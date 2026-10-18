@@ -13,13 +13,27 @@ void OkuFlowApp::InitializeUltraClearText()
     if (!mainWindow_ || ultraClearText_) {
         return;
     }
-    // Off by default and session-only: the user opts in each session.
+    const auto models=settingsController_->Settings().ultraClearTextModels;
+    mainWindow_->ultraClearTextPanel()->SetModelSettings(models);
+    // UCT activation stays session-only; the model preferences persist.
     ultraClearText_ = std::make_unique<UltraClearTextController>(
         mainWindow_->ultraClearTextOverlay(), mainWindow_->ultraClearTextPanel(),
-        [] { return uct::CreateDefaultRecognizer(); });
+        [models] { return uct::CreateDefaultRecognizer(models); });
+    connect(mainWindow_->ultraClearTextPanel(),&UltraClearTextPanel::modelSettingsChanged,
+            this,&OkuFlowApp::OnUltraClearTextModelsChanged);
     if (assistiveManager_ && mainWindow_->ultraClearTextOverlay()) {
         mainWindow_->ultraClearTextOverlay()->SetExcludedWidget(&assistiveManager_->Overlay());
     }
+}
+
+void OkuFlowApp::OnUltraClearTextModelsChanged()
+{
+    if(!mainWindow_ || !ultraClearText_)return;
+    const auto models=mainWindow_->ultraClearTextPanel()->ModelSettings();
+    settingsController_->MutableSettings().ultraClearTextModels=models;
+    // Capture an immutable value, never an app/settings pointer on the OCR worker.
+    ultraClearText_->ReplaceRecognizerFactory([models]{return uct::CreateDefaultRecognizer(models);});
+    SavePersistentSettings();
 }
 
 // What the user asks for now, as the CUDA path would apply it. The CPU path

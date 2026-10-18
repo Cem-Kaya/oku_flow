@@ -113,7 +113,9 @@ std::map<Field, QJsonValue> ImageDefaults() {
             {Field::BumpHold, false}, {Field::KeystonePaused, false}, {Field::Scheme, QStringLiteral("normal")},
             {Field::CustomColorMode, QStringLiteral("gradient")}, {Field::CustomColorStopCount, 2},
             {Field::CustomColorStops, QJsonArray{"#000000", "#ffffff"}}, {Field::CustomColorStepped, false},
-            {Field::CustomColorRecipe, QJsonObject{}}};
+            {Field::CustomColorRecipe, QJsonObject{}},
+            {Field::UctGpuDetector,"medium"},{Field::UctGpuRecognizer,"medium"},
+            {Field::UctCpuDetector,"tiny"},{Field::UctCpuRecognizer,"small"}};
 }
 ControlPlan PlanImage(const std::map<Field, QJsonValue>& current, ToolId tool, const QJsonObject& args) {
     return AppControlTarget::PlanImageParameterDependencies(current, tool, args);
@@ -307,7 +309,7 @@ private slots:
             shared(control["schema"].toObject(), Object(p->schema), id);
         }
         for (const auto& p : ParameterRegistry()) ++registryGroups[Id(ParameterGroupName(p.group))];
-        const std::map<QString, int> expected{{"image", 49}, {"view", 9}, {"camera", 5}, {"recording", 2},
+        const std::map<QString, int> expected{{"image", 53}, {"view", 9}, {"camera", 5}, {"recording", 2},
             {"assistant_preferences", 10}, {"notes_output", 2}, {"ui", 9}, {"annotation", 8}};
         QVERIFY(registryGroups == inventoryGroups);
         QVERIFY(registryGroups == expected);
@@ -432,7 +434,7 @@ private slots:
         for (const auto& p : ParameterRegistry()) QVERIFY(expected.insert(Id(p.id)).second);
         for (const auto& p : ProtectedControlRegistry()) QVERIFY(expected.insert(Id(p.id)).second);
         for (const auto& a : ControlActionRegistry()) QVERIFY(expected.insert(Id(a.id)).second);
-        QCOMPARE(expected.size(), std::size_t(94 + 17 + 39));
+        QCOMPARE(expected.size(), std::size_t(98 + 17 + 39));
         for (const std::size_t limit : {std::size_t(16), std::size_t(7), std::size_t(1)}) {
             int pages = 0; qsizetype largest = 0;
             const auto items = MetadataItems({}, limit, &pages, &largest);
@@ -603,7 +605,7 @@ private slots:
         QVERIFY2(appAccepts.isEmpty(), qPrintable(appAccepts.join(", ")));
     }
 
-    // [planner] The image planner owns exactly the 49 image and 9 view fields.
+    // [planner] The image planner owns exactly the 53 image and 9 view fields.
     void imagePlannerOwnsEveryImageAndViewField() {
         std::set<Field> fields; int owned = 0;
         for (const auto& p : ParameterRegistry()) {
@@ -614,7 +616,7 @@ private slots:
             QVERIFY(!FieldName(*field).isEmpty());
             ++owned;
         }
-        QCOMPARE(owned, 58);
+        QCOMPARE(owned, 62);
         QVERIFY(!AppControlTarget::ImageParameterField("image.colors.custom"));
         QVERIFY(!AppControlTarget::ImageParameterField("assistant.apiKey"));
     }
@@ -643,7 +645,7 @@ private slots:
             QCOMPARE(revisions.size(),1);
             QVERIFY2(revisions.contains(Id(p.id)),qPrintable(Id(p.id)+" missing from receipt"));
         }
-        QCOMPARE(checked, 58);
+        QCOMPARE(checked, 62);
         // Legacy receipts retain their prior vocabulary; grouped setters
         // publish registry IDs through the actual service receipt path.
         QCOMPARE(FieldName(Field::Contrast),QStringLiteral("contrast"));
@@ -715,7 +717,7 @@ private slots:
             }
             ++covered;
         }
-        QCOMPARE(covered, 54); // 58 minus the four custom-recipe components
+        QCOMPARE(covered, 58); // 62 minus the four custom-recipe components
         QVERIFY(samples > 150);
         qInfo("image/view fields: %d, accepted boundary/choice samples: %d", covered, samples);
     }
@@ -904,7 +906,7 @@ private slots:
         const auto two = PlanImage(defaults, ToolId::ImageSettingsGet, {{"fields", QJsonArray{"image.brightness", "image.contrast"}}});
         QVERIFY(two.error.isEmpty() && two.writes.empty());
         QVERIFY(std::set<Field>(two.observedFields.begin(), two.observedFields.end()) == (std::set<Field>{Field::Contrast, Field::Brightness}));
-        QCOMPARE(PlanImage(defaults, ToolId::ImageSettingsGet, {}).observedFields.size(), std::size_t(49));
+        QCOMPARE(PlanImage(defaults, ToolId::ImageSettingsGet, {}).observedFields.size(), std::size_t(53));
         QCOMPARE(PlanImage(defaults, ToolId::ViewSettingsGet, {}).observedFields.size(), std::size_t(9));
     }
 

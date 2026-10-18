@@ -2,6 +2,17 @@
 
 ## Optional PaddleOCR acceptance (2026-10-18)
 
+`uct_paddle_processing` reconciles all six compiled tier pins against the
+preparation manifest (a declared runtime input). Settings/planner contracts
+cover GPU medium/medium and CPU tiny/small defaults, migration, closed enum
+validation and independent choices. `ultra_clear_text_contract` replaces a held
+worker without joining it on UI or reviving stale results. The opt-in
+`native_app_control_offscreen` exercises the four real UCT combos through the
+actual target, including saved projection, undo and native user edits.
+Real CPU/TensorRT rows remain explicit opt-in: defaults now select different
+model pairs. Reuse valid engine plans; do not repeat cold compilation as a
+routine benchmark. All of these checks can run without foreground desktop use.
+
 `uct_paddle_processing` is desktop-free and model-free: CPU reference
 normalization/region/CTC checks, missing/tampered model refusal and scripted
 backend initialization/runtime/exception/cancellation fallback. `uct_paddle_cuda`

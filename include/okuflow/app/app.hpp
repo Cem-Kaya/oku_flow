@@ -367,6 +367,7 @@ private:
                                           UINT viewportWidth, UINT viewportHeight) const;
     UctSceneSettings UltraClearTextRequest() const;
     void InitializeUltraClearText();
+    void OnUltraClearTextModelsChanged();
 
     QApplication* qtApp_{};
     bool initialized_{false};

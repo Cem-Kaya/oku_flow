@@ -3253,5 +3253,25 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>Change drawing settings and save a photo?</source>
             <translation>לשנות את הגדרות הציור ולשמור תמונה?</translation>
         </message>
+        <message>
+            <source>UCT advanced settings</source>
+            <translation>הגדרות UCT מתקדמות</translation>
+        </message>
+        <message>
+            <source>GPU text detector</source>
+            <translation>זיהוי אזורי טקסט ב-GPU</translation>
+        </message>
+        <message>
+            <source>GPU text recognizer</source>
+            <translation>פענוח טקסט ב-GPU</translation>
+        </message>
+        <message>
+            <source>CPU text detector</source>
+            <translation>זיהוי אזורי טקסט ב-CPU</translation>
+        </message>
+        <message>
+            <source>CPU text recognizer</source>
+            <translation>פענוח טקסט ב-CPU</translation>
+        </message>
     </context>
 </TS>

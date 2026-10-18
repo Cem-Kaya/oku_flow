@@ -1,7 +1,12 @@
 #include "okuflow/common/uct_paddle.hpp"
+#include "okuflow/common/uct_model_pins.hpp"
 #include "okuflow/cuda/uct_analysis_pool.hpp"
 #include <QFontDatabase>
 #include <QPainter>
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QFile>
 #include <QtTest>
 #include <limits>
 #include <stdexcept>
@@ -127,6 +132,32 @@ class PaddleTests final : public QObject
 {
     Q_OBJECT
   private slots:
+    void modelPinsMatchPreparationAndFailClosed()
+    {
+        QFile file(QFINDTESTDATA("../scripts/uct/pins.json"));QVERIFY(file.open(QIODevice::ReadOnly));
+        const auto models=QJsonDocument::fromJson(file.readAll()).object()["models"].toArray();
+        QCOMPARE(models.size(),qsizetype(6));QCOMPARE(kPaddleModelPins.size(),size_t(6));
+        for(const bool detection:{false,true})for(const auto tier:{ModelTier::Tiny,ModelTier::Small,ModelTier::Medium}) {
+            const auto* pin=FindPaddleModelPin(detection,tier);QVERIFY(pin);
+            const auto value=[](std::string_view text){return QString::fromUtf8(text.data(),qsizetype(text.size()));};
+            bool found=false;
+            for(const auto& item:models) {
+                const auto m=item.toObject();
+                if(m["kind"].toString()!=(detection?"det":"rec") || m["tier"].toString()!=ModelTierToken(tier))continue;
+                QVERIFY(!found);found=true;
+                QCOMPARE(m["directory"].toString(),value(pin->directory));
+                QCOMPARE(m["repository"].toString(),value(pin->repository));
+                QCOMPARE(m["revision"].toString(),value(pin->revision));
+                QCOMPARE(m["files"].toObject()["inference.onnx"].toString(),value(pin->modelSha256));
+                QCOMPARE(m["files"].toObject()["inference.yml"].toString(),value(pin->configSha256));
+            }
+            QVERIFY(found);
+            QTemporaryDir absent;const auto assets=LoadPaddleAssets(absent.path(),detection?tier:ModelTier::Tiny,detection?ModelTier::Small:tier);
+            QVERIFY(!assets.IsValid());QVERIFY(!assets.error.isEmpty());
+        }
+        QVERIFY(!FindPaddleModelPin(true,static_cast<ModelTier>(999)));
+        QVERIFY(!ParseModelTier("../../custom"));
+    }
     void automaticFallback_data()
     {
         QTest::addColumn<int>("behavior");
@@ -584,16 +615,25 @@ class PaddleTests final : public QObject
         QSKIP("CUDA adapter not compiled.");
 #endif
     }
+    void optionalRealCpu_data()
+    {
+        QTest::addColumn<int>("detector");QTest::addColumn<int>("recognizer");
+        QTest::newRow("default-tiny-small")<<int(ModelTier::Tiny)<<int(ModelTier::Small);
+        QTest::newRow("tiny-tiny")<<int(ModelTier::Tiny)<<int(ModelTier::Tiny);
+        QTest::newRow("small-small")<<int(ModelTier::Small)<<int(ModelTier::Small);
+        QTest::newRow("medium-medium")<<int(ModelTier::Medium)<<int(ModelTier::Medium);
+    }
     void optionalRealCpu()
     {
         if (!qEnvironmentVariableIsSet("OKUFLOW_TEST_PADDLE_RUNTIME"))
             QSKIP("Explicit model-runtime acceptance not selected.");
-        auto recognizer = CreatePaddleCpuRecognizer();
-        const auto status = recognizer->Initialize();
+        QFETCH(int,detector);QFETCH(int,recognizer);
+        auto backend = CreatePaddleCpuRecognizer({},static_cast<ModelTier>(detector),static_cast<ModelTier>(recognizer));
+        const auto status = backend->Initialize();
         QVERIFY2(status.state == BackendState::kReady, qPrintable(status.detail));
-        QTRY_VERIFY_WITH_TIMEOUT(!recognizer->Preparing(), 180000);
-        QVERIFY2(recognizer->Status().state == BackendState::kReady,
-                 qPrintable(recognizer->Status().detail));
+        QTRY_VERIFY_WITH_TIMEOUT(!backend->Preparing(), 180000);
+        QVERIFY2(backend->Status().state == BackendState::kReady,
+                 qPrintable(backend->Status().detail));
         QVERIFY(QFontDatabase::addApplicationFont("C:/Windows/Fonts/arial.ttf") >= 0);
         QImage page(1280, 720, QImage::Format_ARGB32);
         page.fill(Qt::white);
@@ -608,7 +648,7 @@ class PaddleTests final : public QObject
         std::atomic<bool> cancelled{false};
         QElapsedTimer timer;
         timer.start();
-        const auto output = recognizer->Recognize(page, cancelled);
+        const auto output = backend->Recognize(page, cancelled);
         QVERIFY2(output.ok, qPrintable(output.error));
         QStringList words;
         for (const auto &line : output.lines)

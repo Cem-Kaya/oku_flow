@@ -32,7 +32,8 @@ enum class Field {
     UiMode, UiInspectorWidth, UiLanguage, UiHidden, UiSectionExpanded, UiAssistiveDock, UiAssistiveGeometry,
     UiSetupPromptDeclined, UiActiveTab, AnnotationColor, AnnotationWidth, AnnotationTextSize, AnnotationDashed,
     AnnotationShape, AnnotationCaptureOnExit, AnnotationTool, AnnotationEnabled,
-    CameraFormat, CameraAcceleration, CameraTorch, RecordingMicrophone, RecordingCanvas, NotesRoot
+    CameraFormat, CameraAcceleration, CameraTorch, RecordingMicrophone, RecordingCanvas, NotesRoot,
+    UctGpuDetector, UctGpuRecognizer, UctCpuDetector, UctCpuRecognizer
 };
 enum class ContextKind { EmbeddedTurn, ExternalLease };
 enum class ApprovalDomain { None, Configuration };

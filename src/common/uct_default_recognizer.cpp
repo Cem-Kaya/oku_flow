@@ -114,9 +114,9 @@ std::unique_ptr<Recognizer> CreateWindowsRecognizer()
 }
 #endif
 
-std::unique_ptr<Recognizer> CreateDefaultRecognizer()
+std::unique_ptr<Recognizer> CreateDefaultRecognizer(const ModelSettings& models)
 {
-    return CreateAutomaticRecognizer();
+    return CreateAutomaticRecognizer(models);
 }
 
 } // namespace okuflow::uct

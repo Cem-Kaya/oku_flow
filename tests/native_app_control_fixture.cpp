@@ -11,6 +11,7 @@
 #include "okuflow/app/language_manager.hpp"
 #include "okuflow/ui/main_window.hpp"
 #include "okuflow/ui/render_widget.hpp"
+#include "okuflow/ui/ultra_clear_text_panel.hpp"
 #include "okuflow/mcp/app_ipc_endpoint.hpp"
 #include <QApplication>
 #include <QComboBox>
@@ -59,6 +60,7 @@ public:
         app.cameraIntent_.LoadSaved({});
         app.PopulatePresetList();
         app.uiState_->ApplyConfigToUI(settings.currentConfig,true);
+        app.InitializeUltraClearText();
         app.controlTarget_=std::make_unique<AppControlTarget>(app);
         app.controlService_=std::make_unique<AppControlService>(*app.controlTarget_,CatalogEdition::DevFull);
         app.controlService_->SetEnabled(true,true);
@@ -107,6 +109,10 @@ public:
     static void ClearAnnotation(OkuFlowApp& app) {app.CancelAnnotationCaptures();}
     static AppControlService& Service(OkuFlowApp& app) {return *app.controlService_;}
     static AppControlTarget& Target(OkuFlowApp& app) {return *app.controlTarget_;}
+    static uct::ModelSettings UctModels(OkuFlowApp& app) {return app.mainWindow_->ultraClearTextPanel()->ModelSettings();}
+    static void NativeUctModels(OkuFlowApp& app,const uct::ModelSettings& models) {
+        app.mainWindow_->ultraClearTextPanel()->SetModelSettings(models);app.OnUltraClearTextModelsChanged();
+    }
     static QString DeferredPreferenceOperation(OkuFlowApp& app) {
         auto& operations=app.controlTarget_->operations_;
         const auto id=operations.Create(OperationKind::Recording,"wait-fixture");
@@ -555,7 +561,7 @@ private slots:
             const auto result=Call(context,tool,tool);QVERIFY2(result.content["ok"].toBool(),tool);
             QVERIFY(QJsonDocument(result.content).toJson(QJsonDocument::Compact).size()<=32768);
         }
-        QCOMPARE(ParameterRegistry().size(),size_t(94));
+        QCOMPARE(ParameterRegistry().size(),size_t(98));
         const auto state=NativeControlFixture::NativeState(app_);
         QVERIFY(!state["cameraActive"].toBool());QCOMPARE(state["cameraCount"].toInt(),0);
         QVERIFY(!state["platformInitialized"].toBool());QVERIFY(!state["recording"].toBool());
@@ -575,11 +581,40 @@ private slots:
         QCOMPARE(NativeControlFixture::NativeState(app_)["zoomSlider"].toInt(),175);
         service.End(context);
     }
+    void uctModelSettingsShareNativePersistenceApiUndoAndUserWins() {
+        auto& service=NativeControlFixture::Service(app_);
+        const auto original=NativeControlFixture::UctModels(app_);
+        const auto restore=qScopeGuard([&]{service.StopAndUndo();NativeControlFixture::NativeUctModels(app_,original);});
+        NativeControlFixture::NativeUctModels(app_,{});
+        const auto context=service.Begin({ContextKind::EmbeddedTurn,"native-uct-models",1,{}});
+        auto rows=Call(context,"uct-initial","image_settings_get").content["parameters"].toObject();
+        QCOMPARE(rows["image.uct.gpu.detector"].toObject()["requested"],QJsonValue("medium"));
+        QCOMPARE(rows["image.uct.cpu.recognizer"].toObject()["saved"],QJsonValue("small"));
+        QVERIFY(rows["image.uct.gpu.detector"].toObject()["effective"].isNull());
+        const QJsonObject changes{{"image.uct.gpu.detector","small"},{"image.uct.gpu.recognizer","tiny"},
+            {"image.uct.cpu.detector","medium"},{"image.uct.cpu.recognizer","medium"}};
+        QVERIFY(Call(context,"uct-select","image_settings_set",changes).content["ok"].toBool());
+        rows=Call(context,"uct-saved","image_settings_get").content["parameters"].toObject();
+        for(auto it=changes.begin();it!=changes.end();++it) {
+            const auto row=rows[it.key()].toObject();QVERIFY(row["available"].toBool());
+            QCOMPARE(row["requested"],it.value());QCOMPARE(row["saved"],it.value());QVERIFY(row["effective"].isNull());
+        }
+        QVERIFY(service.StopAndUndo().content["restored"].toArray().contains("image.uct.gpu.detector"));
+        QVERIFY(NativeControlFixture::UctModels(app_)==uct::ModelSettings{});
+        const auto second=service.Begin({ContextKind::EmbeddedTurn,"native-uct-user-wins",2,{}});
+        (void)Call(second,"uct-baseline","image_settings_get");
+        auto native=NativeControlFixture::UctModels(app_);native.cpuRecognizer=uct::ModelTier::Tiny;
+        NativeControlFixture::NativeUctModels(app_,native);
+        const auto stale=Call(second,"uct-stale","image_settings_set",{{"image.uct.cpu.recognizer","medium"}});
+        QCOMPARE(stale.content["error"].toObject()["code"].toString(),"stale_state");
+        QCOMPARE(NativeControlFixture::UctModels(app_).cpuRecognizer,uct::ModelTier::Tiny);
+        service.End(second);
+    }
     void unavailableCpuImageWritesHaveNoNativeEffects() {
         auto& service=NativeControlFixture::Service(app_);
         const auto context=service.Begin({ContextKind::EmbeddedTurn,"native-image-unavailable",3,{}});
         const auto rows=Call(context,"image-availability","image_settings_get").content["parameters"].toObject();
-        QCOMPARE(rows.size(),49);int denied=0;
+        QCOMPARE(rows.size(),53);int denied=0;
         for(const auto& descriptor:ParameterRegistry()) {
             if(descriptor.group!=ParameterGroup::Image)continue;
             const auto id=QString::fromUtf8(descriptor.id.data(),descriptor.id.size());

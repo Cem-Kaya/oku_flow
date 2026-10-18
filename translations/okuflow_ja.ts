@@ -3253,5 +3253,25 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>Change drawing settings and save a photo?</source>
             <translation>描画設定を変更して写真を保存しますか？</translation>
         </message>
+        <message>
+            <source>UCT advanced settings</source>
+            <translation>UCT の詳細設定</translation>
+        </message>
+        <message>
+            <source>GPU text detector</source>
+            <translation>GPU テキスト検出モデル</translation>
+        </message>
+        <message>
+            <source>GPU text recognizer</source>
+            <translation>GPU テキスト認識モデル</translation>
+        </message>
+        <message>
+            <source>CPU text detector</source>
+            <translation>CPU テキスト検出モデル</translation>
+        </message>
+        <message>
+            <source>CPU text recognizer</source>
+            <translation>CPU テキスト認識モデル</translation>
+        </message>
     </context>
 </TS>

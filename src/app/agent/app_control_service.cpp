@@ -90,7 +90,8 @@ QString FieldName(Field field) {
         "ui.mode","ui.inspectorWidth","ui.language","ui.hidden","ui.sectionExpanded","ui.assistiveDock","ui.assistiveGeometry",
         "ui.setupPromptDeclined","ui.activeTab","annotation.color","annotation.width","annotation.textSize","annotation.dashed",
         "annotation.shape","annotation.captureOnExit","annotation.tool","annotation.enabled",
-        "camera.format","camera.acceleration","camera.phoneTorch","recording.microphone","recording.canvas","notes_output.root"};
+        "camera.format","camera.acceleration","camera.phoneTorch","recording.microphone","recording.canvas","notes_output.root",
+        "image.uct.gpu.detector","image.uct.gpu.recognizer","image.uct.cpu.detector","image.uct.cpu.recognizer"};
     const auto index = static_cast<std::size_t>(field);
     return index < std::size(names) ? QString::fromLatin1(names[index]) : QString();
 }

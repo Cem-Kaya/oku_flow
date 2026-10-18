@@ -67,6 +67,7 @@ public:
     std::optional<bool> ApplyImageParameter(const FieldWrite& write);
     bool ApplyImageParameterBatch(const ControlPlan& plan);
     bool ValidateImageParameterBatch(const ControlPlan& plan) const;
+    void FinalizeUctModelParameters();
     static bool ImageParameterEffectiveIntent(Field field, const std::map<Field,QJsonValue>& current);
     static std::optional<Field> ImageParameterField(std::string_view id);
     std::map<Field,QJsonValue> ImageParameterFields() const;
@@ -117,6 +118,7 @@ private:
     bool fieldPlanActive_{}, fieldPlanPreviousApplying_{};
     QString fieldPlanPreset_;
     bool fieldPlanWritesPreset_{};
+    bool uctModelsPending_{};
     std::map<Field,QJsonValue> observed_;
     mutable OperationTracker operations_;
     std::map<QString,QString> recordingOperations_;

@@ -845,14 +845,14 @@ private slots:
         QVERIFY(cataloged(fallback));
         // Layout-only preferences without their own caption keep the neutral label.
         const QSet<QString> neutral{"ui.mode","ui.activeTab","ui.sectionExpanded"};
-        QCOMPARE(ParameterRegistry().size(),size_t(94));
+        QCOMPARE(ParameterRegistry().size(),size_t(98));
         for (const auto& descriptor : ParameterRegistry()) {
             const auto id = QString::fromUtf8(descriptor.id.data(),static_cast<qsizetype>(descriptor.id.size()));
             QVERIFY2(cataloged(label(id)),qPrintable(id));
             QVERIFY2(neutral.contains(id) || label(id) != fallback,qPrintable(id));
         }
         // Every legacy receipt spelling resolves to the caption of its canonical id.
-        for (int index = 0; index <= static_cast<int>(Field::NotesRoot); ++index) {
+        for (int index = 0; index <= static_cast<int>(Field::UctCpuRecognizer); ++index) {
             const auto field = static_cast<Field>(index);
             const auto legacy = FieldName(field), canonical = ParameterId(field);
             QVERIFY2(!legacy.isEmpty() && cataloged(label(legacy)),qPrintable(legacy));

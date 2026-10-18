@@ -12,7 +12,8 @@ namespace
 class PaddleCpuRecognizer final : public Recognizer
 {
   public:
-    explicit PaddleCpuRecognizer(QString root) : root_(std::move(root))
+    PaddleCpuRecognizer(QString root,ModelTier detector,ModelTier recognizer)
+        : root_(std::move(root)),detectorTier_(detector),recognizerTier_(recognizer)
     {
     }
     BackendStatus Initialize() override
@@ -20,7 +21,7 @@ class PaddleCpuRecognizer final : public Recognizer
         status_.name = "PaddleOCR / ONNX CPU";
         status_.languageTag = "multilingual";
         status_.state = BackendState::kUnavailable;
-        assets_ = LoadPaddleAssets(root_);
+        assets_ = LoadPaddleAssets(root_,detectorTier_,recognizerTier_);
         if (!assets_.IsValid())
         {
             status_.detail = assets_.error;
@@ -32,7 +33,7 @@ class PaddleCpuRecognizer final : public Recognizer
             detector_ = OpenPaddleCpuSession(runtime, assets_.detector);
             recognizer_ = OpenPaddleCpuSession(runtime, assets_.recognizer);
             status_.state = BackendState::kReady;
-            status_.detail = "PP-OCRv6 tiny detector / small recognizer; CPU fallback.";
+            status_.detail = "PP-OCRv6 "+ModelTierToken(detectorTier_)+" detector / "+ModelTierToken(recognizerTier_)+" recognizer; CPU fallback.";
         }
         catch (const std::exception &e)
         {
@@ -110,6 +111,7 @@ class PaddleCpuRecognizer final : public Recognizer
 
   private:
     QString root_;
+    ModelTier detectorTier_,recognizerTier_;
     PaddleAssets assets_;
     BackendStatus status_;
     std::unique_ptr<PaddleCpuSession> detector_, recognizer_;
@@ -118,8 +120,8 @@ class PaddleCpuRecognizer final : public Recognizer
 class AutomaticRecognizer final : public Recognizer
 {
   public:
-    explicit AutomaticRecognizer(std::vector<std::unique_ptr<Recognizer>> candidates = {})
-        : candidates_(std::move(candidates))
+    explicit AutomaticRecognizer(std::vector<std::unique_ptr<Recognizer>> candidates = {},ModelSettings models = {})
+        : candidates_(std::move(candidates)),models_(models)
     {
     }
     BackendStatus Initialize() override
@@ -129,8 +131,8 @@ class AutomaticRecognizer final : public Recognizer
         initialized_ = true;
         if (candidates_.empty())
         {
-            candidates_.push_back(CreateTensorRtRecognizer());
-            candidates_.push_back(CreatePaddleCpuRecognizer());
+            candidates_.push_back(CreateTensorRtRecognizer({},{},models_.gpuDetector,models_.gpuRecognizer));
+            candidates_.push_back(CreatePaddleCpuRecognizer({},models_.cpuDetector,models_.cpuRecognizer));
             candidates_.push_back(CreateWindowsRecognizer());
         }
         states_.resize(candidates_.size(), CandidateState::kUninitialized);
@@ -300,6 +302,7 @@ class AutomaticRecognizer final : public Recognizer
         kRetired
     };
     std::vector<std::unique_ptr<Recognizer>> candidates_;
+    ModelSettings models_;
     std::vector<CandidateState> states_;
     std::size_t active_{};
     QString reasons_;
@@ -308,13 +311,13 @@ class AutomaticRecognizer final : public Recognizer
     std::optional<std::size_t> preparing_;
 };
 } // namespace
-std::unique_ptr<Recognizer> CreatePaddleCpuRecognizer(const QString &root)
+std::unique_ptr<Recognizer> CreatePaddleCpuRecognizer(const QString &root,ModelTier detector,ModelTier recognizer)
 {
-    return std::make_unique<PaddleCpuRecognizer>(root.isEmpty() ? DefaultPaddleRoot() : root);
+    return std::make_unique<PaddleCpuRecognizer>(root.isEmpty() ? DefaultPaddleRoot() : root,detector,recognizer);
 }
-std::unique_ptr<Recognizer> CreateAutomaticRecognizer()
+std::unique_ptr<Recognizer> CreateAutomaticRecognizer(const ModelSettings& models)
 {
-    return std::make_unique<AutomaticRecognizer>();
+    return std::make_unique<AutomaticRecognizer>(std::vector<std::unique_ptr<Recognizer>>{},models);
 }
 std::unique_ptr<Recognizer> CreateAutomaticRecognizer(
     std::vector<std::unique_ptr<Recognizer>> candidates)

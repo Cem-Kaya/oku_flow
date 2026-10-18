@@ -3253,5 +3253,25 @@ Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u
             <source>Change drawing settings and save a photo?</source>
             <translation>Tekeninstellingen wijzigen en een foto opslaan?</translation>
         </message>
+        <message>
+            <source>UCT advanced settings</source>
+            <translation>Geavanceerde UCT-instellingen</translation>
+        </message>
+        <message>
+            <source>GPU text detector</source>
+            <translation>Tekstdetectie op GPU</translation>
+        </message>
+        <message>
+            <source>GPU text recognizer</source>
+            <translation>Tekstherkenning op GPU</translation>
+        </message>
+        <message>
+            <source>CPU text detector</source>
+            <translation>Tekstdetectie op CPU</translation>
+        </message>
+        <message>
+            <source>CPU text recognizer</source>
+            <translation>Tekstherkenning op CPU</translation>
+        </message>
     </context>
 </TS>

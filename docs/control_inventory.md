@@ -1,7 +1,7 @@
 # Expanded native control inventory
 
 The implementation inventory is [app_control_inventory.json](../tests/data/app_control_inventory.json).
-It records **94 adjustable values**, **13 protected entries** (including the
+It records **98 adjustable values**, **13 protected entries** (including the
 four-field external lease bundle and an internal credential locator), and **39
 action/workflow identities** found in the current Windows production source.
 The original 19 MCP tools and their private SDK proof cover a subset. This
@@ -11,7 +11,7 @@ target integration remains separately gated.
 
 | Group | Adjustable values | Native owner |
 | --- | ---: | --- |
-| Image | 49 | `app_controls.cpp`, `ColorSchemePicker`, `UIStateManager` |
+| Image | 53 | `app_controls.cpp`, `app_ultra_clear_text.cpp`, `ColorSchemePicker`, `UIStateManager` |
 | View/navigation/presentation | 9 | `app_controls.cpp`, bootstrap, `PipelineOrchestrator` |
 | Camera/source | 5 | `app_controls.cpp`, bootstrap, `MediaCapture` |
 | Recording preferences | 2 | bootstrap, `RecordingManager` |
@@ -73,7 +73,7 @@ unchanged.
 
 These descriptors are implemented in `app/agent/control_registry.cpp` and
 `app/agent/parameter_registry.cpp`. `ParameterRegistry`/`FindParameter` return
-the immutable 94-field table; `ProtectedControlRegistry` returns 17 metadata
+the immutable 98-field table; `ProtectedControlRegistry` returns 17 metadata
 entries (the protected bundle's four fields are flattened), and
 `ControlActionRegistry` preserves the 39 existing-tool/native-only workflow
 classifications. `ParameterGroupForTool` maps the eight appended finite pairs.
@@ -223,14 +223,14 @@ expanded groups; the existing private MCP SDK scenarios remain subset evidence.
 Runtime source switching, real device/media quality, CUDA/Maxine effects,
 native approval UI, accessibility and complete release gates remain outstanding.
 
-`mcp_bridge_contract` now validates the 94 compiled parameter mappings,
+`mcp_bridge_contract` now validates the 98 compiled parameter mappings,
 immutable old catalog sizes, all grouped closed schemas, protected fields,
 bounded metadata traversal and Protocol admission. The explicit `dev-full`
 private app implements metadata, four synthetic view reads and one synthetic
 assistant projection field through the production pure packing helper; new grouped
 setters return `unavailable` and leave its write count unchanged. That fixture
 proves honest discovery/admission through stdio/IPC/service, not native effects
-for all 94 controls. The default `dev-camera` SDK contract continues to advertise
+for all 98 controls. The default `dev-camera` SDK contract continues to advertise
 19 tools.
 
 The reviewed shared schemas now bound `sinceEvent` to the exact JSON integer

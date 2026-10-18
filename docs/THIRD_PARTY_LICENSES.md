@@ -158,7 +158,7 @@ binaries and caches are not added to Windows/Android release inventories.
 
 ## Optional experimental PaddleOCR component (2026-10-18)
 
-PP-OCRv6 tiny detection and small recognition ONNX weights, configuration and
+PP-OCRv6 tiny, small and medium detection and recognition ONNX weights, configuration and
 original model cards come from PaddlePaddle under Apache-2.0. Exact repository
 revisions and hashes are in `scripts/uct/pins.json`. The unchanged upstream
 license is retained in `third_party/paddleocr/LICENSE` and staged as

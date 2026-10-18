@@ -11,12 +11,15 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QComboBox>
+#include <QToolButton>
 #include <QElapsedTimer>
 #include <QFontMetricsF>
 #include <QHash>
 #include <QLabel>
 #include <QPlainTextEdit>
 #include <QScrollBar>
+#include <QScopeGuard>
 #include <QTextCursor>
 #include <QtTest>
 
@@ -484,6 +487,43 @@ class UltraClearTextTests final : public QObject {
 
 private slots:
     void initTestCase() { RegisterFixtureFonts(); }
+    void independentModelSelectorsKeepActivationSessionOnly() {
+        UltraClearTextPanel panel;
+        const auto defaults=panel.ModelSettings();
+        QCOMPARE(defaults.gpuDetector,ModelTier::Medium);QCOMPARE(defaults.gpuRecognizer,ModelTier::Medium);
+        QCOMPARE(defaults.cpuDetector,ModelTier::Tiny);QCOMPARE(defaults.cpuRecognizer,ModelTier::Small);
+        QSignalSpy changes(&panel,&UltraClearTextPanel::modelSettingsChanged);
+        panel.cpuDetectorCombo()->setCurrentIndex(1);
+        QCOMPARE(changes.size(),1);QCOMPARE(panel.ModelSettings().cpuDetector,ModelTier::Small);
+        QCOMPARE(panel.ModelSettings().gpuDetector,ModelTier::Medium);QVERIFY(!panel.IsEnabledByUser());
+        panel.SetModelSettings(defaults);QCOMPARE(changes.size(),1);QVERIFY(panel.ModelSettings()==defaults);
+        auto* advanced=panel.findChild<QToolButton*>("uctAdvancedSettings");QVERIFY(advanced);
+        QVERIFY(advanced->isCheckable());QVERIFY(!advanced->isChecked());
+        QVERIFY(!panel.gpuDetectorCombo()->accessibleName().isEmpty());QCOMPARE(panel.gpuRecognizerCombo()->count(),3);
+    }
+    void modelSwitchRetiresHeldWorkerWithoutBlockingOrDisablingUct() {
+        Harness h;
+        h.Enable();QVERIFY(h.RunUntilShown());
+        h.shared->SetHold(true);
+        const auto release=qScopeGuard([&]{h.shared->SetHold(false);});
+        int callsBefore;
+        {std::lock_guard lock(h.shared->mutex);callsBefore=h.shared->calls;}
+        h.SetPage(MakePage({"Changed page needs recognition"}));
+        QTRY_VERIFY(([&]{h.Run(1);std::lock_guard lock(h.shared->mutex);return h.shared->calls>callsBefore;})());
+        h.controller->SetShowOriginal(true);
+        auto replacement=std::make_shared<ScriptShared>();
+        replacement->initState=BackendState::kUnavailable;
+        QElapsedTimer timer;timer.start();
+        h.controller->ReplaceRecognizerFactory([replacement]{return std::make_unique<ScriptedRecognizer>(replacement);});
+        QVERIFY2(timer.elapsed()<1000,"Model switch joined a held inference worker on the UI thread");
+        QVERIFY(h.panel->IsEnabledByUser());QVERIFY(h.panel->IsShowingOriginal());
+        QTRY_COMPARE(h.controller->BackendStatusSnapshot().state,BackendState::kUnavailable);
+        h.shared->SetHold(false);
+        h.Run(20);QCoreApplication::processEvents();
+        QCOMPARE(h.overlay->WordCount(),0);
+        QVERIFY(h.panel->readingPane()->toPlainText().isEmpty());
+        QCOMPARE(h.controller->BackendStatusSnapshot().state,BackendState::kUnavailable);
+    }
 
     // --- Geometry -----------------------------------------------------------
     void geometryRoundTripsThroughFitFillZoomPanAndDpi();

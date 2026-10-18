@@ -1,5 +1,56 @@
 # OkuFlow Code Reference
 
+## Configurable UCT models (2026-10-18)
+
+- `uct_model_settings.hpp`: `ModelTier`, `ModelSettings`, `ModelTierToken` and
+  strict `ParseModelTier` define three finite tiers and independent GPU M/M,
+  CPU T/S defaults. `settings::PersistentSettings::ultraClearTextModels` is an
+  additive root setting. `ParseSettingsRoot` defaults each invalid/missing member
+  independently; serialization stores only the four tokens, never activation.
+- `uct_model_pins.hpp`: `PaddleModelPin`, `kPaddleModelPins` and
+  `FindPaddleModelPin` bind each detector/recognizer tier to reviewed immutable
+  graph/config hashes and upstream revision. `LoadPaddleAssets` selects those
+  paths, validates both graph and dictionary and returns exact graph hashes in
+  `PaddleAssets`. TensorRT `Network` consumes the selected compiled hash;
+  cache keys remain model/device/driver/version-bound.
+- `CreateDefaultRecognizer` and `CreateAutomaticRecognizer` capture immutable
+  `ModelSettings`. `CreateTensorRtRecognizer` and `CreatePaddleCpuRecognizer`
+  receive the selected pair separately. Preparation and inference remain worker
+  owned; CPU serves while the selected GPU pair prepares.
+- `UltraClearTextPanel::{ModelSettings,SetModelSettings}` read/set four combos;
+  `gpuDetectorCombo`, `gpuRecognizerCombo`, `cpuDetectorCombo` and
+  `cpuRecognizerCombo` expose their native controls. Setters block signals.
+  The collapsed advanced foldout retains normal keyboard
+  navigation and translated captions. `modelSettingsChanged` reaches
+  `OkuFlowApp::OnUltraClearTextModelsChanged`, which saves current preferences and
+  calls `UltraClearTextController::ReplaceRecognizerFactory`. This retires the old
+  generation asynchronously, preserving UCT enabled/Show original preferences.
+- `AppControlTarget::FinalizeUctModelParameters` coalesces a batch's model
+  changes into one worker replacement. The four `image.uct.{gpu,cpu}.{detector,recognizer}`
+  fields share native combos, saved-state projection, strict enum validation,
+  user-revision checks and Stop and undo. Model preferences remain writable on
+  CPU-only builds. Effective values are null when that backend is inactive.
+- Regressions cover legacy/default/invalid/round-trip settings, all six pin
+  identities, independent selectors, a held old worker during replacement,
+  closed planner enums and actual-app offscreen persistence/undo/user-wins.
+  The five new labels were reviewed across all 24 catalogs (120/120 entries)
+  by three read-only Luna agents; all 24 flagged replacements were reconciled.
+  This is model review, separate from native-speaker and rendered acceptance.
+
+Validation on 2026-10-18: shipping CUDA Release compiled; the tracked background
+CPU gate passed all 86 cases (one optional MCP Qt row skipped inside a passed
+case), and all 10 CUDA delta cases passed. The initial matrix's CPU resume was
+refused because a repaired coverage fixture had changed shared environment
+inputs; its original failed evidence was preserved, then a fresh CPU gate
+completed successfully. Native offscreen acceptance passed all 24 Qt rows,
+including `NativeControlFixture::{UctModels,NativeUctModels}` persistence/undo/
+user-wins coverage. Explicit real-model acceptance passed seven Qt rows:
+default tiny/small plus tiny/tiny, small/small and medium/medium on CPU, and
+medium/medium via TensorRT with host and owned-device inputs. This verifies
+the pinned graph integrations, not broad OCR accuracy or a new benchmark.
+All 24 catalogs passed exact parity at 812 source keys. Native foreground GUI,
+physical cameras and installer acceptance were excluded; no installer published.
+
 ## PaddleOCR analysis and fallback (2026-10-18)
 
 This section supersedes the older Windows-only/final-viewport UCT description
@@ -4165,7 +4216,7 @@ Assistant preference reads accept assistant-only finite `valueKind` projections:
 `ControlPlan::requiresFrames` independently requires the active context frame grant, including after exact configuration approval. `IAppControlTarget::BeginFieldPlan` validates without applying effects; `CommitFieldPlan` starts native mutation only after the service captures the complete original field snapshot. `EndFieldPlan` completes the batch and refreshes native readouts. The anticipated applied/effective receipt is bounded before any native effect. Approval resolution compares the complete normalized write sequence and its permission/history/recording semantics against the immutable approved plan. Pending approval DTOs expose finite native `approvalDomain` and `sideEffects` values for accessible headings, independently of model arguments.
 
 `AppControlTarget::ImageParameterField`, `ImageProfileFields` and
-`ImageParameterFields` map the finite 49 image and nine view preferences plus
+`ImageParameterFields` map the finite 53 image and nine view preferences plus
 the internal complete custom-color recipe. `PrepareImageParameters` uses the
 pure `PlanImageParameterDependencies` to finish closed-schema validation,
 native-step normalization and changed-value dependencies before publishing

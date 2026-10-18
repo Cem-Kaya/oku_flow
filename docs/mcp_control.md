@@ -1,5 +1,16 @@
 # Local MCP control (development)
 
+UCT model choices use the existing `image_settings_get` / `image_settings_set`
+tools in the full catalog. The four keys are `image.uct.gpu.detector`,
+`image.uct.gpu.recognizer`, `image.uct.cpu.detector`, and
+`image.uct.cpu.recognizer`; each accepts only `tiny`, `small`, or `medium`.
+For example, `{"image.uct.gpu.detector":"medium","image.uct.gpu.recognizer":"medium"}`
+selects the default GPU pair. They require the View grant and share the native
+UCT advanced controls, persistent settings, stale-state checks and undo journal.
+A grouped change reloads the OCR chain once, asynchronously. Read results keep
+requested/saved values separate from effective values (null for an inactive
+backend). Selecting models does not enable UCT or grant camera-image access.
+
 Image delivery retains the native observation's original control stamp, frame
 sequence and monotonic processing time through local preview, HTTP/Codex and
 MCP serialization. The final delivery fence rechecks that exact record, current
@@ -25,7 +36,7 @@ runtime. Selecting `v1` does not clear acceptance or enable packaging.
 The preserved development editions contain 14, 17 and 19 tools respectively.
 `dev-full` and the still-gated `v1` contain 36 tools: the original 19 plus
 `app.controls.list` and eight finite grouped get/set pairs. Their inventory
-describes 94 adjustable parameters, 17 protected metadata entries and 39
+describes 98 adjustable parameters, 17 protected metadata entries and 39
 workflow actions. A listed field is not proof that its native implementation,
 hardware or permission is available. Runtime rows expose availability,
 writability and unsupported reasons; protected entries expose no secret values.
@@ -208,7 +219,7 @@ report `denied_by_policy` before any availability check (§14.3).
 Cold image effects remain explicitly unavailable without CUDA; CPU fixture
 availability is never fabricated to obtain a passing mutation.
 Its results must stay separate from the synthetic fixture above, and neither
-proves all 94 native effects, real camera/media, live provider, rendered approval
+proves all 98 native effects, real camera/media, live provider, rendered approval
 UI, accessibility, the embedded assistant adapter or shipping acceptance.
 
 Operation-state waits compare the complete public status projection at admission

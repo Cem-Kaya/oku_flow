@@ -194,6 +194,8 @@ public:
 
     void SetEnabled(bool enabled);
     bool IsEnabled() const noexcept { return enabled_; }
+    // Retire a previous worker asynchronously and fence its queued callbacks.
+    void ReplaceRecognizerFactory(RecognizerFactory factory);
     void SetShowOriginal(bool showOriginal);
 
     // Presentation clock. Never blocks; returns true when a viewport copy

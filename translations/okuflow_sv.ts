@@ -3253,5 +3253,25 @@ Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</
             <source>Change drawing settings and save a photo?</source>
             <translation>Ändra ritinställningar och spara ett foto?</translation>
         </message>
+        <message>
+            <source>UCT advanced settings</source>
+            <translation>Avancerade UCT-inställningar</translation>
+        </message>
+        <message>
+            <source>GPU text detector</source>
+            <translation>Textdetektering med GPU</translation>
+        </message>
+        <message>
+            <source>GPU text recognizer</source>
+            <translation>Textigenkänning med GPU</translation>
+        </message>
+        <message>
+            <source>CPU text detector</source>
+            <translation>Textdetektering med CPU</translation>
+        </message>
+        <message>
+            <source>CPU text recognizer</source>
+            <translation>Textigenkänning med CPU</translation>
+        </message>
     </context>
 </TS>

@@ -3253,5 +3253,25 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
             <source>Change drawing settings and save a photo?</source>
             <translation>Çizim ayarları değiştirilsin ve bir fotoğraf kaydedilsin mi?</translation>
         </message>
+        <message>
+            <source>UCT advanced settings</source>
+            <translation>UCT gelişmiş ayarları</translation>
+        </message>
+        <message>
+            <source>GPU text detector</source>
+            <translation>GPU metin algılama modeli</translation>
+        </message>
+        <message>
+            <source>GPU text recognizer</source>
+            <translation>GPU metin tanıma modeli</translation>
+        </message>
+        <message>
+            <source>CPU text detector</source>
+            <translation>CPU metin algılama modeli</translation>
+        </message>
+        <message>
+            <source>CPU text recognizer</source>
+            <translation>CPU metin tanıma modeli</translation>
+        </message>
     </context>
 </TS>

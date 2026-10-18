@@ -657,6 +657,14 @@ namespace {
 std::optional<PersistentSettings> ParseSettingsRoot(const QJsonObject& root)
 {
     PersistentSettings settings;
+    const auto models = root.value(QStringLiteral("ultraClearTextModels")).toObject();
+    const auto loadTier = [&](const char* key, uct::ModelTier fallback) {
+        return uct::ParseModelTier(models.value(QLatin1String(key)).toString()).value_or(fallback);
+    };
+    settings.ultraClearTextModels.gpuDetector=loadTier("gpuDetector",settings.ultraClearTextModels.gpuDetector);
+    settings.ultraClearTextModels.gpuRecognizer=loadTier("gpuRecognizer",settings.ultraClearTextModels.gpuRecognizer);
+    settings.ultraClearTextModels.cpuDetector=loadTier("cpuDetector",settings.ultraClearTextModels.cpuDetector);
+    settings.ultraClearTextModels.cpuRecognizer=loadTier("cpuRecognizer",settings.ultraClearTextModels.cpuRecognizer);
     // A supported code is an explicit choice; "system", a missing key, or an
     // unknown value follows the Windows display language.
     settings.language = NormalizeLanguagePreference(
@@ -977,6 +985,12 @@ std::optional<PersistentSettings> Load(const QString& path)
 QByteArray Serialize(const PersistentSettings& settings)
 {
     QJsonObject root;
+    const auto& models=settings.ultraClearTextModels;
+    root.insert(QStringLiteral("ultraClearTextModels"),QJsonObject{
+        {QStringLiteral("gpuDetector"),uct::ModelTierToken(models.gpuDetector)},
+        {QStringLiteral("gpuRecognizer"),uct::ModelTierToken(models.gpuRecognizer)},
+        {QStringLiteral("cpuDetector"),uct::ModelTierToken(models.cpuDetector)},
+        {QStringLiteral("cpuRecognizer"),uct::ModelTierToken(models.cpuRecognizer)}});
     const QString language = NormalizeLanguagePreference(settings.language);
     root.insert(QStringLiteral("language"),
                 language.isEmpty()

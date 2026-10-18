@@ -1,4 +1,5 @@
 #include "okuflow/common/uct_paddle.hpp"
+#include "okuflow/common/uct_model_pins.hpp"
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -52,18 +53,21 @@ QString DefaultPaddleRoot()
     return QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath("OkuFlow/ocr-runtime");
 }
 
-PaddleAssets LoadPaddleAssets(const QString &root)
+PaddleAssets LoadPaddleAssets(const QString &root, ModelTier detector, ModelTier recognizer)
 {
     PaddleAssets assets;
     assets.root = root;
-    assets.detector = QDir(root).filePath("det/inference.onnx");
-    assets.recognizer = QDir(root).filePath("rec/inference.onnx");
-    const QString config = QDir(root).filePath("rec/inference.yml");
-    if (!Verify(assets.detector,
-                "193bab7a04fca699a6c82e6abb5b81bdb28177f0abd4062552b04908dafb19f8") ||
-        !Verify(assets.recognizer,
-                "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634") ||
-        !Verify(config, "ab078671bb49f06228eadccd34f1bb501e157f7a047095ffb943ba81512c77d1"))
+    const auto* det=FindPaddleModelPin(true,detector);
+    const auto* rec=FindPaddleModelPin(false,recognizer);
+    if(!det || !rec) {assets.error="Unsupported PaddleOCR model tier.";return assets;}
+    assets.detector = QDir(root).filePath(QString::fromUtf8(det->directory.data(),qsizetype(det->directory.size()))+"/inference.onnx");
+    assets.recognizer = QDir(root).filePath(QString::fromUtf8(rec->directory.data(),qsizetype(rec->directory.size()))+"/inference.onnx");
+    const QString config=QDir(root).filePath(QString::fromUtf8(rec->directory.data(),qsizetype(rec->directory.size()))+"/inference.yml");
+    assets.detectorSha256=QByteArray(det->modelSha256.data(),qsizetype(det->modelSha256.size()));
+    assets.recognizerSha256=QByteArray(rec->modelSha256.data(),qsizetype(rec->modelSha256.size()));
+    if (!Verify(assets.detector,det->modelSha256.data()) ||
+        !Verify(assets.recognizer,rec->modelSha256.data()) ||
+        !Verify(config,rec->configSha256.data()))
     {
         assets.error = "Pinned PaddleOCR model/config files are missing or changed.";
         return assets;

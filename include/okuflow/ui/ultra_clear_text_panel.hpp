@@ -3,9 +3,11 @@
 #if defined(_WIN32) || defined(Q_MOC_RUN)
 
 #include <QWidget>
+#include "okuflow/common/uct_model_settings.hpp"
 
 QT_BEGIN_NAMESPACE
 class QCheckBox;
+class QComboBox;
 class QLabel;
 class QPlainTextEdit;
 QT_END_NAMESPACE
@@ -24,6 +26,12 @@ public:
     QCheckBox* showOriginalCheckbox() const { return showOriginalCheckbox_; }
     QLabel* statusLabel() const { return statusLabel_; }
     QPlainTextEdit* readingPane() const { return readingPane_; }
+    QComboBox* gpuDetectorCombo() const { return gpuDetectorCombo_; }
+    QComboBox* gpuRecognizerCombo() const { return gpuRecognizerCombo_; }
+    QComboBox* cpuDetectorCombo() const { return cpuDetectorCombo_; }
+    QComboBox* cpuRecognizerCombo() const { return cpuRecognizerCombo_; }
+    uct::ModelSettings ModelSettings() const;
+    void SetModelSettings(const uct::ModelSettings& models);
 
     bool IsEnabledByUser() const;
     bool IsShowingOriginal() const;
@@ -38,6 +46,7 @@ public:
 signals:
     void enabledChanged(bool enabled);
     void showOriginalChanged(bool showOriginal);
+    void modelSettingsChanged();
 
 private:
     void UpdateDependentState();
@@ -46,6 +55,7 @@ private:
     QCheckBox* showOriginalCheckbox_{};
     QLabel* statusLabel_{};
     QPlainTextEdit* readingPane_{};
+    QComboBox *gpuDetectorCombo_{}, *gpuRecognizerCombo_{}, *cpuDetectorCombo_{}, *cpuRecognizerCombo_{};
     QString statusSource_;
 };
 

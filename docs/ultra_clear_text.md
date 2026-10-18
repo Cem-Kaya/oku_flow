@@ -18,6 +18,13 @@ accepted use cases. Use Show original to compare, especially for numbers.
   default and not persisted: it starts off on every launch.
 - **Show original camera text**: always available while UCT is on; hides the
   sharp letters for comparison without stopping recognition.
+- **UCT advanced settings** below those switches has independent GPU and CPU
+  text-detector and text-recognizer selectors. Each offers PP-OCRv6 tiny, small
+  and medium. GPU defaults to medium/medium; CPU defaults to tiny/small. Choices
+  persist across launches, including migration from settings without these keys.
+  Changing a choice while UCT is on cancels the old worker's authority and
+  starts a fresh backend chain asynchronously. Camera presentation keeps running;
+  recognition must become ready and revalidate text before replacement glyphs return.
 - A polite status line (starting, waiting for steady text, reading, showing N
   words, text moved, paused, unavailable) and a read-only, keyboard-selectable
   **Recognized text** pane with the accepted words in reading order. An
@@ -45,8 +52,12 @@ accepted use cases. Use Show original to compare, especially for numbers.
 
 ### PaddleOCR development backend (2026-10-18)
 
-New builds select **TensorRT CUDA → ONNX Runtime CPU → Windows OCR**. Both
-Paddle paths use the pinned PP-OCRv6 tiny detector and small recognizer.
+New builds select **TensorRT CUDA → ONNX Runtime CPU → Windows OCR**. The GPU
+and CPU paths use their own saved model pairs (medium/medium and tiny/small by
+default). CPU OCR serves while GPU engines prepare. A failed or unavailable GPU
+uses the configured CPU pair; Windows OCR is the final fallback. Model size is
+not a guarantee of recognition quality. Language coverage also differs by tier;
+the tiny recognizer, for example, lacks Japanese support offered by larger tiers.
 Unavailable/failed backends retire for the current recognition session;
 copy/input faults drop only that frame. Cancellation does not start fallback.
 Each fallback candidate initializes at most once per session; GPU promotion
@@ -58,6 +69,10 @@ Run `pwsh -NoProfile -File scripts/prepare_uct_runtime.ps1`, optionally with
 `-TensorRT` for the external CUDA-12.9 TensorRT SDK. Files stay in
 `%LOCALAPPDATA%/OkuFlow/ocr-deps` and `ocr-runtime`. Reconfigure CMake after
 preparation. No network/model downloads happen when enabling UCT.
+Preparation verifies all six models and their model cards. Legacy `det/` and
+`rec/` hold tiny detection and small recognition; `det/small`, `det/medium`,
+`rec/tiny` and `rec/medium` contain the other choices. Missing or tampered
+selected files make that backend unavailable; arbitrary paths/models are rejected.
 `OKUFLOW_UCT_ROOT` overrides the model/CPU directory;
 `OKUFLOW_UCT_TENSORRT_ROOT` overrides the external TensorRT SDK.
 Build-time `OKUFLOW_UCT_SDK_ROOT` selects the private header cache.

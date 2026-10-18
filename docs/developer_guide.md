@@ -5,6 +5,11 @@ OkuFlow was formerly named OpenZoom. Website: <https://okuflow.com>. Repository:
 OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, Direct3D 12, and an optional CUDA processing path. The current codebase already supports live camera capture, GPU (CUDA) frame processing with CPU format-conversion support paths, a two-stage preset/advanced UI, rotation-aware presentation, persistent settings, paired photo snapshots, and live AV1/H.264 recording with optional microphone audio in fragmented MP4 containers.
 
 ## Current Capabilities
+- UCT advanced settings persist separate PP-OCRv6 detector/recognizer tiers
+  for GPU (medium/medium by default) and CPU fallback (tiny/small). All three
+  tiers use compiled immutable pins, native combo data and the same four
+  Assistant/MCP image-setting fields. Model replacement retires old workers
+  asynchronously; activation remains session-only. See [UCT](ultra_clear_text.md).
 - Experimental UCT has optional PP-OCRv6 TensorRT CUDA and ONNX Runtime CPU
   adapters, with built-in Windows OCR as the final fallback. Prepare pinned
   development inputs with `scripts/prepare_uct_runtime.ps1` (`-TensorRT` opts

@@ -3253,5 +3253,25 @@ Use “Conectar ao ChatGPT” na guia Assistente do modo Avançado para fazer lo
             <source>Change drawing settings and save a photo?</source>
             <translation>Alterar as configurações de desenho e salvar uma foto?</translation>
         </message>
+        <message>
+            <source>UCT advanced settings</source>
+            <translation>Configurações avançadas do UCT</translation>
+        </message>
+        <message>
+            <source>GPU text detector</source>
+            <translation>Detector de texto na GPU</translation>
+        </message>
+        <message>
+            <source>GPU text recognizer</source>
+            <translation>Reconhecimento de texto na GPU</translation>
+        </message>
+        <message>
+            <source>CPU text detector</source>
+            <translation>Detector de texto na CPU</translation>
+        </message>
+        <message>
+            <source>CPU text recognizer</source>
+            <translation>Reconhecimento de texto na CPU</translation>
+        </message>
     </context>
 </TS>

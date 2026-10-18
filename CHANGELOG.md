@@ -1,11 +1,16 @@
 # Changelog
 
 ## [Unreleased]
+- Add independent PP-OCRv6 detector/recognizer selectors under UCT advanced
+  settings. GPU defaults to medium/medium; CPU defaults to tiny/small. Persist
+  the four choices and expose them through the existing Assistant/MCP image
+  settings API. Switch OCR workers asynchronously; UCT activation remains
+  session-only. Pin all six optional models and retain their original notices.
 - Keep Ultra Clear Text visible through busy presentation slots and small OCR
   refresh jitter without extending validation deadlines. Fit padded Paddle boxes
   to visible source ink and retain gray/source backgrounds when improving contrast.
 - Add optional local PaddleOCR with TensorRT CUDA inference and automatic
-  same-model ONNX Runtime CPU fallback, then built-in Windows OCR. Analyze
+  independently configured ONNX Runtime CPU fallback, then built-in Windows OCR. Analyze
   owned pre-zoom scenes so 16x display zoom retains text context. Keep motion
   validation independent of slow inference and rendering; pin model/runtime
   inputs and retain their licenses outside the source and release inventory.

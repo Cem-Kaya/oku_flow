@@ -3253,5 +3253,25 @@ Wybierz „Połącz z ChatGPT” na karcie Asystent w trybie zaawansowanym, aby 
             <source>Change drawing settings and save a photo?</source>
             <translation>Zmienić ustawienia rysowania i zapisać zdjęcie?</translation>
         </message>
+        <message>
+            <source>UCT advanced settings</source>
+            <translation>Zaawansowane ustawienia UCT</translation>
+        </message>
+        <message>
+            <source>GPU text detector</source>
+            <translation>Wykrywanie tekstu na GPU</translation>
+        </message>
+        <message>
+            <source>GPU text recognizer</source>
+            <translation>Rozpoznawanie tekstu na GPU</translation>
+        </message>
+        <message>
+            <source>CPU text detector</source>
+            <translation>Wykrywanie tekstu na CPU</translation>
+        </message>
+        <message>
+            <source>CPU text recognizer</source>
+            <translation>Rozpoznawanie tekstu na CPU</translation>
+        </message>
     </context>
 </TS>

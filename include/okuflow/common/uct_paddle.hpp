@@ -1,6 +1,7 @@
 #pragma once
 
 #include "okuflow/common/ultra_clear_text.hpp"
+#include <QByteArray>
 #include <QDir>
 #include <QStringList>
 #include <array>
@@ -15,6 +16,7 @@ struct PaddleAssets
     QString root;
     QString detector;
     QString recognizer;
+    QByteArray detectorSha256, recognizerSha256;
     QStringList dictionary; // blank at 0, space appended exactly once
     QString error;
     bool IsValid() const
@@ -22,7 +24,8 @@ struct PaddleAssets
         return error.isEmpty() && !dictionary.isEmpty();
     }
 };
-PaddleAssets LoadPaddleAssets(const QString &root);
+PaddleAssets LoadPaddleAssets(const QString &root, ModelTier detector = ModelTier::Tiny,
+                             ModelTier recognizer = ModelTier::Small);
 QString DefaultPaddleRoot();
 
 struct PaddleQuad
@@ -43,7 +46,9 @@ struct PaddleToken
 RecognizedLine PaddleDecodeTokens(std::span<const PaddleToken> tokens, int steps,
                                   const PaddleQuad &quad, const QStringList &dictionary);
 std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &root = {},
-                                                     const QString &sdk = {});
+                                                     const QString &sdk = {},
+                                                     ModelTier detector = ModelTier::Medium,
+                                                     ModelTier recognizer = ModelTier::Medium);
 
 // All calls are worker-confined; the optional runtime is loaded by absolute path.
 class PaddleCpuSession
@@ -65,12 +70,14 @@ std::vector<float> PaddleRectify(const QImage &image, const PaddleQuad &quad, in
                                  int validWidth);
 RecognizedLine PaddleDecode(std::span<const float> probabilities, int steps, int classes,
                             const PaddleQuad &quad, const QStringList &dictionary);
-std::unique_ptr<Recognizer> CreatePaddleCpuRecognizer(const QString &root = {});
+std::unique_ptr<Recognizer> CreatePaddleCpuRecognizer(const QString &root = {},
+                                                    ModelTier detector = ModelTier::Tiny,
+                                                    ModelTier recognizer = ModelTier::Small);
 std::unique_ptr<Recognizer> CreateWindowsRecognizer();
 
 // Chooses TensorRT, Paddle CPU, then Windows OCR. A failed backend is retired
 // for this recognizer's lifetime; cancellation never triggers fallback/retry.
-std::unique_ptr<Recognizer> CreateAutomaticRecognizer();
+std::unique_ptr<Recognizer> CreateAutomaticRecognizer(const ModelSettings& models = {});
 std::unique_ptr<Recognizer> CreateAutomaticRecognizer(
     std::vector<std::unique_ptr<Recognizer>> candidates);
 

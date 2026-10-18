@@ -2,6 +2,7 @@
 
 #include "okuflow/common/view_transform.hpp"
 #include "okuflow/common/uct_device_image.hpp"
+#include "okuflow/common/uct_model_settings.hpp"
 
 #include <QColor>
 #include <QImage>
@@ -194,7 +195,7 @@ public:
 };
 
 // Optional TensorRT -> Paddle CPU -> built-in Windows OCR, selected on worker.
-std::unique_ptr<Recognizer> CreateDefaultRecognizer();
+std::unique_ptr<Recognizer> CreateDefaultRecognizer(const ModelSettings& models = {});
 
 // --- Scheduler -------------------------------------------------------------
 

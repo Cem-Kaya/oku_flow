@@ -224,7 +224,7 @@ class Progress final : public nvinfer1::IProgressMonitor
 class Network
 {
   public:
-    Network(Libraries &libraries, Logger &logger, const QString &model, bool detection, int device,
+    Network(Libraries &libraries, Logger &logger, const QString &model, const QByteArray& expected, bool detection, int device,
             cudaStream_t stream, const std::atomic<bool> &cancelled)
     {
         Progress progress(cancelled);
@@ -236,10 +236,6 @@ class Network
         if (!modelFile.open(QIODevice::ReadOnly))
             throw std::runtime_error("Cannot read pinned OCR graph.");
         const auto bytes = modelFile.readAll();
-        const auto expected =
-            detection
-                ? QByteArray("193bab7a04fca699a6c82e6abb5b81bdb28177f0abd4062552b04908dafb19f8")
-                : QByteArray("5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634");
         if (QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex() != expected)
             throw std::runtime_error("Pinned OCR graph changed before preparation.");
         cudaDeviceProp properties{};
@@ -415,7 +411,8 @@ struct Preparation
 class TensorRtRecognizer final : public Recognizer
 {
   public:
-    TensorRtRecognizer(QString root, QString sdk) : root_(std::move(root)), sdk_(std::move(sdk))
+    TensorRtRecognizer(QString root, QString sdk,ModelTier detector,ModelTier recognizer)
+        : root_(std::move(root)), sdk_(std::move(sdk)),detectorTier_(detector),recognizerTier_(recognizer)
     {
     }
     ~TensorRtRecognizer() override
@@ -427,7 +424,7 @@ class TensorRtRecognizer final : public Recognizer
         status_.name = "PaddleOCR / TensorRT CUDA";
         status_.languageTag = "multilingual";
         status_.state = BackendState::kUnavailable;
-        assets_ = LoadPaddleAssets(root_);
+        assets_ = LoadPaddleAssets(root_,detectorTier_,recognizerTier_);
         if (!assets_.IsValid())
         {
             status_.detail = assets_.error;
@@ -683,12 +680,12 @@ class TensorRtRecognizer final : public Recognizer
                     Check(cudaStreamCreateWithPriority(&state->stream, cudaStreamNonBlocking, low));
                     state->libraries = std::make_unique<Libraries>(sdk);
                     state->detector = std::make_unique<Network>(
-                        *state->libraries, state->logger, assets.detector, true, state->device,
+                        *state->libraries, state->logger, assets.detector, assets.detectorSha256, true, state->device,
                         state->stream, preparation->cancel);
                     if (preparation->cancel.load())
                         throw std::runtime_error("GPU preparation cancelled.");
                     state->recognizer = std::make_unique<Network>(
-                        *state->libraries, state->logger, assets.recognizer, false, state->device,
+                        *state->libraries, state->logger, assets.recognizer, assets.recognizerSha256, false, state->device,
                         state->stream, preparation->cancel);
                     if (preparation->cancel.load())
                         throw std::runtime_error("GPU preparation cancelled.");
@@ -745,13 +742,14 @@ class TensorRtRecognizer final : public Recognizer
         RetireState(std::move(state_));
     }
     QString root_, sdk_;
+    ModelTier detectorTier_,recognizerTier_;
     PaddleAssets assets_;
     BackendStatus status_;
     std::shared_ptr<State> state_;
     std::shared_ptr<Preparation> preparation_;
 };
 } // namespace
-std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &root, const QString &sdk)
+std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &root, const QString &sdk,ModelTier detector,ModelTier recognizer)
 {
     QString selected = sdk.isEmpty() ? qEnvironmentVariable("OKUFLOW_UCT_TENSORRT_ROOT") : sdk;
     if (selected.isEmpty())
@@ -759,13 +757,13 @@ std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &root, const 
             QDir(qEnvironmentVariable("LOCALAPPDATA"))
                 .filePath("OkuFlow/ocr-deps/TensorRT-11.4.0.106-cuda12.9/TensorRT-11.4.0.106");
     return std::make_unique<TensorRtRecognizer>(root.isEmpty() ? DefaultPaddleRoot() : root,
-                                                selected);
+                                                selected,detector,recognizer);
 }
 } // namespace okuflow::uct
 #else
 namespace okuflow::uct
 {
-std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &, const QString &)
+std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &, const QString &,ModelTier,ModelTier)
 {
     return {};
 }

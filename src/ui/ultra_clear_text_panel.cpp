@@ -5,10 +5,13 @@
 #include "okuflow/ui/live_status_text.hpp"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QLabel>
 #include <QPlainTextEdit>
 #include <QScrollBar>
 #include <QTextCursor>
+#include <QSignalBlocker>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -62,6 +65,46 @@ UltraClearTextPanel::UltraClearTextPanel(QWidget* parent)
     showOriginalCheckbox_->setToolTip(showOriginalCheckbox_->accessibleDescription());
     layout->addWidget(showOriginalCheckbox_);
 
+    auto* advanced = new QToolButton(this);
+    advanced->setObjectName(QStringLiteral("uctAdvancedSettings"));
+    advanced->setText(QStringLiteral("UCT advanced settings"));
+    advanced->setAccessibleName(advanced->text());
+    advanced->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    advanced->setArrowType(Qt::RightArrow);
+    advanced->setCheckable(true);
+    advanced->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Preferred);
+    layout->addWidget(advanced);
+    auto* modelControls = new QWidget(this);
+    auto* modelLayout = new QVBoxLayout(modelControls);
+    modelLayout->setContentsMargins(12,0,0,0);
+    const auto addModel = [&](const QString& label,const char* name) {
+        auto* caption=new QLabel(label,modelControls);
+        caption->setWordWrap(true);
+        caption->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Preferred);
+        auto* combo=new QComboBox(modelControls);
+        combo->setObjectName(QString::fromLatin1(name));
+        combo->setAccessibleName(label);
+        combo->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
+        for(const auto tier:{uct::ModelTier::Tiny,uct::ModelTier::Small,uct::ModelTier::Medium}) {
+            const auto token=uct::ModelTierToken(tier);
+            combo->addItem(QStringLiteral("PP-OCRv6 ")+token,token);
+        }
+        caption->setBuddy(combo);
+        modelLayout->addWidget(caption);modelLayout->addWidget(combo);
+        connect(combo,&QComboBox::currentIndexChanged,this,[this]{emit modelSettingsChanged();});
+        return combo;
+    };
+    gpuDetectorCombo_=addModel(QStringLiteral("GPU text detector"),"uctGpuDetector");
+    gpuRecognizerCombo_=addModel(QStringLiteral("GPU text recognizer"),"uctGpuRecognizer");
+    cpuDetectorCombo_=addModel(QStringLiteral("CPU text detector"),"uctCpuDetector");
+    cpuRecognizerCombo_=addModel(QStringLiteral("CPU text recognizer"),"uctCpuRecognizer");
+    SetModelSettings({});
+    layout->addWidget(modelControls);modelControls->hide();
+    connect(advanced,&QToolButton::toggled,this,[advanced,modelControls](bool expanded){
+        advanced->setArrowType(expanded?Qt::DownArrow:Qt::RightArrow);
+        modelControls->setVisible(expanded);
+    });
+
     statusLabel_ = new QLabel();
     statusLabel_->setObjectName(QStringLiteral("ultraClearTextStatus"));
     statusLabel_->setWordWrap(true);
@@ -102,6 +145,26 @@ bool UltraClearTextPanel::IsEnabledByUser() const
 bool UltraClearTextPanel::IsShowingOriginal() const
 {
     return showOriginalCheckbox_->isChecked();
+}
+
+uct::ModelSettings UltraClearTextPanel::ModelSettings() const {
+    uct::ModelSettings models;
+    const auto tier=[](QComboBox* combo,uct::ModelTier fallback){
+        return uct::ParseModelTier(combo->currentData().toString()).value_or(fallback);
+    };
+    models.gpuDetector=tier(gpuDetectorCombo_,models.gpuDetector);
+    models.gpuRecognizer=tier(gpuRecognizerCombo_,models.gpuRecognizer);
+    models.cpuDetector=tier(cpuDetectorCombo_,models.cpuDetector);
+    models.cpuRecognizer=tier(cpuRecognizerCombo_,models.cpuRecognizer);
+    return models;
+}
+void UltraClearTextPanel::SetModelSettings(const uct::ModelSettings& models) {
+    const auto set=[](QComboBox* combo,uct::ModelTier tier){
+        const int index=combo->findData(uct::ModelTierToken(tier));if(index<0)return;
+        const QSignalBlocker blocker(combo);combo->setCurrentIndex(index);
+    };
+    set(gpuDetectorCombo_,models.gpuDetector);set(gpuRecognizerCombo_,models.gpuRecognizer);
+    set(cpuDetectorCombo_,models.cpuDetector);set(cpuRecognizerCombo_,models.cpuRecognizer);
 }
 
 void UltraClearTextPanel::SetStatus(const QString& sourceText, bool important)

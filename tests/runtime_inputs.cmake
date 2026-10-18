@@ -40,3 +40,7 @@ if(OKUFLOW_ENABLE_CUDA)
             "${OKUFLOW_CUOBJDUMP}" $<TARGET_FILE:oku_flow>)
     endif()
 endif()
+
+set_property(TEST uct_paddle_processing APPEND PROPERTY REQUIRED_FILES
+    "${PROJECT_SOURCE_DIR}/scripts/uct/pins.json"
+    "${PROJECT_SOURCE_DIR}/include/okuflow/common/uct_model_pins.hpp")

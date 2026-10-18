@@ -3253,5 +3253,25 @@ Chọn Kết nối ChatGPT trong tab Trợ lý của chế độ Nâng cao để
             <source>Change drawing settings and save a photo?</source>
             <translation>Thay đổi cài đặt vẽ và lưu ảnh?</translation>
         </message>
+        <message>
+            <source>UCT advanced settings</source>
+            <translation>Cài đặt UCT nâng cao</translation>
+        </message>
+        <message>
+            <source>GPU text detector</source>
+            <translation>Mô hình phát hiện văn bản trên GPU</translation>
+        </message>
+        <message>
+            <source>GPU text recognizer</source>
+            <translation>Mô hình nhận dạng văn bản trên GPU</translation>
+        </message>
+        <message>
+            <source>CPU text detector</source>
+            <translation>Mô hình phát hiện văn bản trên CPU</translation>
+        </message>
+        <message>
+            <source>CPU text recognizer</source>
+            <translation>Mô hình nhận dạng văn bản trên CPU</translation>
+        </message>
     </context>
 </TS>

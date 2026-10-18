@@ -9,6 +9,14 @@ archives/extraction and `ocr-runtime` for verified models, CPU runtime and
 notices. `-CacheRoot`/`-RuntimeRoot` select other local roots. No download occurs
 on UCT enable or CMake configuration.
 
+`uct_model_pins.hpp` compiles the same six immutable graph/config identities;
+the model-free fixture reconciles them against `pins.json`. Tiny detector uses
+`det/`, small recognizer uses `rec/`; other tiers use `det/{small,medium}` and
+`rec/{tiny,medium}`. Persistent `ultraClearTextModels` stores independent
+`gpuDetector`, `gpuRecognizer`, `cpuDetector`, `cpuRecognizer` tokens from
+`tiny|small|medium`. Missing/invalid values independently fall back to
+medium/medium on GPU and tiny/small on CPU. It never persists UCT activation.
+
 `OKUFLOW_UCT_ROOT` selects model/CPU files; otherwise an `ocr` directory beside
 the inner application is preferred when it contains a detector, then LocalAppData.
 `OKUFLOW_UCT_TENSORRT_ROOT` selects the external SDK at runtime; otherwise the

@@ -320,6 +320,14 @@ void UltraClearTextController::OnPresentationSucceeded()
     }
 }
 
+void UltraClearTextController::ReplaceRecognizerFactory(RecognizerFactory factory)
+{
+    const bool enabled=enabled_;
+    if(enabled)SetEnabled(false);
+    factory_=std::move(factory);
+    if(enabled)SetEnabled(true);
+}
+
 void UltraClearTextController::OnPresentationDeferred()
 {
     if (!enabled_) return;
