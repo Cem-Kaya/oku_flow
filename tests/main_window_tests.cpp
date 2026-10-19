@@ -1623,10 +1623,17 @@ void MainWindowTests::chromeFollowsNativeOwnerMove()
     QVERIFY(ActivateFixtureWindow(&window));
     auto* render = window.renderWidget();
     QVERIFY(render);
-    const std::array<const char*, 8> names{"topLeftPanel", "bottomLeftPanel",
+    auto* glyphs = window.ultraClearTextOverlay();
+    QVERIFY(glyphs);
+    glyphs->SetViewTransform(ComputeViewTransform(1600, 900, render->width(), render->height(),
+                                                1.0f, 0.5f, 0.5f, ViewportFitMode::kFit));
+    glyphs->SetWords({{QStringLiteral("Reading"), QRectF(.28, .35, .23, .07),
+                       {QColor(Qt::black), QColor(Qt::white)}, 1}});
+    QTRY_VERIFY(glyphs->isVisible());
+    const std::array<const char*, 9> names{"topLeftPanel", "bottomLeftPanel",
         "keystoneTrackingPanel", "bottomRightPanel", "modeGridPopup", "modeToast",
-        "cameraPlaceholder", "uiVisibilityPanel"};
-    std::array<QWidget*, 8> peers{};
+        "cameraPlaceholder", "uiVisibilityPanel", "ultraClearTextOverlay"};
+    std::array<QWidget*, 9> peers{};
     for (size_t index = 0; index < peers.size(); ++index) {
         peers[index] = Named<QWidget>(window, names[index]);
         QVERIFY(peers[index]);
@@ -1644,9 +1651,9 @@ void MainWindowTests::chromeFollowsNativeOwnerMove()
     for (auto* peer : peers) peer->installEventFilter(&observer);
     const HWND owner = reinterpret_cast<HWND>(window.winId());
     for (const QPoint nativeDelta : {QPoint(57, 31), QPoint(-83, -49), QPoint(26, 18)}) {
-        std::array<QRect, 8> before{};
-        std::array<RECT, 8> nativeBefore{};
-        std::array<HWND, 8> nativePeers{};
+        std::array<QRect, 9> before{};
+        std::array<RECT, 9> nativeBefore{};
+        std::array<HWND, 9> nativePeers{};
         for (size_t index = 0; index < peers.size(); ++index) {
             if (peers[index]->isVisible()) {
                 nativePeers[index] = reinterpret_cast<HWND>(peers[index]->winId());

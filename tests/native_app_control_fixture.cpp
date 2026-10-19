@@ -12,6 +12,7 @@
 #include "okuflow/ui/main_window.hpp"
 #include "okuflow/ui/render_widget.hpp"
 #include "okuflow/ui/ultra_clear_text_panel.hpp"
+#include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "okuflow/ui/video_transport.hpp"
 #include "okuflow/common/uct_device_image.hpp"
 #include "okuflow/common/video_playback.hpp"
@@ -86,6 +87,9 @@ public:
 #endif
 class NativeControlFixture {
 public:
+    static void MoveViewportPeers(MainWindow& window,const QPoint& origin) {
+        window.MoveSimpleChrome(origin);
+    }
     static void Initialize(OkuFlowApp& app,const QString& root) {
         SettingsController::StorageOperations storage;
         storage.readSecret=[](const QString&) {return ProtectedSecretResult{};};
@@ -774,6 +778,28 @@ private slots:
         QVERIFY2(problem().isEmpty(),qPrintable(problem()));
         window.simpleModeButton()->click();window.resize(1280,800);QCoreApplication::processEvents();
         QVERIFY2(problem().isEmpty(),qPrintable(problem()));
+    }
+    void uctOverlayFollowsImmediateViewportMovesWithoutQueuedEvents() {
+        MainWindow window;window.resize(1100,760);window.show();
+        QCoreApplication::processEvents();
+        auto* target=window.renderWidget();auto* overlay=window.ultraClearTextOverlay();
+        QVERIFY(target&&overlay);
+        const auto transform=ComputeViewTransform(1600,900,target->width(),target->height(),1.0f,0.5f,0.5f,ViewportFitMode::kFit);
+        overlay->SetViewTransform(transform);
+        overlay->SetWords({{QStringLiteral("Reading"),QRectF(.28,.35,.23,.07),{Qt::black,Qt::white},1}});
+        QCoreApplication::processEvents();QVERIFY(overlay->isVisible());
+        const QPoint origin=target->mapToGlobal(QPoint());
+        const auto paints=overlay->PaintCount();
+        // Feed the production fast path the native position while Qt's move
+        // queue is withheld. No OCR, timer tick or repaint may be required.
+        for(int step=1;step<=120;++step){
+            const QPoint next=origin+QPoint(step*2,step%7);
+            NativeControlFixture::MoveViewportPeers(window,next);
+            QCOMPARE(overlay->geometry(),QRect(next,target->size()));
+            QCOMPARE(overlay->WordCount(),1);
+            QCOMPARE(overlay->PaintCount(),paints);
+            QCOMPARE(overlay->CurrentViewTransform().sourceX,transform.sourceX);
+        }
     }
     void selectedMediaGpuPolicyIncludesAllImageEffects() {
         // Exercise the policy seam without creating a CUDA surface or claiming

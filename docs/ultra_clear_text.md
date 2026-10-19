@@ -237,6 +237,13 @@ There is no second capture or render pipeline. UCT reuses:
   submission receipt; this does not measure GPU scanout or sensor-to-photon time.
 - The overlay holds only accepted scene-space words. Pan, zoom, Fit/Fill and
   resize repaint through the newest transform on the presentation clock.
+  The glyph tool window also participates in the immediate native `WM_MOVE`
+  path used by floating controls. Its retained pixels translate with the
+  viewport before queued Qt move events run, so dragging the owner cannot
+  leave text outside the viewport until an OCR/status refresh. This positioning
+  is event-driven; pan/zoom continues at the configured presentation rate
+  (Auto/120 FPS is capped by the display). No independent OCR or 120 Hz idle
+  repaint loop is added; scanout cadence still depends on Windows/the display.
 - Probe construction, similarity and residual searching run on `ProbeWorker`,
   with one executing and one latest-only waiting request. A 60 ms per-probe
   search budget leaves new unchecked lines hidden; an already validated line

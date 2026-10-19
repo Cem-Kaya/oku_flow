@@ -3147,12 +3147,21 @@ Namespace `okuflow`
   - `nativeEvent()` follows the existing owner's exact HWND on `WM_MOVE`, skips
     minimized native moves, and leaves the message available to Qt. It calls
     `MoveSimpleChrome()` before Qt's deferred geometry notification; that helper
-    translates all eight chrome peers by the change in render origin, preserving
+    translates the eight chrome peers and the UCT glyph window by the change
+    in render origin, preserving
     their actual positions after native pixel rounding rather than restoring
     pre-rounding offsets.
     The explicit-origin overload uses `ClientToScreen`, the matching native/Qt
     monitor origins and the screen DPR, avoiding stale Qt globals at 1Ã— scaling.
-    It only repositions existing layouts; later Qt events reconcile size/DPR.
+    It only repositions existing layouts/retained glyph pixels; later Qt events
+    reconcile size/DPR. UCT therefore follows each native move without waiting
+    for queued Qt movement, a repaint timer, OCR or semantic UIA updates.
+    `NativeControlFixture::MoveViewportPeers` exercises that same private path;
+    `uctOverlayFollowsImmediateViewportMovesWithoutQueuedEvents` verifies 120
+    successive synthetic origin receipts with Qt's event queue withheld, stable
+    accepted words/transform and no repaint. The native
+    `chromeFollowsNativeOwnerMove` case checks the actual UCT HWND alongside
+    all chrome peers, in LTR/RTL and the existing CI scale matrix.
     At non-unit DPR it uses Qt's live native render mapping, preserving child
     origin rounding. Unit-scale moves use the render-to-owner offset captured
     from completed global geometry, rather than recomputing logical parent offsets.

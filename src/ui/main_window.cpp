@@ -3531,9 +3531,12 @@ void MainWindow::MoveSimpleChrome(const QPoint& viewOrigin)
     if (delta.isNull()) return;
     QScopedValueRollback<bool> geometryGuard(updatingChromeGeometry_, true);
     chromeViewOrigin_ = viewOrigin;
-    const std::array<QWidget*, 8> peers{topLeftPanel_, bottomLeftPanel_,
+    const std::array<QWidget*, 9> peers{topLeftPanel_, bottomLeftPanel_,
         keystoneTrackingPanel_, bottomRightPanel_, modeGridPopup_, modeToast_,
-        cameraPlaceholder_, uiVisibilityPanel_};
+        cameraPlaceholder_, uiVisibilityPanel_, ultraClearTextOverlay_};
+    // UCT is a separate native tool window too. Its accepted glyph bitmap
+    // must follow this immediate origin receipt, before Qt delivers Move;
+    // moving the bitmap requires neither OCR nor a new projection paint.
     for (size_t index = 0; index < peers.size(); ++index) {
         // Preserve the peer's actual position after native pixel rounding,
         // rather than restoring an offset cached before that rounding.

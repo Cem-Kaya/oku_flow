@@ -63,6 +63,7 @@ class UltraClearTextPanel;
 class VideoTransport;
 class CollapsibleSection;
 namespace settings { struct AdvancedConfig; }
+namespace agent { class NativeControlFixture; }
 
 class MainWindow : public QMainWindow, public QAbstractNativeEventFilter {
     Q_OBJECT
@@ -270,6 +271,7 @@ protected:
     bool nativeEventFilter(const QByteArray& eventType, void* message, qintptr* result) override;
 
 private:
+    friend class agent::NativeControlFixture;
     void ActivatePresetRow(int row);
     void ActivateRelativePreset(int offset);
     void ToggleModeGrid();

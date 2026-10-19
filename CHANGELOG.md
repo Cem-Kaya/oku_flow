@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Keep Ultra Clear Text attached to the viewport during native window drags.
+  Move its retained glyph window immediately with the existing floating
+  controls, independently of queued Qt events, OCR and accessibility cadence.
+
 - Correct remaining Turkish/German wrapped-toolbar width differences: give
   each action row independent spacing and equal button minimums, preserving
   readable labels through narrow layouts and live reflow.
