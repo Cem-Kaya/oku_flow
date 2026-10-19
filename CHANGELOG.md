@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Keep the second bottom-control row confined to the left quick-mode cluster.
+  Keep Photo, Record, Explain, Read and Draw in one row at the right, adapting
+  their faces at narrow widths while preserving labels, tooltips and accessibility.
+
 - Update UCT status text and its screen-reader name immediately together,
   removing the routine diagnostic delay while keeping routine changes silent.
   Cover cached accessibility interfaces and refreshed reading-pane content.

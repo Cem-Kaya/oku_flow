@@ -762,6 +762,7 @@ private slots:
         const auto problem=[&]() -> QString {
             QMap<int,QVector<QRect>> rows;
             for(auto* button:{window.capturePhotoButton(),window.recordButton(),window.explainNowButton(),window.readTextButton(),window.annotationButton()})rows[button->y()].push_back(button->geometry());
+            if(rows.size()!=1)return QStringLiteral("Actions wrapped into %1 rows; only the mode cluster may have a second row").arg(rows.size());
             int left=-1,right=-1;
             for(const auto& row:rows){
                 int minWidth=INT_MAX,maxWidth=0,rowLeft=INT_MAX,rowRight=0;
@@ -774,8 +775,22 @@ private slots:
         };
         QCoreApplication::processEvents();
         QVERIFY2(problem().isEmpty(),qPrintable(problem()));
+        auto* modes=window.findChild<QWidget*>("bottomLeftPanel");QVERIFY(modes);
+        QCOMPARE(modes->property("modeRows").toInt(),2);
+        QVERIFY(modes->width()<window.renderWidget()->width());
+        const auto bounds=[](QWidget* widget){return QRect(widget->mapToGlobal(QPoint()),widget->size());};
+        QVERIFY(!bounds(modes).intersects(bounds(panel)));
+        QCOMPARE(bounds(panel).bottom(),bounds(window.renderWidget()).bottom());
         window.resize(720,720);window.setAdvancedPanelWidth(360);QCoreApplication::processEvents();
         QVERIFY2(problem().isEmpty(),qPrintable(problem()));
+        QVERIFY(bounds(window.renderWidget()).contains(bounds(panel)));
+        QVERIFY(bounds(window.renderWidget()).contains(bounds(modes)));
+        QVERIFY(!bounds(modes).intersects(bounds(panel)));
+        for(auto* button:{window.capturePhotoButton(),window.recordButton(),window.explainNowButton(),window.readTextButton(),window.annotationButton()}){
+            QVERIFY(!button->text().isEmpty());QVERIFY(!button->toolTip().isEmpty());
+            QVERIFY(!button->accessibleName().isEmpty());
+            QVERIFY(button->width()>=48);QVERIFY(button->height()>=58);
+        }
         window.simpleModeButton()->click();window.resize(1280,800);QCoreApplication::processEvents();
         QVERIFY2(problem().isEmpty(),qPrintable(problem()));
     }

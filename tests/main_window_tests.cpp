@@ -107,6 +107,7 @@ QString ActionRowsProblem(MainWindow& window, int* rowCount)
         rows[rect.y()].append(rect);
     }
     *rowCount = static_cast<int>(rows.size());
+    if (*rowCount != 1) return QStringLiteral("The five actions must stay on one row");
     int left = 0;
     int right = 0;
     bool first = true;
@@ -1893,20 +1894,20 @@ void MainWindowTests::bottomChromeFormsRectangularGroups()
     QCOMPARE(rows, 1);
     SaveScreenshot(window, code + QStringLiteral("-bottom-chrome-simple-corners"));
 
-    // A narrow Advanced camera gets one full-width toolbar: the action row
-    // directly above the carousel row, both exactly as wide as the camera.
+    // Only the left cluster gains a second row. The actions stay at the
+    // bottom trailing corner, never a full-width bar above the mode controls.
     const auto verifyStrip = [&](const QString& name) -> QString {
         const QRect view = viewport();
         const QRect left = GlobalRect(bottomLeft);
         const QRect right = GlobalRect(bottomRight);
-        if (left.left() != view.left() || left.right() != view.right() ||
-            right.left() != view.left() || right.right() != view.right()) {
-            return QStringLiteral("%1: strip rows [%2..%3] and [%4..%5] do not span camera [%6..%7]")
+        if (left.left() != view.left() || right.right() != view.right() ||
+            !view.contains(left) || !view.contains(right) || left.width() >= view.width()) {
+            return QStringLiteral("%1: compact groups [%2..%3] and [%4..%5] exceed camera [%6..%7]")
                 .arg(name).arg(left.left()).arg(left.right()).arg(right.left())
                 .arg(right.right()).arg(view.left()).arg(view.right());
         }
-        if (left.bottom() != view.bottom() || right.bottom() + 1 != left.top()) {
-            return QStringLiteral("%1: action row bottom %2 is not stacked on carousel top %3 at %4")
+        if (right.bottom() != view.bottom() || left.intersects(right)) {
+            return QStringLiteral("%1: action row bottom %2 overlaps mode top %3 or is not at %4")
                 .arg(name).arg(right.bottom()).arg(left.top()).arg(view.bottom());
         }
         return {};
@@ -1916,15 +1917,15 @@ void MainWindowTests::bottomChromeFormsRectangularGroups()
     QTRY_VERIFY(!window.isSimpleMode());
     window.setAdvancedPanelWidth(440);
     QTRY_VERIFY(render->width() <= 700);
-    QTRY_COMPARE(bottomRight->property("chromeDock").toString(), QStringLiteral("strip"));
-    QCOMPARE(bottomLeft->property("chromeDock").toString(), QStringLiteral("strip"));
+    QTRY_COMPARE(bottomLeft->property("modeRows").toInt(), 2);
     QTRY_VERIFY2(verifyStrip(QStringLiteral("advanced")).isEmpty(),
                  qPrintable(verifyStrip(QStringLiteral("advanced"))));
     problem = ActionRowsProblem(window, &rows);
     QVERIFY2(problem.isEmpty(), qPrintable(problem));
+    QCOMPARE(rows, 1);
     SaveScreenshot(window, code + QStringLiteral("-bottom-chrome-advanced-strip"));
 
-    // The narrowest camera wraps actions into balanced full-width rows.
+    // The narrowest camera compacts action faces, preserving one action row.
     window.resize(720, 720);
     window.setAdvancedPanelWidth(360);
     QTRY_VERIFY(render->width() <= 400);
@@ -1932,7 +1933,7 @@ void MainWindowTests::bottomChromeFormsRectangularGroups()
                  qPrintable(verifyStrip(QStringLiteral("minimum"))));
     problem = ActionRowsProblem(window, &rows);
     QVERIFY2(problem.isEmpty(), qPrintable(problem));
-    QVERIFY(rows > 1);
+    QCOMPARE(rows, 1);
     SaveScreenshot(window, code + QStringLiteral("-bottom-chrome-minimum-strip"));
 
     // Returning to Simple at full width restores the compact corners.

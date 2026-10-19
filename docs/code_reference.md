@@ -3182,21 +3182,26 @@ Namespace `okuflow`
     `MainWindowTests::chromeFollowsNativeOwnerMove` covers Simple/Advanced and
     LTR/RTL, forward/reverse native moves, immediate Qt and visible HWND
     displacement, no deferred layout requests, and real resize refitting.
-  - `UpdateSimpleChromeGeometry()` gives the bottom chrome two shapes,
-    exposed as the `chromeDock` dynamic property (`corner`/`strip`) on the
-    carousel, keystone, and action panels. Corner groups hug the camera's
-    bottom corners when the carousel, any keystone strip, and all five
-    actions fit in one line. Otherwise they become full-width rows stacked
-    from the bottom edge (carousel, keystone inline or as its own row, then
-    actions), styled without side borders or radii. Actions wrap at 5/3/2/1
-    columns; a shorter final row spans proportionally wider grid cells so
-    every row shares the same edges. Strip placement pins panel sizes, which
-    each pass releases before measuring. Only Simple's visible tracking
-    controls reserve space; Advanced's hidden tracking peer does not. A
+  - `UpdateSimpleChromeGeometry()` retains independent bottom clusters.
+    `chromeDock` is `corner` when both fit beside each other and `stacked`
+    when the compact left group must sit above the actions. `modeRows` is 1
+    or 2 on the left panel. It folds the mode name above Previous/grid/Next
+    before compacting actions; the actions always stay on one row, with equal
+    widths. Extremely narrow views stack only the compact left cluster over
+    the trailing action row, never full-width carousel/action bands. Each
+    pass releases pinned sizes and remeasures translated content. Only
+    Simple's visible tracking controls reserve space; Advanced's hidden peer does not. A
     deferred language-change pass remeasures after the whole tree is
     translated. Geometry regressions cover English/Turkish/German, live
     language switching without resizing, hidden tracking, and a short
     narrow window at its effective layout minimum.
+  - Internal `ChromeActionButton` retains the normal `QPushButton` API,
+    checked/disabled/focus state, full text and accessibility metadata.
+    `SetFace(Beside/Under/Icon)`, `sizeHint`, `minimumSizeHint` and `paintEvent`
+    adapt only visual placement: beside-icon labels normally, below-icon labels
+    at narrower widths, icon-only only when a labeled row exceeds the viewport.
+    Compact buttons remain at least 48 px wide and 58 px tall. No new timer,
+    reduced font size, secondary action row or lost accessible label is added.
   - Internal `ModeCarouselButton` elides at paint time and draws a separate
     shortcut badge. `EnabledMirror` dims a slider's companion readout;
     `FormatPercent`, `FormatScaled`, and `FormatSigned` use the active locale.
@@ -3573,8 +3578,9 @@ Namespace `okuflow`
   shortcuts after scrolling them into view.
 - `GlobalRect()` and `ActionRowsProblem()` inspect the buttons' actual screen
   geometry. `bottomChromeFormsRectangularGroups()` covers translated corner,
-  Advanced strip, and minimum strip layouts, returning to a wide layout after
-  wrapping, live language changes, and tracking controls hidden in Advanced.
+  compact Advanced and minimum layouts, returning to a wide layout after
+  folding the left cluster, live language changes, and tracking controls hidden
+  in Advanced. Every layout requires one action row and disjoint clusters.
 
 ## Android Companion
 
@@ -5662,14 +5668,19 @@ control after cancelled or failed opens without showing it for a webcam.
 metadata only, without opening a picker or connecting to a device.
 
 `MainWindow::UpdateSimpleChromeGeometry`/`arrangeActions` gives each action
-row its own `QHBoxLayout`, equal translated button minimums and equal stretch.
-The outer grid stacks full-width row layouts and clears inactive constraints;
+the same single `QHBoxLayout`, equal translated button minimums and equal stretch.
+The outer grid owns that one row and clears inactive constraints;
 removing prior layout items preserves the buttons and their focus identity.
-This avoids unequal internal spacing from mixed grid column spans (three
-buttons above two). Offscreen `translatedActionRowsHaveUniformCellMinimums`
+Only the left carousel gains a second row; compact action faces preserve one
+action row at every supported width. Offscreen `translatedActionRowsHaveUniformCellMinimums`
 and its three language data rows use the real Segoe UI font and exercise
-corner-to-strip, narrow and return transitions. The native
-`bottomChromeFormsRectangularGroups` acceptance assertion remains unchanged.
+corner-to-compact, narrow and return transitions, group bounds/disjointness,
+button targets, tooltips and retained accessible names. The native
+`bottomChromeFormsRectangularGroups` case now requires one action row and
+independent groups instead of full-width stacked bands. The opt-in
+`agent_control_capture --chrome-output` branch composes the actual offscreen
+MainWindow peers at 1440, 1100 and 720 px, with no device/provider bootstrap;
+it is development layout evidence, not native focus/UIA or camera acceptance.
 
 `residentBatchesRespectBudgetAndPreserveCompletedChecks` covers 1100 references,
 partial budget progress and cancellation. `gpuResidentBatchMappingMatchesDistinctCpuLines`

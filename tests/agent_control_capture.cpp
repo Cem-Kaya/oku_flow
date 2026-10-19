@@ -55,12 +55,24 @@ int main(int argc,char** argv)
     if(qEnvironmentVariableIntValue("OKUFLOW_UI_CAPTURE_DARK")==1)app.setPalette(okuflow::theme_contrast::PinnedDarkPalette(app.palette()));
     const int fontId=QFontDatabase::addApplicationFont(QStringLiteral("C:/Windows/Fonts/segoeui.ttf"));if(fontId<0)return 7;
     QApplication::setFont(QFont(QFontDatabase::applicationFontFamilies(fontId).value(0),9));
-    if(app.arguments().size()!=3||app.arguments().at(1)!="--output")return 2;
+    if(app.arguments().size()!=3)return 2;
+    const bool chromeOnly=app.arguments().at(1)=="--chrome-output";
+    if(!chromeOnly&&app.arguments().at(1)!="--output")return 2;
     const QString output=QDir::cleanPath(app.arguments().at(2));
     const QString local=QDir::cleanPath(qEnvironmentVariable("LOCALAPPDATA"));
     if(!QDir::isAbsolutePath(output)||!output.startsWith(local+QLatin1Char('/'),Qt::CaseInsensitive))return 3;
     QDir directory(output);if(!directory.mkpath(QStringLiteral(".")))return 4;
     okuflow::MainWindow window;window.resize(1672,941);window.setLocale(QLocale(QLocale::English,QLocale::UnitedStates));
+    if(chromeOnly) {
+        window.setCameraPlaceholder(QStringLiteral("Waiting for camera"),QStringLiteral("Development fixture: no camera or provider is connected."));
+        window.show();window.advancedModeButton()->click();
+        for(const int width:{1440,1100,720}) {
+            window.resize(width,900);window.setAdvancedPanelWidth(width==1440?520:width==1100?440:360);
+            QApplication::processEvents();
+            if(!SaveWindow(window,directory.filePath(QStringLiteral("chrome-%1.png").arg(width))))return 5;
+        }
+        return 0;
+    }
     auto* contrast=window.contrastSlider();auto* readout=contrast->parentWidget()->findChild<QLabel*>(QStringLiteral("sliderValueLabel"));
     if(!readout)return 10;
     const int originalContrast=contrast->value();const QString originalText=readout->text();
