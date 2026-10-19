@@ -41,9 +41,9 @@ Simple mode is the normal operating view:
   the carousel with Previous, Stop/Continue, and Next correction controls. It
   disappears for profiles that do not use keystone correction.
 - In a camera view too narrow for both bottom corner clusters on one line
-  (typically Advanced, or a small Simple window), only the left cluster gains
-  a second row: mode name above Previous / mode grid / Next. The actions remain
-  one row on the right; see Layout Invariants.
+  (typically Advanced, or a small Simple window), the left cluster folds first:
+  mode name above Previous / mode grid / Next. Further narrowing wraps the
+  right actions into two rows within their own corner; see Layout Invariants.
 - The clusters are frameless windows owned by the main window. This keeps them
   above the native D3D swap chain while retaining normal Qt buttons,
   accessibility metadata, focus, and tooltips.
@@ -310,11 +310,13 @@ code persists and applies orientation at the top level of
 - Advanced controls live beside the camera, never above it as a tall form.
 - The bottom-right Photo/Record/Explain/Read/Draw action bar remains available
   in Advanced, positioned against the camera viewport rather than the
-  inspector. When both clusters cannot share a line, only the left mode cluster
-  gets a second row, with its name above the three navigation buttons. The five
-  actions stay together in one equal-width row at the bottom trailing edge.
+  inspector. When both clusters cannot share a line, the left mode cluster
+  gets a second row first, with its name above the three navigation buttons.
+  The five actions initially stay in one row at the bottom trailing edge.
   If necessary their icons move above their full labels, keeping the same font
-  size. Only a viewport too narrow for that labeled row uses icon-only faces;
+  size. Further narrowing wraps that group into three actions above two, with
+  equal widths within each row and matching outer row edges. Only a viewport
+  too narrow for even that labeled two-row group uses icon-only faces;
   full button text, screen-reader names and tooltips are retained. If both
   compact clusters still cannot fit beside each other, the compact left cluster
   sits above the actions, without stretching into a full-width second band.

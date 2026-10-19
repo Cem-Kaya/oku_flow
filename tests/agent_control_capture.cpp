@@ -66,8 +66,8 @@ int main(int argc,char** argv)
     if(chromeOnly) {
         window.setCameraPlaceholder(QStringLiteral("Waiting for camera"),QStringLiteral("Development fixture: no camera or provider is connected."));
         window.show();window.advancedModeButton()->click();
-        for(const int width:{1440,1100,720}) {
-            window.resize(width,900);window.setAdvancedPanelWidth(width==1440?520:width==1100?440:360);
+        for(const int width:{1440,1100,960,720}) {
+            window.resize(width,900);window.setAdvancedPanelWidth(width==1440?520:width>=960?440:360);
             QApplication::processEvents();
             if(!SaveWindow(window,directory.filePath(QStringLiteral("chrome-%1.png").arg(width))))return 5;
         }

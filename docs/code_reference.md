@@ -3186,9 +3186,10 @@ Namespace `okuflow`
     `chromeDock` is `corner` when both fit beside each other and `stacked`
     when the compact left group must sit above the actions. `modeRows` is 1
     or 2 on the left panel. It folds the mode name above Previous/grid/Next
-    before compacting actions; the actions always stay on one row, with equal
-    widths. Extremely narrow views stack only the compact left cluster over
-    the trailing action row, never full-width carousel/action bands. Each
+    before compacting actions. `actionRows` is 1 or 2 on the right panel:
+    further narrowing wraps three actions above two, with equal widths within
+    each row and matching outer edges. Extremely narrow views stack the compact
+    left cluster over the trailing action group, never full-width bands. Each
     pass releases pinned sizes and remeasures translated content. Only
     Simple's visible tracking controls reserve space; Advanced's hidden peer does not. A
     deferred language-change pass remeasures after the whole tree is
@@ -3199,9 +3200,9 @@ Namespace `okuflow`
     checked/disabled/focus state, full text and accessibility metadata.
     `SetFace(Beside/Under/Icon)`, `sizeHint`, `minimumSizeHint` and `paintEvent`
     adapt only visual placement: beside-icon labels normally, below-icon labels
-    at narrower widths, icon-only only when a labeled row exceeds the viewport.
+    at narrower widths, icon-only only when even two labeled rows exceed the viewport.
     Compact buttons remain at least 48 px wide and 58 px tall. No new timer,
-    reduced font size, secondary action row or lost accessible label is added.
+    reduced font size or lost accessible label is added.
   - Internal `ModeCarouselButton` elides at paint time and draws a separate
     shortcut badge. `EnabledMirror` dims a slider's companion readout;
     `FormatPercent`, `FormatScaled`, and `FormatSigned` use the active locale.
@@ -5667,19 +5668,19 @@ control after cancelled or failed opens without showing it for a webcam.
 `cancelledVideoPickerRestoresOnlyPhoneLight` exercise this with fixture camera
 metadata only, without opening a picker or connecting to a device.
 
-`MainWindow::UpdateSimpleChromeGeometry`/`arrangeActions` gives each action
-the same single `QHBoxLayout`, equal translated button minimums and equal stretch.
-The outer grid owns that one row and clears inactive constraints;
+`MainWindow::UpdateSimpleChromeGeometry`/`arrangeActions` gives each action row
+its own `QHBoxLayout`, equal translated button minimums and equal stretch.
+The outer grid owns one or two rows and clears inactive constraints;
 removing prior layout items preserves the buttons and their focus identity.
-Only the left carousel gains a second row; compact action faces preserve one
-action row at every supported width. Offscreen `translatedActionRowsHaveUniformCellMinimums`
+The left carousel folds first, followed by a three-plus-two action group at
+tighter widths. Offscreen `translatedActionRowsHaveUniformCellMinimums`
 and its three language data rows use the real Segoe UI font and exercise
 corner-to-compact, narrow and return transitions, group bounds/disjointness,
 button targets, tooltips and retained accessible names. The native
-`bottomChromeFormsRectangularGroups` case now requires one action row and
+`bottomChromeFormsRectangularGroups` case requires responsive one/two action rows and
 independent groups instead of full-width stacked bands. The opt-in
 `agent_control_capture --chrome-output` branch composes the actual offscreen
-MainWindow peers at 1440, 1100 and 720 px, with no device/provider bootstrap;
+MainWindow peers at 1440, 1100, 960 and 720 px, with no device/provider bootstrap;
 it is development layout evidence, not native focus/UIA or camera acceptance.
 
 `residentBatchesRespectBudgetAndPreserveCompletedChecks` covers 1100 references,

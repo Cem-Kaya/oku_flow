@@ -107,7 +107,9 @@ QString ActionRowsProblem(MainWindow& window, int* rowCount)
         rows[rect.y()].append(rect);
     }
     *rowCount = static_cast<int>(rows.size());
-    if (*rowCount != 1) return QStringLiteral("The five actions must stay on one row");
+    if (*rowCount < 1 || *rowCount > 2) return QStringLiteral("Actions must form one or two rows");
+    if (*rowCount == 2 && (rows.first().size() != 3 || rows.last().size() != 2))
+        return QStringLiteral("Wrapped actions must form three above two");
     int left = 0;
     int right = 0;
     bool first = true;
@@ -1894,8 +1896,8 @@ void MainWindowTests::bottomChromeFormsRectangularGroups()
     QCOMPARE(rows, 1);
     SaveScreenshot(window, code + QStringLiteral("-bottom-chrome-simple-corners"));
 
-    // Only the left cluster gains a second row. The actions stay at the
-    // bottom trailing corner, never a full-width bar above the mode controls.
+    // The left cluster folds first; further narrowing wraps the actions
+    // within their own trailing corner, without either full-width band.
     const auto verifyStrip = [&](const QString& name) -> QString {
         const QRect view = viewport();
         const QRect left = GlobalRect(bottomLeft);
@@ -1922,10 +1924,18 @@ void MainWindowTests::bottomChromeFormsRectangularGroups()
                  qPrintable(verifyStrip(QStringLiteral("advanced"))));
     problem = ActionRowsProblem(window, &rows);
     QVERIFY2(problem.isEmpty(), qPrintable(problem));
-    QCOMPARE(rows, 1);
     SaveScreenshot(window, code + QStringLiteral("-bottom-chrome-advanced-strip"));
 
-    // The narrowest camera compacts action faces, preserving one action row.
+    window.resize(960, 760);
+    QTRY_VERIFY(render->width() <= 520);
+    QTRY_VERIFY2(verifyStrip(QStringLiteral("squeezed")).isEmpty(),
+                 qPrintable(verifyStrip(QStringLiteral("squeezed"))));
+    problem = ActionRowsProblem(window, &rows);
+    QVERIFY2(problem.isEmpty(), qPrintable(problem));
+    QCOMPARE(rows, 2);
+    SaveScreenshot(window, code + QStringLiteral("-bottom-chrome-two-action-rows"));
+
+    // The narrowest camera preserves the two-row action group.
     window.resize(720, 720);
     window.setAdvancedPanelWidth(360);
     QTRY_VERIFY(render->width() <= 400);
@@ -1933,7 +1943,7 @@ void MainWindowTests::bottomChromeFormsRectangularGroups()
                  qPrintable(verifyStrip(QStringLiteral("minimum"))));
     problem = ActionRowsProblem(window, &rows);
     QVERIFY2(problem.isEmpty(), qPrintable(problem));
-    QCOMPARE(rows, 1);
+    QCOMPARE(rows, 2);
     SaveScreenshot(window, code + QStringLiteral("-bottom-chrome-minimum-strip"));
 
     // Returning to Simple at full width restores the compact corners.

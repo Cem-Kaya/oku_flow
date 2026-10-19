@@ -207,7 +207,7 @@ private:
 };
 
 // Retain QPushButton semantics, state, full text and accessible names while
-// fitting the five actions on one row. Only their visual presentation changes.
+// fitting the five actions in their corner group. Only their face changes.
 class ChromeActionButton final : public QPushButton {
 public:
     using QPushButton::QPushButton;
@@ -3637,8 +3637,8 @@ void MainWindow::UpdateSimpleChromeGeometry()
         panel->adjustSize();
         return std::max(panel->sizeHint().width(), panel->minimumSizeHint().width());
     };
-    // Keep independent corner groups. Only the carousel gains a second row;
-    // the five actions never become another full-width band over the image.
+    // Keep independent corner groups; wrap inside a group instead of turning
+    // either one into a full-width band over the image.
     const auto setChromeDock = [](QWidget* panel, const QString& dock) {
         if (panel->property("chromeDock").toString() == dock) return;
         panel->setProperty("chromeDock", dock);
@@ -3709,7 +3709,7 @@ void MainWindow::UpdateSimpleChromeGeometry()
     const bool showTracking = keystoneTrackingActive_ && isSimpleMode();
     const int trackingWidth = showTracking ? refit(keystoneTrackingPanel_) : 0;
     auto* actionsLayout = qobject_cast<QGridLayout*>(bottomRightPanel_->layout());
-    const auto arrangeActions = [&] {
+    const auto arrangeActions = [&](int rowCount = 1) {
         if (!actionsLayout) return;
         while (auto* item = actionsLayout->takeAt(0)) {
             if (auto* row = item->layout()) {
@@ -3726,14 +3726,24 @@ void MainWindow::UpdateSimpleChromeGeometry()
             button->setMinimumWidth(0);
             buttonMinimum = std::max(buttonMinimum, button->sizeHint().width());
         }
-        auto* row = new QHBoxLayout;
-        row->setContentsMargins(0, 0, 0, 0);
-        row->setSpacing(actionsLayout->horizontalSpacing());
-        for (const auto& [button, label] : actionButtons) {
-            button->setMinimumWidth(buttonMinimum);
-            row->addWidget(button, 1);
+        for (int row = 0; row < actionsLayout->rowCount(); ++row) {
+            actionsLayout->setRowStretch(row, 0);
+            actionsLayout->setRowMinimumHeight(row, 0);
         }
-        actionsLayout->addLayout(row, 0, 0, 1, actionsLayout->columnCount());
+        int index = 0;
+        for (int rowIndex = 0; rowIndex < rowCount; ++rowIndex) {
+            auto* row = new QHBoxLayout;
+            row->setContentsMargins(0, 0, 0, 0);
+            row->setSpacing(actionsLayout->horizontalSpacing());
+            const int count = rowCount == 1 ? 5 : rowIndex == 0 ? 3 : 2;
+            for (int cell = 0; cell < count; ++cell) {
+                auto* button = actionButtons[index++].first;
+                button->setMinimumWidth(buttonMinimum);
+                row->addWidget(button, 1);
+            }
+            actionsLayout->addLayout(row, rowIndex, 0, 1, actionsLayout->columnCount());
+        }
+        bottomRightPanel_->setProperty("actionRows", rowCount);
     };
     // Test the real translated button sizes, including stylesheet padding
     // and icons. Retain readable labels even at the minimum camera width.
@@ -3761,12 +3771,17 @@ void MainWindow::UpdateSimpleChromeGeometry()
                 static_cast<ChromeActionButton*>(button)->SetFace(ChromeActionButton::Face::Under);
             arrangeActions(); actionWidth = refit(bottomRightPanel_);
         }
+        if (bottomLeftPanel_->width() + trackingWidth + actionWidth + groupGap > viewWidth) {
+            // After compacting the left group and the one-row action faces,
+            // a tighter view gets three actions above two, still at the right.
+            arrangeActions(2); actionWidth = refit(bottomRightPanel_);
+        }
         if (actionWidth > viewWidth) {
-            // Only the smallest viewport needs icon-only faces. Full button
-            // text/names and descriptive tooltips remain available to readers.
+            // Only a viewport too narrow for even two labeled rows needs
+            // icon-only faces. Button text/names and tooltips remain intact.
             for (const auto& [button, label] : actionButtons)
                 static_cast<ChromeActionButton*>(button)->SetFace(ChromeActionButton::Face::Icon);
-            arrangeActions(); actionWidth = refit(bottomRightPanel_);
+            arrangeActions(2); actionWidth = refit(bottomRightPanel_);
         }
     }
     const bool cornerChrome =
@@ -3814,8 +3829,8 @@ void MainWindow::UpdateSimpleChromeGeometry()
         leftChromeHeight = bottomLeftPanel_->height();
         bottomRightY = viewHeight - bottomRightPanel_->height();
     } else {
-        // Very narrow views keep a compact left group above the one-row
-        // actions, never a full-width carousel band below/above the actions.
+        // Very narrow views keep a compact left group above the actions,
+        // never a full-width carousel band below/above the actions.
         const bool trackingInline =
             showTracking && bottomLeftPanel_->width() + trackingWidth <= viewWidth;
         const int carouselWidth = bottomLeftPanel_->width();

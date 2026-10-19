@@ -759,10 +759,11 @@ private slots:
         window.resize(1100,760);window.advancedModeButton()->click();window.setAdvancedPanelWidth(440);
         auto* panel=window.findChild<QWidget*>("bottomRightPanel");QVERIFY(panel);
         auto* grid=qobject_cast<QGridLayout*>(panel->layout());QVERIFY(grid);
-        const auto problem=[&]() -> QString {
+        const auto problem=[&](int expectedRows) -> QString {
             QMap<int,QVector<QRect>> rows;
             for(auto* button:{window.capturePhotoButton(),window.recordButton(),window.explainNowButton(),window.readTextButton(),window.annotationButton()})rows[button->y()].push_back(button->geometry());
-            if(rows.size()!=1)return QStringLiteral("Actions wrapped into %1 rows; only the mode cluster may have a second row").arg(rows.size());
+            if(rows.size()<1||rows.size()>2||(expectedRows&&rows.size()!=expectedRows))return QStringLiteral("Expected %1 action rows (0 = content fit), got %2").arg(expectedRows).arg(rows.size());
+            if(rows.size()==2&&(rows.first().size()!=3||rows.last().size()!=2))return QStringLiteral("Wrapped actions must form three above two");
             int left=-1,right=-1;
             for(const auto& row:rows){
                 int minWidth=INT_MAX,maxWidth=0,rowLeft=INT_MAX,rowRight=0;
@@ -774,15 +775,19 @@ private slots:
             return {};
         };
         QCoreApplication::processEvents();
-        QVERIFY2(problem().isEmpty(),qPrintable(problem()));
+        QVERIFY2(problem(0).isEmpty(),qPrintable(problem(0)));
         auto* modes=window.findChild<QWidget*>("bottomLeftPanel");QVERIFY(modes);
         QCOMPARE(modes->property("modeRows").toInt(),2);
         QVERIFY(modes->width()<window.renderWidget()->width());
         const auto bounds=[](QWidget* widget){return QRect(widget->mapToGlobal(QPoint()),widget->size());};
         QVERIFY(!bounds(modes).intersects(bounds(panel)));
         QCOMPARE(bounds(panel).bottom(),bounds(window.renderWidget()).bottom());
+        window.resize(960,760);QCoreApplication::processEvents();
+        QVERIFY2(problem(2).isEmpty(),qPrintable(problem(2)));
+        QVERIFY(bounds(window.renderWidget()).contains(bounds(panel)));
+        QVERIFY(!bounds(modes).intersects(bounds(panel)));
         window.resize(720,720);window.setAdvancedPanelWidth(360);QCoreApplication::processEvents();
-        QVERIFY2(problem().isEmpty(),qPrintable(problem()));
+        QVERIFY2(problem(2).isEmpty(),qPrintable(problem(2)));
         QVERIFY(bounds(window.renderWidget()).contains(bounds(panel)));
         QVERIFY(bounds(window.renderWidget()).contains(bounds(modes)));
         QVERIFY(!bounds(modes).intersects(bounds(panel)));
@@ -791,8 +796,8 @@ private slots:
             QVERIFY(!button->accessibleName().isEmpty());
             QVERIFY(button->width()>=48);QVERIFY(button->height()>=58);
         }
-        window.simpleModeButton()->click();window.resize(1280,800);QCoreApplication::processEvents();
-        QVERIFY2(problem().isEmpty(),qPrintable(problem()));
+        window.simpleModeButton()->click();window.resize(language==int(AppLanguage::German)?1600:1280,800);QCoreApplication::processEvents();
+        QVERIFY2(problem(1).isEmpty(),qPrintable(problem(1)));
     }
     void uctOverlayFollowsImmediateViewportMovesWithoutQueuedEvents() {
         MainWindow window;window.resize(1100,760);window.show();
