@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Measure the phone USB cancellation fixture from its actual private health
+  probe, independently of startup scheduling. Keep the 500 ms cancellation
+  limit and verify a deliberately delayed start without using a real phone.
+
 - Retry OCR for an Extra Stable held image when its previous result failed,
   expired or was rejected during a recovery crossfade. Keep successful held
   reads deduplicated and preserve a newer job's acquisition marker.

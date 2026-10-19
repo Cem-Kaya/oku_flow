@@ -44,6 +44,23 @@ reader before blocking H. `opus-retry-final-fingerprint-matrix.log` retains that
 background result. Native GUI was excluded; the new head's remote GUI acceptance
 is separate from the earlier `afa6b3b` run.
 
+The `c41f67b` GitHub run (39330242549) passed all 64 native GUI cases with no
+skipped rows, plus the separate 125%, 150% and 200% movement checks. Its Windows
+job nevertheless failed in the unrelated private phone cancellation fixture:
+the assertion that one health probe had arrived within one second of starting
+the worker failed. The log does not record the observed count, so it cannot
+distinguish late setup from a missed observation. This is not an observed UCT
+or physical-phone failure. The fixture now cancels at the fake health service's
+acknowledgement, timestamps production completion and retains the 500 ms
+cancellation bound. A deliberately delayed start exercises the separation of
+setup from cancellation; setup still has a bounded, diagnostic failure path.
+The original failed CI log remains in `ci-c41f67b-failed.log` beside the other
+LocalAppData evidence. The tracked `agent_check.ps1` selection rebuilt the phone
+fixture and passed the complete `phone_camera_contract` in 75.57 seconds, with no
+skipped rows or unresolved results (`phone-cancel-boundary-scoped.log`). This is
+a SCOPED CPU result for a test-only change; the production Release/CUDA bytes
+remain those already validated above. New-head remote acceptance is pending.
+
 ## Temporal registration limitation
 
 The reviewer questioned whether a mostly unchanged long word can pass the strict

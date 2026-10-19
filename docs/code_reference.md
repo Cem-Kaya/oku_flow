@@ -1014,7 +1014,12 @@ so metadata generation cannot silently accept an incomplete copy.
   does not require a second network event. This is a test-server repair only.
   `FakePhoneAdb::ArrivalMode` also gates a two-client listener backlog for
   `alreadyQueuedFakeAdbConnectionsAreHandled`; the worker drains Qt's pending
-  queue before blocking for another arrival. Process-scanning recovery and
+  queue before blocking for another arrival. Its optional `healthProbeReceived`
+  callback fires after acknowledging the shell health request.
+  `canceledUsbRecoveryStopsPromptly_data` supplies immediate/delayed startup;
+  `canceledUsbRecoveryStopsPromptly` uses that callback to cancel and measure the
+  unchanged 500 ms completion limit independently of worker-start scheduling.
+  Process-scanning recovery and
   temporary OkuFlow-named launcher/MCP/native fixtures share the CTest
   `okuflow_process_identity` resource, retaining fail-closed provenance checks.
 

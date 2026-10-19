@@ -381,6 +381,15 @@ connection queue before waiting for a new arrival; the regression fails on the
 former unconditional wait. `FakePhoneAdb::ArrivalMode` selects normal traffic,
 an already-buffered request or this deterministic backlog without real devices.
 
+`canceledUsbRecoveryStopsPromptly` cancels from the fake server's health-probe
+callback, after its acknowledgement, rather than polling for arrival within one
+second of worker launch. Immediate and deliberately delayed (1,250 ms) startup
+rows share the same 500 ms cancellation limit, measured with steady-clock
+timestamps at cancellation and production-call completion. Setup has a separate
+five-second bound and reports observed services if no probe arrives. Exactly one
+health probe, a false recovery result and zero reconnects remain required. This
+is private loopback fixture evidence, not physical-phone recovery acceptance.
+
 Legacy recovery scans the native process inventory and deliberately fails closed
 when a candidate image disappears before classification. `adb_legacy_recovery`,
 `windows_runtime_contract`, `mcp_bridge_contract` and the optional

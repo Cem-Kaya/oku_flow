@@ -15,6 +15,7 @@
 #include <QScopeGuard>
 #include <QtEndian>
 #include <future>
+#include <functional>
 #include <thread>
 #include <atomic>
 #include <cstring>
@@ -87,10 +88,11 @@ public:
     explicit FakePhoneAdb(bool old = false, bool stall = false, bool busy = false,
                          LaunchMode mode = LaunchMode::None, RecoveryMode recovery = RecoveryMode::Healthy,
                          bool installHooks = true, quint16 listenPort = 0,
-                         ArrivalMode arrival = ArrivalMode::Normal)
+                         ArrivalMode arrival = ArrivalMode::Normal,
+                         std::function<void()> healthProbeReceived = {})
         : deviceStalled(recovery != RecoveryMode::Healthy && recovery != RecoveryMode::SlowHealthy),
           old(old), stall(stall), busy(busy),
-          launchMode(mode), recoveryMode(recovery), installedHooks(installHooks),
+          launchMode(mode), recoveryMode(recovery), healthProbeReceived(std::move(healthProbeReceived)), installedHooks(installHooks),
           hostUnresponsive(recovery == RecoveryMode::ServerStalled) {
         std::promise<quint16> promise;
         auto future = promise.get_future();
@@ -202,6 +204,7 @@ private:
             ++healthProbes;
             if (recoveryMode == RecoveryMode::Replugged) ++transportId;
             Write(socket, "OKAY");
+            if (healthProbeReceived) healthProbeReceived();
             if (recoveryMode == RecoveryMode::PartialEcho) { Write(socket, "O"); waitForClose(); }
             else if (recoveryMode == RecoveryMode::SlowHealthy) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1500));
@@ -248,6 +251,7 @@ private:
     bool old, stall, busy;
     LaunchMode launchMode;
     RecoveryMode recoveryMode;
+    std::function<void()> healthProbeReceived;
     bool launchReady{false};
     std::mutex launchMutex;
     QStringList launches;
@@ -1162,19 +1166,44 @@ private slots:
         QCOMPARE(server.healthProbes.load(), 0);
         QCOMPARE(server.reconnects.load(), 0);
     }
+    void canceledUsbRecoveryStopsPromptly_data() {
+        QTest::addColumn<int>("startupDelayMs");
+        QTest::newRow("immediate-start") << 0;
+        QTest::newRow("delayed-start") << 1250;
+    }
     void canceledUsbRecoveryStopsPromptly() {
-        FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::None,
-                            FakePhoneAdb::RecoveryMode::Stalled);
-        okuflow::CameraDescriptor phone; phone.phoneSerial = "abc"; phone.phoneTransportId = 9;
+        QFETCH(int, startupDelayMs);
+        using Clock = std::chrono::steady_clock;
         std::atomic<bool> canceled{false};
+        std::promise<Clock::time_point> cancellation;
+        auto probeEntered = cancellation.get_future();
+        FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::None,
+                            FakePhoneAdb::RecoveryMode::Stalled, true, 0,
+                            FakePhoneAdb::ArrivalMode::Normal, [&] {
+            // Cancel at the actual stalled-read boundary, independently of the
+            // test/UI thread's scheduling and earlier host/listing exchanges.
+            const auto when = Clock::now();
+            canceled.store(true);
+            cancellation.set_value(when);
+        });
+        okuflow::CameraDescriptor phone; phone.phoneSerial = "abc"; phone.phoneTransportId = 9;
         auto result = std::async(std::launch::async, [&] {
-            return okuflow::PhoneCameraTransport::RecoverStalledUsbTransport(phone, &canceled);
+            std::this_thread::sleep_for(std::chrono::milliseconds(startupDelayMs));
+            const bool recovered = okuflow::PhoneCameraTransport::RecoverStalledUsbTransport(phone, &canceled);
+            return std::make_pair(recovered, Clock::now());
         });
         auto cancelOnExit = qScopeGuard([&] { canceled.store(true); });
-        QTRY_VERIFY_WITH_TIMEOUT(server.healthProbes.load() == 1, 1000);
-        canceled.store(true);
+        QVERIFY2(probeEntered.wait_for(std::chrono::seconds(5)) == std::future_status::ready,
+                 qPrintable(QString("Health probe not reached; count=%1, services=%2")
+                     .arg(server.healthProbes.load()).arg(server.Services().join(", "))));
+        const auto canceledAt = probeEntered.get();
         QVERIFY(result.wait_for(std::chrono::milliseconds(500)) == std::future_status::ready);
-        QVERIFY(!result.get()); QCOMPARE(server.reconnects.load(), 0);
+        const auto [recovered, finishedAt] = result.get();
+        QVERIFY2(finishedAt - canceledAt < std::chrono::milliseconds(500),
+                 "Cancellation exceeded 500 ms after the health-probe boundary");
+        QVERIFY(!recovered);
+        QCOMPARE(server.healthProbes.load(), 1);
+        QCOMPARE(server.reconnects.load(), 0);
     }
     void failedStartRequestsTargetedUsbRecovery() {
         FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::None,
