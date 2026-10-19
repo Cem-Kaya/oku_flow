@@ -1160,6 +1160,7 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
                 changedSinceSubmit_ = false;
                 lastOcrAcquisition_ = acquisition;
                 lastOcrGeneration_ = geometryGeneration_;
+                lastOcrJob_ = job;
                 haveLastOcr_ = true;
                 if (advancingMediaScene_) {
                     advancingMediaJob_ = job;
@@ -1189,10 +1190,19 @@ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
         return;
     }
     const std::int64_t now = clock_();
+    const auto retryUnreadAcquisition = [&] {
+        if (result.jobId == lastOcrJob_) {
+            haveLastOcr_ = false;
+            changedSinceSubmit_ = true;
+        }
+    };
     if (advancingMediaScene_) {
         if (result.jobId != advancingMediaJob_ || advancingMediaJob_ == 0 ||
             now - advancingMediaSubmittedAtMs_ > timing_.immutableJobTimeoutMs) {
-            if (result.jobId == advancingMediaJob_) advancingMediaJob_ = 0;
+            if (result.jobId == advancingMediaJob_) {
+                advancingMediaJob_ = 0;
+                retryUnreadAcquisition();
+            }
             ++rejectedResults_;
             return;
         }
@@ -1202,6 +1212,7 @@ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
         // The worker found Extra Stable crossfade pixels: no recognition ran.
         // Neither evidence nor a failure; a later single acquisition is read.
         changedSinceSubmit_ = true;
+        retryUnreadAcquisition();
         ++rejectedResults_;
         UpdateStatus();
         return;
@@ -1222,6 +1233,9 @@ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
     const uct::AdmitVerdict verdict = advancingMediaScene_
         ? model_.AdmitAdvancingMedia(result, CurrentScene(), latestProbe_.get(), ModelTime(now))
         : model_.AdmitLiveCamera(result, CurrentScene(), latestProbe_.get(), now);
+    if (verdict != uct::AdmitVerdict::kAccepted && verdict != uct::AdmitVerdict::kPending &&
+        verdict != uct::AdmitVerdict::kEmpty)
+        retryUnreadAcquisition();
     switch (verdict) {
     case uct::AdmitVerdict::kAccepted:
         ++acceptedResults_;

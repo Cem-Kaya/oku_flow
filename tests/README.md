@@ -78,6 +78,13 @@ finalization separately, preserving Live intent or an unavailable held-frame
 receipt as appropriate. They call the actual acceptance boundary without a
 device or native window.
 
+`heldAcquisitionRetriesRejectedOcr` exercises the controller's actual worker
+queues with synthetic held-image records. Three rows reject the blocked held
+job through a crossfade barrier, backend failure or expiry, then require a retry
+that reads additional text. The blocked input checksum and drained warm-up
+receipts keep the rejection attached to the intended job. Repeated accepted
+held frames must subsequently cause no additional recognition calls.
+
 `uct_paddle_processing` reconciles all six compiled tier pins against the
 preparation manifest (a declared runtime input). Settings/planner contracts
 cover GPU medium/medium and CPU tiny/small defaults, migration, closed enum

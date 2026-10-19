@@ -22,6 +22,8 @@ documents optional local PaddleOCR/TensorRT, CPU/Windows fallback, independent
 pre-zoom analysis, preparation, transfer boundaries and acceptance limits.
 [Temporal pause status review](uct_temporal_status_language_review_2026_10_19.md)
 records full small-agent review of the new 24-language Extra Stable message.
+[Opus implementation follow-up](uct_opus_review_2026_10_20.md) records the held-
+acquisition retry repair, registration experiment and remaining coverage limits.
 [Implementation review repairs](uct_paddle_review_2026_10_18.md) distinguish
 verified fallback/ownership regressions from remaining camera/release acceptance.
 [Pan continuity and source-style review](uct_pan_style_review_2026_10_18.md)

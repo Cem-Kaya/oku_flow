@@ -524,6 +524,7 @@ private:
     // while text derived from it remains.
     std::uint64_t lastOcrAcquisition_{};
     std::uint64_t lastOcrGeneration_{};
+    std::uint64_t lastOcrJob_{}; // a rejected older job cannot reset a newer marker
     bool haveLastOcr_{};
     bool lastResultMoved_{};
     bool lastResultEmpty_{};

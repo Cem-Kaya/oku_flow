@@ -66,6 +66,7 @@ struct ScriptShared {
     std::condition_variable cv;
     bool hold{};
     int calls{};
+    QVector<quint64> inputChecksums;
     int inputMutations{};
     BackendState initState{BackendState::kReady};
     QHash<quint64, ViewTransform> transforms; // image checksum -> transform
@@ -111,6 +112,7 @@ public:
         const quint64 before = Checksum(image);
         std::unique_lock lock(shared_->mutex);
         ++shared_->calls;
+        shared_->inputChecksums.push_back(before);
         shared_->cv.wait(lock, [&] { return !shared_->hold; });
         RecognitionOutput output;
         if (Checksum(image) != before) {
@@ -489,6 +491,10 @@ public:
     bool WaitReady(void*,QString&) const override{return true;}
     QImage Readback(const std::atomic<bool>&,QString&) const override{return page_;}
     QImage ReadProbe(const std::atomic<bool>&,QString&) const override{return page_.scaled(width/2,height/2,Qt::IgnoreAspectRatio,Qt::SmoothTransformation);}
+    bool HasHoldProvenance() const override { return hold.has_value(); }
+    HoldProvenance ReadHoldProvenance(const std::atomic<bool>&, QString&) const override
+    { return hold.value_or(HoldProvenance{HoldDisplay::Unknown, 0, 0.0f}); }
+    std::optional<HoldProvenance> hold;
 private:QImage page_;
 };
 
@@ -641,6 +647,8 @@ private slots:
     void smoothedProbeFallbackDownloadsOnlyTheCurrentProbe();
     void deviceProbesContinueAt16xWhileInferenceIsHeld();
     void staticDeviceSceneDoesNotContinuouslyRunOcr();
+    void heldAcquisitionRetriesRejectedOcr_data();
+    void heldAcquisitionRetriesRejectedOcr();
     void slowDeviceProbesStillSubmitOcrAndInputHealthRecovers();
 
     // --- Controller (production widgets, scripted OCR) ----------------------
@@ -818,6 +826,123 @@ void UltraClearTextTests::staticDeviceSceneDoesNotContinuouslyRunOcr()
     QVERIFY(controller.AcceptedResults()>0);QVERIFY(captures>=20);
     std::lock_guard lock(shared->mutex);QVERIFY2(shared->calls<10,"A stable accepted device scene should not infer on every capture.");
     QVERIFY(shared->calls>=2);
+}
+
+void UltraClearTextTests::heldAcquisitionRetriesRejectedOcr_data()
+{
+    QTest::addColumn<int>("rejection");
+    QTest::newRow("crossfade-before-completion") << int(AdmitVerdict::kContentMoved);
+    QTest::newRow("backend-failure") << int(AdmitVerdict::kFailed);
+    QTest::newRow("too-old") << int(AdmitVerdict::kTooOld);
+}
+
+void UltraClearTextTests::heldAcquisitionRetriesRejectedOcr()
+{
+    QFETCH(int, rejection);
+    const auto livePage = MakePage({"Reading glasses help"});
+    const auto heldPage = MakePage({"Reading glasses help", "Additional held text"});
+    auto shared = std::make_shared<ScriptShared>();
+    shared->SetWords(livePage.words);
+    ViewTransform identity; identity.valid = true;
+    shared->transforms.insert(Checksum(livePage.image), identity);
+    shared->transforms.insert(Checksum(heldPage.image), identity);
+    QWidget owner;
+    UltraClearTextOverlay overlay(&owner, &owner);
+    UltraClearTextPanel panel(&owner);
+    std::int64_t now = 1000;
+    UctTiming timing; timing.refreshIntervalMs = 100;
+    UltraClearTextController controller(&overlay, &panel,
+        [shared] { return std::make_unique<ScriptedRecognizer>(shared); },
+        nullptr, [&] { return now; }, timing);
+    const auto release = qScopeGuard([&] { shared->SetHold(false); });
+    controller.SetEnabled(true);
+    QTRY_COMPARE(controller.BackendStatusSnapshot().state, BackendState::kReady);
+    UctFrameContext context;
+    context.geometry.settings.sourceEpoch = 7;
+    context.geometry.settings.stabilization = true;
+    context.requested = context.geometry.settings;
+    context.geometry.sceneWidth = livePage.image.width();
+    context.geometry.sceneHeight = livePage.image.height();
+    context.cameraActive = true;
+    context.heldFrames = true;
+    context.compositeFrames = true;
+    context.viewportWidth = kViewWidth; context.viewportHeight = kViewHeight;
+    context.transform = Transform(1.0f, .5f, .5f);
+    std::uint64_t sequence = 0;
+    const auto calls = [&] { std::lock_guard lock(shared->mutex); return shared->calls; };
+    const auto tick = [&](const SyntheticPage& page, HoldDisplay display, std::uint64_t acquisition) {
+        now += 100; context.frameSeq = ++sequence;
+        const bool wanted = controller.OnPresented(context);
+        controller.OnPresentationSucceeded();
+        if (wanted) {
+            auto image = std::make_shared<SceneDeviceImage>(page.image);
+            image->frameSequence = context.frameSeq; image->timestampMs = now;
+            image->hold = HoldProvenance{display,
+                display == HoldDisplay::Live ? sequence : acquisition,
+                display == HoldDisplay::Crossfade ? .5f : 0.0f};
+            controller.OnDeviceScene(context, std::move(image));
+        }
+        QTest::qWait(10);
+    };
+    QTRY_VERIFY(([&] {
+        tick(livePage, HoldDisplay::Live, 0);
+        return controller.AcceptedResults() > 0 && panel.readingPane()->toPlainText().contains("Reading");
+    })());
+    // Drain the last warm-up probe/result before blocking the next job. The
+    // failure must belong to H, not an older live job queued during warm-up.
+    now += 100; // reopen normal input admission after the final warm-up copy
+    QTRY_VERIFY(([&] {
+        QCoreApplication::processEvents();
+        const bool inputIdle = controller.OnPresented(context);
+        controller.OnPresentationSucceeded();
+        const auto scheduler = controller.SchedulerStatistics();
+        const auto probes = controller.ProbeStatistics();
+        return inputIdle && scheduler.submitted == scheduler.completed &&
+            probes.submitted == probes.completed;
+    })());
+    // Keep established lines in the model, then hold a new acquisition with
+    // additional text. A rejected job must not mark that acquisition as read.
+    shared->SetWords(heldPage.words);
+    shared->SetHold(true);
+    const int beforeHeld = calls();
+    const auto acquisition = ++sequence;
+    QSignalSpy admitted(&controller, &UltraClearTextController::recognitionAdmitted);
+    QTRY_VERIFY(([&] {
+        tick(heldPage, HoldDisplay::Held, acquisition);
+        return calls() > beforeHeld;
+    })());
+    { std::lock_guard lock(shared->mutex);
+      QCOMPARE(shared->inputChecksums.constLast(), Checksum(heldPage.image)); }
+    admitted.clear();
+    if (rejection == int(AdmitVerdict::kContentMoved)) {
+        const auto probesBefore = controller.ProbeStatistics().completed;
+        QTRY_VERIFY(([&] {
+            tick(heldPage, HoldDisplay::Crossfade, acquisition);
+            return controller.ProbeStatistics().completed > probesBefore && overlay.WordCount() == 0;
+        })());
+    } else if (rejection == int(AdmitVerdict::kFailed)) {
+        std::lock_guard lock(shared->mutex); shared->fail = true;
+    } else {
+        now += 5000; // real age rejection, independently of OCR/probe ordering
+        controller.OnPresented(context); controller.OnPresentationSucceeded();
+    }
+    shared->SetHold(false);
+    QTRY_VERIFY(!admitted.isEmpty());
+    QCOMPARE(admitted.constLast().front().toInt(), rejection);
+    { std::lock_guard lock(shared->mutex); shared->fail = false; }
+    const int afterRejected = calls();
+    QTRY_VERIFY(([&] {
+        tick(heldPage, HoldDisplay::Held, acquisition);
+        return calls() > afterRejected;
+    })());
+    QTRY_VERIFY(([&] {
+        tick(heldPage, HoldDisplay::Held, acquisition);
+        return panel.readingPane()->toPlainText().contains("Additional");
+    })());
+    const int afterRetry = calls();
+    for (int frame = 0; frame < 20; ++frame) tick(heldPage, HoldDisplay::Held, acquisition);
+    QCOMPARE(calls(), afterRetry); // an admitted held acquisition is still read once
+    QVERIFY(!panel.readingPane()->toPlainText().contains("Additional Additional"));
 }
 
 void UltraClearTextTests::paddedRecognitionFitsVisibleInk_data() {

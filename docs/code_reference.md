@@ -5831,3 +5831,17 @@ bundle proves idle before destruction and retains unknown GPU work on failure.
 The complete `immutable_uct_contract` Qt suite has a 120-second aggregate CTest
 deadline after archived CI evidence showed 31 completed cases before its old
 60-second limit. Individual QTRY/assertion limits and all rows remain intact.
+
+### Rejected held-acquisition retry (2026-10-20)
+
+`UltraClearTextController::HandleProbeOutcome` binds `lastOcrJob_` to the exact
+submission that set the acquisition marker. `HandleResult`'s local
+`retryUnreadAcquisition` clears that marker only for the same job when an OCR
+result fails, expires, carries unusable composite pixels or loses admission.
+Accepted, pending and empty results retain held-image deduplication; old
+completions cannot reset the marker of a newer submission.
+`heldAcquisitionRetriesRejectedOcr` uses actual device-probe/controller/scheduler
+wiring with synthetic `SceneDeviceImage` hold records. It drains warm-up jobs
+and checks the blocked image's checksum before testing three rejection paths,
+then requires additional held text and no further OCR for that acquisition.
+See [the independent review](uct_opus_review_2026_10_20.md) for evidence and limits.
