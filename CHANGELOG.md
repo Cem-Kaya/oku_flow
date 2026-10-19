@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Correct remaining Turkish/German wrapped-toolbar width differences: give
+  each action row independent spacing and equal button minimums, preserving
+  readable labels through narrow layouts and live reflow.
+
 - Restore the phone-light control after cancelling or failing video selection,
   and keep translated action-grid cells equal in width when toolbar rows wrap.
   Preserve the complete UCT suite's individual assertions while allowing its

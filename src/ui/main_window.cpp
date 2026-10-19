@@ -86,7 +86,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <numeric>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -3664,35 +3663,40 @@ void MainWindow::UpdateSimpleChromeGeometry()
     const bool showTracking = keystoneTrackingActive_ && isSimpleMode();
     const int trackingWidth = showTracking ? refit(keystoneTrackingPanel_) : 0;
     auto* actionsLayout = qobject_cast<QGridLayout*>(bottomRightPanel_->layout());
-    // Lays the actions out as a filled rectangle: full rows of `columns`
-    // and a shorter final row whose buttons span proportionally wider cells,
-    // so 3 + 2 renders as two equal-width rows rather than an L shape.
+    // Each row owns its horizontal spacing. A shared grid with mixed column
+    // spans (three actions above two) suppresses some internal gaps, so equal
+    // column widths alone still produce unequal button widths.
     const auto arrangeActions = [&](int columns) {
         if (!actionsLayout) return;
+        while (auto* item = actionsLayout->takeAt(0)) {
+            if (auto* row = item->layout()) {
+                while (auto* cell = row->takeAt(0)) delete cell;
+            }
+            delete item; // Removes layout items, never the persistent buttons.
+        }
+        for (int column = 0; column < actionsLayout->columnCount(); ++column) {
+            actionsLayout->setColumnStretch(column, column == 0 ? 1 : 0);
+            actionsLayout->setColumnMinimumWidth(column, 0);
+        }
         const int count = static_cast<int>(actionButtons.size());
-        const int lastRowCount = count % columns == 0 ? columns : count % columns;
-        const int lastRow = (count - 1) / columns;
-        const int cells = std::lcm(columns, lastRowCount);
-        for (const auto& action : actionButtons) {
-            actionsLayout->removeWidget(action.first);
-        }
-        const int spacing = std::max(0, actionsLayout->horizontalSpacing());
-        int cellMinimum = 0;
-        for (int index = 0; index < count; ++index) {
-            const int span = cells / (index / columns == lastRow ? lastRowCount : columns);
-            const auto* button = actionButtons[index].first;
-            const int hint = std::max(button->sizeHint().width(), button->minimumWidth());
-            cellMinimum = std::max(cellMinimum, (hint - (span - 1) * spacing + span - 1) / span);
-        }
-        for (int column = 0; column < std::max(cells, actionsLayout->columnCount()); ++column) {
-            actionsLayout->setColumnStretch(column, column < cells ? 1 : 0);
-            actionsLayout->setColumnMinimumWidth(column, column < cells ? cellMinimum : 0);
-        }
-        for (int index = 0; index < count; ++index) {
-            const int row = index / columns;
-            const int span = cells / (row == lastRow ? lastRowCount : columns);
-            actionsLayout->addWidget(actionButtons[index].first, row,
-                                     (index % columns) * span, 1, span);
+        for (int first = 0; first < count; first += columns) {
+            const int end = std::min(first + columns, count);
+            int buttonMinimum = 0;
+            for (int index = first; index < end; ++index) {
+                const auto* button = actionButtons[index].first;
+                buttonMinimum = std::max(buttonMinimum,
+                    std::max(button->sizeHint().width(), button->minimumWidth()));
+            }
+            auto* row = new QHBoxLayout;
+            row->setContentsMargins(0, 0, 0, 0);
+            row->setSpacing(actionsLayout->horizontalSpacing());
+            for (int index = first; index < end; ++index) {
+                auto* button = actionButtons[index].first;
+                button->setMinimumWidth(buttonMinimum);
+                row->addWidget(button, 1);
+            }
+            actionsLayout->addLayout(row, first / columns, 0, 1,
+                                     actionsLayout->columnCount());
         }
     };
     // Test the real translated button sizes, including stylesheet padding

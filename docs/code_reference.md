@@ -5646,12 +5646,15 @@ control after cancelled or failed opens without showing it for a webcam.
 `cancelledVideoPickerRestoresOnlyPhoneLight` exercise this with fixture camera
 metadata only, without opening a picker or connecting to a device.
 
-`MainWindow::UpdateFloatingChromeGeometries`/`arrangeActions` derives one common
-minimum grid-cell width from translated button size hints, spans and spacing,
-and clears inactive-column minima. This prevents mixed-span rows from assigning
-different minima to supposedly equal action cells. Offscreen
-`translatedActionRowsHaveUniformCellMinimums` checks German content, alongside
-the unchanged native `bottomChromeFormsRectangularGroups` acceptance case.
+`MainWindow::UpdateSimpleChromeGeometry`/`arrangeActions` gives each action
+row its own `QHBoxLayout`, equal translated button minimums and equal stretch.
+The outer grid stacks full-width row layouts and clears inactive constraints;
+removing prior layout items preserves the buttons and their focus identity.
+This avoids unequal internal spacing from mixed grid column spans (three
+buttons above two). Offscreen `translatedActionRowsHaveUniformCellMinimums`
+and its three language data rows use the real Segoe UI font and exercise
+corner-to-strip, narrow and return transitions. The native
+`bottomChromeFormsRectangularGroups` acceptance assertion remains unchanged.
 
 `residentBatchesRespectBudgetAndPreserveCompletedChecks` covers 1100 references,
 partial budget progress and cancellation. `gpuResidentBatchMappingMatchesDistinctCpuLines`

@@ -383,6 +383,7 @@ for the approved concept, review coverage and validation limits.
 Video source recovery also preserves the camera-only phone-light control:
 cancelling or failing the native video picker reconciles the source dropdown
 and recomputes phone availability from the current camera, rather than leaving
-the button hidden. Wrapped action rows derive equal grid-cell minimums from the
-translated button hints and column spans; longer labels retain readable sizes
-without making neighbouring buttons uneven.
+the button hidden. Wrapped action rows use independent horizontal layouts with equal button
+minimums derived from translated content. Each row owns its spacing, including
+a three-button row above two wider buttons; mixed grid spans cannot suppress
+internal gaps or make neighbouring buttons uneven.

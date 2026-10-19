@@ -20,6 +20,7 @@
 #include <QComboBox>
 #include <QDir>
 #include <QFile>
+#include <QFontDatabase>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLayout>
@@ -736,19 +737,43 @@ private slots:
         QVERIFY(NativeControlFixture::CancelVideoPickerRestoresPhoneLight(app_,true));
         QVERIFY(NativeControlFixture::CancelVideoPickerRestoresPhoneLight(app_,false));
     }
+    void translatedActionRowsHaveUniformCellMinimums_data() {
+        QTest::addColumn<int>("language");
+        QTest::newRow("english") << int(AppLanguage::English);
+        QTest::newRow("turkish") << int(AppLanguage::Turkish);
+        QTest::newRow("german") << int(AppLanguage::German);
+    }
     void translatedActionRowsHaveUniformCellMinimums() {
+        QFETCH(int,language);
         auto* application=qobject_cast<QApplication*>(QCoreApplication::instance());QVERIFY(application);
-        LanguageManager translations(*application);QVERIFY(translations.SetLanguage(AppLanguage::German,false));
+        QVERIFY(QFontDatabase::addApplicationFont(QDir(qEnvironmentVariable("WINDIR")).filePath("Fonts/segoeui.ttf"))>=0);
+        LanguageManager translations(*application);QVERIFY(translations.SetLanguage(static_cast<AppLanguage>(language),false));
         const auto cleanup=qScopeGuard([&]{translations.SetLanguage(AppLanguage::English,false);});
-        MainWindow window;window.resize(1100,760);window.show();window.advancedModeButton()->click();window.setAdvancedPanelWidth(440);
+        MainWindow window;window.setFont(QFont(QStringLiteral("Segoe UI")));
+        window.resize(language==int(AppLanguage::German)?1600:1280,800);window.show();
         QCoreApplication::processEvents();
+        window.resize(1100,760);window.advancedModeButton()->click();window.setAdvancedPanelWidth(440);
         auto* panel=window.findChild<QWidget*>("bottomRightPanel");QVERIFY(panel);
         auto* grid=qobject_cast<QGridLayout*>(panel->layout());QVERIFY(grid);
-        const int minimum=grid->columnMinimumWidth(0);QVERIFY(minimum>0);
-        for(int i=0;i<grid->columnCount();++i)if(grid->columnStretch(i)>0)QCOMPARE(grid->columnMinimumWidth(i),minimum);
-        QMap<int,QVector<int>> widths;
-        for(auto* button:{window.capturePhotoButton(),window.recordButton(),window.explainNowButton(),window.readTextButton(),window.annotationButton()})widths[button->y()].push_back(button->width());
-        for(const auto& row:widths){const auto range=std::minmax_element(row.begin(),row.end());QVERIFY(*range.second-*range.first<=4);}
+        const auto problem=[&]() -> QString {
+            QMap<int,QVector<QRect>> rows;
+            for(auto* button:{window.capturePhotoButton(),window.recordButton(),window.explainNowButton(),window.readTextButton(),window.annotationButton()})rows[button->y()].push_back(button->geometry());
+            int left=-1,right=-1;
+            for(const auto& row:rows){
+                int minWidth=INT_MAX,maxWidth=0,rowLeft=INT_MAX,rowRight=0;
+                for(const auto& rect:row){minWidth=std::min(minWidth,rect.width());maxWidth=std::max(maxWidth,rect.width());rowLeft=std::min(rowLeft,rect.left());rowRight=std::max(rowRight,rect.right());}
+                if(maxWidth-minWidth>4)return QStringLiteral("Action row widths %1..%2").arg(minWidth).arg(maxWidth);
+                if(left>=0&&(std::abs(rowLeft-left)>1||std::abs(rowRight-right)>1))return QStringLiteral("Action row edges differ");
+                left=rowLeft;right=rowRight;
+            }
+            return {};
+        };
+        QCoreApplication::processEvents();
+        QVERIFY2(problem().isEmpty(),qPrintable(problem()));
+        window.resize(720,720);window.setAdvancedPanelWidth(360);QCoreApplication::processEvents();
+        QVERIFY2(problem().isEmpty(),qPrintable(problem()));
+        window.simpleModeButton()->click();window.resize(1280,800);QCoreApplication::processEvents();
+        QVERIFY2(problem().isEmpty(),qPrintable(problem()));
     }
     void selectedMediaGpuPolicyIncludesAllImageEffects() {
         // Exercise the policy seam without creating a CUDA surface or claiming
