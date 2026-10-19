@@ -3676,8 +3676,17 @@ void MainWindow::UpdateSimpleChromeGeometry()
         for (const auto& action : actionButtons) {
             actionsLayout->removeWidget(action.first);
         }
+        const int spacing = std::max(0, actionsLayout->horizontalSpacing());
+        int cellMinimum = 0;
+        for (int index = 0; index < count; ++index) {
+            const int span = cells / (index / columns == lastRow ? lastRowCount : columns);
+            const auto* button = actionButtons[index].first;
+            const int hint = std::max(button->sizeHint().width(), button->minimumWidth());
+            cellMinimum = std::max(cellMinimum, (hint - (span - 1) * spacing + span - 1) / span);
+        }
         for (int column = 0; column < std::max(cells, actionsLayout->columnCount()); ++column) {
             actionsLayout->setColumnStretch(column, column < cells ? 1 : 0);
+            actionsLayout->setColumnMinimumWidth(column, column < cells ? cellMinimum : 0);
         }
         for (int index = 0; index < count; ++index) {
             const int row = index / columns;

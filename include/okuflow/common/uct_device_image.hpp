@@ -7,6 +7,7 @@
 
 namespace okuflow::uct
 {
+struct RecognitionResult;
 // Immutable independently owned pre-zoom BGRA analysis image. Native handles
 // are CUDA device pointers/events only in a CUDA build. No borrowed camera or
 // presenter allocation survives submission. Readback is worker-only.
@@ -20,6 +21,12 @@ class DeviceImage : public std::enable_shared_from_this<DeviceImage>
     std::int64_t timestampMs{};
     virtual const void *Data() const = 0;
     virtual bool WaitReady(void *consumerStream, QString &error) const = 0;
+    // Production CUDA images provide worker-only analysis without pixel egress.
+    // False means an explicit CPU image/fallback implementation, never a silent
+    // retry after a resident-analysis failure.
+    virtual bool HasResidentAnalysis() const { return false; }
+    virtual bool PrepareResidentAnalysis(RecognitionResult&, int, bool,
+                                         const std::atomic<bool>&, QString&) const { return false; }
     virtual QImage Readback(const std::atomic<bool> &cancelled, QString &error) const = 0;
     // Independent bounded validation branch; never an inference input.
     virtual QImage ReadProbe(const std::atomic<bool> &cancelled, QString &error) const

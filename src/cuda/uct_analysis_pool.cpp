@@ -3,6 +3,7 @@
 
 #if OKUFLOW_ENABLE_CUDA
 #include "okuflow/cuda/uct_kernels.hpp"
+#include "uct_device_analysis.hpp"
 #include <array>
 #include <chrono>
 #include <cstring>
@@ -69,6 +70,12 @@ class Image final : public DeviceImage
         if (status != cudaSuccess)
             error = QString::fromUtf8(cudaGetErrorString(status));
         return status == cudaSuccess;
+    }
+    bool HasResidentAnalysis() const override { return true; }
+    bool PrepareResidentAnalysis(RecognitionResult& result, int decimation, bool probeOnly,
+                                  const std::atomic<bool>& cancelled, QString& error) const override
+    {
+        return resident::Prepare(*this, result, decimation, probeOnly, cancelled, error);
     }
     QImage Readback(const std::atomic<bool> &cancelled, QString &error) const override
     {

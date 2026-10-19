@@ -970,6 +970,7 @@ uct::SourceStamp UltraClearTextController::MakeStamp(const UctFrameContext& cont
     stamp.sourceEpoch = context.geometry.settings.sourceEpoch;
     stamp.geometryGeneration = geometryGeneration_;
     stamp.frameSeq = context.frameSeq;
+    stamp.liveCameraCapture = context.cameraActive;
     stamp.timestampMs = nowMs;
     stamp.viewTransform = context.transform;
     stamp.viewportWidth = context.viewportWidth;
@@ -1147,7 +1148,7 @@ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
     }
     const uct::AdmitVerdict verdict = advancingMediaScene_
         ? model_.AdmitAdvancingMedia(result, CurrentScene(), latestProbe_.get(), ModelTime(now))
-        : model_.Admit(result, CurrentScene(), latestProbe_.get(), now);
+        : model_.AdmitLiveCamera(result, CurrentScene(), latestProbe_.get(), now);
     switch (verdict) {
     case uct::AdmitVerdict::kAccepted:
         ++acceptedResults_;
@@ -1221,8 +1222,16 @@ void UltraClearTextController::SubmitImmutableIfNeeded()
     const auto submitFrame = [this](const UctImmutableFrame& frame) {
         const auto stamp = ImmutableStamp(frame);
         std::uint64_t job = 0;
-        if (const auto device = EffectiveDevice(frame, geometry_))
-            job = scheduler_->SubmitDevice(stamp, device);
+        if (const auto device = EffectiveDevice(frame, geometry_)) {
+            uct::CorroborationRequest corroboration;
+            corroboration.tuning = uct::ModelTuning{}.match;
+            if (immutableSelectedResult_) {
+                corroboration.selectedJobId = immutableSelectedResult_->jobId;
+                for (const auto& line : immutableSelectedResult_->prepared)
+                    corroboration.references.push_back(line.reference);
+            }
+            job = scheduler_->SubmitDevice(stamp, device, std::move(corroboration));
+        }
         if (job == 0 && PixelsMatchFrame(frame, geometry_))
             job = scheduler_->Submit(stamp, frame.pixels);
         return job;

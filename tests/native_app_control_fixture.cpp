@@ -23,6 +23,8 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLayout>
+#include <QGridLayout>
+#include <QMap>
 #include <QPushButton>
 #include <QScopeGuard>
 #include <QSlider>
@@ -338,6 +340,18 @@ public:
     static bool VideoTimerActive(const OkuFlowApp& app) {return app.videoPlaybackTimer_ && app.videoPlaybackTimer_->isActive();}
     static VideoTransport::Snapshot VideoUi(const OkuFlowApp& app) {return app.mainWindow_->videoTransport()->snapshot();}
     static MainWindow& Window(OkuFlowApp& app) {return *app.mainWindow_;}
+    static bool CancelVideoPickerRestoresPhoneLight(OkuFlowApp& app,bool phone) {
+        const auto previous=app.cameras_;const auto selected=app.selectedCameraIndex_;
+        const auto cleanup=qScopeGuard([&]{app.cameras_=previous;app.selectedCameraIndex_=selected;app.UpdatePhoneLightUi();});
+        CameraDescriptor camera;camera.name=L"Fixture source";if(phone)camera.phoneSerial="fixture-only";
+        app.cameras_={camera};app.selectedCameraIndex_=0;
+        app.mainWindow_->setCameraDevices({"Fixture source"},0);app.PollVideoPlayback();app.UpdatePhoneLightUi();
+        if(app.mainWindow_->phoneLightButton()->isHidden()==phone)return false;
+        app.mainWindow_->setVideoSourceSelected(true,0);
+        if(!app.mainWindow_->phoneLightButton()->isHidden())return false;
+        app.PollVideoPlayback(); // same cancellation/failure reconciliation, no dialog/device
+        return !app.mainWindow_->videoSourceSelected() && app.mainWindow_->phoneLightButton()->isHidden()!=phone;
+    }
     static void VideoOrientation(OkuFlowApp& app,int turns) {
         app.uiState_->rotationCombo_->setCurrentIndex(turns);
         app.OnRotationSelectionChanged(turns);
@@ -716,6 +730,25 @@ private slots:
         QVERIFY(!window.videoSourceSelected());QCOMPARE(combo->currentIndex(),1);
         QVERIFY(select->isHidden());QVERIFY(!window.cameraFormatCombo()->parentWidget()->isHidden());
         QCOMPARE(changes.count(),1);
+    }
+    void cancelledVideoPickerRestoresOnlyPhoneLight() {
+        NativeControlFixture::ResetVideo(app_);
+        QVERIFY(NativeControlFixture::CancelVideoPickerRestoresPhoneLight(app_,true));
+        QVERIFY(NativeControlFixture::CancelVideoPickerRestoresPhoneLight(app_,false));
+    }
+    void translatedActionRowsHaveUniformCellMinimums() {
+        auto* application=qobject_cast<QApplication*>(QCoreApplication::instance());QVERIFY(application);
+        LanguageManager translations(*application);QVERIFY(translations.SetLanguage(AppLanguage::German,false));
+        const auto cleanup=qScopeGuard([&]{translations.SetLanguage(AppLanguage::English,false);});
+        MainWindow window;window.resize(1100,760);window.show();window.advancedModeButton()->click();window.setAdvancedPanelWidth(440);
+        QCoreApplication::processEvents();
+        auto* panel=window.findChild<QWidget*>("bottomRightPanel");QVERIFY(panel);
+        auto* grid=qobject_cast<QGridLayout*>(panel->layout());QVERIFY(grid);
+        const int minimum=grid->columnMinimumWidth(0);QVERIFY(minimum>0);
+        for(int i=0;i<grid->columnCount();++i)if(grid->columnStretch(i)>0)QCOMPARE(grid->columnMinimumWidth(i),minimum);
+        QMap<int,QVector<int>> widths;
+        for(auto* button:{window.capturePhotoButton(),window.recordButton(),window.explainNowButton(),window.readTextButton(),window.annotationButton()})widths[button->y()].push_back(button->width());
+        for(const auto& row:widths){const auto range=std::minmax_element(row.begin(),row.end());QVERIFY(*range.second-*range.first<=4);}
     }
     void selectedMediaGpuPolicyIncludesAllImageEffects() {
         // Exercise the policy seam without creating a CUDA surface or claiming

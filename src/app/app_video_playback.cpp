@@ -1000,11 +1000,12 @@ void OkuFlowApp::PollVideoPlayback()
              !doc.followingLive && !doc.finishing && !doc.heldLive && !doc.pausedDisplayHold && !doc.pendingHold)
         ui.state = VideoTransport::State::Waiting;
     mainWindow_->videoTransport()->SetSnapshot(ui);
-    mainWindow_->setVideoSourceSelected(MediaViewSelected() || doc.openingFile ||
-        !doc.waitingSession.isEmpty(), selectedCameraIndex_);
+    const bool videoSource = MediaViewSelected() || doc.openingFile || !doc.waitingSession.isEmpty();
+    const bool sourceUiChanged = mainWindow_->videoSourceSelected() != videoSource;
+    mainWindow_->setVideoSourceSelected(videoSource, selectedCameraIndex_);
     const bool selectedMedia = MediaViewSelected();
     const bool mediaGpuAvailable = selectedMedia && SelectedMediaGpuProcessingAvailable();
-    if (!doc.controlsInitialized || doc.controlsMediaSelected != selectedMedia ||
+    if (!doc.controlsInitialized || sourceUiChanged || doc.controlsMediaSelected != selectedMedia ||
         doc.controlsMediaGpuAvailable != mediaGpuAvailable) {
         doc.controlsInitialized = true;
         doc.controlsMediaSelected = selectedMedia;

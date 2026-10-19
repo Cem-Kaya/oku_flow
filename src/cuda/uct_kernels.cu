@@ -426,3 +426,5 @@ void Decode(const float *p, int steps, int classes, const Quad *quads, int index
     compact<<<1, 1, 0, s>>>(ids, scores, steps, quads, index, cropWidth, tokens, count);
 }
 } // namespace okuflow::uct::gpu
+
+#include "uct_validation_kernels.cuh"

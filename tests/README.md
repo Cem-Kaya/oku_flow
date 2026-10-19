@@ -59,9 +59,13 @@ routine benchmark. All of these checks can run without foreground desktop use.
 normalization/region/CTC checks, missing/tampered model refusal and scripted
 backend initialization/runtime/exception/cancellation fallback. `uct_paddle_cuda`
 compares actual device normalization, quads, padded crops and CTC against CPU
-references and verifies two-slot owned snapshots, exact stamps and readback
-after source overwrite. It is serial with other `gpu` tests and does not open
-a native window. Neither fixture requires TensorRT or model downloads.
+references and verifies two-slot owned snapshots, exact stamps and explicit CPU
+readback after source overwrite. Resident-path cases guard both download APIs,
+compare GPU colors/ink geometry and motion/cropped-view validation with CPU
+references, check complete GPU fingerprints against a CPU SHA-256-tree oracle,
+and retain eight probes without pinning the two full-scene capture slots. A
+resident preparation failure must remain an input fault with zero image downloads.
+It is serial with other `gpu` tests and does not open a native window. Neither fixture requires TensorRT or model downloads.
 Input-copy faults are separately tested so one bad frame cannot exhaust the
 backend chain. Preparation tests keep CPU service available and promote the
 retained GPU candidate only when ready. A separate SDK-free build passes the
@@ -96,8 +100,8 @@ missing. TensorRT acceptance exercises system-memory upload and an independently
 owned direct device input, checking six known printed words. First use may
 compile model/GPU-specific cached plans on the OCR worker. Do not repeatedly
 delete caches or call this a general camera/FPS benchmark. The one-time RTX4090
-synthetic cold compilation was about 86 s; cached warm inference was 7–38 ms,
-CPU 96–142 ms across development runs. These are fixture observations, not
+synthetic cold compilation was about 86 s; cached warm inference was 7â€“38 ms,
+CPU 96â€“142 ms across development runs. These are fixture observations, not
 live-camera latency, GTX1070 validation, multilingual accuracy or render-tail
 acceptance. Keep fixture logs and SDK/model caches under LocalAppData, outside
 Git and installer staging. A background gate excluding native GUI is partial.
@@ -176,12 +180,12 @@ tracked `msvc-cpu` preset. Background checks run first through the existing
 gate. Native GUI checks then run serially on the remote Windows desktop and
 complete that same CPU inventory. An unavailable or locked input desktop is a
 failure, not an offscreen pass. Nothing installs a runner on the owner's PC.
-Before building, the workflow requests a 1920×1080 display on that disposable
-VM and verifies its actual size. The default 1024×768 clips large native windows
+Before building, the workflow requests a 1920Ã—1080 display on that disposable
+VM and verifies its actual size. The default 1024Ã—768 clips large native windows
 and changes geometry restoration. A refused/unchanged mode cannot pass GUI
 acceptance; the `desktop` manual scope checks only this prerequisite quickly.
 The first remote preparation verified session 2, the Default input desktop and
-an actual 1920×1080 mode change; no owner display settings were changed.
+an actual 1920Ã—1080 mode change; no owner display settings were changed.
 The contrast regression checks actual light/dark text pixels before and after
 a runtime scheme switch. Inspector panes explicitly paint the matching Window
 surface; native-style rendering cannot silently substitute a white pane.
@@ -193,7 +197,7 @@ are explicit additional modules.
 The host-protocol capture fixture streams until the client closes and has a one-second
 capture window; its packet/control assertions do not depend on 50 ms scheduling.
 
-In GitHub **Actions → Windows checks → Run workflow**, select `background`,
+In GitHub **Actions â†’ Windows checks â†’ Run workflow**, select `background`,
 `gui-all`, a `gui-state/layout/input/idle` group, or `two-cases`. The last option
 runs only the docking-hold and mouse-idle slots previously interrupted locally.
 Manual selections preserve every Qt data row and run each selected CTest entry
@@ -651,7 +655,7 @@ from camera/optics validation.
   times, checks active/next-session canvas selection, CPU ink snapshot/clear/
   undo/pan with clean originals, and BGRA-to-NV12 layout/color/padding rejection.
   It uses temporary user-data paths and no camera or encoder submission.
-- `media_writer_gpu_codecs` now exercises GPU → CPU red fallback → GPU in one
+- `media_writer_gpu_codecs` now exercises GPU â†’ CPU red fallback â†’ GPU in one
   writer, decodes 90 frames, checks increasing timestamps and fallback color,
   and retains AAC/finalization checks. Hardware absence retains the existing
   skip behavior; a supported encoder failure is a failure, not a skip.
@@ -1086,7 +1090,7 @@ fixtures do not establish compatibility with a live endpoint or rendered UI.
 ### Chat/control offscreen fixture and opt-in captures
 
 `agent_control_panel_headless` always uses Qt offscreen. Its focused cases cover
-sole master ownership, user-only grants, exact/expired approvals, canonical 90°
+sole master ownership, user-only grants, exact/expired approvals, canonical 90Â°
 orientation, unchanged approval Details selection/caret/scroll across refreshes,
 bounded activity, explicit testing, lease defaults/no widening,
 refused drafts, shared draft/attachment/keyboard submission, escaped messages,
@@ -1109,7 +1113,7 @@ no camera/provider/bridge/browser and claims no native focus or screen-reader
 acceptance. Serial disposable Windows native cases remain separate.
 
 Explicitly build `agent_control_capture` and run `--output` with an absolute
-LocalAppData folder. The real production MainWindow is rendered at 1672×941 to
+LocalAppData folder. The real production MainWindow is rendered at 1672Ã—941 to
 match the approved chat-first concept, with synthetic chat and pending photo
 approval, a settings drawer and AI Settings with built-in control on / external
 MCP off defaults. Settings round trips cover explicit opt-out, missing keys and
@@ -1638,3 +1642,36 @@ an automatic benchmark or a release FPS requirement. The measured report and
 per-trial CSV are in [the result](../docs/media_output_buffer_benchmark.md).
 The ordinary app retains one output because the measured tradeoff did not improve
 both throughput and tail latency across the target workloads.
+
+The resident UCT controller protocol also has hardware-free CPU oracles for live
+camera acquisition (including identical pixels and return from video), selected
+neighbour registration and no UI-thread analysis. These do not replace the actual
+CUDA fixture. The opt-in `optionalRealGpu` row now checks resident colors, ink
+geometry and line registration using real medium/medium TensorRT OCR output,
+in addition to verifying expected recognized words. It never downloads models.
+GPU parity includes opposite polarities, multiple lines, rejected middle spans,
+detached character marks, decimation 1/2/4, CPU descriptor uploads, compact batch
+indexing and cancelled checks. Immutable model tests reject neighbour checks
+with the wrong selected-job ticket, line count or matching policy.
+
+`uct_paddle_tests residentDensePageLatencyExperiment` is a separate opt-in
+one-time worker-latency experiment: set `OKUFLOW_UCT_RESIDENT_PERF=1`, use
+`QT_QPA_PLATFORM=offscreen` and the CUDA build/Qt runtime, then save QtTest output
+under LocalAppData. It compares 60 synthetic lines after one warm-up and three
+measured trials, asserting registration without a fragile timing threshold.
+It excludes real inference, capture, presentation and sensor-to-photon latency;
+ordinary CTest never reruns this timing experiment.
+
+
+UCT residual workers validate resident lines in 64-line chunks, preserving checked
+prefixes when their budget expires or the consumer cancels. A hardware-free oracle
+covers a 1100-line input and exact unchecked tails. The regular CUDA batch case
+uses distinct line contents, different motion/occlusion outcomes, an invalid
+middle entry and a CPU descriptor; each slot is compared with the CPU oracle.
+
+PR10's original CI evidence retained a 60-second aggregate timeout after 31
+completed `immutable_uct_contract` rows. Its suite deadline is now 120 seconds;
+per-row QTRY limits/assertions and the full inventory remain unchanged. This does
+not classify a timeout as a pass or erase the archived attempt. The native German
+bottom-toolbar regression remains required; offscreen cell-minimum and cancelled
+video-picker/phone-light cases complement it without desktop or real-device claims.

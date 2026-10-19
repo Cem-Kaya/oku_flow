@@ -134,6 +134,27 @@ struct FakeDeviceState {
     std::atomic<int> probes{};
     std::atomic<bool> readOnUiThread{};
     std::atomic<bool> probeFails{};
+    std::atomic<bool> resident{};
+};
+
+// CPU oracle for the resident controller protocol, not a GPU implementation.
+// Separate CUDA fixtures verify production kernels and no-image-egress behavior.
+class ResidentOracle final : public ResidentProbe {
+public:
+    ProbeFrame cpu;std::shared_ptr<FakeDeviceState> state;
+    int Width() const noexcept override{return cpu.Width();}
+    int Height() const noexcept override{return cpu.Height();}
+    void Note() const {if(std::this_thread::get_id()==state->uiThread)state->readOnUiThread=true;}
+    ReferencePatch Reference(const SourceStamp& s,const QRectF& r) const override {
+        Note();auto p=cpu;p.stamp=s;return BuildReferencePatch(p,r);
+    }
+    PatchMatch Match(const SourceStamp& s,const ReferencePatch& r,const MatchTuning& t,std::optional<QPointF> seed) const override {
+        Note();auto p=cpu;p.stamp=s;return MatchPatch(r,p,t,seed);
+    }
+    std::optional<double> Similarity(const SourceStamp& a,const ResidentProbe& other,const SourceStamp& b) const override {
+        Note();auto* oracle=dynamic_cast<const ResidentOracle*>(&other);if(!oracle)return {};
+        auto x=cpu,y=oracle->cpu;x.stamp=a;y.stamp=b;return SceneSimilarity(x,y);
+    }
 };
 
 class FakeDeviceImage final : public DeviceImage {
@@ -151,6 +172,16 @@ public:
     }
     const void* Data() const override { return this; }
     bool WaitReady(void*, QString&) const override { return true; }
+    bool HasResidentAnalysis() const override {return state_->resident.load();}
+    bool PrepareResidentAnalysis(RecognitionResult& result,int decimation,bool probeOnly,
+                                  const std::atomic<bool>& cancel,QString&) const override {
+        NoteThread();if(cancel.load())return false;
+        auto p=std::make_shared<ResidentOracle>();p->state=state_;
+        p->cpu=MakeProbeFrame(page_.constBits(),width,height,page_.bytesPerLine(),std::max(1,decimation),result.stamp);
+        result.reference.stamp=result.stamp;result.reference.resident=p;
+        if(!probeOnly&&!result.stamp.liveCameraCapture)result.sourcePixelDigest=SourcePixelsDigest(page_);
+        return true;
+    }
     QImage Readback(const std::atomic<bool>&, QString&) const override
     {
         ++state_->readbacks;
@@ -324,6 +355,9 @@ struct ImmutableHarness {
 class UltraClearTextControllerTests final : public QObject {
     Q_OBJECT
 private slots:
+    void liveCameraIdenticalPixelsAcquireText_data();
+    void liveCameraIdenticalPixelsAcquireText();
+    void residentSelectedNeighbourUsesWorkerRegistration();
     void immutableOldFrameAndIdleDoNoPeriodicWork();
     void backendReadySubmitsWaitingMediaOnce();
     void coveredZoomReprojectsTheSameArtifact();
@@ -358,6 +392,74 @@ private slots:
     void gapReceiptSameFrameReprojectsRepeatedlyWithoutWork();
     void processingCorrespondenceGateRevokesTextAndUiaWithoutChangingPreference();
 };
+
+void UltraClearTextControllerTests::liveCameraIdenticalPixelsAcquireText_data()
+{
+    QTest::addColumn<bool>("device");
+    QTest::addColumn<bool>("afterMedia");
+    QTest::addColumn<bool>("resident");
+    QTest::newRow("cpu-camera") << false << false << false;
+    QTest::newRow("device-camera") << true << false << false;
+    QTest::newRow("device-camera-after-video") << true << true << false;
+    QTest::newRow("resident-camera") << true << false << true;
+    QTest::newRow("resident-camera-after-video") << true << true << true;
+}
+
+void UltraClearTextControllerTests::liveCameraIdenticalPixelsAcquireText()
+{
+    QFETCH(bool,device);QFETCH(bool,afterMedia);QFETCH(bool,resident);
+    ImmutableHarness h;
+    h.script->wantsDevice=device;h.devices->resident=resident;
+    h.Enable();
+    QTRY_COMPARE(h.controller->BackendStatusSnapshot().state,BackendState::kReady);
+    if(afterMedia) {
+        QVERIFY(h.controller->SetImmutableScene(h.Scene()));
+        h.controller->ClearImmutableScene();
+    }
+    UctFrameContext context;
+    context.geometry=h.Scene().geometry;
+    context.requested=context.geometry.settings;
+    context.transform.valid=true;
+    context.cameraActive=true;
+    context.viewportWidth=h.page.image.width();context.viewportHeight=h.page.image.height();
+    const auto present=[&](std::uint64_t sequence) {
+        h.now+=100;context.frameSeq=sequence;
+        const bool wanted=h.controller->OnPresented(context);
+        h.controller->OnPresentationSucceeded();
+        if(wanted) {
+            if(device)h.controller->OnDeviceScene(context,h.Device(h.page.image,sequence,h.now));
+            else h.controller->OnCpuViewport(context,h.page.image.constBits(),h.page.image.width(),
+                h.page.image.height(),h.page.image.bytesPerLine());
+        }
+        QTest::qWait(12);
+    };
+    // Repainting a held camera sample is not another acquisition. The fixture
+    // intentionally keeps ALL pixel bytes identical in both phases.
+    for(int repeat=0;repeat<12;++repeat)present(1);
+    QVERIFY(h.script->calls.load()+h.script->deviceCalls.load()>=2);
+    QCOMPARE(h.overlay.WordCount(),0);
+    for(std::uint64_t sequence=2;sequence<=55 && h.overlay.WordCount()==0;++sequence)present(sequence);
+    QVERIFY2(h.overlay.WordCount()>0,"Fresh live-camera acquisitions with identical pixels stayed pending forever");
+    QVERIFY(h.Reading().contains(QStringLiteral("Reading helps")));
+    QVERIFY(!h.controller->HasImmutableScene());
+    QVERIFY(!h.devices->readOnUiThread.load());
+    if(resident){QCOMPARE(h.devices->readbacks.load(),0);QCOMPARE(h.devices->probes.load(),0);}
+}
+
+void UltraClearTextControllerTests::residentSelectedNeighbourUsesWorkerRegistration()
+{
+    ImmutableHarness h;h.script->wantsDevice=true;h.devices->resident=true;h.Enable();
+    auto scene=h.DeviceScene();
+    const auto neighbour=IndependentFramePixels(h.page.image,11);
+    scene.corroboration=UctImmutableFrame{{},11,2,h.Device(neighbour,11,2)};
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_COMPARE(h.script->deviceCalls.load(),2);
+    QTRY_VERIFY(h.overlay.WordCount()>0);
+    QVERIFY(h.Reading().contains(QStringLiteral("Reading helps")));
+    QCOMPARE(h.devices->readbacks.load(),0);QCOMPARE(h.devices->probes.load(),0);
+    QVERIFY(!h.devices->readOnUiThread.load());
+    h.controller->ClearImmutableScene();QCOMPARE(h.overlay.WordCount(),0);
+}
 
 void UltraClearTextControllerTests::processingCorrespondenceGateRevokesTextAndUiaWithoutChangingPreference()
 {

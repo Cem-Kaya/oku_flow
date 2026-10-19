@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+- Restore the phone-light control after cancelling or failing video selection,
+  and keep translated action-grid cells equal in width when toolbar rows wrap.
+  Preserve the complete UCT suite's individual assertions while allowing its
+  aggregate runtime on loaded Windows CI runners.
+
+- Keep CUDA UCT color sampling, ink fitting, scene/line validation and saved-frame
+  duplicate fingerprints on the GPU after TensorRT inference. Return compact
+  text/geometry/color/validation metadata only; keep CPU image readback confined
+  to the explicit CPU OCR fallback. Retain asynchronous UI admission and bounded
+  ownership independently of the two full-scene analysis slots.
+
+- Restore Ultra Clear Text on steady live/virtual camera feeds. Use trusted
+  camera acquisition sequences to confirm unchanged printed text, while
+  repainting a held sample supplies no new evidence. Skip redundant camera
+  and validation-only pixel hashing; retain strict saved-frame duplicate,
+  scene, freshness and registration checks.
+
 - Move saved-video selection into Settings > Camera: choose View video to open
   the file picker, then use Select video to replace it. Keep the five camera
   actions uncluttered, preserve the source selection through camera discovery,

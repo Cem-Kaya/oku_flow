@@ -592,6 +592,7 @@ private slots:
     void patchKeepsDenseZeroWhenSparseDistractorWins_data();
     void patchKeepsDenseZeroWhenSparseDistractorWins();
     void partialRecognitionDoesNotDuplicateAfterPanBack();
+    void residentBatchesRespectBudgetAndPreserveCompletedChecks();
     void budgetRefreshKeepsExactlyRevalidatedText();
     void missedProbeBudgetKeepsOnlyUnexpiredProof();
     void refreshRetainsLineOnceAndStabilizesColors();
@@ -605,6 +606,7 @@ private slots:
     // --- Model --------------------------------------------------------------
     void modelRequiresTemporalAgreement();
     void livePendingEvidenceRejectsDuplicatePixels();
+    void liveCaptureAcceptsIdenticalPixelsOnlyFromNewAcquisitions();
     void liveDuplicateRefreshPreservesEstablishedWords();
     void pendingEvidenceCannotCrossResetOrAdmissionMode();
     void modelRejectsStaleSceneAndLateResults();
@@ -1194,6 +1196,51 @@ void UltraClearTextTests::livePendingEvidenceRejectsDuplicatePixels()
     QCOMPARE(missing.AcceptedWordCount(),0);
 }
 
+void UltraClearTextTests::liveCaptureAcceptsIdenticalPixelsOnlyFromNewAcquisitions()
+{
+    const auto page=MakePage({QStringLiteral("Read page")});
+    const auto transform=Transform(1,.5f,.5f);
+    auto first=ResultFor(page,transform,Stamp(3,4,100,transform));first.authority=7;
+    first.stamp.liveCameraCapture=true;first.reference.stamp=first.stamp;
+    first.sourcePixelDigest.clear(); // camera jobs no longer scan pixels for a hash
+    OverlayModel model;
+    QCOMPARE(model.AdmitLiveCamera(first,first.stamp,nullptr,110),AdmitVerdict::kPending);
+    auto replay=first;
+    for(int tick=1;tick<=4;++tick) {
+        replay.jobId=20+tick;replay.stamp.timestampMs=100+tick*10;replay.reference.stamp=replay.stamp;
+        QCOMPARE(model.AdmitLiveCamera(replay,replay.stamp,nullptr,150),AdmitVerdict::kPending);
+        QCOMPARE(model.AcceptedWordCount(),0);
+    }
+    auto next=replay;next.stamp.frameSeq++;next.reference.stamp=next.stamp;
+    QCOMPARE(next.sourcePixelDigest,first.sourcePixelDigest);
+    QCOMPARE(model.AdmitLiveCamera(next,next.stamp,nullptr,160),AdmitVerdict::kAccepted);
+    QCOMPARE(model.ReadingText(160,next.stamp.frameSeq),QStringLiteral("Read page"));
+    QCOMPARE(model.SceneWords(160,next.stamp.frameSeq).size(),2);
+
+    // Entering a saved/unknown input policy cannot borrow camera evidence.
+    QCOMPARE(model.AdmitAdvancingMedia(next,next.stamp,nullptr,160),AdmitVerdict::kPending);
+    QCOMPARE(model.AcceptedWordCount(),0);
+    auto saved=next;saved.stamp.frameSeq++;saved.reference.stamp=saved.stamp;
+    QCOMPARE(model.AdmitAdvancingMedia(saved,saved.stamp,nullptr,170),AdmitVerdict::kPending);
+    QCOMPARE(model.AcceptedWordCount(),0);
+
+    // Missing identity, older acquisitions, source/settings changes and a
+    // different scheduler authority remain insufficient camera evidence.
+    for(int fault=0;fault<5;++fault) {
+        OverlayModel guarded;
+        guarded.AdmitLiveCamera(first,first.stamp,nullptr,110);
+        auto bad=next;
+        if(fault==0)bad.stamp.liveCameraCapture=false;
+        if(fault==1)bad.stamp.frameSeq=first.stamp.frameSeq-1;
+        if(fault==2)++bad.stamp.sourceEpoch;
+        if(fault==3)++bad.stamp.geometryGeneration;
+        if(fault==4)++bad.authority;
+        bad.reference.stamp=bad.stamp;
+        QCOMPARE(guarded.AdmitLiveCamera(bad,bad.stamp,nullptr,160),AdmitVerdict::kPending);
+        QCOMPARE(guarded.AcceptedWordCount(),0);
+    }
+}
+
 void UltraClearTextTests::liveDuplicateRefreshPreservesEstablishedWords()
 {
     const auto page=MakePage({QStringLiteral("Read page")});
@@ -1496,7 +1543,9 @@ void UltraClearTextTests::immutableEvidenceRequiresDistinctPixelsAndSafeRegistra
     QVERIFY(model.SceneWords(hour,50).isEmpty());
     QCOMPARE(model.AdmitImmutable(selected,selected.stamp,hour+1),AdmitVerdict::kPending);
     QVERIFY(model.SceneWords(hour+1,50).isEmpty());
-    auto duplicate=neighbor;duplicate.sourcePixelDigest=selected.sourcePixelDigest;
+    auto duplicate=neighbor;duplicate.sourcePixelDigestKind=RecognitionResult::DigestKind::GpuTreeSha256V1;
+    QCOMPARE(model.AdmitImmutable(selected,selected.stamp,hour,&duplicate),AdmitVerdict::kPending);
+    duplicate=neighbor;duplicate.sourcePixelDigest=selected.sourcePixelDigest;
     QCOMPARE(model.AdmitImmutable(selected,selected.stamp,hour,&duplicate),AdmitVerdict::kPending);
     duplicate=neighbor;duplicate.stamp.frameSeq=50;
     QCOMPARE(model.AdmitImmutable(selected,selected.stamp,hour,&duplicate),AdmitVerdict::kPending);
@@ -1512,7 +1561,32 @@ void UltraClearTextTests::immutableEvidenceRequiresDistinctPixelsAndSafeRegistra
     mismatched.reference=MakeProbeFrame(changedPixels.constBits(),kViewWidth,kViewHeight,
                                         changedPixels.bytesPerLine(),2,stamp);
     QCOMPARE(model.AdmitImmutable(selected,selected.stamp,hour,&mismatched),AdmitVerdict::kPending);
-    QCOMPARE(model.AdmitImmutable(selected,selected.stamp,hour,&neighbor),AdmitVerdict::kAccepted);
+    // Resident checks must belong to this selected job, line count and policy.
+    struct ResidentMarker final:ResidentProbe {
+        int Width() const noexcept override{return 100;}
+        int Height() const noexcept override{return 100;}
+        ReferencePatch Reference(const SourceStamp&,const QRectF&) const override{return {};}
+        PatchMatch Match(const SourceStamp&,const ReferencePatch&,const MatchTuning&,std::optional<QPointF>) const override{return {};}
+        std::optional<double> Similarity(const SourceStamp&,const ResidentProbe&,const SourceStamp&) const override{return {};}
+    };
+    auto residentNeighbor=neighbor;
+    residentNeighbor.prepared=PrepareLines(neighbor,tuning.minimumWordHeightPx);
+    selected.prepared=PrepareLines(selected,tuning.minimumWordHeightPx);
+    selected.jobId=99;
+    residentNeighbor.reference.resident=std::make_shared<ResidentMarker>();
+    residentNeighbor.corroborationMatches.fill(true,selected.prepared.size());
+    residentNeighbor.corroboratedJobId=100;
+    QCOMPARE(model.AdmitImmutable(selected,selected.stamp,hour,&residentNeighbor),AdmitVerdict::kPending);
+    residentNeighbor.corroboratedJobId=selected.jobId;
+    residentNeighbor.corroborationMatches.push_back(true);
+    QCOMPARE(model.AdmitImmutable(selected,selected.stamp,hour,&residentNeighbor),AdmitVerdict::kPending);
+    residentNeighbor.corroborationMatches.removeLast();
+    residentNeighbor.corroborationTuning.minimumScore=.50;
+    QCOMPARE(model.AdmitImmutable(selected,selected.stamp,hour,&residentNeighbor),AdmitVerdict::kPending);
+    residentNeighbor.corroborationTuning=tuning.match;
+    QCOMPARE(model.AdmitImmutable(selected,selected.stamp,hour,&residentNeighbor),AdmitVerdict::kAccepted);
+    OverlayModel cpuModel(tuning);
+    QCOMPARE(cpuModel.AdmitImmutable(selected,selected.stamp,hour,&neighbor),AdmitVerdict::kAccepted);
     QCOMPARE(model.ReadingText(hour,50),QStringLiteral("Read page"));
     QCOMPARE(model.SceneWords(hour,50).size(),2);
     for(const auto& word:model.SceneWords(hour,50))QVERIFY(word.protectedSceneRects.isEmpty());
@@ -1608,6 +1682,10 @@ void UltraClearTextTests::schedulerPixelEvidenceIgnoresAllocationPadding()
     ++stamp.frameSeq;
     QVERIFY(scheduler.Submit(stamp,pixels(91))!=0);
     QTRY_VERIFY(([&]{std::lock_guard lock(mutex);return results.size()==2;})());
+    // The same scheduler skips the full-image digest for trusted live capture.
+    ++stamp.frameSeq;stamp.liveCameraCapture=true;
+    QVERIFY(scheduler.Submit(stamp,pixels(52))!=0);
+    QTRY_VERIFY(([&]{std::lock_guard lock(mutex);return results.size()==3;})());
     const auto expected=QCryptographicHash::hash(QByteArrayView(reinterpret_cast<const char*>(source.constBits()),
                                                               source.sizeInBytes()),QCryptographicHash::Sha256);
     std::lock_guard lock(mutex);
@@ -1615,6 +1693,9 @@ void UltraClearTextTests::schedulerPixelEvidenceIgnoresAllocationPadding()
     QCOMPARE(results[0].sourcePixelDigest,expected);
     QCOMPARE(results[1].sourcePixelDigest,expected);
     QVERIFY(results[0].stamp.frameSeq!=results[1].stamp.frameSeq);
+    QVERIFY(results[2].stamp.liveCameraCapture);
+    QVERIFY(results[2].sourcePixelDigest.isEmpty());
+    QVERIFY(results[2].reference.IsValid()); // residual validation still receives its pixels
 }
 
 void UltraClearTextTests::schedulerCoalescesLatestOnly()
@@ -1771,6 +1852,33 @@ void UltraClearTextTests::partialRecognitionDoesNotDuplicateAfterPanBack()
         if (word.text == QStringLiteral("Gamma")) ++gamma;
     }
     QCOMPARE(gamma,1);
+}
+
+void UltraClearTextTests::residentBatchesRespectBudgetAndPreserveCompletedChecks()
+{
+    struct BatchOracle final:ResidentProbe {
+        mutable int calls{};bool delay{};std::atomic<bool>* cancel{};
+        int Width() const noexcept override{return 100;}
+        int Height() const noexcept override{return 100;}
+        ReferencePatch Reference(const SourceStamp&,const QRectF&) const override{return {};}
+        PatchMatch Match(const SourceStamp&,const ReferencePatch&,const MatchTuning&,std::optional<QPointF>) const override{return {};}
+        std::optional<double> Similarity(const SourceStamp&,const ResidentProbe&,const SourceStamp&) const override{return {};}
+        QVector<PatchMatch> Matches(const SourceStamp&,const QVector<ReferencePatch>& p,const MatchTuning&,
+                                   const QVector<QPointF>&,const std::atomic<bool>*) const override {
+            ++calls;if(delay)std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            QVector<PatchMatch> out(p.size());for(auto& v:out){v.matched=true;v.visible=true;v.score=1;}
+            if(cancel)cancel->store(true);return out;
+        }
+    };
+    auto resident=std::make_shared<BatchOracle>();ProbeFrame probe;probe.resident=resident;probe.stamp.viewTransform.valid=true;
+    QVector<LineReference> lines;for(int i=0;i<1100;++i)lines.push_back({std::uint64_t(i+1),{}, {}});
+    auto checks=CheckLines(lines,probe,{},0);QCOMPARE(checks.size(),1100);QCOMPARE(resident->calls,18);
+    for(int i=0;i<checks.size();++i){QVERIFY(checks[i].checked);QVERIFY(checks[i].match.matched);QCOMPARE(checks[i].lineId,std::uint64_t(i+1));}
+    resident->calls=0;resident->delay=true;checks=CheckLines(lines,probe,{},1);
+    QCOMPARE(resident->calls,1);for(int i=0;i<checks.size();++i)QCOMPARE(checks[i].checked,i<64);
+    resident->calls=0;resident->delay=false;std::atomic<bool> cancelled{false};resident->cancel=&cancelled;
+    checks=CheckLines(lines,probe,{},0,&cancelled);QCOMPARE(resident->calls,1);
+    for(int i=0;i<checks.size();++i)QCOMPARE(checks[i].checked,i<64);
 }
 
 void UltraClearTextTests::budgetRefreshKeepsExactlyRevalidatedText()

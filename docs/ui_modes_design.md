@@ -112,26 +112,26 @@ available after Alt-Tab and when moving between tabs.
 Image starts with a pinned search field, current-mode summary, and
 `Save as Quick Mode` / `Reset Mode` actions. Its groups follow everyday tasks:
 
-1. **Zoom** — magnification, horizontal/vertical position, and focus marker.
-2. **Colors and contrast** — display colors, contrast, brightness, automatic
+1. **Zoom** â€” magnification, horizontal/vertical position, and focus marker.
+2. **Colors and contrast** â€” display colors, contrast, brightness, automatic
    contrast, and black-and-white thresholding.
-3. **Text clarity** — automatic text treatment first; individual algorithms
+3. **Text clarity** â€” automatic text treatment first; individual algorithms
    sit inside a collapsed **Fine-tune text** group.
-4. **Steady image** — stabilization, Extra Stable (hold on shake), and temporal smoothing.
-5. **Straighten screen** — keystone correction and history controls.
-6. **Sharpness** — spatial sharpening, NVIDIA Super Resolution, and blur.
-7. **Assistant behavior** — profile-owned explanation and overlay switches.
-8. **Diagnostics** — debug view and pipeline/performance status.
+4. **Steady image** â€” stabilization, Extra Stable (hold on shake), and temporal smoothing.
+5. **Straighten screen** â€” keystone correction and history controls.
+6. **Sharpness** â€” spatial sharpening, NVIDIA Super Resolution, and blur.
+7. **Assistant behavior** â€” profile-owned explanation and overlay switches.
+8. **Diagnostics** â€” debug view and pipeline/performance status.
 
 Settings contains shared controls, never saved into quick modes:
 
-1. **Camera** — source, session-only phone-light button, orientation, capture resolution and frame rate.
-2. **View and navigation** — framing, motion rate, joystick, wheel acceleration.
-3. **Recording** — processed resolution and microphone.
-4. **Notes and files** — lecture notes, save drawing on exit, and output folder.
-5. **Language** — application language.
-6. **AI and downloads** — AI Settings and dependency setup.
-7. **Troubleshooting** — camera acceleration and camera test.
+1. **Camera** â€” source, session-only phone-light button, orientation, capture resolution and frame rate.
+2. **View and navigation** â€” framing, motion rate, joystick, wheel acceleration.
+3. **Recording** â€” processed resolution and microphone.
+4. **Notes and files** â€” lecture notes, save drawing on exit, and output folder.
+5. **Language** â€” application language.
+6. **AI and downloads** â€” AI Settings and dependency setup.
+7. **Troubleshooting** â€” camera acceleration and camera test.
 
 The phone-light button appears only for a selected phone, enables only
 after the phone reports an available light, and reflects actual capture metadata.
@@ -378,3 +378,11 @@ Ctrl+Shift+A explicitly reveals/focuses Deny, and Ctrl+Shift+U stops and undoes.
 MainWindow owns the persistent live region outside hideable chrome. Refused
 routing preserves the shared draft. See [the UI contract](agent_control_ui.md)
 for the approved concept, review coverage and validation limits.
+
+
+Video source recovery also preserves the camera-only phone-light control:
+cancelling or failing the native video picker reconciles the source dropdown
+and recomputes phone availability from the current camera, rather than leaving
+the button hidden. Wrapped action rows derive equal grid-cell minimums from the
+translated button hints and column spans; longer labels retain readable sizes
+without making neighbouring buttons uneven.

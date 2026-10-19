@@ -31,11 +31,11 @@
 // scene coordinates through the current ViewTransform into normalized view
 // coordinates and then into the overlay's logical pixels, so DPI is applied
 // exactly once and the SuperRes ROI remap never enters text geometry.
-// Recognition, validation and rendering never touch the D3D presentation
-// stream; they only consume CPU copies stamped at readback-request time.
+// Recognition and validation consume independently owned, stamped CPU/GPU
+// analysis images on private workers, never the D3D presentation stream.
 namespace okuflow::uct {
 
-// Immutable provenance of one CPU copy of presented pixels. Copies, jobs,
+// Immutable provenance of one owned CPU/GPU analysis image. Copies, jobs,
 // results and accepted words all carry the stamp of the pixels they came
 // from, never a newly sampled one.
 struct SourceStamp {
@@ -46,6 +46,9 @@ struct SourceStamp {
     ViewTransform viewTransform;        // full-scene -> viewport of the copy
     std::uint32_t viewportWidth{};
     std::uint32_t viewportHeight{};
+    // Set only by the live-camera controller from capture-owned frame identity.
+    // Selected media leaves this false; job/timestamp changes cannot set it.
+    bool liveCameraCapture{};
 
     bool SameScene(const SourceStamp& other) const noexcept
     {
@@ -110,14 +113,21 @@ private:
 // QImage view of shared pixels; the image keeps the buffer alive.
 QImage WrapPixels(const SharedPixels& pixels);
 
-// Low-resolution luma copy used for residual validation and scene stability.
+class ResidentProbe;
+class ResidentPatch { public: virtual ~ResidentPatch() = default; };
+
+// CPU luma/integral or an independently owned GPU validation surface.
 // The image can be any size; mapping uses the stamp's normalized transform.
 struct ProbeFrame {
     SourceStamp stamp;
     QImage luma;                // Format_Grayscale8
     QVector<quint32> integral;  // summed-area table, (w + 1) x (h + 1)
+    std::shared_ptr<const ResidentProbe> resident;
+    int Width() const noexcept;
+    int Height() const noexcept;
     bool IsValid() const noexcept
     {
+        if (resident) return stamp.viewTransform.valid && Width() >= 8 && Height() >= 8;
         return !luma.isNull() && stamp.viewTransform.valid &&
                integral.size() == (luma.width() + 1) * (luma.height() + 1);
     }
@@ -132,8 +142,9 @@ struct ReferencePatch {
     QRectF sceneRect; // sampled area (line box plus margin), scene units
     int columns{};
     int rows{};
-    QVector<float> values; // zero-mean, unit-variance samples
+    QVector<float> values; // CPU zero-mean, unit-variance samples
     bool valid{};
+    std::shared_ptr<const ResidentPatch> resident; // GPU descriptor, no pixel/feature download
 };
 
 // --- Recognition backend -------------------------------------------------
@@ -236,6 +247,19 @@ struct PreparedLine {
     ReferencePatch reference;    // invalid when untrackable
 };
 
+struct MatchTuning {
+    double minimumScore{0.82};
+    double minimumVisibleFraction{0.85};
+    int searchRadiusPx{6}; // probe pixels, clamped to [1, 10] on CPU and GPU
+};
+
+// Worker registration is tied to one selected job and the exact model policy.
+struct CorroborationRequest {
+    std::uint64_t selectedJobId{};
+    QVector<ReferencePatch> references;
+    MatchTuning tuning;
+};
+
 struct RecognitionResult {
     std::uint64_t jobId{};
     std::uint64_t authority{};
@@ -250,11 +274,17 @@ struct RecognitionResult {
     QVector<PreparedLine> prepared;
     double durationMs{};
     bool deviceInput{};
-    QByteArray sourcePixelDigest; // worker SHA-256 of exact owned recognition pixels
+    QByteArray sourcePixelDigest; // complete saved/unknown input fingerprint; empty for camera/probes
+    // Digests from different algorithms are never independent evidence.
+    enum class DigestKind { Sha256, GpuTreeSha256V1 };
+    DigestKind sourcePixelDigestKind{DigestKind::Sha256};
+    QVector<bool> corroborationMatches; // exactly one per selected prepared line
+    std::uint64_t corroboratedJobId{};
+    MatchTuning corroborationTuning;
 };
 
 // Maps recognized words into scene coordinates and builds per-line residual
-// references from `result.reference`. Pure; safe on any thread.
+// references from `result.reference`. CPU work is pure; resident input is worker-only.
 QVector<PreparedLine> PrepareLines(const RecognitionResult& result, double minimumWordHeightPx);
 
 struct SchedulerStats {
@@ -291,7 +321,8 @@ public:
     std::uint64_t Submit(const SourceStamp& stamp, QImage pixels);
     // Zero-copy hand-off of already shared, immutable pixels.
     std::uint64_t Submit(const SourceStamp& stamp, SharedPixels pixels);
-    std::uint64_t SubmitDevice(const SourceStamp& stamp, SharedDeviceImage device);
+    std::uint64_t SubmitDevice(const SourceStamp& stamp, SharedDeviceImage device,
+                               CorroborationRequest corroboration = {});
     void Cancel();
     std::uint64_t Authority() const;
     bool IsCurrent(const RecognitionResult& result) const;
@@ -316,10 +347,36 @@ struct PatchMatch {
     QPointF sceneOffset;   // validated translation, scene units
 };
 
-struct MatchTuning {
-    double minimumScore{0.82};
-    double minimumVisibleFraction{0.85};
-    int searchRadiusPx{6}; // probe pixels
+// Independent GPU probe lifetime; never pins a full AnalysisPool slot. Methods
+// run only on OCR/probe workers. The UI consumes their small returned records.
+class ResidentProbe {
+public:
+    virtual ~ResidentProbe() = default;
+    virtual int Width() const noexcept = 0;
+    virtual int Height() const noexcept = 0;
+    virtual ReferencePatch Reference(const SourceStamp&, const QRectF&) const = 0;
+    virtual PatchMatch Match(const SourceStamp&, const ReferencePatch&, const MatchTuning&,
+                              std::optional<QPointF>) const = 0;
+    virtual std::optional<double> Similarity(const SourceStamp&, const ResidentProbe&,
+                                             const SourceStamp&) const = 0;
+    // Native CUDA batches one block per line and returns one metadata array.
+    // Defaults retain compatibility with hardware-free protocol oracles.
+    virtual QVector<ReferencePatch> References(const SourceStamp& stamp, const QVector<QRectF>& rects) const {
+        QVector<ReferencePatch> out;out.reserve(rects.size());
+        for(const auto& rect:rects)out.push_back(Reference(stamp,rect));
+        return out;
+    }
+    virtual QVector<PatchMatch> Matches(const SourceStamp& stamp,const QVector<ReferencePatch>& patches,
+                                        const MatchTuning& tuning,const QVector<QPointF>& seeds,
+                                        const std::atomic<bool>* cancelled = nullptr) const {
+        QVector<PatchMatch> out;out.reserve(patches.size());
+        for(int i=0;i<patches.size();++i){
+            if(cancelled&&cancelled->load())return {};
+            const auto seed=i<seeds.size()&&seeds[i]!=QPointF()?std::optional<QPointF>(seeds[i]):std::nullopt;
+            out.push_back(Match(stamp,patches[i],tuning,seed));
+        }
+        return out;
+    }
 };
 
 // `seedSceneOffset` (e.g. the line's last validated offset) is tried before
@@ -344,8 +401,9 @@ struct LineCheck {
 };
 
 // Residual-checks lines against a probe until `budgetMs` elapses (<= 0 is
-// unlimited) or `cancelled` is set. Unchecked lines are reported, never
-// silently treated as valid.
+// unlimited) or `cancelled` is set. CPU checks stop between lines; resident
+// GPU checks stop between bounded 64-line batches, preserving completed checks.
+// Unchecked lines are reported, never silently treated as valid.
 QVector<LineCheck> CheckLines(const QVector<LineReference>& lines, const ProbeFrame& probe,
                               const MatchTuning& tuning, double budgetMs,
                               const std::atomic<bool>* cancelled = nullptr);
@@ -399,8 +457,9 @@ struct ProbeWorkerStats {
 // Builds probes and runs residual validation off the UI thread. One worker,
 // at most one request in flight plus one latest-only pending slot; Submit
 // never blocks on work. Cancel() revokes authority immediately and stops the
-// in-flight check loop at the next line. Work is CPU-only and budgeted, so
-// destruction joins.
+// in-flight check loop at the next line. CPU checks and resident GPU operations
+// are worker-only; destruction waits a bounded time, then leaves held inputs
+// with the callback-revoked worker.
 class ProbeWorker {
 public:
     using Completion = std::function<void(ProbeOutcome)>; // worker thread
@@ -535,6 +594,16 @@ public:
                        const SourceStamp& current,
                        const ProbeFrame* latestProbe,
                        std::int64_t nowMs);
+    // Live capture uses the capture owner's monotonically increasing sample
+    // sequence as independent acquisition evidence. Identical source pixels
+    // are valid on a steady camera/virtual feed; repainting the same sample
+    // never supplies a second observation. Capture provenance, scheduler
+    // authority, scene/age, agreement and pixel-residual checks still apply;
+    // the live worker does not compute a redundant full-image digest.
+    AdmitVerdict AdmitLiveCamera(const RecognitionResult& result,
+                                const SourceStamp& current,
+                                const ProbeFrame* latestProbe,
+                                std::int64_t nowMs);
     // Advancing saved media retains real media PTS in every stamp. Admission
     // uses the live temporal/residual policy with an independent caller-owned
     // wall-clock job deadline instead of the live source-age gate.
@@ -593,7 +662,7 @@ private:
     AdmitVerdict AdmitImpl(const RecognitionResult& result, const SourceStamp& current,
                            const ProbeFrame* latestProbe, std::int64_t nowMs, bool immutable,
                            const RecognitionResult* corroboration = nullptr,
-                           bool advancingMedia = false);
+                           bool advancingMedia = false, bool liveCamera = false);
 
     struct PendingWord {
         QString text;
@@ -610,9 +679,11 @@ private:
     // hashes per token or retaining an unbounded history of source images.
     SourceStamp pendingEvidenceStamp_;
     QByteArray pendingEvidenceDigest_;
+    RecognitionResult::DigestKind pendingDigestKind_{RecognitionResult::DigestKind::Sha256};
     std::uint64_t pendingEvidenceAuthority_{};
     std::uint64_t nextLineId_{1};
     bool immutable_{};
+    bool liveCamera_{};
 };
 
 } // namespace okuflow::uct

@@ -12,7 +12,7 @@ Completed unchanged stills schedule no periodic OCR or validation jobs; pan and
 zoom only reproject their retained scene artifact. The immutable job deadline
 does not expire an otherwise valid still because the live camera aged.
 
-Rejected or uncertain OCR spans remain ordered omissions (…). Their source
+Rejected or uncertain OCR spans remain ordered omissions (Ã¢â‚¬Â¦). Their source
 rectangles protect original ink from replacement plates. Valid replacements
 and their plates share one drawability decision. See
 [uncertainty handling](uct_uncertainty_repair.md) and
@@ -39,7 +39,7 @@ accepted use cases. Use Show original to compare, especially for numbers.
 
 ## What the user gets
 
-- **Advanced → Image → Text clarity → Ultra Clear Text (experimental)**. Off by
+- **Advanced Ã¢â€ â€™ Image Ã¢â€ â€™ Text clarity Ã¢â€ â€™ Ultra Clear Text (experimental)**. Off by
   default and not persisted: it starts off on every launch.
 - **Show original camera text**: always available while UCT is on; hides the
   sharp letters for comparison without stopping recognition.
@@ -53,7 +53,7 @@ accepted use cases. Use Show original to compare, especially for numbers.
 - A polite status line (starting, waiting for steady text, reading, showing N
   words, text moved, paused, unavailable) and a read-only, keyboard-selectable
   **Recognized text** pane with the accepted words in reading order. An
-  ellipsis (…) marks words that were left as the original image.
+  ellipsis (Ã¢â‚¬Â¦) marks words that were left as the original image.
 - Glyph weight follows the existing Text Clarity **Stroke weight** slider.
   Plate colors are measured from the analysis pixels, using a bounded
   surrounding margin and its background-class median to identify dense/bold print. CUDA's
@@ -77,7 +77,7 @@ accepted use cases. Use Show original to compare, especially for numbers.
 
 ### PaddleOCR development backend (2026-10-18)
 
-New builds select **TensorRT CUDA → ONNX Runtime CPU → Windows OCR**. The GPU
+New builds select **TensorRT CUDA Ã¢â€ â€™ ONNX Runtime CPU Ã¢â€ â€™ Windows OCR**. The GPU
 and CPU paths use their own saved model pairs (medium/medium and tiny/small by
 default). CPU OCR serves while GPU engines prepare. A failed or unavailable GPU
 uses the configured CPU pair; Windows OCR is the final fallback. Model size is
@@ -123,20 +123,51 @@ opportunity. CPU presentation also offers its pre-zoom scene. Complete-scene
 context preserves words even when only part is visible at 16x. Source,
 processing and frame identity remain bound through worker submission.
 
-**Transfer boundary:** no neural input, probability map or recognizer logits
-round-trip through the CPU between inference stages. Final color/reference
-preparation reads that job's image after GPU recognition. Independently, a
-latest-only validation reader downloads a GPU-decimated image (long edge at
-most 960) to keep checking motion while recognition is slow or preparing an
-engine. It never supplies pixels to TensorRT. This is not zero-readback:
-validation, color preparation and string publication use the CPU. Rendering
-does not wait for recognition, validation or their private copy streams.
-Each reader reuses its stream and pinned/device download buffers. Stable
-accepted scenes honor the refresh interval instead of inferring on every
-capture. Device OCR never retains a pending snapshot while inference runs:
-the two-slot pool remains available for live validation. Copy/allocator faults
-with unknown completion latch that pool until UCT is disabled/re-enabled;
-uncertain resources remain retained rather than repeatedly allocated.
+**Transfer boundary:** TensorRT device input, normalization, detector/recognizer
+outputs, color sampling, ink fitting and validation remain on CUDA. The independent
+validation reader builds a resident summed-area probe (long edge at most 960),
+not a host image. Line descriptors also stay resident. Workers return compact
+colors, fitted rectangles, match/similarity scores, text and provenance; neither
+full frames, decimated images nor feature arrays are downloaded by this path.
+The explicit CPU recognizer/fallback can still request one full image. A failed
+resident-analysis operation fails that input; it never silently retries through
+CPU readback. A TensorRT recognizer runtime failure can still retire that backend
+and run the explicit CPU fallback on the same job, requesting its one image and
+reporting the fallback in backend status. This describes the UCT device path, not every capture/export feature
+or a claim of literally no device-to-device copies.
+
+UI admission never waits on CUDA: a new line needing newer-scene validation waits
+for the probe worker, while unchanged already-validated lines retain their own
+proof and freshness deadline. Immutable selected-frame neighbour registration is
+computed on the OCR worker before publication and bound to the selected job ID,
+line count and exact matching policy. References and validation launch one GPU
+block per line in a single bounded batch, rather than waiting on a host fence
+for each line. Validation uses 64-line chunks, checking cancellation/time budget
+between chunks and preserving completed results; native batches are capped at
+1024. Completed camera probes remain reusable after normal consumer cancellation.
+Completion deadlines stay on the worker. CPU validation retains its per-line time budget. Probe/patch allocations are
+independent of the two analysis slots; retaining overlays does not retain camera
+snapshots. Private nonblocking low-priority streams, pinned metadata staging,
+stream-ordered allocation on capable devices and one retirement worker keep this
+work separate from presentation. Windows fence polling uses a private high-resolution
+one-shot wait, avoiding a coarse scheduler sleep per line; it does not change global
+timer resolution. Legacy allocation remains a compatibility path.
+Unknown completion retains its exact inputs, outputs and DMA endpoints; probe
+worker destruction is bounded with callbacks revoked before a detached retirement.
+
+Live capture does not hash pixels. Saved/unknown GPU OCR computes a domain-separated
+SHA-256 tree over **all** packed BGRA bytes on CUDA (4096-byte leaves prefixed by
+0x00; parents contain up to 16 ordered child digests prefixed by 0x01). Only the
+32-byte root returns to the host. CPU input retains active-row SHA-256. Digest kinds
+must match before different roots count as independent observations: switching
+backends cannot manufacture distinct-content evidence. Allocation padding never
+counts as content.
+
+Stable accepted scenes honor the refresh interval instead of inferring on every
+capture. Device OCR never retains a pending snapshot while inference runs, keeping
+the pool available for live validation. Copy/allocator faults with unknown
+completion latch that pool until an explicit UCT reset. No numerical FPS or
+latency improvement is claimed from these architecture/functional checks.
 
 GTX 1070 uses CPU OCR: CUDA 12.9 optical-kernel support does not imply Pascal
 support in TensorRT. CTC character spans are estimates, not glyph outlines.
@@ -160,12 +191,12 @@ Runtime availability:
 - If Windows has no OCR-capable language, UCT reports *Text recognition is
   unavailable: Windows has no OCR language installed* and shows the original
   image. Users add OCR support with a Windows display language that includes
-  optical character recognition (Settings → Time & language).
+  optical character recognition (Settings Ã¢â€ â€™ Time & language).
 - Recognition runs on the CPU on a dedicated worker thread. It does not use
   CUDA, tensor cores or Maxine, so the GTX 1070 / CUDA 12.9 optical path is
   unaffected; the CUDA pipeline keeps running independently.
-- Measured on the development machine (en-US, synthetic 1600×900 page):
-  about 25–32 ms per recognition. This is one data point, not a budget.
+- Measured on the development machine (en-US, synthetic 1600Ãƒâ€”900 page):
+  about 25Ã¢â‚¬â€œ32 ms per recognition. This is one data point, not a budget.
 
 Repeated backend errors (three in a row) switch UCT to *Text recognition
 stopped working*; it then shows only the original image.
@@ -192,7 +223,7 @@ camera -> geometry-correct scene -> appearance/presenter -> viewport
 There is no second capture or render pipeline. UCT reuses:
 
 - `PresentLatestCudaScene` / `PresentFitted` for the per-presentation hook,
-  the annotation `ViewTransform` (full scene → viewport) and a separate owned
+  the annotation `ViewTransform` (full scene Ã¢â€ â€™ viewport) and a separate owned
   pre-zoom analysis snapshot. UCT no longer requests the presenter's final
   zoomed viewport readback. CPU presentation supplies its pre-zoom scene.
 - The annotation overlay's coordinate space and floating tool-window pattern.
@@ -265,8 +296,8 @@ There is no second capture or render pipeline. UCT reuses:
   pixels they came from; nothing is re-stamped with newly sampled identity.
 - Recognized boxes are converted once from copy pixels to normalized
   *processed-scene* coordinates (after rotation, stabilization and keystone;
-  before zoom/pan/Fit/Fill/SuperRes sampling). Rendering maps scene → current
-  transform → normalized view → overlay logical pixels, so DPI is applied
+  before zoom/pan/Fit/Fill/SuperRes sampling). Rendering maps scene Ã¢â€ â€™ current
+  transform Ã¢â€ â€™ normalized view Ã¢â€ â€™ overlay logical pixels, so DPI is applied
   exactly once.
 - The full-scene annotation transform is used, never the SuperRes ROI remap;
   SR crop geometry therefore never enters text coordinates.
@@ -287,17 +318,17 @@ A word is drawn only when all of these hold:
 2. **Age**: the result arrived within 4 s of its copy.
 3. **Residual**: each recognized line builds a box-filtered reference patch
    from the job's own pixels. If a newer probe exists, the line must still
-   correlate (NCC ≥ 0.82) within a ±6 probe-pixel translation search;
+   correlate (NCC Ã¢â€°Â¥ 0.82) within a Ã‚Â±6 probe-pixel translation search;
    otherwise the result is rejected as *content moved*. Flat (textureless)
    lines are untrackable and never drawn.
 4. **Temporal agreement**: the same text at an overlapping scene position
-   (IoU ≥ 0.5) from two separate recognitions, or a previously accepted word.
+   (IoU Ã¢â€°Â¥ 0.5) from two separate recognitions, or a previously accepted word.
    This checks stability, not correctness: the same engine can repeat a
    mistake.
 5. **High-risk tokens fail closed**: standalone `l I | 1 0 O o`, digits mixed
    with confusable letters (`O o I l S s B Z z G g q`), superscripts, modifier
-   letters and any symbol outside plain punctuation (math operators, `^`, `√`,
-   `∑` …) are left as original pixels. Plain numbers such as `3.14`, `-12`,
+   letters and any symbol outside plain punctuation (math operators, `^`, `Ã¢Ë†Å¡`,
+   `Ã¢Ë†â€˜` Ã¢â‚¬Â¦) are left as original pixels. Plain numbers such as `3.14`, `-12`,
    `1,000` may be shown.
 
 Afterwards every probe revalidates accepted lines. A line that no longer
@@ -499,3 +530,81 @@ after three consecutive attempts; unknown completion remains immediately failed.
 Rejected device submission releases its candidate immediately. Unused same-frame
 similarity state/computation was removed; device-input provenance remains a test
 and diagnostic field.
+
+
+## Steady live-camera regression repair (2026-10-19)
+
+The saved-video duplicate-evidence policy had also been applied to live capture:
+UCT required two different complete image hashes before confirming a new word.
+A steady virtual camera or screen-based lecture feed can legitimately deliver
+byte-identical frames, leaving text permanently pending despite repeated OCR.
+The original three offscreen CPU/device controller cases reproduced that failure
+on the pre-fix code. Two more resident-oracle rows cover the new GPU protocol.
+
+Live UCT now uses the trusted capture owner's acquisition sequence: two matching
+recognitions from strictly increasing samples under the same camera/geometry and
+scheduler authority can confirm unchanged text. Repainting one sample, changing
+only a job ID/timestamp, or crossing a source/settings/admission-mode boundary
+cannot supply new proof. Freshness, content registration and high-risk-token
+rules remain active. File playback and selected-frame neighbors retain their
+stricter exact-pixel duplicate checks.
+
+A `liveCameraCapture` stamp also lets the worker skip full-image SHA-256 on live
+OCR inputs; validation-only probes no longer hash pixels either. Default/saved
+OCR inputs keep their worker hash. Hashing previously scanned the active BGRA
+rows of the already available post-recognition reference image; it did not
+require an additional GPU readback, and it never ran on the UI/presentation
+thread. Removing it saves that CPU scan, but no numerical latency improvement
+is claimed. The resident transfer boundary above replaces the former post-GPU
+CPU color/reference and validation-image copies. CPU fallback still uses pixels.
+
+
+### Resident-path regression coverage (2026-10-19)
+
+The window-free CUDA fixture guards both image-download entry points and checks
+GPU scheduler/probe publication with no host image or descriptor array. It compares
+fitted words and sampled colors with the CPU implementation across three lines,
+both polarities, detached i/j/accent marks and rejected middle words. It validates
+resident references, compact CPU-reference uploads, invalid-entry batch indexing,
+cancellation, and motion/occlusion/cropped-view parity at decimations 1, 2 and 4.
+Scene-edge box filtering uses matching double precision and a 1e-7-pixel roundoff
+allowance, preventing algebraically identical border samples from changing visibility.
+A CPU SHA-256-tree oracle checks every GPU digest, including source pitch padding,
+multiple tree levels and a changed pixel outside probe sampling. Retaining eight
+resident probes must leave the two capture slots reusable. Offscreen controller
+oracles exercise live camera, return from video and immutable-neighbour registration
+without UI-thread analysis or image readbacks. These are not physical camera,
+interactive screen-reader, or measured presentation-latency acceptance.
+
+
+### One-time resident batching measurement (2026-10-19)
+
+On the development RTX 4090 (CUDA 12.9, Qt 6.12/MSVC 2022), the explicit
+60-line 1280Ã—2160 synthetic-page experiment compared the first resident version
+(one host fence per line) with batched references/checks. One warm-up preceded
+three measured trials; all 60 registrations passed. Inputs and known OCR output
+were identical, with already fitted/unpadded word boxes (no ink-refinement work
+in this experiment). Times include colors/reference preparation and checks, excluding
+real inference, input capture/upload, display/VSync and sensor-to-photon latency.
+
+| Worker operation | Per-line GPU fences | Batched GPU | CPU oracle in batched run |
+| --- | ---: | ---: | ---: |
+| Prepare 60 references + metadata | 69.0â€“80.1 ms | 2.8â€“3.8 ms | 8.1â€“8.5 ms |
+| Validate 60 lines | 65.2â€“65.7 ms | 1.29â€“1.45 ms | 3.5â€“3.7 ms |
+
+This establishes the batching benefit for this fixture/GPU, not a general OCR
+speed or frame-rate claim. Ordinary CTest does not repeat the timing experiment.
+Raw attempts are retained under LocalAppData's `uct-camera-repair-20261019`
+evidence folder (`resident-dense60-latency.txt` and
+`resident-dense60-batched-latency.txt`). Real medium/medium TensorRT OCR is checked
+separately by `optionalRealGpu` with resident preparation and registration.
+
+
+Background acceptance for this repair: tracked `agent_build.bat` with the desktop
+excluded passed Release compilation, 108 CPU cases (two cases have skipped Qt
+rows) and the 17-case CUDA delta, with exact-fingerprint pass reuse. Scoped
+8-case CPU and actual CUDA/real TensorRT resident checks also passed. The original
+steady-camera fault and the intermediate crop-parity failure are retained in
+local evidence alongside their repairs. No native GUI, physical camera/phone or
+interactive screen-reader acceptance was performed in this desktop-reserved run;
+this is partial validation, not the full release gate or a published installer.
