@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Update UCT status text and its screen-reader name immediately together,
+  removing the routine diagnostic delay while keeping routine changes silent.
+  Cover cached accessibility interfaces and refreshed reading-pane content.
+
 - Keep Ultra Clear Text attached to the viewport during native window drags.
   Move its retained glyph window immediately with the existing floating
   controls, independently of queued Qt events, OCR and accessibility cadence.

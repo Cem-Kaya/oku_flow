@@ -3004,9 +3004,15 @@ Namespace `okuflow`
 ### `include/okuflow/ui/ultra_clear_text_panel.hpp`
 `okuflow::UltraClearTextPanel`
 - Accessible opt-in checkbox, Show original checkbox (enabled while on), a
-  live status label (polite for important states, coalesced silent
-  otherwise) and a read-only selectable `Recognized text` pane that preserves
+  live status label (polite for important states, silent otherwise) and a
+  read-only selectable `Recognized text` pane that preserves
   scroll position. Hosted at the end of MainWindow's Text clarity section.
+  `SetStatus` updates visible text and the accessible name immediately through
+  `SetLiveText`, without diagnostic coalescing. Repeated source text is a no-op.
+  `panelStatusUpdatesCachedAccessibleTextImmediately` retains the real Qt
+  accessible interface through routine state changes without draining events,
+  and checks that the reading pane's text interface returns refreshed content.
+  This offscreen contract does not establish native Windows UIA client behavior.
 
 ### `include/okuflow/ui/live_status_text.hpp`
 `okuflow::LivePoliteness`, `okuflow::SetLiveText(...)`, and

@@ -54,6 +54,12 @@ accepted use cases. Use Show original to compare, especially for numbers.
   words, text moved, paused, unavailable) and a read-only, keyboard-selectable
   **Recognized text** pane with the accepted words in reading order. An
   ellipsis (Ã¢â‚¬Â¦) marks words that were left as the original image.
+- The status text and its accessible name change immediately together. Routine
+  states update silently; important states retain polite announcements. A
+  diagnostic timer no longer delays the status exposed to a cached screen-reader
+  interface. The recognized-text pane keeps its stable label while exposing the
+  current recognized content through its text interface. Offscreen regression
+  coverage is separate from native Windows UIA/NVDA acceptance.
 - Glyph weight follows the existing Text Clarity **Stroke weight** slider.
   Plate colors are measured from the analysis pixels, using a bounded
   surrounding margin and its background-class median to identify dense/bold print. CUDA's

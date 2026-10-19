@@ -10,6 +10,7 @@
 #include "ultra_clear_text_test_support.hpp"
 
 #include <QApplication>
+#include <QAccessible>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QCryptographicHash>
@@ -654,6 +655,7 @@ private slots:
     void probeWorkIsBoundedForLargeViewports();
     void denseMovingPageValidationCostAt4K();
     void panelExposesAccessibleControls();
+    void panelStatusUpdatesCachedAccessibleTextImmediately();
     void glyphAndPlateVisibilityUseTheSameEligibility_data();
     void glyphAndPlateVisibilityUseTheSameEligibility();
     void readingPanePreservesSelectionAndScroll_data();
@@ -2853,6 +2855,35 @@ void UltraClearTextTests::panelExposesAccessibleControls()
     QVERIFY(panel.showOriginalCheckbox()->isEnabled());
     panel.SetReadingText(QStringLiteral("one\ntwo"));
     QCOMPARE(panel.readingPane()->toPlainText(), QStringLiteral("one\ntwo"));
+}
+
+void UltraClearTextTests::panelStatusUpdatesCachedAccessibleTextImmediately()
+{
+    UltraClearTextPanel panel;
+    panel.SetStatus(QStringLiteral("Reading text…"), true);
+    // A screen reader retains the interface while the runtime changes state.
+    // Do not drain Qt events: the advertised text must match the new state
+    // immediately, independently of announcement/diagnostic timers.
+    auto* accessible = QAccessible::queryAccessibleInterface(panel.statusLabel());
+    QVERIFY(accessible);
+    for (const auto& source : {
+             QStringLiteral("Paused while Temporal Smooth or Extra Stable is on. The original camera image is shown."),
+             QStringLiteral("Reading text…"),
+             QStringLiteral("No steady printed text recognized yet."),
+             QStringLiteral("Ultra Clear Text is off.")}) {
+        panel.SetStatus(source);
+        QCOMPARE(accessible->text(QAccessible::Name), source);
+        QCOMPARE(panel.statusLabel()->text(), source);
+    }
+    QCoreApplication::processEvents();
+    QCOMPARE(accessible->text(QAccessible::Name), panel.statusLabel()->text());
+    // Recognized text uses a stable control name and a changing text pattern.
+    auto* pane = QAccessible::queryAccessibleInterface(panel.readingPane());
+    QVERIFY(pane && pane->textInterface());
+    panel.SetReadingText(QStringLiteral("first result"));
+    QCOMPARE(pane->textInterface()->text(0, pane->textInterface()->characterCount()), QStringLiteral("first result"));
+    panel.SetReadingText(QStringLiteral("new result"));
+    QCOMPARE(pane->textInterface()->text(0, pane->textInterface()->characterCount()), QStringLiteral("new result"));
 }
 
 int main(int argc, char** argv)

@@ -36,6 +36,8 @@ public:
     bool IsEnabledByUser() const;
     bool IsShowingOriginal() const;
     // Status is English source text routed through the translation catalog.
+    // Visible text and accessible name update together without a timer;
+    // important controls announcements, not accessibility-tree freshness.
     void SetStatus(const QString& sourceText, bool important = false);
     // Replaces the pane text only when it changed. The reader's caret and
     // selection (in either direction) are remapped through the unchanged

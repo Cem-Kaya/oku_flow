@@ -174,12 +174,11 @@ void UltraClearTextPanel::SetStatus(const QString& sourceText, bool important)
         return;
     }
     statusSource_ = sourceText;
-    if (important) {
-        SetLiveText(statusLabel_, sourceText, LivePoliteness::kPolite);
-    } else {
-        // Routine transitions coalesce silently instead of interrupting speech.
-        SetLiveTextCoalesced(statusLabel_, sourceText, LivePoliteness::kSilent);
-    }
+    // Semantic state is current immediately, including for an already cached
+    // accessibility interface. Silence controls unsolicited speech, not tree
+    // freshness; only rapidly changing numerical diagnostics need coalescing.
+    SetLiveText(statusLabel_, sourceText,
+                important ? LivePoliteness::kPolite : LivePoliteness::kSilent);
 }
 
 void UltraClearTextPanel::SetReadingText(const QString& text)
