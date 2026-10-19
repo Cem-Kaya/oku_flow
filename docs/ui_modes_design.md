@@ -44,6 +44,16 @@ Simple mode is the normal operating view:
   (typically Advanced, or a small Simple window), the left cluster folds first:
   mode name above Previous / mode grid / Next. Further narrowing wraps the
   right actions into two rows within their own corner; see Layout Invariants.
+- Measure alternative row/face arrangements without resizing visible controls.
+  Apply only the selected arrangement, retaining existing layouts when the
+  topology stays the same. A folded native group must not briefly expand to
+  its wide layout during activation or small resizes within one layout range.
+  The native stability regression observes every intermediate Resize event:
+  the original code fails all four folded LTR/RTL rows, while the repaired
+  code passes all six wide/folded rows. Six focused native GUI cases also pass
+  translated, minimum-width, movement and visual-layout checks. These are
+  geometry/interaction checks; actual camera optics and high-refresh display
+  latency remain separate acceptance.
 - The clusters are frameless windows owned by the main window. This keeps them
   above the native D3D swap chain while retaining normal Qt buttons,
   accessibility metadata, focus, and tooltips.

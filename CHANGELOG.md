@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Keep folded bottom control groups stable during window movement, activation
+  and resizing. Measure candidate layouts before applying the selected layout,
+  avoiding temporary wide native windows that caused visible flicker.
+
 - Measure the phone USB cancellation fixture from its actual private health
   probe, independently of startup scheduling. Keep the 500 ms cancellation
   limit and verify a deliberately delayed start without using a real phone.

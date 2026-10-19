@@ -368,6 +368,28 @@ Without that environment, Qt may send its plain-text output to the system
 debugger instead. Keep original empty-output failures archived: a later local
 pass is diagnostic evidence, not proof of the original failure's cause.
 
+`main_window_interactions.bottomChromeRetainsNativeSizeDuringRefresh` is a
+serial native regression for folded toolbar flicker. Its six data rows cover
+wide controls, folded quick modes and folded quick modes/actions in LTR/RTL.
+It counts every native peer's synchronous Qt Resize event during unchanged
+activation refreshes, small window resizes within a layout range and native
+owner moves. The final sizes must remain stable and within the viewport.
+All four folded rows fail against the original live-trial-layout code, while
+the wide rows pass. Keep that failed evidence; an end-of-loop screenshot alone
+cannot detect the temporary wide windows. The ordinary translated geometry,
+focus and scaled movement tests remain separate checks.
+
+The toolbar repair's final tracked background matrix passes Release compilation,
+108 CPU cases (two contain optional skipped Qt rows) and the 17-case CUDA delta,
+with no whole-test skips or unresolved results. The six focused native GUI cases
+pass separately with no skipped rows. A 120-second isolated-settings runtime
+smoke also presents real 1280x720 virtual-camera frames through the CUDA/D3D
+path and exits normally, preserving the source settings hash. The profiler's
+incidental timing samples are not a new flicker/video-latency benchmark. The
+native regression supplies the interim resize-event evidence; end-state manual
+captures do not measure every compositor frame. Both requested Opus review
+attempts failed at the provider's API rate limit and produced no review.
+
 `PhoneCameraTests::alreadyBufferedFakeAdbRequestIsNotDiscarded` deliberately
 buffers a complete private host-version request before the fake adb handler
 starts. `FakePhoneAdb::Serve` must consume those bytes immediately instead of

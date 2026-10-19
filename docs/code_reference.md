@@ -5802,10 +5802,16 @@ control after cancelled or failed opens without showing it for a webcam.
 `cancelledVideoPickerRestoresOnlyPhoneLight` exercise this with fixture camera
 metadata only, without opening a picker or connecting to a device.
 
-`MainWindow::UpdateSimpleChromeGeometry`/`arrangeActions` gives each action row
-its own `QHBoxLayout`, equal translated button minimums and equal stretch.
-The outer grid owns one or two rows and clears inactive constraints;
-removing prior layout items preserves the buttons and their focus identity.
+`MainWindow::UpdateSimpleChromeGeometry` decides the complete row/face layout
+before resizing any native peer. `ChromeGridCell`/`ChromeGridSize` measure grid
+spans with spacer items and the actual layout margins, spacing and widget
+borders. `ChromeActionButton::SizeHintForFace` caches style-equivalent hidden
+measurement-button hints for Beside/Under/Icon faces; text, font, icon presence/dimensions,
+DPR and style/font changes invalidate the relevant measurements. Its
+`changeEvent` preserves normal QPushButton event handling while clearing stale
+measurements. Each action row retains its `QHBoxLayout`, equal translated
+minimums and equal stretch while its row count stays unchanged. The outer grid
+owns one or two rows; replacing layout items preserves button/focus identity.
 The left carousel folds first, followed by a three-plus-two action group at
 tighter widths. Offscreen `translatedActionRowsHaveUniformCellMinimums`
 and its three language data rows use the real Segoe UI font and exercise
@@ -5816,6 +5822,14 @@ independent groups instead of full-width stacked bands. The opt-in
 `agent_control_capture --chrome-output` branch composes the actual offscreen
 MainWindow peers at 1440, 1100, 960 and 720 px, with no device/provider bootstrap;
 it is development layout evidence, not native focus/UIA or camera acceptance.
+
+`bottomChromeRetainsNativeSizeDuringRefresh_data` supplies wide, folded-mode
+and folded-both native layouts in LTR/RTL. `bottomChromeRetainsNativeSizeDuringRefresh`
+observes all synchronous peer Resize events across repeated activation,
+small resizes away from wrapping thresholds and immediate native owner movement.
+It rejects even temporary expand/contract geometry, rather than checking only
+the final rectangle after the flicker. The original implementation fails all
+four folded rows and passes both wide rows; original evidence is retained.
 
 `residentBatchesRespectBudgetAndPreserveCompletedChecks` covers 1100 references,
 partial budget progress and cancellation. `gpuResidentBatchMappingMatchesDistinctCpuLines`

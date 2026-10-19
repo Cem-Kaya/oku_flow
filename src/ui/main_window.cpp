@@ -219,6 +219,29 @@ public:
         style()->unpolish(this); style()->polish(this);
         updateGeometry(); update();
     }
+    QSize SizeHintForFace(Face face) const {
+        if (hintText_ != text() || hintFont_ != font() || hintIconSize_ != iconSize() ||
+            hintHasIcon_ != !icon().isNull() ||
+            hintDpr_ != devicePixelRatioF()) {
+            faceHints_ = {};
+            hintText_ = text(); hintFont_ = font(); hintIconSize_ = iconSize();
+            hintHasIcon_ = !icon().isNull();
+            hintDpr_ = devicePixelRatioF();
+        }
+        auto& hint = faceHints_[static_cast<size_t>(face)];
+        if (hint.isValid()) return hint;
+        // Resolve the same inherited stylesheet, including compact padding,
+        // without changing a visible button's face or native panel geometry.
+        ChromeActionButton measure(text(), parentWidget());
+        measure.setObjectName(objectName());
+        measure.setFont(font());
+        measure.setIcon(icon()); measure.setIconSize(iconSize());
+        measure.setCheckable(isCheckable()); measure.setChecked(isChecked());
+        measure.setEnabled(isEnabled());
+        measure.ensurePolished(); measure.SetFace(face);
+        hint = measure.sizeHint();
+        return hint;
+    }
     QSize sizeHint() const override {
         if (face_ == Face::Beside) return QPushButton::sizeHint();
         QStyleOptionButton option; initStyleOption(&option);
@@ -229,6 +252,11 @@ public:
     }
     QSize minimumSizeHint() const override { return sizeHint(); }
 protected:
+    void changeEvent(QEvent* event) override {
+        if (event->type() == QEvent::StyleChange || event->type() == QEvent::FontChange ||
+            event->type() == QEvent::ApplicationFontChange) faceHints_ = {};
+        QPushButton::changeEvent(event);
+    }
     void paintEvent(QPaintEvent* event) override {
         if (face_ == Face::Beside) { QPushButton::paintEvent(event); return; }
         QStylePainter painter(this);
@@ -252,7 +280,34 @@ protected:
     }
 private:
     Face face_{Face::Beside};
+    mutable std::array<QSize, 3> faceHints_{};
+    mutable QString hintText_;
+    mutable QFont hintFont_;
+    mutable QSize hintIconSize_;
+    mutable bool hintHasIcon_{};
+    mutable qreal hintDpr_{};
 };
+
+struct ChromeGridCell {
+    QSize size;
+    int row{};
+    int column{};
+    int columnSpan{1};
+};
+
+QSize ChromeGridSize(QWidget* panel, std::initializer_list<ChromeGridCell> cells)
+{
+    const auto* source = qobject_cast<QGridLayout*>(panel->layout());
+    QGridLayout measure;
+    measure.setContentsMargins(source->contentsMargins());
+    measure.setHorizontalSpacing(source->horizontalSpacing());
+    measure.setVerticalSpacing(source->verticalSpacing());
+    for (const auto& cell : cells)
+        measure.addItem(new QSpacerItem(cell.size.width(), cell.size.height(),
+            QSizePolicy::Minimum, QSizePolicy::Minimum), cell.row, cell.column, 1, cell.columnSpan);
+    const QMargins border = panel->contentsMargins();
+    return measure.sizeHint() + QSize(border.left() + border.right(), border.top() + border.bottom());
+}
 
 // Keeps a companion widget's enabled state in step with a source widget, so a
 // slider's value readout dims exactly when the slider does.
@@ -3599,201 +3654,157 @@ void MainWindow::UpdateSimpleChromeGeometry()
     const int viewHeight = renderWidget_->height();
     const QPoint viewOrigin = renderWidget_->mapToGlobal(QPoint(0, 0));
     UpdateUiVisibilityControl();
-    currentModeButton_->setMinimumWidth(220);
-    currentModeButton_->setMaximumWidth(QWIDGETSIZE_MAX);
     const std::array<std::pair<QPushButton*, QString>, 5> actionButtons{{
         {capturePhotoButton_, QStringLiteral("Photo")},
-        {recordButton_, !recordButton_->isEnabled()
-                            ? QStringLiteral("Finishing")
-                            : recordButton_->isChecked()
-                                  ? QStringLiteral("Stop")
-                                  : QStringLiteral("Record")},
-        {explainNowButton_, explainBusy_
-                                ? QStringLiteral("Stop")
-                                : QStringLiteral("Explain")},
+        {recordButton_, !recordButton_->isEnabled() ? QStringLiteral("Finishing")
+                         : recordButton_->isChecked() ? QStringLiteral("Stop") : QStringLiteral("Record")},
+        {explainNowButton_, explainBusy_ ? QStringLiteral("Stop") : QStringLiteral("Explain")},
         {readTextButton_, QStringLiteral("Read")},
         {annotationButton_, QStringLiteral("Draw")},
     }};
-    for (const auto& [button, label] : actionButtons) {
-        button->setText(TranslateUi(label));
-        button->setMinimumWidth(0);
-        button->setMaximumWidth(QWIDGETSIZE_MAX);
-        static_cast<ChromeActionButton*>(button)->SetFace(ChromeActionButton::Face::Beside);
-    }
-    // Compact placement pins some panel sizes; release them so every pass
-    // measures the real translated content from scratch.
-    for (QWidget* panel : {bottomLeftPanel_, keystoneTrackingPanel_, bottomRightPanel_}) {
-        panel->setMinimumSize(0, 0);
-        panel->setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
-    }
-    for (QWidget* panel :
-         {topLeftPanel_, bottomLeftPanel_, keystoneTrackingPanel_,
-          bottomRightPanel_}) {
-        panel->adjustSize();
-    }
-    const auto refit = [](QWidget* panel) {
-        panel->layout()->invalidate();
-        panel->layout()->activate();
-        panel->adjustSize();
-        return std::max(panel->sizeHint().width(), panel->minimumSizeHint().width());
+    for (const auto& [button, label] : actionButtons) button->setText(TranslateUi(label));
+    const auto hint = [](QWidget* widget) {
+        return widget->sizeHint().expandedTo(widget->minimumSizeHint());
     };
-    // Keep independent corner groups; wrap inside a group instead of turning
-    // either one into a full-width band over the image.
-    const auto setChromeDock = [](QWidget* panel, const QString& dock) {
-        if (panel->property("chromeDock").toString() == dock) return;
-        panel->setProperty("chromeDock", dock);
-        panel->style()->unpolish(panel);
-        panel->style()->polish(panel);
-        panel->update();
-    };
-    if (auto* topLayout = qobject_cast<QGridLayout*>(topLeftPanel_->layout())) {
-        for (QWidget* widget : std::array<QWidget*, 3>{simpleModeButton_,
-                                advancedModeButton_, simpleTextClarityCheckbox_}) {
-            topLayout->removeWidget(widget);
-        }
-        topLayout->addWidget(simpleModeButton_, 0, 0);
-        topLayout->addWidget(advancedModeButton_, 0, 1);
-        topLayout->addWidget(simpleTextClarityCheckbox_, 0, 2);
-        if (refit(topLeftPanel_) > viewWidth) {
-            topLayout->removeWidget(simpleTextClarityCheckbox_);
-            topLayout->addWidget(simpleTextClarityCheckbox_, 1, 0, 1, 2);
-            if (refit(topLeftPanel_) > viewWidth) {
-                topLayout->removeWidget(advancedModeButton_);
-                topLayout->removeWidget(simpleTextClarityCheckbox_);
-                topLayout->addWidget(advancedModeButton_, 1, 0);
-                topLayout->addWidget(simpleTextClarityCheckbox_, 2, 0);
-                refit(topLeftPanel_);
-            }
-        }
+    const QSize simpleHint = hint(simpleModeButton_), advancedHint = hint(advancedModeButton_);
+    const QSize clarityHint = hint(simpleTextClarityCheckbox_);
+    int topRows = 1;
+    if (ChromeGridSize(topLeftPanel_, {{simpleHint, 0, 0}, {advancedHint, 0, 1},
+                                      {clarityHint, 0, 2}}).width() > viewWidth) {
+        topRows = 2;
+        if (ChromeGridSize(topLeftPanel_, {{simpleHint, 0, 0}, {advancedHint, 0, 1},
+                                          {clarityHint, 1, 0, 2}}).width() > viewWidth) topRows = 3;
     }
-    if (auto* carouselLayout = qobject_cast<QGridLayout*>(bottomLeftPanel_->layout())) {
-        bottomLeftPanel_->setProperty("modeRows", 1);
-        currentModeButton_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
-        for (QWidget* widget : std::array<QWidget*, 4>{modeGridButton_, previousModeButton_,
-                                currentModeButton_, nextModeButton_}) {
-            carouselLayout->removeWidget(widget);
-        }
-        modeGridButton_->setVisible(true);
-        carouselLayout->addWidget(modeGridButton_, 0, 0);
-        carouselLayout->addWidget(previousModeButton_, 0, 1);
-        carouselLayout->addWidget(currentModeButton_, 0, 2);
-        carouselLayout->addWidget(nextModeButton_, 0, 3);
-        // Spare strip width goes to the mode name, never to the arrows.
-        for (int column = 0; column < carouselLayout->columnCount(); ++column) {
-            carouselLayout->setColumnStretch(column, column == 2 ? 1 : 0);
-        }
-        if (refit(bottomLeftPanel_) > viewWidth) {
-            // The current-mode button opens the same grid, so a narrow view
-            // drops the separate grid button instead of wrapping it onto a
-            // second chrome row over the camera.
-            const bool gridHadFocus = modeGridButton_->hasFocus();
-            carouselLayout->removeWidget(modeGridButton_);
-            carouselLayout->removeWidget(previousModeButton_);
-            carouselLayout->removeWidget(currentModeButton_);
-            carouselLayout->removeWidget(nextModeButton_);
-            modeGridButton_->setVisible(false);
-            if (gridHadFocus) currentModeButton_->setFocus(Qt::OtherFocusReason);
-            carouselLayout->addWidget(previousModeButton_, 0, 0);
-            carouselLayout->addWidget(currentModeButton_, 0, 1);
-            carouselLayout->addWidget(nextModeButton_, 0, 2);
-            for (int column = 0; column < carouselLayout->columnCount(); ++column) {
-                carouselLayout->setColumnStretch(column, column == 1 ? 1 : 0);
-            }
-            const int overhead = std::max(0, refit(bottomLeftPanel_) - currentModeButton_->width());
-            currentModeButton_->setMinimumWidth(120);
-            currentModeButton_->setMaximumWidth(std::max(120, viewWidth - overhead));
-            refit(bottomLeftPanel_);
-        }
-    }
+    QSize modeHint = hint(currentModeButton_);
+    modeHint.setWidth(std::max(220, modeHint.width()));
+    const QSize gridHint = hint(modeGridButton_), previousHint = hint(previousModeButton_);
+    const QSize nextHint = hint(nextModeButton_);
+    int modeRows = 1;
+    int carouselWidth = ChromeGridSize(bottomLeftPanel_, {{gridHint, 0, 0}, {previousHint, 0, 1},
+                                      {modeHint, 0, 2}, {nextHint, 0, 3}}).width();
     // Advanced hides the tracking peer; it must not leave a blank toolbar row.
     const bool showTracking = keystoneTrackingActive_ && isSimpleMode();
-    const int trackingWidth = showTracking ? refit(keystoneTrackingPanel_) : 0;
+    const int trackingWidth = showTracking ? keystoneTrackingPanel_->sizeHint().width() : 0;
     auto* actionsLayout = qobject_cast<QGridLayout*>(bottomRightPanel_->layout());
-    const auto arrangeActions = [&](int rowCount = 1) {
-        if (!actionsLayout) return;
+    using Face = ChromeActionButton::Face;
+    Face actionFace = Face::Beside;
+    int actionRows = 1;
+    const auto actionButtonSize = [&](Face face) {
+        QSize size;
+        for (const auto& [button, label] : actionButtons)
+            size = size.expandedTo(static_cast<ChromeActionButton*>(button)->SizeHintForFace(face));
+        return size;
+    };
+    const auto actionGroupWidth = [&](Face face, int rows) {
+        const QSize size = actionButtonSize(face);
+        const int count = rows == 1 ? 5 : 3;
+        // Nested independent rows fill equal outer widths, including the 2-cell row.
+        const QMargins border = bottomRightPanel_->contentsMargins();
+        const QMargins margins = actionsLayout->contentsMargins();
+        return count * size.width() + (count - 1) * actionsLayout->horizontalSpacing() +
+            margins.left() + margins.right() + border.left() + border.right();
+    };
+    int actionWidth = actionGroupWidth(actionFace, actionRows);
+    constexpr int groupGap = 8;
+    const auto combinedWidth = [&] { return carouselWidth + trackingWidth + actionWidth + groupGap; };
+    if (combinedWidth() > viewWidth) {
+        modeRows = 2;
+        // Ignored horizontal policy lets the name elide above the three buttons.
+        modeHint.setWidth(120);
+        carouselWidth = ChromeGridSize(bottomLeftPanel_, {{modeHint, 0, 0, 3},
+            {previousHint, 1, 0}, {gridHint, 1, 1}, {nextHint, 1, 2}}).width();
+        if (combinedWidth() > viewWidth) {
+            actionFace = Face::Under;
+            actionWidth = actionGroupWidth(actionFace, actionRows);
+        }
+        if (combinedWidth() > viewWidth) {
+            actionRows = 2;
+            actionWidth = actionGroupWidth(actionFace, actionRows);
+        }
+        if (actionWidth > viewWidth) {
+            actionFace = Face::Icon;
+            actionWidth = actionGroupWidth(actionFace, actionRows);
+        }
+    }
+    // Measurement above never resizes a visible peer. Commit only the selected
+    // topology, retaining the real layouts/buttons while it stays unchanged.
+    if (auto* top = qobject_cast<QGridLayout*>(topLeftPanel_->layout());
+        topLeftPanel_->property("topRows").toInt() != topRows) {
+        for (QWidget* widget : std::array<QWidget*, 3>{simpleModeButton_, advancedModeButton_,
+                                                       simpleTextClarityCheckbox_}) top->removeWidget(widget);
+        top->addWidget(simpleModeButton_, 0, 0);
+        top->addWidget(advancedModeButton_, topRows == 3 ? 1 : 0, topRows == 3 ? 0 : 1);
+        top->addWidget(simpleTextClarityCheckbox_, topRows - 1, topRows == 1 ? 2 : 0,
+                       1, topRows == 2 ? 2 : 1);
+        topLeftPanel_->setProperty("topRows", topRows);
+    }
+    currentModeButton_->setMaximumWidth(modeRows == 1 ? QWIDGETSIZE_MAX : 220);
+    currentModeButton_->setMinimumWidth(modeRows == 1 ? 220 : 120);
+    currentModeButton_->setSizePolicy(modeRows == 1 ? QSizePolicy::Preferred : QSizePolicy::Ignored,
+                                     QSizePolicy::Preferred);
+    if (auto* carousel = qobject_cast<QGridLayout*>(bottomLeftPanel_->layout());
+        bottomLeftPanel_->property("modeRows").toInt() != modeRows) {
+        for (QWidget* widget : std::array<QWidget*, 4>{modeGridButton_, previousModeButton_,
+                                                      currentModeButton_, nextModeButton_}) carousel->removeWidget(widget);
+        modeGridButton_->setVisible(true);
+        for (int column = 0; column < carousel->columnCount(); ++column)
+            carousel->setColumnStretch(column, modeRows == 1 ? int(column == 2) : int(column < 3));
+        if (modeRows == 1) {
+            carousel->addWidget(modeGridButton_, 0, 0);
+            carousel->addWidget(previousModeButton_, 0, 1);
+            carousel->addWidget(currentModeButton_, 0, 2);
+            carousel->addWidget(nextModeButton_, 0, 3);
+        } else {
+            carousel->addWidget(currentModeButton_, 0, 0, 1, 3);
+            carousel->addWidget(previousModeButton_, 1, 0);
+            carousel->addWidget(modeGridButton_, 1, 1);
+            carousel->addWidget(nextModeButton_, 1, 2);
+        }
+        bottomLeftPanel_->setProperty("modeRows", modeRows);
+    }
+    const int buttonMinimum = actionButtonSize(actionFace).width();
+    for (const auto& [button, label] : actionButtons) {
+        static_cast<ChromeActionButton*>(button)->SetFace(actionFace);
+        button->setMinimumWidth(buttonMinimum);
+        button->setMaximumWidth(QWIDGETSIZE_MAX);
+    }
+    if (bottomRightPanel_->property("actionRows").toInt() != actionRows) {
         while (auto* item = actionsLayout->takeAt(0)) {
-            if (auto* row = item->layout()) {
-                while (auto* cell = row->takeAt(0)) delete cell;
-            }
-            delete item; // Removes layout items, never the persistent buttons.
+            if (auto* row = item->layout()) while (auto* cell = row->takeAt(0)) delete cell;
+            delete item; // Layout items only; the buttons retain their owners/focus.
         }
         for (int column = 0; column < actionsLayout->columnCount(); ++column) {
             actionsLayout->setColumnStretch(column, column == 0 ? 1 : 0);
             actionsLayout->setColumnMinimumWidth(column, 0);
         }
-        int buttonMinimum = 0;
-        for (const auto& [button, label] : actionButtons) {
-            button->setMinimumWidth(0);
-            buttonMinimum = std::max(buttonMinimum, button->sizeHint().width());
-        }
-        for (int row = 0; row < actionsLayout->rowCount(); ++row) {
-            actionsLayout->setRowStretch(row, 0);
-            actionsLayout->setRowMinimumHeight(row, 0);
-        }
         int index = 0;
-        for (int rowIndex = 0; rowIndex < rowCount; ++rowIndex) {
+        for (int rowIndex = 0; rowIndex < actionRows; ++rowIndex) {
             auto* row = new QHBoxLayout;
             row->setContentsMargins(0, 0, 0, 0);
             row->setSpacing(actionsLayout->horizontalSpacing());
-            const int count = rowCount == 1 ? 5 : rowIndex == 0 ? 3 : 2;
-            for (int cell = 0; cell < count; ++cell) {
-                auto* button = actionButtons[index++].first;
-                button->setMinimumWidth(buttonMinimum);
-                row->addWidget(button, 1);
-            }
+            const int count = actionRows == 1 ? 5 : rowIndex == 0 ? 3 : 2;
+            for (int cell = 0; cell < count; ++cell) row->addWidget(actionButtons[index++].first, 1);
             actionsLayout->addLayout(row, rowIndex, 0, 1, actionsLayout->columnCount());
         }
-        bottomRightPanel_->setProperty("actionRows", rowCount);
-    };
-    // Test the real translated button sizes, including stylesheet padding
-    // and icons. Retain readable labels even at the minimum camera width.
-    arrangeActions();
-    int actionWidth = refit(bottomRightPanel_);
-    constexpr int groupGap = 8;
-    if (bottomLeftPanel_->width() + trackingWidth + actionWidth + groupGap > viewWidth) {
-        auto* carousel = qobject_cast<QGridLayout*>(bottomLeftPanel_->layout());
-        for (QWidget* widget : std::array<QWidget*, 4>{modeGridButton_, previousModeButton_,
-                                currentModeButton_, nextModeButton_}) carousel->removeWidget(widget);
-        modeGridButton_->setVisible(true);
-        currentModeButton_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-        currentModeButton_->setMinimumWidth(120);
-        currentModeButton_->setMaximumWidth(220);
-        carousel->addWidget(currentModeButton_, 0, 0, 1, 3);
-        carousel->addWidget(previousModeButton_, 1, 0);
-        carousel->addWidget(modeGridButton_, 1, 1);
-        carousel->addWidget(nextModeButton_, 1, 2);
-        for (int column = 0; column < carousel->columnCount(); ++column)
-            carousel->setColumnStretch(column, column < 3 ? 1 : 0);
-        bottomLeftPanel_->setProperty("modeRows", 2);
-        refit(bottomLeftPanel_);
-        if (bottomLeftPanel_->width() + trackingWidth + actionWidth + groupGap > viewWidth) {
-            for (const auto& [button, label] : actionButtons)
-                static_cast<ChromeActionButton*>(button)->SetFace(ChromeActionButton::Face::Under);
-            arrangeActions(); actionWidth = refit(bottomRightPanel_);
-        }
-        if (bottomLeftPanel_->width() + trackingWidth + actionWidth + groupGap > viewWidth) {
-            // After compacting the left group and the one-row action faces,
-            // a tighter view gets three actions above two, still at the right.
-            arrangeActions(2); actionWidth = refit(bottomRightPanel_);
-        }
-        if (actionWidth > viewWidth) {
-            // Only a viewport too narrow for even two labeled rows needs
-            // icon-only faces. Button text/names and tooltips remain intact.
-            for (const auto& [button, label] : actionButtons)
-                static_cast<ChromeActionButton*>(button)->SetFace(ChromeActionButton::Face::Icon);
-            arrangeActions(2); actionWidth = refit(bottomRightPanel_);
-        }
+        bottomRightPanel_->setProperty("actionRows", actionRows);
     }
-    const bool cornerChrome =
-        bottomLeftPanel_->width() + trackingWidth + actionWidth + groupGap <= viewWidth;
-    const QString chromeDock = cornerChrome ? QStringLiteral("corner") : QStringLiteral("stacked");
     for (QWidget* panel : {bottomLeftPanel_, keystoneTrackingPanel_, bottomRightPanel_}) {
-        setChromeDock(panel, chromeDock);
+        panel->setMinimumSize(0, 0);
+        panel->setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
     }
     for (QWidget* panel : {topLeftPanel_, bottomLeftPanel_, keystoneTrackingPanel_, bottomRightPanel_}) {
-        refit(panel);
+        panel->layout()->activate();
+        panel->adjustSize();
     }
-
+    actionWidth = bottomRightPanel_->width();
+    const bool cornerChrome = bottomLeftPanel_->width() + trackingWidth + actionWidth + groupGap <= viewWidth;
+    const QString chromeDock = cornerChrome ? QStringLiteral("corner") : QStringLiteral("stacked");
+    for (QWidget* panel : {bottomLeftPanel_, keystoneTrackingPanel_, bottomRightPanel_}) {
+        if (panel->property("chromeDock").toString() == chromeDock) continue;
+        panel->setProperty("chromeDock", chromeDock);
+        panel->style()->unpolish(panel); panel->style()->polish(panel);
+        panel->update();
+    }
     const bool rightToLeft = layoutDirection() == Qt::RightToLeft;
     const auto leadingX = [&](int itemWidth) {
         return rightToLeft

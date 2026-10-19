@@ -442,6 +442,8 @@ private slots:
     void minimumViewportChromeFits();
     void bottomChromeFormsRectangularGroups_data();
     void bottomChromeFormsRectangularGroups();
+    void bottomChromeRetainsNativeSizeDuringRefresh_data();
+    void bottomChromeRetainsNativeSizeDuringRefresh();
     void hideUiPreservesPriorModeAndStreaming_data();
     void hideUiPreservesPriorModeAndStreaming();
     void mouseFocusedChromeCanIdleFade();
@@ -1993,6 +1995,94 @@ void MainWindowTests::bottomChromeFormsRectangularGroups()
     QCoreApplication::processEvents();
     QVERIFY(!GlobalRect(bottomRight).intersects(GlobalRect(bottomLeft)));
     QVERIFY(translations.SetLanguage(AppLanguage::English, false));
+}
+
+void MainWindowTests::bottomChromeRetainsNativeSizeDuringRefresh_data()
+{
+    QTest::addColumn<int>("width");
+    QTest::addColumn<bool>("advanced");
+    QTest::addColumn<int>("modeRows");
+    QTest::addColumn<int>("actionRows");
+    QTest::addColumn<bool>("rtl");
+    for (bool rtl : {false, true}) {
+        const QByteArray direction = rtl ? "rtl" : "ltr";
+        QTest::newRow(("wide-" + direction).constData()) << 1400 << false << 1 << 1 << rtl;
+        QTest::newRow(("folded-mode-" + direction).constData()) << 1100 << true << 2 << 1 << rtl;
+        QTest::newRow(("folded-both-" + direction).constData()) << 960 << true << 2 << 2 << rtl;
+    }
+}
+
+void MainWindowTests::bottomChromeRetainsNativeSizeDuringRefresh()
+{
+    QFETCH(int, width);
+    QFETCH(bool, advanced);
+    QFETCH(int, modeRows);
+    QFETCH(int, actionRows);
+    QFETCH(bool, rtl);
+    MainWindow window;
+    window.setLayoutDirection(rtl ? Qt::RightToLeft : Qt::LeftToRight);
+    window.setSimpleMode(!advanced);
+    window.resize(width, 740);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
+    if (advanced) window.setAdvancedPanelWidth(440);
+    auto* left = Named<QWidget>(window, "bottomLeftPanel");
+    auto* right = Named<QWidget>(window, "bottomRightPanel");
+    QVERIFY(left && right);
+    QTRY_VERIFY(left->isVisible() && right->isVisible());
+    QTRY_COMPARE(left->property("modeRows").toInt(), modeRows);
+    QTRY_COMPARE(right->property("actionRows").toInt(), actionRows);
+    QTest::qWait(100);
+    class ResizeObserver final : public QObject {
+    public:
+        QStringList sizes;
+        bool eventFilter(QObject* object, QEvent* event) override {
+            if (event->type() == QEvent::Resize) {
+                const auto* resize = static_cast<QResizeEvent*>(event);
+                sizes.append(QStringLiteral("%1 %2x%3 -> %4x%5")
+                    .arg(object->objectName()).arg(resize->oldSize().width())
+                    .arg(resize->oldSize().height()).arg(resize->size().width())
+                    .arg(resize->size().height()));
+            }
+            return false;
+        }
+    } observer;
+    left->installEventFilter(&observer);
+    right->installEventFilter(&observer);
+    const QSize leftSize = left->size(), rightSize = right->size();
+    // Activation refits the peers even when the viewport has not changed.
+    // A compact group must never resize to a wide trial layout and back.
+    if (advanced) {
+        for (int repeat = 0; repeat < 3; ++repeat) {
+            QEvent activation(QEvent::ApplicationActivate);
+            QCoreApplication::sendEvent(&window, &activation);
+            QCoreApplication::processEvents();
+        }
+        QVERIFY2(observer.sizes.isEmpty(), qPrintable(observer.sizes.join("; ")));
+    }
+    // Stay away from a wrapping threshold, including during actual resizes.
+    for (int delta : {1, 2, -1, 0}) {
+        window.resize(width + delta, window.height());
+        QCoreApplication::processEvents();
+        QCOMPARE(left->property("modeRows").toInt(), modeRows);
+        QCOMPARE(right->property("actionRows").toInt(), actionRows);
+        QCOMPARE(left->size(), leftSize);
+        QCOMPARE(right->size(), rightSize);
+        QVERIFY2(observer.sizes.isEmpty(), qPrintable(observer.sizes.join("; ")));
+    }
+    const HWND owner = reinterpret_cast<HWND>(window.winId());
+    RECT frame{};
+    QVERIFY(GetWindowRect(owner, &frame));
+    QVERIFY(SetWindowPos(owner, nullptr, frame.left + 13, frame.top + 11, 0, 0,
+                         SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE));
+    QCoreApplication::processEvents();
+    QVERIFY2(observer.sizes.isEmpty(), qPrintable(observer.sizes.join("; ")));
+    const QRect viewport = GlobalRect(window.renderWidget());
+    QVERIFY(viewport.contains(GlobalRect(left)) && viewport.contains(GlobalRect(right)));
+    QVERIFY(SaveScreenshot(window, QStringLiteral("stable-bottom-chrome-%1-%2")
+        .arg(modeRows == 1 ? "wide" : actionRows == 1 ? "folded-mode" : "folded-both")
+        .arg(rtl ? "rtl" : "ltr")));
 }
 
 void MainWindowTests::hideUiPreservesPriorModeAndStreaming_data()
