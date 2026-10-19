@@ -33,6 +33,7 @@
 #include "okuflow/common/view_transform.hpp"
 #include "okuflow/cuda/cuda_interop.hpp"
 #include "okuflow/ui/live_status_text.hpp"
+#include "okuflow/ui/view_overlay_snapshot.hpp"
 
 #include <wrl/client.h>
 
@@ -214,7 +215,7 @@ private:
     bool PresentMediaView();
     std::int64_t SelectedMediaDocumentPts100ns(std::int64_t localPts100ns) const;
     void ExpireAnnotationReadback();
-    void AcceptLiveMediaHold(std::vector<std::uint8_t> pixels, UINT width, UINT height,
+    bool AcceptLiveMediaHold(std::vector<std::uint8_t> pixels, UINT width, UINT height,
                              std::uint64_t sequence, std::int64_t captureClock100ns);
     void SaveSelectedVideoFrame();
     QJsonObject SelectedVideoState() const;
@@ -224,6 +225,7 @@ private:
                                  std::shared_ptr<const VideoPlaybackFrame> frame,
                                  bool recording, bool playing);
     QString PendingVideoOpenForTest() const;
+    void SeedPendingLiveHoldForTest(bool finishing);
     std::shared_ptr<const VideoPlaybackFrame> HeldVideoFrameForTest() const;
     void SeedCommittedVideoSaveForTest();
     // Models a successful native presentation of the adopted frame followed
@@ -428,6 +430,7 @@ private:
     bool PopulateOriginalFrameMetadata(const MediaFrame& source,
                                        CapturedFrame& destination) const;
     void CapturePendingPhoto(const CapturedFrame& originalFrame);
+    ViewOverlaySnapshot CaptureViewOverlays(const ViewTransform& transform);
     void SaveCapturedPhotoPair(const uint8_t* processedData,
                                UINT processedWidth,
                                UINT processedHeight,
@@ -442,6 +445,7 @@ private:
                                 UINT processedHeight,
                                 const QVector<AnnotationStroke>& strokes,
                                 const ViewTransform& transform,
+                                const UctOverlaySnapshot& text,
                                 const QString& heading);
     void ShowStatusMessage(
         const QString& message,
@@ -731,6 +735,7 @@ private:
     bool photoCapturePending_{};
     UINT64 pendingPhotoReadbackId_{};
     CapturedFrame pendingPhotoOriginal_;
+    ViewOverlaySnapshot pendingPhotoOverlays_;
     QElapsedTimer pendingPhotoReadbackTimer_;
     struct AnnotationGpuPresentation {
         const void* texture{};
@@ -741,6 +746,7 @@ private:
     };
     struct PendingAnnotationCapture {
         QVector<AnnotationStroke> strokes;
+        UctOverlaySnapshot text;
         ViewTransform transform;
         QString heading;
         UctFrameContext frame;

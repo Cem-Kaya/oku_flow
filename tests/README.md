@@ -44,6 +44,40 @@ never a full release or native screen-reader acceptance claim.
 
 ## Optional PaddleOCR acceptance (2026-10-18)
 
+Processed-image export regressions use the production overlay and image writer.
+The offscreen UCT cases compare frozen vector commands with rendered glyph pixels,
+replay them on a worker after clearing/changing the live overlay, and check scaling,
+protected omissions, chrome exclusion and ink above text. Capturing must not change
+the screen's last-painted accessibility plan. The actual-app
+`processedPhotoAndDrawingIncludeUctAndInkWithCleanOriginal` case decodes the saved
+JPEG pair and drawing PNG, checks sharp UCT letters and ink, and verifies the entire
+Original stays clean. These are desktop-free synthetic-image contracts; they do
+not establish live-camera readback pairing or native screen-reader acceptance.
+The serial `recording_original_native` fixture also decodes changing Original
+colours through end of stream while the supplied legacy processed view remains
+unchanged. It proves recording continues independently of that display payload,
+with the actual CUDA bump-hold surface checked separately.
+
+`OriginalTextureAdvancesDuringExtraStableHoldTests` in `media_gpu_scene_cuda`
+constructs a production `CudaInteropSurface` with private scene, cache, Original
+textures and a shared fence. Sharp frames must establish a reference; uniform
+blur must hold that exact acquisition; recovery must produce a real crossfade
+and return to Live. Every frame's Original pixels must equal the current input
+exactly, including held/crossfade frames. Missing hold or recovery evidence fails
+the test. This window-free CUDA check does not use a camera or record a file;
+the native recorder test above independently checks encoded Original output.
+
+`heldFramesReadOnceAndCrossfadesRevoke` distinguishes a repeated held
+acquisition from new live evidence. It covers unchecked/missing line checks
+and late OCR after a composite probe. The frozen export comparison permits
+only one RGB channel unit of premultiplied edge-rounding between QWidget's
+backing layer and vector replay; alpha and all placement checks remain intact.
+Mismatch PNGs are retained below LocalAppData's `OkuFlow/test-evidence/uct-export-*`.
+Native asynchronous hold-refusal rows cover camera loss and recording
+finalization separately, preserving Live intent or an unavailable held-frame
+receipt as appropriate. They call the actual acceptance boundary without a
+device or native window.
+
 `uct_paddle_processing` reconciles all six compiled tier pins against the
 preparation manifest (a declared runtime input). Settings/planner contracts
 cover GPU medium/medium and CPU tiny/small defaults, migration, closed enum

@@ -11,7 +11,20 @@ The Original producer supplies full source pixels after necessary color
 conversion and source-orientation normalization. Recording does not reapply
 rotation metadata. Playback crop, colors, Ultra Clear Text, Super Resolution
 and annotations belong to viewing; they must not enter this producer.
-Paired photo capture remains a separate existing feature.
+Extra Stable holds only the displayed image: conversion/orientation publishes
+the clean Original before stabilization and bump hold. Capture and recording
+continue while that view is held; recovery returns the view to the current
+source, leaving the intervening camera frames available in the recording.
+Manual recording rewind remains an independent viewing action.
+Automatic hold/recovery does not issue decoder pause or seek commands; the
+camera pipeline keeps running and returns to current pixels on recovery. The
+existing bounded recorder may still report ordinary encoder/queue drops; a
+display hold must not introduce a separate recording pause.
+Paired photo capture remains separate: the Original photo stays clean, while
+the processed photo includes eligible visible UCT text and active vector ink.
+Saved annotated images also include UCT below the drawn figures. Their vector
+overlays are frozen with the capture, so delayed image saving cannot use later
+OCR words or a later viewport. UI chrome and editing handles are excluded.
 
 ## Recording contracts
 
@@ -110,6 +123,15 @@ PCM, with no camera, microphone, browser or native window. It encodes through
 the actual manager/writer, checks one successful Original output plus preserved
 failed attempts, one video/audio stream, exactly 48,000 admitted PCM frames,
 clean decoded pixels and source dimensions, archive identity and part receipt.
+The synthetic Original advances red, green and blue while its legacy display
+payload stays black; decoding must recover all three colours through end of
+stream. This guards recorder admission against a frozen display payload; it
+does not replace the separate CUDA surface/hold-path check.
+`media_gpu_scene_cuda` supplies that separate window-free check with the real
+`CudaInteropSurface`: it requires a sharp reference, exact held acquisition,
+recovery crossfade and return to Live, while comparing every Original texture
+with the current raw input byte for byte. Both tests passed in the 2026-10-19
+integration run. They do not establish physical-camera or long-recording quality.
 Enumerated outputs and failed attempts are matched through held Windows file
 identities, including when Qt and the native fallback label paths differently.
 The normal manager case leaves this native slot explicitly skipped.

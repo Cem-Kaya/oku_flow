@@ -64,9 +64,16 @@ UctFrameContext OkuFlowApp::UltraClearTextContext(bool cudaScene, const ViewTran
     const bool requestedComposite =
         cudaScene ? (temporalSmoothEnabled_ || (stabilizationEnabled_ && bumpHoldEnabled_))
                   : (debugViewEnabled_ && temporalSmoothEnabled_);
+    // Displayed-composite truth above stays for annotations/observations.
+    // UCT analysis is unsupported only for the CPU debug composite, whose
+    // pixels are the blend itself. CUDA Temporal Smooth gets a neutral paired
+    // capture; CUDA Extra Stable captures carry their frame's hold record.
+    const bool requestedUnsupportedComposite =
+        !cudaScene && debugViewEnabled_ && temporalSmoothEnabled_;
+    const bool requestedHeldFrames = cudaScene && stabilizationEnabled_ && bumpHoldEnabled_;
     return uctProvenance_.Context(cudaScene, UltraClearTextRequest(), requestedComposite, transform,
                                   viewportWidth, viewportHeight, cameraActive_ && cameraFramePresented_,
-                                  strokeWeight_);
+                                  strokeWeight_, requestedUnsupportedComposite, requestedHeldFrames);
 }
 
 } // namespace okuflow

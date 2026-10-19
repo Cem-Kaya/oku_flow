@@ -61,7 +61,19 @@ Engine plans stay in `%LOCALAPPDATA%/OkuFlow/ocr-engines`, keyed by graph hash,
 GPU UUID, driver and TensorRT/precision identity, with a payload integrity hash.
 Model/license data never belongs in Git or capture output. The analysis pool
 has two slots, at most 128 MiB each; input dimensions are limited to 8192 per
-axis. Detector long edge is 960, recognizer canvas 1024×48, accepted regions
+axis. A Temporal Smooth lease counts both OCR and current-validation images
+against that per-slot limit (at most 64 MiB per half, without pitch padding).
+It discloses EMA alpha, history epoch, seed and blend count; capture remains
+throttled to 80 ms while the neutral EMA advances on actual processed frames.
+Neutral EMA/scratch consumes about 20 bytes/pixel per initialized surface;
+media replay adds 20 bytes/pixel, before pitch padding. These buffers allocate
+lazily and remain cached when disabled. Allocation failures latch per size
+(EMA) or surface (snapshots), retrying only on explicit reset or size change.
+Smoothed/current input registration requires every candidate word to reach
+NCC 0.94 and visible fraction 0.95 with zero translation/refinement. It is
+separate from the ordinary 0.82, six-probe-pixel motion tracker. Resident input
+registration batches at most 1024 word descriptors and refuses over 8192 words.
+Detector long edge is 960, recognizer canvas 1024×48, accepted regions
 at most 128, detector thresholds 0.2/0.4 and word confidence at least 0.7.
 These are bounded experimental defaults, not accuracy or latency promises.
 
@@ -842,6 +854,11 @@ COM/driver calls retain their separate watchdog limits. See
 
 
 ## GPU selected-video resource policy
+
+Extra Stable's analysis lease includes one 32-byte acquisition record copied
+with its pixels into pinned slot storage. Workers consume it after the same
+completion fence; this is metadata egress, not an image download. Held copies
+remain one observation and recovery crossfades name no independent acquisition.
 
 The GPU decoder admits eight logical BGRA texture allocations / 256 MiB across
 published leases, pool storage, optional private conversion target and deferred

@@ -3521,5 +3521,17 @@ Use «Connect ChatGPT» en la pestaña Asistente del modo avanzado para iniciar 
             <source>Select video</source>
             <translation>Seleccionar vídeo</translation>
         </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>En pausa mientras «Estabilidad extra» está activada. Se muestra la imagen original de la cámara.</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>Se muestra el texto original de la cámara.</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>El reconocimiento de texto está pausado en la vista compuesta de depuración. Se muestra la imagen original de la cámara.</translation>
+        </message>
     </context>
 </TS>

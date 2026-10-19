@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+- Preserve live preview when a manual recording pause cannot retain the exact
+  displayed view. Extra Stable remains a viewing effect: new video recordings
+  continue from the clean Original source before stabilization and held frames.
+
+- Include eligible UCT text and drawn figures in processed photos and saved
+  annotated views. Keep Original photos clean and freeze overlays before
+  asynchronous saving; omit UI controls and selection handles.
+
+- Support UCT with CUDA Temporal Smooth using a separate, full-scene neutral
+  temporal input before zoom and image effects. Keep current-frame validation
+  separate from the smoothed OCR pixels, preserve same-frame media replay,
+  reseed paused UCT toggles without changing playback, and reset analysis history
+  on source/geometry changes. Verify smoothed words against current pixels and
+  retain only independently validated old text on a rejected refresh. Bound
+  allocation retries under memory pressure. Support exact Extra Stable held
+  images with GPU-resident acquisition records, reject recovery crossfades,
+  and prevent repeated held copies from confirming text. Update unsupported
+  composite status in all 24 translations.
+
 - Fold the left quick-mode cluster first when the view narrows, then wrap
   Photo, Record, Explain, Read and Draw into three buttons above two at the
   right when needed. Preserve labels, tooltips and accessibility.

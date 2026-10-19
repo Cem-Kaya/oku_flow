@@ -965,7 +965,10 @@ private slots:
             source.pixels.resize(64u * 48u * 4u);
             for (std::size_t at = 0; at < source.pixels.size(); at += 4) {
                 source.pixels[at] = 0; source.pixels[at + 1] = 0;
-                source.pixels[at + 2] = 255; source.pixels[at + 3] = 255;
+                source.pixels[at + 2] = 0; source.pixels[at + 3] = 255;
+                // The view stays black while Original advances red -> green
+                // -> blue. A display hold must never freeze the recording.
+                source.pixels[at + (index < 10 ? 2 : index < 20 ? 1 : 0)] = 255;
             }
             source.identity = {origin + index * 10'000'000LL / 30,
                                origin + index * 10'000'000LL / 30, index, 30, 1};
@@ -1066,21 +1069,29 @@ private slots:
         QVERIFY(SUCCEEDED(decodedType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video)));
         QVERIFY(SUCCEEDED(decodedType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32)));
         QVERIFY(SUCCEEDED(reader->SetCurrentMediaType(videoStream, nullptr, decodedType.Get())));
-        bool decoded = false;
-        for (unsigned attempt = 0; attempt < 8 && !decoded; ++attempt) {
+        unsigned decoded = 0;
+        bool sawRed = false, sawGreen = false, sawBlue = false, ended = false;
+        LONGLONG previousPts = -1;
+        for (unsigned attempt = 0; attempt < 64 && !ended; ++attempt) {
             DWORD flags = 0; LONGLONG pts = -1;
             Microsoft::WRL::ComPtr<IMFSample> sample;
             QVERIFY(SUCCEEDED(reader->ReadSample(videoStream, 0, nullptr, &flags, &pts,
                                                 sample.GetAddressOf())));
+            ended = (flags & MF_SOURCE_READERF_ENDOFSTREAM) != 0;
             if (!sample) continue;
+            QVERIFY(pts >= previousPts); previousPts = pts;
             Microsoft::WRL::ComPtr<IMFMediaBuffer> pixels;
             QVERIFY(SUCCEEDED(sample->ConvertToContiguousBuffer(pixels.GetAddressOf())));
             BYTE* bytes = nullptr; DWORD length = 0;
             QVERIFY(SUCCEEDED(pixels->Lock(&bytes, nullptr, &length)));
-            const bool clean = length >= 4 && bytes[2] > 200 && bytes[1] < 60 && bytes[0] < 60;
-            pixels->Unlock(); QVERIFY(clean); decoded = true;
+            const bool red = length >= 4 && bytes[2] > 200 && bytes[1] < 60 && bytes[0] < 60;
+            const bool green = length >= 4 && bytes[1] > 200 && bytes[2] < 60 && bytes[0] < 60;
+            const bool blue = length >= 4 && bytes[0] > 200 && bytes[1] < 60 && bytes[2] < 60;
+            pixels->Unlock(); QVERIFY(red || green || blue);
+            sawRed |= red; sawGreen |= green; sawBlue |= blue; ++decoded;
         }
-        QVERIFY(decoded);
+        QVERIFY(ended); QVERIFY(decoded > 1);
+        QVERIFY(sawRed && sawGreen && sawBlue);
     }
 
     void cpuFallbackUsesNv12LayoutAndColor()

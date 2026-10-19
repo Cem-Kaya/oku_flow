@@ -3521,5 +3521,17 @@ Wybierz „Połącz z ChatGPT” na karcie Asystent w trybie zaawansowanym, aby 
             <source>Select video</source>
             <translation>Wybierz wideo</translation>
         </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>Wstrzymano, gdy włączony jest tryb „Bardzo stabilny”. Wyświetlany jest oryginalny obraz z kamery.</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>Wyświetlany jest oryginalny tekst z kamery.</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>Rozpoznawanie tekstu w złożonym widoku debugowania jest wstrzymane. Oryginalny obraz z kamery jest wyświetlany.</translation>
+        </message>
     </context>
 </TS>

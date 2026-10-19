@@ -3521,5 +3521,17 @@ Pilih Hubungkan ChatGPT di tab Asisten pada mode Tingkat Lanjut untuk masuk.</tr
             <source>Select video</source>
             <translation>Pilih video</translation>
         </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>Dijeda saat Ekstra Stabil aktif. Gambar asli kamera ditampilkan.</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>Teks asli kamera sedang ditampilkan.</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>Pengenalan teks dijeda dalam tampilan komposit debug. Gambar kamera asli tetap ditampilkan.</translation>
+        </message>
     </context>
 </TS>

@@ -34,6 +34,7 @@
 #include <QUuid>
 #include <QElapsedTimer>
 #include <QtTest>
+#include "ultra_clear_text_test_support.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -125,6 +126,24 @@ public:
 #if defined(OKUFLOW_VIDEO_DOCUMENT_TESTS)
         app.InitializeVideoPlayback();
 #endif
+    }
+    static QString PhotoDirectory(OkuFlowApp& app) {
+        return app.userDataPaths_->PhotosForDate(QDate::currentDate());
+    }
+    static void SavePhotoFixture(OkuFlowApp& app, const QImage& pixels,
+                                 ViewOverlaySnapshot overlays) {
+        CapturedFrame original;
+        original.width=static_cast<UINT>(pixels.width());
+        original.height=static_cast<UINT>(pixels.height());
+        original.pixels.resize(static_cast<std::size_t>(pixels.sizeInBytes()));
+        std::memcpy(original.pixels.data(),pixels.constBits(),original.pixels.size());
+        app.pendingPhotoOverlays_=std::move(overlays);
+        app.SaveCapturedPhotoPair(pixels.constBits(),original.width,original.height,original);
+    }
+    static void SaveDrawingFixture(OkuFlowApp& app, const QImage& pixels,
+                                   const ViewOverlaySnapshot& overlays) {
+        app.SaveAnnotationSnapshot(pixels.constBits(),pixels.width(),pixels.height(),
+            overlays.strokes,overlays.transform,overlays.text,QStringLiteral("Fixture drawing"));
     }
     static UctFrameContext PrimeAnnotation(OkuFlowApp& app) {
         app.CancelAnnotationCaptures();
@@ -341,6 +360,11 @@ public:
         app.SeedVideoDocumentForTest(session,frame,recording,playing);
     }
     static void VideoStopping(OkuFlowApp& app,const RecordingSessionInfo& session) {app.OnVideoRecordingStopping(session);}
+    static bool RefusePendingLiveHold(OkuFlowApp& app, bool finishing, bool cameraActive) {
+        app.SeedPendingLiveHoldForTest(finishing);
+        app.cameraActive_=cameraActive;
+        return app.AcceptLiveMediaHold({},0,0,1,10'000);
+    }
     static void VideoSaved(OkuFlowApp& app,const SavedRecordingSegment& part) {app.OnVideoSegmentSaved(part);}
     static bool VideoTimerActive(const OkuFlowApp& app) {return app.videoPlaybackTimer_ && app.videoPlaybackTimer_->isActive();}
     static VideoTransport::Snapshot VideoUi(const OkuFlowApp& app) {return app.mainWindow_->videoTransport()->snapshot();}
@@ -709,6 +733,66 @@ class NativeAcceptance final : public QObject {
 public:
     explicit NativeAcceptance(OkuFlowApp& app):app_(app) {}
 private slots:
+    void processedPhotoAndDrawingIncludeUctAndInkWithCleanOriginal() {
+        uct_test::RegisterFixtureFonts();
+        QWidget owner;owner.resize(640,360);
+        QWidget viewport(&owner);viewport.setGeometry(owner.rect());
+        UltraClearTextOverlay overlay(&viewport,&owner);
+        ViewTransform transform;transform.valid=true;
+        overlay.SetViewTransform(transform);
+        owner.show();viewport.show();
+        overlay.SetWords({{QStringLiteral("Clear"),QRectF(.15,.25,.35,.20),
+            {QColor(Qt::white),QColor(Qt::black)},1,{},0}});
+        QCoreApplication::processEvents();
+        AnnotationStroke ink;ink.color=Qt::yellow;ink.sceneWidth=.025;
+        ink.points={QPointF(.15,.35),QPointF(.5,.35)};
+        ViewOverlaySnapshot overlays{overlay.CaptureSnapshot(transform,owner.size()),{ink},transform};
+        QVERIFY(!overlays.text.IsEmpty());
+        const QDir folder(NativeControlFixture::PhotoDirectory(app_));
+        const auto before=folder.entryList({QStringLiteral("IMG_*.jpg")},QDir::Files);
+        QImage base(owner.size(),QImage::Format_ARGB32);base.fill(QColor(82,94,108));
+        const auto beforeDrawings=folder.entryList({QStringLiteral("ANNOTATION_*.png")},QDir::Files);
+        NativeControlFixture::SavePhotoFixture(app_,base,overlays);
+        overlay.ClearWords(); // writer must not consult the current overlay
+        QTRY_COMPARE_WITH_TIMEOUT(folder.entryList({QStringLiteral("IMG_*.jpg")},QDir::Files).size(),before.size()+2,5000);
+        const auto files=folder.entryList({QStringLiteral("IMG_*.jpg")},QDir::Files);
+        QImage original,processed;
+        for(const auto& name:files)if(!before.contains(name)) {
+            if(name.endsWith(QStringLiteral("_original.jpg")))original.load(folder.filePath(name));
+            if(name.endsWith(QStringLiteral("_processed.jpg")))processed.load(folder.filePath(name));
+        }
+        QVERIFY(!original.isNull());QVERIFY(!processed.isNull());
+        QCOMPARE(original.size(),base.size());QCOMPARE(processed.size(),base.size());
+        const auto clean=original.pixelColor(200,126);
+        QVERIFY(std::abs(clean.red()-82)<4 && std::abs(clean.green()-94)<4 && std::abs(clean.blue()-108)<4);
+        bool allOriginalPixelsClean=true;
+        for(int y=0;y<original.height();++y)for(int x=0;x<original.width();++x) {
+            const auto pixel=original.pixelColor(x,y);
+            if(std::abs(pixel.red()-82)>=4 || std::abs(pixel.green()-94)>=4 ||
+                std::abs(pixel.blue()-108)>=4)allOriginalPixelsClean=false;
+        }
+        QVERIFY(allOriginalPixelsClean);
+        const auto textPlate=processed.pixelColor(90,100);
+        QVERIFY(textPlate.red()<25 && textPlate.green()<25 && textPlate.blue()<25);
+        const auto drawn=processed.pixelColor(200,126);
+        QVERIFY(drawn.red()>220 && drawn.green()>220 && drawn.blue()<40);
+        NativeControlFixture::SaveDrawingFixture(app_,base,overlays);
+        QTRY_COMPARE_WITH_TIMEOUT(folder.entryList({QStringLiteral("ANNOTATION_*.png")},QDir::Files).size(),beforeDrawings.size()+1,5000);
+        QImage drawing;
+        for(const auto& name:folder.entryList({QStringLiteral("ANNOTATION_*.png")},QDir::Files))
+            if(!beforeDrawings.contains(name))drawing.load(folder.filePath(name));
+        QVERIFY(!drawing.isNull());QCOMPARE(drawing.size(),base.size());
+        QCOMPARE(drawing.pixelColor(90,100),QColor(Qt::black));
+        QCOMPARE(drawing.pixelColor(200,126),QColor(Qt::yellow));
+        QCOMPARE(drawing.pixelColor(10,10),base.pixelColor(10,10));
+        int whiteGlyphPixels=0;
+        for(int y=85;y<170;++y)for(int x=90;x<330;++x) {
+            const auto pixel=drawing.pixelColor(x,y);
+            if(pixel.red()>230 && pixel.green()>230 && pixel.blue()>230)++whiteGlyphPixels;
+        }
+        QVERIFY(whiteGlyphPixels>100);
+        QCOMPARE(base.pixelColor(200,126),QColor(82,94,108));
+    }
 #if defined(OKUFLOW_VIDEO_DOCUMENT_TESTS)
     void videoSourceControlsBelongToCameraSettings() {
         MainWindow window;
@@ -958,6 +1042,27 @@ private slots:
         QTest::newRow("unsupported-actual-neutral-request")<<true<<false;
         QTest::newRow("neutral-actual-newer-pending-contrast")<<false<<true;
     }
+    void asynchronousPauseRefusalKeepsLiveOrReportsUnavailable_data() {
+        QTest::addColumn<bool>("finishing");QTest::addColumn<bool>("cameraActive");
+        QTest::newRow("recording-camera-live")<<false<<true;
+        QTest::newRow("recording-camera-lost")<<false<<false;
+        QTest::newRow("finishing-camera-live")<<true<<true;
+        QTest::newRow("finishing-camera-lost")<<true<<false;
+    }
+    void asynchronousPauseRefusalKeepsLiveOrReportsUnavailable() {
+        QFETCH(bool,finishing);QFETCH(bool,cameraActive);
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::ResetVideo(app_);
+            NativeControlFixture::SetCameraActive(app_,false);
+        });
+        QVERIFY(!NativeControlFixture::RefusePendingLiveHold(app_,finishing,cameraActive));
+        const auto state=NativeControlFixture::VideoState(app_);
+        QVERIFY(!state["pendingHold"].toBool());
+        QCOMPARE(state["heldUnrecorded"].toBool(),finishing);
+        QCOMPARE(state["playing"].toBool(),!finishing); // active recording retains live intent
+        QCOMPARE(state["state"].toString(),finishing?QStringLiteral("finishing")
+            :cameraActive?QStringLiteral("live"):QStringLiteral("waiting"));
+    }
     void pauseRejectsUnreproducibleDisplayedAppearance() {
         QFETCH(bool,unsupportedApplied);QFETCH(bool,pendingAppearance);
         const auto original=NativeControlFixture::CurrentImageConfig(app_);
@@ -977,6 +1082,9 @@ private slots:
         QCOMPARE(shown->recipe.contrast,1.0f);
         QVERIFY(!NativeControlFixture::HeldVideoFrame(app_));
         QVERIFY(!NativeControlFixture::VideoState(app_)["pendingHold"].toBool());
+        // Refusing an unreproducible hold leaves the camera selected instead
+        // of entering an empty selected-media document and freezing preview.
+        QCOMPARE(NativeControlFixture::VideoState(app_)["state"].toString(),QStringLiteral("live"));
     }
     void presentedOriginalCacheBoundsLeasesAndRevokesUnretainedSuccess() {
         PresentedOriginalCache cache;

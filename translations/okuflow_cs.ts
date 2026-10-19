@@ -3521,5 +3521,17 @@ Přihlaste se přes Connect ChatGPT na kartě Asistent v režimu Upřesnit.</tra
             <source>Select video</source>
             <translation>Vybrat video</translation>
         </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>Pozastaveno, dokud je zapnutý režim „Extra stabilní“. Zobrazuje se původní obraz z kamery.</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>Zobrazuje se původní text z kamery.</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>Rozpoznávání textu je ve složeném ladicím zobrazení pozastaveno. Zobrazuje se původní obraz z kamery.</translation>
+        </message>
     </context>
 </TS>

@@ -3521,5 +3521,17 @@ Chọn Kết nối ChatGPT trong tab Trợ lý của chế độ Nâng cao để
             <source>Select video</source>
             <translation>Chọn video</translation>
         </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>Tạm dừng khi bật Siêu ổn định. Hình ảnh gốc từ camera được hiển thị.</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>Đang hiển thị văn bản gốc từ camera.</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>Tính năng nhận dạng văn bản tạm dừng trong chế độ xem tổng hợp để gỡ lỗi. Hình ảnh gốc từ camera vẫn được hiển thị.</translation>
+        </message>
     </context>
 </TS>

@@ -31,6 +31,7 @@
 #include <string>
 #include <utility>
 #include <mutex>
+#include <atomic>
 #include <thread>
 #include <vector>
 
@@ -41,6 +42,32 @@ namespace okuflow {
 
 namespace { void ThrowIfCudaFailed(cudaError_t status, const char* message); }
 
+namespace {
+// Fixture-only fault seam for UCT-only allocations; production never arms it.
+std::atomic<int> gInjectedUctTemporalFailures{0};
+std::atomic<int> gInjectedUctSnapshotFailures{0};
+bool ConsumeInjectedUctFailure(std::atomic<int>& pending)
+{
+    int value = pending.load();
+    while (value > 0 && !pending.compare_exchange_weak(value, value - 1)) {
+    }
+    return value > 0;
+}
+static_assert(sizeof(BumpHoldProvenance) == sizeof(uct::HoldProvenanceRecord) &&
+                  offsetof(BumpHoldProvenance, displayedFrame) == offsetof(uct::HoldProvenanceRecord, displayedFrame) &&
+                  offsetof(BumpHoldProvenance, heldFrame) == offsetof(uct::HoldProvenanceRecord, heldFrame) &&
+                  offsetof(BumpHoldProvenance, state) == offsetof(uct::HoldProvenanceRecord, state) &&
+                  offsetof(BumpHoldProvenance, heldValid) == offsetof(uct::HoldProvenanceRecord, heldValid) &&
+                  offsetof(BumpHoldProvenance, blendAlpha) == offsetof(uct::HoldProvenanceRecord, blendAlpha),
+              "Extra Stable record layout differs between CUDA and UCT");
+}
+
+void CudaInteropSurface::InjectUctAllocationFailureForTesting(UctAllocationFault which)
+{
+    ++(which == UctAllocationFault::TemporalHistory ? gInjectedUctTemporalFailures
+                                                    : gInjectedUctSnapshotFailures);
+}
+
 void CudaInteropSurface::EnableUctAnalysis(bool enabled)
 {
     if (!enabled && uctAnalysisEnabled_) {
@@ -48,11 +75,11 @@ void CudaInteropSurface::EnableUctAnalysis(bool enabled)
         uctAnalysisPool_.reset(); // cleanup never waits on the presentation thread
         uctLastCaptureMs_ = 0;
     }
+    if (enabled != uctAnalysisEnabled_) {
+        ResetUctTemporalHistory();
+        ClearUctAllocationFailures(); // an explicit toggle may retry once
+    }
     uctAnalysisEnabled_ = enabled;
-}
-bool CudaInteropSurface::UctAnalysisFailed() const
-{
-    return uctAnalysisPool_ && uctAnalysisPool_->HasFailure();
 }
 
 struct CudaInteropSurface::AsyncSuperResState {
@@ -73,20 +100,56 @@ struct CudaInteropSurface::FrameReprocessingState {
     uchar4* geometry{};
     uchar4* preKeystone{};
     float4* temporal{};
+    float4* uctTemporal{};
+    uchar4* uctSmoothed{};
     unsigned char* mask{};
     float2* levels{};
-    size_t geometryPitch{}, preKeystonePitch{}, temporalPitch{}, maskPitch{};
+    size_t geometryPitch{}, preKeystonePitch{}, temporalPitch{}, maskPitch{}, uctTemporalPitch{}, uctSmoothedPitch{};
     bool valid{}, temporalValid{}, maskValid{}, levelsValid{};
+    bool uctTemporalValid{}, uctSmoothedValid{}, uctSmoothedWanted{};
+    // uctPreFrameHistory: a live pre-frame history existed, even if its
+    // pixels could not be saved. uctSmoothedRevoked: only a true reset
+    // dropped the smoothed snapshot, so a paused refresh may rebuild it.
+    bool uctPreFrameHistory{}, uctSmoothedRevoked{};
+    // This frame's settings-level request and EMA identity, recorded even
+    // while UCT is off so a paused re-enable can seed a truthful history.
+    float uctWantedAlpha{};
+    int uctWantedRotation{};
+    bool uctWantedStabilization{}, uctWantedKeystone{};
+    std::uint64_t uctHistoryEpoch{}, uctSeedFrame{}, uctBlendCount{};
+    std::uint64_t uctSmoothedHistoryEpoch{}, uctSmoothedSeedFrame{}, uctSmoothedBlendCount{};
+    float uctSmoothedAlpha{};
+    std::uint64_t uctIdentityEpoch{};
+    int uctIdentityRotation{};
+    bool uctIdentityStabilization{}, uctIdentityKeystone{}, uctIdentityValid{};
+    float uctAlpha{};
     bool keystoneDirty{};
     std::uint64_t epoch{}, frame{}, appearance{};
+    // Extra Stable record of the saved geometry: replay/refresh captures of
+    // these held or crossfaded pixels carry the identity they were shown with.
+    BumpHoldProvenance* hold{};
+    bool holdRecorded{};
     ~FrameReprocessingState() {
+        if (hold) cudaFree(hold);
         if (geometry) cudaFree(geometry);
         if (preKeystone) cudaFree(preKeystone);
         if (temporal) cudaFree(temporal);
+        if (uctTemporal) cudaFree(uctTemporal);
+        if (uctSmoothed) cudaFree(uctSmoothed);
         if (mask) cudaFree(mask);
         if (levels) cudaFree(levels);
     }
 };
+
+bool CudaInteropSurface::UctAnalysisFailed() const
+{
+    // A missing media replay snapshot stays reported while paired smoothing
+    // is wanted, even when the live EMA itself keeps succeeding.
+    const bool snapshotFailed = uctSnapshotFailed_ && uctAnalysisEnabled_ &&
+        frameReprocessing_ && frameReprocessing_->uctSmoothedWanted;
+    return uctTemporalFailed_ || snapshotFailed ||
+           (uctAnalysisPool_ && uctAnalysisPool_->HasFailure());
+}
 
 void CudaInteropSurface::EnableFrameReprocessing() {
     if (frameReprocessing_ || !valid_) return;
@@ -100,8 +163,14 @@ void CudaInteropSurface::EnableFrameReprocessing() {
         static_cast<size_t>(width_) * sizeof(float4), height_), "Media temporal snapshot allocation failed");
     ThrowIfCudaFailed(cudaMallocPitch(reinterpret_cast<void**>(&state->mask), &state->maskPitch,
         width_, height_), "Media text snapshot allocation failed");
+    // The UCT temporal/smoothed snapshots (~20 B/pixel) are intentionally
+    // not allocated here: they stay null until EnsureUctSnapshotBuffers()
+    // runs on the first frame that actually wants UCT temporal smoothing,
+    // so media surfaces without UCT (or without smoothing) pay nothing.
     ThrowIfCudaFailed(cudaMalloc(reinterpret_cast<void**>(&state->levels), sizeof(float2)),
         "Media contrast snapshot allocation failed");
+    ThrowIfCudaFailed(cudaMalloc(reinterpret_cast<void**>(&state->hold), sizeof(BumpHoldProvenance)),
+        "Media Extra Stable record allocation failed");
     frameReprocessing_ = std::move(state);
 }
 
@@ -115,7 +184,8 @@ void CudaInteropSurface::ResetFrameHistory() {
     discardFocusCopy_ = focusCopyPending_;
     uctAnalysisFrame_.reset();
     uctLastCaptureMs_ = 0;
-    if (frameReprocessing_) { frameReprocessing_->valid = false; frameReprocessing_->keystoneDirty = false; }
+    if (frameReprocessing_) frameReprocessing_->holdRecorded = false;
+    if (frameReprocessing_) { frameReprocessing_->valid = false; frameReprocessing_->keystoneDirty = false; frameReprocessing_->uctTemporalValid = false; frameReprocessing_->uctSmoothedValid = false; frameReprocessing_->uctSmoothedWanted = false; frameReprocessing_->uctPreFrameHistory = false; frameReprocessing_->uctSmoothedRevoked = false; }
     // Revocation preserves the independent model and performance/failure latches.
     InvalidateSuperResRequest();
 }
@@ -126,6 +196,16 @@ bool CudaInteropSurface::RefreshUctAnalysis(const FenceSyncParams& sync) {
     const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
     if (now - uctLastCaptureMs_ < 80) return false;
+    // A frame that wanted the temporal EMA never falls back to a raw capture
+    // here. Only a true reset (such as a paused UCT re-enable) may rebuild
+    // its paired image, as a new one-frame history seeded from the saved
+    // current geometry. An actual smoothing or snapshot failure publishes
+    // nothing and leaves the health state recorded by ProcessFrame intact.
+    auto& saved = *frameReprocessing_;
+    const bool regenerate = saved.uctSmoothedWanted && !saved.uctSmoothedValid &&
+        saved.uctSmoothedRevoked;
+    if (saved.uctSmoothedWanted && !saved.uctSmoothedValid && !regenerate)
+        return false;
     try {
         ThrowIfCudaFailed(cudaSetDevice(cudaDeviceId_), "Media analysis CUDA device selection failed");
         if (sync.enable && externalSemaphore_) {
@@ -133,10 +213,19 @@ bool CudaInteropSurface::RefreshUctAnalysis(const FenceSyncParams& sync) {
             ThrowIfCudaFailed(cudaWaitExternalSemaphoresAsync(&externalSemaphore_, &wait, 1, stream_),
                 "Media analysis graphics wait failed");
         }
+        if (regenerate) RegenerateUctSmoothedSnapshot();
         if (!uctAnalysisPool_) uctAnalysisPool_ = std::make_unique<uct::AnalysisPool>();
-        auto frame = uctAnalysisPool_->Capture(frameReprocessing_->geometry,
-            frameReprocessing_->geometryPitch, width_, height_, stream_,
-            frameReprocessing_->epoch, frameReprocessing_->frame, frameReprocessing_->appearance);
+        uct::SharedDeviceImage frame;
+        if (saved.uctSmoothedValid)
+            frame = uctAnalysisPool_->CapturePair(saved.uctSmoothed, saved.uctSmoothedPitch,
+                saved.geometry, saved.geometryPitch, width_, height_, stream_,
+                saved.epoch, saved.frame, saved.appearance,
+                saved.uctSmoothedHistoryEpoch, saved.uctSmoothedSeedFrame,
+                saved.uctSmoothedBlendCount, saved.uctSmoothedAlpha);
+        else if (!saved.uctSmoothedWanted)
+            frame = uctAnalysisPool_->Capture(saved.geometry, saved.geometryPitch, width_, height_,
+                stream_, saved.epoch, saved.frame, saved.appearance,
+                saved.holdRecorded ? saved.hold : nullptr);
         if (frame) { uctAnalysisFrame_ = std::move(frame); uctLastCaptureMs_ = now; }
         // Even a busy analysis pool may have queued a wait. Always close the
         // reservation once we begin submitting work to the private timeline.
@@ -1272,6 +1361,7 @@ void CudaInteropSurface::ReleaseDeviceBuffers() {
     deviceHeight_ = 0;
     bufferFormat_ = CudaBufferFormat::kRgba8;
     ReleaseTemporalHistory();
+    ReleaseUctTemporalBuffers();
     ReleaseStabilization();
     ReleaseRawInput();
     ReleaseKeystone();
@@ -1316,6 +1406,187 @@ void CudaInteropSurface::ReleaseTemporalHistory() {
 
 void CudaInteropSurface::ResetTemporalHistory() {
     temporalHistoryValid_ = false;
+    ResetUctTemporalHistory();
+    ClearUctAllocationFailures(); // explicit reset: one bounded UCT retry
+}
+
+bool CudaInteropSurface::EnsureUctTemporalBuffers(unsigned int width, unsigned int height) {
+    if (deviceUctTemporalHistory_ && deviceUctSmoothed_ &&
+        uctTemporalWidth_ == width && uctTemporalHeight_ == height) {
+        return true;
+    }
+    // Sustained VRAM pressure: a failed size is not retried, so no
+    // allocation, free or stream drain repeats per frame.
+    if (uctAllocationFailedWidth_ == width && uctAllocationFailedHeight_ == height) return false;
+    ReleaseUctTemporalBuffers(); // size change only; drains like EnsureTemporalHistory
+    if (streamFaulted_ || deviceUctTemporalHistory_ || deviceUctSmoothed_) return false;
+    // First use (or a new size) is a legacy pitched allocation that may
+    // implicitly synchronize the device; it is never repeated per frame.
+    float4* history = nullptr;
+    uchar4* smoothed = nullptr;
+    size_t historyPitch = 0, smoothedPitch = 0;
+    cudaError_t status = cudaDeviceId_ >= 0 ? cudaSetDevice(cudaDeviceId_) : cudaSuccess;
+    if (status == cudaSuccess && ConsumeInjectedUctFailure(gInjectedUctTemporalFailures))
+        status = cudaErrorMemoryAllocation;
+    if (status == cudaSuccess)
+        status = cudaMallocPitch(reinterpret_cast<void**>(&history), &historyPitch,
+                                 static_cast<size_t>(width) * sizeof(float4), height);
+    if (status == cudaSuccess) {
+        status = cudaMallocPitch(reinterpret_cast<void**>(&smoothed), &smoothedPitch,
+                                 static_cast<size_t>(width) * sizeof(uchar4), height);
+        // Nothing was ever queued against the fresh half: free it at once.
+        if (status != cudaSuccess) cudaFree(history);
+    }
+    if (status != cudaSuccess) {
+        // UCT-only: clear the per-thread error so the display kernels'
+        // launch checks never inherit this failure.
+        (void)cudaGetLastError();
+        uctAllocationFailedWidth_ = width;
+        uctAllocationFailedHeight_ = height;
+        return false;
+    }
+    deviceUctTemporalHistory_ = history;
+    deviceUctHistoryPitch_ = historyPitch;
+    deviceUctSmoothed_ = smoothed;
+    deviceUctSmoothedPitch_ = smoothedPitch;
+    uctTemporalWidth_ = width;
+    uctTemporalHeight_ = height;
+    return true;
+}
+
+// One-time lazy allocation on the first UCT-temporal frame, matching the
+// legacy pitched allocation/free lifetime of the other media snapshots
+// (FrameReprocessingState frees with cudaFree after the surface drain).
+// Legacy cudaMallocPitch may implicitly synchronize the device, so this is
+// not free: it runs once per surface, never in steady state, and a failure
+// degrades only UCT. Stream-ordered pool allocation would avoid that sync
+// but changes the free contract (cudaFreeAsync on the owning stream) and
+// would need a flat allocation with a self-computed pitch, so it is not a
+// drop-in replacement for these two buffers. The pair is allocated and, on
+// failure, freed together (nothing was queued against it), so a partial pair
+// never persists. A failure is latched per surface, whose size is fixed,
+// until an explicit reset; it is reported separately from the live EMA.
+bool CudaInteropSurface::EnsureUctSnapshotBuffers() {
+    if (!frameReprocessing_) return false;
+    auto& saved = *frameReprocessing_;
+    if (saved.uctTemporal && saved.uctSmoothed) return true;
+    if (uctSnapshotFailed_) return false;
+    float4* temporal = nullptr;
+    uchar4* smoothed = nullptr;
+    size_t temporalPitch = 0, smoothedPitch = 0;
+    cudaError_t status = ConsumeInjectedUctFailure(gInjectedUctSnapshotFailures)
+        ? cudaErrorMemoryAllocation
+        : cudaMallocPitch(reinterpret_cast<void**>(&temporal), &temporalPitch,
+                          static_cast<size_t>(width_) * sizeof(float4), height_);
+    if (status == cudaSuccess) {
+        status = cudaMallocPitch(reinterpret_cast<void**>(&smoothed), &smoothedPitch,
+                                 static_cast<size_t>(width_) * sizeof(uchar4), height_);
+        if (status != cudaSuccess) cudaFree(temporal);
+    }
+    if (status != cudaSuccess) {
+        (void)cudaGetLastError(); // UCT-only; never inherited by display checks
+        uctSnapshotFailed_ = true;
+        return false;
+    }
+    saved.uctTemporal = temporal;
+    saved.uctTemporalPitch = temporalPitch;
+    saved.uctSmoothed = smoothed;
+    saved.uctSmoothedPitch = smoothedPitch;
+    saved.uctTemporalValid = false;
+    saved.uctSmoothedValid = false;
+    return true;
+}
+
+void CudaInteropSurface::ReleaseUctTemporalBuffers() {
+    // Any later seed starts a new history, so it carries a new epoch.
+    if (uctTemporalValid_ || uctBlendCount_ != 0) ++uctHistoryEpoch_;
+    uctTemporalValid_ = false;
+    uctBlendCount_ = 0;
+    uctIdentityValid_ = false;
+    if (deviceUctTemporalHistory_ || deviceUctSmoothed_) {
+        if (!SynchronizeStream()) return; // faulted: retained with the surface
+        if (deviceUctTemporalHistory_) cudaFree(deviceUctTemporalHistory_);
+        if (deviceUctSmoothed_) cudaFree(deviceUctSmoothed_);
+        deviceUctTemporalHistory_ = nullptr;
+        deviceUctSmoothed_ = nullptr;
+    }
+    deviceUctHistoryPitch_ = 0;
+    deviceUctSmoothedPitch_ = 0;
+    uctTemporalWidth_ = 0;
+    uctTemporalHeight_ = 0;
+}
+
+void CudaInteropSurface::ResetUctTemporalHistory() {
+    uctTemporalValid_ = false;
+    uctBlendCount_ = 0;
+    uctSeedFrame_ = 0;
+    uctTemporalFailed_ = false;
+    uctIdentityValid_ = false;
+    ++uctHistoryEpoch_;
+    // A true reset also revokes the saved pre-frame snapshot: media replay
+    // must not resurrect a history (or its identity/epoch) from before a
+    // UCT toggle, alpha/geometry reseed or smoothing gap. A paused refresh
+    // may instead rebuild this frame's pair as a new one-frame history.
+    if (frameReprocessing_) {
+        frameReprocessing_->uctSmoothedValid = false;
+        frameReprocessing_->uctTemporalValid = false;
+        frameReprocessing_->uctPreFrameHistory = false;
+        frameReprocessing_->uctIdentityValid = false;
+        frameReprocessing_->uctSmoothedRevoked = true;
+    }
+}
+
+void CudaInteropSurface::ClearUctAllocationFailures() {
+    uctAllocationFailedWidth_ = 0;
+    uctAllocationFailedHeight_ = 0;
+    uctSnapshotFailed_ = false;
+}
+
+// Runs inside RefreshUctAnalysis after its graphics wait. The reset already
+// advanced the history epoch; this seeds exactly what processing the saved
+// frame now would (a one-frame EMA of its current geometry), keeps the live
+// history continuous for the next frame and leaves display state untouched.
+// A failure is UCT-only and refuses; it is not retried until another reset.
+bool CudaInteropSurface::RegenerateUctSmoothedSnapshot() {
+    auto& saved = *frameReprocessing_;
+    saved.uctSmoothedRevoked = false;
+    if (!EnsureUctSnapshotBuffers()) return false;
+    bool seeded = false;
+    if (EnsureUctTemporalBuffers(width_, height_)) {
+        try {
+            LaunchTemporalSmoothLinear(saved.uctSmoothed, saved.uctSmoothedPitch,
+                                       saved.geometry, saved.geometryPitch,
+                                       deviceUctTemporalHistory_, deviceUctHistoryPitch_,
+                                       static_cast<int>(width_), static_cast<int>(height_),
+                                       saved.uctWantedAlpha, false, stream_);
+            seeded = true;
+        } catch (const std::exception&) {
+        }
+    }
+    if (!seeded) {
+        uctTemporalFailed_ = true;
+        if (uctTemporalValid_ || uctBlendCount_ != 0) ++uctHistoryEpoch_;
+        uctTemporalValid_ = false;
+        uctBlendCount_ = 0;
+        uctIdentityValid_ = false;
+        return false;
+    }
+    uctTemporalValid_ = true;
+    uctSeedFrame_ = saved.frame;
+    uctBlendCount_ = 1;
+    uctTemporalAlpha_ = saved.uctWantedAlpha;
+    uctIdentityEpoch_ = saved.epoch;
+    uctIdentityRotation_ = saved.uctWantedRotation;
+    uctIdentityStabilization_ = saved.uctWantedStabilization;
+    uctIdentityKeystone_ = saved.uctWantedKeystone;
+    uctIdentityValid_ = true;
+    uctTemporalFailed_ = false;
+    saved.uctSmoothedHistoryEpoch = uctHistoryEpoch_;
+    saved.uctSmoothedSeedFrame = saved.frame;
+    saved.uctSmoothedBlendCount = 1;
+    saved.uctSmoothedAlpha = saved.uctWantedAlpha;
+    saved.uctSmoothedValid = true;
+    return true;
 }
 
 bool CudaInteropSurface::EnsureStabilizationBuffers(unsigned int width,
@@ -1488,6 +1759,13 @@ bool CudaInteropSurface::EnsureStabilizationBuffers(unsigned int width,
                           sizeof(BumpHoldState)),
                       "cudaMalloc bump hold state failed");
     LaunchResetBumpHoldState(deviceBumpHoldState_, stream_);
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(&deviceBumpHoldProvenance_),
+                          sizeof(BumpHoldProvenance)),
+                      "cudaMalloc bump hold provenance failed");
+    ThrowIfCudaFailed(cudaMemsetAsync(deviceBumpHoldProvenance_, 0,
+                                      sizeof(BumpHoldProvenance), stream_),
+                      "cudaMemsetAsync bump hold provenance failed");
     ThrowIfCudaFailed(cudaMallocHost(
                           reinterpret_cast<void**>(&hostStabDiagnostics_),
                           5 * sizeof(float4)),
@@ -1538,7 +1816,7 @@ void CudaInteropSurface::ReleaseStabilization() {
         deviceTripodReferenceAccumulator_ ||
         deviceTripodReferenceSampleCounts_ || deviceTripodFocusScore_ ||
         deviceTripodBestFocusScore_ || deviceTripodSelectionFlag_ ||
-        deviceBumpHoldFrame_ || deviceBumpHoldState_ ||
+        deviceBumpHoldFrame_ || deviceBumpHoldState_ || deviceBumpHoldProvenance_ ||
         deviceStabColProjCurr_ || deviceStabRowProjCurr_ ||
         deviceStabColProjPrev_ || deviceStabRowProjPrev_ || deviceStabState_ ||
         hostStabDiagnostics_ ||
@@ -1642,6 +1920,10 @@ void CudaInteropSurface::ReleaseStabilization() {
         cudaFree(deviceBumpHoldState_);
         deviceBumpHoldState_ = nullptr;
     }
+    if (deviceBumpHoldProvenance_) {
+        cudaFree(deviceBumpHoldProvenance_);
+        deviceBumpHoldProvenance_ = nullptr;
+    }
     if (deviceStabColProjCurr_) {
         cudaFree(deviceStabColProjCurr_);
         deviceStabColProjCurr_ = nullptr;
@@ -1722,6 +2004,7 @@ void CudaInteropSurface::ResetStabilization() {
     tripodNextRecoverySlot_ = 1u;
     activeStabilizerEngine_ = -1;
     lastStabilizerMs_ = -1.0f;
+    ResetUctTemporalHistory();
     stabilizerStatus_ = "Stabilizer resetting";
 }
 
@@ -2629,6 +2912,11 @@ void CudaInteropSurface::ResetKeystoneCornersToIdentity() {
 // left to finish harmlessly (its pinned buffer stays allocated), so no stream
 // sync is needed here.
 void CudaInteropSurface::ResetKeystone() {
+    ResetKeystoneState();
+    ResetUctTemporalHistory();
+}
+
+void CudaInteropSurface::ResetKeystoneState() {
     controlDiagnostics_ = {}; pendingControlDiagnostics_ = {};
     keystoneReferenceValid_ = false; keystoneLastCornerDelta_ = 0;
     keystoneCopyPending_ = false;
@@ -2689,6 +2977,7 @@ void CudaInteropSurface::RestoreKeystoneCorrection() {
         keystoneCorners_[i] = correction[static_cast<size_t>(i)];
     }
     keystoneFramesSinceDetection_ = 0;
+    ResetUctTemporalHistory();
     keystoneReferenceValid_ = keystoneHistoryIndex_ > 0;
     keystoneLastCornerDelta_ = 0;
 }
@@ -3654,7 +3943,10 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
     settings.ApplyTextClarityMaster();
     if (lastTextClarityMasterEnabled_ != settings.enableAutoTextClarity) {
         lastTextClarityMasterEnabled_ = settings.enableAutoTextClarity;
-        ResetTemporalHistory(); // Text-colored pixels cannot linger after a master edge.
+        // Text-colored display pixels cannot linger after a master edge. The
+        // neutral pre-appearance UCT history (and its replay snapshot) is
+        // unaffected by this appearance-only edit, so it is kept.
+        temporalHistoryValid_ = false;
         ResetTextClarityHistory();
         focusScoreValid_ = false;
         focusFrameCounter_ = 0;
@@ -4044,6 +4336,15 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                 "cudaEventRecord input timing boundary failed");
         }
 
+        // One authority for both the pre-frame snapshot below and the
+        // analysis capture after geometry: UCT temporal work (including
+        // its snapshot allocation/copies) exists only when all of these hold.
+        // The settings-level request is also recorded while UCT is off.
+        const bool uctTemporalRequested = settings.enableTemporalSmoothing &&
+            resolvedFormat == CudaBufferFormat::kRgba8 &&
+            !(settings.enableStabilization && settings.enableBumpHold);
+        const bool uctTemporalWanted = uctAnalysisEnabled_ && uctTemporalRequested;
+        if (frameReprocessing_ && uctTemporalWanted) EnsureUctSnapshotBuffers();
         const bool replay = input.reprocessFrame && frameReprocessing_ && frameReprocessing_->valid;
         if (input.reprocessFrame && !replay) {
             throw std::runtime_error("Media frame replay has no matching geometry snapshot");
@@ -4054,6 +4355,7 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                 // Explicit history steps change the warp for this sample.
                 // Composite histories have no valid mapping across that edit.
                 saved.temporalValid = saved.maskValid = saved.levelsValid = false;
+                ResetUctTemporalHistory(); // the stepped warp starts a new UCT history
                 uctAnalysisFrame_.reset(); uctLastCaptureMs_ = 0;
             }
             const auto copy = [&](void* dst, size_t dstPitch, const void* src, size_t srcPitch,
@@ -4068,6 +4370,36 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                 if (saved.temporalValid)
                     copy(deviceTemporalHistory_, devicePitchHistory_, saved.temporal, saved.temporalPitch,
                          static_cast<size_t>(procWidth) * sizeof(float4), procHeight);
+                // Restore the saved history only when it is still valid and
+                // this frame wants the EMA: a true reset since the snapshot
+                // (UCT toggle, reseed, smoothing gap) revoked it, and the
+                // current epoch authority then wins over stale metadata.
+                // Otherwise a wanted replay reseeds from this frame. A
+                // pre-frame history that existed but cannot be restored
+                // ends here, so that reseed takes a new epoch; a seed frame
+                // keeps its own. Unwanted frames reset in the analysis stage.
+                const bool restoreUct = uctTemporalWanted && saved.uctTemporalValid &&
+                    saved.uctTemporal && deviceUctTemporalHistory_ != nullptr;
+                if (!restoreUct && uctTemporalWanted) {
+                    if (saved.uctPreFrameHistory) ++uctHistoryEpoch_;
+                    uctTemporalValid_ = false;
+                    uctBlendCount_ = 0;
+                    uctIdentityValid_ = false;
+                }
+                if (restoreUct) {
+                    uctTemporalValid_ = true;
+                    uctHistoryEpoch_ = saved.uctHistoryEpoch;
+                    uctSeedFrame_ = saved.uctSeedFrame;
+                    uctBlendCount_ = saved.uctBlendCount;
+                    uctTemporalAlpha_ = saved.uctAlpha;
+                    uctIdentityEpoch_ = saved.uctIdentityEpoch;
+                    uctIdentityRotation_ = saved.uctIdentityRotation;
+                    uctIdentityStabilization_ = saved.uctIdentityStabilization;
+                    uctIdentityKeystone_ = saved.uctIdentityKeystone;
+                    uctIdentityValid_ = saved.uctIdentityValid;
+                    copy(deviceUctTemporalHistory_, deviceUctHistoryPitch_, saved.uctTemporal, saved.uctTemporalPitch,
+                         static_cast<size_t>(procWidth) * sizeof(float4), procHeight);
+                }
                 if (saved.maskValid)
                     copy(deviceTextMaskHistory_, deviceTextMaskPitch_, saved.mask, saved.maskPitch, procWidth, procHeight);
                 if (saved.levelsValid)
@@ -4081,6 +4413,23 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                 if (saved.temporalValid)
                     copy(saved.temporal, saved.temporalPitch, deviceTemporalHistory_, devicePitchHistory_,
                          static_cast<size_t>(procWidth) * sizeof(float4), procHeight);
+                saved.uctPreFrameHistory = uctTemporalWanted && uctTemporalValid_;
+                saved.uctTemporalValid = saved.uctPreFrameHistory &&
+                    saved.uctTemporal && deviceUctTemporalHistory_ != nullptr;
+                saved.uctHistoryEpoch = uctHistoryEpoch_;
+                saved.uctSeedFrame = uctSeedFrame_;
+                saved.uctBlendCount = uctBlendCount_;
+                saved.uctAlpha = uctTemporalAlpha_;
+                saved.uctIdentityEpoch = uctIdentityEpoch_;
+                saved.uctIdentityRotation = uctIdentityRotation_;
+                saved.uctIdentityStabilization = uctIdentityStabilization_;
+                saved.uctIdentityKeystone = uctIdentityKeystone_;
+                saved.uctIdentityValid = uctIdentityValid_;
+                saved.uctSmoothedValid = false;
+                saved.uctSmoothedRevoked = false;
+                if (saved.uctTemporalValid)
+                    copy(saved.uctTemporal, saved.uctTemporalPitch, deviceUctTemporalHistory_, deviceUctHistoryPitch_,
+                         static_cast<size_t>(procWidth) * sizeof(float4), procHeight);
                 if (saved.maskValid)
                     copy(saved.mask, saved.maskPitch, deviceTextMaskHistory_, deviceTextMaskPitch_, procWidth, procHeight);
                 if (saved.levelsValid)
@@ -4092,6 +4441,9 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
         // CUDA geometry. Tracking, recovery, path state, and the affine warp
         // remain device-resident.
         bool sampledControlDiagnostics = false;
+        // Set only when ApplyBumpHold ran for this new sample and its compact
+        // device record names what `current` now shows.
+        bool holdRecordedThisFrame = false;
         if (!replay && settings.enableStabilization) {
             if (!EnsureStabilizationBuffers(procWidth, procHeight)) {
                 return false;
@@ -4527,6 +4879,12 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                     current, currentPitch, deviceBumpHoldFrame_,
                     deviceBumpHoldPitch_, static_cast<int>(procWidth),
                     static_cast<int>(procHeight), deviceBumpHoldState_, stream_);
+                // Recorded on every Extra Stable frame, not only while UCT
+                // is on: enabling UCT mid-hold must still name the held frame.
+                LaunchRecordBumpHoldProvenance(
+                    deviceBumpHoldState_, deviceBumpHoldProvenance_,
+                    static_cast<unsigned long long>(input.frameSequence), stream_);
+                holdRecordedThisFrame = true;
             }
 
             if (sampleStabilizerTiming) {
@@ -4611,13 +4969,23 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
             } else if (keystoneFullWidth_ != 0) {
                 // Stage is off, so an eased return would be invisible anyway: drop
                 // any pending snapshot and re-enable cleanly from identity.
-                ResetKeystone();
+                // This repeats every keystone-off frame; the UCT identity's
+                // keystone flag already restarted the UCT history once, so
+                // only the keystone host state is reset here.
+                ResetKeystoneState();
             }
             if (frameReprocessing_) {
                 auto& saved = *frameReprocessing_;
                 ThrowIfCudaFailed(cudaMemcpy2DAsync(saved.geometry, saved.geometryPitch, current, currentPitch,
                     static_cast<size_t>(procWidth) * sizeof(uchar4), procHeight, cudaMemcpyDeviceToDevice, stream_),
                     "Media geometry snapshot copy failed");
+                saved.holdRecorded = false;
+                if (holdRecordedThisFrame) {
+                    ThrowIfCudaFailed(cudaMemcpyAsync(saved.hold, deviceBumpHoldProvenance_,
+                        sizeof(BumpHoldProvenance), cudaMemcpyDeviceToDevice, stream_),
+                        "Media Extra Stable record snapshot copy failed");
+                    saved.holdRecorded = true;
+                }
                 saved.valid = true;
                 saved.keystoneDirty = keystoneSingleStepRequested_ || keystoneSingleStepInFlight_;
             }
@@ -4639,21 +5007,119 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                 "cudaEventRecord geometry timing boundary failed");
         }
         if (frameReprocessing_) {
-            frameReprocessing_->epoch = input.cameraEpoch;
-            frameReprocessing_->frame = input.frameSequence;
-            frameReprocessing_->appearance = input.settingsGeneration;
+            auto& saved = *frameReprocessing_;
+            saved.epoch = input.cameraEpoch;
+            saved.frame = input.frameSequence;
+            saved.appearance = input.settingsGeneration;
+            saved.uctSmoothedWanted = uctTemporalRequested;
+            saved.uctWantedAlpha = std::clamp(settings.temporalSmoothingAlpha, 0.0f, 1.0f);
+            saved.uctWantedRotation = turns;
+            saved.uctWantedStabilization = settings.enableStabilization;
+            saved.uctWantedKeystone = settings.enableKeystone;
         }
 
         // Independently owned, appearance-neutral analysis before display
         // enhancement/zoom. Capture enqueues only a D2D copy on this stream;
         // inference and all host waits belong to the OCR worker.
         if (uctAnalysisEnabled_) {
+            const bool wantSmoothed = uctTemporalWanted;
+            bool smoothedReady = false;
+            if (!wantSmoothed) {
+                // Any gap in wanted smoothing (off, Extra Stable hold, FP16
+                // staging) ends the neutral history, so a later EMA never
+                // reuses an old seed/count. Single-frame analysis has no
+                // smoothing failure to report.
+                if (uctTemporalValid_ || uctBlendCount_ != 0 ||
+                    (frameReprocessing_ && (frameReprocessing_->uctTemporalValid ||
+                                            frameReprocessing_->uctPreFrameHistory ||
+                                            frameReprocessing_->uctSmoothedValid)))
+                    ResetUctTemporalHistory();
+                uctTemporalFailed_ = false;
+            } else {
+                const float alpha = std::clamp(settings.temporalSmoothingAlpha, 0.0f, 1.0f);
+                const bool identityMismatch = uctTemporalValid_ &&
+                    (!uctIdentityValid_ || uctIdentityEpoch_ != input.cameraEpoch ||
+                     uctIdentityRotation_ != turns ||
+                     uctIdentityStabilization_ != settings.enableStabilization ||
+                     uctIdentityKeystone_ != settings.enableKeystone ||
+                     uctTemporalAlpha_ != alpha);
+                if (identityMismatch) ResetUctTemporalHistory();
+                // This frame's outcome, not an earlier reset, now decides
+                // whether a paused refresh may publish its pair.
+                if (frameReprocessing_) frameReprocessing_->uctSmoothedRevoked = false;
+                bool computed = false;
+                if (EnsureUctTemporalBuffers(procWidth, procHeight)) {
+                    try {
+                        LaunchTemporalSmoothLinear(deviceUctSmoothed_, deviceUctSmoothedPitch_,
+                                                   current, currentPitch,
+                                                   deviceUctTemporalHistory_, deviceUctHistoryPitch_,
+                                                   static_cast<int>(procWidth), static_cast<int>(procHeight),
+                                                   alpha, uctTemporalValid_, stream_);
+                        computed = true;
+                    } catch (const std::exception&) {
+                    }
+                }
+                if (computed) {
+                    if (!uctTemporalValid_) {
+                        uctSeedFrame_ = input.frameSequence;
+                        uctBlendCount_ = 0;
+                    }
+                    uctTemporalValid_ = true;
+                    ++uctBlendCount_;
+                    uctTemporalAlpha_ = alpha;
+                    uctIdentityEpoch_ = input.cameraEpoch;
+                    uctIdentityRotation_ = turns;
+                    uctIdentityStabilization_ = settings.enableStabilization;
+                    uctIdentityKeystone_ = settings.enableKeystone;
+                    uctIdentityValid_ = true;
+                    uctTemporalFailed_ = false;
+                    smoothedReady = true;
+                    if (frameReprocessing_ && frameReprocessing_->uctSmoothed) {
+                        // The replay snapshot fails separately: the live pair
+                        // stays truthful, only paused refresh/replay is lost.
+                        auto& saved = *frameReprocessing_;
+                        if (cudaMemcpy2DAsync(saved.uctSmoothed, saved.uctSmoothedPitch,
+                                              deviceUctSmoothed_, deviceUctSmoothedPitch_,
+                                              static_cast<size_t>(procWidth) * sizeof(uchar4), procHeight,
+                                              cudaMemcpyDeviceToDevice, stream_) == cudaSuccess) {
+                            saved.uctSmoothedHistoryEpoch = uctHistoryEpoch_;
+                            saved.uctSmoothedSeedFrame = uctSeedFrame_;
+                            saved.uctSmoothedBlendCount = uctBlendCount_;
+                            saved.uctSmoothedAlpha = uctTemporalAlpha_;
+                            saved.uctSmoothedValid = true;
+                        } else {
+                            (void)cudaGetLastError();
+                            uctSnapshotFailed_ = true;
+                            saved.uctSmoothedValid = false;
+                        }
+                    }
+                } else {
+                    // UCT-only failure: display continues, UCT reports
+                    // unavailable, and nothing raw is relabelled smoothed.
+                    // No earlier snapshot/analysis may be republished for
+                    // this frame either, and a later seed is a new history.
+                    uctTemporalFailed_ = true;
+                    if (uctTemporalValid_ || uctBlendCount_ != 0) ++uctHistoryEpoch_;
+                    uctTemporalValid_ = false;
+                    uctBlendCount_ = 0;
+                    uctIdentityValid_ = false;
+                    if (frameReprocessing_) frameReprocessing_->uctSmoothedValid = false;
+                    uctAnalysisFrame_.reset();
+                }
+            }
             const auto now=std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now().time_since_epoch()).count();
-            if(now-uctLastCaptureMs_>=80) {
+            if(now-uctLastCaptureMs_>=80 && (!wantSmoothed || smoothedReady)) {
                 if(!uctAnalysisPool_) uctAnalysisPool_=std::make_unique<uct::AnalysisPool>();
-                auto frame=uctAnalysisPool_->Capture(current,currentPitch,procWidth,procHeight,stream_,
-                    input.cameraEpoch,input.frameSequence,input.settingsGeneration);
+                auto frame = wantSmoothed
+                    ? uctAnalysisPool_->CapturePair(deviceUctSmoothed_, deviceUctSmoothedPitch_,
+                        current, currentPitch, procWidth, procHeight, stream_,
+                        input.cameraEpoch, input.frameSequence, input.settingsGeneration,
+                        uctHistoryEpoch_, uctSeedFrame_, uctBlendCount_, uctTemporalAlpha_)
+                    : uctAnalysisPool_->Capture(current,currentPitch,procWidth,procHeight,stream_,
+                        input.cameraEpoch,input.frameSequence,input.settingsGeneration,
+                        replay ? (frameReprocessing_->holdRecorded ? frameReprocessing_->hold : nullptr)
+                               : (holdRecordedThisFrame ? deviceBumpHoldProvenance_ : nullptr));
                 if(frame) {uctAnalysisFrame_=std::move(frame);uctLastCaptureMs_=now;}
             }
         }
@@ -5023,6 +5489,7 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
         qWarning() << "ProcessFrame exception:" << e.what();
         controlDiagnostics_ = {}; pendingControlDiagnostics_ = {};
         temporalHistoryValid_ = false;
+        ResetUctTemporalHistory();
         stabPrevValid_ = false;
         keystoneCopyPending_ = false;
         autoLevelsValid_ = false;
@@ -5032,6 +5499,7 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
         controlDiagnostics_ = {}; pendingControlDiagnostics_ = {};
         qWarning() << "ProcessFrame encountered unknown exception";
         temporalHistoryValid_ = false;
+        ResetUctTemporalHistory();
         stabPrevValid_ = false;
         keystoneCopyPending_ = false;
         autoLevelsValid_ = false;

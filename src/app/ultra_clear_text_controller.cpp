@@ -50,11 +50,18 @@ bool SameColors(const uct::LineColors& a, const uct::LineColors& b)
 bool DeviceMatchesFrame(const UctImmutableFrame& frame, const UctGeometryKey& geometry)
 {
     const auto& device = frame.device;
-    return device && device->Data() &&
+    const bool paired = device && device->kind == uct::AnalysisKind::TemporallySmoothed;
+    return device && device->Data() && device->ValidationData() &&
+           device->ValidationPitch() >= static_cast<std::size_t>(device->width) * 4 &&
+           (!paired || (device->blendFrameCount >= 1 &&
+                        device->seedFrameSequence <= device->frameSequence &&
+                        device->historyEpoch != 0 && device->temporalAlpha >= 0.0f &&
+                        device->temporalAlpha <= 1.0f)) &&
            device->width == static_cast<int>(geometry.sceneWidth) &&
            device->height == static_cast<int>(geometry.sceneHeight) &&
            device->width > 0 && device->height > 0 && device->width <= 8192 && device->height <= 8192 &&
-           static_cast<std::size_t>(device->width) * static_cast<std::size_t>(device->height) * 4 <=
+           static_cast<std::size_t>(device->width) * static_cast<std::size_t>(device->height) * 4 *
+                   (paired ? 2 : 1) <=
                128ull * 1024 * 1024 &&
            device->pitch >= static_cast<std::size_t>(device->width) * 4 &&
            device->sourceEpoch == geometry.settings.sourceEpoch &&
@@ -320,9 +327,17 @@ void UltraClearTextController::SetShowOriginal(bool showOriginal)
     UpdateStatus();
 }
 
-void UltraClearTextController::SetMediaOverlaySuppressed(bool suppressed)
+void UltraClearTextController::SetMediaOverlaySuppressed(bool suppressed, bool extraStable)
 {
-    if (mediaOverlaySuppressed_ == suppressed) return;
+    if (mediaOverlaySuppressed_ == suppressed) {
+        // Only the named reason changed: no second revocation, status only.
+        if (mediaSuppressionExtraStable_ != extraStable) {
+            mediaSuppressionExtraStable_ = extraStable;
+            UpdateStatus();
+        }
+        return;
+    }
+    mediaSuppressionExtraStable_ = extraStable;
     if (suppressed) {
         // Drop the previous source input as well as semantic authority. A
         // delayed recognition callback cannot revive it behind this gate.
@@ -722,8 +737,12 @@ bool UltraClearTextController::OnPresented(const UctFrameContext& context)
         ++geometryGeneration_;
         Invalidate(hadGeometry ? QStringLiteral("scene") : QString());
     }
-    if (context.compositeFrames != compositePaused_) {
-        compositePaused_ = context.compositeFrames;
+    // Name the pause truthfully: an unsupported composite from a stabilized
+    // scene is Extra Stable's held frames; the CPU debug composite (applied
+    // stabilization is always false there) keeps its own reason.
+    compositeExtraStable_ = context.geometry.settings.stabilization || context.heldFrames;
+    if (context.unsupportedCompositeFrames != compositePaused_) {
+        compositePaused_ = context.unsupportedCompositeFrames;
         if (compositePaused_) {
             Invalidate(QStringLiteral("composite"));
         }
@@ -938,8 +957,24 @@ void UltraClearTextController::OnDeviceScene(const UctFrameContext& context, uct
     const auto now=clock_();
     if (device->sourceEpoch!=context.geometry.settings.sourceEpoch || device->timestampMs>now ||
         now-device->timestampMs>1000 || device->frameSequence!=context.frameSeq) return;
+    if (device->kind == uct::AnalysisKind::TemporallySmoothed &&
+        (device->blendFrameCount == 0 || device->seedFrameSequence > device->frameSequence ||
+         device->historyEpoch == 0 || !(device->temporalAlpha >= 0.0f) ||
+         device->temporalAlpha > 1.0f || !device->ValidationData())) return;
+    // Extra Stable can show an earlier held acquisition or a crossfade under
+    // this frame's sequence. Such a capture must carry the frame's own device
+    // record; an unnamed image is skipped rather than trusted as live.
+    const bool holdRecorded = device->HasHoldProvenance();
+    if (context.heldFrames && !holdRecorded) return;
     auto stamp=MakeStamp(context,device->timestampMs);
+    // Unresolved until the probe worker reads the record after the copy.
+    if (holdRecorded) stamp.holdDisplay = uct::HoldDisplay::Unknown;
     stamp.frameSeq=device->frameSequence;
+    stamp.temporallySmoothed = device->kind == uct::AnalysisKind::TemporallySmoothed;
+    stamp.historyEpoch = device->historyEpoch;
+    stamp.seedFrameSeq = device->seedFrameSequence;
+    stamp.blendFrameCount = device->blendFrameCount;
+    stamp.temporalAlpha = device->temporalAlpha;
     stamp.viewTransform={}; stamp.viewTransform.valid=true; // independent complete scene, no display crop
     stamp.viewportWidth=device->width;stamp.viewportHeight=device->height;
     lastProbeRequestMs_=now;
@@ -1012,6 +1047,7 @@ void UltraClearTextController::Invalidate(const QString& reason)
     stableProbes_ = 0;
     changedSinceSubmit_ = true;
     lastJobCoverage_ = {};
+    haveLastOcr_ = false;
     pendingReadbackId_ = 0;
     lastResultMoved_ = false;
     lastResultEmpty_ = false;
@@ -1055,10 +1091,27 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
         return;
     }
     const std::int64_t now = clock_();
-    const uct::ValidationSummary summary = model_.ApplyChecks(outcome.checks, outcome.stamp);
+    // An Extra Stable crossfade (or unreadable record) composites two
+    // acquisitions. It may hide or remove text, never renew its proof.
+    const bool composite = !uct::EvidenceAcquisition(outcome.stamp);
+    const uct::ValidationSummary summary = model_.ApplyChecks(outcome.checks, outcome.stamp, !composite);
     if (summary.valid > 0) NoteAdvancingValidation(now); // real pixels only
     if (summary.invalid > 0 && summary.valid == 0) {
         lastResultMoved_ = true;
+    }
+    if (composite) {
+        // Retain its identity as an admission barrier for late OCR results,
+        // never as independent proof or OCR input.
+        latestProbe_ = outcome.probe;
+        stableProbes_ = 0;
+        changedSinceSubmit_ = true;
+        if (deviceCandidate_ && deviceCandidate_->frameSequence == outcome.stamp.frameSeq)
+            deviceCandidate_.reset();
+        RefreshOverlay(now);
+        UpdateReadingText();
+        UpdateStatus();
+        lastOutcomeMs_ = handling.nsecsElapsed() / 1e6;
+        return;
     }
     const bool stable = outcome.similarity && *outcome.similarity >= timing_.stableSimilarity;
     stableProbes_ = stable ? stableProbes_ + 1 : 0;
@@ -1077,9 +1130,18 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
                 .intersected(QRectF(0.0, 0.0, 1.0, 1.0));
         const bool covered = Area(viewScene) > 0.0 &&
                              Area(lastJobCoverage_.intersected(viewScene)) >= 0.8 * Area(viewScene);
-        const bool needed = model_.PendingWordCount() > 0 || !model_.HasAcceptedText() || !covered ||
-                            now - (advancingMediaScene_ ? advancingMediaLastSubmitMs_ : lastSubmitMs_) >=
-                                timing_.refreshIntervalMs;
+        const std::int64_t sinceSubmit =
+            now - (advancingMediaScene_ ? advancingMediaLastSubmitMs_ : lastSubmitMs_);
+        // A held image repeats an acquisition already read: it cannot confirm
+        // pending words, so it is re-read only to recover lost text geometry
+        // (for example after keystone drift) at the ordinary refresh cadence.
+        const std::uint64_t acquisition = uct::EvidenceAcquisition(outcome.stamp).value_or(0);
+        const bool repeatedHold = outcome.stamp.holdDisplay == uct::HoldDisplay::Held && haveLastOcr_ &&
+            lastOcrGeneration_ == geometryGeneration_ && lastOcrAcquisition_ == acquisition;
+        const bool needed = repeatedHold
+            ? !model_.HasAcceptedText() && sinceSubmit >= timing_.refreshIntervalMs
+            : model_.PendingWordCount() > 0 || !model_.HasAcceptedText() || !covered ||
+                  sinceSubmit >= timing_.refreshIntervalMs;
         // Latest-only: a busy worker only receives a replacement after the
         // scene changed, so slow recognition cannot accumulate work. The
         // pixels move on without a copy.
@@ -1096,6 +1158,9 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
                 lastSubmitMs_ = now;
                 lastJobCoverage_ = viewScene;
                 changedSinceSubmit_ = false;
+                lastOcrAcquisition_ = acquisition;
+                lastOcrGeneration_ = geometryGeneration_;
+                haveLastOcr_ = true;
                 if (advancingMediaScene_) {
                     advancingMediaJob_ = job;
                     advancingMediaSubmittedAtMs_ = now;
@@ -1132,6 +1197,14 @@ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
             return;
         }
         advancingMediaJob_ = 0;
+    }
+    if (result.output.compositeInput) {
+        // The worker found Extra Stable crossfade pixels: no recognition ran.
+        // Neither evidence nor a failure; a later single acquisition is read.
+        changedSinceSubmit_ = true;
+        ++rejectedResults_;
+        UpdateStatus();
+        return;
     }
     // Admit compares recognized pixels with the newest independent scene probe.
     // The admission probe for this exact device frame is not a motion test.
@@ -1206,6 +1279,13 @@ uct::SourceStamp UltraClearTextController::ImmutableStamp(const UctImmutableFram
     if (const auto device = EffectiveDevice(frame, geometry_)) {
         stamp.viewportWidth = static_cast<std::uint32_t>(device->width);
         stamp.viewportHeight = static_cast<std::uint32_t>(device->height);
+        stamp.temporallySmoothed = device->kind == uct::AnalysisKind::TemporallySmoothed;
+        stamp.historyEpoch = device->historyEpoch;
+        stamp.seedFrameSeq = device->seedFrameSequence;
+        stamp.blendFrameCount = device->blendFrameCount;
+        stamp.temporalAlpha = device->temporalAlpha;
+        // Extra Stable media pixels are named only by the worker-read record.
+        if (device->HasHoldProvenance()) stamp.holdDisplay = uct::HoldDisplay::Unknown;
     } else if (frame.pixels) {
         stamp.viewportWidth = static_cast<std::uint32_t>(frame.pixels->width);
         stamp.viewportHeight = static_cast<std::uint32_t>(frame.pixels->height);
@@ -1283,8 +1363,9 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
     else immutableCorroborationJob_ = 0;
     if (result.output.inputFault && !result.output.cancelled) ++consecutiveInputFailures_;
     else if (result.output.ok) consecutiveInputFailures_ = 0;
+    // A paused Extra Stable crossfade is not recognized; it is not a failure.
     if (!result.output.ok && !result.output.cancelled && !result.output.inputFault &&
-        !result.output.backendPreparing) {
+        !result.output.backendPreparing && !result.output.compositeInput) {
         if (++consecutiveFailures_ >= kMaximumConsecutiveFailures) {
             backend_.state = uct::BackendState::kFailed;
             backend_.detail = result.output.error;
@@ -1467,7 +1548,12 @@ void UltraClearTextController::UpdateStatus()
         break;
     }
     if (mediaOverlaySuppressed_) {
-        SetStatus(QStringLiteral("Original camera text shown."));
+        if (mediaSuppressionExtraStable_) {
+            SetStatus(QStringLiteral("Paused while Extra Stable is on. The original camera image is shown."),
+                      true);
+        } else {
+            SetStatus(QStringLiteral("Original camera text shown."));
+        }
         return;
     }
     if (!AnalysisHealthy()) {
@@ -1475,8 +1561,9 @@ void UltraClearTextController::UpdateStatus()
         return;
     }
     if (compositePaused_) {
-        SetStatus(QStringLiteral("Paused while Temporal Smooth or Extra Stable is on. "
-                                 "The original camera image is shown."),
+        SetStatus(compositeExtraStable_
+                      ? QStringLiteral("Paused while Extra Stable is on. The original camera image is shown.")
+                      : QStringLiteral("Text recognition is paused in the debug composite view. The original camera image is shown."),
                   true);
     } else if (!cameraActive_ && !HasImmutableScene()) {
         SetStatus(QStringLiteral("Waiting for the camera."));

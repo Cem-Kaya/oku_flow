@@ -3521,5 +3521,17 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>Select video</source>
             <translation>ویڈیو منتخب کریں</translation>
         </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>زیادہ استحکام فعال ہونے پر عارضی طور پر روک دیا گیا ہے۔ کیمرے کی اصل تصویر دکھائی جا رہی ہے۔</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>کیمرے کا اصل متن دکھایا جا رہا ہے۔</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>ڈیبگ کمپوزٹ ویو میں متن کی شناخت عارضی طور پر رکی ہوئی ہے۔ کیمرے کی اصل تصویر دکھائی جا رہی ہے۔</translation>
+        </message>
     </context>
 </TS>

@@ -3521,5 +3521,17 @@ Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</
             <source>Select video</source>
             <translation>Välj video</translation>
         </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>Pausad medan Extra stabil är på. Den ursprungliga kamerabilden visas.</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>Den ursprungliga kameratexten visas.</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>Textigenkänningen är pausad i den sammansatta felsökningsvyn. Den ursprungliga kamerabilden visas.</translation>
+        </message>
     </context>
 </TS>

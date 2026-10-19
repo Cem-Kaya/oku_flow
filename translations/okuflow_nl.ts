@@ -3521,5 +3521,17 @@ Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u
             <source>Select video</source>
             <translation>Video selecteren</translation>
         </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>Gepauzeerd zolang Extra stabiel aanstaat. Het oorspronkelijke camerabeeld wordt getoond.</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>De oorspronkelijke cameratekst wordt weergegeven.</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>Tekstherkenning is gepauzeerd in de samengestelde debugweergave. Het oorspronkelijke camerabeeld blijft zichtbaar.</translation>
+        </message>
     </context>
 </TS>

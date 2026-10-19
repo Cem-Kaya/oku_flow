@@ -8,6 +8,7 @@
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "okuflow/ui/ultra_clear_text_panel.hpp"
 #include "ultra_clear_text_test_support.hpp"
+#include "uct_capture_test_cases.hpp"
 
 #include <QApplication>
 #include <QAccessible>
@@ -497,6 +498,10 @@ class UltraClearTextTests final : public QObject {
     Q_OBJECT
 
 private slots:
+    void frozenExportMatchesGlyphsAndSurvivesLiveChanges()
+    { uct_capture_test::FrozenExportMatchesGlyphsAndSurvivesLiveChanges(); }
+    void exportProtectsOmissionsAndKeepsInkAboveText()
+    { uct_capture_test::ExportProtectsOmissionsAndKeepsInkAboveText(); }
     void initTestCase() { RegisterFixtureFonts(); }
     void independentModelSelectorsKeepActivationSessionOnly() {
         UltraClearTextPanel panel;
@@ -608,6 +613,7 @@ private slots:
     void modelRequiresTemporalAgreement();
     void livePendingEvidenceRejectsDuplicatePixels();
     void liveCaptureAcceptsIdenticalPixelsOnlyFromNewAcquisitions();
+    void heldFramesReadOnceAndCrossfadesRevoke();
     void liveDuplicateRefreshPreservesEstablishedWords();
     void pendingEvidenceCannotCrossResetOrAdmissionMode();
     void modelRejectsStaleSceneAndLateResults();
@@ -632,6 +638,7 @@ private slots:
     void schedulerPixelEvidenceIgnoresAllocationPadding();
     void deviceRecognitionPrecedesReadbackAndDoesNotBlockUi();
     void cancelledDeviceJobRetainsInputAndRejectsLateOutput();
+    void smoothedProbeFallbackDownloadsOnlyTheCurrentProbe();
     void deviceProbesContinueAt16xWhileInferenceIsHeld();
     void staticDeviceSceneDoesNotContinuouslyRunOcr();
     void slowDeviceProbesStillSubmitOcrAndInputHealthRecovers();
@@ -645,6 +652,7 @@ private slots:
     void sourceSwitchAndGeometryChangeInvalidateImmediately();
     void contentMotionHidesTextAndStaleProbeExpires();
     void compositeFramesPauseAndShowOriginalPreservesState();
+    void smoothedResultsNeedCurrentFrameProbeProof();
     void unavailableBackendIsReportedHonestly();
     void explicitEnableRetriesBackendInitialization_data();
     void explicitEnableRetriesBackendInitialization();
@@ -696,6 +704,27 @@ void UltraClearTextTests::cancelledDeviceJobRetainsInputAndRejectsLateOutput()
     scheduler.Cancel();image.reset();QVERIFY(!owned.expired());
     shared->release=true;QTRY_VERIFY(!scheduler.HasWork());QTRY_VERIFY(owned.expired());
     QCOMPARE(completions.load(),0);QCOMPARE(shared->readbacks.load(),0);
+}
+
+void UltraClearTextTests::smoothedProbeFallbackDownloadsOnlyTheCurrentProbe()
+{
+    // A CPU-only DeviceImage has no resident validator. Its ReadProbe already
+    // returns current-frame pixels; it must not then download a full image.
+    auto shared=std::make_shared<DeviceJobState>();
+    RecognitionResult completed; std::atomic<bool> done{};
+    RecognitionScheduler reader(nullptr,[&](RecognitionResult r){completed=std::move(r);done=true;},{},1,4,true);
+    QTRY_COMPARE(reader.Status().state,BackendState::kReady);
+    auto image=std::make_shared<TestDeviceImage>(shared);
+    image->kind=AnalysisKind::TemporallySmoothed;
+    SourceStamp stamp;stamp.sourceEpoch=1;stamp.frameSeq=1;
+    stamp.temporallySmoothed=true;stamp.viewportWidth=128;stamp.viewportHeight=64;
+    stamp.viewTransform={0,0,1,1,0,0,1,1,true};
+    QVERIFY(reader.SubmitDevice(stamp,image));
+    QTRY_VERIFY(done.load());
+    QVERIFY(completed.output.ok);QVERIFY(completed.reference.IsValid());
+    QCOMPARE(shared->probes.load(),1);
+    QCOMPARE(shared->readbacks.load(),0);
+    QCOMPARE(shared->cpuCalls.load(),0);QCOMPARE(shared->gpuCalls.load(),0);
 }
 
 void UltraClearTextTests::deviceProbesContinueAt16xWhileInferenceIsHeld()
@@ -1243,6 +1272,184 @@ void UltraClearTextTests::liveCaptureAcceptsIdenticalPixelsOnlyFromNewAcquisitio
     }
 }
 
+void UltraClearTextTests::heldFramesReadOnceAndCrossfadesRevoke()
+{
+    const auto page=MakePage({QStringLiteral("Read page")});
+    const auto t=Transform(1,.5f,.5f);
+    const auto live=[&](std::int64_t ms){
+        auto r=ResultFor(page,t,Stamp(3,4,ms,t));r.authority=7;
+        r.stamp.liveCameraCapture=true;r.reference.stamp=r.stamp;r.sourcePixelDigest.clear();
+        return r;};
+    const auto held=[&](std::int64_t ms,std::uint64_t acquisition){
+        auto r=live(ms);r.stamp.holdDisplay=HoldDisplay::Held;
+        r.stamp.holdAcquisition=acquisition;r.reference.stamp=r.stamp;return r;};
+
+    // Enabling UCT during a hold reads the exact held still once: its words
+    // reach the reading pane behind an omission mark, but no glyph or
+    // screen-reader word is claimed from a single observation.
+    {
+        OverlayModel model;
+        auto first=held(110,100);
+        QCOMPARE(model.AdmitLiveCamera(first,first.stamp,nullptr,120),AdmitVerdict::kPending);
+        QVERIFY(model.SceneWords(120,110).isEmpty());
+        QVERIFY(model.ScreenLines(120,110).isEmpty());
+        QCOMPARE(model.ReadingText(120,110),QStringLiteral("\u2026 Read page"));
+        // Repeating the same held acquisition under newer presentation
+        // sequences is still that one observation, never corroboration.
+        auto repeat=held(150,100);
+        QCOMPARE(model.AdmitLiveCamera(repeat,repeat.stamp,nullptr,160),AdmitVerdict::kPending);
+        QVERIFY(model.SceneWords(160,150).isEmpty());
+        // The next genuinely new acquisition confirms the held pending text.
+        auto next=live(200);
+        QCOMPARE(model.AdmitLiveCamera(next,next.stamp,nullptr,210),AdmitVerdict::kAccepted);
+        QCOMPARE(model.SceneWords(210,200).size(),2);
+        QCOMPARE(model.ReadingText(210,200),QStringLiteral("Read page"));
+    }
+    // A held copy of an acquisition already read live cannot confirm it.
+    {
+        OverlayModel model;
+        auto first=live(100);
+        QCOMPARE(model.AdmitLiveCamera(first,first.stamp,nullptr,110),AdmitVerdict::kPending);
+        auto same=held(120,100);
+        QCOMPARE(model.AdmitLiveCamera(same,same.stamp,nullptr,130),AdmitVerdict::kPending);
+        QVERIFY(model.SceneWords(130,120).isEmpty());
+        auto again=held(180,100);
+        model.AdmitLiveCamera(again,again.stamp,nullptr,190);
+        QVERIFY(model.SceneWords(190,180).isEmpty());
+        auto next=live(200);
+        QCOMPARE(model.AdmitLiveCamera(next,next.stamp,nullptr,210),AdmitVerdict::kAccepted);
+        QCOMPARE(model.SceneWords(210,200).size(),2);
+    }
+    // Crossfade, unknown and inconsistent held stamps are never evidence,
+    // whatever their presentation sequence claims.
+    for (int kind=0;kind<4;++kind) {
+        OverlayModel model;
+        auto bad=live(110);
+        if(kind==0)bad.stamp.holdDisplay=HoldDisplay::Crossfade;
+        if(kind==1)bad.stamp.holdDisplay=HoldDisplay::Unknown;
+        if(kind==2){bad.stamp.holdDisplay=HoldDisplay::Held;bad.stamp.holdAcquisition=110;}
+        if(kind==3){bad.stamp.holdDisplay=HoldDisplay::Held;bad.stamp.holdAcquisition=120;}
+        bad.reference.stamp=bad.stamp;
+        QCOMPARE(model.AdmitLiveCamera(bad,bad.stamp,nullptr,120),AdmitVerdict::kFailed);
+        QCOMPARE(model.AcceptedWordCount(),0);
+        QVERIFY(model.ReadingText(120,110).isEmpty());
+    }
+    // Composite identity revokes display even with no queued line checks or
+    // an exhausted worker budget, and blocks a late older OCR completion.
+    for (int checkMode=0;checkMode<3;++checkMode) {
+        OverlayModel model;
+        auto first=live(100);model.AdmitLiveCamera(first,first.stamp,nullptr,110);
+        auto second=live(200);
+        QCOMPARE(model.AdmitLiveCamera(second,second.stamp,nullptr,210),AdmitVerdict::kAccepted);
+        QCOMPARE(model.SceneWords(210,200).size(),2);
+        auto blend=ProbeOf(RenderView(page.image,t,kViewWidth,kViewHeight),t,3,4,250,250);
+        blend.stamp.holdDisplay=HoldDisplay::Crossfade;
+        QVector<LineCheck> checks;
+        if (checkMode==1) {
+            checks=CheckLines(model.LineReferences(blend.stamp),blend,{},0.0);
+            for(auto& check:checks)check.checked=false;
+        }
+        const ValidationSummary revoked=checkMode==2 ? model.Validate(blend,250)
+            : model.ApplyChecks(checks,blend.stamp,false);
+        QCOMPARE(revoked.valid,0);
+        QVERIFY(model.SceneWords(260,250).isEmpty());
+        QVERIFY(model.ReadingText(260,250).isEmpty());
+        QCOMPARE(model.Lines().first().validatedFrameSeq,std::uint64_t{200});
+        QCOMPARE(model.AdmitLiveCamera(second,blend.stamp,&blend,260),AdmitVerdict::kContentMoved);
+        QVERIFY(model.SceneWords(260,250).isEmpty());
+        const auto current=ProbeOf(RenderView(page.image,t,kViewWidth,kViewHeight),t,3,4,300,300);
+        const ValidationSummary restored=model.Validate(current,300);
+        QVERIFY(restored.valid>0);
+        QCOMPARE(model.SceneWords(310,300).size(),2);
+        QCOMPARE(model.Lines().first().validatedFrameSeq,std::uint64_t{300});
+    }
+}
+void UltraClearTextTests::smoothedResultsNeedCurrentFrameProbeProof()
+{
+    const auto page=MakePage({QStringLiteral("Read page")});
+    const auto t=Transform(1,.5f,.5f);
+    const auto smoothed=[&](std::int64_t ms){
+        auto result=ResultFor(page,t,Stamp(3,4,ms,t));
+        result.authority=7;
+        result.stamp.liveCameraCapture=true;
+        result.stamp.temporallySmoothed=true;
+        result.stamp.historyEpoch=5;
+        result.stamp.seedFrameSeq=result.stamp.frameSeq;
+        result.stamp.blendFrameCount=4;
+        result.stamp.temporalAlpha=0.25f;
+        result.currentInputMatches.fill(true,result.output.lines.size());
+        result.reference.stamp=result.stamp;
+        result.sourcePixelDigest.clear();
+        return result;
+    };
+    OverlayModel model;
+    auto first=smoothed(100);
+    QCOMPARE(model.AdmitLiveCamera(first,first.stamp,nullptr,110),AdmitVerdict::kPending);
+    auto second=smoothed(200);
+    model.AdmitLiveCamera(second,second.stamp,nullptr,210);
+    // Two agreeing smoothed reads confirm the words but draw/read nothing:
+    // smoothed pixels are never their own proof.
+    QCOMPARE(model.AcceptedWordCount(),2);
+    QVERIFY(model.SceneWords(210,second.stamp.frameSeq).isEmpty());
+    QVERIFY(model.ReadingText(210,second.stamp.frameSeq).isEmpty() ||
+            !model.ReadingText(210,second.stamp.frameSeq).contains(QStringLiteral("Read")));
+    // An older single-frame probe cannot validate the newer blend.
+    const ProbeFrame older=ProbeOf(RenderView(page.image,t,kViewWidth,kViewHeight),t,3,4,
+                                    second.stamp.frameSeq-1,250);
+    model.Validate(older,250);
+    QVERIFY(model.SceneWords(260,second.stamp.frameSeq).isEmpty());
+    // A current-frame probe at the blend's latest frame validates it.
+    const ProbeFrame current=ProbeOf(RenderView(page.image,t,kViewWidth,kViewHeight),t,3,4,
+                                      second.stamp.frameSeq,300);
+    const ValidationSummary ok=model.Validate(current,300);
+    QVERIFY(ok.valid>0);
+    QVERIFY(!model.SceneWords(310,second.stamp.frameSeq).isEmpty());
+    QCOMPARE(model.Lines().first().validatedFrameSeq,second.stamp.frameSeq);
+    // Text that leaves the current frame is removed by the next probe, even
+    // though a fading smoothed blend would still show it.
+    const SyntheticPage moved=MakePage({QStringLiteral("Read page")},QPointF(150.0,90.0));
+    const ProbeFrame gone=ProbeOf(RenderView(moved.image,t,kViewWidth,kViewHeight),t,3,4,
+                                   second.stamp.frameSeq+1,400);
+    const ValidationSummary bad=model.Validate(gone,400);
+    QVERIFY(bad.invalid>0);
+    QVERIFY(model.SceneWords(410,second.stamp.frameSeq+1).isEmpty());
+
+    // A perfectly trackable raw patch may contain DIFFERENT text from the
+    // fading OCR input. Current-to-current tracking must not validate it.
+    for (const bool missingProof : {false,true}) {
+        OverlayModel changedInput;
+        auto staleFirst=first,staleSecond=second;
+        if (missingProof) { staleFirst.currentInputMatches.clear(); staleSecond.currentInputMatches.clear(); }
+        else { staleFirst.currentInputMatches.fill(false,staleFirst.output.lines.size());
+               staleSecond.currentInputMatches.fill(false,staleSecond.output.lines.size()); }
+        changedInput.AdmitLiveCamera(staleFirst,staleFirst.stamp,nullptr,110);
+        changedInput.AdmitLiveCamera(staleSecond,staleSecond.stamp,nullptr,210);
+        changedInput.Validate(current,300);
+        QVERIFY(changedInput.SceneWords(310,second.stamp.frameSeq).isEmpty());
+        QVERIFY(!changedInput.ReadingText(310,second.stamp.frameSeq).contains(QStringLiteral("Read")));
+        OverlayModel immutableInput;
+        immutableInput.AdmitImmutable(staleSecond,staleSecond.stamp,210);
+        QVERIFY(!immutableInput.ReadingText(210,second.stamp.frameSeq).contains(QStringLiteral("Read")));
+    }
+    // An intermittent OCR/current mismatch adds no new evidence, but must not
+    // erase an old line already validated by a probe at/after that OCR frame.
+    OverlayModel retained;
+    retained.AdmitLiveCamera(first,first.stamp,nullptr,110);
+    retained.AdmitLiveCamera(second,second.stamp,nullptr,210);
+    const auto latest=ProbeOf(RenderView(page.image,t,kViewWidth,kViewHeight),t,3,4,320,330);
+    retained.Validate(latest,330);
+    QVERIFY(!retained.SceneWords(335,320).isEmpty());
+    const auto old=retained.Lines().first();
+    auto failed=smoothed(320);failed.currentInputMatches.fill(false,failed.output.lines.size());
+    retained.AdmitLiveCamera(failed,failed.stamp,&latest,340);
+    QCOMPARE(retained.ReadingText(340,320),QStringLiteral("Read page"));
+    QCOMPARE(retained.Lines().first().id,old.id);
+    QCOMPARE(retained.Lines().first().validatedAtMs,old.validatedAtMs);
+    QCOMPARE(retained.Lines().first().validatedFrameSeq,old.validatedFrameSeq);
+    retained.Validate(ProbeOf(RenderView(moved.image,t,kViewWidth,kViewHeight),t,3,4,321,350),350);
+    QVERIFY(retained.SceneWords(360,321).isEmpty());
+}
+
 void UltraClearTextTests::liveDuplicateRefreshPreservesEstablishedWords()
 {
     const auto page=MakePage({QStringLiteral("Read page")});
@@ -1587,6 +1794,14 @@ void UltraClearTextTests::immutableEvidenceRequiresDistinctPixelsAndSafeRegistra
     QCOMPARE(model.AdmitImmutable(selected,selected.stamp,hour,&residentNeighbor),AdmitVerdict::kPending);
     residentNeighbor.corroborationTuning=tuning.match;
     QCOMPARE(model.AdmitImmutable(selected,selected.stamp,hour,&residentNeighbor),AdmitVerdict::kAccepted);
+    auto smoothedNeighbor=neighbor;
+    smoothedNeighbor.stamp.temporallySmoothed=true;
+    smoothedNeighbor.currentInputMatches.fill(false,neighbor.output.lines.size());
+    OverlayModel rejectedNeighbor;
+    QCOMPARE(rejectedNeighbor.AdmitImmutable(selected,selected.stamp,hour,&smoothedNeighbor),AdmitVerdict::kPending);
+    QVERIFY(rejectedNeighbor.SceneWords(hour,selected.stamp.frameSeq).isEmpty());
+    smoothedNeighbor.currentInputMatches.fill(true,neighbor.output.lines.size());
+    QCOMPARE(rejectedNeighbor.AdmitImmutable(selected,selected.stamp,hour,&smoothedNeighbor),AdmitVerdict::kAccepted);
     OverlayModel cpuModel(tuning);
     QCOMPARE(cpuModel.AdmitImmutable(selected,selected.stamp,hour,&neighbor),AdmitVerdict::kAccepted);
     QCOMPARE(model.ReadingText(hour,50),QStringLiteral("Read page"));
@@ -2278,13 +2493,34 @@ void UltraClearTextTests::compositeFramesPauseAndShowOriginalPreservesState()
     h.Present(false, 1);
     QVERIFY(h.overlay->WordCount() > 0);
 
+    // A displayed Temporal Smooth composite alone no longer pauses UCT:
+    // CUDA analysis uses its own paired neutral capture for it.
     h.context.compositeFrames = true;
+    h.Present(false, 1);
+    QVERIFY(h.overlay->WordCount() > 0);
+    // An unsupported composite from a stabilized scene still pauses and
+    // names Extra Stable; supported held frames arrive with their record.
+    h.context.geometry.settings.stabilization = true;
+    h.context.requested.stabilization = true;
+    h.context.unsupportedCompositeFrames = true;
     QVERIFY(!h.Present());
     QCOMPARE(h.overlay->WordCount(), 0);
-    QVERIFY(h.controller->StatusSource().contains(QStringLiteral("Temporal Smooth")));
+    QVERIFY(h.controller->StatusSource().contains(QStringLiteral("Extra Stable")));
+    QVERIFY(!h.controller->StatusSource().contains(QStringLiteral("Temporal Smooth")));
     for (int i = 0; i < 20; ++i) {
         QVERIFY(!h.Present());
     }
+    h.controller->SetMediaOverlaySuppressed(true,true);
+    QVERIFY(h.controller->StatusSource().contains(QStringLiteral("Extra Stable")));
+    auto* status=QAccessible::queryAccessibleInterface(h.panel->statusLabel());QVERIFY(status);
+    QCOMPARE(status->text(QAccessible::Name),h.panel->statusLabel()->text());
+    h.controller->SetMediaOverlaySuppressed(true,false);
+    QVERIFY(!h.controller->StatusSource().contains(QStringLiteral("Extra Stable")));
+    h.controller->SetMediaOverlaySuppressed(false);
+    h.context.geometry.settings.stabilization=false;
+    h.context.requested.stabilization=false;
+    h.Present();
+    QVERIFY(h.controller->StatusSource().contains(QStringLiteral("debug composite")));
 }
 
 void UltraClearTextTests::explicitEnableRetriesBackendInitialization_data()
@@ -2867,7 +3103,7 @@ void UltraClearTextTests::panelStatusUpdatesCachedAccessibleTextImmediately()
     auto* accessible = QAccessible::queryAccessibleInterface(panel.statusLabel());
     QVERIFY(accessible);
     for (const auto& source : {
-             QStringLiteral("Paused while Temporal Smooth or Extra Stable is on. The original camera image is shown."),
+             QStringLiteral("Paused while Extra Stable is on. The original camera image is shown."),
              QStringLiteral("Reading text…"),
              QStringLiteral("No steady printed text recognized yet."),
              QStringLiteral("Ultra Clear Text is off.")}) {

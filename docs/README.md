@@ -20,6 +20,8 @@ from adapter limitations and native acceptance still required.
 [Ultra Clear Text](ultra_clear_text.md#paddleocr-development-backend-2026-10-18)
 documents optional local PaddleOCR/TensorRT, CPU/Windows fallback, independent
 pre-zoom analysis, preparation, transfer boundaries and acceptance limits.
+[Temporal pause status review](uct_temporal_status_language_review_2026_10_19.md)
+records full small-agent review of the new 24-language Extra Stable message.
 [Implementation review repairs](uct_paddle_review_2026_10_18.md) distinguish
 verified fallback/ownership regressions from remaining camera/release acceptance.
 [Pan continuity and source-style review](uct_pan_style_review_2026_10_18.md)
@@ -137,8 +139,8 @@ The current frame flow is:
    clones queue their own CUDA dependency even when the viewport is busy.
    Recording textures require both producer completion and consumer lease
    retirement before reuse or obsolete-size eviction.
-   Recording reads the completed
-   processed scene before viewport scaling; periodic assistive grabs use the
+   New recordings use a separately owned clean Original source before effects,
+   viewport scaling, UCT and ink; periodic assistive grabs use the
    asynchronous readback ring (`RequestReadback` /
    `TryGetCompletedReadback`), as do photos and on-demand analysis. Request ids
    match results to the originating request/frame. Fence and CUDA stream
@@ -161,20 +163,16 @@ limits. Initial platform discovery, graphics resource creation, and manual devic
 synchronous work; ordinary frame-slot admission and initial device opening no
 longer add blocking waits to the Qt event loop.
 
-6. `RecordingManager` maps those matched pairs into a fixed processed-video
-   canvas and sends them through a bounded worker queue. Two `VideoRecorder`
-   instances encode synchronized original/processed output live through Media
-   Foundation using the camera timestamps and exact negotiated fractional
-   rate. A selected `AudioCapture` endpoint is normalized to 48 kHz mono PCM
-   on its own capture thread, mapped onto the same monotonic clock, and encoded
-   as AAC into both MP4 files. Both recorders probe AV1 first, fall back
-   together to H.264, write fragmented MP4 with free-disk-space guards, check
-   finalization, report drops by cause, and start matching `_partN` files after
-   a camera-format change. Nonempty failed output from either writer is
-   retained independently; only a fully finalized pair enters notes. Cleanup
-   removes only session-owned regular zero-byte files with no accepted video
-   samples, and there is no startup sweep of old recordings. Incomplete output
-   is not claimed playable without checking it.
+6. `RecordingManager` sends clean Original frames through a bounded worker queue
+   to one `VideoRecorder`. It encodes fragmented MP4 through Media Foundation
+   using source timestamps and the negotiated fractional rate. A selected
+   `AudioCapture` endpoint is normalized to 48 kHz mono PCM on its own thread
+   and encoded as AAC into that same file. AV1 is preferred, with H.264 fallback.
+   Format changes start a new Original part. Only successful finalized outputs
+   enter notes; diagnostic bytes from failed attempts remain independently owned.
+   Cleanup removes only session-owned regular zero-byte files with no accepted
+   samples; there is no startup sweep of old recordings. Legacy paired-video
+   notes remain readable. See [Original-only recording](original_only_recording.md).
    Microphone callbacks cross an independently owned, generation-tagged target
    that Stop cancels before waiting; a detached reader can therefore deliver
    to neither a destroyed app nor a later recording session. Recorder
@@ -194,11 +192,11 @@ keyboard zoom explicitly requests a new viewport presentation. GPU publication,
 rotation, and capture stop invalidate old CPU presentation pixels. Annotation
 rotation rebases ink and edit history; text anchors rotate with upright labels.
 
-CPU recording jobs retain immutable ink and view-transform snapshots, then
-paint only the processed canvas using the shared annotation renderer. Resolution
-selection freezes at session start and changes apply to the next session.
-GPU-started writers convert CPU fallback BGRA to BT.601 limited-range NV12
-instead of changing the sink contract; the synchronized timeline continues.
+Processed photo and drawing jobs retain immutable UCT commands, ink and view
+transforms, then paint text below ink on the image writer. Original photos and
+new recordings stay clean. GPU-started video writers retain their source lease;
+CPU fallback BGRA is converted to the writer's NV12 contract without adding a
+processed-video copy.
 
 Assistant preparation cancellation retires its notes payload and emits one
 terminal event; late workers remove only their own temporary file. History

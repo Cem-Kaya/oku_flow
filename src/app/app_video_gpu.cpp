@@ -265,7 +265,11 @@ bool OkuFlowApp::PresentSelectedMediaGpuFrame(const VideoPlaybackFrame& frame,
     context.geometry.settings.warpRevision = uctWarpRevision_;
     context.geometry.neuralEnhancement = neural;
     context.requested = context.geometry.settings;
-    context.compositeFrames = settings.enableTemporalSmoothing || settings.enableBumpHold;
+    context.compositeFrames = settings.enableTemporalSmoothing ||
+        (settings.enableStabilization && settings.enableBumpHold);
+    // Extra Stable media captures carry their frame's device hold record, so
+    // UCT names held/crossfade pixels per capture instead of pausing.
+    context.heldFrames = settings.enableStabilization && settings.enableBumpHold;
     context.strokeWeight = settings.strokeWeight;
     context.frameSeq = frame.sampleId;
     context.transform = transform;
@@ -385,6 +389,7 @@ bool OkuFlowApp::PresentSelectedMediaGpuFrame(const VideoPlaybackFrame& frame,
             // never presents an enhancement or starts a second neural producer.
             auto neighborSettings = settings;
             neighborSettings.enableMlSuperRes = false;
+            neighborSettings.enableTemporalSmoothing = false;
             mediaGpuNeighborRetryAtMs_ = now + 80;
             if (mediaGpuNeighborScene_->Prepare(presenter_->GetDevice(), width, height, cache.width(), cache.height()) ==
                     MediaGpuScene::Status::Ready &&

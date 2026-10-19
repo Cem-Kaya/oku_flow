@@ -357,11 +357,85 @@ Box-filtered cells (via a per-probe summed-area table) cover the same scene
 area at any zoom, so a pan or zoom after acceptance revalidates without new
 recognition.
 
+### Temporal Smooth analysis
+
+CUDA UCT and Temporal Smooth can run together. OCR uses its own neutral
+full-scene temporal average after orientation, stabilization and keystone,
+before display zoom, Text Clarity, color adjustments, blur and Super Resolution.
+The display pipeline keeps its existing stage order. This avoids sending an
+already magnified or recolored display image to recognition.
+
+Each published analysis lease owns two GPU images: the smoothed OCR input and
+the exact current single frame for validation. Both have the same latest-frame
+identity; history epoch, seed frame, contributing-frame count and alpha state
+which pixels were blended. Recognition, color/ink preparation, references,
+fingerprints and motion checks remain on GPU for the TensorRT path. References
+and saved-frame fingerprints use the current frame, so a fading old word
+cannot validate itself from its own smoothed image. The OCR worker also
+registers every candidate word against that exact current frame, requiring
+0.94 correlation and 95% visibility at zero translation. It does not reuse the
+moving-text tracker's search/refinement policy. Per-word proof prevents an
+otherwise matching line from hiding one stale word.
+Tracking a current raw patch against later raw patches alone is insufficient:
+it might track different text while OCR still sees an older average. A failed
+or missing input-registration result adds no new text or proof and cannot be
+revived by later motion checks. A previously shown line may survive only when
+an independent raw probe at/after the rejected OCR frame already validated it;
+its identity, reference and proof clock remain unchanged until the next probe.
+New live/advancing-media
+lines remain hidden until a current-frame probe at or after the OCR frame
+validates them. Reading text and screen-reader text share this eligibility.
+
+Analysis smoothing advances on actual processed frames, independently of the
+80 ms snapshot throttle. Source/seek, geometry/history reset and alpha changes
+reseed it. Every gap in supported smoothing ends its history, including an
+Extra Stable interval. Saved-video appearance edits replay from the pre-frame history;
+repeated pan/zoom or analysis refresh must not blend a held sample again.
+Text Clarity's master switch resets display histories only. Re-enabling UCT
+on a paused frame builds a new one-frame pair from the saved neutral geometry,
+without changing the displayed image, PTS or appearance revision. Actual EMA
+or snapshot failure refuses publication instead of substituting raw pixels.
+CPU-only processing stays single-frame. Explicit CPU OCR fallback may download
+the smoothed image and current-frame reference on its worker; the independent
+probe fallback downloads only its bounded current-frame probe.
+
+The two-slot pool's 128 MiB per-lease limit counts both halves. A pair may be
+skipped under pressure; unknown completion is quarantined, never permission to
+reuse either allocation. Optional analysis failure leaves the original video
+running. Media replay snapshots are allocated lazily when both UCT and temporal
+smoothing are enabled; disabled features add no snapshot copies. First use of
+the existing pitched CUDA allocator can synchronize once, including first enable
+on a paused frame. Allocation failures latch per EMA size and separately for
+replay snapshots, preventing repeated allocation/free/drain each frame. Explicit
+UCT/history reset or a new size permits another attempt. Handled UCT errors are
+cleared before display launch checks. Allocated history/scratch uses about
+20 bytes/pixel per surface, plus 20 for media replay snapshots (before pitch
+padding); it remains cached when UCT is disabled to avoid a synchronous free on
+the UI path. Neighbor-only recognition disables temporal smoothing and does not
+allocate these histories. Steady-state OCR and
+registration waits stay on the OCR worker. These are development contracts, not recognition-quality or native
+latency measurements. Small alpha values can delay newly appearing text while
+the average settles; they do not slow the presentation clock to the OCR rate.
+
+### Extra Stable held images
+
+Extra Stable records the acquisition actually displayed alongside each GPU
+image. Its 32-byte record travels with the owned analysis pixels and is read
+on a worker after stream completion. Repeated presentations of a held image
+remain one observation; they cannot confirm their own text. Previously
+confirmed words remain eligible only while exact held-image validation succeeds.
+If UCT starts during a hold, its single observation is available in the reading
+pane with an omission marker, leaving original ink visible until a distinct
+acquisition confirms it. Screen-reader overlay text follows glyph eligibility.
+
+Recovery crossfades and invalid records cannot supply recognition or validation
+evidence. Their probes revoke glyph visibility without renewing proof clocks.
+Saved-media replay retains the exact record; source, seek and history resets
+retire it. Extra Stable holds only the view: clean Original recording continues,
+without automatically pausing or seeking the recording archive.
+
 ### Unsupported modes
 
-- **Temporal Smooth** and **Extra Stable** (bump hold) present multi-frame
-  composites whose provenance UCT cannot state truthfully. UCT pauses, clears
-  its text and says so.
 - The debug composite view registers consistently (same pixels and transform)
   but is not a supported reading mode.
 
@@ -490,6 +564,17 @@ Unconfirmed and high-risk tokens leave an ellipsis at their original position
 with a single typographic ellipsis, never `Take tablet ...`. Show original
 keeps verified reading text available while hiding glyphs; presentation failure
 or timeout hides both until a confirmed successful presentation.
+
+### Photos and annotated views
+
+Processed photos, saved video frames and annotation snapshots include eligible
+UCT plates and letters, with vector ink painted above them. The Original photo
+and Original recording stay clean. Captures freeze drawing commands, styles,
+ink and viewport mapping before asynchronous saving; a later OCR result, pan or
+cleared drawing cannot alter the pending image. Protected uncertain tokens keep
+their original pixels. UI buttons, floating panels and selection handles are
+excluded from exported images, without leaving artificial holes where chrome
+covered the camera view.
 
 ### Probe progress and resource recovery (2026-10-18)
 
@@ -621,3 +706,57 @@ steady-camera fault and the intermediate crop-parity failure are retained in
 local evidence alongside their repairs. No native GUI, physical camera/phone or
 interactive screen-reader acceptance was performed in this desktop-reserved run;
 this is partial validation, not the full release gate or a published installer.
+
+### Temporal integration validation (2026-10-19)
+
+Before the independent Opus review, the tracked background matrix passed Release compilation, all 108 CPU cases
+(two contain skipped optional Qt rows), and all 17 CUDA delta cases without
+unresolved failures. The actual-app offscreen fixture also passed. Scoped CUDA
+oracles checked both exact analysis halves, stale OCR/current-content rejection,
+raw fingerprints, bounded leases, same-frame replay and seek/toggle/alpha reseeding.
+The real pinned CPU default and TensorRT smoke rows passed; TensorRT read all six
+expected printed words through owned single-frame and paired inputs and returned
+resident current-input registration. These checks do not measure camera optics,
+120 Hz presentation, native UIA reader behavior or installer acceptance.
+
+Evidence is retained under LocalAppData's `uct-temporal-integration-20261019`,
+including the initial test-call compilation error, a diagnosed standalone-link
+dependency, and a replay fixture that retained both bounded leases while asking
+for a third. The repaired fixture releases each lease after its pixel assertion;
+separate pool-pressure assertions still require no publication while both slots
+are leased. The remote chat-layout failure from `29ee439` is preserved separately;
+its wrapping assertion now waits for the queued native viewport render, and remote
+native confirmation remains pending. No local GUI/browser/phone automation ran.
+
+### Held-frame and export integration checkpoints (2026-10-19)
+
+Muse's Extra Stable handoff was reviewed independently. The two scoped CUDA
+cases passed, including held/crossfade pixels, compact acquisition records,
+paired inputs and allocation-pressure/quarantine injection. The pinned CPU
+T/S and TensorRT M/M smoke rows passed (four Qt rows including setup/cleanup).
+The actual-app offscreen fixture passed processed-photo/drawing composition
+and asynchronous hold refusal, including camera loss and finishing recording.
+The complete UCT contract passed after a diagnosed export-oracle repair:
+QWidget backing-layer edges and direct vector replay differ by at most one RGB
+channel unit, with identical alpha. Worker replay remains byte-identical.
+Original failed logs and mismatch PNGs remain in LocalAppData evidence.
+
+Release compilation and all 24 catalogs/877 keys passed. The subsequent direct
+Original-texture regression also passed: the real CUDA surface established a
+sharp reference, held the exact named acquisition during blur, recovered through
+a real crossfade and returned to Live. Every Original texture matched that
+frame's raw input exactly. Both scoped CUDA groups passed without skips. This
+is private surface evidence; recording/codec output is checked independently.
+The final tracked `agent_build.bat` background matrix passed shipping Release
+compilation, all 108 CPU cases (two contain optional skipped Qt rows) and all
+17 CUDA delta cases, with no whole-test skips or unresolved results. Native
+desktop/screen-reader, physical camera/phone and installer acceptance remain
+separate. The desktop was excluded throughout this run.
+
+The earlier interrupted codec attempt and the subsequent PATH-mismatch refusal
+remain archived. Diagnosis found that Codex injects a different temporary launcher
+directory into every shell's PATH. The final invocation excluded only that
+transient launcher entry, used the real VS2022 initializer and completed both
+test presets under one stable runtime environment. No ledger, assertion or
+deadline was changed to obtain this result. Evidence includes
+`held-export-final-stable-matrix.log` in the integration folder above.

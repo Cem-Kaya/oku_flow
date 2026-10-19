@@ -3521,5 +3521,17 @@ Melden Sie sich auf der erweiterten Registerkarte Assistent über ChatGPT verbin
             <source>Select video</source>
             <translation>Video auswählen</translation>
         </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>Pausiert, solange „Besonders stabil“ aktiv ist. Das ursprüngliche Kamerabild wird angezeigt.</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>Der ursprüngliche Kameratext wird angezeigt.</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>In der Debug-Kompositansicht ist die Texterkennung angehalten. Das Originalkamerabild wird angezeigt.</translation>
+        </message>
     </context>
 </TS>

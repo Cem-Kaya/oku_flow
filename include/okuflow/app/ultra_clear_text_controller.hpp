@@ -65,10 +65,19 @@ struct UctFrameContext {
     std::uint32_t viewportWidth{};
     std::uint32_t viewportHeight{};
     bool cameraActive{};
-    // Temporal Smooth / Extra Stable present multi-frame composites whose
-    // provenance UCT cannot state truthfully; UCT pauses instead. True when
-    // either the cached scene or the request is a composite.
+    // Display truth for annotations/observations: Temporal Smooth and Extra
+    // Stable both combine/hold frames. True for a cached or requested composite.
+    // UCT's separate analysis eligibility is below.
     bool compositeFrames{};
+    // UCT-specific: the analysis branch cannot truthfully describe this scene
+    // (CPU debug composites). Display Temporal Smooth and CUDA Extra Stable
+    // are compositeFrames but supported: the former through a neutral paired
+    // analysis image, the latter through per-capture hold provenance.
+    bool unsupportedCompositeFrames{};
+    // CUDA Extra Stable may show a held earlier acquisition or a recovery
+    // crossfade. Device analysis must then carry the frame's device hold
+    // record, resolved on a worker; an image without one is never live.
+    bool heldFrames{};
     int strokeWeight{};
 };
 
@@ -80,6 +89,8 @@ struct UctSceneSnapshot {
     UctGeometryKey geometry;
     std::uint64_t frameSeq{};
     bool composite{};
+    bool unsupportedComposite{};
+    bool heldFrames{};
 };
 
 // The production seam between OkuFlowApp's processing paths and Ultra Clear
@@ -91,20 +102,25 @@ public:
     // CUDA processing was admitted and queued for `frameSeq`. `applied`
     // carries the settings actually submitted with this frame.
     void OnCudaSceneProcessed(const UctSceneSettings& applied, std::uint32_t width,
-                              std::uint32_t height, std::uint64_t frameSeq, bool composite)
+                              std::uint32_t height, std::uint64_t frameSeq, bool composite,
+                              std::optional<bool> unsupportedComposite = std::nullopt,
+                              bool heldFrames = false)
     {
-        cuda_ = {true, {Normalize(applied), width, height}, frameSeq, composite};
+        cuda_ = {true, {Normalize(applied), width, height}, frameSeq, composite,
+                 unsupportedComposite.value_or(composite), heldFrames};
     }
     // CPU fallback: rotation is applied on the CPU; keystone,
     // stabilization and display colors are not.
     void OnCpuSceneProcessed(std::uint64_t sourceEpoch, int rotationQuarterTurns,
                              std::uint32_t width, std::uint32_t height, std::uint64_t frameSeq,
-                             bool composite)
+                             bool composite,
+                             std::optional<bool> unsupportedComposite = std::nullopt)
     {
         UctSceneSettings applied;
         applied.sourceEpoch = sourceEpoch;
         applied.rotationQuarterTurns = NormalizeTurns(rotationQuarterTurns);
-        cpu_ = {true, {applied, width, height}, frameSeq, composite};
+        cpu_ = {true, {applied, width, height}, frameSeq, composite,
+                unsupportedComposite.value_or(composite)};
     }
     void InvalidateCuda() { cuda_ = {}; }
     void Reset()
@@ -140,7 +156,9 @@ public:
 
     UctFrameContext Context(bool cudaPath, const UctSceneSettings& requested, bool requestedComposite,
                             const ViewTransform& transform, std::uint32_t viewportWidth,
-                            std::uint32_t viewportHeight, bool cameraActive, int strokeWeight) const
+                            std::uint32_t viewportHeight, bool cameraActive, int strokeWeight,
+                            std::optional<bool> requestedUnsupportedComposite = std::nullopt,
+                            bool requestedHeldFrames = false) const
     {
         const UctSceneSnapshot& scene = cudaPath ? cuda_ : cpu_;
         UctFrameContext context;
@@ -154,6 +172,11 @@ public:
         // no camera image were shown.
         context.cameraActive = cameraActive && scene.valid;
         context.compositeFrames = scene.composite || requestedComposite;
+        context.unsupportedCompositeFrames =
+            scene.unsupportedComposite || requestedUnsupportedComposite.value_or(requestedComposite);
+        // Either the cached scene or the request may hold frames: require the
+        // record whenever either does, so a toggle never admits unnamed pixels.
+        context.heldFrames = cudaPath && (scene.heldFrames || requestedHeldFrames);
         context.strokeWeight = strokeWeight;
         return context;
     }
@@ -277,9 +300,12 @@ public:
     // hidden live analysis until ClearImmutableScene() is called.
     bool SetImmutableScene(UctImmutableScene scene);
     // A processed media view may not have provable single-frame text
-    // correspondence (temporal/hold composites or neural output). Preserve
-    // the user's UCT preference, but revoke its words, jobs and UIA exposure.
-    void SetMediaOverlaySuppressed(bool suppressed);
+    // correspondence (neural output). Preserve the user's UCT preference, but
+    // revoke its words, jobs and UIA exposure. Extra Stable media is supported
+    // through the per-capture hold record and is not suppressed for that
+    // reason; `extraStable` only attributes this suppression to shake-held
+    // frames in the status line.
+    void SetMediaOverlaySuppressed(bool suppressed, bool extraStable = false);
     // Successful native media receipt only. Retains one latest scene lease,
     // paces full-scene probes/OCR, and never fabricates a camera presentation.
     bool OnAdvancingMediaPresented(UctAdvancingMediaScene scene);
@@ -353,6 +379,9 @@ public:
     // so its pixels are copied once into a pooled buffer.
     void OnCpuViewport(const UctFrameContext& context, const std::uint8_t* bgra, int width,
                        int height, int strideBytes);
+    // An Extra Stable capture names its acquisition only after a worker reads
+    // its device record. Crossfade probes may hide text but never validate,
+    // admit or start OCR; a held image is read once per held acquisition.
     void OnDeviceScene(const UctFrameContext& context, uct::SharedDeviceImage device);
     // A pool/copy failure is recoverable input health, not a failed OCR model.
     void OnAnalysisHealth(bool failed);
@@ -464,7 +493,12 @@ private:
     bool enabled_{};
     bool showOriginal_{};
     bool compositePaused_{};
+    // Which pause reason the status line names: a stabilized (Extra Stable)
+    // scene or media suppression attributed to shake-held frames, versus the
+    // CPU debug composite. Updated from each presented context.
+    bool compositeExtraStable_{};
     bool mediaOverlaySuppressed_{};
+    bool mediaSuppressionExtraStable_{};
     bool cameraActive_{};
     bool haveGeometry_{};
     bool settling_{};
@@ -485,6 +519,12 @@ private:
     bool changedSinceSubmit_{true};
     std::int64_t lastSubmitMs_{std::numeric_limits<std::int64_t>::min() / 2};
     QRectF lastJobCoverage_;
+    // Acquisition of the last submitted live/advancing OCR job. A held image
+    // of the same acquisition cannot add an observation, so it is not re-read
+    // while text derived from it remains.
+    std::uint64_t lastOcrAcquisition_{};
+    std::uint64_t lastOcrGeneration_{};
+    bool haveLastOcr_{};
     bool lastResultMoved_{};
     bool lastResultEmpty_{};
 

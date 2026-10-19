@@ -144,7 +144,7 @@ __device__ void matchBody(const unsigned *p, int w, int h, Grid g, const float *
         out->visible = z.visible >= visible;
         best = z.score;
         bx = by = sx = sy = 0;
-        done = !out->visible || best >= score + .08;
+        done = !out->visible || radius == 0 || best >= score + .08;
         if (!done && (seedX != 0 || seedY != 0) && fabs(seedX) <= radius && fabs(seedY) <= radius)
         {
             const auto c = correlate(p, w, h, g, ref, seedX, seedY, 1);
@@ -615,7 +615,7 @@ void MatchReference(const unsigned *p, int w, int h, Grid g, const float *ref, d
                     double visible, int radius, double sx, double sy, double ux, double uy,
                     MatchResult *out, cudaStream_t s)
 {
-    radius = radius < 1 ? 1 : (radius > 10 ? 10 : radius);
+    radius = radius < 0 ? 0 : (radius > 10 ? 10 : radius);
     validation::match<<<1, 128, 0, s>>>(p, w, h, g, ref, score, visible, radius, sx, sy, ux, uy,
                                         out);
 }
@@ -628,7 +628,7 @@ void References(const unsigned *p, int w, int h, const ReferenceRequest *request
 void MatchReferences(const unsigned *p, int w, int h, const MatchRequest *requests, int n,
                      double score, double visible, int radius, MatchResult *out, cudaStream_t s)
 {
-    radius = radius < 1 ? 1 : (radius > 10 ? 10 : radius);
+    radius = radius < 0 ? 0 : (radius > 10 ? 10 : radius);
     if (n > 0)
         validation::matches<<<n, 128, 0, s>>>(p, w, h, requests, score, visible, radius, out);
 }

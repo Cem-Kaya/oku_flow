@@ -105,7 +105,10 @@
   `CaptureLiveForMediaHold` uses an owned matching receipt;
   `D3D12Presenter::RequestReadback(GpuVideoFrame)` retains its resource/fence
   through asynchronous completion. `AcceptLiveMediaHold` accepts only that
-  exact still. `PresentMediaView`, `PresentSelectedMediaPixels` and the
+  exact still and reports actual admission to the CPU caller. Refused or failed
+  manual holds keep an active recording's live camera selected, while a
+  finishing recording retains its separate failure receipt.
+  `PresentMediaView`, `PresentSelectedMediaPixels` and the
   `PresentFitted` selected-media branch reuse owned pixels for pan/zoom without
   claiming camera liveness. `CameraOriginalRotationQuarterTurns` separates
   recording orientation from file-view rotation. See [presentation](media_presentation.md).
@@ -272,8 +275,8 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
 
 - `uct_device_image.hpp`: `DeviceImage` is shared immutable ownership of a
   pre-zoom BGRA allocation and exact device/source/frame/processing/time stamp.
-  `Data`/`WaitReady` expose device input; worker-only `Readback` provides final
-  reference/color or CPU fallback pixels. `ReadProbe` is a separate bounded
+  `Data`/`WaitReady` expose device input; worker-only `Readback` provides OCR
+  or CPU fallback pixels. `ReadProbe` is a separate bounded
   validation copy. It never supplies neural input. TensorRT holds a shared
   image lease until the stream proves completion, including error cleanup.
 - `uct_analysis_pool.hpp/.cpp`: `AnalysisPool::Capture` makes stream-ordered
@@ -281,6 +284,37 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   `Storage` event ownership prevents reuse while leased; `Image` implements
   worker-only downloads through pinned `Download` state and private streams.
   Unknown completion retains both DMA endpoints through `AsyncCleanup`.
+- `AnalysisKind`, `DeviceImage::{historyEpoch,seedFrameSequence,blendFrameCount,
+  temporalAlpha}` disclose single-frame versus temporally smoothed OCR input.
+  `ValidationData`/`ValidationPitch`/`WaitValidationReady` and worker-only
+  `ReadValidation` expose the paired exact current frame; their defaults alias
+  the OCR input for ordinary single-frame images. `ReadProbe`, resident
+  references and fingerprints use validation pixels; OCR color/ink fitting
+  uses the OCR pixels. `AnalysisPool::CapturePair`/`CaptureInternal` reserve
+  and publish a complete pair or none, counting both halves against 128 MiB.
+- `CudaInteropSurface::{EnsureUctTemporalBuffers,EnsureUctSnapshotBuffers,ReleaseUctTemporalBuffers,
+  ResetUctTemporalHistory,ClearUctAllocationFailures,RegenerateUctSmoothedSnapshot}` own a separate neutral EMA after geometry and
+  before appearance/zoom. History is advanced per processed frame, with
+  explicit reseeding and no change to the display temporal stage order.
+  Media UCT snapshots allocate lazily, with no UCT history copies while UCT or
+  smoothing is off. First-use pitched allocation may synchronize. A true reset
+  revokes saved pre-frame history/identity; `RefreshUctAnalysis` never replaces a
+  wanted-but-invalid EMA with raw pixels. After a true reset only,
+  `RegenerateUctSmoothedSnapshot` may seed a new one-frame pair from the held
+  geometry without changing display, PTS or appearance. Actual failures cannot
+  take that recovery branch. `uctAllocationFailedWidth_/Height_` latch EMA
+  allocation failure per size; `uctSnapshotFailed_` independently latches replay
+  failure. `UctAnalysisFailed` includes both. Explicit UCT/history resets clear
+  allocation latches; ordinary frames never retry them. Pool completion becomes
+  unknown only after work is queued; pre-enqueue failures retire safely, while
+  queued allocation/copy without completion proof stays quarantined.
+- `ResetKeystoneState` clears only keystone tracking for the per-frame disabled
+  path. Public `ResetKeystone` additionally revokes UCT history. The Text Clarity
+  master edge resets display temporal history without changing neutral UCT.
+- `MainWindowTests::desktopVisualChat` waits for the queued splitter/viewport
+  resize render before asserting zero horizontal overflow. Text snapshot arrival
+  is synchronous and cannot prove that the native layout has settled; the
+  wrapping assertion and both theme rows remain required in remote GUI checks.
 - `CudaInteropSurface::{EnableUctAnalysis,TakeUctAnalysis}` controls the
   throttled geometry-correct snapshot before appearance/SuperRes/zoom.
   `TryCudaFrame` enables it only for UCT. `PresentLatestCudaScene` accepts only
@@ -1394,7 +1428,7 @@ source changes make no measured throughput or latency claim.
 - UI-thread Ultra Clear Text runtime. `OnPresented(...)` runs on every
   presentation: it forwards the transform to the overlay, starts a new
   geometry generation (and clears everything) when `UctGeometryKey` changes,
-  pauses for composite frames, enforces freshness and returns whether one
+  pauses for unsupported composites, enforces freshness and returns whether one
   asynchronous viewport copy is wanted (80 ms probe interval, one outstanding).
 - `OnReadbackRequested`/`OwnsReadback`/`OnReadbackCompleted` attach to the
   presenter readback ring; `OnCpuViewport` serves the CPU presentation path.
@@ -1404,6 +1438,38 @@ source changes make no measured throughput or latency claim.
   and `OkuFlowApp::UltraClearTextContext(...)` (in
   `src/app/app_ultra_clear_text.cpp`) provide production wiring; the
   controller member is declared last in `OkuFlowApp` so it retires first.
+- `UctFrameContext::compositeFrames` remains display truth for annotations
+  and observations. `unsupportedCompositeFrames`, `UctSceneSnapshot`'s matching
+  flag and the optional provenance arguments distinguish UCT eligibility.
+  CUDA Temporal Smooth has paired neutral analysis; Extra Stable uses the
+  capture-owned hold record. Recovery crossfades and CPU debug composites
+  cannot confirm text. `OnDeviceScene` and
+  `ImmutableStamp` carry the paired image's blend provenance without restamping
+  it from a later display receipt. Unsupported stabilized composites retain
+  their Extra Stable pause reason; debug fallback names text recognition pausing
+  in the debug composite view. `SetMediaOverlaySuppressed` carries a separate
+  `extraStable` reason and refreshes the accessible status on reason changes,
+  even when the suppression boolean stays the same.
+
+- `uct::HoldProvenanceRecord` / `HoldProvenance` / `HoldDisplay` name the exact
+  acquisition behind live, held or crossfaded pixels. `DecodeHoldProvenance`,
+  `ApplyHoldProvenance` and `EvidenceAcquisition` reject inconsistent records.
+  `LaunchRecordBumpHoldProvenance` mirrors the display kernel on its stream;
+  the analysis pool owns a pinned 32-byte copy read only by workers. Held
+  repeats never corroborate pending words. `OverlayModel::ApplyChecks(...,
+  renew=false)` revokes display without advancing proof during a crossfade.
+- `CudaInteropSurface::InjectUctAllocationFailureForTesting(UctAllocationFault)`
+  and `uct::AnalysisPool::InjectFaultForTesting(InjectedFault)` are explicit,
+  bounded fixture seams for EMA/replay allocation pressure and unknown copy
+  completion. Normal operation never arms them; tests verify latch/reset,
+  atomic image/record refusal and quarantine without exhausting real VRAM.
+- Composite identity revokes display even when worker checks are missing or
+  budget-limited. The controller retains the composite probe as an admission
+  barrier so a late older recognition completion cannot revive text over it.
+- Test-only `OkuFlowApp::SeedPendingLiveHoldForTest(bool)` stages the same
+  completion boundary used by asynchronous clean-frame retention. Native
+  fixture rows verify refusal returns an active recording to Live, including
+  camera loss, and marks a finishing recording unavailable.
 
 ### `include/okuflow/app/pipeline_orchestrator.hpp`
 `okuflow::TimingPercentiles`
@@ -2533,7 +2599,10 @@ Namespace `okuflow::processing`
 - Ultra Clear Text core (Qt Core/Gui only). `SourceStamp` carries camera
   epoch, UCT geometry generation, frame sequence, request time and the exact
   full-scene `ViewTransform` of a viewport copy; results and accepted lines
-  keep the stamp of their own pixels.
+  keep the stamp of their own pixels. `temporallySmoothed`, `historyEpoch`,
+  `seedFrameSeq`, `blendFrameCount` and `temporalAlpha` preserve OCR blend
+  provenance, while the reference/probe always describes its exact current
+  contributing frame.
 - `ViewPixelToScene`/`SceneToViewPixel`/`ViewRectToScene`/`SceneRectToView`
   map through one transform via normalized coordinates (DPI applied once).
 - `MakeProbeFrame(...)` builds a decimated luma copy plus summed-area table.
@@ -2550,6 +2619,24 @@ Namespace `okuflow::processing`
   `Validate` revalidates lines against newer probes; `SceneWords`/
   `DisplayWords` apply the 350 ms freshness rule; `ReadingText` orders lines
   and marks omissions with an ellipsis.
+- Smoothed live/advancing candidates in `AdmitImpl` start unvalidated even
+  after OCR agreement. `ApplyChecks` refuses an older frame as proof for a
+  new smoothed line. `smoothedResultsNeedCurrentFrameProbeProof` covers
+  deferred visibility, older-probe refusal and removal on motion.
+  `RecognitionResult::currentInputMatches` contains worker-computed smoothed
+  versus current-frame registration per line: every candidate word must match
+  in place. `kInputRegistrationTuning` requires 0.94 correlation, 0.95 visibility
+  and zero search/refinement on CPU and GPU. `MatchTuning::searchRadiusPx` now
+  admits zero as an explicit static-registration mode; motion defaults stay
+  unchanged. `resident::Prepare` uses a transient OCR integral and batches of
+  at most 1024 word descriptors, with at most 8192 words, returning booleans only;
+  CPU fallback compares its two worker-owned images. `AdmitImpl` drops a
+  missing/failed input match rather than inventing new evidence. Only an exact
+  old line independently validated at/after that frame may survive, retaining
+  its original reference, identity and proof clock. Neighbour glyph evidence
+  excludes failed smoothed-input registration too.
+  `smoothedProbeFallbackDownloadsOnlyTheCurrentProbe` guards the independent
+  CPU probe path against an extra full-frame validation readback.
 - `CreateDefaultRecognizer()` (in `src/common/uct_default_recognizer.cpp`)
   returns the Windows OCR adapter: grayscale, dark-background inversion and
   the engine's maximum dimension, mapping boxes back to copy pixels.
@@ -3000,6 +3087,32 @@ Namespace `okuflow`
   black/white in scene polarity; weight follows Text Clarity stroke weight.
   Paint is clipped away from floating panels, annotation chrome and the
   floating Assistant. `ProjectedWordRects()` exposes drawn geometry.
+- `CaptureSnapshot(transform, viewportSize)` records an independent vector
+  `UctOverlaySnapshot` from eligible cached glyphs and plates at the capture's
+  exact view transform. `ComputePaintPlan` shares clipping/protected-token and
+  replacement eligibility with screen paint, while excluding UI chrome only on
+  screen. `PaintWords` shares both drawing passes. Captures do not replace the
+  last-painted accessibility plan or query widgets on the writer thread.
+- `UctOverlaySnapshot::Paint` replays frozen drawing commands at the saved
+  image's pixel size; later word/style/pan changes cannot alter them.
+  `ViewOverlaySnapshot::Paint` composites that text before value-owned
+  annotation strokes, with no editing handles or UI controls.
+- `OkuFlowApp::CaptureViewOverlays` freezes the current eligible UCT commands
+  and active ink for one `ViewTransform`. Pending photo and annotation receipts
+  own these values until their exact readback completes. Original photo pixels
+  never pass through this composition.
+  `SaveCapturedPhotoPair` consumes `pendingPhotoOverlays_` before queueing the
+  image writer; timeout/cancellation clears it. `QueueAnnotationSnapshot` freezes
+  text alongside its strokes, and `SaveAnnotationSnapshot` receives that exact
+  `UctOverlaySnapshot` instead of reading the live overlay later.
+  CPU failed/deferred presentation clears its stale overlay receipt; capture
+  also requires matching acquisition sequence and viewport extent before
+  compositing, so newer CPU pixels never use an older view's ink transform.
+  `uct_capture_test::FrozenExportMatchesGlyphsAndSurvivesLiveChanges` compares
+  screen/export pixels and worker replay; `ExportProtectsOmissionsAndKeepsInkAboveText`
+  covers protected tokens, chrome and layer order. Native fixture helpers
+  `PhotoDirectory`, `SavePhotoFixture` and `SaveDrawingFixture` call the real
+  writers for `processedPhotoAndDrawingIncludeUctAndInkWithCleanOriginal`.
 
 ### `include/okuflow/ui/ultra_clear_text_panel.hpp`
 `okuflow::UltraClearTextPanel`
@@ -5469,6 +5582,22 @@ step, private fake-SDK publication, retained models and obsolete tickets.
 `AwaitOwnedWorkers` is console-fixture shutdown only: it keeps the static CUDA
 runtime loaded until the fixture's own detached host workers finish.
 
+The reprocessing snapshot also retains the pre-frame UCT EMA metadata/history
+and the completed neutral smoothed pixels. Replay reconstructs the same blend;
+`RefreshUctAnalysis` publishes the saved smoothed/current pair without advancing
+history. A paused UCT re-enable instead reseeds a one-frame pair under the reset
+epoch and starts the next forward blend from that held frame. Text Clarity edits
+preserve neutral UCT history. `MediaGpuScene::TakeUctAnalysis` checks pair provenance and exact scene
+identity, and `UctCoordinatesReliable` permits Temporal Smooth and exact held
+Extra Stable images while refusing neural-coordinate mismatches. The
+media CUDA fixture checks actual paired pixels, replay and seek reseeding;
+`gpuPairedCaptureKeepsSmoothedOcrAndCurrentValidationApart` checks exact halves,
+  raw fingerprints and two-slot pressure.
+  It also rejects mismatching OCR/current pixels even when the raw patch remains
+  trackable, and accepts exact paired pixels. `optionalRealGpu` exercises normal
+  upload, owned single-frame and paired input through real pinned TensorRT graphs,
+  including resident input-registration booleans; it remains explicit opt-in.
+
 `SelectedMediaDocumentPts100ns` adds the current recording part's document offset
 before producing observation authority; UCT and decoder internals keep local PTS.
 `SelectedMediaGpuSceneProcessed` preserves a matching analysis lease across a
@@ -5688,6 +5817,16 @@ partial budget progress and cancellation. `gpuResidentBatchMappingMatchesDistinc
 compares distinct unchanged, occluded and moved lines, an invalid middle entry
 and a CPU descriptor against sequential CPU results. Kernel coarse search uses
 the CPU's zero-centred fallback when no coarse candidate qualifies.
+
+`Harness::MakeSharedTexture`, `MakeSharedFence` and `ReadTexture(TextureSync)`
+in `media_gpu_scene_tests.cpp` provide private production-compatible targets
+and an explicitly fenced readback. `ReadScene` wraps that helper while preserving
+the scene's presentation reservation/consumption bookkeeping.
+`OriginalTextureAdvancesDuringExtraStableHoldTests` drives the actual camera
+surface through sharp-reference acquisition, blur hold, recovery crossfade and
+Live. It compares each frame's Original texture to current raw input exactly,
+and the held display to the stored pixels of its named acquisition. Its private
+bundle proves idle before destruction and retains unknown GPU work on failure.
 
 The complete `immutable_uct_contract` Qt suite has a 120-second aggregate CTest
 deadline after archived CI evidence showed 31 completed cases before its old

@@ -546,7 +546,7 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
     decimation = std::max({1, decimation, (std::max(image.width, image.height) + 959) / 960});
     const int w = image.width / decimation, h = image.height / decimation;
     auto c = Worker(image.device, 4 * 1024 * 1024);
-    if (!c || w < 8 || h < 8 || !image.WaitReady(c->stream, error))
+    if (!c || w < 8 || h < 8 || !image.WaitReady(c->stream, error) || !image.WaitValidationReady(c->stream, error))
         return false;
     c->owners = {image.shared_from_this()};
     auto probe = std::make_shared<Probe>();
@@ -563,7 +563,7 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
         return false;
     }
     c->owners.push_back(probe->integral);
-    gpu::ValidationIntegral(image.Data(), image.pitch, image.width, image.height, decimation,
+    gpu::ValidationIntegral(image.ValidationData(), image.ValidationPitch(), image.width, image.height, decimation,
                             static_cast<unsigned *>(probe->integral->data), c->stream);
     if (!Finish(c, &cancel))
     {
@@ -671,6 +671,56 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
                 word.boundsPx = {f.x, f.y, f.w, f.h};
             }
     }
+    if (image.kind == AnalysisKind::TemporallySmoothed && !result.output.lines.isEmpty())
+    {
+        // Trackability of the raw image alone says nothing about stale words
+        // still visible in an EMA. Register the recognized pixels against the
+        // exact current image first, on this worker and without image egress.
+        auto recognized = std::make_shared<Probe>();
+        recognized->device = image.device; recognized->width = w; recognized->height = h;
+        recognized->integral = Allocate(size_t(w + 1) * (h + 1) * sizeof(unsigned), c);
+        if (!recognized->integral) { error = "Smoothed UCT registration allocation failed."; return false; }
+        c->owners = {image.shared_from_this(), recognized->integral};
+        gpu::ValidationIntegral(image.Data(), image.pitch, image.width, image.height, decimation,
+            static_cast<unsigned *>(recognized->integral->data), c->stream);
+        if (!Finish(c, &cancel)) { error = "Smoothed UCT registration did not complete."; return false; }
+        QVector<QRectF> sceneRects;
+        QVector<int> lineIndices;
+        QVector<bool> hasCandidate(result.output.lines.size(), false);
+        result.currentInputMatches.fill(true, result.output.lines.size());
+        const auto map = Mapping(result.stamp, image.width, image.height);
+        for (int i = 0; i < result.output.lines.size(); ++i) {
+            for (const auto& word : result.output.lines[i].words) {
+                if (word.disposition != TokenDisposition::kCandidate) continue;
+                hasCandidate[i] = true;
+                const auto pixels = word.boundsPx;
+                const QRectF r((pixels.x() - map.x) / map.sx, (pixels.y() - map.y) / map.sy,
+                    pixels.width() / map.sx, pixels.height() / map.sy);
+                if (r.isEmpty() || !std::isfinite(r.x()) || !std::isfinite(r.y()) ||
+                    !std::isfinite(r.width()) || !std::isfinite(r.height())) {
+                    result.currentInputMatches[i] = false;
+                    continue;
+                }
+                sceneRects.push_back(r);
+                lineIndices.push_back(i);
+            }
+            if (!hasCandidate[i]) result.currentInputMatches[i] = false;
+        }
+        if (sceneRects.size() > 8192) { error = "Smoothed UCT registration budget exceeded."; return false; }
+        // Per-word proof prevents a mostly unchanged line hiding one stale
+        // word. Batches retain the 1024-descriptor bound and never copy patches
+        // to the host. Zero search excludes both translation and refinement.
+        for (qsizetype base = 0; base < sceneRects.size(); base += 1024) {
+            const auto rects = sceneRects.mid(base, 1024);
+            const auto patches = recognized->References(result.stamp, rects);
+            const auto matches = probe->Matches(result.stamp, patches, kInputRegistrationTuning, {}, &cancel);
+            if (matches.size() != rects.size()) { error = "Smoothed UCT registration is incomplete."; return false; }
+            for (int i = 0; i < matches.size(); ++i)
+                result.currentInputMatches[lineIndices[base + i]] =
+                    result.currentInputMatches[lineIndices[base + i]] &&
+                    matches[i].matched && matches[i].sceneOffset.isNull();
+        }
+    }
     if (!result.stamp.liveCameraCapture)
     {
         int n = (image.width * image.height * 4 + 4095) / 4096;
@@ -683,7 +733,7 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
         auto *a = static_cast<unsigned char *>(c->scratch);
         auto *b = a + offset;
         c->owners = {image.shared_from_this()};
-        gpu::FingerprintLeaves(image.Data(), image.pitch, image.width, image.height, a, c->stream);
+        gpu::FingerprintLeaves(image.ValidationData(), image.ValidationPitch(), image.width, image.height, a, c->stream);
         while (n > 1)
         {
             gpu::FingerprintParents(a, n, b, c->stream);

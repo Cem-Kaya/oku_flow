@@ -3,6 +3,7 @@
 #if defined(_WIN32) || defined(Q_MOC_RUN)
 
 #include "okuflow/common/ultra_clear_text.hpp"
+#include "okuflow/ui/uct_overlay_snapshot.hpp"
 
 #include <QFont>
 #include <QHash>
@@ -58,6 +59,10 @@ public:
         qreal baselineY{};
     };
     QVector<GlyphGeometry> ProjectedGlyphs() const;
+    // Freeze only eligible glyphs/plates in the requested capture transform.
+    // Export excludes UI chrome, preserves protected source ink and leaves
+    // the last-painted accessibility geometry untouched. UI thread only.
+    UctOverlaySnapshot CaptureSnapshot(const ViewTransform& transform, const QSize& viewportSize);
     std::uint64_t PaintCount() const noexcept { return paintCount_; }
     QWidget* RenderTarget() const noexcept { return renderTarget_; }
 
@@ -105,7 +110,10 @@ private:
     void UpdateVisibility();
     void RebuildGlyphLayout();
     QRectF InkAtReference(const QString& text);
-    void ComputePaintPlan();
+    struct PaintPlan;
+    void ComputePaintPlan(PaintPlan& plan, const ViewTransform& transform,
+                          const QSize& viewportSize, bool excludeChrome);
+    void PaintWords(QPainter& painter, const PaintPlan& plan) const;
     // Caret x of every UTF-16 position shaped with `font` (NaN inside a
     // grapheme cluster). Computed lazily on the first accessibility query.
     // Painted geometry passes the font stored with the paint plan, never

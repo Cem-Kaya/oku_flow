@@ -66,7 +66,7 @@ struct Bundle {
     ID3D11Texture2D* sourceTexture{}; // compared only while sourceStorage is alive
     UINT sourceWidth{}, sourceHeight{}, sourceStride{};
     bool sourceIsGpu{};
-    bool resetPending{true}, forceReprocess{}, uctReliable{true};
+    bool resetPending{true}, forceReprocess{};
     ProcessingSettings settings;
 };
 
@@ -619,8 +619,11 @@ MediaGpuScene::Status MediaGpuScene::Process(const VideoPlaybackFrame& frame,
         ++b.historyResetCount;
         s.analysis.reset();
     }
-    b.uctReliable = !settings.enableTemporalSmoothing &&
-        !(settings.enableStabilization && settings.enableBumpHold);
+    // Temporal Smooth and Extra Stable are both reliable for UCT: the CUDA
+    // surface captures a neutral paired smoothed/current image for the
+    // former, and copies each frame's device hold record for the latter, so
+    // held or crossfaded pixels are named on the UCT worker. Replay and
+    // refresh reuse the saved pre-frame history and hold record.
     if (b.forceReprocess || b.surface->GetKeystoneTrackingState().stepPending) s.analysis.reset();
 
 #if OKUFLOW_HAS_CUDA_EXT_MEMORY
@@ -639,8 +642,8 @@ MediaGpuScene::Status MediaGpuScene::Process(const VideoPlaybackFrame& frame,
             s.analysis = std::move(orphaned);
         }
     }
-    b.surface->EnableUctAnalysis(enableUct && b.uctReliable);
-    if (!enableUct || !b.uctReliable) s.analysis.reset();
+    b.surface->EnableUctAnalysis(enableUct);
+    if (!enableUct) s.analysis.reset();
 #else
     (void)enableUct;
 #endif
@@ -718,7 +721,7 @@ MediaGpuScene::Status MediaGpuScene::Process(const VideoPlaybackFrame& frame,
     b.sourceIsGpu = bool(gpuImage);
     b.settings = settings;
 #if OKUFLOW_HAS_CUDA_EXT_MEMORY
-    if (enableUct && b.uctReliable) {
+    if (enableUct) {
         if (auto fresh = b.surface->TakeUctAnalysis()) {
             if (fresh->sourceEpoch == epoch &&
                 fresh->frameSequence == frame.sampleId &&
@@ -833,7 +836,7 @@ std::uint64_t MediaGpuScene::HistoryResetCount() const noexcept
 bool MediaGpuScene::UctCoordinatesReliable() const noexcept
 {
     const auto& b = state_->current;
-    return b && b->sceneReady && b->uctReliable && !b->surface->IsSuperResActive();
+    return b && b->sceneReady && !b->surface->IsSuperResActive();
 }
 
 std::uint64_t MediaGpuScene::SceneEpoch() const noexcept
@@ -891,6 +894,14 @@ uct::SharedDeviceImage MediaGpuScene::TakeUctAnalysis()
     State& s = *state_;
     if (!UctCoordinatesReliable()) { s.analysis.reset(); return {}; }
     if (!s.current || !s.current->sceneReady || !s.analysis) return {};
+    if (s.analysis->kind == uct::AnalysisKind::TemporallySmoothed &&
+        (s.analysis->blendFrameCount < 1 ||
+         s.analysis->seedFrameSequence > s.analysis->frameSequence ||
+         s.analysis->historyEpoch == 0 || !(s.analysis->temporalAlpha >= 0.0f) ||
+         s.analysis->temporalAlpha > 1.0f || !s.analysis->ValidationData())) {
+        s.analysis.reset();
+        return {};
+    }
     if (s.analysis->sourceEpoch != s.current->sceneEpoch ||
         s.analysis->frameSequence != s.current->sceneFrameSequence ||
         s.analysis->processingGeneration != s.current->sceneAppearance) {

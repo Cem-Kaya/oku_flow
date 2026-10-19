@@ -302,6 +302,61 @@ class PaddleTests final : public QObject
         QVERIFY(!health.CanAttempt(100000));
         QVERIFY(health.Failed());
     }
+    // The Extra Stable record names live or held pixels only when it is
+    // internally consistent; composites and inconsistent records name none.
+    void holdRecordDecodingFailsClosed()
+    {
+        using H = HoldDisplay;
+        const auto decode = [](HoldProvenanceRecord record) { return DecodeHoldProvenance(record); };
+        const auto live = decode({42, 42, 0, 1, 1.0f, 0});
+        QCOMPARE(int(live.display), int(H::Live));
+        QCOMPARE(live.acquisition, std::uint64_t{42});
+        const auto held = decode({40, 40, 1, 1, 0.0f, 0});
+        QCOMPARE(int(held.display), int(H::Held));
+        QCOMPARE(held.acquisition, std::uint64_t{40});
+        QCOMPARE(int(decode({40, 40, 1, 0, 0.0f, 0}).display), int(H::Unknown)); // no valid surface
+        QCOMPARE(int(decode({41, 40, 1, 1, 0.0f, 0}).display), int(H::Unknown)); // shown != held
+        QCOMPARE(int(decode({0, 40, 2, 1, 0.5f, 0}).display), int(H::Crossfade));
+        QCOMPARE(int(decode({0, 40, 2, 1, 1.5f, 0}).display), int(H::Unknown));
+        QCOMPARE(int(decode({0, 0, 3, 0, 0.0f, 0}).display), int(H::Unknown));
+        SourceStamp stamp;
+        stamp.frameSeq = 42;
+        QCOMPARE(EvidenceAcquisition(stamp).value_or(0), std::uint64_t{42}); // no hold policy
+        auto resolved = stamp;
+        ApplyHoldProvenance(resolved, held);
+        QCOMPARE(int(resolved.holdDisplay), int(H::Held));
+        QCOMPARE(EvidenceAcquisition(resolved).value_or(0), std::uint64_t{40});
+        resolved = stamp;
+        ApplyHoldProvenance(resolved, live);
+        QCOMPARE(EvidenceAcquisition(resolved).value_or(0), std::uint64_t{42});
+        const HoldProvenance inconsistent[] = {{H::Live, 41, 1.0f}, {H::Held, 42, 0.0f}, {H::Held, 43, 0.0f},
+                                               {H::NotHeld, 42, 0.0f}, {H::Unknown, 40, 0.0f}};
+        for (const auto& record : inconsistent)
+        {
+            resolved = stamp;
+            ApplyHoldProvenance(resolved, record);
+            QCOMPARE(int(resolved.holdDisplay), int(H::Unknown));
+            QVERIFY(!EvidenceAcquisition(resolved));
+        }
+        resolved = stamp;
+        ApplyHoldProvenance(resolved, {H::Crossfade, 40, 0.5f});
+        QCOMPARE(int(resolved.holdDisplay), int(H::Crossfade));
+        QCOMPARE(resolved.holdAcquisition, std::uint64_t{0});
+        QVERIFY(!EvidenceAcquisition(resolved));
+        // Hand-built stamps that bypass ApplyHoldProvenance fail closed too:
+        // live must name exactly this frame, held a strictly earlier one.
+        resolved = stamp;
+        resolved.holdDisplay = H::Live;
+        resolved.holdAcquisition = 41;
+        QVERIFY(!EvidenceAcquisition(resolved));
+        resolved.holdDisplay = H::Held;
+        resolved.holdAcquisition = 42;
+        QVERIFY(!EvidenceAcquisition(resolved));
+        resolved.holdAcquisition = 43;
+        QVERIFY(!EvidenceAcquisition(resolved));
+        resolved.holdAcquisition = 40;
+        QCOMPARE(EvidenceAcquisition(resolved).value_or(0), std::uint64_t{40});
+    }
     void missingOrTamperedModelsFailClosed()
     {
         QTemporaryDir directory;
@@ -654,6 +709,268 @@ class PaddleTests final : public QObject
         QCOMPARE(retained.size(),8);cancel=true;QString error;RecognitionResult rejected;
         auto owned=pool.Capture(pixels.data,pitch,page.width(),page.height(),stream.value,1,9,1);QVERIFY(owned);
         QVERIFY(!owned->PrepareResidentAnalysis(rejected,2,true,cancel,error));QVERIFY(!rejected.reference.IsValid());
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
+    void gpuPairedCaptureKeepsSmoothedOcrAndCurrentValidationApart()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        int devices{};if(cudaGetDeviceCount(&devices)!=cudaSuccess||!devices)QSKIP("No CUDA device.");
+        const auto tree=[](const QImage& page) {
+            QByteArray packed;for(int y=0;y<page.height();++y)packed.append(reinterpret_cast<const char*>(page.constScanLine(y)),page.width()*4);
+            QVector<QByteArray> nodes;
+            for(qsizetype i=0;i<packed.size();i+=4096)nodes.push_back(QCryptographicHash::hash(QByteArray(1,char(0))+packed.mid(i,4096),QCryptographicHash::Sha256));
+            while(nodes.size()>1){QVector<QByteArray> next;for(qsizetype i=0;i<nodes.size();i+=16){QByteArray bytes(1,char(1));for(qsizetype k=i;k<std::min(i+16,nodes.size());++k)bytes+=nodes[k];next.push_back(QCryptographicHash::hash(bytes,QCryptographicHash::Sha256));}nodes=std::move(next);}return nodes.front();
+        };
+        FixtureStream stream;AnalysisPool pool;std::atomic<bool> cancel{false};
+        QImage smoothed(128,64,QImage::Format_ARGB32),current(128,64,QImage::Format_ARGB32);
+        for(int y=0;y<64;++y)for(int x=0;x<128;++x){
+            smoothed.setPixelColor(x,y,QColor((x*2)%256,(y*4)%256,128));
+            current.setPixelColor(x,y,QColor(255-(x*2)%256,(y*3)%256,32));
+        }
+        GpuBuffer<unsigned char> smoothedPx(smoothed.sizeInBytes()),currentPx(current.sizeInBytes());
+        QCOMPARE(cudaMemcpyAsync(smoothedPx.data,smoothed.constBits(),smoothed.sizeInBytes(),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+        QCOMPARE(cudaMemcpyAsync(currentPx.data,current.constBits(),current.sizeInBytes(),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+        auto pair=pool.CapturePair(smoothedPx.data,smoothed.bytesPerLine(),currentPx.data,current.bytesPerLine(),
+                                   128,64,stream.value,7,42,3,9,40,3,0.25f);
+        QVERIFY(pair);
+        QVERIFY(pair->kind==AnalysisKind::TemporallySmoothed);
+        QCOMPARE(pair->historyEpoch,std::uint64_t{9});
+        QCOMPARE(pair->seedFrameSequence,std::uint64_t{40});
+        QCOMPARE(pair->blendFrameCount,std::uint64_t{3});
+        QCOMPARE(pair->frameSequence,std::uint64_t{42});
+        QVERIFY(pair->Data()!=pair->ValidationData());
+        QString error;
+        const QImage ocr=pair->Readback(cancel,error);QVERIFY2(!ocr.isNull(),qPrintable(error));
+        const QImage validation=pair->ReadValidation(cancel,error);QVERIFY2(!validation.isNull(),qPrintable(error));
+        QCOMPARE(ocr.convertToFormat(QImage::Format_ARGB32),smoothed);
+        QCOMPARE(validation.convertToFormat(QImage::Format_ARGB32),current);
+        // Resident fingerprint and probe come from the current frame only.
+        RecognitionResult r;r.stamp.sourceEpoch=7;r.stamp.frameSeq=42;r.stamp.geometryGeneration=1;
+        r.stamp.viewportWidth=128;r.stamp.viewportHeight=64;r.stamp.viewTransform={0,0,1,1,0,0,1,1,true};
+        QVERIFY2(pair->PrepareResidentAnalysis(r,1,false,cancel,error),qPrintable(error));
+        QCOMPARE(r.sourcePixelDigest,tree(current));
+        QVERIFY(r.sourcePixelDigest!=tree(smoothed));
+        QVERIFY(r.reference.resident);
+        // Atomicity: with both pair slots leased, no half-pair is published.
+        auto pair2=pool.CapturePair(smoothedPx.data,smoothed.bytesPerLine(),currentPx.data,current.bytesPerLine(),
+                                    128,64,stream.value,7,43,3,9,40,4,0.25f);
+        QVERIFY(pair2);
+        QVERIFY(!pool.CapturePair(smoothedPx.data,smoothed.bytesPerLine(),currentPx.data,current.bytesPerLine(),
+                                  128,64,stream.value,7,44,3,9,40,5,0.25f));
+        QVERIFY(!pool.HasFailure());
+        pair.reset();
+        auto pair3=pool.CapturePair(smoothedPx.data,smoothed.bytesPerLine(),currentPx.data,current.bytesPerLine(),
+                                    128,64,stream.value,7,44,3,9,40,5,0.25f);
+        QVERIFY(pair3);
+        // A raw reference can be trackable while the smoothed OCR pixels
+        // contain different, stale text. Require direct OCR-to-current proof
+        // before later raw motion tracking is allowed to admit those words.
+        {
+            AnalysisPool registration;
+            for(int y=0;y<64;++y)for(int x=0;x<128;++x){
+                const unsigned cell=unsigned(x/3)+unsigned(y/3)*43;
+                smoothed.setPixelColor(x,y,((cell*2654435761u)>>(cell%19))&1 ? Qt::white : Qt::black);
+                current.setPixelColor(x,y,((cell*2246822519u+3266489917u)>>(cell%17))&1 ? Qt::white : Qt::black);
+            }
+            const auto prepare=[&](bool same,RecognitionResult& result) {
+                const auto& raw=same?smoothed:current;
+                if(cudaMemcpyAsync(smoothedPx.data,smoothed.constBits(),smoothed.sizeInBytes(),cudaMemcpyHostToDevice,stream.value)!=cudaSuccess ||
+                   cudaMemcpyAsync(currentPx.data,raw.constBits(),raw.sizeInBytes(),cudaMemcpyHostToDevice,stream.value)!=cudaSuccess)return false;
+                auto input=registration.CapturePair(smoothedPx.data,smoothed.bytesPerLine(),currentPx.data,raw.bytesPerLine(),
+                    128,64,stream.value,7,46,3,9,40,7,.25f);
+                if(!input)return false;
+                result.stamp=r.stamp;
+                RecognizedLine line;line.words.push_back({QStringLiteral("recognized"),QRectF(8,8,112,48)});
+                result.output.lines.push_back(line);
+                return input->PrepareResidentAnalysis(result,1,false,cancel,error);
+            };
+            RecognitionResult stale;QVERIFY2(prepare(false,stale),qPrintable(error));
+            QCOMPARE(stale.currentInputMatches.size(),1);QVERIFY(!stale.currentInputMatches.front());
+            QVERIFY(BuildReferencePatch(stale.reference,QRectF(8.0/128,8.0/64,112.0/128,48.0/64)).valid);
+            RecognitionResult exact;QVERIFY2(prepare(true,exact),qPrintable(error));
+            QCOMPARE(exact.currentInputMatches.size(),1);QVERIFY(exact.currentInputMatches.front());
+        }
+        {
+            QVERIFY(QFontDatabase::addApplicationFont("C:/Windows/Fonts/arial.ttf")>=0);
+            QFont font("Arial");font.setPixelSize(28);font.setBold(true);
+            const QFontMetrics fm(font);
+            const auto textPage=[&](const QString& last,int dy,RecognizedLine* line) {
+                QImage image(640,256,QImage::Format_ARGB32);image.fill(Qt::white);
+                QPainter painter(&image);painter.setFont(font);painter.setPen(Qt::black);
+                int x=50;const int baseline=100+dy;
+                for(const auto& word:QStringList{"Read","clear","words",last}) {
+                    painter.drawText(x,baseline,word);
+                    if(line)line->words.push_back({word,QRectF(fm.tightBoundingRect(word).translated(x,baseline))});
+                    x+=fm.horizontalAdvance(word+QStringLiteral(" "));
+                }
+                return image;
+            };
+            RecognizedLine line;const auto stable=textPage("today",0,&line);
+            GpuBuffer<unsigned char> a(stable.sizeInBytes()),b(stable.sizeInBytes());AnalysisPool words;
+            for(int scenario=0;scenario<5;++scenario) {
+                QImage raw=scenario==0?stable:textPage(scenario==1?"never":"today",
+                    scenario<2?0:(scenario==2?12:scenario==3?24:48),nullptr);
+                if(scenario==0)for(int y=0;y<raw.height();++y)for(int x=0;x<raw.width();++x) {
+                    const int noise=(x*17+y*23)%13-6;
+                    const int v=std::clamp(qRed(raw.pixel(x,y))+noise,0,255);raw.setPixel(x,y,qRgb(v,v,v));
+                }
+                QCOMPARE(cudaMemcpyAsync(a.data,stable.constBits(),stable.sizeInBytes(),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+                QCOMPARE(cudaMemcpyAsync(b.data,raw.constBits(),raw.sizeInBytes(),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+                auto input=words.CapturePair(a.data,stable.bytesPerLine(),b.data,raw.bytesPerLine(),
+                    stable.width(),stable.height(),stream.value,7,47+scenario,3,9,40,8,.25f);QVERIFY(input);
+                RecognitionResult proof;proof.stamp=r.stamp;proof.stamp.viewportWidth=stable.width();proof.stamp.viewportHeight=stable.height();
+                proof.output.lines.push_back(line);
+                QVERIFY2(input->PrepareResidentAnalysis(proof,2,false,cancel,error),qPrintable(error));
+                QCOMPARE(proof.currentInputMatches.size(),1);
+                QCOMPARE(proof.currentInputMatches.front(),scenario==0);
+                const auto recognized=MakeProbeFrame(stable.constBits(),stable.width(),stable.height(),stable.bytesPerLine(),2,proof.stamp);
+                const auto currentProbe=MakeProbeFrame(raw.constBits(),raw.width(),raw.height(),raw.bytesPerLine(),2,proof.stamp);
+                bool cpu=true;
+                for(const auto& word:line.words) {
+                    const auto rect=ViewRectToScene(proof.stamp.viewTransform,stable.width(),stable.height(),word.boundsPx);
+                    const auto match=MatchPatch(BuildReferencePatch(recognized,rect),currentProbe,kInputRegistrationTuning);
+                    cpu &= match.matched && match.sceneOffset.isNull();
+                }
+                QCOMPARE(proof.currentInputMatches.front(),cpu);
+            }
+        }
+        // The 128 MiB bound counts both halves: this extent fits singly
+        // (69 MiB) but not as a pair, and is refused before any copy.
+        AnalysisPool capped;
+        QVERIFY(!capped.CapturePair(smoothedPx.data,4096*4,currentPx.data,4096*4,
+                                    4096,4224,stream.value,7,45,3,9,40,6,0.25f));
+        QVERIFY(!capped.HasFailure());
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
+    // The 32-byte record is copied with the pixels on the capture stream and
+    // read only by a worker after that copy. Later device-state changes cannot
+    // rename a capture; crossfades never reach the recognizer.
+    void gpuHoldRecordTravelsWithCaptureAndResolvesOnWorker()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        int devices{};if(cudaGetDeviceCount(&devices)!=cudaSuccess||!devices)QSKIP("No CUDA device.");
+        FixtureStream stream;AnalysisPool pool;std::atomic<bool> cancel{false};QString error;
+        QImage page(128,64,QImage::Format_ARGB32);
+        for(int y=0;y<64;++y)for(int x=0;x<128;++x)page.setPixelColor(x,y,QColor((x*2)%256,(y*4)%256,96));
+        GpuBuffer<unsigned char> pixels(page.sizeInBytes());GpuBuffer<HoldProvenanceRecord> record(1);
+        const auto upload=[&](HoldProvenanceRecord value){
+            return cudaMemcpyAsync(record.data,&value,sizeof(value),cudaMemcpyHostToDevice,stream.value)==cudaSuccess;};
+        const auto capture=[&](std::uint64_t frame,bool withRecord){
+            return pool.Capture(pixels.data,page.bytesPerLine(),page.width(),page.height(),stream.value,7,frame,3,
+                                withRecord?record.data:nullptr);};
+        QCOMPARE(cudaMemcpyAsync(pixels.data,page.constBits(),page.sizeInBytes(),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+        QVERIFY(upload({40,40,1,1,0.0f,0}));
+        auto held=capture(42,true);QVERIFY(held);QVERIFY(held->HasHoldProvenance());
+        QVERIFY(upload({43,43,0,1,1.0f,0})); // the next frame's state, stream-ordered after the copy
+        const auto read=held->ReadHoldProvenance(cancel,error);
+        QCOMPARE(int(read.display),int(HoldDisplay::Held));QCOMPARE(read.acquisition,std::uint64_t{40});
+        QCOMPARE(held->Readback(cancel,error).convertToFormat(QImage::Format_ARGB32),page);
+        SourceStamp stamp;stamp.sourceEpoch=7;stamp.frameSeq=42;stamp.geometryGeneration=1;
+        stamp.viewportWidth=page.width();stamp.viewportHeight=page.height();
+        stamp.viewTransform={0,0,1,1,0,0,1,1,true};stamp.liveCameraCapture=true;stamp.holdDisplay=HoldDisplay::Unknown;
+        {
+            RecognitionResult probe;std::atomic<bool> done{};
+            RecognitionScheduler reader(nullptr,[&](RecognitionResult r){probe=std::move(r);done=true;},{},2,4,true);
+            QTRY_COMPARE(reader.Status().state,BackendState::kReady);
+            QVERIFY(reader.SubmitDevice(stamp,held));
+            QTRY_VERIFY(done.load());
+            QVERIFY(probe.output.ok);QVERIFY(probe.reference.resident);QVERIFY(probe.reference.luma.isNull());
+            QCOMPARE(int(probe.stamp.holdDisplay),int(HoldDisplay::Held));
+            QCOMPARE(int(probe.reference.stamp.holdDisplay),int(HoldDisplay::Held));
+            QCOMPARE(EvidenceAcquisition(probe.stamp).value_or(0),std::uint64_t{40});
+        }
+        held.reset();
+        BackendCalls calls;std::atomic<int> completions{};RecognitionResult ocr;
+        RecognitionScheduler scheduler(std::make_unique<FakeBackend>(calls,0,true),
+            [&](RecognitionResult r){ocr=std::move(r);++completions;},{});
+        QTRY_COMPARE(scheduler.Status().state,BackendState::kReady);
+        QVERIFY(upload({0,40,2,1,0.5f,0}));
+        auto blend=capture(44,true);QVERIFY(blend);stamp.frameSeq=44;
+        QVERIFY(scheduler.SubmitDevice(stamp,blend));QTRY_COMPARE(completions.load(),1);
+        QVERIFY(ocr.output.compositeInput);QVERIFY(!ocr.output.ok);QVERIFY(!ocr.output.inputFault);
+        QCOMPARE(calls.calls,0);QCOMPARE(int(ocr.stamp.holdDisplay),int(HoldDisplay::Crossfade));
+        blend.reset();
+        QVERIFY(upload({45,45,0,1,1.0f,0}));
+        auto live=capture(45,true);QVERIFY(live);stamp.frameSeq=45;
+        QVERIFY(scheduler.SubmitDevice(stamp,live));QTRY_COMPARE(completions.load(),2);
+        QVERIFY(ocr.output.ok);QVERIFY(!ocr.output.compositeInput);QCOMPARE(calls.calls,1);
+        QCOMPARE(int(ocr.stamp.holdDisplay),int(HoldDisplay::Live));QCOMPARE(ocr.stamp.holdAcquisition,std::uint64_t{45});
+        live.reset();
+        // Without a record, a stamp cannot keep claiming held pixels.
+        auto plain=capture(46,false);QVERIFY(plain);QVERIFY(!plain->HasHoldProvenance());
+        QCOMPARE(int(plain->ReadHoldProvenance(cancel,error).display),int(HoldDisplay::Unknown));
+        stamp.frameSeq=46;stamp.holdDisplay=HoldDisplay::Held;stamp.holdAcquisition=40;
+        QVERIFY(scheduler.SubmitDevice(stamp,plain));QTRY_COMPARE(completions.load(),3);
+        QVERIFY(ocr.output.compositeInput);QCOMPARE(calls.calls,1);
+        QCOMPARE(int(ocr.stamp.holdDisplay),int(HoldDisplay::Unknown));
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
+    // Explicit pool fault seam: clean allocation pressure backs off and
+    // becomes visible after three attempts; unknown copy completion
+    // quarantines the pool until an explicit reset replaces it.
+    void gpuAnalysisFaultSeamLatchesPressureAndQuarantinesUnknownCompletion()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        int devices{};if(cudaGetDeviceCount(&devices)!=cudaSuccess||!devices)QSKIP("No CUDA device.");
+        FixtureStream stream;GpuBuffer<unsigned char> pixels(64*32*4);
+        QCOMPARE(cudaMemsetAsync(pixels.data,0x40,64*32*4,stream.value),cudaSuccess);
+        const auto capture=[&](AnalysisPool& pool,std::uint64_t frame){
+            return pool.Capture(pixels.data,64*4,64,32,stream.value,1,frame,1);};
+        {
+            AnalysisPool pool;
+            pool.InjectFaultForTesting(AnalysisPool::InjectedFault::CleanAllocation);
+            QVERIFY(!capture(pool,1));QVERIFY(!pool.HasFailure());
+            QVERIFY(!capture(pool,2));QVERIFY(!pool.HasFailure()); // bounded pause, no new attempt
+            QTest::qSleep(270);
+            QVERIFY(capture(pool,3));QVERIFY(!pool.HasFailure());
+        }
+        {
+            AnalysisPool pool;
+            for(int attempt=0;attempt<3;++attempt){
+                pool.InjectFaultForTesting(AnalysisPool::InjectedFault::CleanAllocation);
+                QVERIFY(!capture(pool,10+attempt));
+                QCOMPARE(pool.HasFailure(),attempt==2);
+                QTest::qSleep(270);
+            }
+            QVERIFY(capture(pool,20));QVERIFY(!pool.HasFailure()); // success clears clean pressure
+        }
+        {
+            AnalysisPool pool;
+            pool.InjectFaultForTesting(AnalysisPool::InjectedFault::UnknownCompletion);
+            QVERIFY(!capture(pool,30));QVERIFY(pool.HasFailure());
+            QTest::qSleep(300);
+            QVERIFY(!capture(pool,31));QVERIFY(pool.HasFailure()); // no time-based recovery
+            AnalysisPool reset; // explicit UCT reset replaces the pool
+            QVERIFY(capture(reset,32));QVERIFY(!reset.HasFailure());
+        }
+        {
+            // A hold-bearing capture is atomic with its 32-byte record: a
+            // fault publishes neither pixels nor provenance, and the retry
+            // after clean pressure still carries the exact record.
+            GpuBuffer<HoldProvenanceRecord> record(1);
+            const HoldProvenanceRecord held{40,40,1,1,0.0f,0};
+            QCOMPARE(cudaMemcpyAsync(record.data,&held,sizeof(held),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+            AnalysisPool pool;
+            pool.InjectFaultForTesting(AnalysisPool::InjectedFault::UnknownCompletion);
+            QVERIFY(!pool.Capture(pixels.data,64*4,64,32,stream.value,1,42,1,record.data));
+            QVERIFY(pool.HasFailure());
+            AnalysisPool clean;
+            clean.InjectFaultForTesting(AnalysisPool::InjectedFault::CleanAllocation);
+            QVERIFY(!clean.Capture(pixels.data,64*4,64,32,stream.value,1,42,1,record.data));
+            QVERIFY(!clean.HasFailure());
+            QTest::qSleep(270);
+            auto image=clean.Capture(pixels.data,64*4,64,32,stream.value,1,42,1,record.data);
+            QVERIFY(image);QVERIFY(image->HasHoldProvenance());
+            std::atomic<bool> cancel{false};QString error;
+            const auto read=image->ReadHoldProvenance(cancel,error);
+            QCOMPARE(int(read.display),int(HoldDisplay::Held));QCOMPARE(read.acquisition,std::uint64_t{40});
+        }
 #else
         QSKIP("CUDA adapter not compiled.");
 #endif
@@ -1046,8 +1363,16 @@ class PaddleTests final : public QObject
         QVERIFY(!recognizer->Preparing());
         QCOMPARE(recognizer->Status().state, BackendState::kReady);
 #endif
-        for (int iteration = 0; iteration < 2; ++iteration)
+        for (int iteration = 0; iteration < 3; ++iteration)
         {
+#if OKUFLOW_ENABLE_CUDA
+            if(iteration==2) {
+                owned.reset();
+                owned=pool.CapturePair(devicePixels.data,page.bytesPerLine(),devicePixels.data,page.bytesPerLine(),
+                    page.width(),page.height(),stream.value,1,1,1,1,1,1,.25f);
+                QVERIFY(owned);
+            }
+#endif
             QElapsedTimer timer;
             timer.start();
 #if OKUFLOW_ENABLE_CUDA
@@ -1063,12 +1388,17 @@ class PaddleTests final : public QObject
                     if (word.disposition == TokenDisposition::kCandidate) words.push_back(word.text);
             qInfo() << "Paddle TensorRT iteration" << iteration << "ms" << timer.elapsed() << words;
 #if OKUFLOW_ENABLE_CUDA
-            if(iteration==1) {
+            if(iteration>=1) {
                 RecognitionResult r;r.output=output;r.stamp.sourceEpoch=1;r.stamp.frameSeq=1;
                 r.stamp.geometryGeneration=1;r.stamp.liveCameraCapture=true;
+                r.stamp.temporallySmoothed=iteration==2;
                 r.stamp.viewportWidth=page.width();r.stamp.viewportHeight=page.height();
                 r.stamp.viewTransform={0,0,1,1,0,0,1,1,true};QString error;
                 QVERIFY2(owned->PrepareResidentAnalysis(r,2,false,cancelled,error),qPrintable(error));
+                if(iteration==2) {
+                    QCOMPARE(r.currentInputMatches.size(),r.output.lines.size());
+                    for(bool matched:r.currentInputMatches)QVERIFY(matched);
+                }
                 r.prepared=PrepareLines(r,7);QVERIFY(!r.prepared.isEmpty());
                 QVERIFY(r.reference.resident);QVERIFY(r.reference.luma.isNull());QVERIFY(r.reference.integral.isEmpty());
                 QVERIFY(r.sourcePixelDigest.isEmpty());

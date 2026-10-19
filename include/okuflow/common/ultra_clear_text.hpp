@@ -49,6 +49,20 @@ struct SourceStamp {
     // Set only by the live-camera controller from capture-owned frame identity.
     // Selected media leaves this false; job/timestamp changes cannot set it.
     bool liveCameraCapture{};
+    // OCR-input provenance copied from the paired device image. Validation
+    // probes always describe the single exact frameSeq frame; these fields
+    // disclose that the recognized pixels were a neutral temporal blend.
+    bool temporallySmoothed{};
+    std::uint64_t historyEpoch{};
+    std::uint64_t seedFrameSeq{};
+    std::uint64_t blendFrameCount{};
+    float temporalAlpha{};
+    // Extra Stable identity of the pixels, set only by a worker from the
+    // capture's own device record (or Unknown while that is unresolved).
+    // Held pixels belong to the earlier holdAcquisition: repeating one held
+    // image is one observation. Crossfade/Unknown images are never evidence.
+    HoldDisplay holdDisplay{HoldDisplay::NotHeld};
+    std::uint64_t holdAcquisition{};
 
     bool SameScene(const SourceStamp& other) const noexcept
     {
@@ -56,6 +70,13 @@ struct SourceStamp {
                geometryGeneration == other.geometryGeneration;
     }
 };
+
+// The acquisition whose pixels a stamped image actually shows: frameSeq,
+// or the earlier held acquisition. Composite/unknown pixels name none.
+std::optional<std::uint64_t> EvidenceAcquisition(const SourceStamp& stamp);
+// Applies a worker-read device record. Inconsistent identity (live other than
+// frameSeq, held not strictly older than frameSeq) becomes Unknown.
+void ApplyHoldProvenance(SourceStamp& stamp, const HoldProvenance& hold);
 
 // Normalized-scene <-> pixel mapping through one ViewTransform. `width` and
 // `height` are the pixel extent of whatever surface the transform targets.
@@ -195,6 +216,9 @@ struct RecognitionOutput {
     QVector<RecognizedLine> lines;
     bool inputFault{}; // dropped frame/copy, not a reason to retire a backend
     bool backendPreparing{}; // use a temporary fallback, retain this candidate
+    // Extra Stable crossfade/unknown input: recognition was not attempted.
+    // Neither a backend nor an input fault, and never recognition evidence.
+    bool compositeInput{};
 };
 
 // Runs only on the scheduler's worker thread. Implementations must honor
@@ -250,8 +274,12 @@ struct PreparedLine {
 struct MatchTuning {
     double minimumScore{0.82};
     double minimumVisibleFraction{0.85};
-    int searchRadiusPx{6}; // probe pixels, clamped to [1, 10] on CPU and GPU
+    int searchRadiusPx{6}; // probe pixels, clamped to [0, 10]; zero disables translation/refinement
 };
+
+// OCR/current halves have identical coordinates. Unlike later motion tracking,
+// input registration must not search for old words elsewhere in the new frame.
+inline constexpr MatchTuning kInputRegistrationTuning{0.94, 0.95, 0};
 
 // Worker registration is tied to one selected job and the exact model policy.
 struct CorroborationRequest {
@@ -265,10 +293,15 @@ struct RecognitionResult {
     std::uint64_t authority{};
     SourceStamp stamp;
     RecognitionOutput output;
-    // Luma reference built from the job's own pixels (same stamp), so
-    // acceptance validates against the exact recognized content.
+    // Single-frame luma reference at the job's latest contributing frame.
+    // Smoothed OCR additionally requires currentInputMatches below.
     ProbeFrame reference;
     QVector<LineColors> lineColors; // parallel to output.lines
+    // For smoothed OCR, every candidate word must match in place with stricter
+    // registration tuning. One worker-computed verdict per line compares the
+    // recognized smoothed pixels and the exact current frame. Merely matching
+    // a raw reference against later raw probes cannot prove OCR correspondence.
+    QVector<bool> currentInputMatches;
     // Parallel to output.lines when filled by the scheduler; Admit prepares
     // lines itself when this is empty (hand-built fixtures).
     QVector<PreparedLine> prepared;
@@ -600,6 +633,9 @@ public:
     // never supplies a second observation. Capture provenance, scheduler
     // authority, scene/age, agreement and pixel-residual checks still apply;
     // the live worker does not compute a redundant full-image digest.
+    // Extra Stable held images count as their earlier held acquisition, never
+    // as the newer presentation sequence; a single held observation is shown
+    // only as reading text that leaves the original ink in place.
     AdmitVerdict AdmitLiveCamera(const RecognitionResult& result,
                                 const SourceStamp& current,
                                 const ProbeFrame* latestProbe,
@@ -627,8 +663,11 @@ public:
     QVector<LineReference> LineReferences(const SourceStamp& scene) const;
     // Applies off-thread checks made against a probe stamped `probeStamp`.
     // Lines removed or re-admitted meanwhile are ignored; lines validated by
-    // newer pixels than the probe keep that newer state.
-    ValidationSummary ApplyChecks(const QVector<LineCheck>& checks, const SourceStamp& probeStamp);
+    // newer pixels than the probe keep that newer state. `renew` false (an
+    // Extra Stable crossfade composite) revokes a matched line's display and may remove lines, but never
+    // validates one or advances its proof clock.
+    ValidationSummary ApplyChecks(const QVector<LineCheck>& checks, const SourceStamp& probeStamp,
+                                  bool renew = true);
     // Words safe to draw now, in scene units. A line is shown only if its
     // latest validation is fresh, or no newer camera frame has been
     // presented since it.

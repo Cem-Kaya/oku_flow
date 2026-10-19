@@ -555,18 +555,22 @@ bool OkuFlowApp::PresentMediaView()
     return presented;
 }
 
-void OkuFlowApp::AcceptLiveMediaHold(std::vector<std::uint8_t> pixels, UINT width, UINT height,
+bool OkuFlowApp::AcceptLiveMediaHold(std::vector<std::uint8_t> pixels, UINT width, UINT height,
                                    std::uint64_t sequence, std::int64_t captureClock100ns)
 {
     if (!videoDocument_ || !videoDocument_->pendingHold ||
-        videoDocument_->holdEpoch != mediaDocumentEpoch_) return;
+        videoDocument_->holdEpoch != mediaDocumentEpoch_) return false;
     auto& doc = *videoDocument_;
     doc.pendingHold = false;
     if (!VideoPlaybackLayoutFits(width, height, static_cast<std::int64_t>(width) * 4) ||
         pixels.size() != static_cast<std::size_t>(width) * height * 4) {
         doc.resumePending = false;
+        // A failed manual hold must not abandon a still-recording live view.
+        // Finishing recordings retain their separate unavailable receipt.
+        doc.followingLive = doc.active && doc.kind == VideoDocumentState::Kind::Recording;
+        doc.heldUnrecorded = !doc.followingLive;
         ShowStatusMessage(QStringLiteral("The displayed frame could not be retained. Recorded video remains available."));
-        return;
+        return false;
     }
     const auto& shownView = mediaHoldViewTransform_;
     const bool fitted = shownView.destinationWidth < 0.99999f || shownView.destinationHeight < 0.99999f ||
@@ -590,8 +594,10 @@ void OkuFlowApp::AcceptLiveMediaHold(std::vector<std::uint8_t> pixels, UINT widt
     }
     if (!exactFraming) {
         doc.resumePending = false;
+        doc.followingLive = doc.active && doc.kind == VideoDocumentState::Kind::Recording;
+        doc.heldUnrecorded = !doc.followingLive;
         ShowStatusMessage(QStringLiteral("Pause unavailable: the displayed framing could not be retained exactly."));
-        return;
+        return false;
     }
     auto frame = std::make_shared<VideoPlaybackFrame>();
     frame->bgra = std::make_shared<const std::vector<std::uint8_t>>(std::move(pixels)); frame->width = width; frame->height = height;
@@ -608,6 +614,7 @@ void OkuFlowApp::AcceptLiveMediaHold(std::vector<std::uint8_t> pixels, UINT widt
     SetZoomCenter(heldCenterX, heldCenterY, true, true, false);
     if (pipelineOrchestrator_->ViewportFitMode() != fitMode) SetViewportFitMode(fitMode, false);
     PollVideoPlayback();
+    return true;
 }
 
 void OkuFlowApp::SeekSelectedVideo(qint64 positionMs)
@@ -672,6 +679,9 @@ void OkuFlowApp::ToggleSelectedVideoPlayback()
         doc.followingLive = false;
         if (!retained) {
             doc.pendingHold = false;
+            doc.followingLive = true;
+            lastAnnotationPresentation_ = livePresentation;
+            lastAnnotationGpuPresentation_ = liveGpuPresentation;
             ShowStatusMessage(QStringLiteral("The displayed frame could not be retained. Recorded video remains available."));
         }
     } else if (doc.pendingHold || doc.resumePending) {
@@ -1065,12 +1075,10 @@ void OkuFlowApp::SaveSelectedVideoFrame()
     if (owned.isNull()) { ShowStatusMessage(QStringLiteral("Frame not saved: the image could not be queued.")); return; }
     {
         QPainter painter(&owned);
-        if (auto* overlay = mainWindow_->ultraClearTextOverlay(); overlay && overlay->isVisible() && overlay->width() > 0 && overlay->height() > 0) {
-            painter.save();
-            painter.scale(static_cast<qreal>(presentationWidth_) / overlay->width(),
-                          static_cast<qreal>(presentationHeight_) / overlay->height());
-            overlay->render(&painter, QPoint(), QRegion(), QWidget::DrawChildren);
-            painter.restore();
+        if (auto* overlay = mainWindow_->ultraClearTextOverlay()) {
+            const auto transform = lastAnnotationPresentation_
+                ? lastAnnotationPresentation_->transform : overlay->CurrentViewTransform();
+            overlay->CaptureSnapshot(transform, overlay->size()).Paint(painter, owned.size());
         }
         if (auto* ink = mainWindow_->annotationOverlay(); ink && ink->IsActive() && ink->HasInk() && lastAnnotationPresentation_)
             RenderAnnotationStrokes(painter, ink->Strokes(), lastAnnotationPresentation_->transform,
@@ -1290,6 +1298,17 @@ void OkuFlowApp::SeedVideoDocumentForTest(const RecordingSessionInfo& session,
 QString OkuFlowApp::PendingVideoOpenForTest() const
 {
     return videoDocument_ ? videoDocument_->pendingOpenPath : QString();
+}
+void OkuFlowApp::SeedPendingLiveHoldForTest(bool finishing)
+{
+    if (!videoDocument_) InitializeVideoPlayback();
+    auto& doc = *videoDocument_;
+    doc.kind = VideoDocumentState::Kind::Recording;
+    doc.finishing = finishing;
+    doc.active = !finishing;
+    doc.followingLive = false;
+    doc.pendingHold = true;
+    doc.holdEpoch = mediaDocumentEpoch_;
 }
 std::shared_ptr<const VideoPlaybackFrame> OkuFlowApp::HeldVideoFrameForTest() const
 {

@@ -584,7 +584,10 @@ void MainWindowTests::desktopVisualChat()
         }
         QVERIFY2(ActivateFixtureWindow(view), test::ActivationFailureMessage());
         QTRY_VERIFY(view->transcript()->toPlainText().contains(answer));
-        QCOMPARE(view->transcript()->horizontalScrollBar()->maximum(), 0);
+        // Text arrives synchronously, while the splitter/viewport resize
+        // posts the width-dependent transcript render to the next event turn.
+        // Wait for the same wrapping invariant after that layout completes.
+        QTRY_COMPARE(view->transcript()->horizontalScrollBar()->maximum(), 0);
         for (QWidget* action : {static_cast<QWidget*>(view->readAloudButton()),
                                 static_cast<QWidget*>(view->attachmentCheckbox()),
                                 static_cast<QWidget*>(view->sendButton())}) {
