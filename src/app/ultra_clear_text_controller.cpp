@@ -246,7 +246,8 @@ void UltraClearTextController::EnsureScheduler()
                 },
                 Qt::QueuedConnection);
         },
-        timing_.probeDecimation, uct::ModelTuning{}.minimumWordHeightPx);
+        timing_.probeDecimation, uct::ModelTuning{}.minimumWordHeightPx, false,
+        qEnvironmentVariable("OKUFLOW_UCT_SHADOW_PLANNER") == "1");
 }
 
 void UltraClearTextController::SetEnabled(bool enabled)
@@ -633,6 +634,7 @@ void UltraClearTextController::UpdateImmutableView(const ViewTransform& transfor
                                                    std::uint32_t viewportHeight, int strokeWeight)
 {
     if (!HasImmutableScene()) return;
+    if (scheduler_) scheduler_->SetShadowFocus(uct::ViewRectToScene(transform, 1, 1, {0, 0, 1, 1}));
     if (immutableScene_) {
         immutableScene_->transform = transform;
         immutableScene_->viewportWidth = viewportWidth;
@@ -725,6 +727,7 @@ bool UltraClearTextController::OnPresented(const UctFrameContext& context)
     cameraActive_ = context.cameraActive;
     attemptedFrameSeq_ = context.frameSeq;
     attemptedTransform_ = context.transform;
+    if (scheduler_) scheduler_->SetShadowFocus(uct::ViewRectToScene(context.transform, 1, 1, {0, 0, 1, 1}));
     attemptedViewport_ = QSize(context.viewportWidth, context.viewportHeight);
     if (overlay_) {
         overlay_->SetStrokeWeight(context.strokeWeight);

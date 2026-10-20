@@ -295,6 +295,7 @@ struct CorroborationRequest {
     QVector<PreparedLine> selectedLines;
 };
 
+struct RegionShadowPlan;
 struct RecognitionResult {
     std::uint64_t jobId{};
     std::uint64_t authority{};
@@ -322,6 +323,10 @@ struct RecognitionResult {
     QVector<QVector<bool>> corroborationWordMatches; // selected line/word indices; no display offsets
     std::uint64_t corroboratedJobId{};
     MatchTuning corroborationTuning;
+    // Optional metadata-only observer; never input to overlay/UIA admission.
+    std::shared_ptr<const RegionShadowPlan> shadowPlan;
+    double shadowPlannerMs{}; // excluded from ordinary OCR worker duration
+    QString shadowPlannerError;
 };
 
 // Maps recognized words into scene coordinates and builds per-line residual
@@ -352,7 +357,8 @@ public:
                          StatusChanged statusChanged,
                          int referenceDecimation = 2,
                          double minimumWordHeightPx = 7.0,
-                         bool probeOnly = false);
+                         bool probeOnly = false,
+                         bool shadowPlanner = false);
     ~RecognitionScheduler();
     RecognitionScheduler(const RecognitionScheduler&) = delete;
     RecognitionScheduler& operator=(const RecognitionScheduler&) = delete;
@@ -367,6 +373,12 @@ public:
     std::uint64_t SubmitDevice(const SourceStamp& stamp, SharedDeviceImage device,
                                CorroborationRequest corroboration = {});
     void Cancel();
+    // Overwrites one optional priority descriptor for the next job only.
+    // Does not submit work, reset/renew evidence or alter recognition policy.
+    void SetShadowFocus(std::optional<QRectF> sceneRect);
+    // Explicit hardware-free fixture seam; affects only an enabled diagnostic
+    // observer. Recognition and its original-image fallback remain unchanged.
+    void FailNextShadowObservationForTest();
     std::uint64_t Authority() const;
     bool IsCurrent(const RecognitionResult& result) const;
     bool HasWork() const; // pending or in flight

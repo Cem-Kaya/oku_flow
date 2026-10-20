@@ -59,6 +59,7 @@ using TensorRtRetirementObserver = std::function<void(std::shared_ptr<AsyncClean
 // Explicit diagnostic only: retain at most four immutable owned inputs and the
 // compact detector windows copied by ordinary recognition. Later calls on the
 // SAME leased pixels replay those windows, isolating recognition from detection.
+// Capacity/allocation refusal leaves ordinary recognition authoritative.
 // Worker-confined, including queries; never installed by the automatic backend.
 class TensorRtCropDiagnostic {
 public:
@@ -69,6 +70,10 @@ public:
     std::uint64_t ReplayCalls() const { return replayCalls_; }
 private:
     friend struct TensorRtCropDiagnosticAccess;
+    friend struct TensorRtCropDiagnosticTestAccess;
+    static constexpr std::size_t kMaxSources = 4;
+    // Diagnostic refusal must not invalidate completed OCR or healthy engines.
+    bool TryCommit(Plan&& plan) noexcept;
     std::vector<Plan> plans_;
     std::uint64_t replayCalls_{};
 };

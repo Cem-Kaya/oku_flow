@@ -1,5 +1,9 @@
 # OkuFlow Documentation Guide
 
+[Shadow regional planning](uct_region_planner.md) describes the opt-in metadata
+observer, source-bound spatial occurrences, requested focus and finite coverage
+debt. Full OCR stays authoritative; no recognition reuse is enabled.
+
 [Batch-eight quality acceptance](uct_batch8_quality_acceptance.md) records the
 owner-approved 10-pixel geometry tolerance, exact text/disposition checks, the
 affected microphone icon, and the development GPU default change.

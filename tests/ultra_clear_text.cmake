@@ -20,6 +20,7 @@ add_executable(ultra_clear_text_tests
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ultra_clear_text_panel.hpp
     ${PROJECT_SOURCE_DIR}/src/app/ultra_clear_text_controller.cpp
     ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp
+    ${PROJECT_SOURCE_DIR}/src/common/uct_region_planner.cpp
     ${PROJECT_SOURCE_DIR}/src/common/view_transform.cpp
     ${PROJECT_SOURCE_DIR}/src/common/annotation_model.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/ultra_clear_text_overlay.cpp
@@ -42,6 +43,7 @@ add_executable(ultra_clear_text_windows_ocr_tests
     ultra_clear_text_windows_ocr_tests.cpp
     ultra_clear_text_test_support.hpp
     ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp
+    ${PROJECT_SOURCE_DIR}/src/common/uct_region_planner.cpp
     ${PROJECT_SOURCE_DIR}/src/common/uct_default_recognizer.cpp
     ${PROJECT_SOURCE_DIR}/src/common/uct_paddle.cpp
     ${PROJECT_SOURCE_DIR}/src/common/uct_paddle_processing.cpp
@@ -63,6 +65,7 @@ add_executable(uct_paddle_tests
     uct_character_diagnostic.hpp
     uct_resident_diagnostic.hpp
     ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp
+    ${PROJECT_SOURCE_DIR}/src/common/uct_region_planner.cpp
     ${PROJECT_SOURCE_DIR}/src/common/view_transform.cpp
     ${PROJECT_SOURCE_DIR}/src/common/uct_paddle_processing.cpp
     ${PROJECT_SOURCE_DIR}/src/common/uct_paddle.cpp
@@ -88,7 +91,7 @@ if(OKUFLOW_ENABLE_CUDA)
     set_target_properties(ultra_clear_text_windows_ocr_tests PROPERTIES CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON
         CUDA_ARCHITECTURES "${OKUFLOW_CUDA_ARCHITECTURES}")
 endif()
-add_test(NAME uct_paddle_processing COMMAND uct_paddle_tests residentDiagnosticSelectionAndComparison modelPinsMatchPreparationAndFailClosed normalizationAndBounds detectionRejectsNoiseAndMapsSource detailRegionsPreserveSmallTextAndMerge ctcBlankRepeatSpaceAndConfidence decoderPreservesUncertainNegationThroughReading automaticFallback allBackendsUnavailable missingOrTamperedModelsFailClosed copyFaultKeepsFallbackUsableAndCopiesOnce cpuServesWhileGpuPreparesThenGpuPromotes promotedGpuFailureDoesNotResurrectRetiredCpu windowsBridgeDefersCpuAndPromotes missingWindowsBridgeWaitsWithoutStartingCpu failedGpuPreparationUsesCpuThenRetainsWindowsBridge windowsBridgeCancellationAndInputFaultDoNotRetire analysisAllocationBackoffAndUnknownCompletionQuarantine holdRecordDecodingFailsClosed)
+add_test(NAME uct_paddle_processing COMMAND uct_paddle_tests residentDiagnosticSelectionAndComparison frozenCropDiagnosticRefusesFifthSourceWithoutChangingLeases modelPinsMatchPreparationAndFailClosed normalizationAndBounds detectionRejectsNoiseAndMapsSource detailRegionsPreserveSmallTextAndMerge ctcBlankRepeatSpaceAndConfidence decoderPreservesUncertainNegationThroughReading automaticFallback allBackendsUnavailable missingOrTamperedModelsFailClosed copyFaultKeepsFallbackUsableAndCopiesOnce cpuServesWhileGpuPreparesThenGpuPromotes promotedGpuFailureDoesNotResurrectRetiredCpu windowsBridgeDefersCpuAndPromotes missingWindowsBridgeWaitsWithoutStartingCpu failedGpuPreparationUsesCpuThenRetainsWindowsBridge windowsBridgeCancellationAndInputFaultDoNotRetire analysisAllocationBackoffAndUnknownCompletionQuarantine holdRecordDecodingFailsClosed)
 set_tests_properties(uct_paddle_processing PROPERTIES TIMEOUT 30 LABELS "headless"
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
@@ -98,3 +101,28 @@ if(OKUFLOW_ENABLE_CUDA)
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 endif()
+
+# Shadow planner contracts: full OCR remains authoritative; each Qt slot gets
+# the standard independently selectable 30-second headless deadline.
+foreach(fixture IN ITEMS uct_region_planner uct_region_scheduler)
+    add_executable(${fixture}_tests
+        ${fixture}_tests.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/uct_region_planner.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/view_transform.cpp)
+    target_include_directories(${fixture}_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_compile_definitions(${fixture}_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+    target_link_libraries(${fixture}_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
+endforeach()
+okuflow_add_headless_cases(uct_region_planner uct_region_planner_tests UctRegionPlannerTests)
+okuflow_add_headless_cases(uct_region_scheduler uct_region_scheduler_tests UctRegionSchedulerTests)
+
+# Explicit metadata-cost experiment; excluded from ordinary builds and CTest.
+add_executable(uct_region_planner_benchmark EXCLUDE_FROM_ALL
+    uct_region_planner_benchmark.cpp
+    ${PROJECT_SOURCE_DIR}/src/common/uct_region_planner.cpp
+    ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp
+    ${PROJECT_SOURCE_DIR}/src/common/view_transform.cpp)
+target_include_directories(uct_region_planner_benchmark PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_compile_definitions(uct_region_planner_benchmark PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+target_link_libraries(uct_region_planner_benchmark PRIVATE Qt6::Core Qt6::Gui)

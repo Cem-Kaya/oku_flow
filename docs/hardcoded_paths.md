@@ -913,3 +913,22 @@ decimation 1/2/4, line/token extents and three existing matcher policies. The
 installed `C:/Windows/Fonts/consola.ttf` is loaded and hashed for local provenance,
 never redistributed. Synthetic translation is (2,1) pixels; it is not physical
 camera acceptance. No ordinary-runtime setting or OCR-reuse policy is enabled.
+
+
+## Optional UCT shadow diagnostics (2026-10-20)
+
+`OKUFLOW_UCT_SHADOW_PLANNER=1` opts the app's existing OCR worker into a
+metadata-only observer. Default operation allocates no planner. One optional
+focus descriptor is copied per submitted job; pan/zoom cannot enqueue OCR or
+refresh acquisition age. Default tracking uses 2048 occurrences, 1024 lines,
+8192 words, an 8x8 unseen-coverage grid and 24 hypothetical selections (six
+reserved for old coverage debt). Every plan leaves full OCR authoritative.
+These are experimental planner limits, not a text cache or a latency claim.
+Observer text is capped at 4096 UTF-16 units per word and 1 Mi units per
+observation for each raw/prepared representation; retained occurrences have a
+separate finite 8 Mi-unit worst case. Oversize observations reject without
+truncating full recognition output.
+The finite resident diagnostic has a separate
+`OKUFLOW_UCT_RESIDENT_SHADOW_PLANNER=1` selector that requires retained frozen
+source identities and records plans beside full outputs; it never fabricates
+fresh evidence by assigning new frame IDs to copies.

@@ -13,6 +13,7 @@ add_executable(uct_screen_text_accessibility_tests
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/uct_screen_text_accessible.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ultra_clear_text_overlay.hpp
     ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp
+    ${PROJECT_SOURCE_DIR}/src/common/uct_region_planner.cpp
     ${PROJECT_SOURCE_DIR}/src/common/view_transform.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/uct_screen_text_accessible.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/ultra_clear_text_overlay.cpp

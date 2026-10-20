@@ -121,6 +121,7 @@ target_sources(oku_flow PRIVATE
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ultra_clear_text_panel.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/app/ultra_clear_text_controller.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/common/ultra_clear_text.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/common/uct_region_planner.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/common/uct_windows_ocr.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/joystick_overlay.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/live_status_text.hpp

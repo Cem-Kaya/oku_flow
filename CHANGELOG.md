@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+- Add an opt-in bounded UCT shadow planner beside full OCR, with persistent
+  spatial occurrences, requested-region priority, unseen-area coverage debt
+  and exact source/acquisition tickets. Keep full OCR authoritative and
+  isolate observer faults; add metadata, real-scheduler and resident diagnostic
+  coverage without enabling inference skipping or changing visual/UIA admission.
+  Bound overlap selection and rank missing-region eviction once; validate the
+  reduced metadata cost with finite before/after evidence and deterministic
+  counter/order regressions.
+- Keep the optional frozen-crop recorder's four-source capacity refusal local
+  to the diagnostic, preserving finished OCR, existing leases and healthy GPU
+  engines. Verify duplicate acquisitions throughout the resident shadow run.
+
+
 - Accept medium/small GPU recognition at batch eight under the
   owner's explicit 10-source-pixel geometry/confidence-variation policy. Keep
   exact text/order/omission behavior, original strict diagnostic failures, saved

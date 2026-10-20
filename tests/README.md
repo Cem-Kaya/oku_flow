@@ -1881,3 +1881,28 @@ variants. This completes recognizer isolation separately from complete-path
 SubmitDevice measurements. The original strict assertion remains unchanged;
 `userTenPixelConfidenceVariationPass` is a separate owner-authorized policy.
 See `docs/uct_resident_baseline.md` and `docs/uct_batch8_quality_acceptance.md`.
+
+
+### Shadow regional planner and scheduler
+
+`uct_region_planner.*` and `uct_region_scheduler.*` are desktop-free,
+independently selectable 30-second Qt slots registered with the existing
+headless helper. Scripted complete outputs test spatial IDs, coverage debt,
+priority and source/acquisition boundaries; real scheduler tests assert full
+output preservation, disabled observation, held duplicates, backward seeks
+and failure injection. They never establish OCR reuse safety or model accuracy.
+The optional resident diagnostic can observe actual TensorRT/scheduler jobs
+with `OKUFLOW_UCT_RESIDENT_SHADOW_PLANNER=1`, requiring
+`OKUFLOW_UCT_RESIDENT_FROZEN_CROPS=1`; repeated source copies retain their
+acquisition and are rejected as duplicate shadow evidence. Observer timing
+is recorded separately from OCR work and actual callback delivery.
+
+`uct_region_planner_benchmark` is excluded from ordinary builds and CTest.
+Build that explicit target in the CPU preset, then run it with `--run
+--repetitions 12 --warmups 2 --output <new-local-evidence.json>`. It reports
+metadata bookkeeping cost for 17 finite scenarios, including 8192 words,
+continual newcomers and heavily overlapping boxes. Raw accepted/rejected
+timings, nearest-rank summaries and invariant failures are retained; no timing
+threshold is asserted. This model-free experiment measures no inference,
+native presentation or accessibility latency. It needs Qt Core/Gui and no
+camera, fonts, model runtime, GPU or native window.

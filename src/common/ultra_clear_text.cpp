@@ -1,4 +1,5 @@
 #include "okuflow/common/ultra_clear_text.hpp"
+#include "okuflow/common/uct_region_planner.hpp"
 #include <QCryptographicHash>
 
 #include <QElapsedTimer>
@@ -12,6 +13,7 @@
 #include <cstring>
 #include <limits>
 #include <mutex>
+#include <stdexcept>
 #include <thread>
 #include <utility>
 
@@ -1124,6 +1126,7 @@ struct RecognitionScheduler::State {
         QImage pixels;
         SharedDeviceImage device;
         CorroborationRequest corroboration;
+        std::optional<QRectF> shadowFocus;
     };
 
     std::mutex mutex;
@@ -1136,6 +1139,11 @@ struct RecognitionScheduler::State {
     StatusChanged statusChanged;
     int referenceDecimation{2};
     bool probeOnly{};
+    bool shadowRequested{}; // immutable after starting the worker
+    std::unique_ptr<RegionShadowPlanner> shadowPlanner;
+    std::optional<QRectF> shadowFocus;
+    std::uint64_t shadowAuthority{}; // worker-only
+    std::atomic<bool> shadowFault{};
     double minimumWordHeightPx{7.0};
     std::optional<Job> pending;
     bool inFlight{};
@@ -1178,6 +1186,7 @@ struct RecognitionScheduler::State {
         job.pixels = std::move(owned);
         job.device = std::move(device);
         job.corroboration = std::move(corroboration);
+        if (shadowRequested) job.shadowFocus = shadowFocus;
         const std::uint64_t id = job.id;
         pending = std::move(job);
         ++stats.submitted;
@@ -1375,6 +1384,27 @@ struct RecognitionScheduler::State {
                 }
             }
             if (current) {
+                if (self->shadowPlanner && result.output.ok && !result.output.cancelled &&
+                    !result.output.inputFault && !result.output.backendPreparing && !self->cancelInFlight.load()) {
+                    // Observe only complete current jobs. The observer cannot
+                    // alter OCR output or any admission decision. A diagnostic
+                    // failure disables it without failing the recognition job.
+                    QElapsedTimer shadowTimer;
+                    shadowTimer.start();
+                    try {
+                        if (self->shadowFault.exchange(false)) throw std::runtime_error("Injected shadow observer failure.");
+                        if (self->shadowAuthority != job.authority) {
+                            self->shadowPlanner->Reset(RegionResetReason::kAuthorityChanged);
+                            self->shadowAuthority = job.authority;
+                        }
+                        result.shadowPlan = std::make_shared<const RegionShadowPlan>(
+                            self->shadowPlanner->Observe(result, job.shadowFocus));
+                    } catch (...) {
+                        self->shadowPlanner.reset();
+                        result.shadowPlannerError = QStringLiteral("Shadow planner unavailable; full OCR retained.");
+                    }
+                    result.shadowPlannerMs = shadowTimer.nsecsElapsed() / 1e6;
+                }
                 std::lock_guard callbackLock(self->callbackMutex);
                 if (self->callbacksEnabled && self->completion) {
                     self->completion(std::move(result));
@@ -1392,16 +1422,30 @@ RecognitionScheduler::RecognitionScheduler(std::unique_ptr<Recognizer> recognize
                                            Completion completion,
                                            StatusChanged statusChanged,
                                            int referenceDecimation,
-                                           double minimumWordHeightPx, bool probeOnly)
+                                           double minimumWordHeightPx, bool probeOnly, bool shadowPlanner)
     : state_(std::make_shared<State>())
 {
     state_->minimumWordHeightPx = minimumWordHeightPx;
     state_->probeOnly=probeOnly;
+    state_->shadowRequested = shadowPlanner && !probeOnly;
+    if (state_->shadowRequested) state_->shadowPlanner = std::make_unique<RegionShadowPlanner>();
     state_->recognizer = std::move(recognizer);
     state_->completion = std::move(completion);
     state_->statusChanged = std::move(statusChanged);
     state_->referenceDecimation = std::max(1, referenceDecimation);
     state_->thread = std::thread(&State::Run, state_);
+}
+
+void RecognitionScheduler::SetShadowFocus(std::optional<QRectF> sceneRect)
+{
+    if (!state_->shadowRequested) return;
+    std::lock_guard lock(state_->mutex);
+    state_->shadowFocus = std::move(sceneRect);
+}
+
+void RecognitionScheduler::FailNextShadowObservationForTest()
+{
+    state_->shadowFault.store(true);
 }
 
 RecognitionScheduler::~RecognitionScheduler()

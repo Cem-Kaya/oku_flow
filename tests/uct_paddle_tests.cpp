@@ -22,6 +22,25 @@
 #include "okuflow/cuda/uct_kernels.hpp"
 #endif
 
+namespace okuflow::uct
+{
+// Exercise the production cap/commit path without an optional TensorRT SDK.
+struct TensorRtCropDiagnosticTestAccess
+{
+    static bool TryCommit(TensorRtCropDiagnostic& diagnostic,
+                          TensorRtCropDiagnostic::Plan&& plan) noexcept
+    {
+        static_assert(noexcept(diagnostic.TryCommit(std::move(plan))));
+        return diagnostic.TryCommit(std::move(plan));
+    }
+    static const TensorRtCropDiagnostic::Plan& PlanAt(const TensorRtCropDiagnostic& diagnostic,
+                                                     std::size_t index)
+    {
+        return diagnostic.plans_.at(index);
+    }
+};
+} // namespace okuflow::uct
+
 using namespace okuflow::uct;
 namespace
 {
@@ -139,6 +158,92 @@ class PaddleTests final : public QObject
 {
     Q_OBJECT
   private slots:
+    void frozenCropDiagnosticRefusesFifthSourceWithoutChangingLeases()
+    {
+        class ImmutableInput final : public DeviceImage
+        {
+          public:
+            explicit ImmutableInput(unsigned char marker)
+                : pixels_([marker] {
+                    std::array<unsigned char, 16 * 8 * 4> pixels{};
+                    pixels.fill(marker);
+                    return pixels;
+                }())
+            {
+                width = 16; height = 8; pitch = 16 * 4;
+                sourceEpoch = 9; frameSequence = marker; processingGeneration = 7;
+            }
+            const void* Data() const override { return pixels_.data(); }
+            bool WaitReady(void*, QString&) const override { return true; }
+            QImage Readback(const std::atomic<bool>&, QString&) const override { return {}; }
+          private:
+            const std::array<unsigned char, 16 * 8 * 4> pixels_;
+        };
+        TensorRtCropDiagnostic diagnostic;
+        std::array<SharedDeviceImage, 5> inputs;
+        std::array<std::weak_ptr<const DeviceImage>, 5> weak;
+        std::array<const DeviceImage*, 5> identities{};
+        std::array<const void*, 5> pixels{};
+        // Allocate all five before releasing any external owners. Distinct
+        // addresses cannot be an allocator's reuse of an earlier dead input.
+        for (std::size_t i = 0; i < inputs.size(); ++i) {
+            inputs[i] = std::make_shared<const ImmutableInput>(static_cast<unsigned char>(i + 1));
+            weak[i] = inputs[i]; identities[i] = inputs[i].get(); pixels[i] = inputs[i]->Data();
+            for (std::size_t previous = 0; previous < i; ++previous) {
+                QVERIFY(identities[i] != identities[previous]);
+                QVERIFY(pixels[i] != pixels[previous]);
+            }
+        }
+        const auto makePlan = [&](std::size_t i) {
+            TensorRtCropDiagnostic::Plan plan;
+            plan.source = std::move(inputs[i]);
+            plan.detectorSha256 = "fixture-detector";
+            TensorRtCropDiagnostic::Crop crop;
+            crop.xy = {float(i), 1, float(i + 8), 1, float(i + 8), 7, float(i), 7};
+            crop.score = 0.75f; crop.validWidth = 400 + int(i); crop.internalEdges = int(i);
+            plan.regions.push_back({QRect(int(i), 1, 8, 6), {crop}});
+            return plan;
+        };
+        for (std::size_t i = 0; i < 4; ++i) {
+            auto plan = makePlan(i);
+            QVERIFY(TensorRtCropDiagnosticTestAccess::TryCommit(diagnostic, std::move(plan)));
+            QCOMPARE(diagnostic.CapturedSources(), int(i + 1));
+            QVERIFY(!inputs[i]);
+            QCOMPARE(weak[i].use_count(), 1L);
+        }
+        auto refused = makePlan(4);
+        QVERIFY(!TensorRtCropDiagnosticTestAccess::TryCommit(diagnostic, std::move(refused)));
+        QCOMPARE(diagnostic.CapturedSources(), 4);
+        QCOMPARE(diagnostic.ReplayCalls(), std::uint64_t(0));
+        QCOMPARE(refused.source.get(), identities[4]);
+        QCOMPARE(weak[4].use_count(), 1L); // still caller-owned, never leased
+        refused = {};
+        QVERIFY(weak[4].expired());
+        for (std::size_t i = 0; i < 4; ++i) {
+            const auto& retained = TensorRtCropDiagnosticTestAccess::PlanAt(diagnostic, i);
+            QCOMPARE(weak[i].use_count(), 1L); // only the original diagnostic lease
+            QCOMPARE(retained.source.get(), identities[i]);
+            QCOMPARE(retained.source->Data(), pixels[i]);
+            QCOMPARE(retained.source->ValidationData(), pixels[i]);
+            QCOMPARE(retained.source->frameSequence, std::uint64_t(i + 1));
+            QCOMPARE(retained.source->sourceEpoch, std::uint64_t(9));
+            QCOMPARE(retained.source->processingGeneration, std::uint64_t(7));
+            const auto* immutablePixels = static_cast<const unsigned char*>(retained.source->Data());
+            for (std::size_t byte = 0; byte < 16 * 8 * 4; ++byte)
+                QCOMPARE(immutablePixels[byte], static_cast<unsigned char>(i + 1));
+            QCOMPARE(retained.detectorSha256, QByteArray("fixture-detector"));
+            QCOMPARE(retained.regions.size(), std::size_t(1));
+            QCOMPARE(retained.regions[0].bounds, QRect(int(i), 1, 8, 6));
+            QCOMPARE(retained.regions[0].crops.size(), std::size_t(1));
+            const auto& crop = retained.regions[0].crops[0];
+            const std::array<float, 8> expected{float(i), 1, float(i + 8), 1, float(i + 8), 7, float(i), 7};
+            for (std::size_t coordinate = 0; coordinate < expected.size(); ++coordinate)
+                QCOMPARE(crop.xy[coordinate], expected[coordinate]);
+            QCOMPARE(crop.score, 0.75f);
+            QCOMPARE(crop.validWidth, 400 + int(i));
+            QCOMPARE(crop.internalEdges, int(i));
+        }
+    }
     void modelPinsMatchPreparationAndFailClosed()
     {
         QFile file(QFINDTESTDATA("../scripts/uct/pins.json"));QVERIFY(file.open(QIODevice::ReadOnly));

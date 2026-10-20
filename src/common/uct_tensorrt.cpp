@@ -1,4 +1,20 @@
 #include "okuflow/common/uct_paddle.hpp"
+#include <new>
+#include <utility>
+
+namespace okuflow::uct
+{
+bool TensorRtCropDiagnostic::TryCommit(Plan&& plan) noexcept
+{
+    if (plans_.size() >= kMaxSources) return false;
+    try {
+        plans_.push_back(std::move(plan));
+        return true;
+    } catch (const std::bad_alloc&) {
+        return false;
+    }
+}
+} // namespace okuflow::uct
 
 #if OKUFLOW_UCT_TRT
 #include "okuflow/common/async_cleanup.hpp"
@@ -18,7 +34,6 @@
 #include <mutex>
 #include <stdexcept>
 #include <thread>
-#include <utility>
 
 namespace okuflow::uct
 {
@@ -36,9 +51,11 @@ struct TensorRtCropDiagnosticAccess {
         }
         return nullptr;
     }
-    static void Commit(TensorRtCropDiagnostic& diagnostic, TensorRtCropDiagnostic::Plan plan) {
-        if (diagnostic.plans_.size() >= 4) throw std::runtime_error("Frozen diagnostic is limited to four leased sources.");
-        diagnostic.plans_.push_back(std::move(plan));
+    static bool HasCapacity(const TensorRtCropDiagnostic& diagnostic) {
+        return diagnostic.plans_.size() < TensorRtCropDiagnostic::kMaxSources;
+    }
+    static bool TryCommit(TensorRtCropDiagnostic& diagnostic, TensorRtCropDiagnostic::Plan&& plan) noexcept {
+        return diagnostic.TryCommit(std::move(plan));
     }
     static void Replayed(TensorRtCropDiagnostic& diagnostic) { ++diagnostic.replayCalls_; }
 };
@@ -669,7 +686,9 @@ class TensorRtRecognizer final : public Recognizer
             const auto* frozen = cropDiagnostic_
                 ? TensorRtCropDiagnosticAccess::Find(*cropDiagnostic_, image, assets_.detectorSha256) : nullptr;
             TensorRtCropDiagnostic::Plan captured;
-            if (cropDiagnostic_ && !frozen) {
+            bool captureCrops = cropDiagnostic_ && !frozen &&
+                TensorRtCropDiagnosticAccess::HasCapacity(*cropDiagnostic_);
+            if (captureCrops) {
                 captured.source = state_->inFlight;
                 captured.detectorSha256 = assets_.detectorSha256;
             }
@@ -739,7 +758,16 @@ class TensorRtRecognizer final : public Recognizer
             }
             if (count < 0 || count > 128*9)
                 throw std::runtime_error("GPU detector region count is invalid.");
-            if (cropDiagnostic_ && !frozen) captured.regions.push_back({region, {}});
+            if (captureCrops) {
+                // The detector count wait proved completion. Only this optional
+                // compact record may be dropped; CUDA failures still propagate.
+                try {
+                    captured.regions.push_back({region, {}});
+                } catch (const std::bad_alloc&) {
+                    captureCrops = false;
+                    captured = {};
+                }
+            }
             for (int first = 0; first < count; first += submissionGroup)
             {
                 if (cancelled.load())
@@ -832,12 +860,18 @@ class TensorRtRecognizer final : public Recognizer
                 {
                     const int tokenCount = hostCount[slot];
                     const auto quad = hostQuads[slot];
-                    if (cropDiagnostic_ && !frozen) {
+                    if (captureCrops) {
                         TensorRtCropDiagnostic::Crop record;
                         std::copy(std::begin(quad.xy), std::end(quad.xy), record.xy.begin());
                         record.score = quad.score; record.validWidth = quad.validWidth;
                         record.internalEdges = quad.internalEdges;
-                        captured.regions.back().crops.push_back(record);
+                        // This group's CUDA completion was already confirmed.
+                        try {
+                            captured.regions.back().crops.push_back(record);
+                        } catch (const std::bad_alloc&) {
+                            captureCrops = false;
+                            captured = {};
+                        }
                     }
                     profile.CropDescriptor(quad.xy, quad.score, quad.validWidth,
                                            quad.internalEdges, region, width);
@@ -875,7 +909,8 @@ class TensorRtRecognizer final : public Recognizer
             profile.Emit(state_->recognizerBatch);
             if (cropDiagnostic_) {
                 if (frozen) TensorRtCropDiagnosticAccess::Replayed(*cropDiagnostic_);
-                else TensorRtCropDiagnosticAccess::Commit(*cropDiagnostic_, std::move(captured));
+                else if (captureCrops)
+                    TensorRtCropDiagnosticAccess::TryCommit(*cropDiagnostic_, std::move(captured));
             }
             state_->inFlight.reset(); // final metadata copy proved all reads complete
             status_.detail = "PP-OCRv6 GPU preprocessing, detection, rectification, recognition "

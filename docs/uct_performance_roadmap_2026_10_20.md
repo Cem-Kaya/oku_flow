@@ -6,8 +6,9 @@ video text indexing and recordings-as-searchable-documents. It retains ordinary
 video playback, Original recording, paused-frame UCT and recording rewind.
 
 The work is staged. Proposed gains are not measurements, and a diagnostic is
-not an accepted production optimization. Model defaults and automatic batch one
-remain unchanged until quality and lifecycle acceptance justify a separate change.
+not an accepted production optimization. Model defaults remain GPU medium/medium
+and CPU tiny/small. Subsequent quality acceptance enabled batch eight for medium
+and small recognizers; tiny retains batch one, as recorded below.
 
 ## Order and evidence
 
@@ -86,18 +87,17 @@ checks preceded integration. Exact matching evidence fingerprints were reused.
 Native GUI and screen-reader acceptance remain separate and pending; the owner's
 desktop was not driven.
 
-The shadow regional planner is the next implementation stage and is not active
-or implemented by these diagnostics. It must continue to compare against full
-OCR and may not authorize reuse from the unsafe matcher baseline. A truly
-frozen-crop recognizer-only entry point, graph-width support checks, broader
-labelled quality evaluation, failure/long-soak traces and contention measurements
-remain research/acceptance work. Equal-crop complete-path measurements do not
-silently claim to complete those experiments.
+At that initial checkpoint, the shadow regional planner and frozen-crop entry
+were not implemented. The subsequent sections record their separate integration.
+Graph-width support checks, broader labelled quality evaluation, failure/long-soak
+traces and contention measurements remain research/acceptance work. Equal-crop
+complete-path measurements do not silently complete those experiments.
 
 Both requested Opus xhigh tasks hit the provider's rate limit. The implementation
 task left its new helper/document; root repaired and tested their integration.
 The independent review attempt did not deliver a completed review. No completed
-Opus safety sign-off is claimed, and no production default was promoted.
+Opus safety sign-off is claimed. Production batching was promoted only after the
+separate quality acceptance below.
 
 
 ## Subsequent batch acceptance and completed frozen entry
@@ -118,4 +118,26 @@ fixture exposed small recognition's `O0` → `00` error, blocking its promotion
 under this roadmap's critical-symbol guard despite lower total character edits.
 See [the decision](uct_batch8_quality_acceptance.md) and the
 [frozen result](uct_resident_baseline.md#completed-frozen-crop-run).
-The shadow planner remains the next separately integrated stage.
+
+## Shadow regional planner integration
+
+The metadata-only planner is implemented behind the explicit
+`OKUFLOW_UCT_SHADOW_PLANNER=1` diagnostic switch, disabled by default. The OCR
+worker observes complete current results after preparation; full inference,
+overlay admission, reading text and accessibility publication retain their
+existing authority. No plan can skip OCR or reuse a recognized word. The
+independent motion-probe worker never runs the planner.
+
+Spatial word occurrences, acquisition freshness, source/geometry/authority
+resets, bounded focus priority and reserved oldest-region coverage are tracked
+without retaining pixels. Held duplicates cannot advance stability or coverage
+age. Every plan includes its job/authority ticket, full-versus-shadow counters
+and a finite accepted-observation coverage deadline. A failed observer retires
+without failing full OCR. Planner time is reported separately from ordinary
+worker time and remains part of end-to-end callback latency.
+
+Model-free planner and actual scheduler fixtures cover these contracts. An
+optional frozen-input resident diagnostic checks the worker integration without
+pretending repeated held images are fresh evidence. No measured OCR saving is
+claimed by this shadow stage. See [planner policy](uct_region_planner.md) for
+limits, tests and the current validation status.

@@ -6028,3 +6028,65 @@ asserts zero detector calls. Original complete-path timing remains the default.
 <=10-pixel drift of every box edge while allowing finite confidence variation.
 `StrictComparisons` retains its original strict verdict and assertion. See
 `uct_batch8_quality_acceptance.md` and `uct_resident_baseline.md`.
+
+`TensorRtCropDiagnostic::TryCommit` is private, bounded to four leases and
+nonthrowing. Saturation or allocation failure in the optional compact recorder
+disables that capture without clearing finished OCR or retiring healthy engines.
+The narrow friend fixture exercises the same commit path without TensorRT,
+including retained input ownership and unchanged first-four descriptors after a
+fifth-source refusal. CUDA failures still follow the normal quarantine policy.
+
+
+### Bounded UCT shadow planner integration (2026-10-20)
+
+`RegionShadowPlanner::Observe` consumes const, complete, prepared full OCR and
+emits `RegionShadowPlan` metadata. Region identities are source-space spatial
+occurrences; equal strings at different locations stay separate. Source,
+geometry, scheduler authority, job and acquisition tickets reject stale/held
+work. The bounded coverage grid includes unseen scene areas, and reserved
+oldest-debt selections coexist with requested-focus priority. A fixed eight-pair
+overlap array retains the exact previous sort prefix, and a ranked missing-id
+queue preserves last-seen/id eviction order without repeated empty scans.
+All plans carry
+`RegionAuthoritativeAction::kRunFullOcr`; neither selections nor repetition
+counters authorize skipping inference or publishing text.
+`PreparedWordMatchesSource` checks same-job text/confidence and stamp-mapped
+scene/protected geometry before scene clamping, preventing stale same-count
+prepared arrays from manufacturing stability. Positive frame geometry and
+hard-clamped `maxWordUtf16Units`/`maxTotalUtf16Units` reject malformed or oversized
+metadata before content processing or evidence-clock changes. These observer
+limits never truncate authoritative OCR.
+
+`RecognitionScheduler`'s optional trailing `shadowPlanner` constructor flag
+defaults false and is ignored for probe-only workers. Its existing worker owns
+one planner. Complete current jobs are observed after ordinary OCR/preparation;
+`RecognitionResult::shadowPlan`, `shadowPlannerMs` and `shadowPlannerError` carry
+separate diagnostics. Ordinary `durationMs` excludes observer time. Each
+scheduler authority change explicitly resets planner tickets before observing,
+including backward seeks and source epochs restarted at a smaller number. An
+observer exception retires the observer while preserving full recognition.
+`SetShadowFocus` overwrites a single descriptor copied into the next job,
+without submitting work or renewing evidence. The explicit
+`FailNextShadowObservationForTest` seam covers observer failure isolation.
+
+The controller enables observation only for
+`OKUFLOW_UCT_SHADOW_PLANNER=1`. View updates supply the normalized visible region
+as a priority hint; glyph/reading/UIA paths never consume shadow plans.
+`uct_region_planner_tests` covers metadata policy, and
+`uct_region_scheduler_tests` covers the real scheduler boundary, opt-out, focus,
+capture-owned held identity, rejection of an unowned hold claim, seek reset and
+injected failure. `OwnedHeldInput` models that metadata protocol through the
+explicit CPU fallback fixture without a native device. Both use independently
+registered 30-second headless slots. `optionalResidentBaseline` additionally
+accepts `OKUFLOW_UCT_RESIDENT_SHADOW_PLANNER=1` only with frozen source identities,
+records observer time/tickets/debt and retains full OCR/zero-egress validity.
+See `uct_region_planner.md` for acceptance boundaries and hard limits.
+
+`uct_region_planner_benchmark` is an excluded, explicit QCoreApplication
+diagnostic. `MakeResult` builds bounded synthetic full/prepared metadata with
+distinct acquisition tickets; `RunScenario` times only `Observe`, while
+`ValidatePlan` checks tickets, occurrence accounting, caps and coverage.
+`Distribution` preserves raw samples and nearest-rank median/p95/max. Its stable,
+shifted, repeated-label, continual-churn and overlapping scenarios make no OCR
+latency or accuracy claim. `--run` is required; output is bounded JSON and no
+ordinary CTest case runs the benchmark.

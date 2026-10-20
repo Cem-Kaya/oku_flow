@@ -681,6 +681,7 @@ if (WIN32)
         ${PROJECT_SOURCE_DIR}/src/ui/ultra_clear_text_overlay.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/ultra_clear_text_panel.cpp
         ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/uct_region_planner.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/joystick_overlay.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/color_scheme_picker.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/collapsible_section.cpp
