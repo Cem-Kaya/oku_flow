@@ -1,5 +1,8 @@
 # OkuFlow Documentation Guide
 
+[UCT color and readiness repairs](uct_color_startup_repair.md) cover local word
+colors, active GPU/CPU status and paused-frame recovery.
+
 [Compact playback and dense UCT repair](video_uct_detail_repair.md) documents
 same-frame pan continuity, bounded GPU detail/long-line recognition and long-GOP
 seek handling in the development player.
@@ -584,6 +587,8 @@ legacy `powershell.exe` bridge.
   SHA-256 checksums, a release manifest, and an SPDX SBOM.
 
 ## Documentation Index
+
+- [UCT color and readiness repairs](uct_color_startup_repair.md)
 - [`android/README.md`](../android/README.md): native Android companion setup,
   USB streaming, Advanced settings, current limits, and interactive drafts.
   [`PROTOCOL.md`](../android/PROTOCOL.md) freezes the implemented wire contract.

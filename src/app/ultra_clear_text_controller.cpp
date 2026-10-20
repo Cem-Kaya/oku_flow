@@ -1035,6 +1035,9 @@ void UltraClearTextController::Invalidate(const QString& reason)
     immutableSelectedJob_ = 0;
     immutableCorroborationJob_ = 0;
     immutableSelectedAttempted_ = false;
+    immutableRetryCount_ = 0;
+    immutableRetryScheduled_ = immutableRetryExhausted_ = false;
+    immutableRetryStartedAtMs_.reset();
     immutableCorroborationAttempted_ = false;
     advancingMediaJob_ = 0;
     haveAdvancingValidation_ = false;
@@ -1309,6 +1312,7 @@ uct::SourceStamp UltraClearTextController::ImmutableStamp(const UctImmutableFram
 
 void UltraClearTextController::SubmitImmutableIfNeeded()
 {
+    if (immutableRetryScheduled_ || immutableRetryExhausted_) return;
     if (mediaOverlaySuppressed_ || !enabled_ || !immutableScene_ || !scheduler_ || backend_.state != uct::BackendState::kReady ||
         !AnalysisHealthy()) return;
     // Preferred device input first; owned CPU pixels remain the fallback of
@@ -1331,9 +1335,11 @@ void UltraClearTextController::SubmitImmutableIfNeeded()
         return job;
     };
     if (!immutableSelectedAttempted_) {
+        if (!immutableRetryStartedAtMs_) immutableRetryStartedAtMs_ = clock_();
         immutableSelectedAttempted_ = true;
         immutableSubmittedAtMs_ = clock_();
         immutableSelectedJob_ = submitFrame(immutableScene_->selected);
+        if (!immutableSelectedJob_) ScheduleImmutableRetry(true);
         return;
     }
     if (!immutableSelectedResult_ || !immutableSelectedResult_->output.ok ||
@@ -1352,6 +1358,41 @@ void UltraClearTextController::SubmitImmutableIfNeeded()
         neighbour.frameSeq == immutableScene_->selected.frameSeq || reusedLease) return;
     immutableSubmittedAtMs_ = clock_();
     immutableCorroborationJob_ = submitFrame(neighbour);
+    if (!immutableCorroborationJob_) ScheduleImmutableRetry(false);
+}
+
+void UltraClearTextController::ScheduleImmutableRetry(bool selected, bool preparing)
+{
+    if (!immutableScene_ || !enabled_ || immutableRetryScheduled_) return;
+    if (preparing && immutableRetryStartedAtMs_ &&
+        clock_() - *immutableRetryStartedAtMs_ > timing_.immutableJobTimeoutMs &&
+        ((immutableSelectedResult_ && immutableSelectedResult_->output.ok) ||
+         model_.AcceptedWordCount() > 0)) {
+        return; // a healthy CPU fallback does not fail because GPU preparation is slow
+    }
+    if ((!preparing && ++immutableRetryCount_ > 3) ||
+        (preparing && immutableRetryStartedAtMs_ &&
+         clock_() - *immutableRetryStartedAtMs_ > timing_.immutableJobTimeoutMs)) {
+        immutableRetryExhausted_ = true;
+        model_.Reset();
+        RefreshOverlay(clock_());
+        UpdateReadingText();
+        return;
+    }
+    if (selected) {
+        immutableSelectedAttempted_ = false;
+        immutableSelectedResult_.reset();
+        immutableCorroborationAttempted_ = false;
+    } else immutableCorroborationAttempted_ = false;
+    immutableRetryScheduled_ = true;
+    const auto generation = geometryGeneration_;
+    QTimer::singleShot(preparing ? 500 : 100, this, [this, generation] {
+        // The old timer cannot alter a newer source, seek or settings ticket.
+        if (generation != geometryGeneration_) return;
+        immutableRetryScheduled_ = false;
+        SubmitImmutableIfNeeded();
+        UpdateStatus();
+    });
 }
 
 void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult result)
@@ -1369,6 +1410,8 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
                       result.stamp.frameSeq != immutableScene_->corroboration->frameSeq))) {
         if (selected) immutableSelectedJob_ = 0;
         if (neighbour) immutableCorroborationJob_ = 0;
+        if ((selected || neighbour) && immutableScene_ && scheduler_ && scheduler_->IsCurrent(result) &&
+            result.stamp.SameScene(CurrentScene())) ScheduleImmutableRetry(selected);
         ++rejectedResults_;
         UpdateStatus();
         return;
@@ -1391,11 +1434,28 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
         consecutiveFailures_ = 0;
     }
 
+    if (!result.output.ok || result.output.cancelled) {
+        ScheduleImmutableRetry(selected, result.output.backendPreparing);
+        UpdateStatus();
+        return;
+    }
+
+    const bool retainProvenModel = !model_.SceneWords(now, currentFrameSeq_).isEmpty();
+    const auto previousModel = retainProvenModel ? std::optional<uct::OverlayModel>(model_) : std::nullopt;
     uct::AdmitVerdict verdict;
     if (selected) {
         // Preserve this selected result's job/authority/frame ticket. A
         // neighbour may corroborate it but never becomes selected evidence.
         immutableSelectedResult_ = std::move(result);
+        if (retainProvenModel) {
+            // Keep the proven same-frame artifact until a complete refinement
+            // pair is available. A selected-only candidate cannot erase it.
+            SubmitImmutableIfNeeded();
+            if (!immutableCorroborationJob_ && immutableSelectedResult_->output.backendPreparing)
+                ScheduleImmutableRetry(true, true);
+            UpdateStatus();
+            return;
+        }
         verdict = model_.AdmitImmutable(*immutableSelectedResult_,
                                         ImmutableStamp(immutableScene_->selected), now);
     } else {
@@ -1403,6 +1463,8 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
         verdict = model_.AdmitImmutable(*immutableSelectedResult_,
                                         ImmutableStamp(immutableScene_->selected), now, &result);
     }
+    if (previousModel && verdict != uct::AdmitVerdict::kAccepted)
+        model_ = *previousModel; // a refused refinement cannot erase prior proof
     switch (verdict) {
     case uct::AdmitVerdict::kAccepted:
         ++acceptedResults_;
@@ -1422,6 +1484,9 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
         break;
     }
     if (selected) SubmitImmutableIfNeeded();
+    if (immutableSelectedResult_ && immutableSelectedResult_->output.backendPreparing &&
+        immutableCorroborationJob_ == 0)
+        ScheduleImmutableRetry(true, true); // refine the completed fallback only after its neighbour
     RefreshOverlay(now);
     UpdateReadingText();
     UpdateStatus();
@@ -1538,6 +1603,7 @@ bool UltraClearTextController::AnalysisHealthy() const
 
 void UltraClearTextController::UpdateStatus()
 {
+    if (panel_) panel_->SetBackendStatus(backend_);
     if (!enabled_) {
         SetStatus(QStringLiteral("Ultra Clear Text is off."));
         return;
@@ -1571,6 +1637,10 @@ void UltraClearTextController::UpdateStatus()
         return;
     }
     if (!AnalysisHealthy()) {
+        SetStatus(QStringLiteral("Text recognition stopped working. The original camera image is shown."), true);
+        return;
+    }
+    if (immutableRetryExhausted_) {
         SetStatus(QStringLiteral("Text recognition stopped working. The original camera image is shown."), true);
         return;
     }

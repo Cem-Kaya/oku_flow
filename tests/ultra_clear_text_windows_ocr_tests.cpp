@@ -65,6 +65,7 @@ void UltraClearTextWindowsOcrTests::recognizesSyntheticPrintedPage()
     std::mutex mutex;
     std::optional<RecognitionResult> received;
     BackendStatus status;
+    int statusUpdates = 0;
     RecognitionScheduler scheduler(
         CreateWindowsRecognizer(),
         [&](RecognitionResult r) {
@@ -74,6 +75,7 @@ void UltraClearTextWindowsOcrTests::recognizesSyntheticPrintedPage()
         [&](BackendStatus s) {
             std::lock_guard lock(mutex);
             status = s;
+            ++statusUpdates;
         });
     QTRY_VERIFY_WITH_TIMEOUT(scheduler.Status().state != BackendState::kNotStarted, 15000);
     const BackendStatus initial = scheduler.Status();
@@ -97,6 +99,12 @@ void UltraClearTextWindowsOcrTests::recognizesSyntheticPrintedPage()
         30000);
     std::lock_guard lock(mutex);
     QVERIFY2(received->output.ok, qPrintable(received->output.error));
+    // Runtime status must survive Initialize(), including when Windows is the
+    // temporary bridge in an automatic chain whose initial status was GPU.
+    QVERIFY(statusUpdates >= 2);
+    QCOMPARE(status.state, BackendState::kReady);
+    QCOMPARE(status.name, QStringLiteral("Windows.Media.Ocr"));
+    QVERIFY(!status.usesGpu);
     qInfo("recognition took %.1f ms", received->durationMs);
     for (const RecognizedLine& line : received->output.lines) {
         for (const RecognizedWord& word : line.words) {

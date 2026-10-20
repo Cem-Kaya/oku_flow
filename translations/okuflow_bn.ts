@@ -3533,5 +3533,13 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
             <translation>ডিবাগ কম্পোজিট ভিউতে টেক্সট শনাক্তকরণ থামানো আছে। ক্যামেরার মূল ছবি দেখানো হচ্ছে।</translation>
         </message>
-    </context>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>GPU ইঞ্জিন ব্যবহার করা হচ্ছে: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>CPU ইঞ্জিন ব্যবহার করা হচ্ছে: %1</translation>
+    </message>
+</context>
 </TS>

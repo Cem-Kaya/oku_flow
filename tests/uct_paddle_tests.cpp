@@ -2,6 +2,7 @@
 #include "okuflow/common/uct_model_pins.hpp"
 #include "okuflow/cuda/uct_analysis_pool.hpp"
 #include "ultra_clear_text_test_support.hpp"
+#include "uct_startup_test_cases.hpp"
 #include <QFontDatabase>
 #include <QPainter>
 #include <QJsonDocument>
@@ -283,6 +284,22 @@ class PaddleTests final : public QObject
         QCOMPARE(windows.initialized, 1);
         QCOMPARE(gpu.initialized, 1);
     }
+    void windowsBridgeDefersCpuAndPromotes()
+    {
+        uct_startup_test::BridgeDefersCpuAndPromotes();
+    }
+    void missingWindowsBridgeWaitsWithoutStartingCpu()
+    {
+        uct_startup_test::MissingBridgeWaitsWithoutStartingCpu();
+    }
+    void failedGpuPreparationUsesCpuThenRetainsWindowsBridge()
+    {
+        uct_startup_test::FailedPreparationUsesCpuThenRetainsBridge();
+    }
+    void windowsBridgeCancellationAndInputFaultDoNotRetire()
+    {
+        uct_startup_test::BridgeCancellationAndInputFaultDoNotRetire();
+    }
     void analysisAllocationBackoffAndUnknownCompletionQuarantine()
     {
         AnalysisCaptureHealth health;
@@ -477,6 +494,10 @@ class PaddleTests final : public QObject
             QCOMPARE(text.join(' '),expected);
         }
     }
+    void optionalAutomaticStartup()
+    {
+        uct_startup_test::AutomaticStartupDiagnostic();
+    }
     void optionalDenseImage()
     {
         const auto path=qEnvironmentVariable("OKUFLOW_UCT_TEST_IMAGE");
@@ -592,16 +613,27 @@ class PaddleTests final : public QObject
     void gpuResidentSchedulerKeepsPixelsAndDescriptorsOnDevice_data()
     {
         QTest::addColumn<bool>("lightInk");
-        QTest::newRow("light-on-dark") << true;
-        QTest::newRow("dark-on-light") << false;
+        QTest::addColumn<bool>("mixedColors");
+        QTest::newRow("light-on-dark") << true << false;
+        QTest::newRow("dark-on-light") << false << false;
+        QTest::newRow("selected-yellow-button-in-dark-row") << true << true;
     }
     void gpuResidentSchedulerKeepsPixelsAndDescriptorsOnDevice()
     {
 #if OKUFLOW_ENABLE_CUDA
         int devices{};if(cudaGetDeviceCount(&devices)!=cudaSuccess||!devices)QSKIP("No CUDA device.");
-        QFETCH(bool,lightInk);
-        const auto page=uct_test::MakePage({"Printed not words",QString::fromUtf8("jig d\xc3\xa9j\xc3\xa0 words"),"Ready not later"},{},640,360,40,
+        QFETCH(bool,lightInk);QFETCH(bool,mixedColors);
+        auto page=uct_test::MakePage({"Printed not words",QString::fromUtf8("jig d\xc3\xa9j\xc3\xa0 words"),"Ready not later"},{},640,360,40,
             lightInk?QColor(226,230,234):QColor(18,18,22),lightInk?QColor(66,70,74):QColor(246,244,236));
+        if(mixedColors) {
+            const auto r=page.words.first().sceneRect;
+            const auto selected=QRectF(r.x()*640-10,r.y()*360-10,r.width()*640+20,r.height()*360+20).toAlignedRect().intersected(page.image.rect());
+            const QColor paper(240,190,96);
+            for(int y=selected.top();y<=selected.bottom();++y) for(int x=selected.left();x<=selected.right();++x) {
+                const double ink=std::clamp((qGray(page.image.pixel(x,y))-69.0)/160.0,0.0,1.0);
+                page.image.setPixelColor(x,y,QColor(int(paper.red()*(1-ink)),int(paper.green()*(1-ink)),int(paper.blue()*(1-ink))));
+            }
+        }
         RecognitionOutput output;output.ok=true;
         for(int i=0;i<page.words.size();++i) {
             if(i%3==0)output.lines.push_back({});
@@ -659,9 +691,22 @@ class PaddleTests final : public QObject
             QCOMPARE(gpu->lineColors[row].background,cpu->lineColors[row].background);
             QVERIFY(gpu->prepared[row].reference.resident);QVERIFY(gpu->prepared[row].reference.values.isEmpty());
             for(int i=0;i<output.lines[row].words.size();++i){
+                const auto& gc=gpu->output.lines[row].words[i].colors;
+                const auto& cc=cpu->output.lines[row].words[i].colors;
+                QVERIFY(gc);QVERIFY(cc);
+                QCOMPARE(gc->foreground,cc->foreground);QCOMPARE(gc->background,cc->background);
+                QVERIFY(gpu->prepared[row].words[i].colors);
+                QCOMPARE(gpu->prepared[row].words[i].colors->background,gc->background);
                 QCOMPARE(gpu->output.lines[row].words[i].boundsPx,cpu->output.lines[row].words[i].boundsPx);
                 QCOMPARE(gpu->output.lines[row].words[i].protectedBoundsPx,output.lines[row].words[i].boundsPx);
             }
+        }
+        if(mixedColors) {
+            const auto selected=*gpu->output.lines[0].words[0].colors;
+            const auto neighbor=*gpu->output.lines[0].words[1].colors;
+            QVERIFY(selected.background.red()>200 && selected.background.green()>140 && selected.background.blue()<140);
+            QVERIFY(qGray(selected.foreground.rgb())<100);
+            QVERIFY(qGray(neighbor.background.rgb())<120 && qGray(neighbor.foreground.rgb())>180);
         }
         const auto patch=gpu->prepared[0].reference;
         const auto checked=CheckLines({{42,patch,{}}},probe->reference,{},0);

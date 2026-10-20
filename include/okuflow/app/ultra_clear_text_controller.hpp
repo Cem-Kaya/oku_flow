@@ -420,6 +420,7 @@ private:
     void HandleResult(uct::RecognitionResult result);
     void HandleBackendStatus(uct::BackendStatus status);
     void SubmitImmutableIfNeeded();
+    void ScheduleImmutableRetry(bool selected, bool preparing = false);
     void HandleImmutableResult(uct::RecognitionResult result);
     uct::SourceStamp ImmutableStamp(const UctImmutableFrame& frame) const;
     void SubmitAdvancingMediaProbe();
@@ -488,6 +489,10 @@ private:
     std::uint64_t immutableCorroborationJob_{};
     std::int64_t immutableSubmittedAtMs_{};
     bool immutableSelectedAttempted_{};
+    unsigned immutableRetryCount_{};
+    bool immutableRetryScheduled_{};
+    bool immutableRetryExhausted_{};
+    std::optional<std::int64_t> immutableRetryStartedAtMs_;
     bool immutableCorroborationAttempted_{};
 
     bool enabled_{};

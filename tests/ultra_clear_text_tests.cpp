@@ -3238,6 +3238,16 @@ void UltraClearTextTests::panelStatusUpdatesCachedAccessibleTextImmediately()
     }
     QCoreApplication::processEvents();
     QCOMPARE(accessible->text(QAccessible::Name), panel.statusLabel()->text());
+    panel.enableCheckbox()->setChecked(true);
+    panel.SetBackendStatus({BackendState::kReady,"PaddleOCR / TensorRT CUDA","","",true});
+    auto* backend=QAccessible::queryAccessibleInterface(panel.backendLabel());
+    QVERIFY(backend);QVERIFY(!panel.backendLabel()->isHidden());
+    QCOMPARE(backend->text(QAccessible::Name),QString("Using GPU backend: PaddleOCR / TensorRT CUDA"));
+    panel.SetBackendStatus({BackendState::kReady,"Windows.Media.Ocr","","",false});
+    QCOMPARE(backend->text(QAccessible::Name),QString("Using CPU backend: Windows.Media.Ocr"));
+    QCOMPARE(panel.backendLabel()->text(),backend->text(QAccessible::Name));
+    panel.SetBackendStatus({BackendState::kFailed,"Windows.Media.Ocr","",""});
+    QVERIFY(panel.backendLabel()->isHidden());QVERIFY(backend->text(QAccessible::Name).isEmpty());
     // Recognized text uses a stable control name and a changing text pattern.
     auto* pane = QAccessible::queryAccessibleInterface(panel.readingPane());
     QVERIFY(pane && pane->textInterface());

@@ -3533,5 +3533,13 @@ Melden Sie sich auf der erweiterten Registerkarte Assistent über ChatGPT verbin
             <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
             <translation>In der Debug-Kompositansicht ist die Texterkennung angehalten. Das Originalkamerabild wird angezeigt.</translation>
         </message>
-    </context>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>GPU-Backend aktiv: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>CPU-Backend aktiv: %1</translation>
+    </message>
+</context>
 </TS>

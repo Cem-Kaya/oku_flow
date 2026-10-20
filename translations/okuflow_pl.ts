@@ -3533,5 +3533,13 @@ Wybierz „Połącz z ChatGPT” na karcie Asystent w trybie zaawansowanym, aby 
             <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
             <translation>Rozpoznawanie tekstu w złożonym widoku debugowania jest wstrzymane. Oryginalny obraz z kamery jest wyświetlany.</translation>
         </message>
-    </context>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>Używany silnik GPU: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>Używany silnik CPU: %1</translation>
+    </message>
+</context>
 </TS>

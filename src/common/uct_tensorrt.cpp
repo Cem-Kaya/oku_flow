@@ -150,15 +150,11 @@ struct Libraries
         const auto cudaBin = cuda.toStdWString();
         cudaDirectory.value = AddDllDirectory(cudaBin.c_str());
         const auto inferPath = QDir(sdk).filePath("bin/nvinfer_11.dll").toStdWString();
-        const auto parserPath = QDir(sdk).filePath("bin/nvonnxparser_11.dll").toStdWString();
         inference =
             LoadLibraryExW(inferPath.c_str(), nullptr,
                            LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
-        parser =
-            LoadLibraryExW(parserPath.c_str(), nullptr,
-                           LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
-        if (!inference || !parser)
-            throw std::runtime_error("TensorRT 11 runtime/parser is unavailable.");
+        if (!inference)
+            throw std::runtime_error("TensorRT 11 runtime is unavailable.");
         using Version = int32_t (*)();
         const char *versionNames[]{"getInferLibMajorVersion", "getInferLibMinorVersion",
                                    "getInferLibPatchVersion", "getInferLibBuildVersion"};
@@ -170,6 +166,23 @@ struct Libraries
             if (!version || version() != expected[i])
                 throw std::runtime_error("TensorRT must match the pinned 11.4.0.106 SDK.");
         }
+        runtime =
+            reinterpret_cast<Factory>(GetProcAddress(inference, "createInferRuntime_INTERNAL"));
+        if (!runtime)
+            throw std::runtime_error("TensorRT runtime factory API is unavailable.");
+    }
+    void PrepareBuilder(const QString &sdk)
+    {
+        if (builder && createParser)
+            return;
+        // Cached plans require only the inference runtime. The architecture
+        // resource is hundreds of MiB and belongs to cache-miss compilation.
+        const auto parserPath = QDir(sdk).filePath("bin/nvonnxparser_11.dll").toStdWString();
+        parser =
+            LoadLibraryExW(parserPath.c_str(), nullptr,
+                           LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+        if (!parser)
+            throw std::runtime_error("TensorRT 11 parser is unavailable.");
         int device{};
         cudaDeviceProp properties{};
         Check(cudaGetDevice(&device));
@@ -188,12 +201,10 @@ struct Libraries
             throw std::runtime_error("TensorRT builder resource/dependencies are unavailable.");
         builder =
             reinterpret_cast<Factory>(GetProcAddress(inference, "createInferBuilder_INTERNAL"));
-        runtime =
-            reinterpret_cast<Factory>(GetProcAddress(inference, "createInferRuntime_INTERNAL"));
         createParser =
             reinterpret_cast<ParserFactory>(GetProcAddress(parser, "createNvOnnxParser_INTERNAL"));
-        if (!builder || !runtime || !createParser)
-            throw std::runtime_error("TensorRT factory API is unavailable.");
+        if (!builder || !createParser)
+            throw std::runtime_error("TensorRT builder/parser factory API is unavailable.");
     }
     ~Libraries()
     {
@@ -224,7 +235,7 @@ class Progress final : public nvinfer1::IProgressMonitor
 class Network
 {
   public:
-    Network(Libraries &libraries, Logger &logger, const QString &model, const QByteArray& expected, bool detection, int device,
+    Network(Libraries &libraries, Logger &logger, const QString &sdk, const QString &model, const QByteArray& expected, bool detection, int device,
             cudaStream_t stream, const std::atomic<bool> &cancelled)
     {
         Progress progress(cancelled);
@@ -261,6 +272,7 @@ class Network
         }
         if (!engine_)
         {
+            libraries.PrepareBuilder(sdk);
             std::unique_ptr<nvinfer1::IBuilder> builder(
                 static_cast<nvinfer1::IBuilder *>(libraries.builder(&logger, NV_TENSORRT_VERSION)));
             if (!builder)
@@ -386,6 +398,9 @@ struct State
             cudaStreamDestroy(stream);
     }
 };
+// Keep the cached batch-one engine: queue a bounded group on its existing
+// stream, then collect only the compact metadata with one completion wait.
+constexpr int kRecognitionSubmissionGroup = 8;
 void RetireState(std::shared_ptr<State> state)
 {
     if (state)
@@ -450,6 +465,7 @@ class TensorRtRecognizer final : public Recognizer
         }
         BeginPreparation(0);
         status_.state = BackendState::kReady;
+        status_.usesGpu = true;
         status_.detail = "Preparing GPU text engines; CPU OCR is used until ready.";
         return status_;
     }
@@ -573,14 +589,14 @@ class TensorRtRecognizer final : public Recognizer
             gpu::RecognitionWindows(state_->detectedQuads.Get(),state_->count.Get(),
                                      state_->quads.Reserve(128*9),state_->stream);
             Check(cudaGetLastError());
-            auto *hostCount = state_->hostCount.Reserve(1);
+            auto *hostCount = state_->hostCount.Reserve(kRecognitionSubmissionGroup);
             Check(cudaMemcpyAsync(hostCount, state_->count.Get(), sizeof(int),
                                   cudaMemcpyDeviceToHost, state_->stream));
             Check(cudaStreamSynchronize(state_->stream)); // worker-only tiny control readback
             const int count = *hostCount;
             if (count < 0 || count > 128*9)
                 throw std::runtime_error("GPU detector region count is invalid.");
-            for (int index = 0; index < count; ++index)
+            for (int first = 0; first < count; first += kRecognitionSubmissionGroup)
             {
                 if (cancelled.load())
                 {
@@ -590,50 +606,74 @@ class TensorRtRecognizer final : public Recognizer
                     return output;
                 }
                 constexpr int width = 1024;
-                auto *crop = state_->recognizerInput.Reserve(width * 48 * 3);
-                gpu::Rectify(cropPixels, image.pitch, region.width(), region.height(),
-                             state_->quads.Get(), index, crop, width, state_->stream);
-                const auto recShape = state_->recognizer->Run(crop, width, 48, state_->stream);
-                if (recShape.nbDims != 3 || recShape.d[0] != 1 ||
-                    recShape.d[2] != assets_.dictionary.size())
-                    throw std::runtime_error("GPU recognizer dictionary/output mismatch.");
-                const int steps = static_cast<int>(recShape.d[1]);
-                gpu::Decode(state_->recognizer->Output(), steps, assets_.dictionary.size(),
-                            state_->quads.Get(), index, width, state_->ids.Reserve(steps),
-                            state_->scores.Reserve(steps), state_->tokens.Reserve(steps),
-                            state_->tokenCount.Reserve(1), state_->stream);
-                Check(cudaGetLastError());
-                auto *hostQuad = state_->hostQuad.Reserve(1);
-                auto *tokens = state_->hostTokens.Reserve(steps);
-                Check(cudaMemcpyAsync(hostCount, state_->tokenCount.Get(), sizeof(int),
-                                      cudaMemcpyDeviceToHost, state_->stream));
-                Check(cudaMemcpyAsync(hostQuad, state_->quads.Get() + index, sizeof(gpu::Quad),
-                                      cudaMemcpyDeviceToHost, state_->stream));
-                Check(cudaMemcpyAsync(tokens, state_->tokens.Get(), steps * sizeof(gpu::Token),
-                                      cudaMemcpyDeviceToHost, state_->stream));
+                const int groupSize = std::min(kRecognitionSubmissionGroup, count - first);
+                auto *hostQuads = state_->hostQuad.Reserve(kRecognitionSubmissionGroup);
+                gpu::Token *hostTokens{};
+                int steps{};
+                for (int slot = 0; slot < groupSize; ++slot)
+                {
+                    const int index = first + slot;
+                    auto *crop = state_->recognizerInput.Reserve(width * 48 * 3);
+                    gpu::Rectify(cropPixels, image.pitch, region.width(), region.height(),
+                                 state_->quads.Get(), index, crop, width, state_->stream);
+                    const auto recShape = state_->recognizer->Run(crop, width, 48, state_->stream);
+                    if (recShape.nbDims != 3 || recShape.d[0] != 1 ||
+                        recShape.d[2] != assets_.dictionary.size())
+                        throw std::runtime_error("GPU recognizer dictionary/output mismatch.");
+                    if (recShape.d[1] <= 0 || (slot && steps != recShape.d[1]))
+                        throw std::runtime_error("GPU recognizer step count changed within a group.");
+                    steps = static_cast<int>(recShape.d[1]);
+                    if (!slot)
+                        hostTokens = state_->hostTokens.Reserve(
+                            static_cast<std::size_t>(steps) * kRecognitionSubmissionGroup);
+                    gpu::Decode(state_->recognizer->Output(), steps, assets_.dictionary.size(),
+                                state_->quads.Get(), index, width, state_->ids.Reserve(steps),
+                                state_->scores.Reserve(steps), state_->tokens.Reserve(steps),
+                                state_->tokenCount.Reserve(1), state_->stream);
+                    Check(cudaGetLastError());
+                    Check(cudaMemcpyAsync(hostCount + slot, state_->tokenCount.Get(), sizeof(int),
+                                          cudaMemcpyDeviceToHost, state_->stream));
+                    Check(cudaMemcpyAsync(hostQuads + slot, state_->quads.Get() + index,
+                                          sizeof(gpu::Quad), cudaMemcpyDeviceToHost, state_->stream));
+                    Check(cudaMemcpyAsync(hostTokens + static_cast<std::size_t>(slot) * steps,
+                                          state_->tokens.Get(), steps * sizeof(gpu::Token),
+                                          cudaMemcpyDeviceToHost, state_->stream));
+                }
                 Check(cudaStreamSynchronize(
-                    state_->stream)); // final compact metadata, no image/logit download
-                const int tokenCount = *hostCount;
-                const auto quad = *hostQuad;
-                if (tokenCount < 0)
-                    continue; // untrustworthy crop, same policy as CPU decoder
-                if (tokenCount > steps)
-                    throw std::runtime_error("GPU CTC output exceeds capacity.");
-                PaddleQuad box{};
-                box.score = quad.score;
-                box.internalEdges = quad.internalEdges;
-                for (int k = 0; k < 4; ++k)
-                    box.points[k] = {quad.xy[k * 2], quad.xy[k * 2 + 1]};
-                std::vector<PaddleToken> decoded;
-                decoded.reserve(tokenCount);
-                for (int k = 0; k < tokenCount; ++k)
-                    decoded.push_back(
-                        {tokens[k].id, tokens[k].first, tokens[k].last, tokens[k].confidence});
-                const int validSteps = std::min(
-                    steps, static_cast<int>(std::ceil(steps * std::min(width, quad.validWidth) /
-                                                      static_cast<double>(width))));
-                auto line = PaddleDecodeTokens(decoded, validSteps, box, assets_.dictionary);
-                PaddleMergeRecognition(output.lines,std::move(line),region,{image.width,image.height});
+                    state_->stream)); // all group reads and compact metadata copies complete
+                if (cancelled.load())
+                {
+                    output.cancelled = true;
+                    output.lines.clear();
+                    state_->inFlight.reset();
+                    return output;
+                }
+                for (int slot = 0; slot < groupSize; ++slot)
+                {
+                    const int tokenCount = hostCount[slot];
+                    const auto quad = hostQuads[slot];
+                    const auto *tokens = hostTokens + static_cast<std::size_t>(slot) * steps;
+                    if (tokenCount < 0)
+                        continue; // untrustworthy crop, same policy as CPU decoder
+                    if (tokenCount > steps)
+                        throw std::runtime_error("GPU CTC output exceeds capacity.");
+                    PaddleQuad box{};
+                    box.score = quad.score;
+                    box.internalEdges = quad.internalEdges;
+                    for (int k = 0; k < 4; ++k)
+                        box.points[k] = {quad.xy[k * 2], quad.xy[k * 2 + 1]};
+                    std::vector<PaddleToken> decoded;
+                    decoded.reserve(tokenCount);
+                    for (int k = 0; k < tokenCount; ++k)
+                        decoded.push_back(
+                            {tokens[k].id, tokens[k].first, tokens[k].last, tokens[k].confidence});
+                    const int validSteps = std::min(
+                        steps, static_cast<int>(std::ceil(steps * std::min(width, quad.validWidth) /
+                                                          static_cast<double>(width))));
+                    auto line = PaddleDecodeTokens(decoded, validSteps, box, assets_.dictionary);
+                    PaddleMergeRecognition(output.lines, std::move(line), region,
+                                           {image.width, image.height});
+                }
             }
             }
             std::sort(output.lines.begin(), output.lines.end(), [](const auto &a, const auto &b) {
@@ -690,12 +730,12 @@ class TensorRtRecognizer final : public Recognizer
                     Check(cudaStreamCreateWithPriority(&state->stream, cudaStreamNonBlocking, low));
                     state->libraries = std::make_unique<Libraries>(sdk);
                     state->detector = std::make_unique<Network>(
-                        *state->libraries, state->logger, assets.detector, assets.detectorSha256, true, state->device,
+                        *state->libraries, state->logger, sdk, assets.detector, assets.detectorSha256, true, state->device,
                         state->stream, preparation->cancel);
                     if (preparation->cancel.load())
                         throw std::runtime_error("GPU preparation cancelled.");
                     state->recognizer = std::make_unique<Network>(
-                        *state->libraries, state->logger, assets.recognizer, assets.recognizerSha256, false, state->device,
+                        *state->libraries, state->logger, sdk, assets.recognizer, assets.recognizerSha256, false, state->device,
                         state->stream, preparation->cancel);
                     if (preparation->cancel.load())
                         throw std::runtime_error("GPU preparation cancelled.");

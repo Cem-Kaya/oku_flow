@@ -3533,5 +3533,13 @@ Přihlaste se přes Connect ChatGPT na kartě Asistent v režimu Upřesnit.</tra
             <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
             <translation>Rozpoznávání textu je ve složeném ladicím zobrazení pozastaveno. Zobrazuje se původní obraz z kamery.</translation>
         </message>
-    </context>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>Používá se backend GPU: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>Používá se backend CPU: %1</translation>
+    </message>
+</context>
 </TS>

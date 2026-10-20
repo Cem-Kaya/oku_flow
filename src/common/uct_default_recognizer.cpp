@@ -24,7 +24,7 @@ class WindowsOcrRecognizer final : public Recognizer {
 public:
     BackendStatus Initialize() override
     {
-        BackendStatus status;
+        auto& status = status_;
         status.name = QStringLiteral("Windows.Media.Ocr");
         const windows_ocr::InitResult init = engine_.Initialize();
         status.languageTag = QString::fromStdWString(init.languageTag);
@@ -33,6 +33,8 @@ public:
         maximumDimension_ = init.maxImageDimension > 0 ? static_cast<int>(init.maxImageDimension) : 2600;
         return status;
     }
+
+    BackendStatus Status() const override { return status_; }
 
     RecognitionOutput Recognize(const QImage& image, const std::atomic<bool>& cancelled) override
     {
@@ -97,6 +99,7 @@ public:
     }
 
 private:
+    BackendStatus status_;
     windows_ocr::Engine engine_;
     int maximumDimension_{2600};
 };

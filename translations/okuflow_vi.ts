@@ -3533,5 +3533,13 @@ Chọn Kết nối ChatGPT trong tab Trợ lý của chế độ Nâng cao để
             <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
             <translation>Tính năng nhận dạng văn bản tạm dừng trong chế độ xem tổng hợp để gỡ lỗi. Hình ảnh gốc từ camera vẫn được hiển thị.</translation>
         </message>
-    </context>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>Đang dùng bộ xử lý OCR trên GPU: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>Đang dùng bộ xử lý OCR trên CPU: %1</translation>
+    </message>
+</context>
 </TS>

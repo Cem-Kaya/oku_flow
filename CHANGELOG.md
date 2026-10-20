@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Preserve word-local UCT colors on mixed button/document rows, identify the
+  active GPU/CPU OCR backend accessibly, and recover paused text after transient
+  recognition failures. Reduce cached GPU startup work and group OCR submissions;
+  defer heavy CPU fallback while GPU preparation is pending.
+
 - Put playback icons and the scrubber on one compact row, retaining keyboard
   and screen-reader actions. Keep UCT text during same-frame magnified pans,
   and improve small/dense print with overlapping GPU-resident detail passes

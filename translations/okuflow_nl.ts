@@ -3533,5 +3533,13 @@ Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u
             <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
             <translation>Tekstherkenning is gepauzeerd in de samengestelde debugweergave. Het oorspronkelijke camerabeeld blijft zichtbaar.</translation>
         </message>
-    </context>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>GPU-backend actief: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>CPU-backend actief: %1</translation>
+    </message>
+</context>
 </TS>

@@ -3533,5 +3533,13 @@ Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</
             <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
             <translation>Textigenkänningen är pausad i den sammansatta felsökningsvyn. Den ursprungliga kamerabilden visas.</translation>
         </message>
-    </context>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>OCR använder GPU: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>OCR använder CPU: %1</translation>
+    </message>
+</context>
 </TS>

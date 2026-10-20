@@ -769,3 +769,8 @@ resident; only compact text/box metadata is merged. Paused video keeps the same
 admitted analysis lease across view-only reprocessing, so panning reprojects text
 without restarting recognition. Source/frame/appearance changes still revoke it.
 See [the repair and bounded resource policy](video_uct_detail_repair.md).
+
+UCT color/readiness follow-up: line validation stays unchanged while local word
+surfaces supply foreground/background colors. Advanced UCT identifies its actual
+GPU/CPU recognizer, including temporary Windows OCR during GPU preparation.
+See [the implementation and validation notes](uct_color_startup_repair.md).

@@ -580,34 +580,39 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
     QVector<gpu::Rect> rects;
     QVector<gpu::Ink> words;
     QVector<int> indices;
-    for (int i = 0; i < result.output.lines.size(); ++i)
-    {
-        auto &line = result.output.lines[i];
+    if (result.output.lines.size() > 1024) {
+        error = "UCT metadata budget exceeded.";
+        return false;
+    }
+    for (auto& line : result.output.lines) {
         QRectF bounds;
-        for (auto &word : line.words)
-        {
+        for (auto& word : line.words) {
             bounds = bounds.isNull() ? word.boundsPx : bounds.united(word.boundsPx);
-            if (word.protectedBoundsPx.isEmpty())
-                word.protectedBoundsPx = word.boundsPx;
-            if (!word.paddedBounds || word.disposition != TokenDisposition::kCandidate)
-                continue;
-            bool marks = word.text.contains(QLatin1Char('i'), Qt::CaseInsensitive) ||
-                         word.text.contains(QLatin1Char('j'), Qt::CaseInsensitive);
-            for (auto ch : word.text.normalized(QString::NormalizationForm_D))
-                marks = marks || ch.isMark() || QStringLiteral("!?:;").contains(ch);
-            const auto r = word.boundsPx;
-            words.push_back(
-                {Rect(word.inkSearchPx.isEmpty() ? r : word.inkSearchPx, image.width, image.height),
-                 r.x(), r.y(), r.width(), r.height(), int(marks)});
-            indices.push_back(i);
+            if (word.protectedBoundsPx.isEmpty()) word.protectedBoundsPx = word.boundsPx;
         }
         rects.push_back(Rect(bounds, image.width, image.height));
     }
-    // The recognizer already bounds regions, but defend this public seam too.
-    if (rects.size() > 1024 || words.size() > 8192)
-    {
-        error = "UCT metadata budget exceeded.";
-        return false;
+    const int lineCount = rects.size();
+    int wordCount = 0;
+    for (auto& line : result.output.lines) for (auto& word : line.words) {
+        if (++wordCount > 8192) {
+            error = "UCT metadata budget exceeded.";
+            return false;
+        }
+        // Preserve logical line references, but sample each word's own surface.
+        // A selected button can have the opposite polarity to its neighbours.
+        const int colorIndex = rects.size();
+        rects.push_back(Rect(word.boundsPx, image.width, image.height));
+        if (!word.paddedBounds || word.disposition != TokenDisposition::kCandidate) continue;
+        bool marks = word.text.contains(QLatin1Char('i'), Qt::CaseInsensitive) ||
+                     word.text.contains(QLatin1Char('j'), Qt::CaseInsensitive);
+        for (auto ch : word.text.normalized(QString::NormalizationForm_D))
+            marks = marks || ch.isMark() || QStringLiteral("!?:;").contains(ch);
+        const auto r = word.boundsPx;
+        words.push_back(
+            {Rect(word.inkSearchPx.isEmpty() ? r : word.inkSearchPx, image.width, image.height),
+             r.x(), r.y(), r.width(), r.height(), int(marks)});
+        indices.push_back(colorIndex);
     }
     const size_t colorsAt = 0, rectsAt = rects.size() * sizeof(gpu::Colors),
                  wordsAt = rectsAt + rects.size() * sizeof(gpu::Rect),
@@ -658,18 +663,20 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
         reinterpret_cast<const gpu::Colors *>(static_cast<char *>(c->host) + hostAt);
     const auto *fits =
         reinterpret_cast<const gpu::Fit *>(static_cast<char *>(c->host) + hostAt + colorsBytes);
-    int k = 0;
-    for (int i = 0; i < result.output.lines.size(); ++i)
-    {
-        const auto &v = colors[i];
-        result.lineColors.push_back({QColor(v.foreground[0], v.foreground[1], v.foreground[2]),
-                                     QColor(v.background[0], v.background[1], v.background[2])});
-        for (auto &word : result.output.lines[i].words)
-            if (word.paddedBounds && word.disposition == TokenDisposition::kCandidate)
-            {
+    const auto pair = [](const gpu::Colors& v) {
+        return LineColors{QColor(v.foreground[0], v.foreground[1], v.foreground[2]),
+                          QColor(v.background[0], v.background[1], v.background[2])};
+    };
+    int k = 0, colorIndex = lineCount;
+    for (int i = 0; i < result.output.lines.size(); ++i) {
+        result.lineColors.push_back(pair(colors[i]));
+        for (auto& word : result.output.lines[i].words) {
+            word.colors = pair(colors[colorIndex++]);
+            if (word.paddedBounds && word.disposition == TokenDisposition::kCandidate) {
                 const auto f = fits[k++];
                 word.boundsPx = {f.x, f.y, f.w, f.h};
             }
+        }
     }
     if (image.kind == AnalysisKind::TemporallySmoothed && !result.output.lines.isEmpty())
     {

@@ -5891,3 +5891,27 @@ producer-fenced fragment proof. `Finalized` restores that monotonic mapping
 metadata after finalizer backwrites/SetLength, while revoking generation, sample
 counts and readable/seekable ranges as before. It cannot authorize old bytes.
 `FinalizationRetainsRevokedMapping` checks this independently of parser timing.
+
+### UCT per-word colors and backend readiness (2026-10-20)
+
+`RecognizedWord::colors`, `PreparedWord::colors` and `AcceptedWord::colors`
+carry optional local `LineColors` without splitting semantic lines or changing
+validation references. The CPU scheduler and resident metadata worker measure
+each word before ink fitting. `OverlayModel::SceneWords` uses the local pair
+when present, preserving legacy line fallback and stable-color hysteresis.
+`BackendStatus::usesGpu` describes the selected recognizer. The panel's
+`SetBackendStatus` keeps its visible backend label and accessible name current.
+`WindowsOcrRecognizer::Status` retains its initialized CPU identity for runtime
+publication, so a preparation bridge cannot leave a stale GPU label.
+
+`AutomaticRecognizer` accepts an optional preparation-bridge candidate index.
+Production uses Windows OCR while TensorRT prepares, deferring configured CPU
+sessions until necessary. A complete bridge result can set `backendPreparing`
+to request preferred-backend refinement without bypassing evidence admission.
+`Libraries::PrepareBuilder` lazily loads compilation-only TensorRT resources;
+`TensorRtRecognizer` groups eight batch-one submissions per worker stream wait.
+
+`UltraClearTextController::ScheduleImmutableRetry` retries unsuccessful selected
+or neighbour work under the same ticket with bounded timers. New geometry revokes
+old callbacks; successful final one-shot analysis is not periodically repeated.
+See [color/readiness repair](uct_color_startup_repair.md) for limits and tests.

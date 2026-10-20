@@ -3533,5 +3533,13 @@ Utilisez Connect ChatGPT dans l'onglet Assistant avancé pour vous connecter.</t
             <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
             <translation>La reconnaissance de texte est suspendue dans la vue composite de débogage. L’image d’origine de la caméra reste affichée.</translation>
         </message>
-    </context>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>Moteur GPU utilisé : %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>Moteur CPU utilisé : %1</translation>
+    </message>
+</context>
 </TS>

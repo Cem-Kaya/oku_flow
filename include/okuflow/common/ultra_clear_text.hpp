@@ -182,6 +182,7 @@ struct BackendStatus {
     QString name;        // e.g. "Windows.Media.Ocr"
     QString languageTag; // recognizer language actually used
     QString detail;      // English technical detail for diagnostics
+    bool usesGpu{};      // actual selected recognizer, including temporary fallback
 };
 
 // Candidate text is evidence, not accepted reading text. Rejected spans stay
@@ -195,6 +196,11 @@ enum class TokenDisposition : std::uint8_t {
     kUnrecognized,
 };
 
+struct LineColors {
+    QColor foreground{Qt::black};
+    QColor background{Qt::white};
+};
+
 struct RecognizedWord {
     QString text;
     QRectF boundsPx; // pixels of the job image
@@ -203,6 +209,7 @@ struct RecognizedWord {
     TokenDisposition disposition{TokenDisposition::kCandidate};
     double confidence{1.0}; // backend evidence; never increased during admission
     QRectF protectedBoundsPx; // original detector span, before optional ink fitting
+    std::optional<LineColors> colors; // local word surface, measured after recognition
 };
 
 struct RecognizedLine {
@@ -215,7 +222,7 @@ struct RecognitionOutput {
     QString error;
     QVector<RecognizedLine> lines;
     bool inputFault{}; // dropped frame/copy, not a reason to retire a backend
-    bool backendPreparing{}; // use a temporary fallback, retain this candidate
+    bool backendPreparing{}; // preferred backend pending; complete fallback output may still be ok
     // Extra Stable crossfade/unknown input: recognition was not attempted.
     // Neither a backend nor an input fault, and never recognition evidence.
     bool compositeInput{};
@@ -249,11 +256,6 @@ std::unique_ptr<Recognizer> CreateDefaultRecognizer(const ModelSettings& models 
 
 // --- Scheduler -------------------------------------------------------------
 
-struct LineColors {
-    QColor foreground{Qt::black};
-    QColor background{Qt::white};
-};
-
 // A recognized line already mapped to scene coordinates with its residual
 // reference, prepared on the recognition worker so admission on the UI
 // thread does no pixel work.
@@ -263,6 +265,7 @@ struct PreparedWord {
     TokenDisposition disposition{TokenDisposition::kCandidate};
     double confidence{1.0};
     QRectF protectedSceneRect;
+    std::optional<LineColors> colors;
 };
 
 struct PreparedLine {
@@ -528,6 +531,7 @@ struct AcceptedWord {
     QString text;
     QRectF sceneRect;
     bool glyphEligible{true}; // immutable text may be readable without corroboration
+    std::optional<LineColors> colors; // absent in legacy/hand-built line-only evidence
 };
 
 struct AcceptedLine {

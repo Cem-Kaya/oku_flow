@@ -879,3 +879,11 @@ RAM/VRAM ceiling. UCT advancing gap retention uses 350 ms wall validation plus
 real-media freshness; gap receipts cannot renew either. Save's owned GPU clone
 has a three-second asynchronous readback deadline and retains exact identity
 through resize retry/late-result discard. See [GPU playback](gpu_video_playback.md).
+
+UCT readiness limits: eight batch-one TensorRT recognitions per completion wait;
+up to 1024 line colors plus 8192 word-local color descriptors in the existing
+resident metadata scratch. Paused unsuccessful jobs permit three ordinary
+retries at 100-ms spacing; preferred-backend preparation retries use 500-ms
+spacing within the existing 30-second horizon. Successful final reads do not
+poll. Builder/parser runtime resources load only when a cached engine is absent
+or invalid; cache identity and runtime pins are unchanged.

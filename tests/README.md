@@ -1789,3 +1789,24 @@ private observed archive, prove its duration, revoke its bytes by truncation,
 then verify finalization retains only historical mapping and denies old reads.
 This deterministically exercises the finalizer-duration race; no owner media is
 modified. Initial AV1 failure evidence is retained.
+
+The UCT readiness fixture includes `uct_startup_test_cases.hpp` through moc-visible
+Paddle test wrappers in the tracked `uct_paddle_processing` command. It checks
+Windows preparation bridging, GPU promotion, failed preparation fallback and
+cancellation/input faults without real models or downloads. Immutable controller
+rows cover playback-to-pause transient faults and revocation of an old retry timer.
+The real resident CUDA scheduler case includes a yellow selected word in an
+otherwise dark row, checking CPU/GPU local color/ink parity and zero image egress.
+Cached accessibility interfaces must reflect actual GPU/CPU backend switches.
+The real Windows OCR fixture also requires runtime status publication after
+recognition, retaining its initialized CPU identity when used as a bridge.
+
+`optionalAutomaticStartup` is an unregistered private-image diagnostic. Explicitly
+set `OKUFLOW_UCT_STARTUP_DIAGNOSTIC=1` and `OKUFLOW_UCT_TEST_IMAGE`; optional
+`OKUFLOW_TEST_PADDLE_GPU=1` requires eventual usable GPU completion. Prepare the
+pinned models and compatible engine plans beforehand; do not clear caches or use
+this as a cold compilation benchmark. The real scheduler initializes and runs the
+automatic chain on its worker, logging first complete fallback and preferred GPU
+results, with 500-ms gaps and a 30-second horizon. It measures candidate completion,
+not glyph admission, native presentation or end-to-end latency. Local word-color
+diagnostics and word counts are observations, not recognition-accuracy assertions.

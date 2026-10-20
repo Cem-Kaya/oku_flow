@@ -43,10 +43,14 @@ struct ImmutableScript {
     std::condition_variable changed;
     bool holdInitialization{};
     bool holdRecognition{};
+    int holdCall{};
     QVector<PageWord> words;
     std::atomic<int> initialized{};
     std::atomic<int> calls{};
     std::atomic<int> deviceCalls{};
+    std::atomic<int> transientFailures{};
+    int transientKind{};
+    std::atomic<int> completeBridgeResults{};
     std::atomic<bool> wantsDevice{};
 
     void Release()
@@ -55,6 +59,7 @@ struct ImmutableScript {
             std::lock_guard lock(mutex);
             holdInitialization = false;
             holdRecognition = false;
+            holdCall = 0;
         }
         changed.notify_all();
     }
@@ -96,12 +101,22 @@ private:
         {
             std::unique_lock lock(script_->mutex);
             words = script_->words;
+            if (script_->holdCall && script_->calls.load() == script_->holdCall)
+                script_->changed.wait(lock, [&] { return script_->holdCall == 0; });
             script_->changed.wait(lock, [&] { return !script_->holdRecognition; });
         }
         RecognitionOutput output;
+        if (script_->transientFailures.load() > 0 && script_->transientFailures.fetch_sub(1) > 0) {
+            output.inputFault = script_->transientKind == 0;
+            output.backendPreparing = script_->transientKind == 1;
+            output.cancelled = script_->transientKind == 2;
+            return output;
+        }
         output.cancelled = cancelled.load();
         output.ok = !output.cancelled;
         if (!output.ok) return output;
+        if(script_->completeBridgeResults.load()>0 && script_->completeBridgeResults.fetch_sub(1)>0)
+            output.backendPreparing=true;
         RecognizedLine line;
         for (const PageWord& word : words) {
             line.words.push_back({word.text,
@@ -371,6 +386,12 @@ private slots:
     void advancingMediaValidatesWhileOcrHeldAndRejectsChangedPixels();
     void advancingMediaAuthorityRevokesAndSuppressesLiveInput();
     void advancingMediaPauseReturnsToOneShotAnalysis();
+    void pausedMediaRecoversTransientRecognition_data();
+    void pausedMediaRecoversTransientRecognition();
+    void pausedMediaRetryCannotReviveReplacedScene();
+    void pausedBridgeRefinesAfterCorroboration();
+    void pausedBridgeHorizonKeepsHealthyFallback();
+    void pausedFailureRetriesAreBounded();
     void advancingMediaDeadlineUsesWallClock();
     void mediaPresentationFailureRevokesCachedArtifact_data();
     void mediaPresentationFailureRevokesCachedArtifact();
@@ -720,8 +741,13 @@ void UltraClearTextControllerTests::immutableDeadlineIsIndependentOfSourceAge()
     QTRY_COMPARE(h.controller->RejectedResults(), std::uint64_t(1));
     QVERIFY(h.Reading().isEmpty());
     QVERIFY(h.controller->Model().Lines().isEmpty());
+    // The expired completion stays rejected. A fresh bounded attempt can read
+    // the same held pixels without confusing media age with job age.
+    QTRY_VERIFY(h.Reading().contains(QStringLiteral("Reading helps")));
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(2));
+    QCOMPARE(h.controller->RejectedResults(), std::uint64_t(1));
     QTest::qWait(250);
-    QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(1));
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(2));
 }
 
 void UltraClearTextControllerTests::invalidSelectedMediaDoesNotResumeHiddenLiveInput()
@@ -867,6 +893,105 @@ void UltraClearTextControllerTests::advancingMediaPauseReturnsToOneShotAnalysis(
     QCOMPARE(h.controller->ProbeStatistics().submitted,probes);
     QVERIFY(h.controller->SetImmutableScene(paused));
     QCOMPARE(h.controller->SchedulerStatistics().submitted,before+2);
+}
+
+void UltraClearTextControllerTests::pausedMediaRecoversTransientRecognition_data()
+{
+    QTest::addColumn<int>("kind");
+    QTest::newRow("input-fault") << 0;
+    QTest::newRow("backend-preparing") << 1;
+    QTest::newRow("cancelled-current-job") << 2;
+}
+
+void UltraClearTextControllerTests::pausedMediaRecoversTransientRecognition()
+{
+    QFETCH(int, kind);
+    ImmutableHarness h;h.Enable();
+    UctAdvancingMediaScene last;
+    for(std::uint64_t frame=1;frame<=60;++frame) last=h.PlayFrame(frame);
+    QTRY_VERIFY(h.overlay.WordCount()>0);QTest::qWait(20);
+    const auto before=h.controller->SchedulerStatistics().submitted;
+    h.script->transientKind=kind;h.script->transientFailures=1;
+    auto paused=h.Scene(last.current.frameSeq);
+    paused.selected=last.current;
+    paused.corroboration=UctImmutableFrame{OwnedPixels(IndependentFramePixels(h.page.image,last.current.frameSeq+1)),
+        last.current.frameSeq+1,last.current.timestampMs+20};
+    QVERIFY(h.controller->SetImmutableScene(paused));
+    QTRY_VERIFY_WITH_TIMEOUT(h.overlay.WordCount()>0,5000);
+    QCOMPARE(h.script->transientFailures.load(),0);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted,before+3); // failed + selected + neighbour
+    const auto complete=h.controller->SchedulerStatistics().submitted;
+    h.now+=15000;QTest::qWait(700);
+    QVERIFY(h.controller->SetImmutableScene(paused));
+    QCOMPARE(h.controller->SchedulerStatistics().submitted,complete);
+    QVERIFY(h.overlay.WordCount()>0); // a successful held read stays one-shot
+}
+
+void UltraClearTextControllerTests::pausedMediaRetryCannotReviveReplacedScene()
+{
+    ImmutableHarness h;h.script->transientKind=1;h.script->transientFailures=1;
+    h.Enable();QVERIFY(h.controller->SetImmutableScene(h.Scene(10)));
+    QTRY_COMPARE(h.script->transientFailures.load(),0);
+    QTest::qWait(20); // failed completion schedules the delayed preparation retry
+    auto newer=h.Scene(20);
+    newer.corroboration=UctImmutableFrame{OwnedPixels(IndependentFramePixels(h.page.image,21)),21,20};
+    QVERIFY(h.controller->SetImmutableScene(newer));
+    QTRY_VERIFY(h.overlay.WordCount()>0);
+    const auto submitted=h.controller->SchedulerStatistics().submitted;
+    QTest::qWait(700);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted,submitted);
+    QCOMPARE(h.controller->Model().Lines().first().provenance.frameSeq,std::uint64_t(20));
+}
+
+void UltraClearTextControllerTests::pausedBridgeRefinesAfterCorroboration()
+{
+    ImmutableHarness h;h.script->completeBridgeResults=1;h.script->holdCall=4;h.Enable();
+    auto scene=h.Scene(10);
+    scene.corroboration=UctImmutableFrame{OwnedPixels(IndependentFramePixels(h.page.image,11)),11,20};
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_VERIFY(h.overlay.WordCount()>0); // complete fallback and neighbour may show first
+    QTRY_COMPARE_WITH_TIMEOUT(h.script->calls.load(),4,5000);
+    // The complete old pair stays visible/accessibly readable while the new
+    // selected result waits for its held neighbour. No selected-only flicker.
+    QVERIFY(h.overlay.WordCount()>0);
+    QVERIFY(!h.controller->ScreenTextSnapshot().lines.isEmpty());
+    QVERIFY(h.Reading().contains(QStringLiteral("Reading helps")));
+    h.script->Release();
+    QTRY_VERIFY(h.overlay.WordCount()>0);
+    QTest::qWait(700);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted,std::uint64_t(4));
+}
+
+void UltraClearTextControllerTests::pausedBridgeHorizonKeepsHealthyFallback()
+{
+    UctTiming timing;timing.immutableJobTimeoutMs=1000;
+    ImmutableHarness h(timing);h.script->completeBridgeResults=100;h.Enable();
+    auto scene=h.Scene(10);
+    scene.corroboration=UctImmutableFrame{OwnedPixels(IndependentFramePixels(h.page.image,11)),11,20};
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_VERIFY(h.overlay.WordCount()>0);
+    h.now+=1001; // only preferred preparation has expired, fallback proof is valid
+    QTRY_COMPARE_WITH_TIMEOUT(h.script->calls.load(),4,5000);
+    QTest::qWait(700);
+    QCOMPARE(h.script->calls.load(),4);
+    QVERIFY(h.overlay.WordCount()>0);
+    QVERIFY(!h.controller->ScreenTextSnapshot().lines.isEmpty());
+    QVERIFY(h.controller->StatusSource().contains(QStringLiteral("Showing sharp text")));
+}
+
+void UltraClearTextControllerTests::pausedFailureRetriesAreBounded()
+{
+    ImmutableHarness h;h.script->transientKind=0;h.script->transientFailures=10;h.Enable();
+    QVERIFY(h.controller->SetImmutableScene(h.Scene(10)));
+    QTRY_COMPARE(h.script->calls.load(),3);
+    QTest::qWait(700);QCOMPARE(h.script->calls.load(),3);
+    QVERIFY(h.overlay.WordCount()==0);
+    QVERIFY(h.controller->StatusSource().contains(QStringLiteral("stopped working")));
+    h.script->transientFailures=0;
+    auto newer=h.Scene(20);
+    newer.corroboration=UctImmutableFrame{OwnedPixels(IndependentFramePixels(h.page.image,21)),21,20};
+    QVERIFY(h.controller->SetImmutableScene(newer));
+    QTRY_VERIFY(h.overlay.WordCount()>0); // a new source ticket can recover
 }
 
 void UltraClearTextControllerTests::advancingMediaDeadlineUsesWallClock()

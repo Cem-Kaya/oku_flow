@@ -905,7 +905,7 @@ QVector<PreparedLine> PrepareLines(const RecognitionResult& result, double minim
                     disposition = TokenDisposition::kTooSmall;
                 else if (IsHighRiskToken(text)) disposition = TokenDisposition::kHighRisk;
             }
-            out.words.push_back({text, scene, disposition, word.confidence, protectedScene});
+            out.words.push_back({text, scene, disposition, word.confidence, protectedScene, word.colors});
             if (usableRect(protectedScene))
                 out.sceneRect = out.sceneRect.isNull() ? protectedScene : out.sceneRect.united(protectedScene);
         }
@@ -1217,8 +1217,9 @@ struct RecognitionScheduler::State {
                     result.lineColors.push_back(colors);
                     for (RecognizedWord& word : line.words) {
                         if (word.protectedBoundsPx.isEmpty()) word.protectedBoundsPx = word.boundsPx;
+                        word.colors = MeasureLineColors(pixels, word.boundsPx.toAlignedRect());
                         if (word.paddedBounds && word.disposition == TokenDisposition::kCandidate)
-                            word.boundsPx = RefineWordInkBounds(pixels, word, colors);
+                            word.boundsPx = RefineWordInkBounds(pixels, word, *word.colors);
                     }
                 }
                 }
@@ -1874,7 +1875,8 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                     std::any_of(evidence->begin(), evidence->end(), [&](const QRectF& r) {
                         return Iou(word.sceneRect, r) >= tuning_.agreementIou;
                     }));
-                candidate.line.words.push_back({word.text, word.sceneRect, glyphEligible});
+                candidate.line.words.push_back({word.text, word.sceneRect, glyphEligible,
+                    word.colors ? std::optional<LineColors>(StableLineColors(*word.colors)) : std::nullopt});
                 candidate.line.readingTokens.push_back(word.text);
                 if (!glyphEligible) candidate.line.protectedSceneRects.push_back(
                     word.protectedSceneRect.isEmpty() ? word.sceneRect : word.protectedSceneRect);
@@ -1931,6 +1933,10 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                     }
                     if (sameWords) {
                         candidate.line.colors = StableLineColors(candidate.line.colors, &old.colors);
+                        for (int i = 0; i < old.words.size(); ++i)
+                            if (candidate.line.words[i].colors && old.words[i].colors)
+                                candidate.line.words[i].colors = StableLineColors(
+                                    *candidate.line.words[i].colors, &*old.words[i].colors);
                         if (!IsShown(old, nowMs, latestProbe->stamp.frameSeq) ||
                             (candidate.line.valid &&
                              (candidate.line.validatedAtMs > old.validatedAtMs ||
@@ -1940,8 +1946,11 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                             break;
                         }
                         const LineColors colors = candidate.line.colors;
+                        auto measuredWords = std::move(candidate.line.words);
                         candidate.line = old;
                         candidate.line.colors = colors;
+                        for (int i = 0; i < candidate.line.words.size(); ++i)
+                            candidate.line.words[i].colors = measuredWords[i].colors;
                         retained = true;
                         retainedIds.insert(old.id);
                         break;
@@ -2148,7 +2157,7 @@ QVector<SceneWord> OverlayModel::SceneWords(std::int64_t nowMs, std::uint64_t cu
         for (int i = 0; i < line.words.size(); ++i) {
             const AcceptedWord& word = line.words[i];
             if (!word.glyphEligible) continue;
-            words.push_back({word.text, word.sceneRect.translated(line.sceneOffset), line.colors, line.id,
+            words.push_back({word.text, word.sceneRect.translated(line.sceneOffset), word.colors.value_or(line.colors), line.id,
                              protectedRects, i});
         }
     }

@@ -1,4 +1,5 @@
 #include "okuflow/ui/ultra_clear_text_panel.hpp"
+#include "okuflow/common/ultra_clear_text.hpp"
 
 #if defined(_WIN32)
 
@@ -106,6 +107,15 @@ UltraClearTextPanel::UltraClearTextPanel(QWidget* parent)
         modelControls->setVisible(expanded);
     });
 
+    backendLabel_ = new QLabel(this);
+    backendLabel_->setObjectName(QStringLiteral("ultraClearTextBackend"));
+    backendLabel_->setWordWrap(true);
+    backendLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
+    backendLabel_->setFocusPolicy(Qt::TabFocus);
+    backendLabel_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    layout->addWidget(backendLabel_);
+    backendLabel_->hide();
+
     statusLabel_ = new QLabel();
     statusLabel_->setObjectName(QStringLiteral("ultraClearTextStatus"));
     statusLabel_->setWordWrap(true);
@@ -181,6 +191,19 @@ void UltraClearTextPanel::SetStatus(const QString& sourceText, bool important)
                 important ? LivePoliteness::kPolite : LivePoliteness::kSilent);
 }
 
+void UltraClearTextPanel::SetBackendStatus(const uct::BackendStatus& status)
+{
+    const QString source = status.state == uct::BackendState::kReady && !status.name.isEmpty()
+        ? (status.usesGpu ? QStringLiteral("Using GPU backend: %1")
+                          : QStringLiteral("Using CPU backend: %1")).arg(status.name)
+        : QString{};
+    if (backendSource_ != source) {
+        backendSource_ = source;
+        SetLiveText(backendLabel_, source, LivePoliteness::kSilent);
+    }
+    backendLabel_->setVisible(enableCheckbox_->isChecked() && !backendSource_.isEmpty());
+}
+
 void UltraClearTextPanel::SetReadingText(const QString& text)
 {
     const QString previous = readingPane_->toPlainText();
@@ -248,6 +271,7 @@ void UltraClearTextPanel::UpdateDependentState()
     const bool enabled = enableCheckbox_->isChecked();
     showOriginalCheckbox_->setEnabled(enabled);
     readingPane_->setEnabled(true);
+    backendLabel_->setVisible(enabled && !backendSource_.isEmpty());
 }
 
 } // namespace okuflow

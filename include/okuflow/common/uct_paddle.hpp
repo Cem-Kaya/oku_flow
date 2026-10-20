@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QStringList>
 #include <array>
+#include <optional>
 #include <span>
 
 namespace okuflow::uct
@@ -86,8 +87,13 @@ std::unique_ptr<Recognizer> CreateWindowsRecognizer();
 
 // Chooses TensorRT, Paddle CPU, then Windows OCR. A failed backend is retired
 // for this recognizer's lifetime; cancellation never triggers fallback/retry.
+// An injected bridge serves complete jobs while a preferred backend prepares;
+// default production uses Windows OCR, deferring costly Paddle CPU startup.
+// Bridge results retain backendPreparing even when ok, permitting bounded
+// preferred-backend refinement without changing normal evidence admission.
 std::unique_ptr<Recognizer> CreateAutomaticRecognizer(const ModelSettings& models = {});
 std::unique_ptr<Recognizer> CreateAutomaticRecognizer(
-    std::vector<std::unique_ptr<Recognizer>> candidates);
+    std::vector<std::unique_ptr<Recognizer>> candidates,
+    std::optional<std::size_t> preparationBridge = {});
 
 } // namespace okuflow::uct

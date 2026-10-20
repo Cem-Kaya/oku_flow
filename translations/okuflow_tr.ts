@@ -3533,5 +3533,13 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
             <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
             <translation>Birleştirilmiş hata ayıklama görünümünde metin tanıma duraklatıldı. Orijinal kamera görüntüsü gösteriliyor.</translation>
         </message>
-    </context>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>GPU ile çalışıyor: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>CPU ile çalışıyor: %1</translation>
+    </message>
+</context>
 </TS>

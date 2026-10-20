@@ -3533,5 +3533,13 @@ Pilih Hubungkan ChatGPT di tab Asisten pada mode Tingkat Lanjut untuk masuk.</tr
             <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
             <translation>Pengenalan teks dijeda dalam tampilan komposit debug. Gambar kamera asli tetap ditampilkan.</translation>
         </message>
-    </context>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>Menggunakan backend GPU: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>Menggunakan backend CPU: %1</translation>
+    </message>
+</context>
 </TS>
