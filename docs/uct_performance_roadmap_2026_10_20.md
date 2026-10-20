@@ -141,3 +141,12 @@ optional frozen-input resident diagnostic checks the worker integration without
 pretending repeated held images are fresh evidence. No measured OCR saving is
 claimed by this shadow stage. See [planner policy](uct_region_planner.md) for
 limits, tests and the current validation status.
+
+The final background integration matrix passes Release compilation, 146 CPU
+cases (two include optional skipped Qt rows) and 17 CUDA delta cases, with no
+whole-case skips or unresolved failures. PCH-off contracts and the shared-source
+guard pass separately. The finite real resident observer run verifies source
+boundaries and duplicate rejection on all 18 full outputs, zero image egress
+and unchanged cached plans. All four owner-quality comparisons pass; the two
+original strict failures and normal exit one remain preserved. Hosted native
+GUI and real screen-reader/camera acceptance are separate from these results.

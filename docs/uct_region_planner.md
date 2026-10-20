@@ -289,8 +289,29 @@ saturation). New tie and multi-age eviction regressions preserve deterministic
 occurrence ordering. The held scheduler fixture now supplies the capture-owned
 record; a separate case proves an unowned hold claim is rejected without
 advancing planner evidence. Original intermediate compilation, fixture failure
-and runner refusal logs remain retained. PCH-off, CUDA and final integration
-validation are recorded below when complete.
+and runner refusal logs remain retained. The independent PCH-off build passes
+all 40 selected cases (the same contracts plus `shared_source_equivalence`).
+The tracked integration matrix passes shipping Release compilation, 146 CPU
+cases (two with optional skipped Qt rows) and all 17 CUDA delta cases, with no
+whole-case skips or unresolved failures. Matching evidence was reused by exact
+fingerprint. Local GUI cases were explicitly excluded; hosted native checks and
+real screen-reader/camera acceptance remain separate.
+
+The finite real GPU observer run completed two blocks, four immutable sources,
+18 full results and eight timed results in 16.48 seconds, excluding backend
+preparation polls from the full-result count. All eight new-source plans were
+accepted and all ten repeated acquisitions were rejected, with accepted age
+fixed at one in each source epoch. Every full result retained zero image-egress
+calls; all timed jobs had zero detector calls. Four leases and 14 frozen replays
+were retained, both exact State closures completed and cached plan bytes were
+unchanged. All four owner-policy comparisons preserved text/order/disposition.
+Two failed the original strict geometry/confidence check, retained unchanged;
+normal process exit was one for that original assertion. This was an integration
+check, not a new OCR speed comparison.
+
+Real-run evidence is retained in
+`%LOCALAPPDATA%/OkuFlow/uct-resident-20261020-212348-575f4a8b-2162-4ebb-bfb7-e5c89555e380`.
+The derived audit and actual exit receipt are in `uct-shadow-20261020`.
 
 ### Finite metadata-cost experiment
 
