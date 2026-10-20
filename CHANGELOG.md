@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+- Add opt-in resident performance and character-change diagnostics, crop-width
+  telemetry and existing host-wait attribution for the revised UCT roadmap.
+  The character baseline retains false accepts/hides; region reuse remains
+  disabled and production OCR model/batch defaults are unchanged.
+
+- Confirm paused-video words at their recognized positions in a neighbouring
+  frame when scrolling moved them, while keeping glyphs on the selected frame.
+  Completed worker validation no longer loses later lines to the UI match budget.
+
 - Add opt-in TensorRT recognizer batches of eight and sixteen with bounded
   stage profiling and a larger checked output-allocation ceiling for sixteen.
   The one-time comparison was faster, but failed strict numerical agreement

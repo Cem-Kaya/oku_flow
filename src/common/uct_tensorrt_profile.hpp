@@ -3,11 +3,18 @@
 // Private, explicitly enabled OCR worker instrumentation. Event resources live
 // with the inference state, including its unknown-completion quarantine.
 #include <QDebug>
+#include <QCryptographicHash>
 #include <QElapsedTimer>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonArray>
+#include <QRect>
+#include <QtEndian>
 #include <algorithm>
 #include <array>
+#include <cstdint>
+#include <cstring>
+#include <memory>
 #include <cuda_runtime.h>
 #include <stdexcept>
 #include <vector>
@@ -20,7 +27,10 @@ public:
     TensorRtProfile() : enabled_(qEnvironmentVariable("OKUFLOW_UCT_TRT_PROFILE") == "1") {
         // Allocate the bounded host slots before any CUDA event exists, so
         // publishing a newly created pair cannot leak it on host allocation.
-        if (enabled_) events_.reserve(kMaximumPairs);
+        if (enabled_) {
+            events_.reserve(kMaximumPairs);
+            cropHash_ = std::make_unique<QCryptographicHash>(QCryptographicHash::Sha256);
+        }
     }
     ~TensorRtProfile() {
         for (const auto& pair : events_) {
@@ -36,7 +46,11 @@ public:
         inputBytes_ = outputBytes_ = outputLimitBytes_ = 0;
         maximumBatch_ = 0;
         enqueueMs_ = mergeMs_ = 0;
+        detectorWaitMs_ = groupWaitMs_ = 0;
+        widthBins_ = {}; invalidWidths_ = oversizedWidths_ = 0;
+        requestedWidth_ = usedWidth_ = canvasWidth_ = 0;
         if (enabled_) {
+            cropHash_->reset();
             Check(cudaMemGetInfo(&freeBefore_, &totalBytes_));
             wall_.start();
         }
@@ -72,6 +86,42 @@ public:
         addressSets_ += addressSets;
     }
     void Merge(double hostMs) { if (enabled_) mergeMs_ += hostMs; }
+    template<class Operation> void Wait(bool detectorCount, Operation operation) {
+        if (!enabled_) { operation(); return; }
+        QElapsedTimer timer;timer.start();
+        operation();
+        const double ms = timer.nsecsElapsed() / 1e6;
+        (detectorCount ? detectorWaitMs_ : groupWaitMs_) += ms;
+    }
+    void CropWidth(int requested, int canvas) {
+        if (!enabled_) return;
+        if (requested <= 0 || canvas <= 0) { ++invalidWidths_; return; }
+        requestedWidth_ += requested;
+        usedWidth_ += std::min(requested, canvas);
+        canvasWidth_ += canvas;
+        const auto bin = std::lower_bound(kWidthBounds.begin(), kWidthBounds.end(), requested);
+        if (bin == kWidthBounds.end()) ++oversizedWidths_;
+        else ++widthBins_[bin - kWidthBounds.begin()];
+    }
+    // Hash only descriptors already copied for publication, never image bytes.
+    // Explicit LE words avoid C++ padding/ABI-dependent comparison evidence.
+    void CropDescriptor(const float* xy, float score, int requested, int edges,
+                        const QRect& region, int canvas) {
+        if (!enabled_) return;
+        CropWidth(requested, canvas);
+        std::array<quint32, 16> words{};
+        words[0] = 1; // descriptor encoding version
+        words[1] = static_cast<quint32>(region.x());
+        words[2] = static_cast<quint32>(region.y());
+        words[3] = static_cast<quint32>(region.width());
+        words[4] = static_cast<quint32>(region.height());
+        for (int i = 0; i < 8; ++i) std::memcpy(&words[5+i], xy+i, sizeof(float));
+        std::memcpy(&words[13], &score, sizeof(float));
+        words[14] = static_cast<quint32>(requested);
+        words[15] = static_cast<quint32>(edges);
+        for (auto& word : words) word = qToLittleEndian(word);
+        cropHash_->addData(QByteArrayView(reinterpret_cast<const char*>(words.data()), sizeof(words)));
+    }
     void Transfer(std::size_t bytes) { if (enabled_) metadataBytes_ += bytes; }
     void Tensor(int batch, std::size_t inputBytes, std::size_t outputBytes, std::size_t outputLimitBytes) {
         if (!enabled_) return;
@@ -92,6 +142,17 @@ public:
         QJsonObject gpu;
         const char* names[]{"normalize", "detector", "regions", "rectify", "recognizer", "ctc", "metadataCopies"};
         for (int i = 0; i < StageCount; ++i) gpu[names[i]] = stageMs[i];
+        QJsonArray widthBounds, widthCounts;
+        for (int i = 0; i < kWidthBounds.size(); ++i) {
+            widthBounds.push_back(kWidthBounds[i]);
+            widthCounts.push_back(widthBins_[i]);
+        }
+        const QJsonObject widths{{"inclusiveUpperBounds", widthBounds}, {"counts", widthCounts},
+            {"above1024", oversizedWidths_}, {"invalid", invalidWidths_},
+            {"requestedWidthSum", static_cast<qint64>(requestedWidth_)},
+            {"usedWidthSum", static_cast<qint64>(usedWidth_)},
+            {"canvasWidthSum", static_cast<qint64>(canvasWidth_)},
+            {"paddedWidthFraction", canvasWidth_ ? 1.0 - double(usedWidth_) / canvasWidth_ : 0.0}};
         std::size_t freeAfter{}, totalAfter{};
         Check(cudaMemGetInfo(&freeAfter, &totalAfter));
         // Stream event intervals include launch gaps and external GPU contention;
@@ -101,6 +162,10 @@ public:
             {"detectorPasses", detectorPasses_}, {"recognizerCalls", recognizerCalls_},
             {"recognizerSamples", recognizerSamples_}, {"networkHostMs", enqueueMs_},
             {"mergeHostMs", mergeMs_}, {"shapeSets", shapeSets_}, {"addressSets", addressSets_},
+            {"detectorCountHostWaitMs", detectorWaitMs_}, {"recognizerGroupHostWaitMs", groupWaitMs_},
+            {"cropWidthHistogram", widths},
+            {"orderedCropDescriptorSha256", QString::fromLatin1(cropHash_->result().toHex())},
+            {"cropDescriptorEncoding", "v1-le32:version,region-xywh,quad-xy8,score,validWidth,internalEdges"},
             {"metadataBytes", static_cast<qint64>(metadataBytes_)}, {"sourceUploadMeasured", false},
             {"maximumActualBatch", maximumBatch_},
             {"recognizerInputCapacityBytes", static_cast<qint64>(inputBytes_)},
@@ -120,6 +185,12 @@ private:
     }
     struct EventPair { cudaEvent_t begin{}, end{}; Stage stage{}; };
     static constexpr std::size_t kMaximumPairs = 2048;
+    static constexpr std::array<int, 7> kWidthBounds{64, 128, 256, 384, 512, 768, 1024};
+    std::array<int, 7> widthBins_{};
+    int invalidWidths_{}, oversizedWidths_{};
+    std::uint64_t requestedWidth_{}, usedWidth_{}, canvasWidth_{};
+    std::unique_ptr<QCryptographicHash> cropHash_;
+    double detectorWaitMs_{}, groupWaitMs_{};
     bool enabled_{};
     std::vector<EventPair> events_;
     std::size_t used_{};

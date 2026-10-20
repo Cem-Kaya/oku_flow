@@ -922,6 +922,96 @@ QVector<PreparedLine> PrepareLines(const RecognitionResult& result, double minim
     return prepared;
 }
 
+namespace {
+// A paused source does not move. Its *neighbour* may have scrolled: validate
+// the same recognized word there, without moving the selected-frame glyph.
+// GPU references/samples remain resident and only bounded verdicts return.
+QVector<QVector<bool>> MatchImmutableWords(const CorroborationRequest& request,
+                                          const RecognitionResult& neighbor,
+                                          const std::atomic<bool>& cancelled, bool& failed)
+{
+    failed = false;
+    const auto unavailable = [&]() -> QVector<QVector<bool>> { failed = true; return {}; };
+    QVector<QVector<bool>> out;
+    if (!request.selectedJobId || !request.selectedReference.IsValid() ||
+        !request.selectedReference.stamp.SameScene(neighbor.stamp) ||
+        request.selectedReference.stamp.frameSeq == neighbor.stamp.frameSeq ||
+        std::abs(double(request.selectedReference.stamp.timestampMs) - neighbor.stamp.timestampMs) > 250 ||
+        request.selectedLines.size() > 1024) return out;
+    qsizetype wordCount = 0;
+    for (const auto& line : request.selectedLines) wordCount += line.words.size();
+    if (wordCount > 8192) return out;
+    QHash<QString, QVector<QRectF>> recognized;
+    for (qsizetype i = 0; i < neighbor.prepared.size(); ++i) {
+        if (neighbor.stamp.temporallySmoothed &&
+            (neighbor.currentInputMatches.size() != neighbor.prepared.size() ||
+             !neighbor.currentInputMatches[i])) continue;
+        for (const auto& word : neighbor.prepared[i].words)
+            if (word.disposition == TokenDisposition::kCandidate && !IsHighRiskToken(word.text))
+                recognized[word.text].push_back(word.sceneRect);
+    }
+    QVector<QRectF> rects;
+    QVector<QPointF> offsets;
+    QVector<QPair<int, int>> destinations;
+    for (int i = 0; i < request.selectedLines.size(); ++i) {
+        const auto& line = request.selectedLines[i];
+        out.push_back(QVector<bool>(line.words.size(), false));
+        for (int j = 0; j < line.words.size(); ++j) {
+            if (cancelled.load()) return unavailable();
+            const auto& word = line.words[j];
+            if (word.disposition != TokenDisposition::kCandidate || IsHighRiskToken(word.text)) continue;
+            const auto evidence = recognized.constFind(word.text);
+            if (evidence == recognized.constEnd()) continue;
+            // The ordinary completed line proof already covers static words.
+            if (i < neighbor.corroborationMatches.size() && neighbor.corroborationMatches[i] &&
+                std::any_of(evidence->begin(), evidence->end(), [&](const QRectF& r) {
+                    return Iou(word.sceneRect, r) >= .5;
+                })) continue;
+            std::optional<QPointF> best;
+            double nearest = std::numeric_limits<double>::max();
+            for (const auto& target : *evidence) {
+                const auto delta = target.center() - word.sceneRect.center();
+                if (std::abs(delta.x()) > .25 || std::abs(delta.y()) > .25 ||
+                    std::min(target.width(), word.sceneRect.width()) < .75 * std::max(target.width(), word.sceneRect.width()) ||
+                    std::min(target.height(), word.sceneRect.height()) < .75 * std::max(target.height(), word.sceneRect.height())) continue;
+                const double distance = delta.x() * delta.x() + delta.y() * delta.y();
+                if (distance < nearest) { nearest = distance; best = delta; }
+            }
+            if (!best) continue;
+            rects.push_back(word.sceneRect);
+            offsets.push_back(*best);
+            destinations.push_back({i, j});
+        }
+    }
+    // Stronger than ordinary line tracking, with only two probe pixels of
+    // local OCR-box refinement around the explicitly recognized destination.
+    constexpr MatchTuning tuning{.94, .95, 2};
+    for (qsizetype first = 0; first < rects.size(); first += 1024) {
+        if (cancelled.load()) return unavailable();
+        const auto batch = rects.mid(first, 1024);
+        QVector<ReferencePatch> patches;
+        if (request.selectedReference.resident)
+            patches = request.selectedReference.resident->References(request.selectedReference.stamp, batch);
+        else for (const auto& rect : batch) patches.push_back(BuildReferencePatch(request.selectedReference, rect));
+        if (patches.size() != batch.size()) return unavailable();
+        for (int i = 0; i < patches.size(); ++i) patches[i].sceneRect.translate(offsets[first + i]);
+        QVector<PatchMatch> matches;
+        if (neighbor.reference.resident)
+            matches = neighbor.reference.resident->Matches(neighbor.stamp, patches, tuning, {}, &cancelled);
+        else for (const auto& patch : patches) {
+            if (cancelled.load()) return unavailable();
+            matches.push_back(MatchPatch(patch, neighbor.reference, tuning));
+        }
+        if (matches.size() != patches.size()) return unavailable();
+        for (int i = 0; i < matches.size(); ++i) {
+            const auto [line, word] = destinations[first + i];
+            out[line][word] = matches[i].matched;
+        }
+    }
+    return out;
+}
+} // namespace
+
 std::optional<double> SceneSimilarity(const ProbeFrame& a, const ProbeFrame& b)
 {
     if (a.resident && b.resident)
@@ -1251,8 +1341,24 @@ struct RecognitionScheduler::State {
                         const auto matches=result.reference.resident->Matches(result.stamp,job.corroboration.references,
                             job.corroboration.tuning,{},&self->cancelInFlight);
                         for(const auto& match:matches)result.corroborationMatches.push_back(match.matched);
-                    } else for (const auto& patch : job.corroboration.references)
+                    } else for (const auto& patch : job.corroboration.references) {
+                        if (self->cancelInFlight.load()) break;
                         result.corroborationMatches.push_back(MatchPatch(patch,result.reference,job.corroboration.tuning).matched);
+                    }
+                    if (!job.corroboration.selectedLines.isEmpty()) {
+                        bool failed = false;
+                        result.corroborationWordMatches = MatchImmutableWords(job.corroboration, result, self->cancelInFlight, failed);
+                        if (failed) {
+                            result.output.ok = false;
+                            result.output.cancelled = self->cancelInFlight.load();
+                            result.output.inputFault = !result.output.cancelled;
+                            result.output.error = QStringLiteral("Paused word registration unavailable.");
+                            result.output.lines.clear();
+                            result.prepared.clear();
+                            result.corroborationMatches.clear();
+                            result.corroborationWordMatches.clear();
+                        }
+                    }
                 }
             }
             }catch(const std::exception& error){result.output.ok=false;result.output.lines.clear();result.output.error=QString::fromUtf8(error.what());}
@@ -1327,7 +1433,8 @@ RecognitionScheduler::~RecognitionScheduler()
     }
 }
 
-std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, QImage pixels)
+std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, QImage pixels,
+                                          CorroborationRequest corroboration)
 {
     if (pixels.isNull()) {
         return 0;
@@ -1341,10 +1448,11 @@ std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, QImage pixe
     if (owned.isNull()) {
         return 0;
     }
-    return state_->Enqueue(stamp, std::move(owned));
+    return state_->Enqueue(stamp, std::move(owned), {}, std::move(corroboration));
 }
 
-std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, SharedPixels pixels)
+std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, SharedPixels pixels,
+                                          CorroborationRequest corroboration)
 {
     // Shared pixels are immutable after hand-off, so a read-only view is an
     // owned input: the worker keeps the buffer alive until it is done.
@@ -1352,7 +1460,7 @@ std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, SharedPixel
     if (view.isNull()) {
         return 0;
     }
-    return state_->Enqueue(stamp, std::move(view));
+    return state_->Enqueue(stamp, std::move(view), {}, std::move(corroboration));
 }
 
 std::uint64_t RecognitionScheduler::SubmitDevice(const SourceStamp& stamp, SharedDeviceImage device,
@@ -1684,6 +1792,20 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         result.prepared.size() == result.output.lines.size()
             ? result.prepared
             : PrepareLines(result, tuning_.minimumWordHeightPx);
+    const bool workerRegistration = corroboration &&
+        corroboration->prepared.size() == corroboration->output.lines.size() &&
+        result.jobId != 0 && corroboration->corroboratedJobId == result.jobId &&
+        corroboration->corroborationMatches.size() == prepared.size() &&
+        corroboration->corroborationTuning.minimumScore == tuning_.match.minimumScore &&
+        corroboration->corroborationTuning.minimumVisibleFraction == tuning_.match.minimumVisibleFraction &&
+        corroboration->corroborationTuning.searchRadiusPx == tuning_.match.searchRadiusPx;
+    const bool workerWordRegistration = workerRegistration &&
+        corroboration->corroborationWordMatches.size() == prepared.size() &&
+        [&] {
+            for (int i = 0; i < prepared.size(); ++i)
+                if (corroboration->corroborationWordMatches[i].size() != prepared[i].words.size()) return false;
+            return true;
+        }();
     const bool independentNeighbor = immutable && corroboration && corroboration->output.ok &&
         !corroboration->output.cancelled && corroboration->authority == result.authority &&
         corroboration->stamp.SameScene(stamp) && corroboration->stamp.frameSeq != stamp.frameSeq &&
@@ -1692,13 +1814,9 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         corroboration->sourcePixelDigest != result.sourcePixelDigest && corroboration->reference.IsValid() &&
         corroboration->reference.stamp.SameScene(corroboration->stamp) &&
         corroboration->reference.stamp.frameSeq == corroboration->stamp.frameSeq &&
-        (!corroboration->reference.resident ||
-         (corroboration->prepared.size() == corroboration->output.lines.size() &&
-          result.jobId != 0 && corroboration->corroboratedJobId == result.jobId &&
-          corroboration->corroborationMatches.size() == prepared.size() &&
-          corroboration->corroborationTuning.minimumScore == tuning_.match.minimumScore &&
-          corroboration->corroborationTuning.minimumVisibleFraction == tuning_.match.minimumVisibleFraction &&
-          corroboration->corroborationTuning.searchRadiusPx == tuning_.match.searchRadiusPx));
+        (workerRegistration || (!corroboration->reference.resident &&
+            corroboration->corroboratedJobId == 0 && corroboration->corroborationMatches.isEmpty() &&
+            corroboration->corroborationWordMatches.isEmpty()));
     QHash<QString, QVector<QRectF>> neighborWords;
     if (independentNeighbor) {
         const auto neighbor = corroboration->prepared.size() == corroboration->output.lines.size()
@@ -1850,14 +1968,12 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         // Preserve the confirmed reading text, with visible uncertainty, only
         // on the sample's own freshness clock.
         bool neighborRegistered = false;
-        if (independentNeighbor && candidate.line.reference.valid &&
-            matchTimer.nsecsElapsed() / 1e6 < tuning_.admitMatchBudgetMs)
+        const auto index = static_cast<qsizetype>(candidate.source - prepared.constData());
+        if (independentNeighbor && candidate.line.reference.valid)
         {
-            const auto index = static_cast<qsizetype>(candidate.source - prepared.constData());
-            neighborRegistered = corroboration->reference.resident
-                ? (index < corroboration->corroborationMatches.size() &&
-                   corroboration->corroborationMatches[index])
-                : MatchPatch(candidate.line.reference, corroboration->reference, tuning_.match).matched;
+            if (workerRegistration) neighborRegistered = corroboration->corroborationMatches[index];
+            else if (matchTimer.nsecsElapsed() / 1e6 < tuning_.admitMatchBudgetMs)
+                neighborRegistered = MatchPatch(candidate.line.reference, corroboration->reference, tuning_.match).matched;
         }
         if (!candidate.line.reference.valid) candidate.line.readingTokens.push_back({});
         for (const PreparedWord& word : candidate.source->words) {
@@ -1871,7 +1987,11 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
             }
             if (confirmedBefore(word.text, currentRect)) {
                 const auto evidence = neighborWords.constFind(word.text);
-                const bool glyphEligible = !immutable || (neighborRegistered && evidence != neighborWords.constEnd() &&
+                const auto wordIndex = static_cast<qsizetype>(&word - candidate.source->words.constData());
+                const bool registeredWord = independentNeighbor && candidate.line.reference.valid &&
+                    workerWordRegistration && evidence != neighborWords.constEnd() &&
+                    corroboration->corroborationWordMatches[index][wordIndex];
+                const bool glyphEligible = !immutable || registeredWord || (neighborRegistered && evidence != neighborWords.constEnd() &&
                     std::any_of(evidence->begin(), evidence->end(), [&](const QRectF& r) {
                         return Iou(word.sceneRect, r) >= tuning_.agreementIou;
                     }));

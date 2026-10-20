@@ -40,6 +40,14 @@ One scheduler and one latest-only probe worker serve all modes; a paused still
 returns to one-shot admission. These are bounded scheduling defaults, not an
 OCR-rate or native display-latency guarantee.
 
+Immutable paused-word corroboration considers neighbours within 250 ms, limits
+translation to 0.25 normalized scene units per axis, and requires each dimension
+to retain at least 75% of the larger word box. Word registration uses NCC 0.94,
+visibility 0.95 and a two-probe-pixel local refinement. Requests are capped at
+1024 selected lines / 8192 words, with resident reference/match batches <= 1024.
+These limits do not expand the live camera's motion search. Completed worker
+checks are consumed even after the UI's 3 ms inline match budget expires.
+
 ## Optional PaddleOCR (2026-10-18)
 
 `scripts/uct/pins.json` pins upstream model revisions, model/config/card hashes,
@@ -896,3 +904,11 @@ retries at 100-ms spacing; preferred-backend preparation retries use 500-ms
 spacing within the existing 30-second horizon. Successful final reads do not
 poll. Builder/parser runtime resources load only when a cached engine is absent
 or invalid; cache identity and runtime pins are unchanged.
+
+The explicit `OKUFLOW_UCT_CHARACTER_DIAGNOSTIC=1` fixture writes unique
+`%LOCALAPPDATA%/OkuFlow/uct-character-<timestamp>-<uuid>` evidence. Its synthetic
+source is 960 x 128, with 12 edits, sizes 14/24/44, requested and asserted actual
+decimation 1/2/4, line/token extents and three existing matcher policies. The
+installed `C:/Windows/Fonts/consola.ttf` is loaded and hashed for local provenance,
+never redistributed. Synthetic translation is (2,1) pixels; it is not physical
+camera acceptance. No ordinary-runtime setting or OCR-reuse policy is enabled.

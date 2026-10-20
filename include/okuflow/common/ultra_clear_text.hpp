@@ -289,6 +289,10 @@ struct CorroborationRequest {
     std::uint64_t selectedJobId{};
     QVector<ReferencePatch> references;
     MatchTuning tuning;
+    // Immutable selected-frame evidence, shared with the neighbour worker.
+    // Used only for word-local registration when scrolling defeats line motion.
+    ProbeFrame selectedReference;
+    QVector<PreparedLine> selectedLines;
 };
 
 struct RecognitionResult {
@@ -315,6 +319,7 @@ struct RecognitionResult {
     enum class DigestKind { Sha256, GpuTreeSha256V1 };
     DigestKind sourcePixelDigestKind{DigestKind::Sha256};
     QVector<bool> corroborationMatches; // exactly one per selected prepared line
+    QVector<QVector<bool>> corroborationWordMatches; // selected line/word indices; no display offsets
     std::uint64_t corroboratedJobId{};
     MatchTuning corroborationTuning;
 };
@@ -354,9 +359,11 @@ public:
 
     // Takes an independently owned copy (detached by the caller or here).
     // Returns the job id, or 0 when the backend is unavailable/failed.
-    std::uint64_t Submit(const SourceStamp& stamp, QImage pixels);
+    std::uint64_t Submit(const SourceStamp& stamp, QImage pixels,
+                         CorroborationRequest corroboration = {});
     // Zero-copy hand-off of already shared, immutable pixels.
-    std::uint64_t Submit(const SourceStamp& stamp, SharedPixels pixels);
+    std::uint64_t Submit(const SourceStamp& stamp, SharedPixels pixels,
+                         CorroborationRequest corroboration = {});
     std::uint64_t SubmitDevice(const SourceStamp& stamp, SharedDeviceImage device,
                                CorroborationRequest corroboration = {});
     void Cancel();

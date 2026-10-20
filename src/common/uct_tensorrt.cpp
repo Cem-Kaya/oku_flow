@@ -680,7 +680,7 @@ class TensorRtRecognizer final : public Recognizer
                                       cudaMemcpyDeviceToHost, state_->stream));
             });
             profile.Transfer(sizeof(int));
-            Check(cudaStreamSynchronize(state_->stream)); // worker-only tiny control readback
+            profile.Wait(true, [&] { Check(cudaStreamSynchronize(state_->stream)); }); // existing worker-only count wait
             const int count = *hostCount;
             if (count < 0 || count > 128*9)
                 throw std::runtime_error("GPU detector region count is invalid.");
@@ -762,8 +762,7 @@ class TensorRtRecognizer final : public Recognizer
                     profile.Transfer(static_cast<std::size_t>(batchSize) *
                         (sizeof(int) + sizeof(gpu::Quad) + steps * sizeof(gpu::Token)));
                 }
-                Check(cudaStreamSynchronize(
-                    state_->stream)); // all group reads and compact metadata copies complete
+                profile.Wait(false, [&] { Check(cudaStreamSynchronize(state_->stream)); }); // existing group completion wait
                 if (cancelled.load())
                 {
                     output.cancelled = true;
@@ -777,6 +776,8 @@ class TensorRtRecognizer final : public Recognizer
                 {
                     const int tokenCount = hostCount[slot];
                     const auto quad = hostQuads[slot];
+                    profile.CropDescriptor(quad.xy, quad.score, quad.validWidth,
+                                           quad.internalEdges, region, width);
                     const auto *tokens = hostTokens + static_cast<std::size_t>(slot) * steps;
                     if (tokenCount < 0)
                         continue; // untrustworthy crop, same policy as CPU decoder

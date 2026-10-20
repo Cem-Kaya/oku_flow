@@ -5955,3 +5955,55 @@ diagnostic defaults to medium/medium, supports the existing small/small selector
 and independent detector/recognizer tier overrides, and records both immutable
 model pins before comparing each pair with its own batch one.
 See [GPU batching](uct_gpu_batching.md) for ceilings and evidence boundaries.
+
+### Paused scrolling text corroboration (2026-10-20)
+
+Both `RecognitionScheduler::Submit` CPU overloads accept `CorroborationRequest`
+like the device overload. The immutable controller shares the selected result's
+prepared lines and decimated reference with its neighbour job. Worker-local
+`MatchImmutableWords` relocates bounded word reference descriptors to recognized
+neighbour positions and returns `RecognitionResult::corroborationWordMatches`;
+resident samples never leave GPU memory. It does not move selected-frame glyphs.
+`OverlayModel::AdmitImpl` checks the exact receipt job/policy/shape and consumes
+completed line/word checks independently of its inline CPU match budget. Empty,
+foreign, changed, low-confidence and missing neighbour evidence remain refused.
+See [immutable UCT](uct_immutable_controller.md) for bounds and ownership.
+
+`TensorRtProfile::CropWidth` records bounded useful-width bins from existing
+quad metadata; `Wait` attributes the existing detector-count and recognizer-group
+host waits. They add no synchronization or transfer. Reports include width sums,
+padding fraction and separate host-wait intervals only when profiling is enabled.
+`CropDescriptor` hashes the already-copied ordered crop descriptors using an
+explicit versioned little-endian encoding, excluding C++ padding and image bytes.
+This diagnostic-only fingerprint can establish equal detector crop work across
+recognizer/batch comparisons; it does not hash pixels on the runtime path.
+See [performance stages](uct_performance_roadmap_2026_10_20.md).
+
+`uct_character_test::Run` is an unregistered finite CPU/resident diagnostic for
+the existing matcher, covering changed/unchanged tokens at three sizes and three
+decimations with synthetic translation controls. `optionalCharacterChangeCpu`
+and `optionalCharacterChangeGpu` supply actual production probe implementations.
+Full per-case output and false-accept/false-hide totals are retained without
+converting diagnostic completion into a passing reuse-quality gate. See
+[character verification](uct_character_verification.md).
+
+`uct_resident_test::ResidentBaselineDiagnostic` enters the actual
+`RecognitionScheduler::SubmitDevice` path through a metered, owned AnalysisPool
+image, with upload/capture setup outside steady timing. Bounded seeded model/batch
+rounds preserve complete outputs, independent resident-analysis timing, cached
+plan identities and exact TensorRT State receipts. The model-free
+`SelectionAndComparisonSelfTest` is part of `uct_paddle_processing`; the actual
+GPU experiment is unregistered and explicit. `CacheInventory` hashes every file
+afresh and tests metadata-preserving mutation. `TimedOutput` retains an ordered
+crop fingerprint; counts alone cannot certify equal detector work. See
+[resident baseline](uct_resident_baseline.md).
+
+Within that private test module, `Selection` / `PlanBlocks` bound and seed the
+experiment. `ProfileCapture` forwards Qt logs while retaining completed profile
+JSON; `MeteredImage` forwards the real owned device input and counts any image
+egress. `Validate` refuses fallback, nonresident, missing-fingerprint or truncated
+trace results. `Run::Capture` completes each owned analysis copy before steady
+timing. `StrictComparisons` preserves the preselected output gate and adds known
+crop-identity equality; `MatchByOccurrence` and `TruthJson` are diagnostic only.
+`Stats` retains run order and withholds p95 below 20 samples. `ResultJson` records
+source/job/geometry/temporal authority with the full neural output.

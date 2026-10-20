@@ -1,5 +1,15 @@
 # OkuFlow Documentation Guide
 
+[UCT performance roadmap implementation](uct_performance_roadmap_2026_10_20.md)
+tracks the revised performance-first stages, resident measurement boundaries and
+quality prerequisites before regional reuse.
+
+[Character verification](uct_character_verification.md) records the finite
+CPU/resident change-sensitivity diagnostic and its blocked OCR-reuse gate.
+
+[Resident UCT baseline](uct_resident_baseline.md) describes the owned-device
+model/batch comparison and exact measurement boundaries.
+
 [GPU OCR batching](uct_gpu_batching.md) describes dynamic TensorRT batches,
 allocation ceilings and the finite latency/quality comparison.
 

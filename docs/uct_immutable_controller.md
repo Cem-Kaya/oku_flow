@@ -21,10 +21,34 @@ The first result supplies selectable text with an omission marker and leaves
 original pixels visible. One optional distinct neighboring image can be
 recognized after the selected result. Admission additionally requires a
 different frame sequence, a different full-source SHA-256 digest, matching
-text and geometry, and a matching line residual reference before glyph
+text and geometry, and a matching line or bounded word residual reference before glyph
 replacement is eligible. Reused leases are refused before scheduling;
 different leases containing identical pixels do not provide corroboration.
 Failure or unavailable evidence ends that bounded attempt.
+
+Paused scrolling text has an additional word-local worker check. A neighbour
+within 250 ms may show a recognized word at a different position even though
+the selected frame is now frozen. Exact text, candidate status, comparable box
+dimensions and at most a quarter-scene translation select the nearest candidate.
+The worker samples the selected word and compares its pixels at that neighbour
+position with NCC >= 0.94, visibility >= 0.95 and at most two probe pixels of
+local box refinement. This proof never changes selected glyph geometry. Whole-
+line matching and the live/advancing motion policy remain unchanged. Unreadable,
+changed or missing neighbour words do not gain replacement eligibility.
+
+`CorroborationRequest` shares selected prepared lines and their owned decimated
+reference with the existing recognition worker. CPU as well as device submissions
+carry it. Resident references/matching stay on GPU, in batches of at most 1024;
+at most 1024 selected lines / 8192 words enter the bounded word-local check.
+No full-frame download, extra OCR worker, periodic reread of a completed still,
+or fabricated second acquisition is introduced. Result word verdicts are indexed
+by selected line/word and tied to the selected job, authority and match policy.
+
+The UI's 3 ms budget applies only to work it would otherwise perform. It cannot
+discard already-computed worker line/word receipts. Previously later lines could
+remain unconfirmed forever after a dense one-shot read despite complete resident
+validation. CPU immutable submissions now prepare their line proof on the worker
+too, keeping pixel matching off the application callback.
 
 Source age is separate from the current analysis deadline. The default
 `UctTiming::immutableJobTimeoutMs` is 30,000 ms measured from job submission;

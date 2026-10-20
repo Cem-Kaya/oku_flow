@@ -8,6 +8,13 @@ Per-sample CTC decoding and source geometry remain separate. Detector/detail
 coverage, FP32 weights, confidence thresholds and admission rules are unchanged.
 Repeated TensorRT input shapes and unchanged tensor addresses are cached.
 
+The opt-in profiler additionally hashes ordered crop descriptors already present
+in compact host metadata. Its versioned little-endian encoding includes detection
+region, quad, score, useful width and internal-cut edges. This establishes whether
+comparisons received equal crop work; no image hash/readback or synchronization
+is added. Character sensitivity remains a separate
+[verification gate](uct_character_verification.md).
+
 `OKUFLOW_UCT_TRT_BATCH` explicitly selects `1`, `8` or `16`; the development
 default remains one; eight and sixteen are experimental overrides. Invalid
 overrides make this optional backend unavailable, preserving ordinary CPU
@@ -64,6 +71,10 @@ events and emits no per-job profile logs. Stream event intervals include launch
 gaps and external contention. Worker timing also includes input upload and
 scheduler metadata work, while the stage intervals exclude source upload.
 Reported free-memory deltas are approximate, not peak or exclusively owned VRAM.
+The profiler also reports useful crop-width bins, padding fraction and existing
+detector-count/group host wait intervals. These add no readback or new wait and
+are attribution data, not a speedup claim. See the
+[revised performance stages](uct_performance_roadmap_2026_10_20.md).
 These measurements do not establish native presentation, first validated glyph,
 camera latency or a 16-ms complete OCR budget.
 

@@ -634,6 +634,8 @@ private slots:
     void untrackableTextStaysReadableWithoutReplacement();
     void rejectedRefreshCannotRestoreOldAcceptedText();
     void immutableEvidenceRequiresDistinctPixelsAndSafeRegistration();
+    void immutableCompletedRegistrationIgnoresUiBudget_data();
+    void immutableCompletedRegistrationIgnoresUiBudget();
     void protectedAdjacentInkSurvivesCompositing_data();
     void protectedAdjacentInkSurvivesCompositing();
 
@@ -1939,6 +1941,51 @@ void UltraClearTextTests::immutableEvidenceRequiresDistinctPixelsAndSafeRegistra
     QCOMPARE(model.Admit(selected,selected.stamp,nullptr,110),AdmitVerdict::kPending);
     QVERIFY(model.SceneWords(110,50).isEmpty());
     QCOMPARE(model.Admit(selected,selected.stamp,nullptr,hour),AdmitVerdict::kTooOld);
+}
+
+void UltraClearTextTests::immutableCompletedRegistrationIgnoresUiBudget_data()
+{
+    QTest::addColumn<bool>("resident");
+    QTest::newRow("cpu") << false;
+    QTest::newRow("resident") << true;
+}
+
+void UltraClearTextTests::immutableCompletedRegistrationIgnoresUiBudget()
+{
+    QFETCH(bool, resident);
+    const auto page=MakePage({"Millwright","Orchard Beacon","Motion previews"});
+    const auto transform=Transform(1,.5f,.5f);
+    auto stamp=Stamp(1,1,100,transform);stamp.frameSeq=10;
+    auto selected=ResultFor(page,transform,stamp);selected.jobId=99;
+    selected.prepared=PrepareLines(selected,7);
+    selected.sourcePixelDigest=QByteArray(32,'a');
+    stamp.frameSeq=11;stamp.timestampMs=134;
+    auto neighbor=ResultFor(page,transform,stamp);
+    neighbor.prepared=PrepareLines(neighbor,7);
+    neighbor.sourcePixelDigest=QByteArray(32,'b');
+    struct NoUiMatching final:ResidentProbe {
+        int Width()const noexcept override{return 960;} int Height()const noexcept override{return 540;}
+        ReferencePatch Reference(const SourceStamp&,const QRectF&)const override{QTest::qFail("UI reference sampling",__FILE__,__LINE__);return {};}
+        PatchMatch Match(const SourceStamp&,const ReferencePatch&,const MatchTuning&,std::optional<QPointF>)const override{QTest::qFail("UI pixel matching",__FILE__,__LINE__);return {};}
+        std::optional<double> Similarity(const SourceStamp&,const ResidentProbe&,const SourceStamp&)const override{return {};}
+    };
+    if(resident)neighbor.reference.resident=std::make_shared<NoUiMatching>();
+    neighbor.corroboratedJobId=selected.jobId;
+    neighbor.corroborationMatches.fill(true,selected.prepared.size());
+    ModelTuning tuning;tuning.admitMatchBudgetMs=0;
+    neighbor.corroborationTuning=tuning.match;
+    OverlayModel model(tuning);
+    QCOMPARE(model.AdmitImmutable(selected,selected.stamp,500,&neighbor),AdmitVerdict::kAccepted);
+    QCOMPARE(model.SceneWords(500,10).size(),page.words.size());
+    for(int fault=0;fault<3;++fault) {
+        auto bad=neighbor;
+        if(fault==0)++bad.corroboratedJobId;
+        if(fault==1)bad.corroborationMatches.removeLast();
+        if(fault==2)bad.corroborationTuning.minimumScore=.5;
+        OverlayModel rejected(tuning);
+        QCOMPARE(rejected.AdmitImmutable(selected,selected.stamp,500,&bad),AdmitVerdict::kPending);
+        QVERIFY(rejected.SceneWords(500,10).isEmpty());
+    }
 }
 
 void UltraClearTextTests::protectedAdjacentInkSurvivesCompositing_data()

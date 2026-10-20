@@ -46,6 +46,8 @@ struct ImmutableScript {
     bool holdRecognition{};
     int holdCall{};
     QVector<PageWord> words;
+    QHash<QByteArray, QVector<PageWord>> pixelWords;
+    QHash<quint64, QVector<PageWord>> frameWords;
     std::atomic<int> initialized{};
     std::atomic<int> calls{};
     std::atomic<int> deviceCalls{};
@@ -86,22 +88,25 @@ public:
     RecognitionOutput Recognize(const QImage& image, const std::atomic<bool>& cancelled) override
     {
         ++script_->calls;
-        return Produce(image.width(), image.height(), cancelled);
+        return Produce(image.width(), image.height(), cancelled, 0, SourcePixelsDigest(image));
     }
 
     RecognitionOutput RecognizeDevice(const DeviceImage& image, const std::atomic<bool>& cancelled) override
     {
         ++script_->deviceCalls;
-        return Produce(image.width, image.height, cancelled);
+        return Produce(image.width, image.height, cancelled, image.frameSequence);
     }
 
 private:
-    RecognitionOutput Produce(int width, int height, const std::atomic<bool>& cancelled)
+    RecognitionOutput Produce(int width, int height, const std::atomic<bool>& cancelled,
+                              quint64 frame = 0, const QByteArray& digest = {})
     {
         QVector<PageWord> words;
         {
             std::unique_lock lock(script_->mutex);
             words = script_->words;
+            if (script_->pixelWords.contains(digest)) words = script_->pixelWords[digest];
+            if (script_->frameWords.contains(frame)) words = script_->frameWords[frame];
             if (script_->holdCall && script_->calls.load() == script_->holdCall)
                 script_->changed.wait(lock, [&] { return script_->holdCall == 0; });
             script_->changed.wait(lock, [&] { return !script_->holdRecognition; });
@@ -151,6 +156,7 @@ struct FakeDeviceState {
     std::atomic<bool> readOnUiThread{};
     std::atomic<bool> probeFails{};
     std::atomic<bool> resident{};
+    std::atomic<bool> failWordReferences{};
 };
 
 // CPU oracle for the resident controller protocol, not a GPU implementation.
@@ -163,6 +169,11 @@ public:
     void Note() const {if(std::this_thread::get_id()==state->uiThread)state->readOnUiThread=true;}
     ReferencePatch Reference(const SourceStamp& s,const QRectF& r) const override {
         Note();auto p=cpu;p.stamp=s;return BuildReferencePatch(p,r);
+    }
+    QVector<ReferencePatch> References(const SourceStamp& s,const QVector<QRectF>& rects) const override {
+        Note();
+        if(state->failWordReferences && rects.size()>1)return {};
+        return ResidentProbe::References(s,rects);
     }
     PatchMatch Match(const SourceStamp& s,const ReferencePatch& r,const MatchTuning& t,std::optional<QPointF> seed) const override {
         Note();auto p=cpu;p.stamp=s;return MatchPatch(r,p,t,seed);
@@ -375,6 +386,9 @@ private slots:
     void liveCameraIdenticalPixelsAcquireText_data();
     void liveCameraIdenticalPixelsAcquireText();
     void residentSelectedNeighbourUsesWorkerRegistration();
+    void pausedScrollingTextUsesSelectedFrameCoordinates_data();
+    void pausedScrollingTextUsesSelectedFrameCoordinates();
+    void pausedWordRegistrationFaultCannotPublishPartialProof();
     void immutableOldFrameAndIdleDoNoPeriodicWork();
     void backendReadySubmitsWaitingMediaOnce();
     void coveredZoomReprojectsTheSameArtifact();
@@ -512,6 +526,77 @@ void UltraClearTextControllerTests::residentSelectedNeighbourUsesWorkerRegistrat
     QCOMPARE(h.devices->readbacks.load(),0);QCOMPARE(h.devices->probes.load(),0);
     QVERIFY(!h.devices->readOnUiThread.load());
     h.controller->ClearImmutableScene();QCOMPARE(h.overlay.WordCount(),0);
+}
+
+void UltraClearTextControllerTests::pausedScrollingTextUsesSelectedFrameCoordinates_data()
+{
+    QTest::addColumn<bool>("resident");
+    QTest::addColumn<bool>("changedInk");
+    QTest::newRow("cpu") << false << false;
+    QTest::newRow("resident") << true << false;
+    QTest::newRow("cpu-changed-ink") << false << true;
+    QTest::newRow("resident-changed-ink") << true << true;
+}
+
+void UltraClearTextControllerTests::pausedScrollingTextUsesSelectedFrameCoordinates()
+{
+    QFETCH(bool, resident);
+    QFETCH(bool, changedInk);
+    ImmutableHarness h;
+    h.page=MakeLayoutPage({{"Fixed",{90,70},32},{"Millwright",{360,170},32},
+                           {"Motion",{360,230},32}},960,540);
+    auto neighbor=MakeLayoutPage({{"Fixed",{90,70},32},{"Millwright",{360,250},32},
+                                       {"Motion",{360,310},32}},960,540);
+    if(changedInk)neighbor.image=MakeLayoutPage({{"Fixed",{90,70},32},{"Different",{360,250},32},
+                                                {"Motion",{360,310},32}},960,540).image;
+    h.script->words=h.page.words;
+    h.script->pixelWords.insert(SourcePixelsDigest(h.page.image),h.page.words);
+    h.script->pixelWords.insert(SourcePixelsDigest(neighbor.image),neighbor.words);
+    h.script->frameWords.insert(10,h.page.words);
+    h.script->frameWords.insert(11,neighbor.words);
+    h.script->wantsDevice=resident;h.devices->resident=resident;
+    auto scene=h.Scene(10);
+    if(resident) {
+        scene.selected={{},10,1,h.Device(h.page.image,10,1)};
+        scene.corroboration=UctImmutableFrame{{},11,34,h.Device(neighbor.image,11,34)};
+    } else scene.corroboration=UctImmutableFrame{OwnedPixels(neighbor.image),11,34};
+    h.Enable();QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_COMPARE(h.script->calls.load()+h.script->deviceCalls.load(),2);
+    QTRY_COMPARE(h.controller->Model().SceneWords(h.now,10).size(),h.page.words.size()-(changedInk?1:0));
+    const auto shown=h.controller->Model().SceneWords(h.now,10);
+    for(const auto& expected:h.page.words) {
+        const auto found=std::find_if(shown.begin(),shown.end(),[&](const auto& word){return word.text==expected.text;});
+        if(changedInk && expected.text=="Millwright"){QVERIFY(found==shown.end());continue;}
+        QVERIFY(found!=shown.end());
+        QCOMPARE(found->sceneRect,expected.sceneRect); // never adopt the neighbour's scrolled position
+    }
+    h.controller->UpdateImmutableView(scene.transform,800,450,0);
+    QTest::qWait(80);
+    QCOMPARE(h.script->calls.load()+h.script->deviceCalls.load(),2); // remains bounded, one selected pair
+    QVERIFY(!h.devices->readOnUiThread.load());
+    if(resident){QCOMPARE(h.devices->readbacks.load(),0);QCOMPARE(h.devices->probes.load(),0);}
+}
+
+void UltraClearTextControllerTests::pausedWordRegistrationFaultCannotPublishPartialProof()
+{
+    ImmutableHarness h;
+    h.page=MakeLayoutPage({{"Fixed",{90,70},32},{"Millwright",{360,170},32},
+                           {"Motion",{360,230},32}},960,540);
+    const auto neighbor=MakeLayoutPage({{"Fixed",{90,70},32},{"Millwright",{360,250},32},
+                                       {"Motion",{360,310},32}},960,540);
+    h.script->words=h.page.words;
+    h.script->frameWords.insert(10,h.page.words);h.script->frameWords.insert(11,neighbor.words);
+    h.script->wantsDevice=true;h.devices->resident=true;h.devices->failWordReferences=true;
+    auto scene=h.DeviceScene();
+    scene.corroboration=UctImmutableFrame{{},11,34,h.Device(neighbor.image,11,34)};
+    h.Enable();QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_VERIFY(h.script->deviceCalls.load()>=2);
+    QTest::qWait(700); // bounded failure/retry path, no completed partial receipt
+    QCOMPARE(h.overlay.WordCount(),0);
+    QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
+    QVERIFY(h.script->deviceCalls.load()<=5);
+    QVERIFY(!h.devices->readOnUiThread.load());
+    QCOMPARE(h.devices->readbacks.load(),0);
 }
 
 void UltraClearTextControllerTests::processingCorrespondenceGateRevokesTextAndUiaWithoutChangingPreference()

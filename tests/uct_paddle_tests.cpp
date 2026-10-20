@@ -4,6 +4,8 @@
 #include "ultra_clear_text_test_support.hpp"
 #include "uct_startup_test_cases.hpp"
 #include "uct_batch_diagnostic.hpp"
+#include "uct_character_diagnostic.hpp"
+#include "uct_resident_diagnostic.hpp"
 #include <QFontDatabase>
 #include <QPainter>
 #include <QJsonDocument>
@@ -499,9 +501,50 @@ class PaddleTests final : public QObject
     {
         uct_batch_test::CompareTensorRtBatches();
     }
+    void residentDiagnosticSelectionAndComparison()
+    {
+        uct_resident_test::SelectionAndComparisonSelfTest();
+    }
+    void optionalResidentBaseline()
+    {
+        uct_resident_test::ResidentBaselineDiagnostic();
+    }
     void optionalTensorRtRetirement()
     {
         uct_batch_test::TensorRtRetirementDiagnostic();
+    }
+    void optionalCharacterChangeCpu()
+    {
+        SourceStamp stamp; stamp.sourceEpoch=1; stamp.geometryGeneration=1;
+        stamp.viewportWidth=960; stamp.viewportHeight=128;
+        stamp.viewTransform={0,0,1,1,0,0,1,1,true};
+        uct_character_test::Run([&](const QImage& image,int decimation) {
+            ++stamp.frameSeq;
+            return MakeProbeFrame(image.constBits(),image.width(),image.height(),image.bytesPerLine(),decimation,stamp);
+        },false);
+    }
+    void optionalCharacterChangeGpu()
+    {
+        if(qEnvironmentVariable("OKUFLOW_UCT_CHARACTER_DIAGNOSTIC")!="1")
+            QSKIP("Explicit character-change diagnostic not selected.");
+#if OKUFLOW_ENABLE_CUDA
+        int devices{};QVERIFY(cudaGetDeviceCount(&devices)==cudaSuccess&&devices>0);
+        FixtureStream stream;GpuBuffer<unsigned char> pixels(960*128*4);AnalysisPool pool;
+        std::atomic<bool> cancelled{};SourceStamp stamp;stamp.sourceEpoch=1;stamp.geometryGeneration=1;
+        stamp.viewportWidth=960;stamp.viewportHeight=128;stamp.viewTransform={0,0,1,1,0,0,1,1,true};
+        uct_character_test::Run([&](const QImage& image,int decimation) {
+            if(cudaMemcpyAsync(pixels.data,image.constBits(),image.sizeInBytes(),cudaMemcpyHostToDevice,stream.value)!=cudaSuccess)
+                throw std::runtime_error("character fixture upload failed");
+            ++stamp.frameSeq;
+            auto input=pool.Capture(pixels.data,image.bytesPerLine(),960,128,stream.value,1,stamp.frameSeq,1);
+            RecognitionResult result;result.stamp=stamp;QString error;
+            if(!input||!input->PrepareResidentAnalysis(result,decimation,true,cancelled,error))
+                throw std::runtime_error("character fixture resident analysis failed: "+error.toStdString());
+            return result.reference;
+        },true);
+#else
+        QFAIL("Explicit resident diagnostic requires CUDA.");
+#endif
     }
     void optionalAutomaticStartup()
     {
@@ -835,6 +878,36 @@ class PaddleTests final : public QObject
             QVERIFY(std::abs(results[i].match.score-expected[i].score)<1e-5);
             QVERIFY(std::abs(results[i].match.sceneOffset.x()-expected[i].sceneOffset.x())<1e-5);
             QVERIFY(std::abs(results[i].match.sceneOffset.y()-expected[i].sceneOffset.y())<1e-5);}
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
+    void gpuResidentShiftedWordReferenceKeepsSamplesOnDevice()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        int devices{};if(cudaGetDeviceCount(&devices)!=cudaSuccess||!devices)QSKIP("No CUDA device.");
+        const auto page=uct_test::MakeLayoutPage({{"Millwright",{90,70},32}},640,360);
+        const auto moved=uct_test::MakeLayoutPage({{"Millwright",{90,150},32}},640,360);
+        FixtureStream stream;GpuBuffer<unsigned char> pixels(page.image.sizeInBytes());AnalysisPool pool;
+        std::atomic<bool> cancel{false};SourceStamp stamp;stamp.sourceEpoch=1;stamp.geometryGeneration=1;
+        stamp.viewportWidth=640;stamp.viewportHeight=360;stamp.viewTransform={0,0,1,1,0,0,1,1,true};
+        const auto prepare=[&](const QImage& image,int sequence){
+            cudaMemcpyAsync(pixels.data,image.constBits(),image.sizeInBytes(),cudaMemcpyHostToDevice,stream.value);
+            auto owned=pool.Capture(pixels.data,image.bytesPerLine(),640,360,stream.value,1,sequence,sequence);
+            RecognitionResult r;r.stamp=stamp;r.stamp.frameSeq=sequence;QString error;
+            if(owned)owned->PrepareResidentAnalysis(r,2,true,cancel,error);return r.reference;
+        };
+        const auto source=prepare(page.image,1),neighbor=prepare(moved.image,2);
+        QVERIFY(source.resident);QVERIFY(neighbor.resident);QVERIFY(neighbor.luma.isNull());
+        auto refs=source.resident->References(source.stamp,{page.words[0].sceneRect});
+        QCOMPARE(refs.size(),1);QVERIFY(refs[0].valid);QVERIFY(refs[0].values.isEmpty());
+        const MatchTuning tuning{.94,.95,2};
+        const auto before=neighbor.resident->Matches(neighbor.stamp,refs,tuning,{});
+        QCOMPARE(before.size(),1);QVERIFY(!before[0].matched);
+        refs[0].sceneRect.translate(moved.words[0].sceneRect.center()-page.words[0].sceneRect.center());
+        const auto matched=neighbor.resident->Matches(neighbor.stamp,refs,tuning,{});
+        QCOMPARE(matched.size(),1);QVERIFY(matched[0].matched);
+        QVERIFY(refs[0].values.isEmpty());
 #else
         QSKIP("CUDA adapter not compiled.");
 #endif

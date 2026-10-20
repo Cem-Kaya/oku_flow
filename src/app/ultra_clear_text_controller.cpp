@@ -1330,18 +1330,20 @@ void UltraClearTextController::SubmitImmutableIfNeeded()
     const auto submitFrame = [this](const UctImmutableFrame& frame) {
         const auto stamp = ImmutableStamp(frame);
         std::uint64_t job = 0;
+        uct::CorroborationRequest corroboration;
+        corroboration.tuning = uct::ModelTuning{}.match;
+        if (immutableSelectedResult_) {
+            corroboration.selectedJobId = immutableSelectedResult_->jobId;
+            corroboration.selectedReference = immutableSelectedResult_->reference;
+            corroboration.selectedLines = immutableSelectedResult_->prepared;
+            for (const auto& line : immutableSelectedResult_->prepared)
+                corroboration.references.push_back(line.reference);
+        }
         if (const auto device = EffectiveDevice(frame, geometry_)) {
-            uct::CorroborationRequest corroboration;
-            corroboration.tuning = uct::ModelTuning{}.match;
-            if (immutableSelectedResult_) {
-                corroboration.selectedJobId = immutableSelectedResult_->jobId;
-                for (const auto& line : immutableSelectedResult_->prepared)
-                    corroboration.references.push_back(line.reference);
-            }
-            job = scheduler_->SubmitDevice(stamp, device, std::move(corroboration));
+            job = scheduler_->SubmitDevice(stamp, device, corroboration);
         }
         if (job == 0 && PixelsMatchFrame(frame, geometry_))
-            job = scheduler_->Submit(stamp, frame.pixels);
+            job = scheduler_->Submit(stamp, frame.pixels, std::move(corroboration));
         return job;
     };
     if (!immutableSelectedAttempted_) {

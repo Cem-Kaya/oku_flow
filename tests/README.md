@@ -1803,6 +1803,10 @@ recognition and revokes text while retaining UCT intent, resumes one-shot work
 when enabled, and respects an explicit UCT opt-out. Settings cover missing-key
 defaults and saved opt-in/out. Native UCT controls cover the disabled master state
 and retained checked preference through off/on transitions.
+Paused scrolling regressions keep one region fixed while moving readable words
+by 80 scene pixels in the real neighbour. CPU and resident-protocol rows require
+all independently checked words at the selected frame's coordinates, no UI-thread
+pixel work, no resident image readback and exactly two one-shot OCR jobs.
 The real Windows OCR fixture also requires runtime status publication after
 recognition, retaining its initialized CPU identity when used as a bridge.
 
@@ -1844,3 +1848,23 @@ builder resources, requires actual N16 GPU completion, destroys its scheduler
 and polls exact TensorRT State retirement receipts for at most ten seconds.
 Receipt completion excludes nested analysis storage/vendor workers; record the
 process exit code separately. It is not another throughput or quality comparison.
+
+`optionalCharacterChangeCpu` / `optionalCharacterChangeGpu` are unregistered,
+finite verifier diagnostics enabled by `OKUFLOW_UCT_CHARACTER_DIAGNOSTIC=1`.
+Select one slot explicitly. They test signs, decimals, operators and similar
+letters through production probes, with small-print and synthetic translation
+controls; the GPU variant requires resident samples without pixel/feature egress.
+Raw case outputs and false accepts/hides are retained under a unique LocalAppData
+directory. Diagnostic PASS is report completion, not a passing quality gate for
+region reuse. See [character verification](../docs/uct_character_verification.md).
+
+`optionalResidentBaseline` is a separate explicit, unregistered SubmitDevice
+benchmark, with cached verified plans, an inference-only SDK, independent owned
+input and no image egress. It measures real resident reference/color/ink work
+separately from the OCR stream and CPU publication. Seeded paired rounds support
+independent tiers at capacities 1/8/16, up to four sources, complete output and
+strict comparison evidence. Its model-free selector/comparison/validity and
+exact-byte cache checks run in `uct_paddle_processing` via
+`residentDiagnosticSelectionAndComparison`. See the finite
+[resident protocol](../docs/uct_resident_baseline.md); this is not a native
+display/accessibility latency benchmark, and a State receipt is not process exit.
