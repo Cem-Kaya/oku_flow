@@ -57,8 +57,11 @@ class PaddleCpuRecognizer final : public Recognizer
             }
             if (!detector_ || !recognizer_ || image.isNull())
                 throw std::runtime_error("PaddleOCR is not ready.");
-            const QSize size = PaddleDetectionSize(image.size());
-            const auto pixels = PaddleNormalize(image, size, true);
+            for (const QRect& region : PaddleDetectionRegions(image.size())) {
+            if (cancelled.load()) { result.cancelled=true; result.lines.clear(); return result; }
+            const QImage crop = region.size()==image.size() ? image : image.copy(region);
+            const QSize size = PaddleDetectionSize(crop.size());
+            const auto pixels = PaddleNormalize(crop, size, true);
             const std::array<std::int64_t, 4> shape{1, 3, size.height(), size.width()};
             const auto map = detector_->Run(pixels, shape);
             if (map.shape.size() != 4 || map.shape[0] != 1 || map.shape[1] != 1 ||
@@ -66,8 +69,9 @@ class PaddleCpuRecognizer final : public Recognizer
                 throw std::runtime_error("Unexpected detector output dimensions.");
             const auto quads =
                 PaddleDetect(map.data, static_cast<int>(map.shape[3]),
-                             static_cast<int>(map.shape[2]), image.size(), cancelled);
-            for (const auto &quad : quads)
+                             static_cast<int>(map.shape[2]), crop.size(), cancelled);
+            for (const auto &detected : quads)
+            for (const auto &quad : PaddleRecognitionWindows(detected))
             {
                 if (cancelled.load())
                 {
@@ -82,7 +86,7 @@ class PaddleCpuRecognizer final : public Recognizer
                 constexpr int width = 1024;
                 const int validWidth =
                     std::clamp(static_cast<int>(std::ceil(48 * w / h)), 1, width);
-                const auto normalized = PaddleRectify(image, quad, width, validWidth);
+                const auto normalized = PaddleRectify(crop, quad, width, validWidth);
                 const std::array<std::int64_t, 4> recShape{1, 3, 48, width};
                 const auto logits = recognizer_->Run(normalized, recShape);
                 if (logits.shape.size() != 3 || logits.shape[0] != 1 || logits.shape[1] <= 0 ||
@@ -96,8 +100,8 @@ class PaddleCpuRecognizer final : public Recognizer
                 auto line = PaddleDecode(
                     std::span(logits.data).first(static_cast<std::size_t>(validSteps) * classes),
                     validSteps, classes, quad, assets_.dictionary);
-                if (!line.words.isEmpty())
-                    result.lines.push_back(std::move(line));
+                PaddleMergeRecognition(result.lines,std::move(line),region,image.size());
+            }
             }
             result.ok = !cancelled.load();
             result.cancelled = cancelled.load();

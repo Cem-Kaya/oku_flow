@@ -41,6 +41,7 @@ set_tests_properties(immutable_uct_contract PROPERTIES TIMEOUT 120 LABELS "headl
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 
 add_executable(video_transport_tests video_transport_tests.cpp
+    ${PROJECT_SOURCE_DIR}/assets/okuflow_resources.qrc
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/video_transport.hpp
     ${PROJECT_SOURCE_DIR}/src/ui/video_transport.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/live_status_text.cpp

@@ -3,17 +3,20 @@
 #include "okuflow/ui/video_transport.hpp"
 
 #include "okuflow/ui/live_status_text.hpp"
+#include "okuflow/ui/theme_contrast.hpp"
 #include "okuflow/ui/ui_translation.hpp"
 
 #include <QAccessible>
 #include <QAccessibleWidget>
 #include <QApplication>
 #include <QEvent>
-#include <QGridLayout>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLocale>
+#include <QPainter>
+#include <QPalette>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QSignalBlocker>
@@ -24,11 +27,20 @@
 #include <QWheelEvent>
 
 #include <algorithm>
-#include <array>
 #include <limits>
 
 namespace okuflow {
 namespace {
+
+// One compact transport line: icon buttons at a 44-DIP minimum touch target
+// flank the scrubber. Play and the icon-plus-"10" rewind get a little more
+// width because they carry the primary action and a two-digit badge.
+constexpr int kButtonExtent = 44;
+constexpr int kPlayWidth = 52;
+constexpr int kRewindWidth = 60;
+constexpr int kIconExtent = 24;
+constexpr int kMinTimelineWidth = 96;
+constexpr int kRowSpacing = 4;
 
 int SliderTime(qint64 milliseconds)
 {
@@ -64,6 +76,29 @@ void NameButton(QPushButton* button, const QString& source)
     RetranslateWidget(button);
     // The icon/glyph is deliberately separate from the spoken action.
     button->setProperty("okuflow.transportAction", source);
+}
+
+// The bundled Lucide set has a speaker icon but no muted variant, so the
+// muted face is the same speaker with a diagonal slash painted over it.
+QIcon SlashedIcon(const QIcon& base, const QColor& ink)
+{
+    QIcon result;
+    for (int extent : {24, 32, 48}) {
+        QPixmap pixmap = base.pixmap(QSize(extent, extent));
+        if (pixmap.isNull()) continue;
+        QPainter painter(&pixmap);
+        painter.setRenderHint(QPainter::Antialiasing);
+        QPen pen(ink, std::max(2, pixmap.width() / 12));
+        pen.setCapStyle(Qt::RoundCap);
+        painter.setPen(pen);
+        const int insetX = pixmap.width() / 8;
+        const int insetY = pixmap.height() / 8;
+        painter.drawLine(insetX, pixmap.height() - insetY,
+                         pixmap.width() - insetX, insetY);
+        painter.end();
+        result.addPixmap(pixmap);
+    }
+    return result;
 }
 
 // Numeric UI Automation values remain milliseconds, while the Value text is
@@ -133,52 +168,51 @@ VideoTransport::VideoTransport(QWidget* parent) : QWidget(parent)
     Q_UNUSED(factoryInstalled);
     setObjectName(QStringLiteral("videoTransport"));
     setFocusPolicy(Qt::StrongFocus); // Safe focus parking if no viewport is supplied.
-    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+    // A transport follows its viewport width. Propagating the wide row's
+    // minimum to the parent prevents the very resize that should wrap it.
+    setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
     setAutoFillBackground(true);
     auto* layout = new QVBoxLayout(this);
-    layout->setContentsMargins(10, 6, 10, 8);
-    layout->setSpacing(4);
+    layout->setSizeConstraint(QLayout::SetNoConstraint);
+    layout->setContentsMargins(10, 4, 10, 6);
+    layout->setSpacing(2);
+    // Understated metadata line: elided filename plus state badge. Neither
+    // grows vertically; the full name stays in the tooltip/accessible name.
     auto* sourceRow = new QHBoxLayout();
-    sourceRow->setSpacing(10);
+    metadataLayout_ = sourceRow;
+    sourceRow->setSpacing(8);
     sourceLabel_ = new SourceLabel(this);
     sourceLabel_->setObjectName(QStringLiteral("videoSourceLabel"));
     sourceLabel_->setTextFormat(Qt::PlainText);
     sourceLabel_->setMinimumWidth(0);
-    sourceLabel_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    sourceLabel_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
     stateLabel_ = new QLabel(this);
     stateLabel_->setObjectName(QStringLiteral("videoStateLabel"));
     stateLabel_->setTextFormat(Qt::PlainText);
-    stateLabel_->setWordWrap(true);
+    stateLabel_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     sourceRow->addWidget(sourceLabel_, 1);
     sourceRow->addWidget(stateLabel_);
     layout->addLayout(sourceRow);
 
-    controlsRow_ = new QWidget(this);
-    controlsLayout_ = new QGridLayout(controlsRow_);
-    controlsLayout_->setContentsMargins(0, 0, 0, 0);
-    controlsLayout_->setSpacing(6);
-    const auto makeButton = [this](const char* name, const QString& glyph) {
-        auto* button = new QPushButton(glyph, controlsRow_);
+    const auto makeButton = [this](const char* name, const QString& glyph, int width) {
+        auto* button = new QPushButton(glyph, this);
         button->setObjectName(QString::fromLatin1(name));
-        button->setMinimumSize(52, 52);
-        button->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
+        button->setFixedSize(width, kButtonExtent);
+        button->setIconSize(QSize(kIconExtent, kIconExtent));
         button->setAutoDefault(false);
         button->installEventFilter(this);
         return button;
     };
-    rewindButton_ = makeButton("videoRewindButton", QStringLiteral("\u21b6 10"));
-    playPauseButton_ = makeButton("videoPlayPauseButton", QStringLiteral("\u25b6"));
-    jumpButton_ = makeButton("videoJumpButton", QStringLiteral(">>"));
-    returnButton_ = makeButton("videoReturnCameraButton", QStringLiteral("\u21a9"));
-    saveFrameButton_ = makeButton("videoSaveFrameButton", QStringLiteral("\u25a3"));
-    muteButton_ = makeButton("videoMuteButton", QStringLiteral("\u266a"));
-    layout->addWidget(controlsRow_);
+    rewindButton_ = makeButton("videoRewindButton", QStringLiteral("\u21b6 10"), kRewindWidth);
+    playPauseButton_ = makeButton("videoPlayPauseButton", QStringLiteral("\u25b6"), kPlayWidth);
+    jumpButton_ = makeButton("videoJumpButton", QStringLiteral(">>"), kButtonExtent);
+    returnButton_ = makeButton("videoReturnCameraButton", QStringLiteral("\u21a9"), kButtonExtent);
+    saveFrameButton_ = makeButton("videoSaveFrameButton", QStringLiteral("\u25a3"), kButtonExtent);
+    muteButton_ = makeButton("videoMuteButton", QStringLiteral("\u266a"), kButtonExtent);
 
-    auto* timelineRow = new QHBoxLayout();
-    timelineRow->setSpacing(8);
     timeline_ = new QSlider(Qt::Horizontal, this);
     timeline_->setObjectName(QStringLiteral("videoTimeline"));
-    timeline_->setMinimumHeight(44);
+    timeline_->setMinimumSize(kMinTimelineWidth, kButtonExtent);
     timeline_->setSingleStep(1000);
     timeline_->setPageStep(10000);
     timeline_->setTracking(false);
@@ -189,11 +223,22 @@ VideoTransport::VideoTransport(QWidget* parent) : QWidget(parent)
     timeLabel_ = new QLabel(this);
     timeLabel_->setObjectName(QStringLiteral("videoTimeLabel"));
     timeLabel_->setTextFormat(Qt::PlainText);
-    timeLabel_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    timeLabel_->setAlignment(Qt::AlignCenter);
     timeLabel_->setLayoutDirection(Qt::LeftToRight);
-    timelineRow->addWidget(timeline_, 1);
-    timelineRow->addWidget(timeLabel_);
-    layout->addLayout(timelineRow);
+
+    // The one transport line: primary actions, scrubber, readout, then the
+    // secondary actions. UpdateLayout owns widget placement from here on;
+    // at very narrow widths the secondaries move to their own compact row
+    // below so play and the scrubber keep usable space on the main line.
+    mainLayout_ = new QHBoxLayout();
+    mainLayout_->setSpacing(kRowSpacing);
+    layout->addLayout(mainLayout_);
+    secondaryRow_ = new QWidget(this);
+    secondaryRow_->setObjectName(QStringLiteral("videoSecondaryRow"));
+    secondaryLayout_ = new QHBoxLayout(secondaryRow_);
+    secondaryLayout_->setContentsMargins(0, 0, 0, 0);
+    secondaryLayout_->setSpacing(kRowSpacing);
+    layout->addWidget(secondaryRow_);
 
     announcementTimer_ = new QTimer(this);
     announcementTimer_->setSingleShot(true);
@@ -388,6 +433,9 @@ void VideoTransport::ApplyGate(QWidget* control, Gate gate)
         control->style()->unpolish(control);
         control->style()->polish(control);
         control->update();
+        // Icon ink follows the gate: an inert-but-focused button stays
+        // enabled, so its face must dim without a disabled-state switch.
+        if (auto* button = qobject_cast<QPushButton*>(control)) ApplyFace(button);
     }
 }
 
@@ -478,8 +526,15 @@ void VideoTransport::RefreshText()
     timeline_->setAccessibleName(TranslateUi(QStringLiteral("Video timeline")));
     timeline_->setToolTip(TranslateUi(QStringLiteral(
         "Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.")));
-    timeLabel_->setMinimumWidth(timeLabel_->fontMetrics().horizontalAdvance(
-        QStringLiteral("000:00:00 / 000:00:00")));
+    ApplyButtonFaces();
+    // The rewind badge is text beside an icon; keep it unclipped when the
+    // application font grows instead of pinning every button to one width.
+    const int badgeRoom = rewindButton_->icon().isNull() ? 16 : kIconExtent + 18;
+    const int rewindWidth = std::max(kRewindWidth, badgeRoom +
+        rewindButton_->fontMetrics().horizontalAdvance(rewindButton_->text()));
+    if (rewindButton_->minimumWidth() != rewindWidth) {
+        rewindButton_->setFixedWidth(rewindWidth);
+    }
     UpdateLayout();
     ApplyStyle();
 }
@@ -514,6 +569,14 @@ void VideoTransport::RefreshTimeline(bool force)
     if (dragging_) return; // Freeze both range and pointer-to-time mapping.
     const qint64 selected = SeekBaseline();
     timeLabel_->setText(QStringLiteral("%1 / %2").arg(TimeText(selected), TimeText(snapshot_.durationMs)));
+    // Reserve exactly the room this duration's readout needs, so the label
+    // neither jitters during playback nor starves the scrubber when narrow.
+    const QString widest = QStringLiteral("%1 / %1").arg(TimeText(snapshot_.durationMs));
+    const int readoutWidth = timeLabel_->fontMetrics().horizontalAdvance(widest) + 8;
+    if (timeLabel_->minimumWidth() != readoutWidth) {
+        timeLabel_->setMinimumWidth(readoutWidth);
+        UpdateLayout();
+    }
     const QString description = TranslateUi(QStringLiteral("%1 of %2"))
         .arg(TimeText(SliderTime(std::min(selected, snapshot_.durationMs))),
              TimeText(SliderTime(snapshot_.durationMs)));
@@ -549,9 +612,11 @@ qint64 VideoTransport::SeekBaseline() const
 
 std::vector<QWidget*> VideoTransport::FocusTargets() const
 {
-    std::vector<QWidget*> targets{rewindButton_, playPauseButton_, jumpButton_, saveFrameButton_};
+    // Tab order follows the single-line visual order: primary actions,
+    // scrubber, secondary actions. Return to camera stays last.
+    std::vector<QWidget*> targets{rewindButton_, playPauseButton_, jumpButton_, timeline_,
+                                  saveFrameButton_};
     if (muteShown_) targets.push_back(muteButton_);
-    targets.push_back(timeline_);
     if (returnShown_) targets.push_back(returnButton_);
     return targets;
 }
@@ -605,26 +670,73 @@ bool VideoTransport::eventFilter(QObject* watched, QEvent* event)
     return QWidget::eventFilter(watched, event);
 }
 
-std::vector<QPushButton*> VideoTransport::ActionButtons() const
+std::vector<QPushButton*> VideoTransport::SecondaryButtons() const
 {
-    std::vector<QPushButton*> buttons{rewindButton_, playPauseButton_, jumpButton_, saveFrameButton_};
+    std::vector<QPushButton*> buttons{saveFrameButton_};
     if (muteShown_) buttons.push_back(muteButton_);
     if (returnShown_) buttons.push_back(returnButton_);
     return buttons;
 }
 
+void VideoTransport::ApplyFace(QPushButton* button)
+{
+    QString resource;
+    QString glyph;
+    QString caption; // Short badge kept beside the icon; never a full label.
+    if (button == rewindButton_) {
+        resource = QStringLiteral(":/okuflow/icons/undo.svg");
+        glyph = QStringLiteral("\u21b6 10");
+        caption = QLocale().toString(10);
+    } else if (button == playPauseButton_) {
+        resource = snapshot_.playing ? QStringLiteral(":/okuflow/icons/pause.svg")
+                                     : QStringLiteral(":/okuflow/icons/play.svg");
+        glyph = snapshot_.playing ? QStringLiteral("\u23f8") : QStringLiteral("\u25b6");
+    } else if (button == jumpButton_) {
+        resource = QStringLiteral(":/okuflow/icons/step-forward.svg");
+        glyph = QStringLiteral(">>");
+    } else if (button == saveFrameButton_) {
+        resource = QStringLiteral(":/okuflow/icons/save.svg");
+        glyph = QStringLiteral("\u25a3");
+    } else if (button == muteButton_) {
+        resource = QStringLiteral(":/okuflow/icons/read.svg");
+        glyph = snapshot_.muted ? QStringLiteral("\u266a\u00d7") : QStringLiteral("\u266a");
+    } else if (button == returnButton_) {
+        resource = QStringLiteral(":/okuflow/icons/camera.svg");
+        glyph = QStringLiteral("\u21a9");
+    } else {
+        return;
+    }
+    const bool slashed = button == muteButton_ && snapshot_.muted;
+    const QPalette pal = palette();
+    const QColor readyInk = pal.color(QPalette::Active, QPalette::ButtonText);
+    const QColor dimInk = pal.color(QPalette::Disabled, QPalette::ButtonText);
+    const bool ready = button->property("okuflowTransportGate").toInt() ==
+                       static_cast<int>(Gate::Ready);
+    const QColor ink = ready ? readyInk : dimInk;
+    const QString faceKey = resource + QLatin1Char('|') + ink.name(QColor::HexArgb) +
+                            QLatin1Char('|') +
+                            (slashed ? QStringLiteral("muted") : glyph + caption);
+    if (button->property("okuflowFaceKey").toString() == faceKey) return;
+    button->setProperty("okuflowFaceKey", faceKey);
+
+    QIcon icon = theme_contrast::ThemedIcon(resource, ink, dimInk);
+    if (!icon.isNull() && slashed) icon = SlashedIcon(icon, ink);
+    if (!icon.isNull()) {
+        button->setIcon(icon);
+        if (button->text() != caption) button->setText(caption);
+    } else {
+        // Hosts without the compiled icon resources (unit fixtures) keep
+        // the previous unicode glyphs instead of blank buttons.
+        button->setIcon(QIcon());
+        if (button->text() != glyph) button->setText(glyph);
+    }
+}
+
 void VideoTransport::ApplyButtonFaces()
 {
-    const std::array<std::pair<QPushButton*, QString>, 6> faces{{
-        {rewindButton_, QStringLiteral("\u21b6 10")},
-        {playPauseButton_, snapshot_.playing ? QStringLiteral("\u23f8") : QStringLiteral("\u25b6")},
-        {jumpButton_, QStringLiteral(">>")}, {saveFrameButton_, QStringLiteral("\u25a3")},
-        {muteButton_, snapshot_.muted ? QStringLiteral("\u266a\u00d7") : QStringLiteral("\u266a")},
-        {returnButton_, QStringLiteral("\u21a9")}
-    }};
-    for (const auto& [button, glyph] : faces) {
-        const QString face = labelled_ ? button->accessibleName() : glyph;
-        if (button->text() != face) button->setText(face);
+    for (auto* button : {rewindButton_, playPauseButton_, jumpButton_,
+                         saveFrameButton_, muteButton_, returnButton_}) {
+        ApplyFace(button);
     }
 }
 
@@ -634,10 +746,20 @@ void VideoTransport::ApplyStyle()
     applyingStyle_ = true;
     const QString style = QStringLiteral(
         "QWidget#videoTransport { border-top: 1px solid palette(mid); }"
+        "QWidget#videoTransport QPushButton { border: 1px solid palette(mid);"
+        " border-radius: 8px; background: palette(button); padding: 0; }"
+        "QWidget#videoTransport QPushButton:hover { border-color: palette(highlight); }"
         "QWidget#videoTransport QPushButton:focus { border: 3px solid palette(highlight); }"
         "QWidget#videoTransport QPushButton[okuflowTransportGate=\"1\"],"
         "QWidget#videoTransport QPushButton[okuflowTransportGate=\"2\"] { color: palette(mid); }"
-        "QWidget#videoTransport QSlider:focus { border: 2px solid palette(highlight); }");
+        "QWidget#videoTransport QSlider:focus { border: 2px solid palette(highlight); }"
+        "QWidget#videoTransport QSlider::groove:horizontal { height: 6px;"
+        " border-radius: 3px; background: palette(mid); }"
+        "QWidget#videoTransport QSlider::sub-page:horizontal {"
+        " border-radius: 3px; background: palette(highlight); }"
+        "QWidget#videoTransport QSlider::handle:horizontal { width: 18px; height: 28px;"
+        " margin: -11px 0; border-radius: 6px; background: palette(button);"
+        " border: 2px solid palette(highlight); }");
     if (styleSheet() != style) setStyleSheet(style);
     const QString badge = snapshot_.state == State::Live ? QStringLiteral(
         "color: #ffffff; background: #14351e; border: 2px solid #ffffff; border-radius: 4px; padding: 3px 8px; font-weight: bold;")
@@ -650,27 +772,44 @@ void VideoTransport::ApplyStyle()
 
 void VideoTransport::UpdateLayout()
 {
-    const int available = std::max(0, width() - 20);
-    const auto buttons = ActionButtons();
-    const int count = static_cast<int>(buttons.size());
-    int required = (count - 1) * controlsLayout_->spacing();
-    for (auto* button : buttons) {
-        required += std::max(52, button->fontMetrics().horizontalAdvance(button->accessibleName()) + 32);
+    const auto secondaries = SecondaryButtons();
+    // Everything stays on the main line while the scrubber can keep its
+    // minimum width. Below that the secondaries drop to a second compact
+    // row; buttons never shrink under their fixed touch-target size.
+    int required = 20 + rewindButton_->minimumWidth() + kPlayWidth + kButtonExtent +
+                   timeLabel_->minimumWidth() + kMinTimelineWidth;
+    for (auto* button : secondaries) required += button->minimumWidth();
+    required += kRowSpacing * (4 + static_cast<int>(secondaries.size()));
+    const bool below = width() > 0 && width() < required && !secondaries.empty();
+    if (below == secondariesBelow_ && secondaries == layoutSecondaries_ &&
+        mainLayout_->count() > 0) {
+        return;
     }
-    labelled_ = required <= available;
-    ApplyButtonFaces();
-    const int columns = labelled_ || count * 52 + (count - 1) * controlsLayout_->spacing() <= available
-        ? count : std::min(3, count);
-    if (columns == layoutColumns_ && buttons == layoutButtons_) return;
-    layoutColumns_ = columns;
-    layoutButtons_ = buttons;
-    for (auto* button : {rewindButton_, playPauseButton_, jumpButton_, saveFrameButton_, muteButton_, returnButton_}) {
-        controlsLayout_->removeWidget(button);
+    secondariesBelow_ = below;
+    layoutSecondaries_ = secondaries;
+    const QPointer<QWidget> focused = isAncestorOf(QApplication::focusWidget())
+        ? QApplication::focusWidget() : nullptr;
+    const auto strip = [](QLayout* stripLayout) {
+        while (QLayoutItem* item = stripLayout->takeAt(0)) delete item;
+    };
+    strip(mainLayout_);
+    strip(secondaryLayout_);
+    metadataLayout_->removeWidget(timeLabel_);
+    mainLayout_->addWidget(rewindButton_);
+    mainLayout_->addWidget(playPauseButton_);
+    mainLayout_->addWidget(jumpButton_);
+    mainLayout_->addWidget(timeline_, 1);
+    // At narrow widths the time shares the metadata line; the primary
+    // buttons and a usable scrubber still fit in a 320-DIP viewport.
+    (below ? metadataLayout_ : mainLayout_)->addWidget(timeLabel_);
+    for (auto* button : secondaries) {
+        (below ? secondaryLayout_ : mainLayout_)->addWidget(button);
+        button->setVisible(true); // reparenting a QWidget hides it
     }
-    for (int column = 0; column < 6; ++column) controlsLayout_->setColumnStretch(column, column < columns ? 1 : 0);
-    for (int index = 0; index < count; ++index) {
-        controlsLayout_->addWidget(buttons[index], index / columns, index % columns);
-    }
+    if (below) secondaryLayout_->addStretch(1);
+    secondaryRow_->setVisible(below);
+    if(focused && focused->isEnabled() && focused->isVisibleTo(this) && !focused->hasFocus())
+        focused->setFocus(Qt::OtherFocusReason);
     const auto targets = FocusTargets();
     for (std::size_t index = 1; index < targets.size(); ++index) {
         QWidget::setTabOrder(targets[index - 1], targets[index]);
@@ -690,6 +829,12 @@ void VideoTransport::changeEvent(QEvent* event)
         RefreshText();
         RefreshTimeline(true);
         UpdateLayout();
+    }
+    if (event->type() == QEvent::PaletteChange ||
+        event->type() == QEvent::ApplicationPaletteChange) {
+        // Icon pixmaps are baked with the palette ink at render time.
+        ApplyButtonFaces();
+        ApplyStyle();
     }
 }
 

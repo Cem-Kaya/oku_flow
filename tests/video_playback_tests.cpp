@@ -211,6 +211,58 @@ void FailedOpenSupersession() {
     player.Close(); Expect(player.Snapshot().state == VideoPlaybackState::Closed, "close is immediate and worker-owned");
 }
 bool nativeSkipped{};
+void FinalizationRetainsRevokedMapping(const std::filesystem::path& source) {
+    std::ifstream input(source,std::ios::binary|std::ios::ate);
+    const auto length=input.tellg();
+    Expect(length>0 && length<16*1024*1024,"private finalized fixture fits bounded copy");
+    if(length<=0 || length>=16*1024*1024)return;
+    std::vector<BYTE> bytes(static_cast<std::size_t>(length));input.seekg(0);
+    input.read(reinterpret_cast<char*>(bytes.data()),bytes.size());
+    const auto path=TempPath();auto archive=std::make_shared<RecordingArchive>(path.wstring());
+    ComPtr<IMFByteStream> file,observed;
+    Expect(SUCCEEDED(CreateRecordingArchiveOutputStream(path.wstring(),&file)),"private mapping fixture created");
+    if(!file)return;
+    Expect(SUCCEEDED(RecordingArchive::Observe(file.Get(),archive,&observed)),"mapping observer installed");
+    if(!observed)return;
+    ULONG written{};
+    Expect(SUCCEEDED(observed->Write(bytes.data(),static_cast<ULONG>(bytes.size()),&written)) && written==bytes.size(),"complete native fixture copied through write observer");
+    const bool proved=Wait([&]{return archive->Snapshot().duration100ns>0;});
+    Expect(proved,"native copied fragments establish duration before mutation");
+    const auto before=archive->Snapshot();
+    // A producer rewrite revokes bytes before the parser can re-establish
+    // them. Truncation prevents a race from accidentally restoring the proof.
+    Expect(SUCCEEDED(observed->SetLength(0)),"producer truncation revokes read ranges");
+    archive->Finalized(false);
+    const auto after=archive->Snapshot();
+    Expect(!proved || after.duration100ns>=before.duration100ns,"finalization restores prior proven mapping after write revocation");
+    Expect(after.seekableEnd100ns==-1 && !archive->ValidateRange(before.generation,0,1),"retained mapping cannot authorize revoked media bytes");
+    observed.Reset();file.Reset();archive.reset();
+    std::error_code error;std::filesystem::remove(path,error);
+}
+
+void LongGopSeeking() {
+    const auto path=std::filesystem::path(__FILE__).parent_path()/"data"/"long-gop-h264.mp4";
+    VideoPlayback player;
+    auto request=player.OpenFile(path.wstring());
+    VideoPlaybackSnapshot snapshot;
+    const auto settled=[&] {
+        snapshot=player.Snapshot();
+        return snapshot.requestGeneration==request &&
+            (snapshot.state==VideoPlaybackState::Paused || snapshot.state==VideoPlaybackState::Unavailable);
+    };
+    Expect(Wait(settled) && snapshot.frame && snapshot.state==VideoPlaybackState::Paused,
+           "committed long-GOP source opens without an encoder or GPU");
+    if(!snapshot.frame)return;
+    snapshot={};request=player.Seek100ns(30'000'000);
+    Expect(Wait(settled) && snapshot.frame && snapshot.state==VideoPlaybackState::Paused && snapshot.frame->pts100ns>=30'000'000,
+           "long-GOP seek reaches three seconds beyond 120 preroll reads");
+    std::cout<<"Long-GOP regression reads="<<snapshot.lastRequestReadCount<<" latencyUs="<<snapshot.lastRequestLatencyUs<<" error="<<snapshot.error<<'\n';
+    player.Seek100ns(10'000'000);request=player.Seek100ns(40'000'000);snapshot={};
+    Expect(Wait(settled) && snapshot.frame && snapshot.state==VideoPlaybackState::Paused && snapshot.frame->pts100ns>=40'000'000,
+           "new long-GOP seek supersedes a waiting target");
+    player.Close();
+}
+
 void NativeAvcAac(VideoRecorder::Codec codec = VideoRecorder::Codec::H264, bool strictActive = false) {
     if (!GetEnvironmentVariableW(L"OKUFLOW_TEST_VIDEO_PLAYBACK_CODEC", nullptr, 0)) {
         std::cout << "SKIP opt-in AVC/AAC and active archive: set OKUFLOW_TEST_VIDEO_PLAYBACK_CODEC=1\n"; return;
@@ -313,6 +365,7 @@ void NativeAvcAac(VideoRecorder::Codec codec = VideoRecorder::Codec::H264, bool 
     const auto result = recorder.Stop(); Expect(result.FullyCompleted(), "native Original finalized");
     Expect(archive->Snapshot().duration100ns >= provenDurationBeforeStop,
         "finalization retains proven duration for stable multipart receipt offsets");
+    if(result.FullyCompleted())FinalizationRetainsRevokedMapping(path);
     {
         const auto g = player.OpenFile(path.wstring());
         Expect(Wait([&] { const auto s = player.Snapshot(); return s.requestGeneration == g && s.state != VideoPlaybackState::Opening; }), "saved file first frame opens");
@@ -695,6 +748,17 @@ void NativeGpuExternal(const std::filesystem::path& path) {
     const auto seek=player.Seek100ns(10'000'000);
     Expect(Wait([&] {s=player.Snapshot();return s.requestGeneration==seek && s.frame && s.state==VideoPlaybackState::Paused;},10000),"external native format seeks without stale publication");
     RequireGpu(s);Expect(s.frame && s.frame->pts100ns>=10'000'000,"external format publishes requested PTS");
+    for (const std::int64_t seconds : {3, 7, 13, 23}) {
+        const auto target=seconds*10'000'000;
+        if(target>=s.duration100ns)continue;
+        s={}; // release the consumer lease before each independent seek
+        const auto request=player.Seek100ns(target);
+        const bool sought=Wait([&] {s=player.Snapshot();return s.requestGeneration==request &&
+            (s.state==VideoPlaybackState::Paused || s.state==VideoPlaybackState::Unavailable);},10000);
+        std::cout<<"External seek seconds="<<seconds<<" error="<<s.error<<'\n';
+        Expect(sought && s.state==VideoPlaybackState::Paused && s.frame && s.frame->pts100ns>=target,
+               "external format random access publishes the requested frame");
+    }
     const auto end=player.JumpToEnd();
     Expect(Wait([&] {s=player.Snapshot();return s.requestGeneration==end && s.state==VideoPlaybackState::Ended;},10000),"external native format holds actual endpoint");
     RequireGpu(s);player.Close();
@@ -732,7 +796,7 @@ int main(int argc, char** argv) {
             NativeAvcAac(codec, true);
             if (!failures && !nativeSkipped) NativeSparseVideoAudio(codec);
         }
-    } else { LayoutAndIdentity(); MutationObservation(); UnsupportedAndUnknownWrites(); FailedOpenSupersession(); }
+    } else { LayoutAndIdentity(); MutationObservation(); UnsupportedAndUnknownWrites(); FailedOpenSupersession(); LongGopSeeking(); }
     // Workers own their MFStartup/MFShutdown pairs; these local scopes own
     // only the fixture's startup. No camera/microphone or native GUI opens.
     MFShutdown(); CoUninitialize();

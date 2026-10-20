@@ -760,3 +760,12 @@ transient launcher entry, used the real VS2022 initializer and completed both
 test presets under one stable runtime environment. No ledger, assertion or
 deadline was changed to obtain this result. Evidence includes
 `held-export-final-stable-matrix.log` in the integration folder above.
+
+### Dense-text and selected-video pan repair (2026-10-20)
+
+Paddle recognition now retains whole-scene context and adds overlapping detail
+crops, plus recognition windows for long text lines. GPU crops and tensors stay
+resident; only compact text/box metadata is merged. Paused video keeps the same
+admitted analysis lease across view-only reprocessing, so panning reprojects text
+without restarting recognition. Source/frame/appearance changes still revoke it.
+See [the repair and bounded resource policy](video_uct_detail_repair.md).

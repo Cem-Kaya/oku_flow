@@ -19,14 +19,18 @@ data only and commits a CopyAction; asynchronous format validation and opening
 belong to the application. Opening a saved file stops/finalizes a current
 recording first. It does not start a recording.
 
-The bar uses source text, a playback status, six 52-DIP minimum buttons, and a
-separate full-width timeline row. The buttons reflow into two rows at narrow
-widths. Full source names remain in accessible names and tooltips when the
-visible label elides. Time readouts retain hours for long recordings and use
+The bar uses a slim source/status line above one horizontal row of icon actions,
+a scrubber and the time readout. Actions have 44-DIP minimum targets; play and
+the rewind badge are wider. The scrubber takes the remaining width. At narrow
+widths save, mute and return move below, leaving play and the scrubber together.
+Time moves to the metadata line at that width. Full source names remain in
+accessible names and tooltips when the visible label elides. Time readouts retain
+hours for long recordings and use
 the active locale's digits. The displayed selected time can exceed the verified
 seekable range while a live scene is pending; the slider never exceeds it.
 
-`>>` requests Jump to live for the selected ongoing recording, and Jump to end
+The step-forward icon (`>>`) requests Jump to live for the selected ongoing
+recording, and Jump to end
 for a selected saved video. It never changes speed. Resume continues from the
 held position. End of video disables Resume until the user seeks away. Playback
 mute is independent of microphone capture. Return to camera and Save frame
@@ -61,7 +65,8 @@ and pause while the slider has keyboard focus.
 
 ## Keyboard and accessibility
 
-Tab order follows the visible transport actions, then the timeline. MainWindow
+Tab order follows the row: rewind, play, jump, timeline, save, mute and return.
+MainWindow
 bridges it with the existing corner, inspector and annotation regions. F6 moves
 between those regions and the transport. Space toggles playback only in the
 viewport or timeline; buttons retain native Space activation, and text editors

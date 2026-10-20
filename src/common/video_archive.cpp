@@ -364,6 +364,7 @@ struct RecordingArchive::State {
     std::mutex mutex; std::condition_variable changed;
     std::atomic<bool> stop{};
     RecordingArchiveSnapshot snapshot;
+    std::int64_t provenDurationHighWater{}; // mapping evidence, never read permission
     std::array<Range, 64> pending{};
     std::array<Range, 128> completed{};
     std::size_t pendingCount{}, completedCount{};
@@ -557,6 +558,7 @@ void ParseArchive(std::shared_ptr<RecordingArchive::State> state) {
                         state->snapshot.verifiedMediaBytes = offset + length;
                         state->snapshot.seekableEnd100ns = std::max(state->snapshot.seekableEnd100ns, fragment.lastPts);
                         state->snapshot.duration100ns = std::max(state->snapshot.duration100ns, fragment.duration);
+                        state->provenDurationHighWater = std::max(state->provenDurationHighWater, fragment.duration);
                         state->snapshot.videoSamples += fragment.videos;
                         state->snapshot.hasAudio = std::any_of(init.tracks.begin(), init.tracks.end(), [](auto& t) { return t.audio; });
                         for (const auto& t : init.tracks) if (t.video) {
@@ -710,6 +712,8 @@ void RecordingArchive::Finalized(bool complete) {
     ++state_->snapshot.generation;
     state_->snapshot.videoSamples = 0; state_->snapshot.verifiedMediaBytes = 0;
     state_->snapshot.seekableEnd100ns = -1;
+    if (!state_->lost)
+        state_->snapshot.duration100ns = std::max(state_->snapshot.duration100ns, state_->provenDurationHighWater);
     // Duration is previously proven mapping evidence for retained multipart
     // receipts. Revoking read ranges must not temporarily collapse offsets.
     if (!state_->lost) state_->snapshot.availability = ActiveRewindAvailability::WaitingForMedia;

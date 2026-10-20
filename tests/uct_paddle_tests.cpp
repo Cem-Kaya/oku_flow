@@ -396,6 +396,112 @@ class PaddleTests final : public QObject
         cancelled = true;
         QVERIFY(PaddleDetect(map, 128, 64, {256, 128}, cancelled).isEmpty());
     }
+    void detailRegionsPreserveSmallTextAndMerge()
+    {
+        const QSize source(1920,1080);
+        const auto regions=PaddleDetectionRegions(source);
+        QCOMPARE(regions.size(),3);
+        QCOMPARE(regions.first(),QRect(QPoint{},source));
+        // The 12-pixel UI lettering lost at 0.5x now reaches the detector
+        // at >0.85x, with full coverage and an overlap across the seam.
+        for(const QRect& region:regions.sliced(1)) {
+            QVERIFY(QRect(QPoint{},source).contains(region));
+            QVERIFY(double(PaddleDetectionSize(region.size()).height())/region.height()>.85);
+        }
+        QVERIFY(regions[1].intersected(regions[2]).width()>=160);
+        QCOMPARE(PaddleDetectionRegions({8192,8192}).size(),17);
+        QCOMPARE(PaddleDetectionRegions({8193,100}),QVector<QRect>{QRect(0,0,8193,100)});
+        QVector<RecognizedLine> output;
+        const auto line=[](QString text,QRectF rect,double confidence=0.95) {
+            return RecognizedLine{{RecognizedWord{text,rect,true,rect,TokenDisposition::kCandidate,confidence,rect}}};
+        };
+        PaddleMergeRecognition(output,line("Machines",{920,200,100,18}),regions[0],source);
+        const QRect right=regions[2];
+        const QRectF local(920-right.x(),200,100,18);
+        PaddleMergeRecognition(output,line("Machines",local),right,source);
+        QCOMPARE(output.size(),1);
+        QCOMPARE(output[0].words.size(),1);
+        QCOMPARE(output[0].words[0].boundsPx,QRectF(920,200,100,18));
+        QCOMPARE(output[0].words[0].inkSearchPx,output[0].words[0].boundsPx);
+        QCOMPARE(output[0].words[0].protectedBoundsPx,output[0].words[0].boundsPx);
+        // An internal-edge fragment must not erase the global complete word.
+        PaddleMergeRecognition(output,line("ines",{0,200,80,18}),right,source);
+        QCOMPARE(output[0].words[0].text,QString("Machines"));
+        // A weaker crop cannot erase the reliable word, even partially.
+        PaddleMergeRecognition(output,line("Noise",local,.4),right,source);
+        QCOMPARE(output[0].words[0].text,QString("Machines"));
+        PaddleMergeRecognition(output,line("Small",{300,500,50,12}),right,source);
+        QCOMPARE(output.size(),2);
+        QCOMPARE(output[1].words[0].boundsPx,QRectF(right.x()+300,500,50,12));
+        const PaddleQuad paragraph{{QPointF(20,30),QPointF(1220,30),QPointF(1220,48),QPointF(20,48)},.99f};
+        const auto windows=PaddleRecognitionWindows(paragraph);
+        QVERIFY(windows.size()>2 && windows.size()<=9);
+        QCOMPARE(windows.first().points,paragraph.points);
+        QCOMPARE(windows[1].internalEdges,2);
+        QCOMPARE(windows.last().internalEdges,1);
+        QCOMPARE(windows.last().points[1],paragraph.points[1]);
+        for(int i=1;i<windows.size();++i) {
+            const auto& q=windows[i];
+            QVERIFY(q.points[1].x()-q.points[0].x()<=20*18+.001);
+            if(i>1)QVERIFY(windows[i-1].points[1].x()-q.points[0].x()>=8*18-1);
+        }
+        for(const double aspect:{104.0,132.0,160.0,200.0}) {
+            const double h=12,w=aspect*h;
+            const auto capped=PaddleRecognitionWindows({{QPointF(0,0),QPointF(w,0),QPointF(w,h),QPointF(0,h)},1});
+            QCOMPARE(capped.size(),9);
+            QCOMPARE(capped[1].points[0],QPointF(0,0));
+            QVERIFY(std::abs(capped.last().points[1].x()-w)<.001);
+            for(int i=2;i<capped.size();++i)
+                QVERIFY2(capped[i-1].points[1].x()-capped[i].points[0].x()>=8*h-.001,"capped windows must retain context and cover seams");
+        }
+        // Replacements stay in their logical line, including at capacity.
+        QVector<RecognizedLine> merged;
+        RecognizedLine row;
+        for(int i=0;i<5;++i) row.words+=line(QString(QChar(static_cast<char16_t>('A'+i))),{100.0+30*i,100,20,12}).words;
+        PaddleMergeRecognition(merged,row,regions[0],source);
+        PaddleMergeRecognition(merged,line("X",{160,100,20,12},1),regions[0],source);
+        QCOMPARE(merged.size(),1);
+        QStringList order;for(const auto& word:merged[0].words)order<<word.text;
+        QCOMPARE(order.join(' '),QString("A B X D E"));
+        for(int i=1;i<1024;++i)merged.push_back(line("Other",{100,100.0+20*i,20,12}));
+        PaddleMergeRecognition(merged,line("Y",{160,100,20,12},1),regions[0],source);
+        QCOMPARE(merged.size(),1024);
+        QCOMPARE(merged[0].words[2].text,QString("Y"));
+        const QStringList dict{"","A","B","C"," "};
+        const std::array<PaddleToken,5> tokens{{{1,0,5,.99f},{4,6,6,.99f},{2,45,50,.99f},{4,51,51,.99f},{3,94,99,.99f}}};
+        for(int edges=0;edges<4;++edges) {
+            PaddleQuad window{{QPointF(0,0),QPointF(200,0),QPointF(200,10),QPointF(0,10)},1,edges};
+            const auto decoded=PaddleDecodeTokens(tokens,100,window,dict);
+            QStringList text;for(const auto& word:decoded.words)text<<word.text;
+            const QString expected=edges==0?"A B C":edges==1?"B C":edges==2?"A B":"B";
+            QCOMPARE(text.join(' '),expected);
+        }
+    }
+    void optionalDenseImage()
+    {
+        const auto path=qEnvironmentVariable("OKUFLOW_UCT_TEST_IMAGE");
+        if(path.isEmpty())QSKIP("Explicit local image diagnostic not selected.");
+        const QImage image(path);QVERIFY2(!image.isNull(),qPrintable(path));
+        const bool gpu=qEnvironmentVariableIsSet("OKUFLOW_TEST_PADDLE_GPU");
+        auto backend=gpu?CreateTensorRtRecognizer():CreatePaddleCpuRecognizer();
+        const auto initialized=backend->Initialize();
+        QVERIFY2(initialized.state==BackendState::kReady,qPrintable(initialized.detail));
+        QTRY_VERIFY_WITH_TIMEOUT(!backend->Preparing(),180000);
+        std::atomic<bool> cancelled{};QElapsedTimer timer;timer.start();
+        const auto output=backend->Recognize(image,cancelled);
+        QVERIFY2(output.ok,qPrintable(output.error));
+        int words=0;QString text;
+        for(const auto& line:output.lines) {
+            for(const auto& word:line.words) {
+                if(word.disposition!=TokenDisposition::kCandidate)continue;
+                ++words;text+=word.text+' ';
+            }
+            text+='\n';
+        }
+        qInfo().noquote()<<"Dense image backend="<<backend->Status().name<<"words="<<words
+            <<"detailRegions="<<PaddleDetectionRegions(image.size()).size()<<"ms="<<timer.elapsed()<<'\n'<<text;
+        QVERIFY(words>0);
+    }
     void ctcBlankRepeatSpaceAndConfidence()
     {
         const QStringList dictionary{"", "A", "B", " "};
@@ -1074,6 +1180,42 @@ class PaddleTests final : public QObject
             cudaSuccess);
         QCOMPARE(cudaStreamSynchronize(stream.value), cudaSuccess);
         QCOMPARE(found, 1);
+        {
+            for(const double aspect:{19.5,20.25,104.0,132.0,160.0,200.0})
+            for(const double angle:{0.0,0.3}) {
+                const double w=aspect*12,h=12;
+                const auto at=[&](double x,double y) {
+                    return QPointF(100+x*std::cos(angle)-y*std::sin(angle),
+                                   100+x*std::sin(angle)+y*std::cos(angle));
+                };
+                PaddleQuad source{{at(0,0),at(w,0),at(w,h),at(0,h)},.99f};
+                gpu::Quad raw{};raw.score=.99f;raw.validWidth=int(std::ceil(48*aspect));
+                for(int k=0;k<4;++k) {
+                    raw.xy[k*2]=float(source.points[k].x());raw.xy[k*2+1]=float(source.points[k].y());
+                    source.points[k]={raw.xy[k*2],raw.xy[k*2+1]};
+                }
+                const int one=1;
+                QCOMPARE(cudaMemcpyAsync(boxes.data,&raw,sizeof(raw),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+                QCOMPARE(cudaMemcpyAsync(count.data,&one,sizeof(one),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+                GpuBuffer<gpu::Quad> windows(128*9);
+                gpu::RecognitionWindows(boxes.data,count.data,windows.data,stream.value);
+                QCOMPARE(cudaMemcpyAsync(&found,count.data,sizeof(int),cudaMemcpyDeviceToHost,stream.value),cudaSuccess);
+                QCOMPARE(cudaStreamSynchronize(stream.value),cudaSuccess);
+                const auto expected=PaddleRecognitionWindows(source);
+                QCOMPARE(found,expected.size());
+                QVector<gpu::Quad> actual(found);
+                QCOMPARE(cudaMemcpyAsync(actual.data(),windows.data,found*sizeof(gpu::Quad),cudaMemcpyDeviceToHost,stream.value),cudaSuccess);
+                QCOMPARE(cudaStreamSynchronize(stream.value),cudaSuccess);
+                for(int i=0;i<found;++i) {
+                    QCOMPARE(actual[i].internalEdges,expected[i].internalEdges);
+                    for(int k=0;k<4;++k) {
+                        QVERIFY(std::abs(actual[i].xy[k*2]-expected[i].points[k].x())<.005);
+                        QVERIFY(std::abs(actual[i].xy[k*2+1]-expected[i].points[k].y())<.005);
+                    }
+                }
+            }
+
+        }
         std::atomic<bool> cancel{false};
         const auto cpuBoxes = PaddleDetect(map, 128, 64, {128, 64}, cancel);
         for (int k = 0; k < 4; ++k)

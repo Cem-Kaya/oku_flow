@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QLineF>
 #include <QStandardPaths>
 #include <algorithm>
 #include <cmath>
@@ -128,6 +129,133 @@ QSize PaddleDetectionSize(QSize source)
     const double scale = std::min(1.0, 960.0 / std::max(source.width(), source.height()));
     return {std::max(32, static_cast<int>(std::round(source.width() * scale / 32)) * 32),
             std::max(32, static_cast<int>(std::round(source.height() * scale / 32)) * 32)};
+}
+
+QVector<QRect> PaddleDetectionRegions(QSize source)
+{
+    if (source.isEmpty()) return {};
+    const QRect whole(QPoint{},source);
+    QVector<QRect> regions{whole};
+    // Explicit CPU images historically supported larger extents. Keep their
+    // bounded whole-scene pass rather than report successful empty OCR.
+    if(source.width()>8192 || source.height()>8192) return regions;
+    constexpr int overlap=160, desiredEdge=1280;
+    const auto count=[](int extent) {
+        return std::clamp((extent-overlap+desiredEdge-overlap-1)/(desiredEdge-overlap),1,4);
+    };
+    const int columns=count(source.width()), rows=count(source.height());
+    if(columns==1 && rows==1) return regions;
+    const int width=(source.width()+(columns-1)*overlap+columns-1)/columns;
+    const int height=(source.height()+(rows-1)*overlap+rows-1)/rows;
+    for(int y=0;y<rows;++y) for(int x=0;x<columns;++x) {
+        const int left=std::min(x*(width-overlap),source.width()-width);
+        const int top=std::min(y*(height-overlap),source.height()-height);
+        regions.push_back(QRect(left,top,width,height));
+    }
+    return regions;
+}
+
+QVector<PaddleQuad> PaddleRecognitionWindows(const PaddleQuad& line)
+{
+    QVector<PaddleQuad> result{line};
+    const double width=QLineF(line.points[0],line.points[1]).length();
+    const double height=QLineF(line.points[0],line.points[3]).length();
+    if(!std::isfinite(width) || !std::isfinite(height) || height<1 || width/height<=20) return result;
+    const int count=std::clamp(int(std::ceil((width/height-8)/12)),2,8);
+    // At the count cap, widen windows instead of leaving gaps or losing
+    // the context needed to discard cut-edge fragments safely.
+    const double span=std::max(20.0,(width/height+8*(count-1))/count);
+    const double fraction=std::min(1.0,span*height/width);
+    for(int i=0;i<count;++i) {
+        const double start=i*(1-fraction)/(count-1), end=start+fraction;
+        auto q=line;
+        q.points={At(line,start,0),At(line,end,0),At(line,end,1),At(line,start,1)};
+        q.internalEdges=(i>0?1:0)|(i+1<count?2:0);
+        result.push_back(q);
+    }
+    return result;
+}
+
+void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line,
+                             QRect region, QSize source)
+{
+    const bool detail = region.size() != source;
+    const auto area = [](const QRectF& r) {
+        return std::max(0.0, r.width()) * std::max(0.0, r.height());
+    };
+    const auto overlaps = [&](const RecognizedWord& a, const RecognizedWord& b) {
+        const double smaller = std::min(area(a.boundsPx), area(b.boundsPx));
+        return smaller > 0 && area(a.boundsPx.intersected(b.boundsPx)) >= .7 * smaller;
+    };
+    qsizetype preferredLine = -1;
+    for (auto word : line.words) {
+        // Overlapping crops supply complete words instead of cut-edge fragments.
+        constexpr double margin = 8.0;
+        if (detail && ((region.left() > 0 && word.boundsPx.left() < margin) ||
+            (region.top() > 0 && word.boundsPx.top() < margin) ||
+            (region.x() + region.width() < source.width() && word.boundsPx.right() > region.width() - margin) ||
+            (region.y() + region.height() < source.height() && word.boundsPx.bottom() > region.height() - margin))) continue;
+        word.boundsPx.translate(region.topLeft());
+        if (!word.inkSearchPx.isEmpty()) word.inkSearchPx.translate(region.topLeft());
+        if (!word.protectedBoundsPx.isEmpty()) word.protectedBoundsPx.translate(region.topLeft());
+        bool use = true;
+        qsizetype target = -1;
+        for (qsizetype index = 0; index < output.size(); ++index) {
+            for (const auto& old : output[index].words) {
+                if (!overlaps(word, old)) continue;
+                if (target < 0) target = index;
+                if (word.confidence < old.confidence ||
+                    (word.disposition != TokenDisposition::kCandidate && old.disposition == TokenDisposition::kCandidate)) {
+                    use = false;
+                    break;
+                }
+            }
+            if (!use) break;
+        }
+        if (target >= 0) preferredLine = target;
+        if (!use) continue;
+        if (target < 0) target = preferredLine;
+        qsizetype emptyLine = -1;
+        if (target < 0) {
+            double best = std::numeric_limits<double>::max();
+            for (qsizetype index = 0; index < output.size(); ++index) {
+                const auto& words = output[index].words;
+                if (words.isEmpty()) { emptyLine = index; continue; }
+                QRectF bounds;
+                for (const auto& old : words) bounds = bounds.united(old.boundsPx);
+                const double h = std::max(bounds.height(), word.boundsPx.height());
+                const double dy = std::abs(bounds.center().y() - word.boundsPx.center().y());
+                const double gap = std::max({0.0, bounds.left() - word.boundsPx.right(),
+                                            word.boundsPx.left() - bounds.right()});
+                if (dy <= .35 * h && gap <= 8 * h && gap + 4 * dy < best) {
+                    best = gap + 4 * dy;
+                    target = index;
+                }
+            }
+        }
+        if (target < 0) {
+            if (emptyLine >= 0) target = emptyLine;
+            else {
+                // Refuse before erasing any predecessor. A matching word at
+                // the cap is still replaced inside its existing logical line.
+                if (output.size() >= 1024) continue;
+                target = output.size();
+                output.push_back({});
+            }
+        }
+        for (auto& oldLine : output) {
+            oldLine.words.erase(std::remove_if(oldLine.words.begin(), oldLine.words.end(),
+                [&](const auto& old) { return overlaps(word, old); }), oldLine.words.end());
+        }
+        output[target].words.push_back(std::move(word));
+        preferredLine = target;
+    }
+    output.erase(std::remove_if(output.begin(), output.end(), [](const auto& l) {
+        return l.words.isEmpty();
+    }), output.end());
+    for (auto& row : output) std::stable_sort(row.words.begin(), row.words.end(), [](const auto& a, const auto& b) {
+        return a.boundsPx.left() < b.boundsPx.left();
+    });
 }
 
 std::vector<float> PaddleNormalize(const QImage &image, QSize target, bool detection)
@@ -347,6 +475,9 @@ RecognizedLine PaddleDecodeTokens(std::span<const PaddleToken> tokens, int steps
                          searchRight = std::max({sa.x(), sb.x(), sc.x(), sd.x()});
             const QRectF bounds(left, top, right - left, bottom - top);
             const double meanConfidence = confidence / count;
+            const double context=2*QLineF(quad.points[0],quad.points[3]).length()/
+                std::max(1.0,QLineF(quad.points[0],quad.points[1]).length());
+            if (!((quad.internalEdges&1 && x0<context) || (quad.internalEdges&2 && x1>1-context)))
             line.words.push_back({word, bounds, true,
                                   QRectF(searchLeft, top, searchRight - searchLeft, bottom - top),
                                   meanConfidence >= .7 ? TokenDisposition::kCandidate

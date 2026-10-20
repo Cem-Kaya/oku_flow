@@ -32,6 +32,7 @@ struct PaddleQuad
 {
     std::array<QPointF, 4> points; // TL, TR, BR, BL in source pixels
     float score{};
+    int internalEdges{}; // recognition-window left/right cut (1/2), not source edges
 };
 struct PaddleTensor
 {
@@ -63,6 +64,14 @@ std::unique_ptr<PaddleCpuSession> OpenPaddleCpuSession(const QString &runtime,
 // CPU reference algorithms. GPU implementations retain the same channel order,
 // resize, threshold, rectification, dictionary and CTC conventions.
 QSize PaddleDetectionSize(QSize source);
+// Whole-scene context followed by bounded overlapping detail crops. Each
+// detector invocation retains the existing <=960-pixel engine contract.
+QVector<QRect> PaddleDetectionRegions(QSize source);
+QVector<PaddleQuad> PaddleRecognitionWindows(const PaddleQuad& line);
+// Maps crop-local evidence back to the complete scene, excludes internal
+// crop-edge fragments and reconciles overlapping words without duplicates.
+void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line,
+                             QRect region, QSize source);
 std::vector<float> PaddleNormalize(const QImage &image, QSize target, bool detection);
 QVector<PaddleQuad> PaddleDetect(std::span<const float> map, int width, int height, QSize source,
                                  const std::atomic<bool> &cancelled);

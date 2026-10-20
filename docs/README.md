@@ -1,5 +1,9 @@
 # OkuFlow Documentation Guide
 
+[Compact playback and dense UCT repair](video_uct_detail_repair.md) documents
+same-frame pan continuity, bounded GPU detail/long-line recognition and long-GOP
+seek handling in the development player.
+
 [Accessible video implementation](accessible_video_implementation.md) records
 the corrected recording/playback contract. The [native archive/player](video_archive_backend.md),
 [document lifecycle](video_document_lifecycle.md), [transport](video_transport.md),

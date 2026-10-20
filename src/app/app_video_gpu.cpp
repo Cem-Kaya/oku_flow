@@ -116,8 +116,14 @@ void OkuFlowApp::SelectedMediaGpuSceneProcessed(bool uctEnabled, uct::SharedDevi
             image->frameSequence == mediaSceneRecipe_[1] &&
             image->processingGeneration == mediaSceneAppearanceRevision_;
     };
-    if (matchesCurrent(analysis)) mediaGpuAnalysis_ = std::move(analysis);
-    else if (!matchesCurrent(mediaGpuAnalysis_)) mediaGpuAnalysis_.reset();
+    // A paused ROI replay may produce a fresh allocation for the exact same
+    // sample. Keep UCT's admitted lease: replacing it would make immutable
+    // admission revoke the complete artifact on every pan, despite unchanged
+    // source pixels. Source/frame/appearance changes still revoke immediately.
+    if (!matchesCurrent(mediaGpuAnalysis_)) {
+        mediaGpuAnalysis_.reset();
+        if (matchesCurrent(analysis)) mediaGpuAnalysis_ = std::move(analysis);
+    }
     // A view replay may hit the capture throttle. It neither discards a valid
     // same-scene lease nor spends another attempt before the retry deadline.
     if (mediaGpuAnalysis_) {

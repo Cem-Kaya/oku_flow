@@ -177,7 +177,7 @@ last-video PTS. For saved files it begins near the metadata tail; container
 duration can include later audio and need not name a video sample. Only actual
 native video EOS without any decoded frame permits an earlier anchor, using
 exponential backoff and at most eight total seeks (the last reaches zero).
-Every attempt shares the original 120-read/two-second request budget. Once a
+Every attempt shares the 4096-read/two-second request budget. Once a
 frame is obtained, real decoder EOS and the last decoded pixels establish the
 endpoint. An anchor never substitutes for an observed endpoint. Failure reports
 include read/seek/decoded counts, EOS/selected-frame presence, last PTS, anchor,

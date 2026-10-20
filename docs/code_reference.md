@@ -345,11 +345,12 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
 - `uct_paddle.hpp`: `PaddleAssets` and `LoadPaddleAssets` verify pinned graphs
   and dictionary. `DefaultPaddleRoot` resolves explicit, adjacent and local
   roots. `PaddleTensor`/`PaddleCpuSession` describe bounded float I/O.
-  `PaddleDetectionSize`, `PaddleNormalize`, `PaddleDetect`, `PaddleRectify`,
+  `PaddleDetectionSize`, `PaddleDetectionRegions`, `PaddleRecognitionWindows`,
+  `PaddleMergeRecognition`, `PaddleNormalize`, `PaddleDetect`, `PaddleRectify`,
   `PaddleDecode`/`PaddleDecodeTokens`, `PaddleQuad` and `PaddleToken` implement
   first-party bilinear BGR normalization, connected-component/PCA regions,
   padded rectification and confidence-filtered CTC word spans. Spans are
-  approximate, not exact glyph geometry. `gpu::{Normalize,Detect,Rectify,
+  approximate, not exact glyph geometry. `gpu::{Normalize,Detect,RecognitionWindows,Rectify,
   Decode,Probe}` in `uct_kernels` implement device equivalents using
   `gpu::{Component,Quad,Token}` with finite-value checks and bounded outputs.
 - `CreateDefaultRecognizer` delegates to `CreateAutomaticRecognizer`:
@@ -5550,7 +5551,7 @@ helpers preserve semantic focus while a transiently unavailable action is inert.
 keys, wheel and accessible increments, independently of the frozen inspection
 thumb. `AnnounceSettledState` coalesces only settled states and their current time.
 `MainWindow::eventFilter` checks action readiness for Space on the render host.
-Wide controls retain translated labels; recording hides duplicate Return/Mute,
+Icon faces retain translated tooltips and accessible names; recording hides duplicate Return/Mute,
 and file Return remains last in the tab order.
 
 `VideoDocumentState::controlsMediaGpuAvailable` refreshes native enabled states
@@ -5606,7 +5607,7 @@ media CUDA fixture checks actual paired pixels, replay and seek reseeding;
 `SelectedMediaDocumentPts100ns` adds the current recording part's document offset
 before producing observation authority; UCT and decoder internals keep local PTS.
 `SelectedMediaGpuSceneProcessed` preserves a matching analysis lease across a
-throttled view replay, rejects foreign epoch/frame/appearance leases before
+view replay, including new allocations for the same sample. It rejects foreign epoch/frame/appearance leases before
 storing them, and spends retries only when their deadline is due.
 Correspondence recovery resets the bounded analysis budget. Media keystone and
 processing/SR status refresh on a 100-ms cadence, including paused polling.
@@ -5864,3 +5865,29 @@ wiring with synthetic `SceneDeviceImage` hold records. It drains warm-up jobs
 and checks the blocked image's checksum before testing three rejection paths,
 then requires additional held text and no further OCR for that acquisition.
 See [the independent review](uct_opus_review_2026_10_20.md) for evidence and limits.
+
+### Compact transport and detail OCR (2026-10-20)
+
+`VideoTransport::ApplyFace`, `ApplyButtonFaces`, `SecondaryButtons` and
+`UpdateLayout` keep 44-DIP icon actions beside the scrubber, with secondary-row
+fallback. `FocusTargets` interleaves the timeline in visual order; `ApplyFace`
+caches resource/palette/state identity instead of rasterizing on every snapshot.
+`RefreshTimeline` reserves the actual duration format width. Tooltip and native
+accessible names keep complete translated actions.
+
+`PaddleDetectionRegions` returns complete-scene context plus at most 16 detail
+rectangles. `PaddleRecognitionWindows` and `gpu::RecognitionWindows` retain a
+whole detected line and add up to eight overlapping recognition windows.
+`PaddleQuad::internalEdges` and `gpu::Quad::internalEdges` bind left/right cut
+provenance to CTC decoding; cut-edge fragments cannot become complete words.
+`PaddleMergeRecognition` maps bounds/search/protected rectangles to full-scene
+coordinates, reconciles duplicates and retains stronger evidence. GPU images
+remain worker-owned strided subviews; detector profiles/models are unchanged.
+`VideoPlayback::kSeekSampleLimit` is now a 4096-read malformed-stream guard under
+its existing two-second request-age deadline and per-read generation checks.
+
+`RecordingArchive::State::provenDurationHighWater` advances only with parsed,
+producer-fenced fragment proof. `Finalized` restores that monotonic mapping
+metadata after finalizer backwrites/SetLength, while revoking generation, sample
+counts and readable/seekable ranges as before. It cannot authorize old bytes.
+`FinalizationRetainsRevokedMapping` checks this independently of parser timing.

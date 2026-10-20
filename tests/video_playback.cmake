@@ -27,7 +27,7 @@ if(WIN32)
         PROPERTIES TIMEOUT 120 LABELS "codec" SKIP_RETURN_CODE 77 RUN_SERIAL TRUE
         REQUIRED_FILES "${PROJECT_SOURCE_DIR}/src/common/video_playback.cpp;${PROJECT_SOURCE_DIR}/src/common/video_archive.cpp;${PROJECT_SOURCE_DIR}/src/common/media_writer.cpp")
     set_tests_properties(video_playback_contract PROPERTIES TIMEOUT 60 LABELS "codec"
-        REQUIRED_FILES "${PROJECT_SOURCE_DIR}/src/common/video_playback.cpp;${PROJECT_SOURCE_DIR}/src/common/video_archive.cpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/video_playback.hpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/video_archive.hpp")
+        REQUIRED_FILES "${PROJECT_SOURCE_DIR}/src/common/video_playback.cpp;${PROJECT_SOURCE_DIR}/src/common/video_archive.cpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/video_playback.hpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/video_archive.hpp;${PROJECT_SOURCE_DIR}/tests/data/long-gop-h264.mp4")
     # Explicit private fixtures permit wider codec/profile acceptance without
     # adding a downloaded sample or an encoder dependency to the application.
     set(OKUFLOW_TEST_VIDEO_GPU_FILES "" CACHE STRING "Absolute private video files for optional native GPU acceptance")

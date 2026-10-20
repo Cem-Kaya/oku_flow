@@ -77,7 +77,10 @@ public:
     static constexpr std::size_t kDecodedByteLimit = 256u * 1024 * 1024;
     static constexpr std::size_t kReadWindowByteLimit = 64u * 1024 * 1024;
     static constexpr std::size_t kAudioByteLimit = 2u * 1024 * 1024;
-    static constexpr std::uint32_t kSeekSampleLimit = 120;
+    // Long-GOP screen recordings can require hundreds of cheap preroll
+    // reads. The two-second wall deadline and generation cancellation are
+    // the latency bounds; this independent guard stops malformed streams.
+    static constexpr std::uint32_t kSeekSampleLimit = 4096;
     VideoPlayback();
     ~VideoPlayback(); // cancellation only; never joins a native call
     VideoPlayback(const VideoPlayback&) = delete;

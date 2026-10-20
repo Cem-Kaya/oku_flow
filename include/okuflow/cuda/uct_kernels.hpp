@@ -35,6 +35,7 @@ struct Quad
     float xy[8];
     float score;
     int validWidth;
+    int internalEdges{};
 };
 struct Token
 {
@@ -54,6 +55,8 @@ void Normalize(const void *image, std::size_t pitch, int width, int height, floa
                int outWidth, int outHeight, cudaStream_t stream);
 void Detect(const float *map, int width, int height, int sourceWidth, int sourceHeight, int *labels,
             Component *components, Quad *quads, int *count, cudaStream_t stream);
+// 128 detected lines -> at most 128*(original+8 overlapping windows).
+void RecognitionWindows(const Quad* detected, int* count, Quad* windows, cudaStream_t stream);
 void Rectify(const void *image, std::size_t pitch, int width, int height, const Quad *quads,
              int index, float *out, int cropWidth, cudaStream_t stream);
 void Decode(const float *probabilities, int steps, int classes, const Quad *quads, int index,

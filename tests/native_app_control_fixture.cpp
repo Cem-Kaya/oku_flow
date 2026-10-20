@@ -553,7 +553,7 @@ public:
         app.SelectedMediaGpuSceneProcessed(false,{},1000);
         const OkuFlowApp::MediaGpuSceneStamp upright{true,app.mediaDocumentEpoch_,7,app.mediaSceneAppearanceRevision_,false};
         // Two seconds of unchanged 60-Hz paused polling reuse the processed scene.
-        for(std::int64_t now=1000;now<3000;now+=16)
+        for(std::int64_t now=1000;now<3000;now+=8)
             if(app.AdmitSelectedMediaSceneRecipe(app.SelectedMediaSceneRecipe(frame)) ||
                app.SelectedMediaGpuSceneNeedsProcess(upright,7,false,now))return false;
         app.rotationQuarterTurns_=2; // 180 degrees keeps the 32x16 extent
@@ -578,11 +578,15 @@ public:
         app.SelectedMediaGpuSceneProcessed(true,lease,1000);
         if(app.mediaGpuAnalysis_!=lease || app.mediaGpuAnalysisAttempts_!=0)return false;
         OkuFlowApp::MediaGpuSceneStamp stamp{true,app.mediaDocumentEpoch_,21,app.mediaSceneAppearanceRevision_,false};
-        // Two seconds of 60-Hz view replays whose capture throttle yields no
+        // Two seconds of 125-Hz view replays whose capture throttle yields no
         // fresh lease: the valid same-scene lease survives every replay and
         // its untouched retry budget never demands another whole-frame pass.
-        for(std::int64_t now=1000;now<3000;now+=16) {
-            app.SelectedMediaGpuSceneProcessed(true,{},now);
+        for(std::int64_t now=1000;now<3000;now+=8) {
+            // ROI sharpening/SR can replay the same selected sample and
+            // return a new allocation. Allocation identity is not a new
+            // selected image: keep the lease already owned by UCT.
+            const auto replay=MetadataAnalysis(app,21,app.mediaSceneAppearanceRevision_);
+            app.SelectedMediaGpuSceneProcessed(true,replay,now);
             if(app.mediaGpuAnalysis_!=lease || app.mediaGpuAnalysisAttempts_!=0 ||
                app.SelectedMediaGpuSceneNeedsProcess(stamp,21,true,now))return false;
         }

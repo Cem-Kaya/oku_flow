@@ -11,7 +11,10 @@ Optional neighbor preparation waits for a 50 ms quiet period after target
 publication; immediate scrubs supersede it. Proven same-frame seeks share pixels
 and require neither native decode nor another full-frame allocation.
 Additional limits are a 64 MiB byte-read window, an 8 MiB metadata/index budget and
-120 decoded samples per seek. Audio queues include in-flight PCM and are
+4096 native reads per seek, with the unchanged two-second request-age deadline
+and generation cancellation. The read cap is a malformed-stream guard, not a
+two-second GOP limit; pre-target frames do not allocate presentation copies.
+Audio queues include in-flight PCM and are
 bounded to 2 MiB, 32 packets and 500 ms; the native output endpoint is capped
 at 250 ms. These are admission limits, not latency promises. The selected
 transport polls at 16 ms only while a recording/file document exists; normal
@@ -73,8 +76,15 @@ Smoothed/current input registration requires every candidate word to reach
 NCC 0.94 and visible fraction 0.95 with zero translation/refinement. It is
 separate from the ordinary 0.82, six-probe-pixel motion tracker. Resident input
 registration batches at most 1024 word descriptors and refuses over 8192 words.
-Detector long edge is 960, recognizer canvas 1024×48, accepted regions
-at most 128, detector thresholds 0.2/0.4 and word confidence at least 0.7.
+Detector long edge is 960 per invocation. Complete-scene context is followed
+by at most 16 overlapping detail crops (desired source edge 1280, overlap 160,
+at most four crops per axis). Recognition uses a 1024×48 canvas; each of at
+most 128 detected regions per pass can add eight overlapping windows for long
+lines (targeting 20 source heights wide, eight heights overlap; capped windows
+widen to preserve coverage, internal-edge fragments
+discarded). CUDA retains all crops/windows on device, with at most 1152 compact
+quad descriptors per pass. Merged output is bounded to 1024 lines. Detector
+thresholds remain 0.2/0.4 and word confidence at least 0.7.
 These are bounded experimental defaults, not accuracy or latency promises.
 
 UCT's optional padded-box ink fit samples about 16K pixels per word, requires

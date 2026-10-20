@@ -1747,3 +1747,45 @@ per-row QTRY limits/assertions and the full inventory remain unchanged. This doe
 not classify a timeout as a pass or erase the archived attempt. The native German
 bottom-toolbar regression remains required; offscreen cell-minimum and cancelled
 video-picker/phone-light cases complement it without desktop or real-device claims.
+
+### Compact video transport and dense UCT checks
+
+`video_transport_contract` now embeds the production icon resource collection
+and verifies the one-row controls/scrubber, narrow secondary-row fallback,
+translated accessible names, focus, seek actions and state-dependent faces.
+For optional Qt-offscreen widget captures, set
+`OKUFLOW_TRANSPORT_PREVIEW_DIR` and invoke its wide/narrow layout slots; these
+images do not establish native UIA/focus acceptance.
+
+`uct_paddle_processing` covers detail crop coverage, overlap/edge policy, word
+reconciliation, coordinate mapping and long-line recognition windows.
+`uct_paddle_cuda` compares actual GPU/CPU recognition-window metadata and retains
+resident-input/validation/quarantine cases. `optionalDenseImage` is an unregistered,
+explicit private-image diagnostic: set `OKUFLOW_UCT_TEST_IMAGE` and optionally
+`OKUFLOW_TEST_PADDLE_GPU=1`, then invoke that slot directly. Inspect its actual
+text; candidate word counts alone are not recognition accuracy.
+
+The actual-app offscreen selected-media fixture checks 250 view replays with
+fresh same-sample allocations at an 8-ms simulated clock interval, retaining the
+same UCT lease and retry budget. The external native video fixture includes
+3/7/13/23-second seeks in addition to Open/1-second/End checks. Private recordings
+and extracted frames stay outside Git. Deadline, cancellation and memory-credit
+bounds remain unchanged; native desktop/display-rate acceptance is separate.
+
+The default `video_playback_contract` also decodes the committed original
+`tests/data/long-gop-h264.mp4`: 192×128, 60 fps, 5.2 seconds with a single long
+GOP, no audio. It seeks past 120 preroll samples and checks latest-target
+supersession, without a runtime encoder, downloaded footage or GPU requirement.
+The absolute file is a CTest `REQUIRED_FILES` input. Generation used the owner's
+separately installed FFmpeg/libx264, neither redistributed:
+
+```text
+ffmpeg -f lavfi -i testsrc2=size=192x128:rate=60 -t 5.2 -c:v libx264 -preset veryfast -crf 32 -g 360 -keyint_min 360 -sc_threshold 0 -bf 0 -pix_fmt yuv420p -an -movflags +faststart tests/data/long-gop-h264.mp4
+```
+
+Reviewed SHA-256: `5459ddb3da0ab0819b015d967e5ef1dfd0d513b9efcb45e357d636a8dbc62dca`.
+The native AVC/AV1 fixtures additionally copy their own finalized output to a
+private observed archive, prove its duration, revoke its bytes by truncation,
+then verify finalization retains only historical mapping and denies old reads.
+This deterministically exercises the finalizer-duration race; no owner media is
+modified. Initial AV1 failure evidence is retained.

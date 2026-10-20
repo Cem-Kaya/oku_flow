@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+- Put playback icons and the scrubber on one compact row, retaining keyboard
+  and screen-reader actions. Keep UCT text during same-frame magnified pans,
+  and improve small/dense print with overlapping GPU-resident detail passes
+  and long-line recognition windows.
+- Preserve previously proven recording duration across finalizer backwrites,
+  without restoring revoked read or seek permissions.
+- Allow long-GOP saved videos to seek beyond 120 preroll reads while preserving
+  the two-second request deadline, cancellation and decoded-memory limits.
+
 - Keep folded bottom control groups stable during window movement, activation
   and resizing. Measure candidate layouts before applying the selected layout,
   avoiding temporary wide native windows that caused visible flicker.

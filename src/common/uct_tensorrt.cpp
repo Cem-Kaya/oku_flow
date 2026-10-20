@@ -371,7 +371,7 @@ struct State
     DeviceBuffer<float> detectorInput, recognizerInput, scores;
     DeviceBuffer<int> labels, count, ids, tokenCount;
     DeviceBuffer<gpu::Component> components;
-    DeviceBuffer<gpu::Quad> quads;
+    DeviceBuffer<gpu::Quad> detectedQuads, quads;
     DeviceBuffer<gpu::Token> tokens;
     HostBuffer<int> hostCount;
     HostBuffer<gpu::Quad> hostQuad;
@@ -550,28 +550,37 @@ class TensorRtRecognizer final : public Recognizer
                 throw std::runtime_error(error.toStdString());
             }
             output.inputFault = false;
-            const QSize size = PaddleDetectionSize({image.width, image.height});
+            for (const QRect& region : PaddleDetectionRegions({image.width,image.height})) {
+            if (cancelled.load()) {
+                output.cancelled=true;output.lines.clear();state_->inFlight.reset();return output;
+            }
+            // A strided subview of the owned image, never a host pixel copy.
+            const auto* cropPixels=static_cast<const unsigned char*>(image.Data())+
+                std::size_t(region.y())*image.pitch+std::size_t(region.x())*4;
+            const QSize size = PaddleDetectionSize(region.size());
             auto *input = state_->detectorInput.Reserve(static_cast<std::size_t>(size.width()) *
                                                         size.height() * 3);
-            gpu::Normalize(image.Data(), image.pitch, image.width, image.height, input,
+            gpu::Normalize(cropPixels, image.pitch, region.width(), region.height(), input,
                            size.width(), size.height(), state_->stream);
             const auto shape =
                 state_->detector->Run(input, size.width(), size.height(), state_->stream);
             if (shape.nbDims != 4 || shape.d[0] != 1 || shape.d[1] != 1)
                 throw std::runtime_error("Unexpected GPU detector output.");
             const int w = static_cast<int>(shape.d[3]), h = static_cast<int>(shape.d[2]);
-            gpu::Detect(state_->detector->Output(), w, h, image.width, image.height,
+            gpu::Detect(state_->detector->Output(), w, h, region.width(), region.height(),
                         state_->labels.Reserve(w * h), state_->components.Reserve(w * h),
-                        state_->quads.Reserve(128), state_->count.Reserve(1), state_->stream);
+                        state_->detectedQuads.Reserve(128), state_->count.Reserve(1), state_->stream);
+            gpu::RecognitionWindows(state_->detectedQuads.Get(),state_->count.Get(),
+                                     state_->quads.Reserve(128*9),state_->stream);
             Check(cudaGetLastError());
             auto *hostCount = state_->hostCount.Reserve(1);
             Check(cudaMemcpyAsync(hostCount, state_->count.Get(), sizeof(int),
                                   cudaMemcpyDeviceToHost, state_->stream));
             Check(cudaStreamSynchronize(state_->stream)); // worker-only tiny control readback
             const int count = *hostCount;
-            if (count < 0)
+            if (count < 0 || count > 128*9)
                 throw std::runtime_error("GPU detector region count is invalid.");
-            for (int index = 0; index < std::min(count, 128); ++index)
+            for (int index = 0; index < count; ++index)
             {
                 if (cancelled.load())
                 {
@@ -582,7 +591,7 @@ class TensorRtRecognizer final : public Recognizer
                 }
                 constexpr int width = 1024;
                 auto *crop = state_->recognizerInput.Reserve(width * 48 * 3);
-                gpu::Rectify(image.Data(), image.pitch, image.width, image.height,
+                gpu::Rectify(cropPixels, image.pitch, region.width(), region.height(),
                              state_->quads.Get(), index, crop, width, state_->stream);
                 const auto recShape = state_->recognizer->Run(crop, width, 48, state_->stream);
                 if (recShape.nbDims != 3 || recShape.d[0] != 1 ||
@@ -612,6 +621,7 @@ class TensorRtRecognizer final : public Recognizer
                     throw std::runtime_error("GPU CTC output exceeds capacity.");
                 PaddleQuad box{};
                 box.score = quad.score;
+                box.internalEdges = quad.internalEdges;
                 for (int k = 0; k < 4; ++k)
                     box.points[k] = {quad.xy[k * 2], quad.xy[k * 2 + 1]};
                 std::vector<PaddleToken> decoded;
@@ -623,8 +633,8 @@ class TensorRtRecognizer final : public Recognizer
                     steps, static_cast<int>(std::ceil(steps * std::min(width, quad.validWidth) /
                                                       static_cast<double>(width))));
                 auto line = PaddleDecodeTokens(decoded, validSteps, box, assets_.dictionary);
-                if (!line.words.isEmpty())
-                    output.lines.push_back(std::move(line));
+                PaddleMergeRecognition(output.lines,std::move(line),region,{image.width,image.height});
+            }
             }
             std::sort(output.lines.begin(), output.lines.end(), [](const auto &a, const auto &b) {
                 return a.words[0].boundsPx.top() < b.words[0].boundsPx.top();

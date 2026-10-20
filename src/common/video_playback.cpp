@@ -818,7 +818,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                     }
                     if (!s->Current(command.generation)) continue;
                     if (Clock::now() > deadline || !chosen || (end && !reader.eos) || (!end && chosen->pts100ns < target))
-                        throw std::runtime_error("This seek exceeds the 120-read / two-second decode budget: reads=" +
+                        throw std::runtime_error("This seek exceeds the " + std::to_string(VideoPlayback::kSeekSampleLimit) + "-read / two-second decode budget: reads=" +
                             std::to_string(samples) + ", seeks=" + std::to_string(seeks) + ", decoded=" + std::to_string(decoded) +
                             ", eos=" + std::to_string(reader.eos) + ", chosen=" + std::to_string(bool(chosen)) +
                             ", lastPts=" + std::to_string(reader.lastDecodedPts) + ", anchor=" + std::to_string(target) +
