@@ -11,6 +11,9 @@ struct ModelSettings {
     ModelTier cpuRecognizer{ModelTier::Small};
     bool operator==(const ModelSettings&) const = default;
 };
+inline constexpr int DefaultTensorRtBatchCapacity(ModelTier recognizer) {
+    return recognizer == ModelTier::Tiny ? 1 : 8;
+}
 inline QString ModelTierToken(ModelTier tier) {
     switch(tier) {
     case ModelTier::Tiny:return QStringLiteral("tiny");

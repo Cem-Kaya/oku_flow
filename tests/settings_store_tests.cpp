@@ -238,6 +238,10 @@ void SettingsStoreTests::uctModelDefaultsMigrationAndRoundTrip()
     QCOMPARE(loaded->ultraClearTextModels.gpuRecognizer,ModelTier::Medium);
     QCOMPARE(loaded->ultraClearTextModels.cpuDetector,ModelTier::Small);
     QCOMPARE(loaded->ultraClearTextModels.cpuRecognizer,ModelTier::Tiny);
+    // Explicit model choices survive the batching policy; no silent migration.
+    root["ultraClearTextModels"]=QJsonObject{{"gpuDetector","medium"},{"gpuRecognizer","small"}};
+    QVERIFY(write());loaded=Load(path);QVERIFY(loaded);
+    QCOMPARE(loaded->ultraClearTextModels.gpuRecognizer,ModelTier::Small);
     loaded->ultraClearTextModels={ModelTier::Small,ModelTier::Tiny,ModelTier::Medium,ModelTier::Medium};
     loaded->ultraClearTextEnabled=true;
     QVERIFY(Save(path,*loaded));const auto saved=Load(path);QVERIFY(saved);

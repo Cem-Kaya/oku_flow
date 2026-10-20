@@ -71,7 +71,7 @@ struct Selection {
     QStringList images;
     int rounds{3}, passes{5};
     quint32 seed{20261020};
-    bool profile{true}, media{}, paired{};
+    bool profile{true}, media{}, paired{}, frozenCrops{};
     QString sdk;
     qint64 watchdogMs{};
     QString error;
@@ -92,6 +92,7 @@ struct Selection {
                 {"warmupsPerSourcePerBlock", 1}, {"timedPassesPerSourcePerBlock", passes},
                 {"seed", qint64(seed)}, {"profiling", profile}, {"stamp", media ? "media" : "camera"},
                 {"input", paired ? "pair" : "single"}, {"sdk", sdk}, {"watchdogMs", watchdogMs},
+                {"frozenCrops", frozenCrops},
                 {"startupDeadlineMs", kStartupDeadlineMs}, {"jobDeadlineMs", kJobDeadlineMs}};
     }
 };
@@ -166,6 +167,14 @@ inline Selection ParseSelection(const EnvironmentReader& read)
     s.media = stamp == "media";
     s.paired = input == "pair";
     s.profile = profile != "0";
+    const auto frozen = read("OKUFLOW_UCT_RESIDENT_FROZEN_CROPS");
+    if (!frozen.isEmpty() && frozen != "0" && frozen != "1")
+        return refuse("OKUFLOW_UCT_RESIDENT_FROZEN_CROPS accepts only 0 or 1.");
+    s.frozenCrops = frozen == "1";
+    if (s.frozenCrops && !s.profile) return refuse("Frozen-crop trials require profiling to prove detection was skipped.");
+    if (s.frozenCrops && std::any_of(s.pairs.begin(), s.pairs.end(), [&s](const Pair& pair) {
+            return pair.detector != s.pairs.front().detector;
+        })) return refuse("Frozen-crop trials require the same pinned detector tier for all pairs.");
     s.sdk = read("OKUFLOW_UCT_TENSORRT_ROOT");
     if (s.sdk.isEmpty()) return refuse("Select the existing inference-only TensorRT SDK with OKUFLOW_UCT_TENSORRT_ROOT.");
     if (s.Blocks() > kMaximumBlocks || qint64(s.Blocks()) * s.JobsPerBlock() > kMaximumJobs)
@@ -744,6 +753,29 @@ inline QJsonObject ThresholdWindow(const RecognitionOutput& output, double drift
 // The unchanged gate of the earlier batch diagnostic: identical text, order,
 // dispositions and padding, geometry <= 0.001 px, confidence <= 0.001, versus
 // the pair/source's first timed batch-one output. Batch one must also repeat.
+// Separately authorized user-facing policy (2026-10-20). Historical strict
+// comparisons remain intact: confidence may vary, but text/order/dispositions
+// and every source-box edge must retain the stated behavior and <=10 px drift.
+inline bool UserTolerancePass(const RecognitionOutput& reference, const RecognitionOutput& actual)
+{
+    const auto agreement = uct_batch_test::Compare(reference, actual);
+    if (!reference.ok || !actual.ok || reference.cancelled || actual.cancelled ||
+        reference.inputFault || actual.inputFault || reference.backendPreparing || actual.backendPreparing ||
+        !agreement.structure) return false;
+    const auto edges = [](const QRectF& a, const QRectF& b) {
+        return std::max({std::abs(a.left()-b.left()), std::abs(a.right()-b.right()),
+                         std::abs(a.top()-b.top()), std::abs(a.bottom()-b.bottom())}) <= 10.0;
+    };
+    for (qsizetype l = 0; l < reference.lines.size(); ++l)
+        for (qsizetype w = 0; w < reference.lines[l].words.size(); ++w) {
+            const auto& a = reference.lines[l].words[w];
+            const auto& b = actual.lines[l].words[w];
+            if (!edges(a.boundsPx, b.boundsPx) || !edges(a.protectedBoundsPx, b.protectedBoundsPx) ||
+                !edges(a.inkSearchPx, b.inkSearchPx)) return false;
+        }
+    return true;
+}
+
 inline bool StrictComparisons(const std::vector<TimedOutput>& timed, QJsonArray& records, int& failures)
 {
     std::map<std::pair<int, int>, const TimedOutput*> reference;
@@ -770,6 +802,7 @@ inline bool StrictComparisons(const std::vector<TimedOutput>& timed, QJsonArray&
         records.push_back(QJsonObject{{"file", output.file}, {"referenceFile", found->second->file},
             {"pair", output.pair}, {"capacity", output.capacity}, {"source", output.source},
             {"round", output.round}, {"pass", output.pass}, {"strictPass", ok},
+            {"userTenPixelConfidenceVariationPass", UserTolerancePass(found->second->output, output.output)},
             {"orderedCropWorkEqual", cropKnown ? QJsonValue(cropEqual) : QJsonValue(QJsonValue::Null)},
             {"structureMatchesBatchOne", agreement.structure},
             {"maximumGeometryDeltaPx", agreement.geometryDelta}, {"maximumConfidenceDelta", agreement.confidenceDelta},
@@ -909,6 +942,10 @@ inline void SelectionAndComparisonSelfTest()
     };
     QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_CAPACITIES", "8,16"}})); // no strict batch-one reference
     QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_CAPACITIES", "1,4"}}));
+    QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_FROZEN_CROPS", "yes"}}));
+    QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_FROZEN_CROPS", "1"}, {"OKUFLOW_UCT_RESIDENT_PROFILE", "0"}}));
+    QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_FROZEN_CROPS", "1"},
+                     {"OKUFLOW_UCT_RESIDENT_PAIRS", "medium:small,tiny:small"}}));
     QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_PAIRS", "medium:small,medium:small"}}));
     QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_PAIRS", "large:small"}}));
     QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_ROUNDS", "0"}}));
@@ -990,6 +1027,19 @@ inline void SelectionAndComparisonSelfTest()
     QCOMPARE(reordered["identity"].toObject()["orderDescents"].toInt(), 1);
     QCOMPARE(reordered["identity"].toObject()["changedText"].toInt(), 0);
     QVERIFY(!records[2].toObject()["strictPass"].toBool()); // 0.002 confidence drift exceeds 0.001
+    QVERIFY(UserTolerancePass(n1, drift));
+    QVERIFY(!UserTolerancePass(n1, swapped));
+    auto allowed = n1;
+    allowed.lines[0].words[0].boundsPx.translate(10, 0);
+    QVERIFY(UserTolerancePass(n1, allowed));
+    allowed.lines[0].words[0].boundsPx.translate(.001, 0);
+    QVERIFY(!UserTolerancePass(n1, allowed));
+    allowed = n1;
+    allowed.lines[0].words[0].disposition = TokenDisposition::kLowConfidence;
+    QVERIFY(!UserTolerancePass(n1, allowed));
+    allowed = n1;
+    allowed.lines[0].words[0].text = "Annotatc";
+    QVERIFY(!UserTolerancePass(n1, allowed));
     QVERIFY(!StrictComparisons({{0, 0, 8, 0, 1, "orphan", n1}}, records, failures)); // no reference fails closed
     std::vector<TimedOutput> changedCrops{{0,0,1,0,1,"fixed",n1,QString(64, QLatin1Char('a'))},
         {0,0,8,0,1,"other-crops",n1,QString(64, QLatin1Char('b'))}};
@@ -1205,6 +1255,11 @@ struct Run {
     DeviceStream stream;      // destroyed last
     DeviceUploads uploads;    // freed after the pool
     std::unique_ptr<AnalysisPool> pool;
+    // Diagnostic-only: one bounded pool and one immutable lease per source.
+    // The normal complete-path experiment still uses fresh two-slot captures.
+    std::vector<std::unique_ptr<AnalysisPool>> frozenPools;
+    std::vector<SharedDeviceImage> frozenInputs;
+    std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic;
     std::uint64_t nextFrame{1};
     int jobs{};
     std::vector<TimedOutput> timed; // execution order
@@ -1218,26 +1273,32 @@ struct Run {
     Input Capture(int sourceIndex)
     {
         Input input;
+        if (selection.frozenCrops && frozenInputs[std::size_t(sourceIndex)]) {
+            input.image = std::make_shared<MeteredImage>(frozenInputs[std::size_t(sourceIndex)]);
+            return input;
+        }
         const auto& source = sources[std::size_t(sourceIndex)];
         const int w = source.image.width(), h = source.image.height();
         const std::size_t pitch = std::size_t(w) * 4;
         const std::uint64_t frame = nextFrame++, epoch = std::uint64_t(sourceIndex) + 1;
         const auto begin = Clock::now(), deadline = begin + std::chrono::seconds(2);
         for (;;) {
+            auto* selectedPool = selection.frozenCrops ? frozenPools[std::size_t(sourceIndex)].get() : pool.get();
             auto owned = selection.paired
-                ? pool->CapturePair(source.device, pitch, source.device, pitch, w, h, stream.value, epoch, frame, 1,
+                ? selectedPool->CapturePair(source.device, pitch, source.device, pitch, w, h, stream.value, epoch, frame, 1,
                                     1, frame, 1, .25f)
-                : pool->Capture(source.device, pitch, w, h, stream.value, epoch, frame, 1);
+                : selectedPool->Capture(source.device, pitch, w, h, stream.value, epoch, frame, 1);
             if (owned) {
                 if (cudaStreamSynchronize(stream.value) != cudaSuccess) {
                     input.error = "The analysis copy did not complete.";
                     return input;
                 }
+                if (selection.frozenCrops) frozenInputs[std::size_t(sourceIndex)] = owned;
                 input.image = std::make_shared<MeteredImage>(std::move(owned));
                 input.setupMs = Ms(Clock::now() - begin);
                 return input;
             }
-            if (pool->HasFailure()) {
+            if (selectedPool->HasFailure()) {
                 input.error = "The analysis pool reported allocation pressure or quarantine.";
                 return input;
             }
@@ -1347,7 +1408,8 @@ inline void RunBlock(Run& run, const Block& block, ProfileCapture& capture)
     capture.Take();
     const auto constructed = Clock::now();
     auto scheduler = std::make_unique<RecognitionScheduler>(
-        CreateTensorRtRecognizer(assets.root, run.selection.sdk, pair.detector, pair.recognizer, retirement.Observer()),
+        CreateTensorRtRecognizer(assets.root, run.selection.sdk, pair.detector, pair.recognizer, retirement.Observer(),
+                                 run.cropDiagnostic),
         [mailbox](RecognitionResult result) {
             const auto at = Clock::now();
             {
@@ -1417,6 +1479,10 @@ inline void RunBlock(Run& run, const Block& block, ProfileCapture& capture)
             const auto invalid = Validate(*completion, input.image->Read(), profiles, block.capacity, run.selection,
                                           run.sources[std::size_t(source)].treeSha256);
             QVERIFY2(invalid.isEmpty(), qPrintable(invalid + " Evidence: " + file));
+            if (run.selection.frozenCrops && pass > 0) {
+                QCOMPARE(profiles.size(), 1);
+                QCOMPARE(profiles.front()["detectorPasses"].toInt(), 0);
+            }
             if (pass > 0) run.Accumulate(block, source, pass, record, file, std::move(completion->result.output));
         }
     }
@@ -1611,6 +1677,12 @@ inline void ResidentBaselineDiagnostic()
     QVERIFY2(run.stream.value, "Fixture CUDA stream unavailable.");
     run.uploads.stream = run.stream.value;
     run.pool = std::make_unique<AnalysisPool>();
+    if (selection.frozenCrops) {
+        run.cropDiagnostic = std::make_shared<TensorRtCropDiagnostic>();
+        run.frozenInputs.resize(run.sources.size());
+        for (std::size_t i = 0; i < run.sources.size(); ++i)
+            run.frozenPools.push_back(std::make_unique<AnalysisPool>());
+    }
     for (auto& source : run.sources) {
         const auto bytes = std::size_t(source.image.sizeInBytes());
         source.device = run.uploads.Allocate(bytes);
@@ -1721,6 +1793,9 @@ inline void ResidentBaselineDiagnostic()
     const bool cacheUnchanged = cacheAfter == cacheBefore;
     QVERIFY(uct_batch_test::Save(QDir(run.evidence).filePath("cache-after.json"), {{"cache", cache}, {"files", cacheAfter}}));
     const QJsonObject summary{{"complete", !truncated}, {"truncatedBeforeWatchdog", truncated},
+        {"frozenCrops", selection.frozenCrops},
+        {"frozenSources", run.cropDiagnostic ? run.cropDiagnostic->CapturedSources() : 0},
+        {"frozenReplayCalls", run.cropDiagnostic ? qint64(run.cropDiagnostic->ReplayCalls()) : qint64(0)},
         {"blocksPlanned", int(plan.size())}, {"blocksCompleted", completed}, {"configurations", configurations},
         {"startupFirstResultMs", startup}, {"pairedByRound", paired},
         {"strict", QJsonObject{{"pass", strictPass}, {"comparisons", int(comparisons.size())},

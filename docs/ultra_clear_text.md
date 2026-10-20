@@ -51,7 +51,7 @@ accepted use cases. Use Show original to compare, especially for numbers.
   sharp letters for comparison without stopping recognition.
 - **UCT advanced settings** below those switches has independent GPU and CPU
   text-detector and text-recognizer selectors. Each offers PP-OCRv6 tiny, small
-  and medium. GPU defaults to medium/medium; CPU defaults to tiny/small. Choices
+  and medium. GPU defaults to medium/medium (recognizer batch eight); CPU defaults to tiny/small. Existing saved model choices are preserved. Choices
   persist across launches, including migration from settings without these keys.
   Changing a choice while UCT is on cancels the old worker's authority and
   starts a fresh backend chain asynchronously. Camera presentation keeps running;

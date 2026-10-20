@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+- Accept medium/small GPU recognition at batch eight under the
+  owner's explicit 10-source-pixel geometry/confidence-variation policy. Keep
+  exact text/order/omission behavior, original strict diagnostic failures, saved
+  model choices, GPU medium/medium and CPU tiny/small defaults, and batch-one
+  preparation fallback. The small model remains selectable after a serial-token
+  regression blocked its promotion to the default.
+- Complete the diagnostic frozen-crop recognizer comparison: bounded immutable
+  owned inputs replay exact recorded detector windows without image readback;
+  normal app recognition never installs that diagnostic.
+
+
 - Add opt-in resident performance and character-change diagnostics, crop-width
   telemetry and existing host-wait attribution for the revised UCT roadmap.
   The character baseline retains false accepts/hides; region reuse remains

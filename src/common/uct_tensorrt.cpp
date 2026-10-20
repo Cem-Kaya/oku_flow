@@ -22,6 +22,26 @@
 
 namespace okuflow::uct
 {
+struct TensorRtCropDiagnosticAccess {
+    static const TensorRtCropDiagnostic::Plan* Find(TensorRtCropDiagnostic& diagnostic,
+                                                    const DeviceImage& image, const QByteArray& detector) {
+        for (const auto& plan : diagnostic.plans_) {
+            const auto& held = *plan.source;
+            if (held.Data() == image.Data() && held.ValidationData() == image.ValidationData() &&
+                held.width == image.width && held.height == image.height && held.pitch == image.pitch &&
+                held.device == image.device && held.sourceEpoch == image.sourceEpoch &&
+                held.frameSequence == image.frameSequence && held.processingGeneration == image.processingGeneration &&
+                held.kind == image.kind && held.historyEpoch == image.historyEpoch &&
+                plan.detectorSha256 == detector) return &plan;
+        }
+        return nullptr;
+    }
+    static void Commit(TensorRtCropDiagnostic& diagnostic, TensorRtCropDiagnostic::Plan plan) {
+        if (diagnostic.plans_.size() >= 4) throw std::runtime_error("Frozen diagnostic is limited to four leased sources.");
+        diagnostic.plans_.push_back(std::move(plan));
+    }
+    static void Replayed(TensorRtCropDiagnostic& diagnostic) { ++diagnostic.replayCalls_; }
+};
 namespace
 {
 void Check(cudaError_t status)
@@ -490,15 +510,17 @@ class TensorRtRecognizer final : public Recognizer
 {
   public:
     TensorRtRecognizer(QString root, QString sdk,ModelTier detector,ModelTier recognizer,
-                       TensorRtRetirementObserver retirementObserver)
+                       TensorRtRetirementObserver retirementObserver,
+                       std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic)
         : root_(std::move(root)), sdk_(std::move(sdk)),detectorTier_(detector),recognizerTier_(recognizer),
-          retirementObserver_(std::move(retirementObserver))
+          retirementObserver_(std::move(retirementObserver)), cropDiagnostic_(std::move(cropDiagnostic))
     {
-        // Wider profiles remain opt-in until their numerical agreement and
-        // process-exit validation are accepted; preserve the cached default.
+        // Medium/Small N8 retained text/dispositions under the
+        // owner's 10-source-pixel geometry tolerance. Explicit overrides win.
         const auto batch = qEnvironmentVariable("OKUFLOW_UCT_TRT_BATCH");
         invalidBatch_ = !batch.isEmpty() && batch != "1" && batch != "8" && batch != "16";
-        recognizerBatch_ = batch == "16" ? 16 : batch == "8" ? 8 : 1;
+        recognizerBatch_ = batch.isEmpty() ? DefaultTensorRtBatchCapacity(recognizer)
+                                         : batch == "16" ? 16 : batch == "8" ? 8 : 1;
     }
     ~TensorRtRecognizer() override
     {
@@ -644,13 +666,46 @@ class TensorRtRecognizer final : public Recognizer
             auto &profile = state_->profile;
             profile.Reset();
             const int submissionGroup = state_->recognizerBatch == 16 ? 16 : kRecognitionSubmissionGroup;
-            for (const QRect& region : PaddleDetectionRegions({image.width,image.height})) {
+            const auto* frozen = cropDiagnostic_
+                ? TensorRtCropDiagnosticAccess::Find(*cropDiagnostic_, image, assets_.detectorSha256) : nullptr;
+            TensorRtCropDiagnostic::Plan captured;
+            if (cropDiagnostic_ && !frozen) {
+                captured.source = state_->inFlight;
+                captured.detectorSha256 = assets_.detectorSha256;
+            }
+            QVector<QRect> regions;
+            if (frozen) for (const auto& region : frozen->regions) regions.push_back(region.bounds);
+            else regions = PaddleDetectionRegions({image.width,image.height});
+            int regionIndex = 0;
+            for (const QRect& region : regions) {
             if (cancelled.load()) {
                 output.cancelled=true;output.lines.clear();state_->inFlight.reset();return output;
             }
             // A strided subview of the owned image, never a host pixel copy.
             const auto* cropPixels=static_cast<const unsigned char*>(image.Data())+
                 std::size_t(region.y())*image.pitch+std::size_t(region.x())*4;
+            auto *hostCount = state_->hostCount.Reserve(submissionGroup);
+            int count{};
+            if (frozen) {
+                const auto& recorded = frozen->regions[std::size_t(regionIndex)];
+                std::vector<gpu::Quad> quads;
+                quads.reserve(recorded.crops.size());
+                for (const auto& crop : recorded.crops) {
+                    gpu::Quad q{};
+                    std::copy(crop.xy.begin(), crop.xy.end(), q.xy);
+                    q.score = crop.score; q.validWidth = crop.validWidth; q.internalEdges = crop.internalEdges;
+                    quads.push_back(q);
+                }
+                count = int(quads.size());
+                if (count) {
+                    // Compact descriptor upload only. Retain pinned storage
+                    // until the existing first recognition-group wait.
+                    auto* upload = state_->hostQuad.Reserve(std::max(submissionGroup, count));
+                    std::copy(quads.begin(), quads.end(), upload);
+                    Check(cudaMemcpyAsync(state_->quads.Reserve(128*9), upload,
+                                          quads.size()*sizeof(gpu::Quad), cudaMemcpyHostToDevice, state_->stream));
+                }
+            } else {
             const QSize size = PaddleDetectionSize(region.size());
             auto *input = state_->detectorInput.Reserve(static_cast<std::size_t>(size.width()) *
                                                         size.height() * 3);
@@ -666,7 +721,6 @@ class TensorRtRecognizer final : public Recognizer
             if (shape.nbDims != 4 || shape.d[0] != 1 || shape.d[1] != 1)
                 throw std::runtime_error("Unexpected GPU detector output.");
             const int w = static_cast<int>(shape.d[3]), h = static_cast<int>(shape.d[2]);
-            auto *hostCount = state_->hostCount.Reserve(submissionGroup);
             profile.Measure(TensorRtProfile::Regions, state_->stream, [&] {
                 gpu::Detect(state_->detector->Output(), w, h, region.width(), region.height(),
                             state_->labels.Reserve(w * h), state_->components.Reserve(w * h),
@@ -681,9 +735,11 @@ class TensorRtRecognizer final : public Recognizer
             });
             profile.Transfer(sizeof(int));
             profile.Wait(true, [&] { Check(cudaStreamSynchronize(state_->stream)); }); // existing worker-only count wait
-            const int count = *hostCount;
+            count = *hostCount;
+            }
             if (count < 0 || count > 128*9)
                 throw std::runtime_error("GPU detector region count is invalid.");
+            if (cropDiagnostic_ && !frozen) captured.regions.push_back({region, {}});
             for (int first = 0; first < count; first += submissionGroup)
             {
                 if (cancelled.load())
@@ -776,6 +832,13 @@ class TensorRtRecognizer final : public Recognizer
                 {
                     const int tokenCount = hostCount[slot];
                     const auto quad = hostQuads[slot];
+                    if (cropDiagnostic_ && !frozen) {
+                        TensorRtCropDiagnostic::Crop record;
+                        std::copy(std::begin(quad.xy), std::end(quad.xy), record.xy.begin());
+                        record.score = quad.score; record.validWidth = quad.validWidth;
+                        record.internalEdges = quad.internalEdges;
+                        captured.regions.back().crops.push_back(record);
+                    }
                     profile.CropDescriptor(quad.xy, quad.score, quad.validWidth,
                                            quad.internalEdges, region, width);
                     const auto *tokens = hostTokens + static_cast<std::size_t>(slot) * steps;
@@ -802,6 +865,7 @@ class TensorRtRecognizer final : public Recognizer
                 }
                 profile.Merge(profile.Enabled() ? merge.nsecsElapsed() / 1e6 : 0);
             }
+            ++regionIndex;
             }
             std::sort(output.lines.begin(), output.lines.end(), [](const auto &a, const auto &b) {
                 return a.words[0].boundsPx.top() < b.words[0].boundsPx.top();
@@ -809,6 +873,10 @@ class TensorRtRecognizer final : public Recognizer
             output.ok = !cancelled.load();
             output.cancelled = cancelled.load();
             profile.Emit(state_->recognizerBatch);
+            if (cropDiagnostic_) {
+                if (frozen) TensorRtCropDiagnosticAccess::Replayed(*cropDiagnostic_);
+                else TensorRtCropDiagnosticAccess::Commit(*cropDiagnostic_, std::move(captured));
+            }
             state_->inFlight.reset(); // final metadata copy proved all reads complete
             status_.detail = "PP-OCRv6 GPU preprocessing, detection, rectification, recognition "
                              "and CTC; CPU metadata publication; recognizer batch=" +
@@ -954,6 +1022,7 @@ class TensorRtRecognizer final : public Recognizer
     TensorRtRetirementObserver retirementObserver_;
     int recognizerBatch_{1};
     bool invalidBatch_{};
+    std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic_;
     PaddleAssets assets_;
     BackendStatus status_;
     std::shared_ptr<State> state_;
@@ -961,7 +1030,8 @@ class TensorRtRecognizer final : public Recognizer
 };
 } // namespace
 std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &root, const QString &sdk,ModelTier detector,ModelTier recognizer,
-                                                   TensorRtRetirementObserver retirementObserver)
+                                                   TensorRtRetirementObserver retirementObserver,
+                                                   std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic)
 {
     QString selected = sdk.isEmpty() ? qEnvironmentVariable("OKUFLOW_UCT_TENSORRT_ROOT") : sdk;
     if (selected.isEmpty())
@@ -969,14 +1039,14 @@ std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &root, const 
             QDir(qEnvironmentVariable("LOCALAPPDATA"))
                 .filePath("OkuFlow/ocr-deps/TensorRT-11.4.0.106-cuda12.9/TensorRT-11.4.0.106");
     return std::make_unique<TensorRtRecognizer>(root.isEmpty() ? DefaultPaddleRoot() : root,
-                                                selected,detector,recognizer,std::move(retirementObserver));
+                                                selected,detector,recognizer,std::move(retirementObserver),std::move(cropDiagnostic));
 }
 } // namespace okuflow::uct
 #else
 namespace okuflow::uct
 {
 std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &, const QString &,ModelTier,ModelTier,
-                                                   TensorRtRetirementObserver)
+                                                   TensorRtRetirementObserver, std::shared_ptr<TensorRtCropDiagnostic>)
 {
     return {};
 }

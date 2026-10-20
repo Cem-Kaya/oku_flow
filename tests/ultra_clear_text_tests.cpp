@@ -513,6 +513,9 @@ private slots:
         UltraClearTextPanel panel;
         const auto defaults=panel.ModelSettings();
         QCOMPARE(defaults.gpuDetector,ModelTier::Medium);QCOMPARE(defaults.gpuRecognizer,ModelTier::Medium);
+        QCOMPARE(DefaultTensorRtBatchCapacity(ModelTier::Small),8);
+        QCOMPARE(DefaultTensorRtBatchCapacity(ModelTier::Medium),8);
+        QCOMPARE(DefaultTensorRtBatchCapacity(ModelTier::Tiny),1);
         QCOMPARE(defaults.cpuDetector,ModelTier::Tiny);QCOMPARE(defaults.cpuRecognizer,ModelTier::Small);
         QSignalSpy changes(&panel,&UltraClearTextPanel::modelSettingsChanged);
         panel.cpuDetectorCombo()->setCurrentIndex(1);

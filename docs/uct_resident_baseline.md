@@ -236,3 +236,60 @@ The other sources are first-party printed-text fixtures created with Pillow
 11.1.0 and the locally hashed Arial font; their images, truth and provenance
 stay in `uct-paused-scrolling-20261020/resident-samples`. No font, model,
 private image, SDK or plan was added to Git or a release payload.
+
+
+## Frozen-crop follow-up and separate acceptance (2026-10-20)
+
+`OKUFLOW_UCT_RESIDENT_FROZEN_CROPS=1` is a new, explicit diagnostic selector.
+It requires profiling and one common detector tier. At most four independent
+source pools retain one immutable owned image each. `TensorRtCropDiagnostic`
+records the first complete detector-window result for each exact leased input;
+subsequent jobs, model pairs and capacities replay those exact descriptors.
+Each timed frozen job asserts zero detector calls. Compact descriptor uploads
+are included in measured worker time; source images never leave the device.
+Every timed job gets a fresh metering decorator, preserving per-job egress and
+resident-analysis receipts. The complete-path experiment remains the default.
+The diagnostic cannot authorize OCR reuse and is never constructed by the app.
+
+The owner subsequently accepted <=10 source pixels of box-edge drift and finite
+confidence variation, while retaining exact text/order/disposition/padding.
+`UserTolerancePass` records this separately beside every original strict verdict.
+The diagnostic's original strict assertion/exit status is deliberately retained.
+See [the quality decision](uct_batch8_quality_acceptance.md) for the recheck and
+new medium-N8 development batching default; model defaults retain medium/medium. Statements
+above about unaccepted quality describe the original stricter decision, not a
+changed or deleted historical result.
+
+
+### Completed frozen-crop run
+
+The 2026-10-20 follow-up used the same RTX 4090/runtime, four sources (the
+previous dense, sparse and long-line images plus a new critical-symbol/accents
+fixture), two randomized rounds, one warmup and three timed passes per source.
+All eight blocks and 136 jobs completed in 43.97 seconds. All 96 timed jobs
+had zero detector invocations and zero image-egress calls. Four source leases
+were retained, with 132 exact crop replays, equal ordered descriptor hashes per
+source across both models/capacities, unchanged plan bytes, eight completed
+State closures and normal process exit one for the preserved strict assertion.
+
+Median frozen-crop scheduler worker milliseconds (six observations per cell):
+
+| Recognizer / capacity | Dense | Sparse | Long lines | Symbols/accents |
+| --- | ---: | ---: | ---: | ---: |
+| Medium / 1 | 272.79 | 9.59 | 128.44 | 79.09 |
+| Medium / 8 | 153.67 | 6.89 | 73.64 | 49.67 |
+| Small / 1 | 197.89 | 10.36 | 93.34 | 58.42 |
+| Small / 8 | 71.51 | 7.95 | 35.08 | 23.47 |
+
+This includes normal resident result preparation and compact descriptor uploads
+but no detection; it is not the complete app pipeline or a cross-run speedup
+claim. All 88 comparisons passed the owner's separate 10-pixel/confidence policy;
+18 still failed the original strict comparison. Source and output artifacts are
+retained under `uct-resident-20261020-202041-9f0a64b1-6235-4da1-a60c-dffd2431d8b9`.
+The sparse source had zero text edits for both models; the long source had zero
+for small and two for medium. The new symbols/accents fixture had six edits for
+small and seven for medium, but small misread the serial `O0` as `00`; medium
+retained it. Sensitive-token exact recall was 0.9245 versus 0.9434, so small
+recognition was not promoted to model default. Both models preserved the tested
+minus signs, decimals and inequalities. These four scenes are not general
+accuracy, physical-camera jitter or native accessibility acceptance.

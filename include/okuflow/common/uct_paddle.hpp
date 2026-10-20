@@ -56,11 +56,28 @@ RecognizedLine PaddleDecodeTokens(std::span<const PaddleToken> tokens, int steps
 // nested AnalysisPool storage cleanup and vendor threads have separate lifetimes.
 // An observer exception is ignored and never changes cleanup/quarantine.
 using TensorRtRetirementObserver = std::function<void(std::shared_ptr<AsyncCleanup>)>;
+// Explicit diagnostic only: retain at most four immutable owned inputs and the
+// compact detector windows copied by ordinary recognition. Later calls on the
+// SAME leased pixels replay those windows, isolating recognition from detection.
+// Worker-confined, including queries; never installed by the automatic backend.
+class TensorRtCropDiagnostic {
+public:
+    struct Crop { std::array<float, 8> xy{}; float score{}; int validWidth{}, internalEdges{}; };
+    struct Region { QRect bounds; std::vector<Crop> crops; };
+    struct Plan { SharedDeviceImage source; QByteArray detectorSha256; std::vector<Region> regions; };
+    int CapturedSources() const { return int(plans_.size()); }
+    std::uint64_t ReplayCalls() const { return replayCalls_; }
+private:
+    friend struct TensorRtCropDiagnosticAccess;
+    std::vector<Plan> plans_;
+    std::uint64_t replayCalls_{};
+};
 std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &root = {},
                                                      const QString &sdk = {},
                                                      ModelTier detector = ModelTier::Medium,
                                                      ModelTier recognizer = ModelTier::Medium,
-                                                     TensorRtRetirementObserver retirementObserver = {});
+                                                     TensorRtRetirementObserver retirementObserver = {},
+                                                     std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic = {});
 
 // All calls are worker-confined; the optional runtime is loaded by absolute path.
 class PaddleCpuSession

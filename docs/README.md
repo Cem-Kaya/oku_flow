@@ -1,5 +1,9 @@
 # OkuFlow Documentation Guide
 
+[Batch-eight quality acceptance](uct_batch8_quality_acceptance.md) records the
+owner-approved 10-pixel geometry tolerance, exact text/disposition checks, the
+affected microphone icon, and the development GPU default change.
+
 [UCT performance roadmap implementation](uct_performance_roadmap_2026_10_20.md)
 tracks the revised performance-first stages, resident measurement boundaries and
 quality prerequisites before regional reuse.

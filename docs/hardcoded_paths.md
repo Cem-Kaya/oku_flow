@@ -3,7 +3,8 @@
 ## Selected-video resource limits (development)
 
 The separate GPU OCR recognizer admits true batch capacities `1`, `8`, `16`
-through `OKUFLOW_UCT_TRT_BATCH` (default one; eight/sixteen experimental).
+through `OKUFLOW_UCT_TRT_BATCH`. With no override, medium/small recognition uses
+batch eight and tiny uses one; sixteen remains experimental.
 N16 output tensors have a 1 GiB allocation ceiling; detector/N1/N8 tensors
 retain 256 MiB. This is an upper
 validation bound, not eager allocation or total VRAM budget; TensorRT builder

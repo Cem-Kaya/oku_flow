@@ -98,3 +98,24 @@ Both requested Opus xhigh tasks hit the provider's rate limit. The implementatio
 task left its new helper/document; root repaired and tested their integration.
 The independent review attempt did not deliver a completed review. No completed
 Opus safety sign-off is claimed, and no production default was promoted.
+
+
+## Subsequent batch acceptance and completed frozen entry
+
+The owner explicitly allowed <=10 source pixels of box-edge variation and
+finite confidence variation, while preserving exact text, order, dispositions
+and padding. That separate policy passed all 88 comparisons in the four-source
+frozen-crop follow-up; the original strict verdict/assertion remains unchanged
+(18 failures retained). The new diagnostic replays exact detector windows on
+retained immutable source leases and asserts zero detector calls for all 96
+timed jobs. It completes the previously missing recognizer-isolation entry,
+without introducing OCR reuse into the app.
+
+Medium and small recognizers now default to batch eight (tiny retains one),
+with explicit overrides and batch-one preparation fallback preserved. Model
+defaults remain GPU medium/medium and CPU tiny/small: the new serial-symbol
+fixture exposed small recognition's `O0` → `00` error, blocking its promotion
+under this roadmap's critical-symbol guard despite lower total character edits.
+See [the decision](uct_batch8_quality_acceptance.md) and the
+[frozen result](uct_resident_baseline.md#completed-frozen-crop-run).
+The shadow planner remains the next separately integrated stage.

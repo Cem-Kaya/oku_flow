@@ -1868,3 +1868,16 @@ exact-byte cache checks run in `uct_paddle_processing` via
 `residentDiagnosticSelectionAndComparison`. See the finite
 [resident protocol](../docs/uct_resident_baseline.md); this is not a native
 display/accessibility latency benchmark, and a State receipt is not process exit.
+
+
+### Frozen resident UCT comparison
+
+The opt-in `optionalResidentBaseline` slot additionally accepts
+`OKUFLOW_UCT_RESIDENT_FROZEN_CROPS=1`; no ordinary CTest case enables it. It
+requires profiling and a common detector tier and retains at most four owned
+source leases. The first full job records detector windows, then timed jobs
+assert zero detector calls while replaying those windows across model/capacity
+variants. This completes recognizer isolation separately from complete-path
+SubmitDevice measurements. The original strict assertion remains unchanged;
+`userTenPixelConfidenceVariationPass` is a separate owner-authorized policy.
+See `docs/uct_resident_baseline.md` and `docs/uct_batch8_quality_acceptance.md`.

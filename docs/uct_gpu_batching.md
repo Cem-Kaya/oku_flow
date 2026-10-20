@@ -16,7 +16,10 @@ is added. Character sensitivity remains a separate
 [verification gate](uct_character_verification.md).
 
 `OKUFLOW_UCT_TRT_BATCH` explicitly selects `1`, `8` or `16`; the development
-default remains one; eight and sixteen are experimental overrides. Invalid
+default is eight for medium/small recognizers and one for tiny. Sixteen
+remains experimental. Existing saved model choices and explicit overrides are
+preserved. The separately authorized [quality decision](uct_batch8_quality_acceptance.md)
+retains the historical strict failures. Invalid
 overrides make this optional backend unavailable, preserving ordinary CPU
 fallback. Batch sixteen preparation can fall back to
 eight, then one; batch eight can fall back to one. Diagnostics report the actual

@@ -6007,3 +6007,24 @@ timing. `StrictComparisons` preserves the preselected output gate and adds known
 crop-identity equality; `MatchByOccurrence` and `TruthJson` are diagnostic only.
 `Stats` retains run order and withholds p95 below 20 samples. `ResultJson` records
 source/job/geometry/temporal authority with the full neural output.
+
+
+### Batch-eight development policy and frozen diagnostic (2026-10-20)
+
+`ModelSettings::gpuRecognizer` retains Medium, with medium detection.
+`DefaultTensorRtBatchCapacity` chooses eight for Medium/Small and one for Tiny;
+`TensorRtRecognizer` preserves explicit 1/8/16 overrides and preparation fallback.
+Saved model selections retain authority. `TensorRtCropDiagnostic`, optionally
+passed to `CreateTensorRtRecognizer`, retains at most four exact owned image
+leases and the compact regions/quads already returned by detection. Its private
+`TensorRtCropDiagnosticAccess` binds replay to device pointer, extent, stride,
+source/frame/processing/history identity and detector hash. Replay uploads only
+compact descriptors and uses existing group completion waits. No automatic
+backend constructs it, and it cannot cache/reuse text or authorize admission.
+`Selection::frozenCrops` in `uct_resident_diagnostic.hpp` holds separate bounded
+per-source pools and recreates only metering decorators; every timed frozen job
+asserts zero detector calls. Original complete-path timing remains the default.
+`UserTolerancePass` separately records exact text/order/disposition/padding and
+<=10-pixel drift of every box edge while allowing finite confidence variation.
+`StrictComparisons` retains its original strict verdict and assertion. See
+`uct_batch8_quality_acceptance.md` and `uct_resident_baseline.md`.
