@@ -289,6 +289,8 @@ public:
     ~UltraClearTextController() override;
 
     void SetEnabled(bool enabled);
+    bool IsEnabledByUser() const noexcept { return enabledByUser_; }
+    void SetTextClarityEnabled(bool enabled);
     bool IsEnabled() const noexcept { return enabled_; }
     // Retire a previous worker asynchronously and fence its queued callbacks.
     void ReplaceRecognizerFactory(RecognizerFactory factory);
@@ -419,6 +421,7 @@ private:
     void HandleProbeOutcome(uct::ProbeOutcome outcome);
     void HandleResult(uct::RecognitionResult result);
     void HandleBackendStatus(uct::BackendStatus status);
+    void ApplyEnabled(bool enabled);
     void SubmitImmutableIfNeeded();
     void ScheduleImmutableRetry(bool selected, bool preparing = false);
     void HandleImmutableResult(uct::RecognitionResult result);
@@ -496,6 +499,8 @@ private:
     bool immutableCorroborationAttempted_{};
 
     bool enabled_{};
+    bool enabledByUser_{};
+    bool textClarityEnabled_{true};
     bool showOriginal_{};
     bool compositePaused_{};
     // Which pause reason the status line names: a stabilized (Extra Stable)

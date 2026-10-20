@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+- Add opt-in TensorRT recognizer batches of eight and sixteen with bounded
+  stage profiling and a larger checked output-allocation ceiling for sixteen.
+  The one-time comparison was faster, but failed strict numerical agreement
+  and encountered an exit crash; retain batch one as the automatic default.
+  See `docs/uct_gpu_batching.md` for measurements and remaining limits.
+
+- Use a switch for the top-left Text Clarity control. Remember the shared UCT
+  preference across sessions, pausing it with Text Clarity and restoring it
+  with the other retained text settings when the master is enabled again.
+
 - Preserve word-local UCT colors on mixed button/document rows, identify the
   active GPU/CPU OCR backend accessibly, and recover paused text after transient
   recognition failures. Reduce cached GPU startup work and group OCR submissions;

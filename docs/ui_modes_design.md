@@ -102,9 +102,13 @@ Simple mode is the normal operating view:
   viewport pan and zoom do not detach marks from lecture content. Move
   selects one item with an explicit bounding box; Erase removes whole items.
   Closing the mode clears session ink after the configured annotated snapshot.
-- A large, button-styled `Text Clarity` checkbox beside Simple/Advanced is the only
+- A large `Text Clarity` switch beside Simple/Advanced is the only
   direct image-processing toggle in Simple mode. It automatically chooses
   paper/board/mixed behavior; all component parameters remain in Advanced.
+  It retains native Qt checked-state/keyboard accessibility. The shared UCT
+  opt-in is saved across sessions; switching Text Clarity off stops UCT without
+  clearing that preference or the retained fine-tune settings. Switching back on
+  restores the enabled components. UCT remains off by default for old settings.
 - Device selection and detailed numeric controls are intentionally absent.
 
 Adding a new profile must not create persistent chrome. It joins the mode grid

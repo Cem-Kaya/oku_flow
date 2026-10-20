@@ -16,7 +16,7 @@ namespace okuflow {
 namespace uct { struct BackendStatus; }
 
 // Native, screen-reader accessible Ultra Clear Text controls: an opt-in
-// switch, an always-available "show original" comparison switch, a polite
+// switch, a "show original" comparison while effectively enabled, a polite
 // status line and a selectable read-only pane with the accepted text.
 class UltraClearTextPanel final : public QWidget {
     Q_OBJECT
@@ -36,6 +36,8 @@ public:
     void SetModelSettings(const uct::ModelSettings& models);
 
     bool IsEnabledByUser() const;
+    void SetEnabledByUser(bool enabled);
+    void SetTextClarityEnabled(bool enabled);
     bool IsShowingOriginal() const;
     // Status is English source text routed through the translation catalog.
     // Visible text and accessible name update together without a timer;
@@ -64,6 +66,7 @@ private:
     QComboBox *gpuDetectorCombo_{}, *gpuRecognizerCombo_{}, *cpuDetectorCombo_{}, *cpuRecognizerCombo_{};
     QString statusSource_;
     QString backendSource_;
+    bool textClarityEnabled_{true};
 };
 
 } // namespace okuflow

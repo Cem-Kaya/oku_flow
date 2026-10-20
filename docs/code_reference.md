@@ -1440,7 +1440,8 @@ source changes make no measured throughput or latency claim.
   presenter readback ring; `OnCpuViewport` serves the CPU presentation path.
   Probes revalidate accepted lines and decide latest-only submissions; results
   return through queued calls and are admitted by `uct::OverlayModel`.
-- Off by default and session-only. `OkuFlowApp::InitializeUltraClearText()`
+- Off by default with a shared saved opt-in, gated by Text Clarity.
+  `OkuFlowApp::InitializeUltraClearText()`
   and `OkuFlowApp::UltraClearTextContext(...)` (in
   `src/app/app_ultra_clear_text.cpp`) provide production wiring; the
   controller member is declared last in `OkuFlowApp` so it retires first.
@@ -5915,3 +5916,41 @@ to request preferred-backend refinement without bypassing evidence admission.
 or neighbour work under the same ticket with bounded timers. New geometry revokes
 old callbacks; successful final one-shot analysis is not periodically repeated.
 See [color/readiness repair](uct_color_startup_repair.md) for limits and tests.
+
+### Text Clarity master and saved UCT intent (2026-10-20)
+
+`PersistentSettings::ultraClearTextEnabled` is the shared saved opt-in (missing or
+invalid JSON defaults off). `UltraClearTextController::SetEnabled` records user
+intent; `SetTextClarityEnabled` gates it and `ApplyEnabled` owns effective worker,
+glyph and UIA lifecycle. `IsEnabledByUser` is saved, while `IsEnabled` reports
+runtime use. The panel mirrors retained intent while its master is off, disabling
+the opt-in/comparison controls. Its setters update dependent state even under
+signal blocking. App initialization/settings restoration and Text Clarity handlers
+keep this gate current; quick-mode changes do not overwrite shared UCT intent.
+The corner switch uses first-party on/off SVG indicators on the existing native
+QCheckBox, preserving focus, Space activation and checked accessibility state.
+
+### Bounded TensorRT recognition microbatches (2026-10-20)
+
+`Network` caches its current shape and tensor bindings, accepts recognizer
+batch dimensions up to eight/sixteen and bounds checked output products before
+allocation. Exact wider-profile shapes extend recognizer cache identity while
+detector and legacy plans stay compatible. `State::recognizerBatch` controls
+input rectification, inference output offsets and distinct compact metadata
+slots; preparation can fall back through sixteen/eight/one. `TensorRtProfile`
+owns bounded opt-in CUDA events with the inference state and emits completed
+stage/call/allocation diagnostics. `uct_batch_test::CompareTensorRtBatches`
+retains finite same-input full-output comparisons separately from normal CTest.
+The automatic capacity remains one pending wider-profile acceptance. A profiling
+exception clears successful output before backend retirement, keeping a failed
+diagnostic from publishing successful text.
+`CreateTensorRtRecognizer` accepts an optional `TensorRtRetirementObserver` that
+receives the exact `AsyncCleanup` receipt without changing cleanup or quarantine.
+The callback is absent in production. The cached `optionalTensorRtRetirement`
+fixture waits in its isolated offscreen process for those closures before exit;
+nested analysis storage and vendor workers remain outside that receipt's scope.
+`uct_batch_test::RetirementReceipts` retains/polls these exact receipts after
+scheduler destruction, including early fixture assertion exits. The batch
+diagnostic selects explicit medium/medium or small/small tiers and records
+their immutable model pins before comparing each tier with its own batch one.
+See [GPU batching](uct_gpu_batching.md) for ceilings and evidence boundaries.

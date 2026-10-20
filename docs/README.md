@@ -1,5 +1,8 @@
 # OkuFlow Documentation Guide
 
+[GPU OCR batching](uct_gpu_batching.md) describes dynamic TensorRT batches,
+allocation ceilings and the finite latency/quality comparison.
+
 [UCT color and readiness repairs](uct_color_startup_repair.md) cover local word
 colors, active GPU/CPU status and paused-frame recovery.
 

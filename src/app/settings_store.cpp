@@ -657,6 +657,7 @@ namespace {
 std::optional<PersistentSettings> ParseSettingsRoot(const QJsonObject& root)
 {
     PersistentSettings settings;
+    settings.ultraClearTextEnabled = root.value(QStringLiteral("ultraClearTextEnabled")).toBool(false);
     const auto models = root.value(QStringLiteral("ultraClearTextModels")).toObject();
     const auto loadTier = [&](const char* key, uct::ModelTier fallback) {
         return uct::ParseModelTier(models.value(QLatin1String(key)).toString()).value_or(fallback);
@@ -979,6 +980,7 @@ std::optional<PersistentSettings> Load(const QString& path)
 QByteArray Serialize(const PersistentSettings& settings)
 {
     QJsonObject root;
+    root.insert(QStringLiteral("ultraClearTextEnabled"), settings.ultraClearTextEnabled);
     const auto& models=settings.ultraClearTextModels;
     root.insert(QStringLiteral("ultraClearTextModels"),QJsonObject{
         {QStringLiteral("gpuDetector"),uct::ModelTierToken(models.gpuDetector)},

@@ -935,10 +935,11 @@ void UltraClearTextTests::heldAcquisitionRetriesRejectedOcr()
         tick(heldPage, HoldDisplay::Held, acquisition);
         return calls() > afterRejected;
     })());
-    QTRY_VERIFY(([&] {
-        tick(heldPage, HoldDisplay::Held, acquisition);
-        return panel.readingPane()->toPlainText().contains("Additional");
-    })());
+    // The fresh retry has entered the recognizer. Waiting for that worker must
+    // not advance its injected wall clock by 100ms per polling iteration and
+    // expire this job too on a loaded runner. The deliberate 5-second jump
+    // above still proves that the original job was rejected as too old.
+    QTRY_VERIFY(panel.readingPane()->toPlainText().contains("Additional"));
     const int afterRetry = calls();
     for (int frame = 0; frame < 20; ++frame) tick(heldPage, HoldDisplay::Held, acquisition);
     QCOMPARE(calls(), afterRetry); // an admitted held acquisition is still read once

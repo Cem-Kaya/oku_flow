@@ -1798,6 +1798,11 @@ rows cover playback-to-pause transient faults and revocation of an old retry tim
 The real resident CUDA scheduler case includes a yellow selected word in an
 otherwise dark row, checking CPU/GPU local color/ink parity and zero image egress.
 Cached accessibility interfaces must reflect actual GPU/CPU backend switches.
+The immutable controller fixture also checks that the Text Clarity master stops
+recognition and revokes text while retaining UCT intent, resumes one-shot work
+when enabled, and respects an explicit UCT opt-out. Settings cover missing-key
+defaults and saved opt-in/out. Native UCT controls cover the disabled master state
+and retained checked preference through off/on transitions.
 The real Windows OCR fixture also requires runtime status publication after
 recognition, retaining its initialized CPU identity when used as a bridge.
 
@@ -1810,3 +1815,27 @@ automatic chain on its worker, logging first complete fallback and preferred GPU
 results, with 500-ms gaps and a 30-second horizon. It measures candidate completion,
 not glyph admission, native presentation or end-to-end latency. Local word-color
 diagnostics and word counts are observations, not recognition-accuracy assertions.
+
+`optionalTensorRtBatchComparison` is a separate, unregistered finite experiment.
+Set `OKUFLOW_UCT_BATCH_DIAGNOSTIC=1`, select a private source through
+`OKUFLOW_UCT_TEST_IMAGE` and use the full pinned TensorRT SDK for the explicitly
+authorized wider-plan preparations. It compares capacities 1/8/16, one warmup
+and three timed passes each, saving complete outputs and strict decision,
+geometry and confidence comparisons. Opt-in CUDA event diagnostics retain
+stage, allocation and binding evidence. They do not measure native latency or
+peak process VRAM. See [GPU batching](../docs/uct_gpu_batching.md).
+`OKUFLOW_UCT_BATCH_TEST_TIER=small` selects a separately authorized small/small
+comparison; the default is medium/medium. Output evidence includes exact model
+pins. Wider batches compare against their own model tier's batch-one output.
+The 2026-10-20 comparison retained every output but failed its strict numerical
+gate and crashed after QTest cleanup. Preserve that failed evidence; eight and
+sixteen remain opt-in, with batch one still the automatic default. This optional
+experiment is separate from the normal background CTest passes.
+
+`optionalTensorRtRetirement` is an independent one-pass cached-engine lifecycle
+diagnostic selected with `OKUFLOW_UCT_RETIREMENT_DIAGNOSTIC=1`, the private test
+image and an explicit inference-only TensorRT SDK folder. It refuses parser and
+builder resources, requires actual N16 GPU completion, destroys its scheduler
+and polls exact TensorRT State retirement receipts for at most ten seconds.
+Receipt completion excludes nested analysis storage/vendor workers; record the
+process exit code separately. It is not another throughput or quality comparison.

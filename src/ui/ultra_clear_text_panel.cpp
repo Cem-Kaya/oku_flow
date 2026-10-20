@@ -153,6 +153,19 @@ bool UltraClearTextPanel::IsEnabledByUser() const
     return enableCheckbox_->isChecked();
 }
 
+void UltraClearTextPanel::SetEnabledByUser(bool enabled)
+{
+    const QSignalBlocker blocker(enableCheckbox_);
+    enableCheckbox_->setChecked(enabled);
+    UpdateDependentState();
+}
+
+void UltraClearTextPanel::SetTextClarityEnabled(bool enabled)
+{
+    textClarityEnabled_ = enabled;
+    UpdateDependentState();
+}
+
 bool UltraClearTextPanel::IsShowingOriginal() const
 {
     return showOriginalCheckbox_->isChecked();
@@ -201,7 +214,7 @@ void UltraClearTextPanel::SetBackendStatus(const uct::BackendStatus& status)
         backendSource_ = source;
         SetLiveText(backendLabel_, source, LivePoliteness::kSilent);
     }
-    backendLabel_->setVisible(enableCheckbox_->isChecked() && !backendSource_.isEmpty());
+    backendLabel_->setVisible(textClarityEnabled_ && enableCheckbox_->isChecked() && !backendSource_.isEmpty());
 }
 
 void UltraClearTextPanel::SetReadingText(const QString& text)
@@ -268,7 +281,8 @@ void UltraClearTextPanel::SetReadingText(const QString& text)
 
 void UltraClearTextPanel::UpdateDependentState()
 {
-    const bool enabled = enableCheckbox_->isChecked();
+    enableCheckbox_->setEnabled(textClarityEnabled_);
+    const bool enabled = textClarityEnabled_ && enableCheckbox_->isChecked();
     showOriginalCheckbox_->setEnabled(enabled);
     readingPane_->setEnabled(true);
     backendLabel_->setVisible(enabled && !backendSource_.isEmpty());

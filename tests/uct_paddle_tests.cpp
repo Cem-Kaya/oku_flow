@@ -3,6 +3,7 @@
 #include "okuflow/cuda/uct_analysis_pool.hpp"
 #include "ultra_clear_text_test_support.hpp"
 #include "uct_startup_test_cases.hpp"
+#include "uct_batch_diagnostic.hpp"
 #include <QFontDatabase>
 #include <QPainter>
 #include <QJsonDocument>
@@ -493,6 +494,14 @@ class PaddleTests final : public QObject
             const QString expected=edges==0?"A B C":edges==1?"B C":edges==2?"A B":"B";
             QCOMPARE(text.join(' '),expected);
         }
+    }
+    void optionalTensorRtBatchComparison()
+    {
+        uct_batch_test::CompareTensorRtBatches();
+    }
+    void optionalTensorRtRetirement()
+    {
+        uct_batch_test::TensorRtRetirementDiagnostic();
     }
     void optionalAutomaticStartup()
     {

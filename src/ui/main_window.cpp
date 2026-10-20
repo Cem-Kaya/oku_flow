@@ -589,13 +589,17 @@ MainWindow::MainWindow()
         }
         QCheckBox#simpleTextClarityToggle:hover { background: palette(midlight); }
         QCheckBox#simpleTextClarityToggle:checked {
-            background: palette(highlight);
-            color: palette(highlighted-text);
             border-color: palette(highlight);
         }
         QCheckBox#simpleTextClarityToggle:focus { border: 3px solid palette(highlight); }
         QCheckBox#simpleTextClarityToggle:checked:focus { border: 3px solid #ffffff; }
-        QCheckBox#simpleTextClarityToggle::indicator { width: 24px; height: 24px; }
+        QCheckBox#simpleTextClarityToggle::indicator {
+            width: 48px; height: 28px;
+            image: url(:/okuflow/icons/switch-off.svg);
+        }
+        QCheckBox#simpleTextClarityToggle::indicator:checked {
+            image: url(:/okuflow/icons/switch-on.svg);
+        }
         QPushButton#simpleModeButton {
             border-top-right-radius: 0;
             border-bottom-right-radius: 0;
@@ -1078,8 +1082,7 @@ MainWindow::MainWindow()
     textClaritySectionLayout->addWidget(refinements);
     connect(textClarityCheckbox_, &QCheckBox::toggled, this,
             &MainWindow::refreshTextClarityUi);
-    // Ultra Clear Text (local OCR glyph overlay) is independent of the
-    // optical Text Clarity switch and stays off until the user opts in.
+    // UCT keeps a shared opt-in preference, gated by the Text Clarity master.
     ultraClearTextPanel_ = new UltraClearTextPanel();
     textClaritySectionLayout->addWidget(ultraClearTextPanel_);
 
@@ -2866,6 +2869,8 @@ void MainWindow::refreshTextClarityUi()
     textClarityFineSection_->headerWidget()->setToolTip(explanation);
     textClarityFineSection_->contentWidget()->setAccessibleDescription(explanation);
     textClarityFineSection_->contentWidget()->setEnabled(textClarityCheckbox_->isChecked());
+    if (ultraClearTextPanel_)
+        ultraClearTextPanel_->SetTextClarityEnabled(textClarityCheckbox_->isChecked());
 }
 
 void MainWindow::refreshSliderReadouts()

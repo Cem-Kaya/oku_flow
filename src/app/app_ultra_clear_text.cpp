@@ -15,10 +15,17 @@ void OkuFlowApp::InitializeUltraClearText()
     }
     const auto models=settingsController_->Settings().ultraClearTextModels;
     mainWindow_->ultraClearTextPanel()->SetModelSettings(models);
-    // UCT activation stays session-only; the model preferences persist.
+    // Restore intent separately from the Text Clarity master gate.
     ultraClearText_ = std::make_unique<UltraClearTextController>(
         mainWindow_->ultraClearTextOverlay(), mainWindow_->ultraClearTextPanel(),
         [models] { return uct::CreateDefaultRecognizer(models); });
+    ultraClearText_->SetTextClarityEnabled(autoTextClarityEnabled_);
+    ultraClearText_->SetEnabled(settingsController_->Settings().ultraClearTextEnabled);
+    connect(mainWindow_->ultraClearTextPanel(), &UltraClearTextPanel::enabledChanged,
+            this, [this](bool enabled) {
+                settingsController_->MutableSettings().ultraClearTextEnabled = enabled;
+                SavePersistentSettings();
+            });
     connect(mainWindow_->ultraClearTextPanel(),&UltraClearTextPanel::modelSettingsChanged,
             this,&OkuFlowApp::OnUltraClearTextModelsChanged);
     if (assistiveManager_ && mainWindow_->ultraClearTextOverlay()) {

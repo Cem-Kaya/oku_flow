@@ -1017,6 +1017,7 @@ void OkuFlowApp::OnTextClarityControlsChanged() {
     const bool wasZoomEnabled = zoomEnabled_;
     const float previousZoom = zoomAmount_;
     autoTextClarityEnabled_ = uiState_->textClarityCheckbox_ && uiState_->textClarityCheckbox_->isChecked();
+    if (ultraClearText_) ultraClearText_->SetTextClarityEnabled(autoTextClarityEnabled_);
     if (!autoTextClarityEnabled_ && assistiveManager_) assistiveManager_->ClearFocusWarning();
     backgroundFlattenEnabled_ = uiState_->backgroundFlattenCheckbox_ && uiState_->backgroundFlattenCheckbox_->isChecked();
     backgroundFlattenStrength_ = uiState_->backgroundFlattenStrengthSlider_

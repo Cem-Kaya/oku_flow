@@ -209,6 +209,8 @@ void OkuFlowApp::OnPresetSelectionChanged(QListWidgetItem* current, QListWidgetI
 }
 
 void OkuFlowApp::ApplyPersistentSettings(const settings::PersistentSettings settings) {
+    settingsController_->MutableSettings().ultraClearTextEnabled = settings.ultraClearTextEnabled;
+    if (ultraClearText_) ultraClearText_->SetEnabled(settings.ultraClearTextEnabled);
     if(mainWindow_ && mainWindow_->ultraClearTextPanel())
         mainWindow_->ultraClearTextPanel()->SetModelSettings(settings.ultraClearTextModels);
     // Callers can pass the controller's mutable settings. Applying controls
@@ -297,6 +299,8 @@ void OkuFlowApp::ApplyPersistentSettings(const settings::PersistentSettings sett
 }
 
 void OkuFlowApp::SavePersistentSettings() {
+    if (ultraClearText_)
+        settingsController_->MutableSettings().ultraClearTextEnabled = ultraClearText_->IsEnabledByUser();
     if(mainWindow_ && mainWindow_->ultraClearTextPanel())
         settingsController_->MutableSettings().ultraClearTextModels=mainWindow_->ultraClearTextPanel()->ModelSettings();
     // Only an explicit native source selection changes saved startup intent.

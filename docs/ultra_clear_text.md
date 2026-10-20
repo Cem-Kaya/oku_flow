@@ -1,5 +1,8 @@
 # Ultra Clear Text (experimental, development)
 
+See [GPU batch execution and measurement](uct_gpu_batching.md) for the wider
+recognizer profiles and their separate memory and latency evidence.
+
 ## Selected-video and held-frame authority (development)
 
 Saved playback and same-session recording rewind use the same UCT scheduler
@@ -27,7 +30,10 @@ See [screen-reader text and native acceptance limits](uct_screen_text_accessibil
 
 Ultra Clear Text (UCT) recognizes steady printed camera text on this computer
 and draws sharp, high-contrast letters over the original words. It is an
-opt-in, session-only development feature. It is **not** release-accepted, and
+opt-in development feature. The UCT preference is saved globally, while the
+Text Clarity master switch gates recognition and glyphs. Turning the master off
+retains UCT and fine-tune preferences; turning it on restores their use. Existing
+settings without a UCT preference default to off. It is **not** release-accepted, and
 nothing here claims recognition accuracy beyond the fixtures listed below.
 
 OCR is not optical sharpening. UCT replaces only words it has recognized and
@@ -40,7 +46,7 @@ accepted use cases. Use Show original to compare, especially for numbers.
 ## What the user gets
 
 - **Advanced Ã¢â€ â€™ Image Ã¢â€ â€™ Text clarity Ã¢â€ â€™ Ultra Clear Text (experimental)**. Off by
-  default and not persisted: it starts off on every launch.
+  default. The saved opt-in resumes when Text Clarity is enabled.
 - **Show original camera text**: always available while UCT is on; hides the
   sharp letters for comparison without stopping recognition.
 - **UCT advanced settings** below those switches has independent GPU and CPU

@@ -2,6 +2,13 @@
 
 ## Selected-video resource limits (development)
 
+The separate GPU OCR recognizer admits true batch capacities `1`, `8`, `16`
+through `OKUFLOW_UCT_TRT_BATCH` (default one; eight/sixteen experimental).
+N16 output tensors have a 1 GiB allocation ceiling; detector/N1/N8 tensors
+retain 256 MiB. This is an upper
+validation bound, not eager allocation or total VRAM budget; TensorRT builder
+workspace remains 256 MiB. See [batching and measurements](uct_gpu_batching.md).
+
 Playback uses resolution/stride/PAR-aware decoded admission with a 96 MiB
 minimum allowance and 256 MiB absolute ceiling, including consumer-held
 frames. This is a cap, not eager allocation. A complete working set must fit
@@ -48,7 +55,9 @@ the model-free fixture reconciles them against `pins.json`. Tiny detector uses
 `rec/{tiny,medium}`. Persistent `ultraClearTextModels` stores independent
 `gpuDetector`, `gpuRecognizer`, `cpuDetector`, `cpuRecognizer` tokens from
 `tiny|small|medium`. Missing/invalid values independently fall back to
-medium/medium on GPU and tiny/small on CPU. It never persists UCT activation.
+medium/medium on GPU and tiny/small on CPU. The shared Boolean
+`ultraClearTextEnabled` persists the opt-in; missing/non-Boolean values default
+off. Runtime use additionally requires the current Text Clarity master to be on.
 
 `OKUFLOW_UCT_ROOT` selects model/CPU files; otherwise an `ocr` directory beside
 the inner application is preferred when it contains a detector, then LocalAppData.

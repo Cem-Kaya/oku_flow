@@ -62,6 +62,9 @@ selected source and keeps your held position. Processed photos and saved drawing
 include eligible UCT text and ink; Original photos stay clean. These changes are not yet a
 published installer; see [development status](docs/accessible_video_implementation.md).
 
+Development UCT remembers your opt-in across launches. The Text Clarity switch
+pauses it without clearing your choice and restores it when switched on again.
+
 Record microphone audio or choose no microphone for silent video. Captures, readings and explanations gather in local HTML lecture notes. The default folder is `Documents\OkuFlow\`; you can choose another location.
 
 **Privacy-respecting local transcription:** open recorded-video notes in Chrome and choose Transcribe. Grant access to the folder containing your recording, then explicitly choose a speech model and processor in the [OkuFlow transcription tool](https://okuflow.com/transcribe/). First use downloads the selected model and runtime. Speech recognition runs on your own computer, without an inference server or audio/text upload. Returned text appears beneath the recording and is saved beside it as a transcript sidecar. Browser caches can be cleared or evicted, so a later session may need another download.

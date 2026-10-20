@@ -15,6 +15,7 @@
 #include <QSignalSpy>
 #include <QUuid>
 #include <QtTest>
+#include <QCheckBox>
 
 #include <atomic>
 #include <cmath>
@@ -370,6 +371,7 @@ struct ImmutableHarness {
 class UltraClearTextControllerTests final : public QObject {
     Q_OBJECT
 private slots:
+    void textClarityMasterPreservesUctPreference();
     void liveCameraIdenticalPixelsAcquireText_data();
     void liveCameraIdenticalPixelsAcquireText();
     void residentSelectedNeighbourUsesWorkerRegistration();
@@ -413,6 +415,36 @@ private slots:
     void gapReceiptSameFrameReprojectsRepeatedlyWithoutWork();
     void processingCorrespondenceGateRevokesTextAndUiaWithoutChangingPreference();
 };
+
+void UltraClearTextControllerTests::textClarityMasterPreservesUctPreference()
+{
+    ImmutableHarness h;
+    h.controller->SetTextClarityEnabled(false);
+    h.controller->SetEnabled(true);
+    QVERIFY(h.controller->IsEnabledByUser());
+    QVERIFY(!h.controller->IsEnabled());
+    QVERIFY(h.panel.enableCheckbox()->isChecked());
+    QVERIFY(!h.panel.enableCheckbox()->isEnabled());
+    QVERIFY(h.controller->SetImmutableScene(h.Scene()));
+    QTest::qWait(60);
+    QCOMPARE(h.script->calls.load(), 0);
+    h.controller->SetTextClarityEnabled(true);
+    QVERIFY(h.controller->IsEnabled());
+    QTRY_COMPARE(h.script->calls.load(), 1);
+    QTRY_VERIFY(!h.Reading().isEmpty());
+    h.controller->SetTextClarityEnabled(false);
+    QVERIFY(h.controller->IsEnabledByUser());
+    QVERIFY(h.Reading().isEmpty());
+    QVERIFY(h.overlay.Words().isEmpty());
+    h.controller->SetTextClarityEnabled(true);
+    QTRY_COMPARE(h.script->calls.load(), 2);
+    h.controller->SetEnabled(false);
+    h.controller->SetTextClarityEnabled(false);
+    h.controller->SetTextClarityEnabled(true);
+    QVERIFY(!h.controller->IsEnabled());
+    QVERIFY(!h.controller->IsEnabledByUser());
+    QVERIFY(!h.panel.enableCheckbox()->isChecked());
+}
 
 void UltraClearTextControllerTests::liveCameraIdenticalPixelsAcquireText_data()
 {

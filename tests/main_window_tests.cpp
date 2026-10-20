@@ -1054,8 +1054,10 @@ void MainWindowTests::ultraClearTextControlsHaveNativeGeometry()
     auto* enabled = panel->enableCheckbox();
     auto* original = panel->showOriginalCheckbox();
     QVERIFY(!enabled->isChecked());
-    QVERIFY(enabled->isEnabled()); // OCR works independently of CUDA refinements.
+    QVERIFY(!enabled->isEnabled());
     QVERIFY(!original->isEnabled());
+    window.textClarityCheckbox()->setChecked(true);
+    QVERIFY(enabled->isEnabled());
     scroll->ensureWidgetVisible(panel);
     QTRY_VERIFY(GlobalRect(scroll->viewport()).contains(GlobalRect(enabled)));
     QVERIFY2(ActivateFixtureWindow(enabled), test::ActivationFailureMessage());
@@ -1068,6 +1070,11 @@ void MainWindowTests::ultraClearTextControlsHaveNativeGeometry()
     QTRY_VERIFY(original->hasFocus());
     QTest::keyClick(original, Qt::Key_Space);
     QVERIFY(original->isChecked());
+    window.textClarityCheckbox()->setChecked(false);
+    QVERIFY(enabled->isChecked()); // master gating preserves the saved preference
+    QVERIFY(!enabled->isEnabled() && !original->isEnabled());
+    window.textClarityCheckbox()->setChecked(true);
+    QVERIFY(enabled->isChecked() && enabled->isEnabled() && original->isEnabled());
     for (QWidget* widget : {static_cast<QWidget*>(enabled), static_cast<QWidget*>(original),
                             static_cast<QWidget*>(panel->readingPane())}) {
         auto* accessible = QAccessible::queryAccessibleInterface(widget);

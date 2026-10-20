@@ -251,10 +251,20 @@ void UltraClearTextController::EnsureScheduler()
 
 void UltraClearTextController::SetEnabled(bool enabled)
 {
-    if (panel_ && panel_->enableCheckbox()->isChecked() != enabled) {
-        const QSignalBlocker blocker(panel_->enableCheckbox());
-        panel_->enableCheckbox()->setChecked(enabled);
-    }
+    enabledByUser_ = enabled;
+    if (panel_) panel_->SetEnabledByUser(enabled);
+    ApplyEnabled(enabledByUser_ && textClarityEnabled_);
+}
+
+void UltraClearTextController::SetTextClarityEnabled(bool enabled)
+{
+    textClarityEnabled_ = enabled;
+    if (panel_) panel_->SetTextClarityEnabled(enabled);
+    ApplyEnabled(enabledByUser_ && textClarityEnabled_);
+}
+
+void UltraClearTextController::ApplyEnabled(bool enabled)
+{
     if (enabled_ == enabled) {
         return;
     }

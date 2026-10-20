@@ -159,7 +159,9 @@ struct PresetDefinition {
 };
 
 struct PersistentSettings {
-    // Model preferences persist; UCT enable/show-original remain session-only.
+    // UCT preference is shared across quick modes; Text Clarity gates runtime use.
+    bool ultraClearTextEnabled{false};
+    // Model preferences persist; show-original remains session-only.
     uct::ModelSettings ultraClearTextModels;
     // UI language preference: a supported code from app_language.hpp (an
     // explicit choice) or "system". Empty also follows the Windows display

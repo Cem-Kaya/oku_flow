@@ -19,7 +19,8 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   for GPU (medium/medium by default) and CPU fallback (tiny/small). All three
   tiers use compiled immutable pins, native combo data and the same four
   Assistant/MCP image-setting fields. Model replacement retires old workers
-  asynchronously; activation remains session-only. See [UCT](ultra_clear_text.md).
+  asynchronously. The shared UCT opt-in preference persists; Text Clarity gates
+  runtime activation without clearing that preference. See [UCT](ultra_clear_text.md).
 - Experimental UCT has optional PP-OCRv6 TensorRT CUDA and ONNX Runtime CPU
   adapters, with built-in Windows OCR as the final fallback. Prepare pinned
   development inputs with `scripts/prepare_uct_runtime.ps1` (`-TensorRT` opts

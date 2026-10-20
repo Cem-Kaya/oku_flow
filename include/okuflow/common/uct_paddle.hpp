@@ -5,8 +5,12 @@
 #include <QDir>
 #include <QStringList>
 #include <array>
+#include <functional>
+#include <memory>
 #include <optional>
 #include <span>
+
+namespace okuflow { class AsyncCleanup; }
 
 namespace okuflow::uct
 {
@@ -47,10 +51,16 @@ struct PaddleToken
 };
 RecognizedLine PaddleDecodeTokens(std::span<const PaddleToken> tokens, int steps,
                                   const PaddleQuad &quad, const QStringList &dictionary);
+// Optional off-UI diagnostic receipt for an exact TensorRT State closure.
+// Completed means that closure was released after known stream completion;
+// nested AnalysisPool storage cleanup and vendor threads have separate lifetimes.
+// An observer exception is ignored and never changes cleanup/quarantine.
+using TensorRtRetirementObserver = std::function<void(std::shared_ptr<AsyncCleanup>)>;
 std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &root = {},
                                                      const QString &sdk = {},
                                                      ModelTier detector = ModelTier::Medium,
-                                                     ModelTier recognizer = ModelTier::Medium);
+                                                     ModelTier recognizer = ModelTier::Medium,
+                                                     TensorRtRetirementObserver retirementObserver = {});
 
 // All calls are worker-confined; the optional runtime is loaded by absolute path.
 class PaddleCpuSession
