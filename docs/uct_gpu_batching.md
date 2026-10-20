@@ -43,7 +43,12 @@ per wider profile, retains old plans and performs no download or cache clearing.
 `OKUFLOW_UCT_BATCH_TEST_TIER=small` selects both small models for the separately
 requested follow-up; the default `medium` selects both medium models. Model
 repositories, revisions and graph/configuration pins are recorded with the
-source and each output. Wider results compare with their own tier's batch one.
+source and each output. Independent optional overrides
+`OKUFLOW_UCT_BATCH_TEST_DETECTOR_TIER` and
+`OKUFLOW_UCT_BATCH_TEST_RECOGNIZER_TIER` accept `tiny`, `small` or `medium`;
+an omitted override inherits the selected shared tier. These are private test
+selectors, not application settings. Wider results compare with their own
+detector/recognizer pair's batch one.
 First completion including preparation is reported separately from steady work.
 Raw outputs and full word/geometry/confidence records stay in a unique
 `%LOCALAPPDATA%/OkuFlow/uct-batch-*` folder.
@@ -167,6 +172,60 @@ The full outputs/model pins are retained in `%LOCALAPPDATA%/OkuFlow/`
 Raw child logs/exits, cache/hardware inventories and derived analysis are under
 `uct-master-batching-20261020/`
 `retirement-small-run-20261020-045844-979e90515e6143b387eefed72b73d3f7/`.
+
+## Tiny detector / medium recognizer follow-up
+
+The separately requested mixed pair used the identical private frame and GPU,
+one warmup plus three timed passes per capacity. All four required plans were
+already cached with valid payload digests. The inference-only runtime contained
+no parser/builder resources; no plans were created, replaced or downloaded.
+All nine existing plan files retained their exact hashes.
+
+| Metric | Batch 1 | Batch 8 | Batch 16 |
+| --- | ---: | ---: | ---: |
+| Median scheduler worker, ms | 447.98 | 263.63 | 269.70 |
+| Timed worker range, ms | 413.54–453.73 | 243.90–266.54 | 264.05–287.13 |
+| Median OCR stream wall, ms | 391.05 | 211.21 | 217.10 |
+| Median detector event intervals, ms | 7.75 | 9.75 | 6.93 |
+| Median recognizer event intervals, ms | 354.29 | 176.70 | 189.44 |
+| Recognizer enqueues / crops | 171 / 171 | 23 / 171 | 13 / 171 |
+| Output tensor allocation, MiB | 9.14 | 73.09 | 146.17 |
+| First result including cached preparation, s | 3.03 | 2.28 | 2.49 |
+
+Batch eight reduced worker time by about 41% versus this pair's batch one;
+sixteen reduced it by about 40%. The lighter detector did not give the shortest
+complete read on this image: it produced 171 recognizer crops, versus 136 with
+the medium detector, about 26% more recognition work. Its detector was faster,
+but the medium recognizer still dominated. The earlier medium/medium N8 worker
+median was 218.43 ms and small/small N16 was 129.63 ms. Those are separate,
+non-interleaved runs, not a controlled universal ranking. Neither worker time
+nor OCR stream time reached the requested 16-ms target. Worker time includes
+the private image upload and CPU result preparation; these are not native
+camera/display latency or first admitted-glyph measurements.
+
+All mixed-pair variants retained 187 candidate words, 206 total tokens and 42
+lines with exact text/order/dispositions. This count is not accuracy evidence:
+170 case-sensitive candidate occurrences were shared with the medium/medium
+reference's 178 candidates; the differences include symbols and segmentation.
+The unchanged strict wider-batch comparison **failed**. N8/N16 both changed
+protected/search envelopes by up to 3.1946 source pixels; N8 changed a final
+fitted bound by one pixel, while N16 retained final bounds. Maximum confidence
+variation was 0.01910 for N8 and 0.03101 for N16, above the 0.001 limit.
+No acceptance limits or outputs were changed to obtain a pass. Batch one remains
+the application default; this experiment did not change model settings.
+
+All three exact TensorRT State retirement receipts completed. QTest retained
+its failed assertion and the process exited normally with code one, without an
+access violation. Full model/source pins and outputs are under
+`%LOCALAPPDATA%/OkuFlow/`
+`uct-batch-20261020-021407-9528d9b1-73a3-45eb-981c-5ff0293eb6ac/`.
+Raw logs/exits, before/after cache/hardware inventories and derived analysis are
+under `uct-tiny-medium-batching-20261020/`
+`run-20261020-021405-fd1b73707b0b4afaa6e93658dc38cc0e/`.
+
+The private diagnostic selector extension passed scoped `uct_paddle_processing`
+checks in both CPU and CUDA presets. It changes no production source and does
+not replace the integration matrix or establish native GUI/quality acceptance.
 
 ## Integration validation
 

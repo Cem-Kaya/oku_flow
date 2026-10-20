@@ -163,9 +163,9 @@ inline Agreement Compare(const RecognitionOutput& reference, const RecognitionOu
     return agreement;
 }
 
-// One explicitly authorized model-tier experiment: at most one preparation per
+// One explicitly authorized model-pair experiment: at most one preparation per
 // missing detector/recognizer profile, one warmup and three timed passes per
-// variant. Existing plans are preserved; wider batches compare to their tier's N1.
+// variant. Existing plans are preserved; wider batches compare to their pair's N1.
 // This diagnostic is intentionally not registered with CTest.
 inline void CompareTensorRtBatches()
 {
@@ -175,15 +175,23 @@ inline void CompareTensorRtBatches()
     if (tierToken.isEmpty()) tierToken = "medium";
     QVERIFY2(tierToken == "medium" || tierToken == "small",
              "OKUFLOW_UCT_BATCH_TEST_TIER must be medium or small.");
-    const auto tier = tierToken == "small" ? ModelTier::Small : ModelTier::Medium;
-    const auto assets = LoadPaddleAssets(DefaultPaddleRoot(), tier, tier);
+    auto detectorToken = qEnvironmentVariable("OKUFLOW_UCT_BATCH_TEST_DETECTOR_TIER");
+    auto recognizerToken = qEnvironmentVariable("OKUFLOW_UCT_BATCH_TEST_RECOGNIZER_TIER");
+    if (detectorToken.isEmpty()) detectorToken = tierToken;
+    if (recognizerToken.isEmpty()) recognizerToken = tierToken;
+    const auto detectorTier = ParseModelTier(detectorToken);
+    const auto recognizerTier = ParseModelTier(recognizerToken);
+    QVERIFY2(detectorTier.has_value(), "Detector tier must be tiny, small or medium.");
+    QVERIFY2(recognizerTier.has_value(), "Recognizer tier must be tiny, small or medium.");
+    const auto assets = LoadPaddleAssets(DefaultPaddleRoot(), *detectorTier, *recognizerTier);
     QVERIFY2(assets.IsValid(), qPrintable(assets.error));
-    const auto pinJson = [tier, &tierToken](bool detection) {
+    const auto pinJson = [detectorTier, recognizerTier](bool detection) {
+        const auto tier = detection ? *detectorTier : *recognizerTier;
         const auto& pin = *FindPaddleModelPin(detection, tier);
         const auto text = [](std::string_view value) {
             return QString::fromUtf8(value.data(), qsizetype(value.size()));
         };
-        return QJsonObject{{"tier", tierToken}, {"directory", text(pin.directory)},
+        return QJsonObject{{"tier", ModelTierToken(tier)}, {"directory", text(pin.directory)},
             {"modelSha256", text(pin.modelSha256)}, {"configSha256", text(pin.configSha256)},
             {"repository", text(pin.repository)}, {"revision", text(pin.revision)}};
     };
@@ -196,8 +204,8 @@ inline void CompareTensorRtBatches()
         "OkuFlow/uct-batch-" + QDateTime::currentDateTimeUtc().toString("yyyyMMdd-HHmmss") +
         "-" + QUuid::createUuid().toString(QUuid::WithoutBraces));
     QVERIFY(QDir().mkpath(evidence));
-    qInfo().noquote() << "TensorRT batch comparison detector=" << tierToken
-                     << "recognizer=" << tierToken << "evidence=" << evidence;
+    qInfo().noquote() << "TensorRT batch comparison detector=" << detectorToken
+                     << "recognizer=" << recognizerToken << "evidence=" << evidence;
     QVERIFY(Save(QDir(evidence).filePath("source.json"),
         {{"width", image.width()}, {"height", image.height()},
          {"models", models},
@@ -225,7 +233,7 @@ inline void CompareTensorRtBatches()
         const auto state = std::make_shared<State>();
         RetirementReceipts retirement;
         auto scheduler = std::make_unique<RecognitionScheduler>(
-            CreateTensorRtRecognizer(assets.root, {}, tier, tier, retirement.Observer()),
+            CreateTensorRtRecognizer(assets.root, {}, *detectorTier, *recognizerTier, retirement.Observer()),
             [state, elapsed](RecognitionResult result) {
                 std::lock_guard lock(state->mutex);
                 state->completed = Completion{std::move(result), state->backend, elapsed()};
@@ -315,7 +323,7 @@ inline void CompareTensorRtBatches()
         QVERIFY(Save(QDir(evidence).filePath(QString("batch%1-retirement.json").arg(batch)), retirementReport));
         QVERIFY2(retired.Passed(), "Exact TensorRT State retirement failed or exceeded 10 seconds; do not advance variants.");
     }
-    qInfo().noquote() << "TensorRT comparison tier=" << tierToken
+    qInfo().noquote() << "TensorRT comparison detector=" << detectorToken << "recognizer=" << recognizerToken
         << "mean scheduler-worker completionMs batch1=" << averageMs[0]
         << "batch8=" << averageMs[1] << "batch16=" << averageMs[2]
         << "allTimedQualityComparisonsPass=" << allAgree;

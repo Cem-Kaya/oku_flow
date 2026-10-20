@@ -1826,11 +1826,16 @@ stage, allocation and binding evidence. They do not measure native latency or
 peak process VRAM. See [GPU batching](../docs/uct_gpu_batching.md).
 `OKUFLOW_UCT_BATCH_TEST_TIER=small` selects a separately authorized small/small
 comparison; the default is medium/medium. Output evidence includes exact model
-pins. Wider batches compare against their own model tier's batch-one output.
-The 2026-10-20 comparison retained every output but failed its strict numerical
-gate and crashed after QTest cleanup. Preserve that failed evidence; eight and
-sixteen remain opt-in, with batch one still the automatic default. This optional
-experiment is separate from the normal background CTest passes.
+pins. Independent `OKUFLOW_UCT_BATCH_TEST_DETECTOR_TIER` and
+`OKUFLOW_UCT_BATCH_TEST_RECOGNIZER_TIER` overrides accept `tiny|small|medium`
+and otherwise inherit that shared tier. Wider batches compare against their
+own model pair's batch-one output.
+The first 2026-10-20 medium/medium comparison retained every output but failed
+its strict numerical gate and crashed after QTest cleanup. Small/small and
+tiny/medium follow-ups also failed strict agreement but exited normally after
+exact State retirement. Preserve the failed evidence; eight and sixteen remain
+opt-in, with batch one still the automatic default. These optional experiments
+are separate from the normal background CTest passes.
 
 `optionalTensorRtRetirement` is an independent one-pass cached-engine lifecycle
 diagnostic selected with `OKUFLOW_UCT_RETIREMENT_DIAGNOSTIC=1`, the private test

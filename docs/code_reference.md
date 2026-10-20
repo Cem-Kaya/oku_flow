@@ -5951,6 +5951,7 @@ fixture waits in its isolated offscreen process for those closures before exit;
 nested analysis storage and vendor workers remain outside that receipt's scope.
 `uct_batch_test::RetirementReceipts` retains/polls these exact receipts after
 scheduler destruction, including early fixture assertion exits. The batch
-diagnostic selects explicit medium/medium or small/small tiers and records
-their immutable model pins before comparing each tier with its own batch one.
+diagnostic defaults to medium/medium, supports the existing small/small selector
+and independent detector/recognizer tier overrides, and records both immutable
+model pins before comparing each pair with its own batch one.
 See [GPU batching](uct_gpu_batching.md) for ceilings and evidence boundaries.
