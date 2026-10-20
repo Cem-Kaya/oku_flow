@@ -3513,5 +3513,33 @@ Utilisez Connect ChatGPT dans l'onglet Assistant avancé pour vous connecter.</t
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>Pause indisponible : le cadrage affiché n’a pas pu être conservé à l’identique.</translation>
         </message>
-    </context>
+        <message>
+            <source>View video</source>
+            <translation>Regarder une vidéo</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Sélectionner une vidéo</translation>
+        </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>En pause tant que le mode « Très stable » est activé. L’image originale de la caméra est affichée.</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>Le texte original de la caméra est affiché.</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>La reconnaissance de texte est suspendue dans la vue composite de débogage. L’image d’origine de la caméra reste affichée.</translation>
+        </message>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>Moteur GPU utilisé : %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>Moteur CPU utilisé : %1</translation>
+    </message>
+</context>
 </TS>

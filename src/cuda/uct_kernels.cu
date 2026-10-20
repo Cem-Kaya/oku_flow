@@ -295,6 +295,36 @@ __global__ void emitBoxes(const Component *comps, int w, int h, int sw, int sh, 
     q.validWidth = max(1, static_cast<int>(ceilf(48 * qw / fmaxf(qh, 1))));
     quads[index] = q;
 }
+__global__ void recognitionWindows(const Quad* detected,int* count,Quad* windows)
+{
+    int written=0;
+    for(int index=0;index<min(*count,128);++index) {
+        const auto q=detected[index];
+        windows[written++]=q;
+        const float width=hypotf(q.xy[2]-q.xy[0],q.xy[3]-q.xy[1]);
+        const float height=hypotf(q.xy[6]-q.xy[0],q.xy[7]-q.xy[1]);
+        if(!isfinite(width) || !isfinite(height) || height<1 || width/height<=20)continue;
+        const int n=min(8,max(2,int(ceilf((width/height-8)/12))));
+        const float span=fmaxf(20,(width/height+8*(n-1))/n);
+        const float fraction=fminf(1,span*height/width);
+        for(int i=0;i<n;++i) {
+            const float start=i*(1-fraction)/(n-1),end=start+fraction;
+            auto window=q;
+            for(int axis=0;axis<2;++axis) {
+                window.xy[axis]=q.xy[axis]*(1-start)+q.xy[2+axis]*start;
+                window.xy[2+axis]=q.xy[axis]*(1-end)+q.xy[2+axis]*end;
+                window.xy[4+axis]=q.xy[6+axis]*(1-end)+q.xy[4+axis]*end;
+                window.xy[6+axis]=q.xy[6+axis]*(1-start)+q.xy[4+axis]*start;
+            }
+            const float ww=hypotf(window.xy[2]-window.xy[0],window.xy[3]-window.xy[1]);
+            const float wh=hypotf(window.xy[6]-window.xy[0],window.xy[7]-window.xy[1]);
+            window.validWidth=max(1,int(ceilf(48*ww/fmaxf(wh,1))));
+            window.internalEdges=(i>0?1:0)|(i+1<n?2:0);
+            windows[written++]=window;
+        }
+    }
+    *count=written;
+}
 __global__ void rectify(const unsigned char *pixels, std::size_t pitch, int w, int h,
                         const Quad *quads, int index, float *out, int ow)
 {
@@ -413,6 +443,10 @@ void Detect(const float *map, int w, int h, int sw, int sh, int *labels, Compone
     boxOffsets<<<1, 1, 0, s>>>(labels, blocks, count);
     emitBoxes<<<blocks, 256, 0, s>>>(comps, w, h, sw, sh, labels, quads);
 }
+void RecognitionWindows(const Quad* detected,int* count,Quad* windows,cudaStream_t stream)
+{
+    recognitionWindows<<<1,1,0,stream>>>(detected,count,windows);
+}
 void Rectify(const void *p, std::size_t pitch, int w, int h, const Quad *quads, int index,
              float *out, int ow, cudaStream_t s)
 {
@@ -426,3 +460,5 @@ void Decode(const float *p, int steps, int classes, const Quad *quads, int index
     compact<<<1, 1, 0, s>>>(ids, scores, steps, quads, index, cropWidth, tokens, count);
 }
 } // namespace okuflow::uct::gpu
+
+#include "uct_validation_kernels.cuh"

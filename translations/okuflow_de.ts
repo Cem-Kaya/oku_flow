@@ -3513,5 +3513,33 @@ Melden Sie sich auf der erweiterten Registerkarte Assistent über ChatGPT verbin
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>Pause nicht verfügbar: Der angezeigte Bildausschnitt konnte nicht exakt beibehalten werden.</translation>
         </message>
-    </context>
+        <message>
+            <source>View video</source>
+            <translation>Video ansehen</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Video auswählen</translation>
+        </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>Pausiert, solange „Besonders stabil“ aktiv ist. Das ursprüngliche Kamerabild wird angezeigt.</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>Der ursprüngliche Kameratext wird angezeigt.</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>In der Debug-Kompositansicht ist die Texterkennung angehalten. Das Originalkamerabild wird angezeigt.</translation>
+        </message>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>GPU-Backend aktiv: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>CPU-Backend aktiv: %1</translation>
+    </message>
+</context>
 </TS>

@@ -44,6 +44,47 @@ never a full release or native screen-reader acceptance claim.
 
 ## Optional PaddleOCR acceptance (2026-10-18)
 
+Processed-image export regressions use the production overlay and image writer.
+The offscreen UCT cases compare frozen vector commands with rendered glyph pixels,
+replay them on a worker after clearing/changing the live overlay, and check scaling,
+protected omissions, chrome exclusion and ink above text. Capturing must not change
+the screen's last-painted accessibility plan. The actual-app
+`processedPhotoAndDrawingIncludeUctAndInkWithCleanOriginal` case decodes the saved
+JPEG pair and drawing PNG, checks sharp UCT letters and ink, and verifies the entire
+Original stays clean. These are desktop-free synthetic-image contracts; they do
+not establish live-camera readback pairing or native screen-reader acceptance.
+The serial `recording_original_native` fixture also decodes changing Original
+colours through end of stream while the supplied legacy processed view remains
+unchanged. It proves recording continues independently of that display payload,
+with the actual CUDA bump-hold surface checked separately.
+
+`OriginalTextureAdvancesDuringExtraStableHoldTests` in `media_gpu_scene_cuda`
+constructs a production `CudaInteropSurface` with private scene, cache, Original
+textures and a shared fence. Sharp frames must establish a reference; uniform
+blur must hold that exact acquisition; recovery must produce a real crossfade
+and return to Live. Every frame's Original pixels must equal the current input
+exactly, including held/crossfade frames. Missing hold or recovery evidence fails
+the test. This window-free CUDA check does not use a camera or record a file;
+the native recorder test above independently checks encoded Original output.
+
+`heldFramesReadOnceAndCrossfadesRevoke` distinguishes a repeated held
+acquisition from new live evidence. It covers unchecked/missing line checks
+and late OCR after a composite probe. The frozen export comparison permits
+only one RGB channel unit of premultiplied edge-rounding between QWidget's
+backing layer and vector replay; alpha and all placement checks remain intact.
+Mismatch PNGs are retained below LocalAppData's `OkuFlow/test-evidence/uct-export-*`.
+Native asynchronous hold-refusal rows cover camera loss and recording
+finalization separately, preserving Live intent or an unavailable held-frame
+receipt as appropriate. They call the actual acceptance boundary without a
+device or native window.
+
+`heldAcquisitionRetriesRejectedOcr` exercises the controller's actual worker
+queues with synthetic held-image records. Three rows reject the blocked held
+job through a crossfade barrier, backend failure or expiry, then require a retry
+that reads additional text. The blocked input checksum and drained warm-up
+receipts keep the rejection attached to the intended job. Repeated accepted
+held frames must subsequently cause no additional recognition calls.
+
 `uct_paddle_processing` reconciles all six compiled tier pins against the
 preparation manifest (a declared runtime input). Settings/planner contracts
 cover GPU medium/medium and CPU tiny/small defaults, migration, closed enum
@@ -59,9 +100,13 @@ routine benchmark. All of these checks can run without foreground desktop use.
 normalization/region/CTC checks, missing/tampered model refusal and scripted
 backend initialization/runtime/exception/cancellation fallback. `uct_paddle_cuda`
 compares actual device normalization, quads, padded crops and CTC against CPU
-references and verifies two-slot owned snapshots, exact stamps and readback
-after source overwrite. It is serial with other `gpu` tests and does not open
-a native window. Neither fixture requires TensorRT or model downloads.
+references and verifies two-slot owned snapshots, exact stamps and explicit CPU
+readback after source overwrite. Resident-path cases guard both download APIs,
+compare GPU colors/ink geometry and motion/cropped-view validation with CPU
+references, check complete GPU fingerprints against a CPU SHA-256-tree oracle,
+and retain eight probes without pinning the two full-scene capture slots. A
+resident preparation failure must remain an input fault with zero image downloads.
+It is serial with other `gpu` tests and does not open a native window. Neither fixture requires TensorRT or model downloads.
 Input-copy faults are separately tested so one bad frame cannot exhaust the
 backend chain. Preparation tests keep CPU service available and promote the
 retained GPU candidate only when ready. A separate SDK-free build passes the
@@ -96,8 +141,8 @@ missing. TensorRT acceptance exercises system-memory upload and an independently
 owned direct device input, checking six known printed words. First use may
 compile model/GPU-specific cached plans on the OCR worker. Do not repeatedly
 delete caches or call this a general camera/FPS benchmark. The one-time RTX4090
-synthetic cold compilation was about 86 s; cached warm inference was 7–38 ms,
-CPU 96–142 ms across development runs. These are fixture observations, not
+synthetic cold compilation was about 86 s; cached warm inference was 7â€“38 ms,
+CPU 96â€“142 ms across development runs. These are fixture observations, not
 live-camera latency, GTX1070 validation, multilingual accuracy or render-tail
 acceptance. Keep fixture logs and SDK/model caches under LocalAppData, outside
 Git and installer staging. A background gate excluding native GUI is partial.
@@ -176,12 +221,12 @@ tracked `msvc-cpu` preset. Background checks run first through the existing
 gate. Native GUI checks then run serially on the remote Windows desktop and
 complete that same CPU inventory. An unavailable or locked input desktop is a
 failure, not an offscreen pass. Nothing installs a runner on the owner's PC.
-Before building, the workflow requests a 1920×1080 display on that disposable
-VM and verifies its actual size. The default 1024×768 clips large native windows
+Before building, the workflow requests a 1920Ã—1080 display on that disposable
+VM and verifies its actual size. The default 1024Ã—768 clips large native windows
 and changes geometry restoration. A refused/unchanged mode cannot pass GUI
 acceptance; the `desktop` manual scope checks only this prerequisite quickly.
 The first remote preparation verified session 2, the Default input desktop and
-an actual 1920×1080 mode change; no owner display settings were changed.
+an actual 1920Ã—1080 mode change; no owner display settings were changed.
 The contrast regression checks actual light/dark text pixels before and after
 a runtime scheme switch. Inspector panes explicitly paint the matching Window
 surface; native-style rendering cannot silently substitute a white pane.
@@ -193,7 +238,7 @@ are explicit additional modules.
 The host-protocol capture fixture streams until the client closes and has a one-second
 capture window; its packet/control assertions do not depend on 50 ms scheduling.
 
-In GitHub **Actions → Windows checks → Run workflow**, select `background`,
+In GitHub **Actions â†’ Windows checks â†’ Run workflow**, select `background`,
 `gui-all`, a `gui-state/layout/input/idle` group, or `two-cases`. The last option
 runs only the docking-hold and mouse-idle slots previously interrupted locally.
 Manual selections preserve every Qt data row and run each selected CTest entry
@@ -323,6 +368,28 @@ Without that environment, Qt may send its plain-text output to the system
 debugger instead. Keep original empty-output failures archived: a later local
 pass is diagnostic evidence, not proof of the original failure's cause.
 
+`main_window_interactions.bottomChromeRetainsNativeSizeDuringRefresh` is a
+serial native regression for folded toolbar flicker. Its six data rows cover
+wide controls, folded quick modes and folded quick modes/actions in LTR/RTL.
+It counts every native peer's synchronous Qt Resize event during unchanged
+activation refreshes, small window resizes within a layout range and native
+owner moves. The final sizes must remain stable and within the viewport.
+All four folded rows fail against the original live-trial-layout code, while
+the wide rows pass. Keep that failed evidence; an end-of-loop screenshot alone
+cannot detect the temporary wide windows. The ordinary translated geometry,
+focus and scaled movement tests remain separate checks.
+
+The toolbar repair's final tracked background matrix passes Release compilation,
+108 CPU cases (two contain optional skipped Qt rows) and the 17-case CUDA delta,
+with no whole-test skips or unresolved results. The six focused native GUI cases
+pass separately with no skipped rows. A 120-second isolated-settings runtime
+smoke also presents real 1280x720 virtual-camera frames through the CUDA/D3D
+path and exits normally, preserving the source settings hash. The profiler's
+incidental timing samples are not a new flicker/video-latency benchmark. The
+native regression supplies the interim resize-event evidence; end-state manual
+captures do not measure every compositor frame. Both requested Opus review
+attempts failed at the provider's API rate limit and produced no review.
+
 `PhoneCameraTests::alreadyBufferedFakeAdbRequestIsNotDiscarded` deliberately
 buffers a complete private host-version request before the fake adb handler
 starts. `FakePhoneAdb::Serve` must consume those bytes immediately instead of
@@ -335,6 +402,15 @@ letting the fake server accept either. Its worker must drain Qt's pending
 connection queue before waiting for a new arrival; the regression fails on the
 former unconditional wait. `FakePhoneAdb::ArrivalMode` selects normal traffic,
 an already-buffered request or this deterministic backlog without real devices.
+
+`canceledUsbRecoveryStopsPromptly` cancels from the fake server's health-probe
+callback, after its acknowledgement, rather than polling for arrival within one
+second of worker launch. Immediate and deliberately delayed (1,250 ms) startup
+rows share the same 500 ms cancellation limit, measured with steady-clock
+timestamps at cancellation and production-call completion. Setup has a separate
+five-second bound and reports observed services if no probe arrives. Exactly one
+health probe, a false recovery result and zero reconnects remain required. This
+is private loopback fixture evidence, not physical-phone recovery acceptance.
 
 Legacy recovery scans the native process inventory and deliberately fails closed
 when a candidate image disappears before classification. `adb_legacy_recovery`,
@@ -651,7 +727,7 @@ from camera/optics validation.
   times, checks active/next-session canvas selection, CPU ink snapshot/clear/
   undo/pan with clean originals, and BGRA-to-NV12 layout/color/padding rejection.
   It uses temporary user-data paths and no camera or encoder submission.
-- `media_writer_gpu_codecs` now exercises GPU → CPU red fallback → GPU in one
+- `media_writer_gpu_codecs` now exercises GPU â†’ CPU red fallback â†’ GPU in one
   writer, decodes 90 frames, checks increasing timestamps and fallback color,
   and retains AAC/finalization checks. Hardware absence retains the existing
   skip behavior; a supported encoder failure is a failure, not a skip.
@@ -1086,7 +1162,7 @@ fixtures do not establish compatibility with a live endpoint or rendered UI.
 ### Chat/control offscreen fixture and opt-in captures
 
 `agent_control_panel_headless` always uses Qt offscreen. Its focused cases cover
-sole master ownership, user-only grants, exact/expired approvals, canonical 90°
+sole master ownership, user-only grants, exact/expired approvals, canonical 90Â°
 orientation, unchanged approval Details selection/caret/scroll across refreshes,
 bounded activity, explicit testing, lease defaults/no widening,
 refused drafts, shared draft/attachment/keyboard submission, escaped messages,
@@ -1109,7 +1185,7 @@ no camera/provider/bridge/browser and claims no native focus or screen-reader
 acceptance. Serial disposable Windows native cases remain separate.
 
 Explicitly build `agent_control_capture` and run `--output` with an absolute
-LocalAppData folder. The real production MainWindow is rendered at 1672×941 to
+LocalAppData folder. The real production MainWindow is rendered at 1672Ã—941 to
 match the approved chat-first concept, with synthetic chat and pending photo
 approval, a settings drawer and AI Settings with built-in control on / external
 MCP off defaults. Settings round trips cover explicit opt-out, missing keys and
@@ -1638,3 +1714,170 @@ an automatic benchmark or a release FPS requirement. The measured report and
 per-trial CSV are in [the result](../docs/media_output_buffer_benchmark.md).
 The ordinary app retains one output because the measured tradeoff did not improve
 both throughput and tail latency across the target workloads.
+
+The resident UCT controller protocol also has hardware-free CPU oracles for live
+camera acquisition (including identical pixels and return from video), selected
+neighbour registration and no UI-thread analysis. These do not replace the actual
+CUDA fixture. The opt-in `optionalRealGpu` row now checks resident colors, ink
+geometry and line registration using real medium/medium TensorRT OCR output,
+in addition to verifying expected recognized words. It never downloads models.
+GPU parity includes opposite polarities, multiple lines, rejected middle spans,
+detached character marks, decimation 1/2/4, CPU descriptor uploads, compact batch
+indexing and cancelled checks. Immutable model tests reject neighbour checks
+with the wrong selected-job ticket, line count or matching policy.
+
+`uct_paddle_tests residentDensePageLatencyExperiment` is a separate opt-in
+one-time worker-latency experiment: set `OKUFLOW_UCT_RESIDENT_PERF=1`, use
+`QT_QPA_PLATFORM=offscreen` and the CUDA build/Qt runtime, then save QtTest output
+under LocalAppData. It compares 60 synthetic lines after one warm-up and three
+measured trials, asserting registration without a fragile timing threshold.
+It excludes real inference, capture, presentation and sensor-to-photon latency;
+ordinary CTest never reruns this timing experiment.
+
+
+UCT residual workers validate resident lines in 64-line chunks, preserving checked
+prefixes when their budget expires or the consumer cancels. A hardware-free oracle
+covers a 1100-line input and exact unchecked tails. The regular CUDA batch case
+uses distinct line contents, different motion/occlusion outcomes, an invalid
+middle entry and a CPU descriptor; each slot is compared with the CPU oracle.
+
+PR10's original CI evidence retained a 60-second aggregate timeout after 31
+completed `immutable_uct_contract` rows. Its suite deadline is now 120 seconds;
+per-row QTRY limits/assertions and the full inventory remain unchanged. This does
+not classify a timeout as a pass or erase the archived attempt. The native German
+bottom-toolbar regression remains required; offscreen cell-minimum and cancelled
+video-picker/phone-light cases complement it without desktop or real-device claims.
+
+### Compact video transport and dense UCT checks
+
+`video_transport_contract` now embeds the production icon resource collection
+and verifies the one-row controls/scrubber, narrow secondary-row fallback,
+translated accessible names, focus, seek actions and state-dependent faces.
+For optional Qt-offscreen widget captures, set
+`OKUFLOW_TRANSPORT_PREVIEW_DIR` and invoke its wide/narrow layout slots; these
+images do not establish native UIA/focus acceptance.
+
+`uct_paddle_processing` covers detail crop coverage, overlap/edge policy, word
+reconciliation, coordinate mapping and long-line recognition windows.
+`uct_paddle_cuda` compares actual GPU/CPU recognition-window metadata and retains
+resident-input/validation/quarantine cases. `optionalDenseImage` is an unregistered,
+explicit private-image diagnostic: set `OKUFLOW_UCT_TEST_IMAGE` and optionally
+`OKUFLOW_TEST_PADDLE_GPU=1`, then invoke that slot directly. Inspect its actual
+text; candidate word counts alone are not recognition accuracy.
+
+The actual-app offscreen selected-media fixture checks 250 view replays with
+fresh same-sample allocations at an 8-ms simulated clock interval, retaining the
+same UCT lease and retry budget. The external native video fixture includes
+3/7/13/23-second seeks in addition to Open/1-second/End checks. Private recordings
+and extracted frames stay outside Git. Deadline, cancellation and memory-credit
+bounds remain unchanged; native desktop/display-rate acceptance is separate.
+
+The default `video_playback_contract` also decodes the committed original
+`tests/data/long-gop-h264.mp4`: 192×128, 60 fps, 5.2 seconds with a single long
+GOP, no audio. It seeks past 120 preroll samples and checks latest-target
+supersession, without a runtime encoder, downloaded footage or GPU requirement.
+The absolute file is a CTest `REQUIRED_FILES` input. Generation used the owner's
+separately installed FFmpeg/libx264, neither redistributed:
+
+```text
+ffmpeg -f lavfi -i testsrc2=size=192x128:rate=60 -t 5.2 -c:v libx264 -preset veryfast -crf 32 -g 360 -keyint_min 360 -sc_threshold 0 -bf 0 -pix_fmt yuv420p -an -movflags +faststart tests/data/long-gop-h264.mp4
+```
+
+Reviewed SHA-256: `5459ddb3da0ab0819b015d967e5ef1dfd0d513b9efcb45e357d636a8dbc62dca`.
+The native AVC/AV1 fixtures additionally copy their own finalized output to a
+private observed archive, prove its duration, revoke its bytes by truncation,
+then verify finalization retains only historical mapping and denies old reads.
+This deterministically exercises the finalizer-duration race; no owner media is
+modified. Initial AV1 failure evidence is retained.
+
+The UCT readiness fixture includes `uct_startup_test_cases.hpp` through moc-visible
+Paddle test wrappers in the tracked `uct_paddle_processing` command. It checks
+Windows preparation bridging, GPU promotion, failed preparation fallback and
+cancellation/input faults without real models or downloads. Immutable controller
+rows cover playback-to-pause transient faults and revocation of an old retry timer.
+The real resident CUDA scheduler case includes a yellow selected word in an
+otherwise dark row, checking CPU/GPU local color/ink parity and zero image egress.
+Cached accessibility interfaces must reflect actual GPU/CPU backend switches.
+The immutable controller fixture also checks that the Text Clarity master stops
+recognition and revokes text while retaining UCT intent, resumes one-shot work
+when enabled, and respects an explicit UCT opt-out. Settings cover missing-key
+defaults and saved opt-in/out. Native UCT controls cover the disabled master state
+and retained checked preference through off/on transitions.
+Paused scrolling regressions keep one region fixed while moving readable words
+by 80 scene pixels in the real neighbour. CPU and resident-protocol rows require
+all independently checked words at the selected frame's coordinates, no UI-thread
+pixel work, no resident image readback and exactly two one-shot OCR jobs.
+The real Windows OCR fixture also requires runtime status publication after
+recognition, retaining its initialized CPU identity when used as a bridge.
+
+`optionalAutomaticStartup` is an unregistered private-image diagnostic. Explicitly
+set `OKUFLOW_UCT_STARTUP_DIAGNOSTIC=1` and `OKUFLOW_UCT_TEST_IMAGE`; optional
+`OKUFLOW_TEST_PADDLE_GPU=1` requires eventual usable GPU completion. Prepare the
+pinned models and compatible engine plans beforehand; do not clear caches or use
+this as a cold compilation benchmark. The real scheduler initializes and runs the
+automatic chain on its worker, logging first complete fallback and preferred GPU
+results, with 500-ms gaps and a 30-second horizon. It measures candidate completion,
+not glyph admission, native presentation or end-to-end latency. Local word-color
+diagnostics and word counts are observations, not recognition-accuracy assertions.
+
+`optionalTensorRtBatchComparison` is a separate, unregistered finite experiment.
+Set `OKUFLOW_UCT_BATCH_DIAGNOSTIC=1`, select a private source through
+`OKUFLOW_UCT_TEST_IMAGE` and use the full pinned TensorRT SDK for the explicitly
+authorized wider-plan preparations. It compares capacities 1/8/16, one warmup
+and three timed passes each, saving complete outputs and strict decision,
+geometry and confidence comparisons. Opt-in CUDA event diagnostics retain
+stage, allocation and binding evidence. They do not measure native latency or
+peak process VRAM. See [GPU batching](../docs/uct_gpu_batching.md).
+`OKUFLOW_UCT_BATCH_TEST_TIER=small` selects a separately authorized small/small
+comparison; the default is medium/medium. Output evidence includes exact model
+pins. Independent `OKUFLOW_UCT_BATCH_TEST_DETECTOR_TIER` and
+`OKUFLOW_UCT_BATCH_TEST_RECOGNIZER_TIER` overrides accept `tiny|small|medium`
+and otherwise inherit that shared tier. Wider batches compare against their
+own model pair's batch-one output.
+The first 2026-10-20 medium/medium comparison retained every output but failed
+its strict numerical gate and crashed after QTest cleanup. Small/small and
+tiny/medium follow-ups also failed strict agreement but exited normally after
+exact State retirement. Preserve the failed evidence; eight and sixteen remain
+opt-in, with batch one still the automatic default. These optional experiments
+are separate from the normal background CTest passes.
+
+`optionalTensorRtRetirement` is an independent one-pass cached-engine lifecycle
+diagnostic selected with `OKUFLOW_UCT_RETIREMENT_DIAGNOSTIC=1`, the private test
+image and an explicit inference-only TensorRT SDK folder. It refuses parser and
+builder resources, requires actual N16 GPU completion, destroys its scheduler
+and polls exact TensorRT State retirement receipts for at most ten seconds.
+Receipt completion excludes nested analysis storage/vendor workers; record the
+process exit code separately. It is not another throughput or quality comparison.
+
+`optionalCharacterChangeCpu` / `optionalCharacterChangeGpu` are unregistered,
+finite verifier diagnostics enabled by `OKUFLOW_UCT_CHARACTER_DIAGNOSTIC=1`.
+Select one slot explicitly. They test signs, decimals, operators and similar
+letters through production probes, with small-print and synthetic translation
+controls; the GPU variant requires resident samples without pixel/feature egress.
+Raw case outputs and false accepts/hides are retained under a unique LocalAppData
+directory. Diagnostic PASS is report completion, not a passing quality gate for
+region reuse. See [character verification](../docs/uct_character_verification.md).
+
+`optionalResidentBaseline` is a separate explicit, unregistered SubmitDevice
+benchmark, with cached verified plans, an inference-only SDK, independent owned
+input and no image egress. It measures real resident reference/color/ink work
+separately from the OCR stream and CPU publication. Seeded paired rounds support
+independent tiers at capacities 1/8/16, up to four sources, complete output and
+strict comparison evidence. Its model-free selector/comparison/validity and
+exact-byte cache checks run in `uct_paddle_processing` via
+`residentDiagnosticSelectionAndComparison`. See the finite
+[resident protocol](../docs/uct_resident_baseline.md); this is not a native
+display/accessibility latency benchmark, and a State receipt is not process exit.
+
+
+### Frozen resident UCT comparison
+
+The opt-in `optionalResidentBaseline` slot additionally accepts
+`OKUFLOW_UCT_RESIDENT_FROZEN_CROPS=1`; no ordinary CTest case enables it. It
+requires profiling and a common detector tier and retains at most four owned
+source leases. The first full job records detector windows, then timed jobs
+assert zero detector calls while replaying those windows across model/capacity
+variants. This completes recognizer isolation separately from complete-path
+SubmitDevice measurements. The original strict assertion remains unchanged;
+`userTenPixelConfidenceVariationPass` is a separate owner-authorized policy.
+See `docs/uct_resident_baseline.md` and `docs/uct_batch8_quality_acceptance.md`.

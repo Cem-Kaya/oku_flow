@@ -1,4 +1,5 @@
 #include "okuflow/ui/ultra_clear_text_panel.hpp"
+#include "okuflow/common/ultra_clear_text.hpp"
 
 #if defined(_WIN32)
 
@@ -106,6 +107,15 @@ UltraClearTextPanel::UltraClearTextPanel(QWidget* parent)
         modelControls->setVisible(expanded);
     });
 
+    backendLabel_ = new QLabel(this);
+    backendLabel_->setObjectName(QStringLiteral("ultraClearTextBackend"));
+    backendLabel_->setWordWrap(true);
+    backendLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
+    backendLabel_->setFocusPolicy(Qt::TabFocus);
+    backendLabel_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    layout->addWidget(backendLabel_);
+    backendLabel_->hide();
+
     statusLabel_ = new QLabel();
     statusLabel_->setObjectName(QStringLiteral("ultraClearTextStatus"));
     statusLabel_->setWordWrap(true);
@@ -143,6 +153,19 @@ bool UltraClearTextPanel::IsEnabledByUser() const
     return enableCheckbox_->isChecked();
 }
 
+void UltraClearTextPanel::SetEnabledByUser(bool enabled)
+{
+    const QSignalBlocker blocker(enableCheckbox_);
+    enableCheckbox_->setChecked(enabled);
+    UpdateDependentState();
+}
+
+void UltraClearTextPanel::SetTextClarityEnabled(bool enabled)
+{
+    textClarityEnabled_ = enabled;
+    UpdateDependentState();
+}
+
 bool UltraClearTextPanel::IsShowingOriginal() const
 {
     return showOriginalCheckbox_->isChecked();
@@ -174,12 +197,24 @@ void UltraClearTextPanel::SetStatus(const QString& sourceText, bool important)
         return;
     }
     statusSource_ = sourceText;
-    if (important) {
-        SetLiveText(statusLabel_, sourceText, LivePoliteness::kPolite);
-    } else {
-        // Routine transitions coalesce silently instead of interrupting speech.
-        SetLiveTextCoalesced(statusLabel_, sourceText, LivePoliteness::kSilent);
+    // Semantic state is current immediately, including for an already cached
+    // accessibility interface. Silence controls unsolicited speech, not tree
+    // freshness; only rapidly changing numerical diagnostics need coalescing.
+    SetLiveText(statusLabel_, sourceText,
+                important ? LivePoliteness::kPolite : LivePoliteness::kSilent);
+}
+
+void UltraClearTextPanel::SetBackendStatus(const uct::BackendStatus& status)
+{
+    const QString source = status.state == uct::BackendState::kReady && !status.name.isEmpty()
+        ? (status.usesGpu ? QStringLiteral("Using GPU backend: %1")
+                          : QStringLiteral("Using CPU backend: %1")).arg(status.name)
+        : QString{};
+    if (backendSource_ != source) {
+        backendSource_ = source;
+        SetLiveText(backendLabel_, source, LivePoliteness::kSilent);
     }
+    backendLabel_->setVisible(textClarityEnabled_ && enableCheckbox_->isChecked() && !backendSource_.isEmpty());
 }
 
 void UltraClearTextPanel::SetReadingText(const QString& text)
@@ -246,9 +281,11 @@ void UltraClearTextPanel::SetReadingText(const QString& text)
 
 void UltraClearTextPanel::UpdateDependentState()
 {
-    const bool enabled = enableCheckbox_->isChecked();
+    enableCheckbox_->setEnabled(textClarityEnabled_);
+    const bool enabled = textClarityEnabled_ && enableCheckbox_->isChecked();
     showOriginalCheckbox_->setEnabled(enabled);
     readingPane_->setEnabled(true);
+    backendLabel_->setVisible(enabled && !backendSource_.isEmpty());
 }
 
 } // namespace okuflow

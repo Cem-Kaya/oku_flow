@@ -3513,5 +3513,33 @@ Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>Pauzeren niet beschikbaar: het weergegeven kader kon niet exact worden behouden.</translation>
         </message>
-    </context>
+        <message>
+            <source>View video</source>
+            <translation>Video bekijken</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Video selecteren</translation>
+        </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>Gepauzeerd zolang Extra stabiel aanstaat. Het oorspronkelijke camerabeeld wordt getoond.</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>De oorspronkelijke cameratekst wordt weergegeven.</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>Tekstherkenning is gepauzeerd in de samengestelde debugweergave. Het oorspronkelijke camerabeeld blijft zichtbaar.</translation>
+        </message>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>GPU-backend actief: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>CPU-backend actief: %1</translation>
+    </message>
+</context>
 </TS>

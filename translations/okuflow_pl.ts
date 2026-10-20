@@ -3513,5 +3513,33 @@ Wybierz „Połącz z ChatGPT” na karcie Asystent w trybie zaawansowanym, aby 
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>Pauza niedostępna: nie udało się dokładnie zachować wyświetlanego kadru.</translation>
         </message>
-    </context>
+        <message>
+            <source>View video</source>
+            <translation>Wyświetl wideo</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Wybierz wideo</translation>
+        </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>Wstrzymano, gdy włączony jest tryb „Bardzo stabilny”. Wyświetlany jest oryginalny obraz z kamery.</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>Wyświetlany jest oryginalny tekst z kamery.</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>Rozpoznawanie tekstu w złożonym widoku debugowania jest wstrzymane. Oryginalny obraz z kamery jest wyświetlany.</translation>
+        </message>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>Używany silnik GPU: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>Używany silnik CPU: %1</translation>
+    </message>
+</context>
 </TS>

@@ -3513,5 +3513,33 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>Duraklatılamıyor: görüntülenen kadraj aynen korunamadı.</translation>
         </message>
-    </context>
+        <message>
+            <source>View video</source>
+            <translation>Video izle</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Video seç</translation>
+        </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>Ekstra sabitleme açıkken duraklatılır. Kameranın orijinal görüntüsü gösterilir.</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>Orijinal kamera metni gösteriliyor.</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>Birleştirilmiş hata ayıklama görünümünde metin tanıma duraklatıldı. Orijinal kamera görüntüsü gösteriliyor.</translation>
+        </message>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>GPU ile çalışıyor: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>CPU ile çalışıyor: %1</translation>
+    </message>
+</context>
 </TS>

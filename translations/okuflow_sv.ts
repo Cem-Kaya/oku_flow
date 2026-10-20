@@ -3513,5 +3513,33 @@ Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>Det går inte att pausa: den visade bildens utsnitt kunde inte behållas exakt.</translation>
         </message>
-    </context>
+        <message>
+            <source>View video</source>
+            <translation>Visa video</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Välj video</translation>
+        </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>Pausad medan Extra stabil är på. Den ursprungliga kamerabilden visas.</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>Den ursprungliga kameratexten visas.</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>Textigenkänningen är pausad i den sammansatta felsökningsvyn. Den ursprungliga kamerabilden visas.</translation>
+        </message>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>OCR använder GPU: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>OCR använder CPU: %1</translation>
+    </message>
+</context>
 </TS>

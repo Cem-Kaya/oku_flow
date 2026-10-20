@@ -293,6 +293,7 @@ struct StabilizationState;
 struct TripodReferenceFeature;
 struct TripodMatchCandidate;
 struct BumpHoldState;
+struct BumpHoldProvenance;
 
 class CudaInteropSurface {
 public:
@@ -321,8 +322,15 @@ public:
     // Busy queues no work and sets LastFailureWasBusy(); retry the same frame.
     bool PrepareMediaBgraInput(unsigned int width, unsigned int height,
                                int rotationQuarterTurns, bool deviceResident);
+    // Extra Stable captures also copy the frame's compact device hold record;
+    // UCT workers read it after the copy, so held/crossfade pixels are never
+    // mistaken for the newer acquisition that triggered their presentation.
     void EnableUctAnalysis(bool enabled);
     bool UctAnalysisFailed() const;
+    // Explicit desktop-free fault seam (fixtures only): the next UCT-only
+    // allocation of this kind fails as clean pressure, exercising its latch.
+    enum class UctAllocationFault { TemporalHistory, ReplaySnapshot };
+    static void InjectUctAllocationFailureForTesting(UctAllocationFault which);
     uct::SharedDeviceImage TakeUctAnalysis() { return std::move(uctAnalysisFrame_); }
     const std::string& LastError() const { return lastError_; }
     bool LastFailureWasBusy() const { return uploadAdmissionBusy_; }
@@ -439,6 +447,22 @@ private:
     void ImportFenceSemaphore(ID3D12Device* device, ID3D12Fence* fence);
     bool EnsureDeviceBuffers(unsigned int width, unsigned int height, CudaBufferFormat format);
     bool EnsureTemporalHistory(unsigned int width, unsigned int height);
+    // UCT-only and nonthrowing. A failed size stays latched (no allocation,
+    // free or stream drain per frame) until an explicit reset or a new size.
+    bool EnsureUctTemporalBuffers(unsigned int width, unsigned int height);
+    // Lazily allocates the media replay snapshots for the UCT temporal
+    // history/smoothed image. Only called when UCT temporal smoothing is
+    // actually wanted; failure is UCT-only, never throws, and is latched
+    // separately from the live EMA until an explicit reset.
+    bool EnsureUctSnapshotBuffers();
+    void ReleaseUctTemporalBuffers();
+    // True reset: new history epoch; live history and replay snapshot revoked.
+    void ResetUctTemporalHistory();
+    // Explicit resets (UCT toggle, public history reset) may retry once.
+    void ClearUctAllocationFailures();
+    // Paused media refresh after a true reset: seeds a new one-frame EMA
+    // from the saved current geometry. Attempted once per reset.
+    bool RegenerateUctSmoothedSnapshot();
     bool EnsureStabilizationBuffers(unsigned int width, unsigned int height);
     bool EnsureRawInputBuffers(unsigned int width, unsigned int height, int format);
     // streamAlreadyIdle is only for pre-fence media admission after PollIdle.
@@ -477,6 +501,9 @@ private:
     void RunKeystoneStage(uchar4*& current, uchar4*& alternate,
                           size_t& currentPitch, size_t& alternatePitch);
     void ConsumeKeystoneDetection();
+    // Keystone host state only; the public ResetKeystone also restarts the
+    // UCT history. The per-frame keystone-off path must not reseed UCT.
+    void ResetKeystoneState();
     void RememberKeystoneCorrection();
     void RestoreKeystoneCorrection();
     void ResetKeystoneCornersToIdentity();
@@ -571,6 +598,33 @@ private:
     unsigned int historyWidth_{};
     unsigned int historyHeight_{};
     bool temporalHistoryValid_{};
+    // UCT-only neutral temporal EMA (post-geometry, pre-effects). Its own
+    // history/scratch; never the display temporal buffer. Allocated once at
+    // surface size, released only with the other device buffers. Cost while
+    // retained: 20 bytes/pixel per surface (float4 history + BGRA scratch);
+    // media replay snapshots add another 20. Kept across UCT toggles: legacy
+    // free/realloc would synchronize, and cleanup never drains on the UI.
+    float4* deviceUctTemporalHistory_{};
+    size_t deviceUctHistoryPitch_{};
+    uchar4* deviceUctSmoothed_{};
+    size_t deviceUctSmoothedPitch_{};
+    unsigned int uctTemporalWidth_{};
+    unsigned int uctTemporalHeight_{};
+    bool uctTemporalValid_{};
+    bool uctTemporalFailed_{};
+    // Allocation failure latches: the EMA by size, media snapshots per surface.
+    unsigned int uctAllocationFailedWidth_{};
+    unsigned int uctAllocationFailedHeight_{};
+    bool uctSnapshotFailed_{};
+    std::uint64_t uctHistoryEpoch_{1};
+    std::uint64_t uctSeedFrame_{};
+    std::uint64_t uctBlendCount_{};
+    float uctTemporalAlpha_{};
+    std::uint64_t uctIdentityEpoch_{};
+    int uctIdentityRotation_{};
+    bool uctIdentityStabilization_{};
+    bool uctIdentityKeystone_{};
+    bool uctIdentityValid_{};
     float* deviceStabLuma_{};
     float* deviceStabLumaPrevious_{};
     float* deviceStabLumaReference_{};
@@ -598,6 +652,9 @@ private:
     uchar4* deviceBumpHoldFrame_{};
     size_t deviceBumpHoldPitch_{};
     BumpHoldState* deviceBumpHoldState_{};
+    // Written every Extra Stable frame (even while UCT is off) so a later UCT
+    // enable during a hold still knows which acquisition is being shown.
+    BumpHoldProvenance* deviceBumpHoldProvenance_{};
     float* deviceStabColProjCurr_{};
     float* deviceStabRowProjCurr_{};
     float* deviceStabColProjPrev_{};

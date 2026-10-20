@@ -3513,5 +3513,33 @@ Use «Connect ChatGPT» en la pestaña Asistente del modo avanzado para iniciar 
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>No se puede pausar: no se pudo conservar exactamente el encuadre mostrado.</translation>
         </message>
-    </context>
+        <message>
+            <source>View video</source>
+            <translation>Ver vídeo</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Seleccionar vídeo</translation>
+        </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>En pausa mientras «Estabilidad extra» está activada. Se muestra la imagen original de la cámara.</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>Se muestra el texto original de la cámara.</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>El reconocimiento de texto está pausado en la vista compuesta de depuración. Se muestra la imagen original de la cámara.</translation>
+        </message>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>Motor GPU en uso: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>Motor CPU en uso: %1</translation>
+    </message>
+</context>
 </TS>

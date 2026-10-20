@@ -784,6 +784,7 @@ void AppControlTarget::CancelPhotoReadback() {
     if (operation && (operation->state == OperationState::Queued || operation->state == OperationState::Readback)) {
         PhotoState(operation->id,OperationState::Failed);
         app_.photoCapturePending_ = false; app_.pendingPhotoReadbackId_ = 0; app_.pendingPhotoOriginal_ = {};
+        app_.pendingPhotoOverlays_ = {};
     }
 }
 void AppControlTarget::RecordingEnded(const RecordingSessionInfo& session) {

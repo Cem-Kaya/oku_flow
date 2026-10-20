@@ -865,3 +865,25 @@ aligned with the project goals.
   `docs/media_output_buffer_benchmark.md` and `tests/README.md`.
 - Prefer exact resource-owner completion for fixture teardown; do not wait for
   unrelated persistent graphics-library threads or terminate an owner's app.
+
+## Paired temporal UCT analysis (2026-10-19)
+- CUDA Temporal Smooth is an explicit exception to the earlier blanket UCT
+  composite pause. Keep a neutral post-geometry, pre-appearance/zoom EMA for
+  OCR, paired with the exact current single frame for references, fingerprints
+  and motion checks. Display composite provenance remains unchanged for
+  annotations and observations. Extra Stable uses a capture-owned acquisition
+  record for exact held pixels; recovery crossfades and unnamed composites
+  cannot confirm or display text. Debug composites still pause.
+- Do not let agreeing smoothed OCR jobs validate their own fading pixels. New
+  live/advancing lines need current-frame proof; keep glyphs, reading text and
+  screen-reader eligibility together. Preserve blend provenance and paired
+  ownership, atomic failure/quarantine and the whole-pair analysis cap.
+- Saved-frame replay must restore pre-frame analysis history without blending
+  a held sample twice or resurrecting history across an explicit reset. Test
+  actual GPU halves, replay/seek/toggle resets and CPU fallback transfers.
+  Native GUI, screen-reader and camera acceptance remain separate.
+
+- Held images remain one acquisition regardless of presentation sequence.
+  Never manufacture independent OCR evidence from repeated held copies. Keep
+  clean Original recording before hold/effects and do not route automatic
+  Extra Stable recovery through decoder pause/seek/jump.

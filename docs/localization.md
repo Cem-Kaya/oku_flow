@@ -310,3 +310,18 @@ installed on the computer, independent of the UI language.
 The 2026-10-17 approval-receipt additions bring the current Windows source
 catalog to 807 keys. All 48 additions received small-agent review; see
 [the complete review record](localization_review_2026_10_17.md).
+
+
+## Video source selector (2026-10-19)
+
+The two new native keys, View video and Select video, bring every non-English
+catalog to 874 entries. Three read-only GPT-6-Luna review tasks covered all
+48 targets, 16 entries each, with an explicit per-entry verdict. The Czech
+View video label was changed from Přehrát video to Zobrazit video, and Polish
+from Odtwórz wideo to Wyświetl wideo, following the reviewers' distinction
+between selecting a view source and starting playback. All other targets were
+accepted. Task request identities are `okuflow-video-source-ui-l10n-1-20261019-r1`
+through `-3-20261019-r1`. `scripts/check_translations.ps1 -UpdateManifest` passed
+all 24 catalogs and generated all 874 finished entries per catalog. This is
+structural and linguistic model review, not native-speaker or rendered UIA/RTL
+acceptance. No Android or website strings changed.

@@ -1,14 +1,28 @@
 #ifdef _WIN32
 #include "app_internal.hpp"
 #include "okuflow/app/agent/app_control_target.hpp"
+#include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include <QUuid>
 
 namespace okuflow {
+ViewOverlaySnapshot OkuFlowApp::CaptureViewOverlays(const ViewTransform& transform)
+{
+    ViewOverlaySnapshot snapshot;
+    snapshot.transform = transform;
+    if (!mainWindow_ || !transform.valid) return snapshot;
+    if (auto* text = mainWindow_->ultraClearTextOverlay())
+        snapshot.text = text->CaptureSnapshot(transform, text->size());
+    if (auto* ink = mainWindow_->annotationOverlay(); ink && ink->IsActive() && ink->HasInk())
+        snapshot.strokes = ink->Strokes();
+    return snapshot;
+}
+
 QString OkuFlowApp::RequestPhotoCapture(const QString& owner)
 {
     if (!controlTarget_ || !cameraActive_ || MediaViewSelected() || !photoOperationId_.isEmpty()) return {};
     photoOperationId_ = controlTarget_->CreatePhoto(owner);
     if (photoOperationId_.isEmpty()) return {};
+    pendingPhotoOverlays_ = {};
     photoCapturePending_ = true;
     pipelineOrchestrator_->MarkViewportDirty();
     ShowStatusMessage(QStringLiteral("Capturing original and processed photos..."),2500);

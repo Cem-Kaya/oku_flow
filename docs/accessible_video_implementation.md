@@ -159,9 +159,10 @@ The final run reused only matching passing evidence and has no unresolved cases.
 Native GUI/focus/layout execution, Windows UIA/Narrator/NVDA/Magnifier,
 mixed-monitor DPI, physical A/V sync, real Maxine quality/performance and long-soak
 measurements remain separate acceptance. Two old hosted action-row failures were
-traced to a five-button assertion after Open video became the sixth; the shared
-assertion now checks all six and both test binaries compile. Their native rerun
-belongs on the free hosted desktop. No installer or public release is certified.
+traced to a five-button assertion after Open video became the sixth. At that
+checkpoint the assertion covered all six; the source-picker follow-up below
+moves video out again and preserves geometry checks for the five corner actions.
+Native reruns belong on the free hosted desktop. No installer or public release is certified.
 
 
 ## Two-output experiment (2026-10-19)
@@ -175,3 +176,31 @@ construction stays at one. The experiment is not part of recurring validation.
 Afterward the tracked background Release/CPU/CUDA gate passed again (108 CPU,
 17 CUDA), the offscreen native app passed 53 Qt rows, and PCH ON/OFF equivalence
 passed. Native desktop/screen-reader and public release boundaries are unchanged.
+
+
+## Source picker UI follow-up (2026-10-19)
+
+Saved-video opening now belongs to Settings > Camera, through the View video
+source option and conditional Select video button below it. The corner row keeps
+five capture/assistive actions; Notes and files no longer duplicates the picker.
+Ctrl+O and file drop remain available. The existing orientation control rotates
+selected media independently of the camera's persisted orientation. Discovery,
+file adoption/failure/cancel and Return to camera keep the dropdown honest.
+The two new keys have complete 24-catalog structural parity and read-only small
+model review of all 48 targets (two vetted Czech/Polish wording corrections).
+This is separate from native-speaker, rendered RTL and native screen-reader review.
+
+
+Validation for this follow-up: shipping Release compilation passed. The tracked
+background gate passed 108 CPU cases (two contain optional skipped Qt rows) and
+17 CUDA delta cases, with no skipped cases or unresolved background failures.
+Matching exact-fingerprint passes were reused: 94 CPU and 16 CUDA cases. The
+real-app offscreen fixture ran all 55 Qt rows successfully, including both new
+source/orientation cases; PCH OFF shared-source equivalence passed alongside it.
+Native GUI/focus, actual Windows file-picker interaction, screen-reader and mixed
+DPI acceptance remain pending. No local desktop, camera, browser or phone was
+operated for this validation. Logs remain under LocalAppData/OkuFlow/
+video-source-ui-20261019. The initial scoped selector correctly required the full
+background gate; its refusal log is retained. The previous merged branch's hosted
+run also retains independent MCP shutdown-timing and phone-recovery failures;
+this UI change does not claim to repair those failures.

@@ -12,6 +12,7 @@
 #include "okuflow/ui/main_window.hpp"
 #include "okuflow/ui/render_widget.hpp"
 #include "okuflow/ui/ultra_clear_text_panel.hpp"
+#include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "okuflow/ui/video_transport.hpp"
 #include "okuflow/common/uct_device_image.hpp"
 #include "okuflow/common/video_playback.hpp"
@@ -20,14 +21,20 @@
 #include <QComboBox>
 #include <QDir>
 #include <QFile>
+#include <QFontDatabase>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QLayout>
+#include <QGridLayout>
+#include <QMap>
+#include <QPushButton>
 #include <QScopeGuard>
 #include <QSlider>
 #include <QTemporaryDir>
 #include <QUuid>
 #include <QElapsedTimer>
 #include <QtTest>
+#include "ultra_clear_text_test_support.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -81,6 +88,9 @@ public:
 #endif
 class NativeControlFixture {
 public:
+    static void MoveViewportPeers(MainWindow& window,const QPoint& origin) {
+        window.MoveSimpleChrome(origin);
+    }
     static void Initialize(OkuFlowApp& app,const QString& root) {
         SettingsController::StorageOperations storage;
         storage.readSecret=[](const QString&) {return ProtectedSecretResult{};};
@@ -116,6 +126,24 @@ public:
 #if defined(OKUFLOW_VIDEO_DOCUMENT_TESTS)
         app.InitializeVideoPlayback();
 #endif
+    }
+    static QString PhotoDirectory(OkuFlowApp& app) {
+        return app.userDataPaths_->PhotosForDate(QDate::currentDate());
+    }
+    static void SavePhotoFixture(OkuFlowApp& app, const QImage& pixels,
+                                 ViewOverlaySnapshot overlays) {
+        CapturedFrame original;
+        original.width=static_cast<UINT>(pixels.width());
+        original.height=static_cast<UINT>(pixels.height());
+        original.pixels.resize(static_cast<std::size_t>(pixels.sizeInBytes()));
+        std::memcpy(original.pixels.data(),pixels.constBits(),original.pixels.size());
+        app.pendingPhotoOverlays_=std::move(overlays);
+        app.SaveCapturedPhotoPair(pixels.constBits(),original.width,original.height,original);
+    }
+    static void SaveDrawingFixture(OkuFlowApp& app, const QImage& pixels,
+                                   const ViewOverlaySnapshot& overlays) {
+        app.SaveAnnotationSnapshot(pixels.constBits(),pixels.width(),pixels.height(),
+            overlays.strokes,overlays.transform,overlays.text,QStringLiteral("Fixture drawing"));
     }
     static UctFrameContext PrimeAnnotation(OkuFlowApp& app) {
         app.CancelAnnotationCaptures();
@@ -332,9 +360,37 @@ public:
         app.SeedVideoDocumentForTest(session,frame,recording,playing);
     }
     static void VideoStopping(OkuFlowApp& app,const RecordingSessionInfo& session) {app.OnVideoRecordingStopping(session);}
+    static bool RefusePendingLiveHold(OkuFlowApp& app, bool finishing, bool cameraActive) {
+        app.SeedPendingLiveHoldForTest(finishing);
+        app.cameraActive_=cameraActive;
+        return app.AcceptLiveMediaHold({},0,0,1,10'000);
+    }
     static void VideoSaved(OkuFlowApp& app,const SavedRecordingSegment& part) {app.OnVideoSegmentSaved(part);}
     static bool VideoTimerActive(const OkuFlowApp& app) {return app.videoPlaybackTimer_ && app.videoPlaybackTimer_->isActive();}
     static VideoTransport::Snapshot VideoUi(const OkuFlowApp& app) {return app.mainWindow_->videoTransport()->snapshot();}
+    static MainWindow& Window(OkuFlowApp& app) {return *app.mainWindow_;}
+    static bool CancelVideoPickerRestoresPhoneLight(OkuFlowApp& app,bool phone) {
+        const auto previous=app.cameras_;const auto selected=app.selectedCameraIndex_;
+        const auto cleanup=qScopeGuard([&]{app.cameras_=previous;app.selectedCameraIndex_=selected;app.UpdatePhoneLightUi();});
+        CameraDescriptor camera;camera.name=L"Fixture source";if(phone)camera.phoneSerial="fixture-only";
+        app.cameras_={camera};app.selectedCameraIndex_=0;
+        app.mainWindow_->setCameraDevices({"Fixture source"},0);app.PollVideoPlayback();app.UpdatePhoneLightUi();
+        if(app.mainWindow_->phoneLightButton()->isHidden()==phone)return false;
+        app.mainWindow_->setVideoSourceSelected(true,0);
+        if(!app.mainWindow_->phoneLightButton()->isHidden())return false;
+        app.PollVideoPlayback(); // same cancellation/failure reconciliation, no dialog/device
+        return !app.mainWindow_->videoSourceSelected() && app.mainWindow_->phoneLightButton()->isHidden()!=phone;
+    }
+    static void VideoOrientation(OkuFlowApp& app,int turns) {
+        app.uiState_->rotationCombo_->setCurrentIndex(turns);
+        app.OnRotationSelectionChanged(turns);
+    }
+    static int VideoRecipeOrientation(const OkuFlowApp& app) {
+        return static_cast<int>(app.SelectedMediaSceneRecipe(*app.SelectedVideoFrameForTest())[OkuFlowApp::kMediaRecipeRotation]);
+    }
+    static int CameraOrientation(const OkuFlowApp& app) {return app.CameraOriginalRotationQuarterTurns();}
+    static int SavedOrientation(const OkuFlowApp& app) {return app.settingsController_->Settings().rotationQuarterTurns;}
+    static void ReturnVideo(OkuFlowApp& app) {app.ReturnVideoToCamera();}
     static bool VideoStartAllowed(const OkuFlowApp& app) {return app.BeforeRequestRecording();}
     static void SetCameraActive(OkuFlowApp& app,bool active) {app.cameraActive_=active;}
     static std::shared_ptr<const VideoPlaybackFrame> HeldVideoFrame(const OkuFlowApp& app) {
@@ -497,7 +553,7 @@ public:
         app.SelectedMediaGpuSceneProcessed(false,{},1000);
         const OkuFlowApp::MediaGpuSceneStamp upright{true,app.mediaDocumentEpoch_,7,app.mediaSceneAppearanceRevision_,false};
         // Two seconds of unchanged 60-Hz paused polling reuse the processed scene.
-        for(std::int64_t now=1000;now<3000;now+=16)
+        for(std::int64_t now=1000;now<3000;now+=8)
             if(app.AdmitSelectedMediaSceneRecipe(app.SelectedMediaSceneRecipe(frame)) ||
                app.SelectedMediaGpuSceneNeedsProcess(upright,7,false,now))return false;
         app.rotationQuarterTurns_=2; // 180 degrees keeps the 32x16 extent
@@ -522,11 +578,15 @@ public:
         app.SelectedMediaGpuSceneProcessed(true,lease,1000);
         if(app.mediaGpuAnalysis_!=lease || app.mediaGpuAnalysisAttempts_!=0)return false;
         OkuFlowApp::MediaGpuSceneStamp stamp{true,app.mediaDocumentEpoch_,21,app.mediaSceneAppearanceRevision_,false};
-        // Two seconds of 60-Hz view replays whose capture throttle yields no
+        // Two seconds of 125-Hz view replays whose capture throttle yields no
         // fresh lease: the valid same-scene lease survives every replay and
         // its untouched retry budget never demands another whole-frame pass.
-        for(std::int64_t now=1000;now<3000;now+=16) {
-            app.SelectedMediaGpuSceneProcessed(true,{},now);
+        for(std::int64_t now=1000;now<3000;now+=8) {
+            // ROI sharpening/SR can replay the same selected sample and
+            // return a new allocation. Allocation identity is not a new
+            // selected image: keep the lease already owned by UCT.
+            const auto replay=MetadataAnalysis(app,21,app.mediaSceneAppearanceRevision_);
+            app.SelectedMediaGpuSceneProcessed(true,replay,now);
             if(app.mediaGpuAnalysis_!=lease || app.mediaGpuAnalysisAttempts_!=0 ||
                app.SelectedMediaGpuSceneNeedsProcess(stamp,21,true,now))return false;
         }
@@ -677,7 +737,178 @@ class NativeAcceptance final : public QObject {
 public:
     explicit NativeAcceptance(OkuFlowApp& app):app_(app) {}
 private slots:
+    void processedPhotoAndDrawingIncludeUctAndInkWithCleanOriginal() {
+        uct_test::RegisterFixtureFonts();
+        QWidget owner;owner.resize(640,360);
+        QWidget viewport(&owner);viewport.setGeometry(owner.rect());
+        UltraClearTextOverlay overlay(&viewport,&owner);
+        ViewTransform transform;transform.valid=true;
+        overlay.SetViewTransform(transform);
+        owner.show();viewport.show();
+        overlay.SetWords({{QStringLiteral("Clear"),QRectF(.15,.25,.35,.20),
+            {QColor(Qt::white),QColor(Qt::black)},1,{},0}});
+        QCoreApplication::processEvents();
+        AnnotationStroke ink;ink.color=Qt::yellow;ink.sceneWidth=.025;
+        ink.points={QPointF(.15,.35),QPointF(.5,.35)};
+        ViewOverlaySnapshot overlays{overlay.CaptureSnapshot(transform,owner.size()),{ink},transform};
+        QVERIFY(!overlays.text.IsEmpty());
+        const QDir folder(NativeControlFixture::PhotoDirectory(app_));
+        const auto before=folder.entryList({QStringLiteral("IMG_*.jpg")},QDir::Files);
+        QImage base(owner.size(),QImage::Format_ARGB32);base.fill(QColor(82,94,108));
+        const auto beforeDrawings=folder.entryList({QStringLiteral("ANNOTATION_*.png")},QDir::Files);
+        NativeControlFixture::SavePhotoFixture(app_,base,overlays);
+        overlay.ClearWords(); // writer must not consult the current overlay
+        QTRY_COMPARE_WITH_TIMEOUT(folder.entryList({QStringLiteral("IMG_*.jpg")},QDir::Files).size(),before.size()+2,5000);
+        const auto files=folder.entryList({QStringLiteral("IMG_*.jpg")},QDir::Files);
+        QImage original,processed;
+        for(const auto& name:files)if(!before.contains(name)) {
+            if(name.endsWith(QStringLiteral("_original.jpg")))original.load(folder.filePath(name));
+            if(name.endsWith(QStringLiteral("_processed.jpg")))processed.load(folder.filePath(name));
+        }
+        QVERIFY(!original.isNull());QVERIFY(!processed.isNull());
+        QCOMPARE(original.size(),base.size());QCOMPARE(processed.size(),base.size());
+        const auto clean=original.pixelColor(200,126);
+        QVERIFY(std::abs(clean.red()-82)<4 && std::abs(clean.green()-94)<4 && std::abs(clean.blue()-108)<4);
+        bool allOriginalPixelsClean=true;
+        for(int y=0;y<original.height();++y)for(int x=0;x<original.width();++x) {
+            const auto pixel=original.pixelColor(x,y);
+            if(std::abs(pixel.red()-82)>=4 || std::abs(pixel.green()-94)>=4 ||
+                std::abs(pixel.blue()-108)>=4)allOriginalPixelsClean=false;
+        }
+        QVERIFY(allOriginalPixelsClean);
+        const auto textPlate=processed.pixelColor(90,100);
+        QVERIFY(textPlate.red()<25 && textPlate.green()<25 && textPlate.blue()<25);
+        const auto drawn=processed.pixelColor(200,126);
+        QVERIFY(drawn.red()>220 && drawn.green()>220 && drawn.blue()<40);
+        NativeControlFixture::SaveDrawingFixture(app_,base,overlays);
+        QTRY_COMPARE_WITH_TIMEOUT(folder.entryList({QStringLiteral("ANNOTATION_*.png")},QDir::Files).size(),beforeDrawings.size()+1,5000);
+        QImage drawing;
+        for(const auto& name:folder.entryList({QStringLiteral("ANNOTATION_*.png")},QDir::Files))
+            if(!beforeDrawings.contains(name))drawing.load(folder.filePath(name));
+        QVERIFY(!drawing.isNull());QCOMPARE(drawing.size(),base.size());
+        QCOMPARE(drawing.pixelColor(90,100),QColor(Qt::black));
+        QCOMPARE(drawing.pixelColor(200,126),QColor(Qt::yellow));
+        QCOMPARE(drawing.pixelColor(10,10),base.pixelColor(10,10));
+        int whiteGlyphPixels=0;
+        for(int y=85;y<170;++y)for(int x=90;x<330;++x) {
+            const auto pixel=drawing.pixelColor(x,y);
+            if(pixel.red()>230 && pixel.green()>230 && pixel.blue()>230)++whiteGlyphPixels;
+        }
+        QVERIFY(whiteGlyphPixels>100);
+        QCOMPARE(base.pixelColor(200,126),QColor(82,94,108));
+    }
 #if defined(OKUFLOW_VIDEO_DOCUMENT_TESTS)
+    void videoSourceControlsBelongToCameraSettings() {
+        MainWindow window;
+        window.setCameraDevices({"Fixture webcam","Fixture phone"},0);
+        auto* combo=window.cameraCombo();auto* select=window.openVideoButton();
+        QVERIFY(select->parentWidget()==combo->parentWidget());
+        QVERIFY(select->parentWidget()!=window.annotationButton()->parentWidget());
+        QCOMPARE(window.annotationButton()->parentWidget()->layout()->indexOf(select),-1);
+        QVERIFY(select->isHidden());QVERIFY(!window.cameraFormatCombo()->parentWidget()->isHidden());
+        QCOMPARE(combo->count(),3);QCOMPARE(combo->itemText(2),QStringLiteral("View video"));
+        QSignalSpy changes(combo,&QComboBox::currentIndexChanged);
+        QSignalSpy opens(&window,&MainWindow::openVideoRequested);
+        combo->setCurrentIndex(2);
+        QVERIFY(window.videoSourceSelected());QVERIFY(!select->isHidden());
+        QCOMPARE(select->text(),QStringLiteral("Select video"));
+        QVERIFY(window.cameraFormatCombo()->parentWidget()->isHidden());
+        QVERIFY(!window.rotationCombo()->isHidden());QVERIFY(window.rotationCombo()->isEnabled());
+        QCOMPARE(combo->nextInFocusChain(),static_cast<QWidget*>(select));
+        select->click();QCOMPARE(opens.count(),1);
+        window.setCameraDevices({"Fixture webcam","Fixture phone","New phone"},1);
+        QVERIFY(window.videoSourceSelected());QCOMPARE(combo->currentIndex(),3);
+        QCOMPARE(changes.count(),1);QCOMPARE(opens.count(),1); // refresh cannot open a dialog
+        window.setVideoSourceSelected(false,1);
+        QVERIFY(!window.videoSourceSelected());QCOMPARE(combo->currentIndex(),1);
+        QVERIFY(select->isHidden());QVERIFY(!window.cameraFormatCombo()->parentWidget()->isHidden());
+        QCOMPARE(changes.count(),1);
+    }
+    void cancelledVideoPickerRestoresOnlyPhoneLight() {
+        NativeControlFixture::ResetVideo(app_);
+        QVERIFY(NativeControlFixture::CancelVideoPickerRestoresPhoneLight(app_,true));
+        QVERIFY(NativeControlFixture::CancelVideoPickerRestoresPhoneLight(app_,false));
+    }
+    void translatedActionRowsHaveUniformCellMinimums_data() {
+        QTest::addColumn<int>("language");
+        QTest::newRow("english") << int(AppLanguage::English);
+        QTest::newRow("turkish") << int(AppLanguage::Turkish);
+        QTest::newRow("german") << int(AppLanguage::German);
+    }
+    void translatedActionRowsHaveUniformCellMinimums() {
+        QFETCH(int,language);
+        auto* application=qobject_cast<QApplication*>(QCoreApplication::instance());QVERIFY(application);
+        QVERIFY(QFontDatabase::addApplicationFont(QDir(qEnvironmentVariable("WINDIR")).filePath("Fonts/segoeui.ttf"))>=0);
+        LanguageManager translations(*application);QVERIFY(translations.SetLanguage(static_cast<AppLanguage>(language),false));
+        const auto cleanup=qScopeGuard([&]{translations.SetLanguage(AppLanguage::English,false);});
+        MainWindow window;window.setFont(QFont(QStringLiteral("Segoe UI")));
+        window.resize(language==int(AppLanguage::German)?1600:1280,800);window.show();
+        QCoreApplication::processEvents();
+        window.resize(1100,760);window.advancedModeButton()->click();window.setAdvancedPanelWidth(440);
+        auto* panel=window.findChild<QWidget*>("bottomRightPanel");QVERIFY(panel);
+        auto* grid=qobject_cast<QGridLayout*>(panel->layout());QVERIFY(grid);
+        const auto problem=[&](int expectedRows) -> QString {
+            QMap<int,QVector<QRect>> rows;
+            for(auto* button:{window.capturePhotoButton(),window.recordButton(),window.explainNowButton(),window.readTextButton(),window.annotationButton()})rows[button->y()].push_back(button->geometry());
+            if(rows.size()<1||rows.size()>2||(expectedRows&&rows.size()!=expectedRows))return QStringLiteral("Expected %1 action rows (0 = content fit), got %2").arg(expectedRows).arg(rows.size());
+            if(rows.size()==2&&(rows.first().size()!=3||rows.last().size()!=2))return QStringLiteral("Wrapped actions must form three above two");
+            int left=-1,right=-1;
+            for(const auto& row:rows){
+                int minWidth=INT_MAX,maxWidth=0,rowLeft=INT_MAX,rowRight=0;
+                for(const auto& rect:row){minWidth=std::min(minWidth,rect.width());maxWidth=std::max(maxWidth,rect.width());rowLeft=std::min(rowLeft,rect.left());rowRight=std::max(rowRight,rect.right());}
+                if(maxWidth-minWidth>4)return QStringLiteral("Action row widths %1..%2").arg(minWidth).arg(maxWidth);
+                if(left>=0&&(std::abs(rowLeft-left)>1||std::abs(rowRight-right)>1))return QStringLiteral("Action row edges differ");
+                left=rowLeft;right=rowRight;
+            }
+            return {};
+        };
+        QCoreApplication::processEvents();
+        QVERIFY2(problem(0).isEmpty(),qPrintable(problem(0)));
+        auto* modes=window.findChild<QWidget*>("bottomLeftPanel");QVERIFY(modes);
+        QCOMPARE(modes->property("modeRows").toInt(),2);
+        QVERIFY(modes->width()<window.renderWidget()->width());
+        const auto bounds=[](QWidget* widget){return QRect(widget->mapToGlobal(QPoint()),widget->size());};
+        QVERIFY(!bounds(modes).intersects(bounds(panel)));
+        QCOMPARE(bounds(panel).bottom(),bounds(window.renderWidget()).bottom());
+        window.resize(960,760);QCoreApplication::processEvents();
+        QVERIFY2(problem(2).isEmpty(),qPrintable(problem(2)));
+        QVERIFY(bounds(window.renderWidget()).contains(bounds(panel)));
+        QVERIFY(!bounds(modes).intersects(bounds(panel)));
+        window.resize(720,720);window.setAdvancedPanelWidth(360);QCoreApplication::processEvents();
+        QVERIFY2(problem(2).isEmpty(),qPrintable(problem(2)));
+        QVERIFY(bounds(window.renderWidget()).contains(bounds(panel)));
+        QVERIFY(bounds(window.renderWidget()).contains(bounds(modes)));
+        QVERIFY(!bounds(modes).intersects(bounds(panel)));
+        for(auto* button:{window.capturePhotoButton(),window.recordButton(),window.explainNowButton(),window.readTextButton(),window.annotationButton()}){
+            QVERIFY(!button->text().isEmpty());QVERIFY(!button->toolTip().isEmpty());
+            QVERIFY(!button->accessibleName().isEmpty());
+            QVERIFY(button->width()>=48);QVERIFY(button->height()>=58);
+        }
+        window.simpleModeButton()->click();window.resize(language==int(AppLanguage::German)?1600:1280,800);QCoreApplication::processEvents();
+        QVERIFY2(problem(1).isEmpty(),qPrintable(problem(1)));
+    }
+    void uctOverlayFollowsImmediateViewportMovesWithoutQueuedEvents() {
+        MainWindow window;window.resize(1100,760);window.show();
+        QCoreApplication::processEvents();
+        auto* target=window.renderWidget();auto* overlay=window.ultraClearTextOverlay();
+        QVERIFY(target&&overlay);
+        const auto transform=ComputeViewTransform(1600,900,target->width(),target->height(),1.0f,0.5f,0.5f,ViewportFitMode::kFit);
+        overlay->SetViewTransform(transform);
+        overlay->SetWords({{QStringLiteral("Reading"),QRectF(.28,.35,.23,.07),{Qt::black,Qt::white},1}});
+        QCoreApplication::processEvents();QVERIFY(overlay->isVisible());
+        const QPoint origin=target->mapToGlobal(QPoint());
+        const auto paints=overlay->PaintCount();
+        // Feed the production fast path the native position while Qt's move
+        // queue is withheld. No OCR, timer tick or repaint may be required.
+        for(int step=1;step<=120;++step){
+            const QPoint next=origin+QPoint(step*2,step%7);
+            NativeControlFixture::MoveViewportPeers(window,next);
+            QCOMPARE(overlay->geometry(),QRect(next,target->size()));
+            QCOMPARE(overlay->WordCount(),1);
+            QCOMPARE(overlay->PaintCount(),paints);
+            QCOMPARE(overlay->CurrentViewTransform().sourceX,transform.sourceX);
+        }
+    }
     void selectedMediaGpuPolicyIncludesAllImageEffects() {
         // Exercise the policy seam without creating a CUDA surface or claiming
         // that this offscreen fixture has executed any shader.
@@ -815,6 +1046,27 @@ private slots:
         QTest::newRow("unsupported-actual-neutral-request")<<true<<false;
         QTest::newRow("neutral-actual-newer-pending-contrast")<<false<<true;
     }
+    void asynchronousPauseRefusalKeepsLiveOrReportsUnavailable_data() {
+        QTest::addColumn<bool>("finishing");QTest::addColumn<bool>("cameraActive");
+        QTest::newRow("recording-camera-live")<<false<<true;
+        QTest::newRow("recording-camera-lost")<<false<<false;
+        QTest::newRow("finishing-camera-live")<<true<<true;
+        QTest::newRow("finishing-camera-lost")<<true<<false;
+    }
+    void asynchronousPauseRefusalKeepsLiveOrReportsUnavailable() {
+        QFETCH(bool,finishing);QFETCH(bool,cameraActive);
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::ResetVideo(app_);
+            NativeControlFixture::SetCameraActive(app_,false);
+        });
+        QVERIFY(!NativeControlFixture::RefusePendingLiveHold(app_,finishing,cameraActive));
+        const auto state=NativeControlFixture::VideoState(app_);
+        QVERIFY(!state["pendingHold"].toBool());
+        QCOMPARE(state["heldUnrecorded"].toBool(),finishing);
+        QCOMPARE(state["playing"].toBool(),!finishing); // active recording retains live intent
+        QCOMPARE(state["state"].toString(),finishing?QStringLiteral("finishing")
+            :cameraActive?QStringLiteral("live"):QStringLiteral("waiting"));
+    }
     void pauseRejectsUnreproducibleDisplayedAppearance() {
         QFETCH(bool,unsupportedApplied);QFETCH(bool,pendingAppearance);
         const auto original=NativeControlFixture::CurrentImageConfig(app_);
@@ -834,6 +1086,9 @@ private slots:
         QCOMPARE(shown->recipe.contrast,1.0f);
         QVERIFY(!NativeControlFixture::HeldVideoFrame(app_));
         QVERIFY(!NativeControlFixture::VideoState(app_)["pendingHold"].toBool());
+        // Refusing an unreproducible hold leaves the camera selected instead
+        // of entering an empty selected-media document and freezing preview.
+        QCOMPARE(NativeControlFixture::VideoState(app_)["state"].toString(),QStringLiteral("live"));
     }
     void presentedOriginalCacheBoundsLeasesAndRevokesUnretainedSuccess() {
         PresentedOriginalCache cache;
@@ -1028,6 +1283,32 @@ private slots:
         QVERIFY(!state["hasFrame"].toBool());
         NativeControlFixture::ResetVideo(app_);
         bool removed=false;QTRY_VERIFY_WITH_TIMEOUT(removed || (removed=QFile::remove(path)),3000);
+    }
+    void selectedVideoOrientationPreservesCameraPreferenceAndIdentity() {
+        QTemporaryDir folder;QVERIFY(folder.isValid());
+        const auto path=folder.filePath(QStringLiteral("orientation.avi"));
+        QVERIFY(WritePrivateVideoFixture(path));
+        const auto cleanup=qScopeGuard([&] {NativeControlFixture::ReturnVideo(app_);NativeControlFixture::ResetVideo(app_);});
+        NativeControlFixture::ResetVideo(app_);
+        const int cameraTurns=NativeControlFixture::CameraOrientation(app_);
+        NativeControlFixture::OpenVideo(app_,path);
+        QTRY_COMPARE_WITH_TIMEOUT(NativeControlFixture::VideoState(app_)["kind"].toString(),QStringLiteral("file"),5000);
+        auto& window=NativeControlFixture::Window(app_);
+        QVERIFY(window.videoSourceSelected());QVERIFY(!window.openVideoButton()->isHidden());
+        const auto identity=NativeControlFixture::VideoState(app_)["documentId"];
+        const auto pts=NativeControlFixture::SelectedVideoFrame(app_)->pts100ns;
+        for(int turns:{1,2,3}) {
+            NativeControlFixture::VideoOrientation(app_,turns);
+            QCOMPARE(window.rotationCombo()->currentIndex(),turns);
+            QCOMPARE(NativeControlFixture::VideoRecipeOrientation(app_),turns);
+            QCOMPARE(NativeControlFixture::CameraOrientation(app_),cameraTurns);
+            QCOMPARE(NativeControlFixture::SavedOrientation(app_),cameraTurns);
+            QCOMPARE(NativeControlFixture::VideoState(app_)["documentId"],identity);
+            QCOMPARE(NativeControlFixture::SelectedVideoFrame(app_)->pts100ns,pts);
+        }
+        NativeControlFixture::ReturnVideo(app_);
+        QVERIFY(!window.videoSourceSelected());QVERIFY(window.openVideoButton()->isHidden());
+        QCOMPARE(window.rotationCombo()->currentIndex(),cameraTurns);
     }
     void pendingRecordingOpenWaitsForMatchingSessionAndNewestFileWins() {
         QTemporaryDir folder;QVERIFY(folder.isValid());

@@ -353,15 +353,16 @@ void UltraClearTextOverlay::RebuildGlyphLayout()
     }
 }
 
-void UltraClearTextOverlay::ComputePaintPlan()
+void UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransform& transform,
+                                              const QSize& viewportSize, bool excludeChrome)
 {
-    PaintPlan& plan = plan_;
+    const QRect bounds(QPoint(0, 0), viewportSize);
     const int count = words_.size();
     plan.words.resize(count);
     plan.texts.resize(count);
 
     // Never paint over native controls floating above the viewport.
-    QRegion clip(rect());
+    QRegion clip(bounds);
     const auto exclude = [&](QWidget* widget) {
         if (!widget || !widget->isVisible()) {
             return;
@@ -369,8 +370,8 @@ void UltraClearTextOverlay::ComputePaintPlan()
         const QPoint topLeft = mapFromGlobal(widget->mapToGlobal(QPoint(0, 0)));
         clip -= QRegion(QRect(topLeft, widget->size()));
     };
-    exclude(excludedWidget_);
-    if (QWidget* owner = parentWidget()) {
+    if (excludeChrome) exclude(excludedWidget_);
+    if (QWidget* owner = excludeChrome ? parentWidget() : nullptr) {
         for (const QString& name :
              {QStringLiteral("topLeftPanel"), QStringLiteral("bottomLeftPanel"),
               QStringLiteral("keystoneTrackingPanel"), QStringLiteral("bottomRightPanel"),
@@ -396,10 +397,10 @@ void UltraClearTextOverlay::ComputePaintPlan()
             continue;
         seenProtection.insert(word.protectedSceneRects.constData());
         for (const QRectF& scene : word.protectedSceneRects) {
-            const QRectF view = uct::SceneRectToView(transform_, width(), height(), scene);
+            const QRectF view = uct::SceneRectToView(transform, viewportSize.width(), viewportSize.height(), scene);
             if (!view.isEmpty() && std::isfinite(view.x()) && std::isfinite(view.y()) &&
                 std::isfinite(view.width()) && std::isfinite(view.height()))
-                protectedInk += QRegion(view.intersected(QRectF(rect())).toAlignedRect());
+                protectedInk += QRegion(view.intersected(QRectF(bounds)).toAlignedRect());
         }
     }
 
@@ -412,11 +413,11 @@ void UltraClearTextOverlay::ComputePaintPlan()
         planned.lineId = words_[i].lineId;
         planned.wordIndex = words_[i].wordIndex;
         plan.texts[i] = words_[i].text;
-        const QRectF view = uct::SceneRectToView(transform_, width(), height(), words_[i].sceneRect);
-        const QRectF ink = uct::SceneRectToView(transform_, width(), height(), glyph.inkRect);
+        const QRectF view = uct::SceneRectToView(transform, viewportSize.width(), viewportSize.height(), words_[i].sceneRect);
+        const QRectF ink = uct::SceneRectToView(transform, viewportSize.width(), viewportSize.height(), glyph.inkRect);
         planned.originalRect = view;
         planned.inkRect = ink;
-        planned.origin = uct::SceneToViewPixel(transform_, width(), height(), glyph.origin);
+        planned.origin = uct::SceneToViewPixel(transform, viewportSize.width(), viewportSize.height(), glyph.origin);
         planned.scaleX = glyph.referenceInk.width() > 0.0 ? ink.width() / glyph.referenceInk.width() : 0.0;
         planned.scaleY = glyph.referenceInk.height() > 0.0 ? ink.height() / glyph.referenceInk.height() : 0.0;
         const qreal pad = view.height() * 0.12;
@@ -425,7 +426,7 @@ void UltraClearTextOverlay::ComputePaintPlan()
                                               planned.plateRect, clip);
         if (!planned.drawn && !view.isEmpty() && std::isfinite(view.x()) && std::isfinite(view.y()) &&
             std::isfinite(view.width()) && std::isfinite(view.height()))
-            protectedInk += QRegion(view.intersected(QRectF(rect())).toAlignedRect());
+            protectedInk += QRegion(view.intersected(QRectF(bounds)).toAlignedRect());
     }
     // Never show a clipped fragment of an accepted word over protected ink.
     // A suppressed replacement's own source box becomes protected too; resolve
@@ -436,10 +437,10 @@ void UltraClearTextOverlay::ComputePaintPlan()
         changed = false;
         for (int i = 0; i < count; ++i) {
             PlannedWord& planned = plan.words[i];
-            if (planned.drawn && (protectedInk.intersects(planned.originalRect.intersected(QRectF(rect())).toAlignedRect()) ||
-                                  protectedInk.intersects(planned.inkRect.intersected(QRectF(rect())).toAlignedRect()))) {
+            if (planned.drawn && (protectedInk.intersects(planned.originalRect.intersected(QRectF(bounds)).toAlignedRect()) ||
+                                  protectedInk.intersects(planned.inkRect.intersected(QRectF(bounds)).toAlignedRect()))) {
                 planned.drawn = false;
-                protectedInk += QRegion(planned.originalRect.intersected(QRectF(rect())).toAlignedRect());
+                protectedInk += QRegion(planned.originalRect.intersected(QRectF(bounds)).toAlignedRect());
                 changed = true;
             }
         }
@@ -475,32 +476,10 @@ void UltraClearTextOverlay::paintEvent(QPaintEvent* event)
         }
         return;
     }
-    ComputePaintPlan();
+    ComputePaintPlan(plan_, transform_, size(), true);
     const QFont paintFont = referenceFont_;
     QPainter painter(this);
-    painter.setRenderHint(QPainter::TextAntialiasing, true);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-    painter.setClipRegion(plan_.paintClip);
-    // Paint all plates before any glyphs so a neighbouring word's plate
-    // cannot erase an overhang or descender already drawn.
-    for (int i = 0; i < words_.size(); ++i) {
-        if (plan_.words[i].drawn) {
-            painter.fillRect(plan_.words[i].plateRect, glyphs_[i].colors.background);
-        }
-    }
-    for (int i = 0; i < words_.size(); ++i) {
-        const PlannedWord& planned = plan_.words[i];
-        if (!planned.drawn) {
-            continue;
-        }
-        painter.save();
-        painter.translate(planned.origin);
-        painter.scale(planned.scaleX, planned.scaleY);
-        painter.setFont(paintFont);
-        painter.setPen(glyphs_[i].colors.foreground);
-        painter.drawText(QPointF(0.0, 0.0), words_[i].text);
-        painter.restore();
-    }
+    PaintWords(painter, plan_);
     if (offscreenPaint) {
         plan_ = std::move(savedPlan);
         return;
@@ -513,6 +492,62 @@ void UltraClearTextOverlay::paintEvent(QPaintEvent* event)
     plan_.screen = screen();
     ++plan_.generation;
     plan_.valid = true;
+}
+
+
+void UltraClearTextOverlay::PaintWords(QPainter& painter, const PaintPlan& plan) const
+{
+    painter.setRenderHint(QPainter::TextAntialiasing, true);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setClipRegion(plan.paintClip);
+    // Paint all plates before any glyphs so a neighbouring word's plate
+    // cannot erase an overhang or descender already drawn.
+    for (int i = 0; i < words_.size(); ++i) {
+        if (plan.words[i].drawn) {
+            painter.fillRect(plan.words[i].plateRect, glyphs_[i].colors.background);
+        }
+    }
+    for (int i = 0; i < words_.size(); ++i) {
+        const PlannedWord& planned = plan.words[i];
+        if (!planned.drawn) {
+            continue;
+        }
+        painter.save();
+        painter.translate(planned.origin);
+        painter.scale(planned.scaleX, planned.scaleY);
+        painter.setFont(referenceFont_);
+        painter.setPen(glyphs_[i].colors.foreground);
+        painter.drawText(QPointF(0.0, 0.0), words_[i].text);
+        painter.restore();
+    }
+}
+
+UctOverlaySnapshot UltraClearTextOverlay::CaptureSnapshot(const ViewTransform& transform,
+                                                          const QSize& viewportSize)
+{
+    UctOverlaySnapshot snapshot;
+    if (!isVisible() || words_.isEmpty() || glyphs_.size() != words_.size() ||
+        !transform.valid || viewportSize.isEmpty()) return snapshot;
+    PaintPlan capturePlan;
+    ComputePaintPlan(capturePlan, transform, viewportSize, false);
+    if (std::none_of(capturePlan.words.cbegin(), capturePlan.words.cend(),
+                     [](const PlannedWord& word) { return word.drawn; })) return snapshot;
+    snapshot.viewportSize = viewportSize;
+    QPainter recorder(&snapshot.picture);
+    PaintWords(recorder, capturePlan);
+    recorder.end();
+    return snapshot;
+}
+
+void UctOverlaySnapshot::Paint(QPainter& painter, const QSize& imageSize) const
+{
+    if (IsEmpty() || imageSize.isEmpty()) return;
+    painter.save();
+    painter.setClipRect(QRect(QPoint(0, 0), imageSize), Qt::IntersectClip);
+    painter.scale(qreal(imageSize.width()) / viewportSize.width(),
+                  qreal(imageSize.height()) / viewportSize.height());
+    painter.drawPicture(QPointF(0.0, 0.0), picture);
+    painter.restore();
 }
 
 bool UltraClearTextOverlay::PaintedGeometryCurrent() const

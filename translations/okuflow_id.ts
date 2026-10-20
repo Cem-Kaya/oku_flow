@@ -3513,5 +3513,33 @@ Pilih Hubungkan ChatGPT di tab Asisten pada mode Tingkat Lanjut untuk masuk.</tr
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>Jeda tidak tersedia: area gambar yang sedang ditampilkan tidak dapat dipertahankan dengan tepat.</translation>
         </message>
-    </context>
+        <message>
+            <source>View video</source>
+            <translation>Tonton video</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Pilih video</translation>
+        </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>Dijeda saat Ekstra Stabil aktif. Gambar asli kamera ditampilkan.</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>Teks asli kamera sedang ditampilkan.</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>Pengenalan teks dijeda dalam tampilan komposit debug. Gambar kamera asli tetap ditampilkan.</translation>
+        </message>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>Menggunakan backend GPU: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>Menggunakan backend CPU: %1</translation>
+    </message>
+</context>
 </TS>

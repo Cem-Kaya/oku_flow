@@ -2,6 +2,14 @@
 
 ## Selected-video resource limits (development)
 
+The separate GPU OCR recognizer admits true batch capacities `1`, `8`, `16`
+through `OKUFLOW_UCT_TRT_BATCH`. With no override, medium/small recognition uses
+batch eight and tiny uses one; sixteen remains experimental.
+N16 output tensors have a 1 GiB allocation ceiling; detector/N1/N8 tensors
+retain 256 MiB. This is an upper
+validation bound, not eager allocation or total VRAM budget; TensorRT builder
+workspace remains 256 MiB. See [batching and measurements](uct_gpu_batching.md).
+
 Playback uses resolution/stride/PAR-aware decoded admission with a 96 MiB
 minimum allowance and 256 MiB absolute ceiling, including consumer-held
 frames. This is a cap, not eager allocation. A complete working set must fit
@@ -11,7 +19,10 @@ Optional neighbor preparation waits for a 50 ms quiet period after target
 publication; immediate scrubs supersede it. Proven same-frame seeks share pixels
 and require neither native decode nor another full-frame allocation.
 Additional limits are a 64 MiB byte-read window, an 8 MiB metadata/index budget and
-120 decoded samples per seek. Audio queues include in-flight PCM and are
+4096 native reads per seek, with the unchanged two-second request-age deadline
+and generation cancellation. The read cap is a malformed-stream guard, not a
+two-second GOP limit; pre-target frames do not allocate presentation copies.
+Audio queues include in-flight PCM and are
 bounded to 2 MiB, 32 packets and 500 ms; the native output endpoint is capped
 at 250 ms. These are admission limits, not latency promises. The selected
 transport polls at 16 ms only while a recording/file document exists; normal
@@ -30,6 +41,14 @@ One scheduler and one latest-only probe worker serve all modes; a paused still
 returns to one-shot admission. These are bounded scheduling defaults, not an
 OCR-rate or native display-latency guarantee.
 
+Immutable paused-word corroboration considers neighbours within 250 ms, limits
+translation to 0.25 normalized scene units per axis, and requires each dimension
+to retain at least 75% of the larger word box. Word registration uses NCC 0.94,
+visibility 0.95 and a two-probe-pixel local refinement. Requests are capped at
+1024 selected lines / 8192 words, with resident reference/match batches <= 1024.
+These limits do not expand the live camera's motion search. Completed worker
+checks are consumed even after the UI's 3 ms inline match budget expires.
+
 ## Optional PaddleOCR (2026-10-18)
 
 `scripts/uct/pins.json` pins upstream model revisions, model/config/card hashes,
@@ -45,7 +64,9 @@ the model-free fixture reconciles them against `pins.json`. Tiny detector uses
 `rec/{tiny,medium}`. Persistent `ultraClearTextModels` stores independent
 `gpuDetector`, `gpuRecognizer`, `cpuDetector`, `cpuRecognizer` tokens from
 `tiny|small|medium`. Missing/invalid values independently fall back to
-medium/medium on GPU and tiny/small on CPU. It never persists UCT activation.
+medium/medium on GPU and tiny/small on CPU. The shared Boolean
+`ultraClearTextEnabled` persists the opt-in; missing/non-Boolean values default
+off. Runtime use additionally requires the current Text Clarity master to be on.
 
 `OKUFLOW_UCT_ROOT` selects model/CPU files; otherwise an `ocr` directory beside
 the inner application is preferred when it contains a detector, then LocalAppData.
@@ -61,8 +82,27 @@ Engine plans stay in `%LOCALAPPDATA%/OkuFlow/ocr-engines`, keyed by graph hash,
 GPU UUID, driver and TensorRT/precision identity, with a payload integrity hash.
 Model/license data never belongs in Git or capture output. The analysis pool
 has two slots, at most 128 MiB each; input dimensions are limited to 8192 per
-axis. Detector long edge is 960, recognizer canvas 1024×48, accepted regions
-at most 128, detector thresholds 0.2/0.4 and word confidence at least 0.7.
+axis. A Temporal Smooth lease counts both OCR and current-validation images
+against that per-slot limit (at most 64 MiB per half, without pitch padding).
+It discloses EMA alpha, history epoch, seed and blend count; capture remains
+throttled to 80 ms while the neutral EMA advances on actual processed frames.
+Neutral EMA/scratch consumes about 20 bytes/pixel per initialized surface;
+media replay adds 20 bytes/pixel, before pitch padding. These buffers allocate
+lazily and remain cached when disabled. Allocation failures latch per size
+(EMA) or surface (snapshots), retrying only on explicit reset or size change.
+Smoothed/current input registration requires every candidate word to reach
+NCC 0.94 and visible fraction 0.95 with zero translation/refinement. It is
+separate from the ordinary 0.82, six-probe-pixel motion tracker. Resident input
+registration batches at most 1024 word descriptors and refuses over 8192 words.
+Detector long edge is 960 per invocation. Complete-scene context is followed
+by at most 16 overlapping detail crops (desired source edge 1280, overlap 160,
+at most four crops per axis). Recognition uses a 1024×48 canvas; each of at
+most 128 detected regions per pass can add eight overlapping windows for long
+lines (targeting 20 source heights wide, eight heights overlap; capped windows
+widen to preserve coverage, internal-edge fragments
+discarded). CUDA retains all crops/windows on device, with at most 1152 compact
+quad descriptors per pass. Merged output is bounded to 1024 lines. Detector
+thresholds remain 0.2/0.4 and word confidence at least 0.7.
 These are bounded experimental defaults, not accuracy or latency promises.
 
 UCT's optional padded-box ink fit samples about 16K pixels per word, requires
@@ -843,6 +883,11 @@ COM/driver calls retain their separate watchdog limits. See
 
 ## GPU selected-video resource policy
 
+Extra Stable's analysis lease includes one 32-byte acquisition record copied
+with its pixels into pinned slot storage. Workers consume it after the same
+completion fence; this is metadata egress, not an image download. Held copies
+remain one observation and recovery crossfades name no independent acquisition.
+
 The GPU decoder admits eight logical BGRA texture allocations / 256 MiB across
 published leases, pool storage, optional private conversion target and deferred
 native release. The CPU decoded allowance remains adaptive 96-256 MiB. These
@@ -852,3 +897,19 @@ RAM/VRAM ceiling. UCT advancing gap retention uses 350 ms wall validation plus
 real-media freshness; gap receipts cannot renew either. Save's owned GPU clone
 has a three-second asynchronous readback deadline and retains exact identity
 through resize retry/late-result discard. See [GPU playback](gpu_video_playback.md).
+
+UCT readiness limits: eight batch-one TensorRT recognitions per completion wait;
+up to 1024 line colors plus 8192 word-local color descriptors in the existing
+resident metadata scratch. Paused unsuccessful jobs permit three ordinary
+retries at 100-ms spacing; preferred-backend preparation retries use 500-ms
+spacing within the existing 30-second horizon. Successful final reads do not
+poll. Builder/parser runtime resources load only when a cached engine is absent
+or invalid; cache identity and runtime pins are unchanged.
+
+The explicit `OKUFLOW_UCT_CHARACTER_DIAGNOSTIC=1` fixture writes unique
+`%LOCALAPPDATA%/OkuFlow/uct-character-<timestamp>-<uuid>` evidence. Its synthetic
+source is 960 x 128, with 12 edits, sizes 14/24/44, requested and asserted actual
+decimation 1/2/4, line/token extents and three existing matcher policies. The
+installed `C:/Windows/Fonts/consola.ttf` is loaded and hashed for local provenance,
+never redistributed. Synthetic translation is (2,1) pixels; it is not physical
+camera acceptance. No ordinary-runtime setting or OCR-reuse policy is enabled.

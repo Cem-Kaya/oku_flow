@@ -34,11 +34,14 @@ target_include_directories(ultra_clear_text_controller_tests PRIVATE ${PROJECT_S
 target_compile_definitions(ultra_clear_text_controller_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 target_link_libraries(ultra_clear_text_controller_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test)
 add_test(NAME immutable_uct_contract COMMAND ultra_clear_text_controller_tests)
-set_tests_properties(immutable_uct_contract PROPERTIES TIMEOUT 60 LABELS "headless"
+# Aggregate deadline for the whole Qt suite; individual QTRY limits remain.
+# The loaded CI runner completed 31 cases before the old 60 s suite deadline.
+set_tests_properties(immutable_uct_contract PROPERTIES TIMEOUT 120 LABELS "headless"
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 
 add_executable(video_transport_tests video_transport_tests.cpp
+    ${PROJECT_SOURCE_DIR}/assets/okuflow_resources.qrc
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/video_transport.hpp
     ${PROJECT_SOURCE_DIR}/src/ui/video_transport.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/live_status_text.cpp

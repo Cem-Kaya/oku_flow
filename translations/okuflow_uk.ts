@@ -3513,5 +3513,33 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>Пауза недоступна: не вдалося точно зберегти показане кадрування.</translation>
         </message>
-    </context>
+        <message>
+            <source>View video</source>
+            <translation>Перегляд відео</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Вибрати відео</translation>
+        </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>Призупинено, поки ввімкнено додаткову стабілізацію. Відображається оригінальне зображення з камери.</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>Показано оригінальний текст із камери.</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>Розпізнавання тексту призупинено в комбінованому режимі налагодження. Показано оригінальне зображення з камери.</translation>
+        </message>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>Використовується рушій GPU: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>Використовується рушій CPU: %1</translation>
+    </message>
+</context>
 </TS>

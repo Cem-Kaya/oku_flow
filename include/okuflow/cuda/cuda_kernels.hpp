@@ -130,6 +130,22 @@ struct BumpHoldState {
     float reserved[3];
 };
 
+// Compact, device-resident identity of the pixels ApplyBumpHold left in the
+// frame this record was written for. It persists across frames only to
+// remember which acquisition the hold surface contains. Ultra Clear Text
+// copies these 32 bytes with an analysis capture and reads them on its worker;
+// the layout matches uct::HoldProvenanceRecord (checked where both are seen).
+// state: 0 = live acquisition `displayedFrame`, 1 = held earlier acquisition
+// `heldFrame`, 2 = recovery crossfade composite, 3 = unknown.
+struct BumpHoldProvenance {
+    unsigned long long displayedFrame;
+    unsigned long long heldFrame;
+    unsigned int state;
+    unsigned int heldValid;
+    float blendAlpha;
+    unsigned int reserved;
+};
+
 void LaunchStabilizationLumaDownsample(float* dstLuma,
                                        int smallWidth, int smallHeight,
                                        const uchar4* src, size_t srcPitchBytes,
@@ -239,6 +255,11 @@ void LaunchApplyBumpHold(
     uchar4* held, size_t heldPitchBytes,
     int width, int height, const BumpHoldState* state,
     cudaStream_t stream);
+// One thread, stream-ordered after LaunchUpdateBumpHoldState for the frame
+// `frameSequence`. Never reads pixels and never synchronizes the host.
+void LaunchRecordBumpHoldProvenance(
+    const BumpHoldState* state, BumpHoldProvenance* provenance,
+    unsigned long long frameSequence, cudaStream_t stream);
 void LaunchSelectSharperVirtualTripodReference(
     const float* candidate, float* reference, int pixelCount,
     const float* focusScore, float* bestFocusScore,

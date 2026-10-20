@@ -60,7 +60,10 @@ bool BoxAverage(const ProbeFrame& probe, double cx, double cy, double halfW, dou
     const double x1 = cx + halfW;
     const double y0 = cy - halfH;
     const double y1 = cy + halfH;
-    if (x0 < 0.0 || y0 < 0.0 || x1 > probe.luma.width() || y1 > probe.luma.height()) {
+    // Roundoff at a shared scene edge is not missing image content. IntegralAt
+    // clamps this sub-millionth-pixel allowance on both CPU and GPU.
+    constexpr double edge = 1e-7;
+    if (x0 < -edge || y0 < -edge || x1 > probe.luma.width() + edge || y1 > probe.luma.height() + edge) {
         return false;
     }
     const double sum = IntegralAt(probe, x1, y1) - IntegralAt(probe, x0, y1) -
@@ -72,13 +75,13 @@ bool BoxAverage(const ProbeFrame& probe, double cx, double cy, double halfW, dou
 double PixelsPerSceneX(const ProbeFrame& probe)
 {
     const ViewTransform& t = probe.stamp.viewTransform;
-    return t.destinationWidth * probe.luma.width() / t.sourceWidth;
+    return static_cast<double>(t.destinationWidth) * probe.luma.width() / t.sourceWidth;
 }
 
 double PixelsPerSceneY(const ProbeFrame& probe)
 {
     const ViewTransform& t = probe.stamp.viewTransform;
-    return t.destinationHeight * probe.luma.height() / t.sourceHeight;
+    return static_cast<double>(t.destinationHeight) * probe.luma.height() / t.sourceHeight;
 }
 
 struct PatchGeometry {
@@ -515,6 +518,39 @@ QImage WrapPixels(const SharedPixels& pixels)
 
 // --- Geometry ----------------------------------------------------------------
 
+std::optional<std::uint64_t> EvidenceAcquisition(const SourceStamp& stamp)
+{
+    // The same consistency ApplyHoldProvenance enforces, checked again here
+    // so a hand-built or stale stamp cannot name an acquisition it never had.
+    switch (stamp.holdDisplay) {
+    case HoldDisplay::NotHeld:
+        return stamp.frameSeq;
+    case HoldDisplay::Live:
+        if (stamp.holdAcquisition == stamp.frameSeq) return stamp.frameSeq;
+        break;
+    case HoldDisplay::Held:
+        if (stamp.holdAcquisition < stamp.frameSeq) return stamp.holdAcquisition;
+        break;
+    case HoldDisplay::Crossfade:
+    case HoldDisplay::Unknown:
+        break;
+    }
+    return std::nullopt;
+}
+
+void ApplyHoldProvenance(SourceStamp& stamp, const HoldProvenance& hold)
+{
+    // Live pixels are exactly this capture's frame; held pixels were acquired
+    // strictly earlier. Anything else cannot name its acquisition.
+    const bool consistent =
+        (hold.display == HoldDisplay::Live && hold.acquisition == stamp.frameSeq) ||
+        (hold.display == HoldDisplay::Held && hold.acquisition < stamp.frameSeq) ||
+        hold.display == HoldDisplay::Crossfade;
+    stamp.holdDisplay = consistent ? hold.display : HoldDisplay::Unknown;
+    stamp.holdAcquisition =
+        consistent && hold.display != HoldDisplay::Crossfade ? hold.acquisition : 0;
+}
+
 bool ViewPixelToScene(const ViewTransform& t, double width, double height,
                       const QPointF& viewPixel, QPointF& scenePoint)
 {
@@ -612,8 +648,12 @@ ProbeFrame MakeProbeFrame(const std::uint8_t* bgra, int width, int height, int s
 
 // --- Validation primitives ---------------------------------------------------
 
+int ProbeFrame::Width() const noexcept { return resident ? resident->Width() : luma.width(); }
+int ProbeFrame::Height() const noexcept { return resident ? resident->Height() : luma.height(); }
+
 ReferencePatch BuildReferencePatch(const ProbeFrame& reference, const QRectF& lineRect)
 {
+    if (reference.resident) return reference.resident->Reference(reference.stamp, lineRect);
     ReferencePatch patch;
     if (!reference.IsValid() || lineRect.isEmpty()) {
         return patch;
@@ -664,6 +704,9 @@ PatchMatch MatchPatch(const ReferencePatch& patch, const ProbeFrame& probe, cons
                       std::optional<QPointF> seedSceneOffset)
 {
     PatchMatch match;
+    // Resident matching is explicit worker work (CheckLines / corroboration).
+    // Never make UI-thread admission wait for a GPU stream.
+    if (probe.resident) return match;
     if (!patch.valid || !probe.IsValid()) {
         return match;
     }
@@ -674,11 +717,11 @@ PatchMatch MatchPatch(const ReferencePatch& patch, const ProbeFrame& probe, cons
         return match;
     }
     const double confident = tuning.minimumScore + 0.08;
-    const int radius = std::max(1, tuning.searchRadiusPx);
+    const int radius = std::clamp(tuning.searchRadiusPx, 0, 10);
     double bestScore = zero.score;
     double bestX = 0.0, bestY = 0.0;
     // Static fast path: an unmoved, unchanged line is the common case.
-    if (zero.score < confident) {
+    if (radius > 0 && zero.score < confident) {
         double searchX = 0.0, searchY = 0.0;
         bool seeded = false;
         if (seedSceneOffset) {
@@ -782,6 +825,31 @@ QVector<LineCheck> CheckLines(const QVector<LineReference>& lines, const ProbeFr
 {
     QVector<LineCheck> checks;
     checks.reserve(lines.size());
+    if (probe.resident && probe.IsValid()) {
+        checks.resize(lines.size());
+        for (int i = 0; i < lines.size(); ++i) checks[i].lineId = lines[i].lineId;
+        QElapsedTimer timer;
+        timer.start();
+        constexpr int batchSize = 64;
+        for (int offset = 0; offset < lines.size(); offset += batchSize) {
+            if ((cancelled && cancelled->load(std::memory_order_relaxed)) ||
+                (budgetMs > 0.0 && timer.nsecsElapsed() / 1e6 >= budgetMs)) break;
+            const int count = std::min(batchSize, int(lines.size()) - offset);
+            QVector<ReferencePatch> patches;
+            QVector<QPointF> seeds;
+            for (int i = 0; i < count; ++i) {
+                patches.push_back(lines[offset + i].reference);
+                seeds.push_back(lines[offset + i].lastSceneOffset);
+            }
+            const auto matches = probe.resident->Matches(probe.stamp, patches, tuning, seeds, cancelled);
+            if (matches.size() != count) break;
+            for (int i = 0; i < count; ++i) {
+                checks[offset + i].checked = true;
+                checks[offset + i].match = matches[i];
+            }
+        }
+        return checks;
+    }
     QElapsedTimer timer;
     timer.start();
     bool stopped = !probe.IsValid();
@@ -795,8 +863,10 @@ QVector<LineCheck> CheckLines(const QVector<LineReference>& lines, const ProbeFr
         if (!stopped) {
             check.checked = true;
             const bool hasSeed = line.lastSceneOffset != QPointF();
-            check.match = MatchPatch(line.reference, probe, tuning,
-                                     hasSeed ? std::optional<QPointF>(line.lastSceneOffset) : std::nullopt);
+            const auto seed = hasSeed ? std::optional<QPointF>(line.lastSceneOffset) : std::nullopt;
+            check.match = probe.resident
+                ? probe.resident->Match(probe.stamp, line.reference, tuning, seed)
+                : MatchPatch(line.reference, probe, tuning, seed);
         }
         checks.push_back(check);
     }
@@ -807,6 +877,7 @@ QVector<PreparedLine> PrepareLines(const RecognitionResult& result, double minim
 {
     QVector<PreparedLine> prepared;
     prepared.reserve(result.output.lines.size());
+    QVector<QRectF> referenceRects;
     const SourceStamp& stamp = result.stamp;
     const double width = stamp.viewportWidth;
     const double height = stamp.viewportHeight;
@@ -834,20 +905,118 @@ QVector<PreparedLine> PrepareLines(const RecognitionResult& result, double minim
                     disposition = TokenDisposition::kTooSmall;
                 else if (IsHighRiskToken(text)) disposition = TokenDisposition::kHighRisk;
             }
-            out.words.push_back({text, scene, disposition, word.confidence, protectedScene});
+            out.words.push_back({text, scene, disposition, word.confidence, protectedScene, word.colors});
             if (usableRect(protectedScene))
                 out.sceneRect = out.sceneRect.isNull() ? protectedScene : out.sceneRect.united(protectedScene);
         }
-        if (!out.words.isEmpty() && !unmappedSpan) {
-            out.reference = BuildReferencePatch(result.reference, out.sceneRect);
-        }
+        const bool trackable=!out.words.isEmpty()&&!unmappedSpan;
+        referenceRects.push_back(trackable?out.sceneRect:QRectF());
+        if(trackable&&!result.reference.resident)out.reference=BuildReferencePatch(result.reference,out.sceneRect);
         prepared.push_back(std::move(out));
+    }
+    if(result.reference.resident){
+        const auto references=result.reference.resident->References(stamp,referenceRects);
+        if(references.size()==prepared.size())
+            for(int i=0;i<prepared.size();++i)prepared[i].reference=references[i];
     }
     return prepared;
 }
 
+namespace {
+// A paused source does not move. Its *neighbour* may have scrolled: validate
+// the same recognized word there, without moving the selected-frame glyph.
+// GPU references/samples remain resident and only bounded verdicts return.
+QVector<QVector<bool>> MatchImmutableWords(const CorroborationRequest& request,
+                                          const RecognitionResult& neighbor,
+                                          const std::atomic<bool>& cancelled, bool& failed)
+{
+    failed = false;
+    const auto unavailable = [&]() -> QVector<QVector<bool>> { failed = true; return {}; };
+    QVector<QVector<bool>> out;
+    if (!request.selectedJobId || !request.selectedReference.IsValid() ||
+        !request.selectedReference.stamp.SameScene(neighbor.stamp) ||
+        request.selectedReference.stamp.frameSeq == neighbor.stamp.frameSeq ||
+        std::abs(double(request.selectedReference.stamp.timestampMs) - neighbor.stamp.timestampMs) > 250 ||
+        request.selectedLines.size() > 1024) return out;
+    qsizetype wordCount = 0;
+    for (const auto& line : request.selectedLines) wordCount += line.words.size();
+    if (wordCount > 8192) return out;
+    QHash<QString, QVector<QRectF>> recognized;
+    for (qsizetype i = 0; i < neighbor.prepared.size(); ++i) {
+        if (neighbor.stamp.temporallySmoothed &&
+            (neighbor.currentInputMatches.size() != neighbor.prepared.size() ||
+             !neighbor.currentInputMatches[i])) continue;
+        for (const auto& word : neighbor.prepared[i].words)
+            if (word.disposition == TokenDisposition::kCandidate && !IsHighRiskToken(word.text))
+                recognized[word.text].push_back(word.sceneRect);
+    }
+    QVector<QRectF> rects;
+    QVector<QPointF> offsets;
+    QVector<QPair<int, int>> destinations;
+    for (int i = 0; i < request.selectedLines.size(); ++i) {
+        const auto& line = request.selectedLines[i];
+        out.push_back(QVector<bool>(line.words.size(), false));
+        for (int j = 0; j < line.words.size(); ++j) {
+            if (cancelled.load()) return unavailable();
+            const auto& word = line.words[j];
+            if (word.disposition != TokenDisposition::kCandidate || IsHighRiskToken(word.text)) continue;
+            const auto evidence = recognized.constFind(word.text);
+            if (evidence == recognized.constEnd()) continue;
+            // The ordinary completed line proof already covers static words.
+            if (i < neighbor.corroborationMatches.size() && neighbor.corroborationMatches[i] &&
+                std::any_of(evidence->begin(), evidence->end(), [&](const QRectF& r) {
+                    return Iou(word.sceneRect, r) >= .5;
+                })) continue;
+            std::optional<QPointF> best;
+            double nearest = std::numeric_limits<double>::max();
+            for (const auto& target : *evidence) {
+                const auto delta = target.center() - word.sceneRect.center();
+                if (std::abs(delta.x()) > .25 || std::abs(delta.y()) > .25 ||
+                    std::min(target.width(), word.sceneRect.width()) < .75 * std::max(target.width(), word.sceneRect.width()) ||
+                    std::min(target.height(), word.sceneRect.height()) < .75 * std::max(target.height(), word.sceneRect.height())) continue;
+                const double distance = delta.x() * delta.x() + delta.y() * delta.y();
+                if (distance < nearest) { nearest = distance; best = delta; }
+            }
+            if (!best) continue;
+            rects.push_back(word.sceneRect);
+            offsets.push_back(*best);
+            destinations.push_back({i, j});
+        }
+    }
+    // Stronger than ordinary line tracking, with only two probe pixels of
+    // local OCR-box refinement around the explicitly recognized destination.
+    constexpr MatchTuning tuning{.94, .95, 2};
+    for (qsizetype first = 0; first < rects.size(); first += 1024) {
+        if (cancelled.load()) return unavailable();
+        const auto batch = rects.mid(first, 1024);
+        QVector<ReferencePatch> patches;
+        if (request.selectedReference.resident)
+            patches = request.selectedReference.resident->References(request.selectedReference.stamp, batch);
+        else for (const auto& rect : batch) patches.push_back(BuildReferencePatch(request.selectedReference, rect));
+        if (patches.size() != batch.size()) return unavailable();
+        for (int i = 0; i < patches.size(); ++i) patches[i].sceneRect.translate(offsets[first + i]);
+        QVector<PatchMatch> matches;
+        if (neighbor.reference.resident)
+            matches = neighbor.reference.resident->Matches(neighbor.stamp, patches, tuning, {}, &cancelled);
+        else for (const auto& patch : patches) {
+            if (cancelled.load()) return unavailable();
+            matches.push_back(MatchPatch(patch, neighbor.reference, tuning));
+        }
+        if (matches.size() != patches.size()) return unavailable();
+        for (int i = 0; i < matches.size(); ++i) {
+            const auto [line, word] = destinations[first + i];
+            out[line][word] = matches[i].matched;
+        }
+    }
+    return out;
+}
+} // namespace
+
 std::optional<double> SceneSimilarity(const ProbeFrame& a, const ProbeFrame& b)
 {
+    if (a.resident && b.resident)
+        return a.resident->Similarity(a.stamp, *b.resident, b.stamp);
+    if (a.resident || b.resident) return std::nullopt;
     if (!a.IsValid() || !b.IsValid()) {
         return std::nullopt;
     }
@@ -954,6 +1123,7 @@ struct RecognitionScheduler::State {
         SourceStamp stamp;
         QImage pixels;
         SharedDeviceImage device;
+        CorroborationRequest corroboration;
     };
 
     std::mutex mutex;
@@ -990,7 +1160,8 @@ struct RecognitionScheduler::State {
         }
     }
 
-    std::uint64_t Enqueue(const SourceStamp& stamp, QImage owned, SharedDeviceImage device = {})
+    std::uint64_t Enqueue(const SourceStamp& stamp, QImage owned, SharedDeviceImage device = {},
+                          CorroborationRequest corroboration = {})
     {
         std::lock_guard lock(mutex);
         if (shutdown || status.state == BackendState::kUnavailable ||
@@ -1006,6 +1177,7 @@ struct RecognitionScheduler::State {
         job.stamp = stamp;
         job.pixels = std::move(owned);
         job.device = std::move(device);
+        job.corroboration = std::move(corroboration);
         const std::uint64_t id = job.id;
         pending = std::move(job);
         ++stats.submitted;
@@ -1047,19 +1219,41 @@ struct RecognitionScheduler::State {
             result.stamp = job.stamp;
             result.deviceInput = static_cast<bool>(job.device);
             QImage pixels=job.pixels;
+            QImage validationPixels;
             try {
+            // Extra Stable identity comes only from this capture's own device
+            // record, read after its copy completes (compact metadata only).
+            // Without one, a stamp cannot keep claiming live or held pixels.
+            if (job.device && job.device->HasHoldProvenance()) {
+                QString holdError;
+                ApplyHoldProvenance(job.stamp,
+                    job.device->ReadHoldProvenance(self->cancelInFlight, holdError));
+            } else if (job.stamp.holdDisplay != HoldDisplay::NotHeld) {
+                ApplyHoldProvenance(job.stamp, {HoldDisplay::Unknown, 0, 0.0f});
+            }
+            result.stamp = job.stamp;
             const BackendState state = [&] {
                 std::lock_guard lock(self->mutex);
                 return self->status.state;
             }();
             if (state != BackendState::kReady) {
                 result.output.error = QStringLiteral("Recognition backend is not ready.");
+            } else if (!self->probeOnly && !EvidenceAcquisition(job.stamp)) {
+                // A recovery crossfade (or unreadable record) is a composite of
+                // two acquisitions: no inference, no evidence, and neither a
+                // backend nor an input failure. Validation may still probe it.
+                result.output.compositeInput = true;
+                result.output.error = QStringLiteral("Extra Stable composite pixels are not recognized.");
             } else if(self->probeOnly) {
                 result.output.inputFault=true;
-                if(job.device)pixels=job.device->ReadProbe(self->cancelInFlight,result.output.error);
+                if(job.device && job.device->HasResidentAnalysis()) {
+                    result.output.ok=job.device->PrepareResidentAnalysis(result,
+                        self->referenceDecimation, true, self->cancelInFlight, result.output.error);
+                } else if(job.device)pixels=job.device->ReadProbe(self->cancelInFlight,result.output.error);
                 else result.output.error="Device validation requires an owned image.";
-                result.output.ok=!pixels.isNull();result.output.cancelled=self->cancelInFlight.load();
-                result.output.inputFault=pixels.isNull();
+                result.output.ok=result.reference.IsValid() || !pixels.isNull();
+                result.output.cancelled=self->cancelInFlight.load();
+                result.output.inputFault=!result.output.ok;
             } else {
                 const bool wantsDevice = job.device && self->recognizer->WantsDeviceInput();
                 if(job.device && !wantsDevice) {
@@ -1075,18 +1269,34 @@ struct RecognitionScheduler::State {
                 if (currentStatus.state != BackendState::kNotStarted) self->Publish(currentStatus);
             }
             if (result.output.ok && !self->cancelInFlight.load()) {
-                // GPU recognition finishes before the existing CPU validation
-                // branch reads any pixels. The network path remains resident;
-                // only final publication/reference preparation crosses back.
+                const bool resident = pixels.isNull() && job.device && job.device->HasResidentAnalysis();
+                if (resident && !self->probeOnly) {
+                    result.output.ok=job.device->PrepareResidentAnalysis(result,
+                        self->referenceDecimation, false, self->cancelInFlight, result.output.error);
+                    result.output.inputFault=!result.output.ok;
+                }
+                // Only an explicit CPU implementation/fallback downloads pixels.
+                // A resident-analysis error never retries via image readback.
+                if (!resident) {
                 if(pixels.isNull()&&job.device){
                     result.output.inputFault=true;pixels=job.device->Readback(self->cancelInFlight,result.output.error);
                     result.output.inputFault=pixels.isNull();
                 }
                 if(pixels.isNull()){result.output.ok=false;result.output.inputFault=true;result.output.cancelled=self->cancelInFlight.load();}
-                result.sourcePixelDigest = SourcePixelDigest(pixels);
-                result.reference = MakeProbeFrame(pixels.constBits(), pixels.width(),
-                                                  pixels.height(),
-                                                  static_cast<int>(pixels.bytesPerLine()),
+                const QImage* referencePixels = &pixels;
+                if (!self->probeOnly && job.device && job.device->kind == AnalysisKind::TemporallySmoothed) {
+                    validationPixels = job.device->ReadValidation(self->cancelInFlight, result.output.error);
+                    if (validationPixels.isNull()) { result.output.ok = false; result.output.inputFault = true; }
+                    else referencePixels = &validationPixels;
+                }
+                // Camera acquisition identity already comes from its owner.
+                // Validation-only results are never temporal OCR evidence.
+                // Hash only saved/unknown recognition inputs, on this worker.
+                if (!self->probeOnly && !job.stamp.liveCameraCapture)
+                    result.sourcePixelDigest = SourcePixelDigest(*referencePixels);
+                result.reference = MakeProbeFrame(referencePixels->constBits(), referencePixels->width(),
+                                                  referencePixels->height(),
+                                                  static_cast<int>(referencePixels->bytesPerLine()),
                                                   self->referenceDecimation, job.stamp);
                 for (RecognizedLine& line : result.output.lines) {
                     QRectF bounds;
@@ -1097,13 +1307,59 @@ struct RecognitionScheduler::State {
                     result.lineColors.push_back(colors);
                     for (RecognizedWord& word : line.words) {
                         if (word.protectedBoundsPx.isEmpty()) word.protectedBoundsPx = word.boundsPx;
+                        word.colors = MeasureLineColors(pixels, word.boundsPx.toAlignedRect());
                         if (word.paddedBounds && word.disposition == TokenDisposition::kCandidate)
-                            word.boundsPx = RefineWordInkBounds(pixels, word, colors);
+                            word.boundsPx = RefineWordInkBounds(pixels, word, *word.colors);
                     }
                 }
-                // Scene mapping and residual references are pixel work too:
-                // done here so UI-thread admission stays cheap.
-                result.prepared = PrepareLines(result, self->minimumWordHeightPx);
+                }
+                if (result.output.ok && !self->cancelInFlight.load()) {
+                    result.prepared = PrepareLines(result, self->minimumWordHeightPx);
+                    if (!self->probeOnly && job.device &&
+                        job.device->kind == AnalysisKind::TemporallySmoothed && !resident) {
+                        const auto recognized = MakeProbeFrame(pixels.constBits(), pixels.width(),
+                            pixels.height(), static_cast<int>(pixels.bytesPerLine()),
+                            self->referenceDecimation, job.stamp);
+                        for (const auto& line : result.output.lines) {
+                            if (self->cancelInFlight.load()) break;
+                            bool matches = true, hasCandidate = false;
+                            for (const auto& word : line.words) {
+                                if (word.disposition != TokenDisposition::kCandidate) continue;
+                                hasCandidate = true;
+                                const auto rect = ViewRectToScene(job.stamp.viewTransform,
+                                    pixels.width(), pixels.height(), word.boundsPx);
+                                const auto patch = BuildReferencePatch(recognized, rect);
+                                const auto match = MatchPatch(patch, result.reference, kInputRegistrationTuning);
+                                matches &= match.matched && match.sceneOffset.isNull();
+                            }
+                            result.currentInputMatches.push_back(hasCandidate && matches);
+                        }
+                    }
+                    result.corroboratedJobId = job.corroboration.selectedJobId;
+                    result.corroborationTuning = job.corroboration.tuning;
+                    if(result.reference.resident){
+                        const auto matches=result.reference.resident->Matches(result.stamp,job.corroboration.references,
+                            job.corroboration.tuning,{},&self->cancelInFlight);
+                        for(const auto& match:matches)result.corroborationMatches.push_back(match.matched);
+                    } else for (const auto& patch : job.corroboration.references) {
+                        if (self->cancelInFlight.load()) break;
+                        result.corroborationMatches.push_back(MatchPatch(patch,result.reference,job.corroboration.tuning).matched);
+                    }
+                    if (!job.corroboration.selectedLines.isEmpty()) {
+                        bool failed = false;
+                        result.corroborationWordMatches = MatchImmutableWords(job.corroboration, result, self->cancelInFlight, failed);
+                        if (failed) {
+                            result.output.ok = false;
+                            result.output.cancelled = self->cancelInFlight.load();
+                            result.output.inputFault = !result.output.cancelled;
+                            result.output.error = QStringLiteral("Paused word registration unavailable.");
+                            result.output.lines.clear();
+                            result.prepared.clear();
+                            result.corroborationMatches.clear();
+                            result.corroborationWordMatches.clear();
+                        }
+                    }
+                }
             }
             }catch(const std::exception& error){result.output.ok=false;result.output.lines.clear();result.output.error=QString::fromUtf8(error.what());}
             result.durationMs = timer.nsecsElapsed() / 1e6;
@@ -1177,7 +1433,8 @@ RecognitionScheduler::~RecognitionScheduler()
     }
 }
 
-std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, QImage pixels)
+std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, QImage pixels,
+                                          CorroborationRequest corroboration)
 {
     if (pixels.isNull()) {
         return 0;
@@ -1191,10 +1448,11 @@ std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, QImage pixe
     if (owned.isNull()) {
         return 0;
     }
-    return state_->Enqueue(stamp, std::move(owned));
+    return state_->Enqueue(stamp, std::move(owned), {}, std::move(corroboration));
 }
 
-std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, SharedPixels pixels)
+std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, SharedPixels pixels,
+                                          CorroborationRequest corroboration)
 {
     // Shared pixels are immutable after hand-off, so a read-only view is an
     // owned input: the worker keeps the buffer alive until it is done.
@@ -1202,17 +1460,18 @@ std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, SharedPixel
     if (view.isNull()) {
         return 0;
     }
-    return state_->Enqueue(stamp, std::move(view));
+    return state_->Enqueue(stamp, std::move(view), {}, std::move(corroboration));
 }
 
-std::uint64_t RecognitionScheduler::SubmitDevice(const SourceStamp& stamp, SharedDeviceImage device)
+std::uint64_t RecognitionScheduler::SubmitDevice(const SourceStamp& stamp, SharedDeviceImage device,
+                                                  CorroborationRequest corroboration)
 {
     if(!device||!device->Data()||device->width<=0||device->height<=0||device->width>8192||device->height>8192||
         static_cast<std::size_t>(device->width)*device->height*4>128ull*1024*1024||
         device->pitch<static_cast<std::size_t>(device->width)*4||
         stamp.sourceEpoch!=device->sourceEpoch||stamp.frameSeq!=device->frameSequence||
         stamp.viewportWidth!=device->width||stamp.viewportHeight!=device->height)return 0;
-    return state_->Enqueue(stamp, {}, std::move(device));
+    return state_->Enqueue(stamp, {}, std::move(device), std::move(corroboration));
 }
 
 void RecognitionScheduler::Cancel()
@@ -1266,6 +1525,7 @@ SchedulerStats RecognitionScheduler::Stats() const
 struct ProbeWorker::State {
     std::mutex mutex;
     std::condition_variable wake;
+    std::condition_variable exitedSignal;
     std::mutex callbackMutex;
     bool callbacksEnabled{true};
     Completion completion;
@@ -1276,6 +1536,7 @@ struct ProbeWorker::State {
     std::uint64_t authority{1};
     std::uint64_t nextJobId{1};
     bool shutdown{};
+    bool exited{};
     ProbeWorkerStats stats;
     std::thread thread;
 
@@ -1342,6 +1603,9 @@ struct ProbeWorker::State {
                 }
             }
         }
+        std::lock_guard lock(self->mutex);
+        self->exited = true;
+        self->exitedSignal.notify_all();
     }
 };
 
@@ -1366,8 +1630,16 @@ ProbeWorker::~ProbeWorker()
         std::lock_guard callbackLock(state_->callbackMutex);
         state_->callbacksEnabled = false;
     }
-    // Budgeted CPU work that stops at the next line once cancelled.
-    state_->thread.join();
+    // A lost GPU can outlive its caller. State and inputs stay worker-owned,
+    // callbacks are disabled above, and destruction never joins indefinitely.
+    bool exited;
+    {
+        std::unique_lock lock(state_->mutex);
+        exited = state_->exitedSignal.wait_for(lock, std::chrono::milliseconds(1500),
+                                               [&] { return state_->exited; });
+    }
+    if (exited) state_->thread.join();
+    else state_->thread.detach();
 }
 
 std::uint64_t ProbeWorker::Submit(ProbeRequest request)
@@ -1437,12 +1709,19 @@ void OverlayModel::Reset()
     pendingEvidenceDigest_.clear();
     pendingEvidenceAuthority_ = 0;
     immutable_ = false;
+    liveCamera_ = false;
 }
 
 AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceStamp& current,
                                  const ProbeFrame* latestProbe, std::int64_t nowMs)
 {
     return AdmitImpl(result, current, latestProbe, nowMs, false);
+}
+
+AdmitVerdict OverlayModel::AdmitLiveCamera(const RecognitionResult& result, const SourceStamp& current,
+                                           const ProbeFrame* latestProbe, std::int64_t nowMs)
+{
+    return AdmitImpl(result, current, latestProbe, nowMs, false, nullptr, false, true);
 }
 
 AdmitVerdict OverlayModel::AdmitImmutable(const RecognitionResult& result,
@@ -1466,9 +1745,15 @@ AdmitVerdict OverlayModel::AdmitAdvancingMedia(const RecognitionResult& result,
 
 AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const SourceStamp& current,
                                     const ProbeFrame* latestProbe, std::int64_t nowMs, bool immutable,
-                                    const RecognitionResult* corroboration, bool advancingMedia)
+                                    const RecognitionResult* corroboration, bool advancingMedia, bool liveCamera)
 {
     if (!result.output.ok || result.output.cancelled) {
+        return AdmitVerdict::kFailed;
+    }
+    // Composite (Extra Stable crossfade) or unresolved pixels never become
+    // recognition evidence, whatever their frame sequence says.
+    const std::optional<std::uint64_t> acquisition = EvidenceAcquisition(result.stamp);
+    if (!acquisition) {
         return AdmitVerdict::kFailed;
     }
     if (!result.stamp.SameScene(current)) {
@@ -1477,16 +1762,29 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
     if (!immutable && !advancingMedia && nowMs - result.stamp.timestampMs > tuning_.maxResultAgeMs) {
         return AdmitVerdict::kTooOld;
     }
-    if (!result.reference.IsValid()) {
+    if (!result.reference.IsValid() ||
+        (result.reference.resident && result.prepared.size() != result.output.lines.size())) {
+        // A resident job must arrive fully prepared by its worker. A malformed
+        // completion must not turn fixture fallback preparation into UI CUDA.
         return AdmitVerdict::kFailed;
     }
-    if (immutable_ != immutable) Reset();
+    if (immutable_ != immutable || liveCamera_ != liveCamera) Reset();
     immutable_ = immutable;
+    liveCamera_ = liveCamera;
     const SourceStamp& stamp = result.stamp;
+    if (!immutable && latestProbe && latestProbe->IsValid() &&
+        latestProbe->stamp.SameScene(current) &&
+        latestProbe->stamp.frameSeq >= stamp.frameSeq &&
+        !EvidenceAcquisition(latestProbe->stamp)) {
+        return AdmitVerdict::kContentMoved; // an older OCR completion cannot revive crossfade text
+    }
     const double jobWidth = stamp.viewportWidth;
     const double jobHeight = stamp.viewportHeight;
+    // A composite (crossfade/unknown) probe names no acquisition, so it can
+    // never be the newer independent check that validates or moves new text.
     const bool newerProbe = latestProbe && latestProbe->IsValid() &&
                             latestProbe->stamp.SameScene(current) &&
+                            EvidenceAcquisition(latestProbe->stamp).has_value() &&
                             latestProbe->stamp.timestampMs > stamp.timestampMs;
     // The scheduler prepares lines on its worker; hand-built results are
     // prepared here.
@@ -1494,20 +1792,44 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         result.prepared.size() == result.output.lines.size()
             ? result.prepared
             : PrepareLines(result, tuning_.minimumWordHeightPx);
+    const bool workerRegistration = corroboration &&
+        corroboration->prepared.size() == corroboration->output.lines.size() &&
+        result.jobId != 0 && corroboration->corroboratedJobId == result.jobId &&
+        corroboration->corroborationMatches.size() == prepared.size() &&
+        corroboration->corroborationTuning.minimumScore == tuning_.match.minimumScore &&
+        corroboration->corroborationTuning.minimumVisibleFraction == tuning_.match.minimumVisibleFraction &&
+        corroboration->corroborationTuning.searchRadiusPx == tuning_.match.searchRadiusPx;
+    const bool workerWordRegistration = workerRegistration &&
+        corroboration->corroborationWordMatches.size() == prepared.size() &&
+        [&] {
+            for (int i = 0; i < prepared.size(); ++i)
+                if (corroboration->corroborationWordMatches[i].size() != prepared[i].words.size()) return false;
+            return true;
+        }();
     const bool independentNeighbor = immutable && corroboration && corroboration->output.ok &&
         !corroboration->output.cancelled && corroboration->authority == result.authority &&
         corroboration->stamp.SameScene(stamp) && corroboration->stamp.frameSeq != stamp.frameSeq &&
+        corroboration->sourcePixelDigestKind == result.sourcePixelDigestKind &&
         corroboration->sourcePixelDigest.size() == 32 && result.sourcePixelDigest.size() == 32 &&
         corroboration->sourcePixelDigest != result.sourcePixelDigest && corroboration->reference.IsValid() &&
         corroboration->reference.stamp.SameScene(corroboration->stamp) &&
-        corroboration->reference.stamp.frameSeq == corroboration->stamp.frameSeq;
+        corroboration->reference.stamp.frameSeq == corroboration->stamp.frameSeq &&
+        (workerRegistration || (!corroboration->reference.resident &&
+            corroboration->corroboratedJobId == 0 && corroboration->corroborationMatches.isEmpty() &&
+            corroboration->corroborationWordMatches.isEmpty()));
     QHash<QString, QVector<QRectF>> neighborWords;
     if (independentNeighbor) {
-        const auto neighbor = PrepareLines(*corroboration, tuning_.minimumWordHeightPx);
-        for (const PreparedLine& line : neighbor)
+        const auto neighbor = corroboration->prepared.size() == corroboration->output.lines.size()
+            ? corroboration->prepared : PrepareLines(*corroboration, tuning_.minimumWordHeightPx);
+        for (qsizetype i = 0; i < neighbor.size(); ++i) {
+            if (corroboration->stamp.temporallySmoothed &&
+                (corroboration->currentInputMatches.size() != neighbor.size() ||
+                 !corroboration->currentInputMatches[i])) continue;
+            const auto& line = neighbor[i];
             for (const PreparedWord& word : line.words)
                 if (word.disposition == TokenDisposition::kCandidate)
                     neighborWords[word.text].push_back(word.sceneRect);
+        }
     }
 
     struct Candidate {
@@ -1516,12 +1838,21 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         bool matchDeferred{};
     };
     QVector<Candidate> candidates;
+    QVector<QRectF> failedRegistrationRects;
     int movedLines = 0;
     QElapsedTimer matchTimer;
     matchTimer.start();
     for (int i = 0; i < prepared.size(); ++i) {
         const PreparedLine& line = prepared[i];
         if (line.words.isEmpty()) {
+            continue;
+        }
+        const bool currentInputMatches = !stamp.temporallySmoothed ||
+            (result.currentInputMatches.size() == prepared.size() && result.currentInputMatches[i]);
+        if (!currentInputMatches) {
+            // No new evidence: do not transfer recognition or its clock. A
+            // separately current-validated old line may survive below.
+            failedRegistrationRects.push_back(line.sceneRect);
             continue;
         }
         Candidate candidate;
@@ -1533,8 +1864,18 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         candidate.line.valid = !newerProbe || line.reference.valid;
         candidate.line.validatedAtMs = stamp.timestampMs;
         candidate.line.validatedFrameSeq = stamp.frameSeq;
-        if (newerProbe && line.reference.valid) {
-            if (matchTimer.nsecsElapsed() / 1e6 >= tuning_.admitMatchBudgetMs) {
+        if (stamp.temporallySmoothed && !immutable) {
+            // Smoothed OCR pixels are never their own proof: the line stays
+            // hidden until a single-frame probe at or after this frame
+            // matches its current-frame reference (inline below, or a later
+            // off-thread ApplyChecks). Two agreeing smoothed reads therefore
+            // confirm words into pending/accepted state but draw nothing.
+            candidate.line.valid = false;
+            candidate.matchDeferred = true;
+        }
+        if (newerProbe && candidate.line.reference.valid) {
+            if (latestProbe->resident || matchTimer.nsecsElapsed() / 1e6 >= tuning_.admitMatchBudgetMs ||
+                (stamp.temporallySmoothed && latestProbe->stamp.frameSeq < stamp.frameSeq)) {
                 // Budget spent on the UI thread: admit unverified. The line
                 // stays hidden until an off-thread probe validates it.
                 candidate.line.valid = false;
@@ -1546,6 +1887,8 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                     continue;
                 }
                 if (m.matched) {
+                    candidate.line.valid = true;
+                    candidate.matchDeferred = false;
                     candidate.line.sceneOffset = m.sceneOffset;
                     candidate.line.validatedAtMs = latestProbe->stamp.timestampMs;
                     candidate.line.validatedFrameSeq = latestProbe->stamp.frameSeq;
@@ -1565,18 +1908,36 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
             continue;
         }
         for (const AcceptedWord& word : line.words) {
+            // A reading-only word is one unconfirmed observation; it can be
+            // confirmed through the pending ticket below, never by itself.
+            if (!word.glyphEligible) continue;
             earlier[word.text].push_back(word.sceneRect.translated(line.sceneOffset));
         }
     }
+    // Evidence is the acquisition the pixels show. An Extra Stable held image
+    // repeats its earlier held frame however many presentations later it is
+    // copied, so it can never corroborate an observation of that same frame.
+    const std::optional<std::uint64_t> pendingAcquisition = EvidenceAcquisition(pendingEvidenceStamp_);
     const bool independentPending = !immutable && pendingEvidenceStamp_.SameScene(stamp) &&
         pendingEvidenceAuthority_ == result.authority &&
         pendingEvidenceStamp_.frameSeq != stamp.frameSeq &&
-        pendingEvidenceDigest_.size() == 32 && result.sourcePixelDigest.size() == 32 &&
-        pendingEvidenceDigest_ != result.sourcePixelDigest;
+        pendingAcquisition && *pendingAcquisition != *acquisition &&
+        (liveCamera
+            ? pendingEvidenceStamp_.liveCameraCapture && stamp.liveCameraCapture &&
+                *acquisition > *pendingAcquisition
+            : pendingDigestKind_ == result.sourcePixelDigestKind &&
+                pendingEvidenceDigest_.size() == 32 && result.sourcePixelDigest.size() == 32 &&
+                pendingEvidenceDigest_ != result.sourcePixelDigest);
+    // While a hold lasts no second acquisition can arrive. A single held
+    // observation is offered as reading text only: the original ink stays and
+    // no glyph, screen-reader word or proof of agreement is claimed for it.
+    const bool heldReadingOnly = !immutable && stamp.holdDisplay == HoldDisplay::Held;
     // Existing accepted words already have independent confirmation. Keep
     // them above, including during a duplicate refresh. Only NEW words need
-    // a distinct prior observation; changed job IDs or timestamps alone are
-    // never evidence that the recognized source pixels changed.
+    // a distinct prior observation. Live capture supplies a new acquisition
+    // sequence even on a byte-identical steady/virtual scene. Saved/unknown
+    // inputs still require different complete pixel hashes. Changing only a
+    // job ID/timestamp or repainting one capture never supplies evidence.
     if (independentPending) {
         for (const PendingWord& word : pending_) {
             if (word.sourceEpoch == current.sourceEpoch &&
@@ -1607,10 +1968,13 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         // Preserve the confirmed reading text, with visible uncertainty, only
         // on the sample's own freshness clock.
         bool neighborRegistered = false;
-        if (independentNeighbor && candidate.line.reference.valid &&
-            matchTimer.nsecsElapsed() / 1e6 < tuning_.admitMatchBudgetMs)
-            neighborRegistered = MatchPatch(candidate.line.reference, corroboration->reference,
-                                             tuning_.match).matched;
+        const auto index = static_cast<qsizetype>(candidate.source - prepared.constData());
+        if (independentNeighbor && candidate.line.reference.valid)
+        {
+            if (workerRegistration) neighborRegistered = corroboration->corroborationMatches[index];
+            else if (matchTimer.nsecsElapsed() / 1e6 < tuning_.admitMatchBudgetMs)
+                neighborRegistered = MatchPatch(candidate.line.reference, corroboration->reference, tuning_.match).matched;
+        }
         if (!candidate.line.reference.valid) candidate.line.readingTokens.push_back({});
         for (const PreparedWord& word : candidate.source->words) {
             const QRectF currentRect = word.sceneRect.translated(candidate.line.sceneOffset);
@@ -1623,14 +1987,26 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
             }
             if (confirmedBefore(word.text, currentRect)) {
                 const auto evidence = neighborWords.constFind(word.text);
-                const bool glyphEligible = !immutable || (neighborRegistered && evidence != neighborWords.constEnd() &&
+                const auto wordIndex = static_cast<qsizetype>(&word - candidate.source->words.constData());
+                const bool registeredWord = independentNeighbor && candidate.line.reference.valid &&
+                    workerWordRegistration && evidence != neighborWords.constEnd() &&
+                    corroboration->corroborationWordMatches[index][wordIndex];
+                const bool glyphEligible = !immutable || registeredWord || (neighborRegistered && evidence != neighborWords.constEnd() &&
                     std::any_of(evidence->begin(), evidence->end(), [&](const QRectF& r) {
                         return Iou(word.sceneRect, r) >= tuning_.agreementIou;
                     }));
-                candidate.line.words.push_back({word.text, word.sceneRect, glyphEligible});
+                candidate.line.words.push_back({word.text, word.sceneRect, glyphEligible,
+                    word.colors ? std::optional<LineColors>(StableLineColors(*word.colors)) : std::nullopt});
                 candidate.line.readingTokens.push_back(word.text);
                 if (!glyphEligible) candidate.line.protectedSceneRects.push_back(
                     word.protectedSceneRect.isEmpty() ? word.sceneRect : word.protectedSceneRect);
+            } else if (heldReadingOnly) {
+                candidate.line.words.push_back({word.text, word.sceneRect, false});
+                candidate.line.readingTokens.push_back(word.text);
+                candidate.line.protectedSceneRects.push_back(
+                    word.protectedSceneRect.isEmpty() ? word.sceneRect : word.protectedSceneRect);
+                nextPending.push_back({word.text, currentRect, current.sourceEpoch,
+                                       current.geometryGeneration});
             } else {
                 ++candidate.line.omittedWords;
                 candidate.line.readingTokens.push_back({});
@@ -1640,7 +2016,7 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                                        current.geometryGeneration});
             }
         }
-        if (immutable && candidate.line.reference.valid &&
+        if ((immutable || heldReadingOnly) && candidate.line.reference.valid &&
             std::any_of(candidate.line.words.begin(), candidate.line.words.end(),
                 [](const AcceptedWord& word) { return !word.glyphEligible; }))
             candidate.line.readingTokens.prepend(QString());
@@ -1677,6 +2053,10 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                     }
                     if (sameWords) {
                         candidate.line.colors = StableLineColors(candidate.line.colors, &old.colors);
+                        for (int i = 0; i < old.words.size(); ++i)
+                            if (candidate.line.words[i].colors && old.words[i].colors)
+                                candidate.line.words[i].colors = StableLineColors(
+                                    *candidate.line.words[i].colors, &*old.words[i].colors);
                         if (!IsShown(old, nowMs, latestProbe->stamp.frameSeq) ||
                             (candidate.line.valid &&
                              (candidate.line.validatedAtMs > old.validatedAtMs ||
@@ -1686,8 +2066,11 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                             break;
                         }
                         const LineColors colors = candidate.line.colors;
+                        auto measuredWords = std::move(candidate.line.words);
                         candidate.line = old;
                         candidate.line.colors = colors;
+                        for (int i = 0; i < candidate.line.words.size(); ++i)
+                            candidate.line.words[i].colors = measuredWords[i].colors;
                         retained = true;
                         retainedIds.insert(old.id);
                         break;
@@ -1706,6 +2089,19 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
     QVector<AcceptedLine> kept;
     for (const AcceptedLine& line : lines_) {
         if (!line.provenance.SameScene(current)) {
+            continue;
+        }
+        const QRectF oldRect = line.sceneRect.translated(line.sceneOffset);
+        if (!immutable && latestProbe && latestProbe->stamp.SameScene(current) &&
+            latestProbe->stamp.frameSeq >= stamp.frameSeq &&
+            line.validatedFrameSeq >= stamp.frameSeq &&
+            IsShown(line, nowMs, latestProbe->stamp.frameSeq) &&
+            std::any_of(failedRegistrationRects.begin(), failedRegistrationRects.end(),
+                [&](const QRectF& r) { return r.intersects(oldRect); }) &&
+            std::none_of(admitted.begin(), admitted.end(), [&](const AcceptedLine& replacement) {
+                return replacement.sceneRect.translated(replacement.sceneOffset).intersects(oldRect);
+            })) {
+            kept.push_back(line); // exact old identity/reference/proof, never refreshed by failed OCR
             continue;
         }
         if (!coverage.contains(line.sceneRect.translated(line.sceneOffset).center())) {
@@ -1729,14 +2125,16 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
     pending_ = std::move(nextPending);
     pendingEvidenceStamp_ = stamp;
     pendingEvidenceDigest_ = result.sourcePixelDigest.size() == 32 ? result.sourcePixelDigest : QByteArray{};
+    pendingDigestKind_ = result.sourcePixelDigestKind;
     pendingEvidenceAuthority_ = result.authority;
+    const auto glyphWord = [](const AcceptedWord& word) { return word.glyphEligible; };
     if (std::any_of(admitted.begin(), admitted.end(), [&](const AcceptedLine& line) {
-        return !immutable ? !line.words.isEmpty() : line.reference.valid &&
-            std::any_of(line.words.begin(), line.words.end(), [](const AcceptedWord& word) { return word.glyphEligible; });
+        return !immutable ? std::any_of(line.words.begin(), line.words.end(), glyphWord)
+                          : line.reference.valid && std::any_of(line.words.begin(), line.words.end(), glyphWord);
     })) {
         return AdmitVerdict::kAccepted;
     }
-    if (immutable && !admitted.isEmpty()) return AdmitVerdict::kPending;
+    if ((immutable || heldReadingOnly) && !admitted.isEmpty()) return AdmitVerdict::kPending;
     return pending_.isEmpty() ? (movedLines > 0 ? AdmitVerdict::kContentMoved : AdmitVerdict::kEmpty)
                               : AdmitVerdict::kPending;
 }
@@ -1759,7 +2157,8 @@ QVector<LineReference> OverlayModel::LineReferences(const SourceStamp& scene) co
     return references;
 }
 
-ValidationSummary OverlayModel::ApplyChecks(const QVector<LineCheck>& checks, const SourceStamp& probeStamp)
+ValidationSummary OverlayModel::ApplyChecks(const QVector<LineCheck>& checks, const SourceStamp& probeStamp,
+                                            bool renew)
 {
     ValidationSummary summary;
     QHash<std::uint64_t, const LineCheck*> byId;
@@ -1774,10 +2173,25 @@ ValidationSummary OverlayModel::ApplyChecks(const QVector<LineCheck>& checks, co
             ++summary.invalid;
             continue;
         }
+        if (!renew && probeStamp.frameSeq >= line.provenance.frameSeq &&
+            probeStamp.timestampMs >= line.validatedAtMs) {
+            // Composite identity alone revokes display, even if no line check
+            // was queued or the worker exhausted its budget. It never alters
+            // the last single-frame proof, allowing later live revalidation.
+            line.valid = false;
+        }
         const LineCheck* check = byId.value(line.id, nullptr);
         // Not part of this probe (admitted after it was taken), or already
         // validated against newer pixels: keep the newer state.
         if (!check || probeStamp.timestampMs < line.validatedAtMs) {
+            kept.push_back(line);
+            continue;
+        }
+        if (!line.valid && line.provenance.temporallySmoothed &&
+            probeStamp.frameSeq < line.provenance.frameSeq) {
+            // An older single-frame probe cannot validate smoothed text
+            // recognized from a newer blend; keep it unverified.
+            ++summary.unchecked;
             kept.push_back(line);
             continue;
         }
@@ -1800,6 +2214,14 @@ ValidationSummary OverlayModel::ApplyChecks(const QVector<LineCheck>& checks, co
             ++summary.invalid; // content changed, occluded or moved too far
             continue;
         }
+        if (!renew) {
+            // A composite agreeing with the line is not proof of either source:
+            // revoke its display (glyphs and reading text) until a single-frame
+            // probe revalidates it, without touching its proof clocks or offset.
+            line.valid = false;
+            kept.push_back(line);
+            continue;
+        }
         line.valid = true;
         line.sceneOffset = check->match.sceneOffset;
         line.validatedAtMs = probeStamp.timestampMs;
@@ -1814,10 +2236,14 @@ ValidationSummary OverlayModel::ApplyChecks(const QVector<LineCheck>& checks, co
 ValidationSummary OverlayModel::Validate(const ProbeFrame& probe, std::int64_t nowMs)
 {
     Q_UNUSED(nowMs);
-    if (!probe.IsValid()) {
+    if (!probe.IsValid() || probe.resident) {
+        // Resident validation arrives through worker-computed ApplyChecks.
         return {};
     }
-    return ApplyChecks(CheckLines(LineReferences(probe.stamp), probe, tuning_.match, 0.0), probe.stamp);
+    // Same authority as the worker path: a composite probe may hide or
+    // remove text but never renews its proof.
+    return ApplyChecks(CheckLines(LineReferences(probe.stamp), probe, tuning_.match, 0.0), probe.stamp,
+                       EvidenceAcquisition(probe.stamp).has_value());
 }
 
 bool OverlayModel::IsShown(const AcceptedLine& line, std::int64_t nowMs, std::uint64_t currentFrameSeq) const
@@ -1851,7 +2277,7 @@ QVector<SceneWord> OverlayModel::SceneWords(std::int64_t nowMs, std::uint64_t cu
         for (int i = 0; i < line.words.size(); ++i) {
             const AcceptedWord& word = line.words[i];
             if (!word.glyphEligible) continue;
-            words.push_back({word.text, word.sceneRect.translated(line.sceneOffset), line.colors, line.id,
+            words.push_back({word.text, word.sceneRect.translated(line.sceneOffset), word.colors.value_or(line.colors), line.id,
                              protectedRects, i});
         }
     }

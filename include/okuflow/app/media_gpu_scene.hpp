@@ -146,8 +146,9 @@ public:
     // in annotation/UCT presentation identity as well as epoch/frame/settings.
     std::uint64_t SceneGeneration() const noexcept;
     std::uint64_t HistoryResetCount() const noexcept;
-    // Analysis pixels are post-stabilization/keystone. Hold/temporal composites
-    // and neural presentation cannot prove single-frame text correspondence;
+    // Analysis pixels are post-stabilization/keystone. Temporal Smooth uses a
+    // paired neutral capture and Extra Stable captures carry their hold record;
+    // neural presentation cannot prove single-frame text correspondence, so
     // clear existing OCR overlays while this is false. Spatial ROI scaling is
     // still a known mapping and remains compatible.
     bool UctCoordinatesReliable() const noexcept;

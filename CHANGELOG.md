@@ -2,6 +2,119 @@
 
 ## [Unreleased]
 
+- Accept medium/small GPU recognition at batch eight under the
+  owner's explicit 10-source-pixel geometry/confidence-variation policy. Keep
+  exact text/order/omission behavior, original strict diagnostic failures, saved
+  model choices, GPU medium/medium and CPU tiny/small defaults, and batch-one
+  preparation fallback. The small model remains selectable after a serial-token
+  regression blocked its promotion to the default.
+- Complete the diagnostic frozen-crop recognizer comparison: bounded immutable
+  owned inputs replay exact recorded detector windows without image readback;
+  normal app recognition never installs that diagnostic.
+
+
+- Add opt-in resident performance and character-change diagnostics, crop-width
+  telemetry and existing host-wait attribution for the revised UCT roadmap.
+  The character baseline retains false accepts/hides; region reuse remains
+  disabled and production OCR model/batch defaults are unchanged.
+
+- Confirm paused-video words at their recognized positions in a neighbouring
+  frame when scrolling moved them, while keeping glyphs on the selected frame.
+  Completed worker validation no longer loses later lines to the UI match budget.
+
+- Add opt-in TensorRT recognizer batches of eight and sixteen with bounded
+  stage profiling and a larger checked output-allocation ceiling for sixteen.
+  The one-time comparison was faster, but failed strict numerical agreement
+  and encountered an exit crash; retain batch one as the automatic default.
+  See `docs/uct_gpu_batching.md` for measurements and remaining limits.
+
+- Use a switch for the top-left Text Clarity control. Remember the shared UCT
+  preference across sessions, pausing it with Text Clarity and restoring it
+  with the other retained text settings when the master is enabled again.
+
+- Preserve word-local UCT colors on mixed button/document rows, identify the
+  active GPU/CPU OCR backend accessibly, and recover paused text after transient
+  recognition failures. Reduce cached GPU startup work and group OCR submissions;
+  defer heavy CPU fallback while GPU preparation is pending.
+
+- Put playback icons and the scrubber on one compact row, retaining keyboard
+  and screen-reader actions. Keep UCT text during same-frame magnified pans,
+  and improve small/dense print with overlapping GPU-resident detail passes
+  and long-line recognition windows.
+- Preserve previously proven recording duration across finalizer backwrites,
+  without restoring revoked read or seek permissions.
+- Allow long-GOP saved videos to seek beyond 120 preroll reads while preserving
+  the two-second request deadline, cancellation and decoded-memory limits.
+
+- Keep folded bottom control groups stable during window movement, activation
+  and resizing. Measure candidate layouts before applying the selected layout,
+  avoiding temporary wide native windows that caused visible flicker.
+
+- Measure the phone USB cancellation fixture from its actual private health
+  probe, independently of startup scheduling. Keep the 500 ms cancellation
+  limit and verify a deliberately delayed start without using a real phone.
+
+- Retry OCR for an Extra Stable held image when its previous result failed,
+  expired or was rejected during a recovery crossfade. Keep successful held
+  reads deduplicated and preserve a newer job's acquisition marker.
+
+- Preserve live preview when a manual recording pause cannot retain the exact
+  displayed view. Extra Stable remains a viewing effect: new video recordings
+  continue from the clean Original source before stabilization and held frames.
+
+- Include eligible UCT text and drawn figures in processed photos and saved
+  annotated views. Keep Original photos clean and freeze overlays before
+  asynchronous saving; omit UI controls and selection handles.
+
+- Support UCT with CUDA Temporal Smooth using a separate, full-scene neutral
+  temporal input before zoom and image effects. Keep current-frame validation
+  separate from the smoothed OCR pixels, preserve same-frame media replay,
+  reseed paused UCT toggles without changing playback, and reset analysis history
+  on source/geometry changes. Verify smoothed words against current pixels and
+  retain only independently validated old text on a rejected refresh. Bound
+  allocation retries under memory pressure. Support exact Extra Stable held
+  images with GPU-resident acquisition records, reject recovery crossfades,
+  and prevent repeated held copies from confirming text. Update unsupported
+  composite status in all 24 translations.
+
+- Fold the left quick-mode cluster first when the view narrows, then wrap
+  Photo, Record, Explain, Read and Draw into three buttons above two at the
+  right when needed. Preserve labels, tooltips and accessibility.
+
+- Update UCT status text and its screen-reader name immediately together,
+  removing the routine diagnostic delay while keeping routine changes silent.
+  Cover cached accessibility interfaces and refreshed reading-pane content.
+
+- Keep Ultra Clear Text attached to the viewport during native window drags.
+  Move its retained glyph window immediately with the existing floating
+  controls, independently of queued Qt events, OCR and accessibility cadence.
+
+- Correct remaining Turkish/German wrapped-toolbar width differences: give
+  each action row independent spacing and equal button minimums, preserving
+  readable labels through narrow layouts and live reflow.
+
+- Restore the phone-light control after cancelling or failing video selection,
+  and keep translated action-grid cells equal in width when toolbar rows wrap.
+  Preserve the complete UCT suite's individual assertions while allowing its
+  aggregate runtime on loaded Windows CI runners.
+
+- Keep CUDA UCT color sampling, ink fitting, scene/line validation and saved-frame
+  duplicate fingerprints on the GPU after TensorRT inference. Return compact
+  text/geometry/color/validation metadata only; keep CPU image readback confined
+  to the explicit CPU OCR fallback. Retain asynchronous UI admission and bounded
+  ownership independently of the two full-scene analysis slots.
+
+- Restore Ultra Clear Text on steady live/virtual camera feeds. Use trusted
+  camera acquisition sequences to confirm unchanged printed text, while
+  repainting a held sample supplies no new evidence. Skip redundant camera
+  and validation-only pixel hashing; retain strict saved-frame duplicate,
+  scene, freshness and registration checks.
+
+- Move saved-video selection into Settings > Camera: choose View video to open
+  the file picker, then use Select video to replace it. Keep the five camera
+  actions uncluttered, preserve the source selection through camera discovery,
+  and keep video orientation separate from the saved camera preference.
+
 - Add an explicit two-output GPU media experiment and one-time throughput/latency
   measurements, preserving shared processing history and independent output
   fences. Keep one output as the app default after the measured tradeoff.

@@ -3513,5 +3513,33 @@ Chọn Kết nối ChatGPT trong tab Trợ lý của chế độ Nâng cao để
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>Không thể tạm dừng: không thể giữ nguyên chính xác khung hình đang hiển thị.</translation>
         </message>
-    </context>
+        <message>
+            <source>View video</source>
+            <translation>Xem video</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Chọn video</translation>
+        </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>Tạm dừng khi bật Siêu ổn định. Hình ảnh gốc từ camera được hiển thị.</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>Đang hiển thị văn bản gốc từ camera.</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>Tính năng nhận dạng văn bản tạm dừng trong chế độ xem tổng hợp để gỡ lỗi. Hình ảnh gốc từ camera vẫn được hiển thị.</translation>
+        </message>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>Đang dùng bộ xử lý OCR trên GPU: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>Đang dùng bộ xử lý OCR trên CPU: %1</translation>
+    </message>
+</context>
 </TS>

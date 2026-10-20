@@ -3513,5 +3513,33 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>وقفہ ممکن نہیں: دکھائے گئے فریم کی ترتیب بالکل اسی طرح برقرار نہیں رکھی جا سکی۔</translation>
         </message>
-    </context>
+        <message>
+            <source>View video</source>
+            <translation>ویڈیو دیکھیں</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>ویڈیو منتخب کریں</translation>
+        </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>زیادہ استحکام فعال ہونے پر عارضی طور پر روک دیا گیا ہے۔ کیمرے کی اصل تصویر دکھائی جا رہی ہے۔</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>کیمرے کا اصل متن دکھایا جا رہا ہے۔</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>ڈیبگ کمپوزٹ ویو میں متن کی شناخت عارضی طور پر رکی ہوئی ہے۔ کیمرے کی اصل تصویر دکھائی جا رہی ہے۔</translation>
+        </message>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>GPU انجن استعمال ہو رہا ہے: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>CPU انجن استعمال ہو رہا ہے: %1</translation>
+    </message>
+</context>
 </TS>

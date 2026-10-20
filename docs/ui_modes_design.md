@@ -20,13 +20,16 @@ pixels. Its source label distinguishes the current recording from a saved file;
 ordinary live camera use has no timeline. Native Pause/Resume, timeline,
 forward-to-live/end, Return to camera, Mute and Save frame controls retain
 keyboard and accessibility semantics. Opening a file first finalizes recording.
-The Open video action joins the corner actions and is also available through
-Ctrl+O and a single local-file drop. See [transport layout](video_transport.md).
+Open a file through Settings > Camera > View video, Ctrl+O or a single local-file
+drop. The conditional Select video button sits below the source dropdown;
+the five corner actions remain Photo, Record, Explain, Read and Draw. See
+[transport layout](video_transport.md).
 
-Selected media uses the CPU presentation path for zoom, rotation, reading
-colors and UCT. Advanced GPU effects are unavailable there; preferences remain
-intact for returning to the camera. Camera setup and keystone strips must not
-obscure the selected file or imply that those effects are applied.
+Selected media shares image controls, including orientation. The independent
+CUDA media scene supports the shared effects pipeline; CPU compatibility retains
+zoom, rotation, reading colors and UCT. Camera resolution/frame rate and the phone
+light are hidden while video is selected. Video rotation preserves the camera's
+saved orientation and restores it on Return to camera.
 
 Simple mode is the normal operating view:
 
@@ -38,8 +41,19 @@ Simple mode is the normal operating view:
   the carousel with Previous, Stop/Continue, and Next correction controls. It
   disappears for profiles that do not use keystone correction.
 - In a camera view too narrow for both bottom corner clusters on one line
-  (typically Advanced, or a small Simple window), the bottom clusters merge
-  into a full-width toolbar; see Layout Invariants.
+  (typically Advanced, or a small Simple window), the left cluster folds first:
+  mode name above Previous / mode grid / Next. Further narrowing wraps the
+  right actions into two rows within their own corner; see Layout Invariants.
+- Measure alternative row/face arrangements without resizing visible controls.
+  Apply only the selected arrangement, retaining existing layouts when the
+  topology stays the same. A folded native group must not briefly expand to
+  its wide layout during activation or small resizes within one layout range.
+  The native stability regression observes every intermediate Resize event:
+  the original code fails all four folded LTR/RTL rows, while the repaired
+  code passes all six wide/folded rows. Six focused native GUI cases also pass
+  translated, minimum-width, movement and visual-layout checks. These are
+  geometry/interaction checks; actual camera optics and high-refresh display
+  latency remain separate acceptance.
 - The clusters are frameless windows owned by the main window. This keeps them
   above the native D3D swap chain while retaining normal Qt buttons,
   accessibility metadata, focus, and tooltips.
@@ -88,9 +102,13 @@ Simple mode is the normal operating view:
   viewport pan and zoom do not detach marks from lecture content. Move
   selects one item with an explicit bounding box; Erase removes whole items.
   Closing the mode clears session ink after the configured annotated snapshot.
-- A large, button-styled `Text Clarity` checkbox beside Simple/Advanced is the only
+- A large `Text Clarity` switch beside Simple/Advanced is the only
   direct image-processing toggle in Simple mode. It automatically chooses
   paper/board/mixed behavior; all component parameters remain in Advanced.
+  It retains native Qt checked-state/keyboard accessibility. The shared UCT
+  opt-in is saved across sessions; switching Text Clarity off stops UCT without
+  clearing that preference or the retained fine-tune settings. Switching back on
+  restores the enabled components. UCT remains off by default for old settings.
 - Device selection and detailed numeric controls are intentionally absent.
 
 Adding a new profile must not create persistent chrome. It joins the mode grid
@@ -109,26 +127,26 @@ available after Alt-Tab and when moving between tabs.
 Image starts with a pinned search field, current-mode summary, and
 `Save as Quick Mode` / `Reset Mode` actions. Its groups follow everyday tasks:
 
-1. **Zoom** — magnification, horizontal/vertical position, and focus marker.
-2. **Colors and contrast** — display colors, contrast, brightness, automatic
+1. **Zoom** â€” magnification, horizontal/vertical position, and focus marker.
+2. **Colors and contrast** â€” display colors, contrast, brightness, automatic
    contrast, and black-and-white thresholding.
-3. **Text clarity** — automatic text treatment first; individual algorithms
+3. **Text clarity** â€” automatic text treatment first; individual algorithms
    sit inside a collapsed **Fine-tune text** group.
-4. **Steady image** — stabilization, Extra Stable (hold on shake), and temporal smoothing.
-5. **Straighten screen** — keystone correction and history controls.
-6. **Sharpness** — spatial sharpening, NVIDIA Super Resolution, and blur.
-7. **Assistant behavior** — profile-owned explanation and overlay switches.
-8. **Diagnostics** — debug view and pipeline/performance status.
+4. **Steady image** â€” stabilization, Extra Stable (hold on shake), and temporal smoothing.
+5. **Straighten screen** â€” keystone correction and history controls.
+6. **Sharpness** â€” spatial sharpening, NVIDIA Super Resolution, and blur.
+7. **Assistant behavior** â€” profile-owned explanation and overlay switches.
+8. **Diagnostics** â€” debug view and pipeline/performance status.
 
 Settings contains shared controls, never saved into quick modes:
 
-1. **Camera** — source, session-only phone-light button, orientation, capture resolution and frame rate.
-2. **View and navigation** — framing, motion rate, joystick, wheel acceleration.
-3. **Recording** — processed resolution and microphone.
-4. **Notes and files** — lecture notes, save drawing on exit, and output folder.
-5. **Language** — application language.
-6. **AI and downloads** — AI Settings and dependency setup.
-7. **Troubleshooting** — camera acceleration and camera test.
+1. **Camera** â€” source, session-only phone-light button, orientation, capture resolution and frame rate.
+2. **View and navigation** â€” framing, motion rate, joystick, wheel acceleration.
+3. **Recording** â€” processed resolution and microphone.
+4. **Notes and files** â€” lecture notes, save drawing on exit, and output folder.
+5. **Language** â€” application language.
+6. **AI and downloads** â€” AI Settings and dependency setup.
+7. **Troubleshooting** â€” camera acceleration and camera test.
 
 The phone-light button appears only for a selected phone, enables only
 after the phone reports an available light, and reflects actual capture metadata.
@@ -306,13 +324,17 @@ code persists and applies orientation at the top level of
 - Advanced controls live beside the camera, never above it as a tall form.
 - The bottom-right Photo/Record/Explain/Read/Draw action bar remains available
   in Advanced, positioned against the camera viewport rather than the
-  inspector. Narrow camera areas use measured wrapping for the mode switch,
-  carousel, and labeled action rows. Bottom chrome is always rectangular:
-  when the carousel, any keystone strip, and all five actions cannot share
-  one line, they become one full-width bottom toolbar of stacked rows
-  (actions above the carousel) instead of corner fragments. Wrapped action
-  rows keep equal outer edges; a shorter final row uses wider buttons, so
-  3 + 2 never forms an L shape. Application
+  inspector. When both clusters cannot share a line, the left mode cluster
+  gets a second row first, with its name above the three navigation buttons.
+  The five actions initially stay in one row at the bottom trailing edge.
+  If necessary their icons move above their full labels, keeping the same font
+  size. Further narrowing wraps that group into three actions above two, with
+  equal widths within each row and matching outer row edges. Only a viewport
+  too narrow for even that labeled two-row group uses icon-only faces;
+  full button text, screen-reader names and tooltips are retained. If both
+  compact clusters still cannot fit beside each other, the compact left cluster
+  sits above the actions, without stretching into a full-width second band.
+  Contextual keystone controls remain with the left cluster. Application
   deactivation may temporarily hide the native tool window, but reactivation
   must restore this bar in both Simple and Advanced modes.
 - Record remains actionable while Draw is active. New recordings remain clean
@@ -375,3 +397,12 @@ Ctrl+Shift+A explicitly reveals/focuses Deny, and Ctrl+Shift+U stops and undoes.
 MainWindow owns the persistent live region outside hideable chrome. Refused
 routing preserves the shared draft. See [the UI contract](agent_control_ui.md)
 for the approved concept, review coverage and validation limits.
+
+
+Video source recovery also preserves the camera-only phone-light control:
+cancelling or failing the native video picker reconciles the source dropdown
+and recomputes phone availability from the current camera, rather than leaving
+the button hidden. Wrapped action rows use independent horizontal layouts with equal button
+minimums derived from translated content. Each row owns its spacing, including
+a three-button row above two wider buttons; mixed grid spans cannot suppress
+internal gaps or make neighbouring buttons uneven.

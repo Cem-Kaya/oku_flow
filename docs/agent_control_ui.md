@@ -114,6 +114,11 @@ isolation. Serial native desktop behavior remains a separate gate.
 
 Explicitly build `agent_control_capture` (excluded from default builds), then
 run `agent_control_capture.exe --output <absolute LocalAppData evidence folder>`.
+For the bottom-control layout alone, use `--chrome-output` with the same
+LocalAppData-only destination. It captures the real Image inspector and corner
+widgets at 1440, 1100 and 720 px: mode name above its navigation controls, one
+action row with beside/below-icon labels, and the smallest icon-only row.
+Full button text, accessible names and tooltips survive the compact faces.
 The fixture forces offscreen and constructs real MainWindow/AiSettingsDialog
 with in-memory defaults. At1672×941, matching the concept viewport, it captures
 chat with a pending photo approval, the direct approval card, the settings drawer

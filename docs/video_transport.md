@@ -6,21 +6,31 @@ column's width. The native corner-control windows remain inside the render
 rectangle, so they cannot cover the timeline. Plain unrecorded camera use has
 no transport and supplies no camera-history collection.
 
-Open video is a sixth corner action, a Settings / Notes and files button, and
-`Ctrl+O` on OkuFlow's main/owned control surfaces. A single local file URL may
+Saved-video selection lives in Settings > Camera. The camera dropdown includes
+`View video`; choosing it opens the local file picker. While video is selected,
+`Select video` appears directly beneath the dropdown. Orientation stays available
+for the video; camera-only format controls and the phone light are hidden.
+Camera discovery preserves this selection. Choosing a physical/phone camera
+leaves file review, and canceling the picker keeps the previous viewed source.
+There is no Open video action in the corner toolbar or Notes and files.
+`Ctrl+O` still works on OkuFlow's main/owned control surfaces. A single local file URL may
 also be dropped on the view or its owned chrome. Drag handling inspects MIME
 data only and commits a CopyAction; asynchronous format validation and opening
 belong to the application. Opening a saved file stops/finalizes a current
 recording first. It does not start a recording.
 
-The bar uses source text, a playback status, six 52-DIP minimum buttons, and a
-separate full-width timeline row. The buttons reflow into two rows at narrow
-widths. Full source names remain in accessible names and tooltips when the
-visible label elides. Time readouts retain hours for long recordings and use
+The bar uses a slim source/status line above one horizontal row of icon actions,
+a scrubber and the time readout. Actions have 44-DIP minimum targets; play and
+the rewind badge are wider. The scrubber takes the remaining width. At narrow
+widths save, mute and return move below, leaving play and the scrubber together.
+Time moves to the metadata line at that width. Full source names remain in
+accessible names and tooltips when the visible label elides. Time readouts retain
+hours for long recordings and use
 the active locale's digits. The displayed selected time can exceed the verified
 seekable range while a live scene is pending; the slider never exceeds it.
 
-`>>` requests Jump to live for the selected ongoing recording, and Jump to end
+The step-forward icon (`>>`) requests Jump to live for the selected ongoing
+recording, and Jump to end
 for a selected saved video. It never changes speed. Resume continues from the
 held position. End of video disables Resume until the user seeks away. Playback
 mute is independent of microphone capture. Return to camera and Save frame
@@ -55,7 +65,8 @@ and pause while the slider has keyboard focus.
 
 ## Keyboard and accessibility
 
-Tab order follows the visible transport actions, then the timeline. MainWindow
+Tab order follows the row: rewind, play, jump, timeline, save, mute and return.
+MainWindow
 bridges it with the existing corner, inspector and annotation regions. F6 moves
 between those regions and the transport. Space toggles playback only in the
 viewport or timeline; buttons retain native Space activation, and text editors
@@ -102,7 +113,9 @@ string; existing keys may already be present in the catalogs.
 | `Video timeline` | Slider accessible name |
 | `Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.` | Timeline help |
 | `%1 of %2` | Accessible current time and total time; preserve both placeholders |
-| `Open video` | Corner and Notes/files actions |
+| `Open video` | File dialog title |
+| `View video` | Camera/source dropdown option |
+| `Select video` | Conditional file selection button under the source dropdown |
 | `Open a saved video (Ctrl+O)` | Open action help; preserve shortcut |
 | `Record Original video` | Record tooltip |
 | `Start or stop an Original MP4 recording` | Record accessible description |

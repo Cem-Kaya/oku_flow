@@ -116,8 +116,14 @@ void OkuFlowApp::SelectedMediaGpuSceneProcessed(bool uctEnabled, uct::SharedDevi
             image->frameSequence == mediaSceneRecipe_[1] &&
             image->processingGeneration == mediaSceneAppearanceRevision_;
     };
-    if (matchesCurrent(analysis)) mediaGpuAnalysis_ = std::move(analysis);
-    else if (!matchesCurrent(mediaGpuAnalysis_)) mediaGpuAnalysis_.reset();
+    // A paused ROI replay may produce a fresh allocation for the exact same
+    // sample. Keep UCT's admitted lease: replacing it would make immutable
+    // admission revoke the complete artifact on every pan, despite unchanged
+    // source pixels. Source/frame/appearance changes still revoke immediately.
+    if (!matchesCurrent(mediaGpuAnalysis_)) {
+        mediaGpuAnalysis_.reset();
+        if (matchesCurrent(analysis)) mediaGpuAnalysis_ = std::move(analysis);
+    }
     // A view replay may hit the capture throttle. It neither discards a valid
     // same-scene lease nor spends another attempt before the retry deadline.
     if (mediaGpuAnalysis_) {
@@ -265,7 +271,11 @@ bool OkuFlowApp::PresentSelectedMediaGpuFrame(const VideoPlaybackFrame& frame,
     context.geometry.settings.warpRevision = uctWarpRevision_;
     context.geometry.neuralEnhancement = neural;
     context.requested = context.geometry.settings;
-    context.compositeFrames = settings.enableTemporalSmoothing || settings.enableBumpHold;
+    context.compositeFrames = settings.enableTemporalSmoothing ||
+        (settings.enableStabilization && settings.enableBumpHold);
+    // Extra Stable media captures carry their frame's device hold record, so
+    // UCT names held/crossfade pixels per capture instead of pausing.
+    context.heldFrames = settings.enableStabilization && settings.enableBumpHold;
     context.strokeWeight = settings.strokeWeight;
     context.frameSeq = frame.sampleId;
     context.transform = transform;
@@ -385,6 +395,7 @@ bool OkuFlowApp::PresentSelectedMediaGpuFrame(const VideoPlaybackFrame& frame,
             // never presents an enhancement or starts a second neural producer.
             auto neighborSettings = settings;
             neighborSettings.enableMlSuperRes = false;
+            neighborSettings.enableTemporalSmoothing = false;
             mediaGpuNeighborRetryAtMs_ = now + 80;
             if (mediaGpuNeighborScene_->Prepare(presenter_->GetDevice(), width, height, cache.width(), cache.height()) ==
                     MediaGpuScene::Status::Ready &&

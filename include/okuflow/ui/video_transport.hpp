@@ -12,7 +12,7 @@
 
 QT_BEGIN_NAMESPACE
 class QLabel;
-class QGridLayout;
+class QHBoxLayout;
 class QPushButton;
 class QSlider;
 class QEvent;
@@ -85,6 +85,7 @@ private:
     void ReturnFocus();
     void RefreshText();
     void ApplyButtonFaces();
+    void ApplyFace(QPushButton* button);
     void ApplyStyle();
     void RequestAnnouncement();
     void AnnounceSettledState();
@@ -92,7 +93,7 @@ private:
     void UpdateLayout();
     void CommitSeek(qint64 positionMs);
     qint64 SeekBaseline() const;
-    std::vector<QPushButton*> ActionButtons() const;
+    std::vector<QPushButton*> SecondaryButtons() const;
     QString StateText() const;
     static QString TimeText(qint64 milliseconds);
 
@@ -107,23 +108,24 @@ private:
     QPushButton* returnButton_{};
     QPushButton* saveFrameButton_{};
     QPushButton* muteButton_{};
-    QWidget* controlsRow_{};
-    QGridLayout* controlsLayout_{};
+    QWidget* secondaryRow_{};
+    QHBoxLayout* mainLayout_{};
+    QHBoxLayout* metadataLayout_{};
+    QHBoxLayout* secondaryLayout_{};
     QTimer* announcementTimer_{};
     QPointer<QWidget> focusReturnTarget_;
     QElapsedTimer timelineUpdateClock_;
     QString lastAnnouncement_;
     std::optional<qint64> pendingSeekMs_;
-    std::vector<QPushButton*> layoutButtons_;
+    std::vector<QPushButton*> layoutSecondaries_;
     bool dragging_{};
     bool updating_{};
     bool uiHidden_{};
-    bool labelled_{};
+    bool secondariesBelow_{};
     bool muteShown_{true};
     bool returnShown_{true};
     bool announcementPending_{};
     bool applyingStyle_{};
-    int layoutColumns_{};
     int wheelRemainder_{};
     quint64 dragGeneration_{};
 };

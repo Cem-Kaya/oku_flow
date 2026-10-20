@@ -5,6 +5,7 @@
 #include <QAbstractNativeEventFilter>
 #include <QColor>
 #include <QString>
+#include <QStringList>
 #include <QMainWindow>
 #include <QWidget>
 #include <QPointF>
@@ -62,6 +63,7 @@ class UltraClearTextPanel;
 class VideoTransport;
 class CollapsibleSection;
 namespace settings { struct AdvancedConfig; }
+namespace agent { class NativeControlFixture; }
 
 class MainWindow : public QMainWindow, public QAbstractNativeEventFilter {
     Q_OBJECT
@@ -73,6 +75,9 @@ public:
 
     RenderWidget* renderWidget() const;
     QComboBox* cameraCombo() const;
+    void setCameraDevices(const QStringList& names, int selectedCamera);
+    void setVideoSourceSelected(bool selected, int cameraIndex);
+    bool videoSourceSelected() const;
     QPushButton* phoneLightButton() const;
     QComboBox* microphoneCombo() const;
     QListWidget* presetList() const;
@@ -266,6 +271,7 @@ protected:
     bool nativeEventFilter(const QByteArray& eventType, void* message, qintptr* result) override;
 
 private:
+    friend class agent::NativeControlFixture;
     void ActivatePresetRow(int row);
     void ActivateRelativePreset(int offset);
     void ToggleModeGrid();
@@ -280,6 +286,7 @@ private:
     QSize chromeViewportSize_;
     qreal chromeDevicePixelRatio_{};
     void UpdateCameraPlaceholderVisibility();
+    void UpdateCameraSourceUi();
     void RevealSimpleChrome();
     void FadeSimpleChrome();
     void SetChromeOpacity(qreal opacity, int durationMs, bool hideWhenFinished);
@@ -313,6 +320,7 @@ private:
 
     RenderWidget* renderWidget_{};
     QComboBox* cameraCombo_{};
+    QWidget* cameraFormatControls_{};
     QPushButton* phoneLightButton_{};
     QComboBox* microphoneCombo_{};
     QListWidget* presetList_{};

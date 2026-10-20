@@ -14,6 +14,8 @@
 // Once CUDA hardware is present, every failure is a real failure.
 #include "okuflow/app/media_gpu_scene.hpp"
 #include "okuflow/common/uct_device_image.hpp"
+#include "okuflow/cuda/cuda_kernels.hpp"
+#include "okuflow/cuda/uct_analysis_pool.hpp"
 #include "maxine_fake_sdk.hpp"
 
 #include <QCoreApplication>
@@ -32,6 +34,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
+#include <map>
 #include <utility>
 #include <memory>
 #include <stdexcept>
@@ -241,6 +245,40 @@ public:
     ID3D12Device* Device() const { return d3d12_.Get(); }
     int CudaDevice() const { return cudaDevice_; }
 
+    // Private shared BGRA target/fence for a directly constructed
+    // CudaInteropSurface, mirroring the production bundle descriptors.
+    ComPtr<ID3D12Resource> MakeSharedTexture(UINT width, UINT height)
+    {
+        D3D12_RESOURCE_DESC desc{};
+        desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        desc.Width = width;
+        desc.Height = height;
+        desc.DepthOrArraySize = 1;
+        desc.MipLevels = 1;
+        desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        desc.SampleDesc.Count = 1;
+        desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS |
+                     D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS;
+        D3D12_HEAP_PROPERTIES heap{};
+        heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+        heap.CreationNodeMask = 1;
+        heap.VisibleNodeMask = 1;
+        ComPtr<ID3D12Resource> texture;
+        Hr(d3d12_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_SHARED, &desc,
+                                           D3D12_RESOURCE_STATE_COMMON, nullptr,
+                                           IID_PPV_ARGS(&texture)),
+           "shared BGRA texture creation failed");
+        return texture;
+    }
+    ComPtr<ID3D12Fence> MakeSharedFence()
+    {
+        ComPtr<ID3D12Fence> fence;
+        Hr(d3d12_->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&fence)),
+           "shared fence creation failed");
+        return fence;
+    }
+
     // Fresh owned NT-shareable BGRA source filled with known pixels; the
     // D3D11 fill is proven complete with an event query before publication.
     okuflow::VideoPlaybackFrame MakeFrame(UINT width, UINT height, unsigned seed,
@@ -328,16 +366,23 @@ public:
         std::uint64_t waitValue{};
         std::uint64_t signalValue{};
     };
-    // One view-only consumer read: wait the private producer fence on the
-    // private queue, copy scene -> staging, signal the reserved value, then
-    // record it exactly as a successful presentation would.
-    ReadResult ReadScene(okuflow::MediaGpuScene& scene, bool recordByValue = false, bool cache = false, ID3D12Resource* completedOutput = nullptr)
+    // Explicit consumer sync for one view-only read: wait waitValue on the
+    // given fence on the private queue, copy texture -> staging, signal
+    // signalValue, then run onQueued exactly where a successful
+    // presentation would record its reservation.
+    struct TextureSync {
+        ID3D12Fence* presentationFence{};
+        std::uint64_t waitValue{};
+        std::uint64_t signalValue{};
+    };
+    ReadResult ReadTexture(ID3D12Resource* texture, const TextureSync& sync,
+                           const std::function<void()>& onQueued = {})
     {
-        ID3D12Resource* texture = completedOutput ? completedOutput : (cache ? scene.SuperResTexture() : scene.Texture());
-        Require(texture != nullptr, "scene texture missing for consumer read");
-        const auto sync = scene.PresentationSync();
-        Require(sync.enable && sync.presentationFence && sync.signalValue != 0,
-                "presentation sync missing for a ready scene");
+        Require(sync.presentationFence && sync.signalValue != 0,
+                "explicit sync missing for a consumer read");
+        Require(texture != nullptr, "texture missing for consumer read");
+
+
 
         const auto desc = texture->GetDesc();
         D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
@@ -371,8 +416,8 @@ public:
         queue_->ExecuteCommandLists(1, lists);
         Hr(queue_->Signal(sync.presentationFence, sync.signalValue),
            "consumer signal on the private producer fence failed");
-        if (recordByValue) scene.RecordPresented(sync.signalValue);
-        else scene.RecordPresented();
+        if (onQueued) onQueued();
+
         Hr(sync.presentationFence->SetEventOnCompletion(sync.signalValue, completed_),
            "consumer completion event failed");
         Require(WaitForSingleObject(completed_, 3000) == WAIT_OBJECT_0 &&
@@ -397,6 +442,23 @@ public:
         const D3D12_RANGE noWrites{0, 0};
         readback_->Unmap(0, &noWrites);
         return result;
+    }
+
+    // MediaGpuScene consumption bookkeeping, preserved exactly: reserve via
+    // PresentationSync, copy through ReadTexture, and record the queued
+    // signal (by value or as the outstanding reservation) before waiting.
+    ReadResult ReadScene(okuflow::MediaGpuScene& scene, bool recordByValue = false, bool cache = false, ID3D12Resource* completedOutput = nullptr)
+    {
+        ID3D12Resource* texture = completedOutput ? completedOutput : (cache ? scene.SuperResTexture() : scene.Texture());
+        Require(texture != nullptr, "scene texture missing for consumer read");
+        const auto sync = scene.PresentationSync();
+        Require(sync.enable && sync.presentationFence && sync.signalValue != 0,
+                "presentation sync missing for a ready scene");
+        return ReadTexture(texture, {sync.presentationFence, sync.waitValue, sync.signalValue},
+                           [&] {
+                               if (recordByValue) scene.RecordPresented(sync.signalValue);
+                               else scene.RecordPresented();
+                           });
     }
 
 private:
@@ -541,7 +603,7 @@ void CpuBgraTests(Harness& harness)
     ProcessUntilReady(scene, b, 0, settings, 501, 2, false);
     ComparePixels(harness.ReadScene(scene).pixels, expected, kWidth, 0, "CPU replay double-blended history");
     Require(scene.HistoryResetCount() == resets, "forward CPU frame/edit reset history");
-    Require(!scene.UctCoordinatesReliable() && !scene.TakeUctAnalysis(), "CPU temporal composite exposed UCT authority");
+    Require(scene.UctCoordinatesReliable() && !scene.TakeUctAnalysis(), "UCT-disabled temporal scene exposed analysis");
 
     auto changedStride = MakeCpuFrame(kWidth, kHeight, 32, 3002, 19);
     ProcessUntilReady(scene, changedStride, 0, settings, 501, 3, false);
@@ -736,19 +798,209 @@ void EffectAndHistoryTests(Harness& harness, unsigned outputBuffers = 1)
         expected[i].r = std::uint8_t(.25f * expected[i].r + .75f * prior[i].r + .5f);
     }
     ComparePixels(harness.ReadScene(scene).pixels, expected, kWidth, 0, "forward temporal blend");
-    Require(!scene.UctCoordinatesReliable() && !scene.TakeUctAnalysis(), "composite frame exposed unverifiable UCT geometry");
+    Require(scene.UctCoordinatesReliable(), "paired temporal analysis lost UCT reliability");
+    {
+        Sleep(90); // reopen the surface's 80 ms analysis throttle
+        ProcessUntilReady(scene, b, 0, settings, 303, 30, true);
+        auto paired = scene.TakeUctAnalysis();
+        Require(paired && paired->kind == okuflow::uct::AnalysisKind::TemporallySmoothed &&
+                paired->frameSequence == b.sampleId && paired->blendFrameCount == 2 &&
+                paired->seedFrameSequence == a.sampleId && paired->Data() != paired->ValidationData(),
+                "temporal media frame did not publish an exact paired analysis image");
+        std::atomic<bool> cancelled{false}; QString error;
+        const auto ocrImage = paired->Readback(cancelled, error);
+        Require(!ocrImage.isNull(), "paired OCR readback failed");
+        std::vector<Bgra> ocrPixels(expected.size());
+        for (unsigned y = 0; y < kHeight; ++y)
+            std::memcpy(ocrPixels.data() + size_t(y) * kWidth, ocrImage.constScanLine(int(y)), kWidth * sizeof(Bgra));
+        ComparePixels(ocrPixels, expected, kWidth, 1, "paired smoothed OCR pixels");
+        const auto validationImage = paired->ReadValidation(cancelled, error);
+        Require(!validationImage.isNull(), "paired validation readback failed");
+        std::vector<Bgra> validationPixels(expected.size());
+        for (unsigned y = 0; y < kHeight; ++y)
+            std::memcpy(validationPixels.data() + size_t(y) * kWidth, validationImage.constScanLine(int(y)), kWidth * sizeof(Bgra));
+        ComparePixels(validationPixels, Pattern(kWidth, kHeight, 13), kWidth, 0, "paired current-frame validation pixels");
+    }
     const auto generation = scene.SceneGeneration();
     for (unsigned retry = 0; retry < 3; ++retry)
-        ProcessUntilReady(scene, b, 0, settings, 303, 30, false);
+        ProcessUntilReady(scene, b, 0, settings, 303, 30, true);
     Require(scene.SceneGeneration() == generation, "same-frame retry republished/reprocessed the base scene");
     settings.zoomCenterX = .7f;
-    ProcessUntilReady(scene, b, 0, settings, 303, 31, false);
+    ProcessUntilReady(scene, b, 0, settings, 303, 31, true);
     ComparePixels(harness.ReadScene(scene).pixels, expected, kWidth, 0, "paused view edit double-blended history");
+    {
+        // Appearance-edit replay and analysis refresh reproduce the initial
+        // UCT blend exactly; the same sample is never folded in twice.
+        Sleep(90);
+        ProcessUntilReady(scene, b, 0, settings, 303, 31, true);
+        auto paired = scene.TakeUctAnalysis();
+        Require(paired && paired->kind == okuflow::uct::AnalysisKind::TemporallySmoothed &&
+                paired->frameSequence == b.sampleId && paired->blendFrameCount == 2,
+                "replay did not republish the initial paired blend");
+        std::atomic<bool> cancelled{false}; QString error;
+        const auto ocrImage = paired->Readback(cancelled, error);
+        Require(!ocrImage.isNull(), "replay paired OCR readback failed");
+        std::vector<Bgra> ocrPixels(expected.size());
+        for (unsigned y = 0; y < kHeight; ++y)
+            std::memcpy(ocrPixels.data() + size_t(y) * kWidth, ocrImage.constScanLine(int(y)), kWidth * sizeof(Bgra));
+        ComparePixels(ocrPixels, expected, kWidth, 1, "replay paired smoothed pixels");
+    }
     ProcessUntilReady(scene, a, 0, settings, 303, 32, false); // backwards PTS
     Require(scene.HistoryResetCount() == resets + 1, "backwards PTS did not reset state");
     ComparePixels(harness.ReadScene(scene).pixels, prior, kWidth, 0, "backwards PTS leaked future history");
-    ProcessUntilReady(scene, b, 0, settings, 304, 33, false); // seek epoch
+    ProcessUntilReady(scene, b, 0, settings, 304, 33, true); // seek epoch
     ComparePixels(harness.ReadScene(scene).pixels, Pattern(kWidth, kHeight, 13), kWidth, 0, "seek retained old history");
+    {
+        Sleep(90);
+        ProcessUntilReady(scene, b, 0, settings, 304, 33, true);
+        auto paired = scene.TakeUctAnalysis();
+        Require(paired && paired->kind == okuflow::uct::AnalysisKind::TemporallySmoothed &&
+                paired->blendFrameCount == 1 && paired->seedFrameSequence == b.sampleId,
+                "seek did not reseed the UCT temporal history");
+        std::atomic<bool> cancelled{false}; QString error;
+        const auto ocrImage = paired->Readback(cancelled, error);
+        Require(!ocrImage.isNull(), "seek paired OCR readback failed");
+        std::vector<Bgra> ocrPixels(expected.size());
+        for (unsigned y = 0; y < kHeight; ++y)
+            std::memcpy(ocrPixels.data() + size_t(y) * kWidth, ocrImage.constScanLine(int(y)), kWidth * sizeof(Bgra));
+        ComparePixels(ocrPixels, Pattern(kWidth, kHeight, 13), kWidth, 0, "seek paired seed pixels");
+    }
+    // UCT reset authority: replay reproduces a blend only while no true
+    // reset intervened. Toggling UCT, changing alpha, or turning temporal
+    // smoothing off must each reseed instead of resurrecting the saved
+    // pre-frame history, with exact OCR pixels proving the reseed.
+    const auto readOcr = [&](const okuflow::uct::SharedDeviceImage& image) {
+        std::atomic<bool> cancelled{false}; QString error;
+        const auto ocrImage = image->Readback(cancelled, error);
+        Require(!ocrImage.isNull(), "UCT reset OCR readback failed");
+        std::vector<Bgra> pixels(size_t(kWidth) * kHeight);
+        for (unsigned y = 0; y < kHeight; ++y)
+            std::memcpy(pixels.data() + size_t(y) * kWidth, ocrImage.constScanLine(int(y)), kWidth * sizeof(Bgra));
+        return pixels;
+    };
+    const auto blended = [](std::vector<Bgra> current, const std::vector<Bgra>& prior, float alpha) {
+        for (size_t i = 0; i < current.size(); ++i) {
+            current[i].b = std::uint8_t(alpha * current[i].b + (1 - alpha) * prior[i].b + .5f);
+            current[i].g = std::uint8_t(alpha * current[i].g + (1 - alpha) * prior[i].g + .5f);
+            current[i].r = std::uint8_t(alpha * current[i].r + (1 - alpha) * prior[i].r + .5f);
+        }
+        return current;
+    };
+    auto c = harness.MakeFrame(kWidth, kHeight, 14, 1002);
+    ProcessUntilReady(scene, c, 0, settings, 304, 33, true);
+    Sleep(90);
+    ProcessUntilReady(scene, c, 0, settings, 304, 33, true);
+    auto pairedC = scene.TakeUctAnalysis();
+    Require(pairedC && pairedC->blendFrameCount == 2 && pairedC->seedFrameSequence == b.sampleId,
+            "forward frame did not build the expected two-frame UCT blend");
+    const auto epochC = pairedC->historyEpoch;
+    ComparePixels(readOcr(pairedC), blended(Pattern(kWidth, kHeight, 14), Pattern(kWidth, kHeight, 13), .25f),
+                  kWidth, 1, "pre-toggle paired blend pixels");
+    pairedC.reset();
+    const auto displayC = harness.ReadScene(scene).pixels;
+    const auto generationC = scene.SceneGeneration();
+    ProcessUntilReady(scene, c, 0, settings, 304, 33, false); // UCT off
+    Require(!scene.TakeUctAnalysis(), "UCT-off paused frame exposed analysis");
+    // Re-enabling UCT on the same paused frame and appearance is usable at
+    // once: the refresh rebuilds a one-frame EMA from the saved geometry
+    // under a new history epoch, without reprocessing the display scene.
+    ProcessUntilReady(scene, c, 0, settings, 304, 33, true); // UCT on, refresh only
+    auto pairedToggle = scene.TakeUctAnalysis();
+    Require(pairedToggle && pairedToggle->kind == okuflow::uct::AnalysisKind::TemporallySmoothed &&
+            pairedToggle->frameSequence == c.sampleId && pairedToggle->processingGeneration == 33 &&
+            pairedToggle->blendFrameCount == 1 && pairedToggle->seedFrameSequence == c.sampleId &&
+            pairedToggle->historyEpoch != epochC && pairedToggle->Data() != pairedToggle->ValidationData(),
+            "re-enabled UCT did not rebuild a reseeded paired analysis");
+    const auto epochToggle = pairedToggle->historyEpoch;
+    ComparePixels(readOcr(pairedToggle), Pattern(kWidth, kHeight, 14), kWidth, 0,
+                  "UCT toggle reseeded OCR pixels");
+    {
+        std::atomic<bool> cancelled{false}; QString error;
+        const auto validationImage = pairedToggle->ReadValidation(cancelled, error);
+        Require(!validationImage.isNull(), "UCT toggle validation readback failed");
+        std::vector<Bgra> validationPixels(size_t(kWidth) * kHeight);
+        for (unsigned y = 0; y < kHeight; ++y)
+            std::memcpy(validationPixels.data() + size_t(y) * kWidth, validationImage.constScanLine(int(y)), kWidth * sizeof(Bgra));
+        ComparePixels(validationPixels, Pattern(kWidth, kHeight, 14), kWidth, 0,
+                      "UCT toggle current-frame validation pixels");
+    }
+    Require(scene.SceneGeneration() == generationC, "UCT re-enable reprocessed the paused scene");
+    ComparePixels(harness.ReadScene(scene).pixels, displayC, kWidth, 0,
+                  "UCT reset changed the display blend");
+    pairedToggle.reset(); // release the bounded lease before the next oracle
+    Sleep(90);
+    ProcessUntilReady(scene, c, 0, settings, 304, 35, true); // appearance replay
+    auto pairedReplay = scene.TakeUctAnalysis();
+    Require(pairedReplay && pairedReplay->kind == okuflow::uct::AnalysisKind::TemporallySmoothed &&
+            pairedReplay->blendFrameCount == 1 && pairedReplay->seedFrameSequence == c.sampleId &&
+            pairedReplay->historyEpoch == epochToggle,
+            "appearance replay after UCT re-enable did not reproduce the rebuilt history");
+    ComparePixels(readOcr(pairedReplay), Pattern(kWidth, kHeight, 14), kWidth, 0,
+                  "UCT re-enable replay OCR pixels");
+    ComparePixels(harness.ReadScene(scene).pixels, displayC, kWidth, 0,
+                  "UCT re-enable replay changed the display blend");
+    pairedReplay.reset();
+    auto d = harness.MakeFrame(kWidth, kHeight, 15, 1003);
+    ProcessUntilReady(scene, d, 0, settings, 304, 35, true);
+    Sleep(90);
+    ProcessUntilReady(scene, d, 0, settings, 304, 35, true);
+    auto pairedD = scene.TakeUctAnalysis();
+    Require(pairedD && pairedD->blendFrameCount == 2 && pairedD->seedFrameSequence == c.sampleId &&
+            pairedD->historyEpoch == epochToggle,
+            "forward frame after toggle did not rebuild a two-frame blend");
+    ComparePixels(readOcr(pairedD), blended(Pattern(kWidth, kHeight, 15), Pattern(kWidth, kHeight, 14), .25f),
+                  kWidth, 1, "pre-alpha-change blend pixels");
+    const auto epochD = pairedD->historyEpoch;
+    pairedD.reset();
+    // Text Clarity's master switch is appearance-only: its replay restarts
+    // the display composite but reproduces, never reseeds, the neutral UCT
+    // history (same epoch, seed, count and pixels).
+    scene.ResetTextClarityHistory();
+    settings.enableAutoTextClarity = true;
+    Sleep(90);
+    ProcessUntilReady(scene, d, 0, settings, 304, 45, true);
+    auto pairedText = scene.TakeUctAnalysis();
+    Require(pairedText && pairedText->kind == okuflow::uct::AnalysisKind::TemporallySmoothed &&
+            pairedText->frameSequence == d.sampleId && pairedText->processingGeneration == 45 &&
+            pairedText->blendFrameCount == 2 && pairedText->seedFrameSequence == c.sampleId &&
+            pairedText->historyEpoch == epochD,
+            "Text Clarity master edge reseeded the neutral UCT history");
+    ComparePixels(readOcr(pairedText), blended(Pattern(kWidth, kHeight, 15), Pattern(kWidth, kHeight, 14), .25f),
+                  kWidth, 1, "Text Clarity replay UCT pixels");
+    pairedText.reset();
+    scene.ResetTextClarityHistory();
+    settings.enableAutoTextClarity = false;
+    ProcessUntilReady(scene, d, 0, settings, 304, 46, true);
+    settings.temporalSmoothingAlpha = .5f;
+    Sleep(90);
+    ProcessUntilReady(scene, d, 0, settings, 304, 36, true); // alpha-change replay
+    auto pairedAlpha = scene.TakeUctAnalysis();
+    Require(pairedAlpha && pairedAlpha->blendFrameCount == 1 &&
+            pairedAlpha->seedFrameSequence == d.sampleId && pairedAlpha->temporalAlpha == .5f,
+            "alpha change did not reseed the UCT history");
+    ComparePixels(readOcr(pairedAlpha), Pattern(kWidth, kHeight, 15), kWidth, 0,
+                  "alpha reseeded OCR pixels");
+    pairedAlpha.reset();
+    auto e = harness.MakeFrame(kWidth, kHeight, 16, 1004);
+    ProcessUntilReady(scene, e, 0, settings, 304, 36, true); // blend over d
+    settings.enableTemporalSmoothing = false;
+    Sleep(90);
+    ProcessUntilReady(scene, e, 0, settings, 304, 37, true); // smoothing-off replay
+    auto rawE = scene.TakeUctAnalysis();
+    Require(rawE && rawE->kind == okuflow::uct::AnalysisKind::SingleFrame,
+            "smoothing-off replay did not publish single-frame analysis");
+    ComparePixels(readOcr(rawE), Pattern(kWidth, kHeight, 16), kWidth, 0,
+                  "smoothing-off raw OCR pixels");
+    rawE.reset();
+    settings.enableTemporalSmoothing = true;
+    Sleep(90);
+    ProcessUntilReady(scene, e, 0, settings, 304, 38, true); // smoothing-on replay
+    auto pairedE = scene.TakeUctAnalysis();
+    Require(pairedE && pairedE->kind == okuflow::uct::AnalysisKind::TemporallySmoothed &&
+            pairedE->blendFrameCount == 1 && pairedE->seedFrameSequence == e.sampleId,
+            "smoothing re-enable resurrected pre-off history");
+    ComparePixels(readOcr(pairedE), Pattern(kWidth, kHeight, 16), kWidth, 0,
+                  "smoothing re-enable reseeded OCR pixels");
     auto reticketed = b; ++reticketed.requestGeneration;
     ProcessUntilReady(scene, reticketed, 0, settings, 304, 34, false);
     Require(scene.HistoryResetCount() == resets + 3, "same-image seek generation failed to reset state");
@@ -907,6 +1159,467 @@ void SpatialAndNeuralTests(Harness& harness, unsigned outputBuffers = 1)
 #else
     Fail("media GPU fixture is missing its private fake SDK prerequisite");
 #endif
+}
+
+std::vector<Bgra> ReadAnalysis(const okuflow::uct::SharedDeviceImage& image)
+{
+    std::atomic<bool> cancelled{false};
+    QString error;
+    const auto pixels = image->Readback(cancelled, error);
+    Require(!pixels.isNull(), "analysis readback failed");
+    std::vector<Bgra> result(size_t(pixels.width()) * pixels.height());
+    for (int y = 0; y < pixels.height(); ++y)
+        std::memcpy(result.data() + size_t(y) * pixels.width(), pixels.constScanLine(y),
+                    size_t(pixels.width()) * sizeof(Bgra));
+    return result;
+}
+
+okuflow::uct::HoldProvenance ReadHold(const okuflow::uct::SharedDeviceImage& image)
+{
+    std::atomic<bool> cancelled{false};
+    QString error;
+    return image->ReadHoldProvenance(cancelled, error);
+}
+
+// Extra Stable at the production kernel seam. Explicit tracking/focus state
+// drives live -> held -> recovery crossfade -> live; every frame's compact
+// record must name exactly what ApplyBumpHold left in the frame, and a held
+// image keeps naming its earlier acquisition however many frames repeat it.
+void ExtraStableHoldRecordKernelTests()
+{
+    constexpr int width = 8, height = 4;
+    const size_t pitch = width * sizeof(uchar4);
+    struct Buffers {
+        uchar4* current{}; uchar4* held{};
+        okuflow::BumpHoldState* state{}; okuflow::StabilizationState* tracking{};
+        okuflow::BumpHoldProvenance* record{}; float* focus{}; float* reference{};
+        ~Buffers() { cudaFree(current); cudaFree(held); cudaFree(state); cudaFree(tracking);
+                     cudaFree(record); cudaFree(focus); cudaFree(reference); }
+    } gpu;
+    Cuda(cudaMalloc(reinterpret_cast<void**>(&gpu.current), pitch * height), "hold fixture current allocation");
+    Cuda(cudaMalloc(reinterpret_cast<void**>(&gpu.held), pitch * height), "hold fixture surface allocation");
+    Cuda(cudaMalloc(reinterpret_cast<void**>(&gpu.state), sizeof(okuflow::BumpHoldState)), "hold fixture state allocation");
+    Cuda(cudaMalloc(reinterpret_cast<void**>(&gpu.tracking), sizeof(okuflow::StabilizationState)), "hold fixture tracking allocation");
+    Cuda(cudaMalloc(reinterpret_cast<void**>(&gpu.record), sizeof(okuflow::BumpHoldProvenance)), "hold fixture record allocation");
+    Cuda(cudaMalloc(reinterpret_cast<void**>(&gpu.focus), sizeof(float)), "hold fixture focus allocation");
+    Cuda(cudaMalloc(reinterpret_cast<void**>(&gpu.reference), sizeof(float)), "hold fixture reference allocation");
+    okuflow::StabilizationState tracking{};
+    tracking.diagnostics.y = 1.0f; // valid model, no motion
+    Cuda(cudaMemcpy(gpu.tracking, &tracking, sizeof(tracking), cudaMemcpyHostToDevice), "hold fixture tracking upload");
+    const float sharp = 1.0f;
+    Cuda(cudaMemcpy(gpu.reference, &sharp, sizeof(sharp), cudaMemcpyHostToDevice), "hold fixture reference upload");
+    Cuda(cudaMemset(gpu.record, 0, sizeof(okuflow::BumpHoldProvenance)), "hold fixture record clear");
+    okuflow::LaunchResetBumpHoldState(gpu.state, nullptr);
+
+    struct Shown { okuflow::BumpHoldProvenance record; unsigned value; };
+    const auto frame = [&](std::uint64_t sequence, float focus, bool referenceReady = true) {
+        uchar4 value{};
+        value.x = value.y = value.z = std::uint8_t(sequence);
+        value.w = 255;
+        const std::vector<uchar4> live(size_t(width) * height, value);
+        Cuda(cudaMemcpy(gpu.current, live.data(), pitch * height, cudaMemcpyHostToDevice), "hold fixture live upload");
+        Cuda(cudaMemcpy(gpu.focus, &focus, sizeof(focus), cudaMemcpyHostToDevice), "hold fixture focus upload");
+        okuflow::LaunchUpdateBumpHoldState(gpu.state, gpu.tracking, gpu.focus, gpu.reference, referenceReady,
+                                           1280, 720, 5.0f, 2.0f, nullptr);
+        okuflow::LaunchApplyBumpHold(gpu.current, pitch, gpu.held, pitch, width, height, gpu.state, nullptr);
+        okuflow::LaunchRecordBumpHoldProvenance(gpu.state, gpu.record, sequence, nullptr);
+        Cuda(cudaDeviceSynchronize(), "hold fixture frame failed");
+        Shown shown{};
+        Cuda(cudaMemcpy(&shown.record, gpu.record, sizeof(shown.record), cudaMemcpyDeviceToHost), "hold record download");
+        std::vector<uchar4> pixels(size_t(width) * height);
+        Cuda(cudaMemcpy(pixels.data(), gpu.current, pitch * height, cudaMemcpyDeviceToHost), "hold pixels download");
+        for (const auto& pixel : pixels)
+            Require(pixel.x == pixels.front().x, "hold fixture frame is not uniform");
+        shown.value = pixels.front().x;
+        return shown;
+    };
+    const auto expectLive = [](const Shown& shown, std::uint64_t sequence, const char* what) {
+        Require(shown.record.state == 0 && shown.record.displayedFrame == sequence &&
+                shown.value == unsigned(std::uint8_t(sequence)), what);
+    };
+    const auto expectHeld = [](const Shown& shown, std::uint64_t acquisition, const char* what) {
+        Require(shown.record.state == 1 && shown.record.heldValid == 1 &&
+                shown.record.displayedFrame == acquisition && shown.record.heldFrame == acquisition &&
+                shown.value == unsigned(std::uint8_t(acquisition)), what);
+    };
+    expectLive(frame(10, 1.0f), 10, "first settled frame is not named live");
+    const auto second = frame(11, 1.0f);
+    expectLive(second, 11, "tracking frame is not named live");
+    Require(second.record.heldValid == 1 && second.record.heldFrame == 11, "hold surface acquisition not recorded");
+    expectHeld(frame(12, 0.1f), 11, "blurred frame did not show and name the earlier held acquisition");
+    expectHeld(frame(13, 0.1f), 11, "repeated hold renamed its acquisition");
+    for (std::uint64_t sequence = 14; sequence <= 17; ++sequence)
+        expectHeld(frame(sequence, 1.0f), 11, "settling frames left the held acquisition");
+    // Recovery: four crossfade frames are composites of acquisitions 11 and
+    // the live frame; none names an acquisition, including the alpha-0 entry.
+    const struct { std::uint64_t sequence; float alpha; unsigned value; } recovery[] = {
+        {18, 0.0f, 11}, {19, 0.25f, 13}, {20, 0.5f, 15}, {21, 0.75f, 18}};
+    for (const auto& step : recovery) {
+        const auto shown = frame(step.sequence, 1.0f);
+        Require(shown.record.state == 2 && shown.record.blendAlpha == step.alpha &&
+                shown.record.heldFrame == 11 && shown.value == step.value,
+                "recovery crossfade was not named as a composite");
+        okuflow::uct::HoldProvenanceRecord host{};
+        static_assert(sizeof(host) == sizeof(shown.record), "Extra Stable record layout");
+        std::memcpy(&host, &shown.record, sizeof(host));
+        Require(okuflow::uct::DecodeHoldProvenance(host).display == okuflow::uct::HoldDisplay::Crossfade,
+                "crossfade decoded as evidence");
+    }
+    const auto recovered = frame(22, 1.0f);
+    expectLive(recovered, 22, "completed recovery is not live");
+    Require(recovered.record.heldFrame == 22, "recovery did not recapture the hold surface");
+    expectHeld(frame(23, 0.1f), 22, "second hold did not name the newly captured acquisition");
+    // A reset (toggle/relock) or unavailable reference invalidates the hold.
+    okuflow::LaunchResetBumpHoldState(gpu.state, nullptr);
+    const auto unready = frame(24, 1.0f, false);
+    expectLive(unready, 24, "reset hold kept naming an old acquisition");
+    Require(unready.record.heldValid == 0, "reset hold kept a valid surface");
+}
+
+// Production surface path through MediaGpuScene with Extra Stable on. The
+// published analysis is the displayed pre-appearance image and carries its
+// own frame's record; replay/refresh reuse the saved record, and Extra Stable
+// off attaches none. Identical frames keep pixels comparable whatever the
+// real tracker decides, so the record may be live, held or a crossfade.
+void ExtraStableAnalysisSurfaceTests(Harness& harness)
+{
+    okuflow::MediaGpuScene scene;
+    PrepareUntilReady(scene, harness.Device(), kWidth, kHeight);
+    okuflow::ProcessingSettings settings;
+    settings.enableStabilization = true;
+    settings.enableBumpHold = true;
+    std::vector<okuflow::VideoPlaybackFrame> frames;
+    for (unsigned i = 0; i < 8; ++i) frames.push_back(harness.MakeFrame(kWidth, kHeight, 12, 2000 + i));
+    okuflow::uct::HoldProvenance lastHold;
+    std::vector<Bgra> lastDisplayed;
+    for (const auto& frame : frames) {
+        Sleep(90); // reopen the surface's 80 ms analysis throttle
+        ProcessUntilReady(scene, frame, 0, settings, 400, 50, true);
+        lastDisplayed = harness.ReadScene(scene).pixels;
+        auto image = scene.TakeUctAnalysis();
+        Require(image && image->kind == okuflow::uct::AnalysisKind::SingleFrame &&
+                image->frameSequence == frame.sampleId && image->HasHoldProvenance(),
+                "Extra Stable analysis was published without its hold record");
+        lastHold = ReadHold(image);
+        using okuflow::uct::HoldDisplay;
+        Require((lastHold.display == HoldDisplay::Live && lastHold.acquisition == frame.sampleId) ||
+                (lastHold.display == HoldDisplay::Held && lastHold.acquisition >= frames.front().sampleId &&
+                 lastHold.acquisition < frame.sampleId) ||
+                lastHold.display == HoldDisplay::Crossfade,
+                "Extra Stable analysis named an acquisition it did not show");
+        ComparePixels(ReadAnalysis(image), lastDisplayed, kWidth, 0,
+                      "Extra Stable analysis differs from the displayed pre-appearance scene");
+    }
+    const auto& last = frames.back();
+    const auto sameRecord = [&](const okuflow::uct::SharedDeviceImage& image, const char* what) {
+        Require(image && image->HasHoldProvenance() && image->frameSequence == last.sampleId, what);
+        const auto hold = ReadHold(image);
+        Require(hold.display == lastHold.display && hold.acquisition == lastHold.acquisition, what);
+        ComparePixels(ReadAnalysis(image), lastDisplayed, kWidth, 0, what);
+    };
+    // Paused UCT re-enable refreshes the saved geometry with its saved record.
+    ProcessUntilReady(scene, last, 0, settings, 400, 50, false);
+    Require(!scene.TakeUctAnalysis(), "UCT-off paused frame exposed analysis");
+    Sleep(90);
+    ProcessUntilReady(scene, last, 0, settings, 400, 50, true);
+    sameRecord(scene.TakeUctAnalysis(), "paused refresh lost the saved Extra Stable record");
+    // An appearance replay restores the same geometry and record.
+    Sleep(90);
+    ProcessUntilReady(scene, last, 0, settings, 400, 51, true);
+    sameRecord(scene.TakeUctAnalysis(), "appearance replay lost the saved Extra Stable record");
+    (void)harness.ReadScene(scene);
+    settings.enableBumpHold = false;
+    auto plain = harness.MakeFrame(kWidth, kHeight, 12, 2100);
+    Sleep(90);
+    ProcessUntilReady(scene, plain, 0, settings, 400, 52, true);
+    (void)harness.ReadScene(scene);
+    auto image = scene.TakeUctAnalysis();
+    Require(image && !image->HasHoldProvenance(), "stabilization without Extra Stable attached a hold record");
+}
+
+// Sharp static geometry for the direct-surface lock: deterministic random
+// 16x16 blocks with a 4-pixel checker modulation. Values stay within
+// 20..219 before the recovery shift, so +12 never clamps a channel.
+std::vector<Bgra> SharpBlocks(UINT width, UINT height, int brightnessShift)
+{
+    std::vector<Bgra> pixels(size_t(width) * height);
+    for (UINT y = 0; y < height; ++y) for (UINT x = 0; x < width; ++x) {
+        const unsigned bx = x / 16, by = y / 16;
+        unsigned hash = bx * 374761393u + by * 668265263u + 2246822519u;
+        hash = (hash ^ (hash >> 13)) * 1274126177u;
+        hash ^= hash >> 16;
+        const int base = 48 + int(hash % 144u); // 48..191
+        const int checker = ((x / 4 + y / 4) & 1u) ? 28 : -28;
+        const auto value = static_cast<std::uint8_t>(base + checker + brightnessShift);
+        pixels[size_t(y) * width + x] = {value, value, value, 255};
+    }
+    return pixels;
+}
+
+double MeanGray(const std::vector<Bgra>& pixels)
+{
+    double sum = 0;
+    for (const auto& pixel : pixels) sum += pixel.g;
+    return pixels.empty() ? 0 : sum / double(pixels.size());
+}
+
+// Direct production surface with an Original recording texture, which
+// MediaGpuScene deliberately never creates (publishOriginalFrame=false).
+// Clean Original must keep advancing with every raw frame while Extra
+// Stable holds only the view: no decoder pause/seek exists at this seam,
+// and the held/crossfade display must never leak into Original. Missing
+// lock, hold or crossfade evidence fails; nothing here injects hold state.
+void OriginalTextureAdvancesDuringExtraStableHoldTests(Harness& harness)
+{
+    using okuflow::uct::HoldDisplay;
+    constexpr UINT width = 256, height = 192;
+    constexpr std::uint64_t epoch = 700, generation = 80;
+    // Failure-safe private bundle: the surface (declared last) is destroyed
+    // before its imported textures/fence, and unprovable GPU completion
+    // leaks the whole closure instead of releasing live work.
+    struct DirectBundle {
+        ComPtr<ID3D12Resource> scene, cache, original;
+        ComPtr<ID3D12Fence> fence;
+        std::unique_ptr<okuflow::CudaInteropSurface> surface;
+        ~DirectBundle()
+        {
+            if (surface && !surface->WaitForIdle()) {
+                (void)surface.release();
+                scene.Detach(); cache.Detach(); original.Detach(); fence.Detach();
+            }
+        }
+    } bundle;
+    bundle.scene = harness.MakeSharedTexture(width, height);
+    bundle.cache = harness.MakeSharedTexture(width, height);
+    bundle.original = harness.MakeSharedTexture(width, height);
+    bundle.fence = harness.MakeSharedFence();
+    bundle.surface = std::make_unique<okuflow::CudaInteropSurface>(
+        bundle.scene.Get(), bundle.cache.Get(), bundle.fence.Get(), bundle.original.Get());
+    auto& surface = *bundle.surface;
+    if (!surface.IsValid())
+        Fail("direct Original surface is invalid: " + surface.LastError());
+    Require(surface.HasExternalSemaphore(),
+            "direct Original surface did not import its private fence");
+    surface.EnableUctAnalysis(true);
+
+    okuflow::ProcessingSettings settings; // neutral apart from Extra Stable
+    settings.enableStabilization = true;
+    settings.enableBumpHold = true;
+
+    std::uint64_t nextValue = 1, lastProducer = 0, lastGraphics = 0;
+    std::uint64_t sequence = 5000;
+    std::map<std::uint64_t, std::vector<Bgra>> displayBySequence;
+    struct Outcome {
+        std::uint64_t sequence{};
+        okuflow::uct::HoldProvenance hold;
+        std::vector<Bgra> display;
+    };
+    const auto read = [&](ID3D12Resource* texture) {
+        auto result = harness.ReadTexture(texture, {bundle.fence.Get(), lastProducer, nextValue++});
+        lastGraphics = result.signalValue;
+        return std::move(result.pixels);
+    };
+    const auto runFrame = [&](const std::vector<Bgra>& raw, const char* phase) {
+        Sleep(90); // reopen the surface's 80 ms analysis snapshot throttle
+        okuflow::ProcessingInput input{};
+        input.hostPixels = raw.data();
+        input.hostStrideBytes = width * 4u; // packed BGRA rows
+        input.pixelSizeBytes = sizeof(std::uint32_t);
+        input.width = width;
+        input.height = height;
+        input.publishOriginalFrame = true;
+        input.cameraEpoch = epoch;
+        input.frameSequence = sequence;
+        input.settingsGeneration = generation;
+        okuflow::FenceSyncParams sync{true, lastGraphics, nextValue++};
+        if (!surface.ProcessFrame(input, settings, sync))
+            Fail(std::string("direct surface rejected a frame during ") + phase + ": " +
+                 surface.LastError());
+        lastProducer = sync.signalValue;
+        Outcome outcome;
+        outcome.sequence = sequence++;
+        outcome.display = read(bundle.scene.Get());
+        const auto original = read(bundle.original.Get());
+        ComparePixels(original, raw, width, 0,
+                      "Original texture is not the exact current raw frame");
+        auto image = surface.TakeUctAnalysis();
+        Require(image && image->HasHoldProvenance() &&
+                image->kind == okuflow::uct::AnalysisKind::SingleFrame &&
+                image->sourceEpoch == epoch && image->frameSequence == outcome.sequence &&
+                image->processingGeneration == generation &&
+                image->width == int(width) && image->height == int(height),
+                "frame published no exact UCT hold record (missing evidence is a failure)");
+        outcome.hold = ReadHold(image);
+        Require(outcome.hold.display != HoldDisplay::Unknown,
+                "UCT hold record decoded as Unknown");
+        ComparePixels(ReadAnalysis(image), outcome.display, width, 0,
+                      "hold-record analysis differs from the displayed scene");
+        image.reset(); // release the bounded pool lease before the next frame
+        displayBySequence[outcome.sequence] = outcome.display;
+        return outcome;
+    };
+    // Lock: at least eight live sharp frames build the tripod reference and
+    // capture the hold surface. A held frame here is tolerated only when it
+    // exactly replays its named earlier acquisition.
+    const auto sharp = SharpBlocks(width, height, 0);
+    unsigned liveFrames = 0;
+    for (unsigned i = 0; i < 12; ++i) {
+        const auto outcome = runFrame(sharp, "sharp reference lock");
+        if (outcome.hold.display == HoldDisplay::Live) {
+            Require(outcome.hold.acquisition == outcome.sequence,
+                    "live reference frame named another acquisition");
+            ++liveFrames;
+        } else if (outcome.hold.display == HoldDisplay::Held) {
+            const auto oracle = displayBySequence.find(outcome.hold.acquisition);
+            Require(oracle != displayBySequence.end(),
+                    "held reference frame named an unseen acquisition");
+            ComparePixels(outcome.display, oracle->second, width, 0,
+                          "held reference display differs from its acquisition");
+        } else {
+            Fail("sharp static reference crossfaded before any hold was entered");
+        }
+    }
+    Require(liveFrames >= 8,
+            "Virtual Tripod/Extra Stable never locked on the sharp reference "
+            "(missing lock is a failure, not a pass)");
+
+    // Blur: uniform gray must drive the real hold. While held, the display
+    // stays on the prior sharp acquisition and Original (checked exact in
+    // runFrame against the gray input) keeps advancing underneath it.
+    const std::vector<Bgra> gray(size_t(width) * height, Bgra{128, 128, 128, 255});
+    std::uint64_t heldAcquisition = 0;
+    unsigned heldFrames = 0;
+    for (unsigned i = 0; i < 8 && heldFrames < 3; ++i) {
+        const auto outcome = runFrame(gray, "uniform-gray blur");
+        if (outcome.hold.display != HoldDisplay::Held) continue;
+        if (!heldAcquisition) heldAcquisition = outcome.hold.acquisition;
+        Require(outcome.hold.acquisition == heldAcquisition &&
+                    heldAcquisition < outcome.sequence,
+                "held acquisition changed or named the current blurred frame");
+        const auto oracle = displayBySequence.find(heldAcquisition);
+        Require(oracle != displayBySequence.end(), "hold named an unseen acquisition");
+        ComparePixels(outcome.display, oracle->second, width, 0,
+                      "display left the held acquisition while Original advanced");
+        Require(outcome.display != gray, "held display shows the blurred live frame");
+        ++heldFrames;
+    }
+    Require(heldFrames >= 3,
+            "Extra Stable never held the view on uniform-gray blur "
+            "(missing hold is a failure, not a pass)");
+    const auto heldOracle = displayBySequence.at(heldAcquisition);
+
+    // Recovery: identical geometry, slightly brighter. Settling frames stay
+    // held, then a real crossfade blends toward live; Original already
+    // equals the shifted raw input on every one of those frames.
+    const auto recoveredSharp = SharpBlocks(width, height, 12);
+    struct Crossfade {
+        float alpha{};
+        std::vector<Bgra> display;
+    };
+    std::vector<Crossfade> crossfades;
+    bool liveAgain = false;
+    std::vector<Bgra> liveOracle;
+    for (unsigned i = 0; i < 16 && !liveAgain; ++i) {
+        const auto outcome = runFrame(recoveredSharp, "same-geometry recovery");
+        if (outcome.hold.display == HoldDisplay::Held) {
+            Require(outcome.hold.acquisition == heldAcquisition,
+                    "recovery settling renamed the held acquisition");
+            ComparePixels(outcome.display, heldOracle, width, 0,
+                          "recovery settling left the held acquisition");
+        } else if (outcome.hold.display == HoldDisplay::Crossfade) {
+            Require(outcome.hold.blendAlpha >= 0.0f && outcome.hold.blendAlpha <= 1.0f,
+                    "crossfade record carried an impossible blend alpha");
+            crossfades.push_back({outcome.hold.blendAlpha, outcome.display});
+        } else if (outcome.hold.display == HoldDisplay::Live) {
+            Require(outcome.hold.acquisition == outcome.sequence,
+                    "recovered live frame named another acquisition");
+            liveAgain = true;
+            liveOracle = outcome.display;
+        } else {
+            Fail("recovery frame carried an unexpected hold state");
+        }
+    }
+    Require(liveAgain, "Extra Stable never returned to live after recovery");
+    bool realCrossfade = false;
+    for (const auto& crossfade : crossfades) {
+        if (crossfade.alpha <= 0.0f || crossfade.alpha >= 1.0f) continue;
+        realCrossfade = true;
+        Require(crossfade.display != heldOracle && crossfade.display != liveOracle,
+                "crossfade display is a blend endpoint, not a blend");
+        const double mean = MeanGray(crossfade.display);
+        Require(mean > MeanGray(heldOracle) && mean < MeanGray(liveOracle),
+                "crossfade display is not between the held and live frames");
+    }
+    Require(realCrossfade,
+            "recovery produced no real crossfade frame "
+            "(missing crossfade is a failure, not a pass)");
+    const auto settled = runFrame(recoveredSharp, "post-recovery live");
+    Require(settled.hold.display == HoldDisplay::Live &&
+                settled.hold.acquisition == settled.sequence,
+            "post-recovery frame did not stay live");
+    Require(surface.WaitForIdle() && !surface.IsFaulted(),
+            "direct Original surface did not retire safely");
+}
+
+// Explicit fault seam for the UCT-only allocation latches: a failed EMA or
+// replay snapshot allocation is reported, never retried on following frames,
+// leaves the display untouched, and only an explicit UCT reset retries once.
+void UctAllocationLatchTests(Harness& harness)
+{
+    using Fault = okuflow::CudaInteropSurface::UctAllocationFault;
+    okuflow::ProcessingSettings settings;
+    settings.enableTemporalSmoothing = true;
+    {
+        okuflow::MediaGpuScene scene;
+        PrepareUntilReady(scene, harness.Device(), kWidth, kHeight);
+        auto a = harness.MakeFrame(kWidth, kHeight, 12, 3000);
+        auto b = harness.MakeFrame(kWidth, kHeight, 13, 3001);
+        okuflow::CudaInteropSurface::InjectUctAllocationFailureForTesting(Fault::TemporalHistory);
+        ProcessUntilReady(scene, a, 0, settings, 500, 60, true);
+        ComparePixels(harness.ReadScene(scene).pixels, Pattern(kWidth, kHeight, 12), kWidth, 0,
+                      "UCT-only EMA allocation failure changed the display");
+        Require(scene.UctAnalysisFailed() && !scene.TakeUctAnalysis(),
+                "failed EMA allocation was hidden or published raw pixels");
+        Sleep(90);
+        ProcessUntilReady(scene, b, 0, settings, 500, 60, true);
+        (void)harness.ReadScene(scene);
+        Require(scene.UctAnalysisFailed() && !scene.TakeUctAnalysis(),
+                "EMA allocation latch retried on the following frame");
+        ProcessUntilReady(scene, b, 0, settings, 500, 60, false); // explicit UCT reset
+        Sleep(90);
+        ProcessUntilReady(scene, b, 0, settings, 500, 60, true);
+        auto pair = scene.TakeUctAnalysis();
+        Require(pair && pair->kind == okuflow::uct::AnalysisKind::TemporallySmoothed &&
+                pair->blendFrameCount == 1 && pair->seedFrameSequence == b.sampleId &&
+                !scene.UctAnalysisFailed(),
+                "explicit UCT reset did not permit one new EMA allocation");
+    }
+    {
+        okuflow::MediaGpuScene scene;
+        PrepareUntilReady(scene, harness.Device(), kWidth, kHeight);
+        auto a = harness.MakeFrame(kWidth, kHeight, 14, 3100);
+        auto b = harness.MakeFrame(kWidth, kHeight, 15, 3101);
+        okuflow::CudaInteropSurface::InjectUctAllocationFailureForTesting(Fault::ReplaySnapshot);
+        ProcessUntilReady(scene, a, 0, settings, 501, 70, true);
+        (void)harness.ReadScene(scene);
+        auto live = scene.TakeUctAnalysis();
+        Require(live && live->kind == okuflow::uct::AnalysisKind::TemporallySmoothed,
+                "replay snapshot failure withdrew the truthful live pair");
+        Require(scene.UctAnalysisFailed(), "replay snapshot failure was not reported");
+        live.reset();
+        Sleep(90);
+        ProcessUntilReady(scene, b, 0, settings, 501, 70, true);
+        (void)harness.ReadScene(scene);
+        Require(scene.UctAnalysisFailed(), "replay snapshot latch retried on the following frame");
+        (void)scene.TakeUctAnalysis();
+        ProcessUntilReady(scene, b, 0, settings, 501, 70, false); // explicit UCT reset
+        Sleep(90);
+        ProcessUntilReady(scene, b, 0, settings, 501, 70, true);
+        auto rebuilt = scene.TakeUctAnalysis();
+        Require(rebuilt && rebuilt->kind == okuflow::uct::AnalysisKind::TemporallySmoothed &&
+                rebuilt->blendFrameCount == 1 && !scene.UctAnalysisFailed(),
+                "explicit UCT reset did not permit one replay snapshot allocation");
+    }
 }
 
 // The production destructor deliberately hands cleanup to detached workers.
@@ -1399,12 +2112,17 @@ int main(int argc, char** argv)
         SpatialAndNeuralTests(harness);
         EffectAndHistoryTests(harness, 2);
         SpatialAndNeuralTests(harness, 2);
+        ExtraStableHoldRecordKernelTests();
+        ExtraStableAnalysisSurfaceTests(harness);
+        OriginalTextureAdvancesDuringExtraStableHoldTests(harness);
+        UctAllocationLatchTests(harness);
         } // Queue destruction of all fixture-owned GPU scenes first.
         AwaitOwnedWorkers();
         std::puts("PASS: MediaGpuScene exact-adapter GPU ownership, private fence reads, "
                   "rotation/effects pixels, UCT identity, lease and lifecycle contracts, "
                   "rotating-slot async import cache, CPU BGRA rotation/layout/pinned ownership, "
-                  "history replay/reset, spatial/async neural publication");
+                  "history replay/reset, spatial/async neural publication, Extra Stable "
+                  "hold records and UCT allocation latches");
         return 0;
     } catch (const std::exception& error) {
         std::fprintf(stderr, "FAIL: %s\n", error.what());

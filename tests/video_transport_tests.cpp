@@ -3,6 +3,7 @@
 #include <QAccessible>
 #include <QApplication>
 #include <QFontDatabase>
+#include <QDir>
 #include <QLabel>
 #include <QLocale>
 #include <QPushButton>
@@ -267,16 +268,20 @@ private slots:
         QApplication::processEvents();
         for (auto* button : transport.findChildren<QPushButton*>()) {
             if (button->isHidden()) continue;
-            QVERIFY(button->width() >= 52);
-            QVERIFY(button->height() >= 52);
+            QVERIFY(button->width() >= 44);
+            QVERIFY(button->height() >= 44);
             QVERIFY(!button->accessibleName().isEmpty());
+            QCOMPARE(button->toolTip(), button->accessibleName());
         }
         const auto* label = transport.findChild<QLabel*>(QStringLiteral("videoSourceLabel"));
         QCOMPARE(label->accessibleName(), snapshot.sourceName);
         QCOMPARE(label->textFormat(), Qt::PlainText);
+        // Visual single-line order: primaries, timeline, secondaries.
         const auto targets = transport.FocusTargets();
         QCOMPARE(targets.size(), std::size_t(5));
-        QCOMPARE(targets.back(), transport.timeline());
+        QCOMPARE(targets[3], transport.timeline());
+        QCOMPARE(targets.back(),
+                 transport.findChild<QPushButton*>(QStringLiteral("videoSaveFrameButton")));
     }
 
     void focusedPlaySurvivesSeekingAndEndWithoutClosingFile()
@@ -481,7 +486,7 @@ private slots:
         QCOMPARE(changes.last().front().toBool(), true);
     }
 
-    void labelsFollowExistingTranslationsAndCompactWithAccessibleNames()
+    void iconFacesKeepTranslatedNamesAtWideAndNarrowWidths()
     {
         ActionTranslator translator;
         QApplication::installTranslator(&translator);
@@ -490,24 +495,124 @@ private slots:
         QApplication::processEvents();
         auto* play = fixture.transport->playPauseButton();
         auto* mute = fixture.Button("videoMuteButton");
-        QCOMPARE(play->text(), QStringLiteral("Videoyu s\u00fcrd\u00fcr"));
-        QCOMPARE(mute->text(), QStringLiteral("Wiedergabeton einschalten"));
+        // Faces are icons (or glyphs without compiled resources); the full
+        // translated action lives in the accessible name and tooltip only.
+        QCOMPARE(play->accessibleName(), QStringLiteral("Videoyu s\u00fcrd\u00fcr"));
+        QCOMPARE(mute->accessibleName(), QStringLiteral("Wiedergabeton einschalten"));
         for (auto* button : fixture.transport->findChildren<QPushButton*>()) {
-            QVERIFY(button->width() >= button->fontMetrics().horizontalAdvance(button->text()) + 16);
+            QVERIFY(button->text() != button->accessibleName());
+            QCOMPARE(button->toolTip(), button->accessibleName());
+            QVERIFY(button->width() >= 44);
+            QVERIFY(button->width() <= 60);
+            QCOMPARE(button->height(), 44);
         }
         fixture.host.resize(340, 400);
         QApplication::processEvents();
-        QVERIFY(play->text() != play->accessibleName());
         QCOMPARE(play->accessibleName(), QStringLiteral("Videoyu s\u00fcrd\u00fcr"));
         for (auto* button : fixture.transport->findChildren<QPushButton*>()) {
-            QVERIFY(button->width() >= 52);
-            QVERIFY(button->height() >= 52);
+            QVERIFY(button->width() >= 44);
+            QVERIFY(button->height() >= 44);
             QVERIFY(fixture.transport->rect().contains(button->mapTo(fixture.transport, QPoint())));
             QVERIFY(fixture.transport->rect().contains(button->mapTo(fixture.transport, button->rect().bottomRight())));
         }
         QApplication::removeTranslator(&translator);
         QEvent languageChange(QEvent::LanguageChange);
         QApplication::sendEvent(fixture.transport, &languageChange);
+        QCOMPARE(play->accessibleName(), QStringLiteral("Resume video"));
+    }
+
+    void wideTransportIsOneControlAndScrubberLine()
+    {
+        FocusFixture fixture; // 1200 wide, saved video with every action.
+        auto* transport = fixture.transport;
+        const int lineY = transport->playPauseButton()->mapTo(
+            transport, transport->playPauseButton()->rect().center()).y();
+        for (auto* button : transport->findChildren<QPushButton*>()) {
+            if (button->isHidden()) continue;
+            QVERIFY(!button->icon().isNull()); // production resource path, not glyph fallback
+            const int centerY = button->mapTo(transport, button->rect().center()).y();
+            QVERIFY(std::abs(centerY - lineY) <= 2);
+        }
+        auto* slider = transport->timeline();
+        QVERIFY(std::abs(slider->mapTo(transport, slider->rect().center()).y() - lineY) <= 2);
+        QVERIFY(slider->width() > 400); // The scrubber owns the leftover width.
+        QVERIFY(transport->findChild<QWidget*>(QStringLiteral("videoSecondaryRow"))->isHidden());
+        // Metadata line plus one 44-DIP line: far shorter than the old
+        // stacked header/buttons/timeline bar.
+        QVERIFY(transport->height() < 120);
+        const auto previews=qEnvironmentVariable("OKUFLOW_TRANSPORT_PREVIEW_DIR");
+        if(!previews.isEmpty()) {
+            QVERIFY(QDir().mkpath(previews));
+            QVERIFY(transport->grab().save(QDir(previews).filePath("compact-transport-wide.png")));
+        }
+        const auto* time = transport->findChild<QLabel*>(QStringLiteral("videoTimeLabel"));
+        QCOMPARE(time->text(), QStringLiteral("00:30 / 01:00"));
+        // Readout reserves this duration's width, not a 100-hour worst case.
+        QVERIFY(time->minimumWidth() <
+                time->fontMetrics().horizontalAdvance(QStringLiteral("000:00:00 / 000:00:00")));
+    }
+
+    void narrowTransportKeepsPlayAndScrubberOnMainLine()
+    {
+        FocusFixture fixture;
+        fixture.Focus(fixture.Button("videoSaveFrameButton"));
+        fixture.host.resize(420, 400);
+        QApplication::processEvents();
+        auto* transport = fixture.transport;
+        auto* play = transport->playPauseButton();
+        auto* slider = transport->timeline();
+        const int playY = play->mapTo(transport, play->rect().center()).y();
+        QVERIFY(std::abs(slider->mapTo(transport, slider->rect().center()).y() - playY) <= 2);
+        QVERIFY(slider->width() >= 80);
+        // Secondary actions remain reachable at full size on the row below.
+        auto* save = fixture.Button("videoSaveFrameButton");
+        QCOMPARE(QApplication::focusWidget(),save);
+        QVERIFY(save->mapTo(transport, save->rect().center()).y() > playY + 20);
+        QVERIFY(!transport->findChild<QWidget*>(QStringLiteral("videoSecondaryRow"))->isHidden());
+        for (auto* button : transport->findChildren<QPushButton*>()) {
+            if (button->isHidden()) continue;
+            QVERIFY(button->width() >= 44);
+            QCOMPARE(button->height(), 44);
+            QVERIFY(button->mapTo(transport, button->rect().bottomRight()).x() <= transport->width());
+        }
+        // Widening again restores the single line.
+        const auto previews=qEnvironmentVariable("OKUFLOW_TRANSPORT_PREVIEW_DIR");
+        if(!previews.isEmpty()) {
+            QVERIFY(QDir().mkpath(previews));
+            QVERIFY(transport->grab().save(QDir(previews).filePath("compact-transport-narrow.png")));
+        }
+        fixture.host.resize(1000, 400);
+        QApplication::processEvents();
+        QVERIFY(transport->findChild<QWidget*>(QStringLiteral("videoSecondaryRow"))->isHidden());
+        QVERIFY(std::abs(save->mapTo(transport, save->rect().center()).y() -
+                         play->mapTo(transport, play->rect().center()).y()) <= 2);
+        QCOMPARE(QApplication::focusWidget(),save);
+    }
+
+    void buttonFacesFollowPlayingAndMutedState()
+    {
+        VideoTransport transport;
+        transport.SetSnapshot(Video());
+        const auto face = [](QPushButton* button) {
+            return button->text() + QString::number(button->icon().cacheKey());
+        };
+        auto* play = transport.playPauseButton();
+        auto* mute = transport.findChild<QPushButton*>(QStringLiteral("videoMuteButton"));
+        const QString pausedFace = face(play);
+        const QString mutedFace = face(mute);
+        auto snapshot = Video();
+        snapshot.playing = true;
+        snapshot.state = VideoTransport::State::Video;
+        snapshot.muted = false;
+        transport.SetSnapshot(snapshot);
+        QVERIFY(face(play) != pausedFace);
+        QVERIFY(face(mute) != mutedFace);
+        QCOMPARE(mute->accessibleName(), QStringLiteral("Mute playback"));
+        const QString playingFace = face(play);
+        const QString unmutedFace = face(mute);
+        transport.SetSnapshot(Video());
+        QVERIFY(face(play) != playingFace);
+        QVERIFY(face(mute) != unmutedFace);
         QCOMPARE(play->accessibleName(), QStringLiteral("Resume video"));
     }
 

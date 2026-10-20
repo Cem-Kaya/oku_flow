@@ -220,24 +220,35 @@ void SettingsStoreTests::uctModelDefaultsMigrationAndRoundTrip()
 {
     using uct::ModelTier;
     const PersistentSettings defaults;
+    QVERIFY(!defaults.ultraClearTextEnabled);
     QCOMPARE(defaults.ultraClearTextModels.gpuDetector,ModelTier::Medium);
     QCOMPARE(defaults.ultraClearTextModels.gpuRecognizer,ModelTier::Medium);
     QCOMPARE(defaults.ultraClearTextModels.cpuDetector,ModelTier::Tiny);
     QCOMPARE(defaults.ultraClearTextModels.cpuRecognizer,ModelTier::Small);
     QTemporaryDir directory;QVERIFY(directory.isValid());const auto path=directory.filePath("settings.json");
     auto root=QJsonDocument::fromJson(Serialize(defaults)).object();root.remove("ultraClearTextModels");
+    root.remove("ultraClearTextEnabled");
     const auto write=[&]{QFile f(path);if(!f.open(QIODevice::WriteOnly|QIODevice::Truncate))return false;return f.write(QJsonDocument(root).toJson())>0;};
     QVERIFY(write());auto loaded=Load(path);QVERIFY(loaded);
     QVERIFY(loaded->ultraClearTextModels==defaults.ultraClearTextModels);
+    QVERIFY(!loaded->ultraClearTextEnabled);
     root["ultraClearTextModels"]=QJsonObject{{"gpuDetector","untrusted.onnx"},{"gpuRecognizer",42},{"cpuDetector","small"},{"cpuRecognizer","tiny"}};
     QVERIFY(write());loaded=Load(path);QVERIFY(loaded);
     QCOMPARE(loaded->ultraClearTextModels.gpuDetector,ModelTier::Medium);
     QCOMPARE(loaded->ultraClearTextModels.gpuRecognizer,ModelTier::Medium);
     QCOMPARE(loaded->ultraClearTextModels.cpuDetector,ModelTier::Small);
     QCOMPARE(loaded->ultraClearTextModels.cpuRecognizer,ModelTier::Tiny);
+    // Explicit model choices survive the batching policy; no silent migration.
+    root["ultraClearTextModels"]=QJsonObject{{"gpuDetector","medium"},{"gpuRecognizer","small"}};
+    QVERIFY(write());loaded=Load(path);QVERIFY(loaded);
+    QCOMPARE(loaded->ultraClearTextModels.gpuRecognizer,ModelTier::Small);
     loaded->ultraClearTextModels={ModelTier::Small,ModelTier::Tiny,ModelTier::Medium,ModelTier::Medium};
+    loaded->ultraClearTextEnabled=true;
     QVERIFY(Save(path,*loaded));const auto saved=Load(path);QVERIFY(saved);
     QVERIFY(saved->ultraClearTextModels==loaded->ultraClearTextModels);
+    QVERIFY(saved->ultraClearTextEnabled);
+    auto disabled=*saved;disabled.ultraClearTextEnabled=false;
+    QVERIFY(Save(path,disabled));QVERIFY(!Load(path)->ultraClearTextEnabled);
     const auto json=QJsonDocument::fromJson(Serialize(*saved)).object()["ultraClearTextModels"].toObject();
     QCOMPARE(json["gpuDetector"].toString(),"small");QCOMPARE(json["gpuRecognizer"].toString(),"tiny");
     QVERIFY(!json.contains("enabled"));

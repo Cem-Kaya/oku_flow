@@ -3513,5 +3513,33 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>일시 정지할 수 없습니다: 현재 표시된 구도를 정확히 유지할 수 없습니다.</translation>
         </message>
-    </context>
+        <message>
+            <source>View video</source>
+            <translation>동영상 보기</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>동영상 선택</translation>
+        </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>추가 안정화가 켜져 있어 일시 중지되었습니다. 원본 카메라 영상이 표시됩니다.</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>원본 카메라 텍스트를 표시하고 있습니다.</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>디버그 합성 보기에서는 텍스트 인식이 일시 중지됩니다. 원본 카메라 이미지를 표시합니다.</translation>
+        </message>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>GPU 백엔드 사용 중: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>CPU 백엔드 사용 중: %1</translation>
+    </message>
+</context>
 </TS>

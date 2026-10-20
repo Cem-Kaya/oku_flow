@@ -416,3 +416,9 @@ with a private synthetic application, not a live provider or camera.
 
 The original PaddleOCR Apache license is marked `-text` in `.gitattributes`,
 so Windows checkout conversion cannot alter the reviewed upstream bytes.
+
+`tests/data/long-gop-h264.mp4` is an original 192×128 synthetic test-pattern
+fixture generated locally with the separately installed FFmpeg/libx264 tools.
+It follows the project's contribution/license terms; no tool or codec library
+is bundled. The reproducible command and reviewed byte hash are recorded in
+`tests/README.md`. The fixture is test-only, outside application payloads.

@@ -9,6 +9,10 @@
 namespace okuflow {
 
 void OkuFlowApp::OnCameraSelectionChanged(int index) {
+    if (mainWindow_ && mainWindow_->videoSourceSelected()) {
+        emit mainWindow_->openVideoRequested();
+        return;
+    }
     if (index < 0 || static_cast<size_t>(index) >= cameras_.size()) {
         return;
     }
@@ -27,6 +31,10 @@ void OkuFlowApp::OnCameraSelectionChanged(int index) {
     if (recordingManager_) {
         if (const auto session = recordingManager_->CurrentSessionInfo()) StopRecording(session->id);
     }
+    // A manual camera pick cancels pending file opening as well as adopted
+    // playback. Do this after StopRecording's same-session hold transition.
+    ReturnVideoToCamera();
+    if (mainWindow_) mainWindow_->setVideoSourceSelected(false, index);
     if (automaticPhoneSelectionAllowed_) {
         phoneRetries_[cameras_[static_cast<size_t>(index)].phoneSerial].Succeeded();
         PhoneCameraTransport::AllowAppLaunch(cameras_[static_cast<size_t>(index)].phoneSerial);
@@ -95,7 +103,8 @@ void OkuFlowApp::UpdateCameraAccelerationUi()
 void OkuFlowApp::UpdatePhoneLightUi()
 {
     if (!uiState_ || !uiState_->phoneLightButton_) return;
-    const bool phoneSelected = selectedCameraIndex_ >= 0 &&
+    const bool phoneSelected = !MediaViewSelected() &&
+        (!mainWindow_ || !mainWindow_->videoSourceSelected()) && selectedCameraIndex_ >= 0 &&
         static_cast<size_t>(selectedCameraIndex_) < cameras_.size() &&
         !cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial.empty();
     auto* button = uiState_->phoneLightButton_;
@@ -620,7 +629,7 @@ void OkuFlowApp::SetRotationQuarterTurns(int index) {
 
     const int delta = (clamped - previous + 4) % 4;
     rotationQuarterTurns_ = clamped;
-    settingsController_->MutableSettings().rotationQuarterTurns = rotationQuarterTurns_;
+    settingsController_->MutableSettings().rotationQuarterTurns = CameraOriginalRotationQuarterTurns();
 
     float rotatedX = zoomCenterX_;
     float rotatedY = zoomCenterY_;
@@ -1008,6 +1017,7 @@ void OkuFlowApp::OnTextClarityControlsChanged() {
     const bool wasZoomEnabled = zoomEnabled_;
     const float previousZoom = zoomAmount_;
     autoTextClarityEnabled_ = uiState_->textClarityCheckbox_ && uiState_->textClarityCheckbox_->isChecked();
+    if (ultraClearText_) ultraClearText_->SetTextClarityEnabled(autoTextClarityEnabled_);
     if (!autoTextClarityEnabled_ && assistiveManager_) assistiveManager_->ClearFocusWarning();
     backgroundFlattenEnabled_ = uiState_->backgroundFlattenCheckbox_ && uiState_->backgroundFlattenCheckbox_->isChecked();
     backgroundFlattenStrength_ = uiState_->backgroundFlattenStrengthSlider_

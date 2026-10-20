@@ -231,10 +231,9 @@ void OkuFlowApp::PopulateCameraCombo() {
         return;
     }
 
-    uiState_->cameraCombo_->clear();
-    for (const auto& camera : cameras_) {
-        uiState_->cameraCombo_->addItem(QString::fromWCharArray(camera.name.c_str()));
-    }
+    QStringList names;
+    for (const auto& camera : cameras_) names.append(QString::fromWCharArray(camera.name.c_str()));
+    mainWindow_->setCameraDevices(names, selectedCameraIndex_);
 }
 
 void OkuFlowApp::PollPhoneCameraDiscovery()
@@ -267,7 +266,7 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
                 if (changed && uiState_->cameraCombo_) {
                     auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
                     PopulateCameraCombo();
-                    uiState_->cameraCombo_->setCurrentIndex(selectedCameraIndex_);
+                    if (!mainWindow_->videoSourceSelected()) uiState_->cameraCombo_->setCurrentIndex(selectedCameraIndex_);
                 }
                 UpdatePhoneLightUi();
                 for (const auto& phone : discovered) {
@@ -290,7 +289,7 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
                     pipelineOrchestrator_->CancelCameraReconnect();
                     if (uiState_->cameraCombo_) {
                         auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
-                        uiState_->cameraCombo_->setCurrentIndex(target);
+                        if (!mainWindow_->videoSourceSelected()) uiState_->cameraCombo_->setCurrentIndex(target);
                     }
                     if (preferredPhoneCamera_.isEmpty() && cameraIntent_.FillStartupIdentity(
                             QString::fromStdWString(cameras_[static_cast<size_t>(target)].symbolicLink),target)) {
@@ -351,7 +350,7 @@ void OkuFlowApp::StartFallbackCamera()
         if (!cameras_[i].phoneSerial.empty()) continue;
         if (uiState_->cameraCombo_) {
             auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
-            uiState_->cameraCombo_->setCurrentIndex(static_cast<int>(i));
+            if (!mainWindow_->videoSourceSelected()) uiState_->cameraCombo_->setCurrentIndex(static_cast<int>(i));
         }
         StartCameraCapture(i, false, false, true,agent::CameraSourceOrigin::Fallback);
         return;
@@ -1241,9 +1240,12 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
         applied.keystone = settings.enableKeystone;
         applied.stabilization = settings.enableStabilization;
         ++annotationSceneRevision_;
+        // Extra Stable remains a displayed composite for annotations, but UCT
+        // supports it through each capture's hold record (heldFrames).
         uctProvenance_.OnCudaSceneProcessed(
             applied, presentWidth, presentHeight, currentCameraFrameSequence_,
-            settings.enableTemporalSmoothing || (settings.enableStabilization && settings.enableBumpHold));
+            settings.enableTemporalSmoothing || (settings.enableStabilization && settings.enableBumpHold),
+            false, settings.enableStabilization && settings.enableBumpHold);
     }
     if (!hiddenLive && controlTarget_) controlTarget_->FrameProcessed();
     // CPU pixels belong to the last CPU presentation, not this GPU scene.
@@ -1369,6 +1371,7 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         // photo whose request never returned instead of leaving capture stuck.
         pendingPhotoReadbackId_ = 0;
         pendingPhotoOriginal_ = {};
+        pendingPhotoOverlays_ = {};
         pendingPhotoReadbackTimer_.invalidate();
         photoCapturePending_ = true;
     }
@@ -1493,6 +1496,7 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
             if (controlTarget_) controlTarget_->PhotoState(photoOperationId_,agent::OperationState::Readback);
             pendingPhotoReadbackId_ = readbackRequestId;
             pendingPhotoOriginal_ = *originalFrame;
+            pendingPhotoOverlays_ = CaptureViewOverlays(uctContext.transform);
             pendingPhotoReadbackTimer_.restart();
             photoCapturePending_ = false;
         }
@@ -1608,6 +1612,7 @@ void OkuFlowApp::DrainCompletedGpuReadbacks() {
                                    readbackHeight,
                                    activeAnnotationCapture_->strokes,
                                    activeAnnotationCapture_->transform,
+                                   activeAnnotationCapture_->text,
                                    activeAnnotationCapture_->heading);
             pendingAnnotationReadbackId_ = 0;
             pendingAnnotationReadbackTimer_.invalidate();
@@ -1707,9 +1712,8 @@ bool OkuFlowApp::CaptureLiveForMediaHold() {
         return true;
     }
     if (!original.HasCpuPixels()) return false;
-    AcceptLiveMediaHold(original.pixels, original.width, original.height,
-                       mediaHoldFrameSeq_, mediaHoldCaptureClock100ns_);
-    return true;
+    return AcceptLiveMediaHold(original.pixels, original.width, original.height,
+                               mediaHoldFrameSeq_, mediaHoldCaptureClock100ns_);
 }
 
 bool OkuFlowApp::StartCameraCapture(size_t index,
@@ -3068,8 +3072,14 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
             } else ultraClearText_->OnPresentationDeferred();
         }
     }
-    if (presenter_->IsFaulted()) return;
+    if (presenter_->IsFaulted()) {
+        lastAnnotationPresentation_.reset();
+        lastAnnotationGpuPresentation_.reset();
+        return;
+    }
     if (presenter_->NeedsScenePresent()) {
+        lastAnnotationPresentation_.reset();
+        lastAnnotationGpuPresentation_.reset();
         pipelineOrchestrator_->MarkViewportDirty();
         return;
     }
@@ -3207,6 +3217,11 @@ void OkuFlowApp::CapturePendingPhoto(const CapturedFrame& originalFrame)
         ShowStatusMessage(QStringLiteral("Photo not saved: no processed frame was available."));
         return;
     }
+    pendingPhotoOverlays_ = lastAnnotationPresentation_ &&
+        lastAnnotationPresentation_->frameSeq == originalFrame.identity.sequenceNumber &&
+        lastAnnotationPresentation_->viewportWidth == presentationWidth_ &&
+        lastAnnotationPresentation_->viewportHeight == presentationHeight_
+        ? CaptureViewOverlays(lastAnnotationPresentation_->transform) : ViewOverlaySnapshot{};
     SaveCapturedPhotoPair(presentationBuffer_.data(),
                           presentationWidth_,
                           presentationHeight_,
@@ -3218,6 +3233,7 @@ void OkuFlowApp::SaveCapturedPhotoPair(const uint8_t* processedData,
                                         UINT processedHeight,
                                         const CapturedFrame& originalFrame)
 {
+    auto overlays = std::exchange(pendingPhotoOverlays_, {});
     const QString operationId = photoOperationId_;
     if (!processedData || processedWidth == 0 || processedHeight == 0 ||
         !originalFrame.HasCpuPixels()) {
@@ -3272,8 +3288,13 @@ void OkuFlowApp::SaveCapturedPhotoPair(const uint8_t* processedData,
          operationId,
          processedImage = std::move(processedImage),
          originalImage = std::move(originalImage),
+         overlays = std::move(overlays),
          dirPath,
          preferredStem]() mutable {
+            {
+                QPainter painter(&processedImage);
+                overlays.Paint(painter, processedImage.size());
+            }
             const PhotoPairWriteResult saved = UserDataPaths::WritePhotoPair(
                 dirPath, preferredStem,
                 [&originalImage](QIODevice* file) {
@@ -3415,6 +3436,7 @@ void OkuFlowApp::QueueAnnotationSnapshot(int reason)
     capture.sceneRevision = lastAnnotationSceneRevision_;
     if (lastAnnotationGpuPresentation_) capture.presentation = *lastAnnotationGpuPresentation_;
     capture.transform = capture.frame.transform;
+    capture.text = CaptureViewOverlays(capture.transform).text;
     capture.strokes = mainWindow_->annotationOverlay()->Strokes();
     capture.heading =
         reason == 1
@@ -3426,7 +3448,7 @@ void OkuFlowApp::QueueAnnotationSnapshot(int reason)
                   : QCoreApplication::translate("OkuFlow", "Annotated view");
     if (!annotationPresentationCuda_) {
         SaveAnnotationSnapshot(presentationBuffer_.data(), capture.frame.viewportWidth,
-            capture.frame.viewportHeight, capture.strokes, capture.transform, capture.heading);
+            capture.frame.viewportHeight, capture.strokes, capture.transform, capture.text, capture.heading);
         return;
     }
     annotationCaptureQueue_.push_back(std::move(capture));
@@ -3448,6 +3470,7 @@ void OkuFlowApp::SaveAnnotationSnapshot(
     UINT processedHeight,
     const QVector<AnnotationStroke>& strokes,
     const ViewTransform& transform,
+    const UctOverlaySnapshot& text,
     const QString& heading)
 {
     if (!processedData || processedWidth == 0 || processedHeight == 0 ||
@@ -3493,15 +3516,13 @@ void OkuFlowApp::SaveAnnotationSnapshot(
          annotated = std::move(annotated),
          strokes,
          transform,
+         text,
          dirPath,
          preferredStem,
          heading]() mutable {
             {
                 QPainter painter(&annotated);
-                RenderAnnotationStrokes(painter,
-                                        strokes,
-                                        transform,
-                                        annotated.size());
+                ViewOverlaySnapshot{text, strokes, transform}.Paint(painter, annotated.size());
             }
             const auto result = UserDataPaths::WriteAnnotationImage(dirPath, preferredStem,
                 [&annotated](QIODevice* file) { return annotated.save(file, "PNG"); });

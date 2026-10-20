@@ -1381,6 +1381,49 @@ __global__ void ApplyBumpHoldKernel(
             fminf(fmaxf(frozen.w * inverse + live.w * alpha, 0.0f), 255.0f)));
 }
 
+// Mirrors ApplyBumpHoldKernel's per-frame decision without touching pixels:
+// captureCurrent (or no valid hold surface) shows this live acquisition,
+// mode 1 shows the acquisition last copied into the hold surface, and mode 2
+// is a composite of both. heldFrame survives across frames; the update
+// kernel's resets clear heldFrameValid, which this record follows.
+__global__ void RecordBumpHoldProvenanceKernel(
+    const BumpHoldState* state, BumpHoldProvenance* provenance,
+    unsigned long long frameSequence) {
+    if (threadIdx.x != 0 || blockIdx.x != 0 || state == nullptr ||
+        provenance == nullptr) {
+        return;
+    }
+    provenance->blendAlpha = 1.0f;
+    provenance->reserved = 0u;
+    if (state->captureCurrent != 0u) {
+        provenance->heldFrame = frameSequence;
+        provenance->heldValid = 1u;
+        provenance->displayedFrame = frameSequence;
+        provenance->state = 0u;
+        return;
+    }
+    if (state->heldFrameValid == 0u) {
+        provenance->heldValid = 0u;
+        provenance->displayedFrame = frameSequence;
+        provenance->state = 0u;
+        return;
+    }
+    const unsigned int mode =
+        static_cast<unsigned int>(state->diagnostics.x);
+    if (mode == 1u) {
+        // A hold surface without a recorded acquisition cannot be named.
+        provenance->displayedFrame = provenance->heldFrame;
+        provenance->state = provenance->heldValid != 0u ? 1u : 3u;
+    } else if (mode == 2u) {
+        provenance->displayedFrame = 0ull;
+        provenance->blendAlpha = fminf(fmaxf(state->blendAlpha, 0.0f), 1.0f);
+        provenance->state = 2u;
+    } else {
+        provenance->displayedFrame = frameSequence;
+        provenance->state = 0u;
+    }
+}
+
 __global__ void SelectSharperTripodReferenceStateKernel(
     const float* focusScore, float* bestFocusScore,
     unsigned int* selectionFlag) {
@@ -2679,6 +2722,17 @@ void LaunchApplyBumpHold(
         current, currentPitchBytes, held, heldPitchBytes,
         width, height, state);
     CheckCuda("ApplyBumpHoldKernel launch failed");
+}
+
+void LaunchRecordBumpHoldProvenance(
+    const BumpHoldState* state, BumpHoldProvenance* provenance,
+    unsigned long long frameSequence, cudaStream_t stream) {
+    if (!state || !provenance) {
+        return;
+    }
+    RecordBumpHoldProvenanceKernel<<<1, 1, 0, stream>>>(
+        state, provenance, frameSequence);
+    CheckCuda("RecordBumpHoldProvenanceKernel launch failed");
 }
 
 void LaunchSelectSharperVirtualTripodReference(

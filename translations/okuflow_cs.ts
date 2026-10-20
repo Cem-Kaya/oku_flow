@@ -3513,5 +3513,33 @@ Přihlaste se přes Connect ChatGPT na kartě Asistent v režimu Upřesnit.</tra
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>Pozastavení není k dispozici: zobrazený výřez se nepodařilo přesně zachovat.</translation>
         </message>
-    </context>
+        <message>
+            <source>View video</source>
+            <translation>Zobrazit video</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Vybrat video</translation>
+        </message>
+        <message>
+            <source>Paused while Extra Stable is on. The original camera image is shown.</source>
+            <translation>Pozastaveno, dokud je zapnutý režim „Extra stabilní“. Zobrazuje se původní obraz z kamery.</translation>
+        </message>
+        <message>
+            <source>Original camera text shown.</source>
+            <translation>Zobrazuje se původní text z kamery.</translation>
+        </message>
+        <message>
+            <source>Text recognition is paused in the debug composite view. The original camera image is shown.</source>
+            <translation>Rozpoznávání textu je ve složeném ladicím zobrazení pozastaveno. Zobrazuje se původní obraz z kamery.</translation>
+        </message>
+        <message>
+        <source>Using GPU backend: %1</source>
+        <translation>Používá se backend GPU: %1</translation>
+    </message>
+    <message>
+        <source>Using CPU backend: %1</source>
+        <translation>Používá se backend CPU: %1</translation>
+    </message>
+</context>
 </TS>
