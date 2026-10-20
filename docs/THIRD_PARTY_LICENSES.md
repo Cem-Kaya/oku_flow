@@ -422,3 +422,10 @@ fixture generated locally with the separately installed FFmpeg/libx264 tools.
 It follows the project's contribution/license terms; no tool or codec library
 is bundled. The reproducible command and reviewed byte hash are recorded in
 `tests/README.md`. The fixture is test-only, outside application payloads.
+
+`tests/data/uct-scene-cut-h264.mp4` is another original first-party fixture:
+one second of red followed by two seconds of blue, generated with the owner's
+separately installed FFmpeg/libx264. It has no third-party footage, audio or
+fonts, follows the project's contribution/license terms, and is test-only.
+Its command and exact reviewed hash are recorded in `tests/README.md`; neither
+the tool nor a codec library is bundled with the application.

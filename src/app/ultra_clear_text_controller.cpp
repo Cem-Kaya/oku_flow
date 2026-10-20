@@ -87,6 +87,20 @@ uct::SharedDeviceImage EffectiveDevice(const UctImmutableFrame& frame, const Uct
     return DeviceMatchesFrame(frame, geometry) ? frame.device : uct::SharedDeviceImage{};
 }
 
+// A neighbour is ancillary evidence for the retained selected acquisition,
+// never part of its identity. Reject unusable/repeated descriptors before
+// claiming its one bounded corroboration attempt; pixel independence is
+// checked separately by the recognition worker's complete-source digest.
+bool CorroborationInputValid(const UctImmutableScene& scene, const UctImmutableFrame& neighbour)
+{
+    if (!FrameInputValid(neighbour, scene.geometry) ||
+        neighbour.frameSeq == scene.selected.frameSeq) return false;
+    const auto neighbourDevice = EffectiveDevice(neighbour, scene.geometry);
+    const auto selectedDevice = EffectiveDevice(scene.selected, scene.geometry);
+    return !((neighbourDevice && selectedDevice && neighbourDevice == selectedDevice) ||
+             (!neighbourDevice && !selectedDevice && neighbour.pixels == scene.selected.pixels));
+}
+
 constexpr int kMaximumConsecutiveFailures = 3;
 constexpr std::int64_t kPresentationWatchdogMs = 600;
 // Probes are decimated to at most about this width, bounding worker cost
@@ -373,12 +387,20 @@ bool UltraClearTextController::SetImmutableScene(UctImmutableScene scene)
         return a.pixels == b.pixels && a.device == b.device && a.frameSeq == b.frameSeq &&
                a.timestampMs == b.timestampMs;
     };
-    const bool sameNeighbour = immutableScene_ &&
-        immutableScene_->corroboration.has_value() == scene.corroboration.has_value() &&
-        (!scene.corroboration || sameFrame(*immutableScene_->corroboration, *scene.corroboration));
     if (immutableScene_ && immutableScene_->geometry == scene.geometry &&
         immutableScene_->sourceAuthority == scene.sourceAuthority &&
-        sameFrame(immutableScene_->selected, scene.selected) && sameNeighbour) {
+        sameFrame(immutableScene_->selected, scene.selected)) {
+        // Decoder/preroll may supply the real neighbour after this selected
+        // frame has already been read. Attach it without cancelling that job,
+        // clearing its reading text, or renewing its deadline/authority.
+        // Omitted/changed optional descriptors on later view receipts cannot
+        // replace the first usable neighbour or reread the selected image.
+        if (!immutableScene_->corroboration && scene.corroboration &&
+            CorroborationInputValid(*immutableScene_, *scene.corroboration)) {
+            immutableScene_->corroboration = std::move(scene.corroboration);
+            immutableCorroborationAttempted_ = false;
+            SubmitImmutableIfNeeded();
+        }
         UpdateImmutableView(scene.transform, scene.viewportWidth, scene.viewportHeight, scene.strokeWeight);
         OnMediaPresentationSucceeded(); // this API carries a successful selected-frame receipt
         return FrameInputValid(scene.selected, scene.geometry);
@@ -391,6 +413,9 @@ bool UltraClearTextController::SetImmutableScene(UctImmutableScene scene)
     advancingDeviceIdentity_.reset();
     advancingReceiptValid_ = false;
     immutableScene_ = std::move(scene);
+    if (immutableScene_->corroboration &&
+        !CorroborationInputValid(*immutableScene_, *immutableScene_->corroboration))
+        immutableScene_->corroboration.reset();
     geometry_ = immutableScene_->geometry;
     haveGeometry_ = true;
     cameraActive_ = false;
@@ -1365,12 +1390,7 @@ void UltraClearTextController::SubmitImmutableIfNeeded()
     immutableCorroborationAttempted_ = true;
     if (!immutableScene_->corroboration) return;
     const auto& neighbour = *immutableScene_->corroboration;
-    const auto neighbourDevice = EffectiveDevice(neighbour, geometry_);
-    const auto selectedDevice = EffectiveDevice(immutableScene_->selected, geometry_);
-    const bool reusedLease = (neighbourDevice && selectedDevice && neighbourDevice == selectedDevice) ||
-        (!neighbourDevice && !selectedDevice && neighbour.pixels == immutableScene_->selected.pixels);
-    if (!FrameInputValid(neighbour, geometry_) ||
-        neighbour.frameSeq == immutableScene_->selected.frameSeq || reusedLease) return;
+    if (!CorroborationInputValid(*immutableScene_, neighbour)) return;
     immutableSubmittedAtMs_ = clock_();
     immutableCorroborationJob_ = submitFrame(neighbour);
     if (!immutableCorroborationJob_) ScheduleImmutableRetry(false);
@@ -1478,7 +1498,8 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
         verdict = model_.AdmitImmutable(*immutableSelectedResult_,
                                         ImmutableStamp(immutableScene_->selected), now, &result);
     }
-    if (previousModel && verdict != uct::AdmitVerdict::kAccepted)
+    if (previousModel && verdict != uct::AdmitVerdict::kAccepted &&
+        verdict != uct::AdmitVerdict::kContentMoved)
         model_ = *previousModel; // a refused refinement cannot erase prior proof
     switch (verdict) {
     case uct::AdmitVerdict::kAccepted:
@@ -1493,6 +1514,12 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
     case uct::AdmitVerdict::kEmpty:
         lastResultEmpty_ = true;
         lastResultMoved_ = false;
+        break;
+    case uct::AdmitVerdict::kContentMoved:
+        // A complete independent pair contradicted existing selected-frame
+        // text. The model has revoked the affected proof; never restore it.
+        lastResultMoved_ = true;
+        lastResultEmpty_ = false;
         break;
     default:
         ++rejectedResults_;

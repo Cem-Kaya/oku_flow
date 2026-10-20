@@ -6,6 +6,7 @@
 #include "uct_batch_diagnostic.hpp"
 #include "uct_character_diagnostic.hpp"
 #include "uct_resident_diagnostic.hpp"
+#include "uct_paused_video_diagnostic.hpp"
 #include <QFontDatabase>
 #include <QPainter>
 #include <QJsonDocument>
@@ -661,7 +662,11 @@ class PaddleTests final : public QObject
         if(path.isEmpty())QSKIP("Explicit local image diagnostic not selected.");
         const QImage image(path);QVERIFY2(!image.isNull(),qPrintable(path));
         const bool gpu=qEnvironmentVariableIsSet("OKUFLOW_TEST_PADDLE_GPU");
-        auto backend=gpu?CreateTensorRtRecognizer():CreatePaddleCpuRecognizer();
+        // Retain the exact asynchronous TensorRT closure through diagnostic
+        // process exit, including early QtTest assertion returns.
+        auto retirement=gpu?std::make_unique<uct_batch_test::RetirementReceipts>():nullptr;
+        auto backend=gpu?CreateTensorRtRecognizer({},{},ModelTier::Medium,ModelTier::Medium,retirement->Observer())
+                        :CreatePaddleCpuRecognizer();
         const auto initialized=backend->Initialize();
         QVERIFY2(initialized.state==BackendState::kReady,qPrintable(initialized.detail));
         QTRY_VERIFY_WITH_TIMEOUT(!backend->Preparing(),180000);
@@ -679,6 +684,12 @@ class PaddleTests final : public QObject
         qInfo().noquote()<<"Dense image backend="<<backend->Status().name<<"words="<<words
             <<"detailRegions="<<PaddleDetectionRegions(image.size()).size()<<"ms="<<timer.elapsed()<<'\n'<<text;
         QVERIFY(words>0);
+        backend.reset();
+        if(retirement)QVERIFY2(retirement->Wait().Passed(),"Exact diagnostic TensorRT State closure failed.");
+    }
+    void optionalPausedVideoProof()
+    {
+        uct_paused_video_test::Run();
     }
     void ctcBlankRepeatSpaceAndConfidence()
     {

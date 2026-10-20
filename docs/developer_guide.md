@@ -500,10 +500,12 @@ profiling flags for ordinary operation.
 - `Ultra Clear Text (experimental)` at the end of `Advanced > Image > Text
   clarity` recognizes steady printed text with optional local PaddleOCR or the built-in Windows OCR engine
   and draws sharp letters over validated words; everything else stays the
-  original image. It is off on every launch, offers `Show original camera
-  text`, and lists accepted words in a selectable `Recognized text` pane. It
-  pauses during Temporal Smooth/Extra Stable and reports when Windows has no
-  OCR language. Development feature, not release-accepted; see
+  original image. Its saved preference is gated by the Text Clarity master
+  switch. It offers `Show original camera text` and a selectable `Recognized
+  text` pane, and reports its active CPU/GPU backend. Temporal Smooth and Extra
+  Stable retain exact analysis/held-frame identity; paused video can use a
+  distinct real neighbouring sample without advancing the held view. It reports
+  when Windows has no OCR language. Development feature, not release-accepted; see
   [Ultra Clear Text](ultra_clear_text.md).
 - `Viewport framing` under `Advanced > Settings > View and navigation`
   is a global viewport preference:

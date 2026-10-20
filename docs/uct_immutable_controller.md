@@ -26,6 +26,14 @@ replacement is eligible. Reused leases are refused before scheduling;
 different leases containing identical pixels do not provide corroboration.
 Failure or unavailable evidence ends that bounded attempt.
 
+On an explicit playback Pause, the application holds its exact last displayed
+native frame through `VideoPlayback::PauseAtFrame`. It clears a predecessor
+which could belong to the other side of a scene cut. The existing decoder
+worker may supply one actual following sample within 250 ms, without advancing
+the held frame or playing audio. Late neighbour-only snapshots must still name
+that identical held lease; source or seek changes revoke it. At EOF or without
+independent evidence the original image remains visible.
+
 Paused scrolling text has an additional word-local worker check. A neighbour
 within 250 ms may show a recognized word at a different position even though
 the selected frame is now frozen. Exact text, candidate status, comparable box
@@ -65,6 +73,15 @@ same selection lease and identity also changes only its projection. Supplying
 new selected pixels, frame identity, geometry or source authority cancels old
 work immediately. Recognizer replacement fences the old backend and analyzes
 the retained selected image once with the replacement.
+
+The optional neighbour is ancillary evidence rather than selected-frame
+identity. Its first usable late arrival attaches without resetting the selected
+job, authority, deadline or existing artifact. Same-source refinements preserve
+already proved coverage when the complete source ticket and digest match;
+independently proved additions can extend coverage, while explicit semantic
+contradictions revoke affected proof. See the
+[continuity repair](uct_paused_continuity_repair.md) for the regression and
+diagnostic evidence boundaries.
 
 `ClearImmutableScene` revokes selected work and clears its reading text before
 returning to live mode. Live analysis waits for a truthful new camera

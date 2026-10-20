@@ -6090,3 +6090,53 @@ distinct acquisition tickets; `RunScenario` times only `Observe`, while
 shifted, repeated-label, continual-churn and overlapping scenarios make no OCR
 latency or accuracy claim. `--run` is required; output is bounded JSON and no
 ordinary CTest case runs the benchmark.
+
+### Exact paused-source UCT continuity (2026-10-21)
+
+`VideoPlaybackFrame::decoderLease` is an opaque `VideoPlaybackFrameLease`
+containing weak player/object ownership and immutable file, request, archive
+and track provenance. `SealFrame` attaches it to each real native decode or
+same-pixel seek reticket; `IssuedFrame` requires the identical shared ownership
+and object as well as current document provenance. `FollowingFrame` also
+requires a distinct sample, matching geometry and a later PTS within 250 ms.
+`VideoPlayback::PauseAtFrame` / `PauseAtFrameLocked` retain that exact displayed
+frame, select the nearest already decoded future lease or request one bounded
+read on the existing worker, and clear audio without a Pause seek. The private
+`repositionOnResume` flag preserves decoder realignment when display lags;
+`neighborMayReposition` authorizes deferred seek work only for an explicit
+Open/Seek. The application clears its predecessor on Pause and adopts a later
+neighbour-only snapshot only if its selected pointer still equals the hold.
+
+`CorroborationInputValid` validates an optional independent neighbouring input
+before it consumes the immutable controller's bounded evidence slot.
+`UltraClearTextController::SetImmutableScene` identifies the selected acquisition
+independently of that ancillary descriptor: its first usable late arrival does
+not cancel the selected job, reset its deadline/generation or clear the model.
+`HandleImmutableResult` preserves refused refinements while allowing an explicit
+`kContentMoved` contradiction to revoke old proof without rollback.
+
+`OverlayModel::AdmitImmutable` compares complete selected-source provenance,
+authority and full digest before retaining earlier same-frame coverage.
+`MergeImmutableCoverage` keeps old proved word identities/geometry/reference/
+validation clocks and adds only independently proved new glyphs. The union caps
+are 1024 lines, 8192 word slots and 32768 reading tokens/protected rectangles;
+retired slots count toward the bound. A fixed 64-row spatial index limits
+ordinary matching to nearby rows. Contradictory independently proved overlap
+falls back to original ink, and source/seek changes cannot inherit old proof.
+
+`AcceptedLine::readingWordIndices` is optional. Empty retains the sequential
+token/word contract. Otherwise each reading token explicitly names its stable
+word slot, with -1 for omissions, so an immutable refinement can append newly
+proved words without renumbering old UIA identities. `ScreenLines` validates
+that mapping and exposes only eligible named glyphs; `AcceptedWordCount` counts
+active named slots rather than retired duplicate reading-only slots.
+
+The explicit `uct_paused_video_test::Run` / `optionalPausedVideoProof` diagnostic
+uses existing pinned M/M N8 plans and an inference-only SDK, actual owned CUDA
+inputs, production worker corroboration and immutable admission. It records
+per-word proof alongside raw candidate output, verifies zero image egress and
+unchanged cached-plan bytes, and waits for exact TensorRT State retirement.
+The direct `optionalDenseImage` diagnostic also waits for that receipt after
+recognizer destruction, including assertion exits. See
+`uct_paused_continuity_repair.md` for selectors, the 60 FPS source-specific frame
+mapping and the distinction from decoder/native-display acceptance.

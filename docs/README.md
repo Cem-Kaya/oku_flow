@@ -1,5 +1,9 @@
 # OkuFlow Documentation Guide
 
+[Paused UCT continuity](uct_paused_continuity_repair.md) records the reproduced
+partial-refinement and late-neighbour defects, exact-source retention and the
+private resident recognition/admission diagnostic.
+
 [Shadow regional planning](uct_region_planner.md) describes the opt-in metadata
 observer, source-bound spatial occurrences, requested focus and finite coverage
 debt. Full OCR stays authoritative; no recognition reuse is enabled.

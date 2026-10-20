@@ -12,6 +12,7 @@
 
 namespace okuflow {
 
+struct VideoPlaybackFrameLease;
 struct VideoPlaybackFrame {
     // Immutable pixels can be reticketed after a same-frame seek without a
     // second image allocation. The final pixel lease owns the budget charge.
@@ -22,6 +23,9 @@ struct VideoPlaybackFrame {
     std::int64_t pts100ns{}, duration100ns{};
     std::uint64_t sampleId{}, requestGeneration{}, archiveGeneration{};
     std::uint32_t videoTrackId{};
+    // Opaque native issuance proof. A copied record does not authorize a
+    // different frame object; synthetic/public metadata is not decoder proof.
+    std::shared_ptr<const VideoPlaybackFrameLease> decoderLease;
 };
 struct VideoPlaybackAudio {
     std::vector<std::uint8_t> pcm;
@@ -96,6 +100,12 @@ public:
     // held cursor. It remains CPU-only for that document until the next Open.
     std::uint64_t UseCpuFallback(std::string reason);
     void SetPlaying(bool playing);
+    // Hold this exact, previously issued current-document frame (for example
+    // the last successful display while decoding is ahead). No native call
+    // occurs here. One true following frame may be prepared on the existing
+    // worker without playing video/audio or changing this held image/PTS.
+    // Foreign, copied and previous-request frame objects are refused.
+    bool PauseAtFrame(std::shared_ptr<const VideoPlaybackFrame> shown);
     void SetMuted(bool muted);
     // Consumed output clock in the same steady-clock epoch as
     // duration_cast<nanoseconds>(steady_clock::now().time_since_epoch())/100.

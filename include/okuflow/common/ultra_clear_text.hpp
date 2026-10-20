@@ -568,6 +568,11 @@ struct AcceptedLine {
     QPointF sceneOffset;
     std::int64_t validatedAtMs{};
     std::uint64_t validatedFrameSeq{};
+    // Empty uses the original sequential readingTokens/words contract. An
+    // immutable refinement may append independently proved words while old
+    // word indexes remain stable; then every token has an explicit index
+    // (-1 for an omission), and unused reading-only words stay undrawn.
+    QVector<int> readingWordIndices;
 };
 
 struct SceneWord {
@@ -675,6 +680,9 @@ public:
     // Glyphs require an optional genuinely distinct compatible neighbor: full
     // pixel digests, different frame identity, word agreement and registration.
     // Caller owns selected-media/model authority; no periodic probe is needed.
+    // A refinement of identical selected pixels preserves exact earlier proof
+    // and can add independently proved words; it never rebinds old proof to
+    // jittered recognition boxes or another selected input.
     AdmitVerdict AdmitImmutable(const RecognitionResult& result,
                                 const SourceStamp& selectedFrame,
                                 std::int64_t nowMs,
@@ -725,6 +733,9 @@ private:
                            const ProbeFrame* latestProbe, std::int64_t nowMs, bool immutable,
                            const RecognitionResult* corroboration = nullptr,
                            bool advancingMedia = false, bool liveCamera = false);
+    AdmitVerdict MergeImmutableCoverage(const QVector<AcceptedLine>& previous,
+                                        AdmitVerdict verdict, std::int64_t nowMs,
+                                        std::uint64_t selectedFrameSeq);
 
     struct PendingWord {
         QString text;

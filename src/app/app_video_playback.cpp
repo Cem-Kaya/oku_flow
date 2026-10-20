@@ -689,11 +689,15 @@ void OkuFlowApp::ToggleSelectedVideoPlayback()
         doc.resumePending = !doc.resumePending;
     } else if (doc.playing) {
         InvalidateMediaSelection();
-        doc.player.SetPlaying(false); doc.audio.Close(); doc.playing = false;
+        doc.audio.Close(); doc.playing = false;
         doc.pausedDisplayHold = true;
         // The native decoder may be ahead of a deferred presentation. Own the
         // actual displayed frame and reseek it on Resume.
-        if (doc.presented) { doc.frame = doc.presented; doc.neighbor = doc.presentedNeighbor; doc.framePart = doc.presentedPart; }
+        if (doc.presented) { doc.frame = doc.presented; doc.framePart = doc.presentedPart; }
+        // A predecessor can belong to the other side of a scene cut. Only
+        // the decoder's frame-bound following receipt may corroborate Pause.
+        doc.neighbor.reset(); doc.presentedNeighbor.reset();
+        if (!doc.player.PauseAtFrame(doc.frame)) doc.player.SetPlaying(false);
     } else if (doc.heldLive) {
         if (!doc.heldUnrecorded && !doc.heldMappingUnavailable) { InvalidateMediaSelection(); doc.resumePending = true; }
         else ShowStatusMessage(doc.heldUnrecorded
@@ -903,6 +907,14 @@ void OkuFlowApp::PollVideoPlayback()
                     // Keep the old scene while the ordered seek completes.
                     snapshot = doc.player.Snapshot();
                 }
+            }
+            if (doc.pausedDisplayHold && snapshot.requestGeneration == doc.requestGeneration &&
+                snapshot.frame == doc.frame && snapshot.frame &&
+                snapshot.frame->requestGeneration == doc.requestGeneration &&
+                !doc.followingLive && !doc.heldLive && !doc.pendingHold && !doc.openingFile) {
+                // Ancillary evidence may arrive after the exact displayed
+                // frame was frozen. Never adopt a decoder-ahead frame here.
+                doc.neighbor = snapshot.neighborFrame;
             }
             if (snapshot.requestGeneration == doc.requestGeneration &&
                 snapshot.frame && snapshot.frame->requestGeneration == doc.requestGeneration &&

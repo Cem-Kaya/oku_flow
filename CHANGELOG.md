@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Preserve proved text on the same paused video frame through partial OCR
+  refinements, and attach late neighbouring evidence without restarting the
+  selection. Corroborate the exact displayed Pause frame with a real following
+  frame across scene cuts, without playing audio or advancing its held PTS.
+  Keep source/seek identity and explicit contradiction revocation.
+
 - Add an opt-in bounded UCT shadow planner beside full OCR, with persistent
   spatial occurrences, requested-region priority, unseen-area coverage debt
   and exact source/acquisition tickets. Keep full OCR authoritative and

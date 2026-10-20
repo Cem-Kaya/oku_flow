@@ -240,9 +240,8 @@ void FinalizationRetainsRevokedMapping(const std::filesystem::path& source) {
     std::error_code error;std::filesystem::remove(path,error);
 }
 
-void LongGopSeeking() {
+void LongGopSeeking(VideoPlayback& player) {
     const auto path=std::filesystem::path(__FILE__).parent_path()/"data"/"long-gop-h264.mp4";
-    VideoPlayback player;
     auto request=player.OpenFile(path.wstring());
     VideoPlaybackSnapshot snapshot;
     const auto settled=[&] {
@@ -260,6 +259,128 @@ void LongGopSeeking() {
     player.Seek100ns(10'000'000);request=player.Seek100ns(40'000'000);snapshot={};
     Expect(Wait(settled) && snapshot.frame && snapshot.state==VideoPlaybackState::Paused && snapshot.frame->pts100ns>=40'000'000,
            "new long-GOP seek supersedes a waiting target");
+    player.Close();
+}
+
+void PausedSceneCutNeighbor(VideoPlayback& player) {
+    const auto path=std::filesystem::path(__FILE__).parent_path()/"data"/"uct-scene-cut-h264.mp4";
+    auto request=player.OpenFile(path.wstring());
+    const auto settled=[&] {
+        const auto s=player.Snapshot();
+        return s.requestGeneration==request && s.frame && s.frame->requestGeneration==request &&
+            s.state==VideoPlaybackState::Paused;
+    };
+    Expect(Wait(settled),"first-party scene-cut fixture opens on the system CPU decoder");
+    if(!settled())return;
+    request=player.Seek100ns(9'000'000);
+    Expect(Wait(settled),"scene-cut fixture selects a real pre-cut frame");
+    const auto beforeCut=player.Snapshot().frame;
+    if(!beforeCut)return;
+    const auto blue=[](const std::shared_ptr<const VideoPlaybackFrame>& frame) {
+        if(!frame || !frame->bgra || frame->bgra->size()<4)return false;
+        const auto at=std::size_t(frame->height/2)*frame->strideBytes+std::size_t(frame->width/2)*4;
+        return at+3<frame->bgra->size() && (*frame->bgra)[at] > 180 && (*frame->bgra)[at+2] < 70;
+    };
+    const auto red=[](const std::shared_ptr<const VideoPlaybackFrame>& frame) {
+        if(!frame || !frame->bgra || frame->bgra->size()<4)return false;
+        const auto at=std::size_t(frame->height/2)*frame->strideBytes+std::size_t(frame->width/2)*4;
+        return at+3<frame->bgra->size() && (*frame->bgra)[at+2] > 180 && (*frame->bgra)[at] < 70;
+    };
+    const auto describe=[](const char* label,const std::shared_ptr<const VideoPlaybackFrame>& frame) {
+        std::cout<<"Scene-cut "<<label<<" pts="<<(frame?frame->pts100ns:-1)
+            <<" sample="<<(frame?frame->sampleId:0);
+        if(frame && frame->bgra) {
+            const auto at=std::size_t(frame->height/2)*frame->strideBytes+std::size_t(frame->width/2)*4;
+            if(at+3<frame->bgra->size())std::cout<<" center BGRA="<<unsigned((*frame->bgra)[at])<<','
+                <<unsigned((*frame->bgra)[at+1])<<','<<unsigned((*frame->bgra)[at+2])<<','<<unsigned((*frame->bgra)[at+3]);
+        }
+        std::cout<<'\n';
+    };
+    describe("before",beforeCut);
+    Expect(beforeCut->pts100ns==9'000'000 && red(beforeCut),"pre-cut source is the real red 0.9-second frame");
+    player.SetMuted(false);
+    player.SetPlaying(true);
+    std::shared_ptr<const VideoPlaybackFrame> selected;
+    auto preceding=beforeCut;
+    Expect(Wait([&] {
+        const auto s=player.Snapshot();
+        if(s.frame && s.frame->sampleId!=preceding->sampleId) {
+            if(blue(s.frame))selected=s.frame;
+            else {
+                Expect(red(s.frame),"every observed pre-cut image contains genuine red pixels");
+                preceding=s.frame;
+            }
+        }
+        return bool(selected);
+    }),"playback reaches the first post-cut image");
+    if(!selected)return;
+    describe("last-red",preceding);
+    describe("selected",selected);
+    const auto selectedPts=selected->pts100ns;
+    std::cout<<"Scene-cut authored PTS=10000000 native first-blue PTS="<<selectedPts
+        <<" delta100ns="<<selectedPts-10'000'000<<'\n';
+    Expect(red(preceding) && blue(selected) && preceding->sampleId!=selected->sampleId &&
+        selectedPts-preceding->pts100ns==1'000'000,
+        "the selected native blue image has a genuinely distinct red predecessor exactly 100 ms earlier");
+    const auto selectedId=selected->sampleId;
+    Expect(player.PauseAtFrame(selected),"pause accepts its exact issued displayed frame without a decoder seek");
+    Expect(player.TakeAudio().empty(),"paused corroboration emits no audio");
+    Expect(Wait([&] {
+        const auto s=player.Snapshot();
+        Expect(s.frame==selected && s.frame->sampleId==selectedId && s.frame->pts100ns==selectedPts,
+            "optional following proof never advances the held image, sample or PTS");
+        return s.neighborFrame && s.neighborFrame->pts100ns>selected->pts100ns;
+    }),"pause publishes a genuinely decoded following neighbour instead of the pre-cut predecessor");
+    auto paused=player.Snapshot();
+    describe("following",paused.neighborFrame);
+    Expect(paused.state==VideoPlaybackState::Paused && paused.requestGeneration==request &&
+        paused.neighborFrame && paused.neighborFrame->sampleId!=selectedId &&
+        paused.neighborFrame->pts100ns==selectedPts+1'000'000 && blue(paused.neighborFrame),
+        "post-cut proof is a real blue sample exactly 100 ms later with its unchanged source identity");
+    Expect(paused.readyFrames<=paused.lookaheadFrames && paused.decodedBytes<=paused.decodedByteLimit,
+        "neighbour shares the bounded ready-frame leases and existing byte charges");
+    const auto following=paused.neighborFrame;
+    Expect(player.PauseAtFrame(selected),"an exact repeated pause retains its original acquisition");
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    paused=player.Snapshot();
+    Expect(paused.frame==selected && paused.neighborFrame==following && player.TakeAudio().empty(),
+        "idle/repeated pause neither rereads the selected frame nor consumes its following playback image");
+
+    auto copied=std::make_shared<VideoPlaybackFrame>(*selected);
+    Expect(!player.PauseAtFrame(copied),"copied numeric identity and opaque issuance record cannot authorize another frame object");
+    auto otherOwner=std::make_shared<int>(0);
+    const std::shared_ptr<const VideoPlaybackFrame> borrowed(otherOwner,selected.get());
+    Expect(!player.PauseAtFrame(borrowed),"a borrowed pointer with a different ownership block is not the issued frame lease");
+    VideoPlayback foreign;
+    Expect(!foreign.PauseAtFrame(selected),"an issued frame from a foreign player is refused");
+    Expect(player.Snapshot().frame==selected,"refused pause inputs leave the selected image untouched");
+
+    player.SetPlaying(true);
+    Expect(Wait([&] {
+        const auto s=player.Snapshot();
+        return s.frame && s.frame->pts100ns>selected->pts100ns;
+    }),"explicit Resume consumes the actual future timeline after paused proof");
+    Expect(player.PauseAtFrame(selected),"pause can hold its last actually displayed issued image while the decoder is ahead");
+    Expect(player.Snapshot().frame==selected,"decoder-ahead pause restores only the exact held lease, not a numeric substitute");
+
+    request=player.Seek100ns(20'000'000);
+    Expect(Wait(settled),"a real new seek supersedes paused-neighbour preparation");
+    const auto newer=player.Snapshot().frame;
+    Expect(!player.PauseAtFrame(selected),"a prior seek generation's genuine frame lease is refused");
+    Expect(player.Snapshot().frame==newer && player.Snapshot().requestGeneration==request,
+        "late old neighbour/held requests cannot replace the new selected authority");
+    request=player.JumpToEnd();
+    Expect(Wait([&] {
+        const auto s=player.Snapshot();return s.requestGeneration==request && s.frame && s.state==VideoPlaybackState::Ended;
+    }),"scene-cut source reaches its actual last decoded image");
+    const auto last=player.Snapshot().frame;
+    Expect(last && player.PauseAtFrame(last),"EOF retains the exact issued final frame");
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    const auto ended=player.Snapshot();
+    Expect(ended.frame==last && ended.state==VideoPlaybackState::Ended && !ended.neighborFrame,
+        "EOF cannot invent a following frame or turn paused proof into hidden playback");
+    player.SetPlaying(true);
+    Expect(player.Snapshot().state==VideoPlaybackState::Ended,"proof preparation preserves explicit Resume-at-EOF refusal");
     player.Close();
 }
 
@@ -796,7 +917,7 @@ int main(int argc, char** argv) {
             NativeAvcAac(codec, true);
             if (!failures && !nativeSkipped) NativeSparseVideoAudio(codec);
         }
-    } else { LayoutAndIdentity(); MutationObservation(); UnsupportedAndUnknownWrites(); FailedOpenSupersession(); LongGopSeeking(); }
+    } else { LayoutAndIdentity(); MutationObservation(); UnsupportedAndUnknownWrites(); FailedOpenSupersession(); VideoPlayback player; LongGopSeeking(player); PausedSceneCutNeighbor(player); }
     // Workers own their MFStartup/MFShutdown pairs; these local scopes own
     // only the fixture's startup. No camera/microphone or native GUI opens.
     MFShutdown(); CoUninitialize();

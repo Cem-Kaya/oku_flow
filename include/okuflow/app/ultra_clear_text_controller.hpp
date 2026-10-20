@@ -299,7 +299,10 @@ public:
     // Selected media uses the same recognition scheduler as live input.
     // A successful selection recognizes its owned complete scene once, then
     // optionally one real distinct neighbour. Invalid input still suspends
-    // hidden live analysis until ClearImmutableScene() is called.
+    // hidden live analysis until ClearImmutableScene() is called. A first
+    // usable neighbour arriving for the exact retained selected lease/frame/
+    // PTS/geometry/authority attaches without restarting selected analysis;
+    // later optional neighbour changes are not new selected acquisitions.
     bool SetImmutableScene(UctImmutableScene scene);
     // A processed media view may not have provable single-frame text
     // correspondence (neural output). Preserve the user's UCT preference, but

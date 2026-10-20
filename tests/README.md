@@ -1906,3 +1906,35 @@ timings, nearest-rank summaries and invariant failures are retained; no timing
 threshold is asserted. This model-free experiment measures no inference,
 native presentation or accessibility latency. It needs Qt Core/Gui and no
 camera, fonts, model runtime, GPU or native window.
+
+### Paused UCT continuity and scene cuts
+
+`immutable_uct_contract` covers late optional evidence without a selected-frame
+restart, partial preferred-backend coverage, independent contradiction revocation
+and unchanged deadlines. `ultra_clear_text_contract` checks exact-source coverage
+union, source/digest negatives, stable word identities, reading/UIA deduplication,
+protected omissions and bounded growth. These are offscreen scripted contracts.
+See `docs/uct_paused_continuity_repair.md` for the private real-model diagnostic
+and the original retained failures; they do not establish native screen-reader
+or camera acceptance.
+
+The first-party native playback fixture `tests/data/uct-scene-cut-h264.mp4`
+is 2,449 bytes, SHA-256
+`1f6b4f1207daf315658b0becd72ddb691899258b7fe1bf51b95522c372dd4ecb`.
+It is 192 x 128, 10 FPS, 30 frames, three seconds, no audio. Red changes to blue
+at 1.0 seconds inside one long H.264 GOP. It uses no downloaded media or fonts.
+The runtime test needs Windows decoding only; generation uses separately
+installed FFmpeg/libx264 and is not part of CI or the application:
+
+```powershell
+ffmpeg -hide_banner -loglevel error -n -f lavfi -i 'color=c=red:s=192x128:r=10:d=1' -f lavfi -i 'color=c=blue:s=192x128:r=10:d=2' -filter_complex '[0:v][1:v]concat=n=2:v=1:a=0,format=yuv420p' -c:v libx264 -preset veryfast -crf 28 -g 30 -keyint_min 30 -sc_threshold 0 -metadata 'creation_time=1970-01-01T00:00:00Z' tests/data/uct-scene-cut-h264.mp4
+```
+
+Do not overwrite the reviewed fixture to obtain a pass. Encoder versions can
+produce different bytes; a deliberate regeneration requires inspecting the
+cut/PTS, reviewing the new hash and updating its declared CTest runtime input.
+The regression observes the native decoder's actual red-to-blue transition
+and adjacent 100 ms samples. It prints the authored/native cut offset instead
+of assuming timeline equivalence: on the development machine, the first blue
+native sample was at 1.2 s while FFmpeg placed it at 1.0 s. This separate
+reordered-H.264 timeline discrepancy is not repaired or accepted by this test.

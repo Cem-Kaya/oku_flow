@@ -24,6 +24,7 @@
 #include <QPlainTextEdit>
 #include <QScrollBar>
 #include <QScopeGuard>
+#include <QSet>
 #include <QTextCursor>
 #include <QtTest>
 
@@ -33,6 +34,7 @@
 #include <condition_variable>
 #include <memory>
 #include <mutex>
+#include <utility>
 
 using namespace okuflow;
 using namespace okuflow::uct;
@@ -639,6 +641,19 @@ private slots:
     void immutableEvidenceRequiresDistinctPixelsAndSafeRegistration();
     void immutableCompletedRegistrationIgnoresUiBudget_data();
     void immutableCompletedRegistrationIgnoresUiBudget();
+    void immutableRefinementRetainsExactProvenCoverage_data();
+    void immutableRefinementRetainsExactProvenCoverage();
+    void immutableRefinementAddsOwnProofWithoutDuplicateReading();
+    void immutableRefinementCannotCarryProofAcrossIdentity_data();
+    void immutableRefinementCannotCarryProofAcrossIdentity();
+    void immutableRefinementContradictionRevokesAffectedProof();
+    void immutableRefinementUnionIsBounded();
+    void immutableRefinementLiteralGroupingKeepsPriorProof_data();
+    void immutableRefinementLiteralGroupingKeepsPriorProof();
+    void immutableRefinementKeepsMeaningfulWhitespaceDistinct();
+    void immutableRefinementBoundaryWordUsesIncomingProof_data();
+    void immutableRefinementBoundaryWordUsesIncomingProof();
+    void immutableRefinementAdmitsAdjacentWordWithSmallOverlap();
     void protectedAdjacentInkSurvivesCompositing_data();
     void protectedAdjacentInkSurvivesCompositing();
 
@@ -1989,6 +2004,355 @@ void UltraClearTextTests::immutableCompletedRegistrationIgnoresUiBudget()
         QCOMPARE(rejected.AdmitImmutable(selected,selected.stamp,500,&bad),AdmitVerdict::kPending);
         QVERIFY(rejected.SceneWords(500,10).isEmpty());
     }
+}
+
+namespace {
+// Completed worker receipts, with real distinct synthetic source pixels. The
+// core fixture exercises admission/retention, never an extra OCR acquisition.
+std::pair<RecognitionResult, RecognitionResult> ImmutablePair(const SyntheticPage& page)
+{
+    const auto transform = Transform(1, .5f, .5f);
+    auto stamp = Stamp(1, 1, 55'000, transform); stamp.frameSeq = 55;
+    auto selected = ResultFor(page, transform, stamp); selected.jobId = 101; selected.authority = 7;
+    selected.prepared = PrepareLines(selected, 7);
+    stamp.frameSeq = 56; stamp.timestampMs = 55'033;
+    auto neighbor = ResultFor(page, transform, stamp); neighbor.authority = selected.authority;
+    neighbor.prepared = PrepareLines(neighbor, 7);
+    neighbor.corroboratedJobId = selected.jobId;
+    neighbor.corroborationTuning = ModelTuning{}.match;
+    neighbor.corroborationMatches.fill(false, selected.prepared.size());
+    for (const auto& line : selected.prepared)
+        neighbor.corroborationWordMatches.push_back(QVector<bool>(line.words.size(), true));
+    return {selected, neighbor};
+}
+}
+
+void UltraClearTextTests::immutableRefinementRetainsExactProvenCoverage_data()
+{
+    QTest::addColumn<bool>("selectedOmission");
+    QTest::newRow("selected-omits-three") << true;
+    QTest::newRow("neighbor-proves-one") << false;
+}
+
+void UltraClearTextTests::immutableRefinementRetainsExactProvenCoverage()
+{
+    QFETCH(bool, selectedOmission);
+    auto [selected, neighbor] = ImmutablePair(MakePage({"Reading glasses help people"}));
+    OverlayModel model;
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 60'000, &neighbor), AdmitVerdict::kAccepted);
+    const auto prior = model.Lines().first();
+    const auto reading = model.ReadingText(60'000, 55);
+    auto refinement = selected;
+    if (selectedOmission) {
+        refinement.output.lines[0].words.resize(1);
+        refinement.prepared = PrepareLines(refinement, 7);
+        // OCR-box jitter is not authority to move an already proved glyph.
+        refinement.prepared[0].words[0].sceneRect.translate(.001, .001);
+        neighbor.corroborationWordMatches[0].resize(1);
+    } else {
+        neighbor.corroborationWordMatches[0].fill(false);
+        neighbor.corroborationWordMatches[0][0] = true;
+    }
+    QCOMPARE(model.AdmitImmutable(refinement, refinement.stamp, 70'000, &neighbor), AdmitVerdict::kAccepted);
+    QCOMPARE(model.SceneWords(70'000, 55).size(), 4);
+    QCOMPARE(model.ReadingText(70'000, 55), reading);
+    QCOMPARE(model.ScreenLines(70'000, 55).size(), 1);
+    QCOMPARE(model.ScreenLines(70'000, 55).first().text, reading);
+    QCOMPARE(model.Lines().size(), 1);
+    const auto& kept = model.Lines().first();
+    QCOMPARE(kept.id, prior.id); QCOMPARE(kept.sceneRect, prior.sceneRect);
+    QCOMPARE(kept.reference.sceneRect, prior.reference.sceneRect);
+    QCOMPARE(kept.reference.values, prior.reference.values);
+    QCOMPARE(kept.reference.resident, prior.reference.resident);
+    QCOMPARE(kept.provenance.frameSeq, prior.provenance.frameSeq);
+    QCOMPARE(kept.provenance.timestampMs, prior.provenance.timestampMs);
+    QCOMPARE(kept.validatedAtMs, prior.validatedAtMs);
+    QCOMPARE(kept.validatedFrameSeq, prior.validatedFrameSeq);
+    for (int i = 0; i < prior.words.size(); ++i) {
+        QCOMPARE(kept.words[i].sceneRect, prior.words[i].sceneRect);
+        QCOMPARE(model.SceneWords(70'000, 55)[i].wordIndex, i);
+    }
+}
+
+void UltraClearTextTests::immutableRefinementAddsOwnProofWithoutDuplicateReading()
+{
+    auto [selected, neighbor] = ImmutablePair(MakePage({"Reading glasses help people", "New disjoint words"}));
+    neighbor.corroborationWordMatches[0].fill(false);
+    neighbor.corroborationWordMatches[0][0] = true;
+    neighbor.corroborationWordMatches[1].fill(false);
+    OverlayModel model;
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 60'000, &neighbor), AdmitVerdict::kAccepted);
+    const auto prior = model.Lines().first();
+    QCOMPARE(model.SceneWords(60'000, 55).size(), 1);
+    // Repeating the selected observation cannot promote its reading-only words.
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 61'000), AdmitVerdict::kAccepted);
+    QCOMPARE(model.SceneWords(61'000, 55).size(), 1);
+    for (auto& line : neighbor.corroborationWordMatches) line.fill(true);
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 62'000, &neighbor), AdmitVerdict::kAccepted);
+    const auto words = model.SceneWords(62'000, 55);
+    QCOMPARE(words.size(), 7);
+    QCOMPARE(model.AcceptedWordCount(), 7);
+    QCOMPARE(model.ReadingText(62'000, 55), QStringLiteral("Reading glasses help people\nNew disjoint words"));
+    const auto screen = model.ScreenLines(62'000, 55);
+    QCOMPARE(screen.size(), 2);
+    QCOMPARE(screen[0].text, QStringLiteral("Reading glasses help people"));
+    QCOMPARE(screen[1].text, QStringLiteral("New disjoint words"));
+    QCOMPARE(model.Lines().first().id, prior.id);
+    QCOMPARE(model.Lines().first().words[0].sceneRect, prior.words[0].sceneRect);
+    QCOMPARE(model.Lines().first().reference.values, prior.reference.values);
+    QCOMPARE(model.Lines().first().validatedAtMs, prior.validatedAtMs);
+    QSet<std::pair<std::uint64_t, int>> identities;
+    for (const auto& word : words) {
+        QVERIFY(!identities.contains({word.lineId, word.wordIndex}));
+        identities.insert({word.lineId, word.wordIndex});
+        for (const auto& protectedRect : word.protectedSceneRects)
+            QVERIFY(!protectedRect.intersects(word.sceneRect));
+    }
+    for (int repeat = 0; repeat < 8; ++repeat) {
+        QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 63'000 + repeat, &neighbor), AdmitVerdict::kAccepted);
+        QCOMPARE(model.SceneWords(64'000, 55).size(), 7);
+        QCOMPARE(model.ReadingText(64'000, 55), QStringLiteral("Reading glasses help people\nNew disjoint words"));
+        QCOMPARE(model.Lines().first().words.size(), 7); // four originals plus three appended proofs
+    }
+}
+
+void UltraClearTextTests::immutableRefinementCannotCarryProofAcrossIdentity_data()
+{
+    QTest::addColumn<int>("changed");
+    QTest::newRow("source") << 0; QTest::newRow("geometry") << 1;
+    QTest::newRow("frame") << 2; QTest::newRow("pts") << 3;
+    QTest::newRow("authority") << 4; QTest::newRow("pixel-digest") << 5;
+    QTest::newRow("digest-kind") << 6; QTest::newRow("missing-digest") << 7;
+}
+
+void UltraClearTextTests::immutableRefinementCannotCarryProofAcrossIdentity()
+{
+    QFETCH(int, changed);
+    auto [selected, neighbor] = ImmutablePair(MakePage({"Reading glasses help people"}));
+    OverlayModel model;
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 60'000, &neighbor), AdmitVerdict::kAccepted);
+    const auto oldId = model.Lines().first().id;
+    if (changed == 0) { ++selected.stamp.sourceEpoch; ++neighbor.stamp.sourceEpoch; }
+    if (changed == 1) { ++selected.stamp.geometryGeneration; ++neighbor.stamp.geometryGeneration; }
+    if (changed == 2) { selected.stamp.frameSeq += 2; neighbor.stamp.frameSeq += 2; }
+    if (changed == 3) ++selected.stamp.timestampMs;
+    if (changed == 4) { ++selected.authority; ++neighbor.authority; }
+    if (changed == 5) selected.sourcePixelDigest[0] ^= 1;
+    if (changed == 6) selected.sourcePixelDigestKind = neighbor.sourcePixelDigestKind = RecognitionResult::DigestKind::GpuTreeSha256V1;
+    if (changed == 7) selected.sourcePixelDigest.clear();
+    selected.reference.stamp = selected.stamp; neighbor.reference.stamp = neighbor.stamp;
+    selected.output.lines[0].words.resize(1); selected.prepared = PrepareLines(selected, 7);
+    neighbor.corroborationWordMatches[0].resize(1);
+    const auto verdict = model.AdmitImmutable(selected, selected.stamp, 70'000, &neighbor);
+    QCOMPARE(verdict, changed == 7 ? AdmitVerdict::kPending : AdmitVerdict::kAccepted);
+    QCOMPARE(model.SceneWords(70'000, selected.stamp.frameSeq).size(), changed == 7 ? 0 : 1);
+    QVERIFY(model.Lines().isEmpty() || model.Lines().first().id != oldId);
+}
+
+void UltraClearTextTests::immutableRefinementContradictionRevokesAffectedProof()
+{
+    auto [selected, neighbor] = ImmutablePair(MakePage({"Reading glasses", "Safe distant text"}));
+    OverlayModel model;
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 60'000, &neighbor), AdmitVerdict::kAccepted);
+    const auto safe = model.Lines()[1];
+    selected.output.lines[0].words[0].text = QStringLiteral("Writing");
+    neighbor.output.lines[0].words[0].text = QStringLiteral("Writing");
+    selected.prepared = PrepareLines(selected, 7); neighbor.prepared = PrepareLines(neighbor, 7);
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 70'000, &neighbor), AdmitVerdict::kAccepted);
+    QCOMPARE(model.ReadingText(70'000, 55), QStringLiteral("Safe distant text"));
+    QCOMPARE(model.SceneWords(70'000, 55).size(), 3);
+    QCOMPARE(model.Lines().first().id, safe.id);
+    // No unrelated proof to keep: the explicit conflict is observable and empty.
+    auto pair = ImmutablePair(MakePage({"Reading glasses"}));
+    OverlayModel conflictOnly;
+    QCOMPARE(conflictOnly.AdmitImmutable(pair.first, pair.first.stamp, 60'000, &pair.second), AdmitVerdict::kAccepted);
+    pair.first.output.lines[0].words[0].text = QStringLiteral("Writing");
+    pair.second.output.lines[0].words[0].text = QStringLiteral("Writing");
+    pair.first.prepared = PrepareLines(pair.first, 7); pair.second.prepared = PrepareLines(pair.second, 7);
+    QCOMPARE(conflictOnly.AdmitImmutable(pair.first, pair.first.stamp, 70'000, &pair.second), AdmitVerdict::kContentMoved);
+    QVERIFY(conflictOnly.SceneWords(70'000, 55).isEmpty());
+    QVERIFY(conflictOnly.ReadingText(70'000, 55).isEmpty());
+    QVERIFY(conflictOnly.ScreenLines(70'000, 55).isEmpty());
+}
+
+void UltraClearTextTests::immutableRefinementUnionIsBounded()
+{
+    auto [selected, neighbor] = ImmutablePair(MakePage({"Reading"}));
+    OverlayModel model;
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 60'000, &neighbor), AdmitVerdict::kAccepted);
+    const auto oldId = model.Lines().first().id;
+    // The receipt is intentionally dense; no model/runtime or large image is
+    // involved. Immutable refinement must cap its retained metadata too.
+    selected.output.lines.clear(); selected.prepared.clear();
+    neighbor.output.lines.clear(); neighbor.prepared.clear();
+    neighbor.corroborationMatches.clear(); neighbor.corroborationWordMatches.clear();
+    for (int lineIndex = 0; lineIndex < 1024; ++lineIndex) {
+        RecognizedLine line;
+        PreparedLine prepared;
+        const QRectF rect(.01, .2 + lineIndex * .0007, .8, .0005);
+        prepared.sceneRect = rect; prepared.reference.valid = true; prepared.reference.sceneRect = rect;
+        for (int word = 0; word < 8; ++word) {
+            const QRectF bounds(.01 + word * .1, rect.top(), .08, rect.height());
+            line.words.push_back({QStringLiteral("Text"), bounds});
+            prepared.words.push_back({QStringLiteral("Text"), bounds, TokenDisposition::kCandidate, 1, bounds});
+        }
+        selected.output.lines.push_back(line); neighbor.output.lines.push_back(line);
+        selected.prepared.push_back(prepared); neighbor.prepared.push_back(prepared);
+        neighbor.corroborationMatches.push_back(true);
+        neighbor.corroborationWordMatches.push_back(QVector<bool>(8, true));
+    }
+    for (int repeat = 0; repeat < 3; ++repeat) {
+        QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 61'000 + repeat, &neighbor), AdmitVerdict::kAccepted);
+        QVERIFY(model.Lines().size() <= 1024);
+        qsizetype words = 0, tokens = 0, protectedRects = 0;
+        for (const auto& line : model.Lines()) {
+            words += line.words.size(); tokens += line.readingTokens.size();
+            protectedRects += line.protectedSceneRects.size();
+        }
+        QVERIFY(words <= 8192); QVERIFY(tokens <= 32768); QVERIFY(protectedRects <= 32768);
+        QVERIFY(std::any_of(model.Lines().begin(), model.Lines().end(), [&](const auto& line) { return line.id == oldId; }));
+    }
+}
+
+void UltraClearTextTests::immutableRefinementLiteralGroupingKeepsPriorProof_data()
+{
+    QTest::addColumn<bool>("split");
+    QTest::newRow("unsafe-grouped-token-cannot-erase-proved-words") << false;
+    QTest::newRow("safe-split-tokens-follow-rejected-grouped-token") << true;
+}
+
+void UltraClearTextTests::immutableRefinementLiteralGroupingKeepsPriorProof()
+{
+    QFETCH(bool, split);
+    auto original = ImmutablePair(MakePage({"Reading glasses"}));
+    auto grouped = original;
+    for (auto* result : {&grouped.first, &grouped.second}) {
+        auto merged = result->output.lines[0].words[0];
+        merged.text = QStringLiteral("Reading glasses");
+        merged.boundsPx = merged.boundsPx.united(result->output.lines[0].words[1].boundsPx);
+        result->output.lines[0].words = {merged};
+        result->prepared = PrepareLines(*result, 7);
+    }
+    grouped.second.corroborationWordMatches[0] = {true};
+    auto initial = split ? grouped : original;
+    auto refinement = split ? original : grouped;
+    OverlayModel model;
+    if (split) {
+        // An OCR "word" containing a space is outside the reviewed token
+        // alphabet. It cannot establish prior glyph proof, even when a fake
+        // worker supplies a positive match. Ordinary individual words can
+        // subsequently gain their own independent selected/neighbor proof.
+        QVERIFY(IsHighRiskToken(initial.first.output.lines[0].words[0].text));
+        QCOMPARE(model.AdmitImmutable(initial.first, initial.first.stamp, 60'000, &initial.second), AdmitVerdict::kPending);
+        QVERIFY(model.SceneWords(60'000, 55).isEmpty());
+        QVERIFY(model.ScreenLines(60'000, 55).isEmpty());
+        QCOMPARE(model.ReadingText(60'000, 55), QStringLiteral("\u2026"));
+        QCOMPARE(model.AdmitImmutable(refinement.first, refinement.first.stamp, 70'000, &refinement.second), AdmitVerdict::kAccepted);
+        QCOMPARE(model.SceneWords(70'000, 55).size(), 2);
+        QCOMPARE(model.ReadingText(70'000, 55), QStringLiteral("Reading glasses"));
+        QCOMPARE(model.ScreenLines(70'000, 55).first().text, QStringLiteral("Reading glasses"));
+        return;
+    }
+    QCOMPARE(model.AdmitImmutable(initial.first, initial.first.stamp, 60'000, &initial.second), AdmitVerdict::kAccepted);
+    const auto prior = model.Lines().first();
+    const auto words = model.SceneWords(60'000, 55);
+    QCOMPARE(model.AdmitImmutable(refinement.first, refinement.first.stamp, 70'000, &refinement.second), AdmitVerdict::kAccepted);
+    QCOMPARE(model.Lines().size(), 1);
+    QCOMPARE(model.SceneWords(70'000, 55).size(), words.size());
+    QCOMPARE(model.ReadingText(70'000, 55), QStringLiteral("Reading glasses"));
+    QCOMPARE(model.ScreenLines(70'000, 55).first().text, QStringLiteral("Reading glasses"));
+    QCOMPARE(model.Lines().first().id, prior.id);
+    QCOMPARE(model.Lines().first().reference.values, prior.reference.values);
+    for (int i = 0; i < words.size(); ++i) {
+        const auto kept = model.SceneWords(70'000, 55)[i];
+        QCOMPARE(kept.sceneRect, words[i].sceneRect); QCOMPARE(kept.wordIndex, words[i].wordIndex);
+    }
+}
+
+void UltraClearTextTests::immutableRefinementKeepsMeaningfulWhitespaceDistinct()
+{
+    auto [selected, neighbor] = ImmutablePair(MakePage({"nowhere"}));
+    OverlayModel model;
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 60'000, &neighbor), AdmitVerdict::kAccepted);
+    for (auto* result : {&selected, &neighbor}) {
+        const auto prior = result->output.lines[0].words[0];
+        auto left = prior, right = prior;
+        left.text = QStringLiteral("now"); right.text = QStringLiteral("here");
+        left.boundsPx.setWidth(prior.boundsPx.width() * .45);
+        right.boundsPx.setLeft(left.boundsPx.right());
+        result->output.lines[0].words = {left, right};
+        result->prepared = PrepareLines(*result, 7);
+    }
+    neighbor.corroborationWordMatches[0] = {true, true};
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 70'000, &neighbor), AdmitVerdict::kContentMoved);
+    QVERIFY(model.SceneWords(70'000, 55).isEmpty());
+    QVERIFY(model.ReadingText(70'000, 55).isEmpty());
+    QVERIFY(model.ScreenLines(70'000, 55).isEmpty());
+}
+
+void UltraClearTextTests::immutableRefinementBoundaryWordUsesIncomingProof_data()
+{
+    QTest::addColumn<bool>("proved");
+    QTest::newRow("own-incoming-neighbor-proof") << true;
+    QTest::newRow("reading-only-cannot-promote") << false;
+}
+
+void UltraClearTextTests::immutableRefinementBoundaryWordUsesIncomingProof()
+{
+    QFETCH(bool, proved);
+    auto [selected, neighbor] = ImmutablePair(MakePage({"Reading glasses"}));
+    neighbor.corroborationWordMatches[0] = {true, false};
+    OverlayModel model;
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 60'000, &neighbor), AdmitVerdict::kAccepted);
+    const auto prior = model.Lines().first();
+    auto refinement = selected;
+    refinement.prepared[0].words[1].sceneRect.translate(.001, 0);
+    refinement.prepared[0].sceneRect = refinement.prepared[0].sceneRect.united(refinement.prepared[0].words[1].sceneRect);
+    neighbor.corroborationWordMatches[0] = {false, proved};
+    QCOMPARE(model.AdmitImmutable(refinement, refinement.stamp, 70'000, &neighbor), AdmitVerdict::kAccepted);
+    const auto words = model.SceneWords(70'000, 55);
+    QCOMPARE(words.size(), proved ? 2 : 1);
+    QCOMPARE(model.ReadingText(70'000, 55).count(QStringLiteral("Reading")), 1);
+    QCOMPARE(model.ReadingText(70'000, 55).count(QStringLiteral("glasses")), 1);
+    QCOMPARE(words.first().lineId, prior.id); QCOMPARE(words.first().wordIndex, 0);
+    QCOMPARE(words.first().sceneRect, prior.words[0].sceneRect);
+    QCOMPARE(model.Lines().first().reference.values, prior.reference.values);
+    QCOMPARE(model.Lines().first().validatedAtMs, prior.validatedAtMs);
+    if (proved) {
+        QCOMPARE(words[1].text, QStringLiteral("glasses"));
+        QCOMPARE(words[1].sceneRect, refinement.prepared[0].words[1].sceneRect);
+        QVERIFY(words[1].lineId != prior.id);
+        QCOMPARE(model.Lines()[1].reference.values, refinement.prepared[0].reference.values);
+        int spoken = 0;
+        for (const auto& line : model.ScreenLines(70'000, 55))
+            for (const auto& token : line.tokens) if (token.wordIndex >= 0) ++spoken;
+        QCOMPARE(spoken, 2);
+        for (const auto& rect : words[1].protectedSceneRects) QVERIFY(!rect.intersects(words[1].sceneRect));
+    }
+}
+
+void UltraClearTextTests::immutableRefinementAdmitsAdjacentWordWithSmallOverlap()
+{
+    auto [selected, neighbor] = ImmutablePair(MakePage({"Reading glasses"}));
+    neighbor.corroborationWordMatches[0] = {true, false};
+    OverlayModel model;
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 60'000, &neighbor), AdmitVerdict::kAccepted);
+    const auto prior = model.SceneWords(60'000, 55).first();
+    auto refinement = selected;
+    auto& next = refinement.prepared[0].words[1].sceneRect;
+    next.moveLeft(refinement.prepared[0].words[0].sceneRect.right() - .0005);
+    neighbor.corroborationWordMatches[0] = {false, true};
+    QCOMPARE(model.AdmitImmutable(refinement, refinement.stamp, 70'000, &neighbor), AdmitVerdict::kAccepted);
+    const auto words = model.SceneWords(70'000, 55);
+    QCOMPARE(words.size(), 2);
+    QCOMPARE(words[0].lineId, prior.lineId); QCOMPARE(words[0].wordIndex, prior.wordIndex);
+    QCOMPARE(words[0].sceneRect, prior.sceneRect); QCOMPARE(words[1].sceneRect, next);
+    QCOMPARE(model.ReadingText(70'000, 55).count(QStringLiteral("glasses")), 1);
+    const auto screen = model.ScreenLines(70'000, 55);
+    int spoken = 0;
+    for (const auto& line : screen)
+        for (const auto& token : line.tokens) if (token.wordIndex >= 0) ++spoken;
+    QCOMPARE(spoken, 2);
 }
 
 void UltraClearTextTests::protectedAdjacentInkSurvivesCompositing_data()
