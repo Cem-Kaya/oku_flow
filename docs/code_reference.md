@@ -6438,7 +6438,8 @@ same plan. `ComputePaintPlan` preserves exact polygon protection for oriented
 words and caps protection closure at eight passes before keeping original ink.
 `PixelCoverage` snaps projected rectangles and polygon vertices to the same
 half-open pixel-centre grid. `ProtectedRegion` retains a conservative pixel
-for a punctuation span containing no centre. Fractional remainders of a
+for a punctuation span containing no centre on either axis. A strip lacking
+centres on only one axis adds no coverage. Fractional remainders of a
 carved uncertainty box therefore cannot acquire a false shared row/column
 with the proved word and start a protection cascade over its neighbour.
 See [geometry/detail repair](uct_oriented_detail_repair.md) for acceptance limits.
