@@ -963,3 +963,19 @@ aligned with the project goals.
   latency claims still require a lossless, fully closed trace window. Preserve
   drop accounting and original failed evidence instead of making tracing block
   recognition or silently treating incomplete coverage as complete.
+
+## Explicit local BF16 recognition (2026-10-22)
+
+- Only the app's private production factory reads
+  `OKUFLOW_UCT_LOCAL_BF16_MANIFEST`; diagnostics/public TensorRT factory stay
+  pinned FP32. Require the reviewed source/graph/plan/device/runtime identities,
+  medium/medium N8 fixed1024, FLOAT I/O and explicit prepare=false. A nonempty
+  selector is cache-only for both networks and fallback; never prepare/convert,
+  mutate baseline caches or emit offline receipts from the application.
+- Keep one GPU candidate/worker and the existing preparation bridge index.
+  Only typed pre-inference artifact/policy rejection may select cached FP32;
+  CUDA/API/inference faults preserve quarantine and normal failover. Describe
+  BF16 recognition as a graph with mixed BF16/FP16/FP32 arithmetic, never pure
+  BF16. Preserve the original quality-comparison failures and distinguish the
+  owner-approved local choice from other users' defaults or hardware claims.
+  See `docs/uct_local_bf16.md` for pins, bounds and acceptance limits.

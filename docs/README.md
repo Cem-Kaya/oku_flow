@@ -1,5 +1,9 @@
 # OkuFlow Documentation Guide
 
+[Local BF16 recognition](uct_local_bf16.md) documents the owner's explicit
+cache-only app selection, pinned FP32 detector, mixed arithmetic, failover and
+the original quality-comparison failures. Diagnostic FP32 baselines stay pinned.
+
 [Local development storage](local_work_storage.md) records the owner's Z: work
 folders, compatible C: path redirects, the active-source exception and guidance
 for new build folders.

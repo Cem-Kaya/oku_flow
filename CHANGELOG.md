@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- Add the owner's explicit local BF16 recognition opt-in with the pinned FP32
+  medium detector. Load only the reviewed cached graph/plan for medium/medium
+  N8 fixed1024, report mixed arithmetic and actual precision/fallback, and keep
+  diagnostics and other users on the existing FP32 baseline. Missing or rejected
+  artifacts use cached FP32; production never prepares reduced-precision plans.
+  See [local selection and evidence limits](docs/uct_local_bf16.md).
+
 - Keep complete UCT sentences and uncertainty masks when a supplemental crop
   cuts their edges. Retain unobserved other-pane text without renewing its proof,
   reject truncated edge words before pending agreement, and yield optional work

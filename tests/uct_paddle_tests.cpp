@@ -1,6 +1,7 @@
 #include "okuflow/common/uct_paddle.hpp"
 #include "okuflow/common/uct_model_pins.hpp"
 #include "../src/common/uct_recognizer_width.hpp"
+#include "../src/common/uct_runtime_precision.hpp"
 #include "okuflow/cuda/uct_analysis_pool.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "ultra_clear_text_test_support.hpp"
@@ -19,6 +20,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QFile>
+#include <QTemporaryDir>
 #include <QtTest>
 #include <limits>
 #include <stdexcept>
@@ -167,6 +169,135 @@ class PaddleTests final : public QObject
 {
     Q_OBJECT
   private slots:
+    void localBf16ManifestRequiresReviewedRolesAndCacheOnlySchema()
+    {
+        using namespace runtime_precision;
+        QTemporaryDir root; QVERIFY(root.isValid());
+        const auto detectorPath = root.filePath("det/medium/inference.onnx");
+        const auto graphPath = root.filePath(QString("models/bf16-linear/%1/%2.onnx").arg(kRecognizerSource,kRecognizerGraph));
+        const QJsonObject detector{{"precision","fp32"},{"sourceSha256",kDetectorSource},
+                                   {"sha256",kDetectorSource},{"path",detectorPath}};
+        const QJsonObject recognizer{{"precision","bf16-linear"},{"sourceSha256",kRecognizerSource},
+                                     {"sha256",kRecognizerGraph},{"path",graphPath}};
+        const QJsonObject valid{{"schema",1},{"prepare",false},{"artifactRoot",root.path()},
+                                {"detector",detector},{"recognizer",recognizer}};
+        const auto encode = [](const QJsonObject& json) { return QJsonDocument(json).toJson(); };
+        const auto parsed = ParseManifest(encode(valid),detectorPath);
+        QCOMPARE(parsed.recognizer.path,graphPath);
+        QCOMPARE(parsed.detector.precision,QString("fp32"));
+        // No receiptRoot is required or consumed by production.
+        const auto refuses = [&](const QJsonObject& json) {
+            try { ParseManifest(encode(json),detectorPath); return false; }
+            catch (const ArtifactError&) { return true; }
+        };
+        for (const QJsonValue schema : {QJsonValue(),QJsonValue("1"),QJsonValue(1.1),QJsonValue(2)}) {
+            auto json=valid; json["schema"]=schema; QVERIFY(refuses(json));
+        }
+        for (const QJsonValue prepare : {QJsonValue(),QJsonValue("false"),QJsonValue(true)}) {
+            auto json=valid; json["prepare"]=prepare; QVERIFY(refuses(json));
+        }
+        auto json=valid; json["artifactRoot"]="relative"; QVERIFY(refuses(json));
+        json=valid; json["artifactRoot"]="//server/share"; QVERIFY(refuses(json));
+        json=valid; json["detector"]=recognizer; json["recognizer"]=detector; QVERIFY(refuses(json));
+        json=valid; json.remove("detector"); QVERIFY(refuses(json));
+        for (const QString role : {QString("detector"),QString("recognizer")}) {
+            for (const QString field : {QString("sourceSha256"),QString("sha256")}) {
+                for (const QString hash : {QString(64,'A'),QString(63,'a'),QString(64,'0'),QString("../wrong")}) {
+                    auto graph=valid[role].toObject(); graph[field]=hash;
+                    json=valid; json[role]=graph; QVERIFY(refuses(json));
+                }
+            }
+            auto graph=valid[role].toObject(); graph["precision"]="fp16-linear";
+            json=valid; json[role]=graph; QVERIFY(refuses(json));
+            graph=valid[role].toObject(); graph["path"]=root.filePath("../escaped.onnx");
+            json=valid; json[role]=graph; QVERIFY(refuses(json));
+        }
+        QVERIFY_EXCEPTION_THROWN(ParseManifest("[]",detectorPath),ArtifactError);
+        QVERIFY_EXCEPTION_THROWN(ParseManifest("{",detectorPath),ArtifactError);
+        QVERIFY_EXCEPTION_THROWN(ParseManifest(QByteArray(kManifestLimit+1,' '),detectorPath),ArtifactError);
+        const auto manifest=root.filePath("cached.json");
+        { QFile file(manifest); QVERIFY(file.open(QIODevice::WriteOnly)); file.write(encode(valid)); }
+        QCOMPARE(LoadManifest({manifest},detectorPath).recognizer.sha256,QByteArray(kRecognizerGraph));
+        QVERIFY_EXCEPTION_THROWN(LoadManifest({"relative.json"},detectorPath),ArtifactError);
+        QVERIFY_EXCEPTION_THROWN(LoadManifest({root.filePath("missing.json")},detectorPath),ArtifactError);
+        { QFile file(manifest); QVERIFY(file.open(QIODevice::WriteOnly)); file.write(QByteArray(kManifestLimit+1,' ')); }
+        QVERIFY_EXCEPTION_THROWN(LoadManifest({manifest},detectorPath),ArtifactError);
+    }
+    void localBf16KeyAndFallbackKeepStrictBaselineIdentity()
+    {
+        using namespace runtime_precision;
+        Device device{QByteArray::fromHex(kDeviceUuid),13040,8};
+        Graph graph{"bf16-linear",{},kRecognizerSource,kRecognizerGraph};
+        const auto key=PrecisionPlanKey(graph,device,false,8);
+        // Independent reviewed artifact filename, not a second implementation.
+        QCOMPARE(key,QByteArray("e596b8ac0110f01e88fc94bcbdeda4511b83af90efb761aa4e194de3ea496073"));
+        auto other=graph; other.precision="fp32"; QVERIFY(PrecisionPlanKey(other,device,false,8)!=key);
+        other=graph; other.sourceSha256[0]='0'; QVERIFY(PrecisionPlanKey(other,device,false,8)!=key);
+        other=graph; other.sha256[0]='0'; QVERIFY(PrecisionPlanKey(other,device,false,8)!=key);
+        auto gpu=device; gpu.uuid[0]^=1; QVERIFY(PrecisionPlanKey(graph,gpu,false,8)!=key);
+        gpu=device; ++gpu.driver; QVERIFY(PrecisionPlanKey(graph,gpu,false,8)!=key);
+        gpu=device; gpu.tensorRtVersion="11.4.0.107"; QVERIFY(PrecisionPlanKey(graph,gpu,false,8)!=key);
+        QVERIFY(PrecisionPlanKey(graph,device,true,8)!=key);
+        QVERIFY(PrecisionPlanKey(graph,device,false,1)!=key);
+        QVERIFY(PrecisionPlanKey(graph,device,false,8,"bucketed")!=key);
+        QVERIFY(Unsupported(ModelTier::Medium,ModelTier::Medium,8,false,false,device).isEmpty());
+        for (const auto tier : {ModelTier::Tiny,ModelTier::Small}) {
+            QVERIFY(!Unsupported(tier,ModelTier::Medium,8,false,false,device).isEmpty());
+            QVERIFY(!Unsupported(ModelTier::Medium,tier,8,false,false,device).isEmpty());
+        }
+        for (const int batch : {1,16}) QVERIFY(!Unsupported(ModelTier::Medium,ModelTier::Medium,batch,false,false,device).isEmpty());
+        QVERIFY(!Unsupported(ModelTier::Medium,ModelTier::Medium,8,true,false,device).isEmpty());
+        QVERIFY(!Unsupported(ModelTier::Medium,ModelTier::Medium,8,false,true,device).isEmpty());
+        for (int change=0; change<4; ++change) {
+            gpu=device;
+            if(change==0)gpu.major=7;
+            if(change==1)gpu.uuid[0]^=1;
+            if(change==2)++gpu.driver;
+            if(change==3)gpu.tensorRtVersion="11.4.1.0";
+            QVERIFY(!Unsupported(ModelTier::Medium,ModelTier::Medium,8,false,false,gpu).isEmpty());
+        }
+        const auto fallback=ActualStatus(false,"artifact missing");
+        QVERIFY(fallback.contains("Recognizer=FP32")); QVERIFY(fallback.contains("artifact missing"));
+        QVERIFY(!fallback.contains("graph=BF16"));
+        QVERIFY(ActualStatus(true).contains("graph=BF16-linear"));
+        QVERIFY(ActualStatus(true).contains("mixed BF16/FP16/FP32"));
+        QVERIFY(ActualStatus(true).contains("detector=FP32 medium"));
+        // This scope changes only the fixture process and restores its environment.
+        struct Restore { QByteArray old=qgetenv(kEnvironment); bool set=qEnvironmentVariableIsSet(kEnvironment);
+            ~Restore(){ if(set)qputenv(kEnvironment,old); else qunsetenv(kEnvironment); } } restore;
+        qunsetenv(kEnvironment); QVERIFY(!ReadApplicationRequest().Requested());
+        qputenv(kEnvironment,""); QVERIFY(!ReadApplicationRequest().Requested());
+        qputenv(kEnvironment,"relative.json");
+        QVERIFY(ReadApplicationRequest().Requested());
+        QVERIFY_EXCEPTION_THROWN(LoadManifest(ReadApplicationRequest(),""),ArtifactError);
+        // Public factory remains callable with its unchanged FP32 API. No initialize/inference.
+        auto baseline=CreateTensorRtRecognizer();
+    }
+    void localBf16ArtifactsAreReadOnlyBoundedAndHashChecked()
+    {
+        using namespace runtime_precision;
+        QTemporaryDir root; QVERIFY(root.isValid());
+        const auto path=root.filePath("fixture.bin");
+        const QByteArray original("bounded synthetic artifact");
+        const auto digest=QCryptographicHash::hash(original,QCryptographicHash::Sha256).toHex();
+        { QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); file.write(original); }
+        QCOMPARE(ReadVerified(path,digest,1024),original);
+        QVERIFY_EXCEPTION_THROWN(ReadVerified(path,digest,original.size()),ArtifactError);
+        QVERIFY_EXCEPTION_THROWN(ReadVerified(root.filePath("absent"),digest,1024),ArtifactError);
+        { QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); file.write(QByteArray(original.size(),'x')); }
+        QVERIFY_EXCEPTION_THROWN(ReadVerified(path,digest,1024),ArtifactError);
+        CanonicalWithin(root.path(),path);
+        QTemporaryDir outside; QVERIFY(outside.isValid());
+        const auto external=outside.filePath("external.bin");
+        { QFile file(external); QVERIFY(file.open(QIODevice::WriteOnly)); file.write(original); }
+        QVERIFY_EXCEPTION_THROWN(CanonicalWithin(root.path(),external),ArtifactError);
+        const Selection selection{root.path(),{},Graph{"bf16-linear",root.filePath("missing.onnx"),kRecognizerSource,kRecognizerGraph}};
+        const auto before=QDir(root.path()).entryList(QDir::AllEntries|QDir::NoDotAndDotDot);
+        const Device device{QByteArray::fromHex(kDeviceUuid),13040,8};
+        QVERIFY_EXCEPTION_THROWN(ReadPlan(selection,device),ArtifactError);
+        QCOMPARE(QDir(root.path()).entryList(QDir::AllEntries|QDir::NoDotAndDotDot),before);
+        QVERIFY(!QFile::exists(PlanPath(selection,device))); // never creates plan/receipt/cache directories
+    }
     void orientedInkAndMapping() { uct_geometry_test::CpuGeometry(); }
     void postFitDuplicateKeepsAdjacentIdenticalTokens() { uct_geometry_test::DuplicateInk(); }
     void orientedPerspectiveAndConflictActualPaint() { uct_geometry_test::PaintGeometry(); }
