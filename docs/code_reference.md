@@ -1,5 +1,39 @@
 # OkuFlow Code Reference
 
+## Supplemental regional UCT execution (2026-10-21)
+
+`RegionalOcrRequest` carries one immutable full-plan ticket, a steady full
+deadline and conservative cost estimate through the existing scheduler slot.
+The trailing `RecognitionScheduler::regionalOcr` flag enables planning and
+execution, defaults off and is ignored by probe-only workers. `State::Enqueue`
+protects queued full priority; `State::Run` rechecks current tickets, input hold
+identity, deadline/slack and pending full demand before `SetDetailFocus`.
+Only actual complete full outputs observe the planner. `RegionalPlanMatches`
+checks source/geometry/mapping/processing/authority/acquisition;
+`RegionalDetailFocus` chooses one current-focus plan region with <=480 source
+and detector edges. `DetailFocus::detectorLongEdge` defaults to 960 and flows
+through `DetectorInputSize`, `DetailRegion`, `PaddleDetectionSize` and both
+CPU/TensorRT adapters; `supplemental` prevents optional automatic-chain failover.
+
+`RecognitionResult::jobKind` and regional flags describe actual operation and
+fallback. `SchedulerStats` distinguishes attempts, actual full/regional/paused
+calls, priority refusals, failures, deadline overruns and worker maxima.
+`UltraClearTextController::{EnsureScheduler,HandleProbeOutcome,HandleResult,
+Invalidate}` implements `OKUFLOW_UCT_REGIONAL_OCR=1`, one idle-only region per
+full interval, nondecreasing 750 ms initial cost, unchanged full markers and
+optional failure/overrun latching. Existing worker-generation/source fences
+and paused selected/neighbour detail ownership remain authoritative.
+
+`OverlayModel::AdmitImpl` uses real processed coverage, retains independently
+current-proved outside words with exact old references/clocks, carves bounded
+outside uncertainty residuals, and bounds regional unions. `PendingEvidence`
+is shared by pending words from the same original observation; partial results
+retain outside tickets without restamping or self-confirmation. Full reads
+replace covered pending observations. `uct_region_scheduler_tests`,
+`ultra_clear_text_tests` and `ultra_clear_text_controller_tests` maintain the
+model-free active scheduling/admission regressions. See
+[policy, constants and acceptance limits](uct_active_regional_ocr.md).
+
 ## Optional embedded selected-video adapter (2026-10-21)
 
 `src/common/video_ffmpeg_reader.{hpp,cpp}` defines private
@@ -6208,7 +6242,7 @@ hard-clamped `maxWordUtf16Units`/`maxTotalUtf16Units` reject malformed or oversi
 metadata before content processing or evidence-clock changes. These observer
 limits never truncate authoritative OCR.
 
-`RecognitionScheduler`'s optional trailing `shadowPlanner` constructor flag
+`RecognitionScheduler`'s optional `shadowPlanner` constructor flag
 defaults false and is ignored for probe-only workers. Its existing worker owns
 one planner. Complete current jobs are observed after ordinary OCR/preparation;
 `RecognitionResult::shadowPlan`, `shadowPlannerMs` and `shadowPlannerError` carry
@@ -6220,8 +6254,8 @@ observer exception retires the observer while preserving full recognition.
 without submitting work or renewing evidence. The explicit
 `FailNextShadowObservationForTest` seam covers observer failure isolation.
 
-The controller enables observation only for
-`OKUFLOW_UCT_SHADOW_PLANNER=1`. View updates supply the normalized visible region
+The controller enables observation for `OKUFLOW_UCT_SHADOW_PLANNER=1` or
+active `OKUFLOW_UCT_REGIONAL_OCR=1`. View updates supply the normalized visible region
 as a priority hint; glyph/reading/UIA paths never consume shadow plans.
 `uct_region_planner_tests` covers metadata policy, and
 `uct_region_scheduler_tests` covers the real scheduler boundary, opt-out, focus,

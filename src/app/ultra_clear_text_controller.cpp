@@ -6,6 +6,7 @@
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "okuflow/ui/ultra_clear_text_panel.hpp"
 #include "okuflow/common/async_cleanup.hpp"
+#include "okuflow/common/uct_region_planner.hpp"
 
 #include <QCheckBox>
 #include <QElapsedTimer>
@@ -144,6 +145,7 @@ UltraClearTextController::UltraClearTextController(UltraClearTextOverlay* overla
       timing_(timing),
       pool_(uct::PixelPool::Create(kPixelPoolCapacity))
 {
+    regionalOcrEnabled_ = qEnvironmentVariable("OKUFLOW_UCT_REGIONAL_OCR") == "1";
     // Presentation watchdog: with no presentations (camera stopped, source
     // switching, placeholder shown) cached words must not linger.
     watchdog_ = new QTimer(this);
@@ -217,6 +219,7 @@ void UltraClearTextController::EnsureScheduler()
     if (scheduler_) {
         return;
     }
+    regionalSuppressed_ = false;
     if(!deviceProbeReader_) {
         deviceProbeReader_=std::make_unique<uct::RecognitionScheduler>(nullptr,
             [self](uct::RecognitionResult result){
@@ -287,7 +290,7 @@ void UltraClearTextController::EnsureScheduler()
                 Qt::QueuedConnection);
         },
         timing_.probeDecimation, uct::ModelTuning{}.minimumWordHeightPx, false,
-        qEnvironmentVariable("OKUFLOW_UCT_SHADOW_PLANNER") == "1");
+        qEnvironmentVariable("OKUFLOW_UCT_SHADOW_PLANNER") == "1", regionalOcrEnabled_);
 }
 
 void UltraClearTextController::SetEnabled(bool enabled)
@@ -1148,6 +1151,10 @@ void UltraClearTextController::Invalidate(const QString& reason)
     probeInvalidatedSinceSubmit_ = false;
     lastJobCoverage_ = {};
     haveLastOcr_ = false;
+    regionalPlan_.reset();
+    regionalJob_ = 0;
+    regionalAttempted_ = false;
+    regionalRequireFull_ = false;
     pendingReadbackId_ = 0;
     lastResultMoved_ = false;
     lastResultEmpty_ = false;
@@ -1251,19 +1258,19 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
         const std::uint64_t acquisition = uct::EvidenceAcquisition(outcome.stamp).value_or(0);
         const bool repeatedHold = outcome.stamp.holdDisplay == uct::HoldDisplay::Held && haveLastOcr_ &&
             lastOcrGeneration_ == geometryGeneration_ && lastOcrAcquisition_ == acquisition;
-        const bool needed = repeatedHold
+        const bool needed = regionalRequireFull_ || (repeatedHold
             ? !model_.HasAcceptedText() && sinceSubmit >= timing_.refreshIntervalMs
             : probeInvalidatedSinceSubmit_ || model_.PendingWordCount() > 0 || !model_.HasAcceptedText() || !covered ||
-                  sinceSubmit >= timing_.refreshIntervalMs;
+                  sinceSubmit >= timing_.refreshIntervalMs);
         // Latest-only: a busy worker only receives a replacement after the
         // scene changed, so slow recognition cannot accumulate work. The
         // pixels move on without a copy.
         // Device snapshots share a two-slot pool with validation. Never park
         // a pending OCR lease while inference holds the other slot.
         const bool canSubmit = advancingMediaScene_
-            ? advancingMediaJob_ == 0 && !scheduler_->HasWork() &&
+            ? advancingMediaJob_ == 0 && (!scheduler_->HasWork() || (!candidate && regionalJob_)) &&
                 now - advancingMediaLastSubmitMs_ >= timing_.mediaRecognitionIntervalMs
-            : !scheduler_->HasWork() || (!candidate && changedSinceSubmit_);
+            : !scheduler_->HasWork() || (!candidate && (changedSinceSubmit_ || regionalJob_));
         if (needed && canSubmit) {
             const auto job=candidate?scheduler_->SubmitDevice(outcome.stamp,std::move(candidate))
                                     :scheduler_->Submit(outcome.stamp, std::move(outcome.pixels));
@@ -1276,10 +1283,36 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
                 lastOcrGeneration_ = geometryGeneration_;
                 lastOcrJob_ = job;
                 haveLastOcr_ = true;
+                regionalPlan_.reset();
+                regionalAttempted_ = false;
+                regionalRequireFull_ = false;
                 if (advancingMediaScene_) {
                     advancingMediaJob_ = job;
                     advancingMediaSubmittedAtMs_ = now;
                     advancingMediaLastSubmitMs_ = now;
+                }
+            }
+        } else if (!needed && regionalOcrEnabled_ && !regionalSuppressed_ && !regionalAttempted_ &&
+                   !regionalJob_ && !scheduler_->HasWork() && backend_.detailFocus &&
+                   haveLastOcr_ && regionalPlan_ &&
+                   regionalPlan_->jobId == lastOcrJob_ &&
+                   uct::RegionalPlanMatches(*regionalPlan_, outcome.stamp, scheduler_->Authority())) {
+            // The full deadline is unchanged. One idle-only regional call may
+            // fit before it; its time source is wall time, not held-frame PTS.
+            const auto slack = timing_.refreshIntervalMs - sinceSubmit;
+            if (slack > regionalEstimateMs_ + timing_.probeIntervalMs) {
+                const auto detail = uct::RegionalDetailFocus(*regionalPlan_, outcome.stamp, viewScene);
+                if (detail) {
+                    uct::RegionalOcrRequest request{regionalPlan_,
+                        std::chrono::steady_clock::now() + std::chrono::milliseconds(slack), regionalEstimateMs_};
+                    const auto job = candidate
+                        ? scheduler_->SubmitDevice(outcome.stamp, std::move(candidate), {}, detail, request)
+                        : scheduler_->Submit(outcome.stamp, std::move(outcome.pixels), {}, detail, request);
+                    if (job) {
+                        regionalJob_ = job;
+                        regionalSubmittedAtMs_ = now;
+                        regionalAttempted_ = true;
+                    }
                 }
             }
         }
@@ -1306,13 +1339,37 @@ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
         return;
     }
     const std::int64_t now = clock_();
+    if (result.regionalRequested) {
+        if (result.jobId != regionalJob_ || !regionalJob_) { ++rejectedResults_; return; }
+        regionalJob_ = 0;
+        regionalEstimateMs_ = std::max(regionalEstimateMs_, 2.0 * result.durationMs + 80.0);
+        if (result.regionalFailed || result.regionalDeadlineOverrun ||
+            now - regionalSubmittedAtMs_ > timing_.immutableJobTimeoutMs) {
+            if (lastOcrJob_ < result.jobId) regionalRequireFull_ = true;
+            regionalSuppressed_ = true;
+            ++rejectedResults_;
+            // Existing current-proved text/engine stays intact. No second
+            // recognizer runs; the next current probe requests baseline full.
+            RefreshOverlay(now);
+            UpdateReadingText();
+            UpdateStatus();
+            return;
+        }
+        // A successful full fallback already read this input. Leave the
+        // baseline clock/demand intact, without forcing a redundant loop.
+        if (result.regionalFallback && !result.output.ok && lastOcrJob_ < result.jobId)
+            regionalRequireFull_ = true;
+    } else if (result.shadowPlan && result.shadowPlan->status == uct::RegionPlanStatus::kAccepted &&
+               result.jobId == lastOcrJob_) {
+        regionalPlan_ = result.shadowPlan;
+    }
     const auto retryUnreadAcquisition = [&] {
         if (result.jobId == lastOcrJob_) {
             haveLastOcr_ = false;
             changedSinceSubmit_ = true;
         }
     };
-    if (advancingMediaScene_) {
+    if (advancingMediaScene_ && !result.regionalRequested) {
         if (result.jobId != advancingMediaJob_ || advancingMediaJob_ == 0 ||
             now - advancingMediaSubmittedAtMs_ > timing_.immutableJobTimeoutMs) {
             if (result.jobId == advancingMediaJob_) {

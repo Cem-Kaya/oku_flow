@@ -15,6 +15,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -253,6 +254,8 @@ struct BackendStatus {
 struct DetailFocus {
     QRect regionPx;                    // requested visible source region
     double maximumMagnification{1.0};  // detector enlargement bound, clamped to [1, 6]
+    int detectorLongEdge{960};         // [32, 960]; supplemental regions use 480
+    bool supplemental{};              // failure requests a later full read, not backend retirement
 };
 // Hard bound on visible-detail detector enlargement. Enlarging existing pixels
 // adds no source detail; it only gives the detector more pixels per glyph.
@@ -262,7 +265,7 @@ inline constexpr double kMaximumDetailMagnification = 6.0;
 // adapters and the controller's visible-detail decision.
 // Input size for one detector region: long edge <= 960, enlargement only up
 // to the clamped magnification (1 = never enlarge, the established passes).
-QSize DetectorInputSize(QSize region, double maximumMagnification = 1.0);
+QSize DetectorInputSize(QSize region, double maximumMagnification = 1.0, int maximumLongEdge = 960);
 // Whole-scene context plus at most 4x4 overlapping crops (desired edge 1280,
 // 160-pixel overlap). The 4 is a per-axis crop count, not a zoom factor.
 QVector<QRect> DetectorRegions(QSize source);
@@ -413,6 +416,15 @@ struct CorroborationRequest {
 };
 
 struct RegionShadowPlan;
+// One optional descriptor in the existing latest-only slot. Deadlines use
+// steady wall time, never source PTS or a synthetic acquisition. The worker
+// rechecks the exact retained full plan, deadline and pending full priority.
+struct RegionalOcrRequest {
+    std::shared_ptr<const RegionShadowPlan> plan;
+    std::chrono::steady_clock::time_point fullDeadline;
+    double estimatedMs{750.0};
+};
+enum class RecognitionJobKind : std::uint8_t { Full, PausedDetail, Regional };
 struct RecognitionResult {
     std::uint64_t jobId{};
     std::uint64_t authority{};
@@ -440,10 +452,16 @@ struct RecognitionResult {
     QVector<QVector<bool>> corroborationWordMatches; // selected line/word indices; no display offsets
     std::uint64_t corroboratedJobId{};
     MatchTuning corroborationTuning;
-    // Optional metadata-only observer; never input to overlay/UIA admission.
+    // Full-output planner metadata; active scheduling may consume it, never
+    // overlay/UIA admission or proof. Partial outputs do not observe it.
     std::shared_ptr<const RegionShadowPlan> shadowPlan;
     double shadowPlannerMs{}; // excluded from ordinary OCR worker duration
     QString shadowPlannerError;
+    RecognitionJobKind jobKind{RecognitionJobKind::Full}; // actual backend operation
+    bool regionalRequested{};
+    bool regionalFallback{}; // stale/unsupported/no slack: full, or yielded to queued full
+    bool regionalFailed{};   // request a full read without retiring healthy backend/text
+    bool regionalDeadlineOverrun{};
 };
 
 // Maps recognized words into scene coordinates and builds per-line residual
@@ -456,6 +474,11 @@ struct SchedulerStats {
     std::uint64_t started{};
     std::uint64_t completed{};
     std::uint64_t revoked{};   // finished after their authority was cancelled
+    std::uint64_t fullCalls{}, pausedDetailCalls{}, regionalCalls{};
+    std::uint64_t regionalAttempts{}; // SetDetailFocus call attempted, including ignored/full responses
+    std::uint64_t regionalFallbacks{}, regionalFailures{}, regionalDeadlineOverruns{};
+    std::uint64_t regionalPriorityRefusals{};
+    double maximumFullMs{}, maximumRegionalMs{}; // worker call through preparation
 };
 
 // One worker thread, at most one job in flight plus one latest-only pending
@@ -475,7 +498,8 @@ public:
                          int referenceDecimation = 2,
                          double minimumWordHeightPx = 7.0,
                          bool probeOnly = false,
-                         bool shadowPlanner = false);
+                         bool shadowPlanner = false,
+                         bool regionalOcr = false);
     ~RecognitionScheduler();
     RecognitionScheduler(const RecognitionScheduler&) = delete;
     RecognitionScheduler& operator=(const RecognitionScheduler&) = delete;
@@ -487,14 +511,17 @@ public:
     // a refinement of that observation, never independent evidence.
     std::uint64_t Submit(const SourceStamp& stamp, QImage pixels,
                          CorroborationRequest corroboration = {},
-                         std::optional<DetailFocus> detail = std::nullopt);
+                         std::optional<DetailFocus> detail = std::nullopt,
+                         std::optional<RegionalOcrRequest> regional = std::nullopt);
     // Zero-copy hand-off of already shared, immutable pixels.
     std::uint64_t Submit(const SourceStamp& stamp, SharedPixels pixels,
                          CorroborationRequest corroboration = {},
-                         std::optional<DetailFocus> detail = std::nullopt);
+                         std::optional<DetailFocus> detail = std::nullopt,
+                         std::optional<RegionalOcrRequest> regional = std::nullopt);
     std::uint64_t SubmitDevice(const SourceStamp& stamp, SharedDeviceImage device,
                                CorroborationRequest corroboration = {},
-                               std::optional<DetailFocus> detail = std::nullopt);
+                               std::optional<DetailFocus> detail = std::nullopt,
+                               std::optional<RegionalOcrRequest> regional = std::nullopt);
     void Cancel();
     // Overwrites one optional priority descriptor for the next job only.
     // Does not submit work, reset/renew evidence or alter recognition policy.
@@ -876,19 +903,26 @@ private:
                                         std::uint64_t selectedFrameSeq);
     bool ApplyImmutableConflictBlocks(QVector<AcceptedLine>& lines) const;
 
+    struct PendingEvidence {
+        SourceStamp stamp;
+        QByteArray digest;
+        RecognitionResult::DigestKind digestKind{RecognitionResult::DigestKind::Sha256};
+        std::uint64_t authority{};
+    };
     struct PendingWord {
         QString text;
         QRectF sceneRect;
         std::uint64_t sourceEpoch{};
         std::uint64_t geometryGeneration{};
+        std::shared_ptr<const PendingEvidence> evidence;
     };
 
     ModelTuning tuning_;
     QVector<AcceptedLine> lines_;
     QVector<PendingWord> pending_;
-    // pending_ is replaced as one batch after every successful admission;
-    // one fixed-size evidence ticket covers that batch, rather than storing
-    // hashes per token or retaining an unbounded history of source images.
+    // Full reads replace pending observations; regional reads preserve outside
+    // words with their exact shared source ticket. At most 8192 words/tickets,
+    // no retained source images. These fields also name the immutable input.
     SourceStamp pendingEvidenceStamp_;
     QByteArray pendingEvidenceDigest_;
     RecognitionResult::DigestKind pendingDigestKind_{RecognitionResult::DigestKind::Sha256};

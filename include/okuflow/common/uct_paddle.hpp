@@ -98,7 +98,7 @@ std::unique_ptr<PaddleCpuSession> OpenPaddleCpuSession(const QString &runtime,
 // resize, threshold, rectification, dictionary and CTC conventions.
 // Never enlarges unless maximumMagnification > 1 (visible detail only); the
 // long edge never exceeds the existing 960-pixel engine contract.
-QSize PaddleDetectionSize(QSize source, double maximumMagnification = 1.0);
+QSize PaddleDetectionSize(QSize source, double maximumMagnification = 1.0, int maximumLongEdge = 960);
 // Whole-scene context followed by bounded overlapping detail crops. Each
 // detector invocation retains the existing <=960-pixel engine contract.
 QVector<QRect> PaddleDetectionRegions(QSize source);

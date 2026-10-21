@@ -123,9 +123,9 @@ PaddleAssets LoadPaddleAssets(const QString &root, ModelTier detector, ModelTier
     return assets;
 }
 
-QSize PaddleDetectionSize(QSize source, double maximumMagnification)
+QSize PaddleDetectionSize(QSize source, double maximumMagnification, int maximumLongEdge)
 {
-    return DetectorInputSize(source, maximumMagnification);
+    return DetectorInputSize(source, maximumMagnification, maximumLongEdge);
 }
 
 QVector<QRect> PaddleDetectionRegions(QSize source)

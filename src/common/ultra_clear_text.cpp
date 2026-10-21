@@ -1029,13 +1029,14 @@ TextQuad SceneQuadToView(const ViewTransform& t, double width, double height, co
 
 // --- Detector input planning ----------------------------------------------------
 
-QSize DetectorInputSize(QSize region, double maximumMagnification)
+QSize DetectorInputSize(QSize region, double maximumMagnification, int maximumLongEdge)
 {
     if (region.isEmpty())
         return {};
     const double bound = std::isfinite(maximumMagnification)
         ? std::clamp(maximumMagnification, 1.0, kMaximumDetailMagnification) : 1.0;
-    const double scale = std::min(bound, 960.0 / std::max(region.width(), region.height()));
+    const int edge = std::clamp(maximumLongEdge / 32, 1, 30) * 32;
+    const double scale = std::min(bound, double(edge) / std::max(region.width(), region.height()));
     if (bound > 1.0) {
         // Alignment must not round an explicit detail bound upward. Preserve
         // the established rounding policy for ordinary full-scene jobs.
@@ -1085,7 +1086,8 @@ QRect DetailRegion(QSize source, const DetailFocus& focus)
     // A smaller visible area would need more enlargement than the bound
     // permits. Keep the bound and spend the fixed detector input on context
     // around the visible centre instead of on interpolated pixels.
-    const int minimumLongEdge = static_cast<int>(std::ceil(960.0 / DetailMagnification(focus)));
+    const int edge = std::clamp(focus.detectorLongEdge / 32, 1, 30) * 32;
+    const int minimumLongEdge = static_cast<int>(std::ceil(double(edge) / DetailMagnification(focus)));
     const int longEdge = std::max(region.width(), region.height());
     if (longEdge < minimumLongEdge) {
         const double factor = double(minimumLongEdge) / longEdge;
@@ -1742,6 +1744,7 @@ struct RecognitionScheduler::State {
         CorroborationRequest corroboration;
         std::optional<QRectF> shadowFocus;
         std::optional<DetailFocus> detail;
+        std::optional<RegionalOcrRequest> regional;
     };
 
     std::mutex mutex;
@@ -1755,6 +1758,9 @@ struct RecognitionScheduler::State {
     int referenceDecimation{2};
     bool probeOnly{};
     bool shadowRequested{}; // immutable after starting the worker
+    bool regionalRequested{};
+    std::shared_ptr<const RegionShadowPlan> latestFullPlan; // guarded by mutex
+    std::uint64_t usedRegionalPlan{};
     std::unique_ptr<RegionShadowPlanner> shadowPlanner;
     std::optional<QRectF> shadowFocus;
     std::uint64_t shadowAuthority{}; // worker-only
@@ -1807,12 +1813,19 @@ struct RecognitionScheduler::State {
 
     std::uint64_t Enqueue(const SourceStamp& stamp, QImage owned, SharedDeviceImage device = {},
                           CorroborationRequest corroboration = {},
-                          std::optional<DetailFocus> detail = std::nullopt)
+                          std::optional<DetailFocus> detail = std::nullopt,
+                          std::optional<RegionalOcrRequest> regional = std::nullopt)
     {
         std::lock_guard lock(mutex);
         if (shutdown || status.state == BackendState::kUnavailable ||
             status.state == BackendState::kFailed) {
             return 0;
+        }
+        // Disabled and validation-only schedulers never accept active work.
+        if (regional && (!regionalRequested || probeOnly)) return 0;
+        if (regional && pending && !pending->regional) {
+            ++stats.regionalPriorityRefusals;
+            return 0; // one slot: a region can never overwrite a queued full
         }
         if (pending) {
             TraceTiming(timing::Event::Cancel, timingProducer, TimingChannel(), pending->stamp,
@@ -1826,8 +1839,10 @@ struct RecognitionScheduler::State {
         job.pixels = std::move(owned);
         job.device = std::move(device);
         job.corroboration = std::move(corroboration);
+        job.regional = std::move(regional);
         if (detail && !probeOnly) job.detail = detail;
         if (shadowRequested) job.shadowFocus = shadowFocus;
+        if (!job.regional) latestFullPlan.reset(); // baseline request outranks the old plan
         const std::uint64_t id = job.id;
         TraceTiming(timing::Event::Submit, timingProducer, TimingChannel(), stamp, id, authority,
             {0, 0, (job.device ? timing::DeviceInput : 0u) |
@@ -1877,6 +1892,9 @@ struct RecognitionScheduler::State {
             result.authority = job.authority;
             result.stamp = job.stamp;
             result.deviceInput = static_cast<bool>(job.device);
+            result.regionalRequested = job.regional.has_value();
+            result.jobKind = job.detail ? RecognitionJobKind::PausedDetail : RecognitionJobKind::Full;
+            if (job.regional) result.jobKind = RecognitionJobKind::Full; // promoted only after worker checks
             QImage pixels=job.pixels;
             QImage validationPixels;
             try {
@@ -1924,6 +1942,35 @@ struct RecognitionScheduler::State {
                     result.output.inputFault=pixels.isNull();
                 }
                 if(!job.device || wantsDevice || !pixels.isNull()) {
+                    bool yieldToFull = false;
+                    if (job.regional) {
+                        const auto& request = *job.regional;
+                        const double slack = std::chrono::duration<double, std::milli>(
+                            request.fullDeadline - std::chrono::steady_clock::now()).count();
+                        bool valid;
+                        {
+                            std::lock_guard lock(self->mutex);
+                            yieldToFull = self->pending && !self->pending->regional;
+                            valid = !self->cancelInFlight.load() && !self->shutdown &&
+                                job.authority == self->authority && request.plan &&
+                                request.plan == self->latestFullPlan && request.plan->jobId < job.id &&
+                                self->usedRegionalPlan != request.plan->jobId &&
+                                RegionalPlanMatches(*request.plan, job.stamp, job.authority) &&
+                                self->status.detailFocus && !yieldToFull &&
+                                std::isfinite(request.estimatedMs) && request.estimatedMs >= 750.0 &&
+                                slack > request.estimatedMs + 80.0;
+                            if (valid) self->usedRegionalPlan = request.plan->jobId;
+                        }
+                        job.detail = valid ? RegionalDetailFocus(*request.plan, job.stamp, job.shadowFocus)
+                                           : std::nullopt;
+                        if (job.detail) result.jobKind = RecognitionJobKind::Regional;
+                        else result.regionalFallback = true;
+                    }
+                    if (yieldToFull) {
+                        // The newer current full input is already queued. Do
+                        // not duplicate it with this older regional descriptor.
+                        result.output.cancelled = true;
+                    } else {
                     if (timing::Enabled()) timingBackendFlags |= timing::InferenceAttempted;
                     // The focus applies to exactly this call; a throwing or
                     // cancelled recognition cannot leak it into the next job.
@@ -1932,11 +1979,46 @@ struct RecognitionScheduler::State {
                         ~DetailScope() { recognizer.SetDetailFocus(std::nullopt); }
                     } detailScope{*self->recognizer};
                     self->recognizer->SetDetailFocus(job.detail);
+                    {
+                        std::lock_guard lock(self->mutex);
+                        if (result.jobKind == RecognitionJobKind::Regional) ++self->stats.regionalAttempts;
+                        else if (result.jobKind == RecognitionJobKind::PausedDetail) ++self->stats.pausedDetailCalls;
+                        else ++self->stats.fullCalls;
+                    }
                     result.output = wantsDevice
                         ? self->recognizer->RecognizeDevice(*job.device, self->cancelInFlight)
                         : self->recognizer->Recognize(pixels, self->cancelInFlight);
                     // A backend cannot claim a region it was not asked to use.
                     if (!job.detail) result.output.detailRegionPx = {};
+                    // An advertised backend that ignored the request returned
+                    // complete OCR. Count it as full, never as regional proof.
+                    if (result.jobKind == RecognitionJobKind::Regional && result.output.ok &&
+                        result.output.detailRegionPx.isEmpty()) {
+                        result.jobKind = RecognitionJobKind::Full;
+                        result.regionalFallback = true;
+                        std::lock_guard lock(self->mutex);
+                        ++self->stats.fullCalls;
+                    }
+                    else if (result.jobKind == RecognitionJobKind::Regional) {
+                        std::lock_guard lock(self->mutex);
+                        ++self->stats.regionalCalls;
+                    }
+                    if (result.jobKind == RecognitionJobKind::Regional && result.output.ok) {
+                        const QSize size(static_cast<int>(job.stamp.viewportWidth), static_cast<int>(job.stamp.viewportHeight));
+                        const QRect processed = DetailRegion(size, *job.detail);
+                        const bool malformed = result.output.detailRegionPx != processed ||
+                            std::any_of(result.output.lines.begin(), result.output.lines.end(), [&](const auto& line) {
+                                return std::any_of(line.words.begin(), line.words.end(), [&](const auto& word) {
+                                    return !QRectF(processed).contains(word.boundsPx);
+                                });
+                            });
+                        if (malformed) {
+                            result.output.ok = false;
+                            result.output.lines.clear();
+                            result.output.error = QStringLiteral("Regional backend returned inconsistent coverage.");
+                        }
+                    }
+                    }
                 }
                 else {result.output.cancelled=self->cancelInFlight.load();result.output.inputFault=true;}
                 const auto currentStatus = self->recognizer->Status();
@@ -2058,10 +2140,22 @@ struct RecognitionScheduler::State {
             }
             }catch(const std::exception& error){result.output.ok=false;result.output.lines.clear();result.output.error=QString::fromUtf8(error.what());}
             result.durationMs = timer.nsecsElapsed() / 1e6;
+            result.regionalFailed = result.regionalRequested && !result.output.ok && !result.output.cancelled &&
+                !result.output.compositeInput;
+            result.regionalDeadlineOverrun = result.regionalRequested &&
+                !result.output.cancelled &&
+                std::chrono::steady_clock::now() > job.regional->fullDeadline;
             bool current = false;
             {
                 std::lock_guard lock(self->mutex);
                 self->inFlight = false;
+                if (result.regionalFallback) ++self->stats.regionalFallbacks;
+                if (result.regionalFailed) ++self->stats.regionalFailures;
+                if (result.regionalDeadlineOverrun) ++self->stats.regionalDeadlineOverruns;
+                if (result.jobKind == RecognitionJobKind::Regional)
+                    self->stats.maximumRegionalMs = std::max(self->stats.maximumRegionalMs, result.durationMs);
+                else if (result.jobKind == RecognitionJobKind::Full)
+                    self->stats.maximumFullMs = std::max(self->stats.maximumFullMs, result.durationMs);
                 if (timing::Enabled()) self->activeTiming = {};
                 current = job.authority == self->authority && !self->shutdown;
                 if (current) {
@@ -2081,7 +2175,8 @@ struct RecognitionScheduler::State {
                         result.stamp, job.id, job.authority, values);
             };
             if (current) {
-                if (self->shadowPlanner && result.output.ok && !result.output.cancelled &&
+                if (self->shadowPlanner && result.jobKind == RecognitionJobKind::Full &&
+                    result.output.detailRegionPx.isEmpty() && result.output.ok && !result.output.cancelled &&
                     !result.output.inputFault && !result.output.backendPreparing && !self->cancelInFlight.load()) {
                     // Observe only complete current jobs. The observer cannot
                     // alter OCR output or any admission decision. A diagnostic
@@ -2096,6 +2191,9 @@ struct RecognitionScheduler::State {
                         }
                         result.shadowPlan = std::make_shared<const RegionShadowPlan>(
                             self->shadowPlanner->Observe(result, job.shadowFocus));
+                        std::lock_guard lock(self->mutex);
+                        if (job.authority == self->authority && !self->pending)
+                            self->latestFullPlan = result.shadowPlan;
                     } catch (...) {
                         self->shadowPlanner.reset();
                         result.shadowPlannerError = QStringLiteral("Shadow planner unavailable; full OCR retained.");
@@ -2121,12 +2219,14 @@ RecognitionScheduler::RecognitionScheduler(std::unique_ptr<Recognizer> recognize
                                            Completion completion,
                                            StatusChanged statusChanged,
                                            int referenceDecimation,
-                                           double minimumWordHeightPx, bool probeOnly, bool shadowPlanner)
+                                           double minimumWordHeightPx, bool probeOnly, bool shadowPlanner,
+                                           bool regionalOcr)
     : state_(std::make_shared<State>())
 {
     state_->minimumWordHeightPx = minimumWordHeightPx;
     state_->probeOnly=probeOnly;
-    state_->shadowRequested = shadowPlanner && !probeOnly;
+    state_->regionalRequested = regionalOcr && !probeOnly;
+    state_->shadowRequested = (shadowPlanner || regionalOcr) && !probeOnly;
     if (state_->shadowRequested) state_->shadowPlanner = std::make_unique<RegionShadowPlanner>();
     state_->recognizer = std::move(recognizer);
     state_->completion = std::move(completion);
@@ -2179,7 +2279,8 @@ RecognitionScheduler::~RecognitionScheduler()
 
 std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, QImage pixels,
                                           CorroborationRequest corroboration,
-                                          std::optional<DetailFocus> detail)
+                                          std::optional<DetailFocus> detail,
+                                          std::optional<RegionalOcrRequest> regional)
 {
     if (pixels.isNull()) {
         return 0;
@@ -2193,12 +2294,13 @@ std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, QImage pixe
     if (owned.isNull()) {
         return 0;
     }
-    return state_->Enqueue(stamp, std::move(owned), {}, std::move(corroboration), detail);
+    return state_->Enqueue(stamp, std::move(owned), {}, std::move(corroboration), detail, std::move(regional));
 }
 
 std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, SharedPixels pixels,
                                           CorroborationRequest corroboration,
-                                          std::optional<DetailFocus> detail)
+                                          std::optional<DetailFocus> detail,
+                                          std::optional<RegionalOcrRequest> regional)
 {
     // Shared pixels are immutable after hand-off, so a read-only view is an
     // owned input: the worker keeps the buffer alive until it is done.
@@ -2206,19 +2308,20 @@ std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, SharedPixel
     if (view.isNull()) {
         return 0;
     }
-    return state_->Enqueue(stamp, std::move(view), {}, std::move(corroboration), detail);
+    return state_->Enqueue(stamp, std::move(view), {}, std::move(corroboration), detail, std::move(regional));
 }
 
 std::uint64_t RecognitionScheduler::SubmitDevice(const SourceStamp& stamp, SharedDeviceImage device,
                                                   CorroborationRequest corroboration,
-                                                  std::optional<DetailFocus> detail)
+                                                  std::optional<DetailFocus> detail,
+                                                  std::optional<RegionalOcrRequest> regional)
 {
     if(!device||!device->Data()||device->width<=0||device->height<=0||device->width>8192||device->height>8192||
         static_cast<std::size_t>(device->width)*device->height*4>128ull*1024*1024||
         device->pitch<static_cast<std::size_t>(device->width)*4||
         stamp.sourceEpoch!=device->sourceEpoch||stamp.frameSeq!=device->frameSequence||
         stamp.viewportWidth!=device->width||stamp.viewportHeight!=device->height)return 0;
-    return state_->Enqueue(stamp, {}, std::move(device), std::move(corroboration), detail);
+    return state_->Enqueue(stamp, {}, std::move(device), std::move(corroboration), detail, std::move(regional));
 }
 
 void RecognitionScheduler::Cancel()
@@ -2226,6 +2329,7 @@ void RecognitionScheduler::Cancel()
     std::lock_guard lock(state_->mutex);
     state_->TraceCancellation(0);
     ++state_->authority;
+    state_->latestFullPlan.reset();
     if (state_->pending) {
         state_->pending.reset();
         ++state_->stats.revoked;
@@ -3111,17 +3215,18 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
     // Evidence is the acquisition the pixels show. An Extra Stable held image
     // repeats its earlier held frame however many presentations later it is
     // copied, so it can never corroborate an observation of that same frame.
-    const std::optional<std::uint64_t> pendingAcquisition = EvidenceAcquisition(pendingEvidenceStamp_);
-    const bool independentPending = !immutable && pendingEvidenceStamp_.SameScene(stamp) &&
-        pendingEvidenceAuthority_ == result.authority &&
-        pendingEvidenceStamp_.frameSeq != stamp.frameSeq &&
-        pendingAcquisition && *pendingAcquisition != *acquisition &&
-        (liveCamera
-            ? pendingEvidenceStamp_.liveCameraCapture && stamp.liveCameraCapture &&
-                *acquisition > *pendingAcquisition
-            : pendingDigestKind_ == result.sourcePixelDigestKind &&
-                pendingEvidenceDigest_.size() == 32 && result.sourcePixelDigest.size() == 32 &&
-                pendingEvidenceDigest_ != result.sourcePixelDigest);
+    const auto independentPending = [&](const PendingWord& word) {
+        if (immutable || !word.evidence) return false;
+        const auto& previous = *word.evidence;
+        const auto previousAcquisition = EvidenceAcquisition(previous.stamp);
+        return previous.stamp.SameScene(stamp) && previous.authority == result.authority &&
+            previous.stamp.frameSeq != stamp.frameSeq && previousAcquisition &&
+            *previousAcquisition != *acquisition &&
+            (liveCamera ? previous.stamp.liveCameraCapture && stamp.liveCameraCapture &&
+                *acquisition > *previousAcquisition
+                : previous.digestKind == result.sourcePixelDigestKind && previous.digest.size() == 32 &&
+                  result.sourcePixelDigest.size() == 32 && previous.digest != result.sourcePixelDigest);
+    };
     // While a hold lasts no second acquisition can arrive. A single held
     // observation is offered as reading text only: the original ink stays and
     // no glyph, screen-reader word or proof of agreement is claimed for it.
@@ -3132,10 +3237,10 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
     // sequence even on a byte-identical steady/virtual scene. Saved/unknown
     // inputs still require different complete pixel hashes. Changing only a
     // job ID/timestamp or repainting one capture never supplies evidence.
-    if (independentPending) {
+    {
         for (const PendingWord& word : pending_) {
             if (word.sourceEpoch == current.sourceEpoch &&
-                word.geometryGeneration == current.geometryGeneration) {
+                word.geometryGeneration == current.geometryGeneration && independentPending(word)) {
                 earlier[word.text].push_back(word.sceneRect);
             }
         }
@@ -3157,6 +3262,9 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
     QVector<AcceptedLine> admitted;
     QSet<std::uint64_t> retainedIds;
     QVector<PendingWord> nextPending;
+    const auto pendingTicket = std::make_shared<const PendingEvidence>(PendingEvidence{
+        stamp, result.sourcePixelDigest.size() == 32 ? result.sourcePixelDigest : QByteArray{},
+        result.sourcePixelDigestKind, result.authority});
     for (Candidate& candidate : candidates) {
         // A registration failure never promotes a candidate into a glyph.
         // Preserve the confirmed reading text, with visible uncertainty, only
@@ -3211,14 +3319,14 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                 candidate.line.protectedSceneRects.push_back(
                     word.protectedSceneRect.isEmpty() ? word.sceneRect : word.protectedSceneRect);
                 nextPending.push_back({word.text, currentRect, current.sourceEpoch,
-                                       current.geometryGeneration});
+                                       current.geometryGeneration, pendingTicket});
             } else {
                 ++candidate.line.omittedWords;
                 candidate.line.readingTokens.push_back({});
                 candidate.line.protectedSceneRects.push_back(
                     word.protectedSceneRect.isEmpty() ? word.sceneRect : word.protectedSceneRect);
                 nextPending.push_back({word.text, currentRect, current.sourceEpoch,
-                                       current.geometryGeneration});
+                                       current.geometryGeneration, pendingTicket});
             }
         }
         if ((immutable || heldReadingOnly) && candidate.line.reference.valid &&
@@ -3315,21 +3423,25 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
     // Recognition supersedes observed ink, not independently proved detector
     // omissions. The latest probe must have checked the old object against
     // pixels at/after this job; keeping it never renews its reference or clock.
+    const bool regional = !immutable && !result.output.detailRegionPx.isEmpty();
     const QRectF coverage = ViewRectToScene(stamp.viewTransform, jobWidth, jobHeight,
-                                            QRectF(0.0, 0.0, jobWidth, jobHeight));
+        regional ? QRectF(result.output.detailRegionPx) : QRectF(0.0, 0.0, jobWidth, jobHeight));
     QVector<AcceptedLine> kept;
+    qsizetype regionalProtectionTotal = 0;
+    if (regional) for (const auto& line : lines_) regionalProtectionTotal += line.protectedSceneRects.size();
     for (const AcceptedLine& line : lines_) {
         if (!line.provenance.SameScene(current)) {
             continue;
         }
         if (retainedIds.contains(line.id)) continue; // already present in admitted, with its exact proof
         const QRectF oldRect = line.sceneRect.translated(line.sceneOffset);
-        if (!immutable && latestProbe && latestProbe->IsValid() &&
+        const bool currentProof = !immutable && latestProbe && latestProbe->IsValid() &&
             EvidenceAcquisition(latestProbe->stamp) && latestProbe->stamp.SameScene(current) &&
             latestProbe->stamp.frameSeq >= stamp.frameSeq &&
             line.validatedAtMs >= stamp.timestampMs &&
             line.validatedFrameSeq >= stamp.frameSeq &&
-            IsShown(line, nowMs, latestProbe->stamp.frameSeq) &&
+            IsShown(line, nowMs, latestProbe->stamp.frameSeq);
+        if (currentProof &&
             (std::any_of(failedRegistrationRects.begin(), failedRegistrationRects.end(),
                 [&](const QRectF& r) { return r.intersects(oldRect); }) ||
              std::none_of(prepared.begin(), prepared.end(), [&](const PreparedLine& observation) {
@@ -3341,6 +3453,53 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                 return replacement.sceneRect.translated(replacement.sceneOffset).intersects(oldRect);
             })) {
             kept.push_back(line); // exact old identity/reference/proof, never refreshed by OCR omission
+            continue;
+        }
+        if (regional) {
+            if (!currentProof) continue;
+            // Partial recognition owns only its real processed ROI. Keep
+            // independently current-checked outside words with their exact
+            // object/reference/provenance/clocks, even if a same-line ROI
+            // spelling or rejected span contradicts an inside word.
+            auto outside = line;
+            auto indexes = outside.readingWordIndices;
+            if (indexes.isEmpty()) {
+                int word = 0;
+                for (const auto& token : outside.readingTokens) indexes.push_back(token.isEmpty() ? -1 : word++);
+            }
+            bool any = false;
+            for (qsizetype t = 0; t < indexes.size(); ++t) {
+                const int w = indexes[t];
+                if (w < 0 || w >= outside.words.size()) continue;
+                if (coverage.intersects(outside.words[w].sceneRect.translated(outside.sceneOffset))) {
+                    outside.words[w].glyphEligible = false;
+                    indexes[t] = -1;
+                    outside.readingTokens[t].clear();
+                    ++outside.omittedWords;
+                } else any = true;
+            }
+            outside.readingWordIndices = std::move(indexes);
+            QVector<QRectF> residual;
+            for (const auto& relative : outside.protectedSceneRects) {
+                const QRectF rect=relative.translated(outside.sceneOffset), cut=rect.intersected(coverage);
+                if (cut.isEmpty()) { residual.push_back(relative); continue; }
+                const auto add=[&](const QRectF& r) {
+                    if (!r.isEmpty()) residual.push_back(r.translated(-outside.sceneOffset));
+                };
+                add({rect.left(),rect.top(),rect.width(),cut.top()-rect.top()});
+                add({rect.left(),cut.bottom(),rect.width(),rect.bottom()-cut.bottom()});
+                add({rect.left(),cut.top(),cut.left()-rect.left(),cut.height()});
+                add({cut.right(),cut.top(),rect.right()-cut.right(),cut.height()});
+                if (residual.size()>32768) break;
+            }
+            // Saturation retains the original uncertainty, never erases an
+            // uncovered punctuation/span merely to fit the work quota.
+            const auto newTotal=regionalProtectionTotal-outside.protectedSceneRects.size()+residual.size();
+            if (residual.size()<=32768 && newTotal<=32768) {
+                regionalProtectionTotal=newTotal;
+                outside.protectedSceneRects=std::move(residual);
+            }
+            if (any) kept.push_back(std::move(outside));
             continue;
         }
         if (!coverage.contains(line.sceneRect.translated(line.sceneOffset).center())) {
@@ -3359,9 +3518,29 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
             if (!replaced) kept.push_back(line);
         }
     }
-    kept += admitted;
+    if (regional) {
+        qsizetype words = 0, tokens = 0, protection = 0;
+        for (const auto& line : kept) {
+            words += line.words.size(); tokens += line.readingTokens.size(); protection += line.protectedSceneRects.size();
+        }
+        for (const auto& line : admitted) {
+            if (kept.size() >= 1024 || words + line.words.size() > 8192 ||
+                tokens + line.readingTokens.size() > 32768 || protection + line.protectedSceneRects.size() > 32768) continue;
+            words += line.words.size(); tokens += line.readingTokens.size(); protection += line.protectedSceneRects.size();
+            kept.push_back(line);
+        }
+    } else kept += admitted;
     lines_ = std::move(kept);
-    pending_ = std::move(nextPending);
+    if (regional) {
+        QVector<PendingWord> retained;
+        for (const auto& word : pending_)
+            if (retained.size() < 8192 && word.evidence && word.evidence->stamp.SameScene(stamp) &&
+                word.evidence->authority == result.authority && !coverage.intersects(word.sceneRect))
+                retained.push_back(word); // exact original source ticket; ROI supplies no proof for it
+        for (const auto& word : nextPending)
+            if (retained.size() < 8192) retained.push_back(word);
+        pending_ = std::move(retained);
+    } else pending_ = std::move(nextPending);
     pendingEvidenceStamp_ = stamp;
     pendingEvidenceDigest_ = result.sourcePixelDigest.size() == 32 ? result.sourcePixelDigest : QByteArray{};
     pendingDigestKind_ = result.sourcePixelDigestKind;

@@ -788,6 +788,10 @@ private slots:
     void refreshRetainsLineOnceAndStabilizesColors();
     void refreshKeepsProvenGeometryThroughOmissionBoxJitter();
     void refreshKeepsIndependentlyValidatedOmissionsDuringRegionalScroll();
+    void regionalContradictionKeepsCurrentOtherPane();
+    void regionalSpanningProtectionKeepsUncoveredResidual();
+    void regionalPendingKeepsPerObservationTickets_data();
+    void regionalPendingKeepsPerObservationTickets();
     void probeReferencesPrioritizeUnverifiedAndOldestLines();
     void budgetRefreshCannotBorrowOtherProof_data();
     void budgetRefreshCannotBorrowOtherProof();
@@ -3857,6 +3861,92 @@ void UltraClearTextTests::refreshKeepsIndependentlyValidatedOmissionsDuringRegio
     refresh.stamp = at(10, 600);
     stale.Admit(refresh, current, &probe, 610);
     QVERIFY(stale.SceneWords(610, 10).isEmpty());
+}
+
+void UltraClearTextTests::regionalContradictionKeepsCurrentOtherPane()
+{
+    const auto page=MakeLayoutPage({{"Reading",{80,80},48},{"Outside",{1000,320},48}});
+    auto changed=page;
+    {QPainter painter(&changed.image);painter.fillRect(0,0,700,280,Qt::white);}
+    const auto t=Transform(1,.5,.5); const auto current=Stamp(3,4,0,t);
+    auto result=[&](const SyntheticPage& source,int frame,int ms) {
+        auto stamp=Stamp(3,4,ms,t);stamp.frameSeq=frame;stamp.liveCameraCapture=true;
+        auto value=ResultFor(source,t,stamp);value.authority=1;return value;
+    };
+    OverlayModel model; model.AdmitLiveCamera(result(page,1,100),current,nullptr,110);
+    model.AdmitLiveCamera(result(page,2,200),current,nullptr,210);
+    QCOMPARE(model.AcceptedWordCount(),2);
+    const auto probe=ProbeOf(RenderView(changed.image,t,kViewWidth,kViewHeight),t,3,4,4,400);
+    const auto checks=model.Validate(probe,400);QCOMPARE(checks.valid,1);QCOMPARE(checks.invalid,1);
+    const auto old=model.Lines().first();QCOMPARE(old.words.first().text,QStringLiteral("Outside"));
+    auto roi=result(changed,3,300);roi.output.lines.removeLast();
+    roi.output.lines.first().words.first().confidence=.1; // current ROI cannot claim replacement
+    roi.output.detailRegionPx={0,0,400,200};roi.jobKind=RecognitionJobKind::Regional;
+    model.AdmitLiveCamera(roi,current,&probe,410);
+    const auto words=model.SceneWords(410,4);QCOMPARE(words.size(),1);QCOMPARE(words.first().text,QStringLiteral("Outside"));
+    const auto retained=model.Lines().first();QCOMPARE(retained.id,old.id);
+    QCOMPARE(retained.reference.values,old.reference.values);QCOMPARE(retained.sceneRect,old.sceneRect);
+    QCOMPARE(retained.provenance.frameSeq,old.provenance.frameSeq);
+    QCOMPARE(retained.validatedAtMs,old.validatedAtMs);QCOMPARE(retained.validatedFrameSeq,old.validatedFrameSeq);
+    QVERIFY(model.SceneWords(751,5).isEmpty()); // regional completion did not renew the other pane
+}
+
+void UltraClearTextTests::regionalSpanningProtectionKeepsUncoveredResidual()
+{
+    const auto page=MakeLayoutPage({{"Reading",{80,80},48},{"Outside",{1000,80},48}});
+    const auto t=Transform(1,.5,.5);const auto current=Stamp(3,4,0,t);
+    auto result=[&](int frame,int ms) {
+        auto stamp=Stamp(3,4,ms,t);stamp.frameSeq=frame;auto value=ResultFor(page,t,stamp);value.authority=1;
+        RecognizedWord uncertain{QStringLiteral("unread"),QRectF(330,60,150,30)};uncertain.confidence=.1;
+        value.output.lines.first().words.push_back(uncertain);return value;
+    };
+    OverlayModel model;model.Admit(result(1,100),current,nullptr,110);model.Admit(result(2,200),current,nullptr,210);
+    QCOMPARE(model.AcceptedWordCount(),2);
+    const auto probe=ProbeOf(RenderView(page.image,t,kViewWidth,kViewHeight),t,3,4,4,400);
+    QCOMPARE(model.Validate(probe,400).valid,1);
+    const auto old=model.Lines().first();
+    auto roi=result(3,300);roi.output.lines.first().words.resize(1);
+    roi.output.lines.first().words.first().text=QStringLiteral("Changed");
+    roi.output.lines.first().words.first().confidence=.1;
+    roi.output.detailRegionPx={0,0,400,300};
+    model.Admit(roi,current,&probe,410);
+    const auto retained=std::find_if(model.Lines().begin(),model.Lines().end(),[&](const auto& line){return line.id==old.id;});
+    QVERIFY(retained!=model.Lines().end());
+    const QPointF uncovered(450.0/960,70.0/540);
+    QVERIFY(std::any_of(retained->protectedSceneRects.begin(),retained->protectedSceneRects.end(),
+        [&](const QRectF& mask){return mask.translated(retained->sceneOffset).contains(uncovered);}));
+    QCOMPARE(retained->reference.values,old.reference.values);QCOMPARE(retained->validatedAtMs,old.validatedAtMs);
+    const auto shown=model.SceneWords(410,4);QCOMPARE(shown.size(),1);QCOMPARE(shown.first().text,QStringLiteral("Outside"));
+}
+
+void UltraClearTextTests::regionalPendingKeepsPerObservationTickets_data()
+{
+    QTest::addColumn<bool>("live");QTest::newRow("live")<<true;QTest::newRow("advancing")<<false;
+}
+void UltraClearTextTests::regionalPendingKeepsPerObservationTickets()
+{
+    QFETCH(bool,live);
+    const auto page=MakeLayoutPage({{"Reading",{80,80},48},{"Outside",{1000,320},48}});
+    const auto t=Transform(1,.5,.5);const auto current=Stamp(3,4,0,t);
+    auto result=[&](int frame,int ms) {
+        auto stamp=Stamp(3,4,ms,t);stamp.frameSeq=frame;stamp.liveCameraCapture=live;
+        auto value=ResultFor(page,t,stamp);value.authority=7;return value;
+    };
+    const auto admit=[&](OverlayModel& model,const RecognitionResult& value,int now) {
+        return live ? model.AdmitLiveCamera(value,current,nullptr,now) : model.AdmitAdvancingMedia(value,current,nullptr,now);
+    };
+    const auto a=result(1,100);auto b=result(2,200);auto c=result(3,300);
+    b.output.lines.first().words.first().text=QStringLiteral("Novel");
+    c.output.lines.first().words.first().text=QStringLiteral("Novel");
+    auto roi=b;roi.output.lines.removeLast();roi.output.detailRegionPx={0,0,400,200};
+    OverlayModel baseline,regional,sameAcquisition;
+    admit(baseline,a,110);admit(baseline,c,310);
+    admit(regional,a,110);admit(regional,roi,210);admit(regional,c,310);
+    const auto outside=[](const auto& words){return std::count_if(words.begin(),words.end(),[](const auto& word){return word.text==QStringLiteral("Outside");});};
+    QCOMPARE(outside(baseline.SceneWords(310,3)),1);QCOMPARE(outside(regional.SceneWords(310,3)),1);
+    admit(sameAcquisition,a,110);admit(sameAcquisition,roi,210);admit(sameAcquisition,b,220);
+    const auto shown=sameAcquisition.SceneWords(220,2);QCOMPARE(outside(shown),1);
+    QVERIFY(std::none_of(shown.begin(),shown.end(),[](const auto& word){return word.text==QStringLiteral("Novel");}));
 }
 
 void UltraClearTextTests::probeReferencesPrioritizeUnverifiedAndOldestLines() {

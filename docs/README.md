@@ -34,9 +34,11 @@ private resident recognition/admission diagnostic.
 admission, software-paint and accessibility-publication metadata, with explicit
 dropped/incomplete chains and separate native screen-reader acceptance.
 
-[Shadow regional planning](uct_region_planner.md) describes the opt-in metadata
-observer, source-bound spatial occurrences, requested focus and finite coverage
-debt. Full OCR stays authoritative; no recognition reuse is enabled.
+[Regional planning](uct_region_planner.md) describes observation-only mode,
+source-bound occurrences, requested focus and finite coverage debt.
+[Active regional execution](uct_active_regional_ocr.md) supplements baseline full
+reads on current owned inputs with bounded regions and unchanged pixel proof.
+It never skips full OCR or reuses text as evidence.
 
 [Batch-eight quality acceptance](uct_batch8_quality_acceptance.md) records the
 owner-approved 10-pixel geometry tolerance, exact text/disposition checks, the

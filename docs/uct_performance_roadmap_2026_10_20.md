@@ -46,6 +46,10 @@ and small recognizers; tiny retains batch one, as recorded below.
    spatial occurrences, requested-region priority and finite coverage debt. Its
    first implementation must leave the full recognition path authoritative and
    must not skip inference based on an unaccepted change verifier.
+   The subsequent explicitly opt-in [supplemental executor](uct_active_regional_ocr.md)
+   now runs bounded current-image regions between unchanged baseline full
+   deadlines. The verifier still cannot authorize skipping/deprioritizing full
+   OCR; regional worker timing is separate from end-to-end publication latency.
 5. **Use the evidence to choose optimizations.** Width buckets require graph
    support; compact metadata/batched kernels require attribution; precision
    changes require compatible typed exports and a labelled quality evaluation.

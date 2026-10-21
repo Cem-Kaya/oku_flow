@@ -1969,6 +1969,17 @@ See `docs/uct_resident_baseline.md` and `docs/uct_batch8_quality_acceptance.md`.
 
 ### Shadow regional planner and scheduler
 
+`uct_region_scheduler.*` also covers opt-in active execution with actual scripted
+detail calls on current owned input, full-slot priority, execution-time slack,
+unsupported/stale/held/failed/ignored requests and deadline-overrun accounting.
+The active flag implicitly enables planning; shadow-only and probe-only modes
+never execute regions. `immutable_uct_contract` adds full-deadline comparisons
+under focus pressure, failed-optional latching, stale callback fences and an
+active-mode paused-pair regression. `ultra_clear_text_contract` covers other-pane
+pixel proof, spanning protection residuals and per-observation pending tickets
+(full A / ROI B / full C and same-acquisition rejection). All use model-free
+workers and Qt offscreen. See [execution limits](../docs/uct_active_regional_ocr.md).
+
 `uct_region_planner.*` and `uct_region_scheduler.*` are desktop-free,
 independently selectable 30-second Qt slots registered with the existing
 headless helper. Scripted complete outputs test spatial IDs, coverage debt,

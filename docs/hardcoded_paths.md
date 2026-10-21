@@ -972,6 +972,18 @@ never bundled, and ordinary CTest does not select the diagnostic. See
 
 ## Optional UCT shadow diagnostics (2026-10-20)
 
+`OKUFLOW_UCT_REGIONAL_OCR=1` opts into supplemental execution and implicitly
+enables the planner; shadow alone stays observation-only. Active work is at
+most one region per full interval, <=480 source/detector pixels, magnification
+one. The first cost estimate is 750 ms, later max(previous, 2*duration+80 ms),
+with a controller probe-period reserve and 80 ms execution reserve. It normally
+fits 1500 ms stable refreshes, not 350 ms demanded reads. Full deadlines/priority
+remain unchanged; execution rechecks steady-clock slack and counts overruns.
+Failure/overrun disables optional work until worker recreation. Outside pending
+evidence retains exact shared source tickets at an 8192-word cap; regional
+unions retain 1024 lines/8192 words/32768 tokens or masks. See
+[active policy and limits](uct_active_regional_ocr.md).
+
 `OKUFLOW_UCT_TIMING_TRACE=1` enables a cached process-wide metadata trace.
 Normal teardown writes once with exclusive creation under
 `%LOCALAPPDATA%/OkuFlow/uct-timing/uct-timing-<pid>-<steady-ns>-<n>.jsonl`.

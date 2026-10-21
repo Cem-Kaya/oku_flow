@@ -10,6 +10,10 @@ failed cleanup resources; camera callers must acknowledge release only after
 its completed status. These development changes still require hardware gates.
 
 Current contents:
+- opt-in supplemental UCT region execution on the existing recognition worker,
+  with full-deadline priority, current owned inputs and per-observation pending
+  evidence; shadow-only observation remains separate. See
+  [execution contract](../../docs/uct_active_regional_ocr.md).
 - optional saved-file FFmpeg/dav1d decoding behind an explicit private SDK and
   runtime opt-in, feeding the existing selected-video worker/leases/PCM path;
   native/archive fallback remains default. See

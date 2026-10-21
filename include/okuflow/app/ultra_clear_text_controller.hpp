@@ -582,6 +582,16 @@ private:
     std::uint64_t lastOcrGeneration_{};
     std::uint64_t lastOcrJob_{}; // a rejected older job cannot reset a newer marker
     bool haveLastOcr_{};
+    // Supplemental active jobs never update any of the full-submit markers
+    // above. One last full plan, one attempt per baseline interval, one job.
+    bool regionalOcrEnabled_{};
+    bool regionalAttempted_{};
+    bool regionalRequireFull_{};
+    bool regionalSuppressed_{}; // optional failure/overrun: until worker recreation
+    std::shared_ptr<const uct::RegionShadowPlan> regionalPlan_;
+    std::uint64_t regionalJob_{};
+    std::int64_t regionalSubmittedAtMs_{};
+    double regionalEstimateMs_{750.0}; // conservative first cost; nondecreasing
     bool lastResultMoved_{};
     bool lastResultEmpty_{};
 
