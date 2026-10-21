@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- Refuse supplemental UCT crop updates atomically when omissions, spelling
+  disagreement, protection or caps would withdraw existing owned words. Keep
+  their pending tickets, identities and freshness unchanged; full reads and
+  independent probes remain responsible for corrections. Clear superseded
+  queued-region tickets and attribute changed text publications to the current
+  causal result while identifying retained older proof.
+
 - Keep complete UCT sentences and uncertainty masks when a supplemental crop
   cuts their edges. Retain unobserved other-pane text without renewing its proof,
   reject truncated edge words before pending agreement, and yield optional work

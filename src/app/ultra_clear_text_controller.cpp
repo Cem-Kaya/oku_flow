@@ -1275,6 +1275,10 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
             const auto job=candidate?scheduler_->SubmitDevice(outcome.stamp,std::move(candidate))
                                     :scheduler_->Submit(outcome.stamp, std::move(outcome.pixels));
             if (job != 0) {
+                // A queued region can be coalesced without any completion.
+                // Successful newer full submission supersedes its ticket;
+                // an already-running old region is fenced by exact job id.
+                regionalJob_ = 0;
                 lastSubmitMs_ = now;
                 lastJobCoverage_ = viewScene;
                 changedSinceSubmit_ = false;
@@ -1406,10 +1410,12 @@ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
     } else if (result.output.ok) {
         consecutiveFailures_ = 0;
     }
+    // Whole COW snapshots retain proof separately from diagnostic causality.
+    const auto previousLines = uct::timing::Enabled() ? model_.Lines() : QVector<uct::AcceptedLine>{};
     const uct::AdmitVerdict verdict = advancingMediaScene_
         ? model_.AdmitAdvancingMedia(result, CurrentScene(), latestProbe_.get(), ModelTime(now))
         : model_.AdmitLiveCamera(result, CurrentScene(), latestProbe_.get(), now);
-    NoteTimingAdmission(result, verdict);
+    NoteTimingAdmission(result, verdict, 0, &previousLines);
     if (uct::timing::Enabled()) TraceRecognition(uct::timing::Event::Admit, scheduler_.get(), result,
         {static_cast<std::uint32_t>(verdict), static_cast<std::uint32_t>(model_.AcceptedWordCount())});
     if (verdict != uct::AdmitVerdict::kAccepted && verdict != uct::AdmitVerdict::kPending &&
@@ -1847,15 +1853,38 @@ void UltraClearTextController::FinishImmutableDetail()
 }
 
 void UltraClearTextController::NoteTimingAdmission(const uct::RecognitionResult& result,
-                                                   uct::AdmitVerdict verdict, std::uint32_t flags)
+                                                   uct::AdmitVerdict verdict, std::uint32_t flags,
+                                                   const QVector<uct::AcceptedLine>* previous)
 {
     if (!uct::timing::Enabled()) return;
     if (!model_.HasAcceptedText()) {
         timingAdmission_.reset();
         return;
     }
-    if (verdict != uct::AdmitVerdict::kAccepted && verdict != uct::AdmitVerdict::kContentMoved &&
-        !(immutableScene_ && verdict == uct::AdmitVerdict::kPending)) return;
+    if (!immutableScene_ && previous) {
+        // Verdict describes new glyph acceptance, not model mutation. A
+        // pending/empty full or regional result can remove text or add masks
+        // while another pane survives. Conversely an optional refusal changes
+        // nothing and must preserve the earlier causal publication ticket.
+        const auto& after = model_.Lines();
+        const auto sameLine = [](const auto& a, const auto& b) {
+            if (a.id != b.id || a.protectedSceneRects != b.protectedSceneRects ||
+                !SameColors(a.colors,b.colors) || a.words.size() != b.words.size()) return false;
+            for (int w = 0; w < a.words.size(); ++w) {
+                const auto& ac = a.words[w].colors; const auto& bc = b.words[w].colors;
+                if (ac.has_value() != bc.has_value() || (ac && !SameColors(*ac,*bc))) return false;
+            }
+            // A retained id keeps the whole old geometry/reference/proof and
+            // tokens. Only measured colors and protection can change in place.
+            return true;
+        };
+        if (previous->size() == after.size() &&
+            std::equal(previous->begin(),previous->end(),after.begin(),sameLine)) return;
+        if (std::any_of(after.begin(),after.end(),[&](const auto& line) {
+            return std::any_of(previous->begin(),previous->end(),[&](const auto& old) { return old.id == line.id; });
+        })) flags |= uct::timing::RetainedArtifact;
+    } else if (verdict != uct::AdmitVerdict::kAccepted && verdict != uct::AdmitVerdict::kContentMoved &&
+               !(immutableScene_ && verdict == uct::AdmitVerdict::kPending)) return;
     timingAdmission_ = uct::TimingKey(scheduler_->TimingProducerId(), uct::timing::Channel::Recognition,
                                     result.stamp, result.jobId, result.authority);
     timingAdmissionFlags_ = flags | (result.deviceInput ? uct::timing::DeviceInput : 0u) |

@@ -6523,6 +6523,34 @@ See [geometry/detail repair](uct_oriented_detail_repair.md) for acceptance limit
 
 ## Optional regional GPU execution proof
 
+`OverlayModel::AdmitImpl` stages regional line IDs and checks the complete
+post-cap proposal for withdrawal before committing lines or pending tickets.
+Every active owned word (confirmed or named by a reading token, including
+expired/hidden memory) needs its own ordered exact-text/geometry match; new
+protection intersecting a confirmed word must retain both its old geometry and
+the exact old mask. An old small mask cannot authorize a larger one. Refusal is
+an atomic `kEmpty` no-op, preserving complete objects and clocks. Full/probe
+authority supplies corrections. `regionalWithdrawalIsAtomic` and the separate
+memory/pending regressions exercise omissions, disagreement, repeated words,
+protection/caps and unconsumed identities.
+
+`UltraClearTextController::HandleProbeOutcome` clears `regionalJob_` only after
+a newer full submission succeeds. `activeQueuedRegionalIsSupersededByFull`
+uses `RecognitionScheduler::SetBeforeDequeueForTest`, a one-shot callback
+outside the scheduler mutex, to prove queued coalescing, renewed region
+eligibility and exact-job fencing. Ordinary workers have no callback.
+`UctControllerTestAccess` is a narrow friend fixture, not a runtime enqueue API.
+`activeRegionalWithdrawalDoesNotDemandExtraFull` checks that crop disagreement
+does not create pending/full-demand churn.
+
+`NoteTimingAdmission` receives a whole COW pre-admission line snapshot for
+nonimmutable results when tracing is enabled. Actual line replacement/removal
+and retained-object color/protection changes update causal identity regardless
+of new-glyph verdict. Surviving old IDs mark mixed proof. Exact optional no-ops
+keep earlier tickets. `timingNonimmutableMutationKeepsCausalTickets` inspects
+overlay/pane/accessibility getters directly and also runs under the existing
+trace-enabled pane-publication selector, independently of trace event loss.
+
 The window-free `maxine_navigation_tests` and `media_gpu_scene_tests` targets
 compile the common UCT model, planner and timing implementation used by their
 resident analysis pool. That pool now calls the production quad projection and

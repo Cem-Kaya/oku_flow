@@ -281,6 +281,7 @@ struct UctAdvancingMediaPresentation {
 // through stamp, age, residual and temporal-agreement checks.
 class UltraClearTextController final : public QObject {
     Q_OBJECT
+    friend struct UctControllerTestAccess;
 public:
     using RecognizerFactory = std::function<std::unique_ptr<uct::Recognizer>()>;
     using Clock = std::function<std::int64_t()>;
@@ -465,7 +466,7 @@ private:
     void RefreshOverlay(std::int64_t nowMs);
     void UpdateReadingText(bool shareTimingRevision = false);
     void NoteTimingAdmission(const uct::RecognitionResult& result, uct::AdmitVerdict verdict,
-                             std::uint32_t flags = 0);
+                             std::uint32_t flags = 0, const QVector<uct::AcceptedLine>* previous = nullptr);
     void UpdatePositionedTimingPublication(bool changed, bool positioned, bool clear = false);
     void UpdatePaneTimingPublication(bool sharePositionedRevision, bool clear);
     bool AnalysisHealthy() const;

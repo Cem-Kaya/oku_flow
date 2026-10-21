@@ -98,6 +98,21 @@ or accepted identities. This avoids treating the rejected candidate as a
 negative observation and needs no iterative ownership closure. A later baseline
 full read and independent probes retain their ordinary authority.
 
+Before committing, the complete capped regional proposal must also preserve
+every still-active stored word in an owned line. Matching is exact-text,
+one-to-one in reading order with the established geometry agreement threshold;
+repeated words cannot share one replacement. Intersecting protection is allowed
+only for the unchanged old word geometry and unchanged old mask; an existing
+tiny mask never authorizes enlarged protection. Resource caps cannot withdraw
+existing words. Confirmed words and words still named by a
+reading token are protected even when expired, hidden or reading-only; retired,
+unmapped slots are excluded. A refused transaction leaves whole accepted
+objects, masks, pending observation tickets, proof clocks and the next line ID
+unchanged. It creates no pending disagreement or extra full-demand loop and
+does not restore visibility or renew freshness. The one-region attempt remains
+spent. This deliberately defers corrections to baseline full reads and
+independent probes, rather than letting optional crop disagreements erase text.
+
 Maintained regressions exercise the actual `PaddleMergeRecognition` edge filter
 with tight fitted ink and wider detector bounds, including a wholly omitted
 top-edge line without a new probe. A separate overlapping wide/short sentence
@@ -133,6 +148,14 @@ returns full output increments `fullCalls` and `regionalAttempts`, not
 planner time and do not measure screen-reader publication. Metadata is bounded;
 there is no per-frame file I/O.
 
+A successful full submission clears the superseded regional controller ticket,
+including when the scheduler coalesces a queued region with no completion.
+Exact job IDs fence any late old regional completion from a newer region.
+Timing admission distinguishes new-glyph verdicts from actual model changes:
+pending/empty changes use the current result's causal identity, with a mixed
+retained-artifact flag when older proof survives. Optional no-ops leave existing
+tickets unchanged; each unchanged publication surface retains its own ticket.
+
 Model-free scheduler fixtures count actual backend calls, full priority/no queue
 growth, opt-out/probe exclusion, stale/source/geometry/authority/backward tickets,
 execution slack, held exclusion, unsupported/failed/ignored detail and overruns.
@@ -140,6 +163,22 @@ Controller fixtures compare baseline deadlines under focus pressure, latch
 optional failure, fence stale completion and retain the paused pair. Admission
 fixtures cover current-pixel other-pane retention, spanning masks, pending
 tickets and same-acquisition exclusion. Existing thresholds/caps are unchanged.
+
+New model-free regressions cover three-pixel edge omission, contained spelling
+disagreement, repeated-word count/order, protection/cap withdrawal, expired and
+invalid agreement memory, pending-ticket/ID rollback, and absence of extra full
+demand. A one-shot pre-dequeue fixture barrier exercises real queued-region
+coalescing and subsequent regional admission without timing-based resubmission.
+Direct consumer-ticket assertions cover regional and full pending/empty changes,
+retained proof, optional refusal and pan. The isolated CPU/PCH-off build and
+four-case tracked gate passed on 2026-10-22: `ultra_clear_text_contract`,
+`immutable_uct_contract`, `uct_timing_controller_contract` and
+`uct_timing_pane_publication_contract`, with zero skipped Qt rows, skips or
+unresolved failures in 121.05 seconds. This is scoped CPU evidence only;
+combined parent, shipping/CUDA, native UIA and physical-camera acceptance remain
+unrun here. Logs, including the repaired unsupported rectangle-hash compile
+attempt, remain under
+`Z:/Projects/OkuFlow/local-work-data/uct-regional-r11-20261022/`.
 
 The scoped CPU handoff records local validation separately. Actual cached-model
 GPU/source proof, combined CPU/CUDA integration, native UIA, physical camera,
