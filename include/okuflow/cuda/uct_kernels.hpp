@@ -26,6 +26,13 @@ void Similarity(const unsigned*, int, int, ProbeMap, const unsigned*, int, int, 
 void LineColors(const void*, std::size_t, int, int, const Rect*, int, Colors*, cudaStream_t);
 void InkBounds(const void*, std::size_t, int, int, const Ink*, const int*, int,
                 const Colors*, Fit*, cudaStream_t);
+// Rotated-frame counterpart of InkBounds, sample-for-sample identical to the
+// CPU FitOrientedWordInk reference. Origin/axes are the search quad's TL and
+// unit edge directions in pixels; the fit is returned in local pixel units.
+struct OrientedInk { double ox, oy, ux, uy, vx, vy, width, height, detectedWidth; int detached; double warpX{}, warpY{}; };
+struct OrientedFit { double u0, u1, v0, v1; int fitted; };
+void OrientedInkBounds(const void*, std::size_t, int, int, const OrientedInk*, const int*, int,
+                       const Colors*, OrientedFit*, cudaStream_t);
 // Domain-separated SHA-256 tree over every packed BGRA byte (padding excluded).
 void FingerprintLeaves(const void*, std::size_t, int, int, unsigned char*, cudaStream_t);
 void FingerprintParents(const unsigned char*, int, unsigned char*, cudaStream_t);

@@ -6,7 +6,9 @@
 #include <QBackingStore>
 #include <QEvent>
 #include <QFontMetricsF>
+#include <QLineF>
 #include <QPainter>
+#include <QPolygon>
 #include <QPaintEvent>
 #include <QRegion>
 #include <QScreen>
@@ -25,6 +27,28 @@ constexpr qreal kReferencePixelSize = 100.0;
 // Tiny glyphs gain nothing from replacement; leave the original camera text.
 constexpr qreal kMinProjectedHeight = 6.0;
 constexpr qreal kMinProjectedWidth = 3.0;
+// Words whose shapes share at least this fraction of the smaller one are
+// claiming the same ink. Correct neighbours (same or adjacent lines) touch
+// at most at kerning/descender edges.
+constexpr double kOverlapFraction = 0.2;
+
+QRectF PointBounds(const std::array<QPointF, 4>& points)
+{
+    qreal left = points[0].x(), right = left, top = points[0].y(), bottom = top;
+    for (const QPointF& point : points) {
+        left = std::min(left, point.x()); right = std::max(right, point.x());
+        top = std::min(top, point.y()); bottom = std::max(bottom, point.y());
+    }
+    return QRectF(QPointF(left, top), QPointF(right, bottom));
+}
+
+QRegion PolygonRegion(const std::array<QPointF, 4>& points, const QRect& bounds)
+{
+    QPolygon polygon;
+    polygon.reserve(4);
+    for (const QPointF& point : points) polygon << point.toPoint();
+    return QRegion(polygon).intersected(bounds);
+}
 
 // The one eligibility decision shared by the plate pass and the glyph pass.
 // The plate covers the original word, so it may only be painted when the
@@ -225,7 +249,16 @@ QVector<UltraClearTextOverlay::GlyphGeometry> UltraClearTextOverlay::ProjectedGl
 {
     QVector<GlyphGeometry> result;
     result.reserve(glyphs_.size());
-    for (const SceneGlyph& glyph : glyphs_) {
+    for (int i = 0; i < glyphs_.size(); ++i) {
+        const SceneGlyph& glyph = glyphs_[i];
+        if (glyph.oriented) {
+            PlannedWord planned;
+            if (PlanOriented(planned, glyph, uct::SceneQuadToView(transform_, width(), height(), words_[i].sceneQuad)))
+                result.push_back({planned.inkRect, planned.origin.y()});
+            else
+                result.push_back({});
+            continue;
+        }
         const QPointF origin = uct::SceneToViewPixel(transform_, width(), height(), glyph.origin);
         result.push_back({uct::SceneRectToView(transform_, width(), height(), glyph.inkRect), origin.y()});
     }
@@ -331,15 +364,46 @@ void UltraClearTextOverlay::RebuildGlyphLayout()
         std::nth_element(values.begin(), values.begin() + middle, values.end());
         return values[middle];
     };
-    QHash<std::uint64_t, QVector<int>> lines;
+    QHash<std::uint64_t, QVector<int>> lines, orientedLines;
     for (int i = 0; i < words_.size(); ++i) {
         // Unlabelled legacy/test words are independent, never one giant line.
         const std::uint64_t key = words_[i].lineId ? words_[i].lineId :
                                  std::numeric_limits<std::uint64_t>::max() - i;
-        lines[key].push_back(i);
+        (words_[i].sceneQuad.valid ? orientedLines : lines)[key].push_back(i);
     }
     glyphs_.clear();
     glyphs_.resize(words_.size());
+    // Rotated lines share one type size measured along their own height
+    // axis. Each word keeps its own fitted top: on a curled page the
+    // baseline follows the word, never a straight median across the arc.
+    // Ratios along one axis survive every later pan/zoom projection.
+    for (const QVector<int>& indices : orientedLines) {
+        QVector<qreal> sizes;
+        for (int i : indices) {
+            const QRectF ink = InkAtReference(words_[i].text);
+            const qreal h = uct::QuadHeight(words_[i].sceneQuad);
+            if (ink.height() > 0.0 && h > 0.0 && std::isfinite(h)) sizes.push_back(h / ink.height());
+        }
+        if (sizes.isEmpty()) continue;
+        const qreal scale = median(std::move(sizes));
+        for (int i : indices) {
+            const QRectF ink = InkAtReference(words_[i].text);
+            const qreal h = uct::QuadHeight(words_[i].sceneQuad);
+            SceneGlyph glyph;
+            if (!ink.isEmpty() && h > 0.0 && std::isfinite(h)) {
+                glyph.inkRect = words_[i].sceneQuad.Bounds();
+                glyph.origin = words_[i].sceneQuad.points[3];
+                glyph.referenceInk = ink;
+                glyph.colors = ReadableColors(words_[i].colors);
+                glyph.oriented = true;
+                glyph.heightRatio = scale * ink.height() / h;
+                glyph.baselineFraction = -ink.top() * scale / h;
+                glyph.valid = std::isfinite(glyph.heightRatio) && std::isfinite(glyph.baselineFraction) &&
+                              glyph.heightRatio > 0.0;
+            }
+            glyphs_[i] = glyph;
+        }
+    }
     for (const QVector<int>& indices : lines) {
         QVector<qreal> sizes;
         for (int i : indices) {
@@ -386,6 +450,101 @@ void UltraClearTextOverlay::RebuildGlyphLayout()
                           ink, ReadableColors(word.colors), true};
         }
     }
+    ResolveOverlaps();
+}
+
+void UltraClearTextOverlay::ResolveOverlaps()
+{
+    // Scene areas scale uniformly under every view transform, so the
+    // overlap fraction is decided once here rather than on each pan.
+    struct Item { int index; QRectF bounds; uct::TextQuad shape; double area; };
+    QVector<Item> items;
+    items.reserve(words_.size());
+    for (int i = 0; i < words_.size(); ++i) {
+        if (!glyphs_[i].valid) continue;
+        const uct::TextQuad shape = words_[i].sceneQuad.valid ? words_[i].sceneQuad
+                                                              : uct::TextQuad::FromRect(words_[i].sceneRect);
+        const double area = uct::QuadArea(shape);
+        if (area > 0.0 && std::isfinite(area)) items.push_back({i, shape.Bounds(), shape, area});
+    }
+    std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) {
+        return a.bounds.top() < b.bounds.top() || (a.bounds.top() == b.bounds.top() && a.index < b.index);
+    });
+    for (qsizetype a = 0; a < items.size(); ++a) {
+        for (qsizetype b = a + 1; b < items.size() && items[b].bounds.top() <= items[a].bounds.bottom(); ++b) {
+            if (!items[a].bounds.intersects(items[b].bounds)) continue;
+            const double smaller = std::min(items[a].area, items[b].area);
+            const double shared = uct::QuadIntersectionArea(items[a].shape, items[b].shape);
+            if (shared < kOverlapFraction * smaller) continue;
+            const int first = std::min(items[a].index, items[b].index);
+            const int second = std::max(items[a].index, items[b].index);
+            if (words_[first].text == words_[second].text && shared >= 0.5 * smaller) {
+                glyphs_[second].duplicate = true; // one observation; the twin replaces this ink
+            } else {
+                glyphs_[first].collision = glyphs_[second].collision = true;
+            }
+        }
+    }
+}
+
+bool UltraClearTextOverlay::PlanOriented(PlannedWord& planned, const SceneGlyph& glyph,
+                                         const uct::TextQuad& viewQuad) const
+{
+    planned.oriented = true;
+    planned.originalRect = planned.inkRect = planned.plateRect = {};
+    planned.original = planned.ink = planned.plate = {};
+    if (viewQuad.valid) {
+        planned.original = viewQuad.points;
+        planned.originalRect = PointBounds(viewQuad.points);
+    }
+    if (!viewQuad.valid || glyph.referenceInk.isEmpty()) return false;
+    const QPointF topLeft = viewQuad.points[0];
+    const QPointF baseline = viewQuad.points[1] - topLeft;
+    const qreal w = std::hypot(baseline.x(), baseline.y());
+    if (!(w > 0.0) || !std::isfinite(w)) return false;
+    planned.along = baseline / w;
+    planned.across = QPointF(-planned.along.y(), planned.along.x());
+    const qreal h = QPointF::dotProduct(viewQuad.points[3] - topLeft, planned.across);
+    if (!(h > 0.0) || !std::isfinite(h)) return false;
+    const QRectF& ink = glyph.referenceInk;
+    planned.scaleY = glyph.heightRatio * h / ink.height();
+    planned.scaleX = w / ink.width();
+    const qreal base = glyph.baselineFraction * h;
+    planned.origin = topLeft + planned.across * base - planned.along * (ink.left() * planned.scaleX);
+    planned.inkTop = ink.top() * planned.scaleY;
+    planned.inkBottom = (ink.top() + ink.height()) * planned.scaleY;
+    // Map the local word frame to all four corners. Rotation alone loses
+    // perspective/skew, including the exact affine projection of a tilted
+    // source into a differently shaped viewport.
+    QPolygonF unit, target;
+    unit << QPointF(0, 0) << QPointF(w, 0) << QPointF(w, h) << QPointF(0, h);
+    for (const auto& point : viewQuad.points) target << point;
+    QTransform frame;
+    if (!QTransform::quadToQuad(unit, target, frame)) return false;
+    const auto at = [&](qreal u, qreal v) { return frame.map(QPointF(u, v)); };
+    planned.original = viewQuad.points;
+    planned.ink = {at(0, base + planned.inkTop), at(w, base + planned.inkTop),
+                   at(w, base + planned.inkBottom), at(0, base + planned.inkBottom)};
+    const qreal pad = h * 0.12;
+    const qreal top = std::min<qreal>(0.0, base + planned.inkTop) - pad * 0.5;
+    const qreal bottom = std::max<qreal>(h, base + planned.inkBottom) + pad * 0.5;
+    planned.plate = {at(-pad, top), at(w + pad, top), at(w + pad, bottom), at(-pad, bottom)};
+    planned.originalRect = PointBounds(planned.original);
+    planned.inkRect = PointBounds(planned.ink);
+    planned.plateRect = PointBounds(planned.plate);
+    QPolygonF reference, inkTarget;
+    reference << ink.topLeft() << ink.topRight() << ink.bottomRight() << ink.bottomLeft();
+    for (const auto& point : planned.ink) inkTarget << point;
+    if (!QTransform::quadToQuad(reference, inkTarget, planned.glyphToView)) return false;
+    planned.angleDegrees = std::atan2(planned.along.y(), planned.along.x()) * 180.0 / 3.14159265358979323846;
+    const auto finite = [](const QRectF& r) {
+        return std::isfinite(r.x()) && std::isfinite(r.y()) && std::isfinite(r.width()) && std::isfinite(r.height());
+    };
+    // Size gates use the word's own height/width, not its rotated bound.
+    return finite(planned.originalRect) && finite(planned.inkRect) && finite(planned.plateRect) &&
+           std::isfinite(planned.scaleX) && std::isfinite(planned.scaleY) &&
+           h >= kMinProjectedHeight && w >= kMinProjectedWidth &&
+           planned.inkBottom - planned.inkTop >= kMinProjectedHeight;
 }
 
 void UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransform& transform,
@@ -448,6 +607,20 @@ void UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransfor
         planned.lineId = words_[i].lineId;
         planned.wordIndex = words_[i].wordIndex;
         plan.texts[i] = words_[i].text;
+        if (glyph.oriented) {
+            // Rotated plate and glyph follow the projected word quad. The
+            // plate is painted only together with its glyph, as upright.
+            const bool shaped = PlanOriented(planned, glyph, uct::SceneQuadToView(
+                transform, viewportSize.width(), viewportSize.height(), words_[i].sceneQuad));
+            const QRectF surface(clip.boundingRect());
+            planned.drawn = shaped && glyph.valid && !glyph.duplicate && !glyph.collision &&
+                            clip.intersects(planned.plateRect.intersected(surface).toAlignedRect()) &&
+                            clip.intersects(planned.inkRect.intersected(surface).toAlignedRect());
+            if (!planned.drawn && !glyph.duplicate && !planned.originalRect.isEmpty())
+                protectedInk += PolygonRegion(planned.original, bounds);
+            continue;
+        }
+        planned.oriented = false;
         const QRectF view = uct::SceneRectToView(transform, viewportSize.width(), viewportSize.height(), words_[i].sceneRect);
         const QRectF ink = uct::SceneRectToView(transform, viewportSize.width(), viewportSize.height(), glyph.inkRect);
         planned.originalRect = view;
@@ -458,11 +631,26 @@ void UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransfor
         const qreal pad = view.height() * 0.12;
         planned.plateRect = view.united(ink).adjusted(-pad, -pad * 0.5, pad, pad * 0.5);
         planned.drawn = ReplacementIsDrawable(glyph.valid, glyph.referenceInk, view, ink,
-                                              planned.plateRect, clip);
-        if (!planned.drawn && !view.isEmpty() && std::isfinite(view.x()) && std::isfinite(view.y()) &&
-            std::isfinite(view.width()) && std::isfinite(view.height()))
+                                              planned.plateRect, clip) &&
+                        !glyph.duplicate && !glyph.collision;
+        if (!planned.drawn && !glyph.duplicate && !view.isEmpty() && std::isfinite(view.x()) &&
+            std::isfinite(view.y()) && std::isfinite(view.width()) && std::isfinite(view.height()))
             protectedInk += QRegion(view.intersected(QRectF(bounds)).toAlignedRect());
     }
+    // A rotated word's bounding box covers its neighbours' corners. Test its
+    // exact polygons, after a cheap bounding-box rejection.
+    const auto touchesProtection = [&](const PlannedWord& planned) {
+        const QRect original = planned.originalRect.intersected(QRectF(bounds)).toAlignedRect();
+        const QRect ink = planned.inkRect.intersected(QRectF(bounds)).toAlignedRect();
+        if (!planned.oriented) return protectedInk.intersects(original) || protectedInk.intersects(ink);
+        if (!protectedInk.intersects(original) && !protectedInk.intersects(ink)) return false;
+        return protectedInk.intersects(PolygonRegion(planned.original, bounds)) ||
+               protectedInk.intersects(PolygonRegion(planned.ink, bounds));
+    };
+    const auto protectSource = [&](const PlannedWord& planned) {
+        protectedInk += planned.oriented ? PolygonRegion(planned.original, bounds)
+                                         : QRegion(planned.originalRect.intersected(QRectF(bounds)).toAlignedRect());
+    };
     // Never show a clipped fragment of an accepted word over protected ink.
     // A suppressed replacement's own source box becomes protected too; resolve
     // overlap chains before painting any plate so draw order cannot erase it.
@@ -472,10 +660,9 @@ void UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransfor
         changed = false;
         for (int i = 0; i < count; ++i) {
             PlannedWord& planned = plan.words[i];
-            if (planned.drawn && (protectedInk.intersects(planned.originalRect.intersected(QRectF(bounds)).toAlignedRect()) ||
-                                  protectedInk.intersects(planned.inkRect.intersected(QRectF(bounds)).toAlignedRect()))) {
+            if (planned.drawn && touchesProtection(planned)) {
                 planned.drawn = false;
-                protectedInk += QRegion(planned.originalRect.intersected(QRectF(bounds)).toAlignedRect());
+                protectSource(planned);
                 changed = true;
             }
         }
@@ -546,18 +733,28 @@ void UltraClearTextOverlay::PaintWords(QPainter& painter, const PaintPlan& plan)
     // Paint all plates before any glyphs so a neighbouring word's plate
     // cannot erase an overhang or descender already drawn.
     for (int i = 0; i < words_.size(); ++i) {
-        if (plan.words[i].drawn) {
-            painter.fillRect(plan.words[i].plateRect, glyphs_[i].colors.background);
+        const PlannedWord& planned = plan.words[i];
+        if (!planned.drawn) continue;
+        if (planned.oriented) {
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(glyphs_[i].colors.background);
+            painter.drawConvexPolygon(planned.plate.data(), static_cast<int>(planned.plate.size()));
+        } else {
+            painter.fillRect(planned.plateRect, glyphs_[i].colors.background);
         }
     }
+    painter.setBrush(Qt::NoBrush);
     for (int i = 0; i < words_.size(); ++i) {
         const PlannedWord& planned = plan.words[i];
         if (!planned.drawn) {
             continue;
         }
         painter.save();
-        painter.translate(planned.origin);
-        painter.scale(planned.scaleX, planned.scaleY);
+        if (planned.oriented) painter.setWorldTransform(planned.glyphToView, true);
+        else {
+            painter.translate(planned.origin);
+            painter.scale(planned.scaleX, planned.scaleY);
+        }
         painter.setFont(referenceFont_);
         painter.setPen(glyphs_[i].colors.foreground);
         painter.drawText(QPointF(0.0, 0.0), words_[i].text);
@@ -678,6 +875,36 @@ bool UltraClearTextOverlay::PaintedWord(std::uint64_t lineId, int wordIndex, con
     }
     const qreal extent = visualMax >= visualMin ? visualMax - visualMin : 0.0;
     const int units = static_cast<int>(text.size());
+    if (planned.oriented) {
+        // Characters follow the rotated baseline; each cell reports its
+        // screen bound, as the accessibility interface carries rectangles.
+        const auto fraction = [&](int position) {
+            return extent <= 0.0 ? qreal(position) / units : (carets[position] - visualMin) / extent;
+        };
+        const auto edge = [](const std::array<QPointF, 4>& q, qreal f, bool bottom) {
+            return bottom ? q[3] + (q[2] - q[3]) * f : q[0] + (q[1] - q[0]) * f;
+        };
+        const auto cell = [&](int a, int b) {
+            if (planned.drawn && extent > 0.0) {
+                const auto& ink = glyphs_[found.value()].referenceInk;
+                const auto at = [&](qreal u, qreal v) { return planned.glyphToView.map(QPointF(u, v)); };
+                return PointBounds({at(carets[a], ink.top()), at(carets[b], ink.top()),
+                                    at(carets[b], ink.bottom()), at(carets[a], ink.bottom())});
+            }
+            const auto& q = planned.drawn ? planned.ink : planned.original;
+            return PointBounds({edge(q, fraction(a), false), edge(q, fraction(b), false),
+                                edge(q, fraction(b), true), edge(q, fraction(a), true)});
+        };
+        out.characters.resize(units);
+        int clusterStart = 0;
+        for (int i = 1; i <= units; ++i) {
+            if (i < units && !std::isfinite(carets[i])) continue;
+            const QRectF bounds = cell(clusterStart, i);
+            for (int unit = clusterStart; unit < i; ++unit) out.characters[unit] = bounds;
+            clusterStart = i;
+        }
+        return true;
+    }
     const auto toX = [&](int position) {
         if (extent <= 0.0) {
             // No measurable advance: equal shares of the painted box.

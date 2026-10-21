@@ -587,6 +587,118 @@ __global__ void ink(const unsigned char *p, size_t pitch, int w, int h, const In
     }
 }
 
+// Rotated-frame ink fit. Mirrors FitOrientedWordInk exactly: identical step,
+// grid, nearest-pixel floor sampling (non-fused double arithmetic), run
+// selection, detached-mark rule and 35% shrink guard. One block per word.
+__device__ bool orientedInkAt(const unsigned char *p, size_t pitch, int w, int h,
+                              const OrientedInk &a, int step, int iu, int iv, int threshold, int polarity)
+{
+    const double du = __dmul_rn(double(iu), double(step)), dv = __dmul_rn(double(iv), double(step));
+    const double f = __dmul_rn(__ddiv_rn(du, a.width), __ddiv_rn(dv, a.height));
+    const int x = int(floor(__dadd_rn(__dadd_rn(__dadd_rn(a.ox, __dmul_rn(du, a.ux)), __dmul_rn(dv, a.vx)), __dmul_rn(a.warpX, f))));
+    const int y = int(floor(__dadd_rn(__dadd_rn(__dadd_rn(a.oy, __dmul_rn(du, a.uy)), __dmul_rn(dv, a.vy)), __dmul_rn(a.warpY, f))));
+    if (x < 0 || y < 0 || x >= w || y >= h)
+        return false;
+    const int v = luma(p + size_t(y) * pitch + size_t(x) * 4);
+    return polarity ? v < threshold : v > threshold;
+}
+__global__ void orientedInk(const unsigned char *p, size_t pitch, int w, int h, const OrientedInk *words,
+                            const int *lines, const Colors *cs, OrientedFit *out)
+{
+    const int i = blockIdx.x, t = threadIdx.x;
+    const auto a = words[i];
+    const auto c = cs[lines[i]];
+    __shared__ int rows[8192], total, top, bottom, left, right, threshold, polarity, step, usable, columns, count;
+    if (!t)
+    {
+        out[i] = {0, 0, 0, 0, 0};
+        total = 0;
+        left = 1 << 30;
+        right = -1;
+        const int fg = (77 * c.foreground[0] + 150 * c.foreground[1] + 29 * c.foreground[2]) / 256;
+        const int bg = (77 * c.background[0] + 150 * c.background[1] + 29 * c.background[2]) / 256;
+        usable = abs(fg - bg) >= 24 && a.width >= 1 && a.height >= 1 && isfinite(a.width) && isfinite(a.height);
+        threshold = (fg + bg) / 2;
+        polarity = fg < bg;
+        step = 1;
+        columns = count = 0;
+        if (usable)
+        {
+            step = max(max(1, int(ceil(sqrt(a.width * a.height / 16384.0)))),
+                       max(int(ceil(a.height / 8192.0)), int(ceil(a.width / 8192.0))));
+            columns = int(ceil(a.width / step));
+            count = int(ceil(a.height / step));
+            usable = columns > 0 && count > 0 && count <= 8192;
+        }
+    }
+    __syncthreads();
+    if (!usable)
+        return;
+    for (int y = t; y < count; y += 256)
+        rows[y] = 0;
+    __syncthreads();
+    for (int k = t; k < columns * count; k += 256)
+    {
+        if (!orientedInkAt(p, pitch, w, h, a, step, k % columns, k / columns, threshold, polarity))
+            continue;
+        atomicAdd(rows + k / columns, 1);
+        atomicAdd(&total, 1);
+    }
+    __syncthreads();
+    if (!t)
+    {
+        usable = total >= 8;
+        // Runs exactly as the CPU builds them: empty rows are skipped and an
+        // ink row more than two sample rows below the run starts a new run.
+        // The y == count sentinel closes the last run; the first maximum wins.
+        int mt = -1, mb = -1, mass = -1, rt = -1, rb = -1, rm = 0;
+        for (int y = 0; y <= count; ++y)
+        {
+            if (y < count && !rows[y]) continue;
+            if (y < count && rt >= 0 && y - rb <= 2) { rb = y; rm += rows[y]; continue; }
+            if (rt >= 0 && rm > mass) { mt = rt; mb = rb; mass = rm; }
+            if (y < count) { rt = rb = y; rm = rows[y]; }
+        }
+        usable = usable && mass >= total * .55;
+        top = mt;
+        bottom = mb;
+        if (usable && a.detached)
+        {
+            rt = -1;
+            for (int y = 0; y <= count; ++y)
+            {
+                if (y < count && !rows[y]) continue;
+                if (y < count && rt >= 0 && y - rb <= 2) { rb = y; rm += rows[y]; continue; }
+                if (rt >= 0 && rt != mt && rm <= mass * .3)
+                {
+                    const int gap = max(max(top - rb, rt - bottom), 0) * step;
+                    if (gap <= fmax(2.0, a.height * .22)) { top = min(top, rt); bottom = max(bottom, rb); }
+                }
+                if (y < count) { rt = rb = y; rm = rows[y]; }
+            }
+        }
+    }
+    __syncthreads();
+    if (!usable)
+        return;
+    for (int k = t; k < columns * (bottom - top + 1); k += 256)
+    {
+        const int iu = k % columns, iv = top + k / columns;
+        if (!orientedInkAt(p, pitch, w, h, a, step, iu, iv, threshold, polarity))
+            continue;
+        atomicMin(&left, iu);
+        atomicMax(&right, iu);
+    }
+    __syncthreads();
+    if (!t && right >= left)
+    {
+        const double u0 = double(left) * step, u1 = fmin(a.width, double(right) * step + step);
+        const double v0 = double(top) * step, v1 = fmin(a.height, double(bottom) * step + step);
+        if (u1 - u0 >= a.detectedWidth * .35 && v1 - v0 >= a.height * .35)
+            out[i] = {u0, u1, v0, v1, 1};
+    }
+}
+
 // SHA-256 compression is written here from the published algorithm. Each leaf
 // hashes one complete 4096-byte packed source chunk. Parents hash at most 16
 // child digests. Distinct leaf/parent tags prevent structural ambiguity.
@@ -721,6 +833,13 @@ void InkBounds(const void *p, size_t pitch, int w, int h, const Ink *words, cons
     if (n)
         validation::ink<<<n, 256, 0, s>>>(static_cast<const unsigned char *>(p), pitch, w, h, words,
                                           lines, cs, out);
+}
+void OrientedInkBounds(const void *p, size_t pitch, int w, int h, const OrientedInk *words, const int *lines,
+                       int n, const Colors *cs, OrientedFit *out, cudaStream_t s)
+{
+    if (n)
+        validation::orientedInk<<<n, 256, 0, s>>>(static_cast<const unsigned char *>(p), pitch, w, h, words,
+                                                  lines, cs, out);
 }
 void FingerprintLeaves(const void *p, size_t pitch, int w, int h, unsigned char *out,
                        cudaStream_t s)

@@ -202,6 +202,11 @@ struct UctTiming {
     // bound lives in the model's freshness policy (350 ms of media PTS);
     // a no-analysis gap is retained only while both bounds hold.
     std::int64_t mediaValidationFreshnessMs{350};
+    // Paused visible detail: a view must stay unchanged this long before one
+    // bounded region of the retained selected/neighbour pair is re-detected.
+    std::int64_t immutableDetailSettleMs{300};
+    // Detector enlargement bound for that region (clamped to [1, 6]).
+    double immutableDetailMagnification{uct::kMaximumDetailMagnification};
 };
 
 // Full processed-scene input retained by the selected-media owner. The
@@ -413,6 +418,10 @@ public:
     // empty unless UCT is drawing glyphs now, each glyph word cross-checked
     // against the overlay's word set.
     UctScreenTextSnapshot ScreenTextSnapshot() const;
+    // Visible-detail diagnostics: completed/abandoned regions for the current
+    // selection, and the pair currently in flight (if any).
+    std::uint64_t ImmutableDetailPasses() const noexcept { return immutableDetailPasses_; }
+    std::optional<uct::DetailFocus> ActiveImmutableDetail() const { return immutableDetailFocus_; }
 
 signals:
     void recognitionAdmitted(int verdict);
@@ -433,6 +442,14 @@ private:
     bool HasProvenImmutableArtifact() const;
     void StopImmutableRefinement();
     void HandleImmutableResult(uct::RecognitionResult result);
+    // Visible detail of a paused selection: after the view settles, re-detect
+    // only the visible source region of the SAME selected image and its real
+    // neighbour at a bounded enlargement. Both stay their original
+    // acquisitions; new glyphs still need the neighbour's independent proof.
+    void ScheduleImmutableDetail();
+    void SubmitImmutableDetailIfUseful();
+    std::optional<uct::DetailFocus> ImmutableDetailFocus() const;
+    void FinishImmutableDetail();
     uct::SourceStamp ImmutableStamp(const UctImmutableFrame& frame) const;
     void SubmitAdvancingMediaProbe();
     // Media model clock: the latest DISPLAYED frame's real media PTS while
@@ -517,6 +534,11 @@ private:
     bool immutableRetryExhausted_{};
     std::optional<std::int64_t> immutableRetryStartedAtMs_;
     bool immutableCorroborationAttempted_{};
+    QTimer* immutableDetailTimer_{};
+    std::optional<uct::DetailFocus> immutableDetailFocus_; // pair in flight
+    struct DetailCoverage { QRect region; double magnification{}; };
+    QVector<DetailCoverage> immutableDetailDone_; // bounded, current selection only
+    std::uint64_t immutableDetailPasses_{};
 
     bool enabled_{};
     bool enabledByUser_{};
