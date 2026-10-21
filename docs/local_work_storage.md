@@ -17,6 +17,12 @@ These preserve Git registrations, T3 thread bindings and existing absolute
 CMake/SDK paths. They do not store a second copy on C:. Disk analyzers that
 follow junctions can still display the relocated files below their old paths.
 
+The synthetic bundle-publication fixture resolves its own scratch-root junction
+to the physical destination before creating cases. Publication itself still
+rejects reparse paths at every ancestor and inside a bundle; the dedicated
+reparse-refusal scenario remains unchanged. This avoids mistaking the workstation
+storage redirect for a bundle being published through an unsafe path.
+
 Windows holds this thread's active `feature-uct-recap-player` directory open.
 Its roughly 20 MiB of live source remains on C:; its `build` directory is a
 junction to `Z:\Projects\OkuFlow\t3-worktrees\feature-uct-recap-player\build`.

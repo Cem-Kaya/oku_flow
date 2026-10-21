@@ -3,7 +3,14 @@
 [CmdletBinding()]
 param([ValidateSet('All','Exchange','Refusals','Rollback')][string]$CaseSet = 'All')
 $ErrorActionPreference = 'Stop'
-$work = Join-Path $env:LOCALAPPDATA ('OkuFlow/bundle-publication-fixtures/' + [Guid]::NewGuid().ToString('N'))
+$fixtureRoot = Join-Path $env:LOCALAPPDATA 'OkuFlow/bundle-publication-fixtures'
+New-Item -ItemType Directory -Path $fixtureRoot -Force | Out-Null
+# The owner's large fixture root may have moved to another drive. Use its
+# physical destination for synthetic cases; the publisher must still refuse
+# every reparse path presented to it, including the explicit refusal case.
+$physicalRoot = (Get-Item -LiteralPath $fixtureRoot -Force).ResolveLinkTarget($true)
+if ($physicalRoot) { $fixtureRoot = $physicalRoot.FullName }
+$work = Join-Path $fixtureRoot ([Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $work -Force | Out-Null
 $publisher = Join-Path $PSScriptRoot 'publish_release_bundle.ps1'
 $script:caseWatch = $null

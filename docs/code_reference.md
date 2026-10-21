@@ -6500,6 +6500,12 @@ See [geometry/detail repair](uct_oriented_detail_repair.md) for acceptance limit
 
 ## Optional regional GPU execution proof
 
+The window-free `maxine_navigation_tests` and `media_gpu_scene_tests` targets
+compile the common UCT model, planner and timing implementation used by their
+resident analysis pool. That pool now calls the production quad projection and
+reference planners; omitting these sources leaves unresolved geometry symbols.
+The targets retain their existing fake Maxine runtime, CUDA kernels and gates.
+
 The optional `uct_active_regional_test::Run` / `optionalActiveRegionalProof`
 fixture uses cached M/M N8 plans and two real owned acquisitions for actual
 full/regional/full calls. The final full read retains the second acquisition's
