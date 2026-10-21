@@ -31,6 +31,11 @@ without merging adjacent identical words. The painter also suppresses duplicate
 observations and leaves original pixels where different strings claim the same
 ink. Protected omissions, glyphs and plates use the same eligibility decision.
 The protection closure remains bounded. No interpolation grants tracking proof.
+Projected uncertainty cuts and word shapes use one half-open pixel-centre
+coverage grid. Independently rounding both sides outward previously made
+disjoint fractional spans overlap by a pixel, suppressing a newly proved word
+and sometimes its neighbour. Tiny punctuation without a covered centre still
+protects a conservative pixel. The same plan governs live paint and exports.
 
 ## Paused-frame checks
 
@@ -131,3 +136,11 @@ The final runs use `final-*-1-receipt.json`; earlier intermediate evidence is
 retained. Optional N1/N8 strict comparison failures remain separate failures.
 Full-matrix/shared-source equivalence, native desktop, Windows screen-reader,
 camera and packaged-release acceptance remain pending.
+
+The fractional-protection follow-up adds eight offscreen real-paint cases:
+upright and quad-framed words at two zoom levels and fractional pan offsets,
+with the uncovered punctuation pixels checked unchanged. All eight failed
+before the coverage repair. Afterwards `ultra_clear_text_contract` passes
+all 205 Qt rows, including the existing glyph/plate eligibility cases, with
+no skipped rows (31.84 seconds, CPU/PCH off). This focused result does not
+complete combined or native acceptance; the original failed gate is retained.

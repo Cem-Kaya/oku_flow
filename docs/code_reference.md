@@ -4990,6 +4990,10 @@ replies, testing convergence, permanent failure, exit and expiry without OBS.
 `UltraClearTextOverlay::RebuildGlyphLayout` caches ink metrics and a robust
 shared type size/baseline per accepted OCR line. `SceneWord::lineId` is carried
 from the model through the controller; unlabeled words remain independent.
+`layoutGroupId` overrides only the cached typography key, falling back to
+`lineId` for existing words. Regional additions can retain the old reading/UIA
+key while sharing type size and baseline only with their incoming OCR group.
+The geometry, proof and reading identities are unchanged by this layout key.
 `ProjectedGlyphs` exposes the same cached layout reprojected for diagnostics.
 Paint draws every original/replacement union plate before any sharp letters,
 so adjacent plates cannot erase previously drawn overhangs. The offscreen
@@ -6340,6 +6344,25 @@ proved words without renumbering old UIA identities. `ScreenLines` validates
 that mapping and exposes only eligible named glyphs; `AcceptedWordCount` counts
 active named slots rather than retired duplicate reading-only slots.
 
+`AcceptedWord::layoutGroupId`, `uct::SceneWord::layoutGroupId` and the overlay's
+matching trailing field decouple typography from reading ownership. Zero uses
+the owning `lineId`. An independently proved word appended to an older reading
+line keeps its incoming nonzero group, or its incoming candidate line ID. Old
+words keep their group, ID/index, source geometry, references and clocks.
+`UltraClearTextController::RefreshOverlay` forwards and compares this field;
+both paused-proof overlay conversions also retain it. Painter consumption of
+the separate group is an independent integration change.
+
+`MergeImmutableCoverage` indexes ordinary uncertainty extents alongside line
+bounds. Each independently proved incoming word that is admitted or matches a
+retained glyph carves its footprint from nearby retained uncertainty, regardless
+of reading-line ownership. Residual rectangles preserve uncovered punctuation;
+the shared 32768-rectangle cap refuses an overflowing cut without changing that
+line's protection. Persistent `immutableConflictRects_` never enter this carving
+path. `SceneWords` adds hidden-line fallback bounds only for eligible glyphs:
+reading-only words already have explicit masks, and retired slots must not
+restore their former full boxes over a newly proved boundary word.
+
 The explicit `uct_paused_video_test::Run` / `optionalPausedVideoProof` diagnostic
 uses existing pinned M/M N8 plans and an inference-only SDK, actual owned CUDA
 inputs, production worker corroboration and immutable admission. It records
@@ -6426,6 +6449,11 @@ keeps the rectangle fast path. `PlannedWord` stores fixed-size polygons and
 `glyphToView`; live paint, snapshot paint and actual character geometry use the
 same plan. `ComputePaintPlan` preserves exact polygon protection for oriented
 words and caps protection closure at eight passes before keeping original ink.
+`PixelCoverage` snaps projected rectangles and polygon vertices to the same
+half-open pixel-centre grid. `ProtectedRegion` retains a conservative pixel
+for a punctuation span containing no centre. Fractional remainders of a
+carved uncertainty box therefore cannot acquire a false shared row/column
+with the proved word and start a protection cascade over its neighbour.
 See [geometry/detail repair](uct_oriented_detail_repair.md) for acceptance limits.
 
 ## Oriented local UCT color preparation

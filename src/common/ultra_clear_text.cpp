@@ -2662,7 +2662,12 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
                          static_cast<int>(std::clamp(std::floor(rect.bottom() * 64), 0., 63.))};
     };
     const auto indexLine = [&](qsizetype index) {
-        const auto [first, last] = rowRange(retained[index].sceneRect.translated(retained[index].sceneOffset));
+        const auto& line = retained[index];
+        QRectF bounds = line.sceneRect;
+        // Loose uncertainty can reach another row even when the accepted
+        // glyphs and the reading line do not. Index that protection too.
+        for (const auto& rect : line.protectedSceneRects) bounds = bounds.united(rect);
+        const auto [first, last] = rowRange(bounds.translated(line.sceneOffset));
         for (int row = first; row <= last; ++row) rows[row].push_back(index);
     };
     const auto nearby = [&](const QRectF& rect) {
@@ -2772,6 +2777,7 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
         if (first) line.readingWordIndices = std::move(indexes);
         return first;
     };
+    QVector<QRectF> provedFootprints;
     for (qsizetype n = 0; n < incoming.size(); ++n) {
         auto& candidate = incoming[n];
         const auto candidateIndexes = tokenIndexes(candidate);
@@ -2801,7 +2807,12 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
                                 existing.colors ? &*existing.colors : &old.colors);
                     }
             }
-            if (duplicate) { keep[w] = false; continue; }
+            if (duplicate) {
+                if (word.glyphEligible && IsShown(candidate, nowMs, selectedFrameSeq))
+                    provedFootprints.push_back(rect);
+                keep[w] = false;
+                continue;
+            }
             AcceptedLine* target = nullptr;
             for (const auto o : neighbors)
                 if (retained[o].sceneRect.translated(retained[o].sceneOffset).contains(rect)) {
@@ -2836,6 +2847,7 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
             const auto retiredPosition = retireReadingOnly(replacement, wordShape);
             auto indexes = tokenIndexes(replacement);
             AcceptedWord appended = word;
+            if (!appended.layoutGroupId) appended.layoutGroupId = candidate.id;
             appended.sceneRect = rect.translated(-replacement.sceneOffset);
             if (appended.sceneQuad.valid)
                 appended.sceneQuad = word.sceneQuad.Translated(candidate.sceneOffset - replacement.sceneOffset);
@@ -2860,6 +2872,7 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
             tokenCount += replacement.readingTokens.size() - target->readingTokens.size();
             ++wordCount;
             *target = std::move(replacement);
+            provedFootprints.push_back(rect);
         }
         if (std::none_of(keep.begin(), keep.end(), [](bool value) { return value; })) continue;
         AcceptedLine fragment = candidate;
@@ -2888,10 +2901,21 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
                     fits = unprotect(fragment, absolute(old, word)) && fits;
         }
         if (!fits) { protectedCount -= fragment.protectedSceneRects.size(); continue; }
+        if (IsShown(fragment, nowMs, selectedFrameSeq))
+            for (const auto& word : fragment.words)
+                if (word.glyphEligible) provedFootprints.push_back(absolute(fragment, word));
         wordCount += fragment.words.size(); tokenCount += fragment.readingTokens.size();
         retained.push_back(std::move(fragment));
         indexLine(retained.size() - 1);
     }
+    // Proof belongs to the selected pixels, not to the line chosen for reading
+    // ownership. Carve every admitted incoming footprint from ordinary nearby
+    // uncertainty, including another retained line's loose low-confidence box.
+    // Failed cuts keep their original protection; contradiction blocks remain
+    // separate and are never passed to unprotect.
+    for (const auto& rect : provedFootprints)
+        for (const auto index : nearby(rect))
+            if (!retained[index].protectedSceneRects.isEmpty()) unprotect(retained[index], rect);
     lines_ = std::move(retained);
     if (std::any_of(lines_.begin(), lines_.end(), [&](const auto& line) {
             return IsShown(line, nowMs, selectedFrameSeq);
@@ -3469,7 +3493,11 @@ QVector<SceneWord> OverlayModel::SceneWords(std::int64_t nowMs, std::uint64_t cu
             protectedRects.push_back(r.translated(line.sceneOffset));
         if (!IsShown(line, nowMs, currentFrameSeq))
             for (const AcceptedWord& word : line.words)
-                protectedRects.push_back(word.sceneRect.translated(line.sceneOffset));
+                // Active reading-only uncertainty already has an explicit
+                // mask. A retired slot must not restore its whole old box
+                // after independently proved ink was carved from that mask.
+                if (word.glyphEligible)
+                    protectedRects.push_back(word.sceneRect.translated(line.sceneOffset));
     }
     for (const AcceptedLine& line : lines_) {
         if (!IsShown(line, nowMs, currentFrameSeq)) {
@@ -3480,7 +3508,8 @@ QVector<SceneWord> OverlayModel::SceneWords(std::int64_t nowMs, std::uint64_t cu
             if (!word.glyphEligible) continue;
             words.push_back({word.text, word.sceneRect.translated(line.sceneOffset), word.colors.value_or(line.colors), line.id,
                              protectedRects, i,
-                             word.sceneQuad.valid ? word.sceneQuad.Translated(line.sceneOffset) : TextQuad{}});
+                             word.sceneQuad.valid ? word.sceneQuad.Translated(line.sceneOffset) : TextQuad{},
+                             word.layoutGroupId});
         }
     }
     return words;
