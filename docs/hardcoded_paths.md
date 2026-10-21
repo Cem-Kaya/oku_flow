@@ -136,6 +136,12 @@ Accepted background brightness uses 64 fixed levels; same-polarity foreground/
 background changes up to 8 RGB channel levels retain the prior color. A neutral
 ink channel spread up to 16 snaps to pure black/white. Only replacement colors
 are stabilized; the camera image is not quantized to a global palette.
+Oriented word colors use the detected bilinear frame for body/corner/perimeter
+samples. Oriented ink fitting removes eight-connected components spanning
+opposite search edges, with at most 32768 cells, 8192 columns and 4096 rows.
+CUDA uses about 46 KiB fixed shared scratch and at most 64 full propagation
+scans; incomplete propagation preserves detector geometry. CPU queue fitting
+is exact/linear; incomplete CUDA fitting is conservative, not a parity claim.
 
 ## Browser notes transcription
 

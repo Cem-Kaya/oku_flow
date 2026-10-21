@@ -5,6 +5,9 @@
 // download, native window or app settings are involved.
 #include "uct_resident_diagnostic.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
+#if OKUFLOW_ENABLE_CUDA
+#include "okuflow/cuda/uct_kernels.hpp"
+#endif
 
 namespace uct_paused_video_test {
 // Explicit diagnostic bridge: complete one real Windows selected/neighbour
@@ -364,6 +367,80 @@ inline void Run()
                 {"lineProof", lineProof}, {"wordProof", wordProof}, {"glyphEligible", drawn}});
         }
     }
+    // Diagnostic-only replay of retained search frames/raw colors. Never
+    // downloads pixels or contributes to the worker's measured duration.
+    const auto fitReplay = [&](const SharedDeviceImage& input, const RecognitionOutput& output) {
+        QVector<gpu::OrientedInk> frames; QVector<gpu::Colors> colors; QVector<int> indices;
+        QJsonArray words;
+        for (const auto& line : output.lines) for (const auto& word : line.words) {
+            if (!word.paddedBounds || word.disposition != TokenDisposition::kCandidate ||
+                !QuadIsRotated(word.quadPx) || !word.colors) continue;
+            const auto& q = word.inkSearchQuadPx.valid ? word.inkSearchQuadPx : word.quadPx;
+            const double w=QuadWidth(q),h=QuadHeight(q); const auto origin=q.points[0];
+            const auto u=(q.points[1]-origin)/w,v=(q.points[3]-origin)/h;
+            const auto warp=q.points[2]-q.points[1]-q.points[3]+origin;
+            bool marks=word.text.contains('i',Qt::CaseInsensitive)||word.text.contains('j',Qt::CaseInsensitive);
+            for(const auto c:word.text.normalized(QString::NormalizationForm_D))marks=marks||c.isMark()||QStringLiteral("!?:;").contains(c);
+            frames.push_back({origin.x(),origin.y(),u.x(),u.y(),v.x(),v.y(),w,h,QuadWidth(word.quadPx),int(marks),warp.x(),warp.y()});
+            const auto& fg=word.colors->foreground;const auto& bg=word.colors->background;
+            colors.push_back({{fg.red(),fg.green(),fg.blue()},{bg.red(),bg.green(),bg.blue()}});
+            indices.push_back(indices.size());
+            words.push_back(QJsonObject{{"text",word.text},{"productionFitted",word.inkFitted}});
+        }
+        if(frames.isEmpty())return QJsonObject{{"words",words}};
+        auto* df=static_cast<gpu::OrientedInk*>(uploads.Allocate(frames.size()*sizeof(gpu::OrientedInk)));
+        auto* dc=static_cast<gpu::Colors*>(uploads.Allocate(colors.size()*sizeof(gpu::Colors)));
+        auto* di=static_cast<int*>(uploads.Allocate(indices.size()*sizeof(int)));
+        auto* dr=static_cast<gpu::OrientedFit*>(uploads.Allocate(frames.size()*sizeof(gpu::OrientedFit)));
+        QString error;
+        if(!df||!dc||!di||!dr||!input->WaitReady(stream.value,error))return QJsonObject{{"error","Fit replay input/allocation failed."}};
+        if(cudaMemcpyAsync(df,frames.constData(),frames.size()*sizeof(gpu::OrientedInk),cudaMemcpyHostToDevice,stream.value)!=cudaSuccess||
+           cudaMemcpyAsync(dc,colors.constData(),colors.size()*sizeof(gpu::Colors),cudaMemcpyHostToDevice,stream.value)!=cudaSuccess||
+           cudaMemcpyAsync(di,indices.constData(),indices.size()*sizeof(int),cudaMemcpyHostToDevice,stream.value)!=cudaSuccess)
+            return QJsonObject{{"error","Fit replay descriptor upload failed."}};
+        struct Events {
+            cudaEvent_t begin{},end{};
+            ~Events(){if(begin)cudaEventDestroy(begin);if(end)cudaEventDestroy(end);}
+        } events;
+        if(cudaEventCreate(&events.begin)!=cudaSuccess||cudaEventCreate(&events.end)!=cudaSuccess)
+            return QJsonObject{{"error","Fit replay event creation failed."}};
+        QJsonArray kernelMs;QVector<gpu::OrientedFit> fits(frames.size());
+        for(int pass=0;pass<4;++pass) {
+            if(cudaEventRecord(events.begin,stream.value)!=cudaSuccess)return QJsonObject{{"error","Fit replay timing failed."}};
+            gpu::OrientedInkBounds(input->Data(),input->pitch,input->width,input->height,df,di,frames.size(),dc,dr,stream.value);
+            if(cudaEventRecord(events.end,stream.value)!=cudaSuccess||
+               cudaMemcpyAsync(fits.data(),dr,fits.size()*sizeof(gpu::OrientedFit),cudaMemcpyDeviceToHost,stream.value)!=cudaSuccess||
+               cudaStreamSynchronize(stream.value)!=cudaSuccess)return QJsonObject{{"error","Fit replay completion failed."}};
+            float ms{};if(cudaEventElapsedTime(&ms,events.begin,events.end)!=cudaSuccess)return QJsonObject{{"error","Fit replay elapsed timing failed."}};
+            if(pass)kernelMs.push_back(ms);
+        }
+        QJsonObject histogram;int complete=0,fitted=0;
+        for(int i=0;i<fits.size();++i) {
+            const auto& fit=fits[i];auto item=words[i].toObject();
+            const auto reason=[&] {
+                switch(fit.reason) {
+                case gpu::OrientedFitReason::InvalidInput:return "invalid-input";
+                case gpu::OrientedFitReason::Incomplete:return "propagation-cap";
+                case gpu::OrientedFitReason::UnanchoredInk:return "unanchored-ink";
+                case gpu::OrientedFitReason::TooFewSamples:return "too-few-samples";
+                case gpu::OrientedFitReason::AmbiguousBands:return "ambiguous-bands";
+                case gpu::OrientedFitReason::ShrinkGuard:return "shrink-guard";
+                case gpu::OrientedFitReason::Fitted:return "fitted";
+                }return "unknown";
+            };
+            item.insert("replayReason",QString::fromLatin1(reason()));
+            item.insert("passes",fit.propagationPasses);item.insert("complete",bool(fit.propagationComplete));item.insert("replayFitted",bool(fit.fitted));words[i]=item;
+            const auto key=QString::number(fit.propagationPasses);histogram[key]=histogram.value(key).toInt()+1;
+            complete+=bool(fit.propagationComplete);fitted+=bool(fit.fitted);
+        }
+        return QJsonObject{{"words",words},{"complete",complete},{"incomplete",int(fits.size())-complete},
+            {"replayFitted",fitted},{"passHistogram",histogram},{"kernelMs",kernelMs},
+            {"scope","Diagnostic retained-search/color replay; one warmup, three CUDA event samples; outside actual worker duration."}};
+    };
+    const auto selectedFitReplay=fitReplay(selectedInput,selected->result.output);
+    const auto neighbourFitReplay=fitReplay(neighbourInput,neighbour->result.output);
+    QVERIFY2(!selectedFitReplay.contains("error"),qPrintable(selectedFitReplay.value("error").toString()));
+    QVERIFY2(!neighbourFitReplay.contains("error"),qPrintable(neighbourFitReplay.value("error").toString()));
     const QJsonObject report{{"selectedPath", selectedPath}, {"neighbourPath", neighbourPath},
         {"selectedMs", selectedPts}, {"neighbourMs", neighbourPts},
         {"selectedSha256", FileSha256(selectedPath)}, {"neighbourSha256", FileSha256(neighbourPath)},
@@ -373,6 +450,7 @@ inline void Run()
         {"selectedCandidates", CandidateWords(selected->result.output)}, {"shownWords", int(shown.size())},
         {"paintedWords", painted}, {"paintedCount", paintedCount},
         {"selectedWorkerMs", selected->result.durationMs}, {"neighbourWorkerMs", neighbour->result.durationMs},
+        {"selectedFitReplay",selectedFitReplay},{"neighbourFitReplay",neighbourFitReplay},
         {"sourceDigestsDiffer", selected->result.sourcePixelDigest != neighbour->result.sourcePixelDigest},
         {"words", words}, {"readingText", model.ReadingText(0, selectedStamp.frameSeq)},
         {"imageEgress", selectedInput->Read().egress + neighbourInput->Read().egress},

@@ -1856,6 +1856,23 @@ selected yellow buttons, antialiased ink, clipped rectangles and dense glyphs
 whose corners contain ink. These descriptor checks use synthetic owned pixels,
 not a real-camera or display-color acceptance claim.
 
+The geometry helpers add 48 actual Segoe UI tilted/perspective `Right Hand`
+button variants through CPU/resident preparation, with the identical dark
+surround and an adjacent rule inside padded search. They assert local polarity,
+all glyph corners, word spacing, dot/descender/leading-edge retention and zero
+image egress. Varying ink includes a black dot and lighter letter around a gray
+measured foreground: retain full geometry or the complete detected word. The
+winding-component GPU case requires conservative incomplete fallback at the
+64-scan cap; the exact linear CPU queue may fit that pathological case.
+These run through the existing `uct_paddle_processing`/`uct_paddle_cuda` gates.
+
+The explicitly selected `optionalPausedVideoProof` also records resident
+search/color fit replays in `selectedFitReplay`/`neighbourFitReplay`: per-word
+pass/completion and production/replay fit flags, histograms, one warmup and
+three CUDA-event durations. This diagnostic runs after the actual workers and
+does not enter their durations, admission or pixel-egress counts. It is not
+part of regular CTest or a native display/decoder timing measurement.
+
 The opt-in [bounded timing trace](../docs/uct_timing_trace.md) has four ordinary
 headless CTest contracts: `uct_timing_trace_contract` checks storage and close/drop
 accounting; `uct_timing_controller_contract` follows real scripted worker/admission

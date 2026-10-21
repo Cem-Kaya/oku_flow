@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Measure experimental UCT word colors in each tilted/perspective word frame.
+  Local paper and ink keep their source polarity on buttons against a dark
+  surround, so ink fitting follows letters instead of the button body.
+
 - Preserve tilted/perspective UCT word geometry through recognition, local ink
   fit and glyph/background painting. Compare paused word evidence in its
   detected local frame while retaining strict pixel checks. Re-detect a
