@@ -835,6 +835,10 @@ private slots:
     void immutableRefinementBoundaryWordUsesIncomingProof_data();
     void immutableRefinementBoundaryWordUsesIncomingProof();
     void immutableRefinementAdmitsAdjacentWordWithSmallOverlap();
+    void immutableRefinementKeepsIncomingTypographyWithOldReadingOwnership();
+    void immutableRefinementCarvesCrossLineUncertainty_data();
+    void immutableRefinementCarvesCrossLineUncertainty();
+    void immutableRefinementRetiredReadingOnlyBoundaryKeepsResidualProtection();
     void protectedAdjacentInkSurvivesCompositing_data();
     void protectedAdjacentInkSurvivesCompositing();
 
@@ -2823,6 +2827,232 @@ void UltraClearTextTests::immutableRefinementAdmitsAdjacentWordWithSmallOverlap(
     const auto screen = model.ScreenLines(70'000, 55);
     int spoken = 0;
     for (const auto& line : screen)
+        for (const auto& token : line.tokens) if (token.wordIndex >= 0) ++spoken;
+    QCOMPARE(spoken, 2);
+}
+
+void UltraClearTextTests::immutableRefinementKeepsIncomingTypographyWithOldReadingOwnership()
+{
+    auto [detail, neighbor] = ImmutablePair(MakeLayoutPage({
+        {QStringLiteral("Heading"), {100, 100}, 72},
+        {QStringLiteral("rhythm"), {500, 220}, 24},
+        {QStringLiteral("construction"), {700, 220}, 24},
+        {QStringLiteral("tiny"), {900, 300}, 16}}));
+    QCOMPARE(detail.prepared.size(), 3);
+    // The earlier OCR line owns reading order over several rows/type sizes.
+    // Fresh detail must not inherit that line's typography or alter its proof.
+    auto coarse = detail, coarseNeighbor = neighbor;
+    coarse.output.lines.resize(1); coarse.prepared.resize(1);
+    coarse.prepared[0].sceneRect = QRectF(.01, .01, .95, .6);
+    coarseNeighbor.output.lines.resize(1); coarseNeighbor.prepared.resize(1);
+    coarseNeighbor.corroborationMatches.resize(1);
+    coarseNeighbor.corroborationWordMatches.resize(1);
+    OverlayModel model;
+    QCOMPARE(model.AdmitImmutable(coarse, coarse.stamp, 60'000, &coarseNeighbor), AdmitVerdict::kAccepted);
+    const auto prior = model.Lines().first();
+    QCOMPARE(prior.words.size(), 1);
+    QCOMPARE(prior.words[0].layoutGroupId, std::uint64_t{0}); // legacy fallback
+    for (auto& line : detail.prepared)
+        for (auto& word : line.words) word.sceneQuad = TextQuad::FromRect(word.sceneRect);
+    QCOMPARE(model.AdmitImmutable(detail, detail.stamp, 70'000, &neighbor), AdmitVerdict::kAccepted);
+    QCOMPARE(model.Lines().size(), 1);
+    const auto kept = model.Lines().first();
+    QCOMPARE(kept.id, prior.id); QCOMPARE(kept.sceneRect, prior.sceneRect);
+    QCOMPARE(kept.reference.sceneRect, prior.reference.sceneRect);
+    QCOMPARE(kept.reference.values, prior.reference.values);
+    QCOMPARE(kept.reference.resident, prior.reference.resident);
+    QCOMPARE(kept.provenance.frameSeq, prior.provenance.frameSeq);
+    QCOMPARE(kept.provenance.timestampMs, prior.provenance.timestampMs);
+    QCOMPARE(kept.validatedAtMs, prior.validatedAtMs);
+    QCOMPARE(kept.validatedFrameSeq, prior.validatedFrameSeq);
+    const auto words = model.SceneWords(70'000, 55);
+    QCOMPARE(words.size(), 4);
+    QCOMPARE(words[0].layoutGroupId, std::uint64_t{0});
+    QVERIFY(words[1].layoutGroupId != 0 && words[1].layoutGroupId != prior.id);
+    QCOMPARE(words[2].layoutGroupId, words[1].layoutGroupId);
+    QVERIFY(words[3].layoutGroupId != 0 && words[3].layoutGroupId != words[1].layoutGroupId);
+    QVERIFY(words[3].layoutGroupId != prior.id);
+    for (int i = 0; i < words.size(); ++i) {
+        QCOMPARE(words[i].lineId, prior.id); QCOMPARE(words[i].wordIndex, i);
+        QCOMPARE(words[i].sceneRect, kept.words[i].sceneRect);
+        QCOMPARE(words[i].layoutGroupId, kept.words[i].layoutGroupId);
+        if (i) {
+            const auto& source = i < 3 ? detail.prepared[1].words[i - 1] : detail.prepared[2].words[0];
+            QCOMPARE(words[i].sceneRect, source.sceneRect);
+            QCOMPARE(words[i].sceneQuad, source.sceneQuad);
+        } else QCOMPARE(words[i].sceneRect, prior.words[0].sceneRect);
+    }
+    const auto screen = model.ScreenLines(70'000, 55);
+    QCOMPARE(screen.size(), 1); QCOMPARE(screen[0].lineId, prior.id);
+    QCOMPARE(screen[0].tokens.size(), 4);
+    for (int i = 0; i < screen[0].tokens.size(); ++i) QCOMPARE(screen[0].tokens[i].wordIndex, i);
+    QCOMPARE(model.ReadingText(70'000, 55), QStringLiteral("Heading rhythm construction tiny"));
+    // Subsequent candidate IDs cannot regroup or renumber the retained words.
+    QCOMPARE(model.AdmitImmutable(detail, detail.stamp, 80'000, &neighbor), AdmitVerdict::kAccepted);
+    const auto repeated = model.SceneWords(80'000, 55);
+    QCOMPARE(repeated.size(), words.size());
+    for (int i = 0; i < words.size(); ++i) {
+        QCOMPARE(repeated[i].layoutGroupId, words[i].layoutGroupId);
+        QCOMPARE(repeated[i].lineId, words[i].lineId);
+        QCOMPARE(repeated[i].wordIndex, words[i].wordIndex);
+        QCOMPARE(repeated[i].sceneRect, words[i].sceneRect);
+    }
+}
+
+void UltraClearTextTests::immutableRefinementCarvesCrossLineUncertainty_data()
+{
+    QTest::addColumn<int>("ownership");
+    QTest::newRow("appended-to-another-reading-line") << 0;
+    QTest::newRow("new-incoming-line") << 1;
+    QTest::newRow("duplicate-with-independent-incoming-proof") << 2;
+    QTest::newRow("reading-only-cannot-carve") << 3;
+}
+
+void UltraClearTextTests::immutableRefinementCarvesCrossLineUncertainty()
+{
+    QFETCH(int, ownership);
+    auto [selected, neighbor] = ImmutablePair(MakeLayoutPage({
+        {QStringLiteral("Anchor"), {100, 100}, 48},
+        {QStringLiteral("construction"), {633, 283}, 24},
+        {QStringLiteral(","), {800, 283}, 24},
+        {QStringLiteral("Retained"), {100, 390}, 32}}));
+    QCOMPARE(selected.prepared.size(), 3);
+    QCOMPARE(selected.prepared[1].words.size(), 2);
+    const auto detailLine = selected.prepared[1];
+    const QRectF proved = detailLine.words[0].sceneRect;
+    const QRectF punctuation = detailLine.words[1].sceneRect;
+    const QRectF uncertain = proved.united(punctuation).adjusted(-.01, -.01, .01, .01);
+    auto coarse = selected, coarseNeighbor = neighbor;
+    for (auto* result : {&coarse, &coarseNeighbor}) {
+        result->output.lines = {result->output.lines[0], result->output.lines[2]};
+        result->prepared = {result->prepared[0], result->prepared[2]};
+        auto rejected = detailLine.words[0];
+        rejected.text = QStringLiteral("pocat,");
+        rejected.disposition = TokenDisposition::kLowConfidence;
+        rejected.confidence = .5; rejected.protectedSceneRect = uncertain;
+        result->prepared[1].words.push_back(rejected);
+        auto raw = selected.output.lines[1].words[0];
+        raw.text = rejected.text; raw.disposition = rejected.disposition; raw.confidence = rejected.confidence;
+        result->output.lines[1].words.push_back(raw);
+        // Deliberately keep the accepted row bounds below its loose mask:
+        // carving must index uncertainty extents, not just line geometry.
+        QVERIFY(!result->prepared[1].sceneRect.intersects(proved));
+        if (ownership == 0) result->prepared[0].sceneRect = QRectF(.01, .01, .95, .6);
+        if (ownership == 2) {
+            auto rawDetail = selected.output.lines[1]; rawDetail.words.resize(1);
+            auto preparedDetail = detailLine; preparedDetail.words.resize(1);
+            result->output.lines.push_back(rawDetail); result->prepared.push_back(preparedDetail);
+        }
+    }
+    coarseNeighbor.corroborationMatches.fill(false, coarse.prepared.size());
+    coarseNeighbor.corroborationWordMatches = {{true}, {true, false}};
+    if (ownership == 2) coarseNeighbor.corroborationWordMatches.push_back({true});
+    OverlayModel model;
+    QCOMPARE(model.AdmitImmutable(coarse, coarse.stamp, 60'000, &coarseNeighbor), AdmitVerdict::kAccepted);
+    const auto prior = model.Lines();
+    for (auto* result : {&selected, &neighbor}) {
+        result->output.lines = {result->output.lines[1]}; result->output.lines[0].words.resize(1);
+        result->prepared = {result->prepared[1]}; result->prepared[0].words.resize(1);
+        result->prepared[0].sceneRect = proved;
+    }
+    neighbor.corroborationMatches = {false};
+    neighbor.corroborationWordMatches = {{ownership != 3}};
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 70'000, &neighbor), AdmitVerdict::kAccepted);
+    const auto words = model.SceneWords(70'000, 55);
+    QCOMPARE(words.size(), ownership == 3 ? 2 : 3);
+    const auto& protection = model.Lines()[1].protectedSceneRects;
+    if (ownership == 3) {
+        QCOMPARE(protection, prior[1].protectedSceneRects);
+        QVERIFY(std::any_of(words[0].protectedSceneRects.begin(), words[0].protectedSceneRects.end(),
+            [&](const auto& rect) { return rect.contains(proved); }));
+    } else {
+        double remainingArea = 0;
+        for (const auto& rect : protection) {
+            QVERIFY(!rect.intersects(proved));
+            remainingArea += rect.width() * rect.height();
+        }
+        QVERIFY(std::abs(remainingArea - (uncertain.width() * uncertain.height() - proved.width() * proved.height())) < 1e-10);
+        // A real printed comma remains outside the independently proved word.
+        for (const auto point : {punctuation.topLeft(), punctuation.topRight(), punctuation.center(),
+                                 punctuation.bottomLeft(), punctuation.bottomRight()})
+            QVERIFY(std::any_of(protection.begin(), protection.end(), [&](const auto& rect) { return rect.contains(point); }));
+        for (const auto& word : words)
+            for (const auto& rect : word.protectedSceneRects) QVERIFY(!rect.intersects(proved));
+    }
+    for (int i = 0; i < prior.size(); ++i) {
+        const auto& kept = model.Lines()[i];
+        QCOMPARE(kept.id, prior[i].id); QCOMPARE(kept.sceneRect, prior[i].sceneRect);
+        QCOMPARE(kept.reference.values, prior[i].reference.values);
+        QCOMPARE(kept.reference.sceneRect, prior[i].reference.sceneRect);
+        QCOMPARE(kept.provenance.frameSeq, prior[i].provenance.frameSeq);
+        QCOMPARE(kept.provenance.timestampMs, prior[i].provenance.timestampMs);
+        QCOMPARE(kept.validatedAtMs, prior[i].validatedAtMs);
+        QCOMPARE(kept.validatedFrameSeq, prior[i].validatedFrameSeq);
+        for (int w = 0; w < prior[i].words.size(); ++w) {
+            QCOMPARE(kept.words[w].sceneRect, prior[i].words[w].sceneRect);
+            QCOMPARE(kept.words[w].layoutGroupId, prior[i].words[w].layoutGroupId);
+        }
+    }
+    if (ownership == 3) return;
+    // Carving ordinary uncertainty never clears a genuine contradiction.
+    auto disputed = selected, disputedNeighbor = neighbor;
+    disputed.output.lines[0].words[0].text = disputed.prepared[0].words[0].text = QStringLiteral("constriction");
+    disputedNeighbor.output.lines[0].words[0].text = disputedNeighbor.prepared[0].words[0].text = QStringLiteral("constriction");
+    QCOMPARE(model.AdmitImmutable(disputed, disputed.stamp, 80'000, &disputedNeighbor), AdmitVerdict::kAccepted);
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 90'000, &neighbor), AdmitVerdict::kAccepted);
+    const auto safe = model.SceneWords(90'000, 55);
+    QCOMPARE(safe.size(), 2);
+    for (const auto& word : safe) {
+        QVERIFY(word.text != QStringLiteral("construction") && word.text != QStringLiteral("constriction"));
+        QVERIFY(std::any_of(word.protectedSceneRects.begin(), word.protectedSceneRects.end(),
+            [&](const auto& rect) { return rect.contains(proved); }));
+    }
+}
+
+void UltraClearTextTests::immutableRefinementRetiredReadingOnlyBoundaryKeepsResidualProtection()
+{
+    auto [selected, neighbor] = ImmutablePair(MakePage({"glasses", "Anchor"}));
+    neighbor.corroborationWordMatches[0] = {false};
+    OverlayModel model;
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 60'000, &neighbor), AdmitVerdict::kAccepted);
+    const auto retired = model.Lines()[0], anchor = model.Lines()[1];
+    QVERIFY(!retired.words[0].glyphEligible);
+    const auto oldBounds = retired.words[0].sceneRect;
+    for (auto* result : {&selected, &neighbor}) {
+        result->output.lines.resize(1); result->prepared.resize(1);
+        result->prepared[0].words[0].sceneRect.translate(.001, 0);
+        result->prepared[0].sceneRect = result->prepared[0].words[0].sceneRect;
+    }
+    // Only a regional detail result retains earlier reading-only lines. A
+    // full-frame refresh deliberately drops them before the coverage merge.
+    selected.output.detailRegionPx = SceneRectToView(selected.stamp.viewTransform,
+        kViewWidth, kViewHeight, selected.prepared[0].sceneRect).toAlignedRect();
+    QVERIFY(!retired.sceneRect.contains(selected.prepared[0].words[0].sceneRect));
+    neighbor.corroborationMatches = {false}; neighbor.corroborationWordMatches = {{true}};
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 70'000, &neighbor), AdmitVerdict::kAccepted);
+    QCOMPARE(model.Lines().size(), 3);
+    const auto& kept = model.Lines()[0];
+    QCOMPARE(kept.id, retired.id); QCOMPARE(kept.words.size(), 1);
+    QVERIFY(!kept.words[0].glyphEligible);
+    QVERIFY(std::all_of(kept.readingWordIndices.begin(), kept.readingWordIndices.end(), [](int i) { return i < 0; }));
+    QCOMPARE(kept.words[0].sceneRect, oldBounds);
+    QCOMPARE(kept.reference.values, retired.reference.values);
+    QCOMPARE(kept.validatedAtMs, retired.validatedAtMs);
+    const auto words = model.SceneWords(70'000, 55);
+    QCOMPARE(words.size(), 2);
+    QCOMPARE(words[0].lineId, anchor.id); QCOMPARE(words[0].wordIndex, 0);
+    QCOMPARE(words[0].sceneRect, anchor.words[0].sceneRect);
+    QCOMPARE(words[1].sceneRect, selected.prepared[0].words[0].sceneRect);
+    QVERIFY(words[1].lineId != retired.id); QCOMPARE(words[1].wordIndex, 0);
+    for (const auto& rect : words[1].protectedSceneRects) QVERIFY(!rect.intersects(words[1].sceneRect));
+    // The uncovered left strip stays protected; the retired full box does not.
+    const QPointF uncovered(oldBounds.left() + .0005, oldBounds.center().y());
+    QVERIFY(std::any_of(words[1].protectedSceneRects.begin(), words[1].protectedSceneRects.end(),
+        [&](const auto& rect) { return rect.contains(uncovered); }));
+    QCOMPARE(model.ReadingText(70'000, 55).count(QStringLiteral("glasses")), 1);
+    QCOMPARE(model.AcceptedWordCount(), 2);
+    int spoken = 0;
+    for (const auto& line : model.ScreenLines(70'000, 55))
         for (const auto& token : line.tokens) if (token.wordIndex >= 0) ++spoken;
     QCOMPARE(spoken, 2);
 }

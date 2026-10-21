@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Keep paused UCT detail typography separate from stable reading-line ownership.
+  Carve independently proved incoming words from ordinary uncertainty on nearby
+  retained rows while preserving uncovered punctuation and contradiction
+  blocks. Retired reading-only slots no longer restore full fallback masks.
+
 - Fit small tilted UCT words within loose detector padding rather than keeping
   oversized boxes. Retain an absolute height floor and thin-rule rejection,
   handle rounding at the minimum-height boundary, and keep original pixels

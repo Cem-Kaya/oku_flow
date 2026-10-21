@@ -6340,6 +6340,25 @@ proved words without renumbering old UIA identities. `ScreenLines` validates
 that mapping and exposes only eligible named glyphs; `AcceptedWordCount` counts
 active named slots rather than retired duplicate reading-only slots.
 
+`AcceptedWord::layoutGroupId`, `uct::SceneWord::layoutGroupId` and the overlay's
+matching trailing field decouple typography from reading ownership. Zero uses
+the owning `lineId`. An independently proved word appended to an older reading
+line keeps its incoming nonzero group, or its incoming candidate line ID. Old
+words keep their group, ID/index, source geometry, references and clocks.
+`UltraClearTextController::RefreshOverlay` forwards and compares this field;
+both paused-proof overlay conversions also retain it. Painter consumption of
+the separate group is an independent integration change.
+
+`MergeImmutableCoverage` indexes ordinary uncertainty extents alongside line
+bounds. Each independently proved incoming word that is admitted or matches a
+retained glyph carves its footprint from nearby retained uncertainty, regardless
+of reading-line ownership. Residual rectangles preserve uncovered punctuation;
+the shared 32768-rectangle cap refuses an overflowing cut without changing that
+line's protection. Persistent `immutableConflictRects_` never enter this carving
+path. `SceneWords` adds hidden-line fallback bounds only for eligible glyphs:
+reading-only words already have explicit masks, and retired slots must not
+restore their former full boxes over a newly proved boundary word.
+
 The explicit `uct_paused_video_test::Run` / `optionalPausedVideoProof` diagnostic
 uses existing pinned M/M N8 plans and an inference-only SDK, actual owned CUDA
 inputs, production worker corroboration and immutable admission. It records

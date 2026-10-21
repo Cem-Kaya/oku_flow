@@ -682,6 +682,7 @@ struct AcceptedWord {
     bool glyphEligible{true}; // immutable text may be readable without corroboration
     std::optional<LineColors> colors; // absent in legacy/hand-built line-only evidence
     TextQuad sceneQuad; // oriented geometry (before line offset); invalid for rectangles
+    std::uint64_t layoutGroupId{}; // typography group; 0 uses the owning line id
 };
 
 struct AcceptedLine {
@@ -714,6 +715,7 @@ struct SceneWord {
     QVector<QRectF> protectedSceneRects; // all current protected spans, offset applied
     int wordIndex{-1}; // index into the owning AcceptedLine::words (accessibility key)
     TextQuad sceneQuad; // oriented word geometry, offset applied; invalid for rectangles
+    std::uint64_t layoutGroupId{}; // independent of reading identity; 0 uses lineId
 };
 
 // One token of a screen-reader line projection: a verified glyph word, or a

@@ -43,12 +43,13 @@ public:
         QString text;
         QRectF sceneRect; // offset already applied
         uct::LineColors colors;
-        std::uint64_t lineId{}; // one shared type size and baseline per OCR line
+        std::uint64_t lineId{}; // with wordIndex, the stable reading/accessibility key
         QVector<QRectF> protectedSceneRects; // source ink that neither pass may cover
         int wordIndex{-1}; // uct::SceneWord::wordIndex; with lineId the accessibility key
         // Rotated word geometry (fitted ink). Glyph and plate follow its
         // baseline; sceneRect remains its bound. Invalid for upright words.
         uct::TextQuad sceneQuad;
+        std::uint64_t layoutGroupId{}; // shared type size/baseline; 0 uses lineId
     };
     void SetWords(QVector<SceneWord> words);
     // Optional diagnostic provenance of this content assignment, never a view
