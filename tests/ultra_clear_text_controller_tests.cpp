@@ -35,6 +35,13 @@ using namespace uct_test;
 
 namespace {
 
+struct RegionalFlag {
+    bool existed{qEnvironmentVariableIsSet("OKUFLOW_UCT_REGIONAL_OCR")};
+    QByteArray previous{qgetenv("OKUFLOW_UCT_REGIONAL_OCR")};
+    explicit RegionalFlag(bool enabled) { qputenv("OKUFLOW_UCT_REGIONAL_OCR",enabled ? "1" : "0"); }
+    ~RegionalFlag() { if(existed) qputenv("OKUFLOW_UCT_REGIONAL_OCR",previous); else qunsetenv("OKUFLOW_UCT_REGIONAL_OCR"); }
+};
+
 struct AccessibilityActivation {
     bool previous{QAccessible::isActive()};
     AccessibilityActivation() { QAccessible::setActive(true); }
@@ -66,8 +73,9 @@ struct ImmutableScript {
     // `detailWords` are found only when a region is examined (small print the
     // full-scene detector missed). Every recognition records its focus.
     std::atomic<bool> detailFocus{};
+    std::atomic<bool> ignoreDetail{};
     QVector<PageWord> detailWords;
-    struct Call { QByteArray digest; quint64 frame{}; std::optional<DetailFocus> focus; };
+    struct Call { QByteArray digest; quint64 frame{}; std::optional<DetailFocus> focus; int marker{}; };
     QVector<Call> recorded;
 
     void Release()
@@ -124,7 +132,8 @@ public:
     RecognitionOutput Recognize(const QImage& image, const std::atomic<bool>& cancelled) override
     {
         ++script_->calls;
-        return Produce(image.width(), image.height(), cancelled, 0, SourcePixelsDigest(image));
+        return Produce(image.width(), image.height(), cancelled, 0, SourcePixelsDigest(image),
+                       image.pixelColor(image.width()-1,image.height()-1).blue());
     }
 
     RecognitionOutput RecognizeDevice(const DeviceImage& image, const std::atomic<bool>& cancelled) override
@@ -135,7 +144,7 @@ public:
 
 private:
     RecognitionOutput Produce(int width, int height, const std::atomic<bool>& cancelled,
-                              quint64 frame = 0, const QByteArray& digest = {})
+                              quint64 frame = 0, const QByteArray& digest = {}, int marker = 0)
     {
         QVector<PageWord> words;
         QRect detail;
@@ -146,8 +155,8 @@ private:
             if (script_->frameWords.contains(frame)) words = script_->frameWords[frame];
             const int call = script_->calls.load() + script_->deviceCalls.load();
             if (script_->callWords.contains(call)) words = script_->callWords[call];
-            script_->recorded.push_back({digest, frame, focus_});
-            if (focus_) {
+            script_->recorded.push_back({digest, frame, focus_, marker});
+            if (focus_ && !script_->ignoreDetail) {
                 // One region of the same image: only words inside it, plus
                 // the small print a closer detector look reveals.
                 detail = DetailRegion(QSize(width, height), *focus_);
@@ -461,6 +470,12 @@ struct ImmutableHarness {
 class UltraClearTextControllerTests final : public QObject {
     Q_OBJECT
 private slots:
+    void activeRegionalFullDeadlinesUnderContinuousFocus();
+    void activeRegionalFailureKeepsBackendAndRequestsFull();
+    void activeIgnoredRegionalFallbackDoesNotForceExtraFull();
+    void activeRegionalResetsFenceLateCompletion_data();
+    void activeRegionalResetsFenceLateCompletion();
+    void activeRegionalPreservesPausedDetailPair();
     void timingTraceKeepsWorkerAndAdmissionTickets();
     void timingPaneOnlyChangePreservesPositionedTicket();
     void textClarityMasterPreservesUctPreference();
@@ -533,6 +548,126 @@ private slots:
     void pausedVisibleDetailNeedsSupportNeighbourAndMagnification_data();
     void pausedVisibleDetailNeedsSupportNeighbourAndMagnification();
 };
+
+void UltraClearTextControllerTests::activeRegionalFullDeadlinesUnderContinuousFocus()
+{
+    QVector<int> baseline, active;
+    for (const bool enabled : {false,true}) {
+        RegionalFlag flag(enabled); ImmutableHarness h;
+        h.script->detailFocus=true; h.script->separateWordLines=true;
+        h.page=MakeLayoutPage({{"Reading",{70,70},36},{"Stable",{700,70},36}},960,540);
+        h.Enable(); QTRY_COMPARE(h.controller->BackendStatusSnapshot().state,BackendState::kReady);
+        for (std::uint64_t frame=1;frame<=64;++frame) {
+            h.now+=60; h.PlayFrame(frame); // 80 ms wall / 20 ms genuine media PTS
+            h.controller->UpdateImmutableView(ComputeViewTransform(960,540,960,540,2,
+                frame%2 ? .2f : .8f,.3f,ViewportFitMode::kFill),960,540);
+            QTRY_VERIFY(h.controller->ProbeStatistics().completed>=frame);
+            QTRY_COMPARE(h.controller->SchedulerStatistics().completed,h.controller->SchedulerStatistics().submitted);
+            QTest::qWait(3); // consume queued worker/UI callback before moving the fixture wall clock
+        }
+        QVector<int> full, regions;
+        { std::lock_guard lock(h.script->mutex);
+          for (const auto& call:h.script->recorded) {
+              if(call.focus) {
+                  regions.push_back(call.marker);
+                  QCOMPARE(call.focus->detectorLongEdge,480);
+                  QVERIFY(call.focus->supplemental);
+                  const auto region=DetailRegion(h.page.image.size(),*call.focus);
+                  QVERIFY(region.width()<=480 && region.height()<=480);
+              } else full.push_back(call.marker);
+          }
+        }
+        QVERIFY(full.size()>=4);
+        for(int i=2;i<full.size();++i) QVERIFY((full[i]-full[i-1])*80<=1580);
+        if(enabled) {
+            active=full; QVERIFY(!regions.isEmpty());
+            QCOMPARE(h.controller->SchedulerStatistics().regionalCalls,std::uint64_t(regions.size()));
+            for(int i=0;i+1<full.size();++i)
+                QVERIFY(std::count_if(regions.begin(),regions.end(),[&](int frame){return frame>full[i] && frame<full[i+1];})<=1);
+        } else { baseline=full; QVERIFY(regions.isEmpty()); }
+        QCOMPARE(h.controller->SchedulerStatistics().coalesced,std::uint64_t(0));
+        QCOMPARE(h.controller->PixelAllocations(),std::uint64_t(0));
+    }
+    QCOMPARE(active.size(),baseline.size());
+    for(int i=0;i<active.size();++i) QVERIFY(std::abs(active[i]-baseline[i])<=1);
+}
+
+void UltraClearTextControllerTests::activeRegionalFailureKeepsBackendAndRequestsFull()
+{
+    RegionalFlag flag(true); ImmutableHarness h; h.script->detailFocus=true; h.Enable();
+    std::uint64_t frame=1;
+    for(;frame<100 && h.overlay.WordCount()==0;++frame) { h.now+=60; h.PlayFrame(frame); QTest::qWait(5); }
+    QVERIFY(h.overlay.WordCount()>0);
+    const auto full=h.controller->SchedulerStatistics().fullCalls;
+    h.script->transientKind=3; h.script->transientFailures=1;
+    for(;frame<130 && h.controller->SchedulerStatistics().regionalFailures==0;++frame) {
+        h.now+=60; h.PlayFrame(frame); QTest::qWait(5);
+    }
+    QCOMPARE(h.controller->SchedulerStatistics().regionalFailures,std::uint64_t(1));
+    QCOMPARE(h.controller->BackendStatusSnapshot().state,BackendState::kReady);
+    QVERIFY(h.overlay.WordCount()>0);
+    for(int i=0;i<24;++i) {h.now+=60;h.PlayFrame(frame++);QTest::qWait(5);}
+    QVERIFY(h.controller->SchedulerStatistics().fullCalls>full);
+    QCOMPARE(h.controller->SchedulerStatistics().regionalAttempts,std::uint64_t(1)); // failed optional work latches off
+}
+
+void UltraClearTextControllerTests::activeIgnoredRegionalFallbackDoesNotForceExtraFull()
+{
+    RegionalFlag flag(true); ImmutableHarness h; h.script->detailFocus=true;h.script->ignoreDetail=true;h.Enable();
+    std::uint64_t frame=1;
+    for(;frame<100 && h.controller->SchedulerStatistics().regionalAttempts==0;++frame) {
+        h.now+=60;h.PlayFrame(frame);QTest::qWait(5);
+    }
+    QTRY_COMPARE(h.controller->SchedulerStatistics().regionalAttempts,std::uint64_t(1));
+    QTRY_COMPARE(h.controller->SchedulerStatistics().completed,h.controller->SchedulerStatistics().submitted);
+    QTest::qWait(5);
+    const auto full=h.controller->SchedulerStatistics().fullCalls;
+    QCOMPARE(h.controller->SchedulerStatistics().regionalCalls,std::uint64_t(0));
+    QCOMPARE(h.controller->SchedulerStatistics().regionalFallbacks,std::uint64_t(1));
+    for(int i=0;i<5;++i) {h.now+=60;h.PlayFrame(frame++);QTest::qWait(5);}
+    QCOMPARE(h.controller->SchedulerStatistics().fullCalls,full);
+}
+
+void UltraClearTextControllerTests::activeRegionalResetsFenceLateCompletion_data()
+{
+    QTest::addColumn<int>("change");
+    QTest::newRow("authority")<<0; QTest::newRow("backward-seek")<<1;
+    QTest::newRow("source")<<2; QTest::newRow("processing")<<3;
+}
+void UltraClearTextControllerTests::activeRegionalResetsFenceLateCompletion()
+{
+    QFETCH(int,change); RegionalFlag flag(true); ImmutableHarness h; h.script->detailFocus=true; h.Enable();
+    std::uint64_t frame=1;
+    for(;frame<100 && h.overlay.WordCount()==0;++frame) { h.now+=60; h.PlayFrame(frame); QTest::qWait(5); }
+    QVERIFY(h.overlay.WordCount()>0);
+    {std::lock_guard lock(h.script->mutex); h.script->permittedCalls=h.script->calls.load();}
+    for(;frame<130 && h.controller->SchedulerStatistics().regionalAttempts==0;++frame) {h.now+=60;h.PlayFrame(frame);}
+    QCOMPARE(h.controller->SchedulerStatistics().regionalAttempts,std::uint64_t(1));
+    auto changed=h.Scene(frame+1);
+    changed.selected.timestampMs=12000;
+    if(change==0) ++changed.sourceAuthority;
+    if(change==1) {changed.selected.frameSeq=1;changed.selected.timestampMs=1;}
+    if(change==2) ++changed.geometry.settings.sourceEpoch;
+    if(change==3) changed.geometry.settings.rotationQuarterTurns=1;
+    // Enter a real paused selection after the source/seek/processing change;
+    // its mandatory first selected full read may queue, never an old ROI.
+    QVERIFY(h.controller->SetImmutableScene(changed));
+    QCOMPARE(h.overlay.WordCount(),0);
+    const auto before=h.script->calls.load();
+    h.script->Release(); QTRY_VERIFY(h.script->calls.load()>before);
+    QTRY_COMPARE(h.controller->SchedulerStatistics().completed,h.controller->SchedulerStatistics().submitted-1);
+    QTest::qWait(10);
+    QCOMPARE(h.overlay.WordCount(),0); // selected without real neighbour is reading-only
+    std::lock_guard lock(h.script->mutex);
+    QVERIFY(!h.script->recorded.last().focus);
+    QCOMPARE(h.controller->BackendStatusSnapshot().state,BackendState::kReady);
+}
+
+void UltraClearTextControllerTests::activeRegionalPreservesPausedDetailPair()
+{
+    RegionalFlag flag(true);
+    pausedZoomRequestsOneBoundedVisibleDetailPair(); // production selected + real-neighbour pair assertions
+}
 
 void UltraClearTextControllerTests::timingTraceKeepsWorkerAndAdmissionTickets()
 {

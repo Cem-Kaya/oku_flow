@@ -74,7 +74,7 @@ class PaddleCpuRecognizer final : public Recognizer
             for (const QRect& region : regions) {
             if (cancelled.load()) { result.cancelled=true; result.lines.clear(); return result; }
             const QImage crop = region.size()==image.size() ? image : image.copy(region);
-            const QSize size = PaddleDetectionSize(crop.size(), magnification);
+            const QSize size = PaddleDetectionSize(crop.size(), magnification, detail_ ? detail_->detectorLongEdge : 960);
             const auto pixels = PaddleNormalize(crop, size, true);
             const std::array<std::int64_t, 4> shape{1, 3, size.height(), size.width()};
             const auto map = detector_->Run(pixels, shape);
@@ -166,6 +166,7 @@ class AutomaticRecognizer final : public Recognizer
     }
     void SetDetailFocus(const std::optional<DetailFocus> &focus) override
     {
+        supplemental_ = focus && focus->supplemental;
         // Every candidate sees the same request; only one runs this job.
         for (auto &candidate : candidates_)
             if (candidate) candidate->SetDetailFocus(focus);
@@ -227,6 +228,20 @@ class AutomaticRecognizer final : public Recognizer
         {
             output.cancelled = true;
             return output;
+        }
+        if (supplemental_) {
+            // No promotion, preparation bridge or failover for optional work.
+            // A full read owns those policies on a later current input.
+            if (preparing_ || active_ >= candidates_.size() ||
+                !candidates_[active_] || candidates_[active_]->Preparing()) {
+                output.backendPreparing = true;
+                return output;
+            }
+            try { return operation(*candidates_[active_]); }
+            catch (const std::exception& error) {
+                output.error = QString::fromUtf8(error.what());
+                return output;
+            }
         }
         if (preparing_ && !candidates_[*preparing_]->Preparing())
         {
@@ -407,6 +422,7 @@ class AutomaticRecognizer final : public Recognizer
     QString reasons_;
     BackendStatus status_;
     bool initialized_{};
+    bool supplemental_{};
     std::optional<std::size_t> preparing_;
     std::optional<std::size_t> preparationBridge_;
 };

@@ -3,6 +3,11 @@
 This module owns Qt startup, application wiring, settings persistence,
 interaction orchestration, and recording sessions.
 
+UCT's opt-in regional controller pacing supplements baseline full reads with
+one idle-only bounded region, without updating full timers or held acquisition
+proof. Paused selected/neighbour refinement remains separate. See
+[active execution](../../docs/uct_active_regional_ocr.md).
+
 Protected VLM credential ids are immutable generations. A changed key, provider
 or endpoint stages a new id before publishing settings; save retries reuse that
 staged binding. Previous generations remain available for settings-backup

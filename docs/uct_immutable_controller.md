@@ -1,5 +1,10 @@
 # Selected-media UCT controller
 
+The optional [active regional executor](uct_active_regional_ocr.md) applies to
+advancing/live inputs only. It preserves the paused selected/real-neighbour
+detail pair and 32-attempt cap. Regional admission retains outside accepted
+proof and pending source tickets without renewing them.
+
 `UltraClearTextController` owns a selected-media mode independently of camera
 liveness. `SetImmutableScene(UctImmutableScene)` takes shared ownership of a
 complete processed-scene BGRA image, its real frame sequence and timestamp,

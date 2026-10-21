@@ -798,7 +798,7 @@ class TensorRtRecognizer final : public Recognizer
                     frozenUpload.Queued();
                 }
             } else {
-            const QSize size = PaddleDetectionSize(region.size(), magnification);
+            const QSize size = PaddleDetectionSize(region.size(), magnification, detail_ ? detail_->detectorLongEdge : 960);
             auto *input = state_->detectorInput.Reserve(static_cast<std::size_t>(size.width()) *
                                                         size.height() * 3);
             profile.Measure(TensorRtProfile::Normalize, state_->stream, [&] {

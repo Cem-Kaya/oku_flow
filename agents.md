@@ -928,3 +928,17 @@ aligned with the project goals.
 - Keep private signing/Google Play credentials and app state on C:. Never remove
   test ledgers or rerun cold model preparation because of this storage move.
   Consult `docs/local_work_storage.md` and retain migration evidence.
+
+## Supplemental active regional UCT (2026-10-21)
+
+- `OKUFLOW_UCT_REGIONAL_OCR=1` enables current-input region OCR in addition to
+  baseline full reads. Shadow-only remains observation-only. Never defer full
+  deadlines using the unaccepted character verifier or count held copies as
+  acquisitions. Recheck plan/authority/slack on the worker and protect queued
+  full priority. Keep one region per full interval and bounded call/overrun
+  metadata; measured costs cannot promise hard real-time completion.
+- Only full results update planner occurrences. Preserve outside accepted proof
+  and exact per-observation pending tickets, and carve crossing uncertainty
+  masks without erasing uncovered pixels. Keep the paused selected/real-neighbour
+  detail pair and 32-attempt cap. See `docs/uct_active_regional_ocr.md`; model-free
+  scoped tests do not establish GPU, native UIA or physical-camera acceptance.
