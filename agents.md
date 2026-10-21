@@ -937,8 +937,18 @@ aligned with the project goals.
   acquisitions. Recheck plan/authority/slack on the worker and protect queued
   full priority. Keep one region per full interval and bounded call/overrun
   metadata; measured costs cannot promise hard real-time completion.
-- Only full results update planner occurrences. Preserve outside accepted proof
-  and exact per-observation pending tickets, and carve crossing uncertainty
-  masks without erasing uncovered pixels. Keep the paused selected/real-neighbour
-  detail pair and 32-attempt cap. See `docs/uct_active_regional_ocr.md`; model-free
+- Only full results update planner occurrences. Preserve complete crossing and
+  outside lines, their masks and exact per-observation pending tickets. Keep the
+  paused selected/real-neighbour detail pair and 32-attempt cap. See
+  `docs/uct_active_regional_ocr.md`; model-free
   scoped tests do not establish GPU, native UIA or physical-camera acceptance.
+
+## Regional boundary ownership (2026-10-22)
+
+- Admit only complete lines inside a region's two-input-pixel internal-edge
+  margin; image-border edges have no extra margin. Clipped candidates supply no
+  pending words or observations. Keep crossing/outside lines and masks verbatim
+  without renewing proof or requiring a new probe for an unobserved region.
+- Expired optional slack yields without inference, rather than starting a more
+  expensive full read. Only actual regional durations update its cost estimate.
+  Baseline full work, independent pixel checks and freshness remain unchanged.

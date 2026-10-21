@@ -217,7 +217,16 @@ private slots:
         if(change==6) request.fullDeadline=std::chrono::steady_clock::now()-std::chrono::milliseconds(1);
         if(change==7) request.plan=std::make_shared<const RegionShadowPlan>(*request.plan); // foreign/copy ticket
         QVERIFY(scheduler.Submit(stamp,ActivePixels(3),{},{},request));
-        auto result=box.Take(); QVERIFY(result && result->output.ok && result->regionalFallback);
+        auto result=box.Take(); QVERIFY(result && result->regionalFallback);
+        if (change == 6) {
+            // The full deadline has already elapsed: optional work yields,
+            // and may not substitute an even more expensive full inference.
+            QVERIFY(result->output.cancelled);
+            QCOMPARE(calls->detail.load(),0); QCOMPARE(calls->full.load(),1);
+            QCOMPARE(scheduler.Stats().fullCalls,std::uint64_t(1));
+            return;
+        }
+        QVERIFY(result->output.ok);
         QCOMPARE(result->jobKind,RecognitionJobKind::Full); QCOMPARE(calls->detail.load(),0); QCOMPARE(calls->full.load(),2);
     }
     void activeExecutionRechecksHeldInputAndSlack_data() {
@@ -236,8 +245,14 @@ private slots:
         QVERIFY(scheduler.SubmitDevice(ActiveStamp(2),std::make_shared<DeferredInput>(calls,2,held),{},{},request));
         {std::unique_lock lock(calls->mutex); QVERIFY(calls->ready.wait_for(lock,std::chrono::seconds(2),[&]{return calls->inputEntered;}));}
         if(!held) QTest::qWait(200); // slack was sufficient at enqueue, not at actual execution
-        calls->Release(); auto result=box.Take(); QVERIFY(result && result->output.ok && result->regionalFallback);
-        QCOMPARE(calls->detail.load(),0); QCOMPARE(calls->full.load(),2);
+        calls->Release(); auto result=box.Take(); QVERIFY(result && result->regionalFallback);
+        QCOMPARE(calls->detail.load(),0);
+        if (held) {
+            QVERIFY(result->output.ok); QCOMPARE(calls->full.load(),2);
+        } else {
+            QVERIFY(result->output.cancelled); QCOMPARE(calls->full.load(),1);
+            QCOMPARE(scheduler.Stats().fullCalls,std::uint64_t(1));
+        }
         if(held) QCOMPARE(result->stamp.holdAcquisition,std::uint64_t(1));
     }
     void queuedFullReplacesRegionAndCannotBeOverwritten()

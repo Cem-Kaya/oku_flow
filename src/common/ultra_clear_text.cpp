@@ -1947,18 +1947,18 @@ struct RecognitionScheduler::State {
                         const auto& request = *job.regional;
                         const double slack = std::chrono::duration<double, std::milli>(
                             request.fullDeadline - std::chrono::steady_clock::now()).count();
+                        const bool fits = std::isfinite(request.estimatedMs) && request.estimatedMs >= 750.0 &&
+                            slack > request.estimatedMs + 80.0;
                         bool valid;
                         {
                             std::lock_guard lock(self->mutex);
-                            yieldToFull = self->pending && !self->pending->regional;
+                            yieldToFull = (self->pending && !self->pending->regional) || !fits;
                             valid = !self->cancelInFlight.load() && !self->shutdown &&
                                 job.authority == self->authority && request.plan &&
                                 request.plan == self->latestFullPlan && request.plan->jobId < job.id &&
                                 self->usedRegionalPlan != request.plan->jobId &&
                                 RegionalPlanMatches(*request.plan, job.stamp, job.authority) &&
-                                self->status.detailFocus && !yieldToFull &&
-                                std::isfinite(request.estimatedMs) && request.estimatedMs >= 750.0 &&
-                                slack > request.estimatedMs + 80.0;
+                                self->status.detailFocus && !yieldToFull;
                             if (valid) self->usedRegionalPlan = request.plan->jobId;
                         }
                         job.detail = valid ? RegionalDetailFocus(*request.plan, job.stamp, job.shadowFocus)
@@ -1967,8 +1967,9 @@ struct RecognitionScheduler::State {
                         else result.regionalFallback = true;
                     }
                     if (yieldToFull) {
-                        // The newer current full input is already queued. Do
-                        // not duplicate it with this older regional descriptor.
+                        // Yield to a queued full or its reserved deadline.
+                        // Replacing an ROI that no longer fits with a more
+                        // expensive full call would consume that reservation.
                         result.output.cancelled = true;
                     } else {
                     if (timing::Enabled()) timingBackendFlags |= timing::InferenceAttempted;
@@ -3078,6 +3079,40 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
     }
     const double jobWidth = stamp.viewportWidth;
     const double jobHeight = stamp.viewportHeight;
+    const bool regional = !immutable && !result.output.detailRegionPx.isEmpty();
+    const QRectF coverage = ViewRectToScene(stamp.viewTransform, jobWidth, jobHeight,
+        regional ? QRectF(result.output.detailRegionPx) : QRectF(0.0, 0.0, jobWidth, jobHeight));
+    // A crop cannot own a partially observed sentence. Reject clipped lines
+    // before they can supply agreement, pending words or observations.
+    QRectF ownedCoverage = coverage;
+    QSet<std::uint64_t> regionalKeptIds;
+    QVector<QRectF> regionalKeptRects;
+    if (regional) {
+        const QRectF pixels(result.output.detailRegionPx);
+        if (!QRectF(0,0,jobWidth,jobHeight).contains(pixels)) return AdmitVerdict::kFailed;
+        constexpr double margin = 2.0;
+        const QRectF interior = pixels.adjusted(pixels.left() > 0 ? margin : 0,
+            pixels.top() > 0 ? margin : 0, pixels.right() < jobWidth ? -margin : 0,
+            pixels.bottom() < jobHeight ? -margin : 0);
+        ownedCoverage = ViewRectToScene(stamp.viewTransform,jobWidth,jobHeight,interior);
+    }
+    const auto regionContains = [&](const QRectF& rect) {
+        return !rect.isEmpty() && std::isfinite(rect.x()) && std::isfinite(rect.y()) &&
+            std::isfinite(rect.width()) && std::isfinite(rect.height()) && ownedCoverage.contains(rect);
+    };
+    if (regional) for (const auto& line : lines_) {
+        if (!line.provenance.SameScene(current)) continue;
+        const bool owned = (!line.words.isEmpty() || !line.protectedSceneRects.isEmpty()) &&
+            std::all_of(line.words.begin(),line.words.end(),[&](const auto& word) {
+                return regionContains(word.sceneRect.translated(line.sceneOffset));
+            }) && std::all_of(line.protectedSceneRects.begin(),line.protectedSceneRects.end(),[&](const auto& rect) {
+                return regionContains(rect.translated(line.sceneOffset));
+            });
+        if (!owned) {
+            regionalKeptIds.insert(line.id);
+            regionalKeptRects.push_back(line.sceneRect.translated(line.sceneOffset));
+        }
+    }
     // A composite (crossfade/unknown) probe names no acquisition, so it can
     // never be the newer independent check that validates or moves new text.
     const bool newerProbe = latestProbe && latestProbe->IsValid() &&
@@ -3145,6 +3180,13 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         if (line.words.isEmpty()) {
             continue;
         }
+        if (regional && (!regionContains(line.sceneRect) ||
+            std::any_of(line.words.begin(),line.words.end(),[&](const auto& word) {
+                return !regionContains(word.sceneRect) ||
+                    (!word.protectedSceneRect.isEmpty() && !regionContains(word.protectedSceneRect));
+            }) || std::any_of(regionalKeptRects.begin(),regionalKeptRects.end(),[&](const auto& rect) {
+                return rect.intersects(line.sceneRect);
+            }))) continue;
         const bool currentInputMatches = !stamp.temporallySmoothed ||
             (result.currentInputMatches.size() == prepared.size() && result.currentInputMatches[i]);
         if (!currentInputMatches) {
@@ -3423,17 +3465,18 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
     // Recognition supersedes observed ink, not independently proved detector
     // omissions. The latest probe must have checked the old object against
     // pixels at/after this job; keeping it never renews its reference or clock.
-    const bool regional = !immutable && !result.output.detailRegionPx.isEmpty();
-    const QRectF coverage = ViewRectToScene(stamp.viewTransform, jobWidth, jobHeight,
-        regional ? QRectF(result.output.detailRegionPx) : QRectF(0.0, 0.0, jobWidth, jobHeight));
     QVector<AcceptedLine> kept;
-    qsizetype regionalProtectionTotal = 0;
-    if (regional) for (const auto& line : lines_) regionalProtectionTotal += line.protectedSceneRects.size();
     for (const AcceptedLine& line : lines_) {
         if (!line.provenance.SameScene(current)) {
             continue;
         }
         if (retainedIds.contains(line.id)) continue; // already present in admitted, with its exact proof
+        if (regional && regionalKeptIds.contains(line.id)) {
+            // No regional evidence here: keep sentence order, masks, identity
+            // and clocks. Independent probes and freshness still revoke it.
+            kept.push_back(line);
+            continue;
+        }
         const QRectF oldRect = line.sceneRect.translated(line.sceneOffset);
         const bool currentProof = !immutable && latestProbe && latestProbe->IsValid() &&
             EvidenceAcquisition(latestProbe->stamp) && latestProbe->stamp.SameScene(current) &&
@@ -3456,50 +3499,8 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
             continue;
         }
         if (regional) {
-            if (!currentProof) continue;
-            // Partial recognition owns only its real processed ROI. Keep
-            // independently current-checked outside words with their exact
-            // object/reference/provenance/clocks, even if a same-line ROI
-            // spelling or rejected span contradicts an inside word.
-            auto outside = line;
-            auto indexes = outside.readingWordIndices;
-            if (indexes.isEmpty()) {
-                int word = 0;
-                for (const auto& token : outside.readingTokens) indexes.push_back(token.isEmpty() ? -1 : word++);
-            }
-            bool any = false;
-            for (qsizetype t = 0; t < indexes.size(); ++t) {
-                const int w = indexes[t];
-                if (w < 0 || w >= outside.words.size()) continue;
-                if (coverage.intersects(outside.words[w].sceneRect.translated(outside.sceneOffset))) {
-                    outside.words[w].glyphEligible = false;
-                    indexes[t] = -1;
-                    outside.readingTokens[t].clear();
-                    ++outside.omittedWords;
-                } else any = true;
-            }
-            outside.readingWordIndices = std::move(indexes);
-            QVector<QRectF> residual;
-            for (const auto& relative : outside.protectedSceneRects) {
-                const QRectF rect=relative.translated(outside.sceneOffset), cut=rect.intersected(coverage);
-                if (cut.isEmpty()) { residual.push_back(relative); continue; }
-                const auto add=[&](const QRectF& r) {
-                    if (!r.isEmpty()) residual.push_back(r.translated(-outside.sceneOffset));
-                };
-                add({rect.left(),rect.top(),rect.width(),cut.top()-rect.top()});
-                add({rect.left(),cut.bottom(),rect.width(),rect.bottom()-cut.bottom()});
-                add({rect.left(),cut.top(),cut.left()-rect.left(),cut.height()});
-                add({cut.right(),cut.top(),rect.right()-cut.right(),cut.height()});
-                if (residual.size()>32768) break;
-            }
-            // Saturation retains the original uncertainty, never erases an
-            // uncovered punctuation/span merely to fit the work quota.
-            const auto newTotal=regionalProtectionTotal-outside.protectedSceneRects.size()+residual.size();
-            if (residual.size()<=32768 && newTotal<=32768) {
-                regionalProtectionTotal=newTotal;
-                outside.protectedSceneRects=std::move(residual);
-            }
-            if (any) kept.push_back(std::move(outside));
+            // Wholly owned lines only: crossing/outside lines were kept
+            // above. Never split tokens or discard a mask-only remainder.
             continue;
         }
         if (!coverage.contains(line.sceneRect.translated(line.sceneOffset).center())) {
@@ -3535,7 +3536,11 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         QVector<PendingWord> retained;
         for (const auto& word : pending_)
             if (retained.size() < 8192 && word.evidence && word.evidence->stamp.SameScene(stamp) &&
-                word.evidence->authority == result.authority && !coverage.intersects(word.sceneRect))
+                word.evidence->authority == result.authority &&
+                (!regionContains(word.sceneRect) ||
+                 std::any_of(regionalKeptRects.begin(),regionalKeptRects.end(),[&](const auto& rect) {
+                     return rect.intersects(word.sceneRect);
+                 })))
                 retained.push_back(word); // exact original source ticket; ROI supplies no proof for it
         for (const auto& word : nextPending)
             if (retained.size() < 8192) retained.push_back(word);

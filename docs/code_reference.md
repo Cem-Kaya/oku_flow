@@ -25,14 +25,21 @@ optional failure/overrun latching. Existing worker-generation/source fences
 and paused selected/neighbour detail ownership remain authoritative.
 
 `OverlayModel::AdmitImpl` uses real processed coverage, retains independently
-current-proved outside words with exact old references/clocks, carves bounded
-outside uncertainty residuals, and bounds regional unions. `PendingEvidence`
+complete crossing/outside lines with exact old references/clocks and all masks,
+and bounds regional unions. Two-input-pixel interior margins reject clipped
+candidates before agreement/pending updates; candidates intersecting retained
+lines are also ignored. No fresh probe is required to retain an unobserved line;
+freshness and independent validation remain unchanged. `PendingEvidence`
 is shared by pending words from the same original observation; partial results
 retain outside tickets without restamping or self-confirmation. Full reads
 replace covered pending observations. `uct_region_scheduler_tests`,
 `ultra_clear_text_tests` and `ultra_clear_text_controller_tests` maintain the
 model-free active scheduling/admission regressions. See
 [policy, constants and acceptance limits](uct_active_regional_ocr.md).
+
+Insufficient worker slack cancels the optional descriptor without inference;
+stale/unsupported tickets can still fall back to full when slack permits.
+Only actual regional durations update the controller's regional cost estimate.
 
 ## Optional embedded selected-video adapter (2026-10-21)
 
