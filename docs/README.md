@@ -9,6 +9,11 @@ file-path filtering, column/type-size separation, crop-fragment suppression,
 stable validated geometry, regional detector-omission continuity and actual
 painted-glyph evidence.
 
+[OCR engine research](../improvement_ideas/55-uct-ocr-engine-research-2026-10-21.md)
+compares local alternatives, oriented geometry and visible-region recognition.
+It records external benchmark limits and a proposed evaluation protocol;
+it does not select a new runtime or establish quality on the owner's videos.
+
 [Paused UCT continuity](uct_paused_continuity_repair.md) records the reproduced
 partial-refinement and late-neighbour defects, exact-source retention and the
 private resident recognition/admission diagnostic.

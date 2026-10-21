@@ -84,6 +84,19 @@ Both fixed and bucketed policies painted all five labelled targets. A separate
 56,000/56,050-ms paused proof painted 171 words, including the script path;
 this alone is not an advancing-scroll continuity test.
 
+The same saved 0/50-ms proof also records `drawn: true` for all five words in
+the small brown heading, `HUMAN CIRCUIT / MASTER ASSET LIBRARY`. It contains
+two identical painted `/` records at one rectangle, and the reading text has
+`/ /`; that separator duplication remains an open merge defect. The heading
+is not missing from this sample. This audit adds no recognition job and does
+not establish coverage at a different video position.
+
+There is no global four-times OCR zoom clamp in this baseline. Detection
+downsizes each region to a 960-pixel maximum edge; the overlapping detail grid
+has at most four columns and four rows. Those are separate limits. Six-times
+visible-region detail is being evaluated with the paused-navigation work;
+it is not implemented or validated by this coverage repair.
+
 All nine N8 timed before/after pairs from three fixed source images had equal
 source digests. The raw candidate audit retained every occurrence except the
 contained stray `m`; matched edges were equal within floating-point roundoff.
