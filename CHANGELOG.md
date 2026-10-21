@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Keep complete UCT sentences and uncertainty masks when a supplemental crop
+  cuts their edges. Retain unobserved other-pane text without renewing its proof,
+  reject truncated edge words before pending agreement, and yield optional work
+  when its reserved time no longer fits.
+
 - Keep immutable UCT duplicate carving aligned with displayed geometry and
   preserve risky notation and invalid-geometry masks during nearby refinement.
 

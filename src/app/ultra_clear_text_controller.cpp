@@ -1342,7 +1342,8 @@ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
     if (result.regionalRequested) {
         if (result.jobId != regionalJob_ || !regionalJob_) { ++rejectedResults_; return; }
         regionalJob_ = 0;
-        regionalEstimateMs_ = std::max(regionalEstimateMs_, 2.0 * result.durationMs + 80.0);
+        if (result.jobKind == uct::RecognitionJobKind::Regional)
+            regionalEstimateMs_ = std::max(regionalEstimateMs_, 2.0 * result.durationMs + 80.0);
         if (result.regionalFailed || result.regionalDeadlineOverrun ||
             now - regionalSubmittedAtMs_ > timing_.immutableJobTimeoutMs) {
             if (lastOcrJob_ < result.jobId) regionalRequireFull_ = true;

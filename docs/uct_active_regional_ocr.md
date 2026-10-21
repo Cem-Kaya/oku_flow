@@ -27,8 +27,9 @@ markers. They read current owned pixels; planner text is never evidence.
 
 The first cost estimate is **750 ms**, plus a probe-period controller reserve
 and **80 ms** worker reserve. Later estimates retain the high-water maximum
-of `2 * worker duration + 80 ms`, never decreasing after a faster call or source
-change. This normally permits regions in stable 1,500 ms intervals, **not**
+of `2 * actual regional worker duration + 80 ms`, never decreasing after a faster
+call or source change. Full fallbacks do not update that estimate. This normally
+permits regions in stable 1,500 ms intervals, **not**
 350 ms demand-driven intervals. Insufficient slack leaves baseline work alone.
 
 Each descriptor carries a `steady_clock` full deadline from the remaining
@@ -36,9 +37,11 @@ controller wall-clock interval. Immediately before backend execution, after
 hold metadata/readback, the worker rechecks slack, exact retained plan identity,
 job ordering, authority/source/geometry/image mapping, processing history and
 a strictly later acquisition. Queued full replaces queued region; region cannot
-replace queued full. An executing descriptor yields if a newer full is queued.
-Unsupported detail, unusable/stale plan or insufficient execution slack runs
-full OCR once on the same current input instead of region OCR.
+replace queued full. Before inference the descriptor yields without a backend
+call if a newer full is queued or execution slack no longer fits. Unsupported
+detail or an unusable/stale plan can run full OCR once on the same current input
+when sufficient slack remains; a more expensive full call cannot replace an ROI
+that no longer fits its reservation.
 
 The measured high-water estimate cannot predict every future cost. Deadline
 overruns are counted and disable optional regions until explicit worker
@@ -73,16 +76,24 @@ region adds no CPU retry or readback.
 
 ## Admission
 
-Only the actual processed ROI is observed. Outside words survive only after an
-independent current probe proves their old line at/after the regional input.
-Their id, source, reference, offset and validation clocks remain unchanged.
-Contradictions/rejected spans cannot erase current-proved other-pane words.
-A spanning line may retain its outside words with the exact old reference;
-later real contradiction or ordinary freshness expiry still revokes it.
+Regional admission owns complete lines only. At crop edges inside the image,
+candidate words, protection and line bounds must lie at least **two input pixels**
+inside the actual processed ROI. Image-border edges have no extra margin.
+Rejected edge candidates supply no lines, pending words or temporal observations.
 
-Crossing protection masks are carved into bounded residual rectangles, retaining
-uncovered uncertainty/punctuation. Saturation keeps the original mask. Regional
-unions retain 1,024 lines, 8,192 words and 32,768 tokens/protection rectangles.
+An existing line whose words or masks are not wholly inside that safe coverage
+is retained verbatim, including sentences crossing either axis and mask-only
+remainders. Candidates intersecting such a retained line are ignored. Outside
+lines do not require a new probe merely to survive a region that never observed
+them. No identity, reference, offset, clock or proof is renewed; ordinary
+freshness, independent current-pixel validation and real contradictions still
+revoke stale/changed text. The same preserves reference-less agreement memory.
+
+This conservative ownership keeps reading order intact and preserves all
+crossing uncertainty without carving it. On prose wider than 480 pixels a
+regional read may therefore contribute nothing. Full scans remain authoritative;
+word-level replacement into a spanning line is not implemented. Regional unions
+retain 1,024 lines, 8,192 words and 32,768 tokens/protection rectangles.
 
 Outside pending words keep a shared immutable **per-observation** stamp,
 acquisition, authority, digest kind and full-image digest. ROI cannot reticket
@@ -165,3 +176,28 @@ The maintained model-free Paddle processing group also covers the automatic
 chain directly: a failed supplemental operation does not initialize a fallback
 or retire the preferred backend, and a preparing supplemental operation does
 not start either CPU bridge. The next ordinary full operation remains usable.
+
+### Review repairs, 2026-10-22
+
+The independent review reproduced eleven admission failures: four sentence-edge
+cases, two outside-line/probe races, four clipped-candidate edges and a mask
+crossing the ROI with no outside glyph. All eleven failed before the complete-line
+repair. Afterwards the CPU/PCH-off model contract passed all 252 Qt rows with
+zero skips (34.09 seconds). Crossing-line assertions now require the entire old
+sentence and mask, rather than its former fragmented remainder.
+
+A separate expired-slack regression failed before the worker yielded without
+inference. The combined focused selection now passes 18 CTest cases with zero
+skips/unresolved failures: sixteen scheduler cases plus the 252-row model and
+110-row paused/controller contracts. The final resume reused only the two
+unchanged executable fingerprints; all scheduler cases reran after correcting
+the older expired-deadline fixture to require cancellation and no backend call.
+The original 17/18 gate and earlier red regressions remain in the evidence ledger.
+
+Logs are under
+`Z:/Projects/OkuFlow/local-work-data/uct-geometry-r3-20261021/logs/`, named
+`active-r8-admission-{repro,fixed}-gate-1.log`,
+`active-r8-slack-repro-gate-1.log` and `active-r8-final-cpu-gate-{1,2}.log`.
+These are model-free scoped results; combined CUDA and actual native latency
+acceptance remain separate. In particular, the earlier scheduler-only GPU proof
+does not establish regional text admission or reading order.

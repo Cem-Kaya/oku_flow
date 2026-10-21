@@ -1,5 +1,10 @@
 # Hard-Coded Paths and Defaults
 
+Active regional UCT admission keeps a two-input-pixel margin at internal crop
+edges (zero at image borders). It owns complete lines only, retaining crossing
+sentences and masks verbatim without renewing their validation clocks. See
+[regional policy](uct_active_regional_ocr.md).
+
 Oriented UCT ink fitting keeps at least 35% of the detected word width and
 25% of the padded search height, with a four-source-pixel height floor.
 The separate minimum word height, confidence and strict pixel-proof gates

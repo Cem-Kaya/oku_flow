@@ -792,6 +792,13 @@ private slots:
     void regionalSpanningProtectionKeepsUncoveredResidual();
     void regionalPendingKeepsPerObservationTickets_data();
     void regionalPendingKeepsPerObservationTickets();
+    void regionalBoundaryLineRemainsWhole_data();
+    void regionalBoundaryLineRemainsWhole();
+    void regionalOutsideLineNeedsNoNewProbe_data();
+    void regionalOutsideLineNeedsNoNewProbe();
+    void regionalEdgeCandidateAddsNoPending_data();
+    void regionalEdgeCandidateAddsNoPending();
+    void regionalMaskBeyondRegionKeepsOwningLine();
     void probeReferencesPrioritizeUnverifiedAndOldestLines();
     void budgetRefreshCannotBorrowOtherProof_data();
     void budgetRefreshCannotBorrowOtherProof();
@@ -3916,7 +3923,11 @@ void UltraClearTextTests::regionalSpanningProtectionKeepsUncoveredResidual()
     QVERIFY(std::any_of(retained->protectedSceneRects.begin(),retained->protectedSceneRects.end(),
         [&](const QRectF& mask){return mask.translated(retained->sceneOffset).contains(uncovered);}));
     QCOMPARE(retained->reference.values,old.reference.values);QCOMPARE(retained->validatedAtMs,old.validatedAtMs);
-    const auto shown=model.SceneWords(410,4);QCOMPARE(shown.size(),1);QCOMPARE(shown.first().text,QStringLiteral("Outside"));
+    // The ROI cannot own this spanning sentence or its mask. Keep the whole
+    // old line, rather than splitting its reading order into fragments.
+    QCOMPARE(retained->protectedSceneRects,old.protectedSceneRects);
+    QCOMPARE(retained->readingTokens,old.readingTokens);
+    QCOMPARE(model.SceneWords(410,4).size(),2);
 }
 
 void UltraClearTextTests::regionalPendingKeepsPerObservationTickets_data()
@@ -3947,6 +3958,169 @@ void UltraClearTextTests::regionalPendingKeepsPerObservationTickets()
     admit(sameAcquisition,a,110);admit(sameAcquisition,roi,210);admit(sameAcquisition,b,220);
     const auto shown=sameAcquisition.SceneWords(220,2);QCOMPARE(outside(shown),1);
     QVERIFY(std::none_of(shown.begin(),shown.end(),[](const auto& word){return word.text==QStringLiteral("Novel");}));
+}
+
+void UltraClearTextTests::regionalBoundaryLineRemainsWhole_data()
+{
+    QTest::addColumn<bool>("wide");
+    QTest::addColumn<QRect>("region");
+    QTest::newRow("both-horizontal-edges") << true << QRect(150, 60, 480, 150);
+    QTest::newRow("left-half") << true << QRect(0, 60, 480, 150);
+    QTest::newRow("bottom-sliver") << false << QRect(50, 60, 480, 50);
+    QTest::newRow("top-sliver") << false << QRect(50, 110, 480, 150);
+}
+
+void UltraClearTextTests::regionalBoundaryLineRemainsWhole()
+{
+    QFETCH(bool, wide);
+    QFETCH(QRect, region);
+    const auto page = wide
+        ? MakeLayoutPage({{"The", {80,160},48}, {"quick",{400,160},48},
+                          {"brown",{760,160},48}, {"fox",{1150,160},48}})
+        : MakeLayoutPage({{"Reading",{240,160},48}});
+    const auto transform = Transform(1,.5,.5);
+    const auto current = Stamp(3,4,0,transform);
+    const auto result = [&](int frame, int ms) {
+        auto stamp = Stamp(3,4,ms,transform); stamp.frameSeq = frame;
+        return ResultFor(page,transform,stamp);
+    };
+    OverlayModel model;
+    model.Admit(result(1,100),current,nullptr,110);
+    model.Admit(result(2,200),current,nullptr,210);
+    const auto probe = ProbeOf(RenderView(page.image,transform,kViewWidth,kViewHeight),
+                               transform,3,4,4,400);
+    QCOMPARE(model.Validate(probe,400).valid,1);
+    const auto old = model.Lines().first();
+    const auto reading = model.ReadingText(410,4);
+    const auto screen = model.ScreenLines(410,4);
+    QVERIFY(!reading.isEmpty()); QCOMPARE(screen.size(),1);
+    auto roi = result(3,300);
+    QVector<RecognizedWord> clipped;
+    for (auto word : roi.output.lines.first().words) {
+        const auto cut = word.boundsPx.intersected(QRectF(region));
+        if (cut.isEmpty()) continue;
+        if (cut != word.boundsPx) word.text = QStringLiteral("bro");
+        word.boundsPx = cut;
+        if (!wide) word.confidence = .1;
+        clipped.push_back(word);
+    }
+    QVERIFY(!clipped.isEmpty());
+    roi.output.lines = {RecognizedLine{clipped}};
+    roi.output.detailRegionPx = region;
+    model.Admit(roi,current,&probe,410);
+    QCOMPARE(model.ReadingText(410,4),reading);
+    QCOMPARE(model.Lines().size(),1);
+    QCOMPARE(model.Lines().first().id,old.id);
+    QCOMPARE(model.Lines().first().readingTokens,old.readingTokens);
+    QCOMPARE(model.Lines().first().validatedAtMs,old.validatedAtMs);
+    QCOMPARE(model.Lines().first().reference.values,old.reference.values);
+    QCOMPARE(model.SceneWords(410,4).size(),old.words.size());
+    QCOMPARE(model.ScreenLines(410,4).first().lineId,
+             screen.first().lineId);
+    QCOMPARE(model.PendingWordCount(),0);
+}
+
+void UltraClearTextTests::regionalOutsideLineNeedsNoNewProbe_data()
+{
+    QTest::addColumn<bool>("referenceLess");
+    QTest::newRow("probe-not-yet-arrived") << false;
+    QTest::newRow("reference-less-agreement-memory") << true;
+}
+
+void UltraClearTextTests::regionalOutsideLineNeedsNoNewProbe()
+{
+    QFETCH(bool, referenceLess);
+    const auto page = MakeLayoutPage({{"Reading",{80,80},48},{"Outside",{1000,320},48}});
+    const auto transform = Transform(1,.5,.5);
+    const auto current = Stamp(3,4,0,transform);
+    const auto result = [&](int frame, int ms) {
+        auto stamp = Stamp(3,4,ms,transform); stamp.frameSeq = frame;
+        auto value = ResultFor(page,transform,stamp);
+        value.prepared = PrepareLines(value,7);
+        if (referenceLess) value.prepared.last().reference.valid = false;
+        return value;
+    };
+    OverlayModel model;
+    model.Admit(result(1,100),current,nullptr,110);
+    model.Admit(result(2,200),current,nullptr,210);
+    const auto old = model.Lines().last();
+    const auto reading = model.ReadingText(310,3);
+    const auto words = model.SceneWords(310,3).size();
+    auto roi = result(3,300);
+    roi.output.lines.removeLast(); roi.prepared.removeLast();
+    roi.output.detailRegionPx = {0,0,400,200};
+    model.Admit(roi,current,nullptr,310);
+    const auto outside = std::find_if(model.Lines().begin(),model.Lines().end(),
+        [&](const auto& line) { return line.id == old.id; });
+    QVERIFY(outside != model.Lines().end());
+    QCOMPARE(outside->validatedFrameSeq,old.validatedFrameSeq);
+    QCOMPARE(outside->validatedAtMs,old.validatedAtMs);
+    QCOMPARE(outside->reference.values,old.reference.values);
+    QCOMPARE(model.ReadingText(310,3),reading);
+    QCOMPARE(model.SceneWords(310,3).size(),words);
+    model.Admit(result(4,400),current,nullptr,410);
+    QCOMPARE(model.PendingWordCount(),0);
+    QCOMPARE(model.AcceptedWordCount(),2);
+}
+
+void UltraClearTextTests::regionalEdgeCandidateAddsNoPending_data()
+{
+    QTest::addColumn<QRectF>("bounds");
+    QTest::newRow("left") << QRectF(201,140,60,25);
+    QTest::newRow("right") << QRectF(539,140,60,25);
+    QTest::newRow("top") << QRectF(300,101,60,25);
+    QTest::newRow("bottom") << QRectF(300,274,60,25);
+}
+
+void UltraClearTextTests::regionalEdgeCandidateAddsNoPending()
+{
+    QFETCH(QRectF,bounds);
+    const auto page = MakeLayoutPage({{"brown",{500,240},48}});
+    const auto transform = Transform(1,.5,.5);
+    auto stamp = Stamp(3,4,300,transform); stamp.frameSeq = 3;
+    auto roi = ResultFor(page,transform,stamp);
+    roi.output.lines.first().words.first().boundsPx = bounds;
+    roi.output.detailRegionPx = {200,100,400,200};
+    OverlayModel model;
+    QCOMPARE(model.Admit(roi,stamp,nullptr,310),AdmitVerdict::kEmpty);
+    QCOMPARE(model.PendingWordCount(),0);
+    QVERIFY(model.Lines().isEmpty());
+    // An image boundary does not imply a crop-truncated word.
+    roi.output.detailRegionPx = {0,0,400,200};
+    roi.output.lines.first().words.first().boundsPx = {0,20,60,25};
+    QCOMPARE(model.Admit(roi,stamp,nullptr,310),AdmitVerdict::kPending);
+    QCOMPARE(model.PendingWordCount(),1);
+}
+
+void UltraClearTextTests::regionalMaskBeyondRegionKeepsOwningLine()
+{
+    const auto page = MakeLayoutPage({{"Total",{80,80},48}});
+    const auto transform = Transform(1,.5,.5);
+    const auto current = Stamp(3,4,0,transform);
+    const auto result = [&](int frame,int ms) {
+        auto stamp = Stamp(3,4,ms,transform); stamp.frameSeq = frame;
+        auto value = ResultFor(page,transform,stamp);
+        RecognizedWord uncertain{QStringLiteral("$1,250.00"),QRectF(330,60,150,30)};
+        uncertain.confidence = .1;
+        value.output.lines.first().words.push_back(uncertain);
+        return value;
+    };
+    OverlayModel model;
+    model.Admit(result(1,100),current,nullptr,110);
+    model.Admit(result(2,200),current,nullptr,210);
+    const auto probe = ProbeOf(RenderView(page.image,transform,kViewWidth,kViewHeight),
+                               transform,3,4,4,400);
+    model.Validate(probe,400);
+    const auto old = model.Lines().first();
+    auto roi = result(3,300); roi.output.lines.first().words.resize(1);
+    roi.output.lines.first().words.first().confidence = .1;
+    roi.output.detailRegionPx = {0,0,400,300};
+    model.Admit(roi,current,&probe,410);
+    QCOMPARE(model.Lines().size(),1);
+    QCOMPARE(model.Lines().first().id,old.id);
+    QCOMPARE(model.Lines().first().protectedSceneRects,old.protectedSceneRects);
+    QCOMPARE(model.Lines().first().readingTokens,old.readingTokens);
+    QCOMPARE(model.PendingWordCount(),0);
 }
 
 void UltraClearTextTests::probeReferencesPrioritizeUnverifiedAndOldestLines() {
