@@ -1,6 +1,7 @@
 #ifdef _WIN32
 #include "okuflow/common/video_playback.hpp"
 #include "video_playback_seek_budget.hpp"
+#include "video_ffmpeg_reader.hpp"
 #include <mfapi.h>
 #include <mferror.h>
 #include <mfreadwrite.h>
@@ -85,6 +86,7 @@ struct Reader {
     std::int64_t lastDecodedPts{-1};
     std::int64_t decodeCost100ns{10'000};
     VideoPlaybackMemoryPlan memory;
+    std::string backend{"media-foundation"}, backendReason;
     std::shared_ptr<VideoGpuDecoder> gpu;
     std::weak_ptr<const VideoPlaybackFrame> cachedSeekFrame;
     std::int64_t cachedSeekLowerBound{};
@@ -101,6 +103,7 @@ struct Reader {
         duration = 0; audioFloor100ns = audioEnd100ns = 0; audioEos = false;
         hasAudio = audioAvailable = eos = incomplete = false;
         parN = parD = 1; file = {}; archiveAdmission = {};
+        backend="media-foundation";backendReason.clear();
     }
 };
 bool HasDecodeCredit(const Reader& r, const std::shared_ptr<PixelBudget>& pool) {
@@ -340,7 +343,7 @@ std::optional<unsigned> CodedBitsPerComponent(IMFMediaType* native, const GUID& 
     }
     return std::nullopt;
 }
-void ConfigureReader(Reader& r, const Command& cmd) {
+void ConfigureReader(Reader& r, const Command& cmd, VideoPlayback::State& state) {
     if (cmd.archive) {
         r.archive = cmd.archive;
         if(!r.bytes)Check(cmd.archive->OpenReadStream(&r.bytes, &r.archiveAdmission,&r.cloneRead), "Active recording is not yet safely readable");
@@ -348,13 +351,30 @@ void ConfigureReader(Reader& r, const Command& cmd) {
         r.incomplete = r.archiveAdmission.finalized && !r.archiveAdmission.complete;
     } else if(!r.bytes)Check(OpenStableVideoReadStream(cmd.path, &r.bytes, &r.file,&r.cloneRead), "Open a stable read-only video handle");
     ComPtr<IMFAttributes> attrs; Check(MFCreateAttributes(&attrs, 4), "Create playback attributes");
-    if(cmd.gpuAdapter && !cmd.forceCpu) {
+    if(detail::FfmpegPlaybackRequested()) {
+        if(cmd.archive)r.backendReason="Recording archives use the Media Foundation backend.";
+        else {
+            const auto gen=state.generation.load();
+            const auto result=detail::CreateFfmpegVideoReader(r.bytes.Get(),r.cloneRead,
+                [&state,gen]{return state.Current(gen);},cmd.queued+std::chrono::seconds(2),&r.source,r.backendReason);
+            if(!state.Current(gen))throw std::runtime_error("Embedded open was superseded.");
+            if(SUCCEEDED(result))r.backend="ffmpeg-dav1d";
+            else {
+                // A failed probe never reopens the path. Native fallback gets
+                // an independent cursor on the identical held file backing.
+                ComPtr<IMFByteStream> fallback;
+                Check(r.cloneRead(&fallback),"Clone held stream after embedded decoder refusal");
+                r.bytes=std::move(fallback);
+            }
+        }
+    }
+    if(!r.source && cmd.gpuAdapter && !cmd.forceCpu) {
         r.gpu=VideoGpuDecoder::Create(*cmd.gpuAdapter);r.gpu->ConfigureReader(attrs.Get());
     } else {
         Check(attrs->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE), "Enable native BGRA conversion");
         Check(attrs->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, FALSE), "Select bounded CPU decode output");
     }
-    Check(MFCreateSourceReaderFromByteStream(r.bytes.Get(), attrs.Get(), &r.source), "Open native video decoder");
+    if(!r.source)Check(MFCreateSourceReaderFromByteStream(r.bytes.Get(), attrs.Get(), &r.source), "Open native video decoder");
     if(r.gpu)r.gpu->AttachSourceReader(r.source.Get());
     Check(r.source->SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS, FALSE), "Select playback tracks");
     Check(r.source->SetStreamSelection(MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE), "Select video track");
@@ -569,13 +589,14 @@ bool ReadVideo(Reader& r, VideoPlayback::State& state, std::uint64_t gen,
         ~StagingLease() { pool->bytes.fetch_sub(bytes); }
     } lease{state.pixels, staging};
     DWORD stream{}, flags{}; LONGLONG time{}; ComPtr<IMFSample> sample;
+    detail::ArmFfmpegVideoReader(r.source.Get(),[&state,gen]{return state.Current(gen);},deadline,minimumCopiedPts);
     const auto readHr = r.source->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0,
         &stream, &flags, &time, &sample);
     if (FAILED(readHr)) {
         if(r.archive && !r.archive->ValidateRange(r.archiveAdmission.generation,0,r.archiveAdmission.verifiedMediaBytes))
             throw std::runtime_error("Recording bytes changed during native decode; seek again.");
         if(r.gpu)throw VideoGpuIncompatible(Error("Decode GPU video sample",readHr));
-        throw DecodeFailure(Error("Decode video sample",readHr));
+        throw DecodeFailure(Error("Decode video sample",readHr)+detail::FfmpegVideoReaderError(r.source.Get()));
     }
     if (!state.Current(gen)) return false;
     r.videoStreamIndex = stream;
@@ -629,12 +650,13 @@ bool ReadVideo(Reader& r, VideoPlayback::State& state, std::uint64_t gen,
     r.decodeCost100ns=std::max<std::int64_t>(cost,(r.decodeCost100ns*3+cost)/4);
     return sample != nullptr;
 }
-void SeekReader(Reader& r, std::int64_t target) {
+void SeekReader(Reader& r, std::int64_t target,VideoPlayback::State& state,std::uint64_t gen) {
     // No new native seek on a reader whose sample is retained by an unsafe
     // conversion; the typed error routes to a fresh CPU reader instead.
     if(r.gpu && r.gpu->HasUnsafePending())
         throw VideoGpuIncompatible("GPU playback conversion is retained with unknown completion; using CPU playback.");
     if (!VideoPlaybackTimestampFits(target)) throw std::runtime_error("Seek target exceeds the supported host-clock range.");
+    detail::ArmFfmpegVideoReader(r.source.Get(),[&state,gen]{return state.Current(gen);},Clock::now()+std::chrono::seconds(2));
     PROPVARIANT position; PropVariantInit(&position); position.vt = VT_I8; position.hVal.QuadPart = std::max<std::int64_t>(0, target);
     Check(r.source->SetCurrentPosition(GUID_NULL, position), "Seek native video source"); r.eos = false; r.lastDecodedPts = -1;
     r.audioFloor100ns = std::max<std::int64_t>(0, target);
@@ -662,6 +684,7 @@ void QueueAudio(Reader& r, VideoPlayback::State& s, std::uint64_t gen,
               (!s.audio.empty() && s.audio.back().pts100ns > until + 5'000'000)) return;
         }
         DWORD stream{}, flags{}; LONGLONG time{}; ComPtr<IMFSample> sample;
+        detail::ArmFfmpegVideoReader(r.source.Get(),[&s,gen]{return s.Current(gen);},deadline);
         const auto hr = r.source->ReadSample(MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, &stream, &flags, &time, &sample);
         if (!s.Current(gen)) return;
         if (Clock::now() > deadline) { r.audioAvailable = false; return; }
@@ -732,7 +755,9 @@ void Publish(VideoPlayback::State& s, Reader& r, const Command& cmd,
     s.snapshot.incomplete = r.incomplete; s.snapshot.error.clear();
     s.snapshot.gpuResident=bool(s.snapshot.frame && s.snapshot.frame->gpu);
     s.snapshot.gpuDecodedBitsPerComponent=r.gpu?r.gpuComponentBits:0;
-    s.snapshot.backendReason=s.backendReason;
+    s.snapshot.decoderBackend=r.backend;
+    s.snapshot.backendReason=r.backendReason.empty()?s.backendReason:
+        r.backendReason+(s.backendReason.empty()?"":" "+s.backendReason);
     s.snapshot.memoryPressure=false;
     s.snapshot.lastRequestReadCount=reads;
     s.snapshot.lastRequestCopiedFrames=copies;
@@ -799,7 +824,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                         // the successor. A stuck Release retains the permit.
                         reader.Reset();
                         if (!s->Current(command.generation)) continue;
-                        ConfigureReader(reader, command); AdmitReaderMemory(reader,*s,command.generation); document = command;
+                        ConfigureReader(reader, command,*s); AdmitReaderMemory(reader,*s,command.generation); document = command;
                     } else {
                         if((command.forceCpu && reader.gpu) || (!reader.source && command.forceCpu)) {
                             // Keep the stable stream handle and identity across
@@ -814,7 +839,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                             reader.Reset();reader.bytes=bytes;reader.cloneRead=std::move(clone);reader.file=identity;
                             reader.archiveAdmission=admission;reader.archive=archive;
                             document.forceCpu=true;document.gpuAdapter.reset();
-                            ConfigureReader(reader,document);AdmitReaderMemory(reader,*s,command.generation);
+                            ConfigureReader(reader,document,*s);AdmitReaderMemory(reader,*s,command.generation);
                         }
                         if (!reader.source) throw std::runtime_error("No readable video is selected.");
                         document.generation = command.generation;
@@ -824,7 +849,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                                 now.verifiedMediaBytes != reader.archiveAdmission.verifiedMediaBytes) {
                                 reader.Reset();
                                 if (!s->Current(command.generation)) continue;
-                                ConfigureReader(reader, document); AdmitReaderMemory(reader,*s,command.generation);
+                                ConfigureReader(reader, document,*s); AdmitReaderMemory(reader,*s,command.generation);
                             }
                         }
                     }
@@ -862,7 +887,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                     // hidden audio cursor can continue through a scrub.
                     if (reader.hasAudio) reader.source->SetStreamSelection(MF_SOURCE_READER_FIRST_AUDIO_STREAM, FALSE);
                     unsigned seeks{};
-                    if (command.kind != CommandKind::Open) { SeekReader(reader, target); ++seeks; }
+                    if (command.kind != CommandKind::Open) { SeekReader(reader, target,*s,command.generation); ++seeks; }
                     detail::VideoPlaybackSeekBudget budget(command.queued);
                     if (budget.Expired(Clock::now())) throw std::runtime_error("Native open/seek exhausted its progress deadline.");
                     std::shared_ptr<const VideoPlaybackFrame> chosen, neighbor;
@@ -895,7 +920,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                             endLookback = std::min(reader.duration, std::max<std::int64_t>(1'000'000, endLookback * 2));
                             auto earlier = seeks + 1 == kEndSeekLimit ? 0 : reader.duration - endLookback;
                             if (earlier >= target) earlier = target / 2;
-                            target = earlier; SeekReader(reader, target); ++seeks;
+                            target = earlier; SeekReader(reader, target,*s,command.generation); ++seeks;
                             continue;
                         }
                         if (reader.eos || (!end && chosen && chosen->pts100ns >= target)) break;
@@ -995,7 +1020,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                     const auto deadline=Clock::now()+std::chrono::seconds(2);
                     bool touched{};
                     if (reader.needsReposition) {
-                        touched=true; SeekReader(reader,selectedPts); reader.needsReposition=false;
+                        touched=true; SeekReader(reader,selectedPts,*s,document.generation); reader.needsReposition=false;
                     }
                     std::shared_ptr<const VideoPlaybackFrame> next;
                     for(unsigned reads=0;reads<VideoPlayback::kSeekSampleLimit && !reader.eos &&
@@ -1053,7 +1078,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                         current.generation != reader.archiveAdmission.generation) {
                         try {
                             reader.Reset();
-                            ConfigureReader(reader, document); AdmitReaderMemory(reader,*s,document.generation);
+                            ConfigureReader(reader, document,*s); AdmitReaderMemory(reader,*s,document.generation);
                             std::lock_guard lock(s->mutex);
                             if (s->Current(document.generation)) {
                                 s->restartAtCursor = true;
@@ -1122,7 +1147,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                     if (reader.hasAudio) Check(reader.source->SetStreamSelection(MF_SOURCE_READER_FIRST_AUDIO_STREAM, audioEnabled), "Select playback audio");
                     if((audioEnabled && reader.hasAudio) || reader.needsReposition) {
                         {std::lock_guard lock(s->mutex);s->ready.clear();}
-                        SeekReader(reader,cursor);
+                        SeekReader(reader,cursor,*s,document.generation);
                         reader.needsReposition=false;
                         reader.resumeClockPending=true;
                     } else {

@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "ffmpegVersion": "7.1.1",
+  "dav1dVersion": "1.5.1",
+  "gccVersion": "16.2.0",
+  "inputs": [
+    {"name":"ffmpeg-7.1.1.tar.xz","url":"https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz","sha256":"733984395e0dbbe5c046abda2dc49a5544e7e0e1e2366bba849222ae9e3a03b1"},
+    {"name":"dav1d-1.5.1.tar.xz","url":"https://downloads.videolan.org/pub/videolan/dav1d/1.5.1/dav1d-1.5.1.tar.xz","sha256":"401813f1f89fa8fd4295805aa5284d9aed9bc7fc1fdbe554af4292f64cbabe21"},
+    {"name":"make-4.4.1-3-x86_64.pkg.tar.zst","url":"https://repo.msys2.org/msys/x86_64/make-4.4.1-3-x86_64.pkg.tar.zst","sha256":"af0bdba17f06fe037f0194069adaa31a8fe45f1a11381501896aea1fae37bd5d"},
+    {"name":"diffutils-3.12-1-x86_64.pkg.tar.zst","url":"https://repo.msys2.org/msys/x86_64/diffutils-3.12-1-x86_64.pkg.tar.zst","sha256":"7902c8ce3d4dd69a0f5e98dc9d5c83c17b23314ba486169db57ef6e2835ce3b6"},
+    {"name":"meson-1.7.0-py3-none-any.whl","url":"https://files.pythonhosted.org/packages/ab/3b/63fdad828b4cbeb49cef3aad26f3edfbc72f37a0ab54917d445ec0b9d9ff/meson-1.7.0-py3-none-any.whl","sha256":"ae3f12953045f3c7c60e27f2af1ad862f14dee125b4ed9bcb8a842a5080dbf85"}
+  ],
+  "configure": ["--target-os=mingw32","--arch=x86_64","--cc=gcc","--enable-shared","--disable-static","--disable-autodetect","--enable-libdav1d","--disable-network","--disable-protocols","--disable-programs","--disable-doc","--disable-avdevice","--disable-avfilter","--disable-postproc","--disable-encoders","--disable-muxers","--disable-hwaccels","--disable-debug"],
+  "runtime": ["avutil-59.dll","avcodec-61.dll","avformat-61.dll","swresample-5.dll","swscale-8.dll","libdav1d.dll","libwinpthread-1.dll"],
+  "winpthreadSha256": "76cc52adfcdb8c800813b2ae8da42a908934eb1ee54ce8e9744fc8d703c76ee1"
+}

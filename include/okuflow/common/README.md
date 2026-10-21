@@ -3,6 +3,9 @@
 Public common-layer interfaces live here.
 
 Currently exported:
+- `video_playback.hpp`: existing immutable video/PCM authority, with
+  `VideoPlaybackSnapshot::decoderBackend` exposing actual optional embedded
+  versus Media Foundation use independently of fallback diagnostics.
 - `assistive_runtime.hpp`: shared provider configuration, including response
   instructions, scene analysis, vision text reading, speech output, and HTML lecture notes
 - `codex_app_server_client.hpp`: native app-server transport with configurable

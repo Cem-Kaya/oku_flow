@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Add an opt-in embedded FFmpeg/dav1d saved-video CPU backend with pinned
+  private development builds, stable custom I/O and existing selected-frame,
+  PCM and retirement authority. Keep native/archive fallback and default;
+  document same-source timing/color differences and unaccepted HDR/deployment.
+
 - Keep healthy long-GOP video seeks and audio-aligned Resume active while
   decoding advances, under a two-second progress timeout and sixty-second
   request cap. Rebase playback after preroll and pace PCM already handed to

@@ -1,5 +1,36 @@
 # OkuFlow Tests
 
+## Optional embedded FFmpeg playback
+
+An explicit `OKUFLOW_FFMPEG_SDK_ROOT` registers
+`video_playback_embedded_contract`, `video_playback_embedded_missing_runtime`,
+`video_playback_embedded_archive_fallback` and `video_playback_embedded_4k`.
+These serial, desktop-free codec cases require actual embedded identity, stable
+custom I/O cancellation/deadlines, native fallback, frame issuance/retirement,
+PCM continuity and retained-lease pressure. No GUI or audio endpoint opens.
+Run through `run_test_gate.ps1` using the independent build directory. The
+default native contract and silent audio-output contract remain separate.
+`compare_video_backends.ps1` takes the global lease for an explicit finite
+same-source diagnostic and retains input/runtime hashes, original output and
+process-memory evidence. See [recipe, measurements and scope](../docs/video_ffmpeg_playback.md).
+
+The embedded 4K pressure case uses original `data/embedded-pool-4k.mp4`, a
+5,878-byte ordinary (nonfragmented) MP4 with 12 uniform gray steps at 5 FPS,
+3840×2160, one H.264 GOP and no audio. SHA-256:
+`b2f2b7ca62153b28f185396b72c972ec683aeaaed753fa7be90e1805e27f7583`.
+The owner's existing FFmpeg 7.1.1 generated this synthetic fixture only; no
+decoder executable or SDK is included in Git or a release payload:
+
+```powershell
+ffmpeg -hide_banner -nostdin -loglevel error -f lavfi -i "nullsrc=size=3840x2160:rate=5:duration=2.4,geq=lum='N*15':cb=128:cr=128" -c:v libx264 -threads 4 -preset veryfast -crf 35 -g 12 -pix_fmt yuv420p -an -movflags +faststart -map_metadata -1 embedded-pool-4k.mp4
+```
+
+Default native 4K cases still generate their original recorder fixture. The
+embedded case preserves its committed input and all timing, lease-pressure,
+same-frame reuse, supersession, pause/order and actual endpoint assertions.
+Saved fragmented MP4 is explicitly native fallback until the retained strict
+native-versus-FFmpeg timestamp precision failure is resolved.
+
 ## Accessible video and positioned UCT (development)
 
 `video_playback_contract` checks pure archive/resource admission. Explicit native
