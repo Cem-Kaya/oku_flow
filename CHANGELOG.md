@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Hide the UCT glyph window while a modal file picker blocks OkuFlow or the
+  application is inactive. Late OCR results cannot draw over the dialog or
+  another app; still-valid words return when the magnifier resumes.
+
 - Add an opt-in TensorRT recognizer-width policy that reduces padding within
   the existing ordered batches, with separate cached profile identity,
   initialized compact device metadata and actual CUDA stride regressions.

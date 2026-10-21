@@ -2,6 +2,7 @@
 
 #if defined(_WIN32)
 
+#include <QApplication>
 #include <QBackingStore>
 #include <QEvent>
 #include <QFontMetricsF>
@@ -132,10 +133,11 @@ UltraClearTextOverlay::UltraClearTextOverlay(QWidget* renderTarget, QWidget* own
     setAccessibleName(QStringLiteral("Ultra Clear Text overlay"));
     setAccessibleDescription(QStringLiteral(
         "Visual glyph overlay. The recognized text is available in the Ultra Clear Text reading pane."));
+    applicationActive_ = QGuiApplication::applicationState() == Qt::ApplicationActive;
+    // One application filter sees activation as well as target/ancestor
+    // geometry and modality events, without duplicate per-widget filters.
+    qApp->installEventFilter(this);
     if (renderTarget_) {
-        for (QWidget* widget = renderTarget_; widget; widget = widget->parentWidget()) {
-            widget->installEventFilter(this);
-        }
         SyncGeometryToRenderTarget();
     }
     hide();
@@ -232,10 +234,34 @@ QVector<UltraClearTextOverlay::GlyphGeometry> UltraClearTextOverlay::ProjectedGl
 
 bool UltraClearTextOverlay::eventFilter(QObject* watched, QEvent* event)
 {
+    if (watched == qApp) {
+        switch (event->type()) {
+        case QEvent::ApplicationActivate:
+            applicationActive_ = true;
+            UpdateVisibility();
+            break;
+        case QEvent::ApplicationDeactivate:
+            applicationActive_ = false;
+            UpdateVisibility();
+            break;
+        default:
+            break;
+        }
+    }
     auto* widget = qobject_cast<QWidget*>(watched);
     if (widget && renderTarget_ &&
         (widget == renderTarget_ || widget->isAncestorOf(renderTarget_))) {
         switch (event->type()) {
+        case QEvent::WindowBlocked:
+        case QEvent::WindowUnblocked:
+            if (widget == renderTarget_->window()) {
+                ownerBlocked_ = event->type() == QEvent::WindowBlocked;
+                UpdateVisibility();
+            }
+            break;
+        case QEvent::EnabledChange:
+            UpdateVisibility();
+            break;
         case QEvent::Resize:
         case QEvent::Move:
         case QEvent::Show:
@@ -267,7 +293,12 @@ void UltraClearTextOverlay::UpdateVisibility()
     QWidget* window = renderTarget_ ? renderTarget_->window() : nullptr;
     const bool targetShown = renderTarget_ && renderTarget_->isVisible() && window &&
                              !(window->windowState() & Qt::WindowMinimized);
-    const bool wanted = targetShown && !words_.isEmpty();
+    // The tool window is a sibling of native dialogs, not part of their
+    // client area. A late OCR completion must not show it above a modal file
+    // picker or another application. Keep the words for a normal resume.
+    const bool wanted = targetShown && applicationActive_ && !ownerBlocked_ &&
+                        window->isEnabled() && !QApplication::activeModalWidget() &&
+                        !words_.isEmpty();
     if (wanted && !isVisible()) {
         SyncGeometryToRenderTarget();
         show();

@@ -45,6 +45,15 @@ accepted use cases. Use Show original to compare, especially for numbers.
 
 ## What the user gets
 
+The native glyph window yields while a modal dialog (including Open video)
+blocks the magnifier, while its owner is disabled, or when OkuFlow becomes
+inactive. OCR completions and window movement cannot reveal it during that
+interval. Returning to the magnifier restores still-valid cached words at the
+current viewport position; this visibility change schedules no recognition.
+Desktop-free regressions cover blocking, nested dialogs, late assignments and
+reactivation. Native Qt/native-file-dialog rows belong to the serial Windows
+GUI gate; an offscreen pass alone does not establish Windows stacking behavior.
+
 - **Advanced Ã¢â€ â€™ Image Ã¢â€ â€™ Text clarity Ã¢â€ â€™ Ultra Clear Text (experimental)**. Off by
   default. The saved opt-in resumes when Text Clarity is enabled.
 - **Show original camera text**: always available while UCT is on; hides the

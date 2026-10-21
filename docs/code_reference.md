@@ -3147,6 +3147,13 @@ Namespace `okuflow`
   black/white in scene polarity; weight follows Text Clarity stroke weight.
   Paint is clipped away from floating panels, annotation chrome and the
   floating Assistant. `ProjectedWordRects()` exposes drawn geometry.
+- `eventFilter` tracks application activation and owner window blocking;
+  `UpdateVisibility` also checks owner enablement and the active modal widget.
+  The native overlay stays hidden during file pickers, nested modal dialogs,
+  and application deactivation, including late `SetWords` and geometry events.
+  Accepted words are retained; unblocking/reactivation restores the current
+  viewport placement without another OCR job. Hidden paints do not qualify as
+  current positioned accessibility geometry.
 - `CaptureSnapshot(transform, viewportSize)` records an independent vector
   `UctOverlaySnapshot` from eligible cached glyphs and plates at the capture's
   exact view transform. `ComputePaintPlan` shares clipping/protected-token and

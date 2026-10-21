@@ -25,6 +25,8 @@ namespace okuflow {
 // draws Ultra Clear Text glyph plates. It holds only accepted, scene-registered
 // words; every paint projects them through the latest presentation transform,
 // so pan/zoom/resize redraw at presentation rate without recognition work.
+// Hides while the application is inactive or its owner is modal-blocked or
+// disabled. Accepted words remain available for restoration when it resumes.
 class UltraClearTextOverlay final : public QWidget {
     Q_OBJECT
 public:
@@ -130,6 +132,8 @@ private:
 
     QPointer<QWidget> renderTarget_;
     QPointer<QWidget> excludedWidget_;
+    bool applicationActive_{};
+    bool ownerBlocked_{};
     ViewTransform transform_;
     QVector<SceneWord> words_;
     // Fitted glyph cached when words or style change; paint only reprojects

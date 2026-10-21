@@ -16,6 +16,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QCryptographicHash>
+#include <QDialog>
 #include <QWheelEvent>
 #include <QToolButton>
 #include <QElapsedTimer>
@@ -707,6 +708,8 @@ private slots:
     void overlayKeepsSourceBackgroundInsteadOfBlackWhite();
     void deferredPresentationKeepsCommittedProjectionAndExpires();
     void continuousPanDoesNotHideOverlayWhileOcrHeld();
+    void overlayStaysHiddenWhileOwnerBlockedOrApplicationInactive();
+    void overlayStaysHiddenAcrossNestedModalDialogs();
 
     // --- Validation primitives ----------------------------------------------
     void patchMatchesUnchangedTextAcrossPanAndZoom();
@@ -1253,6 +1256,97 @@ void UltraClearTextTests::paddedRecognitionFitsVisibleInk() {
     QVERIFY(std::abs(fitted.height() - actual.height()) <= 3);
     QVERIFY(std::abs(fitted.width() - actual.width()) <= 3);
     QVERIFY(fitted.height() < padded.height() * .8);
+}
+
+void UltraClearTextTests::overlayStaysHiddenWhileOwnerBlockedOrApplicationInactive()
+{
+    QWidget owner;
+    owner.resize(640, 480);
+    QWidget target(&owner);
+    target.setGeometry(20, 30, 580, 400);
+    UltraClearTextOverlay overlay(&target, &owner);
+    owner.show();
+    const auto words = QVector<UltraClearTextOverlay::SceneWord>{
+        {QStringLiteral("Reading"), QRectF(.2, .3, .4, .1),
+         {QColor(Qt::white), QColor(Qt::black)}, 1}};
+    overlay.SetViewTransform(ComputeViewTransform(640, 480, target.width(), target.height(),
+        1.0f, .5f, .5f, ViewportFitMode::kFill));
+    overlay.SetWords(words);
+    QTRY_VERIFY(overlay.isVisible());
+
+    QEvent blocked(QEvent::WindowBlocked);
+    QApplication::sendEvent(&owner, &blocked);
+    QVERIFY(!overlay.isVisible());
+    overlay.SetWords(words); // completion while a native dialog owns the window
+    target.resize(560, 380);
+    owner.hide();
+    owner.show();
+    QApplication::processEvents();
+    QVERIFY(!overlay.isVisible());
+    QCOMPARE(overlay.WordCount(), 1);
+    QVERIFY(!overlay.PaintedGeometryCurrent());
+
+    QEvent unblocked(QEvent::WindowUnblocked);
+    QApplication::sendEvent(&owner, &unblocked);
+    QTRY_VERIFY(overlay.isVisible());
+    QCOMPARE(overlay.size(), target.size());
+    QCOMPARE(overlay.mapToGlobal(QPoint()), target.mapToGlobal(QPoint()));
+
+    owner.setEnabled(false);
+    QVERIFY(!overlay.isVisible());
+    overlay.SetWords(words);
+    QVERIFY(!overlay.isVisible());
+    owner.setEnabled(true);
+    QTRY_VERIFY(overlay.isVisible());
+
+    const auto restoreActivation = qScopeGuard([] {
+        QEvent activated(QEvent::ApplicationActivate);
+        QApplication::sendEvent(qApp, &activated);
+    });
+    QEvent deactivated(QEvent::ApplicationDeactivate);
+    QApplication::sendEvent(qApp, &deactivated);
+    QVERIFY(!overlay.isVisible());
+    overlay.SetWords(words);
+    owner.move(owner.pos() + QPoint(10, 15));
+    QApplication::processEvents();
+    QVERIFY(!overlay.isVisible());
+    QCOMPARE(overlay.WordCount(), 1);
+    QEvent activated(QEvent::ApplicationActivate);
+    QApplication::sendEvent(qApp, &activated);
+    QTRY_VERIFY(overlay.isVisible());
+    QTRY_VERIFY(overlay.PaintedGeometryCurrent());
+}
+
+void UltraClearTextTests::overlayStaysHiddenAcrossNestedModalDialogs()
+{
+    QWidget owner;
+    owner.resize(640, 480);
+    UltraClearTextOverlay overlay(&owner, &owner);
+    owner.show();
+    const auto words = QVector<UltraClearTextOverlay::SceneWord>{
+        {QStringLiteral("Reading"), QRectF(.2, .3, .4, .1),
+         {QColor(Qt::white), QColor(Qt::black)}, 1}};
+    overlay.SetWords(words);
+    QTRY_VERIFY(overlay.isVisible());
+    QDialog outer(&owner);
+    outer.setWindowModality(Qt::WindowModal);
+    outer.show();
+    QTRY_VERIFY(!overlay.isVisible());
+    overlay.SetWords(words);
+    QVERIFY(!overlay.isVisible());
+
+    QDialog inner(&outer);
+    inner.setWindowModality(Qt::WindowModal);
+    inner.show();
+    overlay.SetWords(words);
+    QVERIFY(!overlay.isVisible());
+    inner.reject();
+    QApplication::processEvents();
+    overlay.SetWords(words);
+    QVERIFY(!overlay.isVisible());
+    outer.reject();
+    QTRY_VERIFY(overlay.isVisible());
+    QCOMPARE(overlay.WordCount(), 1);
 }
 
 void UltraClearTextTests::overlayKeepsSourceBackgroundInsteadOfBlackWhite_data() {
