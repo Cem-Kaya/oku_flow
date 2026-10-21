@@ -165,3 +165,33 @@ The maintained model-free Paddle processing group also covers the automatic
 chain directly: a failed supplemental operation does not initialize a fallback
 or retire the preferred backend, and a preparing supplemental operation does
 not start either CPU bridge. The next ordinary full operation remains usable.
+
+### Parent integration evidence, 2026-10-22
+
+The combined CPU/PCH-off gate passed 53 selected CTest cases in 83.19 seconds,
+including 241 UCT model rows, 110 paused/controller rows and both direct
+automatic-backend regressions. The two offscreen accessibility scales each
+passed 25 rows and skipped their explicitly opt-in timing row. The combined
+CUDA/PCH-on gate passed all four selected cases without skipped rows; the
+serial kernel case took 7.39 seconds. These remain scoped results.
+
+The cached GPU execution proof on the book pair passed with actual region
+`[448,125,480,288]`: first full worker 458.263 ms, regional worker 49.548 ms,
+then a full worker on the same second acquisition 109.726 ms. There was one
+regional call, no regional fallback/failure/overrun and zero image egress.
+Exact TensorRT retirement and unchanged engine-cache inventory passed.
+The first full includes startup effects; this single sequence is not a
+controlled speed comparison or a controller/display latency measurement.
+
+The integrated paused 6x book proof retains 383 candidates, 351 eligible and
+203 painted words, with fourteen painted in the detail view. Counts describe
+coverage, not ground-truth accuracy. Original model misreads and weak ink-fit
+geometry remain separate limitations. Native UIA, physical-camera, audible
+playback and packaged-release acceptance are still pending.
+
+Raw receipts and logs are retained under the workstation evidence root
+`Z:/Projects/OkuFlow/local-work-data/uct-geometry-r3-20261021/`, including
+`evidence/runs/active-book-gpu-1-receipt.json`,
+`evidence/runs/active-integrated-book-detail-1-receipt.json` and
+`logs/active-combined-{cpu,cuda}-gate-1.log`. The tested isolated source is
+`9bea79e`; its integrated production/test blobs match parent `32d3c7d`.

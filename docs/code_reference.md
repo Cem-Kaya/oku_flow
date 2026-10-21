@@ -6498,7 +6498,7 @@ carved uncertainty box therefore cannot acquire a false shared row/column
 with the proved word and start a protection cascade over its neighbour.
 See [geometry/detail repair](uct_oriented_detail_repair.md) for acceptance limits.
 
-## Oriented local UCT color preparation
+## Optional regional GPU execution proof
 
 The optional `uct_active_regional_test::Run` / `optionalActiveRegionalProof`
 fixture uses cached M/M N8 plans and two real owned acquisitions for actual
@@ -6509,6 +6509,8 @@ cache bytes. It admits no text and does not measure native or screen-reader
 latency. `supplementalFailureKeepsPreferredBackend` and
 `supplementalPreparingDoesNotStartCpuBridge` exercise the automatic chain
 directly in the maintained model-free processing group.
+
+## Oriented local UCT color preparation
 
 `MeasureLineColors` accepts an optional detected `TextQuad`. Its body, corner
 and immediate/expanded exterior samples use that quad's bilinear local frame;
