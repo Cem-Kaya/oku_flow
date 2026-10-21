@@ -7,7 +7,9 @@
   detected local frame while retaining strict pixel checks. Re-detect a
   settled paused visible region at up to six-times enlargement under bounded
   coverage and the existing detector size limit. Reconcile post-fit same-ink
-  duplicates without merging adjacent identical tokens.
+  duplicates without merging adjacent identical tokens. Resume a settled
+  detail request after presentation or backend recovery without adding polling
+  or restarting its timer on ordinary presentation receipts.
 
 - Add an opt-in embedded FFmpeg/dav1d saved-video CPU backend with pinned
   private development builds, stable custom I/O and existing selected-frame,

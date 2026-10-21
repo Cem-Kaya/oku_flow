@@ -56,7 +56,12 @@ At most 32 regions are attempted for one selection. Completed and abandoned
 regions are retained in that bounded coverage list, so panning back cannot
 create a retry loop. A finer scale may earn another pass. A new source/seek or
 settings authority resets it. A view that changes during work is reconsidered
-once that pair finishes. Refinement preserves prior independently proved text;
+once that pair finishes. If the settle deadline expires while presentation is
+latched failed or the backend is still preparing, the recovery event itself
+(presentation success after a failure, or the backend becoming ready) asks
+once more for the settled view, because no view change or OCR result follows
+such a recovery; ordinary receipts do not restart the settle timer.
+Refinement preserves prior independently proved text;
 new glyphs still require a distinct real neighbour.
 
 ## Validation and limits
