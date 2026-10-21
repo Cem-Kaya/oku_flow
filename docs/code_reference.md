@@ -7,8 +7,7 @@
 FfmpegVideoReaderError}`. Without explicit SDK headers it compiles a native
 fallback stub. `Api`/`Library` load one private dynamic runtime identity with
 version/config/license checks. `FragmentedMp4` probes bounded held-stream boxes
-to refuse the measured fragmented-file PTS mismatch, refuses exhaustion of its
-top-level or child-box budget, and `Matrix` validates
+to refuse the measured fragmented-file PTS mismatch, and `Matrix` validates
 supported color matrices. `Track::{Open,Seek,Decode,Sample}` own one held
 AVIO/demuxer/decoder/packet/frame per track; `Read`, `SeekIo`, `Interrupt`,
 `DenyExternal` and `Canceled` fence file access and secondary I/O. `Reader`
@@ -18,14 +17,8 @@ system readers without RTTI. `Require`/`AvCheck` retain native/library failures.
 RAII retires contexts/conversions on the existing worker; code remains loaded
 for process lifetime.
 
-`CreateFfmpegVideoReader` uses the successfully opened video demuxer's stream
-inventory to decide whether an audio cursor is required. Failure of a known
-audio track cannot be mistaken for a genuinely silent source.
-
-`video_playback.cpp::ConfigureReader` accepts worker state and the exact
-request generation for cancellation and same-held-file fallback; it never
-adopts a successor generation while opening an older request.
-`ReadVideo`, `QueueAudio` and `SeekReader` arm the
+`video_playback.cpp::ConfigureReader` now accepts worker state for cancellation
+and same-held-file fallback. `ReadVideo`, `QueueAudio` and `SeekReader` arm the
 optional provider with generation/deadline. `Publish` fills snapshot
 `decoderBackend` independently of its reason; private `Reader::Reset` resets
 it. Existing `SealFrame`, pixel quota, PCM trimming/high-water, supersession,
@@ -37,9 +30,7 @@ No new app/controller or OCR authority exists. See [contract](video_ffmpeg_playb
 optional headers/definitions, without downloading, import linking or deployment.
 `prepare_ffmpeg_playback.ps1` verifies pinned inputs/reused sources, builds private
 shared SDKs and records runtime/config/notices. `compare_video_backends.ps1`
-owns the global lease, finite child and evidence. `EmbeddedAdmissionRefusals`
-covers exhausted container probes and a failed cursor for known audio.
-`EmbeddedContract`,
+owns the global lease, finite child and evidence. `EmbeddedContract`,
 `EmbeddedMissingRuntime` and `CompareEmbedded` exercise actual backend/fallback,
 canceled I/O, issuance/retirement and same-source PTS; production PCM/4K/archive
 fixtures include continuity and embedded-specific backend assertions.
@@ -164,10 +155,6 @@ admission callbacks before advancing, so setup cannot expire otherwise current
   Optional corroboration follows exact-target publication and a 50 ms quiet
   period, so immediate scrubs take priority. A reused native cursor repositions
   before corroboration/Resume; audible Resume also skips owned preroll copies.
-  `Worker` consumes held-frame rewind intent and `restartAtCursor` together
-  under the same state lock. End publication rechecks both flags, so a
-  same-generation Pause/Resume cannot strand the decoder at EOS or publish
-  Ended over a pending replay of an earlier issued frame.
   `VideoPlaybackState::Waiting` retains forward intent at a growing archive's
   verified tail; new complete fragments resume it without another user action.
   Archive `parserBoxAttempts` exposes bounded unsupported-generation work.
@@ -6365,3 +6352,58 @@ frozen-upload / `RetireOwnedState` ownership contracts.
 `TensorRtProfile` records width policy, canvas counts and useful padding.
 The five width fixtures and resident selector are described in
 [narrower recognition inputs](uct_recognizer_width.md); defaults remain fixed.
+
+### UCT four-corner geometry and paused visible detail (2026-10-21)
+
+`TextQuad::{FromRect,Bounds,Center,Translated}` and `QuadWidth`, `QuadHeight`,
+`QuadAngle`, `QuadIsRotated`, `QuadArea`, `QuadIntersectionArea`,
+`ViewQuadToScene` and `SceneQuadToView` retain reading-order corners and exact
+normalized scene/view mappings. Invalid/nonconvex/nonfinite shapes have no
+intersection authority. `RecognizedWord::{quadPx,inkSearchQuadPx,inkFitted}`,
+`PreparedWord::sceneQuad` and the accepted/scene word quad fields carry fitted
+geometry through model retention, replacement and projection.
+`FitOrientedWordInk` operates in the detected local frame. The CUDA
+`gpu::OrientedInk`/`OrientedFit` descriptors and `OrientedInkBounds` preserve
+the corresponding fit without downloading image pixels.
+`FinalizeRecognizedGeometry` rejects invalid geometry and reconciles fitted
+same-ink duplicates while retaining adjacent identical tokens.
+
+`ReferencePatch::sceneQuad` optionally describes rectified sampling.
+`PlanQuadReference` creates only bounded sample geometry; its result is not a
+valid proof until CPU `BuildQuadReferencePatch` or resident
+`ResidentProbe::QuadReferences` captures and normalizes the samples.
+`gpu::Grid` retains its rectangle fields and adds `crossX/crossY/warpX/warpY`
+for bilinear row/column cross terms. CPU `ProjectPatch` and resident `Project`
+use the same cell centres and isotropic box extents. `Probe::CaptureReferences`
+shares the existing owner-retaining reference allocation/upload/completion
+path for rectangle and quad requests. Immutable `MatchImmutableWords` compares
+intrinsic source/destination edges and retains selected samples while replacing
+only their destination mapping. The existing strict proof and cancellation
+rules remain; no OCR string match alone confirms a glyph.
+
+`DetailFocus`, `kMaximumDetailMagnification`, `DetectorInputSize`,
+`DetailMagnification`, `DetailRegion` and `EstablishedDetectorScale` define
+bounded same-image visible detail. Paddle's `PaddleDetectionSize`,
+`PaddleDetailRegion`, `PaddleDetailMagnification` and
+`PaddleRecognitionRegions` share that policy in CPU/TensorRT.
+`Recognizer::SetDetailFocus` is call-scoped by the scheduler; all CPU/device
+`Submit` overloads optionally carry it, and unrequested backend region claims
+are discarded. Detail output coordinates remain full-scene coordinates.
+
+`UltraClearTextController::{ScheduleImmutableDetail,ImmutableDetailFocus,
+SubmitImmutableDetailIfUseful,FinishImmutableDetail}` use a single-shot settle
+timer and a bounded non-evicting attempt list. Selected/neighbour jobs share
+one focus but distinct acquisition identities. Completion/failure schedules
+only the latest view; authority invalidation clears timer/focus/coverage.
+`UctTiming::{immutableDetailSettleMs,immutableDetailMagnification}` and the
+controller's detail state do not renew media timestamps or manufacture evidence.
+
+`UltraClearTextOverlay::SceneWord::sceneQuad` and `SceneGlyph`'s oriented
+ratios retain shared line size/baseline. `PlanOriented` maps glyphs and plates
+projectively into four projected corners. `ResolveOverlaps` runs on content
+changes, distinguishes duplicate observations from conflicting strings, and
+keeps the rectangle fast path. `PlannedWord` stores fixed-size polygons and
+`glyphToView`; live paint, snapshot paint and actual character geometry use the
+same plan. `ComputePaintPlan` preserves exact polygon protection for oriented
+words and caps protection closure at eight passes before keeping original ink.
+See [geometry/detail repair](uct_oriented_detail_repair.md) for acceptance limits.

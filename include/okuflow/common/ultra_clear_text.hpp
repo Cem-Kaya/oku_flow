@@ -13,6 +13,7 @@
 #include <QString>
 #include <QVector>
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <functional>
@@ -108,6 +109,40 @@ QRectF ViewRectToScene(const ViewTransform& transform, double width, double heig
 QRectF SceneRectToView(const ViewTransform& transform, double width, double height,
                        const QRectF& sceneRect);
 
+// Reading-order text quadrilateral: top-left, top-right, bottom-right and
+// bottom-left along the recognized baseline. Paddle detector lines and their
+// CTC word spans are rotated rectangles in source pixels. Scene coordinates
+// keep the four mapped points, so the anisotropic normalized scene mapping
+// and the final view transform remain exact affine maps of the same shape.
+// An absent quad (valid == false) means the axis-aligned rectangle applies.
+struct TextQuad {
+    std::array<QPointF, 4> points{};
+    bool valid{};
+
+    static TextQuad FromRect(const QRectF& rect);
+    QRectF Bounds() const;
+    QPointF Center() const;
+    TextQuad Translated(const QPointF& offset) const;
+    bool operator==(const TextQuad&) const = default;
+};
+// Length of the baseline (top edge) and of the left edge, in the units of
+// the coordinates. Exact for rotated rectangles in isotropic pixel space.
+double QuadWidth(const TextQuad& quad);
+double QuadHeight(const TextQuad& quad);
+// Baseline angle in radians; meaningful only in isotropic pixel space.
+double QuadAngle(const TextQuad& quad);
+// Pixel-space quads tilted at least this much keep oriented geometry through
+// ink fitting and paint. Smaller tilts retain the established rectangle path.
+inline constexpr double kOrientedTextMinimumRadians = 0.035; // about 2 degrees
+bool QuadIsRotated(const TextQuad& pixelQuad);
+// Exact convex intersection area (Sutherland-Hodgman); 0 for invalid input.
+double QuadArea(const TextQuad& quad);
+double QuadIntersectionArea(const TextQuad& a, const TextQuad& b);
+TextQuad ViewQuadToScene(const ViewTransform& transform, double width, double height,
+                         const TextQuad& viewQuad);
+TextQuad SceneQuadToView(const ViewTransform& transform, double width, double height,
+                         const TextQuad& sceneQuad);
+
 // Owned BGRA pixels handed from the UI thread to workers without copying.
 // After hand-off nobody writes to the buffer; workers only read it.
 struct PixelBuffer {
@@ -185,7 +220,12 @@ struct ReferencePatch {
     QVector<float> values; // CPU zero-mean, unit-variance samples
     bool valid{};
     std::shared_ptr<const ResidentPatch> resident; // GPU descriptor, no pixel/feature download
+    TextQuad sceneQuad; // optional rectified sampling frame for immutable word proof
 };
+
+// Metadata-only bounded sampling plan; no image access or independent evidence.
+ReferencePatch PlanQuadReference(const SourceStamp&, int width, int height, const TextQuad&);
+ReferencePatch BuildQuadReferencePatch(const ProbeFrame&, const TextQuad&);
 
 // --- Recognition backend -------------------------------------------------
 
@@ -202,7 +242,38 @@ struct BackendStatus {
     QString languageTag; // recognizer language actually used
     QString detail;      // English technical detail for diagnostics
     bool usesGpu{};      // actual selected recognizer, including temporary fallback
+    // The selected recognizer can restrict detection to one visible-detail
+    // region of the same owned image (Paddle CPU/TensorRT, not Windows OCR).
+    bool detailFocus{};
 };
+
+// One bounded visible-detail detection region of an already owned analysis
+// image. It never changes the image, stamp or acquisition: recognition still
+// samples the same source pixels and maps boxes to full-image pixels.
+struct DetailFocus {
+    QRect regionPx;                    // requested visible source region
+    double maximumMagnification{1.0};  // detector enlargement bound, clamped to [1, 6]
+};
+// Hard bound on visible-detail detector enlargement. Enlarging existing pixels
+// adds no source detail; it only gives the detector more pixels per glyph.
+inline constexpr double kMaximumDetailMagnification = 6.0;
+
+// Backend-neutral detector input planning, shared by the Paddle CPU/TensorRT
+// adapters and the controller's visible-detail decision.
+// Input size for one detector region: long edge <= 960, enlargement only up
+// to the clamped magnification (1 = never enlarge, the established passes).
+QSize DetectorInputSize(QSize region, double maximumMagnification = 1.0);
+// Whole-scene context plus at most 4x4 overlapping crops (desired edge 1280,
+// 160-pixel overlap). The 4 is a per-axis crop count, not a zoom factor.
+QVector<QRect> DetectorRegions(QSize source);
+double DetailMagnification(const DetailFocus& focus);
+// The single visible-detail region: the request clamped to the image and,
+// when its long edge is below 960/magnification, enlarged around its centre
+// so detector enlargement never exceeds the bound. Empty for unusable input.
+QRect DetailRegion(QSize source, const DetailFocus& focus);
+// Highest detector scale (input pixels per source pixel) any established
+// region gives at `point`; the baseline a detail pass must clearly beat.
+double EstablishedDetectorScale(QSize source, const QPointF& point);
 
 // Candidate text is evidence, not accepted reading text. Rejected spans stay
 // ordered through preparation/admission and protect their original pixels.
@@ -229,6 +300,11 @@ struct RecognizedWord {
     double confidence{1.0}; // backend evidence; never increased during admission
     QRectF protectedBoundsPx; // original detector span, before optional ink fitting
     std::optional<LineColors> colors; // local word surface, measured after recognition
+    // Oriented Paddle geometry in job pixels. boundsPx is always its
+    // axis-aligned bound. Windows OCR words keep valid == false.
+    TextQuad quadPx;          // CTC span over the line height; fitted ink after preparation
+    TextQuad inkSearchQuadPx; // span widened by one CTC step, bounded by neighbours
+    bool inkFitted{};         // worker ink fitting replaced the padded span
 };
 
 struct RecognizedLine {
@@ -245,6 +321,10 @@ struct RecognitionOutput {
     // Extra Stable crossfade/unknown input: recognition was not attempted.
     // Neither a backend nor an input fault, and never recognition evidence.
     bool compositeInput{};
+    // Non-empty when detection examined only this region of the same image
+    // (visible detail). Boxes remain full-image pixels. Words touching an
+    // internal region edge were excluded, never cut into fragments.
+    QRect detailRegionPx;
 };
 
 // Runs only on the scheduler's worker thread. Implementations must honor
@@ -258,6 +338,10 @@ public:
     virtual BackendStatus Status() const { return {}; }
     virtual bool WantsDeviceInput() const { return false; }
     virtual bool Preparing() const { return false; }
+    // Worker-confined: the scheduler sets this immediately before one
+    // recognition and clears it afterwards. Backends without detail support
+    // ignore it and leave RecognitionOutput::detailRegionPx empty.
+    virtual void SetDetailFocus(const std::optional<DetailFocus>& focus) { Q_UNUSED(focus); }
     virtual RecognitionOutput Recognize(const QImage& image,
                                         const std::atomic<bool>& cancelled) = 0;
     virtual RecognitionOutput RecognizeDevice(const DeviceImage& image,
@@ -285,7 +369,21 @@ struct PreparedWord {
     double confidence{1.0};
     QRectF protectedSceneRect;
     std::optional<LineColors> colors;
+    TextQuad sceneQuad; // oriented scene geometry of a rotated word; sceneRect is its bound
 };
+
+// Worker-side oriented ink fit, the rotated-frame counterpart of the
+// row-band rectangle fit. Samples the word's search quad on a bounded local
+// grid, keeps the dominant ink band (plus detached marks) and returns the
+// fitted quad, or the unchanged span when ink is ambiguous. CPU reference
+// for the resident CUDA kernel; never called on the UI thread.
+TextQuad FitOrientedWordInk(const QImage& image, const RecognizedWord& word,
+                            const LineColors& colors, bool* fitted = nullptr);
+// Worker-side completion after fitting, shared by CPU and resident paths:
+// rejects invalid convex geometry and removes duplicate observations of the same text
+// that fitting resolved onto the same ink. Lines are never removed, so
+// every parallel per-line vector stays aligned.
+void FinalizeRecognizedGeometry(RecognitionOutput& output);
 
 struct PreparedLine {
     QVector<PreparedWord> words; // every known span, including rejected ones
@@ -384,13 +482,19 @@ public:
 
     // Takes an independently owned copy (detached by the caller or here).
     // Returns the job id, or 0 when the backend is unavailable/failed.
+    // `detail` restricts detection to one bounded region of the SAME owned
+    // image. The job keeps the image's stamp, digest and acquisition: it is
+    // a refinement of that observation, never independent evidence.
     std::uint64_t Submit(const SourceStamp& stamp, QImage pixels,
-                         CorroborationRequest corroboration = {});
+                         CorroborationRequest corroboration = {},
+                         std::optional<DetailFocus> detail = std::nullopt);
     // Zero-copy hand-off of already shared, immutable pixels.
     std::uint64_t Submit(const SourceStamp& stamp, SharedPixels pixels,
-                         CorroborationRequest corroboration = {});
+                         CorroborationRequest corroboration = {},
+                         std::optional<DetailFocus> detail = std::nullopt);
     std::uint64_t SubmitDevice(const SourceStamp& stamp, SharedDeviceImage device,
-                               CorroborationRequest corroboration = {});
+                               CorroborationRequest corroboration = {},
+                               std::optional<DetailFocus> detail = std::nullopt);
     void Cancel();
     // Overwrites one optional priority descriptor for the next job only.
     // Does not submit work, reset/renew evidence or alter recognition policy.
@@ -440,6 +544,11 @@ public:
         QVector<ReferencePatch> out;out.reserve(rects.size());
         for(const auto& rect:rects)out.push_back(Reference(stamp,rect));
         return out;
+    }
+    // Oracles without oriented sampling fail closed, rather than pretending a
+    // bounding rectangle contains the same pixels as a rotated word.
+    virtual QVector<ReferencePatch> QuadReferences(const SourceStamp&, const QVector<TextQuad>& quads) const {
+        return QVector<ReferencePatch>(quads.size());
     }
     virtual QVector<PatchMatch> Matches(const SourceStamp& stamp,const QVector<ReferencePatch>& patches,
                                         const MatchTuning& tuning,const QVector<QPointF>& seeds,
@@ -572,6 +681,7 @@ struct AcceptedWord {
     QRectF sceneRect;
     bool glyphEligible{true}; // immutable text may be readable without corroboration
     std::optional<LineColors> colors; // absent in legacy/hand-built line-only evidence
+    TextQuad sceneQuad; // oriented geometry (before line offset); invalid for rectangles
 };
 
 struct AcceptedLine {
@@ -603,6 +713,7 @@ struct SceneWord {
     std::uint64_t lineId{};
     QVector<QRectF> protectedSceneRects; // all current protected spans, offset applied
     int wordIndex{-1}; // index into the owning AcceptedLine::words (accessibility key)
+    TextQuad sceneQuad; // oriented word geometry, offset applied; invalid for rectangles
 };
 
 // One token of a screen-reader line projection: a verified glyph word, or a
