@@ -73,6 +73,32 @@ accessibility follow the resulting model.
 The union is bounded; the implementation and exact limits are documented in
 the code reference. No motion/recognition confidence threshold is lowered.
 
+Detail additions now carry an explicit typography group independently of their
+stable reading/accessibility line and word index. Appending a small word inside
+an oversized earlier line preserves the incoming row/type group instead of
+assigning the earlier line's group. Zero retains the legacy line-ID fallback;
+the painter's consumption of this field is a separate integration change.
+This does not impose a universal type-size clamp or regroup old word geometry.
+
+Ordinary low-confidence protection can extend across another retained row.
+Each independently proved admitted or duplicate incoming footprint now carves
+that ordinary protection across nearby lines. Uncovered ink, including real
+punctuation, stays protected. Genuine contradiction blocks remain immutable for
+the exact selection. A retired reading-only word keeps its bounded slot and
+residual uncertainty without restoring its full former box as hidden-line
+fallback protection. The source, acquisition, proof and resource limits remain
+unchanged. Model fixtures cover these cases; native painting and real-source
+OCR quality require separate validation. Word counts do not measure accuracy.
+
+The 2026-10-21 focused CPU `ultra_clear_text_contract` gate passed 203 Qt rows,
+with zero skips, in 32.07 seconds. Its first attempt passed 202 rows and failed
+the new entirely-reading-only boundary fixture: it omitted the regional output
+metadata, so full-frame admission correctly dropped that old line before the
+merge. The repaired fixture marks the actual detail region and asserts that the
+new word extends outside the exact previously accepted line bounds. Original
+failed logs and the repair reason remain in private r5 evidence. This scoped
+offscreen gate is not the Windows release matrix or native/GPU acceptance.
+
 Live and advancing-video admission remains separate. Repaint, a new job number
 and repeated copies of a held frame still cannot manufacture independent
 recognition evidence. Actual presentation failure still suppresses glyphs,

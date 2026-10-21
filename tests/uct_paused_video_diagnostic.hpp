@@ -226,7 +226,7 @@ inline void Run()
     QVector<okuflow::UltraClearTextOverlay::SceneWord> overlayWords;
     for (const auto& word : shown)
         overlayWords.push_back({word.text, word.sceneRect, word.colors, word.lineId,
-                               word.protectedSceneRects, word.wordIndex, word.sceneQuad});
+                               word.protectedSceneRects, word.wordIndex, word.sceneQuad, word.layoutGroupId});
     overlay.SetWords(std::move(overlayWords));
     QTRY_VERIFY(overlay.PaintedGeometryCurrent());
     QJsonArray painted;
@@ -278,7 +278,7 @@ inline void Run()
             const auto words = source.SceneWords(0, selectedStamp.frameSeq);
             for (const auto& word : words)
                 sceneWords.push_back({word.text, word.sceneRect, word.colors, word.lineId,
-                                      word.protectedSceneRects, word.wordIndex, word.sceneQuad});
+                                      word.protectedSceneRects, word.wordIndex, word.sceneQuad, word.layoutGroupId});
             zoomOverlay.SetWords(std::move(sceneWords));
             QJsonArray visibleWords;
             int inView = 0, drawn = 0;

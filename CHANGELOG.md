@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Preserve incoming UCT typography groups without changing stable reading
+  ownership. Carve independently proved detail ink from nearby ordinary
+  uncertainty across retained lines, preserving uncovered punctuation and
+  genuine contradiction blocks. Retired reading-only slots no longer restore
+  their full old protection over a newly proved boundary word.
+
 - Use consistent pixel coverage for UCT refinement protection, so fractional
   pan/zoom boundaries do not hide newly proved words or their neighbours.
   Keep tiny uncertain punctuation protected.

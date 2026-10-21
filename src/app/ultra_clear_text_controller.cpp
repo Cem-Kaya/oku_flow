@@ -1861,7 +1861,7 @@ void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
     next.reserve(words.size());
     for (const uct::SceneWord& word : words) {
         next.push_back({word.text, word.sceneRect, word.colors, word.lineId, word.protectedSceneRects,
-                        word.wordIndex, word.sceneQuad});
+                        word.wordIndex, word.sceneQuad, word.layoutGroupId});
     }
     // Text, position and colors all decide what is drawn; a re-recognized
     // word in a new color scheme must not keep its old plate.
@@ -1870,6 +1870,7 @@ void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
         same = next[i].text == overlayWords_[i].text &&
                next[i].sceneRect == overlayWords_[i].sceneRect &&
                next[i].lineId == overlayWords_[i].lineId &&
+               next[i].layoutGroupId == overlayWords_[i].layoutGroupId &&
                next[i].wordIndex == overlayWords_[i].wordIndex &&
                next[i].protectedSceneRects == overlayWords_[i].protectedSceneRects &&
                next[i].sceneQuad == overlayWords_[i].sceneQuad &&

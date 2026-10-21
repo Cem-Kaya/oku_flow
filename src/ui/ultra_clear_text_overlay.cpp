@@ -392,8 +392,8 @@ void UltraClearTextOverlay::RebuildGlyphLayout()
     QHash<std::uint64_t, QVector<int>> lines, orientedLines;
     for (int i = 0; i < words_.size(); ++i) {
         // Unlabelled legacy/test words are independent, never one giant line.
-        const std::uint64_t key = words_[i].lineId ? words_[i].lineId :
-                                 std::numeric_limits<std::uint64_t>::max() - i;
+        const std::uint64_t group = words_[i].layoutGroupId ? words_[i].layoutGroupId : words_[i].lineId;
+        const std::uint64_t key = group ? group : std::numeric_limits<std::uint64_t>::max() - i;
         (words_[i].sceneQuad.valid ? orientedLines : lines)[key].push_back(i);
     }
     glyphs_.clear();
