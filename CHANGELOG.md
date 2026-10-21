@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Use consistent pixel coverage for UCT refinement protection, so fractional
+  pan/zoom boundaries do not hide newly proved words or their neighbours.
+  Keep tiny uncertain punctuation protected.
+
 - Fit small tilted UCT words within loose detector padding rather than keeping
   oversized boxes. Retain an absolute height floor and thin-rule rejection,
   handle rounding at the minimum-height boundary, and keep original pixels

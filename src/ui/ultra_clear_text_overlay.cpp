@@ -42,12 +42,37 @@ QRectF PointBounds(const std::array<QPointF, 4>& points)
     return QRectF(QPointF(left, top), QPointF(right, bottom));
 }
 
+QRect PixelCoverage(const QRectF& rect, const QRect& bounds)
+{
+    const QRectF clipped = rect.intersected(QRectF(bounds));
+    if (clipped.isEmpty()) return {};
+    // Half-open coverage by pixel centres. Outward rounding BOTH sides of
+    // a fractional carve gives disjoint source spans a shared pixel row.
+    const int left = static_cast<int>(std::ceil(clipped.left() - .5));
+    const int top = static_cast<int>(std::ceil(clipped.top() - .5));
+    const int right = static_cast<int>(std::ceil(clipped.right() - .5));
+    const int bottom = static_cast<int>(std::ceil(clipped.bottom() - .5));
+    return QRect(left, top, std::max(0, right - left), std::max(0, bottom - top));
+}
+
+QRegion ProtectedRegion(const QRectF& rect, const QRect& bounds)
+{
+    const QRect covered = PixelCoverage(rect, bounds);
+    // A genuinely tiny punctuation span must still protect a pixel even
+    // when it contains no sample centre. Ordinary carved strips share the
+    // same half-open grid as the replacement they border.
+    return covered.isEmpty() ? QRegion(rect.intersected(QRectF(bounds)).toAlignedRect())
+                             : QRegion(covered);
+}
+
 QRegion PolygonRegion(const std::array<QPointF, 4>& points, const QRect& bounds)
 {
     QPolygon polygon;
     polygon.reserve(4);
-    for (const QPointF& point : points) polygon << point.toPoint();
-    return QRegion(polygon).intersected(bounds);
+    for (const QPointF& point : points)
+        polygon << QPoint(static_cast<int>(std::ceil(point.x() - .5)),
+                          static_cast<int>(std::ceil(point.y() - .5)));
+    return QRegion(polygon).intersected(PixelCoverage(PointBounds(points), bounds));
 }
 
 // The one eligibility decision shared by the plate pass and the glyph pass.
@@ -594,7 +619,7 @@ void UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransfor
             const QRectF view = uct::SceneRectToView(transform, viewportSize.width(), viewportSize.height(), scene);
             if (!view.isEmpty() && std::isfinite(view.x()) && std::isfinite(view.y()) &&
                 std::isfinite(view.width()) && std::isfinite(view.height()))
-                protectedInk += QRegion(view.intersected(QRectF(bounds)).toAlignedRect());
+                protectedInk += ProtectedRegion(view, bounds);
         }
     }
 
@@ -635,13 +660,13 @@ void UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransfor
                         !glyph.duplicate && !glyph.collision;
         if (!planned.drawn && !glyph.duplicate && !view.isEmpty() && std::isfinite(view.x()) &&
             std::isfinite(view.y()) && std::isfinite(view.width()) && std::isfinite(view.height()))
-            protectedInk += QRegion(view.intersected(QRectF(bounds)).toAlignedRect());
+            protectedInk += ProtectedRegion(view, bounds);
     }
     // A rotated word's bounding box covers its neighbours' corners. Test its
     // exact polygons, after a cheap bounding-box rejection.
     const auto touchesProtection = [&](const PlannedWord& planned) {
-        const QRect original = planned.originalRect.intersected(QRectF(bounds)).toAlignedRect();
-        const QRect ink = planned.inkRect.intersected(QRectF(bounds)).toAlignedRect();
+        const QRect original = PixelCoverage(planned.originalRect, bounds);
+        const QRect ink = PixelCoverage(planned.inkRect, bounds);
         if (!planned.oriented) return protectedInk.intersects(original) || protectedInk.intersects(ink);
         if (!protectedInk.intersects(original) && !protectedInk.intersects(ink)) return false;
         return protectedInk.intersects(PolygonRegion(planned.original, bounds)) ||
@@ -649,7 +674,7 @@ void UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransfor
     };
     const auto protectSource = [&](const PlannedWord& planned) {
         protectedInk += planned.oriented ? PolygonRegion(planned.original, bounds)
-                                         : QRegion(planned.originalRect.intersected(QRectF(bounds)).toAlignedRect());
+                                         : ProtectedRegion(planned.originalRect, bounds);
     };
     // Never show a clipped fragment of an accepted word over protected ink.
     // A suppressed replacement's own source box becomes protected too; resolve

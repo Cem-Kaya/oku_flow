@@ -760,6 +760,8 @@ private slots:
     void mixedHeightReadingOrderIsStableAndOnlyFreshTextIsRead();
     void unchangedWordsRefreshMeasuredColors();
     void glyphsShareLineBaselineDespiteDifferentInkHeights();
+    void fractionalProtectionCutsKeepProvedWords_data();
+    void fractionalProtectionCutsKeepProvedWords();
     void paddedRecognitionFitsVisibleInk_data();
     void paddedRecognitionFitsVisibleInk();
     void overlayKeepsSourceBackgroundInsteadOfBlackWhite_data();
@@ -1584,6 +1586,75 @@ void UltraClearTextTests::glyphsShareLineBaselineDespiteDifferentInkHeights()
         const QPointF base(0.5, (150.0 + (i / texts.size()) * 130.0) / 540.0);
         QVERIFY(std::abs(moved[i].baselineY - SceneToViewPixel(zoom, 960, 540, base).y()) < 0.1);
     }
+}
+
+void UltraClearTextTests::fractionalProtectionCutsKeepProvedWords_data()
+{
+    QTest::addColumn<float>("zoom");
+    QTest::addColumn<float>("pan");
+    QTest::addColumn<bool>("oriented");
+    for (const bool oriented : {false, true}) {
+        for (int i = 0; i < 4; ++i)
+            QTest::newRow(qPrintable(QStringLiteral("%1-%2").arg(oriented).arg(i)))
+                << (i < 2 ? 1.f : 3.f) << (.38f + i * .00031f) << oriented;
+    }
+}
+
+void UltraClearTextTests::fractionalProtectionCutsKeepProvedWords()
+{
+    QFETCH(float, zoom);
+    QFETCH(float, pan);
+    QFETCH(bool, oriented);
+    const auto scene = [](const QRectF& r) {
+        return QRectF(r.x() / 960, r.y() / 540, r.width() / 960, r.height() / 540);
+    };
+    const QRectF proved(241.25, 166.75, 140, 40);
+    // These are the exact continuous remainders of an ordinary uncertainty
+    // box after the newly proved footprint was subtracted. The incoming
+    // detector word extends two pixels past the old uncertainty, towards an
+    // already proved neighbour, just as in the recorded book example.
+    const QVector<QRectF> protection{scene({237.25, 160.25, 142, 6.5}),
+                                    scene({237.25, 206.75, 142, 6}),
+                                    scene({237.25, 166.75, 4, 40})};
+    QWidget target;
+    target.resize(960, 540);
+    UltraClearTextOverlay overlay(&target, &target);
+    target.show();
+    const auto transform = ComputeViewTransform(960, 540, 960, 540, zoom, pan, .35f,
+                                               ViewportFitMode::kFill);
+    overlay.SetViewTransform(transform);
+    QVector<UltraClearTextOverlay::SceneWord> words{
+        {QStringLiteral("to"), scene(proved), {Qt::black, Qt::white}, 1, protection, 0},
+        {QStringLiteral("an"), scene({380.45, 166.75, 110, 40}),
+         {Qt::black, Qt::white}, 2, protection, 0}};
+    if (oriented) for (auto& word : words) word.sceneQuad = TextQuad::FromRect(word.sceneRect);
+    overlay.SetWords(words);
+    QTRY_VERIFY(overlay.PaintedGeometryCurrent());
+    for (const auto& word : words) {
+        UltraClearTextOverlay::PaintedWordGeometry geometry;
+        QVERIFY(overlay.PaintedWord(word.lineId, word.wordIndex, word.text, geometry));
+        QVERIFY2(geometry.drawn, "Rounding a carved protection edge suppressed proved ink.");
+    }
+    QImage base(target.size(), QImage::Format_ARGB32);
+    base.fill(Qt::white);
+    const QColor punctuation(191, 17, 39);
+    {
+        QPainter painter(&base);
+        painter.fillRect(SceneRectToView(transform, 960, 540, scene({238.25, 162.25, 2, 2})),
+                         punctuation);
+    }
+    QImage composite = base;
+    {
+        QPainter painter(&composite);
+        overlay.CaptureSnapshot(transform, composite.size()).Paint(painter, composite.size());
+    }
+    int protectedPixels = 0;
+    for (int y = 0; y < base.height(); ++y) for (int x = 0; x < base.width(); ++x)
+        if (base.pixelColor(x, y) == punctuation) {
+            ++protectedPixels;
+            QCOMPARE(composite.pixelColor(x, y), punctuation);
+        }
+    QVERIFY(protectedPixels > 0);
 }
 
 void UltraClearTextTests::geometryRoundTripsThroughFitFillZoomPanAndDpi()

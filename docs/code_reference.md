@@ -6413,6 +6413,11 @@ keeps the rectangle fast path. `PlannedWord` stores fixed-size polygons and
 `glyphToView`; live paint, snapshot paint and actual character geometry use the
 same plan. `ComputePaintPlan` preserves exact polygon protection for oriented
 words and caps protection closure at eight passes before keeping original ink.
+`PixelCoverage` snaps projected rectangles and polygon vertices to the same
+half-open pixel-centre grid. `ProtectedRegion` retains a conservative pixel
+for a punctuation span containing no centre. Fractional remainders of a
+carved uncertainty box therefore cannot acquire a false shared row/column
+with the proved word and start a protection cascade over its neighbour.
 See [geometry/detail repair](uct_oriented_detail_repair.md) for acceptance limits.
 
 ## Oriented local UCT color preparation
