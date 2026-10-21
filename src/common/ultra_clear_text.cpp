@@ -24,6 +24,31 @@
 namespace okuflow::uct {
 namespace {
 
+using ProtectionKey = std::array<double, 4>;
+
+ProtectionKey MaskKey(const QRectF& rect)
+{
+    return {rect.x(), rect.y(), rect.width(), rect.height()};
+}
+
+std::set<ProtectionKey> MaskKeys(const QVector<QRectF>& rects, QPointF offset = {})
+{
+    std::set<ProtectionKey> keys;
+    for (const auto& rect : rects) {
+        const auto key = MaskKey(rect.translated(offset));
+        if (std::all_of(key.begin(), key.end(), [](double v) { return std::isfinite(v); })) keys.insert(key);
+    }
+    return keys;
+}
+
+QVector<QRectF> MaskRects(const std::set<ProtectionKey>& keys)
+{
+    QVector<QRectF> rects;
+    rects.reserve(static_cast<qsizetype>(keys.size()));
+    for (const auto& key : keys) rects.push_back({key[0], key[1], key[2], key[3]});
+    return rects;
+}
+
 timing::Values TimingOutput(const RecognitionOutput& output, bool device, bool current,
                             std::uint64_t relatedJob = 0)
 {
@@ -2860,18 +2885,28 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
         for (const auto& risk : line.nonCarvableSceneRects)
             if (QuadIntersectionArea(proved,TextQuad::FromRect(risk.translated(line.sceneOffset))) > 0) return false;
         QVector<QRectF> next;
+        const auto carved = MaskKeys(line.carvedSceneRects);
+        std::set<ProtectionKey> nextCarved, originals;
+        const auto preserve = [&](const QRectF& relative) {
+            next.push_back(relative);
+            (carved.contains(MaskKey(relative)) ? nextCarved : originals).insert(MaskKey(relative));
+        };
         for (const auto& relative : line.protectedSceneRects) {
             const QRectF rect = relative.translated(line.sceneOffset), cut = rect.intersected(provedBounds);
-            if (cut.isEmpty()) { next.push_back(relative); continue; }
+            if (cut.isEmpty()) { preserve(relative); continue; }
             const double area = cut.width()*cut.height();
             const double provedArea = QuadIntersectionArea(proved,TextQuad::FromRect(cut));
-            if (provedArea <= 0) { next.push_back(relative); continue; }
+            if (provedArea <= 0) { preserve(relative); continue; }
             // A quad's bounding box is not proof of its outer corners. Keep
             // ambiguous protection whole rather than approximate a diagonal
             // cut with rectangles that uncover unproved punctuation.
             if (provedArea < area*(1.0-1e-6)) return false;
             const auto add = [&](const QRectF& r) {
-                if (!r.isEmpty()) next.push_back(r.translated(-line.sceneOffset));
+                if (!r.isEmpty()) {
+                    const auto remainder = r.translated(-line.sceneOffset);
+                    next.push_back(remainder);
+                    nextCarved.insert(MaskKey(remainder));
+                }
             };
             add(QRectF(rect.left(), rect.top(), rect.width(), cut.top() - rect.top()));
             add(QRectF(rect.left(), cut.bottom(), rect.width(), rect.bottom() - cut.bottom()));
@@ -2881,8 +2916,12 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
         }
         const auto count = protectedCount - line.protectedSceneRects.size() + next.size();
         if (count > maximumProtected) return false;
+        // A residual can exactly coincide with an untouched original mask.
+        // Classification is per geometry: never downgrade the original ink.
+        for (const auto& key : originals) nextCarved.erase(key);
         protectedCount = count;
         line.protectedSceneRects = std::move(next);
+        line.carvedSceneRects = MaskRects(nextCarved);
         return true;
     };
     const auto trimProvedOmissions = [](AcceptedLine& line) {
@@ -3051,15 +3090,22 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
                 retained.push_back(std::move(masks));
             } else {
                 auto& carrier = retained[*maskOwner];
+                auto carrierMasks = MaskKeys(carrier.protectedSceneRects);
+                auto carrierCarved = MaskKeys(carrier.carvedSceneRects);
+                const auto incomingCarved = MaskKeys(masks.carvedSceneRects);
                 for (const auto& mask : masks.protectedSceneRects) {
                     const auto relative = mask.translated(masks.sceneOffset - carrier.sceneOffset);
-                    if (!carrier.protectedSceneRects.contains(relative)) {
+                    const auto key = MaskKey(relative);
+                    if (carrierMasks.insert(key).second) {
                         carrier.protectedSceneRects.push_back(relative); ++protectedCount;
+                        if (incomingCarved.contains(MaskKey(mask))) carrierCarved.insert(key);
                     }
+                    if (!incomingCarved.contains(MaskKey(mask))) carrierCarved.erase(key);
                     if (masks.nonCarvableSceneRects.contains(mask) && !carrier.nonCarvableSceneRects.contains(relative))
                         carrier.nonCarvableSceneRects.push_back(relative);
                     if (carrier.words.isEmpty()) carrier.sceneRect = carrier.sceneRect.united(relative);
                 }
+                carrier.carvedSceneRects = MaskRects(carrierCarved);
             }
             for (auto& row : rows) row.clear();
             for (qsizetype i = 0; i < retained.size(); ++i) indexLine(i);
@@ -3486,7 +3532,11 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                 // still checks that object and real content changes remove it.
                 const auto stableProtection = [&](const AcceptedLine& old) {
                     if (old.protectedSceneRects.size() != candidate.line.protectedSceneRects.size()) return false;
+                    const auto oldCarved = MaskKeys(old.carvedSceneRects);
+                    const auto newCarved = MaskKeys(candidate.line.carvedSceneRects);
                     for (int i = 0; i < old.protectedSceneRects.size(); ++i) {
+                        if (oldCarved.contains(MaskKey(old.protectedSceneRects[i])) !=
+                            newCarved.contains(MaskKey(candidate.line.protectedSceneRects[i]))) return false;
                         const QRectF a = old.protectedSceneRects[i].translated(old.sceneOffset);
                         const QRectF b = candidate.line.protectedSceneRects[i].translated(candidate.line.sceneOffset);
                         const auto finite = [](const QRectF& r) {
@@ -3542,12 +3592,19 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                         const LineColors colors = candidate.line.colors;
                         auto measuredWords = std::move(candidate.line.words);
                         const auto measuredProtection = candidate.line.protectedSceneRects;
+                        const auto measuredCarved = MaskKeys(candidate.line.carvedSceneRects);
+                        std::set<ProtectionKey> retainedCarved, retainedOriginals;
                         const auto protectionOffset = candidate.line.sceneOffset - old.sceneOffset;
                         candidate.line = old;
                         candidate.line.colors = colors;
-                        for (int i = 0; i < measuredProtection.size(); ++i)
+                        for (int i = 0; i < measuredProtection.size(); ++i) {
                             candidate.line.protectedSceneRects[i] = old.protectedSceneRects[i].united(
                                 measuredProtection[i].translated(protectionOffset));
+                            (measuredCarved.contains(MaskKey(measuredProtection[i])) ? retainedCarved : retainedOriginals)
+                                .insert(MaskKey(candidate.line.protectedSceneRects[i]));
+                        }
+                        for (const auto& key : retainedOriginals) retainedCarved.erase(key);
+                        candidate.line.carvedSceneRects = MaskRects(retainedCarved);
                         for (int i = 0; i < candidate.line.words.size(); ++i)
                             candidate.line.words[i].colors = measuredWords[i].colors;
                         retained = true;
@@ -3660,23 +3717,30 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         };
         const auto oldWords = activeWords(lines_, true);
         const auto proposedWords = activeWords(kept, false);
-        const auto maskKey = [](const QRectF& rect) {
-            return std::array<double,4>{rect.x(),rect.y(),rect.width(),rect.height()};
-        };
-        std::set<std::array<double,4>> oldProtection;
-        for (const auto& line : lines_)
+        std::set<ProtectionKey> oldProtection, oldOriginalProtection;
+        for (const auto& line : lines_) {
+            const auto carved = MaskKeys(line.carvedSceneRects);
             for (const auto& mask : line.protectedSceneRects) {
-                const auto key = maskKey(mask.translated(line.sceneOffset));
-                if (std::all_of(key.begin(),key.end(),[](double v) { return std::isfinite(v); })) oldProtection.insert(key);
+                const auto key = MaskKey(mask.translated(line.sceneOffset));
+                if (!std::all_of(key.begin(),key.end(),[](double v) { return std::isfinite(v); })) continue;
+                oldProtection.insert(key);
+                if (!carved.contains(MaskKey(mask))) oldOriginalProtection.insert(key);
             }
+        }
+        QVector<std::pair<QRectF, bool>> proposedProtection;
+        for (const auto& line : kept) {
+            const auto carved = MaskKeys(line.carvedSceneRects);
+            for (const auto& mask : line.protectedSceneRects)
+                proposedProtection.push_back({mask.translated(line.sceneOffset), carved.contains(MaskKey(mask))});
+        }
         const auto newProtectionAt = [&](const QRectF& oldRect, const QRectF& proposedRect) {
-            return std::any_of(kept.begin(),kept.end(),[&](const auto& line) {
-                return std::any_of(line.protectedSceneRects.begin(),line.protectedSceneRects.end(),
-                    [&](const auto& mask) {
-                        const auto absolute = mask.translated(line.sceneOffset);
-                        return absolute.intersects(proposedRect) &&
-                            (oldRect != proposedRect || !oldProtection.contains(maskKey(absolute)));
-                    });
+            return std::any_of(proposedProtection.begin(),proposedProtection.end(),[&](const auto& mask) {
+                // Replacing a carved strip with original ink can strengthen
+                // pixel coverage even at identical geometry. That is new
+                // protection for the no-withdrawal transaction too.
+                const auto& previousProtection = mask.second ? oldProtection : oldOriginalProtection;
+                return mask.first.intersects(proposedRect) &&
+                    (oldRect != proposedRect || !previousProtection.contains(MaskKey(mask.first)));
             });
         };
         qsizetype next = 0;
@@ -3855,17 +3919,32 @@ QVector<SceneWord> OverlayModel::SceneWords(std::int64_t nowMs, std::uint64_t cu
     // Conflict ink is shared scene protection even when its entire former
     // line was removed. Adjacent plates must never occlude those originals.
     QVector<QRectF> protectedRects = immutable_ ? immutableConflictRects_ : QVector<QRectF>{};
+    const bool hasCarved = std::any_of(lines_.begin(), lines_.end(), [](const auto& line) {
+        return !line.carvedSceneRects.isEmpty();
+    });
+    auto originals = hasCarved ? MaskKeys(protectedRects) : std::set<ProtectionKey>{};
+    std::set<ProtectionKey> carved;
     for (const AcceptedLine& line : lines_) {
-        for (const QRectF& r : line.protectedSceneRects)
+        const auto lineCarved = MaskKeys(line.carvedSceneRects);
+        for (const QRectF& r : line.protectedSceneRects) {
             protectedRects.push_back(r.translated(line.sceneOffset));
+            if (hasCarved)
+                (lineCarved.contains(MaskKey(r)) ? carved : originals).insert(MaskKey(protectedRects.back()));
+        }
         if (!IsShown(line, nowMs, currentFrameSeq))
             for (const AcceptedWord& word : line.words)
                 // Active reading-only uncertainty already has an explicit
                 // mask. A retired slot must not restore its whole old box
                 // after independently proved ink was carved from that mask.
-                if (word.glyphEligible)
+                if (word.glyphEligible) {
                     protectedRects.push_back(word.sceneRect.translated(line.sceneOffset));
+                    if (hasCarved) originals.insert(MaskKey(protectedRects.back()));
+                }
     }
+    // Different owners may describe the very same area. An original mask or
+    // conflict must keep conservative coverage even if another owner carved it.
+    for (const auto& key : originals) carved.erase(key);
+    const auto carvedRects = MaskRects(carved);
     for (const AcceptedLine& line : lines_) {
         if (!IsShown(line, nowMs, currentFrameSeq)) {
             continue;
@@ -3876,7 +3955,7 @@ QVector<SceneWord> OverlayModel::SceneWords(std::int64_t nowMs, std::uint64_t cu
             words.push_back({word.text, word.sceneRect.translated(line.sceneOffset), word.colors.value_or(line.colors), line.id,
                              protectedRects, i,
                              word.sceneQuad.valid ? word.sceneQuad.Translated(line.sceneOffset) : TextQuad{},
-                             word.layoutGroupId});
+                             word.layoutGroupId, carvedRects});
         }
     }
     return words;

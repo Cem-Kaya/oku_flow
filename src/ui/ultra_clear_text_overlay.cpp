@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <set>
 
 namespace okuflow {
 namespace {
@@ -55,13 +56,14 @@ QRect PixelCoverage(const QRectF& rect, const QRect& bounds)
     return QRect(left, top, std::max(0, right - left), std::max(0, bottom - top));
 }
 
-QRegion ProtectedRegion(const QRectF& rect, const QRect& bounds)
+QRegion ProtectedRegion(const QRectF& rect, const QRect& bounds, bool carved = false)
 {
     const QRect covered = PixelCoverage(rect, bounds);
-    // A genuinely tiny punctuation mark has no centre on either axis.
-    // A carved strip can lack centres on only one axis; rounding that strip
-    // outward would invent a shared pixel with the proved word beside it.
-    return covered.width() == 0 && covered.height() == 0
+    // Original thin marks need conservative coverage if either axis has no
+    // centres. Only subtraction remainders use the narrower strip rule:
+    // outward rounding there would invent a pixel shared with proved ink.
+    const bool emptyX = covered.width() == 0, emptyY = covered.height() == 0;
+    return (carved ? emptyX && emptyY : emptyX || emptyY)
         ? QRegion(rect.intersected(QRectF(bounds)).toAlignedRect()) : QRegion(covered);
 }
 
@@ -610,16 +612,24 @@ void UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransfor
     // both passes, including plate padding beyond an accepted word's box.
     QRegion& protectedInk = protectedInk_;
     protectedInk = QRegion();
-    QSet<const QRectF*> seenProtection;
+    QSet<std::pair<const QRectF*, const QRectF*>> seenProtection;
     for (const SceneWord& word : words_) {
-        if (word.protectedSceneRects.isEmpty() || seenProtection.contains(word.protectedSceneRects.constData()))
+        const auto identity = std::pair{word.protectedSceneRects.constData(), word.carvedSceneRects.constData()};
+        if (word.protectedSceneRects.isEmpty() || seenProtection.contains(identity))
             continue;
-        seenProtection.insert(word.protectedSceneRects.constData());
+        seenProtection.insert(identity);
+        const auto key = [](const QRectF& rect) {
+            return std::array<double, 4>{rect.x(), rect.y(), rect.width(), rect.height()};
+        };
+        std::set<std::array<double, 4>> carved;
+        for (const auto& rect : word.carvedSceneRects)
+            if (std::isfinite(rect.x()) && std::isfinite(rect.y()) &&
+                std::isfinite(rect.width()) && std::isfinite(rect.height())) carved.insert(key(rect));
         for (const QRectF& scene : word.protectedSceneRects) {
             const QRectF view = uct::SceneRectToView(transform, viewportSize.width(), viewportSize.height(), scene);
             if (!view.isEmpty() && std::isfinite(view.x()) && std::isfinite(view.y()) &&
                 std::isfinite(view.width()) && std::isfinite(view.height()))
-                protectedInk += ProtectedRegion(view, bounds);
+                protectedInk += ProtectedRegion(view, bounds, carved.contains(key(scene)));
         }
     }
 

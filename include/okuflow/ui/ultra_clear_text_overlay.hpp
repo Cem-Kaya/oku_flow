@@ -50,6 +50,7 @@ public:
         // baseline; sceneRect remains its bound. Invalid for upright words.
         uct::TextQuad sceneQuad;
         std::uint64_t layoutGroupId{}; // shared type size/baseline; 0 uses lineId
+        QVector<QRectF> carvedSceneRects; // protected subtraction remainders; original otherwise
     };
     void SetWords(QVector<SceneWord> words);
     // Optional diagnostic provenance of this content assignment, never a view
