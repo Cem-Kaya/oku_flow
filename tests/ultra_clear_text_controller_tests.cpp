@@ -614,10 +614,14 @@ void UltraClearTextControllerTests::activeRegionalFullDeadlinesUnderContinuousFo
           for (const auto& call:h.script->recorded) {
               if(call.focus) {
                   regions.push_back(call.marker);
-                  QCOMPARE(call.focus->detectorLongEdge,480);
+                  QCOMPARE(call.focus->detectorLongEdge,704);
+                  QCOMPARE(call.focus->maximumMagnification,
+                      std::nextafter(704.0/480.0,std::numeric_limits<double>::infinity()));
                   QVERIFY(call.focus->supplemental);
                   const auto region=DetailRegion(h.page.image.size(),*call.focus);
                   QVERIFY(region.width()<=480 && region.height()<=480);
+                  const auto input=DetectorInputSize(region.size(),DetailMagnification(*call.focus),call.focus->detectorLongEdge);
+                  QVERIFY(input.width()<=704 && input.height()<=704);
               } else full.push_back(call.marker);
           }
         }

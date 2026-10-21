@@ -254,7 +254,7 @@ struct BackendStatus {
 struct DetailFocus {
     QRect regionPx;                    // requested visible source region
     double maximumMagnification{1.0};  // detector enlargement bound, clamped to [1, 6]
-    int detectorLongEdge{960};         // [32, 960]; supplemental regions use 480
+    int detectorLongEdge{960};         // [32, 960]; supplemental detector edge is 704 (source <=480)
     bool supplemental{};              // failure requests a later full read, not backend retirement
 };
 // Hard bound on visible-detail detector enlargement. Enlarging existing pixels

@@ -6523,6 +6523,29 @@ See [geometry/detail repair](uct_oriented_detail_repair.md) for acceptance limit
 
 ## Optional regional GPU execution proof
 
+`RegionalDetailFocus` keeps source context at most 480 pixels and supplies the
+existing engine a 704-pixel detector long edge, nominal magnification 22/15.
+Its helper-local `nextafter(704.0/480.0,+infinity)` corrects a single-ULP
+reciprocal error that otherwise asks `DetailRegion` for 481 source pixels.
+Source dimensions are checked before narrowing, and desired dimensions and
+positions are bounded as doubles before integer conversion. Common detector
+rounding, 32-pixel short-axis minimum, paused 960/6x, eight-pixel backend source-edge
+exclusion and ten-pixel conservative admission are unchanged. This represents
+roughly 720 pixels on a crop edge, not a 1280×720 profile.
+
+`regionalRealizedInputDimensions` checks the helper descriptor through the
+backend's `DetailRegion` pass and `DetectorInputSize`, plus real bounded image
+crop/resize fixtures. It covers normal/wide/tall/square, alignment, borders,
+small and largest permitted source dimensions, tiny 32-pixel minimum axes,
+whole-source refusal and finite extreme metadata. `regionalMalformedInputsAreRefused`
+covers zero/oversized/unsigned-extreme sources and malformed rectangles.
+`ActiveRecognizer` records the actual fixture crop/resize sizes for the real
+scheduler path; controller pressure tests check 704 metadata and source caps.
+`regionalDetectorBudgetKeepsPausedDefaults` retains full 960×544 and paused
+six-times 960×576 inputs. No model/profile preparation or GPU quality claim is
+part of these fixtures. The planner remains a metadata observer, not optical
+flow or multi-frame OCR stacking.
+
 `OverlayModel::AdmitImpl` stages regional line IDs and checks the complete
 post-cap proposal for withdrawal before committing lines or pending tickets.
 Every active owned word (confirmed or named by a reading token, including

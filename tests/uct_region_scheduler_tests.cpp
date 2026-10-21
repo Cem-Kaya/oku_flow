@@ -3,8 +3,10 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cmath>
 #include <deque>
 #include <mutex>
+#include <limits>
 #include <utility>
 
 using namespace okuflow::uct;
@@ -79,6 +81,7 @@ struct ActiveCalls {
     std::condition_variable ready;
     bool blockInput{}, inputEntered{}, blockDetail{};
     QRgb lastPixel{};
+    QSize regionalSourceSize, regionalDetectorSize;
     void Release() { std::lock_guard lock(mutex); blockInput = blockDetail = false; ready.notify_all(); }
 };
 class ActiveRecognizer final : public Recognizer {
@@ -101,6 +104,12 @@ public:
         QRectF word(20,20,50,18);
         if (focus_ && !calls_->ignoreDetail) {
             output.detailRegionPx=DetailRegion(image.size(),*focus_);
+            const auto detector = DetectorInputSize(output.detailRegionPx.size(),DetailMagnification(*focus_),focus_->detectorLongEdge);
+            // Follow the production crop/resize dimensions, without a model.
+            const auto crop = image.copy(output.detailRegionPx);
+            const auto input = crop.scaled(detector,Qt::IgnoreAspectRatio,Qt::FastTransformation);
+            { std::lock_guard lock(calls_->mutex);
+              calls_->regionalSourceSize=crop.size(); calls_->regionalDetectorSize=input.size(); }
             word=QRectF(output.detailRegionPx.x()+12,output.detailRegionPx.y()+12,50,18);
         }
         output.lines={RecognizedLine{{RecognizedWord{QStringLiteral("Read"),word}}}};
@@ -116,6 +125,15 @@ QImage ActivePixels(std::uint64_t frame) {
 }
 SourceStamp ActiveStamp(std::uint64_t frame) {
     auto stamp=Stamp(frame); stamp.viewportWidth=960; stamp.viewportHeight=540; return stamp;
+}
+std::optional<DetailFocus> PlannedFocus(quint32 width, quint32 height, const QRectF& selection)
+{
+    auto current=ActiveStamp(2); current.viewportWidth=width; current.viewportHeight=height;
+    RegionShadowPlan plan;
+    plan.status=RegionPlanStatus::kAccepted; plan.jobId=1; plan.authority=1; plan.evidenceAcquisition=1;
+    plan.stamp=current; plan.stamp.frameSeq=1; plan.stamp.timestampMs=100;
+    RegionPlannedSelection selected; selected.sceneRect=selection; plan.selections.push_back(selected);
+    return RegionalDetailFocus(plan,current);
 }
 RegionalOcrRequest Request(const RecognitionResult& full, int slackMs=5000) {
     return {full.shadowPlan,std::chrono::steady_clock::now()+std::chrono::milliseconds(slackMs),750};
@@ -149,14 +167,84 @@ private slots:
     {
         const QSize source(1920,1080);
         const DetailFocus paused{QRect(0,0,100,60),1};
-        const DetailFocus regional{QRect(0,0,100,60),1,480,true};
         QCOMPARE(DetailRegion(source,paused).width(),960);
-        QCOMPARE(DetailRegion(source,regional).width(),480);
-        for (const QSize size:{QSize(480,480),QSize(480,270),QSize(479,33),QSize(1920,1080)}) {
-            const auto budget=DetectorInputSize(size,1,480);
-            QVERIFY(budget.width()<=480 && budget.height()<=480);
-        }
+        const DetailFocus pausedSix{QRect(0,0,100,60),6};
+        QCOMPARE(DetailRegion(source,pausedSix).size(),QSize(160,96));
+        QCOMPARE(DetectorInputSize(DetailRegion(source,pausedSix).size(),DetailMagnification(pausedSix),pausedSix.detectorLongEdge),QSize(960,576));
         QCOMPARE(DetectorInputSize(source),QSize(960,544));
+        QCOMPARE(kDetailCropEdgeMarginPx,8.0); // source-crop pixels, unchanged by detector interpolation
+    }
+    void regionalRealizedInputDimensions_data()
+    {
+        QTest::addColumn<quint32>("width"); QTest::addColumn<quint32>("height");
+        QTest::addColumn<QRectF>("selection"); QTest::addColumn<QSize>("crop"); QTest::addColumn<QSize>("detector");
+        const auto row=[](const char* name,quint32 w,quint32 h,QRectF selection,QSize crop,QSize detector) {
+            QTest::newRow(name)<<w<<h<<selection<<crop<<detector;
+        };
+        row("context-480x288",1920,1080,{.25,.25,.001,.001},{480,288},{704,416});
+        row("square-cap",960,960,{.25,.25,.5,.5},{480,480},{704,704});
+        row("wide",1920,1080,{.125,.5,.5,.015625},{480,96},{704,128});
+        row("tall",1080,1920,{.5,.125,.03125,.5},{160,480},{224,704});
+        row("alignment-floors-short-axis",960,512,{.25,.25,.25,.125},{480,183},{704,256});
+        row("small-source-backend-context-pass",300,800,{.25,.25,.001,.001},{300,461},{416,672});
+        row("one-pixel-short-axis-minimum",800,1,{.25,0,.001,1},{480,1},{704,32});
+        row("eight-pixel-short-axis-minimum",8,800,{0,.25,1,.001},{8,480},{32,704});
+        row("left-top-border",1920,1080,{0,0,.001,.001},{480,288},{704,416});
+        row("right-bottom-border",1920,1080,{.999,.999,.001,.001},{480,288},{704,416});
+        row("largest-valid-source",8192,8192,{.25,.25,.0001220703125,.0001220703125},{480,288},{704,416});
+        row("almost-whole-source",481,288,{.25,.25,.001,.001},{480,288},{704,416});
+        row("whole-source-refused",300,200,{.25,.25,.001,.001},{},{});
+        row("tiny-whole-source-refused",1,1,{0,0,1,1},{},{});
+        row("huge-finite-selection-bounded-before-casts",960,540,{0,0,1e100,1e100},{480,480},{704,704});
+    }
+    void regionalRealizedInputDimensions()
+    {
+        QFETCH(quint32,width); QFETCH(quint32,height); QFETCH(QRectF,selection);
+        QFETCH(QSize,crop); QFETCH(QSize,detector);
+        const auto focus=PlannedFocus(width,height,selection);
+        if(crop.isEmpty()) { QVERIFY(!focus); return; }
+        QVERIFY(focus); QCOMPARE(focus->detectorLongEdge,704); QVERIFY(focus->supplemental);
+        QCOMPARE(focus->maximumMagnification,std::nextafter(704.0/480.0,std::numeric_limits<double>::infinity()));
+        QCOMPARE(std::ceil(704.0/DetailMagnification(*focus)),480.0); // actual C++ reciprocal-rounding guard
+        const QSize source{int(width),int(height)};
+        const auto actual=DetailRegion(source,*focus);
+        QVERIFY(focus->regionPx.width()<=480 && focus->regionPx.height()<=480);
+        // Backend context expansion on a source-clamped short axis is kept;
+        // assert its realized crop, not just the requested descriptor.
+        QCOMPARE(actual.size(),crop); QVERIFY(QRect(QPoint{},source).contains(actual));
+        QVERIFY(actual.width()<=480 && actual.height()<=480);
+        const auto input=DetectorInputSize(actual.size(),DetailMagnification(*focus),focus->detectorLongEdge);
+        QCOMPARE(input,detector); QVERIFY(input.width()<=704 && input.height()<=704);
+        QCOMPARE(input.width()%32,0); QCOMPARE(input.height()%32,0);
+        // Real crop/resize on bounded fixtures; the 8192 case is metadata-only.
+        if(width<=1920 && height<=1920) {
+            QImage pixels(source,QImage::Format_ARGB32); pixels.fill(Qt::white);
+            const auto copied=pixels.copy(actual); QCOMPARE(copied.size(),crop);
+            QCOMPARE(copied.scaled(input,Qt::IgnoreAspectRatio).size(),detector);
+        }
+        const double longScale=double(std::max(input.width(),input.height()))/std::max(crop.width(),crop.height());
+        QVERIFY(longScale<=704.0/480.0+1e-14);
+        // The existing minimum 32 tensor pixels on a tiny short axis is
+        // explicit above; it is not a promise of isotropic <=22/15 resizing.
+    }
+    void regionalMalformedInputsAreRefused_data()
+    {
+        QTest::addColumn<quint32>("width"); QTest::addColumn<quint32>("height"); QTest::addColumn<QRectF>("selection");
+        QTest::newRow("zero-width")<<quint32(0)<<quint32(540)<<QRectF(.2,.2,.1,.1);
+        QTest::newRow("zero-height")<<quint32(960)<<quint32(0)<<QRectF(.2,.2,.1,.1);
+        QTest::newRow("oversize-width")<<quint32(8193)<<quint32(540)<<QRectF(.2,.2,.1,.1);
+        QTest::newRow("oversize-height")<<quint32(960)<<quint32(8193)<<QRectF(.2,.2,.1,.1);
+        QTest::newRow("uint-max")<<std::numeric_limits<quint32>::max()<<std::numeric_limits<quint32>::max()<<QRectF(.2,.2,.1,.1);
+        QTest::newRow("empty-selection")<<quint32(960)<<quint32(540)<<QRectF();
+        QTest::newRow("negative-extent")<<quint32(960)<<quint32(540)<<QRectF(.2,.2,-.1,.1);
+        QTest::newRow("nan")<<quint32(960)<<quint32(540)<<QRectF(std::numeric_limits<double>::quiet_NaN(),.2,.1,.1);
+        QTest::newRow("infinity")<<quint32(960)<<quint32(540)<<QRectF(.2,.2,std::numeric_limits<double>::infinity(),.1);
+        QTest::newRow("mapping-overflow")<<quint32(960)<<quint32(540)<<QRectF(1e308,.2,1e308,.1);
+    }
+    void regionalMalformedInputsAreRefused()
+    {
+        QFETCH(quint32,width); QFETCH(quint32,height); QFETCH(QRectF,selection);
+        QVERIFY(!PlannedFocus(width,height,selection));
     }
     void activePlanRunsActualCurrentRegionAndDoesNotObservePartial()
     {
@@ -174,6 +262,9 @@ private slots:
         QCOMPARE(calls->lastPixel,ActivePixels(2).pixel(959,539)); // current owned image actually executed
         QVERIFY(!roi->shadowPlan);
         QVERIFY(roi->output.detailRegionPx.width()<=480 && roi->output.detailRegionPx.height()<=480);
+        { std::lock_guard lock(calls->mutex);
+          QCOMPARE(calls->regionalSourceSize,roi->output.detailRegionPx.size());
+          QCOMPARE(calls->regionalDetectorSize,QSize(704,416)); }
         QCOMPARE(roi->stamp.frameSeq,std::uint64_t(2)); QCOMPARE(roi->reference.stamp.frameSeq,std::uint64_t(2));
         QVERIFY(scheduler.Submit(ActiveStamp(3),ActivePixels(3)));
         auto next=box.Take(); QVERIFY(next && next->shadowPlan);

@@ -56,11 +56,33 @@ OCR. No second CPU OCR worker, preparation bridge, model, download or engine
 profile is added.
 
 `RegionalDetailFocus` chooses one planned occurrence/grid cell using current
-focus and bounded context. Source and detector edges are at most **480 pixels**,
-magnification one. `DetailFocus::detectorLongEdge` defaults to 960, preserving
-paused detail defaults. Paddle CPU/TensorRT reuse their existing detector
-planning. Boxes/references/stamps remain in the full job image/processed scene.
+focus and bounded context. Source-crop edges remain at most **480 pixels**;
+the detector's longest edge is now at most **704 pixels**, the nearest supported
+32-pixel-aligned size below the requested roughly 720 crop pixels. This is not
+1280×720 video or a 720p full-frame profile. Nominal detector enlargement is
+**704/480 = 22/15**, about 1.47 times, on the same bounded source area.
+`DetailFocus::detectorLongEdge` still defaults to 960, preserving paused
+960-pixel/six-times detail. Paddle CPU/TensorRT reuse the existing detector
+planning and warm profile with a 960-pixel maximum; no engine/profile change,
+download or cold preparation is added. Boxes/references/stamps remain in the full job image/processed scene.
 Inconsistent processed-ROI metadata or words outside it fail closed.
+
+The helper uses `nextafter(704.0/480.0, +infinity)`, one adjacent double, to
+represent the intended 22/15: otherwise reciprocal roundoff makes
+`ceil(704 / magnification)` return 481 instead of 480. Shared rounding policy
+is unchanged. Aligned detector axes round down after enlargement. A 480×288
+crop therefore gives 704×416, and 480×480 gives 704×704. Small-source clamping
+can cause the backend's context pass to expand a helper descriptor further:
+for a 300×800 source and tiny selection, 300×288 becomes an actual 300×461 crop
+and a 416×672 detector input. Fixtures inspect this realized pass.
+
+The existing minimum detector short edge is 32 pixels. On a tiny source axis
+this can interpolate by more than 22/15 on that axis (an 8×480 crop becomes
+32×704), while the long-axis enlargement and both tensor edges remain bounded.
+This is transparent sizing behavior, not a new tiny-source acceptance policy.
+Additional detector work has not been benchmarked; cadence, slack estimates,
+full priority and overrun handling remain unchanged, with no speed or accuracy
+improvement claimed.
 
 Only successful complete **full outputs** feed `RegionShadowPlanner::Observe`.
 Partial outputs never advance missing counts, occurrence ages or coverage debt.
@@ -79,8 +101,10 @@ region adds no CPU retry or readback.
 Regional admission owns complete lines only. At crop edges inside the image,
 candidate words, protection and original detector bounds must lie at least
 **ten input pixels** inside the actual processed ROI: the backend's shared
-eight-pixel edge exclusion plus two pixels for detector jitter. Active regions
-use magnification one, so these are source pixels. Image-border edges have no
+eight-pixel edge exclusion plus two pixels for detector jitter. The backend
+maps detector boxes back to source-crop coordinates before applying its
+eight-pixel exclusion, including with enlarged detector input. These remain
+**ten source pixels**, with no division by 22/15. Image-border edges have no
 extra margin. Tight ink fitting does not enlarge the trustworthy interior.
 Rejected edge candidates supply no lines, pending words or temporal observations.
 
@@ -156,6 +180,11 @@ pending/empty changes use the current result's causal identity, with a mixed
 retained-artifact flag when older proof survives. Optional no-ops leave existing
 tickets unchanged; each unchanged publication surface retains its own ticket.
 
+The shadow planner tracks bounded word occurrences and grid-cell priorities
+from full OCR metadata. It is neither optical flow nor a multi-frame OCR
+image stack. This input-density change adds neither capability and does not
+turn repeated/held frames into independent evidence.
+
 Model-free scheduler fixtures count actual backend calls, full priority/no queue
 growth, opt-out/probe exclusion, stale/source/geometry/authority/backward tickets,
 execution slack, held exclusion, unsupported/failed/ignored detail and overruns.
@@ -179,6 +208,16 @@ combined parent, shipping/CUDA, native UIA and physical-camera acceptance remain
 unrun here. Logs, including the repaired unsupported rectangle-hash compile
 attempt, remain under
 `Z:/Projects/OkuFlow/local-work-data/uct-regional-r11-20261022/`.
+That scoped result predates the 704-pixel follow-up. The separate CPU/PCH-off
+follow-up gate passed all **51/226 selected cases** in **88.19 seconds**, with
+zero skipped Qt rows, skips or unresolved failures: 32 planner slots, 18 scheduler
+slots and the complete offscreen controller contract. This includes fifteen
+realized-dimension rows, ten malformed-input rows and unchanged paused dimensions.
+Its first configure/build and gate passed, without retries. Exact selection and
+logs remain under
+`Z:/Projects/OkuFlow/local-work-data/uct-regional-704-20261022/`.
+GPU/model execution at 704, native UIA, source accuracy/performance and combined
+parent shipping acceptance remain unrun here.
 
 The scoped CPU handoff records local validation separately. Actual cached-model
 GPU/source proof, combined CPU/CUDA integration, native UIA, physical camera,
@@ -207,6 +246,10 @@ inventory was not built. Parent integration owns those gates and the separate
 real-source proof; this is explicitly **SCOPED CPU** evidence only.
 
 ### Explicit cached GPU execution proof
+
+The historical parent receipts below use the original 480-pixel regional
+detector budget. They do not validate the new 704-pixel request, which requires
+separate cached-engine execution after parent integration.
 
 `uct_paddle_tests optionalActiveRegionalProof` requires explicit
 `OKUFLOW_UCT_ACTIVE_DIAGNOSTIC=1`, the existing absolute selected/neighbour PNG

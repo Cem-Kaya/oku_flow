@@ -334,6 +334,8 @@ std::optional<DetailFocus> RegionalDetailFocus(const RegionShadowPlan& plan,
                                              std::optional<QRectF> focus)
 {
     if (!RegionalPlanMatches(plan, current, plan.authority)) return {};
+    if (!current.viewportWidth || !current.viewportHeight ||
+        current.viewportWidth > 8192 || current.viewportHeight > 8192) return {};
     const auto finite = [](const QRectF& r) {
         return std::isfinite(r.x()) && std::isfinite(r.y()) && std::isfinite(r.width()) &&
                std::isfinite(r.height()) && !r.isEmpty();
@@ -350,17 +352,23 @@ std::optional<DetailFocus> RegionalDetailFocus(const RegionShadowPlan& plan,
     }
     if (!selected) return {};
     const QSize source(static_cast<int>(current.viewportWidth), static_cast<int>(current.viewportHeight));
-    if (source.isEmpty() || source.width() > 8192 || source.height() > 8192) return {};
     const QRectF pixels = SceneRectToView(current.viewTransform, source.width(), source.height(), selected->sceneRect);
-    if (!finite(pixels)) return {};
-    const int width = std::min(source.width(), std::clamp(static_cast<int>(std::ceil(pixels.width() + 96)), 160, 480));
-    const int height = std::min(source.height(), std::clamp(static_cast<int>(std::ceil(pixels.height() + 64)), 96, 480));
-    const int left = std::clamp(static_cast<int>(std::lround(pixels.center().x() - width/2.0)), 0, source.width()-width);
-    const int top = std::clamp(static_cast<int>(std::lround(pixels.center().y() - height/2.0)), 0, source.height()-height);
-    // At magnification 1, DetailRegion may expand context up to 480, never 960.
-    DetailFocus result{QRect(left, top, width, height), 1.0, 480, true};
+    if (!finite(pixels) || !std::isfinite(pixels.center().x()) || !std::isfinite(pixels.center().y())) return {};
+    // Bound metadata in double precision before integer conversion, including
+    // finite but extreme selections. The source context remains at most 480.
+    const int width = std::min(source.width(), static_cast<int>(std::ceil(std::clamp(pixels.width() + 96,160.0,480.0))));
+    const int height = std::min(source.height(), static_cast<int>(std::ceil(std::clamp(pixels.height() + 64,96.0,480.0))));
+    const int left = static_cast<int>(std::lround(std::clamp(pixels.center().x() - width/2.0,0.0,double(source.width()-width))));
+    const int top = static_cast<int>(std::lround(std::clamp(pixels.center().y() - height/2.0,0.0,double(source.height()-height))));
+    // About 720 crop pixels means the existing engine's aligned 704 edge,
+    // not a 1280x720 frame. One ULP upward represents the intended 22/15:
+    // ceil(704 / (704/480)) otherwise rounds to 481 in double precision and
+    // lets a backend's repeated DetailRegion pass enlarge the source crop.
+    const double magnification = std::nextafter(704.0/480.0,std::numeric_limits<double>::infinity());
+    DetailFocus result{QRect(left, top, width, height), magnification, 704, true};
     result.regionPx = DetailRegion(source, result);
-    if (result.regionPx.isEmpty() || result.regionPx == QRect(QPoint{}, source)) return {};
+    if (result.regionPx.isEmpty() || result.regionPx.width() > 480 || result.regionPx.height() > 480 ||
+        result.regionPx == QRect(QPoint{}, source)) return {};
     return result;
 }
 
