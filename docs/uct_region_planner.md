@@ -1,5 +1,11 @@
 # UCT shadow region planner
 
+The planner now also supplies the explicitly opt-in
+[supplemental executor](uct_active_regional_ocr.md). Shadow mode described here
+remains observation-only. Active mode runs current-image regions between
+baseline full deadlines, never skipping full OCR or treating tracked text as
+evidence. The planner's `authoritativeAction` remains `kRunFullOcr`.
+
 Stage 4 of the [UCT performance roadmap](uct_performance_roadmap_2026_10_20.md)
 (revised roadmap Design B) is a **shadow** regional planner: a bounded,
 pure-metadata observer that runs beside full OCR and reports what a future
@@ -229,7 +235,8 @@ string cannot retain an unrelated oversized reserved allocation.
 
 `OKUFLOW_UCT_SHADOW_PLANNER=1` explicitly enables observation on the existing
 OCR worker. `RecognitionScheduler` owns one planner and observes only complete,
-current, successful results after ordinary preparation. The separate motion-probe
+current, successful full results after ordinary preparation. Partial results
+are not observations and cannot age/evict unseen occurrences. The separate motion-probe
 worker cannot enable it. The result carries an immutable `shadowPlan`, separate
 `shadowPlannerMs`, and an error field; an observer exception retires that observer
 and preserves full OCR. Ordinary `durationMs` excludes observation, while actual
@@ -261,6 +268,10 @@ explicit `--run`. It measures `Observe` on 17 bounded synthetic metadata
 scenarios, keeping raw timings, nearest-rank summaries, rejected calls and
 invariant failures. It runs no inference and measures no OCR saving. See
 [test commands](../tests/README.md#shadow-regional-planner-and-scheduler).
+
+`OKUFLOW_UCT_REGIONAL_OCR=1` also enables observation for the active executor;
+without that flag the shadow switch alone never runs regional OCR. The executor
+retains at most one immutable full plan and separately rechecks its tickets.
 
 No third-party dependency, persisted setting, file format or user-visible string
 is added; licensing and translation catalogs are unchanged.

@@ -308,6 +308,62 @@ RegionShadowPlan RegionShadowPlanner::Reject(RegionRejectReason reason,
     return plan;
 }
 
+bool RegionalPlanMatches(const RegionShadowPlan& plan, const SourceStamp& current,
+                         std::uint64_t authority)
+{
+    const auto acquisition = EvidenceAcquisition(current);
+    const auto& a = plan.stamp.viewTransform;
+    const auto& b = current.viewTransform;
+    return plan.status == RegionPlanStatus::kAccepted && plan.jobId &&
+        plan.authority == authority && current.SameScene(plan.stamp) &&
+        current.viewportWidth == plan.stamp.viewportWidth && current.viewportHeight == plan.stamp.viewportHeight &&
+        a.valid && b.valid && a.sourceX == b.sourceX && a.sourceY == b.sourceY &&
+        a.sourceWidth == b.sourceWidth && a.sourceHeight == b.sourceHeight &&
+        a.destinationX == b.destinationX && a.destinationY == b.destinationY &&
+        a.destinationWidth == b.destinationWidth && a.destinationHeight == b.destinationHeight &&
+        current.temporallySmoothed == plan.stamp.temporallySmoothed &&
+        current.historyEpoch == plan.stamp.historyEpoch && current.temporalAlpha == plan.stamp.temporalAlpha &&
+        (current.holdDisplay == HoldDisplay::NotHeld || current.holdDisplay == HoldDisplay::Live) &&
+        acquisition && plan.evidenceAcquisition &&
+        *acquisition > *plan.evidenceAcquisition && current.frameSeq > plan.stamp.frameSeq &&
+        current.timestampMs >= plan.stamp.timestampMs;
+}
+
+std::optional<DetailFocus> RegionalDetailFocus(const RegionShadowPlan& plan,
+                                             const SourceStamp& current,
+                                             std::optional<QRectF> focus)
+{
+    if (!RegionalPlanMatches(plan, current, plan.authority)) return {};
+    const auto finite = [](const QRectF& r) {
+        return std::isfinite(r.x()) && std::isfinite(r.y()) && std::isfinite(r.width()) &&
+               std::isfinite(r.height()) && !r.isEmpty();
+    };
+    if (focus && (!finite(*focus) || !focus->intersects(QRectF(0, 0, 1, 1)))) focus.reset();
+    const RegionPlannedSelection* selected = nullptr;
+    double best = std::numeric_limits<double>::max();
+    for (const auto& region : plan.selections) {
+        if (!finite(region.sceneRect)) continue;
+        // Plan order resolves ties; the focus changes selection, never evidence.
+        const auto delta = region.sceneRect.center() - focus.value_or(QRectF(0, 0, 1, 1)).center();
+        const double score = focus ? delta.x()*delta.x() + delta.y()*delta.y() : 0;
+        if (!selected || score < best) { selected = &region; best = score; }
+    }
+    if (!selected) return {};
+    const QSize source(static_cast<int>(current.viewportWidth), static_cast<int>(current.viewportHeight));
+    if (source.isEmpty() || source.width() > 8192 || source.height() > 8192) return {};
+    const QRectF pixels = SceneRectToView(current.viewTransform, source.width(), source.height(), selected->sceneRect);
+    if (!finite(pixels)) return {};
+    const int width = std::min(source.width(), std::clamp(static_cast<int>(std::ceil(pixels.width() + 96)), 160, 480));
+    const int height = std::min(source.height(), std::clamp(static_cast<int>(std::ceil(pixels.height() + 64)), 96, 480));
+    const int left = std::clamp(static_cast<int>(std::lround(pixels.center().x() - width/2.0)), 0, source.width()-width);
+    const int top = std::clamp(static_cast<int>(std::lround(pixels.center().y() - height/2.0)), 0, source.height()-height);
+    // At magnification 1, DetailRegion may expand context up to 480, never 960.
+    DetailFocus result{QRect(left, top, width, height), 1.0, 480, true};
+    result.regionPx = DetailRegion(source, result);
+    if (result.regionPx.isEmpty() || result.regionPx == QRect(QPoint{}, source)) return {};
+    return result;
+}
+
 RegionShadowPlan RegionShadowPlanner::Observe(const RecognitionResult& validatedFull,
                                               std::optional<QRectF> requestedSceneRect)
 {
@@ -323,7 +379,8 @@ RegionShadowPlan RegionShadowPlanner::Observe(const RecognitionResult& validated
     // An ok flag cannot rehabilitate faulted input or a still-preparing
     // backend mix: neither is a settled full result the shadow may learn
     // from, even though production may show a complete fallback output.
-    if (!result.output.ok || result.output.inputFault || result.output.backendPreparing)
+    if (!result.output.ok || result.output.inputFault || result.output.backendPreparing ||
+        !result.output.detailRegionPx.isEmpty())
         return Reject(RegionRejectReason::kResultNotOk, result, acquisition);
     if (result.jobId == 0 || result.authority == 0)
         return Reject(RegionRejectReason::kMissingJobTicket, result, acquisition);

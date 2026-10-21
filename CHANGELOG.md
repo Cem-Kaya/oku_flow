@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Add opt-in supplemental regional UCT reads between baseline full scans.
+  Use current owned pixels and bounded planner regions while retaining full
+  deadlines/priority, pixel checks, per-observation pending evidence and
+  unchanged other-pane proof. Default operation and paused neighbour-pair
+  refinement remain separate; no full-frame inference saving is claimed.
+
 - Preserve incoming UCT typography groups without changing stable reading
   ownership. Carve independently proved detail ink from nearby ordinary
   uncertainty across retained lines, preserving uncovered punctuation and

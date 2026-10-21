@@ -167,6 +167,18 @@ constexpr QRectF kWordC{0.05, 0.60, 0.10, 0.04};
 class UctRegionPlannerTests : public QObject {
     Q_OBJECT
 private slots:
+    void partialOutputsNeverAgeOrEvictOutsideOccurrences()
+    {
+        RegionShadowPlanner planner(TestLimits());
+        ResultSpec spec;spec.words={{QStringLiteral("outside"),kWordA}};
+        const auto first=planner.Observe(MakeResult(spec));QCOMPARE(first.status,RegionPlanStatus::kAccepted);
+        spec.jobId=2;spec.frameSeq=2;spec.timestampMs+=100;
+        auto partial=MakeResult(spec);partial.output.detailRegionPx={0,0,400,200};
+        const auto rejected=planner.Observe(partial);
+        QCOMPARE(rejected.status,RegionPlanStatus::kRejected);
+        QCOMPARE(rejected.coverage.acceptedObservations,first.coverage.acceptedObservations);
+        QCOMPARE(planner.RetainedOccurrences(),1);
+    }
     void fullResultBytesUnchangedAndPlanAuthoritative()
     {
         RegionShadowPlanner planner(TestLimits());

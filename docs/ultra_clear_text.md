@@ -1,5 +1,11 @@
 # Ultra Clear Text (experimental, development)
 
+An optional [supplemental regional executor](uct_active_regional_ocr.md) uses
+current owned inputs between baseline full reads when
+`OKUFLOW_UCT_REGIONAL_OCR=1`. It preserves full deadlines and priority, strict
+pixel/temporal admission and the separate paused selected/neighbour pair.
+Default is off; shadow observation alone executes no regional OCR.
+
 See [GPU batch execution and measurement](uct_gpu_batching.md) for the wider
 recognizer profiles and their separate memory and latency evidence.
 
