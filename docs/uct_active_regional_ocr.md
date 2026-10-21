@@ -329,3 +329,23 @@ Logs are under
 These are model-free scoped results; combined CUDA and actual native latency
 acceptance remain separate. In particular, the earlier scheduler-only GPU proof
 does not establish regional text admission or reading order.
+
+
+### Integrated 704-pixel cache-only GPU execution (2026-10-22)
+
+At `b129d8c`, enabled CUDA target compilation and the production-factory BF16
+full/region/full diagnostic passed on the two owned book acquisitions. Its
+480x288 source region uses the new704-pixel detector policy. Worker times were
+305.019/33.5792/94.3459 ms; exact TensorRT retirement completed, both engine
+cache inventories stayed unchanged, and image egress was zero. Receipt:
+`uct-geometry-r3-20261021/evidence/runs/
+bf16-production-active-704-book-1-receipt.json` under local work data.
+
+This is functional execution evidence, not a speed/accuracy comparison or
+controller-admission proof. The earlier480-input proof used different device
+load. On this curved book region, raw output changed from107 words/106 candidate
+words to102 words/69 candidates, with more low-confidence output. These counts
+do not establish which strings are correct. Increasing detector sampling does
+not guarantee better recognition. Atomic optional admission must preserve
+previously confirmed words; full scans remain authoritative. The read-only
+output comparison is retained in `evidence/regional-704-existing-output-comparison.json`.
