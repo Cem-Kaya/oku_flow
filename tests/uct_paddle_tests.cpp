@@ -2,6 +2,7 @@
 #include "okuflow/common/uct_model_pins.hpp"
 #include "okuflow/cuda/uct_analysis_pool.hpp"
 #include "ultra_clear_text_test_support.hpp"
+#include "uct_color_test_support.hpp"
 #include "uct_startup_test_cases.hpp"
 #include "uct_batch_diagnostic.hpp"
 #include "uct_character_diagnostic.hpp"
@@ -777,6 +778,69 @@ class PaddleTests final : public QObject
             QCOMPARE(word.protectedSceneRects.size(),1);
             QCOMPARE(word.protectedSceneRects[0],second.prepared[0].words[1].protectedSceneRect);
         }
+    }
+    void gpuLocalColorDescriptorsMatchCpu_data()
+    {
+        QTest::addColumn<int>("sample");
+        const auto fixtures = uct_test::LocalColorFixtures();
+        for (int i = 0; i < fixtures.size(); ++i)
+            QTest::newRow(qPrintable(fixtures[i].name)) << i;
+    }
+    void gpuLocalColorDescriptorsMatchCpu()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        int devices{};
+        if (cudaGetDeviceCount(&devices) != cudaSuccess || !devices) QSKIP("No CUDA device.");
+        QFETCH(int, sample);
+        const auto f = uct_test::LocalColorFixtures()[sample];
+        if (f.expectInkCorners) QVERIFY2(uct_test::SolidInkCorners(f), qPrintable(f.name));
+        struct Backend final : Recognizer {
+            RecognitionOutput output;
+            BackendStatus Initialize() override { return {BackendState::kReady, "colors", "", ""}; }
+            RecognitionOutput Recognize(const QImage&, const std::atomic<bool>&) override { return output; }
+        };
+        auto backend = std::make_unique<Backend>(); backend->output.ok = true;
+        RecognizedLine line; line.words.push_back({QStringLiteral("Button"), QRectF(f.bounds)});
+        backend->output.lines.push_back(line);
+        RecognitionResult cpu;
+        std::atomic<bool> received{false};
+        RecognitionScheduler scheduler(std::move(backend), [&](RecognitionResult result) {
+            cpu = std::move(result); received.store(true);
+        }, {});
+        SourceStamp stamp; stamp.sourceEpoch = 1; stamp.geometryGeneration = 1; stamp.frameSeq = 1;
+        stamp.viewportWidth = f.pixels.width(); stamp.viewportHeight = f.pixels.height();
+        stamp.viewTransform = {0,0,1,1,0,0,1,1,true};
+        QVERIFY(scheduler.Submit(stamp, f.pixels)); QTRY_VERIFY(received.load());
+        QVERIFY(cpu.output.ok); QCOMPARE(cpu.lineColors.size(), 1);
+        QVERIFY(cpu.output.lines[0].words[0].colors);
+        FixtureStream stream;
+        GpuBuffer<unsigned char> pixels(f.pixels.sizeInBytes());
+        GpuBuffer<gpu::Rect> rectangle(1); GpuBuffer<gpu::Colors> descriptor(1);
+        // Production resident::Rect clips on the host before dispatch too.
+        const QRect clipped = f.bounds.intersected(f.pixels.rect());
+        const gpu::Rect rect{clipped.x(), clipped.y(), clipped.width(), clipped.height()};
+        QCOMPARE(cudaMemcpyAsync(pixels.data, f.pixels.constBits(), f.pixels.sizeInBytes(),
+                                 cudaMemcpyHostToDevice, stream.value), cudaSuccess);
+        QCOMPARE(cudaMemcpyAsync(rectangle.data, &rect, sizeof(rect), cudaMemcpyHostToDevice, stream.value), cudaSuccess);
+        gpu::LineColors(pixels.data, f.pixels.bytesPerLine(), f.pixels.width(), f.pixels.height(),
+                        rectangle.data, 1, descriptor.data, stream.value);
+        QCOMPARE(cudaGetLastError(), cudaSuccess);
+        gpu::Colors raw{};
+        // Only the 24-byte descriptor crosses back; resident image pixels do not.
+        QCOMPARE(cudaMemcpyAsync(&raw, descriptor.data, sizeof(raw), cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+        QCOMPARE(cudaStreamSynchronize(stream.value), cudaSuccess);
+        const QColor ink(raw.foreground[0], raw.foreground[1], raw.foreground[2]);
+        const QColor paper(raw.background[0], raw.background[1], raw.background[2]);
+        QCOMPARE(ink, cpu.lineColors[0].foreground); QCOMPARE(paper, cpu.lineColors[0].background);
+        QCOMPARE(ink, cpu.output.lines[0].words[0].colors->foreground);
+        QCOMPARE(paper, cpu.output.lines[0].words[0].colors->background);
+        if (f.expectSourceColors) {
+            QVERIFY2(uct_test::ColorDistance(ink, f.ink) <= f.tolerance, qPrintable(f.name));
+            QVERIFY2(uct_test::ColorDistance(paper, f.paper) <= f.tolerance, qPrintable(f.name));
+        }
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
     }
     void gpuResidentSchedulerKeepsPixelsAndDescriptorsOnDevice_data()
     {

@@ -54,10 +54,11 @@ pixels, range positions and interface identity across 300 projections.
   - Reading-only evidence is never exposed as text.
   - A line is exposed only if each of its glyph words is in the overlay's
     current word set.
-- **Empty root.** The root has no lines in any of these cases: Show original,
-  settling, Temporal Smooth/Extra Stable pause, presentation watchdog,
-  presentation failure, unhealthy analysis, or an unusable backend. In each
-  of them nothing is drawn.
+- **Empty root.** Show original, settling, unsupported composites, presentation
+  failure/watchdog or loss of source authority leave no drawn lines and an
+  empty root. Paired Temporal Smooth and exact Extra Stable holds are supported.
+  A terminal optional refinement failure may retain already proved text on the
+  exact immutable selected frame; that exception never admits new work or text.
 - **Geometry.** It is computed when a client asks, from the overlay's **last
   actual paint** (`UltraClearTextOverlay` paint plan).
   - **Coordinates:** global logical pixels via
@@ -106,19 +107,26 @@ pixels, range positions and interface identity across 300 projections.
 - **Pan and zoom** send no events and do no accessibility work; clients
   re-query and get the new geometry.
 - **Cadence.**
-  - Additions publish on a 1 s semantic tick, measured from the first pending
+  - Genuinely new lines publish on a 1 s semantic tick, measured from the first pending
     change.
   - If any UCT element was queried within the last 3 s, additions are held,
     but never more than 3 s after the first pending change.
   - The first content after enable, activation, or any revocation (seek,
     settling, Show original) publishes at once.
   - One single-shot timer is used. Churn never restarts it.
+  - Optional timing hooks carry a copied admission ticket/content revision,
+    including coalesced updates, rather than reading a newer frame at timer
+    expiry. They record software publication, never reader receipt or speech.
+  - Changed text under an existing line ID is replaced in the same update.
+    Its old interface/ranges are revoked synchronously; withholding its new
+    interface cannot preserve the old reading position. Other unchanged lines
+    retain their interfaces, and unrelated new lines still wait for the tick.
 - **Revocation is immediate.** Any loss of validation or authority deletes
   the element synchronously (`QAccessible::deleteAccessibleInterface`) on the
   UI thread, before any timer fires. Ranges a client holds then fail with
   `UIA_E_ELEMENTNOTAVAILABLE`.
-  - A line that leaves the drawn set, or whose text changes, is removed now
-    and re-added later.
+  - A line that leaves the drawn set is removed now. A line whose text changes
+    loses its old ranges now and gets its replacement immediately.
   - There is no soft hold.
 - **Identity.** Re-recognizing identical text under a new model line id, at
   an IoU of at least 0.5 with the previous box, silently rebinds the existing

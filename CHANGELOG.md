@@ -7,6 +7,17 @@
   selection. Corroborate the exact displayed Pause frame with a real following
   frame across scene cuts, without playing audio or advancing its held PTS.
   Keep source/seek identity and explicit contradiction revocation.
+- Replace changed UCT accessibility lines immediately instead of withholding
+  them for one to three seconds. Preserve unchanged reader interfaces and
+  the bounded cadence for unrelated new lines.
+- Request replacement OCR promptly when a probe invalidates part of a page,
+  retaining existing stability and playback pacing limits. Sample UCT colors
+  from each word's local surface and opaque ink to reduce button-edge and
+  antialiasing errors; keep independently proved paused text through optional
+  refinement failure and CPU-to-GPU promotion.
+- Add optional bounded metadata timing for UCT worker, admission, software
+  paint, reading pane and accessibility publication. Keep input pixels and
+  recognized text out of the trace and report dropped or incomplete chains.
 
 - Add an opt-in bounded UCT shadow planner beside full OCR, with persistent
   spatial occurrences, requested-region priority, unseen-area coverage debt

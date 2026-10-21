@@ -6,6 +6,38 @@
 #include "uct_resident_diagnostic.hpp"
 
 namespace uct_paused_video_test {
+// Explicit diagnostic bridge: complete one real Windows selected/neighbour
+// pair before using the real resident recognizer, even with warm GPU plans.
+class CpuBridgeThenResident final : public okuflow::uct::Recognizer {
+public:
+    explicit CpuBridgeThenResident(std::unique_ptr<okuflow::uct::Recognizer> preferred)
+        : preferred_(std::move(preferred)), bridge_(okuflow::uct::CreateWindowsRecognizer()) {}
+    okuflow::uct::BackendStatus Initialize() override {
+        preferred_->Initialize();
+        status_ = bridge_->Initialize();
+        return status_;
+    }
+    okuflow::uct::BackendStatus Status() const override { return status_; }
+    bool WantsDeviceInput() const override { return bridgeCalls_ >= 2; }
+    okuflow::uct::RecognitionOutput Recognize(const QImage& image, const std::atomic<bool>& cancel) override {
+        auto output = bridge_->Recognize(image, cancel);
+        ++bridgeCalls_;
+        status_ = bridge_->Status();
+        output.backendPreparing = true;
+        return output;
+    }
+    okuflow::uct::RecognitionOutput RecognizeDevice(const okuflow::uct::DeviceImage& image,
+                                                   const std::atomic<bool>& cancel) override {
+        auto output = preferred_->RecognizeDevice(image, cancel);
+        status_ = preferred_->Status();
+        return output;
+    }
+private:
+    std::unique_ptr<okuflow::uct::Recognizer> preferred_, bridge_;
+    okuflow::uct::BackendStatus status_;
+    int bridgeCalls_{};
+};
+
 inline void Run()
 {
     using namespace okuflow::uct;
@@ -15,6 +47,7 @@ inline void Run()
     QFAIL("The selected diagnostic requires the CUDA/TensorRT fixture.");
 #else
     using namespace uct_resident_test;
+    const bool bridge = qEnvironmentVariable("OKUFLOW_UCT_PAUSE_BRIDGE") == "1";
     const auto selectedPath = qEnvironmentVariable("OKUFLOW_UCT_PAUSE_SELECTED");
     const auto neighbourPath = qEnvironmentVariable("OKUFLOW_UCT_PAUSE_NEIGHBOUR");
     const auto sdk = qEnvironmentVariable("OKUFLOW_UCT_TENSORRT_ROOT");
@@ -22,7 +55,9 @@ inline void Run()
     const auto selectedPts = qEnvironmentVariable("OKUFLOW_UCT_PAUSE_SELECTED_MS").toLongLong(&selectedPtsOk);
     const auto neighbourPts = qEnvironmentVariable("OKUFLOW_UCT_PAUSE_NEIGHBOUR_MS").toLongLong(&neighbourPtsOk);
     QVERIFY(selectedPtsOk && neighbourPtsOk && selectedPts >= 0 && neighbourPts >= 0);
-    QVERIFY(std::abs(double(selectedPts) - neighbourPts) <= 250 && selectedPts != neighbourPts);
+    QVERIFY(selectedPts <= std::numeric_limits<qint64>::max() / 60 &&
+            neighbourPts <= std::numeric_limits<qint64>::max() / 60);
+    QVERIFY(std::abs(selectedPts - neighbourPts) <= 250 && selectedPts != neighbourPts);
     const QDir bin(QDir(sdk).filePath("bin"));
     QVERIFY(QFile::exists(bin.filePath("nvinfer_11.dll")));
     QVERIFY(!QFile::exists(bin.filePath("nvonnxparser_11.dll")) &&
@@ -88,8 +123,10 @@ inline void Run()
     uct_batch_test::Environment batch("OKUFLOW_UCT_TRT_BATCH", "8");
     uct_batch_test::RetirementReceipts retirement;
     const auto box = std::make_shared<Mailbox>();
-    auto scheduler = std::make_unique<RecognitionScheduler>(
-        CreateTensorRtRecognizer(assets.root, sdk, ModelTier::Medium, ModelTier::Medium, retirement.Observer()),
+    auto recognizer = CreateTensorRtRecognizer(assets.root, sdk, ModelTier::Medium,
+                                               ModelTier::Medium, retirement.Observer());
+    if (bridge) recognizer = std::make_unique<CpuBridgeThenResident>(std::move(recognizer));
+    auto scheduler = std::make_unique<RecognitionScheduler>(std::move(recognizer),
         [box](RecognitionResult result) {
             { std::lock_guard lock(box->mutex); box->completed = Completion{std::move(result), box->backend, Clock::now()}; }
             box->ready.notify_all();
@@ -104,7 +141,7 @@ inline void Run()
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
         else selected = std::move(completion);
     }
-    QVERIFY(selected && selected->backend.usesGpu);
+    QVERIFY(selected && (bridge ? !selected->backend.usesGpu : selected->backend.usesGpu));
     QVERIFY2(selected->result.output.ok, qPrintable(selected->result.output.error));
     QVERIFY(selected->result.reference.resident && selected->result.sourcePixelDigest.size() == 32);
     OverlayModel model;
@@ -117,9 +154,57 @@ inline void Run()
     for (const auto& line : request.selectedLines) request.references.push_back(line.reference);
     QVERIFY(scheduler->SubmitDevice(neighbourStamp, neighbourInput, request));
     auto neighbour = Await(*box, Clock::now() + std::chrono::seconds(30));
-    QVERIFY(neighbour && neighbour->backend.usesGpu);
+    QVERIFY(neighbour && (bridge ? !neighbour->backend.usesGpu : neighbour->backend.usesGpu));
     QVERIFY2(neighbour->result.output.ok, qPrintable(neighbour->result.output.error));
-    const auto afterVerdict = model.AdmitImmutable(selected->result, selectedStamp, 0, &neighbour->result);
+    auto afterVerdict = model.AdmitImmutable(selected->result, selectedStamp, 0, &neighbour->result);
+    QJsonObject bridgeReport;
+    if (bridge) {
+        const auto initial = selected->result;
+        const auto oldWords = model.SceneWords(0, selectedStamp.frameSeq);
+        bridgeReport = {{"selectedOutput", uct_batch_test::Output(initial.output)},
+                        {"neighbourOutput", uct_batch_test::Output(neighbour->result.output)},
+                        {"shownWords", int(oldWords.size())},
+                        {"digestKind", int(initial.sourcePixelDigestKind)}};
+        selected.reset();
+        const auto preferredDeadline = Clock::now() + std::chrono::seconds(60);
+        while (!selected && Clock::now() < preferredDeadline) {
+            QVERIFY(scheduler->SubmitDevice(selectedStamp, selectedInput));
+            auto completion = Await(*box, preferredDeadline);
+            QVERIFY(completion);
+            if (completion->result.output.backendPreparing && !completion->result.output.ok)
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            else selected = std::move(completion);
+        }
+        QVERIFY(selected && selected->backend.usesGpu && selected->result.output.ok);
+        QVERIFY(selected->result.reference.resident);
+        QCOMPARE(selected->result.sourcePixelDigestKind, initial.sourcePixelDigestKind);
+        QCOMPARE(selected->result.sourcePixelDigest, initial.sourcePixelDigest);
+        request = {};
+        request.selectedJobId = selected->result.jobId;
+        request.selectedReference = selected->result.reference;
+        request.selectedLines = selected->result.prepared;
+        request.tuning = ModelTuning{}.match;
+        for (const auto& line : request.selectedLines) request.references.push_back(line.reference);
+        QVERIFY(scheduler->SubmitDevice(neighbourStamp, neighbourInput, request));
+        neighbour = Await(*box, Clock::now() + std::chrono::seconds(30));
+        QVERIFY(neighbour && neighbour->backend.usesGpu && neighbour->result.output.ok);
+        afterVerdict = model.AdmitImmutable(selected->result, selectedStamp, 0, &neighbour->result);
+        const auto refined = model.SceneWords(0, selectedStamp.frameSeq);
+        QJsonArray retained, revoked;
+        for (const auto& old : oldWords) {
+            const bool kept = std::any_of(refined.begin(), refined.end(), [&](const auto& word) {
+                return word.lineId == old.lineId && word.wordIndex == old.wordIndex &&
+                       word.text == old.text && word.sceneRect == old.sceneRect;
+            });
+            QJsonObject item{{"text", old.text}, {"lineId", qint64(old.lineId)},
+                             {"wordIndex", old.wordIndex},
+                             {"rect", QJsonArray{old.sceneRect.x(), old.sceneRect.y(),
+                                                 old.sceneRect.width(), old.sceneRect.height()}}};
+            (kept ? retained : revoked).push_back(item);
+        }
+        bridgeReport.insert("retainedWords", retained);
+        bridgeReport.insert("revokedWords", revoked);
+    }
     const auto shown = model.SceneWords(0, selectedStamp.frameSeq);
     QJsonArray words;
     for (int i = 0; i < selected->result.prepared.size(); ++i) {
@@ -131,7 +216,7 @@ inline void Run()
             const bool wordProof = i < neighbour->result.corroborationWordMatches.size() &&
                 j < neighbour->result.corroborationWordMatches[i].size() && neighbour->result.corroborationWordMatches[i][j];
             const bool drawn = std::any_of(shown.begin(), shown.end(), [&](const auto& s) {
-                return s.text == word.text && s.sceneRect.intersects(word.sceneRect);
+                return s.text == word.text && s.sceneRect == word.sceneRect;
             });
             words.push_back(QJsonObject{{"text", word.text}, {"disposition", int(word.disposition)},
                 {"line", i}, {"word", j}, {"referenceValid", line.reference.valid},
@@ -148,11 +233,14 @@ inline void Run()
         {"sourceDigestsDiffer", selected->result.sourcePixelDigest != neighbour->result.sourcePixelDigest},
         {"words", words}, {"readingText", model.ReadingText(0, selectedStamp.frameSeq)},
         {"imageEgress", selectedInput->Read().egress + neighbourInput->Read().egress},
+        {"bridge", bridgeReport},
         {"scope", "Actual resident recognition and immutable admission; no decoder, native display or latency benchmark."}};
     QVERIFY(uct_batch_test::Save(QDir(evidence).filePath("proof.json"), report));
     qInfo().noquote() << "Paused candidates=" << CandidateWords(selected->result.output)
                      << "shown=" << shown.size() << "egress=" << report["imageEgress"].toInt();
-    QCOMPARE(selectedInput->Read().egress + neighbourInput->Read().egress, 0);
+    // A real Windows bridge explicitly reads each image once for its CPU OCR.
+    // GPU recognition/validation adds no image egress after that handoff.
+    QCOMPARE(selectedInput->Read().egress + neighbourInput->Read().egress, bridge ? 2 : 0);
     QCOMPARE(model.SceneWords(3600000, selectedStamp.frameSeq).size(), shown.size());
     scheduler->Cancel();
     scheduler.reset();

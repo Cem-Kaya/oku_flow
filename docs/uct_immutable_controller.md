@@ -153,6 +153,11 @@ Presentation-fault cases cover both media modes, immediate pane/glyph/active
 accessibility revocation, blocked late readiness and recognition, view/toggle
 isolation, and exact successful receipt recovery without additional analysis.
 It requires no camera, desktop focus, external OCR runtime or media sample.
+Partial-page-change rows retain 24 unchanged lines while one real line fails
+its residual check. That invalidation now demands replacement recognition
+without waiting for the 1.5-second periodic refresh, while preserving stable
+probes, latest-only work, 350 ms media pacing and independent read/validation
+requirements. No new glyph is admitted from a probe alone.
 The zoom regression uses the cropped Fill transform, verifies its half-size
 source extent and checks the overlay's exact scene-to-view projection; Fit
 deliberately preserves the complete source and ignores magnification.

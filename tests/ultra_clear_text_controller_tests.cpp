@@ -17,6 +17,7 @@
 #include <QtTest>
 #include <QCheckBox>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <condition_variable>
@@ -25,6 +26,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <thread>
 
 using namespace okuflow;
@@ -45,6 +47,7 @@ struct ImmutableScript {
     bool holdInitialization{};
     bool holdRecognition{};
     int holdCall{};
+    int permittedCalls{-1}; // -1: unlimited; otherwise hold later calls deterministically
     QVector<PageWord> words;
     QHash<QByteArray, QVector<PageWord>> pixelWords;
     QHash<quint64, QVector<PageWord>> frameWords;
@@ -55,7 +58,10 @@ struct ImmutableScript {
     std::atomic<int> transientFailures{};
     int transientKind{};
     std::atomic<int> completeBridgeResults{};
+    std::atomic<int> unavailableAtCall{};
     std::atomic<bool> wantsDevice{};
+    std::atomic<int> wantsDeviceAfterCalls{}; // actual CPU bridge -> preferred device handoff
+    std::atomic<bool> separateWordLines{};
 
     void Release()
     {
@@ -64,6 +70,7 @@ struct ImmutableScript {
             holdInitialization = false;
             holdRecognition = false;
             holdCall = 0;
+            permittedCalls = -1;
         }
         changed.notify_all();
     }
@@ -84,7 +91,25 @@ public:
         return status;
     }
 
-    bool WantsDeviceInput() const override { return script_->wantsDevice.load(); }
+    bool WantsDeviceInput() const override
+    {
+        const auto after = script_->wantsDeviceAfterCalls.load();
+        return script_->wantsDevice.load() || (after > 0 &&
+            script_->calls.load() + script_->deviceCalls.load() >= after);
+    }
+
+    BackendStatus Status() const override
+    {
+        if (script_->unavailableAtCall.load() > 0 &&
+            script_->calls.load() + script_->deviceCalls.load() >= script_->unavailableAtCall.load()) {
+            BackendStatus status;
+            status.state = BackendState::kUnavailable;
+            status.name = QStringLiteral("immutable fixture");
+            status.detail = QStringLiteral("fixture backend chain exhausted");
+            return status;
+        }
+        return {};
+    }
 
     RecognitionOutput Recognize(const QImage& image, const std::atomic<bool>& cancelled) override
     {
@@ -110,6 +135,9 @@ private:
             if (script_->frameWords.contains(frame)) words = script_->frameWords[frame];
             const int call = script_->calls.load() + script_->deviceCalls.load();
             if (script_->callWords.contains(call)) words = script_->callWords[call];
+            script_->changed.wait(lock, [&] {
+                return script_->permittedCalls < 0 || call <= script_->permittedCalls;
+            });
             if (script_->holdCall && script_->calls.load() == script_->holdCall)
                 script_->changed.wait(lock, [&] { return script_->holdCall == 0; });
             script_->changed.wait(lock, [&] { return !script_->holdRecognition; });
@@ -119,6 +147,7 @@ private:
             output.inputFault = script_->transientKind == 0;
             output.backendPreparing = script_->transientKind == 1;
             output.cancelled = script_->transientKind == 2;
+            output.error = QStringLiteral("fixture recognition failure");
             return output;
         }
         output.cancelled = cancelled.load();
@@ -128,11 +157,16 @@ private:
             output.backendPreparing=true;
         RecognizedLine line;
         for (const PageWord& word : words) {
-            line.words.push_back({word.text,
+            RecognizedWord recognized{word.text,
                 QRectF(word.sceneRect.x() * width, word.sceneRect.y() * height,
-                       word.sceneRect.width() * width, word.sceneRect.height() * height)});
+                       word.sceneRect.width() * width, word.sceneRect.height() * height)};
+            if (script_->separateWordLines.load()) {
+                RecognizedLine separate;
+                separate.words.push_back(std::move(recognized));
+                output.lines.push_back(std::move(separate));
+            } else line.words.push_back(std::move(recognized));
         }
-        output.lines.push_back(std::move(line));
+        if (!line.words.isEmpty()) output.lines.push_back(std::move(line));
         return output;
     }
 
@@ -159,6 +193,7 @@ struct FakeDeviceState {
     std::atomic<bool> readOnUiThread{};
     std::atomic<bool> probeFails{};
     std::atomic<bool> resident{};
+    std::atomic<int> residentPreparations{};
     std::atomic<bool> failWordReferences{};
 };
 
@@ -190,8 +225,9 @@ public:
 class FakeDeviceImage final : public DeviceImage {
 public:
     FakeDeviceImage(std::shared_ptr<FakeDeviceState> state, QImage page,
-                    std::uint64_t epoch, std::uint64_t frame, std::int64_t ptsMs)
-        : state_(std::move(state)), page_(std::move(page))
+                    std::uint64_t epoch, std::uint64_t frame, std::int64_t ptsMs,
+                    std::optional<HoldProvenance> hold = {})
+        : state_(std::move(state)), page_(std::move(page)), hold_(hold)
     {
         width = page_.width();
         height = page_.height();
@@ -202,6 +238,10 @@ public:
     }
     const void* Data() const override { return this; }
     bool WaitReady(void*, QString&) const override { return true; }
+    bool HasHoldProvenance() const override { return hold_.has_value(); }
+    HoldProvenance ReadHoldProvenance(const std::atomic<bool>&, QString&) const override {
+        NoteThread(); return hold_.value_or(HoldProvenance{HoldDisplay::Unknown, 0, 0.0f});
+    }
     bool HasResidentAnalysis() const override {return state_->resident.load();}
     bool PrepareResidentAnalysis(RecognitionResult& result,int decimation,bool probeOnly,
                                   const std::atomic<bool>& cancel,QString&) const override {
@@ -209,7 +249,16 @@ public:
         auto p=std::make_shared<ResidentOracle>();p->state=state_;
         p->cpu=MakeProbeFrame(page_.constBits(),width,height,page_.bytesPerLine(),std::max(1,decimation),result.stamp);
         result.reference.stamp=result.stamp;result.reference.resident=p;
-        if(!probeOnly&&!result.stamp.liveCameraCapture)result.sourcePixelDigest=SourcePixelsDigest(page_);
+        if(!probeOnly) {
+            ++state_->residentPreparations;
+            if(!result.stamp.liveCameraCapture) {
+                // A protocol oracle: stable owned-image bytes model the
+                // canonical resident digest across CPU/GPU OCR phases.
+                // Separate CUDA fixtures validate the actual tree algorithm.
+                result.sourcePixelDigest=SourcePixelsDigest(page_);
+                result.sourcePixelDigestKind=RecognitionResult::DigestKind::GpuTreeSha256V1;
+            }
+        }
         return true;
     }
     QImage Readback(const std::atomic<bool>&, QString&) const override
@@ -236,6 +285,7 @@ private:
     }
     std::shared_ptr<FakeDeviceState> state_;
     QImage page_;
+    const std::optional<HoldProvenance> hold_;
 };
 
 struct ImmutableHarness {
@@ -385,6 +435,8 @@ struct ImmutableHarness {
 class UltraClearTextControllerTests final : public QObject {
     Q_OBJECT
 private slots:
+    void timingTraceKeepsWorkerAndAdmissionTickets();
+    void timingPaneOnlyChangePreservesPositionedTicket();
     void textClarityMasterPreservesUctPreference();
     void liveCameraIdenticalPixelsAcquireText_data();
     void liveCameraIdenticalPixelsAcquireText();
@@ -405,6 +457,8 @@ private slots:
     void immutableDeadlineIsIndependentOfSourceAge();
     void invalidSelectedMediaDoesNotResumeHiddenLiveInput();
     void advancingMediaPacesOcrAndValidatesLatestFrames();
+    void partialProbeInvalidationRequestsPromptReplacement_data();
+    void partialProbeInvalidationRequestsPromptReplacement();
     void advancingMediaValidatesWhileOcrHeldAndRejectsChangedPixels();
     void advancingMediaAuthorityRevokesAndSuppressesLiveInput();
     void advancingMediaPauseReturnsToOneShotAnalysis();
@@ -414,9 +468,15 @@ private slots:
     void pausedBridgeRefinesAfterCorroboration();
     void pausedRefinementCannotDropProvenWords_data();
     void pausedRefinementCannotDropProvenWords();
+    void pausedRefinementContradictionCannotRestorePriorProof_data();
     void pausedRefinementContradictionCannotRestorePriorProof();
     void pausedBridgeHorizonKeepsHealthyFallback();
     void pausedFailureRetriesAreBounded();
+    void pausedRefinementFailureKeepsOnlyProvenArtifact_data();
+    void pausedRefinementFailureKeepsOnlyProvenArtifact();
+    void pausedReadingOnlyCandidateStillFailsClosed();
+    void failedPausedRefinementStillFencesSceneChanges_data();
+    void failedPausedRefinementStillFencesSceneChanges();
     void advancingMediaDeadlineUsesWallClock();
     void mediaPresentationFailureRevokesCachedArtifact_data();
     void mediaPresentationFailureRevokesCachedArtifact();
@@ -438,6 +498,261 @@ private slots:
     void gapReceiptSameFrameReprojectsRepeatedlyWithoutWork();
     void processingCorrespondenceGateRevokesTextAndUiaWithoutChangingPreference();
 };
+
+void UltraClearTextControllerTests::timingTraceKeepsWorkerAndAdmissionTickets()
+{
+    // The full ordinary suite validates the cached disabled path. The CTest
+    // selector runs this slot alone with tracing enabled before process start.
+    if (!timing::Enabled()) {
+        const auto snapshot = timing::CloseForDiagnostics();
+        QVERIFY(snapshot && !snapshot->enabled && !snapshot->count);
+        return;
+    }
+    ImmutableHarness h;
+    h.Enable();
+    auto scene = h.Scene();
+    scene.corroboration = UctImmutableFrame{
+        OwnedPixels(IndependentFramePixels(h.page.image, 11)), 11, 20};
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_VERIFY(h.overlay.WordCount() > 0);
+    QTRY_COMPARE(h.controller->SchedulerStatistics().completed, std::uint64_t(2));
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(2));
+    QCOMPARE(h.controller->ProbeStatistics().submitted, std::uint64_t(0));
+    QCOMPARE(h.script->calls.load(), 2);
+    QVERIFY(h.Reading().contains(QStringLiteral("Reading helps")));
+
+    const auto snapshot = timing::CloseForDiagnostics();
+    QVERIFY(snapshot && snapshot->enabled && snapshot->count);
+    struct Observed { unsigned phases{}; std::int64_t lastNs{}; };
+    std::map<std::uint64_t, Observed> jobs;
+    bool sawAccepted{}, sawCorroboration{}, sawCpuDone{};
+    std::uint64_t producer{}, authority{}, geometry{};
+    for (std::size_t i = 0; i < snapshot->count; ++i) {
+        const auto& r = snapshot->records[i];
+        if (!r.key.jobId || r.key.channel != timing::Channel::Recognition) continue;
+        if (!producer) { producer = r.key.producer; authority = r.key.authority; geometry = r.key.geometryGeneration; }
+        QCOMPARE(r.key.producer, producer);
+        QCOMPARE(r.key.authority, authority);
+        QCOMPARE(r.key.geometryGeneration, geometry);
+        QCOMPARE(r.key.sourceEpoch, std::uint64_t(41));
+        QVERIFY(r.key.frameSeq == 10 || r.key.frameSeq == 11);
+        QCOMPARE(r.key.sourceTimestampMs, r.key.frameSeq == 10 ? std::int64_t(1) : std::int64_t(20));
+        QCOMPARE(r.key.acquisition, r.key.frameSeq);
+        auto& job = jobs[r.key.jobId];
+        QVERIFY(r.steadyNs >= job.lastNs);
+        job.lastNs = r.steadyNs;
+        switch (r.event) {
+        case timing::Event::Submit: job.phases |= 1; break;
+        case timing::Event::Dequeue: job.phases |= 2; break;
+        case timing::Event::Done:
+            job.phases |= 4;
+            QVERIFY(r.values.flags & timing::InferenceAttempted);
+            QVERIFY(r.values.flags & timing::BackendKnown);
+            QVERIFY(!(r.values.flags & timing::GpuBackend));
+            sawCpuDone = true;
+            break;
+        case timing::Event::UiReceipt: job.phases |= 8; break;
+        case timing::Event::Admit:
+            QCOMPARE(r.key.frameSeq, std::uint64_t(10)); // neighbor never becomes selected evidence
+            if (r.values.code == static_cast<std::uint32_t>(AdmitVerdict::kAccepted)) {
+                job.phases |= 16;
+                QVERIFY(r.values.relatedJobId && r.values.relatedJobId != r.key.jobId);
+                QCOMPARE(r.values.count, static_cast<std::uint32_t>(h.overlay.WordCount()));
+                sawAccepted = true;
+            }
+            break;
+        default: break;
+        }
+        if (r.key.frameSeq == 11 && (r.values.flags & timing::Corroboration)) {
+            QVERIFY(r.values.relatedJobId && r.values.relatedJobId != r.key.jobId);
+            sawCorroboration = true;
+        }
+    }
+    const auto summary = timing::Summarize(*snapshot);
+    QCOMPARE(summary.ticketMismatches, std::uint64_t(0));
+    if (!snapshot->capacityDrops && !snapshot->contentionDrops && !snapshot->unavailableDueToContention) {
+        QCOMPARE(jobs.size(), std::size_t(2));
+        QVERIFY(sawAccepted && sawCorroboration && sawCpuDone);
+        QCOMPARE(summary.fullyObserved, std::uint64_t(2));
+        QCOMPARE(summary.incomplete, std::uint64_t(0));
+        QVERIFY(!summary.coverageIncomplete);
+    } else {
+        // Best-effort production hooks must drop rather than wait. Any loss
+        // is valid only with explicit incomplete coverage in the same output.
+        QVERIFY(summary.coverageIncomplete);
+        std::ostringstream output;
+        timing::WriteJsonLines(*snapshot, output);
+        QVERIFY(output.str().find("\"eligible_for_complete_chain_latency\":false") != std::string::npos);
+    }
+}
+
+void UltraClearTextControllerTests::timingPaneOnlyChangePreservesPositionedTicket()
+{
+    if (!timing::Enabled()) return; // enabled CTest selector owns one trace window
+    AccessibilityActivation accessibility;
+    ImmutableHarness h;
+    h.owner.resize(1000, 600);
+    h.owner.show(); // Qt offscreen; no interactive desktop fixture
+    h.page = MakePage({QStringLiteral("Reading"), QStringLiteral("HintAlpha")}, {}, 960, 540, 48);
+    const QVector<PageWord> glyphWords{h.page.words[0]};
+    h.script->words = glyphWords;
+    h.script->separateWordLines = true;
+    h.Enable();
+    QTRY_COMPARE(h.controller->BackendStatusSnapshot().state, BackendState::kReady);
+    QSignalSpy admitted(h.controller.get(), &UltraClearTextController::recognitionAdmitted);
+    UctFrameContext context;
+    context.geometry = h.Scene().geometry;
+    context.geometry.settings.stabilization = true;
+    context.requested = context.geometry.settings;
+    context.transform.valid = true;
+    context.cameraActive = true;
+    context.heldFrames = true;
+    context.compositeFrames = true;
+    context.viewportWidth = 960; context.viewportHeight = 540;
+    std::uint64_t sequence{};
+    constexpr std::int64_t stepMs = 80;
+    const auto await = [](const auto& ready) {
+        QElapsedTimer deadline;
+        deadline.start();
+        while (!ready() && deadline.elapsed() < 5000) QTest::qWait(1);
+        return ready();
+    };
+    const auto stage = [&](HoldDisplay display, std::uint64_t acquisition) {
+        const auto probes = h.controller->ProbeStatistics().submitted;
+        h.now += stepMs;
+        context.frameSeq = ++sequence;
+        // Readiness includes consumption of the previous device/probe UI
+        // receipts. Recheck this one staged presentation at a fixed clock;
+        // only one independently owned image is submitted for its frame.
+        if (!await([&] { return h.controller->OnPresented(context); })) return false;
+        h.controller->OnPresentationSucceeded();
+        h.controller->OnDeviceScene(context, std::make_shared<FakeDeviceImage>(
+            h.devices, h.page.image, 41, sequence, h.now,
+            HoldProvenance{display, display == HoldDisplay::Live ? sequence : acquisition, 0.0f}));
+        if (!await([&] { return h.controller->ProbeStatistics().submitted == probes + 1; }) ||
+            !await([&] { return h.controller->ProbeStatistics().completed == probes + 1; })) return false;
+        if (!h.controller->Model().Lines().isEmpty()) {
+            // completed counts worker completion, not UI receipt. The exact
+            // frame in the model proves that ApplyChecks has run on the UI.
+            if (!await([&] {
+                    const auto& lines = h.controller->Model().Lines();
+                    return !lines.isEmpty() && std::all_of(lines.begin(), lines.end(), [&](const AcceptedLine& line) {
+                        return line.valid && line.validatedFrameSeq == sequence;
+                    });
+                })) return false;
+        }
+        const auto submitted = h.controller->SchedulerStatistics().submitted;
+        return await([&] {
+            return h.controller->SchedulerStatistics().completed == submitted &&
+                static_cast<std::uint64_t>(admitted.count()) == submitted;
+        }); // freeze fake time until any job's real admission callback ran
+    };
+    // The first probe establishes similarity; the next two live acquisitions
+    // independently recognize and prove the one positioned word. Do not age
+    // that proof while two queued worker/UI chains are still in flight.
+    QVERIFY(stage(HoldDisplay::Live, 0));
+    QVERIFY(stage(HoldDisplay::Live, 0));
+    QTRY_COMPARE(admitted.count(), 1);
+    QVERIFY(stage(HoldDisplay::Live, 0));
+    QTRY_COMPARE(admitted.count(), 2);
+    QCOMPARE(h.overlay.WordCount(), glyphWords.size());
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(2));
+    {
+        std::lock_guard lock(h.script->mutex);
+        h.script->words = h.page.words;
+    }
+    // Each new held acquisition is genuinely older than its presentation.
+    // Reading it still obeys the ordinary 1500-ms refresh gate. Revalidating
+    // every completed 80-ms stage keeps the glyph's proof inside 350 ms.
+    const auto alphaAcquisition = ++sequence;
+    const auto refreshSteps = (UctTiming{}.refreshIntervalMs + stepMs - 1) / stepMs;
+    for (std::int64_t i = 0; i < refreshSteps; ++i) QVERIFY(stage(HoldDisplay::Held, alphaAcquisition));
+    QVERIFY(h.Reading().contains(QStringLiteral("HintAlpha")));
+    QCOMPARE(admitted.count(), 3);
+    QCOMPARE(h.overlay.WordCount(), glyphWords.size()); // held token stays reading-only
+    const auto positioned = h.overlay.Words();
+    QVERIFY(!positioned.first().protectedSceneRects.isEmpty());
+    const auto screenBefore = h.controller->ScreenTextSnapshot();
+    QVERIFY(!screenBefore.lines.isEmpty());
+    for (const auto& line : screenBefore.lines) QVERIFY(!line.text.contains(QStringLiteral("HintAlpha")));
+    // Settle any legitimate setup addition through the documented bounded
+    // semantic cadence, keeping each real validation current. This is a
+    // fixed interval, not a loop that drives time until a precondition passes.
+    const auto semanticMs = std::max(UctScreenTextTiming{}.cadenceMs, UctScreenTextTiming{}.readingHoldMs);
+    const auto semanticSteps = (semanticMs + stepMs - 1) / stepMs;
+    for (std::int64_t i = 0; i < semanticSteps; ++i) {
+        QVERIFY(stage(HoldDisplay::Held, alphaAcquisition));
+        h.controller->ScreenTextAccessibility()->ProcessDueWork();
+        QCOMPARE(h.overlay.WordCount(), glyphWords.size());
+        QCOMPARE(admitted.count(), 3); // repeating alpha cannot corroborate or reread it
+    }
+    const auto drivePaint = [&] {
+        const auto before = h.overlay.PaintedGeneration();
+        h.overlay.repaint();
+        return await([&] { return h.overlay.PaintedGeneration() > before; });
+    };
+    QVERIFY(drivePaint());
+    QVERIFY(!h.controller->ScreenTextAccessibility()->HasPendingAdditions());
+    QCOMPARE(h.controller->ScreenTextAccessibility()->ExposedLineCount(), screenBefore.lines.size());
+    const auto publications = h.controller->ScreenTextAccessibility()->Publications();
+    const auto paneOnlyStartedNs = timing::SteadyNanoseconds();
+    {
+        std::lock_guard lock(h.script->mutex);
+        h.script->words.last().text = QStringLiteral("HintBeta"); // same protected rect/owned pixels
+    }
+    const auto betaAcquisition = ++sequence;
+    QVERIFY(stage(HoldDisplay::Held, betaAcquisition));
+    QVERIFY(h.Reading().contains(QStringLiteral("HintBeta")));
+    QVERIFY(!h.Reading().contains(QStringLiteral("HintAlpha")));
+    QCOMPARE(admitted.count(), 4);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(4));
+    QCOMPARE(h.overlay.Words().size(), positioned.size());
+    for (int i = 0; i < positioned.size(); ++i) {
+        const auto& after = h.overlay.Words()[i]; const auto& before = positioned[i];
+        QCOMPARE(after.text, before.text); QCOMPARE(after.lineId, before.lineId);
+        QCOMPARE(after.wordIndex, before.wordIndex); QCOMPARE(after.sceneRect, before.sceneRect);
+        QCOMPARE(after.protectedSceneRects, before.protectedSceneRects);
+        QCOMPARE(after.colors.foreground, before.colors.foreground);
+        QCOMPARE(after.colors.background, before.colors.background);
+    }
+    const auto jobs = h.controller->SchedulerStatistics().submitted;
+    context.transform.sourceX = 0.02f; // actual controller reprojection after pane-only admission
+    context.transform.sourceWidth = 0.98f;
+    h.controller->OnPresented(context);
+    h.controller->OnPresentationSucceeded();
+    QVERIFY(drivePaint());
+    h.controller->ScreenTextAccessibility()->ProcessDueWork();
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, jobs);
+    QCOMPARE(h.controller->ScreenTextAccessibility()->Publications(), publications);
+    QVERIFY(!h.devices->readOnUiThread.load());
+
+    const auto snapshot = timing::CloseForDiagnostics();
+    QVERIFY(snapshot && !snapshot->unavailableDueToContention);
+    QCOMPARE(snapshot->capacityDrops, std::uint64_t(0));
+    QCOMPARE(snapshot->contentionDrops, std::uint64_t(0));
+    QVERIFY(!snapshot->closeOverlappedAttempts);
+    const timing::Record* lastPositionedAssignment{};
+    const timing::Record* paneChange{};
+    int oldContentPaints{}, changedPositionedEvents{}, paneAssignments{};
+    for (std::size_t i = 0; i < snapshot->count; ++i) {
+        const auto& r = snapshot->records[i];
+        if (r.steadyNs < paneOnlyStartedNs) {
+            if (r.event == timing::Event::OverlayAssigned) lastPositionedAssignment = &r;
+            if (r.event == timing::Event::OverlayPainted) ++oldContentPaints;
+        } else {
+            if (r.event == timing::Event::PaneAssigned) { paneChange = &r; ++paneAssignments; }
+            if (r.event == timing::Event::OverlayAssigned || r.event == timing::Event::OverlayPainted ||
+                r.event == timing::Event::AccessibilityScheduled || r.event == timing::Event::AccessibilityPublished)
+                ++changedPositionedEvents;
+        }
+    }
+    QVERIFY(lastPositionedAssignment && oldContentPaints > 0 && paneChange);
+    QCOMPARE(paneAssignments, 1);
+    QVERIFY(paneChange->values.publicationRevision > lastPositionedAssignment->values.publicationRevision);
+    QVERIFY(paneChange->key.jobId != lastPositionedAssignment->key.jobId);
+    QCOMPARE(paneChange->key.acquisition, betaAcquisition);
+    QCOMPARE(changedPositionedEvents, 0); // baseline retickets and falsely logs a fresh content paint on pan
+}
 
 void UltraClearTextControllerTests::textClarityMasterPreservesUctPreference()
 {
@@ -1025,6 +1340,125 @@ void UltraClearTextControllerTests::advancingMediaPacesOcrAndValidatesLatestFram
     QCOMPARE(h.controller->SchedulerStatistics().submitted,jobs);
 }
 
+void UltraClearTextControllerTests::partialProbeInvalidationRequestsPromptReplacement_data()
+{
+    QTest::addColumn<bool>("advancing");
+    QTest::newRow("live-camera") << false;
+    QTest::newRow("advancing-saved-video") << true;
+}
+
+void UltraClearTextControllerTests::partialProbeInvalidationRequestsPromptReplacement()
+{
+    QFETCH(bool, advancing);
+    UctTiming timing;
+    ImmutableHarness h(timing);
+    QVector<LayoutWord> layout;
+    for (int row = 0; row < 6; ++row)
+        for (int column = 0; column < 4; ++column)
+            layout.push_back({QStringLiteral("Reference"), QPointF(25 + column * 225, 25 + row * 60), 24});
+    layout.push_back({QStringLiteral("Before"), QPointF(30, 445), 24});
+    const auto original = MakeLayoutPage(layout, 960, 540);
+    layout.last().text = QStringLiteral("Afterward");
+    const auto changed = MakeLayoutPage(layout, 960, 540);
+    h.page = original;
+    h.script->words = original.words;
+    h.script->separateWordLines = true;
+    SourceStamp stamp;
+    stamp.viewTransform.valid = true;
+    stamp.viewportWidth = 960;
+    stamp.viewportHeight = 540;
+    const auto beforeProbe = MakeProbeFrame(original.image.constBits(), 960, 540,
+        original.image.bytesPerLine(), timing.probeDecimation, stamp);
+    const auto afterProbe = MakeProbeFrame(changed.image.constBits(), 960, 540,
+        changed.image.bytesPerLine(), timing.probeDecimation, stamp);
+    const auto similarity = SceneSimilarity(beforeProbe, afterProbe);
+    QVERIFY(similarity.has_value());
+    QVERIFY2(*similarity >= timing.stableSimilarity,
+             "The fixture must be globally stable while one real line changes");
+    const auto geometry = h.Scene().geometry;
+    std::uint64_t sequence = 0;
+    std::uint64_t observedSubmissions = 0;
+    auto lastSubmitWall = h.now;
+    const auto present = [&] {
+        ++sequence;
+        h.now += timing.probeIntervalMs;
+        {
+            std::lock_guard lock(h.script->mutex);
+            h.script->words = h.page.words;
+        }
+        if (advancing) {
+            UctAdvancingMediaScene scene;
+            scene.geometry = geometry;
+            scene.sourceAuthority = 3;
+            scene.current = {OwnedPixels(IndependentFramePixels(h.page.image, sequence)), sequence,
+                             10000 + static_cast<std::int64_t>(sequence) * timing.probeIntervalMs};
+            scene.transform.valid = true;
+            scene.viewportWidth = 960;
+            scene.viewportHeight = 540;
+            h.controller->OnAdvancingMediaPresented(std::move(scene));
+        } else {
+            UctFrameContext context;
+            context.geometry = geometry;
+            context.requested = geometry.settings;
+            context.frameSeq = sequence;
+            context.cameraActive = true;
+            context.transform.valid = true;
+            context.viewportWidth = 960;
+            context.viewportHeight = 540;
+            const bool wanted = h.controller->OnPresented(context);
+            h.controller->OnPresentationSucceeded();
+            if (wanted) h.controller->OnCpuViewport(context, h.page.image.constBits(), 960, 540,
+                                                   h.page.image.bytesPerLine());
+        }
+        QTest::qWait(12);
+        const auto submitted = h.controller->SchedulerStatistics().submitted;
+        if (submitted != observedSubmissions) {
+            observedSubmissions = submitted;
+            lastSubmitWall = h.now;
+        }
+    };
+    h.Enable();
+    QTRY_COMPARE(h.controller->BackendStatusSnapshot().state, BackendState::kReady);
+    for (int tick = 0; tick < 80 && h.overlay.WordCount() != original.words.size(); ++tick) present();
+    QCOMPARE(h.overlay.WordCount(), original.words.size());
+    QVERIFY(h.Reading().contains(QStringLiteral("Before")));
+    QTRY_COMPARE(h.controller->SchedulerStatistics().completed, h.controller->SchedulerStatistics().submitted);
+    QTest::qWait(20);
+    const auto jobs = h.controller->SchedulerStatistics().submitted;
+    const auto generation = h.controller->GeometryGeneration();
+    const auto proofWall = h.now;
+    const auto priorSubmitWall = lastSubmitWall;
+    {
+        std::lock_guard lock(h.script->mutex);
+        h.script->holdRecognition = true;
+    }
+    h.page = changed;
+    present();
+    QTRY_VERIFY(!h.Reading().contains(QStringLiteral("Before")));
+    QCOMPARE(h.overlay.WordCount(), original.words.size() - 1);
+    QVERIFY(h.Reading().contains(QStringLiteral("Reference"))); // surviving accepted lines keep coverage
+    QVERIFY(!h.Reading().contains(QStringLiteral("Afterward"))); // no new proof from a probe
+    for (int tick = 1; tick < 5 && h.controller->SchedulerStatistics().submitted == jobs; ++tick) present();
+    QVERIFY2(h.controller->SchedulerStatistics().submitted > jobs,
+             "Real partial invalidation waited for the 1500-ms periodic refresh despite remaining accepted coverage");
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, jobs + 1);
+    const auto firstReplacementDelay = h.now - proofWall;
+    QVERIFY(firstReplacementDelay <= 5 * timing.probeIntervalMs);
+    QVERIFY(h.now - priorSubmitWall < timing.refreshIntervalMs);
+    if (advancing) QVERIFY(h.now - priorSubmitWall >= timing.mediaRecognitionIntervalMs);
+    for (int tick = 0; tick < 3; ++tick) present();
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, jobs + 1); // held inference gets no replacement backlog
+    QCOMPARE(h.overlay.WordCount(), original.words.size() - 1);
+    h.script->Release();
+    QTest::qWait(20);
+    while (h.now - proofWall < 1200 && !h.Reading().contains(QStringLiteral("Afterward"))) present();
+    QVERIFY(h.Reading().contains(QStringLiteral("Afterward")));
+    QVERIFY(!h.Reading().contains(QStringLiteral("Before")));
+    QCOMPARE(h.overlay.WordCount(), changed.words.size());
+    QVERIFY(h.now - proofWall < timing.refreshIntervalMs);
+    QCOMPARE(h.controller->GeometryGeneration(), generation);
+}
+
 void UltraClearTextControllerTests::advancingMediaValidatesWhileOcrHeldAndRejectsChangedPixels()
 {
     ImmutableHarness h;
@@ -1192,13 +1626,17 @@ void UltraClearTextControllerTests::pausedBridgeRefinesAfterCorroboration()
 void UltraClearTextControllerTests::pausedRefinementCannotDropProvenWords_data()
 {
     QTest::addColumn<bool>("selectedOmitsWords");
-    QTest::newRow("selected-result-omits-proven-words") << true;
-    QTest::newRow("neighbour-result-omits-proven-words") << false;
+    QTest::addColumn<bool>("residentBridge");
+    QTest::newRow("selected-result-omits-proven-words") << true << false;
+    QTest::newRow("neighbour-result-omits-proven-words") << false << false;
+    QTest::newRow("resident-cpu-bridge-selected-omits-proven-words") << true << true;
+    QTest::newRow("resident-cpu-bridge-neighbour-omits-proven-words") << false << true;
 }
 
 void UltraClearTextControllerTests::pausedRefinementCannotDropProvenWords()
 {
     QFETCH(bool, selectedOmitsWords);
+    QFETCH(bool, residentBridge);
     AccessibilityActivation accessibility;
     ImmutableHarness h;
     h.page = MakePage({QStringLiteral("Reading helps"), QStringLiteral("Steady words")}, {},
@@ -1208,15 +1646,18 @@ void UltraClearTextControllerTests::pausedRefinementCannotDropProvenWords()
     if (selectedOmitsWords) h.script->callWords.insert(3, partial);
     h.script->callWords.insert(4, partial);
     h.script->completeBridgeResults = 1;
-    h.script->holdCall = 4;
-    auto scene = h.Scene(10);
-    scene.corroboration = UctImmutableFrame{
-        OwnedPixels(IndependentFramePixels(h.page.image, 11)), 11, 20};
+    h.script->permittedCalls = 3;
+    h.devices->resident = residentBridge;
+    if(residentBridge)h.script->wantsDeviceAfterCalls = 2;
+    auto scene = residentBridge ? h.DeviceScene(10) : h.Scene(10);
+    scene.corroboration = residentBridge
+        ? UctImmutableFrame{{}, 11, 20, h.Device(IndependentFramePixels(h.page.image, 11), 11, 20)}
+        : UctImmutableFrame{OwnedPixels(IndependentFramePixels(h.page.image, 11)), 11, 20};
     QSignalSpy admitted(h.controller.get(), &UltraClearTextController::recognitionAdmitted);
     h.Enable();
     QVERIFY(h.controller->SetImmutableScene(scene));
     QTRY_COMPARE(h.overlay.WordCount(), h.page.words.size());
-    QTRY_COMPARE_WITH_TIMEOUT(h.script->calls.load(), 4, 5000);
+    QTRY_COMPARE_WITH_TIMEOUT(h.script->calls.load() + h.script->deviceCalls.load(), 4, 5000);
     const auto proven = h.controller->Model().SceneWords(h.now, scene.selected.frameSeq);
     const QString reading = h.Reading();
     QVERIFY(reading.contains(QStringLiteral("Steady words")));
@@ -1224,6 +1665,14 @@ void UltraClearTextControllerTests::pausedRefinementCannotDropProvenWords()
 
     h.script->Release();
     QTRY_COMPARE(admitted.size(), 3); // selected + fallback neighbour + preferred neighbour
+    if(residentBridge) {
+        QCOMPARE(h.script->calls.load(), 2);
+        QCOMPARE(h.script->deviceCalls.load(), 2);
+        QCOMPARE(h.devices->residentPreparations.load(), 4);
+        QCOMPARE(h.devices->readbacks.load(), 2); // explicit CPU bridge OCR only
+        QCOMPARE(h.devices->probes.load(), 0);
+        QVERIFY(!h.devices->readOnUiThread.load());
+    }
     QCOMPARE(h.overlay.WordCount(), h.page.words.size());
     QCOMPARE(h.Reading(), reading);
     const auto refined = h.controller->Model().SceneWords(h.now, scene.selected.frameSeq);
@@ -1246,41 +1695,87 @@ void UltraClearTextControllerTests::pausedRefinementCannotDropProvenWords()
     auto newer = scene;
     ++newer.sourceAuthority;
     newer.selected.frameSeq = 30;
+    if(residentBridge)newer.selected.device = h.Device(h.page.image, 30, newer.selected.timestampMs);
     QVERIFY(h.controller->SetImmutableScene(newer));
     QCOMPARE(h.overlay.WordCount(), 0);
     QVERIFY(h.Reading().isEmpty());
     QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
 }
 
+void UltraClearTextControllerTests::pausedRefinementContradictionCannotRestorePriorProof_data()
+{
+    QTest::addColumn<bool>("residentBridge");
+    QTest::addColumn<bool>("mixedConflict");
+    QTest::newRow("cpu-all-words-conflict") << false << false;
+    QTest::newRow("resident-bridge-all-words-conflict") << true << false;
+    QTest::newRow("cpu-conflict-preserves-safe-sibling") << false << true;
+    QTest::newRow("resident-bridge-conflict-preserves-safe-sibling") << true << true;
+}
+
 void UltraClearTextControllerTests::pausedRefinementContradictionCannotRestorePriorProof()
 {
+    QFETCH(bool, residentBridge);
+    QFETCH(bool, mixedConflict);
     ImmutableHarness h;
     auto conflicting = h.page.words;
     conflicting.first().text = QStringLiteral("Writing");
+    if(!mixedConflict)conflicting.last().text = QStringLiteral("hinders");
     h.script->callWords.insert(3, conflicting);
     h.script->callWords.insert(4, conflicting);
     h.script->completeBridgeResults = 1;
-    h.script->holdCall = 4;
-    auto scene = h.Scene();
-    scene.corroboration = UctImmutableFrame{
-        OwnedPixels(IndependentFramePixels(h.page.image, 11)), 11, 20};
+    h.script->permittedCalls = 3;
+    h.devices->resident = residentBridge;
+    if(residentBridge)h.script->wantsDeviceAfterCalls = 2;
+    auto scene = residentBridge ? h.DeviceScene() : h.Scene();
+    scene.corroboration = residentBridge
+        ? UctImmutableFrame{{}, 11, 20, h.Device(IndependentFramePixels(h.page.image, 11), 11, 20)}
+        : UctImmutableFrame{OwnedPixels(IndependentFramePixels(h.page.image, 11)), 11, 20};
     QSignalSpy admitted(h.controller.get(), &UltraClearTextController::recognitionAdmitted);
     h.Enable();
     QVERIFY(h.controller->SetImmutableScene(scene));
     QTRY_COMPARE(h.overlay.WordCount(), h.page.words.size());
-    QTRY_COMPARE_WITH_TIMEOUT(h.script->calls.load(), 4, 5000);
+    QTRY_COMPARE_WITH_TIMEOUT(h.script->calls.load() + h.script->deviceCalls.load(), 4, 5000);
     QVERIFY(h.Reading().contains(QStringLiteral("Reading helps")));
+    const auto proven = h.controller->Model().SceneWords(h.now, scene.selected.frameSeq);
+    QVERIFY(proven.size()==2);
     h.script->Release();
     QTRY_COMPARE(admitted.size(), 3);
-    QCOMPARE(admitted.last().first().toInt(), static_cast<int>(AdmitVerdict::kContentMoved));
-    QCOMPARE(h.overlay.WordCount(), 0);
-    QVERIFY(h.Reading().isEmpty());
-    QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
+    if(residentBridge) {
+        QCOMPARE(h.script->calls.load(), 2);
+        QCOMPARE(h.script->deviceCalls.load(), 2);
+        QCOMPARE(h.devices->residentPreparations.load(), 4);
+        QCOMPARE(h.devices->readbacks.load(), 2);
+        QCOMPARE(h.devices->probes.load(), 0);
+        QVERIFY(!h.devices->readOnUiThread.load());
+    }
+    QCOMPARE(admitted.last().first().toInt(), static_cast<int>(mixedConflict
+        ? AdmitVerdict::kAccepted : AdmitVerdict::kContentMoved));
+    if(mixedConflict) {
+        QCOMPARE(h.overlay.WordCount(), 1);
+        const auto retained = h.controller->Model().SceneWords(h.now, scene.selected.frameSeq);
+        QCOMPARE(retained.size(), 1);
+        QCOMPARE(retained.first().text, QStringLiteral("helps"));
+        QCOMPARE(retained.first().lineId, proven.last().lineId);
+        QCOMPARE(retained.first().wordIndex, proven.last().wordIndex);
+        QCOMPARE(retained.first().sceneRect, proven.last().sceneRect);
+        QVERIFY(h.Reading().contains(QStringLiteral("helps")));
+        QVERIFY(!h.Reading().contains(QStringLiteral("Reading")));
+        QVERIFY(!h.Reading().contains(QStringLiteral("Writing")));
+        const auto screen = h.controller->ScreenTextSnapshot();
+        QVERIFY(!screen.lines.isEmpty());
+        QVERIFY(!screen.lines.first().text.contains(QStringLiteral("Reading")));
+        QVERIFY(!screen.lines.first().text.contains(QStringLiteral("Writing")));
+    } else {
+        QCOMPARE(h.overlay.WordCount(), 0);
+        QVERIFY(h.Reading().isEmpty());
+        QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
+    }
     h.controller->UpdateImmutableView(scene.transform, 960, 540);
     h.controller->SetShowOriginal(true);
     h.controller->SetShowOriginal(false);
-    QCOMPARE(h.overlay.WordCount(), 0); // no cached-model rollback may revive the conflict
-    QVERIFY(h.Reading().isEmpty());
+    QCOMPARE(h.overlay.WordCount(), mixedConflict ? 1 : 0); // view changes cannot revive revoked words
+    QVERIFY(!h.Reading().contains(QStringLiteral("Reading")));
+    QVERIFY(!h.Reading().contains(QStringLiteral("Writing")));
 }
 
 void UltraClearTextControllerTests::pausedBridgeHorizonKeepsHealthyFallback()
@@ -1313,6 +1808,251 @@ void UltraClearTextControllerTests::pausedFailureRetriesAreBounded()
     newer.corroboration=UctImmutableFrame{OwnedPixels(IndependentFramePixels(h.page.image,21)),21,20};
     QVERIFY(h.controller->SetImmutableScene(newer));
     QTRY_VERIFY(h.overlay.WordCount()>0); // a new source ticket can recover
+}
+
+void UltraClearTextControllerTests::pausedRefinementFailureKeepsOnlyProvenArtifact_data()
+{
+    QTest::addColumn<bool>("priorProof");
+    QTest::addColumn<int>("failure");
+    for (bool priorProof : {false, true}) {
+        const QByteArray prefix = priorProof ? "proven-" : "unproven-";
+        QTest::newRow((prefix + "backend-error").constData()) << priorProof << 0;
+        QTest::newRow((prefix + "input-fault").constData()) << priorProof << 1;
+        QTest::newRow((prefix + "cancelled-current-job").constData()) << priorProof << 2;
+        QTest::newRow((prefix + "wall-deadline").constData()) << priorProof << 3;
+        QTest::newRow((prefix + "terminal-unavailable").constData()) << priorProof << 4;
+    }
+}
+
+void UltraClearTextControllerTests::pausedRefinementFailureKeepsOnlyProvenArtifact()
+{
+    QFETCH(bool, priorProof);
+    QFETCH(int, failure);
+    AccessibilityActivation accessibility;
+    UctTiming timing;
+    timing.immutableJobTimeoutMs = 100;
+    ImmutableHarness h(timing);
+    const int firstFailure = priorProof ? 3 : 1;
+    h.script->permittedCalls = firstFailure - 1;
+    h.script->completeBridgeResults = priorProof ? 1 : 0;
+    auto scene = h.Scene();
+    scene.corroboration = UctImmutableFrame{
+        OwnedPixels(IndependentFramePixels(h.page.image, 11)), 11, 20};
+    h.Enable();
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_COMPARE_WITH_TIMEOUT(h.script->calls.load(), firstFailure, 5000);
+    const auto proven = h.controller->Model().Lines();
+    const QString reading = h.Reading();
+    const auto accepted = h.controller->AcceptedResults();
+    const auto generation = h.controller->GeometryGeneration();
+    if (priorProof) {
+        QCOMPARE(h.overlay.WordCount(), h.page.words.size());
+        QVERIFY(!proven.isEmpty());
+        QVERIFY(!reading.isEmpty());
+        QVERIFY(h.controller->ScreenTextAccessibility()->ExposedLineCount() > 0);
+    } else {
+        QVERIFY(proven.isEmpty());
+        QVERIFY(reading.isEmpty());
+        QCOMPARE(h.overlay.WordCount(), 0);
+    }
+
+    const int lastFailure = firstFailure + ((failure == 2 || failure == 3) ? 3 :
+                                            failure == 4 ? 0 : 2);
+    if (failure == 3) {
+        // Every retry completes with an otherwise healthy output after its
+        // own wall deadline. Media PTS and selected pixels never change.
+        for (int call = firstFailure; call <= lastFailure; ++call) {
+            QTRY_COMPARE(h.script->calls.load(), call);
+            const auto rejected = h.controller->RejectedResults();
+            h.now += timing.immutableJobTimeoutMs + 1;
+            {
+                std::lock_guard lock(h.script->mutex);
+                h.script->permittedCalls = call;
+            }
+            h.script->changed.notify_all();
+            QTRY_COMPARE(h.controller->RejectedResults(), rejected + 1);
+        }
+    } else {
+        h.script->transientKind = failure == 1 ? 0 : failure == 2 ? 2 : 3;
+        if (failure == 4) {
+            // The terminal status must fence even an otherwise successful
+            // in-flight output, before it can publish any new evidence.
+            h.script->unavailableAtCall = firstFailure;
+        } else h.script->transientFailures = 10;
+        h.script->Release();
+        QTRY_COMPARE(h.script->calls.load(), lastFailure);
+    }
+    QTest::qWait(700); // drain retries; exhausted optional work must stop
+    QCOMPARE(h.script->calls.load(), lastFailure);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(lastFailure));
+    QCOMPARE(h.controller->AcceptedResults(), accepted); // failures never admit new proof
+    QCOMPARE(h.controller->GeometryGeneration(), generation);
+    if (failure == 0) {
+        QCOMPARE(h.controller->BackendStatusSnapshot().state, BackendState::kFailed);
+        QCOMPARE(h.controller->BackendStatusSnapshot().detail, QStringLiteral("fixture recognition failure"));
+    } else if (failure == 4) {
+        QCOMPARE(h.controller->BackendStatusSnapshot().state, BackendState::kUnavailable);
+        QCOMPARE(h.controller->BackendStatusSnapshot().detail, QStringLiteral("fixture backend chain exhausted"));
+    } else QCOMPARE(h.controller->BackendStatusSnapshot().state, BackendState::kReady);
+
+    h.controller->UpdateImmutableView(scene.transform, 960, 540);
+    if (!priorProof) {
+        QVERIFY(h.controller->Model().Lines().isEmpty());
+        QCOMPARE(h.overlay.WordCount(), 0);
+        QVERIFY(h.Reading().isEmpty());
+        QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
+        QCOMPARE(h.controller->ScreenTextAccessibility()->ExposedLineCount(), 0);
+        QVERIFY(!h.controller->StatusSource().contains(QStringLiteral("Showing sharp text")));
+        return; // existing no-prior-proof terminal behavior remains fail-closed
+    }
+
+    const auto& retained = h.controller->Model().Lines();
+    QCOMPARE(retained.size(), proven.size());
+    for (int i = 0; i < proven.size(); ++i) {
+        const auto& before = proven[i];
+        const auto& after = retained[i];
+        QCOMPARE(after.id, before.id);
+        QCOMPARE(after.sceneRect, before.sceneRect);
+        QCOMPARE(after.sceneOffset, before.sceneOffset);
+        QCOMPARE(after.readingTokens, before.readingTokens);
+        QCOMPARE(after.readingWordIndices, before.readingWordIndices);
+        QCOMPARE(after.protectedSceneRects, before.protectedSceneRects);
+        QCOMPARE(after.validatedAtMs, before.validatedAtMs);
+        QCOMPARE(after.validatedFrameSeq, before.validatedFrameSeq);
+        QCOMPARE(after.provenance.sourceEpoch, before.provenance.sourceEpoch);
+        QCOMPARE(after.provenance.geometryGeneration, before.provenance.geometryGeneration);
+        QCOMPARE(after.provenance.frameSeq, before.provenance.frameSeq);
+        QCOMPARE(after.provenance.timestampMs, before.provenance.timestampMs);
+        QCOMPARE(after.reference.sceneRect, before.reference.sceneRect);
+        QCOMPARE(after.reference.values, before.reference.values);
+        QCOMPARE(after.reference.resident, before.reference.resident);
+        QCOMPARE(after.words.size(), before.words.size());
+        for (int word = 0; word < before.words.size(); ++word) {
+            QCOMPARE(after.words[word].text, before.words[word].text);
+            QCOMPARE(after.words[word].sceneRect, before.words[word].sceneRect);
+            QCOMPARE(after.words[word].glyphEligible, before.words[word].glyphEligible);
+        }
+    }
+    QCOMPARE(h.overlay.WordCount(), h.page.words.size());
+    QCOMPARE(h.Reading(), reading);
+    QVERIFY(!h.controller->ScreenTextSnapshot().lines.isEmpty());
+    QVERIFY(h.controller->ScreenTextAccessibility()->ExposedLineCount() > 0);
+    QVERIFY(h.controller->StatusSource().contains(QStringLiteral("Showing sharp text")));
+    const auto jobs = h.controller->SchedulerStatistics().submitted;
+    h.now += 3600000;
+    h.script->transientFailures = 0;
+    h.script->unavailableAtCall = 0;
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    h.controller->UpdateImmutableView(scene.transform, 960, 540);
+    QTest::qWait(250);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, jobs);
+    QCOMPARE(h.overlay.WordCount(), h.page.words.size());
+    QCOMPARE(h.Reading(), reading);
+
+    h.controller->SetShowOriginal(true);
+    QCOMPARE(h.overlay.WordCount(), 0);
+    QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
+    QCOMPARE(h.Reading(), reading); // existing Show original pane contract
+    h.controller->SetShowOriginal(false);
+    QCOMPARE(h.overlay.WordCount(), h.page.words.size());
+    h.controller->OnMediaPresentationFailed();
+    QCOMPARE(h.overlay.WordCount(), 0);
+    QVERIFY(h.Reading().isEmpty());
+    QCOMPARE(h.controller->ScreenTextAccessibility()->ExposedLineCount(), 0);
+    h.controller->UpdateImmutableView(scene.transform, 960, 540);
+    h.controller->SetShowOriginal(true);
+    h.controller->SetShowOriginal(false);
+    QCOMPARE(h.overlay.WordCount(), 0); // a view/toggle cannot clear the presentation latch
+    QVERIFY(h.Reading().isEmpty());
+    h.controller->OnMediaPresentationSucceeded();
+    QCOMPARE(h.overlay.WordCount(), h.page.words.size());
+    QCOMPARE(h.Reading(), reading);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, jobs);
+    h.controller->SetEnabled(false);
+    QVERIFY(h.controller->Model().Lines().isEmpty());
+    QCOMPARE(h.overlay.WordCount(), 0);
+    QVERIFY(h.Reading().isEmpty());
+    QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
+}
+
+void UltraClearTextControllerTests::pausedReadingOnlyCandidateStillFailsClosed()
+{
+    ImmutableHarness h;
+    h.script->completeBridgeResults = 1;
+    h.script->permittedCalls = 1;
+    auto scene = h.Scene(); // no independent neighbour: reading-only evidence
+    h.Enable();
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_COMPARE_WITH_TIMEOUT(h.script->calls.load(), 2, 5000);
+    QCOMPARE(h.overlay.WordCount(), 0);
+    QVERIFY(!h.Reading().isEmpty());
+    QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
+    h.script->transientKind = 0;
+    h.script->transientFailures = 10;
+    h.script->Release();
+    QTRY_COMPARE(h.script->calls.load(), 4);
+    QTest::qWait(250);
+    h.controller->UpdateImmutableView(scene.transform, 960, 540);
+    QCOMPARE(h.overlay.WordCount(), 0);
+    QVERIFY(h.Reading().isEmpty());
+    QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
+    QVERIFY(h.controller->StatusSource().contains(QStringLiteral("stopped working")));
+}
+
+void UltraClearTextControllerTests::failedPausedRefinementStillFencesSceneChanges_data()
+{
+    QTest::addColumn<int>("change");
+    QTest::newRow("source-epoch") << 0;
+    QTest::newRow("source-authority") << 1;
+    QTest::newRow("processed-geometry") << 2;
+    QTest::newRow("selected-frame") << 3;
+    QTest::newRow("selected-pts") << 4;
+    QTest::newRow("different-owned-lease-same-bytes") << 5;
+    QTest::newRow("different-selected-pixels") << 6;
+    QTest::newRow("clear-scene") << 7;
+    QTest::newRow("processing-suppressed") << 8;
+}
+
+void UltraClearTextControllerTests::failedPausedRefinementStillFencesSceneChanges()
+{
+    QFETCH(int, change);
+    ImmutableHarness h;
+    h.script->completeBridgeResults = 1;
+    h.script->permittedCalls = 2;
+    auto scene = h.Scene();
+    scene.corroboration = UctImmutableFrame{
+        OwnedPixels(IndependentFramePixels(h.page.image, 11)), 11, 20};
+    h.Enable();
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_COMPARE_WITH_TIMEOUT(h.script->calls.load(), 3, 5000);
+    QCOMPARE(h.overlay.WordCount(), h.page.words.size());
+    h.script->transientKind = 3;
+    h.script->transientFailures = 10;
+    h.script->Release();
+    QTRY_COMPARE(h.controller->BackendStatusSnapshot().state, BackendState::kFailed);
+    QCOMPARE(h.overlay.WordCount(), h.page.words.size());
+    const auto generation = h.controller->GeometryGeneration();
+    if (change == 7) h.controller->ClearImmutableScene();
+    else if (change == 8) h.controller->SetMediaOverlaySuppressed(true);
+    else {
+        if (change == 0) ++scene.geometry.settings.sourceEpoch;
+        if (change == 1) ++scene.sourceAuthority;
+        if (change == 2) ++scene.geometry.settings.colorScheme;
+        if (change == 3) ++scene.selected.frameSeq;
+        if (change == 4) ++scene.selected.timestampMs;
+        if (change == 5) scene.selected.pixels = OwnedPixels(h.page.image);
+        if (change == 6) scene.selected.pixels = OwnedPixels(IndependentFramePixels(h.page.image, 12));
+        QVERIFY(h.controller->SetImmutableScene(scene));
+    }
+    QVERIFY(h.controller->GeometryGeneration() > generation);
+    QVERIFY(h.controller->Model().Lines().isEmpty());
+    QCOMPARE(h.overlay.WordCount(), 0);
+    QVERIFY(h.Reading().isEmpty());
+    QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
+    h.controller->OnMediaPresentationSucceeded(); // a receipt cannot revive revoked source proof
+    h.controller->UpdateImmutableView(scene.transform, 960, 540);
+    QCOMPARE(h.overlay.WordCount(), 0);
+    QVERIFY(h.Reading().isEmpty());
 }
 
 void UltraClearTextControllerTests::advancingMediaDeadlineUsesWallClock()

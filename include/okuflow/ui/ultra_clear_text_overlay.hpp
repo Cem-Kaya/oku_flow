@@ -3,6 +3,7 @@
 #if defined(_WIN32) || defined(Q_MOC_RUN)
 
 #include "okuflow/common/ultra_clear_text.hpp"
+#include "okuflow/common/uct_timing_trace.hpp"
 #include "okuflow/ui/uct_overlay_snapshot.hpp"
 
 #include <QFont>
@@ -43,6 +44,9 @@ public:
         int wordIndex{-1}; // uct::SceneWord::wordIndex; with lineId the accessibility key
     };
     void SetWords(QVector<SceneWord> words);
+    // Optional diagnostic provenance of this content assignment, never a view
+    // receipt or a replacement for the model's independent word proof.
+    void SetTimingTicket(uct::timing::PublicationTicket ticket) { timingTicket_ = ticket; }
     void ClearWords();
     int WordCount() const noexcept { return words_.size(); }
     const QVector<SceneWord>& Words() const noexcept { return words_; }
@@ -106,6 +110,8 @@ protected:
     void paintEvent(QPaintEvent* event) override;
 
 private:
+    uct::timing::PublicationTicket timingTicket_{};
+    std::uint64_t timingPaintedRevision_{};
     void SyncGeometryToRenderTarget();
     void UpdateVisibility();
     void RebuildGlyphLayout();

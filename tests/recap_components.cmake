@@ -40,6 +40,20 @@ set_tests_properties(immutable_uct_contract PROPERTIES TIMEOUT 120 LABELS "headl
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 
+add_test(NAME uct_timing_controller_contract
+    COMMAND ultra_clear_text_controller_tests timingTraceKeepsWorkerAndAdmissionTickets)
+set_tests_properties(uct_timing_controller_contract PROPERTIES TIMEOUT 30 LABELS "headless"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1;OKUFLOW_UCT_TIMING_TRACE=1"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
+    REQUIRED_FILES "${PROJECT_SOURCE_DIR}/include/okuflow/common/uct_timing_trace.hpp;${PROJECT_SOURCE_DIR}/src/common/uct_timing_trace.cpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/ultra_clear_text.hpp;${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp;${PROJECT_SOURCE_DIR}/include/okuflow/app/ultra_clear_text_controller.hpp;${PROJECT_SOURCE_DIR}/src/app/ultra_clear_text_controller.cpp;${PROJECT_SOURCE_DIR}/tests/ultra_clear_text_controller_tests.cpp")
+
+add_test(NAME uct_timing_pane_publication_contract
+    COMMAND ultra_clear_text_controller_tests timingPaneOnlyChangePreservesPositionedTicket)
+set_tests_properties(uct_timing_pane_publication_contract PROPERTIES TIMEOUT 30 LABELS "headless"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1;OKUFLOW_UCT_TIMING_TRACE=1"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
+    REQUIRED_FILES "${PROJECT_SOURCE_DIR}/include/okuflow/common/uct_timing_trace.hpp;${PROJECT_SOURCE_DIR}/src/common/uct_timing_trace.cpp;${PROJECT_SOURCE_DIR}/include/okuflow/app/ultra_clear_text_controller.hpp;${PROJECT_SOURCE_DIR}/src/app/ultra_clear_text_controller.cpp;${PROJECT_SOURCE_DIR}/tests/ultra_clear_text_controller_tests.cpp")
+
 add_executable(video_transport_tests video_transport_tests.cpp
     ${PROJECT_SOURCE_DIR}/assets/okuflow_resources.qrc
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/video_transport.hpp

@@ -4,6 +4,10 @@
 partial-refinement and late-neighbour defects, exact-source retention and the
 private resident recognition/admission diagnostic.
 
+[UCT software timing](uct_timing_trace.md) describes bounded opt-in worker,
+admission, software-paint and accessibility-publication metadata, with explicit
+dropped/incomplete chains and separate native screen-reader acceptance.
+
 [Shadow regional planning](uct_region_planner.md) describes the opt-in metadata
 observer, source-bound spatial occurrences, requested focus and finite coverage
 debt. Full OCR stays authoritative; no recognition reuse is enabled.

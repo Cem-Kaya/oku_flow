@@ -9,6 +9,7 @@
 #include "okuflow/ui/ultra_clear_text_panel.hpp"
 #include "ultra_clear_text_test_support.hpp"
 #include "uct_capture_test_cases.hpp"
+#include "uct_color_test_support.hpp"
 
 #include <QApplication>
 #include <QAccessible>
@@ -500,6 +501,111 @@ public:
 private:QImage page_;
 };
 
+// Hardware-free scheduler protocol oracle. Its fingerprint is explicitly fake:
+// this verifies selection of the owner's canonical analysis path, not the CUDA
+// tree-hash implementation or recognition quality.
+struct ResidentBridgeState {
+    std::atomic<bool> preferred{}, fail{}, holdAnalysis{}, analysisStarted{}, releaseAnalysis{};
+    std::atomic<int> readbacks{}, validationReads{}, probeReads{}, preparations{}, cpuCalls{}, deviceCalls{};
+    std::mutex mutex;
+    std::condition_variable wake;
+    void Release() { releaseAnalysis = true; wake.notify_all(); }
+};
+class CanonicalResidentProbe final : public ResidentProbe {
+public:
+    int Width() const noexcept override { return 128; }
+    int Height() const noexcept override { return 64; }
+    ReferencePatch Reference(const SourceStamp&, const QRectF& rect) const override {
+        ReferencePatch patch; patch.sceneRect = rect; patch.valid = !rect.isEmpty();
+        patch.resident = std::make_shared<ResidentPatch>(); return patch;
+    }
+    PatchMatch Match(const SourceStamp&, const ReferencePatch& patch, const MatchTuning&,
+                     std::optional<QPointF>) const override {
+        return {patch.valid && bool(patch.resident), true, 1, {}};
+    }
+    std::optional<double> Similarity(const SourceStamp&, const ResidentProbe&, const SourceStamp&) const override { return 1; }
+};
+class CanonicalResidentImage final : public DeviceImage {
+public:
+    explicit CanonicalResidentImage(std::shared_ptr<ResidentBridgeState> state)
+        : state_(std::move(state)), page_(128, 64, QImage::Format_ARGB32),
+          probe_(std::make_shared<CanonicalResidentProbe>()) {
+        page_.fill(QColor(237, 219, 181));
+        width = 128; height = 64; pitch = width * 4; sourceEpoch = 7; frameSequence = 55;
+        kind = AnalysisKind::TemporallySmoothed;
+        historyEpoch = 1; seedFrameSequence = 54; blendFrameCount = 2; temporalAlpha = .25f;
+        canonical_ = QCryptographicHash::hash(QByteArray("resident-protocol-oracle:") +
+            QByteArray(reinterpret_cast<const char*>(page_.constBits()), page_.sizeInBytes()), QCryptographicHash::Sha256);
+    }
+    const void* Data() const override { return this; }
+    bool WaitReady(void*, QString&) const override { return true; }
+    bool HasResidentAnalysis() const override { return true; }
+    const QByteArray& CanonicalDigest() const { return canonical_; }
+    const QImage& Pixels() const { return page_; }
+    QImage Readback(const std::atomic<bool>& cancelled, QString&) const override {
+        ++state_->readbacks; return cancelled.load() ? QImage{} : page_;
+    }
+    QImage ReadValidation(const std::atomic<bool>&, QString& error) const override {
+        ++state_->validationReads; error = "unexpected CPU validation fallback"; return {};
+    }
+    QImage ReadProbe(const std::atomic<bool>&, QString& error) const override {
+        ++state_->probeReads; error = "unexpected CPU probe fallback"; return {};
+    }
+    bool PrepareResidentAnalysis(RecognitionResult& result, int, bool probeOnly,
+                                  const std::atomic<bool>& cancelled, QString& error) const override {
+        ++state_->preparations; state_->analysisStarted = true;
+        if (state_->holdAnalysis.load()) {
+            std::unique_lock lock(state_->mutex);
+            state_->wake.wait(lock, [&] { return state_->releaseAnalysis.load(); });
+        }
+        if (cancelled.load() || state_->fail.load()) { error = "resident fixture refusal"; return false; }
+        result.reference = {}; result.reference.stamp = result.stamp; result.reference.resident = probe_;
+        if (!probeOnly) {
+            result.sourcePixelDigestKind = RecognitionResult::DigestKind::GpuTreeSha256V1;
+            result.sourcePixelDigest = canonical_;
+            const LineColors colors{QColor(11, 29, 47), QColor(231, 197, 103)};
+            result.lineColors.fill(colors, result.output.lines.size());
+            for (auto& line : result.output.lines) for (auto& word : line.words) word.colors = colors;
+            result.currentInputMatches.fill(true, result.output.lines.size());
+        }
+        return true;
+    }
+private:
+    std::shared_ptr<ResidentBridgeState> state_;
+    QImage page_;
+    std::shared_ptr<const CanonicalResidentProbe> probe_;
+    QByteArray canonical_;
+};
+class ResidentBridgeRecognizer final : public Recognizer {
+public:
+    explicit ResidentBridgeRecognizer(std::shared_ptr<ResidentBridgeState> state) : state_(std::move(state)) {}
+    BackendStatus Initialize() override { return {BackendState::kReady, "bridge fixture", "", ""}; }
+    bool WantsDeviceInput() const override { return state_->preferred.load(); }
+    RecognitionOutput Recognize(const QImage&, const std::atomic<bool>& cancelled) override {
+        ++state_->cpuCalls; return Output("Bridge", cancelled);
+    }
+    RecognitionOutput RecognizeDevice(const DeviceImage&, const std::atomic<bool>& cancelled) override {
+        ++state_->deviceCalls; return Output("Preferred", cancelled);
+    }
+private:
+    RecognitionOutput Output(const char* text, const std::atomic<bool>& cancelled) const {
+        RecognitionOutput output; output.ok = !cancelled.load(); output.cancelled = cancelled.load();
+        output.backendPreparing = !state_->preferred.load();
+        output.lines = {{{{QString::fromLatin1(text), QRectF(8, 8, 80, 24)}}}}; return output;
+    }
+    std::shared_ptr<ResidentBridgeState> state_;
+};
+
+SourceStamp ResidentBridgeStamp()
+{
+    SourceStamp stamp; stamp.sourceEpoch = 7; stamp.geometryGeneration = 3; stamp.frameSeq = 55;
+    stamp.timestampMs = 55'000; stamp.viewportWidth = 128; stamp.viewportHeight = 64;
+    stamp.viewTransform = {0, 0, 1, 1, 0, 0, 1, 1, true};
+    stamp.temporallySmoothed = true; stamp.historyEpoch = 1; stamp.seedFrameSeq = 54;
+    stamp.blendFrameCount = 2; stamp.temporalAlpha = .25f;
+    return stamp;
+}
+
 } // namespace
 
 class UltraClearTextTests final : public QObject {
@@ -616,8 +722,16 @@ private slots:
     void probeReferencesPrioritizeUnverifiedAndOldestLines();
     void budgetRefreshCannotBorrowOtherProof_data();
     void budgetRefreshCannotBorrowOtherProof();
+    void schedulerKeepsLocalSurfaceColors_data();
+    void schedulerKeepsLocalSurfaceColors();
+    void immutableRefinementRefreshesOnlyProvenMatchingColors_data();
+    void immutableRefinementRefreshesOnlyProvenMatchingColors();
     void schedulerPreservesDenseTextPolarity_data();
     void schedulerPreservesDenseTextPolarity();
+    void cpuBridgeKeepsCanonicalResidentAnalysisAcrossPromotion();
+    void residentAnalysisRefusalNeverFallsBackToCpu_data();
+    void residentAnalysisRefusalNeverFallsBackToCpu();
+    void residentProbePreparationRemainsSinglePass();
     void highRiskTokensFailClosed();
 
     // --- Model --------------------------------------------------------------
@@ -647,6 +761,10 @@ private slots:
     void immutableRefinementCannotCarryProofAcrossIdentity_data();
     void immutableRefinementCannotCarryProofAcrossIdentity();
     void immutableRefinementContradictionRevokesAffectedProof();
+    void immutableWordConflictKeepsSafeSibling_data();
+    void immutableWordConflictKeepsSafeSibling();
+    void immutableConflictBlocksFollowExactSelectedIdentity_data();
+    void immutableConflictBlocksFollowExactSelectedIdentity();
     void immutableRefinementUnionIsBounded();
     void immutableRefinementLiteralGroupingKeepsPriorProof_data();
     void immutableRefinementLiteralGroupingKeepsPriorProof();
@@ -732,6 +850,105 @@ void UltraClearTextTests::cancelledDeviceJobRetainsInputAndRejectsLateOutput()
     scheduler.Cancel();image.reset();QVERIFY(!owned.expired());
     shared->release=true;QTRY_VERIFY(!scheduler.HasWork());QTRY_VERIFY(owned.expired());
     QCOMPARE(completions.load(),0);QCOMPARE(shared->readbacks.load(),0);
+}
+
+void UltraClearTextTests::cpuBridgeKeepsCanonicalResidentAnalysisAcrossPromotion()
+{
+    auto shared = std::make_shared<ResidentBridgeState>();
+    auto image = std::make_shared<CanonicalResidentImage>(shared);
+    std::mutex mutex; QVector<RecognitionResult> completed;
+    RecognitionScheduler scheduler(std::make_unique<ResidentBridgeRecognizer>(shared), [&](RecognitionResult result) {
+        std::lock_guard lock(mutex); completed.push_back(std::move(result));
+    }, {});
+    QTRY_COMPARE(scheduler.Status().state, BackendState::kReady);
+    const auto count = [&] { std::lock_guard lock(mutex); return completed.size(); };
+    const auto stamp = ResidentBridgeStamp();
+    QVERIFY(scheduler.SubmitDevice(stamp, image));
+    QTRY_COMPARE(count(), 1);
+    shared->preferred = true;
+    QVERIFY(scheduler.SubmitDevice(stamp, image));
+    QTRY_COMPARE(count(), 2);
+    std::lock_guard lock(mutex);
+    const auto& bridge = completed[0]; const auto& preferred = completed[1];
+    QVERIFY(bridge.output.ok); QVERIFY(preferred.output.ok);
+    QCOMPARE(bridge.output.lines[0].words[0].text, QStringLiteral("Bridge"));
+    QCOMPARE(preferred.output.lines[0].words[0].text, QStringLiteral("Preferred"));
+    QVERIFY(bridge.output.backendPreparing); QVERIFY(!preferred.output.backendPreparing);
+    QVERIFY(bridge.jobId != preferred.jobId); QCOMPARE(bridge.authority, preferred.authority);
+    QCOMPARE(bridge.sourcePixelDigestKind, RecognitionResult::DigestKind::GpuTreeSha256V1);
+    QCOMPARE(preferred.sourcePixelDigestKind, bridge.sourcePixelDigestKind);
+    QCOMPARE(bridge.sourcePixelDigest, image->CanonicalDigest());
+    QCOMPARE(preferred.sourcePixelDigest, bridge.sourcePixelDigest);
+    QVERIFY(bridge.sourcePixelDigest != SourcePixelsDigest(image->Pixels()));
+    for (const auto& result : completed) {
+        QVERIFY(result.deviceInput); QVERIFY(result.reference.resident); QVERIFY(result.reference.IsValid());
+        QVERIFY(result.reference.luma.isNull()); QVERIFY(result.reference.integral.isEmpty());
+        QCOMPARE(result.stamp.frameSeq, stamp.frameSeq); QCOMPARE(result.stamp.timestampMs, stamp.timestampMs);
+        QCOMPARE(result.prepared.size(), 1); QVERIFY(result.prepared[0].reference.resident);
+        QVERIFY(result.prepared[0].reference.values.isEmpty());
+        QCOMPARE(result.lineColors[0].foreground, QColor(11, 29, 47));
+        QVERIFY(result.output.lines[0].words[0].colors);
+        QCOMPARE(result.output.lines[0].words[0].colors->background, QColor(231, 197, 103));
+        QCOMPARE(result.currentInputMatches, QVector<bool>({true}));
+    }
+    QCOMPARE(shared->cpuCalls.load(), 1); QCOMPARE(shared->deviceCalls.load(), 1);
+    QCOMPARE(shared->readbacks.load(), 1); QCOMPARE(shared->preparations.load(), 2);
+    QCOMPARE(shared->validationReads.load(), 0); QCOMPARE(shared->probeReads.load(), 0);
+}
+
+void UltraClearTextTests::residentAnalysisRefusalNeverFallsBackToCpu_data()
+{
+    QTest::addColumn<bool>("preferred"); QTest::addColumn<bool>("cancel");
+    QTest::newRow("cpu-bridge-refusal") << false << false;
+    QTest::newRow("preferred-device-refusal") << true << false;
+    QTest::newRow("cpu-bridge-cancelled") << false << true;
+    QTest::newRow("preferred-device-cancelled") << true << true;
+}
+
+void UltraClearTextTests::residentAnalysisRefusalNeverFallsBackToCpu()
+{
+    QFETCH(bool, preferred); QFETCH(bool, cancel);
+    auto shared = std::make_shared<ResidentBridgeState>();
+    shared->preferred = preferred; shared->fail = !cancel; shared->holdAnalysis = cancel;
+    const auto release = qScopeGuard([&] { shared->Release(); });
+    auto image = std::make_shared<CanonicalResidentImage>(shared);
+    std::weak_ptr<const DeviceImage> owned = image;
+    RecognitionResult completed; std::atomic<int> completions{};
+    RecognitionScheduler scheduler(std::make_unique<ResidentBridgeRecognizer>(shared), [&](RecognitionResult result) {
+        completed = std::move(result); ++completions;
+    }, {});
+    QTRY_COMPARE(scheduler.Status().state, BackendState::kReady);
+    QVERIFY(scheduler.SubmitDevice(ResidentBridgeStamp(), image));
+    if (cancel) {
+        QTRY_VERIFY(shared->analysisStarted.load());
+        scheduler.Cancel(); image.reset(); QVERIFY(!owned.expired());
+        shared->Release(); QTRY_VERIFY(!scheduler.HasWork()); QTRY_VERIFY(owned.expired());
+        QCOMPARE(completions.load(), 0);
+    } else {
+        QTRY_COMPARE(completions.load(), 1);
+        QVERIFY(!completed.output.ok); QVERIFY(completed.output.inputFault);
+        QVERIFY(!completed.reference.IsValid()); QVERIFY(completed.prepared.isEmpty());
+        QVERIFY(completed.sourcePixelDigest.isEmpty()); QVERIFY(completed.lineColors.isEmpty());
+        QCOMPARE(completed.output.error, QStringLiteral("resident fixture refusal"));
+    }
+    QCOMPARE(shared->preparations.load(), 1);
+    QCOMPARE(shared->readbacks.load(), preferred ? 0 : 1);
+    QCOMPARE(shared->validationReads.load(), 0); QCOMPARE(shared->probeReads.load(), 0);
+}
+
+void UltraClearTextTests::residentProbePreparationRemainsSinglePass()
+{
+    auto shared = std::make_shared<ResidentBridgeState>();
+    auto image = std::make_shared<CanonicalResidentImage>(shared);
+    RecognitionResult completed; std::atomic<bool> done{};
+    RecognitionScheduler scheduler(nullptr, [&](RecognitionResult result) { completed = std::move(result); done = true; }, {}, 1, 7, true);
+    QTRY_COMPARE(scheduler.Status().state, BackendState::kReady);
+    QVERIFY(scheduler.SubmitDevice(ResidentBridgeStamp(), image)); QTRY_VERIFY(done.load());
+    QVERIFY(completed.output.ok); QVERIFY(completed.reference.resident);
+    QVERIFY(completed.reference.IsValid()); QVERIFY(completed.sourcePixelDigest.isEmpty());
+    QCOMPARE(shared->preparations.load(), 1); QCOMPARE(shared->readbacks.load(), 0);
+    QCOMPARE(shared->validationReads.load(), 0); QCOMPARE(shared->probeReads.load(), 0);
+    QCOMPARE(shared->cpuCalls.load(), 0); QCOMPARE(shared->deviceCalls.load(), 0);
 }
 
 void UltraClearTextTests::smoothedProbeFallbackDownloadsOnlyTheCurrentProbe()
@@ -2154,25 +2371,124 @@ void UltraClearTextTests::immutableRefinementContradictionRevokesAffectedProof()
     auto [selected, neighbor] = ImmutablePair(MakePage({"Reading glasses", "Safe distant text"}));
     OverlayModel model;
     QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 60'000, &neighbor), AdmitVerdict::kAccepted);
-    const auto safe = model.Lines()[1];
+    const auto first = model.Lines()[0], safe = model.Lines()[1];
     selected.output.lines[0].words[0].text = QStringLiteral("Writing");
     neighbor.output.lines[0].words[0].text = QStringLiteral("Writing");
     selected.prepared = PrepareLines(selected, 7); neighbor.prepared = PrepareLines(neighbor, 7);
     QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 70'000, &neighbor), AdmitVerdict::kAccepted);
-    QCOMPARE(model.ReadingText(70'000, 55), QStringLiteral("Safe distant text"));
-    QCOMPARE(model.SceneWords(70'000, 55).size(), 3);
-    QCOMPARE(model.Lines().first().id, safe.id);
+    QCOMPARE(model.ReadingText(70'000, 55), QStringLiteral("\u2026 glasses\nSafe distant text"));
+    QCOMPARE(model.SceneWords(70'000, 55).size(), 4);
+    QCOMPARE(model.Lines().first().id, first.id);
+    QCOMPARE(model.SceneWords(70'000, 55).first().wordIndex, 1);
+    QCOMPARE(model.Lines()[1].id, safe.id);
     // No unrelated proof to keep: the explicit conflict is observable and empty.
     auto pair = ImmutablePair(MakePage({"Reading glasses"}));
     OverlayModel conflictOnly;
     QCOMPARE(conflictOnly.AdmitImmutable(pair.first, pair.first.stamp, 60'000, &pair.second), AdmitVerdict::kAccepted);
     pair.first.output.lines[0].words[0].text = QStringLiteral("Writing");
     pair.second.output.lines[0].words[0].text = QStringLiteral("Writing");
+    pair.first.output.lines[0].words[1].text = QStringLiteral("goggles");
+    pair.second.output.lines[0].words[1].text = QStringLiteral("goggles");
     pair.first.prepared = PrepareLines(pair.first, 7); pair.second.prepared = PrepareLines(pair.second, 7);
     QCOMPARE(conflictOnly.AdmitImmutable(pair.first, pair.first.stamp, 70'000, &pair.second), AdmitVerdict::kContentMoved);
     QVERIFY(conflictOnly.SceneWords(70'000, 55).isEmpty());
     QVERIFY(conflictOnly.ReadingText(70'000, 55).isEmpty());
     QVERIFY(conflictOnly.ScreenLines(70'000, 55).isEmpty());
+}
+
+void UltraClearTextTests::immutableWordConflictKeepsSafeSibling_data()
+{
+    QTest::addColumn<QString>("oldText"); QTest::addColumn<QString>("newText");
+    QTest::newRow("punctuation") << QStringLiteral("Hello,") << QStringLiteral("Hello");
+    QTest::newRow("case") << QStringLiteral("Read") << QStringLiteral("read");
+    QTest::newRow("rn-m") << QStringLiteral("modern") << QStringLiteral("modem");
+}
+
+void UltraClearTextTests::immutableWordConflictKeepsSafeSibling()
+{
+    QFETCH(QString, oldText); QFETCH(QString, newText);
+    auto [selected, neighbor] = ImmutablePair(MakePage({oldText + QStringLiteral(" Safe")}));
+    OverlayModel model;
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 60'000, &neighbor), AdmitVerdict::kAccepted);
+    const auto prior = model.Lines().first();
+    const auto oldRect = prior.words[0].sceneRect;
+    selected.output.lines[0].words[0].text = newText;
+    neighbor.output.lines[0].words[0].text = newText;
+    selected.prepared = PrepareLines(selected, 7); neighbor.prepared = PrepareLines(neighbor, 7);
+    selected.prepared[0].words[0].sceneRect.translate(.001, 0);
+    const auto newRect = selected.prepared[0].words[0].sceneRect;
+    for (int repeat = 0; repeat < 4; ++repeat) {
+        QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 70'000 + repeat, &neighbor), AdmitVerdict::kAccepted);
+        const auto words = model.SceneWords(70'000 + repeat, 55);
+        QCOMPARE(words.size(), 1); QCOMPARE(words[0].text, QStringLiteral("Safe"));
+        QCOMPARE(model.AcceptedWordCount(), 1);
+        QCOMPARE(words[0].protectedSceneRects.size(), 2); // repeated pairs cannot accumulate block history
+        QCOMPARE(words[0].lineId, prior.id); QCOMPARE(words[0].wordIndex, 1);
+        QCOMPARE(words[0].sceneRect, prior.words[1].sceneRect);
+        QCOMPARE(model.ReadingText(70'000 + repeat, 55), QStringLiteral("\u2026 Safe"));
+        const auto screen = model.ScreenLines(70'000 + repeat, 55);
+        QCOMPARE(screen.size(), 1); QCOMPARE(screen[0].lineId, prior.id);
+        QCOMPARE(screen[0].text, QStringLiteral("\u2026 Safe"));
+        QCOMPARE(screen[0].tokens.last().wordIndex, 1);
+        const auto& kept = model.Lines().first();
+        QCOMPARE(kept.sceneRect, prior.sceneRect); QCOMPARE(kept.reference.values, prior.reference.values);
+        QCOMPARE(kept.provenance.frameSeq, prior.provenance.frameSeq);
+        QCOMPARE(kept.provenance.timestampMs, prior.provenance.timestampMs);
+        QCOMPARE(kept.validatedAtMs, prior.validatedAtMs); QCOMPARE(kept.validatedFrameSeq, prior.validatedFrameSeq);
+        for (const auto& rect : {oldRect, newRect})
+            QVERIFY(std::any_of(words[0].protectedSceneRects.begin(), words[0].protectedSceneRects.end(),
+                [&](const auto& blocked) { return blocked.contains(rect); }));
+        // A failed foreign result cannot erase the still-selected input's
+        // conflict history and thereby permit the next same-source revival.
+        auto failed = selected; ++failed.stamp.sourceEpoch; failed.output.ok = false;
+        QCOMPARE(model.AdmitImmutable(failed, failed.stamp, 70'000 + repeat), AdmitVerdict::kFailed);
+    }
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 80'000), AdmitVerdict::kAccepted);
+    QCOMPARE(model.ReadingText(80'000, 55), QStringLiteral("\u2026 Safe"));
+}
+
+void UltraClearTextTests::immutableConflictBlocksFollowExactSelectedIdentity_data()
+{
+    QTest::addColumn<int>("changed");
+    QTest::newRow("source") << 0; QTest::newRow("geometry") << 1;
+    QTest::newRow("frame") << 2; QTest::newRow("pts") << 3;
+    QTest::newRow("authority") << 4; QTest::newRow("pixel-digest") << 5;
+    QTest::newRow("digest-kind") << 6; QTest::newRow("explicit-reset") << 7;
+    QTest::newRow("temporal-history") << 8;
+}
+
+void UltraClearTextTests::immutableConflictBlocksFollowExactSelectedIdentity()
+{
+    QFETCH(int, changed);
+    auto [selected, neighbor] = ImmutablePair(MakePage({"Reading glasses"}));
+    OverlayModel model;
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 60'000, &neighbor), AdmitVerdict::kAccepted);
+    const auto oldId = model.Lines().first().id;
+    selected.output.lines[0].words[0].text = neighbor.output.lines[0].words[0].text = QStringLiteral("Writing");
+    selected.output.lines[0].words[1].text = neighbor.output.lines[0].words[1].text = QStringLiteral("goggles");
+    selected.prepared = PrepareLines(selected, 7); neighbor.prepared = PrepareLines(neighbor, 7);
+    for (int repeat = 0; repeat < 3; ++repeat) {
+        QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 70'000 + repeat, &neighbor), AdmitVerdict::kContentMoved);
+        QVERIFY(model.SceneWords(70'000 + repeat, 55).isEmpty());
+        QVERIFY(model.ReadingText(70'000 + repeat, 55).isEmpty());
+        QVERIFY(model.ScreenLines(70'000 + repeat, 55).isEmpty());
+    }
+    if (changed == 0) { ++selected.stamp.sourceEpoch; ++neighbor.stamp.sourceEpoch; }
+    if (changed == 1) { ++selected.stamp.geometryGeneration; ++neighbor.stamp.geometryGeneration; }
+    if (changed == 2) { selected.stamp.frameSeq += 2; neighbor.stamp.frameSeq += 2; }
+    if (changed == 3) ++selected.stamp.timestampMs;
+    if (changed == 4) { ++selected.authority; ++neighbor.authority; }
+    if (changed == 5) selected.sourcePixelDigest[0] ^= 1;
+    if (changed == 6) selected.sourcePixelDigestKind = neighbor.sourcePixelDigestKind = RecognitionResult::DigestKind::GpuTreeSha256V1;
+    if (changed == 7) model.Reset();
+    if (changed == 8) ++selected.stamp.historyEpoch;
+    selected.reference.stamp = selected.stamp; neighbor.reference.stamp = neighbor.stamp;
+    selected.prepared = PrepareLines(selected, 7); neighbor.prepared = PrepareLines(neighbor, 7);
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 80'000, &neighbor), AdmitVerdict::kAccepted);
+    QCOMPARE(model.SceneWords(80'000, selected.stamp.frameSeq).size(), 2);
+    QCOMPARE(model.ReadingText(80'000, selected.stamp.frameSeq), QStringLiteral("Writing goggles"));
+    QVERIFY(model.Lines().first().id != oldId);
+    for (const auto& word : model.SceneWords(80'000, selected.stamp.frameSeq)) QVERIFY(word.protectedSceneRects.isEmpty());
 }
 
 void UltraClearTextTests::immutableRefinementUnionIsBounded()
@@ -2813,6 +3129,112 @@ void UltraClearTextTests::budgetRefreshCannotBorrowOtherProof()
         QVERIFY(model.HasAcceptedText());
         QVERIFY(!model.LineReferences(current).isEmpty());
     }
+}
+
+void UltraClearTextTests::schedulerKeepsLocalSurfaceColors_data()
+{
+    QTest::addColumn<int>("sample");
+    const auto fixtures = LocalColorFixtures();
+    for (int i = 0; i < fixtures.size(); ++i)
+        QTest::newRow(qPrintable(fixtures[i].name)) << i;
+}
+
+void UltraClearTextTests::schedulerKeepsLocalSurfaceColors()
+{
+    QFETCH(int, sample);
+    const auto f = LocalColorFixtures()[sample];
+    if (f.expectInkCorners) QVERIFY2(SolidInkCorners(f), qPrintable(f.name));
+    struct Backend final : Recognizer {
+        RecognitionOutput output;
+        BackendStatus Initialize() override { return {BackendState::kReady, "colors", "", ""}; }
+        RecognitionOutput Recognize(const QImage&, const std::atomic<bool>&) override { return output; }
+    };
+    auto backend = std::make_unique<Backend>();
+    backend->output.ok = true;
+    RecognizedLine line; line.words.push_back({QStringLiteral("Button"), QRectF(f.bounds)});
+    backend->output.lines.push_back(line);
+    RecognitionResult measured;
+    std::atomic<bool> received{false};
+    RecognitionScheduler scheduler(std::move(backend), [&](RecognitionResult result) {
+        measured = std::move(result); received.store(true);
+    }, {});
+    auto stamp = Stamp(1, 1, 100, {0,0,1,1,0,0,1,1,true});
+    stamp.viewportWidth = f.pixels.width(); stamp.viewportHeight = f.pixels.height();
+    QVERIFY(scheduler.Submit(stamp, f.pixels));
+    QTRY_VERIFY(received.load());
+    QVERIFY(measured.output.ok);
+    QCOMPARE(measured.lineColors.size(), 1);
+    QVERIFY(measured.output.lines[0].words[0].colors);
+    const auto check = [&](const LineColors& colors) {
+        return ColorDistance(colors.foreground, f.ink) <= f.tolerance &&
+               ColorDistance(colors.background, f.paper) <= f.tolerance;
+    };
+    if (f.expectSourceColors) {
+        QVERIFY2(check(measured.lineColors[0]), qPrintable(f.name + " line ink=" +
+            measured.lineColors[0].foreground.name() + " paper=" + measured.lineColors[0].background.name()));
+        QVERIFY2(check(*measured.output.lines[0].words[0].colors), qPrintable(f.name));
+    }
+    // Boundary rows exercise raw measurement, independently of admission or
+    // fallback-polarity semantics. A tiny/outside word may have no prepared word.
+    QVERIFY(measured.lineColors[0].foreground.isValid());
+    QVERIFY(measured.lineColors[0].background.isValid());
+    QCOMPARE(measured.output.lines[0].words[0].colors->foreground, measured.lineColors[0].foreground);
+    QCOMPARE(measured.output.lines[0].words[0].colors->background, measured.lineColors[0].background);
+    // The overlay's separate 7:1 adjustment and 64-level background
+    // stabilization are deliberately not source equality.
+    if (!measured.prepared.isEmpty() && !measured.prepared[0].words.isEmpty()) {
+        QVERIFY(measured.prepared[0].words[0].colors);
+        QCOMPARE(measured.prepared[0].words[0].colors->foreground, measured.lineColors[0].foreground);
+        QCOMPARE(measured.prepared[0].words[0].colors->background, measured.lineColors[0].background);
+    }
+}
+
+void UltraClearTextTests::immutableRefinementRefreshesOnlyProvenMatchingColors_data()
+{
+    QTest::addColumn<bool>("proven"); QTest::addColumn<bool>("matching");
+    QTest::newRow("matching-own-proof-colors-only") << true << true;
+    QTest::newRow("matching-reading-only-cannot-refresh") << false << true;
+    QTest::newRow("different-reading-only-cannot-refresh") << false << false;
+}
+
+void UltraClearTextTests::immutableRefinementRefreshesOnlyProvenMatchingColors()
+{
+    QFETCH(bool, proven); QFETCH(bool, matching);
+    auto [selected, neighbor] = ImmutablePair(MakePage({"Reading glasses"}));
+    const LineColors original{QColor(230,240,232), QColor(32,64,48)};
+    const LineColors corrected{QColor(12,18,24), QColor(255,192,96)};
+    for (auto& word : selected.prepared[0].words) word.colors = original;
+    OverlayModel model;
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, 60'000, &neighbor), AdmitVerdict::kAccepted);
+    const auto before = model.Lines()[0];
+    const auto beforeWords = model.SceneWords(60'000, 55);
+    auto refined = selected;
+    refined.prepared[0].words[0].colors = corrected;
+    refined.prepared[0].words[0].sceneRect.translate(.001, .001);
+    if (!matching) refined.prepared[0].words[0].text = QStringLiteral("Writing");
+    neighbor.corroborationWordMatches[0][0] = proven;
+    QCOMPARE(model.AdmitImmutable(refined, refined.stamp, 90'000, &neighbor), AdmitVerdict::kAccepted);
+    const auto& after = model.Lines()[0];
+    QCOMPARE(after.id, before.id); QCOMPARE(after.words.size(), before.words.size());
+    QCOMPARE(after.sceneRect, before.sceneRect); QCOMPARE(after.sceneOffset, before.sceneOffset);
+    QCOMPARE(after.reference.sceneRect, before.reference.sceneRect);
+    QCOMPARE(after.reference.values, before.reference.values); QCOMPARE(after.reference.resident, before.reference.resident);
+    QCOMPARE(after.provenance.frameSeq, before.provenance.frameSeq);
+    QCOMPARE(after.provenance.timestampMs, before.provenance.timestampMs);
+    QCOMPARE(after.validatedAtMs, before.validatedAtMs); QCOMPARE(after.validatedFrameSeq, before.validatedFrameSeq);
+    const auto words = model.SceneWords(90'000, 55);
+    QCOMPARE(words.size(), beforeWords.size());
+    QCOMPARE(model.ReadingText(90'000, 55), QStringLiteral("Reading glasses"));
+    for (int i = 0; i < words.size(); ++i) {
+        QCOMPARE(words[i].lineId, beforeWords[i].lineId); QCOMPARE(words[i].wordIndex, beforeWords[i].wordIndex);
+        QCOMPARE(after.words[i].sceneRect, before.words[i].sceneRect);
+        QCOMPARE(after.words[i].text, before.words[i].text);
+    }
+    const auto expected = proven && matching ? corrected : *before.words[0].colors;
+    QCOMPARE(after.words[0].colors->foreground, expected.foreground);
+    QCOMPARE(after.words[0].colors->background, expected.background);
+    QCOMPARE(after.words[1].colors->foreground, before.words[1].colors->foreground);
+    QCOMPARE(after.words[1].colors->background, before.words[1].colors->background);
 }
 
 void UltraClearTextTests::schedulerPreservesDenseTextPolarity_data()

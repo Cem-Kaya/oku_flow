@@ -14,6 +14,42 @@ quarantine remain in force. CPU fallback performs equivalent local measurements.
 The line reference, omission protection and independent evidence rules do not
 change.
 
+The later local-surface repair samples inside the word before trusting its
+surroundings. Ink and paper use per-channel medians. A consistent immediate
+one-pixel perimeter can identify local paper even when all in-box corners
+contain ink; the wider-ring fallback requires local-color compatibility and
+corner support. The foreground uses its opaque brightness quartile so antialiased
+edges cannot wash its average toward paper. CPU and CUDA share integer decisions,
+fixed scratch and exact descriptor parity fixtures, including tight button edges,
+dense ink, small gradients and tiny/clipped boxes. A matching, independently
+proved immutable refinement may improve colors without changing text identity,
+geometry, references or validation age.
+
+The all-corners-ink review regression exposed inversion on tight bold E/H boxes.
+Ten added cases reproduced it before repair. A compatible consensus on all four
+immediately adjacent one-pixel sides now takes priority, so those glyph corners
+need not be paper. It also preserves one-pixel button padding before sampling
+farther page colors. All 33 real CUDA descriptor cases pass exact CPU parity;
+controlled surface cases additionally require their exact source colors. Clipped
+or very small boxes can still use the fallback, whose boundary tests establish
+safety/parity rather than universally correct polarity.
+
+A bounded 1280 x 2160 scripted page experiment (60 lines, 180 words, one warmup
+excluded, three timed samples per version) measured preparation-only median/max
+as CPU 8.95/9.70 ms and GPU 3.48/4.27 ms before, CPU 8.90/9.33 ms and GPU
+2.98/3.05 ms after the adjacent-perimeter repair. It runs no neural inference,
+decoder or presentation. These few observations do not establish a statistical
+speedup, dense OCR throughput, native UIA latency or another GPU's performance.
+Raw samples are `color-preparation-comparison.json` and the before/final QtTest
+logs in `LocalAppData/OkuFlow/uct-paused-continuity-20261021/`.
+
+This is still a solid representative fill. It does not reconstruct arbitrary
+gradients or the final colors of spatial Text Clarity/display effects. GPU
+analysis precedes those effects; CPU saved-media preparation already grades its
+pixels. Correct full effect matching needs an owned per-source appearance/color
+input, rather than sampling mutable display storage or grading twice. Renderer
+contrast policy remains separate from raw source-color accuracy.
+
 Advanced UCT displays the actual selected OCR backend as GPU or CPU, including
 Windows OCR during GPU preparation. The native visible label and cached
 accessibility name update together, without unsolicited speech. Off/unavailable
@@ -58,8 +94,13 @@ retained; the diagnosed controller oracle and backend-status issues were repaire
 before the passing integration gate.
 
 Independent Sol integration review identified two refinement gaps. Preferred
-preparation timeout now retains a healthy validated CPU fallback; terminal
-recognition exhaustion clears glyphs, reading text and accessible text together.
+preparation timeout now retains a healthy validated CPU fallback. The later
+[paused continuity repair](uct_paused_continuity_repair.md) narrows terminal
+exhaustion: without previously corroborated glyph proof it still clears glyphs,
+reading text and accessible text together. A failed optional refinement of the
+identical owned paused input stops its worker attempts while retaining the old
+proved artifact. Source/seek/geometry changes and presentation failure still
+revoke or hide all affected surfaces; a reading-only candidate is insufficient.
 A new selected refinement is staged until its complete neighbour pair is ready,
 so it cannot temporarily replace a proven artifact with an uncorroborated one.
 Tests hold that new neighbour and check visible/readable/UIA continuity, then

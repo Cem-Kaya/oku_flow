@@ -949,7 +949,8 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                     std::shared_ptr<const VideoPlaybackFrame> selected;
                     bool mayReposition{};
                     {std::unique_lock lock(s->mutex);
-                     if(!s->Current(document.generation) || !s->snapshot.frame)continue;
+                     if(!s->Current(document.generation) || !s->snapshot.frame || s->playing ||
+                        s->pending.kind!=CommandKind::None)continue;
                      if(Clock::now()<s->neighborNotBefore) {
                          s->prepareNeighbor=true;
                          s->changed.wait_until(lock,s->neighborNotBefore,[&]{return s->stop.load() || s->pending.kind!=CommandKind::None || s->playing;});
@@ -963,11 +964,19 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                      for (const auto& ready : s->ready)
                          if (FollowingFrame(*s, ready, *selected) &&
                              (!readyNeighbor || ready->pts100ns < readyNeighbor->pts100ns)) readyNeighbor = ready;
-                     if (readyNeighbor) { s->snapshot.neighborFrame = std::move(readyNeighbor); continue; }}
+                     if (readyNeighbor) { s->snapshot.neighborFrame = std::move(readyNeighbor); continue; }
+                     // A queued sparse/VFR future outside the proof window
+                     // cannot corroborate this selected frame. Reading past
+                     // it adds no proof and must not discard playback samples
+                     // when the bounded ready queue is already full.
+                     if (s->ready.size()>=reader.memory.lookaheadFrames ||
+                         std::any_of(s->ready.begin(),s->ready.end(),[&](const auto& ready) {
+                             return ready && ready->pts100ns>selected->pts100ns;
+                         }))continue;}
                     const auto selectedPts = selected->pts100ns;
                     const auto preempted=[&] {std::lock_guard lock(s->mutex);
                         return !s->Current(document.generation) || s->playing || s->pending.kind!=CommandKind::None ||
-                            s->snapshot.frame != selected;};
+                            s->snapshot.frame != selected || s->ready.size()>=reader.memory.lookaheadFrames;};
                     if(preempted())continue;
                     // Pause itself never seeks the decoder. Deferred cursor
                     // realignment belongs only to an explicit cached Seek.
@@ -1009,13 +1018,19 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                 if(play && !reader.source) {std::lock_guard lock(s->mutex);s->playing=false;}
                 continue;
             }
-            if (reader.eos && ReadyEmpty(*s)) {
+            {std::lock_guard lock(s->mutex);
+             if(!s->Current(document.generation) || !s->playing)continue;
+             // A real Resume may restore an earlier issued displayed frame
+             // after the decoder reached EOS. Consume that intent before EOS
+             // can publish Ended at the earlier held PTS or shorten the tail.
+             if(s->repositionOnResume) {reader.needsReposition=true;s->repositionOnResume=false;}}
+            if (reader.eos && ReadyEmpty(*s) && !reader.needsReposition) {
                 if (document.archive) {
                     const auto current = document.archive->Snapshot();
                     if (!current.finalized && current.generation == reader.archiveAdmission.generation &&
                         current.verifiedMediaBytes == reader.archiveAdmission.verifiedMediaBytes) {
                         std::unique_lock lock(s->mutex);
-                        if (s->Current(document.generation)) {
+                        if (s->Current(document.generation) && s->playing) {
                             if (s->snapshot.state != VideoPlaybackState::Waiting) ClearAudio(*s);
                             s->snapshot.state = VideoPlaybackState::Waiting;
                             s->snapshot.error = "Waiting for the next complete recording fragment.";
@@ -1087,7 +1102,6 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                       continue;
                   }
                   restart = s->restartAtCursor; s->restartAtCursor = false;
-                  if (s->repositionOnResume) { reader.needsReposition = true; s->repositionOnResume = false; }
                   audioEnabled = !s->muted && reader.audioAvailable;
                   cursor = s->restartCursor100ns;
                   copyFloor=s->snapshot.frame?s->snapshot.frame->pts100ns+1:0;

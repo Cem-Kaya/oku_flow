@@ -243,10 +243,12 @@ private slots:
     void rtlOriginalInkOmissionAndHitTesting();
     void fullyHiddenLineHasZeroAreaQtRangeRect();
     void additionsFollowCadenceAndBoundedReadingHold();
+    void replacementDoesNotWaitBehindReadingHold();
     void everyHardRevocationIsSynchronous();
     void identicalReRecognitionRebindsIdentity();
     void resourceBoundsHoldUnderChurn();
     void emptySnapshotIsEmptyRoot();
+    void timingPublicationKeepsAdmissionTicket();
 };
 
 void UctScreenTextAccessibilityTests::initTestCase()
@@ -921,6 +923,36 @@ void UctScreenTextAccessibilityTests::additionsFollowCadenceAndBoundedReadingHol
     QCOMPARE(ForbiddenEvents(), 0);
 }
 
+void UctScreenTextAccessibilityTests::replacementDoesNotWaitBehindReadingHold()
+{
+    Harness h;
+    h.useScripted = true;
+    h.now = 100;
+    h.scripted = {Scripted(1, QStringLiteral("alpha")),
+                  Scripted(2, QStringLiteral("stable"), {0.1, 0.3, 0.5, 0.05})};
+    h.a11y->SetEnabled(true);
+    const auto oldId = QAccessible::uniqueId(h.Line(0));
+    const auto stableId = QAccessible::uniqueId(h.Line(1));
+    QCOMPARE(h.Line(0)->text(QAccessible::Name), QStringLiteral("alpha")); // reader is active
+    h.now = 200;
+    h.scripted[0] = Scripted(1, QStringLiteral("alpha beta"));
+    h.scripted << Scripted(3, QStringLiteral("new line"), {0.1, 0.5, 0.5, 0.05});
+    h.a11y->ContentChanged();
+    QVERIFY(!QAccessible::accessibleInterface(oldId)); // stale ranges are revoked now
+    QCOMPARE(h.a11y->ExposedLineCount(), 2); // replacement exists in this same update
+    QCOMPARE(h.Line(0)->text(QAccessible::Name), QStringLiteral("alpha beta"));
+    QCOMPARE(QAccessible::uniqueId(h.Line(1)), stableId);
+    QVERIFY(h.a11y->HasPendingAdditions()); // unrelated additions retain their cadence
+    h.now = 3199;
+    h.a11y->ProcessDueWork();
+    QCOMPARE(h.a11y->ExposedLineCount(), 2);
+    h.now = 3200;
+    h.a11y->ProcessDueWork();
+    QCOMPARE(h.a11y->ExposedLineCount(), 3);
+    QCOMPARE(h.Line(2)->text(QAccessible::Name), QStringLiteral("new line"));
+    QCOMPARE(ForbiddenEvents(), 0);
+}
+
 void UctScreenTextAccessibilityTests::everyHardRevocationIsSynchronous()
 {
     Harness h;
@@ -941,12 +973,13 @@ void UctScreenTextAccessibilityTests::everyHardRevocationIsSynchronous()
     QVERIFY(!QAccessible::accessibleInterface(ids[0]));
     QVERIFY(QAccessible::accessibleInterface(ids[1]));
 
-    // Text changing under one id is a removal now, an addition later.
+    // Text changing under one id revokes old ranges and replaces immediately.
     h.scripted = {Scripted(2, QStringLiteral("bet"), {0.1, 0.3, 0.5, 0.05})};
     h.a11y->ContentChanged();
     QVERIFY(!QAccessible::accessibleInterface(ids[1]));
-    QCOMPARE(h.a11y->ExposedLineCount(), 0);
-    QVERIFY(h.a11y->HasPendingAdditions());
+    QCOMPARE(h.a11y->ExposedLineCount(), 1);
+    QCOMPARE(h.Line(0)->text(QAccessible::Name), QStringLiteral("bet"));
+    QVERIFY(!h.a11y->HasPendingAdditions());
 
     // Invalidate()/clear-branch path: everything, before any timer.
     h.now += 2000;
@@ -1056,4 +1089,93 @@ void UctScreenTextAccessibilityTests::emptySnapshotIsEmptyRoot()
 }
 
 QTEST_MAIN(UctScreenTextAccessibilityTests)
+void UctScreenTextAccessibilityTests::timingPublicationKeepsAdmissionTicket()
+{
+    using namespace uct::timing;
+    if (!Enabled()) QSKIP("Explicit timing-publication contract not selected.");
+    // Scripted numeric tickets test diagnostic correlation, not OCR evidence.
+    Key key{101, 1, 1, 200, 200, 5, 2, 200, Channel::Recognition};
+    PublicationTicket first{key, 1, AcquisitionKnown};
+    Harness h;
+    h.useScripted = true;
+    h.now = 100;
+    h.scripted = {Scripted(1, QStringLiteral("alpha"))};
+    h.overlay->SetTimingTicket(first);
+    h.overlay->SetViewTransform(Transform(1.0f, 0.5f, 0.5f));
+    h.overlay->SetWords({{QStringLiteral("alpha"), {0.1, 0.1, 0.5, 0.05}, {}, 1, {}, 0}});
+    h.DrivePaint();
+    QVERIFY(h.overlay->PaintedGeneration());
+    h.a11y->SetTimingTicket(first);
+    h.a11y->SetEnabled(true);
+    QCOMPARE(h.Line(0)->text(QAccessible::Name), QStringLiteral("alpha"));
+    h.Pan(Transform(2.0f, 0.5f, 0.5f)); // no new content-paint latency sample
+
+    auto second = first;
+    second.admission.jobId = 6;
+    second.revision = 2;
+    h.now = 200;
+    h.scripted << Scripted(2, QStringLiteral("beta"), {0.1, 0.3, 0.5, 0.05});
+    h.a11y->SetTimingTicket(second);
+    h.a11y->ContentChanged();
+    QVERIFY(h.a11y->HasPendingAdditions());
+    QCOMPARE(h.a11y->ExposedLineCount(), 1);
+
+    auto third = second;
+    third.admission.jobId = 7;
+    third.revision = 3;
+    h.now = 300;
+    h.scripted[0] = Scripted(1, QStringLiteral("alpha changed"));
+    h.scripted << Scripted(3, QStringLiteral("gamma"), {0.1, 0.5, 0.5, 0.05});
+    h.a11y->SetTimingTicket(third);
+    h.a11y->ContentChanged(); // replacement now, additions coalesce on current snapshot
+    QCOMPARE(h.a11y->ExposedLineCount(), 1);
+    QCOMPARE(h.Line(0)->text(QAccessible::Name), QStringLiteral("alpha changed"));
+    h.now = 3200;
+    h.a11y->ProcessDueWork();
+    QCOMPARE(h.a11y->ExposedLineCount(), 3);
+
+    const auto snapshot = CloseForDiagnostics();
+    QVERIFY(snapshot);
+    QVERIFY(!snapshot->unavailableDueToContention);
+    QCOMPARE(snapshot->capacityDrops, 0u);
+    QCOMPARE(snapshot->contentionDrops, 0u);
+    int assigned = 0, painted = 0, firstPublished = 0, latestPublished = 0;
+    bool secondScheduled = false, latestCoalesced = false;
+    for (std::size_t i = 0; i < snapshot->count; ++i) {
+        const auto& record = snapshot->records[i];
+        if (record.key.producer != key.producer) continue;
+        QCOMPARE(record.key.sourceEpoch, key.sourceEpoch);
+        QCOMPARE(record.key.frameSeq, key.frameSeq);
+        QCOMPARE(record.key.acquisition, key.acquisition);
+        QCOMPARE(record.key.authority, key.authority);
+        if (record.event == Event::OverlayAssigned || record.event == Event::OverlayPainted) {
+            QCOMPARE(record.key.jobId, first.admission.jobId);
+            QCOMPARE(record.values.publicationRevision, first.revision);
+            assigned += record.event == Event::OverlayAssigned;
+            painted += record.event == Event::OverlayPainted;
+        } else if (record.event == Event::AccessibilityScheduled) {
+            secondScheduled |= record.key.jobId == second.admission.jobId &&
+                record.values.publicationRevision == second.revision;
+            latestCoalesced |= record.key.jobId == third.admission.jobId &&
+                record.values.publicationRevision == third.revision && (record.values.flags & Coalesced);
+        } else if (record.event == Event::AccessibilityPublished) {
+            if (record.values.publicationRevision == first.revision) {
+                QCOMPARE(record.key.jobId, first.admission.jobId);
+                ++firstPublished;
+            } else {
+                QCOMPARE(record.key.jobId, third.admission.jobId);
+                QCOMPARE(record.values.publicationRevision, third.revision);
+                ++latestPublished;
+            }
+        }
+    }
+    QCOMPARE(assigned, 1);
+    QCOMPARE(painted, 1);
+    QCOMPARE(firstPublished, 1);
+    QCOMPARE(latestPublished, 2); // immediate replacement and later new-line batch
+    QVERIFY(secondScheduled);
+    QVERIFY(latestCoalesced);
+    QCOMPARE(ForbiddenEvents(), 0);
+}
+
 #include "uct_screen_text_accessibility_tests.moc"

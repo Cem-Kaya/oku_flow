@@ -3,6 +3,18 @@ if(NOT WIN32)
     return()
 endif()
 
+# Pure C++ contracts for bounded metadata storage/drop accounting; no Qt,
+# capture, native OCR runtime or model download is involved.
+add_executable(uct_timing_trace_tests uct_timing_trace_tests.cpp
+    ${PROJECT_SOURCE_DIR}/src/common/uct_timing_trace.cpp)
+target_include_directories(uct_timing_trace_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_compile_definitions(uct_timing_trace_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+set_target_properties(uct_timing_trace_tests PROPERTIES
+    AUTOMOC OFF AUTOUIC OFF AUTORCC OFF DISABLE_PRECOMPILE_HEADERS ON)
+add_test(NAME uct_timing_trace_contract COMMAND uct_timing_trace_tests)
+set_tests_properties(uct_timing_trace_contract PROPERTIES TIMEOUT 15 LABELS "headless"
+    REQUIRED_FILES "${PROJECT_SOURCE_DIR}/include/okuflow/common/uct_timing_trace.hpp;${PROJECT_SOURCE_DIR}/src/common/uct_timing_trace.cpp;${PROJECT_SOURCE_DIR}/tests/uct_timing_trace_tests.cpp")
+
 # The C++/WinRT translation unit stays free of the Qt precompiled header in
 # this directory too (source properties are directory scoped).
 set_source_files_properties(${PROJECT_SOURCE_DIR}/src/common/uct_windows_ocr.cpp
@@ -19,6 +31,7 @@ add_executable(ultra_clear_text_tests
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/uct_screen_text_accessible.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ultra_clear_text_panel.hpp
     ${PROJECT_SOURCE_DIR}/src/app/ultra_clear_text_controller.cpp
+    ${PROJECT_SOURCE_DIR}/src/common/uct_timing_trace.cpp
     ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp
     ${PROJECT_SOURCE_DIR}/src/common/uct_region_planner.cpp
     ${PROJECT_SOURCE_DIR}/src/common/view_transform.cpp
@@ -42,6 +55,7 @@ set_tests_properties(ultra_clear_text_contract PROPERTIES TIMEOUT 120 LABELS "he
 add_executable(ultra_clear_text_windows_ocr_tests
     ultra_clear_text_windows_ocr_tests.cpp
     ultra_clear_text_test_support.hpp
+    ${PROJECT_SOURCE_DIR}/src/common/uct_timing_trace.cpp
     ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp
     ${PROJECT_SOURCE_DIR}/src/common/uct_region_planner.cpp
     ${PROJECT_SOURCE_DIR}/src/common/uct_default_recognizer.cpp
@@ -64,6 +78,7 @@ add_executable(uct_paddle_tests
     uct_paddle_tests.cpp
     uct_character_diagnostic.hpp
     uct_resident_diagnostic.hpp
+    ${PROJECT_SOURCE_DIR}/src/common/uct_timing_trace.cpp
     ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp
     ${PROJECT_SOURCE_DIR}/src/common/uct_region_planner.cpp
     ${PROJECT_SOURCE_DIR}/src/common/view_transform.cpp
@@ -96,7 +111,7 @@ set_tests_properties(uct_paddle_processing PROPERTIES TIMEOUT 30 LABELS "headles
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 if(OKUFLOW_ENABLE_CUDA)
-    add_test(NAME uct_paddle_cuda COMMAND uct_paddle_tests gpuResidentSchedulerKeepsPixelsAndDescriptorsOnDevice gpuResidentShiftedWordReferenceKeepsSamplesOnDevice gpuResidentFingerprintCoversEveryByteAndReleasesCaptureSlots gpuResidentValidationMatchesCpuUnderMotionOcclusionAndCrop gpuResidentBatchMappingMatchesDistinctCpuLines gpuPairedCaptureKeepsSmoothedOcrAndCurrentValidationApart gpuHoldRecordTravelsWithCaptureAndResolvesOnWorker gpuAnalysisFaultSeamLatchesPressureAndQuarantinesUnknownCompletion gpuAlgorithmsAndOwnedInputs gpuDenseRegionSelectionIsDeterministic gpuOrientedRegionsMatchCpuCornerOrder)
+    add_test(NAME uct_paddle_cuda COMMAND uct_paddle_tests gpuLocalColorDescriptorsMatchCpu gpuResidentSchedulerKeepsPixelsAndDescriptorsOnDevice gpuResidentShiftedWordReferenceKeepsSamplesOnDevice gpuResidentFingerprintCoversEveryByteAndReleasesCaptureSlots gpuResidentValidationMatchesCpuUnderMotionOcclusionAndCrop gpuResidentBatchMappingMatchesDistinctCpuLines gpuPairedCaptureKeepsSmoothedOcrAndCurrentValidationApart gpuHoldRecordTravelsWithCaptureAndResolvesOnWorker gpuAnalysisFaultSeamLatchesPressureAndQuarantinesUnknownCompletion gpuAlgorithmsAndOwnedInputs gpuDenseRegionSelectionIsDeterministic gpuOrientedRegionsMatchCpuCornerOrder)
     set_tests_properties(uct_paddle_cuda PROPERTIES TIMEOUT 60 LABELS "gpu"
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
@@ -108,6 +123,7 @@ foreach(fixture IN ITEMS uct_region_planner uct_region_scheduler)
     add_executable(${fixture}_tests
         ${fixture}_tests.cpp
         ${PROJECT_SOURCE_DIR}/src/common/uct_region_planner.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/uct_timing_trace.cpp
         ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp
         ${PROJECT_SOURCE_DIR}/src/common/view_transform.cpp)
     target_include_directories(${fixture}_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
@@ -121,6 +137,7 @@ okuflow_add_headless_cases(uct_region_scheduler uct_region_scheduler_tests UctRe
 add_executable(uct_region_planner_benchmark EXCLUDE_FROM_ALL
     uct_region_planner_benchmark.cpp
     ${PROJECT_SOURCE_DIR}/src/common/uct_region_planner.cpp
+    ${PROJECT_SOURCE_DIR}/src/common/uct_timing_trace.cpp
     ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp
     ${PROJECT_SOURCE_DIR}/src/common/view_transform.cpp)
 target_include_directories(uct_region_planner_benchmark PRIVATE ${PROJECT_SOURCE_DIR}/include)

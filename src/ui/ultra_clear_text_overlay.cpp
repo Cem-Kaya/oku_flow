@@ -161,6 +161,10 @@ void UltraClearTextOverlay::SetViewTransform(const ViewTransform& transform)
 void UltraClearTextOverlay::SetWords(QVector<SceneWord> words)
 {
     words_ = std::move(words);
+    timingPaintedRevision_ = 0;
+    if (uct::timing::Enabled() && timingTicket_.admission.producer)
+        uct::timing::RecordEvent(uct::timing::Event::OverlayAssigned, timingTicket_.admission,
+            {0, static_cast<std::uint32_t>(words_.size()), timingTicket_.flags, 0, timingTicket_.revision});
     if (inkCache_.size() > 4096) {
         inkCache_.clear();
     }
@@ -492,6 +496,14 @@ void UltraClearTextOverlay::paintEvent(QPaintEvent* event)
     plan_.screen = screen();
     ++plan_.generation;
     plan_.valid = true;
+    // A completed software paint plan, not a scanout/photon receipt. Export
+    // paints returned above and cannot satisfy this first-content-paint event.
+    if (uct::timing::Enabled() && timingTicket_.admission.producer &&
+        timingTicket_.revision != timingPaintedRevision_) {
+        timingPaintedRevision_ = timingTicket_.revision;
+        uct::timing::RecordEvent(uct::timing::Event::OverlayPainted, timingTicket_.admission,
+            {0, static_cast<std::uint32_t>(words_.size()), timingTicket_.flags, 0, timingTicket_.revision});
+    }
 }
 
 

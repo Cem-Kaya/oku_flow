@@ -914,7 +914,11 @@ void OkuFlowApp::PollVideoPlayback()
                 !doc.followingLive && !doc.heldLive && !doc.pendingHold && !doc.openingFile) {
                 // Ancillary evidence may arrive after the exact displayed
                 // frame was frozen. Never adopt a decoder-ahead frame here.
-                doc.neighbor = snapshot.neighborFrame;
+                const auto& neighbor = snapshot.neighborFrame;
+                doc.neighbor = neighbor && neighbor->requestGeneration == doc.requestGeneration &&
+                    neighbor->sampleId != doc.frame->sampleId && neighbor->pts100ns > doc.frame->pts100ns &&
+                    neighbor->pts100ns - doc.frame->pts100ns <= 2'500'000
+                    ? neighbor : std::shared_ptr<const VideoPlaybackFrame>{};
             }
             if (snapshot.requestGeneration == doc.requestGeneration &&
                 snapshot.frame && snapshot.frame->requestGeneration == doc.requestGeneration &&

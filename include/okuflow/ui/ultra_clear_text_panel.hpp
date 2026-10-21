@@ -4,6 +4,7 @@
 
 #include <QWidget>
 #include "okuflow/common/uct_model_settings.hpp"
+#include "okuflow/common/uct_timing_trace.hpp"
 
 QT_BEGIN_NAMESPACE
 class QCheckBox;
@@ -49,6 +50,7 @@ public:
     // prefix/suffix of the refreshed text, and scroll is restored clamped,
     // so a recognition refresh never loses the reading position.
     void SetReadingText(const QString& text);
+    void SetTimingTicket(uct::timing::PublicationTicket ticket) { timingTicket_ = ticket; }
 
 signals:
     void enabledChanged(bool enabled);
@@ -56,6 +58,7 @@ signals:
     void modelSettingsChanged();
 
 private:
+    uct::timing::PublicationTicket timingTicket_{};
     void UpdateDependentState();
 
     QCheckBox* enableCheckbox_{};

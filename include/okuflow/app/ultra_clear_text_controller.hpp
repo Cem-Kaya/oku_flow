@@ -427,6 +427,11 @@ private:
     void ApplyEnabled(bool enabled);
     void SubmitImmutableIfNeeded();
     void ScheduleImmutableRetry(bool selected, bool preparing = false);
+    // Exact selected-frame proof survives a failed optional refinement. This
+    // is presentation authority only, never permission to submit/admit work
+    // through an unhealthy input/backend. Source changes still Invalidate.
+    bool HasProvenImmutableArtifact() const;
+    void StopImmutableRefinement();
     void HandleImmutableResult(uct::RecognitionResult result);
     uct::SourceStamp ImmutableStamp(const UctImmutableFrame& frame) const;
     void SubmitAdvancingMediaProbe();
@@ -441,7 +446,11 @@ private:
     bool AdvancingValidationFresh(std::int64_t wallNowMs) const;
     void NoteAdvancingValidation(std::int64_t wallNowMs);
     void RefreshOverlay(std::int64_t nowMs);
-    void UpdateReadingText();
+    void UpdateReadingText(bool shareTimingRevision = false);
+    void NoteTimingAdmission(const uct::RecognitionResult& result, uct::AdmitVerdict verdict,
+                             std::uint32_t flags = 0);
+    void UpdatePositionedTimingPublication(bool changed, bool positioned, bool clear = false);
+    void UpdatePaneTimingPublication(bool sharePositionedRevision, bool clear);
     bool AnalysisHealthy() const;
     bool PresentationAvailable(std::int64_t nowMs) const;
     void UpdateStatus();
@@ -464,6 +473,14 @@ private:
     std::unique_ptr<uct::ProbeWorker> probeWorker_;
     uct::OverlayModel model_;
     uct::BackendStatus backend_;
+    // Diagnostic-only: never derive a publication ticket from the current
+    // displayed frame or a timer. Promote a model-admission key only when a
+    // surface snapshot actually changes; pane-only changes leave positioned
+    // provenance/revision intact, and projection keeps both tickets.
+    std::optional<uct::timing::Key> timingAdmission_;
+    std::uint32_t timingAdmissionFlags_{};
+    uct::timing::PublicationTicket timingPositionedPublication_, timingPanePublication_;
+    std::uint64_t timingPublicationRevision_{};
 
     std::optional<UctImmutableScene> immutableScene_;
     std::optional<UctAdvancingMediaScene> advancingMediaScene_;
@@ -530,6 +547,10 @@ private:
     std::shared_ptr<const uct::ProbeFrame> latestProbe_;
     int stableProbes_{};
     bool changedSinceSubmit_{true};
+    // A real residual failure needs replacement OCR even when other accepted
+    // lines still cover the view. Persist across the existing pacing delay;
+    // an unchecked/out-of-view/composite probe does not create this demand.
+    bool probeInvalidatedSinceSubmit_{};
     std::int64_t lastSubmitMs_{std::numeric_limits<std::int64_t>::min() / 2};
     QRectF lastJobCoverage_;
     // Acquisition of the last submitted live/advancing OCR job. A held image

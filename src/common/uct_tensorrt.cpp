@@ -21,6 +21,7 @@ bool TensorRtCropDiagnostic::TryCommit(Plan&& plan) noexcept
 #include "okuflow/cuda/uct_analysis_pool.hpp"
 #include "okuflow/cuda/uct_kernels.hpp"
 #include "uct_tensorrt_profile.hpp"
+#include "uct_frozen_upload.hpp"
 #include <NvInfer.h>
 #include <NvOnnxParser.h>
 #include <QCryptographicHash>
@@ -479,6 +480,9 @@ struct State
     QImage uploadPixels;
     AnalysisPool uploadPool;
     SharedDeviceImage inFlight;
+    // Pre-existing empty slot: final retirement can self-quarantine without
+    // allocation if asynchronous cleanup cannot accept the resource closure.
+    std::shared_ptr<State> retirementQuarantine;
     ~State()
     {
         if (stream)
@@ -517,10 +521,10 @@ struct Preparation
     std::shared_ptr<State> state;
     QString error;
     TensorRtRetirementObserver retirementObserver;
-    ~Preparation()
+    ~Preparation() noexcept
     {
         cancel = true;
-        ObserveRetirement(retirementObserver, RetireState(std::move(state)));
+        ObserveRetirement(retirementObserver, detail::RetireOwnedState(state, RetireState));
     }
 };
 class TensorRtRecognizer final : public Recognizer
@@ -654,6 +658,12 @@ class TensorRtRecognizer final : public Recognizer
                                       const std::atomic<bool> &cancelled) override
     {
         RecognitionOutput output;
+        detail::FrozenUploadRetirement frozenUpload;
+        const auto cancelOwnedInput = [&] {
+            ObserveRetirement(retirementObserver_, frozenUpload.Cancel(state_, [](std::shared_ptr<State> state) {
+                return RetireState(std::move(state));
+            }));
+        };
         try
         {
             if (cancelled.load())
@@ -698,7 +708,7 @@ class TensorRtRecognizer final : public Recognizer
             int regionIndex = 0;
             for (const QRect& region : regions) {
             if (cancelled.load()) {
-                output.cancelled=true;output.lines.clear();state_->inFlight.reset();return output;
+                output.cancelled=true;output.lines.clear();cancelOwnedInput();return output;
             }
             // A strided subview of the owned image, never a host pixel copy.
             const auto* cropPixels=static_cast<const unsigned char*>(image.Data())+
@@ -723,6 +733,7 @@ class TensorRtRecognizer final : public Recognizer
                     std::copy(quads.begin(), quads.end(), upload);
                     Check(cudaMemcpyAsync(state_->quads.Reserve(128*9), upload,
                                           quads.size()*sizeof(gpu::Quad), cudaMemcpyHostToDevice, state_->stream));
+                    frozenUpload.Queued();
                 }
             } else {
             const QSize size = PaddleDetectionSize(region.size());
@@ -774,7 +785,7 @@ class TensorRtRecognizer final : public Recognizer
                 {
                     output.cancelled = true;
                     output.lines.clear();
-                    state_->inFlight.reset();
+                    cancelOwnedInput();
                     return output;
                 }
                 constexpr int width = 1024;
@@ -847,11 +858,12 @@ class TensorRtRecognizer final : public Recognizer
                         (sizeof(int) + sizeof(gpu::Quad) + steps * sizeof(gpu::Token)));
                 }
                 profile.Wait(false, [&] { Check(cudaStreamSynchronize(state_->stream)); }); // existing group completion wait
+                frozenUpload.Completed();
                 if (cancelled.load())
                 {
                     output.cancelled = true;
                     output.lines.clear();
-                    state_->inFlight.reset();
+                    cancelOwnedInput();
                     return output;
                 }
                 QElapsedTimer merge;
@@ -924,14 +936,15 @@ class TensorRtRecognizer final : public Recognizer
             // inference set ok. Never return those candidates as successful.
             output.ok = false;
             output.lines.clear();
-            output.error = QString::fromUtf8(error.what());
-            status_.detail = output.error;
             // Ownership/event admission failed before this input enqueued work.
             // Keep the healthy engines; a bad frame must not rebuild models.
             if (output.inputFault && state_)
                 state_->inFlight.reset();
             else
                 Retire();
+            // Seal resource ownership before fallible diagnostic formatting.
+            output.error = QString::fromUtf8(error.what());
+            status_.detail = output.error;
         }
         return output;
     }
@@ -1043,14 +1056,14 @@ class TensorRtRecognizer final : public Recognizer
         Check(cudaSetDevice(device));
         return true;
     }
-    void Retire()
+    void Retire() noexcept
     {
         if (preparation_)
         {
             preparation_->cancel = true;
             preparation_.reset();
         }
-        ObserveRetirement(retirementObserver_, RetireState(std::move(state_)));
+        ObserveRetirement(retirementObserver_, detail::RetireOwnedState(state_, RetireState));
     }
     QString root_, sdk_;
     ModelTier detectorTier_,recognizerTier_;

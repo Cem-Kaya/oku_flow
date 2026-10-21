@@ -3,6 +3,7 @@
 #include "okuflow/common/view_transform.hpp"
 #include "okuflow/common/uct_device_image.hpp"
 #include "okuflow/common/uct_model_settings.hpp"
+#include "okuflow/common/uct_timing_trace.hpp"
 
 #include <QColor>
 #include <QByteArray>
@@ -74,6 +75,24 @@ struct SourceStamp {
 // The acquisition whose pixels a stamped image actually shows: frameSeq,
 // or the earlier held acquisition. Composite/unknown pixels name none.
 std::optional<std::uint64_t> EvidenceAcquisition(const SourceStamp& stamp);
+// Metadata adapter only: the opt-in trace never feeds authority/admission.
+inline timing::Key TimingKey(std::uint64_t producer, timing::Channel channel,
+                            const SourceStamp& stamp, std::uint64_t jobId, std::uint64_t authority)
+{
+    return {producer, stamp.sourceEpoch, stamp.geometryGeneration, stamp.frameSeq,
+            EvidenceAcquisition(stamp).value_or(0), jobId, authority, stamp.timestampMs, channel};
+}
+inline void TraceTiming(timing::Event event, std::uint64_t producer, timing::Channel channel,
+                        const SourceStamp& stamp, std::uint64_t jobId, std::uint64_t authority,
+                        timing::Values values = {}) noexcept
+{
+    if (!timing::Enabled()) return;
+    try {
+        if (stamp.liveCameraCapture) values.flags |= timing::LiveCamera;
+        if (EvidenceAcquisition(stamp)) values.flags |= timing::AcquisitionKnown;
+        timing::RecordEvent(event, TimingKey(producer, channel, stamp, jobId, authority), values);
+    } catch (...) {} // diagnostics cannot affect recognition, including allocation faults
+}
 // Applies a worker-read device record. Inconsistent identity (live other than
 // frameSeq, held not strictly older than frameSeq) becomes Unknown.
 void ApplyHoldProvenance(SourceStamp& stamp, const HoldProvenance& hold);
@@ -385,6 +404,7 @@ public:
     bool InFlight() const;
     BackendStatus Status() const;
     SchedulerStats Stats() const;
+    std::uint64_t TimingProducerId() const noexcept;
 
 private:
     struct State;
@@ -530,6 +550,7 @@ public:
     bool HasPending() const;
     bool HasWork() const;
     ProbeWorkerStats Stats() const;
+    std::uint64_t TimingProducerId() const noexcept;
 
 private:
     struct State;
@@ -736,6 +757,7 @@ private:
     AdmitVerdict MergeImmutableCoverage(const QVector<AcceptedLine>& previous,
                                         AdmitVerdict verdict, std::int64_t nowMs,
                                         std::uint64_t selectedFrameSeq);
+    bool ApplyImmutableConflictBlocks(QVector<AcceptedLine>& lines) const;
 
     struct PendingWord {
         QString text;
@@ -755,6 +777,11 @@ private:
     RecognitionResult::DigestKind pendingDigestKind_{RecognitionResult::DigestKind::Sha256};
     std::uint64_t pendingEvidenceAuthority_{};
     std::uint64_t nextLineId_{1};
+    // Exact selected-input disagreements keep only those source regions as
+    // original ink, including after a later result omits the conflicting word.
+    // Bounded independently of refinements; no history crosses input identity.
+    QVector<QRectF> immutableConflictRects_;
+    bool immutableConflictSaturated_{};
     bool immutable_{};
     bool liveCamera_{};
 };

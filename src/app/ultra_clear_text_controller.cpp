@@ -34,6 +34,24 @@ bool BackendUsable(const uct::BackendStatus& status)
            status.state != uct::BackendState::kFailed;
 }
 
+void TraceRecognition(uct::timing::Event event, const uct::RecognitionScheduler* scheduler,
+                      const uct::RecognitionResult& result, uct::timing::Values values = {},
+                      uct::timing::Channel channel = uct::timing::Channel::Recognition)
+{
+    if (!uct::timing::Enabled() || !scheduler) return;
+    if (result.deviceInput) values.flags |= uct::timing::DeviceInput;
+    if (result.output.cancelled) values.flags |= uct::timing::Cancelled;
+    if (result.output.inputFault) values.flags |= uct::timing::InputFault;
+    if (result.output.backendPreparing) values.flags |= uct::timing::Preparing;
+    if (result.output.compositeInput) values.flags |= uct::timing::Composite;
+    if (result.corroboratedJobId) {
+        values.flags |= uct::timing::Corroboration;
+        if (!values.relatedJobId) values.relatedJobId = result.corroboratedJobId;
+    }
+    uct::TraceTiming(event, scheduler->TimingProducerId(), channel, result.stamp,
+                     result.jobId, result.authority, values);
+}
+
 double Area(const QRectF& rect)
 {
     return rect.isEmpty() ? 0.0 : rect.width() * rect.height();
@@ -169,6 +187,8 @@ UltraClearTextController::~UltraClearTextController()
     probeWorker_.reset();
     deviceProbeReader_.reset();
     scheduler_.reset();
+    uct::timing::RecordEvent(uct::timing::Event::WindowClosed, {});
+    uct::timing::FlushAtNormalTeardown(); // opt-in only; never waits for detached workers
 }
 
 void UltraClearTextController::EnsureScheduler()
@@ -198,6 +218,8 @@ void UltraClearTextController::EnsureScheduler()
             [self](uct::RecognitionResult result){
                 if(!self)return;
                 QMetaObject::invokeMethod(self.data(),[self,result=std::move(result)]() mutable {
+                    if(self) TraceRecognition(uct::timing::Event::UiReceipt, self->deviceProbeReader_.get(),
+                        result, {}, uct::timing::Channel::DeviceValidation);
                     // Advancing media reuses this independent validation chain;
                     // a selected immutable still (and hidden live camera work
                     // under any media scene) does not. Media probes must match
@@ -732,11 +754,13 @@ void UltraClearTextController::OnMediaPresentationFailed()
     // it, while immediately revoking every currently visible text surface.
     // Keep the latch even while disabled or awaiting backend readiness.
     presentationFailed_ = true;
+    const bool hadWords = !overlayWords_.isEmpty();
+    UpdatePositionedTimingPublication(hadWords, false, true);
     if (overlay_) overlay_->ClearWords();
     if (screenText_) screenText_->RevokeAll();
     overlayWords_.clear();
     shownWords_ = 0;
-    UpdateReadingText();
+    UpdateReadingText(hadWords);
     UpdateStatus();
 }
 
@@ -904,13 +928,15 @@ void UltraClearTextController::OnPresentationFailed()
     }
     presentationFailed_ = true;
     presentationAvailable_ = false;
+    const bool hadWords = !overlayWords_.isEmpty();
+    UpdatePositionedTimingPublication(hadWords, false, true);
     if (overlay_) {
         overlay_->ClearWords();
     }
     if (screenText_) screenText_->RevokeAll();
     overlayWords_.clear();
     shownWords_ = 0;
-    UpdateReadingText();
+    UpdateReadingText(hadWords);
     UpdateStatus();
 }
 
@@ -1061,6 +1087,14 @@ uct::SourceStamp UltraClearTextController::CurrentScene() const
 
 void UltraClearTextController::Invalidate(const QString& reason)
 {
+    if (uct::timing::Enabled()) {
+        uct::timing::Key key;
+        key.producer = scheduler_ ? scheduler_->TimingProducerId() : 0;
+        key.sourceEpoch = geometry_.settings.sourceEpoch;
+        key.geometryGeneration = geometryGeneration_;
+        key.authority = scheduler_ ? scheduler_->Authority() : 0;
+        uct::timing::RecordEvent(uct::timing::Event::Reset, key);
+    }
     if (scheduler_) {
         scheduler_->Cancel(); // in-flight input stays owned by the worker
     }
@@ -1069,6 +1103,10 @@ void UltraClearTextController::Invalidate(const QString& reason)
     }
     if(deviceProbeReader_)deviceProbeReader_->Cancel();
     model_.Reset();
+    timingAdmission_.reset();
+    timingPositionedPublication_ = {};
+    UpdatePositionedTimingPublication(false, false);
+    UpdatePaneTimingPublication(false, true);
     immutableSelectedResult_.reset();
     immutableSelectedJob_ = 0;
     immutableCorroborationJob_ = 0;
@@ -1087,6 +1125,7 @@ void UltraClearTextController::Invalidate(const QString& reason)
     deviceCandidate_.reset();
     stableProbes_ = 0;
     changedSinceSubmit_ = true;
+    probeInvalidatedSinceSubmit_ = false;
     lastJobCoverage_ = {};
     haveLastOcr_ = false;
     pendingReadbackId_ = 0;
@@ -1124,11 +1163,16 @@ void UltraClearTextController::SubmitProbe(const uct::SourceStamp& stamp, uct::S
 
 void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
 {
+    if (probeWorker_) uct::TraceTiming(uct::timing::Event::UiReceipt, probeWorker_->TimingProducerId(),
+        uct::timing::Channel::Probe, outcome.stamp, outcome.jobId, outcome.authority);
     QElapsedTimer handling;
     handling.start();
     if (!enabled_ || immutableScene_ || !probeWorker_ || !probeWorker_->IsCurrent(outcome) || settling_ || compositePaused_ || mediaOverlaySuppressed_ ||
         !outcome.stamp.SameScene(CurrentScene()) || !outcome.probe ||
         (latestProbe_ && outcome.stamp.frameSeq<latestProbe_->stamp.frameSeq)) {
+        if (probeWorker_) uct::TraceTiming(uct::timing::Event::Fault, probeWorker_->TimingProducerId(),
+            uct::timing::Channel::Probe, outcome.stamp, outcome.jobId, outcome.authority,
+            {1, 0, uct::timing::Stale});
         return;
     }
     const std::int64_t now = clock_();
@@ -1137,6 +1181,14 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
     const bool composite = !uct::EvidenceAcquisition(outcome.stamp);
     const uct::ValidationSummary summary = model_.ApplyChecks(outcome.checks, outcome.stamp, !composite);
     if (summary.valid > 0) NoteAdvancingValidation(now); // real pixels only
+    if (!composite && summary.invalid > 0) {
+        // A changed portion can disappear while unchanged accepted lines
+        // remain. Request its replacement without waiting for the periodic
+        // refresh; retain demand until the ordinary worker/pacing gates admit
+        // a job, since the failed line is removed by this probe.
+        probeInvalidatedSinceSubmit_ = true;
+        changedSinceSubmit_ = true;
+    }
     if (summary.invalid > 0 && summary.valid == 0) {
         lastResultMoved_ = true;
     }
@@ -1181,7 +1233,7 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
             lastOcrGeneration_ == geometryGeneration_ && lastOcrAcquisition_ == acquisition;
         const bool needed = repeatedHold
             ? !model_.HasAcceptedText() && sinceSubmit >= timing_.refreshIntervalMs
-            : model_.PendingWordCount() > 0 || !model_.HasAcceptedText() || !covered ||
+            : probeInvalidatedSinceSubmit_ || model_.PendingWordCount() > 0 || !model_.HasAcceptedText() || !covered ||
                   sinceSubmit >= timing_.refreshIntervalMs;
         // Latest-only: a busy worker only receives a replacement after the
         // scene changed, so slow recognition cannot accumulate work. The
@@ -1199,6 +1251,7 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
                 lastSubmitMs_ = now;
                 lastJobCoverage_ = viewScene;
                 changedSinceSubmit_ = false;
+                probeInvalidatedSinceSubmit_ = false;
                 lastOcrAcquisition_ = acquisition;
                 lastOcrGeneration_ = geometryGeneration_;
                 lastOcrJob_ = job;
@@ -1219,6 +1272,7 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
 
 void UltraClearTextController::HandleResult(uct::RecognitionResult result)
 {
+    TraceRecognition(uct::timing::Event::UiReceipt, scheduler_.get(), result);
     if (immutableScene_) {
         HandleImmutableResult(std::move(result));
         return;
@@ -1227,6 +1281,7 @@ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
     handling.start();
     if (!enabled_ || !scheduler_ || !scheduler_->IsCurrent(result) || settling_ || compositePaused_ || mediaOverlaySuppressed_ ||
         !result.stamp.SameScene(CurrentScene())) {
+        TraceRecognition(uct::timing::Event::Fault, scheduler_.get(), result, {1, 0, uct::timing::Stale});
         ++rejectedResults_;
         return;
     }
@@ -1266,6 +1321,8 @@ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
         if (++consecutiveFailures_ >= kMaximumConsecutiveFailures) {
             backend_.state = uct::BackendState::kFailed;
             backend_.detail = result.output.error;
+            TraceRecognition(uct::timing::Event::BackendState, scheduler_.get(), result,
+                {static_cast<std::uint32_t>(backend_.state)});
             Invalidate(QStringLiteral("failed"));
         }
     } else if (result.output.ok) {
@@ -1274,6 +1331,9 @@ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
     const uct::AdmitVerdict verdict = advancingMediaScene_
         ? model_.AdmitAdvancingMedia(result, CurrentScene(), latestProbe_.get(), ModelTime(now))
         : model_.AdmitLiveCamera(result, CurrentScene(), latestProbe_.get(), now);
+    NoteTimingAdmission(result, verdict);
+    if (uct::timing::Enabled()) TraceRecognition(uct::timing::Event::Admit, scheduler_.get(), result,
+        {static_cast<std::uint32_t>(verdict), static_cast<std::uint32_t>(model_.AcceptedWordCount())});
     if (verdict != uct::AdmitVerdict::kAccepted && verdict != uct::AdmitVerdict::kPending &&
         verdict != uct::AdmitVerdict::kEmpty)
         retryUnreadAcquisition();
@@ -1310,9 +1370,19 @@ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
 
 void UltraClearTextController::HandleBackendStatus(uct::BackendStatus status)
 {
+    if (uct::timing::Enabled()) {
+        uct::timing::Key key;
+        key.producer = scheduler_ ? scheduler_->TimingProducerId() : 0;
+        uct::timing::RecordEvent(uct::timing::Event::BackendState, key,
+            {static_cast<std::uint32_t>(status.state), 0, status.usesGpu ? uct::timing::DeviceInput : 0u});
+    }
     backend_ = std::move(status);
     if (!BackendUsable(backend_)) {
-        Invalidate(QStringLiteral("unavailable"));
+        if (HasProvenImmutableArtifact()) {
+            StopImmutableRefinement();
+            RefreshOverlay(clock_());
+            UpdateReadingText();
+        } else Invalidate(QStringLiteral("unavailable"));
     }
     if (screenText_) screenText_->ContentChanged(); // recognizer language may differ
     // Backend readiness is an event, not a reason to poll every presentation
@@ -1396,6 +1466,42 @@ void UltraClearTextController::SubmitImmutableIfNeeded()
     if (!immutableCorroborationJob_) ScheduleImmutableRetry(false);
 }
 
+bool UltraClearTextController::HasProvenImmutableArtifact() const
+{
+    if (!immutableScene_ || !haveGeometry_ || geometry_ != immutableScene_->geometry ||
+        currentFrameSeq_ != immutableScene_->selected.frameSeq ||
+        !FrameInputValid(immutableScene_->selected, geometry_)) return false;
+    // SetImmutableScene invalidates on ANY selected lease/frame/PTS, source
+    // authority or geometry change. Its generation therefore binds these
+    // stamps to the exact retained CPU/GPU image; neighbour/view updates do
+    // not change that ticket. Reading-only candidates do not qualify.
+    const auto selected = ImmutableStamp(immutableScene_->selected);
+    const auto now = clock_();
+    return std::any_of(model_.Lines().begin(), model_.Lines().end(), [&](const auto& line) {
+        return line.provenance.SameScene(selected) &&
+               line.provenance.frameSeq == selected.frameSeq &&
+               line.provenance.timestampMs == selected.timestampMs &&
+               line.validatedFrameSeq == selected.frameSeq &&
+               model_.IsShown(line, now, selected.frameSeq);
+    });
+}
+
+void UltraClearTextController::StopImmutableRefinement()
+{
+    if (uct::timing::Enabled() && immutableScene_ && scheduler_)
+        uct::TraceTiming(uct::timing::Event::Cancel, scheduler_->TimingProducerId(), uct::timing::Channel::Recognition,
+            ImmutableStamp(immutableScene_->selected), 0, scheduler_->Authority(),
+            {3, 0, uct::timing::Cancelled | uct::timing::RetainedArtifact});
+    // Retire optional work, not the accepted immutable model. This does not
+    // renew any source/validation clock or clear backend/input failures.
+    immutableRetryExhausted_ = true;
+    immutableRetryScheduled_ = false;
+    immutableSelectedAttempted_ = immutableCorroborationAttempted_ = true;
+    immutableSelectedJob_ = immutableCorroborationJob_ = 0;
+    immutableSelectedResult_.reset();
+    if (scheduler_) scheduler_->Cancel(); // fence a queued/in-flight refinement
+}
+
 void UltraClearTextController::ScheduleImmutableRetry(bool selected, bool preparing)
 {
     if (!immutableScene_ || !enabled_ || immutableRetryScheduled_) return;
@@ -1403,13 +1509,17 @@ void UltraClearTextController::ScheduleImmutableRetry(bool selected, bool prepar
         clock_() - *immutableRetryStartedAtMs_ > timing_.immutableJobTimeoutMs &&
         ((immutableSelectedResult_ && immutableSelectedResult_->output.ok) ||
          model_.AcceptedWordCount() > 0)) {
+        if (HasProvenImmutableArtifact()) StopImmutableRefinement();
         return; // a healthy CPU fallback does not fail because GPU preparation is slow
     }
     if ((!preparing && ++immutableRetryCount_ > 3) ||
         (preparing && immutableRetryStartedAtMs_ &&
          clock_() - *immutableRetryStartedAtMs_ > timing_.immutableJobTimeoutMs)) {
-        immutableRetryExhausted_ = true;
-        model_.Reset();
+        if (HasProvenImmutableArtifact()) StopImmutableRefinement();
+        else {
+            immutableRetryExhausted_ = true;
+            model_.Reset();
+        }
         RefreshOverlay(clock_());
         UpdateReadingText();
         return;
@@ -1443,6 +1553,7 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
         (selected && result.stamp.frameSeq != immutableScene_->selected.frameSeq) ||
         (neighbour && (!immutableScene_->corroboration ||
                       result.stamp.frameSeq != immutableScene_->corroboration->frameSeq))) {
+        TraceRecognition(uct::timing::Event::Fault, scheduler_.get(), result, {2, 0, uct::timing::Stale});
         if (selected) immutableSelectedJob_ = 0;
         if (neighbour) immutableCorroborationJob_ = 0;
         if ((selected || neighbour) && immutableScene_ && scheduler_ && scheduler_->IsCurrent(result) &&
@@ -1461,7 +1572,12 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
         if (++consecutiveFailures_ >= kMaximumConsecutiveFailures) {
             backend_.state = uct::BackendState::kFailed;
             backend_.detail = result.output.error;
-            Invalidate(QStringLiteral("failed"));
+            TraceRecognition(uct::timing::Event::BackendState, scheduler_.get(), result,
+                {static_cast<std::uint32_t>(backend_.state)});
+            if (HasProvenImmutableArtifact()) StopImmutableRefinement();
+            else Invalidate(QStringLiteral("failed"));
+            RefreshOverlay(now);
+            UpdateReadingText();
             UpdateStatus();
             return;
         }
@@ -1470,7 +1586,11 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
     }
 
     if (!result.output.ok || result.output.cancelled) {
-        ScheduleImmutableRetry(selected, result.output.backendPreparing);
+        if (!AnalysisHealthy() && HasProvenImmutableArtifact()) {
+            StopImmutableRefinement();
+            RefreshOverlay(now);
+            UpdateReadingText();
+        } else ScheduleImmutableRetry(selected, result.output.backendPreparing);
         UpdateStatus();
         return;
     }
@@ -1501,6 +1621,12 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
     if (previousModel && verdict != uct::AdmitVerdict::kAccepted &&
         verdict != uct::AdmitVerdict::kContentMoved)
         model_ = *previousModel; // a refused refinement cannot erase prior proof
+    if (immutableSelectedResult_) NoteTimingAdmission(*immutableSelectedResult_, verdict,
+        previousModel ? uct::timing::RetainedArtifact : 0u);
+    if (uct::timing::Enabled() && immutableSelectedResult_) TraceRecognition(uct::timing::Event::Admit, scheduler_.get(),
+        *immutableSelectedResult_, {static_cast<std::uint32_t>(verdict),
+            static_cast<std::uint32_t>(model_.AcceptedWordCount()),
+            previousModel ? uct::timing::RetainedArtifact : 0u, selected ? 0 : result.jobId});
     switch (verdict) {
     case uct::AdmitVerdict::kAccepted:
         ++acceptedResults_;
@@ -1536,20 +1662,72 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
     emit recognitionAdmitted(static_cast<int>(verdict));
 }
 
+void UltraClearTextController::NoteTimingAdmission(const uct::RecognitionResult& result,
+                                                   uct::AdmitVerdict verdict, std::uint32_t flags)
+{
+    if (!uct::timing::Enabled()) return;
+    if (!model_.HasAcceptedText()) {
+        timingAdmission_.reset();
+        return;
+    }
+    if (verdict != uct::AdmitVerdict::kAccepted && verdict != uct::AdmitVerdict::kContentMoved &&
+        !(immutableScene_ && verdict == uct::AdmitVerdict::kPending)) return;
+    timingAdmission_ = uct::TimingKey(scheduler_->TimingProducerId(), uct::timing::Channel::Recognition,
+                                    result.stamp, result.jobId, result.authority);
+    timingAdmissionFlags_ = flags | (result.deviceInput ? uct::timing::DeviceInput : 0u) |
+        (result.stamp.liveCameraCapture ? uct::timing::LiveCamera : 0u) |
+        (uct::EvidenceAcquisition(result.stamp) ? uct::timing::AcquisitionKnown : 0u) |
+        (verdict == uct::AdmitVerdict::kContentMoved ? uct::timing::RetainedArtifact : 0u);
+}
+
+void UltraClearTextController::UpdatePositionedTimingPublication(bool changed, bool positioned, bool clear)
+{
+    if (!uct::timing::Enabled()) return;
+    if (changed) {
+        ++timingPublicationRevision_;
+        timingPositionedPublication_ = timingAdmission_ && !clear
+            ? uct::timing::PublicationTicket{*timingAdmission_, timingPublicationRevision_, timingAdmissionFlags_}
+            : uct::timing::PublicationTicket{};
+    }
+    if (clear) timingPositionedPublication_ = {};
+    if (!positioned) timingPositionedPublication_ = {};
+    // Only a positioned snapshot change/revocation reaches these consumers.
+    // A later pane-only update must leave their ticket and painted revision.
+    if (overlay_) overlay_->SetTimingTicket(timingPositionedPublication_);
+    if (screenText_) screenText_->SetTimingTicket(timingPositionedPublication_);
+}
+
+void UltraClearTextController::UpdatePaneTimingPublication(bool sharePositionedRevision, bool clear)
+{
+    if (!uct::timing::Enabled()) return;
+    if (clear) timingPanePublication_ = {};
+    else {
+        const auto revision = sharePositionedRevision ? timingPublicationRevision_ : ++timingPublicationRevision_;
+        timingPanePublication_ = timingAdmission_
+            ? uct::timing::PublicationTicket{*timingAdmission_, revision, timingAdmissionFlags_}
+            : uct::timing::PublicationTicket{};
+    }
+    if (panel_) panel_->SetTimingTicket(timingPanePublication_);
+}
+
 void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
 {
     if (!overlay_) {
         return;
     }
-    if (!enabled_ || !AnalysisHealthy() || showOriginal_ || compositePaused_ || mediaOverlaySuppressed_ || settling_ || !PresentationAvailable(nowMs) ||
-        !AdvancingValidationFresh(nowMs) || !BackendUsable(backend_)) {
+    const bool provenImmutable = HasProvenImmutableArtifact();
+    if (!enabled_ || (!provenImmutable && (!AnalysisHealthy() || !BackendUsable(backend_))) ||
+        showOriginal_ || compositePaused_ || mediaOverlaySuppressed_ || settling_ || !PresentationAvailable(nowMs) ||
+        !AdvancingValidationFresh(nowMs)) {
+        const bool hadWords = !overlayWords_.isEmpty();
+        UpdatePositionedTimingPublication(hadWords, false);
         overlay_->ClearWords();
         overlayWords_.clear();
         // Nothing is drawn, so nothing is exposed: an empty root. Trivial
         // when already empty, as this branch runs on every presentation.
         if (screenText_) screenText_->RevokeAll();
         shownWords_ = 0;
-        UpdateReadingText();
+        UpdateReadingText(hadWords);
         return;
     }
     const QVector<uct::SceneWord> words = model_.SceneWords(ModelTime(nowMs), currentFrameSeq_);
@@ -1572,6 +1750,7 @@ void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
     }
     if (!same) {
         overlayWords_ = next;
+        UpdatePositionedTimingPublication(true, !next.isEmpty());
         if (next.isEmpty()) {
             overlay_->ClearWords();
         } else {
@@ -1580,7 +1759,7 @@ void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
         // Removals apply at once; additions wait for the semantic cadence.
         // Pan/zoom never reaches here: geometry is answered from paint.
         if (screenText_) screenText_->ContentChanged();
-        UpdateReadingText();
+        UpdateReadingText(true);
     }
     shownWords_ = overlayWords_.size();
 }
@@ -1590,8 +1769,8 @@ UctScreenTextSnapshot UltraClearTextController::ScreenTextSnapshot() const
     UctScreenTextSnapshot snapshot;
     snapshot.enabled = enabled_;
     // overlayWords_ is non-empty only while every RefreshOverlay gate holds
-    // (no Show original, settling, composite, watchdog, failure or
-    // unusable backend): exactly when glyphs are drawn.
+    // (including presentation/source revocation). A failed optional
+    // refinement may leave exact paused proof drawn, never new evidence.
     if (!enabled_ || overlayWords_.isEmpty()) {
         return snapshot;
     }
@@ -1612,17 +1791,20 @@ UctScreenTextSnapshot UltraClearTextController::ScreenTextSnapshot() const
     return snapshot;
 }
 
-void UltraClearTextController::UpdateReadingText()
+void UltraClearTextController::UpdateReadingText(bool shareTimingRevision)
 {
     // The pane offers exactly the lines verified on screen now (also while
     // Show original hides the glyph plates).
     QString text;
-    if (enabled_ && AnalysisHealthy() && PresentationAvailable(clock_()) && AdvancingValidationFresh(clock_()) && !compositePaused_ && !mediaOverlaySuppressed_ && !settling_ && BackendUsable(backend_)) {
+    if (enabled_ && (HasProvenImmutableArtifact() || (AnalysisHealthy() && BackendUsable(backend_))) &&
+        PresentationAvailable(clock_()) && AdvancingValidationFresh(clock_()) &&
+        !compositePaused_ && !mediaOverlaySuppressed_ && !settling_) {
         text = model_.ReadingText(ModelTime(clock_()), currentFrameSeq_);
     }
     if (text == readingText_) {
         return;
     }
+    UpdatePaneTimingPublication(shareTimingRevision, text.isEmpty());
     readingText_ = text;
     if (panel_) {
         panel_->SetReadingText(readingText_);
@@ -1648,6 +1830,13 @@ void UltraClearTextController::UpdateStatus()
     if (panel_) panel_->SetBackendStatus(backend_);
     if (!enabled_) {
         SetStatus(QStringLiteral("Ultra Clear Text is off."));
+        return;
+    }
+    // The backend panel above still reports the actual terminal status.
+    // Avoid claiming the original image is shown while accepted paused
+    // glyphs remain drawn; reuse the ordinary visible-word count.
+    if (shownWords_ > 0 && HasProvenImmutableArtifact()) {
+        SetStatus(QStringLiteral("Showing sharp text for %1 words.").arg(shownWords_));
         return;
     }
     switch (backend_.state) {

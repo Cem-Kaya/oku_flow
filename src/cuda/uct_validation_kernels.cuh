@@ -1,6 +1,7 @@
 // First-party CUDA implementation of UCT's CPU validation/color/ink policy.
 // Included by uct_kernels.cu so every CUDA consumer has the same primitives.
 #include <cstdint>
+#include "../common/uct_color_policy.hpp"
 
 namespace okuflow::uct::gpu
 {
@@ -313,84 +314,154 @@ __global__ void similarity(const unsigned *a, int aw, int ah, ProbeMap ma, const
 __global__ void colors(const unsigned char *p, size_t pitch, int w, int h, const Rect *rects,
                        Colors *out)
 {
+    using namespace color_policy;
     const int t = threadIdx.x, index = blockIdx.x;
     const auto b = rects[index];
-    __shared__ unsigned hist[2][3][256];
-    __shared__ unsigned sums[8], lum[256];
-    __shared__ int threshold;
+    // Fixed 9.5KiB shared scratch per word/line; hist is reused for body,
+    // qualified ring, then ink endpoint. Pixels never leave resident storage.
+    __shared__ unsigned hist[2][3][256], lumaHist[2][256], reduction[256];
+    __shared__ unsigned bodyCounts[2], ringCounts[2], sideCounts[4][2], sideTotals[4], cornerVotes[2];
+    __shared__ int threshold, endpoint[2], fg, adjacentBackground;
+    __shared__ Rgb body[2];
+    __shared__ Colors measured;
     for (int i = t; i < 1536; i += 256)
         reinterpret_cast<unsigned *>(hist)[i] = 0;
-    if (t < 8)
-        sums[t] = 0;
+    for (int i = t; i < 512; i += 256)
+        reinterpret_cast<unsigned *>(lumaHist)[i] = 0;
+    if (t < 2) bodyCounts[t] = ringCounts[t] = cornerVotes[t] = 0;
+    if (t < 8) reinterpret_cast<unsigned *>(sideCounts)[t] = 0;
+    if (t < 4) sideTotals[t] = 0;
     unsigned sum = 0;
     const int nx = (b.w + 1) / 2, ny = (b.h + 1) / 2;
     for (int i = t; i < nx * ny; i += 256)
         sum += luma(p + (b.y + (i / nx) * 2) * pitch + (b.x + (i % nx) * 2) * 4);
-    lum[t] = sum;
+    reduction[t] = sum;
     __syncthreads();
-    for (int d = 128; d; d /= 2)
-    {
-        if (t < d)
-            lum[t] += lum[t + d];
+    for (int d = 128; d; d /= 2) {
+        if (t < d) reduction[t] += reduction[t + d];
         __syncthreads();
     }
-    if (!t)
-        threshold = nx * ny ? int(lum[0] / (nx * ny)) : 0;
+    if (!t) {
+        threshold = nx * ny ? int(reduction[0] / (nx * ny)) : 0;
+        measured = {{0, 0, 0}, {255, 255, 255}};
+    }
     __syncthreads();
-    for (int i = t; i < nx * ny; i += 256)
-    {
+    for (int i = t; i < nx * ny; i += 256) {
         const auto *px = p + (b.y + (i / nx) * 2) * pitch + (b.x + (i % nx) * 2) * 4;
-        int side = luma(px) < threshold ? 0 : 1;
-        atomicAdd(sums + side * 4, 1u);
-        for (int c = 0; c < 3; ++c)
-            atomicAdd(sums + side * 4 + c + 1, unsigned(px[2 - c]));
-    }
-    const int m = min(12, max(2, b.h / 6)), x = max(0, b.x - m), y = max(0, b.y - m),
-              rw = min(w, b.x + b.w + m) - x, rh = min(h, b.y + b.h + m) - y;
-    const int sw = (rw + 1) / 2, sh = (rh + 1) / 2;
-    for (int i = t; i < sw * sh; i += 256)
-    {
-        const int xx = x + (i % sw) * 2, yy = y + (i / sw) * 2;
-        if (xx >= b.x && xx < b.x + b.w && yy >= b.y && yy < b.y + b.h)
-            continue;
-        const auto *px = p + yy * pitch + xx * 4;
-        int side = luma(px) < threshold ? 0 : 1;
-        for (int c = 0; c < 3; ++c)
-            atomicAdd(&hist[side][c][px[2 - c]], 1u);
+        const int value = luma(px), side = value < threshold ? 0 : 1;
+        atomicAdd(bodyCounts + side, 1u);
+        atomicAdd(&lumaHist[side][value], 1u);
+        for (int c = 0; c < 3; ++c) atomicAdd(&hist[side][c][px[2 - c]], 1u);
     }
     __syncthreads();
-    if (!t)
-    {
-        unsigned counts[2]{};
-        for (int i = 0; i < 256; ++i)
-        {
-            counts[0] += hist[0][0][i];
-            counts[1] += hist[1][0][i];
+    if (!bodyCounts[0] || !bodyCounts[1]) {
+        if (!t) out[index] = measured;
+        return;
+    }
+    if (!t) {
+        for (int side = 0; side < 2; ++side) {
+            for (int c = 0; c < 3; ++c) body[side].channel[c] = Median(hist[side][c], bodyCounts[side]);
+            endpoint[side] = Endpoint(lumaHist[side], bodyCounts[side], side);
         }
-        const int fg = counts[0] != counts[1] ? (counts[1] > counts[0] ? 0 : 1)
-                                              : (sums[0] <= sums[4] ? 0 : 1),
-                  bg = 1 - fg;
-        Colors c{{0, 0, 0}, {255, 255, 255}};
-        if (sums[fg * 4] && (sums[bg * 4] || counts[bg] >= 8))
-            for (int k = 0; k < 3; ++k)
-            {
-                c.foreground[k] = sums[fg * 4 + k + 1] / sums[fg * 4];
-                c.background[k] = sums[bg * 4] ? sums[bg * 4 + k + 1] / sums[bg * 4] : 255;
-                if (counts[bg] >= 8)
-                {
-                    unsigned total = 0;
-                    for (int v = 0; v < 256; ++v)
-                    {
-                        total += hist[bg][k][v];
-                        if (total > counts[bg] / 2)
-                        {
-                            c.background[k] = v;
-                            break;
-                        }
+        if (b.w >= 3 && b.h >= 3)
+            for (int corner = 0; corner < 4; ++corner) {
+                const int left = corner % 2 ? b.x + b.w - 3 : b.x;
+                const int top = corner / 2 ? b.y + b.h - 3 : b.y;
+                unsigned matches[2]{};
+                for (int yy = top; yy < top + 3; ++yy)
+                    for (int xx = left; xx < left + 3; ++xx) {
+                        const auto *px = p + yy * pitch + xx * 4;
+                        const int side = luma(px) < threshold ? 0 : 1;
+                        if (Compatible(px, body[side])) ++matches[side];
                     }
-                }
+                for (int side = 0; side < 2; ++side)
+                    if (matches[side] >= 5) ++cornerVotes[side];
             }
-        out[index] = c;
+    }
+    __syncthreads();
+    for (int i = t; i < 1536; i += 256) reinterpret_cast<unsigned *>(hist)[i] = 0;
+    __syncthreads();
+    const Rect adjacent[4]{
+        {b.x, b.y - 1, b.w, b.y > 0 ? 1 : 0},
+        {b.x, b.y + b.h, b.w, b.y + b.h < h ? 1 : 0},
+        {b.x - 1, b.y, b.x > 0 ? 1 : 0, b.h},
+        {b.x + b.w, b.y, b.x + b.w < w ? 1 : 0, b.h}};
+    for (int s = 0; s < 4; ++s) {
+        const auto r = adjacent[s];
+        const int sw = (r.w + 1) / 2, sh = (r.h + 1) / 2;
+        for (int i = t; i < sw * sh; i += 256) {
+            const auto *px = p + (r.y + (i / sw) * 2) * pitch + (r.x + (i % sw) * 2) * 4;
+            const int side = luma(px) < threshold ? 0 : 1;
+            atomicAdd(sideTotals + s, 1u);
+            if (!Compatible(px, body[side])) continue;
+            atomicAdd(&sideCounts[s][side], 1u);
+            atomicAdd(ringCounts + side, 1u);
+            for (int c = 0; c < 3; ++c) atomicAdd(&hist[side][c][px[2 - c]], 1u);
+        }
+    }
+    __syncthreads();
+    if (!t) {
+        adjacentBackground = AdjacentBackground(sideCounts, sideTotals);
+        if (adjacentBackground >= 0) {
+            fg = 1 - adjacentBackground;
+            for (int c = 0; c < 3; ++c)
+                measured.background[c] = Median(hist[adjacentBackground][c], ringCounts[adjacentBackground]);
+        }
+    }
+    __syncthreads();
+    // The branch is block-uniform. Reuse the same histogram/count scratch;
+    // successful immediate consensus avoids the expanded strip pass entirely.
+    if (adjacentBackground < 0) {
+        for (int i = t; i < 1536; i += 256) reinterpret_cast<unsigned *>(hist)[i] = 0;
+        if (t < 2) ringCounts[t] = 0;
+        if (t < 8) reinterpret_cast<unsigned *>(sideCounts)[t] = 0;
+        if (t < 4) sideTotals[t] = 0;
+        __syncthreads();
+        const int m = min(12, max(2, b.h / 6));
+        const Rect sides[4]{
+            {b.x, max(0, b.y - m), b.w, b.y - max(0, b.y - m)},
+            {b.x, b.y + b.h, b.w, min(h, b.y + b.h + m) - b.y - b.h},
+            {max(0, b.x - m), b.y, b.x - max(0, b.x - m), b.h},
+            {b.x + b.w, b.y, min(w, b.x + b.w + m) - b.x - b.w, b.h}};
+        for (int s = 0; s < 4; ++s) {
+            const auto r = sides[s];
+            const int sw = (r.w + 1) / 2, sh = (r.h + 1) / 2;
+            for (int i = t; i < sw * sh; i += 256) {
+                const auto *px = p + (r.y + (i / sw) * 2) * pitch + (r.x + (i % sw) * 2) * 4;
+                const int side = luma(px) < threshold ? 0 : 1;
+                atomicAdd(sideTotals + s, 1u);
+                if (!Compatible(px, body[side])) continue;
+                atomicAdd(&sideCounts[s][side], 1u);
+                atomicAdd(ringCounts + side, 1u);
+                for (int c = 0; c < 3; ++c) atomicAdd(&hist[side][c][px[2 - c]], 1u);
+            }
+        }
+        __syncthreads();
+        if (!t) {
+            bool useRing = false;
+            const int bg = Background(bodyCounts, sideCounts, sideTotals, cornerVotes, useRing);
+            fg = 1 - bg;
+            for (int c = 0; c < 3; ++c)
+                measured.background[c] = useRing && ringCounts[bg] >= 8
+                    ? Median(hist[bg][c], ringCounts[bg]) : body[bg].channel[c];
+        }
+    }
+    __syncthreads();
+    for (int i = t; i < 1536; i += 256) reinterpret_cast<unsigned *>(hist)[i] = 0;
+    if (!t) ringCounts[0] = 0;
+    __syncthreads();
+    for (int i = t; i < nx * ny; i += 256) {
+        const auto *px = p + (b.y + (i / nx) * 2) * pitch + (b.x + (i % nx) * 2) * 4;
+        const int value = luma(px);
+        if ((value < threshold ? 0 : 1) != fg ||
+            (fg == 0 ? value > endpoint[fg] : value < endpoint[fg])) continue;
+        atomicAdd(ringCounts, 1u);
+        for (int c = 0; c < 3; ++c) atomicAdd(&hist[fg][c][px[2 - c]], 1u);
+    }
+    __syncthreads();
+    if (!t) {
+        for (int c = 0; c < 3; ++c) measured.foreground[c] = Median(hist[fg][c], ringCounts[0]);
+        out[index] = measured;
     }
 }
 __global__ void ink(const unsigned char *p, size_t pitch, int w, int h, const Ink *words,

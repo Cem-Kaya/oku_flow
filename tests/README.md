@@ -8,6 +8,19 @@
 files, decode before finalization, keep the writer advancing during rewind,
 seek the newly verified prefix and check saved-file EOF/PCM/VFR timing. They
 run serially under the `codec` label and preserve unavailable-codec skips.
+
+The one-second active-tail clock assertion uses a separate test-owned observed
+archive containing exactly one bounded, verified native prefix (at most 16 MiB,
+64 KiB copy scratch). Its generation, mutation sequence, committed/verified byte
+extents, sample count and endpoint must stay unchanged while media PTS stays
+exact. Native encoder/parser output can continue independently; only an explicit
+copy of a newly verified suffix lets this archive grow and resume at media pace.
+The earlier original writer/paused-reader and live-prefix seek checks remain on
+the original recording. Both private files are retained on failure, with prefix
+versions and actual state/PTS diagnostics. Writer admission or the first new
+fragment does not prove native output has drained; the former unfenced failure
+log cannot attribute a PTS change to clock leakage versus newly verified bytes.
+
 `video_playback_native_4k` and `video_playback_native_dci_4k` additionally retain
 displayed-frame leases while decoding UHD/DCI clips, check real ready depth,
 adaptive capacity and rapid newest-wins seeks. Their latency output is a small
@@ -1798,6 +1811,20 @@ rows cover playback-to-pause transient faults and revocation of an old retry tim
 The real resident CUDA scheduler case includes a yellow selected word in an
 otherwise dark row, checking CPU/GPU local color/ink parity and zero image egress.
 Cached accessibility interfaces must reflect actual GPU/CPU backend switches.
+`uct_paddle_cuda` also runs all local-color CPU/CUDA parity rows, including
+selected yellow buttons, antialiased ink, clipped rectangles and dense glyphs
+whose corners contain ink. These descriptor checks use synthetic owned pixels,
+not a real-camera or display-color acceptance claim.
+
+The opt-in [bounded timing trace](../docs/uct_timing_trace.md) has four ordinary
+headless CTest contracts: `uct_timing_trace_contract` checks storage and close/drop
+accounting; `uct_timing_controller_contract` follows real scripted worker/admission
+tickets; `uct_screen_text_timing_publication` checks consumer publication tickets;
+and `uct_timing_pane_publication_contract` ensures a pane-only change cannot
+reticket later overlay paints or positioned accessibility. Negative event-count
+assertions require a complete, uncontended trace. Native UI Automation discovery,
+reader speech and photon timing require separate acceptance.
+
 The immutable controller fixture also checks that the Text Clarity master stops
 recognition and revokes text while retaining UCT intent, resumes one-shot work
 when enabled, and respects an explicit UCT opt-out. Settings cover missing-key
@@ -1917,6 +1944,19 @@ protected omissions and bounded growth. These are offscreen scripted contracts.
 See `docs/uct_paused_continuity_repair.md` for the private real-model diagnostic
 and the original retained failures; they do not establish native screen-reader
 or camera acceptance.
+
+Follow-up rows inject optional refinement failure, CPU-to-resident promotion,
+persistent word-local conflicts, and partial real page invalidation with 24
+surviving lines. Local-color cases share controlled surfaces and tiny/clipped
+bounds between CPU and CUDA, asserting raw descriptors separately from renderer
+contrast. The accessibility fixture replaces changed same-ID text immediately
+under a reading hold while unrelated new lines retain their cadence.
+
+The sparse VFR/AAC native fixture obtains its five tail timestamps from a
+separate bounded CPU `IMFSourceReader` before opening `VideoPlayback`. Playback
+must deliver that exact ordered sequence, including after optional Pause proof
+finds a full future queue. This avoids equating authored 100 ns timestamps with
+the container/native decoder clock or introducing an arbitrary timestamp tolerance.
 
 The first-party native playback fixture `tests/data/uct-scene-cut-h264.mp4`
 is 2,449 bytes, SHA-256

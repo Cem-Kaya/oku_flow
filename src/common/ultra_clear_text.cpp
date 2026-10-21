@@ -1,5 +1,6 @@
 #include "okuflow/common/ultra_clear_text.hpp"
 #include "okuflow/common/uct_region_planner.hpp"
+#include "uct_color_policy.hpp"
 #include <QCryptographicHash>
 
 #include <QElapsedTimer>
@@ -20,6 +21,18 @@
 
 namespace okuflow::uct {
 namespace {
+
+timing::Values TimingOutput(const RecognitionOutput& output, bool device, bool current,
+                            std::uint64_t relatedJob = 0)
+{
+    std::uint32_t flags = (output.cancelled ? timing::Cancelled : 0u) |
+        (output.inputFault ? timing::InputFault : 0u) | (output.backendPreparing ? timing::Preparing : 0u) |
+        (output.compositeInput ? timing::Composite : 0u) | (device ? timing::DeviceInput : 0u) |
+        (current ? timing::Current : timing::Stale) | (relatedJob ? timing::Corroboration : 0u);
+    if (!output.ok && !output.cancelled && !output.inputFault && !output.backendPreparing && !output.compositeInput)
+        flags |= timing::Failed;
+    return {0, static_cast<std::uint32_t>(output.lines.size()), flags, relatedJob};
+}
 
 bool UsableTransform(const ViewTransform& t, double width, double height)
 {
@@ -178,84 +191,123 @@ double Iou(const QRectF& a, const QRectF& b)
 
 LineColors MeasureLineColors(const QImage& image, const QRect& bounds)
 {
+    using namespace color_policy;
     LineColors colors;
     const QRect box = bounds.intersected(image.rect());
-    if (box.isEmpty()) {
-        return colors;
-    }
+    if (box.isEmpty()) return colors;
     long long lumaSum = 0;
-    int count = 0;
-    for (int y = box.top(); y <= box.bottom(); y += 2) {
-        const uchar* row = image.constScanLine(y);
+    unsigned count = 0;
+    for (int y = box.top(); y <= box.bottom(); y += 2)
         for (int x = box.left(); x <= box.right(); x += 2) {
-            lumaSum += Luma(row + x * 4);
+            lumaSum += Luma(image.constScanLine(y) + x * 4);
             ++count;
         }
-    }
-    if (count == 0) {
-        return colors;
-    }
+    if (!count) return colors;
     const int threshold = static_cast<int>(lumaSum / count);
-    long long dark[3]{}, light[3]{};
-    int darkCount = 0, lightCount = 0;
-    for (int y = box.top(); y <= box.bottom(); y += 2) {
-        const uchar* row = image.constScanLine(y);
+    unsigned histogram[2][3][256]{}, lumaHistogram[2][256]{}, bodyCounts[2]{};
+    for (int y = box.top(); y <= box.bottom(); y += 2)
         for (int x = box.left(); x <= box.right(); x += 2) {
-            const uchar* px = row + x * 4;
-            const bool isDark = Luma(px) < threshold;
-            long long* target = isDark ? dark : light;
-            ++(isDark ? darkCount : lightCount);
-            target[0] += px[2];
-            target[1] += px[1];
-            target[2] += px[0];
-        }
-    }
-    const auto average = [](const long long* sum, int n) {
-        return n ? QColor(static_cast<int>(sum[0] / n), static_cast<int>(sum[1] / n),
-                          static_cast<int>(sum[2] / n))
-                 : QColor();
-    };
-    const QColor darkColor = average(dark, darkCount);
-    const QColor lightColor = average(light, lightCount);
-    // Dense/bold print can cover most of a tight OCR box. Prefer surrounding
-    // paper/board evidence to the minority-ink heuristic when a margin exists.
-    // This is bounded local color work on the recognition worker, never paint.
-    const int margin = std::clamp(box.height() / 6, 2, 12);
-    const QRect surround = box.adjusted(-margin, -margin, margin, margin).intersected(image.rect());
-    int darkSurround = 0, lightSurround = 0;
-    int surroundHistogram[2][3][256]{};
-    for (int y = surround.top(); y <= surround.bottom(); y += 2) {
-        const uchar* row = image.constScanLine(y);
-        for (int x = surround.left(); x <= surround.right(); x += 2) {
-            if (box.contains(x, y)) continue;
-            const uchar* px = row + x * 4;
-            const int side = Luma(px) < threshold ? 0 : 1;
-            ++(side == 0 ? darkSurround : lightSurround);
+            const uchar* px = image.constScanLine(y) + x * 4;
+            const int value = Luma(px), side = value < threshold ? 0 : 1;
+            ++bodyCounts[side]; ++lumaHistogram[side][value];
             for (int channel = 0; channel < 3; ++channel)
-                ++surroundHistogram[side][channel][px[2-channel]];
+                ++histogram[side][channel][px[2 - channel]];
         }
+    if (!bodyCounts[0] || !bodyCounts[1]) return colors;
+    Rgb body[2];
+    int endpoint[2];
+    for (int side = 0; side < 2; ++side) {
+        for (int channel = 0; channel < 3; ++channel)
+            body[side].channel[channel] = Median(histogram[side][channel], bodyCounts[side]);
+        endpoint[side] = Endpoint(lumaHistogram[side], bodyCounts[side], side);
     }
-    const bool darkText = darkSurround != lightSurround
-                              ? lightSurround > darkSurround
-                              : darkCount <= lightCount;
-    colors.foreground = darkText ? darkColor : lightColor;
-    colors.background = darkText ? lightColor : darkColor;
-    const int backgroundSide = darkText ? 1 : 0;
-    const int surroundingSamples = darkText ? lightSurround : darkSurround;
-    if (surroundingSamples >= 8) {
-        int median[3]{};
-        for (int channel = 0; channel < 3; ++channel) {
-            int total = 0;
-            for (int value = 0; value < 256; ++value) {
-                total += surroundHistogram[backgroundSide][channel][value];
-                if (total > surroundingSamples/2) { median[channel]=value;break; }
-            }
+    unsigned cornerVotes[2]{};
+    if (box.width() >= 3 && box.height() >= 3)
+        for (int corner = 0; corner < 4; ++corner) {
+            const int left = corner % 2 ? box.right() - 2 : box.left();
+            const int top = corner / 2 ? box.bottom() - 2 : box.top();
+            unsigned matches[2]{};
+            for (int y = top; y < top + 3; ++y)
+                for (int x = left; x < left + 3; ++x) {
+                    const uchar* px = image.constScanLine(y) + x * 4;
+                    const int side = Luma(px) < threshold ? 0 : 1;
+                    if (Compatible(px, body[side])) ++matches[side];
+                }
+            for (int side = 0; side < 2; ++side)
+                if (matches[side] >= 5) ++cornerVotes[side];
         }
-        colors.background = QColor(median[0],median[1],median[2]);
+    // First consult the immediately adjacent 1px perimeter. Dense E/H-like
+    // glyphs can touch all four in-box corners: those corners are ink, while
+    // the touching exterior is still paper. A button's 1px padding is also
+    // local paper, independently of the page beyond its narrow boundary.
+    const QRect adjacent[4]{
+        QRect(box.left(), box.top() - 1, box.width(), box.top() > 0 ? 1 : 0),
+        QRect(box.left(), box.bottom() + 1, box.width(), box.bottom() + 1 < image.height() ? 1 : 0),
+        QRect(box.left() - 1, box.top(), box.left() > 0 ? 1 : 0, box.height()),
+        QRect(box.right() + 1, box.top(), box.right() + 1 < image.width() ? 1 : 0, box.height())};
+    std::memset(histogram, 0, sizeof(histogram));
+    unsigned sideCounts[4][2]{}, sideTotals[4]{}, ringCounts[2]{};
+    const auto sampleSides = [&](const QRect (&sides)[4]) {
+        for (int s = 0; s < 4; ++s)
+            for (int y = sides[s].top(); y <= sides[s].bottom(); y += 2)
+                for (int x = sides[s].left(); x <= sides[s].right(); x += 2) {
+                    const uchar* px = image.constScanLine(y) + x * 4;
+                    const int side = Luma(px) < threshold ? 0 : 1;
+                    ++sideTotals[s];
+                    if (!Compatible(px, body[side])) continue;
+                    ++sideCounts[s][side]; ++ringCounts[side];
+                    for (int channel = 0; channel < 3; ++channel)
+                        ++histogram[side][channel][px[2 - channel]];
+                }
+    };
+    sampleSides(adjacent);
+    int bg = AdjacentBackground(sideCounts, sideTotals);
+    Rgb paper;
+    if (bg >= 0) {
+        for (int channel = 0; channel < 3; ++channel)
+            paper.channel[channel] = Median(histogram[bg][channel], ringCounts[bg]);
+    } else {
+        // Each expanded exterior side has one vote, never an area-weighted
+        // vote. Exclude expanded corners and require local RGB agreement.
+        const int margin = std::clamp(box.height() / 6, 2, 12);
+        const QRect sides[4]{
+            QRect(box.left(), std::max(0, box.top() - margin), box.width(),
+                  box.top() - std::max(0, box.top() - margin)),
+            QRect(box.left(), box.bottom() + 1, box.width(),
+                  std::min(image.height(), box.bottom() + 1 + margin) - box.bottom() - 1),
+            QRect(std::max(0, box.left() - margin), box.top(),
+                  box.left() - std::max(0, box.left() - margin), box.height()),
+            QRect(box.right() + 1, box.top(),
+                  std::min(image.width(), box.right() + 1 + margin) - box.right() - 1, box.height())};
+        std::memset(histogram, 0, sizeof(histogram));
+        std::memset(sideCounts, 0, sizeof(sideCounts));
+        std::memset(sideTotals, 0, sizeof(sideTotals));
+        std::memset(ringCounts, 0, sizeof(ringCounts));
+        sampleSides(sides);
+        bool useRing = false;
+        bg = Background(bodyCounts, sideCounts, sideTotals, cornerVotes, useRing);
+        paper = body[bg];
+        if (useRing && ringCounts[bg] >= 8)
+            for (int channel = 0; channel < 3; ++channel)
+                paper.channel[channel] = Median(histogram[bg][channel], ringCounts[bg]);
     }
-    if (!colors.foreground.isValid() || !colors.background.isValid()) {
-        colors = {};
-    }
+    const int fg = 1 - bg;
+    std::memset(histogram, 0, sizeof(histogram));
+    unsigned inkCount = 0;
+    for (int y = box.top(); y <= box.bottom(); y += 2)
+        for (int x = box.left(); x <= box.right(); x += 2) {
+            const uchar* px = image.constScanLine(y) + x * 4;
+            const int value = Luma(px);
+            if ((value < threshold ? 0 : 1) != fg ||
+                (fg == 0 ? value > endpoint[fg] : value < endpoint[fg])) continue;
+            ++inkCount;
+            for (int channel = 0; channel < 3; ++channel)
+                ++histogram[fg][channel][px[2 - channel]];
+        }
+    colors.foreground = QColor(Median(histogram[fg][0], inkCount),
+                               Median(histogram[fg][1], inkCount),
+                               Median(histogram[fg][2], inkCount));
+    colors.background = QColor(paper.channel[0], paper.channel[1], paper.channel[2]);
     return colors;
 }
 
@@ -1156,12 +1208,34 @@ struct RecognitionScheduler::State {
     BackendStatus status;
     SchedulerStats stats;
     std::thread thread;
+    const std::uint64_t timingProducer{timing::NewProducerId()};
+    timing::Key activeTiming;
+
+    timing::Channel TimingChannel() const { return probeOnly ? timing::Channel::DeviceValidation : timing::Channel::Recognition; }
+    // Called only under the existing scheduler mutex; tracing uses try-lock
+    // and cannot block/cancel/reorder the worker's actual jobs.
+    void TraceCancellation(std::uint32_t flags) {
+        if (!timing::Enabled()) return;
+        if (pending) TraceTiming(timing::Event::Cancel, timingProducer, TimingChannel(),
+            pending->stamp, pending->id, pending->authority, {0, 0, flags | timing::Cancelled});
+        if (activeTiming.jobId) timing::RecordEvent(timing::Event::Cancel, activeTiming,
+            {0, 0, flags | timing::Cancelled});
+    }
 
     void Publish(const BackendStatus& value)
     {
         {
             std::lock_guard lock(mutex);
             status = value;
+            if (timing::Enabled()) {
+                auto key = activeTiming;
+                key.producer = timingProducer;
+                key.channel = TimingChannel();
+                timing::RecordEvent(timing::Event::BackendState, key,
+                    {static_cast<std::uint32_t>(value.state), 0,
+                        (value.state != BackendState::kNotStarted ? timing::BackendKnown : 0u) |
+                        (value.usesGpu ? timing::GpuBackend : 0u)});
+            }
         }
         std::lock_guard callbackLock(callbackMutex);
         if (callbacksEnabled && statusChanged) {
@@ -1178,6 +1252,8 @@ struct RecognitionScheduler::State {
             return 0;
         }
         if (pending) {
+            TraceTiming(timing::Event::Cancel, timingProducer, TimingChannel(), pending->stamp,
+                pending->id, pending->authority, {0, 0, timing::Cancelled | timing::Coalesced});
             ++stats.coalesced;
         }
         Job job;
@@ -1189,6 +1265,9 @@ struct RecognitionScheduler::State {
         job.corroboration = std::move(corroboration);
         if (shadowRequested) job.shadowFocus = shadowFocus;
         const std::uint64_t id = job.id;
+        TraceTiming(timing::Event::Submit, timingProducer, TimingChannel(), stamp, id, authority,
+            {0, 0, (job.device ? timing::DeviceInput : 0u) |
+                (job.corroboration.selectedJobId ? timing::Corroboration : 0u), job.corroboration.selectedJobId});
         pending = std::move(job);
         ++stats.submitted;
         wake.notify_one();
@@ -1220,10 +1299,16 @@ struct RecognitionScheduler::State {
                 self->inFlight = true;
                 self->cancelInFlight.store(job.authority != self->authority);
                 ++self->stats.started;
+                if (timing::Enabled()) self->activeTiming = TimingKey(self->timingProducer,
+                    self->TimingChannel(), job.stamp, job.id, job.authority);
             }
+            TraceTiming(timing::Event::Dequeue, self->timingProducer, self->TimingChannel(),
+                job.stamp, job.id, job.authority, {0, 0, job.device ? timing::DeviceInput : 0u,
+                                                job.corroboration.selectedJobId});
             QElapsedTimer timer;
             timer.start();
             RecognitionResult result;
+            std::uint32_t timingBackendFlags{};
             result.jobId = job.id;
             result.authority = job.authority;
             result.stamp = job.stamp;
@@ -1244,6 +1329,9 @@ struct RecognitionScheduler::State {
             result.stamp = job.stamp;
             const BackendState state = [&] {
                 std::lock_guard lock(self->mutex);
+                if (timing::Enabled()) timingBackendFlags =
+                    (self->status.state != BackendState::kNotStarted ? timing::BackendKnown : 0u) |
+                    (self->status.usesGpu ? timing::GpuBackend : 0u);
                 return self->status.state;
             }();
             if (state != BackendState::kReady) {
@@ -1271,15 +1359,27 @@ struct RecognitionScheduler::State {
                     pixels=job.device->Readback(self->cancelInFlight,result.output.error);
                     result.output.inputFault=pixels.isNull();
                 }
-                if(!job.device || wantsDevice || !pixels.isNull())result.output = wantsDevice
-                    ? self->recognizer->RecognizeDevice(*job.device, self->cancelInFlight)
-                    : self->recognizer->Recognize(pixels, self->cancelInFlight);
+                if(!job.device || wantsDevice || !pixels.isNull()) {
+                    if (timing::Enabled()) timingBackendFlags |= timing::InferenceAttempted;
+                    result.output = wantsDevice
+                        ? self->recognizer->RecognizeDevice(*job.device, self->cancelInFlight)
+                        : self->recognizer->Recognize(pixels, self->cancelInFlight);
+                }
                 else {result.output.cancelled=self->cancelInFlight.load();result.output.inputFault=true;}
                 const auto currentStatus = self->recognizer->Status();
+                if (timing::Enabled() && currentStatus.state != BackendState::kNotStarted) {
+                    timingBackendFlags &= ~(timing::BackendKnown | timing::GpuBackend);
+                    timingBackendFlags |= timing::BackendKnown | (currentStatus.usesGpu ? timing::GpuBackend : 0u);
+                }
                 if (currentStatus.state != BackendState::kNotStarted) self->Publish(currentStatus);
             }
             if (result.output.ok && !self->cancelInFlight.load()) {
-                const bool resident = pixels.isNull() && job.device && job.device->HasResidentAnalysis();
+                // The owned analysis image chooses provenance preparation,
+                // independently of the recognizer. A CPU bridge may need its
+                // existing image readback for OCR while the same selected
+                // lease still supplies resident references/colors and the
+                // canonical GPU-tree fingerprint used by preferred inference.
+                const bool resident = job.device && job.device->HasResidentAnalysis();
                 if (resident && !self->probeOnly) {
                     result.output.ok=job.device->PrepareResidentAnalysis(result,
                         self->referenceDecimation, false, self->cancelInFlight, result.output.error);
@@ -1377,6 +1477,7 @@ struct RecognitionScheduler::State {
             {
                 std::lock_guard lock(self->mutex);
                 self->inFlight = false;
+                if (timing::Enabled()) self->activeTiming = {};
                 current = job.authority == self->authority && !self->shutdown;
                 if (current) {
                     ++self->stats.completed;
@@ -1384,6 +1485,16 @@ struct RecognitionScheduler::State {
                     ++self->stats.revoked;
                 }
             }
+            const auto traceDone = [&] {
+                if (!timing::Enabled()) return;
+                auto values = TimingOutput(result.output, result.deviceInput, current, job.corroboration.selectedJobId);
+                values.flags |= timingBackendFlags;
+                TraceTiming(timing::Event::Done, self->timingProducer, self->TimingChannel(),
+                    result.stamp, job.id, job.authority, values);
+                if (values.flags & (timing::Failed | timing::InputFault))
+                    TraceTiming(timing::Event::Fault, self->timingProducer, self->TimingChannel(),
+                        result.stamp, job.id, job.authority, values);
+            };
             if (current) {
                 if (self->shadowPlanner && result.output.ok && !result.output.cancelled &&
                     !result.output.inputFault && !result.output.backendPreparing && !self->cancelInFlight.load()) {
@@ -1406,11 +1517,13 @@ struct RecognitionScheduler::State {
                     }
                     result.shadowPlannerMs = shadowTimer.nsecsElapsed() / 1e6;
                 }
+                traceDone();
                 std::lock_guard callbackLock(self->callbackMutex);
                 if (self->callbacksEnabled && self->completion) {
                     self->completion(std::move(result));
                 }
             }
+            else traceDone();
             // job.pixels is released only here, after the native call returned.
         }
         std::lock_guard lock(self->mutex);
@@ -1453,6 +1566,7 @@ RecognitionScheduler::~RecognitionScheduler()
 {
     {
         std::lock_guard lock(state_->mutex);
+        state_->TraceCancellation(timing::Shutdown);
         state_->shutdown = true;
         state_->pending.reset();
         ++state_->authority;
@@ -1522,6 +1636,7 @@ std::uint64_t RecognitionScheduler::SubmitDevice(const SourceStamp& stamp, Share
 void RecognitionScheduler::Cancel()
 {
     std::lock_guard lock(state_->mutex);
+    state_->TraceCancellation(0);
     ++state_->authority;
     if (state_->pending) {
         state_->pending.reset();
@@ -1535,6 +1650,8 @@ std::uint64_t RecognitionScheduler::Authority() const
     std::lock_guard lock(state_->mutex);
     return state_->authority;
 }
+
+std::uint64_t RecognitionScheduler::TimingProducerId() const noexcept { return state_->timingProducer; }
 
 bool RecognitionScheduler::IsCurrent(const RecognitionResult& result) const
 {
@@ -1584,6 +1701,16 @@ struct ProbeWorker::State {
     bool exited{};
     ProbeWorkerStats stats;
     std::thread thread;
+    const std::uint64_t timingProducer{timing::NewProducerId()};
+    timing::Key activeTiming;
+
+    void TraceCancellation(std::uint32_t flags) {
+        if (!timing::Enabled()) return;
+        if (pending) TraceTiming(timing::Event::Cancel, timingProducer, timing::Channel::Probe,
+            pending->second.stamp, pending->first, pendingAuthority, {0, 0, flags | timing::Cancelled});
+        if (activeTiming.jobId) timing::RecordEvent(timing::Event::Cancel, activeTiming,
+            {0, 0, flags | timing::Cancelled});
+    }
 
     static void Run(std::shared_ptr<State> self)
     {
@@ -1603,7 +1730,11 @@ struct ProbeWorker::State {
                 self->pending.reset();
                 self->inFlight = true;
                 self->cancelInFlight.store(jobAuthority != self->authority);
+                if (timing::Enabled()) self->activeTiming = TimingKey(self->timingProducer,
+                    timing::Channel::Probe, request.stamp, jobId, jobAuthority);
             }
+            TraceTiming(timing::Event::Dequeue, self->timingProducer, timing::Channel::Probe,
+                request.stamp, jobId, jobAuthority);
             ProbeOutcome outcome;
             outcome.jobId = jobId;
             outcome.authority = jobAuthority;
@@ -1638,8 +1769,18 @@ struct ProbeWorker::State {
                 std::lock_guard lock(self->mutex);
                 self->inFlight = false;
                 current = jobAuthority == self->authority && !self->shutdown;
+                if (timing::Enabled()) self->activeTiming = {};
                 ++(current ? self->stats.completed : self->stats.revoked);
                 self->stats.maxCheckMs = std::max(self->stats.maxCheckMs, outcome.checkMs);
+            }
+            if (timing::Enabled()) {
+                const timing::Values values{static_cast<std::uint32_t>(outcome.uncheckedLines),
+                    static_cast<std::uint32_t>(outcome.checks.size()),
+                    (current ? timing::Current : timing::Stale) | (outcome.probe ? 0u : timing::InputFault)};
+                TraceTiming(timing::Event::Done, self->timingProducer, timing::Channel::Probe,
+                    outcome.stamp, jobId, jobAuthority, values);
+                if (!outcome.probe) TraceTiming(timing::Event::Fault, self->timingProducer,
+                    timing::Channel::Probe, outcome.stamp, jobId, jobAuthority, values);
             }
             if (current) {
                 std::lock_guard callbackLock(self->callbackMutex);
@@ -1665,6 +1806,7 @@ ProbeWorker::~ProbeWorker()
 {
     {
         std::lock_guard lock(state_->mutex);
+        state_->TraceCancellation(timing::Shutdown);
         state_->shutdown = true;
         state_->pending.reset();
         ++state_->authority;
@@ -1694,11 +1836,16 @@ std::uint64_t ProbeWorker::Submit(ProbeRequest request)
         return 0;
     }
     if (state_->pending) {
+        TraceTiming(timing::Event::Cancel, state_->timingProducer, timing::Channel::Probe,
+            state_->pending->second.stamp, state_->pending->first, state_->pendingAuthority,
+            {0, 0, timing::Cancelled | timing::Coalesced});
         ++state_->stats.coalesced;
     }
     const std::uint64_t id = state_->nextJobId++;
     state_->pending.emplace(id, std::move(request));
     state_->pendingAuthority = state_->authority;
+    TraceTiming(timing::Event::Submit, state_->timingProducer, timing::Channel::Probe,
+        state_->pending->second.stamp, id, state_->authority);
     ++state_->stats.submitted;
     state_->wake.notify_one();
     return id;
@@ -1707,6 +1854,7 @@ std::uint64_t ProbeWorker::Submit(ProbeRequest request)
 void ProbeWorker::Cancel()
 {
     std::lock_guard lock(state_->mutex);
+    state_->TraceCancellation(0);
     ++state_->authority;
     if (state_->pending) {
         state_->pending.reset();
@@ -1720,6 +1868,8 @@ bool ProbeWorker::IsCurrent(const ProbeOutcome& outcome) const
     std::lock_guard lock(state_->mutex);
     return outcome.authority == state_->authority;
 }
+
+std::uint64_t ProbeWorker::TimingProducerId() const noexcept { return state_->timingProducer; }
 
 bool ProbeWorker::HasPending() const
 {
@@ -1753,6 +1903,8 @@ void OverlayModel::Reset()
     pendingEvidenceStamp_ = {};
     pendingEvidenceDigest_.clear();
     pendingEvidenceAuthority_ = 0;
+    immutableConflictRects_.clear();
+    immutableConflictSaturated_ = false;
     immutable_ = false;
     liveCamera_ = false;
 }
@@ -1804,9 +1956,70 @@ AdmitVerdict OverlayModel::AdmitImmutable(const RecognitionResult& result,
                 previous.push_back(line);
     }
     const auto verdict = AdmitImpl(result, selectedFrame, nullptr, nowMs, true, corroboration);
-    if (previous.isEmpty() || verdict == AdmitVerdict::kFailed || verdict == AdmitVerdict::kStaleScene)
+    if (verdict == AdmitVerdict::kFailed || verdict == AdmitVerdict::kStaleScene) return verdict;
+    if (!sameInput) {
+        immutableConflictRects_.clear();
+        immutableConflictSaturated_ = false;
+    }
+    const bool blocked = ApplyImmutableConflictBlocks(lines_);
+    if (previous.isEmpty()) {
+        if (blocked || immutableConflictSaturated_) {
+            return std::any_of(lines_.begin(), lines_.end(), [&](const auto& line) {
+                return IsShown(line, nowMs, after.frameSeq);
+            }) ? AdmitVerdict::kAccepted : AdmitVerdict::kContentMoved;
+        }
         return verdict;
+    }
     return MergeImmutableCoverage(previous, verdict, nowMs, after.frameSeq);
+}
+
+bool OverlayModel::ApplyImmutableConflictBlocks(QVector<AcceptedLine>& lines) const
+{
+    if (immutableConflictSaturated_) { lines.clear(); return true; }
+    if (immutableConflictRects_.isEmpty()) return false;
+    // At most 8192 exact-input blocks. Typical words inspect only their own
+    // vertical neighborhood rather than every conflict elsewhere on the page.
+    std::array<QVector<int>, 64> rows;
+    const auto range = [](const QRectF& rect) {
+        return std::pair{static_cast<int>(std::clamp(std::floor(rect.top() * 64), 0., 63.)),
+                         static_cast<int>(std::clamp(std::floor(rect.bottom() * 64), 0., 63.))};
+    };
+    for (int i = 0; i < immutableConflictRects_.size(); ++i) {
+        const auto [first, last] = range(immutableConflictRects_[i]);
+        for (int row = first; row <= last; ++row) rows[row].push_back(i);
+    }
+    bool changed = false;
+    QVector<AcceptedLine> retained;
+    for (auto& line : lines) {
+        auto indexes = line.readingWordIndices;
+        if (indexes.isEmpty()) {
+            int word = 0;
+            for (const auto& token : line.readingTokens) indexes.push_back(token.isEmpty() ? -1 : word++);
+        }
+        bool lineChanged = false;
+        for (qsizetype t = 0; t < indexes.size(); ++t) {
+            const int index = indexes[t];
+            if (index < 0 || index >= line.words.size()) continue;
+            auto& word = line.words[index];
+            const QRectF rect = word.sceneRect.translated(line.sceneOffset);
+            const auto [first, last] = range(rect);
+            bool conflict = false;
+            for (int row = first; !conflict && row <= last; ++row)
+                for (const auto block : rows[row])
+                    if (immutableConflictRects_[block].intersects(rect)) { conflict = true; break; }
+            if (!conflict) continue;
+            word.glyphEligible = false;
+            indexes[t] = -1;
+            line.readingTokens[t].clear();
+            ++line.omittedWords;
+            lineChanged = changed = true;
+        }
+        if (lineChanged) line.readingWordIndices = std::move(indexes);
+        if (std::any_of(line.readingTokens.begin(), line.readingTokens.end(),
+                [](const QString& token) { return !token.isEmpty(); })) retained.push_back(std::move(line));
+    }
+    lines = std::move(retained);
+    return changed;
 }
 
 AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& previous,
@@ -1860,7 +2073,12 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
         return indexes;
     };
     for (qsizetype i = 0; i < retained.size(); ++i) indexLine(i);
-    QSet<qsizetype> conflictingOld, conflictingNew;
+    bool conflict = false;
+    const auto block = [&](const QRectF& rect) {
+        if (std::find(immutableConflictRects_.begin(), immutableConflictRects_.end(), rect) != immutableConflictRects_.end()) return;
+        if (immutableConflictRects_.size() >= maximumWords) { immutableConflictSaturated_ = true; return; }
+        immutableConflictRects_.push_back(rect);
+    };
     for (qsizetype n = 0; n < incoming.size(); ++n) {
         if (!IsShown(incoming[n], nowMs, selectedFrameSeq)) continue;
         for (const auto o : nearby(incoming[n].sceneRect.translated(incoming[n].sceneOffset))) {
@@ -1871,20 +2089,21 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
                 for (const auto& newWord : incoming[n].words) {
                     if (newWord.glyphEligible && oldWord.text != newWord.text &&
                         strongOverlap(absolute(retained[o], oldWord), absolute(incoming[n], newWord))) {
-                        conflictingOld.insert(o);
-                        conflictingNew.insert(n);
+                        conflict = true;
+                        block(absolute(retained[o], oldWord));
+                        block(absolute(incoming[n], newWord));
                     }
                 }
             }
         }
     }
-    const bool conflict = !conflictingOld.isEmpty();
-    // A genuine contradictory pair is not an omission. Revoke the affected
-    // whole line, including its old proof; the controller must not roll this
-    // kContentMoved result back to the contradictory artifact.
-    for (qsizetype i = retained.size(); i-- > 0;)
-        if (conflictingOld.contains(i)) retained.removeAt(i);
+    // A disagreement names only its old/new word regions. Safe sibling words
+    // retain their complete objects and indexes; no punctuation/case/letter
+    // equivalence is invented. Persisting these blocks prevents a later
+    // preferred pair from silently resurrecting the same disputed word.
     if (conflict) {
+        ApplyImmutableConflictBlocks(retained);
+        ApplyImmutableConflictBlocks(incoming);
         for (auto& row : rows) row.clear();
         for (qsizetype i = 0; i < retained.size(); ++i) indexLine(i);
     }
@@ -1945,20 +2164,32 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
         return first;
     };
     for (qsizetype n = 0; n < incoming.size(); ++n) {
-        if (conflictingNew.contains(n)) continue;
         auto& candidate = incoming[n];
-        QVector<bool> keep(candidate.words.size(), true);
         const auto candidateIndexes = tokenIndexes(candidate);
+        QVector<bool> keep(candidate.words.size(), false);
+        for (const auto index : candidateIndexes)
+            if (index >= 0 && index < keep.size()) keep[index] = true;
         for (qsizetype w = 0; w < candidate.words.size(); ++w) {
+            if (!keep[w]) continue;
             const auto& word = candidate.words[w];
             const QRectF rect = absolute(candidate, word);
             const auto neighbors = nearby(rect);
             bool duplicate = false;
             for (const auto o : neighbors) {
-                const auto& old = retained[o];
+                auto& old = retained[o];
                 if (!old.sceneRect.translated(old.sceneOffset).intersects(rect)) continue;
-                for (const auto& existing : old.words)
-                    if (existing.glyphEligible && strongOverlap(absolute(old, existing), rect)) duplicate = true;
+                for (auto& existing : old.words)
+                    if (existing.glyphEligible && strongOverlap(absolute(old, existing), rect)) {
+                        duplicate = true;
+                        // Only matching incoming words with their OWN completed
+                        // proof may improve color on this exact selected source.
+                        // Retain the old ID/index, geometry, reference and clocks;
+                        // a color correction is never a new observation/proof.
+                        if (word.glyphEligible && IsShown(candidate, nowMs, selectedFrameSeq) &&
+                            word.text == existing.text && word.colors)
+                            existing.colors = StableLineColors(*word.colors,
+                                existing.colors ? &*existing.colors : &old.colors);
+                    }
             }
             if (duplicate) { keep[w] = false; continue; }
             AcceptedLine* target = nullptr;
@@ -2583,7 +2814,9 @@ bool OverlayModel::IsReadable(const AcceptedLine& line, std::int64_t nowMs, std:
 QVector<SceneWord> OverlayModel::SceneWords(std::int64_t nowMs, std::uint64_t currentFrameSeq) const
 {
     QVector<SceneWord> words;
-    QVector<QRectF> protectedRects;
+    // Conflict ink is shared scene protection even when its entire former
+    // line was removed. Adjacent plates must never occlude those originals.
+    QVector<QRectF> protectedRects = immutable_ ? immutableConflictRects_ : QVector<QRectF>{};
     for (const AcceptedLine& line : lines_) {
         for (const QRectF& r : line.protectedSceneRects)
             protectedRects.push_back(r.translated(line.sceneOffset));

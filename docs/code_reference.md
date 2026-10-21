@@ -1,12 +1,58 @@
 # OkuFlow Code Reference
 
+## Optional UCT software-event timing (2026-10-21)
+
+`uct::timing::{Channel,Event,Flag,Key,Values,PublicationTicket,Record}` describe
+numeric-only software events and exact producer/source/acquisition/job/authority
+correlation. `Recorder::{TryRecord,CloseInto}` owns a fixed 4096-record buffer.
+Its private `ActiveAttempt` guard latches incomplete coverage when close overlaps
+an unresolved producer/drop and bounds the window by copied event timestamps;
+`Snapshot` and `ChainSummary` distinguish lost, incomplete, cancelled, faulted
+and mismatched-ticket chains. `Summarize` covers worker/controller phases only.
+`WriteJsonLines` emits a locale-stable bounded schema; `Enabled`,
+`SteadyNanoseconds`, `NewProducerId`, `RecordEvent`, `CloseForDiagnostics` and
+`FlushAtNormalTeardown` implement opt-in process lifetime, nonblocking recording
+and one uniquely created LocalAppData output. No pixels, OCR text or arbitrary
+strings enter records. `GpuBackend` describes recognizer status separately from
+resident `DeviceInput`. See [timing contract](uct_timing_trace.md).
+
+`uct::TimingKey` and `TraceTiming` adapt `SourceStamp` without mixing media PTS
+with steady nanoseconds. Recognition and probe schedulers expose
+`TimingProducerId` and record submit/dequeue/done/cancel/state/fault boundaries.
+Controller `NoteTimingAdmission` captures the actual selected result plus its
+corroborator relation; `UpdatePositionedTimingPublication` issues positioned
+revisions only when content changes. `UpdatePaneTimingPublication` owns a
+separate pane ticket and can share the revision for simultaneous changes.
+`UpdateReadingText` cannot reticket unchanged positioned content.
+`SetTimingTicket` on overlay, panel and screen-text owner copies that provenance.
+The overlay records assignment and the first real backing-store paint per
+revision; the pane records changed text; accessibility records scheduled and
+published snapshots, including coalescence. Reprojection and export cannot
+manufacture a new admission or first-content paint.
+
+`uct_timing_trace_contract` tests recorder bounds, contention, concurrency,
+closed-window accounting, metadata schema and chain classification.
+`uct_timing_controller_contract` tests actual scripted scheduler/UI/admission
+ticket correlation, and `uct_screen_text_timing_publication` tests immediate
+replacement, delayed/coalesced additions and first-paint provenance. These are
+desktop-free software contracts, not external UIA or photon timing acceptance.
+`uct_timing_pane_publication_contract` exercises the real controller's pane-only
+change and later pan, preventing a phantom content-paint sample. Its staged
+80-ms fake clock awaits exact probe-frame validation and actual recognition
+admission callbacks before advancing, so setup cannot expire otherwise current
+350-ms proof while worker/UI receipts remain queued.
+
 ## Accessible video and immutable UCT (2026-10-18, development)
 
 - `AccessibleVirtualChildren`, `MarkAccessibleVirtualChildHost` and
   `kAccessibleVirtualChildHostProperty` add virtual elements to `RenderWidget`'s
   normal accessibility tree. `UctScreenTextAccessibility::{SetEnabled,
   ContentChanged,RevokeAll,ProcessDueWork}` owns bounded per-line StaticText
-  elements, passive one/three-second semantic timing and immediate revocation.
+  elements, passive one/three-second timing for new lines and immediate
+  revocation. `Sync` replaces changed text under an existing line ID in the same
+  update, preserving unchanged interfaces and the cadence for unrelated additions.
+  `replacementDoesNotWaitBehindReadingHold` covers mixed replacement/addition
+  under an active reading hold at all three offscreen scales.
   `UctScreenTextSnapshot` and `UctScreenTextTiming` define its source/timing DTOs.
   `uct::OrderLinesForReading`, `ScreenToken`, `ScreenLine`, `ScreenTextLimits`
   and `OverlayModel::ScreenLines` project only eligible glyph text and omission
@@ -78,6 +124,13 @@
   verified tail; new complete fragments resume it without another user action.
   Archive `parserBoxAttempts` exposes bounded unsupported-generation work.
   No playback method finalizes a writer.
+  Native codec fixture `NativeAvcAac` fences its exact active-wait clock check
+  with a separate test-owned `RecordingArchive`. Its `appendVerifiedPrefix`
+  lambda copies only an identity/generation-validated `OpenReadStream` extent
+  through `Observe` (16 MiB total, 64 KiB scratch), requires identical parsed
+  track/configuration/sample/endpoint metadata, and explicitly appends verified
+  native suffixes. Stable mirror version/extents are prerequisites for exact
+  held PTS; delayed native output cannot invalidate that fixture precondition.
 - `VideoAudioOutput::{Configure,Push,Reset,Close,Snapshot}` provide one bounded
   WASAPI owner. `VideoAudioOutputSnapshot` reports device-consumed PTS rather
   than submitted PCM; generation changes flush obsolete sound. See
@@ -6021,6 +6074,33 @@ leases and the compact regions/quads already returned by detection. Its private
 source/frame/processing/history identity and detector hash. Replay uploads only
 compact descriptors and uses existing group completion waits. No automatic
 backend constructs it, and it cannot cache/reuse text or authorize admission.
+The private `detail::FrozenUploadRetirement` (`src/common/uct_frozen_upload.hpp`)
+tracks a successfully queued descriptor H2D until `Completed()` follows the
+existing successful group wait. `Cancel()` transfers the exact entire State
+through `RetireState`/`AsyncCleanup` while the upload is pending: its owned input
+lease, pinned descriptor/token storage and engines survive until completion or
+the existing failed-cleanup quarantine. The caller retains State until the
+retirement handoff succeeds. A zero-crop/no-upload region or cancellation after
+the completed first group releases only `inFlight`, keeping healthy engines.
+Later regions re-arm the guard only after their own successful descriptor upload.
+The standalone headless `uct_frozen_upload_contract` exercises that actual
+ownership decision with a gated native-completion substitute, covering all
+three lifetimes, subsequent-job isolation and failed handoff. It executes no
+CUDA/TensorRT/cache/model operations and does not certify real driver timing.
+`detail::RetireOwnedState` is the shared final, nonthrowing retirement policy
+used by `TensorRtRecognizer::Retire()` and `Preparation::~Preparation()`.
+It keeps the reusable State owner until `RetireState` accepts an actual async
+cleanup receipt. If allocation/handoff throws or refuses ownership, it assigns
+the existing owner to State's pre-existing `retirementQuarantine` shared pointer
+before clearing reusable ownership. That noexcept shared-pointer copy allocates
+no new control block and retains the complete State/input/pinned-storage closure
+until process exit, matching `AsyncCleanup`'s unknown-completion failure policy.
+No receipt is fabricated for self-quarantine, and observer exceptions remain
+contained. `RecognizeDevice` seals this retirement decision before diagnostic
+error-string formatting, which may also fail under allocation pressure.
+The headless fixture covers cancellation handoff failure followed by final
+allocation failure or refusal, plus successful gated final release through
+this exact helper; the two final-retirement call sites use the same policy.
 `Selection::frozenCrops` in `uct_resident_diagnostic.hpp` holds separate bounded
 per-source pools and recreates only metering decorators; every timed frozen job
 asserts zero detector calls. Original complete-path timing remains the default.
@@ -6105,7 +6185,12 @@ read on the existing worker, and clear audio without a Pause seek. The private
 `repositionOnResume` flag preserves decoder realignment when display lags;
 `neighborMayReposition` authorizes deferred seek work only for an explicit
 Open/Seek. The application clears its predecessor on Pause and adopts a later
-neighbour-only snapshot only if its selected pointer still equals the hold.
+neighbour-only snapshot only if its selected pointer still equals the hold and
+the independent sample's PTS is later by at most 250 ms. Optional preparation
+stops before native reads when queued future images already exceed that window
+or the ready queue is full. Resume consumes rewound-cursor intent before the
+EOS/empty branch, preserving the real final PTS; live-tail Waiting publication
+also requires playback to remain active under the mutex.
 
 `CorroborationInputValid` validates an optional independent neighbouring input
 before it consumes the immutable controller's bounded evidence slot.
@@ -6115,6 +6200,21 @@ not cancel the selected job, reset its deadline/generation or clear the model.
 `HandleImmutableResult` preserves refused refinements while allowing an explicit
 `kContentMoved` contradiction to revoke old proof without rollback.
 
+`HasProvenImmutableArtifact` checks registered glyph proof against the current
+owned selected input, geometry generation, frame and real PTS. It grants no
+analysis/admission authority. `StopImmutableRefinement` exhausts optional work,
+cancels scheduler authority and clears pending handles while retaining the
+exact old model and its clocks. This presentation-only exception applies to
+terminal refinement errors; source/seek/settings changes and unsuccessful
+presentation still revoke or hide the artifact. Reading-only candidates do
+not qualify. The backend panel keeps the actual recognizer status.
+
+`RecognitionScheduler::State::Run` selects preparation from the device's
+resident-analysis capability independently of whether OCR itself ran on CPU.
+A temporary Windows bridge therefore uses the same resident reference/color
+and GPU-tree digest protocol as the later GPU result. It retains only the CPU
+OCR backend's explicit readback; resident errors cannot trigger CPU analysis.
+
 `OverlayModel::AdmitImmutable` compares complete selected-source provenance,
 authority and full digest before retaining earlier same-frame coverage.
 `MergeImmutableCoverage` keeps old proved word identities/geometry/reference/
@@ -6123,6 +6223,33 @@ are 1024 lines, 8192 word slots and 32768 reading tokens/protected rectangles;
 retired slots count toward the bound. A fixed 64-row spatial index limits
 ordinary matching to nearby rows. Contradictory independently proved overlap
 falls back to original ink, and source/seek changes cannot inherit old proof.
+`ApplyImmutableConflictBlocks` applies persistent word-local conflict rectangles
+through the same bounded index, including when no old glyph survives. The 8192
+rectangle cap fails closed on saturation. Only new complete selected-source
+authority/digest or `Reset` clears these blocks; repeated refinements cannot
+resurrect disputed text. Independently proved matching words may refresh only
+their stabilized colors without renewing IDs, slots, references, geometry or
+validation clocks.
+
+`MeasureLineColors` and the CUDA descriptor kernel share private integer
+`color_policy::{Rgb,Median,Compatible,Endpoint,AdjacentBackground,Background}` decisions. Three
+2-pixel body passes find robust ink/paper medians and the ink's opaque quartile;
+four bounded side strips require RGB agreement with local body clusters and
+in-box corner support before exterior color may override polarity. Scratch is
+fixed (about 8.3 KiB CPU stack and 9356 bytes CUDA shared memory per block), with
+no per-word allocation or image download. `LocalColorFixture`,
+`LocalColorFixtures` and `ColorDistance` supply shared controlled surfaces and
+tiny/clipped bounds to CPU and exact CUDA descriptor tests. These remain solid
+neutral-source colors, separate from display grading and 7:1 renderer contrast.
+All four immediately adjacent one-pixel sides can establish a compatible local
+surface without requiring paper in glyph-filled corners; that branch skips the
+farther ring. Missing or mixed adjacent sides retain the conservative fallback.
+
+`HandleProbe` records noncomposite residual invalidation in
+`probeInvalidatedSinceSubmit_`; it requests replacement OCR even while surviving
+lines cover the viewport. Successful submission or authority invalidation clears
+this demand. Stable-probe checks, 80 ms probe cadence, 350 ms advancing-media
+pacing, held-acquisition exclusion and latest-only pool ownership remain intact.
 
 `AcceptedLine::readingWordIndices` is optional. Empty retains the sequential
 token/word contract. Otherwise each reading token explicitly names its stable
@@ -6134,8 +6261,13 @@ active named slots rather than retired duplicate reading-only slots.
 The explicit `uct_paused_video_test::Run` / `optionalPausedVideoProof` diagnostic
 uses existing pinned M/M N8 plans and an inference-only SDK, actual owned CUDA
 inputs, production worker corroboration and immutable admission. It records
-per-word proof alongside raw candidate output, verifies zero image egress and
-unchanged cached-plan bytes, and waits for exact TensorRT State retirement.
+per-word proof alongside raw candidate output, verifies zero image egress in
+GPU-only mode and unchanged cached-plan bytes, and waits for exact TensorRT
+State retirement. Its explicit `CpuBridgeThenResident` diagnostic wrapper uses
+two real Windows OCR calls before real device recognition, checks the identical
+canonical fingerprint, and records old-word retention/revocation. That bridge
+mode counts exactly two explicit CPU OCR image readbacks. Per-word records
+require exact text and selected geometry rather than overlap matching.
 The direct `optionalDenseImage` diagnostic also waits for that receipt after
 recognizer destruction, including assertion exits. See
 `uct_paused_continuity_repair.md` for selectors, the 60 FPS source-specific frame

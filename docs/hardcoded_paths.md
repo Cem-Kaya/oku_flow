@@ -915,7 +915,32 @@ never redistributed. Synthetic translation is (2,1) pixels; it is not physical
 camera acceptance. No ordinary-runtime setting or OCR-reuse policy is enabled.
 
 
+## Optional paused-video UCT diagnostic (2026-10-21)
+
+The separate explicit paused-video diagnostic uses
+`OKUFLOW_UCT_PAUSE_DIAGNOSTIC=1`, absolute private image paths in
+`OKUFLOW_UCT_PAUSE_SELECTED` / `OKUFLOW_UCT_PAUSE_NEIGHBOUR`, and their actual
+millisecond PTS in `OKUFLOW_UCT_PAUSE_SELECTED_MS` /
+`OKUFLOW_UCT_PAUSE_NEIGHBOUR_MS`. It writes unique
+`%LOCALAPPDATA%/OkuFlow/uct-pause-proof-<timestamp>-<uuid>` reports. The existing
+`OKUFLOW_UCT_TENSORRT_ROOT` must name an inference-only SDK, and pinned M/M N1/N8
+plans must already be cached; no download or engine build is permitted.
+`OKUFLOW_UCT_PAUSE_BRIDGE=1` adds a real Windows OCR pair before TensorRT to
+inspect same-source refinement; its two explicit CPU OCR readbacks are counted
+separately from the zero-egress GPU-only mode.
+Its frame-sequence mapping assumes this private source's 60 FPS. The selected
+and neighbour images must differ and be within 250 ms. Inputs and reports are
+never bundled, and ordinary CTest does not select the diagnostic. See
+[paused continuity repair](uct_paused_continuity_repair.md) for its scope.
+
 ## Optional UCT shadow diagnostics (2026-10-20)
+
+`OKUFLOW_UCT_TIMING_TRACE=1` enables a cached process-wide metadata trace.
+Normal teardown writes once with exclusive creation under
+`%LOCALAPPDATA%/OkuFlow/uct-timing/uct-timing-<pid>-<steady-ns>-<n>.jsonl`.
+It retains at most 4096 numeric records, reports dropped/incomplete chains,
+and never records pixels, recognized text, source paths or credentials.
+Tracing does not request models or uploads. See [trace contract](uct_timing_trace.md).
 
 `OKUFLOW_UCT_SHADOW_PLANNER=1` opts the app's existing OCR worker into a
 metadata-only observer. Default operation allocates no planner. One optional

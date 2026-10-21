@@ -3,6 +3,7 @@
 #if defined(_WIN32) || defined(Q_MOC_RUN)
 
 #include "okuflow/common/ultra_clear_text.hpp"
+#include "okuflow/common/uct_timing_trace.hpp"
 
 #include <QAccessible>
 #include <QObject>
@@ -27,8 +28,9 @@ QT_END_NAMESPACE
 // Grouping root, and one StaticText element per OCR line, each with its own
 // text interface. Geometry is answered at query time from the overlay's last
 // actual paint, mapped to global logical pixels (Qt's UIA adapter applies DPI
-// once). Content additions are published on a 1 s cadence, held up to 3 s
-// while a screen reader is reading; every loss of validation or authority is
+// once). New lines are published on a 1 s cadence, held up to 3 s
+// while a screen reader is reading. Changed existing lines are replaced
+// immediately; every loss of validation or authority is
 // revoked synchronously. Nothing is announced, focused or spoken unprompted.
 // See docs/uct_screen_text_accessibility.md.
 namespace okuflow {
@@ -102,6 +104,9 @@ public:
     // rebinding apply now; additions wait for the cadence (or publish at once
     // when nothing was published since enable, activation or RevokeAll()).
     void ContentChanged();
+    // Diagnostic content ticket copied when additions are scheduled. View
+    // projection cannot create an admission or change a pending ticket.
+    void SetTimingTicket(uct::timing::PublicationTicket ticket) { timingTicket_ = ticket; }
     // Synchronously deletes every line element; the root stays (empty).
     void RevokeAll();
     // Cadence timer body; public for fixtures that drive a fake clock.
@@ -133,6 +138,9 @@ private:
         QAccessible::Id id{};
         UctScreenLineAccessible* iface{};
     };
+    uct::timing::PublicationTicket timingTicket_{};
+    uct::timing::PublicationTicket scheduledTimingTicket_{};
+    bool haveScheduledTimingTicket_{};
 
     void accessibilityActiveChanged(bool active) override;
     void Sync(bool publishAdditions);

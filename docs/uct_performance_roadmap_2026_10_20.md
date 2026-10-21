@@ -150,3 +150,32 @@ boundaries and duplicate rejection on all 18 full outputs, zero image egress
 and unchanged cached plans. All four owner-quality comparisons pass; the two
 original strict failures and normal exit one remain preserved. Hosted native
 GUI and real screen-reader/camera acceptance are separate from these results.
+
+## Follow-up latency work (2026-10-21, development)
+
+The paused-continuity repair also removes two code-level waits: partial real
+probe invalidation now requests replacement OCR within the existing stability
+and pacing constraints, and changed same-ID accessibility lines replace their
+revoked ranges immediately rather than waiting one to three seconds. These are
+separate from inference speed and native reader discovery.
+
+GPU-only profiles of the owner's 55/89-second source pairs found warmed
+neighbour-read wall intervals of 231.68/220.65 ms, with 3.85/3.34 ms host merging
+and 65.93%/65.30% recognition-canvas padding. They are individual instrumented
+observations, with no display/decoder load control, not a latency distribution.
+They used pinned M/M batch-eight engines, zero image egress and unchanged cached
+plans. Raw profile logs and exit receipts stay in the private continuity
+evidence directory. Host merging is about 1.5% of this path, so overlapping it
+cannot provide the order-of-magnitude gain needed for dense 120 FPS OCR.
+
+The next experiment is an explicitly opt-in smaller-width recognition profile,
+preserving crop order and testing exact text/omission behavior against the
+existing canvas before any default changes. It is not enabled or accepted by
+this measurement. TensorRT batching, graphs and stream overlap must be evaluated
+on the critical path; throughput and latency need separate measurements. See
+[NVIDIA's performance guidance](https://docs.nvidia.com/deeplearning/tensorrt/latest/performance/optimization.html).
+
+At 120 recognitions per second the per-read budget is 8.33 ms. No RTX 3050
+measurement or dense-page 120 FPS claim is made. Presentation-rate projection
+of already proved text remains separate from lower-rate recognition and
+independent validation. The shadow planner still cannot skip production OCR.
