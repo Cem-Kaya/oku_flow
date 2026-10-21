@@ -11,6 +11,7 @@
 #include "uct_character_diagnostic.hpp"
 #include "uct_resident_diagnostic.hpp"
 #include "uct_paused_video_diagnostic.hpp"
+#include "uct_active_regional_diagnostic.hpp"
 #include <QFontDatabase>
 #include <QLineF>
 #include <QPainter>
@@ -920,7 +921,8 @@ class PaddleTests final : public QObject
         overlay.SetViewTransform(second.stamp.viewTransform);
         QVector<okuflow::UltraClearTextOverlay::SceneWord> glyphs;
         for (const auto& word : words)
-            glyphs.push_back({word.text,word.sceneRect,word.colors,word.lineId,word.protectedSceneRects,word.wordIndex});
+            glyphs.push_back({word.text,word.sceneRect,word.colors,word.lineId,word.protectedSceneRects,
+                             word.wordIndex,word.sceneQuad,word.layoutGroupId});
         overlay.SetWords(std::move(glyphs));
         QTRY_VERIFY(overlay.PaintedGeometryCurrent());
         QImage layer(size, QImage::Format_ARGB32_Premultiplied); layer.fill(Qt::transparent);
@@ -1026,6 +1028,52 @@ class PaddleTests final : public QObject
     void optionalPausedVideoProof()
     {
         uct_paused_video_test::Run();
+    }
+    void optionalActiveRegionalProof()
+    {
+        uct_active_regional_test::Run();
+    }
+    void supplementalFailureKeepsPreferredBackend()
+    {
+        uct_startup_test::Calls gpu, cpu, windows;
+        auto backend = uct_startup_test::Make(gpu, cpu, windows);
+        QCOMPARE(backend->Initialize().state, BackendState::kReady);
+        std::atomic<bool> cancelled{};
+        QVERIFY(backend->Recognize({}, cancelled).ok);
+        gpu.fail = true;
+        backend->SetDetailFocus(DetailFocus{QRect(0, 0, 160, 96), 1.0, 480, true});
+        QVERIFY(!backend->Recognize({}, cancelled).ok);
+        QCOMPARE(backend->Status().name, QStringLiteral("GPU"));
+        QCOMPARE(gpu.initialized, 1);
+        QCOMPARE(gpu.recognized, 2);
+        QCOMPARE(cpu.initialized, 0); QCOMPARE(cpu.recognized, 0);
+        QCOMPARE(windows.initialized, 0); QCOMPARE(windows.recognized, 0);
+        backend->SetDetailFocus(std::nullopt);
+        gpu.fail = false;
+        QVERIFY(backend->Recognize({}, cancelled).ok);
+        QCOMPARE(backend->Status().name, QStringLiteral("GPU"));
+        QCOMPARE(gpu.initialized, 1); QCOMPARE(gpu.recognized, 3);
+        QCOMPARE(cpu.initialized, 0); QCOMPARE(windows.initialized, 0);
+    }
+    void supplementalPreparingDoesNotStartCpuBridge()
+    {
+        uct_startup_test::Calls gpu, cpu, windows;
+        gpu.preparing = true;
+        auto backend = uct_startup_test::Make(gpu, cpu, windows);
+        QCOMPARE(backend->Initialize().state, BackendState::kReady);
+        std::atomic<bool> cancelled{};
+        backend->SetDetailFocus(DetailFocus{QRect(0, 0, 160, 96), 1.0, 480, true});
+        const auto output = backend->Recognize({}, cancelled);
+        QVERIFY(!output.ok && output.backendPreparing);
+        QCOMPARE(gpu.recognized, 0);
+        QCOMPARE(cpu.initialized, 0); QCOMPARE(cpu.recognized, 0);
+        QCOMPARE(windows.initialized, 0); QCOMPARE(windows.recognized, 0);
+        backend->SetDetailFocus(std::nullopt);
+        gpu.preparing = false;
+        QVERIFY(backend->Recognize({}, cancelled).ok);
+        QCOMPARE(backend->Status().name, QStringLiteral("GPU"));
+        QCOMPARE(gpu.initialized, 1); QCOMPARE(gpu.recognized, 1);
+        QCOMPARE(cpu.initialized, 0); QCOMPARE(windows.initialized, 0);
     }
     void ctcBlankRepeatSpaceAndConfidence()
     {
