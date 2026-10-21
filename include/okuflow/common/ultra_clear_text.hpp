@@ -823,6 +823,17 @@ class OverlayModel {
 public:
     explicit OverlayModel(ModelTuning tuning = {});
 
+    struct RegionalWordMatch {
+        std::uint64_t oldLineId{}, proposedLineId{};
+        int oldWordIndex{-1}, proposedWordIndex{-1};
+    };
+    // Synchronous optional UI-thread precommit check, never recognition or a
+    // publication. The renderer checks its actual painted identities against
+    // one capped proposal within the remaining admission budget. Without it,
+    // novel protection with existing glyphs is conservatively refused.
+    using RegionalPreflight = std::function<bool(const OverlayModel&,
+        const QVector<RegionalWordMatch>&, double remainingMs)>;
+
     void Reset();
     // A previously pending live word needs a different frame and unequal
     // complete source-pixel digests under the same scheduler authority.
@@ -830,7 +841,7 @@ public:
     AdmitVerdict Admit(const RecognitionResult& result,
                        const SourceStamp& current,
                        const ProbeFrame* latestProbe,
-                       std::int64_t nowMs);
+                       std::int64_t nowMs, const RegionalPreflight& preflight = {});
     // Live capture uses the capture owner's monotonically increasing sample
     // sequence as independent acquisition evidence. Identical source pixels
     // are valid on a steady camera/virtual feed; repainting the same sample
@@ -843,14 +854,14 @@ public:
     AdmitVerdict AdmitLiveCamera(const RecognitionResult& result,
                                 const SourceStamp& current,
                                 const ProbeFrame* latestProbe,
-                                std::int64_t nowMs);
+                                std::int64_t nowMs, const RegionalPreflight& preflight = {});
     // Advancing saved media retains real media PTS in every stamp. Admission
     // uses the live temporal/residual policy with an independent caller-owned
     // wall-clock job deadline instead of the live source-age gate.
     AdmitVerdict AdmitAdvancingMedia(const RecognitionResult& result,
                                      const SourceStamp& current,
                                      const ProbeFrame* latestProbe,
-                                     std::int64_t mediaNowMs);
+                                     std::int64_t mediaNowMs, const RegionalPreflight& preflight = {});
     // One explicitly selected immutable frame: require exact scene/frame
     // identity. One result exposes text with uncertainty and leaves source ink.
     // Glyphs require an optional genuinely distinct compatible neighbor: full
@@ -908,7 +919,8 @@ private:
     AdmitVerdict AdmitImpl(const RecognitionResult& result, const SourceStamp& current,
                            const ProbeFrame* latestProbe, std::int64_t nowMs, bool immutable,
                            const RecognitionResult* corroboration = nullptr,
-                           bool advancingMedia = false, bool liveCamera = false);
+                           bool advancingMedia = false, bool liveCamera = false,
+                           const RegionalPreflight& preflight = {});
     AdmitVerdict MergeImmutableCoverage(const QVector<AcceptedLine>& previous,
                                         AdmitVerdict verdict, std::int64_t nowMs,
                                         std::uint64_t selectedFrameSeq);

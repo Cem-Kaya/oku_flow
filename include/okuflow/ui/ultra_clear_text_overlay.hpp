@@ -7,6 +7,7 @@
 #include "okuflow/ui/uct_overlay_snapshot.hpp"
 
 #include <QFont>
+#include <QDeadlineTimer>
 #include <QHash>
 #include <QPointer>
 #include <QRegion>
@@ -111,6 +112,13 @@ public:
     // part of it or its text differs from `text`.
     bool PaintedWord(std::uint64_t lineId, int wordIndex, const QString& text,
                      PaintedWordGeometry& out) const;
+    // Optional UI-thread transaction guard. Uses the actual current paint as
+    // old authority and one cache-only proposed plan; no paint/publication,
+    // event pumping, visibility change or cold text shaping. Refuses absent
+    // paint authority, changed context, cold typography or budget exhaustion.
+    bool PreservesDrawnWords(QVector<SceneWord> proposed,
+                            const QVector<uct::OverlayModel::RegionalWordMatch>& matches,
+                            double remainingMs);
     // Projects a scene rect through the transform of the last paint.
     QRectF PaintedSceneRect(const QRectF& sceneRect) const;
     // Bounding box of the part of `local` the last paint left visible.
@@ -127,11 +135,12 @@ private:
     std::uint64_t timingPaintedRevision_{};
     void SyncGeometryToRenderTarget();
     void UpdateVisibility();
-    void RebuildGlyphLayout();
+    bool RebuildGlyphLayout(const QDeadlineTimer* deadline = nullptr);
     QRectF InkAtReference(const QString& text);
     struct PaintPlan;
-    void ComputePaintPlan(PaintPlan& plan, const ViewTransform& transform,
-                          const QSize& viewportSize, bool excludeChrome);
+    bool ComputePaintPlan(PaintPlan& plan, const ViewTransform& transform,
+                          const QSize& viewportSize, bool excludeChrome,
+                          const QDeadlineTimer* deadline = nullptr);
     void PaintWords(QPainter& painter, const PaintPlan& plan) const;
     // Caret x of every UTF-16 position shaped with `font` (NaN inside a
     // grapheme cluster). Computed lazily on the first accessibility query.
@@ -209,7 +218,7 @@ private:
     PaintPlan plan_;
     // Projects one rotated word; false when its view quad is degenerate.
     bool PlanOriented(PlannedWord& planned, const SceneGlyph& glyph, const uct::TextQuad& viewQuad) const;
-    void ResolveOverlaps();
+    bool ResolveOverlaps(const QDeadlineTimer* deadline = nullptr);
     QRegion protectedInk_; // reused scratch
     mutable QHash<std::pair<std::uint64_t, int>, int> planIndex_;
     mutable std::uint64_t planIndexGeneration_{};

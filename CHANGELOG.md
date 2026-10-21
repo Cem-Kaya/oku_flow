@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Commit immutable UCT refinement words together with their complete protection;
+  a late unsafe cut or storage limit leaves the previous candidate state intact.
+  Refuse optional regional changes whose conservative punctuation pixels would
+  suppress an already painted word, using a bounded scratch renderer check.
+
 - Preserve original thin UCT punctuation when one projected axis contains no
   pixel centres. Track bounded subtraction-remainder metadata so carved strips
   still avoid hiding adjacent proved words; original protection wins identical

@@ -869,6 +869,9 @@ private slots:
     void immutableRiskProtectionSurvivesCrossLineRefinement();
     void immutableIncomingProtectionOutlivesWordConsumption_data();
     void immutableIncomingProtectionOutlivesWordConsumption();
+    void immutableCandidateProtectionRefusalIsAtomic_data();
+    void immutableCandidateProtectionRefusalIsAtomic();
+    void regionalScratchPlanPreservesPaintAuthority();
     void immutableQuadCarveKeepsOutsidePunctuation();
     void immutableProtectionClassificationSurvivesTransfer_data();
     void immutableProtectionClassificationSurvivesTransfer();
@@ -3489,6 +3492,137 @@ void UltraClearTextTests::immutableIncomingProtectionOutlivesWordConsumption()
     QCOMPARE(model.AdmitImmutable(selected,selected.stamp,80'000,&neighbor),AdmitVerdict::kAccepted);
     QCOMPARE(model.Lines().size(),count); // repeated masks must not grow anonymous history
     QVERIFY(preserves(model.SceneWords(80'000,55).first().protectedSceneRects));
+}
+
+void UltraClearTextTests::regionalScratchPlanPreservesPaintAuthority()
+{
+    QWidget target; target.resize(960,540); target.show();
+    UltraClearTextOverlay overlay(&target,&target);
+    ViewTransform transform; transform.valid = true;
+    const auto scene = [&](const QRectF& rect) { return ViewRectToScene(transform,960,540,rect); };
+    UltraClearTextOverlay::SceneWord word{QStringLiteral("Reading"),scene({100,100,100.7,20}),
+        {Qt::black,Qt::white},1,{},0};
+    overlay.SetViewTransform(transform); overlay.SetWords({word});
+    QTRY_VERIFY(overlay.PaintedGeometryCurrent());
+    const auto generation = overlay.PaintedGeneration(), count = overlay.PaintCount();
+    const auto ticket = overlay.TimingTicket(); const auto paintedTicket = overlay.PaintedTimingRevision();
+    const bool visible = overlay.isVisible();
+    UltraClearTextOverlay::PaintedWordGeometry before;
+    QVERIFY(overlay.PaintedWord(1,0,word.text,before)); QVERIFY(before.drawn);
+    const QVector<OverlayModel::RegionalWordMatch> matches{{1,2,0,0}};
+    auto proposed = word; proposed.lineId = 2;
+    proposed.protectedSceneRects = {scene({300,102,.2,15})};
+    QVERIFY(overlay.PreservesDrawnWords({proposed},matches,3.0)); // must really compute a safe scratch plan
+    proposed.protectedSceneRects = {scene({200.75,102,.2,15})};
+    QVERIFY(!overlay.PreservesDrawnWords({proposed},matches,3.0));
+    QVERIFY(!overlay.PreservesDrawnWords({proposed},matches,0.0));
+    auto cold = proposed; cold.text = QStringLiteral("UncachedTypography");
+    QVERIFY(!overlay.PreservesDrawnWords({cold},matches,3.0));
+    QCOMPARE(overlay.PaintedGeneration(),generation); QCOMPARE(overlay.PaintCount(),count);
+    QCOMPARE(overlay.TimingTicket().revision,ticket.revision); QCOMPARE(overlay.PaintedTimingRevision(),paintedTicket);
+    QCOMPARE(overlay.isVisible(),visible); QVERIFY(overlay.PaintedGeometryCurrent());
+    QCOMPARE(overlay.Words().size(),1); QCOMPARE(overlay.Words()[0].lineId,std::uint64_t(1));
+    QVERIFY(overlay.Words()[0].protectedSceneRects.isEmpty());
+    UltraClearTextOverlay::PaintedWordGeometry after;
+    QVERIFY(overlay.PaintedWord(1,0,word.text,after)); QVERIFY(after.drawn);
+    QCOMPARE(after.box,before.box); QCOMPARE(after.characters,before.characters);
+    transform.sourceX = .01f; overlay.SetViewTransform(transform);
+    QVERIFY(!overlay.PreservesDrawnWords({proposed},matches,3.0)); // unpainted projection has no old authority
+    QCOMPARE(overlay.PaintedGeneration(),generation);
+}
+
+void UltraClearTextTests::immutableCandidateProtectionRefusalIsAtomic_data()
+{
+    QTest::addColumn<bool>("capacity");
+    QTest::newRow("late-risk-after-append") << false;
+    QTest::newRow("append-consumes-last-slot-before-fragment") << true;
+}
+
+void UltraClearTextTests::immutableCandidateProtectionRefusalIsAtomic()
+{
+    QFETCH(bool, capacity);
+    auto [selected, neighbor] = ImmutablePair(MakeLayoutPage({
+        {"Left",{100,100},48},{"Added",{300,100},48},{"Right",{600,100},48}}));
+    auto coarse = selected, coarseNeighbor = neighbor;
+    for (auto* result : {&coarse,&coarseNeighbor}) {
+        result->output.lines[0].words.removeAt(1); result->prepared[0].words.removeAt(1);
+        if (capacity) {
+            auto raw = result->output.lines[0]; raw.words.clear();
+            auto row = result->prepared[0]; row.words.clear(); row.sceneRect = {.01,.8,.98,.01};
+            row.reference.sceneRect = row.sceneRect;
+            for (int w = 0; w < 8189; ++w) {
+                auto word = result->prepared[0].words[0]; word.text = QStringLiteral("Stored");
+                word.sceneRect = {.01 + (w % 100)*.009,.8 + (w / 100)*.00001,.0001,.0001};
+                word.protectedSceneRect = word.sceneRect;
+                row.words.push_back(word); raw.words.push_back({word.text,word.sceneRect});
+            }
+            result->prepared.push_back(row); result->output.lines.push_back(raw);
+        }
+    }
+    coarseNeighbor.corroborationMatches = QVector<bool>(coarse.prepared.size(),false);
+    coarseNeighbor.corroborationWordMatches = {{true,true}};
+    if (capacity) coarseNeighbor.corroborationWordMatches.push_back(QVector<bool>(8189,true));
+    OverlayModel model, control;
+    QCOMPARE(model.AdmitImmutable(coarse,coarse.stamp,60'000,&coarseNeighbor),AdmitVerdict::kAccepted);
+    QCOMPARE(control.AdmitImmutable(coarse,coarse.stamp,60'000,&coarseNeighbor),AdmitVerdict::kAccepted);
+    const auto before = model.Lines();
+    const auto reading = model.ReadingText(60'000,selected.stamp.frameSeq);
+    const auto added = selected.prepared[0].words[1];
+    const QRectF comma(added.sceneRect.right()+.001,added.sceneRect.center().y(),.001,.004);
+    for (auto* result : {&selected,&neighbor}) {
+        auto row = result->prepared[0]; row.words = {added}; row.sceneRect = added.sceneRect.united(comma);
+        auto raw = result->output.lines[0]; raw.words = {raw.words[1]};
+        auto other = added;
+        if (capacity) {
+            other.text = QStringLiteral("Fragment"); other.sceneRect.translate(0,.3);
+            other.protectedSceneRect = other.sceneRect;
+        } else {
+            other.text = QStringLiteral("-"); other.sceneRect = before[0].words[0].sceneRect;
+            other.protectedSceneRect = other.sceneRect; other.disposition = TokenDisposition::kHighRisk;
+        }
+        row.words.push_back(other); row.sceneRect = row.sceneRect.united(other.sceneRect);
+        RecognizedWord rawOther{other.text,other.sceneRect};
+        rawOther.confidence = other.confidence; rawOther.disposition = other.disposition;
+        raw.words.push_back(rawOther);
+        auto mark = added; mark.text = QStringLiteral(","); mark.sceneRect = mark.protectedSceneRect = comma;
+        mark.disposition = TokenDisposition::kLowConfidence; mark.confidence = .1;
+        row.words.push_back(mark);
+        RecognizedWord rawMark{mark.text,comma}; rawMark.confidence = .1; rawMark.disposition = mark.disposition;
+        raw.words.push_back(rawMark);
+        result->prepared = {row}; result->output.lines = {raw};
+    }
+    neighbor.corroborationMatches = {false}; neighbor.corroborationWordMatches = {{true,capacity,false}};
+    QCOMPARE(model.AdmitImmutable(selected,selected.stamp,70'000,&neighbor),AdmitVerdict::kAccepted);
+    QCOMPARE(model.ReadingText(70'000,selected.stamp.frameSeq),reading);
+    QCOMPARE(model.Lines().size(),before.size());
+    for (int i = 0; i < before.size(); ++i) {
+        const auto& after = model.Lines()[i]; const auto& old = before[i];
+        QCOMPARE(after.id,old.id); QCOMPARE(after.words.size(),old.words.size());
+        QCOMPARE(after.sceneRect,old.sceneRect); QCOMPARE(after.sceneOffset,old.sceneOffset);
+        QCOMPARE(after.readingTokens,old.readingTokens); QCOMPARE(after.readingWordIndices,old.readingWordIndices);
+        QCOMPARE(after.protectedSceneRects,old.protectedSceneRects);
+        QCOMPARE(after.nonCarvableSceneRects,old.nonCarvableSceneRects); QCOMPARE(after.carvedSceneRects,old.carvedSceneRects);
+        QCOMPARE(after.reference.values,old.reference.values); QCOMPARE(after.valid,old.valid);
+        QCOMPARE(after.validatedAtMs,old.validatedAtMs); QCOMPARE(after.validatedFrameSeq,old.validatedFrameSeq);
+        QCOMPARE(after.omittedWords,old.omittedWords); QCOMPARE(after.provenance.frameSeq,old.provenance.frameSeq);
+        for (int w = 0; w < old.words.size(); ++w) {
+            QCOMPARE(after.words[w].text,old.words[w].text); QCOMPARE(after.words[w].sceneRect,old.words[w].sceneRect);
+            QCOMPARE(after.words[w].sceneQuad,old.words[w].sceneQuad);
+            QCOMPARE(after.words[w].glyphEligible,old.words[w].glyphEligible);
+            QCOMPARE(after.words[w].layoutGroupId,old.words[w].layoutGroupId);
+        }
+    }
+    // A refused candidate must not consume IDs used by the next independent
+    // selected frame (nor IDs serving only as appended typography groups).
+    auto follow = coarse, followNeighbor = coarseNeighbor;
+    follow.jobId = 301; follow.stamp.frameSeq += 10; follow.stamp.timestampMs += 10;
+    follow.reference.stamp = follow.stamp;
+    followNeighbor.stamp.frameSeq += 10; followNeighbor.stamp.timestampMs += 10;
+    followNeighbor.reference.stamp = followNeighbor.stamp; followNeighbor.corroboratedJobId = follow.jobId;
+    model.AdmitImmutable(follow,follow.stamp,80'000,&followNeighbor);
+    control.AdmitImmutable(follow,follow.stamp,80'000,&followNeighbor);
+    QCOMPARE(model.Lines().size(),control.Lines().size());
+    for (int i = 0; i < model.Lines().size(); ++i) QCOMPARE(model.Lines()[i].id,control.Lines()[i].id);
 }
 
 void UltraClearTextTests::immutableQuadCarveKeepsOutsidePunctuation()

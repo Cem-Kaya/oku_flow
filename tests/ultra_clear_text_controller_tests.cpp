@@ -519,6 +519,8 @@ private slots:
     void activeRegionalPreservesPausedDetailPair();
     void activeQueuedRegionalIsSupersededByFull();
     void activeRegionalWithdrawalDoesNotDemandExtraFull();
+    void activeRegionalRasterWithdrawalIsAtomic_data();
+    void activeRegionalRasterWithdrawalIsAtomic();
     void timingNonimmutableMutationKeepsCausalTickets();
     void timingTraceKeepsWorkerAndAdmissionTickets();
     void timingPaneOnlyChangePreservesPositionedTicket();
@@ -809,10 +811,89 @@ void UltraClearTextControllerTests::activeRegionalWithdrawalDoesNotDemandExtraFu
     QCOMPARE(h.controller->Model().PendingWordCount(),0);
 }
 
+void UltraClearTextControllerTests::activeRegionalRasterWithdrawalIsAtomic_data()
+{
+    QTest::addColumn<bool>("oriented");
+    QTest::newRow("upright-original-thin-mask") << false;
+    QTest::newRow("quad-original-thin-mask") << true;
+}
+
+void UltraClearTextControllerTests::activeRegionalRasterWithdrawalIsAtomic()
+{
+    QFETCH(bool,oriented);
+    RegionalFlag flag(true); ImmutableHarness h;
+    h.page = MakeLayoutPage({{"Reading",{100,100},32}},960,540);
+    h.Enable(); QTRY_COMPARE(h.controller->BackendStatusSnapshot().state,BackendState::kReady);
+    h.owner.resize(1000,600); h.owner.show(); // offscreen fixture only
+    UctFrameContext context;
+    context.geometry = h.Scene().geometry; context.requested = context.geometry.settings;
+    context.transform.valid = true; context.cameraActive = true;
+    context.viewportWidth = 960; context.viewportHeight = 540;
+    const QRectF source(100,100,100.7,20), mark(200.75,102,.2,15);
+    QVERIFY(!source.intersects(mark));
+    const auto result = [&](std::uint64_t job, std::uint64_t seq, bool regional) {
+        h.now += 20; context.frameSeq = seq;
+        h.controller->OnPresented(context); h.controller->OnPresentationSucceeded();
+        RecognitionResult r; r.jobId = job; r.authority = UctControllerTestAccess::Authority(*h.controller);
+        r.stamp = UctControllerTestAccess::Stamp(*h.controller);
+        r.stamp.frameSeq = seq; r.stamp.timestampMs = h.now; r.stamp.liveCameraCapture = true;
+        r.stamp.viewTransform.valid = true; r.stamp.viewportWidth = 960; r.stamp.viewportHeight = 540;
+        const auto pixels = IndependentFramePixels(h.page.image,seq);
+        r.reference = MakeProbeFrame(pixels.constBits(),960,540,int(pixels.bytesPerLine()),2,r.stamp);
+        RecognizedWord word{QStringLiteral("Reading"),source};
+        if (oriented) {
+            word.quadPx.valid = true;
+            word.quadPx.points = {QPointF(100,100),QPointF(200.7,104),QPointF(200.7,120),QPointF(100,116)};
+        }
+        r.output.ok = true; r.output.lines = {RecognizedLine{{word}}};
+        r.regionalRequested = regional; r.jobKind = regional ? RecognitionJobKind::Regional : RecognitionJobKind::Full;
+        if (regional) {
+            r.output.detailRegionPx = {0,0,400,200};
+            RecognizedWord uncertain{QStringLiteral(","),mark};
+            uncertain.confidence = .1; uncertain.disposition = TokenDisposition::kLowConfidence;
+            r.output.lines[0].words.push_back(uncertain);
+        }
+        return r;
+    };
+    UctControllerTestAccess::Deliver(*h.controller,result(101,1,false));
+    UctControllerTestAccess::Deliver(*h.controller,result(102,2,false));
+    QTRY_VERIFY(h.overlay.PaintedGeometryCurrent());
+    const auto before = h.controller->Model().Lines(); QVERIFY(!before.isEmpty());
+    const auto oldWord = h.overlay.Words().first();
+    UltraClearTextOverlay::PaintedWordGeometry painted;
+    QVERIFY(h.overlay.PaintedWord(oldWord.lineId,oldWord.wordIndex,oldWord.text,painted));
+    QVERIFY(painted.drawn);
+    const auto ticket = h.overlay.TimingTicket(), paneTicket = h.panel.TimingTicket();
+    QSignalSpy admitted(h.controller.get(),&UltraClearTextController::recognitionAdmitted);
+    auto optional = result(103,3,true);
+    const auto generation = h.overlay.PaintedGeneration();
+    UctControllerTestAccess::Deliver(*h.controller,std::move(optional),true);
+    QCOMPARE(admitted.count(),1); QCOMPARE(admitted.first().first().toInt(),int(AdmitVerdict::kEmpty));
+    QCOMPARE(h.overlay.PaintedGeneration(),generation); // scratch planning never publishes a paint
+    QCOMPARE(h.overlay.TimingTicket().revision,ticket.revision);
+    QCOMPARE(h.overlay.TimingTicket().admission.jobId,ticket.admission.jobId);
+    QCOMPARE(h.panel.TimingTicket().revision,paneTicket.revision);
+    QCOMPARE(h.controller->Model().PendingWordCount(),0);
+    QCOMPARE(h.controller->Model().Lines().size(),before.size());
+    const auto& after = h.controller->Model().Lines()[0]; const auto& old = before[0];
+    QCOMPARE(after.id,old.id); QCOMPARE(after.sceneRect,old.sceneRect); QCOMPARE(after.sceneOffset,old.sceneOffset);
+    QCOMPARE(after.readingTokens,old.readingTokens); QCOMPARE(after.readingWordIndices,old.readingWordIndices);
+    QCOMPARE(after.protectedSceneRects,old.protectedSceneRects); QCOMPARE(after.carvedSceneRects,old.carvedSceneRects);
+    QCOMPARE(after.validatedAtMs,old.validatedAtMs); QCOMPARE(after.validatedFrameSeq,old.validatedFrameSeq);
+    QCOMPARE(after.provenance.frameSeq,old.provenance.frameSeq); QCOMPARE(after.reference.values,old.reference.values);
+    QVERIFY(h.overlay.PaintedGeometryCurrent());
+    UltraClearTextOverlay::PaintedWordGeometry retained;
+    QVERIFY(h.overlay.PaintedWord(oldWord.lineId,oldWord.wordIndex,oldWord.text,retained));
+    QVERIFY(retained.drawn); QCOMPARE(retained.box,painted.box); QCOMPARE(retained.characters,painted.characters);
+    h.overlay.update(); QTRY_VERIFY(h.overlay.PaintedGeneration()>generation);
+    QVERIFY(h.overlay.PaintedWord(oldWord.lineId,oldWord.wordIndex,oldWord.text,retained)); QVERIFY(retained.drawn);
+}
+
 void UltraClearTextControllerTests::timingNonimmutableMutationKeepsCausalTickets()
 {
     if (!timing::Enabled()) return; // also invoked by the existing trace-enabled pane selector below
     RegionalFlag flag(true); ImmutableHarness h;
+    h.owner.resize(1000,600); h.owner.show(); // novel masks require current software-paint authority
     h.page = MakeLayoutPage({{"itself",{40,40},36},{"Outside",{700,300},36}},960,540);
     h.Enable(); QTRY_COMPARE(h.controller->BackendStatusSnapshot().state,BackendState::kReady);
     UctFrameContext context;
@@ -845,6 +926,7 @@ void UltraClearTextControllerTests::timingNonimmutableMutationKeepsCausalTickets
     };
     deliver(result(101,false)); deliver(result(102,false));
     QCOMPARE(h.overlay.WordCount(),2);
+    QTRY_VERIFY(h.overlay.PaintedGeometryCurrent());
     const auto initial = h.overlay.TimingTicket(); QVERIFY(initial.revision);
     auto refused = result(103,true); refused.output.lines.resize(1);
     refused.output.lines.first().words.first().text = QStringLiteral("itelf");
@@ -867,6 +949,8 @@ void UltraClearTextControllerTests::timingNonimmutableMutationKeepsCausalTickets
         QCOMPARE(h.controller->ScreenTextAccessibility()->TimingTicket().admission.jobId,ticket.admission.jobId);
         QCOMPARE(h.panel.TimingTicket().admission.jobId,std::uint64_t(104)); // unchanged omission text keeps its pane ticket
         QCOMPARE(h.controller->Model().PendingWordCount(),pending ? 1 : 0);
+        const auto revision = h.overlay.TimingTicket().revision;
+        QTRY_COMPARE(h.overlay.PaintedTimingRevision(),revision);
     }
     auto successful = result(106,true); successful.output.lines.resize(1); deliver(std::move(successful));
     QCOMPARE(h.overlay.TimingTicket().admission.jobId,std::uint64_t(106));

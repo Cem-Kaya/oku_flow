@@ -6706,6 +6706,43 @@ from actual worker durations and transfer only descriptor results.
 
 ### Immutable protection independent of word consumption (2026-10-22)
 
+`MergeImmutableCoverage` wraps each incoming candidate in one COW transaction
+and RAII rollback. All owner mutations, reading retirements, appends, masks,
+classification, storage counters, carrier, row index and proved footprints
+commit together after late carve/cap decisions, including cross-owner carving
+growth. `AdmitImmutable` restores provisional incoming ID allocation before the
+merge; candidate IDs advance only on successful transactions. Existing accepted
+identities, references, geometry and validation clocks survive refusal.
+
+`OverlayModel::RegionalWordMatch` maps old/proposed line IDs and word indices.
+The optional `RegionalPreflight` parameter on live/advancing/general admission
+receives the capped proposed model, mapping and remaining admission budget
+before IDs/pending/lines commit. Novel protection or changed protected geometry
+needs renderer proof; absent proof, exception or exhausted budget yields
+`kEmpty` without changing the model. Full/immutable admission and probes do not
+invoke this renderer check.
+
+`UltraClearTextOverlay::PreservesDrawnWords` uses the actual current old paint,
+current style/view/viewport/exclusions and one production scratch plan. It
+checks every drawn old identity against its matched proposed drawn identity,
+including retained outside lines. It never calls public `SetWords`, pumps
+events, creates widgets, changes visibility, schedules paints or publishes
+timing. A scope guard restores `words_`, `glyphs_` and `protectedInk_`; the
+paint plan/index/ticket/caret caches stay untouched. An unchanged typography
+partition reuses glyph layout. Otherwise cached font bounds and optional
+deadline-aware `RebuildGlyphLayout`, `ResolveOverlaps` and `ComputePaintPlan`
+yield on cold typography or budget exhaustion. Normal paint/export callers
+retain their existing unlimited-by-this-optional-deadline behavior. The
+controller converts the proposed scene words within the same remaining budget.
+This is cooperative bounded optional work, not a native latency/speed claim.
+
+The r19 baseline's two model and two controller rows failed before repair.
+The fixed fresh CPU/PCH-off build and four-case tracked gate passed on the
+first attempt (4/226, 121.58 seconds, zero skipped rows/skips/unresolved).
+Tests include a successful safe scratch plan, conservative thin original
+coverage with upright/tilted glyphs, exact model/ticket/paint rollback and
+future ID allocation. See [receipts and scope](uct_active_regional_ocr.md#transaction-and-raster-regressions-2026-10-22).
+
 `OverlayModel::MergeImmutableCoverage` preserves candidate protection after every
 word has been appended or deduplicated. Ordinary masks are first carved against
 retained proved shapes; incompatible non-carvable artifacts are refused. A

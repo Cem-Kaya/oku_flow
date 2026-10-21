@@ -98,6 +98,70 @@ region adds no CPU retry or readback.
 
 ## Admission
 
+The no-withdrawal transaction also checks actual conservative raster coverage.
+A geometrically disjoint original mark can share a pixel column with an old
+word: `[200.75,200.95)` protects column 200 when it contains no horizontal
+pixel centre, while a word ending at 200.7 covers centre 200.5. Original masks
+keep that conservative rule; classifying them as carved strips is not a fix.
+
+For novel protection (or changed word geometry near existing protection), the
+controller supplies an optional UI-thread renderer preflight before model
+commit. It matches old glyph identities to proposed identities, uses the
+actually painted old plan and prepares one proposed plan with the production
+layout, viewport, exclusions, exact quad rasterization and protection closure.
+The old paint must still match the current view and style. No valid current
+paint, cold typography, an exception or insufficient remaining admission budget
+yields an optional no-op. Model-only callers without a renderer conservatively
+refuse novel protection while earlier glyphs exist. Full OCR and independent
+pixel probes retain correction authority.
+
+This remains optional work within the existing approximately 3 ms admission
+budget, with cooperative deadline checks rather than a hard real-time promise.
+Unchanged typography/group membership reuses cached glyph layout; other warm
+layouts use cached font measurements only. No cold shaping, inference, event
+pumping, native widget creation, public content assignment, visibility change,
+paint scheduling or timing publication happens inside the scratch check.
+RAII restores temporary content/layout/protection scratch on every exit. The
+current painted generation, ticket and visible geometry are untouched. Dense
+work can yield; synthetic timings do not establish a speed improvement.
+
+### Transaction and raster regressions, 2026-10-22
+
+The archived `30c6538` baseline plus the new fixtures failed all four selected
+regression rows: a late semantic-risk artifact and an append/fragment limit
+left `Added` in the reading line; ordinary and tilted original thin-mask
+updates were admitted despite the no-withdrawal requirement. Initial actual
+`PaintedWord.drawn` assertions passed in both controller rows. These direct
+Qt function selections are diagnostic failures, not registered CTest acceptance.
+Their source/binary SHA-256 and UTC mtimes were verified before execution.
+
+The fixed source built both fixture executables from scratch, with actual
+compilation/linking, VS2022, Qt 6.12, CPU only, PCH off and two compiler jobs.
+The tracked `run_test_gate.ps1` selection then passed **4/226 cases** in
+**121.58 seconds**, `-Parallel 1 -ExcludeGui`, with zero skipped Qt rows,
+skips or unresolved failures: `ultra_clear_text_contract` (303 Qt passes),
+`immutable_uct_contract` (115), `uct_timing_controller_contract` (3) and
+`uct_timing_pane_publication_contract` (3). The first fixed build/gate passed;
+no unchanged failure was retried. Pre/post source and binary hashes match.
+The positive safe scratch-plan row prevents an always-refuse implementation
+from satisfying the renderer checks. Tests also preserve generation/count,
+publication tickets, visible/character geometry, pending evidence and future
+ID allocation after refusal. The existing timing mutation fixture now obtains
+and waits for genuine offscreen paint authority before adding new masks.
+
+Raw baseline diagnostic logs/receipts, both fresh compile logs, the full tracked
+per-attempt log/JUnit/ledger and hash/mtime receipts remain under
+`Z:/Projects/OkuFlow/local-work-data/uct-protection-transaction-r19-20261022/`.
+The key receipts are `baseline-red-diagnostic-receipt-1.json`,
+`fixed-four-case-gate-receipt-1.json`,
+`fixed-gate-input-binary-receipt-1.json` and
+`fixed-gate-post-input-binary-receipt-1.json`.
+This is scoped model-free CPU/offscreen evidence only. PCH-on equivalence,
+combined shipping/CPU/CUDA integration, native UIA/NVDA, camera, audible output
+and release acceptance were not run in this child.
+
+### Complete-line source ownership
+
 Regional admission owns complete lines only. At crop edges inside the image,
 candidate words, protection and original detector bounds must lie at least
 **ten input pixels** inside the actual processed ROI: the backend's shared

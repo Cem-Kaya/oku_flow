@@ -4,6 +4,7 @@
 #include <QCryptographicHash>
 
 #include <QElapsedTimer>
+#include <QScopeGuard>
 #include <QHash>
 #include <QLineF>
 #include <QSet>
@@ -2699,15 +2700,15 @@ void OverlayModel::Reset()
 }
 
 AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceStamp& current,
-                                 const ProbeFrame* latestProbe, std::int64_t nowMs)
+                                 const ProbeFrame* latestProbe, std::int64_t nowMs, const RegionalPreflight& preflight)
 {
-    return AdmitImpl(result, current, latestProbe, nowMs, false);
+    return AdmitImpl(result, current, latestProbe, nowMs, false, nullptr, false, false, preflight);
 }
 
 AdmitVerdict OverlayModel::AdmitLiveCamera(const RecognitionResult& result, const SourceStamp& current,
-                                           const ProbeFrame* latestProbe, std::int64_t nowMs)
+                                           const ProbeFrame* latestProbe, std::int64_t nowMs, const RegionalPreflight& preflight)
 {
-    return AdmitImpl(result, current, latestProbe, nowMs, false, nullptr, false, true);
+    return AdmitImpl(result, current, latestProbe, nowMs, false, nullptr, false, true, preflight);
 }
 
 AdmitVerdict OverlayModel::AdmitImmutable(const RecognitionResult& result,
@@ -2755,6 +2756,7 @@ AdmitVerdict OverlayModel::AdmitImmutable(const RecognitionResult& result,
                  (regional ? IsReadable(line, nowMs, after.frameSeq) : IsShown(line, nowMs, after.frameSeq))))
                 previous.push_back(line);
     }
+    const auto nextId = nextLineId_;
     const auto verdict = AdmitImpl(result, selectedFrame, nullptr, nowMs, true, corroboration);
     if (verdict == AdmitVerdict::kFailed || verdict == AdmitVerdict::kStaleScene) return verdict;
     if (!sameInput) {
@@ -2770,6 +2772,9 @@ AdmitVerdict OverlayModel::AdmitImmutable(const RecognitionResult& result,
         }
         return verdict;
     }
+    // AdmitImpl's incoming IDs are provisional for an exact-input merge.
+    // Allocate them only inside successful candidate transactions below.
+    nextLineId_ = nextId;
     return MergeImmutableCoverage(previous, verdict, nowMs, after.frameSeq);
 }
 
@@ -3010,12 +3015,30 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
         if (retained[i].words.isEmpty() && retained[i].readingTokens.isEmpty()) { protectionCarrier=i; break; }
     for (qsizetype n = 0; n < incoming.size(); ++n) {
         auto& candidate = incoming[n];
+        const auto before = retained; // one bounded COW snapshot per candidate, never per word
+        const auto beforeWords = wordCount, beforeTokens = tokenCount, beforeProtection = protectedCount;
+        const auto beforeFootprints = provedFootprints.size();
+        const auto beforeCarrier = protectionCarrier;
+        const auto beforeId = nextLineId_;
+        bool committed = false;
+        const auto rollback = qScopeGuard([&] {
+            if (committed) return;
+            retained = before;
+            wordCount = beforeWords; tokenCount = beforeTokens; protectedCount = beforeProtection;
+            provedFootprints.resize(beforeFootprints); protectionCarrier = beforeCarrier; nextLineId_ = beforeId;
+            for (auto& row : rows) row.clear();
+            for (qsizetype i = 0; i < retained.size(); ++i) indexLine(i);
+        });
+        candidate.id = nextLineId_++;
+        // A refusal at any late mask/carve/storage decision rolls back every
+        // append, retirement, color, index, carrier and classification effect.
+        const auto mergeCandidate = [&]() -> bool {
         // Reserve mask storage before admitting any of this candidate's words.
         // A new plate cannot be accepted if its uncertainty would be lost at
         // the cap. Word consumption below is independent of mask ownership.
         if (!candidate.protectedSceneRects.isEmpty() &&
             (protectedCount+candidate.protectedSceneRects.size()>maximumProtected ||
-             (!protectionCarrier && retained.size()>=maximumLines))) continue;
+             (!protectionCarrier && retained.size()>=maximumLines))) return false;
         const auto candidateIndexes = tokenIndexes(candidate);
         QVector<bool> keep(candidate.words.size(), false);
         for (const auto index : candidateIndexes)
@@ -3071,7 +3094,7 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
                     // only its unproved duplicate; the new glyph keeps its own
                     // incoming line identity/reference below, never the old
                     // reference or geometry of neighboring proved words.
-                    if (!unprotect(replacement, wordShape)) { keep[w] = false; continue; }
+                    if (!unprotect(replacement, wordShape)) return false;
                     trimProvedOmissions(replacement);
                     tokenCount += replacement.readingTokens.size() - retained[o].readingTokens.size();
                     retained[o] = std::move(replacement);
@@ -3079,8 +3102,8 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
                 continue;
             }
             keep[w] = false; // old reading-only text must not be duplicated either
-            if (!word.glyphEligible || !IsShown(candidate, nowMs, selectedFrameSeq) ||
-                wordCount >= maximumWords || tokenCount >= maximumTokens) continue;
+            if (!word.glyphEligible || !IsShown(candidate, nowMs, selectedFrameSeq)) continue;
+            if (wordCount >= maximumWords || tokenCount >= maximumTokens) return false;
             // This eligibility came from the incoming word's OWN completed
             // neighbor proof in AdmitImpl. The old reference grants no new
             // agreement; retain old references/geometry/clocks and indexes.
@@ -3106,7 +3129,7 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
             indexes.insert(position, appendedIndex);
             replacement.readingTokens.insert(position, word.text);
             replacement.readingWordIndices = std::move(indexes);
-            if (!unprotect(replacement, wordShape)) continue;
+            if (!unprotect(replacement, wordShape)) return false;
             // A leading uncertainty marker is unnecessary once every still
             // named token has its own proof and no protected omission remains.
             trimProvedOmissions(replacement);
@@ -3130,7 +3153,8 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
                     if (word.glyphEligible && !masks.protectedSceneRects.isEmpty())
                         fits = unprotect(masks, shape(retained[o], word)) && fits;
             protectedCount -= masks.protectedSceneRects.size();
-            if (!fits || masks.protectedSceneRects.isEmpty()) continue;
+            if (!fits) return false;
+            if (masks.protectedSceneRects.isEmpty()) return true;
             // Reuse a containing reading owner without altering its words,
             // typography, reference or clocks. A mask-only carrier is needed
             // only when there is no such owner.
@@ -3165,7 +3189,7 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
             }
             for (auto& row : rows) row.clear();
             for (qsizetype i = 0; i < retained.size(); ++i) indexLine(i);
-            continue;
+            return true;
         }
         AcceptedLine fragment = candidate;
         fragment.words.clear(); fragment.readingTokens.clear(); fragment.readingWordIndices.clear();
@@ -3181,7 +3205,7 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
         if (fragment.words.isEmpty() || retained.size() >= maximumLines ||
             wordCount + fragment.words.size() > maximumWords ||
             tokenCount + fragment.readingTokens.size() > maximumTokens ||
-            protectedCount + fragment.protectedSceneRects.size() > maximumProtected) continue;
+            protectedCount + fragment.protectedSceneRects.size() > maximumProtected) return false;
         fragment.sceneRect = bounds;
         // Incoming uncertainty cannot clip the old independently proved ink.
         bool fits = true;
@@ -3192,22 +3216,23 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
                 if (word.glyphEligible && !fragment.protectedSceneRects.isEmpty())
                     fits = unprotect(fragment, shape(old, word)) && fits;
         }
-        if (!fits) { protectedCount -= fragment.protectedSceneRects.size(); continue; }
+        if (!fits) return false;
         if (IsShown(fragment, nowMs, selectedFrameSeq))
             for (const auto& word : fragment.words)
                 if (word.glyphEligible) provedFootprints.push_back(shape(fragment, word));
         wordCount += fragment.words.size(); tokenCount += fragment.readingTokens.size();
         retained.push_back(std::move(fragment));
         indexLine(retained.size() - 1);
+        return true;
+        };
+        committed = mergeCandidate();
+        // Complete cross-owner subtraction in the same transaction. Storage
+        // gained by carving must fit alongside this candidate's words/masks.
+        for (qsizetype f = beforeFootprints; committed && f < provedFootprints.size(); ++f)
+            for (const auto index : nearby(provedFootprints[f].Bounds()))
+                if (!retained[index].protectedSceneRects.isEmpty() &&
+                    !unprotect(retained[index], provedFootprints[f])) { committed = false; break; }
     }
-    // Proof belongs to the selected pixels, not to the line chosen for reading
-    // ownership. Carve every admitted incoming footprint from ordinary nearby
-    // uncertainty, including another retained line's loose low-confidence box.
-    // Failed cuts keep their original protection; contradiction blocks remain
-    // separate and are never passed to unprotect.
-    for (const auto& footprint : provedFootprints)
-        for (const auto index : nearby(footprint.Bounds()))
-            if (!retained[index].protectedSceneRects.isEmpty()) unprotect(retained[index], footprint);
     lines_ = std::move(retained);
     if (std::any_of(lines_.begin(), lines_.end(), [&](const auto& line) {
             return IsShown(line, nowMs, selectedFrameSeq);
@@ -3218,14 +3243,15 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
 AdmitVerdict OverlayModel::AdmitAdvancingMedia(const RecognitionResult& result,
                                               const SourceStamp& current,
                                               const ProbeFrame* latestProbe,
-                                              std::int64_t mediaNowMs)
+                                              std::int64_t mediaNowMs, const RegionalPreflight& preflight)
 {
-    return AdmitImpl(result, current, latestProbe, mediaNowMs, false, nullptr, true);
+    return AdmitImpl(result, current, latestProbe, mediaNowMs, false, nullptr, true, false, preflight);
 }
 
 AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const SourceStamp& current,
                                     const ProbeFrame* latestProbe, std::int64_t nowMs, bool immutable,
-                                    const RecognitionResult* corroboration, bool advancingMedia, bool liveCamera)
+                                    const RecognitionResult* corroboration, bool advancingMedia, bool liveCamera,
+                                    const RegionalPreflight& preflight)
 {
     if (!result.output.ok || result.output.cancelled) {
         return AdmitVerdict::kFailed;
@@ -3749,7 +3775,7 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         // supplemental read may add evidence, but cannot withdraw an owned
         // word because its crop omitted, misspelled or protected that word.
         // Full reads and independent probes remain the correction authority.
-        struct WordSlot { const AcceptedLine* line; const AcceptedWord* word; };
+        struct WordSlot { const AcceptedLine* line; const AcceptedWord* word; int index; };
         const auto activeWords = [&](const QVector<AcceptedLine>& lines, bool ownedOnly) {
             QVector<const AcceptedLine*> order;
             for (const auto& line : lines)
@@ -3767,7 +3793,7 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                         line->words[index].text == line->readingTokens[t]) named.insert(index);
                 }
                 for (int w = 0; w < line->words.size(); ++w)
-                    if (line->words[w].glyphEligible || named.contains(w)) words.push_back({line,&line->words[w]});
+                    if (line->words[w].glyphEligible || named.contains(w)) words.push_back({line,&line->words[w],w});
             }
             return words;
         };
@@ -3784,10 +3810,15 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
             }
         }
         QVector<std::pair<QRectF, bool>> proposedProtection;
+        bool needsRasterPreflight = false;
         for (const auto& line : kept) {
             const auto carved = MaskKeys(line.carvedSceneRects);
-            for (const auto& mask : line.protectedSceneRects)
+            for (const auto& mask : line.protectedSceneRects) {
                 proposedProtection.push_back({mask.translated(line.sceneOffset), carved.contains(MaskKey(mask))});
+                const auto& entry = proposedProtection.back();
+                if (!(entry.second ? oldProtection : oldOriginalProtection).contains(MaskKey(entry.first)))
+                    needsRasterPreflight = true;
+            }
         }
         const auto newProtectionAt = [&](const QRectF& oldRect, const QRectF& proposedRect) {
             return std::any_of(proposedProtection.begin(),proposedProtection.end(),[&](const auto& mask) {
@@ -3799,6 +3830,12 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                     (oldRect != proposedRect || !previousProtection.contains(MaskKey(mask.first)));
             });
         };
+        QVector<RegionalWordMatch> matches;
+        // Outside/crossing lines survive verbatim but new raster protection
+        // is global. Their actually drawn glyphs need the same check too.
+        for (const auto& line : lines_) if (regionalKeptIds.contains(line.id))
+            for (int w = 0; w < line.words.size(); ++w) if (line.words[w].glyphEligible)
+                matches.push_back({line.id,line.id,w,w});
         qsizetype next = 0;
         for (const auto& old : oldWords) {
             const auto rect = old.word->sceneRect.translated(old.line->sceneOffset);
@@ -3810,11 +3847,27 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                     (old.word->glyphEligible && !proposed.word->glyphEligible) ||
                     (old.line->valid && !proposed.line->valid)) continue;
                 if (old.word->glyphEligible && newProtectionAt(rect,proposedRect)) continue;
+                if (old.word->glyphEligible) {
+                    matches.push_back({old.line->id,proposed.line->id,old.index,proposed.index});
+                    if (!proposedProtection.isEmpty() &&
+                        (rect != proposedRect || old.word->sceneQuad != proposed.word->sceneQuad))
+                        needsRasterPreflight = true;
+                }
                 found = true;
                 ++next; // one-to-one, in reading order, including repeated words
                 break;
             }
             if (!found) return AdmitVerdict::kEmpty; // exact no-op: tickets, ids, proof and visibility survive
+        }
+        if (needsRasterPreflight && !matches.isEmpty()) {
+            const double remainingMs = tuning_.admitMatchBudgetMs - matchTimer.nsecsElapsed() / 1e6;
+            if (!preflight || remainingMs <= 0) return AdmitVerdict::kEmpty;
+            OverlayModel proposal = *this; // bounded COW metadata, no image copy/publication
+            proposal.lines_ = kept;
+            try {
+                if (!preflight(proposal,matches,remainingMs) ||
+                    matchTimer.nsecsElapsed() / 1e6 > tuning_.admitMatchBudgetMs) return AdmitVerdict::kEmpty;
+            } catch (...) { return AdmitVerdict::kEmpty; } // optional work always fails closed
         }
         nextLineId_ = regionalNextLineId;
     }

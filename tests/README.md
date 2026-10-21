@@ -1,5 +1,17 @@
 # OkuFlow Tests
 
+`immutableCandidateProtectionRefusalIsAtomic` covers late semantic-risk refusal
+after an append and mixed append/fragment exhaustion at 8191 stored slots.
+`activeRegionalRasterWithdrawalIsAtomic` covers ordinary and tilted words
+next to a geometrically disjoint original thin mark sharing a sampled pixel.
+It checks actual `PaintedWord.drawn`, model/pending/proof/tickets and paint
+generation. `regionalScratchPlanPreservesPaintAuthority` includes a successful
+safe scratch plan, unsafe raster coverage, cold typography, budget exhaustion
+and missing current view authority; all leave the existing paint untouched.
+These are model-free Qt offscreen contracts, not native desktop or OCR quality
+acceptance. The r19 fresh CPU/PCH-off tracked four-case gate passed with no
+skips or unresolved failures; see [regional evidence](../docs/uct_active_regional_ocr.md#transaction-and-raster-regressions-2026-10-22).
+
 `orientedInkAndMapping` / `gpuOrientedInkMatchesCpu` also run 33 small upright
 source-ink cases from `uct_small_ink_test_cases.hpp`. The embedded, lossless
 46x36 owner-source crop is hashed as packed RGB and uses exact saved detector
