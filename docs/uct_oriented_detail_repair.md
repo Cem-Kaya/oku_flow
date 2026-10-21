@@ -39,6 +39,20 @@ protects a conservative pixel only when both axes lack centres. Thin carve
 remainders on a single axis add no artificial bordering pixel. The same plan
 governs live paint and exports.
 
+Immutable duplicate observations keep the original displayed geometry and
+carve only that retained proved footprint. A wider incoming box cannot uncover
+neighbouring uncertainty, and a narrower one cannot leave self-protection.
+Masks for risky notation/confusable tokens or invalid geometry remain protected
+when a nearby word is refined. Ordinary grouped prose can still be replaced
+by independently proved individual words; source identity, references and
+proof clocks remain unchanged.
+
+Five additional model regressions reproduce wider/narrower duplicate carving
+and cross-line operator, confusable-number and invalid-geometry mask loss.
+All five fail before repair. Afterwards the focused CPU/PCH-off UCT contract
+passes all 237 rows, no skips, in 32.33 seconds. The original failures remain
+retained; combined active-executor and native acceptance are separate.
+
 ## Paused-frame checks
 
 A selected paused frame remains immutable. A real neighbouring acquisition may

@@ -2734,6 +2734,8 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
     // (including punctuation at the edge of an earlier uncertainty box) stays
     // protected. Four rectangles per cut and a shared finite cap bound work.
     const auto unprotect = [&](AcceptedLine& line, const QRectF& proved) {
+        for (const auto& risk : line.nonCarvableSceneRects)
+            if (risk.translated(line.sceneOffset).intersects(proved)) return false;
         QVector<QRectF> next;
         for (const auto& relative : line.protectedSceneRects) {
             const QRectF rect = relative.translated(line.sceneOffset), cut = rect.intersected(proved);
@@ -2802,14 +2804,18 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
                         // Retain the old ID/index, geometry, reference and clocks;
                         // a color correction is never a new observation/proof.
                         if (word.glyphEligible && IsShown(candidate, nowMs, selectedFrameSeq) &&
-                            word.text == existing.text && word.colors)
-                            existing.colors = StableLineColors(*word.colors,
+                            word.text == existing.text) {
+                            // The old independently proved geometry is what
+                            // will be painted. Incoming detector jitter must
+                            // neither uncover more ink nor protect that word
+                            // against its own retained footprint.
+                            provedFootprints.push_back(absolute(old, existing));
+                            if (word.colors) existing.colors = StableLineColors(*word.colors,
                                 existing.colors ? &*existing.colors : &old.colors);
+                        }
                     }
             }
             if (duplicate) {
-                if (word.glyphEligible && IsShown(candidate, nowMs, selectedFrameSeq))
-                    provedFootprints.push_back(rect);
                 keep[w] = false;
                 continue;
             }
@@ -3169,8 +3175,18 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
             if (word.disposition != TokenDisposition::kCandidate || IsHighRiskToken(word.text)) {
                 ++candidate.line.omittedWords;
                 candidate.line.readingTokens.push_back({});
-                if (!word.protectedSceneRect.isEmpty())
+                if (!word.protectedSceneRect.isEmpty()) {
                     candidate.line.protectedSceneRects.push_back(word.protectedSceneRect);
+                    const auto parts = word.text.simplified().split(QChar(' '), Qt::SkipEmptyParts);
+                    const bool ordinaryGrouping = parts.size() > 1 &&
+                        std::all_of(parts.begin(), parts.end(), [](const QString& part) {
+                            return !IsHighRiskToken(part);
+                        });
+                    if (immutable && (word.disposition == TokenDisposition::kInvalidGeometry ||
+                        (!ordinaryGrouping && (word.disposition == TokenDisposition::kHighRisk ||
+                                                IsHighRiskToken(word.text)))))
+                        candidate.line.nonCarvableSceneRects.push_back(word.protectedSceneRect);
+                }
                 continue;
             }
             if (confirmedBefore(word.text, currentRect)) {

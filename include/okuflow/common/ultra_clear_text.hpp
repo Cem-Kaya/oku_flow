@@ -705,6 +705,10 @@ struct AcceptedLine {
     // word indexes remain stable; then every token has an explicit index
     // (-1 for an omission), and unused reading-only words stay undrawn.
     QVector<int> readingWordIndices;
+    // Subset of protectedSceneRects naming semantic-risk/invalid-geometry
+    // ink. Immutable refinement may not carve these masks. Ordinary grouped
+    // prose can still be replaced by separately proved word tokens.
+    QVector<QRectF> nonCarvableSceneRects;
 };
 
 struct SceneWord {

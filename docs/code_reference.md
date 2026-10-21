@@ -6337,16 +6337,23 @@ the owning `lineId`. An independently proved word appended to an older reading
 line keeps its incoming nonzero group, or its incoming candidate line ID. Old
 words keep their group, ID/index, source geometry, references and clocks.
 `UltraClearTextController::RefreshOverlay` forwards and compares this field;
-both paused-proof overlay conversions also retain it. Painter consumption of
-the separate group is an independent integration change.
+both paused-proof overlay conversions also retain it. `RebuildGlyphLayout`
+uses `layoutGroupId` when nonzero and otherwise falls back to `lineId`.
 
 `MergeImmutableCoverage` indexes ordinary uncertainty extents alongside line
 bounds. Each independently proved incoming word that is admitted or matches a
 retained glyph carves its footprint from nearby retained uncertainty, regardless
 of reading-line ownership. Residual rectangles preserve uncovered punctuation;
 the shared 32768-rectangle cap refuses an overflowing cut without changing that
-line's protection. Persistent `immutableConflictRects_` never enter this carving
-path. `SceneWords` adds hidden-line fallback bounds only for eligible glyphs:
+line's protection. An exact-text duplicate carves the retained displayed word's
+geometry, never the incoming detector's jittered box. `AcceptedLine` retains
+`nonCarvableSceneRects` as a subset of its ordinary masks for semantic-risk and
+invalid-geometry spans; an intersecting cut is refused without changing any
+mask. The subset cannot outgrow the capped original protection records.
+An otherwise ordinary multiword prose token may still be split into separately
+proved word tokens; this does not admit the grouped token or relax pixel proof.
+Persistent `immutableConflictRects_` never enter this carving path.
+`SceneWords` adds hidden-line fallback bounds only for eligible glyphs:
 reading-only words already have explicit masks, and retired slots must not
 restore their former full boxes over a newly proved boundary word.
 
