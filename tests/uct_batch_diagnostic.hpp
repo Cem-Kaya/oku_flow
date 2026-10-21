@@ -45,15 +45,26 @@ inline QJsonObject Output(const RecognitionOutput& output)
     QJsonArray lines;
     for (const auto& line : output.lines) {
         QJsonArray words;
-        for (const auto& word : line.words)
-            words.push_back(QJsonObject{{"text", word.text}, {"disposition", int(word.disposition)},
+        for (const auto& word : line.words) {
+            QJsonObject item{{"text", word.text}, {"disposition", int(word.disposition)},
                 {"confidence", word.confidence}, {"bounds", Rect(word.boundsPx)},
                 {"protectedBounds", Rect(word.protectedBoundsPx)}, {"inkSearch", Rect(word.inkSearchPx)},
-                {"paddedBounds", word.paddedBounds}});
+                {"paddedBounds", word.paddedBounds}, {"inkFitted", word.inkFitted}};
+            if (word.quadPx.valid) {
+                QJsonArray quad;
+                for (const auto& point : word.quadPx.points) quad.push_back(QJsonArray{point.x(), point.y()});
+                item.insert("quad", quad);
+                item.insert("angleDegrees", QuadAngle(word.quadPx) * 180.0 / 3.14159265358979323846);
+                item.insert("quadHeight", QuadHeight(word.quadPx));
+            }
+            words.push_back(item);
+        }
         lines.push_back(words);
     }
     return {{"ok", output.ok}, {"cancelled", output.cancelled}, {"inputFault", output.inputFault},
-            {"backendPreparing", output.backendPreparing}, {"error", output.error}, {"lines", lines}};
+            {"backendPreparing", output.backendPreparing}, {"error", output.error}, {"lines", lines},
+            {"detailRegion", QJsonArray{output.detailRegionPx.x(), output.detailRegionPx.y(),
+                                        output.detailRegionPx.width(), output.detailRegionPx.height()}}};
 }
 
 inline bool Save(const QString& path, const QJsonObject& value)
