@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Measure experimental UCT word colors in each tilted/perspective word frame.
+  Local paper and ink keep their source polarity on buttons against a dark
+  surround, so ink fitting follows letters instead of the button body.
+
 - Add an opt-in embedded FFmpeg/dav1d saved-video CPU backend with pinned
   private development builds, stable custom I/O and existing selected-frame,
   PCM and retirement authority. Keep native/archive fallback and default;

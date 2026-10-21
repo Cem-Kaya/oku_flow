@@ -6316,7 +6316,7 @@ validation clocks.
 2-pixel body passes find robust ink/paper medians and the ink's opaque quartile;
 four bounded side strips require RGB agreement with local body clusters and
 in-box corner support before exterior color may override polarity. Scratch is
-fixed (about 8.3 KiB CPU stack and 9356 bytes CUDA shared memory per block), with
+  fixed (about 8.3 KiB CPU stack and 10.2 KiB CUDA shared memory per block), with
 no per-word allocation or image download. `LocalColorFixture`,
 `LocalColorFixtures` and `ColorDistance` supply shared controlled surfaces and
 tiny/clipped bounds to CPU and exact CUDA descriptor tests. These remain solid
@@ -6365,3 +6365,62 @@ frozen-upload / `RetireOwnedState` ownership contracts.
 `TensorRtProfile` records width policy, canvas counts and useful padding.
 The five width fixtures and resident selector are described in
 [narrower recognition inputs](uct_recognizer_width.md); defaults remain fixed.
+
+## Oriented local UCT color preparation
+
+`MeasureLineColors` accepts an optional detected `TextQuad`. Its body, corner
+and immediate/expanded exterior samples use that quad's bilinear local frame;
+the existing `color_policy` medians, compatibility votes and opaque-ink endpoint
+decisions are unchanged. The scheduler selects this frame for oriented words
+before `FitOrientedWordInk` scans the separately bounded `inkSearchQuadPx`.
+Rectangle line colors and non-oriented words retain the legacy sampling grid.
+
+`gpu::LineColors` accepts an optional parallel `OrientedInk` frame array (zero
+width selects the corresponding rectangle). The resident preparation worker
+uploads detected color frames alongside the existing search-frame ink
+descriptors within its bounded scratch. `validation::orientedPixel` provides
+the shared floor/bilinear addressing for CUDA colors and `orientedInkAt`, using
+explicit non-fused double operations to match the CPU. Out-of-image samples
+contribute neither sums nor votes; valid sample counts normalize clipped body
+means. Stream completion, input ownership and compact-only readback remain
+unchanged.
+
+`FitOrientedWordInk` and `validation::orientedInk` remove eight-connected ink
+components spanning opposite padded search edges before dominant-row fitting.
+This separates glyphs from an identically colored panel and nearby edges. CPU
+uses a queue of at most 32768 cells; CUDA packs one ink bit plus six
+component reachability bits per cell and 4096 row masses (about 46 KiB shared
+scratch). Monotone whole-run propagation has the CPU queue's fixed point when
+complete. `gpu::kOrientedInkMaxPropagationPasses` caps it at 64 scans; an
+incomplete result keeps detector geometry. `OrientedFit::propagationPasses` and
+`propagationComplete` retain compact diagnostic evidence. Original fit-size/contrast and
+detached-mark rules remain; no token disposition or confidence is changed.
+`OrientedFitReason`/`OrientedFit::reason` distinguish invalid input, propagation
+cap, unanchored ink, too few samples, ambiguous row bands, the shrink guard and
+a completed fit. This uses the result struct's existing alignment space.
+`color_policy::Compatible` anchors entire components to measured ink; all raw
+luma-ink pixels of anchored glyphs remain, preserving darker/lighter cores and
+AA. Paper-enclosed interior components remain regardless of RGB variation.
+Unanchored edge-only fragments or unanchored components spanning two edges
+are excluded. An unanchored boundary component extending inside causes whole-word detector
+fallback, avoiding silent letter truncation from a gray opaque-quartile median.
+The ambiguity guard uses the existing eight-sample minimum;
+`validation::substantialInkComponent` checks at most eight cells to match the
+CPU queue's component-size decision without additional shared image storage.
+
+`uct_geometry_test::TiltedButtonColors` runs 48 real-glyph tilted/perspective
+button fixtures through CPU and resident schedulers. It checks source polarity,
+glyph rather than button bounds, all four corners, spacing/protection and exact
+GPU parity with guarded zero image egress, including dotted/descending glyphs
+touching search edges. `GpuWindingInkWorkCap` requires bounded incomplete GPU
+fallback rather than a partially pruned fit. Existing `CpuGeometry`/`GpuGeometry`
+slots include it in `uct_paddle_processing`/`uct_paddle_cuda`. Diagnostic
+`uct_batch_test::Output` includes raw per-word foreground/background colors
+alongside fitted quads in private image-proof JSON. See
+[local color evidence and limitations](uct_color_startup_repair.md).
+The opt-in paused proof's `fitReplay` lambda reuses resident input/search quads
+and raw colors after actual recognition. `selectedFitReplay` and
+`neighbourFitReplay` record per-word passes/completion, a pass histogram and
+three CUDA-event kernel durations after one warmup. Replay fitted flags are
+labelled separately from production fits; these measurements are excluded
+from actual worker durations and transfer only descriptor results.

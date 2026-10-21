@@ -23,14 +23,22 @@ void MatchReference(const unsigned*, int, int, Grid, const float*, double, doubl
                     double, double, double, double, MatchResult*, cudaStream_t);
 void Similarity(const unsigned*, int, int, ProbeMap, const unsigned*, int, int, ProbeMap,
                  double, double, double, double, double*, cudaStream_t);
-void LineColors(const void*, std::size_t, int, int, const Rect*, int, Colors*, cudaStream_t);
+struct OrientedInk;
+// Optional frames have one descriptor per rectangle; width == 0 retains the
+// rectangle path. Nonzero frames sample body/corners/perimeters in local space.
+void LineColors(const void*, std::size_t, int, int, const Rect*, int, Colors*, cudaStream_t,
+                const OrientedInk* frames = nullptr);
 void InkBounds(const void*, std::size_t, int, int, const Ink*, const int*, int,
                 const Colors*, Fit*, cudaStream_t);
 // Rotated-frame counterpart of InkBounds, sample-for-sample identical to the
 // CPU FitOrientedWordInk reference. Origin/axes are the search quad's TL and
 // unit edge directions in pixels; the fit is returned in local pixel units.
 struct OrientedInk { double ox, oy, ux, uy, vx, vy, width, height, detectedWidth; int detached; double warpX{}, warpY{}; };
-struct OrientedFit { double u0, u1, v0, v1; int fitted; };
+inline constexpr int kOrientedInkMaxPropagationPasses = 64;
+enum class OrientedFitReason : int { InvalidInput, Incomplete, UnanchoredInk, TooFewSamples,
+                                     AmbiguousBands, ShrinkGuard, Fitted };
+struct OrientedFit { double u0, u1, v0, v1; int fitted; int propagationPasses{}, propagationComplete{};
+                     OrientedFitReason reason{OrientedFitReason::InvalidInput}; };
 void OrientedInkBounds(const void*, std::size_t, int, int, const OrientedInk*, const int*, int,
                        const Colors*, OrientedFit*, cudaStream_t);
 // Domain-separated SHA-256 tree over every packed BGRA byte (padding excluded).

@@ -50,12 +50,21 @@ inline QJsonObject Output(const RecognitionOutput& output)
                 {"confidence", word.confidence}, {"bounds", Rect(word.boundsPx)},
                 {"protectedBounds", Rect(word.protectedBoundsPx)}, {"inkSearch", Rect(word.inkSearchPx)},
                 {"paddedBounds", word.paddedBounds}, {"inkFitted", word.inkFitted}};
+            if (word.colors) {
+                item.insert("foreground", word.colors->foreground.name());
+                item.insert("background", word.colors->background.name());
+            }
             if (word.quadPx.valid) {
                 QJsonArray quad;
                 for (const auto& point : word.quadPx.points) quad.push_back(QJsonArray{point.x(), point.y()});
                 item.insert("quad", quad);
                 item.insert("angleDegrees", QuadAngle(word.quadPx) * 180.0 / 3.14159265358979323846);
                 item.insert("quadHeight", QuadHeight(word.quadPx));
+            }
+            if (word.inkSearchQuadPx.valid) {
+                QJsonArray quad;
+                for (const auto& point : word.inkSearchQuadPx.points) quad.push_back(QJsonArray{point.x(), point.y()});
+                item.insert("inkSearchQuad", quad);
             }
             words.push_back(item);
         }

@@ -189,17 +189,37 @@ double Iou(const QRectF& a, const QRectF& b)
     return uni > 0.0 ? inter / uni : 0.0;
 }
 
-LineColors MeasureLineColors(const QImage& image, const QRect& bounds)
+LineColors MeasureLineColors(const QImage& image, const QRect& bounds, const TextQuad* quad = nullptr)
 {
     using namespace color_policy;
     LineColors colors;
-    const QRect box = bounds.intersected(image.rect());
+    if (quad && (QuadArea(*quad) <= 0.0 || QuadWidth(*quad) < 1 || QuadHeight(*quad) < 1)) quad = nullptr;
+    const double width = quad ? QuadWidth(*quad) : 0, height = quad ? QuadHeight(*quad) : 0;
+    const QRect box = quad ? QRect(0, 0, int(std::ceil(width)), int(std::ceil(height)))
+                           : bounds.intersected(image.rect());
     if (box.isEmpty()) return colors;
+    // Body, corners and both exterior rings live in the detected word frame.
+    // An axis-aligned perimeter can cross a tilted button into its dark panel.
+    const QPointF origin = quad ? quad->points[0] : QPointF{};
+    const QPointF u = quad ? (quad->points[1] - origin) / width : QPointF{};
+    const QPointF v = quad ? (quad->points[3] - origin) / height : QPointF{};
+    const QPointF warp = quad ? quad->points[2] - quad->points[1] - quad->points[3] + origin : QPointF{};
+    const auto pixel = [&](int x, int y) -> const uchar* {
+        if (quad) {
+            const QPointF p = origin + u * x + v * y + warp * ((x / width) * (y / height));
+            if (!(p.x() >= 0 && p.y() >= 0 && p.x() < image.width() && p.y() < image.height())) return nullptr;
+            x = int(std::floor(p.x())); y = int(std::floor(p.y()));
+        }
+        return x >= 0 && y >= 0 && x < image.width() && y < image.height()
+            ? image.constScanLine(y) + x * 4 : nullptr;
+    };
     long long lumaSum = 0;
     unsigned count = 0;
     for (int y = box.top(); y <= box.bottom(); y += 2)
         for (int x = box.left(); x <= box.right(); x += 2) {
-            lumaSum += Luma(image.constScanLine(y) + x * 4);
+            const auto* px = pixel(x, y);
+            if (!px) continue;
+            lumaSum += Luma(px);
             ++count;
         }
     if (!count) return colors;
@@ -207,7 +227,8 @@ LineColors MeasureLineColors(const QImage& image, const QRect& bounds)
     unsigned histogram[2][3][256]{}, lumaHistogram[2][256]{}, bodyCounts[2]{};
     for (int y = box.top(); y <= box.bottom(); y += 2)
         for (int x = box.left(); x <= box.right(); x += 2) {
-            const uchar* px = image.constScanLine(y) + x * 4;
+            const uchar* px = pixel(x, y);
+            if (!px) continue;
             const int value = Luma(px), side = value < threshold ? 0 : 1;
             ++bodyCounts[side]; ++lumaHistogram[side][value];
             for (int channel = 0; channel < 3; ++channel)
@@ -229,7 +250,8 @@ LineColors MeasureLineColors(const QImage& image, const QRect& bounds)
             unsigned matches[2]{};
             for (int y = top; y < top + 3; ++y)
                 for (int x = left; x < left + 3; ++x) {
-                    const uchar* px = image.constScanLine(y) + x * 4;
+                    const uchar* px = pixel(x, y);
+                    if (!px) continue;
                     const int side = Luma(px) < threshold ? 0 : 1;
                     if (Compatible(px, body[side])) ++matches[side];
                 }
@@ -241,17 +263,18 @@ LineColors MeasureLineColors(const QImage& image, const QRect& bounds)
     // the touching exterior is still paper. A button's 1px padding is also
     // local paper, independently of the page beyond its narrow boundary.
     const QRect adjacent[4]{
-        QRect(box.left(), box.top() - 1, box.width(), box.top() > 0 ? 1 : 0),
-        QRect(box.left(), box.bottom() + 1, box.width(), box.bottom() + 1 < image.height() ? 1 : 0),
-        QRect(box.left() - 1, box.top(), box.left() > 0 ? 1 : 0, box.height()),
-        QRect(box.right() + 1, box.top(), box.right() + 1 < image.width() ? 1 : 0, box.height())};
+        QRect(box.left(), box.top() - 1, box.width(), quad || box.top() > 0 ? 1 : 0),
+        QRect(box.left(), box.bottom() + 1, box.width(), quad || box.bottom() + 1 < image.height() ? 1 : 0),
+        QRect(box.left() - 1, box.top(), quad || box.left() > 0 ? 1 : 0, box.height()),
+        QRect(box.right() + 1, box.top(), quad || box.right() + 1 < image.width() ? 1 : 0, box.height())};
     std::memset(histogram, 0, sizeof(histogram));
     unsigned sideCounts[4][2]{}, sideTotals[4]{}, ringCounts[2]{};
     const auto sampleSides = [&](const QRect (&sides)[4]) {
         for (int s = 0; s < 4; ++s)
             for (int y = sides[s].top(); y <= sides[s].bottom(); y += 2)
                 for (int x = sides[s].left(); x <= sides[s].right(); x += 2) {
-                    const uchar* px = image.constScanLine(y) + x * 4;
+                    const uchar* px = pixel(x, y);
+                    if (!px) continue;
                     const int side = Luma(px) < threshold ? 0 : 1;
                     ++sideTotals[s];
                     if (!Compatible(px, body[side])) continue;
@@ -270,15 +293,17 @@ LineColors MeasureLineColors(const QImage& image, const QRect& bounds)
         // Each expanded exterior side has one vote, never an area-weighted
         // vote. Exclude expanded corners and require local RGB agreement.
         const int margin = std::clamp(box.height() / 6, 2, 12);
+        const int x0 = quad ? box.left() - margin : std::max(0, box.left() - margin);
+        const int y0 = quad ? box.top() - margin : std::max(0, box.top() - margin);
+        const int x1 = quad ? box.right() + 1 + margin : std::min(image.width(), box.right() + 1 + margin);
+        const int y1 = quad ? box.bottom() + 1 + margin : std::min(image.height(), box.bottom() + 1 + margin);
         const QRect sides[4]{
-            QRect(box.left(), std::max(0, box.top() - margin), box.width(),
-                  box.top() - std::max(0, box.top() - margin)),
+            QRect(box.left(), y0, box.width(), box.top() - y0),
             QRect(box.left(), box.bottom() + 1, box.width(),
-                  std::min(image.height(), box.bottom() + 1 + margin) - box.bottom() - 1),
-            QRect(std::max(0, box.left() - margin), box.top(),
-                  box.left() - std::max(0, box.left() - margin), box.height()),
+                  y1 - box.bottom() - 1),
+            QRect(x0, box.top(), box.left() - x0, box.height()),
             QRect(box.right() + 1, box.top(),
-                  std::min(image.width(), box.right() + 1 + margin) - box.right() - 1, box.height())};
+                  x1 - box.right() - 1, box.height())};
         std::memset(histogram, 0, sizeof(histogram));
         std::memset(sideCounts, 0, sizeof(sideCounts));
         std::memset(sideTotals, 0, sizeof(sideTotals));
@@ -296,7 +321,8 @@ LineColors MeasureLineColors(const QImage& image, const QRect& bounds)
     unsigned inkCount = 0;
     for (int y = box.top(); y <= box.bottom(); y += 2)
         for (int x = box.left(); x <= box.right(); x += 2) {
-            const uchar* px = image.constScanLine(y) + x * 4;
+            const uchar* px = pixel(x, y);
+            if (!px) continue;
             const int value = Luma(px);
             if ((value < threshold ? 0 : 1) != fg ||
                 (fg == 0 ? value > endpoint[fg] : value < endpoint[fg])) continue;
@@ -470,6 +496,7 @@ TextQuad FitOrientedWordInk(const QImage& image, const RecognizedWord& word, con
     const int ink = luma(colors.foreground), paper = luma(colors.background);
     if (std::abs(ink - paper) < 24) return detected;
     const int threshold = (ink + paper) / 2;
+    const color_policy::Rgb localInk{{colors.foreground.red(), colors.foreground.green(), colors.foreground.blue()}};
     const QPointF origin = search.points[0];
     const double width = QuadWidth(search), height = QuadHeight(search);
     if (!(width >= 1.0) || !(height >= 1.0) || !std::isfinite(width) || !std::isfinite(height)) return detected;
@@ -478,19 +505,63 @@ TextQuad FitOrientedWordInk(const QImage& image, const RecognizedWord& word, con
     const auto at = [&](double x, double y) { return origin + u * x + v * y + warp * ((x / width) * (y / height)); };
     // Same bounded sample budget as the rectangle fit, on the rotated grid.
     const int step = std::max({1, static_cast<int>(std::ceil(std::sqrt(width * height / 16384.0))),
-                               static_cast<int>(std::ceil(height / 8192.0)),
+                               static_cast<int>(std::ceil(height / 4096.0)),
                                static_cast<int>(std::ceil(width / 8192.0))});
     const int columns = static_cast<int>(std::ceil(width / step)), rowsCount = static_cast<int>(std::ceil(height / step));
+    if (columns * rowsCount > 32768) return detected;
     QVector<int> rows(rowsCount, 0);
     int total = 0;
-    const auto inkAt = [&](int iu, int iv) {
+    const auto rawInkAt = [&](int iu, int iv) {
         const double du = double(iu) * step, dv = double(iv) * step;
         const QPointF point = at(du, dv);
         const int x = static_cast<int>(std::floor(point.x()));
         const int y = static_cast<int>(std::floor(point.y()));
         if (x < 0 || y < 0 || x >= image.width() || y >= image.height()) return false;
-        const int value = Luma(image.constScanLine(y) + x * 4);
+        const auto* pixel = image.constScanLine(y) + x * 4;
+        const int value = Luma(pixel);
         return ink < paper ? value < threshold : value > threshold;
+    };
+    // A button's surround can have the exact color of its letters. Remove
+    // only connected ink spanning opposite search edges in the word frame.
+    // A legitimate glyph/dot touching one edge (or one corner) is retained.
+    QVector<quint8> mask(columns * rowsCount, 0);
+    for (int iv = 0; iv < rowsCount; ++iv)
+        for (int iu = 0; iu < columns; ++iu) if (rawInkAt(iu, iv)) {
+            mask[iv * columns + iu] = 1;
+        }
+    QVector<int> component;
+    for (int seed = 0; seed < mask.size(); ++seed) {
+        if (mask[seed] != 1) continue;
+        component.clear(); component.push_back(seed); mask[seed] = 2;
+        unsigned sides = 0;
+        bool compatible = false, interior = false;
+        for (int next = 0; next < component.size(); ++next) {
+            const int iu = component[next] % columns, iv = component[next] / columns;
+            const auto point = at(double(iu) * step, double(iv) * step);
+            compatible = compatible || color_policy::Compatible(
+                image.constScanLine(int(std::floor(point.y()))) + int(std::floor(point.x())) * 4, localInk);
+            interior = interior || (iu && iv && iu < columns - 1 && iv < rowsCount - 1);
+            sides |= (!iu ? 1u : 0u) | (iu == columns - 1 ? 2u : 0u) |
+                     (!iv ? 4u : 0u) | (iv == rowsCount - 1 ? 8u : 0u);
+            for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) {
+                const int x = iu + dx, y = iv + dy;
+                if (x < 0 || y < 0 || x >= columns || y >= rowsCount) continue;
+                const int index = y * columns + x;
+                if (mask[index] == 1) { mask[index] = 2; component.push_back(index); }
+            }
+        }
+        const bool exterior = (sides & 3) == 3 || (sides & 12) == 12 ||
+                              (!compatible && (sides & (sides - 1)) != 0);
+        const bool anchored = compatible || sides == 0; // Local paper encloses an interior glyph.
+        // A wholly different interior stroke could be a darker/lighter glyph
+        // missed by the representative ink quartile. Keep detector geometry
+        // rather than silently fitting the remaining letters without it.
+        if (!exterior && !anchored && interior && component.size() >= 8) return detected;
+        for (const int index : component) mask[index] = !exterior && anchored ? 4 : 3;
+    }
+    const auto inkAt = [&](int iu, int iv) {
+        const auto value = mask[iv * columns + iu];
+        return value == 4;
     };
     for (int iv = 0; iv < rowsCount; ++iv)
         for (int iu = 0; iu < columns; ++iu)
@@ -1804,7 +1875,8 @@ struct RecognitionScheduler::State {
                     result.lineColors.push_back(colors);
                     for (RecognizedWord& word : line.words) {
                         if (word.protectedBoundsPx.isEmpty()) word.protectedBoundsPx = word.boundsPx;
-                        word.colors = MeasureLineColors(pixels, word.boundsPx.toAlignedRect());
+                        word.colors = MeasureLineColors(pixels, word.boundsPx.toAlignedRect(),
+                            QuadIsRotated(word.quadPx) ? &word.quadPx : nullptr);
                         if (!word.paddedBounds || word.disposition != TokenDisposition::kCandidate) continue;
                         if (QuadIsRotated(word.quadPx)) {
                             // Rows of a tilted word's bounding box mix ink and
