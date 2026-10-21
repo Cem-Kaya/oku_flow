@@ -98,9 +98,10 @@ def main():
     parser.add_argument("--output",type=Path,required=True)
     args=parser.parse_args()
     args.output.mkdir(parents=True,exist_ok=False)
-    reports=[];statistics_rows=[];receipts=[]
+    reports=[];statistics_rows=[];receipts=[];contended_runs=[]
     for run in args.runs:
         invocation=load(run/"invocation.json");process=load(run/"process.json");raw=run/"raw"
+        if invocation.get("contended",False):contended_runs.append(str(run))
         summary=load(raw/"summary.json");manifest=load(raw/"manifest.json");sources=load(raw/"sources.json")
         if process["exitCode"] or not summary["complete"]:
             raise ValueError("Incomplete/failed timing invocation; preserve and report it separately")
@@ -137,10 +138,14 @@ def main():
                                 for name,values in metrics[(index,source)].items()}}
                 statistics_rows.append(row)
         receipts.append({"run":str(run),"process":process,"manifest":manifest,"summary":summary})
-    output={"notAccuracy":True,"comparisons":reports,"statistics":statistics_rows,"receipts":receipts}
+    output={"notAccuracy":True,"contendedRuns":contended_runs,
+            "comparisons":reports,"statistics":statistics_rows,"receipts":receipts}
     (args.output/"report.json").write_text(json.dumps(output,indent=2),encoding="utf-8")
     escape=lambda v:html.escape(str(v),quote=True)
     content=['<!doctype html><meta charset="utf-8"><title>UCT precision experiment</title><style>body{font:17px system-ui;max-width:1200px;margin:32px auto;padding:16px;line-height:1.5}table{border-collapse:collapse;width:100%}td,th{padding:8px;border:1px solid #bbb;text-align:left}del,.dropped{background:#ffdad8;color:#650000}ins,.added{background:#d3f6d9;color:#034016;text-decoration:none}.changed{background:#ffe7a4}summary{cursor:pointer;margin-top:18px}code{overflow-wrap:anywhere}</style><h1>UCT precision experiment</h1><p>Same-source agreement, not ground-truth accuracy. Fixed1024 / batch8. Warmup and startup excluded. Three finite observations describe these frames, not tail latency, native FPS, or another GPU. INT4 is weight-only, with higher-precision arithmetic.</p>']
+    if contended_runs:
+        content.append('<p><strong>CONTENDED timing:</strong> '+escape(len(contended_runs))+
+                       ' invocation(s) explicitly permitted concurrent GPU clients. Per-configuration GPU utilization, memory, power and process snapshots are retained in raw receipts. These are not unloaded or isolated measurements.</p>')
     content.append('<h2>Worker latency and stage medians</h2><table><tr><th>Source</th><th>Detector / recognizer</th><th>Path</th><th>Worker ms</th><th>Detector ms</th><th>Recognizer ms</th><th>Free VRAM after job</th></tr>')
     for row in statistics_rows:
         m=row["metrics"]

@@ -5,6 +5,10 @@ Status: opt-in development implementation; measured acceptance is recorded below
 An empty value or `fixed1024` retains the existing path and cache identities.
 Model tiers, detector coverage, FP32 precision and publication safeguards are
 unchanged. No model, SDK or dependency is downloaded or bundled by this option.
+Here FP32 describes the pinned graph/storage and interfaces; TensorRT's
+default-allowed TF32 arithmetic cannot be excluded from FP32 I/O alone.
+Separate explicit precision experiments and inspector evidence are recorded
+in [UCT precision experiments](uct_precision_experiment.md).
 
 ## Work and ownership
 

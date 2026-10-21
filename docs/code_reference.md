@@ -36,6 +36,15 @@ bounded CPU calibration and INT8/FP8 explicit Q/DQ; `precision_report.py`
 validates receipts and renders complete word edits/geometry/timing as HTML
 and JSON. `run_uct_precision.ps1` owns the shared runner lease and finite child
 invocations. See [precision experiment and limits](uct_precision_experiment.md).
+`precision_overlay.py::{annotations,page}` cross-check reading-order edits
+against spatial occurrences and renders unchanged source pixels with SVG:
+green for every returned candidate (including possible misreads), red for
+omitted/suppressed baseline words and amber for changed readings. The output
+retains exact receipts and escaped OCR text. `test_precision_reports.py`
+covers edit boundaries, source/crop/width/egress refusals, repeated occurrences,
+disposition/confidence evidence, overlay classification and HTML escaping.
+`precision_report.py` retains explicit contended invocation identities in
+JSON and labels their HTML timing, without inferring exclusive GPU occupancy.
 
 ## Supplemental regional UCT execution (2026-10-21)
 

@@ -955,3 +955,8 @@ aligned with the project goals.
   Inspect existing engines without rebuilding baseline. Keep disjoint calibration
   provenance and every word/disposition/geometry/confidence difference. Model
   agreement is not accuracy; Ada timing is not RTX3050/120FPS acceptance.
+- An explicit owner override may authorize contended measurements;
+  `run_uct_precision.ps1 -AllowContended` still acquires the runner lease and
+  retains per-configuration GPU/process snapshots. Label every such result
+  contended, preserve normal exits and report exact measurement/lease release.
+  This override never authorizes stopping foreign processes or deleting locks.

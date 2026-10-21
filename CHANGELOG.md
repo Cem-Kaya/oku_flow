@@ -6,6 +6,8 @@
   FP16/BF16 linear islands and separately prepared quantized candidates.
   Preserve default models/precision, width, baseline engines and CPU behavior;
   private measurements and quality comparisons remain separate acceptance.
+  Retain contended FP16/BF16/INT4/FP8/INT8 results, exact word differences and
+  source-image overlays with green returned words and highlighted omissions.
 
 - Keep immutable UCT duplicate carving aligned with displayed geometry and
   preserve risky notation and invalid-geometry masks during nearby refinement.
