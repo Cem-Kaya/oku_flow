@@ -6680,3 +6680,10 @@ repair. The changed-input CPU contract passes all258 Qt rows, zero skips, in
 later remaining grouping failure, and a runner recheck refusal are retained;
 none was retried unchanged. This is scoped CPU validation, not combined
 CUDA/native acceptance.
+
+
+`CreateProductionTensorRtRecognizer` has a trailing optional
+`TensorRtRetirementObserver`, omitted by the application. The explicit
+`uct_active_regional_test::Run` production-factory selector uses it to require
+exact state retirement and checks actual precision plus both cache inventories.
+The public FP32 diagnostic factory remains independent of the application opt-in.

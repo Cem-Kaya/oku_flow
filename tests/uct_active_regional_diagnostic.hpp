@@ -4,6 +4,7 @@
 // cached engines and the production scheduler; no native window or settings.
 #include "uct_resident_diagnostic.hpp"
 #include "okuflow/common/uct_region_planner.hpp"
+#include "../src/common/uct_runtime_precision.hpp"
 
 namespace uct_active_regional_test {
 inline void Run()
@@ -94,8 +95,18 @@ inline void Run()
     ProfileCapture capture;
     uct_batch_test::RetirementReceipts retirement;
     const auto box = std::make_shared<Mailbox>();
-    auto recognizer = CreateTensorRtRecognizer(assets.root, sdk, ModelTier::Medium,
-                                               ModelTier::Medium, retirement.Observer());
+    const bool productionFactory = qEnvironmentVariable("OKUFLOW_UCT_ACTIVE_PRODUCTION_FACTORY") == "1";
+    std::optional<runtime_precision::Selection> precisionSelection;
+    QJsonArray precisionCacheBefore;
+    if (productionFactory) {
+        const auto request = runtime_precision::ReadApplicationRequest();
+        QVERIFY2(request.Requested(), "Production BF16 proof requires the explicit reviewed manifest.");
+        precisionSelection = runtime_precision::LoadManifest(request, assets.detector);
+        precisionCacheBefore = CacheInventory(QDir(precisionSelection->artifactRoot).filePath("engines/bf16-linear"));
+    }
+    auto recognizer = productionFactory
+        ? CreateProductionTensorRtRecognizer(ModelTier::Medium, ModelTier::Medium, retirement.Observer())
+        : CreateTensorRtRecognizer(assets.root, sdk, ModelTier::Medium, ModelTier::Medium, retirement.Observer());
     auto scheduler = std::make_unique<RecognitionScheduler>(std::move(recognizer),
         [box](RecognitionResult result) {
             { std::lock_guard lock(box->mutex); box->completed = Completion{std::move(result), box->backend, Clock::now()}; }
@@ -116,6 +127,7 @@ inline void Run()
         else full = std::move(completion);
     }
     QVERIFY(full && full->backend.usesGpu);
+    if (productionFactory) QVERIFY2(full->backend.detail.contains("Recognition graph=BF16-linear"), qPrintable(full->backend.detail));
     QVERIFY2(full->result.output.ok, qPrintable(full->result.output.error));
     QVERIFY(full->result.reference.resident && full->result.sourcePixelDigest.size() == 32);
     QCOMPARE(full->result.jobKind, RecognitionJobKind::Full);
@@ -164,6 +176,7 @@ inline void Run()
         QJsonArray result; for (const auto& value : values) result.push_back(value); return result;
     };
     const QJsonObject report{{"scope", "Actual cached GPU full/region/full calls on two extracted acquisitions; no controller cadence, text admission, screen-reader or display latency claim."},
+        {"productionFactory", productionFactory}, {"actualBackendDetail", full->backend.detail},
         {"firstPath", firstPath}, {"nextPath", nextPath},
         {"firstSha256", FileSha256(firstPath)}, {"nextSha256", FileSha256(nextPath)},
         {"firstPtsMs", firstPts}, {"nextPtsMs", nextPts}, {"slackBeforeRegionMs", slackMs},
@@ -193,6 +206,7 @@ inline void Run()
     scheduler.reset();
     QVERIFY2(retirement.Wait().Passed(), "Exact diagnostic TensorRT State did not close.");
     QVERIFY(CacheInventory(cache) == cacheBefore);
+    if (precisionSelection) QVERIFY(CacheInventory(QDir(precisionSelection->artifactRoot).filePath("engines/bf16-linear")) == precisionCacheBefore);
 #endif
 }
 } // namespace uct_active_regional_test

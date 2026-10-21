@@ -96,3 +96,11 @@ execution were not run by the implementation worker.
 Private optional SDK/model distribution remains governed by
 [existing notices](THIRD_PARTY_LICENSES.md#optional-experimental-paddleocr-component-2026-10-18);
 no new third-party implementation or dependency is added.
+
+The private production factory accepts an optional retirement observer so the
+explicit active-GPU diagnostic can exercise the same app selection and verify
+its exact TensorRT state closure. Ordinary application calls omit that observer.
+`OKUFLOW_UCT_ACTIVE_PRODUCTION_FACTORY=1` additionally requires the reviewed
+local BF16 manifest and asserts actual BF16 status; it retains both baseline
+and variant cache inventories. This diagnostic still measures scheduler calls,
+not controller admission or native publication latency.

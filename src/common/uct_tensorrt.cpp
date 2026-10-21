@@ -1253,22 +1253,24 @@ std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &root, const 
     return std::make_unique<TensorRtRecognizer>(root.isEmpty() ? DefaultPaddleRoot() : root,
                                                 selected,detector,recognizer,std::move(retirementObserver),std::move(cropDiagnostic));
 }
-std::unique_ptr<Recognizer> CreateProductionTensorRtRecognizer(ModelTier detector, ModelTier recognizer)
+std::unique_ptr<Recognizer> CreateProductionTensorRtRecognizer(ModelTier detector, ModelTier recognizer,
+                                                              TensorRtRetirementObserver retirementObserver)
 {
     auto sdk = qEnvironmentVariable("OKUFLOW_UCT_TENSORRT_ROOT");
     if (sdk.isEmpty()) sdk = QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath(
         "OkuFlow/ocr-deps/TensorRT-11.4.0.106-cuda12.9/TensorRT-11.4.0.106");
     return std::make_unique<TensorRtRecognizer>(DefaultPaddleRoot(), sdk, detector, recognizer,
-        TensorRtRetirementObserver{}, std::shared_ptr<TensorRtCropDiagnostic>{},
+        std::move(retirementObserver), std::shared_ptr<TensorRtCropDiagnostic>{},
         runtime_precision::ReadApplicationRequest());
 }
 } // namespace okuflow::uct
 #else
 namespace okuflow::uct
 {
-std::unique_ptr<Recognizer> CreateProductionTensorRtRecognizer(ModelTier detector, ModelTier recognizer)
+std::unique_ptr<Recognizer> CreateProductionTensorRtRecognizer(ModelTier detector, ModelTier recognizer,
+                                                              TensorRtRetirementObserver retirementObserver)
 {
-    return CreateTensorRtRecognizer({}, {}, detector, recognizer);
+    return CreateTensorRtRecognizer({}, {}, detector, recognizer, std::move(retirementObserver));
 }
 std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &, const QString &,ModelTier,ModelTier,
                                                    TensorRtRetirementObserver, std::shared_ptr<TensorRtCropDiagnostic>)
