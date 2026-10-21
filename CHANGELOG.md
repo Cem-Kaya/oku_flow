@@ -6,6 +6,10 @@
   private development builds, stable custom I/O and existing selected-frame,
   PCM and retirement authority. Keep native/archive fallback and default;
   document same-source timing/color differences and unaccepted HDR/deployment.
+  Refuse exhausted container probes and failed known-audio cursors, and bind
+  opening cancellation to its original request generation.
+  Keep held-frame rewind and Resume intent together so a quick Pause/Resume
+  cannot leave playback stuck at the final image without reaching Ended.
 
 - Keep healthy long-GOP video seeks and audio-aligned Resume active while
   decoding advances, under a two-second progress timeout and sixty-second

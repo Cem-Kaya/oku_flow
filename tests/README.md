@@ -8,6 +8,10 @@ An explicit `OKUFLOW_FFMPEG_SDK_ROOT` registers
 These serial, desktop-free codec cases require actual embedded identity, stable
 custom I/O cancellation/deadlines, native fallback, frame issuance/retirement,
 PCM continuity and retained-lease pressure. No GUI or audio endpoint opens.
+The embedded contract also constructs private container metadata beyond the
+box-probe budget and injects a failed cursor for a known audio track. Both
+must refuse embedded admission rather than certify a partial scan or silently
+drop the soundtrack. The generated temporary files contain no external media.
 Run through `run_test_gate.ps1` using the independent build directory. The
 default native contract and silent audio-output contract remain separate.
 `compare_video_backends.ps1` takes the global lease for an explicit finite
@@ -1837,6 +1841,11 @@ an audio endpoint; bounded lead and mute/Resume floors are asserted. Its
 provenance, opt-in private-file playback diagnostics and limits are in
 `docs/video_audio_preroll_repair.md`. PCM delivery does not prove audible
 speaker/device continuity.
+The scene-cut portion also holds an earlier issued frame while the decoder is
+ahead, resumes to actual EOS, then replays the same-generation tail. This covers
+the shared worker's atomic restart/rewind handoff and pending-Resume End guard.
+Its four-second wait is unchanged; a failure additionally reports state, held
+PTS, ready-frame count, memory pressure and the worker error.
 The native AVC/AV1 fixtures additionally copy their own finalized output to a
 private observed archive, prove its duration, revoke its bytes by truncation,
 then verify finalization retains only historical mapping and denies old reads.

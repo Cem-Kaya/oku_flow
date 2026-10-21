@@ -135,7 +135,8 @@ bool FragmentedMp4(IMFByteStream* bytes,const std::function<bool()>& current,Clo
         } else if(!size)size=end-at;
         return size>=header && size<=end-at;
     };
-    for(std::uint64_t at=0,attempts=0;at<length && attempts<1024;++attempts) {
+    std::uint64_t at{};
+    for(unsigned attempts=0;at<length && attempts<1024;++attempts) {
         std::uint64_t size{};unsigned header{};char type[4]{};
         if(!box(at,length,size,header,type))return false;
         if(!std::memcmp(type,"moof",4))return true;
@@ -153,6 +154,7 @@ bool FragmentedMp4(IMFByteStream* bytes,const std::function<bool()>& current,Clo
         }
         at+=size;
     }
+    if(at<length)throw std::runtime_error("Embedded MP4 exceeds the bounded box probe.");
     return false;
 }
 struct Track {
@@ -438,15 +440,18 @@ HRESULT CreateFfmpegVideoReader(IMFByteStream* bytes,const VideoReadStreamClone&
         if(FragmentedMp4(bytes,current,deadline))throw std::runtime_error("Saved fragmented MP4 retains native frame/PTS authority; using Media Foundation.");
         auto reader=std::make_unique<Reader>(Library());
         reader->video.Open(bytes,false,current,deadline);
-        ComPtr<IMFByteStream> audioBytes;Require(clone(&audioBytes));
-        auto audio=std::make_unique<Track>(reader->video.a);
         // No audio stream is legitimate; an unsupported existing track must
         // fail open into native fallback, never become silently muted media.
-        try {audio->Open(audioBytes.Get(),true,current,deadline,reader->video.origin);reader->audio=std::move(audio);}
-        catch(...) {
-            if(audio->format && std::any_of(audio->format->streams,audio->format->streams+audio->format->nb_streams,
-                [](const AVStream* s){return s->codecpar->codec_type==AVMEDIA_TYPE_AUDIO;}))throw;
-            if(!current() || Clock::now()>=deadline)throw;
+        // The successfully opened video demuxer is the authoritative track
+        // inventory. A failed audio open can clear its own format pointer.
+        const auto* format=reader->video.format;
+        const bool hasAudio=std::any_of(format->streams,format->streams+format->nb_streams,
+            [](const AVStream* s){return s->codecpar->codec_type==AVMEDIA_TYPE_AUDIO;});
+        if(hasAudio) {
+            ComPtr<IMFByteStream> audioBytes;Require(clone(&audioBytes));
+            auto audio=std::make_unique<Track>(reader->video.a);
+            audio->Open(audioBytes.Get(),true,current,deadline,reader->video.origin);
+            reader->audio=std::move(audio);
         }
         *out=reader.release();reason="Embedded FFmpeg CPU; libdav1d for AV1; BGRA matrix conversion, no HDR tone mapping.";
         return S_OK;

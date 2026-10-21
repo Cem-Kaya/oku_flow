@@ -343,7 +343,9 @@ std::optional<unsigned> CodedBitsPerComponent(IMFMediaType* native, const GUID& 
     }
     return std::nullopt;
 }
-void ConfigureReader(Reader& r, const Command& cmd, VideoPlayback::State& state) {
+void ConfigureReader(Reader& r, const Command& cmd, VideoPlayback::State& state,
+                     std::uint64_t generation) {
+    if(!state.Current(generation))throw std::runtime_error("Playback open was superseded.");
     if (cmd.archive) {
         r.archive = cmd.archive;
         if(!r.bytes)Check(cmd.archive->OpenReadStream(&r.bytes, &r.archiveAdmission,&r.cloneRead), "Active recording is not yet safely readable");
@@ -354,10 +356,9 @@ void ConfigureReader(Reader& r, const Command& cmd, VideoPlayback::State& state)
     if(detail::FfmpegPlaybackRequested()) {
         if(cmd.archive)r.backendReason="Recording archives use the Media Foundation backend.";
         else {
-            const auto gen=state.generation.load();
             const auto result=detail::CreateFfmpegVideoReader(r.bytes.Get(),r.cloneRead,
-                [&state,gen]{return state.Current(gen);},cmd.queued+std::chrono::seconds(2),&r.source,r.backendReason);
-            if(!state.Current(gen))throw std::runtime_error("Embedded open was superseded.");
+                [&state,generation]{return state.Current(generation);},cmd.queued+std::chrono::seconds(2),&r.source,r.backendReason);
+            if(!state.Current(generation))throw std::runtime_error("Embedded open was superseded.");
             if(SUCCEEDED(result))r.backend="ffmpeg-dav1d";
             else {
                 // A failed probe never reopens the path. Native fallback gets
@@ -824,7 +825,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                         // the successor. A stuck Release retains the permit.
                         reader.Reset();
                         if (!s->Current(command.generation)) continue;
-                        ConfigureReader(reader, command,*s); AdmitReaderMemory(reader,*s,command.generation); document = command;
+                        ConfigureReader(reader, command,*s,command.generation); AdmitReaderMemory(reader,*s,command.generation); document = command;
                     } else {
                         if((command.forceCpu && reader.gpu) || (!reader.source && command.forceCpu)) {
                             // Keep the stable stream handle and identity across
@@ -839,7 +840,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                             reader.Reset();reader.bytes=bytes;reader.cloneRead=std::move(clone);reader.file=identity;
                             reader.archiveAdmission=admission;reader.archive=archive;
                             document.forceCpu=true;document.gpuAdapter.reset();
-                            ConfigureReader(reader,document,*s);AdmitReaderMemory(reader,*s,command.generation);
+                            ConfigureReader(reader,document,*s,command.generation);AdmitReaderMemory(reader,*s,command.generation);
                         }
                         if (!reader.source) throw std::runtime_error("No readable video is selected.");
                         document.generation = command.generation;
@@ -849,7 +850,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                                 now.verifiedMediaBytes != reader.archiveAdmission.verifiedMediaBytes) {
                                 reader.Reset();
                                 if (!s->Current(command.generation)) continue;
-                                ConfigureReader(reader, document,*s); AdmitReaderMemory(reader,*s,command.generation);
+                                ConfigureReader(reader, document,*s,command.generation); AdmitReaderMemory(reader,*s,command.generation);
                             }
                         }
                     }
@@ -1054,13 +1055,13 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                 if(play && !reader.source) {std::lock_guard lock(s->mutex);s->playing=false;}
                 continue;
             }
+            bool resumePending{};
             {std::lock_guard lock(s->mutex);
              if(!s->Current(document.generation) || !s->playing)continue;
-             // A real Resume may restore an earlier issued displayed frame
-             // after the decoder reached EOS. Consume that intent before EOS
-             // can publish Ended at the earlier held PTS or shorten the tail.
-             if(s->repositionOnResume) {reader.needsReposition=true;s->repositionOnResume=false;}}
-            if (reader.eos && ReadyEmpty(*s) && !reader.needsReposition) {
+             // Leave both Resume flags for the same locked handoff below.
+             // Pause/Resume can arrive between this check and that handoff.
+             resumePending=s->restartAtCursor || s->repositionOnResume;}
+            if (reader.eos && ReadyEmpty(*s) && !reader.needsReposition && !resumePending) {
                 if (document.archive) {
                     const auto current = document.archive->Snapshot();
                     if (!current.finalized && current.generation == reader.archiveAdmission.generation &&
@@ -1078,7 +1079,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                         current.generation != reader.archiveAdmission.generation) {
                         try {
                             reader.Reset();
-                            ConfigureReader(reader, document,*s); AdmitReaderMemory(reader,*s,document.generation);
+                            ConfigureReader(reader, document,*s,document.generation); AdmitReaderMemory(reader,*s,document.generation);
                             std::lock_guard lock(s->mutex);
                             if (s->Current(document.generation)) {
                                 s->restartAtCursor = true;
@@ -1122,7 +1123,8 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                     }
                 }
                 std::lock_guard lock(s->mutex);
-                if (s->Current(document.generation) && s->playing) { s->playing = false; s->snapshot.state = VideoPlaybackState::Ended;
+                if (s->Current(document.generation) && s->playing &&
+                    !s->restartAtCursor && !s->repositionOnResume) { s->playing = false; s->snapshot.state = VideoPlaybackState::Ended;
                     if (!document.archive && s->snapshot.frame) s->snapshot.seekableEnd100ns = s->snapshot.frame->pts100ns; }
                 continue;
             }
@@ -1138,6 +1140,12 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                       continue;
                   }
                   restart = s->restartAtCursor; s->restartAtCursor = false;
+                  if(restart && s->repositionOnResume) {
+                      // Consume rewind intent with this exact restart. Taking
+                      // it in a separate iteration can strand needsReposition
+                      // at EOS after restartAtCursor has already been cleared.
+                      reader.needsReposition=true;s->repositionOnResume=false;
+                  }
                   audioEnabled = !s->muted && reader.audioAvailable;
                   cursor = s->restartCursor100ns;
                   copyFloor=s->snapshot.frame?s->snapshot.frame->pts100ns+1:0;

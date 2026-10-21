@@ -1,5 +1,14 @@
 # Hard-Coded Paths and Defaults
 
+## Owner workstation work storage (2026-10-21)
+
+Large private work folders physically reside under `Z:\Projects\OkuFlow`;
+legacy LocalAppData and inactive T3 checkout paths use directory junctions.
+The active checkout retains about 20 MiB of source on C: while its build
+directory redirects to Z:. Private credentials/app state and small loose files
+remain on C:. These are local filesystem aliases, not new application defaults.
+Use Z: for new large outputs; see [storage layout](local_work_storage.md).
+
 ## Optional embedded video SDK (development)
 
 `scripts/ffmpeg/pins.json` pins FFmpeg 7.1.1, dav1d 1.5.1 and private build
@@ -10,7 +19,9 @@ MSYS2. `OKUFLOW_FFMPEG_SDK_ROOT` enables the CMake adapter;
 select it at runtime. No ambient Qt/PATH DLL discovery or deployment occurs.
 Runtime majors are avcodec/avformat 61, avutil 59, swresample 5 and swscale 8.
 Decoder threads are four; AVIO reads 64 KiB; probe/index 8 MiB; streams eight;
-per-step packet attempts 65,536; dimensions 16,777,216 pixels. Upstream internal
+per-step packet attempts 65,536; dimensions 16,777,216 pixels.
+Container inspection is limited to 1,024 top-level and 1,024 child boxes;
+exhaustion refuses admission. Upstream internal
 allocations are outside the pixel quota. Finite comparison receipts use
 `OkuFlow/embedded-video-evidence/<guid>`, the global runner lease and a
 180-second child deadline. See [contract and limits](video_ffmpeg_playback.md).

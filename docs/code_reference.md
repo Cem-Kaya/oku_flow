@@ -7,7 +7,8 @@
 FfmpegVideoReaderError}`. Without explicit SDK headers it compiles a native
 fallback stub. `Api`/`Library` load one private dynamic runtime identity with
 version/config/license checks. `FragmentedMp4` probes bounded held-stream boxes
-to refuse the measured fragmented-file PTS mismatch, and `Matrix` validates
+to refuse the measured fragmented-file PTS mismatch, refuses exhaustion of its
+top-level or child-box budget, and `Matrix` validates
 supported color matrices. `Track::{Open,Seek,Decode,Sample}` own one held
 AVIO/demuxer/decoder/packet/frame per track; `Read`, `SeekIo`, `Interrupt`,
 `DenyExternal` and `Canceled` fence file access and secondary I/O. `Reader`
@@ -17,8 +18,14 @@ system readers without RTTI. `Require`/`AvCheck` retain native/library failures.
 RAII retires contexts/conversions on the existing worker; code remains loaded
 for process lifetime.
 
-`video_playback.cpp::ConfigureReader` now accepts worker state for cancellation
-and same-held-file fallback. `ReadVideo`, `QueueAudio` and `SeekReader` arm the
+`CreateFfmpegVideoReader` uses the successfully opened video demuxer's stream
+inventory to decide whether an audio cursor is required. Failure of a known
+audio track cannot be mistaken for a genuinely silent source.
+
+`video_playback.cpp::ConfigureReader` accepts worker state and the exact
+request generation for cancellation and same-held-file fallback; it never
+adopts a successor generation while opening an older request.
+`ReadVideo`, `QueueAudio` and `SeekReader` arm the
 optional provider with generation/deadline. `Publish` fills snapshot
 `decoderBackend` independently of its reason; private `Reader::Reset` resets
 it. Existing `SealFrame`, pixel quota, PCM trimming/high-water, supersession,
@@ -30,7 +37,9 @@ No new app/controller or OCR authority exists. See [contract](video_ffmpeg_playb
 optional headers/definitions, without downloading, import linking or deployment.
 `prepare_ffmpeg_playback.ps1` verifies pinned inputs/reused sources, builds private
 shared SDKs and records runtime/config/notices. `compare_video_backends.ps1`
-owns the global lease, finite child and evidence. `EmbeddedContract`,
+owns the global lease, finite child and evidence. `EmbeddedAdmissionRefusals`
+covers exhausted container probes and a failed cursor for known audio.
+`EmbeddedContract`,
 `EmbeddedMissingRuntime` and `CompareEmbedded` exercise actual backend/fallback,
 canceled I/O, issuance/retirement and same-source PTS; production PCM/4K/archive
 fixtures include continuity and embedded-specific backend assertions.
@@ -155,6 +164,10 @@ admission callbacks before advancing, so setup cannot expire otherwise current
   Optional corroboration follows exact-target publication and a 50 ms quiet
   period, so immediate scrubs take priority. A reused native cursor repositions
   before corroboration/Resume; audible Resume also skips owned preroll copies.
+  `Worker` consumes held-frame rewind intent and `restartAtCursor` together
+  under the same state lock. End publication rechecks both flags, so a
+  same-generation Pause/Resume cannot strand the decoder at EOS or publish
+  Ended over a pending replay of an earlier issued frame.
   `VideoPlaybackState::Waiting` retains forward intent at a growing archive's
   verified tail; new complete fragments resume it without another user action.
   Archive `parserBoxAttempts` exposes bounded unsupported-generation work.

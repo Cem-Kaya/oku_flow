@@ -376,9 +376,13 @@ void PausedSceneCutNeighbor(VideoPlayback& player) {
     // Keep the same request and issued earlier frame through real playback
     // EOS, then replay its actual tail. No new Seek request retickets it.
     player.SetPlaying(true);
-    Expect(Wait([&] {return player.Snapshot().state==VideoPlaybackState::Ended;}),
-        "same-generation playback reaches native EOS before testing the held earlier frame");
+    const bool reachedFirstEnd=Wait([&] {return player.Snapshot().state==VideoPlaybackState::Ended;});
     const auto firstEnd=player.Snapshot();
+    if(!reachedFirstEnd)std::cerr<<"Held-EOF initial state="<<static_cast<int>(firstEnd.state)
+        <<" pts="<<(firstEnd.frame?firstEnd.frame->pts100ns:-1)
+        <<" ready="<<firstEnd.readyFrames<<" pressure="<<firstEnd.memoryPressure
+        <<" error="<<firstEnd.error<<'\n';
+    Expect(reachedFirstEnd,"same-generation playback reaches native EOS before testing the held earlier frame");
     Expect(firstEnd.frame && firstEnd.frame->pts100ns>selectedPts &&
         firstEnd.seekableEnd100ns==firstEnd.frame->pts100ns,
         "initial EOS records the actual final video sample beyond the held selection");
@@ -1265,10 +1269,51 @@ void NativeExternalPlayback(const std::filesystem::path& path) {
         "private single-GOP playback establishes its actual decoded endpoint under the absolute request cap");
     player.Close();
 }
+void EmbeddedAdmissionRefusals() {
+    const auto longBoxes=TempPath();
+    const auto badAudio=TempPath();
+    {
+        std::ofstream file(longBoxes,std::ios::binary);
+        const char ftyp[]={0,0,0,16,'f','t','y','p','i','s','o','m',0,0,0,0};
+        const char freeBox[]={0,0,0,8,'f','r','e','e'};
+        const char fragmented[]={0,0,0,16,'m','o','o','v',0,0,0,8,'m','v','e','x'};
+        file.write(ftyp,sizeof(ftyp));
+        for(unsigned i=0;i<1024;++i)file.write(freeBox,sizeof(freeBox));
+        file.write(fragmented,sizeof(fragmented));
+    }
+    {std::ofstream file(badAudio,std::ios::binary);file<<"unreadable audio cursor";}
+    {
+        ComPtr<IMFByteStream> bytes;VideoFileIdentity identity;VideoReadStreamClone clone;
+        Expect(SUCCEEDED(OpenStableVideoReadStream(longBoxes.wstring(),&bytes,&identity,&clone)),
+            "bounded container fixture opens its held stream");
+        ComPtr<IMFSourceReader> refused;std::string reason;
+        Expect(FAILED(detail::CreateFfmpegVideoReader(bytes.Get(),clone,[]{return true;},
+            Clock::now()+std::chrono::seconds(2),&refused,reason)) && !refused &&
+            reason.find("bounded box probe")!=std::string::npos,
+            "top-level probe exhaustion cannot certify a later fragmented container as ordinary MP4");
+    }
+    {
+        const auto source=std::filesystem::path(__FILE__).parent_path()/"data/paced-audio-h264.mp4";
+        ComPtr<IMFByteStream> bytes;VideoFileIdentity identity;VideoReadStreamClone clone;
+        Expect(SUCCEEDED(OpenStableVideoReadStream(source.wstring(),&bytes,&identity,&clone)),
+            "audio refusal fixture holds the original video and audio metadata");
+        const VideoReadStreamClone unreadable=[&](IMFByteStream** result) {
+            VideoFileIdentity ignored;
+            return OpenStableVideoReadStream(badAudio.wstring(),result,&ignored);
+        };
+        ComPtr<IMFSourceReader> refused;std::string reason;
+        Expect(FAILED(detail::CreateFfmpegVideoReader(bytes.Get(),unreadable,[]{return true;},
+            Clock::now()+std::chrono::seconds(2),&refused,reason)) && !refused,
+            "failure of a known audio cursor cannot silently admit a video-only decoder");
+    }
+    std::error_code ignored;
+    std::filesystem::remove(longBoxes,ignored);std::filesystem::remove(badAudio,ignored);
+}
 // Same production worker and immutable issuance/PCM contract, no native UI,
 // audio endpoint, camera, external decoder process or model preparation.
 void EmbeddedContract() {
     SetEnvironmentVariableW(L"OKUFLOW_VIDEO_BACKEND",L"ffmpeg");
+    EmbeddedAdmissionRefusals();
     VideoPlayback player;
     LongGopSeeking(player);PausedSceneCutNeighbor(player);PacedAudioDelivery(player);
     player.Close();

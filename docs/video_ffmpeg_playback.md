@@ -89,6 +89,14 @@ high-water, 500 ms/2 MiB/32-packet queues, consumed audio clock, pause, mute and
 the existing output volume path stay owned by the production player/output.
 No microphone or audio endpoint is created by the new fixtures.
 
+Opening retains the exact request generation supplied by the worker; a request
+that was superseded before admission cannot adopt its successor's cancellation
+ticket. The video demuxer's successfully read stream inventory decides whether
+an audio cursor is required. Any failure opening an existing audio track
+refuses the adapter, preserving native fallback instead of silently dropping
+the track. Exhausting the container probe's 1,024 top-level or child boxes also
+refuses admission; an unfinished scan is not proof of a non-fragmented file.
+
 CPU BGRA follows the existing upload/presentation path. It receives the same
 selected frame lease used by GPU effects, UCT, annotation and save operations;
 the adapter never creates a second presentation or OCR authority. Resident
@@ -120,6 +128,34 @@ images only. It does not certify faithful HDR rendering. Keep the backend
 opt-in until color, sound and hardware/native acceptance are complete.
 
 ## Finite validation and measurements
+
+The parent review added two refusal regressions. Before repair, both failed:
+a fragmented container hidden behind more than 1,024 boxes bypassed the probe,
+and a failed audio cursor was accepted as silent video despite known audio
+metadata. The original failing gate is retained under
+`LocalAppData/OkuFlow/ffmpeg-parent-review-20261021/`. These are separate from
+the child's finite seek measurements below.
+
+Parent review also found a shared native/embedded Pause/Resume race: the worker
+could consume restart before its held-frame rewind intent, then leave a pending
+decoder reposition at EOS with no restart left to perform it. Both flags now
+transfer in one locked handoff, and End publication checks for a newer Resume.
+The original native EOS failure and the subsequent disk-full gate remain
+preserved; after-change validation is recorded separately from the child's
+earlier successful prototype run. The four-second fixture wait is unchanged.
+
+After these parent repairs, seven focused SDK/PCH-ON cases passed: native
+playback, embedded playback (including both refusal regressions), 4K retained
+leases, archive fallback, missing-runtime fallback, audio output and shared-source
+equivalence. A separate no-SDK/PCH-OFF build passed native playback, audio output
+and shared-source equivalence. The respective ledgers are
+`DB3D2EF7538D86BAEBF3845B83331B087F93A11D6FD045E68DAF5A37F3FE60B7`
+and `D39910BF5E77D1DA3E9020B5E236B43A934E9E7509A4A2BC0C60544DE5C30670`
+under `LocalAppData/OkuFlow/test-evidence/`. Fresh gates used the current runtime
+after resume refused a changed PATH/codec-opt-in environment; the original
+unfinished disk-full records remain in history. Preprocessing outputs from that
+failure are preserved separately in the SDK build. These are SCOPED background
+checks, not full matrix, native GUI, audible-device or release acceptance.
 
 The SDK-enabled configuration registers desktop-free codec cases for actual
 embedded decoding, missing-runtime native fallback, growing-archive native
@@ -193,12 +229,11 @@ Primary API references: [FFmpeg licensing/checklist](https://ffmpeg.org/legal.ht
 
 ## Integration inventory
 
-The isolated branch starts at parent `876ff4a3fb672979953344eb7cab83664d093790`.
-Cherry-pick its reported implementation commit into the parent before building;
-uncommitted parent files were never copied here. Configure the optional SDK only
-in a fresh private build, using the commands above. Omit both opt-ins to keep
-normal native behavior. Run the complete tracked matrix after integration and
-the existing release gates before publishing. No parent artifact was replaced.
+The prototype is integrated into the development branch. Configure the optional
+SDK only in a fresh private build, using the commands above. Omit both opt-ins
+to keep normal native behavior. The complete tracked matrix and existing release
+gates remain required before publishing; focused private builds do not replace
+the owner's running artifact.
 
 Exact changed files:
 

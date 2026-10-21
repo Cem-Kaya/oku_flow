@@ -36,6 +36,16 @@ work is not counted as elapsed media playback. Earlier PCM remains excluded by
 the exact selected cursor. Long single-GOP inputs can take seconds to seek;
 the new bound is not a latency promise or an unlimited-file guarantee.
 
+## Held-frame Resume
+
+An issued frame can be held behind the decoder without changing request
+generation. Resume transfers its restart flag and decoder-rewind intent in the
+same locked worker handoff. Consuming them in different iterations could leave
+a reposition pending after restart was consumed, stranding playback at EOS.
+End publication also rechecks pending Resume, so it cannot overwrite a newer
+request to replay an earlier issued frame. The scene-cut fixture retains its
+four-second wait and exact final-sample/endpoint assertions.
+
 ## PCM delivery
 
 The native reader and WASAPI output each have a separate bounded queue. Removing
