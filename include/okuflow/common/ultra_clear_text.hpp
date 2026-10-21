@@ -220,7 +220,12 @@ struct ReferencePatch {
     QVector<float> values; // CPU zero-mean, unit-variance samples
     bool valid{};
     std::shared_ptr<const ResidentPatch> resident; // GPU descriptor, no pixel/feature download
+    TextQuad sceneQuad; // optional rectified sampling frame for immutable word proof
 };
+
+// Metadata-only bounded sampling plan; no image access or independent evidence.
+ReferencePatch PlanQuadReference(const SourceStamp&, int width, int height, const TextQuad&);
+ReferencePatch BuildQuadReferencePatch(const ProbeFrame&, const TextQuad&);
 
 // --- Recognition backend -------------------------------------------------
 
@@ -539,6 +544,11 @@ public:
         QVector<ReferencePatch> out;out.reserve(rects.size());
         for(const auto& rect:rects)out.push_back(Reference(stamp,rect));
         return out;
+    }
+    // Oracles without oriented sampling fail closed, rather than pretending a
+    // bounding rectangle contains the same pixels as a rotated word.
+    virtual QVector<ReferencePatch> QuadReferences(const SourceStamp&, const QVector<TextQuad>& quads) const {
+        return QVector<ReferencePatch>(quads.size());
     }
     virtual QVector<PatchMatch> Matches(const SourceStamp& stamp,const QVector<ReferencePatch>& patches,
                                         const MatchTuning& tuning,const QVector<QPointF>& seeds,

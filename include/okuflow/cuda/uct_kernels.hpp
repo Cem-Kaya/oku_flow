@@ -9,7 +9,10 @@ struct Rect { int x, y, w, h; };
 struct Colors { int foreground[3], background[3]; }; // RGB
 struct Ink { Rect search; double x, y, w, h; int detached; };
 struct Fit { double x, y, w, h; };
-struct Grid { double x, y, dx, dy, halfW, halfH; int columns, rows; };
+struct Grid {
+    double x, y, dx, dy, halfW, halfH; int columns, rows;
+    double crossX{}, crossY{}, warpX{}, warpY{};
+};
 struct MatchResult { int visible, matched; double score, x, y; };
 struct ProbeMap { double x, y, sx, sy; }; // scene -> pixels: scene*scale+origin
 struct ReferenceRequest { Grid grid; float* samples; };

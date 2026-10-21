@@ -5,6 +5,7 @@
 
 #include <QElapsedTimer>
 #include <QHash>
+#include <QLineF>
 #include <QSet>
 
 #include <algorithm>
@@ -115,8 +116,17 @@ PatchGeometry ProjectPatch(const ReferencePatch& patch, const ProbeFrame& probe)
     const double h = probe.luma.height();
     const ViewTransform& t = probe.stamp.viewTransform;
     g.probePixels.reserve(patch.columns * patch.rows);
+    const auto quad = patch.sceneQuad.valid ? SceneQuadToView(t, w, h, patch.sceneQuad) : TextQuad{};
+    const auto point = [](const TextQuad& q, double u, double v) {
+        return q.points[0] * ((1-u)*(1-v)) + q.points[1] * (u*(1-v)) +
+               q.points[2] * (u*v) + q.points[3] * ((1-u)*v);
+    };
     for (int r = 0; r < patch.rows; ++r) {
         for (int c = 0; c < patch.columns; ++c) {
+            if(quad.valid) {
+                g.probePixels.push_back(point(quad, (c+.5)/patch.columns, (r+.5)/patch.rows));
+                continue;
+            }
             const QPointF scene(
                 patch.sceneRect.x() + (c + 0.5) / patch.columns * patch.sceneRect.width(),
                 patch.sceneRect.y() + (r + 0.5) / patch.rows * patch.sceneRect.height());
@@ -125,6 +135,13 @@ PatchGeometry ProjectPatch(const ReferencePatch& patch, const ProbeFrame& probe)
     }
     g.halfWidth = 0.5 * patch.sceneRect.width() / patch.columns * PixelsPerSceneX(probe);
     g.halfHeight = 0.5 * patch.sceneRect.height() / patch.rows * PixelsPerSceneY(probe);
+    if(quad.valid) {
+        const double cw=std::min(QLineF(quad.points[0],quad.points[1]).length(),
+                                 QLineF(quad.points[3],quad.points[2]).length())/patch.columns;
+        const double ch=std::min(QLineF(quad.points[0],quad.points[3]).length(),
+                                 QLineF(quad.points[1],quad.points[2]).length())/patch.rows;
+        g.halfWidth=g.halfHeight=.5*std::min(cw,ch);
+    }
     g.sceneUnitsPerPixelX = 1.0 / PixelsPerSceneX(probe);
     g.sceneUnitsPerPixelY = 1.0 / PixelsPerSceneY(probe);
     return g;
@@ -1064,6 +1081,51 @@ ProbeFrame MakeProbeFrame(const std::uint8_t* bgra, int width, int height, int s
 int ProbeFrame::Width() const noexcept { return resident ? resident->Width() : luma.width(); }
 int ProbeFrame::Height() const noexcept { return resident ? resident->Height() : luma.height(); }
 
+ReferencePatch PlanQuadReference(const SourceStamp& stamp, int width, int height, const TextQuad& quad)
+{
+    ReferencePatch patch;
+    if(!UsableTransform(stamp.viewTransform,width,height) || QuadArea(quad)<=0) return patch;
+    const auto pixels=SceneQuadToView(stamp.viewTransform,width,height,quad);
+    const double qw=QuadWidth(pixels),qh=QuadHeight(pixels);
+    if(!std::isfinite(qw) || !std::isfinite(qh) || qw<1 || qh<1) return patch;
+    const auto at=[&](double u,double v) {
+        return pixels.points[0]*((1-u)*(1-v))+pixels.points[1]*(u*(1-v))+
+               pixels.points[2]*(u*v)+pixels.points[3]*((1-u)*v);
+    };
+    const double margin=.15*qh/qw;
+    TextQuad padded{{at(-margin,-.3),at(1+margin,-.3),at(1+margin,1.3),at(-margin,1.3)},true};
+    if(QuadArea(padded)<=0 || !QRectF(1,1,width-2,height-2).contains(padded.Bounds())) return patch;
+    patch.sceneQuad=ViewQuadToScene(stamp.viewTransform,width,height,padded);
+    patch.sceneRect=patch.sceneQuad.Bounds();
+    patch.columns=std::clamp(int(std::lround(QuadWidth(padded))),8,64);
+    patch.rows=std::clamp(int(std::lround(QuadHeight(padded))),4,12);
+    return patch;
+}
+
+ReferencePatch BuildQuadReferencePatch(const ProbeFrame& reference,const TextQuad& quad)
+{
+    if(reference.resident) {
+        const auto patches=reference.resident->QuadReferences(reference.stamp,{quad});
+        return patches.size()==1 ? patches.front() : ReferencePatch{};
+    }
+    if(!reference.IsValid()) return {};
+    auto patch=PlanQuadReference(reference.stamp,reference.Width(),reference.Height(),quad);
+    if(!patch.sceneQuad.valid) return {};
+    const auto geometry=ProjectPatch(patch,reference);
+    double sum=0,sumSq=0;
+    for(const auto& p:geometry.probePixels) {
+        float value{};
+        if(!BoxAverage(reference,p.x(),p.y(),geometry.halfWidth,geometry.halfHeight,value)) return {};
+        patch.values.push_back(value);sum+=value;sumSq+=double(value)*value;
+    }
+    const double mean=sum/patch.values.size();
+    const double deviation=std::sqrt(std::max(0.,sumSq/patch.values.size()-mean*mean));
+    if(deviation<6) return {};
+    for(auto& value:patch.values) value=float((value-mean)/deviation);
+    patch.valid=true;
+    return patch;
+}
+
 ReferencePatch BuildReferencePatch(const ProbeFrame& reference, const QRectF& lineRect)
 {
     if (reference.resident) return reference.resident->Reference(reference.stamp, lineRect);
@@ -1120,7 +1182,9 @@ PatchMatch MatchPatch(const ReferencePatch& patch, const ProbeFrame& probe, cons
     // Resident matching is explicit worker work (CheckLines / corroboration).
     // Never make UI-thread admission wait for a GPU stream.
     if (probe.resident) return match;
-    if (!patch.valid || !probe.IsValid()) {
+    if (!patch.valid || !probe.IsValid() || patch.columns<1 || patch.columns>64 ||
+        patch.rows<1 || patch.rows>12 || patch.values.size()!=patch.columns*patch.rows ||
+        (patch.sceneQuad.valid && QuadArea(patch.sceneQuad)<=0)) {
         return match;
     }
     const PatchGeometry g = ProjectPatch(patch, probe);
@@ -1343,7 +1407,7 @@ QVector<PreparedLine> PrepareLines(const RecognitionResult& result, double minim
 }
 
 namespace {
-// A paused source does not move. Its *neighbour* may have scrolled: validate
+// A paused source does not move. Its *neighbour* may have scrolled or rotated: validate
 // the same recognized word there, without moving the selected-frame glyph.
 // GPU references/samples remain resident and only bounded verdicts return.
 QVector<QVector<bool>> MatchImmutableWords(const CorroborationRequest& request,
@@ -1361,17 +1425,19 @@ QVector<QVector<bool>> MatchImmutableWords(const CorroborationRequest& request,
     qsizetype wordCount = 0;
     for (const auto& line : request.selectedLines) wordCount += line.words.size();
     if (wordCount > 8192) return out;
-    QHash<QString, QVector<QRectF>> recognized;
+    struct WordGeometry { QRectF rect; TextQuad quad; };
+    QHash<QString, QVector<WordGeometry>> recognized;
     for (qsizetype i = 0; i < neighbor.prepared.size(); ++i) {
         if (neighbor.stamp.temporallySmoothed &&
             (neighbor.currentInputMatches.size() != neighbor.prepared.size() ||
              !neighbor.currentInputMatches[i])) continue;
         for (const auto& word : neighbor.prepared[i].words)
             if (word.disposition == TokenDisposition::kCandidate && !IsHighRiskToken(word.text))
-                recognized[word.text].push_back(word.sceneRect);
+                recognized[word.text].push_back({word.sceneRect,word.sceneQuad});
     }
     QVector<QRectF> rects;
     QVector<QPointF> offsets;
+    QVector<TextQuad> sourceQuads,targetQuads;
     QVector<QPair<int, int>> destinations;
     for (int i = 0; i < request.selectedLines.size(); ++i) {
         const auto& line = request.selectedLines[i];
@@ -1384,22 +1450,38 @@ QVector<QVector<bool>> MatchImmutableWords(const CorroborationRequest& request,
             if (evidence == recognized.constEnd()) continue;
             // The ordinary completed line proof already covers static words.
             if (i < neighbor.corroborationMatches.size() && neighbor.corroborationMatches[i] &&
-                std::any_of(evidence->begin(), evidence->end(), [&](const QRectF& r) {
-                    return Iou(word.sceneRect, r) >= .5;
+                std::any_of(evidence->begin(), evidence->end(), [&](const WordGeometry& r) {
+                    return Iou(word.sceneRect, r.rect) >= .5;
                 })) continue;
             std::optional<QPointF> best;
+            TextQuad sourceQuad,targetQuad;
             double nearest = std::numeric_limits<double>::max();
             for (const auto& target : *evidence) {
-                const auto delta = target.center() - word.sceneRect.center();
+                const auto delta = target.rect.center() - word.sceneRect.center();
+                const auto from=word.sceneQuad.valid ? word.sceneQuad : TextQuad::FromRect(word.sceneRect);
+                const auto to=target.quad.valid ? target.quad : TextQuad::FromRect(target.rect);
+                const auto fromPx=SceneQuadToView(request.selectedReference.stamp.viewTransform,
+                    request.selectedReference.Width(),request.selectedReference.Height(),from);
+                const auto toPx=SceneQuadToView(neighbor.stamp.viewTransform,
+                    neighbor.reference.Width(),neighbor.reference.Height(),to);
+                const bool oriented=QuadIsRotated(fromPx) || QuadIsRotated(toPx);
+                const double sourceWidth=oriented?QuadWidth(fromPx):word.sceneRect.width();
+                const double sourceHeight=oriented?QuadHeight(fromPx):word.sceneRect.height();
+                const double targetWidth=oriented?QuadWidth(toPx):target.rect.width();
+                const double targetHeight=oriented?QuadHeight(toPx):target.rect.height();
                 if (std::abs(delta.x()) > .25 || std::abs(delta.y()) > .25 ||
-                    std::min(target.width(), word.sceneRect.width()) < .75 * std::max(target.width(), word.sceneRect.width()) ||
-                    std::min(target.height(), word.sceneRect.height()) < .75 * std::max(target.height(), word.sceneRect.height())) continue;
+                    std::min(targetWidth,sourceWidth) < .75*std::max(targetWidth,sourceWidth) ||
+                    std::min(targetHeight,sourceHeight) < .75*std::max(targetHeight,sourceHeight)) continue;
                 const double distance = delta.x() * delta.x() + delta.y() * delta.y();
-                if (distance < nearest) { nearest = distance; best = delta; }
+                if (distance < nearest) {
+                    nearest=distance;best=delta;
+                    sourceQuad=oriented?from:TextQuad{};targetQuad=oriented?to:TextQuad{};
+                }
             }
             if (!best) continue;
             rects.push_back(word.sceneRect);
             offsets.push_back(*best);
+            sourceQuads.push_back(sourceQuad);targetQuads.push_back(targetQuad);
             destinations.push_back({i, j});
         }
     }
@@ -1408,13 +1490,34 @@ QVector<QVector<bool>> MatchImmutableWords(const CorroborationRequest& request,
     constexpr MatchTuning tuning{.94, .95, 2};
     for (qsizetype first = 0; first < rects.size(); first += 1024) {
         if (cancelled.load()) return unavailable();
-        const auto batch = rects.mid(first, 1024);
-        QVector<ReferencePatch> patches;
-        if (request.selectedReference.resident)
-            patches = request.selectedReference.resident->References(request.selectedReference.stamp, batch);
-        else for (const auto& rect : batch) patches.push_back(BuildReferencePatch(request.selectedReference, rect));
-        if (patches.size() != batch.size()) return unavailable();
-        for (int i = 0; i < patches.size(); ++i) patches[i].sceneRect.translate(offsets[first + i]);
+        const int count=std::min<qsizetype>(1024,rects.size()-first);
+        QVector<ReferencePatch> patches(count);
+        QVector<QRectF> plain;QVector<TextQuad> shapes;
+        QVector<int> plainIndices,shapeIndices;
+        for(int i=0;i<count;++i) {
+            if(sourceQuads[first+i].valid) {shapes.push_back(sourceQuads[first+i]);shapeIndices.push_back(i);}
+            else {plain.push_back(rects[first+i]);plainIndices.push_back(i);}
+        }
+        QVector<ReferencePatch> plainPatches,shapePatches;
+        if(request.selectedReference.resident) {
+            if(!plain.isEmpty()) plainPatches=request.selectedReference.resident->References(request.selectedReference.stamp,plain);
+            if(!shapes.isEmpty()) shapePatches=request.selectedReference.resident->QuadReferences(request.selectedReference.stamp,shapes);
+        } else {
+            for(const auto& rect:plain) plainPatches.push_back(BuildReferencePatch(request.selectedReference,rect));
+            for(const auto& quad:shapes) shapePatches.push_back(BuildQuadReferencePatch(request.selectedReference,quad));
+        }
+        if(plainPatches.size()!=plain.size() || shapePatches.size()!=shapes.size()) return unavailable();
+        for(int i=0;i<plainIndices.size();++i) {
+            const int destination=plainIndices[i];patches[destination]=plainPatches[i];
+            patches[destination].sceneRect.translate(offsets[first+destination]);
+        }
+        for(int i=0;i<shapeIndices.size();++i) {
+            const int destination=shapeIndices[i];patches[destination]=shapePatches[i];
+            const auto target=PlanQuadReference(neighbor.stamp,neighbor.reference.Width(),
+                neighbor.reference.Height(),targetQuads[first+destination]);
+            patches[destination].sceneQuad=target.sceneQuad;patches[destination].sceneRect=target.sceneRect;
+            patches[destination].valid &= target.sceneQuad.valid;
+        }
         QVector<PatchMatch> matches;
         if (neighbor.reference.resident)
             matches = neighbor.reference.resident->Matches(neighbor.stamp, patches, tuning, {}, &cancelled);

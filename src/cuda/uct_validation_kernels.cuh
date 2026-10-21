@@ -75,7 +75,9 @@ __device__ void referenceBody(const unsigned *p, int w, int h, Grid g, float *va
     for (int i = 0; i < n; ++i)
     {
         float v;
-        if (!box(p, w, h, g.x + (i % g.columns) * g.dx, g.y + (i / g.columns) * g.dy, g.halfW,
+        const int column=i%g.columns,row=i/g.columns;
+        if (!box(p, w, h, g.x + column*g.dx + row*g.crossX + column*row*g.warpX,
+                 g.y + row*g.dy + column*g.crossY + column*row*g.warpY, g.halfW,
                  g.halfH, v))
             return;
         values[i] = v;
@@ -112,7 +114,9 @@ __device__ Correlation correlate(const unsigned *p, int w, int h, Grid g, const 
     {
         ++total;
         float v;
-        if (!box(p, w, h, g.x + (i % g.columns) * g.dx + dx, g.y + (i / g.columns) * g.dy + dy,
+        const int column=i%g.columns,row=i/g.columns;
+        if (!box(p, w, h, g.x + column*g.dx + row*g.crossX + column*row*g.warpX + dx,
+                 g.y + row*g.dy + column*g.crossY + column*row*g.warpY + dy,
                  g.halfW, g.halfH, v))
             continue;
         ++n;

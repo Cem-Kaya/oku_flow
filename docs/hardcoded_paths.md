@@ -61,7 +61,10 @@ OCR-rate or native display-latency guarantee.
 
 Immutable paused-word corroboration considers neighbours within 250 ms, limits
 translation to 0.25 normalized scene units per axis, and requires each dimension
-to retain at least 75% of the larger word box. Word registration uses NCC 0.94,
+to retain at least 75% of the larger word box (intrinsic edges for tilted
+quads). Oriented patches sample 8–64 columns by 4–12 rows in the detected
+quad frame, with 0.15-height horizontal and 0.3-height vertical margins.
+Word registration uses NCC 0.94,
 visibility 0.95 and a two-probe-pixel local refinement. Requests are capped at
 1024 selected lines / 8192 words, with resident reference/match batches <= 1024.
 These limits do not expand the live camera's motion search. Completed worker
@@ -940,7 +943,9 @@ The separate explicit paused-video diagnostic uses
 `OKUFLOW_UCT_PAUSE_SELECTED` / `OKUFLOW_UCT_PAUSE_NEIGHBOUR`, and their actual
 millisecond PTS in `OKUFLOW_UCT_PAUSE_SELECTED_MS` /
 `OKUFLOW_UCT_PAUSE_NEIGHBOUR_MS`. It writes unique
-`%LOCALAPPDATA%/OkuFlow/uct-pause-proof-<timestamp>-<uuid>` reports. The existing
+`%LOCALAPPDATA%/OkuFlow/uct-pause-proof-<timestamp>-<uuid>` reports.
+`OKUFLOW_UCT_PAUSE_OUTPUT_ROOT` overrides only that evidence parent and must be
+absolute. The existing
 `OKUFLOW_UCT_TENSORRT_ROOT` must name an inference-only SDK, and pinned M/M N1/N8
 plans must already be cached; no download or engine build is permitted.
 `OKUFLOW_UCT_PAUSE_BRIDGE=1` adds a real Windows OCR pair before TensorRT to
@@ -994,3 +999,13 @@ The minimum, optimum and maximum shapes must match after deserialization.
 `OKUFLOW_UCT_RESIDENT_WIDTH` selects the same two policies in the diagnostic,
 which refuses preparation. Group metadata is bounded to 144 integers / 576
 bytes in each device/host buffer. See [width validation](uct_recognizer_width.md).
+
+## Paused visible UCT detail bounds (2026-10-21)
+
+`UctTiming::immutableDetailSettleMs` defaults to 300 ms (clamped 0–60000).
+`immutableDetailMagnification` defaults to `kMaximumDetailMagnification` (6);
+region selection clamps it to 1–6 and retains the 960-pixel detector long edge.
+A detail pass needs at least 1.25 times the established detector scale.
+Coverage retains up to 32 attempted regions per immutable selection, including
+failed attempts, without eviction. A containing region at 90% of the requested
+scale counts as already covered. See [geometry/detail repair](uct_oriented_detail_repair.md).

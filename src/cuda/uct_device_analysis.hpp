@@ -285,6 +285,20 @@ inline QRectF ViewArea(const SourceStamp &stamp, int w, int h, double border = 0
 }
 inline gpu::Grid Project(const SourceStamp &stamp, int w, int h, const ReferencePatch &p)
 {
+    if(p.sceneQuad.valid) {
+        const auto quad=SceneQuadToView(stamp.viewTransform,w,h,p.sceneQuad);
+        const auto u=(quad.points[1]-quad.points[0])/p.columns;
+        const auto v=(quad.points[3]-quad.points[0])/p.rows;
+        const auto warp=(quad.points[2]-quad.points[1]-quad.points[3]+quad.points[0])/(p.columns*p.rows);
+        const auto origin=quad.points[0]+u*.5+v*.5+warp*.25;
+        const double cw=std::min(QLineF(quad.points[0],quad.points[1]).length(),
+                                 QLineF(quad.points[3],quad.points[2]).length())/p.columns;
+        const double ch=std::min(QLineF(quad.points[0],quad.points[3]).length(),
+                                 QLineF(quad.points[1],quad.points[2]).length())/p.rows;
+        const double half=.5*std::min(cw,ch);
+        return {origin.x(),origin.y(),u.x()+warp.x()*.5,v.y()+warp.y()*.5,half,half,
+                p.columns,p.rows,v.x()+warp.x()*.5,u.y()+warp.y()*.5,warp.x(),warp.y()};
+    }
     const auto m = Mapping(stamp, w, h);
     const double dx = p.sceneRect.width() / p.columns * m.sx,
                  dy = p.sceneRect.height() / p.rows * m.sy;
@@ -328,8 +342,6 @@ class Probe final : public ResidentProbe
         QVector<ReferencePatch> out(rects.size());
         if (!available.load() || rects.isEmpty() || rects.size() > 1024)
             return out;
-        QVector<gpu::ReferenceRequest> requests;
-        QVector<int> indices;
         const auto area = ViewArea(stamp, width, height, 1);
         const auto m = Mapping(stamp, width, height);
         for (int i = 0; i < rects.size(); ++i)
@@ -343,8 +355,24 @@ class Probe final : public ResidentProbe
                               .intersected(area);
             p.columns = std::clamp(int(std::lround(p.sceneRect.width() * m.sx)), 8, 64);
             p.rows = std::clamp(int(std::lround(p.sceneRect.height() * m.sy)), 4, 12);
+        }
+        return CaptureReferences(stamp,std::move(out));
+    }
+    QVector<ReferencePatch> QuadReferences(const SourceStamp& stamp,const QVector<TextQuad>& quads) const override
+    {
+        QVector<ReferencePatch> out;out.reserve(quads.size());
+        if(!available.load() || quads.isEmpty() || quads.size()>1024) return QVector<ReferencePatch>(quads.size());
+        for(const auto& quad:quads) out.push_back(PlanQuadReference(stamp,width,height,quad));
+        return CaptureReferences(stamp,std::move(out));
+    }
+    QVector<ReferencePatch> CaptureReferences(const SourceStamp& stamp,QVector<ReferencePatch> out) const
+    {
+        QVector<gpu::ReferenceRequest> requests;
+        QVector<int> indices;
+        for(int i=0;i<out.size();++i) {
+            if(out[i].columns<1 || out[i].rows<1) continue;
             indices.push_back(i);
-            requests.push_back({Project(stamp, width, height, p), nullptr});
+            requests.push_back({Project(stamp,width,height,out[i]),nullptr});
         }
         if (requests.isEmpty())
             return out;
@@ -432,7 +460,8 @@ class Probe final : public ResidentProbe
         for (int i = 0; i < patches.size(); ++i)
         {
             const auto &p = patches[i];
-            if (!p.valid || p.columns < 1 || p.columns > 64 || p.rows < 1 || p.rows > 12)
+            if (!p.valid || p.columns < 1 || p.columns > 64 || p.rows < 1 || p.rows > 12 ||
+                (p.sceneQuad.valid && QuadArea(p.sceneQuad)<=0))
                 continue;
             const float *samples{};
             int cpuOffset = -1;

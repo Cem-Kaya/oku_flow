@@ -1974,6 +1974,23 @@ threshold is asserted. This model-free experiment measures no inference,
 native presentation or accessibility latency. It needs Qt Core/Gui and no
 camera, fonts, model runtime, GPU or native window.
 
+### Tilted text and paused visible detail
+
+`uct_paddle_processing` includes oriented fit/mapping, post-fit duplicate and
+actual projective-paint cases. `immutable_uct_contract` includes settled paused
+pan/zoom, coalescing, bounded coverage and failure/source fencing. The new
+`ultra_clear_text_contract` quad-reference cases assert unchanged rotated ink
+passes strict matching while changed ink, malformed quads, high-risk tokens and
+reused/foreign acquisitions do not. `uct_paddle_cuda` compares CPU, uploaded
+compact CPU and native resident references at 1/2/4 decimation with rotation
+and perspective, retaining zero image download on the resident path.
+
+The shared `uct_quad_reference_test_support.hpp` uses installed Segoe UI and
+first-party synthetic text. Optional real-image diagnostics can write directly
+to an absolute `OKUFLOW_UCT_PAUSE_OUTPUT_ROOT`, preserving the default when
+unset. See `docs/uct_oriented_detail_repair.md` for bounded six-times detail,
+private-image evidence and the distinction from native desktop acceptance.
+
 ### Paused UCT continuity and scene cuts
 
 `mergeKeepsIndependentColumnsAndTypeSizes` in `uct_paddle_processing` checks

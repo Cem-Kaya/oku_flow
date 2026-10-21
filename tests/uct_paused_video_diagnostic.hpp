@@ -87,8 +87,11 @@ inline void Run()
         QVERIFY2(plan.valid, qPrintable(plan.error));
     }
     const auto cacheBefore = CacheInventory(cache);
-    const auto evidence = QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath(
-        "OkuFlow/uct-pause-proof-" + QDateTime::currentDateTimeUtc().toString("yyyyMMdd-HHmmss") +
+    const auto outputRoot=qEnvironmentVariable("OKUFLOW_UCT_PAUSE_OUTPUT_ROOT");
+    QVERIFY(outputRoot.isEmpty() || QDir::isAbsolutePath(outputRoot));
+    const auto evidence = QDir(outputRoot.isEmpty() ?
+        QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath("OkuFlow") : outputRoot).filePath(
+        "uct-pause-proof-" + QDateTime::currentDateTimeUtc().toString("yyyyMMdd-HHmmss") +
         "-" + QUuid::createUuid().toString(QUuid::WithoutBraces));
     QVERIFY(QDir().mkpath(evidence));
     qInfo().noquote() << "Paused resident proof evidence=" << evidence;
