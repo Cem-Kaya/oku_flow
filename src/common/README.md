@@ -10,6 +10,10 @@ failed cleanup resources; camera callers must acknowledge release only after
 its completed status. These development changes still require hardware gates.
 
 Current contents:
+- optional saved-file FFmpeg/dav1d decoding behind an explicit private SDK and
+  runtime opt-in, feeding the existing selected-video worker/leases/PCM path;
+  native/archive fallback remains default. See
+  [development limits](../../docs/video_ffmpeg_playback.md).
 - shared annotation rendering preserves caller clip regions, including the
   live Assistant exclusion, while restricting ink to the scene destination
 - on-demand Read transcribes through the vision provider, using Luna 6/low as

@@ -1,5 +1,20 @@
 # Hard-Coded Paths and Defaults
 
+## Optional embedded video SDK (development)
+
+`scripts/ffmpeg/pins.json` pins FFmpeg 7.1.1, dav1d 1.5.1 and private build
+tools. `prepare_ffmpeg_playback.ps1` confines source/tool/build caches to
+LocalAppData (`OkuFlow/embedded-video-sdk` by default), using existing GCC 16.2.0
+MSYS2. `OKUFLOW_FFMPEG_SDK_ROOT` enables the CMake adapter;
+`OKUFLOW_VIDEO_BACKEND=ffmpeg` and absolute `OKUFLOW_FFMPEG_RUNTIME=<sdk>/bin`
+select it at runtime. No ambient Qt/PATH DLL discovery or deployment occurs.
+Runtime majors are avcodec/avformat 61, avutil 59, swresample 5 and swscale 8.
+Decoder threads are four; AVIO reads 64 KiB; probe/index 8 MiB; streams eight;
+per-step packet attempts 65,536; dimensions 16,777,216 pixels. Upstream internal
+allocations are outside the pixel quota. Finite comparison receipts use
+`OkuFlow/embedded-video-evidence/<guid>`, the global runner lease and a
+180-second child deadline. See [contract and limits](video_ffmpeg_playback.md).
+
 ## Selected-video resource limits (development)
 
 The separate GPU OCR recognizer admits true batch capacities `1`, `8`, `16`

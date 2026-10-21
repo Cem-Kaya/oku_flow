@@ -898,3 +898,16 @@ aligned with the project goals.
 - Keep all inference input/retirement ownership and zero image-egress contracts.
   See `docs/uct_recognizer_width.md`; no RTX 3050/120 FPS claim follows from Ada
   measurements or padding fraction alone.
+
+## Optional embedded selected-video validation (2026-10-21)
+
+- `prepare_ffmpeg_playback.ps1` builds pinned LGPL FFmpeg/BSD dav1d development
+  libraries in LocalAppData only. Keep Qt DLLs, owner-installed FFmpeg binaries
+  and release staging untouched. SDK configuration plus explicit
+  `OKUFLOW_VIDEO_BACKEND=ffmpeg` are required; Media Foundation stays default
+  and owns all archive/growing-recording paths. See docs/video_ffmpeg_playback.md.
+- Run focused embedded/native codec checks and same-source diagnostics only
+  after parent gates exit. Use the tracked runner/global lease; no GUI, browser,
+  audio endpoint or owner process is needed. Retain original failed receipts,
+  strict PTS/PCM identity and held-file/consumer-lease retirement assertions.
+  Code-value HDR comparisons are not tone-mapping acceptance or deployment.

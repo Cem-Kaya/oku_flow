@@ -51,6 +51,7 @@ struct VideoPlaybackSnapshot {
     bool gpuResident{};
     std::uint32_t gpuDecodedBitsPerComponent{};
     std::size_t gpuTextureBytes{};
+    std::string decoderBackend{"media-foundation"};
     std::string backendReason;
     bool hasAudio{}, audioAvailable{}, muted{true}, incomplete{}, activeRecording{};
     std::string error;

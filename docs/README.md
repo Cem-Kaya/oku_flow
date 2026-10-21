@@ -1,5 +1,9 @@
 # OkuFlow Documentation Guide
 
+[Optional embedded FFmpeg/dav1d playback](video_ffmpeg_playback.md) describes
+the saved-file prototype, private source build, native/archive fallback,
+strict same-source comparison and remaining color/deployment acceptance.
+
 [Video/audio preroll and pacing repair](video_audio_preroll_repair.md) explains
 the reproduced single-keyframe AV1 seek failure, bounded progress policy and
 audio high-water fix, with silent native-decoder validation limits.

@@ -3,6 +3,7 @@
 #include "okuflow/common/video_playback.hpp"
 #include "okuflow/common/media_writer.hpp"
 #include "../src/common/video_playback_seek_budget.hpp"
+#include "../src/common/video_ffmpeg_reader.hpp"
 #include <mfapi.h>
 #include <mfreadwrite.h>
 #include <dxgi1_6.h>
@@ -18,6 +19,7 @@
 #include <iostream>
 #include <limits>
 #include <set>
+#include <numeric>
 #include <thread>
 
 namespace {
@@ -262,6 +264,11 @@ void LongGopSeeking(VideoPlayback& player) {
     player.Seek100ns(10'000'000);request=player.Seek100ns(40'000'000);snapshot={};
     Expect(Wait(settled) && snapshot.frame && snapshot.state==VideoPlaybackState::Paused && snapshot.frame->pts100ns>=40'000'000,
            "new long-GOP seek supersedes a waiting target");
+    if(!detail::FfmpegPlaybackRequested()) {
+        request=player.UseCpuFallback("fixture consumer interop refusal");snapshot={};
+        Expect(Wait(settled) && snapshot.state==VideoPlaybackState::Paused &&
+            snapshot.backendReason=="fixture consumer interop refusal","native CPU fallback preserves its exact existing diagnostic reason");
+    }
     player.Close();
 }
 
@@ -470,6 +477,8 @@ void NativeAvcAac(VideoRecorder::Codec codec = VideoRecorder::Codec::H264, bool 
         const auto g = player.OpenArchive(archive);
         Expect(Wait([&] { const auto s = player.Snapshot(); return s.requestGeneration == g && s.state != VideoPlaybackState::Opening; }), "active decoder completes bounded open");
         Expect(player.Snapshot().frame != nullptr, "verified active fragment decodes actual pixels");
+        if(detail::FfmpegPlaybackRequested())Expect(player.Snapshot().decoderBackend=="media-foundation",
+            "active recording retains producer-fenced native fallback under embedded opt-in");
         RequireGpu(player.Snapshot());
         const auto activeSeek = player.Seek100ns(5'000'000);
         Expect(Wait([&] { const auto s = player.Snapshot(); return s.requestGeneration == activeSeek && s.state == VideoPlaybackState::Paused; }),
@@ -614,6 +623,9 @@ void NativeAvcAac(VideoRecorder::Codec codec = VideoRecorder::Codec::H264, bool 
         Expect(Wait([&] { const auto s = player.Snapshot(); return s.requestGeneration == g && s.state != VideoPlaybackState::Opening; }), "saved file first frame opens");
         auto snapshot = player.Snapshot();
         Expect(snapshot.frame && snapshot.state == VideoPlaybackState::Paused, "saved first frame paused");
+        if(detail::FfmpegPlaybackRequested())Expect(snapshot.decoderBackend=="media-foundation" &&
+            snapshot.backendReason.find("fragmented MP4")!=std::string::npos,
+            "saved fragmented MP4 retains native timing with an explicit unsupported-prototype reason");
         RequireGpu(snapshot);
         Expect(snapshot.hasAudio && snapshot.audioAvailable, "same SourceReader exposes AAC decoded PCM");
         if (snapshot.neighborFrame) Expect(snapshot.frame->pts100ns != snapshot.neighborFrame->pts100ns, "owned neighbor has distinct real PTS");
@@ -827,10 +839,13 @@ void NativeSparseVideoAudio(VideoRecorder::Codec codec) {
     } else std::wcout << L"Retained failed sparse fixture: " << path.wstring() << L'\n';
 }
 void NativeFourKPool(bool dci=false) {
-    const auto path = TempPath(); const int priorFailures = failures;
+    const bool embedded=detail::FfmpegPlaybackRequested();
+    const auto path = embedded?std::filesystem::path(__FILE__).parent_path()/"data/embedded-pool-4k.mp4":TempPath();
+    const int priorFailures = failures;
     std::wcout << L"4K decoded-pool fixture: " << path.wstring() << L'\n';
     VideoRecorder recorder;
     const std::uint32_t width=dci?4096u:3840u,height=2160;
+    if(!embedded) {
     Expect(recorder.Start(path.wstring(), width, height, 5, 1, VideoRecorder::Codec::H264), "4K AVC fixture starts");
     if (!recorder.IsRecording()) return;
     std::vector<std::uint8_t> pixels(std::size_t(width) * height * 4, 255);
@@ -844,10 +859,12 @@ void NativeFourKPool(bool dci=false) {
     }
     Expect(recorder.Stop().FullyCompleted(), "4K fixture finalized");
     pixels.clear(); pixels.shrink_to_fit();
+    }
     VideoPlayback player;ConfigureGpu(player); const auto open = player.OpenFile(path.wstring());
     Expect(Wait([&] { const auto s = player.Snapshot(); return s.requestGeneration == open && s.state == VideoPlaybackState::Paused; }),
         "4K first frame opens with an admitted complete working set");
     auto held=player.Snapshot(); // Actual app retains a displayed pair across decoder work.
+    if(detail::FfmpegPlaybackRequested())Expect(held.decoderBackend=="ffmpeg-dav1d","4K pressure fixture uses embedded decoder, without native fallback");
     RequireGpu(held);
     player.SetPlaying(true); std::set<std::int64_t> displayed;
     Expect(Wait([&] {
@@ -969,7 +986,7 @@ void NativeFourKPool(bool dci=false) {
     Expect(Wait([&] { const auto s = player.Snapshot(); return s.requestGeneration == end && s.state == VideoPlaybackState::Ended; }),
         "4K endpoint retains its last frame through the final no-sample EOS read");
     player.Close();
-    if (failures == priorFailures) {
+    if (!embedded && failures == priorFailures) {
         std::error_code ec; std::filesystem::remove(path, ec);
         if (ec) std::wcout << L"Retained 4K fixture pending handle retirement: " << path.wstring() << L'\n';
     } else std::wcout << L"Retained failed 4K fixture: " << path.wstring() << L'\n';
@@ -1125,12 +1142,16 @@ void PacedAudioDelivery(VideoPlayback& player) {
     player.SetMuted(false);player.SetPlaying(true);
     const auto started=Clock::now();
     std::int64_t audioEnd{},maximumLead{},duration{};
+    bool havePcm{};std::int64_t largestPcmGap{};
     while(Clock::now()-started<std::chrono::seconds(2)) {
         const auto elapsed=std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now()-started).count()/100;
         // Drain exactly as the UI does. The decode high-water must survive
         // TakeAudio; otherwise each video wait pumps another future packet.
         for(const auto& p:player.TakeAudio()) {
             const auto span=static_cast<std::int64_t>(p.pcm.size()*10'000'000ull/(p.sampleRate*p.channels*2));
+            if(havePcm)largestPcmGap=std::max(largestPcmGap,std::abs(p.pts100ns-audioEnd));
+            Expect(p.requestGeneration==request,"PCM packets retain the selected request generation");
+            havePcm=true;
             duration+=span;audioEnd=p.pts100ns+span;
             maximumLead=std::max(maximumLead,audioEnd-firstPts-elapsed);
         }
@@ -1139,7 +1160,8 @@ void PacedAudioDelivery(VideoPlayback& player) {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     std::cout<<"Paced audio maximumLead100ns="<<maximumLead<<" PCM100ns="<<duration
-        <<" videoPts="<<(s.frame?s.frame->pts100ns:-1)<<" error="<<s.error<<'\n';
+        <<" largestPcmBoundary100ns="<<largestPcmGap<<" videoPts="<<(s.frame?s.frame->pts100ns:-1)<<" error="<<s.error<<'\n';
+    Expect(largestPcmGap<=1,"PCM has no dropped, duplicated or discontinuous sample blocks beyond one timestamp tick");
     Expect(maximumLead<=4'000'000,"draining the decoder queue cannot push PCM beyond the output sink's half-second allowance");
     Expect(s.state==VideoPlaybackState::Playing && s.audioAvailable && duration>=15'000'000,
         "bounded audio continues while the silent native video reader advances");
@@ -1211,10 +1233,13 @@ void NativeExternalPlayback(const std::filesystem::path& path) {
     Expect(resumed && s.state==VideoPlaybackState::Playing,"unmuted Resume survives healthy long-GOP preroll");
     if(!resumed || s.state!=VideoPlaybackState::Playing)return;
     const auto started=Clock::now();
-    std::int64_t audioBytes{},audioEnd{},maximumLead{};
+    std::int64_t audioBytes{},audioEnd{},maximumLead{},largestPcmBoundary{};bool havePcm{};
     while(Clock::now()-started<std::chrono::seconds(3)) {
         const auto elapsed=std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now()-started).count()/100;
         for(const auto& packet:player.TakeAudio()) {
+            if(havePcm)largestPcmBoundary=std::max(largestPcmBoundary,std::abs(packet.pts100ns-audioEnd));
+            Expect(packet.requestGeneration==request && packet.pts100ns>=firstPts,"private PCM retains exact current seek authority and floor");
+            havePcm=true;
             audioBytes+=packet.pcm.size();
             audioEnd=packet.pts100ns+static_cast<std::int64_t>(packet.pcm.size()*10'000'000ull/(packet.sampleRate*packet.channels*2));
             maximumLead=std::max(maximumLead,audioEnd-firstPts-elapsed);
@@ -1225,7 +1250,8 @@ void NativeExternalPlayback(const std::filesystem::path& path) {
     }
     std::cout<<"Private playback state="<<static_cast<int>(s.state)<<" videoPts="<<(s.frame?s.frame->pts100ns:-1)
         <<" audioAvailable="<<s.audioAvailable<<" PCMBytes="<<audioBytes<<" audioEnd="<<audioEnd
-        <<" maximumAudioLead100ns="<<maximumLead<<" error="<<s.error<<'\n';
+        <<" maximumAudioLead100ns="<<maximumLead<<" largestPcmBoundary100ns="<<largestPcmBoundary<<" error="<<s.error<<'\n';
+    Expect(largestPcmBoundary<=1,"private PCM packet boundaries remain contiguous within one timestamp tick");
     Expect(s.state==VideoPlaybackState::Playing && s.frame && s.frame->pts100ns>firstPts+20'000'000,
         "private source advances video without becoming unavailable");
     Expect(!s.hasAudio || (s.audioAvailable && audioBytes>0),"private source retains decoded audio throughout playback");
@@ -1238,6 +1264,111 @@ void NativeExternalPlayback(const std::filesystem::path& path) {
     Expect(ended && s.state==VideoPlaybackState::Ended && s.frame && s.frame->pts100ns==s.seekableEnd100ns,
         "private single-GOP playback establishes its actual decoded endpoint under the absolute request cap");
     player.Close();
+}
+// Same production worker and immutable issuance/PCM contract, no native UI,
+// audio endpoint, camera, external decoder process or model preparation.
+void EmbeddedContract() {
+    SetEnvironmentVariableW(L"OKUFLOW_VIDEO_BACKEND",L"ffmpeg");
+    VideoPlayback player;
+    LongGopSeeking(player);PausedSceneCutNeighbor(player);PacedAudioDelivery(player);
+    player.Close();
+    Expect(Wait([&]{return player.Snapshot().decodedBytes==0;}),"all unretained embedded output allocations retire after Close");
+    const auto path=std::filesystem::path(__FILE__).parent_path()/"data/paced-audio-h264.mp4";
+    auto generation=player.OpenFile(path.wstring());VideoPlaybackSnapshot snapshot;
+    Expect(Wait([&]{snapshot=player.Snapshot();return snapshot.requestGeneration==generation &&
+        snapshot.state==VideoPlaybackState::Paused;}),"embedded lease fixture opens");
+    Expect(snapshot.decoderBackend=="ffmpeg-dav1d","opt-in contract actually used embedded decoding");
+    auto held=snapshot.frame;snapshot={};
+    {
+        ComPtr<IMFByteStream> bytes;VideoFileIdentity identity;VideoReadStreamClone clone;
+        Expect(SUCCEEDED(OpenStableVideoReadStream(path.wstring(),&bytes,&identity,&clone)),"embedded cancellation fixture holds a stable source");
+        ComPtr<IMFSourceReader> refused;std::string reason;
+        const auto started=Clock::now();
+        Expect(FAILED(detail::CreateFfmpegVideoReader(bytes.Get(),clone,[]{return false;},Clock::now()+std::chrono::seconds(2),&refused,reason)) &&
+            !refused && Clock::now()-started<std::chrono::milliseconds(200),"superseded custom I/O cannot publish or block on decoding");
+        Expect(FAILED(detail::CreateFfmpegVideoReader(bytes.Get(),clone,[]{return true;},Clock::now()-std::chrono::milliseconds(1),&refused,reason)),
+            "expired custom I/O deadline refuses admission");
+    }
+    if(held) {
+        const auto bytes=held->bgra;
+        const auto copied=std::make_shared<VideoPlaybackFrame>(*held);
+        Expect(!player.PauseAtFrame(copied),"embedded sample metadata copies cannot forge issuance");
+        generation=player.Seek100ns(10'000'000);
+        Expect(Wait([&]{snapshot=player.Snapshot();return snapshot.requestGeneration==generation &&
+            snapshot.state==VideoPlaybackState::Paused;}),"embedded successor publishes");
+        Expect(!player.PauseAtFrame(held),"previous-generation embedded frames cannot regain authority");
+        player.Close();snapshot={};
+        Expect(Wait([&]{return player.Snapshot().decodedBytes==bytes->size();}),"only the exact consumer pixel lease stays charged after retirement");
+    }
+    held.reset();
+    Expect(Wait([&]{return player.Snapshot().decodedBytes==0;}),"last embedded consumer releases its pool charge");
+    // Archive selection always keeps the producer-fenced native path. Missing
+    // SDK/open refusal is checked in a separate process before DLL loading.
+    auto archive=std::make_shared<RecordingArchive>(path.wstring());archive->Finalized(true);
+    generation=player.OpenArchive(archive);
+    Wait([&]{snapshot=player.Snapshot();return snapshot.requestGeneration==generation &&
+        snapshot.state!=VideoPlaybackState::Opening;});
+    Expect(snapshot.decoderBackend=="media-foundation","recording archives never use the saved-file prototype");
+    player.Close();
+}
+void EmbeddedMissingRuntime() {
+    SetEnvironmentVariableW(L"OKUFLOW_VIDEO_BACKEND",L"ffmpeg");
+    SetEnvironmentVariableW(L"OKUFLOW_FFMPEG_RUNTIME",TempPath().c_str());
+    VideoPlayback player;const auto path=std::filesystem::path(__FILE__).parent_path()/"data/paced-audio-h264.mp4";
+    const auto generation=player.OpenFile(path.wstring());VideoPlaybackSnapshot snapshot;
+    Expect(Wait([&]{snapshot=player.Snapshot();return snapshot.requestGeneration==generation &&
+        (snapshot.state==VideoPlaybackState::Paused || snapshot.state==VideoPlaybackState::Unavailable);}) &&
+        snapshot.state==VideoPlaybackState::Paused && snapshot.frame && snapshot.audioAvailable,
+        "missing embedded runtime falls back using the same held file, retaining video and PCM");
+    Expect(snapshot.decoderBackend=="media-foundation" && !snapshot.backendReason.empty(),"native fallback retains the original SDK refusal reason");
+    player.Close();
+}
+void CompareEmbedded(const std::filesystem::path& path) {
+    std::vector<std::shared_ptr<const VideoPlaybackFrame>> native;
+    VideoPlayback player;VideoPlaybackSnapshot snapshot;
+    for(const bool embedded:{false,true}) {
+        SetEnvironmentVariableW(L"OKUFLOW_VIDEO_BACKEND",embedded?L"ffmpeg":nullptr);
+        auto generation=player.OpenFile(path.wstring());
+        const auto settled=[&]{snapshot=player.Snapshot();return snapshot.requestGeneration==generation &&
+            (snapshot.state==VideoPlaybackState::Paused || snapshot.state==VideoPlaybackState::Unavailable);};
+        Expect(Wait(settled,10000) && snapshot.frame && snapshot.state==VideoPlaybackState::Paused,"comparison opens the held source");
+        if(!snapshot.frame || snapshot.state!=VideoPlaybackState::Paused)return;
+        Expect(snapshot.decoderBackend==(embedded?"ffmpeg-dav1d":"media-foundation"),"comparison uses the required decoder, without fallback");
+        std::cout<<"Compare backend="<<snapshot.decoderBackend<<" openUs="<<snapshot.lastRequestLatencyUs<<" reason="<<snapshot.backendReason<<'\n';
+        unsigned index{};
+        for(const std::int64_t second:{6,23}) {
+            generation=player.Seek100ns(second*10'000'000);
+            Expect(Wait(settled,65000) && snapshot.state==VideoPlaybackState::Paused,"comparison completes finite exact seek");
+            if(snapshot.state!=VideoPlaybackState::Paused || !snapshot.frame)return;
+            const auto f=snapshot.frame;
+            std::cout<<"Compare backend="<<snapshot.decoderBackend<<" seek="<<second<<" pts="<<f->pts100ns
+                <<" sample="<<f->sampleId<<" latencyUs="<<snapshot.lastRequestLatencyUs<<" reads="<<snapshot.lastRequestReadCount
+                <<" copied="<<snapshot.lastRequestCopiedFrames<<" ownedPeak="<<snapshot.peakDecodedBytes<<'\n';
+            if(!embedded)native.push_back(f);
+            else {
+                const auto& reference=native.at(index);
+                Expect(f->pts100ns==reference->pts100ns && f->sampleId==reference->sampleId &&
+                    f->width==reference->width && f->height==reference->height,"same-source backends select strict normalized frame/PTS identity");
+                if(f->bgra && reference->bgra && f->bgra->size()==reference->bgra->size()) {
+                    double absolute{},squared{};unsigned maximum{};
+                    for(std::size_t p=0;p<f->bgra->size();++p)if(p%4!=3) {
+                        const auto difference=std::abs(int((*f->bgra)[p])-int((*reference->bgra)[p]));
+                        absolute+=difference;squared+=difference*difference;maximum=std::max(maximum,unsigned(difference));
+                    }
+                    const auto count=double(f->width)*f->height*3;
+                    std::cout<<"Compare RGB meanAbsolute="<<absolute/count<<" maximum="<<maximum
+                        <<" PSNR="<<(squared?10*std::log10(255.*255.*count/squared):999.)<<" noHdrToneMap=true\n";
+                }
+            }
+            ++index;
+        }
+        player.Close();snapshot={};
+        // Keep only the explicitly retained comparison images. Native permit
+        // retirement is verified by successful admission of the next open.
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    native.clear();
+    Expect(Wait([&]{return player.Snapshot().decodedBytes==0;}),"same-source retained images retire completely");
 }
 }
 int main(int argc, char** argv) {
@@ -1261,7 +1392,13 @@ int main(int argc, char** argv) {
             }
             gpuAdapter=desc.AdapterLuid;
         }
-        if(mode=="--native-playback-external" || mode=="--native-gpu-playback-external") {
+        if(mode=="--embedded-contract")EmbeddedContract();
+        else if(mode=="--embedded-missing-runtime")EmbeddedMissingRuntime();
+        else if(mode=="--compare-embedded") {
+            if(argc!=3)Expect(false,"comparison requires one exact private source path");
+            else CompareEmbedded(std::filesystem::path(argv[2]));
+        }
+        else if(mode=="--native-playback-external" || mode=="--native-gpu-playback-external") {
             if(argc!=3)Expect(false,"private playback fixture requires exactly one file path");
             else NativeExternalPlayback(std::filesystem::path(argv[2]));
         }

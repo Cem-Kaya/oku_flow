@@ -53,6 +53,8 @@ if (OKUFLOW_ENABLE_CUDA)
 endif()
 
 add_executable(oku_flow ${OKUFLOW_CPP_SOURCES})
+include(FfmpegPlayback.cmake)
+okuflow_configure_ffmpeg_playback(oku_flow)
 include(UctOcr.cmake)
 okuflow_configure_ocr(oku_flow)
 

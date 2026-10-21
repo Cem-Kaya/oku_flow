@@ -82,6 +82,43 @@ binaries and caches are not added to Windows/Android release inventories.
   LGPL-2.1-or-later text as `licenses/QT_FFMPEG_LGPL_2_1.txt` and retain the
   exact Qt Multimedia SPDX document under `licenses/qt-sbom/`
 
+### Optional embedded FFmpeg/dav1d development SDK
+
+`tests/data/embedded-pool-4k.mp4` is an original generated 12-frame uniform
+gray-step fixture, without external footage/audio/fonts. It is test-only under
+the project's contribution terms; its generation tool is not shipped. The exact
+command and hash are recorded in tests/README.md.
+
+- FFmpeg 7.1.1 sources: <https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz>,
+  LGPL-2.1-or-later with upstream permissive components (including IJG terms)
+  retained in the complete source archive and `LICENSE.md`.
+- dav1d 1.5.1: <https://downloads.videolan.org/pub/videolan/dav1d/1.5.1/>,
+  BSD-2-Clause, original `COPYING` retained without modification.
+- First-party code calls public libavformat/libavcodec/libavutil/libswscale/
+  libswresample APIs through dynamic DLL loading. The reviewed configuration
+  disables GPL, nonfree, autodetection, programs, encoders, muxers, filters,
+  devices, network/protocols and hardware acceleration; AV1 explicitly uses
+  libdav1d. These libraries are not relicensed under OkuFlow's commercial terms.
+- `scripts/ffmpeg/pins.json` retains source/tool hashes and configuration.
+  `prepare_ffmpeg_playback.ps1` builds only under LocalAppData, retaining exact
+  source/configuration, original LGPL/component/dav1d/MinGW notices and actual
+  runtime import/hash inventory. Its additional dependency is the existing
+  reviewed MinGW winpthread DLL (original MIT/BSD component notices).
+- GNU make 4.4.1/diffutils 3.12 (GPL-3.0-or-later) and Meson 1.7.0
+  (Apache-2.0) are private build tools only. Existing GCC/MinGW retains its
+  separate runtime exception/notices; see the adb source-build inventory below.
+  No build tool enters an application payload.
+- No SDK binary/source is copied into Git, Qt, an installer or a release bundle.
+  The owner's installed full GPL FFmpeg executable is not a library/deployment
+  input. Qt's FFmpeg 9 libraries remain separate.
+- **Public redistribution is not accepted by this prototype.** Before shipping,
+  review exact corresponding sources, configuration/changes, complete component
+  notices and SBOM; provide required LGPL library replacement/relinking rights
+  and source access/attribution in both licensing channels. Compatible licenses
+  and local compilation do not establish distribution or patent acceptance.
+  See [development integration](video_ffmpeg_playback.md) and
+  [upstream compliance guidance](https://ffmpeg.org/legal.html).
+
 ## NVIDIA Image Scaling
 - Upstream: <https://github.com/NVIDIAGameWorks/NVIDIAImageScaling>
 - Version/commit: 1.0.3,

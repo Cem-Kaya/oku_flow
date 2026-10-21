@@ -1,5 +1,40 @@
 # OkuFlow Code Reference
 
+## Optional embedded selected-video adapter (2026-10-21)
+
+`src/common/video_ffmpeg_reader.{hpp,cpp}` defines private
+`detail::{FfmpegPlaybackRequested,CreateFfmpegVideoReader,ArmFfmpegVideoReader,
+FfmpegVideoReaderError}`. Without explicit SDK headers it compiles a native
+fallback stub. `Api`/`Library` load one private dynamic runtime identity with
+version/config/license checks. `FragmentedMp4` probes bounded held-stream boxes
+to refuse the measured fragmented-file PTS mismatch, and `Matrix` validates
+supported color matrices. `Track::{Open,Seek,Decode,Sample}` own one held
+AVIO/demuxer/decoder/packet/frame per track; `Read`, `SeekIo`, `Interrupt`,
+`DenyExternal` and `Canceled` fence file access and secondary I/O. `Reader`
+implements the synchronous IMFSourceReader subset and private
+`EmbeddedControl::{Arm,Failure}` COM interface. QueryInterface identifies
+system readers without RTTI. `Require`/`AvCheck` retain native/library failures.
+RAII retires contexts/conversions on the existing worker; code remains loaded
+for process lifetime.
+
+`video_playback.cpp::ConfigureReader` now accepts worker state for cancellation
+and same-held-file fallback. `ReadVideo`, `QueueAudio` and `SeekReader` arm the
+optional provider with generation/deadline. `Publish` fills snapshot
+`decoderBackend` independently of its reason; private `Reader::Reset` resets
+it. Existing `SealFrame`, pixel quota, PCM trimming/high-water, supersession,
+archive proof, GPU quarantine and publication own all selected-frame authority.
+Native CPU-fallback reason formatting is covered by the long-GOP regression.
+No new app/controller or OCR authority exists. See [contract](video_ffmpeg_playback.md).
+
+`cmake/FfmpegPlayback.cmake::okuflow_configure_ffmpeg_playback` explicitly adds
+optional headers/definitions, without downloading, import linking or deployment.
+`prepare_ffmpeg_playback.ps1` verifies pinned inputs/reused sources, builds private
+shared SDKs and records runtime/config/notices. `compare_video_backends.ps1`
+owns the global lease, finite child and evidence. `EmbeddedContract`,
+`EmbeddedMissingRuntime` and `CompareEmbedded` exercise actual backend/fallback,
+canceled I/O, issuance/retirement and same-source PTS; production PCM/4K/archive
+fixtures include continuity and embedded-specific backend assertions.
+
 ## Optional UCT software-event timing (2026-10-21)
 
 `uct::timing::{Channel,Event,Flag,Key,Values,PublicationTicket,Record}` describe
