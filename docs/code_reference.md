@@ -6301,7 +6301,9 @@ authority and full digest before retaining earlier same-frame coverage.
 validation clocks and adds only independently proved new glyphs. The union caps
 are 1024 lines, 8192 word slots and 32768 reading tokens/protected rectangles;
 retired slots count toward the bound. A fixed 64-row spatial index limits
-ordinary matching to nearby rows. Contradictory independently proved overlap
+ordinary matching to nearby rows; a word lying in one row reuses that row's
+already-ordered index list instead of allocating a deduplication set and
+sorting it again for every incoming word. Contradictory independently proved overlap
 falls back to original ink, and source/seek changes cannot inherit old proof.
 `ApplyImmutableConflictBlocks` applies persistent word-local conflict rectangles
 through the same bounded index, including when no old glyph survives. The 8192
@@ -6316,7 +6318,7 @@ validation clocks.
 2-pixel body passes find robust ink/paper medians and the ink's opaque quartile;
 four bounded side strips require RGB agreement with local body clusters and
 in-box corner support before exterior color may override polarity. Scratch is
-fixed (about 8.3 KiB CPU stack and 9356 bytes CUDA shared memory per block), with
+fixed (about 8.3 KiB CPU stack and 10.2 KiB CUDA shared memory per block), with
 no per-word allocation or image download. `LocalColorFixture`,
 `LocalColorFixtures` and `ColorDistance` supply shared controlled surfaces and
 tiny/clipped bounds to CPU and exact CUDA descriptor tests. These remain solid
@@ -6365,3 +6367,137 @@ frozen-upload / `RetireOwnedState` ownership contracts.
 `TensorRtProfile` records width policy, canvas counts and useful padding.
 The five width fixtures and resident selector are described in
 [narrower recognition inputs](uct_recognizer_width.md); defaults remain fixed.
+
+### UCT four-corner geometry and paused visible detail (2026-10-21)
+
+`TextQuad::{FromRect,Bounds,Center,Translated}` and `QuadWidth`, `QuadHeight`,
+`QuadAngle`, `QuadIsRotated`, `QuadArea`, `QuadIntersectionArea`,
+`ViewQuadToScene` and `SceneQuadToView` retain reading-order corners and exact
+normalized scene/view mappings. Invalid/nonconvex/nonfinite shapes have no
+intersection authority. `RecognizedWord::{quadPx,inkSearchQuadPx,inkFitted}`,
+`PreparedWord::sceneQuad` and the accepted/scene word quad fields carry fitted
+geometry through model retention, replacement and projection.
+`FitOrientedWordInk` operates in the detected local frame. The CUDA
+`gpu::OrientedInk`/`OrientedFit` descriptors and `OrientedInkBounds` preserve
+the corresponding fit without downloading image pixels.
+`FinalizeRecognizedGeometry` rejects invalid geometry and reconciles fitted
+same-ink duplicates while retaining adjacent identical tokens.
+
+`ReferencePatch::sceneQuad` optionally describes rectified sampling.
+`PlanQuadReference` creates only bounded sample geometry; its result is not a
+valid proof until CPU `BuildQuadReferencePatch` or resident
+`ResidentProbe::QuadReferences` captures and normalizes the samples.
+`gpu::Grid` retains its rectangle fields and adds `crossX/crossY/warpX/warpY`
+for bilinear row/column cross terms. CPU `ProjectPatch` and resident `Project`
+use the same cell centres and isotropic box extents. `Probe::CaptureReferences`
+shares the existing owner-retaining reference allocation/upload/completion
+path for rectangle and quad requests. Immutable `MatchImmutableWords` compares
+intrinsic source/destination edges and retains selected samples while replacing
+only their destination mapping. The existing strict proof and cancellation
+rules remain; no OCR string match alone confirms a glyph.
+
+`DetailFocus`, `kMaximumDetailMagnification`, `DetectorInputSize`,
+`DetailMagnification`, `DetailRegion` and `EstablishedDetectorScale` define
+bounded same-image visible detail. Paddle's `PaddleDetectionSize`,
+`PaddleDetailRegion`, `PaddleDetailMagnification` and
+`PaddleRecognitionRegions` share that policy in CPU/TensorRT.
+`Recognizer::SetDetailFocus` is call-scoped by the scheduler; all CPU/device
+`Submit` overloads optionally carry it, and unrequested backend region claims
+are discarded. Detail output coordinates remain full-scene coordinates.
+
+`UltraClearTextController::{ScheduleImmutableDetail,ImmutableDetailFocus,
+SubmitImmutableDetailIfUseful,FinishImmutableDetail}` use a single-shot settle
+timer and a bounded non-evicting attempt list. Selected/neighbour jobs share
+one focus but distinct acquisition identities. Completion/failure schedules
+only the latest view; authority invalidation clears timer/focus/coverage.
+A settle deadline that expired while presentation was latched failed or the
+backend was still preparing is re-asked once by the recovery event itself
+(`OnMediaPresentationSucceeded` only on an actual failure-to-success
+transition, `HandleBackendStatus` only on the transition into ready);
+ordinary receipts never restart the settle timer, and no polling is added.
+`UctTiming::{immutableDetailSettleMs,immutableDetailMagnification}` and the
+controller's detail state do not renew media timestamps or manufacture evidence.
+
+`UltraClearTextOverlay::SceneWord::sceneQuad` and `SceneGlyph`'s oriented
+ratios retain shared line size/baseline. `PlanOriented` maps glyphs and plates
+projectively into four projected corners. `ResolveOverlaps` runs on content
+changes, distinguishes duplicate observations from conflicting strings, and
+keeps the rectangle fast path. `PlannedWord` stores fixed-size polygons and
+`glyphToView`; live paint, snapshot paint and actual character geometry use the
+same plan. `ComputePaintPlan` preserves exact polygon protection for oriented
+words and caps protection closure at eight passes before keeping original ink.
+See [geometry/detail repair](uct_oriented_detail_repair.md) for acceptance limits.
+
+## Oriented local UCT color preparation
+
+`MeasureLineColors` accepts an optional detected `TextQuad`. Its body, corner
+and immediate/expanded exterior samples use that quad's bilinear local frame;
+the existing `color_policy` medians, compatibility votes and opaque-ink endpoint
+decisions are unchanged. The scheduler selects this frame for oriented words
+before `FitOrientedWordInk` scans the separately bounded `inkSearchQuadPx`.
+Rectangle line colors and non-oriented words retain the legacy sampling grid.
+
+`gpu::LineColors` accepts an optional parallel `OrientedInk` frame array (zero
+width selects the corresponding rectangle). The resident preparation worker
+uploads detected color frames alongside the existing search-frame ink
+descriptors within its bounded scratch. `validation::orientedPixel` provides
+the shared floor/bilinear addressing for CUDA colors and `orientedInkAt`, using
+explicit non-fused double operations to match the CPU. Out-of-image samples
+contribute neither sums nor votes; valid sample counts normalize clipped body
+means. Stream completion, input ownership and compact-only readback remain
+unchanged.
+
+`FitOrientedWordInk` and `validation::orientedInk` remove eight-connected ink
+components spanning opposite padded search edges before dominant-row fitting.
+This separates glyphs from an identically colored panel and nearby edges. CPU
+uses a queue of at most 32768 cells; CUDA packs one ink bit plus six
+component reachability bits per cell and 4096 row masses (about 46 KiB shared
+scratch). Monotone whole-run propagation has the CPU queue's fixed point when
+complete. `gpu::kOrientedInkMaxPropagationPasses` caps it at 64 scans; an
+incomplete result keeps detector geometry. `OrientedFit::propagationPasses` and
+`propagationComplete` retain compact diagnostic evidence. Contrast and
+detached-mark rules remain. Fitted width must retain 35% of the detected span;
+fitted height must retain 25% of the padded search height and at least four
+source pixels. The previous 35% height guard rejected readable small print
+inside loose detector padding and left tall boxes for painting.
+No confidence or word-proof threshold changes.
+`PrepareLines` allows 1e-5 source pixels of arithmetic error at its existing
+minimum-height boundary, so a rotated seven-pixel glyph does not become
+too-small solely through floating-point projection. `FinalizeRecognizedGeometry`
+marks a padded, unfitted single Unicode scalar as high-risk when its baseline
+is predominantly vertical (absolute cosine below 0.5). The original symbol
+remains visible instead of a stretched close-button X/4. Fitted scalars,
+ordinary multi-letter words and horizontal scalars retain their prior policy.
+`OrientedFitReason`/`OrientedFit::reason` distinguish invalid input, propagation
+cap, unanchored ink, too few samples, ambiguous row bands, the shrink guard and
+a completed fit. This uses the result struct's existing alignment space.
+`color_policy::Compatible` anchors entire components to measured ink; all raw
+luma-ink pixels of anchored glyphs remain, preserving darker/lighter cores and
+AA. Paper-enclosed interior components remain regardless of RGB variation.
+Unanchored edge-only fragments or unanchored components spanning two edges
+are excluded. An unanchored boundary component extending inside causes whole-word detector
+fallback, avoiding silent letter truncation from a gray opaque-quartile median.
+The ambiguity guard uses the existing eight-sample minimum;
+`validation::substantialInkComponent` checks at most eight cells to match the
+CPU queue's component-size decision without additional shared image storage.
+
+`uct_geometry_test::TiltedButtonColors` runs 48 real-glyph tilted/perspective
+button fixtures through CPU and resident schedulers. It checks source polarity,
+glyph rather than button bounds, all four corners, spacing/protection and exact
+GPU parity with guarded zero image egress, including dotted/descending glyphs
+touching search edges. `GpuWindingInkWorkCap` requires bounded incomplete GPU
+fallback rather than a partially pruned fit. Existing `CpuGeometry`/`GpuGeometry`
+slots include it in `uct_paddle_processing`/`uct_paddle_cuda`. Diagnostic
+`uct_batch_test::Output` includes raw per-word foreground/background colors
+alongside fitted quads in private image-proof JSON. See
+[local color evidence and limitations](uct_color_startup_repair.md).
+`uct_geometry_test::LooseInkPadding` fits real Segoe UI small-print glyphs
+inside a 32-pixel-high rotated detector box, while refusing a two-pixel rule
+with sufficient total ink to pass the separate sample-count gate. The resident
+case checks exact CPU/CUDA corners and the same refusal.
+The opt-in paused proof's `fitReplay` lambda reuses resident input/search quads
+and raw colors after actual recognition. `selectedFitReplay` and
+`neighbourFitReplay` record per-word passes/completion, a pass histogram and
+three CUDA-event kernel durations after one warmup. Replay fitted flags are
+labelled separately from production fits; these measurements are excluded
+from actual worker durations and transfer only descriptor results.

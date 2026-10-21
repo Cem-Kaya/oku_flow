@@ -5,6 +5,7 @@
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "ultra_clear_text_test_support.hpp"
 #include "uct_color_test_support.hpp"
+#include "uct_quad_reference_test_support.hpp"
 #include "uct_startup_test_cases.hpp"
 #include "uct_batch_diagnostic.hpp"
 #include "uct_character_diagnostic.hpp"
@@ -159,10 +160,22 @@ struct FixtureStream
 };
 #endif
 } // namespace
+#include "uct_geometry_test_cases.hpp"
+
 class PaddleTests final : public QObject
 {
     Q_OBJECT
   private slots:
+    void orientedInkAndMapping() { uct_geometry_test::CpuGeometry(); }
+    void postFitDuplicateKeepsAdjacentIdenticalTokens() { uct_geometry_test::DuplicateInk(); }
+    void orientedPerspectiveAndConflictActualPaint() { uct_geometry_test::PaintGeometry(); }
+    void gpuOrientedInkMatchesCpu() {
+#if OKUFLOW_ENABLE_CUDA
+        uct_geometry_test::GpuGeometry();
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
     void frozenCropDiagnosticRefusesFifthSourceWithoutChangingLeases()
     {
         class ImmutableInput final : public DeviceImage
@@ -1386,6 +1399,54 @@ class PaddleTests final : public QObject
             QVERIFY(std::abs(results[i].match.score-expected[i].score)<1e-5);
             QVERIFY(std::abs(results[i].match.sceneOffset.x()-expected[i].sceneOffset.x())<1e-5);
             QVERIFY(std::abs(results[i].match.sceneOffset.y()-expected[i].sceneOffset.y())<1e-5);}
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
+    void gpuQuadReferencesNormalizeRotationAndMatchCpuWithoutImageEgress()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        using namespace uct_quad_reference_test;
+        int devices{}; if(cudaGetDeviceCount(&devices)!=cudaSuccess || !devices) QSKIP("No CUDA device.");
+        const auto source=Render(.48), target=Render(.57), changed=Render(.57,true);
+        FixtureStream stream; GpuBuffer<unsigned char> pixels(source.image.sizeInBytes()); AnalysisPool pool;
+        std::atomic<bool> cancel{false};
+        for(const bool perspective : {false,true}) for(const int decimation : {1,2,4}) {
+            const auto a=perspective ? Render(.48,false,true) : source;
+            const auto b=perspective ? Render(.57,false,true) : target;
+            const auto c=perspective ? Render(.57,true,true) : changed;
+            const auto prepare=[&](const Fixture& fixture,int frame) {
+                cudaMemcpyAsync(pixels.data,fixture.image.constBits(),fixture.image.sizeInBytes(),cudaMemcpyHostToDevice,stream.value);
+                auto owned=pool.Capture(pixels.data,fixture.image.bytesPerLine(),640,360,stream.value,1,frame,1);
+                RecognitionResult result; result.stamp=uct_quad_reference_test::Stamp(frame); QString error;
+                if(owned) owned->PrepareResidentAnalysis(result,decimation,true,cancel,error);
+                return result.reference;
+            };
+            const auto gpuSource=prepare(a,1), gpuTarget=prepare(b,2), gpuChanged=prepare(c,3);
+            QVERIFY(gpuSource.resident); QVERIFY(gpuTarget.resident); QVERIFY(gpuChanged.resident);
+            QVERIFY(gpuSource.luma.isNull()); QVERIFY(gpuTarget.luma.isNull());
+            const auto cpuSource=Probe(a,1,decimation), cpuTarget=Probe(b,2,decimation), cpuChanged=Probe(c,3,decimation);
+            const auto cpuPatch=BuildQuadReferencePatch(cpuSource,a.scene);
+            const auto gpuPatch=BuildQuadReferencePatch(gpuSource,a.scene);
+            QVERIFY(cpuPatch.valid); QVERIFY(gpuPatch.valid); QVERIFY(gpuPatch.resident); QVERIFY(gpuPatch.values.isEmpty());
+            QCOMPARE(gpuPatch.columns,cpuPatch.columns); QCOMPARE(gpuPatch.rows,cpuPatch.rows);
+            const MatchTuning strict{.94,.95,2};
+            for(const bool different : {false,true}) {
+                const auto& cpuProbe=different ? cpuChanged : cpuTarget;
+                const auto& gpuProbe=different ? gpuChanged : gpuTarget;
+                const auto expected=MatchPatch(Reproject(cpuPatch,cpuProbe,b.scene),cpuProbe,strict);
+                if(!perspective) QCOMPARE(expected.matched,!different);
+                for(const auto& original : {cpuPatch,gpuPatch}) {
+                    const auto patch=Reproject(original,gpuProbe,b.scene);
+                    const auto matches=gpuProbe.resident->Matches(gpuProbe.stamp,{patch},strict,{});
+                    QCOMPARE(matches.size(),1); QCOMPARE(matches[0].matched,expected.matched);
+                    QCOMPARE(matches[0].visible,expected.visible);
+                    QVERIFY2(std::abs(matches[0].score-expected.score)<1e-5,
+                        qPrintable(QString("perspective=%1 decimation=%2 changed=%3 GPU=%4 CPU=%5")
+                            .arg(perspective).arg(decimation).arg(different).arg(matches[0].score,0,'g',14).arg(expected.score,0,'g',14)));
+                }
+            }
+        }
 #else
         QSKIP("CUDA adapter not compiled.");
 #endif

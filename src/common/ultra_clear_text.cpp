@@ -5,6 +5,7 @@
 
 #include <QElapsedTimer>
 #include <QHash>
+#include <QLineF>
 #include <QSet>
 
 #include <algorithm>
@@ -115,8 +116,17 @@ PatchGeometry ProjectPatch(const ReferencePatch& patch, const ProbeFrame& probe)
     const double h = probe.luma.height();
     const ViewTransform& t = probe.stamp.viewTransform;
     g.probePixels.reserve(patch.columns * patch.rows);
+    const auto quad = patch.sceneQuad.valid ? SceneQuadToView(t, w, h, patch.sceneQuad) : TextQuad{};
+    const auto point = [](const TextQuad& q, double u, double v) {
+        return q.points[0] * ((1-u)*(1-v)) + q.points[1] * (u*(1-v)) +
+               q.points[2] * (u*v) + q.points[3] * ((1-u)*v);
+    };
     for (int r = 0; r < patch.rows; ++r) {
         for (int c = 0; c < patch.columns; ++c) {
+            if(quad.valid) {
+                g.probePixels.push_back(point(quad, (c+.5)/patch.columns, (r+.5)/patch.rows));
+                continue;
+            }
             const QPointF scene(
                 patch.sceneRect.x() + (c + 0.5) / patch.columns * patch.sceneRect.width(),
                 patch.sceneRect.y() + (r + 0.5) / patch.rows * patch.sceneRect.height());
@@ -125,6 +135,13 @@ PatchGeometry ProjectPatch(const ReferencePatch& patch, const ProbeFrame& probe)
     }
     g.halfWidth = 0.5 * patch.sceneRect.width() / patch.columns * PixelsPerSceneX(probe);
     g.halfHeight = 0.5 * patch.sceneRect.height() / patch.rows * PixelsPerSceneY(probe);
+    if(quad.valid) {
+        const double cw=std::min(QLineF(quad.points[0],quad.points[1]).length(),
+                                 QLineF(quad.points[3],quad.points[2]).length())/patch.columns;
+        const double ch=std::min(QLineF(quad.points[0],quad.points[3]).length(),
+                                 QLineF(quad.points[1],quad.points[2]).length())/patch.rows;
+        g.halfWidth=g.halfHeight=.5*std::min(cw,ch);
+    }
     g.sceneUnitsPerPixelX = 1.0 / PixelsPerSceneX(probe);
     g.sceneUnitsPerPixelY = 1.0 / PixelsPerSceneY(probe);
     return g;
@@ -189,17 +206,37 @@ double Iou(const QRectF& a, const QRectF& b)
     return uni > 0.0 ? inter / uni : 0.0;
 }
 
-LineColors MeasureLineColors(const QImage& image, const QRect& bounds)
+LineColors MeasureLineColors(const QImage& image, const QRect& bounds, const TextQuad* quad = nullptr)
 {
     using namespace color_policy;
     LineColors colors;
-    const QRect box = bounds.intersected(image.rect());
+    if (quad && (QuadArea(*quad) <= 0.0 || QuadWidth(*quad) < 1 || QuadHeight(*quad) < 1)) quad = nullptr;
+    const double width = quad ? QuadWidth(*quad) : 0, height = quad ? QuadHeight(*quad) : 0;
+    const QRect box = quad ? QRect(0, 0, int(std::ceil(width)), int(std::ceil(height)))
+                           : bounds.intersected(image.rect());
     if (box.isEmpty()) return colors;
+    // Body, corners and both exterior rings live in the detected word frame.
+    // An axis-aligned perimeter can cross a tilted button into its dark panel.
+    const QPointF origin = quad ? quad->points[0] : QPointF{};
+    const QPointF u = quad ? (quad->points[1] - origin) / width : QPointF{};
+    const QPointF v = quad ? (quad->points[3] - origin) / height : QPointF{};
+    const QPointF warp = quad ? quad->points[2] - quad->points[1] - quad->points[3] + origin : QPointF{};
+    const auto pixel = [&](int x, int y) -> const uchar* {
+        if (quad) {
+            const QPointF p = origin + u * x + v * y + warp * ((x / width) * (y / height));
+            if (!(p.x() >= 0 && p.y() >= 0 && p.x() < image.width() && p.y() < image.height())) return nullptr;
+            x = int(std::floor(p.x())); y = int(std::floor(p.y()));
+        }
+        return x >= 0 && y >= 0 && x < image.width() && y < image.height()
+            ? image.constScanLine(y) + x * 4 : nullptr;
+    };
     long long lumaSum = 0;
     unsigned count = 0;
     for (int y = box.top(); y <= box.bottom(); y += 2)
         for (int x = box.left(); x <= box.right(); x += 2) {
-            lumaSum += Luma(image.constScanLine(y) + x * 4);
+            const auto* px = pixel(x, y);
+            if (!px) continue;
+            lumaSum += Luma(px);
             ++count;
         }
     if (!count) return colors;
@@ -207,7 +244,8 @@ LineColors MeasureLineColors(const QImage& image, const QRect& bounds)
     unsigned histogram[2][3][256]{}, lumaHistogram[2][256]{}, bodyCounts[2]{};
     for (int y = box.top(); y <= box.bottom(); y += 2)
         for (int x = box.left(); x <= box.right(); x += 2) {
-            const uchar* px = image.constScanLine(y) + x * 4;
+            const uchar* px = pixel(x, y);
+            if (!px) continue;
             const int value = Luma(px), side = value < threshold ? 0 : 1;
             ++bodyCounts[side]; ++lumaHistogram[side][value];
             for (int channel = 0; channel < 3; ++channel)
@@ -229,7 +267,8 @@ LineColors MeasureLineColors(const QImage& image, const QRect& bounds)
             unsigned matches[2]{};
             for (int y = top; y < top + 3; ++y)
                 for (int x = left; x < left + 3; ++x) {
-                    const uchar* px = image.constScanLine(y) + x * 4;
+                    const uchar* px = pixel(x, y);
+                    if (!px) continue;
                     const int side = Luma(px) < threshold ? 0 : 1;
                     if (Compatible(px, body[side])) ++matches[side];
                 }
@@ -241,17 +280,18 @@ LineColors MeasureLineColors(const QImage& image, const QRect& bounds)
     // the touching exterior is still paper. A button's 1px padding is also
     // local paper, independently of the page beyond its narrow boundary.
     const QRect adjacent[4]{
-        QRect(box.left(), box.top() - 1, box.width(), box.top() > 0 ? 1 : 0),
-        QRect(box.left(), box.bottom() + 1, box.width(), box.bottom() + 1 < image.height() ? 1 : 0),
-        QRect(box.left() - 1, box.top(), box.left() > 0 ? 1 : 0, box.height()),
-        QRect(box.right() + 1, box.top(), box.right() + 1 < image.width() ? 1 : 0, box.height())};
+        QRect(box.left(), box.top() - 1, box.width(), quad || box.top() > 0 ? 1 : 0),
+        QRect(box.left(), box.bottom() + 1, box.width(), quad || box.bottom() + 1 < image.height() ? 1 : 0),
+        QRect(box.left() - 1, box.top(), quad || box.left() > 0 ? 1 : 0, box.height()),
+        QRect(box.right() + 1, box.top(), quad || box.right() + 1 < image.width() ? 1 : 0, box.height())};
     std::memset(histogram, 0, sizeof(histogram));
     unsigned sideCounts[4][2]{}, sideTotals[4]{}, ringCounts[2]{};
     const auto sampleSides = [&](const QRect (&sides)[4]) {
         for (int s = 0; s < 4; ++s)
             for (int y = sides[s].top(); y <= sides[s].bottom(); y += 2)
                 for (int x = sides[s].left(); x <= sides[s].right(); x += 2) {
-                    const uchar* px = image.constScanLine(y) + x * 4;
+                    const uchar* px = pixel(x, y);
+                    if (!px) continue;
                     const int side = Luma(px) < threshold ? 0 : 1;
                     ++sideTotals[s];
                     if (!Compatible(px, body[side])) continue;
@@ -270,15 +310,17 @@ LineColors MeasureLineColors(const QImage& image, const QRect& bounds)
         // Each expanded exterior side has one vote, never an area-weighted
         // vote. Exclude expanded corners and require local RGB agreement.
         const int margin = std::clamp(box.height() / 6, 2, 12);
+        const int x0 = quad ? box.left() - margin : std::max(0, box.left() - margin);
+        const int y0 = quad ? box.top() - margin : std::max(0, box.top() - margin);
+        const int x1 = quad ? box.right() + 1 + margin : std::min(image.width(), box.right() + 1 + margin);
+        const int y1 = quad ? box.bottom() + 1 + margin : std::min(image.height(), box.bottom() + 1 + margin);
         const QRect sides[4]{
-            QRect(box.left(), std::max(0, box.top() - margin), box.width(),
-                  box.top() - std::max(0, box.top() - margin)),
+            QRect(box.left(), y0, box.width(), box.top() - y0),
             QRect(box.left(), box.bottom() + 1, box.width(),
-                  std::min(image.height(), box.bottom() + 1 + margin) - box.bottom() - 1),
-            QRect(std::max(0, box.left() - margin), box.top(),
-                  box.left() - std::max(0, box.left() - margin), box.height()),
+                  y1 - box.bottom() - 1),
+            QRect(x0, box.top(), box.left() - x0, box.height()),
             QRect(box.right() + 1, box.top(),
-                  std::min(image.width(), box.right() + 1 + margin) - box.right() - 1, box.height())};
+                  x1 - box.right() - 1, box.height())};
         std::memset(histogram, 0, sizeof(histogram));
         std::memset(sideCounts, 0, sizeof(sideCounts));
         std::memset(sideTotals, 0, sizeof(sideTotals));
@@ -296,7 +338,8 @@ LineColors MeasureLineColors(const QImage& image, const QRect& bounds)
     unsigned inkCount = 0;
     for (int y = box.top(); y <= box.bottom(); y += 2)
         for (int x = box.left(); x <= box.right(); x += 2) {
-            const uchar* px = image.constScanLine(y) + x * 4;
+            const uchar* px = pixel(x, y);
+            if (!px) continue;
             const int value = Luma(px);
             if ((value < threshold ? 0 : 1) != fg ||
                 (fg == 0 ? value > endpoint[fg] : value < endpoint[fg])) continue;
@@ -456,6 +499,189 @@ QByteArray SourcePixelDigest(const QImage& pixels)
 }
 
 } // namespace
+
+TextQuad FitOrientedWordInk(const QImage& image, const RecognizedWord& word, const LineColors& colors,
+                            bool* fitted)
+{
+    if (fitted) *fitted = false;
+    const TextQuad detected = word.quadPx;
+    const TextQuad search = word.inkSearchQuadPx.valid ? word.inkSearchQuadPx : detected;
+    if (QuadArea(detected) <= 0.0 || QuadArea(search) <= 0.0 || image.isNull()) return detected;
+    const auto luma = [](const QColor& color) {
+        return (77 * color.red() + 150 * color.green() + 29 * color.blue()) / 256;
+    };
+    const int ink = luma(colors.foreground), paper = luma(colors.background);
+    if (std::abs(ink - paper) < 24) return detected;
+    const int threshold = (ink + paper) / 2;
+    const color_policy::Rgb localInk{{colors.foreground.red(), colors.foreground.green(), colors.foreground.blue()}};
+    const QPointF origin = search.points[0];
+    const double width = QuadWidth(search), height = QuadHeight(search);
+    if (!(width >= 1.0) || !(height >= 1.0) || !std::isfinite(width) || !std::isfinite(height)) return detected;
+    const QPointF u = (search.points[1] - origin) / width, v = (search.points[3] - origin) / height;
+    const QPointF warp = search.points[2] - search.points[1] - search.points[3] + origin;
+    const auto at = [&](double x, double y) { return origin + u * x + v * y + warp * ((x / width) * (y / height)); };
+    // Same bounded sample budget as the rectangle fit, on the rotated grid.
+    const int step = std::max({1, static_cast<int>(std::ceil(std::sqrt(width * height / 16384.0))),
+                               static_cast<int>(std::ceil(height / 4096.0)),
+                               static_cast<int>(std::ceil(width / 8192.0))});
+    const int columns = static_cast<int>(std::ceil(width / step)), rowsCount = static_cast<int>(std::ceil(height / step));
+    if (columns * rowsCount > 32768) return detected;
+    QVector<int> rows(rowsCount, 0);
+    int total = 0;
+    const auto rawInkAt = [&](int iu, int iv) {
+        const double du = double(iu) * step, dv = double(iv) * step;
+        const QPointF point = at(du, dv);
+        const int x = static_cast<int>(std::floor(point.x()));
+        const int y = static_cast<int>(std::floor(point.y()));
+        if (x < 0 || y < 0 || x >= image.width() || y >= image.height()) return false;
+        const auto* pixel = image.constScanLine(y) + x * 4;
+        const int value = Luma(pixel);
+        return ink < paper ? value < threshold : value > threshold;
+    };
+    // A button's surround can have the exact color of its letters. Remove
+    // only connected ink spanning opposite search edges in the word frame.
+    // A legitimate glyph/dot touching one edge (or one corner) is retained.
+    QVector<quint8> mask(columns * rowsCount, 0);
+    for (int iv = 0; iv < rowsCount; ++iv)
+        for (int iu = 0; iu < columns; ++iu) if (rawInkAt(iu, iv)) {
+            mask[iv * columns + iu] = 1;
+        }
+    QVector<int> component;
+    for (int seed = 0; seed < mask.size(); ++seed) {
+        if (mask[seed] != 1) continue;
+        component.clear(); component.push_back(seed); mask[seed] = 2;
+        unsigned sides = 0;
+        bool compatible = false, interior = false;
+        for (int next = 0; next < component.size(); ++next) {
+            const int iu = component[next] % columns, iv = component[next] / columns;
+            const auto point = at(double(iu) * step, double(iv) * step);
+            compatible = compatible || color_policy::Compatible(
+                image.constScanLine(int(std::floor(point.y()))) + int(std::floor(point.x())) * 4, localInk);
+            interior = interior || (iu && iv && iu < columns - 1 && iv < rowsCount - 1);
+            sides |= (!iu ? 1u : 0u) | (iu == columns - 1 ? 2u : 0u) |
+                     (!iv ? 4u : 0u) | (iv == rowsCount - 1 ? 8u : 0u);
+            for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) {
+                const int x = iu + dx, y = iv + dy;
+                if (x < 0 || y < 0 || x >= columns || y >= rowsCount) continue;
+                const int index = y * columns + x;
+                if (mask[index] == 1) { mask[index] = 2; component.push_back(index); }
+            }
+        }
+        const bool exterior = (sides & 3) == 3 || (sides & 12) == 12 ||
+                              (!compatible && (sides & (sides - 1)) != 0);
+        const bool anchored = compatible || sides == 0; // Local paper encloses an interior glyph.
+        // A wholly different interior stroke could be a darker/lighter glyph
+        // missed by the representative ink quartile. Keep detector geometry
+        // rather than silently fitting the remaining letters without it.
+        if (!exterior && !anchored && interior && component.size() >= 8) return detected;
+        for (const int index : component) mask[index] = !exterior && anchored ? 4 : 3;
+    }
+    const auto inkAt = [&](int iu, int iv) {
+        const auto value = mask[iv * columns + iu];
+        return value == 4;
+    };
+    for (int iv = 0; iv < rowsCount; ++iv)
+        for (int iu = 0; iu < columns; ++iu)
+            if (inkAt(iu, iv)) { ++rows[iv]; ++total; }
+    if (total < 8) return detected;
+    struct Run { int top, bottom, mass; };
+    QVector<Run> runs;
+    for (int iv = 0; iv < rowsCount; ++iv) {
+        if (!rows[iv]) continue;
+        if (runs.isEmpty() || iv - runs.last().bottom > 2) runs.push_back({iv, iv, rows[iv]});
+        else { runs.last().bottom = iv; runs.last().mass += rows[iv]; }
+    }
+    int main = 0;
+    for (int i = 1; i < runs.size(); ++i)
+        if (runs[i].mass > runs[main].mass) main = i;
+    if (runs[main].mass < total * .55) return detected;
+    int top = runs[main].top, bottom = runs[main].bottom;
+    bool detachedMarks = word.text.contains(QLatin1Char('i'), Qt::CaseInsensitive) ||
+                         word.text.contains(QLatin1Char('j'), Qt::CaseInsensitive);
+    for (QChar c : word.text.normalized(QString::NormalizationForm_D))
+        detachedMarks = detachedMarks || c.isMark() || QStringLiteral("!?:;").contains(c);
+    if (detachedMarks)
+        for (int i = 0; i < runs.size(); ++i) {
+            if (i == main || runs[i].mass > runs[main].mass * .3) continue;
+            const int gap = std::max({top - runs[i].bottom, runs[i].top - bottom, 0}) * step;
+            if (gap <= std::max(2.0, height * .22)) {
+                top = std::min(top, runs[i].top);
+                bottom = std::max(bottom, runs[i].bottom);
+            }
+        }
+    int left = columns, right = -1;
+    for (int iv = top; iv <= bottom; ++iv)
+        for (int iu = 0; iu < columns; ++iu)
+            if (inkAt(iu, iv)) { left = std::min(left, iu); right = std::max(right, iu); }
+    if (right < left) return detected;
+    const double u0 = double(left) * step, u1 = std::min(width, double(right) * step + step);
+    const double v0 = double(top) * step, v1 = std::min(height, double(bottom) * step + step);
+    const double detectedWidth = QuadWidth(detected);
+    // Detector padding can be more than three times the actual small-print
+    // ink height. Keep the width guard, but admit a complete quarter-height
+    // body; four source pixels still reject isolated dots and thin rules.
+    if (u1 - u0 < detectedWidth * .35 || v1 - v0 < std::max(4.0, height * .25)) return detected;
+    TextQuad result;
+    result.points = {at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1)};
+    result.valid = true;
+    if (fitted) *fitted = true;
+    return result;
+}
+
+void FinalizeRecognizedGeometry(RecognitionOutput& output)
+{
+    const auto candidate = [](const RecognizedWord& word) {
+        return word.disposition == TokenDisposition::kCandidate;
+    };
+    for (auto& line : output.lines)
+        for (auto& word : line.words) {
+            if (word.quadPx.valid && QuadArea(word.quadPx) <= 0.0)
+                word.disposition = TokenDisposition::kInvalidGeometry;
+            else if (candidate(word) && word.paddedBounds && !word.inkFitted &&
+                     (word.text.size() == 1 || (word.text.size() == 2 &&
+                       word.text[0].isHighSurrogate() && word.text[1].isLowSurrogate())) &&
+                     QuadIsRotated(word.quadPx) && std::abs(std::cos(QuadAngle(word.quadPx))) < .5)
+                // An isolated scalar has no reliable reading direction in a
+                // near-vertical padded box when ink fitting failed. Preserve
+                // the original symbol rather than stretching a guessed X/4.
+                word.disposition = TokenDisposition::kHighRisk;
+        }
+    // Two observations of the same text that fitting resolved onto the same
+    // ink are one word. Keep the more confident one; never merge different text.
+    QHash<QString, QVector<std::pair<int, int>>> byText;
+    for (int i = 0; i < output.lines.size(); ++i)
+        for (int j = 0; j < output.lines[i].words.size(); ++j)
+            if (candidate(output.lines[i].words[j])) byText[output.lines[i].words[j].text].push_back({i, j});
+    QSet<std::pair<int, int>> removed;
+    const auto geometry = [](const RecognizedWord& word) {
+        return word.quadPx.valid ? word.quadPx : TextQuad::FromRect(word.boundsPx);
+    };
+    for (const auto& occurrences : std::as_const(byText)) {
+        for (qsizetype a = 0; a < occurrences.size(); ++a) {
+            if (removed.contains(occurrences[a])) continue;
+            for (qsizetype b = a + 1; b < occurrences.size(); ++b) {
+                if (removed.contains(occurrences[b])) continue;
+                const auto& first = output.lines[occurrences[a].first].words[occurrences[a].second];
+                const auto& second = output.lines[occurrences[b].first].words[occurrences[b].second];
+                const TextQuad ga = geometry(first), gb = geometry(second);
+                const double smaller = std::min(QuadArea(ga), QuadArea(gb));
+                const double larger = std::max(QuadArea(ga), QuadArea(gb));
+                // Post-fit duplicates must describe the same ink, not merely
+                // overlap a neighbouring identical word or a different size.
+                if (smaller <= 0.0 || QuadIntersectionArea(ga, gb) < larger * .9 ||
+                    (!first.inkFitted && !second.inkFitted && ga != gb)) continue;
+                if (second.confidence > first.confidence) { removed.insert(occurrences[a]); break; }
+                removed.insert(occurrences[b]);
+            }
+        }
+    }
+    if (removed.isEmpty()) return;
+    for (int i = 0; i < output.lines.size(); ++i) {
+        auto& words = output.lines[i].words;
+        for (int j = static_cast<int>(words.size()) - 1; j >= 0; --j)
+            if (removed.contains({i, j})) words.removeAt(j);
+    }
+}
 
 // --- Pixel hand-off -----------------------------------------------------------
 
@@ -650,6 +876,238 @@ QRectF SceneRectToView(const ViewTransform& t, double width, double height, cons
         .normalized();
 }
 
+TextQuad TextQuad::FromRect(const QRectF& rect)
+{
+    TextQuad quad;
+    quad.points = {rect.topLeft(), rect.topRight(), rect.bottomRight(), rect.bottomLeft()};
+    quad.valid = !rect.isEmpty();
+    return quad;
+}
+
+QRectF TextQuad::Bounds() const
+{
+    if (!valid) return {};
+    double left = points[0].x(), right = left, top = points[0].y(), bottom = top;
+    for (const QPointF& point : points) {
+        left = std::min(left, point.x()); right = std::max(right, point.x());
+        top = std::min(top, point.y()); bottom = std::max(bottom, point.y());
+    }
+    return QRectF(QPointF(left, top), QPointF(right, bottom));
+}
+
+QPointF TextQuad::Center() const
+{
+    return (points[0] + points[1] + points[2] + points[3]) / 4.0;
+}
+
+TextQuad TextQuad::Translated(const QPointF& offset) const
+{
+    TextQuad quad = *this;
+    for (QPointF& point : quad.points) point += offset;
+    return quad;
+}
+
+double QuadWidth(const TextQuad& quad)
+{
+    return quad.valid ? std::hypot(quad.points[1].x() - quad.points[0].x(),
+                                   quad.points[1].y() - quad.points[0].y()) : 0.0;
+}
+
+double QuadHeight(const TextQuad& quad)
+{
+    return quad.valid ? std::hypot(quad.points[3].x() - quad.points[0].x(),
+                                   quad.points[3].y() - quad.points[0].y()) : 0.0;
+}
+
+double QuadAngle(const TextQuad& quad)
+{
+    return quad.valid ? std::atan2(quad.points[1].y() - quad.points[0].y(),
+                                   quad.points[1].x() - quad.points[0].x()) : 0.0;
+}
+
+bool QuadIsRotated(const TextQuad& pixelQuad)
+{
+    const double angle = QuadAngle(pixelQuad);
+    if (!pixelQuad.valid || !std::isfinite(angle)) return false;
+    const auto& p = pixelQuad.points;
+    const double h = QuadHeight(pixelQuad), w = QuadWidth(pixelQuad);
+    return std::abs(angle) >= kOrientedTextMinimumRadians ||
+        std::abs(p[3].x() - p[0].x()) > h * kOrientedTextMinimumRadians ||
+        std::hypot((p[2] - p[1] - p[3] + p[0]).x(), (p[2] - p[1] - p[3] + p[0]).y()) >
+            std::min(w, h) * kOrientedTextMinimumRadians;
+}
+
+namespace {
+double PolygonArea(const QVector<QPointF>& polygon)
+{
+    double twice = 0.0;
+    for (qsizetype i = 0; i < polygon.size(); ++i) {
+        const QPointF& a = polygon[i];
+        const QPointF& b = polygon[(i + 1) % polygon.size()];
+        twice += a.x() * b.y() - b.x() * a.y();
+    }
+    return std::abs(twice) * 0.5;
+}
+bool FinitePoints(const TextQuad& quad)
+{
+    return std::all_of(quad.points.begin(), quad.points.end(), [](const QPointF& point) {
+        return std::isfinite(point.x()) && std::isfinite(point.y());
+    });
+}
+} // namespace
+
+double QuadArea(const TextQuad& quad)
+{
+    if (!quad.valid || !FinitePoints(quad)) return 0.0;
+    double turn = 0.0;
+    for (int i = 0; i < 4; ++i) {
+        const auto a = quad.points[(i + 1) % 4] - quad.points[i];
+        const auto b = quad.points[(i + 2) % 4] - quad.points[(i + 1) % 4];
+        const double cross = a.x() * b.y() - a.y() * b.x();
+        if (cross == 0.0 || (turn != 0.0 && std::signbit(cross) != std::signbit(turn))) return 0.0;
+        turn = cross;
+    }
+    return PolygonArea({quad.points[0], quad.points[1], quad.points[2], quad.points[3]});
+}
+
+double QuadIntersectionArea(const TextQuad& a, const TextQuad& b)
+{
+    if (QuadArea(a) <= 0.0 || QuadArea(b) <= 0.0) return 0.0;
+    if (!a.Bounds().intersects(b.Bounds())) return 0.0;
+    // Convex clipping; both inputs are convex rectangles/parallelograms. The
+    // clip polygon's winding decides which side is inside.
+    QVector<QPointF> subject{a.points[0], a.points[1], a.points[2], a.points[3]};
+    const QVector<QPointF> clip{b.points[0], b.points[1], b.points[2], b.points[3]};
+    double winding = 0.0;
+    for (int i = 0; i < 4; ++i) {
+        const QPointF& p = clip[i];
+        const QPointF& q = clip[(i + 1) % 4];
+        winding += p.x() * q.y() - q.x() * p.y();
+    }
+    if (winding == 0.0) return 0.0;
+    const double sign = winding > 0.0 ? 1.0 : -1.0;
+    for (int edge = 0; edge < 4 && !subject.isEmpty(); ++edge) {
+        const QPointF p = clip[edge], q = clip[(edge + 1) % 4];
+        const auto side = [&](const QPointF& r) {
+            return sign * ((q.x() - p.x()) * (r.y() - p.y()) - (q.y() - p.y()) * (r.x() - p.x()));
+        };
+        QVector<QPointF> next;
+        for (qsizetype i = 0; i < subject.size(); ++i) {
+            const QPointF& current = subject[i];
+            const QPointF& previous = subject[(i + subject.size() - 1) % subject.size()];
+            const double sc = side(current), sp = side(previous);
+            if (sc >= 0.0) {
+                if (sp < 0.0) next.push_back(previous + (current - previous) * (sp / (sp - sc)));
+                next.push_back(current);
+            } else if (sp >= 0.0) {
+                next.push_back(previous + (current - previous) * (sp / (sp - sc)));
+            }
+        }
+        subject = std::move(next);
+    }
+    return subject.size() < 3 ? 0.0 : PolygonArea(subject);
+}
+
+TextQuad ViewQuadToScene(const ViewTransform& t, double width, double height, const TextQuad& viewQuad)
+{
+    TextQuad scene;
+    if (!viewQuad.valid) return scene;
+    for (int i = 0; i < 4; ++i)
+        if (!ViewPixelToScene(t, width, height, viewQuad.points[i], scene.points[i])) return {};
+    scene.valid = FinitePoints(scene);
+    return scene;
+}
+
+TextQuad SceneQuadToView(const ViewTransform& t, double width, double height, const TextQuad& sceneQuad)
+{
+    TextQuad view;
+    if (!sceneQuad.valid || !UsableTransform(t, width, height)) return view;
+    for (int i = 0; i < 4; ++i) view.points[i] = SceneToViewPixel(t, width, height, sceneQuad.points[i]);
+    view.valid = FinitePoints(view);
+    return view;
+}
+
+// --- Detector input planning ----------------------------------------------------
+
+QSize DetectorInputSize(QSize region, double maximumMagnification)
+{
+    if (region.isEmpty())
+        return {};
+    const double bound = std::isfinite(maximumMagnification)
+        ? std::clamp(maximumMagnification, 1.0, kMaximumDetailMagnification) : 1.0;
+    const double scale = std::min(bound, 960.0 / std::max(region.width(), region.height()));
+    if (bound > 1.0) {
+        // Alignment must not round an explicit detail bound upward. Preserve
+        // the established rounding policy for ordinary full-scene jobs.
+        return {std::max(32, static_cast<int>(std::floor(region.width() * scale / 32)) * 32),
+                std::max(32, static_cast<int>(std::floor(region.height() * scale / 32)) * 32)};
+    }
+    return {std::max(32, static_cast<int>(std::round(region.width() * scale / 32)) * 32),
+            std::max(32, static_cast<int>(std::round(region.height() * scale / 32)) * 32)};
+}
+
+QVector<QRect> DetectorRegions(QSize source)
+{
+    if (source.isEmpty()) return {};
+    const QRect whole(QPoint{},source);
+    QVector<QRect> regions{whole};
+    // Explicit CPU images historically supported larger extents. Keep their
+    // bounded whole-scene pass rather than report successful empty OCR.
+    if(source.width()>8192 || source.height()>8192) return regions;
+    constexpr int overlap=160, desiredEdge=1280;
+    const auto count=[](int extent) {
+        return std::clamp((extent-overlap+desiredEdge-overlap-1)/(desiredEdge-overlap),1,4);
+    };
+    const int columns=count(source.width()), rows=count(source.height());
+    if(columns==1 && rows==1) return regions;
+    const int width=(source.width()+(columns-1)*overlap+columns-1)/columns;
+    const int height=(source.height()+(rows-1)*overlap+rows-1)/rows;
+    for(int y=0;y<rows;++y) for(int x=0;x<columns;++x) {
+        const int left=std::min(x*(width-overlap),source.width()-width);
+        const int top=std::min(y*(height-overlap),source.height()-height);
+        regions.push_back(QRect(left,top,width,height));
+    }
+    return regions;
+}
+
+double DetailMagnification(const DetailFocus& focus)
+{
+    return std::isfinite(focus.maximumMagnification)
+        ? std::clamp(focus.maximumMagnification, 1.0, kMaximumDetailMagnification) : 1.0;
+}
+
+QRect DetailRegion(QSize source, const DetailFocus& focus)
+{
+    if (source.isEmpty() || source.width() > 8192 || source.height() > 8192) return {};
+    const QRect image(QPoint{}, source);
+    QRect region = focus.regionPx.normalized().intersected(image);
+    if (region.isEmpty()) return {};
+    // A smaller visible area would need more enlargement than the bound
+    // permits. Keep the bound and spend the fixed detector input on context
+    // around the visible centre instead of on interpolated pixels.
+    const int minimumLongEdge = static_cast<int>(std::ceil(960.0 / DetailMagnification(focus)));
+    const int longEdge = std::max(region.width(), region.height());
+    if (longEdge < minimumLongEdge) {
+        const double factor = double(minimumLongEdge) / longEdge;
+        const int width = std::min(source.width(), static_cast<int>(std::ceil(region.width() * factor)));
+        const int height = std::min(source.height(), static_cast<int>(std::ceil(region.height() * factor)));
+        const QPointF centre = QRectF(region).center();
+        const int left = std::clamp(static_cast<int>(std::lround(centre.x() - width / 2.0)), 0, source.width() - width);
+        const int top = std::clamp(static_cast<int>(std::lround(centre.y() - height / 2.0)), 0, source.height() - height);
+        region = QRect(left, top, width, height);
+    }
+    return region;
+}
+
+double EstablishedDetectorScale(QSize source, const QPointF& point)
+{
+    double best = 0.0;
+    for (const QRect& region : DetectorRegions(source))
+        if (QRectF(region).contains(point))
+            best = std::max(best, double(DetectorInputSize(region.size()).width()) / region.width());
+    return best;
+}
+
 ProbeFrame MakeProbeFrame(const std::uint8_t* bgra, int width, int height, int strideBytes,
                           int decimation, const SourceStamp& stamp)
 {
@@ -705,6 +1163,51 @@ ProbeFrame MakeProbeFrame(const std::uint8_t* bgra, int width, int height, int s
 
 int ProbeFrame::Width() const noexcept { return resident ? resident->Width() : luma.width(); }
 int ProbeFrame::Height() const noexcept { return resident ? resident->Height() : luma.height(); }
+
+ReferencePatch PlanQuadReference(const SourceStamp& stamp, int width, int height, const TextQuad& quad)
+{
+    ReferencePatch patch;
+    if(!UsableTransform(stamp.viewTransform,width,height) || QuadArea(quad)<=0) return patch;
+    const auto pixels=SceneQuadToView(stamp.viewTransform,width,height,quad);
+    const double qw=QuadWidth(pixels),qh=QuadHeight(pixels);
+    if(!std::isfinite(qw) || !std::isfinite(qh) || qw<1 || qh<1) return patch;
+    const auto at=[&](double u,double v) {
+        return pixels.points[0]*((1-u)*(1-v))+pixels.points[1]*(u*(1-v))+
+               pixels.points[2]*(u*v)+pixels.points[3]*((1-u)*v);
+    };
+    const double margin=.15*qh/qw;
+    TextQuad padded{{at(-margin,-.3),at(1+margin,-.3),at(1+margin,1.3),at(-margin,1.3)},true};
+    if(QuadArea(padded)<=0 || !QRectF(1,1,width-2,height-2).contains(padded.Bounds())) return patch;
+    patch.sceneQuad=ViewQuadToScene(stamp.viewTransform,width,height,padded);
+    patch.sceneRect=patch.sceneQuad.Bounds();
+    patch.columns=std::clamp(int(std::lround(QuadWidth(padded))),8,64);
+    patch.rows=std::clamp(int(std::lround(QuadHeight(padded))),4,12);
+    return patch;
+}
+
+ReferencePatch BuildQuadReferencePatch(const ProbeFrame& reference,const TextQuad& quad)
+{
+    if(reference.resident) {
+        const auto patches=reference.resident->QuadReferences(reference.stamp,{quad});
+        return patches.size()==1 ? patches.front() : ReferencePatch{};
+    }
+    if(!reference.IsValid()) return {};
+    auto patch=PlanQuadReference(reference.stamp,reference.Width(),reference.Height(),quad);
+    if(!patch.sceneQuad.valid) return {};
+    const auto geometry=ProjectPatch(patch,reference);
+    double sum=0,sumSq=0;
+    for(const auto& p:geometry.probePixels) {
+        float value{};
+        if(!BoxAverage(reference,p.x(),p.y(),geometry.halfWidth,geometry.halfHeight,value)) return {};
+        patch.values.push_back(value);sum+=value;sumSq+=double(value)*value;
+    }
+    const double mean=sum/patch.values.size();
+    const double deviation=std::sqrt(std::max(0.,sumSq/patch.values.size()-mean*mean));
+    if(deviation<6) return {};
+    for(auto& value:patch.values) value=float((value-mean)/deviation);
+    patch.valid=true;
+    return patch;
+}
 
 ReferencePatch BuildReferencePatch(const ProbeFrame& reference, const QRectF& lineRect)
 {
@@ -762,7 +1265,9 @@ PatchMatch MatchPatch(const ReferencePatch& patch, const ProbeFrame& probe, cons
     // Resident matching is explicit worker work (CheckLines / corroboration).
     // Never make UI-thread admission wait for a GPU stream.
     if (probe.resident) return match;
-    if (!patch.valid || !probe.IsValid()) {
+    if (!patch.valid || !probe.IsValid() || patch.columns<1 || patch.columns>64 ||
+        patch.rows<1 || patch.rows>12 || patch.values.size()!=patch.columns*patch.rows ||
+        (patch.sceneQuad.valid && QuadArea(patch.sceneQuad)<=0)) {
         return match;
     }
     const PatchGeometry g = ProjectPatch(patch, probe);
@@ -949,18 +1454,25 @@ QVector<PreparedLine> PrepareLines(const RecognitionResult& result, double minim
                 return !r.isEmpty() && std::isfinite(r.x()) && std::isfinite(r.y()) &&
                        std::isfinite(r.width()) && std::isfinite(r.height());
             };
-            if (!usableRect(scene) || !usableRect(protectedScene)) {
+            // Only a genuinely rotated word carries an oriented shape forward;
+            // near-horizontal words keep the established rectangle contract.
+            const TextQuad sceneQuad = QuadIsRotated(word.quadPx)
+                ? ViewQuadToScene(stamp.viewTransform, width, height, word.quadPx) : TextQuad{};
+            // A tilted word's bounding box is taller than its text.
+            const double textHeight = QuadIsRotated(word.quadPx) ? QuadHeight(word.quadPx) : word.boundsPx.height();
+            if (!usableRect(scene) || !usableRect(protectedScene) ||
+                (QuadIsRotated(word.quadPx) && !sceneQuad.valid)) {
                 disposition = TokenDisposition::kInvalidGeometry;
                 unmappedSpan = true;
             } else if (disposition == TokenDisposition::kCandidate) {
                 if (!std::isfinite(word.confidence) || word.confidence < .7 || word.confidence > 1.0001)
                     disposition = TokenDisposition::kLowConfidence;
                 else if (text.isEmpty()) disposition = TokenDisposition::kUnrecognized;
-                else if (word.boundsPx.height() < minimumWordHeightPx)
+                else if (textHeight + 1e-5 < minimumWordHeightPx)
                     disposition = TokenDisposition::kTooSmall;
                 else if (IsHighRiskToken(text)) disposition = TokenDisposition::kHighRisk;
             }
-            out.words.push_back({text, scene, disposition, word.confidence, protectedScene, word.colors});
+            out.words.push_back({text, scene, disposition, word.confidence, protectedScene, word.colors, sceneQuad});
             if (usableRect(protectedScene))
                 out.sceneRect = out.sceneRect.isNull() ? protectedScene : out.sceneRect.united(protectedScene);
         }
@@ -978,7 +1490,7 @@ QVector<PreparedLine> PrepareLines(const RecognitionResult& result, double minim
 }
 
 namespace {
-// A paused source does not move. Its *neighbour* may have scrolled: validate
+// A paused source does not move. Its *neighbour* may have scrolled or rotated: validate
 // the same recognized word there, without moving the selected-frame glyph.
 // GPU references/samples remain resident and only bounded verdicts return.
 QVector<QVector<bool>> MatchImmutableWords(const CorroborationRequest& request,
@@ -996,17 +1508,19 @@ QVector<QVector<bool>> MatchImmutableWords(const CorroborationRequest& request,
     qsizetype wordCount = 0;
     for (const auto& line : request.selectedLines) wordCount += line.words.size();
     if (wordCount > 8192) return out;
-    QHash<QString, QVector<QRectF>> recognized;
+    struct WordGeometry { QRectF rect; TextQuad quad; };
+    QHash<QString, QVector<WordGeometry>> recognized;
     for (qsizetype i = 0; i < neighbor.prepared.size(); ++i) {
         if (neighbor.stamp.temporallySmoothed &&
             (neighbor.currentInputMatches.size() != neighbor.prepared.size() ||
              !neighbor.currentInputMatches[i])) continue;
         for (const auto& word : neighbor.prepared[i].words)
             if (word.disposition == TokenDisposition::kCandidate && !IsHighRiskToken(word.text))
-                recognized[word.text].push_back(word.sceneRect);
+                recognized[word.text].push_back({word.sceneRect,word.sceneQuad});
     }
     QVector<QRectF> rects;
     QVector<QPointF> offsets;
+    QVector<TextQuad> sourceQuads,targetQuads;
     QVector<QPair<int, int>> destinations;
     for (int i = 0; i < request.selectedLines.size(); ++i) {
         const auto& line = request.selectedLines[i];
@@ -1019,22 +1533,38 @@ QVector<QVector<bool>> MatchImmutableWords(const CorroborationRequest& request,
             if (evidence == recognized.constEnd()) continue;
             // The ordinary completed line proof already covers static words.
             if (i < neighbor.corroborationMatches.size() && neighbor.corroborationMatches[i] &&
-                std::any_of(evidence->begin(), evidence->end(), [&](const QRectF& r) {
-                    return Iou(word.sceneRect, r) >= .5;
+                std::any_of(evidence->begin(), evidence->end(), [&](const WordGeometry& r) {
+                    return Iou(word.sceneRect, r.rect) >= .5;
                 })) continue;
             std::optional<QPointF> best;
+            TextQuad sourceQuad,targetQuad;
             double nearest = std::numeric_limits<double>::max();
             for (const auto& target : *evidence) {
-                const auto delta = target.center() - word.sceneRect.center();
+                const auto delta = target.rect.center() - word.sceneRect.center();
+                const auto from=word.sceneQuad.valid ? word.sceneQuad : TextQuad::FromRect(word.sceneRect);
+                const auto to=target.quad.valid ? target.quad : TextQuad::FromRect(target.rect);
+                const auto fromPx=SceneQuadToView(request.selectedReference.stamp.viewTransform,
+                    request.selectedReference.Width(),request.selectedReference.Height(),from);
+                const auto toPx=SceneQuadToView(neighbor.stamp.viewTransform,
+                    neighbor.reference.Width(),neighbor.reference.Height(),to);
+                const bool oriented=QuadIsRotated(fromPx) || QuadIsRotated(toPx);
+                const double sourceWidth=oriented?QuadWidth(fromPx):word.sceneRect.width();
+                const double sourceHeight=oriented?QuadHeight(fromPx):word.sceneRect.height();
+                const double targetWidth=oriented?QuadWidth(toPx):target.rect.width();
+                const double targetHeight=oriented?QuadHeight(toPx):target.rect.height();
                 if (std::abs(delta.x()) > .25 || std::abs(delta.y()) > .25 ||
-                    std::min(target.width(), word.sceneRect.width()) < .75 * std::max(target.width(), word.sceneRect.width()) ||
-                    std::min(target.height(), word.sceneRect.height()) < .75 * std::max(target.height(), word.sceneRect.height())) continue;
+                    std::min(targetWidth,sourceWidth) < .75*std::max(targetWidth,sourceWidth) ||
+                    std::min(targetHeight,sourceHeight) < .75*std::max(targetHeight,sourceHeight)) continue;
                 const double distance = delta.x() * delta.x() + delta.y() * delta.y();
-                if (distance < nearest) { nearest = distance; best = delta; }
+                if (distance < nearest) {
+                    nearest=distance;best=delta;
+                    sourceQuad=oriented?from:TextQuad{};targetQuad=oriented?to:TextQuad{};
+                }
             }
             if (!best) continue;
             rects.push_back(word.sceneRect);
             offsets.push_back(*best);
+            sourceQuads.push_back(sourceQuad);targetQuads.push_back(targetQuad);
             destinations.push_back({i, j});
         }
     }
@@ -1043,13 +1573,34 @@ QVector<QVector<bool>> MatchImmutableWords(const CorroborationRequest& request,
     constexpr MatchTuning tuning{.94, .95, 2};
     for (qsizetype first = 0; first < rects.size(); first += 1024) {
         if (cancelled.load()) return unavailable();
-        const auto batch = rects.mid(first, 1024);
-        QVector<ReferencePatch> patches;
-        if (request.selectedReference.resident)
-            patches = request.selectedReference.resident->References(request.selectedReference.stamp, batch);
-        else for (const auto& rect : batch) patches.push_back(BuildReferencePatch(request.selectedReference, rect));
-        if (patches.size() != batch.size()) return unavailable();
-        for (int i = 0; i < patches.size(); ++i) patches[i].sceneRect.translate(offsets[first + i]);
+        const int count=std::min<qsizetype>(1024,rects.size()-first);
+        QVector<ReferencePatch> patches(count);
+        QVector<QRectF> plain;QVector<TextQuad> shapes;
+        QVector<int> plainIndices,shapeIndices;
+        for(int i=0;i<count;++i) {
+            if(sourceQuads[first+i].valid) {shapes.push_back(sourceQuads[first+i]);shapeIndices.push_back(i);}
+            else {plain.push_back(rects[first+i]);plainIndices.push_back(i);}
+        }
+        QVector<ReferencePatch> plainPatches,shapePatches;
+        if(request.selectedReference.resident) {
+            if(!plain.isEmpty()) plainPatches=request.selectedReference.resident->References(request.selectedReference.stamp,plain);
+            if(!shapes.isEmpty()) shapePatches=request.selectedReference.resident->QuadReferences(request.selectedReference.stamp,shapes);
+        } else {
+            for(const auto& rect:plain) plainPatches.push_back(BuildReferencePatch(request.selectedReference,rect));
+            for(const auto& quad:shapes) shapePatches.push_back(BuildQuadReferencePatch(request.selectedReference,quad));
+        }
+        if(plainPatches.size()!=plain.size() || shapePatches.size()!=shapes.size()) return unavailable();
+        for(int i=0;i<plainIndices.size();++i) {
+            const int destination=plainIndices[i];patches[destination]=plainPatches[i];
+            patches[destination].sceneRect.translate(offsets[first+destination]);
+        }
+        for(int i=0;i<shapeIndices.size();++i) {
+            const int destination=shapeIndices[i];patches[destination]=shapePatches[i];
+            const auto target=PlanQuadReference(neighbor.stamp,neighbor.reference.Width(),
+                neighbor.reference.Height(),targetQuads[first+destination]);
+            patches[destination].sceneQuad=target.sceneQuad;patches[destination].sceneRect=target.sceneRect;
+            patches[destination].valid &= target.sceneQuad.valid;
+        }
         QVector<PatchMatch> matches;
         if (neighbor.reference.resident)
             matches = neighbor.reference.resident->Matches(neighbor.stamp, patches, tuning, {}, &cancelled);
@@ -1190,6 +1741,7 @@ struct RecognitionScheduler::State {
         SharedDeviceImage device;
         CorroborationRequest corroboration;
         std::optional<QRectF> shadowFocus;
+        std::optional<DetailFocus> detail;
     };
 
     std::mutex mutex;
@@ -1254,7 +1806,8 @@ struct RecognitionScheduler::State {
     }
 
     std::uint64_t Enqueue(const SourceStamp& stamp, QImage owned, SharedDeviceImage device = {},
-                          CorroborationRequest corroboration = {})
+                          CorroborationRequest corroboration = {},
+                          std::optional<DetailFocus> detail = std::nullopt)
     {
         std::lock_guard lock(mutex);
         if (shutdown || status.state == BackendState::kUnavailable ||
@@ -1273,6 +1826,7 @@ struct RecognitionScheduler::State {
         job.pixels = std::move(owned);
         job.device = std::move(device);
         job.corroboration = std::move(corroboration);
+        if (detail && !probeOnly) job.detail = detail;
         if (shadowRequested) job.shadowFocus = shadowFocus;
         const std::uint64_t id = job.id;
         TraceTiming(timing::Event::Submit, timingProducer, TimingChannel(), stamp, id, authority,
@@ -1371,9 +1925,18 @@ struct RecognitionScheduler::State {
                 }
                 if(!job.device || wantsDevice || !pixels.isNull()) {
                     if (timing::Enabled()) timingBackendFlags |= timing::InferenceAttempted;
+                    // The focus applies to exactly this call; a throwing or
+                    // cancelled recognition cannot leak it into the next job.
+                    struct DetailScope {
+                        Recognizer& recognizer;
+                        ~DetailScope() { recognizer.SetDetailFocus(std::nullopt); }
+                    } detailScope{*self->recognizer};
+                    self->recognizer->SetDetailFocus(job.detail);
                     result.output = wantsDevice
                         ? self->recognizer->RecognizeDevice(*job.device, self->cancelInFlight)
                         : self->recognizer->Recognize(pixels, self->cancelInFlight);
+                    // A backend cannot claim a region it was not asked to use.
+                    if (!job.detail) result.output.detailRegionPx = {};
                 }
                 else {result.output.cancelled=self->cancelInFlight.load();result.output.inputFault=true;}
                 const auto currentStatus = self->recognizer->Status();
@@ -1427,13 +1990,25 @@ struct RecognitionScheduler::State {
                     result.lineColors.push_back(colors);
                     for (RecognizedWord& word : line.words) {
                         if (word.protectedBoundsPx.isEmpty()) word.protectedBoundsPx = word.boundsPx;
-                        word.colors = MeasureLineColors(pixels, word.boundsPx.toAlignedRect());
-                        if (word.paddedBounds && word.disposition == TokenDisposition::kCandidate)
+                        word.colors = MeasureLineColors(pixels, word.boundsPx.toAlignedRect(),
+                            QuadIsRotated(word.quadPx) ? &word.quadPx : nullptr);
+                        if (!word.paddedBounds || word.disposition != TokenDisposition::kCandidate) continue;
+                        if (QuadIsRotated(word.quadPx)) {
+                            // Rows of a tilted word's bounding box mix ink and
+                            // paper: fit in the word's own rotated frame.
+                            word.quadPx = FitOrientedWordInk(pixels, word, *word.colors, &word.inkFitted);
+                            word.boundsPx = word.quadPx.Bounds();
+                        } else {
+                            const QRectF detected = word.boundsPx;
                             word.boundsPx = RefineWordInkBounds(pixels, word, *word.colors);
+                            word.inkFitted = word.boundsPx != detected;
+                            if (word.quadPx.valid) word.quadPx = TextQuad::FromRect(word.boundsPx);
+                        }
                     }
                 }
                 }
                 if (result.output.ok && !self->cancelInFlight.load()) {
+                    FinalizeRecognizedGeometry(result.output);
                     result.prepared = PrepareLines(result, self->minimumWordHeightPx);
                     if (!self->probeOnly && job.device &&
                         job.device->kind == AnalysisKind::TemporallySmoothed && !resident) {
@@ -1603,7 +2178,8 @@ RecognitionScheduler::~RecognitionScheduler()
 }
 
 std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, QImage pixels,
-                                          CorroborationRequest corroboration)
+                                          CorroborationRequest corroboration,
+                                          std::optional<DetailFocus> detail)
 {
     if (pixels.isNull()) {
         return 0;
@@ -1617,11 +2193,12 @@ std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, QImage pixe
     if (owned.isNull()) {
         return 0;
     }
-    return state_->Enqueue(stamp, std::move(owned), {}, std::move(corroboration));
+    return state_->Enqueue(stamp, std::move(owned), {}, std::move(corroboration), detail);
 }
 
 std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, SharedPixels pixels,
-                                          CorroborationRequest corroboration)
+                                          CorroborationRequest corroboration,
+                                          std::optional<DetailFocus> detail)
 {
     // Shared pixels are immutable after hand-off, so a read-only view is an
     // owned input: the worker keeps the buffer alive until it is done.
@@ -1629,18 +2206,19 @@ std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, SharedPixel
     if (view.isNull()) {
         return 0;
     }
-    return state_->Enqueue(stamp, std::move(view), {}, std::move(corroboration));
+    return state_->Enqueue(stamp, std::move(view), {}, std::move(corroboration), detail);
 }
 
 std::uint64_t RecognitionScheduler::SubmitDevice(const SourceStamp& stamp, SharedDeviceImage device,
-                                                  CorroborationRequest corroboration)
+                                                  CorroborationRequest corroboration,
+                                                  std::optional<DetailFocus> detail)
 {
     if(!device||!device->Data()||device->width<=0||device->height<=0||device->width>8192||device->height>8192||
         static_cast<std::size_t>(device->width)*device->height*4>128ull*1024*1024||
         device->pitch<static_cast<std::size_t>(device->width)*4||
         stamp.sourceEpoch!=device->sourceEpoch||stamp.frameSeq!=device->frameSequence||
         stamp.viewportWidth!=device->width||stamp.viewportHeight!=device->height)return 0;
-    return state_->Enqueue(stamp, {}, std::move(device), std::move(corroboration));
+    return state_->Enqueue(stamp, {}, std::move(device), std::move(corroboration), detail);
 }
 
 void RecognitionScheduler::Cancel()
@@ -1958,11 +2536,21 @@ AdmitVerdict OverlayModel::AdmitImmutable(const RecognitionResult& result,
         pendingDigestKind_ == result.sourcePixelDigestKind &&
         pendingEvidenceDigest_.size() == 32 && result.sourcePixelDigest.size() == 32 &&
         pendingEvidenceDigest_ == result.sourcePixelDigest;
+    // A visible-detail result examined one region of the same pixels. It is
+    // never a standalone observation: without the exact retained input it
+    // would erase everything outside its region, so it is refused.
+    const QRect jobRect(0, 0, static_cast<int>(after.viewportWidth), static_cast<int>(after.viewportHeight));
+    const bool regional = !result.output.detailRegionPx.isEmpty() &&
+                          result.output.detailRegionPx.intersected(jobRect) != jobRect;
+    if (regional && !sameInput) return AdmitVerdict::kStaleScene;
     QVector<AcceptedLine> previous;
     if (sameInput) {
+        // A region also keeps earlier reading-only lines; the merge promotes
+        // a token in place only when this pair independently proves it.
         for (const auto& line : lines_)
             if (line.provenance.SameScene(after) && line.provenance.frameSeq == after.frameSeq &&
-                line.provenance.timestampMs == after.timestampMs && IsShown(line, nowMs, after.frameSeq))
+                line.provenance.timestampMs == after.timestampMs &&
+                (regional ? IsReadable(line, nowMs, after.frameSeq) : IsShown(line, nowMs, after.frameSeq)))
                 previous.push_back(line);
     }
     const auto verdict = AdmitImpl(result, selectedFrame, nullptr, nowMs, true, corroboration);
@@ -2056,10 +2644,15 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
     const auto absolute = [](const AcceptedLine& line, const AcceptedWord& word) {
         return word.sceneRect.translated(line.sceneOffset);
     };
-    const auto strongOverlap = [](const QRectF& left, const QRectF& right) {
-        const QRectF overlap = left.intersected(right);
-        const double smaller = std::min(left.width() * left.height(), right.width() * right.height());
-        return smaller > 0 && overlap.width() * overlap.height() >= smaller * .5;
+    // Tilted words compare their oriented shapes: bounding boxes of two
+    // neighbouring rotated words overlap even when their ink does not.
+    const auto shape = [](const AcceptedLine& line, const AcceptedWord& word) {
+        return word.sceneQuad.valid ? word.sceneQuad.Translated(line.sceneOffset)
+                                    : TextQuad::FromRect(word.sceneRect.translated(line.sceneOffset));
+    };
+    const auto strongOverlap = [](const TextQuad& left, const TextQuad& right) {
+        const double smaller = std::min(QuadArea(left), QuadArea(right));
+        return smaller > 0 && QuadIntersectionArea(left, right) >= smaller * .5;
     };
     // Immutable pages can be dense. A fixed vertical index keeps ordinary
     // row-local refinement from comparing every word with every old line.
@@ -2073,9 +2666,15 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
         for (int row = first; row <= last; ++row) rows[row].push_back(index);
     };
     const auto nearby = [&](const QRectF& rect) {
+        const auto [first, last] = rowRange(rect);
+        // One row is already unique and in increasing line order (indexLine
+        // only ever appends larger indexes), so the common small-word case
+        // needs neither the hash set nor the sort below. This runs once per
+        // incoming word on the admission path, where a dense page would
+        // otherwise allocate a QSet for every word.
+        if (first == last) return rows[first];
         QVector<qsizetype> indexes;
         QSet<qsizetype> seen;
-        const auto [first, last] = rowRange(rect);
         for (int row = first; row <= last; ++row)
             for (const auto index : rows[row])
                 if (!seen.contains(index)) { seen.insert(index); indexes.push_back(index); }
@@ -2098,7 +2697,7 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
                 if (!oldWord.glyphEligible) continue;
                 for (const auto& newWord : incoming[n].words) {
                     if (newWord.glyphEligible && oldWord.text != newWord.text &&
-                        strongOverlap(absolute(retained[o], oldWord), absolute(incoming[n], newWord))) {
+                        strongOverlap(shape(retained[o], oldWord), shape(incoming[n], newWord))) {
                         conflict = true;
                         block(absolute(retained[o], oldWord));
                         block(absolute(incoming[n], newWord));
@@ -2159,13 +2758,13 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
                 line.readingTokens.removeAt(t);
             }
     };
-    const auto retireReadingOnly = [&](AcceptedLine& line, const QRectF& proved) {
+    const auto retireReadingOnly = [&](AcceptedLine& line, const TextQuad& proved) {
         auto indexes = tokenIndexes(line);
         std::optional<qsizetype> first;
         for (qsizetype t = 0; t < indexes.size(); ++t) {
             const int index = indexes[t];
             if (index >= 0 && index < line.words.size() && !line.words[index].glyphEligible &&
-                strongOverlap(absolute(line, line.words[index]), proved)) {
+                strongOverlap(shape(line, line.words[index]), proved)) {
                 indexes[t] = -1; line.readingTokens[t].clear();
                 if (!first) first = t;
             }
@@ -2183,13 +2782,14 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
             if (!keep[w]) continue;
             const auto& word = candidate.words[w];
             const QRectF rect = absolute(candidate, word);
+            const TextQuad wordShape = shape(candidate, word);
             const auto neighbors = nearby(rect);
             bool duplicate = false;
             for (const auto o : neighbors) {
                 auto& old = retained[o];
                 if (!old.sceneRect.translated(old.sceneOffset).intersects(rect)) continue;
                 for (auto& existing : old.words)
-                    if (existing.glyphEligible && strongOverlap(absolute(old, existing), rect)) {
+                    if (existing.glyphEligible && strongOverlap(shape(old, existing), wordShape)) {
                         duplicate = true;
                         // Only matching incoming words with their OWN completed
                         // proof may improve color on this exact selected source.
@@ -2210,7 +2810,7 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
             if (!target) {
                 for (const auto o : neighbors) {
                     auto replacement = retained[o];
-                    if (!retireReadingOnly(replacement, rect)) continue;
+                    if (!retireReadingOnly(replacement, wordShape)) continue;
                     if (!word.glyphEligible || !IsShown(candidate, nowMs, selectedFrameSeq)) {
                         keep[w] = false; // no duplicate reading-only refresh or self-promotion
                         continue;
@@ -2233,10 +2833,12 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
             // neighbor proof in AdmitImpl. The old reference grants no new
             // agreement; retain old references/geometry/clocks and indexes.
             auto replacement = *target;
-            const auto retiredPosition = retireReadingOnly(replacement, rect);
+            const auto retiredPosition = retireReadingOnly(replacement, wordShape);
             auto indexes = tokenIndexes(replacement);
             AcceptedWord appended = word;
             appended.sceneRect = rect.translated(-replacement.sceneOffset);
+            if (appended.sceneQuad.valid)
+                appended.sceneQuad = word.sceneQuad.Translated(candidate.sceneOffset - replacement.sceneOffset);
             const int appendedIndex = static_cast<int>(replacement.words.size());
             replacement.words.push_back(std::move(appended));
             qsizetype position = retiredPosition.value_or(indexes.size());
@@ -2558,12 +3160,13 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                         return Iou(word.sceneRect, r) >= tuning_.agreementIou;
                     }));
                 candidate.line.words.push_back({word.text, word.sceneRect, glyphEligible,
-                    word.colors ? std::optional<LineColors>(StableLineColors(*word.colors)) : std::nullopt});
+                    word.colors ? std::optional<LineColors>(StableLineColors(*word.colors)) : std::nullopt,
+                    word.sceneQuad});
                 candidate.line.readingTokens.push_back(word.text);
                 if (!glyphEligible) candidate.line.protectedSceneRects.push_back(
                     word.protectedSceneRect.isEmpty() ? word.sceneRect : word.protectedSceneRect);
             } else if (heldReadingOnly) {
-                candidate.line.words.push_back({word.text, word.sceneRect, false});
+                candidate.line.words.push_back({word.text, word.sceneRect, false, std::nullopt, word.sceneQuad});
                 candidate.line.readingTokens.push_back(word.text);
                 candidate.line.protectedSceneRects.push_back(
                     word.protectedSceneRect.isEmpty() ? word.sceneRect : word.protectedSceneRect);
@@ -2876,7 +3479,8 @@ QVector<SceneWord> OverlayModel::SceneWords(std::int64_t nowMs, std::uint64_t cu
             const AcceptedWord& word = line.words[i];
             if (!word.glyphEligible) continue;
             words.push_back({word.text, word.sceneRect.translated(line.sceneOffset), word.colors.value_or(line.colors), line.id,
-                             protectedRects, i});
+                             protectedRects, i,
+                             word.sceneQuad.valid ? word.sceneQuad.Translated(line.sceneOffset) : TextQuad{}});
         }
     }
     return words;

@@ -1865,6 +1865,23 @@ selected yellow buttons, antialiased ink, clipped rectangles and dense glyphs
 whose corners contain ink. These descriptor checks use synthetic owned pixels,
 not a real-camera or display-color acceptance claim.
 
+The geometry helpers add 48 actual Segoe UI tilted/perspective `Right Hand`
+button variants through CPU/resident preparation, with the identical dark
+surround and an adjacent rule inside padded search. They assert local polarity,
+all glyph corners, word spacing, dot/descender/leading-edge retention and zero
+image egress. Varying ink includes a black dot and lighter letter around a gray
+measured foreground: retain full geometry or the complete detected word. The
+winding-component GPU case requires conservative incomplete fallback at the
+64-scan cap; the exact linear CPU queue may fit that pathological case.
+These run through the existing `uct_paddle_processing`/`uct_paddle_cuda` gates.
+
+The explicitly selected `optionalPausedVideoProof` also records resident
+search/color fit replays in `selectedFitReplay`/`neighbourFitReplay`: per-word
+pass/completion and production/replay fit flags, histograms, one warmup and
+three CUDA-event durations. This diagnostic runs after the actual workers and
+does not enter their durations, admission or pixel-egress counts. It is not
+part of regular CTest or a native display/decoder timing measurement.
+
 The opt-in [bounded timing trace](../docs/uct_timing_trace.md) has four ordinary
 headless CTest contracts: `uct_timing_trace_contract` checks storage and close/drop
 accounting; `uct_timing_controller_contract` follows real scripted worker/admission
@@ -1983,6 +2000,23 @@ threshold is asserted. This model-free experiment measures no inference,
 native presentation or accessibility latency. It needs Qt Core/Gui and no
 camera, fonts, model runtime, GPU or native window.
 
+### Tilted text and paused visible detail
+
+`uct_paddle_processing` includes oriented fit/mapping, post-fit duplicate and
+actual projective-paint cases. `immutable_uct_contract` includes settled paused
+pan/zoom, coalescing, bounded coverage and failure/source fencing. The new
+`ultra_clear_text_contract` quad-reference cases assert unchanged rotated ink
+passes strict matching while changed ink, malformed quads, high-risk tokens and
+reused/foreign acquisitions do not. `uct_paddle_cuda` compares CPU, uploaded
+compact CPU and native resident references at 1/2/4 decimation with rotation
+and perspective, retaining zero image download on the resident path.
+
+The shared `uct_quad_reference_test_support.hpp` uses installed Segoe UI and
+first-party synthetic text. Optional real-image diagnostics can write directly
+to an absolute `OKUFLOW_UCT_PAUSE_OUTPUT_ROOT`, preserving the default when
+unset. See `docs/uct_oriented_detail_repair.md` for bounded six-times detail,
+private-image evidence and the distinction from native desktop acceptance.
+
 ### Paused UCT continuity and scene cuts
 
 `mergeKeepsIndependentColumnsAndTypeSizes` in `uct_paddle_processing` checks
@@ -2048,6 +2082,14 @@ of assuming timeline equivalence: on the development machine, the first blue
 native sample was at 1.2 s while FFmpeg placed it at 1.0 s. This separate
 reordered-H.264 timeline discrepancy is not repaired or accepted by this test.
 ## Recognition-width validation
+
+The model-free `orientedInkAndMapping` and `gpuOrientedInkMatchesCpu` slots
+also cover a readable nine-pixel Segoe UI word inside 32-pixel detector padding.
+The complete body must fit on CPU and CUDA; a two-pixel rule must retain the
+detected geometry. These controlled geometry checks do not prove OCR accuracy.
+The same fixture distinguishes a seven-pixel projection-rounding error from
+a genuinely sub-threshold body. Post-fit finalization covers unfitted/fitted
+near-vertical single scalars and multi-letter words separately.
 
 `uct_paddle_processing` includes `recognizerWidthPolicyKeepsBoundsAndOrderedGroups`,
 `recognizerWidthRectificationRetainsUsefulAspectSamples` and

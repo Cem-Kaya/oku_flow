@@ -62,6 +62,13 @@ struct ImmutableScript {
     std::atomic<bool> wantsDevice{};
     std::atomic<int> wantsDeviceAfterCalls{}; // actual CPU bridge -> preferred device handoff
     std::atomic<bool> separateWordLines{};
+    // Visible-detail support: the backend advertises region detection, and
+    // `detailWords` are found only when a region is examined (small print the
+    // full-scene detector missed). Every recognition records its focus.
+    std::atomic<bool> detailFocus{};
+    QVector<PageWord> detailWords;
+    struct Call { QByteArray digest; quint64 frame{}; std::optional<DetailFocus> focus; };
+    QVector<Call> recorded;
 
     void Release()
     {
@@ -88,8 +95,11 @@ public:
         BackendStatus status;
         status.state = BackendState::kReady;
         status.name = QStringLiteral("immutable fixture");
+        status.detailFocus = script_->detailFocus.load();
         return status;
     }
+
+    void SetDetailFocus(const std::optional<DetailFocus>& focus) override { focus_ = focus; }
 
     bool WantsDeviceInput() const override
     {
@@ -128,6 +138,7 @@ private:
                               quint64 frame = 0, const QByteArray& digest = {})
     {
         QVector<PageWord> words;
+        QRect detail;
         {
             std::unique_lock lock(script_->mutex);
             words = script_->words;
@@ -135,6 +146,19 @@ private:
             if (script_->frameWords.contains(frame)) words = script_->frameWords[frame];
             const int call = script_->calls.load() + script_->deviceCalls.load();
             if (script_->callWords.contains(call)) words = script_->callWords[call];
+            script_->recorded.push_back({digest, frame, focus_});
+            if (focus_) {
+                // One region of the same image: only words inside it, plus
+                // the small print a closer detector look reveals.
+                detail = DetailRegion(QSize(width, height), *focus_);
+                words += script_->detailWords;
+                QVector<PageWord> inside;
+                for (const PageWord& word : words)
+                    if (QRectF(detail).contains(QRectF(word.sceneRect.x() * width, word.sceneRect.y() * height,
+                                                       word.sceneRect.width() * width, word.sceneRect.height() * height)))
+                        inside.push_back(word);
+                words = inside;
+            }
             script_->changed.wait(lock, [&] {
                 return script_->permittedCalls < 0 || call <= script_->permittedCalls;
             });
@@ -153,6 +177,7 @@ private:
         output.cancelled = cancelled.load();
         output.ok = !output.cancelled;
         if (!output.ok) return output;
+        output.detailRegionPx = detail;
         if(script_->completeBridgeResults.load()>0 && script_->completeBridgeResults.fetch_sub(1)>0)
             output.backendPreparing=true;
         RecognizedLine line;
@@ -171,6 +196,7 @@ private:
     }
 
     std::shared_ptr<ImmutableScript> script_;
+    std::optional<DetailFocus> focus_; // worker-confined, like production backends
 };
 
 SharedPixels OwnedPixels(const QImage& image)
@@ -497,6 +523,15 @@ private slots:
     void gapReceiptLateOldRecognitionCannotReviveAfterExpiry();
     void gapReceiptSameFrameReprojectsRepeatedlyWithoutWork();
     void processingCorrespondenceGateRevokesTextAndUiaWithoutChangingPreference();
+    void pausedDetailSettledWhileBusyUsesLatestView();
+    void pausedDetailFailureIsFiniteAndOtherRegionCanProceed();
+    void pausedDetailSettledDuringPresentationFailureRunsAfterRecovery();
+    void pausedDetailHeldCopiesNeverCorroborate();
+    void pausedDetailAuthorityRevokesHeldWork_data();
+    void pausedDetailAuthorityRevokesHeldWork();
+    void pausedZoomRequestsOneBoundedVisibleDetailPair();
+    void pausedVisibleDetailNeedsSupportNeighbourAndMagnification_data();
+    void pausedVisibleDetailNeedsSupportNeighbourAndMagnification();
 };
 
 void UltraClearTextControllerTests::timingTraceKeepsWorkerAndAdmissionTickets()
@@ -2741,3 +2776,249 @@ int main(int argc, char** argv)
 }
 
 #include "ultra_clear_text_controller_tests.moc"
+
+namespace {
+// Paused view zoomed onto `target`: a quarter of the scene in each axis.
+ViewTransform ZoomOnto(const QRectF& target, double span = 0.25)
+{
+    const double x = std::clamp(target.center().x() - span / 2, 0.0, 1.0 - span);
+    const double y = std::clamp(target.center().y() - span / 2, 0.0, 1.0 - span);
+    return {float(x), float(y), float(span), float(span), 0, 0, 1, 1, true};
+}
+bool OverlayShows(const UltraClearTextOverlay& overlay, const QString& text)
+{
+    return std::any_of(overlay.Words().begin(), overlay.Words().end(),
+                       [&](const auto& word) { return word.text == text; });
+}
+} // namespace
+
+void UltraClearTextControllerTests::pausedZoomRequestsOneBoundedVisibleDetailPair()
+{
+    // Reproduces the owner's paused zoom: readable small print the full-scene
+    // detector never found stayed original forever, because view changes were
+    // projection-only. A settled zoom now re-detects exactly the visible
+    // region of the SAME selected image and its real neighbour, once.
+    UctTiming timing;
+    timing.immutableDetailSettleMs = 0;
+    ImmutableHarness h(timing);
+    h.page = MakePage({QStringLiteral("Reading helps"), QStringLiteral("every small word")}, {}, 960, 540, 48);
+    const PageWord hidden = h.page.words.last();
+    {
+        std::lock_guard lock(h.script->mutex);
+        h.script->words = h.page.words.mid(0, h.page.words.size() - 1);
+        h.script->detailWords = {hidden};
+        h.script->detailFocus = true;
+    }
+    const QImage neighbourImage = IndependentFramePixels(h.page.image, 11);
+    const QByteArray selectedDigest = SourcePixelsDigest(h.page.image);
+    const QByteArray neighbourDigest = SourcePixelsDigest(neighbourImage);
+    h.Enable();
+    auto scene = h.Scene();
+    scene.corroboration = UctImmutableFrame{OwnedPixels(neighbourImage), 11, 20};
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_COMPARE(h.script->calls.load(), 2);
+    QTRY_VERIFY(h.overlay.WordCount() > 0);
+    QTest::qWait(30);
+    QCOMPARE(h.script->calls.load(), 2); // the whole scene needs no detail pass
+    QVERIFY(!OverlayShows(h.overlay, hidden.text));
+
+    // Hold the neighbour half: the held image alone can never confirm what
+    // its own region pass finds.
+    {
+        std::lock_guard lock(h.script->mutex);
+        h.script->permittedCalls = 3;
+    }
+    const ViewTransform zoom = ZoomOnto(hidden.sceneRect);
+    h.controller->UpdateImmutableView(zoom, 960, 540);
+    QTRY_COMPARE(h.script->calls.load(), 4);
+    QTest::qWait(30);
+    QVERIFY(!OverlayShows(h.overlay, hidden.text));
+    h.script->Release();
+    QTRY_VERIFY(OverlayShows(h.overlay, hidden.text));
+    QVERIFY(h.Reading().contains(hidden.text));
+    QCOMPARE(h.controller->ImmutableDetailPasses(), std::uint64_t(1));
+    QVERIFY(!h.controller->ActiveImmutableDetail());
+
+    // Both halves name the visible source region in the retained full-scene
+    // pixels, at the 6x bound, on the two original acquisitions only.
+    std::vector<ImmutableScript::Call> calls;
+    {
+        std::lock_guard lock(h.script->mutex);
+        calls.assign(h.script->recorded.begin(), h.script->recorded.end());
+    }
+    QCOMPARE(calls.size(), std::size_t(4));
+    QVERIFY(!calls[0].focus && !calls[1].focus);
+    const QRect expected = QRectF(zoom.sourceX * 960.0, zoom.sourceY * 540.0, zoom.sourceWidth * 960.0,
+                                  zoom.sourceHeight * 540.0).toAlignedRect();
+    for (int i : {2, 3}) {
+        QVERIFY(calls[i].focus);
+        QCOMPARE(calls[i].focus->regionPx, expected);
+        QCOMPARE(calls[i].focus->maximumMagnification, kMaximumDetailMagnification);
+    }
+    QCOMPARE(calls[2].digest, selectedDigest);
+    QCOMPARE(calls[3].digest, neighbourDigest);
+    QCOMPARE(h.controller->ProbeStatistics().submitted, std::uint64_t(0));
+
+    // The same settled view and a small pan inside the covered region add no work.
+    h.controller->UpdateImmutableView(zoom, 960, 540);
+    ViewTransform nudged = zoom;
+    nudged.sourceX += 0.01f;
+    nudged.sourceWidth -= 0.02f;
+    nudged.sourceHeight -= 0.02f;
+    h.controller->UpdateImmutableView(nudged, 960, 540);
+    QTest::qWait(40);
+    QCOMPARE(h.script->calls.load(), 4);
+    // Returning to the whole view keeps the improved artifact without work.
+    ViewTransform fit;
+    fit.valid = true;
+    h.controller->UpdateImmutableView(fit, 960, 540);
+    QTest::qWait(40);
+    QCOMPARE(h.script->calls.load(), 4);
+    QVERIFY(OverlayShows(h.overlay, hidden.text));
+    // Panning to an uncovered region requests exactly one more bounded pair.
+    h.controller->UpdateImmutableView(ZoomOnto(h.page.words.first().sceneRect), 960, 540);
+    QTRY_COMPARE(h.script->calls.load(), 6);
+    QTest::qWait(40);
+    QCOMPARE(h.script->calls.load(), 6);
+    QCOMPARE(h.controller->ImmutableDetailPasses(), std::uint64_t(2));
+    QVERIFY(OverlayShows(h.overlay, hidden.text)); // earlier proof survives a later region
+}
+
+void UltraClearTextControllerTests::pausedVisibleDetailNeedsSupportNeighbourAndMagnification_data()
+{
+    QTest::addColumn<bool>("supported");
+    QTest::addColumn<bool>("neighbour");
+    QTest::addColumn<double>("span");
+    QTest::newRow("backend-without-region-detection") << false << true << 0.25;
+    QTest::newRow("no-independent-neighbour") << true << false << 0.25;
+    QTest::newRow("zoom-gains-too-little-detector-detail") << true << true << 0.95;
+}
+
+void UltraClearTextControllerTests::pausedVisibleDetailNeedsSupportNeighbourAndMagnification()
+{
+    QFETCH(bool, supported);
+    QFETCH(bool, neighbour);
+    QFETCH(double, span);
+    UctTiming timing;
+    timing.immutableDetailSettleMs = 0;
+    ImmutableHarness h(timing);
+    h.page = MakePage({QStringLiteral("Reading helps"), QStringLiteral("every small word")}, {}, 960, 540, 48);
+    {
+        std::lock_guard lock(h.script->mutex);
+        h.script->words = h.page.words.mid(0, h.page.words.size() - 1);
+        h.script->detailWords = {h.page.words.last()};
+        h.script->detailFocus = supported;
+    }
+    h.Enable();
+    auto scene = h.Scene();
+    if (neighbour) scene.corroboration = UctImmutableFrame{OwnedPixels(IndependentFramePixels(h.page.image, 11)), 11, 20};
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    const int baseline = neighbour ? 2 : 1;
+    QTRY_COMPARE(h.script->calls.load(), baseline);
+    h.controller->UpdateImmutableView(ZoomOnto(h.page.words.last().sceneRect, span), 960, 540);
+    QTest::qWait(60);
+    QCOMPARE(h.script->calls.load(), baseline);
+    QCOMPARE(h.controller->ImmutableDetailPasses(), std::uint64_t(0));
+    QVERIFY(!OverlayShows(h.overlay, h.page.words.last().text));
+}
+
+void UltraClearTextControllerTests::pausedDetailSettledWhileBusyUsesLatestView()
+{
+    UctTiming timing; timing.immutableDetailSettleMs=0;
+    ImmutableHarness h(timing); h.script->detailFocus=true; h.Enable();
+    auto scene=h.Scene(); scene.corroboration=UctImmutableFrame{OwnedPixels(IndependentFramePixels(h.page.image,11)),11,20};
+    QVERIFY(h.controller->SetImmutableScene(scene)); QTRY_VERIFY(h.overlay.WordCount()>0);
+    const auto old=h.controller->Model().Lines();
+    {std::lock_guard lock(h.script->mutex);h.script->permittedCalls=3;}
+    h.controller->UpdateImmutableView(ZoomOnto({.12,.15,.1,.1}),960,540);
+    QTRY_COMPARE(h.script->calls.load(),4);
+    const auto latest=ZoomOnto({.72,.7,.1,.1});
+    h.controller->UpdateImmutableView(latest,960,540);
+    QTest::qWait(30); QCOMPARE(h.script->calls.load(),4);
+    h.script->Release(); QTRY_COMPARE(h.script->calls.load(),6);
+    QTRY_VERIFY(!h.controller->ActiveImmutableDetail()); QTest::qWait(30);
+    QCOMPARE(h.script->calls.load(),6);
+    {std::lock_guard lock(h.script->mutex);const auto last=h.script->recorded.last();
+     QVERIFY(last.focus); QCOMPARE(last.focus->regionPx.x(),int(std::floor(latest.sourceX*960.0)));}
+    for(const auto& line:old) {
+        const auto& current=h.controller->Model().Lines();
+        const auto found=std::find_if(current.begin(),current.end(),[&](const auto& x){return x.id==line.id;});
+        QVERIFY(found!=current.end()); QCOMPARE(found->validatedAtMs,line.validatedAtMs);
+        QCOMPARE(found->validatedFrameSeq,line.validatedFrameSeq);
+    }
+}
+void UltraClearTextControllerTests::pausedDetailFailureIsFiniteAndOtherRegionCanProceed()
+{
+    UctTiming timing;timing.immutableDetailSettleMs=0;
+    ImmutableHarness h(timing);h.script->detailFocus=true;h.Enable();
+    auto scene=h.Scene();scene.corroboration=UctImmutableFrame{OwnedPixels(IndependentFramePixels(h.page.image,11)),11,20};
+    QVERIFY(h.controller->SetImmutableScene(scene));QTRY_VERIFY(h.overlay.WordCount()>0);
+    h.script->transientFailures=1;h.script->transientKind=0;
+    const auto failed=ZoomOnto({.12,.15,.1,.1});
+    h.controller->UpdateImmutableView(failed,960,540);QTRY_COMPARE(h.script->calls.load(),3);
+    QTRY_VERIFY(!h.controller->ActiveImmutableDetail());
+    for(int i=0;i<12;++i)h.controller->UpdateImmutableView(failed,960,540);
+    QTest::qWait(160);QCOMPARE(h.script->calls.load(),3);QVERIFY(h.overlay.WordCount()>0);
+    h.controller->UpdateImmutableView(ZoomOnto({.72,.7,.1,.1}),960,540);
+    QTRY_COMPARE(h.script->calls.load(),5);QTest::qWait(30);QCOMPARE(h.script->calls.load(),5);
+}
+void UltraClearTextControllerTests::pausedDetailSettledDuringPresentationFailureRunsAfterRecovery()
+{
+    // The settle deadline can expire while presentation is latched failed.
+    // Recovery is an event, not a view change: it must ask once more for the
+    // already-settled view instead of leaving its small print unexamined
+    // until the owner happens to pan or zoom again.
+    UctTiming timing;timing.immutableDetailSettleMs=25;
+    ImmutableHarness h(timing);h.script->detailFocus=true;h.Enable();
+    auto scene=h.Scene();scene.corroboration=UctImmutableFrame{OwnedPixels(IndependentFramePixels(h.page.image,11)),11,20};
+    QVERIFY(h.controller->SetImmutableScene(scene));QTRY_VERIFY(h.overlay.WordCount()>0);
+    QTRY_COMPARE(h.script->calls.load(),2);
+    h.controller->OnMediaPresentationFailed();
+    h.controller->UpdateImmutableView(ZoomOnto({.12,.15,.1,.1}),960,540);
+    QTest::qWait(90); // the settle timer fired behind the presentation latch
+    QCOMPARE(h.script->calls.load(),2);
+    QCOMPARE(h.controller->ImmutableDetailPasses(),std::uint64_t(0));
+    h.controller->OnMediaPresentationSucceeded();
+    QTRY_COMPARE(h.script->calls.load(),4);
+    QTRY_COMPARE(h.controller->ImmutableDetailPasses(),std::uint64_t(1));
+    QTRY_VERIFY(!h.controller->ActiveImmutableDetail());
+    QVERIFY(h.overlay.WordCount()>0);
+    QTest::qWait(60);QCOMPARE(h.script->calls.load(),4); // recovered once, never a polling loop
+}
+void UltraClearTextControllerTests::pausedDetailHeldCopiesNeverCorroborate()
+{
+    UctTiming timing;timing.immutableDetailSettleMs=0;
+    ImmutableHarness h(timing);h.script->detailFocus=true;h.Enable();
+    auto scene=h.Scene();scene.corroboration=UctImmutableFrame{OwnedPixels(h.page.image.copy()),11,20};
+    QVERIFY(h.controller->SetImmutableScene(scene));QTRY_COMPARE(h.script->calls.load(),2);
+    h.controller->UpdateImmutableView(ZoomOnto(h.page.words.first().sceneRect),960,540);
+    QTRY_COMPARE(h.script->calls.load(),4);QTRY_VERIFY(!h.controller->ActiveImmutableDetail());
+    for(int i=0;i<12;++i)h.controller->UpdateImmutableView(ZoomOnto(h.page.words.first().sceneRect),960,540);
+    QTest::qWait(60);QCOMPARE(h.script->calls.load(),4);QCOMPARE(h.overlay.WordCount(),0);
+    QVERIFY(h.controller->Model().SceneWords(h.now,10).isEmpty());
+}
+void UltraClearTextControllerTests::pausedDetailAuthorityRevokesHeldWork_data()
+{
+    QTest::addColumn<int>("change");
+    QTest::newRow("source")<<0;QTest::newRow("seek")<<1;QTest::newRow("processing")<<2;
+}
+void UltraClearTextControllerTests::pausedDetailAuthorityRevokesHeldWork()
+{
+    QFETCH(int,change);UctTiming timing;timing.immutableDetailSettleMs=0;
+    ImmutableHarness h(timing);h.script->detailFocus=true;h.Enable();
+    auto scene=h.Scene();scene.corroboration=UctImmutableFrame{OwnedPixels(IndependentFramePixels(h.page.image,11)),11,20};
+    QVERIFY(h.controller->SetImmutableScene(scene));QTRY_VERIFY(h.overlay.WordCount()>0);
+    {std::lock_guard lock(h.script->mutex);h.script->holdCall=3;}
+    h.controller->UpdateImmutableView(ZoomOnto(h.page.words.first().sceneRect),960,540);
+    QTRY_COMPARE(h.script->calls.load(),3);
+    const auto old=h.controller->GeometryGeneration();
+    auto next=h.Scene(100);next.selected.pixels=OwnedPixels(IndependentFramePixels(h.page.image,100));
+    if(change==0)++next.sourceAuthority;
+    if(change==2)++next.geometry.settings.warpRevision;
+    QVERIFY(h.controller->SetImmutableScene(next));
+    QVERIFY(h.controller->GeometryGeneration()>old);QVERIFY(!h.controller->ActiveImmutableDetail());
+    h.script->Release();QTRY_VERIFY(h.controller->SchedulerStatistics().revoked>0);
+    QTRY_VERIFY(h.script->calls.load()>=4);QTest::qWait(40);
+    QCOMPARE(h.overlay.WordCount(),0); // new selection has no independent half
+    QCOMPARE(h.controller->ImmutableDetailPasses(),std::uint64_t(1));
+}

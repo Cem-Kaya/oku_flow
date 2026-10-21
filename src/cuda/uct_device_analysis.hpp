@@ -285,6 +285,20 @@ inline QRectF ViewArea(const SourceStamp &stamp, int w, int h, double border = 0
 }
 inline gpu::Grid Project(const SourceStamp &stamp, int w, int h, const ReferencePatch &p)
 {
+    if(p.sceneQuad.valid) {
+        const auto quad=SceneQuadToView(stamp.viewTransform,w,h,p.sceneQuad);
+        const auto u=(quad.points[1]-quad.points[0])/p.columns;
+        const auto v=(quad.points[3]-quad.points[0])/p.rows;
+        const auto warp=(quad.points[2]-quad.points[1]-quad.points[3]+quad.points[0])/(p.columns*p.rows);
+        const auto origin=quad.points[0]+u*.5+v*.5+warp*.25;
+        const double cw=std::min(QLineF(quad.points[0],quad.points[1]).length(),
+                                 QLineF(quad.points[3],quad.points[2]).length())/p.columns;
+        const double ch=std::min(QLineF(quad.points[0],quad.points[3]).length(),
+                                 QLineF(quad.points[1],quad.points[2]).length())/p.rows;
+        const double half=.5*std::min(cw,ch);
+        return {origin.x(),origin.y(),u.x()+warp.x()*.5,v.y()+warp.y()*.5,half,half,
+                p.columns,p.rows,v.x()+warp.x()*.5,u.y()+warp.y()*.5,warp.x(),warp.y()};
+    }
     const auto m = Mapping(stamp, w, h);
     const double dx = p.sceneRect.width() / p.columns * m.sx,
                  dy = p.sceneRect.height() / p.rows * m.sy;
@@ -328,8 +342,6 @@ class Probe final : public ResidentProbe
         QVector<ReferencePatch> out(rects.size());
         if (!available.load() || rects.isEmpty() || rects.size() > 1024)
             return out;
-        QVector<gpu::ReferenceRequest> requests;
-        QVector<int> indices;
         const auto area = ViewArea(stamp, width, height, 1);
         const auto m = Mapping(stamp, width, height);
         for (int i = 0; i < rects.size(); ++i)
@@ -343,8 +355,24 @@ class Probe final : public ResidentProbe
                               .intersected(area);
             p.columns = std::clamp(int(std::lround(p.sceneRect.width() * m.sx)), 8, 64);
             p.rows = std::clamp(int(std::lround(p.sceneRect.height() * m.sy)), 4, 12);
+        }
+        return CaptureReferences(stamp,std::move(out));
+    }
+    QVector<ReferencePatch> QuadReferences(const SourceStamp& stamp,const QVector<TextQuad>& quads) const override
+    {
+        QVector<ReferencePatch> out;out.reserve(quads.size());
+        if(!available.load() || quads.isEmpty() || quads.size()>1024) return QVector<ReferencePatch>(quads.size());
+        for(const auto& quad:quads) out.push_back(PlanQuadReference(stamp,width,height,quad));
+        return CaptureReferences(stamp,std::move(out));
+    }
+    QVector<ReferencePatch> CaptureReferences(const SourceStamp& stamp,QVector<ReferencePatch> out) const
+    {
+        QVector<gpu::ReferenceRequest> requests;
+        QVector<int> indices;
+        for(int i=0;i<out.size();++i) {
+            if(out[i].columns<1 || out[i].rows<1) continue;
             indices.push_back(i);
-            requests.push_back({Project(stamp, width, height, p), nullptr});
+            requests.push_back({Project(stamp,width,height,out[i]),nullptr});
         }
         if (requests.isEmpty())
             return out;
@@ -432,7 +460,8 @@ class Probe final : public ResidentProbe
         for (int i = 0; i < patches.size(); ++i)
         {
             const auto &p = patches[i];
-            if (!p.valid || p.columns < 1 || p.columns > 64 || p.rows < 1 || p.rows > 12)
+            if (!p.valid || p.columns < 1 || p.columns > 64 || p.rows < 1 || p.rows > 12 ||
+                (p.sceneQuad.valid && QuadArea(p.sceneQuad)<=0))
                 continue;
             const float *samples{};
             int cpuOffset = -1;
@@ -578,8 +607,12 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
     // Line/word descriptors, not images, enter the device. Results are tiny
     // QColor/QRectF metadata. Preserve every original protected omission span.
     QVector<gpu::Rect> rects;
+    QVector<gpu::OrientedInk> colorFrames;
     QVector<gpu::Ink> words;
     QVector<int> indices;
+    // Tilted words fit in their own rotated frame (same policy as the CPU).
+    QVector<gpu::OrientedInk> oriented;
+    QVector<int> orientedIndices;
     if (result.output.lines.size() > 1024) {
         error = "UCT metadata budget exceeded.";
         return false;
@@ -593,6 +626,17 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
         rects.push_back(Rect(bounds, image.width, image.height));
     }
     const int lineCount = rects.size();
+    colorFrames.resize(lineCount); // Zero width keeps line rectangle sampling.
+    const auto descriptor = [](const TextQuad& quad, double detectedWidth = 0, int detached = 0) {
+        const auto origin = quad.points[0];
+        const double width = QuadWidth(quad), height = QuadHeight(quad);
+        if (QuadArea(quad) <= 0.0 || !(width >= 1) || !(height >= 1)) return gpu::OrientedInk{};
+        const auto u = (quad.points[1] - origin) / width;
+        const auto v = (quad.points[3] - origin) / height;
+        const auto warp = quad.points[2] - quad.points[1] - quad.points[3] + origin;
+        return gpu::OrientedInk{origin.x(), origin.y(), u.x(), u.y(), v.x(), v.y(),
+            width, height, detectedWidth, detached, warp.x(), warp.y()};
+    };
     int wordCount = 0;
     for (auto& line : result.output.lines) for (auto& word : line.words) {
         if (++wordCount > 8192) {
@@ -603,11 +647,18 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
         // A selected button can have the opposite polarity to its neighbours.
         const int colorIndex = rects.size();
         rects.push_back(Rect(word.boundsPx, image.width, image.height));
+        colorFrames.push_back(QuadIsRotated(word.quadPx) ? descriptor(word.quadPx) : gpu::OrientedInk{});
         if (!word.paddedBounds || word.disposition != TokenDisposition::kCandidate) continue;
         bool marks = word.text.contains(QLatin1Char('i'), Qt::CaseInsensitive) ||
                      word.text.contains(QLatin1Char('j'), Qt::CaseInsensitive);
         for (auto ch : word.text.normalized(QString::NormalizationForm_D))
             marks = marks || ch.isMark() || QStringLiteral("!?:;").contains(ch);
+        if (QuadIsRotated(word.quadPx)) {
+            const TextQuad search = word.inkSearchQuadPx.valid ? word.inkSearchQuadPx : word.quadPx;
+            oriented.push_back(descriptor(search, QuadWidth(word.quadPx), int(marks)));
+            orientedIndices.push_back(colorIndex);
+            continue;
+        }
         const auto r = word.boundsPx;
         words.push_back(
             {Rect(word.inkSearchPx.isEmpty() ? r : word.inkSearchPx, image.width, image.height),
@@ -617,15 +668,20 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
     const size_t colorsAt = 0, rectsAt = rects.size() * sizeof(gpu::Colors),
                  wordsAt = rectsAt + rects.size() * sizeof(gpu::Rect),
                  indicesAt = wordsAt + words.size() * sizeof(gpu::Ink),
-                 fitsAt = (indicesAt + indices.size() * sizeof(int) + 7) & ~size_t(7);
-    if (fitsAt + words.size() * sizeof(gpu::Fit) > c->capacity)
+                 fitsAt = (indicesAt + indices.size() * sizeof(int) + 7) & ~size_t(7),
+                 orientedAt = fitsAt + words.size() * sizeof(gpu::Fit),
+                 orientedIndicesAt = orientedAt + oriented.size() * sizeof(gpu::OrientedInk),
+                 orientedFitsAt = (orientedIndicesAt + orientedIndices.size() * sizeof(int) + 7) & ~size_t(7),
+                 colorFramesAt = orientedFitsAt + oriented.size() * sizeof(gpu::OrientedFit);
+    if (colorFramesAt + colorFrames.size() * sizeof(gpu::OrientedInk) > c->capacity)
     {
         error = "Resident UCT metadata scratch budget exceeded.";
         return false;
     }
     const size_t hostAt = 2 * 1024 * 1024, colorsBytes = rects.size() * sizeof(gpu::Colors),
-                 fitsBytes = words.size() * sizeof(gpu::Fit);
-    if (hostAt + colorsBytes + fitsBytes > c->capacity)
+                 fitsBytes = words.size() * sizeof(gpu::Fit),
+                 orientedBytes = oriented.size() * sizeof(gpu::OrientedFit);
+    if (hostAt + colorsBytes + fitsBytes + orientedBytes > c->capacity)
     {
         error = "Resident UCT metadata result budget exceeded.";
         return false;
@@ -633,23 +689,35 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
     auto at = [&](size_t n) { return static_cast<char *>(c->scratch) + n; };
     if (!Upload(c, rects.constData(), rects.size() * sizeof(gpu::Rect), rectsAt) ||
         !Upload(c, words.constData(), words.size() * sizeof(gpu::Ink), wordsAt) ||
-        !Upload(c, indices.constData(), indices.size() * sizeof(int), indicesAt))
+        !Upload(c, indices.constData(), indices.size() * sizeof(int), indicesAt) ||
+        !Upload(c, oriented.constData(), oriented.size() * sizeof(gpu::OrientedInk), orientedAt) ||
+        !Upload(c, orientedIndices.constData(), orientedIndices.size() * sizeof(int), orientedIndicesAt) ||
+        !Upload(c, colorFrames.constData(), colorFrames.size() * sizeof(gpu::OrientedInk), colorFramesAt))
         return false;
     c->owners = {image.shared_from_this()};
     gpu::LineColors(image.Data(), image.pitch, image.width, image.height,
                     reinterpret_cast<gpu::Rect *>(at(rectsAt)), rects.size(),
-                    reinterpret_cast<gpu::Colors *>(at(colorsAt)), c->stream);
+                    reinterpret_cast<gpu::Colors *>(at(colorsAt)), c->stream,
+                    reinterpret_cast<gpu::OrientedInk *>(at(colorFramesAt)));
     gpu::InkBounds(image.Data(), image.pitch, image.width, image.height,
                    reinterpret_cast<gpu::Ink *>(at(wordsAt)),
                    reinterpret_cast<int *>(at(indicesAt)), words.size(),
                    reinterpret_cast<gpu::Colors *>(at(colorsAt)),
                    reinterpret_cast<gpu::Fit *>(at(fitsAt)), c->stream);
+    gpu::OrientedInkBounds(image.Data(), image.pitch, image.width, image.height,
+                           reinterpret_cast<gpu::OrientedInk *>(at(orientedAt)),
+                           reinterpret_cast<int *>(at(orientedIndicesAt)), oriented.size(),
+                           reinterpret_cast<gpu::Colors *>(at(colorsAt)),
+                           reinterpret_cast<gpu::OrientedFit *>(at(orientedFitsAt)), c->stream);
     // Copy outputs to distinct pinned offsets, leaving H2D staging immutable
     // until its DMA completes. No pageable-vector lifetime races.
     if (cudaMemcpyAsync(static_cast<char *>(c->host) + hostAt, at(colorsAt), colorsBytes,
                         cudaMemcpyDeviceToHost, c->stream) != cudaSuccess ||
         cudaMemcpyAsync(static_cast<char *>(c->host) + hostAt + colorsBytes, at(fitsAt), fitsBytes,
-                        cudaMemcpyDeviceToHost, c->stream) != cudaSuccess)
+                        cudaMemcpyDeviceToHost, c->stream) != cudaSuccess ||
+        (orientedBytes && cudaMemcpyAsync(static_cast<char *>(c->host) + hostAt + colorsBytes + fitsBytes,
+                                          at(orientedFitsAt), orientedBytes, cudaMemcpyDeviceToHost,
+                                          c->stream) != cudaSuccess))
     {
         Quarantine(c);
         return false;
@@ -663,19 +731,37 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
         reinterpret_cast<const gpu::Colors *>(static_cast<char *>(c->host) + hostAt);
     const auto *fits =
         reinterpret_cast<const gpu::Fit *>(static_cast<char *>(c->host) + hostAt + colorsBytes);
+    const auto *orientedFits = reinterpret_cast<const gpu::OrientedFit *>(
+        static_cast<char *>(c->host) + hostAt + colorsBytes + fitsBytes);
     const auto pair = [](const gpu::Colors& v) {
         return LineColors{QColor(v.foreground[0], v.foreground[1], v.foreground[2]),
                           QColor(v.background[0], v.background[1], v.background[2])};
     };
-    int k = 0, colorIndex = lineCount;
+    int k = 0, o = 0, colorIndex = lineCount;
     for (int i = 0; i < result.output.lines.size(); ++i) {
         result.lineColors.push_back(pair(colors[i]));
         for (auto& word : result.output.lines[i].words) {
             word.colors = pair(colors[colorIndex++]);
-            if (word.paddedBounds && word.disposition == TokenDisposition::kCandidate) {
-                const auto f = fits[k++];
-                word.boundsPx = {f.x, f.y, f.w, f.h};
+            if (!word.paddedBounds || word.disposition != TokenDisposition::kCandidate) continue;
+            if (QuadIsRotated(word.quadPx)) {
+                const auto f = orientedFits[o];
+                const auto& d = oriented[o++];
+                if (!f.fitted) continue; // ambiguous ink keeps the detector span
+                const QPointF origin(d.ox, d.oy), u(d.ux, d.uy), v(d.vx, d.vy);
+                const auto at = [&](double x, double y) {
+                    return origin + u * x + v * y + QPointF(d.warpX, d.warpY) * ((x / d.width) * (y / d.height));
+                };
+                word.quadPx.points = {at(f.u0, f.v0), at(f.u1, f.v0), at(f.u1, f.v1), at(f.u0, f.v1)};
+                word.quadPx.valid = true;
+                word.boundsPx = word.quadPx.Bounds();
+                word.inkFitted = true;
+                continue;
             }
+            const auto f = fits[k++];
+            const QRectF detected = word.boundsPx;
+            word.boundsPx = {f.x, f.y, f.w, f.h};
+            word.inkFitted = word.boundsPx != detected;
+            if (word.quadPx.valid) word.quadPx = TextQuad::FromRect(word.boundsPx);
         }
     }
     if (image.kind == AnalysisKind::TemporallySmoothed && !result.output.lines.isEmpty())

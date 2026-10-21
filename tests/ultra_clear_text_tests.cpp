@@ -10,6 +10,7 @@
 #include "ultra_clear_text_test_support.hpp"
 #include "uct_capture_test_cases.hpp"
 #include "uct_color_test_support.hpp"
+#include "uct_quad_reference_test_support.hpp"
 
 #include <QApplication>
 #include <QAccessible>
@@ -613,6 +614,63 @@ class UltraClearTextTests final : public QObject {
     Q_OBJECT
 
 private slots:
+    void quadReferenceNormalizesRotationWithoutAcceptingChangedInk()
+    {
+        using namespace uct_quad_reference_test;
+        const auto source=Render(.48), target=Render(.57), changed=Render(.57,true);
+        for(const int decimation : {1,2,4}) {
+            const auto original=Probe(source,1,decimation), neighbor=Probe(target,2,decimation);
+            const auto patch=BuildQuadReferencePatch(original,source.scene);
+            QVERIFY(patch.valid); QVERIFY(patch.sceneQuad.valid);
+            const MatchTuning strict{.94,.95,2};
+            const auto moved=Reproject(patch,neighbor,target.scene);
+            const auto match=MatchPatch(moved,neighbor,strict);
+            QVERIFY2(match.matched,qPrintable(QString("decimation=%1 score=%2").arg(decimation).arg(match.score,0,'g',14)));
+            QVERIFY(!MatchPatch(moved,Probe(changed,3,decimation),strict).matched);
+            auto invalid=source.scene; std::swap(invalid.points[1],invalid.points[2]);
+            QVERIFY(!BuildQuadReferencePatch(original,invalid).valid);
+            invalid=source.scene; invalid.points[0].setX(std::numeric_limits<double>::quiet_NaN());
+            QVERIFY(!BuildQuadReferencePatch(original,invalid).valid);
+            QVERIFY(!BuildQuadReferencePatch(original,TextQuad::FromRect({-.1,-.1,.2,.2})).valid);
+            auto malformed=moved; malformed.sceneQuad=invalid;
+            QVERIFY(!MatchPatch(malformed,neighbor,strict).matched);
+        }
+    }
+    void immutableWordProofUsesDetectedRotationAndKeepsSourceIdentity()
+    {
+        using namespace uct_quad_reference_test;
+        const auto source=Render(.48), target=Render(.57);
+        struct Backend final : Recognizer {
+            RecognizedWord word;
+            BackendStatus Initialize() override { return {BackendState::kReady,"quad-proof","",""}; }
+            RecognitionOutput Recognize(const QImage&,const std::atomic<bool>&) override {
+                RecognitionOutput output; output.ok=true; output.lines={{{word}}}; return output;
+            }
+        };
+        for(const int variant : {0,1,2,3}) {
+            auto backend=std::make_unique<Backend>();
+            backend->word.text=variant==3 ? QStringLiteral("0") : QStringLiteral("Reading");
+            backend->word.boundsPx=target.pixels.Bounds(); backend->word.quadPx=target.pixels;
+            auto word=backend->word; word.boundsPx=source.pixels.Bounds(); word.quadPx=source.pixels;
+            RecognitionResult selected; selected.stamp=uct_quad_reference_test::Stamp(1);
+            selected.reference=Probe(source,1,2); selected.output.ok=true; selected.output.lines={{{word}}};
+            CorroborationRequest proof; proof.selectedJobId=91; proof.selectedReference=selected.reference;
+            proof.selectedLines=PrepareLines(selected,7);
+            RecognitionResult measured; std::atomic<bool> received{false};
+            RecognitionScheduler scheduler(std::move(backend),[&](RecognitionResult result) {
+                measured=std::move(result); received.store(true);
+            },{});
+            auto stamp=uct_quad_reference_test::Stamp(variant==1 ? 1 : 2);
+            if(variant==2) ++stamp.sourceEpoch;
+            QVERIFY(scheduler.Submit(stamp,target.image,proof));
+            QTRY_VERIFY(received.load()); QVERIFY(measured.output.ok);
+            if(variant==1 || variant==2) QVERIFY(measured.corroborationWordMatches.isEmpty());
+            else {
+                QCOMPARE(measured.corroborationWordMatches.size(),1);
+                QCOMPARE(measured.corroborationWordMatches[0],QVector<bool>({variant==0}));
+            }
+        }
+    }
     void frozenExportMatchesGlyphsAndSurvivesLiveChanges()
     { uct_capture_test::FrozenExportMatchesGlyphsAndSurvivesLiveChanges(); }
     void exportProtectsOmissionsAndKeepsInkAboveText()

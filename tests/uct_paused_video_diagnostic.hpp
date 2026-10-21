@@ -5,6 +5,9 @@
 // download, native window or app settings are involved.
 #include "uct_resident_diagnostic.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
+#if OKUFLOW_ENABLE_CUDA
+#include "okuflow/cuda/uct_kernels.hpp"
+#endif
 
 namespace uct_paused_video_test {
 // Explicit diagnostic bridge: complete one real Windows selected/neighbour
@@ -87,8 +90,11 @@ inline void Run()
         QVERIFY2(plan.valid, qPrintable(plan.error));
     }
     const auto cacheBefore = CacheInventory(cache);
-    const auto evidence = QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath(
-        "OkuFlow/uct-pause-proof-" + QDateTime::currentDateTimeUtc().toString("yyyyMMdd-HHmmss") +
+    const auto outputRoot=qEnvironmentVariable("OKUFLOW_UCT_PAUSE_OUTPUT_ROOT");
+    QVERIFY(outputRoot.isEmpty() || QDir::isAbsolutePath(outputRoot));
+    const auto evidence = QDir(outputRoot.isEmpty() ?
+        QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath("OkuFlow") : outputRoot).filePath(
+        "uct-pause-proof-" + QDateTime::currentDateTimeUtc().toString("yyyyMMdd-HHmmss") +
         "-" + QUuid::createUuid().toString(QUuid::WithoutBraces));
     QVERIFY(QDir().mkpath(evidence));
     qInfo().noquote() << "Paused resident proof evidence=" << evidence;
@@ -220,7 +226,7 @@ inline void Run()
     QVector<okuflow::UltraClearTextOverlay::SceneWord> overlayWords;
     for (const auto& word : shown)
         overlayWords.push_back({word.text, word.sceneRect, word.colors, word.lineId,
-                               word.protectedSceneRects, word.wordIndex});
+                               word.protectedSceneRects, word.wordIndex, word.sceneQuad});
     overlay.SetWords(std::move(overlayWords));
     QTRY_VERIFY(overlay.PaintedGeometryCurrent());
     QJsonArray painted;
@@ -239,6 +245,111 @@ inline void Run()
     overlay.CaptureSnapshot(selectedStamp.viewTransform, composite.size()).Paint(painter, composite.size());
     painter.end();
     QVERIFY(composite.save(QDir(evidence).filePath("overlay.png")));
+
+    // Optional visible detail: one bounded region of the SAME two owned
+    // images, as the paused controller requests after a zoom settles. The
+    // selected half keeps its stamp and digest; only the real neighbour can
+    // supply independent proof for anything the region newly finds.
+    QJsonObject detailReport;
+    const auto focusText = qEnvironmentVariable("OKUFLOW_UCT_PAUSE_FOCUS");
+    if (!focusText.isEmpty()) {
+        const auto parts = focusText.split(',');
+        QVERIFY2(parts.size() == 4, "OKUFLOW_UCT_PAUSE_FOCUS is x,y,w,h in normalized scene units.");
+        const QRectF focusScene(parts[0].toDouble(), parts[1].toDouble(), parts[2].toDouble(), parts[3].toDouble());
+        QVERIFY(!focusScene.isEmpty() && QRectF(0, 0, 1, 1).contains(focusScene));
+        bool magnificationOk{};
+        double magnification = qEnvironmentVariable("OKUFLOW_UCT_PAUSE_DETAIL_MAGNIFICATION").toDouble(&magnificationOk);
+        if (!magnificationOk) magnification = kMaximumDetailMagnification;
+        const QSize sceneSize = selectedImage.size();
+        const DetailFocus focus{QRectF(focusScene.x() * sceneSize.width(), focusScene.y() * sceneSize.height(),
+                                       focusScene.width() * sceneSize.width(), focusScene.height() * sceneSize.height())
+                                    .toAlignedRect(), magnification};
+        const okuflow::ViewTransform zoomed{float(focusScene.x()), float(focusScene.y()), float(focusScene.width()),
+                                   float(focusScene.height()), 0, 0, 1, 1, true};
+        const double zoomScale = 1600.0 / (focusScene.width() * sceneSize.width());
+        const QSize viewSize(1600, int(std::lround(focusScene.height() * sceneSize.height() * zoomScale)));
+        const auto renderZoom = [&](const OverlayModel& source, const QString& name) {
+            QWidget zoomViewport;
+            zoomViewport.resize(viewSize);
+            okuflow::UltraClearTextOverlay zoomOverlay(&zoomViewport, &zoomViewport);
+            zoomViewport.show();
+            zoomOverlay.SetViewTransform(zoomed);
+            QVector<okuflow::UltraClearTextOverlay::SceneWord> sceneWords;
+            const auto words = source.SceneWords(0, selectedStamp.frameSeq);
+            for (const auto& word : words)
+                sceneWords.push_back({word.text, word.sceneRect, word.colors, word.lineId,
+                                      word.protectedSceneRects, word.wordIndex, word.sceneQuad});
+            zoomOverlay.SetWords(std::move(sceneWords));
+            QJsonArray visibleWords;
+            int inView = 0, drawn = 0;
+            if (!words.isEmpty()) {
+                [&] { QTRY_VERIFY(zoomOverlay.PaintedGeometryCurrent()); }();
+                for (const auto& word : words) {
+                    if (!word.sceneRect.intersects(focusScene)) continue;
+                    ++inView;
+                    okuflow::UltraClearTextOverlay::PaintedWordGeometry geometry;
+                    const bool painted = zoomOverlay.PaintedWord(word.lineId, word.wordIndex, word.text, geometry) &&
+                                         geometry.drawn;
+                    drawn += painted;
+                    visibleWords.push_back(QJsonObject{{"text", word.text}, {"drawn", painted},
+                                                       {"rotated", word.sceneQuad.valid}});
+                }
+            }
+            QImage view = selectedImage.copy(QRectF(focusScene.x() * sceneSize.width(), focusScene.y() * sceneSize.height(),
+                                                    focusScene.width() * sceneSize.width(),
+                                                    focusScene.height() * sceneSize.height()).toAlignedRect())
+                              .scaled(viewSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+                              .convertToFormat(QImage::Format_ARGB32);
+            QPainter zoomPainter(&view);
+            zoomOverlay.CaptureSnapshot(zoomed, view.size()).Paint(zoomPainter, view.size());
+            zoomPainter.end();
+            const bool saved = view.save(QDir(evidence).filePath(name));
+            return QJsonObject{{"wordsInView", inView}, {"paintedInView", drawn}, {"words", visibleWords},
+                               {"image", name}, {"saved", saved}, {"reading", source.ReadingText(0, selectedStamp.frameSeq)}};
+        };
+        const OverlayModel baseModel = model;
+        const auto before = renderZoom(baseModel, "zoom-before.png");
+        QVERIFY(scheduler->SubmitDevice(selectedStamp, selectedInput, {}, focus));
+        auto detailSelected = Await(*box, Clock::now() + std::chrono::seconds(30));
+        QVERIFY(detailSelected);
+        QVERIFY2(detailSelected->result.output.ok, qPrintable(detailSelected->result.output.error));
+        QVERIFY(!detailSelected->result.output.detailRegionPx.isEmpty());
+        // Re-detecting the held image is the same acquisition, never a new one.
+        QCOMPARE(detailSelected->result.stamp.frameSeq, selectedStamp.frameSeq);
+        QCOMPARE(detailSelected->result.sourcePixelDigest, selected->result.sourcePixelDigest);
+        const auto selectedOnly = model.SceneWords(0, selectedStamp.frameSeq).isEmpty()
+            ? model.AdmitImmutable(detailSelected->result, selectedStamp, 0) : AdmitVerdict::kPending;
+        CorroborationRequest detailRequest;
+        detailRequest.selectedJobId = detailSelected->result.jobId;
+        detailRequest.selectedReference = detailSelected->result.reference;
+        detailRequest.selectedLines = detailSelected->result.prepared;
+        detailRequest.tuning = ModelTuning{}.match;
+        for (const auto& line : detailRequest.selectedLines) detailRequest.references.push_back(line.reference);
+        QVERIFY(scheduler->SubmitDevice(neighbourStamp, neighbourInput, detailRequest, focus));
+        auto detailNeighbour = Await(*box, Clock::now() + std::chrono::seconds(30));
+        QVERIFY(detailNeighbour && detailNeighbour->result.output.ok);
+        const auto detailVerdict = model.AdmitImmutable(detailSelected->result, selectedStamp, 0, &detailNeighbour->result);
+        const auto after = renderZoom(model, "zoom-after.png");
+        detailReport = {{"focusScene", QJsonArray{focusScene.x(), focusScene.y(), focusScene.width(), focusScene.height()}},
+                        {"requestedRegion", QJsonArray{focus.regionPx.x(), focus.regionPx.y(), focus.regionPx.width(), focus.regionPx.height()}},
+                        {"requestedMagnification", magnification},
+                        {"effectiveMagnification", double(DetectorInputSize(detailSelected->result.output.detailRegionPx.size(),
+                                                                             magnification).width()) /
+                                                       detailSelected->result.output.detailRegionPx.width()},
+                        {"establishedScale", EstablishedDetectorScale(sceneSize, QRectF(focus.regionPx).center())},
+                        {"selectedOnlyVerdict", int(selectedOnly)}, {"pairVerdict", int(detailVerdict)},
+                        {"selectedOutput", uct_batch_test::Output(detailSelected->result.output)},
+                        {"selectedCandidates", CandidateWords(detailSelected->result.output)},
+                        {"neighbourCandidates", CandidateWords(detailNeighbour->result.output)},
+                        {"selectedWorkerMs", detailSelected->result.durationMs},
+                        {"neighbourWorkerMs", detailNeighbour->result.durationMs},
+                        {"before", before}, {"after", after}};
+        qInfo().noquote() << "Detail magnification=" << magnification << "region=" << detailSelected->result.output.detailRegionPx
+                         << "candidates=" << CandidateWords(detailSelected->result.output)
+                         << "inView before/after=" << before["paintedInView"].toInt() << "/" << after["paintedInView"].toInt()
+                         << "of" << before["wordsInView"].toInt() << "/" << after["wordsInView"].toInt()
+                         << "ms=" << detailSelected->result.durationMs << "+" << detailNeighbour->result.durationMs;
+    }
     QJsonArray words;
     for (int i = 0; i < selected->result.prepared.size(); ++i) {
         const auto& line = selected->result.prepared[i];
@@ -256,6 +367,80 @@ inline void Run()
                 {"lineProof", lineProof}, {"wordProof", wordProof}, {"glyphEligible", drawn}});
         }
     }
+    // Diagnostic-only replay of retained search frames/raw colors. Never
+    // downloads pixels or contributes to the worker's measured duration.
+    const auto fitReplay = [&](const SharedDeviceImage& input, const RecognitionOutput& output) {
+        QVector<gpu::OrientedInk> frames; QVector<gpu::Colors> colors; QVector<int> indices;
+        QJsonArray words;
+        for (const auto& line : output.lines) for (const auto& word : line.words) {
+            if (!word.paddedBounds || word.disposition != TokenDisposition::kCandidate ||
+                !QuadIsRotated(word.quadPx) || !word.colors) continue;
+            const auto& q = word.inkSearchQuadPx.valid ? word.inkSearchQuadPx : word.quadPx;
+            const double w=QuadWidth(q),h=QuadHeight(q); const auto origin=q.points[0];
+            const auto u=(q.points[1]-origin)/w,v=(q.points[3]-origin)/h;
+            const auto warp=q.points[2]-q.points[1]-q.points[3]+origin;
+            bool marks=word.text.contains('i',Qt::CaseInsensitive)||word.text.contains('j',Qt::CaseInsensitive);
+            for(const auto c:word.text.normalized(QString::NormalizationForm_D))marks=marks||c.isMark()||QStringLiteral("!?:;").contains(c);
+            frames.push_back({origin.x(),origin.y(),u.x(),u.y(),v.x(),v.y(),w,h,QuadWidth(word.quadPx),int(marks),warp.x(),warp.y()});
+            const auto& fg=word.colors->foreground;const auto& bg=word.colors->background;
+            colors.push_back({{fg.red(),fg.green(),fg.blue()},{bg.red(),bg.green(),bg.blue()}});
+            indices.push_back(indices.size());
+            words.push_back(QJsonObject{{"text",word.text},{"productionFitted",word.inkFitted}});
+        }
+        if(frames.isEmpty())return QJsonObject{{"words",words}};
+        auto* df=static_cast<gpu::OrientedInk*>(uploads.Allocate(frames.size()*sizeof(gpu::OrientedInk)));
+        auto* dc=static_cast<gpu::Colors*>(uploads.Allocate(colors.size()*sizeof(gpu::Colors)));
+        auto* di=static_cast<int*>(uploads.Allocate(indices.size()*sizeof(int)));
+        auto* dr=static_cast<gpu::OrientedFit*>(uploads.Allocate(frames.size()*sizeof(gpu::OrientedFit)));
+        QString error;
+        if(!df||!dc||!di||!dr||!input->WaitReady(stream.value,error))return QJsonObject{{"error","Fit replay input/allocation failed."}};
+        if(cudaMemcpyAsync(df,frames.constData(),frames.size()*sizeof(gpu::OrientedInk),cudaMemcpyHostToDevice,stream.value)!=cudaSuccess||
+           cudaMemcpyAsync(dc,colors.constData(),colors.size()*sizeof(gpu::Colors),cudaMemcpyHostToDevice,stream.value)!=cudaSuccess||
+           cudaMemcpyAsync(di,indices.constData(),indices.size()*sizeof(int),cudaMemcpyHostToDevice,stream.value)!=cudaSuccess)
+            return QJsonObject{{"error","Fit replay descriptor upload failed."}};
+        struct Events {
+            cudaEvent_t begin{},end{};
+            ~Events(){if(begin)cudaEventDestroy(begin);if(end)cudaEventDestroy(end);}
+        } events;
+        if(cudaEventCreate(&events.begin)!=cudaSuccess||cudaEventCreate(&events.end)!=cudaSuccess)
+            return QJsonObject{{"error","Fit replay event creation failed."}};
+        QJsonArray kernelMs;QVector<gpu::OrientedFit> fits(frames.size());
+        for(int pass=0;pass<4;++pass) {
+            if(cudaEventRecord(events.begin,stream.value)!=cudaSuccess)return QJsonObject{{"error","Fit replay timing failed."}};
+            gpu::OrientedInkBounds(input->Data(),input->pitch,input->width,input->height,df,di,frames.size(),dc,dr,stream.value);
+            if(cudaEventRecord(events.end,stream.value)!=cudaSuccess||
+               cudaMemcpyAsync(fits.data(),dr,fits.size()*sizeof(gpu::OrientedFit),cudaMemcpyDeviceToHost,stream.value)!=cudaSuccess||
+               cudaStreamSynchronize(stream.value)!=cudaSuccess)return QJsonObject{{"error","Fit replay completion failed."}};
+            float ms{};if(cudaEventElapsedTime(&ms,events.begin,events.end)!=cudaSuccess)return QJsonObject{{"error","Fit replay elapsed timing failed."}};
+            if(pass)kernelMs.push_back(ms);
+        }
+        QJsonObject histogram;int complete=0,fitted=0;
+        for(int i=0;i<fits.size();++i) {
+            const auto& fit=fits[i];auto item=words[i].toObject();
+            const auto reason=[&] {
+                switch(fit.reason) {
+                case gpu::OrientedFitReason::InvalidInput:return "invalid-input";
+                case gpu::OrientedFitReason::Incomplete:return "propagation-cap";
+                case gpu::OrientedFitReason::UnanchoredInk:return "unanchored-ink";
+                case gpu::OrientedFitReason::TooFewSamples:return "too-few-samples";
+                case gpu::OrientedFitReason::AmbiguousBands:return "ambiguous-bands";
+                case gpu::OrientedFitReason::ShrinkGuard:return "shrink-guard";
+                case gpu::OrientedFitReason::Fitted:return "fitted";
+                }return "unknown";
+            };
+            item.insert("replayReason",QString::fromLatin1(reason()));
+            item.insert("passes",fit.propagationPasses);item.insert("complete",bool(fit.propagationComplete));item.insert("replayFitted",bool(fit.fitted));words[i]=item;
+            const auto key=QString::number(fit.propagationPasses);histogram[key]=histogram.value(key).toInt()+1;
+            complete+=bool(fit.propagationComplete);fitted+=bool(fit.fitted);
+        }
+        return QJsonObject{{"words",words},{"complete",complete},{"incomplete",int(fits.size())-complete},
+            {"replayFitted",fitted},{"passHistogram",histogram},{"kernelMs",kernelMs},
+            {"scope","Diagnostic retained-search/color replay; one warmup, three CUDA event samples; outside actual worker duration."}};
+    };
+    const auto selectedFitReplay=fitReplay(selectedInput,selected->result.output);
+    const auto neighbourFitReplay=fitReplay(neighbourInput,neighbour->result.output);
+    QVERIFY2(!selectedFitReplay.contains("error"),qPrintable(selectedFitReplay.value("error").toString()));
+    QVERIFY2(!neighbourFitReplay.contains("error"),qPrintable(neighbourFitReplay.value("error").toString()));
     const QJsonObject report{{"selectedPath", selectedPath}, {"neighbourPath", neighbourPath},
         {"selectedMs", selectedPts}, {"neighbourMs", neighbourPts},
         {"selectedSha256", FileSha256(selectedPath)}, {"neighbourSha256", FileSha256(neighbourPath)},
@@ -265,10 +450,11 @@ inline void Run()
         {"selectedCandidates", CandidateWords(selected->result.output)}, {"shownWords", int(shown.size())},
         {"paintedWords", painted}, {"paintedCount", paintedCount},
         {"selectedWorkerMs", selected->result.durationMs}, {"neighbourWorkerMs", neighbour->result.durationMs},
+        {"selectedFitReplay",selectedFitReplay},{"neighbourFitReplay",neighbourFitReplay},
         {"sourceDigestsDiffer", selected->result.sourcePixelDigest != neighbour->result.sourcePixelDigest},
         {"words", words}, {"readingText", model.ReadingText(0, selectedStamp.frameSeq)},
         {"imageEgress", selectedInput->Read().egress + neighbourInput->Read().egress},
-        {"bridge", bridgeReport},
+        {"bridge", bridgeReport}, {"detail", detailReport},
         {"scope", "Actual resident recognition and immutable admission; no decoder, native display or latency benchmark."}};
     QVERIFY(uct_batch_test::Save(QDir(evidence).filePath("proof.json"), report));
     qInfo().noquote() << "Paused candidates=" << CandidateWords(selected->result.output)
@@ -276,7 +462,8 @@ inline void Run()
     // A real Windows bridge explicitly reads each image once for its CPU OCR.
     // GPU recognition/validation adds no image egress after that handoff.
     QCOMPARE(selectedInput->Read().egress + neighbourInput->Read().egress, bridge ? 2 : 0);
-    QCOMPARE(model.SceneWords(3600000, selectedStamp.frameSeq).size(), shown.size());
+    QCOMPARE(model.SceneWords(3600000, selectedStamp.frameSeq).size(),
+             model.SceneWords(0, selectedStamp.frameSeq).size());
     scheduler->Cancel();
     scheduler.reset();
     const auto& closed = retirement.Wait();

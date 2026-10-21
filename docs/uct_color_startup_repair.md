@@ -7,12 +7,100 @@ dark lettering on yellow while adjacent buttons retain light lettering on dark.
 Ink fitting uses that same local pair. Small refresh variations use the existing
 brightness grid and color hysteresis; absent metadata retains the line fallback.
 
-The CUDA worker measures line and word rectangles together and returns compact
+The CUDA worker measures line and word surfaces together and returns compact
 color/geometry metadata. Word images are not downloaded. Inputs remain leased
 through exact stream completion, and existing scratch caps/unknown-completion
 quarantine remain in force. CPU fallback performs equivalent local measurements.
 The line reference, omission protection and independent evidence rules do not
 change.
+
+## Tilted button color repair (2026-10-21)
+
+The oriented-geometry draft still measured colors in an axis-aligned word box.
+On the menu's tilted light `Right Hand` button, that box's corners/perimeter
+crossed the dark panel. Its inverted pair made the oriented ink fit capture the
+button: `Right` grew to 67 source pixels high while `Hand` was about 40.
+
+The CPU sampler and resident CUDA color kernel now apply the existing robust
+local policy in the detected word's bilinear frame, including body samples,
+corner votes, the immediate one-pixel perimeter and the wider qualified ring.
+Clipped samples are ignored. The measured pair feeds the oriented search-frame
+ink fit. Color alone cannot distinguish letters from an identical dark panel
+inside search padding: the fit first removes eight-connected ink components
+spanning opposite search edges in that local frame. Components touching a
+single edge or corner remain, protecting legitimate stems/dots. The existing
+dominant-band/detached-mark policy then fits the interior glyphs. CPU uses a
+bounded queue; CUDA packs ink plus six component reachability bits per cell
+(four sides, compatible ink and interior support), with parallel whole-run
+propagation, about 46 KiB shared scratch and no per-word device image/mask
+allocation. GPU propagation stops after at most 64 scans;
+incomplete labels return `fitted=false` and preserve detected geometry, never a
+partial fit. CPU remains exact/linear, so pathological incomplete GPU fits do
+not claim CPU geometry parity.
+The existing 24-channel-level RGB compatibility policy anchors entire connected
+ink components, rather than filtering individual pixels. Anchored glyphs keep
+their darker cores, lighter strokes and antialiased edges. Paper-enclosed
+interior components also remain regardless of RGB variation. Unanchored edge-only
+fragments, or unanchored components bridging two search edges, are unrelated
+surround; an unanchored boundary component extending into the interior instead
+preserves the complete detected word when it reaches the existing eight-sample minimum. It may be a
+real glyph missed by the representative ink quartile; smaller isolated AA
+fragments cannot veto the complete fit.
+The grid retains its roughly 16K sample budget, caps rows at 4096 and columns
+at 8192, and refuses more than 32768 cells. No global palette, confidence change
+or word omission is used. The CUDA color and ink samplers share floor/bilinear pixel addressing with
+non-fused double arithmetic for CPU parity. Axis-aligned words/line fallbacks
+retain their rectangle policy. Input leases, completion/cancellation handling,
+quarantine and the four-MiB resident metadata budget remain in force. Only
+compact colors and fitted coordinates return to the host.
+
+`uct_geometry_test_cases.hpp::TiltedButtonColors` exercises the real scheduler
+with Segoe UI `Right Hand`, a light button, a dark surround and an adjacent rule,
+at three positive/negative tilts with and without perspective, plus leading,
+top and bottom search-edge variants, with uniform and varying ink (48 cases).
+The varying case puts a black dot and a light-gray letter around measured gray
+ink, requiring complete bounds/marks or conservative whole-word fallback. Its search
+padding crosses the identical dark surround and the adjacent light rule.
+It requires the
+actual chromatic source pair, all four glyph-fit corners, a surviving word gap,
+unchanged candidate/protection metadata and exact CPU/resident results, with
+guarded image egress fixed at zero. Restoring the draft CPU sampler reproduces
+the defect: foreground becomes paper `#f4f0f6` instead of ink `#1f1923`.
+The winding-component CUDA regression requires the 64-scan incomplete fallback
+and zero fitted coordinates, while the exact CPU queue completes. The corrected
+focused CPU and real-CUDA gates are scoped development
+checks, not combined geometry/paused-registration or release acceptance.
+
+At color-only commit `4f5ea6b`, three cached menu25/25033 GPU proofs preserve 29 candidates, 24 production
+ink fits, 21 shown words and 20 actual paints, with zero image egress and exact
+TensorRT retirement/cache-inventory checks. The upper `Right`/`Hand` quads fit
+at 53/41 pixels (draft 67/40); the lower pair fits at 60.20/43.01 pixels. All four
+report completed fits. The earlier lower-Hand 76.14-pixel unanchored fallback
+is corrected by retaining paper-enclosed components. The separate X detector/
+painter issue remains outside this repair. Counts do not establish OCR accuracy
+or final visual acceptance; the draft's 22 shown/21 painted is not improved by
+these counts, and combined paused registration remains a separate change.
+
+Final selected/neighbour worker medians are 400.46/96.03 ms across three
+processes, versus the historical draft's single 279.31/98.65 ms observation.
+The selected-worker increase is not explained by this comparison: these totals
+include inference/startup and do not isolate fit overhead. Separate resident
+fit replays (one warmup, three CUDA-event samples per source/run) have pooled
+medians 6.90/7.10 ms for 29/28 descriptors. They exclude descriptor transfers and
+actual worker duration. Selected propagation completes 28/29 descriptors in
+2–47 scans; the remaining `lead` hits 64 and retains detector geometry. The
+neighbour completes 27/28 in 2–43 scans, likewise with one cap fallback.
+Incomplete GPU fits intentionally may differ from exact CPU fits. No native
+latency, other-GPU performance or speedup claim follows from these observations.
+
+Raw receipts, images, histograms, per-word reasons and the source/executable
+bindings are under
+`Z:/Projects/OkuFlow/local-work-data/uct-oriented-color-20261021/evidence/`:
+`runs/final-color-menu-25000-{1,2,3}-receipt.json` and `final-summary.json`.
+Original baseline/intermediate failures remain retained. `agent_check.ps1`
+refused a full selection because the fresh focused build lacks a complete
+Ninja dependency inventory; no broad build was substituted. The explicit
+tracked CPU/CUDA gates above are scoped evidence only.
 
 The later local-surface repair samples inside the word before trusting its
 surroundings. Ink and paper use per-channel medians. A consistent immediate

@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+- Fit small tilted UCT words within loose detector padding rather than keeping
+  oversized boxes. Retain an absolute height floor and thin-rule rejection,
+  handle rounding at the minimum-height boundary, and keep original pixels
+  for isolated near-vertical characters whose ink fit failed.
+
+- Measure experimental UCT word colors in each tilted/perspective word frame.
+  Local paper and ink keep their source polarity on buttons against a dark
+  surround, so ink fitting follows letters instead of the button body.
+
+- Preserve tilted/perspective UCT word geometry through recognition, local ink
+  fit and glyph/background painting. Compare paused word evidence in its
+  detected local frame while retaining strict pixel checks. Re-detect a
+  settled paused visible region at up to six-times enlargement under bounded
+  coverage and the existing detector size limit. Reconcile post-fit same-ink
+  duplicates without merging adjacent identical tokens. Resume a settled
+  detail request after presentation or backend recovery without adding polling
+  or restarting its timer on ordinary presentation receipts.
+
 - Add an opt-in embedded FFmpeg/dav1d saved-video CPU backend with pinned
   private development builds, stable custom I/O and existing selected-frame,
   PCM and retirement authority. Keep native/archive fallback and default;
