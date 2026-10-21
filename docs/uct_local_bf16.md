@@ -104,3 +104,28 @@ its exact TensorRT state closure. Ordinary application calls omit that observer.
 local BF16 manifest and asserts actual BF16 status; it retains both baseline
 and variant cache inventories. This diagnostic still measures scheduler calls,
 not controller admission or native publication latency.
+
+
+### Integrated cache-only GPU proof (2026-10-22)
+
+At root `852086b`, the enabled CUDA/PCH-on three-target build succeeded. The
+explicit production-factory active diagnostic then passed on the actual
+RTX 4090 using the reviewed BF16 manifest and inference-only TensorRT SDK.
+Actual status named the BF16-linear recognition graph with mixed arithmetic
+and the FP32 detector. Full/region/full worker times were407.8408/47.9183/
+141.1936 ms for the two owned book acquisitions, with a480x288 source ROI.
+One exact TensorRT state closure completed; both baseline and BF16 cache
+inventories were unchanged and image egress was zero. These are descriptive
+worker measurements, not a BF16 speed comparison or native latency proof.
+
+Raw receipt: `uct-geometry-r3-20261021/evidence/runs/
+bf16-production-active-book-1-receipt.json` under the workstation work-data root.
+This fixture executes the scheduler, not regional text admission. The pending
+704-pixel resolution change is not part of this proof. Combined current-head
+CPU/CUDA/shared-source and native application acceptance remain separate.
+
+Muse Wonder Full reviewed the frozen selector at `83a34c7` read-only after
+Opus encountered a provider rate limit and found no defensible BF16 defect.
+The review does not cover the later diagnostic observer seam or constitute
+execution/release acceptance. Its full response is retained in
+`uct-geometry-r3-20261021/evidence/muse-r15-bf16-review.json`.
