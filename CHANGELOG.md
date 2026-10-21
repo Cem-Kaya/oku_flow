@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Keep immutable UCT duplicate carving aligned with displayed geometry and
+  preserve risky notation and invalid-geometry masks during nearby refinement.
+
 - Prevent subpixel leftover uncertainty strips from hiding proved UCT words
   again during panning, while retaining protection for tiny punctuation.
 
