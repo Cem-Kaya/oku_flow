@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Sample small UCT word bodies densely enough to retain narrow dark stems.
+  Fit upright connected source ink and AA while excluding disconnected padding
+  ink, preserving detector fallback and existing recognition/proof/size gates.
+
 - Keep complete UCT sentences and uncertainty masks when a supplemental crop
   cuts their edges. Retain unobserved other-pane text without renewing its proof,
   reject truncated edge words before pending agreement, and yield optional work

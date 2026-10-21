@@ -169,6 +169,15 @@ CUDA uses about 46 KiB fixed shared scratch and at most 64 full propagation
 scans; incomplete propagation preserves detector geometry. CPU queue fitting
 is exact/linear; incomplete CUDA fitting is conservative, not a parity claim.
 
+Color body sampling uses stride one for at most 4096 pixels, otherwise stride
+two. Upright fitting uses a midpoint-strength detector anchor and connected AA
+up to halfway from midpoint toward paper. Detached marks keep the existing
+22%-height/two-pixel allowance. Its 35% fit guard and seven-pixel admission
+minimum remain unchanged. The upright component grid refuses more than 32768
+cells, 8192 source columns or 4096 source rows; CUDA uses fixed shared scratch
+and at most 64 propagation scans, otherwise preserving detector geometry.
+See [source diagnosis and scoped validation](uct_color_startup_repair.md#small-upright-source-ink-2026-10-22-development).
+
 ## Browser notes transcription
 
 The opt-in notes renderer defaults to `%LOCALAPPDATA%\OkuFlow\notes-preview\`.

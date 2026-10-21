@@ -6375,8 +6375,10 @@ their stabilized colors without renewing IDs, slots, references, geometry or
 validation clocks.
 
 `MeasureLineColors` and the CUDA descriptor kernel share private integer
-`color_policy::{Rgb,Median,Compatible,Endpoint,AdjacentBackground,Background}` decisions. Three
-2-pixel body passes find robust ink/paper medians and the ink's opaque quartile;
+`color_policy::{Rgb,BodySampleStep,Median,Compatible,Endpoint,AdjacentBackground,Background}` decisions. Three
+body passes find robust ink/paper medians and the ink's opaque quartile;
+`BodySampleStep` selects every pixel for bodies up to 4096 pixels, retaining
+stride two above that budget to avoid aliasing single-pixel stems locally;
 four bounded side strips require RGB agreement with local body clusters and
 in-box corner support before exterior color may override polarity. Scratch is
 fixed (about 8.3 KiB CPU stack and 10.2 KiB CUDA shared memory per block), with
@@ -6387,6 +6389,25 @@ neutral-source colors, separate from display grading and 7:1 renderer contrast.
 All four immediately adjacent one-pixel sides can establish a compatible local
 surface without requiring paper in glyph-filled corners; that branch skips the
 farther ring. Missing or mixed adjacent sides retain the conservative fallback.
+
+`RefineWordInkBounds` and CUDA `validation::ink` retain eight-connected AA
+components with a midpoint-strength core inside the original detector, plus
+the existing bounded detached-mark allowance. The weak mask threshold is halfway
+from midpoint toward paper. Connected clipped strokes survive; disconnected
+padding ink and unanchored opposite-edge rules do not enter the row fit.
+An anchored opposite-edge component preserves detector geometry. Upright
+fitting also preserves the complete detector for substantial weak-only
+in-detector components rather than cropping a lighter letter. Existing 35%
+upright shrink, contrast/sample/row-band and downstream seven-pixel admission
+guards remain. CPU's exact queue and CUDA's fixed shared mask/labels use at most
+32768 cells, 8192 columns and 4096 rows; CUDA stops after 64 scans and returns
+detector geometry on incomplete propagation. No per-word device allocation or
+host image transfer is added; oriented filtering is unchanged.
+`uct_small_ink_test::{Fixture,Word,Fixtures,Prepare,Check,Run}` and
+`uct_book_crop_test::{Image,kPackedRgbSha256}` provide exact source and controlled
+phase/AA/mark/rule/noise/clipped-stroke/fallback checks through CPU and guarded
+resident schedulers. Execution evidence remains separate from model accuracy,
+native UI and release acceptance.
 
 `HandleProbe` records noncomposite residual invalidation in
 `probeInvalidatedSinceSubmit_`; it requests replacement OCR even while surviving

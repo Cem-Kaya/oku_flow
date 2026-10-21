@@ -353,6 +353,14 @@ the project's contribution/license terms. Neither generation tool is redistribut
 - The Android APK and development SDK remain separately installed/distributed.
 
 ## Not Currently Bundled
+
+`tests/uct_book_crop_test_support.hpp` contains a test-only 46x36 lossless RGB
+crop from the owner's supplied local book frame, used for the authorized source
+ink regression. It introduces no third-party code, font, model or runtime and
+is not an application asset or release payload. Source identity, crop bounds
+and exact pixel digest are recorded in
+[`uct_color_startup_repair.md`](uct_color_startup_repair.md#small-upright-source-ink-2026-10-22-development).
+
 - OpenCV DNN
 - TensorRT
 - external AI model weights

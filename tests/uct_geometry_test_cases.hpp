@@ -1,5 +1,7 @@
 #pragma once
 
+#include "uct_small_ink_test_cases.hpp"
+
 // Synthetic source ink, exact source mappings and production software paint.
 // No model, camera, native window, or owner endpoint is involved.
 namespace uct_geometry_test {
@@ -245,6 +247,7 @@ inline void LooseInkPadding(bool resident)
 }
 inline void CpuGeometry()
 {
+    uct_small_ink_test::Run(false);
     TiltedButtonColors(false);
     LooseInkPadding(false);
     for(const double bound : {4.0,6.0}) {
@@ -391,6 +394,7 @@ inline void GpuWindingInkWorkCap()
 }
 inline void GpuGeometry()
 {
+    uct_small_ink_test::Run(true);
     TiltedButtonColors(true);
     LooseInkPadding(true);
     GpuWindingInkWorkCap();

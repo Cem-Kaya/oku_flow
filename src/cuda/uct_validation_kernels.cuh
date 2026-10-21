@@ -353,9 +353,10 @@ __global__ void colors(const unsigned char *p, size_t pitch, int w, int h, const
     if (t < 8) reinterpret_cast<unsigned *>(sideCounts)[t] = 0;
     if (t < 4) sideTotals[t] = 0;
     unsigned sum = 0, valid = 0;
-    const int nx = (b.w + 1) / 2, ny = (b.h + 1) / 2;
+    const int bodyStep = BodySampleStep(b.w, b.h);
+    const int nx = (b.w + bodyStep - 1) / bodyStep, ny = (b.h + bodyStep - 1) / bodyStep;
     for (int i = t; i < nx * ny; i += 256) {
-        const auto* px = pixel(b.x + (i % nx) * 2, b.y + (i / nx) * 2);
+        const auto* px = pixel(b.x + (i % nx) * bodyStep, b.y + (i / nx) * bodyStep);
         if (px) { sum += luma(px); ++valid; }
     }
     reduction[t] = sum;
@@ -371,7 +372,7 @@ __global__ void colors(const unsigned char *p, size_t pitch, int w, int h, const
     }
     __syncthreads();
     for (int i = t; i < nx * ny; i += 256) {
-        const auto *px = pixel(b.x + (i % nx) * 2, b.y + (i / nx) * 2);
+        const auto *px = pixel(b.x + (i % nx) * bodyStep, b.y + (i / nx) * bodyStep);
         if (!px) continue;
         const int value = luma(px), side = value < threshold ? 0 : 1;
         atomicAdd(bodyCounts + side, 1u);
@@ -483,7 +484,7 @@ __global__ void colors(const unsigned char *p, size_t pitch, int w, int h, const
     if (!t) ringCounts[0] = 0;
     __syncthreads();
     for (int i = t; i < nx * ny; i += 256) {
-        const auto *px = pixel(b.x + (i % nx) * 2, b.y + (i / nx) * 2);
+        const auto *px = pixel(b.x + (i % nx) * bodyStep, b.y + (i / nx) * bodyStep);
         if (!px) continue;
         const int value = luma(px);
         if ((value < threshold ? 0 : 1) != fg ||
@@ -497,6 +498,7 @@ __global__ void colors(const unsigned char *p, size_t pitch, int w, int h, const
         out[index] = measured;
     }
 }
+__device__ bool substantialInkComponent(const unsigned* ink, int columns, int rows, int seed);
 __global__ void ink(const unsigned char *p, size_t pitch, int w, int h, const Ink *words,
                     const int *lines, const Colors *cs, Fit *out)
 {
@@ -504,13 +506,13 @@ __global__ void ink(const unsigned char *p, size_t pitch, int w, int h, const In
     const auto a = words[i];
     const auto b = a.search;
     const auto c = cs[lines[i]];
-    __shared__ int rows[8192], total, top, bottom, left, right, threshold, polarity, step, usable;
-    for (int y = t; y < b.h; y += 256)
-        rows[y] = 0;
+    __shared__ unsigned inkBits[1024], reach[6554];
+    __shared__ int rows[4096], total, top, bottom, left, right, threshold, fringeThreshold,
+        polarity, step, usable, changed, complete;
     if (!t)
     {
         out[i] = {a.x, a.y, a.w, a.h};
-        total = 0;
+        total = complete = 0;
         top = bottom = 0;
         left = b.x + b.w;
         right = b.x - 1;
@@ -518,17 +520,97 @@ __global__ void ink(const unsigned char *p, size_t pitch, int w, int h, const In
         int bg = (77 * c.background[0] + 150 * c.background[1] + 29 * c.background[2]) / 256;
         usable = abs(fg - bg) >= 24 && b.w > 0 && b.h > 0;
         threshold = (fg + bg) / 2;
+        fringeThreshold = (threshold + bg) / 2;
         polarity = fg < bg;
         step = max(1, int(ceil(sqrt(double(b.w) * b.h / 16384))));
+        usable = usable && b.w <= 8192 && b.h <= 4096 &&
+            ((b.w + step - 1) / step) * ((b.h + step - 1) / step) <= 32768;
     }
     __syncthreads();
     if (!usable)
         return;
     const int nx = (b.w + step - 1) / step, ny = (b.h + step - 1) / step;
+    for (int k = t; k < 1024; k += 256) inkBits[k] = 0;
+    for (int k = t; k < 6554; k += 256) reach[k] = 0;
+    __syncthreads();
+    for (int k = t; k < nx * ny; k += 256) {
+        const int u = k % nx, v = k / nx;
+        const int x = b.x + u * step, y = b.y + v * step;
+        const int value = luma(p + size_t(y) * pitch + size_t(x) * 4);
+        if (polarity ? value >= fringeThreshold : value <= fringeThreshold) continue;
+        atomicOr(inkBits + k / 32, 1u << (k % 32));
+        const bool core = polarity ? value < threshold : value > threshold;
+        const bool withinX = x + .5 >= a.x && x + .5 < a.x + a.w;
+        const bool withinY = y + .5 >= a.y && y + .5 < a.y + a.h;
+        const double margin = a.detached ? fmax(2., a.h * .22) : 0.;
+        const bool mark = core && withinX && a.detached &&
+            y + .5 >= a.y - margin && y + .5 < a.y + a.h + margin;
+        const unsigned anchor = (core && withinX && withinY) || mark ? 16u : 0u;
+        const unsigned detectorSupport = withinX && withinY ? 32u : 0u;
+        const unsigned labels = (!u ? 1u : 0u) | (u == nx - 1 ? 2u : 0u) |
+            (!v ? 4u : 0u) | (v == ny - 1 ? 8u : 0u) | anchor | detectorSupport;
+        atomicOr(reach + k / 5, labels << ((k % 5) * 6));
+    }
+    __syncthreads();
+    // Same fixed bound as the oriented path. Incomplete propagation retains
+    // the complete detector, never partially filtered word coordinates.
+    for (int pass = 0; pass < kOrientedInkMaxPropagationPasses; ++pass) {
+        if (!t) changed = 0;
+        __syncthreads();
+        for (int v = t; v < ny; v += 256) {
+            int u = 0;
+            while (u < nx) {
+                const int start = u;
+                unsigned labels = 0;
+                while (u < nx) {
+                    const int k = v * nx + u;
+                    if (!(inkBits[k / 32] & (1u << (k % 32)))) break;
+                    labels |= (atomicOr(reach + k / 5, 0u) >> ((k % 5) * 6)) & 63u;
+                    for (int dy = -1; dy <= 1; dy += 2) for (int dx = -1; dx <= 1; ++dx) {
+                        const int x = u + dx, y = v + dy;
+                        if (x < 0 || y < 0 || x >= nx || y >= ny) continue;
+                        const int n = y * nx + x;
+                        labels |= (atomicOr(reach + n / 5, 0u) >> ((n % 5) * 6)) & 63u;
+                    }
+                    ++u;
+                }
+                if (labels) for (int x = start; x < u; ++x) {
+                    const int k = v * nx + x;
+                    const unsigned bits = labels << ((k % 5) * 6);
+                    if ((atomicOr(reach + k / 5, bits) & bits) != bits) atomicExch(&changed, 1);
+                }
+                ++u;
+            }
+        }
+        __syncthreads();
+        const bool again = changed != 0;
+        __syncthreads();
+        if (!again) { if (!t) complete = 1; break; }
+    }
+    __syncthreads();
+    if (!complete) return;
+    for (int k = t; k < nx * ny; k += 256) {
+        if (!(inkBits[k / 32] & (1u << (k % 32)))) continue;
+        const unsigned labels = (reach[k / 5] >> ((k % 5) * 6)) & 63u;
+        const bool spanning = (labels & 3) == 3 || (labels & 12) == 12;
+        if (spanning && (labels & 16u) && (labels & 32u)) atomicExch(&usable, 0);
+        if (!spanning && !(labels & 16u) && (labels & 32u) &&
+            substantialInkComponent(inkBits, nx, ny, k)) atomicExch(&usable, 0);
+    }
+    __syncthreads();
+    if (!usable) return;
+    const auto inkAt = [&](int k) {
+        const unsigned labels = (reach[k / 5] >> ((k % 5) * 6)) & 63u;
+        return (inkBits[k / 32] & (1u << (k % 32))) && (labels & 16u) &&
+            (labels & 3) != 3 && (labels & 12) != 12;
+    };
+
+    for (int y = t; y < b.h; y += 256) rows[y] = 0;
+    __syncthreads();
     for (int k = t; k < nx * ny; k += 256)
     {
-        int x = b.x + (k % nx) * step, y = b.y + (k / nx) * step, v = luma(p + y * pitch + x * 4);
-        if (polarity ? v >= threshold : v <= threshold)
+        int y = b.y + (k / nx) * step;
+        if (!inkAt(k))
             continue;
         atomicAdd(rows + y - b.y, 1);
         atomicAdd(&total, 1);
@@ -605,8 +687,7 @@ __global__ void ink(const unsigned char *p, size_t pitch, int w, int h, const In
         int x = b.x + (k % nx) * step, y = b.y + (k / nx) * step;
         if (y < top || y > bottom)
             continue;
-        int v = luma(p + y * pitch + x * 4);
-        if (polarity ? v >= threshold : v <= threshold)
+        if (!inkAt(k))
             continue;
         atomicMin(&left, x);
         atomicMax(&right, x);

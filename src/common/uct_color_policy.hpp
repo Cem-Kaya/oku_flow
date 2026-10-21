@@ -11,6 +11,15 @@ namespace okuflow::uct::color_policy {
 
 struct Rgb { int channel[3]; };
 
+OKUFLOW_UCT_COLOR_HD inline int BodySampleStep(int width, int height)
+{
+    // Small glyph cores can be only one source pixel wide. Visit every pixel
+    // within this fixed dense-sampling budget so a 2px lattice cannot miss a
+    // stem and promote its blur halo to representative ink. Larger bodies
+    // retain their existing stride and all perimeter/endpoint decisions.
+    return width > 0 && height > 0 && width <= 4096 / height ? 1 : 2;
+}
+
 OKUFLOW_UCT_COLOR_HD inline int Median(const unsigned* histogram, unsigned count)
 {
     unsigned total = 0;

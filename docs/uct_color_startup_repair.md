@@ -14,6 +14,95 @@ quarantine remain in force. CPU fallback performs equivalent local measurements.
 The line reference, omission protection and independent evidence rules do not
 change.
 
+## Small upright source ink (2026-10-22 development)
+
+The saved 6x book detail exposed sampling aliasing rather than evidence for a
+universal font-size clamp. Its upright `to` detector encloses narrow stems at
+source columns 645 and 649. The fixed two-pixel body lattice misses those dark
+cores (luma 72--92), yielding foreground `#bbb4ad` against paper `#e8e3dc`.
+The resulting midpoint near 204 admits blur and disconnected next-word ink.
+This is source-color/geometry evidence, not proof that OCR spelling is correct.
+
+`color_policy::BodySampleStep` visits every body pixel for bodies of at most
+4096 pixels. Larger bodies keep stride two. All three CPU/CUDA body passes
+share that integer decision. Perimeter votes, RGB medians, opaque quartiles
+and oriented coordinates keep their existing rules. The dense path has at most
+4096 reads per body pass and adds no histogram, device allocation or readback.
+
+Upright fitting labels eight-connected components on a weak/AA mask halfway
+between the ink/paper midpoint and paper. A component needs a midpoint-strength
+core inside the original detector; whole connected strokes may extend outside
+it. Detached marks retain the existing 22%-height/two-pixel vertical allowance.
+Disconnected padding ink is excluded. An anchored component spanning opposite
+search edges preserves detector geometry rather than silently losing a glyph.
+Unanchored rules/adjacent lines spanning those edges are excluded. Original
+row-band, detached-mark, eight-sample, contrast and 35% width/height fit guards
+remain. This keeps connected AA instead of filtering pixels to one ink RGB.
+A substantial weak-only in-detector component also preserves the whole detector:
+a lighter glyph must not be silently discarded while fitting its neighbours.
+
+The grid keeps its roughly 16K sample budget and refuses more than 32768 cells,
+8192 source columns or 4096 source rows. CPU uses an exact bounded queue. CUDA
+uses fixed shared bit/label/row scratch (about 46 KiB) and at most 64 propagation
+scans; incomplete propagation returns the complete detector. Such cap fallbacks
+can differ from exact CPU fits. The oriented fitter and its 48 varied button
+fixtures are unchanged.
+
+The downstream seven-source-pixel minimum is unchanged. A five/six-pixel core
+cannot be padded to seven or used to bypass admission. The source regression
+requires actual connected AA rows to keep `to` drawable, and explicitly requires
+the six-pixel `an` body to retain detector fallback under the existing 35% guard.
+Its larger fallback remains a geometry limitation, not a precise ink fit.
+
+`uct_small_ink_test::Run` adds 33 source/controlled cases to the existing
+`orientedInkAndMapping` and `gpuOrientedInkMatchesCpu` slots: all four lattice
+phases, both polarities, chromatic paper, gradients, AA, dots, descenders,
+connected clipped strokes, nearby disconnected ink, rules/noise and winding
+component fallback, including connected lighter ink and weak-only glyph refusal.
+The exact 46x36 crop is embedded in
+`uct_book_crop_test_support.hpp`; its packed RGB digest is checked independently.
+Original PNG SHA-256:
+`df25907f060d7b8f8a59b39dfc1b633950500b0fc3941fe6a77eacee6089868f`;
+crop `[630,252,46,36]`, packed RGB SHA-256
+`b8d7336e070cd539f50a35523e98efe03db377486fff5b122c83ec6016c9c36b`.
+No resampling/recoloring is applied. Detector/search metadata is taken from the
+saved proof and translated only by the crop origin.
+
+The first registered CPU baseline reproduced the exact saved defect:
+foreground `#bbb4ad`, source fit `[641,266,14,8]`. It failed as expected (37 Qt
+rows passed, one failed, none skipped); its first failure ledger and full output
+remain retained. After repair, CPU/PCH-off `uct_paddle_processing` passes all
+38 Qt rows with no skips (1.60 seconds); CUDA/PCH-on `uct_paddle_cuda` passes all
+52 rows with no skips (8.63 seconds), including all 33 new cases and the existing
+oriented controls. Both are tracked **SCOPED** gates, not release acceptance.
+
+The exact crop now measures `to` as `#615b54` on the same `#e8e3dc` paper and
+fits source `[642,267,9,7]`, identically on CPU and resident CUDA. Its seven rows
+are actual connected source AA pixels, not an inflated five-pixel core. Both
+prepared words remain candidates under the unchanged seven-pixel minimum.
+`an` keeps `#615c57` and its original detector fallback
+`[655.7547169811321,261.29469450464785,9.056603773584904,18.29944423459611]`;
+this is not a successful six-pixel ink fit. The fitted word gap is at least
+four source pixels. GPU cases retain zero host image egress; the winding case
+retains the complete detector while the exact CPU queue fits. Complete ordinary
+fits/colors match CPU exactly; cap fallback deliberately need not.
+
+Exact source restoration initially retained older timestamps, making Ninja
+report no work. This was caught before the repaired gate: the original logs were
+preserved, the two owned source timestamps advanced without changing bytes,
+and both affected targets rebuilt. No pass was inferred from stale objects.
+
+`agent_check.ps1 -Base 01697be` refuses automatic selection because the private
+target-only build lacks the complete Ninja dependency inventory. No broad build
+was substituted; the two explicit tracked gates above remain scoped evidence.
+
+No new neural inference, model preparation, whole-source cached-model proof,
+native display/screen-reader, broad matrix, accuracy, performance or release
+acceptance is claimed. The test source identity/recognizer metadata is fixed;
+model output is not ground truth. Private proposals, raw failures, archived Qt
+logs, executable/source hashes and scoped receipts are under
+`Z:/Projects/OkuFlow/local-work-data/uct-small-ink-20261022/`.
+
 ## Tilted button color repair (2026-10-21)
 
 The oriented-geometry draft still measured colors in an axis-aligned word box.
