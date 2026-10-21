@@ -58,11 +58,11 @@ QRect PixelCoverage(const QRectF& rect, const QRect& bounds)
 QRegion ProtectedRegion(const QRectF& rect, const QRect& bounds)
 {
     const QRect covered = PixelCoverage(rect, bounds);
-    // A genuinely tiny punctuation span must still protect a pixel even
-    // when it contains no sample centre. Ordinary carved strips share the
-    // same half-open grid as the replacement they border.
-    return covered.isEmpty() ? QRegion(rect.intersected(QRectF(bounds)).toAlignedRect())
-                             : QRegion(covered);
+    // A genuinely tiny punctuation mark has no centre on either axis.
+    // A carved strip can lack centres on only one axis; rounding that strip
+    // outward would invent a shared pixel with the proved word beside it.
+    return covered.width() == 0 && covered.height() == 0
+        ? QRegion(rect.intersected(QRectF(bounds)).toAlignedRect()) : QRegion(covered);
 }
 
 QRegion PolygonRegion(const std::array<QPointF, 4>& points, const QRect& bounds)

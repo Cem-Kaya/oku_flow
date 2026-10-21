@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Prevent subpixel leftover uncertainty strips from hiding proved UCT words
+  again during panning, while retaining protection for tiny punctuation.
+
 - Preserve incoming UCT typography groups without changing stable reading
   ownership. Carve independently proved detail ink from nearby ordinary
   uncertainty across retained lines, preserving uncovered punctuation and

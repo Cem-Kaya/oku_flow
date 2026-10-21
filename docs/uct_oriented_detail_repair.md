@@ -35,7 +35,9 @@ Projected uncertainty cuts and word shapes use one half-open pixel-centre
 coverage grid. Independently rounding both sides outward previously made
 disjoint fractional spans overlap by a pixel, suppressing a newly proved word
 and sometimes its neighbour. Tiny punctuation without a covered centre still
-protects a conservative pixel. The same plan governs live paint and exports.
+protects a conservative pixel only when both axes lack centres. Thin carve
+remainders on a single axis add no artificial bordering pixel. The same plan
+governs live paint and exports.
 
 ## Paused-frame checks
 
@@ -144,3 +146,21 @@ before the coverage repair. Afterwards `ultra_clear_text_contract` passes
 all 205 Qt rows, including the existing glyph/plate eligibility cases, with
 no skipped rows (31.84 seconds, CPU/PCH off). This focused result does not
 complete combined or native acceptance; the original failed gate is retained.
+
+The subsequent independent review found that outward rounding of a strip
+thinner than one pixel could recreate that suppression during panning.
+Sixteen additional real-paint rows cover 0.25-pixel strips before and after
+words, boundary fractions 0.3/0.7, zoom 1/3 and upright/quad geometry. Eight
+failed before the repair. Four additional rows retain a 0.6-by-0.6-pixel
+punctuation mark beneath plate padding. The repaired focused CPU/PCH-off
+contract passes all 232 rows with no skips (32.45 seconds).
+
+Five matching-source GPU proofs at `051b0f2` keep raw selected/neighbour OCR
+output identical to the previous evidence, remove no previously painted
+word and retain zero image egress. Book paint coverage increases from 190 to
+203 words, and its 6x detail view from ten to fourteen painted words: `to`,
+`construction`, `and` and `rhythm` become drawable while `an` remains drawn.
+These counts measure rendering coverage, not recognition accuracy. Misreads
+and weak fitted geometry remain; the latest comparison is retained as
+`evidence/runs/r5-same-source-quality-comparison.json` under the private
+evidence root above.

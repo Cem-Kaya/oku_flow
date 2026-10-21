@@ -762,6 +762,10 @@ private slots:
     void glyphsShareLineBaselineDespiteDifferentInkHeights();
     void fractionalProtectionCutsKeepProvedWords_data();
     void fractionalProtectionCutsKeepProvedWords();
+    void subpixelProtectionStripsKeepProvedWords_data();
+    void subpixelProtectionStripsKeepProvedWords();
+    void subpixelPunctuationKeepsItsPixel_data();
+    void subpixelPunctuationKeepsItsPixel();
     void paddedRecognitionFitsVisibleInk_data();
     void paddedRecognitionFitsVisibleInk();
     void overlayKeepsSourceBackgroundInsteadOfBlackWhite_data();
@@ -1660,6 +1664,94 @@ void UltraClearTextTests::fractionalProtectionCutsKeepProvedWords()
             QCOMPARE(composite.pixelColor(x, y), punctuation);
         }
     QVERIFY(protectedPixels > 0);
+}
+
+void UltraClearTextTests::subpixelProtectionStripsKeepProvedWords_data()
+{
+    QTest::addColumn<float>("zoom");
+    QTest::addColumn<double>("fraction");
+    QTest::addColumn<bool>("before");
+    QTest::addColumn<bool>("oriented");
+    for (const float zoom : {1.f, 3.f}) for (const double fraction : {.3, .7})
+        for (const bool before : {false, true}) for (const bool oriented : {false, true})
+            QTest::newRow(qPrintable(QStringLiteral("zoom%1-frac%2-before%3-quad%4")
+                .arg(zoom).arg(fraction).arg(before).arg(oriented)))
+                << zoom << fraction << before << oriented;
+}
+
+void UltraClearTextTests::subpixelProtectionStripsKeepProvedWords()
+{
+    QFETCH(float, zoom);
+    QFETCH(double, fraction);
+    QFETCH(bool, before);
+    QFETCH(bool, oriented);
+    QWidget target;
+    target.resize(960, 540);
+    UltraClearTextOverlay overlay(&target, &target);
+    target.show();
+    const auto transform = ComputeViewTransform(960, 540, 960, 540, zoom, .39f, .35f,
+                                               ViewportFitMode::kFill);
+    const auto scene = [&](const QRectF& r) { return ViewRectToScene(transform, 960, 540, r); };
+    const QRectF proved(241.0 + fraction, 166.75, 140, 40);
+    const QRectF strip(before ? proved.left() - .25 : proved.right(), proved.top(), .25, proved.height());
+    const QVector<QRectF> protection{scene(strip)};
+    QVector<UltraClearTextOverlay::SceneWord> words{
+        {QStringLiteral("to"), scene(proved), {Qt::black, Qt::white}, 1, protection, 0},
+        {QStringLiteral("an"), scene({proved.right() + 6, proved.top(), 110, proved.height()}),
+         {Qt::black, Qt::white}, 2, protection, 0}};
+    if (oriented) for (auto& word : words) word.sceneQuad = TextQuad::FromRect(word.sceneRect);
+    overlay.SetViewTransform(transform);
+    overlay.SetWords(words);
+    QTRY_VERIFY(overlay.PaintedGeometryCurrent());
+    for (const auto& word : words) {
+        UltraClearTextOverlay::PaintedWordGeometry geometry;
+        QVERIFY(overlay.PaintedWord(word.lineId, word.wordIndex, word.text, geometry));
+        QVERIFY2(geometry.drawn, "A thin carved strip must not invent a shared bordering pixel.");
+    }
+}
+
+void UltraClearTextTests::subpixelPunctuationKeepsItsPixel_data()
+{
+    QTest::addColumn<float>("zoom");
+    QTest::addColumn<bool>("oriented");
+    for (const float zoom : {1.f, 3.f}) for (const bool oriented : {false, true})
+        QTest::newRow(qPrintable(QStringLiteral("zoom%1-quad%2").arg(zoom).arg(oriented)))
+            << zoom << oriented;
+}
+
+void UltraClearTextTests::subpixelPunctuationKeepsItsPixel()
+{
+    QFETCH(float, zoom);
+    QFETCH(bool, oriented);
+    QWidget target;
+    target.resize(960, 540);
+    UltraClearTextOverlay overlay(&target, &target);
+    target.show();
+    const auto transform = ComputeViewTransform(960, 540, 960, 540, zoom, .39f, .35f,
+                                               ViewportFitMode::kFill);
+    const auto scene = [&](const QRectF& r) { return ViewRectToScene(transform, 960, 540, r); };
+    // Neither axis includes a pixel centre, but a camera's antialiasing can
+    // still contribute ink in the surrounding sampled pixel. Plate padding
+    // would overwrite it without the genuinely tiny-mark fallback.
+    const QRectF dot(380.7, 200.7, .6, .6);
+    UltraClearTextOverlay::SceneWord word{QStringLiteral("Read"), scene({382.4, 190, 90, 32}),
+        {Qt::black, Qt::white}, 1, {scene(dot)}, 0};
+    if (oriented) word.sceneQuad = TextQuad::FromRect(word.sceneRect);
+    overlay.SetViewTransform(transform);
+    overlay.SetWords({word});
+    QTRY_VERIFY(overlay.PaintedGeometryCurrent());
+    UltraClearTextOverlay::PaintedWordGeometry geometry;
+    QVERIFY(overlay.PaintedWord(word.lineId, word.wordIndex, word.text, geometry));
+    QVERIFY(geometry.drawn);
+    QImage composite(target.size(), QImage::Format_ARGB32);
+    composite.fill(Qt::white);
+    const QColor punctuation(191, 17, 39);
+    composite.setPixelColor(381, 201, punctuation);
+    {
+        QPainter painter(&composite);
+        overlay.CaptureSnapshot(transform, composite.size()).Paint(painter, composite.size());
+    }
+    QCOMPARE(composite.pixelColor(381, 201), punctuation);
 }
 
 void UltraClearTextTests::geometryRoundTripsThroughFitFillZoomPanAndDpi()
