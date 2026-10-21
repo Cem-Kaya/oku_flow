@@ -112,9 +112,12 @@ assertions require zero capacity/contention loss
 and no unresolved attempt at close. Its separate process owns one trace window.
 The fixture also compares the exact cached consumer tickets before/after the
 pane-only change and pan through UI-thread `TimingTicket()` diagnostic copies.
+The actual cached `PaintedTimingRevision()` must also remain unchanged.
 Those checks do not depend on a lossless trace. A concurrent recorder drop
 requires `coverageIncomplete=true`; in that case the fixture reports incomplete
 trace coverage and makes no negative-event or complete-chain latency claim.
+The serialized output must explicitly mark complete-chain latency ineligible.
+Lossless assertions also require every accepted record to be in the snapshot.
 The recorder retains its nonblocking try-lock/drop behavior. This replaces an
 invalid assumption that independent asynchronous producers can never contend;
 the original matrix failure with one drop remains in the test evidence.

@@ -1,7 +1,9 @@
 # Hard-Coded Paths and Defaults
 
-Active regional UCT admission keeps a two-input-pixel margin at internal crop
-edges (zero at image borders). It owns complete lines only, retaining crossing
+Active regional UCT admission keeps a ten-input-pixel margin at internal crop
+edges: shared `kDetailCropEdgeMarginPx=8` plus two pixels of detector jitter
+slack (zero at image borders). Ownership includes original detector bounds,
+not just tighter fitted ink. It owns complete lines only, retaining crossing
 sentences and masks verbatim without renewing their validation clocks. See
 [regional policy](uct_active_regional_ocr.md).
 

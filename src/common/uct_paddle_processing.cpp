@@ -234,7 +234,7 @@ void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line
     qsizetype preferredLine = -1;
     for (auto word : line.words) {
         // Overlapping crops supply complete words instead of cut-edge fragments.
-        constexpr double margin = 8.0;
+        constexpr double margin = kDetailCropEdgeMarginPx;
         if (detail && ((region.left() > 0 && word.boundsPx.left() < margin) ||
             (region.top() > 0 && word.boundsPx.top() < margin) ||
             (region.x() + region.width() < source.width() && word.boundsPx.right() > region.width() - margin) ||

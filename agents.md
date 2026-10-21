@@ -945,10 +945,13 @@ aligned with the project goals.
 
 ## Regional boundary ownership (2026-10-22)
 
-- Admit only complete lines inside a region's two-input-pixel internal-edge
-  margin; image-border edges have no extra margin. Clipped candidates supply no
+- Admit only complete detector unions inside the backend's shared eight-pixel
+  crop-edge exclusion plus two input pixels of detector-jitter slack;
+  image-border edges have no extra margin. Clipped candidates supply no
   pending words or observations. Keep crossing/outside lines and masks verbatim
   without renewing proof or requiring a new probe for an unobserved region.
+  If a rejected crop candidate touches an otherwise owned line, leave the whole
+  optional admission unapplied before changing accepted or pending evidence.
 - Expired optional slack yields without inference, rather than starting a more
   expensive full read. Only actual regional durations update its cost estimate.
   Baseline full work, independent pixel checks and freshness remain unchanged.

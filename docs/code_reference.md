@@ -7,6 +7,10 @@ or renew evidence. The pane-only fixture compares all key/revision/flag fields
 directly, so correct surface attribution can be checked even when the optional
 nonblocking trace reports contention loss. Negative-event assertions still
 require complete trace coverage; a lossy window is explicitly incomplete.
+`UltraClearTextOverlay::PaintedTimingRevision` copies the cached revision that
+actually reached paint; the fixture checks it independently of assigned tickets.
+Lossless trace assertions also require `acceptedAtSnapshot == count`; lossy
+output must serialize `eligible_for_complete_chain_latency:false`.
 
 ## Supplemental regional UCT execution (2026-10-21)
 
@@ -34,9 +38,13 @@ and paused selected/neighbour detail ownership remain authoritative.
 
 `OverlayModel::AdmitImpl` uses real processed coverage, retains independently
 complete crossing/outside lines with exact old references/clocks and all masks,
-and bounds regional unions. Two-input-pixel interior margins reject clipped
+and bounds regional unions. `kDetailCropEdgeMarginPx=8` is shared with
+`PaddleMergeRecognition`; ownership adds two input pixels of detector jitter
+slack and checks the retained detector union as well as fitted ink. These margins reject clipped
 candidates before agreement/pending updates; candidates intersecting retained
 lines are also ignored. No fresh probe is required to retain an unobserved line;
+if such an ignored candidate touches an otherwise owned line, the entire
+optional admission returns before changing accepted or pending evidence.
 freshness and independent validation remain unchanged. `PendingEvidence`
 is shared by pending words from the same original observation; partial results
 retain outside tickets without restamping or self-confirmation. Full reads

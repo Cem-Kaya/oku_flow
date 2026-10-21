@@ -260,6 +260,9 @@ struct DetailFocus {
 // Hard bound on visible-detail detector enlargement. Enlarging existing pixels
 // adds no source detail; it only gives the detector more pixels per glyph.
 inline constexpr double kMaximumDetailMagnification = 6.0;
+// Detector boxes this close to an internal crop edge are incomplete. Shared
+// by backend merging and regional ownership (which adds detector jitter slack).
+inline constexpr double kDetailCropEdgeMarginPx = 8.0;
 
 // Backend-neutral detector input planning, shared by the Paddle CPU/TensorRT
 // adapters and the controller's visible-detail decision.

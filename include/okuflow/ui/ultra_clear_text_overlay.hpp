@@ -57,6 +57,8 @@ public:
     void SetTimingTicket(uct::timing::PublicationTicket ticket) { timingTicket_ = ticket; }
     // UI-thread diagnostic copy, independent of optional trace record loss.
     uct::timing::PublicationTicket TimingTicket() const noexcept { return timingTicket_; }
+    // Cached revision that actually reached paint, rather than assignment.
+    std::uint64_t PaintedTimingRevision() const noexcept { return timingPaintedRevision_; }
     void ClearWords();
     int WordCount() const noexcept { return words_.size(); }
     const QVector<SceneWord>& Words() const noexcept { return words_; }

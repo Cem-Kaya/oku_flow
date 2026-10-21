@@ -3090,7 +3090,10 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
     if (regional) {
         const QRectF pixels(result.output.detailRegionPx);
         if (!QRectF(0,0,jobWidth,jobHeight).contains(pixels)) return AdmitVerdict::kFailed;
-        constexpr double margin = 2.0;
+        // The backend rejects detector boxes within eight source pixels at
+        // magnification one. Keep another two pixels for detector jitter;
+        // tighter fitted ink is not evidence that the full word was observed.
+        constexpr double margin = kDetailCropEdgeMarginPx + 2.0;
         const QRectF interior = pixels.adjusted(pixels.left() > 0 ? margin : 0,
             pixels.top() > 0 ? margin : 0, pixels.right() < jobWidth ? -margin : 0,
             pixels.bottom() < jobHeight ? -margin : 0);
@@ -3102,7 +3105,8 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
     };
     if (regional) for (const auto& line : lines_) {
         if (!line.provenance.SameScene(current)) continue;
-        const bool owned = (!line.words.isEmpty() || !line.protectedSceneRects.isEmpty()) &&
+        const bool owned = regionContains(line.sceneRect.translated(line.sceneOffset)) &&
+            (!line.words.isEmpty() || !line.protectedSceneRects.isEmpty()) &&
             std::all_of(line.words.begin(),line.words.end(),[&](const auto& word) {
                 return regionContains(word.sceneRect.translated(line.sceneOffset));
             }) && std::all_of(line.protectedSceneRects.begin(),line.protectedSceneRects.end(),[&](const auto& rect) {
@@ -3125,6 +3129,28 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         result.prepared.size() == result.output.lines.size()
             ? result.prepared
             : PrepareLines(result, tuning_.minimumWordHeightPx);
+    const auto regionalCandidateComplete = [&](const PreparedLine& line) {
+        return regionContains(line.sceneRect) &&
+            std::all_of(line.words.begin(),line.words.end(),[&](const auto& word) {
+                return regionContains(word.sceneRect) &&
+                    (word.protectedSceneRect.isEmpty() || regionContains(word.protectedSceneRect));
+            }) && std::none_of(regionalKeptRects.begin(),regionalKeptRects.end(),[&](const auto& rect) {
+                return rect.intersects(line.sceneRect);
+            });
+    };
+    if (regional) for (const auto& observation : prepared) {
+        if (observation.words.isEmpty() || regionalCandidateComplete(observation)) continue;
+        if (std::any_of(lines_.begin(),lines_.end(),[&](const auto& old) {
+                return old.provenance.SameScene(current) && !regionalKeptIds.contains(old.id) &&
+                    old.sceneRect.translated(old.sceneOffset).intersects(observation.sceneRect);
+            })) {
+            // An ignored fragment is no observation of a line it could erase.
+            // Leave the entire optional update unapplied, before any pending
+            // tickets, identities or proof clocks change. Full/probe authority
+            // remains unchanged; no iterative ownership closure is needed.
+            return AdmitVerdict::kEmpty;
+        }
+    }
     const bool workerRegistration = corroboration &&
         corroboration->prepared.size() == corroboration->output.lines.size() &&
         result.jobId != 0 && corroboration->corroboratedJobId == result.jobId &&
@@ -3180,13 +3206,7 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         if (line.words.isEmpty()) {
             continue;
         }
-        if (regional && (!regionContains(line.sceneRect) ||
-            std::any_of(line.words.begin(),line.words.end(),[&](const auto& word) {
-                return !regionContains(word.sceneRect) ||
-                    (!word.protectedSceneRect.isEmpty() && !regionContains(word.protectedSceneRect));
-            }) || std::any_of(regionalKeptRects.begin(),regionalKeptRects.end(),[&](const auto& rect) {
-                return rect.intersects(line.sceneRect);
-            }))) continue;
+        if (regional && !regionalCandidateComplete(line)) continue;
         const bool currentInputMatches = !stamp.temporallySmoothed ||
             (result.currentInputMatches.size() == prepared.size() && result.currentInputMatches[i]);
         if (!currentInputMatches) {

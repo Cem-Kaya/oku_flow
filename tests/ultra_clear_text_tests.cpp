@@ -794,6 +794,7 @@ private slots:
     void regionalPendingKeepsPerObservationTickets();
     void regionalBoundaryLineRemainsWhole_data();
     void regionalBoundaryLineRemainsWhole();
+    void regionalRejectedCandidateCannotObserveOwnedLine();
     void regionalOutsideLineNeedsNoNewProbe_data();
     void regionalOutsideLineNeedsNoNewProbe();
     void regionalEdgeCandidateAddsNoPending_data();
@@ -4017,6 +4018,52 @@ void UltraClearTextTests::regionalBoundaryLineRemainsWhole()
     QCOMPARE(model.SceneWords(410,4).size(),old.words.size());
     QCOMPARE(model.ScreenLines(410,4).first().lineId,
              screen.first().lineId);
+    QCOMPARE(model.PendingWordCount(),0);
+}
+
+void UltraClearTextTests::regionalRejectedCandidateCannotObserveOwnedLine()
+{
+    const auto page = MakeLayoutPage({{"The",{20,100},48},{"wide",{500,100},48},
+                                      {"sentence",{1300,100},48},{"Short",{500,200},48}});
+    const auto transform = Transform(1,.5,.5);
+    const auto current = Stamp(3,4,0,transform);
+    const auto result = [&](int frame,int ms) {
+        auto stamp = Stamp(3,4,ms,transform); stamp.frameSeq = frame;
+        return ResultFor(page,transform,stamp);
+    };
+    OverlayModel model;
+    model.Admit(result(1,100),current,nullptr,110);
+    QCOMPARE(model.Admit(result(2,200),current,nullptr,210),AdmitVerdict::kAccepted);
+    const auto probe = ProbeOf(RenderView(page.image,transform,kViewWidth,kViewHeight),
+                               transform,3,4,4,400);
+    QCOMPARE(model.Validate(probe,400).valid,2);
+    const auto old = model.Lines();
+    const auto reading = model.ReadingText(410,4);
+    const auto screen = model.ScreenLines(410,4);
+    auto roi = result(3,300);
+    QCOMPARE(roi.output.lines.size(),2);
+    const auto wide = roi.output.lines.first().words.first().boundsPx;
+    auto shortWord = roi.output.lines.last().words.first();
+    shortWord.boundsPx.setTop(wide.bottom()-1); // detector padding overlaps the kept sentence
+    roi.output.lines = {RecognizedLine{{shortWord}}};
+    roi.output.detailRegionPx = {100,40,480,240};
+    const auto prepared = PrepareLines(roi,7);
+    QVERIFY(QRectF(110,50,460,220).contains(shortWord.boundsPx));
+    QVERIFY(prepared.first().sceneRect.intersects(old.first().sceneRect));
+    QCOMPARE(model.Admit(roi,current,&probe,410),AdmitVerdict::kEmpty);
+    QCOMPARE(model.ReadingText(410,4),reading);
+    QCOMPARE(model.ScreenLines(410,4).size(),screen.size());
+    QCOMPARE(model.Lines().size(),old.size());
+    for (int i = 0; i < old.size(); ++i) {
+        QCOMPARE(model.Lines()[i].id,old[i].id);
+        QCOMPARE(model.Lines()[i].sceneRect,old[i].sceneRect);
+        QCOMPARE(model.Lines()[i].readingTokens,old[i].readingTokens);
+        QCOMPARE(model.Lines()[i].protectedSceneRects,old[i].protectedSceneRects);
+        QCOMPARE(model.Lines()[i].validatedAtMs,old[i].validatedAtMs);
+        QCOMPARE(model.Lines()[i].validatedFrameSeq,old[i].validatedFrameSeq);
+        QCOMPARE(model.ScreenLines(410,4)[i].lineId,screen[i].lineId);
+    }
+    QCOMPARE(model.SceneWords(410,4).size(),4);
     QCOMPARE(model.PendingWordCount(),0);
 }
 

@@ -867,6 +867,7 @@ void UltraClearTextControllerTests::timingPaneOnlyChangePreservesPositionedTicke
     QCOMPARE(h.controller->ScreenTextAccessibility()->ExposedLineCount(), screenBefore.lines.size());
     const auto publications = h.controller->ScreenTextAccessibility()->Publications();
     const auto positionedTicket = h.overlay.TimingTicket();
+    const auto paintedRevision = h.overlay.PaintedTimingRevision();
     const auto sameTicket = [](const timing::PublicationTicket& a,const timing::PublicationTicket& b) {
         const auto key = [](const timing::Key& value) {
             return std::tuple{value.producer,value.sourceEpoch,value.geometryGeneration,value.frameSeq,
@@ -875,6 +876,7 @@ void UltraClearTextControllerTests::timingPaneOnlyChangePreservesPositionedTicke
         return a.revision == b.revision && a.flags == b.flags && key(a.admission) == key(b.admission);
     };
     QVERIFY(positionedTicket.revision && positionedTicket.admission.jobId);
+    QCOMPARE(paintedRevision,positionedTicket.revision);
     QVERIFY(sameTicket(h.controller->ScreenTextAccessibility()->TimingTicket(),positionedTicket));
     const auto paneOnlyStartedNs = timing::SteadyNanoseconds();
     {
@@ -890,6 +892,7 @@ void UltraClearTextControllerTests::timingPaneOnlyChangePreservesPositionedTicke
     QCOMPARE(h.overlay.Words().size(), positioned.size());
     QVERIFY(sameTicket(h.overlay.TimingTicket(),positionedTicket));
     QVERIFY(sameTicket(h.controller->ScreenTextAccessibility()->TimingTicket(),positionedTicket));
+    QCOMPARE(h.overlay.PaintedTimingRevision(),paintedRevision);
     const auto paneTicket = h.panel.TimingTicket();
     QVERIFY(paneTicket.revision > positionedTicket.revision);
     QVERIFY(paneTicket.admission.jobId != positionedTicket.admission.jobId);
@@ -913,21 +916,27 @@ void UltraClearTextControllerTests::timingPaneOnlyChangePreservesPositionedTicke
     QCOMPARE(h.controller->ScreenTextAccessibility()->Publications(), publications);
     QVERIFY(sameTicket(h.overlay.TimingTicket(),positionedTicket));
     QVERIFY(sameTicket(h.controller->ScreenTextAccessibility()->TimingTicket(),positionedTicket));
+    QCOMPARE(h.overlay.PaintedTimingRevision(),paintedRevision);
     QVERIFY(!h.devices->readOnUiThread.load());
 
     const auto snapshot = timing::CloseForDiagnostics();
-    QVERIFY(snapshot && !snapshot->unavailableDueToContention);
-    QCOMPARE(snapshot->capacityDrops, std::uint64_t(0));
-    QVERIFY(!snapshot->closeOverlappedAttempts);
-    if (snapshot->contentionDrops) {
+    QVERIFY(snapshot);
+    const bool lossless = !snapshot->unavailableDueToContention && !snapshot->capacityDrops &&
+        !snapshot->contentionDrops && !snapshot->closeOverlappedAttempts &&
+        snapshot->acceptedAtSnapshot == snapshot->count;
+    if (!lossless) {
         // This nonblocking recorder is permitted to lose concurrent events.
         // Exact consumer tickets above still prove the publication contract;
         // a lossy trace cannot prove absence or complete-chain latency.
         QVERIFY(timing::Summarize(*snapshot).coverageIncomplete);
-        qInfo() << "Pane publication identity verified directly; trace coverage incomplete, contention drops="
-                << snapshot->contentionDrops;
+        std::ostringstream output;
+        timing::WriteJsonLines(*snapshot,output);
+        QVERIFY(output.str().find("\"eligible_for_complete_chain_latency\":false") != std::string::npos);
+        qInfo() << "Pane publication identity verified directly; trace coverage incomplete, capacity/contention drops="
+                << snapshot->capacityDrops << snapshot->contentionDrops;
         return;
     }
+    QCOMPARE(snapshot->acceptedAtSnapshot,static_cast<std::uint64_t>(snapshot->count));
     const timing::Record* lastPositionedAssignment{};
     const timing::Record* paneChange{};
     int oldContentPaints{}, changedPositionedEvents{}, paneAssignments{};

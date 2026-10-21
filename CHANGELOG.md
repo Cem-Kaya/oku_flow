@@ -6,6 +6,8 @@
   cuts their edges. Retain unobserved other-pane text without renewing its proof,
   reject truncated edge words before pending agreement, and yield optional work
   when its reserved time no longer fits.
+  Match regional ownership to the detector's crop-edge exclusion and preserve
+  existing lines when rejected overlapping crop fragments cannot replace them.
 
 - Keep immutable UCT duplicate carving aligned with displayed geometry and
   preserve risky notation and invalid-geometry masks during nearby refinement.

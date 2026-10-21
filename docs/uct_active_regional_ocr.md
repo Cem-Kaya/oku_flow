@@ -77,17 +77,32 @@ region adds no CPU retry or readback.
 ## Admission
 
 Regional admission owns complete lines only. At crop edges inside the image,
-candidate words, protection and line bounds must lie at least **two input pixels**
-inside the actual processed ROI. Image-border edges have no extra margin.
+candidate words, protection and original detector bounds must lie at least
+**ten input pixels** inside the actual processed ROI: the backend's shared
+eight-pixel edge exclusion plus two pixels for detector jitter. Active regions
+use magnification one, so these are source pixels. Image-border edges have no
+extra margin. Tight ink fitting does not enlarge the trustworthy interior.
 Rejected edge candidates supply no lines, pending words or temporal observations.
 
-An existing line whose words or masks are not wholly inside that safe coverage
+An existing line whose detector union, words or masks are not wholly inside that safe coverage
 is retained verbatim, including sentences crossing either axis and mask-only
 remainders. Candidates intersecting such a retained line are ignored. Outside
 lines do not require a new probe merely to survive a region that never observed
 them. No identity, reference, offset, clock or proof is renewed; ordinary
 freshness, independent current-pixel validation and real contradictions still
 revoke stale/changed text. The same preserves reference-less agreement memory.
+
+If a rejected crop candidate intersects a line that would otherwise be owned,
+the whole optional admission is left unapplied, before changing pending tickets
+or accepted identities. This avoids treating the rejected candidate as a
+negative observation and needs no iterative ownership closure. A later baseline
+full read and independent probes retain their ordinary authority.
+
+Maintained regressions exercise the actual `PaddleMergeRecognition` edge filter
+with tight fitted ink and wider detector bounds, including a wholly omitted
+top-edge line without a new probe. A separate overlapping wide/short sentence
+fixture checks that rejected padding cannot erase the owned short sentence.
+These new cases await the coordinated combined gate; they are not a new pass.
 
 This conservative ownership keeps reading order intact and preserves all
 crossing uncertainty without carving it. On prose wider than 480 pixels a

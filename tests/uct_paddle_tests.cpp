@@ -941,6 +941,77 @@ class PaddleTests final : public QObject
             QVERIFY2(whiteInk > 5, qPrintable(word.text));
         }
     }
+    void regionalOwnershipUsesBackendDetectorInterior_data()
+    {
+        QTest::addColumn<bool>("vertical");
+        QTest::newRow("detector-tail-dropped-despite-contained-ink") << false;
+        QTest::newRow("detector-top-dropped-without-new-probe") << true;
+    }
+    void regionalOwnershipUsesBackendDetectorInterior()
+    {
+        QFETCH(bool,vertical);
+        uct_test::RegisterFixtureFonts();
+        const QSize size(960,540);
+        const QRect region = vertical ? QRect(0,60,400,200) : QRect(0,0,400,200);
+        QImage image(size,QImage::Format_ARGB32); image.fill(Qt::white);
+        QPainter painter(&image); painter.setPen(Qt::black);
+        QFont font(QStringLiteral("Segoe UI")); font.setPixelSize(24); painter.setFont(font);
+        RecognizedLine fitted,detected;
+        const auto word = [&](QString text,QRectF ink,QRectF detector) {
+            painter.drawText(ink.bottomLeft(),text);
+            RecognizedWord fit{text,ink}; fit.protectedBoundsPx=detector; fit.inkFitted=true;
+            fitted.words.push_back(fit);
+            RecognizedWord raw{text,detector.translated(-region.topLeft())};
+            raw.protectedBoundsPx=raw.boundsPx;
+            detected.words.push_back(raw);
+        };
+        if (vertical) word(QStringLiteral("here"),{125,72,55,22},{120,64,70,35});
+        else {
+            word(QStringLiteral("end"),{265,75,35,25},{260,70,45,35});
+            word(QStringLiteral("here"),{355,75,34,25},{350,70,47,35});
+        }
+        painter.end();
+        const auto result = [&](std::uint64_t frame,std::int64_t time) {
+            RecognitionResult r;
+            r.stamp.sourceEpoch=1; r.stamp.geometryGeneration=1;
+            r.stamp.frameSeq=frame; r.stamp.timestampMs=time;
+            r.stamp.viewportWidth=size.width(); r.stamp.viewportHeight=size.height();
+            r.stamp.viewTransform={0,0,1,1,0,0,1,1,true};
+            r.output.ok=true; r.output.lines={fitted};
+            const auto pixels=uct_test::IndependentFramePixels(image,frame);
+            r.sourcePixelDigest=uct_test::SourcePixelsDigest(pixels);
+            r.reference=MakeProbeFrame(pixels.constBits(),pixels.width(),pixels.height(),
+                pixels.bytesPerLine(),2,r.stamp);
+            return r;
+        };
+        const auto first=result(1,100),second=result(2,200);
+        OverlayModel model;
+        model.Admit(first,first.stamp,nullptr,110);
+        QCOMPARE(model.Admit(second,second.stamp,nullptr,210),AdmitVerdict::kAccepted);
+        const auto old=model.Lines().first();
+        const auto reading=model.ReadingText(310,3);
+        const auto screen=model.ScreenLines(310,3);
+        QCOMPARE(reading,vertical ? QStringLiteral("here") : QStringLiteral("end here"));
+        QVector<RecognizedLine> merged;
+        PaddleMergeRecognition(merged,detected,region,size); // real production edge rejection
+        QCOMPARE(merged.size(),vertical ? 0 : 1);
+        if (!vertical) {
+            QCOMPARE(merged.first().words.size(),1);
+            QCOMPARE(merged.first().words.first().text,QStringLiteral("end"));
+        }
+        auto roi=result(3,300); roi.output.lines=merged; roi.output.detailRegionPx=region;
+        model.Admit(roi,roi.stamp,nullptr,310); // no newer validating probe is available
+        QCOMPARE(model.ReadingText(310,3),reading);
+        QCOMPARE(model.Lines().size(),1);
+        QCOMPARE(model.Lines().first().id,old.id);
+        QCOMPARE(model.Lines().first().readingTokens,old.readingTokens);
+        QCOMPARE(model.Lines().first().protectedSceneRects,old.protectedSceneRects);
+        QCOMPARE(model.Lines().first().validatedFrameSeq,old.validatedFrameSeq);
+        QCOMPARE(model.Lines().first().validatedAtMs,old.validatedAtMs);
+        QCOMPARE(model.SceneWords(310,3).size(),fitted.words.size());
+        QCOMPARE(model.ScreenLines(310,3).first().lineId,screen.first().lineId);
+        QCOMPARE(model.PendingWordCount(),0);
+    }
     void optionalTensorRtBatchComparison()
     {
         uct_batch_test::CompareTensorRtBatches();
