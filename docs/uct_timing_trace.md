@@ -41,6 +41,14 @@ aggregate artifact: the ticket identifies the latest model operation, and does
 not claim every retained word was first proved by that job. Partial revocation
 with surviving text identifies the operation that caused the revocation.
 
+For nonimmutable recognition, the controller compares whole pre-admission line
+snapshots with the committed model. `kPending`/`kEmpty` can change masks or remove
+words while other text survives; their new publications therefore use the current
+causal result and mark retained older line IDs as a mixed artifact. A refused
+optional update changes no model content and keeps the prior admission ticket.
+Glyph acceptance remains the verdict's separate meaning. Evidence stamps and
+proof clocks are never rewritten for diagnostic causality.
+
 Publication consumers distinguish assignment from actual software publication.
 `OverlayAssigned` is content assignment; `OverlayPainted` is an actual widget
 backing-store paint for that content, not export rendering or photon delivery.

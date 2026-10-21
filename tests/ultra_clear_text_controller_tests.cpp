@@ -13,6 +13,7 @@
 #include <QFile>
 #include <QPlainTextEdit>
 #include <QSignalSpy>
+#include <QScopeGuard>
 #include <QUuid>
 #include <QtTest>
 #include <QCheckBox>
@@ -34,7 +35,46 @@ using namespace okuflow;
 using namespace okuflow::uct;
 using namespace uct_test;
 
+namespace okuflow {
+// Narrow fixture access: real scheduler barriers and controller receipts,
+// without adding a production enqueue/result-injection API.
+struct UctControllerTestAccess {
+    static void Barrier(UltraClearTextController& c, std::function<void()> barrier) {
+        c.scheduler_->SetBeforeDequeueForTest(std::move(barrier));
+    }
+    static void SuppressRegions(UltraClearTextController& c, bool suppress) { c.regionalSuppressed_ = suppress; }
+    static std::uint64_t RegionalJob(const UltraClearTextController& c) { return c.regionalJob_; }
+    static std::uint64_t ProbeFrame(const UltraClearTextController& c) { return c.latestProbe_ ? c.latestProbe_->stamp.frameSeq : 0; }
+    static SourceStamp Stamp(const UltraClearTextController& c) {
+        return c.CurrentScene();
+    }
+    static std::uint64_t Authority(const UltraClearTextController& c) { return c.scheduler_->Authority(); }
+    static void Deliver(UltraClearTextController& c, RecognitionResult result, bool armRegion = false) {
+        if (armRegion) { c.regionalJob_ = result.jobId; c.regionalSubmittedAtMs_ = c.clock_(); }
+        c.HandleResult(std::move(result));
+    }
+    static void Validate(UltraClearTextController& c, const uct::ProbeFrame& probe) {
+        c.model_.Validate(probe,c.clock_()); c.latestProbe_ = std::make_shared<uct::ProbeFrame>(probe);
+    }
+};
+}
+
 namespace {
+
+struct DequeueBarrier {
+    std::mutex mutex;
+    std::condition_variable changed;
+    std::atomic<bool> entered{};
+    bool released{};
+    void Wait() {
+        std::unique_lock lock(mutex); entered = true;
+        changed.wait(lock,[&] { return released; });
+    }
+    void Release() {
+        { std::lock_guard lock(mutex); released = true; }
+        changed.notify_all();
+    }
+};
 
 struct RegionalFlag {
     bool existed{qEnvironmentVariableIsSet("OKUFLOW_UCT_REGIONAL_OCR")};
@@ -477,6 +517,9 @@ private slots:
     void activeRegionalResetsFenceLateCompletion_data();
     void activeRegionalResetsFenceLateCompletion();
     void activeRegionalPreservesPausedDetailPair();
+    void activeQueuedRegionalIsSupersededByFull();
+    void activeRegionalWithdrawalDoesNotDemandExtraFull();
+    void timingNonimmutableMutationKeepsCausalTickets();
     void timingTraceKeepsWorkerAndAdmissionTickets();
     void timingPaneOnlyChangePreservesPositionedTicket();
     void textClarityMasterPreservesUctPreference();
@@ -668,6 +711,185 @@ void UltraClearTextControllerTests::activeRegionalPreservesPausedDetailPair()
 {
     RegionalFlag flag(true);
     pausedZoomRequestsOneBoundedVisibleDetailPair(); // production selected + real-neighbour pair assertions
+}
+
+void UltraClearTextControllerTests::activeQueuedRegionalIsSupersededByFull()
+{
+    RegionalFlag flag(true); ImmutableHarness h;
+    h.script->detailFocus = true; h.script->separateWordLines = true;
+    h.page = MakeLayoutPage({{"Reading",{70,70},36},{"Outside",{700,300},36}},960,540);
+    h.Enable(); QTRY_COMPARE(h.controller->BackendStatusSnapshot().state,BackendState::kReady);
+    UctControllerTestAccess::SuppressRegions(*h.controller,true);
+    QSignalSpy admitted(h.controller.get(),&UltraClearTextController::recognitionAdmitted);
+    // Fixed, individually completed acquisitions establish the ordinary two
+    // full observations; no polling loop resubmits an input until it passes.
+    for (std::uint64_t frame = 1; frame <= 8; ++frame) {
+        h.now += 60; h.PlayFrame(frame);
+        QTRY_COMPARE(UctControllerTestAccess::ProbeFrame(*h.controller),frame);
+        QTRY_COMPARE(admitted.count(),int(h.controller->SchedulerStatistics().submitted));
+    }
+    QVERIFY(h.overlay.WordCount() > 0);
+    auto first = std::make_shared<DequeueBarrier>();
+    auto second = std::make_shared<DequeueBarrier>();
+    const auto release = qScopeGuard([&] { first->Release(); second->Release(); });
+    UctControllerTestAccess::Barrier(*h.controller,[first] { first->Wait(); });
+    UctControllerTestAccess::SuppressRegions(*h.controller,false);
+    const auto before = h.controller->SchedulerStatistics();
+    const int admissions = admitted.count();
+    h.now += 60; h.PlayFrame(9);
+    QTRY_VERIFY(first->entered.load());
+    QTRY_COMPARE(UctControllerTestAccess::ProbeFrame(*h.controller),std::uint64_t(9));
+    const auto oldRegion = UctControllerTestAccess::RegionalJob(*h.controller);
+    QVERIFY(oldRegion);
+    QCOMPARE(h.controller->SchedulerStatistics().started,before.started); // R really is still queued
+    h.now += 1500; h.PlayFrame(10); // unchanged full refresh deadline outranks queued R
+    QTRY_COMPARE(UctControllerTestAccess::ProbeFrame(*h.controller),std::uint64_t(10));
+    QCOMPARE(h.controller->SchedulerStatistics().coalesced,before.coalesced + 1);
+    QCOMPARE(UctControllerTestAccess::RegionalJob(*h.controller),std::uint64_t(0));
+    first->Release();
+    QTRY_COMPARE(admitted.count(),admissions + 1); // F completes; there is deliberately no R completion
+    QCOMPARE(h.controller->SchedulerStatistics().fullCalls,before.fullCalls + 1);
+    UctControllerTestAccess::Barrier(*h.controller,[second] { second->Wait(); });
+    h.now += 60; h.PlayFrame(11);
+    QTRY_VERIFY(second->entered.load());
+    const auto newRegion = UctControllerTestAccess::RegionalJob(*h.controller);
+    QVERIFY(newRegion > oldRegion);
+    RecognitionResult stale;
+    stale.jobId = oldRegion; stale.authority = UctControllerTestAccess::Authority(*h.controller);
+    stale.stamp = UctControllerTestAccess::Stamp(*h.controller); stale.regionalRequested = true;
+    const auto rejected = h.controller->RejectedResults();
+    UctControllerTestAccess::Deliver(*h.controller,std::move(stale));
+    QCOMPARE(h.controller->RejectedResults(),rejected + 1);
+    QCOMPARE(UctControllerTestAccess::RegionalJob(*h.controller),newRegion);
+    second->Release();
+    QTRY_COMPARE(UctControllerTestAccess::RegionalJob(*h.controller),std::uint64_t(0));
+    QCOMPARE(h.controller->SchedulerStatistics().regionalCalls,before.regionalCalls + 1);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted,before.submitted + 3);
+}
+
+void UltraClearTextControllerTests::activeRegionalWithdrawalDoesNotDemandExtraFull()
+{
+    RegionalFlag flag(true); ImmutableHarness h;
+    h.script->detailFocus = true; h.script->separateWordLines = true;
+    h.page = MakeLayoutPage({{"Reading",{70,70},36},{"Outside",{700,300},36}},960,540);
+    h.Enable(); QTRY_COMPARE(h.controller->BackendStatusSnapshot().state,BackendState::kReady);
+    UctControllerTestAccess::SuppressRegions(*h.controller,true);
+    QSignalSpy admitted(h.controller.get(),&UltraClearTextController::recognitionAdmitted);
+    for (std::uint64_t frame = 1; frame <= 8; ++frame) {
+        h.now += 60; h.PlayFrame(frame);
+        QTRY_COMPARE(UctControllerTestAccess::ProbeFrame(*h.controller),frame);
+        QTRY_COMPARE(admitted.count(),int(h.controller->SchedulerStatistics().submitted));
+    }
+    QVERIFY(h.overlay.WordCount() > 0);
+    const auto old = h.controller->Model().Lines();
+    const auto full = h.controller->SchedulerStatistics().fullCalls;
+    {
+        std::lock_guard lock(h.script->mutex);
+        auto mismatch = h.page.words; mismatch.first().text = QStringLiteral("Readin");
+        h.script->callWords[h.script->calls.load() + 1] = mismatch;
+    }
+    UctControllerTestAccess::SuppressRegions(*h.controller,false);
+    h.now += 60; h.PlayFrame(9);
+    QTRY_COMPARE(h.controller->SchedulerStatistics().regionalCalls,std::uint64_t(1));
+    QTRY_COMPARE(admitted.count(),int(h.controller->SchedulerStatistics().submitted));
+    QCOMPARE(admitted.last().first().toInt(),int(AdmitVerdict::kEmpty));
+    QCOMPARE(h.controller->Model().PendingWordCount(),0);
+    QCOMPARE(h.controller->Model().Lines().size(),old.size());
+    for (int i = 0; i < old.size(); ++i) QCOMPARE(h.controller->Model().Lines()[i].id,old[i].id);
+    for (std::uint64_t frame = 10; frame <= 14; ++frame) {
+        h.now += 60; h.PlayFrame(frame);
+        QTRY_COMPARE(UctControllerTestAccess::ProbeFrame(*h.controller),frame);
+    }
+    QCOMPARE(h.controller->SchedulerStatistics().fullCalls,full);
+    QCOMPARE(h.controller->SchedulerStatistics().regionalAttempts,std::uint64_t(1));
+    QCOMPARE(h.controller->Model().PendingWordCount(),0);
+}
+
+void UltraClearTextControllerTests::timingNonimmutableMutationKeepsCausalTickets()
+{
+    if (!timing::Enabled()) return; // also invoked by the existing trace-enabled pane selector below
+    RegionalFlag flag(true); ImmutableHarness h;
+    h.page = MakeLayoutPage({{"itself",{40,40},36},{"Outside",{700,300},36}},960,540);
+    h.Enable(); QTRY_COMPARE(h.controller->BackendStatusSnapshot().state,BackendState::kReady);
+    UctFrameContext context;
+    context.geometry = h.Scene().geometry; context.requested = context.geometry.settings;
+    context.transform.valid = true; context.cameraActive = true;
+    context.viewportWidth = 960; context.viewportHeight = 540;
+    std::uint64_t sequence = 0;
+    const auto result = [&](std::uint64_t job, bool regional) {
+        h.now += 20; context.frameSeq = ++sequence;
+        h.controller->OnPresented(context); h.controller->OnPresentationSucceeded();
+        RecognitionResult r;
+        r.jobId = job; r.authority = UctControllerTestAccess::Authority(*h.controller);
+        r.stamp = UctControllerTestAccess::Stamp(*h.controller);
+        r.stamp.frameSeq = sequence; r.stamp.timestampMs = h.now;
+        r.stamp.liveCameraCapture = true; r.stamp.viewTransform.valid = true;
+        r.stamp.viewportWidth = 960; r.stamp.viewportHeight = 540;
+        const auto pixels = IndependentFramePixels(h.page.image,sequence);
+        r.reference = MakeProbeFrame(pixels.constBits(),960,540,int(pixels.bytesPerLine()),2,r.stamp);
+        r.output.ok = true;
+        for (const auto& word : h.page.words) r.output.lines.push_back({{{word.text,
+            {word.sceneRect.x()*960,word.sceneRect.y()*540,word.sceneRect.width()*960,word.sceneRect.height()*540}}}});
+        r.regionalRequested = regional;
+        r.jobKind = regional ? RecognitionJobKind::Regional : RecognitionJobKind::Full;
+        if (regional) r.output.detailRegionPx = {0,0,400,200};
+        return r;
+    };
+    const auto deliver = [&](RecognitionResult r) {
+        const bool regional = r.regionalRequested;
+        UctControllerTestAccess::Deliver(*h.controller,std::move(r),regional);
+    };
+    deliver(result(101,false)); deliver(result(102,false));
+    QCOMPARE(h.overlay.WordCount(),2);
+    const auto initial = h.overlay.TimingTicket(); QVERIFY(initial.revision);
+    auto refused = result(103,true); refused.output.lines.resize(1);
+    refused.output.lines.first().words.first().text = QStringLiteral("itelf");
+    deliver(std::move(refused));
+    QCOMPARE(h.overlay.TimingTicket().revision,initial.revision);
+    QCOMPARE(h.overlay.TimingTicket().admission.jobId,initial.admission.jobId);
+    QCOMPARE(h.panel.TimingTicket().admission.jobId,initial.admission.jobId);
+    // Empty-region uncertainty is a real model mutation, with zero new glyphs.
+    for (bool pending : {true,false}) {
+        auto uncertain = result(pending ? 104 : 105,true);
+        uncertain.output.detailRegionPx = {200,100,400,200};
+        RecognizedWord word{QStringLiteral("Novel"),pending ? QRectF(300,150,70,25) : QRectF(310,160,70,25)};
+        if (!pending) word.confidence = .1;
+        uncertain.output.lines = {RecognizedLine{{word}}};
+        deliver(std::move(uncertain));
+        QCOMPARE(h.overlay.WordCount(),2);
+        const auto ticket = h.overlay.TimingTicket();
+        QCOMPARE(ticket.admission.jobId,std::uint64_t(pending ? 104 : 105));
+        QVERIFY(ticket.flags & timing::RetainedArtifact);
+        QCOMPARE(h.controller->ScreenTextAccessibility()->TimingTicket().admission.jobId,ticket.admission.jobId);
+        QCOMPARE(h.panel.TimingTicket().admission.jobId,std::uint64_t(104)); // unchanged omission text keeps its pane ticket
+        QCOMPARE(h.controller->Model().PendingWordCount(),pending ? 1 : 0);
+    }
+    auto successful = result(106,true); successful.output.lines.resize(1); deliver(std::move(successful));
+    QCOMPARE(h.overlay.TimingTicket().admission.jobId,std::uint64_t(106));
+    QVERIFY(h.overlay.TimingTicket().flags & timing::RetainedArtifact);
+    // The same pending/empty mutation class also exists for ordinary full
+    // reads: current-proved detector omissions keep the other pane's proof.
+    for (bool pending : {true,false}) {
+        auto full = result(pending ? 107 : 108,false); full.output.lines.resize(1);
+        full.output.lines.first().words.first().text = pending ? QStringLiteral("Changed") : QStringLiteral("Uncertain");
+        if (!pending) {
+            full.output.lines.first().words.first().confidence = .1;
+            full.output.lines.first().words.first().boundsPx.translate(3,1); // changed protection, unchanged pane text
+        }
+        UctControllerTestAccess::Validate(*h.controller,full.reference);
+        deliver(std::move(full));
+        QCOMPARE(h.overlay.WordCount(),1);
+        const auto ticket = h.overlay.TimingTicket();
+        QCOMPARE(ticket.admission.jobId,std::uint64_t(pending ? 107 : 108));
+        QVERIFY(ticket.flags & timing::RetainedArtifact);
+        QCOMPARE(h.panel.TimingTicket().admission.jobId,std::uint64_t(107));
+    }
+    const auto positioned = h.overlay.TimingTicket(); const auto pane = h.panel.TimingTicket();
+    context.transform.sourceX = .02f; context.transform.sourceWidth = .98f;
+    h.controller->OnPresented(context); h.controller->OnPresentationSucceeded();
+    QCOMPARE(h.overlay.TimingTicket().revision,positioned.revision);
+    QCOMPARE(h.overlay.TimingTicket().admission.jobId,positioned.admission.jobId);
+    QCOMPARE(h.panel.TimingTicket().revision,pane.revision);
 }
 
 void UltraClearTextControllerTests::timingTraceKeepsWorkerAndAdmissionTickets()
@@ -921,6 +1143,7 @@ void UltraClearTextControllerTests::timingPaneOnlyChangePreservesPositionedTicke
 
     const auto snapshot = timing::CloseForDiagnostics();
     QVERIFY(snapshot);
+    timingNonimmutableMutationKeepsCausalTickets(); // direct cached tickets also work after the trace window closes
     const bool lossless = !snapshot->unavailableDueToContention && !snapshot->capacityDrops &&
         !snapshot->contentionDrops && !snapshot->closeOverlappedAttempts &&
         snapshot->acceptedAtSnapshot == snapshot->count;

@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <set>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
@@ -1767,6 +1768,7 @@ struct RecognitionScheduler::State {
     std::atomic<bool> shadowFault{};
     double minimumWordHeightPx{7.0};
     std::optional<Job> pending;
+    std::function<void()> beforeDequeueForTest;
     bool inFlight{};
     std::atomic<bool> cancelInFlight{false};
     std::uint64_t authority{1};
@@ -1872,6 +1874,13 @@ struct RecognitionScheduler::State {
                 self->wake.wait(lock, [&] { return self->shutdown || self->pending.has_value(); });
                 if (self->shutdown) {
                     break;
+                }
+                if (auto barrier = std::exchange(self->beforeDequeueForTest, {})) {
+                    lock.unlock();
+                    barrier();
+                    lock.lock();
+                    if (self->shutdown) break;
+                    if (!self->pending) continue;
                 }
                 job = std::move(*self->pending);
                 self->pending.reset();
@@ -2246,6 +2255,12 @@ void RecognitionScheduler::SetShadowFocus(std::optional<QRectF> sceneRect)
 void RecognitionScheduler::FailNextShadowObservationForTest()
 {
     state_->shadowFault.store(true);
+}
+
+void RecognitionScheduler::SetBeforeDequeueForTest(std::function<void()> barrier)
+{
+    std::lock_guard lock(state_->mutex);
+    state_->beforeDequeueForTest = std::move(barrier);
 }
 
 RecognitionScheduler::~RecognitionScheduler()
@@ -3386,6 +3401,7 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
     };
 
     QVector<AcceptedLine> admitted;
+    auto regionalNextLineId = nextLineId_; // optional transactions allocate only on commit
     QSet<std::uint64_t> retainedIds;
     QVector<PendingWord> nextPending;
     const auto pendingTicket = std::make_shared<const PendingEvidence>(PendingEvidence{
@@ -3541,7 +3557,7 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                 }
             }
             if (duplicate) continue;
-            if (!retained) candidate.line.id = nextLineId_++;
+            if (!retained) candidate.line.id = regional ? regionalNextLineId++ : nextLineId_++;
             admitted.push_back(std::move(candidate.line));
         }
     }
@@ -3615,6 +3631,73 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
             kept.push_back(line);
         }
     } else kept += admitted;
+    if (regional) {
+        // Check the complete, capped proposal before committing anything. A
+        // supplemental read may add evidence, but cannot withdraw an owned
+        // word because its crop omitted, misspelled or protected that word.
+        // Full reads and independent probes remain the correction authority.
+        struct WordSlot { const AcceptedLine* line; const AcceptedWord* word; };
+        const auto activeWords = [&](const QVector<AcceptedLine>& lines, bool ownedOnly) {
+            QVector<const AcceptedLine*> order;
+            for (const auto& line : lines)
+                if (line.provenance.SameScene(current) && (!ownedOnly || !regionalKeptIds.contains(line.id)))
+                    order.push_back(&line);
+            QVector<WordSlot> words;
+            for (const auto* line : OrderLinesForReading(std::move(order))) {
+                QSet<int> named;
+                int sequential = 0;
+                for (int t = 0; t < line->readingTokens.size(); ++t) {
+                    if (line->readingTokens[t].isEmpty()) continue;
+                    const int index = line->readingWordIndices.isEmpty() ? sequential++ :
+                        (t < line->readingWordIndices.size() ? line->readingWordIndices[t] : -1);
+                    if (index >= 0 && index < line->words.size() &&
+                        line->words[index].text == line->readingTokens[t]) named.insert(index);
+                }
+                for (int w = 0; w < line->words.size(); ++w)
+                    if (line->words[w].glyphEligible || named.contains(w)) words.push_back({line,&line->words[w]});
+            }
+            return words;
+        };
+        const auto oldWords = activeWords(lines_, true);
+        const auto proposedWords = activeWords(kept, false);
+        const auto maskKey = [](const QRectF& rect) {
+            return std::array<double,4>{rect.x(),rect.y(),rect.width(),rect.height()};
+        };
+        std::set<std::array<double,4>> oldProtection;
+        for (const auto& line : lines_)
+            for (const auto& mask : line.protectedSceneRects) {
+                const auto key = maskKey(mask.translated(line.sceneOffset));
+                if (std::all_of(key.begin(),key.end(),[](double v) { return std::isfinite(v); })) oldProtection.insert(key);
+            }
+        const auto newProtectionAt = [&](const QRectF& oldRect, const QRectF& proposedRect) {
+            return std::any_of(kept.begin(),kept.end(),[&](const auto& line) {
+                return std::any_of(line.protectedSceneRects.begin(),line.protectedSceneRects.end(),
+                    [&](const auto& mask) {
+                        const auto absolute = mask.translated(line.sceneOffset);
+                        return absolute.intersects(proposedRect) &&
+                            (oldRect != proposedRect || !oldProtection.contains(maskKey(absolute)));
+                    });
+            });
+        };
+        qsizetype next = 0;
+        for (const auto& old : oldWords) {
+            const auto rect = old.word->sceneRect.translated(old.line->sceneOffset);
+            bool found = false;
+            for (; next < proposedWords.size(); ++next) {
+                const auto& proposed = proposedWords[next];
+                const auto proposedRect = proposed.word->sceneRect.translated(proposed.line->sceneOffset);
+                if (old.word->text != proposed.word->text || Iou(rect,proposedRect) < tuning_.agreementIou ||
+                    (old.word->glyphEligible && !proposed.word->glyphEligible) ||
+                    (old.line->valid && !proposed.line->valid)) continue;
+                if (old.word->glyphEligible && newProtectionAt(rect,proposedRect)) continue;
+                found = true;
+                ++next; // one-to-one, in reading order, including repeated words
+                break;
+            }
+            if (!found) return AdmitVerdict::kEmpty; // exact no-op: tickets, ids, proof and visibility survive
+        }
+        nextLineId_ = regionalNextLineId;
+    }
     lines_ = std::move(kept);
     if (regional) {
         QVector<PendingWord> retained;

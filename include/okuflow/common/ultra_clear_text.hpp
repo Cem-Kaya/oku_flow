@@ -532,6 +532,9 @@ public:
     // Explicit hardware-free fixture seam; affects only an enabled diagnostic
     // observer. Recognition and its original-image fallback remain unchanged.
     void FailNextShadowObservationForTest();
+    // One-shot hardware-free fixture barrier, outside the scheduler mutex,
+    // before taking the pending job. Normal workers have no barrier.
+    void SetBeforeDequeueForTest(std::function<void()> barrier);
     std::uint64_t Authority() const;
     bool IsCurrent(const RecognitionResult& result) const;
     bool HasWork() const; // pending or in flight

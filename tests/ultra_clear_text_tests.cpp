@@ -800,6 +800,10 @@ private slots:
     void regionalEdgeCandidateAddsNoPending_data();
     void regionalEdgeCandidateAddsNoPending();
     void regionalMaskBeyondRegionKeepsOwningLine();
+    void regionalWithdrawalIsAtomic_data();
+    void regionalWithdrawalIsAtomic();
+    void regionalRefusalPreservesExpiredAndInvalidMemory();
+    void regionalRefusalPreservesReadingOnlyAndPendingTickets();
     void probeReferencesPrioritizeUnverifiedAndOldestLines();
     void budgetRefreshCannotBorrowOtherProof_data();
     void budgetRefreshCannotBorrowOtherProof();
@@ -4262,6 +4266,153 @@ void UltraClearTextTests::regionalMaskBeyondRegionKeepsOwningLine()
     QCOMPARE(model.Lines().first().id,old.id);
     QCOMPARE(model.Lines().first().protectedSceneRects,old.protectedSceneRects);
     QCOMPARE(model.Lines().first().readingTokens,old.readingTokens);
+    QCOMPARE(model.PendingWordCount(),0);
+}
+
+void UltraClearTextTests::regionalWithdrawalIsAtomic_data()
+{
+    QTest::addColumn<int>("change"); QTest::addColumn<bool>("freshProbe");
+    const char* names[]{"three-pixel-edge-jitter","contained-misspelling","repeated-word-count",
+                        "word-order","new-protection","line-cap","expanded-existing-protection"};
+    for (int change = 0; change < 7; ++change)
+        for (bool probe : {false,true})
+            QTest::newRow(qPrintable(QString::fromLatin1(names[change]) + (probe ? "-probe" : "-no-probe")))
+                << change << probe;
+}
+
+void UltraClearTextTests::regionalWithdrawalIsAtomic()
+{
+    QFETCH(int,change); QFETCH(bool,freshProbe);
+    const auto page = MakeLayoutPage({{"end",{80,80},48},{"here",{565,80},48},{"Outside",{1100,400},48}});
+    const auto transform = Transform(1,.5,.5);
+    const auto current = Stamp(3,4,0,transform);
+    const auto result = [&](int frame,int ms) {
+        auto stamp = Stamp(3,4,ms,transform); stamp.frameSeq = frame;
+        auto value = ResultFor(page,transform,stamp); value.authority = 7;
+        value.output.lines.first().words.last().boundsPx.setRight(390);
+        if (change == 1) {
+            value.output.lines.first().words.resize(1);
+            value.output.lines.first().words.first().text = QStringLiteral("itself");
+        } else if (change == 2) {
+            for (auto& word : value.output.lines.first().words) word.text = QStringLiteral("again");
+        } else if (change == 5) {
+            const auto outside = value.output.lines.last();
+            value.output.lines.resize(1);
+            for (int i = 0; i < 1023; ++i) value.output.lines.push_back(outside);
+        } else if (change == 6) {
+            auto mask = value.output.lines.first().words.first();
+            mask.text = QStringLiteral("uncertain"); mask.confidence = .1;
+            mask.boundsPx = {mask.boundsPx.left()+5,mask.boundsPx.top()+2,1,2};
+            value.output.lines.first().words.push_back(mask);
+        }
+        return value;
+    };
+    OverlayModel model, control;
+    for (auto* target : {&model,&control}) {
+        target->Admit(result(1,100),current,nullptr,110);
+        QCOMPARE(target->Admit(result(2,200),current,nullptr,210),AdmitVerdict::kAccepted);
+    }
+    const auto probe = ProbeOf(RenderView(page.image,transform,kViewWidth,kViewHeight),transform,3,4,4,400);
+    if (freshProbe) { model.Validate(probe,400); control.Validate(probe,400); }
+    const auto old = model.Lines();
+    const auto reading = model.ReadingText(410,4);
+    const auto shown = model.SceneWords(410,4).size();
+    auto roi = result(3,300); roi.output.lines.resize(1);
+    roi.output.detailRegionPx = {0,0,400,200}; roi.jobKind = RecognitionJobKind::Regional;
+    auto& words = roi.output.lines.first().words;
+    if (change == 0 || change == 2) {
+        // Old detector ends at 390. A three-pixel crop jitter puts it
+        // inside the backend's eight-pixel exclusion, so it is absent.
+        words.removeLast();
+    } else if (change == 1) words.first().text = QStringLiteral("itelf");
+    else if (change == 3) std::swap(words.first(),words.last());
+    else if (change == 4) {
+        auto uncertain = words.first(); uncertain.text = QStringLiteral("Novel");
+        words.push_back(uncertain); // new pending protection covers an old confirmed word
+    } else if (change == 5) {
+        auto added = words.first(); added.text = QStringLiteral("Novel");
+        added.boundsPx = {200,100,80,25};
+        roi.output.lines.prepend(RecognizedLine{{added}}); // consumes the final line slot before the owned line
+    } else words.last().boundsPx = words.first().boundsPx; // an old tiny mask does not authorize a new full-word mask
+    QCOMPARE(model.Admit(roi,current,freshProbe ? &probe : nullptr,410),AdmitVerdict::kEmpty);
+    QCOMPARE(model.PendingWordCount(),0);
+    QCOMPARE(model.ReadingText(410,4),reading);
+    QCOMPARE(model.SceneWords(410,4).size(),shown);
+    QCOMPARE(model.Lines().size(),old.size());
+    for (int i = 0; i < old.size(); ++i) {
+        const auto& line = model.Lines()[i];
+        QCOMPARE(line.id,old[i].id); QCOMPARE(line.sceneRect,old[i].sceneRect);
+        QCOMPARE(line.sceneOffset,old[i].sceneOffset); QCOMPARE(line.readingTokens,old[i].readingTokens);
+        QCOMPARE(line.protectedSceneRects,old[i].protectedSceneRects);
+        QCOMPARE(line.reference.values,old[i].reference.values); QCOMPARE(line.valid,old[i].valid);
+        QCOMPARE(line.validatedAtMs,old[i].validatedAtMs); QCOMPARE(line.validatedFrameSeq,old[i].validatedFrameSeq);
+        QCOMPARE(line.provenance.frameSeq,old[i].provenance.frameSeq);
+    }
+    // A refused transaction cannot even consume ids needed by a later full.
+    const auto full = result(5,500);
+    model.Admit(full,current,nullptr,510); control.Admit(full,current,nullptr,510);
+    QCOMPARE(model.Lines().size(),control.Lines().size());
+    for (int i = 0; i < model.Lines().size(); ++i) QCOMPARE(model.Lines()[i].id,control.Lines()[i].id);
+}
+
+void UltraClearTextTests::regionalRefusalPreservesExpiredAndInvalidMemory()
+{
+    const auto page = MakeLayoutPage({{"itself",{80,80},48}});
+    const auto transform = Transform(1,.5,.5);
+    const auto result = [&](int frame,int ms) {
+        auto stamp = Stamp(3,4,ms,transform); stamp.frameSeq = frame;
+        return ResultFor(page,transform,stamp);
+    };
+    for (int state = 0; state < 3; ++state) {
+        OverlayModel model;
+        auto initial = result(1,100); auto second = result(2,200);
+        model.Admit(initial,initial.stamp,nullptr,110); model.Admit(second,second.stamp,nullptr,210);
+        const auto id = model.Lines().first().id;
+        auto checkStamp = second.stamp; checkStamp.frameSeq = 4; checkStamp.timestampMs = 400;
+        if (state == 1) model.ApplyChecks({{id,true,{false,false,0,{}}}},checkStamp); // outside view: stored but invalid
+        if (state == 2) model.ApplyChecks({{id,true,{false,true,0,{}}}},checkStamp); // genuine contradiction removes it
+        auto roi = result(5,600); roi.output.detailRegionPx = {0,0,400,200};
+        roi.output.lines.first().words.first().text = QStringLiteral("itelf");
+        const auto before = model.Lines();
+        if (state != 2) QCOMPARE(model.Admit(roi,roi.stamp,nullptr,610),AdmitVerdict::kEmpty);
+        else model.Admit(roi,roi.stamp,nullptr,610);
+        QVERIFY(model.SceneWords(610,5).isEmpty());
+        QVERIFY(!model.ReadingText(610,5).contains(QStringLiteral("itself")));
+        if (state != 2) {
+            QCOMPARE(model.Lines().first().id,before.first().id);
+            QCOMPARE(model.Lines().first().valid,before.first().valid);
+            QCOMPARE(model.Lines().first().validatedAtMs,before.first().validatedAtMs);
+            QCOMPARE(model.PendingWordCount(),0);
+        } else QCOMPARE(model.AcceptedWordCount(),0);
+    }
+}
+
+void UltraClearTextTests::regionalRefusalPreservesReadingOnlyAndPendingTickets()
+{
+    const auto page = MakeLayoutPage({{"itself",{80,80},48},{"Outside",{1100,400},48}});
+    const auto transform = Transform(1,.5,.5);
+    const auto result = [&](int frame,int ms) {
+        auto stamp = Stamp(3,4,ms,transform); stamp.frameSeq = frame + 10;
+        stamp.holdDisplay = HoldDisplay::Held; stamp.holdAcquisition = frame;
+        auto value = ResultFor(page,transform,stamp); value.authority = 7; return value;
+    };
+    OverlayModel model, control;
+    const auto first = result(1,100);
+    model.Admit(first,first.stamp,nullptr,110); control.Admit(first,first.stamp,nullptr,110);
+    QCOMPARE(model.PendingWordCount(),2); QVERIFY(model.SceneWords(110,1).isEmpty());
+    const auto before = model.Lines();
+    auto roi = result(2,200); roi.output.lines.resize(1); roi.output.detailRegionPx = {0,0,400,200};
+    roi.output.lines.first().words.first().text = QStringLiteral("itelf");
+    QCOMPARE(model.Admit(roi,roi.stamp,nullptr,210),AdmitVerdict::kEmpty);
+    QCOMPARE(model.PendingWordCount(),2);
+    QCOMPARE(model.Lines().first().id,before.first().id);
+    QCOMPARE(model.ReadingText(210,2),control.ReadingText(210,2));
+    // A full read of acquisition two confirms both acquisition-one tickets.
+    auto full = result(2,200);
+    model.Admit(full,full.stamp,nullptr,220); control.Admit(full,full.stamp,nullptr,220);
+    QCOMPARE(model.PendingWordCount(),control.PendingWordCount());
+    QCOMPARE(model.AcceptedWordCount(),control.AcceptedWordCount());
+    QCOMPARE(model.ReadingText(220,2),control.ReadingText(220,2));
     QCOMPARE(model.PendingWordCount(),0);
 }
 
