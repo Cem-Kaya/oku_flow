@@ -525,6 +525,7 @@ private slots:
     void processingCorrespondenceGateRevokesTextAndUiaWithoutChangingPreference();
     void pausedDetailSettledWhileBusyUsesLatestView();
     void pausedDetailFailureIsFiniteAndOtherRegionCanProceed();
+    void pausedDetailSettledDuringPresentationFailureRunsAfterRecovery();
     void pausedDetailHeldCopiesNeverCorroborate();
     void pausedDetailAuthorityRevokesHeldWork_data();
     void pausedDetailAuthorityRevokesHeldWork();
@@ -2960,6 +2961,29 @@ void UltraClearTextControllerTests::pausedDetailFailureIsFiniteAndOtherRegionCan
     QTest::qWait(160);QCOMPARE(h.script->calls.load(),3);QVERIFY(h.overlay.WordCount()>0);
     h.controller->UpdateImmutableView(ZoomOnto({.72,.7,.1,.1}),960,540);
     QTRY_COMPARE(h.script->calls.load(),5);QTest::qWait(30);QCOMPARE(h.script->calls.load(),5);
+}
+void UltraClearTextControllerTests::pausedDetailSettledDuringPresentationFailureRunsAfterRecovery()
+{
+    // The settle deadline can expire while presentation is latched failed.
+    // Recovery is an event, not a view change: it must ask once more for the
+    // already-settled view instead of leaving its small print unexamined
+    // until the owner happens to pan or zoom again.
+    UctTiming timing;timing.immutableDetailSettleMs=25;
+    ImmutableHarness h(timing);h.script->detailFocus=true;h.Enable();
+    auto scene=h.Scene();scene.corroboration=UctImmutableFrame{OwnedPixels(IndependentFramePixels(h.page.image,11)),11,20};
+    QVERIFY(h.controller->SetImmutableScene(scene));QTRY_VERIFY(h.overlay.WordCount()>0);
+    QTRY_COMPARE(h.script->calls.load(),2);
+    h.controller->OnMediaPresentationFailed();
+    h.controller->UpdateImmutableView(ZoomOnto({.12,.15,.1,.1}),960,540);
+    QTest::qWait(90); // the settle timer fired behind the presentation latch
+    QCOMPARE(h.script->calls.load(),2);
+    QCOMPARE(h.controller->ImmutableDetailPasses(),std::uint64_t(0));
+    h.controller->OnMediaPresentationSucceeded();
+    QTRY_COMPARE(h.script->calls.load(),4);
+    QTRY_COMPARE(h.controller->ImmutableDetailPasses(),std::uint64_t(1));
+    QTRY_VERIFY(!h.controller->ActiveImmutableDetail());
+    QVERIFY(h.overlay.WordCount()>0);
+    QTest::qWait(60);QCOMPARE(h.script->calls.load(),4); // recovered once, never a polling loop
 }
 void UltraClearTextControllerTests::pausedDetailHeldCopiesNeverCorroborate()
 {

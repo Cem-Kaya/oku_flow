@@ -752,10 +752,16 @@ void UltraClearTextController::OnMediaPresentationSucceeded()
     if (!HasImmutableScene()) return;
     // This receipt changes presentation availability only. In particular it
     // neither renews media PTS nor resubmits a completed immutable artifact.
+    const bool recovered = presentationFailed_;
     presentationFailed_ = false;
     RefreshOverlay(clock_());
     UpdateReadingText();
     UpdateStatus();
+    // Only an actual recovery re-asks for visible detail: the settle deadline
+    // may have expired behind the failure latch, and no view change or OCR
+    // result will follow to ask again. Ordinary success receipts (which can
+    // arrive every present) must not keep restarting the settle timer.
+    if (recovered) ScheduleImmutableDetail();
 }
 
 void UltraClearTextController::OnMediaPresentationFailed()
@@ -1390,6 +1396,7 @@ void UltraClearTextController::HandleBackendStatus(uct::BackendStatus status)
         uct::timing::RecordEvent(uct::timing::Event::BackendState, key,
             {static_cast<std::uint32_t>(status.state), 0, status.usesGpu ? uct::timing::DeviceInput : 0u});
     }
+    const uct::BackendState previousBackendState = backend_.state;
     backend_ = std::move(status);
     if (!BackendUsable(backend_)) {
         if (HasProvenImmutableArtifact()) {
@@ -1403,6 +1410,11 @@ void UltraClearTextController::HandleBackendStatus(uct::BackendStatus status)
     // or timer tick. A waiting selected frame is submitted exactly once.
     if (immutableScene_ && backend_.state == uct::BackendState::kReady) {
         SubmitImmutableIfNeeded();
+        // A settled paused view whose detail deadline expired while the
+        // backend was still preparing gets one fresh ask on the transition
+        // into ready; if a job was just submitted above, its result (not
+        // this timer) remains the path that schedules detail afterwards.
+        if (previousBackendState != uct::BackendState::kReady) ScheduleImmutableDetail();
     } else if (advancingMediaScene_ && backend_.state == uct::BackendState::kReady) {
         SubmitAdvancingMediaProbe();
     }

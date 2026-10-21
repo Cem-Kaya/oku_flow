@@ -2582,9 +2582,15 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
         for (int row = first; row <= last; ++row) rows[row].push_back(index);
     };
     const auto nearby = [&](const QRectF& rect) {
+        const auto [first, last] = rowRange(rect);
+        // One row is already unique and in increasing line order (indexLine
+        // only ever appends larger indexes), so the common small-word case
+        // needs neither the hash set nor the sort below. This runs once per
+        // incoming word on the admission path, where a dense page would
+        // otherwise allocate a QSet for every word.
+        if (first == last) return rows[first];
         QVector<qsizetype> indexes;
         QSet<qsizetype> seen;
-        const auto [first, last] = rowRange(rect);
         for (int row = first; row <= last; ++row)
             for (const auto index : rows[row])
                 if (!seen.contains(index)) { seen.insert(index); indexes.push_back(index); }

@@ -6288,7 +6288,9 @@ authority and full digest before retaining earlier same-frame coverage.
 validation clocks and adds only independently proved new glyphs. The union caps
 are 1024 lines, 8192 word slots and 32768 reading tokens/protected rectangles;
 retired slots count toward the bound. A fixed 64-row spatial index limits
-ordinary matching to nearby rows. Contradictory independently proved overlap
+ordinary matching to nearby rows; a word lying in one row reuses that row's
+already-ordered index list instead of allocating a deduplication set and
+sorting it again for every incoming word. Contradictory independently proved overlap
 falls back to original ink, and source/seek changes cannot inherit old proof.
 `ApplyImmutableConflictBlocks` applies persistent word-local conflict rectangles
 through the same bounded index, including when no old glyph survives. The 8192
@@ -6395,6 +6397,11 @@ SubmitImmutableDetailIfUseful,FinishImmutableDetail}` use a single-shot settle
 timer and a bounded non-evicting attempt list. Selected/neighbour jobs share
 one focus but distinct acquisition identities. Completion/failure schedules
 only the latest view; authority invalidation clears timer/focus/coverage.
+A settle deadline that expired while presentation was latched failed or the
+backend was still preparing is re-asked once by the recovery event itself
+(`OnMediaPresentationSucceeded` only on an actual failure-to-success
+transition, `HandleBackendStatus` only on the transition into ready);
+ordinary receipts never restart the settle timer, and no polling is added.
 `UctTiming::{immutableDetailSettleMs,immutableDetailMagnification}` and the
 controller's detail state do not renew media timestamps or manufacture evidence.
 
