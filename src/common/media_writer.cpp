@@ -275,6 +275,25 @@ private:
     std::atomic<VideoRecorder::WriterStage>& stage_;
 };
 
+Microsoft::WRL::ComPtr<IMFAttributes> RecordingSinkAttributes(
+    IUnknown* d3dManager, bool hardwareTransforms = true)
+{
+    Microsoft::WRL::ComPtr<IMFAttributes> attrs;
+    ThrowIfFailed(MFCreateAttributes(attrs.GetAddressOf(), 4), "Create sink attributes");
+    attrs->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, hardwareTransforms ? TRUE : FALSE);
+    attrs->SetUINT32(MF_SINK_WRITER_DISABLE_THROTTLING, TRUE);
+    // Preserve the file writer's low-latency and fragmented MP4 configuration.
+    ThrowIfFailed(attrs->SetUINT32(MF_LOW_LATENCY, TRUE),
+                  "Request low-latency recording");
+    if (d3dManager) {
+        ThrowIfFailed(attrs->SetUnknown(MF_SINK_WRITER_D3D_MANAGER, d3dManager),
+                      "Set sink-writer D3D manager");
+    }
+    ThrowIfFailed(attrs->SetGUID(MF_TRANSCODE_CONTAINERTYPE, MFTranscodeContainerType_FMPEG4),
+                  "Set fragmented MP4 container");
+    return attrs;
+}
+
 } // namespace
 
 const char* VideoRecorder::StageName(WriterStage stage)
@@ -839,6 +858,111 @@ bool VideoRecorder::StartGpu(
     return false;
 }
 
+bool VideoRecorder::StartMemory(std::shared_ptr<VideoMemoryStream> output,
+                                UINT width, UINT height,
+                                UINT frameRateNumerator, UINT frameRateDenominator,
+                                UINT bitrate, const GpuVideoFrame* optionalProbe)
+{
+    if (abandoned_.load()) return false;
+    Stop();
+    failedAttemptPaths_.clear();
+    targetPath_.clear();
+    archive_.store(nullptr, std::memory_order_release);
+    terminalResult_.Reset();
+    writeFailureHr_ = S_OK;
+    const auto pixels = static_cast<std::uint64_t>(width) * height;
+    const bool above1080p = pixels > 1920ull * 1080;
+    if (!output || !width || !height || (width & 1u) || (height & 1u) ||
+        !frameRateNumerator || !frameRateDenominator ||
+        static_cast<std::uint64_t>(frameRateNumerator) >
+            (above1080p ? 15ull : 30ull) * frameRateDenominator ||
+        bitrate != (above1080p ? 16'000'000u : 8'000'000u)) {
+        SetError("RAM recording requires even dimensions, at most 30 FPS through "
+                 "1080p or 15 FPS above it, and the fixed 8/16 Mbps H.264 bitrate.");
+        return false;
+    }
+    if (optionalProbe && (!optionalProbe->IsValid() ||
+        optionalProbe->width != width || optionalProbe->height != height)) {
+        SetError("RAM recording probe dimensions do not match the output.");
+        return false;
+    }
+    if (!InputFitsEncoderBudget(width, height, false)) {
+        SetError("RAM recording input cannot fit the CPU encoder backlog budget.");
+        return false;
+    }
+    const auto claimHr = output->BeginRecording();
+    if (FAILED(claimHr)) {
+        SetError("RAM recording needs a fresh unsealed output without writable cursors (" +
+                 HrToString(claimHr) + ").");
+        return false;
+    }
+    memoryOutput_ = std::move(output);
+    try {
+        // Open the probe's actual allocation on a matching adapter. Device
+        // enumeration creates no encoders; at most one native and one CPU
+        // encoder are attempted, strictly sequentially on this worker.
+        const bool haveGpu = optionalProbe &&
+            InitializeGpuDevice(optionalProbe->textureSharedHandle);
+        const bool nativeGpu = haveGpu && InitializeGpuVideoProcessor(
+            width, height, frameRateNumerator, frameRateDenominator);
+        bool useNativeGpu = nativeGpu;
+        if (nativeGpu) {
+            try {
+                InitializeSink(memoryOutput_, width, height, frameRateNumerator,
+                    frameRateDenominator, bitrate, gpuDeviceManager_.Get(),
+                    MFVideoFormat_NV12);
+            } catch (...) {
+                if (abandoned_.load()) throw;
+                sinkWriter_.Reset();
+                pendingSample_.Reset();
+                ResetGpuVideoProcessor();
+                // No file attempt path, archive or stale metadata is reused.
+                // Refuse retry if a failed native adapter still owns a cursor.
+                ThrowIfFailed(memoryOutput_->ResetForRetry(), "Reset RAM encoder attempt");
+                useNativeGpu = false;
+            }
+        }
+        if (!useNativeGpu) {
+            InitializeSink(memoryOutput_, width, height, frameRateNumerator,
+                frameRateDenominator, bitrate, nullptr, MFVideoFormat_ARGB32);
+        }
+        if (abandoned_.load()) return false;
+        frameWidth_ = width;
+        frameHeight_ = height;
+        frameRateNumerator_ = frameRateNumerator;
+        frameRateDenominator_ = frameRateDenominator;
+        timeline_.Reset(frameRateNumerator_, frameRateDenominator_);
+        lastMemoryCaptureTimestamp100ns_ = -1;
+        pendingSample_.Reset();
+        pendingSampleTime100ns_ = -1;
+        timelineEnd100ns_ = 0;
+        videoSamplesWritten_ = 0;
+        videoBacklog_.Reset();
+        audioBacklog_.Reset();
+        audioTimeline_.Reset(48000);
+        lastEncoderStatisticsError_ = S_OK;
+        stopReason_ = StopReason::None;
+        activeCodec_ = Codec::H264;
+        audioEnabled_ = false;
+        gpuInputEnabled_ = useNativeGpu;
+        gpuCompatibilityReadback_ = haveGpu && !useNativeGpu;
+        recording_ = true;
+        lastError_.clear();
+        return true;
+    } catch (const std::exception& error) {
+        SetError(error.what());
+    } catch (...) {
+        SetError("Unknown exception starting RAM recorder");
+    }
+    // Failed initialization must never publish a sealable compressed source.
+    if (!abandoned_.load()) {
+        writeFailureHr_ = E_FAIL;
+        if (memoryOutput_) memoryOutput_->FinishRecording(false);
+        Stop();
+    }
+    return false;
+}
+
 VideoRecorder::FinalizeResult VideoRecorder::Stop()
 {
     return FinalizeAndStop(StopReason::Manual);
@@ -878,7 +1002,8 @@ VideoRecorder::FinalizeResult VideoRecorder::FinalizeAndStop(StopReason reason)
         stage_.store(WriterStage::kFinalize, std::memory_order_relaxed);
         const HRESULT finalizeHr = sinkWriter_->Finalize();
         stage_.store(WriterStage::kIdle, std::memory_order_relaxed);
-        const HRESULT outcomeHr = FAILED(writeFailureHr_)
+        const HRESULT memoryHr = memoryOutput_ ? memoryOutput_->WriteError() : S_OK;
+        const HRESULT outcomeHr = FAILED(memoryHr) ? memoryHr : FAILED(writeFailureHr_)
             ? static_cast<HRESULT>(writeFailureHr_)
             : (reason == StopReason::WriteFailed ? E_FAIL
                : (FAILED(trailingWriteHr) ? trailingWriteHr : finalizeHr));
@@ -892,7 +1017,8 @@ VideoRecorder::FinalizeResult VideoRecorder::FinalizeAndStop(StopReason reason)
             SetError(
                 "The recording's final fragment could not be completed (" +
                 HrToString(outcomeHr) +
-                "). The file was retained; playback has not been verified.");
+                (memoryOutput_ ? "). The RAM segment cannot be sealed."
+                               : "). The file was retained; playback has not been verified."));
         }
     }
     if (hadSink) {
@@ -900,6 +1026,11 @@ VideoRecorder::FinalizeResult VideoRecorder::FinalizeAndStop(StopReason reason)
         result.videoSamplesWritten = videoSamplesWritten_;
     }
     sinkWriter_.Reset();
+    if (memoryOutput_) {
+        memoryOutput_->FinishRecording(hadSink && result.FullyCompleted() &&
+                                       !abandoned_.load());
+        memoryOutput_.reset();
+    }
     if (hadSink) {
         if (auto archive = Archive()) archive->Finalized(result.FullyCompleted());
     }
@@ -948,27 +1079,7 @@ bool VideoRecorder::InitializeSink(const std::wstring& filePath,
                                    IUnknown* d3dManager,
                                    const GUID& inputSubtype)
 {
-    Microsoft::WRL::ComPtr<IMFAttributes> attrs;
-    ThrowIfFailed(MFCreateAttributes(attrs.GetAddressOf(), 4), "Create sink attributes");
-    attrs->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE);
-    attrs->SetUINT32(MF_SINK_WRITER_DISABLE_THROTTLING, TRUE);
-    // Bounded live admission must not depend on an encoder collecting a long
-    // lookahead window before its first output. Windows 8+ sink writers accept
-    // this request; actual driver support remains conditional and is covered
-    // by the generated-media fixtures. Low latency can trade encoding quality
-    // for prompt output, which is appropriate for this live capture route.
-    ThrowIfFailed(attrs->SetUINT32(MF_LOW_LATENCY, TRUE),
-                  "Request low-latency recording");
-    if (d3dManager) {
-        ThrowIfFailed(
-            attrs->SetUnknown(MF_SINK_WRITER_D3D_MANAGER, d3dManager),
-            "Set sink-writer D3D manager");
-    }
-    // Fragmented MP4: the file is playable up to the last completed fragment
-    // even if the process dies mid-recording (no moov finalize needed).
-    ThrowIfFailed(attrs->SetGUID(MF_TRANSCODE_CONTAINERTYPE, MFTranscodeContainerType_FMPEG4),
-                  "Set fragmented MP4 container");
-
+    auto attrs = RecordingSinkAttributes(d3dManager);
     // The earlier existence check is advisory: exclusively create the actual
     // output so a racing user file can never be truncated by the URL sink.
     Microsoft::WRL::ComPtr<IMFByteStream> output;
@@ -986,8 +1097,42 @@ bool VideoRecorder::InitializeSink(const std::wstring& filePath,
     if (sinkInitializationObserver_) {
         sinkInitializationObserver_(d3dManager != nullptr, output.Get());
     }
+    const bool initialized = ConfigureSink(output.Get(), attrs.Get(), width, height,
+        frameRateNumerator, frameRateDenominator, codec, audioFormat,
+        inputSubtype, width * height * 5);
+    if (initialized) {
+        targetPath_ = filePath;
+        failedAttemptPaths_.pop_back();
+    }
+    return initialized;
+}
+
+bool VideoRecorder::InitializeSink(const std::shared_ptr<VideoMemoryStream>& output,
+                                   UINT width, UINT height,
+                                   UINT frameRateNumerator, UINT frameRateDenominator,
+                                   UINT bitrate, IUnknown* d3dManager,
+                                   const GUID& inputSubtype)
+{
+    // CPU recap must work with the required Windows software H.264 codec;
+    // neither absent hardware encoders nor a failed GPU attempt requires a GPU.
+    auto attrs = RecordingSinkAttributes(d3dManager, d3dManager != nullptr);
+    Microsoft::WRL::ComPtr<IMFByteStream> bytes;
+    ThrowIfFailed(output->OpenWriteStream(&bytes), "Open bounded RAM recording output");
+    if (sinkInitializationObserver_)
+        sinkInitializationObserver_(d3dManager != nullptr, bytes.Get());
+    return ConfigureSink(bytes.Get(), attrs.Get(), width, height,
+        frameRateNumerator, frameRateDenominator, Codec::H264, nullptr,
+        inputSubtype, bitrate);
+}
+
+bool VideoRecorder::ConfigureSink(IMFByteStream* output, IMFAttributes* attributes,
+                                  UINT width, UINT height,
+                                  UINT frameRateNumerator, UINT frameRateDenominator,
+                                  Codec codec, const AudioFormat* audioFormat,
+                                  const GUID& inputSubtype, UINT bitrate)
+{
     Microsoft::WRL::ComPtr<IMFSinkWriter> writer;
-    ThrowIfFailed(MFCreateSinkWriterFromURL(nullptr, output.Get(), attrs.Get(), writer.GetAddressOf()),
+    ThrowIfFailed(MFCreateSinkWriterFromURL(nullptr, output, attributes, writer.GetAddressOf()),
                   "Create sink writer");
 
     // Output type. The caller probes AV1 first and falls back to H.264 when
@@ -997,7 +1142,7 @@ bool VideoRecorder::InitializeSink(const std::wstring& filePath,
     ThrowIfFailed(outType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video), "Set out major type");
     const GUID& outputSubtype = codec == Codec::Av1 ? MFVideoFormat_AV1 : MFVideoFormat_H264;
     ThrowIfFailed(outType->SetGUID(MF_MT_SUBTYPE, outputSubtype), "Set out subtype");
-    ThrowIfFailed(outType->SetUINT32(MF_MT_AVG_BITRATE, width * height * 5), "Set bitrate"); // rough default
+    ThrowIfFailed(outType->SetUINT32(MF_MT_AVG_BITRATE, bitrate), "Set bitrate");
     ThrowIfFailed(outType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive), "Set interlace");
     ThrowIfFailed(MFSetAttributeSize(outType.Get(), MF_MT_FRAME_SIZE, width, height), "Set out frame size");
     ThrowIfFailed(MFSetAttributeRatio(outType.Get(),
@@ -1013,8 +1158,12 @@ bool VideoRecorder::InitializeSink(const std::wstring& filePath,
     // loss).
     const UINT32 keyframeSpacingFrames = std::max<UINT32>(
         1u,
-        (2u * frameRateNumerator + frameRateDenominator - 1u) /
-            std::max<UINT32>(1u, frameRateDenominator));
+        memoryOutput_ ? static_cast<UINT32>(std::min<std::uint64_t>(
+            std::numeric_limits<UINT32>::max(),
+            (2ull * frameRateNumerator + frameRateDenominator - 1ull) /
+                std::max<UINT32>(1u, frameRateDenominator)))
+        : (2u * frameRateNumerator + frameRateDenominator - 1u) /
+                std::max<UINT32>(1u, frameRateDenominator));
     ThrowIfFailed(outType->SetUINT32(MF_MT_MAX_KEYFRAME_SPACING,
                                      keyframeSpacingFrames),
                   "Set keyframe spacing");
@@ -1141,8 +1290,6 @@ bool VideoRecorder::InitializeSink(const std::wstring& filePath,
     ThrowIfFailed(writer->BeginWriting(), "BeginWriting");
 
     sinkWriter_ = writer;
-    targetPath_ = filePath;
-    failedAttemptPaths_.pop_back();
     return true;
 }
 
@@ -1293,7 +1440,8 @@ bool VideoRecorder::WritePendingSample(std::int64_t duration100ns)
         pendingSampleTime100ns_ = -1;
     }
     if (IsDiskFullError(writeHr)) {
-        SetError(kDiskFullMessage);
+        SetError(memoryOutput_ ? "RAM recording reached its bounded compressed-byte capacity."
+                               : kDiskFullMessage);
         return false;
     }
     ThrowIfFailed(writeHr, "WriteSample");
@@ -1396,6 +1544,7 @@ bool VideoRecorder::CanAcceptAudioBlock(std::size_t byteCount,
 
 bool VideoRecorder::CheckDiskSpace()
 {
+    if (memoryOutput_) return true;
     const ULONGLONG nowTicks = GetTickCount64();
     if (nowTicks - lastSpaceCheckTicks_ < kSpaceCheckIntervalMs) {
         return true;
@@ -1411,6 +1560,24 @@ bool VideoRecorder::CheckDiskSpace()
     return false;
 }
 
+bool VideoRecorder::ValidateMemoryTimestamp(const RecordingFrameIdentity& identity)
+{
+    if (!memoryOutput_) return true;
+    const auto timestamp = identity.captureTimestamp100ns;
+    // Preserve real delivery-clock holes, refusing unknown/repeated/backward
+    // acquisitions instead of invoking RecordingTimeline's file fallback.
+    const auto origin = lastMemoryCaptureTimestamp100ns_ >= 0
+        ? lastMemoryCaptureTimestamp100ns_ - timeline_.LastTimestamp100ns()
+        : timestamp;
+    if (timestamp < 0 || timestamp <= lastMemoryCaptureTimestamp100ns_ ||
+        timestamp - origin > std::numeric_limits<std::int64_t>::max() -
+            timeline_.NominalDuration100ns()) {
+        SetError("RAM recording requires strictly advancing capture delivery-clock timestamps.");
+        return false;
+    }
+    return true;
+}
+
 bool VideoRecorder::QueueVideoSample(
     Microsoft::WRL::ComPtr<IMFSample> sample,
     const RecordingFrameIdentity& identity)
@@ -1423,10 +1590,11 @@ bool VideoRecorder::QueueVideoSample(
     ThrowIfFailed(sample->SetSampleTime(sampleTime), "SetSampleTime");
     if (pendingSample_ &&
         !WritePendingSample(sampleTime - pendingSampleTime100ns_)) {
-        FinalizeAndStop(StopReason::DiskFull);
+        FinalizeAndStop(memoryOutput_ ? StopReason::WriteFailed : StopReason::DiskFull);
         return false;
     }
     pendingSample_ = std::move(sample);
+    if (memoryOutput_) lastMemoryCaptureTimestamp100ns_ = identity.captureTimestamp100ns;
     pendingSampleTime100ns_ = sampleTime;
     timelineEnd100ns_ = std::max(
         timelineEnd100ns_,
@@ -1441,6 +1609,7 @@ bool VideoRecorder::AddFrame(const uint8_t* bgraData,
     if (abandoned_.load() || !recording_ || !sinkWriter_ || !bgraData) {
         return false;
     }
+    if (!ValidateMemoryTimestamp(identity)) return false;
 
     StageResetGuard stageGuard(stage_);
     try {
@@ -1493,6 +1662,7 @@ bool VideoRecorder::AddGpuFrame(
         frame.width != frameWidth_ || frame.height != frameHeight_) {
         return false;
     }
+    if (!ValidateMemoryTimestamp(identity)) return false;
 
     if (!PollGpuInputReads()) return false;
     // Offline/bursty callers can fill this bounded reader ring faster than

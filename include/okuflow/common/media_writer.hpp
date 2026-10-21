@@ -13,6 +13,7 @@
 #include "okuflow/common/gpu_read_retirement.hpp"
 #include "okuflow/common/recording_preservation.hpp"
 #include "okuflow/common/video_archive.hpp"
+#include "okuflow/common/video_memory_stream.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -240,6 +241,16 @@ public:
                   Codec codec,
                   const GpuVideoFrame& probeFrame,
                   const AudioFormat* audioFormat = nullptr);
+    // Worker-only bounded RAM recap: H.264 video, no audio or filesystem
+    // activity. The optional probe selects its actual shared-resource adapter;
+    // native NV12 rejection retries once with CPU BGRA on the same RAM output.
+    // Bitrate must be 8 Mbps through 1080p, 16 Mbps above it. Caller selects
+    // segment duration/frame admission and supplies delivery-clock timestamps.
+    // Stop/Finalize and release every writable adapter before output->Seal().
+    bool StartMemory(std::shared_ptr<VideoMemoryStream> output,
+                     UINT width, UINT height,
+                     UINT frameRateNumerator, UINT frameRateDenominator,
+                     UINT bitrate, const GpuVideoFrame* optionalProbe = nullptr);
     FinalizeResult Stop();
     bool IsRecording() const { return recording_; }
 
@@ -315,6 +326,16 @@ private:
                         const AudioFormat* audioFormat,
                         IUnknown* d3dManager,
                         const GUID& inputSubtype);
+    bool InitializeSink(const std::shared_ptr<VideoMemoryStream>& output,
+                        UINT width, UINT height,
+                        UINT frameRateNumerator, UINT frameRateDenominator,
+                        UINT bitrate, IUnknown* d3dManager,
+                        const GUID& inputSubtype);
+    bool ConfigureSink(IMFByteStream* output, IMFAttributes* attributes,
+                       UINT width, UINT height,
+                       UINT frameRateNumerator, UINT frameRateDenominator,
+                       Codec codec, const AudioFormat* audioFormat,
+                       const GUID& inputSubtype, UINT bitrate);
     static std::uint64_t InputPayloadBytes(UINT width, UINT height,
                                            bool nativeNv12);
     bool InitializeGpuDevice(HANDLE probeTextureHandle);
@@ -326,6 +347,7 @@ private:
     bool QueueVideoSample(
         Microsoft::WRL::ComPtr<IMFSample> sample,
         const RecordingFrameIdentity& identity);
+    bool ValidateMemoryTimestamp(const RecordingFrameIdentity& identity);
     bool ValidAudioInput(std::size_t byteCount, std::int64_t sampleTime100ns,
                          std::int64_t duration100ns) const;
     bool CanAcceptAudioBlock(std::size_t byteCount, std::int64_t sampleTime100ns,
@@ -392,6 +414,8 @@ private:
     std::int64_t timelineEnd100ns_{0};
     bool recording_{false};
     std::wstring targetPath_;
+    std::shared_ptr<VideoMemoryStream> memoryOutput_;
+    std::int64_t lastMemoryCaptureTimestamp100ns_{-1};
     std::atomic<std::shared_ptr<RecordingArchive>> archive_;
     std::vector<std::wstring> failedAttemptPaths_;
     ULONGLONG lastSpaceCheckTicks_{0};
