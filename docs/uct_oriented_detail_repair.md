@@ -91,11 +91,43 @@ records and the overlay. `OKUFLOW_UCT_PAUSE_OUTPUT_ROOT` optionally selects an
 absolute evidence parent; the default stays LocalAppData/OkuFlow. No cache
 rebuild or model download is part of these checks.
 
-Early rotation-only evidence on the owner's 19,000/19,033 ms menu pair changed
-actually painted words from 2 to 11 while keeping strict proof and zero image
-egress. That intermediate overlay still has a button-color/ink-height defect;
-it is not final visual acceptance. On the 25,000/25,033 ms pair, one previously
-painted `Q` no longer passes word proof; the source is a magnifier icon.
-Counts alone are not accuracy. Final combined color/geometry evidence and the
-tracked background gate must be recorded before promotion. Native desktop,
-Windows screen-reader, camera and packaged-release acceptance remain separate.
+Combined source `0bb7f27` passes the three focused CPU cases with PCH disabled
+and four focused CUDA cases with PCH enabled: processing, scheduling, immutable
+controller and the CUDA delta, with no skipped Qt rows. The new small-print
+regression failed before the height-guard repair; its thin-rule control and
+exact CPU/CUDA geometry checks pass afterwards. The presentation-recovery
+regression likewise failed before its controller repair. Original failures
+remain retained. These are scoped checks, not a complete release matrix.
+
+Finite real-source proofs use the same cached plans, preserve exact TensorRT
+retirement/cache inventory and report zero image egress:
+
+| Selected source | Candidate words | Shown words | Actually painted |
+| --- | ---: | ---: | ---: |
+| Menu 19,000 ms | 27 | 14 | 10 |
+| Menu 25,000 ms | 26 | 19 | 18 |
+| Book 0 ms | 383 | 351 | 190 |
+| Asset gallery 0 ms | 175 | 165 | 160 |
+
+Raw token records/text order are retained (30/29/426/188 records respectively).
+The menu/gallery candidate reductions include unresolved isolated symbols now
+left as original pixels. The close-button X is no longer stretched into X/4;
+the lower Hand fits at about 43 pixels. Book padding no longer produces giant
+letters. Its shown count fell from 366 to 351 and actual paints from 206 to 190
+after fitting and size/protection checks; these counts must not be labelled
+accuracy. The book still contains misrecognitions and undrawn words.
+
+The small brown `HUMAN CIRCUIT / MASTER ASSET LIBRARY` heading is recognized
+in the full-scene gallery pass. A narrow focus exercises actual 4x and 6x
+detector scales (240- versus 160-pixel source widths under the 960-pixel cap);
+both retain the two words already visible there. No extra-word benefit is
+claimed for that example. A separate 6x book region examines 11 candidates,
+with worker times about 19/20 ms for the selected/neighbour jobs. These exclude
+the 300 ms settle and are neither display nor screen-reader latency.
+
+Private receipts, input/executable/source hashes and images are under
+`Z:/Projects/OkuFlow/local-work-data/uct-geometry-r3-20261021/evidence/`.
+The final runs use `final-*-1-receipt.json`; earlier intermediate evidence is
+retained. Optional N1/N8 strict comparison failures remain separate failures.
+Full-matrix/shared-source equivalence, native desktop, Windows screen-reader,
+camera and packaged-release acceptance remain pending.
