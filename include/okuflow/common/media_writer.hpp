@@ -244,7 +244,8 @@ public:
     // Worker-only bounded RAM recap: H.264 video, no audio or filesystem
     // activity. The optional probe selects its actual shared-resource adapter;
     // native NV12 rejection retries once with CPU BGRA on the same RAM output.
-    // Bitrate must be 8 Mbps through 1080p, 16 Mbps above it. Caller selects
+    // At most 30 FPS for every supported size, including 4K. Bitrate must be
+    // 8 Mbps through 1080p-equivalent pixels, 16 Mbps above it. Caller selects
     // segment duration/frame admission and supplies delivery-clock timestamps.
     // Stop/Finalize and release every writable adapter before output->Seal().
     bool StartMemory(std::shared_ptr<VideoMemoryStream> output,

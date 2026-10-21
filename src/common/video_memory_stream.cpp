@@ -20,9 +20,11 @@ namespace {
 
 // Reject an over-allocation before it happens, even if a vector implementation
 // requests more than reserve's argument. Reserve once at the first growth:
-// there are never two compressed-byte allocations during vector expansion.
+// there are never two compressed-byte allocations during writable growth.
+// Seal alone may compact with at most old + new <= 2*limit bytes temporarily.
 template<class T> struct BoundedAllocator {
     using value_type = T;
+    using propagate_on_container_swap = std::true_type;
     std::size_t limit{};
     explicit BoundedAllocator(std::size_t bound = 0) noexcept : limit(bound) {}
     template<class U> BoundedAllocator(const BoundedAllocator<U>& other) noexcept
@@ -295,8 +297,26 @@ std::shared_ptr<const VideoMemorySource> VideoMemoryStream::Seal() {
     if (backing_->writableCursors ||
         (backing_->recorderAttached && !backing_->finalized)) return {};
     try {
-        sealed_ = std::shared_ptr<const VideoMemorySource>(new VideoMemorySource(backing_));
+        // Allocate the source/control block first; publish only after every
+        // potentially failing allocation. No reader exists before this fence.
+        auto source = std::shared_ptr<const VideoMemorySource>(new VideoMemorySource(backing_));
+        if (backing_->bytes.capacity() != backing_->bytes.size()) {
+            const auto size = backing_->bytes.size();
+            // The replacement allocator rejects any capacity above size
+            // before allocation. reserve once, then copy exactly once: actual
+            // retained capacity is exact, and old + new never exceeds 2*limit.
+            // A default stream's peak compressed backing is therefore <=16 MiB.
+            std::vector<BYTE, BoundedAllocator<BYTE>> compact{BoundedAllocator<BYTE>(size)};
+            compact.reserve(size);
+            compact.resize(size);
+            if (size) std::memcpy(compact.data(), backing_->bytes.data(), size);
+            // Allocators propagate with the swap; the sealed allocation now
+            // has the exact size bound, and compact frees the old reservation.
+            backing_->bytes.swap(compact);
+        }
+        sealed_ = std::move(source);
     } catch (const std::bad_alloc&) { return {}; }
+      catch (const std::length_error&) { return {}; }
     backing_->sealed = true;
     return sealed_;
 }

@@ -121,8 +121,8 @@ void BoundsAndCursors() {
     Require(!output.Seal(), "writable clone alone prevents Seal");
     copy.Reset();
     const auto source = output.Seal();
-    Require(source && source->ByteSize() == 8 && source->Capacity() == capacity,
-        "seal shares complete storage");
+    Require(source && source->ByteSize() == 8 && source->Capacity() == 8 &&
+        output.Capacity() == source->Capacity(), "seal compacts actual retained allocation");
     Require(output.Seal().get() == source.get(), "Seal preserves opaque source identity");
     Require(FAILED(output.OpenWriteStream(nullptr)), "sealed null stream refusal");
     Require(Access::Cursor(output, &cursor) == STG_E_ACCESSDENIED && !cursor,
@@ -158,6 +158,7 @@ void AdapterAndEvictedLeases() {
     auto source = output->Seal();
     Require(source != nullptr, "released adapter permits Seal");
     const auto capacity = source->Capacity();
+    Require(capacity == input.size(), "sealed MF payload charges exact compact capacity");
     std::weak_ptr<const okuflow::VideoMemoryBacking> lease = Access::Backing(*source);
     ComPtr<IMFByteStream> first, second;
     okuflow::VideoReadStreamClone clone;
@@ -237,7 +238,107 @@ void RecorderSealFence() {
     Require(retry.ByteSize() == 0 && retry.Capacity() == capacity,
         "retry clears stale metadata without a second allocation");
     Access::Finish(retry, true);
-    Require(retry.Seal() != nullptr, "successful retry may seal");
+    const auto retried = retry.Seal();
+    Require(retried && retried->Capacity() == 0 && retry.Capacity() == 0,
+        "empty successful retry releases unused allocation at Seal");
+}
+
+void CompactSegmentLeases() {
+    constexpr std::size_t limit = 8u * 1024u * 1024u;
+    // Two seconds at 16 Mbps plus 32 KiB of container margin. The parent
+    // exercises the complete 150-segment ring; this checks actual per-source
+    // allocation and byte-preserving read leases without duplicating the ring.
+    constexpr std::size_t segmentBytes = 4'000'000u + 32u * 1024u;
+    auto output = std::make_shared<VideoMemoryStream>(limit);
+    ComPtr<IStream> writer;
+    Ok(Access::Cursor(*output, &writer), "compact segment writer");
+    std::array<BYTE, 64u * 1024u> block{};
+    for (std::size_t i = 0; i < block.size(); ++i) block[i] = static_cast<BYTE>(i % 251);
+    for (std::size_t position = 0; position < segmentBytes;) {
+        const auto count = static_cast<ULONG>(std::min(block.size(), segmentBytes - position));
+        Ok(writer->Write(block.data(), count, nullptr), "write nominal 16 Mbps segment");
+        position += count;
+    }
+    Require(output->ByteSize() == segmentBytes && output->Capacity() == limit,
+        "writable segment exposes actual full reservation");
+    Require(!output->Seal() && output->Capacity() == limit,
+        "live mutable lease prevents compaction");
+    writer.Reset();
+    auto source = output->Seal();
+    Require(source && source->ByteSize() == segmentBytes && source->Capacity() == segmentBytes &&
+        output->Capacity() == segmentBytes, "Seal replaces allocation, not capacity accounting");
+    Require(source->Capacity() * 150u < 768ull * 1024u * 1024u,
+        "actual compact per-segment capacity preserves nominal five-minute byte margin");
+    ComPtr<IMFByteStream> first, second;
+    okuflow::VideoReadStreamClone clone;
+    Ok(source->OpenReadStream(&first, &clone), "open compact read leases");
+    Ok(clone(&second), "clone compact source without byte copy");
+    const auto identity = source.get();
+    Require(output->Seal().get() == identity && source->Capacity() == segmentBytes,
+        "repeated Seal and read cloning do not replace compact source");
+    const auto backing = Access::Backing(*source);
+    output.reset(); source.reset(); clone = {};
+    first.Reset();
+    Require(!backing.expired(), "compact backing survives source eviction");
+    std::array<BYTE, 64u * 1024u> actual{};
+    for (std::size_t position = 0; position < segmentBytes;) {
+        const auto count = static_cast<ULONG>(std::min(actual.size(), segmentBytes - position));
+        ULONG read{};
+        Ok(second->Read(actual.data(), count, &read), "read complete compact segment lease");
+        Require(read == count && std::equal(actual.begin(), actual.begin() + count, block.begin()),
+            "compaction and evicted clone preserve every compressed byte");
+        position += count;
+    }
+    second.Reset();
+    Require(backing.expired(), "last compact decoder lease frees allocation");
+}
+
+void MemoryStartPolicy() {
+    struct Case {
+        UINT width, height, numerator, denominator, bitrate;
+        bool valid;
+    };
+    const Case cases[]{
+        {3840, 2160, 30, 1, 16'000'000, true},
+        {2160, 3840, 30, 1, 16'000'000, true},
+        {3840, 2160, 30'000, 1001, 16'000'000, true},
+        {3840, 2160, 60, 2, 16'000'000, true},
+        {3840, 2160, 31, 1, 16'000'000, false},
+        {3840, 2160, 60, 1, 16'000'000, false},
+        {3840, 2160, 30, 1, 8'000'000, false},
+        {1920, 1080, 30, 1, 8'000'000, true},
+        {1080, 1920, 30, 1, 8'000'000, true},
+        {1920, 1080, 31, 1, 8'000'000, false},
+        {1920, 1080, 30, 1, 16'000'000, false},
+        {3840, 2160, 0, 1, 16'000'000, false},
+        {3840, 2160, 30, 0, 16'000'000, false},
+    };
+    for (const auto& test : cases) {
+        auto output = std::make_shared<VideoMemoryStream>();
+        okuflow::VideoRecorder recorder;
+        unsigned entries{};
+        // Stop at the real memory sink boundary, before ConfigureSink creates
+        // an encoder. This validates production 4K30/fractional-FPS policy
+        // with no GPU and without claiming native 4K30 codec acceptance.
+        okuflow::VideoRecorderTestAccess::ObserveSink(recorder,
+            [&](bool gpu, IMFByteStream*) {
+                Require(!gpu, "memory policy validation uses CPU input");
+                ++entries;
+                throw std::runtime_error("Intentional pre-encoder policy fixture stop");
+            });
+        Require(!recorder.StartMemory(output, test.width, test.height,
+            test.numerator, test.denominator, test.bitrate), "policy fixture stops before encoder");
+        Require(entries == (test.valid ? 1u : 0u), "production RAM FPS/bitrate policy");
+        Require(!recorder.Archive() && recorder.OutputPath().empty() &&
+            recorder.FailedAttemptPaths().empty(), "policy checks stay on memory route");
+        if (test.valid) Require(!output->Seal(), "failed initialization cannot publish source");
+        else {
+            Require(output->Seal() != nullptr, "rejected parameters never claim output");
+            Require(recorder.LastError().find("at most 30 FPS") != std::string::npos &&
+                recorder.LastError().find("15 FPS") == std::string::npos,
+                "RAM policy error copy reflects the common 30 FPS limit");
+        }
+    }
 }
 
 // Explicit opt-in codec seam. No path, camera, microphone, audio endpoint or
@@ -293,7 +394,8 @@ void NativeH264Seam() {
     Require(stopped.HasPlayableVideo() && stopped.videoSamplesWritten == count,
         "native memory writer finalized all samples");
     auto source = output->Seal();
-    Require(source && source->ByteSize() > 0 && source->Capacity() <= 8u * 1024u * 1024u,
+    Require(source && source->ByteSize() > 0 && source->Capacity() == source->ByteSize() &&
+        source->Capacity() <= 8u * 1024u * 1024u,
         "native finalization produces bounded sealed bytes");
     ComPtr<IMFByteStream> bytes;
     Ok(source->OpenReadStream(&bytes), "open native output bytes");
@@ -380,6 +482,8 @@ int main(int argc, char** argv) {
         BoundsAndCursors();
         AdapterAndEvictedLeases();
         RecorderSealFence();
+        CompactSegmentLeases();
+        MemoryStartPolicy();
         if (native) NativeH264Seam();
         std::cout << "Bounded memory stream contracts passed" <<
             (native ? "; native video-only H264 RAM seam passed\n" : "; native seam not requested\n");

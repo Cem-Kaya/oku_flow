@@ -875,10 +875,10 @@ bool VideoRecorder::StartMemory(std::shared_ptr<VideoMemoryStream> output,
     if (!output || !width || !height || (width & 1u) || (height & 1u) ||
         !frameRateNumerator || !frameRateDenominator ||
         static_cast<std::uint64_t>(frameRateNumerator) >
-            (above1080p ? 15ull : 30ull) * frameRateDenominator ||
+            30ull * frameRateDenominator ||
         bitrate != (above1080p ? 16'000'000u : 8'000'000u)) {
-        SetError("RAM recording requires even dimensions, at most 30 FPS through "
-                 "1080p or 15 FPS above it, and the fixed 8/16 Mbps H.264 bitrate.");
+        SetError("RAM recording requires even dimensions, at most 30 FPS, "
+                 "and the fixed 8/16 Mbps H.264 bitrate.");
         return false;
     }
     if (optionalProbe && (!optionalProbe->IsValid() ||

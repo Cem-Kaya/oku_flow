@@ -12,7 +12,7 @@ namespace okuflow {
 struct VideoMemoryBacking;
 class VideoMemorySource;
 
-// A single bounded heap allocation, with no file, mapping, spill or cache.
+// Bounded heap backing, with no file, mapping, spill or cache.
 // Capacity reports allocated compressed-byte storage, not just logical size.
 class VideoMemoryStream {
 public:
@@ -25,6 +25,9 @@ public:
     // Returns null while any writable IStream/MF adapter survives, or a
     // recorder has not completed Finalize successfully. Close alone does not
     // release an adapter: release every writable COM reference before sealing.
+    // Compacts once to an exact-sized allocation before publishing. Temporary
+    // old + new byte capacity is at most 2*limit (16 MiB at the default cap).
+    // Allocation failure returns null and preserves the unsealed bytes.
     // Repeated successful calls return the same source object/pointer identity.
     std::shared_ptr<const VideoMemorySource> Seal();
     std::size_t ByteSize() const;
