@@ -22,6 +22,9 @@ with baseline/variant cache inventories, source identities and exact State
 receipts. `ExportCalibration` uses the worker-retired compact plans through
 the read-only friend `TensorRtPrecisionCalibrationAccess`, original CPU source
 pixels and existing CPU normalization/rectification; it never reads GPU images.
+`CalibrationSourceIndex` binds each randomized compact plan to exactly one
+retained source lease/epoch before selecting CPU pixels; its model-free test
+reorders leases and refuses ambiguous or missing matches without image reads.
 `optionalTensorRtPrecision` is unregistered and explicitly gated.
 `precisionExperimentManifestAndCacheIdentity` tests explicit manifests and
 precision/hash/device/profile cache separation without models/GPU.

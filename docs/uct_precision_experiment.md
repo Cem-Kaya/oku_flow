@@ -147,6 +147,10 @@ CPUExecutionProvider, two CPU threads and max-absolute symmetric calibration;
 INT8/FP8 reuse the same exact source/calibration-hash-keyed ranges. It refuses
 evaluation-frame identity overlap. Calibration is still model work and must
 not overlap the parent's reserved GPU/test session.
+`run_uct_precision.ps1 -Mode Quantize` owns the same runner lease for each
+explicit recognizer conversion and records script/input hashes and normal exit.
+Export binds randomized compact plans to exact retained source leases, never
+their vector position; a model-free test covers reorder/ambiguity refusal.
 
 Explicit INT8/FP8 Q/DQ islands preserve FP32 interfaces and unconverted
 operations. Conservative FP8 channel/group constraints leave incompatible

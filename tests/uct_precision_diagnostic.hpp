@@ -20,6 +20,26 @@ struct TensorRtPrecisionCalibrationAccess {
 namespace uct_precision_test {
 using namespace uct_resident_test;
 
+inline std::optional<std::size_t> CalibrationSourceIndex(
+    const TensorRtCropDiagnostic::Plan& plan,const std::vector<SharedDeviceImage>& sources)
+{
+    if (!plan.source || sources.size()>4) return std::nullopt;
+    std::optional<std::size_t> found;
+    const auto& held=*plan.source;
+    for (std::size_t i=0;i<sources.size();++i) {
+        if (!sources[i]) continue;
+        const auto& source=*sources[i];
+        if (held.Data()!=source.Data() || held.ValidationData()!=source.ValidationData() ||
+            held.width!=source.width || held.height!=source.height || held.pitch!=source.pitch ||
+            held.device!=source.device || held.sourceEpoch!=source.sourceEpoch ||
+            held.frameSequence!=source.frameSequence || held.processingGeneration!=source.processingGeneration ||
+            held.kind!=source.kind || held.historyEpoch!=source.historyEpoch) continue;
+        if (found) return std::nullopt;
+        found=i;
+    }
+    return found;
+}
+
 inline QJsonObject Activity()
 {
     QJsonObject record{{"utc",QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
@@ -63,10 +83,14 @@ inline void ExportCalibration(const Run& run, const QString& output)
             {"preprocessing","production CPU PaddleNormalize/PaddleRectify reference; same compact pinned-detector quads"}});
         return true;
     };
-    for (std::size_t i=0;i<plans.size();++i) {
+    std::vector<bool> visited(run.sources.size());
+    for (const auto& plan:plans) {
+        const auto index=CalibrationSourceIndex(plan,run.frozenInputs);
+        QVERIFY(index && !visited[*index]);
+        const auto i=*index;visited[i]=true;
         const auto& source=run.sources[i];
         int detections=0,recognitions=0;
-        for (const auto& region:plans[i].regions) {
+        for (const auto& region:plan.regions) {
             const auto pixels=source.image.copy(region.bounds);
             if (detections++<2) {
                 const auto size=PaddleDetectionSize(pixels.size());

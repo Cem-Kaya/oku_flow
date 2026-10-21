@@ -1,10 +1,12 @@
 #Requires -Version 7.0
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('Fixtures','Prepare','Measure')][string]$Mode,
+    [Parameter(Mandatory)][ValidateSet('Fixtures','Prepare','Measure','Quantize')][string]$Mode,
     [Parameter(Mandatory)][string]$ArtifactRoot,
     [string]$Executable,
     [string]$Sdk,
+    [string]$Python,
+    [string]$CalibrationInputs,
     [Parameter(Mandatory)][string[]]$Configurations,
     [ValidateSet('selected','neighbours','calibration')][string]$Images = 'selected',
     [string]$FramesRoot = (Join-Path $env:LOCALAPPDATA 'OkuFlow/uct-paused-geometry-20261021/frames'),
@@ -50,6 +52,35 @@ if ($Mode -eq 'Fixtures') {
                 Set-Content -LiteralPath $path -Encoding utf8NoBOM
         }
     }
+    return
+}
+if ($Mode -eq 'Quantize') {
+    if ($Configurations.Count -ne 1 -or $Configurations[0] -notmatch '^(fp8-qdq|int8-qdq)-rec$' -or !$Python -or !$CalibrationInputs -or
+        !$Output -or !(Split-Path -IsAbsolute $Output) -or (Test-Path -LiteralPath $Output)) {
+        throw 'Quantize one explicit FP8/INT8 recognizer using private Python, native calibration inputs and fresh output.'
+    }
+    $precision=$Matches[1]
+    $original=@((Get-Content "$ArtifactRoot/original-audit.json" -Raw|ConvertFrom-Json).records|
+        Where-Object {$_.role -eq 'rec' -and $_.tier -eq 'medium'})[0]
+    $Python=(Resolve-Path -LiteralPath $Python).Path
+    $CalibrationInputs=(Resolve-Path -LiteralPath $CalibrationInputs).Path
+    $lockPath=Join-Path $env:LOCALAPPDATA 'OkuFlow/test-evidence/runner.lock'
+    $lease=[IO.File]::Open($lockPath,'OpenOrCreate','ReadWrite','None')
+    try {
+        [IO.Directory]::CreateDirectory($Output)|Out-Null
+        $start=[DateTime]::UtcNow
+        Write-Host ('UCT CPU calibration runner acquired '+$start.ToString('o'))
+        & $Python -B "$PSScriptRoot/uct/precision_qdq.py" --original $original.path --source-sha256 $original.sha256 `
+            --inputs $CalibrationInputs --evaluation-audit "$ArtifactRoot/evaluation-audit.json" --role rec `
+            --precision $precision --output-root $ArtifactRoot 2>&1 | Tee-Object "$Output/quantization.log"
+        $code=$LASTEXITCODE
+        @{precision=$precision;sourceSha256=$original.sha256;inputs=$CalibrationInputs;
+          inputsSha256=(Get-FileHash -LiteralPath $CalibrationInputs).Hash;python=$Python;
+          scriptSha256=(Get-FileHash -LiteralPath "$PSScriptRoot/uct/precision_qdq.py").Hash;
+          runnerAcquiredUtc=$start.ToString('o');runnerReleasedUtc=[DateTime]::UtcNow.ToString('o');exitCode=$code}|
+            ConvertTo-Json|Set-Content "$Output/process.json" -Encoding utf8NoBOM
+        if($code){throw 'QDQ preparation failed; preserve the failure and do not retry unchanged inputs.'}
+    } finally {$lease.Dispose();Write-Host 'UCT CPU calibration runner lease released.'}
     return
 }
 if (!$Executable -or !$Sdk -or !$Output -or !(Split-Path -IsAbsolute $Output) -or (Test-Path -LiteralPath $Output)) {

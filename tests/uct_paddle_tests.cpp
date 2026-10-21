@@ -960,6 +960,18 @@ class PaddleTests final : public QObject
     }
     void precisionExperimentManifestAndCacheIdentity()
     {
+        // Compact plans follow randomized capture order, not source order.
+        auto first=std::make_shared<CopyFaultImage>();first->sourceEpoch=1;
+        auto second=std::make_shared<CopyFaultImage>();second->sourceEpoch=2;
+        std::vector<SharedDeviceImage> sources{first,second};
+        TensorRtCropDiagnostic::Plan plan;plan.source=second;
+        QCOMPARE(uct_precision_test::CalibrationSourceIndex(plan,sources),std::optional<std::size_t>{1});
+        std::reverse(sources.begin(),sources.end());
+        QCOMPARE(uct_precision_test::CalibrationSourceIndex(plan,sources),std::optional<std::size_t>{0});
+        sources.push_back(second);QVERIFY(!uct_precision_test::CalibrationSourceIndex(plan,sources));
+        sources={first};QVERIFY(!uct_precision_test::CalibrationSourceIndex(plan,sources));
+        plan.source.reset();QVERIFY(!uct_precision_test::CalibrationSourceIndex(plan,sources));
+        QCOMPARE(first->copies,0);QCOMPARE(second->copies,0);
         PrecisionGraph graph{"fp16-linear","Z:/private/graph.onnx",QByteArray(64,'a'),QByteArray(64,'b')};
         const auto key=PrecisionPlanKey(graph,"uuid",12090,false,8);
         QCOMPARE(key.size(),64);
