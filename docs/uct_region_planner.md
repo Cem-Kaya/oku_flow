@@ -6,6 +6,13 @@ remains observation-only. Active mode runs current-image regions between
 baseline full deadlines, never skipping full OCR or treating tracked text as
 evidence. The planner's `authoritativeAction` remains `kRunFullOcr`.
 
+This shadow planner is a metadata occurrence/grid prioritizer, not optical
+flow and not a multi-frame OCR image stack. Supplemental execution now permits
+up to a 704-pixel aligned detector long edge over at most 480 source pixels,
+with nominal enlargement 22/15 through the existing engine. It neither stacks
+source images nor uses planner text as OCR evidence. See the executor's
+[realized dimension and source-margin rules](uct_active_regional_ocr.md).
+
 Stage 4 of the [UCT performance roadmap](uct_performance_roadmap_2026_10_20.md)
 (revised roadmap Design B) is a **shadow** regional planner: a bounded,
 pure-metadata observer that runs beside full OCR and reports what a future

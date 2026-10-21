@@ -3169,8 +3169,8 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
     if (regional) {
         const QRectF pixels(result.output.detailRegionPx);
         if (!QRectF(0,0,jobWidth,jobHeight).contains(pixels)) return AdmitVerdict::kFailed;
-        // The backend rejects detector boxes within eight source pixels at
-        // magnification one. Keep another two pixels for detector jitter;
+        // The backend maps boxes back before its eight-source-pixel edge
+        // rejection. Keep another two source pixels for detector jitter;
         // tighter fitted ink is not evidence that the full word was observed.
         constexpr double margin = kDetailCropEdgeMarginPx + 2.0;
         const QRectF interior = pixels.adjusted(pixels.left() > 0 ? margin : 0,

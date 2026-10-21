@@ -8,7 +8,7 @@ eligible; detector and fallback retain FP32 and existing cache keys. A nonempty
 selector prohibits all engine preparation/cache writes. See
 [exact local identities and fallback policy](uct_local_bf16.md).
 
-Active regional UCT admission keeps a ten-input-pixel margin at internal crop
+Active regional UCT admission keeps a ten-source-pixel margin at internal crop
 edges: shared `kDetailCropEdgeMarginPx=8` plus two pixels of detector jitter
 slack (zero at image borders). Ownership includes original detector bounds,
 not just tighter fitted ink. It owns complete lines only, retaining crossing
@@ -1000,8 +1000,13 @@ never bundled, and ordinary CTest does not select the diagnostic. See
 
 `OKUFLOW_UCT_REGIONAL_OCR=1` opts into supplemental execution and implicitly
 enables the planner; shadow alone stays observation-only. Active work is at
-most one region per full interval, <=480 source/detector pixels, magnification
-one. The first cost estimate is 750 ms, later max(previous, 2*duration+80 ms),
+most one region per full interval, <=480 source-crop pixels and <=704 detector
+pixels, nominal magnification 704/480 (22/15). The helper uses the immediately
+larger double via `nextafter` so reciprocal context sizing remains 480 rather
+than 481; detector axes retain 32-pixel alignment/minimum. Tiny short axes may
+interpolate more because of that minimum. Backend 8px/admission 10px margins
+remain source-crop pixels. Paused 960/6x and the existing engine profile remain
+unchanged. The first cost estimate is 750 ms, later max(previous, 2*duration+80 ms),
 with a controller probe-period reserve and 80 ms execution reserve. It normally
 fits 1500 ms stable refreshes, not 350 ms demanded reads. Full deadlines/priority
 remain unchanged; execution rechecks steady-clock slack and counts overruns.

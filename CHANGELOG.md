@@ -13,6 +13,12 @@
   artifacts use cached FP32; production never prepares reduced-precision plans.
   See [local selection and evidence limits](docs/uct_local_bf16.md).
 
+- Increase opt-in live regional UCT detector density to an aligned 704-pixel
+  longest edge over the same at-most 480-pixel source crop, using the existing
+  engine. Preserve source-space safety margins, baseline full scans and the
+  paused 960/six-times path. This implements roughly 720 crop pixels, not 720p
+  video; no speed or accuracy improvement has been measured.
+
 - Refuse supplemental UCT crop updates atomically when omissions, spelling
   disagreement, protection or caps would withdraw existing owned words. Keep
   their pending tickets, identities and freshness unchanged; full reads and

@@ -261,7 +261,8 @@ struct RegionShadowPlan {
 bool RegionalPlanMatches(const RegionShadowPlan& plan, const SourceStamp& current,
                          std::uint64_t authority);
 // Select one planned occurrence/cell nearest the current focus, adding bounded
-// context. No pixels/text are reused. Source and detector long edges <= 480.
+// context. No pixels/text are reused. Source long edge <=480, detector <=704;
+// nominal enlargement is 22/15, with the existing minimum 32 tensor pixels.
 std::optional<DetailFocus> RegionalDetailFocus(const RegionShadowPlan& plan,
                                              const SourceStamp& current,
                                              std::optional<QRectF> focus = std::nullopt);
