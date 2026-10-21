@@ -110,3 +110,11 @@ receipts would correctly expire the 350-ms proof and schedule restored text,
 which is separate from this pane-only publication contract. Negative event
 assertions require zero capacity/contention loss
 and no unresolved attempt at close. Its separate process owns one trace window.
+The fixture also compares the exact cached consumer tickets before/after the
+pane-only change and pan through UI-thread `TimingTicket()` diagnostic copies.
+Those checks do not depend on a lossless trace. A concurrent recorder drop
+requires `coverageIncomplete=true`; in that case the fixture reports incomplete
+trace coverage and makes no negative-event or complete-chain latency claim.
+The recorder retains its nonblocking try-lock/drop behavior. This replaces an
+invalid assumption that independent asynchronous producers can never contend;
+the original matrix failure with one drop remains in the test evidence.

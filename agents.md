@@ -952,3 +952,11 @@ aligned with the project goals.
 - Expired optional slack yields without inference, rather than starting a more
   expensive full read. Only actual regional durations update its cost estimate.
   Baseline full work, independent pixel checks and freshness remain unchanged.
+
+## Nonblocking timing diagnostics (2026-10-22)
+
+- Concurrent timing producers may legitimately drop a try-lock record. Verify
+  cached surface publication identities directly; negative-event and complete
+  latency claims still require a lossless, fully closed trace window. Preserve
+  drop accounting and original failed evidence instead of making tracing block
+  recognition or silently treating incomplete coverage as complete.

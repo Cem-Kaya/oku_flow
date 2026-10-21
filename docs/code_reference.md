@@ -1,5 +1,13 @@
 # OkuFlow Code Reference
 
+`UltraClearTextOverlay::TimingTicket`, `UltraClearTextPanel::TimingTicket` and
+`UctScreenTextAccessibility::TimingTicket` return UI-thread diagnostic copies
+of the existing cached publication ticket. They do not record, publish, allocate
+or renew evidence. The pane-only fixture compares all key/revision/flag fields
+directly, so correct surface attribution can be checked even when the optional
+nonblocking trace reports contention loss. Negative-event assertions still
+require complete trace coverage; a lossy window is explicitly incomplete.
+
 ## Supplemental regional UCT execution (2026-10-21)
 
 `RegionalOcrRequest` carries one immutable full-plan ticket, a steady full

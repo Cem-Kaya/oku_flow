@@ -55,6 +55,8 @@ public:
     // Optional diagnostic provenance of this content assignment, never a view
     // receipt or a replacement for the model's independent word proof.
     void SetTimingTicket(uct::timing::PublicationTicket ticket) { timingTicket_ = ticket; }
+    // UI-thread diagnostic copy, independent of optional trace record loss.
+    uct::timing::PublicationTicket TimingTicket() const noexcept { return timingTicket_; }
     void ClearWords();
     int WordCount() const noexcept { return words_.size(); }
     const QVector<SceneWord>& Words() const noexcept { return words_; }

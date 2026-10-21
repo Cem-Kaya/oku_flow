@@ -107,6 +107,8 @@ public:
     // Diagnostic content ticket copied when additions are scheduled. View
     // projection cannot create an admission or change a pending ticket.
     void SetTimingTicket(uct::timing::PublicationTicket ticket) { timingTicket_ = ticket; }
+    // UI-thread diagnostic copy; this does not publish or renew content.
+    uct::timing::PublicationTicket TimingTicket() const noexcept { return timingTicket_; }
     // Synchronously deletes every line element; the root stays (empty).
     void RevokeAll();
     // Cadence timer body; public for fixtures that drive a fake clock.

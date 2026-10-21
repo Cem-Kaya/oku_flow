@@ -51,6 +51,8 @@ public:
     // so a recognition refresh never loses the reading position.
     void SetReadingText(const QString& text);
     void SetTimingTicket(uct::timing::PublicationTicket ticket) { timingTicket_ = ticket; }
+    // UI-thread diagnostic copy, independent of optional trace record loss.
+    uct::timing::PublicationTicket TimingTicket() const noexcept { return timingTicket_; }
 
 signals:
     void enabledChanged(bool enabled);

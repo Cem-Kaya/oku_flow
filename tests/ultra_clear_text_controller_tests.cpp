@@ -28,6 +28,7 @@
 #include <mutex>
 #include <sstream>
 #include <thread>
+#include <tuple>
 
 using namespace okuflow;
 using namespace okuflow::uct;
@@ -865,6 +866,16 @@ void UltraClearTextControllerTests::timingPaneOnlyChangePreservesPositionedTicke
     QVERIFY(!h.controller->ScreenTextAccessibility()->HasPendingAdditions());
     QCOMPARE(h.controller->ScreenTextAccessibility()->ExposedLineCount(), screenBefore.lines.size());
     const auto publications = h.controller->ScreenTextAccessibility()->Publications();
+    const auto positionedTicket = h.overlay.TimingTicket();
+    const auto sameTicket = [](const timing::PublicationTicket& a,const timing::PublicationTicket& b) {
+        const auto key = [](const timing::Key& value) {
+            return std::tuple{value.producer,value.sourceEpoch,value.geometryGeneration,value.frameSeq,
+                value.acquisition,value.jobId,value.authority,value.sourceTimestampMs,value.channel};
+        };
+        return a.revision == b.revision && a.flags == b.flags && key(a.admission) == key(b.admission);
+    };
+    QVERIFY(positionedTicket.revision && positionedTicket.admission.jobId);
+    QVERIFY(sameTicket(h.controller->ScreenTextAccessibility()->TimingTicket(),positionedTicket));
     const auto paneOnlyStartedNs = timing::SteadyNanoseconds();
     {
         std::lock_guard lock(h.script->mutex);
@@ -877,6 +888,12 @@ void UltraClearTextControllerTests::timingPaneOnlyChangePreservesPositionedTicke
     QCOMPARE(admitted.count(), 4);
     QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(4));
     QCOMPARE(h.overlay.Words().size(), positioned.size());
+    QVERIFY(sameTicket(h.overlay.TimingTicket(),positionedTicket));
+    QVERIFY(sameTicket(h.controller->ScreenTextAccessibility()->TimingTicket(),positionedTicket));
+    const auto paneTicket = h.panel.TimingTicket();
+    QVERIFY(paneTicket.revision > positionedTicket.revision);
+    QVERIFY(paneTicket.admission.jobId != positionedTicket.admission.jobId);
+    QCOMPARE(paneTicket.admission.acquisition,betaAcquisition);
     for (int i = 0; i < positioned.size(); ++i) {
         const auto& after = h.overlay.Words()[i]; const auto& before = positioned[i];
         QCOMPARE(after.text, before.text); QCOMPARE(after.lineId, before.lineId);
@@ -894,13 +911,23 @@ void UltraClearTextControllerTests::timingPaneOnlyChangePreservesPositionedTicke
     h.controller->ScreenTextAccessibility()->ProcessDueWork();
     QCOMPARE(h.controller->SchedulerStatistics().submitted, jobs);
     QCOMPARE(h.controller->ScreenTextAccessibility()->Publications(), publications);
+    QVERIFY(sameTicket(h.overlay.TimingTicket(),positionedTicket));
+    QVERIFY(sameTicket(h.controller->ScreenTextAccessibility()->TimingTicket(),positionedTicket));
     QVERIFY(!h.devices->readOnUiThread.load());
 
     const auto snapshot = timing::CloseForDiagnostics();
     QVERIFY(snapshot && !snapshot->unavailableDueToContention);
     QCOMPARE(snapshot->capacityDrops, std::uint64_t(0));
-    QCOMPARE(snapshot->contentionDrops, std::uint64_t(0));
     QVERIFY(!snapshot->closeOverlappedAttempts);
+    if (snapshot->contentionDrops) {
+        // This nonblocking recorder is permitted to lose concurrent events.
+        // Exact consumer tickets above still prove the publication contract;
+        // a lossy trace cannot prove absence or complete-chain latency.
+        QVERIFY(timing::Summarize(*snapshot).coverageIncomplete);
+        qInfo() << "Pane publication identity verified directly; trace coverage incomplete, contention drops="
+                << snapshot->contentionDrops;
+        return;
+    }
     const timing::Record* lastPositionedAssignment{};
     const timing::Record* paneChange{};
     int oldContentPaints{}, changedPositionedEvents{}, paneAssignments{};
