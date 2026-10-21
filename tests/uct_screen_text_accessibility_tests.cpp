@@ -174,7 +174,7 @@ struct Harness {
         QVector<UltraClearTextOverlay::SceneWord> words;
         for (const SceneWord& word : model.SceneWords(now, frameSeq)) {
             words.push_back({word.text, word.sceneRect, word.colors, word.lineId, word.protectedSceneRects,
-                             word.wordIndex});
+                             word.wordIndex, word.sceneQuad, word.layoutGroupId});
         }
         overlay->SetViewTransform(t);
         overlay->SetWords(words);

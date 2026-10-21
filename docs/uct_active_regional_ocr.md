@@ -140,3 +140,28 @@ No GPU, native desktop, application shipping build or complete matrix ran in
 this child. `shared_source_equivalence` was not run because its complete target
 inventory was not built. Parent integration owns those gates and the separate
 real-source proof; this is explicitly **SCOPED CPU** evidence only.
+
+### Explicit cached GPU execution proof
+
+`uct_paddle_tests optionalActiveRegionalProof` requires explicit
+`OKUFLOW_UCT_ACTIVE_DIAGNOSTIC=1`, the existing absolute selected/neighbour PNG
+paths and PTS variables from the paused diagnostic, an absolute
+`OKUFLOW_UCT_PAUSE_OUTPUT_ROOT`, and an inference-only TensorRT SDK. Compatible
+medium/medium batch-eight plans must already be cached. The diagnostic refuses
+a missing plan instead of preparing it, and verifies the complete cache inventory
+after exact TensorRT retirement.
+
+It runs full OCR on the first extracted acquisition, then actual regional OCR
+on the distinct next acquisition under the first submit's 1500 ms deadline.
+An ordinary full read then uses that same second lease, frame identity and
+digest: it is explicitly not a third temporal observation. JSON retains actual
+ROI, raw outputs, candidate counts, model profiles, worker durations and image
+egress. No text is admitted by this diagnostic. It does not measure controller
+cadence, time-to-paint, screen-reader publication or native display latency.
+The controller and admission fixtures separately cover those scheduling and
+evidence rules. This optional model run is absent from ordinary CTest.
+
+The maintained model-free Paddle processing group also covers the automatic
+chain directly: a failed supplemental operation does not initialize a fallback
+or retire the preferred backend, and a preparing supplemental operation does
+not start either CPU bridge. The next ordinary full operation remains usable.

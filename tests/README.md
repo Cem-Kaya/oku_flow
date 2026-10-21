@@ -1,5 +1,15 @@
 # OkuFlow Tests
 
+## Optional active regional GPU proof
+
+`uct_paddle_tests optionalActiveRegionalProof` is an explicit cached-model run,
+absent from normal CTest. It executes full/region/full calls on two real
+extracted acquisitions with owned CUDA inputs and no image egress. The last
+full call retains the regional input's exact acquisition; it cannot manufacture
+temporal corroboration. See the [selectors and scope](../docs/uct_active_regional_ocr.md#explicit-cached-gpu-execution-proof).
+The ordinary `uct_paddle_processing` group includes direct automatic-backend
+supplemental failure/preparation regressions, without models or a GPU.
+
 ## Optional embedded FFmpeg playback
 
 An explicit `OKUFLOW_FFMPEG_SDK_ROOT` registers
