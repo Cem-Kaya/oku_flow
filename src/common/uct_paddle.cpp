@@ -1,4 +1,5 @@
 #include "okuflow/common/uct_paddle.hpp"
+#include "uct_runtime_precision.hpp"
 
 #include <QLineF>
 #include <algorithm>
@@ -151,7 +152,7 @@ class AutomaticRecognizer final : public Recognizer
         initialized_ = true;
         if (candidates_.empty())
         {
-            candidates_.push_back(CreateTensorRtRecognizer({},{},models_.gpuDetector,models_.gpuRecognizer));
+            candidates_.push_back(CreateProductionTensorRtRecognizer(models_.gpuDetector,models_.gpuRecognizer));
             candidates_.push_back(CreatePaddleCpuRecognizer({},models_.cpuDetector,models_.cpuRecognizer));
             candidates_.push_back(CreateWindowsRecognizer());
             preparationBridge_ = 2;

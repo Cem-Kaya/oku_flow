@@ -5,6 +5,11 @@ OkuFlow was formerly named OpenZoom. Website: <https://okuflow.com>. Repository:
 OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, Direct3D 12, and an optional CUDA processing path. The current codebase already supports live camera capture, GPU (CUDA) frame processing with CPU format-conversion support paths, a two-stage preset/advanced UI, rotation-aware presentation, persistent settings, paired photo snapshots, and live AV1/H.264 recording with optional microphone audio in fragmented MP4 containers.
 
 ## Current Capabilities
+- The owner's explicit [local BF16 recognition selection](uct_local_bf16.md)
+  uses one reviewed cache-only medium/medium N8 fixed1024 plan with a pinned
+  FP32 detector. Empty/unset `OKUFLOW_UCT_LOCAL_BF16_MANIFEST` and public
+  diagnostic factories retain the normal FP32 baseline. This is mixed
+  arithmetic with FLOAT I/O, not a general precision default or release claim.
 - An optional [embedded FFmpeg/dav1d saved-file backend](video_ffmpeg_playback.md)
   uses a separately pinned private SDK and explicit runtime opt-in. The default
   and all recording archive facades retain Media Foundation. No new SDK/DLL is

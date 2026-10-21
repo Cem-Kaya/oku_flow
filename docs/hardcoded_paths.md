@@ -1,5 +1,13 @@
 # Hard-Coded Paths and Defaults
 
+The optional `OKUFLOW_UCT_LOCAL_BF16_MANIFEST` selector is read only by the app's
+private production factory. Its schema-1/prepare=false manifest is at most
+64 KiB; converted graphs/plans are strictly below 256 MiB and hash-pinned.
+Only the reviewed RTX 4090 UUID/driver/TRT medium/medium N8 fixed1024 variant is
+eligible; detector and fallback retain FP32 and existing cache keys. A nonempty
+selector prohibits all engine preparation/cache writes. See
+[exact local identities and fallback policy](uct_local_bf16.md).
+
 Active regional UCT admission keeps a ten-input-pixel margin at internal crop
 edges: shared `kDetailCropEdgeMarginPx=8` plus two pixels of detector jitter
 slack (zero at image borders). Ownership includes original detector bounds,

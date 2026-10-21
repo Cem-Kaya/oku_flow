@@ -1,4 +1,5 @@
 #include "okuflow/common/uct_paddle.hpp"
+#include "uct_runtime_precision.hpp"
 #include <new>
 #include <utility>
 
@@ -278,7 +279,8 @@ class Network
   public:
     Network(Libraries &libraries, Logger &logger, const QString &sdk, const QString &model, const QByteArray& expected, bool detection, int device,
             cudaStream_t stream, const std::atomic<bool> &cancelled, int maximumBatch = 1,
-            bool variableWidth = false, bool allowPreparation = true)
+            bool variableWidth = false, bool allowPreparation = true,
+            const QByteArray* precisionPlan = nullptr)
         : detection_(detection), variableWidth_(variableWidth), maximumBatch_(maximumBatch),
           // A ceiling for checked on-demand allocation, not reserved VRAM.
           maximumOutputFloats_(!detection && maximumBatch == 16 ? 256ull * 1024 * 1024
@@ -316,10 +318,19 @@ class Network
         const auto key = QCryptographicHash::hash(identity, QCryptographicHash::Sha256).toHex();
         const auto cache =
             QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath("OkuFlow/ocr-engines");
-        QDir().mkpath(cache);
+        if (allowPreparation && !precisionPlan) QDir().mkpath(cache);
         const auto path = QDir(cache).filePath(QString::fromLatin1(key) + ".plan");
         QFile cached(path);
-        if (cached.open(QIODevice::ReadOnly) && cached.size() > 32 &&
+        if (precisionPlan) {
+            engine_.reset(runtime_->deserializeCudaEngine(precisionPlan->constData(), precisionPlan->size()));
+            if (!engine_) {
+                Check(cudaPeekAtLastError());
+                // Exact file/device/runtime checks already passed. A runtime API
+                // failure now follows normal failover, never an engine retry.
+                throw std::runtime_error("Verified local BF16 cached plan could not be deserialized.");
+            }
+        }
+        else if (cached.open(QIODevice::ReadOnly) && cached.size() > 32 &&
             cached.size() < 256 * 1024 * 1024)
         {
             const auto digest = cached.read(32), plan = cached.readAll();
@@ -389,17 +400,37 @@ class Network
                 saved.commit();
             }
         }
+        const auto reject = [&](const char* reason) {
+            // A reported CUDA fault is never permission to retry another engine.
+            if (precisionPlan) {
+                Check(cudaPeekAtLastError());
+                throw runtime_precision::ArtifactError(reason);
+            }
+            throw std::runtime_error(reason);
+        };
         if (engine_->getNbIOTensors() != 2)
-            throw std::runtime_error("Unexpected cached OCR engine I/O.");
+            reject("Unexpected cached OCR engine I/O.");
         for (int i = 0; i < 2; ++i)
         {
             const auto *name = engine_->getIOTensorName(i);
             if (engine_->getTensorDataType(name) != nvinfer1::DataType::kFLOAT)
-                throw std::runtime_error("OCR engine must use float32 tensors.");
+                reject("OCR engine must use float32 tensors.");
             if (engine_->getTensorIOMode(name) == nvinfer1::TensorIOMode::kINPUT)
                 input_ = name;
             else
                 output_ = name;
+        }
+        if (precisionPlan) {
+            if (detection || variableWidth || maximumBatch != 8 || input_.empty() || output_.empty() ||
+                engine_->getNbOptimizationProfiles() != 1)
+                reject("Local BF16 requires the exact fixed1024/N8 recognition profile.");
+            const auto minimum = engine_->getProfileShape(input_.c_str(),0,nvinfer1::OptProfileSelector::kMIN);
+            const auto optimum = engine_->getProfileShape(input_.c_str(),0,nvinfer1::OptProfileSelector::kOPT);
+            const auto maximum = engine_->getProfileShape(input_.c_str(),0,nvinfer1::OptProfileSelector::kMAX);
+            if (!recognizer_width::MatchesProfile(minimum.d,minimum.nbDims,1,1024) ||
+                !recognizer_width::MatchesProfile(optimum.d,optimum.nbDims,8,1024) ||
+                !recognizer_width::MatchesProfile(maximum.d,maximum.nbDims,8,1024))
+                reject("Local BF16 cached plan does not match its fixed1024/N8 profile.");
         }
         if (variableWidth_) {
             if (engine_->getNbOptimizationProfiles() != 1)
@@ -491,6 +522,7 @@ struct State
     int recognizerBatch{1};
     bool variableWidth{};
     QString batchPreparationDetail;
+    QString precisionDetail;
     TensorRtProfile profile;
     cudaStream_t stream{};
     Logger logger;
@@ -560,9 +592,11 @@ class TensorRtRecognizer final : public Recognizer
   public:
     TensorRtRecognizer(QString root, QString sdk,ModelTier detector,ModelTier recognizer,
                        TensorRtRetirementObserver retirementObserver,
-                       std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic)
+                       std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic,
+                       runtime_precision::Request precisionRequest = {})
         : root_(std::move(root)), sdk_(std::move(sdk)),detectorTier_(detector),recognizerTier_(recognizer),
-          retirementObserver_(std::move(retirementObserver)), cropDiagnostic_(std::move(cropDiagnostic))
+          retirementObserver_(std::move(retirementObserver)), cropDiagnostic_(std::move(cropDiagnostic)),
+          precisionRequest_(std::move(precisionRequest))
     {
         // Medium/Small N8 retained text/dispositions under the
         // owner's 10-source-pixel geometry tolerance. Explicit overrides win.
@@ -624,12 +658,18 @@ class TensorRtRecognizer final : public Recognizer
         status_.state = BackendState::kReady;
         status_.usesGpu = true;
         status_.detailFocus = true;
-        status_.detail = "Preparing GPU text engines; CPU OCR is used until ready.";
+        status_.detail = precisionRequest_.Requested()
+            ? "Loading cache-only GPU text engines; local BF16 request is not yet validated."
+            : "Preparing GPU text engines; CPU OCR is used until ready.";
         return status_;
     }
     BackendStatus Status() const override
     {
         auto status = status_;
+        if (preparation_ && preparation_->phase.load(std::memory_order_acquire) == 1) {
+            std::lock_guard lock(preparation_->mutex);
+            status.detail = preparation_->state->precisionDetail + "GPU text engines ready.";
+        }
         if (preparation_ && preparation_->phase.load(std::memory_order_acquire) == 2)
         {
             status.state = BackendState::kUnavailable;
@@ -995,7 +1035,7 @@ class TensorRtRecognizer final : public Recognizer
                     TensorRtCropDiagnosticAccess::TryCommit(*cropDiagnostic_, std::move(captured));
             }
             state_->inFlight.reset(); // final metadata copy proved all reads complete
-            status_.detail = "PP-OCRv6 GPU preprocessing, detection, rectification, recognition "
+            status_.detail = state_->precisionDetail + "PP-OCRv6 GPU preprocessing, detection, rectification, recognition "
                              "and CTC; CPU metadata publication; recognizer batch=" +
                              QString::number(state_->recognizerBatch) + ". " +
                              (state_->variableWidth ? QStringLiteral("Experimental width=bucketed. ") : QString()) +
@@ -1027,15 +1067,20 @@ class TensorRtRecognizer final : public Recognizer
         preparation_ = std::make_shared<Preparation>();
         preparation_->device = device;
         preparation_->retirementObserver = retirementObserver_;
-        status_.detail = "Preparing GPU text engines; CPU OCR is used until ready.";
+        status_.detail = precisionRequest_.Requested()
+            ? "Loading cache-only GPU text engines; local BF16 request is not yet validated."
+            : "Preparing GPU text engines; CPU OCR is used until ready.";
         const auto preparation = preparation_;
         const auto assets = assets_;
         const auto sdk = sdk_;
+        const auto precisionRequest = precisionRequest_;
+        const auto detectorTier = detectorTier_, recognizerTier = recognizerTier_;
         const int recognizerBatch = recognizerBatch_;
         const bool variableWidth = variableWidth_, allowWidthPreparation = allowWidthPreparation_;
         try
         {
-            std::thread([preparation, assets, sdk, recognizerBatch, variableWidth, allowWidthPreparation] {
+            std::thread([preparation, assets, sdk, recognizerBatch, variableWidth, allowWidthPreparation,
+                         precisionRequest, detectorTier, recognizerTier] {
                 try
                 {
                     Check(cudaSetDevice(preparation->device));
@@ -1043,9 +1088,29 @@ class TensorRtRecognizer final : public Recognizer
                     Check(cudaGetDeviceProperties(&properties, preparation->device));
                     if (properties.major * 10 + properties.minor < 75)
                         throw std::runtime_error("TensorRT requires Turing or newer.");
+                    QByteArray precisionPlan;
+                    QString precisionFallback;
+                    if (precisionRequest.Requested()) {
+                        int driver{};
+                        Check(cudaDriverGetVersion(&driver));
+                        const runtime_precision::Device device{
+                            QByteArray(reinterpret_cast<const char*>(&properties.uuid), sizeof(properties.uuid)),
+                            driver, properties.major};
+                        precisionFallback = runtime_precision::Unsupported(detectorTier, recognizerTier,
+                            recognizerBatch, variableWidth, allowWidthPreparation, device);
+                        if (precisionFallback.isEmpty()) {
+                            try {
+                                const auto selection = runtime_precision::LoadManifest(precisionRequest, assets.detector);
+                                precisionPlan = runtime_precision::ReadPlan(selection, device);
+                            } catch (const runtime_precision::ArtifactError& error) {
+                                precisionFallback = QString::fromUtf8(error.what());
+                            }
+                        }
+                    }
                     auto state = std::make_shared<State>();
                     state->device = preparation->device;
                     state->variableWidth = variableWidth;
+                    state->precisionDetail = runtime_precision::ActualStatus(false, precisionFallback);
                     {
                         std::lock_guard lock(preparation->mutex);
                         preparation->state = state;
@@ -1056,10 +1121,27 @@ class TensorRtRecognizer final : public Recognizer
                     state->libraries = std::make_unique<Libraries>(sdk);
                     state->detector = std::make_unique<Network>(
                         *state->libraries, state->logger, sdk, assets.detector, assets.detectorSha256, true, state->device,
-                        state->stream, preparation->cancel, 1, false, !variableWidth || allowWidthPreparation);
+                        state->stream, preparation->cancel, 1, false,
+                        !precisionRequest.Requested() && (!variableWidth || allowWidthPreparation));
                     if (preparation->cancel.load())
                         throw std::runtime_error("GPU preparation cancelled.");
                     int capacity = recognizerBatch;
+                    if (!precisionPlan.isEmpty()) {
+                        try {
+                            state->recognizer = std::make_unique<Network>(
+                                *state->libraries, state->logger, sdk, assets.recognizer,
+                                assets.recognizerSha256, false, state->device,
+                                state->stream, preparation->cancel, 8, false, false, &precisionPlan);
+                            state->recognizerBatch = 8;
+                            state->precisionDetail = runtime_precision::ActualStatus(true);
+                        } catch (const runtime_precision::ArtifactError& error) {
+                            // Only pre-inference artifact rejection permits FP32.
+                            // API/allocation/context faults reach the outer failure path.
+                            Check(cudaStreamSynchronize(state->stream));
+                            state->precisionDetail = runtime_precision::ActualStatus(false, QString::fromUtf8(error.what()));
+                        }
+                    }
+                    if (!state->recognizer)
                     for (;;)
                     {
                         try
@@ -1067,7 +1149,8 @@ class TensorRtRecognizer final : public Recognizer
                             state->recognizer = std::make_unique<Network>(
                                 *state->libraries, state->logger, sdk, assets.recognizer,
                                 assets.recognizerSha256, false, state->device,
-                                state->stream, preparation->cancel, capacity, variableWidth, !variableWidth || allowWidthPreparation);
+                                state->stream, preparation->cancel, capacity, variableWidth,
+                                !precisionRequest.Requested() && (!variableWidth || allowWidthPreparation));
                             state->recognizerBatch = capacity;
                             break;
                         }
@@ -1075,7 +1158,7 @@ class TensorRtRecognizer final : public Recognizer
                         {
                             // An explicit width-profile preparation authorizes
                             // this N only; never cascade into extra new plans.
-                            if (capacity == 1 || preparation->cancel.load() ||
+                            if (precisionRequest.Requested() || capacity == 1 || preparation->cancel.load() ||
                                 (variableWidth && allowWidthPreparation)) throw;
                             // Preserve a supported smaller GPU profile. Unknown
                             // completion still quarantines the whole state.
@@ -1095,7 +1178,9 @@ class TensorRtRecognizer final : public Recognizer
                 {
                     {
                         std::lock_guard lock(preparation->mutex);
-                        preparation->error = QString::fromUtf8(error.what());
+                        preparation->error = (preparation->state ? preparation->state->precisionDetail :
+                            precisionRequest.Requested() ? QStringLiteral("Local BF16 request unavailable. ") : QString()) +
+                            QString::fromUtf8(error.what());
                     }
                     preparation->phase.store(2, std::memory_order_release);
                 }
@@ -1130,6 +1215,7 @@ class TensorRtRecognizer final : public Recognizer
         }
         preparation_.reset();
         Check(cudaSetDevice(device));
+        status_.detail = state_->precisionDetail + "GPU text engines ready.";
         return true;
     }
     void Retire() noexcept
@@ -1147,6 +1233,7 @@ class TensorRtRecognizer final : public Recognizer
     int recognizerBatch_{1};
     bool invalidBatch_{}, invalidWidth_{}, variableWidth_{}, allowWidthPreparation_{};
     std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic_;
+    const runtime_precision::Request precisionRequest_;
     std::optional<DetailFocus> detail_; // worker-confined, one recognition at a time
     PaddleAssets assets_;
     BackendStatus status_;
@@ -1166,10 +1253,23 @@ std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &root, const 
     return std::make_unique<TensorRtRecognizer>(root.isEmpty() ? DefaultPaddleRoot() : root,
                                                 selected,detector,recognizer,std::move(retirementObserver),std::move(cropDiagnostic));
 }
+std::unique_ptr<Recognizer> CreateProductionTensorRtRecognizer(ModelTier detector, ModelTier recognizer)
+{
+    auto sdk = qEnvironmentVariable("OKUFLOW_UCT_TENSORRT_ROOT");
+    if (sdk.isEmpty()) sdk = QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath(
+        "OkuFlow/ocr-deps/TensorRT-11.4.0.106-cuda12.9/TensorRT-11.4.0.106");
+    return std::make_unique<TensorRtRecognizer>(DefaultPaddleRoot(), sdk, detector, recognizer,
+        TensorRtRetirementObserver{}, std::shared_ptr<TensorRtCropDiagnostic>{},
+        runtime_precision::ReadApplicationRequest());
+}
 } // namespace okuflow::uct
 #else
 namespace okuflow::uct
 {
+std::unique_ptr<Recognizer> CreateProductionTensorRtRecognizer(ModelTier detector, ModelTier recognizer)
+{
+    return CreateTensorRtRecognizer({}, {}, detector, recognizer);
+}
 std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &, const QString &,ModelTier,ModelTier,
                                                    TensorRtRetirementObserver, std::shared_ptr<TensorRtCropDiagnostic>)
 {

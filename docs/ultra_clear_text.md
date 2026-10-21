@@ -139,7 +139,7 @@ build dependencies fatal for an explicitly required adapter. CUDA DLL discovery
 uses runtime `OKUFLOW_UCT_CUDA_BIN`, then `CUDA_PATH_V12_9/bin`, then the local
 documented CUDA-12.9.2 installation, never a compiled-in developer path.
 
-TensorRT uses a private low-priority stream, float32 graphs, device I/O,
+TensorRT normally uses a private low-priority stream, float32 graphs, device I/O,
 CUDA normalization, connected regions, rectification and CTC reduction.
 Only a region count is downloaded between networks; token/box metadata
 comes back afterward, never the full model logits. Engines prepare on a
@@ -148,6 +148,12 @@ finishes, then GPU is promoted between jobs. TensorRT's progress monitor
 cooperatively cancels when the backend session ends; it cannot preempt every
 vendor call. Cache identity binds model, GPU UUID, driver,
 TensorRT version and precision; cached bytes also have an integrity digest.
+
+The owner's explicit [local BF16 recognition opt-in](uct_local_bf16.md) selects
+only a reviewed cache-only medium recognition graph with mixed arithmetic and
+FLOAT I/O, retaining the pinned FP32 medium detector. It does not change public
+diagnostic factories or other users' precision defaults. Rejected artifacts
+name cached FP32 fallback; actual runtime faults retain normal failover.
 
 CUDA analysis captures the geometry-correct scene before appearance effects,
 SuperRes and display zoom into two owned device slots. Busy slots skip an

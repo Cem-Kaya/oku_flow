@@ -518,6 +518,23 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   chain. A preparing GPU candidate is retained while CPU/Windows serves, then
   promoted between jobs. CPU device input is copied once per call across fallback.
   `CreateWindowsRecognizer` retains the original Windows.Media.Ocr adapter.
+- Private `CreateProductionTensorRtRecognizer` is used only for the app's normal
+  first GPU candidate. `runtime_precision::{Request,ReadApplicationRequest}`
+  snapshots `OKUFLOW_UCT_LOCAL_BF16_MANIFEST`; public `CreateTensorRtRecognizer`
+  never reads it. `Graph`, `Selection` and `Device` carry immutable selection
+  inputs. `Unsupported` gates the reviewed M/M N8 fixed1024 device identity.
+  `ParseManifest`/`LoadManifest`, `Hash`, `LocalAbsolute`, `Within`, `SamePath`,
+  `CanonicalWithin`, `ReadVerified`, `PlanPath` and `ReadPlan` enforce bounded,
+  role/source/hash/path-pinned cache-only artifacts. `PrecisionPlanKey` matches
+  the offline reviewed precision key. Only `ArtifactError` permits pre-inference
+  FP32 selection; CUDA/API/runtime failures retain ordinary retirement. `Network`
+  accepts an optional verified plan payload and validates FLOAT I/O plus exact
+  fixed1024/N8 profile. `State::precisionDetail` and `ActualStatus` report the
+  BF16 recognition graph/mixed arithmetic or actual FP32/fallback reason.
+  The same preparation worker loads detector/recognizer without creating another
+  candidate or altering supplemental/bridge behavior. `PaddleTests::localBf16*`
+  covers policy/key/refusal/read-only behavior without models or inference.
+  See [local precision selection](uct_local_bf16.md).
 - `CreatePaddleCpuRecognizer` uses `OpenPaddleCpuSession`/private
   `OnnxCpuSession`, runtime-loaded hash-pinned CPU ONNX Runtime, two intra-op
   threads and checked float tensor dimensions. `CreateTensorRtRecognizer`
