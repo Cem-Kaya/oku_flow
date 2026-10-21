@@ -12,7 +12,9 @@
 #include <QPaintEvent>
 #include <QRegion>
 #include <QScreen>
+#include <QScopeGuard>
 #include <QSet>
+#include <QThread>
 #include <QTextLayout>
 #include <QTextOption>
 
@@ -379,7 +381,7 @@ QRectF UltraClearTextOverlay::InkAtReference(const QString& text)
     return ink;
 }
 
-void UltraClearTextOverlay::RebuildGlyphLayout()
+bool UltraClearTextOverlay::RebuildGlyphLayout(const QDeadlineTimer* deadline)
 {
     // OCR boxes bound ink, not the font em square: e.g. "of" has neither
     // capitals nor descenders, while "Changing" has both. Fit a robust shared
@@ -393,6 +395,7 @@ void UltraClearTextOverlay::RebuildGlyphLayout()
     };
     QHash<std::uint64_t, QVector<int>> lines, orientedLines;
     for (int i = 0; i < words_.size(); ++i) {
+        if (deadline && deadline->hasExpired()) return false;
         // Unlabelled legacy/test words are independent, never one giant line.
         const std::uint64_t group = words_[i].layoutGroupId ? words_[i].layoutGroupId : words_[i].lineId;
         const std::uint64_t key = group ? group : std::numeric_limits<std::uint64_t>::max() - i;
@@ -405,8 +408,10 @@ void UltraClearTextOverlay::RebuildGlyphLayout()
     // baseline follows the word, never a straight median across the arc.
     // Ratios along one axis survive every later pan/zoom projection.
     for (const QVector<int>& indices : orientedLines) {
+        if (deadline && deadline->hasExpired()) return false;
         QVector<qreal> sizes;
         for (int i : indices) {
+            if (deadline && deadline->hasExpired()) return false;
             const QRectF ink = InkAtReference(words_[i].text);
             const qreal h = uct::QuadHeight(words_[i].sceneQuad);
             if (ink.height() > 0.0 && h > 0.0 && std::isfinite(h)) sizes.push_back(h / ink.height());
@@ -414,6 +419,7 @@ void UltraClearTextOverlay::RebuildGlyphLayout()
         if (sizes.isEmpty()) continue;
         const qreal scale = median(std::move(sizes));
         for (int i : indices) {
+            if (deadline && deadline->hasExpired()) return false;
             const QRectF ink = InkAtReference(words_[i].text);
             const qreal h = uct::QuadHeight(words_[i].sceneQuad);
             SceneGlyph glyph;
@@ -432,8 +438,10 @@ void UltraClearTextOverlay::RebuildGlyphLayout()
         }
     }
     for (const QVector<int>& indices : lines) {
+        if (deadline && deadline->hasExpired()) return false;
         QVector<qreal> sizes;
         for (int i : indices) {
+            if (deadline && deadline->hasExpired()) return false;
             const QRectF ink = InkAtReference(words_[i].text);
             if (ink.height() > 0.0 && !words_[i].sceneRect.isEmpty()) {
                 sizes.push_back(words_[i].sceneRect.height() / ink.height());
@@ -445,6 +453,7 @@ void UltraClearTextOverlay::RebuildGlyphLayout()
         const qreal scaleY = median(std::move(sizes));
         QVector<qreal> baselines;
         for (int i : indices) {
+            if (deadline && deadline->hasExpired()) return false;
             const QRectF ink = InkAtReference(words_[i].text);
             if (!ink.isEmpty()) {
                 baselines.push_back(words_[i].sceneRect.top() - ink.top() * scaleY);
@@ -455,6 +464,7 @@ void UltraClearTextOverlay::RebuildGlyphLayout()
         }
         const qreal baseline = median(std::move(baselines));
         for (int i : indices) {
+            if (deadline && deadline->hasExpired()) return false;
             const SceneWord& word = words_[i];
             const QRectF ink = InkAtReference(word.text);
             if (ink.isEmpty() || word.sceneRect.isEmpty()) {
@@ -477,10 +487,10 @@ void UltraClearTextOverlay::RebuildGlyphLayout()
                           ink, ReadableColors(word.colors), true};
         }
     }
-    ResolveOverlaps();
+    return ResolveOverlaps(deadline);
 }
 
-void UltraClearTextOverlay::ResolveOverlaps()
+bool UltraClearTextOverlay::ResolveOverlaps(const QDeadlineTimer* deadline)
 {
     // Scene areas scale uniformly under every view transform, so the
     // overlap fraction is decided once here rather than on each pan.
@@ -488,6 +498,7 @@ void UltraClearTextOverlay::ResolveOverlaps()
     QVector<Item> items;
     items.reserve(words_.size());
     for (int i = 0; i < words_.size(); ++i) {
+        if (deadline && deadline->hasExpired()) return false;
         if (!glyphs_[i].valid) continue;
         const uct::TextQuad shape = words_[i].sceneQuad.valid ? words_[i].sceneQuad
                                                               : uct::TextQuad::FromRect(words_[i].sceneRect);
@@ -499,6 +510,7 @@ void UltraClearTextOverlay::ResolveOverlaps()
     });
     for (qsizetype a = 0; a < items.size(); ++a) {
         for (qsizetype b = a + 1; b < items.size() && items[b].bounds.top() <= items[a].bounds.bottom(); ++b) {
+            if (deadline && deadline->hasExpired()) return false;
             if (!items[a].bounds.intersects(items[b].bounds)) continue;
             const double smaller = std::min(items[a].area, items[b].area);
             const double shared = uct::QuadIntersectionArea(items[a].shape, items[b].shape);
@@ -512,6 +524,7 @@ void UltraClearTextOverlay::ResolveOverlaps()
             }
         }
     }
+    return !deadline || !deadline->hasExpired();
 }
 
 bool UltraClearTextOverlay::PlanOriented(PlannedWord& planned, const SceneGlyph& glyph,
@@ -574,8 +587,9 @@ bool UltraClearTextOverlay::PlanOriented(PlannedWord& planned, const SceneGlyph&
            planned.inkBottom - planned.inkTop >= kMinProjectedHeight;
 }
 
-void UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransform& transform,
-                                              const QSize& viewportSize, bool excludeChrome)
+bool UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransform& transform,
+                                              const QSize& viewportSize, bool excludeChrome,
+                                              const QDeadlineTimer* deadline)
 {
     const QRect bounds(QPoint(0, 0), viewportSize);
     const int count = words_.size();
@@ -614,6 +628,7 @@ void UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransfor
     protectedInk = QRegion();
     QSet<std::pair<const QRectF*, const QRectF*>> seenProtection;
     for (const SceneWord& word : words_) {
+        if (deadline && deadline->hasExpired()) return false;
         const auto identity = std::pair{word.protectedSceneRects.constData(), word.carvedSceneRects.constData()};
         if (word.protectedSceneRects.isEmpty() || seenProtection.contains(identity))
             continue;
@@ -622,10 +637,13 @@ void UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransfor
             return std::array<double, 4>{rect.x(), rect.y(), rect.width(), rect.height()};
         };
         std::set<std::array<double, 4>> carved;
-        for (const auto& rect : word.carvedSceneRects)
+        for (const auto& rect : word.carvedSceneRects) {
+            if (deadline && deadline->hasExpired()) return false;
             if (std::isfinite(rect.x()) && std::isfinite(rect.y()) &&
                 std::isfinite(rect.width()) && std::isfinite(rect.height())) carved.insert(key(rect));
+        }
         for (const QRectF& scene : word.protectedSceneRects) {
+            if (deadline && deadline->hasExpired()) return false;
             const QRectF view = uct::SceneRectToView(transform, viewportSize.width(), viewportSize.height(), scene);
             if (!view.isEmpty() && std::isfinite(view.x()) && std::isfinite(view.y()) &&
                 std::isfinite(view.width()) && std::isfinite(view.height()))
@@ -637,6 +655,7 @@ void UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransfor
     // passes consume that single decision: a plate is painted if and only
     // if its glyph is painted over it.
     for (int i = 0; i < count; ++i) {
+        if (deadline && deadline->hasExpired()) return false;
         PlannedWord& planned = plan.words[i];
         const SceneGlyph& glyph = glyphs_[i];
         planned.lineId = words_[i].lineId;
@@ -694,6 +713,7 @@ void UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransfor
     do {
         changed = false;
         for (int i = 0; i < count; ++i) {
+            if (deadline && deadline->hasExpired()) return false;
             PlannedWord& planned = plan.words[i];
             if (planned.drawn && touchesProtection(planned)) {
                 planned.drawn = false;
@@ -709,6 +729,88 @@ void UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransfor
     }
     plan.visibleClip = clip;
     plan.paintClip = clip - protectedInk;
+    return !deadline || !deadline->hasExpired();
+}
+
+bool UltraClearTextOverlay::PreservesDrawnWords(QVector<SceneWord> proposed,
+    const QVector<uct::OverlayModel::RegionalWordMatch>& matches, double remainingMs)
+{
+    if (QThread::currentThread() != thread() || !std::isfinite(remainingMs) || remainingMs <= 0 ||
+        !PaintedGeometryCurrent() || plan_.font != referenceFont_ || proposed.size() > 8192 ||
+        plan_.words.size() != words_.size() || plan_.texts.size() != words_.size()) return false;
+    QDeadlineTimer deadline;
+    deadline.setPreciseRemainingTime(0,static_cast<qint64>(std::min(remainingMs,3.0)*1e6),Qt::PreciseTimer);
+    const auto mapping = [](const ViewTransform& t) {
+        return std::array<float,9>{t.sourceX,t.sourceY,t.sourceWidth,t.sourceHeight,
+            t.destinationX,t.destinationY,t.destinationWidth,t.destinationHeight,float(t.valid)};
+    };
+    if (mapping(plan_.transform) != mapping(transform_)) return false;
+    using Key = std::pair<std::uint64_t,int>;
+    QHash<Key,Key> replacements;
+    for (const auto& match : matches) {
+        if (deadline.hasExpired()) return false;
+        if (replacements.contains({match.oldLineId,match.oldWordIndex})) return false;
+        replacements.insert({match.oldLineId,match.oldWordIndex},{match.proposedLineId,match.proposedWordIndex});
+    }
+    QHash<Key,QString> required;
+    for (int i = 0; i < words_.size(); ++i) {
+        if (deadline.hasExpired()) return false;
+        const auto& painted = plan_.words[i]; const auto& word = words_[i];
+        if (painted.lineId != word.lineId || painted.wordIndex != word.wordIndex || plan_.texts[i] != word.text)
+            return false; // a content assignment has not painted yet
+        if (painted.oriented != word.sceneQuad.valid ||
+            (word.sceneQuad.valid ? uct::SceneQuadToView(transform_,width(),height(),word.sceneQuad).points != painted.original
+                                 : uct::SceneRectToView(transform_,width(),height(),word.sceneRect) != painted.originalRect))
+            return false;
+        if (!painted.drawn) continue;
+        const auto match = replacements.constFind({painted.lineId,painted.wordIndex});
+        if (match == replacements.cend()) return false;
+        if (required.contains(match.value())) return false;
+        required.insert(match.value(),word.text);
+    }
+    // The optional path never calls cold font measurement/shaping. A later
+    // ordinary full result can populate missing typography without this guard.
+    for (const auto& word : proposed)
+        if (deadline.hasExpired() || !inkCache_.contains(word.text)) return false;
+    auto savedWords = std::move(words_);
+    auto savedGlyphs = std::move(glyphs_);
+    auto savedProtection = std::move(protectedInk_);
+    const auto restore = qScopeGuard([&] {
+        words_ = std::move(savedWords); glyphs_ = std::move(savedGlyphs); protectedInk_ = std::move(savedProtection);
+    });
+    words_ = std::move(proposed);
+    bool reuse = words_.size() == savedWords.size() && savedGlyphs.size() == savedWords.size();
+    QHash<std::uint64_t,std::uint64_t> groups, reverseGroups;
+    for (int i = 0; reuse && i < words_.size(); ++i) {
+        if (deadline.hasExpired()) return false;
+        const auto& old = savedWords[i]; const auto& word = words_[i];
+        const auto group = word.layoutGroupId ? word.layoutGroupId : word.lineId;
+        const auto oldGroup = old.layoutGroupId ? old.layoutGroupId : old.lineId;
+        reuse = old.text == word.text && old.sceneRect == word.sceneRect && old.sceneQuad == word.sceneQuad &&
+            replacements.value({old.lineId,old.wordIndex},Key{}) == Key(word.lineId,word.wordIndex) &&
+            (!groups.contains(oldGroup) || groups.value(oldGroup) == group) &&
+            (!reverseGroups.contains(group) || reverseGroups.value(group) == oldGroup);
+        groups.insert(oldGroup,group); reverseGroups.insert(group,oldGroup);
+    }
+    if (reuse) {
+        glyphs_ = savedGlyphs;
+        for (int i = 0; i < glyphs_.size(); ++i) {
+            if (deadline.hasExpired()) return false;
+            glyphs_[i].colors = ReadableColors(words_[i].colors);
+        }
+    } else if (!RebuildGlyphLayout(&deadline)) return false;
+    PaintPlan scratch;
+    if (!ComputePaintPlan(scratch,transform_,size(),true,&deadline) || scratch.visibleClip != plan_.visibleClip)
+        return false;
+    for (int i = 0; i < scratch.words.size(); ++i) {
+        if (deadline.hasExpired()) return false;
+        const auto& word = scratch.words[i];
+        const auto expected = required.constFind({word.lineId,word.wordIndex});
+        if (expected == required.cend()) continue;
+        if (!word.drawn || scratch.texts[i] != expected.value()) return false;
+        required.erase(expected);
+    }
+    return required.isEmpty() && !deadline.hasExpired();
 }
 
 void UltraClearTextOverlay::paintEvent(QPaintEvent* event)

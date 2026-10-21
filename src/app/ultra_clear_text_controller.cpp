@@ -1412,9 +1412,23 @@ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
     }
     // Whole COW snapshots retain proof separately from diagnostic causality.
     const auto previousLines = uct::timing::Enabled() ? model_.Lines() : QVector<uct::AcceptedLine>{};
+    const uct::OverlayModel::RegionalPreflight regionalPreflight = [this,now](const uct::OverlayModel& proposal,
+        const QVector<uct::OverlayModel::RegionalWordMatch>& matches, double remainingMs) {
+        if (!overlay_) return false;
+        QElapsedTimer budget; budget.start();
+        const auto words = proposal.SceneWords(ModelTime(now),currentFrameSeq_);
+        QVector<UltraClearTextOverlay::SceneWord> projected;
+        projected.reserve(words.size());
+        for (const auto& word : words) {
+            if (budget.nsecsElapsed()/1e6 >= remainingMs) return false;
+            projected.push_back({word.text,word.sceneRect,word.colors,word.lineId,word.protectedSceneRects,
+                word.wordIndex,word.sceneQuad,word.layoutGroupId,word.carvedSceneRects});
+        }
+        return overlay_->PreservesDrawnWords(std::move(projected),matches,remainingMs-budget.nsecsElapsed()/1e6);
+    };
     const uct::AdmitVerdict verdict = advancingMediaScene_
-        ? model_.AdmitAdvancingMedia(result, CurrentScene(), latestProbe_.get(), ModelTime(now))
-        : model_.AdmitLiveCamera(result, CurrentScene(), latestProbe_.get(), now);
+        ? model_.AdmitAdvancingMedia(result, CurrentScene(), latestProbe_.get(), ModelTime(now),regionalPreflight)
+        : model_.AdmitLiveCamera(result, CurrentScene(), latestProbe_.get(), now,regionalPreflight);
     NoteTimingAdmission(result, verdict, 0, &previousLines);
     if (uct::timing::Enabled()) TraceRecognition(uct::timing::Event::Admit, scheduler_.get(), result,
         {static_cast<std::uint32_t>(verdict), static_cast<std::uint32_t>(model_.AcceptedWordCount())});

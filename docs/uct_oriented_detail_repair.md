@@ -183,6 +183,17 @@ evidence root above.
 
 ### Immutable protection independent of word consumption (2026-10-22)
 
+Each incoming candidate now commits as one bounded transaction. A single COW
+snapshot covers all touched reading owners, appends and retirements, masks and
+original/carved classification, counters, carrier, provisional IDs and proved
+footprints. Cross-owner subtraction and its possible storage growth complete
+before commit. Semantic-risk, ambiguous-quad or capacity refusal restores the
+pre-candidate accepted state and index; it cannot leave an appended word after
+discarding that candidate's punctuation. Snapshots are per candidate, never per
+word, under the existing 1024-line/8192-slot/32768-mask limits. Retained words
+keep their exact geometry, references and validation clocks. Independent
+contradiction blocks retain their existing correction authority.
+
 `OverlayModel::MergeImmutableCoverage` preserves candidate protection after every
 word has been appended or deduplicated. Ordinary masks are first carved against
 retained proved shapes; incompatible non-carvable artifacts are refused. A
