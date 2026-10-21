@@ -11,8 +11,10 @@
 #include <QPointer>
 #include <QRegion>
 #include <QScreen>
+#include <QTransform>
 #include <QWidget>
 
+#include <array>
 #include <utility>
 
 QT_BEGIN_NAMESPACE
@@ -44,6 +46,9 @@ public:
         std::uint64_t lineId{}; // one shared type size and baseline per OCR line
         QVector<QRectF> protectedSceneRects; // source ink that neither pass may cover
         int wordIndex{-1}; // uct::SceneWord::wordIndex; with lineId the accessibility key
+        // Rotated word geometry (fitted ink). Glyph and plate follow its
+        // baseline; sceneRect remains its bound. Invalid for upright words.
+        uct::TextQuad sceneQuad;
     };
     void SetWords(QVector<SceneWord> words);
     // Optional diagnostic provenance of this content assignment, never a view
@@ -145,6 +150,17 @@ private:
         QRectF referenceInk;      // measured ink at the reference pixel size
         uct::LineColors colors{}; // readable-color decision, made once
         bool valid{};
+        // Rotated words: shared line type size and the word's own baseline
+        // as fractions of its local height, valid under any pan/zoom.
+        bool oriented{};
+        qreal heightRatio{};       // glyph ink height / word height
+        qreal baselineFraction{};  // baseline distance from the top edge / word height
+        // Overlap decisions made once per content change, never per paint:
+        // a second observation of the same word is not painted (and does not
+        // protect ink its twin replaces); different text claiming the same
+        // ink keeps every original pixel there.
+        bool duplicate{};
+        bool collision{};
     };
     QVector<SceneGlyph> glyphs_;
     QHash<QString, QRectF> inkCache_;
@@ -155,13 +171,21 @@ private:
     struct PlannedWord {
         std::uint64_t lineId{};
         int wordIndex{-1};
-        QRectF originalRect; // projected source box
-        QRectF inkRect;      // projected fitted ink
-        QRectF plateRect;
+        QRectF originalRect; // projected source box (bound of the quad when rotated)
+        QRectF inkRect;      // projected fitted ink (bound when rotated)
+        QRectF plateRect;    // plate bound
         QPointF origin;      // glyph baseline origin
         qreal scaleX{};
         qreal scaleY{};
         bool drawn{};
+        // Rotated words: exact view polygons and baseline frame. Fixed-size
+        // arrays keep per-paint planning allocation-free.
+        bool oriented{};
+        qreal angleDegrees{};
+        QPointF along, across;               // unit baseline and downward normal
+        qreal inkTop{}, inkBottom{};         // ink extent from the baseline along `across`
+        std::array<QPointF, 4> original{}, ink{}, plate{};
+        QTransform glyphToView; // complete projective glyph/quad mapping
     };
     struct PaintPlan {
         bool valid{};
@@ -177,6 +201,9 @@ private:
         QPointer<QScreen> screen;
     };
     PaintPlan plan_;
+    // Projects one rotated word; false when its view quad is degenerate.
+    bool PlanOriented(PlannedWord& planned, const SceneGlyph& glyph, const uct::TextQuad& viewQuad) const;
+    void ResolveOverlaps();
     QRegion protectedInk_; // reused scratch
     mutable QHash<std::pair<std::uint64_t, int>, int> planIndex_;
     mutable std::uint64_t planIndexGeneration_{};

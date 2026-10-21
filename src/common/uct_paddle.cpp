@@ -33,6 +33,7 @@ class PaddleCpuRecognizer final : public Recognizer
             detector_ = OpenPaddleCpuSession(runtime, assets_.detector);
             recognizer_ = OpenPaddleCpuSession(runtime, assets_.recognizer);
             status_.state = BackendState::kReady;
+            status_.detailFocus = true;
             status_.detail = "PP-OCRv6 "+ModelTierToken(detectorTier_)+" detector / "+ModelTierToken(recognizerTier_)+" recognizer; CPU fallback.";
         }
         catch (const std::exception &e)
@@ -44,6 +45,10 @@ class PaddleCpuRecognizer final : public Recognizer
     BackendStatus Status() const override
     {
         return status_;
+    }
+    void SetDetailFocus(const std::optional<DetailFocus> &focus) override
+    {
+        detail_ = focus;
     }
     RecognitionOutput Recognize(const QImage &image, const std::atomic<bool> &cancelled) override
     {
@@ -57,10 +62,19 @@ class PaddleCpuRecognizer final : public Recognizer
             }
             if (!detector_ || !recognizer_ || image.isNull())
                 throw std::runtime_error("PaddleOCR is not ready.");
-            for (const QRect& region : PaddleDetectionRegions(image.size())) {
+            const auto regions = PaddleRecognitionRegions(image.size(), detail_);
+            if (detail_ && regions.isEmpty()) {
+                // An unusable view region is a dropped request, not a model fault.
+                result.inputFault = true;
+                result.error = QStringLiteral("Visible-detail region is outside the image.");
+                return result;
+            }
+            const double magnification = detail_ ? PaddleDetailMagnification(*detail_) : 1.0;
+            if (detail_) result.detailRegionPx = regions.first();
+            for (const QRect& region : regions) {
             if (cancelled.load()) { result.cancelled=true; result.lines.clear(); return result; }
             const QImage crop = region.size()==image.size() ? image : image.copy(region);
-            const QSize size = PaddleDetectionSize(crop.size());
+            const QSize size = PaddleDetectionSize(crop.size(), magnification);
             const auto pixels = PaddleNormalize(crop, size, true);
             const std::array<std::int64_t, 4> shape{1, 3, size.height(), size.width()};
             const auto map = detector_->Run(pixels, shape);
@@ -119,6 +133,7 @@ class PaddleCpuRecognizer final : public Recognizer
     PaddleAssets assets_;
     BackendStatus status_;
     std::unique_ptr<PaddleCpuSession> detector_, recognizer_;
+    std::optional<DetailFocus> detail_;
 };
 
 class AutomaticRecognizer final : public Recognizer
@@ -148,6 +163,12 @@ class AutomaticRecognizer final : public Recognizer
     BackendStatus Status() const override
     {
         return status_;
+    }
+    void SetDetailFocus(const std::optional<DetailFocus> &focus) override
+    {
+        // Every candidate sees the same request; only one runs this job.
+        for (auto &candidate : candidates_)
+            if (candidate) candidate->SetDetailFocus(focus);
     }
     bool WantsDeviceInput() const override
     {
