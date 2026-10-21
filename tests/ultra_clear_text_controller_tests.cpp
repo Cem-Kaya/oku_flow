@@ -1128,6 +1128,7 @@ void UltraClearTextControllerTests::timingPaneOnlyChangePreservesPositionedTicke
         QCOMPARE(after.text, before.text); QCOMPARE(after.lineId, before.lineId);
         QCOMPARE(after.wordIndex, before.wordIndex); QCOMPARE(after.sceneRect, before.sceneRect);
         QCOMPARE(after.protectedSceneRects, before.protectedSceneRects);
+        QCOMPARE(after.carvedSceneRects, before.carvedSceneRects);
         QCOMPARE(after.colors.foreground, before.colors.foreground);
         QCOMPARE(after.colors.background, before.colors.background);
     }
@@ -2375,6 +2376,7 @@ void UltraClearTextControllerTests::pausedRefinementFailureKeepsOnlyProvenArtifa
         QCOMPARE(after.readingTokens, before.readingTokens);
         QCOMPARE(after.readingWordIndices, before.readingWordIndices);
         QCOMPARE(after.protectedSceneRects, before.protectedSceneRects);
+        QCOMPARE(after.carvedSceneRects, before.carvedSceneRects);
         QCOMPARE(after.validatedAtMs, before.validatedAtMs);
         QCOMPARE(after.validatedFrameSeq, before.validatedFrameSeq);
         QCOMPARE(after.provenance.sourceEpoch, before.provenance.sourceEpoch);

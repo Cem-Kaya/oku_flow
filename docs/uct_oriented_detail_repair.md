@@ -34,10 +34,11 @@ The protection closure remains bounded. No interpolation grants tracking proof.
 Projected uncertainty cuts and word shapes use one half-open pixel-centre
 coverage grid. Independently rounding both sides outward previously made
 disjoint fractional spans overlap by a pixel, suppressing a newly proved word
-and sometimes its neighbour. Tiny punctuation without a covered centre still
-protects a conservative pixel only when both axes lack centres. Thin carve
-remainders on a single axis add no artificial bordering pixel. The same plan
-governs live paint and exports.
+and sometimes its neighbour. Original punctuation without a covered centre on
+either axis retains conservative outward coverage. Subtraction remainders carry
+explicit classification: only a tiny two-dimensional remainder with no centres
+on either axis receives that fallback. Thin carved strips on a single axis add
+no artificial bordering pixel. The same plan governs live paint and exports.
 
 Immutable duplicate observations keep the original displayed geometry and
 carve only that retained proved footprint. A wider incoming box cannot uncover
@@ -201,3 +202,49 @@ repair. The changed-input CPU contract passes all258 Qt rows, zero skips, in
 later remaining grouping failure, and a runner recheck refusal are retained;
 none was retried unchanged. This is scoped CPU validation, not combined
 CUDA/native acceptance.
+
+### Original thin marks and carved remainders (2026-10-22)
+
+`AcceptedLine::carvedSceneRects` is a subset of the existing protected masks,
+bounded by the same 32768-mask union cap. Untouched masks retain classification;
+successful subtraction marks only its new residual rectangles as carved.
+Ambiguous quad cuts, semantic-risk refusals and cap refusals leave both masks
+and metadata unchanged. The subset follows mask-only/reading-owner transfers
+and scene offsets, and is cleared with the accepted artifact on reset.
+
+An original mask takes precedence when its exact rectangle also occurs as a
+carved remainder, within a line, during transfer, or across different owners.
+Conflict and hidden-source protection remain original. Common/UI scene words,
+controller content/timing equality and proof conversions carry the subset.
+Regional admission treats a change from carved to original at the same geometry
+as stronger protection in its atomic no-withdrawal check.
+
+New model-free regressions cover original vertical/horizontal 0.25-pixel marks
+at zoom 1/3 with upright/quad words. Each first proves that plate padding covers
+the coloured source pixel, then requires the protected pixel to survive both
+export compositing and the live software paint while the word remains drawn.
+Sixteen rows include eight shared-mask variants with different per-word
+classification, so COW deduplication cannot skip an original mask.
+The sixteen existing carved-strip rows keep their assertions and explicitly
+classify their fabricated masks. Tiny two-axis punctuation now covers both
+original and carved classifications. Model cases cover residual classification,
+untouched originals, collision order, cross-owner precedence, repeated carrier
+reuse, offset conversion and reset.
+
+The fresh isolated `msvc-cpu` build uses Qt 6.12.0, PCH OFF and two compiler
+jobs. All three requested targets compile. The coordinated tracked gate runs
+eight exact CTest cases with `-ExcludeGui -Parallel 1`: all eight pass in
+128.16 seconds, with zero failed/skipped tests and zero unresolved results.
+`ultra_clear_text_contract` passes 300 Qt rows with no skips (36.24 seconds);
+`immutable_uct_contract` passes 113 with no skips (84.14 seconds). Each of the
+three accessibility scale cases passes 25 rows and skips its opt-in timing row;
+the separately selected timing case passes all three rows. Both controller
+timing selectors also pass three rows each. Total: 497 passed Qt rows and three
+explicit scale-only skips, with the timing contract independently covered.
+
+Byte-verified copies of the first-attempt ledger, CTest log, detailed Qt log and
+JUnit XML are retained under
+`Z:/Projects/OkuFlow/local-work-data/uct-original-mask-f6-20261022/evidence/`.
+No unchanged retry, GPU, native app, real-camera or model work was run. This is
+SCOPED CPU/PCH-OFF evidence; PCH ON, the complete release matrix and combined
+root changes remain separate acceptance.

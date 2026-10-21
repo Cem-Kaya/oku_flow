@@ -126,8 +126,9 @@ Before committing, the complete capped regional proposal must also preserve
 every still-active stored word in an owned line. Matching is exact-text,
 one-to-one in reading order with the established geometry agreement threshold;
 repeated words cannot share one replacement. Intersecting protection is allowed
-only for the unchanged old word geometry and unchanged old mask; an existing
-tiny mask never authorizes enlarged protection. Resource caps cannot withdraw
+only for the unchanged old word geometry and unchanged old mask, without
+strengthening a carved remainder to original protection; an existing tiny mask
+never authorizes enlarged protection. Resource caps cannot withdraw
 existing words. Confirmed words and words still named by a
 reading token are protected even when expired, hidden or reading-only; retired,
 unmapped slots are excluded. A refused transaction leaves whole accepted

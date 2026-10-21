@@ -1869,6 +1869,7 @@ void UltraClearTextController::NoteTimingAdmission(const uct::RecognitionResult&
         const auto& after = model_.Lines();
         const auto sameLine = [](const auto& a, const auto& b) {
             if (a.id != b.id || a.protectedSceneRects != b.protectedSceneRects ||
+                a.carvedSceneRects != b.carvedSceneRects ||
                 !SameColors(a.colors,b.colors) || a.words.size() != b.words.size()) return false;
             for (int w = 0; w < a.words.size(); ++w) {
                 const auto& ac = a.words[w].colors; const auto& bc = b.words[w].colors;
@@ -1948,7 +1949,7 @@ void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
     next.reserve(words.size());
     for (const uct::SceneWord& word : words) {
         next.push_back({word.text, word.sceneRect, word.colors, word.lineId, word.protectedSceneRects,
-                        word.wordIndex, word.sceneQuad, word.layoutGroupId});
+                        word.wordIndex, word.sceneQuad, word.layoutGroupId, word.carvedSceneRects});
     }
     // Text, position and colors all decide what is drawn; a re-recognized
     // word in a new color scheme must not keep its old plate.
@@ -1960,6 +1961,7 @@ void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
                next[i].layoutGroupId == overlayWords_[i].layoutGroupId &&
                next[i].wordIndex == overlayWords_[i].wordIndex &&
                next[i].protectedSceneRects == overlayWords_[i].protectedSceneRects &&
+               next[i].carvedSceneRects == overlayWords_[i].carvedSceneRects &&
                next[i].sceneQuad == overlayWords_[i].sceneQuad &&
                SameColors(next[i].colors, overlayWords_[i].colors);
     }

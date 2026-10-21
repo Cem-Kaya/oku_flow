@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Preserve original thin UCT punctuation when one projected axis contains no
+  pixel centres. Track bounded subtraction-remainder metadata so carved strips
+  still avoid hiding adjacent proved words; original protection wins identical
+  rectangle collisions in live views and saved images.
+
 - Preserve newly found UCT uncertainty even when all incoming words merge into
   existing reading lines. Keep tilted proof from carving protection outside its
   actual quad. Existing proved words retain their original reading identity.

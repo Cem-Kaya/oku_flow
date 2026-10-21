@@ -766,6 +766,8 @@ private slots:
     void subpixelProtectionStripsKeepProvedWords();
     void subpixelPunctuationKeepsItsPixel_data();
     void subpixelPunctuationKeepsItsPixel();
+    void originalThinProtectionKeepsItsPixels_data();
+    void originalThinProtectionKeepsItsPixels();
     void paddedRecognitionFitsVisibleInk_data();
     void paddedRecognitionFitsVisibleInk();
     void overlayKeepsSourceBackgroundInsteadOfBlackWhite_data();
@@ -868,6 +870,8 @@ private slots:
     void immutableIncomingProtectionOutlivesWordConsumption_data();
     void immutableIncomingProtectionOutlivesWordConsumption();
     void immutableQuadCarveKeepsOutsidePunctuation();
+    void immutableProtectionClassificationSurvivesTransfer_data();
+    void immutableProtectionClassificationSurvivesTransfer();
     void immutableRefinementRetiredReadingOnlyBoundaryKeepsResidualProtection();
     void protectedAdjacentInkSurvivesCompositing_data();
     void protectedAdjacentInkSurvivesCompositing();
@@ -1659,7 +1663,10 @@ void UltraClearTextTests::fractionalProtectionCutsKeepProvedWords()
         {QStringLiteral("to"), scene(proved), {Qt::black, Qt::white}, 1, protection, 0},
         {QStringLiteral("an"), scene({380.45, 166.75, 110, 40}),
          {Qt::black, Qt::white}, 2, protection, 0}};
-    if (oriented) for (auto& word : words) word.sceneQuad = TextQuad::FromRect(word.sceneRect);
+    for (auto& word : words) {
+        word.carvedSceneRects = protection;
+        if (oriented) word.sceneQuad = TextQuad::FromRect(word.sceneRect);
+    }
     overlay.SetWords(words);
     QTRY_VERIFY(overlay.PaintedGeometryCurrent());
     for (const auto& word : words) {
@@ -1722,7 +1729,10 @@ void UltraClearTextTests::subpixelProtectionStripsKeepProvedWords()
         {QStringLiteral("to"), scene(proved), {Qt::black, Qt::white}, 1, protection, 0},
         {QStringLiteral("an"), scene({proved.right() + 6, proved.top(), 110, proved.height()}),
          {Qt::black, Qt::white}, 2, protection, 0}};
-    if (oriented) for (auto& word : words) word.sceneQuad = TextQuad::FromRect(word.sceneRect);
+    for (auto& word : words) {
+        word.carvedSceneRects = protection;
+        if (oriented) word.sceneQuad = TextQuad::FromRect(word.sceneRect);
+    }
     overlay.SetViewTransform(transform);
     overlay.SetWords(words);
     QTRY_VERIFY(overlay.PaintedGeometryCurrent());
@@ -1737,15 +1747,18 @@ void UltraClearTextTests::subpixelPunctuationKeepsItsPixel_data()
 {
     QTest::addColumn<float>("zoom");
     QTest::addColumn<bool>("oriented");
+    QTest::addColumn<bool>("carved");
     for (const float zoom : {1.f, 3.f}) for (const bool oriented : {false, true})
-        QTest::newRow(qPrintable(QStringLiteral("zoom%1-quad%2").arg(zoom).arg(oriented)))
-            << zoom << oriented;
+        for (const bool carved : {false, true})
+            QTest::newRow(qPrintable(QStringLiteral("zoom%1-quad%2-carved%3").arg(zoom).arg(oriented).arg(carved)))
+                << zoom << oriented << carved;
 }
 
 void UltraClearTextTests::subpixelPunctuationKeepsItsPixel()
 {
     QFETCH(float, zoom);
     QFETCH(bool, oriented);
+    QFETCH(bool, carved);
     QWidget target;
     target.resize(960, 540);
     UltraClearTextOverlay overlay(&target, &target);
@@ -1759,6 +1772,7 @@ void UltraClearTextTests::subpixelPunctuationKeepsItsPixel()
     const QRectF dot(380.7, 200.7, .6, .6);
     UltraClearTextOverlay::SceneWord word{QStringLiteral("Read"), scene({382.4, 190, 90, 32}),
         {Qt::black, Qt::white}, 1, {scene(dot)}, 0};
+    if (carved) word.carvedSceneRects = word.protectedSceneRects;
     if (oriented) word.sceneQuad = TextQuad::FromRect(word.sceneRect);
     overlay.SetViewTransform(transform);
     overlay.SetWords({word});
@@ -1775,6 +1789,84 @@ void UltraClearTextTests::subpixelPunctuationKeepsItsPixel()
         overlay.CaptureSnapshot(transform, composite.size()).Paint(painter, composite.size());
     }
     QCOMPARE(composite.pixelColor(381, 201), punctuation);
+}
+
+void UltraClearTextTests::originalThinProtectionKeepsItsPixels_data()
+{
+    QTest::addColumn<float>("zoom");
+    QTest::addColumn<bool>("oriented");
+    QTest::addColumn<bool>("vertical");
+    QTest::addColumn<bool>("sharedGeometry");
+    for (const float zoom : {1.f, 3.f}) for (const bool oriented : {false, true})
+        for (const bool vertical : {false, true}) for (const bool shared : {false, true})
+            QTest::newRow(qPrintable(QStringLiteral("zoom%1-quad%2-vertical%3-shared%4")
+                .arg(zoom).arg(oriented).arg(vertical).arg(shared)))
+                << zoom << oriented << vertical << shared;
+}
+
+void UltraClearTextTests::originalThinProtectionKeepsItsPixels()
+{
+    QFETCH(float, zoom);
+    QFETCH(bool, oriented);
+    QFETCH(bool, vertical);
+    QFETCH(bool, sharedGeometry);
+    QWidget target;
+    target.resize(960, 540);
+    UltraClearTextOverlay overlay(&target, &target);
+    target.show();
+    const auto transform = ComputeViewTransform(960, 540, 960, 540, zoom, .39f, .35f,
+                                               ViewportFitMode::kFill);
+    const auto scene = [&](const QRectF& rect) { return ViewRectToScene(transform, 960, 540, rect); };
+    // No centre on exactly one axis. The original sampled mark is outside
+    // the word, inside its plate padding, and must not suppress the word.
+    const QRectF mark = vertical ? QRectF(380.1, 196, .25, 15) : QRectF(405, 188.1, 15, .25);
+    const QPoint pixel = vertical ? QPoint(380, 201) : QPoint(410, 188);
+    const QColor punctuation(191, 17, 39);
+    QImage source(target.size(), QImage::Format_ARGB32);
+    source.fill(Qt::white);
+    source.setPixelColor(pixel, punctuation);
+    UltraClearTextOverlay::SceneWord word{QStringLiteral("Read"), scene({382.4, 190, 90, 32}),
+        {Qt::black, Qt::white}, 1, {}, 0};
+    if (oriented) word.sceneQuad = TextQuad::FromRect(word.sceneRect);
+    overlay.SetViewTransform(transform);
+    overlay.SetWords({word});
+    const auto composite = [&] {
+        QImage image = source;
+        QPainter painter(&image);
+        overlay.CaptureSnapshot(transform, image.size()).Paint(painter, image.size());
+        painter.end();
+        return image;
+    };
+    // Demonstrate that this exact pixel is actually covered by the plate.
+    QVERIFY(composite().pixelColor(pixel) != punctuation);
+    word.protectedSceneRects = {scene(mark)};
+    QVector<UltraClearTextOverlay::SceneWord> words{word};
+    if (sharedGeometry) {
+        auto other = word;
+        other.text = QStringLiteral("Other"); other.lineId = 2;
+        other.sceneRect = scene({520, 190, 90, 32});
+        if (oriented) other.sceneQuad = TextQuad::FromRect(other.sceneRect);
+        // Same COW geometry, different classification. Processing the first
+        // word's carved view must not hide the second owner's original mask.
+        words[0].carvedSceneRects = word.protectedSceneRects;
+        words.push_back(other);
+    }
+    overlay.SetWords(words);
+    QTRY_VERIFY(overlay.PaintedGeometryCurrent());
+    UltraClearTextOverlay::PaintedWordGeometry geometry;
+    QVERIFY(overlay.PaintedWord(word.lineId, word.wordIndex, word.text, geometry));
+    QVERIFY(geometry.drawn);
+    const auto protectedImage = composite();
+    QCOMPARE(protectedImage.pixelColor(pixel), punctuation);
+    QVERIFY(protectedImage != source); // the replacement is still composited
+    QImage liveLayer(target.size(), QImage::Format_ARGB32_Premultiplied);
+    liveLayer.fill(Qt::transparent);
+    overlay.render(&liveLayer);
+    QCOMPARE(qAlpha(liveLayer.pixel(pixel)), 0);
+    int painted = 0;
+    for (int y = 0; y < liveLayer.height(); ++y) for (int x = 0; x < liveLayer.width(); ++x)
+        painted += qAlpha(liveLayer.pixel(x, y)) > 0;
+    QVERIFY(painted > 100);
 }
 
 void UltraClearTextTests::geometryRoundTripsThroughFitFillZoomPanAndDpi()
@@ -3089,7 +3181,7 @@ void UltraClearTextTests::immutableRefinementKeepsIncomingTypographyWithOldReadi
     QVector<UltraClearTextOverlay::SceneWord> actual, independent;
     for (const auto& word : words) {
         actual.push_back({word.text, word.sceneRect, word.colors, word.lineId,
-                          word.protectedSceneRects, word.wordIndex, word.sceneQuad, word.layoutGroupId});
+                          word.protectedSceneRects, word.wordIndex, word.sceneQuad, word.layoutGroupId, word.carvedSceneRects});
         auto ownLine = actual.back();
         ownLine.lineId = word.layoutGroupId ? word.layoutGroupId : word.lineId;
         ownLine.layoutGroupId = 0;
@@ -3436,6 +3528,144 @@ void UltraClearTextTests::immutableQuadCarveKeepsOutsidePunctuation()
         [&](const auto& rect){return rect.contains(mark);}));
 }
 
+void UltraClearTextTests::immutableProtectionClassificationSurvivesTransfer_data()
+{
+    QTest::addColumn<bool>("containingOwner");
+    QTest::addColumn<int>("collision");
+    for (const bool owner : {false, true}) for (int collision = 0; collision < 3; ++collision)
+        QTest::newRow(qPrintable(QStringLiteral("owner%1-collision%2").arg(owner).arg(collision)))
+            << owner << collision;
+}
+
+void UltraClearTextTests::immutableProtectionClassificationSurvivesTransfer()
+{
+    QFETCH(bool, containingOwner);
+    QFETCH(int, collision);
+    auto [base, baseNeighbor] = ImmutablePair(MakeLayoutPage({
+        {"Left", {100, 100}, 48}, {"Added", {300, 100}, 48}, {"Right", {600, 100}, 48}}));
+    // Binary coordinates make exact rectangle collisions intentional even
+    // after translating between an incoming result and its retained carrier.
+    const QRectF proved(.25, .125, .125, .0625);
+    const QRectF uncertainty = proved.adjusted(-1.0 / 1024, 0, 0, 0);
+    const QRectF residual(uncertainty.left(), proved.top(), proved.left() - uncertainty.left(), proved.height());
+    const QRectF untouched(.75, .25, 1.0 / 1024, .03125);
+    for (auto* result : {&base, &baseNeighbor}) {
+        result->prepared[0].sceneRect = QRectF(.03125, .0625, .875, .3125);
+        result->prepared[0].words[1].sceneRect = proved;
+    }
+    OverlayModel model;
+    QCOMPARE(model.AdmitImmutable(base, base.stamp, 60'000, &baseNeighbor), AdmitVerdict::kAccepted);
+    auto detail = base, neighbor = baseNeighbor;
+    for (auto* result : {&detail, &neighbor}) {
+        auto& line = result->prepared[0];
+        line.words = {line.words[1]};
+        line.sceneRect = containingOwner ? proved.united(untouched).united(uncertainty)
+                                        : QRectF(0, 0, .96875, .4375);
+        const auto reject = [&](const QRectF& rect) {
+            auto word = line.words[0];
+            word.text = QStringLiteral(","); word.confidence = .1;
+            word.disposition = TokenDisposition::kLowConfidence;
+            word.sceneRect = word.protectedSceneRect = rect;
+            line.words.push_back(word);
+        };
+        if (collision == 1) reject(residual);
+        reject(uncertainty);
+        reject(untouched);
+        if (collision == 2) reject(residual);
+        auto raw = result->output.lines[0].words[1];
+        result->output.lines[0].words.fill(raw, line.words.size());
+    }
+    neighbor.corroborationMatches = {false};
+    neighbor.corroborationWordMatches = {QVector<bool>(detail.prepared[0].words.size(), false)};
+    neighbor.corroborationWordMatches[0][0] = true;
+    QCOMPARE(model.AdmitImmutable(detail, detail.stamp, 70'000, &neighbor), AdmitVerdict::kAccepted);
+    QCOMPARE(model.Lines().size(), containingOwner ? 1 : 2);
+    const int owner = containingOwner ? 0 : 1;
+    const auto masks = model.Lines()[owner];
+    QVERIFY(masks.protectedSceneRects.contains(residual));
+    QVERIFY(masks.protectedSceneRects.contains(untouched));
+    QCOMPARE(masks.carvedSceneRects.contains(residual), collision == 0);
+    QVERIFY(!masks.carvedSceneRects.contains(untouched));
+    QVERIFY(masks.carvedSceneRects.size() <= masks.protectedSceneRects.size());
+    const auto shown = model.SceneWords(70'000, 55);
+    QCOMPARE(shown.size(), 3);
+    QCOMPARE(shown.first().carvedSceneRects.contains(residual), collision == 0);
+    QVERIFY(!shown.first().carvedSceneRects.contains(untouched));
+
+    // Existing uncut residuals retain their classification on a repeated
+    // detail pair; neither mask storage nor classification grows as history.
+    QCOMPARE(model.AdmitImmutable(detail, detail.stamp, 80'000, &neighbor), AdmitVerdict::kAccepted);
+    QCOMPARE(model.Lines().size(), containingOwner ? 1 : 2);
+    QCOMPARE(model.Lines()[owner].protectedSceneRects.size(), masks.protectedSceneRects.size());
+    QCOMPARE(model.Lines()[owner].carvedSceneRects, masks.carvedSceneRects);
+
+    if (collision == 0) {
+        // Separate reading owners can retain the same geometry with different
+        // origins. Aggregation must prefer the original globally without
+        // changing the carved classification of the other owner's object.
+        OverlayModel acrossOwners = model;
+        auto addition = detail, additionNeighbor = neighbor;
+        for (auto* result : {&addition, &additionNeighbor}) {
+            auto& line = result->prepared[0];
+            auto word = line.words[0]; word.text = QStringLiteral("Outside");
+            word.sceneRect = QRectF(.8125, .5, .0625, .0625);
+            auto original = line.words[1];
+            original.sceneRect = original.protectedSceneRect = residual;
+            line.words = {word, original};
+            line.sceneRect = word.sceneRect;
+            result->output.lines[0].words.resize(2);
+            result->output.lines[0].words[0].text = word.text;
+        }
+        additionNeighbor.corroborationWordMatches = {{true, false}};
+        QCOMPARE(acrossOwners.AdmitImmutable(addition, addition.stamp, 85'000, &additionNeighbor), AdmitVerdict::kAccepted);
+        QVERIFY(acrossOwners.Lines()[owner].carvedSceneRects.contains(residual));
+        const auto aggregate = acrossOwners.SceneWords(85'000, 55);
+        QCOMPARE(aggregate.size(), 4);
+        for (const auto& word : aggregate) {
+            QVERIFY(word.protectedSceneRects.contains(residual));
+            QVERIFY(!word.carvedSceneRects.contains(residual));
+        }
+    }
+
+    const QPointF offset(1.0 / 64, 1.0 / 128);
+    auto probeStamp = base.stamp;
+    probeStamp.timestampMs = 90'000;
+    QVector<LineCheck> checks;
+    for (const auto& line : model.Lines()) checks.push_back({line.id, true, {true, true, 1, offset}});
+    model.ApplyChecks(checks, probeStamp);
+    const auto moved = model.SceneWords(90'000, 55);
+    QCOMPARE(moved.first().carvedSceneRects.contains(residual.translated(offset)), collision == 0);
+    QVERIFY(moved.first().protectedSceneRects.contains(untouched.translated(offset)));
+
+    // A new original with identical absolute geometry overrides a carved
+    // residual transferred into an owner whose local coordinates now differ.
+    for (auto* result : {&detail, &neighbor}) {
+        auto& line = result->prepared[0];
+        auto word = line.words[0]; word.sceneRect = proved.translated(offset);
+        auto original = line.words[1];
+        original.sceneRect = original.protectedSceneRect = residual.translated(offset);
+        line.words = {word, original};
+        line.sceneRect = line.sceneRect.translated(offset);
+        result->output.lines[0].words.resize(2);
+    }
+    neighbor.corroborationWordMatches = {{true, false}};
+    QCOMPARE(model.AdmitImmutable(detail, detail.stamp, 100'000, &neighbor), AdmitVerdict::kAccepted);
+    const auto& transferred = model.Lines()[owner];
+    QCOMPARE(transferred.sceneOffset, offset);
+    QVERIFY(transferred.protectedSceneRects.contains(residual));
+    QVERIFY(!transferred.carvedSceneRects.contains(residual));
+    const auto merged = model.SceneWords(100'000, 55);
+    QVERIFY(merged.first().protectedSceneRects.contains(residual.translated(offset)));
+    QVERIFY(!merged.first().carvedSceneRects.contains(residual.translated(offset)));
+
+    model.Reset();
+    QVERIFY(model.Lines().isEmpty()); QVERIFY(model.SceneWords(100'000, 55).isEmpty());
+    QCOMPARE(model.AdmitImmutable(base, base.stamp, 110'000, &baseNeighbor), AdmitVerdict::kAccepted);
+    for (const auto& word : model.SceneWords(110'000, 55)) {
+        QVERIFY(word.protectedSceneRects.isEmpty()); QVERIFY(word.carvedSceneRects.isEmpty());
+    }
+}
+
 void UltraClearTextTests::immutableRefinementRetiredReadingOnlyBoundaryKeepsResidualProtection()
 {
     auto [selected, neighbor] = ImmutablePair(MakePage({"glasses", "Anchor"}));
@@ -3525,13 +3755,15 @@ void UltraClearTextTests::protectedAdjacentInkSurvivesCompositing()
     UltraClearTextOverlay overlay(&target,&target);overlay.resize(target.size());
     overlay.SetViewTransform(transform);
     const auto& word=sceneWords[0];
-    overlay.SetWords({{word.text,word.sceneRect,word.colors,word.lineId,{}}});
+    overlay.SetWords({{word.text,word.sceneRect,word.colors,word.lineId,{},
+                       word.wordIndex,word.sceneQuad,word.layoutGroupId,{}}});
     QImage unprotected(target.size(),QImage::Format_ARGB32_Premultiplied);unprotected.fill(Qt::transparent);
     overlay.render(&unprotected);
     const QRect probe=QRectF(protectedPx.x()*scale,protectedPx.y()*scale,
                              protectedPx.width()*scale,protectedPx.height()*scale).toAlignedRect();
     QVERIFY2(qAlpha(unprotected.pixel(probe.center()))>200,"Fixture did not reproduce plate coverage of adjacent ink");
-    overlay.SetWords({{word.text,word.sceneRect,word.colors,word.lineId,word.protectedSceneRects}});
+    overlay.SetWords({{word.text,word.sceneRect,word.colors,word.lineId,word.protectedSceneRects,
+                       word.wordIndex,word.sceneQuad,word.layoutGroupId,word.carvedSceneRects}});
     QImage layer(target.size(),QImage::Format_ARGB32_Premultiplied);layer.fill(Qt::transparent);overlay.render(&layer);
     QImage original=RenderView(source,transform,target.width(),target.height());
     QImage composite=original.copy();QPainter painter(&composite);painter.drawImage(0,0,layer);painter.end();
@@ -4158,6 +4390,7 @@ void UltraClearTextTests::regionalRejectedCandidateCannotObserveOwnedLine()
         QCOMPARE(model.Lines()[i].sceneRect,old[i].sceneRect);
         QCOMPARE(model.Lines()[i].readingTokens,old[i].readingTokens);
         QCOMPARE(model.Lines()[i].protectedSceneRects,old[i].protectedSceneRects);
+        QCOMPARE(model.Lines()[i].carvedSceneRects,old[i].carvedSceneRects);
         QCOMPARE(model.Lines()[i].validatedAtMs,old[i].validatedAtMs);
         QCOMPARE(model.Lines()[i].validatedFrameSeq,old[i].validatedFrameSeq);
         QCOMPARE(model.ScreenLines(410,4)[i].lineId,screen[i].lineId);
@@ -4344,6 +4577,7 @@ void UltraClearTextTests::regionalWithdrawalIsAtomic()
         QCOMPARE(line.id,old[i].id); QCOMPARE(line.sceneRect,old[i].sceneRect);
         QCOMPARE(line.sceneOffset,old[i].sceneOffset); QCOMPARE(line.readingTokens,old[i].readingTokens);
         QCOMPARE(line.protectedSceneRects,old[i].protectedSceneRects);
+        QCOMPARE(line.carvedSceneRects,old[i].carvedSceneRects);
         QCOMPARE(line.reference.values,old[i].reference.values); QCOMPARE(line.valid,old[i].valid);
         QCOMPARE(line.validatedAtMs,old[i].validatedAtMs); QCOMPARE(line.validatedFrameSeq,old[i].validatedFrameSeq);
         QCOMPARE(line.provenance.frameSeq,old[i].provenance.frameSeq);

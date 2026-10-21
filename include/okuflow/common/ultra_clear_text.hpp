@@ -742,6 +742,10 @@ struct AcceptedLine {
     // ink. Immutable refinement may not carve these masks. Ordinary grouped
     // prose can still be replaced by separately proved word tokens.
     QVector<QRectF> nonCarvableSceneRects;
+    // Subset of protectedSceneRects produced by subtraction, before offset.
+    // Original masks win exact-geometry collisions; this subset shares the
+    // existing mask cap and permits pixel-centre rounding of carved strips.
+    QVector<QRectF> carvedSceneRects;
 };
 
 struct SceneWord {
@@ -753,6 +757,7 @@ struct SceneWord {
     int wordIndex{-1}; // index into the owning AcceptedLine::words (accessibility key)
     TextQuad sceneQuad; // oriented word geometry, offset applied; invalid for rectangles
     std::uint64_t layoutGroupId{}; // independent of reading identity; 0 uses lineId
+    QVector<QRectF> carvedSceneRects; // subset of protected spans, offset applied
 };
 
 // One token of a screen-reader line projection: a verified glyph word, or a

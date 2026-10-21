@@ -1053,7 +1053,7 @@ class PaddleTests final : public QObject
         QVector<okuflow::UltraClearTextOverlay::SceneWord> glyphs;
         for (const auto& word : words)
             glyphs.push_back({word.text,word.sceneRect,word.colors,word.lineId,word.protectedSceneRects,
-                             word.wordIndex,word.sceneQuad,word.layoutGroupId});
+                             word.wordIndex,word.sceneQuad,word.layoutGroupId,word.carvedSceneRects});
         overlay.SetWords(std::move(glyphs));
         QTRY_VERIFY(overlay.PaintedGeometryCurrent());
         QImage layer(size, QImage::Format_ARGB32_Premultiplied); layer.fill(Qt::transparent);
@@ -1137,6 +1137,7 @@ class PaddleTests final : public QObject
         QCOMPARE(model.Lines().first().id,old.id);
         QCOMPARE(model.Lines().first().readingTokens,old.readingTokens);
         QCOMPARE(model.Lines().first().protectedSceneRects,old.protectedSceneRects);
+        QCOMPARE(model.Lines().first().carvedSceneRects,old.carvedSceneRects);
         QCOMPARE(model.Lines().first().validatedFrameSeq,old.validatedFrameSeq);
         QCOMPARE(model.Lines().first().validatedAtMs,old.validatedAtMs);
         QCOMPARE(model.SceneWords(310,3).size(),fitted.words.size());

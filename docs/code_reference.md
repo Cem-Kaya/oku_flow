@@ -6531,11 +6531,11 @@ keeps the rectangle fast path. `PlannedWord` stores fixed-size polygons and
 same plan. `ComputePaintPlan` preserves exact polygon protection for oriented
 words and caps protection closure at eight passes before keeping original ink.
 `PixelCoverage` snaps projected rectangles and polygon vertices to the same
-half-open pixel-centre grid. `ProtectedRegion` retains a conservative pixel
-for a punctuation span containing no centre on either axis. A strip lacking
-centres on only one axis adds no coverage. Fractional remainders of a
-carved uncertainty box therefore cannot acquire a false shared row/column
-with the proved word and start a protection cascade over its neighbour.
+half-open pixel-centre grid. `ProtectedRegion` rounds original masks outward
+when either axis contains no centre. Explicitly carved masks use that fallback
+only when both axes lack centres. Fractional subtraction strips therefore cannot
+acquire a false shared row/column with the proved word and start a protection
+cascade over its neighbour, while original thin punctuation remains protected.
 See [geometry/detail repair](uct_oriented_detail_repair.md) for acceptance limits.
 
 ## Optional regional GPU execution proof
@@ -6568,7 +6568,8 @@ post-cap proposal for withdrawal before committing lines or pending tickets.
 Every active owned word (confirmed or named by a reading token, including
 expired/hidden memory) needs its own ordered exact-text/geometry match; new
 protection intersecting a confirmed word must retain both its old geometry and
-the exact old mask. An old small mask cannot authorize a larger one. Refusal is
+the exact old mask and no stronger original/carved classification. An old small
+mask cannot authorize a larger one. Refusal is
 an atomic `kEmpty` no-op, preserving complete objects and clocks. Full/probe
 authority supplies corrections. `regionalWithdrawalIsAtomic` and the separate
 memory/pending regressions exercise omissions, disagreement, repeated words,
@@ -6710,3 +6711,46 @@ CUDA/native acceptance.
 `uct_active_regional_test::Run` production-factory selector uses it to require
 exact state retirement and checks actual precision plus both cache inventories.
 The public FP32 diagnostic factory remains independent of the application opt-in.
+
+### Bounded original/carved UCT protection (2026-10-22)
+
+`AcceptedLine::carvedSceneRects` is a trailing, geometry-unique subset of
+`protectedSceneRects` in the same pre-offset coordinates. `MergeImmutableCoverage`
+preserves it on uncut masks and marks only newly generated subtraction pieces.
+Refused cuts commit neither geometry nor classification. Exact collisions with
+an untouched original remove that rectangle from the carved subset, independent
+of mask order. Carrier transfer converts both lists into the target coordinates
+and retains original precedence on duplicate geometry. No mask or history cap
+is added; classification cannot exceed the existing protected-mask inventory.
+
+Private `MaskKey`, `MaskKeys` and `MaskRects` use finite exact coordinate tuples
+for bounded classification sets and reconstruction. Stable refresh compares
+classification before retaining old proof, and remaps subset membership when
+unioning measured geometry. `SceneWords` shares the offset-applied subset among
+all returned words, with conflict/hidden-source/original masks winning exact
+cross-owner collisions. The ordinary all-original path builds no tuple index.
+
+Both `uct::SceneWord` and `UltraClearTextOverlay::SceneWord` append the subset.
+`RefreshOverlay`, `NoteTimingAdmission` and all test/paused-proof conversions
+carry or compare it. The regional transaction distinguishes an unchanged carved
+mask from stronger original protection at the same geometry. The renderer's
+shared `ComputePaintPlan` keys its COW-mask deduplication on both vectors, so
+different classification of shared geometry cannot skip original coverage.
+Live paint and `CaptureSnapshot` use the same `ProtectedRegion` rule.
+
+`originalThinProtectionKeepsItsPixels` adds sixteen meaningful software-paint and
+compositing rows, including shared COW masks with different classification;
+`immutableProtectionClassificationSurvivesTransfer` adds six
+rows for carving, original precedence in both mask orders, cross-owner sharing,
+carrier reuse, offsets and reset. Existing sixteen thin-strip assertions remain;
+their fixture masks now explicitly identify subtraction remainders. Two-axis
+punctuation rows cover both original and carved masks. The fresh isolated Qt
+6.12.0 CPU/PCH-OFF build compiles the model, controller and accessibility targets
+at two jobs. The tracked eight-case serial gate passes in 128.16 seconds: 300
+model and 113 controller rows with no skips; three accessibility scales each
+25 passed/one opt-in timing skip; the accessibility and two controller timing
+selectors each three passed/no skips. Gate result: eight passed CTest cases,
+zero skipped tests/unresolved failures; 497 Qt rows passed, three scale-only
+skips covered separately by the explicit timing selector. First-attempt evidence
+is byte-verified under `Z:/Projects/OkuFlow/local-work-data/uct-original-mask-f6-20261022/evidence/`.
+No retries, GPU/native/model work or full-release/PCH-ON acceptance is claimed.

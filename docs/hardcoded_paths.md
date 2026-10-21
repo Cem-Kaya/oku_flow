@@ -1066,3 +1066,9 @@ A detail pass needs at least 1.25 times the established detector scale.
 Coverage retains up to 32 attempted regions per immutable selection, including
 failed attempts, without eviction. A containing region at 90% of the requested
 scale counts as already covered. See [geometry/detail repair](uct_oriented_detail_repair.md).
+
+`AcceptedLine::carvedSceneRects` classifies a subset of the existing 32768
+protected-mask union cap. It adds no independent history or mask allowance.
+Original masks round outward when either projected axis has no pixel centres;
+carved remainders do so only when both axes lack centres. Exact original/carved
+rectangle collisions retain original protection through transfers/projection.
