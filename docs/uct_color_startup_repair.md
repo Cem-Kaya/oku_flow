@@ -310,3 +310,36 @@ not first validated glyph, full-controller, native screen-reader or camera
 latency. The selected button's words measured dark foreground on `#eeba65`;
 the neighbouring Robots label measured light foreground on `#253a33`.
 Raw diagnostics stay in `%LOCALAPPDATA%/OkuFlow/uct-color-startup-20261020/`.
+
+### Integrated small-ink source proof (2026-10-22)
+
+At root `30c6538`, the shipping, CPU/PCH-off and CUDA/PCH-on configurations
+compiled with the imported small-ink and original-mask repairs. The actual
+FP32 resident selected/real-neighbour book diagnostic passed with a six-times
+detail pair. Its source `to` measured `#615b54` on `#e8e3dc`, fitted to
+`[642,267,9,7]`; `an` retained its honest detector fallback. Both remained
+candidate words. The exported zoom was inspected: `to` and `an` paint separately.
+The chosen view changed from 9 to 12 painted words after refinement; recognition
+errors and other unpainted words remain. Counts do not establish accuracy.
+Detail worker times were 20.9201 and 21.8118 ms, excluding the controller's
+settle delay, scheduling and native presentation. Image egress was zero, exact
+TensorRT retirement completed and the baseline cache inventory was unchanged.
+
+Receipt: `uct-geometry-r3-20261021/evidence/runs/
+integrated-small-ink-book-detail-fp32-1-receipt.json`. This uses the public FP32
+diagnostic factory, not the private BF16 selector. A separate production-factory
+BF16 full/704-region/full run passed on the same source pair with zero image
+egress and unchanged baseline/variant caches; its receipt is
+`integrated-small-ink-active-bf16-704-book-1-receipt.json` in that directory.
+Neither run establishes native application, camera or screen-reader latency.
+
+The background matrix's UCT CPU and real CUDA kernel checks passed, as did
+`shared_source_equivalence`. Its initial packaging/toolchain case failed during
+nested Visual Studio initialization with “The input line is too long.” The
+same tracked case passed in 6.44 seconds after removing duplicate process-PATH
+entries and omitting redundant outer VS initialization. No machine/user PATH
+or test assertion changed; the original failed matrix remains failed evidence.
+See `logs/combined-uct-bf16-background-matrix-1.log`,
+`logs/bundle-toolchain-environment-repaired-gate-1.log` and
+`evidence/bundle-path-repair-environment.json` under the same work-data root.
+GUI and optional skipped codec cases remain separate acceptance limits.

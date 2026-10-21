@@ -806,3 +806,15 @@ UCT color/readiness follow-up: line validation stays unchanged while local word
 surfaces supply foreground/background colors. Advanced UCT identifies its actual
 GPU/CPU recognizer, including temporary Windows OCR during GPU preparation.
 See [the implementation and validation notes](uct_color_startup_repair.md).
+
+Validation does not run a language-specific grammar checker, spelling dictionary
+or LLM correction. It checks confidence, size, geometry, independent observations
+and current source pixels. The conservative character policy is nevertheless
+not fully language-neutral: it accepts Unicode letters and a fixed common
+punctuation set, but rejects non-ASCII digits, combining marks, modifier letters
+and certain confusable letter/digit combinations. Valid multilingual text can
+therefore remain original ink even if the backend recognized it. The model's
+character dictionary and the Windows fallback's installed recognizer languages
+are separate limits; the application's25 interface languages do not establish
+OCR coverage. Protection masks preserve unproved punctuation/symbol pixels
+against neighbouring replacement plates; they are not grammatical judgements.
