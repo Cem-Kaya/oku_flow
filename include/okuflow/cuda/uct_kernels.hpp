@@ -57,6 +57,9 @@ void Detect(const float *map, int width, int height, int sourceWidth, int source
             Component *components, Quad *quads, int *count, cudaStream_t stream);
 // 128 detected lines -> at most 128*(original+8 overlapping windows).
 void RecognitionWindows(const Quad* detected, int* count, Quad* windows, cudaStream_t stream);
+// Compact ordered-group canvas widths; all ceil(1152/groupSize) slots are
+// initialized. Optional width policy only, with no image transfer or sorting.
+void RecognitionGroupWidths(const Quad*, const int* count, int groupSize, int* widths, cudaStream_t);
 void Rectify(const void *image, std::size_t pitch, int width, int height, const Quad *quads,
              int index, float *out, int cropWidth, cudaStream_t stream);
 void Decode(const float *probabilities, int steps, int classes, const Quad *quads, int index,

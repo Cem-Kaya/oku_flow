@@ -887,3 +887,14 @@ aligned with the project goals.
   Never manufacture independent OCR evidence from repeated held copies. Keep
   clean Original recording before hold/effects and do not route automatic
   Extra Stable recovery through decoder pause/seek/jump.
+## Explicit UCT recognition-width experiments (2026-10-21)
+
+- Keep narrower canvases opt-in until same-source quality and warm performance
+  comparisons support promotion. Prepare only explicitly selected missing
+  profiles once, then benchmark with the inference-only SDK and unchanged cache.
+- Preserve fixed-width keys/plans, exact crop work and original strict failures;
+  report the owner's 5% word-difference tolerance separately from ground-truth
+  accuracy, dispositions, omissions and the ten-pixel geometry allowance.
+- Keep all inference input/retirement ownership and zero image-egress contracts.
+  See `docs/uct_recognizer_width.md`; no RTX 3050/120 FPS claim follows from Ada
+  measurements or padding fraction alone.

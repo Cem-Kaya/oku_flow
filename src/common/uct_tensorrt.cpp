@@ -22,6 +22,7 @@ bool TensorRtCropDiagnostic::TryCommit(Plan&& plan) noexcept
 #include "okuflow/cuda/uct_kernels.hpp"
 #include "uct_tensorrt_profile.hpp"
 #include "uct_frozen_upload.hpp"
+#include "uct_recognizer_width.hpp"
 #include <NvInfer.h>
 #include <NvOnnxParser.h>
 #include <QCryptographicHash>
@@ -276,8 +277,9 @@ class Network
 {
   public:
     Network(Libraries &libraries, Logger &logger, const QString &sdk, const QString &model, const QByteArray& expected, bool detection, int device,
-            cudaStream_t stream, const std::atomic<bool> &cancelled, int maximumBatch = 1)
-        : detection_(detection), maximumBatch_(maximumBatch),
+            cudaStream_t stream, const std::atomic<bool> &cancelled, int maximumBatch = 1,
+            bool variableWidth = false, bool allowPreparation = true)
+        : detection_(detection), variableWidth_(variableWidth), maximumBatch_(maximumBatch),
           // A ceiling for checked on-demand allocation, not reserved VRAM.
           maximumOutputFloats_(!detection && maximumBatch == 16 ? 256ull * 1024 * 1024
                                                                : 64ull * 1024 * 1024)
@@ -301,7 +303,12 @@ class Network
             QCryptographicHash::hash(bytes, QCryptographicHash::Sha256) +
             QByteArray(reinterpret_cast<const char *>(&properties.uuid), sizeof(properties.uuid)) +
             QByteArray::number(driver) + "-trt11.4.0.106-fp32-v1";
-        if (!detection && (maximumBatch == 8 || maximumBatch == 16))
+        if (variableWidth_) {
+            if (detection || (maximumBatch != 1 && maximumBatch != 8 && maximumBatch != 16))
+                throw std::runtime_error("Unsupported variable-width recognizer profile.");
+            identity += recognizer_width::kCacheTag + QByteArray::number(maximumBatch);
+        }
+        else if (!detection && (maximumBatch == 8 || maximumBatch == 16))
             identity += "-rec-min1x3x48x1024-opt" + QByteArray::number(maximumBatch) +
                         "x3x48x1024-max" + QByteArray::number(maximumBatch) + "x3x48x1024-v2";
         else if (maximumBatch != 1)
@@ -321,6 +328,10 @@ class Network
         }
         if (!engine_)
         {
+            // Width experiments never trigger an unreviewed cold build during
+            // normal inference. One-time preparation is a separate opt-in.
+            if (!allowPreparation)
+                throw std::runtime_error("OCR plan is missing/invalid; explicit width-profile preparation is required.");
             libraries.PrepareBuilder(sdk);
             std::unique_ptr<nvinfer1::IBuilder> builder(
                 static_cast<nvinfer1::IBuilder *>(libraries.builder(&logger, NV_TENSORRT_VERSION)));
@@ -348,9 +359,12 @@ class Network
             if (!profile)
                 throw std::runtime_error("TensorRT shape profile creation failed.");
             const char *name = network->getInput(0)->getName();
-            const nvinfer1::Dims4 minimum(1, 3, detection ? 32 : 48, detection ? 32 : 1024);
+            const auto declared = network->getInput(0)->getDimensions();
+            if (variableWidth_ && (declared.nbDims != 4 || declared.d[3] != -1))
+                throw std::runtime_error("Pinned OCR graph does not declare dynamic width.");
+            const nvinfer1::Dims4 minimum(1, 3, detection ? 32 : 48, detection ? 32 : variableWidth_ ? recognizer_width::kMinimum : 1024);
             const nvinfer1::Dims4 optimum(detection ? 1 : maximumBatch, 3,
-                                         detection ? 544 : 48, detection ? 960 : 1024);
+                                         detection ? 544 : 48, detection ? 960 : variableWidth_ ? recognizer_width::kOptimum : 1024);
             const nvinfer1::Dims4 maximum(detection ? 1 : maximumBatch, 3,
                                          detection ? 960 : 48, detection ? 960 : 1024);
             if (!profile->setDimensions(name, nvinfer1::OptProfileSelector::kMIN, minimum) ||
@@ -387,6 +401,17 @@ class Network
             else
                 output_ = name;
         }
+        if (variableWidth_) {
+            if (engine_->getNbOptimizationProfiles() != 1)
+                throw std::runtime_error("Variable-width OCR requires one exact optimization profile.");
+            const auto minimum = engine_->getProfileShape(input_.c_str(),0,nvinfer1::OptProfileSelector::kMIN);
+            const auto optimum = engine_->getProfileShape(input_.c_str(),0,nvinfer1::OptProfileSelector::kOPT);
+            const auto maximum = engine_->getProfileShape(input_.c_str(),0,nvinfer1::OptProfileSelector::kMAX);
+            if (!recognizer_width::MatchesProfile(minimum.d,minimum.nbDims,1,recognizer_width::kMinimum) ||
+                !recognizer_width::MatchesProfile(optimum.d,optimum.nbDims,maximumBatch_,recognizer_width::kOptimum) ||
+                !recognizer_width::MatchesProfile(maximum.d,maximum.nbDims,maximumBatch_,recognizer_width::kMaximum))
+                throw std::runtime_error("Cached OCR plan does not match the variable-width profile.");
+        }
         context_.reset(engine_->createExecutionContext());
         if (!context_)
             throw std::runtime_error("TensorRT execution context creation failed.");
@@ -397,6 +422,8 @@ class Network
         QElapsedTimer host;
         if (profile.Enabled()) host.start();
         int shapeSets = 0, addressSets = 0;
+        if (variableWidth_ && (!recognizer_width::IsCanvas(width) || height != 48))
+            throw std::runtime_error("Recognizer width is outside the prepared bucket policy.");
         if (batch < 1 || batch > maximumBatch_)
             throw std::runtime_error("TensorRT batch exceeds its prepared profile.");
         if (batch != batch_ || width != width_ || height != height_)
@@ -451,7 +478,7 @@ class Network
     std::unique_ptr<nvinfer1::IExecutionContext> context_;
     DeviceBuffer<float> outputBuffer_;
     std::string input_, output_;
-    bool detection_{};
+    bool detection_{}, variableWidth_{};
     int maximumBatch_{1};
     std::size_t maximumOutputFloats_{};
     int batch_{}, width_{}, height_{};
@@ -462,6 +489,7 @@ struct State
 {
     int device{};
     int recognizerBatch{1};
+    bool variableWidth{};
     QString batchPreparationDetail;
     TensorRtProfile profile;
     cudaStream_t stream{};
@@ -469,11 +497,11 @@ struct State
     std::unique_ptr<Libraries> libraries;
     std::unique_ptr<Network> detector, recognizer;
     DeviceBuffer<float> detectorInput, recognizerInput, scores;
-    DeviceBuffer<int> labels, count, ids, tokenCount;
+    DeviceBuffer<int> labels, count, ids, tokenCount, groupWidths;
     DeviceBuffer<gpu::Component> components;
     DeviceBuffer<gpu::Quad> detectedQuads, quads;
     DeviceBuffer<gpu::Token> tokens;
-    HostBuffer<int> hostCount;
+    HostBuffer<int> hostCount, hostGroupWidths;
     HostBuffer<gpu::Quad> hostQuad;
     HostBuffer<gpu::Token> hostTokens;
     DeviceBuffer<unsigned char> uploaded;
@@ -542,6 +570,13 @@ class TensorRtRecognizer final : public Recognizer
         invalidBatch_ = !batch.isEmpty() && batch != "1" && batch != "8" && batch != "16";
         recognizerBatch_ = batch.isEmpty() ? DefaultTensorRtBatchCapacity(recognizer)
                                          : batch == "16" ? 16 : batch == "8" ? 8 : 1;
+        const auto width = qEnvironmentVariable("OKUFLOW_UCT_TRT_WIDTH");
+        variableWidth_ = width == recognizer_width::kBucketedToken;
+        invalidWidth_ = !width.isEmpty() && width != recognizer_width::kFixedToken && !variableWidth_;
+        const auto prepareWidth = qEnvironmentVariable("OKUFLOW_UCT_TRT_PREPARE_WIDTH");
+        allowWidthPreparation_ = prepareWidth == "1";
+        invalidWidth_ = invalidWidth_ || (!prepareWidth.isEmpty() && prepareWidth != "0" && prepareWidth != "1") ||
+                        (allowWidthPreparation_ && !variableWidth_);
     }
     ~TensorRtRecognizer() override
     {
@@ -555,6 +590,10 @@ class TensorRtRecognizer final : public Recognizer
         if (invalidBatch_)
         {
             status_.detail = "OKUFLOW_UCT_TRT_BATCH must be 1, 8 or 16.";
+            return status_;
+        }
+        if (invalidWidth_) {
+            status_.detail = "OKUFLOW_UCT_TRT_WIDTH must be fixed1024 or bucketed; explicit PREPARE_WIDTH=1 requires bucketed.";
             return status_;
         }
         assets_ = LoadPaddleAssets(root_,detectorTier_,recognizerTier_);
@@ -714,9 +753,13 @@ class TensorRtRecognizer final : public Recognizer
             const auto* cropPixels=static_cast<const unsigned char*>(image.Data())+
                 std::size_t(region.y())*image.pitch+std::size_t(region.x())*4;
             auto *hostCount = state_->hostCount.Reserve(submissionGroup);
+            const int maximumGroups = (recognizer_width::kMaximumCrops + submissionGroup - 1) / submissionGroup;
+            auto* hostWidths = state_->variableWidth ? state_->hostGroupWidths.Reserve(maximumGroups) : nullptr;
             int count{};
             if (frozen) {
                 const auto& recorded = frozen->regions[std::size_t(regionIndex)];
+                if (recorded.crops.size() > std::size_t(recognizer_width::kMaximumCrops))
+                    throw std::runtime_error("Frozen OCR crop metadata exceeds capacity.");
                 std::vector<gpu::Quad> quads;
                 quads.reserve(recorded.crops.size());
                 for (const auto& crop : recorded.crops) {
@@ -726,6 +769,10 @@ class TensorRtRecognizer final : public Recognizer
                     quads.push_back(q);
                 }
                 count = int(quads.size());
+                if (hostWidths)
+                    for (int first = 0; first < count; first += submissionGroup)
+                        hostWidths[first/submissionGroup] = recognizer_width::OrderedGroup(
+                            quads.data()+first,std::min(submissionGroup,count-first));
                 if (count) {
                     // Compact descriptor upload only. Retain pinned storage
                     // until the existing first recognition-group wait.
@@ -757,13 +804,19 @@ class TensorRtRecognizer final : public Recognizer
                             state_->detectedQuads.Reserve(128), state_->count.Reserve(1), state_->stream);
                 gpu::RecognitionWindows(state_->detectedQuads.Get(),state_->count.Get(),
                                          state_->quads.Reserve(128*9),state_->stream);
+                if (state_->variableWidth)
+                    gpu::RecognitionGroupWidths(state_->quads.Get(),state_->count.Get(),submissionGroup,
+                        state_->groupWidths.Reserve(maximumGroups),state_->stream);
                 Check(cudaGetLastError());
             });
             profile.Measure(TensorRtProfile::Metadata, state_->stream, [&] {
                 Check(cudaMemcpyAsync(hostCount, state_->count.Get(), sizeof(int),
                                       cudaMemcpyDeviceToHost, state_->stream));
+                if (hostWidths)
+                    Check(cudaMemcpyAsync(hostWidths,state_->groupWidths.Get(),maximumGroups*sizeof(int),
+                                          cudaMemcpyDeviceToHost,state_->stream));
             });
-            profile.Transfer(sizeof(int));
+            profile.Transfer(sizeof(int) + (hostWidths ? maximumGroups*sizeof(int) : 0));
             profile.Wait(true, [&] { Check(cudaStreamSynchronize(state_->stream)); }); // existing worker-only count wait
             count = *hostCount;
             }
@@ -788,8 +841,10 @@ class TensorRtRecognizer final : public Recognizer
                     cancelOwnedInput();
                     return output;
                 }
-                constexpr int width = 1024;
-                constexpr std::size_t samplePixels = width * 48 * 3;
+                const int width = hostWidths ? hostWidths[first/submissionGroup] : 1024;
+                if (!recognizer_width::IsCanvas(width))
+                    throw std::runtime_error("Invalid ordered-group recognizer canvas.");
+                const std::size_t samplePixels = static_cast<std::size_t>(width) * 48 * 3;
                 const int groupSize = std::min(submissionGroup, count - first);
                 auto *crop = state_->recognizerInput.Reserve(
                     samplePixels * state_->recognizerBatch);
@@ -918,7 +973,7 @@ class TensorRtRecognizer final : public Recognizer
             });
             output.ok = !cancelled.load();
             output.cancelled = cancelled.load();
-            profile.Emit(state_->recognizerBatch);
+            profile.Emit(state_->recognizerBatch,state_->variableWidth);
             if (cropDiagnostic_) {
                 if (frozen) TensorRtCropDiagnosticAccess::Replayed(*cropDiagnostic_);
                 else if (captureCrops)
@@ -928,6 +983,7 @@ class TensorRtRecognizer final : public Recognizer
             status_.detail = "PP-OCRv6 GPU preprocessing, detection, rectification, recognition "
                              "and CTC; CPU metadata publication; recognizer batch=" +
                              QString::number(state_->recognizerBatch) + ". " +
+                             (state_->variableWidth ? QStringLiteral("Experimental width=bucketed. ") : QString()) +
                              state_->batchPreparationDetail;
         }
         catch (const std::exception &error)
@@ -961,9 +1017,10 @@ class TensorRtRecognizer final : public Recognizer
         const auto assets = assets_;
         const auto sdk = sdk_;
         const int recognizerBatch = recognizerBatch_;
+        const bool variableWidth = variableWidth_, allowWidthPreparation = allowWidthPreparation_;
         try
         {
-            std::thread([preparation, assets, sdk, recognizerBatch] {
+            std::thread([preparation, assets, sdk, recognizerBatch, variableWidth, allowWidthPreparation] {
                 try
                 {
                     Check(cudaSetDevice(preparation->device));
@@ -973,6 +1030,7 @@ class TensorRtRecognizer final : public Recognizer
                         throw std::runtime_error("TensorRT requires Turing or newer.");
                     auto state = std::make_shared<State>();
                     state->device = preparation->device;
+                    state->variableWidth = variableWidth;
                     {
                         std::lock_guard lock(preparation->mutex);
                         preparation->state = state;
@@ -983,7 +1041,7 @@ class TensorRtRecognizer final : public Recognizer
                     state->libraries = std::make_unique<Libraries>(sdk);
                     state->detector = std::make_unique<Network>(
                         *state->libraries, state->logger, sdk, assets.detector, assets.detectorSha256, true, state->device,
-                        state->stream, preparation->cancel);
+                        state->stream, preparation->cancel, 1, false, !variableWidth || allowWidthPreparation);
                     if (preparation->cancel.load())
                         throw std::runtime_error("GPU preparation cancelled.");
                     int capacity = recognizerBatch;
@@ -994,13 +1052,16 @@ class TensorRtRecognizer final : public Recognizer
                             state->recognizer = std::make_unique<Network>(
                                 *state->libraries, state->logger, sdk, assets.recognizer,
                                 assets.recognizerSha256, false, state->device,
-                                state->stream, preparation->cancel, capacity);
+                                state->stream, preparation->cancel, capacity, variableWidth, !variableWidth || allowWidthPreparation);
                             state->recognizerBatch = capacity;
                             break;
                         }
                         catch (const std::exception &error)
                         {
-                            if (capacity == 1 || preparation->cancel.load()) throw;
+                            // An explicit width-profile preparation authorizes
+                            // this N only; never cascade into extra new plans.
+                            if (capacity == 1 || preparation->cancel.load() ||
+                                (variableWidth && allowWidthPreparation)) throw;
                             // Preserve a supported smaller GPU profile. Unknown
                             // completion still quarantines the whole state.
                             Check(cudaStreamSynchronize(state->stream));
@@ -1069,7 +1130,7 @@ class TensorRtRecognizer final : public Recognizer
     ModelTier detectorTier_,recognizerTier_;
     TensorRtRetirementObserver retirementObserver_;
     int recognizerBatch_{1};
-    bool invalidBatch_{};
+    bool invalidBatch_{}, invalidWidth_{}, variableWidth_{}, allowWidthPreparation_{};
     std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic_;
     PaddleAssets assets_;
     BackendStatus status_;

@@ -26,6 +26,9 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   The experimental regional planner is an opt-in metadata observer on the OCR
   worker. It leaves full OCR and text publication authoritative and has a
   separate finite CPU-cost diagnostic. See [shadow planning](uct_region_planner.md).
+  An opt-in [narrower recognition canvas](uct_recognizer_width.md) reduces
+  padding within ordered batches. It uses separate cached dynamic-width plans;
+  the fixed-width default remains available and unchanged.
 - Experimental UCT has optional PP-OCRv6 TensorRT CUDA and ONNX Runtime CPU
   adapters, with built-in Windows OCR as the final fallback. Prepare pinned
   development inputs with `scripts/prepare_uct_runtime.ps1` (`-TensorRT` opts

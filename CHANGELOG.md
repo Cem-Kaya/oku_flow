@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Add an opt-in TensorRT recognizer-width policy that reduces padding within
+  the existing ordered batches, with separate cached profile identity,
+  initialized compact device metadata and actual CUDA stride regressions.
+  Keep model choices and the fixed-width default unchanged; retain measured
+  quality differences and workload-dependent timing in the width report.
 - Preserve proved text on the same paused video frame through partial OCR
   refinements, and attach late neighbouring evidence without restarting the
   selection. Corroborate the exact displayed Pause frame with a real following

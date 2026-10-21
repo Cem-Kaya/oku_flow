@@ -12,6 +12,7 @@
 
 #include "uct_batch_diagnostic.hpp"
 #include "okuflow/common/uct_region_planner.hpp"
+#include "../src/common/uct_recognizer_width.hpp"
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -73,7 +74,7 @@ struct Selection {
     int rounds{3}, passes{5};
     quint32 seed{20261020};
     bool profile{true}, media{}, paired{}, frozenCrops{}, shadowPlanner{};
-    QString sdk;
+    QString sdk, widthPolicy{QStringLiteral("fixed1024")};
     qint64 watchdogMs{};
     QString error;
     int Blocks() const { return int(pairs.size() * capacities.size()) * rounds; }
@@ -93,7 +94,7 @@ struct Selection {
                 {"warmupsPerSourcePerBlock", 1}, {"timedPassesPerSourcePerBlock", passes},
                 {"seed", qint64(seed)}, {"profiling", profile}, {"stamp", media ? "media" : "camera"},
                 {"input", paired ? "pair" : "single"}, {"sdk", sdk}, {"watchdogMs", watchdogMs},
-                {"frozenCrops", frozenCrops},
+                {"frozenCrops", frozenCrops}, {"recognizerWidthPolicy", widthPolicy},
                 {"shadowPlanner", shadowPlanner},
                 {"startupDeadlineMs", kStartupDeadlineMs}, {"jobDeadlineMs", kJobDeadlineMs}};
     }
@@ -166,6 +167,12 @@ inline Selection ParseSelection(const EnvironmentReader& read)
         return refuse("OKUFLOW_UCT_RESIDENT_INPUT must be single or pair.");
     if (!profile.isEmpty() && profile != "1" && profile != "0")
         return refuse("OKUFLOW_UCT_RESIDENT_PROFILE must be 1 or 0.");
+    const auto widthPolicy = read("OKUFLOW_UCT_RESIDENT_WIDTH");
+    if (!widthPolicy.isEmpty()) s.widthPolicy = widthPolicy;
+    if (s.widthPolicy != "fixed1024" && s.widthPolicy != "bucketed")
+        return refuse("OKUFLOW_UCT_RESIDENT_WIDTH must be fixed1024 or bucketed.");
+    if (!read("OKUFLOW_UCT_TRT_PREPARE_WIDTH").isEmpty() && read("OKUFLOW_UCT_TRT_PREPARE_WIDTH") != "0")
+        return refuse("The resident benchmark cannot prepare width plans; clear OKUFLOW_UCT_TRT_PREPARE_WIDTH.");
     s.media = stamp == "media";
     s.paired = input == "pair";
     s.profile = profile != "0";
@@ -411,11 +418,13 @@ inline std::optional<Completion> Await(Mailbox& box, Clock::time_point deadline)
 // Mirrors Network's cache identity in src/common/uct_tensorrt.cpp. Any drift
 // makes the expected plan look missing, so this check fails closed.
 inline QString PlanKey(const QByteArray& modelSha256Hex, const QByteArray& gpuUuid, int driver,
-                       bool detection, int capacity)
+                       bool detection, int capacity, bool variableWidth = false)
 {
     QByteArray identity = QByteArray::fromHex(modelSha256Hex) + gpuUuid + QByteArray::number(driver) +
                           "-trt11.4.0.106-fp32-v1";
-    if (!detection && (capacity == 8 || capacity == 16))
+    if (!detection && variableWidth)
+        identity += recognizer_width::kCacheTag + QByteArray::number(capacity);
+    else if (!detection && (capacity == 8 || capacity == 16))
         identity += "-rec-min1x3x48x1024-opt" + QByteArray::number(capacity) + "x3x48x1024-max" +
                     QByteArray::number(capacity) + "x3x48x1024-v2";
     return QString::fromLatin1(QCryptographicHash::hash(identity, QCryptographicHash::Sha256).toHex());
@@ -645,6 +654,8 @@ inline QString Validate(const Completion& completion, const MeteredImage::Meters
     if (selection.profile) {
         if (profiles.size() != 1) return QString("Expected exactly one TensorRT profile, received %1.").arg(profiles.size());
         const auto& profile = profiles.front();
+        if (profile["recognizerWidthPolicy"].toString() != selection.widthPolicy)
+            return "The recognizer width policy differs from the request.";
         if (profile["batchCapacity"].toInt() != capacity || profile["maximumActualBatch"].toInt() > capacity)
             return "The TensorRT profile reports a different batch capacity.";
         if (profile["omittedEventPairs"].toInt() != 0)
@@ -963,11 +974,17 @@ inline void SelectionAndComparisonSelfTest()
     QCOMPARE(selection.pairs.size(), qsizetype(2));
     QCOMPARE(selection.images.size(), qsizetype(1));
     QVERIFY(selection.profile && !selection.media && !selection.paired);
+    QCOMPARE(selection.widthPolicy,QStringLiteral("fixed1024"));
     const auto refused = [&values](QHash<QByteArray, QString> changes) {
         auto changed = values;
         for (auto it = changes.begin(); it != changes.end(); ++it) changed[it.key()] = it.value();
         return !ParseSelection([&changed](const char* key) { return changed.value(QByteArray(key)); }).error.isEmpty();
     };
+    QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_WIDTH", "auto"}}));
+    QVERIFY(refused({{"OKUFLOW_UCT_TRT_PREPARE_WIDTH", "1"}}));
+    values["OKUFLOW_UCT_RESIDENT_WIDTH"] = "bucketed";
+    QCOMPARE(ParseSelection(read).widthPolicy,QStringLiteral("bucketed"));
+    values.remove("OKUFLOW_UCT_RESIDENT_WIDTH");
     QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_CAPACITIES", "8,16"}})); // no strict batch-one reference
     QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_CAPACITIES", "1,4"}}));
     QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_SHADOW_PLANNER", "yes"}}));
@@ -1017,6 +1034,11 @@ inline void SelectionAndComparisonSelfTest()
     QVERIFY(PlanKey(model, uuid, 13000, false, 16) != PlanKey(model, uuid, 13000, false, 8));
     QVERIFY(PlanKey(model, uuid, 13001, true, 1) != detector);
     QVERIFY(PlanKey(other, uuid, 13000, true, 1) != detector);
+    for (const int n : {1,8,16}) {
+        QVERIFY(PlanKey(model,uuid,13000,false,n,true) != PlanKey(model,uuid,13000,false,n,false));
+        QVERIFY(PlanKey(model,uuid,13000,false,n,true) != detector);
+    }
+    QVERIFY(PlanKey(model,uuid,13000,false,8,true) != PlanKey(model,uuid,13000,false,16,true));
 
     std::vector<double> samples(19);
     std::iota(samples.begin(), samples.end(), 1.0);
@@ -1185,6 +1207,7 @@ inline void SelectionAndComparisonSelfTest()
     valid.result.reference.resident = std::make_shared<StubProbe>();
     const MeteredImage::Meters resident{1, 0, 1, 0, 0.0, 1.0, true};
     const QVector<QJsonObject> profile{QJsonObject{{"batchCapacity", 8}, {"maximumActualBatch", 8},
+        {"recognizerWidthPolicy", "fixed1024"},
         {"orderedCropDescriptorSha256", QString(64, QLatin1Char('a'))}}};
     QVERIFY2(Validate(valid, resident, profile, 8, selection, {}).isEmpty(),
              qPrintable(Validate(valid, resident, profile, 8, selection, {})));
@@ -1434,6 +1457,7 @@ inline void RunBlock(Run& run, const Block& block, ProfileCapture& capture)
     const auto& assets = run.pairs[std::size_t(block.pair)].assets;
     const QString configuration = pair.Token() + QStringLiteral("/n%1").arg(block.capacity);
     uct_batch_test::Environment batch("OKUFLOW_UCT_TRT_BATCH", QByteArray::number(block.capacity));
+    uct_batch_test::Environment width("OKUFLOW_UCT_TRT_WIDTH",run.selection.widthPolicy.toLatin1());
     uct_batch_test::RetirementReceipts retirement; // outlives the scheduler, including early assertion exits
     const auto mailbox = std::make_shared<Mailbox>();
     capture.Take();
@@ -1641,7 +1665,7 @@ inline void ResidentBaselineDiagnostic()
                                           PlanKey(entry.assets.detectorSha256, uuid, driver, true, 1)));
         for (const int capacity : selection.capacities)
             entry.plans.push_back(InspectPlan(cache, "recognizer", pair.recognizer, capacity,
-                                              PlanKey(entry.assets.recognizerSha256, uuid, driver, false, capacity)));
+                                              PlanKey(entry.assets.recognizerSha256, uuid, driver, false, capacity, selection.widthPolicy == "bucketed")));
         for (const auto& plan : entry.plans)
             if (!plan.valid)
                 missing << QStringLiteral("%1 %2 N%3 %4: %5").arg(pair.Token(), plan.role).arg(plan.capacity)

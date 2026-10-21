@@ -1,5 +1,6 @@
 #include "okuflow/common/uct_paddle.hpp"
 #include "okuflow/common/uct_model_pins.hpp"
+#include "../src/common/uct_recognizer_width.hpp"
 #include "okuflow/cuda/uct_analysis_pool.hpp"
 #include "ultra_clear_text_test_support.hpp"
 #include "uct_color_test_support.hpp"
@@ -9,6 +10,7 @@
 #include "uct_resident_diagnostic.hpp"
 #include "uct_paused_video_diagnostic.hpp"
 #include <QFontDatabase>
+#include <QLineF>
 #include <QPainter>
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -496,6 +498,213 @@ class PaddleTests final : public QObject
         bad.close();
         auto backend = CreatePaddleCpuRecognizer(directory.path());
         QCOMPARE(backend->Initialize().state, BackendState::kUnavailable);
+    }
+    void recognizerWidthPolicyKeepsBoundsAndOrderedGroups()
+    {
+        namespace width = recognizer_width;
+        const std::array<std::pair<int,int>,12> cases{{{-1,1024},{0,1024},{1,128},{128,128},
+            {129,256},{256,256},{257,512},{512,512},{513,1024},{1024,1024},{1025,1024},{2147483647,1024}}};
+        for (const auto [requested,canvas] : cases) {
+            QCOMPARE(width::Canvas(requested),canvas); QVERIFY(width::IsCanvas(canvas));
+            if (requested>0) QVERIFY(canvas>=std::min(requested,1024));
+        }
+        QVERIFY(!width::IsCanvas(127)); QVERIFY(!width::IsCanvas(384));
+        struct Crop { int validWidth{}, order{}; };
+        std::array<Crop,17> crops{};
+        const std::array<int,17> requested{64,80,100,127,128,70,90,20,129,180,200,257,300,400,500,200,513};
+        for (int i=0; i<int(crops.size()); ++i) crops[i]={requested[i],i};
+        const auto before=crops;
+        QCOMPARE(width::OrderedGroup(crops.data(),8),128);
+        QCOMPARE(width::OrderedGroup(crops.data()+8,8),512);
+        QCOMPARE(width::OrderedGroup(crops.data()+16,1),1024);
+        QCOMPARE(width::OrderedGroup(crops.data(),16),512);
+        QCOMPARE(width::OrderedGroup(crops.data(),17),1024);
+        QCOMPARE(width::OrderedGroup(static_cast<const Crop*>(nullptr),1),1024);
+        QCOMPARE(width::OrderedGroup(crops.data(),0),1024);
+        for (int i=0; i<int(crops.size()); ++i) {
+            QCOMPARE(crops[i].order,before[i].order); QCOMPARE(crops[i].validWidth,before[i].validWidth);
+        }
+        crops[2].validWidth=0; QCOMPARE(width::OrderedGroup(crops.data(),8),1024);
+        crops[2].validWidth=-1; QCOMPARE(width::OrderedGroup(crops.data(),8),1024);
+    }
+    void recognizerWidthRectificationRetainsUsefulAspectSamples()
+    {
+        QImage image(1024,64,QImage::Format_ARGB32);
+        for (int y=0; y<image.height(); ++y)
+            for (int x=0; x<image.width(); ++x)
+                image.setPixelColor(x,y,QColor(x%256,(x+y*7)%256,(x*3+y)%256));
+        for (const int valid : {32,128,129,257,513,1024,2048}) {
+            const PaddleQuad quad{{QPointF(0,8),QPointF(valid*.5,8),QPointF(valid*.5,32),QPointF(0,32)},1};
+            const int aspectWidth=int(std::ceil(48*QLineF(quad.points[0],quad.points[1]).length()/
+                                                QLineF(quad.points[0],quad.points[3]).length()));
+            QCOMPARE(aspectWidth,valid);
+            const int canvas=recognizer_width::Canvas(aspectWidth);
+            const auto fixed=PaddleRectify(image,quad,1024,valid);
+            const auto narrow=PaddleRectify(image,quad,canvas,valid);
+            QCOMPARE(narrow.size(),std::size_t(canvas)*48*3);
+            // Only channel/row stride and zero padding change. Real source
+            // samples, rectification aspect and crop coordinates stay exact.
+            for (int channel=0; channel<3; ++channel)
+                for (const int y : {0,7,23,47}) {
+                    for (int x=0; x<std::min(valid,1024); ++x)
+                        QCOMPARE(narrow[channel*canvas*48+y*canvas+x],fixed[channel*1024*48+y*1024+x]);
+                    for (int x=std::min(valid,canvas); x<canvas; ++x)
+                        QCOMPARE(narrow[channel*canvas*48+y*canvas+x],0.f);
+                }
+        }
+    }
+    void recognizerWidthProfileRejectsRenamedFixedPlans()
+    {
+        std::array<std::int64_t,4> shape{1,3,48,128};
+        QVERIFY(recognizer_width::MatchesProfile(shape.data(),4,1,128));
+        shape[3]=1024; QVERIFY(!recognizer_width::MatchesProfile(shape.data(),4,1,128));
+        shape={8,3,48,512}; QVERIFY(recognizer_width::MatchesProfile(shape.data(),4,8,512));
+        QVERIFY(!recognizer_width::MatchesProfile(shape.data(),3,8,512));
+        QVERIFY(!recognizer_width::MatchesProfile(shape.data(),4,16,512));
+        shape[1]=1; QVERIFY(!recognizer_width::MatchesProfile(shape.data(),4,8,512));
+        shape={8,3,32,512}; QVERIFY(!recognizer_width::MatchesProfile(shape.data(),4,8,512));
+    }
+    void gpuRecognizerWidthMetadataDoesNotReorderOrReadPastCount()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        int devices{}; if(cudaGetDeviceCount(&devices)!=cudaSuccess || !devices) QSKIP("No CUDA device.");
+        FixtureStream stream;
+        std::array<gpu::Quad,17> crops{};
+        const std::array<int,17> widths{64,80,100,127,128,70,90,20,129,180,200,257,300,400,500,200,513};
+        for (int i=0; i<int(crops.size()); ++i) { crops[i].xy[0]=float(i); crops[i].validWidth=widths[i]; }
+        GpuBuffer<gpu::Quad> deviceCrops(crops.size()); GpuBuffer<int> count(1), canvases(144);
+        QCOMPARE(cudaMemcpyAsync(deviceCrops.data,crops.data(),sizeof(crops),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+        const auto evaluate=[&](int n,int group) {
+            std::vector<int> result((1152+group-1)/group,-1);
+            if (cudaMemcpyAsync(count.data,&n,sizeof(n),cudaMemcpyHostToDevice,stream.value)!=cudaSuccess) return std::vector<int>{};
+            gpu::RecognitionGroupWidths(deviceCrops.data,count.data,group,canvases.data,stream.value);
+            if (cudaGetLastError()!=cudaSuccess || cudaMemcpyAsync(result.data(),canvases.data,result.size()*sizeof(int),cudaMemcpyDeviceToHost,stream.value)!=cudaSuccess ||
+                cudaStreamSynchronize(stream.value)!=cudaSuccess) return std::vector<int>{};
+            return result;
+        };
+        auto values=evaluate(17,8); QCOMPARE(values.size(),std::size_t(144));
+        QCOMPARE(values[0],128); QCOMPARE(values[1],512); QCOMPARE(values[2],1024);
+        for (std::size_t i=3; i<values.size(); ++i) QCOMPARE(values[i],0);
+        values=evaluate(17,16); QCOMPARE(values.size(),std::size_t(72));
+        QCOMPARE(values[0],512); QCOMPARE(values[1],1024);
+        for (std::size_t i=2; i<values.size(); ++i) QCOMPARE(values[i],0);
+        for (const int invalid : {-1,0,1153}) {
+            values=evaluate(invalid,8); QCOMPARE(values.size(),std::size_t(144));
+            for (const int value : values) QCOMPARE(value,0);
+        }
+        std::array<gpu::Quad,17> after{};
+        QCOMPARE(cudaMemcpyAsync(after.data(),deviceCrops.data,sizeof(after),cudaMemcpyDeviceToHost,stream.value),cudaSuccess);
+        QCOMPARE(cudaStreamSynchronize(stream.value),cudaSuccess);
+        for (int i=0; i<int(crops.size()); ++i) {
+            QCOMPARE(after[i].xy[0],crops[i].xy[0]); QCOMPARE(after[i].validWidth,crops[i].validWidth);
+        }
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
+    void gpuRecognizerWidthRectificationMatchesCpuAcrossCanvasTransitions()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        int devices{};
+        if (cudaGetDeviceCount(&devices) != cudaSuccess || !devices)
+            QSKIP("No CUDA device.");
+        QImage image(640, 96, QImage::Format_ARGB32);
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x)
+                image.setPixelColor(x, y, QColor((x * 3 + y * 5) % 256,
+                                                (x + y * 7) % 256, (x * 5 + y) % 256));
+        constexpr std::size_t guard = 64, fixedSample = 1024 * 48 * 3;
+        constexpr float sentinel = 6.25f; // outside normalized source range
+        std::array<gpu::Quad, 2> quads{};
+        std::array<PaddleQuad, 2> cpuQuads{};
+        std::vector<float> reset(guard + 2 * fixedSample + guard, sentinel);
+        std::vector<float> actual(reset.size()), fixed(2 * fixedSample);
+        GpuBuffer<unsigned char> pixels(image.sizeInBytes());
+        GpuBuffer<gpu::Quad> boxes(quads.size());
+        GpuBuffer<float> reusable(reset.size()), fixedCrops(fixed.size());
+        // On assertion failure, drain before any device allocation or async
+        // host source/destination above is destroyed.
+        FixtureStream stream;
+        QCOMPARE(cudaMemcpyAsync(pixels.data, image.constBits(), image.sizeInBytes(),
+                                 cudaMemcpyHostToDevice, stream.value), cudaSuccess);
+        // Nonmonotonic transitions exercise row, channel and batch strides on
+        // the same high-water allocation. Two crops have distinct useful widths.
+        const std::array<std::array<int, 2>, 8> usefulWidths{{
+            {32, 127}, {257, 511}, {129, 255}, {513, 1024},
+            {128, 31}, {256, 130}, {512, 258}, {1024, 514}}};
+        const std::array<int, 8> canvases{128, 512, 256, 1024, 128, 256, 512, 1024};
+        for (std::size_t transition = 0; transition < usefulWidths.size(); ++transition)
+        {
+            for (std::size_t sample = 0; sample < quads.size(); ++sample)
+            {
+                const int valid = usefulWidths[transition][sample];
+                // Half-pixel/fractional positions require real bilinear
+                // sampling; crop 1 also straddles the left image boundary.
+                const float left = sample ? -3.25f : 8.25f;
+                const float top = sample ? 60.5f : 8.5f;
+                quads[sample] = {{left, top, left + valid * .5f, top,
+                                  left + valid * .5f, top + 24, left, top + 24}, 1, valid};
+                for (int corner = 0; corner < 4; ++corner)
+                    cpuQuads[sample].points[corner] =
+                        {quads[sample].xy[corner * 2], quads[sample].xy[corner * 2 + 1]};
+                cpuQuads[sample].score = 1;
+                QCOMPARE(int(std::ceil(48 * QLineF(cpuQuads[sample].points[0],
+                                                   cpuQuads[sample].points[1]).length() /
+                                           QLineF(cpuQuads[sample].points[0],
+                                                  cpuQuads[sample].points[3]).length())), valid);
+            }
+            const int canvas = recognizer_width::OrderedGroup(quads.data(), int(quads.size()));
+            QCOMPARE(canvas, canvases[transition]);
+            const std::size_t samplePixels = std::size_t(canvas) * 48 * 3;
+            QCOMPARE(cudaMemcpyAsync(boxes.data, quads.data(), sizeof(quads),
+                                     cudaMemcpyHostToDevice, stream.value), cudaSuccess);
+            QCOMPARE(cudaMemcpyAsync(reusable.data, reset.data(), reset.size() * sizeof(float),
+                                     cudaMemcpyHostToDevice, stream.value), cudaSuccess);
+            for (std::size_t sample = 0; sample < quads.size(); ++sample)
+            {
+                gpu::Rectify(pixels.data, image.bytesPerLine(), image.width(), image.height(),
+                             boxes.data, int(sample), fixedCrops.data + sample * fixedSample,
+                             1024, stream.value);
+                gpu::Rectify(pixels.data, image.bytesPerLine(), image.width(), image.height(),
+                             boxes.data, int(sample), reusable.data + guard + sample * samplePixels,
+                             canvas, stream.value);
+            }
+            QCOMPARE(cudaGetLastError(), cudaSuccess);
+            QCOMPARE(cudaMemcpyAsync(actual.data(), reusable.data, actual.size() * sizeof(float),
+                                     cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+            QCOMPARE(cudaMemcpyAsync(fixed.data(), fixedCrops.data, fixed.size() * sizeof(float),
+                                     cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+            QCOMPARE(cudaStreamSynchronize(stream.value), cudaSuccess);
+            for (std::size_t i = 0; i < guard; ++i)
+                QCOMPARE(actual[i], sentinel);
+            for (std::size_t i = guard + quads.size() * samplePixels; i < actual.size(); ++i)
+                QCOMPARE(actual[i], sentinel);
+            for (std::size_t sample = 0; sample < quads.size(); ++sample)
+            {
+                const int valid = usefulWidths[transition][sample];
+                const auto reference = PaddleRectify(image, cpuQuads[sample], canvas, valid);
+                QCOMPARE(reference.size(), samplePixels);
+                for (int channel = 0; channel < 3; ++channel)
+                    for (int y = 0; y < 48; ++y)
+                        for (int x = 0; x < canvas; ++x)
+                        {
+                            const std::size_t index = std::size_t(channel) * canvas * 48 + y * canvas + x;
+                            const float value = actual[guard + sample * samplePixels + index];
+                            // The CPU reference evaluates the quad in double;
+                            // CUDA uses float. This bound is <0.032 RGB levels.
+                            QVERIFY2(std::abs(value - reference[index]) < .00025f,
+                                     "CUDA rectification differs from CPU reference.");
+                            if (x < valid)
+                                QCOMPARE(value, fixed[sample * fixedSample +
+                                    std::size_t(channel) * 1024 * 48 + y * 1024 + x]);
+                            else
+                                QCOMPARE(value, 0.f);
+                        }
+            }
+        }
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
     }
     void normalizationAndBounds()
     {

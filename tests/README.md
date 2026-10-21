@@ -1978,3 +1978,14 @@ and adjacent 100 ms samples. It prints the authored/native cut offset instead
 of assuming timeline equivalence: on the development machine, the first blue
 native sample was at 1.2 s while FFmpeg placed it at 1.0 s. This separate
 reordered-H.264 timeline discrepancy is not repaired or accepted by this test.
+## Recognition-width validation
+
+`uct_paddle_processing` includes `recognizerWidthPolicyKeepsBoundsAndOrderedGroups`,
+`recognizerWidthRectificationRetainsUsefulAspectSamples` and
+`recognizerWidthProfileRejectsRenamedFixedPlans`. `uct_paddle_cuda` includes
+`gpuRecognizerWidthMetadataDoesNotReorderOrReadPastCount` and
+`gpuRecognizerWidthRectificationMatchesCpuAcrossCanvasTransitions` with actual
+CUDA buffers, initialized metadata, fractional/clipped source coordinates,
+nonmonotonic canvas changes and prefix/inactive-tail guards. They require no
+models. Prepared TensorRT output/CTC transitions and recognition quality remain
+separate opt-in evidence: see [width protocol](../docs/uct_recognizer_width.md).

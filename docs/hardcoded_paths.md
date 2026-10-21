@@ -957,3 +957,14 @@ The finite resident diagnostic has a separate
 `OKUFLOW_UCT_RESIDENT_SHADOW_PLANNER=1` selector that requires retained frozen
 source identities and records plans beside full outputs; it never fabricates
 fresh evidence by assigning new frame IDs to copies.
+## Experimental recognizer width profiles
+
+`OKUFLOW_UCT_TRT_WIDTH` accepts empty/`fixed1024` (existing keys) or `bucketed`.
+`OKUFLOW_UCT_TRT_PREPARE_WIDTH=1` permits a separate one-time preparation of
+only the selected N; normal bucketed inference is cache-only. The new cache
+identity appends `-rec-width-v1-buckets128-256-512-1024-min1x3x48x128-optNx3x48x512-maxNx3x48x1024-n`
+and actual capacity, retaining model/GPU UUID/driver/TRT 11.4.0.106/FP32 pins.
+The minimum, optimum and maximum shapes must match after deserialization.
+`OKUFLOW_UCT_RESIDENT_WIDTH` selects the same two policies in the diagnostic,
+which refuses preparation. Group metadata is bounded to 144 integers / 576
+bytes in each device/host buffer. See [width validation](uct_recognizer_width.md).

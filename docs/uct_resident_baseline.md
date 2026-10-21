@@ -1,5 +1,9 @@
 # UCT resident SubmitDevice baseline (diagnostic)
 
+For the independent fixed-versus-bucketed width experiment, use
+`OKUFLOW_UCT_RESIDENT_WIDTH` and the [width comparison protocol](uct_recognizer_width.md).
+Per-run N1/batch agreement alone does not establish cross-width quality.
+
 Status (2026-10-20): integrated and measured. The finite resident run completed
 normally but failed strict wider-batch agreement; defaults remain unchanged.
 It is an unregistered, opt-in QtTest slot in `uct_paddle_tests`; ordinary CTest

@@ -168,10 +168,12 @@ plans. Raw profile logs and exit receipts stay in the private continuity
 evidence directory. Host merging is about 1.5% of this path, so overlapping it
 cannot provide the order-of-magnitude gain needed for dense 120 FPS OCR.
 
-The next experiment is an explicitly opt-in smaller-width recognition profile,
-preserving crop order and testing exact text/omission behavior against the
-existing canvas before any default changes. It is not enabled or accepted by
-this measurement. TensorRT batching, graphs and stream overlap must be evaluated
+The explicitly opt-in smaller-width recognition profile is now implemented
+and measured separately, preserving crop order and retaining exact text/omission
+differences against the existing canvas. Its [width report](uct_recognizer_width.md)
+distinguishes the owner's 5% text-difference allowance from original strict
+failures, ground-truth accuracy and default promotion. TensorRT batching,
+graphs and stream overlap must be evaluated
 on the critical path; throughput and latency need separate measurements. See
 [NVIDIA's performance guidance](https://docs.nvidia.com/deeplearning/tensorrt/latest/performance/optimization.html).
 

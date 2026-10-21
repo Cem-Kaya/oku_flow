@@ -617,6 +617,8 @@ legacy `powershell.exe` bridge.
 
 ## Documentation Index
 
+- [Narrower UCT recognizer inputs](uct_recognizer_width.md): opt-in width
+  profiles, same-crop quality comparison and workload-dependent performance.
 - [UCT color and readiness repairs](uct_color_startup_repair.md)
 - [`android/README.md`](../android/README.md): native Android companion setup,
   USB streaming, Advanced settings, current limits, and interactive drafts.

@@ -6272,3 +6272,16 @@ The direct `optionalDenseImage` diagnostic also waits for that receipt after
 recognizer destruction, including assertion exits. See
 `uct_paused_continuity_repair.md` for selectors, the 60 FPS source-specific frame
 mapping and the distinction from decoder/native-display acceptance.
+## Opt-in recognizer width policy
+
+`src/common/uct_recognizer_width.hpp` supplies bounded 128/256/512/1024
+canvas selection, contiguous ordered-group maxima and exact profile extent
+validation. `gpu::RecognitionGroupWidths` initializes the complete bounded
+metadata array without sorting or transferring pixels. TensorRT `Network`
+checks dynamic-width profile identity and actual output extents; `State`
+owns device/pinned group widths through the existing stream waits. Explicit
+width preparation is separate from cache-only inference and retains the
+frozen-upload / `RetireOwnedState` ownership contracts.
+`TensorRtProfile` records width policy, canvas counts and useful padding.
+The five width fixtures and resident selector are described in
+[narrower recognition inputs](uct_recognizer_width.md); defaults remain fixed.
