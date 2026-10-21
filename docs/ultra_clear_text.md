@@ -815,6 +815,6 @@ punctuation set, but rejects non-ASCII digits, combining marks, modifier letters
 and certain confusable letter/digit combinations. Valid multilingual text can
 therefore remain original ink even if the backend recognized it. The model's
 character dictionary and the Windows fallback's installed recognizer languages
-are separate limits; the application's25 interface languages do not establish
+are separate limits; the application's 25 interface languages do not establish
 OCR coverage. Protection masks preserve unproved punctuation/symbol pixels
 against neighbouring replacement plates; they are not grammatical judgements.

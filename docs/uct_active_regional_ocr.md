@@ -350,10 +350,10 @@ not guarantee better recognition. Atomic optional admission must preserve
 previously confirmed words; full scans remain authoritative. The read-only
 output comparison is retained in `evidence/regional-704-existing-output-comparison.json`.
 
-The same raw receipts contain 1 low-confidence word at480 versus32 at704.
-For704, one scores in `[0.60,0.70)`, eight in `[0.50,0.60)`, and23 below0.50;
-the remaining non-candidate is a high-risk `1` above0.70. Lowering the confidence
-cutoff alone to0.60 would expose one more raw output to the other checks;0.50
+The same raw receipts contain 1 low-confidence word at 480 versus 32 at 704.
+For 704, one scores in `[0.60,0.70)`, eight in `[0.50,0.60)`, and 23 below 0.50;
+the remaining non-candidate is a high-risk `1` above 0.70. Lowering the confidence
+cutoff alone to 0.60 would expose one more raw output to the other checks; 0.50
 would expose nine. Those include fragments such as `tro`, `earared` and `foun`.
 This is read-only threshold sensitivity, not a change of policy or ground-truth
 accuracy. Confidence is not a calibrated probability that the text is correct.
