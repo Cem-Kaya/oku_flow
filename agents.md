@@ -911,3 +911,20 @@ aligned with the project goals.
   audio endpoint or owner process is needed. Retain original failed receipts,
   strict PTS/PCM identity and held-file/consumer-lease retirement assertions.
   Code-value HDR comparisons are not tone-mapping acceptance or deployment.
+
+## Owner workstation work storage (2026-10-21)
+
+- On the owner's PC, put new large Windows build, SDK, test-evidence and scratch
+  folders under `Z:\Projects\OkuFlow\local-work-data`. Keep the main Y: checkout
+  in place. This is a workstation-specific override, not a CI requirement.
+- Existing LocalAppData work directories and inactive T3 checkouts have C:-to-Z:
+  junctions. Preserve them and the original Git/T3 path registrations. The active
+  checkout's roughly 20 MiB of source remains on C: because Windows holds its
+  directory open; its large `build` directory already redirects to Z:.
+- Before configuring a new C: T3 checkout, inspect its build path and put new
+  build output on Z:, retaining the preset's expected path through a junction.
+  Do not replace an existing populated build directory without inspection and
+  verified relocation. Use supported output-root overrides for separate builds.
+- Keep private signing/Google Play credentials and app state on C:. Never remove
+  test ledgers or rerun cold model preparation because of this storage move.
+  Consult `docs/local_work_storage.md` and retain migration evidence.

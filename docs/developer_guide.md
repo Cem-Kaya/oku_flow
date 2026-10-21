@@ -278,6 +278,11 @@ development executable is running. The tracked helper applies the same release
 preset there and keeps the CPU/CUDA test presets unchanged; it never closes the
 running app to replace its executable.
 
+On the owner's workstation, use `Z:\Projects\OkuFlow\local-work-data` for new
+large work folders. Existing C: cache and checkout paths may redirect there;
+the active source directory has a small Windows-lock exception. See
+[local work storage](local_work_storage.md) before creating or moving builds.
+
 You can also run each preset directly:
 
 ```powershell

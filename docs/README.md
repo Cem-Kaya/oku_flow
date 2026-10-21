@@ -1,5 +1,9 @@
 # OkuFlow Documentation Guide
 
+[Local development storage](local_work_storage.md) records the owner's Z: work
+folders, compatible C: path redirects, the active-source exception and guidance
+for new build folders.
+
 [Optional embedded FFmpeg/dav1d playback](video_ffmpeg_playback.md) describes
 the saved-file prototype, private source build, native/archive fallback,
 strict same-source comparison and remaining color/deployment acceptance.
