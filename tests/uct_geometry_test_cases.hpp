@@ -178,9 +178,75 @@ inline void TiltedButtonColors(bool resident)
 #endif
     }
 }
+inline void LooseInkPadding(bool resident)
+{
+    uct_test::RegisterFixtureFonts();
+    const auto q=Quad({70,60},.2);
+    TextQuad search=q;
+    search.points[1]=q.points[0]+(q.points[1]-q.points[0])*.5;
+    search.points[2]=search.points[1]+(q.points[3]-q.points[0])*.8;
+    search.points[3]=q.points[0]+(q.points[3]-q.points[0])*.8;
+    const auto u=(search.points[1]-search.points[0])/80;
+    const auto v=(search.points[3]-search.points[0])/32;
+    QImage image(320,180,QImage::Format_ARGB32);image.fill(Qt::white);
+    QFont font(QStringLiteral("Segoe UI"));font.setPixelSize(40);
+    QPainterPath path;path.addText({},font,QStringLiteral("held"));
+    const auto ink=path.boundingRect();QVERIFY(!ink.isEmpty());
+    QPolygonF from,to;from<<ink.topLeft()<<ink.topRight()<<ink.bottomRight()<<ink.bottomLeft();
+    const auto at=[&](double x,double y){return search.points[0]+u*x+v*y;};
+    to<<at(10,12)<<at(65,12)<<at(65,21)<<at(10,21);
+    QTransform map;QVERIFY(QTransform::quadToQuad(from,to,map));
+    {QPainter p(&image);p.setTransform(map);p.fillPath(path,Qt::black);}
+    auto word=Word(search,QStringLiteral("held"));bool fitted{};
+    const auto cpu=FitOrientedWordInk(image,word,{Qt::black,Qt::white},&fitted);
+    QVERIFY2(fitted,"Readable small glyphs must fit inside loose detector padding.");
+    QVERIFY(QuadHeight(cpu)>=7 && QuadHeight(cpu)<=11);
+    // A short underline has enough total ink to pass the sample-count gate,
+    // but must not become a complete word when the shrink fraction is lower.
+    QImage noise(image.size(),image.format());noise.fill(Qt::white);
+    {QPainter p(&noise);p.setTransform(QTransform(u.x(),u.y(),v.x(),v.y(),search.points[0].x(),search.points[0].y()));
+     p.fillRect(QRectF(10,15,55,2),Qt::black);}
+    bool noiseFitted{};
+    QCOMPARE(FitOrientedWordInk(noise,word,{Qt::black,Qt::white},&noiseFitted),search);
+    QVERIFY(!noiseFitted);
+    // Pixel-space quad arithmetic can put a seven-pixel body a fraction
+    // below seven; this must not remove readable text at the size boundary.
+    for(const double bodyHeight:{7.-1e-7,6.999}) {
+        auto body=search;body.points[2]=body.points[1]+v*bodyHeight;
+        body.points[3]=body.points[0]+v*bodyHeight;
+        RecognitionResult result;result.stamp.viewportWidth=320;result.stamp.viewportHeight=180;
+        result.stamp.viewTransform={0,0,1,1,0,0,1,1,true};
+        result.output.lines={{{Word(body)}}};
+        const auto prepared=PrepareLines(result,7.);
+        QCOMPARE(prepared.size(),1);QCOMPARE(prepared[0].words.size(),1);
+        QCOMPARE(prepared[0].words[0].disposition,bodyHeight>6.9999?TokenDisposition::kCandidate:TokenDisposition::kTooSmall);
+    }
+    if(!resident)return;
+#if OKUFLOW_ENABLE_CUDA
+    for(const auto& source:{image,noise}) {
+        FixtureStream stream;GpuBuffer<unsigned char> pixels(source.sizeInBytes());
+        GpuBuffer<gpu::OrientedInk> desc(1);GpuBuffer<int> index(1);
+        GpuBuffer<gpu::Colors> colors(1);GpuBuffer<gpu::OrientedFit> result(1);
+        const gpu::OrientedInk d{search.points[0].x(),search.points[0].y(),u.x(),u.y(),v.x(),v.y(),80,32,80,0};
+        const gpu::Colors c{{0,0,0},{255,255,255}};const int zero=0;
+        QCOMPARE(cudaMemcpyAsync(pixels.data,source.constBits(),source.sizeInBytes(),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+        QCOMPARE(cudaMemcpyAsync(desc.data,&d,sizeof(d),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+        QCOMPARE(cudaMemcpyAsync(colors.data,&c,sizeof(c),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+        QCOMPARE(cudaMemcpyAsync(index.data,&zero,sizeof(zero),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+        gpu::OrientedInkBounds(pixels.data,source.bytesPerLine(),source.width(),source.height(),desc.data,index.data,1,colors.data,result.data,stream.value);
+        gpu::OrientedFit fit{};QCOMPARE(cudaMemcpyAsync(&fit,result.data,sizeof(fit),cudaMemcpyDeviceToHost,stream.value),cudaSuccess);
+        QCOMPARE(cudaStreamSynchronize(stream.value),cudaSuccess);
+        if(source==noise){QVERIFY(!fit.fitted);continue;}
+        QVERIFY(fit.fitted);QVERIFY(fit.propagationComplete);
+        const std::array<QPointF,4> points{at(fit.u0,fit.v0),at(fit.u1,fit.v0),at(fit.u1,fit.v1),at(fit.u0,fit.v1)};
+        for(int i=0;i<4;++i)QVERIFY(QLineF(cpu.points[i],points[i]).length()<1e-8);
+    }
+#endif
+}
 inline void CpuGeometry()
 {
     TiltedButtonColors(false);
+    LooseInkPadding(false);
     for(const double bound : {4.0,6.0}) {
         const DetailFocus focus{{400,200,80,35},bound};
         const auto region=DetailRegion({1920,1080},focus);
@@ -215,6 +281,16 @@ inline void CpuGeometry()
 }
 inline void DuplicateInk()
 {
+    // A detector can report the close-button X as a nearly vertical letter
+    // or number. Failed ink geometry must keep the original symbol; a
+    // successfully fitted scalar and ordinary multi-letter text still pass.
+    for(const auto text:{QStringLiteral("X"),QStringLiteral("4"),QStringLiteral("Head")})
+        for(const bool fitted:{false,true}) {
+            auto word=Word(Quad({80,40},1.4),text);word.inkFitted=fitted;
+            RecognitionOutput output;output.lines={{{word}}};FinalizeRecognizedGeometry(output);
+            QCOMPARE(output.lines[0].words[0].disposition,
+                !fitted&&text.size()==1?TokenDisposition::kHighRisk:TokenDisposition::kCandidate);
+        }
     // The two pre-fit CTC slash spans overlap only 65%, but fit to exactly
     // the same ink. Adjacent identical tokens must remain distinct.
     RecognitionOutput output; output.ok = true;
@@ -316,6 +392,7 @@ inline void GpuWindingInkWorkCap()
 inline void GpuGeometry()
 {
     TiltedButtonColors(true);
+    LooseInkPadding(true);
     GpuWindingInkWorkCap();
     for(const double angle : {-.35,.2,.65}) for(const bool perspective:{false,true}) {
         const auto q=Quad({80,80},angle,perspective); const auto image=Ink(q); auto word=Word(q);

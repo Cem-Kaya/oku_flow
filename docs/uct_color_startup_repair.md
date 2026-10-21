@@ -71,7 +71,7 @@ and zero fitted coordinates, while the exact CPU queue completes. The corrected
 focused CPU and real-CUDA gates are scoped development
 checks, not combined geometry/paused-registration or release acceptance.
 
-Three final cached menu25/25033 GPU proofs preserve 29 candidates, 24 production
+At color-only commit `4f5ea6b`, three cached menu25/25033 GPU proofs preserve 29 candidates, 24 production
 ink fits, 21 shown words and 20 actual paints, with zero image egress and exact
 TensorRT retirement/cache-inventory checks. The upper `Right`/`Hand` quads fit
 at 53/41 pixels (draft 67/40); the lower pair fits at 60.20/43.01 pixels. All four

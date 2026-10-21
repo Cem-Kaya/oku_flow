@@ -622,7 +622,7 @@ __global__ void ink(const unsigned char *p, size_t pitch, int w, int h, const In
 
 // Rotated-frame ink fit. Mirrors FitOrientedWordInk exactly: identical step,
 // grid, nearest-pixel floor sampling (non-fused double arithmetic), run
-// selection, detached-mark rule and 35% shrink guard. One block per word.
+// selection, detached-mark rule and bounded shrink guards. One block per word.
 __device__ bool orientedInkAt(const unsigned char *p, size_t pitch, int w, int h,
                               const OrientedInk &a, int step, int iu, int iv, int threshold, int polarity)
 {
@@ -831,7 +831,7 @@ __global__ void orientedInk(const unsigned char *p, size_t pitch, int w, int h, 
         out[i].reason = OrientedFitReason::ShrinkGuard;
         const double u0 = double(left) * step, u1 = fmin(a.width, double(right) * step + step);
         const double v0 = double(top) * step, v1 = fmin(a.height, double(bottom) * step + step);
-        if (u1 - u0 >= a.detectedWidth * .35 && v1 - v0 >= a.height * .35) {
+        if (u1 - u0 >= a.detectedWidth * .35 && v1 - v0 >= fmax(4.0, a.height * .25)) {
             out[i].u0 = u0, out[i].u1 = u1, out[i].v0 = v0, out[i].v1 = v1, out[i].fitted = 1;
             out[i].reason = OrientedFitReason::Fitted;
         }

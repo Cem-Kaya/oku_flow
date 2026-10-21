@@ -1,5 +1,13 @@
 # Hard-Coded Paths and Defaults
 
+Oriented UCT ink fitting keeps at least 35% of the detected word width and
+25% of the padded search height, with a four-source-pixel height floor.
+The separate minimum word height, confidence and strict pixel-proof gates
+retain their existing defaults. See [geometry repair](uct_oriented_detail_repair.md).
+Minimum-height comparison permits 1e-5 source pixels of arithmetic error.
+An unfitted padded single-scalar baseline with absolute cosine below 0.5 keeps
+original pixels under the existing high-risk disposition.
+
 ## Optional embedded video SDK (development)
 
 `scripts/ffmpeg/pins.json` pins FFmpeg 7.1.1, dav1d 1.5.1 and private build

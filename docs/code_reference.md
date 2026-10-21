@@ -6442,8 +6442,19 @@ component reachability bits per cell and 4096 row masses (about 46 KiB shared
 scratch). Monotone whole-run propagation has the CPU queue's fixed point when
 complete. `gpu::kOrientedInkMaxPropagationPasses` caps it at 64 scans; an
 incomplete result keeps detector geometry. `OrientedFit::propagationPasses` and
-`propagationComplete` retain compact diagnostic evidence. Original fit-size/contrast and
-detached-mark rules remain; no token disposition or confidence is changed.
+`propagationComplete` retain compact diagnostic evidence. Contrast and
+detached-mark rules remain. Fitted width must retain 35% of the detected span;
+fitted height must retain 25% of the padded search height and at least four
+source pixels. The previous 35% height guard rejected readable small print
+inside loose detector padding and left tall boxes for painting.
+No confidence or word-proof threshold changes.
+`PrepareLines` allows 1e-5 source pixels of arithmetic error at its existing
+minimum-height boundary, so a rotated seven-pixel glyph does not become
+too-small solely through floating-point projection. `FinalizeRecognizedGeometry`
+marks a padded, unfitted single Unicode scalar as high-risk when its baseline
+is predominantly vertical (absolute cosine below 0.5). The original symbol
+remains visible instead of a stretched close-button X/4. Fitted scalars,
+ordinary multi-letter words and horizontal scalars retain their prior policy.
 `OrientedFitReason`/`OrientedFit::reason` distinguish invalid input, propagation
 cap, unanchored ink, too few samples, ambiguous row bands, the shrink guard and
 a completed fit. This uses the result struct's existing alignment space.
@@ -6467,6 +6478,10 @@ slots include it in `uct_paddle_processing`/`uct_paddle_cuda`. Diagnostic
 `uct_batch_test::Output` includes raw per-word foreground/background colors
 alongside fitted quads in private image-proof JSON. See
 [local color evidence and limitations](uct_color_startup_repair.md).
+`uct_geometry_test::LooseInkPadding` fits real Segoe UI small-print glyphs
+inside a 32-pixel-high rotated detector box, while refusing a two-pixel rule
+with sufficient total ink to pass the separate sample-count gate. The resident
+case checks exact CPU/CUDA corners and the same refusal.
 The opt-in paused proof's `fitReplay` lambda reuses resident input/search quads
 and raw colors after actual recognition. `selectedFitReplay` and
 `neighbourFitReplay` record per-word passes/completion, a pass histogram and

@@ -16,6 +16,16 @@ The painter maps the glyph and background through all four projected corners,
 including perspective height changes. Its actual painted-character bounds feed
 accessibility and image exports. Invalid geometry keeps the original pixels.
 
+The oriented ink fit permits a complete glyph body occupying at least one
+quarter of a loosely padded detector height, with a four-source-pixel floor.
+The former 35% height guard rejected readable small print and kept oversized
+detector boxes, producing tall letters on book pages. The 35% width guard,
+sample-count, contrast and detached-mark checks remain. A controlled real-font
+fixture reproduces the rejection; a thin-rule control must still fall back.
+The seven-pixel word-size boundary permits only 1e-5 source pixels of arithmetic
+error. A failed-fit isolated near-vertical character retains the original
+symbol, preventing the close-button X from becoming a stretched X or 4.
+
 Post-fit duplicate reconciliation removes a second observation of the same ink
 without merging adjacent identical words. The painter also suppresses duplicate
 observations and leaves original pixels where different strings claim the same

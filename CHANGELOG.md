@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Fit small tilted UCT words within loose detector padding rather than keeping
+  oversized boxes. Retain an absolute height floor and thin-rule rejection,
+  handle rounding at the minimum-height boundary, and keep original pixels
+  for isolated near-vertical characters whose ink fit failed.
+
 - Measure experimental UCT word colors in each tilted/perspective word frame.
   Local paper and ink keep their source polarity on buttons against a dark
   surround, so ink fitting follows letters instead of the button body.

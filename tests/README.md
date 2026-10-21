@@ -2074,6 +2074,14 @@ native sample was at 1.2 s while FFmpeg placed it at 1.0 s. This separate
 reordered-H.264 timeline discrepancy is not repaired or accepted by this test.
 ## Recognition-width validation
 
+The model-free `orientedInkAndMapping` and `gpuOrientedInkMatchesCpu` slots
+also cover a readable nine-pixel Segoe UI word inside 32-pixel detector padding.
+The complete body must fit on CPU and CUDA; a two-pixel rule must retain the
+detected geometry. These controlled geometry checks do not prove OCR accuracy.
+The same fixture distinguishes a seven-pixel projection-rounding error from
+a genuinely sub-threshold body. Post-fit finalization covers unfitted/fitted
+near-vertical single scalars and multi-letter words separately.
+
 `uct_paddle_processing` includes `recognizerWidthPolicyKeepsBoundsAndOrderedGroups`,
 `recognizerWidthRectificationRetainsUsefulAspectSamples` and
 `recognizerWidthProfileRejectsRenamedFixedPlans`. `uct_paddle_cuda` includes

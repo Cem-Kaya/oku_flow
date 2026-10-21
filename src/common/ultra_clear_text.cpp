@@ -617,7 +617,10 @@ TextQuad FitOrientedWordInk(const QImage& image, const RecognizedWord& word, con
     const double u0 = double(left) * step, u1 = std::min(width, double(right) * step + step);
     const double v0 = double(top) * step, v1 = std::min(height, double(bottom) * step + step);
     const double detectedWidth = QuadWidth(detected);
-    if (u1 - u0 < detectedWidth * .35 || v1 - v0 < height * .35) return detected;
+    // Detector padding can be more than three times the actual small-print
+    // ink height. Keep the width guard, but admit a complete quarter-height
+    // body; four source pixels still reject isolated dots and thin rules.
+    if (u1 - u0 < detectedWidth * .35 || v1 - v0 < std::max(4.0, height * .25)) return detected;
     TextQuad result;
     result.points = {at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1)};
     result.valid = true;
@@ -631,9 +634,18 @@ void FinalizeRecognizedGeometry(RecognitionOutput& output)
         return word.disposition == TokenDisposition::kCandidate;
     };
     for (auto& line : output.lines)
-        for (auto& word : line.words)
+        for (auto& word : line.words) {
             if (word.quadPx.valid && QuadArea(word.quadPx) <= 0.0)
                 word.disposition = TokenDisposition::kInvalidGeometry;
+            else if (candidate(word) && word.paddedBounds && !word.inkFitted &&
+                     (word.text.size() == 1 || (word.text.size() == 2 &&
+                       word.text[0].isHighSurrogate() && word.text[1].isLowSurrogate())) &&
+                     QuadIsRotated(word.quadPx) && std::abs(std::cos(QuadAngle(word.quadPx))) < .5)
+                // An isolated scalar has no reliable reading direction in a
+                // near-vertical padded box when ink fitting failed. Preserve
+                // the original symbol rather than stretching a guessed X/4.
+                word.disposition = TokenDisposition::kHighRisk;
+        }
     // Two observations of the same text that fitting resolved onto the same
     // ink are one word. Keep the more confident one; never merge different text.
     QHash<QString, QVector<std::pair<int, int>>> byText;
@@ -1456,7 +1468,7 @@ QVector<PreparedLine> PrepareLines(const RecognitionResult& result, double minim
                 if (!std::isfinite(word.confidence) || word.confidence < .7 || word.confidence > 1.0001)
                     disposition = TokenDisposition::kLowConfidence;
                 else if (text.isEmpty()) disposition = TokenDisposition::kUnrecognized;
-                else if (textHeight < minimumWordHeightPx)
+                else if (textHeight + 1e-5 < minimumWordHeightPx)
                     disposition = TokenDisposition::kTooSmall;
                 else if (IsHighRiskToken(text)) disposition = TokenDisposition::kHighRisk;
             }
