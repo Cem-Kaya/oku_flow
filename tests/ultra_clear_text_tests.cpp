@@ -861,6 +861,9 @@ private slots:
     void immutableDuplicateCarvesOnlyRetainedGeometry();
     void immutableRiskProtectionSurvivesCrossLineRefinement_data();
     void immutableRiskProtectionSurvivesCrossLineRefinement();
+    void immutableIncomingProtectionOutlivesWordConsumption_data();
+    void immutableIncomingProtectionOutlivesWordConsumption();
+    void immutableQuadCarveKeepsOutsidePunctuation();
     void immutableRefinementRetiredReadingOnlyBoundaryKeepsResidualProtection();
     void protectedAdjacentInkSurvivesCompositing_data();
     void protectedAdjacentInkSurvivesCompositing();
@@ -3335,6 +3338,98 @@ void UltraClearTextTests::immutableRiskProtectionSurvivesCrossLineRefinement()
     QVERIFY(!words.isEmpty());
     QVERIFY(std::any_of(words[0].protectedSceneRects.begin(), words[0].protectedSceneRects.end(),
         [&](const auto& rect) { return rect.contains(proved); }));
+}
+
+void UltraClearTextTests::immutableIncomingProtectionOutlivesWordConsumption_data()
+{
+    QTest::addColumn<bool>("duplicate");
+    QTest::addColumn<bool>("risk");
+    for (bool duplicate : {false,true}) for (bool risk : {false,true})
+        QTest::newRow(qPrintable(QStringLiteral("duplicate%1-risk%2").arg(duplicate).arg(risk))) << duplicate << risk;
+}
+
+void UltraClearTextTests::immutableIncomingProtectionOutlivesWordConsumption()
+{
+    QFETCH(bool,duplicate); QFETCH(bool,risk);
+    auto pair = ImmutablePair(MakeLayoutPage({{"Left",{100,100},48},{"Added",{300,100},48},
+                                             {"Right",{600,100},48}}));
+    auto coarse=pair.first,coarseNeighbor=pair.second;
+    for (auto* result : {&coarse,&coarseNeighbor}) if (!duplicate) {
+        result->output.lines[0].words.removeAt(1); result->prepared[0].words.removeAt(1);
+    }
+    coarseNeighbor.corroborationMatches={false};
+    coarseNeighbor.corroborationWordMatches={QVector<bool>(duplicate ? 3 : 2,true)};
+    OverlayModel model;
+    QCOMPARE(model.AdmitImmutable(coarse,coarse.stamp,60'000,&coarseNeighbor),AdmitVerdict::kAccepted);
+    const auto prior=model.Lines().first();
+    auto selected=pair.first,neighbor=pair.second;
+    const auto added=selected.prepared[0].words[1];
+    const QRectF mark(added.sceneRect.right()+.001,added.sceneRect.center().y(),.001,.004);
+    for (auto* result : {&selected,&neighbor}) {
+        auto row=result->prepared[0]; row.words={row.words[1]}; row.sceneRect=added.sceneRect.united(mark);
+        auto rejected=added; rejected.text=risk ? QStringLiteral("-") : QStringLiteral(",");
+        rejected.sceneRect=rejected.protectedSceneRect=mark;
+        rejected.disposition=risk ? TokenDisposition::kHighRisk : TokenDisposition::kLowConfidence;
+        rejected.confidence=.1; row.words.push_back(rejected);
+        result->prepared={row};
+        auto raw=result->output.lines[0]; raw.words={raw.words[1],raw.words[1]};
+        raw.words[1].text=rejected.text; raw.words[1].disposition=rejected.disposition; raw.words[1].confidence=.1;
+        result->output.lines={raw};
+    }
+    neighbor.corroborationMatches={false}; neighbor.corroborationWordMatches={{true,false}};
+    QCOMPARE(model.AdmitImmutable(selected,selected.stamp,70'000,&neighbor),AdmitVerdict::kAccepted);
+    const auto words=model.SceneWords(70'000,55);
+    QCOMPARE(words.size(),3);
+    QCOMPARE(words.first().lineId,prior.id);
+    const auto preserves=[&](const QVector<QRectF>& rects) {
+        return std::any_of(rects.begin(),rects.end(),[&](const auto& rect){return rect.contains(mark.center());});
+    };
+    QVERIFY2(preserves(words.first().protectedSceneRects),"Consuming all incoming words must not consume their uncertainty masks.");
+    if (risk) QVERIFY(std::any_of(model.Lines().begin(),model.Lines().end(),[&](const auto& line) {
+        QVector<QRectF> absolute; for (const auto& rect : line.nonCarvableSceneRects) absolute.push_back(rect.translated(line.sceneOffset));
+        return preserves(absolute);
+    }));
+    const auto count=model.Lines().size();
+    QCOMPARE(model.AdmitImmutable(selected,selected.stamp,80'000,&neighbor),AdmitVerdict::kAccepted);
+    QCOMPARE(model.Lines().size(),count); // repeated masks must not grow anonymous history
+    QVERIFY(preserves(model.SceneWords(80'000,55).first().protectedSceneRects));
+}
+
+void UltraClearTextTests::immutableQuadCarveKeepsOutsidePunctuation()
+{
+    auto [selected,neighbor]=ImmutablePair(MakeLayoutPage({{"Glyph",{100,100},48},{"Anchor",{600,300},48}}));
+    TextQuad quad; quad.valid=true;
+    const std::array<QPointF,4> pixels{{{100,100},{140,140},{120,160},{80,120}}};
+    for (int i=0;i<4;++i) quad.points[i]={pixels[i].x()/kSceneWidth,pixels[i].y()/kSceneHeight};
+    const QRectF mark(114.8/kSceneWidth,155.8/kSceneHeight,.4/kSceneWidth,.4/kSceneHeight);
+    QVERIFY(quad.Bounds().contains(mark));
+    QVERIFY(QuadIntersectionArea(quad,TextQuad::FromRect(mark)) < 1e-12);
+    auto coarse=selected,coarseNeighbor=neighbor;
+    for (auto* result : {&coarse,&coarseNeighbor}) {
+        // MakeLayoutPage/ResultFor sort these rows by y: Glyph first, Anchor second.
+        auto anchor=result->prepared.last();
+        auto uncertain=anchor.words.first(); uncertain.text=QStringLiteral(",");
+        uncertain.sceneRect=uncertain.protectedSceneRect=mark;
+        uncertain.disposition=TokenDisposition::kLowConfidence; uncertain.confidence=.1;
+        anchor.words.push_back(uncertain);
+        auto raw=result->output.lines.last(); raw.words.push_back(raw.words.first());
+        result->prepared={anchor}; result->output.lines={raw};
+    }
+    coarseNeighbor.corroborationMatches={false}; coarseNeighbor.corroborationWordMatches={{true,false}};
+    OverlayModel model;
+    QCOMPARE(model.AdmitImmutable(coarse,coarse.stamp,60'000,&coarseNeighbor),AdmitVerdict::kAccepted);
+    for (auto* result : {&selected,&neighbor}) {
+        auto row=result->prepared.first(); row.words.resize(1);
+        row.words[0].sceneRect=quad.Bounds(); row.words[0].protectedSceneRect=quad.Bounds(); row.words[0].sceneQuad=quad;
+        row.sceneRect=quad.Bounds();
+        result->prepared={row}; result->output.lines={result->output.lines.first()};
+    }
+    neighbor.corroborationMatches={false}; neighbor.corroborationWordMatches={{true}};
+    QCOMPARE(model.AdmitImmutable(selected,selected.stamp,70'000,&neighbor),AdmitVerdict::kAccepted);
+    const auto words=model.SceneWords(70'000,55);
+    QVERIFY(std::any_of(words.begin(),words.end(),[](const auto& word){return word.text==QStringLiteral("Glyph");}));
+    QVERIFY(std::any_of(words.first().protectedSceneRects.begin(),words.first().protectedSceneRects.end(),
+        [&](const auto& rect){return rect.contains(mark);}));
 }
 
 void UltraClearTextTests::immutableRefinementRetiredReadingOnlyBoundaryKeepsResidualProtection()

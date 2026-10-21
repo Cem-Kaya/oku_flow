@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Preserve newly found UCT uncertainty even when all incoming words merge into
+  existing reading lines. Keep tilted proof from carving protection outside its
+  actual quad. Existing proved words retain their original reading identity.
+
 - Add the owner's explicit local BF16 recognition opt-in with the pinned FP32
   medium detector. Load only the reviewed cached graph/plan for medium/medium
   N8 fixed1024, report mixed arithmetic and actual precision/fallback, and keep

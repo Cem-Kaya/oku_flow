@@ -6629,3 +6629,26 @@ and raw colors after actual recognition. `selectedFitReplay` and
 three CUDA-event kernel durations after one warmup. Replay fitted flags are
 labelled separately from production fits; these measurements are excluded
 from actual worker durations and transfer only descriptor results.
+
+
+### Immutable protection independent of word consumption (2026-10-22)
+
+`OverlayModel::MergeImmutableCoverage` preserves candidate protection after every
+word has been appended or deduplicated. Ordinary masks are first carved against
+retained proved shapes; incompatible non-carvable artifacts are refused. A
+containing reading owner stores the remaining masks without changing its words,
+geometry, reference or proof clocks; otherwise one bounded, deduplicated mask-only
+carrier stores them. Carrier storage shares the existing line/mask limits and
+never supplies reading text or new evidence.
+
+Carving now carries `TextQuad`, including the retained displayed shape for a
+duplicate. A mask outside that quad is untouched. A partial diagonal cut whose
+bounding rectangle includes unproved corners is refused conservatively, rather
+than uncovering punctuation through a rectangular approximation.
+
+Four consumed-word mask rows and an outside-quad punctuation case failed before
+repair. The changed-input CPU contract passes all258 Qt rows, zero skips, in
+32.69 seconds. Three integration failures from the initial carrier draft, a
+later remaining grouping failure, and a runner recheck refusal are retained;
+none was retried unchanged. This is scoped CPU validation, not combined
+CUDA/native acceptance.
