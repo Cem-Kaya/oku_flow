@@ -159,10 +159,22 @@ struct FixtureStream
 };
 #endif
 } // namespace
+#include "uct_geometry_test_cases.hpp"
+
 class PaddleTests final : public QObject
 {
     Q_OBJECT
   private slots:
+    void orientedInkAndMapping() { uct_geometry_test::CpuGeometry(); }
+    void postFitDuplicateKeepsAdjacentIdenticalTokens() { uct_geometry_test::DuplicateInk(); }
+    void orientedPerspectiveAndConflictActualPaint() { uct_geometry_test::PaintGeometry(); }
+    void gpuOrientedInkMatchesCpu() {
+#if OKUFLOW_ENABLE_CUDA
+        uct_geometry_test::GpuGeometry();
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
     void frozenCropDiagnosticRefusesFifthSourceWithoutChangingLeases()
     {
         class ImmutableInput final : public DeviceImage

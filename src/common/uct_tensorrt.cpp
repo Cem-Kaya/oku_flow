@@ -623,6 +623,7 @@ class TensorRtRecognizer final : public Recognizer
         BeginPreparation(0);
         status_.state = BackendState::kReady;
         status_.usesGpu = true;
+        status_.detailFocus = true;
         status_.detail = "Preparing GPU text engines; CPU OCR is used until ready.";
         return status_;
     }
@@ -644,6 +645,10 @@ class TensorRtRecognizer final : public Recognizer
     bool WantsDeviceInput() const override
     {
         return true;
+    }
+    void SetDetailFocus(const std::optional<DetailFocus> &focus) override
+    {
+        detail_ = focus;
     }
     RecognitionOutput Recognize(const QImage &image, const std::atomic<bool> &cancelled) override
     {
@@ -732,10 +737,11 @@ class TensorRtRecognizer final : public Recognizer
             auto &profile = state_->profile;
             profile.Reset();
             const int submissionGroup = state_->recognizerBatch == 16 ? 16 : kRecognitionSubmissionGroup;
-            const auto* frozen = cropDiagnostic_
+            // Frozen crop replay/capture describes whole-image regions only.
+            const auto* frozen = cropDiagnostic_ && !detail_
                 ? TensorRtCropDiagnosticAccess::Find(*cropDiagnostic_, image, assets_.detectorSha256) : nullptr;
             TensorRtCropDiagnostic::Plan captured;
-            bool captureCrops = cropDiagnostic_ && !frozen &&
+            bool captureCrops = cropDiagnostic_ && !frozen && !detail_ &&
                 TensorRtCropDiagnosticAccess::HasCapacity(*cropDiagnostic_);
             if (captureCrops) {
                 captured.source = state_->inFlight;
@@ -743,7 +749,16 @@ class TensorRtRecognizer final : public Recognizer
             }
             QVector<QRect> regions;
             if (frozen) for (const auto& region : frozen->regions) regions.push_back(region.bounds);
-            else regions = PaddleDetectionRegions({image.width,image.height});
+            else regions = PaddleRecognitionRegions({image.width,image.height}, detail_);
+            if (detail_ && regions.isEmpty()) {
+                // A view outside the image drops this request; engines stay healthy.
+                state_->inFlight.reset();
+                output.inputFault = true;
+                output.error = QStringLiteral("Visible-detail region is outside the image.");
+                return output;
+            }
+            const double magnification = detail_ ? PaddleDetailMagnification(*detail_) : 1.0;
+            if (detail_) output.detailRegionPx = regions.first();
             int regionIndex = 0;
             for (const QRect& region : regions) {
             if (cancelled.load()) {
@@ -783,7 +798,7 @@ class TensorRtRecognizer final : public Recognizer
                     frozenUpload.Queued();
                 }
             } else {
-            const QSize size = PaddleDetectionSize(region.size());
+            const QSize size = PaddleDetectionSize(region.size(), magnification);
             auto *input = state_->detectorInput.Reserve(static_cast<std::size_t>(size.width()) *
                                                         size.height() * 3);
             profile.Measure(TensorRtProfile::Normalize, state_->stream, [&] {
@@ -1132,6 +1147,7 @@ class TensorRtRecognizer final : public Recognizer
     int recognizerBatch_{1};
     bool invalidBatch_{}, invalidWidth_{}, variableWidth_{}, allowWidthPreparation_{};
     std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic_;
+    std::optional<DetailFocus> detail_; // worker-confined, one recognition at a time
     PaddleAssets assets_;
     BackendStatus status_;
     std::shared_ptr<State> state_;

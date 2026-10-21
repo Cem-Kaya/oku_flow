@@ -96,10 +96,21 @@ std::unique_ptr<PaddleCpuSession> OpenPaddleCpuSession(const QString &runtime,
 
 // CPU reference algorithms. GPU implementations retain the same channel order,
 // resize, threshold, rectification, dictionary and CTC conventions.
-QSize PaddleDetectionSize(QSize source);
+// Never enlarges unless maximumMagnification > 1 (visible detail only); the
+// long edge never exceeds the existing 960-pixel engine contract.
+QSize PaddleDetectionSize(QSize source, double maximumMagnification = 1.0);
 // Whole-scene context followed by bounded overlapping detail crops. Each
 // detector invocation retains the existing <=960-pixel engine contract.
 QVector<QRect> PaddleDetectionRegions(QSize source);
+// The single visible-detail detector region: the requested region clamped to
+// the image and, when smaller than 960/magnification on its long edge,
+// enlarged around its centre so the detector magnification never exceeds the
+// clamped [1, kMaximumDetailMagnification] bound. Empty for unusable input.
+QRect PaddleDetailRegion(QSize source, const DetailFocus& focus);
+double PaddleDetailMagnification(const DetailFocus& focus);
+// Detector regions for one recognition: the established context/detail grid,
+// or exactly one visible-detail region. A detail job never adds regions.
+QVector<QRect> PaddleRecognitionRegions(QSize source, const std::optional<DetailFocus>& focus);
 QVector<PaddleQuad> PaddleRecognitionWindows(const PaddleQuad& line);
 // Maps crop-local evidence back to the complete scene, excludes internal
 // crop-edge fragments and reconciles overlapping words without duplicates.
