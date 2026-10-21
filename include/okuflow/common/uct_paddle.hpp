@@ -71,6 +71,7 @@ public:
 private:
     friend struct TensorRtCropDiagnosticAccess;
     friend struct TensorRtCropDiagnosticTestAccess;
+    friend struct TensorRtPrecisionCalibrationAccess;
     static constexpr std::size_t kMaxSources = 4;
     // Diagnostic refusal must not invalidate completed OCR or healthy engines.
     bool TryCommit(Plan&& plan) noexcept;

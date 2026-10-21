@@ -1,4 +1,5 @@
 #include "okuflow/common/uct_paddle.hpp"
+#include "uct_precision_experiment.hpp"
 #include <new>
 #include <utility>
 
@@ -278,7 +279,8 @@ class Network
   public:
     Network(Libraries &libraries, Logger &logger, const QString &sdk, const QString &model, const QByteArray& expected, bool detection, int device,
             cudaStream_t stream, const std::atomic<bool> &cancelled, int maximumBatch = 1,
-            bool variableWidth = false, bool allowPreparation = true)
+            bool variableWidth = false, bool allowPreparation = true,
+            const TensorRtPrecisionExperiment* experiment = nullptr)
         : detection_(detection), variableWidth_(variableWidth), maximumBatch_(maximumBatch),
           // A ceiling for checked on-demand allocation, not reserved VRAM.
           maximumOutputFloats_(!detection && maximumBatch == 16 ? 256ull * 1024 * 1024
@@ -289,14 +291,24 @@ class Network
             static_cast<nvinfer1::IRuntime *>(libraries.runtime(&logger, NV_TENSORRT_VERSION)));
         if (!runtime_)
             throw std::runtime_error("TensorRT runtime creation failed.");
-        QFile modelFile(model);
+        const auto* variant = experiment ? (detection ? &experiment->detector : &experiment->recognizer) : nullptr;
+        if (experiment && (variableWidth || (!detection && maximumBatch != 8)))
+            throw std::runtime_error("Precision experiment requires fixed1024 and batch eight.");
+        if (variant && variant->sourceSha256 != expected)
+            throw std::runtime_error("Precision experiment is not derived from the selected pinned graph.");
+        const bool converted = variant && variant->precision != "fp32";
+        QFile modelFile(variant ? variant->path : model);
         if (!modelFile.open(QIODevice::ReadOnly))
             throw std::runtime_error("Cannot read pinned OCR graph.");
         const auto bytes = modelFile.readAll();
-        if (QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex() != expected)
+        if (QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex() != (variant ? variant->sha256 : expected))
             throw std::runtime_error("Pinned OCR graph changed before preparation.");
         cudaDeviceProp properties{};
         Check(cudaGetDeviceProperties(&properties, device));
+        if (variant && variant->precision == "bf16-linear" && properties.major < 8)
+            throw std::runtime_error("BF16 experiment requires Ampere or newer; no precision substitution is allowed.");
+        if (variant && variant->precision == "fp8-qdq" && properties.major*10+properties.minor < 89)
+            throw std::runtime_error("FP8 experiment requires Ada or newer; no precision substitution is allowed.");
         int driver{};
         Check(cudaDriverGetVersion(&driver));
         QByteArray identity =
@@ -313,11 +325,15 @@ class Network
                         "x3x48x1024-max" + QByteArray::number(maximumBatch) + "x3x48x1024-v2";
         else if (maximumBatch != 1)
             throw std::runtime_error("Unsupported TensorRT OCR batch profile.");
-        const auto key = QCryptographicHash::hash(identity, QCryptographicHash::Sha256).toHex();
-        const auto cache =
-            QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath("OkuFlow/ocr-engines");
-        QDir().mkpath(cache);
+        const QByteArray uuid(reinterpret_cast<const char*>(&properties.uuid), sizeof(properties.uuid));
+        const auto key = converted ? PrecisionPlanKey(*variant, uuid, driver, detection, maximumBatch)
+                                  : QCryptographicHash::hash(identity, QCryptographicHash::Sha256).toHex();
+        const auto cache = converted ? QDir(experiment->artifactRoot).filePath("engines/" + variant->precision)
+                                    : QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath("OkuFlow/ocr-engines");
+        if (!experiment || (converted && experiment->prepare)) QDir().mkpath(cache);
         const auto path = QDir(cache).filePath(QString::fromLatin1(key) + ".plan");
+        QElapsedTimer preparationTimer; preparationTimer.start();
+        bool built = false;
         QFile cached(path);
         if (cached.open(QIODevice::ReadOnly) && cached.size() > 32 &&
             cached.size() < 256 * 1024 * 1024)
@@ -328,6 +344,19 @@ class Network
         }
         if (!engine_)
         {
+            // Neither baseline nor an existing invalid variant is ever rebuilt
+            // by this diagnostic. Preparation authorizes one missing key only.
+            if (experiment && (!converted || !experiment->prepare || QFile::exists(path)))
+                throw std::runtime_error("Precision plan missing/invalid; no baseline rebuild or replacement is allowed.");
+            if (experiment) {
+                QFile attempt(path + ".attempt.json");
+                if (!attempt.open(QIODevice::WriteOnly | QIODevice::NewOnly))
+                    throw std::runtime_error("Precision build was already attempted; preserve its failure evidence.");
+                const auto record=QJsonDocument(QJsonObject{{"graphSha256",QString::fromLatin1(variant->sha256)},
+                    {"precision",variant->precision},{"key",QString::fromLatin1(key)},
+                    {"note","Exactly one explicit build attempt for this key; failures are retained."}}).toJson();
+                if (attempt.write(record)!=record.size()) throw std::runtime_error("Cannot retain precision build attempt.");
+            }
             // Width experiments never trigger an unreviewed cold build during
             // normal inference. One-time preparation is a separate opt-in.
             if (!allowPreparation)
@@ -355,6 +384,7 @@ class Network
             config->setMaxAuxStreams(0);
             config->setBuilderOptimizationLevel(2);
             config->setProfileStream(stream);
+            if (experiment) config->setProfilingVerbosity(nvinfer1::ProfilingVerbosity::kDETAILED);
             auto *profile = builder->createOptimizationProfile();
             if (!profile)
                 throw std::runtime_error("TensorRT shape profile creation failed.");
@@ -379,15 +409,17 @@ class Network
             engine_.reset(runtime_->deserializeCudaEngine(plan->data(), plan->size()));
             if (!engine_)
                 throw std::runtime_error("TensorRT OCR engine creation failed.");
+            built = true;
             const auto blob = QByteArray::fromRawData(static_cast<const char *>(plan->data()),
                                                       static_cast<qsizetype>(plan->size()));
             QSaveFile saved(path);
             if (saved.open(QIODevice::WriteOnly))
             {
-                saved.write(QCryptographicHash::hash(blob, QCryptographicHash::Sha256));
-                saved.write(blob);
-                saved.commit();
+                const bool written = saved.write(QCryptographicHash::hash(blob, QCryptographicHash::Sha256)) == 32 &&
+                                     saved.write(blob) == blob.size() && saved.commit();
+                if (experiment && !written) throw std::runtime_error("Cannot persist the prepared precision plan.");
             }
+            else if (experiment) throw std::runtime_error("Cannot save the prepared precision plan.");
         }
         if (engine_->getNbIOTensors() != 2)
             throw std::runtime_error("Unexpected cached OCR engine I/O.");
@@ -415,6 +447,33 @@ class Network
         context_.reset(engine_->createExecutionContext());
         if (!context_)
             throw std::runtime_error("TensorRT execution context creation failed.");
+        if (experiment) {
+            // Detailed build metadata is useful for inspection; disable NVTX in
+            // every diagnostic configuration to avoid asymmetric enqueue cost.
+            if (!context_->setNvtxVerbosity(nvinfer1::ProfilingVerbosity::kNONE))
+                throw std::runtime_error("Cannot disable diagnostic NVTX verbosity.");
+            std::unique_ptr<nvinfer1::IEngineInspector> inspector(engine_->createEngineInspector());
+            const char* raw = inspector ? inspector->getEngineInformation(nvinfer1::LayerInformationFormat::kJSON) : nullptr;
+            QFile planFile(path);
+            if (!planFile.open(QIODevice::ReadOnly)) throw std::runtime_error("Cannot hash precision plan receipt.");
+            const auto planBytes = planFile.readAll();
+            const QJsonObject receipt{{"role", detection ? "detector" : "recognizer"}, {"batch", maximumBatch},
+                {"precision", variant->precision}, {"sourceSha256", QString::fromLatin1(expected)},
+                {"graphSha256", QString::fromLatin1(variant->sha256)}, {"key", QString::fromLatin1(key)},
+                {"plan", path}, {"planFileSha256", QString::fromLatin1(QCryptographicHash::hash(planBytes,QCryptographicHash::Sha256).toHex())},
+                {"planPayloadSha256", QString::fromLatin1(planBytes.first(32).toHex())}, {"planBytes", qint64(planBytes.size())},
+                {"builtOnce", built}, {"loadOrBuildMs", preparationTimer.nsecsElapsed()/1e6},
+                {"deviceMemoryBytes", qint64(engine_->getDeviceMemorySizeV2())},
+                {"profilingVerbosity", int(engine_->getProfilingVerbosity())}, {"nvtxDisabled", true},
+                {"tf32Policy", "default allowed; tactic/accumulation must be inspected separately"},
+                {"inspectorRaw", raw ? QString::fromUtf8(raw) : QString()},
+                {"note", "Baseline names-only metadata may omit tensor/tactic precision. Never rebuild baseline for inspection."}};
+            if (!QDir().mkpath(experiment->receiptRoot)) throw std::runtime_error("Cannot create precision receipt directory.");
+            QSaveFile output(QDir(experiment->receiptRoot).filePath(QString::fromLatin1(key) + ".json"));
+            const auto record = QJsonDocument(receipt).toJson(QJsonDocument::Indented);
+            if (!output.open(QIODevice::WriteOnly) || output.write(record) != record.size() || !output.commit())
+                throw std::runtime_error("Cannot save precision engine inspection receipt.");
+        }
     }
     nvinfer1::Dims Run(float *input, int width, int height, cudaStream_t stream,
                        TensorRtProfile &profile, int batch = 1)
@@ -560,9 +619,10 @@ class TensorRtRecognizer final : public Recognizer
   public:
     TensorRtRecognizer(QString root, QString sdk,ModelTier detector,ModelTier recognizer,
                        TensorRtRetirementObserver retirementObserver,
-                       std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic)
+                       std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic,
+                       std::shared_ptr<const TensorRtPrecisionExperiment> experiment = {})
         : root_(std::move(root)), sdk_(std::move(sdk)),detectorTier_(detector),recognizerTier_(recognizer),
-          retirementObserver_(std::move(retirementObserver)), cropDiagnostic_(std::move(cropDiagnostic))
+          retirementObserver_(std::move(retirementObserver)), cropDiagnostic_(std::move(cropDiagnostic)), experiment_(std::move(experiment))
     {
         // Medium/Small N8 retained text/dispositions under the
         // owner's 10-source-pixel geometry tolerance. Explicit overrides win.
@@ -600,6 +660,11 @@ class TensorRtRecognizer final : public Recognizer
         if (!assets_.IsValid())
         {
             status_.detail = assets_.error;
+            return status_;
+        }
+        if (experiment_ && (recognizerBatch_ != 8 || variableWidth_ || allowWidthPreparation_ ||
+            (cropDiagnostic_ && experiment_->detector.precision != "fp32"))) {
+            status_.detail = "Precision diagnostic requires batch8/fixed1024; frozen crops require the pinned FP32 detector.";
             return status_;
         }
         if (!QFile::exists(QDir(sdk_).filePath("bin/nvinfer_11.dll")))
@@ -1032,10 +1097,11 @@ class TensorRtRecognizer final : public Recognizer
         const auto assets = assets_;
         const auto sdk = sdk_;
         const int recognizerBatch = recognizerBatch_;
+        const auto experiment = experiment_;
         const bool variableWidth = variableWidth_, allowWidthPreparation = allowWidthPreparation_;
         try
         {
-            std::thread([preparation, assets, sdk, recognizerBatch, variableWidth, allowWidthPreparation] {
+            std::thread([preparation, assets, sdk, recognizerBatch, variableWidth, allowWidthPreparation, experiment] {
                 try
                 {
                     Check(cudaSetDevice(preparation->device));
@@ -1056,7 +1122,7 @@ class TensorRtRecognizer final : public Recognizer
                     state->libraries = std::make_unique<Libraries>(sdk);
                     state->detector = std::make_unique<Network>(
                         *state->libraries, state->logger, sdk, assets.detector, assets.detectorSha256, true, state->device,
-                        state->stream, preparation->cancel, 1, false, !variableWidth || allowWidthPreparation);
+                        state->stream, preparation->cancel, 1, false, !variableWidth || allowWidthPreparation, experiment.get());
                     if (preparation->cancel.load())
                         throw std::runtime_error("GPU preparation cancelled.");
                     int capacity = recognizerBatch;
@@ -1067,7 +1133,7 @@ class TensorRtRecognizer final : public Recognizer
                             state->recognizer = std::make_unique<Network>(
                                 *state->libraries, state->logger, sdk, assets.recognizer,
                                 assets.recognizerSha256, false, state->device,
-                                state->stream, preparation->cancel, capacity, variableWidth, !variableWidth || allowWidthPreparation);
+                                state->stream, preparation->cancel, capacity, variableWidth, !variableWidth || allowWidthPreparation, experiment.get());
                             state->recognizerBatch = capacity;
                             break;
                         }
@@ -1075,7 +1141,7 @@ class TensorRtRecognizer final : public Recognizer
                         {
                             // An explicit width-profile preparation authorizes
                             // this N only; never cascade into extra new plans.
-                            if (capacity == 1 || preparation->cancel.load() ||
+                            if (experiment || capacity == 1 || preparation->cancel.load() ||
                                 (variableWidth && allowWidthPreparation)) throw;
                             // Preserve a supported smaller GPU profile. Unknown
                             // completion still quarantines the whole state.
@@ -1147,6 +1213,7 @@ class TensorRtRecognizer final : public Recognizer
     int recognizerBatch_{1};
     bool invalidBatch_{}, invalidWidth_{}, variableWidth_{}, allowWidthPreparation_{};
     std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic_;
+    std::shared_ptr<const TensorRtPrecisionExperiment> experiment_;
     std::optional<DetailFocus> detail_; // worker-confined, one recognition at a time
     PaddleAssets assets_;
     BackendStatus status_;
@@ -1154,6 +1221,15 @@ class TensorRtRecognizer final : public Recognizer
     std::shared_ptr<Preparation> preparation_;
 };
 } // namespace
+std::unique_ptr<Recognizer> CreateTensorRtPrecisionExperiment(
+    const QString& root, const QString& sdk, std::shared_ptr<const TensorRtPrecisionExperiment> experiment,
+    TensorRtRetirementObserver observer, std::shared_ptr<TensorRtCropDiagnostic> crops)
+{
+    if (!experiment || root.isEmpty() || sdk.isEmpty())
+        throw std::runtime_error("Precision diagnostic requires explicit assets, SDK and manifest.");
+    return std::make_unique<TensorRtRecognizer>(root, sdk, ModelTier::Medium, ModelTier::Medium,
+                                               std::move(observer), std::move(crops), std::move(experiment));
+}
 std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &root, const QString &sdk,ModelTier detector,ModelTier recognizer,
                                                    TensorRtRetirementObserver retirementObserver,
                                                    std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic)
@@ -1170,6 +1246,9 @@ std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &root, const 
 #else
 namespace okuflow::uct
 {
+std::unique_ptr<Recognizer> CreateTensorRtPrecisionExperiment(
+    const QString&, const QString&, std::shared_ptr<const TensorRtPrecisionExperiment>,
+    TensorRtRetirementObserver, std::shared_ptr<TensorRtCropDiagnostic>) { return {}; }
 std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &, const QString &,ModelTier,ModelTier,
                                                    TensorRtRetirementObserver, std::shared_ptr<TensorRtCropDiagnostic>)
 {

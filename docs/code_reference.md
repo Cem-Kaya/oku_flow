@@ -1,5 +1,39 @@
 # OkuFlow Code Reference
 
+## Explicit UCT precision diagnostics (2026-10-22)
+
+Private `uct_precision_experiment.hpp` defines `PrecisionGraph`,
+`TensorRtPrecisionExperiment`, `PrecisionHash`, `PrecisionPlanKey`,
+`LoadPrecisionExperiment` and `CreateTensorRtPrecisionExperiment`.
+They bind explicit original/derived graph hashes, strategy, mode, private
+artifact root and receipts to fixed1024/N8 medium models. The normal
+`CreateTensorRtRecognizer` interface/defaults are unchanged. `Network`'s
+optional trailing experiment selects a separate hash-keyed plan directory,
+refuses baseline or existing-plan replacement, keeps one-attempt markers,
+records engine inspection/memory/build receipts and disables diagnostic NVTX.
+`TensorRtRecognizer` retains these immutable options through its existing
+preparation thread and refuses capacity fallback only for this diagnostic.
+All input/stream/retirement ownership remains on the existing path.
+
+`uct_resident_test::Run::precisionExperiment` and `RunBlock` route only an
+explicit precision fixture through that factory. `uct_precision_test::Diagnostic`
+performs bounded preparation without inference, or finite resident measurement
+with baseline/variant cache inventories, source identities and exact State
+receipts. `ExportCalibration` uses the worker-retired compact plans through
+the read-only friend `TensorRtPrecisionCalibrationAccess`, original CPU source
+pixels and existing CPU normalization/rectification; it never reads GPU images.
+`optionalTensorRtPrecision` is unregistered and explicitly gated.
+`precisionExperimentManifestAndCacheIdentity` tests explicit manifests and
+precision/hash/device/profile cache separation without models/GPU.
+
+`scripts/uct/precision_models.py` audits pinned models, converts explicit
+FP16/BF16 linear islands and INT4 block64 weight-only GEMM, and retains
+immutable hash-addressed outputs/failed attempts. `precision_qdq.py` performs
+bounded CPU calibration and INT8/FP8 explicit Q/DQ; `precision_report.py`
+validates receipts and renders complete word edits/geometry/timing as HTML
+and JSON. `run_uct_precision.ps1` owns the shared runner lease and finite child
+invocations. See [precision experiment and limits](uct_precision_experiment.md).
+
 ## Supplemental regional UCT execution (2026-10-21)
 
 `RegionalOcrRequest` carries one immutable full-plan ticket, a steady full

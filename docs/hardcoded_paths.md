@@ -91,6 +91,18 @@ checks are consumed even after the UI's 3 ms inline match budget expires.
 
 ## Optional PaddleOCR (2026-10-18)
 
+The explicit [precision diagnostic](uct_precision_experiment.md) uses private
+`TensorRtPrecisionExperiment` manifests and no production environment selector.
+Its workstation artifacts live under
+`Z:/Projects/OkuFlow/local-work-data/uct-quantization-20261022`; converted
+models/engines/evidence never enter the baseline cache or a release payload.
+Version-one precision keys include original/converted graph hashes, strategy,
+device UUID, driver, TensorRT 11.4.0.106 and fixed1024/N8 builder/profile policy.
+`OKUFLOW_UCT_PRECISION_DIAGNOSTIC=1`, explicit manifest paths/output and the
+unregistered Qt slot are required. Measurements admit up to five configurations,
+four sources, one round and three timed passes; calibration export admits eight
+detector and sixteen recognition tensors from separate source frames.
+
 `scripts/uct/pins.json` pins upstream model revisions, model/config/card hashes,
 ONNX Runtime CPU 1.31.0 archive/DLL and TensorRT 11.4.0.106 CUDA-12.9 archive.
 `prepare_uct_runtime.ps1` defaults to `%LOCALAPPDATA%/OkuFlow/ocr-deps` for SDK

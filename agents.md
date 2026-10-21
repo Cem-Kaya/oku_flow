@@ -942,3 +942,16 @@ aligned with the project goals.
   masks without erasing uncovered pixels. Keep the paused selected/real-neighbour
   detail pair and 32-attempt cap. See `docs/uct_active_regional_ocr.md`; model-free
   scoped tests do not establish GPU, native UIA or physical-camera acceptance.
+
+## Explicit UCT precision experiments (2026-10-22)
+
+- Use only the explicit private precision factory and tracked
+  `run_uct_precision.ps1` with a coordinated serial runner grant. Keep baseline
+  graph/engine bytes, production defaults, fixed1024/N8 and CPU behavior intact.
+  A converted hash/precision gets one explicit missing-engine attempt; retain
+  failed/unsupported receipts, never silently substitute or retry unchanged work.
+- Distinguish ONNX weight storage, interfaces, Q/DQ scales, engine tensor types,
+  tactics and accumulation. FP32 I/O does not disprove TF32 or mixed arithmetic.
+  Inspect existing engines without rebuilding baseline. Keep disjoint calibration
+  provenance and every word/disposition/geometry/confidence difference. Model
+  agreement is not accuracy; Ada timing is not RTX3050/120FPS acceptance.

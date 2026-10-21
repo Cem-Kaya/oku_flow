@@ -13,6 +13,7 @@
 #include "uct_batch_diagnostic.hpp"
 #include "okuflow/common/uct_region_planner.hpp"
 #include "../src/common/uct_recognizer_width.hpp"
+#include "../src/common/uct_precision_experiment.hpp"
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -1313,6 +1314,9 @@ struct Run {
     std::vector<std::unique_ptr<AnalysisPool>> frozenPools;
     std::vector<SharedDeviceImage> frozenInputs;
     std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic;
+    // Set only by the separate precision fixture; baseline callers retain the
+    // exact factory and validation path. Never populated from app settings.
+    std::shared_ptr<const TensorRtPrecisionExperiment> precisionExperiment;
     std::uint64_t nextFrame{1};
     int jobs{};
     std::vector<TimedOutput> timed; // execution order
@@ -1402,6 +1406,13 @@ struct Run {
             {"dispatchAndCallbackMs", submitToCallback - result.durationMs - result.shadowPlannerMs},
             {"analysisCaptureSetupMs", input.setupMs}, {"candidateWords", CandidateWords(result.output)},
             {"lines", int(result.output.lines.size())}};
+        if (precisionExperiment) {
+            std::size_t available{},total{};
+            if (cudaMemGetInfo(&available,&total)==cudaSuccess) {
+                measured["cudaFreeBytesAfterJob"]=qint64(available);
+                measured["cudaTotalBytes"]=qint64(total);
+            }
+        }
         if (profiles.size() == 1) {
             const auto& profile = profiles.front();
             const auto stages = profile["streamStageMs"].toObject();
@@ -1463,8 +1474,11 @@ inline void RunBlock(Run& run, const Block& block, ProfileCapture& capture)
     capture.Take();
     const auto constructed = Clock::now();
     auto scheduler = std::make_unique<RecognitionScheduler>(
-        CreateTensorRtRecognizer(assets.root, run.selection.sdk, pair.detector, pair.recognizer, retirement.Observer(),
-                                 run.cropDiagnostic),
+        run.precisionExperiment
+            ? CreateTensorRtPrecisionExperiment(assets.root, run.selection.sdk, run.precisionExperiment,
+                                                retirement.Observer(), run.cropDiagnostic)
+            : CreateTensorRtRecognizer(assets.root, run.selection.sdk, pair.detector, pair.recognizer, retirement.Observer(),
+                                       run.cropDiagnostic),
         [mailbox](RecognitionResult result) {
             const auto at = Clock::now();
             {

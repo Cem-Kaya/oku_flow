@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Add an explicit offline UCT precision diagnostic for pinned FP32 models,
+  FP16/BF16 linear islands and separately prepared quantized candidates.
+  Preserve default models/precision, width, baseline engines and CPU behavior;
+  private measurements and quality comparisons remain separate acceptance.
+
 - Keep immutable UCT duplicate carving aligned with displayed geometry and
   preserve risky notation and invalid-geometry masks during nearby refinement.
 

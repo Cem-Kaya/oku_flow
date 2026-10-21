@@ -206,6 +206,16 @@ command and hash are recorded in tests/README.md.
 
 ## Optional experimental PaddleOCR component (2026-10-18)
 
+The private [precision experiment](uct_precision_experiment.md) derives
+FP16/BF16/INT4 and calibrated INT8/FP8 ONNX files from these pinned originals;
+the original Apache-2.0 model notice remains applicable. Offline tooling uses
+ONNX (Apache-2.0), NumPy (BSD-3-Clause), ml_dtypes (Apache-2.0) and their
+transitive package notices only in a private environment. Optional CPU
+calibration uses ONNX Runtime under its existing MIT/third-party terms.
+These packages, transformed weights and engines are not application or bundle
+dependencies. Retain exact installed-package notices and hashes with private
+evidence; public redistribution still needs inventory/license review.
+
 PP-OCRv6 tiny, small and medium detection and recognition ONNX weights, configuration and
 original model cards come from PaddlePaddle under Apache-2.0. Exact repository
 revisions and hashes are in `scripts/uct/pins.json`. The unchanged upstream

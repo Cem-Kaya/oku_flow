@@ -10,6 +10,7 @@
 #include "uct_batch_diagnostic.hpp"
 #include "uct_character_diagnostic.hpp"
 #include "uct_resident_diagnostic.hpp"
+#include "uct_precision_diagnostic.hpp"
 #include "uct_paused_video_diagnostic.hpp"
 #include "uct_active_regional_diagnostic.hpp"
 #include <QFontDatabase>
@@ -952,6 +953,42 @@ class PaddleTests final : public QObject
     void optionalResidentBaseline()
     {
         uct_resident_test::ResidentBaselineDiagnostic();
+    }
+    void optionalTensorRtPrecision()
+    {
+        uct_precision_test::Diagnostic();
+    }
+    void precisionExperimentManifestAndCacheIdentity()
+    {
+        PrecisionGraph graph{"fp16-linear","Z:/private/graph.onnx",QByteArray(64,'a'),QByteArray(64,'b')};
+        const auto key=PrecisionPlanKey(graph,"uuid",12090,false,8);
+        QCOMPARE(key.size(),64);
+        QVERIFY(key!=PrecisionPlanKey(graph,"other",12090,false,8));
+        QVERIFY(key!=PrecisionPlanKey(graph,"uuid",12091,false,8));
+        QVERIFY(key!=PrecisionPlanKey(graph,"uuid",12090,true,8));
+        QVERIFY(key!=PrecisionPlanKey(graph,"uuid",12090,false,1));
+        auto changed=graph;changed.precision="bf16-linear";
+        QVERIFY(key!=PrecisionPlanKey(changed,"uuid",12090,false,8));
+        changed=graph;changed.sha256=QByteArray(64,'c');
+        QVERIFY(key!=PrecisionPlanKey(changed,"uuid",12090,false,8));
+        changed=graph;changed.sourceSha256=QByteArray(64,'c');
+        QVERIFY(key!=PrecisionPlanKey(changed,"uuid",12090,false,8));
+        QTemporaryDir dir;QVERIFY(dir.isValid());
+        const auto path=dir.filePath("manifest.json");
+        QJsonObject g{{"precision","fp16-linear"},{"path",dir.filePath("model.onnx")},
+                      {"sourceSha256",QString(64,'a')},{"sha256",QString(64,'b')}};
+        QJsonObject json{{"schema",1},{"prepare",false},{"artifactRoot",dir.path()},
+                         {"receiptRoot",dir.filePath("receipts")},{"detector",g},{"recognizer",g}};
+        QVERIFY(uct_batch_test::Save(path,json));
+        const auto loaded=LoadPrecisionExperiment(path);QVERIFY(!loaded.prepare);
+        g["path"]=QDir(dir.path()).filePath("../escape.onnx");json["recognizer"]=g;
+        QVERIFY(uct_batch_test::Save(path,json));
+        QVERIFY_EXCEPTION_THROWN(LoadPrecisionExperiment(path),std::runtime_error);
+        g["path"]=dir.filePath("model.onnx");g["precision"]="automatic";json["recognizer"]=g;
+        QVERIFY(uct_batch_test::Save(path,json));
+        QVERIFY_EXCEPTION_THROWN(LoadPrecisionExperiment(path),std::runtime_error);
+        json.remove("prepare");QVERIFY(uct_batch_test::Save(path,json));
+        QVERIFY_EXCEPTION_THROWN(LoadPrecisionExperiment(path),std::runtime_error);
     }
     void optionalTensorRtRetirement()
     {

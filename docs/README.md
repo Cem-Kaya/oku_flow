@@ -1,5 +1,10 @@
 # OkuFlow Documentation Guide
 
+[UCT precision experiments](uct_precision_experiment.md) distinguish verified
+FP32 storage/interfaces from TF32/tactic arithmetic, with isolated opt-in
+FP16/BF16 and quantized candidates, finite same-source receipts and unchanged
+production defaults.
+
 [Local development storage](local_work_storage.md) records the owner's Z: work
 folders, compatible C: path redirects, the active-source exception and guidance
 for new build folders.
