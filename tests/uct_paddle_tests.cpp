@@ -2,6 +2,7 @@
 #include "okuflow/common/uct_model_pins.hpp"
 #include "../src/common/uct_recognizer_width.hpp"
 #include "okuflow/cuda/uct_analysis_pool.hpp"
+#include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "ultra_clear_text_test_support.hpp"
 #include "uct_color_test_support.hpp"
 #include "uct_startup_test_cases.hpp"
@@ -813,6 +814,118 @@ class PaddleTests final : public QObject
             QCOMPARE(text.join(' '),expected);
         }
     }
+    void mergeKeepsIndependentColumnsAndTypeSizes()
+    {
+        const QSize size(1920, 1080);
+        const QRect full(QPoint(), size);
+        const auto word = [](QString text, QRectF bounds) {
+            return RecognizedWord{text, bounds, true, bounds, TokenDisposition::kCandidate, .99, bounds};
+        };
+        const RecognizedLine code{{word("scripts/integrate_castle_runtime.py", {102,249,275,18}),
+                                   word("+53", {509,249,27,14}), word("-53", {543,249,23,14})}};
+        const RecognizedLine title{{word("The", {643,248,89,40}), word("tribe,", {748,248,128,46}),
+                                    word("the", {894,248,79,40}), word("machines", {997,248,221,40})}};
+        for (bool reverse : {false, true}) {
+            QVector<RecognizedLine> output;
+            PaddleMergeRecognition(output, reverse ? title : code, full, size);
+            PaddleMergeRecognition(output, reverse ? code : title, full, size);
+            int count = 0;
+            for (const auto& line : output) {
+                QStringList text;
+                for (const auto& token : line.words) { text.push_back(token.text); ++count; }
+                if (text.contains(QStringLiteral("The")))
+                    QCOMPARE(text.join(' '), QStringLiteral("The tribe, the machines"));
+            }
+            QCOMPARE(count, 7);
+        }
+        QVector<RecognizedLine> columns;
+        PaddleMergeRecognition(columns, {{word("Left", {100,400,100,20})}}, full, size);
+        PaddleMergeRecognition(columns, {{word("Right", {320,400,100,20})}}, full, size);
+        QCOMPARE(columns.size(), 2);
+        QVector<RecognizedLine> fragments;
+        PaddleMergeRecognition(fragments, {{word("m", {1000.7155,242.9774,17.3408,51.8340})}}, full, size);
+        PaddleMergeRecognition(fragments, {{word("machines", {1005.9677,242.5213,202.7807,51.5256})}}, full, size);
+        QCOMPARE(fragments.size(), 1);
+        QCOMPARE(fragments.first().words.size(), 1);
+        QCOMPARE(fragments.first().words.first().text, QStringLiteral("machines"));
+        QVector<RecognizedLine> adjacent;
+        PaddleMergeRecognition(adjacent, {{word("m", {100,600,20,20})}}, full, size);
+        PaddleMergeRecognition(adjacent, {{word("machines", {110,600,130,20})}}, full, size);
+        int adjacentWords = 0;
+        for (const auto& row : adjacent) adjacentWords += row.words.size();
+        QCOMPARE(adjacentWords, 2); // weaker overlap is not fragment evidence
+    }
+    void mergedHeadlineAndFilePathPaintTogether()
+    {
+        uct_test::RegisterFixtureFonts();
+        const QSize size(1920, 1080);
+        QImage image(size, QImage::Format_ARGB32);
+        image.fill(Qt::black);
+        QPainter sourcePainter(&image);
+        sourcePainter.setPen(Qt::white);
+        QFont body(QStringLiteral("Segoe UI")); body.setPixelSize(22);
+        QFont titleFont = body; titleFont.setPixelSize(52);
+        const auto draw = [&](RecognizedLine& line, const QString& text, QPointF origin, const QFont& font) {
+            sourcePainter.setFont(font);
+            sourcePainter.drawText(origin, text);
+            const QRectF bounds = QFontMetricsF(font).tightBoundingRect(text).translated(origin);
+            line.words.push_back({text, bounds, false, {}, TokenDisposition::kCandidate, .99, bounds});
+        };
+        RecognizedLine code, title;
+        draw(code, QStringLiteral("scripts/integrate_castle_runtime.py"), {100,270}, body);
+        qreal x = 650;
+        for (const auto& text : QStringLiteral("The tribe, the machines").split(' ')) {
+            draw(title, text, {x,290}, titleFont);
+            x += QFontMetricsF(titleFont).horizontalAdvance(text + ' ');
+        }
+        sourcePainter.end();
+        QVector<RecognizedLine> merged;
+        PaddleMergeRecognition(merged, code, QRect(QPoint(), size), size);
+        PaddleMergeRecognition(merged, title, QRect(QPoint(), size), size);
+        const auto result = [&](std::uint64_t frame, std::int64_t timestamp) {
+            RecognitionResult r;
+            r.stamp.sourceEpoch = 1; r.stamp.geometryGeneration = 1;
+            r.stamp.frameSeq = frame; r.stamp.timestampMs = timestamp;
+            r.stamp.viewportWidth = size.width(); r.stamp.viewportHeight = size.height();
+            r.stamp.viewTransform = {0,0,1,1,0,0,1,1,true};
+            r.output.ok = true; r.output.lines = merged;
+            for (const auto& line : merged) { Q_UNUSED(line); r.lineColors.push_back({Qt::white, Qt::black}); }
+            const auto pixels = uct_test::IndependentFramePixels(image, frame);
+            r.sourcePixelDigest = uct_test::SourcePixelsDigest(pixels);
+            r.reference = MakeProbeFrame(pixels.constBits(), pixels.width(), pixels.height(),
+                pixels.bytesPerLine(), 2, r.stamp);
+            return r;
+        };
+        const auto first = result(1,100), second = result(2,200);
+        OverlayModel model;
+        model.Admit(first, first.stamp, nullptr, 110);
+        QCOMPARE(model.Admit(second, second.stamp, nullptr, 210), AdmitVerdict::kAccepted);
+        const auto words = model.SceneWords(210, second.stamp.frameSeq);
+        QCOMPARE(words.size(), 5);
+        QWidget viewport; viewport.resize(size); viewport.show();
+        okuflow::UltraClearTextOverlay overlay(&viewport, &viewport);
+        overlay.SetViewTransform(second.stamp.viewTransform);
+        QVector<okuflow::UltraClearTextOverlay::SceneWord> glyphs;
+        for (const auto& word : words)
+            glyphs.push_back({word.text,word.sceneRect,word.colors,word.lineId,word.protectedSceneRects,word.wordIndex});
+        overlay.SetWords(std::move(glyphs));
+        QTRY_VERIFY(overlay.PaintedGeometryCurrent());
+        QImage layer(size, QImage::Format_ARGB32_Premultiplied); layer.fill(Qt::transparent);
+        overlay.render(&layer);
+        for (const auto& word : words) {
+            okuflow::UltraClearTextOverlay::PaintedWordGeometry geometry;
+            QVERIFY(overlay.PaintedWord(word.lineId,word.wordIndex,word.text,geometry));
+            QVERIFY2(geometry.drawn, qPrintable(word.text));
+            const QRect region = geometry.box.adjusted(-2,-2,2,2).toAlignedRect().intersected(layer.rect());
+            int whiteInk = 0;
+            for (int y = region.top(); y <= region.bottom(); ++y)
+                for (int px = region.left(); px <= region.right(); ++px) {
+                    const auto color = layer.pixel(px,y);
+                    whiteInk += qAlpha(color) > 0 && qRed(color) > 200;
+                }
+            QVERIFY2(whiteInk > 5, qPrintable(word.text));
+        }
+    }
     void optionalTensorRtBatchComparison()
     {
         uct_batch_test::CompareTensorRtBatches();
@@ -1204,9 +1317,13 @@ class PaddleTests final : public QObject
         const auto gpuPatch=BuildReferencePatch(base,rect);QVERIFY(gpuPatch.valid);QVERIFY(gpuPatch.resident);
         const auto cpuBase=MakeProbeFrame(page.image.constBits(),640,360,page.image.bytesPerLine(),decimation,stamp);
         const auto cpuPatch=BuildReferencePatch(cpuBase,rect);QVERIFY(cpuPatch.valid);
-        for(int phase=0;phase<4;++phase){
+        for(int phase=0;phase<5;++phase){
             QImage image(640,360,QImage::Format_ARGB32);image.fill(phase==2?Qt::white:QColor(246,244,236));
             if(phase!=2){QPainter painter(&image);painter.drawImage(phase==1?QPoint(3,2):QPoint(),page.image);}
+            if(phase==4){
+                QVERIFY(rect.right()*640 < 380); // do not paint over the reference's own ink
+                QPainter painter(&image);painter.fillRect(400,0,240,360,Qt::black);
+            }
             auto gpuProbe=prepare(image,phase+2);QVERIFY(gpuProbe.IsValid());
             auto cpuProbe=MakeProbeFrame(image.constBits(),640,360,image.bytesPerLine(),decimation,stamp);
             if(phase==3){ // Reproject both references through a cropped/panned view.
@@ -1216,6 +1333,7 @@ class PaddleTests final : public QObject
             for(const int radius:{6,1000,-3}) {
                 MatchTuning tuning;tuning.searchRadiusPx=radius;
                 const auto c=MatchPatch(cpuPatch,cpuProbe,tuning,seed);
+                if(phase==4) QVERIFY(c.matched); // independent right region cannot revoke left ink
                 // Native GPU descriptor and compact CPU descriptor upload must agree.
                 for(const auto& patch:{gpuPatch,cpuPatch}) {
                     const auto g=CheckLines({{7,patch,seed}},gpuProbe,tuning,0).front().match;
@@ -1226,6 +1344,7 @@ class PaddleTests final : public QObject
             }
             const auto a=SceneSimilarity(base,gpuProbe),b=SceneSimilarity(cpuBase,cpuProbe);
             QCOMPARE(a.has_value(),b.has_value());if(a)QVERIFY2(std::abs(*a-*b)<1e-5,qPrintable(QString("similarity phase %1 GPU %2 CPU %3").arg(phase).arg(*a,0,'g',15).arg(*b,0,'g',15)));
+            if(phase==4){QVERIFY(a.has_value());QVERIFY(*a<.92);} // globally moving, locally unchanged
         }
         }
 #else

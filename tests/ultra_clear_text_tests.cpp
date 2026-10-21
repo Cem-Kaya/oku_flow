@@ -722,6 +722,8 @@ private slots:
     void budgetRefreshKeepsExactlyRevalidatedText();
     void missedProbeBudgetKeepsOnlyUnexpiredProof();
     void refreshRetainsLineOnceAndStabilizesColors();
+    void refreshKeepsProvenGeometryThroughOmissionBoxJitter();
+    void refreshKeepsIndependentlyValidatedOmissionsDuringRegionalScroll();
     void probeReferencesPrioritizeUnverifiedAndOldestLines();
     void budgetRefreshCannotBorrowOtherProof_data();
     void budgetRefreshCannotBorrowOtherProof();
@@ -1617,12 +1619,14 @@ void UltraClearTextTests::highRiskTokensFailClosed()
     for (const QString& risky : {QStringLiteral("l0O"), QStringLiteral("COVID-19"), QStringLiteral("B2"),
                                  QStringLiteral("x²"), QStringLiteral("∑"), QStringLiteral("1"),
                                  QStringLiteral("I"), QStringLiteral("a^2"), QStringLiteral("√2"),
-                                 QStringLiteral("5S"), QString()}) {
+                                 QStringLiteral("5S"), QStringLiteral("x_2"), QStringLiteral("a_b"), QString()}) {
         QVERIFY2(IsHighRiskToken(risky), qPrintable(risky));
     }
     for (const QString& safe : {QStringLiteral("Hello"), QStringLiteral("3.14"), QStringLiteral("-12"),
                                 QStringLiteral("1,000"), QStringLiteral("page"), QStringLiteral("(see)"),
-                                QStringLiteral("42"), QStringLiteral("Grüße")}) {
+                                QStringLiteral("42"), QStringLiteral("Grüße"),
+                                QStringLiteral("scripts/integrate_castle_runtime.py"),
+                                QStringLiteral("C:\\My_Files\\paper.txt")}) {
         QVERIFY2(!IsHighRiskToken(safe), qPrintable(safe));
     }
 }
@@ -3135,6 +3139,120 @@ void UltraClearTextTests::refreshRetainsLineOnceAndStabilizesColors() {
     // Repeated unknown drafts cannot renew proof forever.
     model.Admit(refresh, current, &newer, 870);
     QVERIFY(model.SceneWords(870, 10).isEmpty());
+}
+
+void UltraClearTextTests::refreshKeepsProvenGeometryThroughOmissionBoxJitter()
+{
+    const auto page = MakePage({QStringLiteral("Reading B2 glasses")});
+    const auto t = Transform(1, .5, .5);
+    const auto current = Stamp(3, 4, 0, t);
+    ModelTuning tuning;
+    tuning.admitMatchBudgetMs = 0;
+    OverlayModel model(tuning);
+    model.Admit(ResultFor(page, t, Stamp(3, 4, 100, t)), current, nullptr, 110);
+    model.Admit(ResultFor(page, t, Stamp(3, 4, 200, t)), current, nullptr, 210);
+    const auto probe = ProbeOf(RenderView(page.image, t, kViewWidth, kViewHeight), t, 3, 4, 9, 500);
+    model.Validate(probe, 500);
+    QVERIFY(!model.Lines().isEmpty());
+    const auto old = model.Lines().first();
+    QVERIFY(!old.protectedSceneRects.isEmpty());
+    auto refresh = ResultFor(page, t, Stamp(3, 4, 300, t));
+    for (auto& line : refresh.output.lines)
+        for (auto& word : line.words) word.boundsPx.translate(.5, .5);
+    model.Admit(refresh, current, &probe, 520);
+    QCOMPARE(model.Lines().size(), 1);
+    const auto stable = model.Lines().first();
+    QCOMPARE(stable.id, old.id);
+    QCOMPARE(stable.sceneRect, old.sceneRect);
+    QCOMPARE(stable.sceneOffset, old.sceneOffset);
+    QCOMPARE(stable.validatedAtMs, old.validatedAtMs);
+    QCOMPARE(stable.validatedFrameSeq, old.validatedFrameSeq);
+    QCOMPARE(stable.words.size(), old.words.size());
+    for (int i = 0; i < old.words.size(); ++i)
+        QCOMPARE(stable.words[i].sceneRect, old.words[i].sceneRect);
+    // A retained word never buys a smaller exclusion around uncertain ink.
+    for (int i = 0; i < old.protectedSceneRects.size(); ++i)
+        QVERIFY(stable.protectedSceneRects[i].contains(old.protectedSceneRects[i]));
+    model.Admit(refresh, current, &probe, 870);
+    QVERIFY(model.SceneWords(870, 10).isEmpty());
+}
+
+void UltraClearTextTests::refreshKeepsIndependentlyValidatedOmissionsDuringRegionalScroll()
+{
+    const auto before = MakeLayoutPage({{"Reading", {80, 80}, 48},
+                                        {"Before", {1000, 80}, 48}});
+    auto after = MakeLayoutPage({{"Reading", {80, 80}, 48},
+                                {"Afterward", {1000, 400}, 48}});
+    // Large independent change on the right, with exactly unchanged left ink.
+    { QPainter painter(&after.image); painter.fillRect(800, 600, 800, 300, Qt::black); }
+    const auto t = Transform(1, .5, .5);
+    const auto current = Stamp(3, 4, 0, t);
+    const auto at = [&](int frame, int ms) { auto s = Stamp(3, 4, ms, t); s.frameSeq = frame; return s; };
+    auto initial = ResultFor(before, t, at(1, 100));
+    const auto splitLines = [](RecognitionResult& result) {
+        QVector<RecognizedWord> words;
+        for (const auto& line : result.output.lines) words += line.words;
+        result.output.lines.clear();
+        for (const auto& word : words) {
+            RecognizedLine line; line.words.push_back(word);
+            result.output.lines.push_back(line);
+        }
+    };
+    splitLines(initial);
+    ModelTuning tuning; tuning.admitMatchBudgetMs = 0;
+    OverlayModel model(tuning);
+    model.Admit(initial, current, nullptr, 110);
+    auto second = ResultFor(before, t, at(2, 200));
+    splitLines(second);
+    model.Admit(second, current, nullptr, 210);
+    QCOMPARE(model.SceneWords(210, 0).size(), 2);
+    const auto probe = ProbeOf(RenderView(after.image, t, kViewWidth, kViewHeight), t, 3, 4, 9, 500);
+    const auto checks = model.Validate(probe, 500);
+    QCOMPARE(checks.valid, 1);
+    QCOMPARE(checks.invalid, 1); // scrolling right ink loses its old position
+    const auto old = model.Lines().first();
+    QCOMPARE(old.words.first().text, QStringLiteral("Reading"));
+    // A real detector miss: only the independently moving right word is returned.
+    auto refresh = ResultFor(after, t, at(3, 300));
+    splitLines(refresh);
+    refresh.output.lines.removeFirst();
+    model.Admit(refresh, current, &probe, 520);
+    const auto shown = model.SceneWords(520, 9);
+    QCOMPARE(shown.size(), 1);
+    QCOMPARE(shown.first().text, QStringLiteral("Reading"));
+    QCOMPARE(shown.first().lineId, old.id);
+    const auto retained = std::find_if(model.Lines().begin(), model.Lines().end(),
+        [&](const auto& line) { return line.id == old.id; });
+    QVERIFY(retained != model.Lines().end());
+    QCOMPARE(retained->sceneRect, old.sceneRect);
+    QCOMPARE(retained->validatedAtMs, old.validatedAtMs);
+    QCOMPARE(retained->validatedFrameSeq, old.validatedFrameSeq);
+    // Omission cannot renew proof, and a checked pixel contradiction revokes it.
+    QVERIFY(model.SceneWords(851, 10).isEmpty());
+    auto changed = after.image.copy();
+    { QPainter painter(&changed); painter.fillRect(0, 0, 800, 900, Qt::white); }
+    model.Validate(ProbeOf(RenderView(changed, t, kViewWidth, kViewHeight), t, 3, 4, 10, 550), 550);
+    QVERIFY(model.SceneWords(550, 10).isEmpty());
+
+    // An explicit rejected observation at the old ink is not a detector miss.
+    OverlayModel conflict(tuning);
+    conflict.Admit(initial, current, nullptr, 110);
+    conflict.Admit(second, current, nullptr, 210);
+    conflict.Validate(probe, 500);
+    auto rejected = ResultFor(after, t, at(3, 300));
+    splitLines(rejected);
+    rejected.output.lines.first().words.first().confidence = .6;
+    conflict.Admit(rejected, current, &probe, 520);
+    QVERIFY(conflict.SceneWords(520, 9).isEmpty());
+
+    // A check older than the OCR acquisition cannot excuse an omission.
+    OverlayModel stale(tuning);
+    stale.Admit(initial, current, nullptr, 110);
+    stale.Admit(second, current, nullptr, 210);
+    stale.Validate(probe, 500);
+    refresh.stamp = at(10, 600);
+    stale.Admit(refresh, current, &probe, 610);
+    QVERIFY(stale.SceneWords(610, 10).isEmpty());
 }
 
 void UltraClearTextTests::probeReferencesPrioritizeUnverifiedAndOldestLines() {

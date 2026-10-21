@@ -1144,6 +1144,15 @@ bool IsHighRiskToken(const QString& text)
     static const QString kConfusableLetters = QStringLiteral("OoIlSsBZzGgq|");
     static const QString kPlainPunctuation =
         QStringLiteral(".,;:!?'\"()[]-/&%$+=*#@’‘“”–—€£");
+    // Underscores and Windows separators in a conventional file token are
+    // ordinary print, not subscript notation. Require a letter-only extension
+    // so this exception cannot turn x_2 or a_b into accepted mathematics.
+    const auto extensionAt = token.lastIndexOf('.');
+    bool fileToken = extensionAt > 0 && token.size() - extensionAt >= 2 &&
+                     token.size() - extensionAt <= 17;
+    for (qsizetype i = extensionAt + 1; fileToken && i < token.size(); ++i)
+        fileToken = (token[i] >= QChar('a') && token[i] <= QChar('z')) ||
+                    (token[i] >= QChar('A') && token[i] <= QChar('Z'));
     bool hasDigit = false;
     bool hasConfusableLetter = false;
     for (const QChar ch : token) {
@@ -1162,7 +1171,8 @@ bool IsHighRiskToken(const QString& text)
             hasConfusableLetter = hasConfusableLetter || kConfusableLetters.contains(ch);
             continue;
         }
-        if (!kPlainPunctuation.contains(ch)) {
+        if (!kPlainPunctuation.contains(ch) &&
+            !(fileToken && (ch == QChar('_') || ch == QChar('\\')))) {
             return true; // math operators, superscripts, symbols: never claimed
         }
     }
@@ -2581,11 +2591,30 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                 // pixels or coordinates: retain the old reference, geometry,
                 // line identity and validation clock together. The next probe
                 // still checks that object and real content changes remove it.
+                const auto stableProtection = [&](const AcceptedLine& old) {
+                    if (old.protectedSceneRects.size() != candidate.line.protectedSceneRects.size()) return false;
+                    for (int i = 0; i < old.protectedSceneRects.size(); ++i) {
+                        const QRectF a = old.protectedSceneRects[i].translated(old.sceneOffset);
+                        const QRectF b = candidate.line.protectedSceneRects[i].translated(candidate.line.sceneOffset);
+                        const auto finite = [](const QRectF& r) {
+                            return std::isfinite(r.left()) && std::isfinite(r.right()) &&
+                                   std::isfinite(r.top()) && std::isfinite(r.bottom());
+                        };
+                        const double tolerance = .1 * std::min(a.height(), b.height());
+                        if (!finite(a) || !finite(b) || a.isEmpty() || b.isEmpty() ||
+                            !std::isfinite(tolerance) || tolerance <= 0 ||
+                            std::abs(a.left() - b.left()) > tolerance ||
+                            std::abs(a.right() - b.right()) > tolerance ||
+                            std::abs(a.top() - b.top()) > tolerance ||
+                            std::abs(a.bottom() - b.bottom()) > tolerance) return false;
+                    }
+                    return true;
+                };
                 for (const AcceptedLine& old : lines_) {
                     if (!old.valid || !old.provenance.SameScene(current) ||
                         old.words.size() != candidate.line.words.size() ||
                         old.readingTokens != candidate.line.readingTokens ||
-                        old.protectedSceneRects != candidate.line.protectedSceneRects ||
+                        !stableProtection(old) ||
                         old.reference.valid != candidate.line.reference.valid) {
                         continue;
                     }
@@ -2619,8 +2648,13 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                         }
                         const LineColors colors = candidate.line.colors;
                         auto measuredWords = std::move(candidate.line.words);
+                        const auto measuredProtection = candidate.line.protectedSceneRects;
+                        const auto protectionOffset = candidate.line.sceneOffset - old.sceneOffset;
                         candidate.line = old;
                         candidate.line.colors = colors;
+                        for (int i = 0; i < measuredProtection.size(); ++i)
+                            candidate.line.protectedSceneRects[i] = old.protectedSceneRects[i].united(
+                                measuredProtection[i].translated(protectionOffset));
                         for (int i = 0; i < candidate.line.words.size(); ++i)
                             candidate.line.words[i].colors = measuredWords[i].colors;
                         retained = true;
@@ -2635,7 +2669,9 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         }
     }
 
-    // This result supersedes accepted lines inside the area it covered.
+    // Recognition supersedes observed ink, not independently proved detector
+    // omissions. The latest probe must have checked the old object against
+    // pixels at/after this job; keeping it never renews its reference or clock.
     const QRectF coverage = ViewRectToScene(stamp.viewTransform, jobWidth, jobHeight,
                                             QRectF(0.0, 0.0, jobWidth, jobHeight));
     QVector<AcceptedLine> kept;
@@ -2643,17 +2679,25 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         if (!line.provenance.SameScene(current)) {
             continue;
         }
+        if (retainedIds.contains(line.id)) continue; // already present in admitted, with its exact proof
         const QRectF oldRect = line.sceneRect.translated(line.sceneOffset);
-        if (!immutable && latestProbe && latestProbe->stamp.SameScene(current) &&
+        if (!immutable && latestProbe && latestProbe->IsValid() &&
+            EvidenceAcquisition(latestProbe->stamp) && latestProbe->stamp.SameScene(current) &&
             latestProbe->stamp.frameSeq >= stamp.frameSeq &&
+            line.validatedAtMs >= stamp.timestampMs &&
             line.validatedFrameSeq >= stamp.frameSeq &&
             IsShown(line, nowMs, latestProbe->stamp.frameSeq) &&
-            std::any_of(failedRegistrationRects.begin(), failedRegistrationRects.end(),
-                [&](const QRectF& r) { return r.intersects(oldRect); }) &&
+            (std::any_of(failedRegistrationRects.begin(), failedRegistrationRects.end(),
+                [&](const QRectF& r) { return r.intersects(oldRect); }) ||
+             std::none_of(prepared.begin(), prepared.end(), [&](const PreparedLine& observation) {
+                 // Even rejected/uncertain ink is an observation. A conflicting
+                 // spelling or protected span must not fall back to old text.
+                 return observation.sceneRect.intersects(oldRect);
+             })) &&
             std::none_of(admitted.begin(), admitted.end(), [&](const AcceptedLine& replacement) {
                 return replacement.sceneRect.translated(replacement.sceneOffset).intersects(oldRect);
             })) {
-            kept.push_back(line); // exact old identity/reference/proof, never refreshed by failed OCR
+            kept.push_back(line); // exact old identity/reference/proof, never refreshed by OCR omission
             continue;
         }
         if (!coverage.contains(line.sceneRect.translated(line.sceneOffset).center())) {

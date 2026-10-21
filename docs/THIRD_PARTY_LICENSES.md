@@ -429,3 +429,11 @@ separately installed FFmpeg/libx264. It has no third-party footage, audio or
 fonts, follows the project's contribution/license terms, and is test-only.
 Its command and exact reviewed hash are recorded in `tests/README.md`; neither
 the tool nor a codec library is bundled with the application.
+
+`tests/data/paced-audio-h264.mp4` is an original first-party synthetic test
+pattern and 440 Hz sine tone, generated with the owner's separately installed
+FFmpeg/libx264 and native FFmpeg AAC encoder. It contains no third-party footage,
+music or fonts, follows the project's contribution/license terms, and is
+test-only. Generation, exact bytes and its silent use are recorded in
+`docs/video_audio_preroll_repair.md`; no generation tool or codec library is
+bundled with the application.

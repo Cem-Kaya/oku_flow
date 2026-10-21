@@ -185,7 +185,34 @@ void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line
     };
     const auto overlaps = [&](const RecognizedWord& a, const RecognizedWord& b) {
         const double smaller = std::min(area(a.boundsPx), area(b.boundsPx));
-        return smaller > 0 && area(a.boundsPx.intersected(b.boundsPx)) >= .7 * smaller;
+        if (smaller <= 0) return false;
+        const double intersection = area(a.boundsPx.intersected(b.boundsPx));
+        if (intersection >= .7 * smaller) return true;
+        if (intersection < .65 * smaller) return false;
+        const QString& shortText = a.text.size() < b.text.size() ? a.text : b.text;
+        const QString& longText = a.text.size() < b.text.size() ? b.text : a.text;
+        // A crop can leave a prefix/suffix letter just outside the complete
+        // token's CTC estimate. Do not let that duplicate protect the very
+        // letter the complete, stronger word would replace.
+        const bool fragment = !shortText.isEmpty() && shortText.size() < longText.size() &&
+            smaller < .35 * std::max(area(a.boundsPx), area(b.boundsPx)) &&
+            (longText.startsWith(shortText) || longText.endsWith(shortText));
+        return fragment;
+    };
+    const auto rowDistance = [](const RecognizedLine& row, const RecognizedWord& word) {
+        double best = std::numeric_limits<double>::max();
+        for (const auto& old : row.words) {
+            const double small = std::min(old.boundsPx.height(), word.boundsPx.height());
+            const double large = std::max(old.boundsPx.height(), word.boundsPx.height());
+            const double dy = std::abs(old.boundsPx.center().y() - word.boundsPx.center().y());
+            const double gap = std::max({0.0, old.boundsPx.left() - word.boundsPx.right(),
+                                        word.boundsPx.left() - old.boundsPx.right()});
+            // Match a nearby word of comparable type size. A row's union
+            // must not bridge another column or pull a title into code text.
+            if (small > 0 && small >= .5 * large && dy <= .35 * large && gap <= 4 * small)
+                best = std::min(best, gap + 4 * dy);
+        }
+        return best;
     };
     qsizetype preferredLine = -1;
     for (auto word : line.words) {
@@ -214,21 +241,18 @@ void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line
         }
         if (target >= 0) preferredLine = target;
         if (!use) continue;
-        if (target < 0) target = preferredLine;
+        if (target < 0 && preferredLine >= 0 &&
+            rowDistance(output[preferredLine], word) < std::numeric_limits<double>::max())
+            target = preferredLine;
         qsizetype emptyLine = -1;
         if (target < 0) {
             double best = std::numeric_limits<double>::max();
             for (qsizetype index = 0; index < output.size(); ++index) {
                 const auto& words = output[index].words;
                 if (words.isEmpty()) { emptyLine = index; continue; }
-                QRectF bounds;
-                for (const auto& old : words) bounds = bounds.united(old.boundsPx);
-                const double h = std::max(bounds.height(), word.boundsPx.height());
-                const double dy = std::abs(bounds.center().y() - word.boundsPx.center().y());
-                const double gap = std::max({0.0, bounds.left() - word.boundsPx.right(),
-                                            word.boundsPx.left() - bounds.right()});
-                if (dy <= .35 * h && gap <= 8 * h && gap + 4 * dy < best) {
-                    best = gap + 4 * dy;
+                const double distance = rowDistance(output[index], word);
+                if (distance < best) {
+                    best = distance;
                     target = index;
                 }
             }

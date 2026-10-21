@@ -4822,6 +4822,16 @@ flatten/glare combinations.
   `WrapPixels` gives a read-only QImage view with shared lifetime.
 - `PreparedWord`, `PreparedLine` and `PrepareLines` prepare scene boxes/reference
   patches on the recognition worker; the scheduler accepts owned shared pixels.
+- `IsHighRiskToken` permits underscores and Windows path separators in file
+  tokens with a one-to-sixteen-letter ASCII extension, while preserving the
+  ordinary confusable and math rejection rules. `OverlayModel::AdmitImpl`
+  retains current-validated geometry/identity through small exclusion-box
+  jitter; it unions exclusions and preserves the original reference and clocks.
+  Live/advancing detector omissions can also retain an existing shown object
+  validated at/after the OCR job, provided neither prepared observations
+  (including rejected spans) nor admitted replacements intersect it. This
+  preserves the exact identity, reference and deadline; OCR never renews proof
+  by omission. `ApplyChecks` still revokes genuinely changed regional pixels.
 - `LineReference`, `LineCheck`, `CheckLines`, `ProbeRequest`, `ProbeOutcome`,
   `ProbeWorkerStats` and `ProbeWorker` implement budgeted off-thread probe
   construction, similarity and residual matching with latest-only admission.
@@ -5944,8 +5954,23 @@ provenance to CTC decoding; cut-edge fragments cannot become complete words.
 `PaddleMergeRecognition` maps bounds/search/protected rectangles to full-scene
 coordinates, reconciles duplicates and retains stronger evidence. GPU images
 remain worker-owned strided subviews; detector profiles/models are unchanged.
-`VideoPlayback::kSeekSampleLimit` is now a 4096-read malformed-stream guard under
-its existing two-second request-age deadline and per-read generation checks.
+Row association now compares a nearby individual word's type size, vertical
+position and gap; preferred rows must qualify too. A contained literal
+prefix/suffix fragment can overlap at 65% (ordinary duplicates retain 70%),
+with the original confidence/candidate precedence and 1024-line cap. See
+[coverage and stable placement](uct_coverage_stability_repair.md).
+`VideoPlayback::kSeekSampleLimit` is a 4096-read malformed-stream guard.
+The private `detail::VideoPlaybackSeekBudget::{Deadline,Expired,Observe}`
+maintains a two-second no-progress window under an absolute sixty-second
+request cap. Only strictly increasing decoded video PTS renews it; late,
+absent, repeated or backward samples cannot. Open/seek and audio-aligned Resume
+use the same guard and per-read generation checks. `MarkNativeOperation`
+refreshes watchdog timing on real progress without publishing a frame.
+`Reader::resumeClockPending` rebases host playback after successful preroll and
+invalidates the old audio clock. `SeekReader` resets this state and PCM floors;
+`QueueAudio` keeps `audioEnd100ns` as a handoff-independent high-water, so
+`TakeAudio` cannot trigger oversupply while video waits. Output hard caps stay
+unchanged. See [video/audio repair](video_audio_preroll_repair.md).
 
 `RecordingArchive::State::provenDurationHighWater` advances only with parsed,
 producer-fenced fragment proof. `Finalized` restores that monotonic mapping

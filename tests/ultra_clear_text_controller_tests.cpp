@@ -1379,12 +1379,13 @@ void UltraClearTextControllerTests::partialProbeInvalidationRequestsPromptReplac
     std::uint64_t sequence = 0;
     std::uint64_t observedSubmissions = 0;
     auto lastSubmitWall = h.now;
+    bool omitStaticWords = false;
     const auto present = [&] {
         ++sequence;
         h.now += timing.probeIntervalMs;
         {
             std::lock_guard lock(h.script->mutex);
-            h.script->words = h.page.words;
+            h.script->words = omitStaticWords ? QVector<PageWord>{h.page.words.last()} : h.page.words;
         }
         if (advancing) {
             UctAdvancingMediaScene scene;
@@ -1457,6 +1458,30 @@ void UltraClearTextControllerTests::partialProbeInvalidationRequestsPromptReplac
     QCOMPARE(h.overlay.WordCount(), changed.words.size());
     QVERIFY(h.now - proofWall < timing.refreshIntervalMs);
     QCOMPARE(h.controller->GeometryGeneration(), generation);
+
+    // A later full-view detection miss must not discard independently checked
+    // static regions. Exercise the real probe -> scheduler -> admission path.
+    QTRY_COMPARE(h.controller->SchedulerStatistics().completed, h.controller->SchedulerStatistics().submitted);
+    const auto staticWords = h.controller->Model().SceneWords(
+        advancing ? 10000 + static_cast<std::int64_t>(sequence) * timing.probeIntervalMs : h.now, sequence);
+    QCOMPARE(staticWords.size(), changed.words.size());
+    const auto priorCompleted = h.controller->SchedulerStatistics().completed;
+    omitStaticWords = true;
+    for (int tick = 0; tick < 30 && h.controller->SchedulerStatistics().completed == priorCompleted; ++tick) {
+        present();
+        QCOMPARE(h.overlay.WordCount(), changed.words.size());
+    }
+    QTRY_VERIFY(h.controller->SchedulerStatistics().completed > priorCompleted);
+    QTest::qWait(20); // consume the completion's queued admission
+    QCOMPARE(h.overlay.WordCount(), changed.words.size());
+    const auto refreshed = h.controller->Model().SceneWords(
+        advancing ? 10000 + static_cast<std::int64_t>(sequence) * timing.probeIntervalMs : h.now, sequence);
+    for (const auto& word : staticWords) {
+        if (word.text != QStringLiteral("Reference")) continue;
+        QVERIFY(std::any_of(refreshed.begin(), refreshed.end(), [&](const auto& kept) {
+            return kept.text == word.text && kept.lineId == word.lineId && kept.sceneRect == word.sceneRect;
+        }));
+    }
 }
 
 void UltraClearTextControllerTests::advancingMediaValidatesWhileOcrHeldAndRejectsChangedPixels()

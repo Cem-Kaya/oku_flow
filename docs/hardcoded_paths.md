@@ -19,12 +19,15 @@ Optional neighbor preparation waits for a 50 ms quiet period after target
 publication; immediate scrubs supersede it. Proven same-frame seeks share pixels
 and require neither native decode nor another full-frame allocation.
 Additional limits are a 64 MiB byte-read window, an 8 MiB metadata/index budget and
-4096 native reads per seek, with the unchanged two-second request-age deadline
-and generation cancellation. The read cap is a malformed-stream guard, not a
-two-second GOP limit; pre-target frames do not allocate presentation copies.
+4096 native reads per seek, generation cancellation, a two-second no-progress
+deadline and sixty-second total request cap. Only strictly advancing decoded
+video PTS renews the progress window; pre-target frames do not allocate
+presentation copies. Audio-aligned Resume uses the same bounded preroll policy.
 Audio queues include in-flight PCM and are
 bounded to 2 MiB, 32 packets and 500 ms; the native output endpoint is capped
 at 250 ms. These are admission limits, not latency promises. The selected
+reader keeps an ordinary 200 ms lead and remembers handed-off PCM independently
+of queue draining. See [video/audio repair](video_audio_preroll_repair.md). The
 transport polls at 16 ms only while a recording/file document exists; normal
 unrecorded camera mode does not run a history collector.
 
@@ -958,6 +961,14 @@ The finite resident diagnostic has a separate
 source identities and records plans beside full outputs; it never fabricates
 fresh evidence by assigning new frame IDs to copies.
 ## Experimental recognizer width profiles
+
+UCT crop merging retains 70% ordinary overlap. Contained literal prefix/suffix
+fragments smaller than 35% of the larger box can match at 65%; row association
+requires at least half the larger word height and a gap no greater than four
+smaller heights. Stable exclusion-box jitter is bounded to 10% of its smaller
+height, with unioned protection and unchanged proof clocks. File-token extension
+exceptions admit one to sixteen ASCII letters. See
+[coverage and stability](uct_coverage_stability_repair.md).
 
 `OKUFLOW_UCT_TRT_WIDTH` accepts empty/`fixed1024` (existing keys) or `bucketed`.
 `OKUFLOW_UCT_TRT_PREPARE_WIDTH=1` permits a separate one-time preparation of

@@ -4,6 +4,7 @@
 // exact selected/neighbour evidence and immutable admission. No CTest/model
 // download, native window or app settings are involved.
 #include "uct_resident_diagnostic.hpp"
+#include "okuflow/ui/ultra_clear_text_overlay.hpp"
 
 namespace uct_paused_video_test {
 // Explicit diagnostic bridge: complete one real Windows selected/neighbour
@@ -206,6 +207,38 @@ inline void Run()
         bridgeReport.insert("revokedWords", revoked);
     }
     const auto shown = model.SceneWords(0, selectedStamp.frameSeq);
+    // Admission is not paint coverage. Exercise the actual glyph layout and
+    // protected-ink closure too, on the desktop-free platform only.
+    QVERIFY(QGuiApplication::platformName() == QStringLiteral("offscreen"));
+    uct_test::RegisterFixtureFonts();
+    QVERIFY(QFontDatabase::families().contains(QStringLiteral("Segoe UI")));
+    QWidget viewport;
+    viewport.resize(selectedImage.size());
+    okuflow::UltraClearTextOverlay overlay(&viewport, &viewport);
+    viewport.show();
+    overlay.SetViewTransform(selectedStamp.viewTransform);
+    QVector<okuflow::UltraClearTextOverlay::SceneWord> overlayWords;
+    for (const auto& word : shown)
+        overlayWords.push_back({word.text, word.sceneRect, word.colors, word.lineId,
+                               word.protectedSceneRects, word.wordIndex});
+    overlay.SetWords(std::move(overlayWords));
+    QTRY_VERIFY(overlay.PaintedGeometryCurrent());
+    QJsonArray painted;
+    int paintedCount = 0;
+    for (const auto& word : shown) {
+        okuflow::UltraClearTextOverlay::PaintedWordGeometry geometry;
+        const bool drawn = overlay.PaintedWord(word.lineId, word.wordIndex, word.text, geometry) &&
+                           geometry.drawn;
+        paintedCount += drawn;
+        painted.push_back(QJsonObject{{"text", word.text}, {"drawn", drawn},
+            {"sceneRect", QJsonArray{word.sceneRect.x(), word.sceneRect.y(),
+                                     word.sceneRect.width(), word.sceneRect.height()}}});
+    }
+    QImage composite = selectedImage;
+    QPainter painter(&composite);
+    overlay.CaptureSnapshot(selectedStamp.viewTransform, composite.size()).Paint(painter, composite.size());
+    painter.end();
+    QVERIFY(composite.save(QDir(evidence).filePath("overlay.png")));
     QJsonArray words;
     for (int i = 0; i < selected->result.prepared.size(); ++i) {
         const auto& line = selected->result.prepared[i];
@@ -230,6 +263,8 @@ inline void Run()
         {"selectedOutput", uct_batch_test::Output(selected->result.output)},
         {"neighbourOutput", uct_batch_test::Output(neighbour->result.output)},
         {"selectedCandidates", CandidateWords(selected->result.output)}, {"shownWords", int(shown.size())},
+        {"paintedWords", painted}, {"paintedCount", paintedCount},
+        {"selectedWorkerMs", selected->result.durationMs}, {"neighbourWorkerMs", neighbour->result.durationMs},
         {"sourceDigestsDiffer", selected->result.sourcePixelDigest != neighbour->result.sourcePixelDigest},
         {"words", words}, {"readingText", model.ReadingText(0, selectedStamp.frameSeq)},
         {"imageEgress", selectedInput->Read().egress + neighbourInput->Read().egress},

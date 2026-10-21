@@ -1,5 +1,6 @@
 #ifdef _WIN32
 #include "okuflow/common/video_playback.hpp"
+#include "video_playback_seek_budget.hpp"
 #include <mfapi.h>
 #include <mferror.h>
 #include <mfreadwrite.h>
@@ -87,7 +88,7 @@ struct Reader {
     std::shared_ptr<VideoGpuDecoder> gpu;
     std::weak_ptr<const VideoPlaybackFrame> cachedSeekFrame;
     std::int64_t cachedSeekLowerBound{};
-    bool cachedSeekEnded{},needsReposition{};
+    bool cachedSeekEnded{},needsReposition{},resumeClockPending{};
     void Reset() {
         // The decoder drops a completed conversion sample before its reader;
         // an unknown-completion closure stays quarantined inside the decoder
@@ -95,7 +96,7 @@ struct Reader {
         // never free a sample or reader the GPU may still touch.
         if (gpu) gpu->DetachSourceReader();
         gpu.reset(); source.Reset(); nativeMetadata.Reset(); bytes.Reset(); cloneRead={}; archive.reset(); lastDecodedPts = -1; memory = {};
-        cachedSeekFrame.reset();needsReposition=false;
+        cachedSeekFrame.reset();needsReposition=resumeClockPending=false;
         width = height = stride = rotation = audioRate = audioChannels = gpuComponentBits = 0;
         duration = 0; audioFloor100ns = audioEnd100ns = 0; audioEos = false;
         hasAudio = audioAvailable = eos = incomplete = false;
@@ -638,6 +639,7 @@ void SeekReader(Reader& r, std::int64_t target) {
     Check(r.source->SetCurrentPosition(GUID_NULL, position), "Seek native video source"); r.eos = false; r.lastDecodedPts = -1;
     r.audioFloor100ns = std::max<std::int64_t>(0, target);
     r.audioEnd100ns = r.audioFloor100ns; r.audioEos = false;
+    r.resumeClockPending = false;
 }
 void MarkNativeOperation(VideoPlayback::State& s, std::uint64_t generation, bool active) {
     std::lock_guard lock(s.mutex);
@@ -649,6 +651,11 @@ void QueueAudio(Reader& r, VideoPlayback::State& s, std::uint64_t gen,
     // Keep audio independent from microphone settings. Up to eight short
     // decoder samples per pass, 500 ms and 2 MiB total remain queued.
     for (unsigned i = 0; i < 8 && Clock::now() < deadline && s.Current(gen); ++i) {
+        // The UI transfers queued PCM to a separate bounded output sink.
+        // TakeAudio empties our queue, not the media already handed off.
+        // Keep that decoded high-water so video-wait polling cannot feed
+        // future audio faster than its consumed/host playback clock.
+        if (r.audioEnd100ns >= until) return;
         { std::lock_guard lock(s.mutex);
           if (s.muted || !s.playing || s.audio.size() >= 32 || s.audioBytes >= VideoPlayback::kAudioByteLimit ||
               s.audioDuration100ns >= 5'000'000 ||
@@ -856,11 +863,12 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                     if (reader.hasAudio) reader.source->SetStreamSelection(MF_SOURCE_READER_FIRST_AUDIO_STREAM, FALSE);
                     unsigned seeks{};
                     if (command.kind != CommandKind::Open) { SeekReader(reader, target); ++seeks; }
-                    const auto deadline = command.queued + std::chrono::seconds(2);
-                    if (Clock::now() >= deadline) throw std::runtime_error("Native open/seek exhausted its request-age deadline.");
+                    detail::VideoPlaybackSeekBudget budget(command.queued);
+                    if (budget.Expired(Clock::now())) throw std::runtime_error("Native open/seek exhausted its progress deadline.");
                     std::shared_ptr<const VideoPlaybackFrame> chosen, neighbor;
                     unsigned samples{}, decoded{},copies{};
-                    while (samples < VideoPlayback::kSeekSampleLimit && Clock::now() < deadline && s->Current(command.generation)) {
+                    while (samples < VideoPlayback::kSeekSampleLimit && !budget.Expired(Clock::now()) && s->Current(command.generation)) {
+                        const auto deadline = budget.Deadline();
                         // Keep the predecessor across a sample-less EOS read
                         // when credit permits; under pressure it stays optional.
                         if(!HasDecodeCredit(reader,s->pixels))neighbor.reset();
@@ -870,11 +878,14 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                         // A real replacement sample may release this optional
                         // lease before its owned pixel copy is allocated.
                         std::shared_ptr<const VideoPlaybackFrame> next;
-                        try { if(ReadVideo(reader,*s,command.generation,next,deadline,&chosen,end?-1:target))++decoded; }
+                        bool readSample{};
+                        try { if((readSample=ReadVideo(reader,*s,command.generation,next,deadline,&chosen,end?-1:target)))++decoded; }
                         catch (const DecodeFailure&) {
                             if (!end || !chosen) throw;
                             reader.eos = true; reader.incomplete = true; break;
                         }
+                        if (readSample && budget.Observe(reader.lastDecodedPts,Clock::now()))
+                            MarkNativeOperation(*s,command.generation,true);
                         if (next) {++copies;neighbor = std::move(chosen); chosen = std::move(next); }
                         if (end && reader.eos && !chosen && target > 0 && seeks < kEndSeekLimit) {
                             // Only observed video EOS without a frame permits
@@ -890,15 +901,15 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                         if (reader.eos || (!end && chosen && chosen->pts100ns >= target)) break;
                     }
                     if (!s->Current(command.generation)) continue;
-                    if (Clock::now() > deadline || !chosen || (end && !reader.eos) || (!end && chosen->pts100ns < target))
-                        throw std::runtime_error("This seek exceeds the " + std::to_string(VideoPlayback::kSeekSampleLimit) + "-read / two-second decode budget: reads=" +
+                    if (budget.Expired(Clock::now()) || !chosen || (end && !reader.eos) || (!end && chosen->pts100ns < target))
+                        throw std::runtime_error("This seek exceeds the " + std::to_string(VideoPlayback::kSeekSampleLimit) + "-read / two-second progress / sixty-second request budget: reads=" +
                             std::to_string(samples) + ", seeks=" + std::to_string(seeks) + ", decoded=" + std::to_string(decoded) +
                             ", eos=" + std::to_string(reader.eos) + ", chosen=" + std::to_string(bool(chosen)) +
                             ", lastPts=" + std::to_string(reader.lastDecodedPts) + ", anchor=" + std::to_string(target) +
                             ", duration=" + std::to_string(reader.duration) + ", elapsedMs=" +
                             std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - command.queued).count()) + ".");
                     if (neighbor && neighbor->pts100ns == chosen->pts100ns) neighbor.reset();
-                    if (Clock::now() > deadline) throw std::runtime_error("Native playback returned after its request-age deadline.");
+                    if (budget.Expired(Clock::now())) throw std::runtime_error("Native playback returned after its progress deadline.");
                     // End is exact only after EOS. Failed seeks leave the
                     // externally held image intact.
                     { std::lock_guard lock(s->mutex); s->playing = false; ClearAudio(*s); }
@@ -1092,7 +1103,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
             }
             try {
                 MarkNativeOperation(*s, document.generation, true);
-                const auto deadline = Clock::now() + std::chrono::seconds(2);
+                detail::VideoPlaybackSeekBudget budget(Clock::now());
                 bool restart{}, audioEnabled{}; std::int64_t cursor{},copyFloor{};
                 { std::lock_guard lock(s->mutex);
                   // A playback iteration captured before Pause must not clear
@@ -1113,6 +1124,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                         {std::lock_guard lock(s->mutex);s->ready.clear();}
                         SeekReader(reader,cursor);
                         reader.needsReposition=false;
+                        reader.resumeClockPending=true;
                     } else {
                         // Muted/silent Resume reuses prepared video. Audio Resume
                         // repositions both tracks to preserve exact PCM continuity.
@@ -1123,6 +1135,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                 }
                 unsigned samples{};
                 for(;;) {
+                    const auto deadline=budget.Deadline();
                     std::size_t readyCount{};std::int64_t headroom{};
                     {std::lock_guard lock(s->mutex);
                      if(!s->Current(document.generation) || !s->playing || s->restartAtCursor)break;
@@ -1139,14 +1152,21 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                     }
                     std::shared_ptr<const VideoPlaybackFrame> decoded;
                     bool readSample{};
+                    if(samples>=VideoPlayback::kSeekSampleLimit || budget.Expired(Clock::now()))
+                        throw std::runtime_error("Resume exceeds the bounded seek budget.");
+                    ++samples;
                     try {readSample=ReadVideo(reader,*s,document.generation,decoded,deadline,nullptr,copyFloor);}
                     catch(const DecodeFailure&) {
                         if(!readyCount)throw;
                         reader.eos=true;reader.incomplete=true;break;
                     }
                     if(!s->Current(document.generation))break;
+                    if(budget.Expired(Clock::now()))
+                        throw std::runtime_error("Playback decode returned after its progress deadline.");
+                    if(readSample && budget.Observe(reader.lastDecodedPts,Clock::now()))
+                        MarkNativeOperation(*s,document.generation,true);
                     if(readSample && !decoded && !reader.eos) {
-                        if(++samples>=VideoPlayback::kSeekSampleLimit || Clock::now()>=deadline)
+                        if(samples>=VideoPlayback::kSeekSampleLimit || budget.Expired(Clock::now()))
                             throw std::runtime_error("Resume exceeds the bounded seek budget.");
                         continue;
                     }
@@ -1154,12 +1174,25 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                     if(decodedFrame) {
                         std::lock_guard lock(s->mutex);
                         if(s->Current(document.generation)) {
+                            if(reader.resumeClockPending) {
+                                // Preroll is decode work, not played media.
+                                // Without this rebase a healthy software seek
+                                // starts video/audio many seconds past its hold.
+                                s->clockPts=reader.audioFloor100ns;s->clockStart=Clock::now();
+                                s->audioClockValid=false;reader.resumeClockPending=false;
+                            }
                             s->ready.push_back(std::move(decoded));s->snapshot.memoryPressure=false;
                         }
                     }
-                    if(!decodedFrame && !reader.eos)break;
+                    if(!decodedFrame && !reader.eos) {
+                        // Empty preroll reads remain in this same bounded
+                        // request. A new outer iteration must not restart its
+                        // no-progress/absolute budget without decoded media.
+                        if(reader.resumeClockPending)continue;
+                        break;
+                    }
                 }
-                if (Clock::now() > deadline && ReadyEmpty(*s)) throw std::runtime_error("Playback decode exceeded its cooperative deadline.");
+                if (budget.Expired(Clock::now()) && ReadyEmpty(*s)) throw std::runtime_error("Playback decode exceeded its cooperative progress deadline.");
                 MarkNativeOperation(*s, document.generation, false);
                 std::shared_ptr<const VideoPlaybackFrame> next;
                 {std::unique_lock lock(s->mutex);

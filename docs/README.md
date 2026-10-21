@@ -1,5 +1,14 @@
 # OkuFlow Documentation Guide
 
+[Video/audio preroll and pacing repair](video_audio_preroll_repair.md) explains
+the reproduced single-keyframe AV1 seek failure, bounded progress policy and
+audio high-water fix, with silent native-decoder validation limits.
+
+[UCT coverage and stable placement](uct_coverage_stability_repair.md) documents
+file-path filtering, column/type-size separation, crop-fragment suppression,
+stable validated geometry, regional detector-omission continuity and actual
+painted-glyph evidence.
+
 [Paused UCT continuity](uct_paused_continuity_repair.md) records the reproduced
 partial-refinement and late-neighbour defects, exact-source retention and the
 private resident recognition/admission diagnostic.

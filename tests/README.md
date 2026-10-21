@@ -1782,8 +1782,9 @@ The actual-app offscreen selected-media fixture checks 250 view replays with
 fresh same-sample allocations at an 8-ms simulated clock interval, retaining the
 same UCT lease and retry budget. The external native video fixture includes
 3/7/13/23-second seeks in addition to Open/1-second/End checks. Private recordings
-and extracted frames stay outside Git. Deadline, cancellation and memory-credit
-bounds remain unchanged; native desktop/display-rate acceptance is separate.
+and extracted frames stay outside Git. Cancellation and memory-credit limits
+remain bounded; the current progress deadline is described in
+`docs/video_audio_preroll_repair.md`. Native desktop/display-rate acceptance is separate.
 
 The default `video_playback_contract` also decodes the committed original
 `tests/data/long-gop-h264.mp4`: 192×128, 60 fps, 5.2 seconds with a single long
@@ -1797,6 +1798,14 @@ ffmpeg -f lavfi -i testsrc2=size=192x128:rate=60 -t 5.2 -c:v libx264 -preset ver
 ```
 
 Reviewed SHA-256: `5459ddb3da0ab0819b015d967e5ef1dfd0d513b9efcb45e357d636a8dbc62dca`.
+The same contract now exercises the private production seek-budget helper with
+synthetic time (strict PTS progress, stalled/repeated/backward/late samples and
+the sixty-second absolute cap). The original `paced-audio-h264.mp4` fixture
+silently drains native AAC/PCM to reproduce handoff oversupply without opening
+an audio endpoint; bounded lead and mute/Resume floors are asserted. Its
+provenance, opt-in private-file playback diagnostics and limits are in
+`docs/video_audio_preroll_repair.md`. PCM delivery does not prove audible
+speaker/device continuity.
 The native AVC/AV1 fixtures additionally copy their own finalized output to a
 private observed archive, prove its duration, revoke its bytes by truncation,
 then verify finalization retains only historical mapping and denies old reads.
@@ -1935,6 +1944,26 @@ native presentation or accessibility latency. It needs Qt Core/Gui and no
 camera, fonts, model runtime, GPU or native window.
 
 ### Paused UCT continuity and scene cuts
+
+`mergeKeepsIndependentColumnsAndTypeSizes` in `uct_paddle_processing` checks
+both merge orders, the title/script/diff example, separated columns and contained
+prefix fragments. The UCT contract adds file-path versus notation filtering and
+retention of a current-proved line through half-pixel exclusion-box jitter,
+including unchanged validation clocks and eventual expiry.
+`mergedHeadlineAndFilePathPaintTogether` draws a synthetic title and file row,
+runs the real merger/model/overlay, and requires drawn glyph geometry and white
+ink for all five target words. Regional-scroll fixtures keep a separately
+pixel-validated static word through detector omission, assert unchanged proof
+clocks, and reject explicit uncertainty and later pixel changes. The controller
+partial-invalidation case exercises static-line omission through the real
+probe/scheduler/admission path in live and advancing-video modes. CUDA matching
+also checks unchanged left ink while a large right region changes enough to
+fail whole-scene stability; CPU/GPU verdicts must agree.
+The explicit paused-video diagnostic now also instantiates the production
+glyph overlay under Qt offscreen, registers Segoe UI, records actual
+`paintedWords`/`paintedCount`, and saves the production `overlay.png` snapshot.
+Model eligibility alone is not treated as painted coverage. These artifacts
+remain separate from native-window, UIA and screen-reader acceptance.
 
 `immutable_uct_contract` covers late optional evidence without a selected-frame
 restart, partial preferred-backend coverage, independent contradiction revocation

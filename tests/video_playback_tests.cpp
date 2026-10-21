@@ -2,6 +2,7 @@
 #include "okuflow/common/video_archive.hpp"
 #include "okuflow/common/video_playback.hpp"
 #include "okuflow/common/media_writer.hpp"
+#include "../src/common/video_playback_seek_budget.hpp"
 #include <mfapi.h>
 #include <mfreadwrite.h>
 #include <dxgi1_6.h>
@@ -1087,8 +1088,160 @@ void NativeGpuExternal(const std::filesystem::path& path) {
     Expect(Wait([&] {s=player.Snapshot();return s.requestGeneration==end && s.state==VideoPlaybackState::Ended;},10000),"external native format holds actual endpoint");
     RequireGpu(s);player.Close();
 }
+void SeekProgressLimits() {
+    using Budget=detail::VideoPlaybackSeekBudget;
+    const auto started=Clock::time_point{};
+    Budget advancing(started);
+    for(int second=1;second<60;++second) {
+        Expect(advancing.Observe(second*10'000'000ll,started+std::chrono::seconds(second)),
+            "strict media progress keeps a long GOP seek eligible before the total cap");
+        Expect(!advancing.Expired(started+std::chrono::seconds(second)),
+            "healthy preroll remains seeking beyond the short native progress window");
+    }
+    Expect(advancing.Expired(started+std::chrono::seconds(60)) &&
+        !advancing.Observe(600'000'000,started+std::chrono::seconds(60)),
+        "steady progress cannot extend the absolute sixty-second request limit");
+    Budget stalled(started);
+    Expect(stalled.Observe(10'000'000,started+std::chrono::seconds(1)),"first real sample establishes progress");
+    Expect(!stalled.Observe(10'000'000,started+std::chrono::milliseconds(1900)) &&
+        !stalled.Observe(9'000'000,started+std::chrono::milliseconds(2500)) &&
+        !stalled.Observe(-1,started+std::chrono::milliseconds(2900)) &&
+        !stalled.Observe(INT64_MAX,started+std::chrono::milliseconds(2900)) &&
+        stalled.Expired(started+std::chrono::seconds(3)),
+        "repeated, backward and absent samples cannot renew a stalled reader");
+    Expect(!stalled.Observe(20'000'000,started+std::chrono::seconds(3)),
+        "a native read returning after the progress deadline cannot revive its request");
+}
+void PacedAudioDelivery(VideoPlayback& player) {
+    const auto path=std::filesystem::path(__FILE__).parent_path()/"data"/"paced-audio-h264.mp4";
+    const auto request=player.OpenFile(path.wstring());
+    Expect(Wait([&] {const auto s=player.Snapshot();return s.requestGeneration==request &&
+        (s.state==VideoPlaybackState::Paused || s.state==VideoPlaybackState::Unavailable);}),
+        "committed audio pacing fixture settles without an encoder or output endpoint");
+    auto s=player.Snapshot();
+    Expect(s.state==VideoPlaybackState::Paused && s.frame && s.audioAvailable,"AAC pacing fixture exposes native PCM");
+    if(s.state!=VideoPlaybackState::Paused || !s.frame)return;
+    const auto firstPts=s.frame->pts100ns;
+    player.SetMuted(false);player.SetPlaying(true);
+    const auto started=Clock::now();
+    std::int64_t audioEnd{},maximumLead{},duration{};
+    while(Clock::now()-started<std::chrono::seconds(2)) {
+        const auto elapsed=std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now()-started).count()/100;
+        // Drain exactly as the UI does. The decode high-water must survive
+        // TakeAudio; otherwise each video wait pumps another future packet.
+        for(const auto& p:player.TakeAudio()) {
+            const auto span=static_cast<std::int64_t>(p.pcm.size()*10'000'000ull/(p.sampleRate*p.channels*2));
+            duration+=span;audioEnd=p.pts100ns+span;
+            maximumLead=std::max(maximumLead,audioEnd-firstPts-elapsed);
+        }
+        s=player.Snapshot();
+        if(s.state==VideoPlaybackState::Unavailable || s.state==VideoPlaybackState::Ended)break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    std::cout<<"Paced audio maximumLead100ns="<<maximumLead<<" PCM100ns="<<duration
+        <<" videoPts="<<(s.frame?s.frame->pts100ns:-1)<<" error="<<s.error<<'\n';
+    Expect(maximumLead<=4'000'000,"draining the decoder queue cannot push PCM beyond the output sink's half-second allowance");
+    Expect(s.state==VideoPlaybackState::Playing && s.audioAvailable && duration>=15'000'000,
+        "bounded audio continues while the silent native video reader advances");
+    player.SetMuted(true);Expect(player.TakeAudio().empty(),"muting immediately revokes decoded audio");
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+    const auto mutedFloor=player.Snapshot().frame->pts100ns;
+    player.SetMuted(false);
+    bool heard{};
+    Expect(Wait([&] {
+        for(const auto& packet:player.TakeAudio()) {
+            Expect(packet.pts100ns>=mutedFloor,"unmuted PCM excludes the prior muted cursor");
+            heard=true;
+        }
+        return heard || player.Snapshot().state==VideoPlaybackState::Unavailable;
+    },1000) && heard,"unmute repositions the decoded audio high-water and resumes PCM");
+    player.SetPlaying(false);Expect(player.TakeAudio().empty(),"paused pacing fixture revokes pending PCM");
+    const auto pausedFloor=player.Snapshot().frame->pts100ns;
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+    player.SetPlaying(true);heard=false;
+    Expect(Wait([&] {
+        for(const auto& packet:player.TakeAudio()) {
+            Expect(packet.pts100ns>=pausedFloor,"resumed PCM excludes preroll before the exact paused frame");
+            heard=true;
+        }
+        return heard || player.Snapshot().state==VideoPlaybackState::Unavailable;
+    },1000) && heard,"Resume resets the high-water at the paused cursor rather than remaining silent");
+    player.Close();
+}
+// Private owner-media diagnostic: decode PCM into memory only. It never
+// creates an audio endpoint, GUI, recorder or temporary copy of the input.
+void NativeExternalPlayback(const std::filesystem::path& path) {
+    VideoPlayback player; ConfigureGpu(player);
+    auto request=player.OpenFile(path.wstring());
+    VideoPlaybackSnapshot s;
+    const auto settled=[&] {
+        s=player.Snapshot();
+        return s.requestGeneration==request &&
+            (s.state==VideoPlaybackState::Paused || s.state==VideoPlaybackState::Unavailable);
+    };
+    Expect(Wait(settled,10000) && s.frame && s.state==VideoPlaybackState::Paused,
+        "private playback input opens with an exact current frame");
+    std::cout<<"Private playback open GPU="<<s.gpuResident<<" reason="<<s.backendReason
+        <<" audio="<<s.audioAvailable<<" error="<<s.error<<'\n';
+    if(!s.frame || s.state!=VideoPlaybackState::Paused)return;
+    for(const std::int64_t seconds:{6,23}) {
+        s={};request=player.Seek100ns(seconds*10'000'000);
+        const bool ready=Wait(settled,65000);
+        std::cout<<"Private playback seek="<<seconds<<" state="<<static_cast<int>(s.state)
+            <<" reads="<<s.lastRequestReadCount<<" latencyUs="<<s.lastRequestLatencyUs
+            <<" reason="<<s.backendReason<<" error="<<s.error<<'\n';
+        Expect(ready && s.frame && s.state==VideoPlaybackState::Paused && s.frame->pts100ns>=seconds*10'000'000,
+            "private playback long-GOP seek selects its requested frame");
+        if(!ready || s.state!=VideoPlaybackState::Paused)return;
+    }
+    s={};player.Seek100ns(700'000'000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    request=player.Seek100ns(60'000'000);
+    Expect(Wait(settled,65000) && s.state==VideoPlaybackState::Paused && s.frame &&
+        s.frame->requestGeneration==request && s.frame->pts100ns>=60'000'000 && s.frame->pts100ns<61'000'000,
+        "a newer near seek supersedes in-progress long-GOP preroll without publishing the old selection");
+    if(!s.frame || s.state!=VideoPlaybackState::Paused)return;
+    const auto firstPts=s.frame->pts100ns;
+    player.SetMuted(false);player.SetPlaying(true);
+    const auto resumeStarted=Clock::now();
+    const bool resumed=Wait([&] {s=player.Snapshot();return s.state==VideoPlaybackState::Unavailable ||
+        (s.frame && s.frame->pts100ns>firstPts);},65000);
+    std::cout<<"Private playback resume prerollMs="<<std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now()-resumeStarted).count()
+        <<" state="<<static_cast<int>(s.state)<<" error="<<s.error<<'\n';
+    Expect(resumed && s.state==VideoPlaybackState::Playing,"unmuted Resume survives healthy long-GOP preroll");
+    if(!resumed || s.state!=VideoPlaybackState::Playing)return;
+    const auto started=Clock::now();
+    std::int64_t audioBytes{},audioEnd{},maximumLead{};
+    while(Clock::now()-started<std::chrono::seconds(3)) {
+        const auto elapsed=std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now()-started).count()/100;
+        for(const auto& packet:player.TakeAudio()) {
+            audioBytes+=packet.pcm.size();
+            audioEnd=packet.pts100ns+static_cast<std::int64_t>(packet.pcm.size()*10'000'000ull/(packet.sampleRate*packet.channels*2));
+            maximumLead=std::max(maximumLead,audioEnd-firstPts-elapsed);
+        }
+        s=player.Snapshot();
+        if(s.state==VideoPlaybackState::Unavailable || s.state==VideoPlaybackState::Ended)break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    std::cout<<"Private playback state="<<static_cast<int>(s.state)<<" videoPts="<<(s.frame?s.frame->pts100ns:-1)
+        <<" audioAvailable="<<s.audioAvailable<<" PCMBytes="<<audioBytes<<" audioEnd="<<audioEnd
+        <<" maximumAudioLead100ns="<<maximumLead<<" error="<<s.error<<'\n';
+    Expect(s.state==VideoPlaybackState::Playing && s.frame && s.frame->pts100ns>firstPts+20'000'000,
+        "private source advances video without becoming unavailable");
+    Expect(!s.hasAudio || (s.audioAvailable && audioBytes>0),"private source retains decoded audio throughout playback");
+    Expect(maximumLead<=4'000'000,"PCM delivery stays within a bounded lead while callers drain the decoder queue");
+    s={};request=player.JumpToEnd();
+    const bool ended=Wait([&] {s=player.Snapshot();return s.requestGeneration==request &&
+        (s.state==VideoPlaybackState::Ended || s.state==VideoPlaybackState::Unavailable);},65000);
+    std::cout<<"Private playback end state="<<static_cast<int>(s.state)<<" reads="<<s.lastRequestReadCount
+        <<" latencyUs="<<s.lastRequestLatencyUs<<" endpoint="<<s.seekableEnd100ns<<" error="<<s.error<<'\n';
+    Expect(ended && s.state==VideoPlaybackState::Ended && s.frame && s.frame->pts100ns==s.seekableEnd100ns,
+        "private single-GOP playback establishes its actual decoded endpoint under the absolute request cap");
+    player.Close();
+}
 }
 int main(int argc, char** argv) {
+    std::cout.setf(std::ios::unitbuf); // retain each diagnostic stage before a slow native call
     if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) return 2;
     if (FAILED(MFStartup(MF_VERSION))) return 2;
     const std::string mode = argc > 1 ? argv[1] : "";
@@ -1097,7 +1250,7 @@ int main(int argc, char** argv) {
             std::cout << "SKIP opt-in native codec run requires OKUFLOW_TEST_VIDEO_PLAYBACK_CODEC=1\n";
             MFShutdown(); CoUninitialize(); return 77;
         }
-        if(mode=="--native-gpu-avc" || mode=="--native-gpu-av1" || mode=="--native-gpu-4k" || mode=="--native-gpu-dci-4k" || mode=="--gpu-conversion" || mode=="--native-gpu-external") {
+        if(mode=="--native-gpu-avc" || mode=="--native-gpu-av1" || mode=="--native-gpu-4k" || mode=="--native-gpu-dci-4k" || mode=="--gpu-conversion" || mode=="--native-gpu-external" || mode=="--native-gpu-playback-external") {
             ComPtr<IDXGIFactory6> factory;ComPtr<IDXGIAdapter1> adapter;DXGI_ADAPTER_DESC1 desc{};
             if(!GetEnvironmentVariableW(L"OKUFLOW_TEST_VIDEO_GPU",nullptr,0) ||
                FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))) ||
@@ -1108,7 +1261,11 @@ int main(int argc, char** argv) {
             }
             gpuAdapter=desc.AdapterLuid;
         }
-        if(mode=="--native-gpu-external") {
+        if(mode=="--native-playback-external" || mode=="--native-gpu-playback-external") {
+            if(argc!=3)Expect(false,"private playback fixture requires exactly one file path");
+            else NativeExternalPlayback(std::filesystem::path(argv[2]));
+        }
+        else if(mode=="--native-gpu-external") {
             if(argc!=3)Expect(false,"external GPU fixture requires exactly one file path");
             else NativeGpuExternal(std::filesystem::path(argv[2]));
         }
@@ -1120,7 +1277,7 @@ int main(int argc, char** argv) {
             NativeAvcAac(codec, true);
             if (!failures && !nativeSkipped) NativeSparseVideoAudio(codec);
         }
-    } else { LayoutAndIdentity(); MutationObservation(); UnsupportedAndUnknownWrites(); FailedOpenSupersession(); VideoPlayback player; LongGopSeeking(player); PausedSceneCutNeighbor(player); }
+    } else { SeekProgressLimits(); LayoutAndIdentity(); MutationObservation(); UnsupportedAndUnknownWrites(); FailedOpenSupersession(); VideoPlayback player; LongGopSeeking(player); PausedSceneCutNeighbor(player); PacedAudioDelivery(player); }
     // Workers own their MFStartup/MFShutdown pairs; these local scopes own
     // only the fixture's startup. No camera/microphone or native GUI opens.
     MFShutdown(); CoUninitialize();

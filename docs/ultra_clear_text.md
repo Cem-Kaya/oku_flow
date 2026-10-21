@@ -3,6 +3,11 @@
 See [GPU batch execution and measurement](uct_gpu_batching.md) for the wider
 recognizer profiles and their separate memory and latency evidence.
 
+See [coverage and stable placement](uct_coverage_stability_repair.md) for the
+headline/file-path repair, independent column grouping and geometry retention
+through small OCR corrections. These are postprocessing/validation fixes;
+recognition-width experiments remain independently opt-in.
+
 ## Selected-video and held-frame authority (development)
 
 Saved playback and same-session recording rewind use the same UCT scheduler

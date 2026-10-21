@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+- Keep healthy long-GOP video seeks and audio-aligned Resume active while
+  decoding advances, under a two-second progress timeout and sixty-second
+  request cap. Rebase playback after preroll and pace PCM already handed to
+  the output queue so audio cannot run ahead and trip its hard buffer limit.
+
+- Preserve UCT coverage for readable file paths and large headlines by keeping
+  independent columns/type sizes apart and removing contained crop fragments.
+  Stabilize current-validated glyph placement through small uncertainty-box
+  changes while retaining conservative cutouts and original proof deadlines.
+  Keep independently pixel-validated text through detector omissions when
+  another region scrolls; changed or conflicting ink still revokes it.
+
 - Hide the UCT glyph window while a modal file picker blocks OkuFlow or the
   application is inactive. Late OCR results cannot draw over the dialog or
   another app; still-valid words return when the magnifier resumes.
