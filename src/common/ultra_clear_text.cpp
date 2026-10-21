@@ -256,10 +256,11 @@ LineColors MeasureLineColors(const QImage& image, const QRect& bounds, const Tex
         return x >= 0 && y >= 0 && x < image.width() && y < image.height()
             ? image.constScanLine(y) + x * 4 : nullptr;
     };
+    const int bodyStep = BodySampleStep(box.width(), box.height());
     long long lumaSum = 0;
     unsigned count = 0;
-    for (int y = box.top(); y <= box.bottom(); y += 2)
-        for (int x = box.left(); x <= box.right(); x += 2) {
+    for (int y = box.top(); y <= box.bottom(); y += bodyStep)
+        for (int x = box.left(); x <= box.right(); x += bodyStep) {
             const auto* px = pixel(x, y);
             if (!px) continue;
             lumaSum += Luma(px);
@@ -268,8 +269,8 @@ LineColors MeasureLineColors(const QImage& image, const QRect& bounds, const Tex
     if (!count) return colors;
     const int threshold = static_cast<int>(lumaSum / count);
     unsigned histogram[2][3][256]{}, lumaHistogram[2][256]{}, bodyCounts[2]{};
-    for (int y = box.top(); y <= box.bottom(); y += 2)
-        for (int x = box.left(); x <= box.right(); x += 2) {
+    for (int y = box.top(); y <= box.bottom(); y += bodyStep)
+        for (int x = box.left(); x <= box.right(); x += bodyStep) {
             const uchar* px = pixel(x, y);
             if (!px) continue;
             const int value = Luma(px), side = value < threshold ? 0 : 1;
@@ -362,8 +363,8 @@ LineColors MeasureLineColors(const QImage& image, const QRect& bounds, const Tex
     const int fg = 1 - bg;
     std::memset(histogram, 0, sizeof(histogram));
     unsigned inkCount = 0;
-    for (int y = box.top(); y <= box.bottom(); y += 2)
-        for (int x = box.left(); x <= box.right(); x += 2) {
+    for (int y = box.top(); y <= box.bottom(); y += bodyStep)
+        for (int x = box.left(); x <= box.right(); x += bodyStep) {
             const uchar* px = pixel(x, y);
             if (!px) continue;
             const int value = Luma(px);
@@ -428,13 +429,72 @@ QRectF RefineWordInkBounds(const QImage &image, const RecognizedWord &word,
     // Bound work for unusually large boxes; all scanning stays on the worker.
     const int step = std::max(1, static_cast<int>(std::ceil(std::sqrt(
                                      static_cast<double>(box.width()) * box.height() / 16384.0))));
+    // Hysteresis preserves connected antialiasing without promoting a blur
+    // halo or an adjacent word to representative ink. A component needs a
+    // midpoint-strength core inside the original detector. Detached marks may
+    // anchor in the same bounded vertical allowance used by run selection.
+    const int fringeThreshold = (threshold + paper) / 2;
+    const int columns = (box.width() + step - 1) / step;
+    const int rowCount = (box.height() + step - 1) / step;
+    if (box.width() > 8192 || box.height() > 4096 || columns * rowCount > 32768)
+        return detected;
+    bool detachedMarks = word.text.contains(QLatin1Char('i'), Qt::CaseInsensitive) ||
+                         word.text.contains(QLatin1Char('j'), Qt::CaseInsensitive);
+    for (QChar c : word.text.normalized(QString::NormalizationForm_D))
+        detachedMarks = detachedMarks || c.isMark() || QStringLiteral("!?:;").contains(c);
+    const double markMargin = detachedMarks ? std::max(2.0, detected.height() * .22) : 0.0;
+    QVector<quint8> mask(columns * rowCount, 0);
+    for (int iv = 0; iv < rowCount; ++iv)
+        for (int iu = 0; iu < columns; ++iu) {
+            const int x = box.left() + iu * step, y = box.top() + iv * step;
+            const int value = Luma(image.constScanLine(y) + x * 4);
+            if (ink < paper ? value < fringeThreshold : value > fringeThreshold)
+                mask[iv * columns + iu] = 1;
+        }
+    QVector<int> component;
+    for (int seed = 0; seed < mask.size(); ++seed) {
+        if (mask[seed] != 1) continue;
+        component.clear(); component.push_back(seed); mask[seed] = 2;
+        unsigned sides = 0;
+        bool anchored = false, mark = false, detectorSupport = false;
+        for (int next = 0; next < component.size(); ++next) {
+            const int iu = component[next] % columns, iv = component[next] / columns;
+            const int x = box.left() + iu * step, y = box.top() + iv * step;
+            const int value = Luma(image.constScanLine(y) + x * 4);
+            const bool core = ink < paper ? value < threshold : value > threshold;
+            const bool withinX = x + .5 >= detected.left() && x + .5 < detected.right();
+            const bool withinY = y + .5 >= detected.top() && y + .5 < detected.bottom();
+            detectorSupport = detectorSupport || (withinX && withinY);
+            anchored = anchored || (core && withinX && withinY);
+            mark = mark || (core && withinX && detachedMarks &&
+                y + .5 >= detected.top() - markMargin && y + .5 < detected.bottom() + markMargin);
+            sides |= (!iu ? 1u : 0u) | (iu == columns - 1 ? 2u : 0u) |
+                     (!iv ? 4u : 0u) | (iv == rowCount - 1 ? 8u : 0u);
+            for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) {
+                const int u = iu + dx, v = iv + dy;
+                if (u < 0 || v < 0 || u >= columns || v >= rowCount) continue;
+                const int index = v * columns + u;
+                if (mask[index] == 1) { mask[index] = 2; component.push_back(index); }
+            }
+        }
+        const bool spanning = (sides & 3) == 3 || (sides & 12) == 12;
+        // Do not silently discard an anchored glyph spanning the search box.
+        // Unanchored rules/adjacent lines can be excluded independently.
+        if (spanning && (anchored || mark) && detectorSupport) return detected;
+        // A complete lighter glyph may occupy the AA range without reaching
+        // the representative ink midpoint. Preserve the whole detector rather
+        // than silently fit the remaining letters without that component.
+        if (!spanning && !anchored && !mark && detectorSupport && component.size() >= 8)
+            return detected;
+        for (const int index : component)
+            mask[index] = !spanning && (anchored || mark) ? 4 : 3;
+    }
+
     QVector<QPoint> samples;
     QVector<int> rows(box.height(), 0);
     for (int y = box.top(); y <= box.bottom(); y += step) {
-        const uchar *row = image.constScanLine(y);
         for (int x = box.left(); x <= box.right(); x += step) {
-            const int value = Luma(row + x * 4);
-            if (ink < paper ? value >= threshold : value <= threshold)
+            if (mask[((y - box.top()) / step) * columns + (x - box.left()) / step] != 4)
                 continue;
             samples.push_back(QPoint(x, y));
             ++rows[y - box.top()];
@@ -467,10 +527,6 @@ QRectF RefineWordInkBounds(const QImage &image, const RecognizedWord &word,
     if (runs[main].mass < samples.size() * .55)
         return detected;
     int top = runs[main].top + box.top(), bottom = runs[main].bottom + box.top();
-    bool detachedMarks = word.text.contains(QLatin1Char('i'), Qt::CaseInsensitive) ||
-                         word.text.contains(QLatin1Char('j'), Qt::CaseInsensitive);
-    for (QChar c : word.text.normalized(QString::NormalizationForm_D))
-        detachedMarks = detachedMarks || c.isMark() || QStringLiteral("!?:;").contains(c);
     if (detachedMarks)
         for (int i = 0; i < runs.size(); ++i) {
             if (i == main || runs[i].mass > runs[main].mass * .3)

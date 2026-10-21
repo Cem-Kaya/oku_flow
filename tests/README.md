@@ -1,5 +1,16 @@
 # OkuFlow Tests
 
+`orientedInkAndMapping` / `gpuOrientedInkMatchesCpu` also run 33 small upright
+source-ink cases from `uct_small_ink_test_cases.hpp`. The embedded, lossless
+46x36 owner-source crop is hashed as packed RGB and uses exact saved detector
+metadata. Controlled cases check lattice phases, AA, gradients/polarity, dots,
+descenders, connected clipped strokes, rules, noise, adjacent ink and bounded
+GPU fallback. They require actual fitted bounds and unchanged prepared-word
+eligibility; counts alone cannot pass. CPU/CUDA source colors and complete fit
+bounds must match, except the explicitly constructed GPU propagation-cap
+fallback. Resident cases forbid host image egress. See
+[diagnosis, provenance and validation status](../docs/uct_color_startup_repair.md#small-upright-source-ink-2026-10-22-development).
+
 ## Optional active regional GPU proof
 
 `uct_paddle_tests optionalActiveRegionalProof` is an explicit cached-model run,
