@@ -14,6 +14,46 @@ quarantine remain in force. CPU fallback performs equivalent local measurements.
 The line reference, omission protection and independent evidence rules do not
 change.
 
+## Neutral video ink (2026-10-22 development)
+
+The atlas recording exposed a renderer color-policy defect: endpoint colors
+such as `#99abab`, `#9dbec5` and `#a2b7b6` were treated as intentional chromatic
+ink because their RGB channel spread exceeded 16. Adjacent words could therefore
+alternate between pure white and muted cyan/green. The painter itself uses a
+single opaque foreground and background per word, without a glyph gradient.
+
+`ReadableColors` now reserves source-hue preservation for RGB channel spreads
+of at least 64 and existing contrast of at least 7:1. Lower-chroma ink uses the
+same solid black/white polarity treatment as neutral ink. This deliberately
+normalizes some muted source colors; clearly colored, readable yellow/cyan/
+purple labels retain their source foreground. Background sampling, brightness
+hysteresis, minimum 7:1 contrast, geometry and protection are unchanged. It does
+not denoise original video outside replacement plates or authorize repainting
+an unproved word. Color work remains cached outside the pan/zoom paint path.
+
+The maintained renderer rows include the three actual atlas colors and dark
+tinted ink, plus upright/quad checks that readable chromatic ink is preserved.
+The private paused proof can explicitly select the production factory with
+`OKUFLOW_UCT_PAUSE_PRODUCTION_FACTORY=1`; this requires the reviewed local BF16
+manifest, records actual backend status and checks both cache inventories.
+The Windows-bridge diagnostic forwards detail focus to the resident backend.
+Neither diagnostic changes the public factory or application settings.
+
+Focused CPU/PCH-off validation passed 313 Qt rows, zero failed/skipped, in the
+tracked `ultra_clear_text_contract` (36.07 s). Four new atlas/tinted-ink rows
+failed against the old renderer before the color-policy change. Cached
+production BF16 selected/neighbour/detail proofs passed on the actual atlas
+frames with both direct resident and Windows-bridge startup. The direct proof
+reported zero image egress; the bridge reported its two explicit CPU reads and
+no additional image egress. Both preserve cache inventories and complete exact
+TensorRT retirement. In these replays `14` is actually drawn sharply; the
+owner's intermittent original-looking number is not reproduced by this proof.
+The background outside replacement plates remains compressed source video.
+Evidence is under local-work-data `uct-atlas-solid-colors-20261022` and the
+`atlas-paint-bf16-*` receipts in `uct-geometry-r3-20261021/evidence/runs`.
+`agent_check` refused incomplete Ninja dependency inventory with FULL required;
+it is not reported as a scoped pass. Combined/native acceptance remains separate.
+
 ## Small upright source ink (2026-10-22 development)
 
 The saved 6x book detail exposed sampling aliasing rather than evidence for a

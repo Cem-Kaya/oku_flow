@@ -772,6 +772,8 @@ private slots:
     void paddedRecognitionFitsVisibleInk();
     void overlayKeepsSourceBackgroundInsteadOfBlackWhite_data();
     void overlayKeepsSourceBackgroundInsteadOfBlackWhite();
+    void overlayPreservesReadableChromaticInk_data();
+    void overlayPreservesReadableChromaticInk();
     void deferredPresentationKeepsCommittedProjectionAndExpires();
     void continuousPanDoesNotHideOverlayWhileOcrHeld();
     void overlayStaysHiddenWhileOwnerBlockedOrApplicationInactive();
@@ -1459,6 +1461,17 @@ void UltraClearTextTests::overlayKeepsSourceBackgroundInsteadOfBlackWhite_data()
     QTest::newRow("dark-on-paper") << QColor(120, 120, 120) << QColor(190, 190, 190) << false;
     QTest::newRow("neutral-ink-still-snaps-white")
         << QColor(200, 200, 200) << QColor(30, 30, 30) << true;
+    // Actual atlas-video endpoint colors differ because compression and AA
+    // pick up the dark green surface. These are one neutral text treatment,
+    // not alternating white/cyan/green words.
+    QTest::newRow("atlas-robots-compression-tint")
+        << QColor("#99abab") << QColor("#0f1a18") << true;
+    QTest::newRow("atlas-number-compression-tint")
+        << QColor("#9dbec5") << QColor("#0f1a18") << true;
+    QTest::newRow("atlas-second-compression-tint")
+        << QColor("#a2b7b6") << QColor("#0f1a18") << true;
+    QTest::newRow("dark-tinted-ink-on-paper")
+        << QColor(38, 63, 71) << QColor(232, 227, 220) << false;
 }
 
 void UltraClearTextTests::overlayKeepsSourceBackgroundInsteadOfBlackWhite() {
@@ -1492,6 +1505,48 @@ void UltraClearTextTests::overlayKeepsSourceBackgroundInsteadOfBlackWhite() {
                 foundInk = true;
         }
     QVERIFY(foundInk);
+}
+
+void UltraClearTextTests::overlayPreservesReadableChromaticInk_data()
+{
+    QTest::addColumn<QColor>("ink");
+    QTest::addColumn<QColor>("paper");
+    QTest::addColumn<bool>("quad");
+    for (const bool quad : {false, true}) {
+        const auto suffix = quad ? "-quad" : "-upright";
+        QTest::newRow(qPrintable(QString("yellow") + suffix))
+            << QColor("#ffe066") << QColor("#0f1a18") << quad;
+        QTest::newRow(qPrintable(QString("cyan") + suffix))
+            << QColor("#60e0ff") << QColor("#0f1a18") << quad;
+        QTest::newRow(qPrintable(QString("purple") + suffix))
+            << QColor("#4a1270") << QColor("#f0e8de") << quad;
+    }
+}
+
+void UltraClearTextTests::overlayPreservesReadableChromaticInk()
+{
+    QFETCH(QColor, ink);
+    QFETCH(QColor, paper);
+    QFETCH(bool, quad);
+    QWidget target;
+    target.resize(640, 180);
+    UltraClearTextOverlay overlay(&target, &target);
+    overlay.resize(target.size());
+    overlay.SetViewTransform(
+        ComputeViewTransform(640, 180, 640, 180, 1, .5, .5, ViewportFitMode::kFit));
+    UltraClearTextOverlay::SceneWord word{QStringLiteral("Control"), QRectF(.1, .25, .6, .4),
+                                         {ink, paper}, 1};
+    if (quad) word.sceneQuad = TextQuad::FromRect(word.sceneRect);
+    overlay.SetWords({word});
+    QImage pixels(target.size(), QImage::Format_ARGB32_Premultiplied);
+    pixels.fill(Qt::transparent);
+    overlay.render(&pixels);
+    QCOMPARE(pixels.pixelColor(60, 50), paper);
+    int solidInkPixels = 0;
+    for (int y = 40; y < 125; ++y)
+        for (int x = 65; x < 450; ++x)
+            solidInkPixels += pixels.pixelColor(x, y) == ink;
+    QVERIFY2(solidInkPixels > 100, "Readable colored text lost its solid source ink.");
 }
 
 void UltraClearTextTests::deferredPresentationKeepsCommittedProjectionAndExpires() {

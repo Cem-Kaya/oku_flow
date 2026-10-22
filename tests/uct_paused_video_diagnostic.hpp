@@ -5,6 +5,7 @@
 // download, native window or app settings are involved.
 #include "uct_resident_diagnostic.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
+#include "../src/common/uct_runtime_precision.hpp"
 #if OKUFLOW_ENABLE_CUDA
 #include "okuflow/cuda/uct_kernels.hpp"
 #endif
@@ -23,6 +24,9 @@ public:
     }
     okuflow::uct::BackendStatus Status() const override { return status_; }
     bool WantsDeviceInput() const override { return bridgeCalls_ >= 2; }
+    void SetDetailFocus(const std::optional<okuflow::uct::DetailFocus>& focus) override {
+        preferred_->SetDetailFocus(focus);
+    }
     okuflow::uct::RecognitionOutput Recognize(const QImage& image, const std::atomic<bool>& cancel) override {
         auto output = bridge_->Recognize(image, cancel);
         ++bridgeCalls_;
@@ -130,8 +134,19 @@ inline void Run()
     uct_batch_test::Environment batch("OKUFLOW_UCT_TRT_BATCH", "8");
     uct_batch_test::RetirementReceipts retirement;
     const auto box = std::make_shared<Mailbox>();
-    auto recognizer = CreateTensorRtRecognizer(assets.root, sdk, ModelTier::Medium,
-                                               ModelTier::Medium, retirement.Observer());
+    const bool productionFactory = qEnvironmentVariable("OKUFLOW_UCT_PAUSE_PRODUCTION_FACTORY") == "1";
+    std::optional<runtime_precision::Selection> precisionSelection;
+    QJsonArray precisionCacheBefore;
+    if (productionFactory) {
+        const auto request = runtime_precision::ReadApplicationRequest();
+        QVERIFY2(request.Requested(), "Production paused proof requires the explicit reviewed manifest.");
+        precisionSelection = runtime_precision::LoadManifest(request, assets.detector);
+        precisionCacheBefore = CacheInventory(QDir(precisionSelection->artifactRoot).filePath("engines/bf16-linear"));
+    }
+    auto recognizer = productionFactory
+        ? CreateProductionTensorRtRecognizer(ModelTier::Medium, ModelTier::Medium, retirement.Observer())
+        : CreateTensorRtRecognizer(assets.root, sdk, ModelTier::Medium,
+                                  ModelTier::Medium, retirement.Observer());
     if (bridge) recognizer = std::make_unique<CpuBridgeThenResident>(std::move(recognizer));
     auto scheduler = std::make_unique<RecognitionScheduler>(std::move(recognizer),
         [box](RecognitionResult result) {
@@ -212,6 +227,9 @@ inline void Run()
         bridgeReport.insert("retainedWords", retained);
         bridgeReport.insert("revokedWords", revoked);
     }
+    if (productionFactory)
+        QVERIFY2(selected->backend.detail.contains("Recognition graph=BF16-linear"),
+                 qPrintable(selected->backend.detail));
     const auto shown = model.SceneWords(0, selectedStamp.frameSeq);
     // Admission is not paint coverage. Exercise the actual glyph layout and
     // protected-ink closure too, on the desktop-free platform only.
@@ -236,7 +254,12 @@ inline void Run()
         const bool drawn = overlay.PaintedWord(word.lineId, word.wordIndex, word.text, geometry) &&
                            geometry.drawn;
         paintedCount += drawn;
+        QJsonArray protection;
+        for (const auto& rect : word.protectedSceneRects) protection.push_back(uct_batch_test::Rect(rect));
         painted.push_back(QJsonObject{{"text", word.text}, {"drawn", drawn},
+            {"lineId", qint64(word.lineId)}, {"wordIndex", word.wordIndex},
+            {"foreground", word.colors.foreground.name()}, {"background", word.colors.background.name()},
+            {"protectedSceneRects", protection},
             {"sceneRect", QJsonArray{word.sceneRect.x(), word.sceneRect.y(),
                                      word.sceneRect.width(), word.sceneRect.height()}}});
     }
@@ -445,6 +468,7 @@ inline void Run()
         {"selectedMs", selectedPts}, {"neighbourMs", neighbourPts},
         {"selectedSha256", FileSha256(selectedPath)}, {"neighbourSha256", FileSha256(neighbourPath)},
         {"beforeVerdict", int(beforeVerdict)}, {"afterVerdict", int(afterVerdict)},
+        {"productionFactory", productionFactory}, {"actualBackendDetail", selected->backend.detail},
         {"selectedOutput", uct_batch_test::Output(selected->result.output)},
         {"neighbourOutput", uct_batch_test::Output(neighbour->result.output)},
         {"selectedCandidates", CandidateWords(selected->result.output)}, {"shownWords", int(shown.size())},
@@ -469,6 +493,8 @@ inline void Run()
     const auto& closed = retirement.Wait();
     QVERIFY2(closed.Passed(), "Exact TensorRT State did not close.");
     QVERIFY(CacheInventory(cache) == cacheBefore);
+    if (precisionSelection)
+        QVERIFY(CacheInventory(QDir(precisionSelection->artifactRoot).filePath("engines/bf16-linear")) == precisionCacheBefore);
 #endif
 }
 } // namespace uct_paused_video_test

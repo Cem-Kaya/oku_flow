@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Normalize low-chroma UCT video text to one solid black/white foreground so
+  compression tint does not alternate between white, cyan and green across
+  words; preserve clearly chromatic readable ink and source paper.
+
 - Commit immutable UCT refinement words together with their complete protection;
   a late unsafe cut or storage limit leaves the previous candidate state intact.
   Refuse optional regional changes whose conservative punctuation pixels would

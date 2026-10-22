@@ -131,7 +131,11 @@ uct::LineColors ReadableColors(const uct::LineColors &measured) {
                                  measured.foreground.blue()}) -
                        std::min({measured.foreground.red(), measured.foreground.green(),
                                  measured.foreground.blue()});
-    if (spread > 16 && contrast(measured.foreground, measured.background) >= 7.0)
+    // A small chroma spread is common in nominally neutral compressed video:
+    // AA picks up the paper/board tint. Treat it as one solid black/white ink
+    // instead of alternating white, cyan and green from word to word. Keep
+    // clearly chromatic, already-readable ink (e.g. a yellow UI label).
+    if (spread >= 64 && contrast(measured.foreground, measured.background) >= 7.0)
         return measured; // already readable chromatic ink retains its hue
     const bool darkText =
         RelativeLuminance(measured.foreground) <= RelativeLuminance(measured.background);

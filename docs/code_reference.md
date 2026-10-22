@@ -5701,7 +5701,8 @@ ink before `PrepareLines`. Row runs isolate the dominant word body; detached
 marks are retained for matching dotted/accented tokens. Low-contrast/tiny or
 ambiguous multi-band fits retain their detector box. Native Windows OCR boxes
 are unmarked. Overlay `ReadableColors` preserves source background and polarity,
-snaps neutral ink to black/white (readable chromatic ink keeps its hue),
+snaps neutral/low-chroma ink to black/white (readable chromatic ink with an RGB
+channel spread of at least 64 keeps its hue),
 and binary-searches only the minimum background adjustment still needed for 7:1.
 Both operations occur outside the pan/zoom paint path.
 

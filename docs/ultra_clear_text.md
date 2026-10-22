@@ -91,7 +91,8 @@ GUI gate; an offscreen pass alone does not establish Windows stacking behavior.
   surrounding margin and its background-class median to identify dense/bold print. CUDA's
   neutral analysis branch precedes display color effects, so its plates preserve
   source polarity rather than a display LUT. Below 7:1 contrast, ink moves to
-  white or black first (neutral ink always snaps to that extreme) while retaining
+  white or black first (neutral/low-chroma ink, with RGB channel spread below 64,
+  always snaps to that extreme) while retaining
   the source paper/board color. Only when
   that cannot reach 7:1 does the background move the minimum distance toward
   its polarity endpoint. Moderate gray backgrounds therefore stay gray. Accepted
