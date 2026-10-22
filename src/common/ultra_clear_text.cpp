@@ -1,6 +1,7 @@
 #include "okuflow/common/ultra_clear_text.hpp"
 #include "okuflow/common/uct_region_planner.hpp"
 #include "uct_color_policy.hpp"
+#include "uct_surface_geometry.hpp"
 #include <QCryptographicHash>
 
 #include <QElapsedTimer>
@@ -709,6 +710,34 @@ TextQuad FitOrientedWordInk(const QImage& image, const RecognizedWord& word, con
     result.valid = true;
     if (fitted) *fitted = true;
     return result;
+}
+
+TextQuad RefineWordSurface(const QImage& image,const RecognizedWord& word,
+                          const LineColors& colors,bool* fitted)
+{
+    if(fitted)*fitted=false;
+    const TextQuad original=word.quadPx.valid?word.quadPx:TextQuad::FromRect(word.boundsPx);
+    const double w=QuadWidth(original),h=QuadHeight(original);
+    if(!word.inkFitted||QuadArea(original)<=0||image.isNull()||w<=0||h<=0||
+        (image.format()!=QImage::Format_ARGB32&&image.format()!=QImage::Format_RGB32&&
+         image.format()!=QImage::Format_ARGB32_Premultiplied))return original;
+    const auto origin=original.points[0],u=(original.points[1]-origin)/w,v=(original.points[3]-origin)/h;
+    const auto warp=original.points[2]-original.points[1]-original.points[3]+origin;
+    if(std::hypot(warp.x(),warp.y())>std::min(w,h)*.002)return original;
+    const auto sample=[&](double x,double y,surface_geometry::Rgb& rgb){
+        const auto point=origin+u*x+v*y;
+        if(point.x()<0||point.y()<0||point.x()>=image.width()||point.y()>=image.height())return false;
+        const auto* pixel=image.constScanLine(int(std::floor(point.y())))+int(std::floor(point.x()))*4;
+        rgb={pixel[2],pixel[1],pixel[0]};return true;
+    };
+    surface_geometry::Scratch scratch;
+    const auto q=surface_geometry::Refine(w,h,{colors.foreground.red(),colors.foreground.green(),colors.foreground.blue()},
+        {colors.background.red(),colors.background.green(),colors.background.blue()},sample,scratch);
+    if(!q.fitted)return original;
+    TextQuad result;result.valid=true;
+    for(int i=0;i<4;++i)result.points[i]=origin+u*q.quad[i].x+v*q.quad[i].y;
+    if(QuadArea(result)<=0)return original;
+    if(fitted)*fitted=true;return result;
 }
 
 void FinalizeRecognizedGeometry(RecognitionOutput& output)
@@ -2170,6 +2199,7 @@ struct RecognitionScheduler::State {
                                                   referencePixels->height(),
                                                   static_cast<int>(referencePixels->bytesPerLine()),
                                                   self->referenceDecimation, job.stamp);
+                int surfaceAttempts=0;
                 for (RecognizedLine& line : result.output.lines) {
                     QRectF bounds;
                     for (const RecognizedWord& word : line.words) {
@@ -2182,6 +2212,7 @@ struct RecognitionScheduler::State {
                         word.colors = MeasureLineColors(pixels, word.boundsPx.toAlignedRect(),
                             QuadIsRotated(word.quadPx) ? &word.quadPx : nullptr);
                         if (!word.paddedBounds || word.disposition != TokenDisposition::kCandidate) continue;
+                        const bool surface=surfaceAttempts++<surface_geometry::WordLimit;
                         if (QuadIsRotated(word.quadPx)) {
                             // Rows of a tilted word's bounding box mix ink and
                             // paper: fit in the word's own rotated frame.
@@ -2192,6 +2223,10 @@ struct RecognitionScheduler::State {
                             word.boundsPx = RefineWordInkBounds(pixels, word, *word.colors);
                             word.inkFitted = word.boundsPx != detected;
                             if (word.quadPx.valid) word.quadPx = TextQuad::FromRect(word.boundsPx);
+                        }
+                        if(surface&&word.inkFitted){
+                            word.quadPx=RefineWordSurface(pixels,word,*word.colors);
+                            word.boundsPx=word.quadPx.Bounds();
                         }
                     }
                 }

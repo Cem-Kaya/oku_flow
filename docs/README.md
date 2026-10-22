@@ -1,5 +1,8 @@
 # OkuFlow Documentation Guide
 
+[Source-supported perspective text](uct_surface_perspective.md) explains bounded
+four-corner recovery, source refusals and projected glyph geometry.
+
 [How the UCT pipeline actually works](uct_pipeline_guide.html) is a detailed,
 offline HTML guide with a sequential pipeline map, expandable chapters, an
 exact crop-sizing explorer and a step-through queue/reuse explanation. It

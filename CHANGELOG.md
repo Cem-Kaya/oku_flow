@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Recover perspective text geometry from closed, well-supported local source
+  surfaces, retaining shear/taper and near/far glyph sizes through live/export
+  painting and character bounds. Ambiguous or cropped surfaces keep prior geometry.
+
 - Replace a preparing OCR fallback atomically when the preferred engine finishes
   a full standalone read of the same paused image. Case/spelling differences
   between engines no longer leave permanent omission masks. Failed reads and

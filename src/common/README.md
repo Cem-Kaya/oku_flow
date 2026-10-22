@@ -136,3 +136,8 @@ establish live model behavior or OS sandbox acceptance. Upstream
 [App Server documentation](https://learn.chatgpt.com/docs/app-server) describes
 thread/turn sandbox policies; the reviewed 0.160.1 feature inventory remains
 the compatibility authority here.
+
+The worker's optional `RefineWordSurface` recovers four-corner geometry from a
+closed uniform surface around already fitted text. Source-supported shear/taper
+survives preparation and admission. Ambiguous edges retain previous geometry;
+see [surface perspective](../../docs/uct_surface_perspective.md).

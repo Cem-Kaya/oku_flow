@@ -2,6 +2,7 @@
 // Included by uct_kernels.cu so every CUDA consumer has the same primitives.
 #include <cstdint>
 #include "../common/uct_color_policy.hpp"
+#include "../common/uct_surface_geometry.hpp"
 
 namespace okuflow::uct::gpu
 {
@@ -919,6 +920,42 @@ __global__ void orientedInk(const unsigned char *p, size_t pitch, int w, int h, 
     }
 }
 
+struct SurfaceSampler {
+    const unsigned char* pixels;size_t pitch;int width,height;OrientedInk frame;
+    __device__ bool operator()(double x,double y,surface_geometry::Rgb& rgb)const{
+        const double px=frame.ox+frame.ux*x+frame.vx*y,py=frame.oy+frame.uy*x+frame.vy*y;
+        if(px<0||py<0||px>=width||py>=height)return false;
+        const auto* p=pixels+int(floor(py))*pitch+int(floor(px))*4;rgb={p[2],p[1],p[0]};return true;
+    }
+};
+__global__ void surfaceFrames(const unsigned char* pixels,size_t pitch,int w,int h,
+    const SurfaceRequest* requests,const Colors* colors,const Fit* fits,const OrientedFit* oriented,SurfaceFit* out)
+{
+    __shared__ surface_geometry::Scratch scratch;
+    if(threadIdx.x)return;
+    const int i=blockIdx.x;out[i]={};const auto request=requests[i];auto frame=request.frame;
+    if(request.oriented){
+        const auto f=oriented[request.fitIndex];if(!f.fitted)return;
+        if(hypot(frame.warpX,frame.warpY)>fmin(frame.width,frame.height)*.002)return;
+        frame.ox+=frame.ux*f.u0+frame.vx*f.v0;frame.oy+=frame.uy*f.u0+frame.vy*f.v0;
+        frame.width=f.u1-f.u0;frame.height=f.v1-f.v0;
+    }else{
+        const auto f=fits[request.fitIndex];
+        if(f.x==frame.ox&&f.y==frame.oy&&f.w==frame.width&&f.h==frame.height)return;
+        frame.ox=f.x;frame.oy=f.y;frame.width=f.w;frame.height=f.h;
+        frame.ux=frame.vy=1;frame.uy=frame.vx=0;
+    }
+    const auto c=colors[request.colorIndex];
+    const auto result=surface_geometry::Refine(frame.width,frame.height,
+        surface_geometry::Rgb{c.foreground[0],c.foreground[1],c.foreground[2]},
+        surface_geometry::Rgb{c.background[0],c.background[1],c.background[2]},
+        SurfaceSampler{pixels,pitch,w,h,frame},scratch);
+    if(!result.fitted)return;
+    for(int k=0;k<4;++k){out[i].xy[k*2]=frame.ox+frame.ux*result.quad[k].x+frame.vx*result.quad[k].y;
+        out[i].xy[k*2+1]=frame.oy+frame.uy*result.quad[k].x+frame.vy*result.quad[k].y;}
+    out[i].fitted=1;
+}
+
 // SHA-256 compression is written here from the published algorithm. Each leaf
 // hashes one complete 4096-byte packed source chunk. Parents hash at most 16
 // child digests. Distinct leaf/parent tags prevent structural ambiguity.
@@ -1060,6 +1097,13 @@ void OrientedInkBounds(const void *p, size_t pitch, int w, int h, const Oriented
     if (n)
         validation::orientedInk<<<n, 256, 0, s>>>(static_cast<const unsigned char *>(p), pitch, w, h, words,
                                                   lines, cs, out);
+}
+void SurfaceFrames(const void* p,size_t pitch,int w,int h,const SurfaceRequest* requests,int n,
+    const Colors* colors,const Fit* fits,const OrientedFit* oriented,SurfaceFit* out,cudaStream_t stream)
+{
+    if(n<0||n>surface_geometry::WordLimit)throw std::invalid_argument("UCT surface request budget exceeded");
+    if(n)validation::surfaceFrames<<<n,32,0,stream>>>(static_cast<const unsigned char*>(p),pitch,w,h,
+        requests,colors,fits,oriented,out);
 }
 void FingerprintLeaves(const void *p, size_t pitch, int w, int h, unsigned char *out,
                        cudaStream_t s)

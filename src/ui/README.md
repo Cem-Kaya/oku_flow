@@ -173,3 +173,8 @@ accepted Ultra Clear Text words through the current presentation transform;
 `UltraClearTextPanel` holds the accessible opt-in, Show original, status and
 Recognized text pane inside the Text clarity section. Neither performs
 recognition. See [`docs/ultra_clear_text.md`](../../docs/ultra_clear_text.md).
+
+Perspective UCT glyphs retain their own source ink height and four-corner
+projection instead of a common screen-space type size. The same cached plan
+feeds live paint, exports and positioned character bounds. Ordinary affine line
+layout stays shared; see [surface perspective](../../docs/uct_surface_perspective.md).

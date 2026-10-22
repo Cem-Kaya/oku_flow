@@ -44,6 +44,11 @@ struct OrientedFit { double u0, u1, v0, v1; int fitted; int propagationPasses{},
                      OrientedFitReason reason{OrientedFitReason::InvalidInput}; };
 void OrientedInkBounds(const void*, std::size_t, int, int, const OrientedInk*, const int*, int,
                        const Colors*, OrientedFit*, cudaStream_t);
+struct SurfaceRequest { OrientedInk frame; int colorIndex,fitIndex,oriented; };
+struct SurfaceFit { double xy[8]; int fitted; };
+// Optional closed-surface perspective, at most 128 requests; metadata only.
+void SurfaceFrames(const void*,std::size_t,int,int,const SurfaceRequest*,int,const Colors*,
+                   const Fit*,const OrientedFit*,SurfaceFit*,cudaStream_t);
 // Domain-separated SHA-256 tree over every packed BGRA byte (padding excluded).
 void FingerprintLeaves(const void*, std::size_t, int, int, unsigned char*, cudaStream_t);
 void FingerprintParents(const unsigned char*, int, unsigned char*, cudaStream_t);

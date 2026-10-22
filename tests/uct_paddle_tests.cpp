@@ -164,6 +164,7 @@ struct FixtureStream
 #endif
 } // namespace
 #include "uct_geometry_test_cases.hpp"
+#include "uct_surface_test_cases.hpp"
 
 class PaddleTests final : public QObject
 {
@@ -301,9 +302,11 @@ class PaddleTests final : public QObject
     void orientedInkAndMapping() { uct_geometry_test::CpuGeometry(); }
     void postFitDuplicateKeepsAdjacentIdenticalTokens() { uct_geometry_test::DuplicateInk(); }
     void orientedPerspectiveAndConflictActualPaint() { uct_geometry_test::PaintGeometry(); }
+    void sourceSurfacePerspective(){uct_surface_test::Cpu();uct_surface_test::LabelsAndSizes();uct_surface_test::Paint();}
     void gpuOrientedInkMatchesCpu() {
 #if OKUFLOW_ENABLE_CUDA
         uct_geometry_test::GpuGeometry();
+        uct_surface_test::Gpu();
 #else
         QSKIP("CUDA adapter not compiled.");
 #endif

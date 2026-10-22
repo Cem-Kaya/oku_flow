@@ -2,6 +2,7 @@
 #include "okuflow/common/async_cleanup.hpp"
 #include "okuflow/common/ultra_clear_text.hpp"
 #include "okuflow/cuda/uct_kernels.hpp"
+#include "../common/uct_surface_geometry.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -613,6 +614,8 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
     // Tilted words fit in their own rotated frame (same policy as the CPU).
     QVector<gpu::OrientedInk> oriented;
     QVector<int> orientedIndices;
+    QVector<gpu::SurfaceRequest> surfaces;
+    QVector<int> surfaceWordIndices;
     if (result.output.lines.size() > 1024) {
         error = "UCT metadata budget exceeded.";
         return false;
@@ -655,11 +658,19 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
             marks = marks || ch.isMark() || QStringLiteral("!?:;").contains(ch);
         if (QuadIsRotated(word.quadPx)) {
             const TextQuad search = word.inkSearchQuadPx.valid ? word.inkSearchQuadPx : word.quadPx;
+            if(surfaces.size()<surface_geometry::WordLimit){
+                surfaces.push_back({descriptor(search),colorIndex,int(oriented.size()),1});
+                surfaceWordIndices.push_back(wordCount-1);
+            }
             oriented.push_back(descriptor(search, QuadWidth(word.quadPx), int(marks)));
             orientedIndices.push_back(colorIndex);
             continue;
         }
         const auto r = word.boundsPx;
+        if(surfaces.size()<surface_geometry::WordLimit){
+            surfaces.push_back({descriptor(TextQuad::FromRect(r)),colorIndex,int(words.size()),0});
+            surfaceWordIndices.push_back(wordCount-1);
+        }
         words.push_back(
             {Rect(word.inkSearchPx.isEmpty() ? r : word.inkSearchPx, image.width, image.height),
              r.x(), r.y(), r.width(), r.height(), int(marks)});
@@ -673,15 +684,18 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
                  orientedIndicesAt = orientedAt + oriented.size() * sizeof(gpu::OrientedInk),
                  orientedFitsAt = (orientedIndicesAt + orientedIndices.size() * sizeof(int) + 7) & ~size_t(7),
                  colorFramesAt = orientedFitsAt + oriented.size() * sizeof(gpu::OrientedFit);
-    if (colorFramesAt + colorFrames.size() * sizeof(gpu::OrientedInk) > c->capacity)
+    const size_t surfacesAt=colorFramesAt+colorFrames.size()*sizeof(gpu::OrientedInk),
+        surfaceFitsAt=(surfacesAt+surfaces.size()*sizeof(gpu::SurfaceRequest)+7)&~size_t(7);
+    if (surfaceFitsAt + surfaces.size() * sizeof(gpu::SurfaceFit) > c->capacity)
     {
         error = "Resident UCT metadata scratch budget exceeded.";
         return false;
     }
     const size_t hostAt = 2 * 1024 * 1024, colorsBytes = rects.size() * sizeof(gpu::Colors),
                  fitsBytes = words.size() * sizeof(gpu::Fit),
-                 orientedBytes = oriented.size() * sizeof(gpu::OrientedFit);
-    if (hostAt + colorsBytes + fitsBytes + orientedBytes > c->capacity)
+                 orientedBytes = oriented.size() * sizeof(gpu::OrientedFit),
+                 surfaceBytes=surfaces.size()*sizeof(gpu::SurfaceFit);
+    if (hostAt + colorsBytes + fitsBytes + orientedBytes + surfaceBytes > c->capacity)
     {
         error = "Resident UCT metadata result budget exceeded.";
         return false;
@@ -692,7 +706,8 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
         !Upload(c, indices.constData(), indices.size() * sizeof(int), indicesAt) ||
         !Upload(c, oriented.constData(), oriented.size() * sizeof(gpu::OrientedInk), orientedAt) ||
         !Upload(c, orientedIndices.constData(), orientedIndices.size() * sizeof(int), orientedIndicesAt) ||
-        !Upload(c, colorFrames.constData(), colorFrames.size() * sizeof(gpu::OrientedInk), colorFramesAt))
+        !Upload(c, colorFrames.constData(), colorFrames.size() * sizeof(gpu::OrientedInk), colorFramesAt) ||
+        !Upload(c,surfaces.constData(),surfaces.size()*sizeof(gpu::SurfaceRequest),surfacesAt))
         return false;
     c->owners = {image.shared_from_this()};
     gpu::LineColors(image.Data(), image.pitch, image.width, image.height,
@@ -709,6 +724,11 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
                            reinterpret_cast<int *>(at(orientedIndicesAt)), oriented.size(),
                            reinterpret_cast<gpu::Colors *>(at(colorsAt)),
                            reinterpret_cast<gpu::OrientedFit *>(at(orientedFitsAt)), c->stream);
+    gpu::SurfaceFrames(image.Data(),image.pitch,image.width,image.height,
+        reinterpret_cast<gpu::SurfaceRequest*>(at(surfacesAt)),surfaces.size(),
+        reinterpret_cast<gpu::Colors*>(at(colorsAt)),reinterpret_cast<gpu::Fit*>(at(fitsAt)),
+        reinterpret_cast<gpu::OrientedFit*>(at(orientedFitsAt)),
+        reinterpret_cast<gpu::SurfaceFit*>(at(surfaceFitsAt)),c->stream);
     // Copy outputs to distinct pinned offsets, leaving H2D staging immutable
     // until its DMA completes. No pageable-vector lifetime races.
     if (cudaMemcpyAsync(static_cast<char *>(c->host) + hostAt, at(colorsAt), colorsBytes,
@@ -717,7 +737,9 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
                         cudaMemcpyDeviceToHost, c->stream) != cudaSuccess ||
         (orientedBytes && cudaMemcpyAsync(static_cast<char *>(c->host) + hostAt + colorsBytes + fitsBytes,
                                           at(orientedFitsAt), orientedBytes, cudaMemcpyDeviceToHost,
-                                          c->stream) != cudaSuccess))
+                                          c->stream) != cudaSuccess) ||
+        (surfaceBytes && cudaMemcpyAsync(static_cast<char*>(c->host)+hostAt+colorsBytes+fitsBytes+orientedBytes,
+            at(surfaceFitsAt),surfaceBytes,cudaMemcpyDeviceToHost,c->stream)!=cudaSuccess))
     {
         Quarantine(c);
         return false;
@@ -733,6 +755,8 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
         reinterpret_cast<const gpu::Fit *>(static_cast<char *>(c->host) + hostAt + colorsBytes);
     const auto *orientedFits = reinterpret_cast<const gpu::OrientedFit *>(
         static_cast<char *>(c->host) + hostAt + colorsBytes + fitsBytes);
+    const auto* surfaceFits=reinterpret_cast<const gpu::SurfaceFit*>(
+        static_cast<char*>(c->host)+hostAt+colorsBytes+fitsBytes+orientedBytes);
     const auto pair = [](const gpu::Colors& v) {
         return LineColors{QColor(v.foreground[0], v.foreground[1], v.foreground[2]),
                           QColor(v.background[0], v.background[1], v.background[2])};
@@ -763,6 +787,15 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
             word.inkFitted = word.boundsPx != detected;
             if (word.quadPx.valid) word.quadPx = TextQuad::FromRect(word.boundsPx);
         }
+    }
+    int sourceWord=0,surfaceIndex=0;
+    for(auto& line:result.output.lines)for(auto& word:line.words){
+        if(surfaceIndex<surfaceWordIndices.size()&&surfaceWordIndices[surfaceIndex]==sourceWord){
+            const auto& fit=surfaceFits[surfaceIndex++];
+            if(fit.fitted){for(int j=0;j<4;++j)word.quadPx.points[j]={fit.xy[j*2],fit.xy[j*2+1]};
+                word.quadPx.valid=true;word.boundsPx=word.quadPx.Bounds();}
+        }
+        ++sourceWord;
     }
     if (image.kind == AnalysisKind::TemporallySmoothed && !result.output.lines.isEmpty())
     {

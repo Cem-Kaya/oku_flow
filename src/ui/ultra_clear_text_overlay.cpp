@@ -434,13 +434,20 @@ bool UltraClearTextOverlay::RebuildGlyphLayout(const QDeadlineTimer* deadline)
             const qreal h = uct::QuadHeight(words_[i].sceneQuad);
             SceneGlyph glyph;
             if (!ink.isEmpty() && h > 0.0 && std::isfinite(h)) {
+                const auto& q=words_[i].sceneQuad;
+                const auto warp=q.points[2]-q.points[1]-q.points[3]+q.points[0];
+                // A shared screen-space type size flattens depth. Genuine
+                // four-corner taper keeps the word's own source ink height.
+                const bool perspective=std::hypot(warp.x(),warp.y())>
+                    std::min(h,uct::QuadWidth(q))*.005;
+                const qreal localScale=perspective?h/ink.height():scale;
                 glyph.inkRect = words_[i].sceneQuad.Bounds();
                 glyph.origin = words_[i].sceneQuad.points[3];
                 glyph.referenceInk = ink;
                 glyph.colors = ReadableColors(words_[i].colors);
                 glyph.oriented = true;
-                glyph.heightRatio = scale * ink.height() / h;
-                glyph.baselineFraction = -ink.top() * scale / h;
+                glyph.heightRatio = localScale * ink.height() / h;
+                glyph.baselineFraction = -ink.top() * localScale / h;
                 glyph.valid = std::isfinite(glyph.heightRatio) && std::isfinite(glyph.baselineFraction) &&
                               glyph.heightRatio > 0.0;
             }

@@ -403,6 +403,10 @@ struct PreparedWord {
 // for the resident CUDA kernel; never called on the UI thread.
 TextQuad FitOrientedWordInk(const QImage& image, const RecognizedWord& word,
                             const LineColors& colors, bool* fitted = nullptr);
+// Optional source-supported perspective on a closed, locally uniform surface.
+// Missing/ambiguous boundaries retain the existing fitted word geometry.
+TextQuad RefineWordSurface(const QImage& image, const RecognizedWord& word,
+                          const LineColors& colors, bool* fitted = nullptr);
 // Worker-side completion after fitting, shared by CPU and resident paths:
 // rejects invalid convex geometry and removes duplicate observations of the same text
 // that fitting resolved onto the same ink. Lines are never removed, so

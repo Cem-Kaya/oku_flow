@@ -2295,3 +2295,10 @@ CUDA buffers, initialized metadata, fractional/clipped source coordinates,
 nonmonotonic canvas changes and prefix/inactive-tail guards. They require no
 models. Prepared TensorRT output/CTC transitions and recognition quality remain
 separate opt-in evidence: see [width protocol](../docs/uct_recognizer_width.md).
+
+`uct_paddle_processing` includes `sourceSurfacePerspective`: both shear signs,
+multiple labels/source sizes/tapers, white/green surfaces, open/clipped/low-contrast/unfitted refusals, already
+projective geometry and actual near/far paint/character bounds.
+`gpuOrientedInkMatchesCpu` also checks resident surface-corner parity. Optional
+`OKUFLOW_UCT_SURFACE_TEST_OUTPUT` writes a synthetic refusal image for diagnosis;
+it does not load external inputs. See [surface perspective](../docs/uct_surface_perspective.md).

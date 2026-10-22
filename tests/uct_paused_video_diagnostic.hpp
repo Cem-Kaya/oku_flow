@@ -6,6 +6,7 @@
 #include "uct_resident_diagnostic.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "../src/common/uct_runtime_precision.hpp"
+#include "../src/common/uct_surface_geometry.hpp"
 #if OKUFLOW_ENABLE_CUDA
 #include "okuflow/cuda/uct_kernels.hpp"
 #endif
@@ -471,7 +472,26 @@ inline void Run()
     const auto neighbourFitReplay=fitReplay(neighbourInput,neighbour->result.output);
     QVERIFY2(!selectedFitReplay.contains("error"),qPrintable(selectedFitReplay.value("error").toString()));
     QVERIFY2(!neighbourFitReplay.contains("error"),qPrintable(neighbourFitReplay.value("error").toString()));
+    QJsonArray surfaceReplay;
+    for(const auto& line:selected->result.output.lines)for(const auto& word:line.words){
+        if(!word.inkFitted||!word.quadPx.valid||!word.colors)continue;
+        const auto& q=word.quadPx;const double w=QuadWidth(q),h=QuadHeight(q);
+        const auto warp=q.points[2]-q.points[1]-q.points[3]+q.points[0];
+        if(w<=0||h<=0||std::hypot(warp.x(),warp.y())>std::min(w,h)*.002)continue;
+        const auto origin=q.points[0],u=(q.points[1]-origin)/w,v=(q.points[3]-origin)/h;
+        const auto sample=[&](double x,double y,surface_geometry::Rgb& rgb){
+            const auto p=origin+u*x+v*y;const int px=int(std::floor(p.x())),py=int(std::floor(p.y()));
+            if(px<0||py<0||px>=selectedImage.width()||py>=selectedImage.height())return false;
+            const auto c=selectedImage.pixelColor(px,py);rgb={c.red(),c.green(),c.blue()};return true;
+        };
+        surface_geometry::Scratch scratch;
+        const auto c=*word.colors;const auto fit=surface_geometry::Refine(w,h,
+            {c.foreground.red(),c.foreground.green(),c.foreground.blue()},
+            {c.background.red(),c.background.green(),c.background.blue()},sample,scratch);
+        surfaceReplay.push_back(QJsonObject{{"text",word.text},{"stage",fit.stage},{"fitted",fit.fitted}});
+    }
     const QJsonObject report{{"selectedPath", selectedPath}, {"neighbourPath", neighbourPath},
+        {"surfaceCpuReplay",surfaceReplay},
         {"selectedMs", selectedPts}, {"neighbourMs", neighbourPts},
         {"selectedSha256", FileSha256(selectedPath)}, {"neighbourSha256", FileSha256(neighbourPath)},
         {"beforeVerdict", int(beforeVerdict)}, {"afterVerdict", int(afterVerdict)},

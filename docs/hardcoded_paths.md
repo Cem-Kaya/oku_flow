@@ -193,6 +193,25 @@ at least 24 luma levels of separation, and refuses a fit under 35% of its input
 width/height. Near-identical refresh retention requires IoU >= 0.8 and edges/
 dimensions within 10% of word height, plus current independent validation.
 The existing 350 ms freshness and 600 ms presentation watchdog are unchanged.
+Optional source-plane refinement considers at most 128 fitted candidates per
+result, with source width/height 8..1024 / 8..256 and aspect ratio at most 24.
+Its 96x40 paper grid spans word width plus 16 word heights, and four heights
+vertically. Only absence of an enclosing component permits one second grid at
+eight heights and doubles horizontal padding from eight to sixteen heights per
+side; it does not override a refused plane or small shape change.
+Paper compatibility is 24 RGB levels; foreground/paper must differ
+by at least 64 in a channel. A closed enclosing component needs 64 cells and
+paper area at least 1.2 times the ink bound. Four sides use six anchors, at most
+15 hypotheses and two trimmed refits, each keeping 60% support, four observations,
+half-span support and a 1.25-grid-cell residual ceiling. Side slopes are bounded
+to 2.5 and top/bottom slopes to 0.5 in the word frame; projective denominators
+at the corners must exceed 0.25. Source ink uses at most 16K samples. A fitted
+envelope stays within the surface, within half-height vertically, and within
+`0.5 * height * (1 + measured side shear)` horizontally of the old bound; its
+bounding area must be 0.5..1.75 times the old area. Shape change must reach both
+two pixels and 10% of source height. Projective words keep local type size when corner warp exceeds
+0.5% of the shorter edge; input geometry already warped by 0.2% is not refitted.
+These are conservative optional geometry limits, not confidence or latency claims.
 Source-color contrast adjustment targets 7:1 and uses 16 bounded search steps.
 Clearly colored paper (RGB channel spread >= 64) is preserved when solid
 same-polarity black/white ink reaches 3:1; otherwise the 7:1 adjustment remains.

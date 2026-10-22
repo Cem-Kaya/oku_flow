@@ -1,5 +1,21 @@
 # OkuFlow Code Reference
 
+## Source-supported text perspective
+
+`RefineWordSurface` optionally replaces an already fitted word rectangle with
+four source-supported corners. `src/common/uct_surface_geometry.hpp` shares
+bounded paper-component, robust four-side fitting and homography decisions
+between CPU and CUDA. It requires a closed enclosing surface and rescans actual
+ink in that plane; ambiguous/open/clipped evidence retains previous geometry.
+The CPU scheduler considers at most 128 candidates on its worker.
+
+`gpu::SurfaceRequest`, `SurfaceFit` and `SurfaceFrames` fuse the same refinement
+after existing ink fitting. Resident analysis uploads bounded descriptors and
+returns corners, with no image egress; its existing stream/ownership/quarantine
+contract remains. The renderer preserves each genuinely tapered word's own ink
+height, then shares its projective plan with exports and character bounds.
+See [surface perspective](uct_surface_perspective.md) for limits and fixtures.
+
 ## Live RAM recap
 
 `common/video_memory_stream.hpp` / `src/common/video_memory_stream.cpp` provide
