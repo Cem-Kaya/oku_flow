@@ -62,7 +62,7 @@ the detector's longest edge is now at most **704 pixels**, the nearest supported
 1280×720 video or a 720p full-frame profile. Nominal detector enlargement is
 **704/480 = 22/15**, about 1.47 times, on the same bounded source area.
 `DetailFocus::detectorLongEdge` still defaults to 960, preserving paused
-960-pixel/six-times detail. Paddle CPU/TensorRT reuse the existing detector
+960-pixel/eight-times detail. Paddle CPU/TensorRT reuse the existing detector
 planning and warm profile with a 960-pixel maximum; no engine/profile change,
 download or cold preparation is added. Boxes/references/stamps remain in the full job image/processed scene.
 Inconsistent processed-ROI metadata or words outside it fail closed.
@@ -222,7 +222,7 @@ without B; region B and full B cannot self-confirm a new inside word. At most
 the existing independent agreement and exact-current/smoothed-pixel policies.
 
 Paused immutable navigation remains separate: selected **and real neighbour**
-detail, original acquisitions/digests, 300 ms settle, up to six-times enlargement
+detail, original acquisitions/digests, 300 ms settle, up to eight-times enlargement
 under 960 pixels and 32 non-evicting attempts. Active mode cannot replace the
 pair with one half or repeated held pixels.
 

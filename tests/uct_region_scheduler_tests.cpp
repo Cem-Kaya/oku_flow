@@ -171,8 +171,54 @@ private slots:
         const DetailFocus pausedSix{QRect(0,0,100,60),6};
         QCOMPARE(DetailRegion(source,pausedSix).size(),QSize(160,96));
         QCOMPARE(DetectorInputSize(DetailRegion(source,pausedSix).size(),DetailMagnification(pausedSix),pausedSix.detectorLongEdge),QSize(960,576));
+        const DetailFocus pausedEight{QRect(0,0,100,60),kMaximumDetailMagnification};
+        QCOMPARE(kMaximumDetailMagnification,8.0);
+        QCOMPARE(DetailRegion(source,pausedEight).size(),QSize(120,72));
+        QCOMPARE(DetectorInputSize(DetailRegion(source,pausedEight).size(),DetailMagnification(pausedEight),pausedEight.detectorLongEdge),QSize(960,576));
         QCOMPARE(DetectorInputSize(source),QSize(960,544));
         QCOMPARE(kDetailCropEdgeMarginPx,8.0); // source-crop pixels, unchanged by detector interpolation
+    }
+    void pausedDetailGeometry_data()
+    {
+        QTest::addColumn<QSize>("source"); QTest::addColumn<QRect>("request");
+        QTest::addColumn<double>("magnification");
+        QTest::addColumn<QSize>("crop"); QTest::addColumn<QSize>("detector");
+        const auto row=[](const char* name,QSize source,QRect request,double bound,QSize crop,QSize detector) {
+            QTest::newRow(name)<<source<<request<<bound<<crop<<detector;
+        };
+        row("eight",{1920,1080},{400,200,100,60},8,{120,72},{960,576});
+        row("ceil-context-and-floor-alignment",{1920,1080},{400,200,17,9},8,{120,64},{960,512});
+        row("portrait",{1080,1920},{200,400,60,100},8,{72,120},{576,960});
+        row("bottom-right",{1920,1080},{1910,1074,10,6},8,{120,72},{960,576});
+        row("clipped-top-left",{1920,1080},{-5,-3,15,9},8,{120,72},{960,576});
+        row("source-smaller-than-context",{80,48},{10,10,20,12},8,{80,48},{640,384});
+        row("minimum-short-axis",{1,500},{0,100,1,1},8,{1,120},{32,960});
+        row("fractional-bound",{1920,1080},{400,200,100,60},7.5,{128,77},{960,576});
+        row("upper-clamp",{1920,1080},{400,200,100,60},1e100,{120,72},{960,576});
+        row("lower-clamp",{1920,1080},{400,200,100,60},0,{960,576},{960,576});
+        row("nan",{1920,1080},{400,200,100,60},std::numeric_limits<double>::quiet_NaN(),{960,576},{960,576});
+        row("infinity",{1920,1080},{400,200,100,60},std::numeric_limits<double>::infinity(),{960,576},{960,576});
+    }
+    void pausedDetailGeometry()
+    {
+        QFETCH(QSize,source); QFETCH(QRect,request); QFETCH(double,magnification);
+        QFETCH(QSize,crop); QFETCH(QSize,detector);
+        const DetailFocus focus{request,magnification};
+        const auto region=DetailRegion(source,focus);
+        QCOMPARE(region.size(),crop);
+        QVERIFY(QRect(QPoint{},source).contains(region));
+        QVERIFY(region.contains(request.intersected(QRect(QPoint{},source))));
+        const double bound=DetailMagnification(focus);
+        QVERIFY(bound>=1 && bound<=8);
+        const auto input=DetectorInputSize(region.size(),bound,focus.detectorLongEdge);
+        QCOMPARE(input,detector);
+        QVERIFY(input.width()<=960 && input.height()<=960);
+        QCOMPARE(input.width()%32,0); QCOMPARE(input.height()%32,0);
+        QVERIFY(input.width()<=std::max(32.0,region.width()*bound));
+        QVERIFY(input.height()<=std::max(32.0,region.height()*bound));
+        QCOMPARE(DetailRegion(source,DetailFocus{region,magnification}),region);
+        QImage pixels(source,QImage::Format_ARGB32); pixels.fill(Qt::white);
+        QCOMPARE(pixels.copy(region).scaled(input,Qt::IgnoreAspectRatio).size(),detector);
     }
     void regionalRealizedInputDimensions_data()
     {

@@ -43,7 +43,7 @@ no artificial bordering pixel. The same plan governs live paint and exports.
 Immutable duplicate observations keep the original displayed geometry and
 carve only that retained proved footprint. A wider incoming box cannot uncover
 neighbouring uncertainty, and a narrower one cannot leave self-protection.
-Masks for risky notation/confusable tokens or invalid geometry remain protected
+Masks for unsupported notation, explicit backend rejection or invalid geometry remain protected
 when a nearby word is refined. Ordinary grouped prose can still be replaced
 by independently proved individual words; source identity, references and
 proof clocks remain unchanged.
@@ -80,9 +80,14 @@ visible source rectangle, only if the backend supports detail and detector
 resolution improves by at least 25% over established full-scene passes.
 
 The detector's long edge stays at most 960 pixels. The requested enlargement
-is clamped to 1–6 times; a tiny region is expanded around its centre to respect
+is clamped to 1–8 times; a tiny region is expanded around its centre to respect
 that bound. This is a maximum enlargement, not a promise to recover blurred
 characters or perform OCR at the display refresh rate.
+
+The default and cap increased from 6x to 8x after the historical measurements
+below. The minimum requested source-context long edge is now `ceil(960/8) = 120`
+pixels, bounded by the image. Existing detector alignment and proof requirements
+remain; see [ordinary labels and 8x detail](uct_token_policy_and_detail.md).
 
 At most 32 regions are attempted for one selection. Completed and abandoned
 regions are retained in that bounded coverage list, so panning back cannot

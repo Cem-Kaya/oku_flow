@@ -10,9 +10,10 @@ percentage alone cannot establish that a readable headline is being replaced.
 - Both fixed-width and bucketed GPU recognition read
   `scripts/integrate_castle_runtime.py`, but the notation filter rejected its
   underscores. Conventional file tokens with a one-to-sixteen-letter ASCII
-  extension now allow underscores and Windows path separators. Standalone
-  confusables, mixed ambiguous digit/letter tokens, `x_2`, `a_b` and math
-  notation keep their existing rejection rules.
+  extension now allow underscores and Windows path separators. That repair
+  retained standalone and mixed ASCII lookalike vetoes; the later owner-requested
+  [ordinary-label policy](uct_token_policy_and_detail.md) removes those vetoes.
+  `x_2`, `a_b` and unsupported math notation retain their rejection rules.
 - The crop merger joined the small script/diff column to the much larger
   `The tribe, the machines` title. That coupled their reference validation and
   shared font fitting. Row association now uses a nearby individual word with
@@ -94,7 +95,7 @@ not establish coverage at a different video position.
 
 There is no global four-times OCR zoom clamp in this baseline. Detection
 downsizes each region to a 960-pixel maximum edge; the overlapping detail grid
-has at most four columns and four rows. Those are separate limits. Six-times
+has at most four columns and four rows. Those are separate limits. Eight-times
 visible-region detail is implemented separately by the paused-navigation
 [geometry/detail repair](uct_oriented_detail_repair.md); the earlier coverage
 measurements below do not validate that follow-up.
