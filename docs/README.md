@@ -1,5 +1,12 @@
 # OkuFlow Documentation Guide
 
+[UCT GPU latency and throughput investigation](uct_throughput_latency_report_2026_10_23.md)
+reports the current resident pipeline audit, shared-desktop raw ABBA evidence,
+dense [recognition look-ahead](uct_recognition_lookahead.md), and a default-off
+[TensorRT graph experiment](uct_trt_graph_experiment.md). It separates Opus'
+first block from Sol's continuation, N8 results from N1 controls, strict
+diagnostic failures from semantic parity, and scoped tests from release gates.
+
 [Source-supported perspective text](uct_surface_perspective.md) explains bounded
 four-corner recovery, source refusals and projected glyph geometry.
 
