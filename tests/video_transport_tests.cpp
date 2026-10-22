@@ -6,6 +6,7 @@
 #include <QDir>
 #include <QLabel>
 #include <QLocale>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QSlider>
@@ -245,6 +246,94 @@ private slots:
         QTest::addColumn<qint64>("first");QTest::addColumn<qint64>("end");QTest::addColumn<QString>("readout");
         QTest::newRow("duration-shrink-5-to-1")<<240000LL<<300000LL<<QStringLiteral("04:00–05:00 · 01:00");
         QTest::newRow("natural-rolling-expiry")<<360000LL<<660000LL<<QStringLiteral("06:00–11:00 · 01:00");
+    }
+
+    void liveTimelineShowsEndWithoutChangingSeekableTime_data()
+    {
+        QTest::addColumn<bool>("recap");
+        QTest::newRow("rolling-recap") << true;
+        QTest::newRow("recording") << false;
+    }
+    void liveTimelineShowsEndWithoutChangingSeekableTime()
+    {
+        QFETCH(bool, recap);
+        FocusFixture fixture;
+        auto* transport = fixture.transport;
+        auto* slider = transport->timeline();
+        auto s = Recording();
+        s.source = recap ? VideoTransport::Source::Recap : VideoTransport::Source::Recording;
+        s.positionMs = 60000;
+        s.durationMs = 300000;
+        transport->SetSnapshot(s);
+        fixture.Focus(slider);
+        QSignalSpy seeks(transport, &VideoTransport::SeekRequested);
+        s.state = VideoTransport::State::Live;
+        s.playing = true;
+        s.firstMs = recap ? 60000 : 0;
+        s.durationMs = 360000;
+        s.positionMs = recap ? 362000 : 360000; // Camera can precede finalized history.
+        transport->SetSnapshot(s);
+        QCOMPARE(slider->value(), 60000); // Focused numeric inspection stays quiet.
+        QCOMPARE(slider->maximum(), recap ? 360000 : 300000);
+        QVERIFY(!slider->property("okuflowOutsideWindow").toBool());
+        auto* accessible = QAccessible::queryAccessibleInterface(slider);
+        QVERIFY(accessible);
+        if (recap) {
+            QVERIFY(!accessible->valueInterface());
+            QCOMPARE(accessible->text(QAccessible::Value), QStringLiteral("01:00–06:00 · 06:02"));
+        }
+        const auto liveImage = slider->grab().toImage();
+        QVERIFY(!liveImage.isNull());
+
+        // The actual styled thumb and filled groove must look exactly like
+        // the endpoint, including while a reader inspects an older value.
+        auto end = s;
+        end.state = VideoTransport::State::Paused;
+        end.playing = false;
+        end.positionMs = end.durationMs;
+        transport->SetSnapshot(end);
+        QCOMPARE(liveImage, slider->grab().toImage());
+        QCOMPARE(seeks.size(), 0);
+
+        transport->SetSnapshot(s);
+        fixture.Key(Qt::Key_Home);
+        QCOMPARE(seeks.size(), 1);
+        QCOMPARE(seeks.last().front().toLongLong(), s.firstMs);
+        // An explicit seek immediately shows its target, even before the app
+        // acknowledges the transition out of Live.
+        QVERIFY(slider->grab().toImage() != liveImage);
+        s.state = VideoTransport::State::Paused;
+        s.playing = false;
+        s.positionMs = s.firstMs;
+        transport->SetSnapshot(s);
+        auto* value = accessible->valueInterface();
+        QVERIFY(value);
+        QCOMPARE(value->currentValue().toLongLong(), s.firstMs);
+        QCOMPARE(value->maximumValue().toLongLong(), s.durationMs);
+
+        // Jumping back to live restores the right-edge marker; grabbing that
+        // marker still uses the real, frozen range and commits one seek.
+        transport->SetSnapshot(s = end);
+        s.state = VideoTransport::State::Live;
+        s.playing = true;
+        transport->SetSnapshot(s);
+        const int priorSeeks = seeks.size();
+        const QPoint handle(slider->width() - 10, slider->height() / 2);
+        QTest::mousePress(slider, Qt::LeftButton, Qt::NoModifier, handle);
+        QVERIFY(slider->isSliderDown());
+        auto newer = s;
+        newer.durationMs += 2000;
+        newer.positionMs += 2000;
+        transport->SetSnapshot(newer);
+        QCOMPARE(slider->maximum(), int(s.durationMs));
+        const QPoint middle(slider->width() / 2, slider->height() / 2);
+        QMouseEvent move(QEvent::MouseMove, middle, slider->mapToGlobal(middle),
+                         Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(slider, &move);
+        QTest::mouseRelease(slider, Qt::LeftButton, Qt::NoModifier, middle);
+        QCOMPARE(seeks.size(), priorSeeks + 1);
+        const auto target = seeks.last().front().toLongLong();
+        QVERIFY(target > s.firstMs && target < s.durationMs);
     }
     void outOfWindowHoldRemovesNumericRangeWithoutChangingDisplayedTime()
     {

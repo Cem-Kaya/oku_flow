@@ -22,6 +22,7 @@
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QStyle>
+#include <QStyleOptionSlider>
 #include <QTimer>
 #include <QTransform>
 #include <QVBoxLayout>
@@ -48,6 +49,32 @@ int SliderTime(qint64 milliseconds)
     return static_cast<int>(std::clamp<qint64>(milliseconds, 0,
                                              std::numeric_limits<int>::max()));
 }
+
+// Live is a viewing mode, not a claim that its pending camera pixels are
+// already seekable. Draw its thumb/fill at the right edge without changing
+// the inspected numeric value, verified range or true timestamp text. Qt uses
+// this same style option for native handle hit testing as well as painting.
+class TimelineSlider final : public QSlider {
+public:
+    using QSlider::QSlider;
+    void SetFollowingLive(bool following)
+    {
+        if (followingLive_ == following) return;
+        followingLive_ = following;
+        update();
+    }
+protected:
+    void initStyleOption(QStyleOptionSlider* option) const override
+    {
+        QSlider::initStyleOption(option);
+        if (followingLive_ && !isSliderDown()) {
+            option->sliderPosition = option->maximum;
+            option->sliderValue = option->maximum;
+        }
+    }
+private:
+    bool followingLive_{};
+};
 
 class SourceLabel final : public QLabel {
 public:
@@ -217,7 +244,7 @@ VideoTransport::VideoTransport(QWidget* parent) : QWidget(parent)
     collapseButton_->setIconSize(QSize(14, 14));
     sourceRow->insertWidget(0, collapseButton_);
 
-    timeline_ = new QSlider(Qt::Horizontal, this);
+    timeline_ = new TimelineSlider(Qt::Horizontal, this);
     timeline_->setObjectName(QStringLiteral("videoTimeline"));
     timeline_->setMinimumSize(kMinTimelineWidth, kButtonExtent);
     timeline_->setSingleStep(1000);
@@ -277,6 +304,7 @@ VideoTransport::VideoTransport(QWidget* parent) : QWidget(parent)
     connect(timeline_, &QSlider::sliderPressed, this, [this]() {
         dragging_ = true;
         dragGeneration_ = snapshot_.sourceGeneration;
+        RefreshTimeline(false);
     });
     connect(timeline_, &QSlider::sliderMoved, this, [this](int position) {
         timeLabel_->setText(QStringLiteral("%1 / %2").arg(TimeText(position),
@@ -400,10 +428,9 @@ void VideoTransport::SetSnapshot(const Snapshot& snapshot)
     snapshot_.positionMs = std::max<qint64>(0, snapshot_.positionMs);
     const bool outside=snapshot_.source==Source::Recap &&
         (snapshot_.positionMs<snapshot_.firstMs || snapshot_.positionMs>snapshot_.durationMs);
+    const bool wasOutside = timeline_->property("okuflowOutsideWindowPosition").isValid();
     timeline_->setProperty("okuflowOutsideWindowPosition",outside?QVariant(snapshot_.positionMs):QVariant());
-    if(timeline_->property("okuflowOutsideWindow").toBool()!=outside) {
-        timeline_->setProperty("okuflowOutsideWindow",outside);
-        timeline_->style()->unpolish(timeline_);timeline_->style()->polish(timeline_);timeline_->update();
+    if (changedDocument || outside != wasOutside) {
         QAccessibleEvent event(timeline_,QAccessible::ObjectAttributeChanged);QAccessible::updateAccessibility(&event);
     }
     const bool hasSource = snapshot_.source != Source::None;
@@ -624,8 +651,20 @@ void VideoTransport::AnnounceSettledState()
 
 void VideoTransport::RefreshTimeline(bool force)
 {
-    if (dragging_) return; // Freeze both range and pointer-to-time mapping.
     const qint64 selected = SeekBaseline();
+    const bool followingLive = (snapshot_.source == Source::Recap || snapshot_.source == Source::Recording) &&
+        snapshot_.state == State::Live && !pendingSeekMs_ && snapshot_.seekable &&
+        snapshot_.durationMs > snapshot_.firstMs;
+    static_cast<TimelineSlider*>(timeline_)->SetFollowingLive(followingLive);
+    const bool hidePlayhead = snapshot_.source == Source::Recap && !followingLive && !dragging_ &&
+        (selected < snapshot_.firstMs || selected > snapshot_.durationMs);
+    if (timeline_->property("okuflowOutsideWindow").toBool() != hidePlayhead) {
+        timeline_->setProperty("okuflowOutsideWindow", hidePlayhead);
+        timeline_->style()->unpolish(timeline_);
+        timeline_->style()->polish(timeline_);
+        timeline_->update();
+    }
+    if (dragging_) return; // Freeze both range and pointer-to-time mapping.
     timeLabel_->setText(QStringLiteral("%1 / %2").arg(TimeText(selected), TimeText(snapshot_.durationMs)));
     if(snapshot_.source==Source::Recap)
         timeLabel_->setText(QStringLiteral("%1–%2 · %3").arg(TimeText(snapshot_.firstMs),TimeText(snapshot_.durationMs),TimeText(selected)));
@@ -696,6 +735,12 @@ bool VideoTransport::eventFilter(QObject* watched, QEvent* event)
         QTimer::singleShot(0, this, &VideoTransport::UpdateActions);
     }
     if (watched == timeline_) {
+        if (event->type() == QEvent::MouseButtonPress && snapshot_.state == State::Live &&
+            (snapshot_.source == Source::Recap || snapshot_.source == Source::Recording)) {
+            // An explicit pointer interaction ends focused inspection. Bring
+            // the real range/value up to date before Qt maps the live thumb.
+            RefreshTimeline(true);
+        }
         if (event->type() == QEvent::Wheel) {
             auto* wheel = static_cast<QWheelEvent*>(event);
             if (timeline_->hasFocus() && !dragging_ && IsActionReady(timeline_) &&

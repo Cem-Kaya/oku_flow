@@ -443,7 +443,13 @@ admission callbacks before advancing, so setup cannot expire otherwise current
   media. `MainWindow::videoTransport`, `openVideoButton`, `openVideoRequested`
   and `videoFileDropped` host it below the render surface. Drag mappings stay
   fixed until release; the slider supplies numeric milliseconds and human time
-  through its accessible value interface. See [transport UI](video_transport.md).
+  through its accessible value interface. Internal `TimelineSlider::SetFollowingLive`
+  and `initStyleOption` draw the live recap/recording thumb and fill at the right
+  edge without changing numeric inspection or verified history. `RefreshTimeline`
+  restores ordinary target geometry for seeking/dragging and hides only expired
+  paused playheads; mouse press refreshes actual bounds before hit testing.
+  Out-of-window recap time remains textual, without a numeric RangeValue.
+  See [transport UI](video_transport.md).
 - `TokenDisposition`, confidence and protected geometry preserve rejected OCR
   spans through Paddle decoding, `PrepareLines`, reading projection and paint.
   `RecognitionResult::sourcePixelDigest` is computed on the worker without row

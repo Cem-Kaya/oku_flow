@@ -11,6 +11,10 @@ keyboard/touch target and the jump action. It preserves playback and current
 snapshot state and cancels unfinished drags without a seek.
 Viewport Space still issues Freeze/Resume while collapsed through separate
 command readiness; hidden chrome remains outside keyboard focus order.
+While following live recap or recording, the timeline stays filled with its
+marker at the right edge. This visual live indicator does not extend seekable
+history or move a focused reader's numeric inspection. Scrubbing shows its
+actual target; an expired paused hold still hides its clamped marker.
 
 `AssistantChatView` renders the shared app-owned chat session in Advanced and
 floating Explain, with one compact header, a fixed composer and settings/history

@@ -37,6 +37,13 @@ accessible names and tooltips when the visible label elides. Time readouts retai
 hours for long recordings and use
 the active locale's digits. The displayed selected time can exceed the verified
 seekable range while a live scene is pending; the slider never exceeds it.
+While following live recap or an ongoing recording, the filled groove and
+playhead stay at the right edge. This indicates live viewing even when the
+camera is ahead of the last finalized segment. The displayed time and seekable
+bounds stay exact; no pending tail becomes seekable. A focused reader's numeric
+inspection remains still. Scrubbing or seeking immediately restores the target
+playhead, and Jump to live restores the right-edge marker. An expired paused
+hold outside retained history still hides its misleading clamped playhead.
 
 A small chevron in the metadata row collapses the transport controls. Its
 native keyboard/touch target remains 44 DIP. Collapse preserves the playback
@@ -82,6 +89,10 @@ readout only; releasing commits the latest absolute target exactly once.
 Snapshots do not start decode work, and source replacement discards a pending
 drag. During playback autonomous slider updates occur at most once a second
 and pause while the slider has keyboard focus.
+The internal `TimelineSlider::initStyleOption` supplies the live endpoint only
+to native style painting/hit testing. Before a live pointer press, `RefreshTimeline`
+refreshes the actual range and value; dragging then uses normal slider geometry
+and freezes that mapping until release. This does not emit an autonomous seek.
 
 ## Keyboard and accessibility
 

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Keep a visible right-edge playhead and filled timeline while following live
+  RAM recap or an ongoing recording. Scrubbing restores the selected position;
+  actual history bounds and focused screen-reader values remain unchanged.
+
 - Process paused video and manual Freeze as standalone images. Eligible OCR
   can draw and expose positioned screen-reader text from the exact held frame
   without a previous/following-frame requirement. Zoom detail uses that same

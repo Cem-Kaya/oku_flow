@@ -24,6 +24,11 @@ misleading clamped playhead. Resume or a seek enters actual retained history.
 The old pin still counts toward the two-pin limit. Numeric RangeValue is absent
 while the held/live position is outside the seek window; ordinary timeline
 actions still seek within actual bounds and Jump to live remains available.
+While following live, the filled timeline and marker remain at the right edge
+as a live-view indicator, including while the current camera time is ahead of
+finalized history. The true time and available range remain separate. Seeking
+back restores the selected playhead; an expired paused hold keeps its marker
+hidden. Recording review uses the same live-edge presentation.
 Encoder pressure, real camera stalls and codec unavailability are not replaced
 by duplicate frames or invented history. A byte-limited shorter span remains
 visible as its actual bounds. Jump to live waits for a new camera presentation.
