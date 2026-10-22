@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Document initially paused frame-zero UCT and sparse-video proof limits; add
+  readiness, late-neighbour and native opening-frame regression coverage.
+  This investigation changes no production glyph-admission policy or lifecycle.
+
 - Commit immutable UCT refinement words together with their complete protection;
   a late unsafe cut or storage limit leaves the previous candidate state intact.
   Refuse optional regional changes whose conservative punctuation pixels would

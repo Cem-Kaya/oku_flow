@@ -1,5 +1,16 @@
 # OkuFlow Tests
 
+Initial paused frame-zero coverage is documented in
+[the source investigation](../docs/uct_initial_paused_frame.md).
+`initialPausedFrameZeroWaitsForReadyAndNeighbour` has eight model-free
+CPU/resident-oracle rows for backend/selected-job/neighbour ordering without
+Play; `initialPausedFrameZeroWithoutIndependentNeighbour` has four refusal rows.
+`pausedBridgeRefinesAfterCorroboration` now starts at frame/PTS zero too.
+The existing `immutable_uct_contract` includes these slots. `LongGopSeeking`
+adds real initial-frame/following-neighbour assertions to `video_playback_contract`.
+These additions are unrun pending parent resource coordination; private
+two-frame CPU extraction is provenance only, not a test pass or lifecycle fix.
+
 `immutableCandidateProtectionRefusalIsAtomic` covers late semantic-risk refusal
 after an append and mixed append/fragment exhaustion at 8191 stored slots.
 `activeRegionalRasterWithdrawalIsAtomic` covers ordinary and tilted words

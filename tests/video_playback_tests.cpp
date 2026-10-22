@@ -257,6 +257,25 @@ void LongGopSeeking(VideoPlayback& player) {
     Expect(Wait(settled) && snapshot.frame && snapshot.state==VideoPlaybackState::Paused,
            "committed long-GOP source opens without an encoder or GPU");
     if(!snapshot.frame)return;
+    {
+        const auto openingFrame = snapshot.frame;
+        const auto openingFile = snapshot.file;
+        Expect(openingFrame->pts100ns == 0 && openingFrame->sampleId == 0,
+               "initial paused selection retains real frame-zero PTS and sample identity");
+        Expect(Wait([&] {
+            snapshot = player.Snapshot();
+            return snapshot.requestGeneration == request && snapshot.neighborFrame;
+        }), "initial paused Open obtains a real following neighbour without Play or Pause");
+        Expect(snapshot.frame == openingFrame && snapshot.state == VideoPlaybackState::Paused &&
+            snapshot.file.SameFile(openingFile) && snapshot.neighborFrame &&
+            snapshot.neighborFrame->requestGeneration == request &&
+            snapshot.neighborFrame->sampleId != openingFrame->sampleId &&
+            snapshot.neighborFrame->pts100ns > openingFrame->pts100ns &&
+            snapshot.neighborFrame->pts100ns - openingFrame->pts100ns <= 2'500'000,
+            "initial neighbour arrival preserves the exact selected lease and bounded real PTS gap");
+        Expect(snapshot.readyFrames <= snapshot.lookaheadFrames && snapshot.decodedBytes <= snapshot.decodedByteLimit &&
+            player.TakeAudio().empty(), "initial paused neighbour stays in the existing silent decoded quotas");
+    }
     snapshot={};request=player.Seek100ns(30'000'000);
     Expect(Wait(settled) && snapshot.frame && snapshot.state==VideoPlaybackState::Paused && snapshot.frame->pts100ns>=30'000'000,
            "long-GOP seek reaches three seconds beyond 120 preroll reads");

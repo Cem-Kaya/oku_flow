@@ -426,6 +426,14 @@ admission callbacks before advancing, so setup cannot expire otherwise current
   scheduler, submit at most a selected and optional corroborating pass, and use
   an independent job deadline. Unchanged completed stills schedule no periodic
   OCR/probes; view updates only reproject. See [immutable controller](uct_immutable_controller.md).
+  Initial native frame/PTS zero is valid without prior Play. The controller's
+  `initialPausedFrameZeroWaitsForReadyAndNeighbour` and
+  `initialPausedFrameZeroWithoutIndependentNeighbour` fixtures cover readiness,
+  late ancillary evidence and retained original glyphs without independent
+  proof. `LongGopSeeking` checks actual opening-frame/following-sample leases.
+  These new rows are unrun pending parent build coordination; the private
+  sparse clip's CPU provenance is separate from runtime acceptance. See
+  [initial paused source investigation](uct_initial_paused_frame.md).
 - `UctAdvancingMediaScene` and `OnAdvancingMediaPresented` bind successful
   playback receipts to real media PTS and independent wall-clock job deadlines.
   They pace residual probes at 80 ms and OCR at a 350 ms minimum/1,500 ms
