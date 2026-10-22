@@ -1,5 +1,9 @@
 # Ultra Clear Text (experimental, development)
 
+Resident GPU validation uses [cooperative integral rows](uct_gpu_integral.md),
+preserving exact table values and downstream source/proof policy. This stage's
+private timing is separate from inference and live presentation measurements.
+
 CPU fallback tensor preparation shares bilinear addressing across B/G/R while
 retaining baseline float operations, borders, formats and padding. The
 [CPU sampling diagnostic](uct_cpu_sampling.md) compares full tensors against

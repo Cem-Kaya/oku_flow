@@ -1,5 +1,11 @@
 # OkuFlow Tests
 
+`uct_paddle_cuda`'s `gpuAlgorithmsAndOwnedInputs` additionally compares full
+validation integrals (including zero borders) against an integer CPU oracle
+across warp/tile tails, decimations, padded pitch and repeated poisoned buffers.
+See [the resident GPU integral candidate](../docs/uct_gpu_integral.md) for the
+separate private source-linked timing protocol and acceptance limits.
+
 CPU UCT sampling's existing `normalizationAndBounds` slot now compares complete
 normalization/rectification tensors against independently compiled exact 8f02
 function bodies, including tiny, padded-row, format, tilt, border and invalid

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Cooperatively scan resident UCT validation-integral rows on the GPU,
+  preserving exact sampled luma and table values, downstream proof policy,
+  buffers and the existing two-launch contract.
+
 - Share bilinear pixel addressing across B/G/R during CPU UCT tensor
   preparation, preserving the existing float operations and sampling rules.
   Device-resident GPU recognition is unchanged.

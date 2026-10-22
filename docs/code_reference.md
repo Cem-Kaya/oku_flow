@@ -739,6 +739,12 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   baseline function bodies, while `uct_cpu_sampling_test_cases.hpp` supplies
   whole-tensor regression and explicit `cpuSamplingBenchmark` diagnostics.
   See [CPU sampling scope and measurement](uct_cpu_sampling.md).
+- `gpu::ValidationIntegral` retains two launches: the private
+  `validation::integralRows` uses one 256-thread block per row with integer warp
+  prefix scans, eight shared warp offsets and a tile carry; `integralColumns`
+  is unchanged. Every luma/table value and zero border retain serial policy.
+  The resident `Prepare` path uses this table before references/matching.
+  See [GPU integral scope and evidence](uct_gpu_integral.md).
 - `CreateDefaultRecognizer` delegates to `CreateAutomaticRecognizer`:
   TensorRT, Paddle CPU, Windows. The candidate-vector overload supports exact
   fallback tests. Private `AutomaticRecognizer` retires unavailable/failing
