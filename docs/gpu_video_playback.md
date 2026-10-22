@@ -156,7 +156,9 @@ processed CUDA scene(s), CUDA scratch, UCT analysis/probe/model buffers, viewpor
 recorder Original pool and one explicit save clone are distinct budgets. Neither
 96 MiB nor 256 MiB is a total application-RAM/VRAM limit. Pressure drops optional
 lookahead/corroboration and preserves bounded ownership rather than growing a
-history buffer. Normal unrecorded camera use still has no playback history.
+decoded history buffer. Live camera now keeps a separately bounded compressed
+RAM recap; it never expands this decoded-frame allowance. See
+[recap ownership and quality](live_ram_recap.md).
 
 ## Evidence scope
 

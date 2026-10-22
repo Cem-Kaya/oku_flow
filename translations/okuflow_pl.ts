@@ -1,8 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="pl" sourcelanguage="en_US">
-    <context>
-        <name>OkuFlow</name>
+<context>
+    <name>OkuFlow</name>
+    <message>
+        <source>Live recap duration (minutes)</source>
+        <translation>Czas powtórki wideo z kamery (minuty)</translation>
+    </message>
+    <message>
+        <source>Estimated video history: %1 MB</source>
+        <translation>Szacowana pamięć na historię wideo: %1 MB</translation>
+    </message>
+    <message>
+        <source>Additional memory is used while buffering, replaying or freezing video.</source>
+        <translation>Buforowanie, ponowne odtwarzanie i zatrzymanie klatki wideo wymagają dodatkowej pamięci.</translation>
+    </message>
+        <message>
+            <source>Live recap</source>
+            <translation>Powtórka wideo z kamery</translation>
+        </message>
+        <message>
+            <source>Buffering live video…</source>
+            <translation>Buforowanie wideo na żywo…</translation>
+        </message>
         <message>
             <source>Action in progress.</source>
             <translation>Działanie w toku.</translation>

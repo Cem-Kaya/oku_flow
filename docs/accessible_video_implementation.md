@@ -17,7 +17,9 @@ Stopping that recording preserves the selected position and playback intent.
 The bottom transport always names its source. Its forward button follows the
 live camera for the current recording, or holds the last decodable frame of a
 saved file. Resume continues from the held position. An ordinary live camera
-without a recording has no timeline or background history collector.
+without a recording now has a separate bounded silent RAM recap; see
+[the later live recap contract](live_ram_recap.md). Recording archive ownership
+and all historical acceptance results below remain distinct.
 
 New video recordings contain one clean full-source Original, including optional
 microphone audio. Necessary conversion and orientation are allowed; viewport

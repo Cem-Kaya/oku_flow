@@ -244,6 +244,7 @@ void OkuFlowApp::ApplyPersistentSettings(const settings::PersistentSettings sett
     if (recordingManager_) {
         recordingManager_->SetCanvasMode(settings.recordingCanvasMode);
     }
+    if(mainWindow_)mainWindow_->setLiveRecapMinutes(settings.liveRecapMinutes);
     if (uiState_->microphoneCombo_) {
         auto block =
             uiState_->BlockSignals(uiState_->microphoneCombo_);

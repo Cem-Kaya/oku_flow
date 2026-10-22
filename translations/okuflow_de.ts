@@ -1,8 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="de_DE" sourcelanguage="en_US">
-    <context>
-        <name>OkuFlow</name>
+<context>
+    <name>OkuFlow</name>
+    <message>
+        <source>Live recap duration (minutes)</source>
+        <translation>Dauer des Live-Rückblicks (Minuten)</translation>
+    </message>
+    <message>
+        <source>Estimated video history: %1 MB</source>
+        <translation>Geschätzter Arbeitsspeicher für den Videoverlauf: %1 MB</translation>
+    </message>
+    <message>
+        <source>Additional memory is used while buffering, replaying or freezing video.</source>
+        <translation>Beim Puffern, Wiedergeben oder Einfrieren von Videos wird zusätzlicher Arbeitsspeicher verwendet.</translation>
+    </message>
+        <message>
+            <source>Live recap</source>
+            <translation>Live-Rückblick</translation>
+        </message>
+        <message>
+            <source>Buffering live video…</source>
+            <translation>Livevideo wird zwischengespeichert…</translation>
+        </message>
         <message>
             <source>Action in progress.</source>
             <translation>Aktion wird ausgeführt.</translation>

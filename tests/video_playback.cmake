@@ -5,6 +5,7 @@ if(WIN32)
         ${PROJECT_SOURCE_DIR}/src/common/video_ffmpeg_reader.cpp
         ${PROJECT_SOURCE_DIR}/src/common/video_gpu_decoder.cpp
         ${PROJECT_SOURCE_DIR}/src/common/video_archive.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/video_memory_stream.cpp
         ${PROJECT_SOURCE_DIR}/src/common/media_writer.cpp
         ${PROJECT_SOURCE_DIR}/src/common/recording_contract.cpp)
     target_include_directories(video_playback_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)

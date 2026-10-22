@@ -3,6 +3,13 @@
 This module owns Qt startup, application wiring, settings persistence,
 interaction orchestration, and recording sessions.
 
+`app_video_playback.cpp` additionally owns silent live RAM recap selection and
+the existing transport, independent of recording/file documents. The clean
+Original path keeps buffering during review; bounded presented-scene leases
+support exact manual Freeze during encoder warmup. Source/format/stop reset
+old recap authority, and jump-live restores camera view intent. See
+[recap ownership](../../docs/live_ram_recap.md).
+
 UCT's opt-in regional controller pacing supplements baseline full reads with
 one idle-only bounded region, without updating full timers or held acquisition
 proof. Paused selected/neighbour refinement remains separate. See

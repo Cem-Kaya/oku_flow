@@ -1,8 +1,10 @@
 # Native recording archive and video playback (development)
 
 The player uses Windows Media Foundation and the existing Original recorder.
-It creates no history encoder, duplicate recording, microphone, network client,
-or media-framework dependency. These are development contracts; native AVC/AAC,
+The archive player creates no duplicate recording, microphone, network client,
+or media-framework dependency. The later [RAM recap](live_ram_recap.md) adds a
+separate bounded video-only history encoder and OpenMemory source, independently
+of on-disk recording archives. These are development contracts; native AVC/AAC,
 AV1 and active-fragment acceptance must be reported separately from model-free
 tests and from the shipping Windows matrix.
 

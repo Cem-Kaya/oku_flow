@@ -20,6 +20,12 @@ successful local AV1 decoding does not grant redistribution rights to an
 external codec extension. Existing Qt accessibility APIs serve the native
 transport under the Qt terms below.
 
+Live RAM recap reuses those Windows Media Foundation H.264 encoder/decoder,
+COM and existing D3D APIs through first-party bounded heap-stream/ring code.
+It adds no bundled codec, media SDK, external model or third-party source.
+Synthetic in-memory codec fixtures contain original generated colour patterns;
+no external footage/audio/fonts or media files enter application payloads.
+
 The new localization resources are machine-assisted translations of first-party
 public UI text generated during development. They introduce no translation SDK
 or runtime service dependency. See [localization provenance and validation](localization.md).

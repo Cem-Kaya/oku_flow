@@ -12,12 +12,17 @@ the fold or surrounding it with permanent tool panels.
 
 ## Simple Mode
 
+The shared Settings tab's View and navigation section owns live recap duration
+(1–5 minutes, default5), its format-dependent decimal-MB estimate, and the
+separate working-memory helper. The control is independent of image quick
+modes and recording; changing it preserves saved camera/zoom/framing intent.
+
 ### Selected-video transport (development)
 
 When a recording or saved video is selected, a native transport occupies its
 own layout row below the render surface in both modes. It never covers camera
 pixels. Its source label distinguishes the current recording from a saved file;
-ordinary live camera use has no timeline. Native Pause/Resume, timeline,
+live camera use also has a distinct silent RAM recap timeline. Native Pause/Resume, timeline,
 forward-to-live/end, Return to camera, Mute and Save frame controls retain
 keyboard and accessibility semantics. Opening a file first finalizes recording.
 Open a file through Settings > Camera > View video, Ctrl+O or a single local-file

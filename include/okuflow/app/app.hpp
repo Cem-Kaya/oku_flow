@@ -19,6 +19,7 @@
 #include "okuflow/app/agent/camera_source_intent.hpp"
 #include "okuflow/app/recording_manager.hpp"
 #include "okuflow/app/presented_original_cache.hpp"
+#include "okuflow/app/frozen_camera_scene.hpp"
 #include "okuflow/app/pipeline_orchestrator.hpp"
 #include "okuflow/app/settings_controller.hpp"
 #include "okuflow/app/ultra_clear_text_controller.hpp"
@@ -204,6 +205,21 @@ private:
     void ShutdownVideoPlayback();
     void OpenVideoFile(const QString& path);
     void PollVideoPlayback();
+    bool LiveRecapActive() const;
+    bool LiveRecapWantsFrame(UINT width, UINT height, std::int64_t clock) const;
+    void ObserveLiveRecapSource(const MediaFrame& frame);
+    void SubmitLiveRecapOriginal(const CapturedFrame& frame);
+    QString LiveOriginalRetentionId() const;
+    void ResetLiveRecap();
+    bool OpenLiveRecapAt(std::int64_t pts100ns, bool play);
+    void PollLiveRecap();
+    bool PresentFrozenMediaScene();
+    void RetainPresentedCameraScene(std::uint64_t sceneEpoch, std::uint64_t sceneSequence,
+                                   std::optional<std::int64_t> committedCaptureClock100ns,
+                                   const void* texture, UINT width, UINT height,
+                                   const ViewTransform& transform, const std::uint8_t* cpuPixels = nullptr,
+                                   std::uint64_t contentGeneration = 0, bool focusMarker = false,
+                                   float focusX = 0.5f, float focusY = 0.5f);
     void OnVideoRecordingStarted(const RecordingSessionInfo& session);
     void OnVideoRecordingStopping(const RecordingSessionInfo& session);
     void OnVideoRecordingEnded(const RecordingSessionInfo& session);
@@ -729,6 +745,26 @@ private:
     std::int64_t mediaHoldCaptureClock100ns_{-1};
     QElapsedTimer mediaHoldReadbackTimer_;
     PresentedOriginalCache presentedOriginalCache_;
+    struct PresentedCameraCaptureStamp {
+        std::uint64_t epoch{}, sequence{};
+        std::int64_t clock100ns{-1};
+    };
+    // Metadata survives a failed pixel clone and consumed latency receipt.
+    std::optional<PresentedCameraCaptureStamp> presentedCameraCapture_;
+    struct FrozenCameraScene {
+        GpuVideoFrame gpu;
+        std::shared_ptr<const std::vector<std::uint8_t>> pixels;
+        UINT width{}, height{};
+        std::uint64_t epoch{}, sequence{}, sceneRevision{};
+        std::uint64_t contentGeneration{};
+        const void* sourceTexture{};
+        std::int64_t captureClock100ns{-1};
+        ViewTransform transform;
+        FrozenSceneRecipe recipe;
+    };
+    std::optional<FrozenCameraScene> presentedCameraScene_;
+    bool mediaHoldBakedScene_{};
+    FrozenSceneRecipe mediaHoldDisplayRecipe_;
     PresentedOriginalCache::ViewRecipe cudaSceneViewRecipe_;
     ViewTransform mediaHoldViewTransform_;
     int mediaHoldCameraRotation_{};

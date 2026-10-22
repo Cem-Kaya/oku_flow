@@ -2,6 +2,7 @@
 
 #ifdef _WIN32
 #include "okuflow/common/video_archive.hpp"
+#include "okuflow/common/video_memory_stream.hpp"
 #include "okuflow/common/video_gpu_decoder.hpp"
 #include <cstddef>
 #include <cstdint>
@@ -41,6 +42,7 @@ struct VideoPlaybackSnapshot {
     std::shared_ptr<const VideoPlaybackFrame> neighborFrame;
     std::wstring path;
     VideoFileIdentity file;
+    std::shared_ptr<const VideoMemorySource> memorySource;
     std::uint32_t videoTrackId{};
     std::int64_t duration100ns{}, seekableEnd100ns{-1};
     std::size_t decodedBytes{}, peakDecodedBytes{}, decodedByteLimit{}, decodeWorkingBytes{};
@@ -93,6 +95,10 @@ public:
     VideoPlayback& operator=(const VideoPlayback&) = delete;
     std::uint64_t OpenFile(std::wstring path);
     std::uint64_t OpenArchive(std::shared_ptr<RecordingArchive> archive);
+    // Immutable heap media uses the same native decoder and generation/lease
+    // contracts. keeper pins the ring segment without inventing a file ID.
+    std::uint64_t OpenMemory(std::shared_ptr<const VideoMemorySource> source,
+                             std::shared_ptr<const void> keeper = {});
     std::uint64_t Seek100ns(std::int64_t target);
     std::uint64_t JumpToEnd();
     // Applies to subsequent opens. The UI supplies the presenter's exact LUID

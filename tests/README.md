@@ -22,6 +22,42 @@ eligibility; counts alone cannot pass. CPU/CUDA source colors and complete fit
 bounds must match, except the explicitly constructed GPU propagation-cap
 fallback. Resident cases forbid host image egress. See
 [diagnosis, provenance and validation status](../docs/uct_color_startup_repair.md#small-upright-source-ink-2026-10-22-development).
+## Live RAM recap production seams
+
+`video_memory_stream_contract` covers actual bounded heap IStream/MF adapters,
+overflow/mutation refusal, cursor clones, successful-Finalize sealing and
+consumer lifetimes. `video_memory_native_h264` is serial native Windows CPU
+H.264 encode/decode/keyframe/PTS evidence using only synthetic memory media.
+`video_recap_contract` covers whole-segment time/byte/keyframe-bound eviction,
+source epochs and counted evicted pins. `video_recap_native_codec` exercises
+the production OpenMemory decoder, exact issued Pause leases, real <=250 ms
+neighbours, stale seek cancellation and continued async producer admission
+while a consumer holds a prior scene. `video_recap_native_4k30` separately
+checks a 65-frame full-resolution 4K30 CPU codec capability and actual compressed
+sample count/PTS, including a capture hole; its elapsed
+time is not sustained physical camera FPS or five-minute soak evidence.
+Transport and opt-in actual-app offscreen rows exercise actual rolling bounds
+and exact Freeze before any encoded segment, without camera/audio endpoints.
+Model-free composition covers held CPU/GPU sampling, focus markers and rotation.
+The app's deferred-receipt rows bind Freeze to the committed epoch/sequence and
+clock despite newer ingress, failed cloning, same-capture reallocation and
+redraw after latency consumption. Reset removes that authority; unknown timing
+refuses manual Pause without entering a pending resume state.
+Ring/transport seams cover5→1 minute trimming while a four-minute-old frame
+remains pinned at its true textual position, plus natural expiry. Numeric
+RangeValue is absent outside the seek window and valid after explicit reentry.
+
+Use tracked `agent_check.ps1` selection and `run_test_gate.ps1` with exact test
+names, serial codec ownership and GUI excluded. The granted 2026-10-22 CPU
+selection passed 11 of 230 cases, including synthetic AAC/gap verification.
+Final source/executable/catalog hashes matched before and after the run; all
+initial failures remain archived. The follow-up committed-stamp repair rebuilt
+the CPU app/fixture and passed the two-case `native_app_control_offscreen` /
+`video_recap_contract` gate, retaining matching pre/post input hashes. That
+narrow repair does not rerun the earlier native codec selection.
+The full matrix is still required. These fixtures do
+not establish native desktop/screen-reader, GPU, camera, long-soak, installer
+or release acceptance. See [the contract](../docs/live_ram_recap.md).
 
 ## Optional active regional GPU proof
 

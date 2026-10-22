@@ -1,8 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="tr_TR" sourcelanguage="en_US">
-    <context>
-        <name>OkuFlow</name>
+<context>
+    <name>OkuFlow</name>
+    <message>
+        <source>Live recap duration (minutes)</source>
+        <translation>Canlı geri sarma süresi (dakika)</translation>
+    </message>
+    <message>
+        <source>Estimated video history: %1 MB</source>
+        <translation>Video geçmişi için tahmini bellek: %1 MB</translation>
+    </message>
+    <message>
+        <source>Additional memory is used while buffering, replaying or freezing video.</source>
+        <translation>Video arabelleğe alınırken, yeniden oynatılırken veya dondurulurken ek bellek kullanılır.</translation>
+    </message>
+        <message>
+            <source>Live recap</source>
+            <translation>Canlı görüntüyü geri sar</translation>
+        </message>
+        <message>
+            <source>Buffering live video…</source>
+            <translation>Canlı video arabelleğe alınıyor…</translation>
+        </message>
         <message>
             <source>Action in progress.</source>
             <translation>İşlem sürüyor.</translation>

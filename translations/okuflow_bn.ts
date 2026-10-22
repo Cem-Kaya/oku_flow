@@ -1,8 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="bn" sourcelanguage="en_US">
-    <context>
-        <name>OkuFlow</name>
+<context>
+    <name>OkuFlow</name>
+    <message>
+        <source>Live recap duration (minutes)</source>
+        <translation>আবার দেখা যাবে এমন ভিডিওর দৈর্ঘ্য (মিনিট)</translation>
+    </message>
+    <message>
+        <source>Estimated video history: %1 MB</source>
+        <translation>ভিডিও হিস্ট্রির জন্য আনুমানিক মেমরি: %1 MB</translation>
+    </message>
+    <message>
+        <source>Additional memory is used while buffering, replaying or freezing video.</source>
+        <translation>ভিডিও বাফার করা, আবার চালানো বা ফ্রেম স্থির রাখার সময় অতিরিক্ত মেমরি ব্যবহৃত হয়।</translation>
+    </message>
+        <message>
+            <source>Live recap</source>
+            <translation>লাইভ ভিডিও আবার দেখুন</translation>
+        </message>
+        <message>
+            <source>Buffering live video…</source>
+            <translation>লাইভ ভিডিও মেমরিতে বাফার করা হচ্ছে…</translation>
+        </message>
         <message>
             <source>Action in progress.</source>
             <translation>কাজ চলছে।</translation>

@@ -5,6 +5,11 @@ OkuFlow was formerly named OpenZoom. Website: <https://okuflow.com>. Repository:
 OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, Direct3D 12, and an optional CUDA processing path. The current codebase already supports live camera capture, GPU (CUDA) frame processing with CPU format-conversion support paths, a two-stage preset/advanced UI, rotation-aware presentation, persistent settings, paired photo snapshots, and live AV1/H.264 recording with optional microphone audio in fragmented MP4 containers.
 
 ## Current Capabilities
+- Development [live RAM recap](live_ram_recap.md) keeps up to five minutes of
+  compressed, video-only camera history independently of recording. It reuses
+  native codecs/player/transport, reports actual rolling bounds and warmup,
+  and retains an exact displayed scene for manual Freeze before coded history
+  is ready. Camera source/format/stop changes reset this temporary authority.
 - The owner's explicit [local BF16 recognition selection](uct_local_bf16.md)
   uses one reviewed cache-only medium/medium N8 fixed1024 plan with a pinned
   FP32 detector. Empty/unset `OKUFLOW_UCT_LOCAL_BF16_MANIFEST` and public
@@ -800,7 +805,7 @@ profiling flags for ordinary operation.
   after preflight succeeds. Stop preserves the selected recording cursor and
   play/pause intent. The forward transport follows live for a recording or
   holds the last decodable saved frame; Resume continues the held cursor.
-  Ordinary unrecorded camera use creates no history. See
+  Unrecorded camera use now keeps the separate bounded silent RAM recap. See
   [archive and player ownership](video_archive_backend.md) and
   [document lifecycle](video_document_lifecycle.md).
 

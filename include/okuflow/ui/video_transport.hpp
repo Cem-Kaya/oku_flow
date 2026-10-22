@@ -27,16 +27,18 @@ namespace okuflow {
 class VideoTransport final : public QWidget {
     Q_OBJECT
 public:
-    enum class Source { None, Recording, Video };
+    enum class Source { None, Recording, Video, Recap };
     enum class State {
         Live, BehindLive, Paused, Video, End, Opening, Seeking,
-        Waiting, Finishing, Unavailable
+        Waiting, Finishing, Unavailable, Buffering
     };
     struct Snapshot {
         Source source{Source::None};
         State state{State::Paused};
         qint64 positionMs{};
         qint64 durationMs{}; // Verified seekable end, never a pending live tail.
+        qint64 firstMs{}; // Rolling history's first available absolute time.
+        bool canPauseLive{}; // Exact display lease can precede encoded media.
         bool playing{};
         bool seekable{};
         bool muted{true};

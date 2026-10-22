@@ -1,5 +1,12 @@
 # ui module
 
+`VideoTransport` reuses native media actions for silent live RAM recap with
+actual rolling bounds and a pre-encoder Freeze lease. An out-of-window held
+scene keeps its true textual time; the existing Qt accessibility adapter omits
+numeric RangeValue until a valid seek enters history. View and navigation
+offers a stable-data1–5 minute preference and a localized decimal-MB estimate.
+See [recap ownership and limits](../../docs/live_ram_recap.md).
+
 `AssistantChatView` renders the shared app-owned chat session in Advanced and
 floating Explain, with one compact header, a fixed composer and settings/history
 drawers. `AgentControlPanel` supplies session grants, contextual native approvals,

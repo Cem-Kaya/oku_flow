@@ -13,6 +13,7 @@
 #include <QRectF>
 
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <utility>
 #include <vector>
@@ -80,6 +81,9 @@ public:
     bool videoSourceSelected() const;
     QPushButton* phoneLightButton() const;
     QComboBox* microphoneCombo() const;
+    QComboBox* liveRecapMinutesCombo() const { return liveRecapMinutesCombo_; }
+    void setLiveRecapMinutes(int minutes);
+    void setLiveRecapEstimate(std::uint32_t bitrate = 0);
     QListWidget* presetList() const;
     QLabel* presetDescriptionLabel() const;
     QPushButton* promotePresetButton() const;
@@ -261,6 +265,7 @@ signals:
     void applicationLanguageRequested(const QString& code);
     void openVideoRequested();
     void videoFileDropped(const QString& path);
+    void liveRecapMinutesChanged(int minutes);
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -403,6 +408,9 @@ private:
     QLabel* cameraAccelerationStatusLabel_{};
     QPushButton* testCameraAccelerationButton_{};
     QComboBox* recordingCanvasCombo_{};
+    QComboBox* liveRecapMinutesCombo_{};
+    QLabel* liveRecapEstimateLabel_{};
+    std::uint32_t liveRecapEstimateBitrate_{};
     QComboBox* applicationLanguageCombo_{};
     CollapsibleSection* applicationSection_{};
     CollapsibleSection* deviceSection_{};
