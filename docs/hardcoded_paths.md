@@ -212,6 +212,9 @@ bounding area must be 0.5..1.75 times the old area. Shape change must reach both
 two pixels and 10% of source height. Projective words keep local type size when corner warp exceeds
 0.5% of the shorter edge; input geometry already warped by 0.2% is not refitted.
 These are conservative optional geometry limits, not confidence or latency claims.
+The 128-thread CUDA block and 31,812-byte per-request scratch are execution
+layout, not acceptance limits; the evidence for this change lives under
+local-work-data `uct-surface-opt-20261022`.
 Source-color contrast adjustment targets 7:1 and uses 16 bounded search steps.
 Clearly colored paper (RGB channel spread >= 64) is preserved when solid
 same-polarity black/white ink reaches 3:1; otherwise the 7:1 adjustment remains.

@@ -11,9 +11,11 @@ inline constexpr int Columns=96, Rows=40, Cells=Columns*Rows, WordLimit=128;
 struct Point { double x{},y{}; };
 struct Rgb { int r{},g{},b{}; };
 struct Scratch {
-    unsigned char state[Cells];
-    unsigned short queue[Cells];
+    int state[Cells];
+    // Two queues keep the best component's cells while later seeds flood.
+    unsigned short queue[2][Cells];
     int left[Rows],right[Rows],top[Columns],bottom[Columns];
+    int size;
 };
 struct Result { Point quad[4]; bool fitted{}; int stage{}; };
 struct Line { double a{},b{}; bool valid{}; };
@@ -21,36 +23,71 @@ OKUFLOW_SURFACE_HD inline double Abs(double x){return x<0?-x:x;}
 OKUFLOW_SURFACE_HD inline int Min(int a,int b){return a<b?a:b;}
 OKUFLOW_SURFACE_HD inline int Max(int a,int b){return a>b?a:b;}
 OKUFLOW_SURFACE_HD inline bool Finite(double x){return x==x && Abs(x)<1e100;}
+// A team executes one request. CPU workers use this one-member team; CUDA
+// supplies a block team with the same operations. Every decision below runs
+// on identical values either way: cross-member combinations are integer
+// counts, minima/maxima whose ties keep the first sequential occurrence, or
+// sums of quarter-integers far below 2^53, so the order of combination
+// cannot change a single bit.
+struct SerialTeam {
+    int Rank()const{return 0;}
+    int Size()const{return 1;}
+    void Sync()const{}
+    template<class T,class F> T Combine(T value,F)const{return value;}
+    int First(bool value)const{return value?0:-1;}
+    void AtomicMin(int& target,int value)const{if(value<target)target=value;}
+    void AtomicMax(int& target,int value)const{if(value>target)target=value;}
+    bool Claim(int& state)const{if(state!=1)return false;state=2;return true;}
+    int Append(int& size)const{return size++;}
+};
+// An extreme keeps its first occurrence in the serial order. -0 and +0
+// compare equal, so the position, not the value, must break that tie.
+struct Extreme { double value; int order,padding; };
+OKUFLOW_SURFACE_HD inline Extreme Lower(Extreme a,Extreme b){return b.value<a.value||(b.value==a.value&&b.order<a.order)?b:a;}
+OKUFLOW_SURFACE_HD inline Extreme Upper(Extreme a,Extreme b){return b.value>a.value||(b.value==a.value&&b.order<a.order)?b:a;}
+struct Hypothesis { double a,b; int count,order; };
+struct Sums { double sx,sy,xx,xy; int count,first,last,padding; };
 // Six deterministic anchors, at most 15 hypotheses and 96 observations.
 // Rounded corners are outliers; a long, independently observed edge is needed.
-OKUFLOW_SURFACE_HD inline Line FitLine(const int* values,int lo,int hi,double slopeLimit)
+template<class Team> OKUFLOW_SURFACE_HD Line FitLine(const Team& team,const int* values,int lo,int hi,double slopeLimit)
 {
     const int trim=(hi-lo)/5;lo+=trim;hi-=trim;
     const int n=hi-lo+1;if(n<4)return {};
-    double bestA=0,bestB=0;int best=0;
-    for(int i=0;i<6;++i)for(int j=i+1;j<6;++j){
+    // Anchor pairs (i,j), i<j<6, in their serial order; the first best wins.
+    Hypothesis local{0,0,0,15};
+    for(int order=team.Rank();order<15;order+=team.Size()){
+        int i=0,j=0;for(int o=order;;++i){if(o<5-i){j=i+1+o;break;}o-=5-i;}
         const int p=lo+(n-1)*i/5,q=lo+(n-1)*j/5;
         if(q-p<Max(1,(n-1)/5)||values[p]<0||values[q]<0)continue;
         const double a=double(values[q]-values[p])/(q-p),b=values[p]-a*(p+.5);
         if(Abs(a)>slopeLimit)continue;
         int count=0;for(int k=lo;k<=hi;++k)if(values[k]>=0&&Abs(values[k]-a*(k+.5)-b)<=1)++count;
-        if(count>best){best=count;bestA=a;bestB=b;}
+        if(count>local.count)local={a,b,count,order};
     }
+    const auto chosen=team.Combine(local,[](Hypothesis x,Hypothesis y){
+        return y.count>x.count||(y.count==x.count&&y.order<x.order)?y:x;});
+    double bestA=chosen.a,bestB=chosen.b;const int best=chosen.count;
     if(best<4||best*5<n*3)return {};
     // Refit twice, dropping rounded-corner outliers after the first fit.
     // Both passes retain the same support/span and residual requirements.
     for(int pass=0;pass<2;++pass){
-        double sx=0,sy=0,xx=0,xy=0;int first=hi,last=lo,count=0;
-        for(int k=lo;k<=hi;++k)if(values[k]>=0&&Abs(values[k]-bestA*(k+.5)-bestB)<=1){
-            const double x=k+.5,y=values[k];sx+=x;sy+=y;xx+=x*x;xy+=x*y;++count;
-            first=Min(first,k);last=Max(last,k);
+        Sums sums{0,0,0,0,0,hi,lo,0};
+        for(int k=lo+team.Rank();k<=hi;k+=team.Size())if(values[k]>=0&&Abs(values[k]-bestA*(k+.5)-bestB)<=1){
+            const double x=k+.5,y=values[k];sums.sx+=x;sums.sy+=y;sums.xx+=x*x;sums.xy+=x*y;++sums.count;
+            sums.first=Min(sums.first,k);sums.last=Max(sums.last,k);
         }
+        sums=team.Combine(sums,[](Sums x,Sums y){return Sums{x.sx+y.sx,x.sy+y.sy,x.xx+y.xx,x.xy+y.xy,
+            x.count+y.count,Min(x.first,y.first),Max(x.last,y.last),0};});
+        const double sx=sums.sx,sy=sums.sy,xx=sums.xx,xy=sums.xy;const int count=sums.count;
         const double den=count*xx-sx*sx;
-        if(count<4||count*5<n*3||den<=0||last-first<(hi-lo)/2)return {};
+        if(count<4||count*5<n*3||den<=0||sums.last-sums.first<(hi-lo)/2)return {};
         const double a=(count*xy-sx*sy)/den,b=(sy-a*sx)/count;
         if(!Finite(a)||!Finite(b)||Abs(a)>slopeLimit)return {};
-        if(pass)for(int k=lo;k<=hi;++k)if(values[k]>=0&&Abs(values[k]-bestA*(k+.5)-bestB)<=1&&
-            Abs(values[k]-a*(k+.5)-b)>1.25)return {};
+        if(pass){int outlier=0;
+            for(int k=lo+team.Rank();k<=hi;k+=team.Size())if(values[k]>=0&&Abs(values[k]-bestA*(k+.5)-bestB)<=1&&
+                Abs(values[k]-a*(k+.5)-b)>1.25)outlier=1;
+            if(team.Combine(outlier,[](int x,int y){return x|y;}))return {};
+        }
         bestA=a;bestB=b;
     }
     return {bestA,bestB,true};
@@ -85,9 +122,31 @@ OKUFLOW_SURFACE_HD inline bool Frame(const Point* p,Homography& h)
     h={{p[1].x-p[0].x+g*p[1].x,p[3].x-p[0].x+k*p[3].x,p[0].x,
         p[1].y-p[0].y+g*p[1].y,p[3].y-p[0].y+k*p[3].y,p[0].y,g,k,1}};return true;
 }
+// Floods one 4-connected paper component. Members expand the current level
+// together; a level's cells are appended in any order, which changes neither
+// the component nor its size, bounds or openness.
+struct Component { int size,l,r,t,b,open; };
+template<class Team> OKUFLOW_SURFACE_HD Component Flood(const Team& team,Scratch& s,unsigned short* queue,int seed)
+{
+    if(!team.Rank()){queue[0]=static_cast<unsigned short>(seed);s.state[seed]=2;s.size=1;}
+    team.Sync();
+    int begin=0,end=1,l=Columns,r=0,t=Rows,b=0,open=0;
+    while(begin<end){
+        for(int i=begin+team.Rank();i<end;i+=team.Size()){const int cell=queue[i],x=cell%Columns,y=cell/Columns;
+            l=Min(l,x);r=Max(r,x);t=Min(t,y);b=Max(b,y);
+            if(x==0||y==0||x==Columns-1||y==Rows-1)open=1;
+            const int adjacent[4]={x?cell-1:-1,x+1<Columns?cell+1:-1,y?cell-Columns:-1,y+1<Rows?cell+Columns:-1};
+            for(int v:adjacent)if(v>=0){if(s.state[v]==3)open=1;
+                if(team.Claim(s.state[v]))queue[team.Append(s.size)]=static_cast<unsigned short>(v);}
+        }
+        team.Sync();begin=end;end=s.size;team.Sync();
+    }
+    return team.Combine(Component{end,l,r,t,b,open},[](Component x,Component y){
+        return Component{x.size,Min(x.l,y.l),Max(x.r,y.r),Min(x.t,y.t),Max(x.b,y.b),x.open|y.open};});
+}
 // Sample receives local coordinates of the existing fitted word and returns
 // actual source RGB. Missing pixels are unknown boundaries, never plane edges.
-template<class Sample> OKUFLOW_SURFACE_HD Result RefineContext(double w,double h,Rgb fg,Rgb bg,
+template<class Team,class Sample> OKUFLOW_SURFACE_HD Result RefineContext(const Team& team,double w,double h,Rgb fg,Rgb bg,
     Sample sample,Scratch& s,int verticalSpan)
 {
     Result result{};result.stage=1;
@@ -96,34 +155,38 @@ template<class Sample> OKUFLOW_SURFACE_HD Result RefineContext(double w,double h
     const double x0=-2*verticalSpan*h,y0=-(verticalSpan-1)*.5*h;
     const double dx=(w+4*verticalSpan*h)/Columns,dy=verticalSpan*h/Rows;
     const auto compatible=[&](Rgb c){return Abs(c.r-bg.r)<=24&&Abs(c.g-bg.g)<=24&&Abs(c.b-bg.b)<=24;};
-    for(int y=0;y<Rows;++y)for(int x=0;x<Columns;++x){Rgb c;
+    for(int cell=team.Rank();cell<Cells;cell+=team.Size()){const int x=cell%Columns,y=cell/Columns;Rgb c;
         const bool valid=sample(x0+(x+.5)*dx,y0+(y+.5)*dy,c);
-        s.state[y*Columns+x]=valid?(compatible(c)?1:0):3;
+        s.state[cell]=valid?(compatible(c)?1:0):3;
     }
+    team.Sync();
     const double cx=(w*.5-x0)/dx,cy=(h*.5-y0)/dy;
-    int best=0,bx0=0,bx1=0,by0=0,by1=0;
-    for(int seed=0;seed<Cells;++seed){
-        if(s.state[seed]!=1)continue;
-        int read=0,size=1,l=Columns,r=0,t=Rows,b=0;bool open=false;
-        s.queue[0]=static_cast<unsigned short>(seed);s.state[seed]=2;
-        while(read<size){const int cell=s.queue[read++],x=cell%Columns,y=cell/Columns;
-            l=Min(l,x);r=Max(r,x);t=Min(t,y);b=Max(b,y);
-            if(x==0||y==0||x==Columns-1||y==Rows-1)open=true;
-            const int adjacent[4]={x?cell-1:-1,x+1<Columns?cell+1:-1,y?cell-Columns:-1,y+1<Rows?cell+Columns:-1};
-            for(int v:adjacent)if(v>=0){if(s.state[v]==3)open=true;if(s.state[v]==1){s.state[v]=2;s.queue[size++]=static_cast<unsigned short>(v);}}
-        }
+    int best=0,bx0=0,bx1=0,by0=0,by1=0,active=0,kept=0;
+    // Seeds are taken in raster order, exactly as a serial scan finds them;
+    // flooding only turns paper cells 1 into visited cells 2.
+    for(int base=0;base<Cells;base+=team.Size())for(;;){
+        const int cell=base+team.Rank(),first=team.First(cell<Cells&&s.state[cell]==1);
+        if(first<0)break;
+        const auto component=Flood(team,s,s.queue[active],base+first);
+        const int size=component.size,l=component.l,r=component.r,t=component.t,b=component.b;
+        const bool open=component.open!=0;
         if(open||size<=best||size<64||cx<l||cx>r+1||cy<t||cy>b+1||size*dx*dy<w*h*1.2)continue;
-        best=size;bx0=l;bx1=r;by0=t;by1=b;
-        for(int y=0;y<Rows;++y){s.left[y]=-1;s.right[y]=-1;}
-        for(int x=0;x<Columns;++x){s.top[x]=-1;s.bottom[x]=-1;}
-        for(int i=0;i<size;++i){const int x=s.queue[i]%Columns,y=s.queue[i]/Columns;
-            if(s.left[y]<0||x<s.left[y])s.left[y]=x;s.right[y]=Max(s.right[y],x+1);
-            if(s.top[x]<0||y<s.top[x])s.top[x]=y;s.bottom[x]=Max(s.bottom[x],y+1);
-        }
+        best=size;bx0=l;bx1=r;by0=t;by1=b;kept=active;active^=1;
     }
     result.stage=3;if(!best)return result;
-    const auto left=FitLine(s.left,by0,by1,2.5*dy/dx),right=FitLine(s.right,by0,by1,2.5*dy/dx);
-    const auto top=FitLine(s.top,bx0,bx1,.5*dx/dy),bottom=FitLine(s.bottom,bx0,bx1,.5*dx/dy);
+    for(int i=team.Rank();i<Rows;i+=team.Size()){s.left[i]=Columns;s.right[i]=-1;}
+    for(int i=team.Rank();i<Columns;i+=team.Size()){s.top[i]=Rows;s.bottom[i]=-1;}
+    team.Sync();
+    for(int i=team.Rank();i<best;i+=team.Size()){const int x=s.queue[kept][i]%Columns,y=s.queue[kept][i]/Columns;
+        team.AtomicMin(s.left[y],x);team.AtomicMax(s.right[y],x+1);
+        team.AtomicMin(s.top[x],y);team.AtomicMax(s.bottom[x],y+1);
+    }
+    team.Sync();
+    for(int i=team.Rank();i<Rows;i+=team.Size())if(s.left[i]==Columns)s.left[i]=-1;
+    for(int i=team.Rank();i<Columns;i+=team.Size())if(s.top[i]==Rows)s.top[i]=-1;
+    team.Sync();
+    const auto left=FitLine(team,s.left,by0,by1,2.5*dy/dx),right=FitLine(team,s.right,by0,by1,2.5*dy/dx);
+    const auto top=FitLine(team,s.top,bx0,bx1,.5*dx/dy),bottom=FitLine(team,s.bottom,bx0,bx1,.5*dx/dy);
     result.stage=41;if(!left.valid)return result;
     result.stage=42;if(!right.valid)return result;
     result.stage=43;if(!top.valid)return result;
@@ -134,20 +197,44 @@ template<class Sample> OKUFLOW_SURFACE_HD Result RefineContext(double w,double h
         corners[i]={x0+x*dx,y0+y*dy};
     }
     result.stage=5;Homography plane,inverse;if(!Frame(corners,plane)||!plane.Inverse(inverse))return result;
-    double u0=1e100,v0=1e100,u1=-1e100,v1=-1e100;int count=0;
     const int threshold=(77*(fg.r+bg.r)+150*(fg.g+bg.g)+29*(fg.b+bg.b))/512;
     const bool dark=77*fg.r+150*fg.g+29*fg.b<77*bg.r+150*bg.g+29*bg.b;
     int step=1;while((int(w/step)+1)*(int(h/step)+1)>16384)++step;
-    for(double y=0;y<h;y+=step)for(double x=0;x<w;x+=step){Rgb c;if(!sample(x,y,c))return result;
+    // The serial sample loops visit x,y = 0, step, ... < w,h; integer
+    // multiples are exact, so row-major order is index = row*nx + column.
+    int nx=0,ny=0;while(double(nx*step)<w)++nx;while(double(ny*step)<h)++ny;
+    Extreme u0{1e100,0x7fffffff,0},v0=u0,u1{-1e100,0x7fffffff,0},v1=u1;
+    int count=0,failed=0,previous=-2;Point reuse[2];
+    int column=team.Rank()%nx,row=team.Rank()/nx;
+    for(int index=team.Rank();index<nx*ny;index+=team.Size()){
+        const double x=double(column*step),y=double(row*step);const int at=column;
+        column+=team.Size();while(column>=nx){column-=nx;++row;}
+        Rgb c;if(!sample(x,y,c)){failed=1;break;}
         const int luma=(77*c.r+150*c.g+29*c.b)/256;if(dark?luma>=threshold:luma<=threshold)continue;
         ++count;
-        for(int k=0;k<4;++k){Point uv;const Point p{x+((k==1||k==2)?(x+step>w?w-x:step):0),
-            y+(k>=2?(y+step>h?h-y:step):0)};if(!inverse.Map(p,uv))return result;
-            if(uv.x<u0)u0=uv.x;if(uv.x>u1)u1=uv.x;if(uv.y<v0)v0=uv.y;if(uv.y>v1)v1=uv.y;
+        // A left neighbour already mapped this cell's two left corners from
+        // bit-identical points; reusing them changes no mapped value.
+        const bool shared=previous==index-1&&at>0;previous=index;
+        const Point neighbour[2]={reuse[0],reuse[1]};
+        for(int k=0;k<4;++k){Point uv;
+            if(shared&&(k==0||k==3))uv=neighbour[k==3];
+            else{const Point p{x+((k==1||k==2)?(x+step>w?w-x:step):0),
+                y+(k>=2?(y+step>h?h-y:step):0)};if(!inverse.Map(p,uv)){failed=1;break;}}
+            if(k==1)reuse[0]=uv;if(k==2)reuse[1]=uv;
+            const int order=index*4+k;
+            u0=Lower(u0,{uv.x,order,0});u1=Upper(u1,{uv.x,order,0});
+            v0=Lower(v0,{uv.y,order,0});v1=Upper(v1,{uv.y,order,0});
         }
+        if(failed)break;
     }
-    result.stage=6;if(count<16||u0<0||v0<0||u1>1||v1>1||u1<=u0||v1<=v0)return result;
-    const Point box[4]={{u0,v0},{u1,v0},{u1,v1},{u0,v1}};
+    struct Ink { Extreme u0,v0,u1,v1; int count,failed; };
+    const auto ink=team.Combine(Ink{u0,v0,u1,v1,count,failed},[](Ink a,Ink b){
+        return Ink{Lower(a.u0,b.u0),Lower(a.v0,b.v0),Upper(a.u1,b.u1),Upper(a.v1,b.v1),a.count+b.count,a.failed|b.failed};});
+    if(ink.failed)return result;
+    count=ink.count;
+    const double U0=ink.u0.value,V0=ink.v0.value,U1=ink.u1.value,V1=ink.v1.value;
+    result.stage=6;if(count<16||U0<0||V0<0||U1>1||V1>1||U1<=U0||V1<=V0)return result;
+    const Point box[4]={{U0,V0},{U1,V0},{U1,V1},{U0,V1}};
     result.stage=7;for(int i=0;i<4;++i)if(!plane.Map(box[i],result.quad[i]))return result;
     // A rectified ink envelope legitimately projects outside its old rotated
     // rectangle. Bound that excursion by the independently fitted side edges,
@@ -169,13 +256,18 @@ template<class Sample> OKUFLOW_SURFACE_HD Result RefineContext(double w,double h
     result.stage=10;if(shape<2||shape<h*.1)return result;
     result.fitted=true;return result;
 }
-template<class Sample> OKUFLOW_SURFACE_HD Result Refine(double w,double h,Rgb fg,Rgb bg,Sample sample,Scratch& s)
+template<class Team,class Sample> OKUFLOW_SURFACE_HD Result Refine(const Team& team,double w,double h,Rgb fg,Rgb bg,
+    Sample sample,Scratch& s)
 {
-    const auto first=RefineContext(w,h,fg,bg,sample,s,4);
+    const auto first=RefineContext(team,w,h,fg,bg,sample,s,4);
     // Small print on a larger card can put every boundary outside the first
     // context. One larger context is allowed only when no enclosing component
     // was found, never to override a rejected plane or a nearly upright result.
-    return first.stage==3?RefineContext(w,h,fg,bg,sample,s,8):first;
+    return first.stage==3?RefineContext(team,w,h,fg,bg,sample,s,8):first;
+}
+template<class Sample> Result Refine(double w,double h,Rgb fg,Rgb bg,Sample sample,Scratch& s)
+{
+    return Refine(SerialTeam{},w,h,fg,bg,sample,s);
 }
 } // namespace okuflow::uct::surface_geometry
 #undef OKUFLOW_SURFACE_HD
