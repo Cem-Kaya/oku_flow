@@ -15,6 +15,10 @@ combinations are limited to integer counts, minima/maxima whose ties keep the
 first serial occurrence, and exactly representable quarter-integer sums.
 `Scratch` (31,812 bytes) holds 32-bit cell states, two flood queues that keep
 the best component while later seeds flood, and the four side profiles.
+Teams whose `FilteredInk` is true (CUDA) use `FilteredInkExtremes`: an FP32
+pre-pass with conservative error bounds selects the only corners re-mapped in
+FP64. Their minima/maxima, first-occurrence ties, ink count and map failures
+are those of the all-FP64 rescan.
 
 `gpu::SurfaceRequest`, `SurfaceFit` and `SurfaceFrames` fuse the same refinement
 after existing ink fitting. Resident analysis uploads bounded descriptors and
