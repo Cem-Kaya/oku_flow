@@ -12,6 +12,22 @@ Per-sample CTC decoding and source geometry remain separate. Detector/detail
 coverage, FP32 weights, confidence thresholds and admission rules are unchanged.
 Repeated TensorRT input shapes and unchanged tensor addresses are cached.
 
+Rectification and CTC decode now also launch once per neural batch instead of
+once per crop: `gpu::RectifyBatch`/`gpu::DecodeBatch` take a device slot-index
+array (one compact upload per submission group) and evaluate the identical
+per-element bilinear, argmax tie-break and compaction arithmetic as the
+per-crop kernels, which remain for fixtures. Each batch's token counts, quads
+and tokens return as three contiguous copies with the same bytes and layouts
+as the former per-crop copies. Decoded lines are buffered per original crop
+index and merged, hashed and captured in detector order at region end, so
+output words, order, dispositions and geometry are unchanged by construction;
+the profiler's merge interval now covers token decoding plus the deferred
+merge. `gpuBatchedRectifyAndDecodeMatchPerSampleKernels` checks bit equality
+against the per-crop kernels, including permuted slots, ties, a non-finite
+sample and width-limited steps. Cross-binary strict output comparison and
+timing for this launch/transfer reduction are recorded with the optimization
+race evidence; no speedup is claimed here without that measurement.
+
 The opt-in profiler additionally hashes ordered crop descriptors already present
 in compact host metadata. Its versioned little-endian encoding includes detection
 region, quad, score, useful width and internal-cut edges. This establishes whether

@@ -529,7 +529,8 @@ struct State
     std::unique_ptr<Libraries> libraries;
     std::unique_ptr<Network> detector, recognizer;
     DeviceBuffer<float> detectorInput, recognizerInput, scores;
-    DeviceBuffer<int> labels, count, ids, tokenCount, groupWidths;
+    DeviceBuffer<int> labels, count, ids, tokenCount, groupWidths, slotIndices;
+    HostBuffer<int> hostSlotIndices;
     DeviceBuffer<gpu::Component> components;
     DeviceBuffer<gpu::Quad> detectedQuads, quads;
     DeviceBuffer<gpu::Token> tokens;
@@ -887,7 +888,16 @@ class TensorRtRecognizer final : public Recognizer
                     captured = {};
                 }
             }
-            for (int first = 0; first < count; first += submissionGroup)
+            // Execution positions map to original crop indices. Batched kernels
+            // consume this order explicitly; decoded lines are buffered per
+            // original index and merged in detector order after the region.
+            std::vector<int> order(count);
+            for (int i = 0; i < count; ++i) order[i] = i;
+            std::vector<std::optional<RecognizedLine>> pending(count);
+            std::vector<gpu::Quad> pendingQuads(count);
+            std::vector<int> pendingCanvas(count, 1024);
+            auto *hostIndices = state_->hostSlotIndices.Reserve(submissionGroup);
+            for (int groupFirst = 0; groupFirst < count; groupFirst += submissionGroup)
             {
                 if (cancelled.load())
                 {
@@ -896,11 +906,19 @@ class TensorRtRecognizer final : public Recognizer
                     cancelOwnedInput();
                     return output;
                 }
-                const int width = hostWidths ? hostWidths[first/submissionGroup] : 1024;
+                const int width = hostWidths ? hostWidths[groupFirst/submissionGroup] : 1024;
                 if (!recognizer_width::IsCanvas(width))
                     throw std::runtime_error("Invalid ordered-group recognizer canvas.");
                 const std::size_t samplePixels = static_cast<std::size_t>(width) * 48 * 3;
-                const int groupSize = std::min(submissionGroup, count - first);
+                const int groupSize = std::min(submissionGroup, count - groupFirst);
+                // One compact index upload per group; the pinned source is
+                // rewritten only after the previous group's completion wait.
+                for (int slot = 0; slot < groupSize; ++slot)
+                    hostIndices[slot] = order[groupFirst + slot];
+                Check(cudaMemcpyAsync(state_->slotIndices.Reserve(submissionGroup), hostIndices,
+                                      groupSize * sizeof(int), cudaMemcpyHostToDevice,
+                                      state_->stream));
+                profile.Transfer(groupSize * sizeof(int));
                 auto *crop = state_->recognizerInput.Reserve(
                     samplePixels * state_->recognizerBatch);
                 auto *hostQuads = state_->hostQuad.Reserve(submissionGroup);
@@ -910,10 +928,11 @@ class TensorRtRecognizer final : public Recognizer
                 {
                     const int batchSize = std::min(state_->recognizerBatch, groupSize - batchFirst);
                     profile.Measure(TensorRtProfile::Rectify, state_->stream, [&] {
-                        for (int sample = 0; sample < batchSize; ++sample)
-                            gpu::Rectify(cropPixels, image.pitch, region.width(), region.height(),
-                                         state_->quads.Get(), first + batchFirst + sample,
-                                         crop + samplePixels * sample, width, state_->stream);
+                        gpu::RectifyBatch(cropPixels, image.pitch, region.width(), region.height(),
+                                          state_->quads.Get(),
+                                          state_->slotIndices.Get() + batchFirst, batchSize, crop,
+                                          width, state_->stream);
+                        Check(cudaGetLastError());
                     });
                     nvinfer1::Dims recShape{};
                     profile.Measure(TensorRtProfile::Recognizer, state_->stream, [&] {
@@ -940,29 +959,27 @@ class TensorRtRecognizer final : public Recognizer
                     auto *tokens = state_->tokens.Reserve(static_cast<std::size_t>(steps) * state_->recognizerBatch);
                     auto *tokenCounts = state_->tokenCount.Reserve(state_->recognizerBatch);
                     profile.Measure(TensorRtProfile::Ctc, state_->stream, [&] {
-                        for (int sample = 0; sample < batchSize; ++sample) {
-                            const int index = first + batchFirst + sample;
-                            gpu::Decode(state_->recognizer->Output() + sampleOutputs * sample,
-                                        steps, assets_.dictionary.size(), state_->quads.Get(), index,
-                                        width, ids + static_cast<std::size_t>(steps) * sample,
-                                        scores + static_cast<std::size_t>(steps) * sample,
-                                        tokens + static_cast<std::size_t>(steps) * sample,
-                                        tokenCounts + sample, state_->stream);
-                            Check(cudaGetLastError());
-                        }
+                        gpu::DecodeBatch(state_->recognizer->Output(), sampleOutputs, steps,
+                                         assets_.dictionary.size(), state_->quads.Get(),
+                                         state_->slotIndices.Get() + batchFirst, batchSize, width,
+                                         ids, scores, tokens, tokenCounts, state_->stream);
+                        Check(cudaGetLastError());
                     });
+                    // Identical bytes and layouts as the former per-crop copies:
+                    // batch slots are contiguous in every device/host buffer,
+                    // and ordered execution keeps quad slots contiguous too.
                     profile.Measure(TensorRtProfile::Metadata, state_->stream, [&] {
-                        for (int sample = 0; sample < batchSize; ++sample) {
-                            const int slot = batchFirst + sample, index = first + slot;
-                            Check(cudaMemcpyAsync(hostCount + slot, tokenCounts + sample, sizeof(int),
-                                                  cudaMemcpyDeviceToHost, state_->stream));
-                            Check(cudaMemcpyAsync(hostQuads + slot, state_->quads.Get() + index,
-                                                  sizeof(gpu::Quad), cudaMemcpyDeviceToHost, state_->stream));
-                            Check(cudaMemcpyAsync(hostTokens + static_cast<std::size_t>(slot) * steps,
-                                                  tokens + static_cast<std::size_t>(sample) * steps,
-                                                  steps * sizeof(gpu::Token),
-                                                  cudaMemcpyDeviceToHost, state_->stream));
-                        }
+                        Check(cudaMemcpyAsync(hostCount + batchFirst, tokenCounts,
+                                              batchSize * sizeof(int),
+                                              cudaMemcpyDeviceToHost, state_->stream));
+                        Check(cudaMemcpyAsync(hostQuads + batchFirst,
+                                              state_->quads.Get() + groupFirst + batchFirst,
+                                              batchSize * sizeof(gpu::Quad),
+                                              cudaMemcpyDeviceToHost, state_->stream));
+                        Check(cudaMemcpyAsync(hostTokens + static_cast<std::size_t>(batchFirst) * steps,
+                                              tokens,
+                                              static_cast<std::size_t>(batchSize) * steps * sizeof(gpu::Token),
+                                              cudaMemcpyDeviceToHost, state_->stream));
                     });
                     profile.Transfer(static_cast<std::size_t>(batchSize) *
                         (sizeof(int) + sizeof(gpu::Quad) + steps * sizeof(gpu::Token)));
@@ -982,21 +999,9 @@ class TensorRtRecognizer final : public Recognizer
                 {
                     const int tokenCount = hostCount[slot];
                     const auto quad = hostQuads[slot];
-                    if (captureCrops) {
-                        TensorRtCropDiagnostic::Crop record;
-                        std::copy(std::begin(quad.xy), std::end(quad.xy), record.xy.begin());
-                        record.score = quad.score; record.validWidth = quad.validWidth;
-                        record.internalEdges = quad.internalEdges;
-                        // This group's CUDA completion was already confirmed.
-                        try {
-                            captured.regions.back().crops.push_back(record);
-                        } catch (const std::bad_alloc&) {
-                            captureCrops = false;
-                            captured = {};
-                        }
-                    }
-                    profile.CropDescriptor(quad.xy, quad.score, quad.validWidth,
-                                           quad.internalEdges, region, width);
+                    const int original = order[groupFirst + slot];
+                    pendingQuads[original] = quad;
+                    pendingCanvas[original] = width;
                     const auto *tokens = hostTokens + static_cast<std::size_t>(slot) * steps;
                     if (tokenCount < 0)
                         continue; // untrustworthy crop, same policy as CPU decoder
@@ -1015,9 +1020,44 @@ class TensorRtRecognizer final : public Recognizer
                     const int validSteps = std::min(
                         steps, static_cast<int>(std::ceil(steps * std::min(width, quad.validWidth) /
                                                           static_cast<double>(width))));
-                    auto line = PaddleDecodeTokens(decoded, validSteps, box, assets_.dictionary);
-                    PaddleMergeRecognition(output.lines, std::move(line), region,
-                                           {image.width, image.height});
+                    pending[original] = PaddleDecodeTokens(decoded, validSteps, box,
+                                                           assets_.dictionary);
+                }
+                profile.Merge(profile.Enabled() ? merge.nsecsElapsed() / 1e6 : 0);
+            }
+            if (cancelled.load())
+            {
+                output.cancelled = true;
+                output.lines.clear();
+                cancelOwnedInput();
+                return output;
+            }
+            // Merge, descriptor hashing and crop capture always follow the
+            // original detector order, independent of execution order.
+            {
+                QElapsedTimer merge;
+                if (profile.Enabled()) merge.start();
+                for (int original = 0; original < count; ++original)
+                {
+                    const auto quad = pendingQuads[original];
+                    if (captureCrops) {
+                        TensorRtCropDiagnostic::Crop record;
+                        std::copy(std::begin(quad.xy), std::end(quad.xy), record.xy.begin());
+                        record.score = quad.score; record.validWidth = quad.validWidth;
+                        record.internalEdges = quad.internalEdges;
+                        // This region's CUDA completion was already confirmed.
+                        try {
+                            captured.regions.back().crops.push_back(record);
+                        } catch (const std::bad_alloc&) {
+                            captureCrops = false;
+                            captured = {};
+                        }
+                    }
+                    profile.CropDescriptor(quad.xy, quad.score, quad.validWidth,
+                                           quad.internalEdges, region, pendingCanvas[original]);
+                    if (pending[original])
+                        PaddleMergeRecognition(output.lines, std::move(*pending[original]), region,
+                                               {image.width, image.height});
                 }
                 profile.Merge(profile.Enabled() ? merge.nsecsElapsed() / 1e6 : 0);
             }

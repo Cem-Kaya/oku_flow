@@ -732,6 +732,11 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   approximate, not exact glyph geometry. `gpu::{Normalize,Detect,RecognitionWindows,Rectify,
   Decode,Probe}` in `uct_kernels` implement device equivalents using
   `gpu::{Component,Quad,Token}` with finite-value checks and bounded outputs.
+  `gpu::{RectifyBatch,DecodeBatch}` launch the same per-element rectification
+  and argmax/compaction for 1..16 crops selected by a device slot-index array;
+  `TensorRtRecognizer::RecognizeDevice` uploads one index array per submission
+  group, downloads each batch's counts/quads/tokens as three contiguous copies,
+  buffers decoded lines per original crop index, and merges in detector order.
 - `CreateDefaultRecognizer` delegates to `CreateAutomaticRecognizer`:
   TensorRT, Paddle CPU, Windows. The candidate-vector overload supports exact
   fallback tests. Private `AutomaticRecognizer` retires unavailable/failing

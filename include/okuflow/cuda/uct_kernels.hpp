@@ -87,4 +87,16 @@ void Rectify(const void *image, std::size_t pitch, int width, int height, const 
              int index, float *out, int cropWidth, cudaStream_t stream);
 void Decode(const float *probabilities, int steps, int classes, const Quad *quads, int index,
             int cropWidth, int *ids, float *scores, Token *tokens, int *count, cudaStream_t stream);
+// Batched equivalents of Rectify/Decode for 1..16 crops in one launch each.
+// slotIndices maps each batch slot to its quad index; per-element arithmetic,
+// argmax tie-breaking and token compaction are identical to the per-crop
+// entry points. Sample s reads/writes the same strided layouts the per-crop
+// calls use: rectified planes at out + s*cropWidth*48*3, probabilities at
+// probabilities + s*sampleOutputs, ids/scores/tokens at + s*steps, counts + s.
+void RectifyBatch(const void *image, std::size_t pitch, int width, int height, const Quad *quads,
+                  const int *slotIndices, int batchSize, float *out, int cropWidth,
+                  cudaStream_t stream);
+void DecodeBatch(const float *probabilities, std::size_t sampleOutputs, int steps, int classes,
+                 const Quad *quads, const int *slotIndices, int batchSize, int cropWidth,
+                 int *ids, float *scores, Token *tokens, int *counts, cudaStream_t stream);
 } // namespace okuflow::uct::gpu

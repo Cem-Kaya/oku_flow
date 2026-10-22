@@ -8,18 +8,28 @@ namespace okuflow::uct::gpu
 {
 namespace
 {
-__device__ float sample(const unsigned char *pixels, std::size_t pitch, int w, int h, float x,
-                        float y, int ch)
+__device__ float bilinear(float fx, float fy, float c00, float c10, float c01, float c11)
+{
+    const float a = c00 * (1 - fx) + c10 * fx;
+    const float b = c01 * (1 - fx) + c11 * fx;
+    return a * (1 - fy) + b * fy;
+}
+// All three BGRA channels with one shared clamp/index/weight computation.
+// Each channel evaluates the identical expression the former per-channel
+// sampling used, so results are unchanged; only redundant recomputation goes.
+__device__ float3 sample3(const unsigned char *pixels, std::size_t pitch, int w, int h, float x,
+                          float y)
 {
     x = fminf(fmaxf(x, 0), w - 1.f);
     y = fminf(fmaxf(y, 0), h - 1.f);
     const int ix = static_cast<int>(x), iy = static_cast<int>(y), jx = min(ix + 1, w - 1),
               jy = min(iy + 1, h - 1);
-    const float a = pixels[iy * pitch + ix * 4 + ch] * (1 - (x - ix)) +
-                    pixels[iy * pitch + jx * 4 + ch] * (x - ix);
-    const float b = pixels[jy * pitch + ix * 4 + ch] * (1 - (x - ix)) +
-                    pixels[jy * pitch + jx * 4 + ch] * (x - ix);
-    return a * (1 - (y - iy)) + b * (y - iy);
+    const float fx = x - ix, fy = y - iy;
+    const unsigned char *p00 = pixels + iy * pitch + ix * 4, *p10 = pixels + iy * pitch + jx * 4,
+                        *p01 = pixels + jy * pitch + ix * 4, *p11 = pixels + jy * pitch + jx * 4;
+    return {bilinear(fx, fy, p00[0], p10[0], p01[0], p11[0]),
+            bilinear(fx, fy, p00[1], p10[1], p01[1], p11[1]),
+            bilinear(fx, fy, p00[2], p10[2], p01[2], p11[2])};
 }
 __global__ void normalize(const unsigned char *pixels, std::size_t pitch, int w, int h, float *out,
                           int ow, int oh)
@@ -29,8 +39,10 @@ __global__ void normalize(const unsigned char *pixels, std::size_t pitch, int w,
         return;
     const float x = (i % ow + .5f) * w / ow - .5f, y = (i / ow + .5f) * h / oh - .5f;
     const float means[3]{.485f, .456f, .406f}, dev[3]{.229f, .224f, .225f};
+    const float3 value = sample3(pixels, pitch, w, h, x, y);
+    const float channels[3]{value.x, value.y, value.z};
     for (int c = 0; c < 3; ++c)
-        out[c * ow * oh + i] = (sample(pixels, pitch, w, h, x, y, c) / 255 - means[c]) / dev[c];
+        out[c * ow * oh + i] = (channels[c] / 255 - means[c]) / dev[c];
 }
 __global__ void probe(const unsigned char *pixels, std::size_t pitch, int w, int h,
                       unsigned char *out, int d)
@@ -337,28 +349,47 @@ __global__ void recognitionGroupWidths(const Quad* quads, const int* count, int 
     widths[group] = n < 0 || n > recognizer_width::kMaximumCrops || first >= n ? 0
         : recognizer_width::OrderedGroup(quads + first, min(groupSize, n - first));
 }
+__device__ void rectifyOne(const unsigned char *pixels, std::size_t pitch, int w, int h,
+                           const Quad *quads, int index, float *out, int ow, int i)
+{
+    const auto q = quads[index];
+    const int x = i % ow, y = i / ow, valid = min(ow, q.validWidth);
+    if (x >= valid)
+    {
+        out[i] = out[ow * 48 + i] = out[2 * ow * 48 + i] = 0;
+        return;
+    }
+    const float u = (x + .5f) / valid, v = (y + .5f) / 48;
+    const float sx = q.xy[0] * (1 - u) * (1 - v) + q.xy[2] * u * (1 - v) + q.xy[4] * u * v +
+                     q.xy[6] * (1 - u) * v - .5f;
+    const float sy = q.xy[1] * (1 - u) * (1 - v) + q.xy[3] * u * (1 - v) + q.xy[5] * u * v +
+                     q.xy[7] * (1 - u) * v - .5f;
+    const float3 value = sample3(pixels, pitch, w, h, sx, sy);
+    out[i] = (value.x / 255 - .5f) * 2;
+    out[ow * 48 + i] = (value.y / 255 - .5f) * 2;
+    out[2 * ow * 48 + i] = (value.z / 255 - .5f) * 2;
+}
 __global__ void rectify(const unsigned char *pixels, std::size_t pitch, int w, int h,
                         const Quad *quads, int index, float *out, int ow)
 {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= ow * 48)
         return;
-    const auto q = quads[index];
-    const int x = i % ow, y = i / ow, valid = min(ow, q.validWidth);
-    const float u = (x + .5f) / valid, v = (y + .5f) / 48;
-    const float sx = q.xy[0] * (1 - u) * (1 - v) + q.xy[2] * u * (1 - v) + q.xy[4] * u * v +
-                     q.xy[6] * (1 - u) * v - .5f;
-    const float sy = q.xy[1] * (1 - u) * (1 - v) + q.xy[3] * u * (1 - v) + q.xy[5] * u * v +
-                     q.xy[7] * (1 - u) * v - .5f;
-    for (int c = 0; c < 3; ++c)
-        out[c * ow * 48 + i] =
-            x >= valid ? 0 : (sample(pixels, pitch, w, h, sx, sy, c) / 255 - .5f) * 2;
+    rectifyOne(pixels, pitch, w, h, quads, index, out, ow, i);
 }
-__global__ void argmax(const float *probabilities, int steps, int classes, int *ids, float *scores)
+__global__ void rectifyBatch(const unsigned char *pixels, std::size_t pitch, int w, int h,
+                             const Quad *quads, const int *slotIndices, float *out, int ow)
 {
-    const int t = blockIdx.x;
-    if (t >= steps)
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= ow * 48)
         return;
+    const int sample = blockIdx.y;
+    rectifyOne(pixels, pitch, w, h, quads, slotIndices[sample],
+               out + static_cast<std::size_t>(sample) * ow * 48 * 3, ow, i);
+}
+__device__ void argmaxStep(const float *probabilities, int t, int classes, int *ids,
+                           float *scores)
+{
     __shared__ float vals[256];
     __shared__ int indices[256];
     float best = -1;
@@ -401,11 +432,26 @@ __global__ void argmax(const float *probabilities, int steps, int classes, int *
         scores[t] = vals[0];
     }
 }
-__global__ void compact(int *ids, float *scores, int steps, const Quad *quads, int index,
-                        int cropWidth, Token *tokens, int *count)
+__global__ void argmax(const float *probabilities, int steps, int classes, int *ids, float *scores)
 {
-    if (threadIdx.x || blockIdx.x)
+    const int t = blockIdx.x;
+    if (t >= steps)
         return;
+    argmaxStep(probabilities, t, classes, ids, scores);
+}
+__global__ void argmaxBatch(const float *probabilities, std::size_t sampleOutputs, int steps,
+                            int classes, int *ids, float *scores)
+{
+    const int t = blockIdx.x;
+    if (t >= steps)
+        return;
+    const int sample = blockIdx.y;
+    argmaxStep(probabilities + sample * sampleOutputs, t, classes, ids + sample * steps,
+               scores + sample * steps);
+}
+__device__ void compactOne(int *ids, float *scores, int steps, const Quad *quads, int index,
+                           int cropWidth, Token *tokens, int *count)
+{
     int n = 0, previous = -1;
     const int limit =
         min(steps, static_cast<int>(ceilf(steps * min(cropWidth, quads[index].validWidth) /
@@ -427,6 +473,22 @@ __global__ void compact(int *ids, float *scores, int steps, const Quad *quads, i
         previous = ids[t];
     }
     *count = n;
+}
+__global__ void compact(int *ids, float *scores, int steps, const Quad *quads, int index,
+                        int cropWidth, Token *tokens, int *count)
+{
+    if (threadIdx.x || blockIdx.x)
+        return;
+    compactOne(ids, scores, steps, quads, index, cropWidth, tokens, count);
+}
+__global__ void compactBatch(int *ids, float *scores, int steps, const Quad *quads,
+                             const int *slotIndices, int cropWidth, Token *tokens, int *counts)
+{
+    if (threadIdx.x)
+        return;
+    const int sample = blockIdx.x;
+    compactOne(ids + sample * steps, scores + sample * steps, steps, quads,
+               slotIndices[sample], cropWidth, tokens + sample * steps, counts + sample);
 }
 } // namespace
 void Normalize(const void *p, std::size_t pitch, int w, int h, float *out, int ow, int oh,
@@ -478,6 +540,27 @@ void Decode(const float *p, int steps, int classes, const Quad *quads, int index
 {
     argmax<<<steps, 256, 0, s>>>(p, steps, classes, ids, scores);
     compact<<<1, 1, 0, s>>>(ids, scores, steps, quads, index, cropWidth, tokens, count);
+}
+void RectifyBatch(const void *p, std::size_t pitch, int w, int h, const Quad *quads,
+                  const int *slotIndices, int batchSize, float *out, int ow, cudaStream_t s)
+{
+    if (batchSize < 1 || batchSize > 16 || ow < 1)
+        throw std::invalid_argument("Unsupported batched rectification shape.");
+    const dim3 grid(static_cast<unsigned>((ow * 48 + 255) / 256),
+                    static_cast<unsigned>(batchSize));
+    rectifyBatch<<<grid, 256, 0, s>>>(static_cast<const unsigned char *>(p), pitch, w, h, quads,
+                                      slotIndices, out, ow);
+}
+void DecodeBatch(const float *p, std::size_t sampleOutputs, int steps, int classes,
+                 const Quad *quads, const int *slotIndices, int batchSize, int cropWidth,
+                 int *ids, float *scores, Token *tokens, int *counts, cudaStream_t s)
+{
+    if (batchSize < 1 || batchSize > 16 || steps < 1 || classes < 1)
+        throw std::invalid_argument("Unsupported batched CTC decode shape.");
+    const dim3 grid(static_cast<unsigned>(steps), static_cast<unsigned>(batchSize));
+    argmaxBatch<<<grid, 256, 0, s>>>(p, sampleOutputs, steps, classes, ids, scores);
+    compactBatch<<<batchSize, 1, 0, s>>>(ids, scores, steps, quads, slotIndices, cropWidth,
+                                         tokens, counts);
 }
 } // namespace okuflow::uct::gpu
 

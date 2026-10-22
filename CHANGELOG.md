@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Development: batch UCT GPU rectification/CTC kernel launches and per-batch
+  metadata transfers in the TensorRT path. Outputs are unchanged by
+  construction and covered by a bit-equality kernel fixture; measured timing
+  is tracked separately from this entry.
+
 - Hide the entire video transport without leaving a filename/status strip.
   Its show/hide chevron now lives beside Custom Setup in the quick-mode corner
   controls, with keyboard access and viewport Freeze/Resume preserved.
