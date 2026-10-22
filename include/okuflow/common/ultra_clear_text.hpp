@@ -385,6 +385,10 @@ struct PreparedWord {
     QRectF protectedSceneRect;
     std::optional<LineColors> colors;
     TextQuad sceneQuad; // oriented scene geometry of a rotated word; sceneRect is its bound
+    // Original neighbour-bounded recognition search frame. Independent pixel
+    // proof may use it when two valid ink fits crop the same letters differently.
+    // This never changes the fitted display footprint or its protection.
+    TextQuad registrationSceneQuad;
 };
 
 // Worker-side oriented ink fit, the rotated-frame counterpart of the

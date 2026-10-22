@@ -1014,7 +1014,15 @@ bool QuadIsRotated(const TextQuad& pixelQuad)
     if (!pixelQuad.valid || !std::isfinite(angle)) return false;
     const auto& p = pixelQuad.points;
     const double h = QuadHeight(pixelQuad), w = QuadWidth(pixelQuad);
+    // A small angle across a wide word still moves its ends by several
+    // source pixels. Keep that geometry instead of switching between an
+    // upright fit and a rectified fit as adjacent frames cross two degrees.
+    constexpr double halfSourcePixel = .5;
     return std::abs(angle) >= kOrientedTextMinimumRadians ||
+        std::abs(p[1].y() - p[0].y()) > halfSourcePixel ||
+        std::abs(p[2].y() - p[3].y()) > halfSourcePixel ||
+        std::abs(p[3].x() - p[0].x()) > halfSourcePixel ||
+        std::abs(p[2].x() - p[1].x()) > halfSourcePixel ||
         std::abs(p[3].x() - p[0].x()) > h * kOrientedTextMinimumRadians ||
         std::hypot((p[2] - p[1] - p[3] + p[0]).x(), (p[2] - p[1] - p[3] + p[0]).y()) >
             std::min(w, h) * kOrientedTextMinimumRadians;
@@ -1557,7 +1565,10 @@ QVector<PreparedLine> PrepareLines(const RecognitionResult& result, double minim
                     disposition = TokenDisposition::kTooSmall;
                 else if (IsHighRiskToken(text)) disposition = TokenDisposition::kHighRisk;
             }
-            out.words.push_back({text, scene, disposition, word.confidence, protectedScene, word.colors, sceneQuad});
+            const TextQuad registrationQuad = word.inkSearchQuadPx.valid
+                ? ViewQuadToScene(stamp.viewTransform, width, height, word.inkSearchQuadPx) : TextQuad{};
+            out.words.push_back({text, scene, disposition, word.confidence, protectedScene, word.colors,
+                                 sceneQuad, registrationQuad});
             if (usableRect(protectedScene))
                 out.sceneRect = out.sceneRect.isNull() ? protectedScene : out.sceneRect.united(protectedScene);
         }
@@ -1593,7 +1604,7 @@ QVector<QVector<bool>> MatchImmutableWords(const CorroborationRequest& request,
     qsizetype wordCount = 0;
     for (const auto& line : request.selectedLines) wordCount += line.words.size();
     if (wordCount > 8192) return out;
-    struct WordGeometry { QRectF rect; TextQuad quad; };
+    struct WordGeometry { QRectF rect; TextQuad quad, registrationQuad; };
     QHash<QString, QVector<WordGeometry>> recognized;
     for (qsizetype i = 0; i < neighbor.prepared.size(); ++i) {
         if (neighbor.stamp.temporallySmoothed &&
@@ -1601,102 +1612,112 @@ QVector<QVector<bool>> MatchImmutableWords(const CorroborationRequest& request,
              !neighbor.currentInputMatches[i])) continue;
         for (const auto& word : neighbor.prepared[i].words)
             if (word.disposition == TokenDisposition::kCandidate && !IsHighRiskToken(word.text))
-                recognized[word.text].push_back({word.sceneRect,word.sceneQuad});
+                recognized[word.text].push_back({word.sceneRect,word.sceneQuad,word.registrationSceneQuad});
     }
-    QVector<QRectF> rects;
-    QVector<QPointF> offsets;
-    QVector<TextQuad> sourceQuads,targetQuads;
-    QVector<QPair<int, int>> destinations;
-    for (int i = 0; i < request.selectedLines.size(); ++i) {
-        const auto& line = request.selectedLines[i];
-        out.push_back(QVector<bool>(line.words.size(), false));
-        for (int j = 0; j < line.words.size(); ++j) {
-            if (cancelled.load()) return unavailable();
-            const auto& word = line.words[j];
-            if (word.disposition != TokenDisposition::kCandidate || IsHighRiskToken(word.text)) continue;
-            const auto evidence = recognized.constFind(word.text);
-            if (evidence == recognized.constEnd()) continue;
-            // The ordinary completed line proof already covers static words.
-            if (i < neighbor.corroborationMatches.size() && neighbor.corroborationMatches[i] &&
-                std::any_of(evidence->begin(), evidence->end(), [&](const WordGeometry& r) {
-                    return Iou(word.sceneRect, r.rect) >= .5;
-                })) continue;
-            std::optional<QPointF> best;
-            TextQuad sourceQuad,targetQuad;
-            double nearest = std::numeric_limits<double>::max();
-            for (const auto& target : *evidence) {
-                const auto delta = target.rect.center() - word.sceneRect.center();
-                const auto from=word.sceneQuad.valid ? word.sceneQuad : TextQuad::FromRect(word.sceneRect);
-                const auto to=target.quad.valid ? target.quad : TextQuad::FromRect(target.rect);
-                const auto fromPx=SceneQuadToView(request.selectedReference.stamp.viewTransform,
-                    request.selectedReference.Width(),request.selectedReference.Height(),from);
-                const auto toPx=SceneQuadToView(neighbor.stamp.viewTransform,
-                    neighbor.reference.Width(),neighbor.reference.Height(),to);
-                const bool oriented=QuadIsRotated(fromPx) || QuadIsRotated(toPx);
-                const double sourceWidth=oriented?QuadWidth(fromPx):word.sceneRect.width();
-                const double sourceHeight=oriented?QuadHeight(fromPx):word.sceneRect.height();
-                const double targetWidth=oriented?QuadWidth(toPx):target.rect.width();
-                const double targetHeight=oriented?QuadHeight(toPx):target.rect.height();
-                if (std::abs(delta.x()) > .25 || std::abs(delta.y()) > .25 ||
-                    std::min(targetWidth,sourceWidth) < .75*std::max(targetWidth,sourceWidth) ||
-                    std::min(targetHeight,sourceHeight) < .75*std::max(targetHeight,sourceHeight)) continue;
-                const double distance = delta.x() * delta.x() + delta.y() * delta.y();
-                if (distance < nearest) {
-                    nearest=distance;best=delta;
-                    sourceQuad=oriented?from:TextQuad{};targetQuad=oriented?to:TextQuad{};
+    for (const auto& line : request.selectedLines) out.push_back(QVector<bool>(line.words.size(), false));
+    // Ink fits are display geometry, not a stable registration frame. Try the
+    // existing fitted patch first, then at most one original recognition-frame
+    // patch for each remaining word. Both require the same independent text,
+    // source identities, 75% size ratio, .94 NCC, .95 visibility and local search.
+    for (const bool recognitionFrame : {false, true}) {
+        QVector<QRectF> rects;
+        QVector<QPointF> offsets;
+        QVector<TextQuad> sourceQuads,targetQuads;
+        QVector<QPair<int, int>> destinations;
+        for (int i = 0; i < request.selectedLines.size(); ++i) {
+            const auto& line = request.selectedLines[i];
+            for (int j = 0; j < line.words.size(); ++j) {
+                if (cancelled.load()) return unavailable();
+                const auto& word = line.words[j];
+                if (out[i][j] || word.disposition != TokenDisposition::kCandidate || IsHighRiskToken(word.text) ||
+                    (recognitionFrame && !word.registrationSceneQuad.valid)) continue;
+                const auto evidence = recognized.constFind(word.text);
+                if (evidence == recognized.constEnd()) continue;
+                // The ordinary completed line proof already covers static words.
+                if (i < neighbor.corroborationMatches.size() && neighbor.corroborationMatches[i] &&
+                    std::any_of(evidence->begin(), evidence->end(), [&](const WordGeometry& r) {
+                        return Iou(word.sceneRect, r.rect) >= .5;
+                    })) continue;
+                std::optional<QPointF> best;
+                TextQuad sourceQuad,targetQuad;
+                double nearest = std::numeric_limits<double>::max();
+                for (const auto& target : *evidence) {
+                    const auto delta = target.rect.center() - word.sceneRect.center();
+                    if (recognitionFrame && !target.registrationQuad.valid) continue;
+                    const auto from=recognitionFrame ? word.registrationSceneQuad :
+                        (word.sceneQuad.valid ? word.sceneQuad : TextQuad::FromRect(word.sceneRect));
+                    const auto to=recognitionFrame ? target.registrationQuad :
+                        (target.quad.valid ? target.quad : TextQuad::FromRect(target.rect));
+                    const auto fromPx=SceneQuadToView(request.selectedReference.stamp.viewTransform,
+                        request.selectedReference.Width(),request.selectedReference.Height(),from);
+                    const auto toPx=SceneQuadToView(neighbor.stamp.viewTransform,
+                        neighbor.reference.Width(),neighbor.reference.Height(),to);
+                    const bool oriented=recognitionFrame || QuadIsRotated(fromPx) || QuadIsRotated(toPx);
+                    const double sourceWidth=oriented?QuadWidth(fromPx):word.sceneRect.width();
+                    const double sourceHeight=oriented?QuadHeight(fromPx):word.sceneRect.height();
+                    const double targetWidth=oriented?QuadWidth(toPx):target.rect.width();
+                    const double targetHeight=oriented?QuadHeight(toPx):target.rect.height();
+                    if (std::abs(delta.x()) > .25 || std::abs(delta.y()) > .25 ||
+                        std::min(targetWidth,sourceWidth) < .75*std::max(targetWidth,sourceWidth) ||
+                        std::min(targetHeight,sourceHeight) < .75*std::max(targetHeight,sourceHeight)) continue;
+                    const double distance = delta.x() * delta.x() + delta.y() * delta.y();
+                    if (distance < nearest) {
+                        nearest=distance;best=delta;
+                        sourceQuad=oriented?from:TextQuad{};targetQuad=oriented?to:TextQuad{};
+                    }
                 }
+                if (!best) continue;
+                rects.push_back(word.sceneRect);
+                offsets.push_back(*best);
+                sourceQuads.push_back(sourceQuad);targetQuads.push_back(targetQuad);
+                destinations.push_back({i, j});
             }
-            if (!best) continue;
-            rects.push_back(word.sceneRect);
-            offsets.push_back(*best);
-            sourceQuads.push_back(sourceQuad);targetQuads.push_back(targetQuad);
-            destinations.push_back({i, j});
         }
-    }
-    // Stronger than ordinary line tracking, with only two probe pixels of
-    // local OCR-box refinement around the explicitly recognized destination.
-    constexpr MatchTuning tuning{.94, .95, 2};
-    for (qsizetype first = 0; first < rects.size(); first += 1024) {
-        if (cancelled.load()) return unavailable();
-        const int count=std::min<qsizetype>(1024,rects.size()-first);
-        QVector<ReferencePatch> patches(count);
-        QVector<QRectF> plain;QVector<TextQuad> shapes;
-        QVector<int> plainIndices,shapeIndices;
-        for(int i=0;i<count;++i) {
-            if(sourceQuads[first+i].valid) {shapes.push_back(sourceQuads[first+i]);shapeIndices.push_back(i);}
-            else {plain.push_back(rects[first+i]);plainIndices.push_back(i);}
-        }
-        QVector<ReferencePatch> plainPatches,shapePatches;
-        if(request.selectedReference.resident) {
-            if(!plain.isEmpty()) plainPatches=request.selectedReference.resident->References(request.selectedReference.stamp,plain);
-            if(!shapes.isEmpty()) shapePatches=request.selectedReference.resident->QuadReferences(request.selectedReference.stamp,shapes);
-        } else {
-            for(const auto& rect:plain) plainPatches.push_back(BuildReferencePatch(request.selectedReference,rect));
-            for(const auto& quad:shapes) shapePatches.push_back(BuildQuadReferencePatch(request.selectedReference,quad));
-        }
-        if(plainPatches.size()!=plain.size() || shapePatches.size()!=shapes.size()) return unavailable();
-        for(int i=0;i<plainIndices.size();++i) {
-            const int destination=plainIndices[i];patches[destination]=plainPatches[i];
-            patches[destination].sceneRect.translate(offsets[first+destination]);
-        }
-        for(int i=0;i<shapeIndices.size();++i) {
-            const int destination=shapeIndices[i];patches[destination]=shapePatches[i];
-            const auto target=PlanQuadReference(neighbor.stamp,neighbor.reference.Width(),
-                neighbor.reference.Height(),targetQuads[first+destination]);
-            patches[destination].sceneQuad=target.sceneQuad;patches[destination].sceneRect=target.sceneRect;
-            patches[destination].valid &= target.sceneQuad.valid;
-        }
-        QVector<PatchMatch> matches;
-        if (neighbor.reference.resident)
-            matches = neighbor.reference.resident->Matches(neighbor.stamp, patches, tuning, {}, &cancelled);
-        else for (const auto& patch : patches) {
+        // Stronger than ordinary line tracking, with only two probe pixels of
+        // local OCR-box refinement around the explicitly recognized destination.
+        constexpr MatchTuning tuning{.94, .95, 2};
+        for (qsizetype first = 0; first < rects.size(); first += 1024) {
             if (cancelled.load()) return unavailable();
-            matches.push_back(MatchPatch(patch, neighbor.reference, tuning));
-        }
-        if (matches.size() != patches.size()) return unavailable();
-        for (int i = 0; i < matches.size(); ++i) {
-            const auto [line, word] = destinations[first + i];
-            out[line][word] = matches[i].matched;
+            const int count=std::min<qsizetype>(1024,rects.size()-first);
+            QVector<ReferencePatch> patches(count);
+            QVector<QRectF> plain;QVector<TextQuad> shapes;
+            QVector<int> plainIndices,shapeIndices;
+            for(int i=0;i<count;++i) {
+                if(sourceQuads[first+i].valid) {shapes.push_back(sourceQuads[first+i]);shapeIndices.push_back(i);}
+                else {plain.push_back(rects[first+i]);plainIndices.push_back(i);}
+            }
+            QVector<ReferencePatch> plainPatches,shapePatches;
+            if(request.selectedReference.resident) {
+                if(!plain.isEmpty()) plainPatches=request.selectedReference.resident->References(request.selectedReference.stamp,plain);
+                if(!shapes.isEmpty()) shapePatches=request.selectedReference.resident->QuadReferences(request.selectedReference.stamp,shapes);
+            } else {
+                for(const auto& rect:plain) plainPatches.push_back(BuildReferencePatch(request.selectedReference,rect));
+                for(const auto& quad:shapes) shapePatches.push_back(BuildQuadReferencePatch(request.selectedReference,quad));
+            }
+            if(plainPatches.size()!=plain.size() || shapePatches.size()!=shapes.size()) return unavailable();
+            for(int i=0;i<plainIndices.size();++i) {
+                const int destination=plainIndices[i];patches[destination]=plainPatches[i];
+                patches[destination].sceneRect.translate(offsets[first+destination]);
+            }
+            for(int i=0;i<shapeIndices.size();++i) {
+                const int destination=shapeIndices[i];patches[destination]=shapePatches[i];
+                const auto target=PlanQuadReference(neighbor.stamp,neighbor.reference.Width(),
+                    neighbor.reference.Height(),targetQuads[first+destination]);
+                patches[destination].sceneQuad=target.sceneQuad;patches[destination].sceneRect=target.sceneRect;
+                patches[destination].valid &= target.sceneQuad.valid;
+            }
+            QVector<PatchMatch> matches;
+            if (neighbor.reference.resident)
+                matches = neighbor.reference.resident->Matches(neighbor.stamp, patches, tuning, {}, &cancelled);
+            else for (const auto& patch : patches) {
+                if (cancelled.load()) return unavailable();
+                matches.push_back(MatchPatch(patch, neighbor.reference, tuning));
+            }
+            if (matches.size() != patches.size()) return unavailable();
+            for (int i = 0; i < matches.size(); ++i) {
+                const auto [line, word] = destinations[first + i];
+                out[line][word] = matches[i].matched;
+            }
         }
     }
     return out;

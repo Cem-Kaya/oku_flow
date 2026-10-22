@@ -10,8 +10,11 @@ unchanged model weights, precision, batch defaults and fixed-width plans.
 ## Geometry and paint
 
 `TextQuad` stores reading-order corners. CPU and CUDA keep the CTC word spans
-in that coordinate frame. Tilts of about two degrees or perspective deformation
-use local ink fitting; smaller upright words retain the rectangle path.
+in that coordinate frame. Tilts of about two degrees, perspective deformation,
+or a corner excursion exceeding half a source pixel use local ink fitting.
+A small angle across a wide word can move its ends by several pixels; it must
+not switch to an upright box merely because it is below two degrees.
+Truly subpixel upright geometry retains the rectangle path.
 The painter maps the glyph and background through all four projected corners,
 including perspective height changes. Its actual painted-character bounds feed
 accessibility and image exports. Invalid geometry keeps the original pixels.
@@ -62,6 +65,16 @@ translated upright patches rejected some readable words in that case.
 `PlanQuadReference` and `BuildQuadReferencePatch` normalize samples in each
 word's own four-corner frame. The neighbouring worker compares the same exact
 token at its detected destination. It does not move the selected glyph.
+
+`PreparedWord::registrationSceneQuad` also retains the original neighbour-bounded
+recognition search frame, independently of the fitted display quad. If the
+fitted patch fails, the worker may compare one additional patch in that original
+frame. This avoids treating two different valid ink crops as identical sampling
+coordinates. It uses the same .94/.95/two-probe-pixel test and 75% intrinsic-size
+ratio, not a lower confidence or correlation threshold. Both recognition results
+must still contain the identical eligible token. There are at most two bounded
+64-by-12 patches per word, batched in groups of 1024; no extra inference,
+UI-thread pixel work, image download or display-footprint change is introduced.
 
 The existing NCC 0.94, visible fraction 0.95 and two-probe-pixel refinement
 remain. Distinct acquisition/source identity, the 250 ms neighbour window,

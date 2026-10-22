@@ -6697,6 +6697,15 @@ normalized scene/view mappings. Invalid/nonconvex/nonfinite shapes have no
 intersection authority. `RecognizedWord::{quadPx,inkSearchQuadPx,inkFitted}`,
 `PreparedWord::sceneQuad` and the accepted/scene word quad fields carry fitted
 geometry through model retention, replacement and projection.
+`QuadIsRotated` also retains sub-two-degree geometry when any edge's transverse
+excursion exceeds half a source pixel, so wide words do not lose several pixels
+of tilt at an angle cutoff. `PreparedWord::registrationSceneQuad` separately
+maps the original neighbour-bounded `RecognizedWord::inkSearchQuadPx` into scene
+coordinates. `MatchImmutableWords` tries that frame only for words without a
+successful fitted-frame proof, retaining the same token/identity, intrinsic-size,
+NCC, visibility and two-probe-pixel checks. Its additional reference work is
+bounded by one 64-by-12 patch per remaining word; display and protection geometry
+are unchanged.
 `FitOrientedWordInk` operates in the detected local frame. The CUDA
 `gpu::OrientedInk`/`OrientedFit` descriptors and `OrientedInkBounds` preserve
 the corresponding fit without downloading image pixels.

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Repair paused tilted-word proof across the upright/rotated fitting boundary;
+  retain significant sub-two-degree geometry and an independent original
+  recognition sampling frame without lowering confidence or pixel agreement.
+
 - Map Windows OCR's deskewed word boxes back through its reported text angle
   before source validation and painting. This corrects displaced startup-bridge
   geometry on tilted text without changing OCR confidence or proof thresholds.

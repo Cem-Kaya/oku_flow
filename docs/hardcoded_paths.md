@@ -124,6 +124,11 @@ quad frame, with 0.15-height horizontal and 0.3-height vertical margins.
 Word registration uses NCC 0.94,
 visibility 0.95 and a two-probe-pixel local refinement. Requests are capped at
 1024 selected lines / 8192 words, with resident reference/match batches <= 1024.
+An original neighbour-bounded recognition search frame may supply one additional
+patch for a word that failed fitted-frame registration; all the same limits and
+thresholds apply. Oriented fitting also preserves a sub-two-degree quad when
+any edge's transverse excursion exceeds 0.5 source pixels, avoiding a several-
+pixel geometry jump on wide text at the old angle cutoff.
 These limits do not expand the live camera's motion search. Completed worker
 checks are consumed even after the UI's 3 ms inline match budget expires.
 

@@ -235,3 +235,51 @@ under the same geometry evidence root. Faint source compression remains outside
 the replacement plates. This verifies that saved crop, not every earlier live
 publication state. See the [offline pipeline guide](uct_pipeline_guide.html)
 for the distinction between source pixels, accepted words and actual paint.
+
+## Five-second Paddle-only refusal (2026-10-22)
+
+The later owner screenshot matches the actual 5200-ms frame of the same
+`Dragable_vid_av1.mp4`. A genuine 5233.333-ms following frame reproduces the
+refusal using the production BF16 Paddle factory alone: 13 eligible recognition
+candidates, one model glyph and one actually painted word (`Persp`), zero image
+egress. Every selected candidate had valid preparation/reference geometry;
+the withheld labels failed the independent line/word pixel checks. Windows
+OCR and painter-mask suppression are not required for this reproduction.
+
+Two general geometry problems were repaired. A sub-two-degree detector quad
+could span several source pixels of slope but enter the upright fitter; its
+neighbour could cross the angle cutoff and enter the oriented fitter. Keeping
+quads with more than half a source pixel of transverse edge excursion raises
+this exact pair to five painted words, including all four upper Left/Hand and
+Right/Hand words. Separating the original neighbour-bounded recognition frame
+from fitted display geometry supplies the additional strict proof for Toggle:
+six model glyphs and six actual paints with Paddle alone. No word or filename
+special case, model/score change, lower NCC, mask carve or display-box enlargement
+is used. A forced real Windows-bridge-to-Paddle run also paints Toggle and all
+four upper button words; the literal `persp`/`Persp` disagreement remains original.
+
+The same repaired Paddle path paints 17/23 recognized candidates at 5500 ms and
+26/26 at 5900 ms. These are actual coverage counts, not accuracy scores; the
+latter includes the literal magnifier-icon misrecognition `Q`. At 5200 ms the
+cropped `INGS`/`ETTINGS`, lower `Right`/`Righ`, unregistered lower spans and the
+pointer-adjacent number are not authorized merely by high recognition scores.
+One lower-Hand detail attempt still supplied no new proof; that refusal is
+retained, not described as recovered text or retried until it passes.
+
+The private CPU extraction, source hashes, original one-word result, two
+incremental geometry results, bridge/detail and other-position reports are under
+`Z:/Projects/OkuFlow/local-work-data/uct-tilted-five-second-20261022/`.
+Original source SHA-256 remains
+`9b09203c3638bcbb3cf023568128ebfb538a9d8e273617e28e047a17b0486671`.
+The 5200/5233 source PNG hashes are
+`09d149fd2001ed27b4472892e868a390dc0919407ad0b4ecf1625f42b31d5d76`
+and `004fb0866b62fdbf86eccbd533cc02df0b3a69604afc48264d0509db8f164641`.
+
+The first focused CPU/PCH-off contract passes 336 Qt rows with no skips in
+40.11 seconds. Its added matrix covers five positive/negative tilts, perspective,
+fit jitter, absent original frames, changed ink, oversized/crossed frames and
+source fencing through actual worker pixel checks. Positive cases additionally
+require production software paint, ScreenLines and nonempty Qt character bounds.
+The real CUDA/PCH-on contract passes 52 Qt rows with no skips in 11.18 seconds,
+including the equivalent resident worker matrix. These scoped checks and saved
+renders do not establish native NVDA or the exact earlier application session.

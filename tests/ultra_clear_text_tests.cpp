@@ -7,6 +7,7 @@
 #include "okuflow/common/ultra_clear_text.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "okuflow/ui/ultra_clear_text_panel.hpp"
+#include "okuflow/ui/uct_screen_text_accessible.hpp"
 #include "ultra_clear_text_test_support.hpp"
 #include "uct_capture_test_cases.hpp"
 #include "uct_color_test_support.hpp"
@@ -672,6 +673,43 @@ private slots:
                 QCOMPARE(measured.corroborationWordMatches[0],QVector<bool>({variant==0}));
             }
         }
+        for(const double angle : {-.3,-.012,.012,.032,.48}) for(const bool perspective : {false,true}) {
+            const auto a=Render(angle,false,perspective);
+            for(const int control : {0,1,2,3,4,5}) {
+                const auto b=Render(angle+.04,control==2,perspective);
+                VerifyWordProof(a,b,control,false,[](RecognitionScheduler& scheduler,const SourceStamp& stamp,
+                    const Fixture& frame,CorroborationRequest request) {
+                    return scheduler.Submit(stamp,frame.image,std::move(request));
+                },[](const OverlayModel& model,const SourceStamp& stamp) {
+                    const bool active=QAccessible::isActive();QAccessible::setActive(true);
+                    const auto restore=qScopeGuard([&]{QAccessible::setActive(active);});
+                    QWidget viewport;viewport.resize(640,360);viewport.show();
+                    UltraClearTextOverlay overlay(&viewport,&viewport);overlay.SetViewTransform(stamp.viewTransform);
+                    QVector<UltraClearTextOverlay::SceneWord> words;
+                    for(const auto& word:model.SceneWords(stamp.timestampMs,stamp.frameSeq))
+                        words.push_back({word.text,word.sceneRect,word.colors,word.lineId,
+                            word.protectedSceneRects,word.wordIndex,word.sceneQuad,word.layoutGroupId,word.carvedSceneRects});
+                    overlay.SetWords(words);QTRY_VERIFY(overlay.PaintedGeometryCurrent());
+                    UltraClearTextOverlay::PaintedWordGeometry geometry;
+                    QVERIFY(overlay.PaintedWord(words[0].lineId,words[0].wordIndex,words[0].text,geometry));
+                    QVERIFY(geometry.drawn);
+                    std::int64_t now=0;
+                    UctScreenTextAccessibility text(&overlay,&viewport,[&] {
+                        return UctScreenTextSnapshot{true,model.ScreenLines(stamp.timestampMs,stamp.frameSeq),"en"};
+                    },[&]{return now;});
+                    text.SetEnabled(true);now=3100;text.ProcessDueWork();
+                    auto* root=text.RootInterface();QVERIFY(root);QCOMPARE(root->childCount(),1);
+                    auto* line=root->child(0);QVERIFY(line);QVERIFY(line->textInterface());
+                    QCOMPARE(line->text(QAccessible::Name),QStringLiteral("Reading"));
+                    QVERIFY(!line->textInterface()->characterRect(0).isEmpty());
+                });
+            }
+        }
+        // The source-pixel excursion matters even below the old two-degree
+        // cutoff; truly subpixel axis noise retains the rectangle path.
+        QVERIFY(QuadIsRotated(Render(.012).pixels));
+        QVERIFY(QuadIsRotated(Render(-.012).pixels));
+        QVERIFY(!QuadIsRotated(Render(.0005).pixels));
     }
     void frozenExportMatchesGlyphsAndSurvivesLiveChanges()
     { uct_capture_test::FrozenExportMatchesGlyphsAndSurvivesLiveChanges(); }

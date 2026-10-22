@@ -1719,6 +1719,20 @@ class PaddleTests final : public QObject
                 }
             }
         }
+        for(const double angle : {-.3,-.012,.012,.032,.48}) for(const bool perspective : {false,true}) {
+            const auto a=Render(angle,false,perspective);
+            for(const int control : {0,1,2,3,4,5}) {
+                const auto b=Render(angle+.04,control==2,perspective);
+                VerifyWordProof(a,b,control,true,[&](RecognitionScheduler& scheduler,const SourceStamp& stamp,
+                    const Fixture& frame,CorroborationRequest request) {
+                    if(cudaMemcpyAsync(pixels.data,frame.image.constBits(),frame.image.sizeInBytes(),
+                        cudaMemcpyHostToDevice,stream.value)!=cudaSuccess)return std::uint64_t{};
+                    auto owned=pool.Capture(pixels.data,frame.image.bytesPerLine(),640,360,stream.value,
+                        stamp.sourceEpoch,stamp.frameSeq,stamp.geometryGeneration);
+                    return scheduler.SubmitDevice(stamp,std::move(owned),std::move(request));
+                });
+            }
+        }
 #else
         QSKIP("CUDA adapter not compiled.");
 #endif
