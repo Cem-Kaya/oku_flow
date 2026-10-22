@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+- Replace a preparing OCR fallback atomically when the preferred engine finishes
+  a full standalone read of the same paused image. Case/spelling differences
+  between engines no longer leave permanent omission masks. Failed reads and
+  supplemental crops do not gain this replacement authority.
+
+- Preserve white text on clearly colored chat bubbles at a 3:1 source-color
+  floor instead of darkening each word's background to 7:1. Neutral surfaces
+  and colored surfaces below that floor retain the existing 7:1 adjustment.
+
 - Keep a visible right-edge playhead and filled timeline while following live
   RAM recap or an ongoing recording. Scrubbing restores the selected position;
   actual history bounds and focused screen-reader values remain unchanged.

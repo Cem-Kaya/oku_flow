@@ -3464,8 +3464,10 @@ Namespace `okuflow`
 `okuflow::UltraClearTextOverlay`
 - Click-through, non-activating tool window over the render target that
   paints accepted scene-space words as glyph plates through the latest
-  `ViewTransform`. Measured colors are kept at â‰¥ 7:1 contrast, otherwise
-  black/white in scene polarity; weight follows Text Clarity stroke weight.
+  `ViewTransform`. Readable chromatic ink retains its hue; other ink uses
+  black/white scene polarity. Colored paper is preserved at a 3:1 solid-ink
+  floor; neutral/below-floor paper retains the 7:1 adjustment. Weight follows
+  Text Clarity stroke weight.
   Paint is clipped away from floating panels, annotation chrome and the
   floating Assistant. `ProjectedWordRects()` exposes drawn geometry.
 - `eventFilter` tracks application activation and owner window blocking;
@@ -5810,7 +5812,10 @@ ambiguous multi-band fits retain their detector box. Native Windows OCR boxes
 are unmarked. Overlay `ReadableColors` preserves source background and polarity,
 snaps neutral/low-chroma ink to black/white (readable chromatic ink with an RGB
 channel spread of at least 64 keeps its hue),
-and binary-searches only the minimum background adjustment still needed for 7:1.
+and preserves clearly colored paper (RGB spread >= 64) when solid same-polarity
+ink reaches a 3:1 source-color floor. Otherwise it binary-searches only the
+minimum background adjustment still needed for 7:1. The floor preserves colored
+chat bubbles; it is not a projected-font-size accessibility certification.
 Both operations occur outside the pan/zoom paint path.
 
 `UltraClearTextController::SetEnabled` retries terminal initialization on an
@@ -6610,7 +6615,7 @@ fixed (about 8.3 KiB CPU stack and 10.2 KiB CUDA shared memory per block), with
 no per-word allocation or image download. `LocalColorFixture`,
 `LocalColorFixtures` and `ColorDistance` supply shared controlled surfaces and
 tiny/clipped bounds to CPU and exact CUDA descriptor tests. These remain solid
-neutral-source colors, separate from display grading and 7:1 renderer contrast.
+neutral-source colors, separate from display grading and renderer contrast/color policy.
 All four immediately adjacent one-pixel sides can establish a compatible local
 surface without requiring paper in glyph-filled corners; that branch skips the
 farther ring. Missing or mixed adjacent sides retain the conservative fallback.
@@ -7068,6 +7073,15 @@ advancing-media methods retain their existing temporal policy. Earlier pair-base
 descriptions in this reference document the retained explicit protocol and its
 historical evidence; they are not the current app's paused prerequisite. See
 [standalone policy](uct_standalone_freeze.md).
+
+`OverlayModel::immutableFullPreparing_` records the last full immutable read's
+preparing status independently of detail crops and controller retry state.
+For exact-input standalone admission only, the first complete preferred full
+read builds a fresh candidate model and replaces fallback coverage/conflicts
+only after accepted preparation. IDs remain monotonic; failed/empty candidates
+leave the fallback intact. Each incoming word uses its own reference/geometry.
+Regional refinements, subsequent same-engine conflicts, corroborated admission
+and live temporal policy retain their existing conservative merge behavior.
 
 The private `UctControllerTestAccess::AdvancingJob` exposes only the pending
 admission ticket to the controller fixture. Its full-deadline comparison now

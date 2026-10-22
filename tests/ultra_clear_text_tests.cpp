@@ -823,6 +823,8 @@ private slots:
     void paddedRecognitionFitsVisibleInk();
     void overlayKeepsSourceBackgroundInsteadOfBlackWhite_data();
     void overlayKeepsSourceBackgroundInsteadOfBlackWhite();
+    void overlayPreservesColoredPaper_data();
+    void overlayPreservesColoredPaper();
     void overlayPreservesReadableChromaticInk_data();
     void overlayPreservesReadableChromaticInk();
     void deferredPresentationKeepsCommittedProjectionAndExpires();
@@ -898,6 +900,8 @@ private slots:
     void rejectedRefreshCannotRestoreOldAcceptedText();
     void immutableEvidenceRequiresDistinctPixelsAndSafeRegistration();
     void standaloneImmutableUsesOnlySelectedFrame();
+    void standalonePreferredFullReplacesPreparingFallback_data();
+    void standalonePreferredFullReplacesPreparingFallback();
     void immutableCompletedRegistrationIgnoresUiBudget_data();
     void immutableCompletedRegistrationIgnoresUiBudget();
     void immutableRefinementRetainsExactProvenCoverage_data();
@@ -1561,6 +1565,61 @@ void UltraClearTextTests::overlayKeepsSourceBackgroundInsteadOfBlackWhite() {
                 foundInk = true;
         }
     QVERIFY(foundInk);
+}
+
+void UltraClearTextTests::overlayPreservesColoredPaper_data()
+{
+    QTest::addColumn<QColor>("paper");
+    QTest::addColumn<bool>("preserved");
+    QTest::addColumn<bool>("quad");
+    for(bool quad:{false,true}) {
+        const auto suffix=quad?"-quad":"-upright";
+        QTest::newRow(qPrintable(QString("chat-blue")+suffix)) << QColor("#6b8bb2") << true << quad;
+        QTest::newRow(qPrintable(QString("rose")+suffix)) << QColor("#b36b83") << true << quad;
+        QTest::newRow(qPrintable(QString("teal")+suffix)) << QColor("#408c86") << true << quad;
+        QTest::newRow(qPrintable(QString("pale-blue-below-floor")+suffix)) << QColor("#a0c8ef") << false << quad;
+        QTest::newRow(qPrintable(QString("neutral-midgray")+suffix)) << QColor(140,140,140) << false << quad;
+    }
+}
+
+void UltraClearTextTests::overlayPreservesColoredPaper()
+{
+    QFETCH(QColor,paper); QFETCH(bool,preserved); QFETCH(bool,quad);
+    QWidget target; target.resize(640,180);
+    UltraClearTextOverlay overlay(&target,&target); overlay.resize(target.size());
+    target.show(); // snapshot export requires a genuinely visible overlay
+    const auto transform=ComputeViewTransform(640,180,640,180,1,.5,.5,ViewportFitMode::kFit);
+    overlay.SetViewTransform(transform);
+    UltraClearTextOverlay::SceneWord word{QStringLiteral("will"),QRectF(.1,.25,.6,.4),
+                                         {QColor("#e3f5ff"),paper},1};
+    if(quad) word.sceneQuad=TextQuad::FromRect(word.sceneRect);
+    overlay.SetWords({word});
+    QImage live(target.size(),QImage::Format_ARGB32_Premultiplied); live.fill(paper);
+    overlay.render(&live);
+    const auto plate=live.pixelColor(60,50);
+    if(preserved) QCOMPARE(plate,paper);
+    else QVERIFY(plate!=paper); // insufficient/neutral paper still gets the strict treatment
+    int white=0;
+    for(int y=40;y<125;++y) for(int x=65;x<450;++x) white+=live.pixelColor(x,y)==QColor(Qt::white);
+    QVERIFY(white>100);
+    QImage saved(target.size(),QImage::Format_ARGB32_Premultiplied); saved.fill(paper);
+    QPainter painter(&saved);
+    overlay.CaptureSnapshot(transform,saved.size()).Paint(painter,saved.size()); painter.end();
+    QCOMPARE(saved.pixelColor(60,50),plate);
+    if(preserved || quad) {
+        QCOMPARE(saved,live); // exact source-paper treatment, including glyphs
+    } else {
+        // QPicture replay of the existing floating-color 7:1 fallback rounds
+        // antialiased upright plate edges by one channel level. Solid paper
+        // above is exact; this does not relax the source-color comparisons.
+        int maxDelta=0;
+        for(int y=0;y<live.height();++y) for(int x=0;x<live.width();++x) {
+            const auto a=live.pixelColor(x,y),b=saved.pixelColor(x,y);
+            maxDelta=std::max({maxDelta,std::abs(a.red()-b.red()),std::abs(a.green()-b.green()),
+                std::abs(a.blue()-b.blue()),std::abs(a.alpha()-b.alpha())});
+        }
+        QVERIFY(maxDelta<=1);
+    }
 }
 
 void UltraClearTextTests::overlayPreservesReadableChromaticInk_data()
@@ -2783,6 +2842,65 @@ void UltraClearTextTests::standaloneImmutableUsesOnlySelectedFrame()
     // A second read is still not independent live-camera evidence.
     QCOMPARE(model.Admit(selected,selected.stamp,nullptr,110),AdmitVerdict::kPending);
     QVERIFY(model.SceneWords(110,selected.stamp.frameSeq).isEmpty());
+}
+
+void UltraClearTextTests::standalonePreferredFullReplacesPreparingFallback_data()
+{
+    QTest::addColumn<QString>("fallback");
+    QTest::addColumn<QString>("preferred");
+    QTest::newRow("capitalization") << QStringLiteral("Will") << QStringLiteral("will");
+    QTest::newRow("different-spelling") << QStringLiteral("ruce") << QStringLiteral("nice");
+}
+
+void UltraClearTextTests::standalonePreferredFullReplacesPreparingFallback()
+{
+    QFETCH(QString,fallback); QFETCH(QString,preferred);
+    const auto page=MakePage({preferred+QStringLiteral(" words")});
+    const auto transform=Transform(1,.5f,.5f);
+    auto full=ResultFor(page,transform,Stamp(1,1,100,transform));
+    auto bridge=ResultFor(page,transform,full.stamp,{fallback,QStringLiteral("words")});
+    bridge.output.backendPreparing=true;
+    OverlayModel model;
+    const auto admit=[&](OverlayModel& target,const RecognitionResult& result) {
+        return target.AdmitImmutable(result,full.stamp,3600000,nullptr,ImmutableAdmission::Standalone);
+    };
+    QCOMPARE(admit(model,bridge),AdmitVerdict::kAccepted);
+    const auto before=model.ReadingText(3600000,full.stamp.frameSeq);
+    const auto id=model.Lines().first().id;
+    auto failed=full; failed.output.ok=false;
+    QCOMPARE(admit(model,failed),AdmitVerdict::kFailed);
+    failed=full; failed.reference.luma={};
+    QCOMPARE(admit(model,failed),AdmitVerdict::kFailed);
+    failed=full; ++failed.stamp.sourceEpoch;
+    QCOMPARE(admit(model,failed),AdmitVerdict::kStaleScene);
+    failed=full; failed.output.lines.clear();
+    QCOMPARE(admit(model,failed),AdmitVerdict::kEmpty);
+    QCOMPARE(model.ReadingText(3600000,full.stamp.frameSeq),before);
+    QCOMPARE(model.Lines().first().id,id);
+    // A preferred crop is supplemental, never full-frame replacement authority.
+    auto cropped=model;
+    auto detail=full; detail.output.detailRegionPx=QRect(0,0,kViewWidth/2,kViewHeight);
+    admit(cropped,detail);
+    const auto croppedWords=cropped.SceneWords(3600000,full.stamp.frameSeq);
+    QVERIFY(std::none_of(croppedWords.begin(),croppedWords.end(),[&](const auto& word) {
+        return word.text==preferred;
+    }));
+    // A non-preparing detail of unchanged fallback spelling must not consume
+    // the full-read handoff state either.
+    detail=bridge; detail.output.backendPreparing=false;
+    detail.output.detailRegionPx=QRect(0,0,kViewWidth/2,kViewHeight);
+    admit(model,detail);
+    QCOMPARE(admit(model,full),AdmitVerdict::kAccepted);
+    QCOMPARE(model.ReadingText(3600000,full.stamp.frameSeq),preferred+QStringLiteral(" words"));
+    QCOMPARE(model.SceneWords(3600000,full.stamp.frameSeq).size(),2);
+    QVERIFY(model.Lines().first().id>id);
+    // Later same-engine contradictions still protect the source ink.
+    auto conflict=full; conflict.output.lines[0].words[0].text=QStringLiteral("other");
+    admit(model,conflict);
+    const auto conflicted=model.SceneWords(3600000,full.stamp.frameSeq);
+    QVERIFY(std::none_of(conflicted.begin(),conflicted.end(),[&](const auto& word) {
+        return word.text==preferred || word.text==QStringLiteral("other");
+    }));
 }
 
 void UltraClearTextTests::immutableEvidenceRequiresDistinctPixelsAndSafeRegistration()

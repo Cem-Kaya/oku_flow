@@ -56,6 +56,10 @@ inline void Run()
 #else
     using namespace uct_resident_test;
     const bool bridge = qEnvironmentVariable("OKUFLOW_UCT_PAUSE_BRIDGE") == "1";
+    // Comparison OCR may still be recorded by this historical diagnostic,
+    // but standalone admission never consumes its result.
+    const bool standalone = qEnvironmentVariable("OKUFLOW_UCT_PAUSE_STANDALONE") == "1";
+    const auto admission = standalone ? ImmutableAdmission::Standalone : ImmutableAdmission::Corroborated;
     const auto selectedPath = qEnvironmentVariable("OKUFLOW_UCT_PAUSE_SELECTED");
     const auto neighbourPath = qEnvironmentVariable("OKUFLOW_UCT_PAUSE_NEIGHBOUR");
     const auto sdk = qEnvironmentVariable("OKUFLOW_UCT_TENSORRT_ROOT");
@@ -167,7 +171,7 @@ inline void Run()
     QVERIFY2(selected->result.output.ok, qPrintable(selected->result.output.error));
     QVERIFY(selected->result.reference.resident && selected->result.sourcePixelDigest.size() == 32);
     OverlayModel model;
-    const auto beforeVerdict = model.AdmitImmutable(selected->result, selectedStamp, 0);
+    const auto beforeVerdict = model.AdmitImmutable(selected->result, selectedStamp, 0, nullptr, admission);
     CorroborationRequest request;
     request.selectedJobId = selected->result.jobId;
     request.selectedReference = selected->result.reference;
@@ -178,7 +182,8 @@ inline void Run()
     auto neighbour = Await(*box, Clock::now() + std::chrono::seconds(30));
     QVERIFY(neighbour && (bridge ? !neighbour->backend.usesGpu : neighbour->backend.usesGpu));
     QVERIFY2(neighbour->result.output.ok, qPrintable(neighbour->result.output.error));
-    auto afterVerdict = model.AdmitImmutable(selected->result, selectedStamp, 0, &neighbour->result);
+    auto afterVerdict = standalone ? beforeVerdict :
+        model.AdmitImmutable(selected->result, selectedStamp, 0, &neighbour->result);
     QJsonObject bridgeReport;
     if (bridge) {
         const auto initial = selected->result;
@@ -210,7 +215,8 @@ inline void Run()
         QVERIFY(scheduler->SubmitDevice(neighbourStamp, neighbourInput, request));
         neighbour = Await(*box, Clock::now() + std::chrono::seconds(30));
         QVERIFY(neighbour && neighbour->backend.usesGpu && neighbour->result.output.ok);
-        afterVerdict = model.AdmitImmutable(selected->result, selectedStamp, 0, &neighbour->result);
+        afterVerdict = model.AdmitImmutable(selected->result, selectedStamp, 0,
+            standalone ? nullptr : &neighbour->result, admission);
         const auto refined = model.SceneWords(0, selectedStamp.frameSeq);
         QJsonArray retained, revoked;
         for (const auto& old : oldWords) {
@@ -340,8 +346,8 @@ inline void Run()
         // Re-detecting the held image is the same acquisition, never a new one.
         QCOMPARE(detailSelected->result.stamp.frameSeq, selectedStamp.frameSeq);
         QCOMPARE(detailSelected->result.sourcePixelDigest, selected->result.sourcePixelDigest);
-        const auto selectedOnly = model.SceneWords(0, selectedStamp.frameSeq).isEmpty()
-            ? model.AdmitImmutable(detailSelected->result, selectedStamp, 0) : AdmitVerdict::kPending;
+        const auto selectedOnly = standalone || model.SceneWords(0, selectedStamp.frameSeq).isEmpty()
+            ? model.AdmitImmutable(detailSelected->result, selectedStamp, 0, nullptr, admission) : AdmitVerdict::kPending;
         CorroborationRequest detailRequest;
         detailRequest.selectedJobId = detailSelected->result.jobId;
         detailRequest.selectedReference = detailSelected->result.reference;
@@ -351,7 +357,8 @@ inline void Run()
         QVERIFY(scheduler->SubmitDevice(neighbourStamp, neighbourInput, detailRequest, focus));
         auto detailNeighbour = Await(*box, Clock::now() + std::chrono::seconds(30));
         QVERIFY(detailNeighbour && detailNeighbour->result.output.ok);
-        const auto detailVerdict = model.AdmitImmutable(detailSelected->result, selectedStamp, 0, &detailNeighbour->result);
+        const auto detailVerdict = standalone ? selectedOnly :
+            model.AdmitImmutable(detailSelected->result, selectedStamp, 0, &detailNeighbour->result);
         const auto after = renderZoom(model, "zoom-after.png");
         detailReport = {{"focusScene", QJsonArray{focusScene.x(), focusScene.y(), focusScene.width(), focusScene.height()}},
                         {"requestedRegion", QJsonArray{focus.regionPx.x(), focus.regionPx.y(), focus.regionPx.width(), focus.regionPx.height()}},
@@ -468,6 +475,8 @@ inline void Run()
         {"selectedMs", selectedPts}, {"neighbourMs", neighbourPts},
         {"selectedSha256", FileSha256(selectedPath)}, {"neighbourSha256", FileSha256(neighbourPath)},
         {"beforeVerdict", int(beforeVerdict)}, {"afterVerdict", int(afterVerdict)},
+        {"admission", standalone ? "Standalone" : "Corroborated"},
+        {"neighbourIsDiagnosticComparisonOnly", standalone},
         {"productionFactory", productionFactory}, {"actualBackendDetail", selected->backend.detail},
         {"selectedOutput", uct_batch_test::Output(selected->result.output)},
         {"neighbourOutput", uct_batch_test::Output(neighbour->result.output)},

@@ -1011,3 +1011,12 @@ aligned with the project goals.
   runtime inputs; measure native sample duration instead of borrowing software
   extraction metadata. Missing duration/neighbour must fail without expanding
   policy. Keep one Open, bounded paused waiting and no Play/GPU/audio endpoints.
+
+## Private standalone paused diagnostics (2026-10-22)
+
+- `OKUFLOW_UCT_PAUSE_STANDALONE=1` selects standalone model admission in the
+  private paused-video diagnostic. Its historical neighbour OCR is comparison
+  data only and must never supply admission evidence in this mode. Label those
+  extra diagnostic jobs separately from the app's selected-only paused path.
+  Retain exact source hashes, fallback/preferred outputs and actual per-word
+  paint decisions; a reading-pane count does not establish visible replacement.

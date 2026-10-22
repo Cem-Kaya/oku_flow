@@ -120,7 +120,8 @@ qreal RelativeLuminance(const QColor& color)
 }
 
 // Preserve the source board/paper color. Improve ink first; only if even pure
-// ink cannot reach 7:1 do we move the background toward its polarity endpoint.
+// ink cannot reach 7:1 do we move neutral paper toward its polarity endpoint.
+// Clearly colored surfaces retain their hue/paper at a 3:1 solid-ink floor.
 // This is cached with the layout, never performed on the pan/zoom paint path.
 uct::LineColors ReadableColors(const uct::LineColors &measured) {
     const auto contrast = [](const QColor &a, const QColor &b) {
@@ -140,7 +141,12 @@ uct::LineColors ReadableColors(const uct::LineColors &measured) {
     const bool darkText =
         RelativeLuminance(measured.foreground) <= RelativeLuminance(measured.background);
     uct::LineColors result{darkText ? QColor(Qt::black) : QColor(Qt::white), measured.background};
-    if (contrast(result.foreground, result.background) >= 7.0)
+    const int paperSpread = std::max({measured.background.red(), measured.background.green(),
+                                      measured.background.blue()}) -
+                            std::min({measured.background.red(), measured.background.green(),
+                                      measured.background.blue()});
+    const double sourceContrast = contrast(result.foreground, result.background);
+    if (sourceContrast >= 7.0 || (paperSpread >= 64 && sourceContrast >= 3.0))
         return result;
     const QColor endpoint = darkText ? QColor(Qt::white) : QColor(Qt::black);
     const auto mix = [&](double amount) {

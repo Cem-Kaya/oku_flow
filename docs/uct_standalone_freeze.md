@@ -66,3 +66,63 @@ matrix; its fresh app/recap cases pass in 6.02 s and 0.36 s. Raw attempts,
 ledger snapshots and source/binary receipts remain in the work directory above.
 These background results do not establish native GUI/NVDA, camera or release
 acceptance. No new real-model coverage count is claimed for standalone mode.
+
+The private optional paused diagnostic can select `OKUFLOW_UCT_PAUSE_STANDALONE=1`
+to feed only the selected result into the real standalone model/paint path. Its
+historical neighbouring OCR remains a separately reported comparison and is
+never consumed for this admission; the JSON records that distinction. This is
+an offline diagnostic, not a claim that the app submits a neighbour job.
+
+## Preparing fallback to preferred recognition
+
+A complete startup fallback can publish while the preferred recognizer loads.
+That provisional full read is not an independent witness against the preferred
+engine. On the same source/frame/PTS/digest and scheduler authority, a complete
+preferred standalone full read prepares a fresh model and atomically replaces
+the fallback only on accepted preparation. It uses its own source references,
+spelling, confidence, geometry and protection. This corrects cases such as a
+fallback `Will` conflicting with preferred `will`; no word whitelist, case folding
+or spelling substitution is involved. Failed/empty reads preserve the fallback.
+A crop cannot replace the whole artifact or consume this full-read handoff.
+Subsequent same-engine disagreement still keeps the conflicting original ink.
+Corroborated and live admission retain their existing policies.
+
+For display colors, clearly colored source paper with RGB channel spread at
+least 64 stays unchanged when solid same-polarity ink reaches a 3:1 contrast
+floor. Thus white text remains white on the original blue chat bubble without
+separate dark word plates. Below that floor, and on neutral paper, the existing
+7:1 adjustment remains. This is a source-color choice, not a guarantee about
+projected font size or native screen-reader acceptance.
+
+The retained chat-frame diagnostic reproduces a real Windows `Will` to Paddle
+`will` handoff refusal before this repair. Preferred-only admission already drew
+the word; the startup refinement removed it. After repair the same production
+factory/selected pixels produce 293 scene words and 277 actual paints, including
+`will`. It remains drawn before and after same-image zoom detail (8 of 9 words
+painted in that focus; the tiny adjacent `i` remains original). Actual blue paper
+is retained with white replacement ink. This is an offline resident/production
+paint replay, not decoder, native display or native screen-reader acceptance.
+Its neighbour job is explicitly comparison-only under standalone admission.
+
+Current focused CPU/PCH-OFF contracts pass 349 model/paint Qt rows and 166
+controller Qt rows, zero failures/skips, in 132.97 seconds. They cover preferred
+handoff painting and positioned character bounds, failed/empty/stale input,
+crop authority, subsequent contradictions, colored paper and below-floor/neutral
+controls. Initial fixture failures are retained: hidden-overlay export, a
+rejection-code expectation, and one-channel QPicture antialiasing differences
+on the existing floating-color fallback. Source-paper colors and the blue live/
+export images are compared exactly; only that old fallback's edge rounding has
+a one-level bound. Private inputs, first attempts and hashes remain under
+`Z:/Projects/OkuFlow/local-work-data/uct-chat-will-20261022`.
+
+The shipping application compiles successfully. CUDA delta: 14 passed, five
+optional codec skips, zero unresolved. The broader CPU invocation remains
+blocked by the previously retained `phone_camera_contract` failure: its shared
+PATH/toolkit environment differs, so Resume refuses an unchanged retry. No
+phone repair or full-matrix PASS is claimed. After explicitly rebuilding the
+optional actual-app fixture, both offscreen app cases and source equivalence
+pass (3/240, 21.45 s); source equivalence also passes PCH ON (1/246, 11.94 s).
+The real chat replay retains exact TensorRT retirement and cache inventories;
+its two image-egress calls are the diagnostic's explicit Windows bridge reads
+(selected fallback and comparison-only neighbour). GUI/NVDA, camera/presenter
+and release acceptance remain unrun.

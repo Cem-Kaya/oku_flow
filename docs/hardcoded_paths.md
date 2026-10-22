@@ -194,6 +194,9 @@ width/height. Near-identical refresh retention requires IoU >= 0.8 and edges/
 dimensions within 10% of word height, plus current independent validation.
 The existing 350 ms freshness and 600 ms presentation watchdog are unchanged.
 Source-color contrast adjustment targets 7:1 and uses 16 bounded search steps.
+Clearly colored paper (RGB channel spread >= 64) is preserved when solid
+same-polarity black/white ink reaches 3:1; otherwise the 7:1 adjustment remains.
+This source-color floor is not a font-size-dependent accessibility certification.
 Accepted background brightness uses 64 fixed levels; same-polarity foreground/
 background changes up to 8 RGB channel levels retain the prior color. A neutral
 ink channel spread below 64 snaps to pure black/white. Source ink is retained

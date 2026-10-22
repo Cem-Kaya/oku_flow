@@ -889,6 +889,8 @@ public:
     // A refinement of identical selected pixels preserves exact earlier words
     // and can add eligible words; it never rebinds old proof to
     // jittered recognition boxes or another selected input.
+    // A complete preferred standalone read replaces the preparing fallback
+    // atomically using its own references. Detail crops cannot do so.
     AdmitVerdict AdmitImmutable(const RecognitionResult& result,
                                 const SourceStamp& selectedFrame,
                                 std::int64_t nowMs,
@@ -978,6 +980,7 @@ private:
     QVector<QRectF> immutableConflictRects_;
     bool immutableConflictSaturated_{};
     bool immutable_{};
+    bool immutableFullPreparing_{};
     ImmutableAdmission immutableAdmission_{ImmutableAdmission::Corroborated};
     bool liveCamera_{};
 };

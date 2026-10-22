@@ -2716,6 +2716,7 @@ void OverlayModel::Reset()
     immutableConflictRects_.clear();
     immutableConflictSaturated_ = false;
     immutable_ = false;
+    immutableFullPreparing_ = false;
     immutableAdmission_ = ImmutableAdmission::Corroborated;
     liveCamera_ = false;
 }
@@ -2774,6 +2775,19 @@ AdmitVerdict OverlayModel::AdmitImmutable(const RecognitionResult& result,
     const bool regional = !result.output.detailRegionPx.isEmpty() &&
                           result.output.detailRegionPx.intersected(jobRect) != jobRect;
     if (regional && !sameInput) return AdmitVerdict::kStaleScene;
+    if (sameInput && !regional && admission == ImmutableAdmission::Standalone &&
+        immutableFullPreparing_ && !result.output.backendPreparing) {
+        // The startup fallback is provisional, not an independent witness
+        // against the preferred engine's full read of these exact pixels.
+        // Build a fresh candidate so spelling/case differences do not create
+        // permanent conflict masks. Keep the prior artifact on failed/empty
+        // preparation; no source reference or geometry is transferred.
+        OverlayModel preferred = *this;
+        preferred.Reset(); // preserves monotonic line IDs
+        const auto verdict = preferred.AdmitImmutable(result, selectedFrame, nowMs, nullptr, admission);
+        if (verdict == AdmitVerdict::kAccepted) *this = std::move(preferred);
+        return verdict;
+    }
     QVector<AcceptedLine> previous;
     if (sameInput) {
         // A region also keeps earlier reading-only lines; the merge promotes
@@ -2789,6 +2803,7 @@ AdmitVerdict OverlayModel::AdmitImmutable(const RecognitionResult& result,
     const auto verdict = AdmitImpl(result, selectedFrame, nullptr, nowMs, true, corroboration,
                                   false, false, {}, admission);
     if (verdict == AdmitVerdict::kFailed || verdict == AdmitVerdict::kStaleScene) return verdict;
+    if (!regional) immutableFullPreparing_ = result.output.backendPreparing;
     if (!sameInput) {
         immutableConflictRects_.clear();
         immutableConflictSaturated_ = false;

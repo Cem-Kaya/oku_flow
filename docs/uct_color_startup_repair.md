@@ -27,7 +27,11 @@ of at least 64 and existing contrast of at least 7:1. Lower-chroma ink uses the
 same solid black/white polarity treatment as neutral ink. This deliberately
 normalizes some muted source colors; clearly colored, readable yellow/cyan/
 purple labels retain their source foreground. Background sampling, brightness
-hysteresis, minimum 7:1 contrast, geometry and protection are unchanged. It does
+hysteresis, geometry and protection are unchanged. The later colored-paper
+repair preserves paper with RGB spread >= 64 when solid same-polarity ink
+reaches 3:1; neutral or below-floor paper still receives the 7:1 adjustment.
+This keeps white text on blue chat bubbles without individual dark word plates.
+It does
 not denoise original video outside replacement plates or authorize repainting
 an unproved word. Color work remains cached outside the pan/zoom paint path.
 

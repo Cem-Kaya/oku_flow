@@ -560,6 +560,8 @@ private slots:
     void immutableOldFrameAndIdleDoNoPeriodicWork();
     void standalonePausedFramePublishesWithoutNeighbour_data();
     void standalonePausedFramePublishesWithoutNeighbour();
+    void standalonePreferredHandoffPublishesPaintAndPositionedText_data();
+    void standalonePreferredHandoffPublishesPaintAndPositionedText();
     void standalonePausedDetailUsesHeldPixels_data();
     void standalonePausedDetailUsesHeldPixels();
     void backendReadySubmitsWaitingMediaOnce();
@@ -2036,6 +2038,61 @@ void UltraClearTextControllerTests::standalonePausedFramePublishesWithoutNeighbo
     QVERIFY(h.controller->SetImmutableScene(scene));
     QTRY_COMPARE(admitted.size(),3);
     QTRY_COMPARE(h.overlay.WordCount(),h.page.words.size());
+}
+
+void UltraClearTextControllerTests::standalonePreferredHandoffPublishesPaintAndPositionedText_data()
+{
+    QTest::addColumn<bool>("resident");
+    QTest::newRow("cpu") << false;
+    QTest::newRow("cpu-bridge-to-resident-preferred") << true;
+}
+
+void UltraClearTextControllerTests::standalonePreferredHandoffPublishesPaintAndPositionedText()
+{
+    QFETCH(bool,resident);
+    AccessibilityActivation accessibility;
+    ImmutableHarness h;
+    h.owner.resize(1000,600); h.owner.show(); // Qt offscreen
+    h.page=MakePage({QStringLiteral("i will recod")},{},960,540,48);
+    h.script->words=h.page.words;
+    auto bridge=h.page.words;
+    bridge[0].text=QStringLiteral("I"); bridge[1].text=QStringLiteral("Will");
+    h.script->callWords[1]=bridge;
+    h.script->completeBridgeResults=1;
+    h.script->permittedCalls=1;
+    h.devices->resident=resident;
+    if(resident) h.script->wantsDeviceAfterCalls=1;
+    auto scene=resident?h.DeviceScene(0):h.Scene(0);
+    scene.admission=ImmutableAdmission::Standalone;
+    QSignalSpy admitted(h.controller.get(),&UltraClearTextController::recognitionAdmitted);
+    h.Enable(); QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_COMPARE(admitted.size(),1);
+    QVERIFY(h.Reading().contains(QStringLiteral("I Will recod")));
+    h.script->Release();
+    QTRY_COMPARE_WITH_TIMEOUT(admitted.size(),2,5000);
+    QCOMPARE(h.Reading(),QStringLiteral("i will recod"));
+    QTRY_VERIFY(h.overlay.PaintedGeometryCurrent());
+    bool drawn=false;
+    for(const auto& word:h.overlay.Words()) if(word.text==QStringLiteral("will")) {
+        UltraClearTextOverlay::PaintedWordGeometry geometry;
+        QVERIFY(h.overlay.PaintedWord(word.lineId,word.wordIndex,word.text,geometry));
+        drawn=geometry.drawn;
+    }
+    QVERIFY(drawn);
+    QVERIFY(!h.controller->Model().ScreenLines(h.now,0).isEmpty());
+    h.now+=3100; h.controller->ScreenTextAccessibility()->ProcessDueWork();
+    auto* root=h.controller->ScreenTextAccessibility()->RootInterface();
+    QVERIFY(root);
+    bool positioned=false;
+    for(int i=0;i<root->childCount();++i) {
+        auto* line=root->child(i); if(!line || !line->textInterface()) continue;
+        auto* text=line->textInterface();
+        const int index=text->text(0,-1).indexOf(QStringLiteral("will"));
+        if(index>=0) positioned=!text->characterRect(index).isEmpty();
+    }
+    QVERIFY(positioned);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted,std::uint64_t(2));
+    QVERIFY(!h.devices->readOnUiThread.load());
 }
 
 void UltraClearTextControllerTests::latePausedNeighbourReusesSelectedEvidence_data()
