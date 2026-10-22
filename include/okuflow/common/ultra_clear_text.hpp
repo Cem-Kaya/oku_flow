@@ -306,8 +306,8 @@ struct RecognizedWord {
     double confidence{1.0}; // backend evidence; never increased during admission
     QRectF protectedBoundsPx; // original detector span, before optional ink fitting
     std::optional<LineColors> colors; // local word surface, measured after recognition
-    // Oriented Paddle geometry in job pixels. boundsPx is always its
-    // axis-aligned bound. Windows OCR words keep valid == false.
+    // Oriented backend geometry in job pixels, including Windows OCR's
+    // deskew-angle correction. boundsPx is always its axis-aligned bound.
     TextQuad quadPx;          // CTC span over the line height; fitted ink after preparation
     TextQuad inkSearchQuadPx; // span widened by one CTC step, bounded by neighbours
     bool inkFitted{};         // worker ink fitting replaced the padded span

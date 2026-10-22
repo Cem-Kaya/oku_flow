@@ -133,3 +133,63 @@ by this evidence-only contribution. Source/current-pixel, distinct-neighbour,
 intact. The two new fixture rows are **UNRUN** in this child. By explicit
 coordination, the parent will compile and run them after import into its warm
 CPU build/combined gate; the child performed no configure, build or test run.
+
+## Actual Windows bridge coordinate defect
+
+A later parent run retained both real Windows bridge outputs before the same
+preferred BF16 pair. Its private report is
+`uct-pause-proof-20261022-015915-253564f5-a277-4d96-a4ae-b33e69be2d48/proof.json`
+under the geometry evidence root. It has 38 model scene words, including
+upright/tilted duplicate fragments, against 26 in the direct run. In the focus,
+19 of 33 paint before detail and 18 of 34 afterwards. Head is visibly missing;
+several retained bridge plates and glyphs are displaced from the source ink.
+This is a reproduced failure, not a quality pass because the diagnostic exits
+normally. It does not by itself establish native screen-reader behavior.
+
+Source inspection found that the Windows wrapper discarded `OcrResult.TextAngle`
+and the adapter treated every `BoundingRect` as original-image coordinates.
+Microsoft documents that these boxes use the rotated coordinate frame and
+must be rotated clockwise about the image centre to overlay the original.
+See [TextAngle](https://learn.microsoft.com/en-us/uwp/api/windows.media.ocr.ocrresult.textangle)
+and [BoundingRect](https://learn.microsoft.com/en-us/uwp/api/windows.media.ocr.ocrword.boundingrect).
+The bridge's Head at `[130,243,97,31]` and Zoom at `[62,320,83,23]` are displaced
+from preferred source bounds around `[137.79,223.31,95.18,33.87]` and
+`[64.34,296.12,83.11,27.27]`; the direction changes across the image, consistent
+with the missing global rotation. The repaired same-source run below retains
+the actual native angle and outputs.
+
+The repair retains that optional native angle, rotates all four corners in
+the actual sampled image, then maps them back with the actual X/Y resize
+ratios. Native null/zero angle keeps the upright path. Nonfinite metadata
+fails closed; no guessed angle, spelling substitution, protection shrink,
+confidence reduction or proof relaxation is introduced. The Windows adapter
+now supplies the existing oriented-geometry pipeline rather than upright
+boxes from a different coordinate frame. Pure mapping and real printed-page
+fixtures are added.
+
+The first repaired CPU/PCH-off Windows OCR gate passes all 11 Qt rows, no
+skips, in 0.80 seconds, including real +/-3 and +/-6 degree printed pages.
+The current CUDA/PCH-on Paddle kernel gate also passes in 8.68 seconds,
+including the 8x normalization path. Both are scoped results; the automatic
+`agent_check` refuses the incomplete full Ninja dependency inventory rather
+than claiming scoped coverage.
+
+The repaired real Windows-bridge -> BF16 proof is
+`uct-pause-proof-20261022-133746-cc11f6c0-7554-4a3a-94cf-d5731222fa1c/proof.json`,
+SHA-256 `5de577bc630233dfa85fb5bd488dfb3a193a3dd6d8a9dbdd30a631ec1442ce62`.
+The native bridge angle is +2.4 degrees. Both Head labels paint, each appears
+once, and all 21 in-focus scene words paint before and after detail. The
+previous 38-word duplicate union becomes 23 scene words. This lower count
+reflects deduplication and retained literal disagreements, not an accuracy
+score or a comparison against the direct run's 26 words. The pointer-occluded
+Right/F.ight conflict remains original; it is not corrected by spelling rules.
+The exported zoom image has been inspected. Minor background/plate artifacts
+remain, and this source pair does not close the atlas's reported blurred-14
+state or native NVDA behavior.
+
+This replay uses the actual production BF16 factory and cached plans. It
+reports exact input retirement, unchanged cache inventories, two intentional
+bridge image readbacks and no additional GPU image egress. The raw build,
+gate/Qt logs and receipts are under the private
+`uct-windows-angle-20261022` work directory. Corrected controller/UIA replay,
+combined shipping/PCH/CPU/CUDA checks and native acceptance remain separate.

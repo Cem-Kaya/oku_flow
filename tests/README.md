@@ -1441,7 +1441,10 @@ latest-only coalescing, cancellation ownership, bounded destruction, and the
 controller's presentation-clock independence while OCR is held.
 `ultra_clear_text_windows_ocr` (labels `headless;ocr-runtime`) exercises the
 real built-in Windows OCR engine on synthetic dark-on-light and light-on-dark
-pages and skips when no OCR language is installed; a skip is not a pass.
+pages, plus clockwise/counterclockwise tilted pages. Its pure mapping row
+checks rotation about the image centre, rounded X/Y resizing and invalid
+metadata. Native rows require both the recognized token and its actual source
+position/angle, and skip when no OCR language is installed; a skip is not a pass.
 Neither opens native windows, cameras or network connections. Native GUI
 layout, screen-reader and real-camera acceptance remain separate.
 

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Map Windows OCR's deskewed word boxes back through its reported text angle
+  before source validation and painting. This corrects displaced startup-bridge
+  geometry on tilted text without changing OCR confidence or proof thresholds.
+
 - Normalize low-chroma UCT video text to one solid black/white foreground so
   compression tint does not alternate between white, cyan and green across
   words; preserve clearly chromatic readable ink and source paper.

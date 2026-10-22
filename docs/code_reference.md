@@ -2934,8 +2934,14 @@ Namespace `okuflow::processing`
   `smoothedProbeFallbackDownloadsOnlyTheCurrentProbe` guards the independent
   CPU probe path against an extra full-frame validation readback.
 - `CreateDefaultRecognizer()` (in `src/common/uct_default_recognizer.cpp`)
-  returns the Windows OCR adapter: grayscale, dark-background inversion and
-  the engine's maximum dimension, mapping boxes back to copy pixels.
+  returns the automatic backend chain. `CreateWindowsRecognizer()` constructs
+  its Windows adapter: grayscale, dark-background inversion and the engine's
+  maximum dimension. `windows_ocr::SourceWordQuad` in the private
+  `src/common/uct_windows_geometry.hpp` rotates native deskewed word corners
+  clockwise about the sampled image centre using `Result::textAngleDegrees`,
+  then restores the actual X/Y resize ratios. The adapter supplies that source
+  quad and its bounding rectangle before color, proof and immutable merging.
+  Null/zero angle preserves upright geometry; nonfinite geometry fails closed.
 
 ### `include/okuflow/common/uct_windows_ocr.hpp`
 `okuflow::uct::windows_ocr::Engine`
@@ -2944,7 +2950,9 @@ Namespace `okuflow::processing`
   an engine from profile languages or the first installed OCR language.
   `Recognize(...)` copies BGRA rows into a `SoftwareBitmap`, waits through its
   own completion handler, requests `Cancel()` on cancellation and still waits
-  (bounded) before returning.
+  (bounded) before returning. `Result::textAngleDegrees` preserves the optional
+  native clockwise angle: `OcrWord.BoundingRect` is in the deskewed coordinate
+  frame, not directly in the input image when this angle is nonzero.
 
 ## D3D12 Module
 
