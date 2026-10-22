@@ -214,7 +214,9 @@ private:
     bool OpenLiveRecapAt(std::int64_t pts100ns, bool play);
     void PollLiveRecap();
     bool PresentFrozenMediaScene();
-    void RetainPresentedCameraScene(const void* texture, UINT width, UINT height,
+    void RetainPresentedCameraScene(std::uint64_t sceneEpoch, std::uint64_t sceneSequence,
+                                   std::optional<std::int64_t> committedCaptureClock100ns,
+                                   const void* texture, UINT width, UINT height,
                                    const ViewTransform& transform, const std::uint8_t* cpuPixels = nullptr,
                                    std::uint64_t contentGeneration = 0, bool focusMarker = false,
                                    float focusX = 0.5f, float focusY = 0.5f);
@@ -743,6 +745,12 @@ private:
     std::int64_t mediaHoldCaptureClock100ns_{-1};
     QElapsedTimer mediaHoldReadbackTimer_;
     PresentedOriginalCache presentedOriginalCache_;
+    struct PresentedCameraCaptureStamp {
+        std::uint64_t epoch{}, sequence{};
+        std::int64_t clock100ns{-1};
+    };
+    // Metadata survives a failed pixel clone and consumed latency receipt.
+    std::optional<PresentedCameraCaptureStamp> presentedCameraCapture_;
     struct FrozenCameraScene {
         GpuVideoFrame gpu;
         std::shared_ptr<const std::vector<std::uint8_t>> pixels;

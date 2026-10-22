@@ -117,6 +117,12 @@ Pan/zoom works over those retained scene pixels. Failed retention is explicit;
 it never quietly substitutes an older image.
 An oversized newer scene also revokes the previous Freeze lease. Hidden live
 camera processing cannot make an unchanged held scene resample continuously.
+The committed presentation's epoch/sequence and processed delivery clock are
+retained separately from its pixel clone and one-shot latency accounting.
+Deferred presentation, a same-capture redraw or a new allocation for that
+capture cannot borrow a later ingress timestamp. Clone pressure does not erase
+the committed clock. Source reset revokes it; if timing proof is absent, manual
+recap Pause is explicitly unavailable and Jump to live remains usable.
 The display-only recipe retains committed focus-marker coordinates and CPU/GPU
 sampling mode. Rotation/pan/zoom sample those same held pixels without another
 appearance pass. A neural ROI cache is retained at its actual scene extent and
@@ -164,6 +170,15 @@ a scoped pass, not the full release gate. `agent_check.ps1` correctly requires
 the full matrix because CMake/test-impact infrastructure changed; its selection
 exit 2 is not a test failure or scoped acceptance. PCH ON was used; PCH OFF,
 shipping/CUDA integration and the complete matrix remain parent-owned.
+
+A subsequent narrow app-only repair rebuilt the CPU app and actual-app fixture
+with at most two jobs, then passed `native_app_control_offscreen` (5.80 s) and
+`video_recap_contract` (0.03 s), Parallel 1 / GUI excluded. Both deferred-ingress
+rows passed, including clone failure/retry, same-identity reallocation/redraw
+after latency metadata consumption, and reset/unknown-clock Pause refusal.
+All 92 source/executable/catalog hashes matched before and after that gate.
+The earlier 11-case candidate evidence is preserved separately; this repair is
+a two-case scoped pass, not another codec run or a full matrix result.
 
 The 65-frame 3840×2160 / 30 FPS synthetic native check completed encode/decode
 in 2367 ms, retaining 4,387,854 compressed bytes with exact matching capacity.

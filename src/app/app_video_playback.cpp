@@ -243,7 +243,7 @@ QString OkuFlowApp::LiveOriginalRetentionId() const {
 void OkuFlowApp::ResetLiveRecap() {
     if(!videoDocument_)return;auto& d=*videoDocument_;
     d.recap.Reset(++d.recapSourceEpoch,-1);d.recapWidth=d.recapHeight=0;d.recapRotation=-1;
-    d.recapDocumentId.clear();presentedCameraScene_.reset();presentedOriginalCache_.Reset();
+    d.recapDocumentId.clear();presentedCameraScene_.reset();presentedCameraCapture_.reset();presentedOriginalCache_.Reset();
     if(d.kind==VideoDocumentState::Kind::Recap) {
         ReturnVideoToCamera();if(videoPlaybackTimer_)videoPlaybackTimer_->stop();
     }
@@ -362,10 +362,10 @@ void OkuFlowApp::PollLiveRecap() {
     ui.sourceGeneration=d.transportGeneration;ui.playing=d.followingLive || d.playing || d.afterOperationPlay || d.waitingNextPart;
     ui.firstMs=std::max<std::int64_t>(0,r.first100ns)/kTicksPerMs;
     ui.durationMs=std::max<std::int64_t>(0,r.end100ns)/kTicksPerMs;ui.seekable=r.available;
-    ui.canPauseLive=d.followingLive && cameraFramePresented_ && presentedCameraScene_.has_value();
+    ui.canPauseLive=d.followingLive && cameraFramePresented_ && presentedCameraScene_ && presentedCameraScene_->captureClock100ns>=0;
     ui.canSaveFrame=MediaViewSelected() && d.presented && !d.savePending;
-    const auto liveCapture=presentedCameraScene_?presentedCameraScene_->captureClock100ns:currentCameraCaptureClock100ns_;
-    ui.positionMs=d.followingLive && r.captureOrigin100ns>=0?std::max<std::int64_t>(0,liveCapture-r.captureOrigin100ns)/kTicksPerMs
+    const auto liveCapture=presentedCameraCapture_?presentedCameraCapture_->clock100ns:-1;
+    ui.positionMs=d.followingLive && liveCapture>=0 && r.captureOrigin100ns>=0?std::max<std::int64_t>(0,liveCapture-r.captureOrigin100ns)/kTicksPerMs
         : d.presented && d.recapPresented?(d.recapPresented->begin100ns+d.presented->pts100ns)/kTicksPerMs
         : d.pendingSeekMs.value_or(ui.firstMs);
     ui.state=d.pendingHold || d.resumePending || (!r.available && !d.heldLive) ? VideoTransport::State::Buffering
@@ -599,7 +599,7 @@ void OkuFlowApp::ReturnVideoToCamera()
     if (!doc.active) doc.documentId.clear();
     if(doc.kind==VideoDocumentState::Kind::Recap)doc.documentId=doc.recapDocumentId;
     doc.followingLive = doc.active || doc.kind==VideoDocumentState::Kind::Recap;
-    if(wasMedia){cameraFramePresented_=false;presentedCameraScene_.reset();}
+    if(wasMedia){cameraFramePresented_=false;presentedCameraScene_.reset();presentedCameraCapture_.reset();}
     cudaSceneReady_ = cpuSceneReady_ = false; // never present cached file pixels as camera
     uctProvenance_.Reset();
     if (pipelineOrchestrator_) pipelineOrchestrator_->MarkViewportDirty();
@@ -811,7 +811,8 @@ bool OkuFlowApp::AcceptLiveMediaHold(std::vector<std::uint8_t> pixels, UINT widt
     auto& doc = *videoDocument_;
     doc.pendingHold = false;
     if (!VideoPlaybackLayoutFits(width, height, static_cast<std::int64_t>(width) * 4) ||
-        pixels.size() != static_cast<std::size_t>(width) * height * 4) {
+        pixels.size() != static_cast<std::size_t>(width) * height * 4 ||
+        (doc.kind==VideoDocumentState::Kind::Recap && captureClock100ns<0)) {
         doc.resumePending = false;
         // A failed manual hold must not abandon a still-recording live view.
         // Finishing recordings retain their separate unavailable receipt.
@@ -930,8 +931,9 @@ void OkuFlowApp::ToggleSelectedVideoPlayback()
         if(!doc.cameraView)doc.cameraView=VideoDocumentState::CameraView{zoomAmount_,zoomCenterX_,zoomCenterY_,zoomEnabled_,pipelineOrchestrator_->ViewportFitMode()};
         if(doc.kind==VideoDocumentState::Kind::Recap) {
             const auto r=doc.recap.Snapshot();
-            if(r.captureOrigin100ns>=0)doc.pendingSeekMs=std::max<std::int64_t>(0,
-                (presentedCameraScene_?presentedCameraScene_->captureClock100ns:currentCameraCaptureClock100ns_)-r.captureOrigin100ns)/kTicksPerMs;
+            if(r.captureOrigin100ns>=0 && presentedCameraCapture_ && presentedCameraCapture_->clock100ns>=0)
+                doc.pendingSeekMs=std::max<std::int64_t>(0,
+                    presentedCameraCapture_->clock100ns-r.captureOrigin100ns)/kTicksPerMs;
             else doc.pendingSeekMs.reset();
         }
         doc.cameraRotation = rotationQuarterTurns_; doc.cameraRotationSaved = true;

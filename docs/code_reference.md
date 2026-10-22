@@ -63,6 +63,12 @@ transport. ReturnVideoToCamera restores saved camera geometry/control intent.
 RetainPresentedCameraScene and PresentFrozenMediaScene preserve the actual
 successful scene/view for warmup Freeze without reapplying effects or claiming
 composited pixels as an independently acquired UCT frame/neighbour.
+The retainer receives the committed receipt's explicit epoch/sequence and
+optional processed clock before latency metadata is consumed. One independent
+PresentedCameraCaptureStamp survives pixel-clone pressure and same-acquisition
+redraw/reallocation, without consulting newer ingress. A reset revokes it;
+unknown timing explicitly refuses manual recap Pause rather than waiting
+forever or inventing a resume point.
 An oversized or otherwise unretainable newer presentation revokes the previous
 scene immediately. Frozen presentation admission uses its own scene/view stamp;
 ongoing hidden camera processing does not force resampling identical held pixels.

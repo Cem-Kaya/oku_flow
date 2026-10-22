@@ -17,6 +17,10 @@ time is not sustained physical camera FPS or five-minute soak evidence.
 Transport and opt-in actual-app offscreen rows exercise actual rolling bounds
 and exact Freeze before any encoded segment, without camera/audio endpoints.
 Model-free composition covers held CPU/GPU sampling, focus markers and rotation.
+The app's deferred-receipt rows bind Freeze to the committed epoch/sequence and
+clock despite newer ingress, failed cloning, same-capture reallocation and
+redraw after latency consumption. Reset removes that authority; unknown timing
+refuses manual Pause without entering a pending resume state.
 Ring/transport seams cover5→1 minute trimming while a four-minute-old frame
 remains pinned at its true textual position, plus natural expiry. Numeric
 RangeValue is absent outside the seek window and valid after explicit reentry.
@@ -25,7 +29,11 @@ Use tracked `agent_check.ps1` selection and `run_test_gate.ps1` with exact test
 names, serial codec ownership and GUI excluded. The granted 2026-10-22 CPU
 selection passed 11 of 230 cases, including synthetic AAC/gap verification.
 Final source/executable/catalog hashes matched before and after the run; all
-initial failures remain archived. The full matrix is still required. These fixtures do
+initial failures remain archived. The follow-up committed-stamp repair rebuilt
+the CPU app/fixture and passed the two-case `native_app_control_offscreen` /
+`video_recap_contract` gate, retaining matching pre/post input hashes. That
+narrow repair does not rerun the earlier native codec selection.
+The full matrix is still required. These fixtures do
 not establish native desktop/screen-reader, GPU, camera, long-soak, installer
 or release acceptance. See [the contract](../docs/live_ram_recap.md).
 

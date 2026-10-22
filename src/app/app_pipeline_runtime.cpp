@@ -1474,7 +1474,8 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         lastAnnotationGpuPresentation_ = annotationPresentation;
         lastAnnotationPresentation_->cameraActive = true;
         lastAnnotationSceneRevision_ = annotationSceneRevision_;
-        RetainPresentedCameraScene(presentationTexture,presentationSourceWidth,presentationSourceHeight,transform,nullptr,superResRoi.generation,
+        RetainPresentedCameraScene(uctContext.geometry.settings.sourceEpoch,uctContext.frameSeq,pendingSceneCaptureClock100ns_,
+            presentationTexture,presentationSourceWidth,presentationSourceHeight,transform,nullptr,superResRoi.generation,
             presentationOptions.drawFocusMarker,presentationOptions.focusX,presentationOptions.focusY);
         annotationPresentationCuda_ = true;
         cameraIntent_.MarkFirstFrame(startingCameraIntentGeneration_);
@@ -1694,6 +1695,7 @@ bool OkuFlowApp::CaptureLiveForMediaHold() {
     if (MediaViewSelected() || mediaHoldReadbackId_ != 0 || !cameraFramePresented_) return false;
     if(presentedCameraScene_ && presentedCameraScene_->epoch==cameraSessionId_) {
         const auto& scene=*presentedCameraScene_;
+        if(scene.captureClock100ns<0)return false;
         mediaHoldFrameSeq_=scene.sequence;mediaHoldCaptureClock100ns_=scene.captureClock100ns;
         mediaHoldViewTransform_=scene.transform;mediaHoldCameraRotation_=CameraOriginalRotationQuarterTurns();
         mediaHoldDisplayRecipe_=scene.recipe;
@@ -1734,11 +1736,26 @@ bool OkuFlowApp::CaptureLiveForMediaHold() {
                                mediaHoldFrameSeq_, mediaHoldCaptureClock100ns_);
 }
 
-void OkuFlowApp::RetainPresentedCameraScene(const void* texture,UINT width,UINT height,
+void OkuFlowApp::RetainPresentedCameraScene(std::uint64_t sceneEpoch,std::uint64_t sceneSequence,
+    std::optional<std::int64_t> committedCaptureClock100ns,const void* texture,UINT width,UINT height,
     const ViewTransform& transform,const std::uint8_t* pixels,std::uint64_t contentGeneration,
     bool focusMarker,float focusX,float focusY) {
     if(!LiveRecapActive() || MediaViewSelected())return;
-    if(!lastAnnotationPresentation_ || !transform.valid || !width || !height ||
+    if(!lastAnnotationPresentation_ || sceneEpoch!=cameraSessionId_ ||
+        sceneSequence!=lastAnnotationPresentation_->frameSeq ||
+        sceneEpoch!=lastAnnotationPresentation_->geometry.settings.sourceEpoch) {
+        presentedCameraCapture_.reset();presentedCameraScene_.reset();return;
+    }
+    // A successful receipt binds the processed clock before latency accounting
+    // consumes it. Keep this one stamp independently of pixel-pool admission,
+    // and never retime the same acquisition from newer camera ingress.
+    if(!presentedCameraCapture_ || presentedCameraCapture_->epoch!=sceneEpoch ||
+        presentedCameraCapture_->sequence!=sceneSequence)
+        presentedCameraCapture_=PresentedCameraCaptureStamp{sceneEpoch,sceneSequence,-1};
+    if(presentedCameraCapture_->clock100ns<0 && committedCaptureClock100ns && *committedCaptureClock100ns>=0)
+        presentedCameraCapture_->clock100ns=*committedCaptureClock100ns;
+    const auto captureClock=presentedCameraCapture_->clock100ns;
+    if(!transform.valid || !width || !height ||
         std::uint64_t(width)*height*4>48u*1024*1024) {
         presentedCameraScene_.reset();return;
     }
@@ -1747,10 +1764,11 @@ void OkuFlowApp::RetainPresentedCameraScene(const void* texture,UINT width,UINT 
         presentedCameraScene_->sceneRevision==annotationSceneRevision_ &&
         presentedCameraScene_->contentGeneration==contentGeneration && presentedCameraScene_->sourceTexture==texture) {
         presentedCameraScene_->transform=transform;
+        presentedCameraScene_->captureClock100ns=captureClock;
         presentedCameraScene_->recipe={0,texture!=nullptr,focusMarker,focusX,focusY};return;
     }
-    FrozenCameraScene scene;scene.epoch=cameraSessionId_;scene.sequence=lastAnnotationPresentation_->frameSeq;
-    scene.sceneRevision=annotationSceneRevision_;scene.captureClock100ns=currentCameraCaptureClock100ns_;
+    FrozenCameraScene scene;scene.epoch=sceneEpoch;scene.sequence=sceneSequence;
+    scene.sceneRevision=annotationSceneRevision_;scene.captureClock100ns=captureClock;
     scene.contentGeneration=contentGeneration;scene.sourceTexture=texture;
     scene.width=width;scene.height=height;scene.transform=transform;
     scene.recipe={0,texture!=nullptr,focusMarker,focusX,focusY};
@@ -3150,7 +3168,9 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
         presentedOriginalCache_.Presented(cameraSessionId_, lastAnnotationPresentation_->frameSeq,
             transform, !lastAnnotationPresentation_->compositeFrames && !debugViewEnabled_ &&
             !focusMarkerEnabled_);
-        RetainPresentedCameraScene(nullptr,srcWidth,srcHeight,transform,data,0,focusMarkerEnabled_ && cropToFill,centerXNorm,centerYNorm);
+        RetainPresentedCameraScene(lastAnnotationPresentation_->geometry.settings.sourceEpoch,
+            lastAnnotationPresentation_->frameSeq,pendingSceneCaptureClock100ns_,
+            nullptr,srcWidth,srcHeight,transform,data,0,focusMarkerEnabled_ && cropToFill,centerXNorm,centerYNorm);
     } else {
         UctFrameContext context;
         context.geometry.settings.sourceEpoch = mediaSceneRecipe_[0];
