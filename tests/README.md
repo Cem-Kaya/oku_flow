@@ -1,5 +1,11 @@
 # OkuFlow Tests
 
+CPU UCT sampling's existing `normalizationAndBounds` slot now compares complete
+normalization/rectification tensors against independently compiled exact 8f02
+function bodies, including tiny, padded-row, format, tilt, border and invalid
+input cases. The optional `cpuSamplingBenchmark` slot runs no inference and is
+not selected by normal CTest; see [scope and raw-output protocol](../docs/uct_cpu_sampling.md).
+
 Initial paused frame-zero coverage is documented in
 [the source investigation](../docs/uct_initial_paused_frame.md).
 `initialPausedFrameZeroWaitsForReadyAndNeighbour` has eight model-free

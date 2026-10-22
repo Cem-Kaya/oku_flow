@@ -76,6 +76,7 @@ set_tests_properties(ultra_clear_text_windows_ocr PROPERTIES TIMEOUT 60 LABELS "
 
 add_executable(uct_paddle_tests
     uct_paddle_tests.cpp
+    uct_cpu_sampling_reference.cpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ultra_clear_text_overlay.hpp
     ${PROJECT_SOURCE_DIR}/src/ui/ultra_clear_text_overlay.cpp
     uct_character_diagnostic.hpp

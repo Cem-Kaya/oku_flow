@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Share bilinear pixel addressing across B/G/R during CPU UCT tensor
+  preparation, preserving the existing float operations and sampling rules.
+  Device-resident GPU recognition is unchanged.
+
 - Hide the entire video transport without leaving a filename/status strip.
   Its show/hide chevron now lives beside Custom Setup in the quick-mode corner
   controls, with keyboard access and viewport Freeze/Resume preserved.

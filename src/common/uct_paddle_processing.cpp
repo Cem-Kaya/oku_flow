@@ -31,16 +31,27 @@ QPointF At(const PaddleQuad &q, double x, double y)
     return q.points[0] * ((1 - x) * (1 - y)) + q.points[1] * (x * (1 - y)) + q.points[2] * (x * y) +
            q.points[3] * ((1 - x) * y);
 }
-float Sample(const QImage &image, float x, float y, int channel)
+struct SampleAxis
 {
-    x = std::clamp(x, 0.f, image.width() - 1.f);
-    y = std::clamp(y, 0.f, image.height() - 1.f);
-    const int ix = static_cast<int>(x), iy = static_cast<int>(y),
-              jx = std::min(ix + 1, image.width() - 1), jy = std::min(iy + 1, image.height() - 1);
-    const auto a = image.constScanLine(iy), b = image.constScanLine(jy);
-    const float top = a[ix * 4 + channel] * (1 - (x - ix)) + a[jx * 4 + channel] * (x - ix);
-    const float bottom = b[ix * 4 + channel] * (1 - (x - ix)) + b[jx * 4 + channel] * (x - ix);
-    return top * (1 - (y - iy)) + bottom * (y - iy);
+    int first, second;
+    float fraction;
+};
+SampleAxis PlanSampleAxis(float coordinate, int extent)
+{
+    coordinate = std::clamp(coordinate, 0.f, extent - 1.f);
+    const int first = static_cast<int>(coordinate);
+    return {first, std::min(first + 1, extent - 1), coordinate - first};
+}
+// Keep the original interpolation arithmetic, sharing only the addressing
+// across B/G/R. No pixel values or normalized tensors survive the call.
+float SampleChannel(const uchar* a, const uchar* b, const SampleAxis& x,
+                    float yFraction, int channel)
+{
+    const float top = a[x.first * 4 + channel] * (1 - x.fraction) +
+                      a[x.second * 4 + channel] * x.fraction;
+    const float bottom = b[x.first * 4 + channel] * (1 - x.fraction) +
+                         b[x.second * 4 + channel] * x.fraction;
+    return top * (1 - yFraction) + bottom * yFraction;
 }
 } // namespace
 
@@ -316,14 +327,19 @@ std::vector<float> PaddleNormalize(const QImage &image, QSize target, bool detec
     const std::size_t plane = static_cast<std::size_t>(target.width()) * target.height();
     std::vector<float> result(plane * 3);
     constexpr float mean[]{.485f, .456f, .406f}, deviation[]{.229f, .224f, .225f};
+    std::vector<SampleAxis> columns(target.width());
+    for (int x = 0; x < target.width(); ++x)
+        columns[x] = PlanSampleAxis((x + .5f) * source.width() / target.width() - .5f,
+                                    source.width());
     for (int y = 0; y < target.height(); ++y)
     {
+        const auto row = PlanSampleAxis((y + .5f) * source.height() / target.height() - .5f,
+                                       source.height());
+        const auto a = source.constScanLine(row.first), b = source.constScanLine(row.second);
         for (int x = 0; x < target.width(); ++x)
             for (int channel = 0; channel < 3; ++channel)
             {
-                const float sx = (x + .5f) * source.width() / target.width() - .5f;
-                const float sy = (y + .5f) * source.height() / target.height() - .5f;
-                const float v = Sample(source, sx, sy, channel) / 255.0f; // vendor BGR, not RGB
+                const float v = SampleChannel(a, b, columns[x], row.fraction, channel) / 255.0f; // vendor BGR, not RGB
                 result[channel * plane + static_cast<std::size_t>(y) * target.width() + x] =
                     detection ? (v - mean[channel]) / deviation[channel] : (v - .5f) * 2;
             }
@@ -455,11 +471,13 @@ std::vector<float> PaddleRectify(const QImage &image, const PaddleQuad &quad, in
         for (int x = 0; x < valid; ++x)
         {
             const auto p = At(quad, (x + .5f) / valid, (y + .5f) / 48);
+            const auto column = PlanSampleAxis(static_cast<float>(p.x()) - .5f, source.width());
+            const auto row = PlanSampleAxis(static_cast<float>(p.y()) - .5f, source.height());
+            const auto a = source.constScanLine(row.first), b = source.constScanLine(row.second);
             for (int ch = 0; ch < 3; ++ch)
             {
                 crop[ch * width * 48 + y * width + x] =
-                    (Sample(source, static_cast<float>(p.x()) - .5f,
-                            static_cast<float>(p.y()) - .5f, ch) /
+                    (SampleChannel(a, b, column, row.fraction, ch) /
                          255 -
                      .5f) *
                     2;

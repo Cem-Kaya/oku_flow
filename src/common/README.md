@@ -141,3 +141,8 @@ The worker's optional `RefineWordSurface` recovers four-corner geometry from a
 closed uniform surface around already fitted text. Source-supported shear/taper
 survives preparation and admission. Ambiguous edges retain previous geometry;
 see [surface perspective](../../docs/uct_surface_perspective.md).
+
+CPU Paddle normalization/rectification share bilinear addressing across B/G/R,
+with unchanged tensor arithmetic and an independent exact-baseline regression.
+See [CPU sampling](../../docs/uct_cpu_sampling.md) for bounded diagnostics and
+the separate device-resident GPU path.

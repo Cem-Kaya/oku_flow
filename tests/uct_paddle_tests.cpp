@@ -13,6 +13,7 @@
 #include "uct_resident_diagnostic.hpp"
 #include "uct_paused_video_diagnostic.hpp"
 #include "uct_active_regional_diagnostic.hpp"
+#include "uct_cpu_sampling_test_cases.hpp"
 #include <QFontDatabase>
 #include <QLineF>
 #include <QPainter>
@@ -170,6 +171,8 @@ class PaddleTests final : public QObject
 {
     Q_OBJECT
   private slots:
+    // Explicit source-only diagnostic; never registered in normal CTest.
+    void cpuSamplingBenchmark() { uct_cpu_sampling_test::Benchmark(); }
     void localBf16ManifestRequiresReviewedRolesAndCacheOnlySchema()
     {
         using namespace runtime_precision;
@@ -857,6 +860,7 @@ class PaddleTests final : public QObject
     }
     void normalizationAndBounds()
     {
+        uct_cpu_sampling_test::ExactRegression();
         QImage image(64, 32, QImage::Format_ARGB32);
         image.fill(QColor(255, 0, 0));
         const auto data = PaddleNormalize(image, image.size(), true);

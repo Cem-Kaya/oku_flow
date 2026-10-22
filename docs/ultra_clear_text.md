@@ -1,5 +1,10 @@
 # Ultra Clear Text (experimental, development)
 
+CPU fallback tensor preparation shares bilinear addressing across B/G/R while
+retaining baseline float operations, borders, formats and padding. The
+[CPU sampling diagnostic](uct_cpu_sampling.md) compares full tensors against
+the exact current baseline. Device-resident GPU sampling is separate.
+
 An optional [supplemental regional executor](uct_active_regional_ocr.md) uses
 current owned inputs between baseline full reads when
 `OKUFLOW_UCT_REGIONAL_OCR=1`. It preserves full deadlines and priority, strict

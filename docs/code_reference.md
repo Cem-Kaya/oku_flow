@@ -732,6 +732,13 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   approximate, not exact glyph geometry. `gpu::{Normalize,Detect,RecognitionWindows,Rectify,
   Decode,Probe}` in `uct_kernels` implement device equivalents using
   `gpu::{Component,Quad,Token}` with finite-value checks and bounded outputs.
+- CPU `PaddleNormalize`/`PaddleRectify` share bilinear addressing across B/G/R
+  with private `SampleAxis`, `PlanSampleAxis` and `SampleChannel`; normalization
+  plans columns once per call. Tensor arithmetic, formats, borders, padding and
+  dimensions are unchanged. `uct_cpu_sampling_reference.cpp` preserves exact
+  baseline function bodies, while `uct_cpu_sampling_test_cases.hpp` supplies
+  whole-tensor regression and explicit `cpuSamplingBenchmark` diagnostics.
+  See [CPU sampling scope and measurement](uct_cpu_sampling.md).
 - `CreateDefaultRecognizer` delegates to `CreateAutomaticRecognizer`:
   TensorRT, Paddle CPU, Windows. The candidate-vector overload supports exact
   fallback tests. Private `AutomaticRecognizer` retires unavailable/failing
