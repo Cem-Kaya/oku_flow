@@ -1,5 +1,10 @@
 # UCT on an initially paused video
 
+> Current app policy: [standalone paused/Freeze](uct_standalone_freeze.md).
+> The neighbour prerequisites and captures below describe the earlier policy
+> and retained explicit corroboration protocol. Paused app glyphs no longer
+> wait for that protocol.
+
 An opened saved video is a selected immutable source before Play is pressed.
 Its first native sample can legitimately have sample ID and PTS zero. The
 controller can recognize that owned sample when its backend becomes ready;

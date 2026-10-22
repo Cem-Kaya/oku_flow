@@ -2256,6 +2256,14 @@ native sample was at 1.2 s while FFmpeg placed it at 1.0 s. This separate
 reordered-H.264 timeline discrepancy is not repaired or accepted by this test.
 ## Recognition-width validation
 
+Standalone paused/Freeze coverage lives in
+`standaloneImmutableUsesOnlySelectedFrame`,
+`standalonePausedFramePublishesWithoutNeighbour` and
+`standalonePausedDetailUsesHeldPixels`. CPU/resident rows require actual paint
+and positioned character bounds without neighbour work, ignore conflicting
+neighbour descriptors, fence mode changes and retain exact same-image detail.
+Existing corroborated/live negatives remain separate protocol coverage.
+
 The model-free `orientedInkAndMapping` and `gpuOrientedInkMatchesCpu` slots
 also cover a readable nine-pixel Segoe UI word inside 32-pixel detector padding.
 The complete body must fit on CPU and CUDA; a two-pixel rule must retain the

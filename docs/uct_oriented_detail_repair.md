@@ -1,5 +1,9 @@
 # UCT tilted text and paused visible detail
 
+> Paused video/manual Freeze now uses [standalone recognition](uct_standalone_freeze.md)
+> and same-image detail. Neighbour-based proof below remains an explicit protocol
+> and historical evidence; geometry, protection and rendering repairs still apply.
+
 This development change keeps the detector's four text corners through CTC
 word mapping, ink fitting, scene coordinates and painting. Previously the
 recognizer rectified tilted text correctly, but later stages reduced its

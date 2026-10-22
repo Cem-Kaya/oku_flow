@@ -2716,6 +2716,7 @@ void OverlayModel::Reset()
     immutableConflictRects_.clear();
     immutableConflictSaturated_ = false;
     immutable_ = false;
+    immutableAdmission_ = ImmutableAdmission::Corroborated;
     liveCamera_ = false;
 }
 
@@ -2733,10 +2734,14 @@ AdmitVerdict OverlayModel::AdmitLiveCamera(const RecognitionResult& result, cons
 
 AdmitVerdict OverlayModel::AdmitImmutable(const RecognitionResult& result,
                                           const SourceStamp& selectedFrame, std::int64_t nowMs,
-                                          const RecognitionResult* corroboration)
+                                          const RecognitionResult* corroboration,
+                                          ImmutableAdmission admission)
 {
     if (!result.output.ok || result.output.cancelled) return AdmitVerdict::kFailed;
     if (result.stamp.frameSeq != selectedFrame.frameSeq ||
+        (admission == ImmutableAdmission::Standalone &&
+            (result.stamp.timestampMs != selectedFrame.timestampMs ||
+             result.reference.stamp.timestampMs != result.stamp.timestampMs)) ||
         result.stamp.immutableCorroboration != selectedFrame.immutableCorroboration ||
         result.reference.stamp.immutableCorroboration != result.stamp.immutableCorroboration ||
         !result.stamp.immutableCorroboration.MatchesSelected(result.stamp.frameSeq, result.stamp.timestampMs) ||
@@ -2746,7 +2751,7 @@ AdmitVerdict OverlayModel::AdmitImmutable(const RecognitionResult& result,
     const auto& after = result.stamp;
     const auto& a = before.viewTransform;
     const auto& b = after.viewTransform;
-    const bool sameInput = immutable_ && before.SameScene(after) &&
+    const bool sameInput = immutable_ && immutableAdmission_ == admission && before.SameScene(after) &&
         before.frameSeq == after.frameSeq && before.timestampMs == after.timestampMs &&
         before.immutableCorroboration == after.immutableCorroboration &&
         before.viewportWidth == after.viewportWidth && before.viewportHeight == after.viewportHeight &&
@@ -2781,7 +2786,8 @@ AdmitVerdict OverlayModel::AdmitImmutable(const RecognitionResult& result,
                 previous.push_back(line);
     }
     const auto nextId = nextLineId_;
-    const auto verdict = AdmitImpl(result, selectedFrame, nullptr, nowMs, true, corroboration);
+    const auto verdict = AdmitImpl(result, selectedFrame, nullptr, nowMs, true, corroboration,
+                                  false, false, {}, admission);
     if (verdict == AdmitVerdict::kFailed || verdict == AdmitVerdict::kStaleScene) return verdict;
     if (!sameInput) {
         immutableConflictRects_.clear();
@@ -3275,7 +3281,7 @@ AdmitVerdict OverlayModel::AdmitAdvancingMedia(const RecognitionResult& result,
 AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const SourceStamp& current,
                                     const ProbeFrame* latestProbe, std::int64_t nowMs, bool immutable,
                                     const RecognitionResult* corroboration, bool advancingMedia, bool liveCamera,
-                                    const RegionalPreflight& preflight)
+                                    const RegionalPreflight& preflight, ImmutableAdmission admission)
 {
     if (!result.output.ok || result.output.cancelled) {
         return AdmitVerdict::kFailed;
@@ -3298,8 +3304,10 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         // completion must not turn fixture fallback preparation into UI CUDA.
         return AdmitVerdict::kFailed;
     }
-    if (immutable_ != immutable || liveCamera_ != liveCamera) Reset();
+    if (immutable_ != immutable || liveCamera_ != liveCamera ||
+        (immutable && immutableAdmission_ != admission)) Reset();
     immutable_ = immutable;
+    immutableAdmission_ = admission;
     liveCamera_ = liveCamera;
     const SourceStamp& stamp = result.stamp;
     if (!immutable && latestProbe && latestProbe->IsValid() &&
@@ -3396,7 +3404,8 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                 if (corroboration->corroborationWordMatches[i].size() != prepared[i].words.size()) return false;
             return true;
         }();
-    const bool independentNeighbor = immutable && corroboration && corroboration->output.ok &&
+    const bool standalone = immutable && admission == ImmutableAdmission::Standalone;
+    const bool independentNeighbor = immutable && !standalone && corroboration && corroboration->output.ok &&
         ImmutableNeighbourAllowed(stamp, corroboration->stamp) &&
         corroboration->reference.stamp.immutableCorroboration == corroboration->stamp.immutableCorroboration &&
         !corroboration->output.cancelled && corroboration->authority == result.authority &&
@@ -3599,7 +3608,8 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                 const bool registeredWord = independentNeighbor && candidate.line.reference.valid &&
                     workerWordRegistration && evidence != neighborWords.constEnd() &&
                     corroboration->corroborationWordMatches[index][wordIndex];
-                const bool glyphEligible = !immutable || registeredWord || (neighborRegistered && evidence != neighborWords.constEnd() &&
+                const bool glyphEligible = !immutable || (standalone && candidate.line.reference.valid) ||
+                    registeredWord || (neighborRegistered && evidence != neighborWords.constEnd() &&
                     std::any_of(evidence->begin(), evidence->end(), [&](const QRectF& r) {
                         return Iou(word.sceneRect, r) >= tuning_.agreementIou;
                     }));

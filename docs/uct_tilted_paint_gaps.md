@@ -238,6 +238,10 @@ for the distinction between source pixels, accepted words and actual paint.
 
 ## Five-second Paddle-only refusal (2026-10-22)
 
+The owner subsequently requested [standalone paused/Freeze](uct_standalone_freeze.md).
+The counts and two-frame checks in this section document the former policy;
+they are not measurements or prerequisites of the new standalone path.
+
 The later owner screenshot matches the actual 5200-ms frame of the same
 `Dragable_vid_av1.mp4`. A genuine 5233.333-ms following frame reproduces the
 refusal using the production BF16 Paddle factory alone: 13 eligible recognition

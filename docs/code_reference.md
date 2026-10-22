@@ -7038,3 +7038,25 @@ zero skipped tests/unresolved failures; 497 Qt rows passed, three scale-only
 skips covered separately by the explicit timing selector. First-attempt evidence
 is byte-verified under `Z:/Projects/OkuFlow/local-work-data/uct-original-mask-f6-20261022/evidence/`.
 No retries, GPU/native/model work or full-release/PCH-ON acceptance is claimed.
+## Standalone paused/Freeze admission (2026-10-22)
+
+`uct::ImmutableAdmission` distinguishes the app's `Standalone` held-frame policy
+from the explicit `Corroborated` protocol. `UctImmutableScene::admission` binds
+that choice to the controller selection generation. `SetImmutableScene` discards
+neighbour/cadence descriptors for standalone selections; `SubmitImmutableIfNeeded`
+submits only the selected image and completes detail without a neighbour job.
+`HandleImmutableResult` admits full and regional same-image refinements through
+`OverlayModel::AdmitImmutable(..., admission)`. The model binds retained coverage
+to that mode, exact selected frame/PTS/source, own references, preparation and
+current-input checks. Confidence, source-height, unsupported notation, geometry,
+protection and painter rules still apply. CPU and GPU app presentation explicitly
+select standalone and no longer prepare a second UCT analysis image. Live and
+advancing-media methods retain their existing temporal policy. Earlier pair-based
+descriptions in this reference document the retained explicit protocol and its
+historical evidence; they are not the current app's paused prerequisite. See
+[standalone policy](uct_standalone_freeze.md).
+
+The private `UctControllerTestAccess::AdvancingJob` exposes only the pending
+admission ticket to the controller fixture. Its full-deadline comparison now
+waits for the exact probe and full/regional UI callbacks before advancing the
+synthetic clock; worker completion alone is not UI admission.

@@ -50,6 +50,7 @@ struct UctControllerTestAccess {
     }
     static void SuppressRegions(UltraClearTextController& c, bool suppress) { c.regionalSuppressed_ = suppress; }
     static std::uint64_t RegionalJob(const UltraClearTextController& c) { return c.regionalJob_; }
+    static std::uint64_t AdvancingJob(const UltraClearTextController& c) { return c.advancingMediaJob_; }
     static std::uint64_t ProbeFrame(const UltraClearTextController& c) { return c.latestProbe_ ? c.latestProbe_->stamp.frameSeq : 0; }
     static SourceStamp Stamp(const UltraClearTextController& c) {
         return c.CurrentScene();
@@ -557,6 +558,10 @@ private slots:
     void pausedScrollingTextUsesSelectedFrameCoordinates();
     void pausedWordRegistrationFaultCannotPublishPartialProof();
     void immutableOldFrameAndIdleDoNoPeriodicWork();
+    void standalonePausedFramePublishesWithoutNeighbour_data();
+    void standalonePausedFramePublishesWithoutNeighbour();
+    void standalonePausedDetailUsesHeldPixels_data();
+    void standalonePausedDetailUsesHeldPixels();
     void backendReadySubmitsWaitingMediaOnce();
     void initialPausedFrameZeroWaitsForReadyAndNeighbour_data();
     void initialPausedFrameZeroWaitsForReadyAndNeighbour();
@@ -642,8 +647,13 @@ void UltraClearTextControllerTests::activeRegionalFullDeadlinesUnderContinuousFo
             h.controller->UpdateImmutableView(ComputeViewTransform(960,540,960,540,2,
                 frame%2 ? .2f : .8f,.3f,ViewportFitMode::kFill),960,540);
             QTRY_VERIFY(h.controller->ProbeStatistics().completed>=frame);
+            // Worker completion precedes queued UI admission. Compare the
+            // two schedules only after this exact frame's callbacks finish,
+            // before advancing their shared synthetic wall clock.
+            QTRY_COMPARE(UctControllerTestAccess::ProbeFrame(*h.controller),frame);
+            QTRY_COMPARE(UctControllerTestAccess::AdvancingJob(*h.controller),std::uint64_t(0));
+            QTRY_COMPARE(UctControllerTestAccess::RegionalJob(*h.controller),std::uint64_t(0));
             QTRY_COMPARE(h.controller->SchedulerStatistics().completed,h.controller->SchedulerStatistics().submitted);
-            QTest::qWait(3); // consume queued worker/UI callback before moving the fixture wall clock
         }
         QVector<int> full, regions;
         { std::lock_guard lock(h.script->mutex);
@@ -1964,6 +1974,68 @@ void UltraClearTextControllerTests::capturedOutputReachesPaintAndPositionedText(
     QCOMPARE(h.controller->Model().Lines().first().provenance.timestampMs,sourceStamp.timestampMs);
     QVERIFY(!h.devices->readOnUiThread.load());
     QCOMPARE(h.devices->readbacks.load(),bridge?2:0);
+}
+
+void UltraClearTextControllerTests::standalonePausedFramePublishesWithoutNeighbour_data()
+{
+    QTest::addColumn<bool>("resident");
+    QTest::addColumn<bool>("conflictingNeighbour");
+    for(bool resident:{false,true}) for(bool conflicting:{false,true})
+        QTest::newRow(qPrintable(QStringLiteral("%1-%2").arg(resident?"resident":"cpu",
+            conflicting?"conflicting-neighbour":"no-neighbour"))) << resident << conflicting;
+}
+
+void UltraClearTextControllerTests::standalonePausedFramePublishesWithoutNeighbour()
+{
+    QFETCH(bool,resident); QFETCH(bool,conflictingNeighbour);
+    AccessibilityActivation accessibility;
+    ImmutableHarness h;
+    h.owner.resize(1000,600); h.owner.show(); // Qt offscreen
+    h.script->wantsDevice=resident; h.devices->resident=resident;
+    auto scene=resident?h.DeviceScene(0):h.Scene(0);
+    scene.admission=ImmutableAdmission::Standalone;
+    if(conflictingNeighbour) {
+        const auto other=MakePage({QStringLiteral("Different text")},{},960,540,48);
+        scene.corroboration=UctImmutableFrame{OwnedPixels(other.image),99,30000};
+        h.script->frameWords[99]=other.words;
+    }
+    QSignalSpy admitted(h.controller.get(),&UltraClearTextController::recognitionAdmitted);
+    h.Enable(); QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_COMPARE(admitted.size(),1);
+    QTRY_COMPARE(h.overlay.WordCount(),h.page.words.size());
+    QTRY_VERIFY(h.overlay.PaintedGeometryCurrent());
+    for(const auto& word:h.overlay.Words()) {
+        UltraClearTextOverlay::PaintedWordGeometry geometry;
+        QVERIFY(h.overlay.PaintedWord(word.lineId,word.wordIndex,word.text,geometry));
+        QVERIFY(geometry.drawn);
+    }
+    QVERIFY(!h.controller->Model().ScreenLines(h.now,0).isEmpty());
+    QVERIFY(!h.controller->ScreenTextSnapshot().lines.isEmpty());
+    h.now+=3100; h.controller->ScreenTextAccessibility()->ProcessDueWork();
+    auto* root=h.controller->ScreenTextAccessibility()->RootInterface();
+    QVERIFY(root); QVERIFY(root->childCount()>0);
+    auto* line=root->child(0); QVERIFY(line); QVERIFY(line->textInterface());
+    QVERIFY(!line->textInterface()->characterRect(0).isEmpty());
+    const auto generation=h.controller->GeometryGeneration();
+    scene.corroboration=scene.selected;
+    scene.corroborationPolicy=UctControllerTestAccess::SavedCadence(1,1,20'000'000);
+    for(int i=0;i<10;++i) QVERIFY(h.controller->SetImmutableScene(scene));
+    QTest::qWait(30);
+    QCOMPARE(h.controller->GeometryGeneration(),generation);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted,std::uint64_t(1));
+    QCOMPARE(h.script->calls.load()+h.script->deviceCalls.load(),1);
+    QVERIFY(!h.devices->readOnUiThread.load());
+    if(resident) QCOMPARE(h.devices->readbacks.load(),0);
+    // Changing policy fences the old artifact rather than laundering it into
+    // independent-frame evidence. Returning to standalone reads once again.
+    scene.admission=ImmutableAdmission::Corroborated;
+    scene.corroboration.reset(); scene.corroborationPolicy={};
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_COMPARE(admitted.size(),2); QCOMPARE(h.overlay.WordCount(),0);
+    scene.admission=ImmutableAdmission::Standalone;
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_COMPARE(admitted.size(),3);
+    QTRY_COMPARE(h.overlay.WordCount(),h.page.words.size());
 }
 
 void UltraClearTextControllerTests::latePausedNeighbourReusesSelectedEvidence_data()
@@ -3703,6 +3775,50 @@ bool OverlayShows(const UltraClearTextOverlay& overlay, const QString& text)
                        [&](const auto& word) { return word.text == text; });
 }
 } // namespace
+
+void UltraClearTextControllerTests::standalonePausedDetailUsesHeldPixels_data()
+{
+    QTest::addColumn<bool>("resident");
+    QTest::newRow("cpu")<<false;
+    QTest::newRow("resident")<<true;
+}
+
+void UltraClearTextControllerTests::standalonePausedDetailUsesHeldPixels()
+{
+    QFETCH(bool,resident);
+    UctTiming timing; timing.immutableDetailSettleMs=0;
+    ImmutableHarness h(timing);
+    h.page=MakePage({QStringLiteral("Reading helps"),QStringLiteral("every small word")},{},960,540,48);
+    const auto hidden=h.page.words.last();
+    h.script->words=h.page.words.mid(0,h.page.words.size()-1);
+    h.script->detailWords={hidden}; h.script->detailFocus=true;
+    h.script->wantsDevice=resident; h.devices->resident=resident;
+    auto scene=resident?h.DeviceScene():h.Scene();
+    scene.admission=ImmutableAdmission::Standalone;
+    h.Enable(); QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_COMPARE(h.overlay.WordCount(),h.page.words.size()-1);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted,std::uint64_t(1));
+    h.controller->UpdateImmutableView(ZoomOnto(hidden.sceneRect),960,540);
+    QTRY_VERIFY(OverlayShows(h.overlay,hidden.text));
+    QTRY_VERIFY(!h.controller->ActiveImmutableDetail());
+    QCOMPARE(h.controller->SchedulerStatistics().submitted,std::uint64_t(2));
+    QCOMPARE(h.controller->ImmutableDetailPasses(),std::uint64_t(1));
+    QCOMPARE(h.controller->Model().SceneWords(h.now,scene.selected.frameSeq).size(),h.page.words.size());
+    std::lock_guard lock(h.script->mutex);
+    QCOMPARE(h.script->recorded.size(),2);
+    for(const auto& call:h.script->recorded) {
+        // The recognizer's CPU API receives pixels only; its device API
+        // receives the source-stamped image without a CPU pixel readback.
+        if(resident) QCOMPARE(call.frame,scene.selected.frameSeq);
+        else QCOMPARE(call.digest,SourcePixelsDigest(h.page.image));
+    }
+    for(const auto& line:h.controller->Model().Lines()) {
+        QCOMPARE(line.provenance.frameSeq,scene.selected.frameSeq);
+        QCOMPARE(line.provenance.timestampMs,scene.selected.timestampMs);
+    }
+    QVERIFY(!h.script->recorded[0].focus); QVERIFY(h.script->recorded[1].focus);
+    if(resident) QCOMPARE(h.devices->readbacks.load(),0);
+}
 
 void UltraClearTextControllerTests::pausedZoomRequestsOneBoundedVisibleDetailPair()
 {

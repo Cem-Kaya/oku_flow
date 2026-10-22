@@ -413,12 +413,19 @@ void UltraClearTextController::SetMediaOverlaySuppressed(bool suppressed, bool e
 
 bool UltraClearTextController::SetImmutableScene(UctImmutableScene scene)
 {
+    if (scene.admission == uct::ImmutableAdmission::Standalone) {
+        // A held frame is its entire input. Ancillary decoder/preroll data
+        // cannot trigger another recognition, change authority or veto text.
+        scene.corroboration.reset();
+        scene.corroborationPolicy = {};
+    }
     const auto sameFrame = [](const UctImmutableFrame& a, const UctImmutableFrame& b) {
         return a.pixels == b.pixels && a.device == b.device && a.frameSeq == b.frameSeq &&
                a.timestampMs == b.timestampMs;
     };
     if (immutableScene_ && immutableScene_->geometry == scene.geometry &&
         immutableScene_->sourceAuthority == scene.sourceAuthority &&
+        immutableScene_->admission == scene.admission &&
         immutableScene_->corroborationPolicy == scene.corroborationPolicy &&
         sameFrame(immutableScene_->selected, scene.selected)) {
         // Decoder/preroll may supply the real neighbour after this selected
@@ -1565,6 +1572,11 @@ void UltraClearTextController::SubmitImmutableIfNeeded()
     }
     if (!immutableSelectedResult_ || !immutableSelectedResult_->output.ok ||
         immutableCorroborationAttempted_) return;
+    if (immutableScene_->admission == uct::ImmutableAdmission::Standalone) {
+        immutableCorroborationAttempted_ = true; // selection work is complete
+        FinishImmutableDetail();
+        return;
+    }
     // Bound corroboration to one actual neighbouring image. A separate
     // buffer with identical pixels still fails the worker digest comparison
     // in AdmitImmutable; a reused lease is rejected before scheduling.
@@ -1725,7 +1737,7 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
         // Preserve this selected result's job/authority/frame ticket. A
         // neighbour may corroborate it but never becomes selected evidence.
         immutableSelectedResult_ = std::move(result);
-        if (retainProvenModel) {
+        if (retainProvenModel && immutableScene_->admission == uct::ImmutableAdmission::Corroborated) {
             // Keep the proven same-frame artifact until a complete refinement
             // pair is available. A selected-only candidate cannot erase it.
             SubmitImmutableIfNeeded();
@@ -1735,11 +1747,13 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
             return;
         }
         verdict = model_.AdmitImmutable(*immutableSelectedResult_,
-                                        ImmutableStamp(immutableScene_->selected), now);
+                                        ImmutableStamp(immutableScene_->selected), now, nullptr,
+                                        immutableScene_->admission);
     } else {
         if (!immutableSelectedResult_) { ++rejectedResults_; return; }
         verdict = model_.AdmitImmutable(*immutableSelectedResult_,
-                                        ImmutableStamp(immutableScene_->selected), now, &result);
+                                        ImmutableStamp(immutableScene_->selected), now, &result,
+                                        immutableScene_->admission);
     }
     if (previousModel && verdict != uct::AdmitVerdict::kAccepted &&
         verdict != uct::AdmitVerdict::kContentMoved)
@@ -1830,9 +1844,10 @@ void UltraClearTextController::SubmitImmutableDetailIfUseful()
         !immutableSelectedResult_ || !immutableSelectedResult_->output.ok ||
         immutableSelectedResult_->output.backendPreparing || immutableDetailDone_.size() >= 32)
         return;
-    // New glyphs need a genuinely distinct real neighbour. Re-detecting the
-    // held image alone cannot confirm anything it finds.
-    if (!immutableScene_->corroboration || !CorroborationInputValid(*immutableScene_, *immutableScene_->corroboration))
+    // Only the explicit two-frame protocol needs a neighbour. Standalone
+    // paused detail examines the retained selected image itself.
+    if (immutableScene_->admission == uct::ImmutableAdmission::Corroborated &&
+        (!immutableScene_->corroboration || !CorroborationInputValid(*immutableScene_, *immutableScene_->corroboration)))
         return;
     const auto focus = ImmutableDetailFocus();
     if (!focus) return;

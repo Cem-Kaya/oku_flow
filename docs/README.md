@@ -773,3 +773,8 @@ capture policy, cancellation and separate native performance acceptance.
 [One-time media output-buffer comparison](media_output_buffer_benchmark.md)
 records the real GPU throughput/latency tradeoff for one and two outputs. The
 experiment preserves one history and leaves the app default unchanged.
+## Current paused-text policy
+
+[Standalone Freeze](uct_standalone_freeze.md) describes held-frame recognition
+without a neighbouring capture. Earlier pair-based repair reports retain their
+historical evidence and explicit-protocol scope.

@@ -240,6 +240,9 @@ struct UctImmutableScene {
     std::uint32_t viewportHeight{};
     int strokeWeight{};
     uct::ImmutableCorroborationPolicy corroborationPolicy;
+    // The app selects Standalone for paused video/manual Freeze. The explicit
+    // Corroborated mode remains for independent-frame protocol callers.
+    uct::ImmutableAdmission admission{uct::ImmutableAdmission::Corroborated};
 };
 
 // A receipt for a successfully presented advancing media frame. timestampMs
@@ -305,7 +308,8 @@ public:
 
     // Selected media uses the same recognition scheduler as live input.
     // A successful selection recognizes its owned complete scene once, then
-    // optionally one real distinct neighbour. Invalid input still suspends
+    // in Standalone mode. Corroborated callers may also supply one real
+    // distinct neighbour. Invalid input still suspends
     // hidden live analysis until ClearImmutableScene() is called. A first
     // usable neighbour arriving for the exact retained selected lease/frame/
     // PTS/geometry/authority attaches without restarting selected analysis;

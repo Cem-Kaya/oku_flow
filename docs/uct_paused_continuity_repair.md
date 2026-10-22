@@ -1,5 +1,9 @@
 # Paused UCT continuity repair
 
+> Current held-frame admission is [standalone](uct_standalone_freeze.md), without
+> a neighbouring capture. The pair-based failures and repairs below are retained
+> as historical evidence and explicit-protocol coverage.
+
 The reported development-player case is the owner's local
 `2026-10-01_17-34-58.mp4`, a 1920 x 1080, 60 FPS HEVC recording. The screenshots
 show paused selections near 55 and 89 seconds after random seeks. The private

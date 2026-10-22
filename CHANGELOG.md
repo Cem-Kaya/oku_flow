@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Process paused video and manual Freeze as standalone images. Eligible OCR
+  can draw and expose positioned screen-reader text from the exact held frame
+  without a previous/following-frame requirement. Zoom detail uses that same
+  retained image; live temporal confirmation remains separate.
+
 - Repair paused tilted-word proof across the upright/rotated fitting boundary;
   retain significant sub-two-degree geometry and an independent original
   recognition sampling frame without lowering confidence or pixel agreement.

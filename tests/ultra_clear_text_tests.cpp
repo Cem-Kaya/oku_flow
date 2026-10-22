@@ -897,6 +897,7 @@ private slots:
     void untrackableTextStaysReadableWithoutReplacement();
     void rejectedRefreshCannotRestoreOldAcceptedText();
     void immutableEvidenceRequiresDistinctPixelsAndSafeRegistration();
+    void standaloneImmutableUsesOnlySelectedFrame();
     void immutableCompletedRegistrationIgnoresUiBudget_data();
     void immutableCompletedRegistrationIgnoresUiBudget();
     void immutableRefinementRetainsExactProvenCoverage_data();
@@ -2746,6 +2747,42 @@ void UltraClearTextTests::rejectedRefreshCannotRestoreOldAcceptedText()
     auto empty=ResultFor(page,t,Stamp(1,1,400,t));empty.output.lines.clear();
     QCOMPARE(model.Admit(empty,empty.stamp,nullptr,410),AdmitVerdict::kEmpty);
     QVERIFY(model.ReadingText(410,0).isEmpty());
+}
+
+void UltraClearTextTests::standaloneImmutableUsesOnlySelectedFrame()
+{
+    const auto page=MakePage({QStringLiteral("Read page")});
+    const auto transform=Transform(1,.5f,.5f);
+    auto selected=ResultFor(page,transform,Stamp(1,1,100,transform));
+    OverlayModel model;
+    const auto admit=[&](const RecognitionResult& result,const SourceStamp& stamp) {
+        return model.AdmitImmutable(result,stamp,3600000,nullptr,ImmutableAdmission::Standalone);
+    };
+    QCOMPARE(admit(selected,selected.stamp),AdmitVerdict::kAccepted);
+    QCOMPARE(model.SceneWords(3600000,selected.stamp.frameSeq).size(),2);
+    QCOMPARE(model.ReadingText(3600000,selected.stamp.frameSeq),QStringLiteral("Read page"));
+    QVERIFY(!model.ScreenLines(3600000,selected.stamp.frameSeq).isEmpty());
+    auto wrong=selected.stamp; ++wrong.timestampMs;
+    QCOMPARE(admit(selected,wrong),AdmitVerdict::kStaleScene);
+    wrong=selected.stamp; ++wrong.sourceEpoch;
+    QCOMPARE(admit(selected,wrong),AdmitVerdict::kStaleScene);
+    auto composite=selected; composite.stamp.holdDisplay=HoldDisplay::Crossfade;
+    QCOMPARE(admit(composite,composite.stamp),AdmitVerdict::kFailed);
+    auto rejected=selected;
+    for(auto& word:rejected.output.lines[0].words) {
+        word.disposition=TokenDisposition::kLowConfidence; word.confidence=.6;
+    }
+    rejected.prepared.clear();
+    OverlayModel lowConfidence;
+    lowConfidence.AdmitImmutable(rejected,rejected.stamp,3600000,nullptr,ImmutableAdmission::Standalone);
+    QVERIFY(lowConfidence.SceneWords(3600000,selected.stamp.frameSeq).isEmpty());
+    // Changing policy cannot reuse standalone eligibility as two-frame proof.
+    QCOMPARE(model.AdmitImmutable(selected,selected.stamp,3600000),AdmitVerdict::kPending);
+    QVERIFY(model.SceneWords(3600000,selected.stamp.frameSeq).isEmpty());
+    QCOMPARE(admit(selected,selected.stamp),AdmitVerdict::kAccepted);
+    // A second read is still not independent live-camera evidence.
+    QCOMPARE(model.Admit(selected,selected.stamp,nullptr,110),AdmitVerdict::kPending);
+    QVERIFY(model.SceneWords(110,selected.stamp.frameSeq).isEmpty());
 }
 
 void UltraClearTextTests::immutableEvidenceRequiresDistinctPixelsAndSafeRegistration()

@@ -19,7 +19,8 @@ capture clock and Jump to live. Transient native-busy metadata keeps waiting.
 
 UCT's opt-in regional controller pacing supplements baseline full reads with
 one idle-only bounded region, without updating full timers or held acquisition
-proof. Paused selected/neighbour refinement remains separate. See
+proof. Paused video/Freeze instead uses standalone selected-image recognition
+and same-image bounded detail, without a neighbour analysis pass. See
 [active execution](../../docs/uct_active_regional_ocr.md).
 
 Protected VLM credential ids are immutable generations. A changed key, provider

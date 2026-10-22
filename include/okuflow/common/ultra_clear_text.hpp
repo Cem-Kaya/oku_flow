@@ -39,6 +39,11 @@
 // analysis images on private workers, never the D3D presentation stream.
 namespace okuflow::uct {
 
+// Standalone is the user-selected paused/Freeze policy. Corroborated remains
+// available for explicit independent-frame protocols; it is not synthesized
+// by rereading a held image.
+enum class ImmutableAdmission { Corroborated, Standalone };
+
 // Immutable provenance of one owned CPU/GPU analysis image. Copies, jobs,
 // results and accepted words all carry the stamp of the pixels they came
 // from, never a newly sampled one.
@@ -876,17 +881,19 @@ public:
                                      const ProbeFrame* latestProbe,
                                      std::int64_t mediaNowMs, const RegionalPreflight& preflight = {});
     // One explicitly selected immutable frame: require exact scene/frame
-    // identity. One result exposes text with uncertainty and leaves source ink.
-    // Glyphs require an optional genuinely distinct compatible neighbor: full
+    // identity. Standalone admits its eligible OCR using its own valid source
+    // references; it never consults a neighbouring result. The explicit
+    // Corroborated protocol requires a genuinely distinct compatible neighbor: full
     // pixel digests, different frame identity, word agreement and registration.
     // Caller owns selected-media/model authority; no periodic probe is needed.
-    // A refinement of identical selected pixels preserves exact earlier proof
-    // and can add independently proved words; it never rebinds old proof to
+    // A refinement of identical selected pixels preserves exact earlier words
+    // and can add eligible words; it never rebinds old proof to
     // jittered recognition boxes or another selected input.
     AdmitVerdict AdmitImmutable(const RecognitionResult& result,
                                 const SourceStamp& selectedFrame,
                                 std::int64_t nowMs,
-                                const RecognitionResult* corroboration = nullptr);
+                                const RecognitionResult* corroboration = nullptr,
+                                ImmutableAdmission admission = ImmutableAdmission::Corroborated);
     // Revalidates every accepted line against a newer probe of the same scene
     // (synchronous: CheckLines + ApplyChecks).
     ValidationSummary Validate(const ProbeFrame& probe, std::int64_t nowMs);
@@ -933,7 +940,8 @@ private:
                            const ProbeFrame* latestProbe, std::int64_t nowMs, bool immutable,
                            const RecognitionResult* corroboration = nullptr,
                            bool advancingMedia = false, bool liveCamera = false,
-                           const RegionalPreflight& preflight = {});
+                           const RegionalPreflight& preflight = {},
+                           ImmutableAdmission admission = ImmutableAdmission::Corroborated);
     AdmitVerdict MergeImmutableCoverage(const QVector<AcceptedLine>& previous,
                                         AdmitVerdict verdict, std::int64_t nowMs,
                                         std::uint64_t selectedFrameSeq);
@@ -970,6 +978,7 @@ private:
     QVector<QRectF> immutableConflictRects_;
     bool immutableConflictSaturated_{};
     bool immutable_{};
+    ImmutableAdmission immutableAdmission_{ImmutableAdmission::Corroborated};
     bool liveCamera_{};
 };
 

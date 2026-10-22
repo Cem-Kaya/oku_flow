@@ -2831,10 +2831,10 @@ void OkuFlowApp::ExpireAnnotationReadback() {
 bool OkuFlowApp::PresentSelectedMediaPixels(const uint8_t* data, UINT width, UINT height,
                                            UINT stride, std::uint64_t sourceEpoch,
                                            std::uint64_t frameSeq,
-                                           const VideoPlaybackFrame* neighbor,
+                                           const VideoPlaybackFrame* /*neighbor*/,
                                            std::int64_t pts100ns,
                                            bool continuousPlayback,
-                                           uct::ImmutableCorroborationPolicy corroborationPolicy) {
+                                           uct::ImmutableCorroborationPolicy /*corroborationPolicy*/) {
     if (!data || !VideoPlaybackLayoutFits(width, height, stride) || !presenter_ ||
         !uiState_->renderWidget_ || !uiState_->renderWidget_->isPresenterReady()) return false;
     if (HandlePresenterFault()) return false;
@@ -2847,8 +2847,8 @@ bool OkuFlowApp::PresentSelectedMediaPixels(const uint8_t* data, UINT width, UIN
         std::bit_cast<std::uint32_t>(brightness_), static_cast<std::uint64_t>(blackWhiteEnabled_),
         std::bit_cast<std::uint32_t>(blackWhiteThreshold_), static_cast<std::uint64_t>(colorTransform)};
     const bool changed = !mediaSceneCacheValid_ || recipe != mediaSceneRecipe_;
-    const std::uint64_t neighborId =
-        !mediaHoldBakedScene_ && !continuousPlayback && ultraClearText_ && ultraClearText_->IsEnabled() && neighbor ? neighbor->sampleId + 1 : 0;
+    const std::uint64_t neighborId = 0; // standalone held-frame analysis
+    const uct::ImmutableCorroborationPolicy corroborationPolicy{};
     const bool wasContinuousPlayback = mediaUctContinuousPlayback_;
     std::optional<UctImmutableScene> pausedScene;
     ViewTransform transform;
@@ -2896,6 +2896,7 @@ bool OkuFlowApp::PresentSelectedMediaPixels(const uint8_t* data, UINT width, UIN
                 corroborationPolicy != mediaUctCorroborationPolicy_ ||
                 neighborId != mediaUctNeighborSeq_) {
                 UctImmutableScene scene;
+                scene.admission = uct::ImmutableAdmission::Standalone;
                 scene.geometry.settings.sourceEpoch = sourceEpoch;
                 scene.geometry.settings.rotationQuarterTurns = turns;
                 scene.geometry.settings.colorScheme = mediaSceneAppearanceRevision_;
@@ -2936,24 +2937,6 @@ bool OkuFlowApp::PresentSelectedMediaPixels(const uint8_t* data, UINT width, UIN
         if(mediaHoldBakedScene_){ultraClearText_->SetMediaOverlaySuppressed(true);return;}
         ultraClearText_->SetMediaOverlaySuppressed(false);
         if (pausedScene) {
-            // Prepare one real neighbour only after a matching successful
-            // receipt. Busy viewport retries and continuous playback never
-            // repeat this full-source appearance pass.
-            if (neighborId != 0 && neighbor && neighbor->sampleId != frameSeq &&
-                neighbor->width == width && neighbor->height == height &&
-                VideoPlaybackLayoutFits(width, height, neighbor->strideBytes) &&
-                neighbor->bgra && neighbor->bgra->size() >= static_cast<std::size_t>(neighbor->strideBytes) * height) {
-                try {
-                    auto pixels = PrepareMediaScene(neighbor->bgra->data(), width, height,
-                        neighbor->strideBytes, turns, blackWhiteEnabled_, blackWhiteThreshold_,
-                        colorTransform, displayColorLut_, contrast_, brightness_);
-                    if (pixels) pausedScene->corroboration = UctImmutableFrame{
-                        std::move(pixels), neighbor->sampleId, neighbor->pts100ns / 10'000};
-                } catch (const std::bad_alloc&) {
-                    // Missing optional corroboration cannot substitute older
-                    // words for the successfully displayed current source.
-                }
-            }
             ultraClearText_->SetImmutableScene(std::move(*pausedScene));
             mediaUctNeighborSeq_ = neighborId;
             mediaUctCorroborationPolicy_ = corroborationPolicy;

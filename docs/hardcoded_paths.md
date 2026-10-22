@@ -1114,3 +1114,10 @@ protected-mask union cap. It adds no independent history or mask allowance.
 Original masks round outward when either projected axis has no pixel centres;
 carved remainders do so only when both axes lack centres. Exact original/carved
 rectangle collisions retain original protection through transfers/projection.
+## Standalone paused text policy (2026-10-22)
+
+Paused video/manual Freeze uses `ImmutableAdmission::Standalone`; it has no
+neighbour-time, distinct-frame or cross-frame pixel-agreement prerequisite.
+The existing confidence, seven-source-pixel, source/PTS/geometry, input/protection
+and rendering bounds still apply. Live and the explicit corroborated protocol
+retain their temporal constants. See [policy](uct_standalone_freeze.md).

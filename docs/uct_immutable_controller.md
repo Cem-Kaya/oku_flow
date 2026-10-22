@@ -1,5 +1,17 @@
 # Selected-media UCT controller
 
+## Current app admission
+
+Paused video/manual Freeze selects `ImmutableAdmission::Standalone`. The exact
+held image supplies eligible OCR, painting and positioned text without another
+capture. A settled zoom submits one same-image detail job. Neighbour/cadence
+descriptors are discarded and cannot schedule work or change selection identity.
+Source/PTS/geometry, result authority, own references and ordinary candidate and
+protection checks still apply. Live and advancing-media temporal policy is
+unchanged. The pair-based descriptions below document the retained explicit
+`Corroborated` protocol and its historical repairs; see
+[standalone policy](uct_standalone_freeze.md).
+
 The optional [active regional executor](uct_active_regional_ocr.md) applies to
 advancing/live inputs only. It preserves the paused selected/real-neighbour
 detail pair and 32-attempt cap. Regional admission retains outside accepted
