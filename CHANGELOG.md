@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Overlap dense UCT recognition groups with host metadata merging using bounded
+  double-buffered metadata and per-group completion events. Private resident
+  FP32 measurements show a dense N8 benefit; sparse/N1 and production BF16
+  acceptance limits are recorded in `docs/uct_recognition_lookahead.md`.
+
 - Hide the entire video transport without leaving a filename/status strip.
   Its show/hide chevron now lives beside Custom Setup in the quick-mode corner
   controls, with keyboard access and viewport Freeze/Resume preserved.

@@ -35,6 +35,7 @@ bool TensorRtCropDiagnostic::TryCommit(Plan&& plan) noexcept
 #include <cmath>
 #include <cuda_runtime.h>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <thread>
 
@@ -535,7 +536,18 @@ struct State
     DeviceBuffer<gpu::Token> tokens;
     HostBuffer<int> hostCount, hostGroupWidths;
     HostBuffer<gpu::Quad> hostQuad;
-    HostBuffer<gpu::Token> hostTokens;
+    // Two recognition-group metadata slots: one being merged on the host,
+    // one possibly still written by the next group's queued copies.
+    HostBuffer<int> groupCount[2];
+    HostBuffer<gpu::Quad> groupQuad[2];
+    HostBuffer<gpu::Token> groupTokens[2];
+    cudaEvent_t groupEvents[2]{};
+    cudaEvent_t GroupEvent(int slot)
+    {
+        if (!groupEvents[slot])
+            Check(cudaEventCreateWithFlags(&groupEvents[slot], cudaEventDisableTiming));
+        return groupEvents[slot];
+    }
     DeviceBuffer<unsigned char> uploaded;
     QImage uploadPixels;
     AnalysisPool uploadPool;
@@ -545,6 +557,9 @@ struct State
     std::shared_ptr<State> retirementQuarantine;
     ~State()
     {
+        for (auto event : groupEvents)
+            if (event)
+                cudaEventDestroy(event);
         if (stream)
             cudaStreamDestroy(stream);
     }
@@ -887,24 +902,34 @@ class TensorRtRecognizer final : public Recognizer
                     captured = {};
                 }
             }
-            for (int first = 0; first < count; first += submissionGroup)
-            {
-                if (cancelled.load())
-                {
-                    output.cancelled = true;
-                    output.lines.clear();
-                    cancelOwnedInput();
-                    return output;
-                }
+            // Recognition groups stay in stream order on one context. The next
+            // group with the identical canvas/batch shape is enqueued before
+            // the host waits on this group's own event, so its inference
+            // overlaps this group's host wait and merge. Merge order, inputs
+            // and kernels are unchanged. A shape change, cancellation or
+            // fault never leaves enqueued work behind a released input lease.
+            struct IssuedGroup {
+                int first{}, width{}, size{}, steps{}, slot{};
+                int* counts{}; gpu::Quad* quads{}; gpu::Token* tokens{};
+            };
+            const auto groupWidth = [&](int first) {
                 const int width = hostWidths ? hostWidths[first/submissionGroup] : 1024;
                 if (!recognizer_width::IsCanvas(width))
                     throw std::runtime_error("Invalid ordered-group recognizer canvas.");
+                return width;
+            };
+            const auto issueGroup = [&](int first, int slot) {
+                IssuedGroup group;
+                group.first = first;
+                group.slot = slot;
+                group.width = groupWidth(first);
+                group.size = std::min(submissionGroup, count - first);
+                const int width = group.width, groupSize = group.size;
                 const std::size_t samplePixels = static_cast<std::size_t>(width) * 48 * 3;
-                const int groupSize = std::min(submissionGroup, count - first);
                 auto *crop = state_->recognizerInput.Reserve(
                     samplePixels * state_->recognizerBatch);
-                auto *hostQuads = state_->hostQuad.Reserve(submissionGroup);
-                gpu::Token *hostTokens{};
+                group.counts = state_->groupCount[slot].Reserve(submissionGroup);
+                group.quads = state_->groupQuad[slot].Reserve(submissionGroup);
                 int steps{};
                 for (int batchFirst = 0; batchFirst < groupSize; batchFirst += state_->recognizerBatch)
                 {
@@ -926,8 +951,8 @@ class TensorRtRecognizer final : public Recognizer
                     if (steps && steps != recShape.d[1])
                         throw std::runtime_error("GPU recognizer step count changed within a group.");
                     steps = static_cast<int>(recShape.d[1]);
-                    if (!hostTokens)
-                        hostTokens = state_->hostTokens.Reserve(
+                    if (!group.tokens)
+                        group.tokens = state_->groupTokens[slot].Reserve(
                             static_cast<std::size_t>(steps) * submissionGroup);
                     const std::size_t sampleOutputs = static_cast<std::size_t>(steps) * recShape.d[2];
                     const std::size_t outputLimit = (state_->recognizerBatch == 16 ? 256ull : 64ull) * 1024 * 1024;
@@ -953,12 +978,12 @@ class TensorRtRecognizer final : public Recognizer
                     });
                     profile.Measure(TensorRtProfile::Metadata, state_->stream, [&] {
                         for (int sample = 0; sample < batchSize; ++sample) {
-                            const int slot = batchFirst + sample, index = first + slot;
-                            Check(cudaMemcpyAsync(hostCount + slot, tokenCounts + sample, sizeof(int),
+                            const int slotIndex = batchFirst + sample, index = first + slotIndex;
+                            Check(cudaMemcpyAsync(group.counts + slotIndex, tokenCounts + sample, sizeof(int),
                                                   cudaMemcpyDeviceToHost, state_->stream));
-                            Check(cudaMemcpyAsync(hostQuads + slot, state_->quads.Get() + index,
+                            Check(cudaMemcpyAsync(group.quads + slotIndex, state_->quads.Get() + index,
                                                   sizeof(gpu::Quad), cudaMemcpyDeviceToHost, state_->stream));
-                            Check(cudaMemcpyAsync(hostTokens + static_cast<std::size_t>(slot) * steps,
+                            Check(cudaMemcpyAsync(group.tokens + static_cast<std::size_t>(slotIndex) * steps,
                                                   tokens + static_cast<std::size_t>(sample) * steps,
                                                   steps * sizeof(gpu::Token),
                                                   cudaMemcpyDeviceToHost, state_->stream));
@@ -967,21 +992,51 @@ class TensorRtRecognizer final : public Recognizer
                     profile.Transfer(static_cast<std::size_t>(batchSize) *
                         (sizeof(int) + sizeof(gpu::Quad) + steps * sizeof(gpu::Token)));
                 }
-                profile.Wait(false, [&] { Check(cudaStreamSynchronize(state_->stream)); }); // existing group completion wait
+                group.steps = steps;
+                Check(cudaEventRecord(state_->GroupEvent(slot), state_->stream));
+                return group;
+            };
+            // Drains enqueued look-ahead before an early return releases the
+            // input lease; a failed drain propagates to normal retirement.
+            const auto cancelGroups = [&](bool aheadIssued) {
+                if (aheadIssued) Check(cudaStreamSynchronize(state_->stream));
+                output.cancelled = true;
+                output.lines.clear();
+                cancelOwnedInput();
+            };
+            if (count > 0 && cancelled.load())
+            {
+                cancelGroups(false);
+                return output;
+            }
+            std::optional<IssuedGroup> current;
+            if (count > 0) current = issueGroup(0, 0);
+            while (current)
+            {
+                const IssuedGroup group = *current;
+                current.reset();
+                const int next = group.first + submissionGroup;
+                bool aheadIssued = false;
+                if (next < count && !cancelled.load() && groupWidth(next) == group.width &&
+                    std::min(submissionGroup, count - next) == group.size)
+                {
+                    current = issueGroup(next, 1 - group.slot);
+                    aheadIssued = true;
+                }
+                profile.Wait(false, [&] { Check(cudaEventSynchronize(state_->groupEvents[group.slot])); }); // this group's completion
                 frozenUpload.Completed();
                 if (cancelled.load())
                 {
-                    output.cancelled = true;
-                    output.lines.clear();
-                    cancelOwnedInput();
+                    cancelGroups(aheadIssued);
                     return output;
                 }
                 QElapsedTimer merge;
                 if (profile.Enabled()) merge.start();
-                for (int slot = 0; slot < groupSize; ++slot)
+                const int width = group.width, steps = group.steps;
+                for (int slot = 0; slot < group.size; ++slot)
                 {
-                    const int tokenCount = hostCount[slot];
-                    const auto quad = hostQuads[slot];
+                    const int tokenCount = group.counts[slot];
+                    const auto quad = group.quads[slot];
                     if (captureCrops) {
                         TensorRtCropDiagnostic::Crop record;
                         std::copy(std::begin(quad.xy), std::end(quad.xy), record.xy.begin());
@@ -997,7 +1052,7 @@ class TensorRtRecognizer final : public Recognizer
                     }
                     profile.CropDescriptor(quad.xy, quad.score, quad.validWidth,
                                            quad.internalEdges, region, width);
-                    const auto *tokens = hostTokens + static_cast<std::size_t>(slot) * steps;
+                    const auto *tokens = group.tokens + static_cast<std::size_t>(slot) * steps;
                     if (tokenCount < 0)
                         continue; // untrustworthy crop, same policy as CPU decoder
                     if (tokenCount > steps)
@@ -1020,6 +1075,16 @@ class TensorRtRecognizer final : public Recognizer
                                            {image.width, image.height});
                 }
                 profile.Merge(profile.Enabled() ? merge.nsecsElapsed() / 1e6 : 0);
+                if (!current && next < count)
+                {
+                    // Shape change: the stream is idle, as before this change.
+                    if (cancelled.load())
+                    {
+                        cancelGroups(false);
+                        return output;
+                    }
+                    current = issueGroup(next, 1 - group.slot);
+                }
             }
             ++regionIndex;
             }

@@ -6374,7 +6374,12 @@ Production uses Windows OCR while TensorRT prepares, deferring configured CPU
 sessions until necessary. A complete bridge result can set `backendPreparing`
 to request preferred-backend refinement without bypassing evidence admission.
 `Libraries::PrepareBuilder` lazily loads compilation-only TensorRT resources;
-`TensorRtRecognizer` groups eight batch-one submissions per worker stream wait.
+`TensorRtRecognizer` groups eight batch-one submissions per worker completion
+event (or one wider neural batch). Private `State::GroupEvent` and two bounded
+pinned count/quad/token slots permit one same-size/same-canvas group of look-ahead
+while the host merges the preceding group. `RecognizeDevice` drains issued
+look-ahead before cancelled input release; shape/partial transitions stay serial.
+See [the measured candidate and acceptance limits](uct_recognition_lookahead.md).
 
 `UltraClearTextController::ScheduleImmutableRetry` retries unsuccessful selected
 or neighbour work under the same ticket with bounded timers. New geometry revokes
