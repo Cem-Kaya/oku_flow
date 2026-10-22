@@ -1,5 +1,10 @@
 # OkuFlow Documentation Guide
 
+[How the UCT pipeline actually works](uct_pipeline_guide.html) is a detailed,
+offline HTML guide with a sequential pipeline map, expandable chapters, an
+exact crop-sizing explorer and a step-through queue/reuse explanation. It
+separates development behavior, local opt-ins, evidence and unfinished work.
+
 [Initially paused video UCT](uct_initial_paused_frame.md) documents frame-zero
 initialization, sealed saved-file duration bounds and captured controller replay
 with actual paint and positioned-text assertions.
