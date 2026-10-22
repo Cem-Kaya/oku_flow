@@ -6654,6 +6654,15 @@ acquire a false shared row/column with the proved word and start a protection
 cascade over its neighbour, while original thin punctuation remains protected.
 See [geometry/detail repair](uct_oriented_detail_repair.md) for acceptance limits.
 
+`uct_tilted_paint_test::{CapturedWord,ButtonRow,Quad,CapturedProtectionBaseline}`
+replays factual model-to-painter metadata from retained menu19/menu25 proofs.
+The offscreen `capturedTiltedMenuProtectionBaseline` rows distinguish an
+independently proved but protected Hand from the drawn 43-pixel Hand, preserve
+all captured rejected-source mask pixels in snapshot/live software paint, and isolate
+the neighbouring-mask cause with a separate diagnostic control. They neither
+run OCR nor manufacture reference/proof flags. Source/report hashes and limits
+are recorded in [tilted repaint diagnosis](uct_tilted_paint_gaps.md).
+
 ## Optional regional GPU execution proof
 
 `RegionalDetailFocus` keeps source context at most 480 pixels and supplies the

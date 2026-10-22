@@ -11,6 +11,7 @@
 #include "uct_capture_test_cases.hpp"
 #include "uct_color_test_support.hpp"
 #include "uct_quad_reference_test_support.hpp"
+#include "uct_tilted_paint_test_cases.hpp"
 
 #include <QApplication>
 #include <QAccessible>
@@ -760,6 +761,17 @@ private slots:
     void mixedHeightReadingOrderIsStableAndOnlyFreshTextIsRead();
     void unchangedWordsRefreshMeasuredColors();
     void glyphsShareLineBaselineDespiteDifferentInkHeights();
+    void capturedTiltedMenuProtectionBaseline_data()
+    {
+        QTest::addColumn<bool>("menu25");
+        QTest::newRow("menu19-proven-hand-protected-neighbour") << false;
+        QTest::newRow("menu25-fitted-43px-hand") << true;
+    }
+    void capturedTiltedMenuProtectionBaseline()
+    {
+        QFETCH(bool, menu25);
+        uct_tilted_paint_test::CapturedProtectionBaseline(menu25);
+    }
     void fractionalProtectionCutsKeepProvedWords_data();
     void fractionalProtectionCutsKeepProvedWords();
     void subpixelProtectionStripsKeepProvedWords_data();
