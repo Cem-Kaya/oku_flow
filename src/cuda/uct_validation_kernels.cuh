@@ -928,12 +928,42 @@ struct SurfaceSampler {
         const auto* p=pixels+int(floor(py))*pitch+int(floor(px))*4;rgb={p[2],p[1],p[0]};return true;
     }
 };
-__global__ void surfaceFrames(const unsigned char* pixels,size_t pitch,int w,int h,
+// One request per block. Members share every loop of the helper; their
+// combinations are exact, so the result matches a single serial member.
+inline constexpr int SurfaceThreads=128;
+struct SurfaceTeam {
+    __device__ int Rank()const{return threadIdx.x;}
+    __device__ int Size()const{return SurfaceThreads;}
+    __device__ void Sync()const{__syncthreads();}
+    template<class T,class F> __device__ T Combine(T value,F combine)const{
+        static_assert(sizeof(T)%sizeof(int)==0,"combined values are shuffled as words");
+        for(int lane=16;lane;lane>>=1){T other;
+            const int* from=reinterpret_cast<const int*>(&value);int* to=reinterpret_cast<int*>(&other);
+            for(int i=0;i<int(sizeof(T)/sizeof(int));++i)to[i]=__shfl_xor_sync(0xffffffffu,from[i],lane);
+            value=combine(value,other);
+        }
+        // Every member then folds the warp results in the same fixed order.
+        __shared__ T warps[SurfaceThreads/32];
+        __syncthreads();
+        if(!(threadIdx.x&31))warps[threadIdx.x>>5]=value;
+        __syncthreads();
+        T result=warps[0];for(int i=1;i<SurfaceThreads/32;++i)result=combine(result,warps[i]);
+        return result;
+    }
+    __device__ int First(bool value)const{
+        const int first=Combine(value?int(threadIdx.x):SurfaceThreads,[](int a,int b){return a<b?a:b;});
+        return first<SurfaceThreads?first:-1;
+    }
+    __device__ void AtomicMin(int& target,int value)const{atomicMin(&target,value);}
+    __device__ void AtomicMax(int& target,int value)const{atomicMax(&target,value);}
+    __device__ bool Claim(int& state)const{return state==1&&atomicCAS(&state,1,2)==1;}
+    __device__ int Append(int& size)const{return atomicAdd(&size,1);}
+};
+__global__ void __launch_bounds__(SurfaceThreads) surfaceFrames(const unsigned char* pixels,size_t pitch,int w,int h,
     const SurfaceRequest* requests,const Colors* colors,const Fit* fits,const OrientedFit* oriented,SurfaceFit* out)
 {
     __shared__ surface_geometry::Scratch scratch;
-    if(threadIdx.x)return;
-    const int i=blockIdx.x;out[i]={};const auto request=requests[i];auto frame=request.frame;
+    const int i=blockIdx.x;if(!threadIdx.x)out[i]={};const auto request=requests[i];auto frame=request.frame;
     if(request.oriented){
         const auto f=oriented[request.fitIndex];if(!f.fitted)return;
         if(hypot(frame.warpX,frame.warpY)>fmin(frame.width,frame.height)*.002)return;
@@ -946,11 +976,11 @@ __global__ void surfaceFrames(const unsigned char* pixels,size_t pitch,int w,int
         frame.ux=frame.vy=1;frame.uy=frame.vx=0;
     }
     const auto c=colors[request.colorIndex];
-    const auto result=surface_geometry::Refine(frame.width,frame.height,
+    const auto result=surface_geometry::Refine(SurfaceTeam{},frame.width,frame.height,
         surface_geometry::Rgb{c.foreground[0],c.foreground[1],c.foreground[2]},
         surface_geometry::Rgb{c.background[0],c.background[1],c.background[2]},
         SurfaceSampler{pixels,pitch,w,h,frame},scratch);
-    if(!result.fitted)return;
+    if(threadIdx.x||!result.fitted)return;
     for(int k=0;k<4;++k){out[i].xy[k*2]=frame.ox+frame.ux*result.quad[k].x+frame.vx*result.quad[k].y;
         out[i].xy[k*2+1]=frame.oy+frame.uy*result.quad[k].x+frame.vy*result.quad[k].y;}
     out[i].fitted=1;
@@ -1102,7 +1132,7 @@ void SurfaceFrames(const void* p,size_t pitch,int w,int h,const SurfaceRequest* 
     const Colors* colors,const Fit* fits,const OrientedFit* oriented,SurfaceFit* out,cudaStream_t stream)
 {
     if(n<0||n>surface_geometry::WordLimit)throw std::invalid_argument("UCT surface request budget exceeded");
-    if(n)validation::surfaceFrames<<<n,32,0,stream>>>(static_cast<const unsigned char*>(p),pitch,w,h,
+    if(n)validation::surfaceFrames<<<n,validation::SurfaceThreads,0,stream>>>(static_cast<const unsigned char*>(p),pitch,w,h,
         requests,colors,fits,oriented,out);
 }
 void FingerprintLeaves(const void *p, size_t pitch, int w, int h, unsigned char *out,

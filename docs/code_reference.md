@@ -8,6 +8,13 @@ bounded paper-component, robust four-side fitting and homography decisions
 between CPU and CUDA. It requires a closed enclosing surface and rescans actual
 ink in that plane; ambiguous/open/clipped evidence retains previous geometry.
 The CPU scheduler considers at most 128 candidates on its worker.
+`Refine` and `RefineContext` are generic over an execution team. The existing
+six-argument `Refine` uses `SerialTeam` and keeps the CPU evaluation order;
+CUDA's `SurfaceTeam` runs each request on one 128-thread block. Team
+combinations are limited to integer counts, minima/maxima whose ties keep the
+first serial occurrence, and exactly representable quarter-integer sums.
+`Scratch` (31,812 bytes) holds 32-bit cell states, two flood queues that keep
+the best component while later seeds flood, and the four side profiles.
 
 `gpu::SurfaceRequest`, `SurfaceFit` and `SurfaceFrames` fuse the same refinement
 after existing ink fitting. Resident analysis uploads bounded descriptors and

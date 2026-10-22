@@ -107,3 +107,43 @@ The private paused diagnostic can report `surfaceCpuReplay` refusal stages for
 still-affine words by reading its already owned source PNG. This is a CPU replay
 of optional geometry only; it changes neither resident output nor admission and
 does not download an image from the GPU.
+
+## Cooperative CUDA evaluation, 2026-10-23
+
+The parent kernel launched 32 threads per request but thread 0 ran the whole
+algorithm serially; its FP64 grid sampling, line fits and two-division inverse
+maps per ink corner then ran at single-lane latency. The helper is now generic
+over an execution team. CPU workers use a one-member `SerialTeam` with the same
+evaluation order. CUDA uses one 128-thread block per request: grid sampling,
+the ink-plane rescan, side-fit hypotheses and refits are split across threads,
+and paper components flood level by level with atomic claims, while seeds
+are still taken in raster order. Combined values are integer counts, minima/maxima whose ties
+keep the first serial occurrence, or quarter-integer sums exactly representable
+in FP64. The CPU additionally reuses a horizontal ink neighbour's two mapped
+corners, which come from bit-identical source points. Thresholds, stages,
+the 128-request and 16K-sample caps, both contexts, refusals, fallback geometry,
+source ownership and the public kernel interface are unchanged.
+
+A private harness built the production `uct_kernels.cu.obj` twice from this
+checkout's own fresh CUDA test cache (parent `4fa8ffb` and this change). It
+linked each object with the matching CPU header and recorded every output bit for
+4,410 requests: 2,250 jittered captured words on the receipt-bound 7000-ms frame
+and 2,160 generated labelled cards (four labels, three sizes, five shears, two
+tapers, three scales, white/green paper). CPU stage, fit and corner bits match
+on all requests. CUDA fit decisions match on all requests (2,666 fitted both
+times); nine fitted results differ by one ULP in a corner coordinate, at most
+1.1e-13 source pixels. Restructuring changes where the compiler contracts a few
+FP64 multiply-adds, so CUDA output is decision-identical but not universally
+bit-identical to the parent. The separate CPU/GPU acceptance difference is unchanged in both
+builds: captured jitter fits 887 CPU and 890 CUDA requests, and generated cards fit 1,776
+each. This corpus is not a proof for every input.
+
+The tracked runner then passed `uct_paddle_processing` and `uct_paddle_cuda`
+(2 of 245, no skips or unresolved selections) from that cache. This scoped
+pass is not release acceptance; the app target was not rebuilt.
+
+The timed parent/optimized comparison was not run. The owner started the
+application for testing before the timing step, so GPU times would not have
+been comparable; parity runs used the harness's untimed mode. The earlier
+parent-only table above remains the only timing evidence. No speedup is claimed
+until a same-session comparison runs on an otherwise idle GPU.

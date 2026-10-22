@@ -32,3 +32,6 @@ Resident UCT `SurfaceFrames` shares the CPU closed-surface decisions and returns
 only bounded corner metadata after ink fitting. It uses the existing owned
 source/stream and completion/quarantine path, with at most 128 requests and no
 image readback. See [surface perspective](../../docs/uct_surface_perspective.md).
+
+One 128-thread block cooperates on each request: grid sampling, level-parallel
+flooding, line hypotheses/refits and the ink-plane rescan share the work.
