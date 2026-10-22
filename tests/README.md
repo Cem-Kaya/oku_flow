@@ -34,6 +34,26 @@ The first private replay predates the runtime declarations and remains diagnosti
 evidence; see the linked results and exact-hash receipt. Corrected-capture results
 are recorded separately with the declarations enabled.
 
+The optional `video_playback_native_sparse_0_2s` fixture measures actual native
+selected-sample duration and initial following preparation for the private
+zero/two-second sparse source. Configure `OKUFLOW_TEST_VIDEO_PAUSED_FILE` as an
+explicit absolute existing file; the FILEPATH option defaults empty and adds no
+ordinary CI case. The registered case has `headless;codec` labels, runs serially
+with a 20-second timeout, and declares the actual clip plus test/playback/policy
+helper bytes as absolute CTest `REQUIRED_FILES` for runtime hashing. It invokes
+`video_playback_tests --native-paused-external <exact-path>` with the existing
+`OKUFLOW_TEST_VIDEO_PLAYBACK_CODEC=1` opt-in. Direct CLI use needs that opt-in too.
+One CPU `OpenFile` and a shared 12-second polling deadline retain initial sample
+and PTS zero while waiting for the actual nearest following sample. Output
+reports native PTS/duration in 100-ns ticks, extents and descriptor agreement.
+This fixture expects native two-second duration and a genuine 2000-ms neighbour;
+it is not a contract for arbitrary video cadence. It never plays/seeks, requests
+a GPU adapter, submits OCR or opens audio endpoints. Missing native duration or
+neighbour fails without inference or policy expansion. The private Tr 9 source
+hash and the separate provenance/acceptance limits are documented in
+[initial paused video](../docs/uct_initial_paused_frame.md). This new optional
+fixture is unbuilt and unrun pending the parent resource grant.
+
 `immutableCandidateProtectionRefusalIsAtomic` covers late semantic-risk refusal
 after an append and mixed append/fragment exhaustion at 8191 stored slots.
 `activeRegionalRasterWithdrawalIsAtomic` covers ordinary and tilted words

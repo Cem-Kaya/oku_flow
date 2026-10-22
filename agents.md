@@ -1005,3 +1005,9 @@ aligned with the project goals.
   that proof and both actual source images as absolute `REQUIRED_FILES` and
   fix its input environment to the configured value. Keep earlier undeclared
   diagnostic failures separate from later corrected-capture acceptance.
+- The optional native sparse 0/2-second case uses an explicit
+  `OKUFLOW_TEST_VIDEO_PAUSED_FILE` FILEPATH (empty by default) and the existing
+  codec opt-in. Declare the actual private clip and helper/test bytes as CTest
+  runtime inputs; measure native sample duration instead of borrowing software
+  extraction metadata. Missing duration/neighbour must fail without expanding
+  policy. Keep one Open, bounded paused waiting and no Play/GPU/audio endpoints.

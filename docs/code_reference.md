@@ -463,6 +463,19 @@ admission callbacks before advancing, so setup cannot expire otherwise current
   existing paths, declares the proof and both images as CTest `REQUIRED_FILES`,
   and fixes the test's replay environment to that configuration. An empty option
   selects synthetic mode. Original undeclared replay remains diagnostic evidence.
+  `NativePausedExternal` in `tests/video_playback_tests.cpp` is the opt-in
+  `--native-paused-external` zero/two-second native sparse-source fixture.
+  It clears the process-local embedded-backend request, creates a CPU player
+  without an adapter, calls OpenFile once and shares a 12-second deadline across
+  initial Paused selection and one actual following arrival. Its print helper
+  reports raw sample/PTS/duration/extent; assertions bind selected zero-frame
+  object/control block, decoder issuance, generation, file and track, requiring
+  actual native two-second duration and the genuine 2000-ms neighbour to satisfy
+  CorroborationPolicy. `OKUFLOW_TEST_VIDEO_PAUSED_FILE` defaults empty; only an
+  explicit absolute existing file registers `video_playback_native_sparse_0_2s`
+  with timeout 20, serial headless/codec labels and actual file plus helper/test
+  bytes as absolute REQUIRED_FILES. It uses the existing native codec opt-in;
+  it adds no inference, playback, seek, GPU or audio-endpoint work. Unrun.
 - `UctAdvancingMediaScene` and `OnAdvancingMediaPresented` bind successful
   playback receipts to real media PTS and independent wall-clock job deadlines.
   They pace residual probes at 80 ms and OCR at a 350 ms minimum/1,500 ms

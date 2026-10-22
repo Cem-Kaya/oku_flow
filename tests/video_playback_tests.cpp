@@ -393,6 +393,74 @@ void InitialSparseSavedFileNeighbour(VideoPlayback& player) {
     std::error_code error;std::filesystem::remove(path,error);
 }
 
+// Private two-second sparse-source contract. Observe actual native sample
+// metadata through OpenFile only; never infer missing duration or retime input.
+void NativePausedExternal(const std::filesystem::path& path) {
+    std::error_code error;
+    const bool validPath = path.is_absolute() && std::filesystem::is_regular_file(path,error);
+    Expect(validPath,"paused native probe requires one absolute existing private file");
+    if (!validPath) return;
+    SetEnvironmentVariableW(L"OKUFLOW_VIDEO_BACKEND",nullptr);
+    VideoPlayback player; // default CPU reader; no GPU adapter is requested
+    const auto deadline = Clock::now()+std::chrono::seconds(12);
+    const auto remaining = [&] {
+        return int(std::max<std::int64_t>(0,std::chrono::duration_cast<std::chrono::milliseconds>(deadline-Clock::now()).count()));
+    };
+    const auto request = player.OpenFile(path.wstring());
+    VideoPlaybackSnapshot snapshot;
+    const bool opened = Wait([&] {
+        snapshot = player.Snapshot();
+        return snapshot.requestGeneration==request &&
+            (snapshot.state==VideoPlaybackState::Paused || snapshot.state==VideoPlaybackState::Unavailable);
+    },remaining());
+    const auto printFrame = [](const char* name,const std::shared_ptr<const VideoPlaybackFrame>& frame) {
+        std::cout << "Native paused " << name << " present=" << bool(frame);
+        if (frame) std::cout << " sample=" << frame->sampleId << " pts100ns=" << frame->pts100ns
+            << " duration100ns=" << frame->duration100ns << " width=" << frame->width
+            << " height=" << frame->height << " stride=" << frame->strideBytes;
+        std::cout << '\n';
+    };
+    std::cout << "Native paused path=" << path.string() << " state=" << int(snapshot.state)
+        << " backend=" << snapshot.decoderBackend << " error=" << snapshot.error << '\n';
+    const auto selected = snapshot.frame;
+    printFrame("selected",selected);
+    Expect(opened && selected && snapshot.state==VideoPlaybackState::Paused,
+        "actual native private source opens paused without Play");
+    if (!selected || snapshot.state!=VideoPlaybackState::Paused) { player.Close(); return; }
+    const auto file = snapshot.file;
+    const auto lease = selected->decoderLease;
+    const auto policy = player.CorroborationPolicy(selected);
+    Expect(snapshot.decoderBackend=="media-foundation" && !snapshot.gpuResident && selected->bgra && !selected->gpu,
+        "private paused probe uses native CPU output without embedded/GPU fallback");
+    Expect(selected->sampleId==0 && selected->pts100ns==0 && selected->requestGeneration==request && lease,
+        "actual native first sample retains exact initial zero PTS and issued lease");
+    Expect(selected->duration100ns==20'000'000,
+        "actual native selected sample reports known two-second duration");
+    bool unchanged = true;
+    const bool arrived = Wait([&] {
+        snapshot = player.Snapshot();
+        unchanged = unchanged && snapshot.requestGeneration==request && snapshot.frame==selected &&
+            !snapshot.frame.owner_before(selected) && !selected.owner_before(snapshot.frame) &&
+            snapshot.state==VideoPlaybackState::Paused;
+        return !unchanged || bool(snapshot.neighborFrame);
+    },remaining());
+    const auto neighbour = snapshot.neighborFrame;
+    printFrame("neighbour",neighbour);
+    const bool allowed = neighbour && policy.Allows(selected->sampleId,selected->pts100ns/10'000,
+                                                   neighbour->sampleId,neighbour->pts100ns/10'000);
+    std::cout << "Native paused selectedLeaseUnchanged=" << unchanged << " descriptorAllows=" << allowed
+        << " readyFrames=" << snapshot.readyFrames << " decodedBytes=" << snapshot.decodedBytes << '\n';
+    Expect(unchanged && snapshot.file.SameFile(file) && snapshot.videoTrackId==selected->videoTrackId &&
+        snapshot.frame==selected && snapshot.frame->decoderLease==lease && selected->requestGeneration==request,
+        "native following preparation keeps the exact selected frame ownership, issuance, file and track");
+    Expect(arrived && neighbour && neighbour->sampleId==20'000'000 && neighbour->pts100ns==20'000'000 &&
+        neighbour->requestGeneration==request && neighbour->videoTrackId==selected->videoTrackId &&
+        neighbour->width==selected->width && neighbour->height==selected->height && neighbour->decoderLease,
+        "actual nearest following native two-second sample arrives without Play or seek");
+    Expect(allowed,"sealed native sample duration authorizes the observed genuine following sample");
+    player.Close();
+}
+
 void PausedSceneCutNeighbor(VideoPlayback& player) {
     const auto path=std::filesystem::path(__FILE__).parent_path()/"data"/"uct-scene-cut-h264.mp4";
     auto request=player.OpenFile(path.wstring());
@@ -1569,6 +1637,10 @@ int main(int argc, char** argv) {
         else if(mode=="--native-playback-external" || mode=="--native-gpu-playback-external") {
             if(argc!=3)Expect(false,"private playback fixture requires exactly one file path");
             else NativeExternalPlayback(std::filesystem::path(argv[2]));
+        }
+        else if(mode=="--native-paused-external") {
+            if(argc!=3)Expect(false,"private paused fixture requires exactly one absolute file path");
+            else NativePausedExternal(std::filesystem::path(argv[2]));
         }
         else if(mode=="--native-gpu-external") {
             if(argc!=3)Expect(false,"external GPU fixture requires exactly one file path");

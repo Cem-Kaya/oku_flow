@@ -41,6 +41,22 @@ if(WIN32)
         REQUIRED_FILES "${PROJECT_SOURCE_DIR}/src/common/video_playback.cpp;${PROJECT_SOURCE_DIR}/src/common/video_archive.cpp;${PROJECT_SOURCE_DIR}/src/common/media_writer.cpp")
     set_tests_properties(video_playback_contract PROPERTIES TIMEOUT 60 LABELS "codec"
         REQUIRED_FILES "${PROJECT_SOURCE_DIR}/src/common/video_playback.cpp;${PROJECT_SOURCE_DIR}/src/common/video_playback_seek_budget.hpp;${PROJECT_SOURCE_DIR}/src/common/video_archive.cpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/video_playback.hpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/video_archive.hpp;${PROJECT_SOURCE_DIR}/tests/data/long-gop-h264.mp4;${PROJECT_SOURCE_DIR}/tests/data/uct-scene-cut-h264.mp4;${PROJECT_SOURCE_DIR}/tests/data/paced-audio-h264.mp4")
+    # One explicit private two-second sparse source; no default/sample discovery.
+    set(OKUFLOW_TEST_VIDEO_PAUSED_FILE "" CACHE FILEPATH "Absolute private file for native sparse 0/2-second paused fixture")
+    if(OKUFLOW_TEST_VIDEO_PAUSED_FILE)
+        if(NOT IS_ABSOLUTE "${OKUFLOW_TEST_VIDEO_PAUSED_FILE}" OR
+           NOT EXISTS "${OKUFLOW_TEST_VIDEO_PAUSED_FILE}" OR
+           IS_DIRECTORY "${OKUFLOW_TEST_VIDEO_PAUSED_FILE}" OR
+           "${OKUFLOW_TEST_VIDEO_PAUSED_FILE}" MATCHES ";")
+            message(FATAL_ERROR "Private native paused fixture must be an existing absolute file")
+        endif()
+        add_test(NAME video_playback_native_sparse_0_2s COMMAND video_playback_tests
+            --native-paused-external "${OKUFLOW_TEST_VIDEO_PAUSED_FILE}")
+        set_tests_properties(video_playback_native_sparse_0_2s PROPERTIES
+            TIMEOUT 20 LABELS "headless;codec" RUN_SERIAL TRUE SKIP_RETURN_CODE 77
+            ENVIRONMENT "OKUFLOW_TEST_VIDEO_PLAYBACK_CODEC=1;OKUFLOW_VIDEO_BACKEND="
+            REQUIRED_FILES "${OKUFLOW_TEST_VIDEO_PAUSED_FILE};${PROJECT_SOURCE_DIR}/tests/video_playback_tests.cpp;${PROJECT_SOURCE_DIR}/tests/video_playback.cmake;${PROJECT_SOURCE_DIR}/src/common/video_playback.cpp;${PROJECT_SOURCE_DIR}/src/common/video_playback_seek_budget.hpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/video_playback.hpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/immutable_corroboration.hpp")
+    endif()
     # Explicit private fixtures permit wider codec/profile acceptance without
     # adding a downloaded sample or an encoder dependency to the application.
     set(OKUFLOW_TEST_VIDEO_GPU_FILES "" CACHE STRING "Absolute private video files for optional native GPU acceptance")
