@@ -113,7 +113,8 @@ uct::SharedDeviceImage EffectiveDevice(const UctImmutableFrame& frame, const Uct
 bool CorroborationInputValid(const UctImmutableScene& scene, const UctImmutableFrame& neighbour)
 {
     if (!FrameInputValid(neighbour, scene.geometry) ||
-        neighbour.frameSeq == scene.selected.frameSeq) return false;
+        !scene.corroborationPolicy.Allows(scene.selected.frameSeq, scene.selected.timestampMs,
+                                          neighbour.frameSeq, neighbour.timestampMs)) return false;
     const auto neighbourDevice = EffectiveDevice(neighbour, scene.geometry);
     const auto selectedDevice = EffectiveDevice(scene.selected, scene.geometry);
     return !((neighbourDevice && selectedDevice && neighbourDevice == selectedDevice) ||
@@ -418,6 +419,7 @@ bool UltraClearTextController::SetImmutableScene(UctImmutableScene scene)
     };
     if (immutableScene_ && immutableScene_->geometry == scene.geometry &&
         immutableScene_->sourceAuthority == scene.sourceAuthority &&
+        immutableScene_->corroborationPolicy == scene.corroborationPolicy &&
         sameFrame(immutableScene_->selected, scene.selected)) {
         // Decoder/preroll may supply the real neighbour after this selected
         // frame has already been read. Attach it without cancelling that job,
@@ -1504,6 +1506,7 @@ uct::SourceStamp UltraClearTextController::ImmutableStamp(const UctImmutableFram
     uct::SourceStamp stamp = CurrentScene();
     stamp.frameSeq = frame.frameSeq;
     stamp.timestampMs = frame.timestampMs;
+    if (immutableScene_) stamp.immutableCorroboration = immutableScene_->corroborationPolicy;
     stamp.viewTransform.valid = true; // full-scene pixels, independent of current view
     if (const auto device = EffectiveDevice(frame, geometry_)) {
         stamp.viewportWidth = static_cast<std::uint32_t>(device->width);
@@ -1526,7 +1529,8 @@ void UltraClearTextController::SubmitImmutableIfNeeded()
 {
     if (immutableRetryScheduled_ || immutableRetryExhausted_) return;
     if (mediaOverlaySuppressed_ || !enabled_ || !immutableScene_ || !scheduler_ || backend_.state != uct::BackendState::kReady ||
-        !AnalysisHealthy()) return;
+        !AnalysisHealthy() || !immutableScene_->corroborationPolicy.MatchesSelected(
+            immutableScene_->selected.frameSeq, immutableScene_->selected.timestampMs)) return;
     // Preferred device input first; owned CPU pixels remain the fallback of
     // the same bounded attempt when the device hand-off is refused.
     const auto submitFrame = [this](const UctImmutableFrame& frame) {
@@ -1591,6 +1595,7 @@ bool UltraClearTextController::HasProvenImmutableArtifact() const
     return std::any_of(model_.Lines().begin(), model_.Lines().end(), [&](const auto& line) {
         return line.provenance.SameScene(selected) &&
                line.provenance.frameSeq == selected.frameSeq &&
+               line.provenance.immutableCorroboration == selected.immutableCorroboration &&
                line.provenance.timestampMs == selected.timestampMs &&
                line.validatedFrameSeq == selected.frameSeq &&
                model_.IsShown(line, now, selected.frameSeq);
@@ -1665,6 +1670,7 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
     const bool neighbour = immutableCorroborationJob_ != 0 && result.jobId == immutableCorroborationJob_;
     const auto now = clock_();
     if (!enabled_ || !immutableScene_ || !scheduler_ || !scheduler_->IsCurrent(result) ||
+        result.stamp.immutableCorroboration != immutableScene_->corroborationPolicy ||
         !result.stamp.SameScene(CurrentScene()) || (!selected && !neighbour) ||
         now - immutableSubmittedAtMs_ > timing_.immutableJobTimeoutMs ||
         (selected && result.stamp.frameSeq != immutableScene_->selected.frameSeq) ||

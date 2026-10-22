@@ -1,6 +1,7 @@
 #pragma once
 
 #ifdef _WIN32
+#include "okuflow/common/immutable_corroboration.hpp"
 #include "okuflow/common/video_archive.hpp"
 #include "okuflow/common/video_memory_stream.hpp"
 #include "okuflow/common/video_gpu_decoder.hpp"
@@ -94,6 +95,10 @@ public:
     VideoPlayback(const VideoPlayback&) = delete;
     VideoPlayback& operator=(const VideoPlayback&) = delete;
     std::uint64_t OpenFile(std::wstring path);
+    // Returns ordinary policy for copied/borrowed/foreign/stale frames and
+    // archive/RAM sources. Saved-file policy seals native duration/PTS/owner.
+    uct::ImmutableCorroborationPolicy CorroborationPolicy(
+        const std::shared_ptr<const VideoPlaybackFrame>& selected) const;
     std::uint64_t OpenArchive(std::shared_ptr<RecordingArchive> archive);
     // Immutable heap media uses the same native decoder and generation/lease
     // contracts. keeper pins the ring segment without inventing a file ID.

@@ -420,6 +420,7 @@ bool OkuFlowApp::PresentSelectedMediaGpuFrame(const VideoPlaybackFrame& frame,
                 scene.geometry = context.geometry;
                 scene.sourceAuthority = mediaDocumentEpoch_;
                 scene.selected = {{}, frame.sampleId, frame.pts100ns / 10'000, mediaGpuAnalysis_};
+                scene.corroborationPolicy = SelectedMediaCorroborationPolicy(frame);
                 scene.transform = transform;
                 scene.viewportWidth = viewport.width;
                 scene.viewportHeight = viewport.height;
@@ -448,6 +449,7 @@ bool OkuFlowApp::PresentSelectedMediaGpuFrame(const VideoPlaybackFrame& frame,
             scene.geometry = context.geometry;
             scene.sourceAuthority = mediaDocumentEpoch_;
             scene.selected = {{}, frame.sampleId, frame.pts100ns / 10'000, {}};
+            scene.corroborationPolicy = SelectedMediaCorroborationPolicy(frame);
             scene.transform = transform;
             scene.viewportWidth = viewport.width;
             scene.viewportHeight = viewport.height;

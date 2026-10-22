@@ -979,3 +979,24 @@ aligned with the project goals.
   BF16. Preserve the original quality-comparison failures and distinguish the
   owner-approved local choice from other users' defaults or hardware claims.
   See `docs/uct_local_bf16.md` for pins, bounds and acceptance limits.
+
+## Paused saved-file sparse cadence (2026-10-22)
+
+- An exact native-issued saved-file selected sample may use its validated
+  positive sample duration for following-neighbour OCR proof: ordinary 250 ms,
+  at most 2500 ms, with integer 100-ns comparisons. Unknown/invalid duration,
+  earlier samples, recording archives, RAM recap and live/advancing media keep
+  the ordinary policy. Never derive this allowance from wall time, repeated
+  held pixels, job IDs, a cache copy or retimed frames.
+- Obtain the opaque descriptor only through `VideoPlayback::CorroborationPolicy`
+  after exact issuance/control-block/source/generation checks. Seal native
+  duration/PTS/sample identity; bind the descriptor through immutable selection,
+  reference, worker line/word checks and model admission. A metadata/descriptor
+  change revokes old proof. Preserve source fencing, distinct source digests,
+  text/geometry agreement, NCC/visibility/refinement thresholds and all budgets.
+- Replay captured button results through the actual controller, model, paint
+  and positioned accessibility path. Reading-pane text or accepted word counts
+  alone do not establish visible glyphs or positioned text. CPU-backed resident
+  oracles and Qt accessibility geometry do not establish real GPU inference,
+  native UIA-client, camera or release acceptance. Keep private captures outside
+  Git; see `docs/uct_initial_paused_frame.md` for exact provenance and scope.

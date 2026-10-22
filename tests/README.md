@@ -1,5 +1,31 @@
 # OkuFlow Tests
 
+Initial paused frame-zero coverage is documented in
+[the source investigation](../docs/uct_initial_paused_frame.md).
+`initialPausedFrameZeroWaitsForReadyAndNeighbour` has eight model-free
+CPU/resident-oracle rows for backend/selected-job/neighbour ordering without
+Play; `initialPausedFrameZeroWithoutIndependentNeighbour` has four refusal rows.
+`pausedBridgeRefinesAfterCorroboration` now starts at frame/PTS zero too.
+The existing `immutable_uct_contract` includes these slots. `LongGopSeeking`
+adds real initial-frame/following-neighbour assertions to `video_playback_contract`.
+`savedSparseCadenceKeepsIndependentProof` checks duration authority, ordinary
+and hard-ceiling boundaries, identical-pixel and changed-text refusal through
+CPU/resident paths. Native `InitialSparseSavedFileNeighbour` uses original raw
+AVI bytes to verify actual two-second duration/nearest following preparation
+without Play; the same bytes opened as RAM keep ordinary policy.
+`capturedOutputReachesPaintAndPositionedText` checks actual `PaintedWord.drawn`,
+`ScreenLines` and Qt accessibility character bounds after selection, Play/Pause,
+bridge refinement and settled zoom. Set `OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF` to
+an explicit absolute private proof JSON to replay captured image/output geometry;
+`OKUFLOW_UCT_CONTROLLER_REPLAY_OUTPUT` writes new per-row evidence in a private
+directory. Zoom reuses full-scene capture outputs because neighbouring detail
+output is not serialized. This is CPU software/controller replay, not inference
+or native UIA-client acceptance. The fresh CPU gate passed native playback and
+152 controller rows; the actual captured bridge rows failed paint and remain
+preserved. Four additive outside-window negative rows are compiled but unrun.
+Private replay is diagnostic-only until proof/image bytes are declared absolute
+CTest `REQUIRED_FILES`; see the linked results and exact-hash receipt.
+
 `immutableCandidateProtectionRefusalIsAtomic` covers late semantic-risk refusal
 after an append and mixed append/fragment exhaustion at 8191 stored slots.
 `activeRegionalRasterWithdrawalIsAtomic` covers ordinary and tilted words

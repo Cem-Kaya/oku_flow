@@ -1,5 +1,9 @@
 # OkuFlow Documentation Guide
 
+[Initially paused video UCT](uct_initial_paused_frame.md) documents frame-zero
+initialization, sealed saved-file duration bounds and captured controller replay
+with actual paint and positioned-text assertions.
+
 [Live RAM recap](live_ram_recap.md) documents the independent silent camera
 history, compressed memory limits, exact scene Freeze, existing-player reuse,
 source resets and separate synthetic/native acceptance boundaries.

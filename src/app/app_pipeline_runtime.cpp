@@ -2833,7 +2833,8 @@ bool OkuFlowApp::PresentSelectedMediaPixels(const uint8_t* data, UINT width, UIN
                                            std::uint64_t frameSeq,
                                            const VideoPlaybackFrame* neighbor,
                                            std::int64_t pts100ns,
-                                           bool continuousPlayback) {
+                                           bool continuousPlayback,
+                                           uct::ImmutableCorroborationPolicy corroborationPolicy) {
     if (!data || !VideoPlaybackLayoutFits(width, height, stride) || !presenter_ ||
         !uiState_->renderWidget_ || !uiState_->renderWidget_->isPresenterReady()) return false;
     if (HandlePresenterFault()) return false;
@@ -2892,6 +2893,7 @@ bool OkuFlowApp::PresentSelectedMediaPixels(const uint8_t* data, UINT width, UIN
         if (ultraClearText_ && !continuousPlayback && !mediaHoldBakedScene_) {
             if (changed || wasContinuousPlayback || ultraClearText_->HasAdvancingMediaScene() ||
                 !ultraClearText_->HasImmutableScene() ||
+                corroborationPolicy != mediaUctCorroborationPolicy_ ||
                 neighborId != mediaUctNeighborSeq_) {
                 UctImmutableScene scene;
                 scene.geometry.settings.sourceEpoch = sourceEpoch;
@@ -2901,6 +2903,7 @@ bool OkuFlowApp::PresentSelectedMediaPixels(const uint8_t* data, UINT width, UIN
                 scene.geometry.sceneHeight = mediaSceneHeight_;
                 scene.sourceAuthority = sourceEpoch;
                 scene.selected = {mediaScenePixels_, frameSeq, pts100ns / 10'000};
+                scene.corroborationPolicy = corroborationPolicy;
                 scene.transform = transform;
                 scene.viewportWidth = presenter_->ViewportWidth();
                 scene.viewportHeight = presenter_->ViewportHeight();
@@ -2953,6 +2956,7 @@ bool OkuFlowApp::PresentSelectedMediaPixels(const uint8_t* data, UINT width, UIN
             }
             ultraClearText_->SetImmutableScene(std::move(*pausedScene));
             mediaUctNeighborSeq_ = neighborId;
+            mediaUctCorroborationPolicy_ = corroborationPolicy;
         } else if (needsPresentation) {
             ultraClearText_->UpdateImmutableView(transform, viewportStamp.width, viewportStamp.height, 0);
         }

@@ -5,6 +5,7 @@
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "okuflow/ui/ultra_clear_text_panel.hpp"
 #include "ultra_clear_text_test_support.hpp"
+#include "uct_controller_capture_replay.hpp"
 
 #include <QAccessible>
 #include <QApplication>
@@ -25,6 +26,7 @@
 #include <cstdio>
 #include <cstring>
 #include <map>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <sstream>
@@ -39,6 +41,10 @@ namespace okuflow {
 // Narrow fixture access: real scheduler barriers and controller receipts,
 // without adding a production enqueue/result-injection API.
 struct UctControllerTestAccess {
+    static ImmutableCorroborationPolicy SavedCadence(std::uint64_t frame, std::int64_t pts100ns,
+                                                    std::int64_t duration100ns) {
+        return {std::make_shared<const int>(0), frame, pts100ns, duration100ns};
+    }
     static void Barrier(UltraClearTextController& c, std::function<void()> barrier) {
         c.scheduler_->SetBeforeDequeueForTest(std::move(barrier));
     }
@@ -100,6 +106,10 @@ struct ImmutableScript {
     QHash<QByteArray, QVector<PageWord>> pixelWords;
     QHash<quint64, QVector<PageWord>> frameWords;
     QHash<int, QVector<PageWord>> callWords;
+    QHash<QByteArray, RecognitionOutput> pixelOutputs;
+    QHash<quint64, RecognitionOutput> frameOutputs;
+    QHash<int, RecognitionOutput> callOutputs;
+    bool reportBackendPhase{};
     std::atomic<int> initialized{};
     std::atomic<int> calls{};
     std::atomic<int> deviceCalls{};
@@ -167,6 +177,12 @@ public:
             status.detail = QStringLiteral("fixture backend chain exhausted");
             return status;
         }
+        if (script_->reportBackendPhase) {
+            BackendStatus status;status.state=BackendState::kReady;status.usesGpu=WantsDeviceInput();
+            status.detailFocus=script_->detailFocus.load();
+            status.name=status.usesGpu ? "Captured preferred output (CPU oracle)" : "Captured bridge output (CPU oracle)";
+            return status;
+        }
         return {};
     }
 
@@ -188,6 +204,7 @@ private:
                               quint64 frame = 0, const QByteArray& digest = {}, int marker = 0)
     {
         QVector<PageWord> words;
+        std::optional<RecognitionOutput> captured;
         QRect detail;
         {
             std::unique_lock lock(script_->mutex);
@@ -195,6 +212,9 @@ private:
             if (script_->pixelWords.contains(digest)) words = script_->pixelWords[digest];
             if (script_->frameWords.contains(frame)) words = script_->frameWords[frame];
             const int call = script_->calls.load() + script_->deviceCalls.load();
+            if (script_->pixelOutputs.contains(digest)) captured=script_->pixelOutputs[digest];
+            if (script_->frameOutputs.contains(frame)) captured=script_->frameOutputs[frame];
+            if (script_->callOutputs.contains(call)) captured=script_->callOutputs[call];
             if (script_->callWords.contains(call)) words = script_->callWords[call];
             script_->recorded.push_back({digest, frame, focus_, marker});
             if (focus_ && !script_->ignoreDetail) {
@@ -217,6 +237,11 @@ private:
             script_->changed.wait(lock, [&] { return !script_->holdRecognition; });
         }
         RecognitionOutput output;
+        if (captured) {
+            captured->cancelled=cancelled.load();
+            captured->ok=captured->ok&&!captured->cancelled;
+            return *captured; // exact captured geometry/disposition/color/protection, no new OCR
+        }
         if (script_->transientFailures.load() > 0 && script_->transientFailures.fetch_sub(1) > 0) {
             output.inputFault = script_->transientKind == 0;
             output.backendPreparing = script_->transientKind == 1;
@@ -533,6 +558,15 @@ private slots:
     void pausedWordRegistrationFaultCannotPublishPartialProof();
     void immutableOldFrameAndIdleDoNoPeriodicWork();
     void backendReadySubmitsWaitingMediaOnce();
+    void initialPausedFrameZeroWaitsForReadyAndNeighbour_data();
+    void initialPausedFrameZeroWaitsForReadyAndNeighbour();
+    void initialPausedFrameZeroWithoutIndependentNeighbour_data();
+    void initialPausedFrameZeroWithoutIndependentNeighbour();
+    void savedSparseCadenceKeepsIndependentProof_data();
+    void savedSparseCadenceKeepsIndependentProof();
+    void savedSparseCadenceChangesRevokeProof();
+    void capturedOutputReachesPaintAndPositionedText_data();
+    void capturedOutputReachesPaintAndPositionedText();
     void latePausedNeighbourReusesSelectedEvidence_data();
     void latePausedNeighbourReusesSelectedEvidence();
     void latePausedNeighbourPreservesSelectedDeadline();
@@ -1538,6 +1572,400 @@ void UltraClearTextControllerTests::backendReadySubmitsWaitingMediaOnce()
     QCOMPARE(h.controller->ProbeStatistics().submitted, std::uint64_t(0));
 }
 
+void UltraClearTextControllerTests::initialPausedFrameZeroWaitsForReadyAndNeighbour_data()
+{
+    QTest::addColumn<bool>("resident");
+    QTest::addColumn<int>("arrival");
+    for (bool resident : {false, true}) {
+        const QByteArray input = resident ? "resident-" : "cpu-";
+        QTest::newRow((input + "initial-pair").constData()) << resident << 0;
+        QTest::newRow((input + "neighbour-during-initialization").constData()) << resident << 1;
+        QTest::newRow((input + "neighbour-during-selected-job").constData()) << resident << 2;
+        QTest::newRow((input + "neighbour-after-selected-result").constData()) << resident << 3;
+    }
+}
+
+void UltraClearTextControllerTests::initialPausedFrameZeroWaitsForReadyAndNeighbour()
+{
+    QFETCH(bool, resident);
+    QFETCH(int, arrival);
+    ImmutableHarness h;
+    h.script->wantsDevice = resident;
+    h.devices->resident = resident;
+    h.script->holdInitialization = true;
+    h.script->holdRecognition = arrival == 2;
+    auto scene = h.Scene(0);
+    scene.selected.timestampMs = 0;
+    if (resident) scene.selected = {{}, 0, 0, h.Device(h.page.image, 0, 0)};
+    // Native playback sample IDs are real 100-ns PTS, including zero.
+    const auto neighbourPixels = IndependentFramePixels(h.page.image, 200'000);
+    const UctImmutableFrame neighbour = resident
+        ? UctImmutableFrame{{}, 200'000, 20, h.Device(neighbourPixels, 200'000, 20)}
+        : UctImmutableFrame{OwnedPixels(neighbourPixels), 200'000, 20};
+    if (arrival == 0) scene.corroboration = neighbour;
+    QSignalSpy admitted(h.controller.get(), &UltraClearTextController::recognitionAdmitted);
+    h.Enable();
+    // This is the first selected scene. No live/advancing/Play call primes it.
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    const auto generation = h.controller->GeometryGeneration();
+    const auto authority = UctControllerTestAccess::Authority(*h.controller);
+    QTRY_COMPARE(h.script->initialized.load(), 1);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(0));
+    if (arrival == 1) {
+        scene.corroboration = neighbour;
+        QVERIFY(h.controller->SetImmutableScene(scene));
+        QCOMPARE(h.controller->GeometryGeneration(), generation);
+        QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(0));
+    }
+    {
+        std::lock_guard lock(h.script->mutex);
+        h.script->holdInitialization = false;
+    }
+    h.script->changed.notify_all();
+    QTRY_COMPARE(h.script->calls.load() + h.script->deviceCalls.load(), arrival < 2 ? 2 : 1);
+    if (arrival >= 2) {
+        if (arrival == 3) {
+            QTRY_COMPARE(admitted.size(), 1);
+            QVERIFY(h.Reading().contains(QStringLiteral("Reading helps")));
+        }
+        QCOMPARE(h.overlay.WordCount(), 0);
+        const QString reading = h.Reading();
+        scene.corroboration = neighbour;
+        QVERIFY(h.controller->SetImmutableScene(scene));
+        QCOMPARE(h.controller->GeometryGeneration(), generation);
+        QCOMPARE(UctControllerTestAccess::Authority(*h.controller), authority);
+        QCOMPARE(h.Reading(), reading);
+        if (arrival == 2) {
+            QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(1));
+            h.script->Release();
+        }
+    }
+    QTRY_COMPARE(h.overlay.WordCount(), h.page.words.size());
+    QTRY_COMPARE(admitted.size(), 2);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(2));
+    QCOMPARE(h.controller->ProbeStatistics().submitted, std::uint64_t(0));
+    QVERIFY(!h.controller->HasAdvancingMediaScene());
+    QVERIFY(!h.controller->ScreenTextSnapshot().lines.isEmpty());
+    for (const auto& line : h.controller->Model().Lines()) {
+        QCOMPARE(line.provenance.frameSeq, std::uint64_t(0));
+        QCOMPARE(line.provenance.timestampMs, std::int64_t(0));
+        QCOMPARE(line.validatedFrameSeq, std::uint64_t(0));
+    }
+    h.now += 3'600'000;
+    for (int i = 0; i < 10; ++i) QVERIFY(h.controller->SetImmutableScene(scene));
+    QTest::qWait(30);
+    QCOMPARE(h.controller->GeometryGeneration(), generation);
+    QCOMPARE(UctControllerTestAccess::Authority(*h.controller), authority);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(2));
+    QCOMPARE(h.overlay.WordCount(), h.page.words.size());
+    QVERIFY(!h.devices->readOnUiThread.load());
+    if (resident) {
+        QCOMPARE(h.devices->readbacks.load(), 0);
+        QCOMPARE(h.devices->probes.load(), 0);
+    }
+}
+
+void UltraClearTextControllerTests::initialPausedFrameZeroWithoutIndependentNeighbour_data()
+{
+    QTest::addColumn<bool>("resident");
+    QTest::addColumn<bool>("identical");
+    QTest::newRow("cpu-no-neighbour") << false << false;
+    QTest::newRow("resident-no-neighbour") << true << false;
+    QTest::newRow("cpu-identical-neighbour") << false << true;
+    QTest::newRow("resident-identical-neighbour") << true << true;
+}
+
+void UltraClearTextControllerTests::initialPausedFrameZeroWithoutIndependentNeighbour()
+{
+    QFETCH(bool, resident);
+    QFETCH(bool, identical);
+    ImmutableHarness h;
+    h.script->wantsDevice = resident;
+    h.devices->resident = resident;
+    auto scene = h.Scene(0);
+    scene.selected.timestampMs = 0;
+    if (resident) scene.selected = {{}, 0, 0, h.Device(h.page.image, 0, 0)};
+    // A sparse source's next sample outside 250 ms is withheld by the
+    // decoder, so the controller truthfully receives no neighbour. Separately,
+    // a genuine nearby sample with identical pixels supplies no glyph proof.
+    if (identical) scene.corroboration = resident
+        ? UctImmutableFrame{{}, 200'000, 20, h.Device(h.page.image.copy(), 200'000, 20)}
+        : UctImmutableFrame{OwnedPixels(h.page.image.copy()), 200'000, 20};
+    QSignalSpy admitted(h.controller.get(), &UltraClearTextController::recognitionAdmitted);
+    h.Enable();
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    const int expected = identical ? 2 : 1;
+    QTRY_COMPARE(admitted.size(), expected);
+    QVERIFY(h.Reading().contains(QStringLiteral("Reading helps")));
+    QCOMPARE(h.overlay.WordCount(), 0);
+    QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
+    const auto generation = h.controller->GeometryGeneration();
+    const QString reading = h.Reading();
+    h.now += 60'000;
+    for (int i = 0; i < 10; ++i) QVERIFY(h.controller->SetImmutableScene(scene));
+    QTest::qWait(30);
+    QCOMPARE(h.controller->GeometryGeneration(), generation);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(expected));
+    QCOMPARE(h.controller->ProbeStatistics().submitted, std::uint64_t(0));
+    QCOMPARE(h.Reading(), reading);
+    QCOMPARE(h.overlay.WordCount(), 0);
+    QVERIFY(!h.devices->readOnUiThread.load());
+}
+
+void UltraClearTextControllerTests::savedSparseCadenceKeepsIndependentProof_data()
+{
+    QTest::addColumn<bool>("resident");
+    QTest::addColumn<bool>("saved");
+    QTest::addColumn<qint64>("duration");
+    QTest::addColumn<int>("gapMs");
+    QTest::addColumn<int>("content"); // 0: agreeing, 1: identical pixels, 2: changed text/pixels
+    QTest::addColumn<bool>("eligible");
+    for (bool resident : {false, true}) {
+        const QByteArray prefix = resident ? "resident-" : "cpu-";
+        const auto row = [&](const char* name, bool saved, qint64 duration, int gap, int content, bool eligible) {
+            QTest::newRow((prefix + name).constData()) << resident << saved << duration << gap << content << eligible;
+        };
+        row("ordinary-250",false,20'000'000,250,0,true);
+        row("ordinary-251",false,20'000'000,251,0,false);
+        row("saved-two-seconds",true,20'000'000,2000,0,true);
+        row("saved-unknown",true,0,2000,0,false);
+        row("saved-invalid",true,-1,2000,0,false);
+        row("saved-huge-invalid",true,std::numeric_limits<qint64>::max(),2000,0,false);
+        row("saved-duration-bound",true,20'000'000,2001,0,false);
+        row("saved-hard-ceiling",true,30'000'000,2500,0,true);
+        row("saved-past-ceiling",true,30'000'000,2501,0,false);
+        row("saved-identical",true,20'000'000,2000,1,false);
+        row("saved-changed-text",true,20'000'000,2000,2,false);
+        row("saved-identical-outside-window",true,20'000'000,2001,1,false);
+        row("saved-changed-text-outside-window",true,20'000'000,2001,2,false);
+    }
+}
+
+void UltraClearTextControllerTests::savedSparseCadenceKeepsIndependentProof()
+{
+    QFETCH(bool,resident); QFETCH(bool,saved); QFETCH(qint64,duration);
+    QFETCH(int,gapMs); QFETCH(int,content); QFETCH(bool,eligible);
+    AccessibilityActivation accessibility;
+    ImmutableHarness h;
+    h.owner.resize(1000,600); h.owner.show(); // Qt offscreen only
+    h.script->wantsDevice = resident; h.devices->resident = resident;
+    auto scene = h.Scene(0); scene.selected.timestampMs = 0;
+    if (resident) scene.selected = {{},0,0,h.Device(h.page.image,0,0)};
+    if (saved) scene.corroborationPolicy = UctControllerTestAccess::SavedCadence(0,0,duration);
+    const auto frame = std::uint64_t(gapMs) * 10'000;
+    QImage neighbour = content == 1 ? h.page.image.copy() : IndependentFramePixels(h.page.image,frame);
+    if (content == 2) {
+        const auto changed = MakePage({QStringLiteral("Different content")},{},960,540,48);
+        neighbour = changed.image;
+        h.script->pixelWords[SourcePixelsDigest(neighbour)] = changed.words;
+        h.script->frameWords[frame] = changed.words;
+    }
+    scene.corroboration = resident ? UctImmutableFrame{{},frame,gapMs,h.Device(neighbour,frame,gapMs)}
+        : UctImmutableFrame{OwnedPixels(neighbour),frame,gapMs};
+    const bool allowed = scene.corroborationPolicy.Allows(0,0,frame,gapMs);
+    QSignalSpy admitted(h.controller.get(),&UltraClearTextController::recognitionAdmitted);
+    h.Enable(); QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_COMPARE(admitted.size(),allowed ? 2 : 1);
+    QVERIFY(h.Reading().contains(QStringLiteral("Reading helps")));
+    QCOMPARE(h.overlay.WordCount(),eligible ? h.page.words.size() : 0);
+    if (eligible) {
+        QTRY_VERIFY(h.overlay.PaintedGeometryCurrent());
+        for (const auto& word : h.overlay.Words()) {
+            UltraClearTextOverlay::PaintedWordGeometry geometry;
+            QVERIFY(h.overlay.PaintedWord(word.lineId,word.wordIndex,word.text,geometry));
+            QVERIFY(geometry.drawn); QVERIFY(!geometry.box.isEmpty());
+        }
+        QVERIFY(!h.controller->Model().ScreenLines(h.now,0).isEmpty());
+        QVERIFY(!h.controller->ScreenTextSnapshot().lines.isEmpty());
+        h.now += 3100; h.controller->ScreenTextAccessibility()->ProcessDueWork();
+        auto* root = h.controller->ScreenTextAccessibility()->RootInterface();
+        QVERIFY(root); QVERIFY(root->childCount()>0);
+        auto* line = root->child(0); QVERIFY(line); QVERIFY(line->textInterface());
+        QVERIFY(!line->textInterface()->characterRect(0).isEmpty());
+    } else {
+        QVERIFY(h.controller->Model().ScreenLines(h.now,0).isEmpty());
+        QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
+    }
+    h.now += 60'000; const auto jobs = h.controller->SchedulerStatistics().submitted;
+    for (int i=0;i<10;++i) QVERIFY(h.controller->SetImmutableScene(scene));
+    QTest::qWait(20); QCOMPARE(h.controller->SchedulerStatistics().submitted,jobs);
+    QVERIFY(!h.devices->readOnUiThread.load());
+}
+
+void UltraClearTextControllerTests::savedSparseCadenceChangesRevokeProof()
+{
+    ImmutableHarness h;
+    auto scene = h.Scene(0); scene.selected.timestampMs = 0;
+    scene.corroborationPolicy = UctControllerTestAccess::SavedCadence(0,0,20'000'000);
+    scene.corroboration = UctImmutableFrame{OwnedPixels(IndependentFramePixels(h.page.image,20'000'000)),20'000'000,2000};
+    h.Enable(); QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_VERIFY(h.overlay.WordCount()>0);
+    const auto generation = h.controller->GeometryGeneration();
+    h.script->holdRecognition = true;
+    scene.corroborationPolicy = {}; // origin/duration authority was revoked
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    QVERIFY(h.controller->GeometryGeneration()>generation);
+    QCOMPARE(h.overlay.WordCount(),0); QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
+    h.script->Release(); QTRY_VERIFY(!h.Reading().isEmpty());
+    QCOMPARE(h.overlay.WordCount(),0);
+    const auto earlier = UctControllerTestAccess::SavedCadence(20'000'000,20'000'000,20'000'000);
+    QVERIFY(!earlier.Allows(20'000'000,2000,0,0)); // expansion never applies to a predecessor
+    QVERIFY(earlier.Allows(20'000'000,2000,17'500'000,1750));
+    QVERIFY(!earlier.Allows(20'000'000,2000,17'499'999,1749));
+    QVERIFY(!earlier.Allows(0,0,20'000'000,2000)); // descriptor cannot move to another selected frame
+}
+
+void UltraClearTextControllerTests::capturedOutputReachesPaintAndPositionedText_data()
+{
+    QTest::addColumn<bool>("playingFirst"); QTest::addColumn<bool>("bridge");
+    QTest::newRow("initial-paused-preferred") << false << false;
+    QTest::newRow("playing-pause-zoom-preferred") << true << false;
+    QTest::newRow("initial-paused-bridge-preferred") << false << true;
+    QTest::newRow("playing-pause-zoom-bridge-preferred") << true << true;
+}
+
+void UltraClearTextControllerTests::capturedOutputReachesPaintAndPositionedText()
+{
+    QFETCH(bool,playingFirst); QFETCH(bool,bridge);
+    RegionalFlag regional(false); AccessibilityActivation accessibility;
+    uct_controller_replay::Pair pair;
+    const auto proofPath=qEnvironmentVariable("OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF");
+    if (!proofPath.isEmpty()) {
+        QString error;QVERIFY2(uct_controller_replay::Load(proofPath,pair,error),qPrintable(error));
+        QVERIFY2(!bridge||pair.bridge,"Bridge replay requires actual captured bridge selected/neighbour output.");
+    } else {
+        // Ordinary CI uses first-party synthetic text; the explicit private
+        // mode replaces both images and every output descriptor with capture.
+        const auto page=MakeLayoutPage({{"Head",{180,230},36},{"Left",{430,230},36},
+            {"Hand",{540,230},36},{"Right",{740,230},36},{"Hand",{890,230},36}},1280,720);
+        pair.selectedImage=page.image;pair.neighbourImage=IndependentFramePixels(page.image,60'330'000);
+        pair.selectedMs=6000;pair.neighbourMs=6033;
+        pair.selected.ok=pair.neighbour.ok=true;
+        RecognizedLine line;
+        for (const auto& word:page.words) line.words.push_back({word.text,
+            QRectF(word.sceneRect.x()*1280,word.sceneRect.y()*720,word.sceneRect.width()*1280,word.sceneRect.height()*720)});
+        pair.selected.lines=pair.neighbour.lines={line};
+        pair.bridgeSelected=pair.selected;pair.bridgeNeighbour=pair.neighbour;pair.bridge=true;
+        pair.bridgeSelected.backendPreparing=pair.bridgeNeighbour.backendPreparing=true;
+    }
+    const auto frame=std::uint64_t(pair.selectedMs)*10'000;
+    const auto neighbourFrame=std::uint64_t(pair.neighbourMs)*10'000;
+    ImmutableHarness h;
+    h.page.image=pair.selectedImage;
+    h.target.resize(pair.selectedImage.size());h.owner.resize(pair.selectedImage.size()+QSize(40,40));h.owner.show();
+    h.devices->resident=true;h.script->detailFocus=true;h.script->reportBackendPhase=true;
+    h.script->wantsDevice=!bridge;h.script->wantsDeviceAfterCalls=bridge?2:0;
+    h.script->frameOutputs[frame]=pair.selected;h.script->frameOutputs[neighbourFrame]=pair.neighbour;
+    h.script->pixelOutputs[SourcePixelsDigest(pair.selectedImage)]=pair.selected;
+    h.script->pixelOutputs[SourcePixelsDigest(pair.neighbourImage)]=pair.neighbour;
+    if (bridge) {
+        h.script->callOutputs[1]=pair.bridgeSelected;h.script->callOutputs[2]=pair.bridgeNeighbour;
+        h.script->permittedCalls=3; // hold preferred neighbour, not the proven bridge artifact
+    }
+    auto scene=h.DeviceScene(frame);scene.selected={{},frame,pair.selectedMs,h.Device(pair.selectedImage,frame,pair.selectedMs)};
+    scene.corroboration=UctImmutableFrame{{},neighbourFrame,pair.neighbourMs,h.Device(pair.neighbourImage,neighbourFrame,pair.neighbourMs)};
+    scene.viewportWidth=pair.selectedImage.width();scene.viewportHeight=pair.selectedImage.height();
+    QSignalSpy admitted(h.controller.get(),&UltraClearTextController::recognitionAdmitted);
+    h.Enable();QTRY_COMPARE(h.controller->BackendStatusSnapshot().state,BackendState::kReady);
+    if (playingFirst) {
+        UctAdvancingMediaScene playing;
+        playing.geometry=scene.geometry;playing.sourceAuthority=scene.sourceAuthority;playing.current=scene.selected;
+        playing.transform=scene.transform;playing.viewportWidth=scene.viewportWidth;playing.viewportHeight=scene.viewportHeight;
+        QVERIFY(h.controller->OnAdvancingMediaPresented(playing));
+        QTRY_VERIFY(h.controller->ProbeStatistics().completed>0);
+        QCOMPARE(h.controller->SchedulerStatistics().submitted,std::uint64_t(0));
+    }
+    QVERIFY(h.controller->SetImmutableScene(scene)); // exact displayed frame, real unshown following source
+    if (bridge) {
+        QTRY_COMPARE_WITH_TIMEOUT(h.script->calls.load()+h.script->deviceCalls.load(),4,5000);
+        QVERIFY(!h.Reading().isEmpty());
+        // Do not infer success from the bridge pane or its accepted count.
+        // The preferred pair must finish before checking actual target glyphs.
+        h.script->Release();
+    }
+    const int fullCalls=bridge?4:2;
+    QTRY_COMPARE_WITH_TIMEOUT(h.controller->SchedulerStatistics().completed,std::uint64_t(fullCalls),5000);
+    QTRY_COMPARE(admitted.size(),bridge?3:2);
+    QVERIFY(h.Reading().contains(QStringLiteral("Head")));
+    QHash<QString,int> required;
+    const QStringList labels{"Head","Left","Right","Hand"};
+    for (const auto& line:pair.selected.lines) for (const auto& word:line.words)
+        if (labels.contains(word.text)&&word.disposition==TokenDisposition::kCandidate) ++required[word.text];
+    for (const auto& label:labels) QVERIFY2(required.value(label)>0,qPrintable("Capture lacks required label: "+label));
+    QJsonArray stages;
+    const auto checkSurface=[&](const QString& stage)->QString {
+        if(!h.overlay.PaintedGeometryCurrent())return "No actual current software paint.";
+        QHash<QString,int> painted,screen,positioned;
+        QJsonArray words;
+        for(const auto& word:h.overlay.Words()){
+            UltraClearTextOverlay::PaintedWordGeometry geometry;
+            const bool drawn=h.overlay.PaintedWord(word.lineId,word.wordIndex,word.text,geometry)&&geometry.drawn;
+            if(labels.contains(word.text)&&drawn)++painted[word.text];
+            QJsonArray protection;for(const auto& rect:word.protectedSceneRects)
+                protection.push_back(QJsonArray{rect.x(),rect.y(),rect.width(),rect.height()});
+            words.push_back(QJsonObject{{"text",word.text},{"drawn",drawn},{"lineId",qint64(word.lineId)},
+                {"wordIndex",word.wordIndex},{"protectedSceneRects",protection}});
+        }
+        for(const auto& line:h.controller->Model().ScreenLines(h.now,frame))
+            for(const auto& label:labels)screen[label]+=line.text.count(label);
+        auto* root=h.controller->ScreenTextAccessibility()->RootInterface();
+        if(!root)return "Positioned accessibility root missing.";
+        QJsonArray uiLines;
+        for(int i=0;i<root->childCount();++i){
+            auto* line=root->child(i);if(!line||!line->textInterface())return "Positioned text interface missing.";
+            const auto text=line->text(QAccessible::Name);QJsonArray bounds;
+            for(const auto& label:labels){
+                qsizetype offset=0;
+                while((offset=text.indexOf(label,offset))>=0){
+                    const auto rect=line->textInterface()->characterRect(int(offset));
+                    if(!rect.isEmpty())++positioned[label];
+                    bounds.push_back(QJsonObject{{"text",label},{"offset",int(offset)},
+                        {"rect",QJsonArray{rect.x(),rect.y(),rect.width(),rect.height()}}});
+                    offset+=label.size();
+                }
+            }
+            uiLines.push_back(QJsonObject{{"text",text},{"characters",bounds}});
+        }
+        stages.push_back(QJsonObject{{"stage",stage},{"words",words},{"positioned",uiLines},
+            {"paintGeneration",qint64(h.overlay.PaintedGeneration())},{"reading",h.Reading()}});
+        for(auto it=required.begin();it!=required.end();++it)
+            if(painted.value(it.key())<it.value()||screen.value(it.key())<it.value()||positioned.value(it.key())<it.value())
+                return QString("%1: %2 required=%3 painted=%4 ScreenLines=%5 positioned=%6")
+                    .arg(stage,it.key()).arg(it.value()).arg(painted.value(it.key())).arg(screen.value(it.key())).arg(positioned.value(it.key()));
+        return {};
+    };
+    QTRY_VERIFY(h.overlay.PaintedGeometryCurrent());
+    h.now+=3100;h.controller->ScreenTextAccessibility()->ProcessDueWork();
+    QString failure=checkSurface("paused-full");
+    const auto generation=h.controller->GeometryGeneration();
+    const auto sourceStamp=h.controller->Model().Lines().first().provenance;
+    h.controller->UpdateImmutableView({float(pair.focus.x()),float(pair.focus.y()),float(pair.focus.width()),
+        float(pair.focus.height()),0,0,1,1,true},scene.viewportWidth,scene.viewportHeight);
+    QTRY_COMPARE_WITH_TIMEOUT(h.controller->SchedulerStatistics().completed,std::uint64_t(fullCalls+2),5000);
+    QTRY_VERIFY(!h.controller->ActiveImmutableDetail());
+    h.overlay.repaint();QTRY_VERIFY(h.overlay.PaintedGeometryCurrent());
+    h.now+=3100;h.controller->ScreenTextAccessibility()->ProcessDueWork();
+    if(failure.isEmpty())failure=checkSurface("paused-zoom-settled");else checkSurface("paused-zoom-settled");
+    const auto outputRoot=qEnvironmentVariable("OKUFLOW_UCT_CONTROLLER_REPLAY_OUTPUT");
+    if(!outputRoot.isEmpty()){
+        QVERIFY(QDir::isAbsolutePath(outputRoot));QVERIFY(QDir().mkpath(outputRoot));
+        const auto name=QString("controller-%1-%2.json").arg(playingFirst?"play-pause":"initial",bridge?"bridge":"preferred");
+        QFile output(QDir(outputRoot).filePath(name));QVERIFY(output.open(QIODevice::WriteOnly|QIODevice::NewOnly));
+        const QJsonObject report{{"proofPath",proofPath},{"proofSha256",QString::fromLatin1(pair.proofSha256)},
+            {"actualCapturedOutput",!proofPath.isEmpty()},{"bridge",bridge},{"playingFirst",playingFirst},
+            {"selectedMs",pair.selectedMs},{"neighbourMs",pair.neighbourMs},{"failure",failure},{"stages",stages},
+            {"detailRecognitionReusesFullScenePair",true},
+            {"scope","Real controller/scheduler/model/software paint/Qt accessibility; CPU-backed resident oracle, no OCR inference or native UIA client. Settled zoom reuses captured full-scene outputs; no captured neighbouring detail output is available."}};
+        QVERIFY(output.write(QJsonDocument(report).toJson())>0);
+    }
+    QVERIFY2(failure.isEmpty(),qPrintable(failure));
+    QCOMPARE(h.controller->GeometryGeneration(),generation);
+    QCOMPARE(h.controller->Model().Lines().first().provenance.frameSeq,sourceStamp.frameSeq);
+    QCOMPARE(h.controller->Model().Lines().first().provenance.timestampMs,sourceStamp.timestampMs);
+    QVERIFY(!h.devices->readOnUiThread.load());
+    QCOMPARE(h.devices->readbacks.load(),bridge?2:0);
+}
+
 void UltraClearTextControllerTests::latePausedNeighbourReusesSelectedEvidence_data()
 {
     QTest::addColumn<bool>("resident");
@@ -2150,8 +2578,8 @@ void UltraClearTextControllerTests::pausedMediaRetryCannotReviveReplacedScene()
 void UltraClearTextControllerTests::pausedBridgeRefinesAfterCorroboration()
 {
     ImmutableHarness h;h.script->completeBridgeResults=1;h.script->holdCall=4;h.Enable();
-    auto scene=h.Scene(10);
-    scene.corroboration=UctImmutableFrame{OwnedPixels(IndependentFramePixels(h.page.image,11)),11,20};
+    auto scene=h.Scene(0);scene.selected.timestampMs=0;
+    scene.corroboration=UctImmutableFrame{OwnedPixels(IndependentFramePixels(h.page.image,200'000)),200'000,20};
     QVERIFY(h.controller->SetImmutableScene(scene));
     QTRY_VERIFY(h.overlay.WordCount()>0); // complete fallback and neighbour may show first
     QTRY_COMPARE_WITH_TIMEOUT(h.script->calls.load(),4,5000);

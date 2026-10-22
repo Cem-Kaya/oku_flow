@@ -445,6 +445,39 @@ admission callbacks before advancing, so setup cannot expire otherwise current
   scheduler, submit at most a selected and optional corroborating pass, and use
   an independent job deadline. Unchanged completed stills schedule no periodic
   OCR/probes; view updates only reproject. See [immutable controller](uct_immutable_controller.md).
+  Initial native frame/PTS zero is valid without prior Play. The controller's
+  `initialPausedFrameZeroWaitsForReadyAndNeighbour` and
+  `initialPausedFrameZeroWithoutIndependentNeighbour` fixtures cover readiness,
+  late ancillary evidence and retained original glyphs without independent
+  proof. `LongGopSeeking` checks actual opening-frame/following-sample leases.
+  The fresh CPU gate passed these rows and native sparse playback. The actual
+  bridge-output controller replay retained two paint failures; four additive
+  outside-window negative rows are compiled but unrun. Private clip CPU
+  provenance is separate from runtime acceptance. See
+  [initial paused source investigation](uct_initial_paused_frame.md).
+  `ImmutableCorroborationPolicy` in `common/immutable_corroboration.hpp` holds
+  opaque native issuance plus selected sample/PTS/duration. Its constructor is
+  private to `VideoPlayback` (and the narrow controller fixture friend).
+  `VideoPlayback::CorroborationPolicy` verifies its exact frame/control block
+  and sealed native metadata; default policy is returned for foreign, copied,
+  borrowed, stale, archive or memory frames. `ImmutableNeighbourWindow100ns`
+  retains 250 ms by default and clamps known saved-file duration to 2500 ms
+  for strictly following evidence only. `SelectedMediaCorroborationPolicy`
+  attaches it only to an actual selected File document. CPU/GPU scenes and
+  `SourceStamp::immutableCorroboration` carry the identical descriptor;
+  `ImmutableNeighbourAllowed` gates worker line/word and model corroboration.
+  Changing descriptor/metadata revokes selection and exact-input coverage.
+  `uct_controller_replay::Pair` and `Load` in the private test helper verify
+  absolute source image paths/SHA-256 and bounded captured recognition JSON.
+  `Rect`, `Quad` and `Output` preserve actual captured geometry, protection,
+  disposition and colors. `ImmutableScript`/`ImmutableRecognizer` can replay
+  those outputs by pixel digest, frame or bounded call index; the controller
+  fixture checks actual painted words, ScreenLines and Qt character bounds.
+  `SparseAviBytes` builds original raw AVI bytes; `InitialSparseSavedFileNeighbour`
+  and fixture-only `VideoMemoryStreamTestAccess::SealBytes` verify native saved
+  versus identical-byte memory-origin policy. The private capture's bytes need
+  absolute CTest runtime declarations before acceptance; current replay is a
+  diagnostic with a separate hash receipt.
 - `UctAdvancingMediaScene` and `OnAdvancingMediaPresented` bind successful
   playback receipts to real media PTS and independent wall-clock job deadlines.
   They pace residual probes at 80 ms and OCR at a 350 ms minimum/1,500 ms
@@ -6462,7 +6495,8 @@ containing weak player/object ownership and immutable file, request, archive
 and track provenance. `SealFrame` attaches it to each real native decode or
 same-pixel seek reticket; `IssuedFrame` requires the identical shared ownership
 and object as well as current document provenance. `FollowingFrame` also
-requires a distinct sample, matching geometry and a later PTS within 250 ms.
+requires a distinct sample, matching geometry and a later PTS within the ordinary
+250 ms or the sealed native saved-file duration window (at most 2500 ms).
 `VideoPlayback::PauseAtFrame` / `PauseAtFrameLocked` retain that exact displayed
 frame, select the nearest already decoded future lease or request one bounded
 read on the existing worker, and clear audio without a Pause seek. The private
@@ -6470,7 +6504,7 @@ read on the existing worker, and clear audio without a Pause seek. The private
 `neighborMayReposition` authorizes deferred seek work only for an explicit
 Open/Seek. The application clears its predecessor on Pause and adopts a later
 neighbour-only snapshot only if its selected pointer still equals the hold and
-the independent sample's PTS is later by at most 250 ms. Optional preparation
+the independent sample's PTS meets that same sealed following window. Optional preparation
 stops before native reads when queued future images already exceed that window
 or the ready queue is full. Resume consumes rewound-cursor intent before the
 EOS/empty branch, preserving the real final PTS; live-tail Waiting publication

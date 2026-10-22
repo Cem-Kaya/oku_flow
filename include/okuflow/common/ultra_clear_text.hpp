@@ -1,6 +1,7 @@
 #pragma once
 
 #include "okuflow/common/view_transform.hpp"
+#include "okuflow/common/immutable_corroboration.hpp"
 #include "okuflow/common/uct_device_image.hpp"
 #include "okuflow/common/uct_model_settings.hpp"
 #include "okuflow/common/uct_timing_trace.hpp"
@@ -66,6 +67,7 @@ struct SourceStamp {
     // image is one observation. Crossfade/Unknown images are never evidence.
     HoldDisplay holdDisplay{HoldDisplay::NotHeld};
     std::uint64_t holdAcquisition{};
+    ImmutableCorroborationPolicy immutableCorroboration;
 
     bool SameScene(const SourceStamp& other) const noexcept
     {
@@ -73,6 +75,13 @@ struct SourceStamp {
                geometryGeneration == other.geometryGeneration;
     }
 };
+
+inline bool ImmutableNeighbourAllowed(const SourceStamp& selected, const SourceStamp& neighbour)
+{
+    return selected.immutableCorroboration == neighbour.immutableCorroboration &&
+        selected.immutableCorroboration.Allows(selected.frameSeq, selected.timestampMs,
+                                             neighbour.frameSeq, neighbour.timestampMs);
+}
 
 // The acquisition whose pixels a stamped image actually shows: frameSeq,
 // or the earlier held acquisition. Composite/unknown pixels name none.

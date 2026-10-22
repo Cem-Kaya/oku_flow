@@ -108,7 +108,15 @@ One scheduler and one latest-only probe worker serve all modes; a paused still
 returns to one-shot admission. These are bounded scheduling defaults, not an
 OCR-rate or native display-latency guarantee.
 
-Immutable paused-word corroboration considers neighbours within 250 ms, limits
+Immutable paused-word corroboration ordinarily considers neighbours within 250 ms.
+Only a native-issued paused saved-file selected sample may expand following
+evidence to its known positive sample duration, clamped to 250--2500 ms.
+Integer 100-ns PTS comparisons retain the exact boundary; unknown/invalid
+duration and earlier samples remain at 250 ms. Archive, RAM/recap and live or
+advancing source policy is unchanged. The opaque native descriptor participates
+in exact immutable proof identity, never a wall-clock allowance. See
+[initial paused sources](uct_initial_paused_frame.md).
+Paused word registration limits
 translation to 0.25 normalized scene units per axis, and requires each dimension
 to retain at least 75% of the larger word box (intrinsic edges for tilted
 quads). Oriented patches sample 8–64 columns by 4–12 rows in the detected

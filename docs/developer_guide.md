@@ -29,6 +29,10 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   retaining CPU compatibility. See [GPU playback](gpu_video_playback.md) for
   device ownership, format limits and explicit image-action transfers.
   This is not a new published Windows installer.
+  Paused saved-file UCT can use a genuine following sample at its known native
+  frame duration, capped at 2500 ms, without pressing Play. Unknown duration,
+  archive/RAM and advancing modes retain ordinary proof timing; see
+  [source identity and sparse-cadence bounds](uct_initial_paused_frame.md).
 - Development UCT retains tilted/perspective word geometry through ink fit and
   painting. Paused navigation can request bounded visible-region detail after
   settling, up to eight-times detector enlargement under the existing 960-pixel

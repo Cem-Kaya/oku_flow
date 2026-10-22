@@ -239,6 +239,7 @@ struct UctImmutableScene {
     std::uint32_t viewportWidth{};
     std::uint32_t viewportHeight{};
     int strokeWeight{};
+    uct::ImmutableCorroborationPolicy corroborationPolicy;
 };
 
 // A receipt for a successfully presented advancing media frame. timestampMs

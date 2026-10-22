@@ -1588,7 +1588,7 @@ QVector<QVector<bool>> MatchImmutableWords(const CorroborationRequest& request,
     if (!request.selectedJobId || !request.selectedReference.IsValid() ||
         !request.selectedReference.stamp.SameScene(neighbor.stamp) ||
         request.selectedReference.stamp.frameSeq == neighbor.stamp.frameSeq ||
-        std::abs(double(request.selectedReference.stamp.timestampMs) - neighbor.stamp.timestampMs) > 250 ||
+        !ImmutableNeighbourAllowed(request.selectedReference.stamp, neighbor.stamp) ||
         request.selectedLines.size() > 1024) return out;
     qsizetype wordCount = 0;
     for (const auto& line : request.selectedLines) wordCount += line.words.size();
@@ -2198,6 +2198,10 @@ struct RecognitionScheduler::State {
                             result.currentInputMatches.push_back(hasCandidate && matches);
                         }
                     }
+                    // Line and word proof use the identical source-bound
+                    // duration policy. An out-of-window pair supplies neither.
+                    if (!job.corroboration.selectedJobId ||
+                        ImmutableNeighbourAllowed(job.corroboration.selectedReference.stamp, result.stamp)) {
                     result.corroboratedJobId = job.corroboration.selectedJobId;
                     result.corroborationTuning = job.corroboration.tuning;
                     if(result.reference.resident){
@@ -2221,6 +2225,7 @@ struct RecognitionScheduler::State {
                             result.corroborationMatches.clear();
                             result.corroborationWordMatches.clear();
                         }
+                    }
                     }
                 }
             }
@@ -2711,6 +2716,9 @@ AdmitVerdict OverlayModel::AdmitImmutable(const RecognitionResult& result,
 {
     if (!result.output.ok || result.output.cancelled) return AdmitVerdict::kFailed;
     if (result.stamp.frameSeq != selectedFrame.frameSeq ||
+        result.stamp.immutableCorroboration != selectedFrame.immutableCorroboration ||
+        result.reference.stamp.immutableCorroboration != result.stamp.immutableCorroboration ||
+        !result.stamp.immutableCorroboration.MatchesSelected(result.stamp.frameSeq, result.stamp.timestampMs) ||
         !result.reference.stamp.SameScene(result.stamp) ||
         result.reference.stamp.frameSeq != result.stamp.frameSeq) return AdmitVerdict::kStaleScene;
     const auto& before = pendingEvidenceStamp_;
@@ -2719,6 +2727,7 @@ AdmitVerdict OverlayModel::AdmitImmutable(const RecognitionResult& result,
     const auto& b = after.viewTransform;
     const bool sameInput = immutable_ && before.SameScene(after) &&
         before.frameSeq == after.frameSeq && before.timestampMs == after.timestampMs &&
+        before.immutableCorroboration == after.immutableCorroboration &&
         before.viewportWidth == after.viewportWidth && before.viewportHeight == after.viewportHeight &&
         a.valid == b.valid && a.sourceX == b.sourceX && a.sourceY == b.sourceY &&
         a.sourceWidth == b.sourceWidth && a.sourceHeight == b.sourceHeight &&
@@ -3367,6 +3376,8 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
             return true;
         }();
     const bool independentNeighbor = immutable && corroboration && corroboration->output.ok &&
+        ImmutableNeighbourAllowed(stamp, corroboration->stamp) &&
+        corroboration->reference.stamp.immutableCorroboration == corroboration->stamp.immutableCorroboration &&
         !corroboration->output.cancelled && corroboration->authority == result.authority &&
         corroboration->stamp.SameScene(stamp) && corroboration->stamp.frameSeq != stamp.frameSeq &&
         corroboration->sourcePixelDigestKind == result.sourcePixelDigestKind &&

@@ -22,6 +22,14 @@
 - Accept the camera's real first acquisition ID zero in Live recap while
   preserving strict subsequent sequence validation. Preserve failed segment
   finalization reasons and expose them with the existing status metadata.
+- Allow UCT on an initially paused sparse saved video to corroborate its exact
+  selected sample with a genuine following frame using the native sample's
+  known duration, capped at 2500 ms. Unknown duration and other source modes
+  keep 250 ms; source identity, pixel/text proof and match thresholds remain.
+
+- Add initially paused frame-zero readiness, late-neighbour and native opening
+  regression coverage. Captured controller replay checks actual glyph paint and
+  positioned text, retaining the separate bridge-to-preferred paint failure.
 
 - Commit immutable UCT refinement words together with their complete protection;
   a late unsafe cut or storage limit leaves the previous candidate state intact.

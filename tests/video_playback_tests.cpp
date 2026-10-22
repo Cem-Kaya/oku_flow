@@ -22,6 +22,21 @@
 #include <numeric>
 #include <thread>
 
+namespace okuflow {
+struct VideoMemoryStreamTestAccess {
+    static std::shared_ptr<const VideoMemorySource> SealBytes(const std::vector<char>& bytes) {
+        VideoMemoryStream output(bytes.size()+64);
+        if (FAILED(output.BeginRecording())) return {};
+        Microsoft::WRL::ComPtr<IStream> cursor;
+        if (FAILED(output.OpenWriteCursor(&cursor))) return {};
+        ULONG written{};
+        const auto status = cursor->Write(bytes.data(),static_cast<ULONG>(bytes.size()),&written);
+        cursor.Reset(); output.FinishRecording(SUCCEEDED(status) && written==bytes.size());
+        return output.Seal();
+    }
+};
+}
+
 namespace {
 using namespace okuflow;
 using Microsoft::WRL::ComPtr;
@@ -257,6 +272,25 @@ void LongGopSeeking(VideoPlayback& player) {
     Expect(Wait(settled) && snapshot.frame && snapshot.state==VideoPlaybackState::Paused,
            "committed long-GOP source opens without an encoder or GPU");
     if(!snapshot.frame)return;
+    {
+        const auto openingFrame = snapshot.frame;
+        const auto openingFile = snapshot.file;
+        Expect(openingFrame->pts100ns == 0 && openingFrame->sampleId == 0,
+               "initial paused selection retains real frame-zero PTS and sample identity");
+        Expect(Wait([&] {
+            snapshot = player.Snapshot();
+            return snapshot.requestGeneration == request && snapshot.neighborFrame;
+        }), "initial paused Open obtains a real following neighbour without Play or Pause");
+        Expect(snapshot.frame == openingFrame && snapshot.state == VideoPlaybackState::Paused &&
+            snapshot.file.SameFile(openingFile) && snapshot.neighborFrame &&
+            snapshot.neighborFrame->requestGeneration == request &&
+            snapshot.neighborFrame->sampleId != openingFrame->sampleId &&
+            snapshot.neighborFrame->pts100ns > openingFrame->pts100ns &&
+            snapshot.neighborFrame->pts100ns - openingFrame->pts100ns <= 2'500'000,
+            "initial neighbour arrival preserves the exact selected lease and bounded real PTS gap");
+        Expect(snapshot.readyFrames <= snapshot.lookaheadFrames && snapshot.decodedBytes <= snapshot.decodedByteLimit &&
+            player.TakeAudio().empty(), "initial paused neighbour stays in the existing silent decoded quotas");
+    }
     snapshot={};request=player.Seek100ns(30'000'000);
     Expect(Wait(settled) && snapshot.frame && snapshot.state==VideoPlaybackState::Paused && snapshot.frame->pts100ns>=30'000'000,
            "long-GOP seek reaches three seconds beyond 120 preroll reads");
@@ -270,6 +304,93 @@ void LongGopSeeking(VideoPlayback& player) {
             snapshot.backendReason=="fixture consumer interop refusal","native CPU fallback preserves its exact existing diagnostic reason");
     }
     player.Close();
+}
+
+// Original raw AVI, three distinct colour grids two seconds apart. This
+// tests native sample duration/issuance without an encoder or private media.
+std::vector<char> SparseAviBytes() {
+    using Bytes = std::vector<char>;
+    const auto u32 = [](Bytes& bytes,std::uint32_t value) {
+        for (int shift=0;shift<32;shift+=8) bytes.push_back(char((value>>shift)&255));
+    };
+    const auto append = [](Bytes& bytes,const Bytes& other) { bytes.insert(bytes.end(),other.begin(),other.end()); };
+    const auto chunk = [&](const char* kind,Bytes data) {
+        Bytes result(kind,kind+4); u32(result,std::uint32_t(data.size())); append(result,data);
+        if (data.size()%2) result.push_back(0); return result;
+    };
+    const auto list = [&](const char* kind,const Bytes& data) {
+        Bytes contents(kind,kind+4); append(contents,data); return chunk("LIST",std::move(contents));
+    };
+    constexpr std::uint32_t width=32,height=16,frameBytes=width*height*4,count=3;
+    Bytes main; for (auto value : {2'000'000u,frameBytes/2,0u,0x10u,count,0u,1u,frameBytes,width,height,0u,0u,0u,0u}) u32(main,value);
+    const char streamType[]="vidsDIB "; Bytes stream(streamType,streamType+8); u32(stream,0); u32(stream,0);
+    for (auto value : {0u,2u,1u,0u,count,frameBytes,0xffffffffu,0u}) u32(stream,value);
+    for (char value : {char(0),char(0),char(0),char(0),char(width),char(0),char(height),char(0)}) stream.push_back(value);
+    Bytes format; for (auto value : {40u,width,height}) u32(format,value);
+    for (char value : {char(1),char(0),char(32),char(0)}) format.push_back(value);
+    for (auto value : {0u,frameBytes,0u,0u,0u,0u}) u32(format,value);
+    Bytes strl=chunk("strh",stream); append(strl,chunk("strf",format));
+    Bytes header=chunk("avih",main); append(header,list("strl",strl));
+    Bytes frames,index;
+    for (std::uint32_t frame=0;frame<count;++frame) {
+        Bytes pixels(frameBytes,0);
+        for (std::uint32_t y=0;y<height;++y) for (std::uint32_t x=0;x<width;++x) {
+            const auto at=(y*width+x)*4;
+            pixels[at]=char(30+60*frame);pixels[at+1]=char(x*7);pixels[at+2]=char(y*13);pixels[at+3]=char(255);
+        }
+        for (const char* tag={"00db"}; *tag; ++tag) index.push_back(*tag);
+        u32(index,0x10);u32(index,std::uint32_t(frames.size())+4);u32(index,frameBytes);
+        append(frames,chunk("00db",std::move(pixels)));
+    }
+    const char type[]="AVI "; Bytes body(type,type+4);append(body,list("hdrl",header));
+    append(body,list("movi",frames));append(body,chunk("idx1",index));return chunk("RIFF",std::move(body));
+}
+
+void InitialSparseSavedFileNeighbour(VideoPlayback& player) {
+    const auto bytes=SparseAviBytes();auto path=TempPath();path.replace_extension(L".avi");
+    { std::ofstream file(path,std::ios::binary);file.write(bytes.data(),std::streamsize(bytes.size()));
+      Expect(bool(file),"first-party sparse raw AVI fixture is written"); }
+    auto generation=player.OpenFile(path.wstring());
+    const auto settled=[&] { const auto s=player.Snapshot(); return s.requestGeneration==generation && s.frame && s.state==VideoPlaybackState::Paused; };
+    Expect(Wait(settled),"sparse saved file opens paused without Play");
+    auto selected=player.Snapshot().frame;
+    if (!selected) {player.Close();return;}
+    Expect(selected->sampleId==0 && selected->pts100ns==0 && selected->duration100ns==20'000'000,
+        "native first sample supplies exact zero PTS and two-second duration");
+    const auto policy=player.CorroborationPolicy(selected);
+    Expect(policy.Allows(0,0,20'000'000,2000),"native saved-file cadence authorizes its actual two-second following sample");
+    Expect(Wait([&] { const auto s=player.Snapshot(); return s.frame==selected && s.neighborFrame && s.neighborFrame->pts100ns==20'000'000; }),
+        "initial sparse selected frame receives the genuine nearest following frame without Play");
+    const auto after=player.Snapshot();
+    Expect(after.frame==selected && after.state==VideoPlaybackState::Paused && after.neighborFrame &&
+        after.neighborFrame->sampleId==20'000'000 && after.readyFrames<=after.lookaheadFrames &&
+        after.decodedBytes<=after.decodedByteLimit,"sparse preparation preserves selected identity and existing quotas");
+    const auto copied=std::make_shared<VideoPlaybackFrame>(*selected);
+    const auto borrowed=std::shared_ptr<const VideoPlaybackFrame>(selected.get(),[](const VideoPlaybackFrame*){});
+    Expect(player.CorroborationPolicy(copied)==uct::ImmutableCorroborationPolicy{} &&
+        player.CorroborationPolicy(borrowed)==uct::ImmutableCorroborationPolicy{},
+        "copied metadata and a borrowed ownership block cannot issue saved cadence");
+    {VideoPlayback foreign;Expect(foreign.CorroborationPolicy(selected)==uct::ImmutableCorroborationPolicy{},
+        "a foreign player cannot authorize this native lease");}
+    copied->requestGeneration++;copied->duration100ns=25'000'000;
+    Expect(player.CorroborationPolicy(copied)==uct::ImmutableCorroborationPolicy{},"forged generation/duration cannot expand proof");
+    generation=player.Seek100ns(0);Expect(Wait(settled),"same-frame seek obtains a new exact native ticket");
+    Expect(player.CorroborationPolicy(selected)==uct::ImmutableCorroborationPolicy{} &&
+        player.CorroborationPolicy(player.Snapshot().frame)!=policy,"seek revokes old cadence issuance even when pixels are reused");
+    player.Close();selected.reset();
+    const auto memory=VideoMemoryStreamTestAccess::SealBytes(bytes);
+    Expect(bool(memory),"same first-party sparse bytes seal as immutable memory");
+    if (memory) {
+        generation=player.OpenMemory(memory);Expect(Wait(settled),"sparse RAM source opens paused");
+        const auto held=player.Snapshot().frame;
+        Expect(held && player.CorroborationPolicy(held)==uct::ImmutableCorroborationPolicy{},
+            "RAM/recap origin never acquires saved-file cadence");
+        Expect(Wait([&] {return player.Snapshot().readyFrames>0;}),"RAM decoder observes its genuine sparse following sample");
+        Expect(player.Snapshot().frame==held && !player.Snapshot().neighborFrame,
+            "RAM retains the ordinary 250-ms limit for the identical two-second gap");
+    }
+    player.Close();
+    std::error_code error;std::filesystem::remove(path,error);
 }
 
 void PausedSceneCutNeighbor(VideoPlayback& player) {
@@ -481,6 +602,8 @@ void NativeAvcAac(VideoRecorder::Codec codec = VideoRecorder::Codec::H264, bool 
         const auto g = player.OpenArchive(archive);
         Expect(Wait([&] { const auto s = player.Snapshot(); return s.requestGeneration == g && s.state != VideoPlaybackState::Opening; }), "active decoder completes bounded open");
         Expect(player.Snapshot().frame != nullptr, "verified active fragment decodes actual pixels");
+        Expect(player.CorroborationPolicy(player.Snapshot().frame)==uct::ImmutableCorroborationPolicy{},
+            "recording archive never acquires saved-file cadence");
         if(detail::FfmpegPlaybackRequested())Expect(player.Snapshot().decoderBackend=="media-foundation",
             "active recording retains producer-fenced native fallback under embedded opt-in");
         RequireGpu(player.Snapshot());
@@ -1459,7 +1582,7 @@ int main(int argc, char** argv) {
             NativeAvcAac(codec, true);
             if (!failures && !nativeSkipped) NativeSparseVideoAudio(codec);
         }
-    } else { SeekProgressLimits(); LayoutAndIdentity(); MutationObservation(); UnsupportedAndUnknownWrites(); FailedOpenSupersession(); VideoPlayback player; LongGopSeeking(player); PausedSceneCutNeighbor(player); PacedAudioDelivery(player); }
+    } else { SeekProgressLimits(); LayoutAndIdentity(); MutationObservation(); UnsupportedAndUnknownWrites(); FailedOpenSupersession(); VideoPlayback player; LongGopSeeking(player); InitialSparseSavedFileNeighbour(player); PausedSceneCutNeighbor(player); PacedAudioDelivery(player); }
     // Workers own their MFStartup/MFShutdown pairs; these local scopes own
     // only the fixture's startup. No camera/microphone or native GUI opens.
     MFShutdown(); CoUninitialize();
