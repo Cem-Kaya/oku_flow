@@ -15,16 +15,24 @@ AVI bytes to verify actual two-second duration/nearest following preparation
 without Play; the same bytes opened as RAM keep ordinary policy.
 `capturedOutputReachesPaintAndPositionedText` checks actual `PaintedWord.drawn`,
 `ScreenLines` and Qt accessibility character bounds after selection, Play/Pause,
-bridge refinement and settled zoom. Set `OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF` to
-an explicit absolute private proof JSON to replay captured image/output geometry;
+bridge refinement and settled zoom. Configure with the FILEPATH cache option
+`OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF` naming an explicit absolute private proof
+JSON to replay captured image/output geometry. Its initial default comes from
+the same environment variable. The test declares that proof and both actual
+source images as absolute CTest `REQUIRED_FILES`, and its configured environment
+prevents an ambient runtime variable from switching inputs. Reconfigure with
+`-DOKUFLOW_UCT_CONTROLLER_REPLAY_PROOF=` to return to ordinary synthetic mode;
 `OKUFLOW_UCT_CONTROLLER_REPLAY_OUTPUT` writes new per-row evidence in a private
 directory. Zoom reuses full-scene capture outputs because neighbouring detail
 output is not serialized. This is CPU software/controller replay, not inference
 or native UIA-client acceptance. The fresh CPU gate passed native playback and
-152 controller rows; the actual captured bridge rows failed paint and remain
-preserved. Four additive outside-window negative rows are compiled but unrun.
-Private replay is diagnostic-only until proof/image bytes are declared absolute
-CTest `REQUIRED_FILES`; see the linked results and exact-hash receipt.
+152 controller rows; its actual captured bridge rows failed paint and remain
+preserved. A separate corrected real capture with runtime declarations passed
+all 158 controller rows, including the four additive outside-window negatives,
+actual paint/ScreenLines and positioned Qt character bounds; zero skips.
+The first private replay predates the runtime declarations and remains diagnostic
+evidence; see the linked results and exact-hash receipt. Corrected-capture results
+are recorded separately with the declarations enabled.
 
 `immutableCandidateProtectionRefusalIsAtomic` covers late semantic-risk refusal
 after an append and mixed append/fragment exhaustion at 8191 stored slots.

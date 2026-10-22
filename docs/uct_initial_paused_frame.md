@@ -105,11 +105,15 @@ an admitted artifact when its descriptor changes and checks earlier boundaries.
 `capturedOutputReachesPaintAndPositionedText` checks initially paused and
 Play-to-Pause paths, preferred output and CPU-bridge-to-preferred refinement,
 then settled zoom. Ordinary CI uses original synthetic text. An explicit
-absolute `OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF` loads private source images with
+absolute `OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF` at configure loads private source images with
 SHA-256 validation and actual captured selected/neighbour recognition output,
 including bridge output when requested. It preserves boxes, quads, colors,
 candidate disposition and protection. `OKUFLOW_UCT_CONTROLLER_REPLAY_OUTPUT`
 selects a private folder for new per-row paint/accessibility reports.
+The FILEPATH cache option initializes from the environment once. Reconfigure
+explicitly to switch captures or clear it for ordinary synthetic CI. CTest binds
+the configured proof and both actual source image paths as absolute
+`REQUIRED_FILES`; the configured environment overrides ambient replay input.
 
 The replay exercises the production controller, scheduler, model, software
 paint and Qt accessibility using a CPU-backed resident protocol oracle. It
@@ -158,10 +162,44 @@ Acceptance must declare those absolute files at configure and rerun using the
 corrected source capture; changing an environment path alone is insufficient.
 
 Four additive CPU/resident changed-text and identical-pixel rows outside the
-saved duration window were compiled after that gate but remain unrun. The
+saved duration window were compiled after that first gate and were then unrun. The
 ordinary synthetic replay mode is also unrun. Compiler/runner resources were
 released for parent coordination; there was no repeat of the failing replay.
 No native UI, GPU, model inference, device, audio-endpoint, owner-app or settings
 work was performed. App presentation handoff translation units were outside
 these two test targets. Full Windows/CUDA and native presentation acceptance
 remain parent-owned and pending.
+
+## Corrected same-source controller replay
+
+The parent supplied a separate real bridge capture after correcting native
+Windows OCR angle coordinates. Its absolute path is
+`Z:/Projects/OkuFlow/local-work-data/uct-geometry-r3-20261021/evidence/proofs/uct-pause-proof-20261022-133746-cc11f6c0-7554-4a3a-94cf-d5731222fa1c/proof.json`,
+SHA-256 `5de577bc630233dfa85fb5bd488dfb3a193a3dd6d8a9dbdd30a631ec1442ce62`.
+The selected and neighbour source PNG bytes are identical to the first capture.
+No controller merge, mask, geometry or threshold was weakened for this replay.
+
+The additive CMake configuration now declares this proof and the two source
+PNGs as absolute `REQUIRED_FILES`, verified in the CTest inventory and tracked
+ledger. The controller-only CPU/PCH-OFF build and one serial/ExcludeGui
+`immutable_uct_contract` gate passed: 158 Qt rows, zero failures, zero skips,
+92.17 s. This includes the four previously unrun outside-window negative rows.
+Both initial selection and Play/Pause bridge rows now have exactly two Head
+words, with both actually painted in full view and settled zoom. All required
+Head/Left/Right/Hand occurrences also satisfy ScreenLines and nonempty positioned
+Qt accessibility bounds.
+
+The bridge replay has 22 SceneWords/22 drawn in full view and 22/21 at settled
+zoom; preferred-only replay remains 24/24 full and 24/22 zoom. These are the
+controller replay's counts on its own base, not root model quality equivalence.
+The required button surfaces pass; other literal recognition conflicts and
+the documented full-scene-output reuse during zoom remain outside that claim.
+
+New evidence is separate under
+`Z:/Projects/OkuFlow/local-work-data/uct-initial-frame-zero-20261022/validation-2/`:
+`controller-ctest-inputs.json`, `corrected-captured-attempt/`,
+`captured-controller/` and `receipt.json`. The first capture and failing
+`validation-1/` archive remain unchanged. Ordinary synthetic mode, combined
+app handoff compilation, GPU/model/native UIA-client and release acceptance
+are still outside this controller-only gate. Resources were released after
+one gate, within the five-minute grant.

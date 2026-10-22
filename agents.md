@@ -1000,3 +1000,8 @@ aligned with the project goals.
   oracles and Qt accessibility geometry do not establish real GPU inference,
   native UIA-client, camera or release acceptance. Keep private captures outside
   Git; see `docs/uct_initial_paused_frame.md` for exact provenance and scope.
+- Configure optional controller replay with an absolute
+  `OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF` FILEPATH. The CTest case must declare
+  that proof and both actual source images as absolute `REQUIRED_FILES` and
+  fix its input environment to the configured value. Keep earlier undeclared
+  diagnostic failures separate from later corrected-capture acceptance.
