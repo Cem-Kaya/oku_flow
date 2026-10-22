@@ -24,6 +24,10 @@ audio high-water fix, with silent native-decoder validation limits.
 four-corner geometry, strict rotation-normalized proof and bounded six-times
 visible-region refinement after paused pan/zoom.
 
+[Tilted menu repaint diagnosis](uct_tilted_paint_gaps.md) separates retained
+recognition/proof gaps from conservative source-protection suppression and
+records the captured-handoff baseline and exact new 6-second source identity.
+
 [UCT coverage and stable placement](uct_coverage_stability_repair.md) documents
 file-path filtering, column/type-size separation, crop-fragment suppression,
 stable validated geometry, regional detector-omission continuity and actual
