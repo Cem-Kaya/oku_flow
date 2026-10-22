@@ -33,6 +33,7 @@ bool TensorRtCropDiagnostic::TryCommit(Plan&& plan) noexcept
 #include <Windows.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cuda_runtime.h>
 #include <mutex>
 #include <optional>
@@ -88,6 +89,7 @@ template <class T> class DeviceBuffer
                 Check(cudaFree(old));
             Check(cudaMalloc(reinterpret_cast<void **>(&data_), count * sizeof(T)));
             capacity_ = count;
+            ++generation_;
         }
         return data_;
     }
@@ -96,10 +98,12 @@ template <class T> class DeviceBuffer
         return data_;
     }
     std::size_t Capacity() const { return capacity_; }
+    std::uint64_t Generation() const { return generation_; }
 
   private:
     T *data_{};
     std::size_t capacity_{};
+    std::uint64_t generation_{};
 };
 template <class T> class HostBuffer
 {
@@ -448,8 +452,15 @@ class Network
         if (!context_)
             throw std::runtime_error("TensorRT execution context creation failed.");
     }
+    ~Network()
+    {
+        if (graphDiagnostics_)
+            qInfo("UCT_GRAPH summary det=%d captures=%u replays=%u invalidations=%u refusals=%u",
+                  detection_, graphCaptures_, graphReplays_, graphInvalidations_, graphRefusals_);
+        if (graphExec_) cudaGraphExecDestroy(graphExec_);
+    }
     nvinfer1::Dims Run(float *input, int width, int height, cudaStream_t stream,
-                       TensorRtProfile &profile, int batch = 1)
+                       TensorRtProfile &profile, int batch = 1, std::uint64_t inputGeneration = 0)
     {
         QElapsedTimer host;
         if (profile.Enabled()) host.start();
@@ -458,6 +469,25 @@ class Network
             throw std::runtime_error("Recognizer width is outside the prepared bucket policy.");
         if (batch < 1 || batch > maximumBatch_)
             throw std::runtime_error("TensorRT batch exceeds its prepared profile.");
+        // A captured TensorRT context must never be reconfigured and then
+        // replayed from an old shape-keyed entry. Drain and destroy its sole
+        // graph before ANY shape, binding or allocation-generation change.
+        // This Network owns one context/profile and its automatic workspace;
+        // no context/profile/workspace mutation exists outside this method.
+        const bool stateChanged = batch != batch_ || width != width_ || height != height_ ||
+                                  input != boundInput_ || inputGeneration != inputGeneration_ ||
+                                  stream != graphStream_;
+        if (graphsEnabled_ && stateChanged) {
+            if (graphExec_) {
+                Check(cudaStreamSynchronize(graphStream_));
+                Check(cudaGraphExecDestroy(graphExec_));
+                graphExec_ = nullptr;
+                ++graphInvalidations_;
+            }
+            graphWarmed_ = false;
+        }
+        inputGeneration_ = inputGeneration;
+        graphStream_ = stream;
         if (batch != batch_ || width != width_ || height != height_)
         {
             if (!context_->setInputShape(input_.c_str(), nvinfer1::Dims4(batch, 3, height, width)))
@@ -492,8 +522,7 @@ class Network
             boundOutput_ = output;
             ++addressSets;
         }
-        if (!context_->enqueueV3(stream))
-            throw std::runtime_error("TensorRT OCR enqueue failed.");
+        Enqueue(stream);
         profile.NetworkCall(detection_, batch, profile.Enabled() ? host.nsecsElapsed() / 1e6 : 0,
                             shapeSets, addressSets);
         return shape_;
@@ -505,6 +534,84 @@ class Network
     std::size_t OutputCapacityBytes() const { return outputBuffer_.Capacity() * sizeof(float); }
 
   private:
+    // Diagnostic opt-in only. One graph per immutable current context state;
+    // changing shape/address/allocation generation destroys it after draining.
+    // Context, profile and automatically allocated workspace are owned here.
+    // State retirement drains the stream before Network destruction, or retains
+    // the entire State in quarantine when completion cannot be established.
+    static bool CaptureRefusal(cudaError_t error) {
+        return error == cudaErrorStreamCaptureUnsupported ||
+               error == cudaErrorStreamCaptureInvalidated;
+    }
+    void Enqueue(cudaStream_t stream)
+    {
+        if (graphsEnabled_) {
+            if (graphExec_) {
+                Check(cudaGraphLaunch(graphExec_, stream));
+                ++graphReplays_;
+                return;
+            }
+            // The first ordinary enqueue flushes TensorRT's deferred updates.
+            if (graphWarmed_) {
+                QElapsedTimer setup;
+                setup.start();
+                cudaGraph_t graph{};
+                const auto begin = cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal);
+                bool queued = false;
+                cudaError_t forced = cudaSuccess, end = begin;
+                if (begin == cudaSuccess) {
+                    // Private diagnostic seam: exercise real stream-capture
+                    // invalidation and cleanup, without changing the network.
+                    if (qEnvironmentVariable("OKUFLOW_UCT_TRT_GRAPH_REFUSE_CAPTURE") == "1")
+                        forced = cudaStreamSynchronize(stream);
+                    else
+                        queued = context_->enqueueV3(stream);
+                    // End capture even when enqueue fails: never leave the
+                    // private stream capturing during exception retirement.
+                    end = cudaStreamEndCapture(stream, &graph);
+                }
+                if (begin == cudaSuccess && end == cudaSuccess && queued && graph) {
+                    const auto instantiate = cudaGraphInstantiate(&graphExec_, graph, 0);
+                    const auto destroy = cudaGraphDestroy(graph);
+                    Check(instantiate);
+                    Check(destroy);
+                    ++graphCaptures_;
+                    if (graphDiagnostics_)
+                        qInfo("UCT_GRAPH capture det=%d batch=%d width=%d height=%d generation=%llu setupMs=%.6f",
+                              detection_, batch_, width_, height_,
+                              static_cast<unsigned long long>(inputGeneration_), setup.nsecsElapsed()/1e6);
+                    Check(cudaGraphLaunch(graphExec_, stream));
+                    ++graphReplays_;
+                    return;
+                }
+                if (graph) Check(cudaGraphDestroy(graph));
+                // Only typed capture incompatibility permits fallback. CUDA
+                // execution/allocation faults retain normal failure/quarantine.
+                if (forced != cudaSuccess && !CaptureRefusal(forced)) Check(forced);
+                if (begin != cudaSuccess && !CaptureRefusal(begin)) Check(begin);
+                if (end != cudaSuccess && !CaptureRefusal(end)) Check(end);
+                if (!CaptureRefusal(begin) && !CaptureRefusal(end) && !CaptureRefusal(forced))
+                    throw std::runtime_error("TensorRT graph capture enqueue failed.");
+                const auto pending = cudaGetLastError();
+                if (pending != cudaSuccess && !CaptureRefusal(pending)) Check(pending);
+                Check(cudaStreamSynchronize(stream));
+                graphsEnabled_ = false;
+                ++graphRefusals_;
+                if (graphDiagnostics_)
+                    qInfo("UCT_GRAPH refusal det=%d begin=%d end=%d forced=%d; drained fallback",
+                          detection_, int(begin), int(end), int(forced));
+            }
+            graphWarmed_ = true;
+        }
+        if (!context_->enqueueV3(stream))
+            throw std::runtime_error("TensorRT OCR enqueue failed.");
+    }
+    bool graphsEnabled_{qEnvironmentVariable("OKUFLOW_UCT_TRT_GRAPHS") == "1"};
+    bool graphDiagnostics_{qEnvironmentVariable("OKUFLOW_UCT_TRT_GRAPH_DIAGNOSTIC") == "1"};
+    bool graphWarmed_{};
+    std::uint64_t inputGeneration_{};
+    cudaStream_t graphStream_{};
+    unsigned graphCaptures_{}, graphReplays_{}, graphInvalidations_{}, graphRefusals_{};
     std::unique_ptr<nvinfer1::IRuntime> runtime_;
     std::unique_ptr<nvinfer1::ICudaEngine> engine_;
     std::unique_ptr<nvinfer1::IExecutionContext> context_;
@@ -516,6 +623,7 @@ class Network
     int batch_{}, width_{}, height_{};
     nvinfer1::Dims shape_{};
     float *boundInput_{}, *boundOutput_{};
+    cudaGraphExec_t graphExec_{};
 };
 struct State
 {
@@ -863,7 +971,7 @@ class TensorRtRecognizer final : public Recognizer
             nvinfer1::Dims shape{};
             profile.Measure(TensorRtProfile::Detector, state_->stream, [&] {
                 shape = state_->detector->Run(input, size.width(), size.height(), state_->stream,
-                                              profile);
+                                              profile, 1, state_->detectorInput.Generation());
             });
             if (shape.nbDims != 4 || shape.d[0] != 1 || shape.d[1] != 1)
                 throw std::runtime_error("Unexpected GPU detector output.");
@@ -943,7 +1051,7 @@ class TensorRtRecognizer final : public Recognizer
                     nvinfer1::Dims recShape{};
                     profile.Measure(TensorRtProfile::Recognizer, state_->stream, [&] {
                         recShape = state_->recognizer->Run(crop, width, 48, state_->stream,
-                                                          profile, batchSize);
+                                                          profile, batchSize, state_->recognizerInput.Generation());
                     });
                     if (recShape.nbDims != 3 || recShape.d[0] != batchSize ||
                         recShape.d[2] != assets_.dictionary.size() || recShape.d[1] <= 0)

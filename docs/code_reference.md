@@ -767,6 +767,16 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   `DeviceBuffer`, `HostBuffer`, `Libraries`, `DllDirectory` and mutex-protected
   `Logger` keep GPU/host/code lifetime independent of the UI. Only counts and
   compact boxes/tokens cross between neural stages and final string assembly.
+  Private `Network::Enqueue` has default-off `OKUFLOW_UCT_TRT_GRAPHS=1` capture:
+  one graph per current owned context/profile/workspace state, invalidated after
+  draining its recorded stream before shape/binding/generation reconfiguration.
+  `DeviceBuffer::Generation` distinguishes reallocation at a recycled address;
+  `Network::Run` receives that generation for detector/recognizer inputs.
+  A normal enqueue flushes every changed state before capture. Typed capture
+  refusal drains and disables graphs; other faults retain normal quarantine.
+  `Network` destruction releases its graph after State retirement completion.
+  Private graph diagnostic counters/refusal seam and unrun lifetime cases are
+  documented in [the graph experiment](uct_trt_graph_experiment.md).
 - `cmake/UctOcr.cmake::okuflow_configure_ocr` locates optional local SDK
   headers, compiles availability stubs when absent and never downloads.
   `prepare_uct_runtime.ps1::{Get-Verified,Expand-Verified}` checks exact archive,

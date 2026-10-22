@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Add a default-off developer CUDA graph experiment for TensorRT enqueue
+  replay, with context-state invalidation, capture-refusal cleanup and bounded
+  graph lifetime. Shared-desktop N8 comparisons do not justify enabling it;
+  see `docs/uct_trt_graph_experiment.md` for measurements and remaining checks.
+
 - Overlap dense UCT recognition groups with host metadata merging using bounded
   double-buffered metadata and per-group completion events. Private resident
   FP32 measurements show a dense N8 benefit; sparse/N1 and production BF16
