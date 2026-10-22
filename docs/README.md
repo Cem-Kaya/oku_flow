@@ -1,8 +1,8 @@
 # OkuFlow Documentation Guide
 
-[Initially paused video UCT](uct_initial_paused_frame.md) distinguishes valid
-frame-zero initialization from a sparse source with no genuine neighbour inside
-250 ms, with CPU provenance and unrun regression coverage.
+[Initially paused video UCT](uct_initial_paused_frame.md) documents frame-zero
+initialization, sealed saved-file duration bounds and captured controller replay
+with actual paint and positioned-text assertions.
 
 [Live RAM recap](live_ram_recap.md) documents the independent silent camera
 history, compressed memory limits, exact scene Freeze, existing-player reuse,

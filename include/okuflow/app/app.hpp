@@ -261,7 +261,9 @@ private:
                                     std::uint64_t frameSequence,
                                     const VideoPlaybackFrame* neighbor = nullptr,
                                     std::int64_t pts100ns = 0,
-                                    bool continuousPlayback = false);
+                                    bool continuousPlayback = false,
+                                    uct::ImmutableCorroborationPolicy corroborationPolicy = {});
+    uct::ImmutableCorroborationPolicy SelectedMediaCorroborationPolicy(const VideoPlaybackFrame& frame) const;
     bool PresentSelectedMediaGpuFrame(const VideoPlaybackFrame& frame,
                                      const VideoPlaybackFrame* neighbor,
                                      bool continuousPlayback);
@@ -700,6 +702,7 @@ private:
     bool mediaSuperResPresented_{};
     std::uint64_t mediaPresentedSceneGeneration_{};
     std::uint64_t mediaUctNeighborSeq_{};
+    uct::ImmutableCorroborationPolicy mediaUctCorroborationPolicy_;
     bool mediaUctContinuousPlayback_{};
     std::unique_ptr<MediaGpuScene> mediaGpuScene_;
     std::unique_ptr<MediaGpuScene> mediaGpuNeighborScene_;

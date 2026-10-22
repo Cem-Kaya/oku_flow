@@ -34,10 +34,19 @@ Failure or unavailable evidence ends that bounded attempt.
 On an explicit playback Pause, the application holds its exact last displayed
 native frame through `VideoPlayback::PauseAtFrame`. It clears a predecessor
 which could belong to the other side of a scene cut. The existing decoder
-worker may supply one actual following sample within 250 ms, without advancing
+worker may supply one actual following sample within the ordinary 250 ms,
+without advancing
 the held frame or playing audio. Late neighbour-only snapshots must still name
 that identical held lease; source or seek changes revoke it. At EOF or without
 independent evidence the original image remains visible.
+
+Paused saved files have one explicit sparse-cadence exception. A validated
+native sample duration can enlarge only the following-neighbour allowance to
+at most 2500 ms; unknown/invalid durations and earlier samples keep 250 ms.
+The private issuance lease binds duration, PTS, sample and source identity,
+and its opaque descriptor travels through selection, reference, line/word
+registration and model admission. Archive, RAM/recap and live/advancing
+policies do not change. See [initial paused video](uct_initial_paused_frame.md).
 
 Paused scrolling text has an additional word-local worker check. A neighbour
 within 250 ms may show a recognized word at a different position even though

@@ -395,6 +395,7 @@ void OkuFlowApp::InvalidateMediaSelection(bool preservePendingReadback)
     mediaGpuAnalysisRetryAtMs_=0;
     mediaGpuAnalysisAttempts_ = 0;
     mediaUctNeighborSeq_ = 0;
+    mediaUctCorroborationPolicy_ = {};
     if (!preservePendingReadback) {
         RetirePendingMediaHoldReadback();
     } else if (videoDocument_ && videoDocument_->pendingHold) {
@@ -619,6 +620,13 @@ bool OkuFlowApp::MediaPlaybackPlaying() const
         videoDocument_->afterOperationPlay || videoDocument_->waitingNextPart);
 }
 
+uct::ImmutableCorroborationPolicy OkuFlowApp::SelectedMediaCorroborationPolicy(
+    const VideoPlaybackFrame& frame) const {
+    if (!videoDocument_ || videoDocument_->kind != VideoDocumentState::Kind::File ||
+        videoDocument_->frame.get() != &frame) return {};
+    return videoDocument_->player.CorroborationPolicy(videoDocument_->frame);
+}
+
 bool OkuFlowApp::MediaGpuViewSelected() const {
     // Image actions and diagnostics describe the last successful display,
     // which may differ from a decoded successor awaiting GPU admission.
@@ -754,7 +762,8 @@ bool OkuFlowApp::PresentMediaView()
         (frame.gpu || SelectedMediaGpuProcessingAvailable())
         ? PresentSelectedMediaGpuFrame(frame,doc.neighbor.get(),MediaPlaybackPlaying()):
         frame.bgra && PresentSelectedMediaPixels(frame.bgra->data(), frame.width, frame.height,
-            frame.strideBytes, mediaDocumentEpoch_, frame.sampleId, doc.neighbor.get(), frame.pts100ns,MediaPlaybackPlaying());
+            frame.strideBytes, mediaDocumentEpoch_, frame.sampleId, doc.neighbor.get(), frame.pts100ns,
+            MediaPlaybackPlaying(), SelectedMediaCorroborationPolicy(frame));
     if (presented) {
         doc.presented = doc.frame;
         doc.presentedNeighbor = doc.neighbor;
@@ -1190,7 +1199,8 @@ void OkuFlowApp::PollVideoPlayback()
                 const auto& neighbor = snapshot.neighborFrame;
                 doc.neighbor = neighbor && neighbor->requestGeneration == doc.requestGeneration &&
                     neighbor->sampleId != doc.frame->sampleId && neighbor->pts100ns > doc.frame->pts100ns &&
-                    neighbor->pts100ns - doc.frame->pts100ns <= 2'500'000
+                    SelectedMediaCorroborationPolicy(*doc.frame).Allows(doc.frame->sampleId,
+                        doc.frame->pts100ns / 10'000, neighbor->sampleId, neighbor->pts100ns / 10'000)
                     ? neighbor : std::shared_ptr<const VideoPlaybackFrame>{};
             }
             if (snapshot.requestGeneration == doc.requestGeneration &&

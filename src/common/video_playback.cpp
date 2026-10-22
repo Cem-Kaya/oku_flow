@@ -29,12 +29,14 @@ struct VideoPlaybackFrameLease {
     std::shared_ptr<const void> memoryKeeper;
     std::uint64_t requestGeneration{}, archiveGeneration{};
     std::uint32_t videoTrackId{};
+    std::uint64_t sampleId{};
+    std::int64_t pts100ns{}, duration100ns{};
+    bool savedFile{};
 };
 namespace {
 using Clock = std::chrono::steady_clock;
 constexpr std::int64_t kMaximumClock100ns = INT64_MAX / 100;
 constexpr unsigned kEndSeekLimit = 8;
-constexpr std::int64_t kPausedNeighborWindow100ns = 2'500'000; // existing 250-ms word proof window
 std::int64_t AdvanceClock(std::int64_t base, std::int64_t elapsed) {
     base = std::clamp<std::int64_t>(base, 0, kMaximumClock100ns);
     return base + std::min(kMaximumClock100ns - base, std::max<std::int64_t>(0, elapsed));
@@ -156,6 +158,9 @@ void SealFrame(const std::shared_ptr<VideoPlaybackFrame>& frame, const VideoPlay
     lease->memory = reader.memorySource; lease->memoryKeeper = reader.memoryKeeper;
     lease->requestGeneration = frame->requestGeneration;
     lease->archiveGeneration = frame->archiveGeneration; lease->videoTrackId = frame->videoTrackId;
+    lease->sampleId = frame->sampleId; lease->pts100ns = frame->pts100ns;
+    lease->duration100ns = frame->duration100ns;
+    lease->savedFile = !reader.archive && !reader.memorySource;
     frame->decoderLease = std::move(lease);
 }
 bool IssuedFrame(const VideoPlayback::State& s, const std::shared_ptr<const VideoPlaybackFrame>& frame) {
@@ -165,6 +170,8 @@ bool IssuedFrame(const VideoPlayback::State& s, const std::shared_ptr<const Vide
     return lease.owner.lock() == s.frameOwner && issued == frame &&
         !issued.owner_before(frame) && !frame.owner_before(issued) &&
         lease.requestGeneration == frame->requestGeneration &&
+        lease.sampleId == frame->sampleId && lease.pts100ns == frame->pts100ns &&
+        lease.duration100ns == frame->duration100ns &&
         lease.archiveGeneration == frame->archiveGeneration && lease.videoTrackId == frame->videoTrackId &&
         (lease.memory ? lease.memory == s.snapshot.memorySource : lease.file.SameFile(s.snapshot.file)) &&
         frame->videoTrackId == s.snapshot.videoTrackId &&
@@ -174,7 +181,8 @@ bool FollowingFrame(const VideoPlayback::State& s, const std::shared_ptr<const V
                     const VideoPlaybackFrame& selected) {
     return IssuedFrame(s, frame) && frame->sampleId != selected.sampleId &&
         frame->pts100ns > selected.pts100ns &&
-        frame->pts100ns - selected.pts100ns <= kPausedNeighborWindow100ns &&
+        frame->pts100ns - selected.pts100ns <= uct::ImmutableNeighbourWindow100ns(
+            selected.decoderLease && selected.decoderLease->savedFile, selected.duration100ns) &&
         frame->width == selected.width && frame->height == selected.height &&
         frame->rotationDegrees == selected.rotationDegrees;
 }
@@ -194,7 +202,8 @@ bool PauseAtFrameLocked(VideoPlayback::State& s, const std::shared_ptr<const Vid
         if (FollowingFrame(s, ready, *shown) && (!next || ready->pts100ns < next->pts100ns)) next = ready;
     const bool rewound = shown != s.snapshot.frame;
     const bool atEnd = s.snapshot.state == VideoPlaybackState::Ended && !rewound;
-    const bool pastWindow = rewound && s.snapshot.frame->pts100ns - shown->pts100ns > kPausedNeighborWindow100ns;
+    const bool pastWindow = rewound && s.snapshot.frame->pts100ns - shown->pts100ns >
+        uct::ImmutableNeighbourWindow100ns(shown->decoderLease->savedFile, shown->duration100ns);
     s.playing = false; ClearAudio(s);
     s.restartAtCursor = false;
     s.repositionOnResume = s.repositionOnResume || rewound;
@@ -763,6 +772,18 @@ void Publish(VideoPlayback::State& s, Reader& r, const Command& cmd,
     s.snapshot.file = r.file; s.snapshot.path = cmd.archive ? r.archiveAdmission.path : cmd.path;
     s.snapshot.memorySource = r.memorySource;
     s.snapshot.videoTrackId = r.archive ? r.archiveAdmission.videoTrackId : r.videoStreamIndex;
+    if (s.snapshot.neighborFrame && s.snapshot.frame) {
+        const auto& selected = *s.snapshot.frame;
+        const auto& neighbour = *s.snapshot.neighborFrame;
+        const auto window = neighbour.pts100ns > selected.pts100ns
+            ? uct::ImmutableNeighbourWindow100ns(selected.decoderLease && selected.decoderLease->savedFile,
+                                               selected.duration100ns)
+            : uct::kOrdinaryNeighbourWindow100ns;
+        const auto gap = neighbour.pts100ns > selected.pts100ns
+            ? neighbour.pts100ns - selected.pts100ns : selected.pts100ns - neighbour.pts100ns;
+        if (!IssuedFrame(s, s.snapshot.neighborFrame) || neighbour.sampleId == selected.sampleId ||
+            gap > window) s.snapshot.neighborFrame.reset();
+    }
     s.snapshot.duration100ns = r.duration;
     s.snapshot.seekableEnd100ns = r.archive ? r.archiveAdmission.seekableEnd100ns
         : (r.eos ? r.lastDecodedPts : -1);
@@ -1368,6 +1389,13 @@ bool VideoPlaybackTimestampFits(std::int64_t pts, std::int64_t duration) {
 VideoPlayback::VideoPlayback() : state_(std::make_shared<State>()) { std::thread(Worker, state_).detach(); }
 VideoPlayback::~VideoPlayback() { state_->stop.store(true); state_->generation.fetch_add(1); state_->changed.notify_one(); }
 std::uint64_t VideoPlayback::OpenFile(std::wstring path) { Command c; c.kind = CommandKind::Open; c.path = std::move(path); return Submit(state_, std::move(c)); }
+uct::ImmutableCorroborationPolicy VideoPlayback::CorroborationPolicy(
+    const std::shared_ptr<const VideoPlaybackFrame>& selected) const {
+    std::lock_guard lock(state_->mutex);
+    if (!IssuedFrame(*state_, selected) || !selected->decoderLease->savedFile ||
+        !VideoPlaybackTimestampFits(selected->pts100ns, selected->duration100ns)) return {};
+    return {selected->decoderLease, selected->sampleId, selected->pts100ns, selected->duration100ns};
+}
 std::uint64_t VideoPlayback::OpenArchive(std::shared_ptr<RecordingArchive> archive) { Command c; c.kind = CommandKind::Open; c.archive = std::move(archive); return Submit(state_, std::move(c)); }
 std::uint64_t VideoPlayback::OpenMemory(std::shared_ptr<const VideoMemorySource> source,
                                       std::shared_ptr<const void> keeper) {
