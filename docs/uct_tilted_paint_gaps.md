@@ -283,3 +283,17 @@ require production software paint, ScreenLines and nonempty Qt character bounds.
 The real CUDA/PCH-on contract passes 52 Qt rows with no skips in 11.18 seconds,
 including the equivalent resident worker matrix. These scoped checks and saved
 renders do not establish native NVDA or the exact earlier application session.
+
+The repaired production source `8fc3a9f09949e954139d24d215d35e9e171f9051`
+also passes the tracked background matrix: shipping compilation, CPU/PCH-OFF
+(162 passed, 12 optional skipped cases, zero unresolved) and CUDA/PCH-ON delta
+(14 passed, five optional codec skips, zero unresolved). Four passing CPU cases
+contain opt-in timing rows. The captured controller contract passes in 93.38 s;
+source equivalence passes with PCH OFF in 18.02 s and PCH ON in 14.79 s.
+The optional `native_app_control_fixture` target is excluded from the default
+build, so it was explicitly rebuilt against this source after the matrix;
+fresh exact app/recap cases then pass in 5.99 s and 0.38 s. The earlier matrix
+results for that older fixture binary are not used as current-source evidence.
+Per-attempt logs, ledger snapshots and binary/source hashes remain under the
+five-second work directory. GUI/NVDA, actual camera and release acceptance
+remain pending; this is background validation.

@@ -2264,6 +2264,15 @@ The same fixture distinguishes a seven-pixel projection-rounding error from
 a genuinely sub-threshold body. Post-fit finalization covers unfitted/fitted
 near-vertical single scalars and multi-letter words separately.
 
+The immutable rotation/quad-reference slots additionally compare independently
+fitted display crops through their original recognition frames. CPU and resident
+worker cases cover both tilt signs, perspective, changed ink, absent/crossed or
+oversized original frames and foreign source epochs. Positive CPU cases require
+actual software paint, positioned ScreenLines and Qt character bounds. This is
+model-free protocol coverage, not OCR spelling or native screen-reader acceptance.
+When validating app wiring, explicitly build `native_app_control_fixture` before
+its offscreen cases: that optional target is excluded from the default build.
+
 `uct_paddle_processing` includes `recognizerWidthPolicyKeepsBoundsAndOrderedGroups`,
 `recognizerWidthRectificationRetainsUsefulAspectSamples` and
 `recognizerWidthProfileRejectsRenamedFixedPlans`. `uct_paddle_cuda` includes
