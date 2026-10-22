@@ -762,6 +762,18 @@ private slots:
         }
     }
 
+    void unavailableRecapAnnouncesExistingFailureReason()
+    {
+        VideoTransport transport;announcementTarget=&transport;
+        VideoTransport::Snapshot snapshot;snapshot.source=VideoTransport::Source::Recap;
+        snapshot.sourceName=QStringLiteral("Live recap");snapshot.state=VideoTransport::State::Unavailable;
+        snapshot.diagnosticDetail=QStringLiteral("Finalize: native HRESULT 0x80030070");
+        transport.SetSnapshot(snapshot);
+        QTRY_COMPARE(announcements.size(),1);
+        QVERIFY(announcements.front().contains(QStringLiteral("Video unavailable")));
+        QVERIFY(announcements.front().contains(snapshot.diagnosticDetail));
+    }
+
     void onlySettledStateAnnouncesCurrentTimeAndDeduplicates()
     {
         VideoTransport transport;

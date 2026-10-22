@@ -10,6 +10,9 @@ failed cleanup resources; camera callers must acknowledge release only after
 its completed status. These development changes still require hardware gates.
 
 Current contents:
+- Zero-admission pressure segments are discarded without fake timeline credit;
+  later real segments can recover. Nonempty finalization/seal/publication errors
+  still latch, with explicit permanent-failure metadata distinct from native busy.
 - bounded heap-backed H.264 live recap segments and a five-minute time/byte
   ring independent of Record, reusing the native player through OpenMemory;
   no recap audio or media files. See [ownership and limits](../../docs/live_ram_recap.md).

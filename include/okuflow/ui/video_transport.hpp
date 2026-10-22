@@ -62,6 +62,8 @@ public:
     // True when activating the control issues its request now. A control
     // that holds focus stays enabled but inert while busy or unavailable.
     bool IsActionReady(const QWidget* control) const;
+    // Same source/busy gates for viewport commands, independent of collapse.
+    bool IsCommandReady(const QWidget* control) const;
     std::vector<QWidget*> FocusTargets() const;
     QSlider* timeline() const { return timeline_; }
     QPushButton* playPauseButton() const { return playPauseButton_; }

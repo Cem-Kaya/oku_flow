@@ -13,6 +13,9 @@ Its selected-video metadata includes the recap error and observed source
 dimensions/frame rate; the existing transport status exposes native failure
 detail without enabling an empty seek range. Pending Resume retains its play
 intent until genuine coded history at the held capture time is readable.
+Permanent failure or an unsupported source cancels an impossible pending Resume
+with the existing unavailable state/reason, retaining the exact held pixels,
+capture clock and Jump to live. Transient native-busy metadata keeps waiting.
 
 UCT's opt-in regional controller pacing supplements baseline full reads with
 one idle-only bounded region, without updating full timers or held acquisition

@@ -28,6 +28,12 @@ Encoder pressure, real camera stalls and codec unavailability are not replaced
 by duplicate frames or invented history. A byte-limited shorter span remains
 visible as its actual bounds. Jump to live waits for a new camera presentation.
 
+If Resume is waiting beyond the published tail when encoding permanently fails
+or the source is unsupported, it stops waiting and reports **Video unavailable**
+with the existing failure detail. The exact held pixels and capture clock stay
+owned, and Jump to live remains available. A temporarily busy native call does
+not cancel Resume. Already readable history retains its actual seek bounds.
+
 ## Encoding and memory ownership
 
 The clean Original producer supplies capture-owned pixels before stabilization,
@@ -45,6 +51,13 @@ Finalize, release of every mutable cursor, and immutable Seal. Encoder setup,
 encoding, native release and finalization run on this worker. The app never
 joins it to pause, seek, stop a camera or shut down. A stuck native call retains
 its complete owned closure and reports unavailable; capture continues.
+
+A segment for which strict encoder admission accepted no frames is discarded
+at the segment boundary as empty pressure work. It supplies no byte range,
+sample, timestamp or completion credit. A later writer can admit real frames.
+Once any frame was accepted, failed Stop, Seal or ring publication still latches
+the source until reset. `VideoRecapSnapshot::failed` reports permanent worker or
+latched error state separately from the temporary native-busy diagnostic text.
 
 The reviewed policy preserves native resolution through 3840×2160 (including
 portrait): at most 30 FPS, with 8 Mbps through 1080p-equivalent pixel count
@@ -260,3 +273,41 @@ presenter clone draw, or establish native GUI/screen-reader, physical-camera,
 long-soak, full Windows matrix or release acceptance. Combined application and
 tracked validation remain parent-owned. No owner app, camera, settings, audio
 endpoint or desktop action was used for this repair.
+
+## Collapsed commands and failure recovery validation (2026-10-22)
+
+The separate follow-up preserves the sequence-zero commit and archives a changed
+input red baseline: behavior-preserving snapshot extraction, a default-false
+failure field and the regression fixtures were present before the three fixes.
+The actual MainWindow viewport key event emitted no Freeze while collapsed;
+all three terminal-Resume rows stayed Buffering; the existing failure reason
+was missing from the announcement. A first writer with a private one-sample
+budget genuinely accepted zero frames, then native Stop returned `0xc00d4a44`
+and incorrectly latched the recap. The prior native GPU case still passed.
+
+After repair, the tracked Parallel-1 / GUI-excluded development selection passed
+**4 of 235**, with zero skips or unresolved failures:
+`native_app_recap_followup_offscreen`, `video_transport_contract`,
+`video_recap_native_gpu` and `video_recap_pressure_gpu`. The actual-app fixture
+compiled the production app status/resume/key-route code and passed seven Qt
+results, including all terminal data rows and transient-busy waiting. Transport
+passed 28 Qt results. Native nonempty finalization still retained `0x80030070`
+and unavailable history. Pressure recovery published exactly 60 actual coded
+pictures, acquisition IDs 60–119, in 38,729 compressed bytes, with each native
+PTS checked against its admitted capture clock and all existing caps intact.
+Queue/refusal counters include producer retry attempts; they are not a distinct
+camera-frame count.
+
+The first fixed app attempt lacked a held-frame presentation receipt in this
+presenter-free fixture. Its first Freeze worked; Resume correctly remained
+gated. That failure is retained. The existing test-only successful-presentation
+bookkeeping helper supplied that fixture receipt, then the changed app case
+passed once (0.36 s). The tracked runner reused the other three unchanged,
+fingerprint-matching passes (2.71 / 2.52 / 1.55 s), without repeating GPU work.
+Red/fixed source and binary hashes, patches and original logs remain under
+`Z:/Projects/OkuFlow/local-work-data/recap-repair-a2f009e4/followup/`.
+
+These are synthetic private-texture and Qt-offscreen results, not an observed
+pressure/statistics diagnosis of the owner's camera, a real presenter/camera
+producer run, native keyboard/UIA acceptance, a full matrix or release evidence.
+No owner instance, settings, camera, desktop or audio endpoint was used.

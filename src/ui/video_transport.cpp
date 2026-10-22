@@ -371,6 +371,8 @@ void VideoTransport::SetSnapshot(const Snapshot& snapshot)
     const bool changedDocument = snapshot_.sourceGeneration != snapshot.sourceGeneration ||
                                  snapshot_.source != snapshot.source;
     const bool changedState = changedDocument || snapshot_.state != snapshot.state ||
+        (snapshot.source == Source::Recap && snapshot.state == State::Unavailable &&
+         snapshot_.diagnosticDetail != snapshot.diagnosticDetail) ||
         snapshot_.sourceName != snapshot.sourceName ||
         (!snapshot.playing && snapshot.state != State::Seeking &&
          snapshot_.positionMs != snapshot.positionMs);
@@ -457,8 +459,14 @@ bool VideoTransport::ActionShown(const QWidget* control) const
 
 bool VideoTransport::IsActionReady(const QWidget* control) const
 {
+    return ActionShown(control) && IsCommandReady(control);
+}
+
+bool VideoTransport::IsCommandReady(const QWidget* control) const
+{
     return control && snapshot_.source != Source::None && !uiHidden_ &&
-        ActionShown(control) && control->isEnabled() &&
+        (control != muteButton_ || muteShown_) && (control != returnButton_ || returnShown_) &&
+        control->isEnabled() &&
         control->property("okuflowTransportGate").toInt() == static_cast<int>(Gate::Ready);
 }
 
@@ -603,8 +611,10 @@ void VideoTransport::AnnounceSettledState()
     if (!announcementPending_ || !isVisible() || snapshot_.source == Source::None ||
         snapshot_.state == State::Opening || snapshot_.state == State::Seeking) return;
     announcementPending_ = false;
-    const QString message = QStringLiteral("%1: %2, %3")
+    QString message = QStringLiteral("%1: %2, %3")
         .arg(sourceLabel_->accessibleName(), TranslateUi(StateText()), TimeText(snapshot_.positionMs));
+    if (snapshot_.source == Source::Recap && snapshot_.state == State::Unavailable &&
+        !snapshot_.diagnosticDetail.isEmpty()) message += QStringLiteral(". ") + snapshot_.diagnosticDetail;
     if (message == lastAnnouncement_) return;
     lastAnnouncement_ = message;
     QAccessibleAnnouncementEvent announcement(this, message);

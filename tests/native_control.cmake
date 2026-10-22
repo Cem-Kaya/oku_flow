@@ -23,4 +23,12 @@ if(OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE)
     set_tests_properties(native_app_control_offscreen PROPERTIES TIMEOUT 60 LABELS "headless;native-control-opt-in"
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+    add_test(NAME native_app_recap_followup_offscreen COMMAND native_app_control_fixture
+        collapsedRecapViewportSpaceKeepsFreezeResumeAndFocus
+        terminalRecapResumeRetainsHeldScene warmingRecapResumeStillWaitsForGenuineHistory)
+    set_tests_properties(native_app_recap_followup_offscreen PROPERTIES TIMEOUT 30 LABELS "headless;native-control-opt-in"
+        RESOURCE_LOCK okuflow_process_identity
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
+        REQUIRED_FILES "${PROJECT_SOURCE_DIR}/tests/native_app_control_fixture.cpp;${PROJECT_SOURCE_DIR}/src/ui/main_window.cpp;${PROJECT_SOURCE_DIR}/include/okuflow/ui/video_transport.hpp;${PROJECT_SOURCE_DIR}/src/ui/video_transport.cpp;${PROJECT_SOURCE_DIR}/src/app/app_video_playback.cpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/video_recap.hpp")
 endif()

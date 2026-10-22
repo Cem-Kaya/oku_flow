@@ -97,6 +97,7 @@ class ColorSchemePicker;
 struct MicrophoneCallbackTarget;
 struct CameraIngress;
 struct StartupWorkerTracker;
+struct VideoRecapSnapshot;
 struct MicrophoneWorkerState;
 struct VideoPlaybackFrame;
 struct VideoPlaybackSnapshot;
@@ -213,6 +214,7 @@ private:
     void ResetLiveRecap();
     bool OpenLiveRecapAt(std::int64_t pts100ns, bool play);
     void PollLiveRecap();
+    void ApplyLiveRecapSnapshot(const VideoRecapSnapshot& snapshot);
     bool PresentFrozenMediaScene();
     void RetainPresentedCameraScene(std::uint64_t sceneEpoch, std::uint64_t sceneSequence,
                                    std::optional<std::int64_t> committedCaptureClock100ns,
@@ -237,6 +239,7 @@ private:
     QJsonObject SelectedVideoState() const;
     bool SetSelectedVideoPlaying(bool playing);
 #if defined(OKUFLOW_VIDEO_DOCUMENT_TESTS)
+    void PollLiveRecapForTest(VideoRecapSnapshot snapshot);
     void SeedVideoDocumentForTest(const RecordingSessionInfo& session,
                                  std::shared_ptr<const VideoPlaybackFrame> frame,
                                  bool recording, bool playing);

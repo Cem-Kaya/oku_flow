@@ -4631,7 +4631,7 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
         if (watched == renderWidget_ && key->key() == Qt::Key_Space &&
             key->modifiers() == Qt::NoModifier && videoTransport_ &&
             videoTransport_->isVisible()) {
-            if (!key->isAutoRepeat() && videoTransport_->IsActionReady(videoTransport_->playPauseButton()))
+            if (!key->isAutoRepeat() && videoTransport_->IsCommandReady(videoTransport_->playPauseButton()))
                 emit videoTransport_->PlayPauseRequested();
             event->accept();
             return true;

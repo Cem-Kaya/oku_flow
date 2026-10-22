@@ -50,10 +50,17 @@ real initial zero while rejecting duplicates, backward/wrapped IDs and sequence
 restart across segments in the same epoch. Reset revokes that prior authority.
 The worker copies `VideoRecorder::LastError` before writer release and latches
 failed finalization/seal/publication without starting a queued successor writer.
+Only a segment with zero actual encoder admissions is discarded as empty
+pressure work, without publication or completion credit. Snapshot's `failed`
+bit derives from permanent worker/latched error state, independently of its
+temporary native-busy diagnostic text.
 The private `RamVideoRecap::SetWriterSetupForTest` friend seam installs an
 observer before any input; the GPU fixture uses the real bounded byte stream's
 oversized SetLength refusal to verify failed native outcomes cannot publish and
 their reason survives. It has no production setting/environment selector.
+The pressure fixture uses that same observer to constrain only its first
+writer's real backlog budget, then requires a normal successor's native count,
+capture PTS and bounded bytes; it grants no fabricated encoder completion.
 
 `VideoPlayback::OpenMemory` adds an immutable-memory source to the existing
 single native reader, preserving issued frame leases, same-frame reticketing,
@@ -69,6 +76,11 @@ LiveRecapWantsFrame and LiveOriginalRetentionId share bounded Original leases
 with independent recording. OpenLiveRecapAt/PollLiveRecap translate absolute
 rolling capture time to segment-local native seeks and reuse the existing
 transport. ReturnVideoToCamera restores saved camera geometry/control intent.
+`ApplyLiveRecapSnapshot` applies the worker receipt and refuses a pending exact
+hold Resume that permanent failure/unsupported input cannot satisfy. The held
+scene/clock and Jump to live remain owned; transient native busy state keeps
+waiting. The test-only `PollLiveRecapForTest` applies metadata under the current
+epoch without opening a decoder or publishing a synthetic segment.
 RetainPresentedCameraScene and PresentFrozenMediaScene preserve the actual
 successful scene/view for warmup Freeze without reapplying effects or claiming
 composited pixels as an independently acquired UCT frame/neighbour.
@@ -5858,6 +5870,10 @@ eight-entry reuse, exact copy leases and worker-only native import retirement.
 
 `VideoTransport::IsActionReady`, `SetFocusReturnTarget` and its focus/readiness
 helpers preserve semantic focus while a transiently unavailable action is inert.
+`IsCommandReady` keeps source/busy/availability gates separate from collapsed
+chrome. MainWindow viewport Space uses command readiness; `ActionShown` and Tab
+targets continue to describe visible controls only. Unavailable recap state
+announcements include the existing native diagnostic reason.
 `SeekBaseline` and `CommitSeek` use current/pending document time for relative
 keys, wheel and accessible increments, independently of the frozen inspection
 thumb. `AnnounceSettledState` coalesces only settled states and their current time.

@@ -129,7 +129,10 @@ void RecapWorker(std::shared_ptr<RamVideoRecap::State> s) {
         const auto result=native([&]{return writer->Stop();});
         const auto failure=writer->LastError();
         writer.reset(); // native ownership is confined to this worker
-        if (publish) {
+        // A pressure-only writer has no acquisition to finalize or publish.
+        // Stop still retires its native ownership, but an empty native outcome
+        // must not prevent the next bounded segment from accepting real input.
+        if (publish && segment && !segment->admissions.empty()) {
             const bool playable=result.HasPlayableVideo() && bytes && segment && !segment->admissions.empty();
             if(playable)segment->source=bytes->Seal();
             std::lock_guard lock(s->mutex);
@@ -281,6 +284,7 @@ VideoRecapSnapshot RamVideoRecap::Snapshot() const {
     result.latestCapture100ns=state_->latestCapture<0 || state_->origin<0 ? -1:state_->latestCapture-state_->origin;
     result.captureOrigin100ns=state_->origin;
     result.maximumNativeCallUs=state_->maximumNativeCallUs;result.pressure=state_->pressure;result.error=state_->error;
+    result.failed=state_->terminal || !state_->error.empty();
     const auto start=state_->nativeStartedNs.load();
     if(start && NowNs()-start>3'000'000'000)result.error="Live recap native encoder is still busy; capture continues.";
     return result;
