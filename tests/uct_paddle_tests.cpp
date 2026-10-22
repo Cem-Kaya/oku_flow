@@ -22,6 +22,7 @@
 #include <QFile>
 #include <QTemporaryDir>
 #include <QtTest>
+#include <cstring>
 #include <limits>
 #include <stdexcept>
 #include <mutex>
@@ -851,6 +852,130 @@ class PaddleTests final : public QObject
                         }
             }
         }
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
+    void gpuBatchedRectifyAndDecodeMatchPerSampleLaunch()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        int devices{};
+        if (cudaGetDeviceCount(&devices) != cudaSuccess || !devices)
+            QSKIP("No CUDA device.");
+        QImage image(96, 48, QImage::Format_ARGB32);
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x)
+                image.setPixelColor(x, y, QColor((x * 3 + y) % 256, (x * 5) % 256, (y * 7) % 256));
+        constexpr int canvas = 128, samples = 2, steps = 8, classes = 4;
+        std::array<gpu::Quad, samples> quads{};
+        quads[0] = {{4.25f, 6.5f, 40.f, 6.5f, 40.f, 28.f, 4.25f, 28.f}, 1.f, 64};
+        // The second crop crosses the left edge and uses a different valid width.
+        quads[1] = {{-2.f, 10.f, 50.f, 12.f, 48.f, 36.f, -1.f, 34.f}, .5f, 96};
+        const std::size_t samplePixels = std::size_t(canvas) * 48 * 3;
+        GpuBuffer<unsigned char> pixels(image.sizeInBytes());
+        GpuBuffer<gpu::Quad> boxes(quads.size());
+        GpuBuffer<float> single(samplePixels * samples), batched(samplePixels * samples);
+        FixtureStream stream;
+        QCOMPARE(cudaMemcpyAsync(pixels.data, image.constBits(), image.sizeInBytes(),
+                                 cudaMemcpyHostToDevice, stream.value), cudaSuccess);
+        QCOMPARE(cudaMemcpyAsync(boxes.data, quads.data(), sizeof(quads),
+                                 cudaMemcpyHostToDevice, stream.value), cudaSuccess);
+        for (int sample = 0; sample < samples; ++sample)
+            gpu::Rectify(pixels.data, image.bytesPerLine(), image.width(), image.height(),
+                         boxes.data, sample, single.data + sample * samplePixels, canvas, stream.value);
+        gpu::RectifyBatch(pixels.data, image.bytesPerLine(), image.width(), image.height(),
+                          boxes.data, 0, batched.data, canvas, samples, stream.value);
+        QCOMPARE(cudaGetLastError(), cudaSuccess);
+        std::vector<float> singleHost(samplePixels * samples), batchHost(samplePixels * samples);
+        QCOMPARE(cudaMemcpyAsync(singleHost.data(), single.data, singleHost.size() * sizeof(float),
+                                 cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+        QCOMPARE(cudaMemcpyAsync(batchHost.data(), batched.data, batchHost.size() * sizeof(float),
+                                 cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+        QCOMPARE(cudaStreamSynchronize(stream.value), cudaSuccess);
+        for (std::size_t i = 0; i < singleHost.size(); ++i) {
+            quint32 left{}, right{};
+            std::memcpy(&left, &singleHost[i], sizeof(left));
+            std::memcpy(&right, &batchHost[i], sizeof(right));
+            QCOMPARE(left, right); // same GPU formula, exact bits, no added epsilon
+        }
+        std::vector<float> probabilities(samples * steps * classes, .02f);
+        const int firstIds[steps]{1, 1, 0, 2, 2, 3, 0, 1};
+        const int secondIds[steps]{3, 0, 2, 2, 1, 1, 1, 0};
+        for (int t = 0; t < steps; ++t) {
+            probabilities[(0 * steps + t) * classes + firstIds[t]] = .8f;
+            probabilities[(1 * steps + t) * classes + secondIds[t]] = .7f;
+        }
+        // Equal top values take the lower class index, matching the scalar reduction.
+        probabilities[(0 * steps + 3) * classes + 1] = .8f;
+        GpuBuffer<float> logits(probabilities.size()), singleScores(samples * steps), batchScores(samples * steps);
+        GpuBuffer<int> singleIds(samples * steps), batchIds(samples * steps), singleCounts(samples), batchCounts(samples);
+        GpuBuffer<gpu::Token> singleTokens(samples * steps), batchTokens(samples * steps);
+        auto decodeBoth = [&](bool corruptSecond) {
+            auto values = probabilities;
+            if (corruptSecond) values[(1 * steps + 2) * classes + 0] = std::numeric_limits<float>::quiet_NaN();
+            QCOMPARE(cudaMemcpyAsync(logits.data, values.data(), values.size() * sizeof(float),
+                                     cudaMemcpyHostToDevice, stream.value), cudaSuccess);
+            for (int sample = 0; sample < samples; ++sample)
+                gpu::Decode(logits.data + sample * steps * classes, steps, classes, boxes.data, sample,
+                            canvas, singleIds.data + sample * steps, singleScores.data + sample * steps,
+                            singleTokens.data + sample * steps, singleCounts.data + sample, stream.value);
+            gpu::DecodeBatch(logits.data, steps, classes, boxes.data, 0, canvas, batchIds.data,
+                             batchScores.data, batchTokens.data, batchCounts.data, samples, stream.value);
+            QCOMPARE(cudaGetLastError(), cudaSuccess);
+        };
+        decodeBoth(false);
+        std::vector<int> singleIdHost(samples * steps), batchIdHost(samples * steps), singleCountHost(samples), batchCountHost(samples);
+        std::vector<float> singleScoreHost(samples * steps), batchScoreHost(samples * steps);
+        std::vector<gpu::Token> singleTokenHost(samples * steps), batchTokenHost(samples * steps);
+        auto copyDecode = [&] {
+            QCOMPARE(cudaMemcpyAsync(singleIdHost.data(), singleIds.data, singleIdHost.size() * sizeof(int),
+                                     cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+            QCOMPARE(cudaMemcpyAsync(batchIdHost.data(), batchIds.data, batchIdHost.size() * sizeof(int),
+                                     cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+            QCOMPARE(cudaMemcpyAsync(singleScoreHost.data(), singleScores.data, singleScoreHost.size() * sizeof(float),
+                                     cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+            QCOMPARE(cudaMemcpyAsync(batchScoreHost.data(), batchScores.data, batchScoreHost.size() * sizeof(float),
+                                     cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+            QCOMPARE(cudaMemcpyAsync(singleCountHost.data(), singleCounts.data, singleCountHost.size() * sizeof(int),
+                                     cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+            QCOMPARE(cudaMemcpyAsync(batchCountHost.data(), batchCounts.data, batchCountHost.size() * sizeof(int),
+                                     cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+            QCOMPARE(cudaMemcpyAsync(singleTokenHost.data(), singleTokens.data, singleTokenHost.size() * sizeof(gpu::Token),
+                                     cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+            QCOMPARE(cudaMemcpyAsync(batchTokenHost.data(), batchTokens.data, batchTokenHost.size() * sizeof(gpu::Token),
+                                     cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+            QCOMPARE(cudaStreamSynchronize(stream.value), cudaSuccess);
+        };
+        copyDecode();
+        for (int i = 0; i < samples; ++i) QCOMPARE(singleCountHost[std::size_t(i)], batchCountHost[std::size_t(i)]);
+        for (std::size_t i = 0; i < singleIdHost.size(); ++i) QCOMPARE(singleIdHost[i], batchIdHost[i]);
+        for (std::size_t i = 0; i < singleScoreHost.size(); ++i) {
+            quint32 left{}, right{};
+            std::memcpy(&left, &singleScoreHost[i], sizeof(left));
+            std::memcpy(&right, &batchScoreHost[i], sizeof(right));
+            QCOMPARE(left, right);
+        }
+        for (int sample = 0; sample < samples; ++sample) {
+            QCOMPARE(singleCountHost[std::size_t(sample)] > 0, true);
+            for (int token = 0; token < singleCountHost[std::size_t(sample)]; ++token) {
+                const auto &left = singleTokenHost[std::size_t(sample) * steps + token];
+                const auto &right = batchTokenHost[std::size_t(sample) * steps + token];
+                QCOMPARE(left.id, right.id);
+                QCOMPARE(left.first, right.first);
+                QCOMPARE(left.last, right.last);
+                quint32 leftBits{}, rightBits{};
+                std::memcpy(&leftBits, &left.confidence, sizeof(leftBits));
+                std::memcpy(&rightBits, &right.confidence, sizeof(rightBits));
+                QCOMPARE(leftBits, rightBits);
+            }
+        }
+        // A non-finite score refuses only that sample. The other sample stays exact.
+        decodeBoth(true);
+        copyDecode();
+        QCOMPARE(singleCountHost[0], batchCountHost[0]);
+        QCOMPARE(singleCountHost[1], -1);
+        QCOMPARE(batchCountHost[1], -1);
+        for (int t = 0; t < steps; ++t) QCOMPARE(singleIdHost[std::size_t(t)], batchIdHost[std::size_t(t)]);
 #else
         QSKIP("CUDA adapter not compiled.");
 #endif

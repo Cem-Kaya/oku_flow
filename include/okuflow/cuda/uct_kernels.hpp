@@ -87,4 +87,11 @@ void Rectify(const void *image, std::size_t pitch, int width, int height, const 
              int index, float *out, int cropWidth, cudaStream_t stream);
 void Decode(const float *probabilities, int steps, int classes, const Quad *quads, int index,
             int cropWidth, int *ids, float *scores, Token *tokens, int *count, cudaStream_t stream);
+// One launch for a contiguous batch. Arithmetic, tie-break and output layout match
+// calling Rectify/Decode once per sample. samples is the recognizer batch, at most 16.
+void RectifyBatch(const void *image, std::size_t pitch, int width, int height, const Quad *quads,
+                  int first, float *out, int cropWidth, int samples, cudaStream_t stream);
+void DecodeBatch(const float *probabilities, int steps, int classes, const Quad *quads, int first,
+                 int cropWidth, int *ids, float *scores, Token *tokens, int *count, int samples,
+                 cudaStream_t stream);
 } // namespace okuflow::uct::gpu

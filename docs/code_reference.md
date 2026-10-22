@@ -730,8 +730,11 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   first-party bilinear BGR normalization, connected-component/PCA regions,
   padded rectification and confidence-filtered CTC word spans. Spans are
   approximate, not exact glyph geometry. `gpu::{Normalize,Detect,RecognitionWindows,Rectify,
-  Decode,Probe}` in `uct_kernels` implement device equivalents using
+  RectifyBatch,Decode,DecodeBatch,Probe}` in `uct_kernels` implement device equivalents using
   `gpu::{Component,Quad,Token}` with finite-value checks and bounded outputs.
+  The batch launches use the same bilinear sample, argmax tie-break and CTC
+  compact as one call per crop. The production recognizer copies each batch's
+  counts, quads and tokens in three transfers.
 - `CreateDefaultRecognizer` delegates to `CreateAutomaticRecognizer`:
   TensorRT, Paddle CPU, Windows. The candidate-vector overload supports exact
   fallback tests. Private `AutomaticRecognizer` retires unavailable/failing

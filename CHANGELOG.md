@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Launch each recognition batch's rectification and CTC decode as one grid.
+  The arithmetic, argmax tie-break and token compact match the per-crop
+  kernels. Counts, quads and tokens for that batch move in three copies.
+
 - Overlap one TensorRT recognition submission group with the next on the same
   stream. Two pinned metadata slots, bounded by the existing recognizer output
   ceiling, keep cancellation to a drain of at most those groups. Text,

@@ -428,6 +428,110 @@ __global__ void compact(int *ids, float *scores, int steps, const Quad *quads, i
     }
     *count = n;
 }
+// Same per-pixel body as rectify. blockIdx.y selects the sample.
+__global__ void rectifyBatch(const unsigned char *pixels, std::size_t pitch, int w, int h,
+                             const Quad *quads, int first, float *out, int ow, int samples)
+{
+    const int sample = blockIdx.y;
+    if (sample >= samples)
+        return;
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= ow * 48)
+        return;
+    const auto q = quads[first + sample];
+    const int x = i % ow, y = i / ow, valid = min(ow, q.validWidth);
+    const float u = (x + .5f) / valid, v = (y + .5f) / 48;
+    const float sx = q.xy[0] * (1 - u) * (1 - v) + q.xy[2] * u * (1 - v) + q.xy[4] * u * v +
+                     q.xy[6] * (1 - u) * v - .5f;
+    const float sy = q.xy[1] * (1 - u) * (1 - v) + q.xy[3] * u * (1 - v) + q.xy[5] * u * v +
+                     q.xy[7] * (1 - u) * v - .5f;
+    float *sampleOut = out + sample * ow * 48 * 3;
+    for (int c = 0; c < 3; ++c)
+        sampleOut[c * ow * 48 + i] =
+            x >= valid ? 0 : (sample(pixels, pitch, w, h, sx, sy, c) / 255 - .5f) * 2;
+}
+// Same reduction and lower-index tie-break as argmax. One block per timestep and sample.
+__global__ void argmaxBatch(const float *probabilities, int steps, int classes, int *ids,
+                            float *scores, int samples)
+{
+    const int sample = blockIdx.y;
+    const int t = blockIdx.x;
+    if (sample >= samples || t >= steps)
+        return;
+    const float *row = probabilities + (static_cast<long long>(sample) * steps + t) * classes;
+    __shared__ float vals[256];
+    __shared__ int indices[256];
+    float best = -1;
+    int id = 0;
+    bool bad = false;
+    for (int c = threadIdx.x; c < classes; c += blockDim.x)
+    {
+        const float v = row[c];
+        if (!isfinite(v) || v < 0 || v > 1.0001f)
+            bad = true;
+        if (v > best)
+        {
+            best = v;
+            id = c;
+        }
+    }
+    vals[threadIdx.x] = bad ? NAN : best;
+    indices[threadIdx.x] = id;
+    __syncthreads();
+    for (int delta = 128; delta; delta /= 2)
+    {
+        if (threadIdx.x < delta)
+        {
+            if (!isfinite(vals[threadIdx.x + delta]))
+                vals[threadIdx.x] = NAN;
+            else if (isfinite(vals[threadIdx.x]) &&
+                     (vals[threadIdx.x + delta] > vals[threadIdx.x] ||
+                      (vals[threadIdx.x + delta] == vals[threadIdx.x] &&
+                       indices[threadIdx.x + delta] < indices[threadIdx.x])))
+            {
+                vals[threadIdx.x] = vals[threadIdx.x + delta];
+                indices[threadIdx.x] = indices[threadIdx.x + delta];
+            }
+        }
+        __syncthreads();
+    }
+    if (!threadIdx.x)
+    {
+        ids[static_cast<long long>(sample) * steps + t] = indices[0];
+        scores[static_cast<long long>(sample) * steps + t] = vals[0];
+    }
+}
+__global__ void compactBatch(int *ids, float *scores, int steps, const Quad *quads, int first,
+                             int cropWidth, Token *tokens, int *count, int samples)
+{
+    const int sample = blockIdx.x * blockDim.x + threadIdx.x;
+    if (sample >= samples)
+        return;
+    int *sampleIds = ids + static_cast<long long>(sample) * steps;
+    float *sampleScores = scores + static_cast<long long>(sample) * steps;
+    Token *sampleTokens = tokens + static_cast<long long>(sample) * steps;
+    int n = 0, previous = -1;
+    const int limit =
+        min(steps, static_cast<int>(ceilf(steps * min(cropWidth, quads[first + sample].validWidth) /
+                                          static_cast<float>(cropWidth))));
+    for (int t = 0; t < limit; ++t)
+    {
+        if (!isfinite(sampleScores[t]))
+        {
+            count[sample] = -1;
+            return;
+        }
+        if (sampleIds[t])
+        {
+            if (sampleIds[t] == previous && n)
+                sampleTokens[n - 1].last = t;
+            else
+                sampleTokens[n++] = {sampleIds[t], t, t, sampleScores[t]};
+        }
+        previous = sampleIds[t];
+    }
+    count[sample] = n;
+}
 } // namespace
 void Normalize(const void *p, std::size_t pitch, int w, int h, float *out, int ow, int oh,
                cudaStream_t s)
@@ -478,6 +582,23 @@ void Decode(const float *p, int steps, int classes, const Quad *quads, int index
 {
     argmax<<<steps, 256, 0, s>>>(p, steps, classes, ids, scores);
     compact<<<1, 1, 0, s>>>(ids, scores, steps, quads, index, cropWidth, tokens, count);
+}
+void RectifyBatch(const void *p, std::size_t pitch, int w, int h, const Quad *quads, int first,
+                  float *out, int ow, int samples, cudaStream_t s)
+{
+    if (samples < 1) return;
+    dim3 grid((ow * 48 + 255) / 256, samples);
+    rectifyBatch<<<grid, 256, 0, s>>>(static_cast<const unsigned char *>(p), pitch, w, h, quads,
+                                      first, out, ow, samples);
+}
+void DecodeBatch(const float *p, int steps, int classes, const Quad *quads, int first, int cropWidth,
+                 int *ids, float *scores, Token *tokens, int *count, int samples, cudaStream_t s)
+{
+    if (samples < 1 || steps < 1) return;
+    dim3 grid(steps, samples);
+    argmaxBatch<<<grid, 256, 0, s>>>(p, steps, classes, ids, scores, samples);
+    compactBatch<<<1, samples, 0, s>>>(ids, scores, steps, quads, first, cropWidth, tokens, count,
+                                       samples);
 }
 } // namespace okuflow::uct::gpu
 
