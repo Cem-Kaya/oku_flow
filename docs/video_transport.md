@@ -179,3 +179,22 @@ drag mapping/release/cancellation, keyboard/wheel behavior, native numeric/time
 accessibility and narrow minimum targets. It opens no camera, video, native
 window, microphone or AI request. Native focus, NVDA and visual acceptance remain
 separate serial desktop work.
+
+### Live-edge validation (2026-10-22)
+
+Frozen runtime source `8fdb8d2` compiled in the separate shipping build. The
+transport contract passed all 35 Qt results with zero failures/skips in both
+CPU/PCH-off and CUDA/PCH-on builds. It covers live marker pixels, right-end
+live intent during growing-history drags, ordinary saved-file endpoints,
+light/dark expired-hold marker pixels, truthful out-of-window time and no
+autonomous seek on eviction.
+
+The final CPU selection passed four cases: transport, both actual-app offscreen
+control cases and shared-source equivalence (26.49 seconds). PCH-on transport
+and equivalence passed two cases (16.52 seconds). These are scoped background
+results. An earlier broader run on `203cb3e` passed shipping compilation and
+the CUDA delta, but its CPU gate retained an unrelated `phone_camera_contract`
+failure: the owned-child fixture PID read as zero instead of 45408. Its cause
+is unresolved; the original attempt is archived and was not retried unchanged.
+The complete matrix is therefore not a pass. Native GUI, screen-reader and
+physical-camera acceptance remain unrun for this repair.
