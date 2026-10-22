@@ -5,13 +5,17 @@ A recognized spelling in the reading pane does not establish independent
 pixel proof, and a proved word can still be suppressed to protect adjacent
 original ink. None of the observations below establishes general OCR accuracy.
 
-## Actual application failure remains open
+## Reported application path and evidence scope
 
 The owner's primary report is functional: after opening/pausing the video,
 some button words remain raw **and are unavailable to the positioned screen
-reader**, even though Recognized Text contains their strings. This is an
-unresolved actual-application-path bug, not merely a font or plate appearance
-issue. The standalone direct-BF16 source replay below does not exercise the
+reader**, even though Recognized Text contains their strings. This was a
+functional application-path failure, not merely a font or plate appearance
+issue. The later bridge capture reproduced missing paint and duplicate
+positioned words, and the angle repair and controller replay below address
+that captured path. The exact prior owner session and native NVDA behavior
+remain unverified. The standalone direct-BF16 source replay below does not
+exercise the
 complete playing-to-paused transition, initial Windows OCR bridge, later GPU
 refresh, actual paint generation and positioned accessibility publication.
 Its all-drawn result does not close that report.
@@ -195,3 +199,39 @@ bridge image readbacks and no additional GPU image egress. The raw build,
 gate/Qt logs and receipts are under the private
 `uct-windows-angle-20261022` work directory. Corrected controller/UIA replay,
 combined shipping/PCH/CPU/CUDA checks and native acceptance remain separate.
+
+## Combined background validation of the repaired source
+
+Frozen production source `40a112d1becc6f3e7062e3d2d41f30209cd8ede4`
+passed the tracked `scripts/agent_build.bat` background matrix with Qt 6.12,
+VS 2022 and the private CUDA 12.9.86 toolchain. Shipping compilation passed;
+the CPU/PCH-OFF gate reported 162 passed, 12 optional skipped cases and zero
+unresolved results. Four passing cases contain opt-in Qt timing skips;
+the explicit timing selectors also passed. The CUDA/PCH-ON delta reported
+14 passed, five optional native-codec skips and zero unresolved results.
+Desktop fixtures were deliberately excluded, so this is partial validation,
+not the complete release gate.
+
+The root model contract passed in 36.96 s, native Windows OCR in 0.77 s and
+the hash-bound captured controller contract in 92.83 s. All required button
+paint and positioned-character assertions passed. Actual-app offscreen
+contracts passed in 5.96 s and 0.35 s, including recap Freeze/Resume and
+collapsed viewport Space. `shared_source_equivalence` passed with PCH OFF
+(15.81 s) and in an additional explicit PCH-ON CUDA selection (12.06 s).
+The first matrix's missing optional native-fixture executable refusal is
+retained; the target was explicitly built before the completed matrix.
+
+Logs, immutable per-attempt Qt/JUnit archives, ledgers, source tree and binary
+hash receipt are under
+`Z:/Projects/OkuFlow/local-work-data/uct-combined-40a112d-20261022/`.
+No native GUI, NVDA, physical-camera/presenter-clone, audible-device or
+five-minute soak acceptance follows from these background checks.
+
+The separate saved atlas crop also verifies actual sharp, solid-white `14`
+alongside its neighbouring words (4/4 focus words painted). Its retained
+`zoom-after.png` is in
+`uct-pause-proof-20261022-013629-770580a3-c7e6-4daa-8ebc-ee9b3e1e70dc/`
+under the same geometry evidence root. Faint source compression remains outside
+the replacement plates. This verifies that saved crop, not every earlier live
+publication state. See the [offline pipeline guide](uct_pipeline_guide.html)
+for the distinction between source pixels, accepted words and actual paint.

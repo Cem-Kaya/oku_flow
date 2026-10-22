@@ -51,8 +51,9 @@ it is not a contract for arbitrary video cadence. It never plays/seeks, requests
 a GPU adapter, submits OCR or opens audio endpoints. Missing native duration or
 neighbour fails without inference or policy expansion. The private Tr 9 source
 hash and the separate provenance/acceptance limits are documented in
-[initial paused video](../docs/uct_initial_paused_frame.md). This new optional
-fixture is unbuilt and unrun pending the parent resource grant.
+[initial paused video](../docs/uct_initial_paused_frame.md). The parent's tracked
+native Tr 9 run passed with selected PTS zero, real two-second sample duration,
+an issued 2000-ms following sample and unchanged selected lease ownership.
 
 `native_app_recap_followup_offscreen` selects three actual-app slots (including
 all terminal-refusal data rows): collapsed viewport Space Freeze/Resume/focus,

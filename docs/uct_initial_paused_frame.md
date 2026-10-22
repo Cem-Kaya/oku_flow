@@ -66,8 +66,18 @@ descriptor decision. It asserts the exact selected zero-frame ownership block,
 issuance, request, file and track remain unchanged, and the real 2000-ms neighbour
 qualifies using native two-second selected duration. No Play, seek stress,
 audio endpoint, model or GPU is used. Unknown duration or absent neighbour is a
-failure, not permission to infer metadata or enlarge production policy. This
-additive optional fixture is unbuilt/unrun pending parent resource coordination.
+failure, not permission to infer metadata or enlarge production policy.
+
+The parent built and ran this exact native diagnostic against the hash-bound
+Tr 9 file. It passed in 0.21 s: Media Foundation remained Paused at issued sample
+ID/PTS zero, reported a selected duration of 20,000,000 ticks (two seconds),
+and supplied the genuine following sample at PTS 20,000,000. Both frames were
+900x800; selected lease ownership remained unchanged and the sealed descriptor
+allowed the pair. The separate software extraction is not used as native
+duration evidence. Raw output, runtime-input hashes and the tracked attempt
+are archived under `uct-windows-angle-20261022/sparse-20261022-170029-656-0146e106*`.
+This establishes native sample availability and policy, not actual OCR accuracy
+or native screen-reader acceptance for that clip.
 
 ## Bounded saved-file cadence policy
 
