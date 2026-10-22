@@ -358,8 +358,9 @@ void OkuFlowApp::PollLiveRecap() {
         !d.heldLive && !d.pendingHold && !d.recapDeferredSeek)d.pendingSeekMs.reset();
     VideoTransport::Snapshot ui;ui.source=VideoTransport::Source::Recap;
     ui.sourceName=QCoreApplication::translate("OkuFlow","Live recap");
+    ui.diagnosticDetail=QString::fromStdString(r.error);
     if(d.transportDocumentId!=d.documentId){d.transportDocumentId=d.documentId;++d.transportGeneration;}
-    ui.sourceGeneration=d.transportGeneration;ui.playing=d.followingLive || d.playing || d.afterOperationPlay || d.waitingNextPart;
+    ui.sourceGeneration=d.transportGeneration;ui.playing=d.followingLive || d.playing || d.resumePending || d.afterOperationPlay || d.waitingNextPart;
     ui.firstMs=std::max<std::int64_t>(0,r.first100ns)/kTicksPerMs;
     ui.durationMs=std::max<std::int64_t>(0,r.end100ns)/kTicksPerMs;ui.seekable=r.available;
     ui.canPauseLive=d.followingLive && cameraFramePresented_ && presentedCameraScene_ && presentedCameraScene_->captureClock100ns>=0;
@@ -1574,6 +1575,11 @@ QJsonObject OkuFlowApp::SelectedVideoState() const
         result["recapDroppedFrames"]=static_cast<qint64>(doc.recapSnapshot.droppedFrames);
         result["recapAdmittedFrames"]=static_cast<qint64>(doc.recapSnapshot.admittedFrames);
         result["recapCompletedFrames"]=static_cast<qint64>(doc.recapSnapshot.completedFrames);
+        result["recapError"]=QString::fromStdString(doc.recapSnapshot.error);
+        result["recapSourceWidth"]=static_cast<int>(doc.recapWidth);
+        result["recapSourceHeight"]=static_cast<int>(doc.recapHeight);
+        result["recapFrameRateNumerator"]=static_cast<int>(doc.recapRateN);
+        result["recapFrameRateDenominator"]=static_cast<int>(doc.recapRateD);
         result["recapWarming"]=doc.recapSnapshot.warming;result["recapPressure"]=doc.recapSnapshot.pressure;
         result["recapRetainedOutsideWindow"]=doc.presented && doc.recapPresented &&
             doc.recapPresented->begin100ns+doc.presented->pts100ns<doc.recapSnapshot.first100ns;

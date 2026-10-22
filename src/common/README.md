@@ -13,6 +13,9 @@ Current contents:
 - bounded heap-backed H.264 live recap segments and a five-minute time/byte
   ring independent of Record, reusing the native player through OpenMemory;
   no recap audio or media files. See [ownership and limits](../../docs/live_ram_recap.md).
+  Initial camera sequence zero is valid; later duplicate/backward/wrapped IDs
+  remain invalid. Native finalization/seal/publication failures retain a reason
+  and latch input until source reset.
 - opt-in supplemental UCT region execution on the existing recognition worker,
   with full-deadline priority, current owned inputs and per-observation pending
   evidence; shadow-only observation remains separate. See

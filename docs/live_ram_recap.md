@@ -107,6 +107,20 @@ file ID is manufactured. The app translates segment-local PTS to the recap's
 capture timeline and switches to the next available segment at playback end.
 An obsolete seek cannot publish into a new request/source.
 
+Camera acquisition sequence zero is valid at the start of a source. Ring
+validation uses explicit prior-admission presence, then requires strictly
+advancing acquisition IDs within and across segments; duplicate, backward and
+wrapped IDs remain invalid. Source reset alone permits restarting that sequence.
+This repairs a camera-reachable empty-history failure: native encoding could
+finish the first segment successfully, but its real first acquisition ID zero
+was rejected by publication. Earlier one-based synthetic fixtures missed it.
+
+Failed native finalization retains its reason, rather than silently discarding
+the outcome. Failed finalization, seal or publication exposes no new segment
+and latches admission until source reset; pending inputs cannot start another
+encoder attempt. The transport's existing status tooltip/accessibility detail
+and selected-video metadata expose the reason without enabling an empty timeline.
+
 Manual live Freeze works before the first coded segment exists. A successful
 camera presentation retains the actual full scene texture/pixels and committed
 view transform in a bounded private lease. This is the scene before native
@@ -150,6 +164,7 @@ stopping/restarting the camera starts filling a new window.
 Production seams are registered as `video_memory_stream_contract`,
 `video_memory_native_h264`, `video_recap_contract`, `video_recap_native_codec`,
 `video_recap_native_4k30`,
+`video_recap_native_gpu`,
 and additions to `video_transport_contract` / the opt-in actual-app offscreen
 fixture. They cover stream bounds/sealing/cursors, native silent H.264 and
 keyframe/PTS evidence, whole-segment time/byte eviction and pinned leases,
@@ -219,3 +234,29 @@ screen-reader, physical camera quality, five-minute real-camera soak, hardware
 RAM encoder/decoder behavior, installer or release acceptance. Desktop acceptance remains
 parent-owned. New source keys have a separate complete model
 review record in [localization review](live_ram_recap_language_review.md).
+
+## Sequence-zero repair validation (2026-10-22)
+
+The isolated e2d433f-based repair first passed native RAM H.264 with one-based
+synthetic IDs, then retained a genuine red run with the camera's zero-based IDs:
+the pure ring rejected the first acquisition and the asynchronous GPU producer
+reported failed publication after native encoding had sealed all 65 pictures.
+The owner's supplied running-app stdout/stderr were both empty, so this is a
+reproduced camera-reachable cause, not a recovered error from that running app.
+
+After repair, the tracked Parallel-1 / GUI-excluded gate passed exactly
+`video_recap_contract` (0.07 s), `video_transport_contract` (2.59 s) and
+`video_recap_native_gpu` (2.82 s): **3 of 232**, with no skips or unresolved
+failures. The GPU case preserved all 65 real pictures and their capture hole,
+then published two zero-based asynchronous segments. Its separate actual
+bounded-stream refusal retained HRESULT `0x80030070`, no available history and
+no published segment. Original red receipts and the limited one-based pass
+remain alongside the fixed evidence under
+`Z:/Projects/OkuFlow/local-work-data/recap-repair-a2f009e4/evidence/`.
+
+This is scoped synthetic/offscreen evidence. Those three targets do not compile
+the app-only status/resume wiring, run the camera/CUDA producer or actual
+presenter clone draw, or establish native GUI/screen-reader, physical-camera,
+long-soak, full Windows matrix or release acceptance. Combined application and
+tracked validation remain parent-owned. No owner app, camera, settings, audio
+endpoint or desktop action was used for this repair.

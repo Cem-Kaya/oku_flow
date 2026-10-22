@@ -36,6 +36,17 @@ while a consumer holds a prior scene. `video_recap_native_4k30` separately
 checks a 65-frame full-resolution 4K30 CPU codec capability and actual compressed
 sample count/PTS, including a capture hole; its elapsed
 time is not sustained physical camera FPS or five-minute soak evidence.
+`video_recap_native_gpu` is a separate serial `gpu;codec` case using the existing
+production-pool-shaped shared D3D12 BGRA texture and ready fence. It tests actual
+StartMemory/AddGpuFrame, 65 real coded pictures with a capture-time hole, native
+PTS/counts, then two asynchronous zero-based source segments. A private observer
+also triggers the real bounded stream's oversized SetLength refusal; the native
+failed outcome must retain its error and publish no available history. This case
+opens no camera, HWND, audio endpoint or media file. It does not exercise the
+camera/CUDA producer or the presenter's actual clone draw. Hardware absence is
+a skip, never release acceptance.
+The pure ring includes real initial sequence zero, duplicate/lower/wrapped IDs,
+same-epoch segment restart refusal and source-reset restart coverage.
 Transport and opt-in actual-app offscreen rows exercise actual rolling bounds
 and exact Freeze before any encoded segment, without camera/audio endpoints.
 Model-free composition covers held CPU/GPU sampling, focus markers and rotation.

@@ -144,6 +144,77 @@ private slots:
         QCOMPARE(transport.timeline()->maximum(), 70000);
     }
 
+    void collapseKeepsPlaybackAndEscapeActionWithoutCommittingDrag()
+    {
+        FocusFixture fixture;
+        auto* transport = fixture.transport;
+        auto snapshot = Recording();
+        snapshot.source = VideoTransport::Source::Recap;
+        snapshot.state = VideoTransport::State::BehindLive;
+        snapshot.playing = true;
+        transport->SetSnapshot(snapshot);
+        QSignalSpy seeks(transport, &VideoTransport::SeekRequested);
+        QSignalSpy toggles(transport, &VideoTransport::PlayPauseRequested);
+        QSignalSpy jumps(transport, &VideoTransport::JumpToEndRequested);
+        auto* collapse = fixture.Button("videoCollapseButton");
+        QVERIFY(collapse && collapse->isCheckable());
+        QVERIFY(collapse->width() >= 44 && collapse->height() >= 44);
+        QCOMPARE(collapse->accessibleDescription(), QStringLiteral("Video controls"));
+        fixture.Focus(transport->timeline());
+        transport->timeline()->setSliderDown(true);
+        transport->timeline()->setSliderPosition(12000);
+        transport->SetCollapsed(true);
+        QApplication::processEvents();
+        QVERIFY(transport->isCollapsed());
+        QCOMPARE(QApplication::focusWidget(), collapse);
+        QVERIFY(!transport->timeline()->isVisibleTo(transport));
+        QVERIFY(transport->jumpButton()->isVisibleTo(transport));
+        QCOMPARE(transport->FocusTargets(), (std::vector<QWidget*>{collapse, transport->jumpButton()}));
+        QVERIFY(transport->snapshot().playing);
+        QCOMPARE(seeks.size(), 0);
+        QCOMPARE(toggles.size(), 0);
+        snapshot.positionMs = 47000;
+        snapshot.state = VideoTransport::State::Seeking;
+        transport->SetSnapshot(snapshot);
+        QVERIFY(transport->IsActionReady(transport->jumpButton()));
+        transport->jumpButton()->click();
+        QCOMPARE(jumps.size(), 1);
+        transport->SetUiHidden(true);
+        transport->SetUiHidden(false);
+        QVERIFY(transport->isCollapsed());
+        fixture.Focus(collapse);
+        fixture.Key(Qt::Key_Space);
+        QVERIFY(!transport->isCollapsed());
+        QVERIFY(transport->timeline()->isVisibleTo(transport));
+        QCOMPARE(transport->timeline()->value(), 47000);
+        QCOMPARE(seeks.size(), 0);
+        QCOMPARE(toggles.size(), 0);
+        QCOMPARE(collapse->accessibleName(), QStringLiteral("Hide UI"));
+    }
+
+    void nativeFailureDetailIsMetadataAndNeverEnablesEmptyHistory()
+    {
+        VideoTransport transport;
+        VideoTransport::Snapshot snapshot;
+        snapshot.source = VideoTransport::Source::Recap;
+        snapshot.state = VideoTransport::State::Unavailable;
+        snapshot.diagnosticDetail = QStringLiteral("Finalize: native HRESULT 0x80004005");
+        transport.SetSnapshot(snapshot);
+        auto* status = transport.findChild<QLabel*>(QStringLiteral("videoStateLabel"));
+        QCOMPARE(status->text(), QStringLiteral("Video unavailable"));
+        QCOMPARE(status->toolTip(), snapshot.diagnosticDetail);
+        QCOMPARE(status->accessibleDescription(), snapshot.diagnosticDetail);
+        QVERIFY(!transport.IsActionReady(transport.timeline()));
+        QVERIFY(transport.IsActionReady(transport.jumpButton()));
+        snapshot.diagnosticDetail = QStringLiteral("StartMemory: invalid native input");
+        transport.SetSnapshot(snapshot);
+        QCOMPARE(status->toolTip(), snapshot.diagnosticDetail);
+        snapshot.diagnosticDetail.clear();
+        transport.SetSnapshot(snapshot);
+        QVERIFY(status->toolTip().isEmpty());
+        QVERIFY(status->accessibleDescription().isEmpty());
+    }
+
     void recapFreezeWorksBeforeFirstEncodedSegmentAndRollingBoundsStayAbsolute()
     {
         VideoTransport transport;VideoTransport::Snapshot s;
@@ -333,8 +404,8 @@ private slots:
         QCOMPARE(label->textFormat(), Qt::PlainText);
         // Visual single-line order: primaries, timeline, secondaries.
         const auto targets = transport.FocusTargets();
-        QCOMPARE(targets.size(), std::size_t(5));
-        QCOMPARE(targets[3], transport.timeline());
+        QCOMPARE(targets.size(), std::size_t(6));
+        QCOMPARE(targets[4], transport.timeline());
         QCOMPARE(targets.back(),
                  transport.findChild<QPushButton*>(QStringLiteral("videoSaveFrameButton")));
     }
@@ -445,9 +516,9 @@ private slots:
         auto* transport = fixture.transport;
         auto* returnButton = fixture.Button("videoReturnCameraButton");
         const auto targets = transport->FocusTargets();
-        QCOMPARE(targets.size(), std::size_t(7));
+        QCOMPARE(targets.size(), std::size_t(8));
         QCOMPARE(targets.back(), returnButton);
-        fixture.Focus(fixture.Button("videoRewindButton"));
+        fixture.Focus(fixture.Button("videoCollapseButton"));
         for (std::size_t index = 1; index < targets.size(); ++index) {
             fixture.Key(Qt::Key_Tab);
             QCOMPARE(QApplication::focusWidget(), targets[index]);
@@ -585,6 +656,7 @@ private slots:
         for (auto* button : transport->findChildren<QPushButton*>()) {
             if (button->isHidden()) continue;
             QVERIFY(!button->icon().isNull()); // production resource path, not glyph fallback
+            if (button->objectName() == QStringLiteral("videoCollapseButton")) continue;
             const int centerY = button->mapTo(transport, button->rect().center()).y();
             QVERIFY(std::abs(centerY - lineY) <= 2);
         }

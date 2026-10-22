@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Add a small video-transport collapse/expand chevron with a full keyboard/touch
+  target. Keep playback running and Jump to live reachable while collapsed.
+- Accept the camera's real first acquisition ID zero in Live recap while
+  preserving strict subsequent sequence validation. Preserve failed segment
+  finalization reasons and expose them with the existing status metadata.
+
 - Commit immutable UCT refinement words together with their complete protection;
   a late unsafe cut or storage limit leaves the previous candidate state intact.
   Refuse optional regional changes whose conservative punctuation pixels would

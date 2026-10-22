@@ -46,6 +46,7 @@ public:
         bool canSaveFrame{};
         bool canReturnToCamera{true};
         QString sourceName;
+        QString diagnosticDetail; // Native failure metadata; not a translated state key.
         quint64 sourceGeneration{};
     };
 
@@ -53,6 +54,8 @@ public:
     void SetSnapshot(const Snapshot& snapshot);
     const Snapshot& snapshot() const { return snapshot_; }
     void SetUiHidden(bool hidden);
+    void SetCollapsed(bool collapsed);
+    bool isCollapsed() const { return collapsed_; }
     // Keyboard focus held inside the bar moves here when the bar hides,
     // instead of to whichever control Qt would pick next.
     void SetFocusReturnTarget(QWidget* target);
@@ -110,6 +113,7 @@ private:
     QPushButton* returnButton_{};
     QPushButton* saveFrameButton_{};
     QPushButton* muteButton_{};
+    QPushButton* collapseButton_{};
     QWidget* secondaryRow_{};
     QHBoxLayout* mainLayout_{};
     QHBoxLayout* metadataLayout_{};
@@ -123,6 +127,8 @@ private:
     bool dragging_{};
     bool updating_{};
     bool uiHidden_{};
+    bool collapsed_{};
+    bool layoutCollapsed_{};
     bool secondariesBelow_{};
     bool muteShown_{true};
     bool returnShown_{true};

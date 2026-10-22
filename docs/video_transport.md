@@ -31,6 +31,15 @@ hours for long recordings and use
 the active locale's digits. The displayed selected time can exceed the verified
 seekable range while a live scene is pending; the slider never exceeds it.
 
+A small chevron in the metadata row collapses the transport controls. Its
+native keyboard/touch target remains 44 DIP. Collapse preserves the playback
+snapshot and running playback; it cancels an unfinished drag without seeking.
+The source/status and jump action remain visible, so Jump to live is still
+available while native work is pending. Expanding restores the current timeline.
+The state survives the application's global UI hide/show for this session.
+The button reuses the translated `Hide UI` / `Show UI` action names with
+`Video controls` as its accessible description; no new translation keys are added.
+
 The step-forward icon (`>>`) requests Jump to live for the selected ongoing
 recording, and Jump to end
 for a selected saved video. It never changes speed. Resume continues from the
@@ -49,6 +58,8 @@ source label and a document `sourceGeneration`. `Source::None` hides the bar.
 Changing source or generation cancels an unfinished drag. `SetUiHidden` retains
 the snapshot while hiding the bar; MainWindow returns transport focus to the
 viewport when the user hides the UI.
+Native failure detail is metadata on the existing status tooltip and accessible
+description. It never enables an empty timeline or changes its verified bounds.
 
 `SeekRequested(qint64)`, `PlayPauseRequested`, `JumpToEndRequested`,
 `ReturnToCameraRequested`, `SaveFrameRequested` and `MutedChanged(bool)` are
@@ -67,7 +78,8 @@ and pause while the slider has keyboard focus.
 
 ## Keyboard and accessibility
 
-Tab order follows the row: rewind, play, jump, timeline, save, mute and return.
+Tab order begins with the chevron, then follows the row: rewind, play, jump,
+timeline, save, mute and return. Collapsed order is chevron then jump.
 MainWindow
 bridges it with the existing corner, inspector and annotation regions. F6 moves
 between those regions and the transport. Space toggles playback only in the

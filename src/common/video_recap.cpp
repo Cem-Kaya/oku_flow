@@ -34,17 +34,20 @@ bool VideoRecapRing::Append(std::shared_ptr<const VideoRecapSegment> segment) {
         segment->source->ByteSize()>segment->source->Capacity() ||
         segment->source->Capacity()>VideoRecapPolicy::kSegmentBytes || segment->source->Capacity() > byteLimit_) return false;
     std::int64_t pts=-1,capture=-1;std::uint64_t sequence{};
+    bool havePreviousAdmission=false;
     for(const auto& a:segment->admissions) {
         if(a.pts100ns<0 || a.pts100ns<=pts || a.capture100ns<segment->captureOrigin100ns ||
-            a.capture100ns<=capture || a.sequence<=sequence ||
+            a.capture100ns<=capture || (havePreviousAdmission && a.sequence<=sequence) ||
             a.pts100ns!=a.capture100ns-segment->captureOrigin100ns)return false;
         pts=a.pts100ns;capture=a.capture100ns;sequence=a.sequence;
+        havePreviousAdmission=true;
     }
     if(segment->admissions.front().pts100ns!=0 || pts!=segment->end100ns-segment->begin100ns)return false;
     segment=std::make_shared<const VideoRecapSegment>(*segment);
     std::lock_guard lock(mutex_);
     if (segment->epoch != epoch_ || (!segments_.empty() &&
-        (segment->id <= segments_.back()->id || segment->begin100ns <= segments_.back()->end100ns))) return false;
+        (segment->id <= segments_.back()->id || segment->begin100ns <= segments_.back()->end100ns ||
+         segment->admissions.front().sequence <= segments_.back()->admissions.back().sequence))) return false;
     const auto bytes=segment->source->Capacity();
     while (!segments_.empty() && (segments_.size()>=VideoRecapPolicy::kSegments || bytes_ > byteLimit_-bytes ||
         segments_.front()->end100ns < segment->end100ns-window100ns_)) {
@@ -99,6 +102,7 @@ struct RamVideoRecap::State {
     std::int64_t maximumNativeCallUs{};
     std::atomic<std::int64_t> nativeStartedNs{};
     std::string error; bool pressure{}, terminal{};
+    std::function<void(VideoRecorder&)> writerSetupForTest;
     VideoRecapRing ring;
 };
 namespace {
@@ -123,14 +127,20 @@ void RecapWorker(std::shared_ptr<RamVideoRecap::State> s) {
     const auto finish=[&](bool publish) {
         if (!writer) return;
         const auto result=native([&]{return writer->Stop();});
+        const auto failure=writer->LastError();
         writer.reset(); // native ownership is confined to this worker
-        if (publish && result.HasPlayableVideo() && bytes && segment && !segment->admissions.empty()) {
-            segment->source=bytes->Seal();
+        if (publish) {
+            const bool playable=result.HasPlayableVideo() && bytes && segment && !segment->admissions.empty();
+            if(playable)segment->source=bytes->Seal();
             std::lock_guard lock(s->mutex);
-            if (generation==s->generation && !s->stop.load() && segment->source && s->ring.Append(segment)) {
-                ++s->completed;s->completedFrames+=segment->admissions.size();
+            if(generation==s->generation && !s->stop.load()) {
+                if(!playable) s->error=failure.empty()
+                    ? "Live recap finalization produced no playable segment (HRESULT " + std::to_string(result.hresult) + ")."
+                    : failure;
+                else if(!segment->source) s->error="Live recap finalized bytes could not be sealed after writer release.";
+                else if(!s->ring.Append(segment)) s->error="Live recap segment failed bounded timeline/identity validation.";
+                else {++s->completed;s->completedFrames+=segment->admissions.size();}
             }
-            else if(generation==s->generation && !s->stop.load()) s->error="Live recap segment could not be published.";
         }
         bytes.reset();segment.reset();
     };
@@ -145,13 +155,20 @@ void RecapWorker(std::shared_ptr<RamVideoRecap::State> s) {
             }
             if(generation!=epoch){finish(false);generation=epoch;}
             if (!frame.width) {if(writer && writer->HasPendingGpuReads()) native([&]{return writer->PollGpuInputReads(true);});continue;}
+            {std::lock_guard lock(s->mutex);if(generation!=s->generation || !s->error.empty())continue;}
             if (segment && frame.identity.captureClock100ns-segment->captureOrigin100ns>=VideoRecapPolicy::kSegment100ns)
                 finish(true);
+            // Finalization/publication failure latches this source. A queued
+            // successor must not silently start another encoder attempt.
+            {std::lock_guard lock(s->mutex);if(generation!=s->generation || !s->error.empty())continue;}
             if (!writer) {
                 const auto policy=VideoRecapPolicy::ForSize(frame.width,frame.height);
                 if(!policy)continue;
                 bytes=std::make_shared<VideoMemoryStream>(VideoRecapPolicy::kSegmentBytes);
                 writer=std::make_unique<VideoRecorder>();
+                std::function<void(VideoRecorder&)> setup;
+                {std::lock_guard lock(s->mutex);setup=s->writerSetupForTest;}
+                if(setup)setup(*writer);
                 if (!native([&]{return writer->StartMemory(bytes,frame.width,frame.height,policy->fps,1,policy->bitrate,
                     frame.gpu.IsValid()?&frame.gpu:nullptr);})) {
                     {std::lock_guard lock(s->mutex);if(generation==s->generation)s->error=writer->LastError();++s->dropped;}
@@ -205,6 +222,11 @@ void RecapWorker(std::shared_ptr<RamVideoRecap::State> s) {
 }
 RamVideoRecap::RamVideoRecap():state_(std::make_shared<State>()){std::thread(RecapWorker,state_).detach();}
 RamVideoRecap::~RamVideoRecap(){state_->stop.store(true);state_->changed.notify_one();}
+bool RamVideoRecap::SetWriterSetupForTest(std::function<void(VideoRecorder&)> setup) {
+    std::lock_guard lock(state_->mutex);
+    if(state_->lastQueued>=0 || state_->stop.load())return false;
+    state_->writerSetupForTest=std::move(setup);return true;
+}
 void RamVideoRecap::SetDurationMinutes(int minutes) {
     state_->ring.SetWindow(std::clamp(minutes,1,5)*60LL*10'000'000);
 }

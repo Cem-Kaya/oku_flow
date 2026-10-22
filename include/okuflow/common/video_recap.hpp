@@ -82,6 +82,9 @@ public:
     std::shared_ptr<const VideoRecapSegment> Acquire(std::int64_t target100ns) const;
     VideoRecapSnapshot Snapshot() const;
 private:
+    friend struct RamVideoRecapTestAccess;
+    // Private fixture seam, installed before input. No production selector.
+    bool SetWriterSetupForTest(std::function<void(VideoRecorder&)> setup);
     std::shared_ptr<State> state_;
 };
 } // namespace okuflow
