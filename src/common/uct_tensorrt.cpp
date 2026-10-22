@@ -34,6 +34,7 @@ bool TensorRtCropDiagnostic::TryCommit(Plan&& plan) noexcept
 #include <algorithm>
 #include <cmath>
 #include <cuda_runtime.h>
+#include <functional>
 #include <mutex>
 #include <stdexcept>
 #include <thread>
@@ -516,6 +517,19 @@ class Network
     nvinfer1::Dims shape_{};
     float *boundInput_{}, *boundOutput_{};
 };
+// The legacy profile queues batch-one calls in the same bounded group. The
+// wider profile executes that group as one neural tensor batch. One extra
+// group may be queued on the same stream. Two pinned slots are the whole
+// queue, not an unbounded pipeline. Peak pinned metadata bytes are
+// kMetadataSlots * submissionGroup * (sizeof(int) + sizeof(gpu::Quad)
+// + steps * sizeof(gpu::Token)). Both slots together must fit in the existing
+// recognizer output ceiling, outputLimit * sizeof(float): 256 MiB when the
+// recognizer batch is 1 or 8, and 1 GiB when it is 16. A slot is reused only
+// after its event has been synchronized and that group has been merged.
+constexpr int kRecognitionSubmissionGroup = 8;
+constexpr int kSubmissionLookahead = 1;
+constexpr int kMetadataSlots = kSubmissionLookahead + 1;
+static_assert(kMetadataSlots == 2, "The other in-flight slot is slot^1.");
 struct State
 {
     int device{};
@@ -536,6 +550,12 @@ struct State
     HostBuffer<int> hostCount, hostGroupWidths;
     HostBuffer<gpu::Quad> hostQuad;
     HostBuffer<gpu::Token> hostTokens;
+    // Lookahead metadata, distinct from the frozen descriptor upload in hostQuad.
+    cudaEvent_t groupEvents[kMetadataSlots]{};
+    HostBuffer<int> slotCount[kMetadataSlots];
+    HostBuffer<gpu::Quad> slotQuad[kMetadataSlots];
+    HostBuffer<gpu::Token> slotTokens[kMetadataSlots];
+    int slotTokenSteps[kMetadataSlots]{};
     DeviceBuffer<unsigned char> uploaded;
     QImage uploadPixels;
     AnalysisPool uploadPool;
@@ -545,13 +565,19 @@ struct State
     std::shared_ptr<State> retirementQuarantine;
     ~State()
     {
+        // Events on this stream are destroyed only after the stream is idle.
+        // RetireState has normally synchronized already; this second wait
+        // covers destruction without that handoff. Device buffers are members
+        // and are released after this body returns.
+        if (stream)
+            cudaStreamSynchronize(stream);
+        for (auto &event : groupEvents)
+            if (event)
+                cudaEventDestroy(event);
         if (stream)
             cudaStreamDestroy(stream);
     }
 };
-// The legacy profile queues batch-one calls in the same bounded group. The
-// wider profile executes that group as one neural tensor batch.
-constexpr int kRecognitionSubmissionGroup = 8;
 std::shared_ptr<AsyncCleanup> RetireState(std::shared_ptr<State> state)
 {
     if (state)
@@ -887,23 +913,170 @@ class TensorRtRecognizer final : public Recognizer
                     captured = {};
                 }
             }
-            for (int first = 0; first < count; first += submissionGroup)
-            {
-                if (cancelled.load())
-                {
+            // Zero crops do not queue recognition or a descriptor upload.
+            if (count > 0) {
+            int canvasCeiling = 1024;
+            if (hostWidths) {
+                canvasCeiling = 0;
+                for (int groupFirst = 0; groupFirst < count; groupFirst += submissionGroup) {
+                    const int groupWidth = hostWidths[groupFirst / submissionGroup];
+                    if (!recognizer_width::IsCanvas(groupWidth))
+                        throw std::runtime_error("Invalid ordered-group recognizer canvas.");
+                    canvasCeiling = std::max(canvasCeiling, groupWidth);
+                }
+            }
+            // Reserve the widest input before any enqueue. Reserve frees the old
+            // device buffer, which is illegal while a later group is in flight.
+            state_->recognizerInput.Reserve(static_cast<std::size_t>(canvasCeiling) * 48 * 3 *
+                                            static_cast<std::size_t>(state_->recognizerBatch));
+            if (!state_->groupEvents[0])
+                for (int created = 0; created < kMetadataSlots; ++created)
+                    Check(cudaEventCreateWithFlags(&state_->groupEvents[created], cudaEventDisableTiming));
+            struct GroupSlot {
+                bool occupied = false;
+                int first = 0, groupSize = 0, steps = 0, width = 0;
+            };
+            GroupSlot slots[kMetadataSlots]{};
+            int nextLaunchSlot = 0, primedBatch = 0, primedWidth = 0;
+            bool uploadCompleted = false, stop = false;
+            auto occupied = [&] {
+                for (const auto &group : slots)
+                    if (group.occupied) return true;
+                return false;
+            };
+            // A successful drain covers the descriptor H2D and every queued
+            // kernel. Completed() then lets cancellation release only inFlight.
+            // A failed drain throws and Retire() keeps the lease until sync.
+            auto drainSubmitted = [&] {
+                if (!occupied()) return;
+                profile.Wait(false, [&] { Check(cudaStreamSynchronize(state_->stream)); });
+                frozenUpload.Completed();
+                uploadCompleted = true;
+                for (auto &group : slots) group.occupied = false;
+            };
+            auto mergeGroup = [&](int metadataSlot) {
+                const GroupSlot group = slots[metadataSlot];
+                auto *groupCounts = state_->slotCount[metadataSlot].Get();
+                auto *groupQuads = state_->slotQuad[metadataSlot].Get();
+                auto *groupTokens = state_->slotTokens[metadataSlot].Get();
+                QElapsedTimer merge;
+                if (profile.Enabled()) merge.start();
+                for (int sample = 0; sample < group.groupSize; ++sample) {
+                    const int tokenCount = groupCounts[sample];
+                    const auto quad = groupQuads[sample];
+                    if (captureCrops) {
+                        TensorRtCropDiagnostic::Crop record;
+                        std::copy(std::begin(quad.xy), std::end(quad.xy), record.xy.begin());
+                        record.score = quad.score; record.validWidth = quad.validWidth;
+                        record.internalEdges = quad.internalEdges;
+                        // This group's event wait already confirmed CUDA completion.
+                        try {
+                            captured.regions.back().crops.push_back(record);
+                        } catch (const std::bad_alloc&) {
+                            captureCrops = false;
+                            captured = {};
+                        }
+                    }
+                    profile.CropDescriptor(quad.xy, quad.score, quad.validWidth,
+                                           quad.internalEdges, region, group.width);
+                    const auto *tokens = groupTokens + static_cast<std::size_t>(sample) * group.steps;
+                    if (tokenCount < 0)
+                        continue; // untrustworthy crop, same policy as CPU decoder
+                    if (tokenCount > group.steps)
+                        throw std::runtime_error("GPU CTC output exceeds capacity.");
+                    PaddleQuad box{};
+                    box.score = quad.score;
+                    box.internalEdges = quad.internalEdges;
+                    for (int k = 0; k < 4; ++k)
+                        box.points[k] = {quad.xy[k * 2], quad.xy[k * 2 + 1]};
+                    std::vector<PaddleToken> decoded;
+                    decoded.reserve(tokenCount);
+                    for (int k = 0; k < tokenCount; ++k)
+                        decoded.push_back(
+                            {tokens[k].id, tokens[k].first, tokens[k].last, tokens[k].confidence});
+                    const int validSteps = std::min(
+                        group.steps, static_cast<int>(std::ceil(group.steps * std::min(group.width, quad.validWidth) /
+                                                          static_cast<double>(group.width))));
+                    auto line = PaddleDecodeTokens(decoded, validSteps, box, assets_.dictionary);
+                    PaddleMergeRecognition(output.lines, std::move(line), region,
+                                           {image.width, image.height});
+                }
+                profile.Merge(profile.Enabled() ? merge.nsecsElapsed() / 1e6 : 0);
+                slots[metadataSlot].occupied = false;
+            };
+            std::function<void(int)> waitAndMerge;
+            waitAndMerge = [&](int metadataSlot) {
+                if (stop || !slots[metadataSlot].occupied) return;
+                // Host block on the oldest queued group. The next group's
+                // kernels may already be recorded on this stream. The elapsed
+                // time is recognition-stage queue latency, not an OCR update rate.
+                profile.Wait(false, [&] {
+                    Check(cudaEventSynchronize(state_->groupEvents[metadataSlot]));
+                });
+                if (!uploadCompleted) {
+                    frozenUpload.Completed();
+                    uploadCompleted = true;
+                }
+                if (cancelled.load()) {
+                    drainSubmitted();
                     output.cancelled = true;
                     output.lines.clear();
+                    stop = true;
                     cancelOwnedInput();
-                    return output;
+                    return;
                 }
-                const int width = hostWidths ? hostWidths[first/submissionGroup] : 1024;
+                mergeGroup(metadataSlot);
+            };
+            auto reserveGroupTokens = [&](int metadataSlot, int steps) {
+                const std::size_t outputLimit = (state_->recognizerBatch == 16 ? 256ull : 64ull) * 1024ull * 1024ull;
+                const std::size_t ceiling = outputLimit * sizeof(float);
+                int high[kMetadataSlots]{};
+                std::size_t tokenItems = 0;
+                for (int i = 0; i < kMetadataSlots; ++i) {
+                    high[i] = state_->slotTokenSteps[i];
+                    if (i == metadataSlot) high[i] = std::max(high[i], steps);
+                    tokenItems += static_cast<std::size_t>(high[i]) * static_cast<std::size_t>(submissionGroup);
+                }
+                const std::size_t bytes = tokenItems * sizeof(gpu::Token)
+                    + static_cast<std::size_t>(kMetadataSlots) * static_cast<std::size_t>(submissionGroup)
+                        * (sizeof(int) + sizeof(gpu::Quad));
+                if (bytes > ceiling)
+                    throw std::runtime_error("Recognition metadata exceeds the existing output ceiling.");
+                auto *stored = state_->slotTokens[metadataSlot].Reserve(
+                    static_cast<std::size_t>(steps) * static_cast<std::size_t>(submissionGroup));
+                state_->slotTokenSteps[metadataSlot] = high[metadataSlot];
+                return stored;
+            };
+            auto ensureDecodeBuffers = [&](int steps, int otherSlot) {
+                const std::size_t needed = static_cast<std::size_t>(steps) * static_cast<std::size_t>(state_->recognizerBatch);
+                const bool grow = state_->ids.Capacity() < needed || state_->scores.Capacity() < needed
+                    || state_->tokens.Capacity() < needed
+                    || state_->tokenCount.Capacity() < static_cast<std::size_t>(state_->recognizerBatch);
+                // Growing frees a buffer the other group's decode may still use.
+                if (grow && slots[otherSlot].occupied) waitAndMerge(otherSlot);
+                if (stop) return;
+                state_->ids.Reserve(needed);
+                state_->scores.Reserve(needed);
+                state_->tokens.Reserve(needed);
+                state_->tokenCount.Reserve(static_cast<std::size_t>(state_->recognizerBatch));
+            };
+            auto launchGroup = [&](int first) {
+                const int metadataSlot = nextLaunchSlot;
+                const int otherSlot = metadataSlot ^ 1;
+                const int width = hostWidths ? hostWidths[first / submissionGroup] : 1024;
                 if (!recognizer_width::IsCanvas(width))
                     throw std::runtime_error("Invalid ordered-group recognizer canvas.");
-                const std::size_t samplePixels = static_cast<std::size_t>(width) * 48 * 3;
                 const int groupSize = std::min(submissionGroup, count - first);
-                auto *crop = state_->recognizerInput.Reserve(
-                    samplePixels * state_->recognizerBatch);
-                auto *hostQuads = state_->hostQuad.Reserve(submissionGroup);
+                const int runBatch = std::min(state_->recognizerBatch, groupSize);
+                // setInputShape / output Reserve must not run under the other
+                // group's decode. Same-shape groups stay overlapped.
+                if (slots[otherSlot].occupied && (runBatch != primedBatch || width != primedWidth))
+                    waitAndMerge(otherSlot);
+                if (stop) return;
+                const std::size_t samplePixels = static_cast<std::size_t>(width) * 48 * 3;
+                auto *crop = state_->recognizerInput.Get();
+                auto *hostQuads = state_->slotQuad[metadataSlot].Reserve(submissionGroup);
+                auto *hostCounts = state_->slotCount[metadataSlot].Reserve(submissionGroup);
                 gpu::Token *hostTokens{};
                 int steps{};
                 for (int batchFirst = 0; batchFirst < groupSize; batchFirst += state_->recognizerBatch)
@@ -920,6 +1093,8 @@ class TensorRtRecognizer final : public Recognizer
                         recShape = state_->recognizer->Run(crop, width, 48, state_->stream,
                                                           profile, batchSize);
                     });
+                    primedBatch = batchSize;
+                    primedWidth = width;
                     if (recShape.nbDims != 3 || recShape.d[0] != batchSize ||
                         recShape.d[2] != assets_.dictionary.size() || recShape.d[1] <= 0)
                         throw std::runtime_error("GPU recognizer dictionary/output mismatch.");
@@ -927,18 +1102,19 @@ class TensorRtRecognizer final : public Recognizer
                         throw std::runtime_error("GPU recognizer step count changed within a group.");
                     steps = static_cast<int>(recShape.d[1]);
                     if (!hostTokens)
-                        hostTokens = state_->hostTokens.Reserve(
-                            static_cast<std::size_t>(steps) * submissionGroup);
+                        hostTokens = reserveGroupTokens(metadataSlot, steps);
                     const std::size_t sampleOutputs = static_cast<std::size_t>(steps) * recShape.d[2];
                     const std::size_t outputLimit = (state_->recognizerBatch == 16 ? 256ull : 64ull) * 1024 * 1024;
                     if (sampleOutputs > outputLimit / batchSize)
                         throw std::runtime_error("GPU recognizer batch output exceeds capacity.");
                     profile.Tensor(batchSize, state_->recognizerInput.Capacity() * sizeof(float),
                                    state_->recognizer->OutputCapacityBytes(), outputLimit * sizeof(float));
-                    auto *ids = state_->ids.Reserve(static_cast<std::size_t>(steps) * state_->recognizerBatch);
-                    auto *scores = state_->scores.Reserve(static_cast<std::size_t>(steps) * state_->recognizerBatch);
-                    auto *tokens = state_->tokens.Reserve(static_cast<std::size_t>(steps) * state_->recognizerBatch);
-                    auto *tokenCounts = state_->tokenCount.Reserve(state_->recognizerBatch);
+                    ensureDecodeBuffers(steps, otherSlot);
+                    if (stop) return;
+                    auto *ids = state_->ids.Get();
+                    auto *scores = state_->scores.Get();
+                    auto *tokens = state_->tokens.Get();
+                    auto *tokenCounts = state_->tokenCount.Get();
                     profile.Measure(TensorRtProfile::Ctc, state_->stream, [&] {
                         for (int sample = 0; sample < batchSize; ++sample) {
                             const int index = first + batchFirst + sample;
@@ -953,12 +1129,12 @@ class TensorRtRecognizer final : public Recognizer
                     });
                     profile.Measure(TensorRtProfile::Metadata, state_->stream, [&] {
                         for (int sample = 0; sample < batchSize; ++sample) {
-                            const int slot = batchFirst + sample, index = first + slot;
-                            Check(cudaMemcpyAsync(hostCount + slot, tokenCounts + sample, sizeof(int),
+                            const int sampleSlot = batchFirst + sample, index = first + sampleSlot;
+                            Check(cudaMemcpyAsync(hostCounts + sampleSlot, tokenCounts + sample, sizeof(int),
                                                   cudaMemcpyDeviceToHost, state_->stream));
-                            Check(cudaMemcpyAsync(hostQuads + slot, state_->quads.Get() + index,
+                            Check(cudaMemcpyAsync(hostQuads + sampleSlot, state_->quads.Get() + index,
                                                   sizeof(gpu::Quad), cudaMemcpyDeviceToHost, state_->stream));
-                            Check(cudaMemcpyAsync(hostTokens + static_cast<std::size_t>(slot) * steps,
+                            Check(cudaMemcpyAsync(hostTokens + static_cast<std::size_t>(sampleSlot) * steps,
                                                   tokens + static_cast<std::size_t>(sample) * steps,
                                                   steps * sizeof(gpu::Token),
                                                   cudaMemcpyDeviceToHost, state_->stream));
@@ -967,59 +1143,30 @@ class TensorRtRecognizer final : public Recognizer
                     profile.Transfer(static_cast<std::size_t>(batchSize) *
                         (sizeof(int) + sizeof(gpu::Quad) + steps * sizeof(gpu::Token)));
                 }
-                profile.Wait(false, [&] { Check(cudaStreamSynchronize(state_->stream)); }); // existing group completion wait
-                frozenUpload.Completed();
-                if (cancelled.load())
-                {
+                Check(cudaEventRecord(state_->groupEvents[metadataSlot], state_->stream));
+                slots[metadataSlot] = GroupSlot{true, first, groupSize, steps, width};
+            };
+            for (int first = 0; first < count; first += submissionGroup)
+            {
+                if (cancelled.load()) {
+                    drainSubmitted();
                     output.cancelled = true;
                     output.lines.clear();
+                    stop = true;
                     cancelOwnedInput();
                     return output;
                 }
-                QElapsedTimer merge;
-                if (profile.Enabled()) merge.start();
-                for (int slot = 0; slot < groupSize; ++slot)
-                {
-                    const int tokenCount = hostCount[slot];
-                    const auto quad = hostQuads[slot];
-                    if (captureCrops) {
-                        TensorRtCropDiagnostic::Crop record;
-                        std::copy(std::begin(quad.xy), std::end(quad.xy), record.xy.begin());
-                        record.score = quad.score; record.validWidth = quad.validWidth;
-                        record.internalEdges = quad.internalEdges;
-                        // This group's CUDA completion was already confirmed.
-                        try {
-                            captured.regions.back().crops.push_back(record);
-                        } catch (const std::bad_alloc&) {
-                            captureCrops = false;
-                            captured = {};
-                        }
-                    }
-                    profile.CropDescriptor(quad.xy, quad.score, quad.validWidth,
-                                           quad.internalEdges, region, width);
-                    const auto *tokens = hostTokens + static_cast<std::size_t>(slot) * steps;
-                    if (tokenCount < 0)
-                        continue; // untrustworthy crop, same policy as CPU decoder
-                    if (tokenCount > steps)
-                        throw std::runtime_error("GPU CTC output exceeds capacity.");
-                    PaddleQuad box{};
-                    box.score = quad.score;
-                    box.internalEdges = quad.internalEdges;
-                    for (int k = 0; k < 4; ++k)
-                        box.points[k] = {quad.xy[k * 2], quad.xy[k * 2 + 1]};
-                    std::vector<PaddleToken> decoded;
-                    decoded.reserve(tokenCount);
-                    for (int k = 0; k < tokenCount; ++k)
-                        decoded.push_back(
-                            {tokens[k].id, tokens[k].first, tokens[k].last, tokens[k].confidence});
-                    const int validSteps = std::min(
-                        steps, static_cast<int>(std::ceil(steps * std::min(width, quad.validWidth) /
-                                                          static_cast<double>(width))));
-                    auto line = PaddleDecodeTokens(decoded, validSteps, box, assets_.dictionary);
-                    PaddleMergeRecognition(output.lines, std::move(line), region,
-                                           {image.width, image.height});
-                }
-                profile.Merge(profile.Enabled() ? merge.nsecsElapsed() / 1e6 : 0);
+                if (slots[nextLaunchSlot].occupied) waitAndMerge(nextLaunchSlot);
+                if (stop) return output;
+                launchGroup(first);
+                if (stop) return output;
+                nextLaunchSlot = (nextLaunchSlot + 1) % kMetadataSlots;
+            }
+            for (int pending = 0; pending < kMetadataSlots; ++pending) {
+                const int metadataSlot = (nextLaunchSlot + pending) % kMetadataSlots;
+                waitAndMerge(metadataSlot);
+                if (stop) return output;
+            }
             }
             ++regionIndex;
             }
@@ -1052,7 +1199,15 @@ class TensorRtRecognizer final : public Recognizer
             if (output.inputFault && state_)
                 state_->inFlight.reset();
             else
+            {
+                // Copy/enqueue/event failures can leave the overlapped group
+                // queued. Drain before Retire releases device buffers. A failed
+                // drain still Retire()s, and that path keeps the lease until its
+                // own sync or process-lifetime quarantine.
+                if (state_ && state_->stream)
+                    cudaStreamSynchronize(state_->stream);
                 Retire();
+            }
             // Seal resource ownership before fallible diagnostic formatting.
             output.error = QString::fromUtf8(error.what());
             status_.detail = output.error;

@@ -6483,11 +6483,19 @@ passed to `CreateTensorRtRecognizer`, retains at most four exact owned image
 leases and the compact regions/quads already returned by detection. Its private
 `TensorRtCropDiagnosticAccess` binds replay to device pointer, extent, stride,
 source/frame/processing/history identity and detector hash. Replay uploads only
-compact descriptors and uses existing group completion waits. No automatic
+compact descriptors and waits for the oldest queued recognition group.
+Two pinned metadata slots overlap one submission group with the next on the
+same stream. Their peak bytes, including both slots' counts, quads and CTC
+tokens, must fit in the existing recognizer output ceiling. Cancellation and
+any enqueue, copy or event failure drain the queued groups before a buffer or
+input lease is released. No automatic
 backend constructs it, and it cannot cache/reuse text or authorize admission.
 The private `detail::FrozenUploadRetirement` (`src/common/uct_frozen_upload.hpp`)
 tracks a successfully queued descriptor H2D until `Completed()` follows the
-existing successful group wait. `Cancel()` transfers the exact entire State
+first successful wait of a recognition group queued after that upload.
+`recognizerGroupHostWaitMs` is the host wait on that group's event, not a
+second full-stream sync and not an end-to-end frame time. `Cancel()` transfers
+the exact entire State
 through `RetireState`/`AsyncCleanup` while the upload is pending: its owned input
 lease, pinned descriptor/token storage and engines survive until completion or
 the existing failed-cleanup quarantine. The caller retains State until the

@@ -199,6 +199,8 @@ private:
     int invalidWidths_{}, oversizedWidths_{};
     std::uint64_t requestedWidth_{}, usedWidth_{}, canvasWidth_{};
     std::unique_ptr<QCryptographicHash> cropHash_;
+    // groupWaitMs_ is host time blocked on the oldest queued recognition
+    // group. It is recognition-stage queue latency, not an OCR update rate.
     double detectorWaitMs_{}, groupWaitMs_{};
     bool enabled_{};
     std::vector<EventPair> events_;

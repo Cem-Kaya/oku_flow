@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Overlap one TensorRT recognition submission group with the next on the same
+  stream. Two pinned metadata slots, bounded by the existing recognizer output
+  ceiling, keep cancellation to a drain of at most those groups. Text,
+  confidence, batch shape and merge order stay on the existing path. This is
+  recognition-stage launch overlap, not an OCR cadence or video-FPS change.
+
 - Hide the entire video transport without leaving a filename/status strip.
   Its show/hide chevron now lives beside Custom Setup in the quick-mode corner
   controls, with keyboard access and viewport Freeze/Resume preserved.

@@ -30,7 +30,9 @@ eight, then one; batch eight can fall back to one. Diagnostics report the actual
 capacity rather than calling a fallback the requested mode. Dynamic profiles
 include their exact min/opt/max dimensions in new recognizer cache identities;
 old batch-one and detector plans are retained. Inputs remain owned through
-completion or quarantine, with cancellation between bounded groups.
+completion or quarantine. Cancellation is checked before each new submission
+group. At most one extra group is already queued, and those groups are drained
+before an input lease or device buffer is released.
 
 ## Memory and allocation
 
