@@ -958,20 +958,20 @@ class PaddleTests final : public QObject
             {{8.25f, 6.5f, 53.25f, 6.5f, 53.25f, 30.5f, 8.25f, 30.5f}, 1, 90},
             {{-4.5f, 40.25f, 120.5f, 40.25f, 120.5f, 64.25f, -4.5f, 64.25f}, 1, 250},
             {{100.75f, 10.5f, 165.75f, 10.5f, 165.75f, 34.5f, 100.75f, 34.5f}, 1, 130}}};
-        const std::array<int, 3> slots{2, 0, 1};
+        const std::array<int, 3> slotOrder{2, 0, 1};
         GpuBuffer<unsigned char> pixels(image.sizeInBytes());
         GpuBuffer<gpu::Quad> boxes(quads.size());
-        GpuBuffer<int> indices(slots.size());
+        GpuBuffer<int> indices(slotOrder.size());
         GpuBuffer<float> singleOut(3 * samplePixels), batchOut(3 * samplePixels);
         QCOMPARE(cudaMemcpyAsync(pixels.data, image.constBits(), image.sizeInBytes(),
                                  cudaMemcpyHostToDevice, stream.value), cudaSuccess);
         QCOMPARE(cudaMemcpyAsync(boxes.data, quads.data(), sizeof(quads),
                                  cudaMemcpyHostToDevice, stream.value), cudaSuccess);
-        QCOMPARE(cudaMemcpyAsync(indices.data, slots.data(), sizeof(slots),
+        QCOMPARE(cudaMemcpyAsync(indices.data, slotOrder.data(), sizeof(slotOrder),
                                  cudaMemcpyHostToDevice, stream.value), cudaSuccess);
         for (int s = 0; s < 3; ++s)
             gpu::Rectify(pixels.data, image.bytesPerLine(), image.width(), image.height(),
-                         boxes.data, slots[s], singleOut.data + s * samplePixels, canvas,
+                         boxes.data, slotOrder[s], singleOut.data + s * samplePixels, canvas,
                          stream.value);
         gpu::RectifyBatch(pixels.data, image.bytesPerLine(), image.width(), image.height(),
                           boxes.data, indices.data, 3, batchOut.data, canvas, stream.value);
