@@ -31,7 +31,7 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   This is not a new published Windows installer.
 - Development UCT retains tilted/perspective word geometry through ink fit and
   painting. Paused navigation can request bounded visible-region detail after
-  settling, up to six-times detector enlargement under the existing 960-pixel
+  settling, up to eight-times detector enlargement under the existing 960-pixel
   limit. See [geometry and detail repair](uct_oriented_detail_repair.md).
 - UCT advanced settings persist separate PP-OCRv6 detector/recognizer tiers
   for GPU (medium/medium by default) and CPU fallback (tiny/small).

@@ -2094,8 +2094,19 @@ and perspective, retaining zero image download on the resident path.
 The shared `uct_quad_reference_test_support.hpp` uses installed Segoe UI and
 first-party synthetic text. Optional real-image diagnostics can write directly
 to an absolute `OKUFLOW_UCT_PAUSE_OUTPUT_ROOT`, preserving the default when
-unset. See `docs/uct_oriented_detail_repair.md` for bounded six-times detail,
+unset. See `docs/uct_oriented_detail_repair.md` for bounded eight-times detail,
 private-image evidence and the distinction from native desktop acceptance.
+
+`ordinaryLabelsUseIndependentProofAndPaint` checks real preparation, CPU pixel
+registration, immutable admission and actual offscreen painted glyphs for mixed
+ASCII labels and isolated lookalikes. Duplicate pixels and changed source ink
+still fail proof. `ordinaryLabelsKeepPreparationGates` retains the score-range,
+seven-source-pixel, nonfinite-geometry and explicit backend-rejection gates.
+`pausedDetailGeometry` covers 8x clamp/context/ceil/alignment/image bounds and
+the unchanged tiny-axis minimum. `pausedDetailNormalization` checks the actual
+120×72-to-960×576 CPU tensor; `gpuAlgorithmsAndOwnedInputs` compares that 8x
+strided GPU crop with CPU normalization. These require their respective CPU
+and serial GPU gates; see [policy and evidence limits](../docs/uct_token_policy_and_detail.md).
 
 ### Paused UCT continuity and scene cuts
 

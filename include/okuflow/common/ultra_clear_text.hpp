@@ -253,13 +253,13 @@ struct BackendStatus {
 // samples the same source pixels and maps boxes to full-image pixels.
 struct DetailFocus {
     QRect regionPx;                    // requested visible source region
-    double maximumMagnification{1.0};  // detector enlargement bound, clamped to [1, 6]
+    double maximumMagnification{1.0};  // detector enlargement bound, clamped to [1, 8]
     int detectorLongEdge{960};         // [32, 960]; supplemental detector edge is 704 (source <=480)
     bool supplemental{};              // failure requests a later full read, not backend retirement
 };
 // Hard bound on visible-detail detector enlargement. Enlarging existing pixels
 // adds no source detail; it only gives the detector more pixels per glyph.
-inline constexpr double kMaximumDetailMagnification = 6.0;
+inline constexpr double kMaximumDetailMagnification = 8.0;
 // Detector boxes this close to an internal crop edge are incomplete. Shared
 // by backend merging and regional ownership (which adds detector jitter slack).
 inline constexpr double kDetailCropEdgeMarginPx = 8.0;
@@ -629,10 +629,10 @@ QVector<LineCheck> CheckLines(const QVector<LineReference>& lines, const ProbeFr
 // a correlation in [-1, 1], or nullopt when they share too little area.
 std::optional<double> SceneSimilarity(const ProbeFrame& a, const ProbeFrame& b);
 
-// True for tokens whose characters are commonly confused (0/O, 1/l/I, 5/S,
-// 8/B, 2/Z) when letters and digits mix in one word, or which contain
-// notation the MVP never claims (superscripts, math operators beyond simple
-// arithmetic). Such words fail closed to original pixels.
+// True for empty text or unsupported notation (non-ASCII digits, superscripts,
+// modifier letters and symbols outside ordinary punctuation). Ordinary letters
+// and ASCII digits, mixed or isolated, still require all normal evidence gates.
+// Unsupported tokens fail closed to original pixels.
 bool IsHighRiskToken(const QString& text);
 
 // --- Probe worker -------------------------------------------------------------

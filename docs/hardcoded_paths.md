@@ -1029,8 +1029,8 @@ pixels, nominal magnification 704/480 (22/15). The helper uses the immediately
 larger double via `nextafter` so reciprocal context sizing remains 480 rather
 than 481; detector axes retain 32-pixel alignment/minimum. Tiny short axes may
 interpolate more because of that minimum. Backend 8px/admission 10px margins
-remain source-crop pixels. Paused 960/6x and the existing engine profile remain
-unchanged. The first cost estimate is 750 ms, later max(previous, 2*duration+80 ms),
+remain source-crop pixels. Paused detail separately permits 960/8x; the existing
+engine profile is unchanged. The first cost estimate is 750 ms, later max(previous, 2*duration+80 ms),
 with a controller probe-period reserve and 80 ms execution reserve. It normally
 fits 1500 ms stable refreshes, not 350 ms demanded reads. Full deadlines/priority
 remain unchanged; execution rechecks steady-clock slack and counts overruns.
@@ -1084,8 +1084,11 @@ bytes in each device/host buffer. See [width validation](uct_recognizer_width.md
 ## Paused visible UCT detail bounds (2026-10-21)
 
 `UctTiming::immutableDetailSettleMs` defaults to 300 ms (clamped 0–60000).
-`immutableDetailMagnification` defaults to `kMaximumDetailMagnification` (6);
-region selection clamps it to 1–6 and retains the 960-pixel detector long edge.
+`immutableDetailMagnification` defaults to `kMaximumDetailMagnification` (8);
+region selection clamps it to 1–8 and retains the 960-pixel detector long edge.
+At 8x a tiny visible region gains context to at least a 120-source-pixel long
+edge, subject to image bounds. Detector axes floor to multiples of 32 for
+enlarged detail, with the existing 32-pixel minimum on tiny short axes.
 A detail pass needs at least 1.25 times the established detector scale.
 Coverage retains up to 32 attempted regions per immutable selection, including
 failed attempts, without eviction. A containing region at 90% of the requested

@@ -205,7 +205,7 @@ struct UctTiming {
     // Paused visible detail: a view must stay unchanged this long before one
     // bounded region of the retained selected/neighbour pair is re-detected.
     std::int64_t immutableDetailSettleMs{300};
-    // Detector enlargement bound for that region (clamped to [1, 6]).
+    // Detector enlargement bound for that region (clamped to [1, 8]).
     double immutableDetailMagnification{uct::kMaximumDetailMagnification};
 };
 

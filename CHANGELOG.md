@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- Allow ordinary UCT ASCII letter/digit labels and isolated lookalikes through
+  the existing confidence, independent-acquisition, geometry and pixel checks.
+  This removes the character veto that kept `GPT-6` original while prose could
+  be replaced; it adds no spelling correction or accuracy guarantee. Unsupported
+  notation stays protected. Raise paused visible-detail enlargement from 6x to
+  8x under the same 960-pixel detector limit; live regional limits stay 704/480.
+
 - Commit immutable UCT refinement words together with their complete protection;
   a late unsafe cut or storage limit leaves the previous candidate state intact.
   Refuse optional regional changes whose conservative punctuation pixels would
@@ -34,7 +41,7 @@
 - Increase opt-in live regional UCT detector density to an aligned 704-pixel
   longest edge over the same at-most 480-pixel source crop, using the existing
   engine. Preserve source-space safety margins, baseline full scans and the
-  paused 960/six-times path. This implements roughly 720 crop pixels, not 720p
+  paused 960-pixel path. This implements roughly 720 crop pixels, not 720p
   video; no speed or accuracy improvement has been measured.
 
 - Refuse supplemental UCT crop updates atomically when omissions, spelling
@@ -89,7 +96,7 @@
 - Preserve tilted/perspective UCT word geometry through recognition, local ink
   fit and glyph/background painting. Compare paused word evidence in its
   detected local frame while retaining strict pixel checks. Re-detect a
-  settled paused visible region at up to six-times enlargement under bounded
+  settled paused visible region at up to eight-times enlargement under bounded
   coverage and the existing detector size limit. Reconcile post-fit same-ink
   duplicates without merging adjacent identical tokens. Resume a settled
   detail request after presentation or backend recovery without adding polling

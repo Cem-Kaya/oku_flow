@@ -1773,11 +1773,9 @@ bool IsHighRiskToken(const QString& text)
     if (token.isEmpty()) {
         return true;
     }
-    static const QString kStandaloneConfusables = QStringLiteral("lI|10Oo");
-    if (token.size() == 1 && kStandaloneConfusables.contains(token.at(0))) {
-        return true;
-    }
-    static const QString kConfusableLetters = QStringLiteral("OoIlSsBZzGgq|");
+    // Ordinary letters and ASCII digits, including isolated lookalikes, use
+    // the same confidence, source-size and independent pixel-proof gates as
+    // other printed text. Character shape alone is not a rejection rule.
     static const QString kPlainPunctuation =
         QStringLiteral(".,;:!?'\"()[]-/&%$+=*#@’‘“”–—€£");
     // Underscores and Windows separators in a conventional file token are
@@ -1789,22 +1787,18 @@ bool IsHighRiskToken(const QString& text)
     for (qsizetype i = extensionAt + 1; fileToken && i < token.size(); ++i)
         fileToken = (token[i] >= QChar('a') && token[i] <= QChar('z')) ||
                     (token[i] >= QChar('A') && token[i] <= QChar('Z'));
-    bool hasDigit = false;
-    bool hasConfusableLetter = false;
     for (const QChar ch : token) {
         if (ch.isDigit()) {
             // Superscript/subscript and other non-ASCII digit forms are notation.
             if (ch.unicode() > 0x7f) {
                 return true;
             }
-            hasDigit = true;
             continue;
         }
         if (ch.isLetter()) {
             if (ch.category() == QChar::Letter_Modifier) {
                 return true;
             }
-            hasConfusableLetter = hasConfusableLetter || kConfusableLetters.contains(ch);
             continue;
         }
         if (!kPlainPunctuation.contains(ch) &&
@@ -1812,7 +1806,7 @@ bool IsHighRiskToken(const QString& text)
             return true; // math operators, superscripts, symbols: never claimed
         }
     }
-    return hasDigit && hasConfusableLetter;
+    return false;
 }
 
 // --- Scheduler ---------------------------------------------------------------

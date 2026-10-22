@@ -21,8 +21,12 @@ the reproduced single-keyframe AV1 seek failure, bounded progress policy and
 audio high-water fix, with silent native-decoder validation limits.
 
 [UCT tilted text and paused visible detail](uct_oriented_detail_repair.md) describes
-four-corner geometry, strict rotation-normalized proof and bounded six-times
+four-corner geometry, strict rotation-normalized proof and bounded eight-times
 visible-region refinement after paused pan/zoom.
+
+[UCT ordinary labels and paused 8x detail](uct_token_policy_and_detail.md)
+records the removal of ASCII lookalike vetoes, unchanged proof/notation limits
+and the CPU/GPU fixture scope.
 
 [UCT coverage and stable placement](uct_coverage_stability_repair.md) documents
 file-path filtering, column/type-size separation, crop-fragment suppression,

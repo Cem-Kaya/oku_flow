@@ -3324,7 +3324,7 @@ void UltraClearTextControllerTests::pausedZoomRequestsOneBoundedVisibleDetailPai
     QVERIFY(!h.controller->ActiveImmutableDetail());
 
     // Both halves name the visible source region in the retained full-scene
-    // pixels, at the 6x bound, on the two original acquisitions only.
+    // pixels, at the 8x bound, on the two original acquisitions only.
     std::vector<ImmutableScript::Call> calls;
     {
         std::lock_guard lock(h.script->mutex);

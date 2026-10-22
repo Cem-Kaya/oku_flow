@@ -370,11 +370,12 @@ A word is drawn only when all of these hold:
    (IoU Ã¢â€°Â¥ 0.5) from two separate recognitions, or a previously accepted word.
    This checks stability, not correctness: the same engine can repeat a
    mistake.
-5. **High-risk tokens fail closed**: standalone `l I | 1 0 O o`, digits mixed
-   with confusable letters (`O o I l S s B Z z G g q`), superscripts, modifier
-   letters and any symbol outside plain punctuation (math operators, `^`, `Ã¢Ë†Å¡`,
-   `Ã¢Ë†â€˜` Ã¢â‚¬Â¦) are left as original pixels. Plain numbers such as `3.14`, `-12`,
-   `1,000` may be shown.
+5. **Unsupported notation fails closed**: non-ASCII digits, superscripts,
+   modifier letters and symbols outside the existing punctuation set keep
+   original pixels. Ordinary letter/digit labels (`GPT-6`, `GPT6`, `RTX4090`,
+   `OCRv6`, `R2D2`) and isolated ASCII lookalikes (`l I 1 0 O o`) use the same
+   evidence gates as prose. `|`, `x_2`, `a_b`, `a^2` and unsupported math symbols
+   remain excluded. See [the policy change and paused 8x limits](uct_token_policy_and_detail.md).
 
 Afterwards every probe revalidates accepted lines. A line that no longer
 matches (occlusion, changed board, motion beyond the search window) is removed
@@ -812,7 +813,8 @@ or LLM correction. It checks confidence, size, geometry, independent observation
 and current source pixels. The conservative character policy is nevertheless
 not fully language-neutral: it accepts Unicode letters and a fixed common
 punctuation set, but rejects non-ASCII digits, combining marks, modifier letters
-and certain confusable letter/digit combinations. Valid multilingual text can
+and unsupported symbols. Ordinary ASCII letter/digit combinations and isolated
+lookalikes are eligible for the same proof as other text. Valid multilingual text can
 therefore remain original ink even if the backend recognized it. The model's
 character dictionary and the Windows fallback's installed recognizer languages
 are separate limits; the application's 25 interface languages do not establish

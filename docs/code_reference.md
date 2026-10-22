@@ -5039,9 +5039,12 @@ flatten/glare combinations.
   `WrapPixels` gives a read-only QImage view with shared lifetime.
 - `PreparedWord`, `PreparedLine` and `PrepareLines` prepare scene boxes/reference
   patches on the recognition worker; the scheduler accepts owned shared pixels.
-- `IsHighRiskToken` permits underscores and Windows path separators in file
-  tokens with a one-to-sixteen-letter ASCII extension, while preserving the
-  ordinary confusable and math rejection rules. `OverlayModel::AdmitImpl`
+- `IsHighRiskToken` permits ordinary letter/ASCII-digit mixtures and isolated
+  ASCII lookalikes, plus underscores and Windows path separators in file tokens
+  with a one-to-sixteen-letter ASCII extension. Empty/unsupported notation,
+  non-ASCII digits, modifier letters and symbols outside the punctuation set
+  remain rejected. It makes no spelling correction or confidence adjustment.
+  `OverlayModel::AdmitImpl`
   retains current-validated geometry/identity through small exclusion-box
   jitter; it unions exclusions and preserves the original reference and clocks.
   Live/advancing detector omissions can also retain an existing shown object
@@ -6621,6 +6624,11 @@ rules remain; no OCR string match alone confirms a glyph.
 bounded same-image visible detail. Paddle's `PaddleDetectionSize`,
 `PaddleDetailRegion`, `PaddleDetailMagnification` and
 `PaddleRecognitionRegions` share that policy in CPU/TensorRT.
+The shared maximum and `UctTiming::immutableDetailMagnification` default are
+8x, retaining a 960-pixel detector long edge. `DetailRegion` adds source context
+to `ceil(edge/magnification)` (120 pixels at 960/8), clamps to image bounds,
+and `DetectorInputSize` floors enlarged axes to 32-pixel alignment with the
+existing 32-pixel short-axis minimum. Active regional 704/480 stays separate.
 `Recognizer::SetDetailFocus` is call-scoped by the scheduler; all CPU/device
 `Submit` overloads optionally carry it, and unrequested backend region claims
 are discarded. Detail output coordinates remain full-scene coordinates.
@@ -6662,8 +6670,9 @@ Its helper-local `nextafter(704.0/480.0,+infinity)` corrects a single-ULP
 reciprocal error that otherwise asks `DetailRegion` for 481 source pixels.
 Source dimensions are checked before narrowing, and desired dimensions and
 positions are bounded as doubles before integer conversion. Common detector
-rounding, 32-pixel short-axis minimum, paused 960/6x, eight-pixel backend source-edge
-exclusion and ten-pixel conservative admission are unchanged. This represents
+rounding, 32-pixel short-axis minimum, eight-pixel backend source-edge exclusion
+and ten-pixel conservative admission are unchanged. Paused detail separately
+permits 960/8x. This represents
 roughly 720 pixels on a crop edge, not a 1280×720 profile.
 
 `regionalRealizedInputDimensions` checks the helper descriptor through the
@@ -6674,8 +6683,15 @@ whole-source refusal and finite extreme metadata. `regionalMalformedInputsAreRef
 covers zero/oversized/unsigned-extreme sources and malformed rectangles.
 `ActiveRecognizer` records the actual fixture crop/resize sizes for the real
 scheduler path; controller pressure tests check 704 metadata and source caps.
-`regionalDetectorBudgetKeepsPausedDefaults` retains full 960×544 and paused
-six-times 960×576 inputs. No model/profile preparation or GPU quality claim is
+`regionalDetectorBudgetKeepsPausedDefaults` retains full 960×544 and explicit
+six-times 960×576 inputs, and checks the new eight-times 120×72-to-960×576 path.
+`pausedDetailGeometry` checks finite/nonfinite clamps, ceil/context/alignment,
+portrait/border/small-source cases and the short-axis minimum. Paddle's
+`pausedDetailNormalization` checks actual CPU tensor contents at 8x;
+`gpuAlgorithmsAndOwnedInputs` compares the same strided GPU crop with CPU output.
+`ordinaryLabelsUseIndependentProofAndPaint` checks real prepared/admitted/drawn
+labels; `ordinaryLabelsKeepPreparationGates` preserves score, size, geometry and
+backend-refusal controls. No model/profile preparation or GPU quality claim is
 part of these fixtures. The planner remains a metadata observer, not optical
 flow or multi-frame OCR stacking.
 

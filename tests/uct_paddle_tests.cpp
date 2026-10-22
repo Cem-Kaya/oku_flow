@@ -863,6 +863,27 @@ class PaddleTests final : public QObject
         QCOMPARE(PaddleDetectionSize({4000, 2256}), QSize(960, 544));
         QVERIFY(PaddleDetectionSize({0, 0}).isEmpty());
     }
+    void pausedDetailNormalization()
+    {
+        QImage image(200,120,QImage::Format_ARGB32);
+        image.fill(QColor(255,0,0));
+        const DetailFocus focus{{44,32,100,60},kMaximumDetailMagnification};
+        QCOMPARE(PaddleDetailMagnification(focus),8.0);
+        const auto region=PaddleDetailRegion(image.size(),focus);
+        QCOMPARE(region,QRect(34,26,120,72));
+        QCOMPARE(PaddleRecognitionRegions(image.size(),focus),QVector<QRect>{region});
+        const auto input=PaddleDetectionSize(region.size(),PaddleDetailMagnification(focus));
+        QCOMPARE(input,QSize(960,576));
+        const auto values=PaddleNormalize(image.copy(region),input,true);
+        const auto plane=std::size_t(input.width())*input.height();
+        QCOMPARE(values.size(),plane*3);
+        // Check actual enlarged CPU tensor contents, including every border.
+        for(std::size_t i=0;i<plane;++i) {
+            QVERIFY(std::abs(values[i]-(0-.485f)/.229f)<.00001f);
+            QVERIFY(std::abs(values[plane+i]-(0-.456f)/.224f)<.00001f);
+            QVERIFY(std::abs(values[2*plane+i]-(1-.406f)/.225f)<.00001f);
+        }
+    }
     void detectionRejectsNoiseAndMapsSource()
     {
         std::vector<float> map(128 * 64, .01f);
@@ -2103,6 +2124,32 @@ class PaddleTests final : public QObject
         const auto reference = PaddleNormalize(image, {64, 32}, true);
         for (std::size_t i = 0; i < values.size(); ++i)
             QVERIFY(std::abs(values[i] - reference[i]) < .00001f);
+
+        {
+            // Production GPU detail uses a strided subview of the owned scene.
+            // Exercise the new 8x geometry and actual kernel against CPU data.
+            QImage source(200,120,QImage::Format_ARGB32);
+            for(int y=0;y<source.height();++y) for(int x=0;x<source.width();++x)
+                source.setPixelColor(x,y,QColor(x,y,(x+y)%256));
+            const DetailFocus focus{{44,32,100,60},kMaximumDetailMagnification};
+            const auto region=PaddleDetailRegion(source.size(),focus);
+            QCOMPARE(region,QRect(34,26,120,72));
+            const auto input=PaddleDetectionSize(region.size(),PaddleDetailMagnification(focus));
+            QCOMPARE(input,QSize(960,576));
+            GpuBuffer<unsigned char> owned(source.sizeInBytes());
+            QCOMPARE(cudaMemcpyAsync(owned.data,source.constBits(),source.sizeInBytes(),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+            const auto count=std::size_t(input.width())*input.height()*3;
+            GpuBuffer<float> tensor(count);
+            std::vector<float> actual(count);
+            const auto* crop=owned.data+std::size_t(region.y())*source.bytesPerLine()+region.x()*4;
+            gpu::Normalize(crop,source.bytesPerLine(),region.width(),region.height(),tensor.data,
+                           input.width(),input.height(),stream.value);
+            QCOMPARE(cudaMemcpyAsync(actual.data(),tensor.data,count*sizeof(float),cudaMemcpyDeviceToHost,stream.value),cudaSuccess);
+            QCOMPARE(cudaStreamSynchronize(stream.value),cudaSuccess);
+            const auto expected=PaddleNormalize(source.copy(region),input,true);
+            QCOMPARE(actual.size(),expected.size());
+            for(std::size_t i=0;i<count;++i) QVERIFY(std::abs(actual[i]-expected[i])<.00001f);
+        }
 
         std::vector<float> map(128 * 64, .01f);
         for (int y = 20; y < 32; ++y)

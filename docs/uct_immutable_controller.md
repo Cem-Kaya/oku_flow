@@ -198,7 +198,7 @@ the CUDA scene fixture separately verifies real device analysis ownership.
 The immediate same-frame pan/zoom receipt remains projection-only. A supported
 backend may subsequently refine the retained selected/neighbour pair after
 300 ms of unchanged view. It uses one current visible region with at most
-six-times detector enlargement and the existing 960-pixel long-edge cap.
+eight-times detector enlargement and the existing 960-pixel long-edge cap.
 Only a materially higher detector scale triggers work; up to 32 attempted
 regions, including abandoned ones, are retained per selection without eviction.
 This preserves proved coverage while newly found glyphs still need the real

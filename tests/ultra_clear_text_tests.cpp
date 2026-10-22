@@ -35,6 +35,7 @@
 #include <cmath>
 #include <cstring>
 #include <condition_variable>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <utility>
@@ -649,7 +650,7 @@ private slots:
         };
         for(const int variant : {0,1,2,3}) {
             auto backend=std::make_unique<Backend>();
-            backend->word.text=variant==3 ? QStringLiteral("0") : QStringLiteral("Reading");
+            backend->word.text=variant==3 ? QStringLiteral("x²") : QStringLiteral("Reading");
             backend->word.boundsPx=target.pixels.Bounds(); backend->word.quadPx=target.pixels;
             auto word=backend->word; word.boundsPx=source.pixels.Bounds(); word.quadPx=source.pixels;
             RecognitionResult selected; selected.stamp=uct_quad_reference_test::Stamp(1);
@@ -820,6 +821,10 @@ private slots:
     void residentAnalysisRefusalNeverFallsBackToCpu();
     void residentProbePreparationRemainsSinglePass();
     void highRiskTokensFailClosed();
+    void ordinaryLabelsUseIndependentProofAndPaint_data();
+    void ordinaryLabelsUseIndependentProofAndPaint();
+    void ordinaryLabelsKeepPreparationGates_data();
+    void ordinaryLabelsKeepPreparationGates();
 
     // --- Model --------------------------------------------------------------
     void modelRequiresTemporalAgreement();
@@ -1960,19 +1965,126 @@ void UltraClearTextTests::patchRejectsChangedContent()
 
 void UltraClearTextTests::highRiskTokensFailClosed()
 {
-    for (const QString& risky : {QStringLiteral("l0O"), QStringLiteral("COVID-19"), QStringLiteral("B2"),
-                                 QStringLiteral("x²"), QStringLiteral("∑"), QStringLiteral("1"),
-                                 QStringLiteral("I"), QStringLiteral("a^2"), QStringLiteral("√2"),
-                                 QStringLiteral("5S"), QStringLiteral("x_2"), QStringLiteral("a_b"), QString()}) {
+    for (const QString& risky : {QStringLiteral("x²"), QStringLiteral("∑"), QStringLiteral("|"),
+                                 QStringLiteral("a^2"), QStringLiteral("√2"), QStringLiteral("x₆"),
+                                 QStringLiteral("GPT-６"), QStringLiteral("xʰ"), QStringLiteral("1−O"),
+                                 QStringLiteral("x_2"), QStringLiteral("a_b"), QString()}) {
         QVERIFY2(IsHighRiskToken(risky), qPrintable(risky));
     }
     for (const QString& safe : {QStringLiteral("Hello"), QStringLiteral("3.14"), QStringLiteral("-12"),
                                 QStringLiteral("1,000"), QStringLiteral("page"), QStringLiteral("(see)"),
                                 QStringLiteral("42"), QStringLiteral("Grüße"),
+                                QStringLiteral("GPT-6"), QStringLiteral("GPT6"), QStringLiteral("RTX4090"),
+                                QStringLiteral("OCRv6"), QStringLiteral("R2D2"), QStringLiteral("COVID-19"),
+                                QStringLiteral("l0O"), QStringLiteral("B2"), QStringLiteral("5S"),
+                                QStringLiteral("l"), QStringLiteral("I"), QStringLiteral("1"),
+                                QStringLiteral("0"), QStringLiteral("O"), QStringLiteral("o"),
                                 QStringLiteral("scripts/integrate_castle_runtime.py"),
                                 QStringLiteral("C:\\My_Files\\paper.txt")}) {
         QVERIFY2(!IsHighRiskToken(safe), qPrintable(safe));
     }
+}
+
+void UltraClearTextTests::ordinaryLabelsUseIndependentProofAndPaint_data()
+{
+    QTest::addColumn<QString>("label");
+    for (const QString& label : {QStringLiteral("GPT-6"), QStringLiteral("GPT6"), QStringLiteral("RTX4090"),
+                                QStringLiteral("OCRv6"), QStringLiteral("R2D2"), QStringLiteral("COVID-19"),
+                                QStringLiteral("l0O"), QStringLiteral("B2"), QStringLiteral("5S"),
+                                QStringLiteral("l"), QStringLiteral("I"), QStringLiteral("1"),
+                                QStringLiteral("0"), QStringLiteral("O"), QStringLiteral("o")})
+        QTest::newRow(qPrintable(label)) << label;
+}
+
+void UltraClearTextTests::ordinaryLabelsUseIndependentProofAndPaint()
+{
+    QFETCH(QString, label);
+    const auto page = MakePage({label});
+    const auto transform = Transform(1, .5f, .5f);
+    auto selected = ResultFor(page, transform, Stamp(1, 1, 100, transform));
+    auto neighbor = ResultFor(page, transform, Stamp(1, 1, 200, transform));
+    for (auto* result : {&selected, &neighbor}) {
+        result->output.lines[0].words[0].confidence = .95;
+        result->prepared = PrepareLines(*result, 7);
+        QCOMPARE(result->prepared.size(), 1);
+        QCOMPARE(result->prepared[0].words.size(), 1);
+        QCOMPARE(result->prepared[0].words[0].disposition, TokenDisposition::kCandidate);
+        QVERIFY(result->prepared[0].reference.valid);
+    }
+    QVERIFY(selected.sourcePixelDigest != neighbor.sourcePixelDigest);
+    ModelTuning tuning;
+    tuning.admitMatchBudgetMs = 1000; // real CPU patch checks, no scripted positive receipts
+    OverlayModel model(tuning);
+    constexpr std::int64_t now = 60'000;
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, now), AdmitVerdict::kPending);
+    QVERIFY(model.SceneWords(now, selected.stamp.frameSeq).isEmpty());
+    auto duplicate = neighbor;
+    duplicate.sourcePixelDigest = selected.sourcePixelDigest;
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, now, &duplicate), AdmitVerdict::kPending);
+    QVERIFY(model.SceneWords(now, selected.stamp.frameSeq).isEmpty());
+    // Agreeing OCR text over different source ink cannot establish proof.
+    auto changed = neighbor;
+    const auto other = MakePage({QStringLiteral("Different ink")}, QPointF(250, 100));
+    const auto pixels = RenderView(other.image, transform, kViewWidth, kViewHeight);
+    changed.sourcePixelDigest = SourcePixelsDigest(pixels);
+    changed.reference = MakeProbeFrame(pixels.constBits(), pixels.width(), pixels.height(),
+                                       pixels.bytesPerLine(), 2, changed.stamp);
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, now, &changed), AdmitVerdict::kPending);
+    QVERIFY(model.SceneWords(now, selected.stamp.frameSeq).isEmpty());
+    QCOMPARE(model.AdmitImmutable(selected, selected.stamp, now, &neighbor), AdmitVerdict::kAccepted);
+    QCOMPARE(model.ReadingText(now, selected.stamp.frameSeq), label);
+    const auto words = model.SceneWords(now, selected.stamp.frameSeq);
+    QCOMPARE(words.size(), 1);
+    QCOMPARE(words[0].text, label);
+    QWidget target;
+    target.resize(kViewWidth, kViewHeight);
+    UltraClearTextOverlay overlay(&target, &target);
+    target.show();
+    overlay.SetViewTransform(transform);
+    const auto& word = words[0];
+    overlay.SetWords({{word.text, word.sceneRect, word.colors, word.lineId,
+                       word.protectedSceneRects, word.wordIndex, word.sceneQuad, word.layoutGroupId,
+                       word.carvedSceneRects}});
+    QTRY_VERIFY(overlay.PaintedGeometryCurrent());
+    UltraClearTextOverlay::PaintedWordGeometry geometry;
+    QVERIFY(overlay.PaintedWord(word.lineId, word.wordIndex, label, geometry));
+    QVERIFY(geometry.drawn);
+}
+
+void UltraClearTextTests::ordinaryLabelsKeepPreparationGates_data()
+{
+    QTest::addColumn<int>("fault");
+    QTest::addColumn<int>("disposition");
+    QTest::newRow("below-confidence-floor") << 0 << int(TokenDisposition::kLowConfidence);
+    QTest::newRow("nonfinite-confidence") << 1 << int(TokenDisposition::kLowConfidence);
+    QTest::newRow("above-confidence-range") << 2 << int(TokenDisposition::kLowConfidence);
+    QTest::newRow("below-seven-source-pixels") << 3 << int(TokenDisposition::kTooSmall);
+    QTest::newRow("nonfinite-geometry") << 4 << int(TokenDisposition::kInvalidGeometry);
+    QTest::newRow("backend-rejection") << 5 << int(TokenDisposition::kHighRisk);
+}
+
+void UltraClearTextTests::ordinaryLabelsKeepPreparationGates()
+{
+    QFETCH(int, fault);
+    QFETCH(int, disposition);
+    const auto page = MakePage({QStringLiteral("GPT-6")});
+    const auto transform = Transform(1, .5f, .5f);
+    auto selected = ResultFor(page, transform, Stamp(1, 1, 100, transform));
+    auto neighbor = ResultFor(page, transform, Stamp(1, 1, 200, transform));
+    for (auto* result : {&selected, &neighbor}) {
+        auto& word = result->output.lines[0].words[0];
+        if (fault == 0) word.confidence = .699;
+        if (fault == 1) word.confidence = std::numeric_limits<double>::quiet_NaN();
+        if (fault == 2) word.confidence = 1.1;
+        if (fault == 3) word.boundsPx.setHeight(6.99);
+        if (fault == 4) word.boundsPx.setX(std::numeric_limits<double>::quiet_NaN());
+        if (fault == 5) word.disposition = TokenDisposition::kHighRisk;
+        result->prepared = PrepareLines(*result, 7);
+        QCOMPARE(result->prepared[0].words[0].disposition, static_cast<TokenDisposition>(disposition));
+    }
+    OverlayModel model;
+    model.AdmitImmutable(selected, selected.stamp, 60'000, &neighbor);
+    QVERIFY(model.SceneWords(60'000, selected.stamp.frameSeq).isEmpty());
 }
 
 void UltraClearTextTests::modelRequiresTemporalAgreement()
@@ -2399,7 +2511,7 @@ void UltraClearTextTests::modelReprojectsWithCurrentTransform()
 
 void UltraClearTextTests::modelOmitsHighRiskWordsFromReadingText()
 {
-    const SyntheticPage page = MakePage({QStringLiteral("Total is 3.14 and l0O ok")});
+    const SyntheticPage page = MakePage({QStringLiteral("Total is 3.14 and x² ok")});
     const ViewTransform t = Transform(1.0f, 0.5f, 0.5f);
     OverlayModel model;
     const SourceStamp current = Stamp(1, 1, 0, t);
@@ -2407,7 +2519,7 @@ void UltraClearTextTests::modelOmitsHighRiskWordsFromReadingText()
     model.Admit(ResultFor(page, t, Stamp(1, 1, 200, t)), current, nullptr, 210);
     const QString text = model.ReadingText(210, model.Lines().first().validatedFrameSeq);
     QVERIFY2(text.contains(QStringLiteral("3.14")), qPrintable(text));
-    QVERIFY2(!text.contains(QStringLiteral("l0O")), qPrintable(text));
+    QVERIFY2(!text.contains(QStringLiteral("x²")), qPrintable(text));
     QCOMPARE(text, QStringLiteral("Total is 3.14 and \u2026 ok"));
 }
 
@@ -2415,15 +2527,15 @@ void UltraClearTextTests::readingTextPreservesOmissionPositions_data()
 {
     QTest::addColumn<QString>("source");
     QTest::addColumn<QString>("expected");
-    QTest::newRow("beginning") << QStringLiteral("1 tablet daily")
+    QTest::newRow("beginning") << QStringLiteral("x² tablet daily")
                                << QStringLiteral("\u2026 tablet daily");
-    QTest::newRow("middle") << QStringLiteral("Take 1 tablet")
+    QTest::newRow("middle") << QStringLiteral("Take x² tablet")
                             << QStringLiteral("Take \u2026 tablet");
-    QTest::newRow("end") << QStringLiteral("Take tablet 1")
+    QTest::newRow("end") << QStringLiteral("Take tablet x²")
                          << QStringLiteral("Take tablet \u2026");
-    QTest::newRow("consecutive") << QStringLiteral("Take 1 O tablet")
+    QTest::newRow("consecutive") << QStringLiteral("Take x² x₆ tablet")
                                  << QStringLiteral("Take \u2026 tablet");
-    QTest::newRow("separate-gaps") << QStringLiteral("1 Take O tablet 1")
+    QTest::newRow("separate-gaps") << QStringLiteral("x² Take x₆ tablet x²")
                                    << QStringLiteral("\u2026 Take \u2026 tablet \u2026");
 }
 
@@ -3394,7 +3506,7 @@ void UltraClearTextTests::immutableRiskProtectionSurvivesCrossLineRefinement_dat
     QTest::addColumn<int>("disposition");
     QTest::addColumn<QString>("rejectedText");
     QTest::newRow("operator") << int(TokenDisposition::kHighRisk) << QString::fromUtf8("\xE2\x88\x92");
-    QTest::newRow("ambiguous-number") << int(TokenDisposition::kHighRisk) << QStringLiteral("1O");
+    QTest::newRow("backend-rejected-ascii-token") << int(TokenDisposition::kHighRisk) << QStringLiteral("1O");
     QTest::newRow("invalid-geometry") << int(TokenDisposition::kInvalidGeometry) << QStringLiteral("uncertain");
 }
 
@@ -4224,7 +4336,7 @@ void UltraClearTextTests::refreshRetainsLineOnceAndStabilizesColors() {
 
 void UltraClearTextTests::refreshKeepsProvenGeometryThroughOmissionBoxJitter()
 {
-    const auto page = MakePage({QStringLiteral("Reading B2 glasses")});
+    const auto page = MakePage({QStringLiteral("Reading x² glasses")});
     const auto t = Transform(1, .5, .5);
     const auto current = Stamp(3, 4, 0, t);
     ModelTuning tuning;
