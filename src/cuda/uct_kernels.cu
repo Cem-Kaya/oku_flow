@@ -432,20 +432,20 @@ __global__ void compact(int *ids, float *scores, int steps, const Quad *quads, i
 __global__ void rectifyBatch(const unsigned char *pixels, std::size_t pitch, int w, int h,
                              const Quad *quads, int first, float *out, int ow, int samples)
 {
-    const int sample = blockIdx.y;
-    if (sample >= samples)
+    const int sampleIndex = blockIdx.y;
+    if (sampleIndex >= samples)
         return;
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= ow * 48)
         return;
-    const auto q = quads[first + sample];
+    const auto q = quads[first + sampleIndex];
     const int x = i % ow, y = i / ow, valid = min(ow, q.validWidth);
     const float u = (x + .5f) / valid, v = (y + .5f) / 48;
     const float sx = q.xy[0] * (1 - u) * (1 - v) + q.xy[2] * u * (1 - v) + q.xy[4] * u * v +
                      q.xy[6] * (1 - u) * v - .5f;
     const float sy = q.xy[1] * (1 - u) * (1 - v) + q.xy[3] * u * (1 - v) + q.xy[5] * u * v +
                      q.xy[7] * (1 - u) * v - .5f;
-    float *sampleOut = out + sample * ow * 48 * 3;
+    float *sampleOut = out + sampleIndex * ow * 48 * 3;
     for (int c = 0; c < 3; ++c)
         sampleOut[c * ow * 48 + i] =
             x >= valid ? 0 : (sample(pixels, pitch, w, h, sx, sy, c) / 255 - .5f) * 2;
