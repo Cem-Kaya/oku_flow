@@ -47,6 +47,28 @@ replacement glyphs for this sparse pair. The reviewed policy below addresses
 that admission gap; it does not establish a backend-readiness defect. The native
 decoder still supplies the real nearest following sample at its original PTS.
 
+The software extraction's two-second duration is not a measurement of the
+Windows decoder's `IMFSample` duration for this AV1 source. The original raw-AVI
+native fixture proves policy plumbing separately. Actual native Tr 9 cadence
+therefore has an explicit opt-in `video_playback_native_sparse_0_2s` diagnostic.
+Configure `OKUFLOW_TEST_VIDEO_PAUSED_FILE` with the private exact absolute path
+`Z:/Vids/Tr 9_av1.mp4` only for that run; it is never a production/default path.
+Expected source SHA-256 is
+`417e64556e371d5f2fdaa0622555722fb03598f15f89f7a284d46766a415a672`.
+The actual clip and relevant test/decoder/policy bytes are CTest runtime inputs,
+so the tracked receipt hashes the source used. An empty option registers no case.
+
+The optional CLI `--native-paused-external <exact-path>` requires the existing
+`OKUFLOW_TEST_VIDEO_PLAYBACK_CODEC=1` opt-in. It performs one native CPU Open,
+with one shared 12-second polling deadline and a 20-second CTest timeout, and
+prints the observed selected/neighbour sample IDs, PTS, durations, extents and
+descriptor decision. It asserts the exact selected zero-frame ownership block,
+issuance, request, file and track remain unchanged, and the real 2000-ms neighbour
+qualifies using native two-second selected duration. No Play, seek stress,
+audio endpoint, model or GPU is used. Unknown duration or absent neighbour is a
+failure, not permission to infer metadata or enlarge production policy. This
+additive optional fixture is unbuilt/unrun pending parent resource coordination.
+
 ## Bounded saved-file cadence policy
 
 Only a paused File document can obtain `ImmutableCorroborationPolicy` from its
