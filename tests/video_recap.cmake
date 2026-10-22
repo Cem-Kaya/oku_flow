@@ -1,4 +1,9 @@
 if(WIN32)
+    target_sources(media_writer_gpu_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/common/video_recap.cpp)
+    add_test(NAME video_recap_native_gpu COMMAND media_writer_gpu_tests --ram-recap)
+    set_tests_properties(video_recap_native_gpu PROPERTIES TIMEOUT 60 LABELS "codec;gpu" RUN_SERIAL TRUE
+        SKIP_RETURN_CODE 77 REQUIRED_FILES
+        "${PROJECT_SOURCE_DIR}/tests/media_writer_gpu_tests.cpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/media_writer.hpp;${PROJECT_SOURCE_DIR}/src/common/media_writer.cpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/video_recap.hpp;${PROJECT_SOURCE_DIR}/src/common/video_recap.cpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/video_memory_stream.hpp;${PROJECT_SOURCE_DIR}/src/common/video_memory_stream.cpp")
     add_executable(video_recap_tests video_recap_tests.cpp
         ${PROJECT_SOURCE_DIR}/src/common/video_recap.cpp
         ${PROJECT_SOURCE_DIR}/src/common/video_memory_stream.cpp

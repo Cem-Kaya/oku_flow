@@ -6,6 +6,9 @@ scene keeps its true textual time; the existing Qt accessibility adapter omits
 numeric RangeValue until a valid seek enters history. View and navigation
 offers a stable-data1–5 minute preference and a localized decimal-MB estimate.
 See [recap ownership and limits](../../docs/live_ram_recap.md).
+The transport's small chevron collapses control rows while retaining a 44-DIP
+keyboard/touch target and the jump action. It preserves playback and current
+snapshot state and cancels unfinished drags without a seek.
 
 `AssistantChatView` renders the shared app-owned chat session in Advanced and
 floating Explain, with one compact header, a fixed composer and settings/history

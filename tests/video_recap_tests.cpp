@@ -88,6 +88,24 @@ void FrozenSceneContract() {
 }
 void RingContract() {
     FrozenSceneContract();
+    auto zeroSource=Memory();VideoRecapRing zeroRing;zeroRing.Reset(1);
+    auto zero=std::make_shared<VideoRecapSegment>(*Segment(1,1,0,9'000'000,zeroSource));
+    zero->admissions.front().sequence=0;zero->admissions.back().sequence=1;
+    Require(zeroRing.Append(zero),"native camera sequence zero is a valid first recap acquisition");
+    auto repeated=std::make_shared<VideoRecapSegment>(*Segment(1,2,10'000'000,19'000'000,zeroSource));
+    repeated->admissions.front().sequence=0;repeated->admissions.back().sequence=0;
+    Require(!zeroRing.Append(repeated),"sequence zero does not waive strictly advancing acquisitions within a segment");
+    repeated->admissions.back().sequence=1;
+    Require(!zeroRing.Append(repeated),"a later segment cannot restart the same source's acquisition sequence");
+    auto lower=std::make_shared<VideoRecapSegment>(*Segment(1,2,10'000'000,19'000'000,zeroSource));
+    lower->admissions.front().sequence=10;lower->admissions.back().sequence=9;
+    Require(!zeroRing.Append(lower),"lower sequence within the same segment is invalid");
+    lower->admissions.front().sequence=UINT64_MAX;lower->admissions.back().sequence=0;
+    Require(!zeroRing.Append(lower),"wrapping acquisition sequence is invalid");
+    zeroRing.Reset(2);
+    Require(!zeroRing.Append(zero),"source reset rejects the old zero-based epoch");
+    zero->epoch=2;
+    Require(zeroRing.Append(zero),"new source epoch may begin with its real capture sequence zero again");
     auto source=Memory();const auto bytes=source->Capacity();VideoRecapRing ring(bytes*3,30'000'000);ring.Reset(9);
     auto empty=std::make_shared<VideoMemoryStream>();
     Require(!ring.Append(Segment(9,1,0,1,empty->Seal())),"zero-byte source cannot create uncharged metadata history");

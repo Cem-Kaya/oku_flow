@@ -23,6 +23,7 @@
 #include <QSlider>
 #include <QStyle>
 #include <QTimer>
+#include <QTransform>
 #include <QVBoxLayout>
 #include <QWheelEvent>
 
@@ -210,6 +211,11 @@ VideoTransport::VideoTransport(QWidget* parent) : QWidget(parent)
     returnButton_ = makeButton("videoReturnCameraButton", QStringLiteral("\u21a9"), kButtonExtent);
     saveFrameButton_ = makeButton("videoSaveFrameButton", QStringLiteral("\u25a3"), kButtonExtent);
     muteButton_ = makeButton("videoMuteButton", QStringLiteral("\u266a"), kButtonExtent);
+    collapseButton_ = makeButton("videoCollapseButton", QString(), kButtonExtent);
+    collapseButton_->setCheckable(true);
+    // A small chevron has the same native keyboard/touch target as actions.
+    collapseButton_->setIconSize(QSize(14, 14));
+    sourceRow->insertWidget(0, collapseButton_);
 
     timeline_ = new QSlider(Qt::Horizontal, this);
     timeline_->setObjectName(QStringLiteral("videoTimeline"));
@@ -264,6 +270,9 @@ VideoTransport::VideoTransport(QWidget* parent) : QWidget(parent)
     });
     connect(muteButton_, &QPushButton::clicked, this, [this]() {
         if (IsActionReady(muteButton_)) emit MutedChanged(!snapshot_.muted);
+    });
+    connect(collapseButton_, &QPushButton::clicked, this, [this]() {
+        SetCollapsed(!collapsed_);
     });
     connect(timeline_, &QSlider::sliderPressed, this, [this]() {
         dragging_ = true;
@@ -366,7 +375,8 @@ void VideoTransport::SetSnapshot(const Snapshot& snapshot)
         (!snapshot.playing && snapshot.state != State::Seeking &&
          snapshot_.positionMs != snapshot.positionMs);
     const bool changedText = changedState || snapshot_.playing != snapshot.playing ||
-        snapshot_.muted != snapshot.muted || snapshot_.hasAudio != snapshot.hasAudio;
+        snapshot_.muted != snapshot.muted || snapshot_.hasAudio != snapshot.hasAudio ||
+        snapshot_.diagnosticDetail != snapshot.diagnosticDetail;
     if (changedDocument && dragging_) {
         dragging_ = false;
         const QSignalBlocker blocker(timeline_);
@@ -411,6 +421,27 @@ void VideoTransport::SetUiHidden(bool hidden)
     RequestAnnouncement();
 }
 
+void VideoTransport::SetCollapsed(bool collapsed)
+{
+    if (collapsed_ == collapsed) return;
+    if (dragging_) {
+        dragging_ = false;
+        const QSignalBlocker blocker(timeline_);
+        timeline_->setSliderDown(false);
+    }
+    if (collapsed) {
+        auto* focus = QApplication::focusWidget();
+        if (focus && isAncestorOf(focus) && focus != jumpButton_ && focus != collapseButton_)
+            collapseButton_->setFocus(Qt::OtherFocusReason);
+    }
+    collapsed_ = collapsed;
+    collapseButton_->setChecked(collapsed);
+    RefreshText();
+    RefreshTimeline(true);
+    UpdateActions();
+    updateGeometry();
+}
+
 void VideoTransport::SetFocusReturnTarget(QWidget* target)
 {
     focusReturnTarget_ = target;
@@ -418,6 +449,7 @@ void VideoTransport::SetFocusReturnTarget(QWidget* target)
 
 bool VideoTransport::ActionShown(const QWidget* control) const
 {
+    if (collapsed_ && control != collapseButton_ && control != jumpButton_) return false;
     if (control == muteButton_) return muteShown_;
     if (control == returnButton_) return returnShown_;
     return true;
@@ -437,7 +469,7 @@ void VideoTransport::ApplyGate(QWidget* control, Gate gate)
     // Qt transfers focus immediately when setEnabled(false) is called. Keep
     // the semantic focus owner inert until the user leaves it or it is ready.
     control->setEnabled(gate == Gate::Ready || control->hasFocus());
-    if (control != timeline_) {
+    if (control != timeline_ && control != collapseButton_) {
         SetLiveAccessibleDescription(control, gate == Gate::Ready ? QString() : StateText());
     }
     if (changed) {
@@ -468,6 +500,7 @@ void VideoTransport::UpdateActions()
     const auto gate = [available](bool ready, bool busy = false) {
         return available && ready ? Gate::Ready : busy && available ? Gate::Busy : Gate::Unavailable;
     };
+    ApplyGate(collapseButton_, hasSource ? Gate::Ready : Gate::Unavailable);
     ApplyGate(rewindButton_, gate(snapshot_.seekable && SeekBaseline() > snapshot_.firstMs));
     ApplyGate(playPauseButton_, gate(!pending && snapshot_.state != State::End &&
         (snapshot_.canPauseLive || snapshot_.canSaveFrame || snapshot_.seekable), pending));
@@ -524,6 +557,8 @@ void VideoTransport::RefreshText()
     static_cast<SourceLabel*>(sourceLabel_)->SetSource(source);
     SetLiveText(stateLabel_, StateText(), LivePoliteness::kSilent,
                 QStringLiteral("Video playback"));
+    stateLabel_->setToolTip(snapshot_.diagnosticDetail);
+    stateLabel_->setAccessibleDescription(snapshot_.diagnosticDetail);
     NameButton(rewindButton_, QStringLiteral("Rewind 10 seconds"));
     NameButton(playPauseButton_, snapshot_.playing ? QStringLiteral("Pause video")
                                                  : QStringLiteral("Resume video"));
@@ -533,6 +568,8 @@ void VideoTransport::RefreshText()
     NameButton(saveFrameButton_, QStringLiteral("Save frame"));
     NameButton(muteButton_, snapshot_.muted ? QStringLiteral("Unmute playback")
                                           : QStringLiteral("Mute playback"));
+    NameButton(collapseButton_, collapsed_ ? QStringLiteral("Show UI") : QStringLiteral("Hide UI"));
+    collapseButton_->setAccessibleDescription(TranslateUi(QStringLiteral("Video controls")));
     setAccessibleName(TranslateUi(QStringLiteral("Video controls")));
     timeline_->setAccessibleName(TranslateUi(QStringLiteral("Video timeline")));
     timeline_->setToolTip(TranslateUi(QStringLiteral(
@@ -635,7 +672,8 @@ std::vector<QWidget*> VideoTransport::FocusTargets() const
 {
     // Tab order follows the single-line visual order: primary actions,
     // scrubber, secondary actions. Return to camera stays last.
-    std::vector<QWidget*> targets{rewindButton_, playPauseButton_, jumpButton_, timeline_,
+    if (collapsed_) return {collapseButton_, jumpButton_};
+    std::vector<QWidget*> targets{collapseButton_, rewindButton_, playPauseButton_, jumpButton_, timeline_,
                                   saveFrameButton_};
     if (muteShown_) targets.push_back(muteButton_);
     if (returnShown_) targets.push_back(returnButton_);
@@ -724,6 +762,9 @@ void VideoTransport::ApplyFace(QPushButton* button)
     } else if (button == returnButton_) {
         resource = QStringLiteral(":/okuflow/icons/camera.svg");
         glyph = QStringLiteral("\u21a9");
+    } else if (button == collapseButton_) {
+        resource = QStringLiteral(":/okuflow/icons/next.svg");
+        glyph = collapsed_ ? QStringLiteral("\u2303") : QStringLiteral("\u2304");
     } else {
         return;
     }
@@ -741,6 +782,11 @@ void VideoTransport::ApplyFace(QPushButton* button)
     button->setProperty("okuflowFaceKey", faceKey);
 
     QIcon icon = theme_contrast::ThemedIcon(resource, ink, dimInk);
+    if (!icon.isNull() && button == collapseButton_) {
+        QTransform rotation;
+        rotation.rotate(collapsed_ ? -90 : 90);
+        icon = QIcon(icon.pixmap(28, 28).transformed(rotation, Qt::SmoothTransformation));
+    }
     if (!icon.isNull() && slashed) icon = SlashedIcon(icon, ink);
     if (!icon.isNull()) {
         button->setIcon(icon);
@@ -756,7 +802,7 @@ void VideoTransport::ApplyFace(QPushButton* button)
 void VideoTransport::ApplyButtonFaces()
 {
     for (auto* button : {rewindButton_, playPauseButton_, jumpButton_,
-                         saveFrameButton_, muteButton_, returnButton_}) {
+                         saveFrameButton_, muteButton_, returnButton_, collapseButton_}) {
         ApplyFace(button);
     }
 }
@@ -807,11 +853,12 @@ void VideoTransport::UpdateLayout()
     required += kRowSpacing * (4 + static_cast<int>(secondaries.size()));
     const bool below = width() > 0 && width() < required && !secondaries.empty();
     if (below == secondariesBelow_ && secondaries == layoutSecondaries_ &&
-        mainLayout_->count() > 0) {
+        collapsed_ == layoutCollapsed_ && mainLayout_->count() > 0) {
         return;
     }
     secondariesBelow_ = below;
     layoutSecondaries_ = secondaries;
+    layoutCollapsed_ = collapsed_;
     const QPointer<QWidget> focused = isAncestorOf(QApplication::focusWidget())
         ? QApplication::focusWidget() : nullptr;
     const auto strip = [](QLayout* stripLayout) {
@@ -820,6 +867,7 @@ void VideoTransport::UpdateLayout()
     strip(mainLayout_);
     strip(secondaryLayout_);
     metadataLayout_->removeWidget(timeLabel_);
+    metadataLayout_->removeWidget(jumpButton_);
     mainLayout_->addWidget(rewindButton_);
     mainLayout_->addWidget(playPauseButton_);
     mainLayout_->addWidget(jumpButton_);
@@ -833,6 +881,15 @@ void VideoTransport::UpdateLayout()
     }
     if (below) secondaryLayout_->addStretch(1);
     secondaryRow_->setVisible(below);
+    if (collapsed_) {
+        mainLayout_->removeWidget(jumpButton_);
+        metadataLayout_->addWidget(jumpButton_);
+    }
+    for (auto* widget : std::vector<QWidget*>{rewindButton_, playPauseButton_, timeline_,
+                         timeLabel_, saveFrameButton_}) widget->setVisible(!collapsed_);
+    muteButton_->setVisible(!collapsed_ && muteShown_);
+    returnButton_->setVisible(!collapsed_ && returnShown_);
+    secondaryRow_->setVisible(!collapsed_ && below);
     if(focused && focused->isEnabled() && focused->isVisibleTo(this) && !focused->hasFocus())
         focused->setFocus(Qt::OtherFocusReason);
     const auto targets = FocusTargets();

@@ -13,6 +13,12 @@
   notation stays protected. Raise paused visible-detail enlargement from 6x to
   8x under the same 960-pixel detector limit; live regional limits stay 704/480.
 
+- Add a small video-transport collapse/expand chevron with a full keyboard/touch
+  target. Keep playback running and Jump to live reachable while collapsed.
+- Accept the camera's real first acquisition ID zero in Live recap while
+  preserving strict subsequent sequence validation. Preserve failed segment
+  finalization reasons and expose them with the existing status metadata.
+
 - Commit immutable UCT refinement words together with their complete protection;
   a late unsafe cut or storage limit leaves the previous candidate state intact.
   Refuse optional regional changes whose conservative punctuation pixels would

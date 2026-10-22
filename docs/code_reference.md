@@ -45,6 +45,15 @@ The recap worker owns native Start/Add/Stop/Seal, records actual timing/losses,
 preserves capture delivery gaps and publishes only complete current-generation
 segments. WantsFrame/Submit bound input without encoder work or native joins
 on capture/UI. Reset/destruction revoke authority while native closures retire.
+Ring sequence validation tracks explicit prior-admission presence, allowing a
+real initial zero while rejecting duplicates, backward/wrapped IDs and sequence
+restart across segments in the same epoch. Reset revokes that prior authority.
+The worker copies `VideoRecorder::LastError` before writer release and latches
+failed finalization/seal/publication without starting a queued successor writer.
+The private `RamVideoRecap::SetWriterSetupForTest` friend seam installs an
+observer before any input; the GPU fixture uses the real bounded byte stream's
+oversized SetLength refusal to verify failed native outcomes cannot publish and
+their reason survives. It has no production setting/environment selector.
 
 `VideoPlayback::OpenMemory` adds an immutable-memory source to the existing
 single native reader, preserving issued frame leases, same-frame reticketing,
@@ -84,6 +93,16 @@ position is outside the seek window; exposed numeric ranges always stay valid.
 
 `VideoTransport::Source::Recap`, State::Buffering, Snapshot::firstMs and
 canPauseLive represent actual rolling bounds and a pre-encoder exact Freeze.
+`VideoTransport::SetCollapsed` / `isCollapsed` own session-only visibility of
+the transport's control rows. The native chevron retains a 44-DIP target;
+collapse cancels an unfinished drag without a seek or playback command, parks
+hidden-control focus on the chevron, and keeps the jump action reachable.
+Snapshot state and global UI hide/show do not reset the collapsed choice.
+`Snapshot::diagnosticDetail` carries native failure metadata to the existing
+status label's tooltip/accessibility description without replacing its localized
+state. `SelectedVideoState` exposes recap error, source dimensions and frame rate
+alongside actual admitted/completed counts. Pending exact-hold Resume is reflected
+in the play/pause intent while the real buffered segment becomes readable.
 Rolling bounds refresh immediately on eviction; saved-file playback retains
 its focused inspection range and ordinary 1000 ms unfocused refresh contract.
 Native actions and drag-stable absolute timeline mapping remain shared with
