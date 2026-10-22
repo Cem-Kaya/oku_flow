@@ -167,8 +167,10 @@ now supplies the existing oriented-geometry pipeline rather than upright
 boxes from a different coordinate frame. Pure mapping and real printed-page
 fixtures are added.
 
-The first repaired CPU/PCH-off Windows OCR gate passes all 11 Qt rows, no
+The first repaired CPU Windows OCR gate passes all 11 Qt rows, no
 skips, in 0.80 seconds, including real +/-3 and +/-6 degree printed pages.
+That target's compile commands use no precompiled header; the surrounding
+cache had `OKUFLOW_USE_PCH=ON`. Whole-configuration PCH-off acceptance is separate.
 The current CUDA/PCH-on Paddle kernel gate also passes in 8.68 seconds,
 including the 8x normalization path. Both are scoped results; the automatic
 `agent_check` refuses the incomplete full Ninja dependency inventory rather
