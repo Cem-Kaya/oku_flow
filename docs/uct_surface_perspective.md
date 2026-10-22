@@ -147,3 +147,39 @@ application for testing before the timing step, so GPU times would not have
 been comparable; parity runs used the harness's untimed mode. The earlier
 parent-only table above remains the only timing evidence. No speedup is claimed
 until a same-session comparison runs on an otherwise idle GPU.
+
+## Measured cooperative and filtered CUDA, 2026-10-23
+
+The owner application had exited before this run; no OkuFlow process existed
+before or after any timed run. Each run used the same hash-bound harness: 5
+warmups and 31 samples per workload, with CUDA event medians/95th percentiles
+in milliseconds. Runs alternated ABBA: parent, cooperative, cooperative, parent;
+then cooperative, filtered, filtered, cooperative.
+
+| Workload | Parent | Cooperative | Filtered |
+| --- | ---: | ---: | ---: |
+| One Head rectangle | 4.82 / 4.24 (p95 5.35 / 5.18) | 0.232-0.246 (p95 0.235-0.254) | 0.212 (p95 0.214-0.219) |
+| Ten captured candidates | 5.66 / 6.19 (p95 6.35 / 7.03) | 0.246-0.260 (p95 0.247-0.264) | 0.226 (p95 0.232-0.234) |
+| 128 repeated Head | 4.59 / 4.90 (p95 5.43 / 5.50) | 0.236-0.249 (p95 0.240-0.250) | 0.215-0.216 (p95 0.217) |
+| 128 jittered generated card | 7.92 / 7.95 (p95 8.44 / 8.41) | 0.336-0.355 (p95 0.337-0.356) | 0.268 (p95 0.269) |
+
+CPU medians stayed within run-to-run noise: 0.07-0.09 ms, 0.89-1.02 ms, 8.7-9.3 ms
+and 14.3-15.3 ms respectively. Every run kept the 4/5 captured-mix CPU/CUDA
+fit counts. Host launch-plus-wait adds about 0.02 ms for small batches and
+0.1 ms at 128 requests. These are warm geometry times on one Ryzen 9 5900X /
+RTX 4090. They are not end-to-end, sustained-FPS or other-GPU claims.
+
+The filtered variant keeps FP64 for sampling, the plane, line fits and every
+reported extreme. In the ink rescan, each corner is first mapped in FP32 with
+a conservative bound on its distance from the FP64 map. Only corners that
+could reach an extreme, or whose denominator is near the FP64 failure limit,
+are mapped again in FP64 and compete with their serial first-occurrence order.
+The CPU never uses this path. Against the cooperative build on the same 4,410
+requests, CPU output is bit-identical and every CUDA fit decision matches; 19
+fitted results differ by at most 2 ULP (1.14e-13 source pixels). A missed
+extreme would move a corner by a sample spacing, so these are rounding-level
+differences from where the compiler places FP64 contractions, not filtering
+losses. Against parent, 18 fitted results differ by at most that size, again
+with no decision change. Tracked `uct_paddle_processing` and `uct_paddle_cuda`
+then passed (scoped 2 of 245, no skips/unresolved). Per-sample raw arrays were
+not retained; each run's output keeps median, p95, minimum and maximum.

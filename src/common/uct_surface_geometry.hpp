@@ -30,6 +30,7 @@ OKUFLOW_SURFACE_HD inline bool Finite(double x){return x==x && Abs(x)<1e100;}
 // sums of quarter-integers far below 2^53, so the order of combination
 // cannot change a single bit.
 struct SerialTeam {
+    static constexpr bool FilteredInk=false;
     int Rank()const{return 0;}
     int Size()const{return 1;}
     void Sync()const{}
@@ -45,6 +46,9 @@ struct SerialTeam {
 struct Extreme { double value; int order,padding; };
 OKUFLOW_SURFACE_HD inline Extreme Lower(Extreme a,Extreme b){return b.value<a.value||(b.value==a.value&&b.order<a.order)?b:a;}
 OKUFLOW_SURFACE_HD inline Extreme Upper(Extreme a,Extreme b){return b.value>a.value||(b.value==a.value&&b.order<a.order)?b:a;}
+struct Ink { Extreme u0,v0,u1,v1; int count,failed; };
+OKUFLOW_SURFACE_HD inline Ink Merge(Ink a,Ink b){
+    return Ink{Lower(a.u0,b.u0),Lower(a.v0,b.v0),Upper(a.u1,b.u1),Upper(a.v1,b.v1),a.count+b.count,a.failed|b.failed};}
 struct Hypothesis { double a,b; int count,order; };
 struct Sums { double sx,sy,xx,xy; int count,first,last,padding; };
 // Six deterministic anchors, at most 15 hypotheses and 96 observations.
@@ -144,6 +148,68 @@ template<class Team> OKUFLOW_SURFACE_HD Component Flood(const Team& team,Scratch
     return team.Combine(Component{end,l,r,t,b,open},[](Component x,Component y){
         return Component{x.size,Min(x.l,y.l),Max(x.r,y.r),Min(x.t,y.t),Max(x.b,y.b),x.open|y.open};});
 }
+// Exact ink-plane extremes with few FP64 maps, for teams whose FP64 rate is
+// far below FP32. Pass one maps every ink corner in FP32 with a conservative
+// bound on its distance from the FP64 map (32 units of 2^-24 relative to the
+// absolute dot-product terms) and keeps the tightest bounds on each extreme.
+// Pass two repeats the FP64 map only for corners that could reach an extreme,
+// and for every corner whose denominator is too near the FP64 failure limit to
+// decide in FP32. Extremes, first occurrences, count and failures therefore
+// equal those of mapping every corner in FP64.
+template<class Team,class Sample> OKUFLOW_SURFACE_HD Ink FilteredInkExtremes(const Team& team,double w,double h,
+    int step,int nx,int ny,bool dark,int threshold,const Homography& inverse,Sample& sample)
+{
+    float m[9];for(int i=0;i<9;++i)m[i]=float(inverse.m[i]);
+    const auto mag=[](float a){return a<0?-a:a;};
+    struct Approx { float u,v,eu,ev; bool exact; };
+    const auto approx=[&](Point p){const float x=float(p.x),y=float(p.y),g=32.f/16777216.f;
+        const float z=m[6]*x+m[7]*y+m[8],ez=g*(mag(m[6]*x)+mag(m[7]*y)+mag(m[8])),az=mag(z)-ez;
+        Approx a{0,0,0,0,!(az>2e-8f)||!(ez<=.01f*mag(z))};if(a.exact)return a;
+        a.u=(m[0]*x+m[1]*y+m[2])/z;a.v=(m[3]*x+m[4]*y+m[5])/z;
+        a.eu=(g*(mag(m[0]*x)+mag(m[1]*y)+mag(m[2]))+mag(a.u)*ez)/az+g*mag(a.u);
+        a.ev=(g*(mag(m[3]*x)+mag(m[4]*y)+mag(m[5]))+mag(a.v)*ez)/az+g*mag(a.v);
+        a.exact=!(a.eu<1e30f)||!(a.ev<1e30f);return a;};
+    const auto corner=[&](double x,double y,int k){return Point{x+((k==1||k==2)?(x+step>w?w-x:step):0),
+        y+(k>=2?(y+step>h?h-y:step):0)};};
+    struct Bounds { float loU,hiU,loV,hiV; int count,failed; };
+    Bounds local{3e38f,-3e38f,3e38f,-3e38f,0,0};
+    int column=team.Rank()%nx,row=team.Rank()/nx;
+    for(int index=team.Rank();index<nx*ny;index+=team.Size()){
+        const double x=double(column*step),y=double(row*step);
+        column+=team.Size();while(column>=nx){column-=nx;++row;}
+        Rgb c;if(!sample(x,y,c)){local.failed=1;break;}
+        const int luma=(77*c.r+150*c.g+29*c.b)/256;if(dark?luma>=threshold:luma<=threshold)continue;
+        ++local.count;
+        for(int k=0;k<4;++k){const auto p=corner(x,y,k);const auto a=approx(p);
+            if(a.exact){Point uv;if(!inverse.Map(p,uv)){local.failed=1;break;}continue;}
+            if(a.u+a.eu<local.loU)local.loU=a.u+a.eu;if(a.u-a.eu>local.hiU)local.hiU=a.u-a.eu;
+            if(a.v+a.ev<local.loV)local.loV=a.v+a.ev;if(a.v-a.ev>local.hiV)local.hiV=a.v-a.ev;
+        }
+        if(local.failed)break;
+    }
+    const auto bounds=team.Combine(local,[](Bounds a,Bounds b){return Bounds{a.loU<b.loU?a.loU:b.loU,
+        a.hiU>b.hiU?a.hiU:b.hiU,a.loV<b.loV?a.loV:b.loV,a.hiV>b.hiV?a.hiV:b.hiV,a.count+b.count,a.failed|b.failed};});
+    Extreme u0{1e100,0x7fffffff,0},v0=u0,u1{-1e100,0x7fffffff,0},v1=u1;
+    if(bounds.failed)return Ink{u0,v0,u1,v1,bounds.count,1};
+    int failed=0;column=team.Rank()%nx;row=team.Rank()/nx;
+    for(int index=team.Rank();index<nx*ny;index+=team.Size()){
+        const double x=double(column*step),y=double(row*step);
+        column+=team.Size();while(column>=nx){column-=nx;++row;}
+        Rgb c;if(!sample(x,y,c)){failed=1;break;}
+        const int luma=(77*c.r+150*c.g+29*c.b)/256;if(dark?luma>=threshold:luma<=threshold)continue;
+        for(int k=0;k<4;++k){const auto p=corner(x,y,k);const auto a=approx(p);
+            // Twice the bound absorbs FP32 rounding of the bound arithmetic.
+            if(!a.exact&&a.u-2*a.eu>bounds.loU&&a.u+2*a.eu<bounds.hiU&&
+                a.v-2*a.ev>bounds.loV&&a.v+2*a.ev<bounds.hiV)continue;
+            Point uv;if(!inverse.Map(p,uv)){failed=1;break;}
+            const int order=index*4+k;
+            u0=Lower(u0,{uv.x,order,0});u1=Upper(u1,{uv.x,order,0});
+            v0=Lower(v0,{uv.y,order,0});v1=Upper(v1,{uv.y,order,0});
+        }
+        if(failed)break;
+    }
+    return team.Combine(Ink{u0,v0,u1,v1,bounds.count,failed},[](Ink a,Ink b){return Merge(a,b);});
+}
 // Sample receives local coordinates of the existing fitted word and returns
 // actual source RGB. Missing pixels are unknown boundaries, never plane edges.
 template<class Team,class Sample> OKUFLOW_SURFACE_HD Result RefineContext(const Team& team,double w,double h,Rgb fg,Rgb bg,
@@ -203,8 +269,11 @@ template<class Team,class Sample> OKUFLOW_SURFACE_HD Result RefineContext(const 
     // The serial sample loops visit x,y = 0, step, ... < w,h; integer
     // multiples are exact, so row-major order is index = row*nx + column.
     int nx=0,ny=0;while(double(nx*step)<w)++nx;while(double(ny*step)<h)++ny;
+    Ink ink;int count=0;
+    if constexpr(Team::FilteredInk)ink=FilteredInkExtremes(team,w,h,step,nx,ny,dark,threshold,inverse,sample);
+    else{
     Extreme u0{1e100,0x7fffffff,0},v0=u0,u1{-1e100,0x7fffffff,0},v1=u1;
-    int count=0,failed=0,previous=-2;Point reuse[2];
+    int failed=0,previous=-2;Point reuse[2];
     int column=team.Rank()%nx,row=team.Rank()/nx;
     for(int index=team.Rank();index<nx*ny;index+=team.Size()){
         const double x=double(column*step),y=double(row*step);const int at=column;
@@ -227,9 +296,8 @@ template<class Team,class Sample> OKUFLOW_SURFACE_HD Result RefineContext(const 
         }
         if(failed)break;
     }
-    struct Ink { Extreme u0,v0,u1,v1; int count,failed; };
-    const auto ink=team.Combine(Ink{u0,v0,u1,v1,count,failed},[](Ink a,Ink b){
-        return Ink{Lower(a.u0,b.u0),Lower(a.v0,b.v0),Upper(a.u1,b.u1),Upper(a.v1,b.v1),a.count+b.count,a.failed|b.failed};});
+    ink=team.Combine(Ink{u0,v0,u1,v1,count,failed},[](Ink a,Ink b){return Merge(a,b);});
+    }
     if(ink.failed)return result;
     count=ink.count;
     const double U0=ink.u0.value,V0=ink.v0.value,U1=ink.u1.value,V1=ink.v1.value;

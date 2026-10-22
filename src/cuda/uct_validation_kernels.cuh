@@ -932,6 +932,7 @@ struct SurfaceSampler {
 // combinations are exact, so the result matches a single serial member.
 inline constexpr int SurfaceThreads=128;
 struct SurfaceTeam {
+    static constexpr bool FilteredInk=true; // FP64 is a small fraction of FP32 throughput
     __device__ int Rank()const{return threadIdx.x;}
     __device__ int Size()const{return SurfaceThreads;}
     __device__ void Sync()const{__syncthreads();}
