@@ -10,9 +10,10 @@
 
 namespace okuflow {
 
-// Two logical slots only: the displayed recording frame and its newest
+// Two logical slots only: the displayed clean Original frame and its newest
 // processed successor awaiting a presentation receipt. GPU allocations share
-// the Original recorder lease; there is no independent camera-history clone.
+// the Original producer lease, shared with recorder/recap admission. Compressed
+// rolling history and the exact processed-scene Freeze lease have other owners.
 class PresentedOriginalCache {
 public:
     static constexpr std::size_t kByteLimit = 96u * 1024 * 1024;

@@ -363,6 +363,7 @@ public:
     static bool RefusePendingLiveHold(OkuFlowApp& app, bool finishing, bool cameraActive) {
         app.SeedPendingLiveHoldForTest(finishing);
         app.cameraActive_=cameraActive;
+        app.cameraFramePresented_=cameraActive; // Explicit successful display receipt for this synthetic live/lost row.
         return app.AcceptLiveMediaHold({},0,0,1,10'000);
     }
     static void VideoSaved(OkuFlowApp& app,const SavedRecordingSegment& part) {app.OnVideoSegmentSaved(part);}
@@ -516,6 +517,32 @@ public:
         app.presentedOriginalCache_.Reset();
         app.SeedVideoDocumentForTest({},nullptr,false,false);
         app.ReturnVideoToCamera();
+    }
+    static void SeedRecapSceneWithoutRecording(OkuFlowApp& app,std::vector<std::uint8_t>& pixels,bool unsupported=false) {
+        app.cameraActive_=true;app.cameraFramePresented_=true;
+        app.currentCameraFrameSequence_=91;app.currentCameraCaptureClock100ns_=9'100'000;
+        MediaFrame source;source.width=unsupported?8192:32;source.height=unsupported?4320:16;source.subtype=MFVideoFormat_ARGB32;
+        source.frameRateNumerator=30;source.frameRateDenominator=1;
+        app.ObserveLiveRecapSource(source);
+        UctFrameContext context;context.frameSeq=91;app.lastAnnotationPresentation_=context;
+        const auto transform=ComputeViewTransform(32,16,1280,720,2,0.4f,0.6f,ViewportFitMode::kFill);
+        app.RetainPresentedCameraScene(nullptr,32,16,transform,pixels.data());
+        app.PollVideoPlayback();
+    }
+    static void ResetRecap(OkuFlowApp& app){app.ResetLiveRecap();}
+    static void OversizedPresentedScene(OkuFlowApp& app) {
+        ++app.lastAnnotationPresentation_->frameSeq;
+        const auto transform=ComputeViewTransform(8192,4320,1280,720,1,0.5f,0.5f,ViewportFitMode::kFill);
+        app.RetainPresentedCameraScene(nullptr,8192,4320,transform,nullptr);
+        app.PollVideoPlayback();
+    }
+    static void SetRecapMinutes(OkuFlowApp& app,int minutes) {
+        auto* combo=app.mainWindow_->liveRecapMinutesCombo();combo->setCurrentIndex(combo->findData(minutes));
+    }
+    static QJsonObject RecapPreferences(const OkuFlowApp& app) {
+        const auto& s=app.settingsController_->Settings();
+        return {{"minutes",s.liveRecapMinutes},{"zoom",s.currentConfig.zoomAmount},{"center",s.currentConfig.zoomCenterX},
+            {"camera",s.cameraSymbolicLink},{"format",s.cameraFormatStableId},{"microphone",s.microphoneEndpointId}};
     }
     static void SeekVideo(OkuFlowApp& app,qint64 positionMs) {app.SeekSelectedVideo(positionMs);}
     static void ToggleVideo(OkuFlowApp& app) {app.ToggleSelectedVideoPlayback();}
@@ -1223,6 +1250,50 @@ private slots:
         QVERIFY(!state["hasFrame"].toBool());
         QCOMPARE(NativeControlFixture::VideoUi(app_).source,VideoTransport::Source::None);
         QVERIFY(!NativeControlFixture::VideoTimerActive(app_));
+    }
+    void recapFreezeOwnsExactSceneDuringEncoderWarmupWithoutRecording_data() {
+        QTest::addColumn<bool>("unsupported");QTest::newRow("encoder-warmup")<<false;QTest::newRow("unsupported-codec-size")<<true;
+    }
+    void recapFreezeOwnsExactSceneDuringEncoderWarmupWithoutRecording() {
+        QFETCH(bool,unsupported);
+        const auto config=NativeControlFixture::CurrentImageConfig(app_);
+        const auto cleanup=qScopeGuard([&]{NativeControlFixture::SetCameraActive(app_,false);
+            NativeControlFixture::ResetRecap(app_);NativeControlFixture::ResetVideo(app_);
+            NativeControlFixture::RestoreImageConfig(app_,config);});
+        NativeControlFixture::ResetVideo(app_);std::vector<std::uint8_t> pixels(32*16*4,47);
+        NativeControlFixture::SeedRecapSceneWithoutRecording(app_,pixels,unsupported);
+        QCOMPARE(NativeControlFixture::VideoState(app_)["kind"].toString(),QStringLiteral("recap"));
+        QCOMPARE(NativeControlFixture::VideoUi(app_).source,VideoTransport::Source::Recap);
+        QVERIFY(!NativeControlFixture::VideoUi(app_).seekable);
+        QVERIFY(NativeControlFixture::VideoUi(app_).canPauseLive);
+        std::fill(pixels.begin(),pixels.end(),211);
+        NativeControlFixture::ToggleVideo(app_);
+        const auto held=NativeControlFixture::HeldVideoFrame(app_);
+        QVERIFY(held && held->bgra);QCOMPARE(held->sampleId,std::uint64_t(91));
+        QVERIFY(std::all_of(held->bgra->begin(),held->bgra->end(),[](auto b){return b==47;}));
+        QVERIFY(NativeControlFixture::VideoState(app_)["selectedPts100ns"].isNull());
+        const auto preferences=NativeControlFixture::RecapPreferences(app_);
+        NativeControlFixture::SetRecapMinutes(app_,3);
+        auto expected=preferences;expected["minutes"]=3;
+        QCOMPARE(NativeControlFixture::RecapPreferences(app_),expected);
+        NativeControlFixture::SetRecapMinutes(app_,preferences["minutes"].toInt());
+        NativeControlFixture::JumpVideo(app_);
+        QCOMPARE(NativeControlFixture::VideoState(app_)["kind"].toString(),QStringLiteral("recap"));
+        QVERIFY(!NativeControlFixture::HeldVideoFrame(app_));
+        NativeControlFixture::ResetRecap(app_);
+        QVERIFY(!NativeControlFixture::HeldVideoFrame(app_));
+        QVERIFY(!NativeControlFixture::VideoUi(app_).seekable);
+    }
+    void oversizedNewPresentationRevokesPreviousExactFreeze() {
+        const auto cleanup=qScopeGuard([&]{NativeControlFixture::SetCameraActive(app_,false);
+            NativeControlFixture::ResetRecap(app_);NativeControlFixture::ResetVideo(app_);});
+        NativeControlFixture::ResetVideo(app_);std::vector<std::uint8_t> pixels(32*16*4,47);
+        NativeControlFixture::SeedRecapSceneWithoutRecording(app_,pixels);
+        QVERIFY(NativeControlFixture::VideoUi(app_).canPauseLive);
+        NativeControlFixture::OversizedPresentedScene(app_);
+        QVERIFY(!NativeControlFixture::VideoUi(app_).canPauseLive);
+        NativeControlFixture::ToggleVideo(app_);
+        QVERIFY(!NativeControlFixture::HeldVideoFrame(app_));
     }
     void stopAndFinalizationKeepPresentedRecordingCursor_data() {
         QTest::addColumn<bool>("playing");

@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+- Add silent camera **Live recap**, independent of recording, with a bounded
+  compressed RAM window up to five minutes and the existing video transport.
+  Preserve an exact displayed scene for Freeze during encoder warmup, keep the
+  camera buffering during review, and restore camera view intent on Jump to
+  live. No temporary media files or recap microphone capture are created.
+  Choose one to five minutes in Settings with a camera-dependent memory estimate;
+  preserve native resolution through supported 4K at a 30 FPS recap admission cap.
+  See [policy and validation limits](docs/live_ram_recap.md).
+
 - Preserve newly found UCT uncertainty even when all incoming words merge into
   existing reading lines. Keep tilted proof from carving protection outside its
   actual quad. Existing proved words retain their original reading identity.

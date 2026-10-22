@@ -1481,6 +1481,29 @@ MainWindow::MainWindow()
         QStringLiteral("Accelerate fast Ctrl+scroll zoom gestures; keyboard zoom remains exact"));
     deviceMoreLayout->addWidget(zoomWheelAccelerationCheckbox_);
 
+    auto* recapDurationLabel=new QLabel(QStringLiteral("Live recap duration (minutes)"));
+    liveRecapMinutesCombo_=new WheelSafeComboBox();
+    liveRecapMinutesCombo_->setObjectName(QStringLiteral("liveRecapMinutes"));
+    SetComboItemsAreData(liveRecapMinutesCombo_);
+    for(int minutes=1;minutes<=5;++minutes)liveRecapMinutesCombo_->addItem(QLocale().toString(minutes),minutes);
+    liveRecapMinutesCombo_->setCurrentIndex(4);
+    recapDurationLabel->setBuddy(liveRecapMinutesCombo_);
+    liveRecapMinutesCombo_->setAccessibleName(recapDurationLabel->text());
+    liveRecapEstimateLabel_=new QLabel();
+    liveRecapEstimateLabel_->setObjectName(QStringLiteral("liveRecapMemoryEstimate"));
+    liveRecapEstimateLabel_->setWordWrap(true);
+    auto* recapWorkingLabel=new QLabel(QStringLiteral("Additional memory is used while buffering, replaying or freezing video."));
+    recapWorkingLabel->setWordWrap(true);
+    deviceMoreLayout->addWidget(recapDurationLabel);
+    deviceMoreLayout->addWidget(liveRecapMinutesCombo_);
+    deviceMoreLayout->addWidget(liveRecapEstimateLabel_);
+    deviceMoreLayout->addWidget(recapWorkingLabel);
+    connect(liveRecapMinutesCombo_,&QComboBox::currentIndexChanged,this,[this](int index){
+        setLiveRecapEstimate(liveRecapEstimateBitrate_);
+        emit liveRecapMinutesChanged(liveRecapMinutesCombo_->itemData(index).toInt());
+    });
+    setLiveRecapEstimate();
+
     // ---- 3. Recording --------------------------------------------------
     recordingSection_ = makeSection(QStringLiteral("Recording"),
                                     QStringLiteral("recording"), false);
@@ -3071,6 +3094,22 @@ QPushButton* MainWindow::testCameraAccelerationButton() const {
 QComboBox* MainWindow::recordingCanvasCombo() const {
     return recordingCanvasCombo_;
 }
+void MainWindow::setLiveRecapMinutes(int minutes) {
+    const QSignalBlocker blocker(liveRecapMinutesCombo_);
+    liveRecapMinutesCombo_->setCurrentIndex(liveRecapMinutesCombo_->findData(std::clamp(minutes,1,5)));
+    setLiveRecapEstimate(liveRecapEstimateBitrate_);
+}
+void MainWindow::setLiveRecapEstimate(std::uint32_t bitrate) {
+    liveRecapEstimateBitrate_=bitrate;
+    const int minutes=liveRecapMinutesCombo_->currentData().toInt();
+    const QLocale locale;
+    const QString amount=bitrate?locale.toString(qint64(bitrate)*60*minutes/8/1'000'000)
+        :QStringLiteral("%1–%2").arg(locale.toString(minutes*60),locale.toString(minutes*120));
+    const auto source=QStringLiteral("Estimated video history: %1 MB").arg(amount);
+    SetLiveTranslationSource(liveRecapEstimateLabel_,source);
+    liveRecapEstimateLabel_->setText(TranslateUi(source));
+    SetLiveAccessibleDescription(liveRecapMinutesCombo_,source);
+}
 void MainWindow::refreshSystemLanguageItem()
 {
     if (!applicationLanguageCombo_ || applicationLanguageCombo_->count() == 0) {
@@ -4364,6 +4403,11 @@ void MainWindow::changeEvent(QEvent* event)
         refreshSliderReadouts();
         refreshTextClarityUi();
         refreshSystemLanguageItem();
+        if(liveRecapMinutesCombo_) {
+            for(int index=0;index<liveRecapMinutesCombo_->count();++index)
+                liveRecapMinutesCombo_->setItemText(index,QLocale().toString(liveRecapMinutesCombo_->itemData(index).toInt()));
+            setLiveRecapEstimate(liveRecapEstimateBitrate_);
+        }
         if (cameraCombo_) {
             const QSignalBlocker blocker(cameraCombo_);
             const int videoIndex = cameraCombo_->findData(QStringLiteral("video"));

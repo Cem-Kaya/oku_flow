@@ -1,5 +1,34 @@
 # OkuFlow Tests
 
+## Live RAM recap production seams
+
+`video_memory_stream_contract` covers actual bounded heap IStream/MF adapters,
+overflow/mutation refusal, cursor clones, successful-Finalize sealing and
+consumer lifetimes. `video_memory_native_h264` is serial native Windows CPU
+H.264 encode/decode/keyframe/PTS evidence using only synthetic memory media.
+`video_recap_contract` covers whole-segment time/byte/keyframe-bound eviction,
+source epochs and counted evicted pins. `video_recap_native_codec` exercises
+the production OpenMemory decoder, exact issued Pause leases, real <=250 ms
+neighbours, stale seek cancellation and continued async producer admission
+while a consumer holds a prior scene. `video_recap_native_4k30` separately
+checks a 65-frame full-resolution 4K30 CPU codec capability and actual compressed
+sample count/PTS, including a capture hole; its elapsed
+time is not sustained physical camera FPS or five-minute soak evidence.
+Transport and opt-in actual-app offscreen rows exercise actual rolling bounds
+and exact Freeze before any encoded segment, without camera/audio endpoints.
+Model-free composition covers held CPU/GPU sampling, focus markers and rotation.
+Ring/transport seams cover5→1 minute trimming while a four-minute-old frame
+remains pinned at its true textual position, plus natural expiry. Numeric
+RangeValue is absent outside the seek window and valid after explicit reentry.
+
+Use tracked `agent_check.ps1` selection and `run_test_gate.ps1` with exact test
+names, serial codec ownership and GUI excluded. The granted 2026-10-22 CPU
+selection passed 11 of 230 cases, including synthetic AAC/gap verification.
+Final source/executable/catalog hashes matched before and after the run; all
+initial failures remain archived. The full matrix is still required. These fixtures do
+not establish native desktop/screen-reader, GPU, camera, long-soak, installer
+or release acceptance. See [the contract](../docs/live_ram_recap.md).
+
 ## Optional active regional GPU proof
 
 `uct_paddle_tests optionalActiveRegionalProof` is an explicit cached-model run,

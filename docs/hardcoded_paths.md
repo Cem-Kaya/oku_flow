@@ -1,5 +1,20 @@
 # Hard-Coded Paths and Defaults
 
+## Live RAM recap (development)
+
+`VideoRecapPolicy` keeps 300 seconds with independently playable ~2-second H.264
+segments, a 768 MiB compressed ring, 8 MiB active segment and two pinned segment
+leases. Two pending raw inputs have a 96 MiB cap; one native input may be in
+flight. Native resolution is retained through 3840×2160/portrait, at most
+30 FPS / 8 Mbps through 1080p-equivalent pixel count and 30 FPS / 16 Mbps above
+it. Queue losses retain real delivery-clock gaps. Manual exact scene retention
+caps a scene at 48 MiB, separately from the 96 MiB clean Original cache and
+existing decoded quotas. Settings JSON `liveRecapMinutes` defaults to five and
+is clamped to 1–5; changing it trims the time window without raising the byte
+cap. The UI estimates decimal 60/120 MB per minute and separates working memory.
+No media/cache/index path, file mapping or audio input exists.
+See [full policy](live_ram_recap.md).
+
 The optional `OKUFLOW_UCT_LOCAL_BF16_MANIFEST` selector is read only by the app's
 private production factory. Its schema-1/prepare=false manifest is at most
 64 KiB; converted graphs/plans are strictly below 256 MiB and hash-pinned.
@@ -77,8 +92,8 @@ bounded to 2 MiB, 32 packets and 500 ms; the native output endpoint is capped
 at 250 ms. These are admission limits, not latency promises. The selected
 reader keeps an ordinary 200 ms lead and remembers handed-off PCM independently
 of queue draining. See [video/audio repair](video_audio_preroll_repair.md). The
-transport polls at 16 ms only while a recording/file document exists; normal
-unrecorded camera mode does not run a history collector.
+transport polls at 16 ms while a recording/file/recap document exists. Camera
+recap encoding has its independent bounded worker, including with Record off.
 
 UCT screen text has at most 128 lines, 512 UTF-16 units per line and 16 KiB
 total. Semantic additions publish at one second, with a three-second maximum

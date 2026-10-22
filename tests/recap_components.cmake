@@ -6,6 +6,7 @@ endif()
 
 include(original_recording.cmake)
 include(video_playback.cmake)
+include(video_recap.cmake)
 include(uct_screen_text_accessibility.cmake)
 
 # Every direct writer consumer needs its observed byte-stream implementation.
@@ -13,6 +14,9 @@ get_property(recap_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
 foreach(recap_target IN LISTS recap_targets)
     get_target_property(recap_sources ${recap_target} SOURCES)
     if("${PROJECT_SOURCE_DIR}/src/common/media_writer.cpp" IN_LIST recap_sources)
+        if(NOT "${PROJECT_SOURCE_DIR}/src/common/video_memory_stream.cpp" IN_LIST recap_sources)
+            target_sources(${recap_target} PRIVATE ${PROJECT_SOURCE_DIR}/src/common/video_memory_stream.cpp)
+        endif()
         if(NOT "${PROJECT_SOURCE_DIR}/src/common/video_archive.cpp" IN_LIST recap_sources)
             target_sources(${recap_target} PRIVATE ${PROJECT_SOURCE_DIR}/src/common/video_archive.cpp)
         endif()

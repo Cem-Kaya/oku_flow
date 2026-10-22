@@ -1,5 +1,93 @@
 # OkuFlow Code Reference
 
+## Live RAM recap
+
+`common/video_memory_stream.hpp` / `src/common/video_memory_stream.cpp` provide
+`VideoMemoryStream` and immutable `VideoMemorySource`: bounded heap IStream/MF
+adapters, exact shared backing/cursor clones, actual Capacity accounting and
+successful-Finalize/mutable-cursor Seal fencing. Memory source identity is its
+opaque shared owner, never `VideoFileIdentity`. `VideoRecorder::StartMemory`
+uses silent H.264 and existing CPU/GPU input retirement/backpressure; its
+explicit output overload bypasses paths, disk probes, archives and audio.
+File Start/StartGpu retain their previous output contract.
+Native fixtures print exact sink statistics, selected transform metadata and
+the encoder's typed low-latency property on an admission failure.
+Their bounded TrackTimeScale header probe and complete compressed-frame census
+report the native container timebase and actual PTS differences separately
+from producer admission timestamps.
+Each native PTS must remain within one measured container tick plus integer
+conversion rounding, with exact 100-ns admissions and one-picture/capture
+inventory; interval/end checks also bound gap mapping and fragment drift.
+RAM CPU input reuses ConvertRecordingBgraToNv12 and, with hardware transforms
+disabled, disables automatic native converters, preventing implicit VideoProcessor frame-rate conversion from
+repeating pictures across capture holes. Its admission charge remains the
+existing conservative BGRA payload. QueueVideoSample retains actual successive
+PTS differences as durations, preserving fMP4 timing through fractional ticks
+and capture holes without adding acquisitions. File duration policy is unchanged.
+RAM GPU input already supplies NV12; it retains hardware-enabled sink
+attributes without the incompatible DISABLE_CONVERTERS flag.
+`VideoMemorySource::WithLifetime` privately wraps identical immutable backing
+for a counted ring lease; OpenReadStream and IStream/factory clones retain that
+same holder even after every public source/segment wrapper has been released.
+The mutable MF adapter preflights SetLength, SetCurrentPosition, signed Seek
+and Write/BeginWrite extents before forwarding: MF can otherwise cache an
+out-of-bounds cursor without invoking the bounded IStream immediately.
+
+`common/video_recap.hpp` / `src/common/video_recap.cpp` define `VideoRecapPolicy`,
+capture/PTS admissions, independently playable `VideoRecapSegment` receipts,
+`VideoRecapRing` and `RamVideoRecap`. ForSize admits the native 4K/1080p cadence
+policy. Ring Reset/Append/Acquire/Snapshot implement epoch-fenced whole-segment
+time/byte eviction with two counted consumer pins (including copied sources).
+SetWindow/SetDurationMinutes trim a bounded 1–5 minute preference without changing
+source identity or the compressed byte cap. Finalized Seal compacts actual
+retained capacity with at most twice the active segment limit transiently.
+The recap worker owns native Start/Add/Stop/Seal, records actual timing/losses,
+preserves capture delivery gaps and publishes only complete current-generation
+segments. WantsFrame/Submit bound input without encoder work or native joins
+on capture/UI. Reset/destruction revoke authority while native closures retire.
+
+`VideoPlayback::OpenMemory` adds an immutable-memory source to the existing
+single native reader, preserving issued frame leases, same-frame reticketing,
+seek generations, CPU/GPU fallback and real <=250 ms neighbouring samples.
+`VideoPlaybackSnapshot::memorySource` exposes opaque source identity separately
+from absent filesystem identity. Native source/read/decoded-frame lifetimes
+retain the segment's memory pin.
+
+`OkuFlowApp::VideoDocumentState::Kind::Recap` remains distinct from Camera,
+Recording and File. ObserveLiveRecapSource/ResetLiveRecap fence source/format/
+rotation transitions; SubmitLiveRecapOriginal consumes the clean producer.
+LiveRecapWantsFrame and LiveOriginalRetentionId share bounded Original leases
+with independent recording. OpenLiveRecapAt/PollLiveRecap translate absolute
+rolling capture time to segment-local native seeks and reuse the existing
+transport. ReturnVideoToCamera restores saved camera geometry/control intent.
+RetainPresentedCameraScene and PresentFrozenMediaScene preserve the actual
+successful scene/view for warmup Freeze without reapplying effects or claiming
+composited pixels as an independently acquired UCT frame/neighbour.
+An oversized or otherwise unretainable newer presentation revokes the previous
+scene immediately. Frozen presentation admission uses its own scene/view stamp;
+ongoing hidden camera processing does not force resampling identical held pixels.
+`FrozenSceneRecipe` / `ComposeFrozenCameraScene` are app-level model-free
+display composition: source/viewport byte admission, saved CPU/GPU sampling,
+focus-marker placement and quarter-turn/pan/zoom over the same owned pixels.
+Rapid recap seeks retain one newest deferred intent while cancellation retires
+the second reader pin. A duration shrink preserves the old selected lease's
+true out-of-window position; transport hides the clamped handle and keeps its
+actual held-time accessibility text, rather than claiming it is the new first
+sample. Its existing Qt accessibility adapter omits ValueInterface while that
+position is outside the seek window; exposed numeric ranges always stay valid.
+
+`VideoTransport::Source::Recap`, State::Buffering, Snapshot::firstMs and
+canPauseLive represent actual rolling bounds and a pre-encoder exact Freeze.
+Rolling bounds refresh immediately on eviction; saved-file playback retains
+its focused inspection range and ordinary 1000 ms unfocused refresh contract.
+Native actions and drag-stable absolute timeline mapping remain shared with
+saved/recording media. See [full contract and limits](live_ram_recap.md).
+`MainWindow::{liveRecapMinutesCombo,setLiveRecapMinutes,setLiveRecapEstimate}`
+provide numeric stable-data duration choices and camera-dependent decimal-MB
+estimates; liveRecapMinutesChanged updates RamVideoRecap and settings-controller
+persistence. `PersistentSettings::liveRecapMinutes` defaults to five, loads/saves
+clamped 1–5, and is independent of image profiles, microphone and camera intent.
+
 `UltraClearTextOverlay::TimingTicket`, `UltraClearTextPanel::TimingTicket` and
 `UctScreenTextAccessibility::TimingTicket` return UI-thread diagnostic copies
 of the existing cached publication ticket. They do not record, publish, allocate
@@ -258,7 +346,8 @@ admission callbacks before advancing, so setup cannot expire otherwise current
   before asynchronous atomic PNG writing. See [document lifecycle](video_document_lifecycle.md).
 - `PresentedOriginalCache::{Stage,Presented,Displayed,Reset}` keep at most the
   last successfully displayed Original and one pending successor within 96 MiB.
-  They share recorder leases without collecting unrecorded camera history.
+  They share Original leases with independent recorder/recap admission; the
+  separate compressed ring owns rolling camera history.
   `AdmitOriginalFrame` separates source admission from presentation.
   `CaptureLiveForMediaHold` uses an owned matching receipt;
   `D3D12Presenter::RequestReadback(GpuVideoFrame)` retains its resource/fence

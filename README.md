@@ -62,6 +62,13 @@ selected source and keeps your held position. Processed photos and saved drawing
 include eligible UCT text and ink; Original photos stay clean. These changes are not yet a
 published installer; see [development status](docs/accessible_video_implementation.md).
 
+Development builds also keep a silent **Live recap** while the camera is on,
+even with recording off. Pause the displayed scene, rewind or scrub the actual
+available window, then jump back to live. Up to five minutes of compressed
+video stays in a bounded RAM buffer; it starts empty and resets when the camera
+stops or changes source/format. It creates no temporary video file or microphone
+capture. See [quality, memory and acceptance limits](docs/live_ram_recap.md).
+
 Development UCT remembers your opt-in across launches. The Text Clarity switch
 pauses it without clearing your choice and restores it when switched on again.
 

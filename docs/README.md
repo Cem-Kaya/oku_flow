@@ -1,5 +1,9 @@
 # OkuFlow Documentation Guide
 
+[Live RAM recap](live_ram_recap.md) documents the independent silent camera
+history, compressed memory limits, exact scene Freeze, existing-player reuse,
+source resets and separate synthetic/native acceptance boundaries.
+
 [Local BF16 recognition](uct_local_bf16.md) documents the owner's explicit
 cache-only app selection, pinned FP32 detector, mixed arithmetic, failover and
 the original quality-comparison failures. Diagnostic FP32 baselines stay pinned.

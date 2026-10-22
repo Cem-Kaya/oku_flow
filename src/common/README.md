@@ -10,6 +10,9 @@ failed cleanup resources; camera callers must acknowledge release only after
 its completed status. These development changes still require hardware gates.
 
 Current contents:
+- bounded heap-backed H.264 live recap segments and a five-minute time/byte
+  ring independent of Record, reusing the native player through OpenMemory;
+  no recap audio or media files. See [ownership and limits](../../docs/live_ram_recap.md).
 - opt-in supplemental UCT region execution on the existing recognition worker,
   with full-deadline priority, current owned inputs and per-observation pending
   evidence; shadow-only observation remains separate. See

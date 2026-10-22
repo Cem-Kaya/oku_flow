@@ -1,8 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="th" sourcelanguage="en_US">
-    <context>
-        <name>OkuFlow</name>
+<context>
+    <name>OkuFlow</name>
+    <message>
+        <source>Live recap duration (minutes)</source>
+        <translation>ระยะเวลาย้อนดูภาพสด (นาที)</translation>
+    </message>
+    <message>
+        <source>Estimated video history: %1 MB</source>
+        <translation>หน่วยความจำโดยประมาณสำหรับวิดีโอย้อนหลัง: %1 MB</translation>
+    </message>
+    <message>
+        <source>Additional memory is used while buffering, replaying or freezing video.</source>
+        <translation>การบัฟเฟอร์ เล่นซ้ำ หรือหยุดภาพวิดีโอจะใช้หน่วยความจำเพิ่มเติม</translation>
+    </message>
+        <message>
+            <source>Live recap</source>
+            <translation>ดูภาพสดย้อนหลัง</translation>
+        </message>
+        <message>
+            <source>Buffering live video…</source>
+            <translation>กำลังบัฟเฟอร์วิดีโอสด…</translation>
+        </message>
         <message>
             <source>Action in progress.</source>
             <translation>กำลังดำเนินการ</translation>

@@ -1,8 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="fa" sourcelanguage="en_US">
-    <context>
-        <name>OkuFlow</name>
+<context>
+    <name>OkuFlow</name>
+    <message>
+        <source>Live recap duration (minutes)</source>
+        <translation>مدت تماشای دوبارهٔ ویدیوی زنده (دقیقه)</translation>
+    </message>
+    <message>
+        <source>Estimated video history: %1 MB</source>
+        <translation>برآورد مصرف حافظه برای تاریخچهٔ ویدیو: %1 MB</translation>
+    </message>
+    <message>
+        <source>Additional memory is used while buffering, replaying or freezing video.</source>
+        <translation>هنگام بافر کردن، بازپخش یا ثابت نگه‌داشتن تصویر ویدیو، حافظهٔ بیشتری مصرف می‌شود.</translation>
+    </message>
+        <message>
+            <source>Live recap</source>
+            <translation>تماشای دوبارهٔ ویدیوی زنده</translation>
+        </message>
+        <message>
+            <source>Buffering live video…</source>
+            <translation>در حال بافر کردن ویدیوی زنده…</translation>
+        </message>
         <message>
             <source>Action in progress.</source>
             <translation>عملیات در حال انجام است.</translation>

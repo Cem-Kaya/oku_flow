@@ -25,6 +25,8 @@ struct VideoPlaybackFrameLease {
     std::weak_ptr<const void> owner;
     std::weak_ptr<const VideoPlaybackFrame> frame;
     VideoFileIdentity file;
+    std::shared_ptr<const VideoMemorySource> memory;
+    std::shared_ptr<const void> memoryKeeper;
     std::uint64_t requestGeneration{}, archiveGeneration{};
     std::uint32_t videoTrackId{};
 };
@@ -54,7 +56,10 @@ enum class CommandKind { None, Open, Seek, End, Close };
 struct Command {
     CommandKind kind{CommandKind::None}; std::uint64_t generation{};
     std::wstring path; std::shared_ptr<RecordingArchive> archive;
+    std::shared_ptr<const VideoMemorySource> memory;
+    std::shared_ptr<const void> memoryKeeper;
     std::int64_t target{}; Clock::time_point queued{};
+    bool memoryOpen{};
     std::optional<LUID> gpuAdapter;
     bool forceCpu{};
     std::string backendReason;
@@ -71,6 +76,8 @@ struct Reader {
     VideoReadStreamClone cloneRead;
     ComPtr<IMFMediaType> nativeMetadata;
     VideoFileIdentity file;
+    std::shared_ptr<const VideoMemorySource> memorySource;
+    std::shared_ptr<const void> memoryKeeper;
     std::shared_ptr<RecordingArchive> archive;
     RecordingArchiveSnapshot archiveAdmission;
     std::uint32_t width{}, height{}, stride{}, rotation{}, parN{1}, parD{1};
@@ -103,6 +110,7 @@ struct Reader {
         duration = 0; audioFloor100ns = audioEnd100ns = 0; audioEos = false;
         hasAudio = audioAvailable = eos = incomplete = false;
         parN = parD = 1; file = {}; archiveAdmission = {};
+        memorySource.reset(); memoryKeeper.reset();
         backend="media-foundation";backendReason.clear();
     }
 };
@@ -142,9 +150,10 @@ struct VideoPlayback::State {
 namespace {
 void ClearAudio(VideoPlayback::State& s) { s.audio.clear(); s.audioBytes = 0; s.audioDuration100ns = 0; s.audioClockValid = false; }
 void SealFrame(const std::shared_ptr<VideoPlaybackFrame>& frame, const VideoPlayback::State& s,
-               const VideoFileIdentity& file) {
+               const Reader& reader) {
     auto lease = std::make_shared<VideoPlaybackFrameLease>();
-    lease->owner = s.frameOwner; lease->frame = frame; lease->file = file;
+    lease->owner = s.frameOwner; lease->frame = frame; lease->file = reader.file;
+    lease->memory = reader.memorySource; lease->memoryKeeper = reader.memoryKeeper;
     lease->requestGeneration = frame->requestGeneration;
     lease->archiveGeneration = frame->archiveGeneration; lease->videoTrackId = frame->videoTrackId;
     frame->decoderLease = std::move(lease);
@@ -157,7 +166,8 @@ bool IssuedFrame(const VideoPlayback::State& s, const std::shared_ptr<const Vide
         !issued.owner_before(frame) && !frame.owner_before(issued) &&
         lease.requestGeneration == frame->requestGeneration &&
         lease.archiveGeneration == frame->archiveGeneration && lease.videoTrackId == frame->videoTrackId &&
-        lease.file.SameFile(s.snapshot.file) && frame->videoTrackId == s.snapshot.videoTrackId &&
+        (lease.memory ? lease.memory == s.snapshot.memorySource : lease.file.SameFile(s.snapshot.file)) &&
+        frame->videoTrackId == s.snapshot.videoTrackId &&
         s.snapshot.frame && frame->archiveGeneration == s.snapshot.frame->archiveGeneration;
 }
 bool FollowingFrame(const VideoPlayback::State& s, const std::shared_ptr<const VideoPlaybackFrame>& frame,
@@ -351,10 +361,14 @@ void ConfigureReader(Reader& r, const Command& cmd, VideoPlayback::State& state,
         if(!r.bytes)Check(cmd.archive->OpenReadStream(&r.bytes, &r.archiveAdmission,&r.cloneRead), "Active recording is not yet safely readable");
         r.file = r.archiveAdmission.file; r.duration = r.archiveAdmission.duration100ns;
         r.incomplete = r.archiveAdmission.finalized && !r.archiveAdmission.complete;
+    } else if (cmd.memoryOpen) {
+        if(!cmd.memory)throw std::runtime_error("No immutable RAM source was supplied.");
+        r.memorySource=cmd.memory;r.memoryKeeper=cmd.memoryKeeper;
+        if(!r.bytes)Check(cmd.memory->OpenReadStream(&r.bytes,&r.cloneRead),"Open immutable RAM video");
     } else if(!r.bytes)Check(OpenStableVideoReadStream(cmd.path, &r.bytes, &r.file,&r.cloneRead), "Open a stable read-only video handle");
     ComPtr<IMFAttributes> attrs; Check(MFCreateAttributes(&attrs, 4), "Create playback attributes");
     if(detail::FfmpegPlaybackRequested()) {
-        if(cmd.archive)r.backendReason="Recording archives use the Media Foundation backend.";
+        if(cmd.archive || cmd.memory)r.backendReason="Recording archives and RAM recap use the Media Foundation backend.";
         else {
             const auto result=detail::CreateFfmpegVideoReader(r.bytes.Get(),r.cloneRead,
                 [&state,generation]{return state.Current(generation);},cmd.queued+std::chrono::seconds(2),&r.source,r.backendReason);
@@ -633,7 +647,7 @@ bool ReadVideo(Reader& r, VideoPlayback::State& state, std::uint64_t gen,
             owned->sampleId=std::uint64_t(time);owned->videoTrackId=r.archive?r.archiveAdmission.videoTrackId:r.videoStreamIndex;
             if(r.archive && !r.archive->ValidateRange(r.archiveAdmission.generation,0,r.archiveAdmission.verifiedMediaBytes))
                 throw std::runtime_error("Recording bytes changed during GPU decode; seek again.");
-            SealFrame(owned, state, r.file);
+            SealFrame(owned, state, r);
             frame=std::move(owned);
         } else {
         const auto squareWidth = (std::uint64_t(r.width) * r.parN + r.parD / 2) / r.parD;
@@ -642,7 +656,7 @@ bool ReadVideo(Reader& r, VideoPlayback::State& state, std::uint64_t gen,
         if (optionalPrevious && (destination > limit ||
             state.pixels->bytes.load() > limit - destination)) optionalPrevious->reset();
         auto copied = CopyFrame(r, sample.Get(), time, gen, state.pixels);
-        SealFrame(copied, state, r.file);
+        SealFrame(copied, state, r);
         frame = std::move(copied); r.lastDecodedPts = frame->pts100ns;
         }
     }
@@ -747,6 +761,7 @@ void Publish(VideoPlayback::State& s, Reader& r, const Command& cmd,
     if (frame) s.snapshot.frame = std::move(frame);
     s.snapshot.neighborFrame = std::move(neighbor);
     s.snapshot.file = r.file; s.snapshot.path = cmd.archive ? r.archiveAdmission.path : cmd.path;
+    s.snapshot.memorySource = r.memorySource;
     s.snapshot.videoTrackId = r.archive ? r.archiveAdmission.videoTrackId : r.videoStreamIndex;
     s.snapshot.duration100ns = r.duration;
     s.snapshot.seekableEnd100ns = r.archive ? r.archiveAdmission.seekableEnd100ns
@@ -872,7 +887,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                        cached && target>=reader.cachedSeekLowerBound && target<=cached->pts100ns) {
                         auto selected=std::make_shared<VideoPlaybackFrame>(*cached);
                         selected->requestGeneration=command.generation;
-                        SealFrame(selected, *s, reader.file);
+                        SealFrame(selected, *s, reader);
                         if(!s->Current(command.generation))continue;
                         reader.cachedSeekFrame=selected;reader.needsReposition=true;
                         reader.eos=reader.cachedSeekEnded;reader.lastDecodedPts=selected->pts100ns;
@@ -1354,6 +1369,11 @@ VideoPlayback::VideoPlayback() : state_(std::make_shared<State>()) { std::thread
 VideoPlayback::~VideoPlayback() { state_->stop.store(true); state_->generation.fetch_add(1); state_->changed.notify_one(); }
 std::uint64_t VideoPlayback::OpenFile(std::wstring path) { Command c; c.kind = CommandKind::Open; c.path = std::move(path); return Submit(state_, std::move(c)); }
 std::uint64_t VideoPlayback::OpenArchive(std::shared_ptr<RecordingArchive> archive) { Command c; c.kind = CommandKind::Open; c.archive = std::move(archive); return Submit(state_, std::move(c)); }
+std::uint64_t VideoPlayback::OpenMemory(std::shared_ptr<const VideoMemorySource> source,
+                                      std::shared_ptr<const void> keeper) {
+    Command c;c.kind=CommandKind::Open;c.memoryOpen=true;c.memory=std::move(source);c.memoryKeeper=std::move(keeper);
+    return Submit(state_,std::move(c));
+}
 std::uint64_t VideoPlayback::Seek100ns(std::int64_t target) { Command c; c.kind = CommandKind::Seek; c.target = std::max<std::int64_t>(0, target); return Submit(state_, std::move(c)); }
 std::uint64_t VideoPlayback::JumpToEnd() { Command c; c.kind = CommandKind::End; return Submit(state_, std::move(c)); }
 void VideoPlayback::SetGpuAdapter(std::optional<LUID> adapter) {std::lock_guard lock(state_->mutex);state_->gpuAdapter=adapter;}

@@ -190,6 +190,7 @@ struct PersistentSettings {
     ViewportRateMode viewportRateMode{ViewportRateMode::AutoUpTo120};
     ViewportFitModeSetting viewportFitMode{ViewportFitModeSetting::Fill};
     RecordingCanvasMode recordingCanvasMode{RecordingCanvasMode::Source};
+    int liveRecapMinutes{5}; // Camera-only RAM history, bounded to 1–5 minutes.
     QMap<QString, bool> uiSectionStates;
     QRect assistiveOverlayGeometry;
     QString assistiveOverlayDockPosition{QStringLiteral("floating")};

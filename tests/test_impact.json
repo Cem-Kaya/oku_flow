@@ -8,6 +8,10 @@
   ],
   "none": ["\\.md$", "^docs/", "^improvement_ideas/", "^website/"],
   "rules": [
+    {
+      "paths": ["^include/okuflow/common/video_(recap|memory_stream)\\.hpp$", "^src/common/video_(recap|memory_stream)\\.cpp$", "^include/okuflow/app/frozen_camera_scene\\.hpp$"],
+      "tests": ["^video_recap_", "^video_memory_stream_", "^video_playback_contract$", "^video_transport_contract$", "^native_app_control_offscreen$", "^shared_source_equivalence$"]
+    },
     { "paths": ["^android/", "^scripts/android_camera_probe\\.py$"], "tests": [], "extraChecks": ["android-host-protocol"] },
     {
       "paths": ["^translations/", "^src/ui/translation_catalog\\.cpp$"],

@@ -3,8 +3,10 @@
 This development UI places `VideoTransport` in a vertical view column directly
 below `RenderWidget`, alongside the Advanced inspector. It spans the render
 column's width. The native corner-control windows remain inside the render
-rectangle, so they cannot cover the timeline. Plain unrecorded camera use has
-no transport and supplies no camera-history collection.
+rectangle, so they cannot cover the timeline. Live camera use now also has the
+same transport for a separate silent RAM recap, even with recording off.
+Its first/end values are actual rolling bounds and exact Freeze can precede
+the first coded segment. See [the recap contract](live_ram_recap.md).
 
 Saved-video selection lives in Settings > Camera. The camera dropdown includes
 `View video`; choosing it opens the local file picker. While video is selected,
