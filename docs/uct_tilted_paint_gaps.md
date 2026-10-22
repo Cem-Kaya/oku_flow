@@ -5,6 +5,36 @@ A recognized spelling in the reading pane does not establish independent
 pixel proof, and a proved word can still be suppressed to protect adjacent
 original ink. None of the observations below establishes general OCR accuracy.
 
+## Actual application failure remains open
+
+The owner's primary report is functional: after opening/pausing the video,
+some button words remain raw **and are unavailable to the positioned screen
+reader**, even though Recognized Text contains their strings. This is an
+unresolved actual-application-path bug, not merely a font or plate appearance
+issue. The standalone direct-BF16 source replay below does not exercise the
+complete playing-to-paused transition, initial Windows OCR bridge, later GPU
+refresh, actual paint generation and positioned accessibility publication.
+Its all-drawn result does not close that report.
+
+The existing code has a reachable distinction worth checking in the controller
+audit: `UpdateReadingText` publishes `OverlayModel::ReadingText`, while
+`RefreshOverlay` takes `SceneWords` and `ScreenTextSnapshot` takes `ScreenLines`.
+Reading-only immutable words may appear in ReadingText; SceneWords excludes
+them and ScreenLines turns their ineligible word slots into omissions.
+Therefore pane text alone does not prove video/positioned-reader eligibility.
+This identifies a diagnostic branch, not the confirmed cause in the owner's
+running application.
+
+Conversely, conservative painter suppression alone does not establish the
+missing positioned-reader symptom. `UctScreenLineAccessible::LocalGeometry`
+accepts an eligible word's last-painted record even when `drawn` is false and
+uses its original-source character boxes with `VisiblePart(..., false)`.
+Unavailable/current paint geometry can hide positioned bounds independently.
+The captured menu19 mask baseline therefore explains that retained word's
+visual suppression only. Controller/eligibility/actual-paint/UIA lifecycle
+validation remains the separately owned investigation; this contribution
+changes none of those paths.
+
 ## Retained source and paint evidence
 
 The original 1920×1080 menu19/menu25 sources and r5 proof reports remain under
