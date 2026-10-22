@@ -37,6 +37,44 @@ identity. Fixed-width plans remain untouched. N8 and N16 maximum input sizes
 remain 4.5 MiB and 9 MiB; high-water allocations are retained, so this does not
 promise lower peak VRAM. Existing output/workspace ceilings remain unchanged.
 
+## Sorted grouping (separate opt-in, development)
+
+`OKUFLOW_UCT_TRT_GROUPING=sorted` additionally permutes each region's crops
+into ascending useful-width order before the existing contiguous groups are
+formed, so a group's canvas is set by similar-width crops instead of the
+widest incidental neighbour. It requires `OKUFLOW_UCT_TRT_WIDTH=bucketed`;
+any other grouping value, or sorted without bucketed, makes the TensorRT
+backend unavailable with an explicit selector error. The default remains
+detector-ordered execution (`ordered`), and fixed1024 is unaffected: grouping
+cannot narrow a fixed canvas. The reviewed local BF16 selection requires
+fixed1024 and therefore never combines with sorted grouping.
+
+Sorting changes execution order only. The worker downloads the region's
+compact quad descriptors once after the existing detector-count wait (no new
+synchronization, no image transfer), computes each sorted group's canvas on
+the host with the same invalid-width rule, and skips the per-batch quad
+downloads. Every crop keeps its own quad, a canvas at least its useful width
+(invalid widths keep the full canvas) and its original output slot: decoded
+lines are buffered per original crop index and merged, descriptor-hashed and
+captured in detector order through the inverse permutation. Cancellation
+between groups, per-crop token-count refusals, input leases and retirement
+ownership are unchanged. The profiler records `recognizerGrouping` beside
+the width policy; the status detail names the sorted experiment.
+
+Quality impact is the same class as bucketed canvases — cross-canvas
+TensorRT numerics — never clipped useful pixels or reduced coverage. It must
+be measured as three separate arms on identical sources: fixed1024 baseline,
+existing unsorted bucketed, and sorted bucketed, so gains from enabling the
+existing width selector are not credited to sorting. Only already-cached
+dynamic-width plans may run (medium recognition N1/N8 at the time of
+writing); no plan is prepared by this selector. Report changed/missing/extra
+words, dispositions, confidence and geometry against the fixed baseline,
+with long-line (no-gain), short-word, mixed-width, small-font and tilted
+controls; baseline agreement is not ground-truth accuracy. Model-free
+fixtures cover the permutation/inverse mapping, concrete group canvases, the
+all-long control and fail-closed selector combinations; they establish no
+inference speed or quality result.
+
 ## Preparation and validation
 
 Missing width plans refuse inference before loading builder/parser resources.

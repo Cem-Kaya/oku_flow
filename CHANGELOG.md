@@ -7,6 +7,13 @@
   construction and covered by a bit-equality kernel fixture; measured timing
   is tracked separately from this entry.
 
+- Development: add opt-in width-sorted recognizer grouping
+  (`OKUFLOW_UCT_TRT_GROUPING=sorted`, requires the bucketed width experiment).
+  Crops execute in ascending useful-width order on narrower existing
+  canvases; detector order is restored before merging and publication. This
+  is an explicitly measured quality/speed experiment, not a new default, and
+  it never combines with the fixed-width local BF16 selection.
+
 - Hide the entire video transport without leaving a filename/status strip.
   Its show/hide chevron now lives beside Custom Setup in the quick-mode corner
   controls, with keyboard access and viewport Freeze/Resume preserved.

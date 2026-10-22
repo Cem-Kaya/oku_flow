@@ -676,6 +676,87 @@ class PaddleTests final : public QObject
         crops[2].validWidth=0; QCOMPARE(width::OrderedGroup(crops.data(),8),1024);
         crops[2].validWidth=-1; QCOMPARE(width::OrderedGroup(crops.data(),8),1024);
     }
+    void recognizerWidthSortedGroupingRestoresOrderAndCanvases()
+    {
+        namespace width = recognizer_width;
+        struct Crop { int validWidth{}; };
+        const std::array<Crop,11> crops{{{500},{64},{1024},{130},{0},{90},{260},{-3},{128},{1024},{70}}};
+        const auto order = width::SortedGroupOrder(crops.data(), int(crops.size()));
+        QCOMPARE(order.size(), crops.size());
+        // A true permutation whose inverse restores the original sequence.
+        std::array<int,11> seen{};
+        for (const int index : order) { QVERIFY(index>=0 && index<11); QCOMPARE(seen[index]++,0); }
+        std::array<int,11> inverse{};
+        for (int position=0; position<11; ++position) inverse[order[position]]=position;
+        for (int original=0; original<11; ++original)
+            QCOMPARE(order[inverse[original]], original);
+        // Ascending useful widths, stable for ties, invalid widths last.
+        const std::array<int,11> expected{1,10,5,8,3,6,0,2,9,4,7};
+        for (int position=0; position<11; ++position) QCOMPARE(order[position], expected[position]);
+        // Concrete group canvases at group size four, versus detector order.
+        QCOMPARE(width::SortedGroupCanvas(crops.data(),order.data(),0,4),128);
+        QCOMPARE(width::SortedGroupCanvas(crops.data(),order.data(),4,4),1024);
+        QCOMPARE(width::SortedGroupCanvas(crops.data(),order.data(),8,3),1024);
+        QCOMPARE(width::OrderedGroup(crops.data(),4),1024);
+        QCOMPARE(width::OrderedGroup(crops.data()+4,4),1024);
+        QCOMPARE(width::OrderedGroup(crops.data()+8,3),1024);
+        // Every crop's sorted canvas still covers its useful width.
+        for (int groupFirst=0; groupFirst<11; groupFirst+=4) {
+            const int groupSize=std::min(4,11-groupFirst);
+            const int canvas=width::SortedGroupCanvas(crops.data(),order.data(),groupFirst,groupSize);
+            for (int slot=0; slot<groupSize; ++slot) {
+                const int requested=crops[order[groupFirst+slot]].validWidth;
+                if (requested>0) QVERIFY(canvas>=std::min(requested,1024));
+            }
+        }
+        // All-long control: sorting cannot narrow any canvas.
+        const std::array<Crop,5> longLines{{{900},{1024},{950},{1000},{1024}}};
+        const auto longOrder = width::SortedGroupOrder(longLines.data(), int(longLines.size()));
+        QCOMPARE(width::SortedGroupCanvas(longLines.data(),longOrder.data(),0,4),1024);
+        QCOMPARE(width::SortedGroupCanvas(longLines.data(),longOrder.data(),4,1),1024);
+        // Bounds refuse to invent a narrower canvas.
+        QVERIFY(width::SortedGroupOrder(static_cast<const Crop*>(nullptr),3).empty());
+        QVERIFY(width::SortedGroupOrder(crops.data(),0).empty());
+        QCOMPARE(width::SortedGroupCanvas(crops.data(),order.data(),0,0),1024);
+        QCOMPARE(width::SortedGroupCanvas(crops.data(),order.data(),0,17),1024);
+        QCOMPARE(width::SortedGroupCanvas(crops.data(),nullptr,0,4),1024);
+        const std::array<Crop,1> single{{{64}}};
+        const auto singleOrder = width::SortedGroupOrder(single.data(),1);
+        QCOMPARE(singleOrder.size(),std::size_t(1)); QCOMPARE(singleOrder[0],0);
+        QCOMPARE(width::SortedGroupCanvas(single.data(),singleOrder.data(),0,1),128);
+    }
+    void tensorRtGroupingSelectorFailsClosed()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto initialize = [&](const QByteArray& grouping, const QByteArray& widthValue) {
+            uct_batch_test::Environment batchEnv("OKUFLOW_UCT_TRT_BATCH", "");
+            uct_batch_test::Environment prepareEnv("OKUFLOW_UCT_TRT_PREPARE_WIDTH", "");
+            uct_batch_test::Environment widthEnv("OKUFLOW_UCT_TRT_WIDTH", widthValue);
+            uct_batch_test::Environment groupingEnv("OKUFLOW_UCT_TRT_GROUPING", grouping);
+            auto backend = CreateTensorRtRecognizer(directory.path(), {});
+            if (!backend) return std::optional<BackendStatus>{};
+            return std::optional<BackendStatus>{backend->Initialize()};
+        };
+        const auto sortedWithoutBuckets = initialize("sorted", "");
+        if (!sortedWithoutBuckets) QSKIP("TensorRT adapter not compiled.");
+        QCOMPARE(sortedWithoutBuckets->state, BackendState::kUnavailable);
+        QVERIFY(sortedWithoutBuckets->detail.contains("OKUFLOW_UCT_TRT_GROUPING"));
+        const auto bogus = initialize("bogus", "bucketed");
+        QVERIFY(bogus.has_value());
+        QCOMPARE(bogus->state, BackendState::kUnavailable);
+        QVERIFY(bogus->detail.contains("OKUFLOW_UCT_TRT_GROUPING"));
+        // Valid combinations pass selector validation and fail later on the
+        // empty fixture model root instead; no engine preparation starts.
+        const auto sortedBucketed = initialize("sorted", "bucketed");
+        QVERIFY(sortedBucketed.has_value());
+        QCOMPARE(sortedBucketed->state, BackendState::kUnavailable);
+        QVERIFY(!sortedBucketed->detail.contains("OKUFLOW_UCT_TRT_GROUPING"));
+        const auto ordered = initialize("ordered", "");
+        QVERIFY(ordered.has_value());
+        QCOMPARE(ordered->state, BackendState::kUnavailable);
+        QVERIFY(!ordered->detail.contains("OKUFLOW_UCT_TRT_GROUPING"));
+    }
     void recognizerWidthRectificationRetainsUsefulAspectSamples()
     {
         QImage image(1024,64,QImage::Format_ARGB32);

@@ -520,7 +520,7 @@ struct State
 {
     int device{};
     int recognizerBatch{1};
-    bool variableWidth{};
+    bool variableWidth{}, sortedGrouping{};
     QString batchPreparationDetail;
     QString precisionDetail;
     TensorRtProfile profile;
@@ -612,6 +612,10 @@ class TensorRtRecognizer final : public Recognizer
         allowWidthPreparation_ = prepareWidth == "1";
         invalidWidth_ = invalidWidth_ || (!prepareWidth.isEmpty() && prepareWidth != "0" && prepareWidth != "1") ||
                         (allowWidthPreparation_ && !variableWidth_);
+        const auto grouping = qEnvironmentVariable("OKUFLOW_UCT_TRT_GROUPING");
+        sortedGrouping_ = grouping == recognizer_width::kSortedToken;
+        invalidGrouping_ = (!grouping.isEmpty() && grouping != recognizer_width::kOrderedToken &&
+                            !sortedGrouping_) || (sortedGrouping_ && !variableWidth_);
     }
     ~TensorRtRecognizer() override
     {
@@ -629,6 +633,10 @@ class TensorRtRecognizer final : public Recognizer
         }
         if (invalidWidth_) {
             status_.detail = "OKUFLOW_UCT_TRT_WIDTH must be fixed1024 or bucketed; explicit PREPARE_WIDTH=1 requires bucketed.";
+            return status_;
+        }
+        if (invalidGrouping_) {
+            status_.detail = "OKUFLOW_UCT_TRT_GROUPING must be ordered or sorted; sorted requires OKUFLOW_UCT_TRT_WIDTH=bucketed.";
             return status_;
         }
         assets_ = LoadPaddleAssets(root_,detectorTier_,recognizerTier_);
@@ -810,32 +818,35 @@ class TensorRtRecognizer final : public Recognizer
                 std::size_t(region.y())*image.pitch+std::size_t(region.x())*4;
             auto *hostCount = state_->hostCount.Reserve(submissionGroup);
             const int maximumGroups = (recognizer_width::kMaximumCrops + submissionGroup - 1) / submissionGroup;
-            auto* hostWidths = state_->variableWidth ? state_->hostGroupWidths.Reserve(maximumGroups) : nullptr;
+            // Sorted grouping computes canvases on the host from downloaded
+            // descriptors; ordered grouping keeps the device group widths.
+            auto* hostWidths = state_->variableWidth && !state_->sortedGrouping
+                ? state_->hostGroupWidths.Reserve(maximumGroups) : nullptr;
             int count{};
+            std::vector<gpu::Quad> frozenQuads;
             if (frozen) {
                 const auto& recorded = frozen->regions[std::size_t(regionIndex)];
                 if (recorded.crops.size() > std::size_t(recognizer_width::kMaximumCrops))
                     throw std::runtime_error("Frozen OCR crop metadata exceeds capacity.");
-                std::vector<gpu::Quad> quads;
-                quads.reserve(recorded.crops.size());
+                frozenQuads.reserve(recorded.crops.size());
                 for (const auto& crop : recorded.crops) {
                     gpu::Quad q{};
                     std::copy(crop.xy.begin(), crop.xy.end(), q.xy);
                     q.score = crop.score; q.validWidth = crop.validWidth; q.internalEdges = crop.internalEdges;
-                    quads.push_back(q);
+                    frozenQuads.push_back(q);
                 }
-                count = int(quads.size());
+                count = int(frozenQuads.size());
                 if (hostWidths)
                     for (int first = 0; first < count; first += submissionGroup)
                         hostWidths[first/submissionGroup] = recognizer_width::OrderedGroup(
-                            quads.data()+first,std::min(submissionGroup,count-first));
+                            frozenQuads.data()+first,std::min(submissionGroup,count-first));
                 if (count) {
                     // Compact descriptor upload only. Retain pinned storage
                     // until the existing first recognition-group wait.
                     auto* upload = state_->hostQuad.Reserve(std::max(submissionGroup, count));
-                    std::copy(quads.begin(), quads.end(), upload);
+                    std::copy(frozenQuads.begin(), frozenQuads.end(), upload);
                     Check(cudaMemcpyAsync(state_->quads.Reserve(128*9), upload,
-                                          quads.size()*sizeof(gpu::Quad), cudaMemcpyHostToDevice, state_->stream));
+                                          frozenQuads.size()*sizeof(gpu::Quad), cudaMemcpyHostToDevice, state_->stream));
                     frozenUpload.Queued();
                 }
             } else {
@@ -860,7 +871,7 @@ class TensorRtRecognizer final : public Recognizer
                             state_->detectedQuads.Reserve(128), state_->count.Reserve(1), state_->stream);
                 gpu::RecognitionWindows(state_->detectedQuads.Get(),state_->count.Get(),
                                          state_->quads.Reserve(128*9),state_->stream);
-                if (state_->variableWidth)
+                if (hostWidths)
                     gpu::RecognitionGroupWidths(state_->quads.Get(),state_->count.Get(),submissionGroup,
                         state_->groupWidths.Reserve(maximumGroups),state_->stream);
                 Check(cudaGetLastError());
@@ -891,8 +902,24 @@ class TensorRtRecognizer final : public Recognizer
             // Execution positions map to original crop indices. Batched kernels
             // consume this order explicitly; decoded lines are buffered per
             // original index and merged in detector order after the region.
+            // Sorted grouping only permutes execution; every crop keeps its
+            // own quad, canvas at least its useful width, and output slot.
+            const bool sorted = state_->sortedGrouping;
+            std::vector<gpu::Quad> sortedQuads;
+            if (sorted && !frozen && count > 0) {
+                // The count wait already synchronized this stream, so one
+                // compact descriptor copy adds no new wait. Sorted execution
+                // reads quads from here instead of per-batch downloads.
+                sortedQuads.resize(count);
+                Check(cudaMemcpy(sortedQuads.data(), state_->quads.Get(),
+                                 count * sizeof(gpu::Quad), cudaMemcpyDeviceToHost));
+                profile.Transfer(count * sizeof(gpu::Quad));
+            }
+            const gpu::Quad *orderQuads = frozen ? frozenQuads.data() : sortedQuads.data();
             std::vector<int> order(count);
             for (int i = 0; i < count; ++i) order[i] = i;
+            if (sorted && count > 0)
+                order = recognizer_width::SortedGroupOrder(orderQuads, count);
             std::vector<std::optional<RecognizedLine>> pending(count);
             std::vector<gpu::Quad> pendingQuads(count);
             std::vector<int> pendingCanvas(count, 1024);
@@ -906,11 +933,14 @@ class TensorRtRecognizer final : public Recognizer
                     cancelOwnedInput();
                     return output;
                 }
-                const int width = hostWidths ? hostWidths[groupFirst/submissionGroup] : 1024;
+                const int groupSize = std::min(submissionGroup, count - groupFirst);
+                const int width = sorted
+                    ? recognizer_width::SortedGroupCanvas(orderQuads, order.data(),
+                                                          groupFirst, groupSize)
+                    : hostWidths ? hostWidths[groupFirst/submissionGroup] : 1024;
                 if (!recognizer_width::IsCanvas(width))
                     throw std::runtime_error("Invalid ordered-group recognizer canvas.");
                 const std::size_t samplePixels = static_cast<std::size_t>(width) * 48 * 3;
-                const int groupSize = std::min(submissionGroup, count - groupFirst);
                 // One compact index upload per group; the pinned source is
                 // rewritten only after the previous group's completion wait.
                 for (int slot = 0; slot < groupSize; ++slot)
@@ -968,21 +998,23 @@ class TensorRtRecognizer final : public Recognizer
                     // Identical bytes and layouts as the former per-crop copies:
                     // batch slots are contiguous in every device/host buffer,
                     // and ordered execution keeps quad slots contiguous too.
+                    // Sorted execution already holds every quad on the host.
                     profile.Measure(TensorRtProfile::Metadata, state_->stream, [&] {
                         Check(cudaMemcpyAsync(hostCount + batchFirst, tokenCounts,
                                               batchSize * sizeof(int),
                                               cudaMemcpyDeviceToHost, state_->stream));
-                        Check(cudaMemcpyAsync(hostQuads + batchFirst,
-                                              state_->quads.Get() + groupFirst + batchFirst,
-                                              batchSize * sizeof(gpu::Quad),
-                                              cudaMemcpyDeviceToHost, state_->stream));
+                        if (!sorted)
+                            Check(cudaMemcpyAsync(hostQuads + batchFirst,
+                                                  state_->quads.Get() + groupFirst + batchFirst,
+                                                  batchSize * sizeof(gpu::Quad),
+                                                  cudaMemcpyDeviceToHost, state_->stream));
                         Check(cudaMemcpyAsync(hostTokens + static_cast<std::size_t>(batchFirst) * steps,
                                               tokens,
                                               static_cast<std::size_t>(batchSize) * steps * sizeof(gpu::Token),
                                               cudaMemcpyDeviceToHost, state_->stream));
                     });
                     profile.Transfer(static_cast<std::size_t>(batchSize) *
-                        (sizeof(int) + sizeof(gpu::Quad) + steps * sizeof(gpu::Token)));
+                        (sizeof(int) + (sorted ? 0 : sizeof(gpu::Quad)) + steps * sizeof(gpu::Token)));
                 }
                 profile.Wait(false, [&] { Check(cudaStreamSynchronize(state_->stream)); }); // existing group completion wait
                 frozenUpload.Completed();
@@ -998,8 +1030,8 @@ class TensorRtRecognizer final : public Recognizer
                 for (int slot = 0; slot < groupSize; ++slot)
                 {
                     const int tokenCount = hostCount[slot];
-                    const auto quad = hostQuads[slot];
                     const int original = order[groupFirst + slot];
+                    const auto quad = sorted ? orderQuads[original] : hostQuads[slot];
                     pendingQuads[original] = quad;
                     pendingCanvas[original] = width;
                     const auto *tokens = hostTokens + static_cast<std::size_t>(slot) * steps;
@@ -1068,7 +1100,7 @@ class TensorRtRecognizer final : public Recognizer
             });
             output.ok = !cancelled.load();
             output.cancelled = cancelled.load();
-            profile.Emit(state_->recognizerBatch,state_->variableWidth);
+            profile.Emit(state_->recognizerBatch,state_->variableWidth,state_->sortedGrouping);
             if (cropDiagnostic_) {
                 if (frozen) TensorRtCropDiagnosticAccess::Replayed(*cropDiagnostic_);
                 else if (captureCrops)
@@ -1079,6 +1111,7 @@ class TensorRtRecognizer final : public Recognizer
                              "and CTC; CPU metadata publication; recognizer batch=" +
                              QString::number(state_->recognizerBatch) + ". " +
                              (state_->variableWidth ? QStringLiteral("Experimental width=bucketed. ") : QString()) +
+                             (state_->sortedGrouping ? QStringLiteral("Experimental grouping=sorted. ") : QString()) +
                              state_->batchPreparationDetail;
         }
         catch (const std::exception &error)
@@ -1117,10 +1150,11 @@ class TensorRtRecognizer final : public Recognizer
         const auto detectorTier = detectorTier_, recognizerTier = recognizerTier_;
         const int recognizerBatch = recognizerBatch_;
         const bool variableWidth = variableWidth_, allowWidthPreparation = allowWidthPreparation_;
+        const bool sortedGrouping = sortedGrouping_;
         try
         {
             std::thread([preparation, assets, sdk, recognizerBatch, variableWidth, allowWidthPreparation,
-                         precisionRequest, detectorTier, recognizerTier] {
+                         sortedGrouping, precisionRequest, detectorTier, recognizerTier] {
                 try
                 {
                     Check(cudaSetDevice(preparation->device));
@@ -1150,6 +1184,7 @@ class TensorRtRecognizer final : public Recognizer
                     auto state = std::make_shared<State>();
                     state->device = preparation->device;
                     state->variableWidth = variableWidth;
+                    state->sortedGrouping = sortedGrouping;
                     state->precisionDetail = runtime_precision::ActualStatus(false, precisionFallback);
                     {
                         std::lock_guard lock(preparation->mutex);
@@ -1272,6 +1307,7 @@ class TensorRtRecognizer final : public Recognizer
     TensorRtRetirementObserver retirementObserver_;
     int recognizerBatch_{1};
     bool invalidBatch_{}, invalidWidth_{}, variableWidth_{}, allowWidthPreparation_{};
+    bool invalidGrouping_{}, sortedGrouping_{};
     std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic_;
     const runtime_precision::Request precisionRequest_;
     std::optional<DetailFocus> detail_; // worker-confined, one recognition at a time

@@ -6751,6 +6751,14 @@ frozen-upload / `RetireOwnedState` ownership contracts.
 `TensorRtProfile` records width policy, canvas counts and useful padding.
 The five width fixtures and resident selector are described in
 [narrower recognition inputs](uct_recognizer_width.md); defaults remain fixed.
+Host-only `SortedGroupOrder`/`SortedGroupCanvas` in the same header build the
+opt-in width-sorted execution permutation; `OKUFLOW_UCT_TRT_GROUPING=sorted`
+(requires bucketed width, otherwise the backend is unavailable) makes
+`TensorRtRecognizer` download compact descriptors once per region, execute
+groups in ascending-width order and restore detector order for merging,
+descriptor hashing and crop capture through the inverse mapping. The profile
+records `recognizerGrouping`; model-free fixtures cover the permutation,
+canvas bounds, all-long control and fail-closed selector combinations.
 
 ### UCT four-corner geometry and paused visible detail (2026-10-21)
 

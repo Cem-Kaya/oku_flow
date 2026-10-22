@@ -135,7 +135,7 @@ public:
         outputLimitBytes_ = std::max(outputLimitBytes_, outputLimitBytes);
     }
     // Call only after the exact inference stream has completed successfully.
-    void Emit(int batchCapacity, bool variableWidth = false) {
+    void Emit(int batchCapacity, bool variableWidth = false, bool sortedGrouping = false) {
         if (!enabled_) return;
         std::array<double, StageCount> stageMs{};
         for (std::size_t i = 0; i < used_; ++i) {
@@ -165,6 +165,7 @@ public:
         for (const auto n : canvasBins_) canvases.push_back(n);
         const QJsonObject report{{"batchCapacity", batchCapacity},
             {"recognizerWidthPolicy", variableWidth ? "bucketed" : "fixed1024"},
+            {"recognizerGrouping", sortedGrouping ? "sorted" : "ordered"},
             {"recognizerCanvasWidths", QJsonArray{128,256,512,1024}}, {"recognizerCanvasCounts", canvases},
             {"workerWallMs", wall_.nsecsElapsed() / 1e6}, {"streamStageMs", gpu},
             {"detectorPasses", detectorPasses_}, {"recognizerCalls", recognizerCalls_},
