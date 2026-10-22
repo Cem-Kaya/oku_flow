@@ -5,6 +5,8 @@
 - Keep a visible right-edge playhead and filled timeline while following live
   RAM recap or an ongoing recording. Scrubbing restores the selected position;
   actual history bounds and focused screen-reader values remain unchanged.
+  Releasing at the far right jumps live. Keep an expired frozen image with an
+  amber/dashed left-edge marker and its actual timestamp outside the history.
 
 - Process paused video and manual Freeze as standalone images. Eligible OCR
   can draw and expose positioned screen-reader text from the exact held frame

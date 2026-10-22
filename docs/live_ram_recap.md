@@ -19,16 +19,18 @@ trims history; increasing it fills from retained/new video without inventing
 evicted frames. The preference persists independently of camera and zoom intent.
 If shrinking evicts the selected scene's time, that bounded pin remains a
 paused hold at its true old position outside the new seek window. The numeric
-readout and accessibility description retain that position; the scrubber hides a
-misleading clamped playhead. Resume or a seek enters actual retained history.
+readout and accessibility description retain that position; an amber, dashed
+marker pins left to identify the expired hold. It does not claim that the
+image is the new first available frame. Resume or a seek enters actual retained history.
 The old pin still counts toward the two-pin limit. Numeric RangeValue is absent
 while the held/live position is outside the seek window; ordinary timeline
 actions still seek within actual bounds and Jump to live remains available.
 While following live, the filled timeline and marker remain at the right edge
 as a live-view indicator, including while the current camera time is ahead of
 finalized history. The true time and available range remain separate. Seeking
-back restores the selected playhead; an expired paused hold keeps its marker
-hidden. Recording review uses the same live-edge presentation.
+back restores the selected playhead. Releasing at the far right jumps to live,
+even when history grows during the drag; recording review uses the same
+live-edge presentation. Saved-video right-end seeking remains an ordinary seek.
 Encoder pressure, real camera stalls and codec unavailability are not replaced
 by duplicate frames or invented history. A byte-limited shorter span remains
 visible as its actual bounds. Jump to live waits for a new camera presentation.

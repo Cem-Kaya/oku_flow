@@ -98,7 +98,7 @@ display composition: source/viewport byte admission, saved CPU/GPU sampling,
 focus-marker placement and quarter-turn/pan/zoom over the same owned pixels.
 Rapid recap seeks retain one newest deferred intent while cancellation retires
 the second reader pin. A duration shrink preserves the old selected lease's
-true out-of-window position; transport hides the clamped handle and keeps its
+true out-of-window position; transport pins an amber/dashed expired-hold handle left and keeps its
 actual held-time accessibility text, rather than claiming it is the new first
 sample. Its existing Qt accessibility adapter omits ValueInterface while that
 position is outside the seek window; exposed numeric ranges always stay valid.
@@ -443,12 +443,15 @@ admission callbacks before advancing, so setup cannot expire otherwise current
   media. `MainWindow::videoTransport`, `openVideoButton`, `openVideoRequested`
   and `videoFileDropped` host it below the render surface. Drag mappings stay
   fixed until release; the slider supplies numeric milliseconds and human time
-  through its accessible value interface. Internal `TimelineSlider::SetFollowingLive`
+  through its accessible value interface. Internal `TimelineSlider::SetEdge`
   and `initStyleOption` draw the live recap/recording thumb and fill at the right
   edge without changing numeric inspection or verified history. `RefreshTimeline`
-  restores ordinary target geometry for seeking/dragging and hides only expired
-  paused playheads; mouse press refreshes actual bounds before hit testing.
+  restores ordinary target geometry for seeking/dragging and pins expired holds
+  left with warning styling; mouse press refreshes live bounds before hit testing.
   Out-of-window recap time remains textual, without a numeric RangeValue.
+  `CommitSeek(positionMs, atRangeEnd)` routes a recap/recording right-end gesture
+  to the existing live command, including growth during a frozen drag; saved
+  video still seeks its endpoint normally.
   See [transport UI](video_transport.md).
 - `TokenDisposition`, confidence and protected geometry preserve rejected OCR
   spans through Paddle decoding, `PrepareLines`, reading projection and paint.

@@ -14,7 +14,9 @@ command readiness; hidden chrome remains outside keyboard focus order.
 While following live recap or recording, the timeline stays filled with its
 marker at the right edge. This visual live indicator does not extend seekable
 history or move a focused reader's numeric inspection. Scrubbing shows its
-actual target; an expired paused hold still hides its clamped marker.
+actual target. Releasing at the far right jumps live, including history growth
+during a drag. An expired paused image remains held with an amber/dashed marker
+pinned left; its true time and absent out-of-window RangeValue remain unchanged.
 
 `AssistantChatView` renders the shared app-owned chat session in Advanced and
 floating Explain, with one compact header, a fixed composer and settings/history

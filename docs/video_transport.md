@@ -43,7 +43,15 @@ camera is ahead of the last finalized segment. The displayed time and seekable
 bounds stay exact; no pending tail becomes seekable. A focused reader's numeric
 inspection remains still. Scrubbing or seeking immediately restores the target
 playhead, and Jump to live restores the right-edge marker. An expired paused
-hold outside retained history still hides its misleading clamped playhead.
+hold keeps its exact image/time with an amber, dashed marker pinned left. That
+marker indicates an expired hold, not the first available frame; numeric
+RangeValue remains absent until a real seek returns inside history. A held
+frame ahead of finalized history still has no ordinary timestamp playhead.
+
+Releasing the scrubber at its far-right endpoint, or pressing End, requests
+Jump to live for recap and recording. It still requests live when finalized
+history grows during the drag: the frozen right endpoint represents that
+intent rather than an older timestamp. Saved video keeps ordinary end seeking.
 
 A small chevron in the metadata row collapses the transport controls. Its
 native keyboard/touch target remains 44 DIP. Collapse preserves the playback
@@ -89,10 +97,12 @@ readout only; releasing commits the latest absolute target exactly once.
 Snapshots do not start decode work, and source replacement discards a pending
 drag. During playback autonomous slider updates occur at most once a second
 and pause while the slider has keyboard focus.
-The internal `TimelineSlider::initStyleOption` supplies the live endpoint only
+The internal `TimelineSlider::SetEdge` / `initStyleOption` supply endpoint markers only
 to native style painting/hit testing. Before a live pointer press, `RefreshTimeline`
 refreshes the actual range and value; dragging then uses normal slider geometry
 and freezes that mapping until release. This does not emit an autonomous seek.
+`CommitSeek` receives explicit right-end intent from drag/value interaction;
+ordinary timestamp seeks and source snapshots cannot invent a live transition.
 
 ## Keyboard and accessibility
 

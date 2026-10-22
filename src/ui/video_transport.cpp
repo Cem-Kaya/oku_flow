@@ -52,28 +52,31 @@ int SliderTime(qint64 milliseconds)
 
 // Live is a viewing mode, not a claim that its pending camera pixels are
 // already seekable. Draw its thumb/fill at the right edge without changing
-// the inspected numeric value, verified range or true timestamp text. Qt uses
-// this same style option for native handle hit testing as well as painting.
+// the inspected numeric value, verified range or true timestamp text. An
+// expired hold similarly pins left, with a distinct warning-colored face.
+// Qt uses this same style option for native handle hit testing and painting.
 class TimelineSlider final : public QSlider {
 public:
+    enum class Edge { Position, Live, ExpiredHold };
     using QSlider::QSlider;
-    void SetFollowingLive(bool following)
+    void SetEdge(Edge edge)
     {
-        if (followingLive_ == following) return;
-        followingLive_ = following;
+        if (edge_ == edge) return;
+        edge_ = edge;
         update();
     }
 protected:
     void initStyleOption(QStyleOptionSlider* option) const override
     {
         QSlider::initStyleOption(option);
-        if (followingLive_ && !isSliderDown()) {
-            option->sliderPosition = option->maximum;
-            option->sliderValue = option->maximum;
+        if (edge_ != Edge::Position && !isSliderDown()) {
+            const int position = edge_ == Edge::Live ? option->maximum : option->minimum;
+            option->sliderPosition = position;
+            option->sliderValue = position;
         }
     }
 private:
-    bool followingLive_{};
+    Edge edge_{Edge::Position};
 };
 
 class SourceLabel final : public QLabel {
@@ -321,14 +324,14 @@ VideoTransport::VideoTransport(QWidget* parent) : QWidget(parent)
             timeline_->setValue(static_cast<int>(target));
         }
         dragging_ = false;
-        if (sameDocument) CommitSeek(target);
+        if (sameDocument) CommitSeek(target, target == timeline_->maximum());
         RefreshTimeline(true);
     });
     connect(timeline_, &QSlider::valueChanged, this, [this](int position) {
         if (!updating_ && !dragging_) {
             timeline_->setAccessibleDescription(TranslateUi(QStringLiteral("%1 of %2"))
                 .arg(TimeText(position), TimeText(timeline_->maximum())));
-            CommitSeek(position);
+            CommitSeek(position, position == timeline_->maximum());
         }
     });
     connect(timeline_, &QSlider::actionTriggered, this, [this](int action) {
@@ -655,11 +658,16 @@ void VideoTransport::RefreshTimeline(bool force)
     const bool followingLive = (snapshot_.source == Source::Recap || snapshot_.source == Source::Recording) &&
         snapshot_.state == State::Live && !pendingSeekMs_ && snapshot_.seekable &&
         snapshot_.durationMs > snapshot_.firstMs;
-    static_cast<TimelineSlider*>(timeline_)->SetFollowingLive(followingLive);
-    const bool hidePlayhead = snapshot_.source == Source::Recap && !followingLive && !dragging_ &&
+    const bool expiredHold = snapshot_.source == Source::Recap && !followingLive && !dragging_ &&
+        selected < snapshot_.firstMs;
+    static_cast<TimelineSlider*>(timeline_)->SetEdge(followingLive ? TimelineSlider::Edge::Live :
+        expiredHold ? TimelineSlider::Edge::ExpiredHold : TimelineSlider::Edge::Position);
+    const bool hidePlayhead = snapshot_.source == Source::Recap && !followingLive && !expiredHold && !dragging_ &&
         (selected < snapshot_.firstMs || selected > snapshot_.durationMs);
-    if (timeline_->property("okuflowOutsideWindow").toBool() != hidePlayhead) {
+    if (timeline_->property("okuflowOutsideWindow").toBool() != hidePlayhead ||
+        timeline_->property("okuflowExpiredHold").toBool() != expiredHold) {
         timeline_->setProperty("okuflowOutsideWindow", hidePlayhead);
+        timeline_->setProperty("okuflowExpiredHold", expiredHold);
         timeline_->style()->unpolish(timeline_);
         timeline_->style()->polish(timeline_);
         timeline_->update();
@@ -702,9 +710,19 @@ void VideoTransport::RefreshTimeline(bool force)
     updating_ = false;
 }
 
-void VideoTransport::CommitSeek(qint64 positionMs)
+void VideoTransport::CommitSeek(qint64 positionMs, bool atRangeEnd)
 {
     if (!IsActionReady(timeline_)) return;
+    if ((snapshot_.source == Source::Recap || snapshot_.source == Source::Recording) &&
+        (atRangeEnd || positionMs >= snapshot_.durationMs)) {
+        // The displayed right edge means live, even if finalized history
+        // advanced while the drag retained its original pointer mapping.
+        pendingSeekMs_.reset();
+        RefreshTimeline(true);
+        UpdateActions();
+        emit JumpToEndRequested();
+        return;
+    }
     const qint64 target = std::clamp<qint64>(positionMs, snapshot_.firstMs, snapshot_.durationMs);
     pendingSeekMs_ = target;
     RefreshTimeline(true);
@@ -885,7 +903,10 @@ void VideoTransport::ApplyStyle()
         "QWidget#videoTransport QSlider[okuflowOutsideWindow=\"true\"]::handle:horizontal {"
         " background: transparent; border: none; }"
         "QWidget#videoTransport QSlider[okuflowOutsideWindow=\"true\"]::sub-page:horizontal {"
-        " background: palette(mid); }");
+        " background: palette(mid); }"
+        "QWidget#videoTransport QSlider[okuflowExpiredHold=\"true\"]::handle:horizontal {"
+        " background: %1; border: 2px dashed palette(window); }")
+        .arg(theme_contrast::WarningTextColor(theme_contrast::IsLightTheme(palette())).name());
     if (styleSheet() != style) setStyleSheet(style);
     const QString badge = snapshot_.state == State::Live ? QStringLiteral(
         "color: #ffffff; background: #14351e; border: 2px solid #ffffff; border-radius: 4px; padding: 3px 8px; font-weight: bold;")

@@ -98,7 +98,7 @@ private:
     void AnnounceSettledState();
     void RefreshTimeline(bool force);
     void UpdateLayout();
-    void CommitSeek(qint64 positionMs);
+    void CommitSeek(qint64 positionMs, bool atRangeEnd = false);
     qint64 SeekBaseline() const;
     std::vector<QPushButton*> SecondaryButtons() const;
     QString StateText() const;

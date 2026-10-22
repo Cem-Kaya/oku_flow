@@ -1952,8 +1952,13 @@ video-picker/phone-light cases complement it without desktop or real-device clai
 `video_transport_contract` now embeds the production icon resource collection
 and verifies the one-row controls/scrubber, narrow secondary-row fallback,
 translated accessible names, focus, seek actions and state-dependent faces.
+Live recap/recording rows compare actual right-edge thumb/fill pixels, focused
+numeric inspection, real dragging and frozen range mapping. Right-end gestures
+request live despite history growth; saved-video endpoint seeks stay ordinary.
+Light/dark expired-hold rows retain true out-of-window time without RangeValue
+and assert visible warning-colored left markers, cleared by a valid seek.
 For optional Qt-offscreen widget captures, set
-`OKUFLOW_TRANSPORT_PREVIEW_DIR` and invoke its wide/narrow layout slots; these
+`OKUFLOW_TRANSPORT_PREVIEW_DIR` and invoke its layout/live/expired-hold slots; these
 images do not establish native UIA/focus acceptance.
 
 `uct_paddle_processing` covers detail crop coverage, overlap/edge policy, word
