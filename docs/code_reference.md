@@ -447,21 +447,25 @@ admission callbacks before advancing, so setup cannot expire otherwise current
 - `TokenDisposition`, confidence and protected geometry preserve rejected OCR
   spans through Paddle decoding, `PrepareLines`, reading projection and paint.
   `RecognitionResult::sourcePixelDigest` is computed on the worker without row
-  padding. `OverlayModel::AdmitImmutable` requires distinct neighbouring frame
-  and pixel evidence before glyphs; a lone immutable result remains text-only.
+  padding. `OverlayModel::AdmitImmutable` admits eligible own-frame words in
+  `Standalone` mode. Its explicit `Corroborated` mode requires distinct
+  neighbouring frame/pixel evidence and leaves lone results text-only.
   `protectedSceneRects` keeps replacement plates away from uncertain source ink.
   See [uncertainty contracts](uct_uncertainty_repair.md).
 - `UctImmutableFrame` and `UctImmutableScene` carry owned source pixels and
   explicit media authority. `UltraClearTextController::{SetImmutableScene,
   UpdateImmutableView,ClearImmutableScene,HasImmutableScene}` share the existing
-  scheduler, submit at most a selected and optional corroborating pass, and use
+  scheduler, submit one selected pass in the app's standalone mode (or a selected
+  and optional neighbour pass for explicit corroborated callers), and use
   an independent job deadline. Unchanged completed stills schedule no periodic
   OCR/probes; view updates only reproject. See [immutable controller](uct_immutable_controller.md).
   Initial native frame/PTS zero is valid without prior Play. The controller's
   `initialPausedFrameZeroWaitsForReadyAndNeighbour` and
   `initialPausedFrameZeroWithoutIndependentNeighbour` fixtures cover readiness,
-  late ancillary evidence and retained original glyphs without independent
-  proof. `LongGopSeeking` checks actual opening-frame/following-sample leases.
+  late ancillary evidence and retained original glyphs in the explicit
+  corroborated protocol. New standalone rows require painting and positioned
+  character bounds without that evidence. `LongGopSeeking` checks actual
+  opening-frame/following-sample leases.
   The fresh CPU gate passed these rows and native sparse playback. The actual
   bridge-output controller replay retained two paint failures. Separate corrected
   real capture with declared runtime inputs passed all 158 controller rows,

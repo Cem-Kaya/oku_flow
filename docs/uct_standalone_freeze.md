@@ -54,3 +54,15 @@ The CPU fixture now checks pixel identity through the CPU API and frame identity
 through the resident API; its synthetic clock advances only after UI admission.
 No deadline, confidence or coverage assertion was loosened. These are scoped
 offscreen checks, not native NVDA, camera or release acceptance.
+
+The frozen production source `fafc0fce732ef938bef6be92adbd01351e52d3fd`
+also passes `scripts/agent_build.bat` with GUI excluded: shipping compilation,
+CPU/PCH-OFF 162 passed / 12 optional skips / zero unresolved and CUDA/PCH-ON
+delta 14 passed / five optional codec skips / zero unresolved. Four passing
+CPU cases include opt-in timing-row skips. The captured controller contract
+passes in 92.91 s. Source equivalence passes with PCH OFF in 18.17 s and ON in
+13.69 s. The optional actual-app fixture was explicitly rebuilt before this
+matrix; its fresh app/recap cases pass in 6.02 s and 0.36 s. Raw attempts,
+ledger snapshots and source/binary receipts remain in the work directory above.
+These background results do not establish native GUI/NVDA, camera or release
+acceptance. No new real-model coverage count is claimed for standalone mode.

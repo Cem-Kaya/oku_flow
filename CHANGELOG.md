@@ -20,7 +20,7 @@
   words; preserve clearly chromatic readable ink and source paper.
 
 - Allow ordinary UCT ASCII letter/digit labels and isolated lookalikes through
-  the existing confidence, independent-acquisition, geometry and pixel checks.
+  the existing confidence, geometry, pixel and applicable temporal checks.
   This removes the character veto that kept `GPT-6` original while prose could
   be replaced; it adds no spelling correction or accuracy guarantee. Unsupported
   notation stays protected. Raise paused visible-detail enlargement from 6x to
