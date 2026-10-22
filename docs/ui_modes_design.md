@@ -29,6 +29,9 @@ Open a file through Settings > Camera > View video, Ctrl+O or a single local-fil
 drop. The conditional Select video button sits below the source dropdown;
 the five corner actions remain Photo, Record, Explain, Read and Draw. See
 [transport layout](video_transport.md).
+The video-controls chevron lives at the end of the quick-mode carousel. Hiding
+it removes the entire transport row and returns that height to the image; the
+corner chevron remains available to restore it without changing playback.
 
 Selected media shares image controls, including orientation. The independent
 CUDA media scene supports the shared effects pipeline; CPU compatibility retains

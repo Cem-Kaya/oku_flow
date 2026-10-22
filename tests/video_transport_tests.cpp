@@ -64,8 +64,11 @@ struct FocusFixture {
         transport = new VideoTransport(&host);
         transport->SetFocusReturnTarget(viewport);
         layout->addWidget(viewport);
+        transport->collapseButton()->setParent(&host);
+        layout->addWidget(transport->collapseButton());
         layout->addWidget(transport);
         transport->SetSnapshot(Video());
+        QWidget::setTabOrder(transport->collapseButton(), transport->FocusTargets().front());
         host.resize(1200, 320);
         host.show();
         QApplication::setActiveWindow(&host);
@@ -84,7 +87,7 @@ struct FocusFixture {
     }
     QPushButton* Button(const char* name)
     {
-        return transport->findChild<QPushButton*>(QString::fromLatin1(name));
+        return host.findChild<QPushButton*>(QString::fromLatin1(name));
     }
 };
 
@@ -146,7 +149,7 @@ private slots:
         QCOMPARE(transport.timeline()->maximum(), 70000);
     }
 
-    void collapseKeepsPlaybackAndEscapeActionWithoutCommittingDrag()
+    void collapseHidesEntireBarWithoutCommittingDrag()
     {
         FocusFixture fixture;
         auto* transport = fixture.transport;
@@ -169,21 +172,23 @@ private slots:
         QApplication::processEvents();
         QVERIFY(transport->isCollapsed());
         QCOMPARE(QApplication::focusWidget(), collapse);
-        QVERIFY(!transport->timeline()->isVisibleTo(transport));
-        QVERIFY(transport->jumpButton()->isVisibleTo(transport));
-        QCOMPARE(transport->FocusTargets(), (std::vector<QWidget*>{collapse, transport->jumpButton()}));
+        QVERIFY(transport->isHidden());
+        QVERIFY(!transport->jumpButton()->isVisible());
+        QVERIFY(collapse->isVisible());
+        QVERIFY(transport->FocusTargets().empty());
         QVERIFY(transport->snapshot().playing);
         QCOMPARE(seeks.size(), 0);
         QCOMPARE(toggles.size(), 0);
         snapshot.positionMs = 47000;
         snapshot.state = VideoTransport::State::Seeking;
         transport->SetSnapshot(snapshot);
-        QVERIFY(transport->IsActionReady(transport->jumpButton()));
+        QVERIFY(!transport->IsActionReady(transport->jumpButton()));
         transport->jumpButton()->click();
-        QCOMPARE(jumps.size(), 1);
+        QCOMPARE(jumps.size(), 0);
         transport->SetUiHidden(true);
         transport->SetUiHidden(false);
         QVERIFY(transport->isCollapsed());
+        QVERIFY(transport->isHidden());
         fixture.Focus(collapse);
         fixture.Key(Qt::Key_Space);
         QVERIFY(!transport->isCollapsed());
@@ -685,10 +690,10 @@ private slots:
         auto* transport = fixture.transport;
         auto* returnButton = fixture.Button("videoReturnCameraButton");
         const auto targets = transport->FocusTargets();
-        QCOMPARE(targets.size(), std::size_t(8));
+        QCOMPARE(targets.size(), std::size_t(7));
         QCOMPARE(targets.back(), returnButton);
         fixture.Focus(fixture.Button("videoCollapseButton"));
-        for (std::size_t index = 1; index < targets.size(); ++index) {
+        for (std::size_t index = 0; index < targets.size(); ++index) {
             fixture.Key(Qt::Key_Tab);
             QCOMPARE(QApplication::focusWidget(), targets[index]);
         }

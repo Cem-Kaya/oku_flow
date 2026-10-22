@@ -399,6 +399,7 @@ QString VideoTransport::StateText() const
 
 void VideoTransport::SetSnapshot(const Snapshot& snapshot)
 {
+    const bool hadSource = snapshot_.source != Source::None;
     const bool changedDocument = snapshot_.sourceGeneration != snapshot.sourceGeneration ||
                                  snapshot_.source != snapshot.source;
     const bool changedState = changedDocument || snapshot_.state != snapshot.state ||
@@ -438,18 +439,21 @@ void VideoTransport::SetSnapshot(const Snapshot& snapshot)
     }
     const bool hasSource = snapshot_.source != Source::None;
     if (!hasSource) ReturnFocus();
-    setVisible(hasSource && !uiHidden_);
+    collapseButton_->setVisible(hasSource && !uiHidden_);
+    setVisible(hasSource && !uiHidden_ && !collapsed_);
     UpdateActions();
     if (changedText) RefreshText();
     RefreshTimeline(changedDocument || !snapshot_.playing);
     if (changedState) RequestAnnouncement();
+    if (hadSource != hasSource) emit ControlsChanged();
 }
 
 void VideoTransport::SetUiHidden(bool hidden)
 {
     if (hidden) ReturnFocus();
     uiHidden_ = hidden;
-    setVisible(!hidden && snapshot_.source != Source::None);
+    collapseButton_->setVisible(!hidden && snapshot_.source != Source::None);
+    setVisible(!hidden && snapshot_.source != Source::None && !collapsed_);
     RequestAnnouncement();
 }
 
@@ -463,15 +467,20 @@ void VideoTransport::SetCollapsed(bool collapsed)
     }
     if (collapsed) {
         auto* focus = QApplication::focusWidget();
-        if (focus && isAncestorOf(focus) && focus != jumpButton_ && focus != collapseButton_)
-            collapseButton_->setFocus(Qt::OtherFocusReason);
+        if (focus && isAncestorOf(focus)) {
+            if (collapseButton_->parentWidget() != this && collapseButton_->isVisible())
+                collapseButton_->setFocus(Qt::OtherFocusReason);
+            else ReturnFocus();
+        }
     }
     collapsed_ = collapsed;
     collapseButton_->setChecked(collapsed);
+    setVisible(!collapsed_ && !uiHidden_ && snapshot_.source != Source::None);
     RefreshText();
     RefreshTimeline(true);
     UpdateActions();
     updateGeometry();
+    emit ControlsChanged();
 }
 
 void VideoTransport::SetFocusReturnTarget(QWidget* target)
@@ -481,7 +490,7 @@ void VideoTransport::SetFocusReturnTarget(QWidget* target)
 
 bool VideoTransport::ActionShown(const QWidget* control) const
 {
-    if (collapsed_ && control != collapseButton_ && control != jumpButton_) return false;
+    if (collapsed_ && control != collapseButton_) return false;
     if (control == muteButton_) return muteShown_;
     if (control == returnButton_) return returnShown_;
     return true;
@@ -576,7 +585,7 @@ void VideoTransport::MoveFocusFrom(QWidget* leaving, QWidget* preferred)
 void VideoTransport::ReturnFocus()
 {
     QWidget* focus = QApplication::focusWidget();
-    if (focus != this && !(focus && isAncestorOf(focus))) return;
+    if (focus != this && focus != collapseButton_ && !(focus && isAncestorOf(focus))) return;
     if (focusReturnTarget_ && focusReturnTarget_->isVisible() && focusReturnTarget_->isEnabled()) {
         focusReturnTarget_->setFocus(Qt::OtherFocusReason);
     } else if (parentWidget()) {
@@ -739,9 +748,10 @@ std::vector<QWidget*> VideoTransport::FocusTargets() const
 {
     // Tab order follows the single-line visual order: primary actions,
     // scrubber, secondary actions. Return to camera stays last.
-    if (collapsed_) return {collapseButton_, jumpButton_};
-    std::vector<QWidget*> targets{collapseButton_, rewindButton_, playPauseButton_, jumpButton_, timeline_,
+    if (collapsed_) return {};
+    std::vector<QWidget*> targets{rewindButton_, playPauseButton_, jumpButton_, timeline_,
                                   saveFrameButton_};
+    if (collapseButton_->parentWidget() == this) targets.insert(targets.begin(), collapseButton_);
     if (muteShown_) targets.push_back(muteButton_);
     if (returnShown_) targets.push_back(returnButton_);
     return targets;
@@ -957,10 +967,6 @@ void VideoTransport::UpdateLayout()
     }
     if (below) secondaryLayout_->addStretch(1);
     secondaryRow_->setVisible(below);
-    if (collapsed_) {
-        mainLayout_->removeWidget(jumpButton_);
-        metadataLayout_->addWidget(jumpButton_);
-    }
     for (auto* widget : std::vector<QWidget*>{rewindButton_, playPauseButton_, timeline_,
                          timeLabel_, saveFrameButton_}) widget->setVisible(!collapsed_);
     muteButton_->setVisible(!collapsed_ && muteShown_);

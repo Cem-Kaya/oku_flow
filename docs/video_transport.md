@@ -53,11 +53,12 @@ Jump to live for recap and recording. It still requests live when finalized
 history grows during the drag: the frozen right endpoint represents that
 intent rather than an older timestamp. Saved video keeps ordinary end seeking.
 
-A small chevron in the metadata row collapses the transport controls. Its
+A small chevron beside the Custom Setup quick-mode controls collapses the entire
+transport, including filename, state, jump action and all reserved height. Its
 native keyboard/touch target remains 44 DIP. Collapse preserves the playback
 snapshot and running playback; it cancels an unfinished drag without seeking.
-The source/status and jump action remain visible, so Jump to live is still
-available while native work is pending. Expanding restores the current timeline.
+The arrow remains in that corner group while the transport is hidden. Expanding
+restores the current timeline and Jump to live. Metadata updates cannot reopen it.
 The state survives the application's global UI hide/show for this session.
 The button reuses the translated `Hide UI` / `Show UI` action names with
 `Video controls` as its accessible description; no new translation keys are added.
@@ -106,8 +107,17 @@ ordinary timestamp seeks and source snapshots cannot invent a live transition.
 
 ## Keyboard and accessibility
 
-Tab order begins with the chevron, then follows the row: rewind, play, jump,
-timeline, save, mute and return. Collapsed order is chevron then jump.
+The 2026-10-23 combined integration passed CPU/PCH-off SCOPED 5/240 and
+CUDA/PCH-on SCOPED 5/246 with zero skips/unresolved results. Actual-app offscreen
+rows verify full-height reclamation, wide/compact corner placement, no playback
+requests on hide/show, metadata/global-hide preservation and viewport Space.
+Saved offscreen widget captures show both layouts; they do not establish native
+desktop focus, UIA/NVDA or full release acceptance. All 24 translation catalogs
+passed source-key/format validation without new source strings.
+
+The chevron follows the quick-mode Next button. Transport Tab order follows the
+row: rewind, play, jump, timeline, save, mute and return. Collapsed transport has
+no focus targets; its corner chevron remains keyboard reachable.
 MainWindow
 bridges it with the existing corner, inspector and annotation regions. F6 moves
 between those regions and the transport. Space toggles playback only in the

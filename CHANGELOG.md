@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Hide the entire video transport without leaving a filename/status strip.
+  Its show/hide chevron now lives beside Custom Setup in the quick-mode corner
+  controls, with keyboard access and viewport Freeze/Resume preserved.
+
 - Apply the successfully presented display palette to sharp UCT ink and plates,
   including inverted and custom LUT colors. Normal colors retains source colors;
   CPU media that already contains its display colors is not recolored twice.

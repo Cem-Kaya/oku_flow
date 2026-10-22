@@ -133,9 +133,14 @@ position is outside the seek window; exposed numeric ranges always stay valid.
 `VideoTransport::Source::Recap`, State::Buffering, Snapshot::firstMs and
 canPauseLive represent actual rolling bounds and a pre-encoder exact Freeze.
 `VideoTransport::SetCollapsed` / `isCollapsed` own session-only visibility of
-the transport's control rows. The native chevron retains a 44-DIP target;
+the complete transport widget. `collapseButton()` is hosted by MainWindow in
+the quick-mode corner group, measured in both wide and compact carousel layouts.
+`ControlsChanged` updates host geometry only on source presence/collapse changes.
+The native chevron retains a 44-DIP target;
 collapse cancels an unfinished drag without a seek or playback command, parks
-hidden-control focus on the chevron, and keeps the jump action reachable.
+hidden-control focus on the external chevron. All bar actions, metadata and
+reserved height disappear until expansion; viewport command readiness stays
+independent of widget visibility. The corner arrow disappears with no source.
 Snapshot state and global UI hide/show do not reset the collapsed choice.
 `Snapshot::diagnosticDetail` carries native failure metadata to the existing
 status label's tooltip/accessibility description without replacing its localized

@@ -1367,7 +1367,7 @@ private slots:
         auto* viewport=window.renderWidget();viewport->setFocus();
         QTRY_COMPARE(QApplication::focusWidget(),viewport);
         transport->SetCollapsed(true);
-        QVERIFY(transport->playPauseButton()->isHidden());
+        QVERIFY(transport->isHidden());
         QSignalSpy toggle(transport,&VideoTransport::PlayPauseRequested);
         QTest::keyClick(viewport,Qt::Key_Space);
         QCOMPARE(toggle.size(),1);
@@ -1385,7 +1385,52 @@ private slots:
         QCOMPARE(NativeControlFixture::HeldVideoFrame(app_),held);
         QCOMPARE(QApplication::focusWidget(),viewport);
         QVERIFY(transport->isCollapsed());
-        QVERIFY(transport->IsActionReady(transport->jumpButton()));
+        QVERIFY(!transport->IsActionReady(transport->jumpButton()));
+        QVERIFY(transport->IsCommandReady(transport->jumpButton()));
+    }
+    void hiddenVideoBarLeavesOnlyCornerToggleAndReclaimsViewport() {
+        QVERIFY(QFontDatabase::addApplicationFont(QDir(qEnvironmentVariable("WINDIR")).filePath("Fonts/segoeui.ttf"))>=0);
+        MainWindow window;
+        auto* transport=window.videoTransport(); auto* toggle=transport->collapseButton();
+        auto* corner=window.findChild<QWidget*>(QStringLiteral("bottomLeftPanel"));
+        QVERIFY(corner); QCOMPARE(toggle->parentWidget(),corner);
+        const auto capture = [&](const QString& name) {
+            const auto folder=qEnvironmentVariable("OKUFLOW_VIDEO_TRANSPORT_PREVIEWS");
+            if(folder.isEmpty())return;
+            QVERIFY(QDir().mkpath(folder));
+            QVERIFY(window.grab().save(QDir(folder).filePath(name+"-window.png")));
+            QVERIFY(corner->grab().save(QDir(folder).filePath(name+"-corner.png")));
+        };
+        for (int width : {1600,800}) {
+            window.resize(width,800); window.show(); QCoreApplication::processEvents();
+            VideoTransport::Snapshot snapshot; snapshot.source=VideoTransport::Source::Video;
+            snapshot.sourceName=QStringLiteral("Fixture video");snapshot.durationMs=60000;
+            snapshot.seekable=true;snapshot.canSaveFrame=true;
+            transport->SetSnapshot(snapshot); QCoreApplication::processEvents();
+            QVERIFY(transport->isVisible()); QVERIFY(toggle->isVisible());
+            QVERIFY(toggle->width()>=44 && toggle->height()>=44);
+            QVERIFY(corner->rect().contains(toggle->geometry()));
+            const auto height=window.renderWidget()->height();
+            capture(QString::number(width)+"-expanded");
+            QSignalSpy play(transport,&VideoTransport::PlayPauseRequested);
+            QSignalSpy seek(transport,&VideoTransport::SeekRequested);
+            QSignalSpy jump(transport,&VideoTransport::JumpToEndRequested);
+            toggle->click();QCoreApplication::processEvents();
+            QVERIFY(transport->isHidden()); QVERIFY(toggle->isVisible());
+            QVERIFY(window.renderWidget()->height()>height);
+            QVERIFY(transport->FocusTargets().empty());
+            QVERIFY(corner->rect().contains(toggle->geometry()));
+            capture(QString::number(width)+"-hidden");
+            snapshot.positionMs=12000;transport->SetSnapshot(snapshot);QCoreApplication::processEvents();
+            QVERIFY(transport->isHidden()); // metadata polling cannot reopen the bar
+            window.setUiHidden(true);window.setUiHidden(false);QCoreApplication::processEvents();
+            QVERIFY(transport->isHidden());QVERIFY(toggle->isVisible());
+            toggle->setFocus();QTest::keyClick(toggle,Qt::Key_Space);QCoreApplication::processEvents();
+            QVERIFY(transport->isVisible());QCOMPARE(transport->timeline()->value(),12000);
+            QCOMPARE(play.size(),0);QCOMPARE(seek.size(),0);QCOMPARE(jump.size(),0);
+            transport->SetSnapshot({});QCoreApplication::processEvents();
+            QVERIFY(transport->isHidden());QVERIFY(toggle->isHidden());
+        }
     }
     void terminalRecapResumeRetainsHeldScene_data() {
         QTest::addColumn<bool>("unsupported");QTest::addColumn<bool>("oldHistory");

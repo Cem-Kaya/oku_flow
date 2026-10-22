@@ -54,8 +54,11 @@ public:
     void SetSnapshot(const Snapshot& snapshot);
     const Snapshot& snapshot() const { return snapshot_; }
     void SetUiHidden(bool hidden);
+    // Hide the complete bar. MainWindow hosts the same small toggle in its
+    // quick-mode corner group, outside this widget's collapsed layout.
     void SetCollapsed(bool collapsed);
     bool isCollapsed() const { return collapsed_; }
+    QPushButton* collapseButton() const { return collapseButton_; }
     // Keyboard focus held inside the bar moves here when the bar hides,
     // instead of to whichever control Qt would pick next.
     void SetFocusReturnTarget(QWidget* target);
@@ -70,6 +73,7 @@ public:
     QPushButton* jumpButton() const { return jumpButton_; }
 
 signals:
+    void ControlsChanged(); // source presence or collapse, never playback intent
     void SeekRequested(qint64 positionMs);
     void PlayPauseRequested();
     void JumpToEndRequested();
