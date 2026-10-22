@@ -936,7 +936,7 @@ class TensorRtRecognizer final : public Recognizer
                 bool occupied = false;
                 int first = 0, groupSize = 0, steps = 0, width = 0;
             };
-            GroupSlot slots[kMetadataSlots]{};
+            GroupSlot slots[kMetadataSlots] = {};
             int nextLaunchSlot = 0, primedBatch = 0, primedWidth = 0;
             bool uploadCompleted = false, stop = false;
             auto occupied = [&] {
