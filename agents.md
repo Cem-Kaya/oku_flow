@@ -898,6 +898,13 @@ aligned with the project goals.
 - Keep all inference input/retirement ownership and zero image-egress contracts.
   See `docs/uct_recognizer_width.md`; no RTX 3050/120 FPS claim follows from Ada
   measurements or padding fraction alone.
+- Width-sorted grouping (`OKUFLOW_UCT_TRT_GROUPING=sorted`) stays a separate
+  opt-in on top of bucketed canvases. It permutes execution only: restore
+  detector order through the inverse mapping before merging, descriptor
+  hashing and publication, never clip useful crop pixels, and never combine
+  it with the fixed1024 local BF16 profile. Measure fixed1024, unsorted
+  bucketed and sorted bucketed as separate arms on identical sources with
+  only already-cached plans; do not credit selector enablement to sorting.
 
 ## Optional embedded selected-video validation (2026-10-21)
 
