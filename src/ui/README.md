@@ -1,5 +1,9 @@
 # ui module
 
+UCT's cached glyph and plate colors follow the successfully presented display
+palette after source readability normalization. Palette changes reuse typography
+and geometry; exports freeze the same colors. Normal colors retains source hues.
+
 `VideoTransport` reuses native media actions for silent live RAM recap with
 actual rolling bounds and a pre-encoder Freeze lease. An out-of-window held
 scene keeps its true textual time; the existing Qt accessibility adapter omits

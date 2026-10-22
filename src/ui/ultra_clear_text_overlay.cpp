@@ -272,6 +272,41 @@ void UltraClearTextOverlay::SetExcludedWidget(QWidget* widget)
     update();
 }
 
+void UltraClearTextOverlay::SetDisplayColors(
+    DisplayColors mode, const std::array<std::uint32_t, 256>& lut)
+{
+    if (mode == displayColors_ && (mode != DisplayColors::LumaLut || lut == displayColorLut_))
+        return;
+    displayColors_ = mode;
+    displayColorLut_ = lut; // owned palette; never borrow mutable application settings
+    for (int i = 0; i < glyphs_.size(); ++i)
+        glyphs_[i].colors = GlyphColors(words_[i].colors);
+    update(); // colors only: no shaping, recognition, proof or geometry changes
+}
+
+uct::LineColors UltraClearTextOverlay::GlyphColors(const uct::LineColors& measured) const
+{
+    auto colors = ReadableColors(measured);
+    const auto map = [this](const QColor& color) {
+        if (displayColors_ == DisplayColors::Inverted)
+            return QColor(255 - color.red(), 255 - color.green(), 255 - color.blue());
+        if (displayColors_ == DisplayColors::LumaLut) {
+            // Same encoded-RGB luma and truncating byte index as the native
+            // CUDA display-color pass. Never re-run readability normalization
+            // afterwards: it would replace the user's selected palette again.
+            const float luma = .299f * (color.red() / 255.f) +
+                               .587f * (color.green() / 255.f) +
+                               .114f * (color.blue() / 255.f);
+            const auto index = static_cast<unsigned>(std::clamp(luma, 0.f, 1.f) * 255.f);
+            return QColor::fromRgb(displayColorLut_[index]);
+        }
+        return color;
+    };
+    colors.foreground = map(colors.foreground);
+    colors.background = map(colors.background);
+    return colors;
+}
+
 QVector<QRectF> UltraClearTextOverlay::ProjectedWordRects() const
 {
     QVector<QRectF> rects;
@@ -444,7 +479,7 @@ bool UltraClearTextOverlay::RebuildGlyphLayout(const QDeadlineTimer* deadline)
                 glyph.inkRect = words_[i].sceneQuad.Bounds();
                 glyph.origin = words_[i].sceneQuad.points[3];
                 glyph.referenceInk = ink;
-                glyph.colors = ReadableColors(words_[i].colors);
+                glyph.colors = GlyphColors(words_[i].colors);
                 glyph.oriented = true;
                 glyph.heightRatio = localScale * ink.height() / h;
                 glyph.baselineFraction = -ink.top() * localScale / h;
@@ -501,7 +536,7 @@ bool UltraClearTextOverlay::RebuildGlyphLayout(const QDeadlineTimer* deadline)
             // measurement nor color work.
             glyphs_[i] = {fitted,
                           QPointF(word.sceneRect.left() - ink.left() * scaleX, baseline),
-                          ink, ReadableColors(word.colors), true};
+                          ink, GlyphColors(word.colors), true};
         }
     }
     return ResolveOverlaps(deadline);
@@ -813,7 +848,7 @@ bool UltraClearTextOverlay::PreservesDrawnWords(QVector<SceneWord> proposed,
         glyphs_ = savedGlyphs;
         for (int i = 0; i < glyphs_.size(); ++i) {
             if (deadline.hasExpired()) return false;
-            glyphs_[i].colors = ReadableColors(words_[i].colors);
+            glyphs_[i].colors = GlyphColors(words_[i].colors);
         }
     } else if (!RebuildGlyphLayout(&deadline)) return false;
     PaintPlan scratch;

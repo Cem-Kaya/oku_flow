@@ -492,6 +492,7 @@ private:
     UctFrameContext UltraClearTextContext(bool cudaScene, const ViewTransform& transform,
                                           UINT viewportWidth, UINT viewportHeight) const;
     UctSceneSettings UltraClearTextRequest() const;
+    void ApplyUltraClearTextDisplayColors(int transform, std::uint64_t lutGeneration = 0);
     void InitializeUltraClearText();
     void OnUltraClearTextModelsChanged();
 

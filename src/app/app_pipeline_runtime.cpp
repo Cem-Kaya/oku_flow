@@ -1464,6 +1464,8 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         }
     }
     if (presented) {
+        ApplyUltraClearTextDisplayColors(cudaSceneViewRecipe_.colorTransform,
+                                        cudaSceneViewRecipe_.colorLutGeneration);
         if (ultraClearText_) {
             ultraClearText_->OnPresentationSucceeded();
         }
@@ -2917,6 +2919,7 @@ bool OkuFlowApp::PresentSelectedMediaPixels(const uint8_t* data, UINT width, UIN
     }
     const auto advancingReceipt = [&] {
         if (!ultraClearText_) return;
+        ApplyUltraClearTextDisplayColors(0); // CPU analysis already contains its display colors.
         ultraClearText_->SetMediaOverlaySuppressed(false);
         UctAdvancingMediaScene scene;
         scene.geometry.settings.sourceEpoch = sourceEpoch;
@@ -2934,6 +2937,7 @@ bool OkuFlowApp::PresentSelectedMediaPixels(const uint8_t* data, UINT width, UIN
     };
     const auto pausedReceipt = [&] {
         if (!ultraClearText_) return;
+        ApplyUltraClearTextDisplayColors(0);
         if(mediaHoldBakedScene_){ultraClearText_->SetMediaOverlaySuppressed(true);return;}
         ultraClearText_->SetMediaOverlaySuppressed(false);
         if (pausedScene) {
@@ -3148,6 +3152,7 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
         if (selectedMedia) ultraClearText_->OnMediaPresentationSucceeded();
         else ultraClearText_->OnPresentationSucceeded();
     }
+    ApplyUltraClearTextDisplayColors(0); // Raw CPU camera / pre-graded CPU media.
     if (!selectedMedia) cameraFramePresented_ = true;
     if (!selectedMedia) {
         lastAnnotationPresentation_ = UltraClearTextContext(false, transform,

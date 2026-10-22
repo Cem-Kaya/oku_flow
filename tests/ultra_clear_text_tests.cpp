@@ -827,6 +827,8 @@ private slots:
     void overlayPreservesColoredPaper();
     void overlayPreservesReadableChromaticInk_data();
     void overlayPreservesReadableChromaticInk();
+    void overlayFollowsDisplayColors_data();
+    void overlayFollowsDisplayColors();
     void deferredPresentationKeepsCommittedProjectionAndExpires();
     void continuousPanDoesNotHideOverlayWhileOcrHeld();
     void overlayStaysHiddenWhileOwnerBlockedOrApplicationInactive();
@@ -1580,6 +1582,65 @@ void UltraClearTextTests::overlayPreservesColoredPaper_data()
         QTest::newRow(qPrintable(QString("pale-blue-below-floor")+suffix)) << QColor("#a0c8ef") << false << quad;
         QTest::newRow(qPrintable(QString("neutral-midgray")+suffix)) << QColor(140,140,140) << false << quad;
     }
+}
+
+void UltraClearTextTests::overlayFollowsDisplayColors_data()
+{
+    QTest::addColumn<QColor>("paper");
+    QTest::addColumn<bool>("quad");
+    QTest::addColumn<int>("mode");
+    for (bool quad : {false, true}) for (int mode : {1, 2})
+        for (const auto& paper : {QColor("#00ff00"), QColor("#6b8bb2"), QColor(Qt::white)})
+            QTest::newRow(qPrintable(QString("%1-%2-%3").arg(paper.name()).arg(quad).arg(mode)))
+                << paper << quad << mode;
+}
+
+void UltraClearTextTests::overlayFollowsDisplayColors()
+{
+    QFETCH(QColor, paper); QFETCH(bool, quad); QFETCH(int, mode);
+    QWidget target; target.resize(640, 180); target.show();
+    UltraClearTextOverlay overlay(&target, &target); overlay.resize(target.size());
+    const auto transform = ComputeViewTransform(640, 180, 640, 180, 1, .5, .5, ViewportFitMode::kFit);
+    overlay.SetViewTransform(transform);
+    const QColor ink = paper == QColor("#6b8bb2") ? QColor(Qt::white) : QColor(Qt::black);
+    UltraClearTextOverlay::SceneWord word{QStringLiteral("Control"), QRectF(.1, .25, .6, .4), {ink, paper}, 1, {}, 0};
+    if (quad) {
+        word.sceneQuad = TextQuad::FromRect(word.sceneRect);
+        word.sceneQuad.points[0].rx() -= .02; // projective plate/glyph path
+    }
+    overlay.SetWords({word});
+    const auto render = [&] {
+        QImage image(target.size(), QImage::Format_ARGB32_Premultiplied); image.fill(Qt::transparent);
+        overlay.render(&image); return image;
+    };
+    const auto original = render();
+    std::array<std::uint32_t, 256> lut;
+    for (unsigned i = 0; i < lut.size(); ++i) lut[i] = qRgb(i, i, 0); // yellow/black palette
+    using Colors = UltraClearTextOverlay::DisplayColors;
+    const auto selected = mode == 1 ? Colors::Inverted : Colors::LumaLut;
+    overlay.SetDisplayColors(selected, lut);
+    QCoreApplication::processEvents();
+    const auto mapped = render();
+    const auto expected = [&](const QColor& color) {
+        if (mode == 1) return QColor(255-color.red(), 255-color.green(), 255-color.blue());
+        const float luma = .299f*(color.red()/255.f) + .587f*(color.green()/255.f) + .114f*(color.blue()/255.f);
+        return QColor::fromRgb(lut[static_cast<unsigned>(luma*255.f)]);
+    };
+    QCOMPARE(mapped.pixelColor(60, 50), expected(paper));
+    int solidInk = 0;
+    for (int y = 40; y < 125; ++y) for (int x = 65; x < 450; ++x)
+        solidInk += mapped.pixelColor(x, y) == expected(ink);
+    QVERIFY(solidInk > 100);
+    // Palette changes must not relabel measured colors, identity or geometry.
+    QCOMPARE(overlay.Words().first().colors.background, paper);
+    QCOMPARE(overlay.Words().first().sceneQuad, word.sceneQuad);
+    const auto frozen = overlay.CaptureSnapshot(transform, target.size());
+    QVERIFY(!frozen.IsEmpty());
+    overlay.SetDisplayColors(Colors::Source); // CPU pre-graded analysis / Normal colors
+    QCOMPARE(render(), original);
+    QImage saved(target.size(), QImage::Format_ARGB32_Premultiplied); saved.fill(Qt::transparent);
+    QPainter painter(&saved); frozen.Paint(painter, saved.size()); painter.end();
+    QCOMPARE(saved.pixelColor(60, 50), mapped.pixelColor(60, 50));
 }
 
 void UltraClearTextTests::overlayPreservesColoredPaper()

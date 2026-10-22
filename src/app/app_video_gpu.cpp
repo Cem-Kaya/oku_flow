@@ -365,6 +365,8 @@ bool OkuFlowApp::PresentSelectedMediaGpuFrame(const VideoPlaybackFrame& frame,
         UpdateProcessingStatusLabel();
     }
     if (ultraClearText_) {
+        ApplyUltraClearTextDisplayColors(static_cast<int>(settings.displayColorTransform),
+                                        settings.displayColorLutGeneration);
         const bool suppressed = !mediaGpuScene_->UctCoordinatesReliable();
         if (mediaGpuAnalysisSuppressed_ && !suppressed) {
             // A completed/disabled neural presentation may restore exact OCR

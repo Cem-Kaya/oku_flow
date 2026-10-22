@@ -43,6 +43,19 @@ void OkuFlowApp::OnUltraClearTextModelsChanged()
     SavePersistentSettings();
 }
 
+void OkuFlowApp::ApplyUltraClearTextDisplayColors(int transform, std::uint64_t lutGeneration)
+{
+    if (!mainWindow_ || !mainWindow_->ultraClearTextOverlay()) return;
+    // A cached camera scene can still belong to an earlier palette. Do not
+    // attach a newer requested LUT to that successfully presented old scene.
+    // Its old overlay mapping stays in place until the new scene succeeds.
+    if (transform == 2 && lutGeneration != displayColorLutGeneration_) return;
+    using Colors = UltraClearTextOverlay::DisplayColors;
+    mainWindow_->ultraClearTextOverlay()->SetDisplayColors(
+        transform == 2 ? Colors::LumaLut : transform == 1 ? Colors::Inverted : Colors::Source,
+        displayColorLut_);
+}
+
 // What the user asks for now, as the CUDA path would apply it. The CPU path
 // narrows this in UctSceneProvenance::RequestFor.
 UctSceneSettings OkuFlowApp::UltraClearTextRequest() const

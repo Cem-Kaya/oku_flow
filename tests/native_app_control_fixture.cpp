@@ -131,6 +131,19 @@ public:
     static QString PhotoDirectory(OkuFlowApp& app) {
         return app.userDataPaths_->PhotosForDate(QDate::currentDate());
     }
+    static void UctPalette(OkuFlowApp& app, const QString& scheme, std::uint64_t generation) {
+        app.displayColorLut_ = color_schemes::BuildColorLut(*color_schemes::FindBuiltInColorScheme(scheme));
+        app.displayColorLutGeneration_ = generation;
+    }
+    static auto UctPaletteState(const OkuFlowApp& app) {
+        return std::pair{app.displayColorLut_, app.displayColorLutGeneration_};
+    }
+    static void RestoreUctPalette(OkuFlowApp& app, const std::pair<color_schemes::ColorLut, std::uint64_t>& state) {
+        app.displayColorLut_ = state.first; app.displayColorLutGeneration_ = state.second;
+    }
+    static void UctPaletteReceipt(OkuFlowApp& app, int transform, std::uint64_t generation = 0) {
+        app.ApplyUltraClearTextDisplayColors(transform, generation);
+    }
     static void SavePhotoFixture(OkuFlowApp& app, const QImage& pixels,
                                  ViewOverlaySnapshot overlays) {
         CapturedFrame original;
@@ -960,6 +973,40 @@ private slots:
             QCOMPARE(overlay->PaintCount(),paints);
             QCOMPARE(overlay->CurrentViewTransform().sourceX,transform.sourceX);
         }
+    }
+    void uctPaletteUsesPresentedGenerationAndCpuDoesNotReapply() {
+        auto& window = NativeControlFixture::Window(app_);
+        auto* target = window.renderWidget(); auto* overlay = window.ultraClearTextOverlay();
+        const auto palette = NativeControlFixture::UctPaletteState(app_);
+        const auto cleanup = qScopeGuard([&] {
+            overlay->ClearWords(); NativeControlFixture::UctPaletteReceipt(app_, 0); window.hide();
+            NativeControlFixture::RestoreUctPalette(app_, palette);
+        });
+        window.resize(1200, 800); window.show(); QCoreApplication::processEvents();
+        overlay->SetViewTransform(ComputeViewTransform(target->width(), target->height(),
+            target->width(), target->height(), 1.f, .5f, .5f, ViewportFitMode::kFit));
+        overlay->SetWords({{QStringLiteral("Control"), QRectF(.25,.25,.45,.14), {Qt::black,Qt::green},1}});
+        const auto count = [&](QColor color) {
+            QImage image(target->size(), QImage::Format_ARGB32_Premultiplied); image.fill(Qt::transparent);
+            overlay->render(&image);
+            int pixels = 0;
+            for (int y=0;y<image.height();++y) for(int x=0;x<image.width();++x)
+                pixels += image.pixelColor(x,y) == color;
+            return pixels;
+        };
+        NativeControlFixture::UctPalette(app_, QStringLiteral("yellow-black"), 100);
+        NativeControlFixture::UctPaletteReceipt(app_, 2, 99); // old receipt cannot borrow new LUT
+        QVERIFY(count(Qt::green)>100);
+        NativeControlFixture::UctPaletteReceipt(app_, 2, 100);
+        QVERIFY(count(QColor(149,149,0))>100);
+        QCOMPARE(count(Qt::green),0);
+        NativeControlFixture::UctPalette(app_, QStringLiteral("cyan-black"), 101);
+        NativeControlFixture::UctPaletteReceipt(app_, 2, 100); // keep cached scene's exact old mapping
+        QVERIFY(count(QColor(149,149,0))>100);
+        NativeControlFixture::UctPaletteReceipt(app_, 2, 101);
+        QVERIFY(count(QColor(0,149,149))>100);
+        NativeControlFixture::UctPaletteReceipt(app_, 0); // CPU analysis has already been processed
+        QVERIFY(count(Qt::green)>100);
     }
     void selectedMediaGpuPolicyIncludesAllImageEffects() {
         // Exercise the policy seam without creating a CUDA surface or claiming

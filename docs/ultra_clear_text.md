@@ -89,16 +89,31 @@ GUI gate; an offscreen pass alone does not establish Windows stacking behavior.
 - Glyph weight follows the existing Text Clarity **Stroke weight** slider.
   Plate colors are measured from the analysis pixels, using a bounded
   surrounding margin and its background-class median to identify dense/bold print. CUDA's
-  neutral analysis branch precedes display color effects, so its plates preserve
-  source polarity rather than a display LUT. Below 7:1 contrast, ink moves to
+  neutral analysis branch precedes display color effects. Its readable ink/plate
+  colors are therefore mapped through the successfully presented display palette
+  before drawing: encoded-RGB inversion or the same 256-entry luma LUT. Normal
+  colors retains source colors, including white text on blue chat bubbles. The
+  CPU media path already analyzes colored pixels and is not mapped twice.
+  A requested LUT cannot replace an older cached scene's mapping before the new
+  scene succeeds. Palette changes update cached colors without recognition,
+  shaping, geometry or admission changes; saved processed overlays freeze the
+  same mapping. This covers display palettes, not the scene's local adaptive
+  Text Clarity or auto-contrast statistics. Before that mapping, below 7:1
+  contrast, ink moves to
   white or black first (neutral/low-chroma ink, with RGB channel spread below 64,
   always snaps to that extreme) while retaining
   the source paper/board color. Only when
-  that cannot reach 7:1 does the background move the minimum distance toward
+  that cannot reach 7:1 (or 3:1 on clearly colored paper) does the background move the minimum distance toward
   its polarity endpoint. Moderate gray backgrounds therefore stay gray. Accepted
   background brightness uses a fixed 64-level grid preserving hue; small color
   changes remain within an 8-level hysteresis band rather than shimmering on
   every recognition. This affects replacement colors, not the camera image.
+  The 2026-10-23 CPU/PCH-off scoped gate passed the paint/model contract,
+  actual-app offscreen contract and shared-source equivalence (3/240,
+  zero skips/unresolved). Palette rows cover upright/projective plates and
+  ink, inversion, yellow/black, original blue-paper restoration, frozen export,
+  LUT-generation fencing and CPU no-double-mapping. This is not native UIA,
+  real-camera or full release acceptance.
 - Paddle detector/CTC boxes include padding. After inference, bounded worker-side
   source-ink fitting uses row bands to avoid adjacent-line ink and a one-CTC-step
   search bounded by the line and neighbouring words to recover clipped edges

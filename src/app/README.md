@@ -3,6 +3,11 @@
 This module owns Qt startup, application wiring, settings persistence,
 interaction orchestration, and recording sessions.
 
+Successful presentation also selects UCT's display-color mapping. Neutral GPU
+analysis uses the presented inversion/LUT; an older cached LUT generation cannot
+borrow current requested colors. CPU media has already been colored and restores
+source mapping. See [UCT color policy](../../docs/ultra_clear_text.md).
+
 `app_video_playback.cpp` additionally owns silent live RAM recap selection and
 the existing transport, independent of recording/file documents. The clean
 Original path keeps buffering during review; bounded presented-scene leases

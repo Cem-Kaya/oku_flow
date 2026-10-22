@@ -68,6 +68,11 @@ public:
     // User style: -3..3 maps onto font weight, reusing Text Clarity's
     // existing stroke-weight preference.
     void SetStrokeWeight(int weight);
+    // Neutral analysis colors follow the successfully presented display palette.
+    // Already graded CPU analysis uses Source to avoid applying it twice.
+    enum class DisplayColors { Source, Inverted, LumaLut };
+    void SetDisplayColors(DisplayColors mode,
+                          const std::array<std::uint32_t, 256>& lut = {});
     void SetExcludedWidget(QWidget* widget);
 
     // Words as drawn for the current transform (tests and diagnostics).
@@ -136,6 +141,7 @@ private:
     void SyncGeometryToRenderTarget();
     void UpdateVisibility();
     bool RebuildGlyphLayout(const QDeadlineTimer* deadline = nullptr);
+    uct::LineColors GlyphColors(const uct::LineColors& measured) const;
     QRectF InkAtReference(const QString& text);
     struct PaintPlan;
     bool ComputePaintPlan(PaintPlan& plan, const ViewTransform& transform,
@@ -224,6 +230,8 @@ private:
     mutable std::uint64_t planIndexGeneration_{};
     QFont referenceFont_;
     int strokeWeight_{};
+    DisplayColors displayColors_{DisplayColors::Source};
+    std::array<std::uint32_t, 256> displayColorLut_{};
     std::uint64_t paintCount_{};
 };
 

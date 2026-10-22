@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Apply the successfully presented display palette to sharp UCT ink and plates,
+  including inverted and custom LUT colors. Normal colors retains source colors;
+  CPU media that already contains its display colors is not recolored twice.
+
 - Recover perspective text geometry from closed, well-supported local source
   surfaces, retaining shear/taper and near/far glyph sizes through live/export
   painting and character bounds. Ambiguous or cropped surfaces keep prior geometry.

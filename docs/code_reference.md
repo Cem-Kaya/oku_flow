@@ -3484,6 +3484,15 @@ Namespace `okuflow`
   black/white scene polarity. Colored paper is preserved at a 3:1 solid-ink
   floor; neutral/below-floor paper retains the 7:1 adjustment. Weight follows
   Text Clarity stroke weight.
+- `DisplayColors` / `SetDisplayColors(mode, lut)` own the presented source,
+  inverted or 256-entry luma palette. `GlyphColors` caches that mapping after
+  readability normalization for upright/projective drawing, preservation checks
+  and snapshot export; it never changes measured word colors or admission.
+  `OkuFlowApp::ApplyUltraClearTextDisplayColors` installs it only from a
+  successful/cached presentation receipt, refusing a different requested LUT
+  generation. GPU neutral analysis is mapped once; pre-graded CPU media and
+  raw CPU camera restore `Source`. Palette mapping does not include adaptive
+  image statistics, and no post-mapping readability step overrides user colors.
   Paint is clipped away from floating panels, annotation chrome and the
   floating Assistant. `ProjectedWordRects()` exposes drawn geometry.
 - `eventFilter` tracks application activation and owner window blocking;
