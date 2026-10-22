@@ -38,6 +38,7 @@ struct VideoRecapSnapshot {
     std::uint32_t queuedFrames{};
     std::int64_t maximumNativeCallUs{};
     bool available{}, pressure{}, warming{true};
+    bool failed{}; // Permanent worker/latched failure; native-busy text is advisory.
     std::string error;
 };
 // Pure segment accounting. Segments are independently coded access points;

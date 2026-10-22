@@ -37,6 +37,12 @@
 
 namespace okuflow {
 struct VideoRecorderTestAccess {
+    static void RefuseVideoAdmission(VideoRecorder& recorder) {
+        // The actual production admission policy needs room for two frames.
+        // A private smaller first-writer budget models pressure without any
+        // fabricated input, completion/statistics credit, or writer bypass.
+        recorder.videoBacklog_ = RecordingEncoderBacklog(1);
+    }
     static void ObserveSink(VideoRecorder& recorder,
                             std::function<void(bool, IMFByteStream*)> observer) {
         recorder.sinkInitializationObserver_ = std::move(observer);
@@ -52,6 +58,15 @@ struct VideoRecorderTestAccess {
     }
 };
 struct RamVideoRecapTestAccess {
+    static bool PressureFirstWriter(RamVideoRecap& recap) {
+        return recap.SetWriterSetupForTest([attempt=std::make_shared<unsigned>(0)](VideoRecorder& writer) {
+            const bool first=(*attempt)++==0;
+            VideoRecorderTestAccess::ObserveSink(writer,[&writer,first](bool nativeGpu,IMFByteStream*) {
+                if(!nativeGpu)throw std::runtime_error("pressure fixture requires actual native GPU input");
+                if(first)VideoRecorderTestAccess::RefuseVideoAdmission(writer);
+            });
+        });
+    }
     static bool FailBoundedStreamFinalization(RamVideoRecap& recap) {
         return recap.SetWriterSetupForTest([](VideoRecorder& writer) {
             VideoRecorderTestAccess::ObserveSink(writer, [](bool, IMFByteStream* bytes) {
@@ -355,6 +370,66 @@ bool CreateSharedFrame(SharedFrameContext& context)
     return context.frame.IsValid();
 }
 
+void RunRamRecapPressurePass(const okuflow::GpuVideoFrame& frame)
+{
+    const auto require=[](bool condition,const std::string& reason){if(!condition)throw std::runtime_error(reason);};
+    const auto wait=[](auto&& predicate) {
+        const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+        while(!predicate()) {
+            if(std::chrono::steady_clock::now()>=deadline)return false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        return true;
+    };
+    okuflow::RamVideoRecap recap;recap.Reset(52,0);
+    require(okuflow::RamVideoRecapTestAccess::PressureFirstWriter(recap),"pressure setup precedes input");
+    for(unsigned index=0;index<125;++index) {
+        const auto clock=1'000'000'000LL+std::int64_t(index)*333'334;
+        require(wait([&] {
+            const auto s=recap.Snapshot();
+            require(s.error.empty(),"zero-admission pressure must not latch: "+s.error);
+            return recap.Submit({{},frame,frame.width,frame.height,{clock,clock,index,30,1}});
+        }),"pressure recovery producer remains bounded");
+        if(index==59) {
+            require(wait([&]{return recap.Snapshot().droppedFrames>=60;}),"first real writer must refuse every input");
+            const auto empty=recap.Snapshot();
+            require(empty.admittedFrames==0 && empty.completedSegments==0 && !empty.available && !empty.failed &&
+                empty.compressedBytes==0,"first pressure writer supplies no fake sample or timeline credit");
+            std::cerr<<"pressure first-writer actual admitted="<<empty.admittedFrames<<" dropped="<<empty.droppedFrames
+                <<" completed="<<empty.completedSegments<<" bytes="<<empty.compressedBytes<<'\n';
+        }
+    }
+    require(wait([&] {
+        const auto s=recap.Snapshot();require(s.error.empty(),"pressure successor: "+s.error);
+        return s.completedSegments>0;
+    }),"normal successor must publish real history");
+    const auto snapshot=recap.Snapshot();auto segment=recap.Acquire(snapshot.first100ns);
+    require(snapshot.available && snapshot.pressure && snapshot.droppedFrames>=60 && segment &&
+        !segment->admissions.empty() && segment->admissions.front().sequence>=60 &&
+        segment->begin100ns>=20'000'000 && segment->source->Capacity()<=okuflow::VideoRecapPolicy::kSegmentBytes,
+        "empty pressure creates no fake admissions or earlier range");
+    ComPtr<IMFByteStream> stream;ComPtr<IMFSourceReader> reader;
+    require(SUCCEEDED(segment->source->OpenReadStream(&stream)) &&
+        SUCCEEDED(MFCreateSourceReaderFromByteStream(stream.Get(),nullptr,&reader)),"recovered native source opens");
+    unsigned pictures{};LONGLONG previous=-1;
+    while(true) {
+        DWORD flags{};LONGLONG pts{};ComPtr<IMFSample> sample;
+        require(SUCCEEDED(reader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM,0,nullptr,&flags,&pts,&sample)),"recovered picture reads");
+        if(sample) {
+            require(pictures<segment->admissions.size(),"recovered native output cannot duplicate acquisitions");
+            const auto& admitted=segment->admissions[pictures];
+            std::cerr<<"pressure recovered_picture="<<pictures<<" sequence="<<admitted.sequence
+                <<" capture_pts100ns="<<admitted.pts100ns<<" native_pts100ns="<<pts<<'\n';
+            require(pts>previous && std::abs(pts-admitted.pts100ns)<=1000,"recovered PTS preserve actual capture clock");
+            previous=pts;++pictures;
+        }
+        if(flags&MF_SOURCE_READERF_ENDOFSTREAM)break;
+    }
+    require(pictures==segment->admissions.size(),"all real admitted recovery pictures must encode");
+    std::cerr<<"pressure recovery completed="<<snapshot.completedSegments<<" admitted="<<snapshot.admittedFrames
+        <<" dropped="<<snapshot.droppedFrames<<" bytes="<<snapshot.compressedBytes<<" pictures="<<pictures<<'\n';
+}
+
 // The RAM sink and asynchronous producer have different attributes, stream
 // callbacks and finalization from the disk writer. No file/audio path is used.
 void RunRamRecapPass(const okuflow::GpuVideoFrame& frame)
@@ -460,6 +535,7 @@ void RunRamRecapPass(const okuflow::GpuVideoFrame& frame)
     }
     require(wait([&] {return !failed.Snapshot().error.empty();}),"failed finalization must surface its native reason");
     const auto failure=failed.Snapshot();
+    require(failure.failed,"failed finalization has explicit permanent failure metadata");
     require(!failure.available && failure.completedSegments==0 && !failed.Acquire(0),
             "failed finalization cannot expose any timeline or playable segment");
     require(failure.error.find("final fragment")!=std::string::npos,"native finalization reason is retained");
@@ -762,6 +838,9 @@ int main(int argc, char** argv)
             std::cout << "SKIP: no D3D12 device with shared-resource "
                          "support on this machine\n";
             exitCode = kSkipExitCode;
+        } else if (argc == 2 && std::string(argv[1]) == "--ram-recap-pressure") {
+            try { RunRamRecapPressurePass(context.frame); }
+            catch (const std::exception& error) { std::cerr << "FAIL: " << error.what() << '\n'; exitCode = 1; }
         } else if (argc == 2 && std::string(argv[1]) == "--ram-recap") {
             try { RunRamRecapPass(context.frame); }
             catch (const std::exception& error) { std::cerr << "FAIL: " << error.what() << '\n'; exitCode = 1; }

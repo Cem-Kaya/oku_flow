@@ -54,6 +54,19 @@ hash and the separate provenance/acceptance limits are documented in
 [initial paused video](../docs/uct_initial_paused_frame.md). This new optional
 fixture is unbuilt and unrun pending the parent resource grant.
 
+`native_app_recap_followup_offscreen` selects three actual-app slots (including
+all terminal-refusal data rows): collapsed viewport Space Freeze/Resume/focus,
+permanent failure/unsupported Resume refusal with the exact hold retained, and
+transient-busy waiting. It uses the opt-in CPU dev-full/native-control target,
+Qt offscreen and fixture settings, without device/provider/bootstrap work.
+`video_transport_contract` also checks the existing unavailable reason's polite
+announcement. `video_recap_pressure_gpu` constrains only its first real writer's
+admission budget through the existing private friend observer, then requires a
+normal successor's actual compressed-picture count, capture PTS and bounded
+bytes. It creates no camera, audio, window or file output. This models bounded
+pressure; it does not identify the owner's hardware statistics or substitute
+for the separate zero-based/nonempty-finalization `video_recap_native_gpu` case.
+
 `immutableCandidateProtectionRefusalIsAtomic` covers late semantic-risk refusal
 after an append and mixed append/fragment exhaustion at 8191 stored slots.
 `activeRegionalRasterWithdrawalIsAtomic` covers ordinary and tilted words

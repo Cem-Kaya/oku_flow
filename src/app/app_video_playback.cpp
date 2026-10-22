@@ -309,7 +309,10 @@ bool OkuFlowApp::OpenLiveRecapAt(std::int64_t target,bool play) {
 }
 
 void OkuFlowApp::PollLiveRecap() {
-    auto& d=*videoDocument_;d.recapSnapshot=d.recap.Snapshot();
+    ApplyLiveRecapSnapshot(videoDocument_->recap.Snapshot());
+}
+void OkuFlowApp::ApplyLiveRecapSnapshot(const VideoRecapSnapshot& recap) {
+    auto& d=*videoDocument_;d.recapSnapshot=recap;
     const auto& r=d.recapSnapshot;
     const bool changedEpoch=d.recapEpoch && r.epoch!=d.recapEpoch;
     d.recapEpoch=r.epoch;
@@ -320,11 +323,16 @@ void OkuFlowApp::PollLiveRecap() {
         // retiring. Acquire is non-native and obeys the same two-pin quota.
         if(r.pinnedSegments<VideoRecapPolicy::kPinnedSegments)OpenLiveRecapAt(intent.first,intent.second);
     }
-    if(d.resumePending && d.heldLive && r.available && r.captureOrigin100ns>=0 && d.heldCaptureClock100ns>=0) {
+    const auto heldTarget=r.captureOrigin100ns>=0 && d.heldCaptureClock100ns>=0
+        ? std::max<std::int64_t>(0,d.heldCaptureClock100ns-r.captureOrigin100ns) : -1;
+    const bool resumeUnavailable=(d.recapUnsupported || r.failed) &&
+        (!r.available || heldTarget<0 || heldTarget>r.end100ns);
+    if(d.resumePending && resumeUnavailable)d.resumePending=false;
+    if(d.resumePending && d.heldLive && r.available && heldTarget>=0) {
         // Resume begins at the first genuine coded sample after the manual
         // freeze action. The uncompressed exact scene is never relabelled as
         // a lossy decoder sample or offered as its corroborating neighbour.
-        const auto target=std::max<std::int64_t>(0,d.heldCaptureClock100ns-r.captureOrigin100ns);
+        const auto target=heldTarget;
         if(target<=r.end100ns)OpenLiveRecapAt(std::max(target,r.first100ns),true);
     }
     auto snapshot=d.player.Snapshot();d.playback=snapshot;
@@ -359,6 +367,8 @@ void OkuFlowApp::PollLiveRecap() {
     VideoTransport::Snapshot ui;ui.source=VideoTransport::Source::Recap;
     ui.sourceName=QCoreApplication::translate("OkuFlow","Live recap");
     ui.diagnosticDetail=QString::fromStdString(r.error);
+    if(d.recapUnsupported && ui.diagnosticDetail.isEmpty())
+        ui.diagnosticDetail=QCoreApplication::translate("OkuFlow","Video unavailable");
     if(d.transportDocumentId!=d.documentId){d.transportDocumentId=d.documentId;++d.transportGeneration;}
     ui.sourceGeneration=d.transportGeneration;ui.playing=d.followingLive || d.playing || d.resumePending || d.afterOperationPlay || d.waitingNextPart;
     ui.firstMs=std::max<std::int64_t>(0,r.first100ns)/kTicksPerMs;
@@ -373,10 +383,11 @@ void OkuFlowApp::PollLiveRecap() {
         : d.recapDeferredSeek ? VideoTransport::State::Seeking
         : d.openingArchive ? VideoTransport::State::Opening
         : snapshot.state==VideoPlaybackState::Seeking && !d.heldLive ? VideoTransport::State::Seeking
-        : !r.error.empty() && !r.available ? VideoTransport::State::Unavailable
+        : r.failed && !r.available ? VideoTransport::State::Unavailable
         : d.followingLive ? (cameraFramePresented_?VideoTransport::State::Live:VideoTransport::State::Buffering)
         : d.playing ? VideoTransport::State::BehindLive : VideoTransport::State::Paused;
-    if((!r.error.empty() || d.recapUnsupported) && !r.available && !d.heldLive)ui.state=VideoTransport::State::Unavailable;
+    if((d.heldLive && resumeUnavailable) || ((r.failed || d.recapUnsupported) && !r.available))
+        ui.state=VideoTransport::State::Unavailable;
     if(snapshot.state==VideoPlaybackState::Unavailable && !d.followingLive && !d.heldLive)ui.state=VideoTransport::State::Unavailable;
     mainWindow_->videoTransport()->SetSnapshot(ui);
     mainWindow_->setVideoSourceSelected(MediaViewSelected(),selectedCameraIndex_);
@@ -1586,6 +1597,7 @@ QJsonObject OkuFlowApp::SelectedVideoState() const
         result["recapAdmittedFrames"]=static_cast<qint64>(doc.recapSnapshot.admittedFrames);
         result["recapCompletedFrames"]=static_cast<qint64>(doc.recapSnapshot.completedFrames);
         result["recapError"]=QString::fromStdString(doc.recapSnapshot.error);
+        result["recapFailed"]=doc.recapSnapshot.failed;
         result["recapSourceWidth"]=static_cast<int>(doc.recapWidth);
         result["recapSourceHeight"]=static_cast<int>(doc.recapHeight);
         result["recapFrameRateNumerator"]=static_cast<int>(doc.recapRateN);
@@ -1598,6 +1610,11 @@ QJsonObject OkuFlowApp::SelectedVideoState() const
 }
 
 #if defined(OKUFLOW_VIDEO_DOCUMENT_TESTS)
+void OkuFlowApp::PollLiveRecapForTest(VideoRecapSnapshot snapshot)
+{
+    snapshot.epoch=videoDocument_->recapEpoch;
+    ApplyLiveRecapSnapshot(snapshot);
+}
 void OkuFlowApp::SeedVideoDocumentForTest(const RecordingSessionInfo& session,
     std::shared_ptr<const VideoPlaybackFrame> frame, bool recording, bool playing)
 {

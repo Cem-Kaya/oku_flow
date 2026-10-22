@@ -17,6 +17,12 @@
   notation stays protected. Raise paused visible-detail enlargement from 6x to
   8x under the same 960-pixel detector limit; live regional limits stay 704/480.
 
+- Preserve viewport Space for Freeze/Resume while video controls are collapsed.
+  Cancel an impossible pending recap Resume with the existing unavailable
+  status and native reason, retaining the exact held scene and Jump to live.
+  Discard pressure-only encoder segments with zero accepted frames so later
+  real history can recover; nonempty finalization failures still latch.
+
 - Add a small video-transport collapse/expand chevron with a full keyboard/touch
   target. Keep playback running and Jump to live reachable while collapsed.
 - Accept the camera's real first acquisition ID zero in Live recap while

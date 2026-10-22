@@ -9,6 +9,8 @@ See [recap ownership and limits](../../docs/live_ram_recap.md).
 The transport's small chevron collapses control rows while retaining a 44-DIP
 keyboard/touch target and the jump action. It preserves playback and current
 snapshot state and cancels unfinished drags without a seek.
+Viewport Space still issues Freeze/Resume while collapsed through separate
+command readiness; hidden chrome remains outside keyboard focus order.
 
 `AssistantChatView` renders the shared app-owned chat session in Advanced and
 floating Explain, with one compact header, a fixed composer and settings/history

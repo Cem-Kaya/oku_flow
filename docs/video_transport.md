@@ -8,6 +8,13 @@ same transport for a separate silent RAM recap, even with recording off.
 Its first/end values are actual rolling bounds and exact Freeze can precede
 the first coded segment. See [the recap contract](live_ram_recap.md).
 
+Collapsing the controls hides their chrome and removes hidden actions from
+Tab order. Viewport Space still issues Freeze/Resume through the same source
+and busy-state gates, without moving viewport focus or expanding the bar.
+Native Space activation on the chevron and other visible buttons is unchanged.
+Permanent recap failure uses the existing **Video unavailable** status; its
+existing native reason is also included in the polite state announcement.
+
 Saved-video selection lives in Settings > Camera. The camera dropdown includes
 `View video`; choosing it opens the local file picker. While video is selected,
 `Select video` appears directly beneath the dropdown. Orientation stays available
