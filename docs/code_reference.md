@@ -6753,7 +6753,8 @@ The five width fixtures and resident selector are described in
 [narrower recognition inputs](uct_recognizer_width.md); defaults remain fixed.
 Host-only `SortedGroupOrder`/`SortedGroupCanvas` in the same header build the
 opt-in width-sorted execution permutation; `OKUFLOW_UCT_TRT_GROUPING=sorted`
-(requires bucketed width, otherwise the backend is unavailable) makes
+(effective only with bucketed width; inert and reported ordered under
+fixed1024, unknown tokens fail closed) makes
 `TensorRtRecognizer` download compact descriptors once per region, execute
 groups in ascending-width order and restore detector order for merging,
 descriptor hashing and crop capture through the inverse mapping. The profile

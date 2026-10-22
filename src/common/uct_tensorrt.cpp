@@ -614,8 +614,11 @@ class TensorRtRecognizer final : public Recognizer
                         (allowWidthPreparation_ && !variableWidth_);
         const auto grouping = qEnvironmentVariable("OKUFLOW_UCT_TRT_GROUPING");
         sortedGrouping_ = grouping == recognizer_width::kSortedToken;
-        invalidGrouping_ = (!grouping.isEmpty() && grouping != recognizer_width::kOrderedToken &&
-                            !sortedGrouping_) || (sortedGrouping_ && !variableWidth_);
+        // Sorted grouping only permutes bucketed execution. Under fixed1024
+        // it is inert (never a reason to lose the GPU backend, in particular
+        // beside the fixed-width local BF16 selection); unknown tokens fail.
+        invalidGrouping_ = !grouping.isEmpty() && grouping != recognizer_width::kOrderedToken &&
+                           !sortedGrouping_;
     }
     ~TensorRtRecognizer() override
     {
@@ -636,7 +639,7 @@ class TensorRtRecognizer final : public Recognizer
             return status_;
         }
         if (invalidGrouping_) {
-            status_.detail = "OKUFLOW_UCT_TRT_GROUPING must be ordered or sorted; sorted requires OKUFLOW_UCT_TRT_WIDTH=bucketed.";
+            status_.detail = "OKUFLOW_UCT_TRT_GROUPING must be ordered or sorted.";
             return status_;
         }
         assets_ = LoadPaddleAssets(root_,detectorTier_,recognizerTier_);
@@ -1184,7 +1187,9 @@ class TensorRtRecognizer final : public Recognizer
                     auto state = std::make_shared<State>();
                     state->device = preparation->device;
                     state->variableWidth = variableWidth;
-                    state->sortedGrouping = sortedGrouping;
+                    // Effective grouping: sorted execution exists only on the
+                    // bucketed canvas policy; fixed1024 reports ordered.
+                    state->sortedGrouping = sortedGrouping && variableWidth;
                     state->precisionDetail = runtime_precision::ActualStatus(false, precisionFallback);
                     {
                         std::lock_guard lock(preparation->mutex);

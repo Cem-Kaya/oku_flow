@@ -42,12 +42,14 @@ promise lower peak VRAM. Existing output/workspace ceilings remain unchanged.
 `OKUFLOW_UCT_TRT_GROUPING=sorted` additionally permutes each region's crops
 into ascending useful-width order before the existing contiguous groups are
 formed, so a group's canvas is set by similar-width crops instead of the
-widest incidental neighbour. It requires `OKUFLOW_UCT_TRT_WIDTH=bucketed`;
-any other grouping value, or sorted without bucketed, makes the TensorRT
+widest incidental neighbour. Sorted execution exists only on top of
+`OKUFLOW_UCT_TRT_WIDTH=bucketed`. Under fixed1024 the selector is inert —
+grouping cannot narrow a fixed canvas — and the profile/status report the
+effective `ordered` grouping; an unknown grouping token makes the TensorRT
 backend unavailable with an explicit selector error. The default remains
-detector-ordered execution (`ordered`), and fixed1024 is unaffected: grouping
-cannot narrow a fixed canvas. The reviewed local BF16 selection requires
-fixed1024 and therefore never combines with sorted grouping.
+detector-ordered execution (`ordered`). The reviewed local BF16 selection
+requires fixed1024 and therefore never combines with sorted grouping, and
+setting the grouping selector can never disable that production backend.
 
 Sorting changes execution order only. The worker downloads the region's
 compact quad descriptors once after the existing detector-count wait (no new

@@ -738,10 +738,12 @@ class PaddleTests final : public QObject
             if (!backend) return std::optional<BackendStatus>{};
             return std::optional<BackendStatus>{backend->Initialize()};
         };
+        // Sorted under fixed1024 is inert, never a backend refusal: it also
+        // fails later on the empty fixture root, without a grouping error.
         const auto sortedWithoutBuckets = initialize("sorted", "");
         if (!sortedWithoutBuckets) QSKIP("TensorRT adapter not compiled.");
         QCOMPARE(sortedWithoutBuckets->state, BackendState::kUnavailable);
-        QVERIFY(sortedWithoutBuckets->detail.contains("OKUFLOW_UCT_TRT_GROUPING"));
+        QVERIFY(!sortedWithoutBuckets->detail.contains("OKUFLOW_UCT_TRT_GROUPING"));
         const auto bogus = initialize("bogus", "bucketed");
         QVERIFY(bogus.has_value());
         QCOMPARE(bogus->state, BackendState::kUnavailable);

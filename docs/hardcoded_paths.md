@@ -1121,8 +1121,9 @@ The minimum, optimum and maximum shapes must match after deserialization.
 which refuses preparation. Group metadata is bounded to 144 integers / 576
 bytes in each device/host buffer. See [width validation](uct_recognizer_width.md).
 `OKUFLOW_UCT_TRT_GROUPING` accepts empty/`ordered` (detector order) or the
-opt-in `sorted` execution permutation; `sorted` requires `bucketed` and any
-other combination makes the TensorRT backend unavailable. Sorted execution
+opt-in `sorted` execution permutation. `sorted` takes effect only with
+`bucketed`; under fixed1024 it is inert and reported as `ordered`, while an
+unknown token makes the TensorRT backend unavailable. Sorted execution
 downloads at most 1152 compact quad descriptors once per region after the
 existing count wait and restores detector order before merging/publication.
 It never selects or prepares plans and cannot combine with the fixed1024
