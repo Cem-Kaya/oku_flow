@@ -44,6 +44,43 @@ set_tests_properties(immutable_uct_contract PROPERTIES TIMEOUT 120 LABELS "headl
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 
+# Private controller replay is opt-in at configure, not an ambient runtime
+# override. Bind the actual proof and both source images into tracked evidence.
+set(OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF "$ENV{OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}"
+    CACHE FILEPATH "Optional absolute private captured UCT controller proof JSON")
+set_property(TEST immutable_uct_contract APPEND PROPERTY ENVIRONMENT
+    "OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF=${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}")
+if(OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF)
+    if(NOT IS_ABSOLUTE "${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}" OR
+       NOT EXISTS "${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}" OR
+       IS_DIRECTORY "${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}" OR
+       "${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}" MATCHES ";")
+        message(FATAL_ERROR "UCT replay proof must be an existing absolute file without list separators")
+    endif()
+    file(SIZE "${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}" replay_proof_bytes)
+    if(replay_proof_bytes GREATER 1048576)
+        message(FATAL_ERROR "UCT replay proof exceeds one MiB")
+    endif()
+    file(READ "${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}" replay_proof_json)
+    set(replay_required_files "${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}")
+    foreach(replay_key IN ITEMS selectedPath neighbourPath)
+        string(JSON replay_image ERROR_VARIABLE replay_error GET "${replay_proof_json}" "${replay_key}")
+        if(replay_error OR NOT IS_ABSOLUTE "${replay_image}" OR
+           NOT EXISTS "${replay_image}" OR IS_DIRECTORY "${replay_image}" OR
+           "${replay_image}" MATCHES ";")
+            message(FATAL_ERROR "UCT replay ${replay_key} must name an existing absolute source image")
+        endif()
+        file(SIZE "${replay_image}" replay_image_bytes)
+        if(replay_image_bytes GREATER 67108864)
+            message(FATAL_ERROR "UCT replay source image exceeds 64 MiB")
+        endif()
+        list(APPEND replay_required_files "${replay_image}")
+    endforeach()
+    set_property(TEST immutable_uct_contract APPEND PROPERTY REQUIRED_FILES ${replay_required_files})
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}")
+endif()
+
 add_test(NAME uct_timing_controller_contract
     COMMAND ultra_clear_text_controller_tests timingTraceKeepsWorkerAndAdmissionTickets)
 set_tests_properties(uct_timing_controller_contract PROPERTIES TIMEOUT 30 LABELS "headless"

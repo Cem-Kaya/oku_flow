@@ -23,6 +23,12 @@ this is not general mathematical-notation support.
 
 Confidence must still be finite and in the existing accepted range, starting
 at 0.7. That engine score is not a calibrated 70% probability of correctness.
+Windows.Media.Ocr provides no per-word score: its adapter's default `1.0` is
+nominal metadata, not measured certainty, so this numeric gate cannot filter
+Windows misreads. The owner's removal of ASCII vetoes also applies to that
+fallback; ordinary labels still require its independent-pair/pixel proof.
+Neither that proof nor a high Paddle score can exclude a repeatable spelling
+error. No score is invented from agreement, and no ASCII veto is reinstated.
 Explicit backend rejection, seven-source-pixel minimum height, valid finite
 geometry, source/acquisition identity, independent observations and pixel
 registration all retain their existing rules. Paused replacement still needs

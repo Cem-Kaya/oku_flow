@@ -451,8 +451,9 @@ admission callbacks before advancing, so setup cannot expire otherwise current
   late ancillary evidence and retained original glyphs without independent
   proof. `LongGopSeeking` checks actual opening-frame/following-sample leases.
   The fresh CPU gate passed these rows and native sparse playback. The actual
-  bridge-output controller replay retained two paint failures; four additive
-  outside-window negative rows are compiled but unrun. Private clip CPU
+  bridge-output controller replay retained two paint failures. Separate corrected
+  real capture with declared runtime inputs passed all 158 controller rows,
+  including four additive outside-window negative rows. Private clip CPU
   provenance is separate from runtime acceptance. See
   [initial paused source investigation](uct_initial_paused_frame.md).
   `ImmutableCorroborationPolicy` in `common/immutable_corroboration.hpp` holds
@@ -475,9 +476,12 @@ admission callbacks before advancing, so setup cannot expire otherwise current
   fixture checks actual painted words, ScreenLines and Qt character bounds.
   `SparseAviBytes` builds original raw AVI bytes; `InitialSparseSavedFileNeighbour`
   and fixture-only `VideoMemoryStreamTestAccess::SealBytes` verify native saved
-  versus identical-byte memory-origin policy. The private capture's bytes need
-  absolute CTest runtime declarations before acceptance; current replay is a
-  diagnostic with a separate hash receipt.
+  versus identical-byte memory-origin policy. The optional FILEPATH cache option
+  `OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF` initializes from its environment variable.
+  `tests/recap_components.cmake` bounds proof/image byte sizes, validates absolute
+  existing paths, declares the proof and both images as CTest `REQUIRED_FILES`,
+  and fixes the test's replay environment to that configuration. An empty option
+  selects synthetic mode. Original undeclared replay remains diagnostic evidence.
 - `UctAdvancingMediaScene` and `OnAdvancingMediaPresented` bind successful
   playback receipts to real media PTS and independent wall-clock job deadlines.
   They pace residual probes at 80 ms and OCR at a 350 ms minimum/1,500 ms
@@ -2975,6 +2979,8 @@ Namespace `okuflow::processing`
   then restores the actual X/Y resize ratios. The adapter supplies that source
   quad and its bounding rectangle before color, proof and immutable merging.
   Null/zero angle preserves upright geometry; nonfinite geometry fails closed.
+  Windows OCR has no per-word confidence API: the default `1.0` is nominal,
+  not a measured score. Independent source/word proof remains required.
 
 ### `include/okuflow/common/uct_windows_ocr.hpp`
 `okuflow::uct::windows_ocr::Engine`
