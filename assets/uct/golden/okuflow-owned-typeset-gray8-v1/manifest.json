@@ -1,0 +1,121 @@
+{
+  "encoding": "gray8-upright-h48-zero-pad1024-v1",
+  "model": {
+    "auxStreams": 0,
+    "capacity": 8,
+    "classes": 18710,
+    "configSha256": "991b700facf5b50a7de193468207d5f4255b538dde0d312ae3b7c7a9b6873129",
+    "dictionarySha256": "f1d7cde73a39cc887dd68d5c64b2756b4962ae28594d3a610c683b2fc47110f1",
+    "format": "LINEAR",
+    "graphSha256": "ecd8ffc92aa1b9f7a33b0ad39757b64887c465f15bb54853936b2136f94e5835",
+    "inputLocation": "DEVICE",
+    "inputName": "x",
+    "inputType": "FLOAT",
+    "maximum": [
+      8,
+      3,
+      48,
+      1024
+    ],
+    "minimum": [
+      1,
+      3,
+      48,
+      1024
+    ],
+    "optimizationLevel": 2,
+    "optimum": [
+      8,
+      3,
+      48,
+      1024
+    ],
+    "outputAbi": "ctc-probabilities-v1",
+    "outputLocation": "DEVICE",
+    "outputName": "fetch_name_0",
+    "outputType": "FLOAT",
+    "precision": "bf16-linear",
+    "preprocessing": "paddle-rectify-normalized-zero-pad-v1",
+    "sourceSha256": "9c09abf0957f7968c7586464b7397b84ad2387a0497a351af40e9acc71b673ba",
+    "tf32": "default",
+    "version": "ppocrv6-medium-rec-bf16-linear-v1",
+    "widthPolicy": "fixed1024",
+    "workspaceMiB": 256
+  },
+  "policy": "uct-bf16-exact-text-n1-n8-v1",
+  "provenance": "Original first-party text typeset with installed hash-pinned DejaVu Sans via Pillow; synthetic ground truth from generator source, NOT human-transcribed real-camera quality. Detailed source/render provenance: render-provenance.json SHA-256 981ca01ca6d00dccf38b6987b2a867995f9c61e26d19c966a57a7e2ff8a1f4af. Unapproved candidate; no inference, N1/N8 attestation or public readiness established.",
+  "samples": [
+    {
+      "expected": "OkuFlow",
+      "id": "words-regular",
+      "pixelsSha256": "845e08157d5bd1a5d73ae9fb535314564700a64aec884e8cac10c6d9953f25bf",
+      "tags": [],
+      "width": 170
+    },
+    {
+      "expected": "Please read this line",
+      "id": "phrase-bold",
+      "pixelsSha256": "25cef458654478d98ce599040fafdb3aa28334bd6bb7cf0fdfc5ae8455301314",
+      "tags": [],
+      "width": 386
+    },
+    {
+      "expected": "2026-10-23",
+      "id": "date-regular",
+      "pixelsSha256": "85b4ab1d0311dfc64a9da23d9d00425705b8ff2af49af88c74c530843a384204",
+      "tags": [
+        "numbers"
+      ],
+      "width": 200
+    },
+    {
+      "expected": "+12.50 -0.75",
+      "id": "decimal-bold",
+      "pixelsSha256": "7fae70370384a4f5f1472e4b48ee8621ea48474bbc948f3cf849c9bcc7cbfafb",
+      "tags": [
+        "numbers"
+      ],
+      "width": 245
+    },
+    {
+      "expected": "O0 OO 00",
+      "id": "o-zero-regular",
+      "pixelsSha256": "efa374434bc1bb53274870bfdce5c21c85dd762433966e8102c6b962fb203068",
+      "tags": [
+        "O0",
+        "numbers"
+      ],
+      "width": 191
+    },
+    {
+      "expected": "Il1 I l 1",
+      "id": "i-l-one-inverse",
+      "pixelsSha256": "3d27de8c915fe355195e9fa068becb75ee20aeb28e1ca1eddb4de02f8fd5ebee",
+      "tags": [
+        "Il1",
+        "numbers"
+      ],
+      "width": 155
+    },
+    {
+      "expected": "Do not enter",
+      "id": "negation-bold",
+      "pixelsSha256": "df8f31f8c127e18fd8cad2cb8a65ed3547ec157ddedb670c6ac3cabc2901d27a",
+      "tags": [
+        "negation"
+      ],
+      "width": 257
+    },
+    {
+      "expected": "café naïve",
+      "id": "accents-inverse",
+      "pixelsSha256": "66bac6b26ac8ccd8db4c89d446503eb77f8c187c3bf9d84a981f85e0fd903783",
+      "tags": [
+        "accents"
+      ],
+      "width": 193
+    }
+  ],
+  "schema": 1,
+  "version": "okuflow-owned-typeset-gray8-v1"
+}

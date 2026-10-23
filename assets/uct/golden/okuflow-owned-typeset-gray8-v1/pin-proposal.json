@@ -1,0 +1,26 @@
+{
+  "boundaryCommit": "faa7fbfe7b87983802c881411a856328bc873dfd",
+  "contactSheetSha256": "0192f4ef4b17f6153ca9cfe4412ed57138492b55848f55fb24bafc0d87ad59cd",
+  "manifestFilename": "manifest.json",
+  "manifestSha256": "26432369ed6831431737072f857620b19c81fc9acd8c21579d50ee7bc0e9ec33",
+  "rawFilesSha256": {
+    "accents-inverse.gray8": "66bac6b26ac8ccd8db4c89d446503eb77f8c187c3bf9d84a981f85e0fd903783",
+    "date-regular.gray8": "85b4ab1d0311dfc64a9da23d9d00425705b8ff2af49af88c74c530843a384204",
+    "decimal-bold.gray8": "7fae70370384a4f5f1472e4b48ee8621ea48474bbc948f3cf849c9bcc7cbfafb",
+    "i-l-one-inverse.gray8": "3d27de8c915fe355195e9fa068becb75ee20aeb28e1ca1eddb4de02f8fd5ebee",
+    "negation-bold.gray8": "df8f31f8c127e18fd8cad2cb8a65ed3547ec157ddedb670c6ac3cabc2901d27a",
+    "o-zero-regular.gray8": "efa374434bc1bb53274870bfdce5c21c85dd762433966e8102c6b962fb203068",
+    "phrase-bold.gray8": "25cef458654478d98ce599040fafdb3aa28334bd6bb7cf0fdfc5ae8455301314",
+    "words-regular.gray8": "845e08157d5bd1a5d73ae9fb535314564700a64aec884e8cac10c6d9953f25bf"
+  },
+  "renderProvenanceSha256": "981ca01ca6d00dccf38b6987b2a867995f9c61e26d19c966a57a7e2ff8a1f4af",
+  "requiredBeforeProductionPin": [
+    "independent review of every source string, crop and provenance",
+    "parent visual review of actual contact sheet",
+    "strict production N1 plus full N8 exact-text attestation and runtime quality gate",
+    "parent review and explicit separate catalog approval"
+  ],
+  "schema": "okuflow-owned-corpus-pin-proposal-v1",
+  "status": "UNAPPROVED-CANDIDATE-NOT-FOR-PRODUCTION-CATALOG",
+  "version": "okuflow-owned-typeset-gray8-v1"
+}

@@ -1,5 +1,22 @@
 # Third-Party Licenses and Attributions
 
+## Unapproved owned BF16 typeset crop proposal (development only)
+
+The eight original source-authored text bitmaps in
+`assets/uct/golden/okuflow-owned-typeset-gray8-v1/` use the separately installed
+Pillow 11.1.0/FreeType renderer and installed DejaVu Sans regular/bold fonts.
+They were first generated in owned Z: work-data; these source copies were added
+unchanged only after independent read-only review of all eight crops.
+The existing installed Pillow notice identifies MIT-CMU; the existing DejaVu
+notice retains Bitstream Vera and Arev terms and says DejaVu changes are public
+domain. Exact installed font and notice hashes, actual tool versions and render
+parameters are retained in the companion provenance. No font binary, rendering
+tool/library, copied third-party implementation or third-party source artwork
+is added. These facts do not assert new redistribution clearance or approve
+public staging. The candidate is unapproved, not an active application asset,
+and has no model quality/attestation result. See
+[owned crop proposal](uct_owned_bf16_crops.md) for source truth and remaining gates.
+
 The separate static website's browser transcription tool uses Transformers.js
 (Apache-2.0), MP4Box.js (BSD-3-Clause), ONNX Runtime and Whisper weights (MIT).
 Those runtimes/models are not Windows or Android binary dependencies. Their

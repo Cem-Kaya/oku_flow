@@ -1,5 +1,19 @@
 # Hard-Coded Paths and Defaults
 
+## Offline owned BF16 crop proposal
+
+`scripts/uct/generate_owned_bf16_crops.py` requires explicit absolute local
+font/license inputs and a fresh output directory, with no installed-path default.
+The first render remains in the owned Z: work-data directory recorded in the
+proposal. After independent read-only review, byte-identical source copies were
+added under `assets/uct/golden/okuflow-owned-typeset-gray8-v1/`. Eight useful-width crops are
+48px high, <=1024px wide, with 8px side margins; font sizes32/34/36, grayscale
+background/ink255/0 or0/255, BASIC layout and no resizing. Runtime padding is
+normalized zero, separate from stored crop backgrounds. Font/notice hashes and
+the complete public model identity are explicit generator pins. The unapproved
+manifest/provenance/proposal use exact UTF-8/LF bytes; Git conversion is disabled.
+See [generation limits and pending gates](uct_owned_bf16_crops.md).
+
 ## Live RAM recap (development)
 
 `VideoRecapPolicy` keeps 300 seconds with independently playable ~2-second H.264
