@@ -935,10 +935,10 @@ class TensorRtRecognizer final : public Recognizer
                 {
                     const int batchSize = std::min(state_->recognizerBatch, groupSize - batchFirst);
                     profile.Measure(TensorRtProfile::Rectify, state_->stream, [&] {
-                        for (int sample = 0; sample < batchSize; ++sample)
-                            gpu::Rectify(cropPixels, image.pitch, region.width(), region.height(),
-                                         state_->quads.Get(), first + batchFirst + sample,
-                                         crop + samplePixels * sample, width, state_->stream);
+                        gpu::RectifyBatch(cropPixels, image.pitch, region.width(), region.height(),
+                                          state_->quads.Get(), first + batchFirst, batchSize,
+                                          crop, width, state_->stream);
+                        Check(cudaGetLastError());
                     });
                     nvinfer1::Dims recShape{};
                     profile.Measure(TensorRtProfile::Recognizer, state_->stream, [&] {

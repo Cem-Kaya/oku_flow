@@ -22,6 +22,7 @@
 #include <QFile>
 #include <QTemporaryDir>
 #include <QtTest>
+#include <cstring>
 #include <limits>
 #include <stdexcept>
 #include <mutex>
@@ -851,6 +852,71 @@ class PaddleTests final : public QObject
                         }
             }
         }
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
+    void gpuBatchedRectificationMatchesScalarCapacityAndTails()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        int devices{};
+        if (cudaGetDeviceCount(&devices) != cudaSuccess || !devices) QSKIP("No CUDA device.");
+        QImage image(99, 61, QImage::Format_ARGB32);
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x)
+                image.setPixelColor(x, y, QColor((x * 3 + y * 7) % 256,
+                                                (x * 11 + y) % 256, (x + y * 13) % 256));
+        constexpr int capacity = 16, first = 1;
+        constexpr std::size_t guard = 32, sampleCapacity = 3 * 48 * 1024;
+        constexpr float poison = 6.25f;
+        std::array<gpu::Quad, capacity + 2> quads{};
+        std::vector<float> reset(guard + capacity * sampleCapacity + guard, poison);
+        std::vector<float> scalar(reset.size()), batch(reset.size());
+        GpuBuffer<unsigned char> pixels(image.sizeInBytes());
+        GpuBuffer<gpu::Quad> boxes(quads.size());
+        GpuBuffer<float> scalarDevice(reset.size()), batchDevice(reset.size());
+        // Declared last: drain queued copies even when a Qt assertion returns.
+        FixtureStream stream;
+        QCOMPARE(cudaMemcpyAsync(pixels.data, image.constBits(), image.sizeInBytes(),
+                                 cudaMemcpyHostToDevice, stream.value), cudaSuccess);
+        for (int canvas : {128, 256, 512, 1024})
+            for (int samples : {1, 3, 7, 8, 15, 16})
+            {
+                const float nan = std::numeric_limits<float>::quiet_NaN();
+                for (auto& q : quads) q = {{nan,nan,nan,nan,nan,nan,nan,nan},nan,-999,3};
+                for (int n = 0; n < samples; ++n)
+                {
+                    const float x = -3.25f + n * 4.5f, y = 2.5f + n;
+                    const int valid = n % 6 == 0 ? canvas - 1 : n % 6 == 1 ? -3 :
+                                      n % 6 == 2 ? canvas + 1 : n % 6 == 3 ? 0 : n % 6 == 4 ? 31 : canvas;
+                    quads[first + n] = {{x,y,x+70,y+1.25f,x+72,y+39,x-1,y+35},.8f,valid,n%4};
+                }
+                QCOMPARE(cudaMemcpyAsync(boxes.data, quads.data(), sizeof(quads),
+                                         cudaMemcpyHostToDevice, stream.value), cudaSuccess);
+                for (auto* target : {scalarDevice.data, batchDevice.data})
+                    QCOMPARE(cudaMemcpyAsync(target, reset.data(), reset.size() * sizeof(float),
+                                             cudaMemcpyHostToDevice, stream.value), cudaSuccess);
+                const std::size_t stride = std::size_t(canvas) * 48 * 3;
+                for (int n = 0; n < samples; ++n)
+                    gpu::Rectify(pixels.data, image.bytesPerLine(), image.width(), image.height(),
+                                 boxes.data, first + n, scalarDevice.data + guard + n * stride,
+                                 canvas, stream.value);
+                gpu::RectifyBatch(pixels.data, image.bytesPerLine(), image.width(), image.height(),
+                                  boxes.data, first, samples, batchDevice.data + guard, canvas, stream.value);
+                QCOMPARE(cudaGetLastError(), cudaSuccess);
+                QCOMPARE(cudaMemcpyAsync(scalar.data(), scalarDevice.data, scalar.size() * sizeof(float),
+                                         cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+                QCOMPARE(cudaMemcpyAsync(batch.data(), batchDevice.data, batch.size() * sizeof(float),
+                                         cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+                QCOMPARE(cudaStreamSynchronize(stream.value), cudaSuccess);
+                QCOMPARE(std::memcmp(scalar.data(), batch.data(), scalar.size() * sizeof(float)), 0);
+                QCOMPARE(std::memcmp(batch.data(), reset.data(), guard * sizeof(float)), 0);
+                const std::size_t tail = guard + samples * stride;
+                QCOMPARE(std::memcmp(batch.data() + tail, reset.data() + tail,
+                                     (batch.size() - tail) * sizeof(float)), 0);
+            }
+        QVERIFY_EXCEPTION_THROWN(gpu::RectifyBatch(pixels.data, image.bytesPerLine(), image.width(),
+            image.height(), boxes.data, first, 17, batchDevice.data, 1024, stream.value), std::invalid_argument);
 #else
         QSKIP("CUDA adapter not compiled.");
 #endif

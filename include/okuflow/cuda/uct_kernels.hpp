@@ -85,6 +85,10 @@ void RecognitionWindows(const Quad* detected, int* count, Quad* windows, cudaStr
 void RecognitionGroupWidths(const Quad*, const int* count, int groupSize, int* widths, cudaStream_t);
 void Rectify(const void *image, std::size_t pitch, int width, int height, const Quad *quads,
              int index, float *out, int cropWidth, cudaStream_t stream);
+// Contiguous detector order, 1..16 samples; out is [samples,3,48,cropWidth].
+// Uses exactly the scalar Rectify sampling/padding arithmetic, without indices.
+void RectifyBatch(const void *image, std::size_t pitch, int width, int height, const Quad *quads,
+                  int first, int samples, float *out, int cropWidth, cudaStream_t stream);
 void Decode(const float *probabilities, int steps, int classes, const Quad *quads, int index,
             int cropWidth, int *ids, float *scores, Token *tokens, int *count, cudaStream_t stream);
 } // namespace okuflow::uct::gpu

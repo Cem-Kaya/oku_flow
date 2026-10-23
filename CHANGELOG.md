@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Batch contiguous UCT recognition crop rectification while preserving scalar
+  sampling arithmetic and existing recognition look-ahead. This exact-change
+  candidate awaits serialized build, CUDA parity and whole-worker measurement;
+  see `docs/uct_helper_batching.md`.
+
 - Overlap dense UCT recognition groups with host metadata merging using bounded
   double-buffered metadata and per-group completion events. Private resident
   FP32 measurements show a dense N8 benefit; sparse/N1 and production BF16

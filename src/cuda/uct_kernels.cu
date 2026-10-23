@@ -354,6 +354,26 @@ __global__ void rectify(const unsigned char *pixels, std::size_t pitch, int w, i
         out[c * ow * 48 + i] =
             x >= valid ? 0 : (sample(pixels, pitch, w, h, sx, sy, c) / 255 - .5f) * 2;
 }
+// Keep the scalar kernel above as the comparison oracle. Only sample selection
+// and output base differ; the per-pixel expressions and channel loop are exact.
+__global__ void rectifyBatch(const unsigned char *pixels, std::size_t pitch, int w, int h,
+                             const Quad *quads, int first, float *out, int ow)
+{
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= ow * 48)
+        return;
+    const auto q = quads[first + blockIdx.y];
+    out += static_cast<std::size_t>(blockIdx.y) * ow * 48 * 3;
+    const int x = i % ow, y = i / ow, valid = min(ow, q.validWidth);
+    const float u = (x + .5f) / valid, v = (y + .5f) / 48;
+    const float sx = q.xy[0] * (1 - u) * (1 - v) + q.xy[2] * u * (1 - v) + q.xy[4] * u * v +
+                     q.xy[6] * (1 - u) * v - .5f;
+    const float sy = q.xy[1] * (1 - u) * (1 - v) + q.xy[3] * u * (1 - v) + q.xy[5] * u * v +
+                     q.xy[7] * (1 - u) * v - .5f;
+    for (int c = 0; c < 3; ++c)
+        out[c * ow * 48 + i] =
+            x >= valid ? 0 : (sample(pixels, pitch, w, h, sx, sy, c) / 255 - .5f) * 2;
+}
 __global__ void argmax(const float *probabilities, int steps, int classes, int *ids, float *scores)
 {
     const int t = blockIdx.x;
@@ -478,6 +498,16 @@ void Decode(const float *p, int steps, int classes, const Quad *quads, int index
 {
     argmax<<<steps, 256, 0, s>>>(p, steps, classes, ids, scores);
     compact<<<1, 1, 0, s>>>(ids, scores, steps, quads, index, cropWidth, tokens, count);
+}
+void RectifyBatch(const void *p, std::size_t pitch, int w, int h, const Quad *quads, int first,
+                  int samples, float *out, int ow, cudaStream_t s)
+{
+    if (!p || !quads || !out || w < 1 || w > 8192 || h < 1 || h > 8192 ||
+        pitch < static_cast<std::size_t>(w) * 4 || ow < 1 || ow > 1024 ||
+        samples < 1 || samples > 16 || first < 0 || first > recognizer_width::kMaximumCrops - samples)
+        throw std::invalid_argument("Unsupported batched rectification shape.");
+    rectifyBatch<<<dim3((ow * 48 + 255) / 256, samples), 256, 0, s>>>(
+        static_cast<const unsigned char *>(p), pitch, w, h, quads, first, out, ow);
 }
 } // namespace okuflow::uct::gpu
 
