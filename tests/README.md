@@ -1,5 +1,11 @@
 # OkuFlow Tests
 
+The UCT resident model-free contract also covers stable ordinary plan identity,
+read-only legacy lookup and accepted-plan receipt matching. Resident, active
+and paused opt-in diagnostics share the loader's version/provenance seam and
+stable/legacy candidate order. These cache-policy additions await serialized
+validation; see [cache policy](../docs/uct_tensorrt_cache_policy.md).
+
 The offline [UCT helper batching candidate](../docs/uct_helper_batching.md)
 adds `recognitionGroupSlotsRequireCompletionAndConsumption` and
 `recognitionGroupCancellationAndPartialFailureRetainClosure` to

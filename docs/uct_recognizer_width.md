@@ -2,7 +2,9 @@
 
 Status: opt-in development implementation; measured acceptance is recorded below.
 `OKUFLOW_UCT_TRT_WIDTH=bucketed` selects the experimental TensorRT policy.
-An empty value or `fixed1024` retains the existing path and cache identities.
+An empty value or `fixed1024` retains the fixed-width path. The separate
+[cache policy](uct_tensorrt_cache_policy.md) preserves read-only historical
+lookup while making new ordinary keys independent of driver updates.
 Model tiers, detector coverage, FP32 precision and publication safeguards are
 unchanged. No model, SDK or dependency is downloaded or bundled by this option.
 
@@ -32,8 +34,9 @@ the removed padding.
 One dynamic profile per selected capacity uses MIN 1x3x48x128,
 OPT Nx3x48x512 and MAX Nx3x48x1024. Deserialized dimensions must match exactly.
 The versioned width-policy cache tag includes every bucket/profile dimension
-and N, in addition to the pinned model, device UUID, driver and TensorRT
-identity. Fixed-width plans remain untouched. N8 and N16 maximum input sizes
+and N, in addition to the pinned model, device UUID and builder TensorRT
+identity. Driver/runtime facts are provenance. Existing fixed-width plan files
+remain untouched. N8 and N16 maximum input sizes
 remain 4.5 MiB and 9 MiB; high-water allocations are retained, so this does not
 promise lower peak VRAM. Existing output/workspace ceilings remain unchanged.
 

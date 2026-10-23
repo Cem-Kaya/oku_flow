@@ -66,9 +66,13 @@ A selection is limited to 60 blocks and 1000 jobs. An optional UTF-8
 - The SDK folder must contain `nvinfer_11.dll` and no parser or builder
   resources, so TensorRT cannot compile a missing plan.
 - Every required plan (detector, then recognizer at each capacity) is checked
-  read-only with the loader's own rule before any model work: key from the
-  pinned graph hash, GPU UUID, driver and profile; size and payload digest.
-  A missing or invalid plan fails with its key; nothing is prepared.
+  read-only with the loader's own rule before any model work: stable graph,
+  GPU, profile and builder identities followed by historical 13050/13040
+  locators; size and payload digest. Driver facts are provenance. Ordered
+  candidate receipts are file preflights; startup matches the actual loader's
+  accepted key and payload hash. Loaded DLL tuple/path/hash is collected by
+  the same Libraries seam, without a version/DLL-hash approval pin. A missing
+  or invalid set fails before preparation. See [cache policy](uct_tensorrt_cache_policy.md).
 - `medium:small` needs the medium detector and small recognizer N1/N8/N16
   plans. `uct_gpu_batching.md` records that earlier runs created each of
   these; the precheck confirms they are still present and valid.

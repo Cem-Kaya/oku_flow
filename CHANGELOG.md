@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Keep ordinary UCT TensorRT plan keys independent of driver updates, with
+  read-only historical lookup, and admit runtimes at least 11.4.0.106 before
+  normal ABI/engine validation. This separate offline policy candidate is
+  untested; see `docs/uct_tensorrt_cache_policy.md`.
+
 - Batch contiguous UCT recognition crop rectification while preserving scalar
   sampling arithmetic and existing recognition look-ahead. This exact-change
   candidate awaits serialized build, CUDA parity and whole-worker measurement;

@@ -108,6 +108,34 @@ and results remain pending until a serialized START slot.
    agreement and historical cross-capacity tolerances. This exact patch has
    no intentional quality budget; approximate width/model work stays separate.
 
+## Owner runtime-policy update and separate arm
+
+The exact helper commits remain `0c3433f` and `3eccb93`; their source review
+does not cover the later [ordinary cache/runtime policy](uct_tensorrt_cache_policy.md).
+Keep that policy in its own commit and arm. The original bb53ac8-versus-helper
+comparison can use the same existing 13050 plan paths and exact payload bytes
+on both sides. If a shared diagnostic/precision-policy seam is required for the
+actual production backend, record its identical diff on both sides. Never
+attribute a backend, precision, cache-policy or merge change to helper batching.
+
+Driver identity is provenance, not a new plan key or approval condition. The
+TensorRT runtime floor is 11.4.0.106, while plan builder identity stays bound
+to each artifact. Newer runtimes may attempt verified older plans; factories,
+deserialization, profiles and I/O remain authoritative. Freeze actual loaded
+DLL/version/hash and driver facts for each visit, without treating a changed
+driver as an automatic invalidation or rebuild request. This also revises the
+schema-1 BF16 policy through the precision lead's separate work; do not describe
+that approval policy as unchanged.
+
+The independent Opus report at docs-only commit `a6f041f` supports the batch
+mapping and same-shape lifetime guard. It identifies host merge cost as a
+separate, potentially larger target. Its archived merge/precision numbers
+predate this exact candidate and do not establish a new gain. The merge lead
+owns that implementation; fresh combined measurements must retain the full
+worker/callback protocol. Equal canvas and group size remain mandatory for
+look-ahead because growing `Reserve()` can free queued device buffers. No
+extra slot, cross-shape look-ahead or prefix-skip change belongs to this arm.
+
 New large evidence/build artifacts belong under
 `Z:/Projects/OkuFlow/local-work-data`; the owner app, desktop, settings,
 devices and credentials remain untouched. Shared desktop/video load is allowed

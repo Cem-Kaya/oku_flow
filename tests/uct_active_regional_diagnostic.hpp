@@ -31,6 +31,9 @@ inline void Run()
     QVERIFY(QFile::exists(bin.filePath("nvinfer_11.dll")));
     QVERIFY(!QFile::exists(bin.filePath("nvonnxparser_11.dll")) &&
             bin.entryList({"nvinfer_builder_resource*.dll"}, QDir::Files).isEmpty());
+    const auto trtRuntime = TensorRtRuntimeForDiagnostic(sdk);
+    QVERIFY(trtRuntime["hashed"].toBool());
+    const auto trtVersion = trtRuntime["tensorRtVersion"].toString().toLatin1();
     const QImage firstImage = QImage(firstPath).convertToFormat(QImage::Format_ARGB32);
     const QImage nextImage = QImage(nextPath).convertToFormat(QImage::Format_ARGB32);
     QVERIFY(!firstImage.isNull() && firstImage.size() == nextImage.size());
@@ -48,10 +51,10 @@ inline void Run()
     const auto assets = LoadPaddleAssets(DefaultPaddleRoot(), ModelTier::Medium, ModelTier::Medium);
     QVERIFY2(assets.IsValid(), qPrintable(assets.error));
     const auto cache = QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath("OkuFlow/ocr-engines");
-    const auto detector = InspectPlan(cache, "detector", ModelTier::Medium, 1,
-                                     PlanKey(assets.detectorSha256, uuid, driver, true, 1));
-    const auto recognizerPlan = InspectPlan(cache, "recognizer", ModelTier::Medium, 8,
-                                           PlanKey(assets.recognizerSha256, uuid, driver, false, 8));
+    const auto detector = InspectCachedPlan(cache, "detector", ModelTier::Medium, 1,
+                                           assets.detectorSha256, uuid, trtVersion);
+    const auto recognizerPlan = InspectCachedPlan(cache, "recognizer", ModelTier::Medium, 8,
+                                                 assets.recognizerSha256, uuid, trtVersion);
     QVERIFY2(detector.valid, qPrintable(detector.error));
     QVERIFY2(recognizerPlan.valid, qPrintable(recognizerPlan.error));
     const auto cacheBefore = CacheInventory(cache);
@@ -127,6 +130,9 @@ inline void Run()
         else full = std::move(completion);
     }
     QVERIFY(full && full->backend.usesGpu);
+    QVERIFY2(MatchesPlanReceipt(full->backend.detail, detector), qPrintable(full->backend.detail));
+    if (!productionFactory)
+        QVERIFY2(MatchesPlanReceipt(full->backend.detail, recognizerPlan), qPrintable(full->backend.detail));
     if (productionFactory) QVERIFY2(full->backend.detail.contains("Recognition graph=BF16-linear"), qPrintable(full->backend.detail));
     QVERIFY2(full->result.output.ok, qPrintable(full->result.output.error));
     QVERIFY(full->result.reference.resident && full->result.sourcePixelDigest.size() == 32);
@@ -177,6 +183,8 @@ inline void Run()
     };
     const QJsonObject report{{"scope", "Actual cached GPU full/region/full calls on two extracted acquisitions; no controller cadence, text admission, screen-reader or display latency claim."},
         {"productionFactory", productionFactory}, {"actualBackendDetail", full->backend.detail},
+        {"tensorRtRuntime", trtRuntime}, {"detectorPreflight", detector.Json()},
+        {"recognizerPreflight", recognizerPlan.Json()},
         {"firstPath", firstPath}, {"nextPath", nextPath},
         {"firstSha256", FileSha256(firstPath)}, {"nextSha256", FileSha256(nextPath)},
         {"firstPtsMs", firstPts}, {"nextPtsMs", nextPts}, {"slackBeforeRegionMs", slackMs},
