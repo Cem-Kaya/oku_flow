@@ -1,5 +1,40 @@
 # OkuFlow Code Reference
 
+## UCT completion admission
+
+- `UltraClearTextController::FullReadNeeded` centralizes the existing coverage,
+  pending-word, invalidation, refresh and repeated-held-acquisition rules.
+  `CreditCompletion` grants at most one metadata-only `CompletionCredit` for
+  the latest exact ordinary full result with remaining demand; stale, failed,
+  preparing, composite, optional and superseded completions cannot grant it.
+- `CompletionProbeReady` rechecks demand, authority, health and worker/input
+  availability. `CompletionProbeTicket(sourceEpoch,frameSeq)` exposes a serial
+  only for a later live frame. `OnPresented` and the next successful probe
+  consume that credit without reusing its old probe or submitting from inside
+  `HandleResult`. `Invalidate` and explicit Resume clear it and `BusyMediaProbe`.
+- `CudaInteropSurface::SetUctCompletionCaptureTicket` receives that serial from
+  `OkuFlowApp` before actual processing. `ProcessFrame` may waive its separate
+  80 ms capture interval once per nonzero serial; a successful capture spends
+  it, while pool refusal does not. Neither the ordinary interval nor pool size
+  changes. This CUDA seam is source-only pending a separately authorized GPU gate.
+- `AdvancingMediaRetryRequested` asks the source owner for current analysis of
+  the exact displayed authority/frame/PTS refused solely by busy OCR. The
+  unchanged CPU presentation receipt path now returns its retained pixels when
+  requested; GPU media already returns its legitimate source-owned current
+  lease. `SubmitAdvancingMediaProbe` permits one fresh V/P chain for that input,
+  retaining the 350 ms OCR minimum and exact job/authority/held fences. Missing
+  analysis is not a substitute receipt or proof. See [limits](media_presentation.md).
+- `completionCreditUsesOneFreshLiveProbe`, `completionCreditRetriesBusyMediaReceipt`
+  and `completionCreditResetsFenceLateResults` add controlled-worker, fake-clock
+  CPU/device-oracle source fixtures to `immutable_uct_contract`; they are not
+  executed and do not establish GPU, native UI or latency acceptance.
+  Media rows include ordinary `NotHeld` images and the worker-complete/UI-pending
+  ordering: `RecognitionScheduler::SetBeforeCompletionForTest` is an unset-by-
+  default one-shot barrier after in-flight bookkeeping and outside its mutex.
+  The exact controller job remains outstanding in that gap. `completionCreditAfterContentMoved`
+  covers a current mismatch with remaining demand; completed-job credit uses
+  its exact job/generation rather than the separate acquisition-reread flag.
+
 ## UCT deadline expiry
 
 - `OverlayModel::NextReadabilityExpiry` returns the earliest first excluded

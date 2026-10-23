@@ -5109,7 +5109,8 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
             }
             const auto now=std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now().time_since_epoch()).count();
-            if(now-uctLastCaptureMs_>=80 && (!wantSmoothed || smoothedReady)) {
+            const bool completionCapture = uctCompletionCaptureTicket_ > uctConsumedCompletionTicket_;
+            if((completionCapture || now-uctLastCaptureMs_>=80) && (!wantSmoothed || smoothedReady)) {
                 if(!uctAnalysisPool_) uctAnalysisPool_=std::make_unique<uct::AnalysisPool>();
                 auto frame = wantSmoothed
                     ? uctAnalysisPool_->CapturePair(deviceUctSmoothed_, deviceUctSmoothedPitch_,
@@ -5120,7 +5121,10 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                         input.cameraEpoch,input.frameSequence,input.settingsGeneration,
                         replay ? (frameReprocessing_->holdRecorded ? frameReprocessing_->hold : nullptr)
                                : (holdRecordedThisFrame ? deviceBumpHoldProvenance_ : nullptr));
-                if(frame) {uctAnalysisFrame_=std::move(frame);uctLastCaptureMs_=now;}
+                if(frame) {
+                    uctAnalysisFrame_=std::move(frame);uctLastCaptureMs_=now;
+                    if (completionCapture) uctConsumedCompletionTicket_ = uctCompletionCaptureTicket_;
+                }
             }
         }
 

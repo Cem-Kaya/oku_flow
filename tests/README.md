@@ -16,6 +16,17 @@ frame/PTS refuses handoff, and missing analysis expires normally after a long
 Freeze. A held-copy probe cannot renew stale text after a nearby unanalysed
 advancing frame. Planner/refinement cancellation never supplies new source evidence.
 
+The source-only controller deadline/admission additions are in the same headless
+`immutable_uct_contract` / `ultra_clear_text_controller_tests` target:
+`deadlineExpiryWithoutReceipts`, `deadlineExpiryResetFencesLateCallback`,
+`completionCreditUsesOneFreshLiveProbe`, `completionCreditAfterContentMoved`,
+`completionCreditRetriesBusyMediaReceipt`, `completionCreditResetsFenceLateResults`.
+They use fake time, real worker/probe paths and CPU-backed device oracles. The
+completion-gap rows use the scheduler's one-shot pre-callback barrier, leaving
+the real input lease alive after in-flight bookkeeping. These additions have
+not been built or executed pending ROOT's explicit finite START. They imply no
+GPU pool, native timer delivery, accessibility-client or latency acceptance.
+
 Restricted Codex profile fixtures require the child-only `mcp_servers={}`
 override, including an invalid unused disabled transport. Raw user configuration
 is not copied into test evidence and real inference is not part of that check.

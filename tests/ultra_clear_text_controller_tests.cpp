@@ -42,6 +42,12 @@ namespace okuflow {
 // Narrow fixture access: real scheduler barriers and controller receipts,
 // without adding a production enqueue/result-injection API.
 struct UctControllerTestAccess {
+    static void CompletionBarrier(UltraClearTextController& c, std::function<void()> barrier) {
+        c.scheduler_->SetBeforeCompletionForTest(std::move(barrier));
+    }
+    static bool HasCredit(const UltraClearTextController& c) { return c.completionCredit_.has_value(); }
+    static bool HasBusyMedia(const UltraClearTextController& c) { return c.busyMediaProbe_.has_value(); }
+    static std::int64_t LastMediaSubmit(const UltraClearTextController& c) { return c.advancingMediaLastSubmitMs_; }
     static std::optional<std::int64_t> Expiry(const UltraClearTextController& c) { return c.expiryDeadlineMs_; }
     static bool ExpiryArmed(const UltraClearTextController& c) { return c.expiryTimer_->isActive(); }
     static int ExpiryInterval(const UltraClearTextController& c) { return c.expiryTimer_->interval(); }
@@ -550,6 +556,13 @@ struct ImmutableHarness {
 class UltraClearTextControllerTests final : public QObject {
     Q_OBJECT
 private slots:
+    void completionCreditUsesOneFreshLiveProbe_data();
+    void completionCreditUsesOneFreshLiveProbe();
+    void completionCreditAfterContentMoved();
+    void completionCreditRetriesBusyMediaReceipt_data();
+    void completionCreditRetriesBusyMediaReceipt();
+    void completionCreditResetsFenceLateResults_data();
+    void completionCreditResetsFenceLateResults();
     void deadlineExpiryWithoutReceipts_data();
     void deadlineExpiryWithoutReceipts();
     void deadlineExpiryResetFencesLateCallback_data();
@@ -655,6 +668,237 @@ private slots:
     void pausedVisibleDetailNeedsSupportNeighbourAndMagnification_data();
     void pausedVisibleDetailNeedsSupportNeighbourAndMagnification();
 };
+
+void UltraClearTextControllerTests::completionCreditUsesOneFreshLiveProbe_data()
+{
+    QTest::addColumn<bool>("device");
+    QTest::newRow("cpu-latest-only") << false;
+    QTest::newRow("device-no-parked-lease") << true;
+}
+
+void UltraClearTextControllerTests::completionCreditUsesOneFreshLiveProbe()
+{
+    QFETCH(bool, device);
+    ImmutableHarness h; h.script->wantsDevice = device; h.script->holdRecognition = true; h.Enable();
+    QTRY_COMPARE(h.controller->BackendStatusSnapshot().state, BackendState::kReady);
+    QSignalSpy admitted(h.controller.get(), &UltraClearTextController::recognitionAdmitted);
+    UctFrameContext context;
+    context.geometry = h.Scene().geometry; context.requested = context.geometry.settings;
+    context.transform.valid = true; context.cameraActive = true;
+    context.viewportWidth = 960; context.viewportHeight = 540;
+    std::weak_ptr<const DeviceImage> refused;
+    const auto present = [&](std::uint64_t frame) {
+        context.frameSeq = frame;
+        if (!h.controller->OnPresented(context)) return false;
+        h.controller->OnPresentationSucceeded();
+        if (device) {
+            auto image = h.Device(h.page.image, frame, h.now); refused = image;
+            h.controller->OnDeviceScene(context, std::move(image));
+        } else h.controller->OnCpuViewport(context, h.page.image.constBits(), 960, 540, h.page.image.bytesPerLine());
+        return true;
+    };
+    for (std::uint64_t frame = 1; frame <= 3; ++frame) {
+        h.now += 80; context.frameSeq = frame;
+        QTRY_VERIFY(h.controller->OnPresented(context));
+        QVERIFY(present(frame)); // QTRY expressions can be evaluated again after success
+        QTRY_COMPARE(UctControllerTestAccess::ProbeFrame(*h.controller), frame);
+        if (frame == 2) QTRY_COMPARE(h.script->calls.load() + h.script->deviceCalls.load(), 1);
+    }
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(1));
+    if (device) QTRY_VERIFY(refused.expired()); // busy probe didn't park slot two
+    QVERIFY(!UctControllerTestAccess::HasCredit(*h.controller));
+    h.script->Release();
+    QTRY_COMPARE(admitted.size(), 1);
+    QTRY_VERIFY(UctControllerTestAccess::HasCredit(*h.controller));
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(1)); // no reentrant submit
+    QCOMPARE(h.controller->CompletionProbeTicket(41, 2), std::uint64_t(0)); // completed acquisition
+    QCOMPARE(h.controller->CompletionProbeTicket(99, 4), std::uint64_t(0)); // foreign source
+    QTRY_VERIFY(h.controller->CompletionProbeTicket(41, 4) != 0);
+    const auto ticket = h.controller->CompletionProbeTicket(41, 4);
+    QCOMPARE(h.controller->CompletionProbeTicket(41, 4), ticket); // query doesn't mint another ticket
+    ++h.now; // both controller and actual capture receive the one-use waiver
+    QVERIFY(present(4));
+    QTRY_COMPARE(UctControllerTestAccess::ProbeFrame(*h.controller), std::uint64_t(4));
+    QTRY_COMPARE(admitted.size(), 2);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(2));
+    QCOMPARE(h.overlay.WordCount(), h.page.words.size());
+    QVERIFY(!UctControllerTestAccess::HasCredit(*h.controller)); // covered, no pending demand
+    QCOMPARE(h.controller->CompletionProbeTicket(41, 5), std::uint64_t(0));
+    context.frameSeq = 5; ++h.now;
+    QVERIFY(!h.controller->OnPresented(context)); // global 80 ms gate remains
+    const auto probes = h.controller->ProbeStatistics().submitted;
+    // A stale/out-of-order callback cannot mint a completion credit.
+    RecognitionResult old; old.stamp = UctControllerTestAccess::Stamp(*h.controller);
+    old.stamp.frameSeq = 2; old.stamp.timestampMs = h.now;
+    old.authority = UctControllerTestAccess::Authority(*h.controller); old.jobId = 1; old.output.ok = true;
+    UctControllerTestAccess::Deliver(*h.controller, old);
+    ++old.authority; old.jobId = 999;
+    UctControllerTestAccess::Deliver(*h.controller, old);
+    QVERIFY(!UctControllerTestAccess::HasCredit(*h.controller));
+    QCOMPARE(h.controller->ProbeStatistics().submitted, probes);
+}
+
+void UltraClearTextControllerTests::completionCreditAfterContentMoved()
+{
+    ImmutableHarness h; h.script->wantsDevice = true; h.script->holdRecognition = true; h.Enable();
+    QTRY_COMPARE(h.controller->BackendStatusSnapshot().state, BackendState::kReady);
+    QSignalSpy admitted(h.controller.get(), &UltraClearTextController::recognitionAdmitted);
+    UctFrameContext context;
+    context.geometry = h.Scene().geometry; context.requested = context.geometry.settings;
+    context.transform.valid = true; context.cameraActive = true;
+    context.viewportWidth = 960; context.viewportHeight = 540;
+    const auto present = [&](std::uint64_t frame) {
+        context.frameSeq = frame;
+        if (!h.controller->OnPresented(context)) return false;
+        h.controller->OnPresentationSucceeded();
+        h.controller->OnDeviceScene(context, h.Device(h.page.image, frame, h.now));
+        return true;
+    };
+    for (std::uint64_t frame = 1; frame <= 2; ++frame) {
+        h.now += 80; context.frameSeq = frame;
+        QTRY_VERIFY(h.controller->OnPresented(context)); QVERIFY(present(frame));
+        QTRY_COMPARE(UctControllerTestAccess::ProbeFrame(*h.controller), frame);
+    }
+    QTRY_COMPARE(h.script->deviceCalls.load(), 1);
+    h.page.image.invertPixels(); // textured current input with negative NCC against A
+    h.now += 80; context.frameSeq = 3;
+    QTRY_VERIFY(h.controller->OnPresented(context)); QVERIFY(present(3));
+    QTRY_COMPARE(UctControllerTestAccess::ProbeFrame(*h.controller), std::uint64_t(3));
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(1)); // no parked device replacement
+    h.script->Release(); QTRY_COMPARE(admitted.size(), 1);
+    QCOMPARE(admitted.first().first().toInt(), static_cast<int>(AdmitVerdict::kContentMoved));
+    QVERIFY(UctControllerTestAccess::HasCredit(*h.controller));
+    QTRY_VERIFY(h.controller->CompletionProbeTicket(41, 4) != 0);
+    ++h.now; QVERIFY(present(4)); // current probe; never resubmit mismatched A
+    QTRY_COMPARE(UctControllerTestAccess::ProbeFrame(*h.controller), std::uint64_t(4));
+    QTRY_COMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(2));
+    QVERIFY(h.controller->Model().SceneWords(h.now, 4).isEmpty()); // one new read cannot corroborate itself
+}
+
+void UltraClearTextControllerTests::completionCreditRetriesBusyMediaReceipt_data()
+{
+    QTest::addColumn<bool>("device"); QTest::addColumn<bool>("pacedBusy"); QTest::addColumn<bool>("completionGap");
+    QTest::newRow("cpu-current-owner") << false << false << false;
+    QTest::newRow("device-current-owner") << true << false << false;
+    QTest::newRow("cpu-pacing-is-not-busy-only") << false << true << false;
+    QTest::newRow("device-pacing-is-not-busy-only") << true << true << false;
+    QTest::newRow("cpu-worker-done-before-ui-receipt") << false << false << true;
+    QTest::newRow("device-worker-done-before-ui-receipt") << true << false << true;
+}
+
+void UltraClearTextControllerTests::completionCreditRetriesBusyMediaReceipt()
+{
+    QFETCH(bool, device); QFETCH(bool, pacedBusy); QFETCH(bool, completionGap);
+    ImmutableHarness h; h.script->wantsDevice = device; h.script->holdRecognition = true; h.Enable();
+    const auto gap = std::make_shared<DequeueBarrier>();
+    const auto releaseGap = qScopeGuard([gap] { gap->Release(); });
+    QTRY_COMPARE(h.controller->BackendStatusSnapshot().state, BackendState::kReady);
+    QSignalSpy admitted(h.controller.get(), &UltraClearTextController::recognitionAdmitted);
+    const auto scene = [&](std::uint64_t frame) {
+        UctAdvancingMediaScene s;
+        s.geometry = h.Scene().geometry; s.sourceAuthority = 3;
+        const auto image = IndependentFramePixels(h.page.image, frame);
+        s.current = device ? UctImmutableFrame{{}, frame, 10000 + std::int64_t(frame) * 20,
+            h.Device(image, frame, h.now)} : UctImmutableFrame{OwnedPixels(image), frame, 10000 + std::int64_t(frame) * 20};
+        s.transform.valid = true; s.viewportWidth = 960; s.viewportHeight = 540;
+        return s;
+    };
+    for (std::uint64_t frame = 1; frame <= 2; ++frame) {
+        h.now += 80; QVERIFY(h.controller->OnAdvancingMediaPresented(scene(frame)));
+        QTRY_COMPARE(UctControllerTestAccess::ProbeFrame(*h.controller), frame);
+    }
+    QTRY_COMPARE(h.script->calls.load() + h.script->deviceCalls.load(), 1);
+    const auto submittedAt = UctControllerTestAccess::LastMediaSubmit(*h.controller);
+    h.now = submittedAt + (pacedBusy ? 80 : 350);
+    if (completionGap) {
+        UctControllerTestAccess::CompletionBarrier(*h.controller, [gap] { gap->Wait(); });
+        h.script->Release();
+        QTRY_VERIFY(gap->entered.load());
+        QCOMPARE(h.controller->SchedulerStatistics().completed, std::uint64_t(1));
+        QCOMPARE(admitted.size(), 0); // A's exact controller job is still outstanding
+    }
+    auto current = scene(3); // source owner retains legitimate current analysis
+    QVERIFY(h.controller->OnAdvancingMediaPresented(current));
+    QTRY_COMPARE(UctControllerTestAccess::ProbeFrame(*h.controller), std::uint64_t(3));
+    QCOMPARE(UctControllerTestAccess::HasBusyMedia(*h.controller), !pacedBusy);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(1));
+    if (device) QTRY_COMPARE(current.current.device.use_count(), long(1)); // only source ownership
+    if (completionGap) gap->Release(); else h.script->Release();
+    QTRY_COMPARE(admitted.size(), 1);
+    QTRY_VERIFY(UctControllerTestAccess::HasCredit(*h.controller));
+    const auto probes = h.controller->ProbeStatistics().submitted;
+    if (pacedBusy) {
+        // Busy + pacing refusal cannot create a same-acquisition exception.
+        h.now = submittedAt + 349;
+        QVERIFY(h.controller->OnAdvancingMediaPresented(scene(4)));
+        QTRY_COMPARE(UctControllerTestAccess::ProbeFrame(*h.controller), std::uint64_t(4));
+        QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(1));
+        h.now += 80;
+        QVERIFY(h.controller->OnAdvancingMediaPresented(scene(5)));
+    } else {
+        QTRY_VERIFY(h.controller->AdvancingMediaRetryRequested(3, 3, current.current.timestampMs));
+        QVERIFY(!h.controller->AdvancingMediaRetryRequested(9, 3, current.current.timestampMs));
+        ++h.now; // less than either 80 ms gate, but >=350 ms since OCR A
+        QVERIFY(h.controller->OnAdvancingMediaPresented(current));
+    }
+    QTRY_COMPARE(admitted.size(), 2);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(2));
+    QVERIFY(UctControllerTestAccess::LastMediaSubmit(*h.controller) - submittedAt >= 350);
+    QVERIFY(h.controller->ProbeStatistics().submitted > probes); // fresh V/P chain, never old-probe resubmit
+    QCOMPARE(h.controller->Model().AcceptedWordCount(), h.page.words.size());
+    QVERIFY(!UctControllerTestAccess::HasCredit(*h.controller));
+    if (!pacedBusy) {
+        const auto retriedProbes = h.controller->ProbeStatistics().submitted;
+        h.now += 1600;
+        QVERIFY(h.controller->OnAdvancingMediaPresented(current));
+        QCOMPARE(h.controller->ProbeStatistics().submitted, retriedProbes);
+        QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(2)); // cannot confirm twice
+    }
+    QVERIFY(!h.devices->readOnUiThread.load());
+}
+
+void UltraClearTextControllerTests::completionCreditResetsFenceLateResults_data()
+{
+    QTest::addColumn<int>("reset");
+    QTest::newRow("disable") << 0;
+    QTest::newRow("source") << 1;
+    QTest::newRow("freeze-resume") << 2;
+}
+
+void UltraClearTextControllerTests::completionCreditResetsFenceLateResults()
+{
+    QFETCH(int, reset);
+    ImmutableHarness h; h.script->holdRecognition = true; h.Enable();
+    QTRY_COMPARE(h.controller->BackendStatusSnapshot().state, BackendState::kReady);
+    for (std::uint64_t frame = 1; frame <= 2; ++frame) {
+        h.now += 80; h.PlayFrame(frame);
+        QTRY_COMPARE(UctControllerTestAccess::ProbeFrame(*h.controller), frame);
+    }
+    QTRY_COMPARE(h.script->calls.load(), 1);
+    h.script->Release();
+    QTRY_VERIFY(UctControllerTestAccess::HasCredit(*h.controller));
+    RecognitionResult old;
+    old.stamp = UctControllerTestAccess::Stamp(*h.controller);
+    old.stamp.frameSeq = 2; old.stamp.timestampMs = 10040;
+    old.authority = UctControllerTestAccess::Authority(*h.controller); old.jobId = 1; old.output.ok = true;
+    if (reset == 0) h.controller->SetEnabled(false);
+    else if (reset == 1) h.PlayFrame(3, 9);
+    else {
+        auto held = h.Scene(); held.admission = ImmutableAdmission::Standalone;
+        QVERIFY(h.controller->SetImmutableScene(held));
+        QTRY_VERIFY(h.overlay.WordCount() > 0);
+        QVERIFY(h.controller->ResumeImmutableMedia(held.sourceAuthority, held.selected.frameSeq, held.selected.timestampMs));
+        const auto probes = h.controller->ProbeStatistics().submitted;
+        QVERIFY(!h.controller->AdvancingMediaRetryRequested(held.sourceAuthority, held.selected.frameSeq, held.selected.timestampMs));
+        h.now += 100;
+        QVERIFY(h.controller->OnAdvancingMediaPresented({held.geometry, held.sourceAuthority, held.selected,
+            held.transform, held.viewportWidth, held.viewportHeight, held.strokeWeight}));
+        QCOMPARE(h.controller->ProbeStatistics().submitted, probes); // selected Resume acquisition stays closed
+    }
+    UctControllerTestAccess::Deliver(*h.controller, std::move(old)); // prior authority after every reset
+    QVERIFY(!UctControllerTestAccess::HasCredit(*h.controller));
+    QVERIFY(!UctControllerTestAccess::HasBusyMedia(*h.controller));
+}
 
 void UltraClearTextControllerTests::deadlineExpiryWithoutReceipts_data()
 {

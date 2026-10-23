@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Reconsider outstanding UCT demand once after ordinary OCR completion, on
+  the next current-pixel probe. Live capture and probe throttles share a
+  one-use waiver; advancing media can re-probe its current source-owned input
+  when refused solely by busy OCR. Media pacing and independent confirmation
+  remain unchanged, and no second analysis lease is parked for completion.
 - Arm UCT expiry at the first excluded millisecond of its existing line,
   advancing-wall or live-presentation deadline. Stopped receipts no longer
   depend on the 200 ms heartbeat to clear glyphs, reading text and positioned

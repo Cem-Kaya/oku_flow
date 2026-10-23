@@ -326,6 +326,9 @@ public:
     // UCT workers read it after the copy, so held/crossfade pixels are never
     // mistaken for the newer acquisition that triggered their presentation.
     void EnableUctAnalysis(bool enabled);
+    // One controller completion may waive the capture interval once. A busy
+    // pool leaves the ticket unspent; no input/image is retained by the ticket.
+    void SetUctCompletionCaptureTicket(std::uint64_t serial) { uctCompletionCaptureTicket_ = serial; }
     bool UctAnalysisFailed() const;
     // Explicit desktop-free fault seam (fixtures only): the next UCT-only
     // allocation of this kind fails as clean pressure, exercising its latch.
@@ -433,6 +436,7 @@ private:
     std::unique_ptr<uct::AnalysisPool> uctAnalysisPool_;
     uct::SharedDeviceImage uctAnalysisFrame_;
     std::int64_t uctLastCaptureMs_{};
+    std::uint64_t uctCompletionCaptureTicket_{}, uctConsumedCompletionTicket_{};
     void Initialize(ID3D12Resource* texture,
                     ID3D12Resource* superResTexture,
                     ID3D12Fence* sharedFence,

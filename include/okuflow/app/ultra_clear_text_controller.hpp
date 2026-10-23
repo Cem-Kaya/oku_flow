@@ -374,6 +374,12 @@ public:
     // Presentation clock. Never blocks; returns true when a viewport copy
     // should be requested with this presentation.
     bool OnPresented(const UctFrameContext& context);
+    // Metadata-only one-use waiver, shared with the live capture throttle.
+    std::uint64_t CompletionProbeTicket(std::uint64_t sourceEpoch, std::uint64_t frameSeq) const;
+    // Ask the media owner for current analysis of this exact successful
+    // receipt. Missing input never authorizes resubmission of an old probe.
+    bool AdvancingMediaRetryRequested(std::uint64_t sourceAuthority, std::uint64_t frameSeq,
+                                     std::int64_t timestampMs) const;
     // Receipt from the actual presenter, never from submission/preflight.
     void OnPresentationSucceeded();
     // A busy frame slot submitted nothing. Keep the last successful projection
@@ -462,6 +468,10 @@ private:
     void FinishImmutableDetail();
     uct::SourceStamp ImmutableStamp(const UctImmutableFrame& frame) const;
     void SubmitAdvancingMediaProbe();
+    bool FullReadNeeded(const uct::SourceStamp& stamp, const QRectF& viewScene, std::int64_t nowMs) const;
+    bool CompletionProbeReady(std::int64_t nowMs) const;
+    void ClearCompletionAdmission();
+    void CreditCompletion(const uct::RecognitionResult& result, uct::AdmitVerdict verdict, std::int64_t nowMs);
     // Media model clock: the latest DISPLAYED frame's real media PTS while
     // advancing (with or without an analysis lease), never the PTS of the
     // last analysis input restamped onto a newer displayed frame.
@@ -594,6 +604,13 @@ private:
     std::uint64_t lastOcrGeneration_{};
     std::uint64_t lastOcrJob_{}; // a rejected older job cannot reset a newer marker
     bool haveLastOcr_{};
+    // Metadata only: no image, probe or second analysis-pool lease is parked.
+    struct CompletionCredit { uct::SourceStamp stamp; std::uint64_t job{}, serial{}; };
+    struct BusyMediaProbe { uct::SourceStamp stamp; std::uint64_t blockedByJob{}; };
+    std::optional<CompletionCredit> completionCredit_;
+    std::optional<BusyMediaProbe> busyMediaProbe_;
+    std::uint64_t completionSerial_{}; // never reset/reuse a live capture ticket
+    std::uint64_t creditedJob_{}; // duplicate/out-of-order completion fence
     // Supplemental active jobs never update any of the full-submit markers
     // above. One last full plan, one attempt per baseline interval, one job.
     bool regionalOcrEnabled_{};
