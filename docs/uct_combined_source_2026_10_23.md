@@ -154,13 +154,13 @@ is expected to report FULL-required (exit 2), not a scoped pass. Do not use
 separate focused grant may then build only:
 
 ```powershell
-cmake --build Z:/Projects/OkuFlow/local-work-data/uct4/cpu-on --parallel 8 --target uct_paddle_tests uct_merge_replay_tests retained_cleanup_tests ultra_clear_text_tests
+cmake --build Z:/Projects/OkuFlow/local-work-data/uct4/cpu-on --parallel 8 --target uct_paddle_tests uct_merge_replay_tests retained_cleanup_tests
 ```
 
-Run the exact selection through the tracked gate (seven source-declared cases):
+Run the exact selection through the tracked gate (six source-declared cases):
 
 ```powershell
-& scripts/run_test_gate.ps1 -BuildDirectory Z:/Projects/OkuFlow/local-work-data/uct4/cpu-on -Test @('uct_paddle_processing','uct_precision_artifact_contract','uct_public_bf16_contract','uct_merge_replay','retained_cleanup_contract','ultra_clear_text_contract','shared_source_equivalence') -Parallel 8 -ExcludeGui -Resume:$false
+& scripts/run_test_gate.ps1 -BuildDirectory Z:/Projects/OkuFlow/local-work-data/uct4/cpu-on -Test @('uct_paddle_processing','uct_precision_artifact_contract','uct_public_bf16_contract','uct_merge_replay','retained_cleanup_contract','shared_source_equivalence') -Parallel 8 -ExcludeGui -Resume:$false
 ```
 
 Do not substitute the previously observed 235/246 inventories for discovery of
@@ -168,7 +168,11 @@ this combination. Preserve every slot/data row and required runtime file;
 missing registration or skipped/unresolved cases are incomplete. The BF16
 contract uses synthetic/private filesystem inputs, not actual model golden.
 
-Nominal PCH ON is retained. Source declarations assign no PCH to these four
+Build/run additional `ultra_clear_text_contract` or immutable contracts only if a
+concrete integration finding requires them; they are outside the default six.
+There is no performance rerun. Root may reuse its corrected C4 job wrapper.
+
+Nominal PCH ON is retained. Source declarations assign no PCH to these three
 selected targets/shared objects; replay and cleanup explicitly disable it.
 Thus repeating these targets with only `OKUFLOW_USE_PCH=OFF` would be a cache-mode
 comparison, not real PCH coverage. Root should inspect actual compile commands.

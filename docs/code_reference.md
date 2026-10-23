@@ -10,7 +10,7 @@ hash/parse snapshot; the merge cache/oracle retains B's exact code, and
 `Context` retains C's complete closure. The final TensorRT implementation
 equals D's reviewed `89f839b` source, including the post-golden deadline guard.
 Root's narrow R3 closure is source acceptance only. All combined code remains
-unbuilt/unrun; seven proposed CPU cases cannot compile the CUDA-gated adapter.
+unbuilt/unrun; six proposed CPU cases cannot compile the CUDA-gated adapter.
 
 ## Owned synthetic BF16 crop proposal (2026-10-23)
 
