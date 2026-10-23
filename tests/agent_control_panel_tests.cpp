@@ -644,6 +644,9 @@ void AgentControlPanelTests::assistantButtonsHaveAccessibleNames()
                 qMakePair("chatCloseDrawer","Close"),qMakePair("chatSend","Send"),
                 qMakePair("chatReadAloud","Read Aloud")}) {
             auto* button=view->findChild<QAbstractButton*>(QString::fromLatin1(entry.first));
+            // Floating Explain reparents the shared header into its native
+            // dock title bar; it is intentionally outside the chat subtree.
+            if(!button)button=view->headerWidget()->findChild<QAbstractButton*>(QString::fromLatin1(entry.first));
             QVERIFY2(button,entry.first);
             auto* accessible=QAccessible::queryAccessibleInterface(button);
             QVERIFY(accessible);

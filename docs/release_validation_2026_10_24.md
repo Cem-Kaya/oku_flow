@@ -18,6 +18,15 @@ actions have a separate accessibility synchronization repair with headless
 name/state/language coverage authored. Both repairs are awaiting build/runtime
 validation; they do not establish native screen-reader or live-provider passes.
 
+The first focused CPU block compiled all selected targets and passed six of
+seven contracts, including the Codex profile/client and both repaired native
+AVC/AV1 sparse-file cases. The new name test failed to locate floating chat's
+New button because Explain reparents that header into its native title bar.
+The fixture now follows the explicit `headerWidget()` ownership path as well
+as the chat subtree; no name or behavior assertion was removed. The failed
+attempt remains under `assistant-sync-r1/C2-20261023-234740-3cd88f3b0e0d488ba6c6dca2688f8e2c`.
+The application build was not reached in that stopped block.
+
 ## Completed checks
 
 - Cleanup reproduction at `5e4bf7f`: actual CUDA application/fixture compilation

@@ -3936,6 +3936,9 @@ Namespace `okuflow`
   installed dependency named as an install action. Qt-accessible contract rows
   cover names, state changes and translated/source restoration; native client
   speech remains separate acceptance.
+  The headless name fixture follows `AssistantChatView::headerWidget()` for
+  floating Explain's reparented native title-bar controls instead of assuming
+  every header control remains in the chat widget's QObject subtree.
 - Announcements with the same complete accessible text are suppressed for
   five seconds per widget. The coalesced form uses a trailing single-shot
   timer so rapid diagnostics publish only their latest value.
