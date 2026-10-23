@@ -8,9 +8,13 @@ known completion releases each resource once. Additional gated receipt-discard
 and independent closure/cleanup witnesses prevent the resource self anchor from
 masking lost cleanup ownership. It links no Qt/CUDA/model code.
 The private test-only hooks are confined to that one TU, and failed cases
-deliberately retain their fake resources until process exit. At source handoff
-this fixture is **authored but unrun** under the owner's compute hold. See
-[the ownership argument and finite CPU plan](../docs/uct_resident_cleanup.md).
+deliberately retain their fake resources until process exit. Root's 2026-10-23
+tracked CPU run on frozen source `356583f8e1aeb546bc501978d06b384a36885d9b`
+passed all 35 named cases plus `shared_source_equivalence`: **SCOPED 2 of 235**,
+zero skips/unresolved results. The fixture disables PCH itself; no meaningful
+PCH-OFF repeat was available. Actual CUDA Context fault routing and the full
+release gate remain unvalidated. See
+[the ownership argument, archived evidence and limits](../docs/uct_resident_cleanup.md).
 
 `viewport_transform_geometry` covers wide/portrait/extreme-aspect whole-source
 fit, uniform partial bars, nonsticky Fill stepping and inverse Freeze framing.
