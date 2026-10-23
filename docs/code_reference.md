@@ -12,6 +12,14 @@ inside its existing 60-second deadline. Startup preparing responses are saved
 outside timing, counted separately from successful outputs, and cannot silently
 escape the finite source-arm job accounting.
 
+In private arms B/C, `PaddleMergeRecognition` ports c3e3fea's bounded call-local
+geometry/overlap cache without changing traversal or stable output order.
+`PolygonArea` accepts a span; `QuadArea` and `QuadIntersectionArea` retain the
+same arithmetic with stack storage and the proven-disjoint early check.
+These two production-file hunks apply to the common policy composition; no
+public fallback to the old merge is added. Composed whole-worker validation
+is pending even though the original merge CPU replay passed.
+
 ## Aspect-aware viewport and Resume continuity
 
 - `ComputeFitZoom`, `EffectiveFillZoom` and `StepFillZoom` in `view_transform`
