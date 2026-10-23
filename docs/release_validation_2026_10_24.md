@@ -27,6 +27,23 @@ as the chat subtree; no name or behavior assertion was removed. The failed
 attempt remains under `assistant-sync-r1/C2-20261023-234740-3cd88f3b0e0d488ba6c6dca2688f8e2c`.
 The application build was not reached in that stopped block.
 
+The repaired block at `4f947ca` passed **7/244 scoped contracts**, zero skips or
+unresolved results, and compiled the actual CUDA application. The new three
+accessible-interface rows passed (23 Qt rows in the panel fixture). The initial
+Codex profile/client and native AVC/AV1 passes were retained only through the
+tracked matching fingerprints. Actual app SHA-256:
+`83df06e5c801b5c3698ad2f57358cf4f1af1d0b61ca22a115227d45f5a116268`.
+Work/controller exited zero in 71.568 seconds; the exact owned Job reached zero,
+runner release was verified and cleanup had no issues. The verified compiler
+telemetry rule handled its sole survivor. Evidence is under
+`assistant-sync-r2/C2-20261023-235002-e569c4d15fb848c49a469c352f822099`.
+Its inherited outer scope label mentions GUI fixture compilation; the actual
+child/stage/test receipts are authoritative: five CPU fixture targets, seven
+headless contracts and `oku_flow` were built/checked, with no GUI or inference.
+Native screen-reader, rebuilt native GUI, live Luna control and installer
+acceptance remain pending. This does not clear the earlier two native geometry
+failures or establish a full release gate.
+
 ## Completed checks
 
 - Cleanup reproduction at `5e4bf7f`: actual CUDA application/fixture compilation
