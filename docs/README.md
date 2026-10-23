@@ -1,5 +1,10 @@
 # OkuFlow Documentation Guide
 
+[Role-aware UCT precision experiments](uct_precision_artifacts.md) describes the
+offline schema-2 contract, current-driver approval prerequisite, exact runtime
+integration seam and serialized finite benchmark/quality slots. No new artifact
+or performance acceptance is implied.
+
 [Source-supported perspective text](uct_surface_perspective.md) explains bounded
 four-corner recovery, source refusals and projected glyph geometry.
 

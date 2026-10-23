@@ -13,6 +13,7 @@
 #include "uct_resident_diagnostic.hpp"
 #include "uct_paused_video_diagnostic.hpp"
 #include "uct_active_regional_diagnostic.hpp"
+#include "uct_precision_artifact_cases.hpp"
 #include <QFontDatabase>
 #include <QLineF>
 #include <QPainter>
@@ -170,6 +171,7 @@ class PaddleTests final : public QObject
 {
     Q_OBJECT
   private slots:
+    void rolePrecisionArtifactContract() { uct_precision_artifact_test::Contract(); }
     void localBf16ManifestRequiresReviewedRolesAndCacheOnlySchema()
     {
         using namespace runtime_precision;

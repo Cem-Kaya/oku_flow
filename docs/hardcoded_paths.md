@@ -1,5 +1,15 @@
 # Hard-Coded Paths and Defaults
 
+The offline schema-2 precision experiment contract in `uct_precision_artifacts.hpp`
+has no runtime selector or production approvals. It represents only medium
+detector profiles 32/544x960/960x960 and N8 medium recognition fixed1024 or
+ordered 128/512/1024 min/opt/max, with FLOAT DEVICE LINEAR I/O, TensorRT
+11.4.0.106, default TF32, optimization 2, 256 MiB workspace and zero auxiliary
+streams. It reuses the legacy 64 KiB manifest / strictly-below-256 MiB graph/plan
+bounds and independently approved relative locators; existing keys stay intact.
+Decoded dictionaries now come from one hash-verified snapshot limited to 8 MiB.
+See [contract and pending finite slots](uct_precision_artifacts.md).
+
 ## Live RAM recap (development)
 
 `VideoRecapPolicy` keeps 300 seconds with independently playable ~2-second H.264

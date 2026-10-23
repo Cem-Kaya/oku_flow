@@ -1,5 +1,10 @@
 # Local BF16 recognition selection (2026-10-22)
 
+The separate [role-aware precision experiment contract](uct_precision_artifacts.md)
+is offline preparation for current-driver approval, ordered BF16 widths and a
+mixed-FP16 detector. It does not broaden the schema-1 approval below or enable
+new artifacts. Current-driver FP32 preparation cannot approve BF16.
+
 The owner approved local use of the measured BF16 recognition variant despite
 visible recognition/geometry differences. This is an unreleased, explicit
 application opt-in, with the normal pinned FP32 medium detector. Other users
