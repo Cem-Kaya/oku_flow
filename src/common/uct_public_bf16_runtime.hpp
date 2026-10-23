@@ -118,7 +118,7 @@ inline QByteArray ReceiptBytes(const LocalBuild& build,const Corpus& corpus,cons
 }
 struct CachedPlan {QByteArray bytes,builderVersion;QString directory;};
 #ifdef Q_OS_WIN
-// Hold actual directories with list access and no delete sharing. Reparse points
+// Hold actual directories with list access and no write/delete sharing. Reparse points
 // below the explicit canonical root are refusals BEFORE creating descendants.
 // The same handles remain held through file creation and the final native rename.
 class DirectoryPins {
@@ -132,7 +132,7 @@ public:
         const auto name=QDir::toNativeSeparators(path).toStdWString();
         // Attribute-only access did not enforce delete exclusion in root's probe.
         const auto handle=CreateFileW(name.c_str(),FILE_LIST_DIRECTORY|FILE_READ_ATTRIBUTES|(forRename?DELETE:0),
-            FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,nullptr);
+            FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,nullptr);
         if(handle==INVALID_HANDLE_VALUE)throw Refusal(Reason::Model,"cannot pin public cache directory");
         BY_HANDLE_FILE_INFORMATION information{};
         if(!GetFileInformationByHandle(handle,&information) ||
@@ -205,7 +205,11 @@ inline CachedPlan FindPlan(const Request& request,const LocalBuild& build,const 
         const auto entry=entries.fileName();
         // Owned incomplete staging is never a usable plan.
         if(entry.startsWith(".pending-"))continue;
-        if(!runtime_precision::Hash(entry.toLatin1()))throw Refusal(Reason::Model,"unknown public BF16 cache generation");
+        if(!runtime_precision::Hash(entry.toLatin1())) {
+            const auto context=QJsonDocument(QJsonObject{{"phase","FindPlan/generation-name"},{"ordinal",visited},
+                {"entry",entry.left(128)},{"entryChars",int(entry.size())},{"path",parent.absolutePath().left(512)}}).toJson(QJsonDocument::Compact);
+            throw Refusal(Reason::Model,(QByteArray("unknown public BF16 cache generation: ")+context).constData());
+        }
         const auto directory=parent.filePath(entry);
 #ifdef Q_OS_WIN
         // Ancestors stay pinned for the whole lookup; each child is pinned only

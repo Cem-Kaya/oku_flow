@@ -10,12 +10,11 @@
 namespace uct_public_bf16_test {
 using namespace okuflow::uct;
 #ifdef Q_OS_WIN
-inline bool CreateFixtureJunction(const QString& path,const QString& target) {
+inline bool SetFixtureJunction(const QString& path,const QString& target,DWORD* nativeError=nullptr) {
     const auto native=QDir::toNativeSeparators(path).toStdWString();
-    if(!CreateDirectoryW(native.c_str(),nullptr))return false;
-    const auto handle=CreateFileW(native.c_str(),GENERIC_WRITE,0,nullptr,OPEN_EXISTING,
+    const auto handle=CreateFileW(native.c_str(),GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,
         FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,nullptr);
-    if(handle==INVALID_HANDLE_VALUE)return false;
+    if(handle==INVALID_HANDLE_VALUE) {if(nativeError)*nativeError=GetLastError();return false;}
     struct MountPoint {
         DWORD tag;WORD dataLength,reserved,substituteOffset,substituteLength,printOffset,printLength;
         wchar_t paths[1];
@@ -30,7 +29,13 @@ inline bool CreateFixtureJunction(const QString& path,const QString& target) {
     std::copy(print.begin(),print.end(),point->paths+substitute.size()+1);
     DWORD returned{};
     const bool result=DeviceIoControl(handle,FSCTL_SET_REPARSE_POINT,point,DWORD(bytes.size()),nullptr,0,&returned,nullptr)!=FALSE;
-    CloseHandle(handle);return result;
+    const auto error=result?ERROR_SUCCESS:GetLastError();
+    CloseHandle(handle);if(nativeError)*nativeError=error;return result;
+}
+inline bool CreateFixtureJunction(const QString& path,const QString& target) {
+    const auto native=QDir::toNativeSeparators(path).toStdWString();
+    if(!CreateDirectoryW(native.c_str(),nullptr))return false;
+    return SetFixtureJunction(path,target);
 }
 #endif
 inline void Contract() {
@@ -187,16 +192,20 @@ inline void PublicationAndLifetime() {
                 {"fixture","non-model lookup only; no golden attestation"}}).toJson(QJsonDocument::Compact);
         };
         const auto olderReceipt=fixtureReceipt(olderBuild),currentReceipt=fixtureReceipt(currentBuild);
+        qInfo("public BF16 fixture phase: two-builder/publication");
         QVERIFY(PublishFilesNew(lookupStorage.path(),lookupParent,CacheKey(olderBuild,corpus),olderBytes,olderReceipt));
         QVERIFY(PublishFilesNew(lookupStorage.path(),lookupParent,CacheKey(currentBuild,corpus),currentBytes,currentReceipt));
         const auto inventory=QDir(lookupParent).entryList(QDir::Dirs|QDir::NoDotAndDotDot|QDir::Hidden);
         QCOMPARE(inventory.size(),2);
+        qInfo("public BF16 fixture phase: two-builder/current");
         const auto selected=FindPlan(lookupRequest,currentBuild,corpus);
         QCOMPARE(selected.bytes,currentBytes);QCOMPARE(selected.builderVersion,currentBuild.builderVersion);
         QCOMPARE(QFileInfo(selected.directory).canonicalFilePath(),
             QFileInfo(QDir(lookupParent).filePath(QString::fromLatin1(CacheKey(currentBuild,corpus)))).canonicalFilePath());
+        qInfo("public BF16 fixture phase: two-builder/older");
         QCOMPARE(FindPlan(lookupRequest,olderBuild,corpus).bytes,olderBytes);
         auto missingBuild=currentBuild;missingBuild.builderVersion="11.6.0.0";
+        qInfo("public BF16 fixture phase: two-builder/missing");
         const auto missing=FindPlan(lookupRequest,missingBuild,corpus);
         QVERIFY(missing.bytes.isEmpty());QVERIFY(missing.builderVersion.isEmpty());QVERIFY(missing.directory.isEmpty());
         QCOMPARE(QDir(lookupParent).entryList(QDir::Dirs|QDir::NoDotAndDotDot|QDir::Hidden),inventory);
@@ -217,13 +226,16 @@ inline void PublicationAndLifetime() {
         }
         const auto fullInventory=QDir(lookupParent).entryList(QDir::Dirs|QDir::NoDotAndDotDot|QDir::Hidden);
         QCOMPARE(fullInventory.size(),32);
+        qInfo("public BF16 fixture phase: 32-generations/missing");
         QVERIFY(FindPlan(lookupRequest,missingBuild,corpus).bytes.isEmpty());
+        qInfo("public BF16 fixture phase: 32-generations/current");
         QCOMPARE(FindPlan(lookupRequest,currentBuild,corpus).bytes,currentBytes);
         QCOMPARE(QDir(lookupParent).entryList(QDir::Dirs|QDir::NoDotAndDotDot|QDir::Hidden),fullInventory);
         auto overflowBuild=currentBuild;overflowBuild.builderVersion="11.5.2.0";
         const QByteArray overflowBytes("non-model lookup overflow sibling");
         overflowBuild.planFileSha256=precision_artifacts::Digest(overflowBytes);
         QVERIFY(PublishFilesNew(lookupStorage.path(),lookupParent,CacheKey(overflowBuild,corpus),overflowBytes,fixtureReceipt(overflowBuild)));
+        qInfo("public BF16 fixture phase: 33-generations/expected-refusal");
         QVERIFY_EXCEPTION_THROWN(FindPlan(lookupRequest,missingBuild,corpus),Refusal); // unchanged 32-entry bound
 
         // A nonmatching generation still undergoes full hash validation before
@@ -233,7 +245,32 @@ inline void PublicationAndLifetime() {
         auto corruptRequest=lookupRequest;corruptRequest.cacheRoot=corruptStorage.path();
         QVERIFY(PublishFilesNew(corruptStorage.path(),CacheParent(corruptRequest,olderBuild,corpus),
             CacheKey(olderBuild,corpus),"corrupt non-model fixture bytes",olderReceipt));
+        qInfo("public BF16 fixture phase: corrupted-plan/expected-refusal");
         QVERIFY_EXCEPTION_THROWN(FindPlan(corruptRequest,currentBuild,corpus),Refusal);
+
+        QTemporaryDir unknownStorage;
+        QVERIFY(unknownStorage.isValid());
+        auto unknownRequest=lookupRequest;unknownRequest.cacheRoot=unknownStorage.path();
+        const auto unknownParent=CacheParent(unknownRequest,currentBuild,corpus);
+        QVERIFY(QDir().mkpath(QDir(unknownParent).filePath("unknown-generation")));
+        const auto unknownInventory=QDir(unknownParent).entryList(QDir::Dirs|QDir::NoDotAndDotDot|QDir::Hidden);
+        qInfo("public BF16 fixture phase: unknown-generation/expected-refusal");
+        bool unknownRefused=false;
+        try { FindPlan(unknownRequest,currentBuild,corpus); }
+        catch(const Refusal& error) {
+            unknownRefused=true;QVERIFY(error.Code()==Reason::Model);
+            const QByteArray prefix("unknown public BF16 cache generation: "),message(error.what());
+            QVERIFY(message.startsWith(prefix));
+            const auto context=QJsonDocument::fromJson(message.mid(prefix.size())).object();
+            QCOMPARE(context["phase"].toString(),QString("FindPlan/generation-name"));
+            QCOMPARE(context["ordinal"].toInt(),1);
+            QCOMPARE(context["entry"].toString(),QString("unknown-generation"));
+            QCOMPARE(context["entryChars"].toInt(),18);
+            QCOMPARE(QFileInfo(context["path"].toString()).canonicalFilePath(),QFileInfo(unknownParent).canonicalFilePath());
+            QVERIFY(context["entry"].toString().size()<=128 && context["path"].toString().size()<=512);
+        }
+        QVERIFY(unknownRefused);
+        QCOMPARE(QDir(unknownParent).entryList(QDir::Dirs|QDir::NoDotAndDotDot|QDir::Hidden),unknownInventory);
     }
 
     QTemporaryDir storage;
@@ -252,6 +289,7 @@ inline void PublicationAndLifetime() {
     const auto parent=CacheParent(request,build,corpus);
     const QByteArray key(64,'a');
     // Plain storage fixture bytes: no model, real plan or passing golden record.
+    qInfo("public BF16 fixture phase: storage/publication");
     QVERIFY(PublishFilesNew(storage.path(),parent,key,"storage fixture plan","storage fixture receipt"));
     QVERIFY(!PublishFilesNew(storage.path(),parent,key,"replacement must fail","replacement must fail"));
     const auto generation=QDir(parent).filePath(QString::fromLatin1(key));
@@ -286,19 +324,46 @@ inline void PublicationAndLifetime() {
     const bool deleteDenied=deleteOnly==INVALID_HANDLE_VALUE;
     if(!deleteDenied)CloseHandle(deleteOnly);
     QVERIFY(deleteDenied);
-    // Non-delete writes share the held parent; the exact production publisher
-    // must still create its files AFTER holding staging and rename new-only.
+    // A writer could mutate this directory into a junction without DELETE.
+    // Child creation is distinct: the production publisher still writes AFTER
+    // holding staging and must rename new-only under the pinned parent.
     const auto noDelete=CreateFileW(parentNative.c_str(),GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,
         nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,nullptr);
-    const bool writeShared=noDelete!=INVALID_HANDLE_VALUE;
-    if(writeShared)CloseHandle(noDelete);
-    QVERIFY(writeShared);
+    const bool writeDenied=noDelete==INVALID_HANDLE_VALUE;
+    if(!writeDenied)CloseHandle(noDelete);
+    QVERIFY(writeDenied);
     const QByteArray pinnedKey(64,'b');
+    qInfo("public BF16 fixture phase: pinned-parent/publication");
     QVERIFY(PublishFilesNew(storage.path(),parent,pinnedKey,"pinned-parent non-model fixture","pinned-parent storage receipt"));
     QVERIFY(!PublishFilesNew(storage.path(),parent,pinnedKey,"replacement must fail","replacement must fail"));
     const auto pinnedGeneration=QDir(parent).filePath(QString::fromLatin1(pinnedKey));
     QCOMPARE(ReadBounded(pinnedGeneration,"recognizer.plan",1024),QByteArray("pinned-parent non-model fixture"));
     QCOMPARE(ReadBounded(pinnedGeneration,"ready.json",1024),QByteArray("pinned-parent storage receipt"));
+
+    qInfo("public BF16 fixture phase: post-hold-reparse/ancestor-and-staging");
+    for(const bool forRename:{false,true}) {
+        QTemporaryDir mutationRoot,mutationOutside;
+        QVERIFY(mutationRoot.isValid() && mutationOutside.isValid());
+        const auto emptyDirectory=QDir(mutationRoot.path()).filePath(forRename?"empty-staging":"empty-ancestor");
+        QVERIFY(QDir().mkdir(emptyDirectory));
+        const auto outsideInventory=QDir(mutationOutside.path()).entryList(QDir::AllEntries|QDir::NoDotAndDotDot|QDir::Hidden);
+        // Close the pin before removing a junction if a regression permits one.
+        // RemoveDirectoryW removes that link without traversing its target.
+        RemoveJunction removeMutation{QDir::toNativeSeparators(emptyDirectory).toStdWString()};
+        DirectoryPins mutationPin;
+        mutationPin.Hold(emptyDirectory,forRename);
+        DWORD mutationError{};
+        QVERIFY(!SetFixtureJunction(emptyDirectory,mutationOutside.path(),&mutationError));
+        QCOMPARE(mutationError,DWORD(ERROR_SHARING_VIOLATION));
+        const auto child=QDir(emptyDirectory).filePath("child");
+        QVERIFY(QDir().mkdir(child));
+        QFile inside(QDir(child).filePath("inside.txt"));
+        const QByteArray insideBytes("private post-hold non-model write");
+        QVERIFY(inside.open(QIODevice::WriteOnly|QIODevice::NewOnly));
+        QCOMPARE(inside.write(insideBytes),qint64(insideBytes.size()));inside.close();
+        QCOMPARE(ReadBounded(child,"inside.txt",1024),insideBytes);
+        QCOMPARE(QDir(mutationOutside.path()).entryList(QDir::AllEntries|QDir::NoDotAndDotDot|QDir::Hidden),outsideInventory);
+    }
 #endif
 
     struct Owner {

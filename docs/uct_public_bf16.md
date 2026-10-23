@@ -3,7 +3,8 @@
 Owner approved shipping the converted **model**, with an engine built and checked
 on each eligible machine. This follow-up preserves the composed batch/helper/cache
 policy ending `7c59a59423a0cefa6e19a78ba81908e16461196c`. Private background
-integration is authored, unbuilt and unrun. It stages nothing and supplies no
+integration is authored; the real model path and latest repair remain unbuilt/unrun.
+Root's partial model-free failures are recorded below. It stages nothing and supplies no
 engine, golden pass, inference, quality or performance result. The private schema-1
 owner/dev artifact remains cache-only and separate from public model approval.
 
@@ -181,8 +182,14 @@ authorize expected text or skip deserialization/profile checks/real reattestatio
 Driver changes alone cannot change the locator. Runtime ABI11 tuple admission
 remains >=11.4.0.106; real deserialization decides compatibility.
 The explicit cache root must already exist. Native directory handles request
-`FILE_LIST_DIRECTORY|FILE_READ_ATTRIBUTES` and share READ/WRITE but not DELETE;
+`FILE_LIST_DIRECTORY|FILE_READ_ATTRIBUTES` and share READ only, excluding WRITE/DELETE;
 only the exact staging handle additionally requests DELETE for its held rename.
+R5 found that WRITE sharing would permit post-check `FSCTL_SET_REPARSE_POINT`
+through a same-directory writer before path-based descendant operations. The new
+fixture attempts that mutation after holding both an empty ancestor and staging,
+requires refusal/outside inventory preservation, and still exercises child writes
+after holding staging through the unchanged real publisher. This repair is not
+yet independent or executable acceptance.
 They reject reparse points below the canonical root **before** any
 descendant creation and stay held through reads/publication. A racing final
 generation is a typed refusal; the losing attempt does not claim publication.
@@ -266,10 +273,17 @@ order, adds delete-only/no-delete opener and pinned-parent publication cases, an
 prints unexpected `std::exception::what()` from the private Qt slot. Those project
 changes remain UNBUILT/UNRUN pending root's changed-fingerprint execution.
 Root's later source inspection found accumulated skipped-generation handles in
-`FindPlan`. The separate scope repair and existing lookup fixture's full
-32-generation missing-match/current-selection and 33rd-entry refusal cases remain
-UNBUILT/UNRUN. Fresh independent closure must cover this lifetime seam too; it is
-not a diagnosis of the earlier Qt exception or a new runtime retry.
+`FindPlan`. R5 closed that iteration-scope repair, deadline scope and builder
+selection in source. Frozen `6d5` compiled in root's composed C3 gate, which again
+finished 5 PASS / 1 unresolved: the publication/lifetime slot reported
+`unknown public BF16 cache generation`, with no entry/phase at 221 ms. The
+32/33-generation cases have no passing acceptance; the precise trigger remains
+unknown. R5 left native confinement open and the new WRITE-exclusion repair and
+post-hold mutation fixtures are UNBUILT/UNRUN. Unknown-entry refusal now includes
+bounded JSON phase, entry, ordinal and parent path, with fixed fixture-phase
+breadcrumbs and an explicit malformed-generation negative case. No unknown name
+is newly ignored. Root owns one future changed-fingerprint run and fresh source
+closure; no automatic retry, model attestation or C3 causal diagnosis is implied.
 
 Proposed finite root START C2: one frozen checkout, maximum 8 compile jobs,
 900-second total stop budget; build only affected `uct_paddle_tests` and

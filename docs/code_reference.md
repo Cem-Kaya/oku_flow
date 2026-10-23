@@ -7357,7 +7357,7 @@ ordinary directories before mutation and performs the held new-only rename.
 fixture; partial records, policy, junction/no-side-effect and sharing checks are
 unbuilt/unrun. See [all three findings and dispositions](uct_public_bf16_review.md).
 
-The root-probed pin repair makes `DirectoryPins::Hold` request list/attribute
+The initial root-probed pin repair made `DirectoryPins::Hold` request list/attribute
 access, share READ/WRITE excluding DELETE, and add DELETE only for exact staging
 rename. Attribute-only opens did not enforce delete exclusion on the probed
 filesystem. `PublicationAndLifetime` retains all original assertions and adds
@@ -7376,3 +7376,20 @@ ten-handle path and 32-entry inventory bounds. The existing publication slot add
 a full 32-child missing-match walk, current selection and 33rd-entry refusal using
 labelled non-model receipts. This source repair/coverage is UNBUILT/UNRUN and is
 included in root's pending fresh independent review scope.
+
+R5 closed deadline/builder/child-pin scope in source but kept confinement open:
+same-directory WRITE sharing admits post-hold reparse mutation. `DirectoryPins::Hold`
+now shares READ only, retaining list/attributes and exact-staging DELETE access.
+Private `SetFixtureJunction` factors the existing FSCTL writer so the same helper
+can create the original junction and attempt mutation after a pin is held. It
+requests all share flags on that writer, preventing a spurious denial from the
+test writer's own sharing mask. The fixture now requires non-delete writer refusal,
+post-hold mutation refusal for ancestor/staging and unchanged outside inventory,
+while preserving actual post-hold child writes and the complete publisher body.
+
+`FindPlan` retains unknown-entry refusal and adds bounded compact JSON context:
+fixed phase, ordinal, at most 128 entry characters and 512 parent-path characters,
+plus full entry length. The private fixture adds fixed phase breadcrumbs and an
+explicit malformed-generation diagnostic/refusal/inventory case. R5 and root C3
+do not identify that earlier offending entry or phase; new source/fixtures remain
+UNBUILT/UNRUN. See [review and first-failure history](uct_public_bf16_review.md).

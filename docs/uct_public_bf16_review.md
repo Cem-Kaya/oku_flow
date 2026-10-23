@@ -192,3 +192,57 @@ bound refusal. It creates no golden/pass record or model success. Source changes
 and fixtures remain **UNBUILT/UNRUN**; root's fresh targeted independent review
 must include this lifetime seam alongside the prior repairs. All previous probe,
 review and first-failure evidence is retained; no new execution or retry ran here.
+
+## Fresh independent R5 and WRITE-sharing repair
+
+Root supplied the full independent report at
+`Z:/Projects/OkuFlow/local-work-data/uct-review-implementation-20261023/public-repair-closure-r5/review.md`
+and sibling `coverage-index.json`, both retained with hashes in the source receipt.
+R5 read frozen clean `6d5f4744b4f7e0f4c2e0d8442b58373475bb7f14`, covering the four
+commits after `89f839b`. The failed R4 rate-limit attempt adds no coverage. R5
+closed deadline scope, actual-builder lookup and iteration-local child pins **in
+source**, and found no new P1. Native confinement remained **OPEN P2**: a
+GENERIC_WRITE handle admitted by FILE_SHARE_WRITE could apply
+FSCTL_SET_REPARSE_POINT after the ordinary-directory check, then redirect later
+path-based mkdir/file operations. DELETE exclusion alone was insufficient.
+
+The separate repair keeps list/attribute access and DELETE only on exact staging,
+but shares READ only, excluding WRITE and DELETE. The incorrect positive writable
+directory expectation becomes denial. Private `SetFixtureJunction` reuses the
+existing real FSCTL path with all share flags on the writer; the original
+create-junction control still uses it. New ancestor/staging cases attempt reparse
+conversion after holding the initially empty directory, then require refusal,
+post-hold child writes and unchanged outside inventory. If a regression permits a
+junction, cleanup releases the pin and removes that link without traversing its
+target. All original junction/new-only/collision/byte assertions and the complete
+production publisher's hold-then-write-then-rename body remain intact.
+
+## Preserved C3 failure and bounded diagnostics
+
+Root's `00dd9f9da9a0bce37e8f7e123a804d16720753c5` composition had Git-identical
+public/fixture bytes to frozen `6d5` plus its separate near/far fix. C3 compiled
+three CPU targets, then the tracked 6/238 selection finished **5 PASS / 1 unresolved**
+with zero skipped rows. The publication/lifetime slot now reported
+`unknown public BF16 cache generation` through Paddle line301 at 221 ms. Receipt
+completion was `2026-10-23T15:40:38.4558642Z`, active children0 and verified release.
+The log and receipt remain under
+`Z:/Projects/OkuFlow/local-work-data/uct-combined-validation-20261023/scripts-C3/C2-20261023-153944-e0d7f51009824c0dbb691e3dd13c6ec5/`.
+The earlier C2 near/far prerequisite failure, C2 generic exception and limited
+native probe remain separate first evidence; none is replaced or cleared.
+
+Source inspection confirms the C3 message's single basename-validation throw
+before receipt reads. Published fixture keys are checked by the same Hash helper
+before publication, but C3 lacks the actual offending entry/lookup phase. No
+precise cause is claimed. Refusal now carries compact JSON with fixed phase,
+ordinal, entry (128 characters), original entry length and parent path (512
+characters); JSON escapes diagnostic text. Fixed fixture breadcrumbs identify
+each positive/absent lookup phase. A controlled unknown-generation case checks
+the refusal, context and unchanged inventory. The rule still rejects unknown
+entries and preserves the existing bounds, digest/identity checks and builder
+filter. No arbitrary name is newly skipped.
+
+R5's three source closures remain retained; the WRITE-exclusion source/fixtures
+and new diagnostics are **UNBUILT/UNRUN** and await root's fresh independent
+review and one changed-fingerprint execution. They do not diagnose C3 or the
+older generic exception, prove platform acceptance, approve any model/corpus or
+authorize an automatic retry. This agent performed source edits/reads/hashes only.

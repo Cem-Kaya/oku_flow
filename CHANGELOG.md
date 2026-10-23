@@ -29,6 +29,10 @@
 - Scope each public BF16 cache-generation pin to its lookup iteration while
   retaining ancestor pins. Skipped builders no longer exhaust the ten-handle
   path capacity before the 32-entry inventory bound. Boundary fixtures are unrun.
+- Exclude same-directory WRITE sharing from public-cache pins to prevent a
+  held empty directory being retargeted as a junction. Preserve post-hold child
+  writes/new-only publication coverage and add bounded lookup/fixture diagnostics
+  for the unresolved C3 unknown-generation failure. This R5 repair is unbuilt/unrun.
 
 - Zoom out to show an entire wide or portrait source. Wheel/key zoom stops
   once at Fill (1x), then continues toward whole-picture Fit; the slider snaps
