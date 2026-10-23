@@ -122,7 +122,7 @@ public:
         app.uiState_->ApplyConfigToUI(settings.currentConfig,true);
         app.InitializeUltraClearText();
         app.controlTarget_=std::make_unique<AppControlTarget>(app);
-        app.controlService_=std::make_unique<AppControlService>(*app.controlTarget_,CatalogEdition::DevFull);
+        app.controlService_=std::make_unique<AppControlService>(*app.controlTarget_,BuiltControlCatalogEdition());
         app.controlService_->SetEnabled(true,true);
 #if defined(OKUFLOW_VIDEO_DOCUMENT_TESTS)
         app.InitializeVideoPlayback();

@@ -65,7 +65,7 @@ try{
         const transport=new StdioClientTransport({command:bridge,args:['--instance',ready.selector],stderr:'pipe'});
         client=new Client({name:'OkuFlow native SDK acceptance',version:'1.0'},{capabilities:{}});await client.connect(transport);
         assert.equal(client.getServerVersion().version,catalogEdition);const list=await client.listTools();assert.equal(list.tools.length,43);
-        for(const tool of list.tools){const additive=['capture.photo.take','capture.recording.start','view.observe'].includes(tool.name);
+        for(const tool of list.tools){const additive=['capture.photo.take','capture.recording.start','video.save_frame','view.observe'].includes(tool.name);
             assert.equal(tool.annotations.destructiveHint,!(tool.annotations.readOnlyHint||additive));}
         peerId=(await next('pending')).peerId;assert.match(peerId,/^[a-f0-9]{32}$/);
         failure(await call('app.state.get'));assert.equal((await command(`approve:${peerId}`,'approved')).ok,true);

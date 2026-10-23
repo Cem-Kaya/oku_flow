@@ -206,6 +206,8 @@ instead of skipping its assertions. The real-target fixture can be built with
 either CPU `dev-full` or CPU `v1`, using `OkuFlowApp.exe` when deployed identity
 policy is selected. These harness repairs are not a declaration that the
 focused provider/device/native-approval or installer checks have passed.
+The fixture service itself uses the compiled edition, and both SDK checks
+include `video.save_frame` in their explicit non-destructive additive actions.
 
 The independent SDK fixture now exercises all 19 tools in 14 scenario groups
 through actual stdio, IPC and service enforcement. Its persistent finite
