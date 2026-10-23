@@ -7301,7 +7301,30 @@ synthetic clock; worker completion alone is not UI admission.
   `CandidateCatalog`, bounded `ReadBounded`/`LoadCorpus`, exact compacted-token
   `RawText`, bounded process `Attempts` latch, `Publication`/`DiscardAfterCompletion`
   completion fence, `ReceiptBytes`, driver-free `CacheParent`/bounded `FindPlan`,
-  atomic new-only `PublishFilesNew` and golden-gated `PublishNew`.
+  v2 ready-last `PublishFilesNew` and golden-gated `PublishNew`.
+  `GenerationName`/`Nonce` enforce recipe64-nonce32 lower-hex names;
+  `NativeCachePath` uses extended local Win32 paths so nonce names do not require
+  owner long-path registry/environment changes. A private long-path case is authored.
+  `CollectGenerations` uses an error-reporting native iterator and fixed32 slots
+  before sorting. `DirectoryPins::CreateNew` uses documented `NtCreateFile`
+  FILE_CREATE to retain the same newly created directory handle without an
+  adoption gap. `Hold/Prepare` retain list/attribute/traverse access, READ-only
+  sharing, ordinary-directory checks and the ten-handle path bound; no DELETE
+  access or rename remains. `FilePin` owns exact regular/non-reparse/single-link
+  file handles, bounded native reads/writes and writer-to-read-pin revalidation.
+  `HasCommit` accepts only exact fixed COMMITTED bytes; only actual absence skips.
+  `PublicationLock` uses a zero-wait named mutex across cooperating publishers'
+  inventory scan, full committed validation, capacity reservation and exclusive
+  generation creation. It releases before writes/observers; abandoned directories
+  remain counted. `ValidateCommitted` is shared by lookup and the typed product
+  publication overload, so no valid match or duplicate masks corrupt siblings.
+  Opaque storage fixtures remain separate from model admission.
+  `StorageObserver` observes precommit/committed phases with data read pins held;
+  it is a private fixture seam, not approval. Marker verification occurs on its
+  creation handle before close; post-close observer failures remain committed.
+  V2 is logical admission, not directory-visibility or power-loss atomicity.
+  CacheKey domain/ready schema are v2; identity fields remain bound as before.
+  No v1/legacy read/rekey/migration is performed. Source/fixtures UNBUILT/UNRUN.
 - `Network::PublicTag`/`PreparePublic` in `uct_tensorrt.cpp` attach the Network to
   the retained `State` before runtime/build work. `PublicResources` owns model,
   progress/parser/builder/configuration/serialized bytes; `PublicPlan` retains
@@ -7341,7 +7364,7 @@ attempt begins, its deadline and runtime faults remain terminal through cleanup.
 The model-free eligibility/baseline cases cover candidate admission, empty
 production and disabled validation, but not the actual worker's elapsed-clock
 sequence. The repair and fixtures remain unbuilt/unrun.
-`FindPlan` validates each visited receipt/plan hash before skipping a different
+`FindPlan` validates every committed receipt/plan hash before skipping a different
 builder recipe, within its unchanged 32-entry bound. The caller keeps the actual
 loaded builder version; it never adopts a previous child's builder. Missing
 matches permit the current recipe's new-only build. This filter does not change
@@ -7351,12 +7374,14 @@ nonmatching-child corruption cases with labelled non-model bytes and no golden
 pass fields. No real model acceptance or executable coverage is claimed.
 `State::publicObservations/publicEvidenceIdentity` and `ReportPublicPartial`/
 `PartialRecord` retain completed outputs across later faults without claiming
-whole-attempt completion. `DirectoryPins::Hold/Prepare/RenameNew` leases native
-ordinary directories before mutation and performs the held new-only rename.
+whole-attempt completion. `DirectoryPins::Hold/Prepare/CreateNew` leases native
+ordinary directories before mutation and retains exclusively created v2 directories.
 `CreateFixtureJunction` authors the private desktop-free native redirection
 fixture; partial records, policy, junction/no-side-effect and sharing checks are
 unbuilt/unrun. See [all three findings and dispositions](uct_public_bf16_review.md).
 
+The following records the preserved unreleased v1 repair history; v2 above
+supersedes its storage operations without claiming those failures passed.
 The initial root-probed pin repair made `DirectoryPins::Hold` request list/attribute
 access, share READ/WRITE excluding DELETE, and add DELETE only for exact staging
 rename. Attribute-only opens did not enforce delete exclusion on the probed
@@ -7370,7 +7395,8 @@ exception's cause. These project changes remain UNBUILT/UNRUN.
 
 `FindPlan` keeps `readPins` for the root/ancestors and uses a separate local
 `generationPin` per loop iteration. Skips close the child handle immediately;
-returns first copy the plan/version/directory into `CachedPlan`, then close pins.
+selected bytes copy into `CachedPlan` before pins close. V2 validates the full
+bounded sorted inventory before returning that first matching candidate.
 All identity/digest/confinement checks remain under those pins, with the original
 ten-handle path and 32-entry inventory bounds. The existing publication slot adds
 a full 32-child missing-match walk, current selection and 33rd-entry refusal using

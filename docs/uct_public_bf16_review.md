@@ -246,3 +246,77 @@ and new diagnostics are **UNBUILT/UNRUN** and await root's fresh independent
 review and one changed-fingerprint execution. They do not diagnose C3 or the
 older generic exception, prove platform acceptance, approve any model/corpus or
 authorize an automatic retry. This agent performed source edits/reads/hashes only.
+
+## R6 and the separately selected public-v2 protocol
+
+R6 read frozen clean `26ebfb835fc62ac690d9240e6f71fc2e10d07d8c`; its report is
+`Z:/Projects/OkuFlow/local-work-data/uct-review-implementation-20261023/public-repair-closure-r6/review.md`
+(SHA256 `47b90e966d6ba674d43360f7c91cbb5fcc79e6287e6f60bb2a73b9877de117f8`).
+It closed WRITE/reparse exclusion in source, retained overall publication P2 and
+identified READ-only absolute-target rename failure32. Root native R2 observations
+confirm both policies allow post-hold child writes/readback, while only READ/WRITE
+sharing permits that rename and also admits outside WRITE. R2 is diagnostic
+counterevidence, not a project pass, and diagnoses neither C2 nor C3. Root's R3
+relative-parent rename probe was rejected by automatic approval review as
+“blocked by policy” BEFORE execution. No R3 result exists; no reroute was attempted.
+
+Root explicitly chose a different public-v2 ready-last protocol after reviewing
+the saved design handoff. Logical all-or-nothing reader admission replaces
+namespace-transaction visibility; no power-loss durable transaction is claimed.
+The original v1 branch/commit26eb and all first failures remain preserved. V1 is
+unreleased/production-disabled and is not read, aliased, rekeyed or migrated.
+Current source is on the separate `t3/public-bf16-v2-ready-last` branch.
+
+Exactly one nested read-only design round was authorized/performed:
+
+- Client request: `public-bf16-v2-ready-last-design-readonly-20261023-r1`.
+- Task: `node:delegated-task:command%3Amcp%3Aa7e253f2-fae6-41f9-9666-c08b36f8dc38%3Adelegate-task%3Apublic-bf16-v2-ready-last-design-readonly-20261023-r1`.
+- Provider/model/options: Codex `gpt-6.1-sol`, reasoning `xhigh`, service `default`.
+- Scope: frozen26eb blobs, full AGENTS/required docs/R6/handoff and proposed v2
+  design. No edits, tests, native calls, models, desktop or nested delegation.
+
+Its findings and implementation responses are preserved here. These are source
+responses, NOT a final independent review of the changed implementation:
+
+1. CreateDirectory-success then Hold can adopt a replacement ordinary directory.
+   `DirectoryPins::CreateNew` now uses documented `NtCreateFile(FILE_CREATE)`
+   relative to the held parent and retains that same returned handle. An existing
+   name refuses; there is one call, no adoption/retry or descendant write before
+   protection. Existing ancestor checks and READ-only sharing remain.
+2. A31-entry scan alone cannot reserve capacity against concurrent publishers.
+   A zero-wait global named mutex over the canonical parent now protects scan,
+   committed validation, reservation and new-directory creation. Cooperating
+   creators see abandoned/live reservations as entries and refuse at32. The
+   mutex releases before writes/observers. External uncooperative additions can
+   still overflow; observed33 always refuses, never deletes or repairs entries.
+3. Opaque byte storage cannot establish production receipt/recipe integrity.
+   `ValidateCommitted` now serves BOTH lookup and typed product publication,
+   including all committed siblings before returning a current selection or
+   same-key false. Opaque storage remains explicitly fixture-only; no model/golden
+   approval is created. A valid earlier match cannot hide a later corrupt child.
+4. Duplicate and snapshot semantics require precision. Same-key false describes
+   a fully validated committed recipe observed in preflight; different actual
+   plan bytes can share a recipe. Overlapping reserved unique generations may
+   both commit unchanged, with lexical selection only over observed entries.
+   Pins do not freeze additions/marker transitions. Every selected actual plan
+   still needs real deserialize/profile and exact golden checks.
+5. Closing a marker writer before readback permits admission before later failure.
+   Marker bytes are now read/verified on the creation handle BEFORE close. After
+   close, any observer failure is already committed; an authored case retains
+   it and requires same-key duplicate false. Write/verification failures after
+   marker creation remain marker-present corrupt/indeterminate outcomes, never
+   silently incomplete, deleted or automatically retried.
+6. Unknown files, hidden/system entries and iterator errors must not disappear.
+   A bounded native FindFirst/FindNext iterator reports errors and includes all
+   entries; it fills fixed32 storage before sorting. Actual marker absence alone
+   skips. File writers close before exact READ-only pins/hash verification;
+   regular/non-reparse/single-link checks and data pins persist through marker
+   close. The authored observer case opens a real reader while those pins remain
+   held. Marker sharing violations remain refusals, not incomplete skips.
+
+All v2 source/fixtures are **UNBUILT/UNRUN**. Network/golden/deadline, recognition,
+helpers/two-slot, CPU bridge, runtime ABI11/floor and catalog/payload policies are
+unchanged. ProductionCorpusCatalog remains EMPTY and crops CANDIDATE only.
+Root owns final independent source review, later finite execution, integration
+and any follow-up implementation. No lease/build/native probe/model/cache/GUI
+execution occurred here; no Python process was launched or foreign process touched.

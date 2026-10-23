@@ -2377,7 +2377,7 @@ it does not load external inputs. See [surface perspective](../docs/uct_surface_
 `publicBf16PublicationAndLifetime`. It declares the actual candidate manifest,
 eight frozen GRAY8 files and private headers as CTest runtime inputs. It authors
 negative approvals/tampering, failed outputs, exact raw spaces, session latches,
-atomic new-only storage and model/input/staging/output closure checks. Storage
+new-only storage and model/input/staging/output closure checks. Storage
 fixtures contain labelled non-model bytes, never passing golden records.
 These changes are **UNBUILT/UNRUN**. No compiler/configure/test/CUDA/GPU/inference,
 model/cache preparation, GUI, desktop or lease work ran. The production catalog
@@ -2385,6 +2385,27 @@ stays EMPTY. The explicit C++ candidate factory needs a separately authorized
 private diagnostic; ordinary tests do not invoke it. See the separate <=900-second,
 8-job CPU/model-free and bounded real-runtime ROOT START proposals in
 [the six-step contract](../docs/uct_public_bf16.md). No permission is inferred.
+
+The current source uses the separately versioned public-v2 ready-last protocol,
+not the preserved v1 directory publisher. Fresh recipe64-nonce32 generations
+remain untouched; absent-marker generations count toward32 and permit a fresh
+nonce after interruption. Exact COMMITTED bytes gate admission, never approval.
+Authored cases cover marker-last admission with another reader while data pins
+remain held; regular/single-link file WRITE/DELETE exclusion; pre-marker failure,
+same-nonce refusal and fresh-nonce recovery; overlapping same-recipe generations,
+lexical selection and ordinary duplicate preservation; corrupt marker/plan/receipt
+and later sorted sibling; wrong recipe prefix; hardlinks;31-to32 reservation,
+full/33-entry refusal; and v1 isolation. Product duplicate checks use the same
+full validator as lookup. Existing junction/reparse/no-side-effect and actual
+post-hold child-write/publication assertions remain; directory rename is removed.
+Native enumeration errors refuse rather than appearing as empty inventory.
+Marker-present failures are not classified as incomplete; post-close observer
+failure explicitly retains a valid committed generation. No durable-transaction
+claim or passing model/golden record is manufactured. All v2 cases UNBUILT/UNRUN.
+
+The following paragraphs preserve earlier v1 findings/failures, not current v2
+implementation or passing acceptance. R6's absolute-target rename P2 remains
+preserved. R3 was blocked by policy before execution; v2 does not reroute it.
 
 The independent-review repair authors cache-only isolated baseline policy,
 incomplete/unknown partial-output records and native Windows junction confinement/

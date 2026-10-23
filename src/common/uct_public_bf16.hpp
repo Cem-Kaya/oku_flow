@@ -202,7 +202,7 @@ inline QJsonObject BuildIdentity(const LocalBuild& build,const Corpus& corpus) {
         {"goldenPolicy",kGoldenPolicy},{"corpusVersion",corpus.Version()},{"corpusSha256",QString::fromLatin1(corpus.Sha256())}};
 }
 inline QByteArray CacheKey(const LocalBuild& build,const Corpus& corpus) {
-    return precision_artifacts::Digest("uct-public-bf16-cache-v1\n"+QJsonDocument(BuildIdentity(build,corpus)).toJson(QJsonDocument::Compact));
+    return precision_artifacts::Digest("uct-public-bf16-cache-v2\n"+QJsonDocument(BuildIdentity(build,corpus)).toJson(QJsonDocument::Compact));
 }
 inline QJsonObject ReadyReceipt(const LocalBuild& build,const Corpus& corpus,const GoldenResult& golden,
                                 const precision_artifacts::Runtime& runtime) {
@@ -218,7 +218,7 @@ inline QJsonObject ReadyReceipt(const LocalBuild& build,const Corpus& corpus,con
         throw Refusal(Reason::Runtime,"local BF16 runtime/device admission changed before readiness");
     identity["planFileSha256"]=QString::fromLatin1(build.planFileSha256);
     identity["golden"]=golden.Record();
-    return {{"schema","uct-local-bf16-ready-v1"},{"identity",identity},
+    return {{"schema","uct-local-bf16-ready-v2"},{"identity",identity},
         {"identitySha256",QString::fromLatin1(precision_artifacts::Digest(QJsonDocument(identity).toJson(QJsonDocument::Compact)))},
         {"runtimeProvenance",QJsonObject{{"driver",runtime.driver},{"driverBuild",QString::fromLatin1(runtime.driverBuild)},
             {"driverSha256",QString::fromLatin1(runtime.driverSha256)},{"tensorRtVersion",QString::fromLatin1(runtime.tensorRtVersion)},

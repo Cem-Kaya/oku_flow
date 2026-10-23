@@ -4,8 +4,13 @@ The source-only public BF16 integration uses `<inner-application>/models`, plann
 `uct/rec/medium/bf16-linear/inference.onnx` and a compiled corpus catalog. Production
 approval is EMPTY. The private C++ validation seam takes explicit local roots and
 candidate manifest SHA-256 `26432369ed6831431737072f857620b19c81fc9acd8c21579d50ee7bc0e9ec33`.
-New-only atomic `recognizer.plan`/`ready.json` generations belong below
-`%LOCALAPPDATA%/OkuFlow/ocr-engines/public-bf16/`; driver/DLL hashes are provenance.
+New-only `recognizer.plan`/`ready.json` generations belong below
+`%LOCALAPPDATA%/OkuFlow/ocr-engines/public-bf16-v2/<model-device-corpus-hash>/`.
+Each name is lowercase `<recipe64>-<nonce32>`; the nonce is only a fresh locator.
+Fixed file `COMMITTED` contains exactly `okuflow-public-bf16-v2\n` (LF, no NUL),
+created LAST. It gates logical reader admission, never golden/model approval.
+Receipt schema and cache-key domain are v2; v1/legacy public plans are not read,
+rekeyed or migrated. Driver/DLL hashes remain provenance.
 Bounds: 32 cache directories, 256-KiB receipt, plan <256 MiB, 64 failed/in-flight
 session identities, 600-second cooperative builder, 120-second golden and
 30-second completion polls, 256-MiB context/workspace/output ceilings separately.
@@ -14,7 +19,13 @@ See [held/unrun contract](uct_public_bf16.md).
 The private candidate seam reads detector/FP32 plans only from its explicit cache
 root, without preparing them. Public publication requires an already-existing
 root; native ordinary-directory leases precede descendant creation and remain
-through the new-only rename. Partial outputs explicitly mark unknown completion.
+through exclusive new-directory creation and ready-last publication. Exact regular,
+non-reparse single-link file pins exclude writers/deleters through commit/readback.
+A zero-wait `Global\OkuFlow-public-bf16-v2-<canonical-parent-hash>` mutex serializes
+cooperating scan/reservation/create; it creates no lockfile and releases before
+publication observers. Incomplete generations count toward32 and remain untouched.
+There is no directory rename or power-loss durable-transaction claim. Partial
+golden outputs explicitly mark unknown completion. V2 remains UNBUILT/UNRUN.
 
 The offline schema-2 precision experiment contract in `uct_precision_artifacts.hpp`
 has no runtime selector or production approvals. It represents only medium

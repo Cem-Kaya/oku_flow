@@ -6,6 +6,9 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
 
 ## Current Capabilities
 - Public BF16 model preparation/local attestation is authored but **UNBUILT/UNRUN**.
+  Its separate public-v2 cache uses fresh nonce directories and ready-last logical
+  reader admission; it neither renames directories nor reads/migrates public-v1.
+  This is a changed product protocol, not durable or namespace-atomic publication.
   Its production corpus catalog remains empty, so automatic public selection
   stays unavailable and FP32/CPU behavior remains available. The private explicit
   candidate-validation factory takes isolated roots and compiled synthetic-corpus

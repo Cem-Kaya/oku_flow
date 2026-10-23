@@ -4,6 +4,9 @@ Owner approved shipping the converted **model**, with an engine built and checke
 on each eligible machine. This follow-up preserves the composed batch/helper/cache
 policy ending `7c59a59423a0cefa6e19a78ba81908e16461196c`. Private background
 integration is authored; the real model path and latest repair remain unbuilt/unrun.
+Root subsequently chose public-v2 ready-last as a separately versioned product
+protocol. It supersedes the unreleased v1 directory publisher; it is not a narrow
+equivalent repair, a rename-probe reroute, or a power-loss durable transaction.
 Root's partial model-free failures are recorded below. It stages nothing and supplies no
 engine, golden pass, inference, quality or performance result. The private schema-1
 owner/dev artifact remains cache-only and separate from public model approval.
@@ -93,7 +96,8 @@ Every actual execution and production activation remains held:
 3. Verify model/corpus/configuration/hardware first. Prepare at most one missing
    local plan per identity, using the actual loaded builder TRT version. Driver
    changes alone do not trigger preparation. Existing plans are read-only; new
-   cache writes are new-only and atomic. Do not enable host-code/plugin trust or
+   cache writes are new-only with logical all-or-nothing v2 reader admission.
+   Do not enable host-code/plugin trust or
    version compatibility implicitly. No unchanged rebuild-until-pass loop.
 4. Validate actual engine I/O/profile, then run the nine bounded golden calls
    through production padding/CTC on that exact serialized plan. Keep actual
@@ -160,39 +164,73 @@ incomplete record never authorizes publication or a healthy-stream retry.
 Complete records additionally retain explicit completion and compute capability.
 
 Public plans are raw serialized bytes, separate from schema-1 and ordinary FP32
-cache files. A driver-free parent under `ocr-engines/public-bf16/` binds approved
-model/device/corpus; each child binds its actual builder via `CacheKey`.
-Within the existing 32-entry scan bound, lookup validates receipt identity and
-plan bytes before skipping a child whose builder differs from the currently
-loaded actual builder. Two valid builder generations cannot select each other;
-no matching child means missing, so the current builder may prepare its own new
-generation. Old bytes are not aliased, deleted, rewritten or adopted as the new
-builder. This is plan-recipe lookup, separate from runtime compatibility admission;
-the ABI11/minimum-tuple rule and driver-independent identity remain unchanged.
-Ancestor pins live for the whole lookup; a separate generation pin lives only
-through that iteration's receipt/plan reads. It closes on skip or after copying
-return bytes, so skipped siblings do not consume the ten-handle path capacity.
-The path capacity and 32-entry inventory bound are unchanged.
-`recognizer.plan` and `ready.json` are written only after completion and exact
-golden success, then exposed together by a new-only same-parent directory
-rename of the exact held staging directory. Existing generations are never overwritten/repaired. Cache lookup reads
-at most 32 directories, bounded 256-KiB receipts and strictly-below-256-MiB plans.
-Receipts bind loaded-plan bytes/device/builder/corpus and provenance, but never
-authorize expected text or skip deserialization/profile checks/real reattestation.
-Driver changes alone cannot change the locator. Runtime ABI11 tuple admission
-remains >=11.4.0.106; real deserialization decides compatibility.
-The explicit cache root must already exist. Native directory handles request
-`FILE_LIST_DIRECTORY|FILE_READ_ATTRIBUTES` and share READ only, excluding WRITE/DELETE;
-only the exact staging handle additionally requests DELETE for its held rename.
-R5 found that WRITE sharing would permit post-check `FSCTL_SET_REPARSE_POINT`
-through a same-directory writer before path-based descendant operations. The new
-fixture attempts that mutation after holding both an empty ancestor and staging,
-requires refusal/outside inventory preservation, and still exercises child writes
-after holding staging through the unchanged real publisher. This repair is not
-yet independent or executable acceptance.
-They reject reparse points below the canonical root **before** any
-descendant creation and stay held through reads/publication. A racing final
-generation is a typed refusal; the losing attempt does not claim publication.
+cache files. The separate `ocr-engines/public-bf16-v2/<identity>/` parent binds
+approved model/device/corpus; the actual builder remains in `CacheKey`. Its
+cache-key domain and ready-receipt schema are v2, with unchanged model/profile/
+GPU/builder/corpus identity fields and driver/DLL hashes only provenance. V1 is
+unreleased and production-disabled; no v1/legacy read, rekey or migration occurs.
+
+Each generation is exactly lowercase `<recipe64>-<nonce32>`. A new UUID nonce is
+only a collision-resistant locator, not approval. A zero-wait named mutex over
+the canonical parent serializes cooperating publishers' bounded inventory scan,
+validation, capacity reservation and ONE exclusive new-directory creation. Busy
+or unavailable serialization refuses; there is no wait/retry loop or lockfile.
+The mutex releases before writes/observers. An already observed, fully validated
+committed generation with the same recipe returns false unchanged, even if its
+plan bytes differ. Overlapping attempts which already reserved distinct nonce
+directories may both commit; they cannot overwrite one another or supply authority.
+
+Root/ancestor/generation pins share READ only, excluding WRITE and DELETE, with
+list/attribute/traverse access and no DELETE right. `NtCreateFile(FILE_CREATE)`
+returns the SAME newly created directory handle, closing the create-to-pin
+adoption gap. Existing ordinary ancestors are checked/pinned before descendants;
+reparse points refuse. No generation is adopted, overwritten, repaired or removed.
+This uses the documented Windows system entry point, not a new redistributed DLL.
+The source implementation and native compatibility remain UNBUILT/UNRUN.
+
+After actual completion/golden success, the worker creates `recognizer.plan` and
+`ready.json` new-only. It closes every writer, acquires exact regular/non-reparse/
+single-link READ-only file pins, and hashes the actual stored bytes against the
+supplied plan/receipt before commit. Those pins reject existing incompatible
+writers and remain through commit/readability. The close-to-read-pin handoff has
+no authority: any substitution must still pass type/link/bounds and exact rehash.
+Directory pins alone do not make files immutable. The final `COMMITTED` file is
+CREATE_NEW LAST, containing exactly `okuflow-public-bf16-v2\n` (LF, no NUL).
+Its bytes/type/link count are verified on its creation handle BEFORE closing
+makes it readable. This provides logical reader admission; unfinished files and
+directories are visible, and there is no directory rename or durable-transaction
+claim. Native writes here do not claim power-loss persistence ordering.
+
+Only an actually absent fixed marker makes a recognized generation incomplete.
+Such generations remain untouched and count toward the same32-entry bound;
+after a pre-marker crash a fresh nonce can reserve another generation without
+repairing the old one. A marker-present failure may be committed, corrupt or
+indeterminate, never silently incomplete. Corrupt markers/committed data refuse;
+post-close observer failure preserves the committed generation. No automatic
+cleanup or retry is introduced. Exhaustion requires a separate diagnosed policy
+decision, not deletion by this path.
+
+The native inventory iterator includes files/hidden/system entries and reports
+enumeration errors. It collects at most32 names in fixed storage BEFORE sorting;
+unknown names refuse, including marker-absent unknowns. Cooperating reservations
+cannot create a33rd entry. Uncooperative external additions can still exceed the
+bound and make admission refuse; pins do not freeze directory additions/marker
+transitions. Lexical selection is deterministic for the observed inventory.
+The reader pins the marker and both exact files, checks fixed marker bytes,
+receipt schema/digest/identity, actual plan hash and recipe prefix. ALL committed
+entries validate before any selected plan is returned or production duplicate
+returns false; different builders are skipped only after integrity validation.
+The first sorted current-builder candidate is copied into owned bytes. A child
+pin closes each iteration, preserving the independent ten-handle path bound.
+Receipts are at most256KiB and plans strictly below256MiB; only selected bytes
+plus the current bounded read are retained. Reads/validation stay on preparation,
+not CPU bridge/UI/presentation. File-system calls are not hard-preemptible.
+
+`ValidateCommitted` is shared between lookup and typed product publication; the
+opaque file-storage fixture overload supplies no model authority. Neither marker
+nor receipt approves expected text or skips real deserialization/profile/golden
+checks. Runtime ABI11 tuple admission remains >=11.4.0.106; actual deserialization
+decides compatibility. ProductionCorpusCatalog remains EMPTY.
 
 A bounded 64-entry process-session attempt latch retains failed/in-flight
 identity/plan attempts. There is no rebuild/retest-until-pass loop. Builder
@@ -240,15 +278,15 @@ zero children. Source-to-binary evidence is under workstation work-data:
 It does not cover this follow-up. All prior grants expired; P0 is not granted.
 
 `uct_public_bf16_contract` also authors actual candidate-byte negative checks,
-raw text preservation, failure records, latching, atomic new-only storage and
+raw text preservation, failure records, latching, new-only storage and
 pending-input/model/staging/output quarantine cases. Storage fixtures are labelled
 non-model bytes, never fake passed receipts. All additions are **UNBUILT/UNRUN**.
 The R1/R2 independent source reviews and subsequent unretested repairs are recorded
 in [review dispositions](uct_public_bf16_review.md). Existing model-free BF16
 fixtures have no clock seam for the final-N8 deadline sequence; this narrow repair
 adds no mirrored helper/test. The actual deadline sequence and positive runtime
-path remain unverified pending a separate ROOT START. Native new-only rename,
-junction refusal and directory sharing still require actual fixture execution.
+path remain unverified pending a separate ROOT START. Native v2 create/pin,
+marker-last admission, junction refusal and directory sharing require execution.
 The existing eligibility and baseline-policy seams additionally cover accepted
 candidate preflight versus unavailable production and disabled candidate requests
 leaving ordinary baseline preparation enabled. They do not execute the preparation
@@ -284,6 +322,22 @@ bounded JSON phase, entry, ordinal and parent path, with fixed fixture-phase
 breadcrumbs and an explicit malformed-generation negative case. No unknown name
 is newly ignored. Root owns one future changed-fingerprint run and fresh source
 closure; no automatic retry, model attestation or C3 causal diagnosis is implied.
+
+R6 subsequently closed WRITE/reparse exclusion in source but confirmed the
+READ-only absolute-target rename P2 through root's native R2 diagnostic. R3's
+relative-parent probe launch was rejected by automatic approval review as
+“blocked by policy”; it never executed, and no result/reroute exists. Root then
+explicitly selected the different v2 protocol above. The one authorized nested
+v2 design review found creation/pin ownership, capacity reservation, shared
+production validation, snapshot/duplicate semantics, marker-close classification
+and enumeration/file-handoff obligations. The source addresses them; this is
+not final independent closure. See [full dispositions](uct_public_bf16_review.md).
+V2 fixtures author marker-last/missing-marker/fresh-nonce recovery, exact file-pin
+exclusion and concurrent readability, overlapping unique generations/determinism,
+duplicate preservation, corrupt marker/plan/receipt/later sibling, recipe mismatch,
+single-link enforcement, v1 isolation,32/33 limits and retained native reparse/
+post-hold publication assertions. All are UNBUILT/UNRUN; no positive model path,
+quality, timing, platform publication or release acceptance is claimed.
 
 Proposed finite root START C2: one frozen checkout, maximum 8 compile jobs,
 900-second total stop budget; build only affected `uct_paddle_tests` and

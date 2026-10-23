@@ -2,9 +2,16 @@
 
 ## [Unreleased]
 
+- Replace the unreleased public-BF16 v1 publisher with a separately versioned
+  `public-bf16-v2` ready-last protocol. Exclusive nonce generations, continuous
+  directory/file pins and a final exact marker provide logical all-or-nothing
+  reader admission, not atomic directory visibility or a durable transaction.
+  Incomplete generations remain untouched and bounded; fresh nonces avoid
+  deterministic-key lockout. No v1 migration, activation or execution is implied.
+  All v2 source/fixtures are UNBUILT/UNRUN; earlier failures remain preserved.
 - Author the private public-BF16 model preparation and strict N1/full-N8 golden
   path on the existing background worker, with retained fault ownership and
-  atomic local plan/receipt publication. The production corpus remains empty;
+  local plan/receipt publication. The production corpus remains empty;
   candidate validation, compilation and runtime execution are unrun.
 - Keep private validation's FP32 plans cache-only in its isolated root, retain
   partial golden outputs on later faults, and pin native cache ancestors before
