@@ -7,6 +7,11 @@ requires M/M N8 fixed1024 media/single without profiling and compares exact
 same-capacity bytes; it does not expose raw CTC tokens or pre-merge crop work.
 See [the bounded source-arm protocol](uct_whole_worker_fp32_arms.md).
 
+Exact-N8 cached startup also enforces kExactN8MaximumStartupSubmissions=3000
+inside its existing 60-second deadline. Startup preparing responses are saved
+outside timing, counted separately from successful outputs, and cannot silently
+escape the finite source-arm job accounting.
+
 ## Aspect-aware viewport and Resume continuity
 
 - `ComputeFitZoom`, `EffectiveFillZoom` and `StepFillZoom` in `view_transform`

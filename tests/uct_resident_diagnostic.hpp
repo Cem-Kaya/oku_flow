@@ -72,6 +72,7 @@ struct Pair {
 inline constexpr int kMaximumPairs = 4, kMaximumImages = 4, kMaximumRounds = 10, kMaximumPasses = 20;
 inline constexpr int kMaximumBlocks = 60, kMaximumJobs = 1000;
 inline constexpr int kStartupDeadlineMs = 60000, kJobDeadlineMs = 30000;
+inline constexpr int kExactN8MaximumStartupSubmissions = 3000;
 
 struct Selection {
     QVector<Pair> pairs;
@@ -102,6 +103,7 @@ struct Selection {
                 {"input", paired ? "pair" : "single"}, {"sdk", sdk}, {"watchdogMs", watchdogMs},
                 {"frozenCrops", frozenCrops}, {"recognizerWidthPolicy", widthPolicy},
                 {"shadowPlanner", shadowPlanner}, {"exactSameCapacityN8", exactN8},
+                {"maximumStartupSubmissions", exactN8 ? kExactN8MaximumStartupSubmissions : 0},
                 {"startupDeadlineMs", kStartupDeadlineMs}, {"jobDeadlineMs", kJobDeadlineMs}};
     }
 };
@@ -1657,10 +1659,12 @@ inline void RunBlock(Run& run, const Block& block, ProfileCapture& capture)
     auto startupInput = run.Capture(firstSource);
     QVERIFY2(startupInput.image, qPrintable(startupInput.error));
     const auto startupDeadline = constructed + std::chrono::milliseconds(kStartupDeadlineMs);
-    int preparingPolls = 0;
+    int preparingPolls = 0, startupSubmissions = 0;
     std::optional<Completion> first;
     Clock::time_point firstSubmitted;
     while (!first && Clock::now() < startupDeadline) {
+        if (run.selection.exactN8 && startupSubmissions >= kExactN8MaximumStartupSubmissions) break;
+        ++startupSubmissions;
         firstSubmitted = Clock::now();
         if (!scheduler->SubmitDevice(run.Stamp(*startupInput.image), startupInput.image))
             QFAIL(qPrintable("Startup submission refused: " + scheduler->Status().detail));
@@ -1668,17 +1672,25 @@ inline void RunBlock(Run& run, const Block& block, ProfileCapture& capture)
         QVERIFY2(completion, "Cached TensorRT startup exceeded 60 seconds; this diagnostic never prepares plans.");
         if (completion->result.output.backendPreparing && !completion->result.output.ok) {
             ++preparingPolls;
+            if (run.selection.exactN8) {
+                auto poll = run.JobJson(block, firstSource, -2, *completion, firstSubmitted, startupInput, capture.Take());
+                poll["kind"] = "startup-preparing";
+                poll["startupSubmission"] = startupSubmissions;
+                const auto file = run.JobFile(block, firstSource, QStringLiteral("preparing%1").arg(preparingPolls));
+                QVERIFY(uct_batch_test::Save(file, poll));
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
         } else {
             first = std::move(completion);
         }
     }
-    QVERIFY2(first, "Cached TensorRT startup exceeded 60 seconds; this diagnostic never prepares plans.");
+    QVERIFY2(first, "Cached TensorRT startup exceeded 60 seconds or the exact-N8 submission cap; no plans were prepared.");
     const double startupMs = Ms(first->at - constructed);
     const auto startupProfiles = capture.Take();
     auto startupRecord = run.JobJson(block, firstSource, -1, *first, firstSubmitted, startupInput, startupProfiles);
     startupRecord["startupFirstResultMs"] = startupMs;
     startupRecord["preparingPolls"] = preparingPolls;
+    startupRecord["startupSubmissions"] = startupSubmissions;
     const auto startupFile = run.JobFile(block, firstSource, QStringLiteral("startup"));
     QVERIFY(uct_batch_test::Save(startupFile, startupRecord));
     const auto startupInvalid = Validate(*first, startupInput.image->Read(), startupProfiles, block.capacity,
@@ -1762,6 +1774,7 @@ inline void RunBlock(Run& run, const Block& block, ProfileCapture& capture)
     report.insert("models", run.pairs[std::size_t(block.pair)].models);
     report.insert("startupFirstResultMs", startupMs);
     report.insert("preparingPolls", preparingPolls);
+    report.insert("startupSubmissions", startupSubmissions);
     report.insert("backendDetail", backendDetail);
     report.insert("scheduler", QJsonObject{{"submitted", qint64(stats.submitted)}, {"coalesced", qint64(stats.coalesced)},
         {"started", qint64(stats.started)}, {"completed", qint64(stats.completed)}, {"revoked", qint64(stats.revoked)}});

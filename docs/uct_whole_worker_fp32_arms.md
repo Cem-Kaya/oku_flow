@@ -89,8 +89,21 @@ Per visit/source: retain one explicit warmup and 20 raw pass records; exclude
 the first four pass records from steady timing by index, regardless of value.
 Also exclude the cached-load/first-result startup record. Retain and compare
 successful startup/warmup/excluded outputs for exactness as well. There are
-18 visits, 1,152 jobs maximum including startup/warmups, 96 steady samples per
+18 visits, 1,152 successful inference outputs including startup/warmups, 96 steady samples per
 arm/source, and no adaptive extension/outlier removal/retry-until-pass.
+
+Startup preparing responses are additional scheduler submissions, never timed
+inference outputs. Exact-N8 startup has an explicit cap of 3,000 submissions
+including its successful result, as well as the existing 60-second deadline
+and 20-ms wait after each preparing response. A completed visit has at most
+2,999 preparing responses plus its 64 successful outputs: **3,063 submissions**;
+18 visits have at most **55,134 submissions**, also bounded by the finite outer
+window. Startup that consumes all 3,000 submissions without success fails.
+Every exact-N8 preparing response is saved as a startup-preparing job record,
+and startupSubmissions/preparingPolls remain in startup and retirement records.
+The cap adds no preparation permission; cached runtime loading is the only
+startup work. Analyze raw jobs by kind/pass index: existing fixture summaries
+include all 20 passes and are not this plan's steady statistics.
 
 Report schedulerWorkerMs and submitToCallbackMs separately: actual SubmitDevice
 worker versus submission through the timestamp at callback entry. Upload and
@@ -146,7 +159,8 @@ never ask to close the owner's apps or treat idle snapshots as isolation proof.
    (kernel source is identical across arms), then one cache-only/source/model/
    runtime precheck. Freeze actual historical 13050 file/payload pins and common
    runtime dependencies before any timed visit. Execute the 18 preregistered
-   visits above, no more than 64 jobs each, 30-second per-job/60-second cached
+   visits above, 64 successful outputs and at most 3,063 total submissions each,
+   30-second per-job/60-second cached
    startup/10-second retirement bounds. Set QTEST_FUNCTION_TIMEOUT=360000; the
    outer owned-job deadline remains the finite window and retains partial
    evidence on timeout. Compare decoded exact-output bytes across all arms and
