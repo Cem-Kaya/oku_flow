@@ -783,6 +783,16 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   plan_inventory,main}` records read-only declarations/reshape dependencies and
   plan envelopes without inference or claiming executable width support. See
   [the frozen experiment and integration plan](uct_precision_artifacts.md).
+- Pure `tensorrt_identity` in `uct_tensorrt_identity.hpp` provides `Version`,
+  `kMinimumRuntime`, `kBuilderVersion`, `ParseVersion`, `VersionString` and
+  `RuntimeAtLeastMinimum` (strict four-part parsing and ordered numeric floor
+  within compiled major ABI11).
+  `CheckKeyInputs` requires raw 32-byte graph digest/16-byte UUID;
+  `Fp32ProfileTag`, `Fp32PlanKey` bind role/profile, builder TRT and FP32/TF32
+  builder policy without a driver/current runtime. `LegacyFp32PlanKey` reproduces
+  old bytes using an explicit historical driver solely for read-only lookup.
+  The actual ABI11 Libraries/Network wiring is a separate batch-lead commit;
+  these helpers never load DLLs, deserialize, access CUDA or write caches.
 - `CreatePaddleCpuRecognizer` uses `OpenPaddleCpuSession`/private
   `OnnxCpuSession`, runtime-loaded hash-pinned CPU ONNX Runtime, two intra-op
   threads and checked float tensor dimensions. `CreateTensorRtRecognizer`
