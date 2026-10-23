@@ -928,6 +928,10 @@ public:
     // while original pixels remain unchanged. Rows are clustered, then each row
     // is ordered left to right, so the order is deterministic and strict.
     QString ReadingText(std::int64_t nowMs, std::uint64_t currentFrameSeq) const;
+    // First integer model-clock millisecond at which a currently readable
+    // line expires. Exact displayed-frame proof is exempt, as in IsReadable.
+    std::optional<std::int64_t> NextReadabilityExpiry(std::int64_t nowMs,
+                                                    std::uint64_t currentFrameSeq) const;
     // Lines whose glyphs SceneWords() would draw now, projected for screen
     // readers in reading order (see ScreenLine). Lines whose reading tokens
     // and confirmed words disagree are left out rather than guessed.

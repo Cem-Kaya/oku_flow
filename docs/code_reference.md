@@ -1,5 +1,22 @@
 # OkuFlow Code Reference
 
+## UCT deadline expiry
+
+- `OverlayModel::NextReadabilityExpiry` returns the earliest first excluded
+  integer model-clock millisecond among readable lines, using the same tuning
+  and exact-frame exception as `IsReadable`.
+- `UltraClearTextController::{ArmExpiry,ProcessExpiry}` own one precise
+  single-shot timer. Live mode considers model readability and the 600 ms
+  successful-presentation bound; advancing media considers its independent wall
+  bound without advancing `ModelTime`. Paused input is exempt. Unchanged
+  deadlines do not restart the timer; inclusive boundaries rearm by at least
+  one millisecond. Invalidation/destruction stop it, and delivery re-evaluates
+  current gates through `RefreshOverlay`, pane and positioned-text revocation.
+- `deadlineExpiryWithoutReceipts` and `deadlineExpiryResetFencesLateCallback`
+  in `ultra_clear_text_controller_tests` drive the actual timer connection with
+  a fake clock under Qt offscreen. Execution is held for ROOT authorization;
+  these source fixtures establish no native delivery-time/performance claim.
+
 ## Aspect-aware viewport and Resume continuity
 
 - `ComputeFitZoom`, `EffectiveFillZoom` and `StepFillZoom` in `view_transform`

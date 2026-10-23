@@ -107,6 +107,10 @@ stable refresh. Its job deadline is separately 30 seconds of wall time.
 One scheduler and one latest-only probe worker serve all modes; a paused still
 returns to one-shot admission. These are bounded scheduling defaults, not an
 OCR-rate or native display-latency guarantee.
+Deadline expiry uses one precise single-shot timer at the first excluded
+integer millisecond of the existing inclusive line/wall/presentation bound.
+The 200 ms heartbeat remains a backstop; neither timer changes proof clocks,
+the exact displayed-frame exception or paused-source policy.
 
 Immutable paused-word corroboration ordinarily considers neighbours within 250 ms.
 Only a native-issued paused saved-file selected sample may expand following
