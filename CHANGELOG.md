@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+- Restore the developer shell's baseline PATH before bundle toolchain setup,
+  preventing nested initialization from exceeding Windows command limits.
+
 - Align the MCP coverage inventory with aspect-aware zoom's `0.01..16` domain,
   retaining strict field-by-field registry validation.
 

@@ -2023,6 +2023,12 @@ source changes make no measured throughput or latency claim.
 - `scripts/build_and_run.bat`, `scripts/build_release_bundle.bat`, and
   `cmake/CMakePresets.json` default to Qt 6.12.0; translation validation and
   startup profiling use the same SDK default.
+- The bundle's `initialize_toolchain` restores `__VSCMD_PREINIT_PATH` before
+  installed VS2022 setup to avoid nested-shell PATH overflow. Installed-root
+  discovery and actual compiler validation remain mandatory.
+  `test_bundle_toolchain.ps1` stresses that real initializer with a roughly
+  7000-character inherited PATH, restores its own environment afterward and
+  preserves all forged-root/generator/cache-refusal assertions.
 - `scripts/build_release_bundle.bat` copies and requires `START_HERE.txt` from
   `docs/portable_start_here.txt`, using the existing exact-byte copy helper.
   It explains the public `oku_flow.exe` launch path and supporting application

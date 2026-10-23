@@ -574,6 +574,11 @@ exit /b 1
 :initialize_toolchain
 set "BUNDLE_VSDEVCMD="
 set "BUNDLE_VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+rem Reinitializing from an existing developer shell can exceed cmd's 8191-byte
+rem line limit before VsDevCmd gets a chance to normalize its repeated PATH.
+rem Restore Microsoft's captured baseline, then still discover and initialize
+rem the installed toolchain and independently validate its compiler below.
+if defined __VSCMD_PREINIT_PATH set "Path=%__VSCMD_PREINIT_PATH%"
 rem VsDevCmd also invokes vswhere by name on some installed SDKs.
 set "Path=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer;%Path%"
 rem Query registered roots directly. A recursive -find **\VsDevCmd.bat scans

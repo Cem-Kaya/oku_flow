@@ -1275,6 +1275,14 @@ ownership, regression fixtures and the opt-in marked Windows AAC diagnostic.
 
 ### Transactional publication and toolchain checks (RB-003 / RB-004)
 
+When entered from another developer shell, bundle initialization restores
+Microsoft's captured `__VSCMD_PREINIT_PATH` before invoking the selected
+VS2022 initializer. This prevents repeated PATH growth from hitting cmd's
+8191-character command limit. It still discovers the installation independently,
+initializes it once and validates the actual compiler; inherited version/root
+claims never certify the toolchain. The preflight fixture exercises a long
+nested-shell PATH as well as forged claims and early refusals.
+
 The bundle entrypoint now defaults to Ninja and initializes Visual Studio 2022
 x64 itself. Ninja is required because the mandatory shared-source equivalence
 fixture consumes `compile_commands.json`. Other generators, including Visual

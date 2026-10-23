@@ -1107,3 +1107,10 @@ aligned with the project goals.
 - Sandbox acceptance now covers a clean candidate install/uninstall before the
   previous-version upgrade sequence. Neither script fixtures nor extracted-byte
   checks substitute for that guest run or native GPU runtime acceptance.
+
+## Nested bundle toolchain setup (2026-10-24)
+
+- Preserve the bundle initializer's restoration of Microsoft's captured
+  __VSCMD_PREINIT_PATH before reinitializing VS2022. Keep independent installed
+  root/compiler validation and the long-PATH plus forged-environment fixture;
+  do not replace setup with trust in inherited version or root declarations.

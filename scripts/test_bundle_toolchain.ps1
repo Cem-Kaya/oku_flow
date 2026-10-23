@@ -11,7 +11,8 @@ $distExisted = Test-Path -LiteralPath $dist
 $saved = @{}
 foreach ($name in @('CMAKE_GENERATOR','CMAKE_ARGS','OKUFLOW_BUNDLE_BUILD_DIR',
     'QT_PREFIX','Qt6_DIR','QT_ROOT_DIR','QT_SOURCE_ROOT',
-    'VSCMD_VER','VisualStudioVersion','VSCMD_ARG_TGT_ARCH','VSCMD_ARG_HOST_ARCH','VSINSTALLDIR')) {
+    'VSCMD_VER','VisualStudioVersion','VSCMD_ARG_TGT_ARCH','VSCMD_ARG_HOST_ARCH','VSINSTALLDIR',
+    'PATH','__VSCMD_PREINIT_PATH')) {
     $saved[$name] = [Environment]::GetEnvironmentVariable($name,'Process')
 }
 $initializationMarker = 'Initializing Visual Studio 2022 x64 toolchain.'
@@ -81,6 +82,16 @@ try {
     Write-Output ("PASS bundle preflight: reject-forged-environment ({0:F2} s)" -f $claimWatch.Elapsed.TotalSeconds)
     # The actual batch must initialize the installed shell even with those
     # same forged declarations, then validate its real registered compiler.
+    # Exercise nested developer-shell PATH growth without crossing cmd's entry
+    # limit. The real initializer must restore its pre-initialization baseline.
+    $baseline = $saved['__VSCMD_PREINIT_PATH']
+    if ([string]::IsNullOrWhiteSpace($baseline)) { $baseline = $saved['PATH'] }
+    $env:__VSCMD_PREINIT_PATH = $baseline
+    $stressSegment = (Join-Path $configuredQt 'bin') + ';'
+    $stress = $baseline
+    while ($stress.Length + $stressSegment.Length -le 7000) { $stress = $stressSegment + $stress }
+    $env:PATH = $stress
+    Write-Output "Nested developer-shell PATH fixture length: $($stress.Length)."
     Invoke-Preflight 'default-real-toolchain' $true "Using Qt deployment prefix: `"$relocatedQt`"" $true
     $expectedLicense = Join-Path $env:QT_SOURCE_ROOT 'qtmultimedia/LICENSES/LGPL-3.0-only.txt'
     $positiveOutput = Get-Content -LiteralPath (Join-Path $work 'default-real-toolchain.log') -Raw
