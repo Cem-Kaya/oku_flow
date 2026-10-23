@@ -7389,3 +7389,16 @@ The private `UctControllerTestAccess::AdvancingJob` exposes only the pending
 admission ticket to the controller fixture. Its full-deadline comparison now
 waits for the exact probe and full/regional UI callbacks before advancing the
 synthetic clock; worker completion alone is not UI admission.
+
+`tests/uct_resident_diagnostic.hpp::Selection` also carries the explicit private
+`localBf16` factory request. `ParseSelection` confines it to medium/medium N8
+fixed-canvas unprofiled visits; the same-capacity mode separately supports
+medium/small FP32 without asserting cross-model equivalence. `Run` retains
+private artifact provenance and its before/after inventory. `RunBlock` uses the
+application factory only for the opt-in owner BF16 artifact, verifies actual
+BF16 selection and payload on each completed output, and preserves direct FP32
+as the default. `ResidentBaselineDiagnostic` verifies the existing private
+artifact before inference and writes it alongside the ordinary plan preflight.
+The ordered-output stream serializes each final word field with fixed Qt stream
+version and raw floating-point bits; this is a same-engine diagnostic contract,
+not model accuracy or raw CTC/crop equivalence. See `docs/uct_resident_baseline.md`.

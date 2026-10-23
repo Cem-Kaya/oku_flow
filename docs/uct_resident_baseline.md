@@ -335,3 +335,30 @@ retained it. Sensitive-token exact recall was 0.9245 versus 0.9434, so small
 recognition was not promoted to model default. Both models preserved the tested
 minus signs, decimals and inequalities. These four scenes are not general
 accuracy, physical-camera jitter or native accessibility acceptance.
+
+## Current private BF16 and small-recognizer pilots
+
+The unregistered Qt slot is `optionalResidentBaseline`. The default factory
+remains the direct FP32 diagnostic. The explicit same-capacity mode
+`OKUFLOW_UCT_RESIDENT_EXACT_N8=1` also accepts one `medium:small` pair; its
+strict checks compare repeated outputs within that model, never small against
+medium. Both model choices require N8, fixed1024, media/single input, one round,
+and profiling, frozen crops and shadow planning disabled. Every successful
+output records the ordered text/geometry/confidence stream and its digest.
+
+For the owner's reviewed medium BF16 artifact only, additionally set
+`OKUFLOW_UCT_RESIDENT_LOCAL_BF16=1` and the existing
+`OKUFLOW_UCT_LOCAL_BF16_MANIFEST` path. This selects the actual application
+factory. The preflight records the verified graph, manifest and plan identities;
+each successful output must report BF16 and the exact verified payload digest.
+A refused artifact or FP32 fallback is a failed BF16 experiment. Ordinary and
+private plan inventories must remain unchanged. No engine is built here.
+The approved owner artifact is not the public model/local-build acceptance path.
+
+The ordinary FP32 model pilot clears the local-BF16 flag and uses the cached
+medium detector plus small recognizer. It may reuse a digest-valid historical
+plan through the same driver-independent loader policy; actual accepted keys
+and payloads remain required. Missing cached plans require a separate preparation
+step. Model substitutions are approximate: report available independent truth
+CER/WER and sensitive-token changes, and label baseline disagreements separately.
+Neither the new seam nor a model's speed establishes release or quality acceptance.

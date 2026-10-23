@@ -2417,3 +2417,13 @@ projective geometry and actual near/far paint/character bounds.
 `gpuOrientedInkMatchesCpu` also checks resident surface-corner parity. Optional
 `OKUFLOW_UCT_SURFACE_TEST_OUTPUT` writes a synthetic refusal image for diagnosis;
 it does not load external inputs. See [surface perspective](../docs/uct_surface_perspective.md).
+
+The private resident model pilot uses the actual `optionalResidentBaseline`
+slot. `residentDiagnosticSelectionAndComparison`, already in
+`uct_paddle_processing`, covers the bounded N8 medium/small selection and refuses
+BF16 on that small recognizer or outside the explicit same-capacity mode.
+`OKUFLOW_UCT_RESIDENT_LOCAL_BF16=1` requires the reviewed owner manifest and
+actual BF16 engine receipts; FP32 fallback is not timed as BF16. This opt-in
+factory seam has no public-corpus activation, engine preparation or GUI behavior.
+See [resident measurement](../docs/uct_resident_baseline.md) for the remaining
+constraints and the distinction between same-model equality and model quality.

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Add an explicit private resident BF16 measurement path that verifies actual
+  application-factory selection and the reviewed payload on every result. Extend
+  same-capacity diagnostics to the cached small recognizer with a medium
+  detector; model quality remains separate from exact optimization checks.
+
 - Rename the batched CTC CUDA fixture's local buffer extent to avoid Qt's
   `slots` macro. ROOT's C3 build of `8f262c3` exposed the compile failure;
   the test-only repair changes no assertions. Repaired `b002b67` passed the
