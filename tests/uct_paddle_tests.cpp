@@ -295,7 +295,11 @@ class PaddleTests final : public QObject
     }
     void rolePrecisionArtifactContract() { uct_precision_artifact_test::Contract(); uct_precision_artifact_test::VersionAndKeys(); }
     void publicBf16RequiresApprovedGoldenCorpus() { uct_public_bf16_test::Contract(); }
-    void publicBf16PublicationAndLifetime() { uct_public_bf16_test::PublicationAndLifetime(); }
+    void publicBf16PublicationAndLifetime()
+    {
+        try { uct_public_bf16_test::PublicationAndLifetime(); }
+        catch (const std::exception& error) { QFAIL(error.what()); }
+    }
     void localBf16ManifestRequiresReviewedRolesAndCacheOnlySchema()
     {
         using namespace runtime_precision;

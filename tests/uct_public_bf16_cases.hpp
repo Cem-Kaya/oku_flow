@@ -262,6 +262,24 @@ inline void PublicationAndLifetime() {
     const bool denied=replacement==INVALID_HANDLE_VALUE;
     if(!denied)CloseHandle(replacement);
     QVERIFY(denied);
+    const auto deleteOnly=CreateFileW(parentNative.c_str(),DELETE,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,
+        nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,nullptr);
+    const bool deleteDenied=deleteOnly==INVALID_HANDLE_VALUE;
+    if(!deleteDenied)CloseHandle(deleteOnly);
+    QVERIFY(deleteDenied);
+    // Non-delete writes share the held parent; the exact production publisher
+    // must still create its files AFTER holding staging and rename new-only.
+    const auto noDelete=CreateFileW(parentNative.c_str(),GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,
+        nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,nullptr);
+    const bool writeShared=noDelete!=INVALID_HANDLE_VALUE;
+    if(writeShared)CloseHandle(noDelete);
+    QVERIFY(writeShared);
+    const QByteArray pinnedKey(64,'b');
+    QVERIFY(PublishFilesNew(storage.path(),parent,pinnedKey,"pinned-parent non-model fixture","pinned-parent storage receipt"));
+    QVERIFY(!PublishFilesNew(storage.path(),parent,pinnedKey,"replacement must fail","replacement must fail"));
+    const auto pinnedGeneration=QDir(parent).filePath(QString::fromLatin1(pinnedKey));
+    QCOMPARE(ReadBounded(pinnedGeneration,"recognizer.plan",1024),QByteArray("pinned-parent non-model fixture"));
+    QCOMPARE(ReadBounded(pinnedGeneration,"ready.json",1024),QByteArray("pinned-parent storage receipt"));
 #endif
 
     struct Owner {
