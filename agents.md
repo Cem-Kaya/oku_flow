@@ -1072,3 +1072,11 @@ aligned with the project goals.
   the backend; do not retry an engine on an uncertain stream.
 - Preserve saved model tiers, tiny recognizer N1 service, CPU FP32 and the one
   worker/two-slot pipeline. No automatic live/Freeze model switch is authorized.
+
+## Selection-scoped evidence reconciliation (2026-10-24)
+
+- The tracked test ledger preserves results outside the current selection.
+  External postchecks must validate each selected case and its fresh attempt;
+  never require the cumulative ledger row count to equal the selection count.
+  Preserve a wrapper postcheck failure independently of passing native cases.
+  Reconcile the archived attempt/logs without rerunning already-passed GUI tests.

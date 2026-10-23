@@ -58,6 +58,40 @@ is unresolved. Exact-job cleanup subsequently reached zero active members and
 verified runner release. These statuses are preserved and are not full release
 acceptance. No native GUI tests were run during the owner's reserved desktop.
 
+## Later native viewport GUI checkpoint: 24 October
+
+After a fresh explicit free-desktop reply, the rebuilt `main_window_tests`
+executed all **31 registered MainWindow cases** serially at Qt scale 1. CTest
+reported **31/249 SCOPED PASS**, zero skipped Qt rows, zero skipped tests and zero
+unresolved cases, in **61.06 seconds**. This includes zoom, bottom-action layout,
+resize stability, English/Turkish/German rows, RTL geometry, Assistant keyboard
+traversal, native focus/idle handoff and modal behavior. No camera or provider
+request was opened. The desktop was released after the one run.
+
+The external wrapper then failed with exit 1 in its postcheck: it required the
+cumulative ledger's 39 saved results to equal this selection's 31 cases. Eight
+saved records were unrelated. Archive-only reconciliation verified all 31
+selected records belong to the same fresh attempt and are Passed, with the
+matching 31-case attempt list and complete zero-skip gate summary. The original
+wrapper/child failure remains intact; no GUI test was rerun. A separately saved
+future generator checks selected records instead of the cumulative count.
+Cleanup reached zero active owned members and verified runner release.
+
+The run saved 83 raw native screenshots. Four were inspected directly, including
+the English four-action toolbar and German two-row layout: Photo, Record, Explain
+and Draw remain, with no bottom Read action. The no-camera resize-stability
+captures also show duplicate inspector strips in the unrendered camera area;
+their capture/rendering cause is unconfirmed. These are retained diagnostic
+images, not approved promotional captures or real-camera rendering acceptance.
+
+Evidence root:
+`Z:/Projects/OkuFlow/local-work-data/viewport-gui-current-20261024/C2-20261023-210153-addcc807a4cc4d1b9d6d9efb5289ce01/`.
+`POSTCHECK_RECONCILIATION.json`, `GUI_VALIDATION_HANDOFF.json`, detailed tracked
+logs and `EVIDENCE_FILE_HASHES.json` preserve the selected results, failure and
+source/binary/evidence identities. Tested documentation HEAD was `10f24b4`, with
+production code unchanged from `a954cc2`. This closes the scoped MainWindow GUI
+check, not the complete CPU/CUDA/installer/release acceptance matrix.
+
 Sol's R4 source review closed the serialized/context-bound finding; focused R5
 review found no P1/P2 after the detector-limit correction. Reviews do not replace
 runtime evidence. Earlier compilation/runtime failures and the original strict
