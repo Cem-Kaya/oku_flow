@@ -1,6 +1,6 @@
 # OkuFlow Code Reference
 
-## Exact host UCT merge candidate (unmeasured)
+## Exact host UCT merge candidate (CPU replay measured)
 
 `PaddleMergeRecognition` caches exact word shape/bounds, lazy area and row
 metrics inside one call. Its 8192-word/1024-row cache follows stable word
@@ -19,9 +19,12 @@ most two emissions per point for four edges), and the identical early
 all ordered word fields bitwise after every call. Its explicit benchmark has
 five warmups and 31 alternating ABBA/BAAB blocks, raw call times and versioned
 binary inputs. `--frozen-input` restores those bytes; optional hash-pinned
-historical final outputs are labelled regrouped workloads. Compilation,
-correctness and performance remain unmeasured pending parent START. See
-[method and evidence limits](uct_merge_optimization.md).
+historical final outputs are labelled regrouped workloads. Frozen c3e3fea passed
+the scoped CPU replay/Paddle/shared-source gate and 1,816 all-field paired visits.
+Function microtime is measured on constructed/regrouped sequences; whole-worker,
+GPU/BF16 throughput, CPU fallback speed and FPS remain unmeasured. See
+[method and evidence limits](uct_merge_optimization.md) and the
+[2026-10-23 CPU replay report](uct_merge_cpu_replay_2026_10_23.md).
 
 ## Source-supported text perspective
 

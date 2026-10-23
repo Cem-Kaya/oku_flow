@@ -1,7 +1,9 @@
 # OkuFlow Documentation Guide
 
 [UCT host merge candidate](uct_merge_optimization.md) records allocation removal,
-bounded call-local geometry reuse, frozen CPU replay and the unmeasured status.
+bounded call-local geometry reuse and frozen CPU replay. The
+[2026-10-23 replay report](uct_merge_cpu_replay_2026_10_23.md) records scoped
+correctness and descriptive function microtime; worker/GPU/FPS gains remain unmeasured.
 
 [Source-supported perspective text](uct_surface_perspective.md) explains bounded
 four-corner recovery, source refusals and projected glyph geometry.

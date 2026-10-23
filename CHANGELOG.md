@@ -4,8 +4,9 @@
 
 - Prepare an exact host UCT merge optimization that removes temporary polygon
   allocations and repeated geometry/overlap work. Frozen CPU replay and paired
-  function timing are prepared; compilation, equivalence and gains remain
-  unmeasured pending the parent START. See `docs/uct_merge_optimization.md`.
+  function timing passed a scoped three-test CPU gate and matched replay.
+  Constructed/regrouped function microtime is measured; worker/GPU/FPS gains
+  remain unmeasured. See `docs/uct_merge_cpu_replay_2026_10_23.md`.
 
 - Overlap dense UCT recognition groups with host metadata merging using bounded
   double-buffered metadata and per-group completion events. Private resident
