@@ -7,6 +7,14 @@ requires M/M N8 fixed1024 media/single without profiling and compares exact
 same-capacity bytes; it does not expose raw CTC tokens or pre-merge crop work.
 See [the bounded source-arm protocol](uct_whole_worker_fp32_arms.md).
 
+In private arms B/C, `PaddleMergeRecognition` ports c3e3fea's bounded call-local
+geometry/overlap cache without changing traversal or stable output order.
+`PolygonArea` accepts a span; `QuadArea` and `QuadIntersectionArea` retain the
+same arithmetic with stack storage and the proven-disjoint early check.
+These two production-file hunks apply to the common policy composition; no
+public fallback to the old merge is added. Composed whole-worker validation
+is pending even though the original merge CPU replay passed.
+
 ## Aspect-aware viewport and Resume continuity
 
 - `ComputeFitZoom`, `EffectiveFillZoom` and `StepFillZoom` in `view_transform`

@@ -29,6 +29,12 @@ this composition is unvalidated. Old merge is never reintroduced into public
 runtime by a flag. Frozen commits/trees and canonical patches are in the new
 private source-arm receipt.
 
+The B step applies the exact two-file production diff from c3e3fea, preserving
+the common composition's dictionary snapshot and Resume changes outside those
+hunks. Its original oracle/replay target is not copied or rerun in this private
+comparison; the future build gate exercises the existing Paddle contracts and
+whole-worker all-field comparison supplies the matched real-source check.
+
 Every arm retains the existing **two-slot, same-size AND same-canvas** lookahead,
 event plus host-consumption fence, cooperative integral, actual [N,T,C], detector
 order/tails, cancellation drain, input leases and whole-State fault quarantine.
