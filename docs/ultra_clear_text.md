@@ -341,6 +341,8 @@ There is no second capture or render pipeline. UCT reuses:
   Exact validated frames and paused selections retain their exceptions.
   Show original keeps the pane's deadline armed. Timer delivery creates no
   proof, changes no media PTS and uses the existing common surface revocation.
+  Clearing the last readable line can leave a later successful-presentation
+  expiry armed; the timer stops once that remaining bound also expires.
   New fake-clock source fixtures are unexecuted pending ROOT's finite START.
 - Analysis opportunities are throttled to 80 ms. Busy snapshot slots skip an
   opportunity instead of blocking presentation. A current ordinary full OCR

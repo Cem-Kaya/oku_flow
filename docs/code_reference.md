@@ -49,7 +49,11 @@
   current gates through `RefreshOverlay`, pane and positioned-text revocation.
 - `deadlineExpiryWithoutReceipts` and `deadlineExpiryResetFencesLateCallback`
   in `ultra_clear_text_controller_tests` drive the actual timer connection with
-  a fake clock under Qt offscreen. Execution is held for ROOT authorization;
+  a fake clock under Qt offscreen. The live non-exact rows assert line/surface
+  revocation at T+351 while the independent successful-presentation expiry
+  remains armed at T+950 (599 ms later), then deliver it before asserting
+  disarming; both callbacks preserve proof and worker/probe counts.
+  Execution is held for ROOT authorization;
   these source fixtures establish no native delivery-time/performance claim.
 
 ## Aspect-aware viewport and Resume continuity

@@ -22,7 +22,12 @@ The source-only controller deadline/admission additions are in the same headless
 `completionCreditUsesOneFreshLiveProbe`, `completionCreditAfterContentMoved`,
 `completionCreditRetriesBusyMediaReceipt`, `completionCreditResetsFenceLateResults`.
 They use fake time, real worker/probe paths and CPU-backed device oracles. The
-completion-gap rows use the scheduler's one-shot pre-callback barrier, leaving
+two live non-exact expiry rows clear every text surface at T+351, then deliver
+the still-armed T+950 successful-presentation expiry before requiring disarming.
+Both deliveries retain the same proof timestamps/frame identity and job counts.
+This fixture expectation was corrected after independent source closure review;
+no production timer behavior changed. The completion-gap rows use the
+scheduler's one-shot pre-callback barrier, leaving
 the real input lease alive after in-flight bookkeeping. These additions have
 not been built or executed pending ROOT's explicit finite START. They imply no
 GPU pool, native timer delivery, accessibility-client or latency acceptance.
