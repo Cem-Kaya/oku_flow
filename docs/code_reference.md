@@ -779,6 +779,16 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   original `Rectify` kernel remains the exact fixture oracle; no index staging,
   sorting or sampling change is introduced. `issueGroup` retains the existing
   one-stream/two-pinned-slot look-ahead, context and input retirement fences.
+  `gpu::DecodeBatch` preserves the scalar 256-lane argmax reduction and serial
+  token compaction with actual `[N,T,C]` strides; all T rows are scanned.
+  `issueGroup` copies counts, contiguous quads and `N*T` token capacity in three
+  transfers per neural batch (eight such batches still execute for N1 groups).
+  Private `detail::RecognitionGroups::{Queue,Completed,Consumed,Cancel}` in
+  `uct_recognition_groups.hpp` asserts that both GPU writes and host merging
+  finish before pinned reuse. Cancellation drains queued groups before input
+  release; exceptions retain the existing complete-State retirement/quarantine.
+  `TensorRtProfile::RecognitionHelpers` counts successful group helper/copy
+  submissions only when profiling is enabled, separately from timing samples.
 - `gpu::ValidationIntegral` retains two launches: the private
   `validation::integralRows` uses one 256-thread block per row with integer warp
   prefix scans, eight shared warp offsets and a tile carry; `integralColumns`

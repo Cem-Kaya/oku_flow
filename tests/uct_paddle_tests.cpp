@@ -2,6 +2,8 @@
 #include "okuflow/common/uct_model_pins.hpp"
 #include "../src/common/uct_recognizer_width.hpp"
 #include "../src/common/uct_runtime_precision.hpp"
+#include "../src/common/uct_recognition_groups.hpp"
+#include "../src/common/uct_frozen_upload.hpp"
 #include "okuflow/cuda/uct_analysis_pool.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "ultra_clear_text_test_support.hpp"
@@ -26,6 +28,7 @@
 #include <limits>
 #include <stdexcept>
 #include <mutex>
+#include <condition_variable>
 #include <optional>
 #if OKUFLOW_ENABLE_CUDA
 #include "okuflow/cuda/uct_analysis_pool.hpp"
@@ -171,6 +174,87 @@ class PaddleTests final : public QObject
 {
     Q_OBJECT
   private slots:
+    void recognitionGroupSlotsRequireCompletionAndConsumption()
+    {
+        detail::RecognitionGroups groups;
+        int drains{}, releases{};
+        groups.Queue(0); groups.Queue(1);
+        QVERIFY_EXCEPTION_THROWN(groups.Queue(0), std::logic_error);
+        groups.Completed(0);
+        QVERIFY_EXCEPTION_THROWN(groups.Queue(0), std::logic_error); // host still merging
+        groups.Consumed(0); groups.Queue(0); // third group, opposite slot still queued
+        groups.Completed(1); groups.Consumed(1);
+        groups.Cancel([&] { ++drains; }, [&] { ++releases; });
+        QCOMPARE(drains, 1); QCOMPARE(releases, 1);
+        groups.Queue(1); groups.Completed(1); // cancellation without look-ahead
+        groups.Cancel([&] { ++drains; }, [&] { ++releases; });
+        QCOMPARE(drains, 1); QCOMPARE(releases, 2);
+        groups.Queue(0); groups.Completed(0); groups.Consumed(0);
+        QVERIFY_EXCEPTION_THROWN(groups.Consumed(0), std::logic_error);
+        QVERIFY_EXCEPTION_THROWN(groups.Queue(2), std::logic_error);
+    }
+    void recognitionGroupCancellationAndPartialFailureRetainClosure()
+    {
+        struct Owner {
+            std::shared_ptr<int> inFlight = std::make_shared<int>(42);
+            std::array<std::shared_ptr<int>,2> pins{std::make_shared<int>(0),std::make_shared<int>(1)};
+            std::shared_ptr<Owner> retirementQuarantine;
+        };
+        struct Gate {
+            std::mutex mutex; std::condition_variable changed; bool open{};
+            bool Wait() { std::unique_lock lock(mutex); changed.wait(lock,[&]{return open;}); return true; }
+            void Release() { { std::lock_guard lock(mutex); open=true; } changed.notify_one(); }
+            ~Gate() { Release(); }
+        };
+        // Fault boundaries: cancel drain, then each bulk copy and event record.
+        // Native calls are replaced by deterministic throws, while production
+        // slot bookkeeping and complete-State final retirement are real.
+        for (int boundary = 0; boundary < 5; ++boundary)
+        {
+            detail::RecognitionGroups groups;
+            auto owner = std::make_shared<Owner>();
+            const auto* original = owner.get();
+            std::weak_ptr<Owner> state = owner;
+            std::weak_ptr<int> input = owner->inFlight, pin0 = owner->pins[0], pin1 = owner->pins[1];
+            auto gate = std::make_shared<Gate>();
+            std::shared_ptr<okuflow::AsyncCleanup> receipt;
+            bool released{}, published{}, caught{};
+            try {
+                groups.Queue(0); groups.Completed(0); // current slot ready for host
+                groups.Queue(1); // look-ahead started but issueGroup has not returned
+                if (!boundary)
+                    groups.Cancel([] { throw std::runtime_error("failed stream drain"); },
+                                  [&] { released=true; owner->inFlight.reset(); });
+                for (int operation = 1; operation <= 4; ++operation)
+                    if (boundary == operation) throw std::runtime_error("partial group submission");
+                published = true;
+            } catch (const std::runtime_error&) {
+                caught=true;
+                receipt = detail::RetireOwnedState(owner, [&](std::shared_ptr<Owner> exact) {
+                    if (exact.get() != original) throw std::logic_error("wrong retirement closure");
+                    return okuflow::AsyncCleanup::Start([exact,gate] { return gate->Wait(); });
+                });
+            }
+            // Always unblock on assertion failure as well, before gate destruction.
+            struct ReleaseGate { std::shared_ptr<Gate> gate; ~ReleaseGate(){gate->Release();} } unblock{gate};
+            QVERIFY(caught && !released && !published && !owner && receipt);
+            QVERIFY(!state.expired() && !input.expired() && !pin0.expired() && !pin1.expired());
+            owner=std::make_shared<Owner>();
+            QVERIFY(owner.get()!=original); // no reuse of either retiring pinned slot
+            gate->Release();
+            QTRY_VERIFY_WITH_TIMEOUT(receipt->Poll()==okuflow::AsyncCleanup::Status::Completed, 2000);
+            QTRY_VERIFY_WITH_TIMEOUT(state.expired() && input.expired() && pin0.expired() && pin1.expired(), 2000);
+        }
+        auto owner=std::make_shared<Owner>();
+        std::weak_ptr<Owner> retained=owner;
+        const auto receipt=detail::RetireOwnedState(owner,[](std::shared_ptr<Owner>) -> std::shared_ptr<okuflow::AsyncCleanup> {
+            throw std::bad_alloc();
+        });
+        QVERIFY(!owner && !receipt && !retained.expired()); // exact allocation-free quarantine
+        const auto quarantined=retained.lock();
+        QVERIFY(quarantined->inFlight && quarantined->pins[0] && quarantined->pins[1] &&
+                quarantined->retirementQuarantine.get()==quarantined.get());
+    }
     void localBf16ManifestRequiresReviewedRolesAndCacheOnlySchema()
     {
         using namespace runtime_precision;
@@ -861,7 +945,9 @@ class PaddleTests final : public QObject
 #if OKUFLOW_ENABLE_CUDA
         int devices{};
         if (cudaGetDeviceCount(&devices) != cudaSuccess || !devices) QSKIP("No CUDA device.");
-        QImage image(99, 61, QImage::Format_ARGB32);
+        constexpr int sourcePitch = 99 * 4 + 28;
+        std::vector<unsigned char> pixelStorage(sourcePitch * 61, 0xcd);
+        QImage image(pixelStorage.data(), 99, 61, sourcePitch, QImage::Format_ARGB32);
         for (int y = 0; y < image.height(); ++y)
             for (int x = 0; x < image.width(); ++x)
                 image.setPixelColor(x, y, QColor((x * 3 + y * 7) % 256,
@@ -917,6 +1003,132 @@ class PaddleTests final : public QObject
             }
         QVERIFY_EXCEPTION_THROWN(gpu::RectifyBatch(pixels.data, image.bytesPerLine(), image.width(),
             image.height(), boxes.data, first, 17, batchDevice.data, 1024, stream.value), std::invalid_argument);
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
+    void gpuBatchedCtcMatchesScalarActualShapesAndFailures_data()
+    {
+        QTest::addColumn<int>("samples"); QTest::addColumn<int>("steps");
+        QTest::addColumn<int>("classes"); QTest::addColumn<int>("canvas");
+        QTest::newRow("singleton-blank") << 1 << 1 << 1 << 128;
+        QTest::newRow("singleton-ctc") << 1 << 7 << 4 << 1024;
+        QTest::newRow("tail3") << 3 << 7 << 257 << 256;
+        QTest::newRow("tail7-cross-lane-ties") << 7 << 33 << 519 << 512;
+        QTest::newRow("full8") << 8 << 128 << 519 << 1024;
+        QTest::newRow("tail15") << 15 << 33 << 257 << 128;
+        QTest::newRow("full16") << 16 << 128 << 519 << 256;
+        QTest::newRow("different-actual-T") << 8 << 17 << 4 << 512;
+    }
+    void gpuBatchedCtcMatchesScalarActualShapesAndFailures()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        QFETCH(int, samples); QFETCH(int, steps); QFETCH(int, classes); QFETCH(int, canvas);
+        int devices{};
+        if (cudaGetDeviceCount(&devices) != cudaSuccess || !devices) QSKIP("No CUDA device.");
+        constexpr int capacity = 16, first = 1, guard = 8, untouched = -777;
+        const std::size_t stride = std::size_t(steps) * classes, slots = guard + capacity * steps + guard;
+        const float nan = std::numeric_limits<float>::quiet_NaN();
+        std::array<gpu::Quad, capacity + 2> quads{};
+        std::vector<float> probabilities(capacity * stride), resetScores(slots, 6.25f);
+        std::vector<int> resetIds(slots, untouched), resetCounts(guard + capacity + guard, untouched);
+        std::vector<gpu::Token> resetTokens(slots, {untouched,untouched,untouched,6.25f});
+        std::vector<float> scoresA(slots), scoresB(slots);
+        std::vector<int> idsA(slots), idsB(slots), countsA(resetCounts.size()), countsB(resetCounts.size());
+        std::vector<gpu::Token> tokensA(slots), tokensB(slots);
+        GpuBuffer<float> logits(probabilities.size()), scoreA(slots), scoreB(slots);
+        GpuBuffer<int> idA(slots), idB(slots), countA(resetCounts.size()), countB(resetCounts.size());
+        GpuBuffer<gpu::Token> tokenA(slots), tokenB(slots);
+        GpuBuffer<gpu::Quad> boxes(quads.size());
+        FixtureStream stream; // all async host/device buffers outlive the drain
+        for (int invalid = 0; invalid < 6; ++invalid)
+        {
+            std::fill(probabilities.begin(), probabilities.end(), nan); // poison unused N capacity
+            for (auto& q : quads) q = {{nan,nan,nan,nan,nan,nan,nan,nan},nan,-999,3};
+            for (int n = 0; n < samples; ++n)
+            {
+                const int width = n % 6 == 0 ? canvas : n % 6 == 1 ? 1 : n % 6 == 2 ? 0 :
+                                  n % 6 == 3 ? -1 : n % 6 == 4 ? canvas - 1 : canvas + 1;
+                quads[first+n] = {{0,0,40,0,40,12,0,12},.9f,width,n%4};
+                for (int t = 0; t < steps; ++t)
+                {
+                    auto* row = probabilities.data() + n * stride + t * classes;
+                    std::fill(row, row + classes, .01f);
+                    const int sequence[]{1,1,0,1,2,2,0,3};
+                    row[sequence[t%8] % classes] = .7f + .01f * (t%8);
+                    if (classes > 513 && t == 0) row[1] = row[257] = row[513] = .91f;
+                }
+                if (invalid && n % 2 == 0)
+                {
+                    // A bad nonwinning class still rejects the consumed row.
+                    const int t = invalid == 5 ? steps - 1 : 0;
+                    probabilities[n * stride + t * classes + classes-1] = invalid == 1 || invalid == 5 ? nan :
+                        invalid == 2 ? std::numeric_limits<float>::infinity() : invalid == 3 ? -.01f : 1.0002f;
+                }
+                if (n % 6 == 1 && steps > 1)
+                    probabilities[n * stride + (steps-1) * classes] = nan; // invalid unconsumed suffix
+            }
+            const auto upload = [&](auto* target, const auto& source) {
+                return cudaMemcpyAsync(target, source.data(), source.size() * sizeof(source[0]),
+                                       cudaMemcpyHostToDevice, stream.value);
+            };
+            QCOMPARE(upload(logits.data, probabilities), cudaSuccess);
+            QCOMPARE(upload(boxes.data, quads), cudaSuccess);
+            for (auto* target : {idA.data,idB.data}) QCOMPARE(upload(target, resetIds), cudaSuccess);
+            for (auto* target : {scoreA.data,scoreB.data}) QCOMPARE(upload(target, resetScores), cudaSuccess);
+            for (auto* target : {tokenA.data,tokenB.data}) QCOMPARE(upload(target, resetTokens), cudaSuccess);
+            for (auto* target : {countA.data,countB.data}) QCOMPARE(upload(target, resetCounts), cudaSuccess);
+            for (int n = 0; n < samples; ++n)
+                gpu::Decode(logits.data + n * stride, steps, classes, boxes.data, first+n, canvas,
+                            idA.data+guard+n*steps, scoreA.data+guard+n*steps,
+                            tokenA.data+guard+n*steps, countA.data+guard+n, stream.value);
+            gpu::DecodeBatch(logits.data, samples, steps, classes, boxes.data, first, canvas,
+                             idB.data+guard, scoreB.data+guard, tokenB.data+guard, countB.data+guard, stream.value);
+            QCOMPARE(cudaGetLastError(), cudaSuccess);
+            const auto download = [&](const auto* source, auto& target) {
+                return cudaMemcpyAsync(target.data(), source, target.size() * sizeof(target[0]),
+                                       cudaMemcpyDeviceToHost, stream.value);
+            };
+            QCOMPARE(download(idA.data, idsA), cudaSuccess); QCOMPARE(download(idB.data, idsB), cudaSuccess);
+            QCOMPARE(download(scoreA.data, scoresA), cudaSuccess); QCOMPARE(download(scoreB.data, scoresB), cudaSuccess);
+            QCOMPARE(download(countA.data, countsA), cudaSuccess); QCOMPARE(download(countB.data, countsB), cudaSuccess);
+            QCOMPARE(download(tokenA.data, tokensA), cudaSuccess); QCOMPARE(download(tokenB.data, tokensB), cudaSuccess);
+            QCOMPARE(cudaStreamSynchronize(stream.value), cudaSuccess);
+            QCOMPARE(std::memcmp(idsA.data(), idsB.data(), slots * sizeof(int)), 0);
+            QCOMPARE(std::memcmp(scoresA.data(), scoresB.data(), slots * sizeof(float)), 0);
+            QCOMPARE(std::memcmp(countsA.data(), countsB.data(), countsA.size() * sizeof(int)), 0);
+            // Seeded unwritten capacity is compared too; only active tokens
+            // have semantic meaning, including partial failure's discarded data.
+            QCOMPARE(std::memcmp(tokensA.data(), tokensB.data(), slots * sizeof(gpu::Token)), 0);
+            const int remainderTokens[]{0,1,1,1,2,3,3,3};
+            const int expected = classes == 1 ? 0 : 4 * (steps/8) + remainderTokens[steps%8];
+            QCOMPARE(countsB[guard], invalid ? -1 : expected);
+            if (samples > 1) QCOMPARE(countsB[guard+1], classes == 1 ? 0 : 1);
+            if (samples > 2) QCOMPARE(countsB[guard+2], 0); // no consumed rows, even if poisoned
+            if (samples > 3) QCOMPARE(countsB[guard+3], 0);
+            if (!invalid && classes > 513) QCOMPARE(tokensB[guard].id, 1);
+            if (!invalid && classes == 4 && steps == 7)
+            {
+                QCOMPARE(tokensB[guard].last, 1); // repeat keeps first confidence
+                QCOMPARE(tokensB[guard].confidence, .7f);
+                QCOMPARE(tokensB[guard+1].first, 3); // blank separates repeated ID
+            }
+            for (int i = 0; i < guard; ++i)
+            {
+                QCOMPARE(countsB[i], untouched); QCOMPARE(idsB[i], untouched);
+                QCOMPARE(scoresB[i], 6.25f); QCOMPARE(tokensB[i].id, untouched);
+            }
+            for (std::size_t i = guard + samples; i < countsB.size(); ++i) QCOMPARE(countsB[i], untouched);
+            for (std::size_t i = guard + samples * steps; i < idsB.size(); ++i)
+            {
+                QCOMPARE(idsB[i], untouched); QCOMPARE(scoresB[i], 6.25f);
+                QCOMPARE(tokensB[i].id, untouched);
+            }
+        }
+        QVERIFY_EXCEPTION_THROWN(gpu::DecodeBatch(logits.data, 17, steps, classes, boxes.data, first,
+            canvas, idB.data, scoreB.data, tokenB.data, countB.data, stream.value), std::invalid_argument);
+        QVERIFY_EXCEPTION_THROWN(gpu::DecodeBatch(logits.data, 1, std::numeric_limits<int>::max(), classes,
+            boxes.data, first, canvas, idB.data, scoreB.data, tokenB.data, countB.data, stream.value), std::invalid_argument);
 #else
         QSKIP("CUDA adapter not compiled.");
 #endif

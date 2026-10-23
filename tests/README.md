@@ -20,6 +20,18 @@ Restricted Codex profile fixtures require the child-only `mcp_servers={}`
 override, including an invalid unused disabled transport. Raw user configuration
 is not copied into test evidence and real inference is not part of that check.
 
+The offline [UCT helper batching candidate](../docs/uct_helper_batching.md)
+adds `recognitionGroupSlotsRequireCompletionAndConsumption` and
+`recognitionGroupCancellationAndPartialFailureRetainClosure` to
+`uct_paddle_processing`. These exercise production slot phases and complete
+State retirement with gated fake native operations. The registered CUDA slots
+`gpuBatchedRectificationMatchesScalarCapacityAndTails` and
+`gpuBatchedCtcMatchesScalarActualShapesAndFailures` compare scalar/batch bits,
+actual shapes, invalid consumed values and poisoned unused capacity. They have
+not run for this candidate; root must grant a finite START compute slot first.
+No injected native CUDA fault, current-driver worker speed, native desktop or
+release acceptance is implied by these prepared fixtures.
+
 `uct_paddle_cuda`'s `gpuAlgorithmsAndOwnedInputs` additionally compares full
 validation integrals (including zero borders) against an integer CPU oracle
 across warp/tile tails, decimations, padded pitch and repeated poisoned buffers.
