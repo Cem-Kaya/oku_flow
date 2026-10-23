@@ -70,6 +70,10 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   into the external SDK), then reconfigure. See [UCT](ultra_clear_text.md) for
   dependencies, independent analysis/validation workers and scoped acceptance.
   These components are not yet a published installer inventory.
+  The app's GPU tiers now prefer BF16 when supported, with same-tier FP32
+  loading/build fallback. Accuracy and FP32-agreement tests are diagnostic only;
+  no perfect-text corpus controls startup. Tiny recognition remains N1 and CPU
+  remains FP32. See the owner-policy update in [BF16 runtime work](uct_public_bf16.md).
   Runtime discovery also supports a private `ocr/` beside the inner application:
   original model/configuration/CPU files plus `pins.json`, and TensorRT under
   `ocr/tensorrt/bin/` (optional CUDA dependency directory `ocr/tensorrt/cuda/bin/`).

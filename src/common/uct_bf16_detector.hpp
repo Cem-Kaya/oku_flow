@@ -1,10 +1,8 @@
 #pragma once
-#include "uct_public_bf16.hpp"
+#include "uct_bf16_runtime.hpp"
 #include <cmath>
 
 namespace okuflow::uct::bf16_detector {
-// Graph presence and tensor smokes are not semantic detector acceptance.
-inline bool ProductionActivated() {return false;}
 inline const char* GraphHash(ModelTier tier) {
     switch(tier) {
     case ModelTier::Medium:return "5699b5d662f046d7fcad339b351263f154a13c67a11ee797f45074f8876db10c";
@@ -29,8 +27,7 @@ inline QString ReadGraphPath(const QString& root,const PaddleAssets& assets,Mode
 }
 inline QByteArray PlanKey(const QByteArray& graph,const QByteArray& uuid,
                           const QByteArray& builder=tensorrt_identity::kBuilderVersion) {
-    return precision_artifacts::Digest("uct-bf16-detector-v1\n"+
-        tensorrt_identity::Fp32PlanKey(graph,uuid,true,1,false,builder));
+    return bf16_runtime::PlanKey(graph,uuid,true,1,false,builder);
 }
 struct MapSummary {float maximum{};double mean{};};
 inline MapSummary CheckMap(std::span<const float> map) {

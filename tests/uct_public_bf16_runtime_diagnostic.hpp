@@ -17,6 +17,8 @@ inline void Prepare() {
     const auto parsed=ParseModelTier(tierToken);QVERIFY(parsed);
     const auto tier=*parsed;
     const bool fp32Control=qEnvironmentVariable("OKUFLOW_UCT_PUBLIC_FP32_CONTROL")=="1";
+    const bool runtimePreference=qEnvironmentVariable("OKUFLOW_UCT_RUNTIME_BF16_PREFERENCE")=="1";
+    QVERIFY(!fp32Control || !runtimePreference);
     const auto modelRoot=qEnvironmentVariable("OKUFLOW_UCT_PUBLIC_MODELS");
     const auto corpusRoot=qEnvironmentVariable("OKUFLOW_UCT_PUBLIC_CORPUS");
     const auto cacheRoot=qEnvironmentVariable("OKUFLOW_UCT_PUBLIC_CACHE");
@@ -30,7 +32,7 @@ inline void Prepare() {
         modelRoot,corpusRoot,cacheRoot,[records](const QJsonObject& row){
             std::lock_guard lock(records->mutex);
             if(records->values.size()<32)records->values.push_back(row);
-        },retirement.Observer(),*detector,tier,qEnvironmentVariable("OKUFLOW_UCT_PUBLIC_BF16_DETECTOR")=="1",fp32Control);
+        },retirement.Observer(),*detector,tier,qEnvironmentVariable("OKUFLOW_UCT_PUBLIC_BF16_DETECTOR")=="1",fp32Control,runtimePreference);
     QVERIFY(recognizer);
     const auto initialized=recognizer->Initialize();
     QVERIFY(initialized.usesGpu);
@@ -49,7 +51,7 @@ inline void Prepare() {
     const auto closed=retirement.Wait();
     QJsonArray observations;
     {std::lock_guard lock(records->mutex);observations=records->values;}
-    QJsonObject result{{"tier",tierToken},{"detectorTier",detectorToken},{"candidateValidation",true},{"productionActivated",false},{"fp32Control",fp32Control},
+    QJsonObject result{{"tier",tierToken},{"detectorTier",detectorToken},{"candidateValidation",true},{"productionActivated",false},{"fp32Control",fp32Control},{"runtimePreference",runtimePreference},
         {"ok",output.ok},{"error",output.error},{"preparing",output.backendPreparing},{"elapsedMs",elapsed.elapsed()},
         {"usesGpu",backend.usesGpu},{"backend",backend.name},{"detail",backend.detail},{"attestations",observations},
         {"retirement",closed.Json()}};
@@ -62,6 +64,6 @@ inline void Prepare() {
     QVERIFY(backend.usesGpu);
     QVERIFY(closed.Passed());
     if(fp32Control)QVERIFY(backend.detail.contains("FP32 control only"));
-    else QVERIFY(backend.detail.contains("Recognition graph=BF16-linear,") || backend.detail.contains("Public BF16 unavailable"));
+    else QVERIFY(backend.detail.contains("Recognition graph=BF16-linear,") || backend.detail.contains("Public BF16 unavailable") || backend.detail.contains("Runtime BF16 unavailable"));
 }
 } // namespace uct_public_runtime_test

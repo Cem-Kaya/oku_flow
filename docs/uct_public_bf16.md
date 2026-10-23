@@ -1,5 +1,29 @@
 # Public BF16 model and local attestation (offline, 2026-10-23)
 
+## Superseded as an app startup policy
+
+The owner explicitly rejected perfect-text or precision-agreement requirements
+for enabling BF16. Normal production now sets `runtimePreference`: both selected
+GPU roles prefer the pinned BF16 model, with selected-tier FP32 fallback for
+supported loading/build/compatibility refusals. No corpus, expected text, golden
+pass or v2 ready receipt is required. ML errors and reduced accuracy are accepted
+as model tradeoffs, rather than startup failures.
+
+`PrepareRuntimeRecognizer` performs graph/config/dictionary integrity and tensor
+compatibility checks, then publishes the engine through the existing complete
+State. It never calls the historical golden path below. Tiny retains N1 service,
+CPU stays FP32 and saved tier choices are unchanged. Explicit bucketed profiles
+remain FP32. Driver-free per-device/builder/profile cache identity is retained.
+
+The historical exact-text/v2 machinery and its empty production catalog remain
+available only for separate diagnostics; they no longer control app precision.
+Recorded failed golden results remain intact. Old quality-failure memos are not
+consulted by the new runtime-recognizer namespace. No expected outputs were
+altered to manufacture a pass. Real API/CUDA/inference uncertainty still retires
+the backend, while confirmed healthy artifact/build refusals allow FP32 fallback.
+This implementation still needs its fresh build/runtime checks and installer
+payload work; it is not a claim of published release or clean-machine acceptance.
+
 ## Opus install-review repair checkpoint
 
 The two reported activation/deadline findings are repaired in source, pending a

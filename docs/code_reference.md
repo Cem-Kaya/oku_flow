@@ -1,5 +1,28 @@
 # OkuFlow Code Reference
 
+## BF16 app model preference (owner decision)
+
+- `Request::runtimePreference` selects the normal production BF16 path; the
+  production factory sets it without a corpus root. It bypasses the historical
+  `PreparePublicCandidate`/`CheckGolden`/v2 readiness experiment entirely.
+- `PrepareRuntimeRecognizer` verifies the selected source/config/dictionary and
+  converted graph, uses `Network::PreparePinned` at the selected service capacity,
+  checks actual tensor/profile compatibility and runs a zero-input tensor smoke.
+  No decoded text, expected strings, precision agreement or accuracy threshold is
+  consulted. BF16 detector selection likewise has no semantic approval switch.
+- `bf16_runtime::PlanKey` separates BF16 detector/recognizer plan recipes from
+  FP32, preserving the existing detector key. `CheckRecognizerProfile` binds the
+  selected N1/N8/N16 fixed1024 shape. Existing explicit bucketed experiments keep
+  their FP32 fallback. Driver changes do not invalidate plans.
+- Graph/build/artifact refusals drain confirmed work before selected-tier FP32;
+  real CUDA/API/context/inference failures or unknown completion retain retirement.
+  Negative operational memos use a separate runtime-recognizer attempt namespace,
+  so historical failed word tests do not block the app.
+- The private fixture can select this production mechanism using
+  `OKUFLOW_UCT_RUNTIME_BF16_PREFERENCE=1`; this is independent of its record-only
+  FP32 control and historical strict-golden modes. Runtime evidence remains pending
+  the frozen-source build. No automatic live/Freeze tier changes are implemented.
+
 ## App-relative OCR runtime discovery
 
 `runtime_paths::PaddleRoot`, `TensorRtRoot` and `CudaBin` select explicit configured

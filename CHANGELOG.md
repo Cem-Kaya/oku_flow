@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Prefer BF16 for both selected GPU model roles without requiring perfect text,
+  FP32 agreement or a golden pass. Keep accuracy tests diagnostic and retain
+  selected-tier FP32 fallback for supported runtime/build/artifact refusals.
+  Preserve tiny N1, CPU FP32, saved tiers and the existing two-slot worker.
+
 - Discover private app-relative OCR models and TensorRT/CUDA dependencies while
   preserving explicit overrides and legacy development paths. Retain the exact
   graph-converter source; installed payload staging/acceptance remains pending.

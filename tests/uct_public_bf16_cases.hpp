@@ -73,7 +73,15 @@ inline void Contract() {
         QVERIFY(bf16_detector::RelativePath(tier).contains(ModelTierToken(tier)));
         QVERIFY_EXCEPTION_THROWN(bf16_detector::ReadGraphPath("relative",PaddleAssets{},tier),runtime_precision::ArtifactError);
     }
-    QVERIFY(!bf16_detector::ProductionActivated());
+    const public_bf16::Request runtimeRequest{paths.path(),{},paths.path(),CatalogUse::Production,true,true,false,true};
+    QVERIFY(runtimeRequest.runtimePreference);QVERIFY(runtimeRequest.corpusRoot.isEmpty());
+    const precision_artifacts::Profile serviceOne{{1,3,48,1024},{1,3,48,1024},{1,3,48,1024}};
+    const precision_artifacts::Profile serviceEight{{1,3,48,1024},{8,3,48,1024},{8,3,48,1024}};
+    bf16_runtime::CheckRecognizerProfile(serviceOne,1);bf16_runtime::CheckRecognizerProfile(serviceEight,8);
+    QVERIFY_EXCEPTION_THROWN(bf16_runtime::CheckRecognizerProfile(serviceOne,8),runtime_precision::ArtifactError);
+    const auto recGraph=QByteArray::fromHex(Model(ModelTier::Medium).graphSha256);
+    QVERIFY(bf16_runtime::PlanKey(recGraph,uuid,false,1,false)!=bf16_runtime::PlanKey(recGraph,uuid,false,8,false));
+    QVERIFY(bf16_runtime::PlanKey(recGraph,uuid,false,8,false)!=tensorrt_identity::Fp32PlanKey(recGraph,uuid,false,8,false));
     const std::array<float,3> map{0,.5f,1};
     const auto mapSummary=bf16_detector::CheckMap(map);
     QCOMPARE(mapSummary.maximum,1.f);QCOMPARE(mapSummary.mean,.5);

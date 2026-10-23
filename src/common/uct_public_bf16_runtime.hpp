@@ -23,6 +23,7 @@ struct Request {
     bool enabled{};
     bool preferDetector{true};
     bool fp32Control{}; // private record-only comparison; production never sets it
+    bool runtimePreference{}; // production BF16; accuracy/word agreement never gate it
 };
 struct BaselineCachePolicy {QString root;bool allowPreparation{true};};
 inline BaselineCachePolicy BaselinePolicy(const Request& request) {
@@ -568,5 +569,5 @@ namespace okuflow::uct {
 std::unique_ptr<Recognizer> CreatePublicBf16ValidationRecognizer(const QString& root,const QString& sdk,
     const QString& modelRoot,const QString& corpusRoot,const QString& cacheRoot,
     public_bf16::AttestationObserver observer={},TensorRtRetirementObserver retirementObserver={},
-    ModelTier detector=ModelTier::Medium,ModelTier recognizer=ModelTier::Medium,bool preferDetector=false,bool fp32Control=false);
+    ModelTier detector=ModelTier::Medium,ModelTier recognizer=ModelTier::Medium,bool preferDetector=false,bool fp32Control=false,bool runtimePreference=false);
 }

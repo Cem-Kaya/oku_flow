@@ -123,6 +123,7 @@ set_property(TEST uct_public_bf16_contract APPEND PROPERTY REQUIRED_FILES
     "${PROJECT_SOURCE_DIR}/src/common/uct_runtime_paths.hpp"
     "${PROJECT_SOURCE_DIR}/scripts/uct/precision_models.py"
     "${PROJECT_SOURCE_DIR}/src/common/uct_bf16_detector.hpp"
+    "${PROJECT_SOURCE_DIR}/src/common/uct_bf16_runtime.hpp"
     "${PROJECT_SOURCE_DIR}/src/common/uct_public_bf16_runtime.hpp"
     "${PROJECT_SOURCE_DIR}/src/common/uct_frozen_upload.hpp"
     "${PROJECT_SOURCE_DIR}/assets/uct/golden/okuflow-owned-typeset-gray8-v1/manifest.json")
