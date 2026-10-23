@@ -3,10 +3,11 @@
 The offline schema-2 precision experiment contract in `uct_precision_artifacts.hpp`
 has no runtime selector or production approvals. It represents only medium
 detector profiles 32/544x960/960x960 and N8 medium recognition fixed1024 or
-ordered 128/512/1024 min/opt/max, with FLOAT DEVICE LINEAR I/O, TensorRT
-11.4.0.106, default TF32, optimization 2, 256 MiB workspace and zero auxiliary
-streams. It reuses the legacy 64 KiB manifest / strictly-below-256 MiB graph/plan
-bounds and independently approved relative locators; existing keys stay intact.
+ordered 128/512/1024 min/opt/max, with FLOAT DEVICE LINEAR I/O, builder TRT
+metadata, runtime floor 11.4.0.106, default TF32, optimization 2, 256 MiB workspace
+and zero auxiliary streams. It reuses the legacy 64 KiB manifest / strictly-below-256 MiB graph/plan
+bounds and independently approved relative locators. Driver and actual loaded
+runtime DLL/version/hash are provenance only; old artifacts remain intact.
 Decoded dictionaries now come from one hash-verified snapshot limited to 8 MiB.
 See [contract and pending finite slots](uct_precision_artifacts.md).
 
@@ -28,8 +29,12 @@ See [full policy](live_ram_recap.md).
 The optional `OKUFLOW_UCT_LOCAL_BF16_MANIFEST` selector is read only by the app's
 private production factory. Its schema-1/prepare=false manifest is at most
 64 KiB; converted graphs/plans are strictly below 256 MiB and hash-pinned.
-Only the reviewed RTX 4090 UUID/driver/TRT medium/medium N8 fixed1024 variant is
-eligible; detector and fallback retain FP32 and existing cache keys. A nonempty
+Only the reviewed RTX 4090 UUID medium/medium N8 fixed1024 variant is eligible;
+the runtime minimum is 11.4.0.106, builder TRT stays plan-bound, and driver never
+gates approval. New schema-1 stable precision key `6c5a2229…` omits driver and
+current runtime; the exact old `e596b8ac…` path is tried read-only only if stable
+is absent. Actual ABI11/factory/deserialization/profile checks remain mandatory.
+Detector and fallback retain FP32. A nonempty
 selector prohibits all engine preparation/cache writes. See
 [exact local identities and fallback policy](uct_local_bf16.md).
 

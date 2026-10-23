@@ -1,9 +1,12 @@
 # Local BF16 recognition selection (2026-10-22)
 
 The separate [role-aware precision experiment contract](uct_precision_artifacts.md)
-is offline preparation for current-driver approval, ordered BF16 widths and a
-mixed-FP16 detector. It does not broaden the schema-1 approval below or enable
-new artifacts. Current-driver FP32 preparation cannot approve BF16.
+is offline preparation for ordered BF16 widths and independently approved role
+pairs. Owner's 2026-10-23 policy removes driver key/admission pins and admits a
+TensorRT runtime at least 11.4.0.106, while retaining the same reviewed schema-1
+graph/plan/device. Ordinary FP32 preparation cannot approve BF16. The archived
+mixed-FP16 detector graph is rejected as a speed candidate based on negative
+archived stage/layer evidence; no repeated build is queued.
 
 The owner approved local use of the measured BF16 recognition variant despite
 visible recognition/geometry differences. This is an unreleased, explicit
@@ -35,21 +38,37 @@ The selection pins:
 - BF16-linear recognition graph:
   `ecd8ffc92aa1b9f7a33b0ad39757b64887c465f15bb54853936b2136f94e5835`,
   under `models/bf16-linear/<source SHA>/<graph SHA>.onnx` in the artifact root.
-- Recognition plan key:
+- Reviewed legacy recognition plan key (read-only fallback):
   `e596b8ac0110f01e88fc94bcbdeda4511b83af90efb761aa4e194de3ea496073`,
   under `engines/bf16-linear/<key>.plan`. The whole file SHA-256 is
   `155c74b5b856467e49853190c881077c9af3200203a196f9e737f7533e6f5495`.
   The existing 32-byte payload digest header is also checked.
-- RTX 4090 UUID `230556cb9d98d5c17318d9ac52e6697d`, CUDA driver identity
-  `13040`, TensorRT `11.4.0.106` (CUDA 12.9.86 experiment). BF16 requires
-  compute capability major at least 8. Other UUID/driver/runtime identities
-  cannot use this approved plan.
+- RTX 4090 UUID `230556cb9d98d5c17318d9ac52e6697d`, builder TensorRT
+  `11.4.0.106` (CUDA 12.9.86 experiment). Historical driver API identity `13040`
+  is provenance only. BF16 requires compute capability major at least 8 and
+  the same UUID. Driver 13050/newer uses the same approval and plan bytes.
 
-The precision key is byte-identical to the offline experiment: source and
-converted graph hashes, explicit precision, device UUID, driver, TensorRT,
+The versioned `uct-precision-v2` key binds source and
+converted graph hashes, explicit precision, device UUID, builder TensorRT,
 TF32/default optimization/workspace/aux-stream policy, fixed-width profile,
-network role and batch. The baseline detector retains its original FP32 key;
-BF16 never aliases it or any FP32 recognizer cache.
+network role and batch. It omits driver and loaded runtime identity. For the
+reviewed plan its stable key is
+`6c5a22298560858aa3bb9539fe40646aa89d3eedda3ca66838210639027e8d01`.
+`PlanPath` names that stable location; `ExistingPlanPath` uses it when present,
+otherwise only the exact legacy filename above. Both require the same whole-plan
+hash. A corrupt/unreadable present stable file fails without trying legacy.
+No copying, aliasing, rekeying, cache deletion or overwrite occurs.
+
+Runtime admission compares the four-part numeric tuple against 11.4.0.106 inside
+compiled major ABI11; 12.0.0.0 fails this boundary.
+The actual loaded runtime version/hash and driver remain provenance. Newer
+runtimes may try verified older plans, but this is not a serialization guarantee:
+[TensorRT's default plans require their build version; explicit build-time
+version compatibility enables later runtimes](https://docs.nvidia.com/deeplearning/tensorrt/11.4.0/inference-library/engine-compatibility.html).
+The compiled ABI11/DLL path, factory, deserialization and exact engine profile/I/O
+remain authoritative. No ABI12 discovery or compatibility build flags are added.
+The minimum-version and ordinary FP32 cache wiring in `uct_tensorrt.cpp` are
+owned by the batch lead and pending integration in this branch.
 
 The private policy allows at most 64 KiB manifest JSON and strictly less than
 256 MiB for each graph/plan file. It rejects invalid role/precision/source/hash,
@@ -64,8 +83,10 @@ it does not authorize a cold build.
 Missing, tampered or incompatible policy/artifacts select the existing pinned
 FP32 GPU path before inference and name the reason in `BackendStatus`. A
 deserialized variant must have FLOAT input/output and the exact single
-min-1/opt-8/max-8 by 3 by 48 by 1024 profile. Typed artifact/profile refusals
-may choose FP32 inside the same preparation worker. CUDA, runtime API,
+min-1/opt-8/max-8 by 3 by 48 by 1024 profile. Typed artifact/profile refusals,
+including pre-inference null deserialization with no reported CUDA error, may
+choose FP32 inside the same preparation worker. Keep `Check(cudaPeekAtLastError())`
+before classifying a null refusal. CUDA, runtime API,
 allocation, context creation and genuine inference faults follow normal
 retirement/quarantine and Automatic failover, with no BF16 inference retry.
 There remains one GPU candidate and one preparation worker; the existing
@@ -89,15 +110,19 @@ or slower; none is imported into production policy.
 
 The three model-free `PaddleTests::localBf16*` slots are registered in
 `uct_paddle_processing` and cover schema/roles/paths/hashes/bounds, the reviewed
-key and its precision/device/profile separation, explicit selector restoration,
+stable key and its precision/device/profile separation, driver-independent
+approval, runtime minimum/malformed-version refusal, legacy lookup precedence,
+explicit selector restoration,
 missing/tampered artifacts and read-only refusal. CPU-only checks cannot
 compile the enabled TensorRT branch or establish actual BF16 execution. Root
 owns the separate integrated cache-only GPU proof, combined gate and launch.
-The implementation's fresh CPU-only target build and tracked
+The earlier implementation's fresh CPU-only target build and tracked
 `uct_paddle_processing` gate passed in 1.12 seconds with zero skipped rows,
 skips or unresolved results. This was one scoped development test, not the
 full release gate; enabled TensorRT compilation, GPU/native UI and real-camera
 execution were not run by the implementation worker.
+The 2026-10-23 policy revision has no build/test execution pending root START;
+earlier passes do not validate this diff.
 Private optional SDK/model distribution remains governed by
 [existing notices](THIRD_PARTY_LICENSES.md#optional-experimental-paddleocr-component-2026-10-18);
 no new third-party implementation or dependency is added.

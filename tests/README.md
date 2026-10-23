@@ -4,7 +4,8 @@
 `rolePrecisionArtifactContract` slot on `uct_paddle_tests` using Qt offscreen.
 Its exact required files include the schema-2 loader, legacy policy, fixture and
 model pins. It covers independently supplied approvals, role/profile/ABI and
-device/driver/hash refusal, dictionary identity and read-only loading; it does
+device/hash refusal, dictionary identity, read-only loading, driver-independent
+approval/keys and numeric TensorRT runtime-floor admission; it does
 not deserialize TensorRT plans or validate engine lifetime. See the
 [frozen finite-slot precision plan](../docs/uct_precision_artifacts.md).
 This case and its build remain pending root START during offline preparation.

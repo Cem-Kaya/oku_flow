@@ -20,8 +20,8 @@ struct Profile { Shape minimum{}, optimum{}, maximum{}; };
 struct Runtime {
     QByteArray uuid; // native CUDA UUID bytes, never an adapter ordinal
     int driver{}, major{}, minor{};
-    QByteArray tensorRtVersion, tensorRtSha256; // exact loaded inference DLL
-    QByteArray driverBuild, driverSha256; // loaded nvcuda.dll version + bytes
+    QByteArray tensorRtVersion, tensorRtSha256; // loaded inference DLL provenance
+    QByteArray driverBuild, driverSha256; // provenance only, never approval/key data
 };
 struct Identity {
     // Exact canonical metadata is compared with a separately reviewed catalog.
@@ -46,9 +46,15 @@ struct VerifiedSelection {
     // and checked. Never copy the engine pointer without its effective policy.
     VerifiedPlan detector, recognizer;
     RecognizerPolicy policy;
+    Runtime runtime;
     QJsonObject Receipt() const {
         return {{"schema", 2}, {"detector", detector.identity.metadata},
-                {"recognizer", recognizer.identity.metadata}};
+                {"recognizer", recognizer.identity.metadata},
+                {"runtimeProvenance", QJsonObject{{"deviceUuid",QString::fromLatin1(runtime.uuid.toHex())},
+                    {"driver",runtime.driver},{"driverBuild",QString::fromLatin1(runtime.driverBuild)},
+                    {"driverSha256",QString::fromLatin1(runtime.driverSha256)},
+                    {"tensorRtVersion",QString::fromLatin1(runtime.tensorRtVersion)},
+                    {"tensorRtSha256",QString::fromLatin1(runtime.tensorRtSha256)}}}};
     }
 };
 
@@ -94,10 +100,10 @@ inline Identity ParseIdentity(const QJsonObject& json) {
     // the loader actually ignores. Strings below are technical, not UI copy.
     constexpr const char* strings[]{"id", "role", "tier", "precision", "sourceSha256", "graphSha256",
         "configSha256", "dictionarySha256", "conversionRecipeSha256", "graphAuditSha256",
-        "planFileSha256", "deviceUuid", "tensorRtVersion", "tensorRtSha256", "inputName", "outputName",
-        "inputType", "outputType", "outputAbi", "widthPolicy", "tf32", "driverBuild", "driverSha256",
+        "planFileSha256", "deviceUuid", "tensorRtVersion", "inputName", "outputName",
+        "inputType", "outputType", "outputAbi", "widthPolicy", "tf32",
         "inputLocation", "outputLocation", "inputFormat", "outputFormat", "graphRelativePath", "planRelativePath"};
-    constexpr const char* numbers[]{"driver", "computeMajor", "computeMinor", "capacity", "classes",
+    constexpr const char* numbers[]{"computeMajor", "computeMinor", "capacity", "classes",
         "optimizationLevel", "workspaceMiB", "auxStreams"};
     if (json.size() != int(std::size(strings) + std::size(numbers) + 3))
         throw ArtifactError("precision artifact identity fields do not match schema 2");
@@ -112,12 +118,13 @@ inline Identity ParseIdentity(const QJsonObject& json) {
     }
     for (const auto* key : numbers) Integer(json, key, 0, 1000000);
     for (const auto* key : {"sourceSha256", "graphSha256", "configSha256", "dictionarySha256",
-                           "conversionRecipeSha256", "graphAuditSha256", "planFileSha256", "tensorRtSha256", "driverSha256"})
+                           "conversionRecipeSha256", "graphAuditSha256", "planFileSha256"})
         if (!runtime_precision::Hash(json[key].toString().toLatin1()))
             throw ArtifactError("precision artifact identity hash is invalid");
     const auto uuid = json["deviceUuid"].toString().toLatin1();
     if (uuid.size() != 32 || QByteArray::fromHex(uuid).toHex() != uuid ||
-        json["tensorRtVersion"] != "11.4.0.106" || json["inputType"] != "FLOAT" || json["outputType"] != "FLOAT" ||
+        !tensorrt_identity::RuntimeAtLeastMinimum(json["tensorRtVersion"].toString().toLatin1()) ||
+        json["inputType"] != "FLOAT" || json["outputType"] != "FLOAT" ||
         json["tier"] != "medium" || json["tf32"] != "default" ||
         json["inputLocation"] != "DEVICE" || json["outputLocation"] != "DEVICE" ||
         json["inputFormat"] != "LINEAR" || json["outputFormat"] != "LINEAR" ||
@@ -129,7 +136,6 @@ inline Identity ParseIdentity(const QJsonObject& json) {
     result.profile = {ParseShape(json["minimum"]), ParseShape(json["optimum"]), ParseShape(json["maximum"])};
     result.capacity = Integer(json,"capacity",1,8);
     result.classes = Integer(json,"classes",1,100000);
-    Integer(json,"driver",1,1000000);
     Integer(json,"computeMajor",1,99);
     Integer(json,"computeMinor",0,99);
     if (json["role"] == "detector") {
@@ -164,7 +170,7 @@ inline Identity ParseIdentity(const QJsonObject& json) {
 }
 inline QByteArray IdentityKey(const Identity& identity) {
     // Receipt identity only. Never a request to rename/copy an existing plan.
-    // Old schema-1 and ordinary FP32 cache keys/locations stay untouched.
+    // Metadata binds builder TRT, never loaded runtime/driver provenance.
     return Digest(QByteArray("uct-role-artifact-v2\n") + QJsonDocument(identity.metadata).toJson(QJsonDocument::Compact));
 }
 inline Identity ApprovedIdentity(const QJsonObject& json, std::span<const QJsonObject> approved) {
@@ -222,13 +228,10 @@ inline Selection LoadManifest(const QString& path, std::span<const QJsonObject> 
 inline void CheckRuntime(const Identity& identity, const Runtime& runtime) {
     const auto& json = identity.metadata;
     if (runtime.uuid.size() != 16 || json["deviceUuid"].toString().toLatin1() != runtime.uuid.toHex() ||
-        json["driver"].toInt() != runtime.driver || json["computeMajor"].toInt() != runtime.major ||
-        json["computeMinor"].toInt() != runtime.minor || json["tensorRtVersion"].toString().toLatin1() != runtime.tensorRtVersion ||
-        json["tensorRtSha256"].toString().toLatin1() != runtime.tensorRtSha256 ||
-        json["driverBuild"].toString().toLatin1() != runtime.driverBuild ||
-        json["driverSha256"].toString().toLatin1() != runtime.driverSha256 ||
+        json["computeMajor"].toInt() != runtime.major || json["computeMinor"].toInt() != runtime.minor ||
+        !tensorrt_identity::RuntimeAtLeastMinimum(runtime.tensorRtVersion) ||
         (json["precision"] == "bf16-linear" && runtime.major < 8))
-        throw ArtifactError("precision artifact device/driver/loaded TensorRT identity mismatch");
+        throw ArtifactError("precision artifact device mismatch or TensorRT runtime below minimum/invalid ABI11");
 }
 inline VerifiedPlan ReadPlan(const QString& root, const Entry& entry, const Runtime& runtime) {
     CheckRuntime(entry.identity,runtime);
@@ -262,7 +265,7 @@ inline VerifiedSelection ReadSelection(const Selection& selection, const Runtime
             e->identity.metadata["configSha256"].toString().toLatin1(),8 * 1024 * 1024 + 1);
     }
     VerifiedSelection result{ReadPlan(selection.root,selection.detector,runtime),ReadPlan(selection.root,selection.recognizer,runtime),
-        {selection.recognizer.identity.width,selection.recognizer.identity.capacity,selection.recognizer.identity.abi}};
+        {selection.recognizer.identity.width,selection.recognizer.identity.capacity,selection.recognizer.identity.abi},runtime};
     return result;
 }
 template<class Extent>
@@ -301,6 +304,7 @@ inline QString ActualStatus(const VerifiedSelection& selection) {
             QString::fromLatin1(IdentityKey(id)) + ", ABI=" + AbiName(id.abi) + ", FLOAT I/O";
     };
     return one(selection.detector) + "; " + one(selection.recognizer) + "; width=" + WidthName(selection.policy.width) +
-        ", N=" + QString::number(selection.policy.capacity) + ". Mixed graph arithmetic; TF32 allowed. ";
+        ", N=" + QString::number(selection.policy.capacity) + ", loaded TRT=" +
+        QString::fromLatin1(selection.runtime.tensorRtVersion) + ". Mixed graph arithmetic; TF32 allowed. ";
 }
 } // namespace okuflow::uct::precision_artifacts

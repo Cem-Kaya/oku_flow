@@ -11,8 +11,10 @@ report is a source of hypotheses, not new measurements.
 ## Contract and approval authority
 
 `src/common/uct_precision_artifacts.hpp` is a separate private schema-2 loader.
-Existing schema-1 pins, paths, approval and key generation in
-`uct_runtime_precision.hpp` remain unchanged. No environment selector is added.
+Schema-1 graph/plan/device pins and manifest remain supported. Owner's follow-up
+removes driver admission/key pinning and admits runtime versions at least
+11.4.0.106; new versioned keys coexist with read-only exact legacy lookup. Old
+artifacts are never copied/rekeyed/overwritten. No environment selector is added.
 `ParseManifest`/`LoadManifest` require an explicit independently reviewed catalog
 provided by trusted application/diagnostic code. The manifest cannot supply or
 load that catalog. There are currently zero production schema-2 catalog entries.
@@ -22,9 +24,10 @@ Every entry binds role, medium tier, conversion policy, source and converted
 graph hashes, configuration and decoded dictionary identities, conversion recipe
 and graph-audit hashes, whole-plan hash, exact graph names, FLOAT/DEVICE/LINEAR
 I/O, output ABI, min/opt/max profile, capacity, width policy, UUID, exact compute
-capability, CUDA API driver identity, actual Windows `nvcuda.dll` build/hash,
-TensorRT version/DLL hash and builder policy. `cudaDriverGetVersion` is an API
-compatibility identity; it does not replace the actual installed driver build.
+capability, builder TensorRT version and builder policy. CUDA API driver
+identity, actual `nvcuda.dll` version/hash and loaded runtime TensorRT version/hash
+are provenance only. Neither driver changes nor a different TensorRT DLL
+hash changes approval. Schema-2 identities cannot contain driver or DLL-hash fields.
 
 Only these bounded proposed families are represented:
 
@@ -50,7 +53,20 @@ catalog entry. Profile arrays are named `minimum`, `optimum`, `maximum`.
 original locators under the selected local root. Canonical paths cannot escape
 that root. `IdentityKey` is a receipt identity, **not a new filename/key for an
 old engine**. Existing cached plans must never be rekeyed, aliased or copied to
-pretend to be a new profile or driver build.
+pretend to be a new profile or builder/runtime result.
+
+Runtime admission compares the numeric major/minor/patch/build tuple against
+11.4.0.106 within major ABI11; 11.4.1.0 and 11.5.0.0 pass, 12.0.0.0 fails.
+Older, incomplete, signed, whitespace or otherwise malformed strings fail.
+Builder `tensorRtVersion` remains part of the exact approved artifact, not a
+loaded-host equality check.
+The existing compiled ABI11 and `nvinfer_11.dll` path remain; passing the numeric
+floor does not discover ABI12 or prove factory/serialization compatibility.
+[NVIDIA's compatibility documentation](https://docs.nvidia.com/deeplearning/tensorrt/11.4.0/inference-library/engine-compatibility.html)
+states that default engines require their build version, while explicit build-time
+version compatibility permits later runtimes. This policy permits an attempt with
+verified older bytes; deserialization, factories, I/O and profiles remain final
+authorities. No compatibility flags or embedded host-code permission are enabled.
 
 The loader rechecks selected source/configuration bytes, decoded dictionary,
 converted graph, whole plan and its 32-byte payload digest. No directory is
@@ -70,9 +86,13 @@ Integration is required before any schema-2 runtime claim:
    Hash the loaded images, not a different PATH candidate. Use
    `LoadManifest(path, reviewedCatalog)` then `ReadSelection(selection,runtime,assets)`.
    Keep every nonempty precision request cache-only for **both** networks and
-   every fallback. Do not broaden legacy `Unsupported` or alter legacy keys.
+   every fallback. Driver observations never gate approval or key selection.
 2. Extend `Network`'s optional verified-plan argument with the approved `Identity`.
-   Deserialize its `payload`; failure is an ordinary runtime/API failure.
+   Deserialize its `payload` before inference. A null refusal with no reported
+   CUDA error is a typed `ArtifactError`; preserve the reason/loaded version and
+   allow verified cache-only FP32 fallback. A reported CUDA fault escapes `Check`
+   and retires/quarantines, never trying another engine. Context/allocation/
+   enqueue faults remain ordinary failures. No embedded host-code flags are enabled.
    Before context creation, require exactly one input, one output and one profile,
    then use `CheckEngineProfile` with actual names, types, DEVICE location, LINEAR
    format and min/opt/max dimensions. Keep `cudaPeekAtLastError` before any typed
@@ -137,7 +157,21 @@ The existing mixed-FP16 medium detector graph hashes to
 `24e3f6f4f003da711fe466429dbf93037da4b7c521e729f32262629c64ff771f`;
 FLOAT I/O and FLOAT ConvTranspose/Sigmoid tail are retained. The old detector
 plan hash is `2caeb2117dd8d80355f06a5cd18b12e00e78cd9999ce0e3be67d3599b717ece5`.
-These are available candidate inputs, not current-driver approvals.
+The new Opus report (`a6f041ff3d5cdbafc9d40b39d71c5b5c5461c740`, private
+`uct-review-implementation-20261023/opus/uct_gpu_independent_opus_review_2026_10_23.md`)
+re-derived negative archived evidence: this graph's engine had 735 layers versus
+278 FP32, with detector stage 26.0–29.7 ms versus 16.2–19.1 ms (n=3 medians per
+scene, contended shared desktop). These are archived measurements, not this
+branch's results. Graph `24e3…` is rejected as a speed candidate; P3/B2 below
+are withdrawn. No build or repeated negative arm is justified. A different
+conversion needs its own source/fusion hypothesis and root slot. Schema support
+for independently approved detector roles does not approve that graph.
+
+The same report prioritizes exact `PaddleMergeRecognition`/quad-area host work
+(archived 49–53 ms of a roughly 95 ms BF16 book worker). Root's merge lead owns
+that work. This branch's `uct_paddle_processing.cpp` diff is entirely within
+`LoadPaddleAssets`; `PaddleMergeRecognition` is unchanged. Approximate width/small
+arms follow the exact host fixes and require fresh complete-worker comparisons.
 
 Read-only installed file inspection found `nvcuda.dll` version `32.0.16.2101`,
 SHA-256 `e52f89d528f4cc2977c90cb6337c2bc1c2fcb31bfa93822b15e936007d7cd26d`.
@@ -156,19 +190,22 @@ load is allowed; record it as contention and never request apps be closed.
 
 | Slot | Finite request | Purpose / stopping condition |
 |---|---|---|
-| C1 | 1 CPU build, at most 8 jobs, 1200 s; tracked scoped checks | Compile contract + snapshot repair; run `uct_precision_artifact_contract`, `uct_paddle_processing`, affected scheduler/controller/shared-source guards; PCH-off compile as a separately granted C1b (1200 s) |
+| C1 | At most 8 CPU jobs, 780 s total; tracked scoped checks | External owned build under work-data; compile affected `uct_paddle_tests` and run `uct_precision_artifact_contract` + `uct_paddle_processing` + required shared-source guard. Bound PCH-on build/test to 600 s, PCH-off affected compile to 150 s, receipts to 30 s. Stop if selection requires a broader gate, first failure or deadline; no full-gate substitution |
 | C2 | 1 enabled-TensorRT CUDA compile, at most 8 jobs, 1200 s | Compile actual batch-lead integration before any engine use; then tracked `uct_paddle_cuda` + retirement/ownership cases in a separate 180 s GPU slot |
-| P0 | Actual runtime/cache-only precheck, 120 s, one child | Verify loaded backend/runtime/source-to-binary receipt and unchanged cache inventories; no cold build. If production BF16 is refused, record actual fallback and stop |
-| P1 | One missing current-driver fixed1024 BF16 plan, 600 s | Same existing converted graph and fixed profile; distinct original new key/location; never rekey old plan. Existing FP32 plans do not approve this plan. Stop after one build attempt; retain failure |
+| P0 | Actual runtime/cache-only precheck, 120 s, one child, separately granted | After batch-lead enabled build receipt exists: try the SAME approved BF16 plan bytes, stable path then exact legacy key; actual runtime minimum/ABI11/factory/deserialize/FLOAT/profile/device acceptance and exact closure. No image inference, builder, cache writes or cold preparation. Record actual status/failure, loaded DLL/version/hash, driver provenance and inventories; stop on refusal |
+| P1 | Withdrawn as a driver-update prerequisite | Driver changes do not justify a new plan or new approval. A deserialize incompatibility is a preserved failure; any genuinely needed new build requires a distinct root decision and slot |
 | B0 | Production BF16 fixed1024 functional/readiness baseline, 240 s | Assert actual BF16+FP32 detector identity and exact State closure, zero image egress, unchanged caches; then four sources × three timed rows plus startup/warmups = 17 jobs, minimum fixture allowance 191 s. No baseline claim if fallback |
 | P2 | One ordered BF16 dynamic profile preparation, 600 s | Same graph/recipe, min128/opt512/max1024 N8 only. Then separately 180 s shape probe for N1/N7/N8 × W128/256/512/1024; retain actual T/classes and failures |
 | B1 | Fixed vs ordered BF16 pilot, 2400 s maximum | Two high-padding sources, same model/helper/medium FP32 detector; predeclared ABBA then BAAB visits, 20 timed rows/source/visit with first four excluded identically but retained. 43 jobs/visit, 269 s minimum allowance/visit; 64 steady rows per arm/source. Descriptive tails only |
 | B1b | Separate sparse/long-line controls, 1200 s | Two sources, ABBA, same 20/first-four rule and 43 jobs/269 s allowance per visit; 32 steady rows per arm/source. Tilted/small-font controls require a separate equivalent slot |
-| P3 | One current-driver existing mixed-FP16 medium detector plan, 600 s | Reuse hash-matching existing graph/recipe; same detector profile. No conversion/download unless this input is invalid and root grants a distinct justified slot |
-| B2 | FP32 vs mixed-FP16 detector pilot, 2400 s | Same exact approved fixed1024 BF16 recognizer/policy; full detection each time. Two dense/small-font sources, same ABBA/BAAB 43-job/269 s visit rule as B1; count every downstream crop/batch. Sparse/tilted controls are a separate B2b (1200 s) |
+| P3 / B2 | Withdrawn for archived graph `24e3…` | Existing negative stage/layer evidence rejects repeated build/timing of that conversion. A source-backed different conversion would be a new hypothesis/commit, keeping recognizer, coverage and thresholds constant |
 | B3 | Optional existing medium-detector/small-FP32-recognizer arm, 900 s | Separate configuration, existing original graph/caches, fixed1024 N8. Two sources, ABBA, eight timed rows/source/visit, first two excluded but retained: 19 jobs/197 s minimum allowance per visit, 12 steady rows per arm/source. Compare against actual current-driver production BF16; no dependable tail or historical-transfer claim |
 
-These are ceilings to request, not permissions or expected runtimes. The tracked
+The revised immediate request is C1 then separately P0: **900 s total ceiling
+(15 minutes)** with no automatic handoff between slots. C2 and later rows are
+future proposals, not part of C1/P0 or permission to run. P0 requires root/batch
+integration and an existing matching enabled binary; this branch alone cannot
+execute it. The tracked
 fixture's existing watchdog minimum may exceed a requested slot when many
 sources/blocks are selected; reduce the visit to its bounded fitting workload or
 request a different finite slot, never weaken its timeout check. The default
@@ -221,7 +258,9 @@ root integration or owner settings/environment mutation is authorized here.
 
 `uct_precision_artifact_contract` is a new desktop-free CTest case using the
 existing `uct_paddle_tests` executable with explicit runtime inputs. It exercises
-approval/refusal, roles, profile/type/device/driver/hash mismatches, distinct
+approval/refusal, roles, profile/type/device/hash mismatches, driver-independent
+approval/keys, builder-bound identities, runtime floor/malformed-version refusal,
+exact historical lookup vectors, distinct
 fixed/ordered identities, dictionary framing, read-only missing-artifact refusal,
 and post-submission output errors which cannot trigger typed fallback.
 Synthetic graph/plan bytes cover successful envelope validation and tampering;
