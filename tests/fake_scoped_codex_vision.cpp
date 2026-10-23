@@ -27,7 +27,7 @@ int main(int argc,char** argv) {
         // A bare legacy launch must not produce isolation proof.
         if(args==QStringList{"app-server","--listen","stdio://"})return OrdinaryFixtureMain(argc,argv);
         for(const auto& pair:{QStringList{"--disable","apps"},QStringList{"--disable","plugins"},QStringList{"--disable","shell_tool"},
-            QStringList{"-c","web_search=\"disabled\""},QStringList{"-c","mcp_servers.fixture-private.enabled=false"}}) {
+            QStringList{"-c","web_search=\"disabled\""},QStringList{"-c","mcp_servers={}"}}) {
             bool found=false;for(int i=0;i+1<args.size();++i)if(args[i]==pair[0] && args[i+1]==pair[1])found=true;
             if(!found)return 2;
         }

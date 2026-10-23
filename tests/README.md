@@ -1,5 +1,25 @@
 # OkuFlow Tests
 
+`viewport_transform_geometry` covers wide/portrait/extreme-aspect whole-source
+fit, uniform partial bars, nonsticky Fill stepping and inverse Freeze framing.
+`settings_store_round_trip` retains sub-1x/whole-source preferences and legacy
+1x Fill. The opt-in CPU `native_app_view_controls_offscreen` uses the production
+app/window with fixture settings to check signal-free slider range refresh,
+first-step zoom-in, agent whole-source writes, committed Freeze framing despite
+a newer deferred Fit request, leading neutral chevron and the four-button action bar.
+It creates no native desktop windows or devices and makes no provider requests.
+The corresponding native GUI cases remain separate acceptance.
+
+`immutable_uct_contract` includes same-acquisition Resume with OCR deliberately
+blocked: pixel probes keep unchanged words, cuts revoke them, wrong authority/
+frame/PTS refuses handoff, and missing analysis expires normally after a long
+Freeze. A held-copy probe cannot renew stale text after a nearby unanalysed
+advancing frame. Planner/refinement cancellation never supplies new source evidence.
+
+Restricted Codex profile fixtures require the child-only `mcp_servers={}`
+override, including an invalid unused disabled transport. Raw user configuration
+is not copied into test evidence and real inference is not part of that check.
+
 `uct_paddle_cuda`'s `gpuAlgorithmsAndOwnedInputs` additionally compares full
 validation integrals (including zero borders) against an integer CPU oracle
 across warp/tile tails, decimations, padded pitch and repeated poisoned buffers.

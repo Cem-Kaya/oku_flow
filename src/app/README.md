@@ -3,6 +3,12 @@
 This module owns Qt startup, application wiring, settings persistence,
 interaction orchestration, and recording sessions.
 
+Zoom input uses actual oriented camera/selected-media dimensions, with a
+whole-source Fill endpoint and nonsticky 1x crossing snap. Same-file Resume
+can retain exact held UCT references while ordinary advancing probes revalidate;
+source/seek transitions retain invalidation. See
+[zoom and Resume ownership](../../docs/viewport_zoom_and_resume.md).
+
 Successful presentation also selects UCT's display-color mapping. Neutral GPU
 analysis uses the presented inversion/LUT; an older cached LUT generation cannot
 borrow current requested colors. CPU media has already been colored and restores

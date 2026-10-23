@@ -1,5 +1,45 @@
 # OkuFlow Code Reference
 
+## Aspect-aware viewport and Resume continuity
+
+- `ComputeFitZoom`, `EffectiveFillZoom` and `StepFillZoom` in `view_transform`
+  define Fill-relative whole-source scale, its persisted endpoint and a
+  nonsticky 1x crossing stop. `FillZoomFromTransform` inverts partial bars and
+  crop together from committed normalized extents, without borrowing a newer
+  viewport during readback. `ComputeViewTransform` keeps one
+  uniform scale below 1x; existing 1x-and-above geometry is preserved.
+- `OkuFlowApp::CurrentViewSourceSize`, `ViewportFitZoom`, `EffectiveZoomAmount`
+  and `RefreshZoomRange` share actual camera/selected-media extents with input,
+  UI and agent reads. `SetZoom` and `OnZoomAmountChanged` distinguish exact
+  model writes from slider snapping. `MainWindow::setZoomRange` blocks signals
+  while updating fit limits and the effective readout; settings application
+  does not invoke the gesture endpoint mapping. Disabled wheel/key zoom starts
+  from displayed 1x, and agent validation uses the persisted domain.
+- `CaptureLiveForMediaHold` retains `mediaHoldFitMode_` and
+  `mediaHoldWholeSource_` through asynchronous readback so `AcceptLiveMediaHold`
+  preserves whole-picture intent even at matching aspects, independently of
+  the numeric reconstructed scale. `FrozenCameraScene::fitMode/wholeSource`
+  bind those values to the successful camera receipt, excluding a newer
+  deferred request. Legacy 1x Fill remains Fill.
+- `UltraClearTextController::ResumeImmutableMedia` accepts only the exact
+  currently held source/frame/PTS with proven glyphs. It fences refinement and
+  regional plans while `OverlayModel::ResumeImmutableMedia` retains accepted
+  references/masks without renewing media proof or pending observations.
+  The held acquisition is already probed; only distinct advancing inputs may
+  supply the next probe. Wall/media freshness still controls publication.
+- `MainWindow` has four bottom actions (Photo/Record/Explain/Draw); its former
+  `readTextButton` accessor/member/binding were removed. The video chevron is
+  the leading corner cell; `VideoTransport::ApplyStyle` owns its neutral checked
+  face and keyboard focus ring after reparenting.
+  The rectangular-layout and native resize-stability fixtures exercise folding
+  at a camera width of at most 400 pixels for the four-action group.
+- `CodexAgentProfile::Validate` overrides `mcp_servers={}` in restricted
+  children instead of adding individually disabled entries. Inventory/version/
+  feature guards remain, and the user's configuration is never edited.
+
+See [behavior and ownership](viewport_zoom_and_resume.md). Background fixtures
+are separate from native desktop, live provider/GPU and release acceptance.
+
 ## Source-supported text perspective
 
 `RefineWordSurface` optionally replaces an already fitted word rectangle with
@@ -2346,11 +2386,14 @@ Namespace `okuflow::settings`
 ### `include/okuflow/app/constants.hpp`
 Namespace `okuflow::app_constants`
 - UI scaling and step constants for zoom, panning, and blur controls
-- `kZoomSliderMaxMultiplier` is 16; the slider spans 100..1600 at hundredth
-  precision. Wheel/keyboard limits follow that same slider range.
+- `kZoomSliderMaxMultiplier` is 16; the slider uses hundredth precision and an
+  aspect-dependent minimum through 1600. Selecting its minimum stores the
+  whole-source endpoint; wheel/key steps use the exact fit scale and stop once
+  when crossing 1x.
 - Helper functions:
-  - `ClampZoomMultiplier(float)` validates finite magnification in 1x..16x,
-    defaulting non-finite values to 1x. Built-in/modern/legacy config parsing,
+  - `ClampZoomMultiplier(float)` preserves positive values in 0.01..16, with
+    0.01 denoting whole-source Fill; invalid nonpositive/nonfinite values use
+    1x. Built-in/modern/legacy config parsing,
     serialization and UI restoration share it; existing valid zoom settings
     and profile values are preserved without a schema change.
   - `SliderValueToSigma(int sliderValue)`
@@ -3802,7 +3845,7 @@ Namespace `okuflow`
     viewport preferences under Settings > View and navigation
   - capture and recording buttons
   - annotation mode button/overlay plus preference and viewport-transform
-    setters; activation raises the persistent Photo/Record/Explain/Read/Draw
+    setters; activation raises the persistent Photo/Record/Explain/Draw
     tool window above the transparent annotation surface, while the overlay's
     native hit test returns all persistent corner-control rectangles to their
     underlying Qt tool windows. Those actions therefore remain clickable after
@@ -6138,7 +6181,7 @@ dialog. `SetRotationQuarterTurns()` and `SavePersistentSettings()` retain
 review, while selected media continues using the current orientation recipe.
 
 The offscreen native fixture adds `videoSourceControlsBelongToCameraSettings`
-(placement, five-action separation, source visibility, keyboard order and silent
+(placement, four-action separation, source visibility, keyboard order and silent
 refresh/reselection) and `selectedVideoOrientationPreservesCameraPreferenceAndIdentity`
 (actual native file adoption, quarter/half/three-quarter rotation through the
 native control handler, paused cursor/document identity and camera restoration).

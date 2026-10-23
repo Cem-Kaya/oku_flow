@@ -918,6 +918,16 @@ void VideoTransport::ApplyStyle()
         " background: %1; border: 2px dashed palette(window); }")
         .arg(theme_contrast::WarningTextColor(theme_contrast::IsLightTheme(palette())).name());
     if (styleSheet() != style) setStyleSheet(style);
+    // Checked means the bar is hidden, not an active blue processing mode.
+    // The button is reparented into the quick-mode corner.
+    const QString collapseStyle = QStringLiteral(
+        "QPushButton#videoCollapseButton { border: 1px solid palette(mid);"
+        " border-radius: 8px; background: palette(button); color: palette(button-text); padding: 0; }"
+        "QPushButton#videoCollapseButton:checked { background: palette(button);"
+        " color: palette(button-text); border-color: palette(mid); }"
+        "QPushButton#videoCollapseButton:hover { border-color: palette(highlight); }"
+        "QPushButton#videoCollapseButton:focus { border: 3px solid palette(highlight); }");
+    if (collapseButton_->styleSheet() != collapseStyle) collapseButton_->setStyleSheet(collapseStyle);
     const QString badge = snapshot_.state == State::Live ? QStringLiteral(
         "color: #ffffff; background: #14351e; border: 2px solid #ffffff; border-radius: 4px; padding: 3px 8px; font-weight: bold;")
         : snapshot_.state == State::BehindLive ? QStringLiteral(

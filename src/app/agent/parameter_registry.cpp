@@ -22,7 +22,7 @@ constexpr ParameterDescriptor kParameters[] = {
      "src/app/app_controls.cpp", "OnZoomToggled",
      "present_control; effective hardware capability must be reported separately"},
     {"view.zoom.amount", ParameterGroup::View,
-     R"parameter({"type":"number","minimum":1,"maximum":16})parameter", "magnification", "live_profile",
+     R"parameter({"type":"number","minimum":0.01,"maximum":16})parameter", "magnification", "live_profile",
      ParameterPermission::View, ParameterAccess::WritableWithPolicy, false, "src/app/app_controls.cpp",
      "SetZoom", "present_control; effective hardware capability must be reported separately"},
     {"view.center.x", ParameterGroup::View, R"parameter({"type":"number","minimum":0,"maximum":1})parameter",

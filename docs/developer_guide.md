@@ -699,7 +699,7 @@ profiling flags for ordinary operation.
 - `Rotation` rotates the pipeline in 90 degree clockwise steps before downstream processing.
 - `Black & White` applies thresholded monochrome conversion.
 - `Zoom` enables the magnifier and focus-point controls, with desktop
-  magnification from 1x to 16x. Existing zoom amounts and saved profiles keep
+  magnification from whole-picture Fit through Fill (1x) to 16x. Existing zoom amounts and saved profiles keep
   their values within that range.
 - `Gaussian Blur` applies the CUDA blur stage with configurable sigma and supported discrete radii.
 - `Temporal Smooth` applies an exponential running average.

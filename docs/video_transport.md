@@ -53,12 +53,15 @@ Jump to live for recap and recording. It still requests live when finalized
 history grows during the drag: the frozen right endpoint represents that
 intent rather than an older timestamp. Saved video keeps ordinary end seeking.
 
-A small chevron beside the Custom Setup quick-mode controls collapses the entire
+A neutral chevron at the leading edge of the Custom Setup quick-mode controls collapses the entire
 transport, including filename, state, jump action and all reserved height. Its
 native keyboard/touch target remains 44 DIP. Collapse preserves the playback
 snapshot and running playback; it cancels an unfinished drag without seeking.
 The arrow remains in that corner group while the transport is hidden. Expanding
 restores the current timeline and Jump to live. Metadata updates cannot reopen it.
+Checked state changes the arrow direction without adding a blue fill; keyboard
+focus retains its visible ring. The adjacent action group contains Photo,
+Record, Explain and Draw, wrapping two by two at narrow widths.
 The state survives the application's global UI hide/show for this session.
 The button reuses the translated `Hide UI` / `Show UI` action names with
 `Video controls` as its accessible description; no new translation keys are added.
@@ -66,8 +69,11 @@ The button reuses the translated `Hide UI` / `Show UI` action names with
 The step-forward icon (`>>`) requests Jump to live for the selected ongoing
 recording, and Jump to end
 for a selected saved video. It never changes speed. Resume continues from the
-held position. End of video disables Resume until the user seeks away. Playback
-mute is independent of microphone capture. Return to camera and Save frame
+held position. End of video disables Resume until the user seeks away. Resume
+of the same selected file can retain exact held OCR references while independent
+advancing-frame probes revalidate them; seeks and source changes still invalidate
+the old scene. See [zoom and Resume ownership](viewport_zoom_and_resume.md).
+Playback mute is independent of microphone capture. Return to camera and Save frame
 are explicit semantic actions; the application controls their availability.
 Stopping recording preserves the current review position as the same session
 becomes saved media.

@@ -2,6 +2,13 @@
 
 This module contains shared processing and output helpers that are reused across the app.
 
+`ComputeFitZoom` and `EffectiveFillZoom` share aspect-aware whole-picture Fill
+geometry with input and readouts. Restricted Codex profiles replace the child
+MCP table with an empty map so invalid unrelated transports cannot abort startup.
+The UCT model's exact immutable-to-advancing handoff retains proven references
+without manufacturing another acquisition. See
+[zoom and Resume ownership](../../docs/viewport_zoom_and_resume.md).
+
 `ComputeZoomAnchorCenter` shares the real cropped view geometry with native
 wheel/keyboard zoom. Its desktop-free fixture verifies anchor position across
 landscape/portrait/aspect changes and clamped old centers, rejecting malformed

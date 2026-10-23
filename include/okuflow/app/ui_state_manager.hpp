@@ -112,7 +112,6 @@ public:
     QSlider* contrastSlider_{};
     QSlider* brightnessSlider_{};
     QPushButton* explainNowButton_{};
-    QPushButton* readTextButton_{};
     QPushButton* aiSettingsButton_{};
     QPushButton* openNotesButton_{};
     QPushButton* setupAssistantButton_{};

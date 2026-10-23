@@ -857,6 +857,9 @@ public:
         const QVector<RegionalWordMatch>&, double remainingMs)>;
 
     void Reset();
+    // Same selected media acquisition starts advancing: retain exact accepted
+    // references and masks, discard pending observations, renew no proof clock.
+    bool ResumeImmutableMedia(const SourceStamp& selected);
     // A previously pending live word needs a different frame and unequal
     // complete source-pixel digests under the same scheduler authority.
     // Confirmed words may survive a duplicate refresh without new evidence.

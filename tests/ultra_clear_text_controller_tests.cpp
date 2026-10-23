@@ -297,6 +297,7 @@ struct FakeDeviceState {
     std::atomic<bool> resident{};
     std::atomic<int> residentPreparations{};
     std::atomic<bool> failWordReferences{};
+    std::shared_ptr<DequeueBarrier> probeBarrier;
 };
 
 // CPU oracle for the resident controller protocol, not a GPU implementation.
@@ -373,6 +374,7 @@ public:
     {
         ++state_->probes;
         NoteThread();
+        if(state_->probeBarrier)state_->probeBarrier->Wait();
         if (state_->probeFails.load()) {
             error = QStringLiteral("fixture probe failure");
             return {};
@@ -590,6 +592,9 @@ private slots:
     void advancingMediaValidatesWhileOcrHeldAndRejectsChangedPixels();
     void advancingMediaAuthorityRevokesAndSuppressesLiveInput();
     void advancingMediaPauseReturnsToOneShotAnalysis();
+    void sameFrameResumeKeepsTextWhileProbesRevalidate();
+    void sameFrameResumeRejectsOtherAcquisitionAndExpiresWithoutAnalysis();
+    void sameFrameResumeNeverReprobesTheHeldAcquisition();
     void pausedMediaRecoversTransientRecognition_data();
     void pausedMediaRecoversTransientRecognition();
     void pausedMediaRetryCannotReviveReplacedScene();
@@ -2654,6 +2659,81 @@ void UltraClearTextControllerTests::advancingMediaPauseReturnsToOneShotAnalysis(
     QCOMPARE(h.controller->ProbeStatistics().submitted,probes);
     QVERIFY(h.controller->SetImmutableScene(paused));
     QCOMPARE(h.controller->SchedulerStatistics().submitted,before+2);
+}
+
+void UltraClearTextControllerTests::sameFrameResumeKeepsTextWhileProbesRevalidate()
+{
+    ImmutableHarness h; h.Enable();
+    auto paused = h.Scene(10); paused.admission = ImmutableAdmission::Standalone;
+    paused.selected.timestampMs = 10200;
+    QVERIFY(h.controller->SetImmutableScene(paused));
+    QTRY_VERIFY(h.overlay.WordCount()>0);
+    const int words = h.overlay.WordCount(); const auto reading = h.Reading();
+    const auto submitted = h.controller->SchedulerStatistics().submitted;
+    h.now += 120000; // a long Freeze must not erase exact selected-frame proof
+    QVERIFY(h.controller->ResumeImmutableMedia(paused.sourceAuthority,10,10200));
+    QVERIFY(h.controller->HasAdvancingMediaScene());
+    QCOMPARE(h.overlay.WordCount(),words); QCOMPARE(h.Reading(),reading);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted,submitted);
+    // Keep OCR blocked: ongoing continuity must come from pixel probes.
+    { std::lock_guard lock(h.script->mutex); h.script->holdRecognition=true; }
+    for (std::uint64_t frame=11;frame<=20;++frame) {
+        h.PlayFrame(frame);
+        QTest::qWait(15);
+        QCOMPARE(h.overlay.WordCount(),words);
+    }
+    QVERIFY(h.controller->ProbeStatistics().submitted>0);
+    // A real cut may not inherit these glyphs just because playback resumed.
+    UctAdvancingMediaScene cut;
+    cut.geometry=paused.geometry;cut.sourceAuthority=paused.sourceAuthority;
+    QImage changed=h.page.image;changed.fill(Qt::black);
+    cut.current={OwnedPixels(changed),21,10420};cut.transform=paused.transform;
+    cut.viewportWidth=960;cut.viewportHeight=540;
+    h.now+=100;
+    QVERIFY(h.controller->OnAdvancingMediaPresented(cut));
+    QTRY_COMPARE(h.overlay.WordCount(),0);
+}
+
+void UltraClearTextControllerTests::sameFrameResumeRejectsOtherAcquisitionAndExpiresWithoutAnalysis()
+{
+    ImmutableHarness h;h.Enable();
+    auto paused=h.Scene(10);paused.admission=ImmutableAdmission::Standalone;paused.selected.timestampMs=10200;
+    QVERIFY(h.controller->SetImmutableScene(paused));QTRY_VERIFY(h.overlay.WordCount()>0);
+    QVERIFY(!h.controller->ResumeImmutableMedia(paused.sourceAuthority+1,10,10200));
+    QVERIFY(!h.controller->ResumeImmutableMedia(paused.sourceAuthority,11,10200));
+    QVERIFY(!h.controller->ResumeImmutableMedia(paused.sourceAuthority,10,10201));
+    QVERIFY(h.overlay.WordCount()>0);
+    QVERIFY(h.controller->ResumeImmutableMedia(paused.sourceAuthority,10,10200));
+    UctAdvancingMediaPresentation receipt{paused.geometry,paused.sourceAuthority,11,11000,
+        paused.transform,960,540,0};
+    h.now+=1000;
+    QVERIFY(h.controller->OnAdvancingMediaPresentedWithoutAnalysis(receipt));
+    QCOMPARE(h.overlay.WordCount(),0);QVERIFY(h.Reading().isEmpty());
+}
+
+void UltraClearTextControllerTests::sameFrameResumeNeverReprobesTheHeldAcquisition()
+{
+    ImmutableHarness h;h.script->wantsDevice=true;h.Enable();
+    auto paused=h.Scene(10);paused.admission=ImmutableAdmission::Standalone;
+    paused.selected.timestampMs=10200;
+    paused.selected.device=std::make_shared<FakeDeviceImage>(h.devices,h.page.image,
+        paused.geometry.settings.sourceEpoch,10,10200);
+    QVERIFY(h.controller->SetImmutableScene(paused));QTRY_VERIFY(h.overlay.WordCount()>0);
+    auto barrier=std::make_shared<DequeueBarrier>();h.devices->probeBarrier=barrier;
+    const auto cleanup=qScopeGuard([&]{barrier->Release();});
+    const auto submitted=h.controller->ProbeStatistics().submitted;
+    QVERIFY(h.controller->ResumeImmutableMedia(paused.sourceAuthority,10,10200));
+    QTest::qWait(20);
+    QCOMPARE(h.controller->ProbeStatistics().submitted,submitted);
+    QVERIFY(!barrier->entered.load());
+    // A nearby media PTS must not let a delayed held-copy probe renew wall age.
+    UctAdvancingMediaPresentation receipt{paused.geometry,paused.sourceAuthority,11,10220,
+        paused.transform,960,540,0};
+    h.now+=20;QVERIFY(h.controller->OnAdvancingMediaPresentedWithoutAnalysis(receipt));
+    h.now+=400;QVERIFY(h.controller->OnAdvancingMediaPresentedWithoutAnalysis(receipt));
+    QCOMPARE(h.overlay.WordCount(),0);QVERIFY(h.Reading().isEmpty());
+    barrier->Release();QTest::qWait(30);
+    QCOMPARE(h.overlay.WordCount(),0);QVERIFY(h.Reading().isEmpty());
 }
 
 void UltraClearTextControllerTests::pausedMediaRecoversTransientRecognition_data()

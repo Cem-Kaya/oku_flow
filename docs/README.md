@@ -1,5 +1,9 @@
 # OkuFlow Documentation Guide
 
+[Viewport zoom and Resume](viewport_zoom_and_resume.md) documents whole-picture
+zoom-out, Fill snapping, retained UCT references, corner controls and isolated
+Assistant startup configuration.
+
 [Source-supported perspective text](uct_surface_perspective.md) explains bounded
 four-corner recovery, source refusals and projected glyph geometry.
 

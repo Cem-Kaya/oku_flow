@@ -74,6 +74,9 @@ class ViewTransformTests final : public QObject {
     Q_OBJECT
 
 private slots:
+    void wideAndPortraitZoomOutFitsAndStaysUniform();
+    void zoomStepsStopAtFillWithoutSticking();
+    void partialLetterboxHoldReconstructsExactScale();
     void zoomAnchorPreservesActualViewportAtClampedEdges();
     void fillPreservesUniformScaleAcrossAspectRatios();
     void checkerboardCirclePatternStaysRound();
@@ -89,6 +92,67 @@ private slots:
     void sharedTimelineAdoptsPresenterSlotSignals();
     void sharedTimelineIgnoresMissedAdmission();
 };
+
+void ViewTransformTests::wideAndPortraitZoomOutFitsAndStaysUniform() {
+    for (const auto source : {QSize(2560,1080), QSize(1080,1920), QSize(100,30000)}) {
+        for (const auto viewport : {QSize(1920,1080), QSize(700,900), QSize(3440,1440)}) {
+            const float fit = ComputeFitZoom(source.width(),source.height(),viewport.width(),viewport.height());
+            QVERIFY(fit > 0 && fit <= 1);
+            const auto whole = ComputeViewTransform(source.width(),source.height(),viewport.width(),viewport.height(),
+                kWholeSourceZoom,0.0f,1.0f,ViewportFitMode::kFill);
+            const auto fitted = ComputeViewTransform(source.width(),source.height(),viewport.width(),viewport.height(),
+                1,0.5f,0.5f,ViewportFitMode::kFit);
+            QVERIFY(std::abs(whole.sourceWidth-1)<1e-5f && std::abs(whole.sourceHeight-1)<1e-5f);
+            QVERIFY(std::abs(whole.destinationWidth-fitted.destinationWidth)<1e-5f);
+            QVERIFY(std::abs(whole.destinationHeight-fitted.destinationHeight)<1e-5f);
+            for (const float zoom : {fit, (fit+1)*0.5f, 1.0f, 1.33f, 2.0f, 16.0f}) {
+                const auto view = ComputeViewTransform(source.width(),source.height(),viewport.width(),viewport.height(),
+                    zoom,0.05f,0.95f,ViewportFitMode::kFill);
+                const float x = view.sourceWidth*source.width()/(view.destinationWidth*viewport.width());
+                const float y = view.sourceHeight*source.height()/(view.destinationHeight*viewport.height());
+                QVERIFY(std::abs(x-y)<1e-4f*std::max(x,y));
+                QVERIFY(view.sourceX >= 0 && view.sourceY >= 0);
+                QVERIFY(view.sourceX+view.sourceWidth<=1.00001f && view.sourceY+view.sourceHeight<=1.00001f);
+                if (zoom>=1) {
+                    QCOMPARE(view.destinationX,0.0f);QCOMPARE(view.destinationY,0.0f);
+                    QCOMPARE(view.destinationWidth,1.0f);QCOMPARE(view.destinationHeight,1.0f);
+                }
+            }
+        }
+    }
+}
+
+void ViewTransformTests::zoomStepsStopAtFillWithoutSticking() {
+    const float fit = ComputeFitZoom(1080,1920,1920,1080);
+    QCOMPARE(StepFillZoom(0.99f,1,1,fit),1.0f);
+    QCOMPARE(StepFillZoom(1.01f,-1,1,fit),1.0f);
+    QVERIFY(StepFillZoom(1,1,1,fit)>1);
+    QVERIFY(StepFillZoom(1,-1,1,fit)<1);
+    QCOMPARE(StepFillZoom(fit,-1,1,fit),kWholeSourceZoom);
+    QVERIFY(StepFillZoom(kWholeSourceZoom,1,1,fit)>fit);
+    QCOMPARE(EffectiveFillZoom(kWholeSourceZoom,fit),fit);
+    QCOMPARE(EffectiveFillZoom(kWholeSourceZoom,0.001f),0.001f);
+    QCOMPARE(ComputeFitZoom(0,1920,1920,1080),1.0f);
+    QCOMPARE(EffectiveFillZoom(std::numeric_limits<float>::quiet_NaN(),fit),1.0f);
+}
+
+void ViewTransformTests::partialLetterboxHoldReconstructsExactScale() {
+    for (const auto source : {QSize(2560,1080),QSize(1080,1920)}) {
+        const float fit = ComputeFitZoom(source.width(),source.height(),1920,1080);
+        for (const float zoom : {fit,(fit+1)*0.5f,1.0f,2.0f}) {
+            const auto before = ComputeViewTransform(source.width(),source.height(),1920,1080,
+                zoom,0.23f,0.78f,ViewportFitMode::kFill);
+            const float recovered = FillZoomFromTransform(before);
+            QVERIFY(std::abs(recovered-zoom)<1e-5f);
+            const auto after = ComputeViewTransform(source.width(),source.height(),1920,1080,recovered,
+                before.sourceX+before.sourceWidth/2,before.sourceY+before.sourceHeight/2,ViewportFitMode::kFill);
+            QVERIFY(std::abs(after.sourceX-before.sourceX)<1e-5f);
+            QVERIFY(std::abs(after.sourceY-before.sourceY)<1e-5f);
+            QVERIFY(std::abs(after.destinationWidth-before.destinationWidth)<1e-5f);
+            QVERIFY(std::abs(after.destinationHeight-before.destinationHeight)<1e-5f);
+        }
+    }
+}
 
 void ViewTransformTests::zoomAnchorPreservesActualViewportAtClampedEdges() {
     for (const auto [sourceWidth,sourceHeight] : {std::pair{1600u,900u},std::pair{900u,1600u},std::pair{1000u,1000u}})

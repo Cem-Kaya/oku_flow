@@ -2756,6 +2756,23 @@ void OverlayModel::Reset()
     liveCamera_ = false;
 }
 
+bool OverlayModel::ResumeImmutableMedia(const SourceStamp& selected)
+{
+    if (!immutable_ || lines_.isEmpty() ||
+        std::any_of(lines_.begin(), lines_.end(), [&](const auto& line) {
+            return !line.provenance.SameScene(selected) || line.provenance.frameSeq != selected.frameSeq ||
+                line.provenance.timestampMs != selected.timestampMs;
+        })) return false;
+    immutable_ = false;
+    immutableFullPreparing_ = false;
+    liveCamera_ = false;
+    pending_.clear(); // selected-only OCR is never a second advancing observation
+    pendingEvidenceStamp_ = {};
+    pendingEvidenceDigest_.clear();
+    pendingEvidenceAuthority_ = 0;
+    return true;
+}
+
 AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceStamp& current,
                                  const ProbeFrame* latestProbe, std::int64_t nowMs, const RegionalPreflight& preflight)
 {
@@ -3957,6 +3974,12 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         }
         nextLineId_ = regionalNextLineId;
     }
+    if (!immutable && !regional) {
+        // A new full read replaces the resumed immutable conflict inventory.
+        // Until then probes must retain its exact conservative masks.
+        immutableConflictRects_.clear();
+        immutableConflictSaturated_ = false;
+    }
     lines_ = std::move(kept);
     if (regional) {
         QVector<PendingWord> retained;
@@ -4113,7 +4136,7 @@ QVector<SceneWord> OverlayModel::SceneWords(std::int64_t nowMs, std::uint64_t cu
     QVector<SceneWord> words;
     // Conflict ink is shared scene protection even when its entire former
     // line was removed. Adjacent plates must never occlude those originals.
-    QVector<QRectF> protectedRects = immutable_ ? immutableConflictRects_ : QVector<QRectF>{};
+    QVector<QRectF> protectedRects = immutableConflictRects_;
     const bool hasCarved = std::any_of(lines_.begin(), lines_.end(), [](const auto& line) {
         return !line.carvedSceneRects.isEmpty();
     });

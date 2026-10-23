@@ -211,6 +211,7 @@ private slots:
     void ignoresPlaintextApiKeyField();
     void clampsOutOfRangeValues();
     void sixteenXZoomPreservesSettingsAndBoundsProfiles();
+    void zoomOutPreferencesRoundTripWithoutChangingLegacyFill();
     void equivalenceUsesUiTolerances();
     void presetIdentitySurvivesApplyTimeMutations();
     void quickModeSaveIsDurableBeforeReturn();
@@ -948,6 +949,20 @@ void SettingsStoreTests::sixteenXZoomPreservesSettingsAndBoundsProfiles()
     loaded = Load(path);
     QVERIFY(loaded.has_value());
     QCOMPARE(loaded->currentConfig.zoomAmount, 16.0f);
+}
+
+void SettingsStoreTests::zoomOutPreferencesRoundTripWithoutChangingLegacyFill()
+{
+    QTemporaryDir dir;QVERIFY(dir.isValid());
+    const auto path=dir.filePath("zoom-out.json");
+    for (float amount : {0.01f,0.32f,0.75f,1.0f}) {
+        PersistentSettings settings;settings.currentConfig.zoomEnabled=true;
+        settings.currentConfig.zoomAmount=amount;
+        QVERIFY(Save(path,settings));
+        const auto loaded=Load(path);QVERIFY(loaded);
+        QCOMPARE(loaded->currentConfig.zoomAmount,amount);
+        QCOMPARE(loaded->viewportFitMode,ViewportFitModeSetting::Fill);
+    }
 }
 
 void SettingsStoreTests::rejectsFutureSettingsVersion()

@@ -38,8 +38,20 @@ private slots:
             QVERIFY(index > 0);
             QCOMPARE(result.arguments[index - 1], QStringLiteral("--disable"));
         }
-        QVERIFY(result.arguments.contains("mcp_servers.approved-server.enabled=false"));
+        QVERIFY(result.arguments.contains("mcp_servers={}"));
+        QVERIFY(!result.arguments.join(' ').contains("approved-server"));
         QVERIFY(!result.arguments.join(' ').contains("secret"));
+    }
+    void invalidDisabledTransportCannotBreakChildConfiguration() {
+        // Codex validates the transport even on enabled=false entries. The
+        // restricted child must discard the entire table, not rebuild entries.
+        const QJsonArray malformed{QJsonObject{{"name", "code-review"},
+            {"enabled", false}, {"transport", "invalid"}}};
+        const auto result = CodexAgentProfile::Validate("codex-cli 0.160.1", Features(), malformed);
+        QVERIFY(result.available);
+        QCOMPARE(result.arguments, CodexAgentProfile::Validate("codex-cli 0.160.1", Features(), {}).arguments);
+        QCOMPARE(result.arguments.count("mcp_servers={}"), 1);
+        QVERIFY(!result.arguments.join(' ').contains("code-review"));
     }
     void futureVersionFailsClosed() {
         const auto result = CodexAgentProfile::Validate("codex-cli 0.161.0", Features(), {});

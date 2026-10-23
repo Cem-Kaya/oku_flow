@@ -63,7 +63,8 @@ bool InteractionController::HandlePanScroll(const QWheelEvent* wheelEvent)
         return false;
     }
 
-    if (!app_.zoomEnabled_ || app_.zoomAmount_ <= 1.0f) {
+    if (!app_.zoomEnabled_ || app_.pipelineOrchestrator_->ViewportFitMode() == settings::ViewportFitModeSetting::Fit ||
+        app_.EffectiveZoomAmount() <= app_.ViewportFitZoom()) {
         return false;
     }
 
@@ -114,8 +115,11 @@ bool InteractionController::HandlePanScroll(const QWheelEvent* wheelEvent)
 float InteractionController::ScaledZoom(float current,
                                         float notches,
                                         float accel) const {
-    constexpr float kZoomStepRatio = 1.10f;
-    return current * std::pow(kZoomStepRatio, notches * accel);
+    if (app_.pipelineOrchestrator_->ViewportFitMode() == settings::ViewportFitModeSetting::Fit)
+        current = kWholeSourceZoom;
+    else if (!app_.zoomEnabled_)
+        current = 1.0f;
+    return StepFillZoom(current, notches, accel, app_.ViewportFitZoom());
 }
 
 void InteractionController::ApplyZoom(float target, const QPointF* localPos) {
@@ -195,7 +199,7 @@ void InteractionController::ScheduleZoomAnnouncement() {
         }
         const QString message =
             TranslateUi(QStringLiteral("Zoom %L1 times"))
-                .arg(app_.zoomAmount_, 0, 'f', 1);
+                .arg(app_.EffectiveZoomAmount(), 0, 'f', 2);
         app_.ShowStatusMessage(message, 2500);
     });
 }

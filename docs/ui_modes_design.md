@@ -27,9 +27,9 @@ forward-to-live/end, Return to camera, Mute and Save frame controls retain
 keyboard and accessibility semantics. Opening a file first finalizes recording.
 Open a file through Settings > Camera > View video, Ctrl+O or a single local-file
 drop. The conditional Select video button sits below the source dropdown;
-the five corner actions remain Photo, Record, Explain, Read and Draw. See
+the four corner actions are Photo, Record, Explain and Draw. See
 [transport layout](video_transport.md).
-The video-controls chevron lives at the end of the quick-mode carousel. Hiding
+The neutral video-controls chevron is the leading cell of the quick-mode carousel. Hiding
 it removes the entire transport row and returns that height to the image; the
 corner chevron remains available to restore it without changing playback.
 
@@ -101,7 +101,7 @@ Simple mode is the normal operating view:
 - Built-in modes use action-oriented names such as "Read a Page", "Keep It
   Steady", and "See in Low Light"; internal preset names remain unchanged for
   persistence and configuration lookup.
-- The immediate actions are Photo, Record, Explain, Read, and Draw. Draw pins
+- The immediate actions are Photo, Record, Explain, and Draw. Draw pins
   the Simple chrome and opens a compact high-contrast vertical tool rail flush
   to the left edge between the permanent corner panels. Tool-specific color,
   thickness, text entry, and save-on-exit controls appear immediately to the

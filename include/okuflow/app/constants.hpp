@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <limits>
+#include "okuflow/common/view_transform.hpp"
 
 namespace okuflow::app_constants {
 
@@ -23,8 +24,8 @@ inline constexpr std::array<int, 19> kSupportedBlurRadii{0, 1, 2, 3, 4, 5, 6, 7,
 
 inline float ClampZoomMultiplier(float value)
 {
-    return std::clamp(std::isfinite(value) ? value : 1.0f,
-                      1.0f, static_cast<float>(kZoomSliderMaxMultiplier));
+    return std::clamp(std::isfinite(value) && value > 0.0f ? value : 1.0f,
+                      kWholeSourceZoom, static_cast<float>(kZoomSliderMaxMultiplier));
 }
 
 inline float SliderValueToSigma(int sliderValue)

@@ -393,6 +393,10 @@ bool CanSetParameterWidget(QObject* widget,const FieldWrite& write) {
     if(qobject_cast<QAbstractButton*>(widget))return write.value.isBool();
     if(auto* slider=qobject_cast<QSlider*>(widget)) {
         if(!write.value.isDouble() || !std::isfinite(write.value.toDouble()))return false;
+        // Persisted zoom has a whole-source token below the aspect-dependent
+        // display slider minimum. SetZoom applies it without a slider gesture.
+        if(write.field==Field::ZoomAmount)return write.value.toDouble()>=double(kWholeSourceZoom) &&
+            write.value.toDouble()<=app_constants::kZoomSliderMaxMultiplier;
         const auto steps=std::lround(write.value.toDouble()*Scale(write.field));
         return steps>=slider->minimum() && steps<=slider->maximum();
     }
@@ -586,7 +590,7 @@ QJsonObject AppControlTarget::QueryImageParameters(ToolId tool,const QJsonObject
         QJsonValue effective=requested.isBool()?QJsonValue(active && intent):active && intent?requested:QJsonValue(QJsonValue::Null);
         if(field==Field::ZoomEnabled && Value(fields,Field::Framing)=="fit") {effective=false;inactive="view_layout";}
         if((field==Field::CenterX || field==Field::CenterY) && Value(fields,Field::Framing)=="fit") {effective=0.5;inactive="view_layout";}
-        if(field==Field::ZoomAmount)effective=app_.cameraActive_ || media?QJsonValue(Value(fields,Field::Framing)=="fit" || !enabled(Field::ZoomEnabled)?1.0:app_.zoomAmount_):QJsonValue(QJsonValue::Null);
+        if(field==Field::ZoomAmount)effective=app_.cameraActive_ || media?QJsonValue(app_.EffectiveZoomAmount()):QJsonValue(QJsonValue::Null);
         if(field==Field::PresentationRate)effective=app_.pipelineOrchestrator_->EffectiveViewportRate();
         if(media && group==ParameterGroup::Image && !SelectedMediaImageFieldAvailable(field,displayedGpu)) {
             effective=QJsonValue(QJsonValue::Null);inactive="selected_media_unsupported_effect";

@@ -478,6 +478,45 @@ bool UltraClearTextController::SetImmutableScene(UctImmutableScene scene)
     return valid;
 }
 
+bool UltraClearTextController::ResumeImmutableMedia(std::uint64_t sourceAuthority,
+    std::uint64_t frameSeq, std::int64_t timestampMs)
+{
+    if (!enabled_ || !immutableScene_ || presentationFailed_ || mediaOverlaySuppressed_ ||
+        immutableScene_->sourceAuthority != sourceAuthority ||
+        immutableScene_->selected.frameSeq != frameSeq || immutableScene_->selected.timestampMs != timestampMs ||
+        !HasProvenImmutableArtifact() || !BackendUsable(backend_)) return false;
+    const auto selectedStamp = ImmutableStamp(immutableScene_->selected);
+    if (!model_.ResumeImmutableMedia(selectedStamp)) return false;
+    UctAdvancingMediaScene scene{immutableScene_->geometry, immutableScene_->sourceAuthority,
+        immutableScene_->selected, immutableScene_->transform, immutableScene_->viewportWidth,
+        immutableScene_->viewportHeight, immutableScene_->strokeWeight};
+    StopImmutableRefinement(); // fences jobs and regional plans; not accepted references
+    if (probeWorker_) probeWorker_->Cancel();
+    if (deviceProbeReader_) deviceProbeReader_->Cancel();
+    immutableScene_.reset();
+    advancingMediaScene_ = std::move(scene);
+    advancingDeviceIdentity_ = advancingMediaScene_->current.device;
+    advancingDisplay_ = UctAdvancingMediaPresentation{geometry_, sourceAuthority, frameSeq, timestampMs,
+        advancingMediaScene_->transform, advancingMediaScene_->viewportWidth,
+        advancingMediaScene_->viewportHeight, advancingMediaScene_->strokeWeight};
+    advancingReceiptValid_ = FrameInputValid(advancingMediaScene_->current, geometry_);
+    latestProbe_.reset(); deviceCandidate_.reset(); stableProbes_ = 0;
+    haveLastOcr_ = false; regionalPlan_.reset(); regionalJob_ = 0;
+    regionalAttempted_ = false; regionalRequireFull_ = false;
+    advancingMediaJob_ = 0;
+    // This selected acquisition is already proven. Reprobing the held copy
+    // could complete after playback advances and renew stale text's wall age.
+    advancingMediaHaveProbe_ = true; advancingMediaProbeFrame_ = frameSeq;
+    lastProbeRequestMs_ = advancingMediaLastSubmitMs_ = std::numeric_limits<std::int64_t>::min() / 2;
+    haveAdvancingValidation_ = false;
+    // Exact selected acquisition is still displayed. Its original media proof
+    // clock survives; this records only the transition's wall-clock deadline.
+    NoteAdvancingValidation(clock_());
+    watchdog_->start();
+    RefreshOverlay(clock_()); UpdateReadingText(); UpdateStatus();
+    return true;
+}
+
 bool UltraClearTextController::OnAdvancingMediaPresented(UctAdvancingMediaScene scene)
 {
     ++presentCount_;

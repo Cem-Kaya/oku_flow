@@ -91,6 +91,8 @@ public:
     QSlider* blackWhiteSlider() const;
     QCheckBox* zoomCheckbox() const;
     QSlider* zoomSlider() const;
+    // Refresh presentation limits/readout without changing model or settings.
+    void setZoomRange(float fitZoom, float requestedZoom);
     QPushButton* debugButton() const;
     QCheckBox* focusMarkerCheckbox() const;
     QSlider* zoomCenterXSlider() const;
@@ -151,7 +153,6 @@ public:
     QAbstractButton* simpleModeButton() const;
     QAbstractButton* advancedModeButton() const;
     QPushButton* explainNowButton() const;
-    QPushButton* readTextButton() const;
     QCheckBox* stabilizationCheckbox() const;
     QCheckBox* bumpHoldCheckbox() const;
     QCheckBox* keystoneCheckbox() const;
@@ -335,6 +336,7 @@ private:
     QSlider* bwSlider_{};
     QCheckBox* zoomCheckbox_{};
     QSlider* zoomSlider_{};
+    QLabel* zoomValueLabel_{};
     QCheckBox* blurCheckbox_{};
     QSlider* blurSigmaSlider_{};
     QSlider* blurRadiusSlider_{};
@@ -477,7 +479,6 @@ private:
     QPushButton* simpleModeButton_{};
     QPushButton* advancedModeButton_{};
     QPushButton* explainNowButton_{};
-    QPushButton* readTextButton_{};
     QCheckBox* stabilizationCheckbox_{};
     QCheckBox* bumpHoldCheckbox_{};
     QCheckBox* keystoneCheckbox_{};

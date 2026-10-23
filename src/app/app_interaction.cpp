@@ -237,6 +237,7 @@ void OkuFlowApp::UpdateCameraPlaceholder() {
 }
 
 void OkuFlowApp::UpdateProcessingStatusLabel() {
+    RefreshZoomRange();
     UpdateCameraPlaceholder();
     if (!uiState_->processingStatusLabel_) {
         return;
@@ -693,7 +694,8 @@ void OkuFlowApp::HandleKeyboardZoom(float notches) {
 }
 
 bool OkuFlowApp::MapViewToSource(const QPointF& pos, float& outX, float& outY) const {
-    if (!uiState_->renderWidget_ || processedFrameWidth_ == 0 || processedFrameHeight_ == 0) {
+    const auto source = CurrentViewSourceSize();
+    if (!uiState_->renderWidget_ || source.width() <= 0 || source.height() <= 0) {
         return false;
     }
 
@@ -702,8 +704,8 @@ bool OkuFlowApp::MapViewToSource(const QPointF& pos, float& outX, float& outY) c
     const float viewportHeight =
         static_cast<float>(std::max(1, uiState_->renderWidget_->height()));
     ViewTransform transform =
-        ComputeViewTransform(processedFrameWidth_,
-                             processedFrameHeight_,
+        ComputeViewTransform(source.width(),
+                             source.height(),
                              static_cast<UINT>(viewportWidth),
                              static_cast<UINT>(viewportHeight),
                              zoomEnabled_ ? zoomAmount_ : 1.0f,

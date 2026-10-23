@@ -111,7 +111,6 @@ UIStateManager::UIStateManager(MainWindow& window, OkuFlowApp& app)
     OKUFLOW_BIND_WIDGET(contrastSlider_, contrastSlider);
     OKUFLOW_BIND_WIDGET(brightnessSlider_, brightnessSlider);
     OKUFLOW_BIND_WIDGET(explainNowButton_, explainNowButton);
-    OKUFLOW_BIND_WIDGET(readTextButton_, readTextButton);
     OKUFLOW_BIND_WIDGET(aiSettingsButton_, aiSettingsButton);
     OKUFLOW_BIND_WIDGET(openNotesButton_, openNotesButton);
     OKUFLOW_BIND_WIDGET(setupAssistantButton_, setupAssistantButton);
@@ -229,7 +228,8 @@ void UIStateManager::ApplyConfigToUI(const settings::AdvancedConfig& config,
         QSignalBlocker block(zoomSlider_);
         zoomSlider_->setValue(sliderValue);
     }
-    app_.OnZoomAmountChanged(static_cast<int>(std::round(app_.zoomAmount_ * kZoomSliderScale)));
+    // Applying a saved value is not a slider gesture or its endpoint snap.
+    app_.SetZoom(app_.zoomAmount_, {}, false);
     app_.SetZoomCenter(config.zoomCenterX, config.zoomCenterY, true);
     app_.OnZoomToggled(app_.zoomEnabled_);
 

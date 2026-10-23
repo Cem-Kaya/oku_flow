@@ -546,13 +546,29 @@ void OkuFlowApp::OnZoomToggled(bool checked) {
 }
 
 void OkuFlowApp::OnZoomAmountChanged(int value) {
-    SetZoom(static_cast<float>(value)/kZoomSliderScale,{},false);
+    const bool whole = uiState_->zoomSlider_ && value == uiState_->zoomSlider_->minimum();
+    // A short slider magnet at Fill; wheel/key stepping uses a crossing stop.
+    if (!whole && std::abs(value - kZoomSliderScale) <= 2) value = kZoomSliderScale;
+    SetViewportFitMode(settings::ViewportFitModeSetting::Fill, false);
+    SetZoom(whole ? kWholeSourceZoom : static_cast<float>(value)/kZoomSliderScale,{},false);
+}
+
+float OkuFlowApp::EffectiveZoomAmount() const {
+    return pipelineOrchestrator_->ViewportFitMode() == settings::ViewportFitModeSetting::Fit
+        ? 1.0f : EffectiveFillZoom(zoomEnabled_ ? zoomAmount_ : 1.0f, ViewportFitZoom());
+}
+
+void OkuFlowApp::RefreshZoomRange() {
+    if (mainWindow_) mainWindow_->setZoomRange(ViewportFitZoom(), zoomAmount_);
 }
 
 void OkuFlowApp::SetZoom(float amount, std::optional<QPointF> anchor, bool enable, bool recenterAnchor) {
     if (!uiState_->zoomSlider_) return;
     const float before = zoomAmount_;
-    const float beforeEffective = zoomEnabled_ ? before : 1.0f;
+    const float beforeEffective = EffectiveFillZoom(zoomEnabled_ ? before : 1.0f, ViewportFitZoom());
+    const auto previousFit = pipelineOrchestrator_->ViewportFitMode() == settings::ViewportFitModeSetting::Fit
+        ? ViewportFitMode::kFit : ViewportFitMode::kFill;
+    if (enable) SetViewportFitMode(settings::ViewportFitModeSetting::Fill, false);
     const bool enableChanged = enable && !zoomEnabled_;
     if (enableChanged) {
         if (uiState_->zoomCheckbox_) {
@@ -560,23 +576,24 @@ void OkuFlowApp::SetZoom(float amount, std::optional<QPointF> anchor, bool enabl
         }
         zoomEnabled_ = true; UpdateControlEnabledStates();
     }
-    const int requested = std::clamp(static_cast<int>(std::lround(amount*kZoomSliderScale)),
-        uiState_->zoomSlider_->minimum(),uiState_->zoomSlider_->maximum());
-    const float after = std::max(1.0f,float(requested)/kZoomSliderScale);
+    const int requested = std::clamp(static_cast<int>(std::lround(ClampZoomMultiplier(amount)*kZoomSliderScale)),
+        1, kZoomSliderMaxMultiplier * kZoomSliderScale);
+    const float after = float(requested)/kZoomSliderScale;
     const bool changed = after != before;
     if (changed) {
-        const QSignalBlocker blocker(uiState_->zoomSlider_); uiState_->zoomSlider_->setValue(requested);
         zoomAmount_ = after;
     }
+    RefreshZoomRange();
     if (anchor && (changed || recenterAnchor)) {
         float x = anchor->x(), y = anchor->y();
-        if (!recenterAnchor && uiState_->renderWidget_ && processedFrameWidth_ && processedFrameHeight_) {
+        const auto source = CurrentViewSourceSize();
+        if (!recenterAnchor && uiState_->renderWidget_ && source.width() > 0 && source.height() > 0) {
             const auto width = static_cast<unsigned int>(std::max(1,uiState_->renderWidget_->width()));
             const auto height = static_cast<unsigned int>(std::max(1,uiState_->renderWidget_->height()));
             const auto fit = pipelineOrchestrator_->ViewportFitMode() == settings::ViewportFitModeSetting::Fit
                 ? ViewportFitMode::kFit : ViewportFitMode::kFill;
-            const auto previous = ComputeViewTransform(processedFrameWidth_,processedFrameHeight_,width,height,beforeEffective,zoomCenterX_,zoomCenterY_,fit);
-            const auto next = ComputeViewTransform(processedFrameWidth_,processedFrameHeight_,width,height,after,zoomCenterX_,zoomCenterY_,fit);
+            const auto previous = ComputeViewTransform(source.width(),source.height(),width,height,beforeEffective,zoomCenterX_,zoomCenterY_,previousFit);
+            const auto next = ComputeViewTransform(source.width(),source.height(),width,height,after,zoomCenterX_,zoomCenterY_,fit);
             if (!ComputeZoomAnchorCenter(previous,next,float(anchor->x()),float(anchor->y()),x,y)) {
                 x = zoomCenterX_; y = zoomCenterY_;
             }

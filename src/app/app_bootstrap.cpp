@@ -848,10 +848,6 @@ bool OkuFlowApp::Initialize()
                     syncExplainBusy();
                 });
     }
-    if (uiState_->readTextButton_) {
-        connect(uiState_->readTextButton_, &QPushButton::clicked,
-                this, [this]() { SubmitOnDemandAnalysis(true); });
-    }
     if (uiState_->aiSettingsButton_) {
         connect(uiState_->aiSettingsButton_, &QPushButton::clicked,
                 this, [this]() { OpenAiSettingsDialog(); });

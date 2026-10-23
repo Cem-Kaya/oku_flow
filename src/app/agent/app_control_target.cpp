@@ -99,7 +99,7 @@ QJsonObject AppControlTarget::State() const {
                 : !enabled ? QStringLiteral("disabled") : QStringLiteral("adaptive_binarization")}};
     };
     return {{"view",QJsonObject{{"framing",f.at(Field::Framing)},{"zoomRequested",f.at(Field::ZoomAmount)},
-        {"zoomEffective",fit ? QJsonValue(1.0) : (f.at(Field::ZoomEnabled).toBool() ? f.at(Field::ZoomAmount) : QJsonValue(1.0))},
+        {"zoomEffective",app_.EffectiveZoomAmount()},
         {"center",QJsonObject{{"x",f.at(Field::CenterX)},{"y",f.at(Field::CenterY)}}}}},
         {"camera",QJsonObject{{"active",app_.cameraActive_},{"orientation",f.at(Field::Rotation)},
             {"requestedHandle",f.at(Field::Camera)},
@@ -202,7 +202,7 @@ ControlPlan AppControlTarget::Prepare(ToolId tool, const QJsonObject& args, cons
     switch (tool) {
     case ToolId::Zoom: {
         write(Field::ZoomEnabled,true);
-        const float minimum = app_.uiState_->zoomSlider_->minimum()/100.0f;
+        const float minimum = kWholeSourceZoom;
         plan=PrepareImageParameters(ToolId::ViewSettingsSet,{{"view.zoom.enabled",true},
             {"view.zoom.amount",std::max(args["magnification"].toDouble(),double(minimum))}});
         if(!plan.error.isEmpty())break;

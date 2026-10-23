@@ -282,7 +282,7 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(!runtime.HasPendingNotesWrites(),5000);
         QFile notes(runtime.notesFilePath());QVERIFY(notes.open(QIODevice::ReadOnly));QCOMPARE(notes.readAll().count("<div class=\"note-body\">"),1);
         QFile proof(fixture.directory.path()+"/launch.json");QVERIFY(proof.open(QIODevice::ReadOnly));const auto args=proof.readAll();
-        QVERIFY(args.contains("mcp_servers.fixture-private.enabled=false"));QVERIFY(args.contains("shell_tool"));QVERIFY(!args.contains("fixture-secret"));
+        QVERIFY(args.contains("mcp_servers={}"));QVERIFY(args.contains("shell_tool"));QVERIFY(!args.contains("fixture-secret"));
     }
 
     void scopedCodexPreflightFailsClosed_data() {
@@ -312,7 +312,7 @@ private slots:
         const auto args=QJsonDocument::fromJson(proof.readAll()).array();
         QVERIFY(args.contains("shell_tool"));QVERIFY(args.contains("view_image"));
         QVERIFY(args.contains("sandbox_mode=\"read-only\""));
-        QVERIFY(args.contains("mcp_servers.fixture-private.enabled=false"));
+        QVERIFY(args.contains("mcp_servers={}"));
     }
 
     void sharedExplainHttpFollowupReadAndNotesOwnership()
@@ -466,7 +466,7 @@ private slots:
         const auto has=[&](const char* value) {return args.contains(QString::fromLatin1(value));};
         for(const auto* capability:{"shell_tool","code_mode","view_image","apps","plugins","computer_use","hooks"})QVERIFY2(has(capability),capability);
         QVERIFY(has("sandbox_mode=\"read-only\""));QVERIFY(has("web_search=\"disabled\""));
-        QVERIFY(has("mcp_servers.fixture-private.enabled=false"));
+        QVERIFY(has("mcp_servers={}"));
     }
     void codingToVisionAndInternetChangesReplaceTheChildProfile()
     {

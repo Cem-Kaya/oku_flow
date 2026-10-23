@@ -398,6 +398,10 @@ private:
     void ResumePendingCameraStart();
     void CancelCameraTransition(const QString& owner, bool failedFallback = false);
     void SetZoom(float amount, std::optional<QPointF> sceneAnchor = {}, bool enable = true, bool recenterAnchor = false);
+    float ViewportFitZoom() const;
+    QSize CurrentViewSourceSize() const;
+    float EffectiveZoomAmount() const;
+    void RefreshZoomRange();
     void SetRotationQuarterTurns(int quarters);
     bool SetDisplayColorSchemeById(const QString& id);
     void SetViewportFitMode(settings::ViewportFitModeSetting mode, bool save = true);
@@ -768,12 +772,16 @@ private:
         std::int64_t captureClock100ns{-1};
         ViewTransform transform;
         FrozenSceneRecipe recipe;
+        settings::ViewportFitModeSetting fitMode{settings::ViewportFitModeSetting::Fill};
+        bool wholeSource{};
     };
     std::optional<FrozenCameraScene> presentedCameraScene_;
     bool mediaHoldBakedScene_{};
     FrozenSceneRecipe mediaHoldDisplayRecipe_;
     PresentedOriginalCache::ViewRecipe cudaSceneViewRecipe_;
     ViewTransform mediaHoldViewTransform_;
+    settings::ViewportFitModeSetting mediaHoldFitMode_{settings::ViewportFitModeSetting::Fill};
+    bool mediaHoldWholeSource_{};
     int mediaHoldCameraRotation_{};
     bool photoCapturePending_{};
     UINT64 pendingPhotoReadbackId_{};

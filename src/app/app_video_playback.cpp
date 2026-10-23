@@ -768,6 +768,7 @@ std::int64_t OkuFlowApp::SelectedMediaDocumentPts100ns(std::int64_t localPts100n
 bool OkuFlowApp::PresentMediaView()
 {
     if (!MediaViewSelected() || !videoDocument_->frame) return false;
+    RefreshZoomRange();
     auto& doc = *videoDocument_;
     const auto& frame = *doc.frame;
     const bool presented = doc.heldLive && mediaHoldBakedScene_ ? PresentFrozenMediaScene() :
@@ -787,19 +788,34 @@ bool OkuFlowApp::PresentMediaView()
     return presented;
 }
 
+QSize OkuFlowApp::CurrentViewSourceSize() const {
+    UINT width = processedFrameWidth_, height = processedFrameHeight_;
+    if (MediaViewSelected() && videoDocument_->frame) {
+        width = videoDocument_->frame->width;
+        height = videoDocument_->frame->height;
+        if (rotationQuarterTurns_ & 1) std::swap(width, height);
+    }
+    return QSize(static_cast<int>(width), static_cast<int>(height));
+}
+
+float OkuFlowApp::ViewportFitZoom() const {
+    if (!uiState_->renderWidget_) return 1.0f;
+    const auto source = CurrentViewSourceSize();
+    const auto viewWidth = presenter_ && presenter_->ViewportWidth() ? presenter_->ViewportWidth()
+        : static_cast<UINT>(std::max(1, uiState_->renderWidget_->width()));
+    const auto viewHeight = presenter_ && presenter_->ViewportHeight() ? presenter_->ViewportHeight()
+        : static_cast<UINT>(std::max(1, uiState_->renderWidget_->height()));
+    return ComputeFitZoom(std::max(0, source.width()), std::max(0, source.height()), viewWidth, viewHeight);
+}
+
 bool OkuFlowApp::PresentFrozenMediaScene() {
     if(!videoDocument_ || !videoDocument_->frame || !videoDocument_->frame->bgra || !presenter_ ||
         !uiState_->renderWidget_ || !uiState_->renderWidget_->isPresenterReady())return false;
     const auto& f=*videoDocument_->frame;
     const auto width=presenter_->ViewportWidth(),height=presenter_->ViewportHeight();
     if(!width || !height)return false;
-    const auto& held=mediaHoldViewTransform_;
-    const float originalZoom=1.0f/std::max(held.sourceWidth,held.sourceHeight);
-    const bool unmoved=rotationQuarterTurns_==0 && std::abs(zoomAmount_-originalZoom)<0.00001f &&
-        std::abs(zoomCenterX_-(held.sourceX+held.sourceWidth*0.5f))<0.00001f &&
-        std::abs(zoomCenterY_-(held.sourceY+held.sourceHeight*0.5f))<0.00001f;
     const bool swapped=(rotationQuarterTurns_&1)!=0;
-    const auto transform=unmoved?held:ComputeViewTransform(swapped?f.height:f.width,swapped?f.width:f.height,width,height,zoomEnabled_?zoomAmount_:1.0f,
+    const auto transform=ComputeViewTransform(swapped?f.height:f.width,swapped?f.width:f.height,width,height,zoomEnabled_?zoomAmount_:1.0f,
         zoomCenterX_,zoomCenterY_,pipelineOrchestrator_->ViewportFitMode()==settings::ViewportFitModeSetting::Fit?ViewportFitMode::kFit:ViewportFitMode::kFill);
     if(!transform.valid)return false;
     MediaViewportAdmission::Stamp stamp;
@@ -844,18 +860,20 @@ bool OkuFlowApp::AcceptLiveMediaHold(std::vector<std::uint8_t> pixels, UINT widt
         return false;
     }
     const auto& shownView = mediaHoldViewTransform_;
-    const bool fitted = shownView.destinationWidth < 0.99999f || shownView.destinationHeight < 0.99999f ||
-        shownView.destinationX > 0.00001f || shownView.destinationY > 0.00001f;
-    const auto fitMode = fitted ? settings::ViewportFitModeSetting::Fit : settings::ViewportFitModeSetting::Fill;
-    const float heldZoom = fitted ? 1.0f : 1.0f / std::max(shownView.sourceWidth, shownView.sourceHeight);
+    // Bars below 1x can coexist with a cropped long axis; they do not imply
+    // explicit Fit mode. Invert both source AND destination uniform scale.
+    const auto fitMode = mediaHoldFitMode_;
+    const float heldZoom = fitMode == settings::ViewportFitModeSetting::Fit ? 1.0f :
+        FillZoomFromTransform(shownView);
     const float heldCenterX = shownView.sourceX + shownView.sourceWidth * 0.5f;
     const float heldCenterY = shownView.sourceY + shownView.sourceHeight * 0.5f;
-    bool exactFraming = shownView.valid && std::isfinite(heldZoom) && heldZoom >= 1.0f &&
+    bool exactFraming = shownView.valid && std::isfinite(heldZoom) && heldZoom > 0.0f &&
         heldZoom <= static_cast<float>(kZoomSliderMaxMultiplier) &&
         shownView.sourceWidth > 0.0f && shownView.sourceHeight > 0.0f;
     if (exactFraming && !mediaHoldBakedScene_ && presenter_ && presenter_->ViewportWidth() && presenter_->ViewportHeight()) {
         const auto reproduced = ComputeViewTransform(width, height, presenter_->ViewportWidth(), presenter_->ViewportHeight(),
-            heldZoom, heldCenterX, heldCenterY, fitted ? ViewportFitMode::kFit : ViewportFitMode::kFill);
+            heldZoom, heldCenterX, heldCenterY,
+            fitMode == settings::ViewportFitModeSetting::Fit ? ViewportFitMode::kFit : ViewportFitMode::kFill);
         const auto same = [](float a, float b) { return std::isfinite(a) && std::isfinite(b) && std::abs(a-b) < 0.00001f; };
         exactFraming = reproduced.valid && same(reproduced.sourceX, shownView.sourceX) &&
             same(reproduced.sourceY, shownView.sourceY) && same(reproduced.sourceWidth, shownView.sourceWidth) &&
@@ -880,9 +898,13 @@ bool OkuFlowApp::AcceptLiveMediaHold(std::vector<std::uint8_t> pixels, UINT widt
     doc.heldAdmission.reset(); doc.heldUnrecorded = false;
     doc.heldMappingUnavailable = false;
     rotationQuarterTurns_ = 0; UpdateRotationUi(); // source orientation is baked into Original
-    zoomAmount_ = heldZoom; zoomEnabled_ = heldZoom > 1.00001f;
+    const bool whole = fitMode == settings::ViewportFitModeSetting::Fill &&
+        shownView.sourceWidth >= 0.99999f && shownView.sourceHeight >= 0.99999f &&
+        (mediaHoldWholeSource_ || heldZoom < 0.99999f);
+    zoomAmount_ = whole ? kWholeSourceZoom : heldZoom;
+    zoomEnabled_ = whole || std::abs(heldZoom - 1.0f) > 0.00001f;
     if (uiState_->zoomCheckbox_) { const QSignalBlocker block(uiState_->zoomCheckbox_); uiState_->zoomCheckbox_->setChecked(zoomEnabled_); }
-    if (uiState_->zoomSlider_) { const QSignalBlocker block(uiState_->zoomSlider_); uiState_->zoomSlider_->setValue(static_cast<int>(std::lround(heldZoom*kZoomSliderScale))); }
+    RefreshZoomRange();
     SetZoomCenter(heldCenterX, heldCenterY, true, true, false);
     if (pipelineOrchestrator_->ViewportFitMode() != fitMode) SetViewportFitMode(fitMode, false);
     PollVideoPlayback();
@@ -1003,7 +1025,19 @@ void OkuFlowApp::ToggleSelectedVideoPlayback()
             doc.playback.frame && doc.frame->pts100ns == doc.playback.frame->pts100ns) {
             ShowStatusMessage(QStringLiteral("End of video. Seek to an earlier point to play again."), 4000);
         } else {
-            InvalidateMediaSelection();
+            const bool sameFileResume = doc.kind == VideoDocumentState::Kind::File &&
+                SameVideoPath(doc.readerFilePath, doc.filePath) && ultraClearText_ &&
+                ultraClearText_->ResumeImmutableMedia(mediaDocumentEpoch_, doc.frame->sampleId,
+                                                       doc.frame->pts100ns / kTicksPerMs);
+            if (!sameFileResume) InvalidateMediaSelection();
+            else {
+                // No new document/scene. Retire click-owned captures/grants,
+                // while retaining the exact displayed scene and OCR references.
+                CancelAnnotationCaptures(); CancelPendingAssistantCaptures();
+                if (controlTarget_) { controlTarget_->CancelObservations(); controlTarget_->CancelPhotoReadback(); }
+                if (controlService_) controlService_->SourceChanged();
+                pipelineOrchestrator_->MarkViewportDirty();
+            }
             doc.pausedDisplayHold = false;
             doc.afterOperationPlay = true;
             if (doc.kind == VideoDocumentState::Kind::Recording) doc.OpenPart(doc.framePart, doc.frame->pts100ns, true);

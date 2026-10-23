@@ -4,6 +4,15 @@
 
 namespace okuflow {
 
+// Persisted Fill zoom token for the whole source. Its effective scale depends
+// on the current source/viewport aspect, including after resize and rotation.
+inline constexpr float kWholeSourceZoom = 0.01f;
+float ComputeFitZoom(std::uint32_t sourceWidth, std::uint32_t sourceHeight,
+                     std::uint32_t viewportWidth, std::uint32_t viewportHeight);
+float EffectiveFillZoom(float requestedZoom, float fitZoom);
+// Geometric wheel/key step, landing once at Fill (1x) when crossing it.
+float StepFillZoom(float currentZoom, float notches, float acceleration, float fitZoom);
+
 enum class ViewportFitMode : std::uint8_t {
     kFill,
     kFit,
@@ -23,6 +32,9 @@ struct ViewTransform {
     float destinationHeight{1.0f};
     bool valid{};
 };
+
+// Inverse of Fill's uniform scale, including partial letterboxing below 1x.
+float FillZoomFromTransform(const ViewTransform& transform);
 
 // Inverts the actual cropped/letterboxed transforms to preserve the viewport
 // location of a visible scene anchor when magnification changes.

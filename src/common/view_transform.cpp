@@ -6,6 +6,41 @@
 
 namespace okuflow {
 
+float ComputeFitZoom(std::uint32_t sourceWidth, std::uint32_t sourceHeight,
+                     std::uint32_t viewportWidth, std::uint32_t viewportHeight) {
+    if (!sourceWidth || !sourceHeight || !viewportWidth || !viewportHeight) return 1.0f;
+    const double x = static_cast<double>(viewportWidth) / sourceWidth;
+    const double y = static_cast<double>(viewportHeight) / sourceHeight;
+    return static_cast<float>(std::min(x, y) / std::max(x, y));
+}
+
+float EffectiveFillZoom(float requestedZoom, float fitZoom) {
+    if (!std::isfinite(fitZoom) || fitZoom <= 0.0f || fitZoom > 1.0f) fitZoom = 1.0f;
+    if (!std::isfinite(requestedZoom) || requestedZoom <= 0.0f) requestedZoom = 1.0f;
+    return requestedZoom <= kWholeSourceZoom ? fitZoom : std::max(fitZoom, requestedZoom);
+}
+
+float StepFillZoom(float currentZoom, float notches, float acceleration, float fitZoom) {
+    const float current = EffectiveFillZoom(currentZoom, fitZoom);
+    if (!std::isfinite(notches) || !std::isfinite(acceleration)) return current;
+    const float target = current * std::pow(1.10f, notches * acceleration);
+    if ((current < 1.0f && target >= 1.0f) || (current > 1.0f && target <= 1.0f)) return 1.0f;
+    return target <= fitZoom ? kWholeSourceZoom : target;
+}
+
+float FillZoomFromTransform(const ViewTransform& transform) {
+    if (!transform.valid || transform.sourceWidth <= 0 || transform.sourceHeight <= 0 ||
+        transform.destinationWidth <= 0 || transform.destinationHeight <= 0)
+        return 0.0f;
+    // At 1x Fill one source axis spans the full source. Its normalized
+    // destination/source ratio is therefore the smaller ratio, even with
+    // partial bars. Invert the committed transform without borrowing a newer
+    // viewport size while asynchronous Freeze readback is pending.
+    const float x=transform.destinationWidth/transform.sourceWidth;
+    const float y=transform.destinationHeight/transform.sourceHeight;
+    return std::isfinite(x) && std::isfinite(y) ? std::min(x,y) : 0.0f;
+}
+
 bool ComputeZoomAnchorCenter(const ViewTransform& before, const ViewTransform& after,
                              float anchorX, float anchorY, float& centerX, float& centerY) {
     if (!before.valid || !after.valid || !std::isfinite(anchorX) || !std::isfinite(anchorY) ||
@@ -140,8 +175,16 @@ ViewTransform ComputeViewTransform(std::uint32_t sourceWidth,
         cropWidth = sourceHeightF * viewportAspect;
     }
 
-    const float safeZoom =
-        std::max(1.0f, std::isfinite(zoom) ? zoom : 1.0f);
+    const float safeZoom = EffectiveFillZoom(zoom,
+        ComputeFitZoom(sourceWidth, sourceHeight, viewportWidth, viewportHeight));
+    // When an axis has no more source pixels to reveal, shrink its centered
+    // destination instead of stretching the independently clamped crop.
+    if (safeZoom < 1.0f) {
+        result.destinationWidth = std::min(1.0f, sourceWidthF * safeZoom / cropWidth);
+        result.destinationHeight = std::min(1.0f, sourceHeightF * safeZoom / cropHeight);
+        result.destinationX = (1.0f - result.destinationWidth) * 0.5f;
+        result.destinationY = (1.0f - result.destinationHeight) * 0.5f;
+    }
     const float sampleWidth = std::clamp(cropWidth / safeZoom, 1.0f, sourceWidthF);
     const float sampleHeight = std::clamp(cropHeight / safeZoom, 1.0f, sourceHeightF);
     const float centerX =

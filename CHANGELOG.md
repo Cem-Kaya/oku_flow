@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+- Zoom out to show an entire wide or portrait source. Wheel/key zoom stops
+  once at Fill (1x), then continues toward whole-picture Fit; the slider snaps
+  near Fill. Saved 1x profiles retain their previous framing.
+- Keep same-file paused UCT references on Resume while ordinary independent
+  probes revalidate them. Seeks, source changes and expired/failed checks still
+  revoke text; old regional plans and in-flight refinements are fenced.
+- Place the video-controls chevron first in the quick-mode corner and keep
+  its collapsed face neutral. The bottom action bar now contains Photo,
+  Record, Explain and Draw; Assistant Read Aloud remains available.
+- Exclude external MCP configuration from restricted Codex children with a
+  child-only empty table, so an invalid unused transport cannot stop chat.
+  The owner's Codex configuration is not modified.
+
 - Overlap dense UCT recognition groups with host metadata merging using bounded
   double-buffered metadata and per-group completion events. Private resident
   FP32 measurements show a dense N8 benefit; sparse/N1 and production BF16

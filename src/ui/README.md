@@ -10,11 +10,15 @@ scene keeps its true textual time; the existing Qt accessibility adapter omits
 numeric RangeValue until a valid seek enters history. View and navigation
 offers a stable-data1–5 minute preference and a localized decimal-MB estimate.
 See [recap ownership and limits](../../docs/live_ram_recap.md).
-The transport's small chevron lives beside the quick-mode controls, retaining a
+The transport's neutral checked chevron leads the quick-mode controls, retaining a
 44-DIP keyboard/touch target while the entire bar hides. It preserves playback and current
 snapshot state and cancels unfinished drags without a seek.
 Viewport Space still issues Freeze/Resume while collapsed through separate
 command readiness; hidden chrome remains outside keyboard focus order.
+The bottom action group has Photo, Record, Explain and Draw, wrapping two by two;
+Assistant Read Aloud remains available. The zoom slider follows the actual
+source/view aspect down to whole-picture Fill and snaps near 1x. See
+[zoom and Resume](../../docs/viewport_zoom_and_resume.md).
 While following live recap or recording, the timeline stays filled with its
 marker at the right edge. This visual live indicator does not extend seekable
 history or move a focused reader's numeric inspection. Scrubbing shows its

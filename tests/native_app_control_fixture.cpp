@@ -255,6 +255,12 @@ public:
         app.SavePersistentSettings(); // Same trusted native settings commit; no service notice.
     }
     static void NativeZoom(OkuFlowApp& app) {app.SetZoom(1.75,{},false);app.SavePersistentSettings();}
+    static void ViewSourceSize(OkuFlowApp& app, const QSize& size) {
+        app.processedFrameWidth_=size.width();app.processedFrameHeight_=size.height();app.RefreshZoomRange();
+    }
+    static void SliderZoom(OkuFlowApp& app,int value) {app.OnZoomAmountChanged(value);}
+    static void WheelZoom(OkuFlowApp& app,float steps) {app.HandleKeyboardZoom(steps);}
+    static void DisableZoom(OkuFlowApp& app) {app.OnZoomToggled(false);}
     // Mirrors the ownership bookkeeping of camera_select without enumerating,
     // opening or starting any device. The empty plan is the target's own
     // controlled-transition window, so the request is not a user edit.
@@ -889,6 +895,90 @@ private slots:
         QVERIFY(select->isHidden());QVERIFY(!window.cameraFormatCombo()->parentWidget()->isHidden());
         QCOMPARE(changes.count(),1);
     }
+    void zoomOutRangeAndEndpointUseActualAspectWithoutPersistence() {
+        auto& window=NativeControlFixture::Window(app_);
+        const auto original=NativeControlFixture::CurrentImageConfig(app_);
+        const auto cleanup=qScopeGuard([&] {NativeControlFixture::ViewSourceSize(app_,QSize(0,0));
+            NativeControlFixture::RestoreImageConfig(app_,original);});
+        NativeControlFixture::ResetVideo(app_);
+        window.resize(1200,780);window.show();QCoreApplication::processEvents();
+        auto* slider=window.zoomSlider();QSignalSpy edits(slider,&QSlider::valueChanged);
+        const auto savedBefore=NativeControlFixture::CurrentImageConfig(app_).zoomAmount;
+        NativeControlFixture::ViewSourceSize(app_,QSize(1080,1920));
+        QCOMPARE(edits.count(),0);
+        QCOMPARE(NativeControlFixture::CurrentImageConfig(app_).zoomAmount,savedBefore);
+        QVERIFY(slider->minimum()<100);QCOMPARE(slider->maximum(),1600);
+        NativeControlFixture::SliderZoom(app_,slider->minimum());
+        QCOMPARE(NativeControlFixture::CurrentImageConfig(app_).zoomAmount,kWholeSourceZoom);
+        const int before=slider->value();
+        NativeControlFixture::WheelZoom(app_,1);
+        QVERIFY(slider->value()>before); // first step leaves the whole-picture endpoint
+        NativeControlFixture::SliderZoom(app_,99);
+        QCOMPARE(NativeControlFixture::CurrentImageConfig(app_).zoomAmount,1.0f);
+        QCOMPARE(slider->value(),100);
+        auto& target=NativeControlFixture::Target(app_);
+        ControlPlan whole;whole.writes.push_back({Field::ZoomAmount,double(kWholeSourceZoom)});
+        QVERIFY(target.ValidateImageParameterBatch(whole));
+        QVERIFY(target.ApplyImageParameter(whole.writes.front()).value_or(false));
+        QCOMPARE(NativeControlFixture::CurrentImageConfig(app_).zoomAmount,kWholeSourceZoom);
+        // The disabled view displays 1x, independently of the saved endpoint.
+        NativeControlFixture::DisableZoom(app_);
+        NativeControlFixture::WheelZoom(app_,1);
+        QCOMPARE(NativeControlFixture::CurrentImageConfig(app_).zoomAmount,1.1f);
+        NativeControlFixture::SliderZoom(app_,99);
+        edits.clear();
+        NativeControlFixture::ViewSourceSize(app_,QSize(2560,1080));
+        QCOMPARE(edits.count(),0);
+        QCOMPARE(NativeControlFixture::CurrentImageConfig(app_).zoomAmount,1.0f);
+    }
+    void freezeKeepsCommittedFillBeforeDeferredFitRequest() {
+        const auto original=NativeControlFixture::CurrentImageConfig(app_);
+        const auto originalFit=NativeControlFixture::VideoFitMode(app_);
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::SetCameraActive(app_,false);
+            NativeControlFixture::ResetRecap(app_);NativeControlFixture::ResetVideo(app_);
+            NativeControlFixture::RestoreImageConfig(app_,original);
+            NativeControlFixture::RestoreVideoFitMode(app_,originalFit);
+        });
+        NativeControlFixture::ResetVideo(app_);
+        auto fill=original;fill.zoomEnabled=true;fill.zoomAmount=2.0f;
+        NativeControlFixture::RestoreImageConfig(app_,fill);
+        NativeControlFixture::RestoreVideoFitMode(app_,settings::ViewportFitModeSetting::Fill);
+        std::vector<std::uint8_t> pixels(32*16*4,47);
+        NativeControlFixture::SeedRecapSceneWithoutRecording(app_,pixels);
+        // No successful camera receipt follows this requested mode change.
+        NativeControlFixture::RestoreVideoFitMode(app_,settings::ViewportFitModeSetting::Fit);
+        NativeControlFixture::ToggleVideo(app_);
+        const auto held=NativeControlFixture::HeldVideoFrame(app_);
+        QVERIFY(held && held->bgra);QCOMPARE(*held->bgra,pixels);
+        const auto config=NativeControlFixture::CurrentImageConfig(app_);
+        QVERIFY(config.zoomEnabled);QCOMPARE(config.zoomAmount,2.0f);
+        QCOMPARE(NativeControlFixture::VideoFitMode(app_),settings::ViewportFitModeSetting::Fill);
+    }
+    void videoChevronLeadsNeutralAndActionsContainOnlyFourButtons() {
+        MainWindow window;window.resize(1400,800);window.show();
+        auto* transport=window.videoTransport();
+        VideoTransport::Snapshot snapshot;snapshot.source=VideoTransport::Source::Video;
+        snapshot.sourceGeneration=51;snapshot.durationMs=10000;snapshot.seekable=true;
+        transport->SetSnapshot(snapshot);
+        for (int width : {1400,600}) {
+            window.resize(width,800);QCoreApplication::processEvents();
+            auto* panel=window.findChild<QWidget*>("bottomLeftPanel");
+            auto* layout=qobject_cast<QGridLayout*>(panel->layout());QVERIFY(layout);
+            int row,column,rowSpan,columnSpan;
+            layout->getItemPosition(layout->indexOf(transport->collapseButton()),&row,&column,&rowSpan,&columnSpan);
+            QCOMPARE(column,0);
+            transport->SetCollapsed(true);QCoreApplication::processEvents();
+            QVERIFY(!transport->isVisible());QVERIFY(transport->collapseButton()->isVisible());
+            const auto ink=transport->collapseButton()->palette().color(QPalette::Button);
+            const auto image=transport->collapseButton()->grab().toImage();
+            QCOMPARE(image.pixelColor(5,image.height()/2),ink);
+            transport->SetCollapsed(false);
+        }
+        auto* actions=window.findChild<QWidget*>("bottomRightPanel");QVERIFY(actions);
+        const auto buttons=actions->findChildren<QPushButton*>();QCOMPARE(buttons.size(),4);
+        for(auto* button:buttons)QVERIFY(!button->text().contains("Read"));
+    }
     void cancelledVideoPickerRestoresOnlyPhoneLight() {
         NativeControlFixture::ResetVideo(app_);
         QVERIFY(NativeControlFixture::CancelVideoPickerRestoresPhoneLight(app_,true));
@@ -914,9 +1004,9 @@ private slots:
         auto* grid=qobject_cast<QGridLayout*>(panel->layout());QVERIFY(grid);
         const auto problem=[&](int expectedRows) -> QString {
             QMap<int,QVector<QRect>> rows;
-            for(auto* button:{window.capturePhotoButton(),window.recordButton(),window.explainNowButton(),window.readTextButton(),window.annotationButton()})rows[button->y()].push_back(button->geometry());
+            for(auto* button:{window.capturePhotoButton(),window.recordButton(),window.explainNowButton(),window.annotationButton()})rows[button->y()].push_back(button->geometry());
             if(rows.size()<1||rows.size()>2||(expectedRows&&rows.size()!=expectedRows))return QStringLiteral("Expected %1 action rows (0 = content fit), got %2").arg(expectedRows).arg(rows.size());
-            if(rows.size()==2&&(rows.first().size()!=3||rows.last().size()!=2))return QStringLiteral("Wrapped actions must form three above two");
+            if(rows.size()==2&&(rows.first().size()!=2||rows.last().size()!=2))return QStringLiteral("Wrapped actions must form two above two");
             int left=-1,right=-1;
             for(const auto& row:rows){
                 int minWidth=INT_MAX,maxWidth=0,rowLeft=INT_MAX,rowRight=0;
@@ -944,7 +1034,7 @@ private slots:
         QVERIFY(bounds(window.renderWidget()).contains(bounds(panel)));
         QVERIFY(bounds(window.renderWidget()).contains(bounds(modes)));
         QVERIFY(!bounds(modes).intersects(bounds(panel)));
-        for(auto* button:{window.capturePhotoButton(),window.recordButton(),window.explainNowButton(),window.readTextButton(),window.annotationButton()}){
+        for(auto* button:{window.capturePhotoButton(),window.recordButton(),window.explainNowButton(),window.annotationButton()}){
             QVERIFY(!button->text().isEmpty());QVERIFY(!button->toolTip().isEmpty());
             QVERIFY(!button->accessibleName().isEmpty());
             QVERIFY(button->width()>=48);QVERIFY(button->height()>=58);

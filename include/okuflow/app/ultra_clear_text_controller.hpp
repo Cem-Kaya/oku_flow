@@ -325,6 +325,10 @@ public:
     // Successful native media receipt only. Retains one latest scene lease,
     // paces full-scene probes/OCR, and never fabricates a camera presentation.
     bool OnAdvancingMediaPresented(UctAdvancingMediaScene scene);
+    // Explicit same-file Resume while this exact selected image is displayed.
+    // Cancels optional refinement/plans, keeps references for ordinary probes.
+    bool ResumeImmutableMedia(std::uint64_t sourceAuthority, std::uint64_t frameSeq,
+                              std::int64_t timestampMs);
     // Successful advancing-media presentation with no analysis lease for the
     // displayed frame. Advances only the display/model clock and view;
     // submits no probe/OCR and renews no validation, recognition stamp or

@@ -98,7 +98,7 @@ QRect GlobalRect(QWidget* widget)
 QString ActionRowsProblem(MainWindow& window, int* rowCount)
 {
     const QList<QPushButton*> actions{window.capturePhotoButton(), window.recordButton(),
-                                      window.explainNowButton(), window.readTextButton(),
+                                      window.explainNowButton(),
                                       window.annotationButton()};
     QMap<int, QList<QRect>> rows;
     for (QPushButton* button : actions) {
@@ -110,8 +110,8 @@ QString ActionRowsProblem(MainWindow& window, int* rowCount)
     }
     *rowCount = static_cast<int>(rows.size());
     if (*rowCount < 1 || *rowCount > 2) return QStringLiteral("Actions must form one or two rows");
-    if (*rowCount == 2 && (rows.first().size() != 3 || rows.last().size() != 2))
-        return QStringLiteral("Wrapped actions must form three above two");
+    if (*rowCount == 2 && (rows.first().size() != 2 || rows.last().size() != 2))
+        return QStringLiteral("Wrapped actions must form two above two");
     int left = 0;
     int right = 0;
     bool first = true;
@@ -2024,8 +2024,10 @@ void MainWindowTests::bottomChromeFormsRectangularGroups()
     QVERIFY2(problem.isEmpty(), qPrintable(problem));
     SaveScreenshot(window, code + QStringLiteral("-bottom-chrome-advanced-strip"));
 
-    window.resize(960, 760);
-    QTRY_VERIFY(render->width() <= 520);
+    // Four actions fit farther down than the former five-button row. Use a
+    // genuinely narrow camera so this case still exercises a filled 2x2 grid.
+    window.resize(840, 760);
+    QTRY_VERIFY(render->width() <= 400);
     QTRY_VERIFY2(verifyStrip(QStringLiteral("squeezed")).isEmpty(),
                  qPrintable(verifyStrip(QStringLiteral("squeezed"))));
     problem = ActionRowsProblem(window, &rows);
@@ -2067,7 +2069,7 @@ void MainWindowTests::bottomChromeFormsRectangularGroups()
         problem = ActionRowsProblem(window, &rows);
         QVERIFY2(problem.isEmpty(), qPrintable(problem));
         for (auto* button : {window.capturePhotoButton(), window.recordButton(),
-                             window.explainNowButton(), window.readTextButton(),
+                             window.explainNowButton(),
                              window.annotationButton()}) {
             QVERIFY(GlobalRect(bottomRight).contains(GlobalRect(button)));
         }
@@ -2101,7 +2103,7 @@ void MainWindowTests::bottomChromeRetainsNativeSizeDuringRefresh_data()
         const QByteArray direction = rtl ? "rtl" : "ltr";
         QTest::newRow(("wide-" + direction).constData()) << 1400 << false << 1 << 1 << rtl;
         QTest::newRow(("folded-mode-" + direction).constData()) << 1100 << true << 2 << 1 << rtl;
-        QTest::newRow(("folded-both-" + direction).constData()) << 960 << true << 2 << 2 << rtl;
+        QTest::newRow(("folded-both-" + direction).constData()) << 840 << true << 2 << 2 << rtl;
     }
 }
 

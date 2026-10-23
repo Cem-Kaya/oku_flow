@@ -1695,11 +1695,16 @@ void OkuFlowApp::DrainCompletedGpuReadbacks() {
 
 bool OkuFlowApp::CaptureLiveForMediaHold() {
     if (MediaViewSelected() || mediaHoldReadbackId_ != 0 || !cameraFramePresented_) return false;
+    mediaHoldFitMode_ = pipelineOrchestrator_->ViewportFitMode();
+    mediaHoldWholeSource_ = zoomEnabled_ && zoomAmount_ <= kWholeSourceZoom;
     if(presentedCameraScene_ && presentedCameraScene_->epoch==cameraSessionId_) {
         const auto& scene=*presentedCameraScene_;
         if(scene.captureClock100ns<0)return false;
         mediaHoldFrameSeq_=scene.sequence;mediaHoldCaptureClock100ns_=scene.captureClock100ns;
         mediaHoldViewTransform_=scene.transform;mediaHoldCameraRotation_=CameraOriginalRotationQuarterTurns();
+        // Intent belongs to these successfully presented pixels, not to a
+        // newer requested Fit/zoom change whose presentation was deferred.
+        mediaHoldFitMode_=scene.fitMode;mediaHoldWholeSource_=scene.wholeSource;
         mediaHoldDisplayRecipe_=scene.recipe;
         mediaHoldBakedScene_=true;
         if(scene.gpu.IsValid()) {
@@ -1766,6 +1771,8 @@ void OkuFlowApp::RetainPresentedCameraScene(std::uint64_t sceneEpoch,std::uint64
         presentedCameraScene_->sceneRevision==annotationSceneRevision_ &&
         presentedCameraScene_->contentGeneration==contentGeneration && presentedCameraScene_->sourceTexture==texture) {
         presentedCameraScene_->transform=transform;
+        presentedCameraScene_->fitMode=pipelineOrchestrator_->ViewportFitMode();
+        presentedCameraScene_->wholeSource=zoomEnabled_ && zoomAmount_<=kWholeSourceZoom;
         presentedCameraScene_->captureClock100ns=captureClock;
         presentedCameraScene_->recipe={0,texture!=nullptr,focusMarker,focusX,focusY};return;
     }
@@ -1773,6 +1780,8 @@ void OkuFlowApp::RetainPresentedCameraScene(std::uint64_t sceneEpoch,std::uint64
     scene.sceneRevision=annotationSceneRevision_;scene.captureClock100ns=captureClock;
     scene.contentGeneration=contentGeneration;scene.sourceTexture=texture;
     scene.width=width;scene.height=height;scene.transform=transform;
+    scene.fitMode=pipelineOrchestrator_->ViewportFitMode();
+    scene.wholeSource=zoomEnabled_ && zoomAmount_<=kWholeSourceZoom;
     scene.recipe={0,texture!=nullptr,focusMarker,focusX,focusY};
     if(texture && presenter_ && pipelineOrchestrator_->FenceInteropEnabled()) {
         RecordingViewTransform full;full.valid=true;
@@ -2435,6 +2444,7 @@ void OkuFlowApp::RefreshAsyncSuperRes() {
 }
 
 void OkuFlowApp::PresentPendingScene() {
+    RefreshZoomRange();
     if (MediaViewSelected()) {
         if (presenter_ && !HandlePresenterFault()) PresentMediaView();
         return;

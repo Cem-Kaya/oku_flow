@@ -59,7 +59,7 @@ std::vector<ToolDescriptor> MakeCatalog(CatalogEdition edition) {
         "Set camera-view magnification, not phone optical zoom. Anchor uses scene or observation "
         "coordinates.",
         Tier::View, true, false, false,
-        Object(std::string(R"({"magnification":{"type":"number","minimum":1,"maximum":16},"anchor":)") +
+        Object(std::string(R"({"magnification":{"type":"number","minimum":0.01,"maximum":16},"anchor":)") +
                    Point() + "}",
                R"(["magnification"])"));
     add(ToolId::Center, "view.center.set", "view_center_set",
