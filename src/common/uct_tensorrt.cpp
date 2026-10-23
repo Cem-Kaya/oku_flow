@@ -926,6 +926,7 @@ void PreparePublicCandidate(State& state,const PaddleAssets& assets,const QStrin
     const auto goldenDeadline=std::chrono::steady_clock::now()+std::chrono::seconds(120);
     const auto goldenStop=[&]{return stop() || std::chrono::steady_clock::now()>=goldenDeadline;};
     RunPublicGolden(state,corpus,assets.dictionary,goldenStop,observer);
+    if(goldenStop())throw std::runtime_error("public BF16 golden cancelled/deadline after final N8");
     state.publicCompletion.RequireConfirmed();
     const auto golden=CheckGolden(corpus,build,state.publicObservations,Completion::Confirmed);
     state.publicGoldenRecord=golden.Record(); // retain actual failure outputs too
