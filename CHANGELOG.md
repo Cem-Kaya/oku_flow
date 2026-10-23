@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Persist newly built OCR engines with Qt's atomic, non-replacing rename and
+  report cache write failures. Align cold/warm serialized-size limits and check
+  BF16 profile/output/context bounds before allocating an execution context.
+
 - Prefer BF16 for both selected GPU model roles without requiring perfect text,
   FP32 agreement or a golden pass. Keep accuracy tests diagnostic and retain
   selected-tier FP32 fallback for supported runtime/build/artifact refusals.
@@ -11,7 +15,7 @@
   preserving explicit overrides and legacy development paths. Retain the exact
   graph-converter source; installed payload staging/acceptance remains pending.
 
-- Gate production BF16 detectors pending semantic acceptance. Confirmed-complete
+- Historical checkpoint (activation policy superseded above): confirmed-complete
   BF16 deadline refusals retain same-tier FP32 GPU fallback; uncertain work stays
   terminal. Remember completed failures without overwriting evidence, release
   cancelled attempt latches only after confirmed drain, and preflight full caches.

@@ -29,10 +29,9 @@ assertions; that failed attempt remains preserved before the corrected build.
 
 ## Opus install-review repair checkpoint
 
-The two reported activation/deadline findings are repaired in source, pending a
-fresh build and independent closure. Production detector activation is explicitly
-false; copying a converted graph cannot enable it. Candidate detector validation
-still runs, now recording max/mean probabilities and exact output-map dimensions.
+Historical checkpoint: the detector semantic-activation switch described by the
+original review was subsequently removed under the owner policy above. Technical
+validation still records max/mean probabilities and exact output-map dimensions.
 
 A candidate budget expiry cannot authorize BF16. When work is confirmed complete,
 a typed refusal permits the selected-tier FP32 GPU fallback with a fresh bounded

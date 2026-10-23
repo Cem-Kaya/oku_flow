@@ -1,5 +1,26 @@
 # Ordinary UCT TensorRT cache and runtime policy
 
+Current app policy prefers BF16 independently for both selected GPU roles, with
+same-tier FP32 fallback for supported technical refusals. The normal path uses
+this flat digest-prefixed cache; no golden text or corpus is required. The
+separate public-v2 diagnostic history below does not control app precision.
+
+New engine files are flushed and published using `QTemporaryFile::rename`,
+which closes Qt's internally retained handle for its atomic rename and refuses
+existing destinations. Auto-removal is disabled only after success. Cache write
+failure keeps the healthy current engine and is named in the technical plan
+receipt. Existing stable/legacy files are never replaced. Both cold payloads
+and warm files obey the same strict 256 MiB limit including the 32-byte digest.
+BF16 profile/output checks and its declared 256 MiB context-memory ceiling are
+checked before execution-context allocation; this is resource compatibility,
+not an OCR accuracy gate.
+
+`engineCachePersistsWithoutReplacing` verifies actual disk persistence after
+temporary destruction, digest/payload bytes, refusal to replace an existing
+file, failed/empty writes and allocation-free boundary checks.
+
+The remainder records the original offline policy checkpoint and its limits.
+
 The later [public BF16 source integration](uct_public_bf16.md) uses a separate
 atomic directory cache and actual local golden reattestation. It does not alter
 these ordinary FP32 keys, ABI11 admission, legacy lookup or factory-fault policy.

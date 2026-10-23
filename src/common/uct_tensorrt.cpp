@@ -4,6 +4,7 @@
 #include "uct_precision_experiment.hpp"
 #include "uct_bf16_detector.hpp"
 #include "uct_runtime_paths.hpp"
+#include "uct_engine_cache.hpp"
 #include <QCoreApplication>
 #include <new>
 #include <utility>
@@ -499,8 +500,7 @@ class Network
         }
         else for (const auto& readKey : readKeys) {
             QFile cached(QDir(cache).filePath(QString::fromLatin1(readKey) + ".plan"));
-            if (!cached.open(QIODevice::ReadOnly) || cached.size() <= 32 ||
-                cached.size() >= 256 * 1024 * 1024) continue;
+            if (!cached.open(QIODevice::ReadOnly) || !engine_cache::FileFits(cached.size())) continue;
             const auto digest = cached.read(32), plan = cached.readAll();
             if (cached.error() != QFileDevice::NoError || !cached.atEnd() ||
                 QCryptographicHash::hash(plan, QCryptographicHash::Sha256) != digest) continue;
@@ -510,6 +510,7 @@ class Network
             if (engine_) {
                 planKey_ = readKey;
                 planPayloadSha256_ = digest.toHex();
+                cacheStatus_ = "loaded";
                 break;
             }
         }
@@ -563,6 +564,8 @@ class Network
             auto& plan=resources.serialized;plan.reset(builder->buildSerializedNetwork(*network,*config));
             if (!plan)
                 artifact("TensorRT OCR compilation failed: " + logger.Error());
+            if (!engine_cache::PayloadFits(plan->size()))
+                artifact("TensorRT serialized plan exceeds the digest-prefixed cache bound.");
             engine_.reset(runtime_->deserializeCudaEngine(plan->data(), plan->size()));
             Check(cudaPeekAtLastError());
             if (!engine_) {
@@ -573,20 +576,6 @@ class Network
                                                       static_cast<qsizetype>(plan->size()));
             planKey_ = key;
             planPayloadSha256_ = QCryptographicHash::hash(blob, QCryptographicHash::Sha256).toHex();
-            // Publish only genuinely new bytes. Historical/stable cache files
-            // are never replaced, even on a corrupt entry or a racing writer.
-            QTemporaryFile saved(QDir(cache).filePath(".uct-plan-XXXXXX"));
-            if (saved.open())
-            {
-                const auto digest = QCryptographicHash::hash(blob, QCryptographicHash::Sha256);
-                if (saved.write(digest) == digest.size() && saved.write(blob) == blob.size() && saved.flush()) {
-                    const auto temporaryPath = saved.fileName().toStdWString();
-                    const auto stablePath = path.toStdWString();
-                    saved.close();
-                    // No MOVEFILE_REPLACE_EXISTING: an existing destination wins.
-                    MoveFileExW(temporaryPath.c_str(), stablePath.c_str(), 0);
-                }
-            }
         }
         const auto reject = [&](const char* reason) {
             // A reported CUDA fault is never permission to retry another engine.
@@ -634,10 +623,6 @@ class Network
                 !recognizer_width::MatchesProfile(maximum.d,maximum.nbDims,maximumBatch_,recognizer_width::kMaximum))
                 throw std::runtime_error("Cached OCR plan does not match the variable-width profile.");
         }
-        context_.reset(engine_->createExecutionContext());
-        Check(cudaPeekAtLastError());
-        if (!context_)
-            throw TensorRtApiFailure("TensorRT execution context creation failed.");
         if(bf16Graph) {
             if(detection)CheckPublicDetector();
             else {
@@ -655,6 +640,18 @@ class Network
                 if(expectedClasses<2 || output.nbDims!=3 || output.d[2]!=expectedClasses)
                     artifact("BF16 recognizer dictionary/output ABI differs");
             }
+            if (!engine_cache::ContextFits(engine_->getDeviceMemorySizeV2()))
+                reject("BF16 execution context exceeds the supported memory bound.");
+        }
+        context_.reset(engine_->createExecutionContext());
+        Check(cudaPeekAtLastError());
+        if (!context_)
+            throw TensorRtApiFailure("TensorRT execution context creation failed.");
+        if (resources.serialized) {
+            const auto& plan = resources.serialized;
+            const auto blob = QByteArray::fromRawData(static_cast<const char*>(plan->data()), qsizetype(plan->size()));
+            QString error;
+            cacheStatus_ = engine_cache::WriteNew(path, blob, error) ? "saved" : "not-saved: " + error;
         }
     }
     // Called only after the State's stream is confirmed complete.
@@ -662,7 +659,8 @@ class Network
     QString PlanReceipt(const QString& role) const
     {
         return role + "PlanKey=" + QString::fromLatin1(planKey_) + ";" +
-               role + "PlanPayloadSha256=" + QString::fromLatin1(planPayloadSha256_) + "; ";
+               role + "PlanPayloadSha256=" + QString::fromLatin1(planPayloadSha256_) + ";" +
+               role + "PlanCache=" + cacheStatus_ + "; ";
     }
     nvinfer1::Dims Run(float *input, int width, int height, cudaStream_t stream,
                        TensorRtProfile &profile, int batch = 1)
@@ -725,6 +723,7 @@ class Network
     std::unique_ptr<PublicResources> publicResources_;
     QByteArray publicPlan_;
     QByteArray planKey_, planPayloadSha256_;
+    QString cacheStatus_{"external"};
     std::unique_ptr<nvinfer1::IRuntime> runtime_;
     std::unique_ptr<nvinfer1::ICudaEngine> engine_;
     std::unique_ptr<nvinfer1::IExecutionContext> context_;

@@ -5,6 +5,7 @@
 #include "../src/common/uct_recognition_groups.hpp"
 #include "../src/common/uct_frozen_upload.hpp"
 #include "../src/common/uct_tensorrt_failures.hpp"
+#include "../src/common/uct_engine_cache.hpp"
 #include "uct_public_bf16_cases.hpp"
 #include "okuflow/cuda/uct_analysis_pool.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
@@ -178,6 +179,40 @@ class PaddleTests final : public QObject
 {
     Q_OBJECT
   private slots:
+    void engineCachePersistsWithoutReplacing()
+    {
+        using namespace engine_cache;
+        QVERIFY(!PayloadFits(0));
+        QVERIFY(PayloadFits(kFileLimit-kDigestBytes-1));
+        QVERIFY(!PayloadFits(kFileLimit-kDigestBytes));
+        QVERIFY(!PayloadFits(std::numeric_limits<std::uint64_t>::max()));
+        QVERIFY(!FileFits(kDigestBytes));
+        QVERIFY(FileFits(kFileLimit-1));
+        QVERIFY(!FileFits(kFileLimit));
+        QVERIFY(!ContextFits(-1));
+        QVERIFY(ContextFits(kContextLimit));
+        QVERIFY(!ContextFits(kContextLimit+1));
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        const auto path=root.filePath("plan.bin");
+        const QByteArray payload("serialized engine\0payload",25);
+        const auto expected=QCryptographicHash::hash(payload,QCryptographicHash::Sha256)+payload;
+        QString error;
+        QVERIFY2(WriteNew(path,payload,error),qPrintable(error));
+        QFile saved(path);
+        QVERIFY(saved.open(QIODevice::ReadOnly));
+        QCOMPARE(saved.readAll(),expected); // temporary object has already died
+        saved.close();
+        QVERIFY(!WriteNew(path,"replacement",error));
+        QVERIFY(!error.isEmpty());
+        QVERIFY(saved.open(QIODevice::ReadOnly));
+        QCOMPARE(saved.readAll(),expected);
+        saved.close();
+        QCOMPARE(QDir(root.path()).entryList(QDir::Files|QDir::Hidden|QDir::NoDotAndDotDot),QStringList{"plan.bin"});
+        QVERIFY(!WriteNew(root.filePath("missing/plan.bin"),payload,error));
+        QVERIFY(!WriteNew(root.filePath("empty.bin"),{},error));
+        QVERIFY(!QFile::exists(root.filePath("empty.bin")));
+    }
     void tensorRtFactoryFailureDoesNotLoadCachedN1()
     {
         int n8Attempts{}, cachedN1Loads{}, value{};

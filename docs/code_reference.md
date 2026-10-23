@@ -2,6 +2,16 @@
 
 ## BF16 app model preference (owner decision)
 
+- `engine_cache::PayloadFits` and `FileFits` share the 256 MiB file ceiling,
+  including its 32-byte digest. `ContextFits` checks BF16's declared context
+  ceiling before context allocation. `Network::PreparePinned` validates its
+  BF16 profile/output contract before that allocation; real API failures still
+  retire the backend.
+- `engine_cache::WriteNew` flushes a same-directory temporary and calls Qt's
+  non-replacing atomic rename, disabling automatic removal only after success.
+  A healthy engine remains usable if saving fails; `PlanReceipt` records loaded,
+  saved or not-saved status. Existing cache files are never overwritten.
+
 - `Request::runtimePreference` selects the normal production BF16 path; the
   production factory sets it without a corpus root. It bypasses the historical
   `PreparePublicCandidate`/`CheckGolden`/v2 readiness experiment entirely.
@@ -43,8 +53,8 @@ No Python/ONNX/NumPy, conversion, download or inference is introduced at app sta
 
 ## BF16 install-review repairs
 
-- `bf16_detector::ProductionActivated` is false until semantic detector acceptance;
-  explicit candidate validation remains available. `CheckMapSize` requires full
+- Historical checkpoint, superseded by the owner policy above: the former
+  `bf16_detector::ProductionActivated` switch was removed. `CheckMapSize` requires full
   input/map geometry equality after completion; `CheckMap` returns max/mean evidence.
 - `public_bf16::RefuseStoppedCandidate` permits typed deadline refusal only with a
   confirmed completion capability. Fallback drains ignore expired candidate
