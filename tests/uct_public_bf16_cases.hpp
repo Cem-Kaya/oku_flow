@@ -57,7 +57,12 @@ inline void Contract() {
         QVERIFY(bf16_detector::RelativePath(tier).contains(ModelTierToken(tier)));
         QVERIFY_EXCEPTION_THROWN(bf16_detector::ReadGraphPath("relative",PaddleAssets{},tier),runtime_precision::ArtifactError);
     }
-    const std::array<float,3> map{0,.5f,1};bf16_detector::CheckMap(map);
+    QVERIFY(!bf16_detector::ProductionActivated());
+    const std::array<float,3> map{0,.5f,1};
+    const auto mapSummary=bf16_detector::CheckMap(map);
+    QCOMPARE(mapSummary.maximum,1.f);QCOMPARE(mapSummary.mean,.5);
+    bf16_detector::CheckMapSize(32,960,32,960);
+    QVERIFY_EXCEPTION_THROWN(bf16_detector::CheckMapSize(32,960,32,32),runtime_precision::ArtifactError);
     QVERIFY_EXCEPTION_THROWN(bf16_detector::CheckMap({}),runtime_precision::ArtifactError);
     for(const auto value:{-1.f,1.01f,std::numeric_limits<float>::quiet_NaN(),std::numeric_limits<float>::infinity()}) {
         const std::array<float,1> invalid{value};
@@ -79,6 +84,21 @@ inline void Contract() {
     QCOMPARE(manifest["preprocessing"],model["preprocessing"]);
     QCOMPARE(manifest["goldenCropEncoding"].toString(),QString(kCropEncoding));
     QVERIFY(manifest["productionGoldenCorpusPins"].toArray().isEmpty());
+    QFile allMetadata(QFINDTESTDATA("../scripts/uct/bf16-models.json"));
+    QVERIFY(allMetadata.open(QIODevice::ReadOnly));
+    const auto allModels=QJsonDocument::fromJson(allMetadata.readAll(),&metadataError).object()["models"].toArray();
+    QVERIFY(metadataError.error==QJsonParseError::NoError);QCOMPARE(allModels.size(),6);
+    QSet<QString> modelEntries;
+    for(const auto value:allModels) {
+        const auto entry=value.toObject();const auto tier=ParseModelTier(entry["tier"].toString());QVERIFY(tier);
+        const auto role=entry["role"].toString();QVERIFY(role=="detector" || role=="recognizer");
+        const auto identity=role+"/"+ModelTierToken(*tier);QVERIFY(!modelEntries.contains(identity));modelEntries.insert(identity);
+        const bool detection=role=="detector";const auto* pin=FindPaddleModelPin(detection,*tier);QVERIFY(pin);
+        QCOMPARE(entry["sourceSha256"].toString(),QString::fromUtf8(pin->modelSha256.data(),qsizetype(pin->modelSha256.size())));
+        QCOMPARE(entry["configSha256"].toString(),QString::fromUtf8(pin->configSha256.data(),qsizetype(pin->configSha256.size())));
+        QCOMPARE(entry["convertedGraphSha256"].toString(),QString::fromLatin1(detection?bf16_detector::GraphHash(*tier):Model(*tier).graphSha256));
+        QCOMPARE(entry["bundlePath"].toString(),detection?bf16_detector::RelativePath(*tier):GraphRelativePath(*tier));
+    }
     for(const auto* key:{"deviceUuid","planFileSha256","driver","driverBuild","driverSha256","tensorRtSha256"})
         QVERIFY(!model.contains(key));
     QVERIFY(ProductionCorpusCatalog().empty());
@@ -196,8 +216,13 @@ inline void PublicationAndLifetime() {
     QCOMPARE(partial["rows"].toArray().size(),3);
     QCOMPARE(partial["rows"].toArray()[0].toObject()["text"].toString(),QString("deliberate model-free mismatch"));
     Publication completion;
+    RefuseStoppedCandidate(completion,false,"not expired");
+    try {RefuseStoppedCandidate(completion,true,"expired while unconfirmed");QFAIL("Unknown completion must fail");}
+    catch(const Refusal&) {QFAIL("Unknown completion must not become typed fallback");}
+    catch(const std::runtime_error&) {}
     QVERIFY_EXCEPTION_THROWN(ReceiptBytes(build,corpus,failed,runtime,completion),std::runtime_error);
     completion.Confirmed();
+    QVERIFY_EXCEPTION_THROWN(RefuseStoppedCandidate(completion,true,"expired after confirmed completion"),Refusal);
     QVERIFY_EXCEPTION_THROWN(ReceiptBytes(build,corpus,failed,runtime,completion),Refusal);
     completion.Queued();
     QVERIFY_EXCEPTION_THROWN(completion.RequireConfirmed(),std::runtime_error);
@@ -210,6 +235,32 @@ inline void PublicationAndLifetime() {
     QVERIFY(attempts.Begin("failed-plan-A"));
     QVERIFY(!attempts.Begin("failed-plan-A"));
     QVERIFY(attempts.Begin("changed-plan-B"));
+    QVERIFY_EXCEPTION_THROWN(attempts.Cancelled("failed-plan-A",Completion::Unknown),std::runtime_error);
+    QVERIFY(!attempts.Begin("failed-plan-A"));
+    attempts.Cancelled("failed-plan-A",Completion::Confirmed);
+    QVERIFY(attempts.Begin("failed-plan-A"));
+    CachedPlan fullCache;fullCache.observedGenerations=32;
+    QVERIFY_EXCEPTION_THROWN(CheckPreparationSpace(fullCache),Refusal);
+    fullCache.bytes="existing validated plan";CheckPreparationSpace(fullCache);
+
+#ifdef Q_OS_WIN
+    QTemporaryDir memoRoot;QVERIFY(memoRoot.isValid());
+    const QByteArray memoAttempt="recognizer:exact-model-corpus-builder-gpu-plan";
+    QVERIFY(ReadFailure(memoRoot.path(),memoAttempt).isEmpty());
+    Publication memoCompletion;
+    QVERIFY_EXCEPTION_THROWN(WriteFailure(memoRoot.path(),memoAttempt,"quality failed",memoCompletion),std::runtime_error);
+    QVERIFY(!QFileInfo::exists(FailurePath(memoRoot.path(),memoAttempt)));
+    memoCompletion.Confirmed();
+    WriteFailure(memoRoot.path(),memoAttempt,"first confirmed quality failure",memoCompletion);
+    QCOMPARE(ReadFailure(memoRoot.path(),memoAttempt),QString("first confirmed quality failure"));
+    QVERIFY_EXCEPTION_THROWN(RefuseRememberedFailure(memoRoot.path(),memoAttempt),Refusal);
+    WriteFailure(memoRoot.path(),memoAttempt,"later failure must not overwrite",memoCompletion);
+    QCOMPARE(ReadFailure(memoRoot.path(),memoAttempt),QString("first confirmed quality failure"));
+    QVERIFY(ReadFailure(memoRoot.path(),memoAttempt+":new-builder").isEmpty());
+    QFile damagedMemo(FailurePath(memoRoot.path(),memoAttempt));QVERIFY(damagedMemo.open(QIODevice::WriteOnly));
+    QVERIFY(damagedMemo.write("{}")>0);damagedMemo.close();
+    QVERIFY_EXCEPTION_THROWN(ReadFailure(memoRoot.path(),memoAttempt),Refusal);
+#endif
     attempts.Passed("changed-plan-B");
     QVERIFY(attempts.Begin("changed-plan-B"));
 

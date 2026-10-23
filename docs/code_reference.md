@@ -1,5 +1,28 @@
 # OkuFlow Code Reference
 
+## BF16 install-review repairs
+
+- `bf16_detector::ProductionActivated` is false until semantic detector acceptance;
+  explicit candidate validation remains available. `CheckMapSize` requires full
+  input/map geometry equality after completion; `CheckMap` returns max/mean evidence.
+- `public_bf16::RefuseStoppedCandidate` permits typed deadline refusal only with a
+  confirmed completion capability. Fallback drains ignore expired candidate
+  budgets, retain a fresh 30-second completion bound and still honor cancellation.
+- `Attempts::Cancelled` requires confirmed drain. State tracks only its inserted
+  in-flight keys; cancellation cannot erase another instance's or a completed
+  failed attempt. `FindPlan` reports observed generation count and
+  `CheckPreparationSpace` refuses a missing recipe at capacity before building.
+- `FailurePath`, `ReadFailure`, `RefuseRememberedFailure` and `WriteFailure` retain
+  new-only, bounded, single-link native failure evidence per exact attempt. They
+  never authorize success; changed model/corpus/GPU/builder/plan gets a new key.
+- `RecordFp32Control` is private candidate-validation measurement through the real
+  rectification/CTC path. `Request::fp32Control` skips both BF16 roles, reports N1
+  plus N8 when the selected FP32 engine supports it, and never invokes readiness
+  receipts, publication or BF16 acceptance. `ReasonName` gives typed status names.
+  `optionalPublicBf16Preparation` selects it with
+  `OKUFLOW_UCT_PUBLIC_FP32_CONTROL=1`; the production factory never reads that flag.
+  These repairs are UNBUILT/UNRUN until fresh frozen-source validation.
+
 ## UCT completion admission
 
 - `UltraClearTextController::FullReadNeeded` centralizes the existing coverage,

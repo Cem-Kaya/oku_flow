@@ -343,7 +343,7 @@ class Network
         runtime_.reset(static_cast<nvinfer1::IRuntime*>(libraries.runtime(&logger,NV_TENSORRT_VERSION)));
         Check(cudaPeekAtLastError());
         detail::RequireTensorRtApi(runtime_.get(),"public BF16 runtime creation failed");
-        if(stop())throw std::runtime_error("public BF16 preparation cancelled/deadline");
+        if(stop())throw Refusal(Reason::BuildRefused,"public BF16 preparation deadline before build");
         if(cached.bytes.isEmpty()) {
             try {libraries.PrepareBuilder(sdk);}
             catch(const CudaFailure&){throw;}
@@ -389,7 +389,7 @@ class Network
                 throw Refusal(Reason::BuildRefused,"public BF16 serialized plan exceeds bound");
             publicPlan_=QByteArray(static_cast<const char*>(resources.serialized->data()),qsizetype(resources.serialized->size()));
         } else publicPlan_=cached.bytes;
-        if(stop())throw std::runtime_error("public BF16 preparation cancelled/deadline");
+        if(stop())throw Refusal(Reason::BuildRefused,"public BF16 preparation deadline after build");
         engine_.reset(runtime_->deserializeCudaEngine(publicPlan_.constData(),publicPlan_.size()));
         Check(cudaPeekAtLastError());
         if(!engine_)throw Refusal(Reason::BuildRefused,"public BF16 plan refused by actual runtime");
@@ -734,6 +734,7 @@ struct State
     bool recognizerBf16{};
     QString detectorFallback;
     QJsonArray detectorSmoke;
+    std::array<QByteArray,2> ownedAttempts; // only keys this preparation inserted
     TensorRtProfile profile;
     cudaStream_t stream{};
     Logger logger;
@@ -849,7 +850,7 @@ void ReportPublicPartial(State& state,const public_bf16::AttestationObserver& ob
 void SmokeDetector(State& state,const std::function<bool()>& stop) {
     // Tensor-only compatibility check, not text-region/quality attestation.
     for(const auto size:{QSize(32,32),QSize(960,544),QSize(960,960),QSize(32,960)}) {
-        if(stop())throw std::runtime_error("BF16 detector preparation cancelled/deadline");
+        public_bf16::RefuseStoppedCandidate(state.publicCompletion,stop(),"BF16 detector deadline before smoke submission");
         auto* input=state.detectorInput.Reserve(std::size_t(size.width())*size.height()*3);
         state.publicCompletion.Queued();
         Check(cudaMemsetAsync(input,0,std::size_t(size.width())*size.height()*3*sizeof(float),state.stream));
@@ -860,13 +861,15 @@ void SmokeDetector(State& state,const std::function<bool()>& stop) {
         auto* host=state.detectorSmokeMap.Reserve(count);
         Check(cudaMemcpyAsync(host,state.detector->Output(),count*sizeof(float),cudaMemcpyDeviceToHost,state.stream));
         ConfirmPublicCompletion(state,stop);
-        bf16_detector::CheckMap({host,count});
+        bf16_detector::CheckMapSize(size.width(),size.height(),int(shape.d[3]),int(shape.d[2]));
+        const auto summary=bf16_detector::CheckMap({host,count});
         state.detectorSmoke.push_back(QJsonObject{{"width",size.width()},{"height",size.height()},
-            {"mapWidth",int(shape.d[3])},{"mapHeight",int(shape.d[2])},{"validProbabilities",true}});
+            {"mapWidth",int(shape.d[3])},{"mapHeight",int(shape.d[2])},{"validProbabilities",true},
+            {"maximumProbability",summary.maximum},{"meanProbability",summary.mean}});
     }
 }
 void RunPublicGolden(State& state,const public_bf16::Corpus& corpus,
-    const QStringList& dictionary,const std::function<bool()>& stop,const public_bf16::AttestationObserver& observer)
+    const QStringList& dictionary,const std::function<bool()>& stop,const public_bf16::AttestationObserver& observer,bool includeBatch8=true)
 {
     using namespace public_bf16;
     constexpr int atlasWidth=1024,atlasHeight=8*48,maximumSteps=512;
@@ -898,7 +901,7 @@ void RunPublicGolden(State& state,const public_bf16::Corpus& corpus,
     Check(cudaMemcpyAsync(deviceQuads,quads,8*sizeof(gpu::Quad),cudaMemcpyHostToDevice,state.stream));
     state.publicObservations.reserve(kGoldenObservations);
     const auto run=[&](int first,int batch) {
-        if(stop())throw std::runtime_error("public BF16 golden cancelled/deadline");
+        RefuseStoppedCandidate(state.publicCompletion,stop(),"public BF16 golden deadline before submission");
         state.publicCompletion.Queued();
         // The actual unchanged runtime rectification/zero-padding and batched
         // argmax/compaction kernels, with eight distinct pinned input crops.
@@ -934,12 +937,36 @@ void RunPublicGolden(State& state,const public_bf16::Corpus& corpus,
         ReportPublicPartial(state,observer,"confirmed-through-reported-rows");
     };
     for(int i=0;i<8;++i)run(i,1);
-    run(0,8); // strict full N8, never eight repeated N1 outputs
+    if(includeBatch8)run(0,8); // production always requires real full N8
+}
+void RecordFp32Control(State& state,const PaddleAssets& assets,const public_bf16::Request& request,
+    ModelTier tier,const std::function<bool()>& cancelled,const public_bf16::AttestationObserver& observer) {
+    using namespace public_bf16;
+    if(request.use!=CatalogUse::CandidateValidation || state.recognizerBf16 || state.detectorBf16)
+        throw std::runtime_error("FP32 control is private and cannot run with BF16 engines");
+    const auto corpus=LoadCorpus(request,tier);
+    ConfirmPublicCompletion(state,cancelled);
+    RunPublicGolden(state,corpus,assets.dictionary,cancelled,{},state.recognizerBatch>=8);
+    QJsonArray rows;
+    for(const auto& row:state.publicObservations) {
+        const auto expected=std::find_if(corpus.Crops().begin(),corpus.Crops().end(),[&](const auto& crop){return crop.id==row.crop;});
+        if(expected==corpus.Crops().end())throw std::runtime_error("FP32 control crop identity changed");
+        rows.push_back(QJsonObject{{"crop",row.crop},{"batch",row.batch},{"T",row.steps},{"classes",row.classes},
+            {"pixelsSha256",QString::fromLatin1(row.pixelsSha256)},{"text",row.text},{"expected",expected->expected},
+            {"exactText",row.text==expected->expected}});
+    }
+    // Never call CheckGolden/ReceiptBytes/PublishNew for this record. It is a
+    // measurement of the FP32 model's errors, not permission to accept BF16.
+    if(observer)observer(QJsonObject{{"role","recognizer"},{"precision","FP32"},{"fp32Control",true},
+        {"complete",true},{"passed",false},{"tier",ModelTierToken(tier)},
+        {"sourceSha256",QString::fromLatin1(assets.recognizerSha256)},
+        {"corpusSha256",QString::fromLatin1(corpus.Sha256())},{"rows",rows},
+        {"acceptedPlan",state.recognizer->PlanReceipt("recognizer")}});
 }
 void PreparePublicCandidate(State& state,const PaddleAssets& assets,const QString& sdk,
     const public_bf16::Request& request,precision_artifacts::Runtime runtime,
     ModelTier detector,ModelTier recognizer,int capacity,bool variableWidth,bool prepareWidth,
-    const std::function<bool()>& stop,const public_bf16::AttestationObserver& observer)
+    const std::function<bool()>& stop,const std::function<bool()>& cancelled,const public_bf16::AttestationObserver& observer)
 {
     using namespace public_bf16;
     CheckEligibility(detector,recognizer,capacity,variableWidth,prepareWidth,runtime,Catalog(request));
@@ -949,8 +976,11 @@ void PreparePublicCandidate(State& state,const PaddleAssets& assets,const QStrin
     state.detector->CheckPublicDetector();
     LocalBuild build{runtime.uuid,runtime.tensorRtVersion,{},runtime.major,runtime.minor};
     const auto cached=FindPlan(request,build,corpus);
+    CheckPreparationSpace(cached);
     const auto attempt=CacheKey(build,corpus)+":"+(cached.bytes.isEmpty()?QByteArray("missing"):precision_artifacts::Digest(cached.bytes));
+    RefuseRememberedFailure(request.cacheRoot,attempt);
     if(!SessionAttempts().Begin(attempt))throw Refusal(Reason::BuildRefused,"public BF16 identity already failed/in flight; no automatic retry");
+    state.ownedAttempts[1]=attempt;
     state.publicEvidenceIdentity=BuildIdentity(build,corpus);
     state.publicGoldenStarted=true;
     state.recognizer=std::make_unique<Network>(Network::PublicTag{});
@@ -958,27 +988,28 @@ void PreparePublicCandidate(State& state,const PaddleAssets& assets,const QStrin
     state.recognizer->PreparePublic(*state.libraries,state.logger,sdk,model,cached,state.stream,stop,int(assets.dictionary.size()));
     // Builder may have used the profile stream. Confirm before allocations or
     // N1 shape changes, and before any typed healthy-stream rejection cleanup.
-    ConfirmPublicCompletion(state,stop);
+    ConfirmPublicCompletion(state,cancelled);
     build.planFileSha256=precision_artifacts::Digest(state.recognizer->PublicPlan());
     state.publicEvidenceIdentity["planFileSha256"]=QString::fromLatin1(build.planFileSha256);
     const auto goldenDeadline=std::chrono::steady_clock::now()+std::chrono::seconds(120);
     const auto goldenStop=[&]{return stop() || std::chrono::steady_clock::now()>=goldenDeadline;};
     RunPublicGolden(state,corpus,assets.dictionary,goldenStop,observer);
-    if(goldenStop())throw std::runtime_error("public BF16 golden cancelled/deadline after final N8");
+    RefuseStoppedCandidate(state.publicCompletion,goldenStop(),"public BF16 golden deadline after final N8");
     state.publicCompletion.RequireConfirmed();
     const auto golden=CheckGolden(corpus,build,state.publicObservations,Completion::Confirmed);
     state.publicGoldenRecord=golden.Record(); // retain actual failure outputs too
     if(observer) {try{observer(state.publicGoldenRecord);}catch(...) {}}
-    if(stop())throw std::runtime_error("public BF16 cancelled before publication");
+    RefuseStoppedCandidate(state.publicCompletion,stop(),"public BF16 deadline before publication");
     // A receipt never authorizes expected text and a cache hit is reattested.
     const auto receipt=ReceiptBytes(build,corpus,golden,runtime,state.publicCompletion);
     if(cached.bytes.isEmpty() && !PublishNew(request,build,corpus,golden,runtime,state.publicCompletion,state.recognizer->PublicPlan()))
         throw Refusal(Reason::BuildRefused,"public BF16 publication raced an existing generation; no replacement/retry");
     SessionAttempts().Passed(attempt);
+    state.ownedAttempts[1].clear();
     state.recognizerBatch=capacity;state.variableWidth=false;state.recognizerBf16=true;
     state.precisionDetail=runtime_precision::ActualStatus(true,{},state.detectorBf16,detector)+
         (request.use==CatalogUse::CandidateValidation ? "Candidate validation only; production catalog remains unavailable. " : "Public model locally attested. ")+
-        "Local ready receipt SHA256="+QString::fromLatin1(precision_artifacts::Digest(receipt))+". ";
+        "Session attestation receipt SHA256="+QString::fromLatin1(precision_artifacts::Digest(receipt))+". ";
 }
 class TensorRtRecognizer final : public Recognizer
 {
@@ -1038,9 +1069,11 @@ class TensorRtRecognizer final : public Recognizer
             return status_;
         }
         int count = 0;
-        if (cudaGetDeviceCount(&count) != cudaSuccess || count == 0)
+        const auto devices=cudaGetDeviceCount(&count);
+        if (devices != cudaSuccess || count == 0)
         {
-            status_.detail = "No CUDA device is available.";
+            status_.detail = devices==cudaSuccess ? "No CUDA device is available." :
+                QString("CUDA unavailable (%1): %2; CPU OCR remains available.").arg(cudaGetErrorName(devices),cudaGetErrorString(devices));
             return status_;
         }
         cudaDeviceProp properties{};
@@ -1585,7 +1618,10 @@ class TensorRtRecognizer final : public Recognizer
                         precisionPlan=experiment->bytes;
                     }
                     if(cancelled())throw std::runtime_error("GPU preparation cancelled before FP32 detector");
-                    if(publicRequest.enabled && publicRequest.preferDetector && !experiment && !precisionRequest.Requested() && properties.major>=8) {
+                    const bool detectorActivated=publicRequest.use==public_bf16::CatalogUse::CandidateValidation || bf16_detector::ProductionActivated();
+                    if(publicRequest.enabled && publicRequest.preferDetector && !detectorActivated)
+                        state->detectorFallback="BF16 detector production activation awaits semantic quality acceptance";
+                    if(publicRequest.enabled && publicRequest.preferDetector && detectorActivated && !publicRequest.fp32Control && !experiment && !precisionRequest.Requested() && properties.major>=8) {
                         const auto detectorDeadline=std::chrono::steady_clock::now()+std::chrono::seconds(600);
                         const auto detectorStop=[cancelled,detectorDeadline]{return cancelled() || std::chrono::steady_clock::now()>=detectorDeadline;};
                         QByteArray attempt;
@@ -1594,15 +1630,21 @@ class TensorRtRecognizer final : public Recognizer
                             const auto path=bf16_detector::ReadGraphPath(publicRequest.modelRoot,assets,detectorTier);
                             attempt="detector:"+bf16_detector::PlanKey(QByteArray::fromHex(bf16_detector::GraphHash(detectorTier)),
                                 QByteArray(reinterpret_cast<const char*>(&properties.uuid),sizeof(properties.uuid)),state->libraries->tensorRtVersion);
+                            public_bf16::RefuseRememberedFailure(publicRequest.cacheRoot,attempt);
                             if(!public_bf16::SessionAttempts().Begin(attempt))throw runtime_precision::ArtifactError("BF16 detector already failed or in flight this session");
+                            state->ownedAttempts[0]=attempt;
                             state->detector=std::make_unique<Network>(Network::PublicTag{});
+                            state->publicCompletion.Queued();
                             state->detector->PreparePinned(*state->libraries,state->logger,sdk,path,bf16_detector::GraphHash(detectorTier),true,state->device,
                                 state->stream,detectorStop,1,false,true,nullptr,baselineCache,{},true);
+                            ConfirmPublicCompletion(*state,cancelled);
+                            public_bf16::RefuseStoppedCandidate(state->publicCompletion,detectorStop(),"BF16 detector build deadline");
                             validating=true;
                             SmokeDetector(*state,detectorStop);
-                            if(detectorStop())throw std::runtime_error("BF16 detector cancelled/deadline after smoke check");
+                            public_bf16::RefuseStoppedCandidate(state->publicCompletion,detectorStop(),"BF16 detector deadline after smoke check");
                             state->detectorBf16=true;
                             public_bf16::SessionAttempts().Passed(attempt);
+                            state->ownedAttempts[0].clear();
                         } catch(const std::exception& error) {
                             if(!detail::AllowsTensorRtCapacityFallback(std::current_exception()))throw;
                             // Actual inference/ABI/deadline faults are terminal;
@@ -1610,12 +1652,17 @@ class TensorRtRecognizer final : public Recognizer
                             // choose FP32 after smoke execution has started.
                             if(validating && !dynamic_cast<const runtime_precision::ArtifactError*>(&error))throw;
                             Check(cudaPeekAtLastError());
-                            if(detectorStop())throw std::runtime_error("BF16 detector cancelled/deadline before FP32 fallback");
+                            if(cancelled())throw std::runtime_error("BF16 detector cancelled before FP32 fallback");
                             if(state->detector) {
-                                ConfirmPublicCompletion(*state,detectorStop);
+                                ConfirmPublicCompletion(*state,cancelled);
                                 public_bf16::DiscardAfterCompletion(state->publicCompletion,[&]{state->detector.reset();});
                             }
                             state->detectorFallback=QString::fromUtf8(error.what());
+                            if(!state->ownedAttempts[0].isEmpty()) {
+                                try {public_bf16::WriteFailure(publicRequest.cacheRoot,state->ownedAttempts[0],state->detectorFallback,state->publicCompletion);}
+                                catch(const runtime_precision::ArtifactError& memo) {state->detectorFallback+="; failure memo unavailable: "+QString::fromUtf8(memo.what());}
+                            }
+                            state->ownedAttempts[0].clear(); // failed latch stays; this attempt is no longer in flight
                         }
                     }
                     if(!state->detector) {
@@ -1635,7 +1682,7 @@ class TensorRtRecognizer final : public Recognizer
                     if (preparation->cancel.load())
                         throw std::runtime_error("GPU preparation cancelled.");
                     int capacity = recognizerBatch;
-                    if(publicRequest.enabled && !experiment && !precisionRequest.Requested()) {
+                    if(publicRequest.enabled && !publicRequest.fp32Control && !experiment && !precisionRequest.Requested()) {
                         if(cancelled())throw std::runtime_error("public BF16 preparation cancelled before eligibility");
                         const precision_artifacts::Runtime runtime{
                             QByteArray(reinterpret_cast<const char*>(&properties.uuid),sizeof(properties.uuid)),
@@ -1651,21 +1698,28 @@ class TensorRtRecognizer final : public Recognizer
                                 return cancelled() || std::chrono::steady_clock::now()>=publicDeadline;
                             };
                             PreparePublicCandidate(*state,assets,sdk,publicRequest,runtime,detectorTier,recognizerTier,
-                                recognizerBatch,variableWidth,allowWidthPreparation,publicStop,attestationObserver);
+                                recognizerBatch,variableWidth,allowWidthPreparation,publicStop,cancelled,attestationObserver);
                         } catch(const runtime_precision::ArtifactError& error) {
                             // Only a typed, confirmed healthy-stream refusal may
                             // retain FP32. Actual API/CUDA/context/enqueue/copy/
                             // event faults never enter this alternate-engine path.
                             Check(cudaPeekAtLastError());
                             if(state->recognizer) {
-                                ConfirmPublicCompletion(*state,publicStop);
+                                ConfirmPublicCompletion(*state,cancelled);
                                 public_bf16::DiscardAfterCompletion(state->publicCompletion,[&]{state->recognizer.reset();});
                             }
                             ReportPublicPartial(*state,attestationObserver,"confirmed-incomplete",error.what());
-                            if(publicStop())throw std::runtime_error("public BF16 cancelled/deadline before FP32 fallback");
+                            if(cancelled())throw std::runtime_error("public BF16 cancelled before FP32 fallback");
+                            QString memoDetail;
+                            if(!state->ownedAttempts[1].isEmpty()) {
+                                try {public_bf16::WriteFailure(publicRequest.cacheRoot,state->ownedAttempts[1],QString::fromUtf8(error.what()),state->publicCompletion);}
+                                catch(const runtime_precision::ArtifactError& memo) {memoDetail="BF16 failure memo unavailable: "+QString::fromUtf8(memo.what())+". ";}
+                            }
+                            state->ownedAttempts[1].clear(); // cancellation of later FP32 work cannot erase this failure
                             const auto* refusal=dynamic_cast<const public_bf16::Refusal*>(&error);
-                            state->precisionDetail=precisionDetail(false)+QString("Public BF16 unavailable (typed reason=%1): ")
-                                .arg(refusal?int(refusal->Code()):int(public_bf16::Reason::Model))+QString::fromUtf8(error.what())+". ";
+                            const auto reason=refusal?refusal->Code():public_bf16::Reason::Model;
+                            state->precisionDetail=precisionDetail(false)+QString("Public BF16 unavailable (typed reason=%1 %2): ")
+                                .arg(int(reason)).arg(public_bf16::ReasonName(reason))+QString::fromUtf8(error.what())+". "+memoDetail;
                         }
                     }
                     if (!precisionPlan.isEmpty()) {
@@ -1724,9 +1778,13 @@ class TensorRtRecognizer final : public Recognizer
                     }
                     if (preparation->cancel.load())
                         throw std::runtime_error("GPU preparation cancelled.");
+                    if(publicRequest.fp32Control) {
+                        RecordFp32Control(*state,assets,publicRequest,recognizerTier,cancelled,attestationObserver);
+                        state->precisionDetail+="FP32 control only; no BF16 activation or publication. ";
+                    }
                     ConfirmPublicCompletion(*state,cancelled);
                     state->detector->ReleaseBuildResources();state->recognizer->ReleaseBuildResources();
-                    state->precisionDetail+=QString("Selected detector=%1/%2; selected recognizer=%3; detector tensor smoke=%4/4. ")
+                    state->precisionDetail+=QString("Selected detector=%1/%2; selected recognizer=%3; attempted BF16 detector tensor smoke=%4/4. ")
                         .arg(ModelTierToken(detectorTier),state->detectorBf16 ? "BF16-linear" : "FP32",ModelTierToken(recognizerTier))
                         .arg(state->detectorSmoke.size());
                     if(!state->detectorFallback.isEmpty())state->precisionDetail+="Detector FP32 fallback: "+state->detectorFallback+". ";
@@ -1737,6 +1795,19 @@ class TensorRtRecognizer final : public Recognizer
                 }
                 catch (const std::exception &error)
                 {
+                    // A user abort is not a failed model. Release only this
+                    // preparation's latch keys after a fresh bounded drain;
+                    // unknown completion or real CUDA/API faults keep them held.
+                    if(preparation->cancel.load() && preparation->state &&
+                       detail::AllowsTensorRtCapacityFallback(std::current_exception())) {
+                        try {
+                            auto& state=*preparation->state;Check(cudaPeekAtLastError());
+                            ConfirmPublicCompletion(state,[]{return false;});
+                            for(auto& key:state.ownedAttempts)if(!key.isEmpty()) {
+                                public_bf16::SessionAttempts().Cancelled(key,public_bf16::Completion::Confirmed);key.clear();
+                            }
+                        }catch(...) {} // preserve original failure and retained ownership
+                    }
                     if(preparation->state)ReportPublicPartial(*preparation->state,attestationObserver,"unknown",error.what());
                     {
                         std::lock_guard lock(preparation->mutex);
@@ -1851,13 +1922,13 @@ std::unique_ptr<Recognizer> CreateProductionTensorRtRecognizer(ModelTier detecto
 std::unique_ptr<Recognizer> CreatePublicBf16ValidationRecognizer(const QString& root,const QString& sdk,
     const QString& modelRoot,const QString& corpusRoot,const QString& cacheRoot,
     public_bf16::AttestationObserver observer,TensorRtRetirementObserver retirementObserver,
-    ModelTier detector,ModelTier recognizer,bool preferDetector)
+    ModelTier detector,ModelTier recognizer,bool preferDetector,bool fp32Control)
 {
     // Explicit private caller only: never reads the schema-1 selector and never
     // changes the compiled production catalog or public diagnostic defaults.
     return std::make_unique<TensorRtRecognizer>(root,sdk,detector,recognizer,
         std::move(retirementObserver),std::shared_ptr<TensorRtCropDiagnostic>{},runtime_precision::Request{},
-        public_bf16::Request{modelRoot,corpusRoot,cacheRoot,public_bf16::CatalogUse::CandidateValidation,true,preferDetector},std::move(observer));
+        public_bf16::Request{modelRoot,corpusRoot,cacheRoot,public_bf16::CatalogUse::CandidateValidation,true,preferDetector,fp32Control},std::move(observer));
 }
 } // namespace okuflow::uct
 #else
@@ -1869,7 +1940,7 @@ std::unique_ptr<Recognizer> CreatePrecisionExperimentRecognizer(const QString&,c
     return {};
 }
 std::unique_ptr<Recognizer> CreatePublicBf16ValidationRecognizer(const QString&,const QString&,
-    const QString&,const QString&,const QString&,public_bf16::AttestationObserver,TensorRtRetirementObserver,ModelTier,ModelTier,bool)
+    const QString&,const QString&,const QString&,public_bf16::AttestationObserver,TensorRtRetirementObserver,ModelTier,ModelTier,bool,bool)
 {
     return {};
 }

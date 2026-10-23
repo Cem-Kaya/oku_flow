@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Gate production BF16 detectors pending semantic acceptance. Confirmed-complete
+  BF16 deadline refusals retain same-tier FP32 GPU fallback; uncertain work stays
+  terminal. Remember completed failures without overwriting evidence, release
+  cancelled attempt latches only after confirmed drain, and preflight full caches.
+  Add a private record-only FP32 golden control and six-model inventory parity.
+
 - Add per-tier GPU detector BF16 preference with independent same-tier FP32
   fallback, compiled converted-model pins and bounded tensor compatibility
   checks. Attach engine resources before preparation and retain them through

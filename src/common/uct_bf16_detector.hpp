@@ -3,6 +3,8 @@
 #include <cmath>
 
 namespace okuflow::uct::bf16_detector {
+// Graph presence and tensor smokes are not semantic detector acceptance.
+inline bool ProductionActivated() {return false;}
 inline const char* GraphHash(ModelTier tier) {
     switch(tier) {
     case ModelTier::Medium:return "5699b5d662f046d7fcad339b351263f154a13c67a11ee797f45074f8876db10c";
@@ -30,10 +32,20 @@ inline QByteArray PlanKey(const QByteArray& graph,const QByteArray& uuid,
     return precision_artifacts::Digest("uct-bf16-detector-v1\n"+
         tensorrt_identity::Fp32PlanKey(graph,uuid,true,1,false,builder));
 }
-inline void CheckMap(std::span<const float> map) {
+struct MapSummary {float maximum{};double mean{};};
+inline MapSummary CheckMap(std::span<const float> map) {
     if(map.empty() || map.size()>960ull*960)
         throw runtime_precision::ArtifactError("BF16 detector smoke output map exceeds its shape bounds");
-    for(const auto value:map)if(!std::isfinite(value) || value<0 || value>1.0001f)
-        throw runtime_precision::ArtifactError("BF16 detector smoke output contains invalid probabilities");
+    MapSummary summary;
+    for(const auto value:map) {
+        if(!std::isfinite(value) || value<0 || value>1.0001f)
+            throw runtime_precision::ArtifactError("BF16 detector smoke output contains invalid probabilities");
+        summary.maximum=std::max(summary.maximum,value);summary.mean+=value;
+    }
+    summary.mean/=map.size();return summary;
+}
+inline void CheckMapSize(int width,int height,int mapWidth,int mapHeight) {
+    if(width!=mapWidth || height!=mapHeight)
+        throw runtime_precision::ArtifactError("BF16 detector probability map differs from input dimensions");
 }
 } // namespace okuflow::uct::bf16_detector

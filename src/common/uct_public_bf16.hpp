@@ -14,6 +14,15 @@ inline constexpr char kPreprocessing[]="paddle-rectify-normalized-zero-pad-v1";
 inline constexpr char kGraphRelativePath[]="uct/rec/medium/bf16-linear/inference.onnx";
 inline constexpr int kGoldenSamples=8, kGoldenObservations=16;
 enum class Reason { Configuration, Hardware, Runtime, Model, CorpusUnavailable, Corpus, BuildRefused, GoldenMismatch };
+inline const char* ReasonName(Reason reason) {
+    switch(reason) {
+    case Reason::Configuration:return "Configuration";case Reason::Hardware:return "Hardware";
+    case Reason::Runtime:return "Runtime";case Reason::Model:return "Model";
+    case Reason::CorpusUnavailable:return "CorpusUnavailable";case Reason::Corpus:return "Corpus";
+    case Reason::BuildRefused:return "BuildRefused";case Reason::GoldenMismatch:return "GoldenMismatch";
+    }
+    return "Unknown";
+}
 class Refusal : public runtime_precision::ArtifactError {
 public:
     Refusal(Reason reason,const char* text):ArtifactError(text),reason_(reason){}

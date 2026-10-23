@@ -1,5 +1,40 @@
 # Public BF16 model and local attestation (offline, 2026-10-23)
 
+## Opus install-review repair checkpoint
+
+The two reported activation/deadline findings are repaired in source, pending a
+fresh build and independent closure. Production detector activation is explicitly
+false; copying a converted graph cannot enable it. Candidate detector validation
+still runs, now recording max/mean probabilities and exact output-map dimensions.
+
+A candidate budget expiry cannot authorize BF16. When work is confirmed complete,
+a typed refusal permits the selected-tier FP32 GPU fallback with a fresh bounded
+drain. Actual CUDA/API/inference faults, cancellation and unknown completion remain
+terminal; a stopped in-flight completion poll is not reclassified as healthy.
+Cancelled attempt keys are released only after a confirmed drain and only if this
+preparation owns them. Completed failures remain latched.
+
+Completed typed failures are also retained new-only at
+`<cache>/public-bf16-failures-v1/<attempt-sha256>.json`, under native directory/file
+pins. These are negative evidence, never model approval or successful readiness.
+Changed model/corpus/GPU/builder/plan identity permits a new attempt; driver updates
+do not. Existing records, corrupt records and partial writes are not overwritten
+or silently repaired. A diagnosed retry requires reviewing the named record
+offline; no automatic deletion exists. A memo write refusal is reported with
+FP32 fallback. No power-loss durability guarantee is claimed.
+
+The v2 lookup reports its observed generation count so a missing recipe at the
+32-entry bound is refused before compilation. A publication race/storage refusal
+still falls back; keeping an uncached golden-passing engine is not implemented.
+
+`OKUFLOW_UCT_PUBLIC_FP32_CONTROL=1` in the explicit private runtime fixture skips
+both BF16 roles, reads the unchanged owned crops through the real FP32 engine and
+records text/ground-truth agreement. Medium/small exercise N1 and N8; tiny's N1
+engine exercises eight N1 crops. Control records never call `CheckGolden`, create
+BF16 ready receipts or publish/activate an engine. This separates model limitations
+from precision differences without changing acceptance policy or expected text.
+These source repairs and the control mode are UNBUILT/UNRUN at this checkpoint.
+
 ## Current real-runtime checkpoint at `0697367`
 
 The real CUDA/TensorRT adapter compiled and all four scoped contracts passed:

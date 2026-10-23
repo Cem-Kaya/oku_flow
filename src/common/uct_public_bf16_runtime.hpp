@@ -22,6 +22,7 @@ struct Request {
     CatalogUse use{CatalogUse::Production};
     bool enabled{};
     bool preferDetector{true};
+    bool fp32Control{}; // private record-only comparison; production never sets it
 };
 struct BaselineCachePolicy {QString root;bool allowPreparation{true};};
 inline BaselineCachePolicy BaselinePolicy(const Request& request) {
@@ -95,6 +96,10 @@ public:
         return keys_.size()<64 && keys_.insert(key).second;
     }
     void Passed(const QByteArray& key) {std::lock_guard lock(mutex_);keys_.erase(key);}
+    void Cancelled(const QByteArray& key,Completion completion) {
+        if(completion!=Completion::Confirmed)throw std::runtime_error("cannot release an unconfirmed BF16 attempt");
+        std::lock_guard lock(mutex_);keys_.erase(key);
+    }
 private:
     std::mutex mutex_;
     std::set<QByteArray> keys_;
@@ -117,12 +122,23 @@ template<class Cleanup> void DiscardAfterCompletion(const Publication& completio
     completion.RequireConfirmed();
     std::forward<Cleanup>(cleanup)();
 }
+// An expired candidate may choose FP32 only when its preceding work is known
+// complete. Cancellation is checked separately by the worker before fallback.
+inline void RefuseStoppedCandidate(const Publication& completion,bool stopped,const char* reason) {
+    if(!stopped)return;
+    completion.RequireConfirmed();
+    throw Refusal(Reason::BuildRefused,reason);
+}
 inline QByteArray ReceiptBytes(const LocalBuild& build,const Corpus& corpus,const GoldenResult& golden,
                               const precision_artifacts::Runtime& runtime,const Publication& completion) {
     completion.RequireConfirmed();
     return QJsonDocument(ReadyReceipt(build,corpus,golden,runtime)).toJson(QJsonDocument::Compact);
 }
-struct CachedPlan {QByteArray bytes,builderVersion;QString directory;};
+struct CachedPlan {QByteArray bytes,builderVersion;QString directory;int observedGenerations{};};
+inline void CheckPreparationSpace(const CachedPlan& cached) {
+    if(cached.bytes.isEmpty() && cached.observedGenerations>=32)
+        throw Refusal(Reason::BuildRefused,"public BF16 cache inventory full before preparation");
+}
 inline constexpr char kCommitName[]="COMMITTED";
 inline constexpr char kCommitBytes[]="okuflow-public-bf16-v2\n";
 inline bool Nonce(const QByteArray& nonce) {
@@ -345,6 +361,57 @@ private:
     HANDLE handle_{};
 };
 #endif
+inline QString FailurePath(const QString& root,const QByteArray& attempt) {
+    if(!runtime_precision::LocalAbsolute(root) || attempt.isEmpty() || attempt.size()>512)
+        throw Refusal(Reason::Model,"invalid BF16 failure memo identity/root");
+    return QDir(root).filePath("public-bf16-failures-v1/"+QString::fromLatin1(precision_artifacts::Digest(attempt))+".json");
+}
+inline QString ReadFailure(const QString& root,const QByteArray& attempt) {
+    const auto path=FailurePath(root,attempt);
+#ifdef Q_OS_WIN
+    const auto attributes=GetFileAttributesW(NativeCachePath(root).c_str());
+    if(attributes==INVALID_FILE_ATTRIBUTES) {
+        const auto error=GetLastError();
+        if(error==ERROR_FILE_NOT_FOUND || error==ERROR_PATH_NOT_FOUND)return {};
+        throw Refusal(Reason::Model,"cannot inspect BF16 failure memo root");
+    }
+    DirectoryPins pins;
+    const auto parent=pins.Prepare(root,QFileInfo(path).absolutePath(),false);
+    if(parent.isEmpty())return {};
+    FilePin file(QDir(parent).filePath(QFileInfo(path).fileName()),false,true);
+    if(!file.Exists())return {};
+    QJsonParseError error;
+    const auto document=QJsonDocument::fromJson(file.Read(16*1024),&error);
+    const auto value=document.object();
+    if(error.error!=QJsonParseError::NoError || !document.isObject() || value.size()!=3 ||
+       value["schema"]!="uct-bf16-failure-v1" || value["attemptSha256"]!=QString::fromLatin1(precision_artifacts::Digest(attempt)) ||
+       !value["reason"].isString() || value["reason"].toString().isEmpty() || value["reason"].toString().size()>4096)
+        throw Refusal(Reason::Model,"invalid BF16 failure memo; no preparation retry");
+    return value["reason"].toString();
+#else
+    throw Refusal(Reason::Model,"BF16 failure memos require native Windows ownership");
+#endif
+}
+inline void RefuseRememberedFailure(const QString& root,const QByteArray& attempt) {
+    const auto reason=ReadFailure(root,attempt);
+    if(!reason.isEmpty())throw Refusal(Reason::BuildRefused,
+        ("BF16 previously refused: "+reason+"; retained memo="+FailurePath(root,attempt)).toUtf8().constData());
+}
+inline void WriteFailure(const QString& root,const QByteArray& attempt,const QString& reason,const Publication& completion) {
+    completion.RequireConfirmed(); // never turn uncertainty/cancellation into a durable failure
+    if(reason.isEmpty())throw Refusal(Reason::Model,"BF16 failure memo requires a reason");
+    const auto path=FailurePath(root,attempt);
+    if(!ReadFailure(root,attempt).isEmpty())return; // first evidence is immutable
+#ifdef Q_OS_WIN
+    DirectoryPins pins;
+    const auto parent=pins.Prepare(root,QFileInfo(path).absolutePath());
+    const auto bytes=QJsonDocument(QJsonObject{{"schema","uct-bf16-failure-v1"},
+        {"attemptSha256",QString::fromLatin1(precision_artifacts::Digest(attempt))},{"reason",reason.left(4096)}}).toJson(QJsonDocument::Compact);
+    FilePin file(QDir(parent).filePath(QFileInfo(path).fileName()),true);file.Write(bytes,16*1024);
+#else
+    throw Refusal(Reason::Model,"BF16 failure memos require native Windows ownership");
+#endif
+}
 inline QString CacheParent(const Request& request,const LocalBuild& build,const Corpus& corpus) {
     // Parent deliberately omits builder as well as driver/runtime provenance.
     // Each v2 recipe still binds its actual builder via CacheKey; nonce is only a locator.
@@ -406,6 +473,7 @@ inline CachedPlan FindPlan(const Request& request,const LocalBuild& build,const 
         // Validate ALL committed siblings, including those after a match. Pins
         // close per generation, after any selected bytes have been copied.
     }
+    selected.observedGenerations=entries.count;
     return selected;
 #else
     throw Refusal(Reason::Model,"public BF16 v2 lookup requires native Windows file ownership");
@@ -500,5 +568,5 @@ namespace okuflow::uct {
 std::unique_ptr<Recognizer> CreatePublicBf16ValidationRecognizer(const QString& root,const QString& sdk,
     const QString& modelRoot,const QString& corpusRoot,const QString& cacheRoot,
     public_bf16::AttestationObserver observer={},TensorRtRetirementObserver retirementObserver={},
-    ModelTier detector=ModelTier::Medium,ModelTier recognizer=ModelTier::Medium,bool preferDetector=false);
+    ModelTier detector=ModelTier::Medium,ModelTier recognizer=ModelTier::Medium,bool preferDetector=false,bool fp32Control=false);
 }

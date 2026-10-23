@@ -166,8 +166,9 @@ comes back afterward, never the full model logits. Engines prepare on a
 separate owned worker; CPU OCR serves until preparation
 finishes, then GPU is promoted between jobs. TensorRT's progress monitor
 cooperatively cancels when the backend session ends; it cannot preempt every
-vendor call. Cache identity binds model, GPU UUID, driver,
-TensorRT version and precision; cached bytes also have an integrity digest.
+vendor call. Cache identity binds model, GPU UUID, builder TensorRT version,
+profile and precision; driver identity is provenance only. Cached bytes also
+have an integrity digest.
 
 The owner's explicit [local BF16 recognition opt-in](uct_local_bf16.md) selects
 only a reviewed cache-only medium recognition graph with mixed arithmetic and
