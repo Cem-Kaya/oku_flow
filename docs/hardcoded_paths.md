@@ -171,7 +171,9 @@ the inner application is preferred when it contains a detector, then LocalAppDat
 `OKUFLOW_UCT_TENSORRT_ROOT` selects the external SDK at runtime; otherwise the
 pinned SDK extraction under `ocr-deps` is used. CMake's `OKUFLOW_UCT_SDK_ROOT`
 and `OKUFLOW_UCT_TENSORRT_ROOT` locate optional headers; absent headers compile
-fallback stubs. Runtime SDK overrides must match the pinned version. The
+fallback stubs. Runtime SDK overrides require ABI11 with an exported version
+at least 11.4.0.106; factory, deserialization, FLOAT I/O and exact profile checks
+still determine actual compatibility. The
 runtime `OKUFLOW_UCT_CUDA_BIN`, then `CUDA_PATH_V12_9/bin`, then the documented
 private CUDA-12.9.2 toolkit `bin` supplies optional CUDA DLL dependencies.
 No compiler-machine absolute path is baked into the OCR loader.
