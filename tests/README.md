@@ -2460,4 +2460,15 @@ The publication/lifetime slot threw an undiagnosed C++ exception at 10 ms before
 completion; it did not establish the suspected directory-sharing assertion
 failure. Preserve that original log and the unchanged denial/new-only assertions.
 The newer policy/cache cases above remain UNBUILT/UNRUN. See the exact retained
-failure path and pending root-owned probe in [review dispositions](../docs/uct_public_bf16_review.md).
+failure path and probe history in [review dispositions](../docs/uct_public_bf16_review.md).
+
+Root's completed isolated native probe confirms the attribute-only pin's delete
+sharing defect and list/attribute plus READ/WRITE/no-DELETE sharing behavior for
+outside DELETE opens and exact-staging new-only rename. It created the file
+before holding staging, so post-hold production file creation remains unverified
+and the earlier Qt exception remains unattributed. The source fixture keeps all
+original denial/junction/new-only assertions, adds DELETE-only refusal, a
+non-delete writer and real publication/collision under a held parent, and prints
+unexpected `std::exception::what()` at the private slot boundary. Production
+`PublishFilesNew` order is unchanged. These changes remain UNBUILT/UNRUN here;
+root owns the single changed-fingerprint execution with the first failure retained.

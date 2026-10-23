@@ -176,8 +176,10 @@ Receipts bind loaded-plan bytes/device/builder/corpus and provenance, but never
 authorize expected text or skip deserialization/profile checks/real reattestation.
 Driver changes alone cannot change the locator. Runtime ABI11 tuple admission
 remains >=11.4.0.106; real deserialization decides compatibility.
-The explicit cache root must already exist. Native directory handles deny write/
-delete sharing, reject reparse points below its canonical root **before** any
+The explicit cache root must already exist. Native directory handles request
+`FILE_LIST_DIRECTORY|FILE_READ_ATTRIBUTES` and share READ/WRITE but not DELETE;
+only the exact staging handle additionally requests DELETE for its held rename.
+They reject reparse points below the canonical root **before** any
 descendant creation and stay held through reads/publication. A racing final
 generation is a typed refusal; the losing attempt does not claim publication.
 
@@ -250,6 +252,15 @@ bytes: 5/6 passed, with the publication/lifetime slot throwing an undiagnosed C+
 exception before completion. The first log and root-owned pending native probe
 are recorded in [review dispositions](uct_public_bf16_review.md). That run does
 not cover these policy/cache repairs or establish native sharing/rename behavior.
+Root's subsequent isolated native probe confirmed that the original attribute-only
+pin allowed outside DELETE and WRITE|DELETE opens, whereas list/attribute access
+with READ/WRITE sharing excluding DELETE refused them and allowed exact-staging
+new-only rename. The probe created its non-model file before holding staging;
+it did not test production's file creation after the staging hold or diagnose the
+earlier Qt exception. The separate source repair preserves that production write
+order, adds delete-only/no-delete opener and pinned-parent publication cases, and
+prints unexpected `std::exception::what()` from the private Qt slot. Those project
+changes remain UNBUILT/UNRUN pending root's changed-fingerprint execution.
 
 Proposed finite root START C2: one frozen checkout, maximum 8 compile jobs,
 900-second total stop budget; build only affected `uct_paddle_tests` and

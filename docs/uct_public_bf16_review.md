@@ -21,10 +21,11 @@ The reviewer reported three findings; all are accepted and repaired in source:
    Full mismatches remain complete failed records with exact outputs.
 3. **P2, late canonical check:** `mkpath` could create a directory beyond an
    existing junction before refusing. Native directory pins now reject reparse
-   ancestors before creation, hold existing/new ordinary ancestors without
-   write/delete sharing, and retain them through reading, file writes and the
-   new-only rename of the held exact staging directory. The explicit root must
-   already exist. No replace/copy fallback is used.
+   ancestors before creation, and retain existing/new ordinary ancestors through
+   reads, writes and new-only rename of exact held staging. The initial sharing
+   exclusion request proved ineffective in root's later native probe; the separate
+   pin repair below corrects it. The explicit root must already exist. No
+   replace/copy fallback is used.
 
 Additional coordinator repairs reject a raced final publication rather than
 claiming success, check cancellation before FP32 fallback and retain explicit
@@ -106,9 +107,9 @@ retirement remain unchanged. Existing model-free eligibility/baseline seams gain
 candidate admission and disabled-request cases; they do not execute or simulate
 the worker's elapsed-clock sequence. All changes remain UNBUILT/UNRUN.
 
-The separate cache-builder repair follows; native `DirectoryPins::Hold` and its
-existing sharing fixture remain unchanged pending root's real fixture result.
-The probable attribute-only-sharing finding is not repaired or declared closed.
+At the policy/cache handoff, native `DirectoryPins::Hold` and its existing sharing
+fixture remained unchanged pending root's real fixture result. The then-probable
+attribute-only-sharing finding was not repaired or declared closed at that point.
 Root retains the initial combined CPU compile failure and owns the test-only
 `TextQuad` near/far rename needed to run the unchanged native fixture. This
 implementation checkout executes no build/test/native API and imports no such fix.
@@ -130,7 +131,7 @@ directions, missing matching builder, unchanged bytes/inventory and corrupted
 nonmatching-child refusal. These are labelled integrity-only fixture bytes with
 no golden/pass field, not manufactured model success. They and both source repairs
 remain **UNBUILT/UNRUN**, awaiting root's targeted independent closure and fresh
-finite execution grants. The probable native sharing issue remains open.
+finite execution grants. At that handoff the probable native sharing issue was open.
 
 Root subsequently reported a combined CPU run on `a7` with public production
 bytes identical to `89f839b03285862aa00f082e057c7a4c2d15dc70`, after the separate
@@ -143,3 +144,35 @@ retains the first log at
 and reports release at 15:13:59, lock-free/job0. A separate bounded native probe
 is root-owned and pending; this checkout executes nothing and preserves the
 original denial/new-only assertions without a behavior or diagnostic workaround.
+
+## Root native probe and separate directory-pin repair
+
+Root completed a new isolated filesystem diagnostic (not a failed-test retry) at
+`2026-10-23T15:17:27.2730543Z`, in 1.41 seconds, with job active0, no helpers or
+termination and verified lock-free release. Evidence is under
+`Z:/Projects/OkuFlow/local-work-data/uct-public-native-pin-probe-20261023/C2-20261023-151725-980723380368444a8f1cd08b86d68819/observations.json`
+and sibling `receipt.json`. The two scenarios confirmed:
+
+- Attribute-only access/share-READ allowed outside DELETE and WRITE|DELETE opens
+  (error0); exact-staging DELETE and new-only rename also succeeded.
+- List/attribute access/share-READ|WRITE excluding DELETE rejected both outside
+  opens (error32), while exact-staging DELETE and the same new-only rename succeeded.
+
+This confirms Opus's probable P2 as a platform defect, separate from the earlier
+unattributed Qt exception. The probe wrote its non-model file before staging was
+held; it did **not** establish that file creation while the staging handle is held
+succeeds or explain the Qt exception at the first production publication.
+
+The separate source repair requests FILE_LIST_DIRECTORY|FILE_READ_ATTRIBUTES,
+shares READ/WRITE without DELETE, and retains DELETE on exact staging for rename.
+All original junction, denial and atomic-new-only assertions remain. Additional
+cases check DELETE-only refusal, a non-delete writer and actual `PublishFilesNew`
+under an already pinned parent, with new-only collision and unchanged byte checks.
+The production publisher still holds staging **before** creating/writing its
+files. A narrow outer private Qt-slot catch reports unexpected `std::exception`
+via `QFAIL(error.what())`, without changing expected-refusal or other assertions.
+
+This implementation agent ran no native API, tests or build. Project changes
+remain **UNBUILT/UNRUN**; root owns fresh focused source closure and the one
+changed-fingerprint failed-case execution, retaining the first failure. No model
+golden success, public activation or causal diagnosis follows from this probe.

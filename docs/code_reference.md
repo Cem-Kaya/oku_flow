@@ -7445,3 +7445,14 @@ ordinary directories before mutation and performs the held new-only rename.
 `CreateFixtureJunction` authors the private desktop-free native redirection
 fixture; partial records, policy, junction/no-side-effect and sharing checks are
 unbuilt/unrun. See [all three findings and dispositions](uct_public_bf16_review.md).
+
+The root-probed pin repair makes `DirectoryPins::Hold` request list/attribute
+access, share READ/WRITE excluding DELETE, and add DELETE only for exact staging
+rename. Attribute-only opens did not enforce delete exclusion on the probed
+filesystem. `PublicationAndLifetime` retains all original assertions and adds
+DELETE-only refusal, a non-delete writer, and actual `PublishFilesNew` under an
+already pinned parent, with collision/byte checks. The private Qt slot catches
+unexpected `std::exception` only to report `what()` through `QFAIL`; assertions
+and production file-write-after-staging-hold order stay unchanged. Probe evidence
+covers delete exclusion/rename, not post-hold file creation or the earlier Qt
+exception's cause. These project changes remain UNBUILT/UNRUN.

@@ -118,7 +118,7 @@ inline QByteArray ReceiptBytes(const LocalBuild& build,const Corpus& corpus,cons
 }
 struct CachedPlan {QByteArray bytes,builderVersion;QString directory;};
 #ifdef Q_OS_WIN
-// Hold actual directories without write/delete sharing. Existing reparse points
+// Hold actual directories with list access and no delete sharing. Reparse points
 // below the explicit canonical root are refusals BEFORE creating descendants.
 // The same handles remain held through file creation and the final native rename.
 class DirectoryPins {
@@ -130,8 +130,9 @@ public:
     HANDLE Hold(const QString& path,bool forRename=false) {
         if(count_==int(handles_.size()))throw Refusal(Reason::Model,"public cache path exceeds directory bound");
         const auto name=QDir::toNativeSeparators(path).toStdWString();
-        const auto handle=CreateFileW(name.c_str(),FILE_READ_ATTRIBUTES|(forRename?DELETE:0),FILE_SHARE_READ,
-            nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,nullptr);
+        // Attribute-only access did not enforce delete exclusion in root's probe.
+        const auto handle=CreateFileW(name.c_str(),FILE_LIST_DIRECTORY|FILE_READ_ATTRIBUTES|(forRename?DELETE:0),
+            FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,nullptr);
         if(handle==INVALID_HANDLE_VALUE)throw Refusal(Reason::Model,"cannot pin public cache directory");
         BY_HANDLE_FILE_INFORMATION information{};
         if(!GetFileInformationByHandle(handle,&information) ||

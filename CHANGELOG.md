@@ -43,6 +43,11 @@
   recipe, after receipt and plan-hash validation. Older builders remain intact;
   an absent matching generation permits a new local build. Runtime admission
   stays ABI11/minimum-tuple based and driver independent. Lookup fixtures are unrun.
+- Repair native public-cache directory pins with list/attribute access and
+  read/write sharing excluding delete; retain DELETE only on exact staging for
+  new-only rename. Add private fixture exception text and sharing/publication
+  cases. Root's probe confirms delete exclusion/rename only; project fixtures
+  and the earlier unattributed publication exception remain unverified.
 
 - Zoom out to show an entire wide or portrait source. Wheel/key zoom stops
   once at Fill (1x), then continues toward whole-picture Fit; the slider snaps
