@@ -7,6 +7,26 @@ two-slot recognition look-ahead and cooperative resident integral. The attached
 No build, configure, test, inference, GPU inspection, model preparation or
 download has run for this candidate; root must first grant a finite START slot.
 
+### Composed-source build status (23 October 2026)
+
+The statements above record the original offline candidate. In ROOT's later
+finite C2/C3 slots, composed source `8f262c3` built the three selected CPU
+targets and passed the five exact headless CTest cases, with no skipped cases
+or rows. CUDA configuration accepted all ten native architectures, and the
+production `uct_tensorrt.cpp` and `uct_kernels.cu` objects compiled. The CUDA
+test target then failed at `tests/uct_paddle_tests.cpp:1100`: Qt's `slots` macro
+removed the fixture's local identifier, producing MSVC C2059 and cascading
+errors. The test executable did not link; no CUDA fixture ran.
+
+The separate test-only repair renames that local allocation extent to
+`bufferElementCount` inside
+`gpuBatchedCtcMatchesScalarActualShapesAndFailures`. Logic, assertions, all
+eight data rows and the Qt `private slots:` declaration are unchanged. This
+repair is source-only and unbuilt/unrun; the prior CPU passes belong to
+`8f262c3`, and repaired binaries require a fresh build and tracked gate under
+a new finite ROOT START. Original failed logs and frozen receipts are retained.
+No inference, model preparation, performance or release acceptance follows.
+
 `gpu::RectifyBatch` uses grid Y for contiguous detector-order samples and the
 unchanged scalar bilinear arithmetic, channel order, zero padding and
 `min(canvas, validWidth)` behavior. It writes `[N,3,48,W]` into the existing

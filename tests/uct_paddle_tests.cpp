@@ -1097,18 +1097,18 @@ class PaddleTests final : public QObject
         int devices{};
         if (cudaGetDeviceCount(&devices) != cudaSuccess || !devices) QSKIP("No CUDA device.");
         constexpr int capacity = 16, first = 1, guard = 8, untouched = -777;
-        const std::size_t stride = std::size_t(steps) * classes, slots = guard + capacity * steps + guard;
+        const std::size_t stride = std::size_t(steps) * classes, bufferElementCount = guard + capacity * steps + guard;
         const float nan = std::numeric_limits<float>::quiet_NaN();
         std::array<gpu::Quad, capacity + 2> quads{};
-        std::vector<float> probabilities(capacity * stride), resetScores(slots, 6.25f);
-        std::vector<int> resetIds(slots, untouched), resetCounts(guard + capacity + guard, untouched);
-        std::vector<gpu::Token> resetTokens(slots, {untouched,untouched,untouched,6.25f});
-        std::vector<float> scoresA(slots), scoresB(slots);
-        std::vector<int> idsA(slots), idsB(slots), countsA(resetCounts.size()), countsB(resetCounts.size());
-        std::vector<gpu::Token> tokensA(slots), tokensB(slots);
-        GpuBuffer<float> logits(probabilities.size()), scoreA(slots), scoreB(slots);
-        GpuBuffer<int> idA(slots), idB(slots), countA(resetCounts.size()), countB(resetCounts.size());
-        GpuBuffer<gpu::Token> tokenA(slots), tokenB(slots);
+        std::vector<float> probabilities(capacity * stride), resetScores(bufferElementCount, 6.25f);
+        std::vector<int> resetIds(bufferElementCount, untouched), resetCounts(guard + capacity + guard, untouched);
+        std::vector<gpu::Token> resetTokens(bufferElementCount, {untouched,untouched,untouched,6.25f});
+        std::vector<float> scoresA(bufferElementCount), scoresB(bufferElementCount);
+        std::vector<int> idsA(bufferElementCount), idsB(bufferElementCount), countsA(resetCounts.size()), countsB(resetCounts.size());
+        std::vector<gpu::Token> tokensA(bufferElementCount), tokensB(bufferElementCount);
+        GpuBuffer<float> logits(probabilities.size()), scoreA(bufferElementCount), scoreB(bufferElementCount);
+        GpuBuffer<int> idA(bufferElementCount), idB(bufferElementCount), countA(resetCounts.size()), countB(resetCounts.size());
+        GpuBuffer<gpu::Token> tokenA(bufferElementCount), tokenB(bufferElementCount);
         GpuBuffer<gpu::Quad> boxes(quads.size());
         FixtureStream stream; // all async host/device buffers outlive the drain
         for (int invalid = 0; invalid < 6; ++invalid)
@@ -1164,12 +1164,12 @@ class PaddleTests final : public QObject
             QCOMPARE(download(countA.data, countsA), cudaSuccess); QCOMPARE(download(countB.data, countsB), cudaSuccess);
             QCOMPARE(download(tokenA.data, tokensA), cudaSuccess); QCOMPARE(download(tokenB.data, tokensB), cudaSuccess);
             QCOMPARE(cudaStreamSynchronize(stream.value), cudaSuccess);
-            QCOMPARE(std::memcmp(idsA.data(), idsB.data(), slots * sizeof(int)), 0);
-            QCOMPARE(std::memcmp(scoresA.data(), scoresB.data(), slots * sizeof(float)), 0);
+            QCOMPARE(std::memcmp(idsA.data(), idsB.data(), bufferElementCount * sizeof(int)), 0);
+            QCOMPARE(std::memcmp(scoresA.data(), scoresB.data(), bufferElementCount * sizeof(float)), 0);
             QCOMPARE(std::memcmp(countsA.data(), countsB.data(), countsA.size() * sizeof(int)), 0);
             // Seeded unwritten capacity is compared too; only active tokens
             // have semantic meaning, including partial failure's discarded data.
-            QCOMPARE(std::memcmp(tokensA.data(), tokensB.data(), slots * sizeof(gpu::Token)), 0);
+            QCOMPARE(std::memcmp(tokensA.data(), tokensB.data(), bufferElementCount * sizeof(gpu::Token)), 0);
             const int remainderTokens[]{0,1,1,1,2,3,3,3};
             const int expected = classes == 1 ? 0 : 4 * (steps/8) + remainderTokens[steps%8];
             QCOMPARE(countsB[guard], invalid ? -1 : expected);
