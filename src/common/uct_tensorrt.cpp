@@ -983,10 +983,9 @@ class TensorRtRecognizer final : public Recognizer
                 {
                     const int batchSize = std::min(state_->recognizerBatch, groupSize - batchFirst);
                     profile.Measure(TensorRtProfile::Rectify, state_->stream, [&] {
-                        for (int sample = 0; sample < batchSize; ++sample)
-                            gpu::Rectify(cropPixels, image.pitch, region.width(), region.height(),
-                                         state_->quads.Get(), first + batchFirst + sample,
-                                         crop + samplePixels * sample, width, state_->stream);
+                        gpu::RectifyBatch(cropPixels, image.pitch, region.width(), region.height(),
+                                          state_->quads.Get(), first + batchFirst, batchSize,
+                                          crop, width, state_->stream);
                         Check(cudaGetLastError());
                     });
                     nvinfer1::Dims recShape{};
@@ -1014,29 +1013,22 @@ class TensorRtRecognizer final : public Recognizer
                     auto *tokens = state_->tokens.Reserve(static_cast<std::size_t>(steps) * state_->recognizerBatch);
                     auto *tokenCounts = state_->tokenCount.Reserve(state_->recognizerBatch);
                     profile.Measure(TensorRtProfile::Ctc, state_->stream, [&] {
-                        for (int sample = 0; sample < batchSize; ++sample) {
-                            const int index = first + batchFirst + sample;
-                            gpu::Decode(state_->recognizer->Output() + sampleOutputs * sample,
-                                        steps, assets_.dictionary.size(), state_->quads.Get(), index,
-                                        width, ids + static_cast<std::size_t>(steps) * sample,
-                                        scores + static_cast<std::size_t>(steps) * sample,
-                                        tokens + static_cast<std::size_t>(steps) * sample,
-                                        tokenCounts + sample, state_->stream);
-                            Check(cudaGetLastError());
-                        }
+                        gpu::DecodeBatch(state_->recognizer->Output(), batchSize, steps,
+                                         assets_.dictionary.size(), state_->quads.Get(), first + batchFirst,
+                                         width, ids, scores, tokens, tokenCounts, state_->stream);
+                        Check(cudaGetLastError());
                     });
                     profile.Measure(TensorRtProfile::Metadata, state_->stream, [&] {
-                        for (int sample = 0; sample < batchSize; ++sample) {
-                            const int slotIndex = batchFirst + sample, index = first + slotIndex;
-                            Check(cudaMemcpyAsync(group.counts + slotIndex, tokenCounts + sample, sizeof(int),
-                                                  cudaMemcpyDeviceToHost, state_->stream));
-                            Check(cudaMemcpyAsync(group.quads + slotIndex, state_->quads.Get() + index,
-                                                  sizeof(gpu::Quad), cudaMemcpyDeviceToHost, state_->stream));
-                            Check(cudaMemcpyAsync(group.tokens + static_cast<std::size_t>(slotIndex) * steps,
-                                                  tokens + static_cast<std::size_t>(sample) * steps,
-                                                  steps * sizeof(gpu::Token),
-                                                  cudaMemcpyDeviceToHost, state_->stream));
-                        }
+                        // Three bulk copies into this slot only. The opposite
+                        // pinned slot may still be in flight; device scratch is
+                        // reused only later on this same stream, after copies.
+                        Check(cudaMemcpyAsync(group.counts + batchFirst, tokenCounts,
+                                              batchSize * sizeof(int), cudaMemcpyDeviceToHost, state_->stream));
+                        Check(cudaMemcpyAsync(group.quads + batchFirst, state_->quads.Get() + first + batchFirst,
+                                              batchSize * sizeof(gpu::Quad), cudaMemcpyDeviceToHost, state_->stream));
+                        Check(cudaMemcpyAsync(group.tokens + static_cast<std::size_t>(batchFirst) * steps, tokens,
+                                              static_cast<std::size_t>(batchSize) * steps * sizeof(gpu::Token),
+                                              cudaMemcpyDeviceToHost, state_->stream));
                     });
                     profile.Transfer(static_cast<std::size_t>(batchSize) *
                         (sizeof(int) + sizeof(gpu::Quad) + steps * sizeof(gpu::Token)));
