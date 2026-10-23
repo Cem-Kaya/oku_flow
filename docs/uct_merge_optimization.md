@@ -1,8 +1,11 @@
-# Exact host merge candidate (2026-10-23, unmeasured)
+# Exact host merge candidate (2026-10-23)
 
 This development candidate reduces repeated host work in
 `PaddleMergeRecognition`, including its use inside the GPU recognizer pipeline.
-It has not been compiled, executed or timed: the parent has withheld START.
+Frozen implementation c3e3fea passed a scoped three-test CPU gate and matched
+all-field replay on 2026-10-23. Constructed/regrouped function microtime results
+and scope/contamination limits are in the
+[CPU replay report](uct_merge_cpu_replay_2026_10_23.md).
 There is no measured worker, CPU fallback, GPU, visible-text or FPS gain.
 
 The base is `bb53ac884c24d15f0c77b2dc43cace0e8e650c24`. Its bounded two-slot
@@ -14,8 +17,8 @@ later model admission/Resume code and dictionary loading are outside this change
 
 The old overlap scan allocates temporary polygons, repeatedly derives word
 geometry, and repeats overlap decisions during erasure. Removing that work
-should make merging cheaper. A current pipeline bottleneck or a particular
-gain remains a hypothesis until matched measurement.
+made the measured replay merging cheaper. A current pipeline bottleneck or
+whole-worker gain remains a hypothesis until matched pipeline measurement.
 
 `PolygonArea` reads a span and preserves vertex-zero directed shoelace summation,
 starting at zero and ending with `abs(twice) * 0.5`. `QuadArea` retains the existing
@@ -96,11 +99,14 @@ Generated oriented controls separately cover geometry fields. Private OCR
 text/receipts stay outside Git/release payloads. Real call-trace capture and
 GPU/full-worker reruns need a separate parent grant.
 
-After START, build the dedicated target with the CPU preset and at most eight
-jobs, then run it and `uct_paddle_processing` through tracked
-`run_test_gate.ps1` as SCOPED evidence. Registration changes select the full
-gate under normal `agent_check.ps1`; a narrow run is not that full gate or release
-acceptance. The shipping/CPU/CUDA matrix remains required before integration.
+The released Window 2 built the dedicated target and `uct_paddle_tests` with
+the CPU preset and at most eight jobs, then ran `uct_merge_replay`,
+`uct_paddle_processing` and mandatory `shared_source_equivalence` through tracked
+`run_test_gate.ps1` as SCOPED evidence. Registration changes selected the expected
+FULL-required exit 2 under `agent_check.ps1`; the root authorized the finite
+scoped selection separately. It is not that full gate or release acceptance.
+The grant is closed; further execution needs separate scheduling. The
+shipping/CPU/CUDA matrix remains required before integration.
 
 ## Historical evidence and limits
 
