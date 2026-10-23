@@ -1047,6 +1047,7 @@ aligned with the project goals.
   extra diagnostic jobs separately from the app's selected-only paused path.
   Retain exact source hashes, fallback/preferred outputs and actual per-word
   paint decisions; a reading-pane count does not establish visible replacement.
+
 ## Public BF16 model validation boundary (2026-10-23)
 
 - Public model approval is separate from the owner's schema-1 cache-only plan.
