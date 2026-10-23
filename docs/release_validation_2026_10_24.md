@@ -31,6 +31,29 @@ The candidate includes the magnifier, both-role BF16 OCR preference and MCP V1.
 
 ## Preserved failures and repairs
 
+The tracked background matrix at `3d2ab50` passed shipping compilation, the CPU
+selection and the CUDA delta. CPU retained 161 matching results and finished
+with **166 passes** (four containing skipped Qt rows), **nine optional skips**
+and **zero unresolved**. The CUDA delta retained 14 matching passes and finished
+with **14 passes, five optional skips and zero unresolved**. GUI was excluded;
+this is explicitly partial validation, not the full release gate. Both child
+and controller exited zero in 83.29 seconds, reached zero Job members and
+verified runner release. Per-test ledgers, detailed logs and build inventories
+are archived under `background-matrix-r4`.
+
+The preceding matrix passed shipping compilation and its CUDA delta, but CPU
+failed `bundle_toolchain_contract`: nested VS initialization grew PATH beyond
+Windows command limits. `3d2ab50` restores Microsoft's pre-initialization PATH
+before genuine installed-toolchain setup; its fixture stresses roughly 7000
+characters while retaining forged-environment and refusal assertions. Source
+review found no P1/P2 issues. The original failure and 1476 archived evidence
+files remain under `background-matrix-r3`.
+
+Earlier private release-cache attempts also preserve NVCC setup failures caused
+by long/8.3 aliases of the same selected host compiler. A fresh cache without a
+redundant forced CUDA host path, using the verified VS2022 environment, resolved
+that setup issue. No installed compiler files or owner processes were changed.
+
 The first MCP configure reset an existing cache after a compiler-path spelling
 change; the identity check stopped before target compilation. A fresh private
 CPU cache and normalized compiler path resolved that environment issue. A
