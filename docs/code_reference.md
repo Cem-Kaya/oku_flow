@@ -802,6 +802,14 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   factory or execution-context failure. BF16 deserialization refusal without
   reported CUDA error is a pre-inference `ArtifactError`, preserving cached
   FP32 fallback. See [cache policy](uct_tensorrt_cache_policy.md).
+  `uct_tensorrt_failures.hpp` shares the private exception types,
+  `RequireTensorRtApi` null-factory guard and `AllowsTensorRtCapacityFallback`
+  decision with a model-free fixture. Null builder, network, parser, config and
+  profile creation is terminal; parser creation is checked separately from
+  graph parse rejection. Ordinary cache/shape/capacity refusals retain their
+  existing smaller-plan policy. CUDA/API/allocation faults keep their type and
+  cannot be hidden by a cached N1 plan. The fixture invokes the production
+  guard/decision with injected outcomes, not native TensorRT factories.
   `Network::PlanReceipt` retains the accepted ordinary key and payload digest,
   appended to technical backend status after context construction.
   `Libraries::Provenance` and private `TensorRtRuntimeForDiagnostic` record the

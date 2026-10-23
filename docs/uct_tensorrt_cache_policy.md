@@ -53,6 +53,19 @@ runtime-factory/execution-context failures and enqueue failures never authorize
 another plan attempt. There is no scalar-helper or alternate-engine retry
 after uncertain GPU work.
 
+The separate source-only factory repair after frozen `679f16d` closes an
+inherited policy gap: a missing N8 plan plus a null builder-side factory could
+load an already cached N1 plan and hide the API failure. Builder, network,
+parser, configuration and optimization-profile creation now use the shared
+terminal API guard; missing factory exports are terminal too. A parser that
+was created successfully but rejects the graph remains a graph-policy refusal,
+as do existing cache/shape/capacity refusals. No cache keys or plan bytes change.
+`tensorRtFactoryFailureDoesNotLoadCachedN1` exercises the production guard and
+fallback decision with injected null factories, valid creation, legitimate
+refusals, CUDA and allocation failures. This model-free fixture is registered
+under `uct_paddle_processing` but remains unrun until a fresh root START;
+native factory-fault behavior is not claimed as validated.
+
 Before START, freeze exact source/helper commits and raw hashes. Authorized
 validation must run the shared pure version/key fixtures, including lower,
 equal and newer tuples, invalid versions, driver independence and unchanged

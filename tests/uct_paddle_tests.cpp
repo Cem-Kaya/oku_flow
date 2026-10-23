@@ -4,6 +4,7 @@
 #include "../src/common/uct_runtime_precision.hpp"
 #include "../src/common/uct_recognition_groups.hpp"
 #include "../src/common/uct_frozen_upload.hpp"
+#include "../src/common/uct_tensorrt_failures.hpp"
 #include "okuflow/cuda/uct_analysis_pool.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "ultra_clear_text_test_support.hpp"
@@ -174,6 +175,41 @@ class PaddleTests final : public QObject
 {
     Q_OBJECT
   private slots:
+    void tensorRtFactoryFailureDoesNotLoadCachedN1()
+    {
+        int n8Attempts{}, cachedN1Loads{}, value{};
+        const auto prepare = [&](auto&& createN8) {
+            try {
+                ++n8Attempts; // detector/N1 cached; N8 missing and needs its factory
+                createN8();
+                return 8;
+            } catch (const std::exception&) {
+                if (!detail::AllowsTensorRtCapacityFallback(std::current_exception())) throw;
+                ++cachedN1Loads;
+                return 1;
+            }
+        };
+        for (const auto* factory : {"builder", "network", "parser", "config", "profile"}) {
+            n8Attempts = cachedN1Loads = 0;
+            QVERIFY_EXCEPTION_THROWN(prepare([&] {
+                detail::RequireTensorRtApi(static_cast<int*>(nullptr), factory);
+            }), detail::TensorRtApiFailure);
+            QCOMPARE(n8Attempts, 1);
+            QCOMPARE(cachedN1Loads, 0);
+        }
+        n8Attempts = cachedN1Loads = 0;
+        QCOMPARE(detail::RequireTensorRtApi(&value, "valid factory"), &value);
+        QCOMPARE(prepare([&] { detail::RequireTensorRtApi(&value, "valid factory"); }), 8);
+        QCOMPARE(cachedN1Loads, 0);
+        for (const auto* refusal : {"cache miss", "graph parse rejection", "unsupported shape/capacity"})
+            QCOMPARE(prepare([&] { throw std::runtime_error(refusal); }), 1);
+        QCOMPARE(cachedN1Loads, 3); // legitimate policy fallbacks remain possible
+        QVERIFY_EXCEPTION_THROWN(prepare([] { throw detail::CudaFailure("reported CUDA fault"); }), detail::CudaFailure);
+        QVERIFY_EXCEPTION_THROWN(prepare([] { throw std::bad_alloc(); }), std::bad_alloc);
+        QCOMPARE(cachedN1Loads, 3);
+        QVERIFY(!detail::AllowsTensorRtCapacityFallback({}));
+        QVERIFY(!detail::AllowsTensorRtCapacityFallback(std::make_exception_ptr(7)));
+    }
     void recognitionGroupSlotsRequireCompletionAndConsumption()
     {
         detail::RecognitionGroups groups;

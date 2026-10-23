@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Treat null TensorRT builder-side API factories as terminal preparation
+  failures, preserving graph/capacity policy fallback while preventing cached
+  N1 plans from masking factory faults. Model-free coverage is prepared and
+  awaits serialized validation.
+
 - Keep ordinary UCT TensorRT plan keys independent of driver updates, with
   read-only historical lookup, and admit runtimes at least 11.4.0.106 before
   normal ABI/engine validation. This separate offline policy candidate is
