@@ -32,8 +32,10 @@
   so historical failed word tests do not block the app.
 - The private fixture can select this production mechanism using
   `OKUFLOW_UCT_RUNTIME_BF16_PREFERENCE=1`; this is independent of its record-only
-  FP32 control and historical strict-golden modes. Runtime evidence remains pending
-  the frozen-source build. No automatic live/Freeze tier changes are implemented.
+  FP32 control and historical strict-golden modes. The
+  [app runtime checkpoint](uct_bf16_app_runtime_2026_10_23.md) records actual
+  both-role selections, warm loads and independent FP32 fallback.
+  No automatic live/Freeze tier changes are implemented.
 
 ## App-relative OCR runtime discovery
 

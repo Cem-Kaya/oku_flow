@@ -2,8 +2,10 @@
 
 [UCT worker pilots](uct_worker_pilots_2026_10_23.md) records measured exact
 merge/batching and separate BF16/small-model results and quality limits.
-[Public BF16](uct_public_bf16.md) documents model approval, golden validation
-and the v2 ready-last cache. Its production corpus catalog remains empty.
+[BF16 app startup](uct_bf16_app_runtime_2026_10_23.md) records both-role BF16,
+same-tier FP32 fallback and real warm-cache checks without accuracy gates.
+[Public BF16](uct_public_bf16.md) retains the separate historical golden/v2
+diagnostic; its empty corpus catalog does not control app precision.
 
 [Viewport zoom and Resume](viewport_zoom_and_resume.md) documents whole-picture
 zoom-out, Fill snapping, retained UCT references, corner controls and isolated
