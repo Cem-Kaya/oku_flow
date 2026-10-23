@@ -7443,3 +7443,8 @@ verify `verified-experimental-bf16` plus actual payload receipts. Tiny uses its 
 6,906-class dictionary; medium/small use 18,710 classes.
 Verified precision-plan `Network` loading also requires actual DEVICE LINEAR
 FLOAT tensors before binding the existing CUDA buffers.
+The `0d0b932` diagnostic seam was exercised by the small/tiny BF16 worker pilot;
+actual payload/backend receipts and within-model exact outputs are retained in
+`docs/uct_worker_pilots_2026_10_23.md`, alongside the 550-word book reference and
+acceptance limits. This supplies no production/model approval or live/Freeze
+switching policy.

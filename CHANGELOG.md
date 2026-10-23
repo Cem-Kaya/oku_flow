@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Record the same-executable small/tiny BF16 worker pilot and independently
+  transcribed 550-word book comparison. Keep worker timing distinct from painted
+  latency and word edits distinct from spelling-only/painted errors. The proposed
+  live/Freeze model split remains unimplemented and under owner review.
+
 - Add private diagnostic-only small/tiny BF16 plan selection, with pinned
   original/config/converted graph and payload, actual device/builder checks and
   no preparation or alternate-engine retry. Application model selection and
