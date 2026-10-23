@@ -936,11 +936,11 @@ class TensorRtRecognizer final : public Recognizer
                 bool occupied = false;
                 int first = 0, groupSize = 0, steps = 0, width = 0;
             };
-            GroupSlot slots[kMetadataSlots]{};
+            GroupSlot groupSlots[kMetadataSlots]{};
             int nextLaunchSlot = 0, primedBatch = 0, primedWidth = 0;
             bool uploadCompleted = false, stop = false;
             auto occupied = [&] {
-                for (const auto &group : slots)
+                for (const auto &group : groupSlots)
                     if (group.occupied) return true;
                 return false;
             };
@@ -952,10 +952,10 @@ class TensorRtRecognizer final : public Recognizer
                 profile.Wait(false, [&] { Check(cudaStreamSynchronize(state_->stream)); });
                 frozenUpload.Completed();
                 uploadCompleted = true;
-                for (auto &group : slots) group.occupied = false;
+                for (auto &group : groupSlots) group.occupied = false;
             };
             auto mergeGroup = [&](int metadataSlot) {
-                const GroupSlot group = slots[metadataSlot];
+                const GroupSlot group = groupSlots[metadataSlot];
                 auto *groupCounts = state_->slotCount[metadataSlot].Get();
                 auto *groupQuads = state_->slotQuad[metadataSlot].Get();
                 auto *groupTokens = state_->slotTokens[metadataSlot].Get();
@@ -1002,11 +1002,11 @@ class TensorRtRecognizer final : public Recognizer
                                            {image.width, image.height});
                 }
                 profile.Merge(profile.Enabled() ? merge.nsecsElapsed() / 1e6 : 0);
-                slots[metadataSlot].occupied = false;
+                groupSlots[metadataSlot].occupied = false;
             };
             std::function<void(int)> waitAndMerge;
             waitAndMerge = [&](int metadataSlot) {
-                if (stop || !slots[metadataSlot].occupied) return;
+                if (stop || !groupSlots[metadataSlot].occupied) return;
                 // Host block on the oldest queued group. The next group's
                 // kernels may already be recorded on this stream. The elapsed
                 // time is recognition-stage queue latency, not an OCR update rate.
@@ -1053,7 +1053,7 @@ class TensorRtRecognizer final : public Recognizer
                     || state_->tokens.Capacity() < needed
                     || state_->tokenCount.Capacity() < static_cast<std::size_t>(state_->recognizerBatch);
                 // Growing frees a buffer the other group's decode may still use.
-                if (grow && slots[otherSlot].occupied) waitAndMerge(otherSlot);
+                if (grow && groupSlots[otherSlot].occupied) waitAndMerge(otherSlot);
                 if (stop) return;
                 state_->ids.Reserve(needed);
                 state_->scores.Reserve(needed);
@@ -1070,7 +1070,7 @@ class TensorRtRecognizer final : public Recognizer
                 const int runBatch = std::min(state_->recognizerBatch, groupSize);
                 // setInputShape / output Reserve must not run under the other
                 // group's decode. Same-shape groups stay overlapped.
-                if (slots[otherSlot].occupied && (runBatch != primedBatch || width != primedWidth))
+                if (groupSlots[otherSlot].occupied && (runBatch != primedBatch || width != primedWidth))
                     waitAndMerge(otherSlot);
                 if (stop) return;
                 const std::size_t samplePixels = static_cast<std::size_t>(width) * 48 * 3;
@@ -1144,7 +1144,7 @@ class TensorRtRecognizer final : public Recognizer
                         (sizeof(int) + sizeof(gpu::Quad) + steps * sizeof(gpu::Token)));
                 }
                 Check(cudaEventRecord(state_->groupEvents[metadataSlot], state_->stream));
-                slots[metadataSlot] = GroupSlot{true, first, groupSize, steps, width};
+                groupSlots[metadataSlot] = GroupSlot{true, first, groupSize, steps, width};
             };
             for (int first = 0; first < count; first += submissionGroup)
             {
@@ -1156,7 +1156,7 @@ class TensorRtRecognizer final : public Recognizer
                     cancelOwnedInput();
                     return output;
                 }
-                if (slots[nextLaunchSlot].occupied) waitAndMerge(nextLaunchSlot);
+                if (groupSlots[nextLaunchSlot].occupied) waitAndMerge(nextLaunchSlot);
                 if (stop) return output;
                 launchGroup(first);
                 if (stop) return output;
