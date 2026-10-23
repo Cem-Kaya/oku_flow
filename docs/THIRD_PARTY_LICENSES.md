@@ -1,5 +1,16 @@
 # Third-Party Licenses and Attributions
 
+## BF16 model family preparation (development only)
+
+The owner requested BF16 preference for all GPU detector and recognizer tiers,
+with same-tier FP32 fallback. `scripts/uct/bf16-models.json` records six converted
+PaddlePaddle graph identities, upstream source/configuration pins and revisions.
+They reuse the first-party hash-pinned BF16-island converter, preserving FLOAT
+I/O and the existing Apache-2.0 model origins. No additional third-party runtime
+or model was downloaded for these conversions. The inventory itself is not
+redistribution clearance or quality acceptance. Public bundle notices, converter
+source/provenance, TensorRT/CUDA dependency and release gates remain separate.
+
 ## Unapproved owned BF16 typeset crop proposal (development only)
 
 The eight original source-authored text bitmaps in

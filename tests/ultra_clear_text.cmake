@@ -119,6 +119,7 @@ set_tests_properties(uct_public_bf16_contract PROPERTIES TIMEOUT 30 LABELS "head
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
     REQUIRED_FILES "${PROJECT_SOURCE_DIR}/src/common/uct_public_bf16.hpp;${PROJECT_SOURCE_DIR}/src/common/uct_precision_artifacts.hpp;${PROJECT_SOURCE_DIR}/src/common/uct_runtime_precision.hpp;${PROJECT_SOURCE_DIR}/src/common/uct_tensorrt_identity.hpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/uct_model_pins.hpp;${PROJECT_SOURCE_DIR}/scripts/uct/public-bf16-model.json;${PROJECT_SOURCE_DIR}/tests/uct_public_bf16_cases.hpp")
 set_property(TEST uct_public_bf16_contract APPEND PROPERTY REQUIRED_FILES
+    "${PROJECT_SOURCE_DIR}/src/common/uct_bf16_detector.hpp"
     "${PROJECT_SOURCE_DIR}/src/common/uct_public_bf16_runtime.hpp"
     "${PROJECT_SOURCE_DIR}/src/common/uct_frozen_upload.hpp"
     "${PROJECT_SOURCE_DIR}/assets/uct/golden/okuflow-owned-typeset-gray8-v1/manifest.json")

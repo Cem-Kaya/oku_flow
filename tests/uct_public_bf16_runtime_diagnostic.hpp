@@ -12,6 +12,8 @@ inline void Prepare() {
     if(qEnvironmentVariable("OKUFLOW_UCT_PUBLIC_DIAGNOSTIC")!="1")QSKIP("Explicit public BF16 runtime diagnostic not selected.");
     const auto tierToken=qEnvironmentVariable("OKUFLOW_UCT_PUBLIC_TIER");
     QVERIFY(tierToken=="tiny" || tierToken=="small" || tierToken=="medium");
+    const auto detectorToken=qEnvironmentVariable("OKUFLOW_UCT_PUBLIC_DETECTOR","medium");
+    const auto detector=ParseModelTier(detectorToken);QVERIFY(detector);
     const auto parsed=ParseModelTier(tierToken);QVERIFY(parsed);
     const auto tier=*parsed;
     const auto modelRoot=qEnvironmentVariable("OKUFLOW_UCT_PUBLIC_MODELS");
@@ -27,7 +29,7 @@ inline void Prepare() {
         modelRoot,corpusRoot,cacheRoot,[records](const QJsonObject& row){
             std::lock_guard lock(records->mutex);
             if(records->values.size()<32)records->values.push_back(row);
-        },retirement.Observer(),ModelTier::Medium,tier);
+        },retirement.Observer(),*detector,tier,qEnvironmentVariable("OKUFLOW_UCT_PUBLIC_BF16_DETECTOR")=="1");
     QVERIFY(recognizer);
     const auto initialized=recognizer->Initialize();
     QVERIFY(initialized.usesGpu);
@@ -46,7 +48,7 @@ inline void Prepare() {
     const auto closed=retirement.Wait();
     QJsonArray observations;
     {std::lock_guard lock(records->mutex);observations=records->values;}
-    QJsonObject result{{"tier",tierToken},{"candidateValidation",true},{"productionActivated",false},
+    QJsonObject result{{"tier",tierToken},{"detectorTier",detectorToken},{"candidateValidation",true},{"productionActivated",false},
         {"ok",output.ok},{"error",output.error},{"preparing",output.backendPreparing},{"elapsedMs",elapsed.elapsed()},
         {"usesGpu",backend.usesGpu},{"backend",backend.name},{"detail",backend.detail},{"attestations",observations},
         {"retirement",closed.Json()}};

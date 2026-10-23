@@ -21,6 +21,7 @@ struct Request {
     QString modelRoot, corpusRoot, cacheRoot;
     CatalogUse use{CatalogUse::Production};
     bool enabled{};
+    bool preferDetector{true};
 };
 struct BaselineCachePolicy {QString root;bool allowPreparation{true};};
 inline BaselineCachePolicy BaselinePolicy(const Request& request) {
@@ -499,5 +500,5 @@ namespace okuflow::uct {
 std::unique_ptr<Recognizer> CreatePublicBf16ValidationRecognizer(const QString& root,const QString& sdk,
     const QString& modelRoot,const QString& corpusRoot,const QString& cacheRoot,
     public_bf16::AttestationObserver observer={},TensorRtRetirementObserver retirementObserver={},
-    ModelTier detector=ModelTier::Medium,ModelTier recognizer=ModelTier::Medium);
+    ModelTier detector=ModelTier::Medium,ModelTier recognizer=ModelTier::Medium,bool preferDetector=false);
 }

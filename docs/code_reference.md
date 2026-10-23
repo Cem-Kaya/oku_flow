@@ -7461,3 +7461,20 @@ after validation by the common N1..N8 engine profile.
 only under explicit diagnostic inputs, retains actual attestation observations
 and exact retirement receipts, and accepts a typed FP32 fallback without calling
 it BF16. It is not a production environment override or corpus activation.
+
+`bf16_detector::GraphHash`, `RelativePath` and `ReadGraphPath` bind the three
+converted detector graphs to the selected original/configuration pins.
+`PlanKey` namespaces their ordinary integrity-protected local plans separately
+from FP32 and binds graph, GPU UUID, builder and detector profile, without driver
+pinning. `CheckMap` rejects empty/oversize/nonfinite/out-of-probability smoke
+outputs; it is not a text-region accuracy test.
+`Network::PreparePinned` initializes an already State-owned empty Network and
+retains parser/builder/config/model/serialized owners in `PublicResources`.
+`ReleaseBuildResources` runs only after confirmed stream completion.
+`SmokeDetector` runs minimum/optimum/maximum/portrait tensor shapes serially with
+State-owned input/readback storage. Typed completed rejection selects same-tier
+FP32; actual inference/API/CUDA/deadline uncertainty retains ordinary retirement.
+`Request::preferDetector` is independent of recognition eligibility. The private
+validation factory opts into it explicitly. Detector observations are separate
+from recognition golden records; `ActualStatus` and the production backend's
+`[detector / recognizer]` precision suffix report actual selected arithmetic.

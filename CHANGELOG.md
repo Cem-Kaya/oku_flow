@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Add per-tier GPU detector BF16 preference with independent same-tier FP32
+  fallback, compiled converted-model pins and bounded tensor compatibility
+  checks. Attach engine resources before preparation and retain them through
+  confirmed completion. Actual detector/recognizer precision is reported in
+  the GPU backend name; activation/runtime validation remains in progress.
+
 - Generalize local BF16 recognizer validation to the selected tiny/small/medium
   tier, retaining tiny N1 service, exact per-model dictionary/corpus identities
   and same-tier FP32 fallback. Production activation and detector BF16 are in

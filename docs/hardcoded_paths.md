@@ -1,5 +1,15 @@
 # Hard-Coded Paths and Defaults
 
+GPU BF16 preference work uses `models/uct/det/<tier>/bf16-linear/inference.onnx`
+and `models/uct/rec/<tier>/bf16-linear/inference.onnx` beside the inner app.
+The six converted graph/source/configuration identities are recorded in
+`scripts/uct/bf16-models.json` and independently checked by compiled loaders.
+Detector cache keys hash `uct-bf16-detector-v1` plus the graph/GPU/builder/profile
+recipe; driver versions do not enter keys. Detector smoke covers 32x32,
+960x544,960x960 and32x960, copying bounded probability maps during preparation
+only. Tiny recognition service remains N1; its golden profile supports N1..N8.
+These paths are not an assertion that payloads have been deployed or accepted.
+
 Public BF16 v2 uses `<cache>/public-bf16-v2/<identity>/<recipe64>-<nonce32>/`
 with new-only `recognizer.plan`, `ready.json` and fixed `COMMITTED` marker bytes
 `okuflow-public-bf16-v2\n`. Recognized incomplete generations count toward the

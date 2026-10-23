@@ -2,8 +2,10 @@
 #include "../src/common/uct_public_bf16.hpp"
 #include "../src/common/uct_public_bf16_runtime.hpp"
 #include "../src/common/uct_frozen_upload.hpp"
+#include "../src/common/uct_bf16_detector.hpp"
 #include <QTemporaryDir>
 #include <QtTest>
+#include <limits>
 #ifdef Q_OS_WIN
 #include <winioctl.h>
 #endif
@@ -42,6 +44,25 @@ inline bool CreateFixtureJunction(const QString& path,const QString& target) {
 inline void Contract() {
     using namespace public_bf16;
     const auto model=ModelIdentity();
+    const QByteArray uuid(16,'u');
+    QSet<QByteArray> detectorKeys;
+    for(const auto tier:{ModelTier::Tiny,ModelTier::Small,ModelTier::Medium}) {
+        const auto graph=QByteArray::fromHex(bf16_detector::GraphHash(tier));
+        QCOMPARE(graph.size(),qsizetype(32));
+        const auto key=bf16_detector::PlanKey(graph,uuid);
+        QVERIFY(!detectorKeys.contains(key));detectorKeys.insert(key);
+        QVERIFY(key!=tensorrt_identity::Fp32PlanKey(graph,uuid,true,1,false));
+        QVERIFY(key!=bf16_detector::PlanKey(graph,QByteArray(16,'v')));
+        QVERIFY(key!=bf16_detector::PlanKey(graph,uuid,"11.5.0.0"));
+        QVERIFY(bf16_detector::RelativePath(tier).contains(ModelTierToken(tier)));
+        QVERIFY_EXCEPTION_THROWN(bf16_detector::ReadGraphPath("relative",PaddleAssets{},tier),runtime_precision::ArtifactError);
+    }
+    const std::array<float,3> map{0,.5f,1};bf16_detector::CheckMap(map);
+    QVERIFY_EXCEPTION_THROWN(bf16_detector::CheckMap({}),runtime_precision::ArtifactError);
+    for(const auto value:{-1.f,1.01f,std::numeric_limits<float>::quiet_NaN(),std::numeric_limits<float>::infinity()}) {
+        const std::array<float,1> invalid{value};
+        QVERIFY_EXCEPTION_THROWN(bf16_detector::CheckMap(invalid),runtime_precision::ArtifactError);
+    }
     QCOMPARE(model["graphSha256"].toString(),QString(runtime_precision::kRecognizerGraph));
     QCOMPARE(model["sourceSha256"].toString(),QString(runtime_precision::kRecognizerSource));
     QCOMPARE(model["dictionarySha256"].toString(),QString(kDictionarySha256));

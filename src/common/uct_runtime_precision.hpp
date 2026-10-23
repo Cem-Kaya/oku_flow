@@ -206,10 +206,12 @@ inline QByteArray ReadPlan(const Selection& selection, const Device& device)
         throw ArtifactError("local BF16 cached plan payload digest mismatch");
     return bytes.sliced(32);
 }
-inline QString ActualStatus(bool bf16, const QString& fallback = {})
+inline QString ActualStatus(bool bf16, const QString& fallback = {},bool detectorBf16=false,ModelTier detector=ModelTier::Medium)
 {
-    return (bf16 ? QStringLiteral("Recognition graph=BF16-linear, mixed BF16/FP16/FP32 arithmetic, FLOAT I/O; detector=FP32 medium (TF32 allowed). ")
-                 : QStringLiteral("Recognizer=FP32 (TF32 allowed), FLOAT I/O; detector=FP32 (TF32 allowed). ")) +
+    const auto detectorStatus=detectorBf16 ? QStringLiteral("BF16-linear, mixed arithmetic, FLOAT I/O. ") :
+        bf16 ? "FP32 "+ModelTierToken(detector)+" (TF32 allowed). " : QStringLiteral("FP32 (TF32 allowed). ");
+    return (bf16 ? QStringLiteral("Recognition graph=BF16-linear, mixed BF16/FP16/FP32 arithmetic, FLOAT I/O; detector=")
+                 : QStringLiteral("Recognizer=FP32 (TF32 allowed), FLOAT I/O; detector=")) +detectorStatus+
            (fallback.isEmpty() ? QString() : "Local BF16 fallback: " + fallback + ". ");
 }
 } // namespace okuflow::uct::runtime_precision

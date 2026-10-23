@@ -19,6 +19,32 @@ golden and typed FP32 fallback for an explicitly selected recognizer in isolated
 model/corpus/cache/evidence roots. This stage is unbuilt/unrun. Detector BF16,
 actual runtime validation, app activation and payload staging remain in progress.
 
+The next checkpoint adds independent detector preference for each GPU tier.
+Three newly converted BF16 detector graph hashes are compiled in
+`uct_bf16_detector.hpp`; the old slower mixed-FP16 detector is not reused.
+`scripts/uct/bf16-models.json` inventories all six converted model identities,
+original source/configuration pins and upstream revisions. It is not runtime
+approval supplied by a writable manifest, a plan shipment or a quality result.
+
+Detector engines use the existing detector profile and new driver-independent
+BF16 cache keys. Minimum, optimum, maximum and portrait **zero-input tensor**
+checks require the actual FLOAT DEVICE LINEAR detector-map ABI, finite bounded
+probabilities and confirmed completion. These are compatibility checks, not
+region-recall, recognition quality or performance attestation. A healthy-stream
+artifact/build/typed smoke refusal selects the same-tier FP32 detector; actual
+inference/API/CUDA faults, cancellation and unknown completion retain normal
+State retirement/Automatic fallback. Detector refusal does not reject an
+independently eligible BF16 recognizer. The pair is published ready only after
+both roles are final. Candidate validation keeps FP32 baseline engines isolated
+and cache-only; BF16 detector preparation is a separate explicit opt-in there.
+
+Both ordinary and precision engine preparation now attach Network ownership to
+State before fallible work. Host graph/parser/builder/config/serialized owners
+remain retained through completion, then are released before readiness.
+GPU status appends actual detector/recognizer precision, without changing tier
+settings or CPU choices. This detector checkpoint is UNBUILT/UNRUN; production
+recognizer corpus activation and app payload staging still await root validation.
+
 Owner approved shipping the converted **model**, with an engine built and checked
 on each eligible machine. This follow-up preserves the composed batch/helper/cache
 policy ending `7c59a59423a0cefa6e19a78ba81908e16461196c`. Private background
