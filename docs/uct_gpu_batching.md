@@ -26,7 +26,13 @@ merge. `gpuBatchedRectifyAndDecodeMatchPerSampleKernels` checks bit equality
 against the per-crop kernels, including permuted slots, ties, a non-finite
 sample and width-limited steps. Cross-binary strict output comparison and
 timing for this launch/transfer reduction are recorded with the optimization
-race evidence; no speedup is claimed here without that measurement.
+race evidence; no speedup is claimed here without that measurement. Race
+status (2026-10-22): the fixture and scoped gate passed and a fixed1024
+resident visit on the batched binary strict-passed its N1/N8 comparisons,
+but no same-workload baseline-binary timing exists, so the launch/transfer
+reduction remains unpriced; one bucketed N8-vs-N1 confidence cell drifted
+0.0010389 (threshold 0.001) with zero geometry delta and identical truth
+scores, unattributed between this change and pre-existing batch numerics.
 
 The opt-in profiler additionally hashes ordered crop descriptors already present
 in compact host metadata. Its versioned little-endian encoding includes detection

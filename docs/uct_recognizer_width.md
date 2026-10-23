@@ -77,6 +77,27 @@ fixtures cover the permutation/inverse mapping, concrete group canvases, the
 all-long control and fail-closed selector combinations; they establish no
 inference speed or quality result.
 
+Race status (2026-10-22/23, shared-desktop RTX 4090, inference-only SDK,
+tested HEAD `cbdffe9`, scoped development gate `uct_paddle_processing` +
+`uct_paddle_cuda` passed): window 1 completed one fixed1024 visit (strict
+pass) and one unsorted-bucketed visit (strict fail: 16/124 comparisons, all
+menu_7033 N8-vs-N1 confidence drift 0.0010389 vs the 0.001 threshold, zero
+geometry delta, truth CER/WER identical to fixed). Indicative steady-state
+medians (12/cell, one visit per arm, not counterbalanced) put unsorted
+bucketed between 34.7% slower and 12.5% faster than fixed depending on
+source/capacity; treat as shared-desktop indication only. Sorted grouping
+itself is UNMEASURED: before window 2 the CUDA driver version changed
+13040 -> 13050, so every cached plan identity missed (detector
+`948b17283f7dad0b8e5d553df0138fb79b26de81ead9d83a29c768be491283d0`,
+recognizer fixed N1
+`490d8f1bba0a024dcb5de09d7c6f04c5c7c3ad865ae6ba5a4be6ff524261a33b`, N8
+`ee04fec24d044750fdaf46b87355b0e60ad77763f4294845bca90714196f1538`, width
+N1 `8213694ce394f589b5c37ac9a0766eba8f5cac8c82fc20793725d7e9f32fca29`, N8
+`7f7a02d0043e5f150a47682303fb3760a4aac2f2e5ffc5c3e0848e3df6b699a9`) and
+the precheck correctly refused. No plans were prepared or re-keyed. Sorting
+needs a fresh three-arm run under one consistent driver identity; no BF16
+production benefit is claimed (that profile stays fixed1024).
+
 ## Preparation and validation
 
 Missing width plans refuse inference before loading builder/parser resources.

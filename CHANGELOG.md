@@ -5,14 +5,18 @@
 - Development: batch UCT GPU rectification/CTC kernel launches and per-batch
   metadata transfers in the TensorRT path. Outputs are unchanged by
   construction and covered by a bit-equality kernel fixture; measured timing
-  is tracked separately from this entry.
+  is tracked separately from this entry. The scoped gate and a fixed-width
+  resident strict comparison passed; no timing claim is made yet.
 
 - Development: add opt-in width-sorted recognizer grouping
   (`OKUFLOW_UCT_TRT_GROUPING=sorted`, requires the bucketed width experiment).
   Crops execute in ascending useful-width order on narrower existing
   canvases; detector order is restored before merging and publication. This
   is an explicitly measured quality/speed experiment, not a new default, and
-  it never combines with the fixed-width local BF16 selection.
+  it never combines with the fixed-width local BF16 selection. Sorting is
+  implemented and gate-passed but still unmeasured: a CUDA driver update
+  (13040 -> 13050) invalidated cached plan identities before its first
+  timed run. No speed or BF16 benefit is claimed.
 
 - Hide the entire video transport without leaving a filename/status strip.
   Its show/hide chevron now lives beside Custom Setup in the quick-mode corner
