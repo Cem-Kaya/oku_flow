@@ -9,9 +9,12 @@ enables no public factory, downloads nothing and changes no release option.
 `scripts/uct/offline_payload.py` is first-party Python 3.10+ standard-library code.
 Its three explicit actions are `inventory` (read-only facts), `validate` (read-only
 reviewed inventory validation), and `stage` (future new-only private staging).
-**All three and the fixtures remain unrun in this task.** The only execution here
-was bounded read-only source/file/PE metadata and selected SHA-256 inventory.
-No build, test, GPU call, inference, engine preparation or payload copy was run.
+**Root ran the eleven model-free Python fixtures once at source `5975fe0`:
+PASS, 0.140 seconds.** The three CLI actions against actual SDK/model payloads
+remain unrun. The implementation worker performed only bounded read-only
+source/file/PE metadata and selected SHA-256 inventory. No build, GPU call,
+inference, engine preparation or actual payload staging was run. The later
+receipt archival and documentation follow-up performed no additional tests.
 
 The separate public boundary at `faa7fbfe7b87983802c881411a856328bc873dfd`
 was read in `t3-2a9e2016`; it was not cherry-picked or edited. Its production
@@ -224,11 +227,14 @@ The composition lead owns these separate steps before public inclusion:
    shipping/CPU/CUDA/bundle gates, signing and disposable installer acceptance.
    No dirty-preview, staging receipt or review verdict substitutes for them.
 
-## Unrun finite model-free validation proposal
+## Original finite model-free validation proposal
 
-This is a proposal for a later **root START**, not a grant. Maximum three serial
-jobs, **300 seconds total** (60 + 180 + 60), one CPU process at a time, no GUI,
-GPU, SDK/model payload reads, real staging, cache mutation or installation:
+This was the pre-execution proposal at `5975fe0`, not a standing grant. Root
+subsequently ran the eleven-fixture functional suite once, as recorded below;
+this does not assert completion of all three proposed jobs. Any further work
+requires a new **root START**. The original ceiling was three serial jobs,
+**300 seconds total** (60 + 180 + 60), one CPU process at a time, no GUI, GPU,
+SDK/model payload reads, real staging, cache mutation or installation:
 
 1. 60 s: compile the two Python source strings with Python's builtin `compile`
    under `python -B` (no pyc), and parse the two JSON source files strictly.
@@ -248,6 +254,53 @@ the reserved merge CPU slot or append jobs automatically. Real dependency,
 GPU golden/runtime/lifetime, multilingual quality, native desktop and release
 acceptance require distinct future grants.
 
+## Root model-free functional receipt (2026-10-23)
+
+Root's existing `root-functional-run/result.json` records clean source
+`5975fe0d05271906fe1616ab7cc2aa85461f5c3c`, exit code 0 and
+`ownedChildStopped=true`, with start/end UTC timestamps
+`2026-10-23T13:34:26.3055866Z` / `2026-10-23T13:34:26.6641390Z`.
+The raw unittest stderr lists all eleven named tests as `ok` and reports
+`Ran 11 tests in 0.140s` followed by `OK`. This is the suite's measured time,
+not a model/GPU benchmark or the wrapper's complete wall time.
+
+The result's scope is model-free Python only, without actual SDK/model/staging.
+The tiny first-party fixture copy/refusal cases exercise low-level staging
+primitives; they do not stage the real candidate inventory or supply accepted
+redistribution/model/corpus evidence. No GPU, GUI, build, inference, engine
+preparation, complete reviewed-manifest acceptance or release acceptance follows.
+
+Root reports that the exact global runner lease was held for this invocation,
+owned Python exit was observed and the lease was then released. The result
+records existing low-CPU `mcp-video` Python control servers as allowed functional
+test background, with no compiler/project-test competitor. Root reports that an
+initial all-Python preflight refusal was corrected to that classification before
+the single fixture invocation. This was a preflight classification correction,
+not an application/test retry; the initial refusal remains root-owned evidence.
+This documentation worker did not inspect or acquire the lease and ran no test
+child.
+
+Original receipts remain at workstation work-data
+`uct-offline-payload-tests-20261023/root-functional-run/`. Exact copies of only
+`result.json`, `stdout.txt` and `stderr.txt` were archived under
+`uct-offline-payload-handoff-20261023-5975fe0d0527/root-functional-evidence/`.
+Original and archive SHA-256 values match:
+
+- `result.json` (464 bytes):
+  `d252a9386257f723f1ca1e051602e01e31cb4b2ae97db945a1e738077f781557`
+- `stdout.txt` (173 bytes):
+  `1fe7d857d7de15f7cf389658bdb5c4dccc0a06e0147eedd9fe4d5c471e9086dc`
+- `stderr.txt` (1,473 bytes):
+  `e7d89fd123ec64f502daf75b8d1bd81f0f11cd42b66ab116ba444c533d861e67`
+
+The sibling `archive-receipt.json` has SHA-256
+`6d4b59360ea3fc25e0a546a95da4d88de399398ef49e4e76470db5d72e3c5df1`.
+The original source handoff receipt remains unchanged as historical evidence
+that implementation itself ran no fixtures. No helper, fixture, candidate or
+schema bytes changed for this docs-only update. Root's fresh independent
+implementation review `uct-offline-payload-implementation-review-20261023-r1`
+is reading source `5975fe0`; no verdict from that review is claimed here.
+
 Independent source/license inventory round task ID:
 `node:delegated-task:command%3Amcp%3A3d67d461-6eb4-4143-84d1-67c74676eb9b%3Adelegate-task%3Auct-offline-payload-license-inventory-20261023-r1`.
 It confirmed selected bytes/imports/dictionary/notices and the open gates. It
@@ -255,7 +308,8 @@ finished before these new source files existed, so **it did not review this
 implementation**. Its initial missing `prepare_uct.ps1` lookup and unavailable
 pinned publisher web pages were retained as review limitations. This task's
 read-only wrong-filename/wildcard lookups were corrected without any execution
-or test failure being erased; no validation pass is claimed.
+or test failure being erased; that earlier inventory round claimed no validation
+pass. The later root model-free result has the separate scope and receipt above.
 Two source-edit patch attempts also refused unmatched context atomically before
 the corrected patches were applied; those original tool failures remain in the
 thread. They were edit failures, not executed fixture outcomes.

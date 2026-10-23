@@ -236,7 +236,9 @@ to an installer. Public inclusion needs a reviewed inventory, notices and
 SBOM entries; private development acceptance does not establish that gate.
 
 The 2026-10-23 [offline payload boundary](uct_offline_payload.md) is DEVELOPMENT,
-UNSTAGED and unrun. Its first-party helper/candidate metadata add no bundled
+UNSTAGED. Root's eleven model-free fixtures passed once at `5975fe0` in 0.140
+seconds; real payload staging and redistribution remain unaccepted.
+Its first-party helper/candidate metadata add no bundled
 model, NVIDIA binary or newly vendored license. Exact hashes cover the selected
 medium source/config/dictionary/cards, existing BF16 graph, archived converter,
 TensorRT ABI11 inference/parser/PTX resource, NVRTC 12.9.86/builtins and notices.

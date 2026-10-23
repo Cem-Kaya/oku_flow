@@ -1033,7 +1033,8 @@ aligned with the project goals.
   manifests or developer tools; retain original notices and conversion source.
   Preserve incomplete/failed staging and first failed test evidence. No active
   bundle integration is supplied; existing release gates remain mandatory.
-- The helper and its model-free fixtures are authored but unrun. Their presence
-  does not grant compute/staging permission or reserve a CPU/GPU slot. Follow
+- Root's eleven model-free Python fixtures passed once at `5975fe0` in 0.140
+  seconds. Actual SDK/model staging remains unrun. This result grants no further
+  compute/staging permission and reserves no CPU/GPU slot. Follow
   the root's current START boundary and `docs/uct_offline_payload.md`; native
   desktop, real GPU/golden, dependency/legal and release acceptance stay separate.

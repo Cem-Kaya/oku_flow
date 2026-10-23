@@ -834,8 +834,9 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   `scripts/uct/offline-payload-{candidate,schema}.json`. The separate
   `OfflinePayloadTests` fixtures use tiny first-party metadata/copy inputs;
   `record`, `manifest_file` and `fake_pe` author only fixture data. No accepted
-  legal/model/golden corpus is fabricated. All new fixtures remain unrun and
-  no release helper, factory, Network or CMake integration was changed. See
+  legal/model/golden corpus is fabricated. Root's eleven model-free fixtures
+  passed once at `5975fe0` in 0.140 seconds; actual SDK/model staging remains
+  unrun. No release helper, factory, Network or CMake integration was changed. See
   [offline inventory and gates](uct_offline_payload.md).
 - `PaddleTests` covers algorithms, fallback/exception/cancellation, model
   refusal and CUDA snapshot parity/ownership; opt-in real CPU/TensorRT rows
