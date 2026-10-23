@@ -1,5 +1,5 @@
 #pragma once
-#include "okuflow/common/async_cleanup.hpp"
+#include "okuflow/common/retained_cleanup.hpp"
 #include "okuflow/common/ultra_clear_text.hpp"
 #include "okuflow/cuda/uct_kernels.hpp"
 #include "../common/uct_surface_geometry.hpp"
@@ -108,6 +108,9 @@ struct Context
     HANDLE pauseTimer{};
 #endif
     std::vector<std::shared_ptr<const void>> owners;
+    // Established without allocating before any terminal cleanup handoff.
+    // Only a confirmed stream drain may release this exact resource closure.
+    std::shared_ptr<Context> cleanupRetention;
     void Pause()
     {
 #if defined(_WIN32)
@@ -149,14 +152,14 @@ struct Context
     }
 };
 inline thread_local std::shared_ptr<Context> cachedContext;
-inline void Quarantine(const std::shared_ptr<Context> &c)
+inline bool DrainContext(Context &c)
 {
-    if (cachedContext == c)
-        cachedContext.reset();
-    AsyncCleanup::Start([c] {
-        return cudaSetDevice(c->device) == cudaSuccess &&
-               (!c->stream || cudaStreamSynchronize(c->stream) == cudaSuccess);
-    });
+    return cudaSetDevice(c.device) == cudaSuccess &&
+           (!c.stream || cudaStreamSynchronize(c.stream) == cudaSuccess);
+}
+inline void Quarantine(const std::shared_ptr<Context> &c) noexcept
+{
+    okuflow::detail::StartRetainedCleanup(c, cachedContext, &Context::cleanupRetention, DrainContext);
 }
 inline std::shared_ptr<Context> Worker(int device, size_t bytes)
 {
@@ -164,11 +167,7 @@ inline std::shared_ptr<Context> Worker(int device, size_t bytes)
         return {};
     if (cachedContext && (cachedContext->device != device || cachedContext->capacity < bytes))
     {
-        auto old = std::move(cachedContext);
-        AsyncCleanup::Start([old] {
-            return cudaSetDevice(old->device) == cudaSuccess &&
-                   cudaStreamSynchronize(old->stream) == cudaSuccess;
-        });
+        Quarantine(cachedContext);
     }
     if (!cachedContext)
     {

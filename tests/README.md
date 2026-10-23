@@ -1,5 +1,17 @@
 # OkuFlow Tests
 
+`retained_cleanup_contract` is a standalone model-free lifetime/fault fixture
+for the resident UCT terminal cleanup handoff. Its 35 cases retain exact fake
+context/input/integral/scratch resources across conversion, object/control-block
+allocation and thread-start failures, pending work and unknown drain outcomes;
+known completion releases each resource once. Additional gated receipt-discard
+and independent closure/cleanup witnesses prevent the resource self anchor from
+masking lost cleanup ownership. It links no Qt/CUDA/model code.
+The private test-only hooks are confined to that one TU, and failed cases
+deliberately retain their fake resources until process exit. At source handoff
+this fixture is **authored but unrun** under the owner's compute hold. See
+[the ownership argument and finite CPU plan](../docs/uct_resident_cleanup.md).
+
 `viewport_transform_geometry` covers wide/portrait/extreme-aspect whole-source
 fit, uniform partial bars, nonsticky Fill stepping and inverse Freeze framing.
 `settings_store_round_trip` retains sub-1x/whole-source preferences and legacy

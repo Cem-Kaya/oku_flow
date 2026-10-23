@@ -6,6 +6,10 @@
   `slots` macro. ROOT's C3 build of `8f262c3` exposed the compile failure;
   this test-only identifier repair changes no assertions and is unbuilt/unrun.
 
+- Retain the complete resident UCT context before asynchronous cleanup setup,
+  including allocation and thread-start failures during quarantine or worker
+  replacement. Release its resources only after confirmed stream completion.
+
 - Zoom out to show an entire wide or portrait source. Wheel/key zoom stops
   once at Fill (1x), then continues toward whole-picture Fit; the slider snaps
   near Fill. Saved 1x profiles retain their previous framing.
