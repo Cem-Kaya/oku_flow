@@ -223,6 +223,9 @@ inline CachedPlan FindPlan(const Request& request,const LocalBuild& build,const 
         const auto plan=ReadBounded(directory,"recognizer.plan",runtime_precision::kPlanLimit-1);
         if(precision_artifacts::Digest(plan)!=actual.planFileSha256)
             throw Refusal(Reason::Model,"public BF16 cached plan hash mismatch");
+        // This lookup selects the current actual builder's plan recipe. Older
+        // valid generations stay untouched; runtime/ABI admission is separate.
+        if(actual.builderVersion!=build.builderVersion)continue;
         // Receipt text/pass fields are NEVER authority. The caller must actually
         // deserialize/check the engine and run all nine golden calls again.
         return {plan,actual.builderVersion,directory};

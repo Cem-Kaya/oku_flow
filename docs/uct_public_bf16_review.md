@@ -106,10 +106,40 @@ retirement remain unchanged. Existing model-free eligibility/baseline seams gain
 candidate admission and disabled-request cases; they do not execute or simulate
 the worker's elapsed-clock sequence. All changes remain UNBUILT/UNRUN.
 
-The separate cache-builder finding is next; native `DirectoryPins::Hold` and its
+The separate cache-builder repair follows; native `DirectoryPins::Hold` and its
 existing sharing fixture remain unchanged pending root's real fixture result.
 The probable attribute-only-sharing finding is not repaired or declared closed.
 Root retains the initial combined CPU compile failure and owns the test-only
 `TextQuad` near/far rename needed to run the unchanged native fixture. This
 implementation checkout executes no build/test/native API and imports no such fix.
 Fresh focused independent closure of these new repairs is owned by root.
+
+**P2, stale builder generation masks a new recipe:** `FindPlan` previously returned
+the first internally valid child regardless of the actual current builder, then
+the caller adopted that child's builder version. A TensorRT upgrade could keep
+retrying an old non-version-compatible plan on every launch instead of preparing
+the current builder's recipe. The separate cache repair validates every visited
+receipt identity and plan hash, skips valid children with a different builder,
+and leaves the caller's actual builder identity unchanged. A missing current
+recipe returns missing; no alias/delete/migration or runtime admission pin is
+introduced. The 32-entry scan bound, ABI11/minimum runtime tuple and driver policy
+are unchanged.
+
+The existing model-free publication slot gains two-builder selection in both
+directions, missing matching builder, unchanged bytes/inventory and corrupted
+nonmatching-child refusal. These are labelled integrity-only fixture bytes with
+no golden/pass field, not manufactured model success. They and both source repairs
+remain **UNBUILT/UNRUN**, awaiting root's targeted independent closure and fresh
+finite execution grants. The probable native sharing issue remains open.
+
+Root subsequently reported a combined CPU run on `a7` with public production
+bytes identical to `89f839b03285862aa00f082e057c7a4c2d15dc70`, after the separate
+test-only near/far rename. That gate passed 5/6 cases: approved-corpus contract
+passed, but `publicBf16PublicationAndLifetime` threw an unhandled C++ exception
+(`0xe06d7363`) at 10 ms without `error.what()`. This is not a diagnosed sharing
+assertion failure and does not cover these newer policy/cache repairs. Root
+retains the first log at
+`Z:/Projects/OkuFlow/local-work-data/uct-combined-validation-20261023/scripts-C2/C2-20261023-151300-d37e040a277e452b88b7cba0f926327e/cpu-tracked-gate.log`
+and reports release at 15:13:59, lock-free/job0. A separate bounded native probe
+is root-owned and pending; this checkout executes nothing and preserves the
+original denial/new-only assertions without a behavior or diagnostic workaround.

@@ -164,6 +164,59 @@ inline void PublicationAndLifetime() {
     attempts.Passed("changed-plan-B");
     QVERIFY(attempts.Begin("changed-plan-B"));
 
+    {
+        // Positive integrity-only lookup, never a model or golden approval.
+        // Both builder generations share the parent; either enumeration order
+        // must return only the requested actual builder's unchanged bytes.
+        QTemporaryDir lookupStorage;
+        QVERIFY(lookupStorage.isValid());
+        auto lookupRequest=request;lookupRequest.cacheRoot=lookupStorage.path();
+        const QByteArray olderBytes("non-model lookup fixture: older builder"),currentBytes("non-model lookup fixture: current builder");
+        auto olderBuild=build,currentBuild=build;
+        currentBuild.builderVersion="11.5.0.0";
+        olderBuild.planFileSha256=precision_artifacts::Digest(olderBytes);
+        currentBuild.planFileSha256=precision_artifacts::Digest(currentBytes);
+        const auto lookupParent=CacheParent(lookupRequest,currentBuild,corpus);
+        QCOMPARE(CacheParent(lookupRequest,olderBuild,corpus),lookupParent);
+        const auto fixtureReceipt=[&](const LocalBuild& recipe) {
+            auto identity=BuildIdentity(recipe,corpus);
+            identity["planFileSha256"]=QString::fromLatin1(recipe.planFileSha256);
+            // No golden/pass field exists: the loader must reattest real plans.
+            return QJsonDocument(QJsonObject{{"schema","uct-local-bf16-ready-v1"},{"identity",identity},
+                {"identitySha256",QString::fromLatin1(precision_artifacts::Digest(QJsonDocument(identity).toJson(QJsonDocument::Compact)))},
+                {"fixture","non-model lookup only; no golden attestation"}}).toJson(QJsonDocument::Compact);
+        };
+        const auto olderReceipt=fixtureReceipt(olderBuild),currentReceipt=fixtureReceipt(currentBuild);
+        QVERIFY(PublishFilesNew(lookupStorage.path(),lookupParent,CacheKey(olderBuild,corpus),olderBytes,olderReceipt));
+        QVERIFY(PublishFilesNew(lookupStorage.path(),lookupParent,CacheKey(currentBuild,corpus),currentBytes,currentReceipt));
+        const auto inventory=QDir(lookupParent).entryList(QDir::Dirs|QDir::NoDotAndDotDot|QDir::Hidden);
+        QCOMPARE(inventory.size(),2);
+        const auto selected=FindPlan(lookupRequest,currentBuild,corpus);
+        QCOMPARE(selected.bytes,currentBytes);QCOMPARE(selected.builderVersion,currentBuild.builderVersion);
+        QCOMPARE(QFileInfo(selected.directory).canonicalFilePath(),
+            QFileInfo(QDir(lookupParent).filePath(QString::fromLatin1(CacheKey(currentBuild,corpus)))).canonicalFilePath());
+        QCOMPARE(FindPlan(lookupRequest,olderBuild,corpus).bytes,olderBytes);
+        auto missingBuild=currentBuild;missingBuild.builderVersion="11.6.0.0";
+        const auto missing=FindPlan(lookupRequest,missingBuild,corpus);
+        QVERIFY(missing.bytes.isEmpty());QVERIFY(missing.builderVersion.isEmpty());QVERIFY(missing.directory.isEmpty());
+        QCOMPARE(QDir(lookupParent).entryList(QDir::Dirs|QDir::NoDotAndDotDot|QDir::Hidden),inventory);
+        const auto olderDirectory=QDir(lookupParent).filePath(QString::fromLatin1(CacheKey(olderBuild,corpus)));
+        const auto currentDirectory=QDir(lookupParent).filePath(QString::fromLatin1(CacheKey(currentBuild,corpus)));
+        QCOMPARE(ReadBounded(olderDirectory,"recognizer.plan",1024),olderBytes);
+        QCOMPARE(ReadBounded(olderDirectory,"ready.json",16*1024),olderReceipt);
+        QCOMPARE(ReadBounded(currentDirectory,"recognizer.plan",1024),currentBytes);
+        QCOMPARE(ReadBounded(currentDirectory,"ready.json",16*1024),currentReceipt);
+
+        // A nonmatching generation still undergoes full hash validation before
+        // being skipped. Corruption is a refusal, never silently ignored.
+        QTemporaryDir corruptStorage;
+        QVERIFY(corruptStorage.isValid());
+        auto corruptRequest=lookupRequest;corruptRequest.cacheRoot=corruptStorage.path();
+        QVERIFY(PublishFilesNew(corruptStorage.path(),CacheParent(corruptRequest,olderBuild,corpus),
+            CacheKey(olderBuild,corpus),"corrupt non-model fixture bytes",olderReceipt));
+        QVERIFY_EXCEPTION_THROWN(FindPlan(corruptRequest,currentBuild,corpus),Refusal);
+    }
+
     QTemporaryDir storage;
     QVERIFY(storage.isValid());
     request.cacheRoot=storage.path();

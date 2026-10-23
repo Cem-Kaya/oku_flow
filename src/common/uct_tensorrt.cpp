@@ -910,7 +910,6 @@ void PreparePublicCandidate(State& state,const PaddleAssets& assets,const QStrin
     state.detector->CheckPublicDetector();
     LocalBuild build{runtime.uuid,runtime.tensorRtVersion,{},runtime.major,runtime.minor};
     const auto cached=FindPlan(request,build,corpus);
-    if(!cached.bytes.isEmpty())build.builderVersion=cached.builderVersion;
     const auto attempt=CacheKey(build,corpus)+":"+(cached.bytes.isEmpty()?QByteArray("missing"):precision_artifacts::Digest(cached.bytes));
     if(!SessionAttempts().Begin(attempt))throw Refusal(Reason::BuildRefused,"public BF16 identity already failed/in flight; no automatic retry");
     state.publicEvidenceIdentity=BuildIdentity(build,corpus);
