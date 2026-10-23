@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Retain the complete resident UCT context before asynchronous cleanup setup,
+  including allocation and thread-start failures during quarantine or worker
+  replacement. Release its resources only after confirmed stream completion.
+
 - Zoom out to show an entire wide or portrait source. Wheel/key zoom stops
   once at Fill (1x), then continues toward whole-picture Fit; the slider snaps
   near Fill. Saved 1x profiles retain their previous framing.

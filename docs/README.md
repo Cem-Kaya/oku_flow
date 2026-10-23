@@ -681,6 +681,8 @@ legacy `powershell.exe` bridge.
 
 ## Documentation Index
 
+- [Resident UCT cleanup ownership](uct_resident_cleanup.md): nonallocating
+  quarantine handoff, deterministic model-free fault fixtures and held validation.
 - [Narrower UCT recognizer inputs](uct_recognizer_width.md): opt-in width
   profiles, same-crop quality comparison and workload-dependent performance.
 - [UCT color and readiness repairs](uct_color_startup_repair.md)

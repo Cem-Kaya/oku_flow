@@ -6266,9 +6266,37 @@ and `Project` preserve the CPU coordinate/filter contract. `Worker`, `Upload`,
 `CopyResult` and `Finish` reuse private streams and pinned metadata staging with
 completion fences. `Context::Pause` uses a private Windows high-resolution
 one-shot timer after a few cooperative polls, avoiding a coarse sleep per line
-without changing process/system timer resolution. `Quarantine` retains unknown work. `Allocate` uses stream-ordered
+without changing process/system timer resolution. `Quarantine` is a nonthrowing
+terminal handoff: `Context::cleanupRetention` first copies the existing shared
+owner without allocating, before removing `cachedContext` or constructing a
+cleanup closure. Worker replacement uses that same handoff, including when its
+argument aliases the cache. `DrainContext` preserves the device-selection and
+stream-synchronize completion predicate. Only a successful drain breaks the self
+owner; setup failure or uncertain completion retains the exact context, input,
+integral, scratch and pinned/event/stream resources until process exit.
+`Allocate` uses stream-ordered
 allocation on capable devices; `RetirementQueue::{Retire,Run}` release known-complete
 allocations on one private worker, with uncertain failures retained.
+
+`include/okuflow/common/retained_cleanup.hpp` implements the model-free
+`detail::StartRetainedCleanup` policy used by that handoff. Its by-value owner
+protects cache aliases, and its detached work captures only that exact owner,
+the resource's anchor member pointer and a drain function pointer. Cache and
+caller storage never enter the closure. Successful completion resets the
+anchor while the closure still owns the resource; exceptions return no receipt
+and preserve the anchor. The caller retires each resource only once.
+`OKUFLOW_ASYNC_CLEANUP_TEST_HOOKS` is defined only for the standalone
+`retained_cleanup_tests` target: `AsyncCleanupSetupPoint`,
+`CheckAsyncCleanupSetup`, `asyncCleanupSetupCheckpoint` and
+`AsyncCleanupTestAllocator` inject conversion/allocation/thread-start faults
+without changing production allocation or adding global allocation overrides.
+The single-TU `retained_cleanup_contract` uses actual `AsyncCleanup` workers and
+fake resource identities/destructor counters; it creates no Qt windows or CUDA
+objects. It also discards a receipt before releasing gated work and observes
+independent captured-token lifetime. The fixture-only
+`AsyncCleanup::TestHasSelfRetention`, read after terminal acquire, verifies the
+cleanup cycle independently of Context's anchor and worker-exit scheduling.
+See [ownership proof and held validation](uct_resident_cleanup.md).
 
 `src/cuda/uct_validation_kernels.cuh`, compiled by `uct_kernels.cu`, implements
 `ValidationIntegral`, `Reference`/`References`, `MatchReference`/`MatchReferences`,

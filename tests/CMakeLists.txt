@@ -9,6 +9,15 @@ target_include_directories(deadline_worker_tests PRIVATE ${PROJECT_SOURCE_DIR}/i
 target_link_libraries(deadline_worker_tests PRIVATE Qt6::Test)
 add_test(NAME deadline_worker COMMAND deadline_worker_tests)
 
+add_executable(retained_cleanup_tests retained_cleanup_tests.cpp)
+target_include_directories(retained_cleanup_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_compile_definitions(retained_cleanup_tests PRIVATE OKUFLOW_ASYNC_CLEANUP_TEST_HOOKS=1)
+set_target_properties(retained_cleanup_tests PROPERTIES
+    AUTOMOC OFF AUTOUIC OFF AUTORCC OFF DISABLE_PRECOMPILE_HEADERS ON)
+add_test(NAME retained_cleanup_contract COMMAND retained_cleanup_tests)
+set_tests_properties(retained_cleanup_contract PROPERTIES TIMEOUT 20 LABELS "headless"
+    REQUIRED_FILES "${PROJECT_SOURCE_DIR}/include/okuflow/common/async_cleanup.hpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/retained_cleanup.hpp;${PROJECT_SOURCE_DIR}/src/cuda/uct_device_analysis.hpp;${PROJECT_SOURCE_DIR}/tests/retained_cleanup_tests.cpp")
+
 add_executable(settings_store_tests
     settings_store_tests.cpp
     ${PROJECT_SOURCE_DIR}/src/app/color_schemes.cpp
