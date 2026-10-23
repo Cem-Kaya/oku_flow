@@ -2361,6 +2361,10 @@ separate bounded CPU `IMFSourceReader` before opening `VideoPlayback`. Playback
 must deliver that exact ordered sequence, including after optional Pause proof
 finds a full future queue. This avoids equating authored 100 ns timestamps with
 the container/native decoder clock or introducing an arbitrary timestamp tolerance.
+Its first sparse gap is three seconds, beyond the saved-file proof ceiling of
+2500 ms. The held-image, empty-neighbour, lease and ready-queue preservation
+assertions remain exact; a two-second native-duration gap can legitimately
+produce a corroborating neighbour and is unsuitable for this negative case.
 
 The first-party native playback fixture `tests/data/uct-scene-cut-h264.mp4`
 is 2,449 bytes, SHA-256

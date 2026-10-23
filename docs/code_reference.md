@@ -727,6 +727,9 @@ admission callbacks before advancing, so setup cannot expire otherwise current
   `SourceStamp::immutableCorroboration` carry the identical descriptor;
   `ImmutableNeighbourAllowed` gates worker line/word and model corroboration.
   Changing descriptor/metadata revokes selection and exact-input coverage.
+  `NativeSparseVideoAudio` in the native playback fixture authors a three-second
+  first gap, exceeding that ceiling, while retaining its exact held-frame,
+  empty-neighbour, allocation/queue and independently decoded tail assertions.
   `uct_controller_replay::Pair` and `Load` in the private test helper verify
   absolute source image paths/SHA-256 and bounded captured recognition JSON.
   `Rect`, `Quad` and `Output` preserve actual captured geometry, protection,

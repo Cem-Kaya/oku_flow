@@ -314,10 +314,12 @@ clips and worker publication only; they are not display or 4K60 benchmarks.
 The 30 fps AVC/AV1 cases also seek before the endpoint after an End scan and
 require actual earlier pixels and successful Resume.
 The sparse fixture submits video
-at 0/33 ms followed by a two-second gap, then requires at least 700 ms of PCM
+at 0/33 ms followed by a three-second gap, then requires at least 700 ms of PCM
 while the exact early video image is still held. Its original video samples
 remain unchanged while AAC continues alone for over two seconds afterward;
 end seeking must retain the actual last video frame before that audio tail.
+The three-second gap exceeds the 2500 ms saved-file corroboration ceiling, so
+the negative Pause case cannot accidentally supply valid duration-based proof.
 These local codec cases
 do not establish long-soak, physical camera, GPU, GUI or release acceptance.
 

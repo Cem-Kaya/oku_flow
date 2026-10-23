@@ -940,7 +940,7 @@ void NativeSparseVideoAudio(VideoRecorder::Codec codec) {
     // duration is not a video-sample position and end seeking must observe it.
     for (int slot = 0; slot < 190 && recorder.IsRecording(); ++slot) {
         const auto time = slot * 333333ll;
-        if (slot == 0 || slot == 1 || slot == 61 || (slot >= 121 && slot < 126)) {
+        if (slot == 0 || slot == 1 || slot == 91 || (slot >= 121 && slot < 126)) {
             RecordingFrameIdentity id; id.captureTimestamp100ns = id.captureClock100ns = time;
             id.sequenceNumber = slot + 1; id.frameRateNumerator = 30; id.frameRateDenominator = 1;
             const bool admitted = Wait([&] { return recorder.CanAcceptVideoFrame(); }, 2000);
@@ -963,7 +963,7 @@ void NativeSparseVideoAudio(VideoRecorder::Codec codec) {
     RequireGpu(player.Snapshot());
     const auto seek = player.Seek100ns(1);
     Expect(Wait([&] { const auto s = player.Snapshot(); return s.requestGeneration == seek && s.state == VideoPlaybackState::Paused; }),
-        "sparse-video fixture selects the frame preceding its two-second gap");
+        "sparse-video fixture selects the frame preceding its three-second gap");
     const auto held = player.Snapshot().frame;
     Expect(held && held->pts100ns < 1'000'000, "sparse-video selected early frame has actual PTS");
     player.SetMuted(false); player.SetPlaying(true);
