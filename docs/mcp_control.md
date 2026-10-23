@@ -211,6 +211,13 @@ include `video.save_frame` in their explicit non-destructive additive actions.
 The tracked coverage inventory uses the persisted `0.01..16` zoom domain;
 the display slider's aspect-dependent minimum does not narrow API validation.
 
+On 2026-10-24, V1 with deployed identity passed seven scoped headless contracts,
+17 independent-client synthetic SDK scenarios and nine actual AppControlTarget
+offscreen SDK scenarios. Work and cleanup exited zero. The complete inventory
+check first caught an obsolete zoom minimum; that input was corrected without
+relaxing its assertions. See [the release preparation receipt](release_validation_2026_10_24.md)
+for preserved failures and the remaining native/provider/installer acceptance.
+
 The independent SDK fixture now exercises all 19 tools in 14 scenario groups
 through actual stdio, IPC and service enforcement. Its persistent finite
 synthetic target uses the real OperationTracker for explicit pending/terminal
