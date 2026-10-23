@@ -46,20 +46,20 @@ inline void Contract() {
     using namespace public_bf16;
     const auto model=ModelIdentity();
     QTemporaryDir paths;QVERIFY(paths.isValid());
-    const auto app=QDir(paths.path()).filePath("application"),local=QDir(paths.path()).filePath("local");
+    const auto app=QDir(paths.path()).filePath("application"),localDataRoot=QDir(paths.path()).filePath("local");
     QVERIFY(QDir().mkpath(app));
-    QCOMPARE(runtime_paths::PaddleRoot({},app,local),QDir(local).filePath("OkuFlow/ocr-runtime"));
-    QCOMPARE(runtime_paths::TensorRtRoot({},app,local),QDir(local).filePath("OkuFlow/ocr-deps/TensorRT-11.4.0.106-cuda12.9/TensorRT-11.4.0.106"));
+    QCOMPARE(runtime_paths::PaddleRoot({},app,localDataRoot),QDir(localDataRoot).filePath("OkuFlow/ocr-runtime"));
+    QCOMPARE(runtime_paths::TensorRtRoot({},app,localDataRoot),QDir(localDataRoot).filePath("OkuFlow/ocr-deps/TensorRT-11.4.0.106-cuda12.9/TensorRT-11.4.0.106"));
     QVERIFY(QDir().mkpath(app+"/ocr/tensorrt/bin"));
     QFile pinsMarker(app+"/ocr/pins.json");QVERIFY(pinsMarker.open(QIODevice::WriteOnly));pinsMarker.close();
-    QCOMPARE(runtime_paths::PaddleRoot({},app,local),app+"/ocr"); // no tiny detector required
+    QCOMPARE(runtime_paths::PaddleRoot({},app,localDataRoot),app+"/ocr"); // no tiny detector required
     QFile sdkMarker(app+"/ocr/tensorrt/bin/nvinfer_11.dll");QVERIFY(sdkMarker.open(QIODevice::WriteOnly));sdkMarker.close();
-    QCOMPARE(runtime_paths::TensorRtRoot({},app,local),app+"/ocr/tensorrt");
-    QCOMPARE(runtime_paths::PaddleRoot(local,app,local),QDir(local).absolutePath());
-    QCOMPARE(runtime_paths::TensorRtRoot(local,app,local),QDir(local).absolutePath());
+    QCOMPARE(runtime_paths::TensorRtRoot({},app,localDataRoot),app+"/ocr/tensorrt");
+    QCOMPARE(runtime_paths::PaddleRoot(localDataRoot,app,localDataRoot),QDir(localDataRoot).absolutePath());
+    QCOMPARE(runtime_paths::TensorRtRoot(localDataRoot,app,localDataRoot),QDir(localDataRoot).absolutePath());
     QVERIFY(QDir().mkpath(app+"/ocr/tensorrt/cuda/bin"));
-    QCOMPARE(runtime_paths::CudaBin({},app+"/ocr/tensorrt",local,local),app+"/ocr/tensorrt/cuda/bin");
-    QCOMPARE(runtime_paths::CudaBin(local,app+"/ocr/tensorrt",{},{}),QDir(local).absolutePath());
+    QCOMPARE(runtime_paths::CudaBin({},app+"/ocr/tensorrt",localDataRoot,localDataRoot),app+"/ocr/tensorrt/cuda/bin");
+    QCOMPARE(runtime_paths::CudaBin(localDataRoot,app+"/ocr/tensorrt",{},{}),QDir(localDataRoot).absolutePath());
     const QByteArray uuid(16,'u');
     QSet<QByteArray> detectorKeys;
     for(const auto tier:{ModelTier::Tiny,ModelTier::Small,ModelTier::Medium}) {

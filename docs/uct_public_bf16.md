@@ -23,6 +23,9 @@ altered to manufacture a pass. Real API/CUDA/inference uncertainty still retires
 the backend, while confirmed healthy artifact/build refusals allow FP32 fallback.
 This implementation still needs its fresh build/runtime checks and installer
 payload work; it is not a claim of published release or clean-machine acceptance.
+The first combined build compiled the real adapter but exposed a fixture-only
+`local` name collision. The local path variable was renamed without changing
+assertions; that failed attempt remains preserved before the corrected build.
 
 ## Opus install-review repair checkpoint
 
