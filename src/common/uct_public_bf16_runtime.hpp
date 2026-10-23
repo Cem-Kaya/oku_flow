@@ -9,6 +9,10 @@
 #include <mutex>
 #include <set>
 #include <utility>
+#include <cstddef>
+#ifdef Q_OS_WIN
+#include <Windows.h>
+#endif
 
 namespace okuflow::uct::public_bf16 {
 enum class CatalogUse { Production, CandidateValidation };
@@ -17,6 +21,13 @@ struct Request {
     CatalogUse use{CatalogUse::Production};
     bool enabled{};
 };
+struct BaselineCachePolicy {QString root;bool allowPreparation{true};};
+inline BaselineCachePolicy BaselinePolicy(const Request& request) {
+    if(!request.enabled || request.use!=CatalogUse::CandidateValidation)return {};
+    if(!runtime_precision::LocalAbsolute(request.cacheRoot))
+        throw Refusal(Reason::Model,"candidate validation requires an explicit isolated FP32/BF16 cache root");
+    return {request.cacheRoot,false}; // detector AND every FP32 fallback stay cache-only
+}
 inline std::span<const CorpusPin> CandidateCatalog() {
     static const std::array<CorpusPin,1> pins{{{"okuflow-owned-typeset-gray8-v1",
         "26432369ed6831431737072f857620b19c81fc9acd8c21579d50ee7bc0e9ec33"}}};
@@ -57,6 +68,17 @@ inline QString RawText(std::span<const PaddleToken> tokens,int validSteps,const 
     }
     return text;
 }
+inline QJsonObject PartialRecord(const QJsonObject& identity,std::span<const Observation> observations,
+                                 const QString& completion,const QString& error={}) {
+    if(observations.size()>kGoldenObservations)throw Refusal(Reason::GoldenMismatch,"partial golden evidence exceeds bound");
+    QJsonArray rows;
+    for(const auto& row:observations) {
+        if(row.crop.size()>48 || row.text.size()>8192)throw Refusal(Reason::GoldenMismatch,"partial golden output exceeds bound");
+        rows.append(QJsonObject{{"crop",row.crop},{"batch",row.batch},{"T",row.steps},{"classes",row.classes},
+            {"pixelsSha256",QString::fromLatin1(row.pixelsSha256)},{"text",row.text}});
+    }
+    return {{"complete",false},{"passed",false},{"completion",completion},{"identity",identity},{"rows",rows},{"error",error.left(4096)}};
+}
 
 // A bounded process-session latch, including in-flight attempts. Only success
 // removes an identity. Changed plan/corpus/builder/device produces a new key.
@@ -95,6 +117,66 @@ inline QByteArray ReceiptBytes(const LocalBuild& build,const Corpus& corpus,cons
     return QJsonDocument(ReadyReceipt(build,corpus,golden,runtime)).toJson(QJsonDocument::Compact);
 }
 struct CachedPlan {QByteArray bytes,builderVersion;QString directory;};
+#ifdef Q_OS_WIN
+// Hold actual directories without write/delete sharing. Existing reparse points
+// below the explicit canonical root are refusals BEFORE creating descendants.
+// The same handles remain held through file creation and the final native rename.
+class DirectoryPins {
+public:
+    DirectoryPins()=default;
+    DirectoryPins(const DirectoryPins&)=delete;
+    DirectoryPins& operator=(const DirectoryPins&)=delete;
+    ~DirectoryPins(){for(int i=0;i<count_;++i)CloseHandle(handles_[i]);}
+    HANDLE Hold(const QString& path,bool forRename=false) {
+        if(count_==int(handles_.size()))throw Refusal(Reason::Model,"public cache path exceeds directory bound");
+        const auto name=QDir::toNativeSeparators(path).toStdWString();
+        const auto handle=CreateFileW(name.c_str(),FILE_READ_ATTRIBUTES|(forRename?DELETE:0),FILE_SHARE_READ,
+            nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,nullptr);
+        if(handle==INVALID_HANDLE_VALUE)throw Refusal(Reason::Model,"cannot pin public cache directory");
+        BY_HANDLE_FILE_INFORMATION information{};
+        if(!GetFileInformationByHandle(handle,&information) ||
+           !(information.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY) || (information.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT)) {
+            CloseHandle(handle);throw Refusal(Reason::Model,"public cache directory is not an owned ordinary directory");
+        }
+        handles_[count_++]=handle;
+        return handle;
+    }
+    QString Prepare(const QString& cacheRoot,const QString& parent,bool create=true) {
+        auto current=QFileInfo(cacheRoot).canonicalFilePath();
+        if(current.isEmpty())throw Refusal(Reason::Model,"public cache root must already exist");
+        Hold(current);
+        const auto relative=QDir::fromNativeSeparators(QDir(cacheRoot).relativeFilePath(parent));
+        const auto parts=relative.split('/');
+        if(parts.size()>8)throw Refusal(Reason::Model,"public cache path exceeds component bound");
+        for(const auto& part:parts) {
+            if(part.isEmpty() || part=="." || part=="..")throw Refusal(Reason::Model,"invalid public cache component");
+            for(const auto c:part)if(!((c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='-'))
+                throw Refusal(Reason::Model,"invalid public cache component");
+            const auto next=QDir(current).filePath(part);
+            // The held parent cannot be retargeted while this component is
+            // examined/created. Hold rejects an existing junction, not its target.
+            if(!QFileInfo::exists(next)) {
+                if(!create)return {};
+                if(!QDir().mkdir(next))throw Refusal(Reason::Model,"cannot create public cache component");
+            }
+            Hold(next);current=next;
+        }
+        return current;
+    }
+    bool RenameNew(HANDLE staging,const QString& destination) {
+        const auto name=QDir::toNativeSeparators(destination).toStdWString();
+        const auto length=name.size()*sizeof(wchar_t);
+        std::vector<unsigned char> bytes(offsetof(FILE_RENAME_INFO,FileName)+length,0);
+        auto* rename=reinterpret_cast<FILE_RENAME_INFO*>(bytes.data());
+        rename->ReplaceIfExists=FALSE;rename->RootDirectory=nullptr;rename->FileNameLength=DWORD(length);
+        std::copy(name.begin(),name.end(),rename->FileName);
+        return SetFileInformationByHandle(staging,FileRenameInfo,rename,DWORD(bytes.size()))!=FALSE;
+    }
+private:
+    std::array<HANDLE,10> handles_{};
+    int count_{};
+};
+#endif
 inline QString CacheParent(const Request& request,const LocalBuild& build,const Corpus& corpus) {
     // Parent deliberately omits builder as well as driver/runtime provenance.
     // Each atomic child still binds its actual builder via CacheKey.
@@ -104,7 +186,15 @@ inline QString CacheParent(const Request& request,const LocalBuild& build,const 
 }
 inline CachedPlan FindPlan(const Request& request,const LocalBuild& build,const Corpus& corpus) {
     if(!runtime_precision::LocalAbsolute(request.cacheRoot))throw Refusal(Reason::Model,"public BF16 cache root must be local/absolute");
-    const QDir parent(CacheParent(request,build,corpus));
+    const auto requestedParent=CacheParent(request,build,corpus);
+#ifdef Q_OS_WIN
+    DirectoryPins readPins;
+    const auto located=readPins.Prepare(request.cacheRoot,requestedParent,false);
+    if(located.isEmpty())return {};
+    const QDir parent(located);
+#else
+    const QDir parent(requestedParent);
+#endif
     if(!parent.exists())return {};
     QDirIterator entries(parent.absolutePath(),QDir::Dirs|QDir::NoDotAndDotDot|QDir::Hidden);
     int visited=0;
@@ -116,6 +206,9 @@ inline CachedPlan FindPlan(const Request& request,const LocalBuild& build,const 
         if(entry.startsWith(".pending-"))continue;
         if(!runtime_precision::Hash(entry.toLatin1()))throw Refusal(Reason::Model,"unknown public BF16 cache generation");
         const auto directory=parent.filePath(entry);
+#ifdef Q_OS_WIN
+        readPins.Hold(directory);
+#endif
         runtime_precision::CanonicalWithin(request.cacheRoot,directory);
         const auto receipt=QJsonDocument::fromJson(ReadBounded(directory,"ready.json",256*1024)).object();
         const auto identity=receipt["identity"].toObject();
@@ -142,26 +235,32 @@ inline bool PublishFilesNew(const QString& cacheRoot,const QString& parent,const
                             const QByteArray& plan,const QByteArray& receipt) {
     if(!runtime_precision::LocalAbsolute(cacheRoot) || !runtime_precision::Hash(key) ||
        !runtime_precision::Within(cacheRoot,parent))throw Refusal(Reason::Model,"invalid public cache publication path");
-    const auto destination=QDir(parent).filePath(QString::fromLatin1(key));
+#ifdef Q_OS_WIN
+    DirectoryPins parents;
+    const auto pinnedParent=parents.Prepare(cacheRoot,parent);
+    const auto destination=QDir(pinnedParent).filePath(QString::fromLatin1(key));
     if(QFileInfo::exists(destination))return false; // never overwrite or repair an old generation
-    if(!QDir().mkpath(parent))throw Refusal(Reason::Model,"cannot create local BF16 cache parent");
-    runtime_precision::CanonicalWithin(cacheRoot,parent);
-    QTemporaryDir temporary(QDir(parent).filePath(".pending-XXXXXX"));
+    QTemporaryDir temporary(QDir(pinnedParent).filePath(".pending-XXXXXX"));
     if(!temporary.isValid())throw Refusal(Reason::Model,"cannot create local BF16 publication staging");
+    DirectoryPins stagingPin; // closes before temporary cleanup on every failure
+    const auto staging=stagingPin.Hold(temporary.path(),true);
     const auto write=[&](const char* name,const QByteArray& bytes) {
         QFile file(QDir(temporary.path()).filePath(name));
         if(!file.open(QIODevice::WriteOnly|QIODevice::NewOnly) || file.write(bytes)!=bytes.size() || !file.flush())
             throw Refusal(Reason::Model,"cannot write local BF16 publication staging");
     };
     write("recognizer.plan",plan);write("ready.json",receipt);
-    // Same-parent directory rename exposes both files together, new-only. Qt's
-    // directory rename refuses an existing destination; no copy/replace fallback.
-    if(!QDir().rename(temporary.path(),destination)) {
+    // Rename the held exact staging directory, no replacement/copy fallback.
+    // Ancestor and staging handles protect confinement through the transaction.
+    if(!stagingPin.RenameNew(staging,destination)) {
         if(QFileInfo::exists(destination))return false;
         throw Refusal(Reason::Model,"cannot atomically publish local BF16 generation");
     }
     temporary.setAutoRemove(false);
     return true;
+#else
+    throw Refusal(Reason::Model,"public BF16 atomic publication requires native Windows directory ownership");
+#endif
 }
 inline bool PublishNew(const Request& request,const LocalBuild& build,const Corpus& corpus,
                        const GoldenResult& golden,const precision_artifacts::Runtime& runtime,

@@ -7391,3 +7391,14 @@ synthetic clock; worker completion alone is not UI admission.
   retained closure checks. CTest declares all eight raw crops/manifest/helpers as
   inputs. No fake positive attestation is authored. **All additions UNBUILT/UNRUN**;
   strict real golden, fault/cancel, quality and root activation remain required.
+
+Independent review follow-up adds `BaselineCachePolicy`/`BaselinePolicy` for
+explicit-root cache-only detector/FP32 validation; `Network` accepts that private
+cache locator while preserving its ordinary default and stable/legacy key rules.
+`State::publicObservations/publicEvidenceIdentity` and `ReportPublicPartial`/
+`PartialRecord` retain completed outputs across later faults without claiming
+whole-attempt completion. `DirectoryPins::Hold/Prepare/RenameNew` leases native
+ordinary directories before mutation and performs the held new-only rename.
+`CreateFixtureJunction` authors the private desktop-free native redirection
+fixture; partial records, policy, junction/no-side-effect and sharing checks are
+unbuilt/unrun. See [all three findings and dispositions](uct_public_bf16_review.md).

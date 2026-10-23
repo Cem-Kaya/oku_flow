@@ -1073,3 +1073,8 @@ aligned with the project goals.
 - Source-only implementation and model-free fixtures remain UNBUILT/UNRUN.
   Follow fresh finite ROOT START boundaries in docs/uct_public_bf16.md; no
   desktop availability, heavy-compute grant or runner lease is implied.
+- Private candidate validation must keep detector/FP32 fallback cache-only in
+  the explicit isolated root. Retain/report completed partial golden outputs
+  after later faults as incomplete, never confirmed passing evidence. Pin native
+  ordinary cache ancestors before mutation and through new-only publication;
+  refuse redirected ancestors before creating descendants.

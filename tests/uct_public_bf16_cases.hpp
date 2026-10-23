@@ -3,9 +3,36 @@
 #include "../src/common/uct_public_bf16_runtime.hpp"
 #include "../src/common/uct_frozen_upload.hpp"
 #include <QtTest>
+#ifdef Q_OS_WIN
+#include <winioctl.h>
+#endif
 
 namespace uct_public_bf16_test {
 using namespace okuflow::uct;
+#ifdef Q_OS_WIN
+inline bool CreateFixtureJunction(const QString& path,const QString& target) {
+    const auto native=QDir::toNativeSeparators(path).toStdWString();
+    if(!CreateDirectoryW(native.c_str(),nullptr))return false;
+    const auto handle=CreateFileW(native.c_str(),GENERIC_WRITE,0,nullptr,OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,nullptr);
+    if(handle==INVALID_HANDLE_VALUE)return false;
+    struct MountPoint {
+        DWORD tag;WORD dataLength,reserved,substituteOffset,substituteLength,printOffset,printLength;
+        wchar_t paths[1];
+    };
+    const auto print=QDir::toNativeSeparators(target).toStdWString(),substitute=L"\\??\\"+print;
+    std::vector<unsigned char> bytes(offsetof(MountPoint,paths)+(substitute.size()+1+print.size()+1)*sizeof(wchar_t),0);
+    auto* point=reinterpret_cast<MountPoint*>(bytes.data());
+    point->tag=IO_REPARSE_TAG_MOUNT_POINT;point->dataLength=WORD(bytes.size()-8);
+    point->substituteLength=WORD(substitute.size()*sizeof(wchar_t));
+    point->printOffset=WORD((substitute.size()+1)*sizeof(wchar_t));point->printLength=WORD(print.size()*sizeof(wchar_t));
+    std::copy(substitute.begin(),substitute.end(),point->paths);
+    std::copy(print.begin(),print.end(),point->paths+substitute.size()+1);
+    DWORD returned{};
+    const bool result=DeviceIoControl(handle,FSCTL_SET_REPARSE_POINT,point,DWORD(bytes.size()),nullptr,0,&returned,nullptr)!=FALSE;
+    CloseHandle(handle);return result;
+}
+#endif
 inline void Contract() {
     using namespace public_bf16;
     const auto model=ModelIdentity();
@@ -103,12 +130,19 @@ inline void PublicationAndLifetime() {
     const auto failed=CheckGolden(corpus,build,{},Completion::Confirmed);
     QVERIFY(!failed.Passed());
     QVERIFY(failed.Record()["rows"].toArray().isEmpty());
+    QVERIFY(!failed.Record()["complete"].toBool());
     std::vector<Observation> mismatches;
     for(const int batch:{1,8})for(const auto& crop:corpus.Crops())
         mismatches.push_back({crop.id,batch,128,18710,crop.pixelsSha256,"deliberate model-free mismatch"});
     const auto mismatch=CheckGolden(corpus,build,mismatches,Completion::Confirmed);
     QVERIFY(!mismatch.Passed());QCOMPARE(mismatch.Record()["rows"].toArray().size(),16);
+    QVERIFY(mismatch.Record()["complete"].toBool());
     QCOMPARE(mismatch.Record()["rows"].toArray()[0].toObject()["text"].toString(),QString("deliberate model-free mismatch"));
+    const auto partial=PartialRecord(BuildIdentity(build,corpus),std::span<const Observation>(mismatches).first(3),"unknown","later call failed");
+    QVERIFY(!partial["complete"].toBool());QVERIFY(!partial["passed"].toBool());
+    QCOMPARE(partial["completion"].toString(),QString("unknown"));
+    QCOMPARE(partial["rows"].toArray().size(),3);
+    QCOMPARE(partial["rows"].toArray()[0].toObject()["text"].toString(),QString("deliberate model-free mismatch"));
     Publication completion;
     QVERIFY_EXCEPTION_THROWN(ReceiptBytes(build,corpus,failed,runtime,completion),std::runtime_error);
     completion.Confirmed();
@@ -130,6 +164,14 @@ inline void PublicationAndLifetime() {
     QTemporaryDir storage;
     QVERIFY(storage.isValid());
     request.cacheRoot=storage.path();
+    request.enabled=true;
+    const auto baseline=BaselinePolicy(request);
+    QVERIFY(!baseline.allowPreparation);QCOMPARE(baseline.root,storage.path());
+    request.use=CatalogUse::Production;
+    QVERIFY(BaselinePolicy(request).allowPreparation);QVERIFY(BaselinePolicy(request).root.isEmpty());
+    request.use=CatalogUse::CandidateValidation;request.cacheRoot="relative";
+    QVERIFY_EXCEPTION_THROWN(BaselinePolicy(request),Refusal);
+    request.cacheRoot=storage.path();
     const auto parent=CacheParent(request,build,corpus);
     const QByteArray key(64,'a');
     // Plain storage fixture bytes: no model, real plan or passing golden record.
@@ -142,6 +184,27 @@ inline void PublicationAndLifetime() {
     QVERIFY_EXCEPTION_THROWN(FindPlan(request,build,corpus),Refusal); // storage receipt cannot authorize a plan
     QVERIFY_EXCEPTION_THROWN(PublishNew(request,build,corpus,failed,runtime,completion,"storage fixture plan"),Refusal);
     QVERIFY_EXCEPTION_THROWN(PublishFilesNew(storage.path(),QDir(storage.path()).filePath("../outside"),key,"x","y"),Refusal);
+#ifdef Q_OS_WIN
+    QTemporaryDir redirected,outside;
+    QVERIFY(redirected.isValid() && outside.isValid());
+    const auto junction=QDir(redirected.path()).filePath("public-bf16");
+    struct RemoveJunction {std::wstring path;~RemoveJunction(){RemoveDirectoryW(path.c_str());}} removeJunction{QDir::toNativeSeparators(junction).toStdWString()};
+    QVERIFY(CreateFixtureJunction(junction,outside.path()));
+    const auto before=QDir(outside.path()).entryList(QDir::AllEntries|QDir::NoDotAndDotDot|QDir::Hidden);
+    auto redirectedRequest=request;redirectedRequest.cacheRoot=redirected.path();
+    QVERIFY_EXCEPTION_THROWN(FindPlan(redirectedRequest,build,corpus),Refusal);
+    QVERIFY_EXCEPTION_THROWN(PublishFilesNew(redirected.path(),QDir(junction).filePath(QString::fromLatin1(key)),key,"x","y"),Refusal);
+    QCOMPARE(QDir(outside.path()).entryList(QDir::AllEntries|QDir::NoDotAndDotDot|QDir::Hidden),before);
+    // Existing ancestors must remain unretargetable through the transaction.
+    DirectoryPins pinned;
+    pinned.Prepare(storage.path(),parent);
+    const auto parentNative=QDir::toNativeSeparators(parent).toStdWString();
+    const auto replacement=CreateFileW(parentNative.c_str(),GENERIC_WRITE|DELETE,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,
+        nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,nullptr);
+    const bool denied=replacement==INVALID_HANDLE_VALUE;
+    if(!denied)CloseHandle(replacement);
+    QVERIFY(denied);
+#endif
 
     struct Owner {
         Publication completion;

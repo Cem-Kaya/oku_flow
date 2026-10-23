@@ -2425,3 +2425,10 @@ stays EMPTY. The explicit C++ candidate factory needs a separately authorized
 private diagnostic; ordinary tests do not invoke it. See the separate <=900-second,
 8-job CPU/model-free and bounded real-runtime ROOT START proposals in
 [the six-step contract](../docs/uct_public_bf16.md). No permission is inferred.
+
+The independent-review repair authors cache-only isolated baseline policy,
+incomplete/unknown partial-output records and native Windows junction confinement/
+directory-sharing fixtures. They create only their private temporary directories
+when explicitly run later; they do not touch the ordinary OCR cache, owner plans,
+desktop, CUDA or model preparation. Native rename/sharing behavior is UNRUN.
+See [review dispositions](../docs/uct_public_bf16_review.md).
