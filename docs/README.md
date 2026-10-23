@@ -1,5 +1,9 @@
 # OkuFlow Documentation Guide
 
+[Owned BF16 crop proposal](uct_owned_bf16_crops.md) documents eight synthetic
+source-authored GRAY8 candidates, deterministic render provenance and pending
+parent/runtime gates. It does not approve the production corpus catalog.
+
 [Viewport zoom and Resume](viewport_zoom_and_resume.md) documents whole-picture
 zoom-out, Fill snapping, retained UCT references, corner controls and isolated
 Assistant startup configuration.

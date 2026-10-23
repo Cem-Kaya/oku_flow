@@ -1,0 +1,356 @@
+{
+  "boundaryCommit": "faa7fbfe7b87983802c881411a856328bc873dfd",
+  "contactSheet": {
+    "filename": "contact-sheet.png",
+    "purpose": "actual raw crops at 1x and 2x for visual review; not model input",
+    "sha256": "0192f4ef4b17f6153ca9cfe4412ed57138492b55848f55fb24bafc0d87ad59cd"
+  },
+  "fontNotices": {
+    "distribution": "font binaries and renderer are not copied; no new legal clearance asserted",
+    "facts": "Installed DejaVu notice: Bitstream Vera terms; DejaVu changes public domain; Arev terms retained.",
+    "installedFilename": "LICENSE_DEJAVU",
+    "sha256": "d75938dec098f06f0ac3c00853065d94f020be1c3c62ef1dc2975ba15b4d9b0e"
+  },
+  "generator": {
+    "path": "scripts/uct/generate_owned_bf16_crops.py",
+    "sha256": "b4b8093159396aaabbccd8f171fc39c85585f01b743579c9da8add52b290aeca"
+  },
+  "parameters": {
+    "bytesPerPixel": 1,
+    "columnOrder": "left-to-right",
+    "embeddedColor": false,
+    "height": 48,
+    "maxUsefulWidth": 1024,
+    "mode": "L",
+    "png": {
+      "compressLevel": 9,
+      "height": 1436,
+      "mode": "L",
+      "optimize": false,
+      "previewResampling": "NEAREST",
+      "previewScale": [
+        1,
+        2
+      ],
+      "width": 1040
+    },
+    "resampling": "none",
+    "rowOrder": "top-to-bottom",
+    "runtimeNormalization": "(sample/255-.5)*2; repeat gray to 3 channels",
+    "runtimePadding": "normalized zero to width1024; no pad bytes stored in crops",
+    "sideMarginPx": 8,
+    "strokeWidth": 0,
+    "verticalAlignment": "integer centered measured ink box"
+  },
+  "renderer": {
+    "freetypeVersion": "2.13.3",
+    "layoutEngine": "ImageFont.Layout.BASIC",
+    "name": "Pillow",
+    "pythonVersion": "3.11.13",
+    "version": "11.1.0",
+    "zlibVersion": "1.2.13"
+  },
+  "samples": [
+    {
+      "actualInkBox": [
+        10,
+        10,
+        161,
+        37
+      ],
+      "backgroundGray8": 255,
+      "drawPosition": [
+        8,
+        10
+      ],
+      "expectedText": "OkuFlow",
+      "fontFilename": "DejaVuSans.ttf",
+      "fontIndex": 0,
+      "fontSha256": "3fdf69cabf06049ea70a00b5919340e2ce1e6d02b0cc3c4b44fb6801bd1e0d22",
+      "fontSizePx": 36,
+      "height": 48,
+      "id": "words-regular",
+      "inkGray8": 0,
+      "measuredTextBox": [
+        0,
+        0,
+        154,
+        27
+      ],
+      "payloadBytes": 8160,
+      "pixelsSha256": "845e08157d5bd1a5d73ae9fb535314564700a64aec884e8cac10c6d9953f25bf",
+      "polarity": "dark-on-light",
+      "tags": [],
+      "textAnchor": "lt",
+      "textUtf8Sha256": "5b24f443970830915078a5fe56d9cec07a3dc209fc259e7dd42db54e18615c9f",
+      "truthSource": "first-party SAMPLES literal; synthetic ground truth; not camera transcription",
+      "width": 170
+    },
+    {
+      "actualInkBox": [
+        10,
+        12,
+        377,
+        36
+      ],
+      "backgroundGray8": 255,
+      "drawPosition": [
+        8,
+        12
+      ],
+      "expectedText": "Please read this line",
+      "fontFilename": "DejaVuSans-Bold.ttf",
+      "fontIndex": 0,
+      "fontSha256": "b184b89e3c1075f22f6b71575b6fc20d4972b3cfd3b23322ca6fd596dcaef167",
+      "fontSizePx": 32,
+      "height": 48,
+      "id": "phrase-bold",
+      "inkGray8": 0,
+      "measuredTextBox": [
+        0,
+        0,
+        370,
+        24
+      ],
+      "payloadBytes": 18528,
+      "pixelsSha256": "25cef458654478d98ce599040fafdb3aa28334bd6bb7cf0fdfc5ae8455301314",
+      "polarity": "dark-on-light",
+      "tags": [],
+      "textAnchor": "lt",
+      "textUtf8Sha256": "f088dd5530f2427fafa36815b59d91b20fa09c9f19d5d2af7f8cd21891cef04e",
+      "truthSource": "first-party SAMPLES literal; synthetic ground truth; not camera transcription",
+      "width": 386
+    },
+    {
+      "actualInkBox": [
+        10,
+        12,
+        190,
+        35
+      ],
+      "backgroundGray8": 255,
+      "drawPosition": [
+        8,
+        12
+      ],
+      "expectedText": "2026-10-23",
+      "fontFilename": "DejaVuSans.ttf",
+      "fontIndex": 0,
+      "fontSha256": "3fdf69cabf06049ea70a00b5919340e2ce1e6d02b0cc3c4b44fb6801bd1e0d22",
+      "fontSizePx": 32,
+      "height": 48,
+      "id": "date-regular",
+      "inkGray8": 0,
+      "measuredTextBox": [
+        0,
+        0,
+        184,
+        23
+      ],
+      "payloadBytes": 9600,
+      "pixelsSha256": "85b4ab1d0311dfc64a9da23d9d00425705b8ff2af49af88c74c530843a384204",
+      "polarity": "dark-on-light",
+      "tags": [
+        "numbers"
+      ],
+      "textAnchor": "lt",
+      "textUtf8Sha256": "9a5028763b8b5525e18ac9a5a598a4d9994aa77acdcb1e81aac966d11bfa5a5c",
+      "truthSource": "first-party SAMPLES literal; synthetic ground truth; not camera transcription",
+      "width": 200
+    },
+    {
+      "actualInkBox": [
+        11,
+        12,
+        236,
+        35
+      ],
+      "backgroundGray8": 255,
+      "drawPosition": [
+        8,
+        12
+      ],
+      "expectedText": "+12.50 -0.75",
+      "fontFilename": "DejaVuSans-Bold.ttf",
+      "fontIndex": 0,
+      "fontSha256": "b184b89e3c1075f22f6b71575b6fc20d4972b3cfd3b23322ca6fd596dcaef167",
+      "fontSizePx": 32,
+      "height": 48,
+      "id": "decimal-bold",
+      "inkGray8": 0,
+      "measuredTextBox": [
+        0,
+        0,
+        229,
+        23
+      ],
+      "payloadBytes": 11760,
+      "pixelsSha256": "7fae70370384a4f5f1472e4b48ee8621ea48474bbc948f3cf849c9bcc7cbfafb",
+      "polarity": "dark-on-light",
+      "tags": [
+        "numbers"
+      ],
+      "textAnchor": "lt",
+      "textUtf8Sha256": "7ad88e1baed952ba7f799be791e441eb192b2b9fca97924ef9dfc113d4e24566",
+      "truthSource": "first-party SAMPLES literal; synthetic ground truth; not camera transcription",
+      "width": 245
+    },
+    {
+      "actualInkBox": [
+        10,
+        11,
+        181,
+        37
+      ],
+      "backgroundGray8": 255,
+      "drawPosition": [
+        8,
+        11
+      ],
+      "expectedText": "O0 OO 00",
+      "fontFilename": "DejaVuSans.ttf",
+      "fontIndex": 0,
+      "fontSha256": "3fdf69cabf06049ea70a00b5919340e2ce1e6d02b0cc3c4b44fb6801bd1e0d22",
+      "fontSizePx": 36,
+      "height": 48,
+      "id": "o-zero-regular",
+      "inkGray8": 0,
+      "measuredTextBox": [
+        0,
+        0,
+        175,
+        26
+      ],
+      "payloadBytes": 9168,
+      "pixelsSha256": "efa374434bc1bb53274870bfdce5c21c85dd762433966e8102c6b962fb203068",
+      "polarity": "dark-on-light",
+      "tags": [
+        "O0",
+        "numbers"
+      ],
+      "textAnchor": "lt",
+      "textUtf8Sha256": "534d2241bc21543d7c2c199cb7bd162509fa3b89ba45f05648b40a6c73c68be1",
+      "truthSource": "first-party SAMPLES literal; synthetic ground truth; not camera transcription",
+      "width": 191
+    },
+    {
+      "actualInkBox": [
+        11,
+        10,
+        145,
+        37
+      ],
+      "backgroundGray8": 0,
+      "drawPosition": [
+        8,
+        10
+      ],
+      "expectedText": "Il1 I l 1",
+      "fontFilename": "DejaVuSans-Bold.ttf",
+      "fontIndex": 0,
+      "fontSha256": "b184b89e3c1075f22f6b71575b6fc20d4972b3cfd3b23322ca6fd596dcaef167",
+      "fontSizePx": 36,
+      "height": 48,
+      "id": "i-l-one-inverse",
+      "inkGray8": 255,
+      "measuredTextBox": [
+        0,
+        0,
+        139,
+        27
+      ],
+      "payloadBytes": 7440,
+      "pixelsSha256": "3d27de8c915fe355195e9fa068becb75ee20aeb28e1ca1eddb4de02f8fd5ebee",
+      "polarity": "light-on-dark",
+      "tags": [
+        "Il1",
+        "numbers"
+      ],
+      "textAnchor": "lt",
+      "textUtf8Sha256": "d1e4d3e10efd97da87a44189b617dc0076a97e1ebe42ff832da72b10d40a420f",
+      "truthSource": "first-party SAMPLES literal; synthetic ground truth; not camera transcription",
+      "width": 155
+    },
+    {
+      "actualInkBox": [
+        11,
+        11,
+        249,
+        36
+      ],
+      "backgroundGray8": 255,
+      "drawPosition": [
+        8,
+        11
+      ],
+      "expectedText": "Do not enter",
+      "fontFilename": "DejaVuSans-Bold.ttf",
+      "fontIndex": 0,
+      "fontSha256": "b184b89e3c1075f22f6b71575b6fc20d4972b3cfd3b23322ca6fd596dcaef167",
+      "fontSizePx": 34,
+      "height": 48,
+      "id": "negation-bold",
+      "inkGray8": 0,
+      "measuredTextBox": [
+        0,
+        0,
+        241,
+        25
+      ],
+      "payloadBytes": 12336,
+      "pixelsSha256": "df8f31f8c127e18fd8cad2cb8a65ed3547ec157ddedb670c6ac3cabc2901d27a",
+      "polarity": "dark-on-light",
+      "tags": [
+        "negation"
+      ],
+      "textAnchor": "lt",
+      "textUtf8Sha256": "ec2167f9742740715736262413d228386030514ad40a7d6fed0604d4862de5d9",
+      "truthSource": "first-party SAMPLES literal; synthetic ground truth; not camera transcription",
+      "width": 257
+    },
+    {
+      "actualInkBox": [
+        9,
+        10,
+        184,
+        37
+      ],
+      "backgroundGray8": 0,
+      "drawPosition": [
+        8,
+        10
+      ],
+      "expectedText": "café naïve",
+      "fontFilename": "DejaVuSans.ttf",
+      "fontIndex": 0,
+      "fontSha256": "3fdf69cabf06049ea70a00b5919340e2ce1e6d02b0cc3c4b44fb6801bd1e0d22",
+      "fontSizePx": 34,
+      "height": 48,
+      "id": "accents-inverse",
+      "inkGray8": 255,
+      "measuredTextBox": [
+        0,
+        0,
+        177,
+        27
+      ],
+      "payloadBytes": 9264,
+      "pixelsSha256": "66bac6b26ac8ccd8db4c89d446503eb77f8c187c3bf9d84a981f85e0fd903783",
+      "polarity": "light-on-dark",
+      "tags": [
+        "accents"
+      ],
+      "textAnchor": "lt",
+      "textUtf8Sha256": "13b003cc7a7084e7f2ee5da8baf71a9e0c2191f0ebba72f3fd39f4f3822b3461",
+      "truthSource": "first-party SAMPLES literal; synthetic ground truth; not camera transcription",
+      "width": 193
+    }
+  ],
+  "schema": "okuflow-owned-typeset-provenance-v1",
+  "status": "synthetic-unapproved-not-attested",
+  "toolNotices": {
+    "facts": "Installed Pillow 11.1.0 notice identifies MIT-CMU; FreeType remains a separately installed tool component.",
+    "installedPillowLicenseSha256": "17f240ae101143707e5e7303a5d800450d9ccc7475b463cedb555cefdb3c6ece"
+  },
+  "version": "okuflow-owned-typeset-gray8-v1"
+}

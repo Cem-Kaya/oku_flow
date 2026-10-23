@@ -1,5 +1,18 @@
 # OkuFlow Code Reference
 
+## Owned synthetic BF16 crop proposal (2026-10-23)
+
+`scripts/uct/generate_owned_bf16_crops.py` is an offline one-process authoring
+tool, separate from the application. `digest` hashes exact bytes, `json_bytes`
+provides sorted UTF-8/LF serialization, and `write_new` exclusively creates and
+reads back one output without replacing failures. `generate` verifies installed
+font/notice hashes, renders all eight `SAMPLES` literals into upright useful-width
+height48 GRAY8 and writes a contact sheet, strict corpus manifest, render
+provenance and unapproved hash-pin proposal. `main` accepts explicit installed
+inputs and fresh owned output, preserving the first exception. No model/runtime,
+GPU/network, child process or application integration exists. See
+[corpus source, contract and remaining gates](uct_owned_bf16_crops.md).
+
 ## Aspect-aware viewport and Resume continuity
 
 - `ComputeFitZoom`, `EffectiveFillZoom` and `StepFillZoom` in `view_transform`
