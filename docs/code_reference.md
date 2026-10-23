@@ -7378,6 +7378,10 @@ synthetic clock; worker completion alone is not UI admission.
   preparation-worker event polls, owned pinned BGRA atlas, unchanged GPU
   normalization/zero padding/CTC, eight N1 plus one full N8, actual output records,
   private build/device/plan receipts, session failure latch and post-pass publication.
+  `PreparePublicCandidate` rechecks `goldenStop` immediately after `RunPublicGolden`,
+  before `CheckGolden`; final-N8 deadline expiry throws ordinary `std::runtime_error`,
+  retaining observations for incomplete reporting and normal retirement without
+  typed FP32 fallback or publication. This R2 repair remains unbuilt/unrun.
   API/CUDA/unknown completion escapes to existing retained retirement/quarantine;
   only a confirmed typed refusal permits FP32 construction.
 - `CreatePublicBf16ValidationRecognizer` is a private explicit C++ seam with local

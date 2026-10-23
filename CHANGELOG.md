@@ -20,6 +20,10 @@
 - Keep private validation's FP32 plans cache-only in its isolated root, retain
   partial golden outputs on later faults, and pin native cache ancestors before
   publication. These independent-review repairs are unbuilt/unrun.
+- Recheck the public BF16 golden deadline after final N8 completion, before
+  golden validation or publication. Expiry retains observations and follows
+  normal retirement without an alternate-engine retry. This R2 repair is
+  unbuilt/unrun.
 
 - Zoom out to show an entire wide or portrait source. Wheel/key zoom stops
   once at Fill (1x), then continues toward whole-picture Fit; the slider snaps

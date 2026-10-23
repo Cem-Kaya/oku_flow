@@ -173,7 +173,12 @@ A bounded 64-entry process-session attempt latch retains failed/in-flight
 identity/plan attempts. There is no rebuild/retest-until-pass loop. Builder
 progress observes cancellation and a 600-second deadline; golden work has a
 120-second deadline and each event poll a 30-second limit, all on preparation
-only. Vendor builder calls are cooperatively cancellable, not forcibly preempted;
+only. Immediately after `RunPublicGolden` returns, `PreparePublicCandidate`
+rechecks the golden deadline/cancellation before `CheckGolden`. A final N8 event
+that completes after expiry cannot authorize golden success or publication:
+ordinary `std::runtime_error` retains the observations for incomplete failure
+reporting and normal retirement, without typed FP32 fallback.
+Vendor builder calls are cooperatively cancellable, not forcibly preempted;
 a stalled vendor call stays on its retained worker. BF16 context memory is capped at
 256 MiB, builder workspace 256 MiB, output at the existing N8 256-MiB ceiling,
 golden input ~4.5 MiB and atlas 1.5 MiB. These checks do not bound all undocumented
@@ -213,8 +218,11 @@ It does not cover this follow-up. All prior grants expired; P0 is not granted.
 raw text preservation, failure records, latching, atomic new-only storage and
 pending-input/model/staging/output quarantine cases. Storage fixtures are labelled
 non-model bytes, never fake passed receipts. All additions are **UNBUILT/UNRUN**.
-The one independent source review and subsequent unretested repairs are recorded
-in [review dispositions](uct_public_bf16_review.md). Native new-only rename,
+The R1/R2 independent source reviews and subsequent unretested repairs are recorded
+in [review dispositions](uct_public_bf16_review.md). Existing model-free BF16
+fixtures have no clock seam for the final-N8 deadline sequence; this narrow repair
+adds no mirrored helper/test. The actual deadline sequence and positive runtime
+path remain unverified pending a separate ROOT START. Native new-only rename,
 junction refusal and directory sharing still require actual fixture execution.
 
 Proposed finite root START C2: one frozen checkout, maximum 8 compile jobs,
