@@ -1,5 +1,11 @@
 # OkuFlow Tests
 
+`uct_paddle_cuda`'s `gpuAlgorithmsAndOwnedInputs` additionally compares full
+validation integrals (including zero borders) against an integer CPU oracle
+across warp/tile tails, decimations, padded pitch and repeated poisoned buffers.
+See [the resident GPU integral candidate](../docs/uct_gpu_integral.md) for the
+separate private source-linked timing protocol and acceptance limits.
+
 Initial paused frame-zero coverage is documented in
 [the source investigation](../docs/uct_initial_paused_frame.md).
 `initialPausedFrameZeroWaitsForReadyAndNeighbour` has eight model-free

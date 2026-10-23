@@ -10,6 +10,10 @@ failed cleanup resources; camera callers must acknowledge release only after
 its completed status. These development changes still require hardware gates.
 
 Current contents:
+- bounded TensorRT recognition-group look-ahead using two pinned metadata
+  slots and per-group events on the existing worker stream; equal-shape
+  groups overlap host merging, while cancellation drains issued work before
+  releasing input. See [measurement and scope](../../docs/uct_recognition_lookahead.md).
 - Zero-admission pressure segments are discarded without fake timeline credit;
   later real segments can recover. Nonempty finalization/seal/publication errors
   still latch, with explicit permanent-failure metadata distinct from native busy.

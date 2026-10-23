@@ -732,6 +732,12 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   approximate, not exact glyph geometry. `gpu::{Normalize,Detect,RecognitionWindows,Rectify,
   Decode,Probe}` in `uct_kernels` implement device equivalents using
   `gpu::{Component,Quad,Token}` with finite-value checks and bounded outputs.
+- `gpu::ValidationIntegral` retains two launches: the private
+  `validation::integralRows` uses one 256-thread block per row with integer warp
+  prefix scans, eight shared warp offsets and a tile carry; `integralColumns`
+  is unchanged. Every luma/table value and zero border retain serial policy.
+  The resident `Prepare` path uses this table before references/matching.
+  See [GPU integral scope and evidence](uct_gpu_integral.md).
 - `CreateDefaultRecognizer` delegates to `CreateAutomaticRecognizer`:
   TensorRT, Paddle CPU, Windows. The candidate-vector overload supports exact
   fallback tests. Private `AutomaticRecognizer` retires unavailable/failing
@@ -6374,7 +6380,12 @@ Production uses Windows OCR while TensorRT prepares, deferring configured CPU
 sessions until necessary. A complete bridge result can set `backendPreparing`
 to request preferred-backend refinement without bypassing evidence admission.
 `Libraries::PrepareBuilder` lazily loads compilation-only TensorRT resources;
-`TensorRtRecognizer` groups eight batch-one submissions per worker stream wait.
+`TensorRtRecognizer` groups eight batch-one submissions per worker completion
+event (or one wider neural batch). Private `State::GroupEvent` and two bounded
+pinned count/quad/token slots permit one same-size/same-canvas group of look-ahead
+while the host merges the preceding group. `RecognizeDevice` drains issued
+look-ahead before cancelled input release; shape/partial transitions stay serial.
+See [the measured candidate and acceptance limits](uct_recognition_lookahead.md).
 
 `UltraClearTextController::ScheduleImmutableRetry` retries unsuccessful selected
 or neighbour work under the same ticket with bounded timers. New geometry revokes

@@ -2122,6 +2122,54 @@ class PaddleTests final : public QObject
         if (cudaGetDeviceCount(&devices) != cudaSuccess || devices < 1)
             QSKIP("No CUDA device.");
         FixtureStream stream;
+        // Full-table oracle: every zero border and tile tail matters to proof.
+        for (int d : {1, 2, 3, 4, 9})
+        for (int ow : {1, 7, 8, 31, 32, 33, 127, 128, 129, 255, 256, 257,
+                       511, 512, 513, 910, 959, 960}) {
+            if (ow * d + 1 > 8192) continue;
+            const int width = ow * d + (d > 1 ? 1 : 0), height = 17 * d + (d > 1 ? 1 : 0);
+            const int stride = width * 4 + 28, oh = height / d;
+            QByteArray bytes(stride * height, char(0xcd));
+            for (int y = 0; y < height; ++y)
+                for (int x = 0; x < width; ++x) {
+                    auto* pixel = reinterpret_cast<uchar*>(bytes.data()) + y * stride + x * 4;
+                    pixel[0] = (x * 11 + y * 43) % 256;
+                    pixel[1] = (x * 31 + y * 97) % 256;
+                    pixel[2] = (x * 73 + y * 19) % 256;
+                    pixel[3] = 255;
+                }
+            std::vector<unsigned> expected(std::size_t(ow + 1) * (oh + 1), 0);
+            const int step = std::max(1, d / 2), per = (d + step - 1) / step;
+            for (int y = 0; y < oh; ++y) {
+                unsigned row = 0;
+                for (int x = 0; x < ow; ++x) {
+                    int value = 0;
+                    for (int dy = 0; dy < d; dy += step)
+                        for (int dx = 0; dx < d; dx += step) {
+                            const auto* p = reinterpret_cast<const uchar*>(bytes.constData()) +
+                                (y * d + dy) * stride + (x * d + dx) * 4;
+                            value += (29 * p[0] + 150 * p[1] + 77 * p[2]) >> 8;
+                        }
+                    row += value / (per * per);
+                    expected[std::size_t(y + 1) * (ow + 1) + x + 1] =
+                        expected[std::size_t(y) * (ow + 1) + x + 1] + row;
+                }
+            }
+            GpuBuffer<uchar> source(bytes.size());
+            GpuBuffer<unsigned> integral(expected.size());
+            QCOMPARE(cudaMemcpyAsync(source.data, bytes.constData(), bytes.size(),
+                                     cudaMemcpyHostToDevice, stream.value), cudaSuccess);
+            for (int repeat = 0; repeat < 3; ++repeat) {
+                QCOMPARE(cudaMemsetAsync(integral.data, 0x5a, expected.size() * sizeof(unsigned), stream.value), cudaSuccess);
+                gpu::ValidationIntegral(source.data, stride, width, height, d, integral.data, stream.value);
+                std::vector<unsigned> actual(expected.size());
+                QCOMPARE(cudaMemcpyAsync(actual.data(), integral.data, actual.size() * sizeof(unsigned),
+                                         cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+                QCOMPARE(cudaStreamSynchronize(stream.value), cudaSuccess);
+                QVERIFY2(actual == expected, qPrintable(QString("Integral mismatch: width %1 decimation %2 repeat %3")
+                    .arg(ow).arg(d).arg(repeat)));
+            }
+        }
         QImage image(128, 64, QImage::Format_ARGB32);
         for (int y = 0; y < 64; ++y)
             for (int x = 0; x < 128; ++x)

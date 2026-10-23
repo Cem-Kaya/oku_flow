@@ -15,20 +15,45 @@ __device__ int luma(const unsigned char *p)
 __global__ void integralRows(const unsigned char *p, size_t pitch, int w, int h, int d,
                              unsigned *out)
 {
-    const int y = blockIdx.x * blockDim.x + threadIdx.x, ow = w / d, oh = h / d;
+    const int y = blockIdx.x, ow = w / d, oh = h / d;
     if (y >= oh)
         return;
     const int step = max(1, d / 2), per = (d + step - 1) / step;
-    unsigned sum = 0;
-    out[(y + 1) * (ow + 1)] = 0;
-    for (int x = 0; x < ow; ++x)
+    // One complete 256-thread block cooperates on a row. Integer prefix sums
+    // retain the serial pass's exact table while adjacent lanes access adjacent
+    // source/output pixels. Every lane participates, including zero-filled tails.
+    __shared__ unsigned offsets[8], carry;
+    const int lane = threadIdx.x & 31, warp = threadIdx.x / 32;
+    if (!threadIdx.x) {
+        carry = 0;
+        out[(y + 1) * (ow + 1)] = 0;
+    }
+    __syncthreads();
+    for (int tile = 0; tile < ow; tile += 256)
     {
+        const int x = tile + threadIdx.x;
         int v = 0;
-        for (int a = 0; a < d; a += step)
-            for (int b = 0; b < d; b += step)
-                v += luma(p + (y * d + a) * pitch + (x * d + b) * 4);
-        sum += v / (per * per);
-        out[(y + 1) * (ow + 1) + x + 1] = sum;
+        if (x < ow)
+            for (int a = 0; a < d; a += step)
+                for (int b = 0; b < d; b += step)
+                    v += luma(p + (y * d + a) * pitch + (x * d + b) * 4);
+        unsigned prefix = v / (per * per);
+        for (int delta = 1; delta < 32; delta *= 2) {
+            const unsigned previous = __shfl_up_sync(0xffffffffu, prefix, delta);
+            if (lane >= delta) prefix += previous;
+        }
+        if (lane == 31) offsets[warp] = prefix;
+        __syncthreads();
+        if (!threadIdx.x)
+            for (int i = 0; i < 8; ++i) {
+                const unsigned total = offsets[i];
+                offsets[i] = carry;
+                carry += total;
+            }
+        __syncthreads();
+        if (x < ow) out[(y + 1) * (ow + 1) + x + 1] = offsets[warp] + prefix;
+        // No lane may overwrite an offset before all lanes consumed this tile.
+        __syncthreads();
     }
 }
 __global__ void integralColumns(unsigned *p, int w, int h)
@@ -1074,7 +1099,7 @@ __global__ void fingerprint(const unsigned char *p, size_t pitch, int w, int h, 
 void ValidationIntegral(const void *p, size_t pitch, int w, int h, int d, unsigned *out,
                         cudaStream_t s)
 {
-    validation::integralRows<<<(h / d + 127) / 128, 128, 0, s>>>(
+    validation::integralRows<<<h / d, 256, 0, s>>>(
         static_cast<const unsigned char *>(p), pitch, w, h, d, out);
     validation::integralColumns<<<(w / d + 128) / 128, 128, 0, s>>>(out, w / d, h / d);
 }

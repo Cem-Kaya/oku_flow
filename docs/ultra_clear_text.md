@@ -1,5 +1,9 @@
 # Ultra Clear Text (experimental, development)
 
+Resident GPU validation uses [cooperative integral rows](uct_gpu_integral.md),
+preserving exact table values and downstream source/proof policy. This stage's
+private timing is separate from inference and live presentation measurements.
+
 An optional [supplemental regional executor](uct_active_regional_ocr.md) uses
 current owned inputs between baseline full reads when
 `OKUFLOW_UCT_REGIONAL_OCR=1`. It preserves full deadlines and priority, strict

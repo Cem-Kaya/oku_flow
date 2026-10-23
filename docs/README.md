@@ -84,6 +84,10 @@ model/batch comparison and exact measurement boundaries.
 
 [GPU OCR batching](uct_gpu_batching.md) describes dynamic TensorRT batches,
 allocation ceilings and the finite latency/quality comparison.
+[Recognition-group look-ahead](uct_recognition_lookahead.md) records bounded
+host/GPU overlap and its dense-worker measurement; the
+[resident GPU integral scan](uct_gpu_integral.md) records exact cooperative
+table construction and its separate stage-level evidence.
 
 [UCT color and readiness repairs](uct_color_startup_repair.md) cover local word
 colors, active GPU/CPU status and paused-frame recovery.

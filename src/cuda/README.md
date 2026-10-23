@@ -35,3 +35,8 @@ image readback. See [surface perspective](../../docs/uct_surface_perspective.md)
 
 One 128-thread block cooperates on each request: grid sampling, level-parallel
 flooding, line hypotheses/refits and the ink-plane rescan share the work.
+
+Resident UCT validation-integral rows use one cooperating 256-thread block per
+row, retaining the serial table's exact unsigned values and unchanged column
+pass. No extra global buffer, transfer or launch is added. See
+[GPU integral scope and validation](../../docs/uct_gpu_integral.md).
