@@ -60,7 +60,7 @@ try {
         transport=new StdioClientTransport({command:bridge,args:['--instance',ready.selector],stderr:'pipe'});
         client=new Client({name:'OkuFlow SDK fixture',version:'1.0'},{capabilities:{}});await client.connect(transport);
         const list=await client.listTools();assert.equal(client.getServerVersion().version,edition);
-        assert.equal(list.tools.length,{'dev-core':14,'dev-capture':17,'dev-camera':19,'v1':36,'dev-full':36}[edition]);
+        assert.equal(list.tools.length,{'dev-core':14,'dev-capture':17,'dev-camera':19,'v1':43,'dev-full':43}[edition]);
         for(const tool of list.tools){assert.equal(tool.inputSchema.$schema,'http://json-schema.org/draft-07/schema#');
             assert.equal(tool.outputSchema.type,'object');assert(tool.outputSchema.oneOf);assert.equal(tool.annotations.openWorldHint,false);
             const additive=['capture.photo.take','capture.recording.start','view.observe'].includes(tool.name);
@@ -69,12 +69,12 @@ try {
         failure(await call('app.state.get'));
         assert.equal((await command(`approve:${peerId}`,'approved')).ok,true);
     });
-    if(edition==='dev-full'){
+    if(edition==='dev-full'||edition==='v1'){
         await check('expanded immutable metadata pages and protected categories',async()=>{
             let afterField;const ids=new Set();let fields=0,protectedEntries=0,actions=0;
             for(let page=0;page<20;++page){
                 const result=success(await call('app.controls.list',{limit:16,...(afterField?{afterField}:{})}));
-                assert.equal(result.catalogEdition,'dev-full');assert(result.items.length<=16);
+                assert.equal(result.catalogEdition,edition);assert(result.items.length<=16);
                 assert(Buffer.byteLength(JSON.stringify(result))<=32*1024);
                 for(const item of result.items){assert(!ids.has(item.id));ids.add(item.id);assert.equal(item.value,undefined);
                     if(item.kind==='parameter'){++fields;assert.equal(item.implementation,'target-integration-required');}
@@ -82,7 +82,7 @@ try {
                     else{++actions;assert(['existing-tool-runtime-gated','native-ui-only'].includes(item.status));}}
                 if(!result.hasMore)break;assert(result.afterField);assert.notEqual(result.afterField,afterField);afterField=result.afterField;
             }
-            assert.equal(fields,94);assert.equal(protectedEntries,17);assert.equal(actions,39);
+            assert.equal(fields,98);assert.equal(protectedEntries,17);assert.equal(actions,46);
             failure(await call('app.controls.list',{afterField:'unknown.field'}),'invalid_argument');
         });
         await check('expanded schema admission with explicit synthetic read subset',async()=>{

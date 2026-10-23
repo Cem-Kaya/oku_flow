@@ -99,6 +99,28 @@ golden failures remain recorded separately.
 
 ## Evidence and remaining delivery work
 
+### Cleanup closure on 24 October
+
+A fresh source-pinned run at `5e4bf7f` rebuilt the application and native window
+fixture, then passed **SCOPED 4/252**: owned cleanup, payload staging, OCR bundle
+metadata and shared-source equivalence. Zero cases/Qt rows were skipped or
+unresolved. Both the child and controller exited **0**, in 127.22 seconds.
+The compiler left a VCTIP uploader after the ten-second natural-drain window.
+The tracked inspector verified its exact Job membership, process creation time,
+canonical image path and independently pinned SHA-256 before owned cleanup.
+The final Job had zero members and the independent runner probe succeeded.
+
+This closes the reproduced cleanup issue without reclassifying earlier unknown
+PIDs. The old exit-125 receipts remain failures. A preceding fresh build passed
+but its wrapper incorrectly treated regenerated Qt resource source as frozen
+input; that failed receipt is retained. The corrected wrapper keeps tracked
+source/tool hashes fixed, records generated outputs after compilation and
+removes only one owned object to exercise the real compiler lifecycle.
+
+Workstation evidence: `release-acceptance-20261024/CLEANUP_CLOSURE_RESULT.json`
+and `CLEANUP_CLOSURE_HASHES.json`, alongside the original failed generations.
+The successful tracked gate is not full release or disposable-VM acceptance.
+
 Workstation-only evidence root:
 `Z:/Projects/OkuFlow/local-work-data/uct-bf16-app-default-20261023/`:
 

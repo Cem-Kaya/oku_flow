@@ -333,8 +333,9 @@ class McpTests final : public QObject {
     }
     void devFullProcessSubset() {
         using namespace okuflow::agent;
-        if (BuiltControlCatalogEdition() != CatalogEdition::DevFull)
-            QSKIP("Explicit dev-full bridge/fixture build required; default remains dev-camera");
+        const auto edition = BuiltControlCatalogEdition();
+        if (edition != CatalogEdition::DevFull && edition != CatalogEdition::V1)
+            QSKIP("Expanded dev-full or v1 bridge/fixture build required");
         QProcess app;
         HideFixture(app);
         app.setProgram(QString::fromUtf8(OKUFLOW_MCP_APP_FIXTURE));
@@ -363,7 +364,7 @@ class McpTests final : public QObject {
         auto page = Read(bridge);
         auto content = page.Find("result")->Find("structuredContent");
         QVERIFY(content);
-        QCOMPARE(content->Find("catalogEdition")->String(), std::string("dev-full"));
+        QCOMPARE(content->Find("catalogEdition")->String(), std::string(CatalogEditionName(edition)));
         QCOMPARE(content->Find("items")->Elements().size(), std::size_t(16));
         Write(
             bridge,

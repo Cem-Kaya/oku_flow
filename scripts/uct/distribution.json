@@ -2,7 +2,7 @@
   "schema": 1,
   "description": "Private Windows x64 UCT payload; exact file inventory, no model-quality gate",
   "maxFileBytes": 536870912,
-  "maxTotalBytes": 2147483648,
+  "maxTotalBytes": 3221225472,
   "packages": [
     {
       "id": "paddleocr",
@@ -71,9 +71,9 @@
     }
   ],
   "provenance": {
-    "selectedArchiveEntries": "2026-10-24: all four ORT files and all six TensorRT files below matched the corresponding cached ZIP entry bytes; whole archives were NOT rehashed in this review",
+    "selectedArchiveEntries": "2026-10-24: selected ORT/TRT entries matched cached ZIP bytes. Full TensorRT ZIP freshly rehashed to the independent pins.json SHA256; ORT whole-archive rehash not repeated.",
     "cuda": "NVRTC, matching builtins and LICENSE hashes match the existing offline-payload-candidate inventory and current installed files; installer archive not checked",
-    "runtimeClosure": "pending parent cold build/load validation, including SM75 resource and PTX fallback on newer GPUs",
+    "runtimeClosure": "Desktop SM75/86/89/120 plus PTX. Initial SM75+PTX-only cold check refused missing SM89; repair validation pending. Server SM80/90/100 resources are outside this desktop bundle; full external SDK override remains available.",
     "installerAcceptance": "pending disposable Windows VM",
     "tensorRtLicense": "Original versioned HTML retained in third_party/tensorrt/LICENSE-11.4.html; source and Supplement 2 runtime DLL terms reviewed by parent"
   },
@@ -429,6 +429,30 @@
       "bytes": 11376,
       "sha256": "3840c5c0c61c294264d2dd77b8777be6ddd90121ef4e0e64abcd22edea581d6e",
       "package": "paddleocr"
+    },
+    {
+      "root": "tensorrt",
+      "source": "bin/nvinfer_builder_resource_sm86_11.dll",
+      "path": "app/ocr/tensorrt/bin/nvinfer_builder_resource_sm86_11.dll",
+      "bytes": 255198320,
+      "sha256": "8a25ec5d15fdaa3f51fff2de9d9bcecb308141b1d92d1dc37faabf64b847d1a5",
+      "package": "tensorrt"
+    },
+    {
+      "root": "tensorrt",
+      "source": "bin/nvinfer_builder_resource_sm89_11.dll",
+      "path": "app/ocr/tensorrt/bin/nvinfer_builder_resource_sm89_11.dll",
+      "bytes": 267857008,
+      "sha256": "47a92f598f96abadbc6076fe07e4abab15aff1a14867a3ecbd1d7996f845d731",
+      "package": "tensorrt"
+    },
+    {
+      "root": "tensorrt",
+      "source": "bin/nvinfer_builder_resource_sm120_11.dll",
+      "path": "app/ocr/tensorrt/bin/nvinfer_builder_resource_sm120_11.dll",
+      "bytes": 402072688,
+      "sha256": "6c9100e8c4ddc55b0ecf8fa878968559a5bab17b84f8d5c64080a1f38d332be1",
+      "package": "tensorrt"
     }
   ]
 }

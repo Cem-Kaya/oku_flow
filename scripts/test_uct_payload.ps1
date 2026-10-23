@@ -86,10 +86,12 @@ try {
             }
             Assert-Fixture ($pin.Success -and $pin.Groups[1].Value -ceq $m.convertedGraphSha256) 'Compiled BF16 tier/role pin differs from catalog.'
         }
-        # Exact extra allowlist: prevent tools, corpora, caches or architecture expansion.
+        # Exact desktop resource allowlist: no tools, corpora or engine caches.
         $extra = @('app/ocr/cpu/onnxruntime.dll','app/ocr/cpu/LICENSE','app/ocr/cpu/ThirdPartyNotices.txt','app/ocr/cpu/Privacy.md',
             'app/ocr/tensorrt/bin/nvinfer_11.dll','app/ocr/tensorrt/bin/nvonnxparser_11.dll',
             'app/ocr/tensorrt/bin/nvinfer_builder_resource_sm75_11.dll','app/ocr/tensorrt/bin/nvinfer_builder_resource_ptx_11.dll',
+            'app/ocr/tensorrt/bin/nvinfer_builder_resource_sm86_11.dll','app/ocr/tensorrt/bin/nvinfer_builder_resource_sm89_11.dll',
+            'app/ocr/tensorrt/bin/nvinfer_builder_resource_sm120_11.dll',
             'app/ocr/tensorrt/doc/Acknowledgements.txt','app/ocr/tensorrt/doc/README.txt','app/ocr/tensorrt/doc/TENSORRT_11_4_LICENSE.html',
             'app/ocr/tensorrt/doc/PROVENANCE.json',
             'app/ocr/tensorrt/cuda/bin/nvrtc64_120_0.dll','app/ocr/tensorrt/cuda/bin/nvrtc-builtins64_129.dll','app/ocr/tensorrt/cuda/LICENSE',
@@ -98,7 +100,7 @@ try {
         $expected = @($extra)
         foreach ($m in $pins.models) { foreach ($name in $m.files.Keys) { $expected += "app/ocr/$($m.directory)/$name" } }
         foreach ($m in $catalog.models) { $expected += "app/models/$($m.bundlePath)" }
-        Assert-Fixture ($manifest.files.Count -eq 44 -and !(Compare-Object ($expected | Sort-Object) ($manifest.files.path | Sort-Object))) 'Unexpected distribution file set.'
+        Assert-Fixture ($manifest.files.Count -eq 47 -and !(Compare-Object ($expected | Sort-Object) ($manifest.files.path | Sort-Object))) 'Unexpected distribution file set.'
         foreach ($f in $manifest.files) {
             Assert-UctRelativePath $f.source
             Assert-UctRelativePath $f.path

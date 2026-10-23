@@ -234,7 +234,7 @@ function Invoke-UctPayloadCopy([hashtable]$Manifest, [hashtable]$Roots, [string]
     [hashtable]$Generated = @{}, [string]$DistributionSha256 = '') {
     if (!$IsWindows) { throw 'UCT payload staging requires Windows file/stream semantics.' }
     if ($Manifest.schema -ne 1 -or $Manifest.maxFileBytes -lt 1 -or $Manifest.maxFileBytes -gt 536870912 -or
-        $Manifest.maxTotalBytes -lt 1 -or $Manifest.maxTotalBytes -gt 2147483648 -or
+        $Manifest.maxTotalBytes -lt 1 -or $Manifest.maxTotalBytes -gt 3221225472 -or
         @($Manifest.files).Count -lt 1 -or @($Manifest.files).Count -gt 128) { throw 'Invalid bounded UCT inventory.' }
     $bundlePath = Get-UctAbsolutePath $Bundle
     Assert-UctRegularPath $bundlePath -Directory

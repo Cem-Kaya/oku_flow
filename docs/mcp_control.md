@@ -199,6 +199,14 @@ independent client interoperability for that private fixture, not live-app,
 provider, device, accessibility or shipping acceptance.
 ## Expanded private acceptance and packaging preparation
 
+The current expanded catalog contains **43 tools, 98 parameters, 17 protected
+entries and 46 actions**. The opt-in SDK scripts now assert those current counts
+and accept V1 for the same scenarios. `devFullProcessSubset` also runs under V1
+instead of skipping its assertions. The real-target fixture can be built with
+either CPU `dev-full` or CPU `v1`, using `OkuFlowApp.exe` when deployed identity
+policy is selected. These harness repairs are not a declaration that the
+focused provider/device/native-approval or installer checks have passed.
+
 The independent SDK fixture now exercises all 19 tools in 14 scenario groups
 through actual stdio, IPC and service enforcement. Its persistent finite
 synthetic target uses the real OperationTracker for explicit pending/terminal

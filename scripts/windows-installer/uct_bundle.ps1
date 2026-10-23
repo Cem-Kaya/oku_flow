@@ -86,7 +86,7 @@ function Get-OkuFlowUctBundleMetadata([string]$BundleRoot, [string]$RepositoryRo
     $distribution = Read-OkuFlowUctJson (Join-UctContainedPath $repo 'scripts/uct/distribution.json')
     $catalog = $distribution.Value
     if ($catalog.schema -ne 1 -or $catalog.maxFileBytes -lt 1 -or $catalog.maxFileBytes -gt 536870912 -or
-        $catalog.maxTotalBytes -lt 1 -or $catalog.maxTotalBytes -gt 2147483648 -or
+        $catalog.maxTotalBytes -lt 1 -or $catalog.maxTotalBytes -gt 3221225472 -or
         @($catalog.files).Count -lt 1 -or @($catalog.files).Count -gt 128) { throw 'Invalid UCT distribution bounds.' }
     $bf16 = Test-UctPayloadCatalog $catalog $repo
     $receiptDocument = Read-OkuFlowUctJson $receiptPath

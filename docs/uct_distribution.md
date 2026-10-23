@@ -18,7 +18,10 @@ The converter is retained as source; staging and the application never run it.
 CPU ONNX Runtime 1.31.0 retains `LICENSE`, `ThirdPartyNotices.txt` and
 `Privacy.md`. The private TensorRT 11.4.0.106 CUDA12.9 subset contains only
 `nvinfer_11.dll`, `nvonnxparser_11.dll`,
-`nvinfer_builder_resource_sm75_11.dll` and
+`nvinfer_builder_resource_sm75_11.dll`,
+`nvinfer_builder_resource_sm86_11.dll`,
+`nvinfer_builder_resource_sm89_11.dll`,
+`nvinfer_builder_resource_sm120_11.dll` and
 `nvinfer_builder_resource_ptx_11.dll`, together with unchanged
 `doc/Acknowledgements.txt`, `doc/README.txt` and the full versioned agreement.
 The parent's exact `PROVENANCE.json` notice snapshot is retained beside them.
@@ -37,7 +40,13 @@ files. The toolkit license lists NVRTC and its builtins. No additional CUDA
 runtime dependency is established by this inventory. The application has its
 separately built static CUDA runtime.
 
-No SDK headers, static/import libraries, SDK tools, `trtexec`, architecture DLL
+This is the desktop GPU inventory: native Turing, consumer/workstation Ampere,
+Ada and Blackwell resources, plus PTX. Server-only SM80/90/100 builder DLLs are
+not bundled; a separately installed full SDK remains an explicit runtime
+override. This payload does not claim fresh-build support on those server GPUs.
+All six model tiers/roles remain included.
+
+No SDK headers, static/import libraries, SDK tools, `trtexec`, unlisted DLL
 expansions, Python environments, archives, plans, timing caches, model review
 receipts or golden corpora are staged.
 
@@ -78,7 +87,7 @@ target rather than the junction. No machine-specific path is in the manifest.
 
 Every selected file has an exact relative source/destination, byte length,
 SHA-256 and package identity. The per-file ceiling is 512 MiB and the whole
-payload ceiling is 2 GiB. Before creating its targets the helper verifies all
+payload ceiling is 3 GiB. Before creating its targets the helper verifies all
 selected inputs, catalog parity and path safety. Paths refuse traversal,
 drive-relative/UNC/device aliases, alternate streams, reparse points in any
 ancestor, reserved Windows names, unsafe components and trailing dot/space
@@ -152,6 +161,15 @@ application and is not an installer or published bundle.
 The new CTest cases are `uct_payload_contract` and
 `uct_bundle_metadata_contract`, both serial with a 120-second limit and exact
 script/catalog/header runtime inputs.
+
+The first cold runtime check using only the staged SM75/PTX subset failed:
+TensorRT's builder explicitly requested SM89 on the Ada test GPU. The failure
+and confirmed retirement are retained. The repaired desktop inventory adds
+SM86/89/120, and raises only the total staging ceiling to 3 GiB. All ten
+model-free staging cases passed again; a fresh 47-file copy and metadata check
+verified 2,394,527,371 bytes in 31.95 seconds. The full cached TensorRT archive
+also freshly matched its independent `pins.json` hash, and all three new DLLs
+matched their exact archive entries. Cold runtime repair validation is pending.
 
 Actual cold TensorRT builds, the SM75
 resource and PTX fallback behavior, dynamic runtime dependency closure, full

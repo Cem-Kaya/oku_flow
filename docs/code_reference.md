@@ -1255,6 +1255,13 @@ or reading live credentials. See [CLI publishing](android_cli_publishing.md).
 
 ## Installer and brand tooling (2026-10-13)
 
+The opt-in MCP SDK fixtures assert the current expanded catalog (43 tools,
+98 parameters, 17 protected entries and 46 actions). Synthetic metadata and
+`devFullProcessSubset` execute for both `dev-full` and `v1`; native fixture
+handshakes report their compiled edition and use the sibling image name chosen
+by deployed identity policy. Native offscreen acceptance permits CPU V1 builds
+without claiming provider, camera or shipping acceptance from those fixtures.
+
 `scripts/stage_uct_payload.ps1` supplies `Invoke-UctPayloadStage` and
 `Invoke-UctPayloadCopy`: bounded, exact-hash source verification, streamed
 new-only copies, source/staged rehashes and a receipt marker written last.
@@ -1274,6 +1281,9 @@ Pinned file records retain their declared package owner. Legacy inventories
 without OCR remain readable; partial or unsealed OCR is refused.
 The shipping batch requires real CPU/TRT headers, stages all model tiers after
 bundle organization and passes `-RequireUctPayload` to release metadata.
+The desktop runtime inventory includes native SM75/86/89/120 builder resources
+and PTX, with a 512 MiB per-file and 3 GiB total staging ceiling. PTX preloading
+alone does not satisfy TensorRT's native builder dispatch on the tested Ada GPU.
 CUDA provenance remains tied to sealed build facts, including the NVRTC EULA.
 `uct_payload_contract` and `uct_bundle_metadata_contract` register the two
 serial, model-free PowerShell fixtures with absolute runtime inputs.

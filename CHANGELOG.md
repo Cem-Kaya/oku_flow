@@ -1,5 +1,9 @@
 # Changelog
 
+- Include the native desktop TensorRT builder resources needed for local OCR
+  engine creation; an isolated SM75/PTX-only cold start exposed the missing Ada
+  builder dependency before installer publication.
+
 ## [Unreleased]
 
 - Verify build cleanup survivors through held native Job/process handles and an

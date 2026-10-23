@@ -38,7 +38,9 @@ staging a release.
 SDK fixture interoperability does not establish live-app/provider/device,
 accessibility, cross-account token/session or release acceptance.
 
-The expanded script covers all 19 tools across 14 scenario groups with a
+The historical 19-tool script covered 14 scenario groups. The current expanded
+`dev-full`/`v1` fixture asserts 43 tools, 98 parameters, 17 protected entries and
+46 actions, including its paged metadata checks. It retains a
 persistent synthetic target and real service/operation tracking. Use
 `--evidence-dir` under LocalAppData for JUnit, JSON scenario receipts and logs.
 It verifies source/frames/capture denial, user-wins, durable photo/recording
@@ -50,7 +52,7 @@ production camera switching or release acceptance.
 
 `scripts/test_mcp_native_sdk.mjs` is a separate opt-in harness for the actual
 `AppControlTarget` fixture built with `OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE=ON`
-and the `dev-full` catalog. Both executables must be exact siblings under
+and the `dev-full` or `v1` catalog. Both executables must be exact siblings under
 `tests/native-control` in LocalAppData; the app must report `realTarget:true`.
 It launches only that fixture with `--stdio-fixture`, Qt offscreen, private
 settings/output and platform/device/provider bootstrap disabled. It uses the
@@ -60,9 +62,12 @@ same pinned development SDK; no additional dependency is installed or deployed.
 node scripts/test_mcp_native_sdk.mjs --sdk-root $sdkRoot --app-fixture <build>/tests/native-control/oku_flow.exe --bridge <build>/tests/native-control/okuflow_mcp.exe --evidence-dir $env:LOCALAPPDATA/OkuFlow/mcp-native-sdk-evidence
 ```
 
-The native harness is prepared but not yet validated. Its separate
+For deployed identity policy, pass `OkuFlowApp.exe` instead of `oku_flow.exe`.
+The fixture reports its actual compiled catalog, which must match the bridge.
+Earlier nine-scenario native runs passed the older catalog; they do not validate
+the expanded V1 harness repairs. Its separate
 `mcp-native-sdk-junit.xml` and JSON receipt identify the actual production target,
-offscreen CPU subset and omitted hardware/provider/full-94-effects acceptance.
+offscreen CPU subset and omitted hardware/provider/full-effects acceptance.
 Zoom and private saved-state checks, native user-wins, exact annotation
 approval and terminal undo/lease checks must actually pass before claiming that
 subset. Existing synthetic SDK evidence is never relabeled as native acceptance.

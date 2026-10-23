@@ -2330,7 +2330,9 @@ int main(int argc,char** argv) {
     if(!stdio) {NativeAcceptance tests(app);return QTest::qExec(&tests,argc,argv);}
     mcp::AppIpcEndpoint endpoint(NativeControlFixture::Service(app));
     if(!endpoint.SetEnabled(true))return 4;
-    Output({{"type","ready"},{"selector",endpoint.InstanceSelector()},{"catalogEdition","dev-full"},{"realTarget",true}});
+    const auto edition=agent::CatalogEditionName(agent::BuiltControlCatalogEdition());
+    Output({{"type","ready"},{"selector",endpoint.InstanceSelector()},
+        {"catalogEdition",QString::fromUtf8(edition.data(),edition.size())},{"realTarget",true}});
     endpoint.SetPendingChanged([&] {const auto id=endpoint.PendingPeerId();if(!id.isEmpty())Output({{"type","pending"},{"peerId",id}});});
     std::thread input([&] {
         std::string line;

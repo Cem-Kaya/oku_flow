@@ -27,7 +27,7 @@ const local=resolve(process.env.LOCALAPPDATA),folder=resolve(args.get('--evidenc
 for(const file of [fixture,bridge,folder])assert(file.toLowerCase().startsWith(local.toLowerCase()+'\\'),
     'Native fixture and evidence must stay in LocalAppData');
 assert.equal(dirname(fixture),dirname(bridge));assert.equal(basename(dirname(fixture)),'native-control');
-assert.equal(basename(fixture),'oku_flow.exe');assert.equal(basename(bridge),'okuflow_mcp.exe');
+assert(['oku_flow.exe','OkuFlowApp.exe'].includes(basename(fixture)));assert.equal(basename(bridge),'okuflow_mcp.exe');
 const app=spawn(fixture,['--stdio-fixture'],{stdio:['pipe','pipe','pipe'],windowsHide:true,
     env:{...process.env,QT_QPA_PLATFORM:'offscreen',OKUFLOW_VLM_API_KEY:''}});
 let appErrors='';app.stderr.on('data',b=>{appErrors+=b.toString();});
@@ -45,7 +45,7 @@ const scenarios=[];const check=async(name,fn)=>{const row={name,started:Date.now
     try{await fn();row.status='passed';}catch(error){row.status='failed';row.error=String(error);throw error;}
     finally{row.durationMs=Date.now()-row.started;}};
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-let client,peerId;
+let client,peerId,catalogEdition=null;
 const call=(name,arguments_={})=>client.callTool({name,arguments:arguments_});
 const success=result=>{assert.equal(result.isError,false);assert.equal(result.structuredContent.ok,true);
     assert.deepEqual(JSON.parse(result.content[0].text),result.structuredContent);
@@ -59,11 +59,12 @@ const nativeState=async()=>{const state=await command('native-state','native-sta
     assert.equal(state.cameraCount,0);assert.equal(state.recording,false);return state;};
 try{
     await check('actual production target and independent stdio lease admission',async()=>{
-        const ready=await next('ready');assert.equal(ready.realTarget,true);assert.equal(ready.catalogEdition,'dev-full');
+        const ready=await next('ready');assert.equal(ready.realTarget,true);assert(['dev-full','v1'].includes(ready.catalogEdition));
+        catalogEdition=ready.catalogEdition;
         assert.match(ready.selector,/^[a-f0-9]{32}$/);await nativeState();
         const transport=new StdioClientTransport({command:bridge,args:['--instance',ready.selector],stderr:'pipe'});
         client=new Client({name:'OkuFlow native SDK acceptance',version:'1.0'},{capabilities:{}});await client.connect(transport);
-        assert.equal(client.getServerVersion().version,'dev-full');const list=await client.listTools();assert.equal(list.tools.length,36);
+        assert.equal(client.getServerVersion().version,catalogEdition);const list=await client.listTools();assert.equal(list.tools.length,43);
         for(const tool of list.tools){const additive=['capture.photo.take','capture.recording.start','view.observe'].includes(tool.name);
             assert.equal(tool.annotations.destructiveHint,!(tool.annotations.readOnlyHint||additive));}
         peerId=(await next('pending')).peerId;assert.match(peerId,/^[a-f0-9]{32}$/);
@@ -78,7 +79,7 @@ try{
                 }else if(item.kind==='protected'){++protectedItems;assert.equal(item.requiresUi,true);assert.equal(item.writable,false);}
                 else ++actions;}
             if(!result.hasMore)break;assert(result.afterField);assert.notEqual(result.afterField,afterField);afterField=result.afterField;}
-        assert.equal(parameters,94);assert.equal(protectedItems,17);assert.equal(actions,39);
+        assert.equal(parameters,98);assert.equal(protectedItems,17);assert.equal(actions,46);
     });
     await check('all eight native grouped reads without bootstrap or hardware',async()=>{
         for(const group of ['image.settings','view.settings','camera.settings','recording.settings','assistant.preferences',
@@ -134,8 +135,8 @@ try{
     if(client)await client.close().catch(()=>{});if(app.exitCode===null)app.stdin.end('exit\n');
     lines.close();for(const waiter of waiting.splice(0))clearTimeout(waiter.timer);
     await mkdir(folder,{recursive:true});const escape=s=>String(s).replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&apos;'}[c]));
-    await writeFile(join(folder,'mcp-native-sdk-evidence.json'),JSON.stringify({sdk:'1.32.1',catalog:'dev-full',
+    await writeFile(join(folder,'mcp-native-sdk-evidence.json'),JSON.stringify({sdk:'1.32.1',catalog:catalogEdition,
         synthetic:false,target:'AppControlTarget',offscreen:true,hardwareAcceptance:false,providerAcceptance:false,
-        full94EffectsAcceptance:false,scenarios,fixtureStderr:appErrors},null,2)+'\n');
+        fullEffectsAcceptance:false,scenarios,fixtureStderr:appErrors},null,2)+'\n');
     await writeFile(join(folder,'mcp-native-sdk-junit.xml'),`<?xml version="1.0" encoding="UTF-8"?>\n<testsuite name="MCP actual native target offscreen SDK" tests="${scenarios.length}" failures="${scenarios.filter(s=>s.status==='failed').length}">${scenarios.map(s=>`<testcase name="${escape(s.name)}" time="${s.durationMs/1000}">${s.status==='failed'?`<failure message="${escape(s.error)}"/>`:''}</testcase>`).join('')}</testsuite>\n`);
 }

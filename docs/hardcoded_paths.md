@@ -3,6 +3,9 @@
 ## Shipping OCR payload inputs (24 October 2026)
 
 `build_release_bundle.bat` requires prepared physical absolute input paths.
+The desktop OCR runtime pins native builder resources for SM75/86/89/120 plus
+PTX. Data-center SM80/90/100 resources require an explicit full SDK override.
+Its bounded payload budget is 3 GiB total and 512 MiB per file.
 `OKUFLOW_UCT_PAYLOAD_RUNTIME` defaults to
 `%LOCALAPPDATA%\OkuFlow\ocr-runtime`; `OKUFLOW_UCT_PAYLOAD_SDK` defaults to
 `%LOCALAPPDATA%\OkuFlow\ocr-deps` and selects both ONNX Runtime headers and
