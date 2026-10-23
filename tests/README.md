@@ -1,6 +1,5 @@
 # OkuFlow Tests
 
-<<<<<<< HEAD
 `viewport_transform_geometry` covers wide/portrait/extreme-aspect whole-source
 fit, uniform partial bars, nonsticky Fill stepping and inverse Freeze framing.
 `settings_store_round_trip` retains sub-1x/whole-source preferences and legacy
@@ -52,7 +51,7 @@ approval/keys and numeric TensorRT runtime-floor admission; it does
 not deserialize TensorRT plans or validate engine lifetime. See the
 [frozen finite-slot precision plan](../docs/uct_precision_artifacts.md).
 This case and its build remain pending root START during offline preparation.
-=======
+
 ## Exact host merge replay (prepared, unmeasured)
 
 `uct_merge_replay` is a dedicated model-free CPU fixture. It compares frozen
@@ -77,7 +76,6 @@ from timing statistics. `<report>.inputs.bin` records exact versioned inputs;
 hash-pinned historical final output rows, explicitly regrouped into artificial
 calls with missing legacy fields defaulted. Those are function microbenchmarks,
 not captured call sequences, ground truth, GPU/full-worker or FPS evidence.
->>>>>>> c3e3fea (Optimize exact host UCT word merging with frozen CPU replay)
 
 `uct_paddle_cuda`'s `gpuAlgorithmsAndOwnedInputs` additionally compares full
 validation integrals (including zero borders) against an integer CPU oracle

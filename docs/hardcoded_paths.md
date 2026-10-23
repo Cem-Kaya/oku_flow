@@ -1,6 +1,5 @@
 # Hard-Coded Paths and Defaults
 
-<<<<<<< HEAD
 The offline schema-2 precision experiment contract in `uct_precision_artifacts.hpp`
 has no runtime selector or production approvals. It represents only medium
 detector profiles 32/544x960/960x960 and N8 medium recognition fixed1024 or
@@ -11,7 +10,7 @@ bounds and independently approved relative locators. Driver and actual loaded
 runtime DLL/version/hash are provenance only; old artifacts remain intact.
 Decoded dictionaries now come from one hash-verified snapshot limited to 8 MiB.
 See [contract and pending finite slots](uct_precision_artifacts.md).
-=======
+
 ## Exact host UCT merge candidate (unmeasured)
 
 `PaddleMergeRecognition` uses a call-local geometry cache capped at 1024 rows
@@ -21,7 +20,6 @@ stack buffers, bounded by four points doubling at most once per each of four
 edges. Explicit CPU replay timing has five warmups per arm, 31 alternating
 ABBA/BAAB blocks and a four-minute between-call deadline. Compilation,
 correctness and gains await parent START; see [method](uct_merge_optimization.md).
->>>>>>> c3e3fea (Optimize exact host UCT word merging with frozen CPU replay)
 
 ## Live RAM recap (development)
 

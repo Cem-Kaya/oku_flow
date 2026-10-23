@@ -1,6 +1,5 @@
 # OkuFlow Code Reference
 
-<<<<<<< HEAD
 ## Aspect-aware viewport and Resume continuity
 
 - `ComputeFitZoom`, `EffectiveFillZoom` and `StepFillZoom` in `view_transform`
@@ -40,7 +39,7 @@
 
 See [behavior and ownership](viewport_zoom_and_resume.md). Background fixtures
 are separate from native desktop, live provider/GPU and release acceptance.
-=======
+
 ## Exact host UCT merge candidate (unmeasured)
 
 `PaddleMergeRecognition` caches exact word shape/bounds, lazy area and row
@@ -63,7 +62,6 @@ binary inputs. `--frozen-input` restores those bytes; optional hash-pinned
 historical final outputs are labelled regrouped workloads. Compilation,
 correctness and performance remain unmeasured pending parent START. See
 [method and evidence limits](uct_merge_optimization.md).
->>>>>>> c3e3fea (Optimize exact host UCT word merging with frozen CPU replay)
 
 ## Source-supported text perspective
 
