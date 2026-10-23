@@ -1,5 +1,9 @@
 # OkuFlow Documentation Guide
 
+[Pinned OCR distribution](uct_distribution.md) describes the model/runtime
+payload, new-only staging, retained licenses, sealed inventory and release SBOM.
+Byte validation is separate from native runtime and disposable-VM acceptance.
+
 [UCT worker pilots](uct_worker_pilots_2026_10_23.md) records measured exact
 merge/batching and separate BF16/small-model results and quality limits.
 [BF16 app startup](uct_bf16_app_runtime_2026_10_23.md) records both-role BF16,

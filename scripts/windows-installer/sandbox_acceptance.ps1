@@ -19,6 +19,18 @@ try{
     foreach($file in @($settings,$capture)){New-Item -ItemType Directory -Path (Split-Path $file) -Force | Out-Null;[IO.File]::WriteAllText($file,'preserve owner data')}
     $desktop=Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'OkuFlow.lnk'
     $startMenu=Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'OkuFlow\OkuFlow.lnk'
+    # A successful upgrade does not establish a clean install of the candidate.
+    # Exercise that separate path before introducing the older product fixture.
+    Assert-Fixture (-not (Test-Path $install) -and -not (Test-Path $desktop) -and -not (Test-Path $startMenu)) 'Candidate clean-install starts without a prior installation or shortcuts'
+    Invoke-FixtureMsi '/i' (Join-Path $InputDirectory 'candidate.msi') 'clean-install-candidate'
+    Assert-Fixture ((Test-Path $desktop) -and (Test-Path $startMenu)) 'Candidate clean-install creates both shortcuts'
+    foreach($record in $inputData.files){
+        Assert-Fixture ((Get-FileHash -LiteralPath (Join-Path $install $record.path)).Hash.ToLowerInvariant() -eq $record.sha256) "Clean-installed payload matches: $($record.path)"
+    }
+    Invoke-FixtureMsi '/x' (Join-Path $InputDirectory 'candidate.msi') 'clean-uninstall-candidate'
+    Assert-Fixture (-not (Test-Path $desktop) -and -not (Test-Path $startMenu)) 'Candidate clean-uninstall removes both shortcuts'
+    Assert-Fixture (-not (Test-Path $install)) 'Candidate clean-uninstall removes the installation folder'
+    foreach($file in @($settings,$capture)){Assert-Fixture ([IO.File]::ReadAllText($file) -eq 'preserve owner data') "Candidate clean-uninstall preserves $file"}
     Invoke-FixtureMsi '/i' (Join-Path $InputDirectory 'previous.msi') 'install-previous'
     Assert-Fixture ((Test-Path $desktop) -and (Test-Path $startMenu)) 'Desktop and Start menu shortcuts are installed'
     Invoke-FixtureMsi '/i' (Join-Path $InputDirectory 'candidate.msi') 'upgrade-candidate'

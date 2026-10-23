@@ -14,7 +14,10 @@ param(
     [ValidateSet('', 'ON', 'OFF', '1', '0', 'TRUE', 'FALSE', 'YES', 'NO')]
     [string]$CudaEnabled = '',
     [Parameter(Mandatory)][string]$BuildDirectory,
-    [string]$Configuration = 'Release'
+    [string]$Configuration = 'Release',
+    # New tracked shipping bundles always stage OCR. Standalone legacy and
+    # synthetic non-OCR inventories retain their original metadata contract.
+    [switch]$RequireUctPayload
 )
 
 $qtRuntimeVersion =
@@ -25,6 +28,7 @@ $bundle = (Resolve-Path -LiteralPath $BundlePath).Path
 . (Join-Path $PSScriptRoot 'windows-installer/bundle_layout.ps1')
 . (Join-Path $PSScriptRoot 'windows-installer/mcp_bundle.ps1')
 . (Join-Path $PSScriptRoot 'windows-installer/release_build_facts.ps1')
+. (Join-Path $PSScriptRoot 'windows-installer/uct_bundle.ps1')
 $layout = Get-OkuFlowBundleLayout $bundle
 $payload = $layout.PayloadRoot
 $buildFacts = Get-OkuFlowReleaseBuildFacts $BuildDirectory $Configuration (Join-Path $bundle $layout.ApplicationRelativePath)
@@ -44,6 +48,13 @@ if (Test-Path -LiteralPath $mcpExecutable -PathType Leaf) {
 }
 $repository = (Resolve-Path -LiteralPath $RepositoryPath).Path
 if ([IO.Path]::GetFullPath($buildFacts.sourceDirectory) -ne $repository) { throw 'Build facts belong to a different source checkout.' }
+$uctInfo = Get-OkuFlowUctBundleMetadata -BundleRoot $bundle -RepositoryRoot $repository -Required:$RequireUctPayload
+if ($uctInfo -and $cudaIsEnabled) {
+    $nvrtcLicense = @($uctInfo.Inventory | Where-Object path -CEQ 'app/ocr/tensorrt/cuda/LICENSE')
+    if ($nvrtcLicense.Count -ne 1 -or $nvrtcLicense[0].sha256 -cne $buildFacts.cuda.licenseSha256) {
+        throw 'UCT NVRTC license differs from the effective build toolkit.'
+    }
+}
 $runtimePin = Get-Content (Join-Path $repository 'scripts/vc-runtime/pins.json') -Raw | ConvertFrom-Json
 $runtimeInstaller = Join-Path $payload $runtimePin.installer.name
 $runtimeLicense = Join-Path $payload 'licenses/MICROSOFT_VC_RUNTIME_LICENSE.rtf'
@@ -108,6 +119,14 @@ $fileRecords = foreach ($file in $files) {
         path = $relative
         bytes = $file.Length
         sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+}
+if ($uctInfo) {
+    foreach ($ocrRecord in $uctInfo.Inventory) {
+        $actual = @($fileRecords | Where-Object path -CEQ $ocrRecord.path)
+        if ($actual.Count -ne 1 -or $actual[0].bytes -ne $ocrRecord.bytes -or $actual[0].sha256 -cne $ocrRecord.sha256) {
+            throw "UCT payload changed during release inventory generation: $($ocrRecord.path)"
+        }
     }
 }
 
@@ -177,6 +196,7 @@ if ($mcpInfo) {
     $manifest.agentControl = [ordered]@{path=($layout.Prefix + 'okuflow_mcp.exe');
         sha256=(Get-FileHash -LiteralPath $mcpExecutable).Hash.ToLowerInvariant();buildInfo=$mcpInfo}
 }
+if ($uctInfo) { $manifest.ocr = $uctInfo.Manifest }
 $manifest | ConvertTo-Json -Depth 8 |
     Set-Content -LiteralPath (Join-Path $bundle 'release-manifest.json') -Encoding utf8NoBOM
 
@@ -389,8 +409,10 @@ if ($mcpInfo) {
         comment = 'Qt-free static-CRT first-party executable; no MCP SDK runtime is bundled. Exact path and V1/deployed-policy facts are in release-manifest.json.'
     }
 }
+if ($uctInfo) { $packages += @($uctInfo.Packages) }
 $packageIds = @($packages | ForEach-Object { $_.SPDXID })
 $relationships = @()
+if ($uctInfo) { $relationships += @($uctInfo.Relationships) }
 if ($mcpInfo) {
     $relationships += [ordered]@{spdxElementId='SPDXRef-Package-OkuFlow';
         relationshipType='CONTAINS';relatedSpdxElement='SPDXRef-Package-OkuFlow-MCP'}
@@ -536,6 +558,10 @@ $sbom = [ordered]@{
         })
     packages = $packages
     relationships = @($relationships)
+}
+if ($uctInfo) {
+    $sbom.files = @($uctInfo.Files)
+    $sbom.hasExtractedLicensingInfos += @($uctInfo.Licenses)
 }
 $sbom | ConvertTo-Json -Depth 8 |
     Set-Content -LiteralPath (Join-Path $bundle 'SBOM.spdx.json') -Encoding utf8NoBOM

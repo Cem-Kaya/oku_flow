@@ -1093,3 +1093,17 @@ aligned with the project goals.
 - Preserve old exit-125 receipts. Native fixtures use the complete Job inventory,
   including console-host children, and must leave an unrelated sentinel running.
   No registry, installed compiler file or foreign process change is required.
+
+## Pinned OCR release staging (2026-10-24)
+
+- Use `stage_uct_payload.ps1` and the tracked distribution manifest for all
+  original/BF16 model tiers and private ORT/TRT/NVRTC files. Supply prepared
+  physical source roots; never stage developer plans/caches or download during
+  packaging. Preserve exact licenses, source catalogs and converter provenance.
+- Generate metadata only after the final receipt marker. Verify both content
+  seals and every file against the current catalog; retain per-file SPDX package
+  ownership, generated model notices and unchanged root license bytes. Use the
+  model-free staging/metadata contracts before the full release pipeline.
+- Sandbox acceptance now covers a clean candidate install/uninstall before the
+  previous-version upgrade sequence. Neither script fixtures nor extracted-byte
+  checks substitute for that guest run or native GPU runtime acceptance.

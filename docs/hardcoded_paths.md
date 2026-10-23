@@ -1,5 +1,35 @@
 # Hard-Coded Paths and Defaults
 
+## Shipping OCR payload inputs (24 October 2026)
+
+`build_release_bundle.bat` requires prepared physical absolute input paths.
+`OKUFLOW_UCT_PAYLOAD_RUNTIME` defaults to
+`%LOCALAPPDATA%\OkuFlow\ocr-runtime`; `OKUFLOW_UCT_PAYLOAD_SDK` defaults to
+`%LOCALAPPDATA%\OkuFlow\ocr-deps` and selects both ONNX Runtime headers and
+`TensorRT-11.4.0.106-cuda12.9\TensorRT-11.4.0.106`. Set these explicit pointers
+to physical targets when the default paths are workstation junctions; the
+script does not resolve aliases or encode a workstation drive. The mandatory
+`OKUFLOW_UCT_PAYLOAD_MODELS` points to the converted-models parent containing
+`uct/`. Optional `OKUFLOW_UCT_PAYLOAD_CUDA` selects a physical toolkit root;
+otherwise the successful build's effective CUDA license directory supplies it.
+A CUDA override must have the same exact license bytes as that selected build.
+CPU-only builds require an explicit CUDA payload pointer for the private NVRTC
+subset. All payload bytes must match `scripts/uct/distribution.json`.
+
+Shipping configuration forces CPU adapter requirements ON, TensorRT requirements
+equal to `OKUFLOW_ENABLE_CUDA`, and both selected SDK paths after `CMAKE_ARGS`.
+For bundles, use the `OKUFLOW_ENABLE_CUDA` environment input to select CUDA;
+an extra CMake argument cannot silently remove the required adapter. Source
+paths, headers and selected file sizes are checked before compilation; exact
+hashes are checked during staging. No download, model conversion, preparation
+or cold engine build occurs. OCR staging runs after fresh bundle organization
+and before metadata. Metadata requires the final sealed receipt, current
+catalog pins, exact staged inventory and retained notices, recording BF16 GPU
+preference, same-tier FP32 fallback, CPU FP32 and per-file SPDX hashes.
+Legacy bundles without OCR remain readable; any OCR payload without its receipt
+is rejected. These receipts establish byte provenance, not runtime, hardware,
+recognition-quality or installer acceptance. See [UCT distribution](uct_distribution.md).
+
 Private installed OCR payload discovery uses `ocr/pins.json` beside the inner
 application to select the original models/configurations/CPU runtime, and
 `ocr/tensorrt/bin/nvinfer_11.dll` to select the private TensorRT root. Optional

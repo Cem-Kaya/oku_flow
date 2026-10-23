@@ -1255,6 +1255,29 @@ or reading live credentials. See [CLI publishing](android_cli_publishing.md).
 
 ## Installer and brand tooling (2026-10-13)
 
+`scripts/stage_uct_payload.ps1` supplies `Invoke-UctPayloadStage` and
+`Invoke-UctPayloadCopy`: bounded, exact-hash source verification, streamed
+new-only copies, source/staged rehashes and a receipt marker written last.
+`Test-UctPayloadCatalog` binds distribution records to the original and BF16
+model catalogs; `Get-UctModificationBytes` generates the retained model-change
+notice. Path helpers reject unsafe aliases, streams and reparse ancestors.
+The repository-parent staging exception still checks every selected source
+against the destination subtrees. It assumes an owned staging tree.
+
+`scripts/windows-installer/uct_bundle.ps1` supplies
+`Get-OkuFlowUctBundleMetadata`, `Read-OkuFlowUctJson`,
+`Assert-OkuFlowUctSourcePaths` and `Assert-OkuFlowUctCudaSource`. Metadata checks
+the current distribution, final receipt marker, both content seals, every
+staged file, generated notices and unchanged root licenses, then returns
+manifest fields, per-package/per-file SPDX records and exact custom licenses.
+Pinned file records retain their declared package owner. Legacy inventories
+without OCR remain readable; partial or unsealed OCR is refused.
+The shipping batch requires real CPU/TRT headers, stages all model tiers after
+bundle organization and passes `-RequireUctPayload` to release metadata.
+CUDA provenance remains tied to sealed build facts, including the NVRTC EULA.
+`uct_payload_contract` and `uct_bundle_metadata_contract` register the two
+serial, model-free PowerShell fixtures with absolute runtime inputs.
+
 `scripts/windows-installer/common.ps1` supplies stable per-path IDs/GUIDs,
 `New-VerifiedBundleSnapshot` (clean provenance, safe inventory, required files,
 copy/hash checks), SDK discovery, Authenticode signing and read-only MSI table
@@ -1268,9 +1291,11 @@ The VM fixture checks the installed resource path and rendered star/ring pixels.
 `test_msi_package.ps1` checks database policy and compares extracted payload
 hash multiplicities to the verified source without installation or UAC.
 `test_msi_sandbox.ps1` creates an owned, network-disabled disposable guest;
-`windows-installer/sandbox_acceptance.ps1` requires its WDAG account and checks
-real install/upgrade/downgrade/uninstall, payload bytes, shortcuts and retained
-user data. Its logs/result stay in the guest's mapped local evidence directory.
+`windows-installer/sandbox_acceptance.ps1` requires its WDAG account. It first
+clean-installs the candidate, verifies every installed byte and both shortcuts,
+then uninstalls while preserving fixture user data. It separately installs the
+previous MSI and checks upgrade, downgrade refusal and final uninstall. Its
+logs/result stay in the guest's mapped local evidence directory.
 The host waits for guest evidence rather than launcher exit because current
 Windows Sandbox detaches its RemoteSession process. Existing remote/guest
 sessions are refused. An idle Store Sandbox server is left running; its `wsb`

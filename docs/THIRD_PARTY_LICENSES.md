@@ -1,5 +1,31 @@
 # Third-Party Licenses and Attributions
 
+## Requested OCR installer payload (24 October 2026)
+
+The upcoming installer preparation includes the six original PP-OCRv6 graphs,
+their configurations/dictionaries and model cards, and the six converted BF16
+graphs identified by `scripts/uct/pins.json` and `scripts/uct/bf16-models.json`.
+Apache-2.0 notices and a conversion/modification record accompany the models.
+The first-party converter is included as provenance, not executed by installers.
+No OCR accuracy or golden-corpus requirement controls app precision selection.
+
+The private TensorRT payload is restricted to the runtime, ONNX parser and
+selected builder-resource DLLs needed for local engine creation. The versioned
+agreement is retained unchanged at `third_party/tensorrt/LICENSE-11.4.html`,
+with its retrieval/hash record in the adjacent `PROVENANCE.json`. Its TensorRT
+supplement section 2 identifies runtime `.so` and `.dll` files as distributable;
+the main agreement requires material application functionality and access only
+by the application. These libraries remain in OkuFlow's private runtime folder.
+Headers, `trtexec`, SDK archives and developer tools are excluded.
+
+The CUDA 12.9 license's Attachment A lists NVRTC and its builtins as
+redistributable. The proposed dependency subset retains that exact toolkit
+license and matching DLL bytes. ONNX Runtime CPU retains Microsoft's MIT license,
+third-party notices and privacy document. No driver, owner engine cache or
+prebuilt GPU plan is distributed. Runtime dependency closure, the staged SBOM
+and candidate-specific installer checks must be verified before publication;
+this preparation does not change the existing v0.2.5 download inventory.
+
 ## BF16 model family preparation (development only)
 
 The owner requested BF16 preference for all GPU detector and recognizer tiers,

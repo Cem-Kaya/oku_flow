@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- Verify build cleanup survivors through held native Job/process handles and an
+  independently pinned compiler telemetry image. Unknown survivors remain
+  failures; classification never terminates a process by name or PID.
+
+- Exercise clean candidate MSI installation and removal before the separate
+  previous-version upgrade, downgrade-refusal and uninstall scenarios.
+
 - Persist newly built OCR engines with Qt's atomic, non-replacing rename and
   report cache write failures. Align cold/warm serialized-size limits and check
   BF16 profile/output and recognizer context bounds before context allocation.

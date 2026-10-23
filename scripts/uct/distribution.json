@@ -1,0 +1,434 @@
+{
+  "schema": 1,
+  "description": "Private Windows x64 UCT payload; exact file inventory, no model-quality gate",
+  "maxFileBytes": 536870912,
+  "maxTotalBytes": 2147483648,
+  "packages": [
+    {
+      "id": "paddleocr",
+      "version": "PP-OCRv6 six pinned source and BF16 graphs",
+      "licenseDeclared": "Apache-2.0",
+      "noticePaths": [
+        "app/ocr/MODEL_LICENSES.txt",
+        "app/models/uct/MODIFICATIONS.txt"
+      ],
+      "name": "PaddleOCR PP-OCRv6 model family",
+      "downloadLocation": "NOASSERTION"
+    },
+    {
+      "id": "onnxruntime",
+      "version": "1.31.0 Windows x64 CPU",
+      "licenseDeclared": "MIT",
+      "archiveSha256": "3958d8a44984160692c1b4ffd0de3cb48f8c39f9d34bb31e433db06e30b82195",
+      "noticePaths": [
+        "app/ocr/cpu/LICENSE",
+        "app/ocr/cpu/ThirdPartyNotices.txt",
+        "app/ocr/cpu/Privacy.md"
+      ],
+      "name": "ONNX Runtime CPU",
+      "downloadLocation": "https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/onnxruntime-win-x64-1.31.0.zip"
+    },
+    {
+      "id": "tensorrt",
+      "version": "11.4.0.106 Windows AMD64 CUDA12.9",
+      "licenseDeclared": "LicenseRef-NVIDIA-TensorRT-11.4",
+      "archiveSha256": "82d29828ff7611b90f524cc13d45e56c752a6f4a3d223b07275012d0a2047bdc",
+      "licenseUrl": "https://docs.nvidia.com/deeplearning/tensorrt/11.4.0/reference/sla.html",
+      "noticePaths": [
+        "app/ocr/tensorrt/doc/TENSORRT_11_4_LICENSE.html",
+        "app/ocr/tensorrt/doc/Acknowledgements.txt",
+        "app/ocr/tensorrt/doc/README.txt",
+        "app/ocr/tensorrt/doc/PROVENANCE.json"
+      ],
+      "name": "NVIDIA TensorRT private runtime and local builder",
+      "downloadLocation": "https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/11.4.0/zip/TensorRT-Enterprise-11.4.0.106-Windows-amd64-cuda-12.9-Release-external.zip",
+      "licensePath": "app/ocr/tensorrt/doc/TENSORRT_11_4_LICENSE.html"
+    },
+    {
+      "id": "cuda-nvrtc",
+      "version": "CUDA 12.9.2 NVRTC 12.9.86",
+      "licenseDeclared": "LicenseRef-NVIDIA-CUDA-12.9",
+      "licenseUrl": "https://docs.nvidia.com/cuda/archive/12.9.2/eula/index.html",
+      "noticePaths": [
+        "app/ocr/tensorrt/cuda/LICENSE"
+      ],
+      "name": "NVIDIA CUDA NVRTC and builtins",
+      "downloadLocation": "NOASSERTION",
+      "licensePath": "app/ocr/tensorrt/cuda/LICENSE"
+    },
+    {
+      "id": "okuflow",
+      "version": "pinned first-party converter and catalogs",
+      "licenseDeclared": "GPL-3.0-only OR LicenseRef-OkuFlow-Commercial",
+      "noticePaths": [
+        "LICENSE",
+        "COMMERCIAL.md"
+      ],
+      "name": "OkuFlow model converter and provenance",
+      "downloadLocation": "NOASSERTION",
+      "licensePath": "COMMERCIAL.md",
+      "licenseUrl": "https://github.com/Cem-Kaya/oku_flow/blob/main/COMMERCIAL.md"
+    }
+  ],
+  "provenance": {
+    "selectedArchiveEntries": "2026-10-24: all four ORT files and all six TensorRT files below matched the corresponding cached ZIP entry bytes; whole archives were NOT rehashed in this review",
+    "cuda": "NVRTC, matching builtins and LICENSE hashes match the existing offline-payload-candidate inventory and current installed files; installer archive not checked",
+    "runtimeClosure": "pending parent cold build/load validation, including SM75 resource and PTX fallback on newer GPUs",
+    "installerAcceptance": "pending disposable Windows VM",
+    "tensorRtLicense": "Original versioned HTML retained in third_party/tensorrt/LICENSE-11.4.html; source and Supplement 2 runtime DLL terms reviewed by parent"
+  },
+  "files": [
+    {
+      "root": "runtime",
+      "source": "det/inference.onnx",
+      "path": "app/ocr/det/inference.onnx",
+      "bytes": 1780590,
+      "sha256": "193bab7a04fca699a6c82e6abb5b81bdb28177f0abd4062552b04908dafb19f8",
+      "package": "paddleocr"
+    },
+    {
+      "root": "runtime",
+      "source": "det/inference.yml",
+      "path": "app/ocr/det/inference.yml",
+      "bytes": 883,
+      "sha256": "3ac018be6f97499a08faa3bbdeb33640968d9307f6736d152902747a9f259593",
+      "package": "paddleocr"
+    },
+    {
+      "root": "runtime",
+      "source": "det/README.md",
+      "path": "app/ocr/det/README.md",
+      "bytes": 16064,
+      "sha256": "f48628931a5dc994ce5c67e32c94d71b4a7e96b8c5c1b00663284999c3c566bc",
+      "package": "paddleocr"
+    },
+    {
+      "root": "runtime",
+      "source": "rec/inference.onnx",
+      "path": "app/ocr/rec/inference.onnx",
+      "bytes": 21159378,
+      "sha256": "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634",
+      "package": "paddleocr"
+    },
+    {
+      "root": "runtime",
+      "source": "rec/inference.yml",
+      "path": "app/ocr/rec/inference.yml",
+      "bytes": 150579,
+      "sha256": "ab078671bb49f06228eadccd34f1bb501e157f7a047095ffb943ba81512c77d1",
+      "package": "paddleocr"
+    },
+    {
+      "root": "runtime",
+      "source": "rec/README.md",
+      "path": "app/ocr/rec/README.md",
+      "bytes": 16585,
+      "sha256": "7d46dbd183ac09bd5a2e6b4577dcb29240751b1c00eb6813eca308d529f86806",
+      "package": "paddleocr"
+    },
+    {
+      "root": "runtime",
+      "source": "det/medium/inference.onnx",
+      "path": "app/ocr/det/medium/inference.onnx",
+      "bytes": 62032837,
+      "sha256": "eb13b44b25bb36f89528b68720af8a61d9cf381176107f465db1757b65d086e1",
+      "package": "paddleocr"
+    },
+    {
+      "root": "runtime",
+      "source": "det/medium/inference.yml",
+      "path": "app/ocr/det/medium/inference.yml",
+      "bytes": 886,
+      "sha256": "7298d5ead546584af2504d03355f881ac7a7bc0eb1e282d3e159277c1d0af871",
+      "package": "paddleocr"
+    },
+    {
+      "root": "runtime",
+      "source": "det/medium/README.md",
+      "path": "app/ocr/det/medium/README.md",
+      "bytes": 16089,
+      "sha256": "3046e3aab0194a2291bb3941c93b980c2b3a938a24a5be88354968f6d6187ac8",
+      "package": "paddleocr"
+    },
+    {
+      "root": "runtime",
+      "source": "rec/medium/inference.onnx",
+      "path": "app/ocr/rec/medium/inference.onnx",
+      "bytes": 76554979,
+      "sha256": "9c09abf0957f7968c7586464b7397b84ad2387a0497a351af40e9acc71b673ba",
+      "package": "paddleocr"
+    },
+    {
+      "root": "runtime",
+      "source": "rec/medium/inference.yml",
+      "path": "app/ocr/rec/medium/inference.yml",
+      "bytes": 150580,
+      "sha256": "991b700facf5b50a7de193468207d5f4255b538dde0d312ae3b7c7a9b6873129",
+      "package": "paddleocr"
+    },
+    {
+      "root": "runtime",
+      "source": "rec/medium/README.md",
+      "path": "app/ocr/rec/medium/README.md",
+      "bytes": 16587,
+      "sha256": "ebce8d28436623ecab4952e24935aed86b3f8ecaf8f8736b92d5544f60fae1e9",
+      "package": "paddleocr"
+    },
+    {
+      "root": "runtime",
+      "source": "det/small/inference.onnx",
+      "path": "app/ocr/det/small/inference.onnx",
+      "bytes": 9880512,
+      "sha256": "d73e0058b7a8086bbd57f3d10b8bcd4ff95363f67e06e2762b5e814fe9c9410e",
+      "package": "paddleocr"
+    },
+    {
+      "root": "runtime",
+      "source": "det/small/inference.yml",
+      "path": "app/ocr/det/small/inference.yml",
+      "bytes": 885,
+      "sha256": "193f435274bf9f0b5f71a929bbfbcf148282df7e633b34e7c373e8f44741b516",
+      "package": "paddleocr"
+    },
+    {
+      "root": "runtime",
+      "source": "det/small/README.md",
+      "path": "app/ocr/det/small/README.md",
+      "bytes": 16076,
+      "sha256": "e9403667f0f92055d8ce9e73a2beb1002fc489d9342697db74039eb7178bb5fb",
+      "package": "paddleocr"
+    },
+    {
+      "root": "runtime",
+      "source": "rec/tiny/inference.onnx",
+      "path": "app/ocr/rec/tiny/inference.onnx",
+      "bytes": 4462639,
+      "sha256": "9ef676d6ed3c88256a2d92c640c44f25b0c40947e111b14b8be8f594091563e6",
+      "package": "paddleocr"
+    },
+    {
+      "root": "runtime",
+      "source": "rec/tiny/inference.yml",
+      "path": "app/ocr/rec/tiny/inference.yml",
+      "bytes": 55571,
+      "sha256": "66170210bad538e83fff3c4a3867e547d6bf20b50d64b20347c4b913f3034ea1",
+      "package": "paddleocr"
+    },
+    {
+      "root": "runtime",
+      "source": "rec/tiny/README.md",
+      "path": "app/ocr/rec/tiny/README.md",
+      "bytes": 16600,
+      "sha256": "e83dd03e515a2d064eaba8ec82248f21dbf6a0813550bafe4c70ee2f6e8fdf2a",
+      "package": "paddleocr"
+    },
+    {
+      "root": "models",
+      "source": "uct/det/medium/bf16-linear/inference.onnx",
+      "path": "app/models/uct/det/medium/bf16-linear/inference.onnx",
+      "bytes": 31130490,
+      "sha256": "5699b5d662f046d7fcad339b351263f154a13c67a11ee797f45074f8876db10c",
+      "package": "paddleocr"
+    },
+    {
+      "root": "models",
+      "source": "uct/det/small/bf16-linear/inference.onnx",
+      "path": "app/models/uct/det/small/bf16-linear/inference.onnx",
+      "bytes": 5004430,
+      "sha256": "05f643581c6662b1e04f201be302aeb4d3fd5f0b03bf65d483e420d977ab06e6",
+      "package": "paddleocr"
+    },
+    {
+      "root": "models",
+      "source": "uct/det/tiny/bf16-linear/inference.onnx",
+      "path": "app/models/uct/det/tiny/bf16-linear/inference.onnx",
+      "bytes": 951756,
+      "sha256": "cfb0aadcc7efb452cb830b30540d5d2468a79b2b59ffba0ec0e986dceaad5833",
+      "package": "paddleocr"
+    },
+    {
+      "root": "models",
+      "source": "uct/rec/medium/bf16-linear/inference.onnx",
+      "path": "app/models/uct/rec/medium/bf16-linear/inference.onnx",
+      "bytes": 38456512,
+      "sha256": "ecd8ffc92aa1b9f7a33b0ad39757b64887c465f15bb54853936b2136f94e5835",
+      "package": "paddleocr"
+    },
+    {
+      "root": "models",
+      "source": "uct/rec/small/bf16-linear/inference.onnx",
+      "path": "app/models/uct/rec/small/bf16-linear/inference.onnx",
+      "bytes": 10713780,
+      "sha256": "483b257a64da0b493e64dc58cc3827070eb11a9c7ee8ae0b1ffad7a61aeb03f1",
+      "package": "paddleocr"
+    },
+    {
+      "root": "models",
+      "source": "uct/rec/tiny/bf16-linear/inference.onnx",
+      "path": "app/models/uct/rec/tiny/bf16-linear/inference.onnx",
+      "bytes": 2289563,
+      "sha256": "7fce45ba34121940382e59fd6a81c78ffab85d80b3fd51d01a9b66c5372f31ad",
+      "package": "paddleocr"
+    },
+    {
+      "root": "runtime",
+      "source": "cpu/onnxruntime.dll",
+      "path": "app/ocr/cpu/onnxruntime.dll",
+      "bytes": 17253176,
+      "sha256": "0c42dc4e278f0968fdf9ebf1b1e54a74c657a9942e70803e453c91993451cf4c",
+      "package": "onnxruntime"
+    },
+    {
+      "root": "runtime",
+      "source": "cpu/LICENSE",
+      "path": "app/ocr/cpu/LICENSE",
+      "bytes": 1094,
+      "sha256": "c250d6278f0b47a6439fb7592b08b58a55eb9f535aa49a1db63211c3f982b674",
+      "package": "onnxruntime"
+    },
+    {
+      "root": "runtime",
+      "source": "cpu/ThirdPartyNotices.txt",
+      "path": "app/ocr/cpu/ThirdPartyNotices.txt",
+      "bytes": 344457,
+      "sha256": "c53a76501ef60db6f865f20599f220761201ac4057683acefdab37d861b86622",
+      "package": "onnxruntime"
+    },
+    {
+      "root": "runtime",
+      "source": "cpu/Privacy.md",
+      "path": "app/ocr/cpu/Privacy.md",
+      "bytes": 6635,
+      "sha256": "8c26e1fc8581d9553e475250fe014e3d1e5ea4ae9f1cb084a068ff8601703dc9",
+      "package": "onnxruntime"
+    },
+    {
+      "root": "tensorrt",
+      "source": "bin/nvinfer_11.dll",
+      "path": "app/ocr/tensorrt/bin/nvinfer_11.dll",
+      "bytes": 412735600,
+      "sha256": "9f658dc8e7d485371eb56c82db96b1f4f9d883c29098c449c4033f7126e3d17f",
+      "package": "tensorrt"
+    },
+    {
+      "root": "tensorrt",
+      "source": "bin/nvonnxparser_11.dll",
+      "path": "app/ocr/tensorrt/bin/nvonnxparser_11.dll",
+      "bytes": 2241648,
+      "sha256": "b9ba5e537703cad214479efea1046b773a5a808d69171d922b9bf797682d8faa",
+      "package": "tensorrt"
+    },
+    {
+      "root": "tensorrt",
+      "source": "bin/nvinfer_builder_resource_sm75_11.dll",
+      "path": "app/ocr/tensorrt/bin/nvinfer_builder_resource_sm75_11.dll",
+      "bytes": 168738416,
+      "sha256": "7bd13f84f0ac1b808ef52f072354920f1a54e33320b45e8c7790940dd9128a05",
+      "package": "tensorrt"
+    },
+    {
+      "root": "tensorrt",
+      "source": "bin/nvinfer_builder_resource_ptx_11.dll",
+      "path": "app/ocr/tensorrt/bin/nvinfer_builder_resource_ptx_11.dll",
+      "bytes": 505629808,
+      "sha256": "7063744c7c77a54812a09947639f2e4b3709f533af4c9ce567a83b682bb3b9f4",
+      "package": "tensorrt"
+    },
+    {
+      "root": "tensorrt",
+      "source": "doc/Acknowledgements.txt",
+      "path": "app/ocr/tensorrt/doc/Acknowledgements.txt",
+      "bytes": 327505,
+      "sha256": "175f0eff1102f77a9c84973e5e0cd2b5284b63abd4db379108b4d303189e9844",
+      "package": "tensorrt"
+    },
+    {
+      "root": "tensorrt",
+      "source": "doc/README.txt",
+      "path": "app/ocr/tensorrt/doc/README.txt",
+      "bytes": 2038,
+      "sha256": "7442043e562ba45e034c285a65b837d1b1ff04ea9603875b3f92d2d834bda3e7",
+      "package": "tensorrt"
+    },
+    {
+      "root": "repo",
+      "source": "third_party/tensorrt/LICENSE-11.4.html",
+      "path": "app/ocr/tensorrt/doc/TENSORRT_11_4_LICENSE.html",
+      "bytes": 61120,
+      "sha256": "ee9cc052ec5f03616f1bd9777cea89dda1b8f5413e7a1948b6f31b64773746c4",
+      "package": "tensorrt"
+    },
+    {
+      "root": "repo",
+      "source": "third_party/tensorrt/PROVENANCE.json",
+      "path": "app/ocr/tensorrt/doc/PROVENANCE.json",
+      "bytes": 523,
+      "sha256": "7cd36980fd8dc06931a7c5f22bdac0866d5083bf610172799e0ec4e00b34a48d",
+      "package": "tensorrt"
+    },
+    {
+      "root": "cuda",
+      "source": "bin/nvrtc64_120_0.dll",
+      "path": "app/ocr/tensorrt/cuda/bin/nvrtc64_120_0.dll",
+      "bytes": 89832960,
+      "sha256": "0cc63349fedffeec1660b30955e8028b6e4e4c26cf1e41c56dc4569fd5eca82c",
+      "package": "cuda-nvrtc"
+    },
+    {
+      "root": "cuda",
+      "source": "bin/nvrtc-builtins64_129.dll",
+      "path": "app/ocr/tensorrt/cuda/bin/nvrtc-builtins64_129.dll",
+      "bytes": 7217664,
+      "sha256": "c405226b0b394ed8bdc593bb1419b94a989f93248ed2873e8f2e0e27c1688ca1",
+      "package": "cuda-nvrtc"
+    },
+    {
+      "root": "cuda",
+      "source": "LICENSE",
+      "path": "app/ocr/tensorrt/cuda/LICENSE",
+      "bytes": 67876,
+      "sha256": "72c22161fc1ebf242443d45158a7dd382d68597b00eeb7a7f539be5c6114be33",
+      "package": "cuda-nvrtc"
+    },
+    {
+      "root": "repo",
+      "source": "scripts/uct/pins.json",
+      "path": "app/ocr/pins.json",
+      "bytes": 3996,
+      "sha256": "72b55daa63a5ca6e64a034a65bb3c96d7fa805b3a020eaa44a165265887c4a8a",
+      "package": "okuflow"
+    },
+    {
+      "root": "repo",
+      "source": "scripts/uct/bf16-models.json",
+      "path": "app/models/uct/bf16-models.json",
+      "bytes": 4084,
+      "sha256": "7733233c707edd290a8059ef612de4646af08bf8ba1177d0086136d8e8b3a5c1",
+      "package": "okuflow"
+    },
+    {
+      "root": "repo",
+      "source": "scripts/uct/precision_models.py",
+      "path": "app/ocr/sources/precision_models.py",
+      "bytes": 13934,
+      "sha256": "da22b96f803e380801db3ea8248e5427a9926f531e7f4344494c1469cf29cc95",
+      "package": "okuflow"
+    },
+    {
+      "root": "repo",
+      "source": "third_party/paddleocr/LICENSE",
+      "path": "app/ocr/MODEL_LICENSES.txt",
+      "bytes": 11376,
+      "sha256": "3840c5c0c61c294264d2dd77b8777be6ddd90121ef4e0e64abcd22edea581d6e",
+      "package": "paddleocr"
+    },
+    {
+      "root": "repo",
+      "source": "third_party/paddleocr/LICENSE",
+      "path": "app/models/uct/MODEL_LICENSES.txt",
+      "bytes": 11376,
+      "sha256": "3840c5c0c61c294264d2dd77b8777be6ddd90121ef4e0e64abcd22edea581d6e",
+      "package": "paddleocr"
+    }
+  ]
+}

@@ -175,8 +175,10 @@ uninstall a test MSI on the owner's machine to simulate a clean VM.
 <older-fixture> -BundlePath <verified-bundle>` automates that acceptance when
 Windows Sandbox is enabled. It owns a new guest, disables network/clipboard/
 camera/microphone, maps input read-only and maps only a private evidence folder
-for writes. The guest tests silent install, upgrade, downgrade rejection,
-every file hash, both shortcuts and uninstall preserving sentinel settings/
+for writes. The guest first clean-installs the candidate, verifies every payload
+hash and both shortcuts, and uninstalls it while preserving sentinel settings
+and captures. It then installs the previous MSI and tests the candidate upgrade,
+downgrade rejection, every file hash, both shortcuts and uninstall preserving sentinel settings/
 captures, then shuts down itself. It refuses an existing Sandbox session and
 does not enable Windows features or request elevation on the owner PC.
 Detached Sandbox launcher exit is not treated as completion; the host waits

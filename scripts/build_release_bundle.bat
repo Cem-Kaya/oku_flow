@@ -2,6 +2,7 @@
 setlocal EnableExtensions DisableDelayedExpansion
 set "STAGING_DIR="
 set "BUNDLE_STAGE_CREATED="
+set "BUNDLE_STAGE_PRESERVE="
 set "BUNDLE_FACTS_ENV="
 set "BUNDLE_PUBLISH_RESULT="
 
@@ -62,6 +63,25 @@ if defined BUNDLE_CHECK_TOOLCHAIN (
 set "CMAKE_EXTRA_ARGS=%CMAKE_ARGS%"
 if not defined OKUFLOW_ENABLE_CUDA set "OKUFLOW_ENABLE_CUDA=ON"
 if not defined OKUFLOW_ENABLE_TEXT_SR set "OKUFLOW_ENABLE_TEXT_SR=ON"
+
+rem Prepared physical source directories only. Explicit environment pointers
+rem select workstation storage; never resolve junctions or prepare dependencies.
+set "BUNDLE_UCT_RUNTIME=%LOCALAPPDATA%\OkuFlow\ocr-runtime"
+if defined OKUFLOW_UCT_PAYLOAD_RUNTIME set "BUNDLE_UCT_RUNTIME=%OKUFLOW_UCT_PAYLOAD_RUNTIME%"
+set "BUNDLE_UCT_SDK=%LOCALAPPDATA%\OkuFlow\ocr-deps"
+if defined OKUFLOW_UCT_PAYLOAD_SDK set "BUNDLE_UCT_SDK=%OKUFLOW_UCT_PAYLOAD_SDK%"
+set "BUNDLE_UCT_TENSORRT=%BUNDLE_UCT_SDK%\TensorRT-11.4.0.106-cuda12.9\TensorRT-11.4.0.106"
+set "BUNDLE_UCT_MODELS=%OKUFLOW_UCT_PAYLOAD_MODELS%"
+set "BUNDLE_UCT_CUDA=%OKUFLOW_UCT_PAYLOAD_CUDA%"
+if not defined BUNDLE_UCT_MODELS (
+    echo ERROR: Set OKUFLOW_UCT_PAYLOAD_MODELS to the physical converted-models parent containing uct.
+    echo The bundle script never downloads, converts, prepares or cold-compiles OCR payloads.
+    goto :fail
+)
+pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\windows-installer\uct_bundle.ps1" -Action Preflight ^
+    -OcrRuntimePath "%BUNDLE_UCT_RUNTIME%" -OcrSdkPath "%BUNDLE_UCT_SDK%" ^
+    -OcrTensorRtPath "%BUNDLE_UCT_TENSORRT%" -OcrModelsPath "%BUNDLE_UCT_MODELS%" -OcrCudaPath "%BUNDLE_UCT_CUDA%"
+if errorlevel 1 goto :fail
 set "TEST_RESUME="
 if "%OKUFLOW_TEST_RESUME%"=="1" set "TEST_RESUME=-Resume"
 
@@ -74,7 +94,12 @@ cmake -S "%ROOT_DIR%" -B "%BUILD_DIR%" -G "%GENERATOR%" ^
     %CMAKE_EXTRA_ARGS% ^
     -DCMAKE_BUILD_TYPE=Release ^
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ^
-    -DOKUFLOW_ENABLE_TESTS=ON
+    -DOKUFLOW_ENABLE_TESTS=ON ^
+    -DOKUFLOW_ENABLE_CUDA=%OKUFLOW_ENABLE_CUDA% ^
+    -DOKUFLOW_UCT_REQUIRE_PADDLE_CPU=ON ^
+    -DOKUFLOW_UCT_REQUIRE_TENSORRT=%OKUFLOW_ENABLE_CUDA% ^
+    "-DOKUFLOW_UCT_SDK_ROOT:PATH=%BUNDLE_UCT_SDK%" ^
+    "-DOKUFLOW_UCT_TENSORRT_ROOT:PATH=%BUNDLE_UCT_TENSORRT%"
 if errorlevel 1 goto :fail
 pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\validate_mcp_release_build.ps1" -BuildDirectory "%BUILD_DIR%" -CacheOnly
 if errorlevel 1 goto :fail
@@ -95,6 +120,13 @@ del /q "%BUNDLE_FACTS_ENV%"
 set "BUNDLE_FACTS_ENV="
 set "CAPABILITY_PROFILE=windows-cpu"
 if /I "%BUNDLE_EFFECTIVE_CUDA%"=="ON" set "CAPABILITY_PROFILE=windows-cuda"
+
+rem Effective configured facts choose the CUDA root unless an explicit physical
+rem pointer is supplied. An override must retain the same exact toolkit license.
+if not defined BUNDLE_UCT_CUDA if defined BUNDLE_CUDA_LICENSE_PATH for %%I in ("%BUNDLE_CUDA_LICENSE_PATH%") do for %%J in ("%%~dpI.") do set "BUNDLE_UCT_CUDA=%%~fJ"
+pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\windows-installer\uct_bundle.ps1" -Action Cuda ^
+    -OcrCudaPath "%BUNDLE_UCT_CUDA%" -ConfiguredCudaLicense "%BUNDLE_CUDA_LICENSE_PATH%"
+if errorlevel 1 goto :fail
 
 if "%OKUFLOW_SKIP_BUNDLE_TESTS%"=="1" (
     echo.
@@ -216,10 +248,18 @@ echo ===== ORGANIZE PORTABLE LAUNCH PATH =====
 pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\organize_release_bundle.ps1" -BundlePath "%STAGING_DIR%"
 if errorlevel 1 goto :fail
 
+echo ===== STAGE PINNED UCT PAYLOAD =====
+rem Preserve partial large-file copies and seals for diagnosis on any later failure.
+set "BUNDLE_STAGE_PRESERVE=1"
+pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\stage_uct_payload.ps1" ^
+    -BundleRoot "%STAGING_DIR%" -RuntimeRoot "%BUNDLE_UCT_RUNTIME%" ^
+    -TensorRtRoot "%BUNDLE_UCT_TENSORRT%" -ModelsRoot "%BUNDLE_UCT_MODELS%" -CudaRoot "%BUNDLE_UCT_CUDA%"
+if errorlevel 1 goto :fail
+
 echo ===== GENERATE RELEASE INTEGRITY METADATA =====
 pwsh.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%\scripts\generate_release_metadata.ps1" ^
     -BundlePath "%STAGING_DIR%" -RepositoryPath "%ROOT_DIR%" -QtVersion "%QT_RUNTIME_VERSION%" ^
-    -BuildDirectory "%BUILD_DIR%"
+    -BuildDirectory "%BUILD_DIR%" -RequireUctPayload
 if errorlevel 1 (
     echo ERROR: Release checksums, manifest, or SBOM could not be generated.
     goto :fail
@@ -522,7 +562,8 @@ exit /b %errorlevel%
 :fail
 if defined BUNDLE_PUBLISH_RESULT if exist "%BUNDLE_PUBLISH_RESULT%" del /q "%BUNDLE_PUBLISH_RESULT%"
 if defined BUNDLE_FACTS_ENV if exist "%BUNDLE_FACTS_ENV%" del /q "%BUNDLE_FACTS_ENV%"
-if defined BUNDLE_STAGE_CREATED if exist "%STAGING_DIR%" pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\publish_release_bundle.ps1" -DistDirectory "%DIST_DIR%" -StagingDirectory "%STAGING_DIR%" -Action DiscardStage
+if defined BUNDLE_STAGE_PRESERVE if exist "%STAGING_DIR%" echo Failed OCR staging preserved at: "%STAGING_DIR%"
+if not defined BUNDLE_STAGE_PRESERVE if defined BUNDLE_STAGE_CREATED if exist "%STAGING_DIR%" pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\publish_release_bundle.ps1" -DistDirectory "%DIST_DIR%" -StagingDirectory "%STAGING_DIR%" -Action DiscardStage
 popd
 :fail_no_popd
 echo.

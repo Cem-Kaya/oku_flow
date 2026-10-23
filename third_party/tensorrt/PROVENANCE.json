@@ -1,0 +1,9 @@
+{
+  "supplementVersion": "2021-02-25",
+  "sha256": "ee9cc052ec5f03616f1bd9777cea89dda1b8f5413e7a1948b6f31b64773746c4",
+  "source": "https://docs.nvidia.com/deeplearning/tensorrt/11.4.0/reference/sla.html",
+  "agreementVersion": "2021-05-24",
+  "bytes": 61120,
+  "review": "Section1.1 and supplement2 runtime DLL distribution under private application access; unmodified agreement retained. Does not establish dynamic dependency closure or installer acceptance.",
+  "retrievedUtc": "2026-10-23T21:23:29.3013357Z"
+}
