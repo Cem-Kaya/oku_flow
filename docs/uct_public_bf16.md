@@ -125,8 +125,13 @@ test or mutable environment switch invokes it.
 Its selected detector and all FP32 fallback plans are **cache-only in the same
 explicit isolated cache root**. Missing baseline plans refuse; they never cold
 build or access the ordinary cache. Verified baseline plans must already exist
-in that private root before a granted runtime attempt. The public deadline starts
-before detector construction. Ordinary production/schema-1 cache policy is unchanged.
+in that private root before a granted runtime attempt. Ordinary FP32 detector
+preparation has cancellation checks but no BF16 deadline. Eligibility/catalog
+admission then precedes the actual candidate attempt and its 600-second deadline;
+an unavailable/ineligible request retains cancellation-only FP32 fallback.
+An attempted candidate still treats deadline expiry/cancellation and runtime
+faults as terminal, including during confirmed-refusal cleanup. Ordinary
+production/schema-1 cache policy is unchanged.
 
 Both selected networks remain in one unpublished preparation `State`. The
 existing CPU bridge continues while the same preparation worker runs. BF16
@@ -224,6 +229,10 @@ fixtures have no clock seam for the final-N8 deadline sequence; this narrow repa
 adds no mirrored helper/test. The actual deadline sequence and positive runtime
 path remain unverified pending a separate ROOT START. Native new-only rename,
 junction refusal and directory sharing still require actual fixture execution.
+The existing eligibility and baseline-policy seams additionally cover accepted
+candidate preflight versus unavailable production and disabled candidate requests
+leaving ordinary baseline preparation enabled. They do not execute the preparation
+worker or prove its deadline control flow; those source repairs remain UNBUILT/UNRUN.
 
 Proposed finite root START C2: one frozen checkout, maximum 8 compile jobs,
 900-second total stop budget; build only affected `uct_paddle_tests` and

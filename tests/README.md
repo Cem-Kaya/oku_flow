@@ -2439,3 +2439,9 @@ directory-sharing fixtures. They create only their private temporary directories
 when explicitly run later; they do not touch the ordinary OCR cache, owner plans,
 desktop, CUDA or model preparation. Native rename/sharing behavior is UNRUN.
 See [review dispositions](../docs/uct_public_bf16_review.md).
+
+The existing eligibility/baseline seams also check candidate preflight admission,
+empty production refusal and disabled validation leaving ordinary FP32 preparation
+enabled. The worker's 600-second BF16 clock starts only after eligibility, outside
+ordinary detector work. These policy cases and worker changes are UNBUILT/UNRUN;
+they do not simulate elapsed worker time or prove real fault/cancellation handling.
