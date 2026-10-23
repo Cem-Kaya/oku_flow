@@ -10,7 +10,7 @@ scripts/build_release_bundle.bat text eol=crlf
 scripts/windows-installer/WIX_LICENSE.txt -text
 third_party/paddleocr/LICENSE -text
 third_party/tensorrt/LICENSE-11.4.html -text -diff
-third_party/tensorrt/PROVENANCE.json -text
+third_party/tensorrt/PROVENANCE.json -text whitespace=cr-at-eol
 scripts/uct/pins.json text eol=crlf
 scripts/uct/bf16-models.json text eol=lf
 scripts/uct/distribution.json text eol=lf
