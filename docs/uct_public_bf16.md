@@ -1,5 +1,46 @@
 # Public BF16 model and local attestation (offline, 2026-10-23)
 
+## Current real-runtime checkpoint at `0697367`
+
+The real CUDA/TensorRT adapter compiled and all four scoped contracts passed:
+Paddle processing, precision artifacts, public BF16 and shared-source equivalence.
+The build controller retained exit125 for an unidentified owned residual process;
+its exact job cleanup reached zero and the runner/slot release was verified.
+This is not complete release acceptance.
+
+Root then ran the actual local-build/strict-golden path once for each selected
+recognizer, using separately owned model/corpus/cache roots. All three native
+fixtures and their controllers exited0, with confirmed State retirement. The
+golden **quality checks failed** and same-tier FP32 was selected as designed:
+
+| Recognizer | Exact rows | Golden accepted | Effective service batch |
+| --- | ---: | --- | ---: |
+| Medium | 8/16 | No; FP32 fallback | 8 |
+| Small | 8/16 | No; FP32 fallback | 8 |
+| Tiny | 12/16 | No; FP32 fallback | 1 |
+
+Sixteen rows mean the same eight owned strings at N1 and full N8, not sixteen
+independent documents or a word-error-rate benchmark. Expected pixels/text were
+not changed after observing output. For example medium returned `00 00 00`
+for `O0 OO 00`, `111111` for `Il1 I l 1`, and `café naive` for `café naïve`.
+These failures do not establish that FP32 reads those examples correctly.
+No production recognizer corpus was activated and no passing ready receipt was
+published for these candidates.
+
+The small-recognizer run independently preferred the **medium BF16 detector**.
+That detector completed all four tensor compatibility smokes, then remained BF16
+while the recognizer fell back to small FP32. This verifies independent role
+fallback and real detector inference on the test GPU. Zero-input probability
+checks are not detector recall/geometry/quality acceptance. Small/tiny BF16
+detectors and public cold/warm install behavior remain unvalidated.
+
+Evidence: `Z:/Projects/OkuFlow/local-work-data/uct-bf16-app-default-20261023/`
+contains `detector-role-build`, `runtime-medium-0697367`,
+`runtime-small-0697367`, `runtime-tiny-0697367` and
+`actual-runtime-summary-0697367.json`. Ordinary owner caches, GUI and running
+application instances were untouched. Production packaging/activation remains
+separate; these results must not be described as BF16 shipping by default.
+
 ## Owner app-preference decision and tier validation work
 
 The owner now requests BF16 preference in both GPU model dropdowns, with
