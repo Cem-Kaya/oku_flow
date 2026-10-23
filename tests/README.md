@@ -2370,3 +2370,17 @@ projective geometry and actual near/far paint/character bounds.
 `gpuOrientedInkMatchesCpu` also checks resident surface-corner parity. Optional
 `OKUFLOW_UCT_SURFACE_TEST_OUTPUT` writes a synthetic refusal image for diagnosis;
 it does not load external inputs. See [surface perspective](../docs/uct_surface_perspective.md).
+## Public BF16 source-only integration fixtures (2026-10-23)
+
+`uct_public_bf16_contract` includes `publicBf16RequiresApprovedGoldenCorpus` and
+`publicBf16PublicationAndLifetime`. It declares the actual candidate manifest,
+eight frozen GRAY8 files and private headers as CTest runtime inputs. It authors
+negative approvals/tampering, failed outputs, exact raw spaces, session latches,
+atomic new-only storage and model/input/staging/output closure checks. Storage
+fixtures contain labelled non-model bytes, never passing golden records.
+These changes are **UNBUILT/UNRUN**. No compiler/configure/test/CUDA/GPU/inference,
+model/cache preparation, GUI, desktop or lease work ran. The production catalog
+stays EMPTY. The explicit C++ candidate factory needs a separately authorized
+private diagnostic; ordinary tests do not invoke it. See the separate <=900-second,
+8-job CPU/model-free and bounded real-runtime ROOT START proposals in
+[the six-step contract](../docs/uct_public_bf16.md). No permission is inferred.

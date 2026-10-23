@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Author the private public-BF16 model preparation and strict N1/full-N8 golden
+  path on the existing background worker, with retained fault ownership and
+  atomic local plan/receipt publication. The production corpus remains empty;
+  candidate validation, compilation and runtime execution are unrun.
+
 - Zoom out to show an entire wide or portrait source. Wheel/key zoom stops
   once at Fill (1x), then continues toward whole-picture Fit; the slider snaps
   near Fill. Saved 1x profiles retain their previous framing.

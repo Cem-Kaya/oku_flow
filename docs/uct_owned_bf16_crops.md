@@ -1,5 +1,13 @@
 # Owned BF16 crop proposal (2026-10-23)
 
+Integration follow-up: the root reports inspecting all 8/8 actual contact-sheet
+entries with matching labels/no clipping, accepting these assets **only as a
+candidate synthetic validation corpus**. The later private
+[background integration](uct_public_bf16.md) compiles its explicit candidate pin,
+but remains UNBUILT/UNRUN. ProductionCorpusCatalog is still EMPTY; strict real
+N1/full-N8, quality and separate root activation remain gates. The asset-only
+scope/status below records the original proposal commit.
+
 `okuflow-owned-typeset-gray8-v1` is an **unapproved synthetic corpus proposal**
 for the public-model contract at independent commit
 `faa7fbfe7b87983802c881411a856328bc873dfd`. It supplies original authored text,

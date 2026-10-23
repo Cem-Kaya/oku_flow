@@ -1,7 +1,7 @@
 #pragma once
 
-// Public-model preparation contract. No active factory, engine builder, CUDA,
-// file writes or release staging. The private schema-1 selection stays separate.
+// Pure public-model attestation contract. Runtime integration is private in
+// uct_tensorrt.cpp; the schema-1 owner/dev selection stays separate.
 #include "uct_precision_artifacts.hpp"
 #include <QSet>
 
@@ -36,8 +36,9 @@ inline QJsonObject ModelIdentity() {
 }
 struct CorpusPin {QString version; QByteArray manifestSha256;};
 inline std::span<const CorpusPin> ProductionCorpusCatalog() {
-    // No reviewed image bytes/truth have been imported. Fail closed until a
-    // separate source change pins the actual owned corpus. Never read this
+    // Owned synthetic source crops are candidate validation inputs only. Fail
+    // closed until strict real runtime attestation and separate root activation.
+    // Never read this
     // authority from an environment variable, selector or writable receipt.
     return {};
 }
