@@ -1488,12 +1488,10 @@ class TensorRtRecognizer final : public Recognizer
                 try
                 {
                     const auto baselinePolicy=public_bf16::BaselinePolicy(publicRequest);
-                    const bool isolatedValidation=!baselinePolicy.allowPreparation;
-                    const auto publicDeadline=std::chrono::steady_clock::now()+std::chrono::seconds(600);
                     const std::weak_ptr<Preparation> weak=preparation;
-                    const auto publicStop=[weak,publicDeadline] {
+                    const auto cancelled=[weak] {
                         const auto owner=weak.lock();
-                        return !owner || owner->cancel.load() || std::chrono::steady_clock::now()>=publicDeadline;
+                        return !owner || owner->cancel.load();
                     };
                     const auto baselineCache=baselinePolicy.root;
                     Check(cudaSetDevice(preparation->device));
@@ -1538,7 +1536,7 @@ class TensorRtRecognizer final : public Recognizer
                         }
                     }
                     state->precisionDetail = precisionDetail(false, precisionFallback);
-                    if(isolatedValidation && publicStop())throw std::runtime_error("validation cancelled/deadline before cached FP32 detector");
+                    if(cancelled())throw std::runtime_error("GPU preparation cancelled before FP32 detector");
                     state->detector = std::make_unique<Network>(
                         *state->libraries, state->logger, sdk, assets.detector, assets.detectorSha256, true, state->device,
                         state->stream, preparation->cancel, 1, false,
@@ -1547,11 +1545,20 @@ class TensorRtRecognizer final : public Recognizer
                         throw std::runtime_error("GPU preparation cancelled.");
                     int capacity = recognizerBatch;
                     if(publicRequest.enabled && !precisionRequest.Requested()) {
-                        if(publicStop())throw std::runtime_error("public BF16 preparation cancelled/deadline before candidate");
+                        if(cancelled())throw std::runtime_error("public BF16 preparation cancelled before eligibility");
                         const precision_artifacts::Runtime runtime{
                             QByteArray(reinterpret_cast<const char*>(&properties.uuid),sizeof(properties.uuid)),
                             driver,properties.major,properties.minor,state->libraries->tensorRtVersion,{}, {}, {}};
+                        std::function<bool()> publicStop=cancelled;
                         try {
+                            // Ineligible/unavailable requests do not start a BF16
+                            // attempt or put a deadline on ordinary FP32 work.
+                            public_bf16::CheckEligibility(detectorTier,recognizerTier,recognizerBatch,
+                                variableWidth,allowWidthPreparation,runtime,public_bf16::Catalog(publicRequest));
+                            const auto publicDeadline=std::chrono::steady_clock::now()+std::chrono::seconds(600);
+                            publicStop=[cancelled,publicDeadline] {
+                                return cancelled() || std::chrono::steady_clock::now()>=publicDeadline;
+                            };
                             PreparePublicCandidate(*state,assets,sdk,publicRequest,runtime,detectorTier,recognizerTier,
                                 recognizerBatch,variableWidth,allowWidthPreparation,publicStop,attestationObserver);
                         } catch(const runtime_precision::ArtifactError& error) {

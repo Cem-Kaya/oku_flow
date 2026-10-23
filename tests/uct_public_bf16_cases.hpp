@@ -56,6 +56,9 @@ inline void Contract() {
         QVERIFY(!model.contains(key));
     QVERIFY(ProductionCorpusCatalog().empty());
     const precision_artifacts::Runtime runtime{QByteArray(16,'x'),13050,8,9,"11.4.0.106",{}, {}, {}};
+    // The real preflight accepts only explicit candidate validation here;
+    // production remains a typed refusal before any BF16 attempt starts.
+    CheckEligibility(ModelTier::Medium,ModelTier::Medium,8,false,false,runtime,CandidateCatalog());
     const auto reason=[&](ModelTier det,ModelTier rec,int n,bool variable,bool prepare,const precision_artifacts::Runtime& actual) {
         try{CheckEligibility(det,rec,n,variable,prepare,actual,ProductionCorpusCatalog());}
         catch(const Refusal& refusal){return refusal.Code();}
@@ -169,7 +172,9 @@ inline void PublicationAndLifetime() {
     QVERIFY(!baseline.allowPreparation);QCOMPARE(baseline.root,storage.path());
     request.use=CatalogUse::Production;
     QVERIFY(BaselinePolicy(request).allowPreparation);QVERIFY(BaselinePolicy(request).root.isEmpty());
-    request.use=CatalogUse::CandidateValidation;request.cacheRoot="relative";
+    request.use=CatalogUse::CandidateValidation;request.enabled=false;request.cacheRoot="relative";
+    QVERIFY(BaselinePolicy(request).allowPreparation);QVERIFY(BaselinePolicy(request).root.isEmpty());
+    request.enabled=true;
     QVERIFY_EXCEPTION_THROWN(BaselinePolicy(request),Refusal);
     request.cacheRoot=storage.path();
     const auto parent=CacheParent(request,build,corpus);

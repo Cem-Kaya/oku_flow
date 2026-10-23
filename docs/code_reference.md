@@ -7334,6 +7334,13 @@ synthetic clock; worker completion alone is not UI admission.
 Independent review follow-up adds `BaselineCachePolicy`/`BaselinePolicy` for
 explicit-root cache-only detector/FP32 validation; `Network` accepts that private
 cache locator while preserving its ordinary default and stable/legacy key rules.
+`BeginPreparation` uses cancellation alone for ordinary FP32 detector work and
+ineligible/unavailable public requests. Existing `CheckEligibility`/catalog
+admission precedes creation of the 600-second candidate stop callback; once an
+attempt begins, its deadline and runtime faults remain terminal through cleanup.
+The model-free eligibility/baseline cases cover candidate admission, empty
+production and disabled validation, but not the actual worker's elapsed-clock
+sequence. The repair and fixtures remain unbuilt/unrun.
 `State::publicObservations/publicEvidenceIdentity` and `ReportPublicPartial`/
 `PartialRecord` retain completed outputs across later faults without claiming
 whole-attempt completion. `DirectoryPins::Hold/Prepare/RenameNew` leases native

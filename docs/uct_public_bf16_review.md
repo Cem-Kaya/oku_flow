@@ -10,7 +10,8 @@ The reviewer reported three findings; all are accepted and repaired in source:
    prepare plans into the ordinary cache, outside the private root/deadline.
    `BaselinePolicy` now disables both preparations and supplies the explicit
    private root to every baseline constructor. Missing cached plans refuse.
-   The deadline starts before the detector, with cancellation checked before
+   At the R1 repair the deadline started before the detector; the later Opus
+   follow-up below corrects that scope. Cancellation is checked before
    candidate/fallback. Normal production and schema-1 defaults stay unchanged.
 2. **P2, lost partial golden evidence:** earlier completed outputs were local
    and disappeared after a later failure. State now retains observations and
@@ -78,3 +79,30 @@ The repair has source inspection only and remains **UNBUILT/UNRUN**; actual
 deadline/positive runtime behavior is unverified. Root's focused R3 closure is
 pending. ProductionCorpusCatalog remains empty, prior evidence is retained, and
 the separate `b002` test-only Qt identifier dependency is left for later composition.
+
+## Root-reported Opus audit: deadline scope repair
+
+Root supplied the substantive independent Opus audit, task
+`node:delegated-task:command%3Amcp%3A818e8417-f389-479c-bab6-e9b3eca72944%3Adelegate-task%3Aopus-public-bf16-quarantine-seams-source-review-20261023-r1`.
+It reported no P1, two concrete P2 findings and one probable P2. Root reports
+the prior R1/R2/R3 closures retained; earlier findings and artifact hashes are
+not replaced by this follow-up.
+
+**P2, BF16 deadline applied without an attempt:** the worker-start 600-second
+clock included ordinary FP32 detector preparation, even when the production
+catalog was empty. A later pre-candidate/fallback check could therefore fail
+ordinary FP32 preparation. The source repair uses cancellation alone for baseline
+work, runs existing eligibility/catalog admission before starting the candidate
+clock, and retains cancellation-only fallback when admission refuses. Once an
+actual candidate starts, its deadline/runtime-fault policy and normal retained
+retirement remain unchanged. Existing model-free eligibility/baseline seams gain
+candidate admission and disabled-request cases; they do not execute or simulate
+the worker's elapsed-clock sequence. All changes remain UNBUILT/UNRUN.
+
+The separate cache-builder finding is next; native `DirectoryPins::Hold` and its
+existing sharing fixture remain unchanged pending root's real fixture result.
+The probable attribute-only-sharing finding is not repaired or declared closed.
+Root retains the initial combined CPU compile failure and owns the test-only
+`TextQuad` near/far rename needed to run the unchanged native fixture. This
+implementation checkout executes no build/test/native API and imports no such fix.
+Fresh focused independent closure of these new repairs is owned by root.

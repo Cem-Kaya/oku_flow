@@ -13,6 +13,10 @@
   golden validation or publication. Expiry retains observations and follows
   normal retirement without an alternate-engine retry. This R2 repair is
   unbuilt/unrun.
+- Start the public BF16 preparation deadline only after eligibility/catalog
+  admission and ordinary FP32 detector preparation. Unattempted public selection
+  cannot time out FP32 preparation; cancellation and actual-candidate fault
+  retirement remain fatal. This repair and policy fixtures are unbuilt/unrun.
 
 - Zoom out to show an entire wide or portrait source. Wheel/key zoom stops
   once at Fill (1x), then continues toward whole-picture Fit; the slider snaps
