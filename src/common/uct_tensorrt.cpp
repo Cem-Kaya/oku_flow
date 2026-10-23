@@ -26,6 +26,7 @@ bool TensorRtCropDiagnostic::TryCommit(Plan&& plan) noexcept
 #include "uct_recognition_groups.hpp"
 #include "uct_recognizer_width.hpp"
 #include "uct_tensorrt_identity.hpp"
+#include "uct_tensorrt_failures.hpp"
 #include <NvInfer.h>
 #include <NvOnnxParser.h>
 #include <QCryptographicHash>
@@ -68,16 +69,8 @@ struct TensorRtCropDiagnosticAccess {
 };
 namespace
 {
-class CudaFailure final : public std::runtime_error
-{
-  public:
-    using std::runtime_error::runtime_error;
-};
-class TensorRtApiFailure final : public std::runtime_error
-{
-  public:
-    using std::runtime_error::runtime_error;
-};
+using detail::CudaFailure;
+using detail::TensorRtApiFailure;
 void Check(cudaError_t status)
 {
     if (status != cudaSuccess)
@@ -231,7 +224,7 @@ struct Libraries
         runtime =
             reinterpret_cast<Factory>(GetProcAddress(inference, "createInferRuntime_INTERNAL"));
         if (!runtime)
-            throw std::runtime_error("TensorRT runtime factory API is unavailable.");
+            throw TensorRtApiFailure("TensorRT runtime factory API is unavailable.");
     }
     void PrepareBuilder(const QString &sdk)
     {
@@ -266,7 +259,7 @@ struct Libraries
         createParser =
             reinterpret_cast<ParserFactory>(GetProcAddress(parser, "createNvOnnxParser_INTERNAL"));
         if (!builder || !createParser)
-            throw std::runtime_error("TensorRT builder/parser factory API is unavailable.");
+            throw TensorRtApiFailure("TensorRT builder/parser factory API is unavailable.");
     }
     ~Libraries()
     {
@@ -387,28 +380,26 @@ class Network
             std::unique_ptr<nvinfer1::IBuilder> builder(
                 static_cast<nvinfer1::IBuilder *>(libraries.builder(&logger, NV_TENSORRT_VERSION)));
             if (!builder)
-                throw std::runtime_error("TensorRT builder creation failed: " + logger.Error());
+                detail::RequireTensorRtApi(builder.get(), "TensorRT builder creation failed: " + logger.Error());
             std::unique_ptr<nvinfer1::INetworkDefinition> network(builder->createNetworkV2(0));
-            if (!network)
-                throw std::runtime_error("TensorRT network creation failed.");
+            detail::RequireTensorRtApi(network.get(), "TensorRT network creation failed.");
             std::unique_ptr<nvonnxparser::IParser> parser(static_cast<nvonnxparser::IParser *>(
                 libraries.createParser(network.get(), &logger, NV_ONNX_PARSER_VERSION)));
-            if (!network || !parser || !parser->parse(bytes.constData(), bytes.size()))
+            detail::RequireTensorRtApi(parser.get(), "TensorRT parser creation failed.");
+            if (!parser->parse(bytes.constData(), bytes.size()))
                 throw std::runtime_error("PaddleOCR graph is unsupported by TensorRT: " +
                                          logger.Error());
             if (network->getNbInputs() != 1 || network->getNbOutputs() != 1)
                 throw std::runtime_error("Unexpected TensorRT OCR graph I/O.");
             std::unique_ptr<nvinfer1::IBuilderConfig> config(builder->createBuilderConfig());
-            if (!config)
-                throw std::runtime_error("TensorRT builder configuration failed.");
+            detail::RequireTensorRtApi(config.get(), "TensorRT builder configuration failed.");
             config->setProgressMonitor(&progress);
             config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, 256ull * 1024 * 1024);
             config->setMaxAuxStreams(0);
             config->setBuilderOptimizationLevel(2);
             config->setProfileStream(stream);
             auto *profile = builder->createOptimizationProfile();
-            if (!profile)
-                throw std::runtime_error("TensorRT shape profile creation failed.");
+            detail::RequireTensorRtApi(profile, "TensorRT shape profile creation failed.");
             const char *name = network->getInput(0)->getName();
             const auto declared = network->getInput(0)->getDimensions();
             if (variableWidth_ && (declared.nbDims != 4 || declared.d[3] != -1))
@@ -1275,11 +1266,9 @@ class TensorRtRecognizer final : public Recognizer
                             state->recognizerBatch = capacity;
                             break;
                         }
-                        catch (const CudaFailure&) { throw; }
-                        catch (const TensorRtApiFailure&) { throw; }
-                        catch (const std::bad_alloc&) { throw; }
                         catch (const std::exception &error)
                         {
+                            if (!detail::AllowsTensorRtCapacityFallback(std::current_exception())) throw;
                             // An explicit width-profile preparation authorizes
                             // this N only; never cascade into extra new plans.
                             if (precisionRequest.Requested() || capacity == 1 || preparation->cancel.load() ||

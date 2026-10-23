@@ -25,6 +25,10 @@ read-only legacy lookup and accepted-plan receipt matching. Resident, active
 and paused opt-in diagnostics share the loader's version/provenance seam and
 stable/legacy candidate order. These cache-policy additions await serialized
 validation; see [cache policy](../docs/uct_tensorrt_cache_policy.md).
+`tensorRtFactoryFailureDoesNotLoadCachedN1` adds injected null-factory and
+fallback-policy coverage using the production guard/decision. It retains
+legitimate cache/graph/shape refusals and checks that API/CUDA/allocation faults
+cannot select cached N1. This fixture awaits the same fresh compute grant.
 
 The offline [UCT helper batching candidate](../docs/uct_helper_batching.md)
 adds `recognitionGroupSlotsRequireCompletionAndConsumption` and
