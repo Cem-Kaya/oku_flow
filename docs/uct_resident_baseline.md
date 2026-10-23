@@ -362,3 +362,24 @@ and payloads remain required. Missing cached plans require a separate preparatio
 step. Model substitutions are approximate: report available independent truth
 CER/WER and sensitive-token changes, and label baseline disagreements separately.
 Neither the new seam nor a model's speed establishes release or quality acceptance.
+
+## Small/tiny BF16 experiment selection (2026-10-23)
+
+`OKUFLOW_UCT_RESIDENT_EXPERIMENT_MANIFEST` is a private resident-test input,
+never an application selector or public approval. It requires explicit
+same-capacity N8, medium detector, small/tiny recognizer, fixed1024, media/single,
+one round and no profiling/frozen crops/shadow. It cannot combine with the
+schema-1 owner BF16 selection. Actual accepted payload receipts are checked;
+original detector cache and experimental graph/plan files are read-only.
+
+The manifest binds selected tier, original/config hashes, converted graph/path,
+raw plan/path/hash, actual GPU UUID and experiment builder TensorRT version.
+The loader owns a verified payload snapshot before preparation. Profile/device/
+source mismatch or plan rejection stops the experiment; no alternate-engine
+result is counted. Production factories never read this manifest. The approved
+medium owner plan and empty public catalog retain their original contracts.
+
+Tiny has 6,906 output classes versus 18,710 for small/medium, so language coverage
+is a separate quality difference. Benchmark compilation and runtime evidence
+must be recorded before claiming a result. The proposed fast-live/quality-Freeze
+policy is intentionally NOT implemented, per the owner's hold.

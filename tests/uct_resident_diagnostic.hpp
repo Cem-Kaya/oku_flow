@@ -15,6 +15,7 @@
 #include "../src/common/uct_recognizer_width.hpp"
 #include "../src/common/uct_tensorrt_identity.hpp"
 #include "../src/common/uct_runtime_precision.hpp"
+#include "../src/common/uct_precision_experiment.hpp"
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -82,7 +83,7 @@ struct Selection {
     int rounds{3}, passes{5};
     quint32 seed{20261020};
     bool profile{true}, media{}, paired{}, frozenCrops{}, shadowPlanner{}, exactN8{}, localBf16{};
-    QString sdk, widthPolicy{QStringLiteral("fixed1024")};
+    QString sdk, experimentManifest, widthPolicy{QStringLiteral("fixed1024")};
     qint64 watchdogMs{};
     QString error;
     int Blocks() const { return int(pairs.size() * capacities.size()) * rounds; }
@@ -104,7 +105,7 @@ struct Selection {
                 {"input", paired ? "pair" : "single"}, {"sdk", sdk}, {"watchdogMs", watchdogMs},
                 {"frozenCrops", frozenCrops}, {"recognizerWidthPolicy", widthPolicy},
                 {"shadowPlanner", shadowPlanner}, {"exactSameCapacityN8", exactN8},
-                {"factory", localBf16 ? "application-local-bf16" : "direct-fp32"},
+                {"factory", !experimentManifest.isEmpty() ? "diagnostic-bf16-experiment" : localBf16 ? "application-local-bf16" : "direct-fp32"},
                 {"maximumStartupSubmissions", exactN8 ? kExactN8MaximumStartupSubmissions : 0},
                 {"startupDeadlineMs", kStartupDeadlineMs}, {"jobDeadlineMs", kJobDeadlineMs}};
     }
@@ -139,6 +140,7 @@ inline Selection ParseSelection(const EnvironmentReader& read)
     if (!localBf16.isEmpty() && localBf16 != "0" && localBf16 != "1")
         return refuse("OKUFLOW_UCT_RESIDENT_LOCAL_BF16 accepts only 0 or 1.");
     s.localBf16 = localBf16 == "1";
+    s.experimentManifest = read("OKUFLOW_UCT_RESIDENT_EXPERIMENT_MANIFEST");
 
     auto capacities = read("OKUFLOW_UCT_RESIDENT_CAPACITIES");
     if (capacities.isEmpty()) capacities = QStringLiteral("1,8,16");
@@ -210,13 +212,17 @@ inline Selection ParseSelection(const EnvironmentReader& read)
             return pair.detector != s.pairs.front().detector;
         })) return refuse("Frozen-crop trials require the same pinned detector tier for all pairs.");
     const bool oneMediumDetector = s.pairs.size() == 1 && s.pairs.front().detector == ModelTier::Medium &&
-        (s.pairs.front().recognizer == ModelTier::Medium || s.pairs.front().recognizer == ModelTier::Small);
+        (s.pairs.front().recognizer == ModelTier::Medium || s.pairs.front().recognizer == ModelTier::Small ||
+         s.pairs.front().recognizer == ModelTier::Tiny);
     if (s.exactN8 && (s.capacities != QVector<int>{8} || !oneMediumDetector ||
         s.widthPolicy != "fixed1024" || s.profile || s.frozenCrops || s.shadowPlanner || !s.media || s.paired || s.rounds != 1))
-        return refuse("Same-capacity N8 visits require medium:medium or medium:small, capacity 8, fixed1024, media/single, one round, "
+        return refuse("Same-capacity N8 visits require a medium detector and medium/small/tiny recognizer, capacity 8, fixed1024, media/single, one round, "
                       "and profiling/frozen-crops/shadow disabled.");
     if (s.localBf16 && (!s.exactN8 || s.pairs.front().recognizer != ModelTier::Medium))
         return refuse("The private BF16 factory requires the medium:medium same-capacity N8 diagnostic.");
+    if (!s.experimentManifest.isEmpty() && (!s.exactN8 || s.localBf16 ||
+        s.pairs.front().recognizer == ModelTier::Medium || !runtime_precision::LocalAbsolute(s.experimentManifest)))
+        return refuse("The experimental BF16 manifest requires an explicit local small/tiny same-capacity N8 selection.");
     s.sdk = read("OKUFLOW_UCT_TENSORRT_ROOT");
     if (s.sdk.isEmpty()) return refuse("Select the existing inference-only TensorRT SDK with OKUFLOW_UCT_TENSORRT_ROOT.");
     if (s.Blocks() > kMaximumBlocks || qint64(s.Blocks()) * s.JobsPerBlock() > kMaximumJobs)
@@ -726,7 +732,7 @@ inline QString Validate(const Completion& completion, const MeteredImage::Meters
     if (!completion.backend.detail.contains(QStringLiteral("recognizer batch=%1.").arg(capacity)))
         return "The actual recognizer capacity differs from the request; a fallback is not benchmarked: " +
                completion.backend.detail;
-    if (selection.localBf16 && !completion.backend.detail.contains("Recognition graph=BF16-linear,"))
+    if ((selection.localBf16 || !selection.experimentManifest.isEmpty()) && !completion.backend.detail.contains("Recognition graph=BF16-linear,"))
         return "The private BF16 request did not actually select BF16: " + completion.backend.detail;
     if (!result.deviceInput) return "The scheduler did not take the device-input path.";
     if (selection.shadowPlanner && (!result.shadowPlan || !result.shadowPlannerError.isEmpty() ||
@@ -1120,6 +1126,29 @@ inline void SelectionAndComparisonSelfTest()
         pilot["OKUFLOW_UCT_RESIDENT_EXACT_N8"] = "0";
         QVERIFY(!ParseSelection([&pilot](const char* key) { return pilot.value(QByteArray(key)); }).error.isEmpty());
     }
+    for(const auto tier:{ModelTier::Small,ModelTier::Tiny}) {
+        auto trial=exactSelection;
+        trial["OKUFLOW_UCT_RESIDENT_PAIRS"]="medium:"+ModelTierToken(tier);
+        trial["OKUFLOW_UCT_RESIDENT_EXPERIMENT_MANIFEST"]="C:/owned/experiment.json";
+        const auto readTrial=[&trial](const char* key){return trial.value(QByteArray(key));};
+        QVERIFY(ParseSelection(readTrial).error.isEmpty());
+        trial["OKUFLOW_UCT_RESIDENT_LOCAL_BF16"]="1";
+        QVERIFY(!ParseSelection(readTrial).error.isEmpty());
+        PrecisionExperimentPlan p;p.tier=tier;p.sourceSha256=QByteArray(64,'a');p.graphSha256=QByteArray(64,'b');
+        p.bytes="labelled fixture payload, not an engine";
+        p.planSha256=QCryptographicHash::hash(p.bytes,QCryptographicHash::Sha256).toHex();
+        p.uuid=QByteArray(16,'x');p.builderVersion="11.4.0.106";
+        PaddleAssets a;a.recognizerSha256=p.sourceSha256;
+        const auto check=[&](int capacity,bool variable,int major,const QByteArray& version) {
+            return PrecisionExperimentRefusal(p,a,tier,capacity,variable,false,p.uuid,major,version);
+        };
+        QVERIFY(check(8,false,8,"11.4.0.106").isEmpty());
+        QVERIFY(!check(1,false,8,"11.4.0.106").isEmpty());
+        QVERIFY(!check(8,true,8,"11.4.0.106").isEmpty());
+        QVERIFY(!check(8,false,7,"11.4.0.106").isEmpty());
+        QVERIFY(!check(8,false,8,"11.5.0.0").isEmpty());
+        p.bytes.append('!');QVERIFY(!check(8,false,8,"11.4.0.106").isEmpty());
+    }
     const auto refused = [&values](QHash<QByteArray, QString> changes) {
         auto changed = values;
         for (auto it = changes.begin(); it != changes.end(); ++it) changed[it.key()] = it.value();
@@ -1505,6 +1534,7 @@ struct Run {
     QJsonObject privatePrecision;
     QString privatePrecisionCache;
     QJsonArray privatePrecisionCacheBefore;
+    std::shared_ptr<const PrecisionExperimentPlan> experiment;
     std::vector<PairAssets> pairs;
     std::vector<Source> sources;
     DeviceStream stream;      // destroyed last
@@ -1667,15 +1697,17 @@ inline void RunBlock(Run& run, const Block& block, ProfileCapture& capture)
     const auto matchesPlans = [&](const QString& detail) {
         for (const auto& preflight : run.pairs[std::size_t(block.pair)].plans) {
             if (preflight.role == "recognizer" && preflight.capacity != block.capacity) continue;
-            if (run.selection.localBf16 && preflight.role == "recognizer") {
-                if (!detail.contains("recognizerPlanKey=verified-local-bf16;") ||
+            if ((run.selection.localBf16 || run.experiment) && preflight.role == "recognizer") {
+                if (!detail.contains(run.experiment ? "recognizerPlanKey=verified-experimental-bf16;" : "recognizerPlanKey=verified-local-bf16;") ||
                     !detail.contains("recognizerPlanPayloadSha256=" +
                         run.privatePrecision["payloadSha256"].toString() + ";")) return false;
             } else if (!MatchesPlanReceipt(detail, preflight)) return false;
         }
         return true;
     };
-    auto recognizer = run.selection.localBf16
+    auto recognizer = run.experiment
+        ? CreatePrecisionExperimentRecognizer(assets.root,run.selection.sdk,pair.recognizer,run.experiment,retirement.Observer())
+        : run.selection.localBf16
         ? CreateProductionTensorRtRecognizer(pair.detector, pair.recognizer, retirement.Observer())
         : CreateTensorRtRecognizer(assets.root, run.selection.sdk, pair.detector, pair.recognizer,
                                   retirement.Observer(), run.cropDiagnostic);
@@ -1901,7 +1933,28 @@ inline void ResidentBaselineDiagnostic()
         };
         entry.plans.push_back(InspectCachedPlan(cache, "detector", pair.detector, 1,
                                               entry.assets.detectorSha256, uuid, trtVersion, false, requiredLegacy(true, 1)));
-        for (const int capacity : selection.capacities)
+        if (!selection.experimentManifest.isEmpty()) {
+            try {
+                run.experiment=std::make_shared<const PrecisionExperimentPlan>(
+                    LoadPrecisionExperiment(selection.experimentManifest,entry.assets,pair.recognizer));
+                const auto& p=*run.experiment;
+                const auto refusal=PrecisionExperimentRefusal(p,entry.assets,pair.recognizer,8,false,false,
+                    uuid,properties.major,trtVersion);
+                QVERIFY2(refusal.isEmpty(),qPrintable(refusal));
+                PlanRecord plan;plan.role="recognizer";plan.tier=ModelTierToken(pair.recognizer);
+                plan.key=plan.requiredKey="verified-experimental-bf16";plan.path=p.planPath;
+                plan.capacity=8;plan.bytes=p.bytes.size();plan.payloadSha256=QString::fromLatin1(p.planSha256);plan.valid=true;
+                entry.plans.push_back(plan);
+                run.privatePrecisionCache=QFileInfo(p.planPath).absolutePath();
+                run.privatePrecisionCacheBefore=CacheInventory(run.privatePrecisionCache);
+                run.privatePrecision={{"manifest",selection.experimentManifest},
+                    {"manifestSha256",FileSha256(selection.experimentManifest)},
+                    {"graphSha256",QString::fromLatin1(p.graphSha256)},
+                    {"fileSha256",QString::fromLatin1(p.planSha256)},
+                    {"payloadSha256",QString::fromLatin1(p.planSha256)},
+                    {"planPath",p.planPath},{"scope","Diagnostic-only converted small/tiny graph; no production/model approval"}};
+            } catch(const runtime_precision::ArtifactError& error) { QFAIL(error.what()); }
+        } else for (const int capacity : selection.capacities)
             entry.plans.push_back(InspectCachedPlan(cache, "recognizer", pair.recognizer, capacity,
                 entry.assets.recognizerSha256, uuid, trtVersion, selection.widthPolicy == "bucketed", requiredLegacy(false, capacity)));
         for (const auto& plan : entry.plans)
@@ -2134,7 +2187,7 @@ inline void ResidentBaselineDiagnostic()
 
     const auto cacheAfter = CacheInventory(cache);
     const bool cacheUnchanged = cacheAfter == cacheBefore;
-    if (selection.localBf16) {
+    if (selection.localBf16 || run.experiment) {
         const auto after = CacheInventory(run.privatePrecisionCache);
         QVERIFY(uct_batch_test::Save(QDir(run.evidence).filePath("private-precision-cache.json"),
             {{"cache", run.privatePrecisionCache}, {"before", run.privatePrecisionCacheBefore}, {"after", after}}));

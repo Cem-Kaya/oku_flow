@@ -1,6 +1,7 @@
 #include "okuflow/common/uct_paddle.hpp"
 #include "uct_runtime_precision.hpp"
 #include "uct_public_bf16_runtime.hpp"
+#include "uct_precision_experiment.hpp"
 #include <QCoreApplication>
 #include <new>
 #include <utility>
@@ -449,7 +450,8 @@ class Network
     Network(Libraries &libraries, Logger &logger, const QString &sdk, const QString &model, const QByteArray& expected, bool detection, int device,
             cudaStream_t stream, const std::atomic<bool> &cancelled, int maximumBatch = 1,
             bool variableWidth = false, bool allowPreparation = true,
-            const QByteArray* precisionPlan = nullptr,const QString& explicitCacheRoot = {})
+            const QByteArray* precisionPlan = nullptr,const QString& explicitCacheRoot = {},
+            const QByteArray& verifiedPlanKey = "verified-local-bf16")
         : detection_(detection), variableWidth_(variableWidth), maximumBatch_(maximumBatch),
           // A ceiling for checked on-demand allocation, not reserved VRAM.
           maximumOutputFloats_(!detection && maximumBatch == 16 ? 256ull * 1024 * 1024
@@ -494,7 +496,7 @@ class Network
                 throw runtime_precision::ArtifactError("Local BF16 plan refused by TensorRT " +
                     libraries.tensorRtVersion.toStdString() + ": " + logger.Error());
             }
-            planKey_ = "verified-local-bf16";
+            planKey_ = verifiedPlanKey;
             planPayloadSha256_ = QCryptographicHash::hash(*precisionPlan, QCryptographicHash::Sha256).toHex();
         }
         else for (const auto& readKey : readKeys) {
@@ -599,6 +601,9 @@ class Network
             const auto *name = engine_->getIOTensorName(i);
             if (engine_->getTensorDataType(name) != nvinfer1::DataType::kFLOAT)
                 reject("OCR engine must use float32 tensors.");
+            if (precisionPlan && (engine_->getTensorLocation(name) != nvinfer1::TensorLocation::kDEVICE ||
+                                  engine_->getTensorFormat(name) != nvinfer1::TensorFormat::kLINEAR))
+                reject("Verified precision plans require DEVICE LINEAR I/O.");
             if (engine_->getTensorIOMode(name) == nvinfer1::TensorIOMode::kINPUT)
                 input_ = name;
             else
@@ -949,11 +954,12 @@ class TensorRtRecognizer final : public Recognizer
                        TensorRtRetirementObserver retirementObserver,
                        std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic,
                        runtime_precision::Request precisionRequest = {},
-                       public_bf16::Request publicRequest = {},public_bf16::AttestationObserver attestationObserver = {})
+                       public_bf16::Request publicRequest = {},public_bf16::AttestationObserver attestationObserver = {},
+                       std::shared_ptr<const PrecisionExperimentPlan> experiment = {})
         : root_(std::move(root)), sdk_(std::move(sdk)),detectorTier_(detector),recognizerTier_(recognizer),
           retirementObserver_(std::move(retirementObserver)), cropDiagnostic_(std::move(cropDiagnostic)),
           precisionRequest_(std::move(precisionRequest)),publicRequest_(std::move(publicRequest)),
-          attestationObserver_(std::move(attestationObserver))
+          attestationObserver_(std::move(attestationObserver)),experiment_(std::move(experiment))
     {
         // Medium/Small N8 retained text/dispositions under the
         // owner's 10-source-pixel geometry tolerance. Explicit overrides win.
@@ -1478,13 +1484,14 @@ class TensorRtRecognizer final : public Recognizer
         const auto precisionRequest = precisionRequest_;
         const auto publicRequest = publicRequest_;
         const auto attestationObserver = attestationObserver_;
+        const auto experiment = experiment_;
         const auto detectorTier = detectorTier_, recognizerTier = recognizerTier_;
         const int recognizerBatch = recognizerBatch_;
         const bool variableWidth = variableWidth_, allowWidthPreparation = allowWidthPreparation_;
         try
         {
             std::thread([preparation, assets, sdk, recognizerBatch, variableWidth, allowWidthPreparation,
-                         precisionRequest, publicRequest, attestationObserver, detectorTier, recognizerTier] {
+                         precisionRequest, publicRequest, attestationObserver, experiment, detectorTier, recognizerTier] {
                 try
                 {
                     const auto baselinePolicy=public_bf16::BaselinePolicy(publicRequest);
@@ -1536,15 +1543,23 @@ class TensorRtRecognizer final : public Recognizer
                         }
                     }
                     state->precisionDetail = precisionDetail(false, precisionFallback);
+                    if(experiment) {
+                        const auto refusal=PrecisionExperimentRefusal(*experiment,assets,recognizerTier,
+                            recognizerBatch,variableWidth,allowWidthPreparation,
+                            QByteArray(reinterpret_cast<const char*>(&properties.uuid),sizeof(properties.uuid)),
+                            properties.major,state->libraries->tensorRtVersion);
+                        if(!refusal.isEmpty())throw std::runtime_error(refusal.toStdString());
+                        precisionPlan=experiment->bytes;
+                    }
                     if(cancelled())throw std::runtime_error("GPU preparation cancelled before FP32 detector");
                     state->detector = std::make_unique<Network>(
                         *state->libraries, state->logger, sdk, assets.detector, assets.detectorSha256, true, state->device,
                         state->stream, preparation->cancel, 1, false,
-                        baselinePolicy.allowPreparation && !precisionRequest.Requested() && (!variableWidth || allowWidthPreparation),nullptr,baselineCache);
+                        baselinePolicy.allowPreparation && !experiment && !precisionRequest.Requested() && (!variableWidth || allowWidthPreparation),nullptr,baselineCache);
                     if (preparation->cancel.load())
                         throw std::runtime_error("GPU preparation cancelled.");
                     int capacity = recognizerBatch;
-                    if(publicRequest.enabled && !precisionRequest.Requested()) {
+                    if(publicRequest.enabled && !experiment && !precisionRequest.Requested()) {
                         if(cancelled())throw std::runtime_error("public BF16 preparation cancelled before eligibility");
                         const precision_artifacts::Runtime runtime{
                             QByteArray(reinterpret_cast<const char*>(&properties.uuid),sizeof(properties.uuid)),
@@ -1582,13 +1597,17 @@ class TensorRtRecognizer final : public Recognizer
                             state->recognizer = std::make_unique<Network>(
                                 *state->libraries, state->logger, sdk, assets.recognizer,
                                 assets.recognizerSha256, false, state->device,
-                                state->stream, preparation->cancel, 8, false, false, &precisionPlan);
+                                state->stream, preparation->cancel, 8, false, false, &precisionPlan,QString{},
+                                experiment ? "verified-experimental-bf16" : "verified-local-bf16");
                             state->recognizerBatch = 8;
                             state->precisionDetail = precisionDetail(true);
+                            if(experiment)state->precisionDetail+="Diagnostic experiment="+ModelTierToken(experiment->tier)+
+                                "; graphSha256="+QString::fromLatin1(experiment->graphSha256)+"; no production approval. ";
                         } catch (const runtime_precision::ArtifactError& error) {
                             // Only pre-inference artifact rejection permits FP32.
                             // API/allocation/context faults reach the outer failure path.
                             Check(cudaStreamSynchronize(state->stream));
+                            if(experiment)throw std::runtime_error(std::string("Experimental BF16 plan refused; no alternate-engine retry: ")+error.what());
                             state->precisionDetail = precisionDetail(false, QString::fromUtf8(error.what()));
                         }
                     }
@@ -1601,7 +1620,7 @@ class TensorRtRecognizer final : public Recognizer
                                 *state->libraries, state->logger, sdk, assets.recognizer,
                                 assets.recognizerSha256, false, state->device,
                                 state->stream, preparation->cancel, capacity, variableWidth,
-                                baselinePolicy.allowPreparation && !precisionRequest.Requested() && (!variableWidth || allowWidthPreparation),nullptr,baselineCache);
+                                baselinePolicy.allowPreparation && !experiment && !precisionRequest.Requested() && (!variableWidth || allowWidthPreparation),nullptr,baselineCache);
                             state->recognizerBatch = capacity;
                             break;
                         }
@@ -1691,6 +1710,7 @@ class TensorRtRecognizer final : public Recognizer
     const runtime_precision::Request precisionRequest_;
     const public_bf16::Request publicRequest_;
     const public_bf16::AttestationObserver attestationObserver_;
+    const std::shared_ptr<const PrecisionExperimentPlan> experiment_;
     std::optional<DetailFocus> detail_; // worker-confined, one recognition at a time
     PaddleAssets assets_;
     BackendStatus status_;
@@ -1700,6 +1720,14 @@ class TensorRtRecognizer final : public Recognizer
 } // namespace
 // Private diagnostic seam: identical Libraries admission/loading, no factory
 // invocation, context, CUDA call, cache access or model preparation.
+std::unique_ptr<Recognizer> CreatePrecisionExperimentRecognizer(const QString& root,const QString& sdk,
+    ModelTier tier,std::shared_ptr<const PrecisionExperimentPlan> plan,TensorRtRetirementObserver observer)
+{
+    if(!plan)throw std::invalid_argument("A verified diagnostic payload is required.");
+    return std::make_unique<TensorRtRecognizer>(root,sdk,ModelTier::Medium,tier,std::move(observer),
+        std::shared_ptr<TensorRtCropDiagnostic>{},runtime_precision::Request{},public_bf16::Request{},
+        public_bf16::AttestationObserver{},std::move(plan));
+}
 QJsonObject TensorRtRuntimeForDiagnostic(const QString& sdk)
 {
     return Libraries(sdk).Provenance();
@@ -1743,6 +1771,11 @@ std::unique_ptr<Recognizer> CreatePublicBf16ValidationRecognizer(const QString& 
 #else
 namespace okuflow::uct
 {
+std::unique_ptr<Recognizer> CreatePrecisionExperimentRecognizer(const QString&,const QString&,ModelTier,
+    std::shared_ptr<const PrecisionExperimentPlan>,TensorRtRetirementObserver)
+{
+    return {};
+}
 std::unique_ptr<Recognizer> CreatePublicBf16ValidationRecognizer(const QString&,const QString&,
     const QString&,const QString&,const QString&,public_bf16::AttestationObserver,TensorRtRetirementObserver)
 {

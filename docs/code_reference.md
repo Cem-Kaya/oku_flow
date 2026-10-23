@@ -7429,3 +7429,17 @@ before explicitly converting dimensions to the compact decoder/observation
 integer ABI. The `uct_surface_test_cases.hpp::Paint` fixture uses `nearQuad` and
 `farQuad` so including Windows-native storage declarations preserves its geometry
 and assertions without macro substitution.
+
+`uct_precision_experiment.hpp::LoadPrecisionExperiment` reads explicit diagnostic
+small/tiny source/config/converted-graph and raw-plan pins into an owned snapshot.
+`PrecisionExperimentRefusal` verifies fixed N8/profile, source, actual device,
+Ampere capability, experiment builder and payload. Its private
+`CreatePrecisionExperimentRecognizer` is called only by the opt-in resident test,
+never by production factories. Detector preparation is disabled; any experimental
+plan refusal terminates the attempt without another engine. It shares the existing
+Network profile/ABI checks, recognition/two-slot path and retirement ownership.
+`Selection`, `Run` and `RunBlock` retain provenance and before/after inventories and
+verify `verified-experimental-bf16` plus actual payload receipts. Tiny uses its own
+6,906-class dictionary; medium/small use 18,710 classes.
+Verified precision-plan `Network` loading also requires actual DEVICE LINEAR
+FLOAT tensors before binding the existing CUDA buffers.

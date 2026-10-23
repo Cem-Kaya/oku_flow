@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Add private diagnostic-only small/tiny BF16 plan selection, with pinned
+  original/config/converted graph and payload, actual device/builder checks and
+  no preparation or alternate-engine retry. Application model selection and
+  the proposed live/Freeze split remain unchanged; that proposal is held for
+  owner review. Public BF16 approval remains empty.
+
 - Check and convert TensorRT golden output dimensions before storing integer
   observations. Preserve the surface fixture geometry while avoiding Windows
   `near`/`far` macros in its local names. Both failures remain in the first root
