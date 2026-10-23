@@ -6406,7 +6406,10 @@ objects. It also discards a receipt before releasing gated work and observes
 independent captured-token lifetime. The fixture-only
 `AsyncCleanup::TestHasSelfRetention`, read after terminal acquire, verifies the
 cleanup cycle independently of Context's anchor and worker-exit scheduling.
-See [ownership proof and held validation](uct_resident_cleanup.md).
+Root's tracked CPU run on frozen source `356583f...` passed all 35 named cases
+and `shared_source_equivalence` (SCOPED 2 of 235; no skips). This is model-free
+helper/cleanup evidence; actual CUDA Context fault routing remains unvalidated.
+See [ownership proof and scoped validation](uct_resident_cleanup.md).
 
 `src/cuda/uct_validation_kernels.cuh`, compiled by `uct_kernels.cu`, implements
 `ValidationIntegral`, `Reference`/`References`, `MatchReference`/`MatchReferences`,

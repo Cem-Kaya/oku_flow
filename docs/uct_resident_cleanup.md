@@ -80,15 +80,58 @@ Named case output and an exact invocation-count assertion preserve complete
 coverage accounting. The independent cases were added after read-only review
 flagged receipt-discard and closure-witness gaps in the original 30 cases.
 
-## Validation status and finite CPU plan
+## Scoped CPU validation
 
-At source handoff, configuration, compilation, fixture execution and all GPU
-work are **HELD** by the owner's explicit desktop/compute instruction. The
-fixture is authored, not a passing test result. Read-only review is distinct
-from compiled CPU validation, real-driver failure behavior and release gates.
+Root validated the frozen, clean implementation commit
+`356583f8e1aeb546bc501978d06b384a36885d9b` on 2026-10-23. Its tested tree is
+`49927a9d74ec27f2d0c16ea909936cbc4de91c1f`. The first fixture build completed
+in 2.04 seconds using VS2022 Hostx64/x64, Qt 6.12.0, Release/Ninja and CUDA OFF.
+The tracked `agent_check.ps1 -Base b86e29f...` returned the expected FULL
+refusal (exit 2) because test registration changes touch CMake. Root then
+explicitly authorized only `retained_cleanup_tests` and the two exact tests:
 
-After a fresh finite `ROOTSTART`, the coordinating root may request a maximum
-900-second, eight-job CPU-only window. Stop on the first failure; preserve its
+- `retained_cleanup_contract`: PASS, all 35 named cases, 0.0584671 seconds.
+- `shared_source_equivalence`: PASS, 15.4427 seconds.
+
+The tracked gate recorded **SCOPED PASS: 2 of 235 tests**, with zero skipped Qt
+rows, skipped tests or unresolved results. Its attempt identity is
+`20261023-162937-160-b61d540e`. No application build/test failure or automatic
+retry occurred. The initial malformed external wrapper, root's toolchain
+bootstrap failure, and a cache-checkpoint mismatch are preserved separately.
+The last mismatch expected `Qt6_DIR:PATH`, although successful configuration
+used the exact pinned Qt path with `UNINITIALIZED` metadata. Root corrected
+that checkpoint without reconfiguring; the first fixture compilation followed.
+
+The actual cache is under the private Z: evidence root
+`uct-quarantine-20261023/C1-root-toolchain-repair/cpu-pch-on`; the final
+controller/release records are in sibling `C1-root-cache-checkpoint`.
+Executable SHA-256:
+`9c0b1b0a534f470595fb20cf1432a3e0139a7d0d0408f4fd55f8b6f0e15ca293`.
+Release at `2026-10-23T13:29:55.8070068Z` preceded the unchanged
+`13:34:57Z` deadline. Owned-child exit was verified before lock release;
+`lockFree=true`, with no remaining owned children or compute processes.
+
+A byte-verified archive of 87 evidence files, including the executable/object, cache,
+compile commands, source snapshot, all controller attempts, gate ledger,
+JUnit and detailed 35-case logs, is retained under
+`Z:/Projects/OkuFlow/local-work-data/uct-quarantine-20261023/archive-356583f-C1-20261023T132955Z`.
+Its `archive_receipt.json` binds the tested source, executable and manifest.
+Original logs and failed prerequisites remain untouched. The validation
+documentation is a subsequent docs-only commit; it does not change the tested
+implementation identity above.
+
+The cache has `OKUFLOW_USE_PCH=ON`, but this standalone fixture explicitly
+disables PCH, so a PCH-OFF repeat would exercise the same sole TU and was not
+performed. This proves the model-free helper/cleanup lifetime contract, not
+actual CUDA `Context` fault routing, driver completion behavior, inference,
+native GUI/hardware quality or the full shipping/CPU/CUDA release gate.
+
+## Finite CPU plan and remaining acceptance
+
+The original finite plan below remains a reference for a separately authorized
+future run. The completed root slot grants no continuing compute or lease.
+Any further run needs a fresh finite `ROOTSTART`; the coordinating root may
+request a maximum 900-second, eight-job CPU-only window. Stop on the first failure; preserve its
 original output and do not repeat to obtain a pass. Use the existing tracked
 MSVC 2022 environment and Qt 6.12.0, with new build/evidence storage under
 `Z:\Projects\OkuFlow\local-work-data` and the CPU preset's expected build path
