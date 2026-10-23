@@ -352,6 +352,41 @@ by default; the CPU preset disables it. Set the environment override explicitly
 to `OFF` only for a bundle that intentionally omits the adapter. OkuFlow links
 no Maxine import library and ships no proprietary runtime or model files.
 
+### External build Job cleanup inspection
+
+An external finite build controller may dot-source
+`scripts/windows-build/owned_job_cleanup.ps1` and call
+`Get-OwnedBuildJobMembers -Job <held IntPtr> -ProcessIds <observed uint32[]>`.
+The helper verifies the complete kernel Job inventory and each held process's
+membership, creation time, actual image path and current image-file SHA-256.
+It returns classified `Members`, `AllVerifiedTelemetry`, `SnapshotVerified`
+and a `NativeSnapshot` containing metadata and refusal diagnostics. It never
+terminates processes or acquires kill authority from a PID or image name.
+
+No helper exception is enabled by default. The controller may supply both
+`-TelemetryImagePath` and `-TelemetryImageSha256` from its independently frozen
+tools manifest for the selected compiler's sibling `VCTIP.EXE`. Canonical long
+paths resolved through held file handles must match exactly, and fresh file
+bytes must match the pin. Only a nonempty, complete, stable snapshot containing
+exclusively these verified images sets `AllVerifiedTelemetry`. Unrelated,
+missing, exited, inaccessible or mismatched members stay unknown and block that
+flag. No signature lookup, network service or third-party dependency is used.
+
+This is a point-in-time observation for a build-only wrapper. The controller
+retains its original Job handle, deadline, child exit result, final membership
+revalidation and exact-Job teardown/postcheck responsibility. It must preserve
+unknown-member/cleanup failures and earlier exit-125 receipts; classification
+does not establish clean natural descendant exit or release acceptance.
+The helper does not change the tracked build/bundle entrypoints itself.
+
+Run `pwsh -NoProfile -File scripts/test_owned_build_cleanup.ps1` for standalone
+model-free native fixtures (target runtime below 120 seconds). They create only
+private Jobs and hidden PowerShell children, including a naturally exiting child,
+a persistent unknown child and a sentinel outside the target Job. Synthetic
+VCTIP pin files are never executed; actual compiler-sibling VCTIP validation
+belongs to a separately authorized build. These fixtures do not compile the app,
+open GUI/hardware, access owner processes or replace the tracked release gates.
+
 ### Release bundle
 
 Release provenance now comes from CMake's per-configuration

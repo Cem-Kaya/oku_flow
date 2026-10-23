@@ -1964,6 +1964,27 @@ source changes make no measured throughput or latency claim.
 ## App Module
 
 ### Windows build and packaging helpers
+- `scripts/windows-build/owned_job_cleanup.ps1` is a dot-sourced external-build
+  inspection helper, with no production-app or process-termination behavior.
+  `Initialize-OwnedBuildJobNative` lazily compiles first-party WinAPI interop;
+  `Get-OwnedBuildJobMembers -Job <held IntPtr> -ProcessIds <uint32[]>` duplicates
+  the caller's Job handle, compares the supplied list with bounded kernel Job
+  inventories, and holds each process/image handle through final revalidation.
+  `OpenProcess`, `IsProcessInJob`, `QueryFullProcessImageNameW` and
+  `GetProcessTimes` bind metadata to that exact Job and process creation time;
+  image-file handles provide normalized long paths and fresh SHA-256 bytes.
+  `Get-OwnedJobCleanupDisposition` is the pure metadata classifier. Optional
+  `-TelemetryImagePath`/`-TelemetryImageSha256` must come from an independent
+  frozen compiler-sibling pin; only exact canonical `VCTIP.EXE` path/hash matches
+  become `VerifiedBuildTelemetry`. Everything else is `Unknown`. Missing pins,
+  incomplete/raced metadata and empty inventories cannot set
+  `AllVerifiedTelemetry`; `NativeSnapshot` retains query/pin diagnostics.
+  `scripts/test_owned_build_cleanup.ps1` covers pure policy and actual private
+  Windows Jobs, natural child exit, persistent unknowns and an unrelated
+  sentinel, without launching real telemetry or models. `Get-FixtureJobSnapshot`
+  awaits a complete inventory including console hosts; it does not grant them a
+  telemetry exception. `owned_build_cleanup_contract` registers the same script
+  with both exact source inputs and a 120-second headless CTest deadline.
 - `scripts/build_and_run.bat`, `scripts/build_release_bundle.bat`, and
   `cmake/CMakePresets.json` default to Qt 6.12.0; translation validation and
   startup profiling use the same SDK default.

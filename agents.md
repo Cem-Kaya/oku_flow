@@ -1080,3 +1080,16 @@ aligned with the project goals.
   never require the cumulative ledger row count to equal the selection count.
   Preserve a wrapper postcheck failure independently of passing native cases.
   Reconcile the archived attempt/logs without rerunning already-passed GUI tests.
+
+## Owned compiler telemetry cleanup (2026-10-24)
+
+- A successful build may leave the selected compiler's VCTIP uploader inside its
+  owned Job. Allow a bounded natural drain, then use
+  `scripts/windows-build/owned_job_cleanup.ps1` with an independently frozen
+  exact image path and hash before classifying that specific survivor. Never
+  authorize cleanup from a name or PID. Unknown or incomplete membership keeps
+  exit 125; nonzero work and watchdog results remain failures. The outer
+  controller still owns exact-Job cancellation and zero-members/runner release.
+- Preserve old exit-125 receipts. Native fixtures use the complete Job inventory,
+  including console-host children, and must leave an unrelated sentinel running.
+  No registry, installed compiler file or foreign process change is required.
