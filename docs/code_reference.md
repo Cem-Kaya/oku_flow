@@ -821,6 +821,22 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   model and CPU DLL hashes, verifies extracted bytes before its completion marker
   and retains notices; TensorRT remains external. Strict adapter-required CMake
   options turn missing headers/CUDA into configure errors.
+- `scripts/uct/offline_payload.py` adds source-only `inventory`/`validate`/`stage`
+  commands. `relative`, `local_path`, `owned_file`, `read_json` and `file_hash`
+  bound exact local input reads; `pe_imports` inspects AMD64 direct/delay imports
+  without loading code. `validate` binds a separately reviewed raw manifest hash,
+  exact catalog records and four review domains; `check_corpus` verifies supplied
+  corpus bytes/format without inference. `make_parents`, `write_new`, `stage`
+  and `check_tree` implement exclusive new private fragments and preserved
+  incomplete failures. `digest`, `hash_text`, `keys`, `record_shape`, `inspect`
+  and `files_hash` support bounded identity/shape checks; `Refusal`/`require`
+  report refusals and `main` is the explicit CLI. The candidate and schema are
+  `scripts/uct/offline-payload-{candidate,schema}.json`. The separate
+  `OfflinePayloadTests` fixtures use tiny first-party metadata/copy inputs;
+  `record`, `manifest_file` and `fake_pe` author only fixture data. No accepted
+  legal/model/golden corpus is fabricated. All new fixtures remain unrun and
+  no release helper, factory, Network or CMake integration was changed. See
+  [offline inventory and gates](uct_offline_payload.md).
 - `PaddleTests` covers algorithms, fallback/exception/cancellation, model
   refusal and CUDA snapshot parity/ownership; opt-in real CPU/TensorRT rows
   exercise actual graphs, including direct device input. UCT controller tests

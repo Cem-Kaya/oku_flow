@@ -235,6 +235,27 @@ does not download it. No TensorRT files or model weights are silently added
 to an installer. Public inclusion needs a reviewed inventory, notices and
 SBOM entries; private development acceptance does not establish that gate.
 
+The 2026-10-23 [offline payload boundary](uct_offline_payload.md) is DEVELOPMENT,
+UNSTAGED and unrun. Its first-party helper/candidate metadata add no bundled
+model, NVIDIA binary or newly vendored license. Exact hashes cover the selected
+medium source/config/dictionary/cards, existing BF16 graph, archived converter,
+TensorRT ABI11 inference/parser/PTX resource, NVRTC 12.9.86/builtins and notices.
+No `.plan`, owner cache, SDK tools/headers, unrelated model or cudart DLL is
+admitted. Original model licenses/notices and a modification/provenance record
+are required. No accepted distribution manifest or corpus approval is supplied.
+
+TensorRT 11.4's [agreement](https://docs.nvidia.com/deeplearning/tensorrt/11.4.0/reference/sla.html)
+identifies runtime DLLs as distributable under its conditions, but does not list
+parser/builder-resource basenames; their exact classification remains unresolved.
+The [CUDA 12.9.2 EULA](https://docs.nvidia.com/cuda/archive/12.9.2/eula/index.html)
+separately lists NVRTC/builtins, subject to its distribution conditions. The
+selected NVRTC component notice has different bytes from the cudart component
+notice. Preserve both applicable identities rather than relabeling the existing
+static-cudart SBOM package. Dynamic closure, exact archive provenance, frozen
+TensorRT agreement, notices and new package-level SBOM semantics require review
+before public inclusion; inventory or a private staging receipt clears none of
+the release/installer gates. See the linked document for precise open findings.
+
 ## Microsoft Platform Components
 
 - APIs used: Media Foundation, Direct3D 12, DXGI, Windows Imaging Component, and other Windows SDK libraries

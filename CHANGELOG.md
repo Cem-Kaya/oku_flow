@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- DEVELOPMENT, UNSTAGED: author an offline UCT model/source and TensorRT/NVRTC
+  candidate inventory, separate reviewed-manifest validator and future new-only
+  private staging helper. No payload is copied or public factory/release option
+  enabled; redistribution, corpus, runtime closure and release acceptance remain
+  pending. The new model-free fixtures are authored but unrun.
+
 - Zoom out to show an entire wide or portrait source. Wheel/key zoom stops
   once at Fill (1x), then continues toward whole-picture Fit; the slider snaps
   near Fill. Saved 1x profiles retain their previous framing.

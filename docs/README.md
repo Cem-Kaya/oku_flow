@@ -24,6 +24,11 @@ source resets and separate synthetic/native acceptance boundaries.
 cache-only app selection, pinned FP32 detector, mixed arithmetic, failover and
 the original quality-comparison failures. Diagnostic FP32 baselines stay pinned.
 
+[UCT offline payload inventory](uct_offline_payload.md) records the unstaged
+BF16 model/source and exact TensorRT/NVRTC candidate, separate review-manifest
+boundary, unresolved redistribution/dependency gates and future integration seam.
+Its helper and model-free fixtures are authored but unrun; no readiness is claimed.
+
 [Local development storage](local_work_storage.md) records the owner's Z: work
 folders, compatible C: path redirects, the active-source exception and guidance
 for new build folders.
