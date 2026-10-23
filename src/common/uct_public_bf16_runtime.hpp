@@ -30,8 +30,10 @@ inline BaselineCachePolicy BaselinePolicy(const Request& request) {
     return {request.cacheRoot,false}; // detector AND every FP32 fallback stay cache-only
 }
 inline std::span<const CorpusPin> CandidateCatalog() {
-    static const std::array<CorpusPin,1> pins{{{"okuflow-owned-typeset-gray8-v1",
-        "26432369ed6831431737072f857620b19c81fc9acd8c21579d50ee7bc0e9ec33"}}};
+    static const std::array<CorpusPin,3> pins{{{"okuflow-owned-typeset-gray8-v1",
+        "26432369ed6831431737072f857620b19c81fc9acd8c21579d50ee7bc0e9ec33"},
+        {"okuflow-owned-typeset-gray8-small-v1","9a0b187a047e8d6aa9189adfe490df6f652d65d5b13979c857ac852ba9cdfe86"},
+        {"okuflow-owned-typeset-gray8-tiny-v1","b8969dcb73d6baffea011e3953a2730bb9740a7dbd98a8f7ed47cb460c090fe1"}}};
     return pins;
 }
 inline std::span<const CorpusPin> Catalog(const Request& request) {
@@ -49,10 +51,12 @@ inline QByteArray ReadBounded(const QString& root,const QString& relative,qint64
         throw Refusal(Reason::Model,"public BF16 file changed/exceeds read bound");
     return bytes;
 }
-inline Corpus LoadCorpus(const Request& request) {
+inline Corpus LoadCorpus(const Request& request,ModelTier tier=ModelTier::Medium) {
     if(Catalog(request).empty())throw Refusal(Reason::CorpusUnavailable,"public BF16 production corpus is unavailable");
-    return ReadCorpus(ReadBounded(request.corpusRoot,"manifest.json",64*1024),Catalog(request),
+    auto corpus=ReadCorpus(ReadBounded(request.corpusRoot,"manifest.json",64*1024),Catalog(request),
         [&](const QString& relative){return ReadBounded(request.corpusRoot,relative,48*1024);});
+    if(corpus.ModelIdentity()!=ModelIdentity(tier))throw Refusal(Reason::Corpus,"golden corpus does not match selected recognizer");
+    return corpus;
 }
 
 // Raw text from the SAME production compacted CTC tokens. Preserve every space
@@ -494,5 +498,6 @@ namespace okuflow::uct {
 // no default public activation. The caller supplies isolated local roots.
 std::unique_ptr<Recognizer> CreatePublicBf16ValidationRecognizer(const QString& root,const QString& sdk,
     const QString& modelRoot,const QString& corpusRoot,const QString& cacheRoot,
-    public_bf16::AttestationObserver observer={},TensorRtRetirementObserver retirementObserver={});
+    public_bf16::AttestationObserver observer={},TensorRtRetirementObserver retirementObserver={},
+    ModelTier detector=ModelTier::Medium,ModelTier recognizer=ModelTier::Medium);
 }

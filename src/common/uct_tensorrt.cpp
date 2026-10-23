@@ -335,7 +335,7 @@ class Network
     explicit Network(PublicTag):maximumBatch_(8),maximumOutputFloats_(64ull*1024*1024){}
     void PreparePublic(Libraries& libraries,Logger& logger,const QString& sdk,QByteArray model,
                        const public_bf16::CachedPlan& cached,cudaStream_t stream,
-                       const std::function<bool()>& stop) {
+                       const std::function<bool()>& stop,int classes) {
         using namespace public_bf16;
         publicResources_=std::make_unique<PublicResources>(std::move(model),stop);
         auto& resources=*publicResources_;
@@ -419,7 +419,7 @@ class Network
         Check(cudaPeekAtLastError());CheckEngine(actual);
         const auto outputShape=engine_->getTensorShape(output_.c_str());
         const auto contextBytes=engine_->getDeviceMemorySizeV2();
-        if(outputShape.nbDims!=3 || outputShape.d[2]!=18710 || contextBytes<0 || contextBytes>256ll*1024*1024)
+        if(outputShape.nbDims!=3 || outputShape.d[2]!=classes || contextBytes<0 || contextBytes>256ll*1024*1024)
             throw Refusal(Reason::Model,"public BF16 output ABI/context memory exceeds contract");
         context_.reset(engine_->createExecutionContext());
         Check(cudaPeekAtLastError());
@@ -429,7 +429,7 @@ class Network
     }
     const QByteArray& PublicPlan() const {return publicPlan_;}
     void CheckPublicDetector() const {
-        const auto bad=[] {throw public_bf16::Refusal(public_bf16::Reason::Model,"public BF16 requires the selected exact FP32 medium detector ABI/profile");};
+        const auto bad=[] {throw public_bf16::Refusal(public_bf16::Reason::Model,"public BF16 requires the selected exact FP32 detector ABI/profile");};
         if(!detection_ || engine_->getNbIOTensors()!=2 || engine_->getNbOptimizationProfiles()!=1 ||
            input_!="x" || output_!="fetch_name_0")bad();
         for(const auto* name:{input_.c_str(),output_.c_str()})
@@ -873,7 +873,7 @@ void RunPublicGolden(State& state,const public_bf16::Corpus& corpus,
         Check(cudaGetLastError());
         const auto shape=state.recognizer->Run(input,1024,48,state.stream,state.profile,batch);
         if(shape.nbDims!=3 || shape.d[0]!=batch || shape.d[1]<1 || shape.d[1]>maximumSteps ||
-           shape.d[2]!=18710 || shape.d[2]!=dictionary.size())
+           shape.d[2]!=corpus.ModelIdentity()["classes"].toInt() || shape.d[2]!=dictionary.size())
             throw TensorRtApiFailure("public BF16 actual output tensor does not satisfy CTC ABI");
         const int steps=int(shape.d[1]),classes=int(shape.d[2]); // bounded above before conversion
         gpu::DecodeBatch(state.recognizer->Output(),batch,steps,classes,deviceQuads,first,1024,
@@ -911,8 +911,8 @@ void PreparePublicCandidate(State& state,const PaddleAssets& assets,const QStrin
     using namespace public_bf16;
     CheckEligibility(detector,recognizer,capacity,variableWidth,prepareWidth,runtime,Catalog(request));
     runtime.tensorRtSha256=state.libraries->Provenance()["inferenceSha256"].toString().toLatin1();
-    const auto model=ReadModel(request.modelRoot,assets);
-    const auto corpus=LoadCorpus(request);
+    const auto model=ReadModel(request.modelRoot,assets,recognizer);
+    const auto corpus=LoadCorpus(request,recognizer);
     state.detector->CheckPublicDetector();
     LocalBuild build{runtime.uuid,runtime.tensorRtVersion,{},runtime.major,runtime.minor};
     const auto cached=FindPlan(request,build,corpus);
@@ -922,7 +922,7 @@ void PreparePublicCandidate(State& state,const PaddleAssets& assets,const QStrin
     state.publicGoldenStarted=true;
     state.recognizer=std::make_unique<Network>(Network::PublicTag{});
     state.publicCompletion.Queued();
-    state.recognizer->PreparePublic(*state.libraries,state.logger,sdk,model,cached,state.stream,stop);
+    state.recognizer->PreparePublic(*state.libraries,state.logger,sdk,model,cached,state.stream,stop,int(assets.dictionary.size()));
     // Builder may have used the profile stream. Confirm before allocations or
     // N1 shape changes, and before any typed healthy-stream rejection cleanup.
     ConfirmPublicCompletion(state,stop);
@@ -942,7 +942,7 @@ void PreparePublicCandidate(State& state,const PaddleAssets& assets,const QStrin
     if(cached.bytes.isEmpty() && !PublishNew(request,build,corpus,golden,runtime,state.publicCompletion,state.recognizer->PublicPlan()))
         throw Refusal(Reason::BuildRefused,"public BF16 publication raced an existing generation; no replacement/retry");
     SessionAttempts().Passed(attempt);
-    state.recognizerBatch=8;state.variableWidth=false;
+    state.recognizerBatch=capacity;state.variableWidth=false;
     state.precisionDetail=runtime_precision::ActualStatus(true)+
         (request.use==CatalogUse::CandidateValidation ? "Candidate validation only; production catalog remains unavailable. " : "Public model locally attested. ")+
         "Local ready receipt SHA256="+QString::fromLatin1(precision_artifacts::Digest(receipt))+". ";
@@ -1751,7 +1751,7 @@ std::unique_ptr<Recognizer> CreateProductionTensorRtRecognizer(ModelTier detecto
     if (sdk.isEmpty()) sdk = QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath(
         "OkuFlow/ocr-deps/TensorRT-11.4.0.106-cuda12.9/TensorRT-11.4.0.106");
     const auto modelRoot=QDir(QCoreApplication::applicationDirPath()).filePath("models");
-    const public_bf16::Request publicRequest{modelRoot,QDir(modelRoot).filePath("uct/golden/okuflow-owned-typeset-gray8-v1"),
+    const public_bf16::Request publicRequest{modelRoot,QDir(modelRoot).filePath("uct/golden/"+public_bf16::CorpusVersion(recognizer)),
         QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath("OkuFlow/ocr-engines"),public_bf16::CatalogUse::Production,true};
     return std::make_unique<TensorRtRecognizer>(DefaultPaddleRoot(), sdk, detector, recognizer,
         std::move(retirementObserver), std::shared_ptr<TensorRtCropDiagnostic>{},
@@ -1759,11 +1759,12 @@ std::unique_ptr<Recognizer> CreateProductionTensorRtRecognizer(ModelTier detecto
 }
 std::unique_ptr<Recognizer> CreatePublicBf16ValidationRecognizer(const QString& root,const QString& sdk,
     const QString& modelRoot,const QString& corpusRoot,const QString& cacheRoot,
-    public_bf16::AttestationObserver observer,TensorRtRetirementObserver retirementObserver)
+    public_bf16::AttestationObserver observer,TensorRtRetirementObserver retirementObserver,
+    ModelTier detector,ModelTier recognizer)
 {
     // Explicit private caller only: never reads the schema-1 selector and never
     // changes the compiled production catalog or public diagnostic defaults.
-    return std::make_unique<TensorRtRecognizer>(root,sdk,ModelTier::Medium,ModelTier::Medium,
+    return std::make_unique<TensorRtRecognizer>(root,sdk,detector,recognizer,
         std::move(retirementObserver),std::shared_ptr<TensorRtCropDiagnostic>{},runtime_precision::Request{},
         public_bf16::Request{modelRoot,corpusRoot,cacheRoot,public_bf16::CatalogUse::CandidateValidation,true},std::move(observer));
 }
@@ -1777,7 +1778,7 @@ std::unique_ptr<Recognizer> CreatePrecisionExperimentRecognizer(const QString&,c
     return {};
 }
 std::unique_ptr<Recognizer> CreatePublicBf16ValidationRecognizer(const QString&,const QString&,
-    const QString&,const QString&,const QString&,public_bf16::AttestationObserver,TensorRtRetirementObserver)
+    const QString&,const QString&,const QString&,public_bf16::AttestationObserver,TensorRtRetirementObserver,ModelTier,ModelTier)
 {
     return {};
 }

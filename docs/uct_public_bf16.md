@@ -1,5 +1,24 @@
 # Public BF16 model and local attestation (offline, 2026-10-23)
 
+## Owner app-preference decision and tier validation work
+
+The owner now requests BF16 preference in both GPU model dropdowns, with
+same-tier FP32 fallback, rather than leaving this as diagnostic-only work.
+CPU fallback stays FP32; no automatic live/Freeze tier switch is authorized.
+The first implementation step generalizes recognition model/corpus identities
+to tiny, small and medium, without activating the production corpus catalog yet.
+Tiny retains N1 service; the local engine still supports N1..N8 for its exact
+golden check. This is not promotion of tiny service to N8.
+
+Small/tiny corpus variants retain all eight original owned pixel payloads and
+expected text. Only their exact model identities/versions and provenance labels
+change. Their decoded dictionary hashes use the same length-prefixed UTF-8
+`uct-dictionary-v1` contract, not the resident diagnostic's newline-joined hash.
+The private `optionalPublicBf16Preparation` slot can exercise the real build,
+golden and typed FP32 fallback for an explicitly selected recognizer in isolated
+model/corpus/cache/evidence roots. This stage is unbuilt/unrun. Detector BF16,
+actual runtime validation, app activation and payload staging remain in progress.
+
 Owner approved shipping the converted **model**, with an engine built and checked
 on each eligible machine. This follow-up preserves the composed batch/helper/cache
 policy ending `7c59a59423a0cefa6e19a78ba81908e16461196c`. Private background

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Generalize local BF16 recognizer validation to the selected tiny/small/medium
+  tier, retaining tiny N1 service, exact per-model dictionary/corpus identities
+  and same-tier FP32 fallback. Production activation and detector BF16 are in
+  progress; this checkpoint does not change the app's current precision.
+
 - Record the same-executable small/tiny BF16 worker pilot and independently
   transcribed 550-word book comparison. Keep worker timing distinct from painted
   latency and word edits distinct from spelling-only/painted errors. The proposed

@@ -7448,3 +7448,16 @@ actual payload/backend receipts and within-model exact outputs are retained in
 `docs/uct_worker_pilots_2026_10_23.md`, alongside the 550-word book reference and
 acceptance limits. This supplies no production/model approval or live/Freeze
 switching policy.
+
+`public_bf16::ModelSpec`, `Model`, `ModelVersion`, `GraphRelativePath` and
+`CorpusVersion` bind each selected tiny/small/medium recognition graph, decoded
+dictionary and output class count. `ModelIdentity(tier)` retains the original
+medium identity and gives other tiers distinct cache identities. `Corpus`
+retains its verified model identity; `LoadCorpus` rejects a corpus for another
+selected tier. `ReadModel` verifies the matching original/config/converted
+graph, and `CheckGolden` uses that corpus's class count. N1 service remains N1
+after validation by the common N1..N8 engine profile.
+`optionalPublicBf16Preparation` calls the private tier-aware validation factory
+only under explicit diagnostic inputs, retains actual attestation observations
+and exact retirement receipts, and accepts a typed FP32 fallback without calling
+it BF16. It is not a production environment override or corpus activation.

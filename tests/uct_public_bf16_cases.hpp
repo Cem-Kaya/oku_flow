@@ -72,10 +72,17 @@ inline void Contract() {
     };
     QVERIFY(reason(ModelTier::Medium,ModelTier::Medium,8,false,false,runtime)==Reason::CorpusUnavailable);
     for(const auto tier:{ModelTier::Tiny,ModelTier::Small}) {
-        QVERIFY(reason(tier,ModelTier::Medium,8,false,false,runtime)==Reason::Configuration);
-        QVERIFY(reason(ModelTier::Medium,tier,8,false,false,runtime)==Reason::Configuration);
+        QVERIFY(reason(tier,ModelTier::Medium,8,false,false,runtime)==Reason::CorpusUnavailable);
+        QVERIFY(reason(ModelTier::Medium,tier,8,false,false,runtime)==Reason::CorpusUnavailable);
+        const auto identity=ModelIdentity(tier);
+        const auto* pin=FindPaddleModelPin(false,tier);
+        QCOMPARE(identity["sourceSha256"].toString(),QString::fromUtf8(pin->modelSha256.data(),qsizetype(pin->modelSha256.size())));
+        QCOMPARE(identity["classes"].toInt(),tier==ModelTier::Tiny ? 6906 : 18710);
+        QVERIFY(identity["graphSha256"]!=model["graphSha256"]);
+        CheckEligibility(tier,tier,1,false,false,runtime,CandidateCatalog());
     }
-    QVERIFY(reason(ModelTier::Medium,ModelTier::Medium,1,false,false,runtime)==Reason::Configuration);
+    QVERIFY(reason(ModelTier::Medium,ModelTier::Medium,1,false,false,runtime)==Reason::CorpusUnavailable);
+    QVERIFY(reason(ModelTier::Medium,ModelTier::Medium,16,false,false,runtime)==Reason::Configuration);
     QVERIFY(reason(ModelTier::Medium,ModelTier::Medium,8,true,false,runtime)==Reason::Configuration);
     QVERIFY(reason(ModelTier::Medium,ModelTier::Medium,8,false,true,runtime)==Reason::Configuration);
     auto older=runtime;older.major=7;
@@ -113,13 +120,28 @@ inline void Contract() {
 inline void PublicationAndLifetime() {
     using namespace public_bf16;
     QVERIFY(ProductionCorpusCatalog().empty());
-    QCOMPARE(CandidateCatalog().size(),std::size_t(1));
+    QCOMPARE(CandidateCatalog().size(),std::size_t(3));
     Request request;
     request.corpusRoot=QFileInfo(QFINDTESTDATA("../assets/uct/golden/okuflow-owned-typeset-gray8-v1/manifest.json")).absolutePath();
     request.use=CatalogUse::CandidateValidation;
     const auto corpus=LoadCorpus(request);
     QCOMPARE(corpus.Crops().size(),std::size_t(8));
     QCOMPARE(corpus.Sha256(),CandidateCatalog()[0].manifestSha256);
+    for(const auto tier:{ModelTier::Small,ModelTier::Tiny}) {
+        auto selected=request;
+        selected.corpusRoot=QDir(QFileInfo(request.corpusRoot).absolutePath()).filePath(CorpusVersion(tier));
+        const auto variant=LoadCorpus(selected,tier);
+        QCOMPARE(variant.ModelIdentity(),ModelIdentity(tier));
+        QCOMPARE(variant.Crops().size(),corpus.Crops().size());
+        for(std::size_t i=0;i<variant.Crops().size();++i) {
+            QCOMPARE(variant.Crops()[i].pixels,corpus.Crops()[i].pixels);
+            QCOMPARE(variant.Crops()[i].expected,corpus.Crops()[i].expected);
+        }
+        QVERIFY_EXCEPTION_THROWN(LoadCorpus(selected,ModelTier::Medium),Refusal);
+        const LocalBuild identity{QByteArray(16,'x'),"11.4.0.106",QByteArray(64,'a'),8,9};
+        QCOMPARE(BuildIdentity(identity,variant)["model"].toObject(),ModelIdentity(tier));
+        QVERIFY(CacheKey(identity,variant)!=CacheKey(identity,corpus));
+    }
     request.use=CatalogUse::Production;
     QVERIFY_EXCEPTION_THROWN(LoadCorpus(request),Refusal);
     request.use=CatalogUse::CandidateValidation;

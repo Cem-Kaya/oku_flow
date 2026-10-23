@@ -21,12 +21,33 @@ public:
 private:
     Reason reason_;
 };
-inline QJsonObject ModelIdentity() {
-    const auto* pin=FindPaddleModelPin(false,ModelTier::Medium);
-    return {{"version",kModelVersion},{"precision","bf16-linear"},
-        {"sourceSha256",runtime_precision::kRecognizerSource},{"graphSha256",runtime_precision::kRecognizerGraph},
+struct ModelSpec {
+    ModelTier tier;
+    const char* graphSha256;
+    const char* dictionarySha256;
+    int classes;
+};
+inline ModelSpec Model(ModelTier tier) {
+    switch(tier) {
+    case ModelTier::Medium:return {tier,runtime_precision::kRecognizerGraph,kDictionarySha256,18710};
+    case ModelTier::Small:return {tier,"483b257a64da0b493e64dc58cc3827070eb11a9c7ee8ae0b1ffad7a61aeb03f1",kDictionarySha256,18710};
+    case ModelTier::Tiny:return {tier,"7fce45ba34121940382e59fd6a81c78ffab85d80b3fd51d01a9b66c5372f31ad",
+        "b1f7def77c3b4dcc341d9a3c6753e2d49c282f7c348896c19ce7eb6e7c7b1dce",6906};
+    }
+    throw Refusal(Reason::Configuration,"unknown BF16 recognizer tier");
+}
+inline QString ModelVersion(ModelTier tier) {return "ppocrv6-"+ModelTierToken(tier)+"-rec-bf16-linear-v1";}
+inline QString GraphRelativePath(ModelTier tier) {return "uct/rec/"+ModelTierToken(tier)+"/bf16-linear/inference.onnx";}
+inline QString CorpusVersion(ModelTier tier) {
+    return tier==ModelTier::Medium ? "okuflow-owned-typeset-gray8-v1" : "okuflow-owned-typeset-gray8-"+ModelTierToken(tier)+"-v1";
+}
+inline QJsonObject ModelIdentity(ModelTier tier=ModelTier::Medium) {
+    const auto spec=Model(tier);
+    const auto* pin=FindPaddleModelPin(false,tier);
+    return {{"version",ModelVersion(tier)},{"precision","bf16-linear"},
+        {"sourceSha256",QString::fromUtf8(pin->modelSha256.data(),qsizetype(pin->modelSha256.size()))},{"graphSha256",spec.graphSha256},
         {"configSha256",QString::fromUtf8(pin->configSha256.data(),qsizetype(pin->configSha256.size()))},
-        {"dictionarySha256",kDictionarySha256},{"classes",18710},
+        {"dictionarySha256",spec.dictionarySha256},{"classes",spec.classes},
         {"inputName","x"},{"outputName","fetch_name_0"},{"inputType","FLOAT"},{"outputType","FLOAT"},
         {"inputLocation","DEVICE"},{"outputLocation","DEVICE"},{"format","LINEAR"},
         {"outputAbi","ctc-probabilities-v1"},{"widthPolicy","fixed1024"},{"capacity",8},
@@ -45,28 +66,31 @@ inline std::span<const CorpusPin> ProductionCorpusCatalog() {
 inline void CheckEligibility(ModelTier detector,ModelTier recognizer,int capacity,bool variableWidth,
                              bool prepareWidth,const precision_artifacts::Runtime& runtime,
                              std::span<const CorpusPin> catalog) {
-    if(detector!=ModelTier::Medium || recognizer!=ModelTier::Medium || capacity!=8 || variableWidth || prepareWidth)
-        throw Refusal(Reason::Configuration,"public BF16 preserves selected tiers; requires medium/medium N8 fixed1024");
+    if(!FindPaddleModelPin(true,detector) || !FindPaddleModelPin(false,recognizer) ||
+       (capacity!=1 && capacity!=8) || variableWidth || prepareWidth)
+        throw Refusal(Reason::Configuration,"public BF16 preserves selected tiers; requires N1/N8 fixed1024");
     if(runtime.major<8 || runtime.uuid.size()!=16)
         throw Refusal(Reason::Hardware,"public BF16 requires Ampere or newer and actual device identity");
     if(!tensorrt_identity::RuntimeAtLeastMinimum(runtime.tensorRtVersion))
         throw Refusal(Reason::Runtime,"public BF16 requires supported TensorRT ABI11 runtime at least 11.4.0.106");
     if(catalog.empty())throw Refusal(Reason::CorpusUnavailable,"public BF16 golden corpus is not approved/available");
 }
-inline QByteArray ReadModel(const QString& modelAssetRoot,const PaddleAssets& assets) {
+inline QByteArray ReadModel(const QString& modelAssetRoot,const PaddleAssets& assets,ModelTier tier=ModelTier::Medium) {
     using namespace runtime_precision;
-    if(!assets.IsValid() || assets.detectorSha256!=kDetectorSource || assets.recognizerSha256!=kRecognizerSource ||
-       precision_artifacts::DictionaryHash(assets.dictionary)!=kDictionarySha256)
-        throw Refusal(Reason::Model,"public BF16 source/dictionary does not match approved medium assets");
-    const auto* pin=FindPaddleModelPin(false,ModelTier::Medium);
+    const auto spec=Model(tier);
+    const auto* pin=FindPaddleModelPin(false,tier);
+    const QByteArray source(pin->modelSha256.data(),qsizetype(pin->modelSha256.size()));
+    if(!assets.IsValid() || assets.recognizerSha256!=source || assets.dictionary.size()!=spec.classes ||
+       precision_artifacts::DictionaryHash(assets.dictionary)!=spec.dictionarySha256)
+        throw Refusal(Reason::Model,"public BF16 source/dictionary does not match selected model assets");
     // The existing decoder's dictionary comes from this exact bounded config.
-    ReadVerified(assets.recognizer,kRecognizerSource,kGraphLimit);
-    ReadVerified(QDir(assets.root).filePath("rec/medium/inference.yml"),
+    ReadVerified(assets.recognizer,source,kGraphLimit);
+    ReadVerified(QDir(assets.root).filePath(QString::fromUtf8(pin->directory.data(),qsizetype(pin->directory.size()))+"/inference.yml"),
         QByteArray(pin->configSha256.data(),qsizetype(pin->configSha256.size())),8*1024*1024+1);
-    const auto path=QDir(modelAssetRoot).filePath(kGraphRelativePath);
+    const auto path=QDir(modelAssetRoot).filePath(GraphRelativePath(tier));
     if(!LocalAbsolute(modelAssetRoot))throw Refusal(Reason::Model,"public BF16 assets require an explicit local model root");
     CanonicalWithin(modelAssetRoot,path);
-    return ReadVerified(path,kRecognizerGraph,kGraphLimit);
+    return ReadVerified(path,spec.graphSha256,kGraphLimit);
 }
 struct Crop {
     QString id,expected;
@@ -78,10 +102,12 @@ public:
     const QString& Version() const{return version_;}
     const QByteArray& Sha256() const{return sha256_;}
     const std::vector<Crop>& Crops() const{return crops_;}
+    const QJsonObject& ModelIdentity() const{return model_;}
 private:
     friend Corpus ReadCorpus(const QByteArray&,std::span<const CorpusPin>,const std::function<QByteArray(const QString&)>&);
     QString version_;
     QByteArray sha256_;
+    QJsonObject model_;
     std::vector<Crop> crops_;
 };
 inline Corpus ReadCorpus(const QByteArray& manifest,std::span<const CorpusPin> catalog,
@@ -96,12 +122,14 @@ inline Corpus ReadCorpus(const QByteArray& manifest,std::span<const CorpusPin> c
     int approved=0;
     for(const auto& pin:catalog)if(pin.version==version && pin.manifestSha256==hash)++approved;
     if(approved!=1)throw Refusal(Reason::CorpusUnavailable,"golden corpus lacks unique compiled approval");
+    bool knownModel=false;
+    for(const auto tier:{ModelTier::Tiny,ModelTier::Small,ModelTier::Medium})knownModel=knownModel || json["model"]==ModelIdentity(tier);
     if(json.size()!=7 || json["schema"]!=1 || version.isEmpty() || version.size()>96 ||
-       json["model"]!=ModelIdentity() || json["policy"]!=kGoldenPolicy || json["encoding"]!=kCropEncoding ||
+       !knownModel || json["policy"]!=kGoldenPolicy || json["encoding"]!=kCropEncoding ||
        !json["provenance"].isString() || json["provenance"].toString().isEmpty() ||
        json["provenance"].toString().size()>2048 || !json["samples"].isArray() || json["samples"].toArray().size()!=kGoldenSamples)
         throw Refusal(Reason::Corpus,"golden corpus model/policy/format/provenance mismatch");
-    Corpus result;result.version_=version;result.sha256_=hash;
+    Corpus result;result.version_=version;result.sha256_=hash;result.model_=json["model"].toObject();
     QSet<QString> ids,coverage;
     for(const auto& value:json["samples"].toArray()) {
         const auto sample=value.toObject();
@@ -176,7 +204,7 @@ inline GoldenResult CheckGolden(const Corpus& corpus,const LocalBuild& tested,st
         for(const auto& candidate:corpus.Crops())if(candidate.id==observation.crop){crop=&candidate;break;}
         const auto key=observation.crop+":"+QString::number(observation.batch);
         const bool row=crop && (observation.batch==1 || observation.batch==8) && observation.steps>0 && observation.steps<=512 &&
-            observation.classes==18710 && observation.pixelsSha256==crop->pixelsSha256 && observation.text==crop->expected && !seen.contains(key);
+            observation.classes==corpus.ModelIdentity()["classes"].toInt() && observation.pixelsSha256==crop->pixelsSha256 && observation.text==crop->expected && !seen.contains(key);
         seen.insert(key);passed=passed&&row;
         rows.append(QJsonObject{{"crop",observation.crop},{"batch",observation.batch},{"T",observation.steps},
             {"classes",observation.classes},{"pixelsSha256",QString::fromLatin1(observation.pixelsSha256)},
@@ -197,7 +225,7 @@ inline QJsonObject BuildIdentity(const LocalBuild& build,const Corpus& corpus) {
     if(build.uuid.size()!=16 || build.major<8 || build.minor<0 || build.minor>99 ||
        !tensorrt_identity::RuntimeAtLeastMinimum(build.builderVersion) || corpus.Crops().size()!=kGoldenSamples)
         throw Refusal(Reason::Hardware,"local BF16 builder/device/corpus identity invalid");
-    return {{"model",ModelIdentity()},{"deviceUuid",QString::fromLatin1(build.uuid.toHex())},
+    return {{"model",corpus.ModelIdentity()},{"deviceUuid",QString::fromLatin1(build.uuid.toHex())},
         {"computeMajor",build.major},{"computeMinor",build.minor},{"builderTensorRtVersion",QString::fromLatin1(build.builderVersion)},
         {"goldenPolicy",kGoldenPolicy},{"corpusVersion",corpus.Version()},{"corpusSha256",QString::fromLatin1(corpus.Sha256())}};
 }

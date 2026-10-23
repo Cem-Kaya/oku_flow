@@ -126,6 +126,14 @@ foreach(crop IN ITEMS words-regular phrase-bold date-regular decimal-bold o-zero
     set_property(TEST uct_public_bf16_contract APPEND PROPERTY REQUIRED_FILES
         "${PROJECT_SOURCE_DIR}/assets/uct/golden/okuflow-owned-typeset-gray8-v1/${crop}.gray8")
 endforeach()
+foreach(tier IN ITEMS small tiny)
+    set_property(TEST uct_public_bf16_contract APPEND PROPERTY REQUIRED_FILES
+        "${PROJECT_SOURCE_DIR}/assets/uct/golden/okuflow-owned-typeset-gray8-${tier}-v1/manifest.json")
+    foreach(crop IN ITEMS words-regular phrase-bold date-regular decimal-bold o-zero-regular i-l-one-inverse negation-bold accents-inverse)
+        set_property(TEST uct_public_bf16_contract APPEND PROPERTY REQUIRED_FILES
+            "${PROJECT_SOURCE_DIR}/assets/uct/golden/okuflow-owned-typeset-gray8-${tier}-v1/${crop}.gray8")
+    endforeach()
+endforeach()
 set_tests_properties(uct_precision_artifact_contract PROPERTIES TIMEOUT 30 LABELS "headless"
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"

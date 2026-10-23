@@ -17,3 +17,7 @@ scripts/uct/generate_owned_bf16_crops.py text eol=lf
 assets/uct/golden/okuflow-owned-typeset-gray8-v1/*.json -text
 assets/uct/golden/okuflow-owned-typeset-gray8-v1/*.gray8 -text -diff
 assets/uct/golden/okuflow-owned-typeset-gray8-v1/*.png -text -diff
+assets/uct/golden/okuflow-owned-typeset-gray8-small-v1/*.json -text
+assets/uct/golden/okuflow-owned-typeset-gray8-small-v1/*.gray8 -text -diff
+assets/uct/golden/okuflow-owned-typeset-gray8-tiny-v1/*.json -text
+assets/uct/golden/okuflow-owned-typeset-gray8-tiny-v1/*.gray8 -text -diff

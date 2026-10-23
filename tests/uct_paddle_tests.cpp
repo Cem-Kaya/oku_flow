@@ -13,6 +13,7 @@
 #include "uct_quad_reference_test_support.hpp"
 #include "uct_startup_test_cases.hpp"
 #include "uct_batch_diagnostic.hpp"
+#include "uct_public_bf16_runtime_diagnostic.hpp"
 #include "uct_character_diagnostic.hpp"
 #include "uct_resident_diagnostic.hpp"
 #include "uct_paused_video_diagnostic.hpp"
@@ -1534,6 +1535,10 @@ class PaddleTests final : public QObject
     void optionalResidentBaseline()
     {
         uct_resident_test::ResidentBaselineDiagnostic();
+    }
+    void optionalPublicBf16Preparation()
+    {
+        uct_public_runtime_test::Prepare();
     }
     void optionalTensorRtRetirement()
     {
