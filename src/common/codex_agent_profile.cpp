@@ -44,7 +44,7 @@ QStringList CodexAgentProfile::DisabledFeatures()
     return {QStringLiteral("apps"), QStringLiteral("plugins"),
         QStringLiteral("image_generation"), QStringLiteral("view_image"), QStringLiteral("multi_agent"),
         QStringLiteral("multi_agent_v2"), QStringLiteral("tool_suggest"),
-        QStringLiteral("shell_tool"), QStringLiteral("code_mode_host"),
+        QStringLiteral("shell_tool"),
         QStringLiteral("code_mode"), QStringLiteral("code_mode_only"),
         QStringLiteral("computer_use"), QStringLiteral("browser_use"),
         QStringLiteral("browser_use_external"), QStringLiteral("browser_use_full_cdp_access"),
@@ -67,6 +67,11 @@ CodexAgentLaunchProfile CodexAgentProfile::Validate(
     for (const QString& feature : DisabledFeatures()) {
         args << QStringLiteral("--disable") << feature;
     }
+    // The selected model may require code_mode_only in its catalog metadata.
+    // Its host routes declared tools; it does not grant shell, filesystem,
+    // browser, MCP or agent tools. Those providers remain disabled above.
+    // Explicitly enable the host even when the user's ordinary CLI disables it.
+    args << QStringLiteral("--enable") << QStringLiteral("code_mode_host");
     args << QStringLiteral("-c") << (allowWebSearch ? QStringLiteral("web_search=\"live\"") : QStringLiteral("web_search=\"disabled\""))
          << QStringLiteral("-c") << QStringLiteral("approval_policy=\"never\"")
          << QStringLiteral("-c") << QStringLiteral("sandbox_mode=\"read-only\"");

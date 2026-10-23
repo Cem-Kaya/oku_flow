@@ -29,6 +29,7 @@ add_executable(assistant_chat_benchmark EXCLUDE_FROM_ALL
     ${PROJECT_SOURCE_DIR}/assets/okuflow_resources.qrc
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/assistant_chat_view.hpp
     ${PROJECT_SOURCE_DIR}/src/ui/assistant_chat_view.cpp
+    ${PROJECT_SOURCE_DIR}/src/ui/live_status_text.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/ui_translation.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/translation_catalog.cpp)
 target_include_directories(assistant_chat_benchmark PRIVATE ${PROJECT_SOURCE_DIR}/include)

@@ -3,6 +3,21 @@
 This records candidate validation, not a published release or complete acceptance.
 The candidate includes the magnifier, both-role BF16 OCR preference and MCP V1.
 
+## Owner-reported Assistant follow-up
+
+The owner's Luna run reported tool support unavailable and answered the zoom
+request without changing the view. This is failed live-control evidence, not a
+successful control test. Read-only inspection of the installed 0.160.1 catalog
+found `gpt-6-luna` uses `code_mode_only`; the selected package includes the host,
+but the restricted launch profile disabled `code_mode_host`. The source repair
+enables that transport and retains execution/provider exclusions, sandboxing
+and the existing call/item checks. No stronger model is substituted.
+
+Assistant action names, approval/lease labels, main corner captions and setup
+actions have a separate accessibility synchronization repair with headless
+name/state/language coverage authored. Both repairs are awaiting build/runtime
+validation; they do not establish native screen-reader or live-provider passes.
+
 ## Completed checks
 
 - Cleanup reproduction at `5e4bf7f`: actual CUDA application/fixture compilation
@@ -64,6 +79,23 @@ retaining every strict schema assertion. The failed fingerprint and all logs
 remain archived; no passing result replaces the historical failure.
 
 ## Remaining acceptance
+
+The final bundle configuration built at `2812fdf`, but its opt-in native codec
+gate retained four failures among 182 passes. All four use
+`NativeSparseVideoAudio`: its two-second sample gap is valid following-frame
+evidence under the current native-duration policy, contrary to the negative
+fixture's empty-neighbour assertion. The fixture now authors a three-second
+gap beyond the 2500 ms ceiling, retaining every preservation assertion. This
+repair is not yet built or executed; the original failed logs remain under
+`bundle-background-r1`.
+
+The serial desktop matrix at the same source passed shipping compilation and
+64 of 66 GUI cases, with two native hit-test failures retained in the CPU
+selection (230 passes, nine skips, two unresolved). The failures report a
+foreign native hit for the chat attachment and UCT checkbox at 150% DPI.
+Their cause remains under investigation; neither is counted as a desktop
+interruption or passing acceptance. CUDA finished with 15 passes and five
+optional skips. Both outer runs released their exact Jobs and runner locks.
 
 The tracked shipping/CPU/CUDA and bundle gates, focused native hardware and
 provider checks through both adapters, and candidate-specific disposable-VM

@@ -65,6 +65,25 @@ sole owner of the master permission. Both chat views share connection status,
 and each Connect ChatGPT button reaches the same login action. A provider
 configuration change invalidates stale capability readiness.
 
+Assistant settings actions and the icon-only History/Settings buttons expose
+explicit accessible names. Approval questions/expiry, external identity and lease
+budgets update visible and accessible text together through `SetLiveText`.
+Countdown changes invalidate the accessible name without announcing every tick.
+The main Photo/Record/Explain/Draw layout refresh uses the same path, so a resize
+cannot leave Record's spoken action behind Stop or Finishing. Setup's installed,
+install/update and folder/guide actions also keep their spoken captions current.
+Headless contracts query Qt accessible interfaces in Advanced and floating chat
+and exercise state changes and translation restoration. Native NVDA/Narrator
+acceptance remains separate.
+
+The selected Codex model may require Code Mode as its tool transport (the
+installed `gpt-6-luna` catalog reports `code_mode_only`). The restricted child
+explicitly enables `code_mode_host`, supplied alongside Codex, while shell,
+computer/browser use, unrelated MCP servers, apps/plugins and delegation remain
+disabled. This does not enable OkuFlow's optional coding permission or change
+the selected model. The explicit no-camera ping still has to succeed before
+offering control; an ordinary chat answer cannot establish control.
+
 Approvals are contextual native chat cards with a human action question,
 optional app-owned target display, expiry, Allow once and Deny. The question uses an explicit 20px native font;
 secondary expiry uses 16px and retains measurable width when decisions stack

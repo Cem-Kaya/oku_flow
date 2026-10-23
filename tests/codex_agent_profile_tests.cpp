@@ -42,6 +42,23 @@ private slots:
         QVERIFY(!result.arguments.join(' ').contains("approved-server"));
         QVERIFY(!result.arguments.join(' ').contains("secret"));
     }
+    void codeModeOnlyModelsRetainRestrictedToolTransport() {
+        const auto result = CodexAgentProfile::Validate("codex-cli 0.160.1", Features(), {});
+        QVERIFY(result.available);
+        QVERIFY(!CodexAgentProfile::DisabledFeatures().contains("code_mode_host"));
+        const auto host = result.arguments.indexOf("code_mode_host");
+        QVERIFY(host > 0);
+        QCOMPARE(result.arguments[host - 1], QStringLiteral("--enable"));
+        QCOMPARE(result.arguments.count("code_mode_host"), 1);
+        for (const auto* feature : {"shell_tool", "computer_use", "browser_use", "multi_agent", "apps", "plugins"}) {
+            const auto index = result.arguments.indexOf(QString::fromLatin1(feature));
+            QVERIFY(index > 0);
+            QCOMPARE(result.arguments[index - 1], QStringLiteral("--disable"));
+        }
+        QVERIFY(result.arguments.contains("sandbox_mode=\"read-only\""));
+        QVERIFY(result.arguments.contains("approval_policy=\"never\""));
+        QVERIFY(result.arguments.contains("mcp_servers={}"));
+    }
     void invalidDisabledTransportCannotBreakChildConfiguration() {
         // Codex validates the transport even on enabled=false entries. The
         // restricted child must discard the entire table, not rebuild entries.

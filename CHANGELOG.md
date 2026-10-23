@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+- Keep Assistant/settings button names, approval/lease status, corner action
+  captions and setup actions synchronized for screen readers. Preserve current
+  action names across state, layout and language changes.
+- Enable the restricted Codex Code Mode transport required by the selected Luna
+  model while retaining disabled execution/provider tools and explicit control
+  capability testing.
+
 - Restore the developer shell's baseline PATH before bundle toolchain setup,
   preventing nested initialization from exceeding Windows command limits.
 

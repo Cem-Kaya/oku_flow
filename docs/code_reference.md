@@ -3930,6 +3930,12 @@ Namespace `okuflow`
 - `LivePoliteness::kSilent` updates the accessibility tree without
   unsolicited speech. `kPolite` covers normal state changes and `kAssertive`
   is reserved for failures such as camera loss.
+- Assistant settings buttons, icon-only History/Settings, approval/lease text,
+  zoom/recap readouts, corner action layout refresh and setup action captions
+  use this path to keep current names synchronized. Setup no longer leaves an
+  installed dependency named as an install action. Qt-accessible contract rows
+  cover names, state changes and translated/source restoration; native client
+  speech remains separate acceptance.
 - Announcements with the same complete accessible text are suppressed for
   five seconds per widget. The coalesced form uses a trailing single-shot
   timer so rapid diagnostics publish only their latest value.
@@ -4833,6 +4839,11 @@ feature name/stability inventory before constructing a restricted agent-only
 launch. They disable provider/execution features and only produce bare-key
 MCP overrides after validating every inventory name. Initialization explicitly
 opts into the experimental API. This does not establish runtime tool acceptance.
+`Validate` explicitly enables the Code Mode host required by code-mode-only
+model metadata, including the installed Luna entry. `DisabledFeatures` retains
+the execution/provider exclusions; read-only sandboxing, disabled tool network,
+empty MCP table and item/call allow-lists remain in force. The host executable
+is part of the selected Codex distribution, not an additional OCR payload.
 The first-party profile under `assets/codex-agent/` records local offline facts;
 `codex_agent_profile_contract` checks malformed/version-drift/name-injection
 boundaries without a real Codex process or credentials.

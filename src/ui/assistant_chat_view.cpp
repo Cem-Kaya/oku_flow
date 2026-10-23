@@ -1,6 +1,7 @@
 #ifdef _WIN32
 #include "okuflow/ui/assistant_chat_view.hpp"
 #include "okuflow/ui/ui_translation.hpp"
+#include "okuflow/ui/live_status_text.hpp"
 #include "okuflow/ui/theme_contrast.hpp"
 #include <QApplication>
 #include <QBuffer>
@@ -193,7 +194,7 @@ AssistantChatView::AssistantChatView(QWidget* parent):QWidget(parent)
     new_->setIconSize(QSize(24,24));bar->addWidget(new_);
     auto* historyButton=new QToolButton;
     historyButton->setObjectName(QStringLiteral("chatHistory"));
-    historyButton->setText(QStringLiteral("History"));
+    SetLiveText(historyButton,QStringLiteral("Assistant History"),LivePoliteness::kSilent);
     historyButton->setIcon(theme_contrast::ThemedIcon(QStringLiteral(":/okuflow/icons/chat-history.svg"),palette().color(QPalette::ButtonText),palette().color(QPalette::Disabled,QPalette::ButtonText)));
     historyButton->setIconSize(QSize(24,24));historyButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
     historyButton->setAccessibleName(QStringLiteral("Assistant History"));
@@ -201,7 +202,7 @@ AssistantChatView::AssistantChatView(QWidget* parent):QWidget(parent)
     historyButton->setMinimumSize(44,44); bar->addWidget(historyButton);
     auto* settingsButton=new QToolButton;
     settingsButton->setObjectName(QStringLiteral("chatSettings"));
-    settingsButton->setText(QStringLiteral("Settings"));
+    SetLiveText(settingsButton,QStringLiteral("Assistant settings"),LivePoliteness::kSilent);
     settingsButton->setIcon(theme_contrast::ThemedIcon(QStringLiteral(":/okuflow/icons/chat-settings.svg"),palette().color(QPalette::ButtonText),palette().color(QPalette::Disabled,QPalette::ButtonText)));
     settingsButton->setIconSize(QSize(24,24));settingsButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
     settingsButton->setAccessibleName(QStringLiteral("Assistant settings"));

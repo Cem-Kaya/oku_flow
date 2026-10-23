@@ -3097,7 +3097,8 @@ void MainWindow::setZoomRange(float fitZoom, float requestedZoom) {
     zoomSlider_->setProperty("okuflowRequestedZoom", requestedZoom);
     zoomSlider_->setMinimum(minimum);
     zoomSlider_->setValue(value);
-    zoomValueLabel_->setText(QLocale().toString(effective, 'f', 2) + QStringLiteral("×"));
+    SetLiveText(zoomValueLabel_, QLocale().toString(effective, 'f', 2) + QStringLiteral("×"),
+                LivePoliteness::kSilent, QStringLiteral("Zoom"));
 }
 QPushButton* MainWindow::debugButton() const { return debugButton_; }
 QComboBox* MainWindow::rotationCombo() const { return rotationCombo_; }
@@ -3127,8 +3128,7 @@ void MainWindow::setLiveRecapEstimate(std::uint32_t bitrate) {
     const QString amount=bitrate?locale.toString(qint64(bitrate)*60*minutes/8/1'000'000)
         :QStringLiteral("%1–%2").arg(locale.toString(minutes*60),locale.toString(minutes*120));
     const auto source=QStringLiteral("Estimated video history: %1 MB").arg(amount);
-    SetLiveTranslationSource(liveRecapEstimateLabel_,source);
-    liveRecapEstimateLabel_->setText(TranslateUi(source));
+    SetLiveText(liveRecapEstimateLabel_,source,LivePoliteness::kSilent);
     SetLiveAccessibleDescription(liveRecapMinutesCombo_,source);
 }
 void MainWindow::refreshSystemLanguageItem()
@@ -3725,7 +3725,10 @@ void MainWindow::UpdateSimpleChromeGeometry()
         {explainNowButton_, explainBusy_ ? QStringLiteral("Stop") : QStringLiteral("Explain")},
         {annotationButton_, QStringLiteral("Draw")},
     }};
-    for (const auto& [button, label] : actionButtons) button->setText(TranslateUi(label));
+    for (const auto& [button, label] : actionButtons)
+        SetLiveText(button,label,LivePoliteness::kSilent,
+                    button==recordButton_ ? QStringLiteral("Record")
+                    : button==explainNowButton_ ? QStringLiteral("Explain") : QString{});
     const auto hint = [](QWidget* widget) {
         return widget->sizeHint().expandedTo(widget->minimumSizeHint());
     };

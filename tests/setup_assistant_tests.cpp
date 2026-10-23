@@ -50,7 +50,7 @@ private slots:
         QCOMPARE(install->text(), okuflow::TranslateUi(installed ? QString("Installed") : QString("Install for Windows")));
         const bool bundled = QFileInfo::exists(QDir(QCoreApplication::applicationDirPath()).filePath("vc_redist.x64.exe"));
         QCOMPARE(install->isEnabled(), !installed && bundled);
-        QVERIFY(!install->accessibleName().isEmpty());
+        QCOMPARE(install->accessibleName(),install->text());
         QTRY_VERIFY(install->width() >= install->sizeHint().width());
         if (!installed && !bundled) QVERIFY(!install->toolTip().isEmpty());
         QVERIFY(row->rect().contains(install->geometry().center()));

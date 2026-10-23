@@ -3,6 +3,7 @@
 #include "okuflow/common/visible_chat_session.hpp"
 #include "okuflow/ui/color_scheme_picker.hpp"
 #include "okuflow/ui/ui_translation.hpp"
+#include "okuflow/ui/live_status_text.hpp"
 #include "okuflow/ui/theme_contrast.hpp"
 #include <QLocale>
 #include <QComboBox>
@@ -30,9 +31,12 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSignalSpy>
+#include <QScopeGuard>
 #include <QTextDocument>
 #include <QAbstractTextDocumentLayout>
 #include <QTextFrame>
+#include <QToolButton>
+#include <QTranslator>
 #include <QtTest>
 #include <algorithm>
 
@@ -56,6 +60,9 @@ private slots:
     void chatAccessibleCharacterGeometry();
     void chatFramePreviewsRenderInBothViews();
     void compactComposerActions();
+    void assistantButtonsHaveAccessibleNames();
+    void dynamicControlTextKeepsAccessibleNames();
+    void assistantNamesFollowLanguageChanges();
     void orientationUsesCanonicalDegrees();
     void customRecipeAbsenceRestoresSilently();
 };
@@ -624,6 +631,106 @@ void AgentControlPanelTests::compactComposerActions()
     }
     QApplication::setPalette(original);
     QApplication::setFont(originalFont);
+}
+void AgentControlPanelTests::assistantButtonsHaveAccessibleNames()
+{
+    okuflow::AssistantChatView advanced;
+    okuflow::AssistiveOverlay floating;
+    for(auto* view : {&advanced,floating.chatView()}) {
+        for(const auto& entry : {qMakePair("chatNew","New Conversation"),
+                qMakePair("chatHistory","Assistant History"),
+                qMakePair("chatSettings","Assistant settings"),
+                qMakePair("chatAISettings","AI Settings"),
+                qMakePair("chatCloseDrawer","Close"),qMakePair("chatSend","Send"),
+                qMakePair("chatReadAloud","Read Aloud")}) {
+            auto* button=view->findChild<QAbstractButton*>(QString::fromLatin1(entry.first));
+            QVERIFY2(button,entry.first);
+            auto* accessible=QAccessible::queryAccessibleInterface(button);
+            QVERIFY(accessible);
+            QCOMPARE(accessible->text(QAccessible::Name),QString::fromLatin1(entry.second));
+            QVERIFY(accessible->role()==QAccessible::Button);
+        }
+    }
+    AgentControlPanel panel;
+    for(const auto* key : {"agentExternalDisclosure","agentCapabilityTest","agentRoutingCapabilityTest",
+            "agentActivityDisclosure","agentAboutDisclosure","agentSendWithoutControl"}) {
+        auto* button=Find<QPushButton>(panel,key);QVERIFY2(button,key);
+        auto* accessible=QAccessible::queryAccessibleInterface(button);QVERIFY(accessible);
+        QCOMPARE(accessible->text(QAccessible::Name),button->text());
+        QVERIFY(!accessible->text(QAccessible::Name).isEmpty());
+    }
+}
+void AgentControlPanelTests::dynamicControlTextKeepsAccessibleNames()
+{
+    const auto matches=[](QLabel* label) {
+        if(!label)return false;
+        auto* accessible=QAccessible::queryAccessibleInterface(label);
+        return accessible && accessible->text(QAccessible::Name)==label->text();
+    };
+    AgentControlPanel panel;
+    panel.SetPendingApproval(Approval("first",50000));
+    QVERIFY(matches(Find<QLabel>(panel,"agentApprovalSummary")));
+    QVERIFY(matches(Find<QLabel>(panel,"agentApprovalExpiry")));
+    const auto first=Find<QLabel>(panel,"agentApprovalExpiry")->accessibleName();
+    panel.SetPendingApproval(Approval("second",90000));
+    QVERIFY(matches(Find<QLabel>(panel,"agentApprovalExpiry")));
+    QVERIFY(Find<QLabel>(panel,"agentApprovalExpiry")->accessibleName()!=first);
+    panel.SetExternalConnection("client","Reader & camera");
+    QVERIFY(matches(Find<QLabel>(panel,"agentExternalIdentity")));
+    panel.SetExternalConnection({},{});
+    QVERIFY(matches(Find<QLabel>(panel,"agentExternalIdentity")));
+    panel.SetExternalLease({{"active",true},{"ownerKind","external-lease"},
+        {"remainingAbsoluteMs",300000},{"remainingIdleMs",60000},{"remainingMutations",60},{"remainingObservations",6}});
+    QVERIFY(matches(Find<QLabel>(panel,"agentLeaseStatus")));
+    panel.SetExternalLease({});
+    QVERIFY(matches(Find<QLabel>(panel,"agentLeaseStatus")));
+    panel.SetRoutingNotice(true,false);
+    for(const auto* state : {"Checking tool support...","Tool support unavailable","Tool support ready"}) {
+        panel.SetCapabilityStatus(QString::fromLatin1(state));
+        QVERIFY(matches(Find<QLabel>(panel,"agentCapabilityStatus")));
+        QVERIFY(matches(Find<QLabel>(panel,"agentRoutingMessage")));
+    }
+    QPushButton action;
+    auto* accessible=QAccessible::queryAccessibleInterface(&action);QVERIFY(accessible);
+    for(const auto* state : {"Record","Stop","Finishing","Record"}) {
+        okuflow::SetLiveText(&action,QString::fromLatin1(state),okuflow::LivePoliteness::kSilent);
+        QCOMPARE(accessible->text(QAccessible::Name),action.text());
+        // Repeated layout/language passes must not restore an older action.
+        okuflow::RetranslateWidgetTree(&action);
+        QCOMPARE(accessible->text(QAccessible::Name),action.text());
+        QCOMPARE(action.text(),QString::fromLatin1(state));
+    }
+}
+void AgentControlPanelTests::assistantNamesFollowLanguageChanges()
+{
+    class Translator final : public QTranslator {
+    public:
+        bool isEmpty() const override {return false;}
+        QString translate(const char* context,const char* source,const char*,int) const override {
+            if(QByteArray(context)!="OkuFlow")return {};
+            if(QByteArray(source)=="Assistant History")return QStringLiteral("Test history");
+            if(QByteArray(source)=="Assistant settings")return QStringLiteral("Test settings");
+            if(QByteArray(source)=="Reconnect ChatGPT")return QStringLiteral("Test reconnect");
+            return {};
+        }
+    } translator;
+    okuflow::AssistantChatView view;
+    okuflow::SetLiveText(view.connectButton(),QStringLiteral("Reconnect ChatGPT"),okuflow::LivePoliteness::kSilent);
+    QVERIFY(QApplication::installTranslator(&translator));
+    // Always remove the temporary translator, including a failed assertion.
+    const auto restore=qScopeGuard([&]{QApplication::removeTranslator(&translator);});
+    okuflow::RetranslateWidgetTree(&view);
+    for(const auto* key : {"chatHistory","chatSettings","chatConnect"}) {
+        auto* button=view.findChild<QAbstractButton*>(QString::fromLatin1(key));QVERIFY(button);
+        auto* accessible=QAccessible::queryAccessibleInterface(button);QVERIFY(accessible);
+        QCOMPARE(accessible->text(QAccessible::Name),button->text());
+        QVERIFY(button->text().startsWith("Test "));
+    }
+    QApplication::removeTranslator(&translator);
+    okuflow::RetranslateWidgetTree(&view);
+    QCOMPARE(view.findChild<QToolButton*>("chatHistory")->accessibleName(),QStringLiteral("Assistant History"));
+    QCOMPARE(view.findChild<QToolButton*>("chatSettings")->accessibleName(),QStringLiteral("Assistant settings"));
+    QCOMPARE(view.connectButton()->accessibleName(),QStringLiteral("Reconnect ChatGPT"));
 }
 void AgentControlPanelTests::orientationUsesCanonicalDegrees()
 {

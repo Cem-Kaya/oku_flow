@@ -76,6 +76,7 @@ QPushButton* Button(QVBoxLayout* layout, const QString& source, const char* name
     button->setMinimumHeight(44);
     button->setAutoDefault(false);
     button->setDefault(false);
+    SetLiveText(button,source,LivePoliteness::kSilent);
     layout->addWidget(button);
     return button;
 }
@@ -353,7 +354,8 @@ void AgentControlPanel::SetExternalConnection(const QString& id, const QString& 
     }
     connectionId_ = id;
     connectionIdentity_ = identity.left(512);
-    connection_->setText(id.isEmpty() ? Ui("No external client connected") : Ui("Connected client: %1").arg(connectionIdentity_));
+    SetLiveText(connection_,id.isEmpty() ? QStringLiteral("No external client connected")
+        : QStringLiteral("Connected client: %1").arg(connectionIdentity_),LivePoliteness::kSilent);
     UpdateAvailability();
 }
 void AgentControlPanel::SetExternalLease(const QJsonObject& status)
@@ -378,19 +380,19 @@ void AgentControlPanel::UpdateCountdowns()
         const auto record = approvalRecord_;
         const QString target=record.value("targetDisplay").toString().left(256);
         const QString changes = NativeChangeSummary(record);
-        approvalSummary_->setText(ActionQuestion(record)
+        SetLiveText(approvalSummary_,ActionQuestion(record)
             + (changes.isEmpty() ? QString{} : QStringLiteral("\n") + changes)
-            + (target.isEmpty() ? QString{} : QStringLiteral("\n") + target));
-        approvalExpiry_->setText(Ui("Expires in %1 seconds").arg((remaining+999)/1000));
+            + (target.isEmpty() ? QString{} : QStringLiteral("\n") + target),LivePoliteness::kSilent);
+        SetLiveText(approvalExpiry_,QStringLiteral("Expires in %1 seconds").arg((remaining+999)/1000),LivePoliteness::kSilent);
         allow_->setEnabled(remaining > 0);
     }
-    if (leaseRecord_.isEmpty()) { leaseStatus_->setText(Ui("No active lease")); return; }
+    if (leaseRecord_.isEmpty()) { SetLiveText(leaseStatus_,QStringLiteral("No active lease"),LivePoliteness::kSilent); return; }
     const qint64 elapsed = leaseClock_.elapsed();
-    leaseStatus_->setText(Ui("External control: %1 seconds remaining; idle timeout %2 seconds. View changes: %3; camera views: %4; photos: %5.")
+    SetLiveText(leaseStatus_,QStringLiteral("External control: %1 seconds remaining; idle timeout %2 seconds. View changes: %3; camera views: %4; photos: %5.")
         .arg((std::max<qint64>(0,leaseAbsoluteMs_-elapsed)+999)/1000)
         .arg((std::max<qint64>(0,leaseIdleMs_-elapsed)+999)/1000)
         .arg(leaseRecord_.value("remainingMutations").toInt()).arg(leaseRecord_.value("remainingObservations").toInt())
-        .arg(leaseRecord_.value("remainingMutations").toInt()));
+        .arg(leaseRecord_.value("remainingMutations").toInt()),LivePoliteness::kSilent);
 }
 void AgentControlPanel::AppendAction(const QString& text, bool assertive)
 {
@@ -407,7 +409,7 @@ void AgentControlPanel::AppendAction(const QString& text, bool assertive)
 }
 void AgentControlPanel::SetStatus(const QString& text, bool assertive, bool coalesce)
 {
-    SetLiveText(status_, text.left(2048), LivePoliteness::kSilent, Ui("Assistant control status"));
+    SetLiveText(status_, text.left(2048), LivePoliteness::kSilent, QStringLiteral("Assistant control status"));
     emit statusAnnouncementRequested(text.left(2048), assertive, coalesce);
 }
 void AgentControlPanel::SetCapabilityStatus(const QString& text)

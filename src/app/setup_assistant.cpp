@@ -482,9 +482,8 @@ void SetupAssistantDialog::RefreshStatus() {
     const WindowsRuntimeStatus runtime = runtimeCheck_();
     SetDependencyStatus(runtimeRow_, runtime.Ready(),
                         runtime.installed ? QStringLiteral("Installed") : QStringLiteral("Not installed"));
-    runtimeRow_.install->setText(runtime.installed ? QStringLiteral("Installed")
-                                                  : QStringLiteral("Install for Windows"));
-    runtimeRow_.install->setAccessibleName(QStringLiteral("Install Microsoft Windows runtime"));
+    SetLiveText(runtimeRow_.install,runtime.installed ? QStringLiteral("Installed")
+                                                    : QStringLiteral("Install for Windows"),LivePoliteness::kSilent);
     const bool installerAvailable = QFileInfo::exists(
         QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("vc_redist.x64.exe")));
     runtimeRow_.install->setEnabled(!runtime.installed && installerAvailable && activeDependency_ == Dependency::None);
@@ -498,18 +497,12 @@ void SetupAssistantDialog::RefreshStatus() {
             ? QStringLiteral("Installed\n%1\nUse Connect ChatGPT on the Advanced Assistant tab to sign in.")
                   .arg(QDir::toNativeSeparators(codex))
             : QStringLiteral("Not installed"));
-    codexRow_.install->setText(
-        codexInstalled ? QStringLiteral("Update") : QStringLiteral("Install"));
-    codexRow_.install->setAccessibleName(
-        codexInstalled ? QStringLiteral("Update Codex CLI")
-                       : QStringLiteral("Install Codex CLI"));
+    SetLiveText(codexRow_.install,
+        codexInstalled ? QStringLiteral("Update") : QStringLiteral("Install"),LivePoliteness::kSilent);
     codexRow_.install->setEnabled(activeDependency_ == Dependency::None);
-    codexRow_.remove->setText(
+    SetLiveText(codexRow_.remove,
         codexInstalled ? QStringLiteral("Open Install Folder")
-                       : QStringLiteral("Setup Guide"));
-    codexRow_.remove->setAccessibleName(
-        codexInstalled ? QStringLiteral("Open Codex CLI install folder")
-                       : QStringLiteral("Open Codex CLI setup guide"));
+                       : QStringLiteral("Setup Guide"),LivePoliteness::kSilent);
     codexRow_.remove->setToolTip(
         codexInstalled
             ? QStringLiteral("Open the folder containing the detected Codex CLI")
