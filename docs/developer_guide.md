@@ -8,10 +8,11 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
 - The source-only [UCT offline payload boundary](uct_offline_payload.md) records
   an exact candidate BF16/model-source/TensorRT/NVRTC inventory and a fail-closed
   helper for separately reviewed private staging. Root's eleven model-free
-  fixtures passed once at `5975fe0` in 0.140 seconds. Subsequent P2 path/PE
-  repairs and seventeen-test fixture source are UNRUN pending fresh root
-  validation/closure. Actual payload staging is unrun; no bundle option or
-  public BF16 factory is enabled by it.
+  fixtures passed once at `5975fe0` in 0.140 seconds. After P2 path/PE repairs,
+  root's seventeen-test suite passed once at `2294e69` in 1.456 seconds;
+  fresh independent r2 source review reports no P1/P2 and closes both findings.
+  Actual payload staging is unrun;
+  no bundle option or public BF16 factory is enabled by it.
 - Development [live RAM recap](live_ram_recap.md) keeps up to five minutes of
   compressed, video-only camera history independently of recording. It reuses
   native codecs/player/transport, reports actual rolling bounds and warmup,

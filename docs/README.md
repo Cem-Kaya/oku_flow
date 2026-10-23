@@ -28,8 +28,9 @@ the original quality-comparison failures. Diagnostic FP32 baselines stay pinned.
 BF16 model/source and exact TensorRT/NVRTC candidate, separate review-manifest
 boundary, unresolved redistribution/dependency gates and future integration seam.
 Root's eleven model-free fixtures passed once at `5975fe0` in 0.140 seconds.
-Subsequent P2 path/PE repairs and seventeen-test fixture source remain UNRUN
-pending fresh root validation and independent closure.
+Root's repaired seventeen-test suite passed once at `2294e69` in 1.456 seconds;
+fresh independent r2 source review reports no P1/P2 and closes both findings.
+Helper/test bytes remain frozen at `2294e69`.
 Actual SDK/model staging and public readiness remain unaccepted.
 
 [Local development storage](local_work_storage.md) records the owner's Z: work

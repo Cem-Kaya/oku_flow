@@ -840,8 +840,10 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   `OfflinePayloadTests` fixtures use tiny first-party metadata/copy inputs;
   `record`, `manifest_file` and `fake_pe` author only fixture data. No accepted
   legal/model/golden corpus is fabricated. Root's eleven model-free fixtures
-  passed once at `5975fe0` in 0.140 seconds; subsequent P2 path/PE repairs and
-  seventeen-test fixture source are UNRUN, pending root validation and closure.
+  passed once at `5975fe0` in 0.140 seconds. After P2 path/PE repairs, root's
+  seventeen-test suite passed once at `2294e69` in 1.456 seconds. Fresh independent
+  r2 source review reports no P1/P2 and closes both findings; helper/test bytes
+  remain frozen at that source.
   Actual SDK/model staging remains unrun. No release helper, factory, Network
   or CMake integration was changed. See
   [offline inventory and gates](uct_offline_payload.md).

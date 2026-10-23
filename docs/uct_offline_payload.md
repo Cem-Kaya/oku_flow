@@ -10,9 +10,11 @@ enables no public factory, downloads nothing and changes no release option.
 Its three explicit actions are `inventory` (read-only facts), `validate` (read-only
 reviewed inventory validation), and `stage` (future new-only private staging).
 **Root ran the eleven model-free Python fixtures once at source `5975fe0`:
-PASS, 0.140 seconds.** That is historical evidence for `5975fe0` only. The
-subsequent P2 path/PE repairs and expanded seventeen-test fixture source are
-**UNRUN**, pending a fresh finite root invocation and independent closure review.
+PASS, 0.140 seconds.** That is historical evidence for `5975fe0` only.
+**Root ran the repaired seventeen-test suite once at `2294e69`: PASS, 1.456
+seconds, exit 0.** Fresh independent r2 source review reports no P1/P2 and closes
+both findings. Helper/test bytes remain frozen; the repair receipt below is
+separate from the earlier pass. All payload records remain unapproved.
 The three CLI actions against actual SDK/model payloads
 remain unrun. The implementation worker performed only bounded read-only
 source/file/PE metadata and selected SHA-256 inventory. No build, GPU call,
@@ -266,7 +268,7 @@ the reserved merge CPU slot or append jobs automatically. Real dependency,
 GPU golden/runtime/lifetime, multilingual quality, native desktop and release
 acceptance require distinct future grants.
 
-## Independent implementation findings and unrun repairs (2026-10-23)
+## Independent implementation findings and repairs (2026-10-23)
 
 Root requested these repairs atop docs-only `da56bec`; the implementation
 review examined the earlier helper at `5975fe0`:
@@ -295,13 +297,80 @@ All new files/streams/links are tiny first-party fixture data retained under the
 future explicitly supplied evidence root. No fixture is executed by this repair
 worker. No SDK/model payload, original receipt or staging tree is read or changed.
 
-**The repaired helper and expanded fixtures are UNRUN.** Only source inspection
-and `git diff --check` are permitted for this handoff; root owns a fresh finite
-model-free invocation and subsequent independent focused closure. No compute
-lease is acquired or reused. Original eleven-test evidence below remains tied
-to `5975fe0`, and all real payload, legal, model/corpus, GPU and release gates
-remain open. These filesystem checks do not claim atomic protection against
-concurrent malicious same-user filesystem changes.
+At the source-only `2294e69` handoff, the repaired helper and expanded fixtures
+were UNRUN; that original handoff receipt remains unchanged. Root subsequently
+performed the one finite model-free invocation recorded below. This receipt
+archival worker acquires/reuses no lease and runs no test. Original eleven-test
+evidence remains tied to `5975fe0`, and all real payload, legal, model/corpus,
+GPU and release gates remain open. These filesystem checks do not claim atomic
+protection against concurrent malicious same-user filesystem changes.
+
+## Root repaired-source functional receipt (2026-10-23)
+
+Root's `root-repair-2294e69/result.json` records clean source
+`2294e69aefecd52d2910889dd0dfb47960fd5837`, exit code 0,
+`ownedChildStopped=true`, and start/end UTC timestamps
+`2026-10-23T13:53:09.9038566Z` / `2026-10-23T13:53:11.5575266Z`.
+The raw stderr lists all seventeen named tests as `ok`, then
+`Ran 17 tests in 1.456s` and `OK`. Root reports exactly one invocation and
+verification of source/head/hashes. Suite time is distinct from wrapper wall
+time and is not a GPU/model benchmark.
+
+The result is model-free fixture evidence only: no real payload staging,
+SDK/model payload read, GPU or GUI work. Tiny first-party fixture files, ADS,
+hardlinks, PE metadata and copy/refusal primitives do not supply an approved
+distribution manifest, real golden acceptance or public/legal clearance.
+Root reports the exact runner lease held during the process, owned child exit
+observed and the lease closed afterward. The result classifies known idle MCP
+Python control servers as background, with zero compiler/project-test
+competitors. This archival worker did not inspect/acquire the lease or execute
+any child fixture.
+
+Original receipts remain under workstation work-data
+`uct-offline-payload-tests-20261023/root-repair-2294e69/`. Exact copies of only
+`result.json`, `stdout.txt` and `stderr.txt` were archived under
+`uct-offline-payload-repairs-20261023-2294e69aefec/root-repair-functional-evidence/`.
+No fixture tree was copied. Original/archive SHA-256 values match:
+
+- `result.json` (422 bytes):
+  `c8c6033b0307358131092b088aef1cf4ad3fe51d66503f01d2ac2dfa320a7f37`
+- `stdout.txt` (173 bytes):
+  `96c7f058c452bb68f75f2ab07c3df92ef3db0ae508e4b539295bec080ae62f31`
+- `stderr.txt` (2,337 bytes):
+  `8c7c341956ed3f32bb5d13a355b8bf29fc323917a9ed8cf8601a96961703dd13`
+
+The new sibling `archive-receipt.json` has SHA-256
+`8701bcb5e27635071b0cd22091003b1c5969a8ad379dd5fcf0748799010a54c7`.
+Original `5975fe0` eleven-pass evidence and `2294e69` source-only unrun handoff
+receipts remain unchanged. This separate documentation update changes no helper,
+fixture, candidate or schema bytes. Current helper/fixture SHA-256 values remain:
+
+- `offline_payload.py`:
+  `8a5ebb4525804ee33c8b1ec46b07ac7f8a051fb08e0a1b6de749fb14fa453112`
+- `test_offline_payload.py`:
+  `b595a60ef346e46f22d79d0b3ee3015eff29e10d4e35fb92089308ea8b1262a2`
+
+Fresh independent focused r2 closure task ID:
+`node:delegated-task:command%3Amcp%3A818e8417-f389-479c-bab6-e9b3eca72944%3Adelegate-task%3Auct-offline-payload-P2-closure-review-20261023-r2`.
+The full untruncated formal assistant verdict at timeline position 39 was read
+and archived as `r2-formal-verdict.json` beside the root repair receipts. Position
+40 is a later PID note, not the formal review. The archive retains the exact
+position-39 message text and identifiers, binds `2294e69`, the two source hashes
+above and the actual seventeen-pass receipt hashes. Its 3,378 bytes have SHA-256
+`8223a2b656fc8e5f1f5e45cf543e3a1f35b3559b94440a32fbb876162d35218b`.
+
+The independent reviewer reports no P1/P2 and closes both r1 findings by source
+inspection. Coverage includes the required guidance, all nine repair-diff files,
+every helper function, all seventeen fixture methods and unchanged schema/candidate
+context (17 fixed records, five required future assets, eight crops). The reviewer
+confirmed both source hashes and inspected root's actual seventeen-test pass;
+the reviewer executed nothing, edited nothing and delegated nothing. Root also
+reports reading the full formal verdict. No new review was requested here.
+
+Helper/tests stay frozen at `2294e69`. Source closure does not approve payload
+records, real staging, model/corpus acceptance, dependency/license closure or
+public release. This receipt grants no further execution/lease or staging
+permission and clears no release/redistribution gate.
 
 ## Root model-free functional receipt (2026-10-23)
 

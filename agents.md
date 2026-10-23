@@ -1038,7 +1038,8 @@ aligned with the project goals.
   compute/staging permission and reserves no CPU/GPU slot. Follow
   the root's current START boundary and `docs/uct_offline_payload.md`; native
   desktop, real GPU/golden, dependency/legal and release acceptance stay separate.
-- Subsequent independent P2 path/PE repairs and seventeen-test fixture source
-  are UNRUN. Preserve the original `5975fe0` eleven-pass receipt as historical;
-  do not transfer it to changed bytes. Root owns fresh finite model-free
-  validation and focused independent closure before any acceptance claim.
+- Root ran the repaired seventeen-test suite once at `2294e69`: PASS in 1.456
+  seconds. Preserve this evidence separately from the original `5975fe0`
+  eleven-pass receipt. Fresh independent r2 source review reports no P1/P2 and
+  closes both findings. Helper/tests remain frozen at `2294e69`; this source
+  closure grants no rerun/lease, real payload, legal or public acceptance.
