@@ -168,6 +168,10 @@ no matching child means missing, so the current builder may prepare its own new
 generation. Old bytes are not aliased, deleted, rewritten or adopted as the new
 builder. This is plan-recipe lookup, separate from runtime compatibility admission;
 the ABI11/minimum-tuple rule and driver-independent identity remain unchanged.
+Ancestor pins live for the whole lookup; a separate generation pin lives only
+through that iteration's receipt/plan reads. It closes on skip or after copying
+return bytes, so skipped siblings do not consume the ten-handle path capacity.
+The path capacity and 32-entry inventory bound are unchanged.
 `recognizer.plan` and `ready.json` are written only after completion and exact
 golden success, then exposed together by a new-only same-parent directory
 rename of the exact held staging directory. Existing generations are never overwritten/repaired. Cache lookup reads
@@ -261,6 +265,11 @@ earlier Qt exception. The separate source repair preserves that production write
 order, adds delete-only/no-delete opener and pinned-parent publication cases, and
 prints unexpected `std::exception::what()` from the private Qt slot. Those project
 changes remain UNBUILT/UNRUN pending root's changed-fingerprint execution.
+Root's later source inspection found accumulated skipped-generation handles in
+`FindPlan`. The separate scope repair and existing lookup fixture's full
+32-generation missing-match/current-selection and 33rd-entry refusal cases remain
+UNBUILT/UNRUN. Fresh independent closure must cover this lifetime seam too; it is
+not a diagnosis of the earlier Qt exception or a new runtime retry.
 
 Proposed finite root START C2: one frozen checkout, maximum 8 compile jobs,
 900-second total stop budget; build only affected `uct_paddle_tests` and

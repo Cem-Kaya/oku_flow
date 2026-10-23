@@ -176,3 +176,26 @@ This implementation agent ran no native API, tests or build. Project changes
 remain **UNBUILT/UNRUN**; root owns fresh focused source closure and the one
 changed-fingerprint failed-case execution, retaining the first failure. No model
 golden success, public activation or causal diagnosis follows from this probe.
+
+## Root source inspection: per-generation read-pin lifetime
+
+Root's later read-only inspection identified another concrete source defect:
+`FindPlan` retained root/ancestor and every visited child handle in one
+`DirectoryPins` object. Its ten-handle path capacity could therefore fail after
+roughly seven skipped child generations, before the advertised 32-entry scan
+bound or a current-builder match. This inspection was not an executed test and
+does not attribute the earlier Qt exception.
+
+The separate narrow repair retains root/ancestor pins for the complete lookup,
+but uses a distinct `DirectoryPins` in the loop's iteration scope for each child.
+Receipt/plan reads and every digest/identity/confinement check stay pinned. A
+skip closes that child; a return copies owned bytes/metadata before the local
+pin closes. The path capacity, inventory limit, runtime admission, builder filter
+and retry/fault policies are unchanged.
+
+The existing integrity-only fixture gains a full 32-generation missing-builder
+walk, successful current-builder selection, unchanged inventory and a 33rd-entry
+bound refusal. It creates no golden/pass record or model success. Source changes
+and fixtures remain **UNBUILT/UNRUN**; root's fresh targeted independent review
+must include this lifetime seam alongside the prior repairs. All previous probe,
+review and first-failure evidence is retained; no new execution or retry ran here.

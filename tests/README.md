@@ -2472,3 +2472,10 @@ non-delete writer and real publication/collision under a held parent, and prints
 unexpected `std::exception::what()` at the private slot boundary. Production
 `PublishFilesNew` order is unchanged. These changes remain UNBUILT/UNRUN here;
 root owns the single changed-fingerprint execution with the first failure retained.
+
+The lookup fixture additionally fills its private parent with 32 valid labelled
+non-model generations, walks all of them for an absent builder, still selects the
+current builder and preserves inventory. A 33rd generation must retain the
+inventory-bound refusal. This checks that per-generation pins close on skips
+instead of exhausting the separate ten-handle path capacity. The added cases
+remain UNBUILT/UNRUN; no path/inventory limit or original assertion was relaxed.

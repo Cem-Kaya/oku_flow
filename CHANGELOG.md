@@ -48,6 +48,9 @@
   new-only rename. Add private fixture exception text and sharing/publication
   cases. Root's probe confirms delete exclusion/rename only; project fixtures
   and the earlier unattributed publication exception remain unverified.
+- Scope each public BF16 cache-generation pin to its lookup iteration while
+  retaining ancestor pins. Skipped builders no longer exhaust the ten-handle
+  path capacity before the 32-entry inventory bound. Boundary fixtures are unrun.
 
 - Zoom out to show an entire wide or portrait source. Wheel/key zoom stops
   once at Fill (1x), then continues toward whole-picture Fit; the slider snaps
