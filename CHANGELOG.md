@@ -7,6 +7,11 @@
   candidate awaits serialized build, CUDA parity and whole-worker measurement;
   see `docs/uct_helper_batching.md`.
 
+- Batch UCT CTC argmax/compaction and use three compact metadata transfers per
+  neural batch. Preserve actual tensor extents, invalid-score/tie rules and
+  two-slot completion/host-consumption fences. Cancellation and partial-failure
+  ownership fixtures are prepared; performance and execution remain unmeasured.
+
 - Overlap dense UCT recognition groups with host metadata merging using bounded
   double-buffered metadata and per-group completion events. Private resident
   FP32 measurements show a dense N8 benefit; sparse/N1 and production BF16

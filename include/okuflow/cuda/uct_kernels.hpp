@@ -91,4 +91,10 @@ void RectifyBatch(const void *image, std::size_t pitch, int width, int height, c
                   int first, int samples, float *out, int cropWidth, cudaStream_t stream);
 void Decode(const float *probabilities, int steps, int classes, const Quad *quads, int index,
             int cropWidth, int *ids, float *scores, Token *tokens, int *count, cudaStream_t stream);
+// Actual [samples,steps,classes] output, contiguous quads[first..first+samples).
+// IDs/scores/tokens have sample stride steps; counts has one entry per sample.
+// Two launches; all probability rows are checked, including the unused suffix.
+void DecodeBatch(const float *probabilities, int samples, int steps, int classes,
+                 const Quad *quads, int first, int cropWidth, int *ids, float *scores,
+                 Token *tokens, int *counts, cudaStream_t stream);
 } // namespace okuflow::uct::gpu

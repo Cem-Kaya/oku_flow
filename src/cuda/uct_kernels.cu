@@ -1,6 +1,7 @@
 #include "okuflow/cuda/uct_kernels.hpp"
 #include "../common/uct_recognizer_width.hpp"
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <cuda_runtime.h>
 
@@ -448,6 +449,88 @@ __global__ void compact(int *ids, float *scores, int steps, const Quad *quads, i
     }
     *count = n;
 }
+// Same 256-lane reduction as argmax, with a separate shared array per [N,T].
+// Deliberately scans every T row: skipping padding is a separate experiment.
+__global__ void argmaxBatch(const float *probabilities, int steps, int classes, int *ids, float *scores)
+{
+    const int t = blockIdx.x;
+    probabilities += static_cast<std::size_t>(blockIdx.y) * steps * classes;
+    ids += static_cast<std::size_t>(blockIdx.y) * steps;
+    scores += static_cast<std::size_t>(blockIdx.y) * steps;
+    __shared__ float vals[256];
+    __shared__ int indices[256];
+    float best = -1;
+    int id = 0;
+    bool bad = false;
+    for (int c = threadIdx.x; c < classes; c += blockDim.x)
+    {
+        const float v = probabilities[t * classes + c];
+        if (!isfinite(v) || v < 0 || v > 1.0001f)
+            bad = true;
+        if (v > best)
+        {
+            best = v;
+            id = c;
+        }
+    }
+    vals[threadIdx.x] = bad ? NAN : best;
+    indices[threadIdx.x] = id;
+    __syncthreads();
+    for (int delta = 128; delta; delta /= 2)
+    {
+        if (threadIdx.x < delta)
+        {
+            if (!isfinite(vals[threadIdx.x + delta]))
+                vals[threadIdx.x] = NAN;
+            else if (isfinite(vals[threadIdx.x]) &&
+                     (vals[threadIdx.x + delta] > vals[threadIdx.x] ||
+                      (vals[threadIdx.x + delta] == vals[threadIdx.x] &&
+                       indices[threadIdx.x + delta] < indices[threadIdx.x])))
+            {
+                vals[threadIdx.x] = vals[threadIdx.x + delta];
+                indices[threadIdx.x] = indices[threadIdx.x + delta];
+            }
+        }
+        __syncthreads();
+    }
+    if (!threadIdx.x)
+    {
+        ids[t] = indices[0];
+        scores[t] = vals[0];
+    }
+}
+__global__ void compactBatch(int *ids, float *scores, int steps, const Quad *quads, int first,
+                             int cropWidth, Token *tokens, int *counts)
+{
+    // Exactly one lane per sample, unchanged serial blank/repeat/confidence loop.
+    const int sampleIndex = threadIdx.x;
+    ids += static_cast<std::size_t>(sampleIndex) * steps;
+    scores += static_cast<std::size_t>(sampleIndex) * steps;
+    tokens += static_cast<std::size_t>(sampleIndex) * steps;
+    int *count = counts + sampleIndex;
+    const int index = first + sampleIndex;
+    int n = 0, previous = -1;
+    const int limit =
+        min(steps, static_cast<int>(ceilf(steps * min(cropWidth, quads[index].validWidth) /
+                                          static_cast<float>(cropWidth))));
+    for (int t = 0; t < limit; ++t)
+    {
+        if (!isfinite(scores[t]))
+        {
+            *count = -1;
+            return;
+        }
+        if (ids[t])
+        {
+            if (ids[t] == previous && n)
+                tokens[n - 1].last = t;
+            else
+                tokens[n++] = {ids[t], t, t, scores[t]};
+        }
+        previous = ids[t];
+    }
+    *count = n;
+}
 } // namespace
 void Normalize(const void *p, std::size_t pitch, int w, int h, float *out, int ow, int oh,
                cudaStream_t s)
@@ -508,6 +591,24 @@ void RectifyBatch(const void *p, std::size_t pitch, int w, int h, const Quad *qu
         throw std::invalid_argument("Unsupported batched rectification shape.");
     rectifyBatch<<<dim3((ow * 48 + 255) / 256, samples), 256, 0, s>>>(
         static_cast<const unsigned char *>(p), pitch, w, h, quads, first, out, ow);
+}
+void DecodeBatch(const float *p, int samples, int steps, int classes, const Quad *quads, int first,
+                 int cropWidth, int *ids, float *scores, Token *tokens, int *counts, cudaStream_t s)
+{
+    // Same maximum tensor ceiling as the N16 worker. Check divisions before
+    // multiplying; the scalar row index and consumed-width product stay int.
+    constexpr std::size_t maximumFloats = 256ull * 1024 * 1024;
+    if (!p || !quads || !ids || !scores || !tokens || !counts ||
+        samples < 1 || samples > 16 || first < 0 || first > recognizer_width::kMaximumCrops - samples ||
+        steps < 1 || classes < 1 || cropWidth < 1 || cropWidth > 1024 ||
+        steps > std::numeric_limits<int>::max() / cropWidth ||
+        static_cast<std::size_t>(steps) > maximumFloats / classes / samples)
+        throw std::invalid_argument("Unsupported batched CTC shape.");
+    argmaxBatch<<<dim3(steps, samples), 256, 0, s>>>(p, steps, classes, ids, scores);
+    const auto launched = cudaGetLastError();
+    if (launched != cudaSuccess)
+        throw std::runtime_error(cudaGetErrorString(launched));
+    compactBatch<<<1, samples, 0, s>>>(ids, scores, steps, quads, first, cropWidth, tokens, counts);
 }
 } // namespace okuflow::uct::gpu
 

@@ -42,6 +42,7 @@ public:
     void Reset() {
         used_ = omitted_ = detectorPasses_ = recognizerCalls_ = recognizerSamples_ = 0;
         shapeSets_ = addressSets_ = 0;
+        rectifyLaunches_ = ctcLaunches_ = recognitionCopies_ = 0;
         metadataBytes_ = 0;
         inputBytes_ = outputBytes_ = outputLimitBytes_ = 0;
         maximumBatch_ = 0;
@@ -127,6 +128,10 @@ public:
         cropHash_->addData(QByteArrayView(reinterpret_cast<const char*>(words.data()), sizeof(words)));
     }
     void Transfer(std::size_t bytes) { if (enabled_) metadataBytes_ += bytes; }
+    void RecognitionHelpers(int rectify, int ctc, int copies) {
+        if (!enabled_) return;
+        rectifyLaunches_ += rectify; ctcLaunches_ += ctc; recognitionCopies_ += copies;
+    }
     void Tensor(int batch, std::size_t inputBytes, std::size_t outputBytes, std::size_t outputLimitBytes) {
         if (!enabled_) return;
         maximumBatch_ = std::max(maximumBatch_, batch);
@@ -175,6 +180,8 @@ public:
             {"orderedCropDescriptorSha256", QString::fromLatin1(cropHash_->result().toHex())},
             {"cropDescriptorEncoding", "v1-le32:version,region-xywh,quad-xy8,score,validWidth,internalEdges"},
             {"metadataBytes", static_cast<qint64>(metadataBytes_)}, {"sourceUploadMeasured", false},
+            {"recognitionRectifyLaunches", rectifyLaunches_}, {"recognitionCtcLaunches", ctcLaunches_},
+            {"recognitionMetadataCopies", recognitionCopies_},
             {"maximumActualBatch", maximumBatch_},
             {"recognizerInputCapacityBytes", static_cast<qint64>(inputBytes_)},
             {"recognizerOutputCapacityBytes", static_cast<qint64>(outputBytes_)},
@@ -205,6 +212,7 @@ private:
     std::size_t used_{};
     int omitted_{}, detectorPasses_{}, recognizerCalls_{}, recognizerSamples_{};
     int shapeSets_{}, addressSets_{};
+    int rectifyLaunches_{}, ctcLaunches_{}, recognitionCopies_{};
     double enqueueMs_{}, mergeMs_{};
     std::size_t metadataBytes_{};
     std::size_t inputBytes_{}, outputBytes_{}, outputLimitBytes_{}, freeBefore_{}, totalBytes_{};
