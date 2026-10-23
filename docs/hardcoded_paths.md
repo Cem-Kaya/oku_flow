@@ -11,6 +11,10 @@ session identities, 600-second cooperative builder, 120-second golden and
 30-second completion polls, 256-MiB context/workspace/output ceilings separately.
 The frozen eight GRAY8 crops remain candidates, never automatic approval.
 See [held/unrun contract](uct_public_bf16.md).
+The private candidate seam reads detector/FP32 plans only from its explicit cache
+root, without preparing them. Public publication requires an already-existing
+root; native ordinary-directory leases precede descendant creation and remain
+through the new-only rename. Partial outputs explicitly mark unknown completion.
 
 The offline schema-2 precision experiment contract in `uct_precision_artifacts.hpp`
 has no runtime selector or production approvals. It represents only medium

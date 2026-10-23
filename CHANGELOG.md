@@ -6,6 +6,9 @@
   path on the existing background worker, with retained fault ownership and
   atomic local plan/receipt publication. The production corpus remains empty;
   candidate validation, compilation and runtime execution are unrun.
+- Keep private validation's FP32 plans cache-only in its isolated root, retain
+  partial golden outputs on later faults, and pin native cache ancestors before
+  publication. These independent-review repairs are unbuilt/unrun.
 
 - Zoom out to show an entire wide or portrait source. Wheel/key zoom stops
   once at Fill (1x), then continues toward whole-picture Fit; the slider snaps

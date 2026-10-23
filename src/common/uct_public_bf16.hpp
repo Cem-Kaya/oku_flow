@@ -182,13 +182,15 @@ inline GoldenResult CheckGolden(const Corpus& corpus,const LocalBuild& tested,st
             {"classes",observation.classes},{"pixelsSha256",QString::fromLatin1(observation.pixelsSha256)},
             {"text",observation.text},{"pass",row}});
     }
-    for(const auto& crop:corpus.Crops())for(const int batch:{1,8})if(!seen.contains(crop.id+":"+QString::number(batch)))passed=false;
+    bool complete=observations.size()==kGoldenObservations;
+    for(const auto& crop:corpus.Crops())for(const int batch:{1,8})if(!seen.contains(crop.id+":"+QString::number(batch))){passed=false;complete=false;}
     GoldenResult result;result.passed_=passed;
     result.record_={{"policy",kGoldenPolicy},{"corpusVersion",corpus.Version()},{"corpusSha256",QString::fromLatin1(corpus.Sha256())},
                     {"testedPlanSha256",QString::fromLatin1(tested.planFileSha256)},
                     {"testedDeviceUuid",QString::fromLatin1(tested.uuid.toHex())},
                     {"testedBuilderVersion",QString::fromLatin1(tested.builderVersion)},
-                    {"passed",passed},{"rows",rows}};
+                    {"testedComputeMajor",tested.major},{"testedComputeMinor",tested.minor},
+                    {"completion","confirmed"},{"complete",complete},{"passed",passed},{"rows",rows}};
     return result; // failed outputs retained; no retry-until-pass
 }
 inline QJsonObject BuildIdentity(const LocalBuild& build,const Corpus& corpus) {

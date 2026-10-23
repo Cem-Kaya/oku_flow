@@ -122,6 +122,11 @@ corpus and isolated cache roots, plus a worker-thread attestation observer. It
 uses the compiled **candidate** pin without changing production approval. It
 must be invoked by a separately authorized private source diagnostic; no default
 test or mutable environment switch invokes it.
+Its selected detector and all FP32 fallback plans are **cache-only in the same
+explicit isolated cache root**. Missing baseline plans refuse; they never cold
+build or access the ordinary cache. Verified baseline plans must already exist
+in that private root before a granted runtime attempt. The public deadline starts
+before detector construction. Ordinary production/schema-1 cache policy is unchanged.
 
 Both selected networks remain in one unpublished preparation `State`. The
 existing CPU bridge continues while the same preparation worker runs. BF16
@@ -142,25 +147,34 @@ Eight N1 calls precede one distinct full N8 call, with serial confirmed shape
 changes. Actual tensor N/T/classes and exact outputs reach `CheckGolden`; the
 observer retains mismatching records too. Existing wider N8/N1 diagnostic and
 quality failures are unchanged.
+Completed observations accumulate in retained State and are reported after each
+confirmed call. A later fault/cancel/timeout reports those exact earlier outputs
+with `complete=false`, `passed=false` and overall completion `unknown`; this
+incomplete record never authorizes publication or a healthy-stream retry.
+Complete records additionally retain explicit completion and compute capability.
 
 Public plans are raw serialized bytes, separate from schema-1 and ordinary FP32
 cache files. A driver-free parent under `ocr-engines/public-bf16/` binds approved
 model/device/corpus; each child binds its actual builder via `CacheKey`.
 `recognizer.plan` and `ready.json` are written only after completion and exact
 golden success, then exposed together by a new-only same-parent directory
-rename. Existing generations are never overwritten/repaired. Cache lookup reads
+rename of the exact held staging directory. Existing generations are never overwritten/repaired. Cache lookup reads
 at most 32 directories, bounded 256-KiB receipts and strictly-below-256-MiB plans.
 Receipts bind loaded-plan bytes/device/builder/corpus and provenance, but never
 authorize expected text or skip deserialization/profile checks/real reattestation.
 Driver changes alone cannot change the locator. Runtime ABI11 tuple admission
 remains >=11.4.0.106; real deserialization decides compatibility.
+The explicit cache root must already exist. Native directory handles deny write/
+delete sharing, reject reparse points below its canonical root **before** any
+descendant creation and stay held through reads/publication. A racing final
+generation is a typed refusal; the losing attempt does not claim publication.
 
 A bounded 64-entry process-session attempt latch retains failed/in-flight
 identity/plan attempts. There is no rebuild/retest-until-pass loop. Builder
 progress observes cancellation and a 600-second deadline; golden work has a
 120-second deadline and each event poll a 30-second limit, all on preparation
 only. Vendor builder calls are cooperatively cancellable, not forcibly preempted;
-a stalled vendor call stays on its retained worker. Context memory is capped at
+a stalled vendor call stays on its retained worker. BF16 context memory is capped at
 256 MiB, builder workspace 256 MiB, output at the existing N8 256-MiB ceiling,
 golden input ~4.5 MiB and atlas 1.5 MiB. These checks do not bound all undocumented
 TensorRT/driver internal memory. CPU/UI/presentation never waits for readiness.
@@ -199,13 +213,17 @@ It does not cover this follow-up. All prior grants expired; P0 is not granted.
 raw text preservation, failure records, latching, atomic new-only storage and
 pending-input/model/staging/output quarantine cases. Storage fixtures are labelled
 non-model bytes, never fake passed receipts. All additions are **UNBUILT/UNRUN**.
+The one independent source review and subsequent unretested repairs are recorded
+in [review dispositions](uct_public_bf16_review.md). Native new-only rename,
+junction refusal and directory sharing still require actual fixture execution.
 
 Proposed finite root START C2: one frozen checkout, maximum 8 compile jobs,
 900-second total stop budget; build only affected `uct_paddle_tests` and
 `shared_source_equivalence` inputs in CPU PCH-on/off configurations, then exactly
 `uct_public_bf16_contract`, `uct_precision_artifact_contract`,
 `uct_paddle_processing`, `shared_source_equivalence`. Stop on first failure,
-preserve evidence; no GUI/GPU/model/cache preparation. Root owns runner/lease
+preserve evidence; private model-free storage fixtures may use their own temporary
+directories, with no owner/model cache preparation or GUI/GPU. Root owns runner/lease
 selection and whether this finite scope is granted. Nothing here takes a lease.
 
 Separate proposed real-runtime START P1: frozen source/private diagnostic and
@@ -213,6 +231,9 @@ explicit isolated model/corpus/cache/evidence roots, <=900 seconds total,
 one eligible device and one preparation worker; at most one cold BF16 identity
 build (600-second cooperative budget), one eight-N1/full-N8 golden attempt
 (120 seconds), bounded completion/fault/cancel observation, then retire normally.
+Supply verified cached FP32 detector/fallback plans in that explicit isolated
+root beforehand; this path cannot prepare them. Do not substitute or modify the
+ordinary owner's cache. A missing baseline is a prerequisite refusal.
 Keep all actual outputs, plan/device/builder/version/hash receipts and failure
 records. No unchanged retry or default catalog activation. A second cache-only
 reattest/reuse session, exact pipeline/runtime regression and wider independent
