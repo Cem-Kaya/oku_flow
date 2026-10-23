@@ -2411,6 +2411,7 @@ projective geometry and actual near/far paint/character bounds.
 `gpuOrientedInkMatchesCpu` also checks resident surface-corner parity. Optional
 `OKUFLOW_UCT_SURFACE_TEST_OUTPUT` writes a synthetic refusal image for diagnosis;
 it does not load external inputs. See [surface perspective](../docs/uct_surface_perspective.md).
+
 ## Public BF16 source-only integration fixtures (2026-10-23)
 
 `uct_public_bf16_contract` includes `publicBf16RequiresApprovedGoldenCorpus` and

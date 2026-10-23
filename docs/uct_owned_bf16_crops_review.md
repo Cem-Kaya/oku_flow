@@ -63,4 +63,3 @@ quality, strict N1 plus full N8 exact-text attestation and explicit separate
 catalog approval remain outstanding. ProductionCorpusCatalog is unchanged and
 unapproved. No golden pass, ready receipt, accuracy, speed or release acceptance
 is claimed. No tests/build/model/GPU work ran in this review.
-

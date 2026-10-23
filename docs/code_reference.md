@@ -7360,6 +7360,7 @@ The private `UctControllerTestAccess::AdvancingJob` exposes only the pending
 admission ticket to the controller fixture. Its full-deadline comparison now
 waits for the exact probe and full/regional UI callbacks before advancing the
 synthetic clock; worker completion alone is not UI admission.
+
 ## Public BF16 background integration (source only, 2026-10-23)
 
 - `src/common/uct_public_bf16_runtime.hpp`: private `Request`/`CatalogUse`, compiled
