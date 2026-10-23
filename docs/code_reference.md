@@ -7341,6 +7341,14 @@ attempt begins, its deadline and runtime faults remain terminal through cleanup.
 The model-free eligibility/baseline cases cover candidate admission, empty
 production and disabled validation, but not the actual worker's elapsed-clock
 sequence. The repair and fixtures remain unbuilt/unrun.
+`FindPlan` validates each visited receipt/plan hash before skipping a different
+builder recipe, within its unchanged 32-entry bound. The caller keeps the actual
+loaded builder version; it never adopts a previous child's builder. Missing
+matches permit the current recipe's new-only build. This filter does not change
+runtime ABI11/minimum-tuple admission or driver policy. The existing publication
+fixture gains positive two-builder byte selection, missing-match/no-mutation and
+nonmatching-child corruption cases with labelled non-model bytes and no golden
+pass fields. No real model acceptance or executable coverage is claimed.
 `State::publicObservations/publicEvidenceIdentity` and `ReportPublicPartial`/
 `PartialRecord` retain completed outputs across later faults without claiming
 whole-attempt completion. `DirectoryPins::Hold/Prepare/RenameNew` leases native

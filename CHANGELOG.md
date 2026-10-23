@@ -17,6 +17,10 @@
   admission and ordinary FP32 detector preparation. Unattempted public selection
   cannot time out FP32 preparation; cancellation and actual-candidate fault
   retirement remain fatal. This repair and policy fixtures are unbuilt/unrun.
+- Select public BF16 cache generations only for the current actual builder's
+  recipe, after receipt and plan-hash validation. Older builders remain intact;
+  an absent matching generation permits a new local build. Runtime admission
+  stays ABI11/minimum-tuple based and driver independent. Lookup fixtures are unrun.
 
 - Zoom out to show an entire wide or portrait source. Wheel/key zoom stops
   once at Fill (1x), then continues toward whole-picture Fit; the slider snaps

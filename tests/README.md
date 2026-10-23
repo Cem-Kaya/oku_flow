@@ -2398,3 +2398,19 @@ empty production refusal and disabled validation leaving ordinary FP32 preparati
 enabled. The worker's 600-second BF16 clock starts only after eligibility, outside
 ordinary detector work. These policy cases and worker changes are UNBUILT/UNRUN;
 they do not simulate elapsed worker time or prove real fault/cancellation handling.
+
+The publication slot also authors a positive `FindPlan` integrity lookup with two
+builder recipes: each selects its own labelled non-model bytes, an absent builder
+returns missing, and all stored bytes/inventory remain unchanged. A corrupted
+nonmatching child's hash must still refuse. Fixture receipts intentionally contain
+no golden/pass field, and lookup cannot approve a model. These cases remain
+UNBUILT/UNRUN; native directory sharing and runtime deserialization still need
+their separately authorized execution.
+
+Root reports that the earlier combined CPU gate using pre-repair `89f839b` public
+bytes compiled after a separate fixture-only near/far rename and passed 5/6 cases.
+The publication/lifetime slot threw an undiagnosed C++ exception at 10 ms before
+completion; it did not establish the suspected directory-sharing assertion
+failure. Preserve that original log and the unchanged denial/new-only assertions.
+The newer policy/cache cases above remain UNBUILT/UNRUN. See the exact retained
+failure path and pending root-owned probe in [review dispositions](../docs/uct_public_bf16_review.md).

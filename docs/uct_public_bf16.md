@@ -161,6 +161,13 @@ Complete records additionally retain explicit completion and compute capability.
 Public plans are raw serialized bytes, separate from schema-1 and ordinary FP32
 cache files. A driver-free parent under `ocr-engines/public-bf16/` binds approved
 model/device/corpus; each child binds its actual builder via `CacheKey`.
+Within the existing 32-entry scan bound, lookup validates receipt identity and
+plan bytes before skipping a child whose builder differs from the currently
+loaded actual builder. Two valid builder generations cannot select each other;
+no matching child means missing, so the current builder may prepare its own new
+generation. Old bytes are not aliased, deleted, rewritten or adopted as the new
+builder. This is plan-recipe lookup, separate from runtime compatibility admission;
+the ABI11/minimum-tuple rule and driver-independent identity remain unchanged.
 `recognizer.plan` and `ready.json` are written only after completion and exact
 golden success, then exposed together by a new-only same-parent directory
 rename of the exact held staging directory. Existing generations are never overwritten/repaired. Cache lookup reads
@@ -233,6 +240,16 @@ The existing eligibility and baseline-policy seams additionally cover accepted
 candidate preflight versus unavailable production and disabled candidate requests
 leaving ordinary baseline preparation enabled. They do not execute the preparation
 worker or prove its deadline control flow; those source repairs remain UNBUILT/UNRUN.
+Integrity-only cache fixtures also select between two builder generations in
+either enumeration order, check absent matching builders, preserve all bytes/
+inventory and reject a nonmatching child's corrupted plan hash. Their labelled
+non-model receipts contain no golden/pass field; positive lookup is not model
+acceptance. These new fixtures are likewise UNBUILT/UNRUN.
+Root reports an earlier combined CPU gate on the pre-repair `89f839b` public
+bytes: 5/6 passed, with the publication/lifetime slot throwing an undiagnosed C++
+exception before completion. The first log and root-owned pending native probe
+are recorded in [review dispositions](uct_public_bf16_review.md). That run does
+not cover these policy/cache repairs or establish native sharing/rename behavior.
 
 Proposed finite root START C2: one frozen checkout, maximum 8 compile jobs,
 900-second total stop budget; build only affected `uct_paddle_tests` and
