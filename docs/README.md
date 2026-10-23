@@ -14,6 +14,10 @@ bounded call-local geometry reuse and frozen CPU replay. The
 [2026-10-23 replay report](uct_merge_cpu_replay_2026_10_23.md) records scoped
 correctness and descriptive function microtime; worker/GPU/FPS gains remain unmeasured.
 
+[Public BF16 model preparation](uct_public_bf16.md) separates approved model
+bytes from each machine's local engine/golden attestation. The offline boundary
+has no production corpus, active factory integration or staged release payload.
+
 [Source-supported perspective text](uct_surface_perspective.md) explains bounded
 four-corner recovery, source refusals and projected glyph geometry.
 

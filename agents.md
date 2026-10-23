@@ -1031,6 +1031,13 @@ aligned with the project goals.
   Keep compiled ABI11 loading and factory/deserialization/profile authority;
   numeric admission does not guarantee newer-runtime serialization acceptance.
   Existing caches are read-only legacy lookups, never migrated or overwritten.
+- Public BF16 approval is model/source/config/dictionary based; the private
+  owner schema-1 plan is not a shipping approval. Require owned immutable golden
+  pixels plus independently checked exact Unicode truth before a compiled corpus
+  pin. Never manufacture a passing corpus/result or infer broad quality from a
+  startup check. Local readiness binds actual plan/GPU/builder/profile/ABI and
+  corpus/results; driver/DLL hashes stay provenance. No public activation/staging
+  without runtime integration, exact redistribution inventory and release gates.
 
 ## Private standalone paused diagnostics (2026-10-22)
 

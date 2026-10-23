@@ -893,6 +893,20 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   old bytes using an explicit historical driver solely for read-only lookup.
   The actual ABI11 Libraries/Network wiring is a separate batch-lead commit;
   these helpers never load DLLs, deserialize, access CUDA or write caches.
+- Private `public_bf16` in `uct_public_bf16.hpp` prepares public model approval
+  separately from the owner plan. `Reason`/`Refusal`, `ModelIdentity`, `CorpusPin`/
+  `ProductionCorpusCatalog`, `CheckEligibility`, `ReadModel`, `Crop`/`Corpus`/
+  `ReadCorpus` bind selected profile, model/config/dictionary and owned pixels.
+  The production corpus catalog is empty. `EngineContract`/`CheckEngine`,
+  `Observation`, `Completion`, `GoldenResult`/`CheckGolden` enforce actual FLOAT
+  profile and exact N1/N8 text, retaining failed rows and tested-engine identity.
+  Unknown completion cannot authorize fallback. `LocalBuild`, `BuildIdentity`,
+  `CacheKey`, `ReadyReceipt` bind local device/builder/plan/corpus/results without
+  global UUID/plan approval or driver/DLL-hash admission. The unrun
+  `PaddleTests::publicBf16RequiresApprovedGoldenCorpus` calls
+  `uct_public_bf16_test::Contract` and creates no corpus truth/accepted result.
+  Factories, writes, preparation and staging remain unintegrated; see
+  [public model contract](uct_public_bf16.md).
 - `CreatePaddleCpuRecognizer` uses `OpenPaddleCpuSession`/private
   `OnnxCpuSession`, runtime-loaded hash-pinned CPU ONNX Runtime, two intra-op
   threads and checked float tensor dimensions. `CreateTensorRtRecognizer`
