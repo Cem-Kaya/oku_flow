@@ -13,6 +13,7 @@
 #include "uct_batch_diagnostic.hpp"
 #include "okuflow/common/uct_region_planner.hpp"
 #include "../src/common/uct_recognizer_width.hpp"
+#include "../src/common/uct_tensorrt_identity.hpp"
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -45,6 +46,9 @@
 #if OKUFLOW_ENABLE_CUDA && OKUFLOW_UCT_TRT
 #include "okuflow/cuda/uct_analysis_pool.hpp"
 #include <cuda_runtime.h>
+namespace okuflow::uct {
+QJsonObject TensorRtRuntimeForDiagnostic(const QString& sdk);
+}
 #endif
 
 namespace uct_resident_test {
@@ -415,19 +419,12 @@ inline std::optional<Completion> Await(Mailbox& box, Clock::time_point deadline)
 
 // --- Identities --------------------------------------------------------------
 
-// Mirrors Network's cache identity in src/common/uct_tensorrt.cpp. Any drift
-// makes the expected plan look missing, so this check fails closed.
-inline QString PlanKey(const QByteArray& modelSha256Hex, const QByteArray& gpuUuid, int driver,
-                       bool detection, int capacity, bool variableWidth = false)
+inline QString PlanKey(const QByteArray& modelSha256Hex, const QByteArray& gpuUuid,
+                       bool detection, int capacity, bool variableWidth = false,
+                       const QByteArray& builderVersion = tensorrt_identity::kBuilderVersion)
 {
-    QByteArray identity = QByteArray::fromHex(modelSha256Hex) + gpuUuid + QByteArray::number(driver) +
-                          "-trt11.4.0.106-fp32-v1";
-    if (!detection && variableWidth)
-        identity += recognizer_width::kCacheTag + QByteArray::number(capacity);
-    else if (!detection && (capacity == 8 || capacity == 16))
-        identity += "-rec-min1x3x48x1024-opt" + QByteArray::number(capacity) + "x3x48x1024-max" +
-                    QByteArray::number(capacity) + "x3x48x1024-v2";
-    return QString::fromLatin1(QCryptographicHash::hash(identity, QCryptographicHash::Sha256).toHex());
+    return QString::fromLatin1(tensorrt_identity::Fp32PlanKey(QByteArray::fromHex(modelSha256Hex),
+        gpuUuid, detection, capacity, variableWidth, builderVersion));
 }
 
 struct PlanRecord {
@@ -435,11 +432,13 @@ struct PlanRecord {
     int capacity{};
     qint64 bytes{};
     bool valid{};
+    QJsonArray candidates;
     QJsonObject Json() const
     {
         return {{"role", role}, {"tier", tier}, {"capacity", capacity}, {"key", key}, {"path", path},
                 {"bytes", bytes}, {"payloadSha256", payloadSha256}, {"modifiedUtc", modifiedUtc},
-                {"valid", valid}, {"error", error}};
+                {"valid", valid}, {"error", error}, {"orderedCandidates", candidates},
+                {"scope", "digest-valid file preflight; actual loader selection is in backend plan receipt"}};
     }
 };
 
@@ -468,6 +467,39 @@ inline PlanRecord InspectPlan(const QString& cache, const QString& role, ModelTi
     plan.valid = payload.result() == header;
     if (!plan.valid) plan.error = "payload digest mismatch";
     return plan;
+}
+
+inline PlanRecord InspectCachedPlan(const QString& cache, const QString& role, ModelTier tier, int capacity,
+                                    const QByteArray& modelSha256Hex, const QByteArray& gpuUuid,
+                                    const QByteArray& runtimeVersion, bool variableWidth = false)
+{
+    const bool detection = role == "detector";
+    QStringList keys{PlanKey(modelSha256Hex, gpuUuid, detection, capacity, variableWidth, runtimeVersion)};
+    const auto original = PlanKey(modelSha256Hex, gpuUuid, detection, capacity, variableWidth);
+    if (!keys.contains(original)) keys.push_back(original);
+    for (const int historicalDriver : {13050, 13040})
+        keys.push_back(QString::fromLatin1(tensorrt_identity::LegacyFp32PlanKey(
+            QByteArray::fromHex(modelSha256Hex), gpuUuid, detection, capacity, variableWidth, historicalDriver)));
+    PlanRecord result;
+    QJsonArray candidates;
+    for (const auto& key : keys) {
+        const auto candidate = InspectPlan(cache, role, tier, capacity, key);
+        candidates.push_back(candidate.Json());
+        if (result.key.isEmpty() || (!result.valid && candidate.valid)) result = candidate;
+    }
+    result.candidates = candidates;
+    return result;
+}
+
+inline bool MatchesPlanReceipt(const QString& detail, const PlanRecord& preflight)
+{
+    for (const auto& value : preflight.candidates) {
+        const auto candidate = value.toObject();
+        if (candidate["valid"].toBool() &&
+            detail.contains(preflight.role + "PlanKey=" + candidate["key"].toString() + ';') &&
+            detail.contains(preflight.role + "PlanPayloadSha256=" + candidate["payloadSha256"].toString() + ';')) return true;
+    }
+    return false;
 }
 
 // Fresh full-file hashes, not metadata/header equality, prove unchanged bytes.
@@ -1027,18 +1059,39 @@ inline void SelectionAndComparisonSelfTest()
         QVERIFY(replay[i].Json(selection) == blocks[i].Json(selection)); // the seed fixes the order
 
     const QByteArray model(64, 'a'), other(64, 'b'), uuid(16, '\x01');
-    const auto detector = PlanKey(model, uuid, 13000, true, 1);
+    const auto detector = PlanKey(model, uuid, true, 1);
     QCOMPARE(detector.size(), qsizetype(64));
-    QCOMPARE(PlanKey(model, uuid, 13000, false, 1), detector); // only wider recognizer profiles extend identity
-    QVERIFY(PlanKey(model, uuid, 13000, false, 8) != detector);
-    QVERIFY(PlanKey(model, uuid, 13000, false, 16) != PlanKey(model, uuid, 13000, false, 8));
-    QVERIFY(PlanKey(model, uuid, 13001, true, 1) != detector);
-    QVERIFY(PlanKey(other, uuid, 13000, true, 1) != detector);
+    QVERIFY(PlanKey(model, uuid, false, 1) != detector); // stable keys bind role
+    QVERIFY(PlanKey(model, uuid, false, 8) != detector);
+    QVERIFY(PlanKey(model, uuid, false, 16) != PlanKey(model, uuid, false, 8));
+    QVERIFY(PlanKey(model, uuid, true, 1, false, "11.5.0.0") != detector); // actual builder identity
+    QVERIFY(PlanKey(other, uuid, true, 1) != detector);
     for (const int n : {1,8,16}) {
-        QVERIFY(PlanKey(model,uuid,13000,false,n,true) != PlanKey(model,uuid,13000,false,n,false));
-        QVERIFY(PlanKey(model,uuid,13000,false,n,true) != detector);
+        QVERIFY(PlanKey(model,uuid,false,n,true) != PlanKey(model,uuid,false,n,false));
+        QVERIFY(PlanKey(model,uuid,false,n,true) != detector);
     }
-    QVERIFY(PlanKey(model,uuid,13000,false,8,true) != PlanKey(model,uuid,13000,false,16,true));
+    QVERIFY(PlanKey(model,uuid,false,8,true) != PlanKey(model,uuid,false,16,true));
+
+    QTemporaryDir legacyCache;
+    QVERIFY(legacyCache.isValid());
+    const auto legacyKey = QString::fromLatin1(tensorrt_identity::LegacyFp32PlanKey(
+        QByteArray::fromHex(model), uuid, false, 8, false, 13040));
+    const QByteArray payload(80, 'p');
+    const auto payloadHash = QCryptographicHash::hash(payload, QCryptographicHash::Sha256);
+    QFile legacy(legacyCache.filePath(legacyKey + ".plan"));
+    QVERIFY(legacy.open(QIODevice::WriteOnly));
+    QCOMPARE(legacy.write(payloadHash + payload), qint64(32 + payload.size()));
+    legacy.close();
+    const auto legacyBefore = CacheInventory(legacyCache.path());
+    const auto inspected = InspectCachedPlan(legacyCache.path(), "recognizer", ModelTier::Medium, 8,
+                                            model, uuid, "11.5.0.0");
+    QVERIFY(inspected.valid);
+    QCOMPARE(inspected.key, legacyKey);
+    QCOMPARE(inspected.candidates.size(), qsizetype(4));
+    QVERIFY(MatchesPlanReceipt("recognizerPlanKey=" + legacyKey + ";recognizerPlanPayloadSha256=" +
+                              QString::fromLatin1(payloadHash.toHex()) + ';', inspected));
+    QVERIFY(!MatchesPlanReceipt("recognizerPlanKey=" + legacyKey + ";recognizerPlanPayloadSha256=wrong;", inspected));
+    QCOMPARE(CacheInventory(legacyCache.path()), legacyBefore);
 
     std::vector<double> samples(19);
     std::iota(samples.begin(), samples.end(), 1.0);
@@ -1511,6 +1564,10 @@ inline void RunBlock(Run& run, const Block& block, ProfileCapture& capture)
     const auto startupInvalid = Validate(*first, startupInput.image->Read(), startupProfiles, block.capacity,
                                          run.selection, run.sources[std::size_t(firstSource)].treeSha256);
     QVERIFY2(startupInvalid.isEmpty(), qPrintable(startupInvalid + " Evidence: " + startupFile));
+    for (const auto& preflight : run.pairs[std::size_t(block.pair)].plans) {
+        if (preflight.role == "recognizer" && preflight.capacity != block.capacity) continue;
+        QVERIFY2(MatchesPlanReceipt(first->backend.detail, preflight), qPrintable(first->backend.detail));
+    }
     std::uint64_t shadowEpoch = 0;
     if (run.selection.shadowPlanner) {
         const auto& plan = *first->result.shadowPlan;
@@ -1639,6 +1696,9 @@ inline void ResidentBaselineDiagnostic()
     QVERIFY2(!QFile::exists(bin.filePath("nvonnxparser_11.dll")) &&
              bin.entryList({"nvinfer_builder_resource*.dll"}, QDir::Files).isEmpty(),
              "The resident baseline refuses SDK parser/builder resources, so it cannot compile a missing plan.");
+    const auto trtRuntime = TensorRtRuntimeForDiagnostic(selection.sdk);
+    QVERIFY2(trtRuntime["hashed"].toBool(), "Actual loaded TensorRT DLL provenance could not be hashed.");
+    const auto trtVersion = trtRuntime["tensorRtVersion"].toString().toLatin1();
 
     int devices{};
     QVERIFY2(cudaGetDeviceCount(&devices) == cudaSuccess && devices > 0, "No CUDA device.");
@@ -1661,11 +1721,11 @@ inline void ResidentBaselineDiagnostic()
         entry.assets = LoadPaddleAssets(DefaultPaddleRoot(), pair.detector, pair.recognizer);
         QVERIFY2(entry.assets.IsValid(), qPrintable(entry.assets.error));
         entry.models = ModelsJson(pair, entry.assets);
-        entry.plans.push_back(InspectPlan(cache, "detector", pair.detector, 1,
-                                          PlanKey(entry.assets.detectorSha256, uuid, driver, true, 1)));
+        entry.plans.push_back(InspectCachedPlan(cache, "detector", pair.detector, 1,
+                                              entry.assets.detectorSha256, uuid, trtVersion));
         for (const int capacity : selection.capacities)
-            entry.plans.push_back(InspectPlan(cache, "recognizer", pair.recognizer, capacity,
-                                              PlanKey(entry.assets.recognizerSha256, uuid, driver, false, capacity, selection.widthPolicy == "bucketed")));
+            entry.plans.push_back(InspectCachedPlan(cache, "recognizer", pair.recognizer, capacity,
+                entry.assets.recognizerSha256, uuid, trtVersion, selection.widthPolicy == "bucketed"));
         for (const auto& plan : entry.plans)
             if (!plan.valid)
                 missing << QStringLiteral("%1 %2 N%3 %4: %5").arg(pair.Token(), plan.role).arg(plan.capacity)
@@ -1723,6 +1783,7 @@ inline void ResidentBaselineDiagnostic()
     QStringList sdkFiles = bin.entryList(QDir::Files, QDir::Name);
     const QJsonObject manifest{{"startedUtc", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
         {"selection", selection.Json()}, {"plannedBlocks", planned}, {"pairs", pairs}, {"sources", sources},
+        {"tensorRtRuntime", trtRuntime},
         {"gpu", gpu}, {"sdk", QJsonObject{{"root", selection.sdk}, {"binFiles", QJsonArray::fromStringList(sdkFiles)},
             {"inferenceOnly", true}}},
         {"host", QJsonObject{{"os", QSysInfo::prettyProductName()}, {"kernel", QSysInfo::kernelVersion()},

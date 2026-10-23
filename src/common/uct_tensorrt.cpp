@@ -25,12 +25,14 @@ bool TensorRtCropDiagnostic::TryCommit(Plan&& plan) noexcept
 #include "uct_frozen_upload.hpp"
 #include "uct_recognition_groups.hpp"
 #include "uct_recognizer_width.hpp"
+#include "uct_tensorrt_identity.hpp"
 #include <NvInfer.h>
 #include <NvOnnxParser.h>
 #include <QCryptographicHash>
 #include <QElapsedTimer>
 #include <QFile>
-#include <QSaveFile>
+#include <QJsonObject>
+#include <QTemporaryFile>
 #include <Windows.h>
 #include <algorithm>
 #include <cmath>
@@ -66,10 +68,20 @@ struct TensorRtCropDiagnosticAccess {
 };
 namespace
 {
+class CudaFailure final : public std::runtime_error
+{
+  public:
+    using std::runtime_error::runtime_error;
+};
+class TensorRtApiFailure final : public std::runtime_error
+{
+  public:
+    using std::runtime_error::runtime_error;
+};
 void Check(cudaError_t status)
 {
     if (status != cudaSuccess)
-        throw std::runtime_error(cudaGetErrorString(status));
+        throw CudaFailure(cudaGetErrorString(status));
 }
 template <class T> class DeviceBuffer
 {
@@ -172,6 +184,7 @@ struct DllDirectory
 struct Libraries
 {
     HMODULE inference{}, parser{}, builderResource{};
+    QByteArray tensorRtVersion;
     DllDirectory sdkDirectory, cudaDirectory;
     using Factory = void *(*)(void *, int);
     using ParserFactory = void *(*)(void *, void *, int);
@@ -202,14 +215,19 @@ struct Libraries
         using Version = int32_t (*)();
         const char *versionNames[]{"getInferLibMajorVersion", "getInferLibMinorVersion",
                                    "getInferLibPatchVersion", "getInferLibBuildVersion"};
-        const int expected[]{11, 4, 0, 106};
+        tensorrt_identity::Version actual{};
         for (int i = 0; i < 4; ++i)
         {
             const auto version =
                 reinterpret_cast<Version>(GetProcAddress(inference, versionNames[i]));
-            if (!version || version() != expected[i])
-                throw std::runtime_error("TensorRT must match the pinned 11.4.0.106 SDK.");
+            if (!version)
+                throw std::runtime_error("TensorRT runtime version API is unavailable.");
+            actual[i] = version();
         }
+        tensorRtVersion = tensorrt_identity::VersionString(actual);
+        if (actual[0] != 11 || !tensorrt_identity::RuntimeAtLeastMinimum(actual))
+            throw std::runtime_error("TensorRT ABI 11 runtime at least 11.4.0.106 is required; found " +
+                                     tensorRtVersion.toStdString());
         runtime =
             reinterpret_cast<Factory>(GetProcAddress(inference, "createInferRuntime_INTERNAL"));
         if (!runtime)
@@ -255,6 +273,19 @@ struct Libraries
         // TensorRT may retain internal worker/tactic resources. Keep these
         // exact modules loaded for process lifetime; do not unload late work.
     }
+    QJsonObject Provenance() const
+    {
+        std::wstring modulePath(32768, L'\0');
+        const auto length = GetModuleFileNameW(inference, modulePath.data(), DWORD(modulePath.size()));
+        const auto path = length && length < modulePath.size()
+            ? QString::fromWCharArray(modulePath.data(), int(length)) : QString();
+        QFile file(path);
+        QCryptographicHash hash(QCryptographicHash::Sha256);
+        const bool hashed = !path.isEmpty() && file.open(QIODevice::ReadOnly) && hash.addData(&file);
+        return {{"tensorRtVersion", QString::fromLatin1(tensorRtVersion)},
+                {"loadedInferencePath", path}, {"inferenceSha256", hashed ? QString::fromLatin1(hash.result().toHex()) : QString()},
+                {"hashed", hashed}, {"scope", "actual loaded DLL provenance; no approval/hash equality gate"}};
+    }
 };
 class Progress final : public nvinfer1::IProgressMonitor
 {
@@ -292,7 +323,7 @@ class Network
         runtime_.reset(
             static_cast<nvinfer1::IRuntime *>(libraries.runtime(&logger, NV_TENSORRT_VERSION)));
         if (!runtime_)
-            throw std::runtime_error("TensorRT runtime creation failed.");
+            throw TensorRtApiFailure("TensorRT runtime creation failed.");
         QFile modelFile(model);
         if (!modelFile.open(QIODevice::ReadOnly))
             throw std::runtime_error("Cannot read pinned OCR graph.");
@@ -301,43 +332,50 @@ class Network
             throw std::runtime_error("Pinned OCR graph changed before preparation.");
         cudaDeviceProp properties{};
         Check(cudaGetDeviceProperties(&properties, device));
-        int driver{};
-        Check(cudaDriverGetVersion(&driver));
-        QByteArray identity =
-            QCryptographicHash::hash(bytes, QCryptographicHash::Sha256) +
-            QByteArray(reinterpret_cast<const char *>(&properties.uuid), sizeof(properties.uuid)) +
-            QByteArray::number(driver) + "-trt11.4.0.106-fp32-v1";
-        if (variableWidth_) {
-            if (detection || (maximumBatch != 1 && maximumBatch != 8 && maximumBatch != 16))
-                throw std::runtime_error("Unsupported variable-width recognizer profile.");
-            identity += recognizer_width::kCacheTag + QByteArray::number(maximumBatch);
-        }
-        else if (!detection && (maximumBatch == 8 || maximumBatch == 16))
-            identity += "-rec-min1x3x48x1024-opt" + QByteArray::number(maximumBatch) +
-                        "x3x48x1024-max" + QByteArray::number(maximumBatch) + "x3x48x1024-v2";
-        else if (maximumBatch != 1)
-            throw std::runtime_error("Unsupported TensorRT OCR batch profile.");
-        const auto key = QCryptographicHash::hash(identity, QCryptographicHash::Sha256).toHex();
+        const auto graphHash = QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
+        const auto uuid = QByteArray(reinterpret_cast<const char *>(&properties.uuid), sizeof(properties.uuid));
+        // A new build binds its actual builder version. Loading an older key
+        // never requires that builder version to equal the loaded runtime.
+        const auto key = tensorrt_identity::Fp32PlanKey(graphHash, uuid, detection,
+            maximumBatch, variableWidth_, libraries.tensorRtVersion);
+        QList<QByteArray> readKeys{key};
+        const auto originalBuilderKey = tensorrt_identity::Fp32PlanKey(graphHash, uuid,
+            detection, maximumBatch, variableWidth_);
+        if (!readKeys.contains(originalBuilderKey)) readKeys.push_back(originalBuilderKey);
+        for (const int historicalDriver : {13050, 13040})
+            readKeys.push_back(tensorrt_identity::LegacyFp32PlanKey(graphHash, uuid,
+                detection, maximumBatch, variableWidth_, historicalDriver));
         const auto cache =
             QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath("OkuFlow/ocr-engines");
         if (allowPreparation && !precisionPlan) QDir().mkpath(cache);
         const auto path = QDir(cache).filePath(QString::fromLatin1(key) + ".plan");
-        QFile cached(path);
         if (precisionPlan) {
             engine_.reset(runtime_->deserializeCudaEngine(precisionPlan->constData(), precisionPlan->size()));
+            Check(cudaPeekAtLastError());
             if (!engine_) {
-                Check(cudaPeekAtLastError());
-                // Exact file/device/runtime checks already passed. A runtime API
-                // failure now follows normal failover, never an engine retry.
-                throw std::runtime_error("Verified local BF16 cached plan could not be deserialized.");
+                // Pre-inference refusal without a CUDA fault permits the
+                // existing cache-only FP32 selection. Context faults do not.
+                throw runtime_precision::ArtifactError("Local BF16 plan refused by TensorRT " +
+                    libraries.tensorRtVersion.toStdString() + ": " + logger.Error());
             }
+            planKey_ = "verified-local-bf16";
+            planPayloadSha256_ = QCryptographicHash::hash(*precisionPlan, QCryptographicHash::Sha256).toHex();
         }
-        else if (cached.open(QIODevice::ReadOnly) && cached.size() > 32 &&
-            cached.size() < 256 * 1024 * 1024)
-        {
+        else for (const auto& readKey : readKeys) {
+            QFile cached(QDir(cache).filePath(QString::fromLatin1(readKey) + ".plan"));
+            if (!cached.open(QIODevice::ReadOnly) || cached.size() <= 32 ||
+                cached.size() >= 256 * 1024 * 1024) continue;
             const auto digest = cached.read(32), plan = cached.readAll();
-            if (QCryptographicHash::hash(plan, QCryptographicHash::Sha256) == digest)
-                engine_.reset(runtime_->deserializeCudaEngine(plan.constData(), plan.size()));
+            if (cached.error() != QFileDevice::NoError || !cached.atEnd() ||
+                QCryptographicHash::hash(plan, QCryptographicHash::Sha256) != digest) continue;
+            engine_.reset(runtime_->deserializeCudaEngine(plan.constData(), plan.size()));
+            // A reported CUDA fault is terminal, even if another locator exists.
+            Check(cudaPeekAtLastError());
+            if (engine_) {
+                planKey_ = readKey;
+                planPayloadSha256_ = digest.toHex();
+                break;
+            }
         }
         if (!engine_)
         {
@@ -390,16 +428,26 @@ class Network
             if (!plan)
                 throw std::runtime_error("TensorRT OCR compilation failed: " + logger.Error());
             engine_.reset(runtime_->deserializeCudaEngine(plan->data(), plan->size()));
+            Check(cudaPeekAtLastError());
             if (!engine_)
-                throw std::runtime_error("TensorRT OCR engine creation failed.");
+                throw TensorRtApiFailure("TensorRT OCR engine creation failed.");
             const auto blob = QByteArray::fromRawData(static_cast<const char *>(plan->data()),
                                                       static_cast<qsizetype>(plan->size()));
-            QSaveFile saved(path);
-            if (saved.open(QIODevice::WriteOnly))
+            planKey_ = key;
+            planPayloadSha256_ = QCryptographicHash::hash(blob, QCryptographicHash::Sha256).toHex();
+            // Publish only genuinely new bytes. Historical/stable cache files
+            // are never replaced, even on a corrupt entry or a racing writer.
+            QTemporaryFile saved(QDir(cache).filePath(".uct-plan-XXXXXX"));
+            if (saved.open())
             {
-                saved.write(QCryptographicHash::hash(blob, QCryptographicHash::Sha256));
-                saved.write(blob);
-                saved.commit();
+                const auto digest = QCryptographicHash::hash(blob, QCryptographicHash::Sha256);
+                if (saved.write(digest) == digest.size() && saved.write(blob) == blob.size() && saved.flush()) {
+                    const auto temporaryPath = saved.fileName().toStdWString();
+                    const auto stablePath = path.toStdWString();
+                    saved.close();
+                    // No MOVEFILE_REPLACE_EXISTING: an existing destination wins.
+                    MoveFileExW(temporaryPath.c_str(), stablePath.c_str(), 0);
+                }
             }
         }
         const auto reject = [&](const char* reason) {
@@ -447,7 +495,12 @@ class Network
         }
         context_.reset(engine_->createExecutionContext());
         if (!context_)
-            throw std::runtime_error("TensorRT execution context creation failed.");
+            throw TensorRtApiFailure("TensorRT execution context creation failed.");
+    }
+    QString PlanReceipt(const QString& role) const
+    {
+        return role + "PlanKey=" + QString::fromLatin1(planKey_) + ";" +
+               role + "PlanPayloadSha256=" + QString::fromLatin1(planPayloadSha256_) + "; ";
     }
     nvinfer1::Dims Run(float *input, int width, int height, cudaStream_t stream,
                        TensorRtProfile &profile, int batch = 1)
@@ -506,6 +559,7 @@ class Network
     std::size_t OutputCapacityBytes() const { return outputBuffer_.Capacity() * sizeof(float); }
 
   private:
+    QByteArray planKey_, planPayloadSha256_;
     std::unique_ptr<nvinfer1::IRuntime> runtime_;
     std::unique_ptr<nvinfer1::ICudaEngine> engine_;
     std::unique_ptr<nvinfer1::IExecutionContext> context_;
@@ -654,7 +708,7 @@ class TensorRtRecognizer final : public Recognizer
         }
         if (!QFile::exists(QDir(sdk_).filePath("bin/nvinfer_11.dll")))
         {
-            status_.detail = "TensorRT 11.4 runtime is not installed.";
+            status_.detail = "TensorRT ABI 11 runtime (minimum 11.4.0.106) is not installed.";
             return status_;
         }
         int count = 0;
@@ -1149,14 +1203,31 @@ class TensorRtRecognizer final : public Recognizer
                     Check(cudaGetDeviceProperties(&properties, preparation->device));
                     if (properties.major * 10 + properties.minor < 75)
                         throw std::runtime_error("TensorRT requires Turing or newer.");
+                    auto state = std::make_shared<State>();
+                    state->device = preparation->device;
+                    state->variableWidth = variableWidth;
+                    state->precisionDetail = runtime_precision::ActualStatus(false);
+                    {
+                        std::lock_guard lock(preparation->mutex);
+                        preparation->state = state;
+                    }
+                    int low{}, high{};
+                    Check(cudaDeviceGetStreamPriorityRange(&low, &high));
+                    Check(cudaStreamCreateWithPriority(&state->stream, cudaStreamNonBlocking, low));
+                    state->libraries = std::make_unique<Libraries>(sdk);
+                    int driver{};
+                    Check(cudaDriverGetVersion(&driver));
+                    const auto precisionDetail = [&](bool bf16, const QString& fallback = QString()) {
+                        return runtime_precision::ActualStatus(bf16, fallback) +
+                            QString("TensorRT runtime=%1; CUDA driver API=%2. ")
+                                .arg(QString::fromLatin1(state->libraries->tensorRtVersion)).arg(driver);
+                    };
                     QByteArray precisionPlan;
                     QString precisionFallback;
                     if (precisionRequest.Requested()) {
-                        int driver{};
-                        Check(cudaDriverGetVersion(&driver));
                         const runtime_precision::Device device{
                             QByteArray(reinterpret_cast<const char*>(&properties.uuid), sizeof(properties.uuid)),
-                            driver, properties.major};
+                            driver, properties.major, state->libraries->tensorRtVersion};
                         precisionFallback = runtime_precision::Unsupported(detectorTier, recognizerTier,
                             recognizerBatch, variableWidth, allowWidthPreparation, device);
                         if (precisionFallback.isEmpty()) {
@@ -1168,18 +1239,7 @@ class TensorRtRecognizer final : public Recognizer
                             }
                         }
                     }
-                    auto state = std::make_shared<State>();
-                    state->device = preparation->device;
-                    state->variableWidth = variableWidth;
-                    state->precisionDetail = runtime_precision::ActualStatus(false, precisionFallback);
-                    {
-                        std::lock_guard lock(preparation->mutex);
-                        preparation->state = state;
-                    }
-                    int low{}, high{};
-                    Check(cudaDeviceGetStreamPriorityRange(&low, &high));
-                    Check(cudaStreamCreateWithPriority(&state->stream, cudaStreamNonBlocking, low));
-                    state->libraries = std::make_unique<Libraries>(sdk);
+                    state->precisionDetail = precisionDetail(false, precisionFallback);
                     state->detector = std::make_unique<Network>(
                         *state->libraries, state->logger, sdk, assets.detector, assets.detectorSha256, true, state->device,
                         state->stream, preparation->cancel, 1, false,
@@ -1194,12 +1254,12 @@ class TensorRtRecognizer final : public Recognizer
                                 assets.recognizerSha256, false, state->device,
                                 state->stream, preparation->cancel, 8, false, false, &precisionPlan);
                             state->recognizerBatch = 8;
-                            state->precisionDetail = runtime_precision::ActualStatus(true);
+                            state->precisionDetail = precisionDetail(true);
                         } catch (const runtime_precision::ArtifactError& error) {
                             // Only pre-inference artifact rejection permits FP32.
                             // API/allocation/context faults reach the outer failure path.
                             Check(cudaStreamSynchronize(state->stream));
-                            state->precisionDetail = runtime_precision::ActualStatus(false, QString::fromUtf8(error.what()));
+                            state->precisionDetail = precisionDetail(false, QString::fromUtf8(error.what()));
                         }
                     }
                     if (!state->recognizer)
@@ -1215,6 +1275,9 @@ class TensorRtRecognizer final : public Recognizer
                             state->recognizerBatch = capacity;
                             break;
                         }
+                        catch (const CudaFailure&) { throw; }
+                        catch (const TensorRtApiFailure&) { throw; }
+                        catch (const std::bad_alloc&) { throw; }
                         catch (const std::exception &error)
                         {
                             // An explicit width-profile preparation authorizes
@@ -1233,6 +1296,8 @@ class TensorRtRecognizer final : public Recognizer
                     }
                     if (preparation->cancel.load())
                         throw std::runtime_error("GPU preparation cancelled.");
+                    state->precisionDetail += state->detector->PlanReceipt("detector") +
+                                              state->recognizer->PlanReceipt("recognizer");
                     preparation->phase.store(1, std::memory_order_release);
                 }
                 catch (const std::exception &error)
@@ -1302,6 +1367,12 @@ class TensorRtRecognizer final : public Recognizer
     std::shared_ptr<Preparation> preparation_;
 };
 } // namespace
+// Private diagnostic seam: identical Libraries admission/loading, no factory
+// invocation, context, CUDA call, cache access or model preparation.
+QJsonObject TensorRtRuntimeForDiagnostic(const QString& sdk)
+{
+    return Libraries(sdk).Provenance();
+}
 std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &root, const QString &sdk,ModelTier detector,ModelTier recognizer,
                                                    TensorRtRetirementObserver retirementObserver,
                                                    std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic)

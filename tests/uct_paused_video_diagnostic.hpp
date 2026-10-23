@@ -75,6 +75,9 @@ inline void Run()
     QVERIFY(QFile::exists(bin.filePath("nvinfer_11.dll")));
     QVERIFY(!QFile::exists(bin.filePath("nvonnxparser_11.dll")) &&
             bin.entryList({"nvinfer_builder_resource*.dll"}, QDir::Files).isEmpty());
+    const auto trtRuntime = TensorRtRuntimeForDiagnostic(sdk);
+    QVERIFY(trtRuntime["hashed"].toBool());
+    const auto trtVersion = trtRuntime["tensorRtVersion"].toString().toLatin1();
     const QImage selectedImage = QImage(selectedPath).convertToFormat(QImage::Format_ARGB32);
     const QImage neighbourImage = QImage(neighbourPath).convertToFormat(QImage::Format_ARGB32);
     QVERIFY(!selectedImage.isNull() && selectedImage.size() == neighbourImage.size());
@@ -90,13 +93,17 @@ inline void Run()
     const auto assets = LoadPaddleAssets(DefaultPaddleRoot(), ModelTier::Medium, ModelTier::Medium);
     QVERIFY2(assets.IsValid(), qPrintable(assets.error));
     const auto cache = QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath("OkuFlow/ocr-engines");
-    const auto detector = InspectPlan(cache, "detector", ModelTier::Medium, 1,
-                                     PlanKey(assets.detectorSha256, uuid, driver, true, 1));
+    const auto detector = InspectCachedPlan(cache, "detector", ModelTier::Medium, 1,
+                                           assets.detectorSha256, uuid, trtVersion);
     QVERIFY2(detector.valid, qPrintable(detector.error));
+    QJsonArray recognizerPreflight;
+    std::optional<PlanRecord> recognizerN8;
     for (const int capacity : {1, 8}) {
-        const auto plan = InspectPlan(cache, "recognizer", ModelTier::Medium, capacity,
-                                      PlanKey(assets.recognizerSha256, uuid, driver, false, capacity));
+        const auto plan = InspectCachedPlan(cache, "recognizer", ModelTier::Medium, capacity,
+                                            assets.recognizerSha256, uuid, trtVersion);
         QVERIFY2(plan.valid, qPrintable(plan.error));
+        recognizerPreflight.push_back(plan.Json());
+        if (capacity == 8) recognizerN8 = plan;
     }
     const auto cacheBefore = CacheInventory(cache);
     const auto outputRoot=qEnvironmentVariable("OKUFLOW_UCT_PAUSE_OUTPUT_ROOT");
@@ -234,6 +241,9 @@ inline void Run()
         bridgeReport.insert("retainedWords", retained);
         bridgeReport.insert("revokedWords", revoked);
     }
+    QVERIFY2(MatchesPlanReceipt(selected->backend.detail, detector), qPrintable(selected->backend.detail));
+    if (!productionFactory)
+        QVERIFY2(recognizerN8 && MatchesPlanReceipt(selected->backend.detail, *recognizerN8), qPrintable(selected->backend.detail));
     if (productionFactory)
         QVERIFY2(selected->backend.detail.contains("Recognition graph=BF16-linear"),
                  qPrintable(selected->backend.detail));
@@ -498,6 +508,8 @@ inline void Run()
         {"admission", standalone ? "Standalone" : "Corroborated"},
         {"neighbourIsDiagnosticComparisonOnly", standalone},
         {"productionFactory", productionFactory}, {"actualBackendDetail", selected->backend.detail},
+        {"tensorRtRuntime", trtRuntime}, {"detectorPreflight", detector.Json()},
+        {"recognizerPreflight", recognizerPreflight},
         {"selectedOutput", uct_batch_test::Output(selected->result.output)},
         {"neighbourOutput", uct_batch_test::Output(neighbour->result.output)},
         {"selectedCandidates", CandidateWords(selected->result.output)}, {"shownWords", int(shown.size())},

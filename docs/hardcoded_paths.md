@@ -176,8 +176,13 @@ runtime `OKUFLOW_UCT_CUDA_BIN`, then `CUDA_PATH_V12_9/bin`, then the documented
 private CUDA-12.9.2 toolkit `bin` supplies optional CUDA DLL dependencies.
 No compiler-machine absolute path is baked into the OCR loader.
 
-Engine plans stay in `%LOCALAPPDATA%/OkuFlow/ocr-engines`, keyed by graph hash,
-GPU UUID, driver and TensorRT/precision identity, with a payload integrity hash.
+Engine plans stay in `%LOCALAPPDATA%/OkuFlow/ocr-engines`. New ordinary FP32
+keys bind graph hash, GPU UUID, profile/precision and actual builder TensorRT
+identity, with a payload integrity hash. Driver and loaded-runtime facts are
+provenance, not approval gates. Stable keys are tried before read-only exact
+historical 13050/13040 locators; old plans are never rekeyed or overwritten.
+ABI-11 runtime admission is an ordered minimum of 11.4.0.106; deserialization
+still controls compatibility. See [cache policy](uct_tensorrt_cache_policy.md).
 Model/license data never belongs in Git or capture output. The analysis pool
 has two slots, at most 128 MiB each; input dimensions are limited to 8192 per
 axis. A Temporal Smooth lease counts both OCR and current-validation images
@@ -1133,7 +1138,8 @@ exceptions admit one to sixteen ASCII letters. See
 `OKUFLOW_UCT_TRT_PREPARE_WIDTH=1` permits a separate one-time preparation of
 only the selected N; normal bucketed inference is cache-only. The new cache
 identity appends `-rec-width-v1-buckets128-256-512-1024-min1x3x48x128-optNx3x48x512-maxNx3x48x1024-n`
-and actual capacity, retaining model/GPU UUID/driver/TRT 11.4.0.106/FP32 pins.
+and actual capacity, retaining model/GPU UUID/builder-TRT/FP32 identity. The
+driver-independent policy preserves exact old 13050/13040 lookup read-only.
 The minimum, optimum and maximum shapes must match after deserialization.
 `OKUFLOW_UCT_RESIDENT_WIDTH` selects the same two policies in the diagnostic,
 which refuses preparation. Group metadata is bounded to 144 integers / 576

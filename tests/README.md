@@ -20,6 +20,12 @@ Restricted Codex profile fixtures require the child-only `mcp_servers={}`
 override, including an invalid unused disabled transport. Raw user configuration
 is not copied into test evidence and real inference is not part of that check.
 
+The UCT resident model-free contract also covers stable ordinary plan identity,
+read-only legacy lookup and accepted-plan receipt matching. Resident, active
+and paused opt-in diagnostics share the loader's version/provenance seam and
+stable/legacy candidate order. These cache-policy additions await serialized
+validation; see [cache policy](../docs/uct_tensorrt_cache_policy.md).
+
 The offline [UCT helper batching candidate](../docs/uct_helper_batching.md)
 adds `recognitionGroupSlotsRequireCompletionAndConsumption` and
 `recognitionGroupCancellationAndPartialFailureRetainClosure` to

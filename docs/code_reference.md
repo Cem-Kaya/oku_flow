@@ -862,8 +862,23 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   `OnnxCpuSession`, runtime-loaded hash-pinned CPU ONNX Runtime, two intra-op
   threads and checked float tensor dimensions. `CreateTensorRtRecognizer`
   creates private `TensorRtRecognizer`: `BeginPreparation` launches an owned
-  `Preparation` worker for exact-version SDK factories, low-priority stream and
-  model/GPU/driver-bound cached `Network` engines. `Progress` cooperatively
+  `Preparation` worker for ABI-11 SDK factories, a minimum loaded runtime tuple,
+  low-priority stream and model/GPU/profile/builder-bound cached `Network`
+  engines. Ordinary FP32 lookup tries stable keys before read-only historical
+  13050/13040 locators; only new compiled bytes may be published to an unused
+  stable path. `Libraries::tensorRtVersion` records the actual exported DLL
+  tuple; `BeginPreparation` supplies it to precision selection and includes it
+  with the driver in status provenance. Private `CudaFailure` and
+  `TensorRtApiFailure` prevent capacity retries after reported CUDA, runtime
+  factory or execution-context failure. BF16 deserialization refusal without
+  reported CUDA error is a pre-inference `ArtifactError`, preserving cached
+  FP32 fallback. See [cache policy](uct_tensorrt_cache_policy.md).
+  `Network::PlanReceipt` retains the accepted ordinary key and payload digest,
+  appended to technical backend status after context construction.
+  `Libraries::Provenance` and private `TensorRtRuntimeForDiagnostic` record the
+  exported tuple and actual loaded module path/hash with no factory/CUDA/model
+  call; this receipt is not an approval pin.
+  `Progress` cooperatively
   checks preparation cancellation; `Ensure` only adopts ready state. `Retire`
   and `RetireState` own asynchronous completion/cleanup. Private `State`,
   `DeviceBuffer`, `HostBuffer`, `Libraries`, `DllDirectory` and mutex-protected
@@ -6571,6 +6586,12 @@ GPU experiment is unregistered and explicit. `CacheInventory` hashes every file
 afresh and tests metadata-preserving mutation. `TimedOutput` retains an ordered
 crop fingerprint; counts alone cannot certify equal detector work. See
 [resident baseline](uct_resident_baseline.md).
+
+`PlanKey` delegates to the pure stable identity helper; `InspectCachedPlan`
+records ordered stable/13050/13040 file checks, and `MatchesPlanReceipt` binds
+startup to the loader's actual accepted key/payload. Active and paused fixtures
+share this resolution and actual-DLL provenance seam. Preflight validity alone
+never establishes engine acceptance.
 
 Within that private test module, `Selection` / `PlanBlocks` bound and seed the
 experiment. `ProfileCapture` forwards Qt logs while retaining completed profile
