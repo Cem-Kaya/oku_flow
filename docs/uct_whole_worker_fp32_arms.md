@@ -35,6 +35,11 @@ hunks. Its original oracle/replay target is not copied or rerun in this private
 comparison; the future build gate exercises the existing Paddle contracts and
 whole-worker all-field comparison supplies the matched real-source check.
 
+The C step restores only src/common/uct_tensorrt.cpp from b002, then checks its
+Git blob identity. Other production source is identical to B. CUDA kernels,
+public CUDA headers, slot state, profile definitions and exact-output fixture
+bytes are identical across all three arms; A/B call the retained scalar APIs.
+
 Every arm retains the existing **two-slot, same-size AND same-canvas** lookahead,
 event plus host-consumption fence, cooperative integral, actual [N,T,C], detector
 order/tails, cancellation drain, input leases and whole-State fault quarantine.

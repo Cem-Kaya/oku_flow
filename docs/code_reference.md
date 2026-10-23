@@ -20,6 +20,12 @@ These two production-file hunks apply to the common policy composition; no
 public fallback to the old merge is added. Composed whole-worker validation
 is pending even though the original merge CPU replay passed.
 
+Private arm C restores only `issueGroup` helper submissions from b002: one
+RectifyBatch and DecodeBatch submission plus three metadata copies per actual
+neural batch, while B's host merge and every common lifetime/policy guard stay
+fixed. The entire TensorRT translation unit is byte-identical at the Git blob
+level to b002; A/B's scalar call/copy loops are private benchmark controls.
+
 ## Aspect-aware viewport and Resume continuity
 
 - `ComputeFitZoom`, `EffectiveFillZoom` and `StepFillZoom` in `view_transform`
