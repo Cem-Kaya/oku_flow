@@ -1,5 +1,23 @@
 # OkuFlow Code Reference
 
+## App-relative OCR runtime discovery
+
+`runtime_paths::PaddleRoot`, `TensorRtRoot` and `CudaBin` select explicit configured
+roots first, then private app-relative payloads and the legacy LocalAppData
+development installation. `DefaultPaddleRoot` accepts an `ocr/pins.json` marker
+without requiring a tiny detector; compiled model verification still controls
+readiness. TensorRT uses `ocr/tensorrt/bin`; optional CUDA dependencies may use
+`ocr/tensorrt/cuda/bin`. No loader writes into the installed application folder.
+`CreateTensorRtRecognizer`, the production factory and `Libraries` share these
+resolvers. This implements discovery, not payload staging or clean-VM acceptance.
+
+`scripts/uct/precision_models.py` is the exact first-party offline converter
+snapshot pinned by all six graph records (SHA256 `da22b96f…`). It exposes bounded
+graph auditing, explicit BF16/FP16 linear-island conversion and the historical
+INT4 research helper. Its CLI preserves the original medium-only research
+workflow; the per-tier conversion receipts used `convert_linear` directly.
+No Python/ONNX/NumPy, conversion, download or inference is introduced at app startup.
+
 ## BF16 install-review repairs
 
 - `bf16_detector::ProductionActivated` is false until semantic detector acceptance;

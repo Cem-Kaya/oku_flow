@@ -70,6 +70,15 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   into the external SDK), then reconfigure. See [UCT](ultra_clear_text.md) for
   dependencies, independent analysis/validation workers and scoped acceptance.
   These components are not yet a published installer inventory.
+  Runtime discovery also supports a private `ocr/` beside the inner application:
+  original model/configuration/CPU files plus `pins.json`, and TensorRT under
+  `ocr/tensorrt/bin/` (optional CUDA dependency directory `ocr/tensorrt/cuda/bin/`).
+  Explicit OCR/TensorRT/CUDA environment overrides take priority; legacy
+  LocalAppData development installations remain the fallback. Graphs and corpus
+  assets live separately under `models/uct/`. Discovery does not stage or approve
+  these payloads. Keep the reviewed license/dependency/SBOM and clean-VM gates.
+  The exact first-party converter source is retained in
+  `scripts/uct/precision_models.py`; Python tooling is developer-only.
 - Lecture notes have larger text, remembered text-size and colour controls,
   media-type filters, grouped conversations, and timestamped transcripts.
   Preview the viewer locally with `python -B scripts/render_notes_preview.py`;

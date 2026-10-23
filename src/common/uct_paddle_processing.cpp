@@ -1,5 +1,6 @@
 #include "okuflow/common/uct_paddle.hpp"
 #include "okuflow/common/uct_model_pins.hpp"
+#include "uct_runtime_paths.hpp"
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -48,13 +49,8 @@ float Sample(const QImage &image, float x, float y, int channel)
 
 QString DefaultPaddleRoot()
 {
-    const QString configured = qEnvironmentVariable("OKUFLOW_UCT_ROOT");
-    if (!configured.isEmpty())
-        return QDir(configured).absolutePath();
-    const QString sibling = QDir(QCoreApplication::applicationDirPath()).filePath("ocr");
-    if (QFile::exists(sibling + "/det/inference.onnx"))
-        return sibling;
-    return QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath("OkuFlow/ocr-runtime");
+    return runtime_paths::PaddleRoot(qEnvironmentVariable("OKUFLOW_UCT_ROOT"),
+        QCoreApplication::applicationDirPath(),qEnvironmentVariable("LOCALAPPDATA"));
 }
 
 PaddleAssets LoadPaddleAssets(const QString &root, ModelTier detector, ModelTier recognizer)

@@ -3,6 +3,7 @@
 #include "../src/common/uct_public_bf16_runtime.hpp"
 #include "../src/common/uct_frozen_upload.hpp"
 #include "../src/common/uct_bf16_detector.hpp"
+#include "../src/common/uct_runtime_paths.hpp"
 #include <QTemporaryDir>
 #include <QtTest>
 #include <limits>
@@ -44,6 +45,21 @@ inline bool CreateFixtureJunction(const QString& path,const QString& target) {
 inline void Contract() {
     using namespace public_bf16;
     const auto model=ModelIdentity();
+    QTemporaryDir paths;QVERIFY(paths.isValid());
+    const auto app=QDir(paths.path()).filePath("application"),local=QDir(paths.path()).filePath("local");
+    QVERIFY(QDir().mkpath(app));
+    QCOMPARE(runtime_paths::PaddleRoot({},app,local),QDir(local).filePath("OkuFlow/ocr-runtime"));
+    QCOMPARE(runtime_paths::TensorRtRoot({},app,local),QDir(local).filePath("OkuFlow/ocr-deps/TensorRT-11.4.0.106-cuda12.9/TensorRT-11.4.0.106"));
+    QVERIFY(QDir().mkpath(app+"/ocr/tensorrt/bin"));
+    QFile pinsMarker(app+"/ocr/pins.json");QVERIFY(pinsMarker.open(QIODevice::WriteOnly));pinsMarker.close();
+    QCOMPARE(runtime_paths::PaddleRoot({},app,local),app+"/ocr"); // no tiny detector required
+    QFile sdkMarker(app+"/ocr/tensorrt/bin/nvinfer_11.dll");QVERIFY(sdkMarker.open(QIODevice::WriteOnly));sdkMarker.close();
+    QCOMPARE(runtime_paths::TensorRtRoot({},app,local),app+"/ocr/tensorrt");
+    QCOMPARE(runtime_paths::PaddleRoot(local,app,local),QDir(local).absolutePath());
+    QCOMPARE(runtime_paths::TensorRtRoot(local,app,local),QDir(local).absolutePath());
+    QVERIFY(QDir().mkpath(app+"/ocr/tensorrt/cuda/bin"));
+    QCOMPARE(runtime_paths::CudaBin({},app+"/ocr/tensorrt",local,local),app+"/ocr/tensorrt/cuda/bin");
+    QCOMPARE(runtime_paths::CudaBin(local,app+"/ocr/tensorrt",{},{}),QDir(local).absolutePath());
     const QByteArray uuid(16,'u');
     QSet<QByteArray> detectorKeys;
     for(const auto tier:{ModelTier::Tiny,ModelTier::Small,ModelTier::Medium}) {
@@ -88,6 +104,8 @@ inline void Contract() {
     QVERIFY(allMetadata.open(QIODevice::ReadOnly));
     const auto allModels=QJsonDocument::fromJson(allMetadata.readAll(),&metadataError).object()["models"].toArray();
     QVERIFY(metadataError.error==QJsonParseError::NoError);QCOMPARE(allModels.size(),6);
+    QFile converter(QFINDTESTDATA("../scripts/uct/precision_models.py"));QVERIFY(converter.open(QIODevice::ReadOnly));
+    QCOMPARE(precision_artifacts::Digest(converter.readAll()),QByteArray("da22b96f803e380801db3ea8248e5427a9926f531e7f4344494c1469cf29cc95"));
     QSet<QString> modelEntries;
     for(const auto value:allModels) {
         const auto entry=value.toObject();const auto tier=ParseModelTier(entry["tier"].toString());QVERIFY(tier);

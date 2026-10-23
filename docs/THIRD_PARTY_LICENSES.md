@@ -10,6 +10,10 @@ I/O and the existing Apache-2.0 model origins. No additional third-party runtime
 or model was downloaded for these conversions. The inventory itself is not
 redistribution clearance or quality acceptance. Public bundle notices, converter
 source/provenance, TensorRT/CUDA dependency and release gates remain separate.
+The exact first-party converter snapshot is now tracked in
+`scripts/uct/precision_models.py` with its original `da22b96f…` hash. Its optional
+ONNX/NumPy imports are offline developer tools, never app/installer dependencies;
+this adds no third-party implementation or model/runtime payload to the bundle.
 
 ## Unapproved owned BF16 typeset crop proposal (development only)
 

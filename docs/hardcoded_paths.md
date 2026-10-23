@@ -1,5 +1,14 @@
 # Hard-Coded Paths and Defaults
 
+Private installed OCR payload discovery uses `ocr/pins.json` beside the inner
+application to select the original models/configurations/CPU runtime, and
+`ocr/tensorrt/bin/nvinfer_11.dll` to select the private TensorRT root. Optional
+toolkit dependencies may be in `ocr/tensorrt/cuda/bin`. Explicit environment
+overrides win; absent bundles retain existing LocalAppData development paths.
+This selection does not prepare, copy or approve files, and all cache writes
+remain outside the application install directory. The historical first-party
+converter is now tracked with exact LF bytes in `scripts/uct/precision_models.py`.
+
 GPU BF16 preference work uses `models/uct/det/<tier>/bf16-linear/inference.onnx`
 and `models/uct/rec/<tier>/bf16-linear/inference.onnx` beside the inner app.
 The six converted graph/source/configuration identities are recorded in

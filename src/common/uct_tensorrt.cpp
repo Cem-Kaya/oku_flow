@@ -3,6 +3,7 @@
 #include "uct_public_bf16_runtime.hpp"
 #include "uct_precision_experiment.hpp"
 #include "uct_bf16_detector.hpp"
+#include "uct_runtime_paths.hpp"
 #include <QCoreApplication>
 #include <new>
 #include <utility>
@@ -192,16 +193,8 @@ struct Libraries
     {
         const auto bin = QDir(sdk).filePath("bin").toStdWString();
         sdkDirectory.value = AddDllDirectory(bin.c_str());
-        auto cuda = qEnvironmentVariable("OKUFLOW_UCT_CUDA_BIN");
-        if (cuda.isEmpty())
-        {
-            const auto system = qEnvironmentVariable("CUDA_PATH_V12_9");
-            if (!system.isEmpty())
-                cuda = QDir(system).filePath("bin");
-            else
-                cuda = QDir(qEnvironmentVariable("LOCALAPPDATA"))
-                           .filePath("OkuFlow/toolchains/cuda-12.9.2/toolkit/bin");
-        }
+        const auto cuda=runtime_paths::CudaBin(qEnvironmentVariable("OKUFLOW_UCT_CUDA_BIN"),sdk,
+            qEnvironmentVariable("CUDA_PATH_V12_9"),qEnvironmentVariable("LOCALAPPDATA"));
         const auto cudaBin = cuda.toStdWString();
         cudaDirectory.value = AddDllDirectory(cudaBin.c_str());
         const auto inferPath = QDir(sdk).filePath("bin/nvinfer_11.dll").toStdWString();
@@ -1898,20 +1891,16 @@ std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &root, const 
                                                    TensorRtRetirementObserver retirementObserver,
                                                    std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic)
 {
-    QString selected = sdk.isEmpty() ? qEnvironmentVariable("OKUFLOW_UCT_TENSORRT_ROOT") : sdk;
-    if (selected.isEmpty())
-        selected =
-            QDir(qEnvironmentVariable("LOCALAPPDATA"))
-                .filePath("OkuFlow/ocr-deps/TensorRT-11.4.0.106-cuda12.9/TensorRT-11.4.0.106");
+    const auto selected=runtime_paths::TensorRtRoot(sdk.isEmpty()?qEnvironmentVariable("OKUFLOW_UCT_TENSORRT_ROOT"):sdk,
+        QCoreApplication::applicationDirPath(),qEnvironmentVariable("LOCALAPPDATA"));
     return std::make_unique<TensorRtRecognizer>(root.isEmpty() ? DefaultPaddleRoot() : root,
                                                 selected,detector,recognizer,std::move(retirementObserver),std::move(cropDiagnostic));
 }
 std::unique_ptr<Recognizer> CreateProductionTensorRtRecognizer(ModelTier detector, ModelTier recognizer,
                                                               TensorRtRetirementObserver retirementObserver)
 {
-    auto sdk = qEnvironmentVariable("OKUFLOW_UCT_TENSORRT_ROOT");
-    if (sdk.isEmpty()) sdk = QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath(
-        "OkuFlow/ocr-deps/TensorRT-11.4.0.106-cuda12.9/TensorRT-11.4.0.106");
+    const auto sdk=runtime_paths::TensorRtRoot(qEnvironmentVariable("OKUFLOW_UCT_TENSORRT_ROOT"),
+        QCoreApplication::applicationDirPath(),qEnvironmentVariable("LOCALAPPDATA"));
     const auto modelRoot=QDir(QCoreApplication::applicationDirPath()).filePath("models");
     const public_bf16::Request publicRequest{modelRoot,QDir(modelRoot).filePath("uct/golden/"+public_bf16::CorpusVersion(recognizer)),
         QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath("OkuFlow/ocr-engines"),public_bf16::CatalogUse::Production,true};

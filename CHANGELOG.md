@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Discover private app-relative OCR models and TensorRT/CUDA dependencies while
+  preserving explicit overrides and legacy development paths. Retain the exact
+  graph-converter source; installed payload staging/acceptance remains pending.
+
 - Gate production BF16 detectors pending semantic acceptance. Confirmed-complete
   BF16 deadline refusals retain same-tier FP32 GPU fallback; uncertain work stays
   terminal. Remember completed failures without overwriting evidence, release
