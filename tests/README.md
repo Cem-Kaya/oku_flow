@@ -1,5 +1,13 @@
 # OkuFlow Tests
 
+`uct_public_bf16_contract` checks compiled model/corpus/profile and exact golden
+contracts plus real native new-only v2 file publication, read pins, incomplete
+generations, bounds and corruption. Labelled opaque storage fixtures do not
+approve a model. No model/GPU inference occurs in this contract. Keep the
+production corpus catalog empty until separate runtime attestation and activation.
+Worker/model pilot results and their narrower scope are in
+`docs/uct_worker_pilots_2026_10_23.md`.
+
 `retained_cleanup_contract` is a standalone model-free lifetime/fault fixture
 for the resident UCT terminal cleanup handoff. Its 35 cases retain exact fake
 context/input/integral/scratch resources across conversion, object/control-block

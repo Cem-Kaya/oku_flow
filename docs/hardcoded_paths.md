@@ -1,5 +1,13 @@
 # Hard-Coded Paths and Defaults
 
+Public BF16 v2 uses `<cache>/public-bf16-v2/<identity>/<recipe64>-<nonce32>/`
+with new-only `recognizer.plan`, `ready.json` and fixed `COMMITTED` marker bytes
+`okuflow-public-bf16-v2\n`. Recognized incomplete generations count toward the
+32-entry bound. No driver identity, v1 migration or overwriting is involved.
+Model and candidate corpus pins are in `uct_public_bf16.hpp` and its private
+runtime header. The production corpus catalog remains empty; see
+[public protocol](uct_public_bf16.md) and [pilot evidence](uct_worker_pilots_2026_10_23.md).
+
 The offline schema-2 precision experiment contract in `uct_precision_artifacts.hpp`
 has no runtime selector or production approvals. It represents only medium
 detector profiles 32/544x960/960x960 and N8 medium recognition fixed1024 or

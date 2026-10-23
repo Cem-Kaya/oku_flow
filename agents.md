@@ -1052,3 +1052,7 @@ aligned with the project goals.
 - Respect any parent's withheld START and finite compute grant. A SCOPED CPU
   replay never replaces shipping/CPU/CUDA acceptance. See
   `docs/uct_merge_optimization.md` for source identity and limits.
+
+## Public BF16 v2 integration (2026-10-23)
+
+- Keep production corpus approval empty until actual strict golden execution and activation. V2 commits a fixed marker last under native read-only directory/file pins. Recognized incomplete recipe/nonce generations remain untouched and count toward the bound; no v1 migration, overwrite, repair or directory rename. See docs/uct_public_bf16.md. Source composition and model-free tests do not establish public model quality or packaging acceptance.

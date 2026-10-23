@@ -1,5 +1,11 @@
 # Local BF16 recognition selection (2026-10-22)
 
+The separate [public model local-build/golden path](uct_public_bf16.md) is now
+authored in private background source, UNBUILT/UNRUN with an empty production
+catalog. It neither reuses this schema-1 global plan/UUID approval for public
+users nor changes this selector's cache-only behavior. Candidate synthetic crops
+require actual strict N1/full-N8 attestation and separate activation.
+
 The separate [role-aware precision experiment contract](uct_precision_artifacts.md)
 is offline preparation for ordered BF16 widths and independently approved role
 pairs. Owner's 2026-10-23 policy removes driver key/admission pins and admits a

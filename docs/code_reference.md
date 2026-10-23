@@ -7402,3 +7402,24 @@ artifact before inference and writes it alongside the ordinary plan preflight.
 The ordered-output stream serializes each final word field with fixed Qt stream
 version and raw floating-point bits; this is a same-engine diagnostic contract,
 not model accuracy or raw CTC/crop equivalence. See `docs/uct_resident_baseline.md`.
+
+`src/common/uct_public_bf16.hpp` defines approved model/profile/dictionary identity,
+immutable bounded `Corpus` loading, `CheckEligibility`, `CheckEngine`, exact N1/N8
+`CheckGolden`, tested-plan `LocalBuild` identity and `ReadyReceipt`. Compiled
+`ProductionCorpusCatalog` stays empty; the private candidate catalog is separate.
+`src/common/uct_public_bf16_runtime.hpp` supplies `BaselinePolicy`, raw compact-CTC
+text, partial records, attempt/completion guards and native v2 storage. Bounded
+`CollectGenerations` validates 32 recipe/nonce names before sorting. `DirectoryPins`
+and `FilePin` retain native ordinary handles; `PublicationLock` serializes only
+new-directory reservations. `PublishFilesNew` commits a fixed marker last;
+`FindPlan` validates every committed generation and selects the current builder.
+Incomplete recognized generations remain retained/counted. `ValidateCommitted`
+checks integrity, never expected golden text or approval.
+
+The private `CreatePublicBf16ValidationRecognizer` isolates cached FP32 baselines
+and shares production preparation/retirement. `Network::PreparePublic`,
+`ConfirmPublicCompletion`, `RunPublicGolden` and `PreparePublicCandidate` retain
+owners before enqueue, preserve confirmed outputs and check final deadlines.
+Production eligibility precedes the BF16 deadline, so an unavailable catalog
+does not impose a BF16 timer on ordinary FP32 work. Recognition/two-slot bodies
+remain unchanged. See `docs/uct_public_bf16.md` for runtime acceptance limits.

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Integrate public BF16 model/golden preparation and a versioned new-only cache
+  with ready-last reader admission, preserving native write/reparse exclusion
+  without the failing directory rename. Production corpus approval remains empty.
+- Record measured whole-worker FP32 and private BF16/small-model pilots in
+  `docs/uct_worker_pilots_2026_10_23.md`, retaining model-output quality limits.
+
 - Add an explicit private resident BF16 measurement path that verifies actual
   application-factory selection and the reviewed payload on every result. Extend
   same-capacity diagnostics to the cached small recognizer with a medium

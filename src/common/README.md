@@ -2,6 +2,11 @@
 
 This module contains shared processing and output helpers that are reused across the app.
 
+The private public-BF16 preparation path and atomic local attestation cache are
+authored but UNBUILT/UNRUN. Production approval remains empty; explicit candidate
+validation retains model/inputs/staging/output in the existing State through
+completion or quarantine. See [contract and held gates](../../docs/uct_public_bf16.md).
+
 `ComputeFitZoom` and `EffectiveFillZoom` share aspect-aware whole-picture Fill
 geometry with input and readouts. Restricted Codex profiles replace the child
 MCP table with an empty map so invalid unrelated transports cannot abort startup.

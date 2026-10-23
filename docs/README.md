@@ -1,5 +1,10 @@
 # OkuFlow Documentation Guide
 
+[UCT worker pilots](uct_worker_pilots_2026_10_23.md) records measured exact
+merge/batching and separate BF16/small-model results and quality limits.
+[Public BF16](uct_public_bf16.md) documents model approval, golden validation
+and the v2 ready-last cache. Its production corpus catalog remains empty.
+
 [Viewport zoom and Resume](viewport_zoom_and_resume.md) documents whole-picture
 zoom-out, Fill snapping, retained UCT references, corner controls and isolated
 Assistant startup configuration.

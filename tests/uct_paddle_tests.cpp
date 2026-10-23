@@ -5,6 +5,7 @@
 #include "../src/common/uct_recognition_groups.hpp"
 #include "../src/common/uct_frozen_upload.hpp"
 #include "../src/common/uct_tensorrt_failures.hpp"
+#include "uct_public_bf16_cases.hpp"
 #include "okuflow/cuda/uct_analysis_pool.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "ultra_clear_text_test_support.hpp"
@@ -293,6 +294,12 @@ class PaddleTests final : public QObject
                 quarantined->retirementQuarantine.get()==quarantined.get());
     }
     void rolePrecisionArtifactContract() { uct_precision_artifact_test::Contract(); uct_precision_artifact_test::VersionAndKeys(); }
+    void publicBf16RequiresApprovedGoldenCorpus() { uct_public_bf16_test::Contract(); }
+    void publicBf16PublicationAndLifetime()
+    {
+        try { uct_public_bf16_test::PublicationAndLifetime(); }
+        catch (const std::exception& error) { QFAIL(error.what()); }
+    }
     void localBf16ManifestRequiresReviewedRolesAndCacheOnlySchema()
     {
         using namespace runtime_precision;

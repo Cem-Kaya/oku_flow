@@ -1,5 +1,10 @@
 # Ordinary UCT TensorRT cache and runtime policy
 
+The later [public BF16 source integration](uct_public_bf16.md) uses a separate
+atomic directory cache and actual local golden reattestation. It does not alter
+these ordinary FP32 keys, ABI11 admission, legacy lookup or factory-fault policy.
+Production BF16 approval remains empty; the candidate path is UNBUILT/UNRUN.
+
 This is a separate offline policy candidate after the exact helper batching
 commits. No compiler, configure, test, inference, GPU job, model preparation or
 download has run for it. Root's finite START and tracked runner lease remain
