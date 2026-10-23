@@ -72,6 +72,28 @@ one owned scene and optional real neighbor once. Both media modes publish OCR
 authority only after successful native presentation, or against an unchanged
 matching retained receipt, and do not fabricate camera liveness.
 
+Ordinary OCR completion may request one new analysis/probe chain for an exact
+still-displayed acquisition previously refused solely because OCR was busy.
+The request contains authority/frame/PTS metadata only. The current CPU scene
+owner supplies its retained pixels even when no new viewport upload is needed;
+GPU media already returns its existing source-owned current analysis lease on
+the unchanged successful receipt. The controller releases its device candidate
+after each probe and keeps no pending full-image reference for this retry.
+The ordinary 350 ms media OCR pacing, stable probe, current validation and
+distinct-acquisition confirmation remain mandatory. A same-frame repeat cannot
+create a third job, another observation or a Resume-held retry.
+
+`AdvancingMediaRetryRequested` is also the source's request for missing current
+analysis, never permission to reuse an old probe. The implemented fast retry
+requires the legitimate same owned input already retained by these production
+media owners. A caller that has released it must obtain analysis for the same
+genuine receipt through its bounded source path; it cannot relabel a different
+lease or fabricate an acquisition. Existing same-frame input-identity changes
+still revoke authority. If that source cannot supply matching current input,
+the retry waits for real analysis/another acquisition; it does not invent proof.
+The new controlled-worker CPU/oracle fixtures are source only until authorized
+headless execution. No GPU pool, native display or performance acceptance follows.
+
 The native decoder's decoded-frame byte limit is not a total application-memory
 limit. A processed displayed scene and at most one pending processed successor,
 an optional processed UCT neighbor, the viewport buffer and bounded in-flight OCR

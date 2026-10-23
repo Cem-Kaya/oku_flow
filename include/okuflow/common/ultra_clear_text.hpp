@@ -557,6 +557,9 @@ public:
     // One-shot hardware-free fixture barrier, outside the scheduler mutex,
     // before taking the pending job. Normal workers have no barrier.
     void SetBeforeDequeueForTest(std::function<void()> barrier);
+    // One-shot barrier after in-flight bookkeeping, before callback posting.
+    // Exercises the real worker/UI ownership gap without sleeping or GPU work.
+    void SetBeforeCompletionForTest(std::function<void()> barrier);
     std::uint64_t Authority() const;
     bool IsCurrent(const RecognitionResult& result) const;
     bool HasWork() const; // pending or in flight

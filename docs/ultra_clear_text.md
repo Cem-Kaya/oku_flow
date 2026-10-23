@@ -343,8 +343,26 @@ There is no second capture or render pipeline. UCT reuses:
   proof, changes no media PTS and uses the existing common surface revocation.
   New fake-clock source fixtures are unexecuted pending ROOT's finite START.
 - Analysis opportunities are throttled to 80 ms. Busy snapshot slots skip an
-  opportunity instead of blocking presentation. Source/frame/processing
-  provenance must match the successfully presented scene before handoff.
+  opportunity instead of blocking presentation. A current ordinary full OCR
+  completion with remaining demand can grant one metadata-only probe credit.
+  On the next useful live frame the controller and actual capture throttle
+  share a one-use serial waiver. Pool pressure leaves the capture ticket
+  unspent; callback-time worker lease ownership never triggers an immediate
+  resubmit. A credit is cleared on source/settings invalidation, disable and
+  Freeze/Resume. Existing CPU latest-only replacement remains available.
+  For advancing media, a still-displayed distinct acquisition refused solely
+  by busy OCR can receive one fresh probe from its source-owned current input.
+  Busy plus media pacing does not qualify; the 350 ms OCR minimum, stable
+  similarity, independent current-pixel checks and later-acquisition two-read
+  confirmation still apply. The old probe is never resubmitted or restamped.
+  Ordinary `NotHeld` and explicitly live acquisition records qualify; held,
+  crossfade and unknown records do not qualify for the busy-only media retry.
+  The exact controller job remains busy until its UI receipt, even after the
+  worker clears its in-flight flag. A current content-moved result can request
+  another current probe while separately marking its acquisition unread.
+  These source/fixture changes are unexecuted pending ROOT's finite START.
+  Source/frame/processing provenance must match the successfully presented
+  scene before handoff.
 - Recognition runs on one worker with at most one job in flight and one
   latest-only pending slot. CUDA input replaces only that pending descriptor;
   CPU admission also uses probe stability. Slow OCR cannot accumulate a queue.

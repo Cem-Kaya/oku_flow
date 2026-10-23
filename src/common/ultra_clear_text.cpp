@@ -1905,6 +1905,7 @@ struct RecognitionScheduler::State {
     double minimumWordHeightPx{7.0};
     std::optional<Job> pending;
     std::function<void()> beforeDequeueForTest;
+    std::function<void()> beforeCompletionForTest;
     bool inFlight{};
     std::atomic<bool> cancelInFlight{false};
     std::uint64_t authority{1};
@@ -2303,6 +2304,7 @@ struct RecognitionScheduler::State {
                 !result.output.cancelled &&
                 std::chrono::steady_clock::now() > job.regional->fullDeadline;
             bool current = false;
+            std::function<void()> completionBarrier;
             {
                 std::lock_guard lock(self->mutex);
                 self->inFlight = false;
@@ -2320,7 +2322,9 @@ struct RecognitionScheduler::State {
                 } else {
                     ++self->stats.revoked;
                 }
+                completionBarrier = std::exchange(self->beforeCompletionForTest, {});
             }
+            if (completionBarrier) completionBarrier(); // outside the scheduler mutex
             const auto traceDone = [&] {
                 if (!timing::Enabled()) return;
                 auto values = TimingOutput(result.output, result.deviceInput, current, job.corroboration.selectedJobId);
@@ -2408,6 +2412,12 @@ void RecognitionScheduler::SetBeforeDequeueForTest(std::function<void()> barrier
 {
     std::lock_guard lock(state_->mutex);
     state_->beforeDequeueForTest = std::move(barrier);
+}
+
+void RecognitionScheduler::SetBeforeCompletionForTest(std::function<void()> barrier)
+{
+    std::lock_guard lock(state_->mutex);
+    state_->beforeCompletionForTest = std::move(barrier);
 }
 
 RecognitionScheduler::~RecognitionScheduler()

@@ -132,6 +132,11 @@ stable refresh. Its job deadline is separately 30 seconds of wall time.
 One scheduler and one latest-only probe worker serve all modes; a paused still
 returns to one-shot admission. These are bounded scheduling defaults, not an
 OCR-rate or native display-latency guarantee.
+One exact ordinary completion can waive the live 80 ms probe and capture
+residual once through a monotonic metadata serial; successful capture consumes
+its waiver. Advancing-media retry retains the 350 ms OCR minimum and requires
+the source's exact current input after a busy-only refusal. No pending GPU
+lease, extra pool slot or global interval change is introduced.
 Deadline expiry uses one precise single-shot timer at the first excluded
 integer millisecond of the existing inclusive line/wall/presentation bound.
 The 200 ms heartbeat remains a backstop; neither timer changes proof clocks,

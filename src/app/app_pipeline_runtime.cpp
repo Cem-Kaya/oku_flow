@@ -1155,6 +1155,8 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
     stampedInput.settingsGeneration = cudaProcessingGeneration_;
 #if OKUFLOW_ENABLE_CUDA
     cudaSurface_->EnableUctAnalysis(!hiddenLive && ultraClearText_ && ultraClearText_->IsEnabled());
+    cudaSurface_->SetUctCompletionCaptureTicket(!hiddenLive && ultraClearText_
+        ? ultraClearText_->CompletionProbeTicket(stampedInput.cameraEpoch, stampedInput.frameSequence) : 0);
 #endif
     if (!cudaSurface_->ProcessFrame(stampedInput, settings, cudaSyncParams)) {
         pipelineOrchestrator_->RecordStageSample(
@@ -2966,7 +2968,8 @@ bool OkuFlowApp::PresentSelectedMediaPixels(const uint8_t* data, UINT width, UIN
         // This exact frame/recipe/view still has its successful native receipt
         // and retained viewport. Polling and explicit Save may reuse it without
         // clearing, resampling or uploading the same pixels again.
-        if (continuousPlayback && !wasContinuousPlayback) advancingReceipt();
+        if (continuousPlayback && (!wasContinuousPlayback || (ultraClearText_ &&
+            ultraClearText_->AdvancingMediaRetryRequested(sourceEpoch, frameSeq, pts100ns / 10'000)))) advancingReceipt();
         else if (!continuousPlayback) pausedReceipt();
         mediaUctContinuousPlayback_ = continuousPlayback;
         return true;

@@ -501,6 +501,7 @@ bool UltraClearTextController::ResumeImmutableMedia(std::uint64_t sourceAuthorit
         immutableScene_->selected, immutableScene_->transform, immutableScene_->viewportWidth,
         immutableScene_->viewportHeight, immutableScene_->strokeWeight};
     StopImmutableRefinement(); // fences jobs and regional plans; not accepted references
+    ClearCompletionAdmission();
     if (probeWorker_) probeWorker_->Cancel();
     if (deviceProbeReader_) deviceProbeReader_->Cancel();
     immutableScene_.reset();
@@ -667,8 +668,16 @@ void UltraClearTextController::SubmitAdvancingMediaProbe()
         if (deviceProbeReader_) deviceProbeReader_->Cancel();
         ++consecutiveProbeFailures_;
     }
-    if ((advancingMediaHaveProbe_ && advancingMediaProbeFrame_ == current.frameSeq) ||
-        now - lastProbeRequestMs_ < timing_.probeIntervalMs) return;
+    const bool completion = CompletionProbeReady(now) && advancingDisplay_ &&
+        advancingDisplay_->frameSeq == current.frameSeq && advancingDisplay_->timestampMs == current.timestampMs &&
+        current.frameSeq > completionCredit_->stamp.frameSeq &&
+        now - advancingMediaLastSubmitMs_ >= timing_.mediaRecognitionIntervalMs;
+    const bool retry = completion && busyMediaProbe_ &&
+        busyMediaProbe_->blockedByJob == completionCredit_->job &&
+        busyMediaProbe_->stamp.SameScene(CurrentScene()) &&
+        busyMediaProbe_->stamp.frameSeq == current.frameSeq && busyMediaProbe_->stamp.timestampMs == current.timestampMs;
+    if ((advancingMediaHaveProbe_ && advancingMediaProbeFrame_ == current.frameSeq && !retry) ||
+        (!completion && now - lastProbeRequestMs_ < timing_.probeIntervalMs)) return;
     if (auto device = EffectiveDevice(current, advancingMediaScene_->geometry)) {
         // Device frames validate through the independent probe reader, never
         // a UI-thread readback. Probe-health alone must not gate submission:
@@ -685,6 +694,7 @@ void UltraClearTextController::SubmitAdvancingMediaProbe()
             if (PixelsMatchFrame(current, advancingMediaScene_->geometry))
                 SubmitProbe(ImmutableStamp(current), current.pixels);
         } else {
+            if (completion) ClearCompletionAdmission();
             // The probe reader and candidate own the analysis lease now.
             // Release the scene's strong reference so its pool slot frees
             // when validation/inference finish, even if this scene stays
@@ -910,7 +920,8 @@ bool UltraClearTextController::OnPresented(const UctFrameContext& context)
         (probeWorker_ && probeWorker_->HasPending())) {
         return false;
     }
-    return now - lastProbeRequestMs_ >= timing_.probeIntervalMs;
+    return (CompletionProbeReady(now) && context.frameSeq > completionCredit_->stamp.frameSeq) ||
+           now - lastProbeRequestMs_ >= timing_.probeIntervalMs;
 }
 
 bool UltraClearTextController::PresentationAvailable(std::int64_t nowMs) const
@@ -1125,6 +1136,7 @@ void UltraClearTextController::OnDeviceScene(const UctFrameContext& context, uct
     deviceCandidate_=device;
     deviceCandidateSinceMs_=now;
     if (!deviceProbeReader_->SubmitDevice(stamp,std::move(device))) deviceCandidate_.reset();
+    else if (completionCredit_ && stamp.frameSeq > completionCredit_->stamp.frameSeq) ClearCompletionAdmission();
 }
 
 void UltraClearTextController::OnAnalysisHealth(bool failed)
@@ -1167,6 +1179,8 @@ uct::SourceStamp UltraClearTextController::CurrentScene() const
 
 void UltraClearTextController::Invalidate(const QString& reason)
 {
+    ClearCompletionAdmission();
+    creditedJob_ = 0;
     expiryTimer_->stop();
     expiryDeadlineMs_.reset();
     if (uct::timing::Enabled()) {
@@ -1247,7 +1261,87 @@ void UltraClearTextController::SubmitProbe(const uct::SourceStamp& stamp, uct::S
     request.lines = model_.LineReferences(CurrentScene());
     request.tuning = uct::ModelTuning{}.match;
     request.budgetMs = timing_.probeCheckBudgetMs;
-    probeWorker_->Submit(std::move(request));
+    if (probeWorker_->Submit(std::move(request)) && completionCredit_ &&
+        stamp.frameSeq > completionCredit_->stamp.frameSeq) ClearCompletionAdmission();
+}
+
+bool UltraClearTextController::FullReadNeeded(const uct::SourceStamp& stamp, const QRectF& viewScene,
+                                             std::int64_t nowMs) const
+{
+    const bool covered = Area(viewScene) > 0.0 &&
+        Area(lastJobCoverage_.intersected(viewScene)) >= 0.8 * Area(viewScene);
+    const auto sinceSubmit = nowMs - (advancingMediaScene_ ? advancingMediaLastSubmitMs_ : lastSubmitMs_);
+    const bool repeatedHold = stamp.holdDisplay == uct::HoldDisplay::Held && haveLastOcr_ &&
+        lastOcrGeneration_ == geometryGeneration_ && lastOcrAcquisition_ == uct::EvidenceAcquisition(stamp).value_or(0);
+    return regionalRequireFull_ || (repeatedHold
+        ? !model_.HasAcceptedText() && sinceSubmit >= timing_.refreshIntervalMs
+        : probeInvalidatedSinceSubmit_ || model_.PendingWordCount() > 0 || !model_.HasAcceptedText() || !covered ||
+          sinceSubmit >= timing_.refreshIntervalMs);
+}
+
+bool UltraClearTextController::CompletionProbeReady(std::int64_t nowMs) const
+{
+    if (!completionCredit_ || !enabled_ || immutableScene_ || settling_ || compositePaused_ ||
+        mediaOverlaySuppressed_ || !AnalysisHealthy() || !BackendUsable(backend_) ||
+        !scheduler_ || scheduler_->HasWork() || deviceCandidate_ || pendingReadbackId_ ||
+        (deviceProbeReader_ && deviceProbeReader_->HasWork()) || (probeWorker_ && probeWorker_->HasWork()) ||
+        !completionCredit_->stamp.SameScene(CurrentScene()) || !latestProbe_) return false;
+    const auto& p = *latestProbe_;
+    const auto view = uct::ViewRectToScene(p.stamp.viewTransform, p.stamp.viewportWidth,
+        p.stamp.viewportHeight, QRectF(0, 0, p.stamp.viewportWidth, p.stamp.viewportHeight))
+        .intersected(QRectF(0, 0, 1, 1));
+    return FullReadNeeded(p.stamp, view, nowMs);
+}
+
+std::uint64_t UltraClearTextController::CompletionProbeTicket(std::uint64_t sourceEpoch,
+                                                             std::uint64_t frameSeq) const
+{
+    return !HasImmutableScene() && CompletionProbeReady(clock_()) &&
+        completionCredit_->stamp.sourceEpoch == sourceEpoch && frameSeq > completionCredit_->stamp.frameSeq
+        ? completionCredit_->serial : 0;
+}
+
+bool UltraClearTextController::AdvancingMediaRetryRequested(std::uint64_t sourceAuthority,
+    std::uint64_t frameSeq, std::int64_t timestampMs) const
+{
+    const auto now = clock_();
+    return CompletionProbeReady(now) && !presentationFailed_ && advancingDisplay_ && busyMediaProbe_ &&
+        advancingDisplay_->sourceAuthority == sourceAuthority && advancingDisplay_->frameSeq == frameSeq &&
+        advancingDisplay_->timestampMs == timestampMs && busyMediaProbe_->stamp.SameScene(CurrentScene()) &&
+        busyMediaProbe_->stamp.frameSeq == frameSeq && busyMediaProbe_->stamp.timestampMs == timestampMs &&
+        busyMediaProbe_->blockedByJob == completionCredit_->job && frameSeq > completionCredit_->stamp.frameSeq &&
+        now - advancingMediaLastSubmitMs_ >= timing_.mediaRecognitionIntervalMs;
+}
+
+void UltraClearTextController::ClearCompletionAdmission()
+{
+    completionCredit_.reset();
+    busyMediaProbe_.reset();
+}
+
+void UltraClearTextController::CreditCompletion(const uct::RecognitionResult& result,
+                                               uct::AdmitVerdict verdict, std::int64_t nowMs)
+{
+    if (result.regionalRequested || result.jobKind != uct::RecognitionJobKind::Full ||
+        result.jobId != lastOcrJob_ || result.jobId <= creditedJob_ || lastOcrGeneration_ != geometryGeneration_ ||
+        !uct::EvidenceAcquisition(result.stamp) ||
+        !result.output.ok || result.output.cancelled || result.output.inputFault || result.output.backendPreparing ||
+        result.output.compositeInput || (verdict != uct::AdmitVerdict::kAccepted && verdict != uct::AdmitVerdict::kPending &&
+        verdict != uct::AdmitVerdict::kEmpty && verdict != uct::AdmitVerdict::kContentMoved) || !latestProbe_ ||
+        completionSerial_ == std::numeric_limits<std::uint64_t>::max()) return;
+    creditedJob_ = result.jobId;
+    // Never enqueue in a completion callback: the worker's local input lease
+    // can still be alive. Recheck demand/nonbusy state at the next present.
+    const auto& p = *latestProbe_;
+    const auto view = uct::ViewRectToScene(p.stamp.viewTransform, p.stamp.viewportWidth,
+        p.stamp.viewportHeight, QRectF(0, 0, p.stamp.viewportWidth, p.stamp.viewportHeight))
+        .intersected(QRectF(0, 0, 1, 1));
+    if (!FullReadNeeded(p.stamp, view, nowMs)) { ClearCompletionAdmission(); return; }
+    completionCredit_ = CompletionCredit{result.stamp, result.jobId, ++completionSerial_};
+    if (busyMediaProbe_ && (busyMediaProbe_->blockedByJob != result.jobId ||
+        busyMediaProbe_->stamp.frameSeq <= result.stamp.frameSeq ||
+        uct::EvidenceAcquisition(busyMediaProbe_->stamp).value_or(0) <= uct::EvidenceAcquisition(result.stamp).value_or(0)))
+        busyMediaProbe_.reset();
 }
 
 void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
@@ -1310,20 +1404,13 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
         const QRectF viewScene =
             uct::ViewRectToScene(outcome.stamp.viewTransform, width, height, QRectF(0, 0, width, height))
                 .intersected(QRectF(0.0, 0.0, 1.0, 1.0));
-        const bool covered = Area(viewScene) > 0.0 &&
-                             Area(lastJobCoverage_.intersected(viewScene)) >= 0.8 * Area(viewScene);
         const std::int64_t sinceSubmit =
             now - (advancingMediaScene_ ? advancingMediaLastSubmitMs_ : lastSubmitMs_);
         // A held image repeats an acquisition already read: it cannot confirm
         // pending words, so it is re-read only to recover lost text geometry
         // (for example after keystone drift) at the ordinary refresh cadence.
         const std::uint64_t acquisition = uct::EvidenceAcquisition(outcome.stamp).value_or(0);
-        const bool repeatedHold = outcome.stamp.holdDisplay == uct::HoldDisplay::Held && haveLastOcr_ &&
-            lastOcrGeneration_ == geometryGeneration_ && lastOcrAcquisition_ == acquisition;
-        const bool needed = regionalRequireFull_ || (repeatedHold
-            ? !model_.HasAcceptedText() && sinceSubmit >= timing_.refreshIntervalMs
-            : probeInvalidatedSinceSubmit_ || model_.PendingWordCount() > 0 || !model_.HasAcceptedText() || !covered ||
-                  sinceSubmit >= timing_.refreshIntervalMs);
+        const bool needed = FullReadNeeded(outcome.stamp, viewScene, now);
         // Latest-only: a busy worker only receives a replacement after the
         // scene changed, so slow recognition cannot accumulate work. The
         // pixels move on without a copy.
@@ -1333,10 +1420,18 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
             ? advancingMediaJob_ == 0 && (!scheduler_->HasWork() || (!candidate && regionalJob_)) &&
                 now - advancingMediaLastSubmitMs_ >= timing_.mediaRecognitionIntervalMs
             : !scheduler_->HasWork() || (!candidate && (changedSinceSubmit_ || regionalJob_));
+        if (advancingMediaScene_ && needed && !canSubmit && advancingMediaJob_ &&
+            sinceSubmit >= timing_.mediaRecognitionIntervalMs &&
+            (outcome.stamp.holdDisplay == uct::HoldDisplay::NotHeld || outcome.stamp.holdDisplay == uct::HoldDisplay::Live) &&
+            acquisition > lastOcrAcquisition_ &&
+            advancingDisplay_ && advancingDisplay_->frameSeq == outcome.stamp.frameSeq &&
+            advancingDisplay_->timestampMs == outcome.stamp.timestampMs)
+            busyMediaProbe_ = BusyMediaProbe{outcome.stamp, advancingMediaJob_};
         if (needed && canSubmit) {
             const auto job=candidate?scheduler_->SubmitDevice(outcome.stamp,std::move(candidate))
                                     :scheduler_->Submit(outcome.stamp, std::move(outcome.pixels));
             if (job != 0) {
+                ClearCompletionAdmission();
                 // A queued region can be coalesced without any completion.
                 // Successful newer full submission supersedes its ticket;
                 // an already-running old region is fenced by exact job id.
@@ -1521,6 +1616,7 @@ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
     }
     if (verdict == uct::AdmitVerdict::kAccepted || verdict == uct::AdmitVerdict::kPending)
         NoteAdvancingValidation(now); // stale admissions are filtered inside
+    CreditCompletion(result, verdict, now);
     RefreshOverlay(now);
     UpdateReadingText();
     UpdateStatus();
