@@ -867,10 +867,11 @@ void RunPublicGolden(State& state,const public_bf16::Corpus& corpus,
         gpu::RectifyBatch(devicePixels,atlasWidth*4,atlasWidth,atlasHeight,deviceQuads,first,batch,input,1024,state.stream);
         Check(cudaGetLastError());
         const auto shape=state.recognizer->Run(input,1024,48,state.stream,state.profile,batch);
-        if(shape.nbDims!=3 || shape.d[0]!=batch || shape.d[1]<1 || shape.d[1]>maximumSteps || shape.d[2]!=dictionary.size())
+        if(shape.nbDims!=3 || shape.d[0]!=batch || shape.d[1]<1 || shape.d[1]>maximumSteps ||
+           shape.d[2]!=18710 || shape.d[2]!=dictionary.size())
             throw TensorRtApiFailure("public BF16 actual output tensor does not satisfy CTC ABI");
-        const int steps=shape.d[1];
-        gpu::DecodeBatch(state.recognizer->Output(),batch,steps,shape.d[2],deviceQuads,first,1024,
+        const int steps=int(shape.d[1]),classes=int(shape.d[2]); // bounded above before conversion
+        gpu::DecodeBatch(state.recognizer->Output(),batch,steps,classes,deviceQuads,first,1024,
             ids,scores,tokens,counts,state.stream);
         Check(cudaGetLastError());
         Check(cudaMemcpyAsync(hostCounts,counts,batch*sizeof(int),cudaMemcpyDeviceToHost,state.stream));
@@ -890,7 +891,7 @@ void RunPublicGolden(State& state,const public_bf16::Corpus& corpus,
                 const int validSteps=std::min(steps,int(std::ceil(steps*std::min(1024,crop.width)/1024.0)));
                 text=RawText(decoded,validSteps,dictionary);
             }
-            state.publicObservations.push_back({crop.id,batch,steps,shape.d[2],crop.pixelsSha256,text});
+            state.publicObservations.push_back({crop.id,batch,steps,classes,crop.pixelsSha256,text});
         }
         ReportPublicPartial(state,observer,"confirmed-through-reported-rows");
     };

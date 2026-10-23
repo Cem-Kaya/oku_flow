@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Check and convert TensorRT golden output dimensions before storing integer
+  observations. Preserve the surface fixture geometry while avoiding Windows
+  `near`/`far` macros in its local names. Both failures remain in the first root
+  public-integration compile evidence; no contract ran in that failed window.
+
 - Integrate public BF16 model/golden preparation and a versioned new-only cache
   with ready-last reader admission, preserving native write/reparse exclusion
   without the failing directory rename. Production corpus approval remains empty.

@@ -7423,3 +7423,9 @@ owners before enqueue, preserve confirmed outputs and check final deadlines.
 Production eligibility precedes the BF16 deadline, so an unavailable catalog
 does not impose a BF16 timer on ordinary FP32 work. Recognition/two-slot bodies
 remain unchanged. See `docs/uct_public_bf16.md` for runtime acceptance limits.
+
+`RunPublicGolden` validates the real N/T/C tensor, including 18,710 classes,
+before explicitly converting dimensions to the compact decoder/observation
+integer ABI. The `uct_surface_test_cases.hpp::Paint` fixture uses `nearQuad` and
+`farQuad` so including Windows-native storage declarations preserves its geometry
+and assertions without macro substitution.
