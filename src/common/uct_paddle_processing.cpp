@@ -68,8 +68,7 @@ PaddleAssets LoadPaddleAssets(const QString &root, ModelTier detector, ModelTier
     assets.detectorSha256=QByteArray(det->modelSha256.data(),qsizetype(det->modelSha256.size()));
     assets.recognizerSha256=QByteArray(rec->modelSha256.data(),qsizetype(rec->modelSha256.size()));
     if (!Verify(assets.detector,det->modelSha256.data()) ||
-        !Verify(assets.recognizer,rec->modelSha256.data()) ||
-        !Verify(config,rec->configSha256.data()))
+        !Verify(assets.recognizer,rec->modelSha256.data()))
     {
         assets.error = "Pinned PaddleOCR model/config files are missing or changed.";
         return assets;
@@ -80,9 +79,19 @@ PaddleAssets LoadPaddleAssets(const QString &root, ModelTier detector, ModelTier
         assets.error = "Cannot read OCR dictionary.";
         return assets;
     }
+    // Verify and parse the SAME bounded snapshot. Reopening a previously
+    // verified file could give token IDs a different meaning during replacement.
+    constexpr qint64 kMaximumConfigBytes = 8 * 1024 * 1024;
+    const auto configBytes = input.read(kMaximumConfigBytes + 1);
+    if (input.error() != QFileDevice::NoError || !input.atEnd() || configBytes.size() > kMaximumConfigBytes ||
+        QCryptographicHash::hash(configBytes,QCryptographicHash::Sha256).toHex() != rec->configSha256.data())
+    {
+        assets.error = "Pinned PaddleOCR model/config files are missing or changed.";
+        return assets;
+    }
     bool reading = false;
     assets.dictionary.push_back(QString());
-    for (const QByteArray &bytes : input.readAll().split('\n'))
+    for (const QByteArray &bytes : configBytes.split('\n'))
     {
         QString line = QString::fromUtf8(bytes).remove('\r');
         if (line == "  character_dict:")

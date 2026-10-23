@@ -1012,6 +1012,20 @@ aligned with the project goals.
   extraction metadata. Missing duration/neighbour must fail without expanding
   policy. Keep one Open, bounded paused waiting and no Play/GPU/audio endpoints.
 
+## Role-aware precision experiment preparation (2026-10-23)
+
+- Schema-2 role/profile/precision descriptors remain separate from the reviewed
+  schema-1 BF16 approval. A manifest cannot approve itself; require an independent
+  exact catalog plus source/config/dictionary/graph/plan/device/driver/TRT identity.
+  Never rekey or alias old plans. Keep loader status separate from validated
+  engine selection; commit both engines and effective width/capacity/ABI together.
+- No engine retry after genuine CUDA/API/inference uncertainty. Only typed
+  pre-inference artifact rejection and confirmed completion permit a separately
+  approved fallback pair. Preserve lookahead, integrals, leases and quarantine.
+- Offline readiness is not compute permission. Follow root's finite START slots,
+  preserve first failures/source-to-binary receipts and measure actual production
+  worker/callback plus independent quality. See docs/uct_precision_artifacts.md.
+
 ## Private standalone paused diagnostics (2026-10-22)
 
 - `OKUFLOW_UCT_PAUSE_STANDALONE=1` selects standalone model admission in the

@@ -32,6 +32,15 @@ not run for this candidate; root must grant a finite START compute slot first.
 No injected native CUDA fault, current-driver worker speed, native desktop or
 release acceptance is implied by these prepared fixtures.
 
+`uct_precision_artifact_contract` selects the model-free
+`rolePrecisionArtifactContract` slot on `uct_paddle_tests` using Qt offscreen.
+Its exact required files include the schema-2 loader, legacy policy, fixture and
+model pins. It covers independently supplied approvals, role/profile/ABI and
+device/driver/hash refusal, dictionary identity and read-only loading; it does
+not deserialize TensorRT plans or validate engine lifetime. See the
+[frozen finite-slot precision plan](../docs/uct_precision_artifacts.md).
+This case and its build remain pending root START during offline preparation.
+
 `uct_paddle_cuda`'s `gpuAlgorithmsAndOwnedInputs` additionally compares full
 validation integrals (including zero borders) against an integer CPU oracle
 across warp/tile tails, decimations, padded pitch and repeated poisoned buffers.

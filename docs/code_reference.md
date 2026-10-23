@@ -819,6 +819,27 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   candidate or altering supplemental/bridge behavior. `PaddleTests::localBf16*`
   covers policy/key/refusal/read-only behavior without models or inference.
   See [local precision selection](uct_local_bf16.md).
+- Private `precision_artifacts` in `uct_precision_artifacts.hpp` prepares a
+  separate schema-2 experiment boundary without enabling a runtime selector or
+  approvals. `Identity`, `Profile`, `Runtime`, `Entry`, `Selection`,
+  `VerifiedPlan`, `RecognizerPolicy` and `VerifiedSelection` bind both roles,
+  profiles, dictionary/source/converted-graph/whole-plan identity, actual driver
+  and loaded TensorRT identity. `ParseIdentity`, `ApprovedIdentity`,
+  `ParseManifest`/`LoadManifest`, `CheckRuntime`, `ReadPlan`/`ReadSelection`
+  require an independently supplied exact approval catalog and never prepare or
+  write a plan. `DictionaryHash`, `Digest`, `IdentityKey`, `Integer`,
+  `ParseShape`, `RoleName`, `WidthName`, `AbiName`, `CheckEngineProfile`,
+  `CheckOutput`, `Receipt` and `ActualStatus` support bounded decoding,
+  role/profile/DEVICE-LINEAR FLOAT ABI validation and actual-selection receipts.
+  `CheckOutput` faults are ordinary runtime errors, never fallback-authorizing
+  `ArtifactError`. Engine/policy atomic commit remains a required integration
+  step in the unmodified TensorRT backend. `LoadPaddleAssets` hashes/parses one
+  bounded configuration snapshot. `PaddleTests::rolePrecisionArtifactContract`
+  delegates to `uct_precision_artifact_test::{FixtureIdentity,Contract}`.
+  `scripts/uct/inspect_precision_artifacts.py::{digest,graph_inventory,
+  plan_inventory,main}` records read-only declarations/reshape dependencies and
+  plan envelopes without inference or claiming executable width support. See
+  [the frozen experiment and integration plan](uct_precision_artifacts.md).
 - `CreatePaddleCpuRecognizer` uses `OpenPaddleCpuSession`/private
   `OnnxCpuSession`, runtime-loaded hash-pinned CPU ONNX Runtime, two intra-op
   threads and checked float tensor dimensions. `CreateTensorRtRecognizer`

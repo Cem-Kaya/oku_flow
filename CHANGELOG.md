@@ -26,6 +26,10 @@
   two-slot completion/host-consumption fences. Cancellation and partial-failure
   ownership fixtures are prepared; performance and execution remain unmeasured.
 
+- Hash and parse the same bounded OCR dictionary configuration snapshot. Prepare
+  a separate role-aware precision artifact contract and read-only graph inventory
+  for serialized local experiments; no new precision artifact is enabled.
+
 - Overlap dense UCT recognition groups with host metadata merging using bounded
   double-buffered metadata and per-group completion events. Private resident
   FP32 measurements show a dense N8 benefit; sparse/N1 and production BF16
