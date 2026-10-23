@@ -640,9 +640,10 @@ class Network
                 if(expectedClasses<2 || output.nbDims!=3 || output.d[2]!=expectedClasses)
                     artifact("BF16 recognizer dictionary/output ABI differs");
             }
-            if (!engine_cache::ContextFits(engine_->getDeviceMemorySizeV2()))
-                reject("BF16 execution context exceeds the supported memory bound.");
         }
+        contextBytes_ = engine_->getDeviceMemorySizeV2();
+        if (bf16Graph && (contextBytes_ < 0 || (!detection && !engine_cache::ContextFits(contextBytes_))))
+            reject("BF16 recognizer context exceeds its supported memory bound.");
         context_.reset(engine_->createExecutionContext());
         Check(cudaPeekAtLastError());
         if (!context_)
@@ -660,7 +661,8 @@ class Network
     {
         return role + "PlanKey=" + QString::fromLatin1(planKey_) + ";" +
                role + "PlanPayloadSha256=" + QString::fromLatin1(planPayloadSha256_) + ";" +
-               role + "PlanCache=" + cacheStatus_ + "; ";
+               role + "PlanCache=" + cacheStatus_ + ";" +
+               role + "ContextBytes=" + QString::number(contextBytes_) + "; ";
     }
     nvinfer1::Dims Run(float *input, int width, int height, cudaStream_t stream,
                        TensorRtProfile &profile, int batch = 1)
@@ -724,6 +726,7 @@ class Network
     QByteArray publicPlan_;
     QByteArray planKey_, planPayloadSha256_;
     QString cacheStatus_{"external"};
+    std::int64_t contextBytes_{};
     std::unique_ptr<nvinfer1::IRuntime> runtime_;
     std::unique_ptr<nvinfer1::ICudaEngine> engine_;
     std::unique_ptr<nvinfer1::IExecutionContext> context_;

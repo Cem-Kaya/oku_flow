@@ -4,7 +4,7 @@
 
 - Persist newly built OCR engines with Qt's atomic, non-replacing rename and
   report cache write failures. Align cold/warm serialized-size limits and check
-  BF16 profile/output/context bounds before allocating an execution context.
+  BF16 profile/output and recognizer context bounds before context allocation.
 
 - Prefer BF16 for both selected GPU model roles without requiring perfect text,
   FP32 agreement or a golden pass. Keep accuracy tests diagnostic and retain

@@ -11,8 +11,10 @@ existing destinations. Auto-removal is disabled only after success. Cache write
 failure keeps the healthy current engine and is named in the technical plan
 receipt. Existing stable/legacy files are never replaced. Both cold payloads
 and warm files obey the same strict 256 MiB limit including the 32-byte digest.
-BF16 profile/output checks and its declared 256 MiB context-memory ceiling are
-checked before execution-context allocation; this is resource compatibility,
+BF16 profile/output checks and recognition's declared 256 MiB context-memory
+ceiling are checked before execution-context allocation. Detectors retain their
+existing profile/resource policy; actual context bytes are recorded for both
+roles. This is resource compatibility,
 not an OCR accuracy gate.
 
 `engineCachePersistsWithoutReplacing` verifies actual disk persistence after
