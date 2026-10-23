@@ -1056,3 +1056,19 @@ aligned with the project goals.
 ## Public BF16 v2 integration (2026-10-23)
 
 - Keep production corpus approval empty until actual strict golden execution and activation. V2 commits a fixed marker last under native read-only directory/file pins. Recognized incomplete recipe/nonce generations remain untouched and count toward the bound; no v1 migration, overwrite, repair or directory rename. See docs/uct_public_bf16.md. Source composition and model-free tests do not establish public model quality or packaging acceptance.
+
+## Owner BF16 app precision decision (2026-10-23)
+
+- Both selected GPU detector and recognizer tiers prefer BF16 with selected-tier
+  FP32 fallback for supported loading/build/artifact refusals. The owner accepts
+  normal ML errors and reduced accuracy. Perfect human text, BF16/FP32 numeric or
+  text equality, golden-corpus passes and quality approval are NOT app startup or
+  precision-selection requirements. Keep accuracy comparisons diagnostic only.
+- The historical public-v2 exact-text attestation remains a separate optional
+  experiment; its empty production corpus catalog must not disable normal BF16
+  model selection. Retain verified graph/config/dictionary identities, actual
+  tensor/profile compatibility, bounded preparation, cancellation and resource
+  ownership. Actual CUDA/API/inference faults or unknown completion still retire
+  the backend; do not retry an engine on an uncertain stream.
+- Preserve saved model tiers, tiny recognizer N1 service, CPU FP32 and the one
+  worker/two-slot pipeline. No automatic live/Freeze model switch is authorized.
