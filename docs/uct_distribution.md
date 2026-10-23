@@ -169,7 +169,15 @@ SM86/89/120, and raises only the total staging ceiling to 3 GiB. All ten
 model-free staging cases passed again; a fresh 47-file copy and metadata check
 verified 2,394,527,371 bytes in 31.95 seconds. The full cached TensorRT archive
 also freshly matched its independent `pins.json` hash, and all three new DLLs
-matched their exact archive entries. Cold runtime repair validation is pending.
+matched their exact archive entries.
+
+The repaired isolated cold run at `5955885` passed in 62.80 seconds: both tiny
+roles built and saved new private BF16 plans, tiny recognition retained N1 and
+no expected-text gate ran. It used only the staged TensorRT/private NVRTC paths,
+with developer SDK/toolkit paths removed from child PATH. State retirement,
+zero owned Job membership and runner release were confirmed; child/controller
+both exited zero. This tests the Ada GPU present on this workstation, not the
+other packaged architectures. The initial missing-SM89 failure is preserved.
 
 Actual cold TensorRT builds, the SM75
 resource and PTX fallback behavior, dynamic runtime dependency closure, full

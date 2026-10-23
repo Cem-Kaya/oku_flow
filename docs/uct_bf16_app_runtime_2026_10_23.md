@@ -139,7 +139,10 @@ Workstation-only evidence root:
 
 The private app build was not launched and the owner's running app, settings,
 model cache and installed bundle were not replaced. App-relative model/runtime
-discovery is implemented, but a complete installer payload, runtime dependency/
-license/SBOM inventory, clean-machine installation and full release matrix remain
-separate delivery work. A corpus is not required for that normal BF16 payload.
+discovery is implemented. The pinned desktop payload and sealed metadata/SBOM
+integration are now implemented and byte-checked. An isolated cold run using the
+repaired packaged subset built both tiny BF16 roles and retired cleanly, without
+developer SDK paths or a text gate. Other GPU architectures, clean-machine MSI
+installation and the full release matrix remain separate delivery work. A
+corpus is not required for that normal BF16 payload.
 The historical [public-v2 experiment](uct_public_bf16.md) remains diagnostic only.
