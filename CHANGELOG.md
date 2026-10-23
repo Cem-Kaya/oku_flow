@@ -4,7 +4,10 @@
 
 - Rename the batched CTC CUDA fixture's local buffer extent to avoid Qt's
   `slots` macro. ROOT's C3 build of `8f262c3` exposed the compile failure;
-  this test-only identifier repair changes no assertions and is unbuilt/unrun.
+  the test-only repair changes no assertions. Repaired `b002b67` passed the
+  scoped model-free CPU/CUDA gates; controller exit 125 and unresolved owned
+  member attribution remain separately recorded in
+  `docs/uct_composed_validation_2026_10_23.md`. This is not full acceptance.
 
 - Retain the complete resident UCT context before asynchronous cleanup setup,
   including allocation and thread-start failures during quarantine or worker

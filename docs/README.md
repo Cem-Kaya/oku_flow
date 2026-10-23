@@ -100,7 +100,10 @@ model/batch comparison and exact measurement boundaries.
 allocation ceilings and the finite latency/quality comparison.
 [Contiguous helper batching](uct_helper_batching.md) documents the exact
 rectification/CTC/metadata candidate, slot-lifetime fixtures and frozen paired
-whole-worker benchmark plan. Execution and performance remain pending.
+whole-worker benchmark plan. The [23 October composed validation](uct_composed_validation_2026_10_23.md)
+records scoped CPU/CUDA passes, preserved first failures and controller exit
+125 with unresolved owned-member attribution. Whole-worker performance and
+full acceptance remain pending.
 [Ordinary TensorRT cache policy](uct_tensorrt_cache_policy.md) covers stable
 driver-independent FP32 keys, historical read-only lookup and the minimum
 runtime check, separately from exact batching and binary compatibility.

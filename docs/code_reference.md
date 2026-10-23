@@ -819,7 +819,11 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   names its allocation extent `bufferElementCount` to avoid Qt's `slots` macro.
   The 23 October C3 CUDA build of frozen `8f262c3` failed at that local name
   before linking the test executable; this identifier-only repair preserves all
-  fixture logic, assertions and data rows and has not been compiled or run.
+  fixture logic, assertions and data rows. ROOT subsequently built repaired
+  `b002b67` and passed the selected model-free CPU/CUDA gates, including all
+  eight CTC rows. The controller retained exit 125 for two unidentified owned
+  Job members despite child exit 0 and verified cleanup; see the
+  [scoped validation receipt and limits](uct_composed_validation_2026_10_23.md).
 - `gpu::ValidationIntegral` retains two launches: the private
   `validation::integralRows` uses one 256-thread block per row with integer warp
   prefix scans, eight shared warp offsets and a tile carry; `integralColumns`

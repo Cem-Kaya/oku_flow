@@ -27,6 +27,16 @@ repair is source-only and unbuilt/unrun; the prior CPU passes belong to
 a new finite ROOT START. Original failed logs and frozen receipts are retained.
 No inference, model preparation, performance or release acceptance follows.
 
+ROOT's later C4 slot built repaired source `b002b67` and passed the selected
+CPU five-case gate (two fresh, three fingerprint-reused), fresh CUDA five-case
+gate and full synthetic `uct_paddle_cuda`, with no skipped rows or tests.
+Optional CPU PCH-OFF compilation also passed; these targets do not actually
+enable PCH. The child exited 0, but the controller retained exit 125 because
+two unidentified owned Job members remained; exact cleanup and runner-lock
+release were verified. See the [scoped validation and archived first failures](uct_composed_validation_2026_10_23.md).
+This updates the historical unrun statements below, without a performance,
+inference, full-matrix or release claim.
+
 `gpu::RectifyBatch` uses grid Y for contiguous detector-order samples and the
 unchanged scalar bilinear arithmetic, channel order, zero padding and
 `min(canvas, validWidth)` behavior. It writes `[N,3,48,W]` into the existing
