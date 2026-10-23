@@ -13,6 +13,9 @@
   including allocation and thread-start failures during quarantine or worker
   replacement. Release its resources only after confirmed stream completion.
 
+- Correct the fake-clock live expiry fixtures to deliver the remaining
+  presentation deadline after text clears, preserving surface-revocation and
+  unchanged-proof assertions. Production expiry behavior is unchanged.
 - Reconsider outstanding UCT demand once after ordinary OCR completion, on
   the next current-pixel probe. Live capture and probe throttles share a
   one-use waiver; advancing media can re-probe its current source-owned input

@@ -982,6 +982,21 @@ void UltraClearTextControllerTests::deadlineExpiryWithoutReceipts()
         QVERIFY(h.Reading().isEmpty());
         QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
         QCOMPARE(h.controller->ScreenTextAccessibility()->ExposedLineCount(), 0);
+        if (mode == 0 && !exact) {
+            // Line proof expired at T+351, but the last real presentation
+            // at T+349 still has its independent T+950 expiry outstanding.
+            const auto presentationDeadline = UctControllerTestAccess::Expiry(*h.controller);
+            QVERIFY(presentationDeadline);
+            QVERIFY(UctControllerTestAccess::ExpiryArmed(*h.controller));
+            QCOMPARE(*presentationDeadline - *deadline, std::int64_t(599));
+            QCOMPARE(UctControllerTestAccess::ExpiryInterval(*h.controller), 599);
+            h.now = *presentationDeadline;
+            UctControllerTestAccess::FireExpiry(*h.controller);
+            QCOMPARE(h.overlay.WordCount(), 0);
+            QVERIFY(h.Reading().isEmpty());
+            QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
+            QCOMPARE(h.controller->ScreenTextAccessibility()->ExposedLineCount(), 0);
+        }
         QVERIFY(!UctControllerTestAccess::ExpiryArmed(*h.controller));
         h.controller->SetShowOriginal(false);
         UctControllerTestAccess::FireExpiry(*h.controller); // late duplicate cannot revive
