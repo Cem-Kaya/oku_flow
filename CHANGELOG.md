@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Prepare a separate public BF16 model and local golden-attestation contract,
+  preserving selected tiers and per-machine engine identity. No corpus truth,
+  public activation, engine preparation or model/runtime staging is enabled.
+
 - Remove driver pinning from local BF16 approval and versioned precision identity;
   retain exact read-only reviewed legacy lookup and admit runtime TensorRT at
   least 11.4.0.106. Add pure version/cache helpers for separate ABI11 backend

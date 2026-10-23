@@ -2,6 +2,7 @@
 #include "okuflow/common/uct_model_pins.hpp"
 #include "../src/common/uct_recognizer_width.hpp"
 #include "../src/common/uct_runtime_precision.hpp"
+#include "uct_public_bf16_cases.hpp"
 #include "okuflow/cuda/uct_analysis_pool.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "ultra_clear_text_test_support.hpp"
@@ -172,6 +173,7 @@ class PaddleTests final : public QObject
     Q_OBJECT
   private slots:
     void rolePrecisionArtifactContract() { uct_precision_artifact_test::Contract(); uct_precision_artifact_test::VersionAndKeys(); }
+    void publicBf16RequiresApprovedGoldenCorpus() { uct_public_bf16_test::Contract(); }
     void localBf16ManifestRequiresReviewedRolesAndCacheOnlySchema()
     {
         using namespace runtime_precision;

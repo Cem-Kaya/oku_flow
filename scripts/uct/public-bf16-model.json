@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "status": "offline-contract-not-staged",
+  "version": "ppocrv6-medium-rec-bf16-linear-v1",
+  "precision": "bf16-linear",
+  "upstream": {
+    "repository": "PaddlePaddle/PP-OCRv6_medium_rec_onnx",
+    "revision": "50c7eacafc52fa7bcf4194e8cd08e46f8558504b",
+    "sourceSha256": "9c09abf0957f7968c7586464b7397b84ad2387a0497a351af40e9acc71b673ba",
+    "configSha256": "991b700facf5b50a7de193468207d5f4255b538dde0d312ae3b7c7a9b6873129",
+    "modelCardSha256": "ebce8d28436623ecab4952e24935aed86b3f8ecaf8f8736b92d5544f60fae1e9",
+    "license": "Apache-2.0",
+    "licenseSha256": "3840c5c0c61c294264d2dd77b8777be6ddd90121ef4e0e64abcd22edea581d6e"
+  },
+  "convertedGraphSha256": "ecd8ffc92aa1b9f7a33b0ad39757b64887c465f15bb54853936b2136f94e5835",
+  "decodedDictionarySha256": "f1d7cde73a39cc887dd68d5c64b2756b4962ae28594d3a610c683b2fc47110f1",
+  "conversion": {
+    "firstPartySource": "scripts/uct/precision_models.py in archived t3-a299a57f checkout",
+    "firstPartySourceSha256": "da22b96f803e380801db3ea8248e5427a9926f531e7f4344494c1469cf29cc95",
+    "method": "opset22 BF16 linear islands, FLOAT I/O; existing graph reused without conversion"
+  },
+  "plannedBundlePath": "app/models/uct/rec/medium/bf16-linear/inference.onnx",
+  "goldenPolicy": "uct-bf16-exact-text-n1-n8-v1",
+  "goldenCropEncoding": "gray8-upright-h48-zero-pad1024-v1",
+  "preprocessing": "paddle-rectify-normalized-zero-pad-v1",
+  "productionGoldenCorpusPins": [],
+  "redistributionReview": "pending exact model modification notice, runtime/parser/builder-resource/CUDA inventory and release gates; no payload copied"
+}

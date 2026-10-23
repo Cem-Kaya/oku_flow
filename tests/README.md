@@ -8,7 +8,17 @@ device/hash refusal, dictionary identity, read-only loading, driver-independent
 approval/keys and numeric TensorRT runtime-floor admission; it does
 not deserialize TensorRT plans or validate engine lifetime. See the
 [frozen finite-slot precision plan](../docs/uct_precision_artifacts.md).
-This case and its build remain pending root START during offline preparation.
+On frozen policy0035c6f, C1 passed affected CPU PCH-on/off builds and this case,
+`uct_paddle_processing`, and `shared_source_equivalence` with no skipped/unresolved
+rows. It released2026-10-23T12:19:00Z. That scoped pass is not the release matrix.
+
+`uct_public_bf16_contract` is a separate authored/unrun Qt-offscreen case for the
+public-model boundary. It checks model identity without global UUID/plan pins,
+selected-tier/Ampere/runtime gates, unavailable production corpus, bounded
+unapproved-manifest refusal before pixel reads, engine profiles and uncertain
+completion. It manufactures no corpus truth or passing golden result; positive
+attestation needs owned pinned pixels and independently verified Unicode text.
+No existing C1 pass covers these new source bytes; every old grant expired.
 
 `uct_paddle_cuda`'s `gpuAlgorithmsAndOwnedInputs` additionally compares full
 validation integrals (including zero borders) against an integer CPU oracle

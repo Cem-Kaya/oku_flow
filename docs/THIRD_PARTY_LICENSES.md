@@ -220,6 +220,15 @@ license is retained in `third_party/paddleocr/LICENSE` and staged as
 First-party CPU/CUDA DB region extraction and CTC decoding do not add OpenCV,
 pyclipper, Python or PaddlePaddle to the application.
 
+Owner approved future distribution of the converted medium BF16-linear model,
+not a private one-card engine. `scripts/uct/public-bf16-model.json` records the
+existing graph/source/config/dictionary, upstream revision/license/model-card and
+first-party converter hashes. No graph, corpus or SDK file is staged by the
+offline contract. Public staging must retain the original Apache-2.0 license,
+model card, configuration and modification/conversion provenance notice. Golden
+pixels/truth must be owned, immutable and independently reviewed; runtime font
+rendering is not a reproducible substitute. See [public BF16 preparation](uct_public_bf16.md).
+
 ONNX Runtime CPU 1.31.0 uses MIT and its complete retained third-party terms.
 Preparation verifies the official Microsoft archive and DLL hashes, retaining
 `LICENSE`, `ThirdPartyNotices.txt` and `Privacy.md` with `onnxruntime.dll`.
@@ -234,6 +243,11 @@ The preparation command installs it only with `-TensorRT`; the application
 does not download it. No TensorRT files or model weights are silently added
 to an installer. Public inclusion needs a reviewed inventory, notices and
 SBOM entries; private development acceptance does not establish that gate.
+The 2026-10-23 Opus redistribution observations remain provisional: exact parser,
+builder-resource, runtime and CUDA payload license/inventory validation remains
+required before bundling. The model decision does not authorize silently copying
+SDK files, changing CUDA12.9/TRT11.4 or claiming release clearance. Prebuilt
+Ampere-plus engines remain an untested later option.
 
 ## Microsoft Platform Components
 
