@@ -10,6 +10,7 @@ import argparse
 import copy
 import importlib.util
 import json
+import os
 from pathlib import Path
 import struct
 import sys
@@ -97,6 +98,62 @@ class OfflinePayloadTests(unittest.TestCase):
             with self.subTest(path=path), self.assertRaises(payload.Refusal):
                 payload.relative(path)
 
+    def test_local_path_absolute_components_and_aliases(self):
+        inputs = self.root / "inputs"
+        inputs.mkdir()
+        self.assertEqual(payload.local_path(inputs), inputs.resolve(strict=True))
+        for component in ("inputs.", "inputs ", "inputs:stream", "inputs::$DATA", "NUL.txt", "COM1",
+                          "bad?name", "bad\x01name", ".."):
+            for candidate in (self.root / component, self.root / component / "app"):
+                with self.subTest(path=str(candidate)), self.assertRaises(payload.Refusal):
+                    payload.local_path(candidate, missing_leaf=True)
+        with self.assertRaises(payload.Refusal):
+            payload.local_path(Path("relative-input"))
+
+    def test_stage_absolute_alias_and_physical_overlap_refusals(self):
+        inputs = self.root / "inputs"
+        inputs.mkdir()
+        destination = inputs / "app"
+        # Both unsafe source spellings previously bypassed lexical containment.
+        for alias in (self.root / "inputs.", self.root / "inputs ", self.root / "inputs:stream"):
+            with self.subTest(alias=str(alias)), self.assertRaisesRegex(payload.Refusal, "absolute"):
+                payload.stage(destination, {"files": []}, {"models": alias}, "4" * 64)
+            self.assertFalse(destination.exists())
+        aliases = [inputs]
+        if os.name == "nt":
+            aliases.append(Path(str(inputs).swapcase()))
+            self.assertEqual(payload.directory_identity(aliases[0]), payload.directory_identity(aliases[1]))
+        for alias in aliases:
+            with self.subTest(alias=str(alias)), self.assertRaisesRegex(payload.Refusal, "overlaps"):
+                payload.stage(destination, {"files": []}, {"models": alias}, "4" * 64)
+            self.assertFalse(destination.exists())
+        with self.assertRaisesRegex(payload.Refusal, "absolute"):
+            payload.stage(self.root / "inputs." / "app", {"files": []}, {"models": inputs}, "4" * 64)
+        self.assertFalse(destination.exists())
+
+    def test_standalone_manifest_alias_ads_hardlink_and_nonregular_refusals(self):
+        path, hashed = self.manifest_file({"schema": 1})
+        for suffix in (".", " "):
+            with self.subTest(suffix=suffix), self.assertRaisesRegex(payload.Refusal, "absolute"):
+                payload.read_json(Path(str(path) + suffix))
+        # On Windows this creates an ADS on our own tiny fixture; elsewhere it
+        # is a colon-named fixture. The bytes really exist before refusal.
+        stream = Path(str(path) + ":review")
+        stream.write_bytes(path.read_bytes())
+        with self.assertRaisesRegex(payload.Refusal, "absolute"):
+            payload.read_json(stream)
+        with self.assertRaisesRegex(payload.Refusal, "absolute"):
+            payload.validate(stream, hashed, {}, {}, "2" * 64)
+        linked = self.root / "linked-manifest.json"
+        os.link(path, linked)
+        for candidate in (path, linked):
+            with self.subTest(path=str(candidate)), self.assertRaisesRegex(payload.Refusal, "hardlinked"):
+                payload.read_json(candidate)
+            with self.subTest(path=str(candidate)), self.assertRaisesRegex(payload.Refusal, "hardlinked"):
+                payload.validate(candidate, hashed, {}, {}, "2" * 64)
+        with self.assertRaisesRegex(payload.Refusal, "nonregular"):
+            payload.read_json(self.root)
+
     def test_duplicate_json_keys_and_bound(self):
         path = self.root / "bad.json"
         path.write_bytes(b'{"schema":1,"schema":1}')
@@ -129,6 +186,60 @@ class OfflinePayloadTests(unittest.TestCase):
             payload.pe_imports(path)
         data = bytearray(self.fake_pe())
         struct.pack_into("<I", data, 152 + 112 + 12, 20)
+        path.write_bytes(data)
+        with self.assertRaisesRegex(payload.Refusal, "unterminated"):
+            payload.pe_imports(path)
+
+    def test_pe_direct_and_delay_descriptor_backing_spans(self):
+        path = self.root / "descriptor-metadata.bin"
+        for index, start, width, name_slot in ((1, 512, 20, 3), (13, 576, 32, 1)):
+            for descriptor in (0, 1):
+                data = bytearray(self.fake_pe())
+                other = 13 if index == 1 else 1
+                struct.pack_into("<II", data, 152 + 112 + other * 8, 0, 0)
+                # Keep the first import name safely in the header, so the
+                # intended first/null descriptor boundary is the refusal.
+                data[448:461] = b"KERNEL32.dll\0"
+                struct.pack_into("<I", data, start + name_slot * 4, 448)
+                raw_size = start - 512 + (descriptor + 1) * width - 1
+                struct.pack_into("<I", data, 408, raw_size)
+                path.write_bytes(data)
+                with self.subTest(index=index, descriptor=descriptor), self.assertRaisesRegex(payload.Refusal, "section span"):
+                    payload.pe_imports(path)
+
+    def test_pe_direct_and_delay_name_backing_spans(self):
+        path = self.root / "name-metadata.bin"
+        for index, start, name_slot in ((1, 512, 3), (13, 576, 1)):
+            data = bytearray(self.fake_pe())
+            other = 13 if index == 1 else 1
+            struct.pack_into("<II", data, 152 + 112 + other * 8, 0, 0)
+            struct.pack_into("<I", data, start + name_slot * 4, 0x1120)
+            # Raw size 289 ends at byte 800, where USER32.dll begins; its
+            # terminator at 810 is present in the file but is not backed.
+            for raw_size in (289, 298):
+                struct.pack_into("<I", data, 408, raw_size)
+                path.write_bytes(data)
+                with self.subTest(index=index, raw_size=raw_size), self.assertRaisesRegex(payload.Refusal, "unterminated"):
+                    payload.pe_imports(path)
+            struct.pack_into("<I", data, 408, 299)
+            path.write_bytes(data)
+            actual = payload.pe_imports(path)
+            self.assertEqual(actual["imports" if index == 1 else "delayImports"], ["user32.dll"])
+
+    def test_pe_header_descriptor_and_name_backing_spans(self):
+        path = self.root / "header-metadata.bin"
+        for index, width in ((1, 20), (13, 32)):
+            data = bytearray(self.fake_pe())
+            other = 13 if index == 1 else 1
+            struct.pack_into("<II", data, 152 + 112 + other * 8, 0, 0)
+            struct.pack_into("<II", data, 152 + 112 + index * 8, 512 - width + 1, width * 2)
+            path.write_bytes(data)
+            with self.subTest(index=index), self.assertRaisesRegex(payload.Refusal, "header span"):
+                payload.pe_imports(path)
+        data = bytearray(self.fake_pe())
+        struct.pack_into("<II", data, 152 + 112 + 13 * 8, 0, 0)
+        struct.pack_into("<I", data, 512 + 12, 500)
+        data[500:512] = b"KERNEL32.dll"
         path.write_bytes(data)
         with self.assertRaisesRegex(payload.Refusal, "unterminated"):
             payload.pe_imports(path)

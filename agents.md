@@ -1038,3 +1038,7 @@ aligned with the project goals.
   compute/staging permission and reserves no CPU/GPU slot. Follow
   the root's current START boundary and `docs/uct_offline_payload.md`; native
   desktop, real GPU/golden, dependency/legal and release acceptance stay separate.
+- Subsequent independent P2 path/PE repairs and seventeen-test fixture source
+  are UNRUN. Preserve the original `5975fe0` eleven-pass receipt as historical;
+  do not transfer it to changed bytes. Root owns fresh finite model-free
+  validation and focused independent closure before any acceptance claim.

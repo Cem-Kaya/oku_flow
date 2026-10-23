@@ -8,6 +8,10 @@
   enabled; redistribution, corpus, runtime closure and release acceptance remain
   pending. Root ran the eleven model-free Python fixtures once at `5975fe0`:
   PASS in 0.140 seconds, without actual SDK/model staging, GPU or GUI acceptance.
+  Subsequent independent P2 findings repair absolute-path aliases, standalone
+  manifest link checks and PE descriptor/name backing bounds. The repaired
+  helper and seventeen-test fixture source remain UNRUN pending fresh root
+  validation and focused independent closure.
 
 - Zoom out to show an entire wide or portrait source. Wheel/key zoom stops
   once at Fill (1x), then continues toward whole-picture Fit; the slider snaps

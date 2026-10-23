@@ -10,7 +10,10 @@ enables no public factory, downloads nothing and changes no release option.
 Its three explicit actions are `inventory` (read-only facts), `validate` (read-only
 reviewed inventory validation), and `stage` (future new-only private staging).
 **Root ran the eleven model-free Python fixtures once at source `5975fe0`:
-PASS, 0.140 seconds.** The three CLI actions against actual SDK/model payloads
+PASS, 0.140 seconds.** That is historical evidence for `5975fe0` only. The
+subsequent P2 path/PE repairs and expanded seventeen-test fixture source are
+**UNRUN**, pending a fresh finite root invocation and independent closure review.
+The three CLI actions against actual SDK/model payloads
 remain unrun. The implementation worker performed only bounded read-only
 source/file/PE metadata and selected SHA-256 inventory. No build, GPU call,
 inference, engine preparation or actual payload staging was run. The later
@@ -183,20 +186,29 @@ the stricter Python semantic checks. No accepted example is provided.
   `models`, `variant`, `converter`, `repo`, `tensorrt`, `cuda`, `review`, `corpus`.
   No environment/default cache/PATH lookup is used. Reject UNC, symlinks,
   junctions at any ancestor, hardlinked files, ADS, device names and traversal.
+  Reject trailing-dot/space aliases and invalid Win32 characters in every
+  absolute component, including standalone manifest paths. Canonicalization
+  occurs only after ancestor checks and rechecks both spellings; standalone
+  JSON inputs also require a regular, singly linked file.
 - `inventory` hashes only the fixed allowlist and reads PE metadata without
   loading DLLs. Its status always says candidate-only. Matching bytes and a
   zero exit status do not clear its printed redistribution/corpus blockers.
 - `validate` performs no writes. `stage` requires the same complete validation
   before exclusively creating a nonexistent `app` folder under an existing
-  private parent, disjoint from every source root. It copies only those 30
-  files, checks source/copy hashes and exact destination inventory, and writes
+  private parent, disjoint from every source root. Canonical containment and
+  physical `(st_dev, st_ino)` directory identities are checked before creation;
+  a spelling alias cannot make an input root into an allowed destination parent.
+  It copies only those 30 files, checks source/copy hashes and exact destination
+  inventory, and writes
   `uct-offline-payload.json` with `private-staging-complete-not-release` status.
   It never overwrites/reuses/deletes an existing tree. Failure preserves partial
   files and an incomplete marker; no retry-until-pass or rollback sweep exists.
 
 JSON inputs/reviews are at most 1 MiB, corpus manifest at most 64 KiB, each
 payload at most 600 MiB, total at most 2 GiB and inventory at most 64 files.
-Hashes stream in 1 MiB chunks; PE section/import counts are bounded. This is
+Hashes stream in 1 MiB chunks; PE section/import counts are bounded. Every
+direct/delay descriptor must fit its complete raw-backed header/section span;
+DLL-name terminator searches stop at that same backing boundary. This is
 offline maintenance code, never run on the UI thread.
 
 ## Separate release integration seam
@@ -254,6 +266,43 @@ the reserved merge CPU slot or append jobs automatically. Real dependency,
 GPU golden/runtime/lifetime, multilingual quality, native desktop and release
 acceptance require distinct future grants.
 
+## Independent implementation findings and unrun repairs (2026-10-23)
+
+Root requested these repairs atop docs-only `da56bec`; the implementation
+review examined the earlier helper at `5975fe0`:
+
+1. Absolute paths accepted Win32 trailing-dot/space aliases and ADS. The helper
+   returned the supplied spelling, so lexical containment could miss overlap
+   between `C:\fixture\inputs.` and `C:\fixture\inputs\app`. Standalone JSON
+   inputs also bypassed the regular-file/hardlink checks. `local_path` now rejects
+   unsafe absolute components before filesystem inspection and returns a checked
+   canonical path. `stage` also compares physical directory identities before
+   creating anything. `regular_file` applies the same link/type boundary to
+   `read_json`, including separately supplied distribution manifests.
+2. PE RVA translation checked only the first byte. A complete direct/delay
+   descriptor or DLL-name terminator could cross a section's raw data boundary
+   into unrelated file bytes. Translation now takes the complete requested
+   length and returns the remaining backed span; name lookup is bounded by that
+   span. A null descriptor must also be fully backed.
+
+Six additional fixture methods bring the authored suite to seventeen tests.
+They cover absolute components/streams, the exact aliased-root overlap shape,
+case aliases and physical identity on Windows, an existing private manifest ADS,
+both hardlink spellings and nonregular JSON input, direct/delay first and null
+descriptor crossings, direct/delay name crossings (including the raw-size-289
+reproducer), exact last-backed-byte termination, and header backing boundaries.
+All new files/streams/links are tiny first-party fixture data retained under the
+future explicitly supplied evidence root. No fixture is executed by this repair
+worker. No SDK/model payload, original receipt or staging tree is read or changed.
+
+**The repaired helper and expanded fixtures are UNRUN.** Only source inspection
+and `git diff --check` are permitted for this handoff; root owns a fresh finite
+model-free invocation and subsequent independent focused closure. No compute
+lease is acquired or reused. Original eleven-test evidence below remains tied
+to `5975fe0`, and all real payload, legal, model/corpus, GPU and release gates
+remain open. These filesystem checks do not claim atomic protection against
+concurrent malicious same-user filesystem changes.
+
 ## Root model-free functional receipt (2026-10-23)
 
 Root's existing `root-functional-run/result.json` records clean source
@@ -297,9 +346,12 @@ The sibling `archive-receipt.json` has SHA-256
 `6d4b59360ea3fc25e0a546a95da4d88de399398ef49e4e76470db5d72e3c5df1`.
 The original source handoff receipt remains unchanged as historical evidence
 that implementation itself ran no fixtures. No helper, fixture, candidate or
-schema bytes changed for this docs-only update. Root's fresh independent
-implementation review `uct-offline-payload-implementation-review-20261023-r1`
-is reading source `5975fe0`; no verdict from that review is claimed here.
+schema bytes changed for the docs-only update
+`da56becdfe71779f6ab22163bd392b2d0aa0168a`. Root subsequently reported two P2
+findings from independent implementation round
+`uct-offline-payload-implementation-review-20261023-r1` against `5975fe0`, with
+no P1 reported. The repairs described above do not inherit the original fixture
+pass.
 
 Independent source/license inventory round task ID:
 `node:delegated-task:command%3Amcp%3A3d67d461-6eb4-4143-84d1-67c74676eb9b%3Adelegate-task%3Auct-offline-payload-license-inventory-20261023-r1`.

@@ -237,7 +237,9 @@ SBOM entries; private development acceptance does not establish that gate.
 
 The 2026-10-23 [offline payload boundary](uct_offline_payload.md) is DEVELOPMENT,
 UNSTAGED. Root's eleven model-free fixtures passed once at `5975fe0` in 0.140
-seconds; real payload staging and redistribution remain unaccepted.
+seconds; that evidence covers the original source only. Subsequent P2 path/PE
+repairs and expanded fixtures are UNRUN; real payload staging and redistribution
+remain unaccepted. These source repairs change no license inventory or clearance.
 Its first-party helper/candidate metadata add no bundled
 model, NVIDIA binary or newly vendored license. Exact hashes cover the selected
 medium source/config/dictionary/cards, existing BF16 graph, archived converter,

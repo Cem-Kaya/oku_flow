@@ -822,9 +822,14 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   and retains notices; TensorRT remains external. Strict adapter-required CMake
   options turn missing headers/CUDA into configure errors.
 - `scripts/uct/offline_payload.py` adds source-only `inventory`/`validate`/`stage`
-  commands. `relative`, `local_path`, `owned_file`, `read_json` and `file_hash`
-  bound exact local input reads; `pe_imports` inspects AMD64 direct/delay imports
-  without loading code. `validate` binds a separately reviewed raw manifest hash,
+  commands. `relative`, `local_path`, `regular_file`, `owned_file`, `read_json`
+  and `file_hash` bound exact local input reads. Absolute components reject
+  Win32 aliases/ADS before canonicalization; standalone JSON also refuses
+  nonregular/hardlinked inputs. `directory_identity` supplies physical directory
+  identities for pre-creation staging separation. `pe_imports` inspects AMD64
+  direct/delay imports without loading code; RVA translation checks complete
+  descriptor spans and name searches stop at the raw/header backing boundary.
+  `validate` binds a separately reviewed raw manifest hash,
   exact catalog records and four review domains; `check_corpus` verifies supplied
   corpus bytes/format without inference. `make_parents`, `write_new`, `stage`
   and `check_tree` implement exclusive new private fragments and preserved
@@ -835,8 +840,10 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   `OfflinePayloadTests` fixtures use tiny first-party metadata/copy inputs;
   `record`, `manifest_file` and `fake_pe` author only fixture data. No accepted
   legal/model/golden corpus is fabricated. Root's eleven model-free fixtures
-  passed once at `5975fe0` in 0.140 seconds; actual SDK/model staging remains
-  unrun. No release helper, factory, Network or CMake integration was changed. See
+  passed once at `5975fe0` in 0.140 seconds; subsequent P2 path/PE repairs and
+  seventeen-test fixture source are UNRUN, pending root validation and closure.
+  Actual SDK/model staging remains unrun. No release helper, factory, Network
+  or CMake integration was changed. See
   [offline inventory and gates](uct_offline_payload.md).
 - `PaddleTests` covers algorithms, fallback/exception/cancellation, model
   refusal and CUDA snapshot parity/ownership; opt-in real CPU/TensorRT rows

@@ -66,35 +66,64 @@ def relative(value: str) -> str:
 def local_path(path: Path, *, missing_leaf: bool = False) -> Path:
     # Require the physical local path. Workstation LocalAppData junctions must
     # be resolved by the caller, never followed as implicit staging authority.
-    require(path.is_absolute() and not str(path).startswith(("\\\\", "//")), "explicit local absolute path required")
-    require(".." not in path.parts, "parent traversal refused")
-    if os.name == "nt":
-        require(re.fullmatch(r"[A-Za-z]:", path.drive) is not None, "local drive required")
-    chain = [*reversed(path.parents), path]
-    for item in chain:
-        try:
-            info = item.lstat()
-        except FileNotFoundError:
-            require(missing_leaf and item == path, "missing path component")
-            continue
-        require(not stat.S_ISLNK(info.st_mode) and not (getattr(info, "st_file_attributes", 0) & 0x400),
-                "reparse/symlink path refused")
-        if item != path:
-            require(stat.S_ISDIR(info.st_mode), "non-directory ancestor")
-    return path
+    def checked_chain(value):
+        require(value.is_absolute() and not str(value).startswith(("\\\\", "//")), "explicit local absolute path required")
+        if os.name == "nt":
+            require(re.fullmatch(r"[A-Za-z]:", value.drive) is not None, "local drive required")
+        for part in value.parts[1:]:
+            require(part not in {".", ".."} and not part.endswith((".", " "))
+                    and re.search(r'[<>:"/\\|?*\x00-\x1f]', part) is None,
+                    "unsafe absolute path component/stream")
+            stem = part.split(".")[0].rstrip(" ").upper()
+            require(stem not in {"CON", "PRN", "AUX", "NUL", "CLOCK$", "CONIN$", "CONOUT$"}
+                    and re.fullmatch(r"(?:COM|LPT)[0-9¹²³]+", stem) is None,
+                    "reserved absolute path component")
+        exists = True
+        for item in [*reversed(value.parents), value]:
+            try:
+                info = item.lstat()
+            except FileNotFoundError:
+                require(missing_leaf and item == value, "missing path component")
+                exists = False
+                continue
+            require(not stat.S_ISLNK(info.st_mode) and not (getattr(info, "st_file_attributes", 0) & 0x400),
+                    "reparse/symlink path refused")
+            if item != value:
+                require(stat.S_ISDIR(info.st_mode), "non-directory ancestor")
+        return exists
+
+    exists = checked_chain(path)
+    # Canonicalize only after rejecting reparse ancestors; check both spellings
+    # again so resolution never confers authority on an untrusted alias.
+    physical = path.resolve(strict=True) if exists else path.parent.resolve(strict=True) / path.name
+    checked_chain(path)
+    checked_chain(physical)
+    return physical
 
 
-def owned_file(root: Path, name: str) -> Path:
-    path = local_path(root / relative(name))
-    require(path.is_relative_to(root) and path.is_file(), "file escaped root or is not regular")
+def regular_file(path: Path) -> Path:
+    path = local_path(path)
     info = path.stat()
     require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, "nonregular/hardlinked input refused")
     return path
 
 
+def directory_identity(path: Path) -> tuple[int, int]:
+    info = local_path(path).stat()
+    require(stat.S_ISDIR(info.st_mode) and info.st_ino != 0, "physical directory identity required")
+    return info.st_dev, info.st_ino
+
+
+def owned_file(root: Path, name: str) -> Path:
+    root = local_path(root)
+    path = regular_file(root / relative(name))
+    require(path.is_relative_to(root), "file escaped root")
+    return path
+
+
 def read_json(path: Path, limit: int = MAX_JSON) -> tuple[dict, bytes]:
-    local_path(path)
-    require(path.is_file() and path.stat().st_size <= limit, "JSON file exceeds bound")
+    path = regular_file(path)
+    require(path.stat().st_size <= limit, "JSON file exceeds bound")
     with path.open("rb") as stream:
         raw = stream.read(limit + 1)
     require(0 < len(raw) <= limit, "JSON file exceeds bound")
@@ -149,20 +178,24 @@ def pe_imports(path: Path) -> dict:
         table = optional + optional_size
         spans = [unpack("<IIII", table + i * 40 + 8) for i in range(sections)]
 
-        def offset(rva):
+        def offset(rva, length):
+            require(length > 0, "invalid PE span length")
             if 0 <= rva < headers:
-                require(rva < len(data), "invalid PE header RVA")
-                return rva
+                end = min(headers, len(data))
+                require(rva + length <= end, "unbacked PE header span")
+                return rva, end
             for virtual_size, address, raw_size, raw_offset in spans:
                 if address <= rva < address + max(virtual_size, raw_size):
                     delta = rva - address
-                    require(delta < raw_size and raw_offset + delta < len(data), "unbacked PE RVA")
-                    return raw_offset + delta
+                    end = min(raw_offset + raw_size, len(data))
+                    require(delta + length <= raw_size and raw_offset + delta + length <= end,
+                            "unbacked PE section span")
+                    return raw_offset + delta, end
             raise Refusal("invalid PE RVA")
 
         def name(rva):
-            start = offset(rva)
-            end = data.find(b"\0", start, min(len(data), start + 256))
+            start, backed_end = offset(rva, 1)
+            end = data.find(b"\0", start, min(backed_end, start + 256))
             require(end > start, "unterminated import name")
             value = data[start:end].decode("ascii")
             require(re.fullmatch(r"[a-z0-9_.-]+\.dll", value, re.I) is not None, "unsafe DLL import")
@@ -175,7 +208,8 @@ def pe_imports(path: Path) -> dict:
             if rva:
                 require(width <= size <= 65536, "import directory exceeds bound")
                 for i in range(min(size // width, 256)):
-                    row = unpack(fmt, offset(rva + i * width))
+                    row_offset, _ = offset(rva + i * width, width)
+                    row = unpack(fmt, row_offset)
                     if not any(row):
                         break
                     target = row[name_slot]
@@ -355,8 +389,11 @@ def check_tree(destination: Path, records: list[dict], extra: set[str]) -> None:
 def stage(destination: Path, manifest: dict, roots: dict[str, Path], reviewed_sha256: str) -> None:
     destination = local_path(destination, missing_leaf=True)
     require(destination.name == "app" and not destination.exists(), "fresh nonexistent private app folder required")
+    parent_ids = {directory_identity(parent) for parent in [destination.parent, *destination.parent.parents]}
     for root in roots.values():
-        require(not destination.is_relative_to(root) and not root.is_relative_to(destination), "staging overlaps an input root")
+        root = local_path(root)
+        require(directory_identity(root) not in parent_ids and not destination.is_relative_to(root)
+                and not root.is_relative_to(destination), "staging overlaps an input root")
     # First mutation follows complete validation; mkdir/open are exclusive.
     destination.mkdir()
     write_new(destination / INCOMPLETE, {"schema": 1, "status": "incomplete-private-staging", "manifestSha256": reviewed_sha256})
