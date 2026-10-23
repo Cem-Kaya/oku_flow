@@ -34,6 +34,8 @@ public:
         ViewTransform transform;
         ViewRecipe recipe;
         bool canReproduceCleanView{};
+        ViewportFitMode fitMode{ViewportFitMode::kFill};
+        bool wholeSource{};
     };
 
     bool Stage(const CapturedFrame& original, const QString& recordingSessionId,
@@ -62,7 +64,8 @@ public:
     // successor leaves displayed_ intact. A successful unretained successor
     // revokes it, so Pause can never silently fall back to an older image.
     void Presented(std::uint64_t cameraEpoch, std::uint64_t sequence,
-                   const ViewTransform& transform, bool canReproducePresentation = true)
+                   const ViewTransform& transform, bool canReproducePresentation = true,
+                   ViewportFitMode fitMode = ViewportFitMode::kFill, bool wholeSource = false)
     {
         const auto matches = [cameraEpoch, sequence](const std::optional<Frame>& frame) {
             return frame && frame->cameraEpoch == cameraEpoch &&
@@ -76,6 +79,8 @@ public:
         }
         if (displayed_) {
             displayed_->transform = transform;
+            displayed_->fitMode = fitMode;
+            displayed_->wholeSource = wholeSource;
             displayed_->canReproduceCleanView =
                 displayed_->recipe.canReproduceCleanView && canReproducePresentation;
         }

@@ -478,7 +478,8 @@ public:
             !app.mediaHoldReadbackRetired_ && !app.DiscardRetiredMediaHoldReadback(404);
     }
     static std::uint64_t StageDeferredLiveOriginal(OkuFlowApp& app,const RecordingSessionInfo& session,
-                                                  bool unsupportedApplied=false,bool pendingAppearance=false) {
+                                                  bool unsupportedApplied=false,bool pendingAppearance=false,
+                                                  int matchingAspectIntent=0) {
         PendingVideoFinalization(app,session);
         auto neutral=app.CaptureCurrentAdvancedConfig();
         neutral.blackWhiteEnabled=false;neutral.blackWhiteThreshold=0.5f;
@@ -510,16 +511,27 @@ public:
             app.displayColorScheme_.id==QStringLiteral("inverted")?1:2;
         applied.colorLutGeneration=applied.colorTransform==2?app.displayColorLutGeneration_:0;
         applied.contrast=app.contrast_;applied.brightness=app.brightness_;
-        CapturedFrame first;first.width=32;first.height=16;first.pixels.assign(32*16*4,31);
+        CapturedFrame first;
+        first.width=matchingAspectIntent ? viewportWidth : 32;
+        first.height=matchingAspectIntent ? viewportHeight : 16;
+        first.pixels.assign(std::size_t(first.width)*first.height*4,31);
         first.identity.sequenceNumber=71;first.identity.captureClock100ns=710'000;
-        const auto view=ComputeViewTransform(32,16,viewportWidth,viewportHeight,2.0f,0.25f,0.75f,ViewportFitMode::kFill);
+        const auto committedMode=matchingAspectIntent==1 ? ViewportFitMode::kFit : ViewportFitMode::kFill;
+        const auto view=ComputeViewTransform(first.width,first.height,viewportWidth,viewportHeight,
+            matchingAspectIntent ? 1.0f : 2.0f,0.25f,0.75f,committedMode);
         if(!app.presentedOriginalCache_.Stage(first,session.id,app.cameraSessionId_,0,applied))return 0;
-        app.presentedOriginalCache_.Presented(app.cameraSessionId_,71,view);
+        app.presentedOriginalCache_.Presented(app.cameraSessionId_,71,view,true,committedMode,matchingAspectIntent==2);
         auto next=first;next.pixels.assign(next.pixels.size(),191);
         next.identity.sequenceNumber=72;next.identity.captureClock100ns=720'000;
         auto nextRecipe=applied;nextRecipe.canReproduceCleanView=true;
         if(pendingAppearance) {app.OnContrastChanged(140);nextRecipe.contrast=app.contrast_;}
         if(!app.presentedOriginalCache_.Stage(next,session.id,app.cameraSessionId_,0,nextRecipe))return 0;
+        if(matchingAspectIntent) {
+            app.SetViewportFitMode(committedMode==ViewportFitMode::kFit
+                ? settings::ViewportFitModeSetting::Fill : settings::ViewportFitModeSetting::Fit,false);
+            app.zoomEnabled_=true;app.zoomAmount_=2.0f;
+        }
+        app.presentedCameraScene_.reset(); // force the retained clean Original fallback
         // This processed successor received no successful presentation. The
         // mutable pipeline buffers and capture clock have already advanced.
         app.currentCameraFrameSequence_=72;app.currentCameraCaptureClock100ns_=720'000;
@@ -1229,6 +1241,43 @@ private slots:
         QVERIFY(heldConfig.zoomEnabled);
         QVERIFY(std::abs(heldConfig.zoomAmount-2.0f)<0.00001f);
         QCOMPARE(NativeControlFixture::VideoFitMode(app_),settings::ViewportFitModeSetting::Fill);
+    }
+    void freezeOriginalFallbackPreservesCommittedIntent_data() {
+        QTest::addColumn<int>("intent");
+        QTest::newRow("explicit-fit-before-pending-fill")<<1;
+        QTest::newRow("whole-fill-before-pending-fit")<<2;
+        QTest::newRow("legacy-fill-before-pending-fit")<<3;
+    }
+    void freezeOriginalFallbackPreservesCommittedIntent() {
+        QFETCH(int,intent);
+        const auto original=NativeControlFixture::CurrentImageConfig(app_);
+        const auto originalFit=NativeControlFixture::VideoFitMode(app_);
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::ResetVideo(app_);
+            NativeControlFixture::SetCameraActive(app_,false);
+            NativeControlFixture::RestoreImageConfig(app_,original);
+            NativeControlFixture::RestoreVideoFitMode(app_,originalFit);
+        });
+        RecordingSessionInfo session;session.id=QUuid::createUuid().toString(QUuid::WithoutBraces);
+        QCOMPARE(NativeControlFixture::StageDeferredLiveOriginal(app_,session,false,false,intent),std::uint64_t(71));
+        const auto held=NativeControlFixture::HeldVideoFrame(app_);
+        QVERIFY(held && held->bgra);
+        QVERIFY(std::all_of(held->bgra->begin(),held->bgra->end(),[](auto pixel) {return pixel==31;}));
+        const auto config=NativeControlFixture::CurrentImageConfig(app_);
+        const bool fitted=intent==1,whole=intent==2;
+        QCOMPARE(NativeControlFixture::VideoFitMode(app_),fitted
+            ? settings::ViewportFitModeSetting::Fit : settings::ViewportFitModeSetting::Fill);
+        QCOMPARE(config.zoomEnabled,whole);
+        QCOMPARE(config.zoomAmount,whole ? kWholeSourceZoom : 1.0f);
+        // All three committed transforms were identical at matching aspects.
+        // A later aspect change must preserve their different requested intent.
+        const auto reframed=ComputeViewTransform(held->width,held->height,held->width*2,held->height,
+            config.zoomEnabled ? config.zoomAmount : 1.0f,0.5f,0.5f,
+            fitted ? ViewportFitMode::kFit : ViewportFitMode::kFill);
+        QVERIFY(reframed.valid);
+        QCOMPARE(reframed.sourceWidth,1.0f);
+        if(fitted || whole)QCOMPARE(reframed.sourceHeight,1.0f);
+        else QVERIFY(reframed.sourceHeight<1.0f);
     }
     void pauseRejectsUnreproducibleDisplayedAppearance_data() {
         QTest::addColumn<bool>("unsupportedApplied");QTest::addColumn<bool>("pendingAppearance");

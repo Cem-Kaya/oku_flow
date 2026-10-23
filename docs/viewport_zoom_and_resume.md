@@ -38,6 +38,10 @@ alongside its transform and pixels; Freeze transfers that committed snapshot,
 not a newer requested setting awaiting presentation. This also applies when matching
 aspects make both numerically equal to legacy 1x Fill; a later resize must not
 turn an intentional whole-picture hold into a crop.
+The clean Original fallback carries the same successful-receipt intent when a
+processed-scene clone is unavailable. A geometrically identical matching-aspect
+transform alone cannot distinguish explicit Fit, whole-source Fill and legacy
+1x Fill, so all three intents are retained separately and tested after resize.
 
 ## UCT Resume ownership
 

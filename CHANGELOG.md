@@ -5,6 +5,8 @@
 - Zoom out to show an entire wide or portrait source. Wheel/key zoom stops
   once at Fill (1x), then continues toward whole-picture Fit; the slider snaps
   near Fill. Saved 1x profiles retain their previous framing.
+- Freeze preserves the displayed framing intent even when it must retain the
+  clean Original instead of a processed-scene clone.
 - Keep same-file paused UCT references on Resume while ordinary independent
   probes revalidate them. Seeks, source changes and expired/failed checks still
   revoke text; old regional plans and in-flight refinements are fenced.

@@ -34,6 +34,7 @@ if(OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE)
     add_test(NAME native_app_view_controls_offscreen COMMAND native_app_control_fixture
         zoomOutRangeAndEndpointUseActualAspectWithoutPersistence
         freezeKeepsCommittedFillBeforeDeferredFitRequest
+        freezeOriginalFallbackPreservesCommittedIntent
         pauseRetainsPresentedOriginalBeforeDeferredSuccessor
         videoChevronLeadsNeutralAndActionsContainOnlyFourButtons)
     set_tests_properties(native_app_view_controls_offscreen PROPERTIES TIMEOUT 30

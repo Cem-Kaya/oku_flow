@@ -455,6 +455,8 @@ admission callbacks before advancing, so setup cannot expire otherwise current
   before asynchronous atomic PNG writing. See [document lifecycle](video_document_lifecycle.md).
 - `PresentedOriginalCache::{Stage,Presented,Displayed,Reset}` keep at most the
   last successfully displayed Original and one pending successor within 96 MiB.
+  `Presented` commits Fit/Fill and whole-source intent beside the transform;
+  Freeze's Original fallback never borrows a newer unpresented request.
   They share Original leases with independent recorder/recap admission; the
   separate compressed ring owns rolling camera history.
   `AdmitOriginalFrame` separates source admission from presentation.

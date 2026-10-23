@@ -1472,7 +1472,10 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         lastAnnotationPresentation_ = uctContext;
         presentedOriginalCache_.Presented(cameraSessionId_, uctContext.frameSeq, annotationTransform,
             presentationTexture == cudaSharedTexture_.Get() &&
-            !focusMarkerEnabled_);
+            !focusMarkerEnabled_,
+            pipelineOrchestrator_->ViewportFitMode() == settings::ViewportFitModeSetting::Fit
+                ? ViewportFitMode::kFit : ViewportFitMode::kFill,
+            zoomEnabled_ && zoomAmount_ <= kWholeSourceZoom);
         lastAnnotationGpuPresentation_ = annotationPresentation;
         lastAnnotationPresentation_->cameraActive = true;
         lastAnnotationSceneRevision_ = annotationSceneRevision_;
@@ -1695,8 +1698,6 @@ void OkuFlowApp::DrainCompletedGpuReadbacks() {
 
 bool OkuFlowApp::CaptureLiveForMediaHold() {
     if (MediaViewSelected() || mediaHoldReadbackId_ != 0 || !cameraFramePresented_) return false;
-    mediaHoldFitMode_ = pipelineOrchestrator_->ViewportFitMode();
-    mediaHoldWholeSource_ = zoomEnabled_ && zoomAmount_ <= kWholeSourceZoom;
     if(presentedCameraScene_ && presentedCameraScene_->epoch==cameraSessionId_) {
         const auto& scene=*presentedCameraScene_;
         if(scene.captureClock100ns<0)return false;
@@ -1732,6 +1733,9 @@ bool OkuFlowApp::CaptureLiveForMediaHold() {
     mediaHoldCaptureClock100ns_ = original.identity.captureClock100ns;
     mediaHoldViewTransform_ = retained->transform;
     mediaHoldCameraRotation_ = retained->rotationQuarterTurns;
+    mediaHoldFitMode_ = retained->fitMode == ViewportFitMode::kFit
+        ? settings::ViewportFitModeSetting::Fit : settings::ViewportFitModeSetting::Fill;
+    mediaHoldWholeSource_ = retained->wholeSource;
     if (original.HasGpuScene()) {
         if (!presenter_ || presenter_->IsFaulted() ||
             !presenter_->RequestReadback(original.gpuScene, &mediaHoldReadbackId_)) return false;
@@ -3169,7 +3173,8 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
             mapping.targetWidth, mapping.targetHeight);
         presentedOriginalCache_.Presented(cameraSessionId_, lastAnnotationPresentation_->frameSeq,
             transform, !lastAnnotationPresentation_->compositeFrames && !debugViewEnabled_ &&
-            !focusMarkerEnabled_);
+            !focusMarkerEnabled_, cropToFill ? ViewportFitMode::kFill : ViewportFitMode::kFit,
+            zoomEnabled_ && zoomAmount_ <= kWholeSourceZoom);
         RetainPresentedCameraScene(lastAnnotationPresentation_->geometry.settings.sourceEpoch,
             lastAnnotationPresentation_->frameSeq,pendingSceneCaptureClock100ns_,
             nullptr,srcWidth,srcHeight,transform,data,0,focusMarkerEnabled_ && cropToFill,centerXNorm,centerYNorm);
