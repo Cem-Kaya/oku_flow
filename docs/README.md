@@ -1,5 +1,9 @@
 # OkuFlow Documentation Guide
 
+[Private cumulative FP32 whole-worker arms](uct_whole_worker_fp32_arms.md)
+freezes the unexecuted A/B/C source comparison, exact same-N8 receipts and
+finite root-only execution proposals. It does not authorize compute.
+
 [Viewport zoom and Resume](viewport_zoom_and_resume.md) documents whole-picture
 zoom-out, Fill snapping, retained UCT references, corner controls and isolated
 Assistant startup configuration.

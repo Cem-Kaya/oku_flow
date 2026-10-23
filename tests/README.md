@@ -1,5 +1,14 @@
 # OkuFlow Tests
 
+The private cumulative A/B/C refs add `OKUFLOW_UCT_RESIDENT_EXACT_N8=1` to the
+existing unregistered `optionalTensorRtResidentBaseline` slot. It requires M/M,
+only N8, fixed1024, media/single, one round, and profiling/frozen-crops/shadow off.
+Every result retains an exact all-field ordered output receipt after timing;
+the same-capacity gate allows no text/confidence/geometry difference. No N1
+reference, model preparation or runtime product flag is added. The historical
+diagnostic mode retains its old gate. See [the separate finite plan](../docs/uct_whole_worker_fp32_arms.md);
+no test or compute was run while preparing these refs.
+
 `viewport_transform_geometry` covers wide/portrait/extreme-aspect whole-source
 fit, uniform partial bars, nonsticky Fill stepping and inverse Freeze framing.
 `settings_store_round_trip` retains sub-1x/whole-source preferences and legacy

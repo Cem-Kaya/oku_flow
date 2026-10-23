@@ -1,5 +1,12 @@
 # OkuFlow Code Reference
 
+Private cumulative FP32 benchmark refs share the test-only
+`uct_resident_test::ExactOutputBytes` receipt (Qt_6_0 stream, raw floating bits,
+every ordered RecognizedWord field) and `Selection::exactN8` mode. This mode
+requires M/M N8 fixed1024 media/single without profiling and compares exact
+same-capacity bytes; it does not expose raw CTC tokens or pre-merge crop work.
+See [the bounded source-arm protocol](uct_whole_worker_fp32_arms.md).
+
 ## Aspect-aware viewport and Resume continuity
 
 - `ComputeFitZoom`, `EffectiveFillZoom` and `StepFillZoom` in `view_transform`

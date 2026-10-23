@@ -17,6 +17,7 @@
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDateTime>
+#include <QDataStream>
 #include <QDir>
 #include <QFileInfo>
 #include <QHash>
@@ -30,6 +31,7 @@
 #include <QtTest>
 #include <algorithm>
 #include <atomic>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
@@ -77,7 +79,7 @@ struct Selection {
     QStringList images;
     int rounds{3}, passes{5};
     quint32 seed{20261020};
-    bool profile{true}, media{}, paired{}, frozenCrops{}, shadowPlanner{};
+    bool profile{true}, media{}, paired{}, frozenCrops{}, shadowPlanner{}, exactN8{};
     QString sdk, widthPolicy{QStringLiteral("fixed1024")};
     qint64 watchdogMs{};
     QString error;
@@ -99,7 +101,7 @@ struct Selection {
                 {"seed", qint64(seed)}, {"profiling", profile}, {"stamp", media ? "media" : "camera"},
                 {"input", paired ? "pair" : "single"}, {"sdk", sdk}, {"watchdogMs", watchdogMs},
                 {"frozenCrops", frozenCrops}, {"recognizerWidthPolicy", widthPolicy},
-                {"shadowPlanner", shadowPlanner},
+                {"shadowPlanner", shadowPlanner}, {"exactSameCapacityN8", exactN8},
                 {"startupDeadlineMs", kStartupDeadlineMs}, {"jobDeadlineMs", kJobDeadlineMs}};
     }
 };
@@ -125,6 +127,11 @@ inline Selection ParseSelection(const EnvironmentReader& read)
         return refuse("OKUFLOW_UCT_RESIDENT_PAIRS must name detector:recognizer pairs, e.g. medium:small,medium:medium.");
     if (s.pairs.size() > kMaximumPairs) return refuse(QString("At most %1 model pairs are accepted.").arg(kMaximumPairs));
 
+    const auto exactN8 = read("OKUFLOW_UCT_RESIDENT_EXACT_N8");
+    if (!exactN8.isEmpty() && exactN8 != "0" && exactN8 != "1")
+        return refuse("OKUFLOW_UCT_RESIDENT_EXACT_N8 accepts only 0 or 1.");
+    s.exactN8 = exactN8 == "1";
+
     auto capacities = read("OKUFLOW_UCT_RESIDENT_CAPACITIES");
     if (capacities.isEmpty()) capacities = QStringLiteral("1,8,16");
     for (const auto& token : capacities.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
@@ -135,7 +142,7 @@ inline Selection ParseSelection(const EnvironmentReader& read)
         if (!s.capacities.contains(capacity)) s.capacities.push_back(capacity);
     }
     std::sort(s.capacities.begin(), s.capacities.end());
-    if (s.capacities.isEmpty() || s.capacities.front() != 1)
+    if (!s.exactN8 && (s.capacities.isEmpty() || s.capacities.front() != 1))
         return refuse("Batch one must run in the same selection as the strict reference for wider capacities.");
 
     for (const auto& path : read("OKUFLOW_UCT_RESIDENT_IMAGES").split(QLatin1Char(';'), Qt::SkipEmptyParts))
@@ -194,6 +201,10 @@ inline Selection ParseSelection(const EnvironmentReader& read)
     if (s.frozenCrops && std::any_of(s.pairs.begin(), s.pairs.end(), [&s](const Pair& pair) {
             return pair.detector != s.pairs.front().detector;
         })) return refuse("Frozen-crop trials require the same pinned detector tier for all pairs.");
+    if (s.exactN8 && (s.capacities != QVector<int>{8} || s.pairs != QVector<Pair>{{ModelTier::Medium, ModelTier::Medium}} ||
+        s.widthPolicy != "fixed1024" || s.profile || s.frozenCrops || s.shadowPlanner || !s.media || s.paired || s.rounds != 1))
+        return refuse("Exact N8 visits require only medium:medium, capacity 8, fixed1024, media/single, one round, "
+                      "and profiling/frozen-crops/shadow disabled.");
     s.sdk = read("OKUFLOW_UCT_TENSORRT_ROOT");
     if (s.sdk.isEmpty()) return refuse("Select the existing inference-only TensorRT SDK with OKUFLOW_UCT_TENSORRT_ROOT.");
     if (s.Blocks() > kMaximumBlocks || qint64(s.Blocks()) * s.JobsPerBlock() > kMaximumJobs)
@@ -428,7 +439,7 @@ inline QString PlanKey(const QByteArray& modelSha256Hex, const QByteArray& gpuUu
 }
 
 struct PlanRecord {
-    QString role, tier, key, path, payloadSha256, modifiedUtc, error;
+    QString role, tier, key, path, payloadSha256, modifiedUtc, error, requiredKey;
     int capacity{};
     qint64 bytes{};
     bool valid{};
@@ -437,7 +448,7 @@ struct PlanRecord {
     {
         return {{"role", role}, {"tier", tier}, {"capacity", capacity}, {"key", key}, {"path", path},
                 {"bytes", bytes}, {"payloadSha256", payloadSha256}, {"modifiedUtc", modifiedUtc},
-                {"valid", valid}, {"error", error}, {"orderedCandidates", candidates},
+                {"valid", valid}, {"error", error}, {"orderedCandidates", candidates}, {"requiredKey", requiredKey},
                 {"scope", "digest-valid file preflight; actual loader selection is in backend plan receipt"}};
     }
 };
@@ -471,7 +482,8 @@ inline PlanRecord InspectPlan(const QString& cache, const QString& role, ModelTi
 
 inline PlanRecord InspectCachedPlan(const QString& cache, const QString& role, ModelTier tier, int capacity,
                                     const QByteArray& modelSha256Hex, const QByteArray& gpuUuid,
-                                    const QByteArray& runtimeVersion, bool variableWidth = false)
+                                    const QByteArray& runtimeVersion, bool variableWidth = false,
+                                    const QString& requiredKey = {})
 {
     const bool detection = role == "detector";
     QStringList keys{PlanKey(modelSha256Hex, gpuUuid, detection, capacity, variableWidth, runtimeVersion)};
@@ -485,8 +497,11 @@ inline PlanRecord InspectCachedPlan(const QString& cache, const QString& role, M
     for (const auto& key : keys) {
         const auto candidate = InspectPlan(cache, role, tier, capacity, key);
         candidates.push_back(candidate.Json());
-        if (result.key.isEmpty() || (!result.valid && candidate.valid)) result = candidate;
+        if ((requiredKey.isEmpty() || key == requiredKey) &&
+            (result.key.isEmpty() || (!result.valid && candidate.valid))) result = candidate;
     }
+    if (result.key.isEmpty()) result.error = "Required comparison key is absent from the loader candidates.";
+    result.requiredKey = requiredKey;
     result.candidates = candidates;
     return result;
 }
@@ -495,6 +510,7 @@ inline bool MatchesPlanReceipt(const QString& detail, const PlanRecord& prefligh
 {
     for (const auto& value : preflight.candidates) {
         const auto candidate = value.toObject();
+        if (!preflight.requiredKey.isEmpty() && candidate["key"].toString() != preflight.requiredKey) continue;
         if (candidate["valid"].toBool() &&
             detail.contains(preflight.role + "PlanKey=" + candidate["key"].toString() + ';') &&
             detail.contains(preflight.role + "PlanPayloadSha256=" + candidate["payloadSha256"].toString() + ';')) return true;
@@ -567,6 +583,43 @@ inline QString FileSha256(const QString& path)
 
 // --- Raw output records ------------------------------------------------------
 
+// Bench-only ordered output receipt. Raw double bits preserve signed zero and
+// NaN payloads; no structure padding, volatile job IDs or timing enters it.
+// Called after callback timing, never from the worker. Tokens before word
+// assembly and pre-merge crop descriptors are not present in RecognitionOutput.
+inline QByteArray ExactOutputBytes(const RecognitionOutput& output)
+{
+    QByteArray bytes;
+    QDataStream out(&bytes, QIODevice::WriteOnly);
+    out.setVersion(QDataStream::Qt_6_0);
+    out << quint32(0x55435431) << output.ok << output.cancelled << output.inputFault
+        << output.backendPreparing << output.compositeInput << output.error << output.detailRegionPx;
+    const auto bits = [&](double value) { out << std::bit_cast<quint64>(value); };
+    const auto rect = [&](const QRectF& r) { bits(r.x()); bits(r.y()); bits(r.width()); bits(r.height()); };
+    const auto quad = [&](const TextQuad& q) {
+        out << q.valid;
+        for (const auto& point : q.points) { bits(point.x()); bits(point.y()); }
+    };
+    out << quint64(output.lines.size());
+    for (const auto& line : output.lines) {
+        out << quint64(line.words.size());
+        for (const auto& word : line.words) {
+            out << word.text;
+            rect(word.boundsPx);
+            out << word.paddedBounds;
+            rect(word.inkSearchPx);
+            out << quint8(word.disposition);
+            bits(word.confidence);
+            rect(word.protectedBoundsPx);
+            out << word.colors.has_value();
+            if (word.colors) out << word.colors->foreground << word.colors->background;
+            quad(word.quadPx); quad(word.inkSearchQuadPx);
+            out << word.inkFitted;
+        }
+    }
+    return bytes;
+}
+
 inline QJsonObject OutputJson(const RecognitionOutput& output)
 {
     QJsonArray lines;
@@ -584,7 +637,11 @@ inline QJsonObject OutputJson(const RecognitionOutput& output)
         }
         lines.push_back(words);
     }
-    return {{"ok", output.ok}, {"cancelled", output.cancelled}, {"inputFault", output.inputFault},
+    const auto exact = ExactOutputBytes(output);
+    return {{"exactOrderedOutputV1", QJsonObject{{"streamVersion", "Qt_6_0"},
+                {"base64", QString::fromLatin1(exact.toBase64())},
+                {"sha256", Hex(QCryptographicHash::hash(exact, QCryptographicHash::Sha256))}}},
+            {"ok", output.ok}, {"cancelled", output.cancelled}, {"inputFault", output.inputFault},
             {"backendPreparing", output.backendPreparing}, {"compositeInput", output.compositeInput},
             {"error", output.error}, {"lines", lines}};
 }
@@ -847,11 +904,11 @@ inline bool UserTolerancePass(const RecognitionOutput& reference, const Recognit
     return true;
 }
 
-inline bool StrictComparisons(const std::vector<TimedOutput>& timed, QJsonArray& records, int& failures)
+inline bool StrictComparisons(const std::vector<TimedOutput>& timed, QJsonArray& records, int& failures, bool exactN8 = false)
 {
     std::map<std::pair<int, int>, const TimedOutput*> reference;
     for (const auto& output : timed)
-        if (output.capacity == 1) reference.try_emplace({output.pair, output.source}, &output);
+        if (output.capacity == (exactN8 ? 8 : 1)) reference.try_emplace({output.pair, output.source}, &output);
     records = QJsonArray();
     failures = 0;
     bool pass = true;
@@ -859,12 +916,24 @@ inline bool StrictComparisons(const std::vector<TimedOutput>& timed, QJsonArray&
         const auto found = reference.find({output.pair, output.source});
         if (found == reference.end()) {
             records.push_back(QJsonObject{{"file", output.file}, {"strictPass", false},
-                                          {"error", "No batch-one reference ran for this pair and source."}});
+                                          {"error", exactN8 ? "No N8 reference ran for this pair and source." :
+                                                                "No batch-one reference ran for this pair and source."}});
             pass = false;
             ++failures;
             continue;
         }
         if (found->second == &output) continue;
+        if (exactN8) {
+            const bool ok = output.capacity == 8 && ExactOutputBytes(found->second->output) == ExactOutputBytes(output.output);
+            records.push_back(QJsonObject{{"file", output.file}, {"referenceFile", found->second->file},
+                {"pair", output.pair}, {"capacity", output.capacity}, {"source", output.source},
+                {"round", output.round}, {"pass", output.pass}, {"strictPass", ok},
+                {"exactOrderedOutputV1Equal", ok}, {"orderedCropWorkEqual", QJsonValue(QJsonValue::Null)},
+                {"rawCtcTokensCompared", false}});
+            pass &= ok;
+            failures += !ok;
+            continue;
+        }
         const auto agreement = uct_batch_test::Compare(found->second->output, output.output);
         const bool cropKnown = !found->second->orderedCropHash.isEmpty() && !output.orderedCropHash.isEmpty();
         const bool cropEqual = cropKnown && found->second->orderedCropHash == output.orderedCropHash;
@@ -1007,6 +1076,24 @@ inline void SelectionAndComparisonSelfTest()
     QCOMPARE(selection.images.size(), qsizetype(1));
     QVERIFY(selection.profile && !selection.media && !selection.paired);
     QCOMPARE(selection.widthPolicy,QStringLiteral("fixed1024"));
+    auto exactSelection = values;
+    exactSelection["OKUFLOW_UCT_RESIDENT_EXACT_N8"] = "1";
+    exactSelection["OKUFLOW_UCT_RESIDENT_PAIRS"] = "medium:medium";
+    exactSelection["OKUFLOW_UCT_RESIDENT_CAPACITIES"] = "8";
+    exactSelection["OKUFLOW_UCT_RESIDENT_ROUNDS"] = "1";
+    exactSelection["OKUFLOW_UCT_RESIDENT_STAMP"] = "media";
+    exactSelection["OKUFLOW_UCT_RESIDENT_PROFILE"] = "0";
+    const auto exactRead = [&exactSelection](const char* key) { return exactSelection.value(QByteArray(key)); };
+    QVERIFY(ParseSelection(exactRead).error.isEmpty());
+    for (const auto& [key, value] : std::vector<std::pair<QByteArray, QString>>{
+        {"OKUFLOW_UCT_RESIDENT_EXACT_N8", "yes"}, {"OKUFLOW_UCT_RESIDENT_CAPACITIES", "1,8"},
+        {"OKUFLOW_UCT_RESIDENT_PAIRS", "medium:small"}, {"OKUFLOW_UCT_RESIDENT_WIDTH", "bucketed"},
+        {"OKUFLOW_UCT_RESIDENT_PROFILE", "1"}, {"OKUFLOW_UCT_RESIDENT_INPUT", "pair"},
+        {"OKUFLOW_UCT_RESIDENT_STAMP", "camera"}, {"OKUFLOW_UCT_RESIDENT_ROUNDS", "2"}}) {
+        auto invalid = exactSelection;
+        invalid[key] = value;
+        QVERIFY(!ParseSelection([&invalid](const char* name) { return invalid.value(QByteArray(name)); }).error.isEmpty());
+    }
     const auto refused = [&values](QHash<QByteArray, QString> changes) {
         auto changed = values;
         for (auto it = changes.begin(); it != changes.end(); ++it) changed[it.key()] = it.value();
@@ -1088,6 +1175,12 @@ inline void SelectionAndComparisonSelfTest()
     QVERIFY(inspected.valid);
     QCOMPARE(inspected.key, legacyKey);
     QCOMPARE(inspected.candidates.size(), qsizetype(4));
+    const auto requiredLegacy = InspectCachedPlan(legacyCache.path(), "recognizer", ModelTier::Medium, 8,
+        model, uuid, "11.5.0.0", false, legacyKey);
+    QVERIFY(requiredLegacy.valid);
+    QCOMPARE(requiredLegacy.requiredKey, legacyKey);
+    QVERIFY(!InspectCachedPlan(legacyCache.path(), "recognizer", ModelTier::Medium, 8,
+        model, uuid, "11.5.0.0", false, QStringLiteral("absent-comparison-key")).valid);
     QVERIFY(MatchesPlanReceipt("recognizerPlanKey=" + legacyKey + ";recognizerPlanPayloadSha256=" +
                               QString::fromLatin1(payloadHash.toHex()) + ';', inspected));
     QVERIFY(!MatchesPlanReceipt("recognizerPlanKey=" + legacyKey + ";recognizerPlanPayloadSha256=wrong;", inspected));
@@ -1146,6 +1239,33 @@ inline void SelectionAndComparisonSelfTest()
     allowed.lines[0].words[0].text = "Annotatc";
     QVERIFY(!UserTolerancePass(n1, allowed));
     QVERIFY(!StrictComparisons({{0, 0, 8, 0, 1, "orphan", n1}}, records, failures)); // no reference fails closed
+    const auto exactBytes = ExactOutputBytes(n1);
+    QVERIFY(!exactBytes.isEmpty());
+    QVERIFY(StrictComparisons({{0,0,8,0,1,"n8-a",n1}, {0,0,8,0,2,"n8-b",n1}}, records, failures, true));
+    using Mutation = std::function<void(RecognizedWord&)>;
+    for (const auto& mutate : std::vector<Mutation>{
+        [](auto& w) { w.text += "!"; }, [](auto& w) { w.boundsPx.translate(0.0000001, 0); },
+        [](auto& w) { w.paddedBounds = !w.paddedBounds; }, [](auto& w) { w.inkSearchPx.setX(0.0000001); },
+        [](auto& w) { w.disposition = TokenDisposition::kLowConfidence; },
+        [](auto& w) { w.confidence = std::nextafter(w.confidence, 2.0); },
+        [](auto& w) { w.protectedBoundsPx.setY(0.0000001); },
+        [](auto& w) { w.colors = LineColors{QColor(Qt::red), QColor(Qt::blue)}; },
+        [](auto& w) { w.quadPx.valid = !w.quadPx.valid; },
+        [](auto& w) { w.quadPx.points[0].setX(0.0000001); },
+        [](auto& w) { w.inkSearchQuadPx.valid = !w.inkSearchQuadPx.valid; },
+        [](auto& w) { w.inkSearchQuadPx.points[3].setY(0.0000001); },
+        [](auto& w) { w.inkFitted = !w.inkFitted; }}) {
+        auto changed = n1;
+        mutate(changed.lines[0].words[0]);
+        QVERIFY(ExactOutputBytes(changed) != exactBytes);
+        QVERIFY(!StrictComparisons({{0,0,8,0,1,"n8-a",n1}, {0,0,8,0,2,"n8-changed",changed}}, records, failures, true));
+        QCOMPARE(failures, 1);
+    }
+    auto signedZero = n1;
+    signedZero.lines[0].words[0].confidence = -0.0;
+    auto positiveZero = signedZero;
+    positiveZero.lines[0].words[0].confidence = 0.0;
+    QVERIFY(ExactOutputBytes(signedZero) != ExactOutputBytes(positiveZero));
     std::vector<TimedOutput> changedCrops{{0,0,1,0,1,"fixed",n1,QString(64, QLatin1Char('a'))},
         {0,0,8,0,1,"other-crops",n1,QString(64, QLatin1Char('b'))}};
     QVERIFY(!StrictComparisons(changedCrops, records, failures));
@@ -1604,6 +1724,9 @@ inline void RunBlock(Run& run, const Block& block, ProfileCapture& capture)
             const auto invalid = Validate(*completion, input.image->Read(), profiles, block.capacity, run.selection,
                                           run.sources[std::size_t(source)].treeSha256);
             QVERIFY2(invalid.isEmpty(), qPrintable(invalid + " Evidence: " + file));
+            if (run.selection.exactN8)
+                for (const auto& preflight : run.pairs[std::size_t(block.pair)].plans)
+                    QVERIFY2(MatchesPlanReceipt(completion->backend.detail, preflight), qPrintable(completion->backend.detail));
             if (run.selection.shadowPlanner) {
                 const auto& plan = *completion->result.shadowPlan;
                 // Startup already observed the first frozen acquisition.
@@ -1721,11 +1844,16 @@ inline void ResidentBaselineDiagnostic()
         entry.assets = LoadPaddleAssets(DefaultPaddleRoot(), pair.detector, pair.recognizer);
         QVERIFY2(entry.assets.IsValid(), qPrintable(entry.assets.error));
         entry.models = ModelsJson(pair, entry.assets);
+        const auto requiredLegacy = [&](bool detection, int capacity) {
+            return selection.exactN8 ? QString::fromLatin1(tensorrt_identity::LegacyFp32PlanKey(
+                QByteArray::fromHex(detection ? entry.assets.detectorSha256 : entry.assets.recognizerSha256),
+                uuid, detection, capacity, false, 13050)) : QString();
+        };
         entry.plans.push_back(InspectCachedPlan(cache, "detector", pair.detector, 1,
-                                              entry.assets.detectorSha256, uuid, trtVersion));
+                                              entry.assets.detectorSha256, uuid, trtVersion, false, requiredLegacy(true, 1)));
         for (const int capacity : selection.capacities)
             entry.plans.push_back(InspectCachedPlan(cache, "recognizer", pair.recognizer, capacity,
-                entry.assets.recognizerSha256, uuid, trtVersion, selection.widthPolicy == "bucketed"));
+                entry.assets.recognizerSha256, uuid, trtVersion, selection.widthPolicy == "bucketed", requiredLegacy(false, capacity)));
         for (const auto& plan : entry.plans)
             if (!plan.valid)
                 missing << QStringLiteral("%1 %2 N%3 %4: %5").arg(pair.Token(), plan.role).arg(plan.capacity)
@@ -1855,7 +1983,7 @@ inline void ResidentBaselineDiagnostic()
     // run before their batch-one reference.
     QJsonArray comparisons;
     int strictFailures = 0;
-    const bool strictPass = StrictComparisons(run.timed, comparisons, strictFailures);
+    const bool strictPass = StrictComparisons(run.timed, comparisons, strictFailures, selection.exactN8);
     QVERIFY(uct_batch_test::Save(QDir(run.evidence).filePath("comparisons.json"),
                                  {{"comparisons", comparisons}, {"strictPass", strictPass}, {"failures", strictFailures}}));
 
@@ -1966,8 +2094,10 @@ inline void ResidentBaselineDiagnostic()
           "Record the process exit code separately from the State receipts.");
     QVERIFY2(!truncated, "The selection did not finish within the QtTest watchdog allowance; completed evidence is retained.");
     QVERIFY2(cacheUnchanged, "The TensorRT plan cache changed during a run that must never create or replace plans.");
-    QVERIFY2(strictPass, "A capacity changed text/order/disposition, geometry >0.001 px or confidence >0.001 versus "
-                         "batch one, or batch one did not repeat. All outputs preserved; thresholds unchanged.");
+    QVERIFY2(strictPass, selection.exactN8
+        ? "Exact N8 ordered output bytes changed. All visits preserved; no numeric tolerance applies."
+        : "A capacity changed text/order/disposition, geometry >0.001 px or confidence >0.001 versus "
+          "batch one, or batch one did not repeat. All outputs preserved; thresholds unchanged.");
 #endif
 }
 

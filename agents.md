@@ -1,5 +1,14 @@
 # Agent Operation Guide
 
+## Private cumulative UCT source arms (2026-10-23)
+
+- Keep the A/B/C whole-worker comparison as three frozen private refs/binaries,
+  with common two-slot lookahead, integral, cache policy and test receipts.
+  Never add the old merge to public runtime through a switch. The test-only
+  exact-N8 mode has zero output tolerance. Its source plan is not a compute
+  grant; root serializes finite build/benchmark slots and preserves first
+  failures. See `docs/uct_whole_worker_fp32_arms.md`.
+
 OkuFlow evolves as an **AI-assisted, GPU-accelerated magnifier** for people
 with low vision. Agents help us deliver that mission by building features,
 keeping the pipeline fast, and ensuring the docs stay accurate. Read this
