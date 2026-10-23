@@ -11,6 +11,16 @@ runtime DLL/version/hash are provenance only; old artifacts remain intact.
 Decoded dictionaries now come from one hash-verified snapshot limited to 8 MiB.
 See [contract and pending finite slots](uct_precision_artifacts.md).
 
+The separate public BF16 preparation boundary proposes
+`app/models/uct/rec/medium/bf16-linear/inference.onnx` and versioned
+`app/models/uct/golden/<corpus-version>/` owned assets, never an owner-cache or SDK
+path. No payload/factory is staged/enabled. Its production corpus catalog is
+empty. Corpus limits are64KiB JSON, eight GRAY8 crops of48 rows by1–1024 columns,
+16 N1/N8 observations and exact Unicode text; normal fixed1024 padding remains.
+Approval binds graph/source/config/dictionary/profile/ABI; local receipts bind
+actual plan/device/builder/corpus, with driver/DLL hashes only provenance.
+See [public model/attestation contract](uct_public_bf16.md).
+
 ## Live RAM recap (development)
 
 `VideoRecapPolicy` keeps 300 seconds with independently playable ~2-second H.264

@@ -36,6 +36,9 @@
   neural batch. Preserve actual tensor extents, invalid-score/tie rules and
   two-slot completion/host-consumption fences. Cancellation and partial-failure
   ownership fixtures are prepared; performance and execution remain unmeasured.
+- Prepare a separate public BF16 model and local golden-attestation contract,
+  preserving selected tiers and per-machine engine identity. No corpus truth,
+  public activation, engine preparation or model/runtime staging is enabled.
 
 - Remove driver pinning from local BF16 approval and versioned precision identity;
   retain exact read-only reviewed legacy lookup and admit runtime TensorRT at

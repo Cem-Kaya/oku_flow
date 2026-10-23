@@ -5,9 +5,13 @@ zoom-out, Fill snapping, retained UCT references, corner controls and isolated
 Assistant startup configuration.
 
 [Role-aware UCT precision experiments](uct_precision_artifacts.md) describes the
-offline schema-2 contract, current-driver approval prerequisite, exact runtime
+offline schema-2 contract, driver-independent cache acceptance, exact runtime
 integration seam and serialized finite benchmark/quality slots. No new artifact
 or performance acceptance is implied.
+
+[Public BF16 model preparation](uct_public_bf16.md) separates approved model
+bytes from each machine's local engine/golden attestation. The offline boundary
+has no production corpus, active factory integration or staged release payload.
 
 [Source-supported perspective text](uct_surface_perspective.md) explains bounded
 four-corner recovery, source refusals and projected glyph geometry.
