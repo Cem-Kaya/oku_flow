@@ -1,5 +1,30 @@
 # OkuFlow Tests
 
+## Exact host merge replay (prepared, unmeasured)
+
+`uct_merge_replay` is a dedicated model-free CPU fixture. It compares frozen
+bb53 merge/geometry bodies with production after every call, including ordered
+text and every word/geometry/metadata field. Binary scalar encoding preserves
+double bits, signed zero and NaN payloads. It uses QCoreApplication without a
+camera, native window, OCR runtime or GPU. See
+[the method, source identity and limits](../docs/uct_merge_optimization.md).
+
+No configure/build/test or timing was performed during implementation: parent
+START is required. After that grant, build `uct_merge_replay_tests` and
+`uct_paddle_tests` in a CPU preset tree using at most eight jobs, then use
+`scripts/run_test_gate.ps1 -BuildDirectory <tree> -Test uct_merge_replay,uct_paddle_processing -Parallel 8 -ExcludeGui`.
+This is SCOPED evidence. CMake registration edits require the normal full gate
+before integration; this narrow selection is not shipping/CUDA acceptance.
+
+Explicit timing uses `uct_merge_replay_tests --benchmark --output <absolute.json>`.
+Five warmups per arm precede 31 alternating ABBA/BAAB blocks. Reports retain
+every raw call/visit time and correctness checks; exclude blocks -2 and -1
+from timing statistics. `<report>.inputs.bin` records exact versioned inputs;
+`--frozen-input <path>` restores them. Optional `--archive-manifest` accepts
+hash-pinned historical final output rows, explicitly regrouped into artificial
+calls with missing legacy fields defaulted. Those are function microbenchmarks,
+not captured call sequences, ground truth, GPU/full-worker or FPS evidence.
+
 `uct_paddle_cuda`'s `gpuAlgorithmsAndOwnedInputs` additionally compares full
 validation integrals (including zero borders) against an integer CPU oracle
 across warp/tile tails, decimations, padded pitch and repeated poisoned buffers.

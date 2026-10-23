@@ -1,5 +1,8 @@
 # OkuFlow Documentation Guide
 
+[UCT host merge candidate](uct_merge_optimization.md) records allocation removal,
+bounded call-local geometry reuse, frozen CPU replay and the unmeasured status.
+
 [Source-supported perspective text](uct_surface_perspective.md) explains bounded
 four-corner recovery, source refusals and projected glyph geometry.
 

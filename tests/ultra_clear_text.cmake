@@ -3,6 +3,8 @@ if(NOT WIN32)
     return()
 endif()
 
+include(uct_merge_replay.cmake)
+
 # Pure C++ contracts for bounded metadata storage/drop accounting; no Qt,
 # capture, native OCR runtime or model download is involved.
 add_executable(uct_timing_trace_tests uct_timing_trace_tests.cpp

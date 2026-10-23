@@ -1,5 +1,15 @@
 # Hard-Coded Paths and Defaults
 
+## Exact host UCT merge candidate (unmeasured)
+
+`PaddleMergeRecognition` uses a call-local geometry cache capped at 1024 rows
+and 8192 word entries/capacity. Oversize or capacity-exhausted inputs retain
+uncached decisions without a new output limit. Quad clipping uses two 64-point
+stack buffers, bounded by four points doubling at most once per each of four
+edges. Explicit CPU replay timing has five warmups per arm, 31 alternating
+ABBA/BAAB blocks and a four-minute between-call deadline. Compilation,
+correctness and gains await parent START; see [method](uct_merge_optimization.md).
+
 ## Live RAM recap (development)
 
 `VideoRecapPolicy` keeps 300 seconds with independently playable ~2-second H.264

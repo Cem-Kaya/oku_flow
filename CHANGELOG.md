@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Prepare an exact host UCT merge optimization that removes temporary polygon
+  allocations and repeated geometry/overlap work. Frozen CPU replay and paired
+  function timing are prepared; compilation, equivalence and gains remain
+  unmeasured pending the parent START. See `docs/uct_merge_optimization.md`.
+
 - Overlap dense UCT recognition groups with host metadata merging using bounded
   double-buffered metadata and per-group completion events. Private resident
   FP32 measurements show a dense N8 benefit; sparse/N1 and production BF16

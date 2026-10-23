@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <array>
 #include <set>
+#include <span>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
@@ -1058,10 +1059,10 @@ bool QuadIsRotated(const TextQuad& pixelQuad)
 }
 
 namespace {
-double PolygonArea(const QVector<QPointF>& polygon)
+double PolygonArea(std::span<const QPointF> polygon)
 {
     double twice = 0.0;
-    for (qsizetype i = 0; i < polygon.size(); ++i) {
+    for (std::size_t i = 0; i < polygon.size(); ++i) {
         const QPointF& a = polygon[i];
         const QPointF& b = polygon[(i + 1) % polygon.size()];
         twice += a.x() * b.y() - b.x() * a.y();
@@ -1087,17 +1088,25 @@ double QuadArea(const TextQuad& quad)
         if (cross == 0.0 || (turn != 0.0 && std::signbit(cross) != std::signbit(turn))) return 0.0;
         turn = cross;
     }
-    return PolygonArea({quad.points[0], quad.points[1], quad.points[2], quad.points[3]});
+    return PolygonArea(quad.points);
 }
 
 double QuadIntersectionArea(const TextQuad& a, const TextQuad& b)
 {
-    if (QuadArea(a) <= 0.0 || QuadArea(b) <= 0.0) return 0.0;
     if (!a.Bounds().intersects(b.Bounds())) return 0.0;
+    if (QuadArea(a) <= 0.0 || QuadArea(b) <= 0.0) return 0.0;
     // Convex clipping; both inputs are convex rectangles/parallelograms. The
     // clip polygon's winding decides which side is inside.
-    QVector<QPointF> subject{a.points[0], a.points[1], a.points[2], a.points[3]};
-    const QVector<QPointF> clip{b.points[0], b.points[1], b.points[2], b.points[3]};
+    // Each input vertex emits at most two vertices per edge, even with
+    // overflow/NaN intermediates. Four edges therefore need at most 4*2^4
+    // points, without relying on the ideal convex-intersection bound of eight.
+    // Keep the original clipping arithmetic, emission and summation order.
+    std::array<QPointF, 64> storageA, storageB;
+    auto* subject = &storageA;
+    auto* next = &storageB;
+    std::copy(a.points.begin(), a.points.end(), subject->begin());
+    std::size_t count = 4;
+    const auto& clip = b.points;
     double winding = 0.0;
     for (int i = 0; i < 4; ++i) {
         const QPointF& p = clip[i];
@@ -1106,26 +1115,27 @@ double QuadIntersectionArea(const TextQuad& a, const TextQuad& b)
     }
     if (winding == 0.0) return 0.0;
     const double sign = winding > 0.0 ? 1.0 : -1.0;
-    for (int edge = 0; edge < 4 && !subject.isEmpty(); ++edge) {
+    for (int edge = 0; edge < 4 && count != 0; ++edge) {
         const QPointF p = clip[edge], q = clip[(edge + 1) % 4];
         const auto side = [&](const QPointF& r) {
             return sign * ((q.x() - p.x()) * (r.y() - p.y()) - (q.y() - p.y()) * (r.x() - p.x()));
         };
-        QVector<QPointF> next;
-        for (qsizetype i = 0; i < subject.size(); ++i) {
-            const QPointF& current = subject[i];
-            const QPointF& previous = subject[(i + subject.size() - 1) % subject.size()];
+        std::size_t nextCount = 0;
+        for (std::size_t i = 0; i < count; ++i) {
+            const QPointF& current = (*subject)[i];
+            const QPointF& previous = (*subject)[(i + count - 1) % count];
             const double sc = side(current), sp = side(previous);
             if (sc >= 0.0) {
-                if (sp < 0.0) next.push_back(previous + (current - previous) * (sp / (sp - sc)));
-                next.push_back(current);
+                if (sp < 0.0) (*next)[nextCount++] = previous + (current - previous) * (sp / (sp - sc));
+                (*next)[nextCount++] = current;
             } else if (sp >= 0.0) {
-                next.push_back(previous + (current - previous) * (sp / (sp - sc)));
+                (*next)[nextCount++] = previous + (current - previous) * (sp / (sp - sc));
             }
         }
-        subject = std::move(next);
+        std::swap(subject, next);
+        count = nextCount;
     }
-    return subject.size() < 3 ? 0.0 : PolygonArea(subject);
+    return count < 3 ? 0.0 : PolygonArea(std::span(subject->data(), count));
 }
 
 TextQuad ViewQuadToScene(const ViewTransform& t, double width, double height, const TextQuad& viewQuad)
