@@ -1,8 +1,10 @@
 #pragma once
 
 #include "okuflow/common/view_transform.hpp"
+#include "okuflow/common/immutable_corroboration.hpp"
 #include "okuflow/common/uct_device_image.hpp"
 #include "okuflow/common/uct_model_settings.hpp"
+#include "okuflow/common/uct_timing_trace.hpp"
 
 #include <QColor>
 #include <QByteArray>
@@ -12,7 +14,9 @@
 #include <QString>
 #include <QVector>
 
+#include <array>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -34,6 +38,11 @@
 // Recognition and validation consume independently owned, stamped CPU/GPU
 // analysis images on private workers, never the D3D presentation stream.
 namespace okuflow::uct {
+
+// Standalone is the user-selected paused/Freeze policy. Corroborated remains
+// available for explicit independent-frame protocols; it is not synthesized
+// by rereading a held image.
+enum class ImmutableAdmission { Corroborated, Standalone };
 
 // Immutable provenance of one owned CPU/GPU analysis image. Copies, jobs,
 // results and accepted words all carry the stamp of the pixels they came
@@ -63,6 +72,7 @@ struct SourceStamp {
     // image is one observation. Crossfade/Unknown images are never evidence.
     HoldDisplay holdDisplay{HoldDisplay::NotHeld};
     std::uint64_t holdAcquisition{};
+    ImmutableCorroborationPolicy immutableCorroboration;
 
     bool SameScene(const SourceStamp& other) const noexcept
     {
@@ -71,9 +81,34 @@ struct SourceStamp {
     }
 };
 
+inline bool ImmutableNeighbourAllowed(const SourceStamp& selected, const SourceStamp& neighbour)
+{
+    return selected.immutableCorroboration == neighbour.immutableCorroboration &&
+        selected.immutableCorroboration.Allows(selected.frameSeq, selected.timestampMs,
+                                             neighbour.frameSeq, neighbour.timestampMs);
+}
+
 // The acquisition whose pixels a stamped image actually shows: frameSeq,
 // or the earlier held acquisition. Composite/unknown pixels name none.
 std::optional<std::uint64_t> EvidenceAcquisition(const SourceStamp& stamp);
+// Metadata adapter only: the opt-in trace never feeds authority/admission.
+inline timing::Key TimingKey(std::uint64_t producer, timing::Channel channel,
+                            const SourceStamp& stamp, std::uint64_t jobId, std::uint64_t authority)
+{
+    return {producer, stamp.sourceEpoch, stamp.geometryGeneration, stamp.frameSeq,
+            EvidenceAcquisition(stamp).value_or(0), jobId, authority, stamp.timestampMs, channel};
+}
+inline void TraceTiming(timing::Event event, std::uint64_t producer, timing::Channel channel,
+                        const SourceStamp& stamp, std::uint64_t jobId, std::uint64_t authority,
+                        timing::Values values = {}) noexcept
+{
+    if (!timing::Enabled()) return;
+    try {
+        if (stamp.liveCameraCapture) values.flags |= timing::LiveCamera;
+        if (EvidenceAcquisition(stamp)) values.flags |= timing::AcquisitionKnown;
+        timing::RecordEvent(event, TimingKey(producer, channel, stamp, jobId, authority), values);
+    } catch (...) {} // diagnostics cannot affect recognition, including allocation faults
+}
 // Applies a worker-read device record. Inconsistent identity (live other than
 // frameSeq, held not strictly older than frameSeq) becomes Unknown.
 void ApplyHoldProvenance(SourceStamp& stamp, const HoldProvenance& hold);
@@ -88,6 +123,40 @@ QRectF ViewRectToScene(const ViewTransform& transform, double width, double heig
                        const QRectF& viewRect);
 QRectF SceneRectToView(const ViewTransform& transform, double width, double height,
                        const QRectF& sceneRect);
+
+// Reading-order text quadrilateral: top-left, top-right, bottom-right and
+// bottom-left along the recognized baseline. Paddle detector lines and their
+// CTC word spans are rotated rectangles in source pixels. Scene coordinates
+// keep the four mapped points, so the anisotropic normalized scene mapping
+// and the final view transform remain exact affine maps of the same shape.
+// An absent quad (valid == false) means the axis-aligned rectangle applies.
+struct TextQuad {
+    std::array<QPointF, 4> points{};
+    bool valid{};
+
+    static TextQuad FromRect(const QRectF& rect);
+    QRectF Bounds() const;
+    QPointF Center() const;
+    TextQuad Translated(const QPointF& offset) const;
+    bool operator==(const TextQuad&) const = default;
+};
+// Length of the baseline (top edge) and of the left edge, in the units of
+// the coordinates. Exact for rotated rectangles in isotropic pixel space.
+double QuadWidth(const TextQuad& quad);
+double QuadHeight(const TextQuad& quad);
+// Baseline angle in radians; meaningful only in isotropic pixel space.
+double QuadAngle(const TextQuad& quad);
+// Pixel-space quads tilted at least this much keep oriented geometry through
+// ink fitting and paint. Smaller tilts retain the established rectangle path.
+inline constexpr double kOrientedTextMinimumRadians = 0.035; // about 2 degrees
+bool QuadIsRotated(const TextQuad& pixelQuad);
+// Exact convex intersection area (Sutherland-Hodgman); 0 for invalid input.
+double QuadArea(const TextQuad& quad);
+double QuadIntersectionArea(const TextQuad& a, const TextQuad& b);
+TextQuad ViewQuadToScene(const ViewTransform& transform, double width, double height,
+                         const TextQuad& viewQuad);
+TextQuad SceneQuadToView(const ViewTransform& transform, double width, double height,
+                         const TextQuad& sceneQuad);
 
 // Owned BGRA pixels handed from the UI thread to workers without copying.
 // After hand-off nobody writes to the buffer; workers only read it.
@@ -166,7 +235,12 @@ struct ReferencePatch {
     QVector<float> values; // CPU zero-mean, unit-variance samples
     bool valid{};
     std::shared_ptr<const ResidentPatch> resident; // GPU descriptor, no pixel/feature download
+    TextQuad sceneQuad; // optional rectified sampling frame for immutable word proof
 };
+
+// Metadata-only bounded sampling plan; no image access or independent evidence.
+ReferencePatch PlanQuadReference(const SourceStamp&, int width, int height, const TextQuad&);
+ReferencePatch BuildQuadReferencePatch(const ProbeFrame&, const TextQuad&);
 
 // --- Recognition backend -------------------------------------------------
 
@@ -183,7 +257,43 @@ struct BackendStatus {
     QString languageTag; // recognizer language actually used
     QString detail;      // English technical detail for diagnostics
     bool usesGpu{};      // actual selected recognizer, including temporary fallback
+    // The selected recognizer can restrict detection to one visible-detail
+    // region of the same owned image (Paddle CPU/TensorRT, not Windows OCR).
+    bool detailFocus{};
 };
+
+// One bounded visible-detail detection region of an already owned analysis
+// image. It never changes the image, stamp or acquisition: recognition still
+// samples the same source pixels and maps boxes to full-image pixels.
+struct DetailFocus {
+    QRect regionPx;                    // requested visible source region
+    double maximumMagnification{1.0};  // detector enlargement bound, clamped to [1, 8]
+    int detectorLongEdge{960};         // [32, 960]; supplemental detector edge is 704 (source <=480)
+    bool supplemental{};              // failure requests a later full read, not backend retirement
+};
+// Hard bound on visible-detail detector enlargement. Enlarging existing pixels
+// adds no source detail; it only gives the detector more pixels per glyph.
+inline constexpr double kMaximumDetailMagnification = 8.0;
+// Detector boxes this close to an internal crop edge are incomplete. Shared
+// by backend merging and regional ownership (which adds detector jitter slack).
+inline constexpr double kDetailCropEdgeMarginPx = 8.0;
+
+// Backend-neutral detector input planning, shared by the Paddle CPU/TensorRT
+// adapters and the controller's visible-detail decision.
+// Input size for one detector region: long edge <= 960, enlargement only up
+// to the clamped magnification (1 = never enlarge, the established passes).
+QSize DetectorInputSize(QSize region, double maximumMagnification = 1.0, int maximumLongEdge = 960);
+// Whole-scene context plus at most 4x4 overlapping crops (desired edge 1280,
+// 160-pixel overlap). The 4 is a per-axis crop count, not a zoom factor.
+QVector<QRect> DetectorRegions(QSize source);
+double DetailMagnification(const DetailFocus& focus);
+// The single visible-detail region: the request clamped to the image and,
+// when its long edge is below 960/magnification, enlarged around its centre
+// so detector enlargement never exceeds the bound. Empty for unusable input.
+QRect DetailRegion(QSize source, const DetailFocus& focus);
+// Highest detector scale (input pixels per source pixel) any established
+// region gives at `point`; the baseline a detail pass must clearly beat.
+double EstablishedDetectorScale(QSize source, const QPointF& point);
 
 // Candidate text is evidence, not accepted reading text. Rejected spans stay
 // ordered through preparation/admission and protect their original pixels.
@@ -210,6 +320,11 @@ struct RecognizedWord {
     double confidence{1.0}; // backend evidence; never increased during admission
     QRectF protectedBoundsPx; // original detector span, before optional ink fitting
     std::optional<LineColors> colors; // local word surface, measured after recognition
+    // Oriented backend geometry in job pixels, including Windows OCR's
+    // deskew-angle correction. boundsPx is always its axis-aligned bound.
+    TextQuad quadPx;          // CTC span over the line height; fitted ink after preparation
+    TextQuad inkSearchQuadPx; // span widened by one CTC step, bounded by neighbours
+    bool inkFitted{};         // worker ink fitting replaced the padded span
 };
 
 struct RecognizedLine {
@@ -226,6 +341,10 @@ struct RecognitionOutput {
     // Extra Stable crossfade/unknown input: recognition was not attempted.
     // Neither a backend nor an input fault, and never recognition evidence.
     bool compositeInput{};
+    // Non-empty when detection examined only this region of the same image
+    // (visible detail). Boxes remain full-image pixels. Words touching an
+    // internal region edge were excluded, never cut into fragments.
+    QRect detailRegionPx;
 };
 
 // Runs only on the scheduler's worker thread. Implementations must honor
@@ -239,6 +358,10 @@ public:
     virtual BackendStatus Status() const { return {}; }
     virtual bool WantsDeviceInput() const { return false; }
     virtual bool Preparing() const { return false; }
+    // Worker-confined: the scheduler sets this immediately before one
+    // recognition and clears it afterwards. Backends without detail support
+    // ignore it and leave RecognitionOutput::detailRegionPx empty.
+    virtual void SetDetailFocus(const std::optional<DetailFocus>& focus) { Q_UNUSED(focus); }
     virtual RecognitionOutput Recognize(const QImage& image,
                                         const std::atomic<bool>& cancelled) = 0;
     virtual RecognitionOutput RecognizeDevice(const DeviceImage& image,
@@ -266,7 +389,29 @@ struct PreparedWord {
     double confidence{1.0};
     QRectF protectedSceneRect;
     std::optional<LineColors> colors;
+    TextQuad sceneQuad; // oriented scene geometry of a rotated word; sceneRect is its bound
+    // Original neighbour-bounded recognition search frame. Independent pixel
+    // proof may use it when two valid ink fits crop the same letters differently.
+    // This never changes the fitted display footprint or its protection.
+    TextQuad registrationSceneQuad;
 };
+
+// Worker-side oriented ink fit, the rotated-frame counterpart of the
+// row-band rectangle fit. Samples the word's search quad on a bounded local
+// grid, keeps the dominant ink band (plus detached marks) and returns the
+// fitted quad, or the unchanged span when ink is ambiguous. CPU reference
+// for the resident CUDA kernel; never called on the UI thread.
+TextQuad FitOrientedWordInk(const QImage& image, const RecognizedWord& word,
+                            const LineColors& colors, bool* fitted = nullptr);
+// Optional source-supported perspective on a closed, locally uniform surface.
+// Missing/ambiguous boundaries retain the existing fitted word geometry.
+TextQuad RefineWordSurface(const QImage& image, const RecognizedWord& word,
+                          const LineColors& colors, bool* fitted = nullptr);
+// Worker-side completion after fitting, shared by CPU and resident paths:
+// rejects invalid convex geometry and removes duplicate observations of the same text
+// that fitting resolved onto the same ink. Lines are never removed, so
+// every parallel per-line vector stays aligned.
+void FinalizeRecognizedGeometry(RecognitionOutput& output);
 
 struct PreparedLine {
     QVector<PreparedWord> words; // every known span, including rejected ones
@@ -295,6 +440,16 @@ struct CorroborationRequest {
     QVector<PreparedLine> selectedLines;
 };
 
+struct RegionShadowPlan;
+// One optional descriptor in the existing latest-only slot. Deadlines use
+// steady wall time, never source PTS or a synthetic acquisition. The worker
+// rechecks the exact retained full plan, deadline and pending full priority.
+struct RegionalOcrRequest {
+    std::shared_ptr<const RegionShadowPlan> plan;
+    std::chrono::steady_clock::time_point fullDeadline;
+    double estimatedMs{750.0};
+};
+enum class RecognitionJobKind : std::uint8_t { Full, PausedDetail, Regional };
 struct RecognitionResult {
     std::uint64_t jobId{};
     std::uint64_t authority{};
@@ -322,6 +477,16 @@ struct RecognitionResult {
     QVector<QVector<bool>> corroborationWordMatches; // selected line/word indices; no display offsets
     std::uint64_t corroboratedJobId{};
     MatchTuning corroborationTuning;
+    // Full-output planner metadata; active scheduling may consume it, never
+    // overlay/UIA admission or proof. Partial outputs do not observe it.
+    std::shared_ptr<const RegionShadowPlan> shadowPlan;
+    double shadowPlannerMs{}; // excluded from ordinary OCR worker duration
+    QString shadowPlannerError;
+    RecognitionJobKind jobKind{RecognitionJobKind::Full}; // actual backend operation
+    bool regionalRequested{};
+    bool regionalFallback{}; // stale/unsupported/no slack: full, or yielded to queued full
+    bool regionalFailed{};   // request a full read without retiring healthy backend/text
+    bool regionalDeadlineOverrun{};
 };
 
 // Maps recognized words into scene coordinates and builds per-line residual
@@ -334,6 +499,11 @@ struct SchedulerStats {
     std::uint64_t started{};
     std::uint64_t completed{};
     std::uint64_t revoked{};   // finished after their authority was cancelled
+    std::uint64_t fullCalls{}, pausedDetailCalls{}, regionalCalls{};
+    std::uint64_t regionalAttempts{}; // SetDetailFocus call attempted, including ignored/full responses
+    std::uint64_t regionalFallbacks{}, regionalFailures{}, regionalDeadlineOverruns{};
+    std::uint64_t regionalPriorityRefusals{};
+    double maximumFullMs{}, maximumRegionalMs{}; // worker call through preparation
 };
 
 // One worker thread, at most one job in flight plus one latest-only pending
@@ -352,27 +522,48 @@ public:
                          StatusChanged statusChanged,
                          int referenceDecimation = 2,
                          double minimumWordHeightPx = 7.0,
-                         bool probeOnly = false);
+                         bool probeOnly = false,
+                         bool shadowPlanner = false,
+                         bool regionalOcr = false);
     ~RecognitionScheduler();
     RecognitionScheduler(const RecognitionScheduler&) = delete;
     RecognitionScheduler& operator=(const RecognitionScheduler&) = delete;
 
     // Takes an independently owned copy (detached by the caller or here).
     // Returns the job id, or 0 when the backend is unavailable/failed.
+    // `detail` restricts detection to one bounded region of the SAME owned
+    // image. The job keeps the image's stamp, digest and acquisition: it is
+    // a refinement of that observation, never independent evidence.
     std::uint64_t Submit(const SourceStamp& stamp, QImage pixels,
-                         CorroborationRequest corroboration = {});
+                         CorroborationRequest corroboration = {},
+                         std::optional<DetailFocus> detail = std::nullopt,
+                         std::optional<RegionalOcrRequest> regional = std::nullopt);
     // Zero-copy hand-off of already shared, immutable pixels.
     std::uint64_t Submit(const SourceStamp& stamp, SharedPixels pixels,
-                         CorroborationRequest corroboration = {});
+                         CorroborationRequest corroboration = {},
+                         std::optional<DetailFocus> detail = std::nullopt,
+                         std::optional<RegionalOcrRequest> regional = std::nullopt);
     std::uint64_t SubmitDevice(const SourceStamp& stamp, SharedDeviceImage device,
-                               CorroborationRequest corroboration = {});
+                               CorroborationRequest corroboration = {},
+                               std::optional<DetailFocus> detail = std::nullopt,
+                               std::optional<RegionalOcrRequest> regional = std::nullopt);
     void Cancel();
+    // Overwrites one optional priority descriptor for the next job only.
+    // Does not submit work, reset/renew evidence or alter recognition policy.
+    void SetShadowFocus(std::optional<QRectF> sceneRect);
+    // Explicit hardware-free fixture seam; affects only an enabled diagnostic
+    // observer. Recognition and its original-image fallback remain unchanged.
+    void FailNextShadowObservationForTest();
+    // One-shot hardware-free fixture barrier, outside the scheduler mutex,
+    // before taking the pending job. Normal workers have no barrier.
+    void SetBeforeDequeueForTest(std::function<void()> barrier);
     std::uint64_t Authority() const;
     bool IsCurrent(const RecognitionResult& result) const;
     bool HasWork() const; // pending or in flight
     bool InFlight() const;
     BackendStatus Status() const;
     SchedulerStats Stats() const;
+    std::uint64_t TimingProducerId() const noexcept;
 
 private:
     struct State;
@@ -408,6 +599,11 @@ public:
         QVector<ReferencePatch> out;out.reserve(rects.size());
         for(const auto& rect:rects)out.push_back(Reference(stamp,rect));
         return out;
+    }
+    // Oracles without oriented sampling fail closed, rather than pretending a
+    // bounding rectangle contains the same pixels as a rotated word.
+    virtual QVector<ReferencePatch> QuadReferences(const SourceStamp&, const QVector<TextQuad>& quads) const {
+        return QVector<ReferencePatch>(quads.size());
     }
     virtual QVector<PatchMatch> Matches(const SourceStamp& stamp,const QVector<ReferencePatch>& patches,
                                         const MatchTuning& tuning,const QVector<QPointF>& seeds,
@@ -455,10 +651,10 @@ QVector<LineCheck> CheckLines(const QVector<LineReference>& lines, const ProbeFr
 // a correlation in [-1, 1], or nullopt when they share too little area.
 std::optional<double> SceneSimilarity(const ProbeFrame& a, const ProbeFrame& b);
 
-// True for tokens whose characters are commonly confused (0/O, 1/l/I, 5/S,
-// 8/B, 2/Z) when letters and digits mix in one word, or which contain
-// notation the MVP never claims (superscripts, math operators beyond simple
-// arithmetic). Such words fail closed to original pixels.
+// True for empty text or unsupported notation (non-ASCII digits, superscripts,
+// modifier letters and symbols outside ordinary punctuation). Ordinary letters
+// and ASCII digits, mixed or isolated, still require all normal evidence gates.
+// Unsupported tokens fail closed to original pixels.
 bool IsHighRiskToken(const QString& text);
 
 // --- Probe worker -------------------------------------------------------------
@@ -518,6 +714,7 @@ public:
     bool HasPending() const;
     bool HasWork() const;
     ProbeWorkerStats Stats() const;
+    std::uint64_t TimingProducerId() const noexcept;
 
 private:
     struct State;
@@ -539,6 +736,8 @@ struct AcceptedWord {
     QRectF sceneRect;
     bool glyphEligible{true}; // immutable text may be readable without corroboration
     std::optional<LineColors> colors; // absent in legacy/hand-built line-only evidence
+    TextQuad sceneQuad; // oriented geometry (before line offset); invalid for rectangles
+    std::uint64_t layoutGroupId{}; // typography group; 0 uses the owning line id
 };
 
 struct AcceptedLine {
@@ -556,6 +755,19 @@ struct AcceptedLine {
     QPointF sceneOffset;
     std::int64_t validatedAtMs{};
     std::uint64_t validatedFrameSeq{};
+    // Empty uses the original sequential readingTokens/words contract. An
+    // immutable refinement may append independently proved words while old
+    // word indexes remain stable; then every token has an explicit index
+    // (-1 for an omission), and unused reading-only words stay undrawn.
+    QVector<int> readingWordIndices;
+    // Subset of protectedSceneRects naming semantic-risk/invalid-geometry
+    // ink. Immutable refinement may not carve these masks. Ordinary grouped
+    // prose can still be replaced by separately proved word tokens.
+    QVector<QRectF> nonCarvableSceneRects;
+    // Subset of protectedSceneRects produced by subtraction, before offset.
+    // Original masks win exact-geometry collisions; this subset shares the
+    // existing mask cap and permits pixel-centre rounding of carved strips.
+    QVector<QRectF> carvedSceneRects;
 };
 
 struct SceneWord {
@@ -565,6 +777,9 @@ struct SceneWord {
     std::uint64_t lineId{};
     QVector<QRectF> protectedSceneRects; // all current protected spans, offset applied
     int wordIndex{-1}; // index into the owning AcceptedLine::words (accessibility key)
+    TextQuad sceneQuad; // oriented word geometry, offset applied; invalid for rectangles
+    std::uint64_t layoutGroupId{}; // independent of reading identity; 0 uses lineId
+    QVector<QRectF> carvedSceneRects; // subset of protected spans, offset applied
 };
 
 // One token of a screen-reader line projection: a verified glyph word, or a
@@ -630,6 +845,17 @@ class OverlayModel {
 public:
     explicit OverlayModel(ModelTuning tuning = {});
 
+    struct RegionalWordMatch {
+        std::uint64_t oldLineId{}, proposedLineId{};
+        int oldWordIndex{-1}, proposedWordIndex{-1};
+    };
+    // Synchronous optional UI-thread precommit check, never recognition or a
+    // publication. The renderer checks its actual painted identities against
+    // one capped proposal within the remaining admission budget. Without it,
+    // novel protection with existing glyphs is conservatively refused.
+    using RegionalPreflight = std::function<bool(const OverlayModel&,
+        const QVector<RegionalWordMatch>&, double remainingMs)>;
+
     void Reset();
     // A previously pending live word needs a different frame and unequal
     // complete source-pixel digests under the same scheduler authority.
@@ -637,7 +863,7 @@ public:
     AdmitVerdict Admit(const RecognitionResult& result,
                        const SourceStamp& current,
                        const ProbeFrame* latestProbe,
-                       std::int64_t nowMs);
+                       std::int64_t nowMs, const RegionalPreflight& preflight = {});
     // Live capture uses the capture owner's monotonically increasing sample
     // sequence as independent acquisition evidence. Identical source pixels
     // are valid on a steady camera/virtual feed; repainting the same sample
@@ -650,23 +876,30 @@ public:
     AdmitVerdict AdmitLiveCamera(const RecognitionResult& result,
                                 const SourceStamp& current,
                                 const ProbeFrame* latestProbe,
-                                std::int64_t nowMs);
+                                std::int64_t nowMs, const RegionalPreflight& preflight = {});
     // Advancing saved media retains real media PTS in every stamp. Admission
     // uses the live temporal/residual policy with an independent caller-owned
     // wall-clock job deadline instead of the live source-age gate.
     AdmitVerdict AdmitAdvancingMedia(const RecognitionResult& result,
                                      const SourceStamp& current,
                                      const ProbeFrame* latestProbe,
-                                     std::int64_t mediaNowMs);
+                                     std::int64_t mediaNowMs, const RegionalPreflight& preflight = {});
     // One explicitly selected immutable frame: require exact scene/frame
-    // identity. One result exposes text with uncertainty and leaves source ink.
-    // Glyphs require an optional genuinely distinct compatible neighbor: full
+    // identity. Standalone admits its eligible OCR using its own valid source
+    // references; it never consults a neighbouring result. The explicit
+    // Corroborated protocol requires a genuinely distinct compatible neighbor: full
     // pixel digests, different frame identity, word agreement and registration.
     // Caller owns selected-media/model authority; no periodic probe is needed.
+    // A refinement of identical selected pixels preserves exact earlier words
+    // and can add eligible words; it never rebinds old proof to
+    // jittered recognition boxes or another selected input.
+    // A complete preferred standalone read replaces the preparing fallback
+    // atomically using its own references. Detail crops cannot do so.
     AdmitVerdict AdmitImmutable(const RecognitionResult& result,
                                 const SourceStamp& selectedFrame,
                                 std::int64_t nowMs,
-                                const RecognitionResult* corroboration = nullptr);
+                                const RecognitionResult* corroboration = nullptr,
+                                ImmutableAdmission admission = ImmutableAdmission::Corroborated);
     // Revalidates every accepted line against a newer probe of the same scene
     // (synchronous: CheckLines + ApplyChecks).
     ValidationSummary Validate(const ProbeFrame& probe, std::int64_t nowMs);
@@ -712,27 +945,47 @@ private:
     AdmitVerdict AdmitImpl(const RecognitionResult& result, const SourceStamp& current,
                            const ProbeFrame* latestProbe, std::int64_t nowMs, bool immutable,
                            const RecognitionResult* corroboration = nullptr,
-                           bool advancingMedia = false, bool liveCamera = false);
+                           bool advancingMedia = false, bool liveCamera = false,
+                           const RegionalPreflight& preflight = {},
+                           ImmutableAdmission admission = ImmutableAdmission::Corroborated);
+    AdmitVerdict MergeImmutableCoverage(const QVector<AcceptedLine>& previous,
+                                        AdmitVerdict verdict, std::int64_t nowMs,
+                                        std::uint64_t selectedFrameSeq);
+    bool ApplyImmutableConflictBlocks(QVector<AcceptedLine>& lines) const;
 
+    struct PendingEvidence {
+        SourceStamp stamp;
+        QByteArray digest;
+        RecognitionResult::DigestKind digestKind{RecognitionResult::DigestKind::Sha256};
+        std::uint64_t authority{};
+    };
     struct PendingWord {
         QString text;
         QRectF sceneRect;
         std::uint64_t sourceEpoch{};
         std::uint64_t geometryGeneration{};
+        std::shared_ptr<const PendingEvidence> evidence;
     };
 
     ModelTuning tuning_;
     QVector<AcceptedLine> lines_;
     QVector<PendingWord> pending_;
-    // pending_ is replaced as one batch after every successful admission;
-    // one fixed-size evidence ticket covers that batch, rather than storing
-    // hashes per token or retaining an unbounded history of source images.
+    // Full reads replace pending observations; regional reads preserve outside
+    // words with their exact shared source ticket. At most 8192 words/tickets,
+    // no retained source images. These fields also name the immutable input.
     SourceStamp pendingEvidenceStamp_;
     QByteArray pendingEvidenceDigest_;
     RecognitionResult::DigestKind pendingDigestKind_{RecognitionResult::DigestKind::Sha256};
     std::uint64_t pendingEvidenceAuthority_{};
     std::uint64_t nextLineId_{1};
+    // Exact selected-input disagreements keep only those source regions as
+    // original ink, including after a later result omits the conflicting word.
+    // Bounded independently of refinements; no history crosses input identity.
+    QVector<QRectF> immutableConflictRects_;
+    bool immutableConflictSaturated_{};
     bool immutable_{};
+    bool immutableFullPreparing_{};
+    ImmutableAdmission immutableAdmission_{ImmutableAdmission::Corroborated};
     bool liveCamera_{};
 };
 

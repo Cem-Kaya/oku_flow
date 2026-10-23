@@ -27,3 +27,16 @@ The effective per-frame settings zero flatten strength when that child is off,
 including glare-only launches of the shared kernel. This does not erase the
 stored strength. CUDA regression inputs cover neutral ordinary pixels, reduced
 bright glare, independent flattening, alpha and pitched-buffer padding.
+
+Resident UCT `SurfaceFrames` shares the CPU closed-surface decisions and returns
+only bounded corner metadata after ink fitting. It uses the existing owned
+source/stream and completion/quarantine path, with at most 128 requests and no
+image readback. See [surface perspective](../../docs/uct_surface_perspective.md).
+
+One 128-thread block cooperates on each request: grid sampling, level-parallel
+flooding, line hypotheses/refits and the ink-plane rescan share the work.
+
+Resident UCT validation-integral rows use one cooperating 256-thread block per
+row, retaining the serial table's exact unsigned values and unchanged column
+pass. No extra global buffer, transfer or launch is added. See
+[GPU integral scope and validation](../../docs/uct_gpu_integral.md).

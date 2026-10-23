@@ -5,6 +5,20 @@ OkuFlow was formerly named OpenZoom. Website: <https://okuflow.com>. Repository:
 OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, Direct3D 12, and an optional CUDA processing path. The current codebase already supports live camera capture, GPU (CUDA) frame processing with CPU format-conversion support paths, a two-stage preset/advanced UI, rotation-aware presentation, persistent settings, paired photo snapshots, and live AV1/H.264 recording with optional microphone audio in fragmented MP4 containers.
 
 ## Current Capabilities
+- Development [live RAM recap](live_ram_recap.md) keeps up to five minutes of
+  compressed, video-only camera history independently of recording. It reuses
+  native codecs/player/transport, reports actual rolling bounds and warmup,
+  and retains an exact displayed scene for manual Freeze before coded history
+  is ready. Camera source/format/stop changes reset this temporary authority.
+- The owner's explicit [local BF16 recognition selection](uct_local_bf16.md)
+  uses one reviewed cache-only medium/medium N8 fixed1024 plan with a pinned
+  FP32 detector. Empty/unset `OKUFLOW_UCT_LOCAL_BF16_MANIFEST` and public
+  diagnostic factories retain the normal FP32 baseline. This is mixed
+  arithmetic with FLOAT I/O, not a general precision default or release claim.
+- An optional [embedded FFmpeg/dav1d saved-file backend](video_ffmpeg_playback.md)
+  uses a separately pinned private SDK and explicit runtime opt-in. The default
+  and all recording archive facades retain Media Foundation. No new SDK/DLL is
+  automatically installed or deployed; HDR tone mapping remains unsupported.
 - Development video playback uses one bounded Media Foundation decoder and the
   Original recording archive for same-session rewind. Opening a saved video
   first finalizes ongoing recording; a new recording returns to the camera.
@@ -15,6 +29,14 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   retaining CPU compatibility. See [GPU playback](gpu_video_playback.md) for
   device ownership, format limits and explicit image-action transfers.
   This is not a new published Windows installer.
+  Paused saved-file UCT can use a genuine following sample at its known native
+  frame duration, capped at 2500 ms, without pressing Play. Unknown duration,
+  archive/RAM and advancing modes retain ordinary proof timing; see
+  [source identity and sparse-cadence bounds](uct_initial_paused_frame.md).
+- Development UCT retains tilted/perspective word geometry through ink fit and
+  painting. Paused navigation can request bounded visible-region detail after
+  settling, up to eight-times detector enlargement under the existing 960-pixel
+  limit. See [geometry and detail repair](uct_oriented_detail_repair.md).
 - UCT advanced settings persist separate PP-OCRv6 detector/recognizer tiers
   for GPU (medium/medium by default) and CPU fallback (tiny/small).
   Medium/small GPU recognizers default to batch eight; tiny retains batch one.
@@ -23,6 +45,14 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   Assistant/MCP image-setting fields. Model replacement retires old workers
   asynchronously. The shared UCT opt-in preference persists; Text Clarity gates
   runtime activation without clearing that preference. See [UCT](ultra_clear_text.md).
+  The regional planner supports separate observation-only and explicitly
+  enabled supplemental execution modes on the same OCR worker. Active regions
+  preserve baseline full deadlines/priority and current-pixel admission; they
+  never authorize skipping full OCR. See [shadow planning](uct_region_planner.md)
+  and [active execution and limits](uct_active_regional_ocr.md).
+  An opt-in [narrower recognition canvas](uct_recognizer_width.md) reduces
+  padding within ordered batches. It uses separate cached dynamic-width plans;
+  the fixed-width default remains available and unchanged.
 - Experimental UCT has optional PP-OCRv6 TensorRT CUDA and ONNX Runtime CPU
   adapters, with built-in Windows OCR as the final fallback. Prepare pinned
   development inputs with `scripts/prepare_uct_runtime.ps1` (`-TensorRT` opts
@@ -268,6 +298,11 @@ development executable is running. The tracked helper applies the same release
 preset there and keeps the CPU/CUDA test presets unchanged; it never closes the
 running app to replace its executable.
 
+On the owner's workstation, use `Z:\Projects\OkuFlow\local-work-data` for new
+large work folders. Existing C: cache and checkout paths may redirect there;
+the active source directory has a small Windows-lock exception. See
+[local work storage](local_work_storage.md) before creating or moving builds.
+
 You can also run each preset directly:
 
 ```powershell
@@ -497,10 +532,12 @@ profiling flags for ordinary operation.
 - `Ultra Clear Text (experimental)` at the end of `Advanced > Image > Text
   clarity` recognizes steady printed text with optional local PaddleOCR or the built-in Windows OCR engine
   and draws sharp letters over validated words; everything else stays the
-  original image. It is off on every launch, offers `Show original camera
-  text`, and lists accepted words in a selectable `Recognized text` pane. It
-  pauses during Temporal Smooth/Extra Stable and reports when Windows has no
-  OCR language. Development feature, not release-accepted; see
+  original image. Its saved preference is gated by the Text Clarity master
+  switch. It offers `Show original camera text` and a selectable `Recognized
+  text` pane, and reports its active CPU/GPU backend. Temporal Smooth and Extra
+  Stable retain exact analysis/held-frame identity; paused video can use a
+  distinct real neighbouring sample without advancing the held view. It reports
+  when Windows has no OCR language. Development feature, not release-accepted; see
   [Ultra Clear Text](ultra_clear_text.md).
 - `Viewport framing` under `Advanced > Settings > View and navigation`
   is a global viewport preference:
@@ -772,7 +809,7 @@ profiling flags for ordinary operation.
   after preflight succeeds. Stop preserves the selected recording cursor and
   play/pause intent. The forward transport follows live for a recording or
   holds the last decodable saved frame; Resume continues the held cursor.
-  Ordinary unrecorded camera use creates no history. See
+  Unrecorded camera use now keeps the separate bounded silent RAM recap. See
   [archive and player ownership](video_archive_backend.md) and
   [document lifecycle](video_document_lifecycle.md).
 

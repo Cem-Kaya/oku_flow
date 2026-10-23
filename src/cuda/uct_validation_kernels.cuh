@@ -1,6 +1,8 @@
 // First-party CUDA implementation of UCT's CPU validation/color/ink policy.
 // Included by uct_kernels.cu so every CUDA consumer has the same primitives.
 #include <cstdint>
+#include "../common/uct_color_policy.hpp"
+#include "../common/uct_surface_geometry.hpp"
 
 namespace okuflow::uct::gpu
 {
@@ -13,20 +15,45 @@ __device__ int luma(const unsigned char *p)
 __global__ void integralRows(const unsigned char *p, size_t pitch, int w, int h, int d,
                              unsigned *out)
 {
-    const int y = blockIdx.x * blockDim.x + threadIdx.x, ow = w / d, oh = h / d;
+    const int y = blockIdx.x, ow = w / d, oh = h / d;
     if (y >= oh)
         return;
     const int step = max(1, d / 2), per = (d + step - 1) / step;
-    unsigned sum = 0;
-    out[(y + 1) * (ow + 1)] = 0;
-    for (int x = 0; x < ow; ++x)
+    // One complete 256-thread block cooperates on a row. Integer prefix sums
+    // retain the serial pass's exact table while adjacent lanes access adjacent
+    // source/output pixels. Every lane participates, including zero-filled tails.
+    __shared__ unsigned offsets[8], carry;
+    const int lane = threadIdx.x & 31, warp = threadIdx.x / 32;
+    if (!threadIdx.x) {
+        carry = 0;
+        out[(y + 1) * (ow + 1)] = 0;
+    }
+    __syncthreads();
+    for (int tile = 0; tile < ow; tile += 256)
     {
+        const int x = tile + threadIdx.x;
         int v = 0;
-        for (int a = 0; a < d; a += step)
-            for (int b = 0; b < d; b += step)
-                v += luma(p + (y * d + a) * pitch + (x * d + b) * 4);
-        sum += v / (per * per);
-        out[(y + 1) * (ow + 1) + x + 1] = sum;
+        if (x < ow)
+            for (int a = 0; a < d; a += step)
+                for (int b = 0; b < d; b += step)
+                    v += luma(p + (y * d + a) * pitch + (x * d + b) * 4);
+        unsigned prefix = v / (per * per);
+        for (int delta = 1; delta < 32; delta *= 2) {
+            const unsigned previous = __shfl_up_sync(0xffffffffu, prefix, delta);
+            if (lane >= delta) prefix += previous;
+        }
+        if (lane == 31) offsets[warp] = prefix;
+        __syncthreads();
+        if (!threadIdx.x)
+            for (int i = 0; i < 8; ++i) {
+                const unsigned total = offsets[i];
+                offsets[i] = carry;
+                carry += total;
+            }
+        __syncthreads();
+        if (x < ow) out[(y + 1) * (ow + 1) + x + 1] = offsets[warp] + prefix;
+        // No lane may overwrite an offset before all lanes consumed this tile.
+        __syncthreads();
     }
 }
 __global__ void integralColumns(unsigned *p, int w, int h)
@@ -74,7 +101,9 @@ __device__ void referenceBody(const unsigned *p, int w, int h, Grid g, float *va
     for (int i = 0; i < n; ++i)
     {
         float v;
-        if (!box(p, w, h, g.x + (i % g.columns) * g.dx, g.y + (i / g.columns) * g.dy, g.halfW,
+        const int column=i%g.columns,row=i/g.columns;
+        if (!box(p, w, h, g.x + column*g.dx + row*g.crossX + column*row*g.warpX,
+                 g.y + row*g.dy + column*g.crossY + column*row*g.warpY, g.halfW,
                  g.halfH, v))
             return;
         values[i] = v;
@@ -111,7 +140,9 @@ __device__ Correlation correlate(const unsigned *p, int w, int h, Grid g, const 
     {
         ++total;
         float v;
-        if (!box(p, w, h, g.x + (i % g.columns) * g.dx + dx, g.y + (i / g.columns) * g.dy + dy,
+        const int column=i%g.columns,row=i/g.columns;
+        if (!box(p, w, h, g.x + column*g.dx + row*g.crossX + column*row*g.warpX + dx,
+                 g.y + row*g.dy + column*g.crossY + column*row*g.warpY + dy,
                  g.halfW, g.halfH, v))
             continue;
         ++n;
@@ -310,89 +341,190 @@ __global__ void similarity(const unsigned *a, int aw, int ah, ProbeMap ma, const
                              : (va <= 1e-9 || vb <= 1e-9 ? 0. : (uv - u * v / n) / sqrt(va * vb)));
     }
 }
-__global__ void colors(const unsigned char *p, size_t pitch, int w, int h, const Rect *rects,
-                       Colors *out)
+// Shared floor/bilinear sampling for local colors and oriented ink. Explicit
+// non-fused operations retain the CPU grid at integer pixel boundaries.
+__device__ const unsigned char* orientedPixel(const unsigned char* p, size_t pitch, int w, int h,
+                                             const OrientedInk& a, double du, double dv)
 {
+    const double f = __dmul_rn(__ddiv_rn(du, a.width), __ddiv_rn(dv, a.height));
+    const double px = __dadd_rn(__dadd_rn(__dadd_rn(a.ox, __dmul_rn(du, a.ux)), __dmul_rn(dv, a.vx)), __dmul_rn(a.warpX, f));
+    const double py = __dadd_rn(__dadd_rn(__dadd_rn(a.oy, __dmul_rn(du, a.uy)), __dmul_rn(dv, a.vy)), __dmul_rn(a.warpY, f));
+    if (!(px >= 0 && py >= 0 && px < w && py < h)) return nullptr;
+    return p + size_t(floor(py)) * pitch + size_t(floor(px)) * 4;
+}
+__global__ void colors(const unsigned char *p, size_t pitch, int w, int h, const Rect *rects,
+                       Colors *out, const OrientedInk* frames)
+{
+    using namespace color_policy;
     const int t = threadIdx.x, index = blockIdx.x;
-    const auto b = rects[index];
-    __shared__ unsigned hist[2][3][256];
-    __shared__ unsigned sums[8], lum[256];
-    __shared__ int threshold;
+    const OrientedInk frame = frames ? frames[index] : OrientedInk{};
+    const bool oriented = frame.width > 0;
+    const auto b = oriented ? Rect{0, 0, int(ceil(frame.width)), int(ceil(frame.height))} : rects[index];
+    const auto pixel = [&](int x, int y) {
+        if (oriented) return orientedPixel(p, pitch, w, h, frame, double(x), double(y));
+        return x >= 0 && y >= 0 && x < w && y < h ? p + size_t(y) * pitch + size_t(x) * 4 : nullptr;
+    };
+    // Fixed 9.5KiB shared scratch per word/line; hist is reused for body,
+    // qualified ring, then ink endpoint. Pixels never leave resident storage.
+    __shared__ unsigned hist[2][3][256], lumaHist[2][256], reduction[256], validCounts[256];
+    __shared__ unsigned bodyCounts[2], ringCounts[2], sideCounts[4][2], sideTotals[4], cornerVotes[2];
+    __shared__ int threshold, endpoint[2], fg, adjacentBackground;
+    __shared__ Rgb body[2];
+    __shared__ Colors measured;
     for (int i = t; i < 1536; i += 256)
         reinterpret_cast<unsigned *>(hist)[i] = 0;
-    if (t < 8)
-        sums[t] = 0;
-    unsigned sum = 0;
-    const int nx = (b.w + 1) / 2, ny = (b.h + 1) / 2;
-    for (int i = t; i < nx * ny; i += 256)
-        sum += luma(p + (b.y + (i / nx) * 2) * pitch + (b.x + (i % nx) * 2) * 4);
-    lum[t] = sum;
+    for (int i = t; i < 512; i += 256)
+        reinterpret_cast<unsigned *>(lumaHist)[i] = 0;
+    if (t < 2) bodyCounts[t] = ringCounts[t] = cornerVotes[t] = 0;
+    if (t < 8) reinterpret_cast<unsigned *>(sideCounts)[t] = 0;
+    if (t < 4) sideTotals[t] = 0;
+    unsigned sum = 0, valid = 0;
+    const int bodyStep = BodySampleStep(b.w, b.h);
+    const int nx = (b.w + bodyStep - 1) / bodyStep, ny = (b.h + bodyStep - 1) / bodyStep;
+    for (int i = t; i < nx * ny; i += 256) {
+        const auto* px = pixel(b.x + (i % nx) * bodyStep, b.y + (i / nx) * bodyStep);
+        if (px) { sum += luma(px); ++valid; }
+    }
+    reduction[t] = sum;
+    validCounts[t] = valid;
     __syncthreads();
-    for (int d = 128; d; d /= 2)
-    {
-        if (t < d)
-            lum[t] += lum[t + d];
+    for (int d = 128; d; d /= 2) {
+        if (t < d) { reduction[t] += reduction[t + d]; validCounts[t] += validCounts[t + d]; }
         __syncthreads();
     }
-    if (!t)
-        threshold = nx * ny ? int(lum[0] / (nx * ny)) : 0;
-    __syncthreads();
-    for (int i = t; i < nx * ny; i += 256)
-    {
-        const auto *px = p + (b.y + (i / nx) * 2) * pitch + (b.x + (i % nx) * 2) * 4;
-        int side = luma(px) < threshold ? 0 : 1;
-        atomicAdd(sums + side * 4, 1u);
-        for (int c = 0; c < 3; ++c)
-            atomicAdd(sums + side * 4 + c + 1, unsigned(px[2 - c]));
-    }
-    const int m = min(12, max(2, b.h / 6)), x = max(0, b.x - m), y = max(0, b.y - m),
-              rw = min(w, b.x + b.w + m) - x, rh = min(h, b.y + b.h + m) - y;
-    const int sw = (rw + 1) / 2, sh = (rh + 1) / 2;
-    for (int i = t; i < sw * sh; i += 256)
-    {
-        const int xx = x + (i % sw) * 2, yy = y + (i / sw) * 2;
-        if (xx >= b.x && xx < b.x + b.w && yy >= b.y && yy < b.y + b.h)
-            continue;
-        const auto *px = p + yy * pitch + xx * 4;
-        int side = luma(px) < threshold ? 0 : 1;
-        for (int c = 0; c < 3; ++c)
-            atomicAdd(&hist[side][c][px[2 - c]], 1u);
+    if (!t) {
+        threshold = validCounts[0] ? int(reduction[0] / validCounts[0]) : 0;
+        measured = {{0, 0, 0}, {255, 255, 255}};
     }
     __syncthreads();
-    if (!t)
-    {
-        unsigned counts[2]{};
-        for (int i = 0; i < 256; ++i)
-        {
-            counts[0] += hist[0][0][i];
-            counts[1] += hist[1][0][i];
+    for (int i = t; i < nx * ny; i += 256) {
+        const auto *px = pixel(b.x + (i % nx) * bodyStep, b.y + (i / nx) * bodyStep);
+        if (!px) continue;
+        const int value = luma(px), side = value < threshold ? 0 : 1;
+        atomicAdd(bodyCounts + side, 1u);
+        atomicAdd(&lumaHist[side][value], 1u);
+        for (int c = 0; c < 3; ++c) atomicAdd(&hist[side][c][px[2 - c]], 1u);
+    }
+    __syncthreads();
+    if (!bodyCounts[0] || !bodyCounts[1]) {
+        if (!t) out[index] = measured;
+        return;
+    }
+    if (!t) {
+        for (int side = 0; side < 2; ++side) {
+            for (int c = 0; c < 3; ++c) body[side].channel[c] = Median(hist[side][c], bodyCounts[side]);
+            endpoint[side] = Endpoint(lumaHist[side], bodyCounts[side], side);
         }
-        const int fg = counts[0] != counts[1] ? (counts[1] > counts[0] ? 0 : 1)
-                                              : (sums[0] <= sums[4] ? 0 : 1),
-                  bg = 1 - fg;
-        Colors c{{0, 0, 0}, {255, 255, 255}};
-        if (sums[fg * 4] && (sums[bg * 4] || counts[bg] >= 8))
-            for (int k = 0; k < 3; ++k)
-            {
-                c.foreground[k] = sums[fg * 4 + k + 1] / sums[fg * 4];
-                c.background[k] = sums[bg * 4] ? sums[bg * 4 + k + 1] / sums[bg * 4] : 255;
-                if (counts[bg] >= 8)
-                {
-                    unsigned total = 0;
-                    for (int v = 0; v < 256; ++v)
-                    {
-                        total += hist[bg][k][v];
-                        if (total > counts[bg] / 2)
-                        {
-                            c.background[k] = v;
-                            break;
-                        }
+        if (b.w >= 3 && b.h >= 3)
+            for (int corner = 0; corner < 4; ++corner) {
+                const int left = corner % 2 ? b.x + b.w - 3 : b.x;
+                const int top = corner / 2 ? b.y + b.h - 3 : b.y;
+                unsigned matches[2]{};
+                for (int yy = top; yy < top + 3; ++yy)
+                    for (int xx = left; xx < left + 3; ++xx) {
+                        const auto *px = pixel(xx, yy);
+                        if (!px) continue;
+                        const int side = luma(px) < threshold ? 0 : 1;
+                        if (Compatible(px, body[side])) ++matches[side];
                     }
-                }
+                for (int side = 0; side < 2; ++side)
+                    if (matches[side] >= 5) ++cornerVotes[side];
             }
-        out[index] = c;
+    }
+    __syncthreads();
+    for (int i = t; i < 1536; i += 256) reinterpret_cast<unsigned *>(hist)[i] = 0;
+    __syncthreads();
+    const Rect adjacent[4]{
+        {b.x, b.y - 1, b.w, oriented || b.y > 0 ? 1 : 0},
+        {b.x, b.y + b.h, b.w, oriented || b.y + b.h < h ? 1 : 0},
+        {b.x - 1, b.y, oriented || b.x > 0 ? 1 : 0, b.h},
+        {b.x + b.w, b.y, oriented || b.x + b.w < w ? 1 : 0, b.h}};
+    for (int s = 0; s < 4; ++s) {
+        const auto r = adjacent[s];
+        const int sw = (r.w + 1) / 2, sh = (r.h + 1) / 2;
+        for (int i = t; i < sw * sh; i += 256) {
+            const auto *px = pixel(r.x + (i % sw) * 2, r.y + (i / sw) * 2);
+            if (!px) continue;
+            const int side = luma(px) < threshold ? 0 : 1;
+            atomicAdd(sideTotals + s, 1u);
+            if (!Compatible(px, body[side])) continue;
+            atomicAdd(&sideCounts[s][side], 1u);
+            atomicAdd(ringCounts + side, 1u);
+            for (int c = 0; c < 3; ++c) atomicAdd(&hist[side][c][px[2 - c]], 1u);
+        }
+    }
+    __syncthreads();
+    if (!t) {
+        adjacentBackground = AdjacentBackground(sideCounts, sideTotals);
+        if (adjacentBackground >= 0) {
+            fg = 1 - adjacentBackground;
+            for (int c = 0; c < 3; ++c)
+                measured.background[c] = Median(hist[adjacentBackground][c], ringCounts[adjacentBackground]);
+        }
+    }
+    __syncthreads();
+    // The branch is block-uniform. Reuse the same histogram/count scratch;
+    // successful immediate consensus avoids the expanded strip pass entirely.
+    if (adjacentBackground < 0) {
+        for (int i = t; i < 1536; i += 256) reinterpret_cast<unsigned *>(hist)[i] = 0;
+        if (t < 2) ringCounts[t] = 0;
+        if (t < 8) reinterpret_cast<unsigned *>(sideCounts)[t] = 0;
+        if (t < 4) sideTotals[t] = 0;
+        __syncthreads();
+        const int m = min(12, max(2, b.h / 6));
+        const int x0 = oriented ? b.x - m : max(0, b.x - m);
+        const int y0 = oriented ? b.y - m : max(0, b.y - m);
+        const int x1 = oriented ? b.x + b.w + m : min(w, b.x + b.w + m);
+        const int y1 = oriented ? b.y + b.h + m : min(h, b.y + b.h + m);
+        const Rect sides[4]{
+            {b.x, y0, b.w, b.y - y0},
+            {b.x, b.y + b.h, b.w, y1 - b.y - b.h},
+            {x0, b.y, b.x - x0, b.h},
+            {b.x + b.w, b.y, x1 - b.x - b.w, b.h}};
+        for (int s = 0; s < 4; ++s) {
+            const auto r = sides[s];
+            const int sw = (r.w + 1) / 2, sh = (r.h + 1) / 2;
+            for (int i = t; i < sw * sh; i += 256) {
+                const auto *px = pixel(r.x + (i % sw) * 2, r.y + (i / sw) * 2);
+                if (!px) continue;
+                const int side = luma(px) < threshold ? 0 : 1;
+                atomicAdd(sideTotals + s, 1u);
+                if (!Compatible(px, body[side])) continue;
+                atomicAdd(&sideCounts[s][side], 1u);
+                atomicAdd(ringCounts + side, 1u);
+                for (int c = 0; c < 3; ++c) atomicAdd(&hist[side][c][px[2 - c]], 1u);
+            }
+        }
+        __syncthreads();
+        if (!t) {
+            bool useRing = false;
+            const int bg = Background(bodyCounts, sideCounts, sideTotals, cornerVotes, useRing);
+            fg = 1 - bg;
+            for (int c = 0; c < 3; ++c)
+                measured.background[c] = useRing && ringCounts[bg] >= 8
+                    ? Median(hist[bg][c], ringCounts[bg]) : body[bg].channel[c];
+        }
+    }
+    __syncthreads();
+    for (int i = t; i < 1536; i += 256) reinterpret_cast<unsigned *>(hist)[i] = 0;
+    if (!t) ringCounts[0] = 0;
+    __syncthreads();
+    for (int i = t; i < nx * ny; i += 256) {
+        const auto *px = pixel(b.x + (i % nx) * bodyStep, b.y + (i / nx) * bodyStep);
+        if (!px) continue;
+        const int value = luma(px);
+        if ((value < threshold ? 0 : 1) != fg ||
+            (fg == 0 ? value > endpoint[fg] : value < endpoint[fg])) continue;
+        atomicAdd(ringCounts, 1u);
+        for (int c = 0; c < 3; ++c) atomicAdd(&hist[fg][c][px[2 - c]], 1u);
+    }
+    __syncthreads();
+    if (!t) {
+        for (int c = 0; c < 3; ++c) measured.foreground[c] = Median(hist[fg][c], ringCounts[0]);
+        out[index] = measured;
     }
 }
+__device__ bool substantialInkComponent(const unsigned* ink, int columns, int rows, int seed);
 __global__ void ink(const unsigned char *p, size_t pitch, int w, int h, const Ink *words,
                     const int *lines, const Colors *cs, Fit *out)
 {
@@ -400,13 +532,13 @@ __global__ void ink(const unsigned char *p, size_t pitch, int w, int h, const In
     const auto a = words[i];
     const auto b = a.search;
     const auto c = cs[lines[i]];
-    __shared__ int rows[8192], total, top, bottom, left, right, threshold, polarity, step, usable;
-    for (int y = t; y < b.h; y += 256)
-        rows[y] = 0;
+    __shared__ unsigned inkBits[1024], reach[6554];
+    __shared__ int rows[4096], total, top, bottom, left, right, threshold, fringeThreshold,
+        polarity, step, usable, changed, complete;
     if (!t)
     {
         out[i] = {a.x, a.y, a.w, a.h};
-        total = 0;
+        total = complete = 0;
         top = bottom = 0;
         left = b.x + b.w;
         right = b.x - 1;
@@ -414,17 +546,97 @@ __global__ void ink(const unsigned char *p, size_t pitch, int w, int h, const In
         int bg = (77 * c.background[0] + 150 * c.background[1] + 29 * c.background[2]) / 256;
         usable = abs(fg - bg) >= 24 && b.w > 0 && b.h > 0;
         threshold = (fg + bg) / 2;
+        fringeThreshold = (threshold + bg) / 2;
         polarity = fg < bg;
         step = max(1, int(ceil(sqrt(double(b.w) * b.h / 16384))));
+        usable = usable && b.w <= 8192 && b.h <= 4096 &&
+            ((b.w + step - 1) / step) * ((b.h + step - 1) / step) <= 32768;
     }
     __syncthreads();
     if (!usable)
         return;
     const int nx = (b.w + step - 1) / step, ny = (b.h + step - 1) / step;
+    for (int k = t; k < 1024; k += 256) inkBits[k] = 0;
+    for (int k = t; k < 6554; k += 256) reach[k] = 0;
+    __syncthreads();
+    for (int k = t; k < nx * ny; k += 256) {
+        const int u = k % nx, v = k / nx;
+        const int x = b.x + u * step, y = b.y + v * step;
+        const int value = luma(p + size_t(y) * pitch + size_t(x) * 4);
+        if (polarity ? value >= fringeThreshold : value <= fringeThreshold) continue;
+        atomicOr(inkBits + k / 32, 1u << (k % 32));
+        const bool core = polarity ? value < threshold : value > threshold;
+        const bool withinX = x + .5 >= a.x && x + .5 < a.x + a.w;
+        const bool withinY = y + .5 >= a.y && y + .5 < a.y + a.h;
+        const double margin = a.detached ? fmax(2., a.h * .22) : 0.;
+        const bool mark = core && withinX && a.detached &&
+            y + .5 >= a.y - margin && y + .5 < a.y + a.h + margin;
+        const unsigned anchor = (core && withinX && withinY) || mark ? 16u : 0u;
+        const unsigned detectorSupport = withinX && withinY ? 32u : 0u;
+        const unsigned labels = (!u ? 1u : 0u) | (u == nx - 1 ? 2u : 0u) |
+            (!v ? 4u : 0u) | (v == ny - 1 ? 8u : 0u) | anchor | detectorSupport;
+        atomicOr(reach + k / 5, labels << ((k % 5) * 6));
+    }
+    __syncthreads();
+    // Same fixed bound as the oriented path. Incomplete propagation retains
+    // the complete detector, never partially filtered word coordinates.
+    for (int pass = 0; pass < kOrientedInkMaxPropagationPasses; ++pass) {
+        if (!t) changed = 0;
+        __syncthreads();
+        for (int v = t; v < ny; v += 256) {
+            int u = 0;
+            while (u < nx) {
+                const int start = u;
+                unsigned labels = 0;
+                while (u < nx) {
+                    const int k = v * nx + u;
+                    if (!(inkBits[k / 32] & (1u << (k % 32)))) break;
+                    labels |= (atomicOr(reach + k / 5, 0u) >> ((k % 5) * 6)) & 63u;
+                    for (int dy = -1; dy <= 1; dy += 2) for (int dx = -1; dx <= 1; ++dx) {
+                        const int x = u + dx, y = v + dy;
+                        if (x < 0 || y < 0 || x >= nx || y >= ny) continue;
+                        const int n = y * nx + x;
+                        labels |= (atomicOr(reach + n / 5, 0u) >> ((n % 5) * 6)) & 63u;
+                    }
+                    ++u;
+                }
+                if (labels) for (int x = start; x < u; ++x) {
+                    const int k = v * nx + x;
+                    const unsigned bits = labels << ((k % 5) * 6);
+                    if ((atomicOr(reach + k / 5, bits) & bits) != bits) atomicExch(&changed, 1);
+                }
+                ++u;
+            }
+        }
+        __syncthreads();
+        const bool again = changed != 0;
+        __syncthreads();
+        if (!again) { if (!t) complete = 1; break; }
+    }
+    __syncthreads();
+    if (!complete) return;
+    for (int k = t; k < nx * ny; k += 256) {
+        if (!(inkBits[k / 32] & (1u << (k % 32)))) continue;
+        const unsigned labels = (reach[k / 5] >> ((k % 5) * 6)) & 63u;
+        const bool spanning = (labels & 3) == 3 || (labels & 12) == 12;
+        if (spanning && (labels & 16u) && (labels & 32u)) atomicExch(&usable, 0);
+        if (!spanning && !(labels & 16u) && (labels & 32u) &&
+            substantialInkComponent(inkBits, nx, ny, k)) atomicExch(&usable, 0);
+    }
+    __syncthreads();
+    if (!usable) return;
+    const auto inkAt = [&](int k) {
+        const unsigned labels = (reach[k / 5] >> ((k % 5) * 6)) & 63u;
+        return (inkBits[k / 32] & (1u << (k % 32))) && (labels & 16u) &&
+            (labels & 3) != 3 && (labels & 12) != 12;
+    };
+
+    for (int y = t; y < b.h; y += 256) rows[y] = 0;
+    __syncthreads();
     for (int k = t; k < nx * ny; k += 256)
     {
-        int x = b.x + (k % nx) * step, y = b.y + (k / nx) * step, v = luma(p + y * pitch + x * 4);
-        if (polarity ? v >= threshold : v <= threshold)
+        int y = b.y + (k / nx) * step;
+        if (!inkAt(k))
             continue;
         atomicAdd(rows + y - b.y, 1);
         atomicAdd(&total, 1);
@@ -501,8 +713,7 @@ __global__ void ink(const unsigned char *p, size_t pitch, int w, int h, const In
         int x = b.x + (k % nx) * step, y = b.y + (k / nx) * step;
         if (y < top || y > bottom)
             continue;
-        int v = luma(p + y * pitch + x * 4);
-        if (polarity ? v >= threshold : v <= threshold)
+        if (!inkAt(k))
             continue;
         atomicMin(&left, x);
         atomicMax(&right, x);
@@ -514,6 +725,291 @@ __global__ void ink(const unsigned char *p, size_t pitch, int w, int h, const In
         if (ww >= a.w * .35 && hh >= a.h * .35)
             out[i] = {double(left), double(top), ww, hh};
     }
+}
+
+// Rotated-frame ink fit. Mirrors FitOrientedWordInk exactly: identical step,
+// grid, nearest-pixel floor sampling (non-fused double arithmetic), run
+// selection, detached-mark rule and bounded shrink guards. One block per word.
+__device__ bool orientedInkAt(const unsigned char *p, size_t pitch, int w, int h,
+                              const OrientedInk &a, int step, int iu, int iv, int threshold, int polarity)
+{
+    const double du = __dmul_rn(double(iu), double(step)), dv = __dmul_rn(double(iv), double(step));
+    const auto* px = orientedPixel(p, pitch, w, h, a, du, dv);
+    if (!px) return false;
+    const int v = luma(px);
+    return polarity ? v < threshold : v > threshold;
+}
+__device__ bool substantialInkComponent(const unsigned* ink, int columns, int rows, int seed)
+{
+    // Match the CPU's existing eight-sample minimum. Isolated AA fragments
+    // cannot veto a fit; a complete unanchored stroke must preserve the word.
+    int nodes[8]; nodes[0] = seed;
+    int count = 1;
+    for (int next = 0; next < count && count < 8; ++next) {
+        const int x = nodes[next] % columns, y = nodes[next] / columns;
+        for (int dy = -1; dy <= 1 && count < 8; ++dy) for (int dx = -1; dx <= 1 && count < 8; ++dx) {
+            const int u = x + dx, v = y + dy;
+            if (u < 0 || v < 0 || u >= columns || v >= rows) continue;
+            const int index = v * columns + u;
+            if (!(ink[index / 32] & (1u << (index % 32)))) continue;
+            bool seen = false;
+            for (int i = 0; i < count; ++i) seen = seen || nodes[i] == index;
+            if (!seen) nodes[count++] = index;
+        }
+    }
+    return count == 8;
+}
+__global__ void orientedInk(const unsigned char *p, size_t pitch, int w, int h, const OrientedInk *words,
+                            const int *lines, const Colors *cs, OrientedFit *out)
+{
+    const int i = blockIdx.x, t = threadIdx.x;
+    const auto a = words[i];
+    const auto c = cs[lines[i]];
+    // One ink bit and six reachability bits per cell plus row masses: ~46KiB.
+    // Only opposite-edge-spanning components are exterior. Retain legitimate
+    // glyphs/dots touching a single search edge or corner.
+    __shared__ unsigned inkBits[1024], reach[6554];
+    __shared__ int rows[4096], changed, total, top, bottom, left, right, threshold, polarity, step, usable, columns, count;
+    if (!t)
+    {
+        out[i] = {0, 0, 0, 0, 0};
+        total = 0;
+        left = 1 << 30;
+        right = -1;
+        const int fg = (77 * c.foreground[0] + 150 * c.foreground[1] + 29 * c.foreground[2]) / 256;
+        const int bg = (77 * c.background[0] + 150 * c.background[1] + 29 * c.background[2]) / 256;
+        usable = abs(fg - bg) >= 24 && a.width >= 1 && a.height >= 1 && isfinite(a.width) && isfinite(a.height);
+        threshold = (fg + bg) / 2;
+        polarity = fg < bg;
+        step = 1;
+        columns = count = 0;
+        if (usable)
+        {
+            step = max(max(1, int(ceil(sqrt(a.width * a.height / 16384.0)))),
+                       max(int(ceil(a.height / 4096.0)), int(ceil(a.width / 8192.0))));
+            columns = int(ceil(a.width / step));
+            count = int(ceil(a.height / step));
+            usable = columns > 0 && count > 0 && count <= 4096 && columns <= 8192 && columns * count <= 32768;
+        }
+    }
+    __syncthreads();
+    if (!usable)
+        return;
+    for (int k = t; k < 1024; k += 256) inkBits[k] = 0;
+    for (int k = t; k < 6554; k += 256) reach[k] = 0;
+    __syncthreads();
+    for (int k = t; k < columns * count; k += 256) {
+        const int iu = k % columns, iv = k / columns;
+        if (!orientedInkAt(p, pitch, w, h, a, step, iu, iv, threshold, polarity)) continue;
+        atomicOr(inkBits + k / 32, 1u << (k % 32));
+        const unsigned sides = (!iu ? 1u : 0u) | (iu == columns - 1 ? 2u : 0u) |
+                               (!iv ? 4u : 0u) | (iv == count - 1 ? 8u : 0u);
+        const auto* px = orientedPixel(p, pitch, w, h, a, double(iu) * step, double(iv) * step);
+        const color_policy::Rgb ink{{c.foreground[0], c.foreground[1], c.foreground[2]}};
+        const unsigned labels = sides | (color_policy::Compatible(px, ink) ? 16u : 0u) |
+                                (iu && iv && iu < columns - 1 && iv < count - 1 ? 32u : 0u);
+        atomicOr(reach + k / 5, labels << ((k % 5) * 6));
+    }
+    __syncthreads();
+    // Propagate whole horizontal runs per worker, including diagonal links in
+    // adjacent rows. Every side label advances at least one graph edge per
+    // pass; N cells is the mathematical bound. Enforce a much smaller fixed
+    // work cap; incomplete labels must never supply a partially pruned fit.
+    if (!t) out[i].reason = OrientedFitReason::Incomplete;
+    for (int pass = 0; pass < kOrientedInkMaxPropagationPasses; ++pass) {
+        if (!t) changed = 0;
+        __syncthreads();
+        for (int iv = t; iv < count; iv += 256) {
+            int iu = 0;
+            while (iu < columns) {
+                const int start = iu;
+                unsigned sides = 0;
+                while (iu < columns) {
+                    const int k = iv * columns + iu;
+                    if (!(inkBits[k / 32] & (1u << (k % 32)))) break;
+                    sides |= (atomicOr(reach + k / 5, 0u) >> ((k % 5) * 6)) & 63u;
+                    for (int dy = -1; dy <= 1; dy += 2) for (int dx = -1; dx <= 1; ++dx) {
+                        const int x = iu + dx, y = iv + dy;
+                        if (x < 0 || y < 0 || x >= columns || y >= count) continue;
+                        const int n = y * columns + x;
+                        sides |= (atomicOr(reach + n / 5, 0u) >> ((n % 5) * 6)) & 63u;
+                    }
+                    ++iu;
+                }
+                if (sides) for (int x = start; x < iu; ++x) {
+                    const int k = iv * columns + x;
+                    const unsigned bits = sides << ((k % 5) * 6);
+                    if ((atomicOr(reach + k / 5, bits) & bits) != bits) atomicExch(&changed, 1);
+                }
+                ++iu;
+            }
+        }
+        __syncthreads();
+        const bool again = changed != 0;
+        __syncthreads(); // Every thread reads before thread zero resets it.
+        if (!t) {
+            out[i].propagationPasses = pass + 1;
+            out[i].propagationComplete = !again;
+        }
+        if (!again) break;
+    }
+    __syncthreads();
+    if (!out[i].propagationComplete) return;
+    if (!t) out[i].reason = OrientedFitReason::UnanchoredInk;
+    for (int k = t; k < columns * count; k += 256) {
+        if (!(inkBits[k / 32] & (1u << (k % 32)))) continue;
+        const unsigned labels = (reach[k / 5] >> ((k % 5) * 6)) & 63u;
+        const unsigned sides = labels & 15u;
+        const bool compatible = labels & 16u;
+        const bool exterior = (sides & 3) == 3 || (sides & 12) == 12 ||
+                              (!compatible && (sides & (sides - 1)) != 0);
+        if (!exterior && !compatible && sides != 0 && (labels & 32u) && substantialInkComponent(inkBits, columns, count, k))
+            atomicExch(&usable, 0);
+    }
+    __syncthreads();
+    if (!usable) return; // An unanchored interior stroke may be a real glyph.
+    const auto inkAt = [&](int iu, int iv) {
+        const int k = iv * columns + iu;
+        const unsigned bit = 1u << (k % 32);
+        const unsigned labels = (reach[k / 5] >> ((k % 5) * 6)) & 63u;
+        const unsigned sides = labels & 15u;
+        return (inkBits[k / 32] & bit) && ((labels & 16u) || sides == 0) &&
+               (sides & 3) != 3 && (sides & 12) != 12;
+    };
+    for (int y = t; y < count; y += 256)
+        rows[y] = 0;
+    __syncthreads();
+    for (int k = t; k < columns * count; k += 256)
+    {
+        if (!inkAt(k % columns, k / columns))
+            continue;
+        atomicAdd(rows + k / columns, 1);
+        atomicAdd(&total, 1);
+    }
+    __syncthreads();
+    if (!t)
+    {
+        usable = total >= 8;
+        out[i].reason = usable ? OrientedFitReason::AmbiguousBands : OrientedFitReason::TooFewSamples;
+        // Runs exactly as the CPU builds them: empty rows are skipped and an
+        // ink row more than two sample rows below the run starts a new run.
+        // The y == count sentinel closes the last run; the first maximum wins.
+        int mt = -1, mb = -1, mass = -1, rt = -1, rb = -1, rm = 0;
+        for (int y = 0; y <= count; ++y)
+        {
+            if (y < count && !rows[y]) continue;
+            if (y < count && rt >= 0 && y - rb <= 2) { rb = y; rm += rows[y]; continue; }
+            if (rt >= 0 && rm > mass) { mt = rt; mb = rb; mass = rm; }
+            if (y < count) { rt = rb = y; rm = rows[y]; }
+        }
+        usable = usable && mass >= total * .55;
+        top = mt;
+        bottom = mb;
+        if (usable && a.detached)
+        {
+            rt = -1;
+            for (int y = 0; y <= count; ++y)
+            {
+                if (y < count && !rows[y]) continue;
+                if (y < count && rt >= 0 && y - rb <= 2) { rb = y; rm += rows[y]; continue; }
+                if (rt >= 0 && rt != mt && rm <= mass * .3)
+                {
+                    const int gap = max(max(top - rb, rt - bottom), 0) * step;
+                    if (gap <= fmax(2.0, a.height * .22)) { top = min(top, rt); bottom = max(bottom, rb); }
+                }
+                if (y < count) { rt = rb = y; rm = rows[y]; }
+            }
+        }
+    }
+    __syncthreads();
+    if (!usable)
+        return;
+    for (int k = t; k < columns * (bottom - top + 1); k += 256)
+    {
+        const int iu = k % columns, iv = top + k / columns;
+        if (!inkAt(iu, iv))
+            continue;
+        atomicMin(&left, iu);
+        atomicMax(&right, iu);
+    }
+    __syncthreads();
+    if (!t && right >= left)
+    {
+        out[i].reason = OrientedFitReason::ShrinkGuard;
+        const double u0 = double(left) * step, u1 = fmin(a.width, double(right) * step + step);
+        const double v0 = double(top) * step, v1 = fmin(a.height, double(bottom) * step + step);
+        if (u1 - u0 >= a.detectedWidth * .35 && v1 - v0 >= fmax(4.0, a.height * .25)) {
+            out[i].u0 = u0, out[i].u1 = u1, out[i].v0 = v0, out[i].v1 = v1, out[i].fitted = 1;
+            out[i].reason = OrientedFitReason::Fitted;
+        }
+    }
+}
+
+struct SurfaceSampler {
+    const unsigned char* pixels;size_t pitch;int width,height;OrientedInk frame;
+    __device__ bool operator()(double x,double y,surface_geometry::Rgb& rgb)const{
+        const double px=frame.ox+frame.ux*x+frame.vx*y,py=frame.oy+frame.uy*x+frame.vy*y;
+        if(px<0||py<0||px>=width||py>=height)return false;
+        const auto* p=pixels+int(floor(py))*pitch+int(floor(px))*4;rgb={p[2],p[1],p[0]};return true;
+    }
+};
+// One request per block. Members share every loop of the helper; their
+// combinations are exact, so the result matches a single serial member.
+inline constexpr int SurfaceThreads=128;
+struct SurfaceTeam {
+    static constexpr bool FilteredInk=true; // FP64 is a small fraction of FP32 throughput
+    __device__ int Rank()const{return threadIdx.x;}
+    __device__ int Size()const{return SurfaceThreads;}
+    __device__ void Sync()const{__syncthreads();}
+    template<class T,class F> __device__ T Combine(T value,F combine)const{
+        static_assert(sizeof(T)%sizeof(int)==0,"combined values are shuffled as words");
+        for(int lane=16;lane;lane>>=1){T other;
+            const int* from=reinterpret_cast<const int*>(&value);int* to=reinterpret_cast<int*>(&other);
+            for(int i=0;i<int(sizeof(T)/sizeof(int));++i)to[i]=__shfl_xor_sync(0xffffffffu,from[i],lane);
+            value=combine(value,other);
+        }
+        // Every member then folds the warp results in the same fixed order.
+        __shared__ T warps[SurfaceThreads/32];
+        __syncthreads();
+        if(!(threadIdx.x&31))warps[threadIdx.x>>5]=value;
+        __syncthreads();
+        T result=warps[0];for(int i=1;i<SurfaceThreads/32;++i)result=combine(result,warps[i]);
+        return result;
+    }
+    __device__ int First(bool value)const{
+        const int first=Combine(value?int(threadIdx.x):SurfaceThreads,[](int a,int b){return a<b?a:b;});
+        return first<SurfaceThreads?first:-1;
+    }
+    __device__ void AtomicMin(int& target,int value)const{atomicMin(&target,value);}
+    __device__ void AtomicMax(int& target,int value)const{atomicMax(&target,value);}
+    __device__ bool Claim(int& state)const{return state==1&&atomicCAS(&state,1,2)==1;}
+    __device__ int Append(int& size)const{return atomicAdd(&size,1);}
+};
+__global__ void __launch_bounds__(SurfaceThreads) surfaceFrames(const unsigned char* pixels,size_t pitch,int w,int h,
+    const SurfaceRequest* requests,const Colors* colors,const Fit* fits,const OrientedFit* oriented,SurfaceFit* out)
+{
+    __shared__ surface_geometry::Scratch scratch;
+    const int i=blockIdx.x;if(!threadIdx.x)out[i]={};const auto request=requests[i];auto frame=request.frame;
+    if(request.oriented){
+        const auto f=oriented[request.fitIndex];if(!f.fitted)return;
+        if(hypot(frame.warpX,frame.warpY)>fmin(frame.width,frame.height)*.002)return;
+        frame.ox+=frame.ux*f.u0+frame.vx*f.v0;frame.oy+=frame.uy*f.u0+frame.vy*f.v0;
+        frame.width=f.u1-f.u0;frame.height=f.v1-f.v0;
+    }else{
+        const auto f=fits[request.fitIndex];
+        if(f.x==frame.ox&&f.y==frame.oy&&f.w==frame.width&&f.h==frame.height)return;
+        frame.ox=f.x;frame.oy=f.y;frame.width=f.w;frame.height=f.h;
+        frame.ux=frame.vy=1;frame.uy=frame.vx=0;
+    }
+    const auto c=colors[request.colorIndex];
+    const auto result=surface_geometry::Refine(SurfaceTeam{},frame.width,frame.height,
+        surface_geometry::Rgb{c.foreground[0],c.foreground[1],c.foreground[2]},
+        surface_geometry::Rgb{c.background[0],c.background[1],c.background[2]},
+        SurfaceSampler{pixels,pitch,w,h,frame},scratch);
+    if(threadIdx.x||!result.fitted)return;
+    for(int k=0;k<4;++k){out[i].xy[k*2]=frame.ox+frame.ux*result.quad[k].x+frame.vx*result.quad[k].y;
+        out[i].xy[k*2+1]=frame.oy+frame.uy*result.quad[k].x+frame.vy*result.quad[k].y;}
+    out[i].fitted=1;
 }
 
 // SHA-256 compression is written here from the published algorithm. Each leaf
@@ -603,7 +1099,7 @@ __global__ void fingerprint(const unsigned char *p, size_t pitch, int w, int h, 
 void ValidationIntegral(const void *p, size_t pitch, int w, int h, int d, unsigned *out,
                         cudaStream_t s)
 {
-    validation::integralRows<<<(h / d + 127) / 128, 128, 0, s>>>(
+    validation::integralRows<<<h / d, 256, 0, s>>>(
         static_cast<const unsigned char *>(p), pitch, w, h, d, out);
     validation::integralColumns<<<(w / d + 128) / 128, 128, 0, s>>>(out, w / d, h / d);
 }
@@ -638,11 +1134,11 @@ void Similarity(const unsigned *a, int aw, int ah, ProbeMap ma, const unsigned *
     validation::similarity<<<1, 128, 0, s>>>(a, aw, ah, ma, b, bw, bh, mb, x, y, w, h, out);
 }
 void LineColors(const void *p, size_t pitch, int w, int h, const Rect *rects, int n, Colors *out,
-                cudaStream_t s)
+                cudaStream_t s, const OrientedInk* frames)
 {
     if (n)
         validation::colors<<<n, 256, 0, s>>>(static_cast<const unsigned char *>(p), pitch, w, h,
-                                             rects, out);
+                                             rects, out, frames);
 }
 void InkBounds(const void *p, size_t pitch, int w, int h, const Ink *words, const int *lines, int n,
                const Colors *cs, Fit *out, cudaStream_t s)
@@ -650,6 +1146,20 @@ void InkBounds(const void *p, size_t pitch, int w, int h, const Ink *words, cons
     if (n)
         validation::ink<<<n, 256, 0, s>>>(static_cast<const unsigned char *>(p), pitch, w, h, words,
                                           lines, cs, out);
+}
+void OrientedInkBounds(const void *p, size_t pitch, int w, int h, const OrientedInk *words, const int *lines,
+                       int n, const Colors *cs, OrientedFit *out, cudaStream_t s)
+{
+    if (n)
+        validation::orientedInk<<<n, 256, 0, s>>>(static_cast<const unsigned char *>(p), pitch, w, h, words,
+                                                  lines, cs, out);
+}
+void SurfaceFrames(const void* p,size_t pitch,int w,int h,const SurfaceRequest* requests,int n,
+    const Colors* colors,const Fit* fits,const OrientedFit* oriented,SurfaceFit* out,cudaStream_t stream)
+{
+    if(n<0||n>surface_geometry::WordLimit)throw std::invalid_argument("UCT surface request budget exceeded");
+    if(n)validation::surfaceFrames<<<n,validation::SurfaceThreads,0,stream>>>(static_cast<const unsigned char*>(p),pitch,w,h,
+        requests,colors,fits,oriented,out);
 }
 void FingerprintLeaves(const void *p, size_t pitch, int w, int h, unsigned char *out,
                        cudaStream_t s)

@@ -1,7 +1,9 @@
 #pragma once
 
 #ifdef _WIN32
+#include "okuflow/common/immutable_corroboration.hpp"
 #include "okuflow/common/video_archive.hpp"
+#include "okuflow/common/video_memory_stream.hpp"
 #include "okuflow/common/video_gpu_decoder.hpp"
 #include <cstddef>
 #include <cstdint>
@@ -12,6 +14,7 @@
 
 namespace okuflow {
 
+struct VideoPlaybackFrameLease;
 struct VideoPlaybackFrame {
     // Immutable pixels can be reticketed after a same-frame seek without a
     // second image allocation. The final pixel lease owns the budget charge.
@@ -22,6 +25,9 @@ struct VideoPlaybackFrame {
     std::int64_t pts100ns{}, duration100ns{};
     std::uint64_t sampleId{}, requestGeneration{}, archiveGeneration{};
     std::uint32_t videoTrackId{};
+    // Opaque native issuance proof. A copied record does not authorize a
+    // different frame object; synthetic/public metadata is not decoder proof.
+    std::shared_ptr<const VideoPlaybackFrameLease> decoderLease;
 };
 struct VideoPlaybackAudio {
     std::vector<std::uint8_t> pcm;
@@ -37,6 +43,7 @@ struct VideoPlaybackSnapshot {
     std::shared_ptr<const VideoPlaybackFrame> neighborFrame;
     std::wstring path;
     VideoFileIdentity file;
+    std::shared_ptr<const VideoMemorySource> memorySource;
     std::uint32_t videoTrackId{};
     std::int64_t duration100ns{}, seekableEnd100ns{-1};
     std::size_t decodedBytes{}, peakDecodedBytes{}, decodedByteLimit{}, decodeWorkingBytes{};
@@ -47,6 +54,7 @@ struct VideoPlaybackSnapshot {
     bool gpuResident{};
     std::uint32_t gpuDecodedBitsPerComponent{};
     std::size_t gpuTextureBytes{};
+    std::string decoderBackend{"media-foundation"};
     std::string backendReason;
     bool hasAudio{}, audioAvailable{}, muted{true}, incomplete{}, activeRecording{};
     std::string error;
@@ -78,15 +86,24 @@ public:
     static constexpr std::size_t kReadWindowByteLimit = 64u * 1024 * 1024;
     static constexpr std::size_t kAudioByteLimit = 2u * 1024 * 1024;
     // Long-GOP screen recordings can require hundreds of cheap preroll
-    // reads. The two-second wall deadline and generation cancellation are
-    // the latency bounds; this independent guard stops malformed streams.
+    // reads. Strictly advancing PTS renews a two-second progress window,
+    // under a sixty-second request cap and generation cancellation. This
+    // independent read guard also stops malformed streams.
     static constexpr std::uint32_t kSeekSampleLimit = 4096;
     VideoPlayback();
     ~VideoPlayback(); // cancellation only; never joins a native call
     VideoPlayback(const VideoPlayback&) = delete;
     VideoPlayback& operator=(const VideoPlayback&) = delete;
     std::uint64_t OpenFile(std::wstring path);
+    // Returns ordinary policy for copied/borrowed/foreign/stale frames and
+    // archive/RAM sources. Saved-file policy seals native duration/PTS/owner.
+    uct::ImmutableCorroborationPolicy CorroborationPolicy(
+        const std::shared_ptr<const VideoPlaybackFrame>& selected) const;
     std::uint64_t OpenArchive(std::shared_ptr<RecordingArchive> archive);
+    // Immutable heap media uses the same native decoder and generation/lease
+    // contracts. keeper pins the ring segment without inventing a file ID.
+    std::uint64_t OpenMemory(std::shared_ptr<const VideoMemorySource> source,
+                             std::shared_ptr<const void> keeper = {});
     std::uint64_t Seek100ns(std::int64_t target);
     std::uint64_t JumpToEnd();
     // Applies to subsequent opens. The UI supplies the presenter's exact LUID
@@ -96,6 +113,12 @@ public:
     // held cursor. It remains CPU-only for that document until the next Open.
     std::uint64_t UseCpuFallback(std::string reason);
     void SetPlaying(bool playing);
+    // Hold this exact, previously issued current-document frame (for example
+    // the last successful display while decoding is ahead). No native call
+    // occurs here. One true following frame may be prepared on the existing
+    // worker without playing video/audio or changing this held image/PTS.
+    // Foreign, copied and previous-request frame objects are refused.
+    bool PauseAtFrame(std::shared_ptr<const VideoPlaybackFrame> shown);
     void SetMuted(bool muted);
     // Consumed output clock in the same steady-clock epoch as
     // duration_cast<nanoseconds>(steady_clock::now().time_since_epoch())/100.

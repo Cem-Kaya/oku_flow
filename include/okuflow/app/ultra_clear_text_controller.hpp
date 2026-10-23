@@ -202,6 +202,11 @@ struct UctTiming {
     // bound lives in the model's freshness policy (350 ms of media PTS);
     // a no-analysis gap is retained only while both bounds hold.
     std::int64_t mediaValidationFreshnessMs{350};
+    // Paused visible detail: a view must stay unchanged this long before one
+    // bounded region of the retained selected/neighbour pair is re-detected.
+    std::int64_t immutableDetailSettleMs{300};
+    // Detector enlargement bound for that region (clamped to [1, 8]).
+    double immutableDetailMagnification{uct::kMaximumDetailMagnification};
 };
 
 // Full processed-scene input retained by the selected-media owner. The
@@ -234,6 +239,10 @@ struct UctImmutableScene {
     std::uint32_t viewportWidth{};
     std::uint32_t viewportHeight{};
     int strokeWeight{};
+    uct::ImmutableCorroborationPolicy corroborationPolicy;
+    // The app selects Standalone for paused video/manual Freeze. The explicit
+    // Corroborated mode remains for independent-frame protocol callers.
+    uct::ImmutableAdmission admission{uct::ImmutableAdmission::Corroborated};
 };
 
 // A receipt for a successfully presented advancing media frame. timestampMs
@@ -276,6 +285,7 @@ struct UctAdvancingMediaPresentation {
 // through stamp, age, residual and temporal-agreement checks.
 class UltraClearTextController final : public QObject {
     Q_OBJECT
+    friend struct UctControllerTestAccess;
 public:
     using RecognizerFactory = std::function<std::unique_ptr<uct::Recognizer>()>;
     using Clock = std::function<std::int64_t()>;
@@ -298,8 +308,12 @@ public:
 
     // Selected media uses the same recognition scheduler as live input.
     // A successful selection recognizes its owned complete scene once, then
-    // optionally one real distinct neighbour. Invalid input still suspends
-    // hidden live analysis until ClearImmutableScene() is called.
+    // in Standalone mode. Corroborated callers may also supply one real
+    // distinct neighbour. Invalid input still suspends
+    // hidden live analysis until ClearImmutableScene() is called. A first
+    // usable neighbour arriving for the exact retained selected lease/frame/
+    // PTS/geometry/authority attaches without restarting selected analysis;
+    // later optional neighbour changes are not new selected acquisitions.
     bool SetImmutableScene(UctImmutableScene scene);
     // A processed media view may not have provable single-frame text
     // correspondence (neural output). Preserve the user's UCT preference, but
@@ -410,6 +424,10 @@ public:
     // empty unless UCT is drawing glyphs now, each glyph word cross-checked
     // against the overlay's word set.
     UctScreenTextSnapshot ScreenTextSnapshot() const;
+    // Visible-detail diagnostics: completed/abandoned regions for the current
+    // selection, and the pair currently in flight (if any).
+    std::uint64_t ImmutableDetailPasses() const noexcept { return immutableDetailPasses_; }
+    std::optional<uct::DetailFocus> ActiveImmutableDetail() const { return immutableDetailFocus_; }
 
 signals:
     void recognitionAdmitted(int verdict);
@@ -424,7 +442,20 @@ private:
     void ApplyEnabled(bool enabled);
     void SubmitImmutableIfNeeded();
     void ScheduleImmutableRetry(bool selected, bool preparing = false);
+    // Exact selected-frame proof survives a failed optional refinement. This
+    // is presentation authority only, never permission to submit/admit work
+    // through an unhealthy input/backend. Source changes still Invalidate.
+    bool HasProvenImmutableArtifact() const;
+    void StopImmutableRefinement();
     void HandleImmutableResult(uct::RecognitionResult result);
+    // Visible detail of a paused selection: after the view settles, re-detect
+    // only the visible source region of the SAME selected image and its real
+    // neighbour at a bounded enlargement. Both stay their original
+    // acquisitions; new glyphs still need the neighbour's independent proof.
+    void ScheduleImmutableDetail();
+    void SubmitImmutableDetailIfUseful();
+    std::optional<uct::DetailFocus> ImmutableDetailFocus() const;
+    void FinishImmutableDetail();
     uct::SourceStamp ImmutableStamp(const UctImmutableFrame& frame) const;
     void SubmitAdvancingMediaProbe();
     // Media model clock: the latest DISPLAYED frame's real media PTS while
@@ -438,7 +469,11 @@ private:
     bool AdvancingValidationFresh(std::int64_t wallNowMs) const;
     void NoteAdvancingValidation(std::int64_t wallNowMs);
     void RefreshOverlay(std::int64_t nowMs);
-    void UpdateReadingText();
+    void UpdateReadingText(bool shareTimingRevision = false);
+    void NoteTimingAdmission(const uct::RecognitionResult& result, uct::AdmitVerdict verdict,
+                             std::uint32_t flags = 0, const QVector<uct::AcceptedLine>* previous = nullptr);
+    void UpdatePositionedTimingPublication(bool changed, bool positioned, bool clear = false);
+    void UpdatePaneTimingPublication(bool sharePositionedRevision, bool clear);
     bool AnalysisHealthy() const;
     bool PresentationAvailable(std::int64_t nowMs) const;
     void UpdateStatus();
@@ -461,6 +496,14 @@ private:
     std::unique_ptr<uct::ProbeWorker> probeWorker_;
     uct::OverlayModel model_;
     uct::BackendStatus backend_;
+    // Diagnostic-only: never derive a publication ticket from the current
+    // displayed frame or a timer. Promote a model-admission key only when a
+    // surface snapshot actually changes; pane-only changes leave positioned
+    // provenance/revision intact, and projection keeps both tickets.
+    std::optional<uct::timing::Key> timingAdmission_;
+    std::uint32_t timingAdmissionFlags_{};
+    uct::timing::PublicationTicket timingPositionedPublication_, timingPanePublication_;
+    std::uint64_t timingPublicationRevision_{};
 
     std::optional<UctImmutableScene> immutableScene_;
     std::optional<UctAdvancingMediaScene> advancingMediaScene_;
@@ -497,6 +540,11 @@ private:
     bool immutableRetryExhausted_{};
     std::optional<std::int64_t> immutableRetryStartedAtMs_;
     bool immutableCorroborationAttempted_{};
+    QTimer* immutableDetailTimer_{};
+    std::optional<uct::DetailFocus> immutableDetailFocus_; // pair in flight
+    struct DetailCoverage { QRect region; double magnification{}; };
+    QVector<DetailCoverage> immutableDetailDone_; // bounded, current selection only
+    std::uint64_t immutableDetailPasses_{};
 
     bool enabled_{};
     bool enabledByUser_{};
@@ -527,6 +575,10 @@ private:
     std::shared_ptr<const uct::ProbeFrame> latestProbe_;
     int stableProbes_{};
     bool changedSinceSubmit_{true};
+    // A real residual failure needs replacement OCR even when other accepted
+    // lines still cover the view. Persist across the existing pacing delay;
+    // an unchecked/out-of-view/composite probe does not create this demand.
+    bool probeInvalidatedSinceSubmit_{};
     std::int64_t lastSubmitMs_{std::numeric_limits<std::int64_t>::min() / 2};
     QRectF lastJobCoverage_;
     // Acquisition of the last submitted live/advancing OCR job. A held image
@@ -536,6 +588,16 @@ private:
     std::uint64_t lastOcrGeneration_{};
     std::uint64_t lastOcrJob_{}; // a rejected older job cannot reset a newer marker
     bool haveLastOcr_{};
+    // Supplemental active jobs never update any of the full-submit markers
+    // above. One last full plan, one attempt per baseline interval, one job.
+    bool regionalOcrEnabled_{};
+    bool regionalAttempted_{};
+    bool regionalRequireFull_{};
+    bool regionalSuppressed_{}; // optional failure/overrun: until worker recreation
+    std::shared_ptr<const uct::RegionShadowPlan> regionalPlan_;
+    std::uint64_t regionalJob_{};
+    std::int64_t regionalSubmittedAtMs_{};
+    double regionalEstimateMs_{750.0}; // conservative first cost; nondecreasing
     bool lastResultMoved_{};
     bool lastResultEmpty_{};
 

@@ -20,6 +20,12 @@ successful local AV1 decoding does not grant redistribution rights to an
 external codec extension. Existing Qt accessibility APIs serve the native
 transport under the Qt terms below.
 
+Live RAM recap reuses those Windows Media Foundation H.264 encoder/decoder,
+COM and existing D3D APIs through first-party bounded heap-stream/ring code.
+It adds no bundled codec, media SDK, external model or third-party source.
+Synthetic in-memory codec fixtures contain original generated colour patterns;
+no external footage/audio/fonts or media files enter application payloads.
+
 The new localization resources are machine-assisted translations of first-party
 public UI text generated during development. They introduce no translation SDK
 or runtime service dependency. See [localization provenance and validation](localization.md).
@@ -81,6 +87,43 @@ binaries and caches are not added to Windows/Android release inventories.
 - Attribution: release bundles stage the matching source tree's complete
   LGPL-2.1-or-later text as `licenses/QT_FFMPEG_LGPL_2_1.txt` and retain the
   exact Qt Multimedia SPDX document under `licenses/qt-sbom/`
+
+### Optional embedded FFmpeg/dav1d development SDK
+
+`tests/data/embedded-pool-4k.mp4` is an original generated 12-frame uniform
+gray-step fixture, without external footage/audio/fonts. It is test-only under
+the project's contribution terms; its generation tool is not shipped. The exact
+command and hash are recorded in tests/README.md.
+
+- FFmpeg 7.1.1 sources: <https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz>,
+  LGPL-2.1-or-later with upstream permissive components (including IJG terms)
+  retained in the complete source archive and `LICENSE.md`.
+- dav1d 1.5.1: <https://downloads.videolan.org/pub/videolan/dav1d/1.5.1/>,
+  BSD-2-Clause, original `COPYING` retained without modification.
+- First-party code calls public libavformat/libavcodec/libavutil/libswscale/
+  libswresample APIs through dynamic DLL loading. The reviewed configuration
+  disables GPL, nonfree, autodetection, programs, encoders, muxers, filters,
+  devices, network/protocols and hardware acceleration; AV1 explicitly uses
+  libdav1d. These libraries are not relicensed under OkuFlow's commercial terms.
+- `scripts/ffmpeg/pins.json` retains source/tool hashes and configuration.
+  `prepare_ffmpeg_playback.ps1` builds only under LocalAppData, retaining exact
+  source/configuration, original LGPL/component/dav1d/MinGW notices and actual
+  runtime import/hash inventory. Its additional dependency is the existing
+  reviewed MinGW winpthread DLL (original MIT/BSD component notices).
+- GNU make 4.4.1/diffutils 3.12 (GPL-3.0-or-later) and Meson 1.7.0
+  (Apache-2.0) are private build tools only. Existing GCC/MinGW retains its
+  separate runtime exception/notices; see the adb source-build inventory below.
+  No build tool enters an application payload.
+- No SDK binary/source is copied into Git, Qt, an installer or a release bundle.
+  The owner's installed full GPL FFmpeg executable is not a library/deployment
+  input. Qt's FFmpeg 9 libraries remain separate.
+- **Public redistribution is not accepted by this prototype.** Before shipping,
+  review exact corresponding sources, configuration/changes, complete component
+  notices and SBOM; provide required LGPL library replacement/relinking rights
+  and source access/attribution in both licensing channels. Compatible licenses
+  and local compilation do not establish distribution or patent acceptance.
+  See [development integration](video_ffmpeg_playback.md) and
+  [upstream compliance guidance](https://ffmpeg.org/legal.html).
 
 ## NVIDIA Image Scaling
 - Upstream: <https://github.com/NVIDIAGameWorks/NVIDIAImageScaling>
@@ -316,6 +359,14 @@ the project's contribution/license terms. Neither generation tool is redistribut
 - The Android APK and development SDK remain separately installed/distributed.
 
 ## Not Currently Bundled
+
+`tests/uct_book_crop_test_support.hpp` contains a test-only 46x36 lossless RGB
+crop from the owner's supplied local book frame, used for the authorized source
+ink regression. It introduces no third-party code, font, model or runtime and
+is not an application asset or release payload. Source identity, crop bounds
+and exact pixel digest are recorded in
+[`uct_color_startup_repair.md`](uct_color_startup_repair.md#small-upright-source-ink-2026-10-22-development).
+
 - OpenCV DNN
 - TensorRT
 - external AI model weights
@@ -422,3 +473,18 @@ fixture generated locally with the separately installed FFmpeg/libx264 tools.
 It follows the project's contribution/license terms; no tool or codec library
 is bundled. The reproducible command and reviewed byte hash are recorded in
 `tests/README.md`. The fixture is test-only, outside application payloads.
+
+`tests/data/uct-scene-cut-h264.mp4` is another original first-party fixture:
+one second of red followed by two seconds of blue, generated with the owner's
+separately installed FFmpeg/libx264. It has no third-party footage, audio or
+fonts, follows the project's contribution/license terms, and is test-only.
+Its command and exact reviewed hash are recorded in `tests/README.md`; neither
+the tool nor a codec library is bundled with the application.
+
+`tests/data/paced-audio-h264.mp4` is an original first-party synthetic test
+pattern and 440 Hz sine tone, generated with the owner's separately installed
+FFmpeg/libx264 and native FFmpeg AAC encoder. It contains no third-party footage,
+music or fonts, follows the project's contribution/license terms, and is
+test-only. Generation, exact bytes and its silent use are recorded in
+`docs/video_audio_preroll_repair.md`; no generation tool or codec library is
+bundled with the application.

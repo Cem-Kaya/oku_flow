@@ -1,5 +1,14 @@
 # Application languages
 
+The unreleased live RAM recap adds five Windows source keys (884 total per
+catalog), including duration and decimal-MB estimates. All 120 targets received
+per-entry model review: initial48 plus72 settings entries, with the latter's
+21 unread Luna judgments replaced by a focused language-capable Sol review.
+See [the complete retained reconciliation](live_ram_recap_language_review.md).
+Qt 6.12 structural validation passed all24 catalogs after manifest regeneration;
+this does not establish native-speaker, rendered RTL, font or screen-reader
+acceptance. Android and website surfaces are unchanged by this feature.
+
 Windows 0.2.4 and the Android companion source support 25 UI languages. This
 includes the website's 14 homepage languages, Dutch and ten additional widely
 used languages. The browser transcription tool and newly generated local notes

@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <numbers>
 #include <stdexcept>
 
 namespace okuflow::uct
@@ -122,37 +123,31 @@ PaddleAssets LoadPaddleAssets(const QString &root, ModelTier detector, ModelTier
     return assets;
 }
 
-QSize PaddleDetectionSize(QSize source)
+QSize PaddleDetectionSize(QSize source, double maximumMagnification, int maximumLongEdge)
 {
-    if (source.isEmpty())
-        return {};
-    const double scale = std::min(1.0, 960.0 / std::max(source.width(), source.height()));
-    return {std::max(32, static_cast<int>(std::round(source.width() * scale / 32)) * 32),
-            std::max(32, static_cast<int>(std::round(source.height() * scale / 32)) * 32)};
+    return DetectorInputSize(source, maximumMagnification, maximumLongEdge);
 }
 
 QVector<QRect> PaddleDetectionRegions(QSize source)
 {
-    if (source.isEmpty()) return {};
-    const QRect whole(QPoint{},source);
-    QVector<QRect> regions{whole};
-    // Explicit CPU images historically supported larger extents. Keep their
-    // bounded whole-scene pass rather than report successful empty OCR.
-    if(source.width()>8192 || source.height()>8192) return regions;
-    constexpr int overlap=160, desiredEdge=1280;
-    const auto count=[](int extent) {
-        return std::clamp((extent-overlap+desiredEdge-overlap-1)/(desiredEdge-overlap),1,4);
-    };
-    const int columns=count(source.width()), rows=count(source.height());
-    if(columns==1 && rows==1) return regions;
-    const int width=(source.width()+(columns-1)*overlap+columns-1)/columns;
-    const int height=(source.height()+(rows-1)*overlap+rows-1)/rows;
-    for(int y=0;y<rows;++y) for(int x=0;x<columns;++x) {
-        const int left=std::min(x*(width-overlap),source.width()-width);
-        const int top=std::min(y*(height-overlap),source.height()-height);
-        regions.push_back(QRect(left,top,width,height));
-    }
-    return regions;
+    return DetectorRegions(source);
+}
+
+double PaddleDetailMagnification(const DetailFocus& focus)
+{
+    return DetailMagnification(focus);
+}
+
+QRect PaddleDetailRegion(QSize source, const DetailFocus& focus)
+{
+    return DetailRegion(source, focus);
+}
+
+QVector<QRect> PaddleRecognitionRegions(QSize source, const std::optional<DetailFocus>& focus)
+{
+    if (!focus) return DetectorRegions(source);
+    const QRect region = DetailRegion(source, *focus);
+    return region.isEmpty() ? QVector<QRect>{} : QVector<QRect>{region};
 }
 
 QVector<PaddleQuad> PaddleRecognitionWindows(const PaddleQuad& line)
@@ -180,17 +175,66 @@ void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line
                              QRect region, QSize source)
 {
     const bool detail = region.size() != source;
-    const auto area = [](const QRectF& r) {
-        return std::max(0.0, r.width()) * std::max(0.0, r.height());
+    // Rotated words compare their detector shapes. Bounding boxes of
+    // neighbouring tilted lines overlap even where the text does not.
+    const auto geometry = [](const RecognizedWord& word) {
+        return word.quadPx.valid ? word.quadPx : TextQuad::FromRect(word.boundsPx);
     };
     const auto overlaps = [&](const RecognizedWord& a, const RecognizedWord& b) {
-        const double smaller = std::min(area(a.boundsPx), area(b.boundsPx));
-        return smaller > 0 && area(a.boundsPx.intersected(b.boundsPx)) >= .7 * smaller;
+        const TextQuad ga = geometry(a), gb = geometry(b);
+        const double areaA = QuadArea(ga), areaB = QuadArea(gb);
+        const double smaller = std::min(areaA, areaB);
+        if (smaller <= 0) return false;
+        const double intersection = QuadIntersectionArea(ga, gb);
+        if (intersection >= .7 * smaller) return true;
+        if (intersection < .65 * smaller) return false;
+        const QString& shortText = a.text.size() < b.text.size() ? a.text : b.text;
+        const QString& longText = a.text.size() < b.text.size() ? b.text : a.text;
+        // A crop can leave a prefix/suffix letter just outside the complete
+        // token's CTC estimate. Do not let that duplicate protect the very
+        // letter the complete, stronger word would replace.
+        const bool fragment = !shortText.isEmpty() && shortText.size() < longText.size() &&
+            smaller < .35 * std::max(areaA, areaB) &&
+            (longText.startsWith(shortText) || longText.endsWith(shortText));
+        return fragment;
+    };
+    const auto rowDistance = [&](const RecognizedLine& row, const RecognizedWord& word) {
+        double best = std::numeric_limits<double>::max();
+        const TextQuad wordShape = geometry(word);
+        const double angle = QuadAngle(wordShape);
+        const QPointF along(std::cos(angle), std::sin(angle)), across(-along.y(), along.x());
+        const auto extent = [&](const TextQuad& quad) {
+            double low = std::numeric_limits<double>::max(), high = std::numeric_limits<double>::lowest();
+            for (const QPointF& point : quad.points) {
+                const double t = QPointF::dotProduct(point, along);
+                low = std::min(low, t); high = std::max(high, t);
+            }
+            return std::pair{low, high};
+        };
+        const auto [wordLow, wordHigh] = extent(wordShape);
+        for (const auto& old : row.words) {
+            const TextQuad oldShape = geometry(old);
+            // Differently tilted text is a different line even when the
+            // bounding boxes of the two rotated rows interleave.
+            double turn = std::abs(QuadAngle(oldShape) - angle);
+            turn = std::fmod(turn, std::numbers::pi);
+            if (std::min(turn, std::numbers::pi - turn) > .175) continue;
+            const double small = std::min(QuadHeight(oldShape), QuadHeight(wordShape));
+            const double large = std::max(QuadHeight(oldShape), QuadHeight(wordShape));
+            const double dy = std::abs(QPointF::dotProduct(oldShape.Center() - wordShape.Center(), across));
+            const auto [oldLow, oldHigh] = extent(oldShape);
+            const double gap = std::max({0.0, oldLow - wordHigh, wordLow - oldHigh});
+            // Match a nearby word of comparable type size. A row's union
+            // must not bridge another column or pull a title into code text.
+            if (small > 0 && small >= .5 * large && dy <= .35 * large && gap <= 4 * small)
+                best = std::min(best, gap + 4 * dy);
+        }
+        return best;
     };
     qsizetype preferredLine = -1;
     for (auto word : line.words) {
         // Overlapping crops supply complete words instead of cut-edge fragments.
-        constexpr double margin = 8.0;
+        constexpr double margin = kDetailCropEdgeMarginPx;
         if (detail && ((region.left() > 0 && word.boundsPx.left() < margin) ||
             (region.top() > 0 && word.boundsPx.top() < margin) ||
             (region.x() + region.width() < source.width() && word.boundsPx.right() > region.width() - margin) ||
@@ -198,6 +242,8 @@ void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line
         word.boundsPx.translate(region.topLeft());
         if (!word.inkSearchPx.isEmpty()) word.inkSearchPx.translate(region.topLeft());
         if (!word.protectedBoundsPx.isEmpty()) word.protectedBoundsPx.translate(region.topLeft());
+        if (word.quadPx.valid) word.quadPx = word.quadPx.Translated(region.topLeft());
+        if (word.inkSearchQuadPx.valid) word.inkSearchQuadPx = word.inkSearchQuadPx.Translated(region.topLeft());
         bool use = true;
         qsizetype target = -1;
         for (qsizetype index = 0; index < output.size(); ++index) {
@@ -214,21 +260,18 @@ void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line
         }
         if (target >= 0) preferredLine = target;
         if (!use) continue;
-        if (target < 0) target = preferredLine;
+        if (target < 0 && preferredLine >= 0 &&
+            rowDistance(output[preferredLine], word) < std::numeric_limits<double>::max())
+            target = preferredLine;
         qsizetype emptyLine = -1;
         if (target < 0) {
             double best = std::numeric_limits<double>::max();
             for (qsizetype index = 0; index < output.size(); ++index) {
                 const auto& words = output[index].words;
                 if (words.isEmpty()) { emptyLine = index; continue; }
-                QRectF bounds;
-                for (const auto& old : words) bounds = bounds.united(old.boundsPx);
-                const double h = std::max(bounds.height(), word.boundsPx.height());
-                const double dy = std::abs(bounds.center().y() - word.boundsPx.center().y());
-                const double gap = std::max({0.0, bounds.left() - word.boundsPx.right(),
-                                            word.boundsPx.left() - bounds.right()});
-                if (dy <= .35 * h && gap <= 8 * h && gap + 4 * dy < best) {
-                    best = gap + 4 * dy;
+                const double distance = rowDistance(output[index], word);
+                if (distance < best) {
+                    best = distance;
                     target = index;
                 }
             }
@@ -253,9 +296,16 @@ void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line
     output.erase(std::remove_if(output.begin(), output.end(), [](const auto& l) {
         return l.words.isEmpty();
     }), output.end());
-    for (auto& row : output) std::stable_sort(row.words.begin(), row.words.end(), [](const auto& a, const auto& b) {
-        return a.boundsPx.left() < b.boundsPx.left();
-    });
+    // Reading order along the row's own baseline (left edge when upright).
+    for (auto& row : output) {
+        const double angle = QuadAngle(geometry(row.words.first()));
+        const QPointF along(std::cos(angle), std::sin(angle));
+        std::stable_sort(row.words.begin(), row.words.end(), [&](const auto& a, const auto& b) {
+            if (!a.quadPx.valid && !b.quadPx.valid) return a.boundsPx.left() < b.boundsPx.left();
+            return QPointF::dotProduct(geometry(a).points[0], along) <
+                   QPointF::dotProduct(geometry(b).points[0], along);
+        });
+    }
 }
 
 std::vector<float> PaddleNormalize(const QImage &image, QSize target, bool detection)
@@ -457,6 +507,10 @@ RecognizedLine PaddleDecodeTokens(std::span<const PaddleToken> tokens, int steps
     int first = 0, last = 0;
     double confidence = 0;
     int count = 0;
+    // Fractions along the line quad, parallel to line.words: CTC span and
+    // its one-step-widened search span. Oriented words are built from these.
+    struct Span { double x0, x1, search0, search1; };
+    QVector<Span> spans;
     auto flush = [&] {
         if (!word.isEmpty() && count) {
             const double x0 = std::max(0.0, (first - .5) / steps),
@@ -477,12 +531,14 @@ RecognizedLine PaddleDecodeTokens(std::span<const PaddleToken> tokens, int steps
             const double meanConfidence = confidence / count;
             const double context=2*QLineF(quad.points[0],quad.points[3]).length()/
                 std::max(1.0,QLineF(quad.points[0],quad.points[1]).length());
-            if (!((quad.internalEdges&1 && x0<context) || (quad.internalEdges&2 && x1>1-context)))
+            if (!((quad.internalEdges&1 && x0<context) || (quad.internalEdges&2 && x1>1-context))) {
             line.words.push_back({word, bounds, true,
                                   QRectF(searchLeft, top, searchRight - searchLeft, bottom - top),
                                   meanConfidence >= .7 ? TokenDisposition::kCandidate
                                                        : TokenDisposition::kLowConfidence,
                                   meanConfidence, bounds});
+            spans.push_back({x0, x1, searchX0, searchX1});
+            }
         }
         word.clear();
         confidence = 0;
@@ -516,6 +572,21 @@ RecognizedLine PaddleDecodeTokens(std::span<const PaddleToken> tokens, int steps
                 : current.inkSearchPx.right();
         current.inkSearchPx = current.inkSearchPx.intersected(
             QRectF(left, current.boundsPx.top(), right - left, current.boundsPx.height()));
+        // The same neighbour bound, along the detector's own baseline. A
+        // tilted line's word keeps its rotated shape through fitting/paint.
+        const Span& span = spans[i];
+        const double searchLeft = i > 0 ? std::max(span.search0, (spans[i - 1].x1 + span.x0) * .5) : span.search0;
+        const double searchRight = i + 1 < spans.size() ? std::min(span.search1, (span.x1 + spans[i + 1].x0) * .5)
+                                                        : span.search1;
+        const auto quadAt = [&](double a, double b) {
+            TextQuad result;
+            result.points = {At(quad, a, 0), At(quad, b, 0), At(quad, b, 1), At(quad, a, 1)};
+            result.valid = b > a;
+            return result;
+        };
+        current.quadPx = quadAt(span.x0, span.x1);
+        current.inkSearchQuadPx = quadAt(searchLeft, std::max(searchLeft, searchRight));
+        if (!current.inkSearchQuadPx.valid) current.inkSearchQuadPx = current.quadPx;
     }
     return line;
 }

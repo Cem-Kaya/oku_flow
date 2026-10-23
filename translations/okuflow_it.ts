@@ -1,8 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="it" sourcelanguage="en_US">
-    <context>
-        <name>OkuFlow</name>
+<context>
+    <name>OkuFlow</name>
+    <message>
+        <source>Live recap duration (minutes)</source>
+        <translation>Durata del replay della diretta (minuti)</translation>
+    </message>
+    <message>
+        <source>Estimated video history: %1 MB</source>
+        <translation>Memoria stimata per la cronologia video: %1 MB</translation>
+    </message>
+    <message>
+        <source>Additional memory is used while buffering, replaying or freezing video.</source>
+        <translation>Il buffering, la riproduzione e il fermo immagine utilizzano memoria aggiuntiva.</translation>
+    </message>
+        <message>
+            <source>Live recap</source>
+            <translation>Rivedi la diretta</translation>
+        </message>
+        <message>
+            <source>Buffering live video…</source>
+            <translation>Memorizzazione del video in diretta…</translation>
+        </message>
         <message>
             <source>Action in progress.</source>
             <translation>Operazione in corso.</translation>

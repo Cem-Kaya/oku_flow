@@ -22,7 +22,9 @@
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QStyle>
+#include <QStyleOptionSlider>
 #include <QTimer>
+#include <QTransform>
 #include <QVBoxLayout>
 #include <QWheelEvent>
 
@@ -47,6 +49,35 @@ int SliderTime(qint64 milliseconds)
     return static_cast<int>(std::clamp<qint64>(milliseconds, 0,
                                              std::numeric_limits<int>::max()));
 }
+
+// Live is a viewing mode, not a claim that its pending camera pixels are
+// already seekable. Draw its thumb/fill at the right edge without changing
+// the inspected numeric value, verified range or true timestamp text. An
+// expired hold similarly pins left, with a distinct warning-colored face.
+// Qt uses this same style option for native handle hit testing and painting.
+class TimelineSlider final : public QSlider {
+public:
+    enum class Edge { Position, Live, ExpiredHold };
+    using QSlider::QSlider;
+    void SetEdge(Edge edge)
+    {
+        if (edge_ == edge) return;
+        edge_ = edge;
+        update();
+    }
+protected:
+    void initStyleOption(QStyleOptionSlider* option) const override
+    {
+        QSlider::initStyleOption(option);
+        if (edge_ != Edge::Position && !isSliderDown()) {
+            const int position = edge_ == Edge::Live ? option->maximum : option->minimum;
+            option->sliderPosition = position;
+            option->sliderValue = position;
+        }
+    }
+private:
+    Edge edge_{Edge::Position};
+};
 
 class SourceLabel final : public QLabel {
 public:
@@ -111,7 +142,8 @@ public:
         : QAccessibleWidget(slider, QAccessible::Slider), slider_(slider) {}
     void* interface_cast(QAccessible::InterfaceType type) override
     {
-        if (type == QAccessible::ValueInterface) return static_cast<QAccessibleValueInterface*>(this);
+        if (type == QAccessible::ValueInterface) return slider_->property("okuflowOutsideWindowPosition").isValid()
+            ? nullptr:static_cast<QAccessibleValueInterface*>(this);
         return QAccessibleWidget::interface_cast(type);
     }
     QVariant currentValue() const override { return slider_->value(); }
@@ -209,8 +241,13 @@ VideoTransport::VideoTransport(QWidget* parent) : QWidget(parent)
     returnButton_ = makeButton("videoReturnCameraButton", QStringLiteral("\u21a9"), kButtonExtent);
     saveFrameButton_ = makeButton("videoSaveFrameButton", QStringLiteral("\u25a3"), kButtonExtent);
     muteButton_ = makeButton("videoMuteButton", QStringLiteral("\u266a"), kButtonExtent);
+    collapseButton_ = makeButton("videoCollapseButton", QString(), kButtonExtent);
+    collapseButton_->setCheckable(true);
+    // A small chevron has the same native keyboard/touch target as actions.
+    collapseButton_->setIconSize(QSize(14, 14));
+    sourceRow->insertWidget(0, collapseButton_);
 
-    timeline_ = new QSlider(Qt::Horizontal, this);
+    timeline_ = new TimelineSlider(Qt::Horizontal, this);
     timeline_->setObjectName(QStringLiteral("videoTimeline"));
     timeline_->setMinimumSize(kMinTimelineWidth, kButtonExtent);
     timeline_->setSingleStep(1000);
@@ -264,9 +301,13 @@ VideoTransport::VideoTransport(QWidget* parent) : QWidget(parent)
     connect(muteButton_, &QPushButton::clicked, this, [this]() {
         if (IsActionReady(muteButton_)) emit MutedChanged(!snapshot_.muted);
     });
+    connect(collapseButton_, &QPushButton::clicked, this, [this]() {
+        SetCollapsed(!collapsed_);
+    });
     connect(timeline_, &QSlider::sliderPressed, this, [this]() {
         dragging_ = true;
         dragGeneration_ = snapshot_.sourceGeneration;
+        RefreshTimeline(false);
     });
     connect(timeline_, &QSlider::sliderMoved, this, [this](int position) {
         timeLabel_->setText(QStringLiteral("%1 / %2").arg(TimeText(position),
@@ -283,14 +324,14 @@ VideoTransport::VideoTransport(QWidget* parent) : QWidget(parent)
             timeline_->setValue(static_cast<int>(target));
         }
         dragging_ = false;
-        if (sameDocument) CommitSeek(target);
+        if (sameDocument) CommitSeek(target, target == timeline_->maximum());
         RefreshTimeline(true);
     });
     connect(timeline_, &QSlider::valueChanged, this, [this](int position) {
         if (!updating_ && !dragging_) {
             timeline_->setAccessibleDescription(TranslateUi(QStringLiteral("%1 of %2"))
                 .arg(TimeText(position), TimeText(timeline_->maximum())));
-            CommitSeek(position);
+            CommitSeek(position, position == timeline_->maximum());
         }
     });
     connect(timeline_, &QSlider::actionTriggered, this, [this](int action) {
@@ -351,20 +392,25 @@ QString VideoTransport::StateText() const
     case State::Waiting: return QStringLiteral("Waiting for recording");
     case State::Finishing: return QStringLiteral("Finishing recording");
     case State::Unavailable: return QStringLiteral("Video unavailable");
+    case State::Buffering: return QStringLiteral("Buffering live video…");
     }
     return {};
 }
 
 void VideoTransport::SetSnapshot(const Snapshot& snapshot)
 {
+    const bool hadSource = snapshot_.source != Source::None;
     const bool changedDocument = snapshot_.sourceGeneration != snapshot.sourceGeneration ||
                                  snapshot_.source != snapshot.source;
     const bool changedState = changedDocument || snapshot_.state != snapshot.state ||
+        (snapshot.source == Source::Recap && snapshot.state == State::Unavailable &&
+         snapshot_.diagnosticDetail != snapshot.diagnosticDetail) ||
         snapshot_.sourceName != snapshot.sourceName ||
         (!snapshot.playing && snapshot.state != State::Seeking &&
          snapshot_.positionMs != snapshot.positionMs);
     const bool changedText = changedState || snapshot_.playing != snapshot.playing ||
-        snapshot_.muted != snapshot.muted || snapshot_.hasAudio != snapshot.hasAudio;
+        snapshot_.muted != snapshot.muted || snapshot_.hasAudio != snapshot.hasAudio ||
+        snapshot_.diagnosticDetail != snapshot.diagnosticDetail;
     if (changedDocument && dragging_) {
         dragging_ = false;
         const QSignalBlocker blocker(timeline_);
@@ -382,22 +428,59 @@ void VideoTransport::SetSnapshot(const Snapshot& snapshot)
     }
     snapshot_ = snapshot;
     snapshot_.durationMs = std::max<qint64>(0, snapshot_.durationMs);
+    snapshot_.firstMs = std::clamp<qint64>(snapshot_.firstMs,0,snapshot_.durationMs);
     snapshot_.positionMs = std::max<qint64>(0, snapshot_.positionMs);
+    const bool outside=snapshot_.source==Source::Recap &&
+        (snapshot_.positionMs<snapshot_.firstMs || snapshot_.positionMs>snapshot_.durationMs);
+    const bool wasOutside = timeline_->property("okuflowOutsideWindowPosition").isValid();
+    timeline_->setProperty("okuflowOutsideWindowPosition",outside?QVariant(snapshot_.positionMs):QVariant());
+    if (changedDocument || outside != wasOutside) {
+        QAccessibleEvent event(timeline_,QAccessible::ObjectAttributeChanged);QAccessible::updateAccessibility(&event);
+    }
     const bool hasSource = snapshot_.source != Source::None;
     if (!hasSource) ReturnFocus();
-    setVisible(hasSource && !uiHidden_);
+    collapseButton_->setVisible(hasSource && !uiHidden_);
+    setVisible(hasSource && !uiHidden_ && !collapsed_);
     UpdateActions();
     if (changedText) RefreshText();
     RefreshTimeline(changedDocument || !snapshot_.playing);
     if (changedState) RequestAnnouncement();
+    if (hadSource != hasSource) emit ControlsChanged();
 }
 
 void VideoTransport::SetUiHidden(bool hidden)
 {
     if (hidden) ReturnFocus();
     uiHidden_ = hidden;
-    setVisible(!hidden && snapshot_.source != Source::None);
+    collapseButton_->setVisible(!hidden && snapshot_.source != Source::None);
+    setVisible(!hidden && snapshot_.source != Source::None && !collapsed_);
     RequestAnnouncement();
+}
+
+void VideoTransport::SetCollapsed(bool collapsed)
+{
+    if (collapsed_ == collapsed) return;
+    if (dragging_) {
+        dragging_ = false;
+        const QSignalBlocker blocker(timeline_);
+        timeline_->setSliderDown(false);
+    }
+    if (collapsed) {
+        auto* focus = QApplication::focusWidget();
+        if (focus && isAncestorOf(focus)) {
+            if (collapseButton_->parentWidget() != this && collapseButton_->isVisible())
+                collapseButton_->setFocus(Qt::OtherFocusReason);
+            else ReturnFocus();
+        }
+    }
+    collapsed_ = collapsed;
+    collapseButton_->setChecked(collapsed);
+    setVisible(!collapsed_ && !uiHidden_ && snapshot_.source != Source::None);
+    RefreshText();
+    RefreshTimeline(true);
+    UpdateActions();
+    updateGeometry();
+    emit ControlsChanged();
 }
 
 void VideoTransport::SetFocusReturnTarget(QWidget* target)
@@ -407,6 +490,7 @@ void VideoTransport::SetFocusReturnTarget(QWidget* target)
 
 bool VideoTransport::ActionShown(const QWidget* control) const
 {
+    if (collapsed_ && control != collapseButton_) return false;
     if (control == muteButton_) return muteShown_;
     if (control == returnButton_) return returnShown_;
     return true;
@@ -414,8 +498,14 @@ bool VideoTransport::ActionShown(const QWidget* control) const
 
 bool VideoTransport::IsActionReady(const QWidget* control) const
 {
+    return ActionShown(control) && IsCommandReady(control);
+}
+
+bool VideoTransport::IsCommandReady(const QWidget* control) const
+{
     return control && snapshot_.source != Source::None && !uiHidden_ &&
-        ActionShown(control) && control->isEnabled() &&
+        (control != muteButton_ || muteShown_) && (control != returnButton_ || returnShown_) &&
+        control->isEnabled() &&
         control->property("okuflowTransportGate").toInt() == static_cast<int>(Gate::Ready);
 }
 
@@ -426,7 +516,7 @@ void VideoTransport::ApplyGate(QWidget* control, Gate gate)
     // Qt transfers focus immediately when setEnabled(false) is called. Keep
     // the semantic focus owner inert until the user leaves it or it is ready.
     control->setEnabled(gate == Gate::Ready || control->hasFocus());
-    if (control != timeline_) {
+    if (control != timeline_ && control != collapseButton_) {
         SetLiveAccessibleDescription(control, gate == Gate::Ready ? QString() : StateText());
     }
     if (changed) {
@@ -453,15 +543,16 @@ void VideoTransport::UpdateActions()
 {
     const bool hasSource = snapshot_.source != Source::None;
     const bool pending = snapshot_.state == State::Opening || snapshot_.state == State::Seeking;
-    const bool available = hasSource && snapshot_.state != State::Unavailable;
+    const bool available = hasSource && (snapshot_.state != State::Unavailable || snapshot_.canPauseLive || snapshot_.canSaveFrame);
     const auto gate = [available](bool ready, bool busy = false) {
         return available && ready ? Gate::Ready : busy && available ? Gate::Busy : Gate::Unavailable;
     };
-    ApplyGate(rewindButton_, gate(snapshot_.seekable && SeekBaseline() > 0));
+    ApplyGate(collapseButton_, hasSource ? Gate::Ready : Gate::Unavailable);
+    ApplyGate(rewindButton_, gate(snapshot_.seekable && SeekBaseline() > snapshot_.firstMs));
     ApplyGate(playPauseButton_, gate(!pending && snapshot_.state != State::End &&
-        (snapshot_.canSaveFrame || snapshot_.seekable), pending));
-    ApplyGate(jumpButton_, gate(!pending &&
-        (snapshot_.source == Source::Recording || snapshot_.seekable), pending));
+        (snapshot_.canPauseLive || snapshot_.canSaveFrame || snapshot_.seekable), pending));
+    ApplyGate(jumpButton_, snapshot_.source==Source::Recap && snapshot_.canReturnToCamera ? Gate::Ready :
+        gate(!pending && (snapshot_.source == Source::Recording || snapshot_.seekable), pending));
     ApplyGate(timeline_, gate(snapshot_.seekable && snapshot_.durationMs > 0));
     ApplyGate(returnButton_, hasSource && snapshot_.canReturnToCamera ? Gate::Ready : Gate::Unavailable);
     ApplyGate(saveFrameButton_, gate(snapshot_.canSaveFrame && !pending, pending));
@@ -494,7 +585,7 @@ void VideoTransport::MoveFocusFrom(QWidget* leaving, QWidget* preferred)
 void VideoTransport::ReturnFocus()
 {
     QWidget* focus = QApplication::focusWidget();
-    if (focus != this && !(focus && isAncestorOf(focus))) return;
+    if (focus != this && focus != collapseButton_ && !(focus && isAncestorOf(focus))) return;
     if (focusReturnTarget_ && focusReturnTarget_->isVisible() && focusReturnTarget_->isEnabled()) {
         focusReturnTarget_->setFocus(Qt::OtherFocusReason);
     } else if (parentWidget()) {
@@ -513,15 +604,19 @@ void VideoTransport::RefreshText()
     static_cast<SourceLabel*>(sourceLabel_)->SetSource(source);
     SetLiveText(stateLabel_, StateText(), LivePoliteness::kSilent,
                 QStringLiteral("Video playback"));
+    stateLabel_->setToolTip(snapshot_.diagnosticDetail);
+    stateLabel_->setAccessibleDescription(snapshot_.diagnosticDetail);
     NameButton(rewindButton_, QStringLiteral("Rewind 10 seconds"));
     NameButton(playPauseButton_, snapshot_.playing ? QStringLiteral("Pause video")
                                                  : QStringLiteral("Resume video"));
-    NameButton(jumpButton_, snapshot_.source == Source::Recording
+    NameButton(jumpButton_, snapshot_.source == Source::Recording || snapshot_.source == Source::Recap
                                ? QStringLiteral("Jump to live") : QStringLiteral("Jump to end"));
     NameButton(returnButton_, QStringLiteral("Return to camera"));
     NameButton(saveFrameButton_, QStringLiteral("Save frame"));
     NameButton(muteButton_, snapshot_.muted ? QStringLiteral("Unmute playback")
                                           : QStringLiteral("Mute playback"));
+    NameButton(collapseButton_, collapsed_ ? QStringLiteral("Show UI") : QStringLiteral("Hide UI"));
+    collapseButton_->setAccessibleDescription(TranslateUi(QStringLiteral("Video controls")));
     setAccessibleName(TranslateUi(QStringLiteral("Video controls")));
     timeline_->setAccessibleName(TranslateUi(QStringLiteral("Video timeline")));
     timeline_->setToolTip(TranslateUi(QStringLiteral(
@@ -555,8 +650,10 @@ void VideoTransport::AnnounceSettledState()
     if (!announcementPending_ || !isVisible() || snapshot_.source == Source::None ||
         snapshot_.state == State::Opening || snapshot_.state == State::Seeking) return;
     announcementPending_ = false;
-    const QString message = QStringLiteral("%1: %2, %3")
+    QString message = QStringLiteral("%1: %2, %3")
         .arg(sourceLabel_->accessibleName(), TranslateUi(StateText()), TimeText(snapshot_.positionMs));
+    if (snapshot_.source == Source::Recap && snapshot_.state == State::Unavailable &&
+        !snapshot_.diagnosticDetail.isEmpty()) message += QStringLiteral(". ") + snapshot_.diagnosticDetail;
     if (message == lastAnnouncement_) return;
     lastAnnouncement_ = message;
     QAccessibleAnnouncementEvent announcement(this, message);
@@ -566,39 +663,76 @@ void VideoTransport::AnnounceSettledState()
 
 void VideoTransport::RefreshTimeline(bool force)
 {
-    if (dragging_) return; // Freeze both range and pointer-to-time mapping.
     const qint64 selected = SeekBaseline();
+    const bool followingLive = (snapshot_.source == Source::Recap || snapshot_.source == Source::Recording) &&
+        snapshot_.state == State::Live && !pendingSeekMs_ && snapshot_.seekable &&
+        snapshot_.durationMs > snapshot_.firstMs;
+    const bool expiredHold = snapshot_.source == Source::Recap && !followingLive && !dragging_ &&
+        selected < snapshot_.firstMs;
+    static_cast<TimelineSlider*>(timeline_)->SetEdge(followingLive ? TimelineSlider::Edge::Live :
+        expiredHold ? TimelineSlider::Edge::ExpiredHold : TimelineSlider::Edge::Position);
+    const bool hidePlayhead = snapshot_.source == Source::Recap && !followingLive && !expiredHold && !dragging_ &&
+        (selected < snapshot_.firstMs || selected > snapshot_.durationMs);
+    if (timeline_->property("okuflowOutsideWindow").toBool() != hidePlayhead ||
+        timeline_->property("okuflowExpiredHold").toBool() != expiredHold) {
+        timeline_->setProperty("okuflowOutsideWindow", hidePlayhead);
+        timeline_->setProperty("okuflowExpiredHold", expiredHold);
+        timeline_->style()->unpolish(timeline_);
+        timeline_->style()->polish(timeline_);
+        timeline_->update();
+    }
+    if (dragging_) return; // Freeze both range and pointer-to-time mapping.
     timeLabel_->setText(QStringLiteral("%1 / %2").arg(TimeText(selected), TimeText(snapshot_.durationMs)));
+    if(snapshot_.source==Source::Recap)
+        timeLabel_->setText(QStringLiteral("%1–%2 · %3").arg(TimeText(snapshot_.firstMs),TimeText(snapshot_.durationMs),TimeText(selected)));
     // Reserve exactly the room this duration's readout needs, so the label
     // neither jitters during playback nor starves the scrubber when narrow.
-    const QString widest = QStringLiteral("%1 / %1").arg(TimeText(snapshot_.durationMs));
+    const auto longest=TimeText(std::max(snapshot_.durationMs,selected));
+    const QString widest = snapshot_.source==Source::Recap?QStringLiteral("%1–%1 · %1").arg(longest)
+        :QStringLiteral("%1 / %1").arg(longest);
     const int readoutWidth = timeLabel_->fontMetrics().horizontalAdvance(widest) + 8;
     if (timeLabel_->minimumWidth() != readoutWidth) {
         timeLabel_->setMinimumWidth(readoutWidth);
         UpdateLayout();
     }
-    const QString description = TranslateUi(QStringLiteral("%1 of %2"))
-        .arg(TimeText(SliderTime(std::min(selected, snapshot_.durationMs))),
+    const QString description = snapshot_.source==Source::Recap
+        ?QStringLiteral("%1–%2 · %3").arg(TimeText(snapshot_.firstMs),TimeText(snapshot_.durationMs),TimeText(selected))
+        : TranslateUi(QStringLiteral("%1 of %2"))
+        .arg(TimeText(SliderTime(selected)),
              TimeText(SliderTime(snapshot_.durationMs)));
     // Keep the native accessible slider quiet during playback. A focused
     // slider retains its value until the reader makes a keyboard selection.
-    const bool canUpdate = force || (!timeline_->hasFocus() && timelineUpdateClock_.elapsed() >= 1000);
+    const bool rangeChanged=timeline_->minimum()!=SliderTime(snapshot_.firstMs) || timeline_->maximum()!=SliderTime(snapshot_.durationMs);
+    // Rolling recap bounds must track eviction immediately. Saved video keeps
+    // its existing focused inspection range until an explicit seek refresh.
+    const bool canUpdate = force || (snapshot_.source==Source::Recap && rangeChanged) ||
+        (!timeline_->hasFocus() && timelineUpdateClock_.elapsed() >= 1000);
     if (!canUpdate) return;
     updating_ = true;
     timeline_->setAccessibleDescription(description);
     {
         const QSignalBlocker blocker(timeline_);
-        timeline_->setRange(0, SliderTime(snapshot_.durationMs));
-        timeline_->setValue(SliderTime(std::min(selected, snapshot_.durationMs)));
+        timeline_->setRange(SliderTime(snapshot_.firstMs), SliderTime(snapshot_.durationMs));
+        if(force || !timeline_->hasFocus())timeline_->setValue(SliderTime(std::min(selected, snapshot_.durationMs)));
     }
     timelineUpdateClock_.restart();
     updating_ = false;
 }
 
-void VideoTransport::CommitSeek(qint64 positionMs)
+void VideoTransport::CommitSeek(qint64 positionMs, bool atRangeEnd)
 {
     if (!IsActionReady(timeline_)) return;
-    const qint64 target = std::clamp<qint64>(positionMs, 0, snapshot_.durationMs);
+    if ((snapshot_.source == Source::Recap || snapshot_.source == Source::Recording) &&
+        (atRangeEnd || positionMs >= snapshot_.durationMs)) {
+        // The displayed right edge means live, even if finalized history
+        // advanced while the drag retained its original pointer mapping.
+        pendingSeekMs_.reset();
+        RefreshTimeline(true);
+        UpdateActions();
+        emit JumpToEndRequested();
+        return;
+    }
+    const qint64 target = std::clamp<qint64>(positionMs, snapshot_.firstMs, snapshot_.durationMs);
     pendingSeekMs_ = target;
     RefreshTimeline(true);
     UpdateActions();
@@ -614,8 +748,10 @@ std::vector<QWidget*> VideoTransport::FocusTargets() const
 {
     // Tab order follows the single-line visual order: primary actions,
     // scrubber, secondary actions. Return to camera stays last.
+    if (collapsed_) return {};
     std::vector<QWidget*> targets{rewindButton_, playPauseButton_, jumpButton_, timeline_,
                                   saveFrameButton_};
+    if (collapseButton_->parentWidget() == this) targets.insert(targets.begin(), collapseButton_);
     if (muteShown_) targets.push_back(muteButton_);
     if (returnShown_) targets.push_back(returnButton_);
     return targets;
@@ -627,6 +763,12 @@ bool VideoTransport::eventFilter(QObject* watched, QEvent* event)
         QTimer::singleShot(0, this, &VideoTransport::UpdateActions);
     }
     if (watched == timeline_) {
+        if (event->type() == QEvent::MouseButtonPress && snapshot_.state == State::Live &&
+            (snapshot_.source == Source::Recap || snapshot_.source == Source::Recording)) {
+            // An explicit pointer interaction ends focused inspection. Bring
+            // the real range/value up to date before Qt maps the live thumb.
+            RefreshTimeline(true);
+        }
         if (event->type() == QEvent::Wheel) {
             auto* wheel = static_cast<QWheelEvent*>(event);
             if (timeline_->hasFocus() && !dragging_ && IsActionReady(timeline_) &&
@@ -652,7 +794,7 @@ bool VideoTransport::eventFilter(QObject* watched, QEvent* event)
                     case Qt::Key_Right: target += 1000; break;
                     case Qt::Key_PageUp: target += 10000; break;
                     case Qt::Key_PageDown: target -= 10000; break;
-                    case Qt::Key_Home: target = 0; break;
+                    case Qt::Key_Home: target = snapshot_.firstMs; break;
                     case Qt::Key_End: target = snapshot_.durationMs; break;
                     }
                     CommitSeek(target);
@@ -703,6 +845,9 @@ void VideoTransport::ApplyFace(QPushButton* button)
     } else if (button == returnButton_) {
         resource = QStringLiteral(":/okuflow/icons/camera.svg");
         glyph = QStringLiteral("\u21a9");
+    } else if (button == collapseButton_) {
+        resource = QStringLiteral(":/okuflow/icons/next.svg");
+        glyph = collapsed_ ? QStringLiteral("\u2303") : QStringLiteral("\u2304");
     } else {
         return;
     }
@@ -720,6 +865,11 @@ void VideoTransport::ApplyFace(QPushButton* button)
     button->setProperty("okuflowFaceKey", faceKey);
 
     QIcon icon = theme_contrast::ThemedIcon(resource, ink, dimInk);
+    if (!icon.isNull() && button == collapseButton_) {
+        QTransform rotation;
+        rotation.rotate(collapsed_ ? -90 : 90);
+        icon = QIcon(icon.pixmap(28, 28).transformed(rotation, Qt::SmoothTransformation));
+    }
     if (!icon.isNull() && slashed) icon = SlashedIcon(icon, ink);
     if (!icon.isNull()) {
         button->setIcon(icon);
@@ -735,7 +885,7 @@ void VideoTransport::ApplyFace(QPushButton* button)
 void VideoTransport::ApplyButtonFaces()
 {
     for (auto* button : {rewindButton_, playPauseButton_, jumpButton_,
-                         saveFrameButton_, muteButton_, returnButton_}) {
+                         saveFrameButton_, muteButton_, returnButton_, collapseButton_}) {
         ApplyFace(button);
     }
 }
@@ -759,7 +909,14 @@ void VideoTransport::ApplyStyle()
         " border-radius: 3px; background: palette(highlight); }"
         "QWidget#videoTransport QSlider::handle:horizontal { width: 18px; height: 28px;"
         " margin: -11px 0; border-radius: 6px; background: palette(button);"
-        " border: 2px solid palette(highlight); }");
+        " border: 2px solid palette(highlight); }"
+        "QWidget#videoTransport QSlider[okuflowOutsideWindow=\"true\"]::handle:horizontal {"
+        " background: transparent; border: none; }"
+        "QWidget#videoTransport QSlider[okuflowOutsideWindow=\"true\"]::sub-page:horizontal {"
+        " background: palette(mid); }"
+        "QWidget#videoTransport QSlider[okuflowExpiredHold=\"true\"]::handle:horizontal {"
+        " background: %1; border: 2px dashed palette(window); }")
+        .arg(theme_contrast::WarningTextColor(theme_contrast::IsLightTheme(palette())).name());
     if (styleSheet() != style) setStyleSheet(style);
     const QString badge = snapshot_.state == State::Live ? QStringLiteral(
         "color: #ffffff; background: #14351e; border: 2px solid #ffffff; border-radius: 4px; padding: 3px 8px; font-weight: bold;")
@@ -782,11 +939,12 @@ void VideoTransport::UpdateLayout()
     required += kRowSpacing * (4 + static_cast<int>(secondaries.size()));
     const bool below = width() > 0 && width() < required && !secondaries.empty();
     if (below == secondariesBelow_ && secondaries == layoutSecondaries_ &&
-        mainLayout_->count() > 0) {
+        collapsed_ == layoutCollapsed_ && mainLayout_->count() > 0) {
         return;
     }
     secondariesBelow_ = below;
     layoutSecondaries_ = secondaries;
+    layoutCollapsed_ = collapsed_;
     const QPointer<QWidget> focused = isAncestorOf(QApplication::focusWidget())
         ? QApplication::focusWidget() : nullptr;
     const auto strip = [](QLayout* stripLayout) {
@@ -795,6 +953,7 @@ void VideoTransport::UpdateLayout()
     strip(mainLayout_);
     strip(secondaryLayout_);
     metadataLayout_->removeWidget(timeLabel_);
+    metadataLayout_->removeWidget(jumpButton_);
     mainLayout_->addWidget(rewindButton_);
     mainLayout_->addWidget(playPauseButton_);
     mainLayout_->addWidget(jumpButton_);
@@ -808,6 +967,11 @@ void VideoTransport::UpdateLayout()
     }
     if (below) secondaryLayout_->addStretch(1);
     secondaryRow_->setVisible(below);
+    for (auto* widget : std::vector<QWidget*>{rewindButton_, playPauseButton_, timeline_,
+                         timeLabel_, saveFrameButton_}) widget->setVisible(!collapsed_);
+    muteButton_->setVisible(!collapsed_ && muteShown_);
+    returnButton_->setVisible(!collapsed_ && returnShown_);
+    secondaryRow_->setVisible(!collapsed_ && below);
     if(focused && focused->isEnabled() && focused->isVisibleTo(this) && !focused->hasFocus())
         focused->setFocus(Qt::OtherFocusReason);
     const auto targets = FocusTargets();

@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,9 @@ struct Result {
     bool cancelled{};
     std::string error;
     std::vector<Line> lines;
+    // BoundingRect is in the engine's deskewed image coordinates. Rotate
+    // clockwise around that image's centre before mapping back to source.
+    std::optional<double> textAngleDegrees;
 };
 
 struct InitResult {

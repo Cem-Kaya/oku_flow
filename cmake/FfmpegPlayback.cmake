@@ -1,0 +1,13 @@
+# Explicit development SDK only. Nothing is downloaded, installed or deployed.
+set(OKUFLOW_FFMPEG_SDK_ROOT "" CACHE PATH "Optional pinned FFmpeg 7.1.1 development SDK")
+function(okuflow_configure_ffmpeg_playback target)
+    if(OKUFLOW_FFMPEG_SDK_ROOT)
+        if(NOT EXISTS "${OKUFLOW_FFMPEG_SDK_ROOT}/include/libavcodec/avcodec.h")
+            message(FATAL_ERROR "Missing explicit FFmpeg SDK headers")
+        endif()
+        target_include_directories(${target} PRIVATE "${OKUFLOW_FFMPEG_SDK_ROOT}/include")
+        target_compile_definitions(${target} PRIVATE OKUFLOW_HAS_FFMPEG_PLAYBACK=1)
+    else()
+        target_compile_definitions(${target} PRIVATE OKUFLOW_HAS_FFMPEG_PLAYBACK=0)
+    endif()
+endfunction()

@@ -48,6 +48,7 @@ include(mcp.cmake)
 include(bundle_publication.cmake)
 include(native_control.cmake)
 include(ultra_clear_text.cmake)
+include(uct_frozen_upload.cmake)
 include(maxine_lifecycle.cmake)
 include(media_gpu_scene.cmake)
 set_tests_properties(deadline_worker PROPERTIES TIMEOUT 15
@@ -680,7 +681,9 @@ if (WIN32)
         ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ultra_clear_text_panel.hpp
         ${PROJECT_SOURCE_DIR}/src/ui/ultra_clear_text_overlay.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/ultra_clear_text_panel.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/uct_timing_trace.cpp
         ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/uct_region_planner.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/joystick_overlay.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/color_scheme_picker.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/collapsible_section.cpp

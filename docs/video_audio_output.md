@@ -49,6 +49,12 @@ does not repeatedly retry a failed endpoint; a new generation or explicit
 `Reset` permits a retry on the same worker. The player must retain a monotonic
 video-clock fallback and show output failure truthfully.
 
+The upstream decoder retains its PCM media high-water after transferring packets
+to this sink. Ordinary delivery prepares about 200 ms of lead, plus at most one
+decoded packet, rather than resetting that lead whenever the UI drains the
+decoder queue. The sink's caps and fail-closed overflow behavior remain unchanged.
+See the [silent pacing and long-GOP regression](video_audio_preroll_repair.md).
+
 One process-wide native-owner lease covers the worker's complete lifetime,
 including COM and endpoint teardown. All native calls, COM initialization,
 waiting, and interface release happen outside the UI thread and outside the

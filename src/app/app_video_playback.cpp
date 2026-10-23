@@ -4,6 +4,7 @@
 #include "okuflow/app/agent/app_control_target.hpp"
 #include "okuflow/common/video_audio_output.hpp"
 #include "okuflow/common/video_playback.hpp"
+#include "okuflow/common/video_recap.hpp"
 #include "okuflow/ui/annotation_overlay.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "okuflow/ui/video_transport.hpp"
@@ -34,7 +35,7 @@ std::uint64_t PackedAdapter(const LUID& luid)
 }
 
 struct OkuFlowApp::VideoDocumentState {
-    enum class Kind { Camera, Recording, File };
+    enum class Kind { Camera, Recap, Recording, File };
     struct Part {
         int index{1};
         std::shared_ptr<RecordingArchive> archive;
@@ -43,6 +44,18 @@ struct OkuFlowApp::VideoDocumentState {
         std::vector<RecordingFrameAdmission> admissions;
     };
     VideoPlayback player;
+    RamVideoRecap recap;
+    VideoRecapSnapshot recapSnapshot;
+    std::shared_ptr<const VideoRecapSegment> recapReader, recapFrame, recapPresented;
+    std::optional<std::pair<std::int64_t,bool>> recapDeferredSeek;
+    QString recapDocumentId;
+    std::uint64_t recapEpoch{}, recapSourceEpoch{};
+    GUID recapSubtype{GUID_NULL}; UINT recapWidth{},recapHeight{},recapRateN{},recapRateD{};
+    int recapRotation{-1};
+    bool recapUnsupported{};
+    struct CameraView {float zoom{1},x{0.5f},y{0.5f};bool enabled{};
+        settings::ViewportFitModeSetting fit{settings::ViewportFitModeSetting::Fill};};
+    std::optional<CameraView> cameraView;
     VideoAudioOutput audio;
     Kind kind{Kind::Camera};
     RecordingSessionInfo session;
@@ -157,6 +170,27 @@ void OkuFlowApp::InitializeVideoPlayback()
 {
     if (videoDocument_ || !mainWindow_) return;
     videoDocument_ = std::make_shared<VideoDocumentState>();
+    if(settingsController_)videoDocument_->recap.SetDurationMinutes(settingsController_->Settings().liveRecapMinutes);
+    connect(mainWindow_.get(),&MainWindow::liveRecapMinutesChanged,this,[this](int minutes) {
+        settingsController_->MutableSettings().liveRecapMinutes=std::clamp(minutes,1,5);
+        if(videoDocument_) {
+            auto& d=*videoDocument_;d.recap.SetDurationMinutes(minutes);
+            const auto window=d.recap.Snapshot();
+            if(d.kind==VideoDocumentState::Kind::Recap && !d.followingLive && d.presented && d.recapPresented &&
+                d.recapPresented->begin100ns+d.presented->pts100ns<window.first100ns) {
+                // Keep the exact displayed lease as a bounded paused hold
+                // outside the shorter seek window, never relabelled as first.
+                if(!d.player.PauseAtFrame(d.presented))d.player.SetPlaying(false);
+                d.frame=d.presented;d.recapFrame=d.recapPresented;d.neighbor=d.presentedNeighbor;
+                d.playing=d.afterOperationPlay=d.waitingNextPart=false;d.pausedDisplayHold=true;
+            }
+        }
+        // A history preference must not persist the temporary replay zoom,
+        // camera selector or framing as the user's startup camera intent.
+        const auto config=settingsController_->Settings().currentConfig;
+        if(!settingsController_->Save(config))ShowStatusMessage(QStringLiteral("OkuFlow could not save settings."));
+        PollVideoPlayback();
+    });
     videoPlaybackTimer_ = new QTimer(this);
     videoPlaybackTimer_->setInterval(16);
     connect(videoPlaybackTimer_, &QTimer::timeout, this, &OkuFlowApp::PollVideoPlayback);
@@ -198,6 +232,172 @@ void OkuFlowApp::ShutdownVideoPlayback()
     if(mediaGpuNeighborScene_)mediaGpuNeighborScene_->Invalidate();
 }
 
+bool OkuFlowApp::LiveRecapActive() const { return videoDocument_ && cameraActive_; }
+bool OkuFlowApp::LiveRecapWantsFrame(UINT w,UINT h,std::int64_t clock) const {
+    return LiveRecapActive() && videoDocument_->recap.WantsFrame(w,h,clock);
+}
+QString OkuFlowApp::LiveOriginalRetentionId() const {
+    if(recordingManager_)if(const auto session=recordingManager_->CurrentSessionInfo())return session->id;
+    return videoDocument_?videoDocument_->recapDocumentId:QString();
+}
+void OkuFlowApp::ResetLiveRecap() {
+    if(!videoDocument_)return;auto& d=*videoDocument_;
+    d.recap.Reset(++d.recapSourceEpoch,-1);d.recapWidth=d.recapHeight=0;d.recapRotation=-1;
+    d.recapDocumentId.clear();presentedCameraScene_.reset();presentedCameraCapture_.reset();presentedOriginalCache_.Reset();
+    if(d.kind==VideoDocumentState::Kind::Recap) {
+        ReturnVideoToCamera();if(videoPlaybackTimer_)videoPlaybackTimer_->stop();
+    }
+}
+void OkuFlowApp::ObserveLiveRecapSource(const MediaFrame& frame) {
+    if(!videoDocument_ || !cameraActive_)return;auto& d=*videoDocument_;
+    const int rotation=CameraOriginalRotationQuarterTurns();
+    if(d.recapSubtype!=frame.subtype || d.recapWidth!=frame.width || d.recapHeight!=frame.height ||
+        d.recapRotation!=rotation || d.recapRateN!=frame.frameRateNumerator || d.recapRateD!=frame.frameRateDenominator) {
+        ResetLiveRecap();d.recapSubtype=frame.subtype;d.recapWidth=frame.width;d.recapHeight=frame.height;
+        d.recapRotation=rotation;d.recapRateN=frame.frameRateNumerator;d.recapRateD=frame.frameRateDenominator;
+        const auto policy=VideoRecapPolicy::ForSize(frame.width,frame.height);
+        d.recapUnsupported=!policy;
+        mainWindow_->setLiveRecapEstimate(policy?policy->bitrate:0);
+        d.recap.Reset(++d.recapSourceEpoch,rotation);
+        d.recapDocumentId=QStringLiteral("recap-")+QUuid::createUuid().toString(QUuid::Id128);
+    }
+    if(d.kind==VideoDocumentState::Kind::Camera) {
+        d.kind=VideoDocumentState::Kind::Recap;d.documentId=d.recapDocumentId;d.followingLive=true;
+    }
+    if(videoPlaybackTimer_ && !videoPlaybackTimer_->isActive())videoPlaybackTimer_->start();
+}
+void OkuFlowApp::SubmitLiveRecapOriginal(const CapturedFrame& original) {
+    if(!LiveRecapActive() || !original.IsValid() ||
+        !LiveRecapWantsFrame(original.width,original.height,original.identity.captureClock100ns))return;
+    VideoRecapFrame frame;frame.width=original.width;frame.height=original.height;frame.identity=original.identity;
+    if(original.HasGpuScene())frame.gpu=original.gpuScene;
+    else try{frame.pixels=std::make_shared<const std::vector<std::uint8_t>>(original.pixels);}catch(const std::bad_alloc&){return;}
+    videoDocument_->recap.Submit(std::move(frame));
+}
+bool OkuFlowApp::OpenLiveRecapAt(std::int64_t target,bool play) {
+    if(!videoDocument_)return false;auto& d=*videoDocument_;
+    const auto range=d.recap.Snapshot();
+    if(!range.available || range.first100ns<0 || range.end100ns<range.first100ns)return false;
+    target=std::clamp(target,range.first100ns,range.end100ns);
+    auto segment=d.recapReader && d.recapReader->epoch==range.epoch &&
+        target>=d.recapReader->begin100ns && target<=d.recapReader->end100ns
+        ? d.recapReader:d.recap.Acquire(target);
+    if(!segment) {
+        // Two pins can be occupied by the exact displayed scene and a reader
+        // being superseded. Cancel its generation, keep only the newest intent,
+        // and retry after native retirement frees the second bounded pin.
+        d.recapDeferredSeek={{target,play}};d.pendingSeekMs=target/kTicksPerMs;
+        d.player.Close();d.requestGeneration=d.player.Snapshot().requestGeneration;
+        d.recapReader.reset();d.openingArchive=false;d.afterOperationPlay=d.playing=false;
+        d.frame=d.presented;d.recapFrame=d.recapPresented;d.neighbor=d.presentedNeighbor;
+        return true;
+    }
+    d.recapDeferredSeek.reset();
+    if(!d.cameraView) d.cameraView=VideoDocumentState::CameraView{zoomAmount_,zoomCenterX_,zoomCenterY_,zoomEnabled_,pipelineOrchestrator_->ViewportFitMode()};
+    if(d.followingLive){d.cameraRotation=rotationQuarterTurns_;d.cameraRotationSaved=true;}
+    InvalidateMediaSelection();mediaHoldBakedScene_=false;
+    d.followingLive=d.pendingHold=d.heldLive=d.pausedDisplayHold=d.resumePending=d.waitingNextPart=false;
+    d.playing=false;d.pendingSeekMs=target/kTicksPerMs;d.afterOperationPlay=play;
+    d.kind=VideoDocumentState::Kind::Recap;d.documentId=d.recapDocumentId;
+    rotationQuarterTurns_=0;UpdateRotationUi();
+    const auto local=std::max<std::int64_t>(0,target-segment->begin100ns);
+    if(!d.recapReader || d.recapReader->id!=segment->id || d.recapReader->epoch!=segment->epoch) {
+        d.requestGeneration=d.player.OpenMemory(segment->source,segment);d.recapReader=std::move(segment);
+        d.openingArchive=true;d.afterOpenSeek=local;
+    } else d.requestGeneration=d.player.Seek100ns(local);
+    d.audio.Close();d.player.SetMuted(true);return true;
+}
+
+void OkuFlowApp::PollLiveRecap() {
+    ApplyLiveRecapSnapshot(videoDocument_->recap.Snapshot());
+}
+void OkuFlowApp::ApplyLiveRecapSnapshot(const VideoRecapSnapshot& recap) {
+    auto& d=*videoDocument_;d.recapSnapshot=recap;
+    const auto& r=d.recapSnapshot;
+    const bool changedEpoch=d.recapEpoch && r.epoch!=d.recapEpoch;
+    d.recapEpoch=r.epoch;
+    if(changedEpoch && !d.followingLive){ReturnVideoToCamera();return;}
+    if(d.recapDeferredSeek) {
+        const auto intent=*d.recapDeferredSeek;
+        // Avoid repeatedly cancelling the reader while its existing close is
+        // retiring. Acquire is non-native and obeys the same two-pin quota.
+        if(r.pinnedSegments<VideoRecapPolicy::kPinnedSegments)OpenLiveRecapAt(intent.first,intent.second);
+    }
+    const auto heldTarget=r.captureOrigin100ns>=0 && d.heldCaptureClock100ns>=0
+        ? std::max<std::int64_t>(0,d.heldCaptureClock100ns-r.captureOrigin100ns) : -1;
+    const bool resumeUnavailable=(d.recapUnsupported || r.failed) &&
+        (!r.available || heldTarget<0 || heldTarget>r.end100ns);
+    if(d.resumePending && resumeUnavailable)d.resumePending=false;
+    if(d.resumePending && d.heldLive && r.available && heldTarget>=0) {
+        // Resume begins at the first genuine coded sample after the manual
+        // freeze action. The uncompressed exact scene is never relabelled as
+        // a lossy decoder sample or offered as its corroborating neighbour.
+        const auto target=heldTarget;
+        if(target<=r.end100ns)OpenLiveRecapAt(std::max(target,r.first100ns),true);
+    }
+    auto snapshot=d.player.Snapshot();d.playback=snapshot;
+    if(snapshot.requestGeneration==d.requestGeneration && !d.followingLive && !d.heldLive && !d.pendingHold) {
+        if(snapshot.state==VideoPlaybackState::Unavailable) {
+            d.openingArchive=false;d.afterOpenSeek.reset();d.afterOperationPlay=d.playing=false;
+        } else if(snapshot.frame && snapshot.frame->requestGeneration==d.requestGeneration &&
+            snapshot.state!=VideoPlaybackState::Opening && snapshot.state!=VideoPlaybackState::Seeking) {
+            if(d.openingArchive) {
+                d.openingArchive=false;const auto target=d.afterOpenSeek.value_or(0);d.afterOpenSeek.reset();
+                if(target>0){d.requestGeneration=d.player.Seek100ns(target);snapshot=d.player.Snapshot();}
+            }
+            if(snapshot.frame && snapshot.frame->requestGeneration==d.requestGeneration) {
+                if(!d.pausedDisplayHold){d.frame=snapshot.frame;d.neighbor=snapshot.neighborFrame;d.recapFrame=d.recapReader;}
+                else if(snapshot.frame==d.frame)d.neighbor=snapshot.neighborFrame;
+                if(d.afterOperationPlay){d.afterOperationPlay=false;d.player.SetPlaying(true);snapshot=d.player.Snapshot();}
+                const bool wasPlaying=d.playing;
+                d.playing=snapshot.state==VideoPlaybackState::Playing;
+                if(snapshot.state==VideoPlaybackState::Ended && !d.pausedDisplayHold && d.playing==false &&
+                    d.recapReader && (d.waitingNextPart || wasPlaying))d.waitingNextPart=true;
+            }
+        }
+    }
+    if(d.waitingNextPart && d.recapReader) {
+        if(r.end100ns>d.recapReader->end100ns)OpenLiveRecapAt(d.recapReader->end100ns+1,true);
+        else if(cameraActive_ && r.available)JumpSelectedVideoToEnd();
+    }
+    if(MediaViewSelected() && d.frame && !d.recapDeferredSeek &&
+        (d.heldLive || d.frame->requestGeneration==d.requestGeneration))PresentMediaView();
+    if(d.pendingSeekMs && d.completedRequestGeneration==d.requestGeneration && !d.openingArchive &&
+        !d.heldLive && !d.pendingHold && !d.recapDeferredSeek)d.pendingSeekMs.reset();
+    VideoTransport::Snapshot ui;ui.source=VideoTransport::Source::Recap;
+    ui.sourceName=QCoreApplication::translate("OkuFlow","Live recap");
+    ui.diagnosticDetail=QString::fromStdString(r.error);
+    if(d.recapUnsupported && ui.diagnosticDetail.isEmpty())
+        ui.diagnosticDetail=QCoreApplication::translate("OkuFlow","Video unavailable");
+    if(d.transportDocumentId!=d.documentId){d.transportDocumentId=d.documentId;++d.transportGeneration;}
+    ui.sourceGeneration=d.transportGeneration;ui.playing=d.followingLive || d.playing || d.resumePending || d.afterOperationPlay || d.waitingNextPart;
+    ui.firstMs=std::max<std::int64_t>(0,r.first100ns)/kTicksPerMs;
+    ui.durationMs=std::max<std::int64_t>(0,r.end100ns)/kTicksPerMs;ui.seekable=r.available;
+    ui.canPauseLive=d.followingLive && cameraFramePresented_ && presentedCameraScene_ && presentedCameraScene_->captureClock100ns>=0;
+    ui.canSaveFrame=MediaViewSelected() && d.presented && !d.savePending;
+    const auto liveCapture=presentedCameraCapture_?presentedCameraCapture_->clock100ns:-1;
+    ui.positionMs=d.followingLive && liveCapture>=0 && r.captureOrigin100ns>=0?std::max<std::int64_t>(0,liveCapture-r.captureOrigin100ns)/kTicksPerMs
+        : d.presented && d.recapPresented?(d.recapPresented->begin100ns+d.presented->pts100ns)/kTicksPerMs
+        : d.pendingSeekMs.value_or(ui.firstMs);
+    ui.state=d.pendingHold || d.resumePending || (!r.available && !d.heldLive) ? VideoTransport::State::Buffering
+        : d.recapDeferredSeek ? VideoTransport::State::Seeking
+        : d.openingArchive ? VideoTransport::State::Opening
+        : snapshot.state==VideoPlaybackState::Seeking && !d.heldLive ? VideoTransport::State::Seeking
+        : r.failed && !r.available ? VideoTransport::State::Unavailable
+        : d.followingLive ? (cameraFramePresented_?VideoTransport::State::Live:VideoTransport::State::Buffering)
+        : d.playing ? VideoTransport::State::BehindLive : VideoTransport::State::Paused;
+    if((d.heldLive && resumeUnavailable) || ((r.failed || d.recapUnsupported) && !r.available))
+        ui.state=VideoTransport::State::Unavailable;
+    if(snapshot.state==VideoPlaybackState::Unavailable && !d.followingLive && !d.heldLive)ui.state=VideoTransport::State::Unavailable;
+    mainWindow_->videoTransport()->SetSnapshot(ui);
+    mainWindow_->setVideoSourceSelected(MediaViewSelected(),selectedCameraIndex_);
+    const bool selected=MediaViewSelected(),gpu=SelectedMediaGpuProcessingAvailable();
+    if(!d.controlsInitialized || d.controlsMediaSelected!=selected || d.controlsMediaGpuAvailable!=gpu) {
+        d.controlsInitialized=true;d.controlsMediaSelected=selected;d.controlsMediaGpuAvailable=gpu;
+        UpdateControlEnabledStates();UpdatePhoneLightUi();UpdateKeystoneTrackingUi();UpdateProcessingStatusLabel();
+    }
+}
+
 void OkuFlowApp::InvalidateMediaSelection(bool preservePendingReadback)
 {
     ++mediaDocumentEpoch_;
@@ -207,6 +407,7 @@ void OkuFlowApp::InvalidateMediaSelection(bool preservePendingReadback)
     mediaGpuAnalysisRetryAtMs_=0;
     mediaGpuAnalysisAttempts_ = 0;
     mediaUctNeighborSeq_ = 0;
+    mediaUctCorroborationPolicy_ = {};
     if (!preservePendingReadback) {
         RetirePendingMediaHoldReadback();
     } else if (videoDocument_ && videoDocument_->pendingHold) {
@@ -276,7 +477,7 @@ void OkuFlowApp::OnVideoRecordingStopping(const RecordingSessionInfo& session)
         if (!retained) {
             doc.pendingHold = false;
             doc.heldUnrecorded = true;
-            ShowStatusMessage(QStringLiteral("The displayed frame could not be retained. Recorded video remains available."));
+            ShowStatusMessage(QStringLiteral("Pause unavailable: the displayed frame could not be retained."));
         }
     }
     PollVideoPlayback();
@@ -372,11 +573,13 @@ void OkuFlowApp::OpenPendingVideoFile()
 void OkuFlowApp::ReturnVideoToCamera()
 {
     if (!videoDocument_) return;
+    const bool wasMedia=MediaViewSelected();
     // The private media scene never becomes the live camera's cached output.
     // Retire its CUDA/native resources on workers while the camera resumes.
     if(mediaGpuScene_)mediaGpuScene_->Invalidate();
     if(mediaGpuNeighborScene_)mediaGpuNeighborScene_->Invalidate();
     auto& doc = *videoDocument_;
+    mediaHoldBakedScene_=false;
     if (doc.followingLive) doc.cameraRotation = rotationQuarterTurns_;
     InvalidateMediaSelection();
     doc.player.Close(); doc.audio.Close();
@@ -394,13 +597,26 @@ void OkuFlowApp::ReturnVideoToCamera()
         rotationQuarterTurns_ = doc.cameraRotation; UpdateRotationUi();
     }
     doc.cameraRotationSaved = doc.active;
-    doc.kind = doc.active ? VideoDocumentState::Kind::Recording : VideoDocumentState::Kind::Camera;
+    doc.recapReader.reset();doc.recapFrame.reset();doc.recapPresented.reset();
+    doc.recapDeferredSeek.reset();
+    if(doc.cameraView) {
+        zoomAmount_=doc.cameraView->zoom;zoomEnabled_=doc.cameraView->enabled;
+        SetZoomCenter(doc.cameraView->x,doc.cameraView->y,true,true,false);
+        if(pipelineOrchestrator_->ViewportFitMode()!=doc.cameraView->fit)SetViewportFitMode(doc.cameraView->fit,false);
+        if(uiState_->zoomSlider_){const QSignalBlocker b(uiState_->zoomSlider_);uiState_->zoomSlider_->setValue(int(std::lround(zoomAmount_*kZoomSliderScale)));}
+        if(uiState_->zoomCheckbox_){const QSignalBlocker b(uiState_->zoomCheckbox_);uiState_->zoomCheckbox_->setChecked(zoomEnabled_);}
+        doc.cameraView.reset();
+    }
+    doc.kind = doc.active ? VideoDocumentState::Kind::Recording : cameraActive_ && !doc.recapDocumentId.isEmpty()
+        ? VideoDocumentState::Kind::Recap : VideoDocumentState::Kind::Camera;
     if (!doc.active) doc.documentId.clear();
-    doc.followingLive = doc.active;
+    if(doc.kind==VideoDocumentState::Kind::Recap)doc.documentId=doc.recapDocumentId;
+    doc.followingLive = doc.active || doc.kind==VideoDocumentState::Kind::Recap;
+    if(wasMedia){cameraFramePresented_=false;presentedCameraScene_.reset();presentedCameraCapture_.reset();}
     cudaSceneReady_ = cpuSceneReady_ = false; // never present cached file pixels as camera
     uctProvenance_.Reset();
     if (pipelineOrchestrator_) pipelineOrchestrator_->MarkViewportDirty();
-    if (!doc.active && videoPlaybackTimer_) videoPlaybackTimer_->stop();
+    if (!doc.active && !cameraActive_ && videoPlaybackTimer_) videoPlaybackTimer_->stop();
     PollVideoPlayback();
 }
 
@@ -416,6 +632,13 @@ bool OkuFlowApp::MediaPlaybackPlaying() const
         videoDocument_->afterOperationPlay || videoDocument_->waitingNextPart);
 }
 
+uct::ImmutableCorroborationPolicy OkuFlowApp::SelectedMediaCorroborationPolicy(
+    const VideoPlaybackFrame& frame) const {
+    if (!videoDocument_ || videoDocument_->kind != VideoDocumentState::Kind::File ||
+        videoDocument_->frame.get() != &frame) return {};
+    return videoDocument_->player.CorroborationPolicy(videoDocument_->frame);
+}
+
 bool OkuFlowApp::MediaGpuViewSelected() const {
     // Image actions and diagnostics describe the last successful display,
     // which may differ from a decoded successor awaiting GPU admission.
@@ -425,7 +648,7 @@ bool OkuFlowApp::MediaGpuViewSelected() const {
 bool OkuFlowApp::SelectedMediaGpuProcessingAvailable() const {
     // Decode can fall back to host pixels independently of CUDA processing.
     // Native media controls may be edited while the private scene initializes.
-    return MediaViewSelected() && videoDocument_ && videoDocument_->frame &&
+    return MediaViewSelected() && !mediaHoldBakedScene_ && videoDocument_ && videoDocument_->frame &&
         SelectedMediaGpuAdapter().has_value();
 }
 
@@ -493,6 +716,9 @@ void OkuFlowApp::RequestMediaCpuFallback(const std::string& reason)
         // The adapter is CPU-only now, so opening another part decodes on CPU.
         if (doc.readerPart && *doc.readerPart == part) doc.player.UseCpuFallback(reason);
         issued = doc.OpenPart(part, anchor->pts100ns, resume);
+    } else if(doc.kind==VideoDocumentState::Kind::Recap && doc.recapFrame) {
+        doc.player.UseCpuFallback(reason);
+        issued=OpenLiveRecapAt(doc.recapFrame->begin100ns+anchor->pts100ns,resume);
     } else if (SameVideoPath(doc.readerFilePath, doc.filePath)) {
         doc.player.UseCpuFallback(reason);
         doc.requestGeneration = doc.player.Seek100ns(anchor->pts100ns);
@@ -522,6 +748,9 @@ int OkuFlowApp::CameraOriginalRotationQuarterTurns() const
 }
 
 std::int64_t OkuFlowApp::SelectedMediaDocumentPts100ns(std::int64_t localPts100ns) const {
+    if(videoDocument_ && videoDocument_->kind==VideoDocumentState::Kind::Recap)
+        return videoDocument_->heldLive ? -1 : videoDocument_->recapFrame
+            ? videoDocument_->recapFrame->begin100ns+localPts100ns : -1;
     if (localPts100ns < 0 || !videoDocument_ ||
         videoDocument_->kind != VideoDocumentState::Kind::Recording) return localPts100ns;
     const auto& doc = *videoDocument_;
@@ -541,18 +770,58 @@ bool OkuFlowApp::PresentMediaView()
     if (!MediaViewSelected() || !videoDocument_->frame) return false;
     auto& doc = *videoDocument_;
     const auto& frame = *doc.frame;
-    const bool presented = (frame.gpu || SelectedMediaGpuProcessingAvailable())
+    const bool presented = doc.heldLive && mediaHoldBakedScene_ ? PresentFrozenMediaScene() :
+        (frame.gpu || SelectedMediaGpuProcessingAvailable())
         ? PresentSelectedMediaGpuFrame(frame,doc.neighbor.get(),MediaPlaybackPlaying()):
         frame.bgra && PresentSelectedMediaPixels(frame.bgra->data(), frame.width, frame.height,
-            frame.strideBytes, mediaDocumentEpoch_, frame.sampleId, doc.neighbor.get(), frame.pts100ns,MediaPlaybackPlaying());
+            frame.strideBytes, mediaDocumentEpoch_, frame.sampleId, doc.neighbor.get(), frame.pts100ns,
+            MediaPlaybackPlaying(), SelectedMediaCorroborationPolicy(frame));
     if (presented) {
         doc.presented = doc.frame;
         doc.presentedNeighbor = doc.neighbor;
         doc.presentedPart = doc.framePart;
+        if(doc.kind==VideoDocumentState::Kind::Recap)doc.recapPresented=doc.recapFrame;
         if (!doc.heldLive && !doc.pendingHold && doc.frame->requestGeneration == doc.requestGeneration)
             doc.completedRequestGeneration = doc.requestGeneration;
     }
     return presented;
+}
+
+bool OkuFlowApp::PresentFrozenMediaScene() {
+    if(!videoDocument_ || !videoDocument_->frame || !videoDocument_->frame->bgra || !presenter_ ||
+        !uiState_->renderWidget_ || !uiState_->renderWidget_->isPresenterReady())return false;
+    const auto& f=*videoDocument_->frame;
+    const auto width=presenter_->ViewportWidth(),height=presenter_->ViewportHeight();
+    if(!width || !height)return false;
+    const auto& held=mediaHoldViewTransform_;
+    const float originalZoom=1.0f/std::max(held.sourceWidth,held.sourceHeight);
+    const bool unmoved=rotationQuarterTurns_==0 && std::abs(zoomAmount_-originalZoom)<0.00001f &&
+        std::abs(zoomCenterX_-(held.sourceX+held.sourceWidth*0.5f))<0.00001f &&
+        std::abs(zoomCenterY_-(held.sourceY+held.sourceHeight*0.5f))<0.00001f;
+    const bool swapped=(rotationQuarterTurns_&1)!=0;
+    const auto transform=unmoved?held:ComputeViewTransform(swapped?f.height:f.width,swapped?f.width:f.height,width,height,zoomEnabled_?zoomAmount_:1.0f,
+        zoomCenterX_,zoomCenterY_,pipelineOrchestrator_->ViewportFitMode()==settings::ViewportFitModeSetting::Fit?ViewportFitMode::kFit:ViewportFitMode::kFill);
+    if(!transform.valid)return false;
+    MediaViewportAdmission::Stamp stamp;
+    stamp.recipe[0]=mediaDocumentEpoch_;stamp.recipe[1]=f.sampleId;stamp.transform=transform;stamp.width=width;stamp.height=height;
+    stamp.recipe[2]=rotationQuarterTurns_;
+    // The live camera keeps processing behind this baked scene. Its dirty
+    // flag cannot change held pixels; this scene's own stamp covers view edits.
+    if(!mediaViewportAdmission_.NeedsPresentation(stamp,false,presenter_->NeedsScenePresent()) &&
+        lastAnnotationPresentation_ && !presentationBuffer_.empty())return true;
+    auto recipe=mediaHoldDisplayRecipe_;recipe.rotationQuarterTurns=rotationQuarterTurns_;
+    if(!ComposeFrozenCameraScene(*f.bgra,f.width,f.height,transform,width,height,recipe,presentationBuffer_))return false;
+    if(ultraClearText_)ultraClearText_->SetMediaOverlaySuppressed(true);
+    presenter_->Present(presentationBuffer_.data(),width,height);
+    if(presenter_->IsFaulted() || presenter_->NeedsScenePresent())return false;
+    presentationWidth_=width;presentationHeight_=height;
+    UctFrameContext context;context.geometry.settings.sourceEpoch=mediaDocumentEpoch_;
+    context.geometry.sceneWidth=f.width;context.geometry.sceneHeight=f.height;context.requested=context.geometry.settings;
+    context.frameSeq=f.sampleId;context.transform=transform;context.viewportWidth=width;context.viewportHeight=height;
+    context.compositeFrames=true;lastAnnotationPresentation_=context;lastAnnotationGpuPresentation_.reset();
+    annotationPresentationCuda_=false;mediaPresentedWithCuda_=false;mediaSuperResPresented_=false;
+    mainWindow_->setAnnotationViewTransform(transform);mediaViewportAdmission_.Presented(stamp);
+    pipelineOrchestrator_->MarkViewportPresented();return true;
 }
 
 bool OkuFlowApp::AcceptLiveMediaHold(std::vector<std::uint8_t> pixels, UINT width, UINT height,
@@ -563,13 +832,15 @@ bool OkuFlowApp::AcceptLiveMediaHold(std::vector<std::uint8_t> pixels, UINT widt
     auto& doc = *videoDocument_;
     doc.pendingHold = false;
     if (!VideoPlaybackLayoutFits(width, height, static_cast<std::int64_t>(width) * 4) ||
-        pixels.size() != static_cast<std::size_t>(width) * height * 4) {
+        pixels.size() != static_cast<std::size_t>(width) * height * 4 ||
+        (doc.kind==VideoDocumentState::Kind::Recap && captureClock100ns<0)) {
         doc.resumePending = false;
         // A failed manual hold must not abandon a still-recording live view.
         // Finishing recordings retain their separate unavailable receipt.
-        doc.followingLive = doc.active && doc.kind == VideoDocumentState::Kind::Recording;
+        doc.followingLive = (doc.active && doc.kind == VideoDocumentState::Kind::Recording) ||
+            (cameraActive_ && doc.kind==VideoDocumentState::Kind::Recap);
         doc.heldUnrecorded = !doc.followingLive;
-        ShowStatusMessage(QStringLiteral("The displayed frame could not be retained. Recorded video remains available."));
+        ShowStatusMessage(QStringLiteral("Pause unavailable: the displayed frame could not be retained."));
         return false;
     }
     const auto& shownView = mediaHoldViewTransform_;
@@ -582,7 +853,7 @@ bool OkuFlowApp::AcceptLiveMediaHold(std::vector<std::uint8_t> pixels, UINT widt
     bool exactFraming = shownView.valid && std::isfinite(heldZoom) && heldZoom >= 1.0f &&
         heldZoom <= static_cast<float>(kZoomSliderMaxMultiplier) &&
         shownView.sourceWidth > 0.0f && shownView.sourceHeight > 0.0f;
-    if (exactFraming && presenter_ && presenter_->ViewportWidth() && presenter_->ViewportHeight()) {
+    if (exactFraming && !mediaHoldBakedScene_ && presenter_ && presenter_->ViewportWidth() && presenter_->ViewportHeight()) {
         const auto reproduced = ComputeViewTransform(width, height, presenter_->ViewportWidth(), presenter_->ViewportHeight(),
             heldZoom, heldCenterX, heldCenterY, fitted ? ViewportFitMode::kFit : ViewportFitMode::kFill);
         const auto same = [](float a, float b) { return std::isfinite(a) && std::isfinite(b) && std::abs(a-b) < 0.00001f; };
@@ -594,7 +865,8 @@ bool OkuFlowApp::AcceptLiveMediaHold(std::vector<std::uint8_t> pixels, UINT widt
     }
     if (!exactFraming) {
         doc.resumePending = false;
-        doc.followingLive = doc.active && doc.kind == VideoDocumentState::Kind::Recording;
+        doc.followingLive = (doc.active && doc.kind == VideoDocumentState::Kind::Recording) ||
+            (cameraActive_ && doc.kind==VideoDocumentState::Kind::Recap);
         doc.heldUnrecorded = !doc.followingLive;
         ShowStatusMessage(QStringLiteral("Pause unavailable: the displayed framing could not be retained exactly."));
         return false;
@@ -621,6 +893,7 @@ void OkuFlowApp::SeekSelectedVideo(qint64 positionMs)
 {
     if (!videoDocument_) return;
     auto& doc = *videoDocument_;
+    if(doc.kind==VideoDocumentState::Kind::Recap){OpenLiveRecapAt(std::clamp<std::int64_t>(positionMs,0,INT64_MAX/kTicksPerMs)*kTicksPerMs,false);PollVideoPlayback();return;}
     if (doc.kind == VideoDocumentState::Kind::Camera || doc.openingFile) return;
     if (doc.followingLive) { doc.cameraRotation = rotationQuarterTurns_; doc.cameraRotationSaved = true; }
     InvalidateMediaSelection();
@@ -658,6 +931,16 @@ void OkuFlowApp::ToggleSelectedVideoPlayback()
     if (!videoDocument_) return;
     auto& doc = *videoDocument_;
     if (doc.openingFile || doc.openingArchive || doc.kind == VideoDocumentState::Kind::Camera) return;
+    if(doc.kind==VideoDocumentState::Kind::Recap && !doc.followingLive) {
+        if(doc.pendingHold || doc.heldLive){doc.resumePending=!doc.resumePending;PollVideoPlayback();return;}
+        if(doc.playing || doc.waitingNextPart || doc.afterOperationPlay) {
+            InvalidateMediaSelection();doc.playing=doc.waitingNextPart=doc.afterOperationPlay=false;doc.pausedDisplayHold=true;
+            if(doc.presented){doc.frame=doc.presented;doc.recapFrame=doc.recapPresented;}
+            doc.neighbor.reset();doc.presentedNeighbor.reset();
+            if(!doc.player.PauseAtFrame(doc.frame))doc.player.SetPlaying(false);
+        } else if(doc.frame && doc.recapFrame)OpenLiveRecapAt(doc.recapFrame->begin100ns+doc.frame->pts100ns,true);
+        PollVideoPlayback();return;
+    }
     if (doc.waitingNextPart) { InvalidateMediaSelection(); doc.waitingNextPart = false; doc.playing = false; PollVideoPlayback(); return; }
     if (doc.afterOperationPlay) {
         InvalidateMediaSelection();
@@ -666,6 +949,14 @@ void OkuFlowApp::ToggleSelectedVideoPlayback()
         PollVideoPlayback(); return;
     }
     if (doc.followingLive) {
+        if(!doc.cameraView)doc.cameraView=VideoDocumentState::CameraView{zoomAmount_,zoomCenterX_,zoomCenterY_,zoomEnabled_,pipelineOrchestrator_->ViewportFitMode()};
+        if(doc.kind==VideoDocumentState::Kind::Recap) {
+            const auto r=doc.recap.Snapshot();
+            if(r.captureOrigin100ns>=0 && presentedCameraCapture_ && presentedCameraCapture_->clock100ns>=0)
+                doc.pendingSeekMs=std::max<std::int64_t>(0,
+                    presentedCameraCapture_->clock100ns-r.captureOrigin100ns)/kTicksPerMs;
+            else doc.pendingSeekMs.reset();
+        }
         doc.cameraRotation = rotationQuarterTurns_; doc.cameraRotationSaved = true;
         const auto livePresentation = lastAnnotationPresentation_;
         const auto liveGpuPresentation = lastAnnotationGpuPresentation_;
@@ -682,18 +973,22 @@ void OkuFlowApp::ToggleSelectedVideoPlayback()
             doc.followingLive = true;
             lastAnnotationPresentation_ = livePresentation;
             lastAnnotationGpuPresentation_ = liveGpuPresentation;
-            ShowStatusMessage(QStringLiteral("The displayed frame could not be retained. Recorded video remains available."));
+            ShowStatusMessage(QStringLiteral("Pause unavailable: the displayed frame could not be retained."));
         }
     } else if (doc.pendingHold || doc.resumePending) {
         InvalidateMediaSelection(doc.pendingHold);
         doc.resumePending = !doc.resumePending;
     } else if (doc.playing) {
         InvalidateMediaSelection();
-        doc.player.SetPlaying(false); doc.audio.Close(); doc.playing = false;
+        doc.audio.Close(); doc.playing = false;
         doc.pausedDisplayHold = true;
         // The native decoder may be ahead of a deferred presentation. Own the
         // actual displayed frame and reseek it on Resume.
-        if (doc.presented) { doc.frame = doc.presented; doc.neighbor = doc.presentedNeighbor; doc.framePart = doc.presentedPart; }
+        if (doc.presented) { doc.frame = doc.presented; doc.framePart = doc.presentedPart; }
+        // A predecessor can belong to the other side of a scene cut. Only
+        // the decoder's frame-bound following receipt may corroborate Pause.
+        doc.neighbor.reset(); doc.presentedNeighbor.reset();
+        if (!doc.player.PauseAtFrame(doc.frame)) doc.player.SetPlaying(false);
     } else if (doc.heldLive) {
         if (!doc.heldUnrecorded && !doc.heldMappingUnavailable) { InvalidateMediaSelection(); doc.resumePending = true; }
         else ShowStatusMessage(doc.heldUnrecorded
@@ -723,6 +1018,7 @@ void OkuFlowApp::JumpSelectedVideoToEnd()
 {
     if (!videoDocument_) return;
     auto& doc = *videoDocument_;
+    if(doc.kind==VideoDocumentState::Kind::Recap){ReturnVideoToCamera();return;}
     if (doc.kind == VideoDocumentState::Kind::Camera || doc.openingFile) return;
     if (doc.followingLive) { doc.cameraRotation = rotationQuarterTurns_; doc.cameraRotationSaved = true; }
     InvalidateMediaSelection();
@@ -762,6 +1058,7 @@ void OkuFlowApp::PollVideoPlayback()
     ExpireAnnotationReadback();
     auto& doc = *videoDocument_;
     doc.player.SetGpuAdapter(SelectedMediaGpuAdapter());
+    if(doc.kind==VideoDocumentState::Kind::Recap && !doc.openingFile && doc.waitingSession.isEmpty()){PollLiveRecap();return;}
     if (recordingManager_ && !doc.session.id.isEmpty()) {
         if (const auto timeline = recordingManager_->CurrentTimeline();
             timeline && timeline->session.id == doc.session.id && timeline->archive) {
@@ -873,6 +1170,7 @@ void OkuFlowApp::PollVideoPlayback()
                     InvalidateMediaSelection();
                     if (!doc.cameraRotationSaved) { doc.cameraRotation = rotationQuarterTurns_; doc.cameraRotationSaved = true; }
                     doc.kind = VideoDocumentState::Kind::File;
+                    mediaHoldBakedScene_=false;
                     doc.documentId = QStringLiteral("media-") + QUuid::createUuid().toString(QUuid::Id128);
                     // The preceding document may remain physically visible until
                     // this frame is submitted, but cannot authorize a new-file
@@ -903,6 +1201,19 @@ void OkuFlowApp::PollVideoPlayback()
                     // Keep the old scene while the ordered seek completes.
                     snapshot = doc.player.Snapshot();
                 }
+            }
+            if (doc.pausedDisplayHold && snapshot.requestGeneration == doc.requestGeneration &&
+                snapshot.frame == doc.frame && snapshot.frame &&
+                snapshot.frame->requestGeneration == doc.requestGeneration &&
+                !doc.followingLive && !doc.heldLive && !doc.pendingHold && !doc.openingFile) {
+                // Ancillary evidence may arrive after the exact displayed
+                // frame was frozen. Never adopt a decoder-ahead frame here.
+                const auto& neighbor = snapshot.neighborFrame;
+                doc.neighbor = neighbor && neighbor->requestGeneration == doc.requestGeneration &&
+                    neighbor->sampleId != doc.frame->sampleId && neighbor->pts100ns > doc.frame->pts100ns &&
+                    SelectedMediaCorroborationPolicy(*doc.frame).Allows(doc.frame->sampleId,
+                        doc.frame->pts100ns / 10'000, neighbor->sampleId, neighbor->pts100ns / 10'000)
+                    ? neighbor : std::shared_ptr<const VideoPlaybackFrame>{};
             }
             if (snapshot.requestGeneration == doc.requestGeneration &&
                 snapshot.frame && snapshot.frame->requestGeneration == doc.requestGeneration &&
@@ -1055,6 +1366,8 @@ void OkuFlowApp::BeginSelectedVideoSaveReceipt()
         doc.savePts100ns = doc.Offset(doc.selectedPart) + doc.heldAdmission->pts100ns;
     else if (!doc.heldLive)
         doc.savePts100ns = (doc.kind == VideoDocumentState::Kind::Recording ? doc.Offset(doc.presentedPart) : 0) + doc.presented->pts100ns;
+    if(doc.kind==VideoDocumentState::Kind::Recap && !doc.heldLive && doc.recapPresented)
+        doc.savePts100ns=doc.recapPresented->begin100ns+doc.presented->pts100ns;
 }
 
 void OkuFlowApp::SaveSelectedVideoFrame()
@@ -1217,7 +1530,7 @@ QJsonObject OkuFlowApp::SelectedVideoState() const
     const auto& doc = *videoDocument_;
     const auto snapshot = doc.player.Snapshot();
     const char* kind = doc.kind == VideoDocumentState::Kind::Camera ? "camera"
-        : doc.kind == VideoDocumentState::Kind::Recording ? "recording" : "file";
+        : doc.kind == VideoDocumentState::Kind::Recap ? "recap" : doc.kind == VideoDocumentState::Kind::Recording ? "recording" : "file";
     const char* state = doc.kind == VideoDocumentState::Kind::Camera ? "camera"
         : doc.finishing ? "finishing" : doc.pendingHold ? "holding"
         : doc.resumePending || doc.waitingNextPart ? "waiting" : doc.openingFile || doc.openingArchive ? "opening"
@@ -1229,7 +1542,8 @@ QJsonObject OkuFlowApp::SelectedVideoState() const
         : snapshot.requestGeneration == doc.requestGeneration && snapshot.state == VideoPlaybackState::Waiting && doc.playing ? "waiting"
         : snapshot.state == VideoPlaybackState::Ended && !doc.pausedDisplayHold ? (doc.active ? "waiting" : "end")
         : doc.playing ? "playing" : "paused";
-    const auto end = doc.kind == VideoDocumentState::Kind::Recording ? doc.End() : doc.fileDuration100ns;
+    const auto end = doc.kind == VideoDocumentState::Kind::Recap ? doc.recapSnapshot.end100ns :
+        doc.kind == VideoDocumentState::Kind::Recording ? doc.End() : doc.fileDuration100ns;
     const bool liveFrame = doc.followingLive && cameraActive_ && cameraFramePresented_ && lastAnnotationPresentation_.has_value();
     const auto liveSequence = liveFrame && lastAnnotationPresentation_
         ? lastAnnotationPresentation_->frameSeq : 0;
@@ -1269,14 +1583,38 @@ QJsonObject OkuFlowApp::SelectedVideoState() const
         }
     } else if (doc.presented && !doc.heldLive) {
         result["selectedPts100ns"] = static_cast<qint64>((doc.kind == VideoDocumentState::Kind::Recording ? doc.Offset(doc.presentedPart) : 0) + doc.presented->pts100ns);
+        if(doc.kind==VideoDocumentState::Kind::Recap && doc.recapPresented)
+            result["selectedPts100ns"]=static_cast<qint64>(doc.recapPresented->begin100ns+doc.presented->pts100ns);
     } else result["selectedPts100ns"] = QJsonValue::Null;
     if (doc.heldLive) result["provisionalCaptureClock100ns"] = static_cast<qint64>(doc.heldCaptureClock100ns);
     result["sourceName"] = doc.kind == VideoDocumentState::Kind::File ? QFileInfo(doc.filePath).fileName()
-        : doc.kind == VideoDocumentState::Kind::Recording ? QStringLiteral("Current recording") : QString();
+        : doc.kind == VideoDocumentState::Kind::Recording ? QStringLiteral("Current recording")
+        : doc.kind == VideoDocumentState::Kind::Recap ? QStringLiteral("Live recap") : QString();
+    if(doc.kind==VideoDocumentState::Kind::Recap) {
+        result["seekableFirst100ns"]=static_cast<qint64>(doc.recapSnapshot.first100ns);
+        result["recapBytes"]=static_cast<qint64>(doc.recapSnapshot.compressedBytes);
+        result["recapDroppedFrames"]=static_cast<qint64>(doc.recapSnapshot.droppedFrames);
+        result["recapAdmittedFrames"]=static_cast<qint64>(doc.recapSnapshot.admittedFrames);
+        result["recapCompletedFrames"]=static_cast<qint64>(doc.recapSnapshot.completedFrames);
+        result["recapError"]=QString::fromStdString(doc.recapSnapshot.error);
+        result["recapFailed"]=doc.recapSnapshot.failed;
+        result["recapSourceWidth"]=static_cast<int>(doc.recapWidth);
+        result["recapSourceHeight"]=static_cast<int>(doc.recapHeight);
+        result["recapFrameRateNumerator"]=static_cast<int>(doc.recapRateN);
+        result["recapFrameRateDenominator"]=static_cast<int>(doc.recapRateD);
+        result["recapWarming"]=doc.recapSnapshot.warming;result["recapPressure"]=doc.recapSnapshot.pressure;
+        result["recapRetainedOutsideWindow"]=doc.presented && doc.recapPresented &&
+            doc.recapPresented->begin100ns+doc.presented->pts100ns<doc.recapSnapshot.first100ns;
+    }
     return result;
 }
 
 #if defined(OKUFLOW_VIDEO_DOCUMENT_TESTS)
+void OkuFlowApp::PollLiveRecapForTest(VideoRecapSnapshot snapshot)
+{
+    snapshot.epoch=videoDocument_->recapEpoch;
+    ApplyLiveRecapSnapshot(snapshot);
+}
 void OkuFlowApp::SeedVideoDocumentForTest(const RecordingSessionInfo& session,
     std::shared_ptr<const VideoPlaybackFrame> frame, bool recording, bool playing)
 {

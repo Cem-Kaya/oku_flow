@@ -683,6 +683,7 @@ std::optional<PersistentSettings> ParseSettingsRoot(const QJsonObject& root)
         root.value(QStringLiteral("cameraFormatStableId")).toString();
     settings.microphoneEndpointId =
         root.value(QStringLiteral("microphoneEndpointId")).toString();
+    settings.liveRecapMinutes=std::clamp(root.value(QStringLiteral("liveRecapMinutes")).toInt(5),1,5);
     const QJsonObject capture =
         root.value(QStringLiteral("capture")).toObject();
     settings.legacyWiderCameraCompatibility =
@@ -1003,6 +1004,7 @@ QByteArray Serialize(const PersistentSettings& settings)
                 settings.cameraFormatStableId);
     root.insert(QStringLiteral("microphoneEndpointId"),
                 settings.microphoneEndpointId);
+    root.insert(QStringLiteral("liveRecapMinutes"),std::clamp(settings.liveRecapMinutes,1,5));
     root.insert(QStringLiteral("rotationQuarterTurns"), SnapRotation(settings.rotationQuarterTurns));
     QJsonObject cameraAcceleration;
     for (auto it = settings.cameraAcceleration.cbegin();

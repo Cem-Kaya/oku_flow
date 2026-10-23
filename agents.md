@@ -887,3 +887,136 @@ aligned with the project goals.
   Never manufacture independent OCR evidence from repeated held copies. Keep
   clean Original recording before hold/effects and do not route automatic
   Extra Stable recovery through decoder pause/seek/jump.
+## Explicit UCT recognition-width experiments (2026-10-21)
+
+- Keep narrower canvases opt-in until same-source quality and warm performance
+  comparisons support promotion. Prepare only explicitly selected missing
+  profiles once, then benchmark with the inference-only SDK and unchanged cache.
+- Preserve fixed-width keys/plans, exact crop work and original strict failures;
+  report the owner's 5% word-difference tolerance separately from ground-truth
+  accuracy, dispositions, omissions and the ten-pixel geometry allowance.
+- Keep all inference input/retirement ownership and zero image-egress contracts.
+  See `docs/uct_recognizer_width.md`; no RTX 3050/120 FPS claim follows from Ada
+  measurements or padding fraction alone.
+
+## Optional embedded selected-video validation (2026-10-21)
+
+- `prepare_ffmpeg_playback.ps1` builds pinned LGPL FFmpeg/BSD dav1d development
+  libraries in LocalAppData only. Keep Qt DLLs, owner-installed FFmpeg binaries
+  and release staging untouched. SDK configuration plus explicit
+  `OKUFLOW_VIDEO_BACKEND=ffmpeg` are required; Media Foundation stays default
+  and owns all archive/growing-recording paths. See docs/video_ffmpeg_playback.md.
+- Run focused embedded/native codec checks and same-source diagnostics only
+  after parent gates exit. Use the tracked runner/global lease; no GUI, browser,
+  audio endpoint or owner process is needed. Retain original failed receipts,
+  strict PTS/PCM identity and held-file/consumer-lease retirement assertions.
+  Code-value HDR comparisons are not tone-mapping acceptance or deployment.
+
+## Owner workstation work storage (2026-10-21)
+
+- On the owner's PC, put new large Windows build, SDK, test-evidence and scratch
+  folders under `Z:\Projects\OkuFlow\local-work-data`. Keep the main Y: checkout
+  in place. This is a workstation-specific override, not a CI requirement.
+- Existing LocalAppData work directories and inactive T3 checkouts have C:-to-Z:
+  junctions. Preserve them and the original Git/T3 path registrations. The active
+  checkout's roughly 20 MiB of source remains on C: because Windows holds its
+  directory open; its large `build` directory already redirects to Z:.
+- Before configuring a new C: T3 checkout, inspect its build path and put new
+  build output on Z:, retaining the preset's expected path through a junction.
+  Do not replace an existing populated build directory without inspection and
+  verified relocation. Use supported output-root overrides for separate builds.
+- Keep private signing/Google Play credentials and app state on C:. Never remove
+  test ledgers or rerun cold model preparation because of this storage move.
+  Consult `docs/local_work_storage.md` and retain migration evidence.
+
+## Supplemental active regional UCT (2026-10-21)
+
+- `OKUFLOW_UCT_REGIONAL_OCR=1` enables current-input region OCR in addition to
+  baseline full reads. Shadow-only remains observation-only. Never defer full
+  deadlines using the unaccepted character verifier or count held copies as
+  acquisitions. Recheck plan/authority/slack on the worker and protect queued
+  full priority. Keep one region per full interval and bounded call/overrun
+  metadata; measured costs cannot promise hard real-time completion.
+- Only full results update planner occurrences. Preserve complete crossing and
+  outside lines, their masks and exact per-observation pending tickets. Keep the
+  paused selected/real-neighbour detail pair and 32-attempt cap. See
+  `docs/uct_active_regional_ocr.md`; model-free
+  scoped tests do not establish GPU, native UIA or physical-camera acceptance.
+
+## Regional boundary ownership (2026-10-22)
+
+- Admit only complete detector unions inside the backend's shared eight-pixel
+  crop-edge exclusion plus two input pixels of detector-jitter slack;
+  image-border edges have no extra margin. Clipped candidates supply no
+  pending words or observations. Keep crossing/outside lines and masks verbatim
+  without renewing proof or requiring a new probe for an unobserved region.
+  If a rejected crop candidate touches an otherwise owned line, leave the whole
+  optional admission unapplied before changing accepted or pending evidence.
+- Expired optional slack yields without inference, rather than starting a more
+  expensive full read. Only actual regional durations update its cost estimate.
+  Baseline full work, independent pixel checks and freshness remain unchanged.
+
+## Nonblocking timing diagnostics (2026-10-22)
+
+- Concurrent timing producers may legitimately drop a try-lock record. Verify
+  cached surface publication identities directly; negative-event and complete
+  latency claims still require a lossless, fully closed trace window. Preserve
+  drop accounting and original failed evidence instead of making tracing block
+  recognition or silently treating incomplete coverage as complete.
+
+## Explicit local BF16 recognition (2026-10-22)
+
+- Only the app's private production factory reads
+  `OKUFLOW_UCT_LOCAL_BF16_MANIFEST`; diagnostics/public TensorRT factory stay
+  pinned FP32. Require the reviewed source/graph/plan/device/runtime identities,
+  medium/medium N8 fixed1024, FLOAT I/O and explicit prepare=false. A nonempty
+  selector is cache-only for both networks and fallback; never prepare/convert,
+  mutate baseline caches or emit offline receipts from the application.
+- Keep one GPU candidate/worker and the existing preparation bridge index.
+  Only typed pre-inference artifact/policy rejection may select cached FP32;
+  CUDA/API/inference faults preserve quarantine and normal failover. Describe
+  BF16 recognition as a graph with mixed BF16/FP16/FP32 arithmetic, never pure
+  BF16. Preserve the original quality-comparison failures and distinguish the
+  owner-approved local choice from other users' defaults or hardware claims.
+  See `docs/uct_local_bf16.md` for pins, bounds and acceptance limits.
+
+## Paused saved-file sparse cadence (2026-10-22)
+
+- An exact native-issued saved-file selected sample may use its validated
+  positive sample duration for following-neighbour OCR proof: ordinary 250 ms,
+  at most 2500 ms, with integer 100-ns comparisons. Unknown/invalid duration,
+  earlier samples, recording archives, RAM recap and live/advancing media keep
+  the ordinary policy. Never derive this allowance from wall time, repeated
+  held pixels, job IDs, a cache copy or retimed frames.
+- Obtain the opaque descriptor only through `VideoPlayback::CorroborationPolicy`
+  after exact issuance/control-block/source/generation checks. Seal native
+  duration/PTS/sample identity; bind the descriptor through immutable selection,
+  reference, worker line/word checks and model admission. A metadata/descriptor
+  change revokes old proof. Preserve source fencing, distinct source digests,
+  text/geometry agreement, NCC/visibility/refinement thresholds and all budgets.
+- Replay captured button results through the actual controller, model, paint
+  and positioned accessibility path. Reading-pane text or accepted word counts
+  alone do not establish visible glyphs or positioned text. CPU-backed resident
+  oracles and Qt accessibility geometry do not establish real GPU inference,
+  native UIA-client, camera or release acceptance. Keep private captures outside
+  Git; see `docs/uct_initial_paused_frame.md` for exact provenance and scope.
+- Configure optional controller replay with an absolute
+  `OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF` FILEPATH. The CTest case must declare
+  that proof and both actual source images as absolute `REQUIRED_FILES` and
+  fix its input environment to the configured value. Keep earlier undeclared
+  diagnostic failures separate from later corrected-capture acceptance.
+- The optional native sparse 0/2-second case uses an explicit
+  `OKUFLOW_TEST_VIDEO_PAUSED_FILE` FILEPATH (empty by default) and the existing
+  codec opt-in. Declare the actual private clip and helper/test bytes as CTest
+  runtime inputs; measure native sample duration instead of borrowing software
+  extraction metadata. Missing duration/neighbour must fail without expanding
+  policy. Keep one Open, bounded paused waiting and no Play/GPU/audio endpoints.
+
+## Private standalone paused diagnostics (2026-10-22)
+
+- `OKUFLOW_UCT_PAUSE_STANDALONE=1` selects standalone model admission in the
+  private paused-video diagnostic. Its historical neighbour OCR is comparison
+  data only and must never supply admission evidence in this mode. Label those
+  extra diagnostic jobs separately from the app's selected-only paused path.
+  Retain exact source hashes, fallback/preferred outputs and actual per-word
+  paint decisions; a reading-pane count does not establish visible replacement.

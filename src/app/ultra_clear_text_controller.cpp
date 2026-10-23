@@ -6,6 +6,7 @@
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "okuflow/ui/ultra_clear_text_panel.hpp"
 #include "okuflow/common/async_cleanup.hpp"
+#include "okuflow/common/uct_region_planner.hpp"
 
 #include <QCheckBox>
 #include <QElapsedTimer>
@@ -32,6 +33,24 @@ bool BackendUsable(const uct::BackendStatus& status)
 {
     return status.state != uct::BackendState::kUnavailable &&
            status.state != uct::BackendState::kFailed;
+}
+
+void TraceRecognition(uct::timing::Event event, const uct::RecognitionScheduler* scheduler,
+                      const uct::RecognitionResult& result, uct::timing::Values values = {},
+                      uct::timing::Channel channel = uct::timing::Channel::Recognition)
+{
+    if (!uct::timing::Enabled() || !scheduler) return;
+    if (result.deviceInput) values.flags |= uct::timing::DeviceInput;
+    if (result.output.cancelled) values.flags |= uct::timing::Cancelled;
+    if (result.output.inputFault) values.flags |= uct::timing::InputFault;
+    if (result.output.backendPreparing) values.flags |= uct::timing::Preparing;
+    if (result.output.compositeInput) values.flags |= uct::timing::Composite;
+    if (result.corroboratedJobId) {
+        values.flags |= uct::timing::Corroboration;
+        if (!values.relatedJobId) values.relatedJobId = result.corroboratedJobId;
+    }
+    uct::TraceTiming(event, scheduler->TimingProducerId(), channel, result.stamp,
+                     result.jobId, result.authority, values);
 }
 
 double Area(const QRectF& rect)
@@ -87,6 +106,21 @@ uct::SharedDeviceImage EffectiveDevice(const UctImmutableFrame& frame, const Uct
     return DeviceMatchesFrame(frame, geometry) ? frame.device : uct::SharedDeviceImage{};
 }
 
+// A neighbour is ancillary evidence for the retained selected acquisition,
+// never part of its identity. Reject unusable/repeated descriptors before
+// claiming its one bounded corroboration attempt; pixel independence is
+// checked separately by the recognition worker's complete-source digest.
+bool CorroborationInputValid(const UctImmutableScene& scene, const UctImmutableFrame& neighbour)
+{
+    if (!FrameInputValid(neighbour, scene.geometry) ||
+        !scene.corroborationPolicy.Allows(scene.selected.frameSeq, scene.selected.timestampMs,
+                                          neighbour.frameSeq, neighbour.timestampMs)) return false;
+    const auto neighbourDevice = EffectiveDevice(neighbour, scene.geometry);
+    const auto selectedDevice = EffectiveDevice(scene.selected, scene.geometry);
+    return !((neighbourDevice && selectedDevice && neighbourDevice == selectedDevice) ||
+             (!neighbourDevice && !selectedDevice && neighbour.pixels == scene.selected.pixels));
+}
+
 constexpr int kMaximumConsecutiveFailures = 3;
 constexpr std::int64_t kPresentationWatchdogMs = 600;
 // Probes are decimated to at most about this width, bounding worker cost
@@ -112,6 +146,7 @@ UltraClearTextController::UltraClearTextController(UltraClearTextOverlay* overla
       timing_(timing),
       pool_(uct::PixelPool::Create(kPixelPoolCapacity))
 {
+    regionalOcrEnabled_ = qEnvironmentVariable("OKUFLOW_UCT_REGIONAL_OCR") == "1";
     // Presentation watchdog: with no presentations (camera stopped, source
     // switching, placeholder shown) cached words must not linger.
     watchdog_ = new QTimer(this);
@@ -131,6 +166,10 @@ UltraClearTextController::UltraClearTextController(UltraClearTextOverlay* overla
             UpdateStatus();
         }
     });
+    // A paused view's visible region is re-detected only after it settles.
+    immutableDetailTimer_ = new QTimer(this);
+    immutableDetailTimer_->setSingleShot(true);
+    connect(immutableDetailTimer_, &QTimer::timeout, this, &UltraClearTextController::SubmitImmutableDetailIfUseful);
     // Screen readers reach the drawn text through the viewport itself. The
     // object is a QObject child of the render target (the host interface
     // finds it there) and does no work while accessibility is inactive.
@@ -155,6 +194,8 @@ UltraClearTextController::~UltraClearTextController()
     probeWorker_.reset();
     deviceProbeReader_.reset();
     scheduler_.reset();
+    uct::timing::RecordEvent(uct::timing::Event::WindowClosed, {});
+    uct::timing::FlushAtNormalTeardown(); // opt-in only; never waits for detached workers
 }
 
 void UltraClearTextController::EnsureScheduler()
@@ -179,11 +220,14 @@ void UltraClearTextController::EnsureScheduler()
     if (scheduler_) {
         return;
     }
+    regionalSuppressed_ = false;
     if(!deviceProbeReader_) {
         deviceProbeReader_=std::make_unique<uct::RecognitionScheduler>(nullptr,
             [self](uct::RecognitionResult result){
                 if(!self)return;
                 QMetaObject::invokeMethod(self.data(),[self,result=std::move(result)]() mutable {
+                    if(self) TraceRecognition(uct::timing::Event::UiReceipt, self->deviceProbeReader_.get(),
+                        result, {}, uct::timing::Channel::DeviceValidation);
                     // Advancing media reuses this independent validation chain;
                     // a selected immutable still (and hidden live camera work
                     // under any media scene) does not. Media probes must match
@@ -246,7 +290,8 @@ void UltraClearTextController::EnsureScheduler()
                 },
                 Qt::QueuedConnection);
         },
-        timing_.probeDecimation, uct::ModelTuning{}.minimumWordHeightPx);
+        timing_.probeDecimation, uct::ModelTuning{}.minimumWordHeightPx, false,
+        qEnvironmentVariable("OKUFLOW_UCT_SHADOW_PLANNER") == "1", regionalOcrEnabled_);
 }
 
 void UltraClearTextController::SetEnabled(bool enabled)
@@ -368,16 +413,32 @@ void UltraClearTextController::SetMediaOverlaySuppressed(bool suppressed, bool e
 
 bool UltraClearTextController::SetImmutableScene(UctImmutableScene scene)
 {
+    if (scene.admission == uct::ImmutableAdmission::Standalone) {
+        // A held frame is its entire input. Ancillary decoder/preroll data
+        // cannot trigger another recognition, change authority or veto text.
+        scene.corroboration.reset();
+        scene.corroborationPolicy = {};
+    }
     const auto sameFrame = [](const UctImmutableFrame& a, const UctImmutableFrame& b) {
         return a.pixels == b.pixels && a.device == b.device && a.frameSeq == b.frameSeq &&
                a.timestampMs == b.timestampMs;
     };
-    const bool sameNeighbour = immutableScene_ &&
-        immutableScene_->corroboration.has_value() == scene.corroboration.has_value() &&
-        (!scene.corroboration || sameFrame(*immutableScene_->corroboration, *scene.corroboration));
     if (immutableScene_ && immutableScene_->geometry == scene.geometry &&
         immutableScene_->sourceAuthority == scene.sourceAuthority &&
-        sameFrame(immutableScene_->selected, scene.selected) && sameNeighbour) {
+        immutableScene_->admission == scene.admission &&
+        immutableScene_->corroborationPolicy == scene.corroborationPolicy &&
+        sameFrame(immutableScene_->selected, scene.selected)) {
+        // Decoder/preroll may supply the real neighbour after this selected
+        // frame has already been read. Attach it without cancelling that job,
+        // clearing its reading text, or renewing its deadline/authority.
+        // Omitted/changed optional descriptors on later view receipts cannot
+        // replace the first usable neighbour or reread the selected image.
+        if (!immutableScene_->corroboration && scene.corroboration &&
+            CorroborationInputValid(*immutableScene_, *scene.corroboration)) {
+            immutableScene_->corroboration = std::move(scene.corroboration);
+            immutableCorroborationAttempted_ = false;
+            SubmitImmutableIfNeeded();
+        }
         UpdateImmutableView(scene.transform, scene.viewportWidth, scene.viewportHeight, scene.strokeWeight);
         OnMediaPresentationSucceeded(); // this API carries a successful selected-frame receipt
         return FrameInputValid(scene.selected, scene.geometry);
@@ -390,6 +451,9 @@ bool UltraClearTextController::SetImmutableScene(UctImmutableScene scene)
     advancingDeviceIdentity_.reset();
     advancingReceiptValid_ = false;
     immutableScene_ = std::move(scene);
+    if (immutableScene_->corroboration &&
+        !CorroborationInputValid(*immutableScene_, *immutableScene_->corroboration))
+        immutableScene_->corroboration.reset();
     geometry_ = immutableScene_->geometry;
     haveGeometry_ = true;
     cameraActive_ = false;
@@ -633,6 +697,12 @@ void UltraClearTextController::UpdateImmutableView(const ViewTransform& transfor
                                                    std::uint32_t viewportHeight, int strokeWeight)
 {
     if (!HasImmutableScene()) return;
+    if (scheduler_) scheduler_->SetShadowFocus(uct::ViewRectToScene(transform, 1, 1, {0, 0, 1, 1}));
+    const auto previousView = immutableScene_ ? immutableScene_->transform : ViewTransform{};
+    const bool detailViewChanged = immutableScene_ &&
+        (previousView.valid != transform.valid || previousView.sourceX != transform.sourceX ||
+         previousView.sourceY != transform.sourceY || previousView.sourceWidth != transform.sourceWidth ||
+         previousView.sourceHeight != transform.sourceHeight);
     if (immutableScene_) {
         immutableScene_->transform = transform;
         immutableScene_->viewportWidth = viewportWidth;
@@ -659,10 +729,12 @@ void UltraClearTextController::UpdateImmutableView(const ViewTransform& transfor
         overlay_->SetStrokeWeight(strokeWeight);
     }
     // The artifact covers the complete scene. View changes are projection
-    // only, and never renew source timestamps or enqueue OCR/probes.
+    // only, and never renew source timestamps or enqueue OCR/probes. A
+    // settled paused view may later re-detect its visible region once.
     RefreshOverlay(clock_());
     UpdateReadingText();
     UpdateStatus();
+    if (detailViewChanged) ScheduleImmutableDetail();
 }
 
 void UltraClearTextController::ClearImmutableScene()
@@ -692,10 +764,16 @@ void UltraClearTextController::OnMediaPresentationSucceeded()
     if (!HasImmutableScene()) return;
     // This receipt changes presentation availability only. In particular it
     // neither renews media PTS nor resubmits a completed immutable artifact.
+    const bool recovered = presentationFailed_;
     presentationFailed_ = false;
     RefreshOverlay(clock_());
     UpdateReadingText();
     UpdateStatus();
+    // Only an actual recovery re-asks for visible detail: the settle deadline
+    // may have expired behind the failure latch, and no view change or OCR
+    // result will follow to ask again. Ordinary success receipts (which can
+    // arrive every present) must not keep restarting the settle timer.
+    if (recovered) ScheduleImmutableDetail();
 }
 
 void UltraClearTextController::OnMediaPresentationFailed()
@@ -705,11 +783,13 @@ void UltraClearTextController::OnMediaPresentationFailed()
     // it, while immediately revoking every currently visible text surface.
     // Keep the latch even while disabled or awaiting backend readiness.
     presentationFailed_ = true;
+    const bool hadWords = !overlayWords_.isEmpty();
+    UpdatePositionedTimingPublication(hadWords, false, true);
     if (overlay_) overlay_->ClearWords();
     if (screenText_) screenText_->RevokeAll();
     overlayWords_.clear();
     shownWords_ = 0;
-    UpdateReadingText();
+    UpdateReadingText(hadWords);
     UpdateStatus();
 }
 
@@ -725,6 +805,7 @@ bool UltraClearTextController::OnPresented(const UctFrameContext& context)
     cameraActive_ = context.cameraActive;
     attemptedFrameSeq_ = context.frameSeq;
     attemptedTransform_ = context.transform;
+    if (scheduler_) scheduler_->SetShadowFocus(uct::ViewRectToScene(context.transform, 1, 1, {0, 0, 1, 1}));
     attemptedViewport_ = QSize(context.viewportWidth, context.viewportHeight);
     if (overlay_) {
         overlay_->SetStrokeWeight(context.strokeWeight);
@@ -876,13 +957,15 @@ void UltraClearTextController::OnPresentationFailed()
     }
     presentationFailed_ = true;
     presentationAvailable_ = false;
+    const bool hadWords = !overlayWords_.isEmpty();
+    UpdatePositionedTimingPublication(hadWords, false, true);
     if (overlay_) {
         overlay_->ClearWords();
     }
     if (screenText_) screenText_->RevokeAll();
     overlayWords_.clear();
     shownWords_ = 0;
-    UpdateReadingText();
+    UpdateReadingText(hadWords);
     UpdateStatus();
 }
 
@@ -1033,6 +1116,14 @@ uct::SourceStamp UltraClearTextController::CurrentScene() const
 
 void UltraClearTextController::Invalidate(const QString& reason)
 {
+    if (uct::timing::Enabled()) {
+        uct::timing::Key key;
+        key.producer = scheduler_ ? scheduler_->TimingProducerId() : 0;
+        key.sourceEpoch = geometry_.settings.sourceEpoch;
+        key.geometryGeneration = geometryGeneration_;
+        key.authority = scheduler_ ? scheduler_->Authority() : 0;
+        uct::timing::RecordEvent(uct::timing::Event::Reset, key);
+    }
     if (scheduler_) {
         scheduler_->Cancel(); // in-flight input stays owned by the worker
     }
@@ -1041,6 +1132,10 @@ void UltraClearTextController::Invalidate(const QString& reason)
     }
     if(deviceProbeReader_)deviceProbeReader_->Cancel();
     model_.Reset();
+    timingAdmission_.reset();
+    timingPositionedPublication_ = {};
+    UpdatePositionedTimingPublication(false, false);
+    UpdatePaneTimingPublication(false, true);
     immutableSelectedResult_.reset();
     immutableSelectedJob_ = 0;
     immutableCorroborationJob_ = 0;
@@ -1049,6 +1144,9 @@ void UltraClearTextController::Invalidate(const QString& reason)
     immutableRetryScheduled_ = immutableRetryExhausted_ = false;
     immutableRetryStartedAtMs_.reset();
     immutableCorroborationAttempted_ = false;
+    immutableDetailFocus_.reset();
+    immutableDetailDone_.clear();
+    if (immutableDetailTimer_) immutableDetailTimer_->stop();
     advancingMediaJob_ = 0;
     haveAdvancingValidation_ = false;
     advancingValidatedFrameSeq_ = 0;
@@ -1059,8 +1157,13 @@ void UltraClearTextController::Invalidate(const QString& reason)
     deviceCandidate_.reset();
     stableProbes_ = 0;
     changedSinceSubmit_ = true;
+    probeInvalidatedSinceSubmit_ = false;
     lastJobCoverage_ = {};
     haveLastOcr_ = false;
+    regionalPlan_.reset();
+    regionalJob_ = 0;
+    regionalAttempted_ = false;
+    regionalRequireFull_ = false;
     pendingReadbackId_ = 0;
     lastResultMoved_ = false;
     lastResultEmpty_ = false;
@@ -1096,11 +1199,16 @@ void UltraClearTextController::SubmitProbe(const uct::SourceStamp& stamp, uct::S
 
 void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
 {
+    if (probeWorker_) uct::TraceTiming(uct::timing::Event::UiReceipt, probeWorker_->TimingProducerId(),
+        uct::timing::Channel::Probe, outcome.stamp, outcome.jobId, outcome.authority);
     QElapsedTimer handling;
     handling.start();
     if (!enabled_ || immutableScene_ || !probeWorker_ || !probeWorker_->IsCurrent(outcome) || settling_ || compositePaused_ || mediaOverlaySuppressed_ ||
         !outcome.stamp.SameScene(CurrentScene()) || !outcome.probe ||
         (latestProbe_ && outcome.stamp.frameSeq<latestProbe_->stamp.frameSeq)) {
+        if (probeWorker_) uct::TraceTiming(uct::timing::Event::Fault, probeWorker_->TimingProducerId(),
+            uct::timing::Channel::Probe, outcome.stamp, outcome.jobId, outcome.authority,
+            {1, 0, uct::timing::Stale});
         return;
     }
     const std::int64_t now = clock_();
@@ -1109,6 +1217,14 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
     const bool composite = !uct::EvidenceAcquisition(outcome.stamp);
     const uct::ValidationSummary summary = model_.ApplyChecks(outcome.checks, outcome.stamp, !composite);
     if (summary.valid > 0) NoteAdvancingValidation(now); // real pixels only
+    if (!composite && summary.invalid > 0) {
+        // A changed portion can disappear while unchanged accepted lines
+        // remain. Request its replacement without waiting for the periodic
+        // refresh; retain demand until the ordinary worker/pacing gates admit
+        // a job, since the failed line is removed by this probe.
+        probeInvalidatedSinceSubmit_ = true;
+        changedSinceSubmit_ = true;
+    }
     if (summary.invalid > 0 && summary.valid == 0) {
         lastResultMoved_ = true;
     }
@@ -1151,34 +1267,65 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
         const std::uint64_t acquisition = uct::EvidenceAcquisition(outcome.stamp).value_or(0);
         const bool repeatedHold = outcome.stamp.holdDisplay == uct::HoldDisplay::Held && haveLastOcr_ &&
             lastOcrGeneration_ == geometryGeneration_ && lastOcrAcquisition_ == acquisition;
-        const bool needed = repeatedHold
+        const bool needed = regionalRequireFull_ || (repeatedHold
             ? !model_.HasAcceptedText() && sinceSubmit >= timing_.refreshIntervalMs
-            : model_.PendingWordCount() > 0 || !model_.HasAcceptedText() || !covered ||
-                  sinceSubmit >= timing_.refreshIntervalMs;
+            : probeInvalidatedSinceSubmit_ || model_.PendingWordCount() > 0 || !model_.HasAcceptedText() || !covered ||
+                  sinceSubmit >= timing_.refreshIntervalMs);
         // Latest-only: a busy worker only receives a replacement after the
         // scene changed, so slow recognition cannot accumulate work. The
         // pixels move on without a copy.
         // Device snapshots share a two-slot pool with validation. Never park
         // a pending OCR lease while inference holds the other slot.
         const bool canSubmit = advancingMediaScene_
-            ? advancingMediaJob_ == 0 && !scheduler_->HasWork() &&
+            ? advancingMediaJob_ == 0 && (!scheduler_->HasWork() || (!candidate && regionalJob_)) &&
                 now - advancingMediaLastSubmitMs_ >= timing_.mediaRecognitionIntervalMs
-            : !scheduler_->HasWork() || (!candidate && changedSinceSubmit_);
+            : !scheduler_->HasWork() || (!candidate && (changedSinceSubmit_ || regionalJob_));
         if (needed && canSubmit) {
             const auto job=candidate?scheduler_->SubmitDevice(outcome.stamp,std::move(candidate))
                                     :scheduler_->Submit(outcome.stamp, std::move(outcome.pixels));
             if (job != 0) {
+                // A queued region can be coalesced without any completion.
+                // Successful newer full submission supersedes its ticket;
+                // an already-running old region is fenced by exact job id.
+                regionalJob_ = 0;
                 lastSubmitMs_ = now;
                 lastJobCoverage_ = viewScene;
                 changedSinceSubmit_ = false;
+                probeInvalidatedSinceSubmit_ = false;
                 lastOcrAcquisition_ = acquisition;
                 lastOcrGeneration_ = geometryGeneration_;
                 lastOcrJob_ = job;
                 haveLastOcr_ = true;
+                regionalPlan_.reset();
+                regionalAttempted_ = false;
+                regionalRequireFull_ = false;
                 if (advancingMediaScene_) {
                     advancingMediaJob_ = job;
                     advancingMediaSubmittedAtMs_ = now;
                     advancingMediaLastSubmitMs_ = now;
+                }
+            }
+        } else if (!needed && regionalOcrEnabled_ && !regionalSuppressed_ && !regionalAttempted_ &&
+                   !regionalJob_ && !scheduler_->HasWork() && backend_.detailFocus &&
+                   haveLastOcr_ && regionalPlan_ &&
+                   regionalPlan_->jobId == lastOcrJob_ &&
+                   uct::RegionalPlanMatches(*regionalPlan_, outcome.stamp, scheduler_->Authority())) {
+            // The full deadline is unchanged. One idle-only regional call may
+            // fit before it; its time source is wall time, not held-frame PTS.
+            const auto slack = timing_.refreshIntervalMs - sinceSubmit;
+            if (slack > regionalEstimateMs_ + timing_.probeIntervalMs) {
+                const auto detail = uct::RegionalDetailFocus(*regionalPlan_, outcome.stamp, viewScene);
+                if (detail) {
+                    uct::RegionalOcrRequest request{regionalPlan_,
+                        std::chrono::steady_clock::now() + std::chrono::milliseconds(slack), regionalEstimateMs_};
+                    const auto job = candidate
+                        ? scheduler_->SubmitDevice(outcome.stamp, std::move(candidate), {}, detail, request)
+                        : scheduler_->Submit(outcome.stamp, std::move(outcome.pixels), {}, detail, request);
+                    if (job) {
+                        regionalJob_ = job;
+                        regionalSubmittedAtMs_ = now;
+                        regionalAttempted_ = true;
+                    }
                 }
             }
         }
@@ -1191,6 +1338,7 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
 
 void UltraClearTextController::HandleResult(uct::RecognitionResult result)
 {
+    TraceRecognition(uct::timing::Event::UiReceipt, scheduler_.get(), result);
     if (immutableScene_) {
         HandleImmutableResult(std::move(result));
         return;
@@ -1199,17 +1347,43 @@ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
     handling.start();
     if (!enabled_ || !scheduler_ || !scheduler_->IsCurrent(result) || settling_ || compositePaused_ || mediaOverlaySuppressed_ ||
         !result.stamp.SameScene(CurrentScene())) {
+        TraceRecognition(uct::timing::Event::Fault, scheduler_.get(), result, {1, 0, uct::timing::Stale});
         ++rejectedResults_;
         return;
     }
     const std::int64_t now = clock_();
+    if (result.regionalRequested) {
+        if (result.jobId != regionalJob_ || !regionalJob_) { ++rejectedResults_; return; }
+        regionalJob_ = 0;
+        if (result.jobKind == uct::RecognitionJobKind::Regional)
+            regionalEstimateMs_ = std::max(regionalEstimateMs_, 2.0 * result.durationMs + 80.0);
+        if (result.regionalFailed || result.regionalDeadlineOverrun ||
+            now - regionalSubmittedAtMs_ > timing_.immutableJobTimeoutMs) {
+            if (lastOcrJob_ < result.jobId) regionalRequireFull_ = true;
+            regionalSuppressed_ = true;
+            ++rejectedResults_;
+            // Existing current-proved text/engine stays intact. No second
+            // recognizer runs; the next current probe requests baseline full.
+            RefreshOverlay(now);
+            UpdateReadingText();
+            UpdateStatus();
+            return;
+        }
+        // A successful full fallback already read this input. Leave the
+        // baseline clock/demand intact, without forcing a redundant loop.
+        if (result.regionalFallback && !result.output.ok && lastOcrJob_ < result.jobId)
+            regionalRequireFull_ = true;
+    } else if (result.shadowPlan && result.shadowPlan->status == uct::RegionPlanStatus::kAccepted &&
+               result.jobId == lastOcrJob_) {
+        regionalPlan_ = result.shadowPlan;
+    }
     const auto retryUnreadAcquisition = [&] {
         if (result.jobId == lastOcrJob_) {
             haveLastOcr_ = false;
             changedSinceSubmit_ = true;
         }
     };
-    if (advancingMediaScene_) {
+    if (advancingMediaScene_ && !result.regionalRequested) {
         if (result.jobId != advancingMediaJob_ || advancingMediaJob_ == 0 ||
             now - advancingMediaSubmittedAtMs_ > timing_.immutableJobTimeoutMs) {
             if (result.jobId == advancingMediaJob_) {
@@ -1238,14 +1412,35 @@ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
         if (++consecutiveFailures_ >= kMaximumConsecutiveFailures) {
             backend_.state = uct::BackendState::kFailed;
             backend_.detail = result.output.error;
+            TraceRecognition(uct::timing::Event::BackendState, scheduler_.get(), result,
+                {static_cast<std::uint32_t>(backend_.state)});
             Invalidate(QStringLiteral("failed"));
         }
     } else if (result.output.ok) {
         consecutiveFailures_ = 0;
     }
+    // Whole COW snapshots retain proof separately from diagnostic causality.
+    const auto previousLines = uct::timing::Enabled() ? model_.Lines() : QVector<uct::AcceptedLine>{};
+    const uct::OverlayModel::RegionalPreflight regionalPreflight = [this,now](const uct::OverlayModel& proposal,
+        const QVector<uct::OverlayModel::RegionalWordMatch>& matches, double remainingMs) {
+        if (!overlay_) return false;
+        QElapsedTimer budget; budget.start();
+        const auto words = proposal.SceneWords(ModelTime(now),currentFrameSeq_);
+        QVector<UltraClearTextOverlay::SceneWord> projected;
+        projected.reserve(words.size());
+        for (const auto& word : words) {
+            if (budget.nsecsElapsed()/1e6 >= remainingMs) return false;
+            projected.push_back({word.text,word.sceneRect,word.colors,word.lineId,word.protectedSceneRects,
+                word.wordIndex,word.sceneQuad,word.layoutGroupId,word.carvedSceneRects});
+        }
+        return overlay_->PreservesDrawnWords(std::move(projected),matches,remainingMs-budget.nsecsElapsed()/1e6);
+    };
     const uct::AdmitVerdict verdict = advancingMediaScene_
-        ? model_.AdmitAdvancingMedia(result, CurrentScene(), latestProbe_.get(), ModelTime(now))
-        : model_.AdmitLiveCamera(result, CurrentScene(), latestProbe_.get(), now);
+        ? model_.AdmitAdvancingMedia(result, CurrentScene(), latestProbe_.get(), ModelTime(now),regionalPreflight)
+        : model_.AdmitLiveCamera(result, CurrentScene(), latestProbe_.get(), now,regionalPreflight);
+    NoteTimingAdmission(result, verdict, 0, &previousLines);
+    if (uct::timing::Enabled()) TraceRecognition(uct::timing::Event::Admit, scheduler_.get(), result,
+        {static_cast<std::uint32_t>(verdict), static_cast<std::uint32_t>(model_.AcceptedWordCount())});
     if (verdict != uct::AdmitVerdict::kAccepted && verdict != uct::AdmitVerdict::kPending &&
         verdict != uct::AdmitVerdict::kEmpty)
         retryUnreadAcquisition();
@@ -1282,15 +1477,31 @@ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
 
 void UltraClearTextController::HandleBackendStatus(uct::BackendStatus status)
 {
+    if (uct::timing::Enabled()) {
+        uct::timing::Key key;
+        key.producer = scheduler_ ? scheduler_->TimingProducerId() : 0;
+        uct::timing::RecordEvent(uct::timing::Event::BackendState, key,
+            {static_cast<std::uint32_t>(status.state), 0, status.usesGpu ? uct::timing::DeviceInput : 0u});
+    }
+    const uct::BackendState previousBackendState = backend_.state;
     backend_ = std::move(status);
     if (!BackendUsable(backend_)) {
-        Invalidate(QStringLiteral("unavailable"));
+        if (HasProvenImmutableArtifact()) {
+            StopImmutableRefinement();
+            RefreshOverlay(clock_());
+            UpdateReadingText();
+        } else Invalidate(QStringLiteral("unavailable"));
     }
     if (screenText_) screenText_->ContentChanged(); // recognizer language may differ
     // Backend readiness is an event, not a reason to poll every presentation
     // or timer tick. A waiting selected frame is submitted exactly once.
     if (immutableScene_ && backend_.state == uct::BackendState::kReady) {
         SubmitImmutableIfNeeded();
+        // A settled paused view whose detail deadline expired while the
+        // backend was still preparing gets one fresh ask on the transition
+        // into ready; if a job was just submitted above, its result (not
+        // this timer) remains the path that schedules detail afterwards.
+        if (previousBackendState != uct::BackendState::kReady) ScheduleImmutableDetail();
     } else if (advancingMediaScene_ && backend_.state == uct::BackendState::kReady) {
         SubmitAdvancingMediaProbe();
     }
@@ -1302,6 +1513,7 @@ uct::SourceStamp UltraClearTextController::ImmutableStamp(const UctImmutableFram
     uct::SourceStamp stamp = CurrentScene();
     stamp.frameSeq = frame.frameSeq;
     stamp.timestampMs = frame.timestampMs;
+    if (immutableScene_) stamp.immutableCorroboration = immutableScene_->corroborationPolicy;
     stamp.viewTransform.valid = true; // full-scene pixels, independent of current view
     if (const auto device = EffectiveDevice(frame, geometry_)) {
         stamp.viewportWidth = static_cast<std::uint32_t>(device->width);
@@ -1324,7 +1536,8 @@ void UltraClearTextController::SubmitImmutableIfNeeded()
 {
     if (immutableRetryScheduled_ || immutableRetryExhausted_) return;
     if (mediaOverlaySuppressed_ || !enabled_ || !immutableScene_ || !scheduler_ || backend_.state != uct::BackendState::kReady ||
-        !AnalysisHealthy()) return;
+        !AnalysisHealthy() || !immutableScene_->corroborationPolicy.MatchesSelected(
+            immutableScene_->selected.frameSeq, immutableScene_->selected.timestampMs)) return;
     // Preferred device input first; owned CPU pixels remain the fallback of
     // the same bounded attempt when the device hand-off is refused.
     const auto submitFrame = [this](const UctImmutableFrame& frame) {
@@ -1332,7 +1545,10 @@ void UltraClearTextController::SubmitImmutableIfNeeded()
         std::uint64_t job = 0;
         uct::CorroborationRequest corroboration;
         corroboration.tuning = uct::ModelTuning{}.match;
-        if (immutableSelectedResult_) {
+        // A visible-detail selected job is the same acquisition; registering
+        // the previous selected lines against identical pixels is no evidence.
+        const bool detailSelected = immutableDetailFocus_ && frame.frameSeq == immutableScene_->selected.frameSeq;
+        if (immutableSelectedResult_ && !detailSelected) {
             corroboration.selectedJobId = immutableSelectedResult_->jobId;
             corroboration.selectedReference = immutableSelectedResult_->reference;
             corroboration.selectedLines = immutableSelectedResult_->prepared;
@@ -1340,10 +1556,10 @@ void UltraClearTextController::SubmitImmutableIfNeeded()
                 corroboration.references.push_back(line.reference);
         }
         if (const auto device = EffectiveDevice(frame, geometry_)) {
-            job = scheduler_->SubmitDevice(stamp, device, corroboration);
+            job = scheduler_->SubmitDevice(stamp, device, corroboration, immutableDetailFocus_);
         }
         if (job == 0 && PixelsMatchFrame(frame, geometry_))
-            job = scheduler_->Submit(stamp, frame.pixels, std::move(corroboration));
+            job = scheduler_->Submit(stamp, frame.pixels, std::move(corroboration), immutableDetailFocus_);
         return job;
     };
     if (!immutableSelectedAttempted_) {
@@ -1356,37 +1572,88 @@ void UltraClearTextController::SubmitImmutableIfNeeded()
     }
     if (!immutableSelectedResult_ || !immutableSelectedResult_->output.ok ||
         immutableCorroborationAttempted_) return;
+    if (immutableScene_->admission == uct::ImmutableAdmission::Standalone) {
+        immutableCorroborationAttempted_ = true; // selection work is complete
+        FinishImmutableDetail();
+        return;
+    }
     // Bound corroboration to one actual neighbouring image. A separate
     // buffer with identical pixels still fails the worker digest comparison
     // in AdmitImmutable; a reused lease is rejected before scheduling.
     immutableCorroborationAttempted_ = true;
-    if (!immutableScene_->corroboration) return;
+    const bool usableNeighbour = immutableScene_->corroboration &&
+                                 CorroborationInputValid(*immutableScene_, *immutableScene_->corroboration);
+    if (!usableNeighbour) {
+        FinishImmutableDetail(); // a region without its independent half proves nothing new
+        return;
+    }
     const auto& neighbour = *immutableScene_->corroboration;
-    const auto neighbourDevice = EffectiveDevice(neighbour, geometry_);
-    const auto selectedDevice = EffectiveDevice(immutableScene_->selected, geometry_);
-    const bool reusedLease = (neighbourDevice && selectedDevice && neighbourDevice == selectedDevice) ||
-        (!neighbourDevice && !selectedDevice && neighbour.pixels == immutableScene_->selected.pixels);
-    if (!FrameInputValid(neighbour, geometry_) ||
-        neighbour.frameSeq == immutableScene_->selected.frameSeq || reusedLease) return;
     immutableSubmittedAtMs_ = clock_();
     immutableCorroborationJob_ = submitFrame(neighbour);
     if (!immutableCorroborationJob_) ScheduleImmutableRetry(false);
 }
 
+bool UltraClearTextController::HasProvenImmutableArtifact() const
+{
+    if (!immutableScene_ || !haveGeometry_ || geometry_ != immutableScene_->geometry ||
+        currentFrameSeq_ != immutableScene_->selected.frameSeq ||
+        !FrameInputValid(immutableScene_->selected, geometry_)) return false;
+    // SetImmutableScene invalidates on ANY selected lease/frame/PTS, source
+    // authority or geometry change. Its generation therefore binds these
+    // stamps to the exact retained CPU/GPU image; neighbour/view updates do
+    // not change that ticket. Reading-only candidates do not qualify.
+    const auto selected = ImmutableStamp(immutableScene_->selected);
+    const auto now = clock_();
+    return std::any_of(model_.Lines().begin(), model_.Lines().end(), [&](const auto& line) {
+        return line.provenance.SameScene(selected) &&
+               line.provenance.frameSeq == selected.frameSeq &&
+               line.provenance.immutableCorroboration == selected.immutableCorroboration &&
+               line.provenance.timestampMs == selected.timestampMs &&
+               line.validatedFrameSeq == selected.frameSeq &&
+               model_.IsShown(line, now, selected.frameSeq);
+    });
+}
+
+void UltraClearTextController::StopImmutableRefinement()
+{
+    if (uct::timing::Enabled() && immutableScene_ && scheduler_)
+        uct::TraceTiming(uct::timing::Event::Cancel, scheduler_->TimingProducerId(), uct::timing::Channel::Recognition,
+            ImmutableStamp(immutableScene_->selected), 0, scheduler_->Authority(),
+            {3, 0, uct::timing::Cancelled | uct::timing::RetainedArtifact});
+    // Retire optional work, not the accepted immutable model. This does not
+    // renew any source/validation clock or clear backend/input failures.
+    immutableRetryExhausted_ = true;
+    immutableRetryScheduled_ = false;
+    immutableSelectedAttempted_ = immutableCorroborationAttempted_ = true;
+    immutableSelectedJob_ = immutableCorroborationJob_ = 0;
+    immutableSelectedResult_.reset();
+    immutableDetailFocus_.reset();
+    if (scheduler_) scheduler_->Cancel(); // fence a queued/in-flight refinement
+    if (immutableDetailTimer_) immutableDetailTimer_->stop();
+}
+
 void UltraClearTextController::ScheduleImmutableRetry(bool selected, bool preparing)
 {
+    if (immutableDetailFocus_) {
+        FinishImmutableDetail();
+        return;
+    }
     if (!immutableScene_ || !enabled_ || immutableRetryScheduled_) return;
     if (preparing && immutableRetryStartedAtMs_ &&
         clock_() - *immutableRetryStartedAtMs_ > timing_.immutableJobTimeoutMs &&
         ((immutableSelectedResult_ && immutableSelectedResult_->output.ok) ||
          model_.AcceptedWordCount() > 0)) {
+        if (HasProvenImmutableArtifact()) StopImmutableRefinement();
         return; // a healthy CPU fallback does not fail because GPU preparation is slow
     }
     if ((!preparing && ++immutableRetryCount_ > 3) ||
         (preparing && immutableRetryStartedAtMs_ &&
          clock_() - *immutableRetryStartedAtMs_ > timing_.immutableJobTimeoutMs)) {
-        immutableRetryExhausted_ = true;
-        model_.Reset();
+        if (HasProvenImmutableArtifact()) StopImmutableRefinement();
+        else {
+            immutableRetryExhausted_ = true;
+            model_.Reset();
+        }
         RefreshOverlay(clock_());
         UpdateReadingText();
         return;
@@ -1415,11 +1682,13 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
     const bool neighbour = immutableCorroborationJob_ != 0 && result.jobId == immutableCorroborationJob_;
     const auto now = clock_();
     if (!enabled_ || !immutableScene_ || !scheduler_ || !scheduler_->IsCurrent(result) ||
+        result.stamp.immutableCorroboration != immutableScene_->corroborationPolicy ||
         !result.stamp.SameScene(CurrentScene()) || (!selected && !neighbour) ||
         now - immutableSubmittedAtMs_ > timing_.immutableJobTimeoutMs ||
         (selected && result.stamp.frameSeq != immutableScene_->selected.frameSeq) ||
         (neighbour && (!immutableScene_->corroboration ||
                       result.stamp.frameSeq != immutableScene_->corroboration->frameSeq))) {
+        TraceRecognition(uct::timing::Event::Fault, scheduler_.get(), result, {2, 0, uct::timing::Stale});
         if (selected) immutableSelectedJob_ = 0;
         if (neighbour) immutableCorroborationJob_ = 0;
         if ((selected || neighbour) && immutableScene_ && scheduler_ && scheduler_->IsCurrent(result) &&
@@ -1438,7 +1707,12 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
         if (++consecutiveFailures_ >= kMaximumConsecutiveFailures) {
             backend_.state = uct::BackendState::kFailed;
             backend_.detail = result.output.error;
-            Invalidate(QStringLiteral("failed"));
+            TraceRecognition(uct::timing::Event::BackendState, scheduler_.get(), result,
+                {static_cast<std::uint32_t>(backend_.state)});
+            if (HasProvenImmutableArtifact()) StopImmutableRefinement();
+            else Invalidate(QStringLiteral("failed"));
+            RefreshOverlay(now);
+            UpdateReadingText();
             UpdateStatus();
             return;
         }
@@ -1447,7 +1721,11 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
     }
 
     if (!result.output.ok || result.output.cancelled) {
-        ScheduleImmutableRetry(selected, result.output.backendPreparing);
+        if (!AnalysisHealthy() && HasProvenImmutableArtifact()) {
+            StopImmutableRefinement();
+            RefreshOverlay(now);
+            UpdateReadingText();
+        } else ScheduleImmutableRetry(selected, result.output.backendPreparing);
         UpdateStatus();
         return;
     }
@@ -1459,7 +1737,7 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
         // Preserve this selected result's job/authority/frame ticket. A
         // neighbour may corroborate it but never becomes selected evidence.
         immutableSelectedResult_ = std::move(result);
-        if (retainProvenModel) {
+        if (retainProvenModel && immutableScene_->admission == uct::ImmutableAdmission::Corroborated) {
             // Keep the proven same-frame artifact until a complete refinement
             // pair is available. A selected-only candidate cannot erase it.
             SubmitImmutableIfNeeded();
@@ -1469,14 +1747,23 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
             return;
         }
         verdict = model_.AdmitImmutable(*immutableSelectedResult_,
-                                        ImmutableStamp(immutableScene_->selected), now);
+                                        ImmutableStamp(immutableScene_->selected), now, nullptr,
+                                        immutableScene_->admission);
     } else {
         if (!immutableSelectedResult_) { ++rejectedResults_; return; }
         verdict = model_.AdmitImmutable(*immutableSelectedResult_,
-                                        ImmutableStamp(immutableScene_->selected), now, &result);
+                                        ImmutableStamp(immutableScene_->selected), now, &result,
+                                        immutableScene_->admission);
     }
-    if (previousModel && verdict != uct::AdmitVerdict::kAccepted)
+    if (previousModel && verdict != uct::AdmitVerdict::kAccepted &&
+        verdict != uct::AdmitVerdict::kContentMoved)
         model_ = *previousModel; // a refused refinement cannot erase prior proof
+    if (immutableSelectedResult_) NoteTimingAdmission(*immutableSelectedResult_, verdict,
+        previousModel ? uct::timing::RetainedArtifact : 0u);
+    if (uct::timing::Enabled() && immutableSelectedResult_) TraceRecognition(uct::timing::Event::Admit, scheduler_.get(),
+        *immutableSelectedResult_, {static_cast<std::uint32_t>(verdict),
+            static_cast<std::uint32_t>(model_.AcceptedWordCount()),
+            previousModel ? uct::timing::RetainedArtifact : 0u, selected ? 0 : result.jobId});
     switch (verdict) {
     case uct::AdmitVerdict::kAccepted:
         ++acceptedResults_;
@@ -1491,11 +1778,18 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
         lastResultEmpty_ = true;
         lastResultMoved_ = false;
         break;
+    case uct::AdmitVerdict::kContentMoved:
+        // A complete independent pair contradicted existing selected-frame
+        // text. The model has revoked the affected proof; never restore it.
+        lastResultMoved_ = true;
+        lastResultEmpty_ = false;
+        break;
     default:
         ++rejectedResults_;
         break;
     }
     if (selected) SubmitImmutableIfNeeded();
+    if (neighbour && immutableDetailFocus_) FinishImmutableDetail();
     if (immutableSelectedResult_ && immutableSelectedResult_->output.backendPreparing &&
         immutableCorroborationJob_ == 0)
         ScheduleImmutableRetry(true, true); // refine the completed fallback only after its neighbour
@@ -1504,6 +1798,165 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
     UpdateStatus();
     lastResultMs_ = handling.nsecsElapsed() / 1e6;
     emit recognitionAdmitted(static_cast<int>(verdict));
+    if (!immutableSelectedJob_ && !immutableCorroborationJob_) ScheduleImmutableDetail();
+}
+
+void UltraClearTextController::ScheduleImmutableDetail()
+{
+    if (!immutableScene_ || !enabled_ || !immutableDetailTimer_) return;
+    // Restarted by every view change: only a settled view is re-detected.
+    immutableDetailTimer_->start(static_cast<int>(std::clamp<std::int64_t>(
+        timing_.immutableDetailSettleMs, 0, 60000)));
+}
+
+std::optional<uct::DetailFocus> UltraClearTextController::ImmutableDetailFocus() const
+{
+    if (!immutableScene_) return std::nullopt;
+    const auto& transform = immutableScene_->transform;
+    const QSize scene(static_cast<int>(geometry_.sceneWidth), static_cast<int>(geometry_.sceneHeight));
+    if (!transform.valid || scene.isEmpty()) return std::nullopt;
+    // The current view's source region, in the exact pixels of the retained
+    // full-scene analysis image (the same coordinates its OCR boxes use).
+    const QRectF visible = uct::ViewRectToScene(transform, 1.0, 1.0, QRectF(0.0, 0.0, 1.0, 1.0))
+                               .intersected(QRectF(0.0, 0.0, 1.0, 1.0));
+    if (visible.isEmpty()) return std::nullopt;
+    const QRect region = QRectF(visible.x() * scene.width(), visible.y() * scene.height(),
+                                visible.width() * scene.width(), visible.height() * scene.height())
+                             .toAlignedRect().intersected(QRect(QPoint(), scene));
+    const uct::DetailFocus focus{region, timing_.immutableDetailMagnification};
+    const QRect detail = uct::DetailRegion(scene, focus);
+    if (detail.isEmpty()) return std::nullopt;
+    // Re-detection is worth one bounded pass only when it gives the detector
+    // clearly more pixels per glyph than the established full-scene passes.
+    const double detailScale = double(uct::DetectorInputSize(detail.size(), uct::DetailMagnification(focus)).width()) /
+                               detail.width();
+    if (detailScale < 1.25 * uct::EstablishedDetectorScale(scene, QRectF(detail).center())) return std::nullopt;
+    return focus;
+}
+
+void UltraClearTextController::SubmitImmutableDetailIfUseful()
+{
+    if (!enabled_ || !immutableScene_ || !scheduler_ || mediaOverlaySuppressed_ || presentationFailed_ ||
+        backend_.state != uct::BackendState::kReady || !backend_.detailFocus || !AnalysisHealthy() ||
+        immutableRetryScheduled_ || immutableRetryExhausted_ || immutableDetailFocus_ ||
+        immutableSelectedJob_ || immutableCorroborationJob_ ||
+        !immutableSelectedAttempted_ || !immutableCorroborationAttempted_ ||
+        !immutableSelectedResult_ || !immutableSelectedResult_->output.ok ||
+        immutableSelectedResult_->output.backendPreparing || immutableDetailDone_.size() >= 32)
+        return;
+    // Only the explicit two-frame protocol needs a neighbour. Standalone
+    // paused detail examines the retained selected image itself.
+    if (immutableScene_->admission == uct::ImmutableAdmission::Corroborated &&
+        (!immutableScene_->corroboration || !CorroborationInputValid(*immutableScene_, *immutableScene_->corroboration)))
+        return;
+    const auto focus = ImmutableDetailFocus();
+    if (!focus) return;
+    const QSize scene(static_cast<int>(geometry_.sceneWidth), static_cast<int>(geometry_.sceneHeight));
+    const QRect region = uct::DetailRegion(scene, *focus);
+    // A region already examined at (almost) this detector scale is covered;
+    // zooming further in may earn one closer look, never beyond the bound.
+    const double magnification = double(uct::DetectorInputSize(region.size(), uct::DetailMagnification(*focus)).width()) /
+                                 region.width();
+    for (const auto& done : immutableDetailDone_)
+        if (done.region.contains(region) && done.magnification >= magnification * 0.9) return;
+    immutableDetailFocus_ = focus;
+    immutableSelectedAttempted_ = immutableCorroborationAttempted_ = false;
+    ++immutableDetailPasses_;
+    SubmitImmutableIfNeeded();
+    UpdateStatus();
+}
+
+void UltraClearTextController::FinishImmutableDetail()
+{
+    if (!immutableDetailFocus_) return;
+    const QSize scene(static_cast<int>(geometry_.sceneWidth), static_cast<int>(geometry_.sceneHeight));
+    // Record completed and abandoned regions alike: a failing region is not
+    // retried in a loop, and the record is bounded for this selection only.
+    const QRect region = uct::DetailRegion(scene, *immutableDetailFocus_);
+    immutableDetailDone_.push_back({region, region.isEmpty() ? 0.0 :
+        double(uct::DetectorInputSize(region.size(), uct::DetailMagnification(*immutableDetailFocus_)).width()) /
+            region.width()});
+    // Never evict coverage and turn navigation into repeated work. At most
+    // 32 pairs are attempted for this selection; a new selection resets it.
+    immutableDetailFocus_.reset();
+    immutableSelectedAttempted_ = immutableCorroborationAttempted_ = true;
+    immutableSelectedJob_ = immutableCorroborationJob_ = 0;
+    immutableRetryScheduled_ = false;
+    // Navigation can settle while this pair is running. Reconsider only the
+    // latest view after completion/failure, including the early error paths.
+    ScheduleImmutableDetail();
+}
+
+void UltraClearTextController::NoteTimingAdmission(const uct::RecognitionResult& result,
+                                                   uct::AdmitVerdict verdict, std::uint32_t flags,
+                                                   const QVector<uct::AcceptedLine>* previous)
+{
+    if (!uct::timing::Enabled()) return;
+    if (!model_.HasAcceptedText()) {
+        timingAdmission_.reset();
+        return;
+    }
+    if (!immutableScene_ && previous) {
+        // Verdict describes new glyph acceptance, not model mutation. A
+        // pending/empty full or regional result can remove text or add masks
+        // while another pane survives. Conversely an optional refusal changes
+        // nothing and must preserve the earlier causal publication ticket.
+        const auto& after = model_.Lines();
+        const auto sameLine = [](const auto& a, const auto& b) {
+            if (a.id != b.id || a.protectedSceneRects != b.protectedSceneRects ||
+                a.carvedSceneRects != b.carvedSceneRects ||
+                !SameColors(a.colors,b.colors) || a.words.size() != b.words.size()) return false;
+            for (int w = 0; w < a.words.size(); ++w) {
+                const auto& ac = a.words[w].colors; const auto& bc = b.words[w].colors;
+                if (ac.has_value() != bc.has_value() || (ac && !SameColors(*ac,*bc))) return false;
+            }
+            // A retained id keeps the whole old geometry/reference/proof and
+            // tokens. Only measured colors and protection can change in place.
+            return true;
+        };
+        if (previous->size() == after.size() &&
+            std::equal(previous->begin(),previous->end(),after.begin(),sameLine)) return;
+        if (std::any_of(after.begin(),after.end(),[&](const auto& line) {
+            return std::any_of(previous->begin(),previous->end(),[&](const auto& old) { return old.id == line.id; });
+        })) flags |= uct::timing::RetainedArtifact;
+    } else if (verdict != uct::AdmitVerdict::kAccepted && verdict != uct::AdmitVerdict::kContentMoved &&
+               !(immutableScene_ && verdict == uct::AdmitVerdict::kPending)) return;
+    timingAdmission_ = uct::TimingKey(scheduler_->TimingProducerId(), uct::timing::Channel::Recognition,
+                                    result.stamp, result.jobId, result.authority);
+    timingAdmissionFlags_ = flags | (result.deviceInput ? uct::timing::DeviceInput : 0u) |
+        (result.stamp.liveCameraCapture ? uct::timing::LiveCamera : 0u) |
+        (uct::EvidenceAcquisition(result.stamp) ? uct::timing::AcquisitionKnown : 0u) |
+        (verdict == uct::AdmitVerdict::kContentMoved ? uct::timing::RetainedArtifact : 0u);
+}
+
+void UltraClearTextController::UpdatePositionedTimingPublication(bool changed, bool positioned, bool clear)
+{
+    if (!uct::timing::Enabled()) return;
+    if (changed) {
+        ++timingPublicationRevision_;
+        timingPositionedPublication_ = timingAdmission_ && !clear
+            ? uct::timing::PublicationTicket{*timingAdmission_, timingPublicationRevision_, timingAdmissionFlags_}
+            : uct::timing::PublicationTicket{};
+    }
+    if (clear) timingPositionedPublication_ = {};
+    if (!positioned) timingPositionedPublication_ = {};
+    // Only a positioned snapshot change/revocation reaches these consumers.
+    // A later pane-only update must leave their ticket and painted revision.
+    if (overlay_) overlay_->SetTimingTicket(timingPositionedPublication_);
+    if (screenText_) screenText_->SetTimingTicket(timingPositionedPublication_);
+}
+
+void UltraClearTextController::UpdatePaneTimingPublication(bool sharePositionedRevision, bool clear)
+{
+    if (!uct::timing::Enabled()) return;
+    if (clear) timingPanePublication_ = {};
+    else {
+        const auto revision = sharePositionedRevision ? timingPublicationRevision_ : ++timingPublicationRevision_;
+        timingPanePublication_ = timingAdmission_
+            ? uct::timing::PublicationTicket{*timingAdmission_, revision, timingAdmissionFlags_}
+            : uct::timing::PublicationTicket{};
+    }
+    if (panel_) panel_->SetTimingTicket(timingPanePublication_);
 }
 
 void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
@@ -1511,15 +1964,19 @@ void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
     if (!overlay_) {
         return;
     }
-    if (!enabled_ || !AnalysisHealthy() || showOriginal_ || compositePaused_ || mediaOverlaySuppressed_ || settling_ || !PresentationAvailable(nowMs) ||
-        !AdvancingValidationFresh(nowMs) || !BackendUsable(backend_)) {
+    const bool provenImmutable = HasProvenImmutableArtifact();
+    if (!enabled_ || (!provenImmutable && (!AnalysisHealthy() || !BackendUsable(backend_))) ||
+        showOriginal_ || compositePaused_ || mediaOverlaySuppressed_ || settling_ || !PresentationAvailable(nowMs) ||
+        !AdvancingValidationFresh(nowMs)) {
+        const bool hadWords = !overlayWords_.isEmpty();
+        UpdatePositionedTimingPublication(hadWords, false);
         overlay_->ClearWords();
         overlayWords_.clear();
         // Nothing is drawn, so nothing is exposed: an empty root. Trivial
         // when already empty, as this branch runs on every presentation.
         if (screenText_) screenText_->RevokeAll();
         shownWords_ = 0;
-        UpdateReadingText();
+        UpdateReadingText(hadWords);
         return;
     }
     const QVector<uct::SceneWord> words = model_.SceneWords(ModelTime(nowMs), currentFrameSeq_);
@@ -1527,7 +1984,7 @@ void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
     next.reserve(words.size());
     for (const uct::SceneWord& word : words) {
         next.push_back({word.text, word.sceneRect, word.colors, word.lineId, word.protectedSceneRects,
-                        word.wordIndex});
+                        word.wordIndex, word.sceneQuad, word.layoutGroupId, word.carvedSceneRects});
     }
     // Text, position and colors all decide what is drawn; a re-recognized
     // word in a new color scheme must not keep its old plate.
@@ -1536,12 +1993,16 @@ void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
         same = next[i].text == overlayWords_[i].text &&
                next[i].sceneRect == overlayWords_[i].sceneRect &&
                next[i].lineId == overlayWords_[i].lineId &&
+               next[i].layoutGroupId == overlayWords_[i].layoutGroupId &&
                next[i].wordIndex == overlayWords_[i].wordIndex &&
                next[i].protectedSceneRects == overlayWords_[i].protectedSceneRects &&
+               next[i].carvedSceneRects == overlayWords_[i].carvedSceneRects &&
+               next[i].sceneQuad == overlayWords_[i].sceneQuad &&
                SameColors(next[i].colors, overlayWords_[i].colors);
     }
     if (!same) {
         overlayWords_ = next;
+        UpdatePositionedTimingPublication(true, !next.isEmpty());
         if (next.isEmpty()) {
             overlay_->ClearWords();
         } else {
@@ -1550,7 +2011,7 @@ void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
         // Removals apply at once; additions wait for the semantic cadence.
         // Pan/zoom never reaches here: geometry is answered from paint.
         if (screenText_) screenText_->ContentChanged();
-        UpdateReadingText();
+        UpdateReadingText(true);
     }
     shownWords_ = overlayWords_.size();
 }
@@ -1560,8 +2021,8 @@ UctScreenTextSnapshot UltraClearTextController::ScreenTextSnapshot() const
     UctScreenTextSnapshot snapshot;
     snapshot.enabled = enabled_;
     // overlayWords_ is non-empty only while every RefreshOverlay gate holds
-    // (no Show original, settling, composite, watchdog, failure or
-    // unusable backend): exactly when glyphs are drawn.
+    // (including presentation/source revocation). A failed optional
+    // refinement may leave exact paused proof drawn, never new evidence.
     if (!enabled_ || overlayWords_.isEmpty()) {
         return snapshot;
     }
@@ -1582,17 +2043,20 @@ UctScreenTextSnapshot UltraClearTextController::ScreenTextSnapshot() const
     return snapshot;
 }
 
-void UltraClearTextController::UpdateReadingText()
+void UltraClearTextController::UpdateReadingText(bool shareTimingRevision)
 {
     // The pane offers exactly the lines verified on screen now (also while
     // Show original hides the glyph plates).
     QString text;
-    if (enabled_ && AnalysisHealthy() && PresentationAvailable(clock_()) && AdvancingValidationFresh(clock_()) && !compositePaused_ && !mediaOverlaySuppressed_ && !settling_ && BackendUsable(backend_)) {
+    if (enabled_ && (HasProvenImmutableArtifact() || (AnalysisHealthy() && BackendUsable(backend_))) &&
+        PresentationAvailable(clock_()) && AdvancingValidationFresh(clock_()) &&
+        !compositePaused_ && !mediaOverlaySuppressed_ && !settling_) {
         text = model_.ReadingText(ModelTime(clock_()), currentFrameSeq_);
     }
     if (text == readingText_) {
         return;
     }
+    UpdatePaneTimingPublication(shareTimingRevision, text.isEmpty());
     readingText_ = text;
     if (panel_) {
         panel_->SetReadingText(readingText_);
@@ -1618,6 +2082,13 @@ void UltraClearTextController::UpdateStatus()
     if (panel_) panel_->SetBackendStatus(backend_);
     if (!enabled_) {
         SetStatus(QStringLiteral("Ultra Clear Text is off."));
+        return;
+    }
+    // The backend panel above still reports the actual terminal status.
+    // Avoid claiming the original image is shown while accepted paused
+    // glyphs remain drawn; reuse the ordinary visible-word count.
+    if (shownWords_ > 0 && HasProvenImmutableArtifact()) {
+        SetStatus(QStringLiteral("Showing sharp text for %1 words.").arg(shownWords_));
         return;
     }
     switch (backend_.state) {

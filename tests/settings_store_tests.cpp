@@ -1,5 +1,6 @@
 #include <limits>
 #include <memory>
+#include <array>
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -166,6 +167,7 @@ class SettingsStoreTests : public QObject {
 private slots:
     void uctModelDefaultsMigrationAndRoundTrip();
     void controlSettingsAndConversationKinds();
+    void liveRecapDurationIsBoundedAndPreservesOtherPreferences();
     void defaultsUseLunaLow();
     void automaticFallbackPreservesPreferredCamera();
     void modelDefaultsPreserveExplicitSelections();
@@ -215,6 +217,23 @@ private slots:
     void failedQuickModeSavePreservesOldModesAndLiveSettings();
     void danglingPresetResolutionLeavesSelectionUnchanged();
 };
+
+void SettingsStoreTests::liveRecapDurationIsBoundedAndPreservesOtherPreferences()
+{
+    QTemporaryDir directory;QVERIFY(directory.isValid());const auto path=directory.filePath("settings.json");
+    PersistentSettings original;original.cameraSymbolicLink="fixture-camera";original.cameraSelectionExplicit=true;
+    original.currentConfig.zoomAmount=2.5f;original.currentConfig.zoomCenterX=0.3f;original.microphoneEndpointId="__none__";
+    QCOMPARE(original.liveRecapMinutes,5);
+    for(const auto& pair:std::array<std::pair<int,int>,4>{{{-10,1},{3,3},{5,5},{999,5}}}) {
+        original.liveRecapMinutes=pair.first;QVERIFY(Save(path,original));const auto loaded=Load(path);QVERIFY(loaded);
+        QCOMPARE(loaded->liveRecapMinutes,pair.second);QCOMPARE(loaded->cameraSymbolicLink,original.cameraSymbolicLink);
+        QCOMPARE(loaded->cameraSelectionExplicit,true);QCOMPARE(loaded->currentConfig.zoomAmount,2.5f);
+        QCOMPARE(loaded->currentConfig.zoomCenterX,0.3f);QCOMPARE(loaded->microphoneEndpointId,original.microphoneEndpointId);
+    }
+    auto json=QJsonDocument::fromJson(Serialize(original)).object();json.remove("liveRecapMinutes");
+    QFile file(path);QVERIFY(file.open(QIODevice::WriteOnly));file.write(QJsonDocument(json).toJson());file.close();
+    const auto missing=Load(path);QVERIFY(missing);QCOMPARE(missing->liveRecapMinutes,5);
+}
 
 void SettingsStoreTests::uctModelDefaultsMigrationAndRoundTrip()
 {

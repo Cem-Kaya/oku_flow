@@ -161,6 +161,7 @@ Result Engine::Recognize(const std::uint8_t* bgra, int width, int height, int st
             return result;
         }
         const wmo::OcrResult ocr = operation.GetResults();
+        if (const auto angle = ocr.TextAngle()) result.textAngleDegrees = angle.Value();
         for (const wmo::OcrLine& line : ocr.Lines()) {
             Line outLine;
             for (const wmo::OcrWord& word : line.Words()) {

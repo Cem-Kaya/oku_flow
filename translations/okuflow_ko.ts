@@ -1,8 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="ko" sourcelanguage="en_US">
-    <context>
-        <name>OkuFlow</name>
+<context>
+    <name>OkuFlow</name>
+    <message>
+        <source>Live recap duration (minutes)</source>
+        <translation>실시간 영상 되돌아보기 시간(분)</translation>
+    </message>
+    <message>
+        <source>Estimated video history: %1 MB</source>
+        <translation>영상 기록의 예상 메모리: %1 MB</translation>
+    </message>
+    <message>
+        <source>Additional memory is used while buffering, replaying or freezing video.</source>
+        <translation>영상을 버퍼링하거나 다시 재생하거나 화면을 멈출 때 추가 메모리가 사용됩니다.</translation>
+    </message>
+        <message>
+            <source>Live recap</source>
+            <translation>실시간 영상 되돌아보기</translation>
+        </message>
+        <message>
+            <source>Buffering live video…</source>
+            <translation>실시간 영상을 메모리에 저장하는 중…</translation>
+        </message>
         <message>
             <source>Action in progress.</source>
             <translation>작업을 실행 중입니다.</translation>

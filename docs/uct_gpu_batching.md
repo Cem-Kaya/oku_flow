@@ -1,5 +1,9 @@
 # UCT GPU recognition batches (development)
 
+An additional [opt-in width policy](uct_recognizer_width.md) reduces padding
+within the same contiguous groups. It changes no model tier or default and
+requires its own prepared dynamic-width plans and cross-width quality evidence.
+
 The pinned PP-OCRv6 recognizers accept a dynamic batch dimension. Previously,
 queuing eight batch-one calls reduced completion waits but still executed each
 network separately. The new path rectifies multiple crops into distinct input

@@ -11,6 +11,8 @@
 // glyph-admission or screen-reader measurement. See docs/uct_resident_baseline.md.
 
 #include "uct_batch_diagnostic.hpp"
+#include "okuflow/common/uct_region_planner.hpp"
+#include "../src/common/uct_recognizer_width.hpp"
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -71,8 +73,8 @@ struct Selection {
     QStringList images;
     int rounds{3}, passes{5};
     quint32 seed{20261020};
-    bool profile{true}, media{}, paired{}, frozenCrops{};
-    QString sdk;
+    bool profile{true}, media{}, paired{}, frozenCrops{}, shadowPlanner{};
+    QString sdk, widthPolicy{QStringLiteral("fixed1024")};
     qint64 watchdogMs{};
     QString error;
     int Blocks() const { return int(pairs.size() * capacities.size()) * rounds; }
@@ -92,7 +94,8 @@ struct Selection {
                 {"warmupsPerSourcePerBlock", 1}, {"timedPassesPerSourcePerBlock", passes},
                 {"seed", qint64(seed)}, {"profiling", profile}, {"stamp", media ? "media" : "camera"},
                 {"input", paired ? "pair" : "single"}, {"sdk", sdk}, {"watchdogMs", watchdogMs},
-                {"frozenCrops", frozenCrops},
+                {"frozenCrops", frozenCrops}, {"recognizerWidthPolicy", widthPolicy},
+                {"shadowPlanner", shadowPlanner},
                 {"startupDeadlineMs", kStartupDeadlineMs}, {"jobDeadlineMs", kJobDeadlineMs}};
     }
 };
@@ -164,6 +167,12 @@ inline Selection ParseSelection(const EnvironmentReader& read)
         return refuse("OKUFLOW_UCT_RESIDENT_INPUT must be single or pair.");
     if (!profile.isEmpty() && profile != "1" && profile != "0")
         return refuse("OKUFLOW_UCT_RESIDENT_PROFILE must be 1 or 0.");
+    const auto widthPolicy = read("OKUFLOW_UCT_RESIDENT_WIDTH");
+    if (!widthPolicy.isEmpty()) s.widthPolicy = widthPolicy;
+    if (s.widthPolicy != "fixed1024" && s.widthPolicy != "bucketed")
+        return refuse("OKUFLOW_UCT_RESIDENT_WIDTH must be fixed1024 or bucketed.");
+    if (!read("OKUFLOW_UCT_TRT_PREPARE_WIDTH").isEmpty() && read("OKUFLOW_UCT_TRT_PREPARE_WIDTH") != "0")
+        return refuse("The resident benchmark cannot prepare width plans; clear OKUFLOW_UCT_TRT_PREPARE_WIDTH.");
     s.media = stamp == "media";
     s.paired = input == "pair";
     s.profile = profile != "0";
@@ -171,6 +180,12 @@ inline Selection ParseSelection(const EnvironmentReader& read)
     if (!frozen.isEmpty() && frozen != "0" && frozen != "1")
         return refuse("OKUFLOW_UCT_RESIDENT_FROZEN_CROPS accepts only 0 or 1.");
     s.frozenCrops = frozen == "1";
+    const auto shadow = read("OKUFLOW_UCT_RESIDENT_SHADOW_PLANNER");
+    if (!shadow.isEmpty() && shadow != "0" && shadow != "1")
+        return refuse("OKUFLOW_UCT_RESIDENT_SHADOW_PLANNER accepts only 0 or 1.");
+    s.shadowPlanner = shadow == "1";
+    if (s.shadowPlanner && !s.frozenCrops)
+        return refuse("Shadow integration requires frozen source identities; copies cannot manufacture fresh evidence.");
     if (s.frozenCrops && !s.profile) return refuse("Frozen-crop trials require profiling to prove detection was skipped.");
     if (s.frozenCrops && std::any_of(s.pairs.begin(), s.pairs.end(), [&s](const Pair& pair) {
             return pair.detector != s.pairs.front().detector;
@@ -403,11 +418,13 @@ inline std::optional<Completion> Await(Mailbox& box, Clock::time_point deadline)
 // Mirrors Network's cache identity in src/common/uct_tensorrt.cpp. Any drift
 // makes the expected plan look missing, so this check fails closed.
 inline QString PlanKey(const QByteArray& modelSha256Hex, const QByteArray& gpuUuid, int driver,
-                       bool detection, int capacity)
+                       bool detection, int capacity, bool variableWidth = false)
 {
     QByteArray identity = QByteArray::fromHex(modelSha256Hex) + gpuUuid + QByteArray::number(driver) +
                           "-trt11.4.0.106-fp32-v1";
-    if (!detection && (capacity == 8 || capacity == 16))
+    if (!detection && variableWidth)
+        identity += recognizer_width::kCacheTag + QByteArray::number(capacity);
+    else if (!detection && (capacity == 8 || capacity == 16))
         identity += "-rec-min1x3x48x1024-opt" + QByteArray::number(capacity) + "x3x48x1024-max" +
                     QByteArray::number(capacity) + "x3x48x1024-v2";
     return QString::fromLatin1(QCryptographicHash::hash(identity, QCryptographicHash::Sha256).toHex());
@@ -542,6 +559,19 @@ inline QJsonObject OutputJson(const RecognitionOutput& output)
 
 inline QJsonObject ResultJson(const RecognitionResult& result)
 {
+    QJsonObject shadow;
+    if (result.shadowPlan) {
+        const auto& plan = *result.shadowPlan;
+        shadow = {{"status", int(plan.status)}, {"rejectReason", int(plan.rejectReason)},
+            {"planGeneration", qint64(plan.planGeneration)}, {"plannerEpoch", qint64(plan.plannerEpoch)},
+            {"fullOcrAuthoritative", plan.authoritativeAction == RegionAuthoritativeAction::kRunFullOcr},
+            {"jobId", qint64(plan.jobId)}, {"authority", qint64(plan.authority)},
+            {"acceptedObservations", qint64(plan.coverage.acceptedObservations)},
+            {"fullCandidateWords", plan.comparison.fullCandidateWords},
+            {"fullOmittedWords", plan.comparison.fullOmittedWords},
+            {"selectedRegions", plan.coverage.selectedRegions}, {"coverageDebt", plan.coverage.coverageDebt},
+            {"deadlineObservation", qint64(plan.coverage.coverageDeadlineObservation)}};
+    }
     QJsonArray colors, matches;
     for (const auto& line : result.lineColors)
         colors.push_back(QJsonArray{line.foreground.name(), line.background.name()});
@@ -552,6 +582,8 @@ inline QJsonObject ResultJson(const RecognitionResult& result)
         residentReferences += line.reference.valid && line.reference.resident && line.reference.values.isEmpty();
     }
     return {{"jobId", qint64(result.jobId)}, {"authority", qint64(result.authority)},
+            {"shadowPlan", shadow}, {"shadowPlannerMs", result.shadowPlannerMs},
+            {"shadowPlannerError", result.shadowPlannerError},
             {"geometryGeneration", qint64(result.stamp.geometryGeneration)},
             {"timestampMs", qint64(result.stamp.timestampMs)},
             {"viewport", QJsonArray{qint64(result.stamp.viewportWidth), qint64(result.stamp.viewportHeight)}},
@@ -594,6 +626,10 @@ inline QString Validate(const Completion& completion, const MeteredImage::Meters
         return "The actual recognizer capacity differs from the request; a fallback is not benchmarked: " +
                completion.backend.detail;
     if (!result.deviceInput) return "The scheduler did not take the device-input path.";
+    if (selection.shadowPlanner && (!result.shadowPlan || !result.shadowPlannerError.isEmpty() ||
+        result.shadowPlan->authoritativeAction != RegionAuthoritativeAction::kRunFullOcr ||
+        result.shadowPlan->jobId != result.jobId || result.shadowPlan->authority != result.authority))
+        return "Shadow observer failed or lost the authoritative full-OCR ticket.";
     if (meters.waitCalls < 1) return "TensorRT did not consume the owned device image.";
     if (meters.residentCalls != 1 || !meters.residentOk)
         return "Scheduler resident analysis did not run exactly once successfully.";
@@ -618,6 +654,8 @@ inline QString Validate(const Completion& completion, const MeteredImage::Meters
     if (selection.profile) {
         if (profiles.size() != 1) return QString("Expected exactly one TensorRT profile, received %1.").arg(profiles.size());
         const auto& profile = profiles.front();
+        if (profile["recognizerWidthPolicy"].toString() != selection.widthPolicy)
+            return "The recognizer width policy differs from the request.";
         if (profile["batchCapacity"].toInt() != capacity || profile["maximumActualBatch"].toInt() > capacity)
             return "The TensorRT profile reports a different batch capacity.";
         if (profile["omittedEventPairs"].toInt() != 0)
@@ -761,6 +799,7 @@ inline bool UserTolerancePass(const RecognitionOutput& reference, const Recognit
     const auto agreement = uct_batch_test::Compare(reference, actual);
     if (!reference.ok || !actual.ok || reference.cancelled || actual.cancelled ||
         reference.inputFault || actual.inputFault || reference.backendPreparing || actual.backendPreparing ||
+        reference.compositeInput || actual.compositeInput ||
         !agreement.structure) return false;
     const auto edges = [](const QRectF& a, const QRectF& b) {
         return std::max({std::abs(a.left()-b.left()), std::abs(a.right()-b.right()),
@@ -935,13 +974,21 @@ inline void SelectionAndComparisonSelfTest()
     QCOMPARE(selection.pairs.size(), qsizetype(2));
     QCOMPARE(selection.images.size(), qsizetype(1));
     QVERIFY(selection.profile && !selection.media && !selection.paired);
+    QCOMPARE(selection.widthPolicy,QStringLiteral("fixed1024"));
     const auto refused = [&values](QHash<QByteArray, QString> changes) {
         auto changed = values;
         for (auto it = changes.begin(); it != changes.end(); ++it) changed[it.key()] = it.value();
         return !ParseSelection([&changed](const char* key) { return changed.value(QByteArray(key)); }).error.isEmpty();
     };
+    QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_WIDTH", "auto"}}));
+    QVERIFY(refused({{"OKUFLOW_UCT_TRT_PREPARE_WIDTH", "1"}}));
+    values["OKUFLOW_UCT_RESIDENT_WIDTH"] = "bucketed";
+    QCOMPARE(ParseSelection(read).widthPolicy,QStringLiteral("bucketed"));
+    values.remove("OKUFLOW_UCT_RESIDENT_WIDTH");
     QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_CAPACITIES", "8,16"}})); // no strict batch-one reference
     QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_CAPACITIES", "1,4"}}));
+    QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_SHADOW_PLANNER", "yes"}}));
+    QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_SHADOW_PLANNER", "1"}}));
     QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_FROZEN_CROPS", "yes"}}));
     QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_FROZEN_CROPS", "1"}, {"OKUFLOW_UCT_RESIDENT_PROFILE", "0"}}));
     QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_FROZEN_CROPS", "1"},
@@ -987,6 +1034,11 @@ inline void SelectionAndComparisonSelfTest()
     QVERIFY(PlanKey(model, uuid, 13000, false, 16) != PlanKey(model, uuid, 13000, false, 8));
     QVERIFY(PlanKey(model, uuid, 13001, true, 1) != detector);
     QVERIFY(PlanKey(other, uuid, 13000, true, 1) != detector);
+    for (const int n : {1,8,16}) {
+        QVERIFY(PlanKey(model,uuid,13000,false,n,true) != PlanKey(model,uuid,13000,false,n,false));
+        QVERIFY(PlanKey(model,uuid,13000,false,n,true) != detector);
+    }
+    QVERIFY(PlanKey(model,uuid,13000,false,8,true) != PlanKey(model,uuid,13000,false,16,true));
 
     std::vector<double> samples(19);
     std::iota(samples.begin(), samples.end(), 1.0);
@@ -1155,6 +1207,7 @@ inline void SelectionAndComparisonSelfTest()
     valid.result.reference.resident = std::make_shared<StubProbe>();
     const MeteredImage::Meters resident{1, 0, 1, 0, 0.0, 1.0, true};
     const QVector<QJsonObject> profile{QJsonObject{{"batchCapacity", 8}, {"maximumActualBatch", 8},
+        {"recognizerWidthPolicy", "fixed1024"},
         {"orderedCropDescriptorSha256", QString(64, QLatin1Char('a'))}}};
     QVERIFY2(Validate(valid, resident, profile, 8, selection, {}).isEmpty(),
              qPrintable(Validate(valid, resident, profile, 8, selection, {})));
@@ -1343,9 +1396,10 @@ struct Run {
         const auto& result = completion.result;
         const double submitToCallback = Ms(completion.at - submitted);
         QJsonObject measured{{"submitToCallbackMs", submitToCallback}, {"schedulerWorkerMs", result.durationMs},
+            {"shadowPlannerMs", result.shadowPlannerMs},
             {"residentAnalysisMs", meters.residentMs}, {"inputWaitReadyMs", meters.waitMs},
             {"workerMinusResidentMs", result.durationMs - meters.residentMs},
-            {"dispatchAndCallbackMs", submitToCallback - result.durationMs},
+            {"dispatchAndCallbackMs", submitToCallback - result.durationMs - result.shadowPlannerMs},
             {"analysisCaptureSetupMs", input.setupMs}, {"candidateWords", CandidateWords(result.output)},
             {"lines", int(result.output.lines.size())}};
         if (profiles.size() == 1) {
@@ -1403,6 +1457,7 @@ inline void RunBlock(Run& run, const Block& block, ProfileCapture& capture)
     const auto& assets = run.pairs[std::size_t(block.pair)].assets;
     const QString configuration = pair.Token() + QStringLiteral("/n%1").arg(block.capacity);
     uct_batch_test::Environment batch("OKUFLOW_UCT_TRT_BATCH", QByteArray::number(block.capacity));
+    uct_batch_test::Environment width("OKUFLOW_UCT_TRT_WIDTH",run.selection.widthPolicy.toLatin1());
     uct_batch_test::RetirementReceipts retirement; // outlives the scheduler, including early assertion exits
     const auto mailbox = std::make_shared<Mailbox>();
     capture.Take();
@@ -1422,7 +1477,7 @@ inline void RunBlock(Run& run, const Block& block, ProfileCapture& capture)
             std::lock_guard lock(mailbox->mutex);
             mailbox->backend = std::move(status);
         },
-        2, ModelTuning{}.minimumWordHeightPx);
+        2, ModelTuning{}.minimumWordHeightPx, false, run.selection.shadowPlanner);
 
     // Startup: cached-plan deserialization, contexts and the first inference.
     const int firstSource = block.sourceOrder.front();
@@ -1456,11 +1511,24 @@ inline void RunBlock(Run& run, const Block& block, ProfileCapture& capture)
     const auto startupInvalid = Validate(*first, startupInput.image->Read(), startupProfiles, block.capacity,
                                          run.selection, run.sources[std::size_t(firstSource)].treeSha256);
     QVERIFY2(startupInvalid.isEmpty(), qPrintable(startupInvalid + " Evidence: " + startupFile));
+    std::uint64_t shadowEpoch = 0;
+    if (run.selection.shadowPlanner) {
+        const auto& plan = *first->result.shadowPlan;
+        QCOMPARE(plan.status, RegionPlanStatus::kAccepted);
+        QCOMPARE(plan.coverage.acceptedObservations, std::uint64_t{1});
+        shadowEpoch = plan.plannerEpoch;
+    }
     const QString backendDetail = first->backend.detail;
     first.reset();
     startupInput = {};
 
+    int previousSource = firstSource;
     for (const int source : block.sourceOrder) {
+        // A selected source change is an authority boundary. Retained copies
+        // within that source keep the same acquisition and must be rejected
+        // as duplicate shadow evidence, including between warmup/timed jobs.
+        const bool sourceBoundary = source != previousSource;
+        if (run.selection.shadowPlanner && sourceBoundary) scheduler->Cancel();
         for (int pass = 0; pass <= run.selection.passes; ++pass) { // pass 0 is this source's warmup
             auto input = run.Capture(source);
             QVERIFY2(input.image, qPrintable(input.error));
@@ -1479,12 +1547,29 @@ inline void RunBlock(Run& run, const Block& block, ProfileCapture& capture)
             const auto invalid = Validate(*completion, input.image->Read(), profiles, block.capacity, run.selection,
                                           run.sources[std::size_t(source)].treeSha256);
             QVERIFY2(invalid.isEmpty(), qPrintable(invalid + " Evidence: " + file));
+            if (run.selection.shadowPlanner) {
+                const auto& plan = *completion->result.shadowPlan;
+                // Startup already observed the first frozen acquisition.
+                // Only an actual selected-source change resets its history.
+                if (sourceBoundary && pass == 0) {
+                    QCOMPARE(plan.status, RegionPlanStatus::kAccepted);
+                    QCOMPARE(plan.resetReason, RegionResetReason::kAuthorityChanged);
+                    QVERIFY(plan.plannerEpoch > shadowEpoch);
+                    shadowEpoch = plan.plannerEpoch;
+                } else {
+                    QCOMPARE(plan.status, RegionPlanStatus::kRejected);
+                    QCOMPARE(plan.rejectReason, RegionRejectReason::kDuplicateAcquisition);
+                    QCOMPARE(plan.plannerEpoch, shadowEpoch);
+                }
+                QCOMPARE(plan.coverage.acceptedObservations, std::uint64_t{1});
+            }
             if (run.selection.frozenCrops && pass > 0) {
                 QCOMPARE(profiles.size(), 1);
                 QCOMPARE(profiles.front()["detectorPasses"].toInt(), 0);
             }
             if (pass > 0) run.Accumulate(block, source, pass, record, file, std::move(completion->result.output));
         }
+        previousSource = source;
     }
 
     const auto stats = scheduler->Stats();
@@ -1580,7 +1665,7 @@ inline void ResidentBaselineDiagnostic()
                                           PlanKey(entry.assets.detectorSha256, uuid, driver, true, 1)));
         for (const int capacity : selection.capacities)
             entry.plans.push_back(InspectPlan(cache, "recognizer", pair.recognizer, capacity,
-                                              PlanKey(entry.assets.recognizerSha256, uuid, driver, false, capacity)));
+                                              PlanKey(entry.assets.recognizerSha256, uuid, driver, false, capacity, selection.widthPolicy == "bucketed")));
         for (const auto& plan : entry.plans)
             if (!plan.valid)
                 missing << QStringLiteral("%1 %2 N%3 %4: %5").arg(pair.Token(), plan.role).arg(plan.capacity)

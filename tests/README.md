@@ -1,5 +1,194 @@
 # OkuFlow Tests
 
+`uct_paddle_cuda`'s `gpuAlgorithmsAndOwnedInputs` additionally compares full
+validation integrals (including zero borders) against an integer CPU oracle
+across warp/tile tails, decimations, padded pitch and repeated poisoned buffers.
+See [the resident GPU integral candidate](../docs/uct_gpu_integral.md) for the
+separate private source-linked timing protocol and acceptance limits.
+
+Initial paused frame-zero coverage is documented in
+[the source investigation](../docs/uct_initial_paused_frame.md).
+`initialPausedFrameZeroWaitsForReadyAndNeighbour` has eight model-free
+CPU/resident-oracle rows for backend/selected-job/neighbour ordering without
+Play; `initialPausedFrameZeroWithoutIndependentNeighbour` has four refusal rows.
+`pausedBridgeRefinesAfterCorroboration` now starts at frame/PTS zero too.
+The existing `immutable_uct_contract` includes these slots. `LongGopSeeking`
+adds real initial-frame/following-neighbour assertions to `video_playback_contract`.
+`savedSparseCadenceKeepsIndependentProof` checks duration authority, ordinary
+and hard-ceiling boundaries, identical-pixel and changed-text refusal through
+CPU/resident paths. Native `InitialSparseSavedFileNeighbour` uses original raw
+AVI bytes to verify actual two-second duration/nearest following preparation
+without Play; the same bytes opened as RAM keep ordinary policy.
+`capturedOutputReachesPaintAndPositionedText` checks actual `PaintedWord.drawn`,
+`ScreenLines` and Qt accessibility character bounds after selection, Play/Pause,
+bridge refinement and settled zoom. Configure with the FILEPATH cache option
+`OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF` naming an explicit absolute private proof
+JSON to replay captured image/output geometry. Its initial default comes from
+the same environment variable. The test declares that proof and both actual
+source images as absolute CTest `REQUIRED_FILES`, and its configured environment
+prevents an ambient runtime variable from switching inputs. Reconfigure with
+`-DOKUFLOW_UCT_CONTROLLER_REPLAY_PROOF=` to return to ordinary synthetic mode;
+`OKUFLOW_UCT_CONTROLLER_REPLAY_OUTPUT` writes new per-row evidence in a private
+directory. Zoom reuses full-scene capture outputs because neighbouring detail
+output is not serialized. This is CPU software/controller replay, not inference
+or native UIA-client acceptance. The fresh CPU gate passed native playback and
+152 controller rows; its actual captured bridge rows failed paint and remain
+preserved. A separate corrected real capture with runtime declarations passed
+all 158 controller rows, including the four additive outside-window negatives,
+actual paint/ScreenLines and positioned Qt character bounds; zero skips.
+The first private replay predates the runtime declarations and remains diagnostic
+evidence; see the linked results and exact-hash receipt. Corrected-capture results
+are recorded separately with the declarations enabled.
+
+The optional `video_playback_native_sparse_0_2s` fixture measures actual native
+selected-sample duration and initial following preparation for the private
+zero/two-second sparse source. Configure `OKUFLOW_TEST_VIDEO_PAUSED_FILE` as an
+explicit absolute existing file; the FILEPATH option defaults empty and adds no
+ordinary CI case. The registered case has `headless;codec` labels, runs serially
+with a 20-second timeout, and declares the actual clip plus test/playback/policy
+helper bytes as absolute CTest `REQUIRED_FILES` for runtime hashing. It invokes
+`video_playback_tests --native-paused-external <exact-path>` with the existing
+`OKUFLOW_TEST_VIDEO_PLAYBACK_CODEC=1` opt-in. Direct CLI use needs that opt-in too.
+One CPU `OpenFile` and a shared 12-second polling deadline retain initial sample
+and PTS zero while waiting for the actual nearest following sample. Output
+reports native PTS/duration in 100-ns ticks, extents and descriptor agreement.
+This fixture expects native two-second duration and a genuine 2000-ms neighbour;
+it is not a contract for arbitrary video cadence. It never plays/seeks, requests
+a GPU adapter, submits OCR or opens audio endpoints. Missing native duration or
+neighbour fails without inference or policy expansion. The private Tr 9 source
+hash and the separate provenance/acceptance limits are documented in
+[initial paused video](../docs/uct_initial_paused_frame.md). The parent's tracked
+native Tr 9 run passed with selected PTS zero, real two-second sample duration,
+an issued 2000-ms following sample and unchanged selected lease ownership.
+
+`native_app_recap_followup_offscreen` selects three actual-app slots (including
+all terminal-refusal data rows): collapsed viewport Space Freeze/Resume/focus,
+permanent failure/unsupported Resume refusal with the exact hold retained, and
+transient-busy waiting. It uses the opt-in CPU dev-full/native-control target,
+Qt offscreen and fixture settings, without device/provider/bootstrap work.
+`video_transport_contract` also checks the existing unavailable reason's polite
+announcement. `video_recap_pressure_gpu` constrains only its first real writer's
+admission budget through the existing private friend observer, then requires a
+normal successor's actual compressed-picture count, capture PTS and bounded
+bytes. It creates no camera, audio, window or file output. This models bounded
+pressure; it does not identify the owner's hardware statistics or substitute
+for the separate zero-based/nonempty-finalization `video_recap_native_gpu` case.
+
+`immutableCandidateProtectionRefusalIsAtomic` covers late semantic-risk refusal
+after an append and mixed append/fragment exhaustion at 8191 stored slots.
+`activeRegionalRasterWithdrawalIsAtomic` covers ordinary and tilted words
+next to a geometrically disjoint original thin mark sharing a sampled pixel.
+It checks actual `PaintedWord.drawn`, model/pending/proof/tickets and paint
+generation. `regionalScratchPlanPreservesPaintAuthority` includes a successful
+safe scratch plan, unsafe raster coverage, cold typography, budget exhaustion
+and missing current view authority; all leave the existing paint untouched.
+These are model-free Qt offscreen contracts, not native desktop or OCR quality
+acceptance. The r19 fresh CPU/PCH-off tracked four-case gate passed with no
+skips or unresolved failures; see [regional evidence](../docs/uct_active_regional_ocr.md#transaction-and-raster-regressions-2026-10-22).
+
+`orientedInkAndMapping` / `gpuOrientedInkMatchesCpu` also run 33 small upright
+source-ink cases from `uct_small_ink_test_cases.hpp`. The embedded, lossless
+46x36 owner-source crop is hashed as packed RGB and uses exact saved detector
+metadata. Controlled cases check lattice phases, AA, gradients/polarity, dots,
+descenders, connected clipped strokes, rules, noise, adjacent ink and bounded
+GPU fallback. They require actual fitted bounds and unchanged prepared-word
+eligibility; counts alone cannot pass. CPU/CUDA source colors and complete fit
+bounds must match, except the explicitly constructed GPU propagation-cap
+fallback. Resident cases forbid host image egress. See
+[diagnosis, provenance and validation status](../docs/uct_color_startup_repair.md#small-upright-source-ink-2026-10-22-development).
+## Live RAM recap production seams
+
+`video_memory_stream_contract` covers actual bounded heap IStream/MF adapters,
+overflow/mutation refusal, cursor clones, successful-Finalize sealing and
+consumer lifetimes. `video_memory_native_h264` is serial native Windows CPU
+H.264 encode/decode/keyframe/PTS evidence using only synthetic memory media.
+`video_recap_contract` covers whole-segment time/byte/keyframe-bound eviction,
+source epochs and counted evicted pins. `video_recap_native_codec` exercises
+the production OpenMemory decoder, exact issued Pause leases, real <=250 ms
+neighbours, stale seek cancellation and continued async producer admission
+while a consumer holds a prior scene. `video_recap_native_4k30` separately
+checks a 65-frame full-resolution 4K30 CPU codec capability and actual compressed
+sample count/PTS, including a capture hole; its elapsed
+time is not sustained physical camera FPS or five-minute soak evidence.
+`video_recap_native_gpu` is a separate serial `gpu;codec` case using the existing
+production-pool-shaped shared D3D12 BGRA texture and ready fence. It tests actual
+StartMemory/AddGpuFrame, 65 real coded pictures with a capture-time hole, native
+PTS/counts, then two asynchronous zero-based source segments. A private observer
+also triggers the real bounded stream's oversized SetLength refusal; the native
+failed outcome must retain its error and publish no available history. This case
+opens no camera, HWND, audio endpoint or media file. It does not exercise the
+camera/CUDA producer or the presenter's actual clone draw. Hardware absence is
+a skip, never release acceptance.
+The pure ring includes real initial sequence zero, duplicate/lower/wrapped IDs,
+same-epoch segment restart refusal and source-reset restart coverage.
+Transport and opt-in actual-app offscreen rows exercise actual rolling bounds
+and exact Freeze before any encoded segment, without camera/audio endpoints.
+Model-free composition covers held CPU/GPU sampling, focus markers and rotation.
+The app's deferred-receipt rows bind Freeze to the committed epoch/sequence and
+clock despite newer ingress, failed cloning, same-capture reallocation and
+redraw after latency consumption. Reset removes that authority; unknown timing
+refuses manual Pause without entering a pending resume state.
+Ring/transport seams cover5→1 minute trimming while a four-minute-old frame
+remains pinned at its true textual position, plus natural expiry. Numeric
+RangeValue is absent outside the seek window and valid after explicit reentry.
+
+Use tracked `agent_check.ps1` selection and `run_test_gate.ps1` with exact test
+names, serial codec ownership and GUI excluded. The granted 2026-10-22 CPU
+selection passed 11 of 230 cases, including synthetic AAC/gap verification.
+Final source/executable/catalog hashes matched before and after the run; all
+initial failures remain archived. The follow-up committed-stamp repair rebuilt
+the CPU app/fixture and passed the two-case `native_app_control_offscreen` /
+`video_recap_contract` gate, retaining matching pre/post input hashes. That
+narrow repair does not rerun the earlier native codec selection.
+The full matrix is still required. These fixtures do
+not establish native desktop/screen-reader, GPU, camera, long-soak, installer
+or release acceptance. See [the contract](../docs/live_ram_recap.md).
+
+## Optional active regional GPU proof
+
+`uct_paddle_tests optionalActiveRegionalProof` is an explicit cached-model run,
+absent from normal CTest. It executes full/region/full calls on two real
+extracted acquisitions with owned CUDA inputs and no image egress. The last
+full call retains the regional input's exact acquisition; it cannot manufacture
+temporal corroboration. See the [selectors and scope](../docs/uct_active_regional_ocr.md#explicit-cached-gpu-execution-proof).
+The ordinary `uct_paddle_processing` group includes direct automatic-backend
+supplemental failure/preparation regressions, without models or a GPU.
+
+## Optional embedded FFmpeg playback
+
+An explicit `OKUFLOW_FFMPEG_SDK_ROOT` registers
+`video_playback_embedded_contract`, `video_playback_embedded_missing_runtime`,
+`video_playback_embedded_archive_fallback` and `video_playback_embedded_4k`.
+These serial, desktop-free codec cases require actual embedded identity, stable
+custom I/O cancellation/deadlines, native fallback, frame issuance/retirement,
+PCM continuity and retained-lease pressure. No GUI or audio endpoint opens.
+The embedded contract also constructs private container metadata beyond the
+box-probe budget and injects a failed cursor for a known audio track. Both
+must refuse embedded admission rather than certify a partial scan or silently
+drop the soundtrack. The generated temporary files contain no external media.
+Run through `run_test_gate.ps1` using the independent build directory. The
+default native contract and silent audio-output contract remain separate.
+`compare_video_backends.ps1` takes the global lease for an explicit finite
+same-source diagnostic and retains input/runtime hashes, original output and
+process-memory evidence. See [recipe, measurements and scope](../docs/video_ffmpeg_playback.md).
+
+The embedded 4K pressure case uses original `data/embedded-pool-4k.mp4`, a
+5,878-byte ordinary (nonfragmented) MP4 with 12 uniform gray steps at 5 FPS,
+3840×2160, one H.264 GOP and no audio. SHA-256:
+`b2f2b7ca62153b28f185396b72c972ec683aeaaed753fa7be90e1805e27f7583`.
+The owner's existing FFmpeg 7.1.1 generated this synthetic fixture only; no
+decoder executable or SDK is included in Git or a release payload:
+
+```powershell
+ffmpeg -hide_banner -nostdin -loglevel error -f lavfi -i "nullsrc=size=3840x2160:rate=5:duration=2.4,geq=lum='N*15':cb=128:cr=128" -c:v libx264 -threads 4 -preset veryfast -crf 35 -g 12 -pix_fmt yuv420p -an -movflags +faststart -map_metadata -1 embedded-pool-4k.mp4
+```
+
+Default native 4K cases still generate their original recorder fixture. The
+embedded case preserves its committed input and all timing, lease-pressure,
+same-frame reuse, supersession, pause/order and actual endpoint assertions.
+Saved fragmented MP4 is explicitly native fallback until the retained strict
+native-versus-FFmpeg timestamp precision failure is resolved.
+
 ## Accessible video and positioned UCT (development)
 
 `video_playback_contract` checks pure archive/resource admission. Explicit native
@@ -8,6 +197,19 @@
 files, decode before finalization, keep the writer advancing during rewind,
 seek the newly verified prefix and check saved-file EOF/PCM/VFR timing. They
 run serially under the `codec` label and preserve unavailable-codec skips.
+
+The one-second active-tail clock assertion uses a separate test-owned observed
+archive containing exactly one bounded, verified native prefix (at most 16 MiB,
+64 KiB copy scratch). Its generation, mutation sequence, committed/verified byte
+extents, sample count and endpoint must stay unchanged while media PTS stays
+exact. Native encoder/parser output can continue independently; only an explicit
+copy of a newly verified suffix lets this archive grow and resume at media pace.
+The earlier original writer/paused-reader and live-prefix seek checks remain on
+the original recording. Both private files are retained on failure, with prefix
+versions and actual state/PTS diagnostics. Writer admission or the first new
+fragment does not prove native output has drained; the former unfenced failure
+log cannot attribute a PTS change to clock leakage versus newly verified bytes.
+
 `video_playback_native_4k` and `video_playback_native_dci_4k` additionally retain
 displayed-frame leases while decoding UHD/DCI clips, check real ready depth,
 adaptive capacity and rapid newest-wins seeks. Their latency output is a small
@@ -1313,7 +1515,10 @@ latest-only coalescing, cancellation ownership, bounded destruction, and the
 controller's presentation-clock independence while OCR is held.
 `ultra_clear_text_windows_ocr` (labels `headless;ocr-runtime`) exercises the
 real built-in Windows OCR engine on synthetic dark-on-light and light-on-dark
-pages and skips when no OCR language is installed; a skip is not a pass.
+pages, plus clockwise/counterclockwise tilted pages. Its pure mapping row
+checks rotation about the image centre, rounded X/Y resizing and invalid
+metadata. Native rows require both the recognized token and its actual source
+position/angle, and skip when no OCR language is installed; a skip is not a pass.
 Neither opens native windows, cameras or network connections. Native GUI
 layout, screen-reader and real-camera acceptance remain separate.
 
@@ -1753,8 +1958,13 @@ video-picker/phone-light cases complement it without desktop or real-device clai
 `video_transport_contract` now embeds the production icon resource collection
 and verifies the one-row controls/scrubber, narrow secondary-row fallback,
 translated accessible names, focus, seek actions and state-dependent faces.
+Live recap/recording rows compare actual right-edge thumb/fill pixels, focused
+numeric inspection, real dragging and frozen range mapping. Right-end gestures
+request live despite history growth; saved-video endpoint seeks stay ordinary.
+Light/dark expired-hold rows retain true out-of-window time without RangeValue
+and assert visible warning-colored left markers, cleared by a valid seek.
 For optional Qt-offscreen widget captures, set
-`OKUFLOW_TRANSPORT_PREVIEW_DIR` and invoke its wide/narrow layout slots; these
+`OKUFLOW_TRANSPORT_PREVIEW_DIR` and invoke its layout/live/expired-hold slots; these
 images do not establish native UIA/focus acceptance.
 
 `uct_paddle_processing` covers detail crop coverage, overlap/edge policy, word
@@ -1769,8 +1979,9 @@ The actual-app offscreen selected-media fixture checks 250 view replays with
 fresh same-sample allocations at an 8-ms simulated clock interval, retaining the
 same UCT lease and retry budget. The external native video fixture includes
 3/7/13/23-second seeks in addition to Open/1-second/End checks. Private recordings
-and extracted frames stay outside Git. Deadline, cancellation and memory-credit
-bounds remain unchanged; native desktop/display-rate acceptance is separate.
+and extracted frames stay outside Git. Cancellation and memory-credit limits
+remain bounded; the current progress deadline is described in
+`docs/video_audio_preroll_repair.md`. Native desktop/display-rate acceptance is separate.
 
 The default `video_playback_contract` also decodes the committed original
 `tests/data/long-gop-h264.mp4`: 192×128, 60 fps, 5.2 seconds with a single long
@@ -1784,6 +1995,19 @@ ffmpeg -f lavfi -i testsrc2=size=192x128:rate=60 -t 5.2 -c:v libx264 -preset ver
 ```
 
 Reviewed SHA-256: `5459ddb3da0ab0819b015d967e5ef1dfd0d513b9efcb45e357d636a8dbc62dca`.
+The same contract now exercises the private production seek-budget helper with
+synthetic time (strict PTS progress, stalled/repeated/backward/late samples and
+the sixty-second absolute cap). The original `paced-audio-h264.mp4` fixture
+silently drains native AAC/PCM to reproduce handoff oversupply without opening
+an audio endpoint; bounded lead and mute/Resume floors are asserted. Its
+provenance, opt-in private-file playback diagnostics and limits are in
+`docs/video_audio_preroll_repair.md`. PCM delivery does not prove audible
+speaker/device continuity.
+The scene-cut portion also holds an earlier issued frame while the decoder is
+ahead, resumes to actual EOS, then replays the same-generation tail. This covers
+the shared worker's atomic restart/rewind handoff and pending-Resume End guard.
+Its four-second wait is unchanged; a failure additionally reports state, held
+PTS, ready-frame count, memory pressure and the worker error.
 The native AVC/AV1 fixtures additionally copy their own finalized output to a
 private observed archive, prove its duration, revoke its bytes by truncation,
 then verify finalization retains only historical mapping and denies old reads.
@@ -1798,6 +2022,37 @@ rows cover playback-to-pause transient faults and revocation of an old retry tim
 The real resident CUDA scheduler case includes a yellow selected word in an
 otherwise dark row, checking CPU/GPU local color/ink parity and zero image egress.
 Cached accessibility interfaces must reflect actual GPU/CPU backend switches.
+`uct_paddle_cuda` also runs all local-color CPU/CUDA parity rows, including
+selected yellow buttons, antialiased ink, clipped rectangles and dense glyphs
+whose corners contain ink. These descriptor checks use synthetic owned pixels,
+not a real-camera or display-color acceptance claim.
+
+The geometry helpers add 48 actual Segoe UI tilted/perspective `Right Hand`
+button variants through CPU/resident preparation, with the identical dark
+surround and an adjacent rule inside padded search. They assert local polarity,
+all glyph corners, word spacing, dot/descender/leading-edge retention and zero
+image egress. Varying ink includes a black dot and lighter letter around a gray
+measured foreground: retain full geometry or the complete detected word. The
+winding-component GPU case requires conservative incomplete fallback at the
+64-scan cap; the exact linear CPU queue may fit that pathological case.
+These run through the existing `uct_paddle_processing`/`uct_paddle_cuda` gates.
+
+The explicitly selected `optionalPausedVideoProof` also records resident
+search/color fit replays in `selectedFitReplay`/`neighbourFitReplay`: per-word
+pass/completion and production/replay fit flags, histograms, one warmup and
+three CUDA-event durations. This diagnostic runs after the actual workers and
+does not enter their durations, admission or pixel-egress counts. It is not
+part of regular CTest or a native display/decoder timing measurement.
+
+The opt-in [bounded timing trace](../docs/uct_timing_trace.md) has four ordinary
+headless CTest contracts: `uct_timing_trace_contract` checks storage and close/drop
+accounting; `uct_timing_controller_contract` follows real scripted worker/admission
+tickets; `uct_screen_text_timing_publication` checks consumer publication tickets;
+and `uct_timing_pane_publication_contract` ensures a pane-only change cannot
+reticket later overlay paints or positioned accessibility. Negative event-count
+assertions require a complete, uncontended trace. Native UI Automation discovery,
+reader speech and photon timing require separate acceptance.
+
 The immutable controller fixture also checks that the Text Clarity master stops
 recognition and revokes text while retaining UCT intent, resumes one-shot work
 when enabled, and respects an explicit UCT opt-out. Settings cover missing-key
@@ -1881,3 +2136,175 @@ variants. This completes recognizer isolation separately from complete-path
 SubmitDevice measurements. The original strict assertion remains unchanged;
 `userTenPixelConfidenceVariationPass` is a separate owner-authorized policy.
 See `docs/uct_resident_baseline.md` and `docs/uct_batch8_quality_acceptance.md`.
+
+
+### Shadow regional planner and scheduler
+
+`uct_region_scheduler.*` also covers opt-in active execution with actual scripted
+detail calls on current owned input, full-slot priority, execution-time slack,
+unsupported/stale/held/failed/ignored requests and deadline-overrun accounting.
+The active flag implicitly enables planning; shadow-only and probe-only modes
+never execute regions. `immutable_uct_contract` adds full-deadline comparisons
+under focus pressure, failed-optional latching, stale callback fences and an
+active-mode paused-pair regression. `ultra_clear_text_contract` covers other-pane
+pixel proof, spanning protection residuals and per-observation pending tickets
+(full A / ROI B / full C and same-acquisition rejection). All use model-free
+workers and Qt offscreen. See [execution limits](../docs/uct_active_regional_ocr.md).
+
+`uct_region_planner.*` and `uct_region_scheduler.*` are desktop-free,
+independently selectable 30-second Qt slots registered with the existing
+headless helper. Scripted complete outputs test spatial IDs, coverage debt,
+priority and source/acquisition boundaries; real scheduler tests assert full
+output preservation, disabled observation, held duplicates, backward seeks
+and failure injection. They never establish OCR reuse safety or model accuracy.
+The optional resident diagnostic can observe actual TensorRT/scheduler jobs
+with `OKUFLOW_UCT_RESIDENT_SHADOW_PLANNER=1`, requiring
+`OKUFLOW_UCT_RESIDENT_FROZEN_CROPS=1`; repeated source copies retain their
+acquisition and are rejected as duplicate shadow evidence. Observer timing
+is recorded separately from OCR work and actual callback delivery.
+
+`uct_region_planner_benchmark` is excluded from ordinary builds and CTest.
+Build that explicit target in the CPU preset, then run it with `--run
+--repetitions 12 --warmups 2 --output <new-local-evidence.json>`. It reports
+metadata bookkeeping cost for 17 finite scenarios, including 8192 words,
+continual newcomers and heavily overlapping boxes. Raw accepted/rejected
+timings, nearest-rank summaries and invariant failures are retained; no timing
+threshold is asserted. This model-free experiment measures no inference,
+native presentation or accessibility latency. It needs Qt Core/Gui and no
+camera, fonts, model runtime, GPU or native window.
+
+### Tilted text and paused visible detail
+
+`uct_paddle_processing` includes oriented fit/mapping, post-fit duplicate and
+actual projective-paint cases. `immutable_uct_contract` includes settled paused
+pan/zoom, coalescing, bounded coverage and failure/source fencing. The new
+`ultra_clear_text_contract` quad-reference cases assert unchanged rotated ink
+passes strict matching while changed ink, malformed quads, high-risk tokens and
+reused/foreign acquisitions do not. `uct_paddle_cuda` compares CPU, uploaded
+compact CPU and native resident references at 1/2/4 decimation with rotation
+and perspective, retaining zero image download on the resident path.
+
+The shared `uct_quad_reference_test_support.hpp` uses installed Segoe UI and
+first-party synthetic text. Optional real-image diagnostics can write directly
+to an absolute `OKUFLOW_UCT_PAUSE_OUTPUT_ROOT`, preserving the default when
+unset. See `docs/uct_oriented_detail_repair.md` for bounded eight-times detail,
+private-image evidence and the distinction from native desktop acceptance.
+
+`ordinaryLabelsUseIndependentProofAndPaint` checks real preparation, CPU pixel
+registration, immutable admission and actual offscreen painted glyphs for mixed
+ASCII labels and isolated lookalikes. Duplicate pixels and changed source ink
+still fail proof. `ordinaryLabelsKeepPreparationGates` retains the score-range,
+seven-source-pixel, nonfinite-geometry and explicit backend-rejection gates.
+`pausedDetailGeometry` covers 8x clamp/context/ceil/alignment/image bounds and
+the unchanged tiny-axis minimum. `pausedDetailNormalization` checks the actual
+120×72-to-960×576 CPU tensor; `gpuAlgorithmsAndOwnedInputs` compares that 8x
+strided GPU crop with CPU normalization. These require their respective CPU
+and serial GPU gates; see [policy and evidence limits](../docs/uct_token_policy_and_detail.md).
+
+### Paused UCT continuity and scene cuts
+
+`mergeKeepsIndependentColumnsAndTypeSizes` in `uct_paddle_processing` checks
+both merge orders, the title/script/diff example, separated columns and contained
+prefix fragments. The UCT contract adds file-path versus notation filtering and
+retention of a current-proved line through half-pixel exclusion-box jitter,
+including unchanged validation clocks and eventual expiry.
+`mergedHeadlineAndFilePathPaintTogether` draws a synthetic title and file row,
+runs the real merger/model/overlay, and requires drawn glyph geometry and white
+ink for all five target words. Regional-scroll fixtures keep a separately
+pixel-validated static word through detector omission, assert unchanged proof
+clocks, and reject explicit uncertainty and later pixel changes. The controller
+partial-invalidation case exercises static-line omission through the real
+probe/scheduler/admission path in live and advancing-video modes. CUDA matching
+also checks unchanged left ink while a large right region changes enough to
+fail whole-scene stability; CPU/GPU verdicts must agree.
+The explicit paused-video diagnostic now also instantiates the production
+glyph overlay under Qt offscreen, registers Segoe UI, records actual
+`paintedWords`/`paintedCount`, and saves the production `overlay.png` snapshot.
+Model eligibility alone is not treated as painted coverage. These artifacts
+remain separate from native-window, UIA and screen-reader acceptance.
+
+`immutable_uct_contract` covers late optional evidence without a selected-frame
+restart, partial preferred-backend coverage, independent contradiction revocation
+and unchanged deadlines. `ultra_clear_text_contract` checks exact-source coverage
+union, source/digest negatives, stable word identities, reading/UIA deduplication,
+protected omissions and bounded growth. These are offscreen scripted contracts.
+See `docs/uct_paused_continuity_repair.md` for the private real-model diagnostic
+and the original retained failures; they do not establish native screen-reader
+or camera acceptance.
+
+Follow-up rows inject optional refinement failure, CPU-to-resident promotion,
+persistent word-local conflicts, and partial real page invalidation with 24
+surviving lines. Local-color cases share controlled surfaces and tiny/clipped
+bounds between CPU and CUDA, asserting raw descriptors separately from renderer
+contrast. The accessibility fixture replaces changed same-ID text immediately
+under a reading hold while unrelated new lines retain their cadence.
+
+The sparse VFR/AAC native fixture obtains its five tail timestamps from a
+separate bounded CPU `IMFSourceReader` before opening `VideoPlayback`. Playback
+must deliver that exact ordered sequence, including after optional Pause proof
+finds a full future queue. This avoids equating authored 100 ns timestamps with
+the container/native decoder clock or introducing an arbitrary timestamp tolerance.
+
+The first-party native playback fixture `tests/data/uct-scene-cut-h264.mp4`
+is 2,449 bytes, SHA-256
+`1f6b4f1207daf315658b0becd72ddb691899258b7fe1bf51b95522c372dd4ecb`.
+It is 192 x 128, 10 FPS, 30 frames, three seconds, no audio. Red changes to blue
+at 1.0 seconds inside one long H.264 GOP. It uses no downloaded media or fonts.
+The runtime test needs Windows decoding only; generation uses separately
+installed FFmpeg/libx264 and is not part of CI or the application:
+
+```powershell
+ffmpeg -hide_banner -loglevel error -n -f lavfi -i 'color=c=red:s=192x128:r=10:d=1' -f lavfi -i 'color=c=blue:s=192x128:r=10:d=2' -filter_complex '[0:v][1:v]concat=n=2:v=1:a=0,format=yuv420p' -c:v libx264 -preset veryfast -crf 28 -g 30 -keyint_min 30 -sc_threshold 0 -metadata 'creation_time=1970-01-01T00:00:00Z' tests/data/uct-scene-cut-h264.mp4
+```
+
+Do not overwrite the reviewed fixture to obtain a pass. Encoder versions can
+produce different bytes; a deliberate regeneration requires inspecting the
+cut/PTS, reviewing the new hash and updating its declared CTest runtime input.
+The regression observes the native decoder's actual red-to-blue transition
+and adjacent 100 ms samples. It prints the authored/native cut offset instead
+of assuming timeline equivalence: on the development machine, the first blue
+native sample was at 1.2 s while FFmpeg placed it at 1.0 s. This separate
+reordered-H.264 timeline discrepancy is not repaired or accepted by this test.
+## Recognition-width validation
+
+Standalone paused/Freeze coverage lives in
+`standaloneImmutableUsesOnlySelectedFrame`,
+`standalonePausedFramePublishesWithoutNeighbour` and
+`standalonePausedDetailUsesHeldPixels`. CPU/resident rows require actual paint
+and positioned character bounds without neighbour work, ignore conflicting
+neighbour descriptors, fence mode changes and retain exact same-image detail.
+Existing corroborated/live negatives remain separate protocol coverage.
+
+The model-free `orientedInkAndMapping` and `gpuOrientedInkMatchesCpu` slots
+also cover a readable nine-pixel Segoe UI word inside 32-pixel detector padding.
+The complete body must fit on CPU and CUDA; a two-pixel rule must retain the
+detected geometry. These controlled geometry checks do not prove OCR accuracy.
+The same fixture distinguishes a seven-pixel projection-rounding error from
+a genuinely sub-threshold body. Post-fit finalization covers unfitted/fitted
+near-vertical single scalars and multi-letter words separately.
+
+The immutable rotation/quad-reference slots additionally compare independently
+fitted display crops through their original recognition frames. CPU and resident
+worker cases cover both tilt signs, perspective, changed ink, absent/crossed or
+oversized original frames and foreign source epochs. Positive CPU cases require
+actual software paint, positioned ScreenLines and Qt character bounds. This is
+model-free protocol coverage, not OCR spelling or native screen-reader acceptance.
+When validating app wiring, explicitly build `native_app_control_fixture` before
+its offscreen cases: that optional target is excluded from the default build.
+
+`uct_paddle_processing` includes `recognizerWidthPolicyKeepsBoundsAndOrderedGroups`,
+`recognizerWidthRectificationRetainsUsefulAspectSamples` and
+`recognizerWidthProfileRejectsRenamedFixedPlans`. `uct_paddle_cuda` includes
+`gpuRecognizerWidthMetadataDoesNotReorderOrReadPastCount` and
+`gpuRecognizerWidthRectificationMatchesCpuAcrossCanvasTransitions` with actual
+CUDA buffers, initialized metadata, fractional/clipped source coordinates,
+nonmonotonic canvas changes and prefix/inactive-tail guards. They require no
+models. Prepared TensorRT output/CTC transitions and recognition quality remain
+separate opt-in evidence: see [width protocol](../docs/uct_recognizer_width.md).
+
+`uct_paddle_processing` includes `sourceSurfacePerspective`: both shear signs,
+multiple labels/source sizes/tapers, white/green surfaces, open/clipped/low-contrast/unfitted refusals, already
+projective geometry and actual near/far paint/character bounds.
+`gpuOrientedInkMatchesCpu` also checks resident surface-corner parity. Optional
+`OKUFLOW_UCT_SURFACE_TEST_OUTPUT` writes a synthetic refusal image for diagnosis;
+it does not load external inputs. See [surface perspective](../docs/uct_surface_perspective.md).

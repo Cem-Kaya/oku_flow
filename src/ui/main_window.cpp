@@ -1481,6 +1481,29 @@ MainWindow::MainWindow()
         QStringLiteral("Accelerate fast Ctrl+scroll zoom gestures; keyboard zoom remains exact"));
     deviceMoreLayout->addWidget(zoomWheelAccelerationCheckbox_);
 
+    auto* recapDurationLabel=new QLabel(QStringLiteral("Live recap duration (minutes)"));
+    liveRecapMinutesCombo_=new WheelSafeComboBox();
+    liveRecapMinutesCombo_->setObjectName(QStringLiteral("liveRecapMinutes"));
+    SetComboItemsAreData(liveRecapMinutesCombo_);
+    for(int minutes=1;minutes<=5;++minutes)liveRecapMinutesCombo_->addItem(QLocale().toString(minutes),minutes);
+    liveRecapMinutesCombo_->setCurrentIndex(4);
+    recapDurationLabel->setBuddy(liveRecapMinutesCombo_);
+    liveRecapMinutesCombo_->setAccessibleName(recapDurationLabel->text());
+    liveRecapEstimateLabel_=new QLabel();
+    liveRecapEstimateLabel_->setObjectName(QStringLiteral("liveRecapMemoryEstimate"));
+    liveRecapEstimateLabel_->setWordWrap(true);
+    auto* recapWorkingLabel=new QLabel(QStringLiteral("Additional memory is used while buffering, replaying or freezing video."));
+    recapWorkingLabel->setWordWrap(true);
+    deviceMoreLayout->addWidget(recapDurationLabel);
+    deviceMoreLayout->addWidget(liveRecapMinutesCombo_);
+    deviceMoreLayout->addWidget(liveRecapEstimateLabel_);
+    deviceMoreLayout->addWidget(recapWorkingLabel);
+    connect(liveRecapMinutesCombo_,&QComboBox::currentIndexChanged,this,[this](int index){
+        setLiveRecapEstimate(liveRecapEstimateBitrate_);
+        emit liveRecapMinutesChanged(liveRecapMinutesCombo_->itemData(index).toInt());
+    });
+    setLiveRecapEstimate();
+
     // ---- 3. Recording --------------------------------------------------
     recordingSection_ = makeSection(QStringLiteral("Recording"),
                                     QStringLiteral("recording"), false);
@@ -1890,6 +1913,11 @@ MainWindow::MainWindow()
     bottomLeftLayout->addWidget(previousModeButton_, 0, 1);
     bottomLeftLayout->addWidget(currentModeButton_, 0, 2);
     bottomLeftLayout->addWidget(nextModeButton_, 0, 3);
+    auto* videoControls = videoTransport_->collapseButton();
+    videoControls->setParent(bottomLeftPanel_);
+    videoControls->hide(); // no media source yet
+    bottomLeftLayout->addWidget(videoControls, 0, 4);
+    connect(videoTransport_, &VideoTransport::ControlsChanged, this, [this] { UpdateSimpleChromeGeometry(); });
     simpleTextClarityCheckbox_ = new QCheckBox("Text Clarity");
     simpleTextClarityCheckbox_->setObjectName(QStringLiteral("simpleTextClarityToggle"));
     simpleTextClarityCheckbox_->setToolTip("Automatically clarify text in the camera view");
@@ -2387,6 +2415,7 @@ MainWindow::MainWindow()
     QWidget::setTabOrder(modeGridButton_, previousModeButton_);
     QWidget::setTabOrder(previousModeButton_, currentModeButton_);
     QWidget::setTabOrder(currentModeButton_, nextModeButton_);
+    QWidget::setTabOrder(nextModeButton_, videoTransport_->collapseButton());
     QWidget::setTabOrder(simpleKeystoneBackButton_, simpleKeystonePauseButton_);
     QWidget::setTabOrder(simpleKeystonePauseButton_, simpleKeystoneNextButton_);
     QWidget::setTabOrder(capturePhotoButton_, recordButton_);
@@ -3071,6 +3100,22 @@ QPushButton* MainWindow::testCameraAccelerationButton() const {
 QComboBox* MainWindow::recordingCanvasCombo() const {
     return recordingCanvasCombo_;
 }
+void MainWindow::setLiveRecapMinutes(int minutes) {
+    const QSignalBlocker blocker(liveRecapMinutesCombo_);
+    liveRecapMinutesCombo_->setCurrentIndex(liveRecapMinutesCombo_->findData(std::clamp(minutes,1,5)));
+    setLiveRecapEstimate(liveRecapEstimateBitrate_);
+}
+void MainWindow::setLiveRecapEstimate(std::uint32_t bitrate) {
+    liveRecapEstimateBitrate_=bitrate;
+    const int minutes=liveRecapMinutesCombo_->currentData().toInt();
+    const QLocale locale;
+    const QString amount=bitrate?locale.toString(qint64(bitrate)*60*minutes/8/1'000'000)
+        :QStringLiteral("%1–%2").arg(locale.toString(minutes*60),locale.toString(minutes*120));
+    const auto source=QStringLiteral("Estimated video history: %1 MB").arg(amount);
+    SetLiveTranslationSource(liveRecapEstimateLabel_,source);
+    liveRecapEstimateLabel_->setText(TranslateUi(source));
+    SetLiveAccessibleDescription(liveRecapMinutesCombo_,source);
+}
 void MainWindow::refreshSystemLanguageItem()
 {
     if (!applicationLanguageCombo_ || applicationLanguageCombo_->count() == 0) {
@@ -3684,9 +3729,12 @@ void MainWindow::UpdateSimpleChromeGeometry()
     modeHint.setWidth(std::max(220, modeHint.width()));
     const QSize gridHint = hint(modeGridButton_), previousHint = hint(previousModeButton_);
     const QSize nextHint = hint(nextModeButton_);
+    const bool hasVideoControls = videoTransport_->snapshot().source != VideoTransport::Source::None;
+    const int videoControlWidth = hasVideoControls
+        ? hint(videoTransport_->collapseButton()).width() + 6 : 0;
     int modeRows = 1;
     int carouselWidth = ChromeGridSize(bottomLeftPanel_, {{gridHint, 0, 0}, {previousHint, 0, 1},
-                                      {modeHint, 0, 2}, {nextHint, 0, 3}}).width();
+                                      {modeHint, 0, 2}, {nextHint, 0, 3}}).width() + videoControlWidth;
     // Advanced hides the tracking peer; it must not leave a blank toolbar row.
     const bool showTracking = keystoneTrackingActive_ && isSimpleMode();
     const int trackingWidth = showTracking ? keystoneTrackingPanel_->sizeHint().width() : 0;
@@ -3717,7 +3765,7 @@ void MainWindow::UpdateSimpleChromeGeometry()
         // Ignored horizontal policy lets the name elide above the three buttons.
         modeHint.setWidth(120);
         carouselWidth = ChromeGridSize(bottomLeftPanel_, {{modeHint, 0, 0, 3},
-            {previousHint, 1, 0}, {gridHint, 1, 1}, {nextHint, 1, 2}}).width();
+            {previousHint, 1, 0}, {gridHint, 1, 1}, {nextHint, 1, 2}}).width() + videoControlWidth;
         if (combinedWidth() > viewWidth) {
             actionFace = Face::Under;
             actionWidth = actionGroupWidth(actionFace, actionRows);
@@ -3748,9 +3796,10 @@ void MainWindow::UpdateSimpleChromeGeometry()
     currentModeButton_->setSizePolicy(modeRows == 1 ? QSizePolicy::Preferred : QSizePolicy::Ignored,
                                      QSizePolicy::Preferred);
     if (auto* carousel = qobject_cast<QGridLayout*>(bottomLeftPanel_->layout());
-        bottomLeftPanel_->property("modeRows").toInt() != modeRows) {
-        for (QWidget* widget : std::array<QWidget*, 4>{modeGridButton_, previousModeButton_,
-                                                      currentModeButton_, nextModeButton_}) carousel->removeWidget(widget);
+        bottomLeftPanel_->property("modeRows").toInt() != modeRows ||
+        bottomLeftPanel_->property("videoControlsPresent").toBool() != hasVideoControls) {
+        for (QWidget* widget : std::array<QWidget*, 5>{modeGridButton_, previousModeButton_,
+                currentModeButton_, nextModeButton_, videoTransport_->collapseButton()}) carousel->removeWidget(widget);
         modeGridButton_->setVisible(true);
         for (int column = 0; column < carousel->columnCount(); ++column)
             carousel->setColumnStretch(column, modeRows == 1 ? int(column == 2) : int(column < 3));
@@ -3759,13 +3808,16 @@ void MainWindow::UpdateSimpleChromeGeometry()
             carousel->addWidget(previousModeButton_, 0, 1);
             carousel->addWidget(currentModeButton_, 0, 2);
             carousel->addWidget(nextModeButton_, 0, 3);
+            if (hasVideoControls) carousel->addWidget(videoTransport_->collapseButton(), 0, 4);
         } else {
-            carousel->addWidget(currentModeButton_, 0, 0, 1, 3);
+            carousel->addWidget(currentModeButton_, 0, 0, 1, hasVideoControls ? 4 : 3);
             carousel->addWidget(previousModeButton_, 1, 0);
             carousel->addWidget(modeGridButton_, 1, 1);
             carousel->addWidget(nextModeButton_, 1, 2);
+            if (hasVideoControls) carousel->addWidget(videoTransport_->collapseButton(), 1, 3);
         }
         bottomLeftPanel_->setProperty("modeRows", modeRows);
+        bottomLeftPanel_->setProperty("videoControlsPresent", hasVideoControls);
     }
     const int buttonMinimum = actionButtonSize(actionFace).width();
     for (const auto& [button, label] : actionButtons) {
@@ -4364,6 +4416,11 @@ void MainWindow::changeEvent(QEvent* event)
         refreshSliderReadouts();
         refreshTextClarityUi();
         refreshSystemLanguageItem();
+        if(liveRecapMinutesCombo_) {
+            for(int index=0;index<liveRecapMinutesCombo_->count();++index)
+                liveRecapMinutesCombo_->setItemText(index,QLocale().toString(liveRecapMinutesCombo_->itemData(index).toInt()));
+            setLiveRecapEstimate(liveRecapEstimateBitrate_);
+        }
         if (cameraCombo_) {
             const QSignalBlocker blocker(cameraCombo_);
             const int videoIndex = cameraCombo_->findData(QStringLiteral("video"));
@@ -4586,8 +4643,8 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
         }
         if (watched == renderWidget_ && key->key() == Qt::Key_Space &&
             key->modifiers() == Qt::NoModifier && videoTransport_ &&
-            videoTransport_->isVisible()) {
-            if (!key->isAutoRepeat() && videoTransport_->IsActionReady(videoTransport_->playPauseButton()))
+            !uiHidden_ && videoTransport_->snapshot().source != VideoTransport::Source::None) {
+            if (!key->isAutoRepeat() && videoTransport_->IsCommandReady(videoTransport_->playPauseButton()))
                 emit videoTransport_->PlayPauseRequested();
             event->accept();
             return true;
@@ -4642,6 +4699,7 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
             std::vector<QWidget*> focusOrder{
                 simpleModeButton_, advancedModeButton_, simpleTextClarityCheckbox_, modeGridButton_,
                 previousModeButton_, currentModeButton_, nextModeButton_,
+                videoTransport_->collapseButton(),
                 simpleKeystoneBackButton_, simpleKeystonePauseButton_, simpleKeystoneNextButton_,
                 capturePhotoButton_, recordButton_, explainNowButton_, readTextButton_,
                 annotationButton_};

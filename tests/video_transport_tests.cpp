@@ -1,4 +1,5 @@
 #include "okuflow/ui/video_transport.hpp"
+#include "okuflow/ui/theme_contrast.hpp"
 
 #include <QAccessible>
 #include <QApplication>
@@ -6,6 +7,7 @@
 #include <QDir>
 #include <QLabel>
 #include <QLocale>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QSlider>
@@ -62,8 +64,11 @@ struct FocusFixture {
         transport = new VideoTransport(&host);
         transport->SetFocusReturnTarget(viewport);
         layout->addWidget(viewport);
+        transport->collapseButton()->setParent(&host);
+        layout->addWidget(transport->collapseButton());
         layout->addWidget(transport);
         transport->SetSnapshot(Video());
+        QWidget::setTabOrder(transport->collapseButton(), transport->FocusTargets().front());
         host.resize(1200, 320);
         host.show();
         QApplication::setActiveWindow(&host);
@@ -82,7 +87,7 @@ struct FocusFixture {
     }
     QPushButton* Button(const char* name)
     {
-        return transport->findChild<QPushButton*>(QString::fromLatin1(name));
+        return host.findChild<QPushButton*>(QString::fromLatin1(name));
     }
 };
 
@@ -142,6 +147,300 @@ private slots:
         QCOMPARE(mute.size(), 0);
         QCOMPARE(transport.timeline()->value(), 40000);
         QCOMPARE(transport.timeline()->maximum(), 70000);
+    }
+
+    void collapseHidesEntireBarWithoutCommittingDrag()
+    {
+        FocusFixture fixture;
+        auto* transport = fixture.transport;
+        auto snapshot = Recording();
+        snapshot.source = VideoTransport::Source::Recap;
+        snapshot.state = VideoTransport::State::BehindLive;
+        snapshot.playing = true;
+        transport->SetSnapshot(snapshot);
+        QSignalSpy seeks(transport, &VideoTransport::SeekRequested);
+        QSignalSpy toggles(transport, &VideoTransport::PlayPauseRequested);
+        QSignalSpy jumps(transport, &VideoTransport::JumpToEndRequested);
+        auto* collapse = fixture.Button("videoCollapseButton");
+        QVERIFY(collapse && collapse->isCheckable());
+        QVERIFY(collapse->width() >= 44 && collapse->height() >= 44);
+        QCOMPARE(collapse->accessibleDescription(), QStringLiteral("Video controls"));
+        fixture.Focus(transport->timeline());
+        transport->timeline()->setSliderDown(true);
+        transport->timeline()->setSliderPosition(12000);
+        transport->SetCollapsed(true);
+        QApplication::processEvents();
+        QVERIFY(transport->isCollapsed());
+        QCOMPARE(QApplication::focusWidget(), collapse);
+        QVERIFY(transport->isHidden());
+        QVERIFY(!transport->jumpButton()->isVisible());
+        QVERIFY(collapse->isVisible());
+        QVERIFY(transport->FocusTargets().empty());
+        QVERIFY(transport->snapshot().playing);
+        QCOMPARE(seeks.size(), 0);
+        QCOMPARE(toggles.size(), 0);
+        snapshot.positionMs = 47000;
+        snapshot.state = VideoTransport::State::Seeking;
+        transport->SetSnapshot(snapshot);
+        QVERIFY(!transport->IsActionReady(transport->jumpButton()));
+        transport->jumpButton()->click();
+        QCOMPARE(jumps.size(), 0);
+        transport->SetUiHidden(true);
+        transport->SetUiHidden(false);
+        QVERIFY(transport->isCollapsed());
+        QVERIFY(transport->isHidden());
+        fixture.Focus(collapse);
+        fixture.Key(Qt::Key_Space);
+        QVERIFY(!transport->isCollapsed());
+        QVERIFY(transport->timeline()->isVisibleTo(transport));
+        QCOMPARE(transport->timeline()->value(), 47000);
+        QCOMPARE(seeks.size(), 0);
+        QCOMPARE(toggles.size(), 0);
+        QCOMPARE(collapse->accessibleName(), QStringLiteral("Hide UI"));
+    }
+
+    void nativeFailureDetailIsMetadataAndNeverEnablesEmptyHistory()
+    {
+        VideoTransport transport;
+        VideoTransport::Snapshot snapshot;
+        snapshot.source = VideoTransport::Source::Recap;
+        snapshot.state = VideoTransport::State::Unavailable;
+        snapshot.diagnosticDetail = QStringLiteral("Finalize: native HRESULT 0x80004005");
+        transport.SetSnapshot(snapshot);
+        auto* status = transport.findChild<QLabel*>(QStringLiteral("videoStateLabel"));
+        QCOMPARE(status->text(), QStringLiteral("Video unavailable"));
+        QCOMPARE(status->toolTip(), snapshot.diagnosticDetail);
+        QCOMPARE(status->accessibleDescription(), snapshot.diagnosticDetail);
+        QVERIFY(!transport.IsActionReady(transport.timeline()));
+        QVERIFY(transport.IsActionReady(transport.jumpButton()));
+        snapshot.diagnosticDetail = QStringLiteral("StartMemory: invalid native input");
+        transport.SetSnapshot(snapshot);
+        QCOMPARE(status->toolTip(), snapshot.diagnosticDetail);
+        snapshot.diagnosticDetail.clear();
+        transport.SetSnapshot(snapshot);
+        QVERIFY(status->toolTip().isEmpty());
+        QVERIFY(status->accessibleDescription().isEmpty());
+    }
+
+    void recapFreezeWorksBeforeFirstEncodedSegmentAndRollingBoundsStayAbsolute()
+    {
+        VideoTransport transport;VideoTransport::Snapshot s;
+        s.source=VideoTransport::Source::Recap;s.sourceName=QStringLiteral("Live recap");
+        s.sourceGeneration=10;s.state=VideoTransport::State::Buffering;s.playing=true;s.canPauseLive=true;
+        QSignalSpy toggles(&transport,&VideoTransport::PlayPauseRequested);
+        transport.SetSnapshot(s);
+        QVERIFY(transport.IsActionReady(transport.playPauseButton()));
+        transport.playPauseButton()->click();QCOMPARE(toggles.size(),1);
+        QCOMPARE(transport.jumpButton()->accessibleName(),QStringLiteral("Jump to live"));
+        QCOMPARE(transport.timeline()->maximum(),0);
+        s.state=VideoTransport::State::BehindLive;s.positionMs=350000;s.firstMs=100000;s.durationMs=400000;s.seekable=true;
+        transport.SetSnapshot(s);QCOMPARE(transport.timeline()->minimum(),100000);
+        QCOMPARE(transport.timeline()->maximum(),400000);
+        QSignalSpy seeks(&transport,&VideoTransport::SeekRequested);
+        transport.timeline()->setFocus();QTest::keyClick(transport.timeline(),Qt::Key_Home);
+        QCOMPARE(seeks.size(),1);QCOMPARE(seeks.front().front().toLongLong(),100000LL);
+        s.firstMs=110000;transport.SetSnapshot(s);
+        QCOMPARE(transport.timeline()->minimum(),110000);
+        s.state=VideoTransport::State::Seeking;transport.SetSnapshot(s);
+        QVERIFY(transport.IsActionReady(transport.jumpButton()));
+        s.state=VideoTransport::State::Unavailable;s.canPauseLive=false;s.canSaveFrame=false;transport.SetSnapshot(s);
+        QVERIFY(transport.IsActionReady(transport.jumpButton()));
+    }
+
+    void outOfWindowHoldRemovesNumericRangeWithoutChangingDisplayedTime_data()
+    {
+        QTest::addColumn<qint64>("first");QTest::addColumn<qint64>("end");QTest::addColumn<QString>("readout");
+        QTest::addColumn<bool>("dark");
+        QTest::newRow("duration-shrink-5-to-1")<<240000LL<<300000LL<<QStringLiteral("04:00–05:00 · 01:00")<<false;
+        QTest::newRow("natural-rolling-expiry")<<360000LL<<660000LL<<QStringLiteral("06:00–11:00 · 01:00")<<false;
+        QTest::newRow("duration-shrink-dark")<<240000LL<<300000LL<<QStringLiteral("04:00–05:00 · 01:00")<<true;
+        QTest::newRow("natural-expiry-dark")<<360000LL<<660000LL<<QStringLiteral("06:00–11:00 · 01:00")<<true;
+    }
+
+    void liveTimelineShowsEndWithoutChangingSeekableTime_data()
+    {
+        QTest::addColumn<bool>("recap");
+        QTest::newRow("rolling-recap") << true;
+        QTest::newRow("recording") << false;
+    }
+    void liveTimelineShowsEndWithoutChangingSeekableTime()
+    {
+        QFETCH(bool, recap);
+        FocusFixture fixture;
+        auto* transport = fixture.transport;
+        auto* slider = transport->timeline();
+        auto s = Recording();
+        s.source = recap ? VideoTransport::Source::Recap : VideoTransport::Source::Recording;
+        s.positionMs = 60000;
+        s.durationMs = 300000;
+        transport->SetSnapshot(s);
+        fixture.Focus(slider);
+        QSignalSpy seeks(transport, &VideoTransport::SeekRequested);
+        s.state = VideoTransport::State::Live;
+        s.playing = true;
+        s.firstMs = recap ? 60000 : 0;
+        s.durationMs = 360000;
+        s.positionMs = recap ? 362000 : 360000; // Camera can precede finalized history.
+        transport->SetSnapshot(s);
+        QCOMPARE(slider->value(), 60000); // Focused numeric inspection stays quiet.
+        QCOMPARE(slider->maximum(), recap ? 360000 : 300000);
+        QVERIFY(!slider->property("okuflowOutsideWindow").toBool());
+        auto* accessible = QAccessible::queryAccessibleInterface(slider);
+        QVERIFY(accessible);
+        if (recap) {
+            QVERIFY(!accessible->valueInterface());
+            QCOMPARE(accessible->text(QAccessible::Value), QStringLiteral("01:00–06:00 · 06:02"));
+        }
+        const auto liveImage = slider->grab().toImage();
+        QVERIFY(!liveImage.isNull());
+        const auto previews = qEnvironmentVariable("OKUFLOW_TRANSPORT_PREVIEW_DIR");
+        if (!previews.isEmpty()) {
+            QVERIFY(QDir().mkpath(previews));
+            QVERIFY(transport->grab().save(QDir(previews).filePath(recap ? "recap-live-edge.png" : "recording-live-edge.png")));
+        }
+
+        // The actual styled thumb and filled groove must look exactly like
+        // the endpoint, including while a reader inspects an older value.
+        auto end = s;
+        end.state = VideoTransport::State::Paused;
+        end.playing = false;
+        end.positionMs = end.durationMs;
+        transport->SetSnapshot(end);
+        QCOMPARE(liveImage, slider->grab().toImage());
+        QCOMPARE(seeks.size(), 0);
+
+        transport->SetSnapshot(s);
+        fixture.Key(Qt::Key_Home);
+        QCOMPARE(seeks.size(), 1);
+        QCOMPARE(seeks.last().front().toLongLong(), s.firstMs);
+        // An explicit seek immediately shows its target, even before the app
+        // acknowledges the transition out of Live.
+        QVERIFY(slider->grab().toImage() != liveImage);
+        s.state = VideoTransport::State::Paused;
+        s.playing = false;
+        s.positionMs = s.firstMs;
+        transport->SetSnapshot(s);
+        auto* value = accessible->valueInterface();
+        QVERIFY(value);
+        QCOMPARE(value->currentValue().toLongLong(), s.firstMs);
+        QCOMPARE(value->maximumValue().toLongLong(), s.durationMs);
+
+        // Jumping back to live restores the right-edge marker; grabbing that
+        // marker still uses the real, frozen range and commits one seek.
+        transport->SetSnapshot(s = end);
+        s.state = VideoTransport::State::Live;
+        s.playing = true;
+        transport->SetSnapshot(s);
+        const int priorSeeks = seeks.size();
+        const QPoint handle(slider->width() - 10, slider->height() / 2);
+        QTest::mousePress(slider, Qt::LeftButton, Qt::NoModifier, handle);
+        QVERIFY(slider->isSliderDown());
+        auto newer = s;
+        newer.durationMs += 2000;
+        newer.positionMs += 2000;
+        transport->SetSnapshot(newer);
+        QCOMPARE(slider->maximum(), int(s.durationMs));
+        const QPoint middle(slider->width() / 2, slider->height() / 2);
+        QMouseEvent move(QEvent::MouseMove, middle, slider->mapToGlobal(middle),
+                         Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(slider, &move);
+        QTest::mouseRelease(slider, Qt::LeftButton, Qt::NoModifier, middle);
+        QCOMPARE(seeks.size(), priorSeeks + 1);
+        const auto target = seeks.last().front().toLongLong();
+        QVERIFY(target > s.firstMs && target < s.durationMs);
+    }
+    void outOfWindowHoldRemovesNumericRangeWithoutChangingDisplayedTime()
+    {
+        QFETCH(qint64,first);QFETCH(qint64,end);QFETCH(QString,readout);
+        QFETCH(bool, dark);
+        VideoTransport transport;auto s=Recording();s.source=VideoTransport::Source::Recap;
+        transport.resize(1200, 120);
+        QPalette colors = dark ? okuflow::theme_contrast::PinnedDarkPalette(transport.palette()) : transport.palette();
+        if (!dark) {
+            colors.setColor(QPalette::Window, Qt::white);
+            colors.setColor(QPalette::Button, QColor("#eeeeee"));
+        }
+        transport.setPalette(colors);
+        QSignalSpy seeks(&transport,&VideoTransport::SeekRequested);
+        QSignalSpy jumps(&transport,&VideoTransport::JumpToEndRequested);
+        s.sourceName="Live recap";s.positionMs=60000;s.firstMs=0;s.durationMs=300000;
+        transport.SetSnapshot(s);
+        s.firstMs=first;s.durationMs=end;transport.SetSnapshot(s);
+        QCOMPARE(transport.snapshot().positionMs,60000LL);
+        QCOMPARE(transport.timeline()->minimum(),int(first));
+        QCOMPARE(transport.timeline()->property("okuflowOutsideWindowPosition").toLongLong(),60000LL);
+        auto* time=transport.findChild<QLabel*>("videoTimeLabel");QVERIFY(time);
+        QCOMPARE(time->text(),readout);
+        auto* accessible=QAccessible::queryAccessibleInterface(transport.timeline());QVERIFY(accessible);
+        QVERIFY(!accessible->valueInterface());QCOMPARE(accessible->text(QAccessible::Value),readout);
+        QCOMPARE(seeks.size(), 0);
+        QCOMPARE(jumps.size(), 0);
+        QVERIFY(transport.timeline()->property("okuflowExpiredHold").toBool());
+        QVERIFY(!transport.timeline()->property("okuflowOutsideWindow").toBool());
+        const auto expiredImage = transport.timeline()->grab().toImage();
+        const QColor warning = okuflow::theme_contrast::WarningTextColor(!dark);
+        QVERIFY(okuflow::theme_contrast::ContrastRatio(warning, colors.color(QPalette::Window)) >= 4.5);
+        int warningPixels = 0;
+        for (int y = 0; y < expiredImage.height(); ++y)
+            for (int x = 0; x < expiredImage.width(); ++x)
+                if (expiredImage.pixelColor(x, y) == warning) ++warningPixels;
+        QVERIFY(warningPixels >= 32); // Visible amber fill, beyond a property-only assertion.
+        const auto previews = qEnvironmentVariable("OKUFLOW_TRANSPORT_PREVIEW_DIR");
+        if (!previews.isEmpty()) {
+            QVERIFY(QDir().mkpath(previews));
+            QVERIFY(transport.grab().save(QDir(previews).filePath(QStringLiteral("recap-expired-%1.png").arg(QTest::currentDataTag()))));
+        }
+        transport.timeline()->setFocus();QTest::keyClick(transport.timeline(),Qt::Key_Home);
+        QCOMPARE(seeks.size(),1);QCOMPARE(seeks.front().front().toLongLong(),first);
+        s.positionMs=first;transport.SetSnapshot(s);
+        QVERIFY(!transport.timeline()->property("okuflowOutsideWindowPosition").isValid());
+        auto* value=accessible->valueInterface();QVERIFY(value);
+        QVERIFY(value->minimumValue().toLongLong()<=value->currentValue().toLongLong());
+        QVERIFY(value->currentValue().toLongLong()<=value->maximumValue().toLongLong());
+        QVERIFY(!transport.timeline()->property("okuflowExpiredHold").toBool());
+        QVERIFY(transport.timeline()->grab().toImage() != expiredImage);
+    }
+
+    void rightEndpointUsesLiveCommandExceptForSavedVideo_data()
+    {
+        QTest::addColumn<int>("source");
+        QTest::newRow("recap") << int(VideoTransport::Source::Recap);
+        QTest::newRow("recording") << int(VideoTransport::Source::Recording);
+        QTest::newRow("saved-video") << int(VideoTransport::Source::Video);
+    }
+    void rightEndpointUsesLiveCommandExceptForSavedVideo()
+    {
+        QFETCH(int, source);
+        FocusFixture fixture;
+        auto* transport = fixture.transport;
+        auto s = Recording();
+        s.source = static_cast<VideoTransport::Source>(source);
+        transport->SetSnapshot(s);
+        auto* slider = transport->timeline();
+        fixture.Focus(slider);
+        QSignalSpy seeks(transport, &VideoTransport::SeekRequested);
+        QSignalSpy jumps(transport, &VideoTransport::JumpToEndRequested);
+        fixture.Key(Qt::Key_End);
+        const bool liveSource = s.source != VideoTransport::Source::Video;
+        QCOMPARE(jumps.size(), liveSource ? 1 : 0);
+        QCOMPARE(seeks.size(), liveSource ? 0 : 1);
+        if (!liveSource) QCOMPARE(seeks.last().front().toLongLong(), s.durationMs);
+
+        // Even if history grows during the drag, its original far-right
+        // endpoint requests live rather than the older finalized timestamp.
+        transport->SetSnapshot(s);
+        slider->setSliderDown(true);
+        slider->setSliderPosition(slider->maximum());
+        s.durationMs += 5000;
+        transport->SetSnapshot(s);
+        const auto jumpCount = jumps.size(), seekCount = seeks.size();
+        const auto frozenEnd = slider->maximum();
+        slider->setSliderDown(false);
+        QCOMPARE(jumps.size(), jumpCount + (liveSource ? 1 : 0));
+        QCOMPARE(seeks.size(), seekCount + (liveSource ? 0 : 1));
+        if (!liveSource) QCOMPARE(seeks.last().front().toLongLong(), qint64(frozenEnd));
+        QCOMPARE(slider->maximum(), int(s.durationMs));
+        QVERIFY(slider->maximum() > frozenEnd);
     }
 
     void jumpMeaningFollowsSelectedSource()
@@ -212,6 +511,7 @@ private slots:
         transport.SetSnapshot(Recording());
         QSignalSpy seeks(&transport, &VideoTransport::SeekRequested);
         QSignalSpy toggles(&transport, &VideoTransport::PlayPauseRequested);
+        QSignalSpy jumps(&transport, &VideoTransport::JumpToEndRequested);
         auto* slider = transport.timeline();
         QTest::keyClick(slider, Qt::Key_Right);
         QCOMPARE(seeks.last().front().toLongLong(), 31000);
@@ -220,7 +520,8 @@ private slots:
         QTest::keyClick(slider, Qt::Key_Home);
         QCOMPARE(seeks.last().front().toLongLong(), 0);
         QTest::keyClick(slider, Qt::Key_End);
-        QCOMPARE(seeks.last().front().toLongLong(), 60000);
+        QCOMPARE(seeks.size(), 3);
+        QCOMPARE(jumps.size(), 1);
         QTest::keyClick(slider, Qt::Key_Space);
         QCOMPARE(toggles.size(), 1);
         const int count = seeks.size();
@@ -229,10 +530,9 @@ private slots:
         QApplication::sendEvent(slider, &wheel);
         QCOMPARE(seeks.size(), count);
         // Native buttons retain their own Space activation behavior.
-        QSignalSpy jumps(&transport, &VideoTransport::JumpToEndRequested);
         QTest::keyClick(transport.jumpButton(), Qt::Key_Space);
         QCOMPARE(toggles.size(), 1);
-        QCOMPARE(jumps.size(), 1);
+        QCOMPARE(jumps.size(), 2);
     }
 
     void accessibilityExposesTimeAndNativeNumericRange()
@@ -278,8 +578,8 @@ private slots:
         QCOMPARE(label->textFormat(), Qt::PlainText);
         // Visual single-line order: primaries, timeline, secondaries.
         const auto targets = transport.FocusTargets();
-        QCOMPARE(targets.size(), std::size_t(5));
-        QCOMPARE(targets[3], transport.timeline());
+        QCOMPARE(targets.size(), std::size_t(6));
+        QCOMPARE(targets[4], transport.timeline());
         QCOMPARE(targets.back(),
                  transport.findChild<QPushButton*>(QStringLiteral("videoSaveFrameButton")));
     }
@@ -392,8 +692,8 @@ private slots:
         const auto targets = transport->FocusTargets();
         QCOMPARE(targets.size(), std::size_t(7));
         QCOMPARE(targets.back(), returnButton);
-        fixture.Focus(fixture.Button("videoRewindButton"));
-        for (std::size_t index = 1; index < targets.size(); ++index) {
+        fixture.Focus(fixture.Button("videoCollapseButton"));
+        for (std::size_t index = 0; index < targets.size(); ++index) {
             fixture.Key(Qt::Key_Tab);
             QCOMPARE(QApplication::focusWidget(), targets[index]);
         }
@@ -530,6 +830,7 @@ private slots:
         for (auto* button : transport->findChildren<QPushButton*>()) {
             if (button->isHidden()) continue;
             QVERIFY(!button->icon().isNull()); // production resource path, not glyph fallback
+            if (button->objectName() == QStringLiteral("videoCollapseButton")) continue;
             const int centerY = button->mapTo(transport, button->rect().center()).y();
             QVERIFY(std::abs(centerY - lineY) <= 2);
         }
@@ -633,6 +934,18 @@ private slots:
             QVERIFY((luminance(badge->palette().color(QPalette::WindowText)) + 0.05) /
                     (luminance(badge->palette().color(QPalette::Window)) + 0.05) >= 7.0);
         }
+    }
+
+    void unavailableRecapAnnouncesExistingFailureReason()
+    {
+        VideoTransport transport;announcementTarget=&transport;
+        VideoTransport::Snapshot snapshot;snapshot.source=VideoTransport::Source::Recap;
+        snapshot.sourceName=QStringLiteral("Live recap");snapshot.state=VideoTransport::State::Unavailable;
+        snapshot.diagnosticDetail=QStringLiteral("Finalize: native HRESULT 0x80030070");
+        transport.SetSnapshot(snapshot);
+        QTRY_COMPARE(announcements.size(),1);
+        QVERIFY(announcements.front().contains(QStringLiteral("Video unavailable")));
+        QVERIFY(announcements.front().contains(snapshot.diagnosticDetail));
     }
 
     void onlySettledStateAnnouncesCurrentTimeAndDeduplicates()

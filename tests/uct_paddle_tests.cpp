@@ -1,17 +1,26 @@
 #include "okuflow/common/uct_paddle.hpp"
 #include "okuflow/common/uct_model_pins.hpp"
+#include "../src/common/uct_recognizer_width.hpp"
+#include "../src/common/uct_runtime_precision.hpp"
 #include "okuflow/cuda/uct_analysis_pool.hpp"
+#include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "ultra_clear_text_test_support.hpp"
+#include "uct_color_test_support.hpp"
+#include "uct_quad_reference_test_support.hpp"
 #include "uct_startup_test_cases.hpp"
 #include "uct_batch_diagnostic.hpp"
 #include "uct_character_diagnostic.hpp"
 #include "uct_resident_diagnostic.hpp"
+#include "uct_paused_video_diagnostic.hpp"
+#include "uct_active_regional_diagnostic.hpp"
 #include <QFontDatabase>
+#include <QLineF>
 #include <QPainter>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QFile>
+#include <QTemporaryDir>
 #include <QtTest>
 #include <limits>
 #include <stdexcept>
@@ -21,6 +30,25 @@
 #include "okuflow/cuda/uct_analysis_pool.hpp"
 #include "okuflow/cuda/uct_kernels.hpp"
 #endif
+
+namespace okuflow::uct
+{
+// Exercise the production cap/commit path without an optional TensorRT SDK.
+struct TensorRtCropDiagnosticTestAccess
+{
+    static bool TryCommit(TensorRtCropDiagnostic& diagnostic,
+                          TensorRtCropDiagnostic::Plan&& plan) noexcept
+    {
+        static_assert(noexcept(diagnostic.TryCommit(std::move(plan))));
+        return diagnostic.TryCommit(std::move(plan));
+    }
+    static const TensorRtCropDiagnostic::Plan& PlanAt(const TensorRtCropDiagnostic& diagnostic,
+                                                     std::size_t index)
+    {
+        return diagnostic.plans_.at(index);
+    }
+};
+} // namespace okuflow::uct
 
 using namespace okuflow::uct;
 namespace
@@ -135,10 +163,240 @@ struct FixtureStream
 };
 #endif
 } // namespace
+#include "uct_geometry_test_cases.hpp"
+#include "uct_surface_test_cases.hpp"
+
 class PaddleTests final : public QObject
 {
     Q_OBJECT
   private slots:
+    void localBf16ManifestRequiresReviewedRolesAndCacheOnlySchema()
+    {
+        using namespace runtime_precision;
+        QTemporaryDir root; QVERIFY(root.isValid());
+        const auto detectorPath = root.filePath("det/medium/inference.onnx");
+        const auto graphPath = root.filePath(QString("models/bf16-linear/%1/%2.onnx").arg(kRecognizerSource,kRecognizerGraph));
+        const QJsonObject detector{{"precision","fp32"},{"sourceSha256",kDetectorSource},
+                                   {"sha256",kDetectorSource},{"path",detectorPath}};
+        const QJsonObject recognizer{{"precision","bf16-linear"},{"sourceSha256",kRecognizerSource},
+                                     {"sha256",kRecognizerGraph},{"path",graphPath}};
+        const QJsonObject valid{{"schema",1},{"prepare",false},{"artifactRoot",root.path()},
+                                {"detector",detector},{"recognizer",recognizer}};
+        const auto encode = [](const QJsonObject& json) { return QJsonDocument(json).toJson(); };
+        const auto parsed = ParseManifest(encode(valid),detectorPath);
+        QCOMPARE(parsed.recognizer.path,graphPath);
+        QCOMPARE(parsed.detector.precision,QString("fp32"));
+        // No receiptRoot is required or consumed by production.
+        const auto refuses = [&](const QJsonObject& json) {
+            try { ParseManifest(encode(json),detectorPath); return false; }
+            catch (const ArtifactError&) { return true; }
+        };
+        for (const QJsonValue schema : {QJsonValue(),QJsonValue("1"),QJsonValue(1.1),QJsonValue(2)}) {
+            auto json=valid; json["schema"]=schema; QVERIFY(refuses(json));
+        }
+        for (const QJsonValue prepare : {QJsonValue(),QJsonValue("false"),QJsonValue(true)}) {
+            auto json=valid; json["prepare"]=prepare; QVERIFY(refuses(json));
+        }
+        auto json=valid; json["artifactRoot"]="relative"; QVERIFY(refuses(json));
+        json=valid; json["artifactRoot"]="//server/share"; QVERIFY(refuses(json));
+        json=valid; json["detector"]=recognizer; json["recognizer"]=detector; QVERIFY(refuses(json));
+        json=valid; json.remove("detector"); QVERIFY(refuses(json));
+        for (const QString role : {QString("detector"),QString("recognizer")}) {
+            for (const QString field : {QString("sourceSha256"),QString("sha256")}) {
+                for (const QString hash : {QString(64,'A'),QString(63,'a'),QString(64,'0'),QString("../wrong")}) {
+                    auto graph=valid[role].toObject(); graph[field]=hash;
+                    json=valid; json[role]=graph; QVERIFY(refuses(json));
+                }
+            }
+            auto graph=valid[role].toObject(); graph["precision"]="fp16-linear";
+            json=valid; json[role]=graph; QVERIFY(refuses(json));
+            graph=valid[role].toObject(); graph["path"]=root.filePath("../escaped.onnx");
+            json=valid; json[role]=graph; QVERIFY(refuses(json));
+        }
+        QVERIFY_EXCEPTION_THROWN(ParseManifest("[]",detectorPath),ArtifactError);
+        QVERIFY_EXCEPTION_THROWN(ParseManifest("{",detectorPath),ArtifactError);
+        QVERIFY_EXCEPTION_THROWN(ParseManifest(QByteArray(kManifestLimit+1,' '),detectorPath),ArtifactError);
+        const auto manifest=root.filePath("cached.json");
+        { QFile file(manifest); QVERIFY(file.open(QIODevice::WriteOnly)); file.write(encode(valid)); }
+        QCOMPARE(LoadManifest({manifest},detectorPath).recognizer.sha256,QByteArray(kRecognizerGraph));
+        QVERIFY_EXCEPTION_THROWN(LoadManifest({"relative.json"},detectorPath),ArtifactError);
+        QVERIFY_EXCEPTION_THROWN(LoadManifest({root.filePath("missing.json")},detectorPath),ArtifactError);
+        { QFile file(manifest); QVERIFY(file.open(QIODevice::WriteOnly)); file.write(QByteArray(kManifestLimit+1,' ')); }
+        QVERIFY_EXCEPTION_THROWN(LoadManifest({manifest},detectorPath),ArtifactError);
+    }
+    void localBf16KeyAndFallbackKeepStrictBaselineIdentity()
+    {
+        using namespace runtime_precision;
+        Device device{QByteArray::fromHex(kDeviceUuid),13040,8};
+        Graph graph{"bf16-linear",{},kRecognizerSource,kRecognizerGraph};
+        const auto key=PrecisionPlanKey(graph,device,false,8);
+        // Independent reviewed artifact filename, not a second implementation.
+        QCOMPARE(key,QByteArray("e596b8ac0110f01e88fc94bcbdeda4511b83af90efb761aa4e194de3ea496073"));
+        auto other=graph; other.precision="fp32"; QVERIFY(PrecisionPlanKey(other,device,false,8)!=key);
+        other=graph; other.sourceSha256[0]='0'; QVERIFY(PrecisionPlanKey(other,device,false,8)!=key);
+        other=graph; other.sha256[0]='0'; QVERIFY(PrecisionPlanKey(other,device,false,8)!=key);
+        auto gpu=device; gpu.uuid[0]^=1; QVERIFY(PrecisionPlanKey(graph,gpu,false,8)!=key);
+        gpu=device; ++gpu.driver; QVERIFY(PrecisionPlanKey(graph,gpu,false,8)!=key);
+        gpu=device; gpu.tensorRtVersion="11.4.0.107"; QVERIFY(PrecisionPlanKey(graph,gpu,false,8)!=key);
+        QVERIFY(PrecisionPlanKey(graph,device,true,8)!=key);
+        QVERIFY(PrecisionPlanKey(graph,device,false,1)!=key);
+        QVERIFY(PrecisionPlanKey(graph,device,false,8,"bucketed")!=key);
+        QVERIFY(Unsupported(ModelTier::Medium,ModelTier::Medium,8,false,false,device).isEmpty());
+        for (const auto tier : {ModelTier::Tiny,ModelTier::Small}) {
+            QVERIFY(!Unsupported(tier,ModelTier::Medium,8,false,false,device).isEmpty());
+            QVERIFY(!Unsupported(ModelTier::Medium,tier,8,false,false,device).isEmpty());
+        }
+        for (const int batch : {1,16}) QVERIFY(!Unsupported(ModelTier::Medium,ModelTier::Medium,batch,false,false,device).isEmpty());
+        QVERIFY(!Unsupported(ModelTier::Medium,ModelTier::Medium,8,true,false,device).isEmpty());
+        QVERIFY(!Unsupported(ModelTier::Medium,ModelTier::Medium,8,false,true,device).isEmpty());
+        for (int change=0; change<4; ++change) {
+            gpu=device;
+            if(change==0)gpu.major=7;
+            if(change==1)gpu.uuid[0]^=1;
+            if(change==2)++gpu.driver;
+            if(change==3)gpu.tensorRtVersion="11.4.1.0";
+            QVERIFY(!Unsupported(ModelTier::Medium,ModelTier::Medium,8,false,false,gpu).isEmpty());
+        }
+        const auto fallback=ActualStatus(false,"artifact missing");
+        QVERIFY(fallback.contains("Recognizer=FP32")); QVERIFY(fallback.contains("artifact missing"));
+        QVERIFY(!fallback.contains("graph=BF16"));
+        QVERIFY(ActualStatus(true).contains("graph=BF16-linear"));
+        QVERIFY(ActualStatus(true).contains("mixed BF16/FP16/FP32"));
+        QVERIFY(ActualStatus(true).contains("detector=FP32 medium"));
+        // This scope changes only the fixture process and restores its environment.
+        struct Restore { QByteArray old=qgetenv(kEnvironment); bool set=qEnvironmentVariableIsSet(kEnvironment);
+            ~Restore(){ if(set)qputenv(kEnvironment,old); else qunsetenv(kEnvironment); } } restore;
+        qunsetenv(kEnvironment); QVERIFY(!ReadApplicationRequest().Requested());
+        qputenv(kEnvironment,""); QVERIFY(!ReadApplicationRequest().Requested());
+        qputenv(kEnvironment,"relative.json");
+        QVERIFY(ReadApplicationRequest().Requested());
+        QVERIFY_EXCEPTION_THROWN(LoadManifest(ReadApplicationRequest(),""),ArtifactError);
+        // Public factory remains callable with its unchanged FP32 API. No initialize/inference.
+        auto baseline=CreateTensorRtRecognizer();
+    }
+    void localBf16ArtifactsAreReadOnlyBoundedAndHashChecked()
+    {
+        using namespace runtime_precision;
+        QTemporaryDir root; QVERIFY(root.isValid());
+        const auto path=root.filePath("fixture.bin");
+        const QByteArray original("bounded synthetic artifact");
+        const auto digest=QCryptographicHash::hash(original,QCryptographicHash::Sha256).toHex();
+        { QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); file.write(original); }
+        QCOMPARE(ReadVerified(path,digest,1024),original);
+        QVERIFY_EXCEPTION_THROWN(ReadVerified(path,digest,original.size()),ArtifactError);
+        QVERIFY_EXCEPTION_THROWN(ReadVerified(root.filePath("absent"),digest,1024),ArtifactError);
+        { QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); file.write(QByteArray(original.size(),'x')); }
+        QVERIFY_EXCEPTION_THROWN(ReadVerified(path,digest,1024),ArtifactError);
+        CanonicalWithin(root.path(),path);
+        QTemporaryDir outside; QVERIFY(outside.isValid());
+        const auto external=outside.filePath("external.bin");
+        { QFile file(external); QVERIFY(file.open(QIODevice::WriteOnly)); file.write(original); }
+        QVERIFY_EXCEPTION_THROWN(CanonicalWithin(root.path(),external),ArtifactError);
+        const Selection selection{root.path(),{},Graph{"bf16-linear",root.filePath("missing.onnx"),kRecognizerSource,kRecognizerGraph}};
+        const auto before=QDir(root.path()).entryList(QDir::AllEntries|QDir::NoDotAndDotDot);
+        const Device device{QByteArray::fromHex(kDeviceUuid),13040,8};
+        QVERIFY_EXCEPTION_THROWN(ReadPlan(selection,device),ArtifactError);
+        QCOMPARE(QDir(root.path()).entryList(QDir::AllEntries|QDir::NoDotAndDotDot),before);
+        QVERIFY(!QFile::exists(PlanPath(selection,device))); // never creates plan/receipt/cache directories
+    }
+    void orientedInkAndMapping() { uct_geometry_test::CpuGeometry(); }
+    void postFitDuplicateKeepsAdjacentIdenticalTokens() { uct_geometry_test::DuplicateInk(); }
+    void orientedPerspectiveAndConflictActualPaint() { uct_geometry_test::PaintGeometry(); }
+    void sourceSurfacePerspective(){uct_surface_test::Cpu();uct_surface_test::LabelsAndSizes();uct_surface_test::Paint();}
+    void gpuOrientedInkMatchesCpu() {
+#if OKUFLOW_ENABLE_CUDA
+        uct_geometry_test::GpuGeometry();
+        uct_surface_test::Gpu();
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
+    void frozenCropDiagnosticRefusesFifthSourceWithoutChangingLeases()
+    {
+        class ImmutableInput final : public DeviceImage
+        {
+          public:
+            explicit ImmutableInput(unsigned char marker)
+                : pixels_([marker] {
+                    std::array<unsigned char, 16 * 8 * 4> pixels{};
+                    pixels.fill(marker);
+                    return pixels;
+                }())
+            {
+                width = 16; height = 8; pitch = 16 * 4;
+                sourceEpoch = 9; frameSequence = marker; processingGeneration = 7;
+            }
+            const void* Data() const override { return pixels_.data(); }
+            bool WaitReady(void*, QString&) const override { return true; }
+            QImage Readback(const std::atomic<bool>&, QString&) const override { return {}; }
+          private:
+            const std::array<unsigned char, 16 * 8 * 4> pixels_;
+        };
+        TensorRtCropDiagnostic diagnostic;
+        std::array<SharedDeviceImage, 5> inputs;
+        std::array<std::weak_ptr<const DeviceImage>, 5> weak;
+        std::array<const DeviceImage*, 5> identities{};
+        std::array<const void*, 5> pixels{};
+        // Allocate all five before releasing any external owners. Distinct
+        // addresses cannot be an allocator's reuse of an earlier dead input.
+        for (std::size_t i = 0; i < inputs.size(); ++i) {
+            inputs[i] = std::make_shared<const ImmutableInput>(static_cast<unsigned char>(i + 1));
+            weak[i] = inputs[i]; identities[i] = inputs[i].get(); pixels[i] = inputs[i]->Data();
+            for (std::size_t previous = 0; previous < i; ++previous) {
+                QVERIFY(identities[i] != identities[previous]);
+                QVERIFY(pixels[i] != pixels[previous]);
+            }
+        }
+        const auto makePlan = [&](std::size_t i) {
+            TensorRtCropDiagnostic::Plan plan;
+            plan.source = std::move(inputs[i]);
+            plan.detectorSha256 = "fixture-detector";
+            TensorRtCropDiagnostic::Crop crop;
+            crop.xy = {float(i), 1, float(i + 8), 1, float(i + 8), 7, float(i), 7};
+            crop.score = 0.75f; crop.validWidth = 400 + int(i); crop.internalEdges = int(i);
+            plan.regions.push_back({QRect(int(i), 1, 8, 6), {crop}});
+            return plan;
+        };
+        for (std::size_t i = 0; i < 4; ++i) {
+            auto plan = makePlan(i);
+            QVERIFY(TensorRtCropDiagnosticTestAccess::TryCommit(diagnostic, std::move(plan)));
+            QCOMPARE(diagnostic.CapturedSources(), int(i + 1));
+            QVERIFY(!inputs[i]);
+            QCOMPARE(weak[i].use_count(), 1L);
+        }
+        auto refused = makePlan(4);
+        QVERIFY(!TensorRtCropDiagnosticTestAccess::TryCommit(diagnostic, std::move(refused)));
+        QCOMPARE(diagnostic.CapturedSources(), 4);
+        QCOMPARE(diagnostic.ReplayCalls(), std::uint64_t(0));
+        QCOMPARE(refused.source.get(), identities[4]);
+        QCOMPARE(weak[4].use_count(), 1L); // still caller-owned, never leased
+        refused = {};
+        QVERIFY(weak[4].expired());
+        for (std::size_t i = 0; i < 4; ++i) {
+            const auto& retained = TensorRtCropDiagnosticTestAccess::PlanAt(diagnostic, i);
+            QCOMPARE(weak[i].use_count(), 1L); // only the original diagnostic lease
+            QCOMPARE(retained.source.get(), identities[i]);
+            QCOMPARE(retained.source->Data(), pixels[i]);
+            QCOMPARE(retained.source->ValidationData(), pixels[i]);
+            QCOMPARE(retained.source->frameSequence, std::uint64_t(i + 1));
+            QCOMPARE(retained.source->sourceEpoch, std::uint64_t(9));
+            QCOMPARE(retained.source->processingGeneration, std::uint64_t(7));
+            const auto* immutablePixels = static_cast<const unsigned char*>(retained.source->Data());
+            for (std::size_t byte = 0; byte < 16 * 8 * 4; ++byte)
+                QCOMPARE(immutablePixels[byte], static_cast<unsigned char>(i + 1));
+            QCOMPARE(retained.detectorSha256, QByteArray("fixture-detector"));
+            QCOMPARE(retained.regions.size(), std::size_t(1));
+            QCOMPARE(retained.regions[0].bounds, QRect(int(i), 1, 8, 6));
+            QCOMPARE(retained.regions[0].crops.size(), std::size_t(1));
+            const auto& crop = retained.regions[0].crops[0];
+            const std::array<float, 8> expected{float(i), 1, float(i + 8), 1, float(i + 8), 7, float(i), 7};
+            for (std::size_t coordinate = 0; coordinate < expected.size(); ++coordinate)
+                QCOMPARE(crop.xy[coordinate], expected[coordinate]);
+            QCOMPARE(crop.score, 0.75f);
+            QCOMPARE(crop.validWidth, 400 + int(i));
+            QCOMPARE(crop.internalEdges, int(i));
+        }
+    }
     void modelPinsMatchPreparationAndFailClosed()
     {
         QFile file(QFINDTESTDATA("../scripts/uct/pins.json"));QVERIFY(file.open(QIODevice::ReadOnly));
@@ -390,6 +648,213 @@ class PaddleTests final : public QObject
         auto backend = CreatePaddleCpuRecognizer(directory.path());
         QCOMPARE(backend->Initialize().state, BackendState::kUnavailable);
     }
+    void recognizerWidthPolicyKeepsBoundsAndOrderedGroups()
+    {
+        namespace width = recognizer_width;
+        const std::array<std::pair<int,int>,12> cases{{{-1,1024},{0,1024},{1,128},{128,128},
+            {129,256},{256,256},{257,512},{512,512},{513,1024},{1024,1024},{1025,1024},{2147483647,1024}}};
+        for (const auto [requested,canvas] : cases) {
+            QCOMPARE(width::Canvas(requested),canvas); QVERIFY(width::IsCanvas(canvas));
+            if (requested>0) QVERIFY(canvas>=std::min(requested,1024));
+        }
+        QVERIFY(!width::IsCanvas(127)); QVERIFY(!width::IsCanvas(384));
+        struct Crop { int validWidth{}, order{}; };
+        std::array<Crop,17> crops{};
+        const std::array<int,17> requested{64,80,100,127,128,70,90,20,129,180,200,257,300,400,500,200,513};
+        for (int i=0; i<int(crops.size()); ++i) crops[i]={requested[i],i};
+        const auto before=crops;
+        QCOMPARE(width::OrderedGroup(crops.data(),8),128);
+        QCOMPARE(width::OrderedGroup(crops.data()+8,8),512);
+        QCOMPARE(width::OrderedGroup(crops.data()+16,1),1024);
+        QCOMPARE(width::OrderedGroup(crops.data(),16),512);
+        QCOMPARE(width::OrderedGroup(crops.data(),17),1024);
+        QCOMPARE(width::OrderedGroup(static_cast<const Crop*>(nullptr),1),1024);
+        QCOMPARE(width::OrderedGroup(crops.data(),0),1024);
+        for (int i=0; i<int(crops.size()); ++i) {
+            QCOMPARE(crops[i].order,before[i].order); QCOMPARE(crops[i].validWidth,before[i].validWidth);
+        }
+        crops[2].validWidth=0; QCOMPARE(width::OrderedGroup(crops.data(),8),1024);
+        crops[2].validWidth=-1; QCOMPARE(width::OrderedGroup(crops.data(),8),1024);
+    }
+    void recognizerWidthRectificationRetainsUsefulAspectSamples()
+    {
+        QImage image(1024,64,QImage::Format_ARGB32);
+        for (int y=0; y<image.height(); ++y)
+            for (int x=0; x<image.width(); ++x)
+                image.setPixelColor(x,y,QColor(x%256,(x+y*7)%256,(x*3+y)%256));
+        for (const int valid : {32,128,129,257,513,1024,2048}) {
+            const PaddleQuad quad{{QPointF(0,8),QPointF(valid*.5,8),QPointF(valid*.5,32),QPointF(0,32)},1};
+            const int aspectWidth=int(std::ceil(48*QLineF(quad.points[0],quad.points[1]).length()/
+                                                QLineF(quad.points[0],quad.points[3]).length()));
+            QCOMPARE(aspectWidth,valid);
+            const int canvas=recognizer_width::Canvas(aspectWidth);
+            const auto fixed=PaddleRectify(image,quad,1024,valid);
+            const auto narrow=PaddleRectify(image,quad,canvas,valid);
+            QCOMPARE(narrow.size(),std::size_t(canvas)*48*3);
+            // Only channel/row stride and zero padding change. Real source
+            // samples, rectification aspect and crop coordinates stay exact.
+            for (int channel=0; channel<3; ++channel)
+                for (const int y : {0,7,23,47}) {
+                    for (int x=0; x<std::min(valid,1024); ++x)
+                        QCOMPARE(narrow[channel*canvas*48+y*canvas+x],fixed[channel*1024*48+y*1024+x]);
+                    for (int x=std::min(valid,canvas); x<canvas; ++x)
+                        QCOMPARE(narrow[channel*canvas*48+y*canvas+x],0.f);
+                }
+        }
+    }
+    void recognizerWidthProfileRejectsRenamedFixedPlans()
+    {
+        std::array<std::int64_t,4> shape{1,3,48,128};
+        QVERIFY(recognizer_width::MatchesProfile(shape.data(),4,1,128));
+        shape[3]=1024; QVERIFY(!recognizer_width::MatchesProfile(shape.data(),4,1,128));
+        shape={8,3,48,512}; QVERIFY(recognizer_width::MatchesProfile(shape.data(),4,8,512));
+        QVERIFY(!recognizer_width::MatchesProfile(shape.data(),3,8,512));
+        QVERIFY(!recognizer_width::MatchesProfile(shape.data(),4,16,512));
+        shape[1]=1; QVERIFY(!recognizer_width::MatchesProfile(shape.data(),4,8,512));
+        shape={8,3,32,512}; QVERIFY(!recognizer_width::MatchesProfile(shape.data(),4,8,512));
+    }
+    void gpuRecognizerWidthMetadataDoesNotReorderOrReadPastCount()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        int devices{}; if(cudaGetDeviceCount(&devices)!=cudaSuccess || !devices) QSKIP("No CUDA device.");
+        FixtureStream stream;
+        std::array<gpu::Quad,17> crops{};
+        const std::array<int,17> widths{64,80,100,127,128,70,90,20,129,180,200,257,300,400,500,200,513};
+        for (int i=0; i<int(crops.size()); ++i) { crops[i].xy[0]=float(i); crops[i].validWidth=widths[i]; }
+        GpuBuffer<gpu::Quad> deviceCrops(crops.size()); GpuBuffer<int> count(1), canvases(144);
+        QCOMPARE(cudaMemcpyAsync(deviceCrops.data,crops.data(),sizeof(crops),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+        const auto evaluate=[&](int n,int group) {
+            std::vector<int> result((1152+group-1)/group,-1);
+            if (cudaMemcpyAsync(count.data,&n,sizeof(n),cudaMemcpyHostToDevice,stream.value)!=cudaSuccess) return std::vector<int>{};
+            gpu::RecognitionGroupWidths(deviceCrops.data,count.data,group,canvases.data,stream.value);
+            if (cudaGetLastError()!=cudaSuccess || cudaMemcpyAsync(result.data(),canvases.data,result.size()*sizeof(int),cudaMemcpyDeviceToHost,stream.value)!=cudaSuccess ||
+                cudaStreamSynchronize(stream.value)!=cudaSuccess) return std::vector<int>{};
+            return result;
+        };
+        auto values=evaluate(17,8); QCOMPARE(values.size(),std::size_t(144));
+        QCOMPARE(values[0],128); QCOMPARE(values[1],512); QCOMPARE(values[2],1024);
+        for (std::size_t i=3; i<values.size(); ++i) QCOMPARE(values[i],0);
+        values=evaluate(17,16); QCOMPARE(values.size(),std::size_t(72));
+        QCOMPARE(values[0],512); QCOMPARE(values[1],1024);
+        for (std::size_t i=2; i<values.size(); ++i) QCOMPARE(values[i],0);
+        for (const int invalid : {-1,0,1153}) {
+            values=evaluate(invalid,8); QCOMPARE(values.size(),std::size_t(144));
+            for (const int value : values) QCOMPARE(value,0);
+        }
+        std::array<gpu::Quad,17> after{};
+        QCOMPARE(cudaMemcpyAsync(after.data(),deviceCrops.data,sizeof(after),cudaMemcpyDeviceToHost,stream.value),cudaSuccess);
+        QCOMPARE(cudaStreamSynchronize(stream.value),cudaSuccess);
+        for (int i=0; i<int(crops.size()); ++i) {
+            QCOMPARE(after[i].xy[0],crops[i].xy[0]); QCOMPARE(after[i].validWidth,crops[i].validWidth);
+        }
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
+    void gpuRecognizerWidthRectificationMatchesCpuAcrossCanvasTransitions()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        int devices{};
+        if (cudaGetDeviceCount(&devices) != cudaSuccess || !devices)
+            QSKIP("No CUDA device.");
+        QImage image(640, 96, QImage::Format_ARGB32);
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x)
+                image.setPixelColor(x, y, QColor((x * 3 + y * 5) % 256,
+                                                (x + y * 7) % 256, (x * 5 + y) % 256));
+        constexpr std::size_t guard = 64, fixedSample = 1024 * 48 * 3;
+        constexpr float sentinel = 6.25f; // outside normalized source range
+        std::array<gpu::Quad, 2> quads{};
+        std::array<PaddleQuad, 2> cpuQuads{};
+        std::vector<float> reset(guard + 2 * fixedSample + guard, sentinel);
+        std::vector<float> actual(reset.size()), fixed(2 * fixedSample);
+        GpuBuffer<unsigned char> pixels(image.sizeInBytes());
+        GpuBuffer<gpu::Quad> boxes(quads.size());
+        GpuBuffer<float> reusable(reset.size()), fixedCrops(fixed.size());
+        // On assertion failure, drain before any device allocation or async
+        // host source/destination above is destroyed.
+        FixtureStream stream;
+        QCOMPARE(cudaMemcpyAsync(pixels.data, image.constBits(), image.sizeInBytes(),
+                                 cudaMemcpyHostToDevice, stream.value), cudaSuccess);
+        // Nonmonotonic transitions exercise row, channel and batch strides on
+        // the same high-water allocation. Two crops have distinct useful widths.
+        const std::array<std::array<int, 2>, 8> usefulWidths{{
+            {32, 127}, {257, 511}, {129, 255}, {513, 1024},
+            {128, 31}, {256, 130}, {512, 258}, {1024, 514}}};
+        const std::array<int, 8> canvases{128, 512, 256, 1024, 128, 256, 512, 1024};
+        for (std::size_t transition = 0; transition < usefulWidths.size(); ++transition)
+        {
+            for (std::size_t sample = 0; sample < quads.size(); ++sample)
+            {
+                const int valid = usefulWidths[transition][sample];
+                // Half-pixel/fractional positions require real bilinear
+                // sampling; crop 1 also straddles the left image boundary.
+                const float left = sample ? -3.25f : 8.25f;
+                const float top = sample ? 60.5f : 8.5f;
+                quads[sample] = {{left, top, left + valid * .5f, top,
+                                  left + valid * .5f, top + 24, left, top + 24}, 1, valid};
+                for (int corner = 0; corner < 4; ++corner)
+                    cpuQuads[sample].points[corner] =
+                        {quads[sample].xy[corner * 2], quads[sample].xy[corner * 2 + 1]};
+                cpuQuads[sample].score = 1;
+                QCOMPARE(int(std::ceil(48 * QLineF(cpuQuads[sample].points[0],
+                                                   cpuQuads[sample].points[1]).length() /
+                                           QLineF(cpuQuads[sample].points[0],
+                                                  cpuQuads[sample].points[3]).length())), valid);
+            }
+            const int canvas = recognizer_width::OrderedGroup(quads.data(), int(quads.size()));
+            QCOMPARE(canvas, canvases[transition]);
+            const std::size_t samplePixels = std::size_t(canvas) * 48 * 3;
+            QCOMPARE(cudaMemcpyAsync(boxes.data, quads.data(), sizeof(quads),
+                                     cudaMemcpyHostToDevice, stream.value), cudaSuccess);
+            QCOMPARE(cudaMemcpyAsync(reusable.data, reset.data(), reset.size() * sizeof(float),
+                                     cudaMemcpyHostToDevice, stream.value), cudaSuccess);
+            for (std::size_t sample = 0; sample < quads.size(); ++sample)
+            {
+                gpu::Rectify(pixels.data, image.bytesPerLine(), image.width(), image.height(),
+                             boxes.data, int(sample), fixedCrops.data + sample * fixedSample,
+                             1024, stream.value);
+                gpu::Rectify(pixels.data, image.bytesPerLine(), image.width(), image.height(),
+                             boxes.data, int(sample), reusable.data + guard + sample * samplePixels,
+                             canvas, stream.value);
+            }
+            QCOMPARE(cudaGetLastError(), cudaSuccess);
+            QCOMPARE(cudaMemcpyAsync(actual.data(), reusable.data, actual.size() * sizeof(float),
+                                     cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+            QCOMPARE(cudaMemcpyAsync(fixed.data(), fixedCrops.data, fixed.size() * sizeof(float),
+                                     cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+            QCOMPARE(cudaStreamSynchronize(stream.value), cudaSuccess);
+            for (std::size_t i = 0; i < guard; ++i)
+                QCOMPARE(actual[i], sentinel);
+            for (std::size_t i = guard + quads.size() * samplePixels; i < actual.size(); ++i)
+                QCOMPARE(actual[i], sentinel);
+            for (std::size_t sample = 0; sample < quads.size(); ++sample)
+            {
+                const int valid = usefulWidths[transition][sample];
+                const auto reference = PaddleRectify(image, cpuQuads[sample], canvas, valid);
+                QCOMPARE(reference.size(), samplePixels);
+                for (int channel = 0; channel < 3; ++channel)
+                    for (int y = 0; y < 48; ++y)
+                        for (int x = 0; x < canvas; ++x)
+                        {
+                            const std::size_t index = std::size_t(channel) * canvas * 48 + y * canvas + x;
+                            const float value = actual[guard + sample * samplePixels + index];
+                            // The CPU reference evaluates the quad in double;
+                            // CUDA uses float. This bound is <0.032 RGB levels.
+                            QVERIFY2(std::abs(value - reference[index]) < .00025f,
+                                     "CUDA rectification differs from CPU reference.");
+                            if (x < valid)
+                                QCOMPARE(value, fixed[sample * fixedSample +
+                                    std::size_t(channel) * 1024 * 48 + y * 1024 + x]);
+                            else
+                                QCOMPARE(value, 0.f);
+                        }
+            }
+        }
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
     void normalizationAndBounds()
     {
         QImage image(64, 32, QImage::Format_ARGB32);
@@ -400,6 +865,27 @@ class PaddleTests final : public QObject
         QVERIFY(std::abs(data[64 * 32 * 2] - (1 - .406f) / .225f) < .0001);
         QCOMPARE(PaddleDetectionSize({4000, 2256}), QSize(960, 544));
         QVERIFY(PaddleDetectionSize({0, 0}).isEmpty());
+    }
+    void pausedDetailNormalization()
+    {
+        QImage image(200,120,QImage::Format_ARGB32);
+        image.fill(QColor(255,0,0));
+        const DetailFocus focus{{44,32,100,60},kMaximumDetailMagnification};
+        QCOMPARE(PaddleDetailMagnification(focus),8.0);
+        const auto region=PaddleDetailRegion(image.size(),focus);
+        QCOMPARE(region,QRect(34,26,120,72));
+        QCOMPARE(PaddleRecognitionRegions(image.size(),focus),QVector<QRect>{region});
+        const auto input=PaddleDetectionSize(region.size(),PaddleDetailMagnification(focus));
+        QCOMPARE(input,QSize(960,576));
+        const auto values=PaddleNormalize(image.copy(region),input,true);
+        const auto plane=std::size_t(input.width())*input.height();
+        QCOMPARE(values.size(),plane*3);
+        // Check actual enlarged CPU tensor contents, including every border.
+        for(std::size_t i=0;i<plane;++i) {
+            QVERIFY(std::abs(values[i]-(0-.485f)/.229f)<.00001f);
+            QVERIFY(std::abs(values[plane+i]-(0-.456f)/.224f)<.00001f);
+            QVERIFY(std::abs(values[2*plane+i]-(1-.406f)/.225f)<.00001f);
+        }
     }
     void detectionRejectsNoiseAndMapsSource()
     {
@@ -497,6 +983,191 @@ class PaddleTests final : public QObject
             QCOMPARE(text.join(' '),expected);
         }
     }
+    void mergeKeepsIndependentColumnsAndTypeSizes()
+    {
+        const QSize size(1920, 1080);
+        const QRect full(QPoint(), size);
+        const auto word = [](QString text, QRectF bounds) {
+            return RecognizedWord{text, bounds, true, bounds, TokenDisposition::kCandidate, .99, bounds};
+        };
+        const RecognizedLine code{{word("scripts/integrate_castle_runtime.py", {102,249,275,18}),
+                                   word("+53", {509,249,27,14}), word("-53", {543,249,23,14})}};
+        const RecognizedLine title{{word("The", {643,248,89,40}), word("tribe,", {748,248,128,46}),
+                                    word("the", {894,248,79,40}), word("machines", {997,248,221,40})}};
+        for (bool reverse : {false, true}) {
+            QVector<RecognizedLine> output;
+            PaddleMergeRecognition(output, reverse ? title : code, full, size);
+            PaddleMergeRecognition(output, reverse ? code : title, full, size);
+            int count = 0;
+            for (const auto& line : output) {
+                QStringList text;
+                for (const auto& token : line.words) { text.push_back(token.text); ++count; }
+                if (text.contains(QStringLiteral("The")))
+                    QCOMPARE(text.join(' '), QStringLiteral("The tribe, the machines"));
+            }
+            QCOMPARE(count, 7);
+        }
+        QVector<RecognizedLine> columns;
+        PaddleMergeRecognition(columns, {{word("Left", {100,400,100,20})}}, full, size);
+        PaddleMergeRecognition(columns, {{word("Right", {320,400,100,20})}}, full, size);
+        QCOMPARE(columns.size(), 2);
+        QVector<RecognizedLine> fragments;
+        PaddleMergeRecognition(fragments, {{word("m", {1000.7155,242.9774,17.3408,51.8340})}}, full, size);
+        PaddleMergeRecognition(fragments, {{word("machines", {1005.9677,242.5213,202.7807,51.5256})}}, full, size);
+        QCOMPARE(fragments.size(), 1);
+        QCOMPARE(fragments.first().words.size(), 1);
+        QCOMPARE(fragments.first().words.first().text, QStringLiteral("machines"));
+        QVector<RecognizedLine> adjacent;
+        PaddleMergeRecognition(adjacent, {{word("m", {100,600,20,20})}}, full, size);
+        PaddleMergeRecognition(adjacent, {{word("machines", {110,600,130,20})}}, full, size);
+        int adjacentWords = 0;
+        for (const auto& row : adjacent) adjacentWords += row.words.size();
+        QCOMPARE(adjacentWords, 2); // weaker overlap is not fragment evidence
+    }
+    void mergedHeadlineAndFilePathPaintTogether()
+    {
+        uct_test::RegisterFixtureFonts();
+        const QSize size(1920, 1080);
+        QImage image(size, QImage::Format_ARGB32);
+        image.fill(Qt::black);
+        QPainter sourcePainter(&image);
+        sourcePainter.setPen(Qt::white);
+        QFont body(QStringLiteral("Segoe UI")); body.setPixelSize(22);
+        QFont titleFont = body; titleFont.setPixelSize(52);
+        const auto draw = [&](RecognizedLine& line, const QString& text, QPointF origin, const QFont& font) {
+            sourcePainter.setFont(font);
+            sourcePainter.drawText(origin, text);
+            const QRectF bounds = QFontMetricsF(font).tightBoundingRect(text).translated(origin);
+            line.words.push_back({text, bounds, false, {}, TokenDisposition::kCandidate, .99, bounds});
+        };
+        RecognizedLine code, title;
+        draw(code, QStringLiteral("scripts/integrate_castle_runtime.py"), {100,270}, body);
+        qreal x = 650;
+        for (const auto& text : QStringLiteral("The tribe, the machines").split(' ')) {
+            draw(title, text, {x,290}, titleFont);
+            x += QFontMetricsF(titleFont).horizontalAdvance(text + ' ');
+        }
+        sourcePainter.end();
+        QVector<RecognizedLine> merged;
+        PaddleMergeRecognition(merged, code, QRect(QPoint(), size), size);
+        PaddleMergeRecognition(merged, title, QRect(QPoint(), size), size);
+        const auto result = [&](std::uint64_t frame, std::int64_t timestamp) {
+            RecognitionResult r;
+            r.stamp.sourceEpoch = 1; r.stamp.geometryGeneration = 1;
+            r.stamp.frameSeq = frame; r.stamp.timestampMs = timestamp;
+            r.stamp.viewportWidth = size.width(); r.stamp.viewportHeight = size.height();
+            r.stamp.viewTransform = {0,0,1,1,0,0,1,1,true};
+            r.output.ok = true; r.output.lines = merged;
+            for (const auto& line : merged) { Q_UNUSED(line); r.lineColors.push_back({Qt::white, Qt::black}); }
+            const auto pixels = uct_test::IndependentFramePixels(image, frame);
+            r.sourcePixelDigest = uct_test::SourcePixelsDigest(pixels);
+            r.reference = MakeProbeFrame(pixels.constBits(), pixels.width(), pixels.height(),
+                pixels.bytesPerLine(), 2, r.stamp);
+            return r;
+        };
+        const auto first = result(1,100), second = result(2,200);
+        OverlayModel model;
+        model.Admit(first, first.stamp, nullptr, 110);
+        QCOMPARE(model.Admit(second, second.stamp, nullptr, 210), AdmitVerdict::kAccepted);
+        const auto words = model.SceneWords(210, second.stamp.frameSeq);
+        QCOMPARE(words.size(), 5);
+        QWidget viewport; viewport.resize(size); viewport.show();
+        okuflow::UltraClearTextOverlay overlay(&viewport, &viewport);
+        overlay.SetViewTransform(second.stamp.viewTransform);
+        QVector<okuflow::UltraClearTextOverlay::SceneWord> glyphs;
+        for (const auto& word : words)
+            glyphs.push_back({word.text,word.sceneRect,word.colors,word.lineId,word.protectedSceneRects,
+                             word.wordIndex,word.sceneQuad,word.layoutGroupId,word.carvedSceneRects});
+        overlay.SetWords(std::move(glyphs));
+        QTRY_VERIFY(overlay.PaintedGeometryCurrent());
+        QImage layer(size, QImage::Format_ARGB32_Premultiplied); layer.fill(Qt::transparent);
+        overlay.render(&layer);
+        for (const auto& word : words) {
+            okuflow::UltraClearTextOverlay::PaintedWordGeometry geometry;
+            QVERIFY(overlay.PaintedWord(word.lineId,word.wordIndex,word.text,geometry));
+            QVERIFY2(geometry.drawn, qPrintable(word.text));
+            const QRect region = geometry.box.adjusted(-2,-2,2,2).toAlignedRect().intersected(layer.rect());
+            int whiteInk = 0;
+            for (int y = region.top(); y <= region.bottom(); ++y)
+                for (int px = region.left(); px <= region.right(); ++px) {
+                    const auto color = layer.pixel(px,y);
+                    whiteInk += qAlpha(color) > 0 && qRed(color) > 200;
+                }
+            QVERIFY2(whiteInk > 5, qPrintable(word.text));
+        }
+    }
+    void regionalOwnershipUsesBackendDetectorInterior_data()
+    {
+        QTest::addColumn<bool>("vertical");
+        QTest::newRow("detector-tail-dropped-despite-contained-ink") << false;
+        QTest::newRow("detector-top-dropped-without-new-probe") << true;
+    }
+    void regionalOwnershipUsesBackendDetectorInterior()
+    {
+        QFETCH(bool,vertical);
+        uct_test::RegisterFixtureFonts();
+        const QSize size(960,540);
+        const QRect region = vertical ? QRect(0,60,400,200) : QRect(0,0,400,200);
+        QImage image(size,QImage::Format_ARGB32); image.fill(Qt::white);
+        QPainter painter(&image); painter.setPen(Qt::black);
+        QFont font(QStringLiteral("Segoe UI")); font.setPixelSize(24); painter.setFont(font);
+        RecognizedLine fitted,detected;
+        const auto word = [&](QString text,QRectF ink,QRectF detector) {
+            painter.drawText(ink.bottomLeft(),text);
+            RecognizedWord fit{text,ink}; fit.protectedBoundsPx=detector; fit.inkFitted=true;
+            fitted.words.push_back(fit);
+            RecognizedWord raw{text,detector.translated(-region.topLeft())};
+            raw.protectedBoundsPx=raw.boundsPx;
+            detected.words.push_back(raw);
+        };
+        if (vertical) word(QStringLiteral("here"),{125,72,55,22},{120,64,70,35});
+        else {
+            word(QStringLiteral("end"),{265,75,35,25},{260,70,45,35});
+            word(QStringLiteral("here"),{355,75,34,25},{350,70,47,35});
+        }
+        painter.end();
+        const auto result = [&](std::uint64_t frame,std::int64_t time) {
+            RecognitionResult r;
+            r.stamp.sourceEpoch=1; r.stamp.geometryGeneration=1;
+            r.stamp.frameSeq=frame; r.stamp.timestampMs=time;
+            r.stamp.viewportWidth=size.width(); r.stamp.viewportHeight=size.height();
+            r.stamp.viewTransform={0,0,1,1,0,0,1,1,true};
+            r.output.ok=true; r.output.lines={fitted};
+            const auto pixels=uct_test::IndependentFramePixels(image,frame);
+            r.sourcePixelDigest=uct_test::SourcePixelsDigest(pixels);
+            r.reference=MakeProbeFrame(pixels.constBits(),pixels.width(),pixels.height(),
+                pixels.bytesPerLine(),2,r.stamp);
+            return r;
+        };
+        const auto first=result(1,100),second=result(2,200);
+        OverlayModel model;
+        model.Admit(first,first.stamp,nullptr,110);
+        QCOMPARE(model.Admit(second,second.stamp,nullptr,210),AdmitVerdict::kAccepted);
+        const auto old=model.Lines().first();
+        const auto reading=model.ReadingText(310,3);
+        const auto screen=model.ScreenLines(310,3);
+        QCOMPARE(reading,vertical ? QStringLiteral("here") : QStringLiteral("end here"));
+        QVector<RecognizedLine> merged;
+        PaddleMergeRecognition(merged,detected,region,size); // real production edge rejection
+        QCOMPARE(merged.size(),vertical ? 0 : 1);
+        if (!vertical) {
+            QCOMPARE(merged.first().words.size(),1);
+            QCOMPARE(merged.first().words.first().text,QStringLiteral("end"));
+        }
+        auto roi=result(3,300); roi.output.lines=merged; roi.output.detailRegionPx=region;
+        model.Admit(roi,roi.stamp,nullptr,310); // no newer validating probe is available
+        QCOMPARE(model.ReadingText(310,3),reading);
+        QCOMPARE(model.Lines().size(),1);
+        QCOMPARE(model.Lines().first().id,old.id);
+        QCOMPARE(model.Lines().first().readingTokens,old.readingTokens);
+        QCOMPARE(model.Lines().first().protectedSceneRects,old.protectedSceneRects);
+        QCOMPARE(model.Lines().first().carvedSceneRects,old.carvedSceneRects);
+        QCOMPARE(model.Lines().first().validatedFrameSeq,old.validatedFrameSeq);
+        QCOMPARE(model.Lines().first().validatedAtMs,old.validatedAtMs);
+        QCOMPARE(model.SceneWords(310,3).size(),fitted.words.size());
+        QCOMPARE(model.ScreenLines(310,3).first().lineId,screen.first().lineId);
+        QCOMPARE(model.PendingWordCount(),0);
+    }
     void optionalTensorRtBatchComparison()
     {
         uct_batch_test::CompareTensorRtBatches();
@@ -556,7 +1227,11 @@ class PaddleTests final : public QObject
         if(path.isEmpty())QSKIP("Explicit local image diagnostic not selected.");
         const QImage image(path);QVERIFY2(!image.isNull(),qPrintable(path));
         const bool gpu=qEnvironmentVariableIsSet("OKUFLOW_TEST_PADDLE_GPU");
-        auto backend=gpu?CreateTensorRtRecognizer():CreatePaddleCpuRecognizer();
+        // Retain the exact asynchronous TensorRT closure through diagnostic
+        // process exit, including early QtTest assertion returns.
+        auto retirement=gpu?std::make_unique<uct_batch_test::RetirementReceipts>():nullptr;
+        auto backend=gpu?CreateTensorRtRecognizer({},{},ModelTier::Medium,ModelTier::Medium,retirement->Observer())
+                        :CreatePaddleCpuRecognizer();
         const auto initialized=backend->Initialize();
         QVERIFY2(initialized.state==BackendState::kReady,qPrintable(initialized.detail));
         QTRY_VERIFY_WITH_TIMEOUT(!backend->Preparing(),180000);
@@ -574,6 +1249,58 @@ class PaddleTests final : public QObject
         qInfo().noquote()<<"Dense image backend="<<backend->Status().name<<"words="<<words
             <<"detailRegions="<<PaddleDetectionRegions(image.size()).size()<<"ms="<<timer.elapsed()<<'\n'<<text;
         QVERIFY(words>0);
+        backend.reset();
+        if(retirement)QVERIFY2(retirement->Wait().Passed(),"Exact diagnostic TensorRT State closure failed.");
+    }
+    void optionalPausedVideoProof()
+    {
+        uct_paused_video_test::Run();
+    }
+    void optionalActiveRegionalProof()
+    {
+        uct_active_regional_test::Run();
+    }
+    void supplementalFailureKeepsPreferredBackend()
+    {
+        uct_startup_test::Calls gpu, cpu, windows;
+        auto backend = uct_startup_test::Make(gpu, cpu, windows);
+        QCOMPARE(backend->Initialize().state, BackendState::kReady);
+        std::atomic<bool> cancelled{};
+        QVERIFY(backend->Recognize({}, cancelled).ok);
+        gpu.fail = true;
+        backend->SetDetailFocus(DetailFocus{QRect(0, 0, 160, 96), 1.0, 480, true});
+        QVERIFY(!backend->Recognize({}, cancelled).ok);
+        QCOMPARE(backend->Status().name, QStringLiteral("GPU"));
+        QCOMPARE(gpu.initialized, 1);
+        QCOMPARE(gpu.recognized, 2);
+        QCOMPARE(cpu.initialized, 0); QCOMPARE(cpu.recognized, 0);
+        QCOMPARE(windows.initialized, 0); QCOMPARE(windows.recognized, 0);
+        backend->SetDetailFocus(std::nullopt);
+        gpu.fail = false;
+        QVERIFY(backend->Recognize({}, cancelled).ok);
+        QCOMPARE(backend->Status().name, QStringLiteral("GPU"));
+        QCOMPARE(gpu.initialized, 1); QCOMPARE(gpu.recognized, 3);
+        QCOMPARE(cpu.initialized, 0); QCOMPARE(windows.initialized, 0);
+    }
+    void supplementalPreparingDoesNotStartCpuBridge()
+    {
+        uct_startup_test::Calls gpu, cpu, windows;
+        gpu.preparing = true;
+        auto backend = uct_startup_test::Make(gpu, cpu, windows);
+        QCOMPARE(backend->Initialize().state, BackendState::kReady);
+        std::atomic<bool> cancelled{};
+        backend->SetDetailFocus(DetailFocus{QRect(0, 0, 160, 96), 1.0, 480, true});
+        const auto output = backend->Recognize({}, cancelled);
+        QVERIFY(!output.ok && output.backendPreparing);
+        QCOMPARE(gpu.recognized, 0);
+        QCOMPARE(cpu.initialized, 0); QCOMPARE(cpu.recognized, 0);
+        QCOMPARE(windows.initialized, 0); QCOMPARE(windows.recognized, 0);
+        backend->SetDetailFocus(std::nullopt);
+        gpu.preparing = false;
+        QVERIFY(backend->Recognize({}, cancelled).ok);
+        QCOMPARE(backend->Status().name, QStringLiteral("GPU"));
+        QCOMPARE(gpu.initialized, 1); QCOMPARE(gpu.recognized, 1);
+        QCOMPARE(cpu.initialized, 0); QCOMPARE(windows.initialized, 0);
     }
     void ctcBlankRepeatSpaceAndConfidence()
     {
@@ -661,6 +1388,69 @@ class PaddleTests final : public QObject
             QCOMPARE(word.protectedSceneRects.size(),1);
             QCOMPARE(word.protectedSceneRects[0],second.prepared[0].words[1].protectedSceneRect);
         }
+    }
+    void gpuLocalColorDescriptorsMatchCpu_data()
+    {
+        QTest::addColumn<int>("sample");
+        const auto fixtures = uct_test::LocalColorFixtures();
+        for (int i = 0; i < fixtures.size(); ++i)
+            QTest::newRow(qPrintable(fixtures[i].name)) << i;
+    }
+    void gpuLocalColorDescriptorsMatchCpu()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        int devices{};
+        if (cudaGetDeviceCount(&devices) != cudaSuccess || !devices) QSKIP("No CUDA device.");
+        QFETCH(int, sample);
+        const auto f = uct_test::LocalColorFixtures()[sample];
+        if (f.expectInkCorners) QVERIFY2(uct_test::SolidInkCorners(f), qPrintable(f.name));
+        struct Backend final : Recognizer {
+            RecognitionOutput output;
+            BackendStatus Initialize() override { return {BackendState::kReady, "colors", "", ""}; }
+            RecognitionOutput Recognize(const QImage&, const std::atomic<bool>&) override { return output; }
+        };
+        auto backend = std::make_unique<Backend>(); backend->output.ok = true;
+        RecognizedLine line; line.words.push_back({QStringLiteral("Button"), QRectF(f.bounds)});
+        backend->output.lines.push_back(line);
+        RecognitionResult cpu;
+        std::atomic<bool> received{false};
+        RecognitionScheduler scheduler(std::move(backend), [&](RecognitionResult result) {
+            cpu = std::move(result); received.store(true);
+        }, {});
+        SourceStamp stamp; stamp.sourceEpoch = 1; stamp.geometryGeneration = 1; stamp.frameSeq = 1;
+        stamp.viewportWidth = f.pixels.width(); stamp.viewportHeight = f.pixels.height();
+        stamp.viewTransform = {0,0,1,1,0,0,1,1,true};
+        QVERIFY(scheduler.Submit(stamp, f.pixels)); QTRY_VERIFY(received.load());
+        QVERIFY(cpu.output.ok); QCOMPARE(cpu.lineColors.size(), 1);
+        QVERIFY(cpu.output.lines[0].words[0].colors);
+        FixtureStream stream;
+        GpuBuffer<unsigned char> pixels(f.pixels.sizeInBytes());
+        GpuBuffer<gpu::Rect> rectangle(1); GpuBuffer<gpu::Colors> descriptor(1);
+        // Production resident::Rect clips on the host before dispatch too.
+        const QRect clipped = f.bounds.intersected(f.pixels.rect());
+        const gpu::Rect rect{clipped.x(), clipped.y(), clipped.width(), clipped.height()};
+        QCOMPARE(cudaMemcpyAsync(pixels.data, f.pixels.constBits(), f.pixels.sizeInBytes(),
+                                 cudaMemcpyHostToDevice, stream.value), cudaSuccess);
+        QCOMPARE(cudaMemcpyAsync(rectangle.data, &rect, sizeof(rect), cudaMemcpyHostToDevice, stream.value), cudaSuccess);
+        gpu::LineColors(pixels.data, f.pixels.bytesPerLine(), f.pixels.width(), f.pixels.height(),
+                        rectangle.data, 1, descriptor.data, stream.value);
+        QCOMPARE(cudaGetLastError(), cudaSuccess);
+        gpu::Colors raw{};
+        // Only the 24-byte descriptor crosses back; resident image pixels do not.
+        QCOMPARE(cudaMemcpyAsync(&raw, descriptor.data, sizeof(raw), cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+        QCOMPARE(cudaStreamSynchronize(stream.value), cudaSuccess);
+        const QColor ink(raw.foreground[0], raw.foreground[1], raw.foreground[2]);
+        const QColor paper(raw.background[0], raw.background[1], raw.background[2]);
+        QCOMPARE(ink, cpu.lineColors[0].foreground); QCOMPARE(paper, cpu.lineColors[0].background);
+        QCOMPARE(ink, cpu.output.lines[0].words[0].colors->foreground);
+        QCOMPARE(paper, cpu.output.lines[0].words[0].colors->background);
+        if (f.expectSourceColors) {
+            QVERIFY2(uct_test::ColorDistance(ink, f.ink) <= f.tolerance, qPrintable(f.name));
+            QVERIFY2(uct_test::ColorDistance(paper, f.paper) <= f.tolerance, qPrintable(f.name));
+        }
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
     }
     void gpuResidentSchedulerKeepsPixelsAndDescriptorsOnDevice_data()
     {
@@ -815,9 +1605,13 @@ class PaddleTests final : public QObject
         const auto gpuPatch=BuildReferencePatch(base,rect);QVERIFY(gpuPatch.valid);QVERIFY(gpuPatch.resident);
         const auto cpuBase=MakeProbeFrame(page.image.constBits(),640,360,page.image.bytesPerLine(),decimation,stamp);
         const auto cpuPatch=BuildReferencePatch(cpuBase,rect);QVERIFY(cpuPatch.valid);
-        for(int phase=0;phase<4;++phase){
+        for(int phase=0;phase<5;++phase){
             QImage image(640,360,QImage::Format_ARGB32);image.fill(phase==2?Qt::white:QColor(246,244,236));
             if(phase!=2){QPainter painter(&image);painter.drawImage(phase==1?QPoint(3,2):QPoint(),page.image);}
+            if(phase==4){
+                QVERIFY(rect.right()*640 < 380); // do not paint over the reference's own ink
+                QPainter painter(&image);painter.fillRect(400,0,240,360,Qt::black);
+            }
             auto gpuProbe=prepare(image,phase+2);QVERIFY(gpuProbe.IsValid());
             auto cpuProbe=MakeProbeFrame(image.constBits(),640,360,image.bytesPerLine(),decimation,stamp);
             if(phase==3){ // Reproject both references through a cropped/panned view.
@@ -827,6 +1621,7 @@ class PaddleTests final : public QObject
             for(const int radius:{6,1000,-3}) {
                 MatchTuning tuning;tuning.searchRadiusPx=radius;
                 const auto c=MatchPatch(cpuPatch,cpuProbe,tuning,seed);
+                if(phase==4) QVERIFY(c.matched); // independent right region cannot revoke left ink
                 // Native GPU descriptor and compact CPU descriptor upload must agree.
                 for(const auto& patch:{gpuPatch,cpuPatch}) {
                     const auto g=CheckLines({{7,patch,seed}},gpuProbe,tuning,0).front().match;
@@ -837,6 +1632,7 @@ class PaddleTests final : public QObject
             }
             const auto a=SceneSimilarity(base,gpuProbe),b=SceneSimilarity(cpuBase,cpuProbe);
             QCOMPARE(a.has_value(),b.has_value());if(a)QVERIFY2(std::abs(*a-*b)<1e-5,qPrintable(QString("similarity phase %1 GPU %2 CPU %3").arg(phase).arg(*a,0,'g',15).arg(*b,0,'g',15)));
+            if(phase==4){QVERIFY(a.has_value());QVERIFY(*a<.92);} // globally moving, locally unchanged
         }
         }
 #else
@@ -878,6 +1674,68 @@ class PaddleTests final : public QObject
             QVERIFY(std::abs(results[i].match.score-expected[i].score)<1e-5);
             QVERIFY(std::abs(results[i].match.sceneOffset.x()-expected[i].sceneOffset.x())<1e-5);
             QVERIFY(std::abs(results[i].match.sceneOffset.y()-expected[i].sceneOffset.y())<1e-5);}
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
+    void gpuQuadReferencesNormalizeRotationAndMatchCpuWithoutImageEgress()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        using namespace uct_quad_reference_test;
+        int devices{}; if(cudaGetDeviceCount(&devices)!=cudaSuccess || !devices) QSKIP("No CUDA device.");
+        const auto source=Render(.48), target=Render(.57), changed=Render(.57,true);
+        FixtureStream stream; GpuBuffer<unsigned char> pixels(source.image.sizeInBytes()); AnalysisPool pool;
+        std::atomic<bool> cancel{false};
+        for(const bool perspective : {false,true}) for(const int decimation : {1,2,4}) {
+            const auto a=perspective ? Render(.48,false,true) : source;
+            const auto b=perspective ? Render(.57,false,true) : target;
+            const auto c=perspective ? Render(.57,true,true) : changed;
+            const auto prepare=[&](const Fixture& fixture,int frame) {
+                cudaMemcpyAsync(pixels.data,fixture.image.constBits(),fixture.image.sizeInBytes(),cudaMemcpyHostToDevice,stream.value);
+                auto owned=pool.Capture(pixels.data,fixture.image.bytesPerLine(),640,360,stream.value,1,frame,1);
+                RecognitionResult result; result.stamp=uct_quad_reference_test::Stamp(frame); QString error;
+                if(owned) owned->PrepareResidentAnalysis(result,decimation,true,cancel,error);
+                return result.reference;
+            };
+            const auto gpuSource=prepare(a,1), gpuTarget=prepare(b,2), gpuChanged=prepare(c,3);
+            QVERIFY(gpuSource.resident); QVERIFY(gpuTarget.resident); QVERIFY(gpuChanged.resident);
+            QVERIFY(gpuSource.luma.isNull()); QVERIFY(gpuTarget.luma.isNull());
+            const auto cpuSource=Probe(a,1,decimation), cpuTarget=Probe(b,2,decimation), cpuChanged=Probe(c,3,decimation);
+            const auto cpuPatch=BuildQuadReferencePatch(cpuSource,a.scene);
+            const auto gpuPatch=BuildQuadReferencePatch(gpuSource,a.scene);
+            QVERIFY(cpuPatch.valid); QVERIFY(gpuPatch.valid); QVERIFY(gpuPatch.resident); QVERIFY(gpuPatch.values.isEmpty());
+            QCOMPARE(gpuPatch.columns,cpuPatch.columns); QCOMPARE(gpuPatch.rows,cpuPatch.rows);
+            const MatchTuning strict{.94,.95,2};
+            for(const bool different : {false,true}) {
+                const auto& cpuProbe=different ? cpuChanged : cpuTarget;
+                const auto& gpuProbe=different ? gpuChanged : gpuTarget;
+                const auto expected=MatchPatch(Reproject(cpuPatch,cpuProbe,b.scene),cpuProbe,strict);
+                if(!perspective) QCOMPARE(expected.matched,!different);
+                for(const auto& original : {cpuPatch,gpuPatch}) {
+                    const auto patch=Reproject(original,gpuProbe,b.scene);
+                    const auto matches=gpuProbe.resident->Matches(gpuProbe.stamp,{patch},strict,{});
+                    QCOMPARE(matches.size(),1); QCOMPARE(matches[0].matched,expected.matched);
+                    QCOMPARE(matches[0].visible,expected.visible);
+                    QVERIFY2(std::abs(matches[0].score-expected.score)<1e-5,
+                        qPrintable(QString("perspective=%1 decimation=%2 changed=%3 GPU=%4 CPU=%5")
+                            .arg(perspective).arg(decimation).arg(different).arg(matches[0].score,0,'g',14).arg(expected.score,0,'g',14)));
+                }
+            }
+        }
+        for(const double angle : {-.3,-.012,.012,.032,.48}) for(const bool perspective : {false,true}) {
+            const auto a=Render(angle,false,perspective);
+            for(const int control : {0,1,2,3,4,5}) {
+                const auto b=Render(angle+.04,control==2,perspective);
+                VerifyWordProof(a,b,control,true,[&](RecognitionScheduler& scheduler,const SourceStamp& stamp,
+                    const Fixture& frame,CorroborationRequest request) {
+                    if(cudaMemcpyAsync(pixels.data,frame.image.constBits(),frame.image.sizeInBytes(),
+                        cudaMemcpyHostToDevice,stream.value)!=cudaSuccess)return std::uint64_t{};
+                    auto owned=pool.Capture(pixels.data,frame.image.bytesPerLine(),640,360,stream.value,
+                        stamp.sourceEpoch,stamp.frameSeq,stamp.geometryGeneration);
+                    return scheduler.SubmitDevice(stamp,std::move(owned),std::move(request));
+                });
+            }
+        }
 #else
         QSKIP("CUDA adapter not compiled.");
 #endif
@@ -1264,6 +2122,54 @@ class PaddleTests final : public QObject
         if (cudaGetDeviceCount(&devices) != cudaSuccess || devices < 1)
             QSKIP("No CUDA device.");
         FixtureStream stream;
+        // Full-table oracle: every zero border and tile tail matters to proof.
+        for (int d : {1, 2, 3, 4, 9})
+        for (int ow : {1, 7, 8, 31, 32, 33, 127, 128, 129, 255, 256, 257,
+                       511, 512, 513, 910, 959, 960}) {
+            if (ow * d + 1 > 8192) continue;
+            const int width = ow * d + (d > 1 ? 1 : 0), height = 17 * d + (d > 1 ? 1 : 0);
+            const int stride = width * 4 + 28, oh = height / d;
+            QByteArray bytes(stride * height, char(0xcd));
+            for (int y = 0; y < height; ++y)
+                for (int x = 0; x < width; ++x) {
+                    auto* pixel = reinterpret_cast<uchar*>(bytes.data()) + y * stride + x * 4;
+                    pixel[0] = (x * 11 + y * 43) % 256;
+                    pixel[1] = (x * 31 + y * 97) % 256;
+                    pixel[2] = (x * 73 + y * 19) % 256;
+                    pixel[3] = 255;
+                }
+            std::vector<unsigned> expected(std::size_t(ow + 1) * (oh + 1), 0);
+            const int step = std::max(1, d / 2), per = (d + step - 1) / step;
+            for (int y = 0; y < oh; ++y) {
+                unsigned row = 0;
+                for (int x = 0; x < ow; ++x) {
+                    int value = 0;
+                    for (int dy = 0; dy < d; dy += step)
+                        for (int dx = 0; dx < d; dx += step) {
+                            const auto* p = reinterpret_cast<const uchar*>(bytes.constData()) +
+                                (y * d + dy) * stride + (x * d + dx) * 4;
+                            value += (29 * p[0] + 150 * p[1] + 77 * p[2]) >> 8;
+                        }
+                    row += value / (per * per);
+                    expected[std::size_t(y + 1) * (ow + 1) + x + 1] =
+                        expected[std::size_t(y) * (ow + 1) + x + 1] + row;
+                }
+            }
+            GpuBuffer<uchar> source(bytes.size());
+            GpuBuffer<unsigned> integral(expected.size());
+            QCOMPARE(cudaMemcpyAsync(source.data, bytes.constData(), bytes.size(),
+                                     cudaMemcpyHostToDevice, stream.value), cudaSuccess);
+            for (int repeat = 0; repeat < 3; ++repeat) {
+                QCOMPARE(cudaMemsetAsync(integral.data, 0x5a, expected.size() * sizeof(unsigned), stream.value), cudaSuccess);
+                gpu::ValidationIntegral(source.data, stride, width, height, d, integral.data, stream.value);
+                std::vector<unsigned> actual(expected.size());
+                QCOMPARE(cudaMemcpyAsync(actual.data(), integral.data, actual.size() * sizeof(unsigned),
+                                         cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+                QCOMPARE(cudaStreamSynchronize(stream.value), cudaSuccess);
+                QVERIFY2(actual == expected, qPrintable(QString("Integral mismatch: width %1 decimation %2 repeat %3")
+                    .arg(ow).arg(d).arg(repeat)));
+            }
+        }
         QImage image(128, 64, QImage::Format_ARGB32);
         for (int y = 0; y < 64; ++y)
             for (int x = 0; x < 128; ++x)
@@ -1283,6 +2189,32 @@ class PaddleTests final : public QObject
         const auto reference = PaddleNormalize(image, {64, 32}, true);
         for (std::size_t i = 0; i < values.size(); ++i)
             QVERIFY(std::abs(values[i] - reference[i]) < .00001f);
+
+        {
+            // Production GPU detail uses a strided subview of the owned scene.
+            // Exercise the new 8x geometry and actual kernel against CPU data.
+            QImage source(200,120,QImage::Format_ARGB32);
+            for(int y=0;y<source.height();++y) for(int x=0;x<source.width();++x)
+                source.setPixelColor(x,y,QColor(x,y,(x+y)%256));
+            const DetailFocus focus{{44,32,100,60},kMaximumDetailMagnification};
+            const auto region=PaddleDetailRegion(source.size(),focus);
+            QCOMPARE(region,QRect(34,26,120,72));
+            const auto input=PaddleDetectionSize(region.size(),PaddleDetailMagnification(focus));
+            QCOMPARE(input,QSize(960,576));
+            GpuBuffer<unsigned char> owned(source.sizeInBytes());
+            QCOMPARE(cudaMemcpyAsync(owned.data,source.constBits(),source.sizeInBytes(),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+            const auto count=std::size_t(input.width())*input.height()*3;
+            GpuBuffer<float> tensor(count);
+            std::vector<float> actual(count);
+            const auto* crop=owned.data+std::size_t(region.y())*source.bytesPerLine()+region.x()*4;
+            gpu::Normalize(crop,source.bytesPerLine(),region.width(),region.height(),tensor.data,
+                           input.width(),input.height(),stream.value);
+            QCOMPARE(cudaMemcpyAsync(actual.data(),tensor.data,count*sizeof(float),cudaMemcpyDeviceToHost,stream.value),cudaSuccess);
+            QCOMPARE(cudaStreamSynchronize(stream.value),cudaSuccess);
+            const auto expected=PaddleNormalize(source.copy(region),input,true);
+            QCOMPARE(actual.size(),expected.size());
+            for(std::size_t i=0;i<count;++i) QVERIFY(std::abs(actual[i]-expected[i])<.00001f);
+        }
 
         std::vector<float> map(128 * 64, .01f);
         for (int y = 20; y < 32; ++y)

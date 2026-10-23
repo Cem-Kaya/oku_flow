@@ -6,8 +6,9 @@ video text indexing and recordings-as-searchable-documents. It retains ordinary
 video playback, Original recording, paused-frame UCT and recording rewind.
 
 The work is staged. Proposed gains are not measurements, and a diagnostic is
-not an accepted production optimization. Model defaults and automatic batch one
-remain unchanged until quality and lifecycle acceptance justify a separate change.
+not an accepted production optimization. Model defaults remain GPU medium/medium
+and CPU tiny/small. Subsequent quality acceptance enabled batch eight for medium
+and small recognizers; tiny retains batch one, as recorded below.
 
 ## Order and evidence
 
@@ -45,6 +46,10 @@ remain unchanged until quality and lifecycle acceptance justify a separate chang
    spatial occurrences, requested-region priority and finite coverage debt. Its
    first implementation must leave the full recognition path authoritative and
    must not skip inference based on an unaccepted change verifier.
+   The subsequent explicitly opt-in [supplemental executor](uct_active_regional_ocr.md)
+   now runs bounded current-image regions between unchanged baseline full
+   deadlines. The verifier still cannot authorize skipping/deprioritizing full
+   OCR; regional worker timing is separate from end-to-end publication latency.
 5. **Use the evidence to choose optimizations.** Width buckets require graph
    support; compact metadata/batched kernels require attribution; precision
    changes require compatible typed exports and a labelled quality evaluation.
@@ -86,18 +91,17 @@ checks preceded integration. Exact matching evidence fingerprints were reused.
 Native GUI and screen-reader acceptance remain separate and pending; the owner's
 desktop was not driven.
 
-The shadow regional planner is the next implementation stage and is not active
-or implemented by these diagnostics. It must continue to compare against full
-OCR and may not authorize reuse from the unsafe matcher baseline. A truly
-frozen-crop recognizer-only entry point, graph-width support checks, broader
-labelled quality evaluation, failure/long-soak traces and contention measurements
-remain research/acceptance work. Equal-crop complete-path measurements do not
-silently claim to complete those experiments.
+At that initial checkpoint, the shadow regional planner and frozen-crop entry
+were not implemented. The subsequent sections record their separate integration.
+Graph-width support checks, broader labelled quality evaluation, failure/long-soak
+traces and contention measurements remain research/acceptance work. Equal-crop
+complete-path measurements do not silently complete those experiments.
 
 Both requested Opus xhigh tasks hit the provider's rate limit. The implementation
 task left its new helper/document; root repaired and tested their integration.
 The independent review attempt did not deliver a completed review. No completed
-Opus safety sign-off is claimed, and no production default was promoted.
+Opus safety sign-off is claimed. Production batching was promoted only after the
+separate quality acceptance below.
 
 
 ## Subsequent batch acceptance and completed frozen entry
@@ -118,4 +122,66 @@ fixture exposed small recognition's `O0` → `00` error, blocking its promotion
 under this roadmap's critical-symbol guard despite lower total character edits.
 See [the decision](uct_batch8_quality_acceptance.md) and the
 [frozen result](uct_resident_baseline.md#completed-frozen-crop-run).
-The shadow planner remains the next separately integrated stage.
+
+## Shadow regional planner integration
+
+The metadata-only planner is implemented behind the explicit
+`OKUFLOW_UCT_SHADOW_PLANNER=1` diagnostic switch, disabled by default. The OCR
+worker observes complete current results after preparation; full inference,
+overlay admission, reading text and accessibility publication retain their
+existing authority. No plan can skip OCR or reuse a recognized word. The
+independent motion-probe worker never runs the planner.
+
+Spatial word occurrences, acquisition freshness, source/geometry/authority
+resets, bounded focus priority and reserved oldest-region coverage are tracked
+without retaining pixels. Held duplicates cannot advance stability or coverage
+age. Every plan includes its job/authority ticket, full-versus-shadow counters
+and a finite accepted-observation coverage deadline. A failed observer retires
+without failing full OCR. Planner time is reported separately from ordinary
+worker time and remains part of end-to-end callback latency.
+
+Model-free planner and actual scheduler fixtures cover these contracts. An
+optional frozen-input resident diagnostic checks the worker integration without
+pretending repeated held images are fresh evidence. No measured OCR saving is
+claimed by this shadow stage. See [planner policy](uct_region_planner.md) for
+limits, tests and the current validation status.
+
+The final background integration matrix passes Release compilation, 146 CPU
+cases (two include optional skipped Qt rows) and 17 CUDA delta cases, with no
+whole-case skips or unresolved failures. PCH-off contracts and the shared-source
+guard pass separately. The finite real resident observer run verifies source
+boundaries and duplicate rejection on all 18 full outputs, zero image egress
+and unchanged cached plans. All four owner-quality comparisons pass; the two
+original strict failures and normal exit one remain preserved. Hosted native
+GUI and real screen-reader/camera acceptance are separate from these results.
+
+## Follow-up latency work (2026-10-21, development)
+
+The paused-continuity repair also removes two code-level waits: partial real
+probe invalidation now requests replacement OCR within the existing stability
+and pacing constraints, and changed same-ID accessibility lines replace their
+revoked ranges immediately rather than waiting one to three seconds. These are
+separate from inference speed and native reader discovery.
+
+GPU-only profiles of the owner's 55/89-second source pairs found warmed
+neighbour-read wall intervals of 231.68/220.65 ms, with 3.85/3.34 ms host merging
+and 65.93%/65.30% recognition-canvas padding. They are individual instrumented
+observations, with no display/decoder load control, not a latency distribution.
+They used pinned M/M batch-eight engines, zero image egress and unchanged cached
+plans. Raw profile logs and exit receipts stay in the private continuity
+evidence directory. Host merging is about 1.5% of this path, so overlapping it
+cannot provide the order-of-magnitude gain needed for dense 120 FPS OCR.
+
+The explicitly opt-in smaller-width recognition profile is now implemented
+and measured separately, preserving crop order and retaining exact text/omission
+differences against the existing canvas. Its [width report](uct_recognizer_width.md)
+distinguishes the owner's 5% text-difference allowance from original strict
+failures, ground-truth accuracy and default promotion. TensorRT batching,
+graphs and stream overlap must be evaluated
+on the critical path; throughput and latency need separate measurements. See
+[NVIDIA's performance guidance](https://docs.nvidia.com/deeplearning/tensorrt/latest/performance/optimization.html).
+
+At 120 recognitions per second the per-read budget is 8.33 ms. No RTX 3050
+measurement or dense-page 120 FPS claim is made. Presentation-rate projection
+of already proved text remains separate from lower-rate recognition and
+independent validation. The shadow planner still cannot skip production OCR.

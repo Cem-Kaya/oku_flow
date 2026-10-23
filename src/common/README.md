@@ -10,6 +10,27 @@ failed cleanup resources; camera callers must acknowledge release only after
 its completed status. These development changes still require hardware gates.
 
 Current contents:
+- bounded TensorRT recognition-group look-ahead using two pinned metadata
+  slots and per-group events on the existing worker stream; equal-shape
+  groups overlap host merging, while cancellation drains issued work before
+  releasing input. See [measurement and scope](../../docs/uct_recognition_lookahead.md).
+- Zero-admission pressure segments are discarded without fake timeline credit;
+  later real segments can recover. Nonempty finalization/seal/publication errors
+  still latch, with explicit permanent-failure metadata distinct from native busy.
+- bounded heap-backed H.264 live recap segments and a five-minute time/byte
+  ring independent of Record, reusing the native player through OpenMemory;
+  no recap audio or media files. See [ownership and limits](../../docs/live_ram_recap.md).
+  Initial camera sequence zero is valid; later duplicate/backward/wrapped IDs
+  remain invalid. Native finalization/seal/publication failures retain a reason
+  and latch input until source reset.
+- opt-in supplemental UCT region execution on the existing recognition worker,
+  with full-deadline priority, current owned inputs and per-observation pending
+  evidence; shadow-only observation remains separate. See
+  [execution contract](../../docs/uct_active_regional_ocr.md).
+- optional saved-file FFmpeg/dav1d decoding behind an explicit private SDK and
+  runtime opt-in, feeding the existing selected-video worker/leases/PCM path;
+  native/archive fallback remains default. See
+  [development limits](../../docs/video_ffmpeg_playback.md).
 - shared annotation rendering preserves caller clip regions, including the
   live Assistant exclusion, while restricting ink to the scene destination
 - on-demand Read transcribes through the vision provider, using Luna 6/low as
@@ -119,3 +140,8 @@ establish live model behavior or OS sandbox acceptance. Upstream
 [App Server documentation](https://learn.chatgpt.com/docs/app-server) describes
 thread/turn sandbox policies; the reviewed 0.160.1 feature inventory remains
 the compatibility authority here.
+
+The worker's optional `RefineWordSurface` recovers four-corner geometry from a
+closed uniform surface around already fitted text. Source-supported shear/taper
+survives preparation and admission. Ambiguous edges retain previous geometry;
+see [surface perspective](../../docs/uct_surface_perspective.md).

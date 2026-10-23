@@ -1,5 +1,7 @@
 #include "okuflow/cuda/uct_kernels.hpp"
+#include "../common/uct_recognizer_width.hpp"
 #include <cmath>
+#include <stdexcept>
 #include <cuda_runtime.h>
 
 namespace okuflow::uct::gpu
@@ -325,6 +327,16 @@ __global__ void recognitionWindows(const Quad* detected,int* count,Quad* windows
     }
     *count=written;
 }
+__global__ void recognitionGroupWidths(const Quad* quads, const int* count, int groupSize, int* widths)
+{
+    const int group = blockIdx.x * blockDim.x + threadIdx.x;
+    const int groups = (recognizer_width::kMaximumCrops + groupSize - 1) / groupSize;
+    if (group >= groups) return;
+    const int n = *count, first = group * groupSize;
+    // Every copied descriptor is initialized, including unused trailing slots.
+    widths[group] = n < 0 || n > recognizer_width::kMaximumCrops || first >= n ? 0
+        : recognizer_width::OrderedGroup(quads + first, min(groupSize, n - first));
+}
 __global__ void rectify(const unsigned char *pixels, std::size_t pitch, int w, int h,
                         const Quad *quads, int index, float *out, int ow)
 {
@@ -446,6 +458,14 @@ void Detect(const float *map, int w, int h, int sw, int sh, int *labels, Compone
 void RecognitionWindows(const Quad* detected,int* count,Quad* windows,cudaStream_t stream)
 {
     recognitionWindows<<<1,1,0,stream>>>(detected,count,windows);
+}
+void RecognitionGroupWidths(const Quad* quads, const int* count, int groupSize, int* widths,
+                            cudaStream_t stream)
+{
+    // The worker supplies the existing bounded submission group, 8 or16.
+    if (groupSize != 8 && groupSize != 16) throw std::invalid_argument("Unsupported recognition submission group.");
+    const int groups = (recognizer_width::kMaximumCrops + groupSize - 1) / groupSize;
+    recognitionGroupWidths<<<(groups + 127) / 128, 128, 0, stream>>>(quads,count,groupSize,widths);
 }
 void Rectify(const void *p, std::size_t pitch, int w, int h, const Quad *quads, int index,
              float *out, int ow, cudaStream_t s)

@@ -10,3 +10,5 @@ scripts/build_release_bundle.bat text eol=crlf
 scripts/windows-installer/WIX_LICENSE.txt -text
 third_party/paddleocr/LICENSE -text
 tests/data/long-gop-h264.mp4 -text -diff
+tests/data/uct-scene-cut-h264.mp4 -text -diff
+tests/data/paced-audio-h264.mp4 -text -diff

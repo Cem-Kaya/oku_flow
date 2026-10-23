@@ -1,7 +1,22 @@
 # Ultra Clear Text (experimental, development)
 
+Resident GPU validation uses [cooperative integral rows](uct_gpu_integral.md),
+preserving exact table values and downstream source/proof policy. This stage's
+private timing is separate from inference and live presentation measurements.
+
+An optional [supplemental regional executor](uct_active_regional_ocr.md) uses
+current owned inputs between baseline full reads when
+`OKUFLOW_UCT_REGIONAL_OCR=1`. It preserves full deadlines and priority, strict
+pixel/temporal admission and the separate paused selected/neighbour pair.
+Default is off; shadow observation alone executes no regional OCR.
+
 See [GPU batch execution and measurement](uct_gpu_batching.md) for the wider
 recognizer profiles and their separate memory and latency evidence.
+
+See [coverage and stable placement](uct_coverage_stability_repair.md) for the
+headline/file-path repair, independent column grouping and geometry retention
+through small OCR corrections. These are postprocessing/validation fixes;
+recognition-width experiments remain independently opt-in.
 
 ## Selected-video and held-frame authority (development)
 
@@ -45,6 +60,15 @@ accepted use cases. Use Show original to compare, especially for numbers.
 
 ## What the user gets
 
+The native glyph window yields while a modal dialog (including Open video)
+blocks the magnifier, while its owner is disabled, or when OkuFlow becomes
+inactive. OCR completions and window movement cannot reveal it during that
+interval. Returning to the magnifier restores still-valid cached words at the
+current viewport position; this visibility change schedules no recognition.
+Desktop-free regressions cover blocking, nested dialogs, late assignments and
+reactivation. Native Qt/native-file-dialog rows belong to the serial Windows
+GUI gate; an offscreen pass alone does not establish Windows stacking behavior.
+
 - **Advanced Ã¢â€ â€™ Image Ã¢â€ â€™ Text clarity Ã¢â€ â€™ Ultra Clear Text (experimental)**. Off by
   default. The saved opt-in resumes when Text Clarity is enabled.
 - **Show original camera text**: always available while UCT is on; hides the
@@ -69,15 +93,31 @@ accepted use cases. Use Show original to compare, especially for numbers.
 - Glyph weight follows the existing Text Clarity **Stroke weight** slider.
   Plate colors are measured from the analysis pixels, using a bounded
   surrounding margin and its background-class median to identify dense/bold print. CUDA's
-  neutral analysis branch precedes display color effects, so its plates preserve
-  source polarity rather than a display LUT. Below 7:1 contrast, ink moves to
-  white or black first (neutral ink always snaps to that extreme) while retaining
+  neutral analysis branch precedes display color effects. Its readable ink/plate
+  colors are therefore mapped through the successfully presented display palette
+  before drawing: encoded-RGB inversion or the same 256-entry luma LUT. Normal
+  colors retains source colors, including white text on blue chat bubbles. The
+  CPU media path already analyzes colored pixels and is not mapped twice.
+  A requested LUT cannot replace an older cached scene's mapping before the new
+  scene succeeds. Palette changes update cached colors without recognition,
+  shaping, geometry or admission changes; saved processed overlays freeze the
+  same mapping. This covers display palettes, not the scene's local adaptive
+  Text Clarity or auto-contrast statistics. Before that mapping, below 7:1
+  contrast, ink moves to
+  white or black first (neutral/low-chroma ink, with RGB channel spread below 64,
+  always snaps to that extreme) while retaining
   the source paper/board color. Only when
-  that cannot reach 7:1 does the background move the minimum distance toward
+  that cannot reach 7:1 (or 3:1 on clearly colored paper) does the background move the minimum distance toward
   its polarity endpoint. Moderate gray backgrounds therefore stay gray. Accepted
   background brightness uses a fixed 64-level grid preserving hue; small color
   changes remain within an 8-level hysteresis band rather than shimmering on
   every recognition. This affects replacement colors, not the camera image.
+  The 2026-10-23 CPU/PCH-off scoped gate passed the paint/model contract,
+  actual-app offscreen contract and shared-source equivalence (3/240,
+  zero skips/unresolved). Palette rows cover upright/projective plates and
+  ink, inversion, yellow/black, original blue-paper restoration, frozen export,
+  LUT-generation fencing and CPU no-double-mapping. This is not native UIA,
+  real-camera or full release acceptance.
 - Paddle detector/CTC boxes include padding. After inference, bounded worker-side
   source-ink fitting uses row bands to avoid adjacent-line ink and a one-CTC-step
   search bounded by the line and neighbouring words to recover clipped edges
@@ -119,7 +159,7 @@ build dependencies fatal for an explicitly required adapter. CUDA DLL discovery
 uses runtime `OKUFLOW_UCT_CUDA_BIN`, then `CUDA_PATH_V12_9/bin`, then the local
 documented CUDA-12.9.2 installation, never a compiled-in developer path.
 
-TensorRT uses a private low-priority stream, float32 graphs, device I/O,
+TensorRT normally uses a private low-priority stream, float32 graphs, device I/O,
 CUDA normalization, connected regions, rectification and CTC reduction.
 Only a region count is downloaded between networks; token/box metadata
 comes back afterward, never the full model logits. Engines prepare on a
@@ -128,6 +168,12 @@ finishes, then GPU is promoted between jobs. TensorRT's progress monitor
 cooperatively cancels when the backend session ends; it cannot preempt every
 vendor call. Cache identity binds model, GPU UUID, driver,
 TensorRT version and precision; cached bytes also have an integrity digest.
+
+The owner's explicit [local BF16 recognition opt-in](uct_local_bf16.md) selects
+only a reviewed cache-only medium recognition graph with mixed arithmetic and
+FLOAT I/O, retaining the pinned FP32 medium detector. It does not change public
+diagnostic factories or other users' precision defaults. Rejected artifacts
+name cached FP32 fallback; actual runtime faults retain normal failover.
 
 CUDA analysis captures the geometry-correct scene before appearance effects,
 SuperRes and display zoom into two owned device slots. Busy slots skip an
@@ -344,11 +390,12 @@ A word is drawn only when all of these hold:
    (IoU Ã¢â€°Â¥ 0.5) from two separate recognitions, or a previously accepted word.
    This checks stability, not correctness: the same engine can repeat a
    mistake.
-5. **High-risk tokens fail closed**: standalone `l I | 1 0 O o`, digits mixed
-   with confusable letters (`O o I l S s B Z z G g q`), superscripts, modifier
-   letters and any symbol outside plain punctuation (math operators, `^`, `Ã¢Ë†Å¡`,
-   `Ã¢Ë†â€˜` Ã¢â‚¬Â¦) are left as original pixels. Plain numbers such as `3.14`, `-12`,
-   `1,000` may be shown.
+5. **Unsupported notation fails closed**: non-ASCII digits, superscripts,
+   modifier letters and symbols outside the existing punctuation set keep
+   original pixels. Ordinary letter/digit labels (`GPT-6`, `GPT6`, `RTX4090`,
+   `OCRv6`, `R2D2`) and isolated ASCII lookalikes (`l I 1 0 O o`) use the same
+   evidence gates as prose. `|`, `x_2`, `a_b`, `a^2` and unsupported math symbols
+   remain excluded. See [the policy change and paused 8x limits](uct_token_policy_and_detail.md).
 
 Afterwards every probe revalidates accepted lines. A line that no longer
 matches (occlusion, changed board, motion beyond the search window) is removed
@@ -780,3 +827,16 @@ UCT color/readiness follow-up: line validation stays unchanged while local word
 surfaces supply foreground/background colors. Advanced UCT identifies its actual
 GPU/CPU recognizer, including temporary Windows OCR during GPU preparation.
 See [the implementation and validation notes](uct_color_startup_repair.md).
+
+Validation does not run a language-specific grammar checker, spelling dictionary
+or LLM correction. It checks confidence, size, geometry, independent observations
+and current source pixels. The conservative character policy is nevertheless
+not fully language-neutral: it accepts Unicode letters and a fixed common
+punctuation set, but rejects non-ASCII digits, combining marks, modifier letters
+and unsupported symbols. Ordinary ASCII letter/digit combinations and isolated
+lookalikes are eligible for the same proof as other text. Valid multilingual text can
+therefore remain original ink even if the backend recognized it. The model's
+character dictionary and the Windows fallback's installed recognizer languages
+are separate limits; the application's 25 interface languages do not establish
+OCR coverage. Protection masks preserve unproved punctuation/symbol pixels
+against neighbouring replacement plates; they are not grammatical judgements.

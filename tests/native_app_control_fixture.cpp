@@ -16,6 +16,7 @@
 #include "okuflow/ui/video_transport.hpp"
 #include "okuflow/common/uct_device_image.hpp"
 #include "okuflow/common/video_playback.hpp"
+#include "okuflow/common/video_recap.hpp"
 #include "okuflow/mcp/app_ipc_endpoint.hpp"
 #include <QApplication>
 #include <QComboBox>
@@ -129,6 +130,19 @@ public:
     }
     static QString PhotoDirectory(OkuFlowApp& app) {
         return app.userDataPaths_->PhotosForDate(QDate::currentDate());
+    }
+    static void UctPalette(OkuFlowApp& app, const QString& scheme, std::uint64_t generation) {
+        app.displayColorLut_ = color_schemes::BuildColorLut(*color_schemes::FindBuiltInColorScheme(scheme));
+        app.displayColorLutGeneration_ = generation;
+    }
+    static auto UctPaletteState(const OkuFlowApp& app) {
+        return std::pair{app.displayColorLut_, app.displayColorLutGeneration_};
+    }
+    static void RestoreUctPalette(OkuFlowApp& app, const std::pair<color_schemes::ColorLut, std::uint64_t>& state) {
+        app.displayColorLut_ = state.first; app.displayColorLutGeneration_ = state.second;
+    }
+    static void UctPaletteReceipt(OkuFlowApp& app, int transform, std::uint64_t generation = 0) {
+        app.ApplyUltraClearTextDisplayColors(transform, generation);
     }
     static void SavePhotoFixture(OkuFlowApp& app, const QImage& pixels,
                                  ViewOverlaySnapshot overlays) {
@@ -363,11 +377,14 @@ public:
     static bool RefusePendingLiveHold(OkuFlowApp& app, bool finishing, bool cameraActive) {
         app.SeedPendingLiveHoldForTest(finishing);
         app.cameraActive_=cameraActive;
+        app.cameraFramePresented_=cameraActive; // Explicit successful display receipt for this synthetic live/lost row.
         return app.AcceptLiveMediaHold({},0,0,1,10'000);
     }
     static void VideoSaved(OkuFlowApp& app,const SavedRecordingSegment& part) {app.OnVideoSegmentSaved(part);}
     static bool VideoTimerActive(const OkuFlowApp& app) {return app.videoPlaybackTimer_ && app.videoPlaybackTimer_->isActive();}
     static VideoTransport::Snapshot VideoUi(const OkuFlowApp& app) {return app.mainWindow_->videoTransport()->snapshot();}
+    // Metadata-only polling seam; no synthetic segment is opened or published.
+    static void ApplyRecapSnapshot(OkuFlowApp& app,const VideoRecapSnapshot& snapshot) {app.PollLiveRecapForTest(snapshot);}
     static MainWindow& Window(OkuFlowApp& app) {return *app.mainWindow_;}
     static bool CancelVideoPickerRestoresPhoneLight(OkuFlowApp& app,bool phone) {
         const auto previous=app.cameras_;const auto selected=app.selectedCameraIndex_;
@@ -516,6 +533,54 @@ public:
         app.presentedOriginalCache_.Reset();
         app.SeedVideoDocumentForTest({},nullptr,false,false);
         app.ReturnVideoToCamera();
+    }
+    static void SeedRecapSceneWithoutRecording(OkuFlowApp& app,std::vector<std::uint8_t>& pixels,bool unsupported=false,bool deferReceipt=false) {
+        app.cameraActive_=true;app.cameraFramePresented_=true;
+        app.currentCameraFrameSequence_=91;app.currentCameraCaptureClock100ns_=9'100'000;
+        MediaFrame source;source.width=unsupported?8192:32;source.height=unsupported?4320:16;source.subtype=MFVideoFormat_ARGB32;
+        source.frameRateNumerator=30;source.frameRateDenominator=1;
+        app.ObserveLiveRecapSource(source);
+        UctFrameContext context;context.frameSeq=91;context.geometry.settings.sourceEpoch=app.cameraSessionId_;app.lastAnnotationPresentation_=context;
+        app.pendingSceneCaptureClock100ns_=9'100'000;
+        const auto transform=ComputeViewTransform(32,16,1280,720,2,0.4f,0.6f,ViewportFitMode::kFill);
+        if(!deferReceipt) {
+            app.RetainPresentedCameraScene(app.cameraSessionId_,91,app.pendingSceneCaptureClock100ns_,nullptr,32,16,transform,pixels.data());
+            app.pendingSceneCaptureClock100ns_.reset();
+        }
+        app.PollVideoPlayback();
+    }
+    static void ResetRecap(OkuFlowApp& app){app.ResetLiveRecap();}
+    static void OversizedPresentedScene(OkuFlowApp& app) {
+        ++app.lastAnnotationPresentation_->frameSeq;
+        const auto transform=ComputeViewTransform(8192,4320,1280,720,1,0.5f,0.5f,ViewportFitMode::kFill);
+        app.RetainPresentedCameraScene(app.cameraSessionId_,app.lastAnnotationPresentation_->frameSeq,
+            std::nullopt,nullptr,8192,4320,transform,nullptr);
+        app.PollVideoPlayback();
+    }
+    static void AdvanceRecapIngress(OkuFlowApp& app) {
+        app.currentCameraFrameSequence_=92;app.currentCameraCaptureClock100ns_=9'200'000;
+    }
+    static void CommitRecapReceipt(OkuFlowApp& app,const std::uint8_t* pixels,std::uint64_t generation) {
+        const auto transform=ComputeViewTransform(32,16,1280,720,2,0.4f,0.6f,ViewportFitMode::kFill);
+        app.RetainPresentedCameraScene(app.cameraSessionId_,app.lastAnnotationPresentation_->frameSeq,
+            app.pendingSceneCaptureClock100ns_,nullptr,32,16,transform,pixels,generation);
+        app.pendingSceneCaptureClock100ns_.reset(); // production consumes latency only after success
+        app.PollVideoPlayback();
+    }
+    static QJsonObject RecapCaptureStamp(const OkuFlowApp& app) {
+        const auto& stamp=app.presentedCameraCapture_;
+        return {{"sequence",static_cast<qint64>(stamp?stamp->sequence:0)},
+            {"clock",static_cast<qint64>(stamp?stamp->clock100ns:-1)},
+            {"hasPixels",app.presentedCameraScene_.has_value()}};
+    }
+    static void ForgetPendingRecapClock(OkuFlowApp& app){app.pendingSceneCaptureClock100ns_.reset();}
+    static void SetRecapMinutes(OkuFlowApp& app,int minutes) {
+        auto* combo=app.mainWindow_->liveRecapMinutesCombo();combo->setCurrentIndex(combo->findData(minutes));
+    }
+    static QJsonObject RecapPreferences(const OkuFlowApp& app) {
+        const auto& s=app.settingsController_->Settings();
+        return {{"minutes",s.liveRecapMinutes},{"zoom",s.currentConfig.zoomAmount},{"center",s.currentConfig.zoomCenterX},
+            {"camera",s.cameraSymbolicLink},{"format",s.cameraFormatStableId},{"microphone",s.microphoneEndpointId}};
     }
     static void SeekVideo(OkuFlowApp& app,qint64 positionMs) {app.SeekSelectedVideo(positionMs);}
     static void ToggleVideo(OkuFlowApp& app) {app.ToggleSelectedVideoPlayback();}
@@ -909,6 +974,40 @@ private slots:
             QCOMPARE(overlay->CurrentViewTransform().sourceX,transform.sourceX);
         }
     }
+    void uctPaletteUsesPresentedGenerationAndCpuDoesNotReapply() {
+        auto& window = NativeControlFixture::Window(app_);
+        auto* target = window.renderWidget(); auto* overlay = window.ultraClearTextOverlay();
+        const auto palette = NativeControlFixture::UctPaletteState(app_);
+        const auto cleanup = qScopeGuard([&] {
+            overlay->ClearWords(); NativeControlFixture::UctPaletteReceipt(app_, 0); window.hide();
+            NativeControlFixture::RestoreUctPalette(app_, palette);
+        });
+        window.resize(1200, 800); window.show(); QCoreApplication::processEvents();
+        overlay->SetViewTransform(ComputeViewTransform(target->width(), target->height(),
+            target->width(), target->height(), 1.f, .5f, .5f, ViewportFitMode::kFit));
+        overlay->SetWords({{QStringLiteral("Control"), QRectF(.25,.25,.45,.14), {Qt::black,Qt::green},1}});
+        const auto count = [&](QColor color) {
+            QImage image(target->size(), QImage::Format_ARGB32_Premultiplied); image.fill(Qt::transparent);
+            overlay->render(&image);
+            int pixels = 0;
+            for (int y=0;y<image.height();++y) for(int x=0;x<image.width();++x)
+                pixels += image.pixelColor(x,y) == color;
+            return pixels;
+        };
+        NativeControlFixture::UctPalette(app_, QStringLiteral("yellow-black"), 100);
+        NativeControlFixture::UctPaletteReceipt(app_, 2, 99); // old receipt cannot borrow new LUT
+        QVERIFY(count(Qt::green)>100);
+        NativeControlFixture::UctPaletteReceipt(app_, 2, 100);
+        QVERIFY(count(QColor(149,149,0))>100);
+        QCOMPARE(count(Qt::green),0);
+        NativeControlFixture::UctPalette(app_, QStringLiteral("cyan-black"), 101);
+        NativeControlFixture::UctPaletteReceipt(app_, 2, 100); // keep cached scene's exact old mapping
+        QVERIFY(count(QColor(149,149,0))>100);
+        NativeControlFixture::UctPaletteReceipt(app_, 2, 101);
+        QVERIFY(count(QColor(0,149,149))>100);
+        NativeControlFixture::UctPaletteReceipt(app_, 0); // CPU analysis has already been processed
+        QVERIFY(count(Qt::green)>100);
+    }
     void selectedMediaGpuPolicyIncludesAllImageEffects() {
         // Exercise the policy seam without creating a CUDA surface or claiming
         // that this offscreen fixture has executed any shader.
@@ -1223,6 +1322,222 @@ private slots:
         QVERIFY(!state["hasFrame"].toBool());
         QCOMPARE(NativeControlFixture::VideoUi(app_).source,VideoTransport::Source::None);
         QVERIFY(!NativeControlFixture::VideoTimerActive(app_));
+    }
+    void recapFreezeOwnsExactSceneDuringEncoderWarmupWithoutRecording_data() {
+        QTest::addColumn<bool>("unsupported");QTest::newRow("encoder-warmup")<<false;QTest::newRow("unsupported-codec-size")<<true;
+    }
+    void recapFreezeOwnsExactSceneDuringEncoderWarmupWithoutRecording() {
+        QFETCH(bool,unsupported);
+        const auto config=NativeControlFixture::CurrentImageConfig(app_);
+        const auto cleanup=qScopeGuard([&]{NativeControlFixture::SetCameraActive(app_,false);
+            NativeControlFixture::ResetRecap(app_);NativeControlFixture::ResetVideo(app_);
+            NativeControlFixture::RestoreImageConfig(app_,config);});
+        NativeControlFixture::ResetVideo(app_);std::vector<std::uint8_t> pixels(32*16*4,47);
+        NativeControlFixture::SeedRecapSceneWithoutRecording(app_,pixels,unsupported);
+        QCOMPARE(NativeControlFixture::VideoState(app_)["kind"].toString(),QStringLiteral("recap"));
+        QCOMPARE(NativeControlFixture::VideoUi(app_).source,VideoTransport::Source::Recap);
+        QVERIFY(!NativeControlFixture::VideoUi(app_).seekable);
+        QVERIFY(NativeControlFixture::VideoUi(app_).canPauseLive);
+        std::fill(pixels.begin(),pixels.end(),211);
+        NativeControlFixture::ToggleVideo(app_);
+        const auto held=NativeControlFixture::HeldVideoFrame(app_);
+        QVERIFY(held && held->bgra);QCOMPARE(held->sampleId,std::uint64_t(91));
+        QVERIFY(std::all_of(held->bgra->begin(),held->bgra->end(),[](auto b){return b==47;}));
+        QVERIFY(NativeControlFixture::VideoState(app_)["selectedPts100ns"].isNull());
+        const auto preferences=NativeControlFixture::RecapPreferences(app_);
+        NativeControlFixture::SetRecapMinutes(app_,3);
+        auto expected=preferences;expected["minutes"]=3;
+        QCOMPARE(NativeControlFixture::RecapPreferences(app_),expected);
+        NativeControlFixture::SetRecapMinutes(app_,preferences["minutes"].toInt());
+        NativeControlFixture::JumpVideo(app_);
+        QCOMPARE(NativeControlFixture::VideoState(app_)["kind"].toString(),QStringLiteral("recap"));
+        QVERIFY(!NativeControlFixture::HeldVideoFrame(app_));
+        NativeControlFixture::ResetRecap(app_);
+        QVERIFY(!NativeControlFixture::HeldVideoFrame(app_));
+        QVERIFY(!NativeControlFixture::VideoUi(app_).seekable);
+    }
+    void collapsedRecapViewportSpaceKeepsFreezeResumeAndFocus() {
+        auto& window=NativeControlFixture::Window(app_);
+        auto* transport=window.videoTransport();
+        const auto cleanup=qScopeGuard([&]{transport->SetCollapsed(false);window.hide();
+            NativeControlFixture::SetCameraActive(app_,false);NativeControlFixture::ResetRecap(app_);NativeControlFixture::ResetVideo(app_);});
+        NativeControlFixture::ResetVideo(app_);std::vector<std::uint8_t> pixels(32*16*4,47);
+        NativeControlFixture::SeedRecapSceneWithoutRecording(app_,pixels);
+        window.show();window.activateWindow();
+        auto* viewport=window.renderWidget();viewport->setFocus();
+        QTRY_COMPARE(QApplication::focusWidget(),viewport);
+        transport->SetCollapsed(true);
+        QVERIFY(transport->isHidden());
+        QSignalSpy toggle(transport,&VideoTransport::PlayPauseRequested);
+        QTest::keyClick(viewport,Qt::Key_Space);
+        QCOMPARE(toggle.size(),1);
+        const auto held=NativeControlFixture::HeldVideoFrame(app_);
+        QVERIFY(held && held->bgra);
+        QCOMPARE(QApplication::focusWidget(),viewport);
+        // There is no native presenter in this fixture. Model only its
+        // successful held-frame receipt through the existing production
+        // bookkeeping seam before asking the real keyboard route to Resume.
+        QCOMPARE(NativeControlFixture::HoldPresentedVideoFrame(app_,held),held);
+        NativeControlFixture::ApplyRecapSnapshot(app_,VideoRecapSnapshot{});
+        QTest::keyClick(viewport,Qt::Key_Space);
+        QCOMPARE(toggle.size(),2);
+        QVERIFY(NativeControlFixture::VideoState(app_)["playing"].toBool());
+        QCOMPARE(NativeControlFixture::HeldVideoFrame(app_),held);
+        QCOMPARE(QApplication::focusWidget(),viewport);
+        QVERIFY(transport->isCollapsed());
+        QVERIFY(!transport->IsActionReady(transport->jumpButton()));
+        QVERIFY(transport->IsCommandReady(transport->jumpButton()));
+    }
+    void hiddenVideoBarLeavesOnlyCornerToggleAndReclaimsViewport() {
+        QVERIFY(QFontDatabase::addApplicationFont(QDir(qEnvironmentVariable("WINDIR")).filePath("Fonts/segoeui.ttf"))>=0);
+        MainWindow window;
+        auto* transport=window.videoTransport(); auto* toggle=transport->collapseButton();
+        auto* corner=window.findChild<QWidget*>(QStringLiteral("bottomLeftPanel"));
+        QVERIFY(corner); QCOMPARE(toggle->parentWidget(),corner);
+        const auto capture = [&](const QString& name) {
+            const auto folder=qEnvironmentVariable("OKUFLOW_VIDEO_TRANSPORT_PREVIEWS");
+            if(folder.isEmpty())return;
+            QVERIFY(QDir().mkpath(folder));
+            QVERIFY(window.grab().save(QDir(folder).filePath(name+"-window.png")));
+            QVERIFY(corner->grab().save(QDir(folder).filePath(name+"-corner.png")));
+        };
+        for (int width : {1600,800}) {
+            window.resize(width,800); window.show(); QCoreApplication::processEvents();
+            VideoTransport::Snapshot snapshot; snapshot.source=VideoTransport::Source::Video;
+            snapshot.sourceName=QStringLiteral("Fixture video");snapshot.durationMs=60000;
+            snapshot.seekable=true;snapshot.canSaveFrame=true;
+            transport->SetSnapshot(snapshot); QCoreApplication::processEvents();
+            QVERIFY(transport->isVisible()); QVERIFY(toggle->isVisible());
+            QVERIFY(toggle->width()>=44 && toggle->height()>=44);
+            QVERIFY(corner->rect().contains(toggle->geometry()));
+            const auto height=window.renderWidget()->height();
+            capture(QString::number(width)+"-expanded");
+            QSignalSpy play(transport,&VideoTransport::PlayPauseRequested);
+            QSignalSpy seek(transport,&VideoTransport::SeekRequested);
+            QSignalSpy jump(transport,&VideoTransport::JumpToEndRequested);
+            toggle->click();QCoreApplication::processEvents();
+            QVERIFY(transport->isHidden()); QVERIFY(toggle->isVisible());
+            QVERIFY(window.renderWidget()->height()>height);
+            QVERIFY(transport->FocusTargets().empty());
+            QVERIFY(corner->rect().contains(toggle->geometry()));
+            capture(QString::number(width)+"-hidden");
+            snapshot.positionMs=12000;transport->SetSnapshot(snapshot);QCoreApplication::processEvents();
+            QVERIFY(transport->isHidden()); // metadata polling cannot reopen the bar
+            window.setUiHidden(true);window.setUiHidden(false);QCoreApplication::processEvents();
+            QVERIFY(transport->isHidden());QVERIFY(toggle->isVisible());
+            toggle->setFocus();QTest::keyClick(toggle,Qt::Key_Space);QCoreApplication::processEvents();
+            QVERIFY(transport->isVisible());QCOMPARE(transport->timeline()->value(),12000);
+            QCOMPARE(play.size(),0);QCOMPARE(seek.size(),0);QCOMPARE(jump.size(),0);
+            transport->SetSnapshot({});QCoreApplication::processEvents();
+            QVERIFY(transport->isHidden());QVERIFY(toggle->isHidden());
+        }
+    }
+    void terminalRecapResumeRetainsHeldScene_data() {
+        QTest::addColumn<bool>("unsupported");QTest::addColumn<bool>("oldHistory");
+        QTest::newRow("failed-cold-buffer")<<false<<false;
+        QTest::newRow("failed-after-published-tail")<<false<<true;
+        QTest::newRow("unsupported-source")<<true<<false;
+    }
+    void terminalRecapResumeRetainsHeldScene() {
+        QFETCH(bool,unsupported);QFETCH(bool,oldHistory);
+        const auto cleanup=qScopeGuard([&]{NativeControlFixture::SetCameraActive(app_,false);
+            NativeControlFixture::ResetRecap(app_);NativeControlFixture::ResetVideo(app_);});
+        NativeControlFixture::ResetVideo(app_);std::vector<std::uint8_t> pixels(32*16*4,47);
+        NativeControlFixture::SeedRecapSceneWithoutRecording(app_,pixels,unsupported);
+        NativeControlFixture::ToggleVideo(app_);
+        const auto held=NativeControlFixture::HeldVideoFrame(app_);
+        const auto stamp=NativeControlFixture::RecapCaptureStamp(app_);
+        QVERIFY(held && held->bgra);
+        NativeControlFixture::ToggleVideo(app_);
+        VideoRecapSnapshot snapshot;snapshot.captureOrigin100ns=0;
+        snapshot.available=oldHistory;snapshot.first100ns=0;snapshot.end100ns=100'000;
+        // This old published tail is before the exact held capture, so no
+        // decoder or fake admission is needed for this app-state regression.
+        snapshot.failed=!unsupported;
+        if(!unsupported)snapshot.error="The recording's final fragment could not be completed (hr=0x80030070). The RAM segment cannot be sealed.";
+        NativeControlFixture::ApplyRecapSnapshot(app_,snapshot);
+        const auto ui=NativeControlFixture::VideoUi(app_);
+        QCOMPARE(ui.state,VideoTransport::State::Unavailable);
+        QVERIFY(!ui.playing);
+        QVERIFY(!NativeControlFixture::VideoState(app_)["playing"].toBool());
+        QCOMPARE(NativeControlFixture::HeldVideoFrame(app_),held);
+        QCOMPARE(NativeControlFixture::RecapCaptureStamp(app_),stamp);
+        QVERIFY(std::all_of(held->bgra->begin(),held->bgra->end(),[](auto b){return b==47;}));
+        QVERIFY(NativeControlFixture::Window(app_).videoTransport()->IsActionReady(
+            NativeControlFixture::Window(app_).videoTransport()->jumpButton()));
+        if(!unsupported)QCOMPARE(ui.diagnosticDetail,QString::fromStdString(snapshot.error));
+    }
+    void warmingRecapResumeStillWaitsForGenuineHistory() {
+        const auto cleanup=qScopeGuard([&]{NativeControlFixture::SetCameraActive(app_,false);
+            NativeControlFixture::ResetRecap(app_);NativeControlFixture::ResetVideo(app_);});
+        NativeControlFixture::ResetVideo(app_);std::vector<std::uint8_t> pixels(32*16*4,47);
+        NativeControlFixture::SeedRecapSceneWithoutRecording(app_,pixels);
+        NativeControlFixture::ToggleVideo(app_);const auto held=NativeControlFixture::HeldVideoFrame(app_);
+        NativeControlFixture::ToggleVideo(app_);
+        VideoRecapSnapshot snapshot;snapshot.captureOrigin100ns=0;snapshot.error="Live recap native encoder is still busy; capture continues.";
+        NativeControlFixture::ApplyRecapSnapshot(app_,snapshot);
+        QCOMPARE(NativeControlFixture::VideoUi(app_).state,VideoTransport::State::Buffering);
+        QVERIFY(NativeControlFixture::VideoState(app_)["playing"].toBool());
+        QCOMPARE(NativeControlFixture::HeldVideoFrame(app_),held);
+    }
+    void deferredRecapReceiptKeepsCommittedClockAcrossIngressAndRedraw_data() {
+        QTest::addColumn<bool>("cloneUnavailable");
+        QTest::newRow("deferred-first-receipt")<<false;
+        QTest::newRow("clone-pressure-then-retry")<<true;
+    }
+    void deferredRecapReceiptKeepsCommittedClockAcrossIngressAndRedraw() {
+        QFETCH(bool,cloneUnavailable);
+        const auto config=NativeControlFixture::CurrentImageConfig(app_);
+        const auto cleanup=qScopeGuard([&]{NativeControlFixture::SetCameraActive(app_,false);
+            NativeControlFixture::ResetRecap(app_);NativeControlFixture::ResetVideo(app_);
+            NativeControlFixture::RestoreImageConfig(app_,config);});
+        NativeControlFixture::ResetVideo(app_);std::vector<std::uint8_t> pixels(32*16*4,47);
+        NativeControlFixture::SeedRecapSceneWithoutRecording(app_,pixels,false,true);
+        NativeControlFixture::AdvanceRecapIngress(app_);
+        NativeControlFixture::CommitRecapReceipt(app_,cloneUnavailable?nullptr:pixels.data(),1);
+        auto receipt=NativeControlFixture::RecapCaptureStamp(app_);
+        QCOMPARE(receipt["sequence"].toInteger(),qint64(91));QCOMPARE(receipt["clock"].toInteger(),qint64(9'100'000));
+        QCOMPARE(receipt["hasPixels"].toBool(),!cloneUnavailable);
+        // Pending latency metadata is gone. Retry/reallocate the same actual
+        // capture with a new scene allocation while newer ingress remains 92.
+        std::fill(pixels.begin(),pixels.end(),95);
+        NativeControlFixture::CommitRecapReceipt(app_,pixels.data(),2);
+        receipt=NativeControlFixture::RecapCaptureStamp(app_);
+        QCOMPARE(receipt["sequence"].toInteger(),qint64(91));QCOMPARE(receipt["clock"].toInteger(),qint64(9'100'000));
+        NativeControlFixture::CommitRecapReceipt(app_,pixels.data(),2); // unchanged same-scene redraw
+        QCOMPARE(NativeControlFixture::RecapCaptureStamp(app_),receipt);
+        NativeControlFixture::ToggleVideo(app_);
+        const auto held=NativeControlFixture::HeldVideoFrame(app_);QVERIFY(held && held->bgra);
+        QCOMPARE(held->sampleId,std::uint64_t(91));
+        QVERIFY(std::all_of(held->bgra->begin(),held->bgra->end(),[](auto byte){return byte==95;}));
+        QCOMPARE(NativeControlFixture::VideoState(app_)["provisionalCaptureClock100ns"].toInteger(),qint64(9'100'000));
+        // A source reset removes clock authority even if its sequence happens
+        // to match. No pending proof means explicit Pause refusal, no waiter.
+        NativeControlFixture::ResetRecap(app_);
+        NativeControlFixture::SeedRecapSceneWithoutRecording(app_,pixels,false,true);
+        NativeControlFixture::ForgetPendingRecapClock(app_);
+        NativeControlFixture::AdvanceRecapIngress(app_);
+        NativeControlFixture::CommitRecapReceipt(app_,pixels.data(),3);
+        receipt=NativeControlFixture::RecapCaptureStamp(app_);
+        QCOMPARE(receipt["sequence"].toInteger(),qint64(91));QCOMPARE(receipt["clock"].toInteger(),qint64(-1));
+        QVERIFY(!NativeControlFixture::VideoUi(app_).canPauseLive);
+        NativeControlFixture::ToggleVideo(app_);
+        QVERIFY(!NativeControlFixture::HeldVideoFrame(app_));
+        QVERIFY(!NativeControlFixture::VideoState(app_)["pendingHold"].toBool());
+        QCOMPARE(NativeControlFixture::VideoState(app_)["state"].toString(),QStringLiteral("live"));
+        QVERIFY(NativeControlFixture::Window(app_).videoTransport()->IsActionReady(
+            NativeControlFixture::Window(app_).videoTransport()->jumpButton()));
+    }
+    void oversizedNewPresentationRevokesPreviousExactFreeze() {
+        const auto cleanup=qScopeGuard([&]{NativeControlFixture::SetCameraActive(app_,false);
+            NativeControlFixture::ResetRecap(app_);NativeControlFixture::ResetVideo(app_);});
+        NativeControlFixture::ResetVideo(app_);std::vector<std::uint8_t> pixels(32*16*4,47);
+        NativeControlFixture::SeedRecapSceneWithoutRecording(app_,pixels);
+        QVERIFY(NativeControlFixture::VideoUi(app_).canPauseLive);
+        NativeControlFixture::OversizedPresentedScene(app_);
+        QVERIFY(!NativeControlFixture::VideoUi(app_).canPauseLive);
+        NativeControlFixture::ToggleVideo(app_);
+        QVERIFY(!NativeControlFixture::HeldVideoFrame(app_));
     }
     void stopAndFinalizationKeepPresentedRecordingCursor_data() {
         QTest::addColumn<bool>("playing");
@@ -1873,7 +2188,7 @@ int main(int argc,char** argv) {
     QCoreApplication::setApplicationName("OkuFlowNativeControlFixture-"+QUuid::createUuid().toString(QUuid::Id128));
     NativeControlFixture::Initialize(app,root.path());
     bool stdio=false;for(int i=1;i<argc;++i)stdio|=QString::fromLocal8Bit(argv[i])=="--stdio-fixture";
-    if(!stdio) {NativeAcceptance tests(app);int testArgc=1;return QTest::qExec(&tests,testArgc,argv);}
+    if(!stdio) {NativeAcceptance tests(app);return QTest::qExec(&tests,argc,argv);}
     mcp::AppIpcEndpoint endpoint(NativeControlFixture::Service(app));
     if(!endpoint.SetEnabled(true))return 4;
     Output({{"type","ready"},{"selector",endpoint.InstanceSelector()},{"catalogEdition","dev-full"},{"realTarget",true}});

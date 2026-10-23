@@ -1,5 +1,27 @@
 # ui module
 
+UCT's cached glyph and plate colors follow the successfully presented display
+palette after source readability normalization. Palette changes reuse typography
+and geometry; exports freeze the same colors. Normal colors retains source hues.
+
+`VideoTransport` reuses native media actions for silent live RAM recap with
+actual rolling bounds and a pre-encoder Freeze lease. An out-of-window held
+scene keeps its true textual time; the existing Qt accessibility adapter omits
+numeric RangeValue until a valid seek enters history. View and navigation
+offers a stable-data1–5 minute preference and a localized decimal-MB estimate.
+See [recap ownership and limits](../../docs/live_ram_recap.md).
+The transport's small chevron lives beside the quick-mode controls, retaining a
+44-DIP keyboard/touch target while the entire bar hides. It preserves playback and current
+snapshot state and cancels unfinished drags without a seek.
+Viewport Space still issues Freeze/Resume while collapsed through separate
+command readiness; hidden chrome remains outside keyboard focus order.
+While following live recap or recording, the timeline stays filled with its
+marker at the right edge. This visual live indicator does not extend seekable
+history or move a focused reader's numeric inspection. Scrubbing shows its
+actual target. Releasing at the far right jumps live, including history growth
+during a drag. An expired paused image remains held with an amber/dashed marker
+pinned left; its true time and absent out-of-window RangeValue remain unchanged.
+
 `AssistantChatView` renders the shared app-owned chat session in Advanced and
 floating Explain, with one compact header, a fixed composer and settings/history
 drawers. `AgentControlPanel` supplies session grants, contextual native approvals,
@@ -155,3 +177,8 @@ accepted Ultra Clear Text words through the current presentation transform;
 `UltraClearTextPanel` holds the accessible opt-in, Show original, status and
 Recognized text pane inside the Text clarity section. Neither performs
 recognition. See [`docs/ultra_clear_text.md`](../../docs/ultra_clear_text.md).
+
+Perspective UCT glyphs retain their own source ink height and four-corner
+projection instead of a common screen-space type size. The same cached plan
+feeds live paint, exports and positioned character bounds. Ordinary affine line
+layout stays shared; see [surface perspective](../../docs/uct_surface_perspective.md).

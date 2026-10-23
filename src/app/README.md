@@ -3,6 +3,31 @@
 This module owns Qt startup, application wiring, settings persistence,
 interaction orchestration, and recording sessions.
 
+Successful presentation also selects UCT's display-color mapping. Neutral GPU
+analysis uses the presented inversion/LUT; an older cached LUT generation cannot
+borrow current requested colors. CPU media has already been colored and restores
+source mapping. See [UCT color policy](../../docs/ultra_clear_text.md).
+
+`app_video_playback.cpp` additionally owns silent live RAM recap selection and
+the existing transport, independent of recording/file documents. The clean
+Original path keeps buffering during review; bounded presented-scene leases
+support exact manual Freeze during encoder warmup. Source/format/stop reset
+old recap authority, and jump-live restores camera view intent. See
+[recap ownership](../../docs/live_ram_recap.md).
+Its selected-video metadata includes the recap error and observed source
+dimensions/frame rate; the existing transport status exposes native failure
+detail without enabling an empty seek range. Pending Resume retains its play
+intent until genuine coded history at the held capture time is readable.
+Permanent failure or an unsupported source cancels an impossible pending Resume
+with the existing unavailable state/reason, retaining the exact held pixels,
+capture clock and Jump to live. Transient native-busy metadata keeps waiting.
+
+UCT's opt-in regional controller pacing supplements baseline full reads with
+one idle-only bounded region, without updating full timers or held acquisition
+proof. Paused video/Freeze instead uses standalone selected-image recognition
+and same-image bounded detail, without a neighbour analysis pass. See
+[active execution](../../docs/uct_active_regional_ocr.md).
+
 Protected VLM credential ids are immutable generations. A changed key, provider
 or endpoint stages a new id before publishing settings; save retries reuse that
 staged binding. Previous generations remain available for settings-backup
