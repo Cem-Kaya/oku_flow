@@ -86,7 +86,8 @@ geometry delta, truth CER/WER identical to fixed). Indicative steady-state
 medians (12/cell, one visit per arm, not counterbalanced) put unsorted
 bucketed between 34.7% slower and 12.5% faster than fixed depending on
 source/capacity; treat as shared-desktop indication only. Sorted grouping
-itself is UNMEASURED: before window 2 the CUDA driver version changed
+itself was then measured in window 3 after preparing only the five
+driver-13050 profiles below. Before window 2 the CUDA driver version changed
 13040 -> 13050, so every cached plan identity missed (detector
 `948b17283f7dad0b8e5d553df0138fb79b26de81ead9d83a29c768be491283d0`,
 recognizer fixed N1
@@ -94,9 +95,17 @@ recognizer fixed N1
 `ee04fec24d044750fdaf46b87355b0e60ad77763f4294845bca90714196f1538`, width
 N1 `8213694ce394f589b5c37ac9a0766eba8f5cac8c82fc20793725d7e9f32fca29`, N8
 `7f7a02d0043e5f150a47682303fb3760a4aac2f2e5ffc5c3e0848e3df6b699a9`) and
-the precheck correctly refused. No plans were prepared or re-keyed. Sorting
-needs a fresh three-arm run under one consistent driver identity; no BF16
-production benefit is claimed (that profile stays fixed1024).
+the precheck correctly refused. In window 3 those five profiles were
+prepared from the pinned graphs (prior cache byte-identical) and a fresh
+F,O,S,S,O,F sequence ran under driver 13050 (steady 24/cell, shared
+desktop). Sorted-vs-ordered N8 median deltas were -5.4%/-4.7% on the menu
+frames, -3.8% sparse and -0.9% on the all-long control; N1 deltas were
+-5.2% to -18.3% with wider per-visit spread. Sorted text equalled ordered
+text on every source and truth CER/WER were identical across arms; both
+sorted visits strict-passed while both fixed visits strict-failed on
+N8-vs-N1 confidence/geometry cells. On these frames most of the
+sorted-vs-fixed gap is the pre-existing width selector, not sorting.
+No BF16 production benefit is claimed (that profile stays fixed1024).
 
 ## Preparation and validation
 

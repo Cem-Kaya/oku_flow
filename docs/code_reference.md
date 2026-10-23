@@ -6760,9 +6760,9 @@ groups in ascending-width order and restore detector order for merging,
 descriptor hashing and crop capture through the inverse mapping. The profile
 records `recognizerGrouping`; model-free fixtures cover the permutation,
 canvas bounds, all-long control and fail-closed selector combinations.
-Sorted execution is implemented and gate-passed but unmeasured: a CUDA
-driver identity change (13040 -> 13050) invalidated every cached plan key
-before its first timed visit; see the width document for exact keys.
+Sorted execution is implemented, gate-passed and race-measured after a
+CUDA driver identity change (13040 -> 13050) first invalidated every
+cached plan key; see the width document for exact keys and outcomes.
 
 ### UCT four-corner geometry and paused visible detail (2026-10-21)
 

@@ -14,9 +14,11 @@
   canvases; detector order is restored before merging and publication. This
   is an explicitly measured quality/speed experiment, not a new default, and
   it never combines with the fixed-width local BF16 selection. Sorting is
-  implemented and gate-passed but still unmeasured: a CUDA driver update
-  (13040 -> 13050) invalidated cached plan identities before its first
-  timed run. No speed or BF16 benefit is claimed.
+  implemented and gate-passed; a CUDA driver update (13040 -> 13050) first
+  invalidated cached plan identities, then a follow-up measurement under
+  the new driver showed small sorted-vs-ordered median gains on
+  mixed-width frames with identical text and truth scores. It remains
+  opt-in; no BF16 benefit is claimed.
 
 - Hide the entire video transport without leaving a filename/status strip.
   Its show/hide chevron now lives beside Custom Setup in the quick-mode corner
