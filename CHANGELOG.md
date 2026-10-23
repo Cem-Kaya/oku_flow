@@ -2,10 +2,11 @@
 
 ## [Unreleased]
 
-- Compose the four public BF16 policy/cache/pin repairs onto the exact fixture
-  fix, preserving C1/C2 failures and earlier component source. Opus R4 remains
-  pending; new source is unbuilt/unrun and the production catalog stays empty.
-  The next proposed CPU block covers four affected cases without a PCH repeat.
+- Compose the public BF16 WRITE-exclusion repair and bounded diagnostics onto
+  the four policy/cache/pin repairs, preserving C1/C2/C3 failures and source
+  identity. C3 compiled three targets but passed only five of six cases; its
+  unknown-generation cause remains unsettled. R6 source review is pending and
+  the latest repair is unbuilt/unrun; the production catalog stays empty.
 
 - Rename the surface-paint fixture's local `near`/`far` quads to avoid Windows
   SDK macros exposed by the public runtime include. ROOT's first combined CPU
@@ -56,6 +57,10 @@
 - Scope each public BF16 cache-generation pin to its lookup iteration while
   retaining ancestor pins. Skipped builders no longer exhaust the ten-handle
   path capacity before the 32-entry inventory bound. Boundary fixtures are unrun.
+- Exclude same-directory WRITE sharing from public-cache pins to prevent a
+  held empty directory being retargeted as a junction. Preserve post-hold child
+  writes/new-only publication coverage and add bounded lookup/fixture diagnostics
+  for the unresolved C3 unknown-generation failure. This R5 repair is unbuilt/unrun.
 
 - Zoom out to show an entire wide or portrait source. Wheel/key zoom stops
   once at Fill (1x), then continues toward whole-picture Fit; the slider snaps

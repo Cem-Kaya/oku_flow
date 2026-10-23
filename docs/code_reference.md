@@ -10,8 +10,11 @@ hash/parse snapshot; the merge cache/oracle retains B's exact code, and
 `Context` retains C's complete closure. The final TensorRT implementation
 equals the four-repair source tip `6d5f4744b4f7e0f4c2e0d8442b58373475bb7f14`,
 including the retained post-golden guard, admitted-attempt deadline, actual-builder
-selection, native delete exclusion and per-generation pin lifetime. Root's
-Opus R4 review is pending; composition is not acceptance. The earlier narrow
+selection, native delete exclusion and per-generation pin lifetime. R5 closed
+deadline/builder/child-pin scope in source and retained an open confinement P2.
+The runtime header and public fixture now equal author commit `26ebfb8`, which
+excludes same-directory WRITE sharing and adds bounded unknown-entry diagnostics.
+Root's independent R6 review is pending; composition is not acceptance. The earlier narrow
 R3 closure on `89f839b` remains source acceptance only. Frozen `9bdd5d1` configured
 and compiled production CPU objects in the first root block, but the Paddle
 fixture failed to compile; no tests ran. The six CPU cases cannot compile the
@@ -26,8 +29,11 @@ bytes after LF normalization. Root later built all three targets on `a7d4757`;
 the six-case gate passed five and failed `uct_public_bf16_contract`. The first
 public slot passed; the publication/lifetime slot threw an unhandled exception
 without `what()` text, so the failing assertion remains unattributed. All C1/C2
-logs and compiled-cache identities are retained. These four newer source repairs
-are unbuilt/unrun; root retains the original failed compile attempt at
+logs and compiled-cache identities are retained. Root C3 on `00dd9f9` built three
+targets and passed five of six cases; publication/lifetime reported
+`unknown public BF16 cache generation` without entry/phase context. Its exact
+trigger remains unsettled. The latest WRITE-exclusion repair and diagnostics
+are unbuilt/unrun, with native platform fixtures pending; root retains C1 at
 `Z:/Projects/OkuFlow/local-work-data/uct-combined-validation-20261023/scripts/C2-20261023-150630-6c409472eeb64f2aacf3b0d573a387af`.
 
 ## Owned synthetic BF16 crop proposal (2026-10-23)
@@ -7453,7 +7459,7 @@ ordinary directories before mutation and performs the held new-only rename.
 fixture; partial records, policy, junction/no-side-effect and sharing checks are
 unbuilt/unrun. See [all three findings and dispositions](uct_public_bf16_review.md).
 
-The root-probed pin repair makes `DirectoryPins::Hold` request list/attribute
+The initial root-probed pin repair made `DirectoryPins::Hold` request list/attribute
 access, share READ/WRITE excluding DELETE, and add DELETE only for exact staging
 rename. Attribute-only opens did not enforce delete exclusion on the probed
 filesystem. `PublicationAndLifetime` retains all original assertions and adds
@@ -7472,3 +7478,20 @@ ten-handle path and 32-entry inventory bounds. The existing publication slot add
 a full 32-child missing-match walk, current selection and 33rd-entry refusal using
 labelled non-model receipts. This source repair/coverage is UNBUILT/UNRUN and is
 included in root's pending fresh independent review scope.
+
+R5 closed deadline/builder/child-pin scope in source but kept confinement open:
+same-directory WRITE sharing admits post-hold reparse mutation. `DirectoryPins::Hold`
+now shares READ only, retaining list/attributes and exact-staging DELETE access.
+Private `SetFixtureJunction` factors the existing FSCTL writer so the same helper
+can create the original junction and attempt mutation after a pin is held. It
+requests all share flags on that writer, preventing a spurious denial from the
+test writer's own sharing mask. The fixture now requires non-delete writer refusal,
+post-hold mutation refusal for ancestor/staging and unchanged outside inventory,
+while preserving actual post-hold child writes and the complete publisher body.
+
+`FindPlan` retains unknown-entry refusal and adds bounded compact JSON context:
+fixed phase, ordinal, at most 128 entry characters and 512 parent-path characters,
+plus full entry length. The private fixture adds fixed phase breadcrumbs and an
+explicit malformed-generation diagnostic/refusal/inventory case. R5 and root C3
+do not identify that earlier offending entry or phase; new source/fixtures remain
+UNBUILT/UNRUN. See [review and first-failure history](uct_public_bf16_review.md).

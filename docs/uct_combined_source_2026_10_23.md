@@ -1,7 +1,8 @@
 # Combined UCT source handoff (2026-10-23)
 
-The latest four-repair composition is **SOURCE READY, UNBUILT/UNRUN; Opus R4
-review pending**. Earlier root CPU attempts remain failed, as recorded below.
+The latest WRITE-exclusion repair and diagnostics are **SOURCE READY,
+UNBUILT/UNRUN; independent R6 review pending**. Root C3 built the preceding
+source but passed only five of six cases; its unknown-entry cause is unsettled.
 It starts at `618ee9a57acb14a601d1fa60e518c0465808968f`. No configure, compiler,
 fixture, native API, GPU, inference, model preparation/download, browser, GUI,
 device, runner lease, push, PR or release operation ran during composition.
@@ -40,16 +41,23 @@ The owner checkout, preview, settings and processes were not operated on.
   `89f839b03285862aa00f082e057c7a4c2d15dc70`. Preserve private-cache isolation,
   partial observations, native publication pins and the final golden deadline
   check. This original source was the authority before the next four repairs.
-- **D follow-up, R4 pending:** separately compose
+- **D four-repair follow-up:** separately compose
   `e88f526075373eaaae0e3c2ea21e8941a1806b78`,
   `2d5c97876611753cf566f260b27aefd064ffb213`,
   `c598537dadefebf17f8db2f5e11de2da200603bd`, and
   `6d5f4744b4f7e0f4c2e0d8442b58373475bb7f14` onto `a7d4757`. Final TensorRT,
-  public runtime and public case-header bytes equal that source tip. Attempt
+  public runtime and public case-header bytes then equalled that source tip. Attempt
   deadlines begin after eligibility; lookup preserves actual builder identity,
   directory pins exclude DELETE while sharing non-delete writes, and each
   skipped generation releases its own read pin. Earlier batching/merge/quarantine
   bytes and the exact near/far and Qt-slots fixture repairs remain intact.
+- **D WRITE-exclusion follow-up, R6 pending:** compose only
+  `26ebfb835fc62ac690d9240e6f71fc2e10d07d8c` onto `00dd9f9`. The runtime
+  header and public-case header equal the author exactly. Pins now exclude
+  WRITE/DELETE sharing, with post-hold reparse-refusal fixtures and bounded
+  unknown-generation diagnostics. TensorRT and Paddle-wrapper bytes are
+  unchanged from `00dd9f9`. R5's deadline/builder/child-pin source closures
+  remain; native platform acceptance and R6 closure are pending.
 
 The production corpus catalog and `productionGoldenCorpusPins` remain empty.
 The eight source-owned crop candidates are unchanged proposals. Root reports
@@ -124,9 +132,12 @@ model-free helper fixture does not establish it. See
 
 Root reports independent full R2 closed D's R1 cache/partial-output/publication
 findings. Focused R3 closed R2's final-N8 deadline P2 on `89f839b`, with no P1/P2;
-only that narrow source closure is accepted. The four newer repairs and actual
-model golden remain **UNBUILT/UNRUN** with R4 pending. See
-[review history](uct_public_bf16_review.md). No prior run validates the new source.
+only that narrow R3 source closure is accepted. R4 stopped at an API rate limit
+without coverage. R5 closed deadline/builder/child-pin scope in source but kept
+native confinement open for post-hold junction mutation. The separate repair at
+`26ebfb8` awaits independent R6 and platform fixtures; actual model golden remains
+unrun. See [review history](uct_public_bf16_review.md). No prior run validates the
+latest repair.
 
 Root C1 on `9bdd5d1` ended `2026-10-23T15:07:17.4978576Z`: configure 0,
 expected FULL-required 2, then fixture compile failure on SDK `near`/`far`
@@ -151,12 +162,45 @@ The original source, logs, ledger and owned cache remain in place. Native probe
 observations are separate from the undiagnosed Qt exception and project acceptance.
 No retry, source mutation or execution occurred while archiving.
 
+Root C3 on `00dd9f9` ended `2026-10-23T15:40:38.4558642Z`: three targets built,
+then **SCOPED FAIL 6/238: five passed, one failed/unresolved**. The public
+publication/lifetime slot reported `unknown public BF16 cache generation` at
+221 ms; the offending entry/phase and exact cause remain unsettled. Child and
+controller exited 1; root verified job0, root exit and independent lock-free
+release. This does not diagnose the earlier generic C2 exception. The accepted
+read/copy/hash archive is `archive-C3-00dd-20261023/`: 149 files, 37,359,029 bytes,
+including three executables and 22 objects; all 94 recorded identity rows matched.
+Its manifest SHA-256 is
+`856fa3b8b68a83bf558139a497c7a0ae8753b223ced6fc2a99067884e3993037`.
+Original receipts, logs, ledger, source snapshots and compiled cache stay intact.
+
 The new composition receipts are in the sibling `public-R4-composition/` folder.
 Original four patches, docs-conflict hunks/resolution, fresh 551 source pins,
 root-byte equivalence, component preservation, final patch/HEAD and pending review
 are recorded separately; prior receipts were not overwritten.
 
-## Current held four-case CPU proposal
+The next single-commit import is indexed separately in `public-R6-composition/`,
+with its original patch, docs-only conflict/resolution, four source hashes,
+551 source pins, root153 equivalence and unchanged prior-evidence hashes. Only
+the author runtime/public-case changes and relevant documentation are imported;
+manual production conflict hunks remain empty.
+
+## Current held two-case CPU proposal
+
+After root's active compute release, R6 closure and a fresh finite START, reuse
+the corrected root wrapper and retained `uct4/cpu-on` cache. Keep the 900-second
+aggregate limit, at most eight jobs and existing 120/480/240/60-second stage caps;
+remaining aggregate time wins. Incrementally build only `uct_paddle_tests`, then
+use tracked `agent_check.ps1` selection/refusal and `run_test_gate.ps1` for exactly
+`uct_public_bf16_contract` plus mandatory `shared_source_equivalence`. Rebuild
+before fingerprinting; preserve every C1/C2/C3 failure and unresolved blocker.
+No extra unchanged-contract, nominal PCH-OFF or performance repeat is proposed.
+This proposal is held and grants no execution to this implementation agent.
+
+## Prior four-case CPU proposal (historical; C3 ran six)
+
+The prior proposal below is retained as history; the current two-case proposal
+above supersedes it. Root instead ran all six cases in C3, with failure retained.
 
 After root's R4 closure and a fresh finite START, reuse its corrected job wrapper
 and retained owned `Z:/Projects/OkuFlow/local-work-data/uct4/cpu-on` cache. Maximum
@@ -189,7 +233,8 @@ were recorded in C2; no nominal PCH-OFF or performance repeat is proposed.
 CPU builds cover the public model-free native-filesystem fixture, not the
 CUDA-gated real TensorRT Network or C's actual CUDA fault routing. No model,
 TensorRT engine, inference, GPU, GUI/browser/device, download or release work is
-included. The repaired project fixtures have not run, and R4 is pending.
+included. At that proposal's handoff, repaired fixtures and R4 were pending;
+later R5/C3 statuses and the current held proposal are recorded above.
 
 ## Original six-case CPU proposal (historical; C1/C2 failed)
 

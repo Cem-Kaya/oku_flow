@@ -2484,3 +2484,22 @@ current builder and preserves inventory. A 33rd generation must retain the
 inventory-bound refusal. This checks that per-generation pins close on skips
 instead of exhausting the separate ten-handle path capacity. The added cases
 remain UNBUILT/UNRUN; no path/inventory limit or original assertion was relaxed.
+
+R5 closed deadline/builder/child-pin scope in source and found the remaining
+post-hold reparse gap caused by WRITE sharing. Its repair changes pins to READ
+sharing only. The previously incorrect writable-directory expectation becomes
+refusal; the same GENERIC_WRITE FSCTL helper used for the original positive
+junction attempts mutation after holding an empty ancestor and staging, using
+all share flags on the attacker handle. Both must refuse with unchanged outside
+inventory, while child writes after the hold and real publication/collision/byte
+assertions remain. Fixture cleanup removes any unexpectedly created junction
+after releasing its pin, without following its target.
+
+Root's frozen composed C3 compiled three targets and finished 5 PASS / 1 unresolved
+on the 6/238 selection. The publication slot reported `unknown public BF16 cache
+generation` at 221 ms; the exact entry/phase is still unknown. New fixed phase
+breadcrumbs and bounded runtime JSON entry/ordinal/path context diagnose a future
+run while preserving refusal. A controlled malformed-generation case verifies
+that context and unchanged inventory. These R5 changes are UNBUILT/UNRUN; root
+owns fresh review and one changed-fingerprint case execution, retaining C2/C3
+failures. No execution or desktop use is authorized here.
