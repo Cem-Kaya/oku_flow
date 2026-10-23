@@ -1,8 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="vi" sourcelanguage="en_US">
-    <context>
-        <name>OkuFlow</name>
+<context>
+    <name>OkuFlow</name>
+    <message>
+        <source>Live recap duration (minutes)</source>
+        <translation>Thời lượng xem lại video trực tiếp (phút)</translation>
+    </message>
+    <message>
+        <source>Estimated video history: %1 MB</source>
+        <translation>Bộ nhớ ước tính cho lịch sử video: %1 MB</translation>
+    </message>
+    <message>
+        <source>Additional memory is used while buffering, replaying or freezing video.</source>
+        <translation>Việc lưu video tạm vào bộ nhớ, phát lại hoặc dừng hình sử dụng thêm bộ nhớ.</translation>
+    </message>
+        <message>
+            <source>Live recap</source>
+            <translation>Xem lại video trực tiếp</translation>
+        </message>
+        <message>
+            <source>Buffering live video…</source>
+            <translation>Đang lưu tạm video trực tiếp vào bộ nhớ…</translation>
+        </message>
         <message>
             <source>Action in progress.</source>
             <translation>Đang thực hiện thao tác.</translation>

@@ -12,6 +12,7 @@ add_executable(uct_screen_text_accessibility_tests
     ${PROJECT_SOURCE_DIR}/include/okuflow/common/ultra_clear_text.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/uct_screen_text_accessible.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ultra_clear_text_overlay.hpp
+    ${PROJECT_SOURCE_DIR}/src/common/uct_timing_trace.cpp
     ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp
     ${PROJECT_SOURCE_DIR}/src/common/uct_region_planner.cpp
     ${PROJECT_SOURCE_DIR}/src/common/view_transform.cpp
@@ -34,3 +35,10 @@ foreach(scale IN ITEMS 1 1.5 2)
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=${scale};QT_FORCE_STDERR_LOGGING=1"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 endforeach()
+
+add_test(NAME uct_screen_text_timing_publication
+    COMMAND uct_screen_text_accessibility_tests timingPublicationKeepsAdmissionTicket)
+set_tests_properties(uct_screen_text_timing_publication PROPERTIES
+    TIMEOUT 30 LABELS "headless"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1;OKUFLOW_UCT_TIMING_TRACE=1"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")

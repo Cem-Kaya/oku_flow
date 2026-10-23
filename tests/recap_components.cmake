@@ -6,6 +6,7 @@ endif()
 
 include(original_recording.cmake)
 include(video_playback.cmake)
+include(video_recap.cmake)
 include(uct_screen_text_accessibility.cmake)
 
 # Every direct writer consumer needs its observed byte-stream implementation.
@@ -13,6 +14,9 @@ get_property(recap_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
 foreach(recap_target IN LISTS recap_targets)
     get_target_property(recap_sources ${recap_target} SOURCES)
     if("${PROJECT_SOURCE_DIR}/src/common/media_writer.cpp" IN_LIST recap_sources)
+        if(NOT "${PROJECT_SOURCE_DIR}/src/common/video_memory_stream.cpp" IN_LIST recap_sources)
+            target_sources(${recap_target} PRIVATE ${PROJECT_SOURCE_DIR}/src/common/video_memory_stream.cpp)
+        endif()
         if(NOT "${PROJECT_SOURCE_DIR}/src/common/video_archive.cpp" IN_LIST recap_sources)
             target_sources(${recap_target} PRIVATE ${PROJECT_SOURCE_DIR}/src/common/video_archive.cpp)
         endif()
@@ -39,6 +43,57 @@ add_test(NAME immutable_uct_contract COMMAND ultra_clear_text_controller_tests)
 set_tests_properties(immutable_uct_contract PROPERTIES TIMEOUT 120 LABELS "headless"
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+
+# Private controller replay is opt-in at configure, not an ambient runtime
+# override. Bind the actual proof and both source images into tracked evidence.
+set(OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF "$ENV{OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}"
+    CACHE FILEPATH "Optional absolute private captured UCT controller proof JSON")
+set_property(TEST immutable_uct_contract APPEND PROPERTY ENVIRONMENT
+    "OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF=${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}")
+if(OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF)
+    if(NOT IS_ABSOLUTE "${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}" OR
+       NOT EXISTS "${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}" OR
+       IS_DIRECTORY "${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}" OR
+       "${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}" MATCHES ";")
+        message(FATAL_ERROR "UCT replay proof must be an existing absolute file without list separators")
+    endif()
+    file(SIZE "${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}" replay_proof_bytes)
+    if(replay_proof_bytes GREATER 1048576)
+        message(FATAL_ERROR "UCT replay proof exceeds one MiB")
+    endif()
+    file(READ "${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}" replay_proof_json)
+    set(replay_required_files "${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}")
+    foreach(replay_key IN ITEMS selectedPath neighbourPath)
+        string(JSON replay_image ERROR_VARIABLE replay_error GET "${replay_proof_json}" "${replay_key}")
+        if(replay_error OR NOT IS_ABSOLUTE "${replay_image}" OR
+           NOT EXISTS "${replay_image}" OR IS_DIRECTORY "${replay_image}" OR
+           "${replay_image}" MATCHES ";")
+            message(FATAL_ERROR "UCT replay ${replay_key} must name an existing absolute source image")
+        endif()
+        file(SIZE "${replay_image}" replay_image_bytes)
+        if(replay_image_bytes GREATER 67108864)
+            message(FATAL_ERROR "UCT replay source image exceeds 64 MiB")
+        endif()
+        list(APPEND replay_required_files "${replay_image}")
+    endforeach()
+    set_property(TEST immutable_uct_contract APPEND PROPERTY REQUIRED_FILES ${replay_required_files})
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}")
+endif()
+
+add_test(NAME uct_timing_controller_contract
+    COMMAND ultra_clear_text_controller_tests timingTraceKeepsWorkerAndAdmissionTickets)
+set_tests_properties(uct_timing_controller_contract PROPERTIES TIMEOUT 30 LABELS "headless"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1;OKUFLOW_UCT_TIMING_TRACE=1"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
+    REQUIRED_FILES "${PROJECT_SOURCE_DIR}/include/okuflow/common/uct_timing_trace.hpp;${PROJECT_SOURCE_DIR}/src/common/uct_timing_trace.cpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/ultra_clear_text.hpp;${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp;${PROJECT_SOURCE_DIR}/include/okuflow/app/ultra_clear_text_controller.hpp;${PROJECT_SOURCE_DIR}/src/app/ultra_clear_text_controller.cpp;${PROJECT_SOURCE_DIR}/tests/ultra_clear_text_controller_tests.cpp")
+
+add_test(NAME uct_timing_pane_publication_contract
+    COMMAND ultra_clear_text_controller_tests timingPaneOnlyChangePreservesPositionedTicket)
+set_tests_properties(uct_timing_pane_publication_contract PROPERTIES TIMEOUT 30 LABELS "headless"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1;OKUFLOW_UCT_TIMING_TRACE=1"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
+    REQUIRED_FILES "${PROJECT_SOURCE_DIR}/include/okuflow/common/uct_timing_trace.hpp;${PROJECT_SOURCE_DIR}/src/common/uct_timing_trace.cpp;${PROJECT_SOURCE_DIR}/include/okuflow/app/ultra_clear_text_controller.hpp;${PROJECT_SOURCE_DIR}/src/app/ultra_clear_text_controller.cpp;${PROJECT_SOURCE_DIR}/tests/ultra_clear_text_controller_tests.cpp")
 
 add_executable(video_transport_tests video_transport_tests.cpp
     ${PROJECT_SOURCE_DIR}/assets/okuflow_resources.qrc

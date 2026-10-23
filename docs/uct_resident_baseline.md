@@ -1,5 +1,9 @@
 # UCT resident SubmitDevice baseline (diagnostic)
 
+For the independent fixed-versus-bucketed width experiment, use
+`OKUFLOW_UCT_RESIDENT_WIDTH` and the [width comparison protocol](uct_recognizer_width.md).
+Per-run N1/batch agreement alone does not establish cross-width quality.
+
 Status (2026-10-20): integrated and measured. The finite resident run completed
 normally but failed strict wider-batch agreement; defaults remain unchanged.
 It is an unregistered, opt-in QtTest slot in `uct_paddle_tests`; ordinary CTest
@@ -250,6 +254,40 @@ are included in measured worker time; source images never leave the device.
 Every timed job gets a fresh metering decorator, preserving per-job egress and
 resident-analysis receipts. The complete-path experiment remains the default.
 The diagnostic cannot authorize OCR reuse and is never constructed by the app.
+
+Frozen replay marks descriptor uploads pending until its existing first-group
+completion wait succeeds. Cancellation before that wait retires the entire
+exact State through the existing asynchronous cleanup receipt, retaining the
+image lease and pinned descriptors/tokens until known completion (or existing
+failure quarantine). It adds no synchronous cancellation wait. No-upload/zero
+crop regions and cancellation after a completed group keep the normal reusable
+State and release only the input lease; a later frozen region re-arms pending
+ownership after its own upload. Exceptions continue through normal retirement.
+The ordinary automatic backend does not construct a frozen diagnostic.
+
+`uct_frozen_upload_contract` is a deterministic headless ownership fixture:
+the real private cancellation guard transfers a State containing separate
+input/pinned-storage sentinels into the existing `AsyncCleanup` mechanism,
+whose completion is gated by the fixture. It verifies early cancellation,
+zero crops, cancellation after first-group completion, a new region, and a
+failed retirement handoff, without a GPU, TensorRT plan or model. Actual native
+descriptor upload/cancellation still belongs to optional resident GPU acceptance;
+this fixture makes no driver-timing or performance claim.
+
+Final retirement is also allocation-safe. Both recognizer catch/destruction and
+preparation destruction keep the exact State owner until asynchronous handoff
+accepts it. If even that handoff cannot allocate or returns no receipt, State
+uses a pre-existing self-owner shared pointer to quarantine all native/input/
+pinned resources until process exit. This fallback uses a noexcept reference
+copy: no allocation, new queue, new wait or substitute completion event. It can
+retain memory for the rest of the process, as does existing failed-cleanup
+quarantine. The reusable owner is cleared only after accepted handoff or that
+self-quarantine; failed diagnostic formatting cannot bypass this decision.
+No receipt is emitted for self-quarantine, so acceptance diagnostics cannot
+report it as known native completion. The deterministic fixture additionally
+drives cancellation allocation failure into the actual final-retirement helper
+with a second allocation failure, refused handoff and successful gated cleanup.
+These synthetic failure checks execute no TensorRT/CUDA work.
 
 The owner subsequently accepted <=10 source pixels of box-edge drift and finite
 confidence variation, while retaining exact text/order/disposition/padding.

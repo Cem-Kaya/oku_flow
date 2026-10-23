@@ -1,8 +1,72 @@
 # OkuFlow Documentation Guide
 
-[Shadow regional planning](uct_region_planner.md) describes the opt-in metadata
-observer, source-bound spatial occurrences, requested focus and finite coverage
-debt. Full OCR stays authoritative; no recognition reuse is enabled.
+[Source-supported perspective text](uct_surface_perspective.md) explains bounded
+four-corner recovery, source refusals and projected glyph geometry.
+
+[How the UCT pipeline actually works](uct_pipeline_guide.html) is a detailed,
+offline HTML guide with a sequential pipeline map, expandable chapters, an
+exact crop-sizing explorer and a step-through queue/reuse explanation. It
+separates development behavior, local opt-ins, evidence and unfinished work.
+
+[Initially paused video UCT](uct_initial_paused_frame.md) documents frame-zero
+initialization, sealed saved-file duration bounds and captured controller replay
+with actual paint and positioned-text assertions.
+
+[Live RAM recap](live_ram_recap.md) documents the independent silent camera
+history, compressed memory limits, exact scene Freeze, existing-player reuse,
+source resets and separate synthetic/native acceptance boundaries.
+
+[Local BF16 recognition](uct_local_bf16.md) documents the owner's explicit
+cache-only app selection, pinned FP32 detector, mixed arithmetic, failover and
+the original quality-comparison failures. Diagnostic FP32 baselines stay pinned.
+
+[Local development storage](local_work_storage.md) records the owner's Z: work
+folders, compatible C: path redirects, the active-source exception and guidance
+for new build folders.
+
+[Optional embedded FFmpeg/dav1d playback](video_ffmpeg_playback.md) describes
+the saved-file prototype, private source build, native/archive fallback,
+strict same-source comparison and remaining color/deployment acceptance.
+
+[Video/audio preroll and pacing repair](video_audio_preroll_repair.md) explains
+the reproduced single-keyframe AV1 seek failure, bounded progress policy and
+audio high-water fix, with silent native-decoder validation limits.
+
+[UCT tilted text and paused visible detail](uct_oriented_detail_repair.md) describes
+four-corner geometry, strict rotation-normalized proof and bounded eight-times
+visible-region refinement after paused pan/zoom.
+
+[Tilted menu repaint diagnosis](uct_tilted_paint_gaps.md) separates retained
+recognition/proof gaps from conservative source-protection suppression and
+records the captured-handoff baseline and exact new 6-second source identity.
+
+[UCT ordinary labels and paused 8x detail](uct_token_policy_and_detail.md)
+records the removal of ASCII lookalike vetoes, unchanged proof/notation limits
+and the CPU/GPU fixture scope.
+
+[UCT coverage and stable placement](uct_coverage_stability_repair.md) documents
+file-path filtering, column/type-size separation, crop-fragment suppression,
+stable validated geometry, regional detector-omission continuity and actual
+painted-glyph evidence.
+
+[OCR engine research](../improvement_ideas/55-uct-ocr-engine-research-2026-10-21.md)
+compares local alternatives, oriented geometry and visible-region recognition.
+It records external benchmark limits and a proposed evaluation protocol;
+it does not select a new runtime or establish quality on the owner's videos.
+
+[Paused UCT continuity](uct_paused_continuity_repair.md) records the reproduced
+partial-refinement and late-neighbour defects, exact-source retention and the
+private resident recognition/admission diagnostic.
+
+[UCT software timing](uct_timing_trace.md) describes bounded opt-in worker,
+admission, software-paint and accessibility-publication metadata, with explicit
+dropped/incomplete chains and separate native screen-reader acceptance.
+
+[Regional planning](uct_region_planner.md) describes observation-only mode,
+source-bound occurrences, requested focus and finite coverage debt.
+[Active regional execution](uct_active_regional_ocr.md) supplements baseline full
+reads on current owned inputs with bounded regions and unchanged pixel proof.
+It never skips full OCR or reuses text as evidence.
 
 [Batch-eight quality acceptance](uct_batch8_quality_acceptance.md) records the
 owner-approved 10-pixel geometry tolerance, exact text/disposition checks, the
@@ -20,6 +84,10 @@ model/batch comparison and exact measurement boundaries.
 
 [GPU OCR batching](uct_gpu_batching.md) describes dynamic TensorRT batches,
 allocation ceilings and the finite latency/quality comparison.
+[Recognition-group look-ahead](uct_recognition_lookahead.md) records bounded
+host/GPU overlap and its dense-worker measurement; the
+[resident GPU integral scan](uct_gpu_integral.md) records exact cooperative
+table construction and its separate stage-level evidence.
 
 [UCT color and readiness repairs](uct_color_startup_repair.md) cover local word
 colors, active GPU/CPU status and paused-frame recovery.
@@ -609,6 +677,8 @@ legacy `powershell.exe` bridge.
 
 ## Documentation Index
 
+- [Narrower UCT recognizer inputs](uct_recognizer_width.md): opt-in width
+  profiles, same-crop quality comparison and workload-dependent performance.
 - [UCT color and readiness repairs](uct_color_startup_repair.md)
 - [`android/README.md`](../android/README.md): native Android companion setup,
   USB streaming, Advanced settings, current limits, and interactive drafts.
@@ -710,3 +780,8 @@ capture policy, cancellation and separate native performance acceptance.
 [One-time media output-buffer comparison](media_output_buffer_benchmark.md)
 records the real GPU throughput/latency tradeoff for one and two outputs. The
 experiment preserves one history and leaves the app default unchanged.
+## Current paused-text policy
+
+[Standalone Freeze](uct_standalone_freeze.md) describes held-frame recognition
+without a neighbouring capture. Earlier pair-based repair reports retain their
+historical evidence and explicit-protocol scope.

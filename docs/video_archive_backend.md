@@ -1,8 +1,10 @@
 # Native recording archive and video playback (development)
 
 The player uses Windows Media Foundation and the existing Original recorder.
-It creates no history encoder, duplicate recording, microphone, network client,
-or media-framework dependency. These are development contracts; native AVC/AAC,
+The archive player creates no duplicate recording, microphone, network client,
+or media-framework dependency. The later [RAM recap](live_ram_recap.md) adds a
+separate bounded video-only history encoder and OpenMemory source, independently
+of on-disk recording archives. These are development contracts; native AVC/AAC,
 AV1 and active-fragment acceptance must be reported separately from model-free
 tests and from the shipping Windows matrix.
 
@@ -91,6 +93,9 @@ a sparse/VFR video gap does not stall the soundtrack. Muting/unmuting during
 playback repositions track decoding at the current playback clock. At ordinary
 video EOF the worker retains its last image while remaining PCM reaches its
 actual audio endpoint; explicit Jump to end remains a paused frame selection.
+Its decoded PCM high-water survives `TakeAudio`: transferred audio counts
+toward the ordinary 200 ms lead. Audio-aligned Resume rebases the host clock
+after preroll and revokes the previous consumed clock.
 `VideoPlaybackTimestampFits` admits nonnegative PTS/duration intervals only
 when their sum fits `INT64_MAX / 100` ticks (about 292 years), making conversion
 to host nanoseconds safe. Native duration, seek targets, decoded frame and PCM
@@ -164,20 +169,23 @@ slow SourceReader release and Media Foundation shutdown. One running request
 and one latest replacement are retained. A new request has no publication
 authority until its generation matches; a successor cannot be created before
 the old reader releases. A native synchronous call cannot be forcefully
-interrupted. Its worker and permit remain counted; after two seconds Snapshot
-reports unavailable and replacement stays on that worker. No UI join, detached
+interrupted. Its worker and permit remain counted; after two seconds without
+decoded media progress Snapshot reports unavailable and replacement stays on
+that worker. No UI join, detached
 replacement reader or accumulated retired decoder list is used.
 
-Seek/open decoding checks cancellation between native steps, at most 120 video
-read attempts and two monotonic seconds. The limit is cooperative, not a native
-driver cancellation promise. Long-GOP or malformed inputs can return unavailable
-with the existing held image. A request older than two seconds is refused before
-native admission. Jump to end anchors active playback at the verified actual
+Seek/open decoding checks cancellation between native steps, at most 4096 video
+read attempts and an absolute sixty-second request cap. Only strictly advancing
+decoded video PTS renews a two-second progress window. Empty, repeated, backward
+or late native returns cannot renew it. These limits are cooperative, not a
+native driver cancellation promise. Long-GOP or malformed inputs can return
+unavailable with the existing held image. A request with no progress for two
+seconds is refused. Jump to end anchors active playback at the verified actual
 last-video PTS. For saved files it begins near the metadata tail; container
 duration can include later audio and need not name a video sample. Only actual
 native video EOS without any decoded frame permits an earlier anchor, using
 exponential backoff and at most eight total seeks (the last reaches zero).
-Every attempt shares the 4096-read/two-second request budget. Once a
+Every attempt shares the 4096-read/sixty-second request budget and progress guard. Once a
 frame is obtained, real decoder EOS and the last decoded pixels establish the
 endpoint. An anchor never substitutes for an observed endpoint. Failure reports
 include read/seek/decoded counts, EOS/selected-frame presence, last PTS, anchor,

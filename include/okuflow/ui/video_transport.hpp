@@ -27,16 +27,18 @@ namespace okuflow {
 class VideoTransport final : public QWidget {
     Q_OBJECT
 public:
-    enum class Source { None, Recording, Video };
+    enum class Source { None, Recording, Video, Recap };
     enum class State {
         Live, BehindLive, Paused, Video, End, Opening, Seeking,
-        Waiting, Finishing, Unavailable
+        Waiting, Finishing, Unavailable, Buffering
     };
     struct Snapshot {
         Source source{Source::None};
         State state{State::Paused};
         qint64 positionMs{};
         qint64 durationMs{}; // Verified seekable end, never a pending live tail.
+        qint64 firstMs{}; // Rolling history's first available absolute time.
+        bool canPauseLive{}; // Exact display lease can precede encoded media.
         bool playing{};
         bool seekable{};
         bool muted{true};
@@ -44,6 +46,7 @@ public:
         bool canSaveFrame{};
         bool canReturnToCamera{true};
         QString sourceName;
+        QString diagnosticDetail; // Native failure metadata; not a translated state key.
         quint64 sourceGeneration{};
     };
 
@@ -51,18 +54,26 @@ public:
     void SetSnapshot(const Snapshot& snapshot);
     const Snapshot& snapshot() const { return snapshot_; }
     void SetUiHidden(bool hidden);
+    // Hide the complete bar. MainWindow hosts the same small toggle in its
+    // quick-mode corner group, outside this widget's collapsed layout.
+    void SetCollapsed(bool collapsed);
+    bool isCollapsed() const { return collapsed_; }
+    QPushButton* collapseButton() const { return collapseButton_; }
     // Keyboard focus held inside the bar moves here when the bar hides,
     // instead of to whichever control Qt would pick next.
     void SetFocusReturnTarget(QWidget* target);
     // True when activating the control issues its request now. A control
     // that holds focus stays enabled but inert while busy or unavailable.
     bool IsActionReady(const QWidget* control) const;
+    // Same source/busy gates for viewport commands, independent of collapse.
+    bool IsCommandReady(const QWidget* control) const;
     std::vector<QWidget*> FocusTargets() const;
     QSlider* timeline() const { return timeline_; }
     QPushButton* playPauseButton() const { return playPauseButton_; }
     QPushButton* jumpButton() const { return jumpButton_; }
 
 signals:
+    void ControlsChanged(); // source presence or collapse, never playback intent
     void SeekRequested(qint64 positionMs);
     void PlayPauseRequested();
     void JumpToEndRequested();
@@ -91,7 +102,7 @@ private:
     void AnnounceSettledState();
     void RefreshTimeline(bool force);
     void UpdateLayout();
-    void CommitSeek(qint64 positionMs);
+    void CommitSeek(qint64 positionMs, bool atRangeEnd = false);
     qint64 SeekBaseline() const;
     std::vector<QPushButton*> SecondaryButtons() const;
     QString StateText() const;
@@ -108,6 +119,7 @@ private:
     QPushButton* returnButton_{};
     QPushButton* saveFrameButton_{};
     QPushButton* muteButton_{};
+    QPushButton* collapseButton_{};
     QWidget* secondaryRow_{};
     QHBoxLayout* mainLayout_{};
     QHBoxLayout* metadataLayout_{};
@@ -121,6 +133,8 @@ private:
     bool dragging_{};
     bool updating_{};
     bool uiHidden_{};
+    bool collapsed_{};
+    bool layoutCollapsed_{};
     bool secondariesBelow_{};
     bool muteShown_{true};
     bool returnShown_{true};

@@ -20,6 +20,7 @@
 #include <QComboBox>
 #include <QCursor>
 #include <QDialog>
+#include <QFileDialog>
 #include <QDir>
 #include <QFileInfo>
 #include <QFile>
@@ -60,6 +61,7 @@
 #include <array>
 #include <cstdlib>
 #include <cmath>
+#include <memory>
 #include <Windows.h>
 #include <dwmapi.h>
 
@@ -424,6 +426,8 @@ private slots:
     void textClarityMasterPreservesRefinements();
     void ultraClearTextControlsHaveNativeGeometry();
     void ultraClearTextOverlayFollowsNativeViewport();
+    void ultraClearTextOverlayYieldsToModalDialogs_data();
+    void ultraClearTextOverlayYieldsToModalDialogs();
     void disabledSlidersHaveDistinctAppearance();
     void inspectorContrastAppearance_data();
     void inspectorContrastAppearance();
@@ -1032,6 +1036,88 @@ void MainWindowTests::ultraClearTextOverlayFollowsNativeViewport()
     QVERIFY(SaveScreenshot(window, QStringLiteral("desktop-en-ultra-clear-overlay")));
     window.hide();
     QTRY_VERIFY(!overlay->isVisible());
+}
+
+void MainWindowTests::ultraClearTextOverlayYieldsToModalDialogs_data()
+{
+    QTest::addColumn<bool>("nativeFileDialog");
+    QTest::newRow("qt-dialog") << false;
+    QTest::newRow("native-open-video-dialog") << true;
+}
+
+void MainWindowTests::ultraClearTextOverlayYieldsToModalDialogs()
+{
+    QFETCH(bool, nativeFileDialog);
+    MainWindow window;
+    QVERIFY(PrepareVisualWindow(window));
+    window.show();
+    const QString fit = FitVisualWindow(window, QSize(1100, 760));
+    QVERIFY2(fit.isEmpty(), qPrintable(fit));
+    QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
+    auto* overlay = window.ultraClearTextOverlay();
+    QVERIFY(overlay);
+    const QVector<UltraClearTextOverlay::SceneWord> words{
+        {QStringLiteral("Reading clearly"), QRectF(.2, .35, .6, .1),
+         {QColor(Qt::white), QColor(Qt::black)}, 1}};
+    auto* target = window.renderWidget();
+    overlay->SetViewTransform(ComputeViewTransform(1600, 900, target->width(), target->height(),
+        1.0f, .5f, .5f, ViewportFitMode::kFill));
+    overlay->SetWords(words);
+    QTRY_VERIFY(overlay->isVisible());
+    QTRY_VERIFY(overlay->PaintedGeometryCurrent());
+
+    std::unique_ptr<QDialog> dialog;
+    if (nativeFileDialog) {
+        auto picker = std::make_unique<QFileDialog>(&window);
+        picker->setWindowTitle(QStringLiteral("Open video"));
+        picker->setDirectory(QDir::tempPath());
+        picker->setFileMode(QFileDialog::ExistingFile);
+        picker->setNameFilter(QStringLiteral("Video files (*.mp4 *.mkv)"));
+        QVERIFY(!picker->testOption(QFileDialog::DontUseNativeDialog));
+        dialog = std::move(picker);
+    } else {
+        dialog = std::make_unique<QDialog>(&window);
+        dialog->setWindowTitle(QStringLiteral("UCT dialog stacking regression"));
+    }
+    dialog->setWindowModality(Qt::WindowModal);
+    dialog->open();
+    QTRY_VERIFY(dialog->isVisible());
+    if (nativeFileDialog) {
+        // Refuse a Qt fallback: this row must exercise the Windows picker
+        // used by Open video, not only the QWidget modality contract.
+        const HWND owner = reinterpret_cast<HWND>(window.winId());
+        QVERIFY(QTest::qWaitFor([&] {
+            const HWND foreground = GetForegroundWindow();
+            DWORD process = 0;
+            GetWindowThreadProcessId(foreground, &process);
+            wchar_t windowClass[64]{};
+            GetClassNameW(foreground, windowClass, 64);
+            return process == GetCurrentProcessId() &&
+                GetAncestor(foreground, GA_ROOTOWNER) == owner &&
+                QString::fromWCharArray(windowClass) == QStringLiteral("#32770");
+        }, 1000));
+    }
+    QTRY_VERIFY(!overlay->isVisible());
+    QVERIFY(!overlay->PaintedGeometryCurrent());
+    overlay->SetWords(words); // OCR can finish inside the modal event loop.
+    window.move(window.pos() + QPoint(2, 2));
+    QApplication::processEvents();
+    QVERIFY(!overlay->isVisible());
+    QCOMPARE(overlay->WordCount(), 1);
+    // The native file picker has no visible QWidget HWND; the normal peer
+    // capture helper must not manufacture one just to take a screenshot.
+    if (!nativeFileDialog)
+        QVERIFY(SaveScreenshot(window, QStringLiteral("desktop-en-uct-modal-dialog-no-overlay")));
+    dialog->reject();
+    QTRY_VERIFY(!dialog->isVisible());
+    QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
+    QTRY_VERIFY(overlay->isVisible());
+    QTRY_VERIFY(overlay->PaintedGeometryCurrent());
+    QCOMPARE(overlay->WordCount(), 1);
+    QCOMPARE(GlobalRect(overlay), GlobalRect(target));
+    QVERIFY(SaveScreenshot(window, nativeFileDialog
+        ? QStringLiteral("desktop-en-uct-native-file-dialog-closed-overlay-restored")
+        : QStringLiteral("desktop-en-uct-modal-dialog-closed-overlay-restored")));
 }
 
 void MainWindowTests::ultraClearTextControlsHaveNativeGeometry()

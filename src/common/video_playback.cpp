@@ -1,5 +1,7 @@
 #ifdef _WIN32
 #include "okuflow/common/video_playback.hpp"
+#include "video_playback_seek_budget.hpp"
+#include "video_ffmpeg_reader.hpp"
 #include <mfapi.h>
 #include <mferror.h>
 #include <mfreadwrite.h>
@@ -19,6 +21,18 @@
 
 namespace okuflow {
 using Microsoft::WRL::ComPtr;
+struct VideoPlaybackFrameLease {
+    std::weak_ptr<const void> owner;
+    std::weak_ptr<const VideoPlaybackFrame> frame;
+    VideoFileIdentity file;
+    std::shared_ptr<const VideoMemorySource> memory;
+    std::shared_ptr<const void> memoryKeeper;
+    std::uint64_t requestGeneration{}, archiveGeneration{};
+    std::uint32_t videoTrackId{};
+    std::uint64_t sampleId{};
+    std::int64_t pts100ns{}, duration100ns{};
+    bool savedFile{};
+};
 namespace {
 using Clock = std::chrono::steady_clock;
 constexpr std::int64_t kMaximumClock100ns = INT64_MAX / 100;
@@ -44,7 +58,10 @@ enum class CommandKind { None, Open, Seek, End, Close };
 struct Command {
     CommandKind kind{CommandKind::None}; std::uint64_t generation{};
     std::wstring path; std::shared_ptr<RecordingArchive> archive;
+    std::shared_ptr<const VideoMemorySource> memory;
+    std::shared_ptr<const void> memoryKeeper;
     std::int64_t target{}; Clock::time_point queued{};
+    bool memoryOpen{};
     std::optional<LUID> gpuAdapter;
     bool forceCpu{};
     std::string backendReason;
@@ -61,6 +78,8 @@ struct Reader {
     VideoReadStreamClone cloneRead;
     ComPtr<IMFMediaType> nativeMetadata;
     VideoFileIdentity file;
+    std::shared_ptr<const VideoMemorySource> memorySource;
+    std::shared_ptr<const void> memoryKeeper;
     std::shared_ptr<RecordingArchive> archive;
     RecordingArchiveSnapshot archiveAdmission;
     std::uint32_t width{}, height{}, stride{}, rotation{}, parN{1}, parD{1};
@@ -76,10 +95,11 @@ struct Reader {
     std::int64_t lastDecodedPts{-1};
     std::int64_t decodeCost100ns{10'000};
     VideoPlaybackMemoryPlan memory;
+    std::string backend{"media-foundation"}, backendReason;
     std::shared_ptr<VideoGpuDecoder> gpu;
     std::weak_ptr<const VideoPlaybackFrame> cachedSeekFrame;
     std::int64_t cachedSeekLowerBound{};
-    bool cachedSeekEnded{},needsReposition{};
+    bool cachedSeekEnded{},needsReposition{},resumeClockPending{};
     void Reset() {
         // The decoder drops a completed conversion sample before its reader;
         // an unknown-completion closure stays quarantined inside the decoder
@@ -87,11 +107,13 @@ struct Reader {
         // never free a sample or reader the GPU may still touch.
         if (gpu) gpu->DetachSourceReader();
         gpu.reset(); source.Reset(); nativeMetadata.Reset(); bytes.Reset(); cloneRead={}; archive.reset(); lastDecodedPts = -1; memory = {};
-        cachedSeekFrame.reset();needsReposition=false;
+        cachedSeekFrame.reset();needsReposition=resumeClockPending=false;
         width = height = stride = rotation = audioRate = audioChannels = gpuComponentBits = 0;
         duration = 0; audioFloor100ns = audioEnd100ns = 0; audioEos = false;
         hasAudio = audioAvailable = eos = incomplete = false;
         parN = parD = 1; file = {}; archiveAdmission = {};
+        memorySource.reset(); memoryKeeper.reset();
+        backend="media-foundation";backendReason.clear();
     }
 };
 bool HasDecodeCredit(const Reader& r, const std::shared_ptr<PixelBudget>& pool) {
@@ -111,21 +133,90 @@ struct VideoPlayback::State {
     VideoPlaybackSnapshot snapshot;
     std::deque<std::shared_ptr<const VideoPlaybackFrame>> ready;
     bool prepareNeighbor{};
+    bool neighborMayReposition{}; // only the remainder of an explicit Open/Seek
     Clock::time_point neighborNotBefore{};
     std::deque<VideoPlaybackAudio> audio;
     std::size_t audioBytes{};
     std::uint64_t audioDuration100ns{};
     bool playing{}, muted{true}, restartAtCursor{};
+    bool repositionOnResume{}; // paused display may be behind the decoder cursor
     Clock::time_point operationStart{}, clockStart{};
     std::int64_t clockPts{};
     std::int64_t restartCursor100ns{};
     std::int64_t audioClockPts{}, audioClockSample{};
     bool audioClockValid{};
     std::shared_ptr<PixelBudget> pixels{std::make_shared<PixelBudget>()};
+    std::shared_ptr<const void> frameOwner{std::make_shared<const int>(0)};
     bool Current(std::uint64_t g) const { return !stop.load() && generation.load() == g; }
 };
 namespace {
 void ClearAudio(VideoPlayback::State& s) { s.audio.clear(); s.audioBytes = 0; s.audioDuration100ns = 0; s.audioClockValid = false; }
+void SealFrame(const std::shared_ptr<VideoPlaybackFrame>& frame, const VideoPlayback::State& s,
+               const Reader& reader) {
+    auto lease = std::make_shared<VideoPlaybackFrameLease>();
+    lease->owner = s.frameOwner; lease->frame = frame; lease->file = reader.file;
+    lease->memory = reader.memorySource; lease->memoryKeeper = reader.memoryKeeper;
+    lease->requestGeneration = frame->requestGeneration;
+    lease->archiveGeneration = frame->archiveGeneration; lease->videoTrackId = frame->videoTrackId;
+    lease->sampleId = frame->sampleId; lease->pts100ns = frame->pts100ns;
+    lease->duration100ns = frame->duration100ns;
+    lease->savedFile = !reader.archive && !reader.memorySource;
+    frame->decoderLease = std::move(lease);
+}
+bool IssuedFrame(const VideoPlayback::State& s, const std::shared_ptr<const VideoPlaybackFrame>& frame) {
+    if (!frame || !frame->decoderLease || !s.Current(frame->requestGeneration)) return false;
+    const auto& lease = *frame->decoderLease;
+    const auto issued = lease.frame.lock();
+    return lease.owner.lock() == s.frameOwner && issued == frame &&
+        !issued.owner_before(frame) && !frame.owner_before(issued) &&
+        lease.requestGeneration == frame->requestGeneration &&
+        lease.sampleId == frame->sampleId && lease.pts100ns == frame->pts100ns &&
+        lease.duration100ns == frame->duration100ns &&
+        lease.archiveGeneration == frame->archiveGeneration && lease.videoTrackId == frame->videoTrackId &&
+        (lease.memory ? lease.memory == s.snapshot.memorySource : lease.file.SameFile(s.snapshot.file)) &&
+        frame->videoTrackId == s.snapshot.videoTrackId &&
+        s.snapshot.frame && frame->archiveGeneration == s.snapshot.frame->archiveGeneration;
+}
+bool FollowingFrame(const VideoPlayback::State& s, const std::shared_ptr<const VideoPlaybackFrame>& frame,
+                    const VideoPlaybackFrame& selected) {
+    return IssuedFrame(s, frame) && frame->sampleId != selected.sampleId &&
+        frame->pts100ns > selected.pts100ns &&
+        frame->pts100ns - selected.pts100ns <= uct::ImmutableNeighbourWindow100ns(
+            selected.decoderLease && selected.decoderLease->savedFile, selected.duration100ns) &&
+        frame->width == selected.width && frame->height == selected.height &&
+        frame->rotationDegrees == selected.rotationDegrees;
+}
+bool PauseAtFrameLocked(VideoPlayback::State& s, const std::shared_ptr<const VideoPlaybackFrame>& shown) {
+    if (s.pending.kind != CommandKind::None || !IssuedFrame(s, shown) ||
+        !VideoPlaybackTimestampFits(shown->pts100ns) ||
+        shown->pts100ns > s.snapshot.frame->pts100ns ||
+        (s.snapshot.state != VideoPlaybackState::Playing && s.snapshot.state != VideoPlaybackState::Waiting &&
+         s.snapshot.state != VideoPlaybackState::Paused && s.snapshot.state != VideoPlaybackState::Ended)) return false;
+    // Prefer the nearest already decoded future lease. It stays in the ready
+    // queue: corroboration neither consumes playback nor creates image bytes.
+    auto next = FollowingFrame(s, s.snapshot.neighborFrame, *shown) ? s.snapshot.neighborFrame
+        : std::shared_ptr<const VideoPlaybackFrame>{};
+    if (FollowingFrame(s, s.snapshot.frame, *shown) && (!next || s.snapshot.frame->pts100ns < next->pts100ns))
+        next = s.snapshot.frame;
+    for (const auto& ready : s.ready)
+        if (FollowingFrame(s, ready, *shown) && (!next || ready->pts100ns < next->pts100ns)) next = ready;
+    const bool rewound = shown != s.snapshot.frame;
+    const bool atEnd = s.snapshot.state == VideoPlaybackState::Ended && !rewound;
+    const bool pastWindow = rewound && s.snapshot.frame->pts100ns - shown->pts100ns >
+        uct::ImmutableNeighbourWindow100ns(shown->decoderLease->savedFile, shown->duration100ns);
+    s.playing = false; ClearAudio(s);
+    s.restartAtCursor = false;
+    s.repositionOnResume = s.repositionOnResume || rewound;
+    s.snapshot.frame = shown;
+    s.snapshot.gpuResident = bool(shown->gpu);
+    s.snapshot.neighborFrame = std::move(next); // a predecessor never reaches paused OCR
+    s.snapshot.state = atEnd ? VideoPlaybackState::Ended : VideoPlaybackState::Paused;
+    s.clockPts = shown->pts100ns; s.clockStart = Clock::now();
+    s.prepareNeighbor = !s.snapshot.neighborFrame && !atEnd && !pastWindow;
+    s.neighborMayReposition = false; // Pause never authorizes a native seek
+    s.neighborNotBefore = Clock::now() + std::chrono::milliseconds(50);
+    return true;
+}
 void AdmitReaderMemory(Reader& r, VideoPlayback::State& s,std::uint64_t generation) {
     std::lock_guard lock(s.mutex);
     if(!s.Current(generation))return;
@@ -271,21 +362,43 @@ std::optional<unsigned> CodedBitsPerComponent(IMFMediaType* native, const GUID& 
     }
     return std::nullopt;
 }
-void ConfigureReader(Reader& r, const Command& cmd) {
+void ConfigureReader(Reader& r, const Command& cmd, VideoPlayback::State& state,
+                     std::uint64_t generation) {
+    if(!state.Current(generation))throw std::runtime_error("Playback open was superseded.");
     if (cmd.archive) {
         r.archive = cmd.archive;
         if(!r.bytes)Check(cmd.archive->OpenReadStream(&r.bytes, &r.archiveAdmission,&r.cloneRead), "Active recording is not yet safely readable");
         r.file = r.archiveAdmission.file; r.duration = r.archiveAdmission.duration100ns;
         r.incomplete = r.archiveAdmission.finalized && !r.archiveAdmission.complete;
+    } else if (cmd.memoryOpen) {
+        if(!cmd.memory)throw std::runtime_error("No immutable RAM source was supplied.");
+        r.memorySource=cmd.memory;r.memoryKeeper=cmd.memoryKeeper;
+        if(!r.bytes)Check(cmd.memory->OpenReadStream(&r.bytes,&r.cloneRead),"Open immutable RAM video");
     } else if(!r.bytes)Check(OpenStableVideoReadStream(cmd.path, &r.bytes, &r.file,&r.cloneRead), "Open a stable read-only video handle");
     ComPtr<IMFAttributes> attrs; Check(MFCreateAttributes(&attrs, 4), "Create playback attributes");
-    if(cmd.gpuAdapter && !cmd.forceCpu) {
+    if(detail::FfmpegPlaybackRequested()) {
+        if(cmd.archive || cmd.memory)r.backendReason="Recording archives and RAM recap use the Media Foundation backend.";
+        else {
+            const auto result=detail::CreateFfmpegVideoReader(r.bytes.Get(),r.cloneRead,
+                [&state,generation]{return state.Current(generation);},cmd.queued+std::chrono::seconds(2),&r.source,r.backendReason);
+            if(!state.Current(generation))throw std::runtime_error("Embedded open was superseded.");
+            if(SUCCEEDED(result))r.backend="ffmpeg-dav1d";
+            else {
+                // A failed probe never reopens the path. Native fallback gets
+                // an independent cursor on the identical held file backing.
+                ComPtr<IMFByteStream> fallback;
+                Check(r.cloneRead(&fallback),"Clone held stream after embedded decoder refusal");
+                r.bytes=std::move(fallback);
+            }
+        }
+    }
+    if(!r.source && cmd.gpuAdapter && !cmd.forceCpu) {
         r.gpu=VideoGpuDecoder::Create(*cmd.gpuAdapter);r.gpu->ConfigureReader(attrs.Get());
     } else {
         Check(attrs->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE), "Enable native BGRA conversion");
         Check(attrs->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, FALSE), "Select bounded CPU decode output");
     }
-    Check(MFCreateSourceReaderFromByteStream(r.bytes.Get(), attrs.Get(), &r.source), "Open native video decoder");
+    if(!r.source)Check(MFCreateSourceReaderFromByteStream(r.bytes.Get(), attrs.Get(), &r.source), "Open native video decoder");
     if(r.gpu)r.gpu->AttachSourceReader(r.source.Get());
     Check(r.source->SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS, FALSE), "Select playback tracks");
     Check(r.source->SetStreamSelection(MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE), "Select video track");
@@ -399,7 +512,7 @@ std::shared_ptr<std::vector<std::uint8_t>> AllocatePixels(std::size_t bytes,cons
     pixels->resize(bytes);
     return pixels;
 }
-std::shared_ptr<const VideoPlaybackFrame> CopyFrame(Reader& r, IMFSample* sample,
+std::shared_ptr<VideoPlaybackFrame> CopyFrame(Reader& r, IMFSample* sample,
     LONGLONG timestamp, std::uint64_t gen, const std::shared_ptr<PixelBudget>& budget) {
     const auto sourceBytes = std::uint64_t(r.stride) * r.height;
     const auto minimum = std::uint64_t(r.stride) * (r.height - 1) + std::uint64_t(r.width) * 4;
@@ -500,13 +613,14 @@ bool ReadVideo(Reader& r, VideoPlayback::State& state, std::uint64_t gen,
         ~StagingLease() { pool->bytes.fetch_sub(bytes); }
     } lease{state.pixels, staging};
     DWORD stream{}, flags{}; LONGLONG time{}; ComPtr<IMFSample> sample;
+    detail::ArmFfmpegVideoReader(r.source.Get(),[&state,gen]{return state.Current(gen);},deadline,minimumCopiedPts);
     const auto readHr = r.source->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0,
         &stream, &flags, &time, &sample);
     if (FAILED(readHr)) {
         if(r.archive && !r.archive->ValidateRange(r.archiveAdmission.generation,0,r.archiveAdmission.verifiedMediaBytes))
             throw std::runtime_error("Recording bytes changed during native decode; seek again.");
         if(r.gpu)throw VideoGpuIncompatible(Error("Decode GPU video sample",readHr));
-        throw DecodeFailure(Error("Decode video sample",readHr));
+        throw DecodeFailure(Error("Decode video sample",readHr)+detail::FfmpegVideoReaderError(r.source.Get()));
     }
     if (!state.Current(gen)) return false;
     r.videoStreamIndex = stream;
@@ -542,6 +656,7 @@ bool ReadVideo(Reader& r, VideoPlayback::State& state, std::uint64_t gen,
             owned->sampleId=std::uint64_t(time);owned->videoTrackId=r.archive?r.archiveAdmission.videoTrackId:r.videoStreamIndex;
             if(r.archive && !r.archive->ValidateRange(r.archiveAdmission.generation,0,r.archiveAdmission.verifiedMediaBytes))
                 throw std::runtime_error("Recording bytes changed during GPU decode; seek again.");
+            SealFrame(owned, state, r);
             frame=std::move(owned);
         } else {
         const auto squareWidth = (std::uint64_t(r.width) * r.parN + r.parD / 2) / r.parD;
@@ -549,7 +664,9 @@ bool ReadVideo(Reader& r, VideoPlayback::State& state, std::uint64_t gen,
         const auto limit=state.pixels->limit.load();
         if (optionalPrevious && (destination > limit ||
             state.pixels->bytes.load() > limit - destination)) optionalPrevious->reset();
-        frame = CopyFrame(r, sample.Get(), time, gen, state.pixels); r.lastDecodedPts = frame->pts100ns;
+        auto copied = CopyFrame(r, sample.Get(), time, gen, state.pixels);
+        SealFrame(copied, state, r);
+        frame = std::move(copied); r.lastDecodedPts = frame->pts100ns;
         }
     }
     if (flags & MF_SOURCE_READERF_ENDOFSTREAM) r.eos = true;
@@ -557,16 +674,18 @@ bool ReadVideo(Reader& r, VideoPlayback::State& state, std::uint64_t gen,
     r.decodeCost100ns=std::max<std::int64_t>(cost,(r.decodeCost100ns*3+cost)/4);
     return sample != nullptr;
 }
-void SeekReader(Reader& r, std::int64_t target) {
+void SeekReader(Reader& r, std::int64_t target,VideoPlayback::State& state,std::uint64_t gen) {
     // No new native seek on a reader whose sample is retained by an unsafe
     // conversion; the typed error routes to a fresh CPU reader instead.
     if(r.gpu && r.gpu->HasUnsafePending())
         throw VideoGpuIncompatible("GPU playback conversion is retained with unknown completion; using CPU playback.");
     if (!VideoPlaybackTimestampFits(target)) throw std::runtime_error("Seek target exceeds the supported host-clock range.");
+    detail::ArmFfmpegVideoReader(r.source.Get(),[&state,gen]{return state.Current(gen);},Clock::now()+std::chrono::seconds(2));
     PROPVARIANT position; PropVariantInit(&position); position.vt = VT_I8; position.hVal.QuadPart = std::max<std::int64_t>(0, target);
     Check(r.source->SetCurrentPosition(GUID_NULL, position), "Seek native video source"); r.eos = false; r.lastDecodedPts = -1;
     r.audioFloor100ns = std::max<std::int64_t>(0, target);
     r.audioEnd100ns = r.audioFloor100ns; r.audioEos = false;
+    r.resumeClockPending = false;
 }
 void MarkNativeOperation(VideoPlayback::State& s, std::uint64_t generation, bool active) {
     std::lock_guard lock(s.mutex);
@@ -578,12 +697,18 @@ void QueueAudio(Reader& r, VideoPlayback::State& s, std::uint64_t gen,
     // Keep audio independent from microphone settings. Up to eight short
     // decoder samples per pass, 500 ms and 2 MiB total remain queued.
     for (unsigned i = 0; i < 8 && Clock::now() < deadline && s.Current(gen); ++i) {
+        // The UI transfers queued PCM to a separate bounded output sink.
+        // TakeAudio empties our queue, not the media already handed off.
+        // Keep that decoded high-water so video-wait polling cannot feed
+        // future audio faster than its consumed/host playback clock.
+        if (r.audioEnd100ns >= until) return;
         { std::lock_guard lock(s.mutex);
           if (s.muted || !s.playing || s.audio.size() >= 32 || s.audioBytes >= VideoPlayback::kAudioByteLimit ||
               s.audioDuration100ns >= 5'000'000 ||
               (!s.audio.empty() && s.audio.back().pts100ns > until + 5'000'000)) return;
         }
         DWORD stream{}, flags{}; LONGLONG time{}; ComPtr<IMFSample> sample;
+        detail::ArmFfmpegVideoReader(r.source.Get(),[&s,gen]{return s.Current(gen);},deadline);
         const auto hr = r.source->ReadSample(MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, &stream, &flags, &time, &sample);
         if (!s.Current(gen)) return;
         if (Clock::now() > deadline) { r.audioAvailable = false; return; }
@@ -645,7 +770,20 @@ void Publish(VideoPlayback::State& s, Reader& r, const Command& cmd,
     if (frame) s.snapshot.frame = std::move(frame);
     s.snapshot.neighborFrame = std::move(neighbor);
     s.snapshot.file = r.file; s.snapshot.path = cmd.archive ? r.archiveAdmission.path : cmd.path;
+    s.snapshot.memorySource = r.memorySource;
     s.snapshot.videoTrackId = r.archive ? r.archiveAdmission.videoTrackId : r.videoStreamIndex;
+    if (s.snapshot.neighborFrame && s.snapshot.frame) {
+        const auto& selected = *s.snapshot.frame;
+        const auto& neighbour = *s.snapshot.neighborFrame;
+        const auto window = neighbour.pts100ns > selected.pts100ns
+            ? uct::ImmutableNeighbourWindow100ns(selected.decoderLease && selected.decoderLease->savedFile,
+                                               selected.duration100ns)
+            : uct::kOrdinaryNeighbourWindow100ns;
+        const auto gap = neighbour.pts100ns > selected.pts100ns
+            ? neighbour.pts100ns - selected.pts100ns : selected.pts100ns - neighbour.pts100ns;
+        if (!IssuedFrame(s, s.snapshot.neighborFrame) || neighbour.sampleId == selected.sampleId ||
+            gap > window) s.snapshot.neighborFrame.reset();
+    }
     s.snapshot.duration100ns = r.duration;
     s.snapshot.seekableEnd100ns = r.archive ? r.archiveAdmission.seekableEnd100ns
         : (r.eos ? r.lastDecodedPts : -1);
@@ -654,13 +792,16 @@ void Publish(VideoPlayback::State& s, Reader& r, const Command& cmd,
     s.snapshot.incomplete = r.incomplete; s.snapshot.error.clear();
     s.snapshot.gpuResident=bool(s.snapshot.frame && s.snapshot.frame->gpu);
     s.snapshot.gpuDecodedBitsPerComponent=r.gpu?r.gpuComponentBits:0;
-    s.snapshot.backendReason=s.backendReason;
+    s.snapshot.decoderBackend=r.backend;
+    s.snapshot.backendReason=r.backendReason.empty()?s.backendReason:
+        r.backendReason+(s.backendReason.empty()?"":" "+s.backendReason);
     s.snapshot.memoryPressure=false;
     s.snapshot.lastRequestReadCount=reads;
     s.snapshot.lastRequestCopiedFrames=copies;
     s.snapshot.lastRequestReusedFrame=reused;
     s.snapshot.lastRequestLatencyUs=std::chrono::duration_cast<std::chrono::microseconds>(Clock::now()-cmd.queued).count();
     s.prepareNeighbor=status==VideoPlaybackState::Paused && !s.snapshot.neighborFrame && !r.eos;
+    s.neighborMayReposition = true; // deferred work of this explicit Open/Seek
     s.neighborNotBefore=Clock::now()+std::chrono::milliseconds(50);
     s.operationStart = {};
     if (s.snapshot.frame) { s.clockPts = s.snapshot.frame->pts100ns; s.clockStart = Clock::now(); }
@@ -720,7 +861,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                         // the successor. A stuck Release retains the permit.
                         reader.Reset();
                         if (!s->Current(command.generation)) continue;
-                        ConfigureReader(reader, command); AdmitReaderMemory(reader,*s,command.generation); document = command;
+                        ConfigureReader(reader, command,*s,command.generation); AdmitReaderMemory(reader,*s,command.generation); document = command;
                     } else {
                         if((command.forceCpu && reader.gpu) || (!reader.source && command.forceCpu)) {
                             // Keep the stable stream handle and identity across
@@ -735,7 +876,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                             reader.Reset();reader.bytes=bytes;reader.cloneRead=std::move(clone);reader.file=identity;
                             reader.archiveAdmission=admission;reader.archive=archive;
                             document.forceCpu=true;document.gpuAdapter.reset();
-                            ConfigureReader(reader,document);AdmitReaderMemory(reader,*s,command.generation);
+                            ConfigureReader(reader,document,*s,command.generation);AdmitReaderMemory(reader,*s,command.generation);
                         }
                         if (!reader.source) throw std::runtime_error("No readable video is selected.");
                         document.generation = command.generation;
@@ -745,7 +886,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                                 now.verifiedMediaBytes != reader.archiveAdmission.verifiedMediaBytes) {
                                 reader.Reset();
                                 if (!s->Current(command.generation)) continue;
-                                ConfigureReader(reader, document); AdmitReaderMemory(reader,*s,command.generation);
+                                ConfigureReader(reader, document,*s,command.generation); AdmitReaderMemory(reader,*s,command.generation);
                             }
                         }
                     }
@@ -767,6 +908,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                        cached && target>=reader.cachedSeekLowerBound && target<=cached->pts100ns) {
                         auto selected=std::make_shared<VideoPlaybackFrame>(*cached);
                         selected->requestGeneration=command.generation;
+                        SealFrame(selected, *s, reader);
                         if(!s->Current(command.generation))continue;
                         reader.cachedSeekFrame=selected;reader.needsReposition=true;
                         reader.eos=reader.cachedSeekEnded;reader.lastDecodedPts=selected->pts100ns;
@@ -782,12 +924,13 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                     // hidden audio cursor can continue through a scrub.
                     if (reader.hasAudio) reader.source->SetStreamSelection(MF_SOURCE_READER_FIRST_AUDIO_STREAM, FALSE);
                     unsigned seeks{};
-                    if (command.kind != CommandKind::Open) { SeekReader(reader, target); ++seeks; }
-                    const auto deadline = command.queued + std::chrono::seconds(2);
-                    if (Clock::now() >= deadline) throw std::runtime_error("Native open/seek exhausted its request-age deadline.");
+                    if (command.kind != CommandKind::Open) { SeekReader(reader, target,*s,command.generation); ++seeks; }
+                    detail::VideoPlaybackSeekBudget budget(command.queued);
+                    if (budget.Expired(Clock::now())) throw std::runtime_error("Native open/seek exhausted its progress deadline.");
                     std::shared_ptr<const VideoPlaybackFrame> chosen, neighbor;
                     unsigned samples{}, decoded{},copies{};
-                    while (samples < VideoPlayback::kSeekSampleLimit && Clock::now() < deadline && s->Current(command.generation)) {
+                    while (samples < VideoPlayback::kSeekSampleLimit && !budget.Expired(Clock::now()) && s->Current(command.generation)) {
+                        const auto deadline = budget.Deadline();
                         // Keep the predecessor across a sample-less EOS read
                         // when credit permits; under pressure it stays optional.
                         if(!HasDecodeCredit(reader,s->pixels))neighbor.reset();
@@ -797,11 +940,14 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                         // A real replacement sample may release this optional
                         // lease before its owned pixel copy is allocated.
                         std::shared_ptr<const VideoPlaybackFrame> next;
-                        try { if(ReadVideo(reader,*s,command.generation,next,deadline,&chosen,end?-1:target))++decoded; }
+                        bool readSample{};
+                        try { if((readSample=ReadVideo(reader,*s,command.generation,next,deadline,&chosen,end?-1:target)))++decoded; }
                         catch (const DecodeFailure&) {
                             if (!end || !chosen) throw;
                             reader.eos = true; reader.incomplete = true; break;
                         }
+                        if (readSample && budget.Observe(reader.lastDecodedPts,Clock::now()))
+                            MarkNativeOperation(*s,command.generation,true);
                         if (next) {++copies;neighbor = std::move(chosen); chosen = std::move(next); }
                         if (end && reader.eos && !chosen && target > 0 && seeks < kEndSeekLimit) {
                             // Only observed video EOS without a frame permits
@@ -811,21 +957,21 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                             endLookback = std::min(reader.duration, std::max<std::int64_t>(1'000'000, endLookback * 2));
                             auto earlier = seeks + 1 == kEndSeekLimit ? 0 : reader.duration - endLookback;
                             if (earlier >= target) earlier = target / 2;
-                            target = earlier; SeekReader(reader, target); ++seeks;
+                            target = earlier; SeekReader(reader, target,*s,command.generation); ++seeks;
                             continue;
                         }
                         if (reader.eos || (!end && chosen && chosen->pts100ns >= target)) break;
                     }
                     if (!s->Current(command.generation)) continue;
-                    if (Clock::now() > deadline || !chosen || (end && !reader.eos) || (!end && chosen->pts100ns < target))
-                        throw std::runtime_error("This seek exceeds the " + std::to_string(VideoPlayback::kSeekSampleLimit) + "-read / two-second decode budget: reads=" +
+                    if (budget.Expired(Clock::now()) || !chosen || (end && !reader.eos) || (!end && chosen->pts100ns < target))
+                        throw std::runtime_error("This seek exceeds the " + std::to_string(VideoPlayback::kSeekSampleLimit) + "-read / two-second progress / sixty-second request budget: reads=" +
                             std::to_string(samples) + ", seeks=" + std::to_string(seeks) + ", decoded=" + std::to_string(decoded) +
                             ", eos=" + std::to_string(reader.eos) + ", chosen=" + std::to_string(bool(chosen)) +
                             ", lastPts=" + std::to_string(reader.lastDecodedPts) + ", anchor=" + std::to_string(target) +
                             ", duration=" + std::to_string(reader.duration) + ", elapsedMs=" +
                             std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - command.queued).count()) + ".");
                     if (neighbor && neighbor->pts100ns == chosen->pts100ns) neighbor.reset();
-                    if (Clock::now() > deadline) throw std::runtime_error("Native playback returned after its request-age deadline.");
+                    if (budget.Expired(Clock::now())) throw std::runtime_error("Native playback returned after its progress deadline.");
                     // End is exact only after EOS. Failed seeks leave the
                     // externally held image intact.
                     { std::lock_guard lock(s->mutex); s->playing = false; ClearAudio(*s); }
@@ -871,24 +1017,47 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
             }
             // A seek publishes its exact target before this optional native
             // read. New commands always take priority at the next boundary.
-            if(!play && prepareNeighbor && reader.source && !reader.eos && s->Current(document.generation)) {
+            if(!play && prepareNeighbor && reader.source && s->Current(document.generation)) {
                 try {
-                    std::int64_t selectedPts{};
+                    std::shared_ptr<const VideoPlaybackFrame> selected;
+                    bool mayReposition{};
                     {std::unique_lock lock(s->mutex);
-                     if(!s->Current(document.generation) || !s->snapshot.frame)continue;
+                     if(!s->Current(document.generation) || !s->snapshot.frame || s->playing ||
+                        s->pending.kind!=CommandKind::None)continue;
                      if(Clock::now()<s->neighborNotBefore) {
                          s->prepareNeighbor=true;
                          s->changed.wait_until(lock,s->neighborNotBefore,[&]{return s->stop.load() || s->pending.kind!=CommandKind::None || s->playing;});
                          continue;
                      }
-                     selectedPts=s->snapshot.frame->pts100ns;}
+                     selected=s->snapshot.frame;
+                     mayReposition=s->neighborMayReposition;
+                     // An in-flight playback read may have filled the ready
+                     // queue after Pause. Reuse its nearest true future frame.
+                     std::shared_ptr<const VideoPlaybackFrame> readyNeighbor;
+                     for (const auto& ready : s->ready)
+                         if (FollowingFrame(*s, ready, *selected) &&
+                             (!readyNeighbor || ready->pts100ns < readyNeighbor->pts100ns)) readyNeighbor = ready;
+                     if (readyNeighbor) { s->snapshot.neighborFrame = std::move(readyNeighbor); continue; }
+                     // A queued sparse/VFR future outside the proof window
+                     // cannot corroborate this selected frame. Reading past
+                     // it adds no proof and must not discard playback samples
+                     // when the bounded ready queue is already full.
+                     if (s->ready.size()>=reader.memory.lookaheadFrames ||
+                         std::any_of(s->ready.begin(),s->ready.end(),[&](const auto& ready) {
+                             return ready && ready->pts100ns>selected->pts100ns;
+                         }))continue;}
+                    const auto selectedPts = selected->pts100ns;
                     const auto preempted=[&] {std::lock_guard lock(s->mutex);
-                        return !s->Current(document.generation) || s->playing || s->pending.kind!=CommandKind::None;};
+                        return !s->Current(document.generation) || s->playing || s->pending.kind!=CommandKind::None ||
+                            s->snapshot.frame != selected || s->ready.size()>=reader.memory.lookaheadFrames;};
                     if(preempted())continue;
+                    // Pause itself never seeks the decoder. Deferred cursor
+                    // realignment belongs only to an explicit cached Seek.
+                    if (reader.eos || (reader.needsReposition && !mayReposition)) continue;
                     const auto deadline=Clock::now()+std::chrono::seconds(2);
                     bool touched{};
-                    if(reader.needsReposition) {
-                        touched=true;SeekReader(reader,selectedPts);reader.needsReposition=false;
+                    if (reader.needsReposition) {
+                        touched=true; SeekReader(reader,selectedPts,*s,document.generation); reader.needsReposition=false;
                     }
                     std::shared_ptr<const VideoPlaybackFrame> next;
                     for(unsigned reads=0;reads<VideoPlayback::kSeekSampleLimit && !reader.eos &&
@@ -899,10 +1068,15 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                         if(next)break;
                     }
                     std::lock_guard lock(s->mutex);
-                    if(s->playing || s->pending.kind!=CommandKind::None) {if(touched)reader.needsReposition=true;continue;}
-                    if(next && s->Current(document.generation) && s->snapshot.frame &&
-                       next->pts100ns!=s->snapshot.frame->pts100ns && s->ready.size()<reader.memory.lookaheadFrames) {
-                        s->ready.push_back(next);s->snapshot.neighborFrame=std::move(next);
+                    if(s->playing || s->pending.kind!=CommandKind::None || s->snapshot.frame != selected) {
+                        if(touched)reader.needsReposition=true;continue;
+                    }
+                    if(next && s->Current(document.generation) &&
+                       s->ready.size()<reader.memory.lookaheadFrames) {
+                        // Keep playback order even if a sparse next frame lies
+                        // outside the proof window; it is never shown by Pause.
+                        s->ready.push_back(next);
+                        if (FollowingFrame(*s, next, *selected)) s->snapshot.neighborFrame=std::move(next);
                     }
                 } catch(const VideoGpuIncompatible& error) {
                     // The completed seek's frame stays published; rebuild on
@@ -917,13 +1091,19 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                 if(play && !reader.source) {std::lock_guard lock(s->mutex);s->playing=false;}
                 continue;
             }
-            if (reader.eos && ReadyEmpty(*s)) {
+            bool resumePending{};
+            {std::lock_guard lock(s->mutex);
+             if(!s->Current(document.generation) || !s->playing)continue;
+             // Leave both Resume flags for the same locked handoff below.
+             // Pause/Resume can arrive between this check and that handoff.
+             resumePending=s->restartAtCursor || s->repositionOnResume;}
+            if (reader.eos && ReadyEmpty(*s) && !reader.needsReposition && !resumePending) {
                 if (document.archive) {
                     const auto current = document.archive->Snapshot();
                     if (!current.finalized && current.generation == reader.archiveAdmission.generation &&
                         current.verifiedMediaBytes == reader.archiveAdmission.verifiedMediaBytes) {
                         std::unique_lock lock(s->mutex);
-                        if (s->Current(document.generation)) {
+                        if (s->Current(document.generation) && s->playing) {
                             if (s->snapshot.state != VideoPlaybackState::Waiting) ClearAudio(*s);
                             s->snapshot.state = VideoPlaybackState::Waiting;
                             s->snapshot.error = "Waiting for the next complete recording fragment.";
@@ -935,7 +1115,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                         current.generation != reader.archiveAdmission.generation) {
                         try {
                             reader.Reset();
-                            ConfigureReader(reader, document); AdmitReaderMemory(reader,*s,document.generation);
+                            ConfigureReader(reader, document,*s,document.generation); AdmitReaderMemory(reader,*s,document.generation);
                             std::lock_guard lock(s->mutex);
                             if (s->Current(document.generation)) {
                                 s->restartAtCursor = true;
@@ -979,16 +1159,29 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                     }
                 }
                 std::lock_guard lock(s->mutex);
-                if (s->Current(document.generation)) { s->playing = false; s->snapshot.state = VideoPlaybackState::Ended;
+                if (s->Current(document.generation) && s->playing &&
+                    !s->restartAtCursor && !s->repositionOnResume) { s->playing = false; s->snapshot.state = VideoPlaybackState::Ended;
                     if (!document.archive && s->snapshot.frame) s->snapshot.seekableEnd100ns = s->snapshot.frame->pts100ns; }
                 continue;
             }
             try {
                 MarkNativeOperation(*s, document.generation, true);
-                const auto deadline = Clock::now() + std::chrono::seconds(2);
+                detail::VideoPlaybackSeekBudget budget(Clock::now());
                 bool restart{}, audioEnabled{}; std::int64_t cursor{},copyFloor{};
                 { std::lock_guard lock(s->mutex);
+                  // A playback iteration captured before Pause must not clear
+                  // its newly selected future proof or consume restart intent.
+                  if (!s->Current(document.generation) || !s->playing) {
+                      if (s->Current(document.generation)) s->operationStart = {};
+                      continue;
+                  }
                   restart = s->restartAtCursor; s->restartAtCursor = false;
+                  if(restart && s->repositionOnResume) {
+                      // Consume rewind intent with this exact restart. Taking
+                      // it in a separate iteration can strand needsReposition
+                      // at EOS after restartAtCursor has already been cleared.
+                      reader.needsReposition=true;s->repositionOnResume=false;
+                  }
                   audioEnabled = !s->muted && reader.audioAvailable;
                   cursor = s->restartCursor100ns;
                   copyFloor=s->snapshot.frame?s->snapshot.frame->pts100ns+1:0;
@@ -998,8 +1191,9 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                     if (reader.hasAudio) Check(reader.source->SetStreamSelection(MF_SOURCE_READER_FIRST_AUDIO_STREAM, audioEnabled), "Select playback audio");
                     if((audioEnabled && reader.hasAudio) || reader.needsReposition) {
                         {std::lock_guard lock(s->mutex);s->ready.clear();}
-                        SeekReader(reader,cursor);
+                        SeekReader(reader,cursor,*s,document.generation);
                         reader.needsReposition=false;
+                        reader.resumeClockPending=true;
                     } else {
                         // Muted/silent Resume reuses prepared video. Audio Resume
                         // repositions both tracks to preserve exact PCM continuity.
@@ -1010,6 +1204,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                 }
                 unsigned samples{};
                 for(;;) {
+                    const auto deadline=budget.Deadline();
                     std::size_t readyCount{};std::int64_t headroom{};
                     {std::lock_guard lock(s->mutex);
                      if(!s->Current(document.generation) || !s->playing || s->restartAtCursor)break;
@@ -1026,14 +1221,21 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                     }
                     std::shared_ptr<const VideoPlaybackFrame> decoded;
                     bool readSample{};
+                    if(samples>=VideoPlayback::kSeekSampleLimit || budget.Expired(Clock::now()))
+                        throw std::runtime_error("Resume exceeds the bounded seek budget.");
+                    ++samples;
                     try {readSample=ReadVideo(reader,*s,document.generation,decoded,deadline,nullptr,copyFloor);}
                     catch(const DecodeFailure&) {
                         if(!readyCount)throw;
                         reader.eos=true;reader.incomplete=true;break;
                     }
                     if(!s->Current(document.generation))break;
+                    if(budget.Expired(Clock::now()))
+                        throw std::runtime_error("Playback decode returned after its progress deadline.");
+                    if(readSample && budget.Observe(reader.lastDecodedPts,Clock::now()))
+                        MarkNativeOperation(*s,document.generation,true);
                     if(readSample && !decoded && !reader.eos) {
-                        if(++samples>=VideoPlayback::kSeekSampleLimit || Clock::now()>=deadline)
+                        if(samples>=VideoPlayback::kSeekSampleLimit || budget.Expired(Clock::now()))
                             throw std::runtime_error("Resume exceeds the bounded seek budget.");
                         continue;
                     }
@@ -1041,12 +1243,25 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                     if(decodedFrame) {
                         std::lock_guard lock(s->mutex);
                         if(s->Current(document.generation)) {
+                            if(reader.resumeClockPending) {
+                                // Preroll is decode work, not played media.
+                                // Without this rebase a healthy software seek
+                                // starts video/audio many seconds past its hold.
+                                s->clockPts=reader.audioFloor100ns;s->clockStart=Clock::now();
+                                s->audioClockValid=false;reader.resumeClockPending=false;
+                            }
                             s->ready.push_back(std::move(decoded));s->snapshot.memoryPressure=false;
                         }
                     }
-                    if(!decodedFrame && !reader.eos)break;
+                    if(!decodedFrame && !reader.eos) {
+                        // Empty preroll reads remain in this same bounded
+                        // request. A new outer iteration must not restart its
+                        // no-progress/absolute budget without decoded media.
+                        if(reader.resumeClockPending)continue;
+                        break;
+                    }
                 }
-                if (Clock::now() > deadline && ReadyEmpty(*s)) throw std::runtime_error("Playback decode exceeded its cooperative deadline.");
+                if (budget.Expired(Clock::now()) && ReadyEmpty(*s)) throw std::runtime_error("Playback decode exceeded its cooperative progress deadline.");
                 MarkNativeOperation(*s, document.generation, false);
                 std::shared_ptr<const VideoPlaybackFrame> next;
                 {std::unique_lock lock(s->mutex);
@@ -1136,7 +1351,7 @@ std::uint64_t Submit(const std::shared_ptr<VideoPlayback::State>& s, Command com
     s->snapshot.error.clear(); s->playing = false; ClearAudio(*s);
     if (command.kind == CommandKind::Open) { s->muted = true; s->snapshot.muted = true; }
     s->snapshot.neighborFrame.reset();
-    s->ready.clear();s->prepareNeighbor=false;s->restartAtCursor=false;
+    s->ready.clear();s->prepareNeighbor=false;s->restartAtCursor=false;s->repositionOnResume=false;
     s->snapshot.memoryPressure=false;
     s->snapshot.lastRequestReadCount=0;s->snapshot.lastRequestCopiedFrames=0;
     s->snapshot.lastRequestLatencyUs=0;s->snapshot.lastRequestReusedFrame=false;
@@ -1174,7 +1389,19 @@ bool VideoPlaybackTimestampFits(std::int64_t pts, std::int64_t duration) {
 VideoPlayback::VideoPlayback() : state_(std::make_shared<State>()) { std::thread(Worker, state_).detach(); }
 VideoPlayback::~VideoPlayback() { state_->stop.store(true); state_->generation.fetch_add(1); state_->changed.notify_one(); }
 std::uint64_t VideoPlayback::OpenFile(std::wstring path) { Command c; c.kind = CommandKind::Open; c.path = std::move(path); return Submit(state_, std::move(c)); }
+uct::ImmutableCorroborationPolicy VideoPlayback::CorroborationPolicy(
+    const std::shared_ptr<const VideoPlaybackFrame>& selected) const {
+    std::lock_guard lock(state_->mutex);
+    if (!IssuedFrame(*state_, selected) || !selected->decoderLease->savedFile ||
+        !VideoPlaybackTimestampFits(selected->pts100ns, selected->duration100ns)) return {};
+    return {selected->decoderLease, selected->sampleId, selected->pts100ns, selected->duration100ns};
+}
 std::uint64_t VideoPlayback::OpenArchive(std::shared_ptr<RecordingArchive> archive) { Command c; c.kind = CommandKind::Open; c.archive = std::move(archive); return Submit(state_, std::move(c)); }
+std::uint64_t VideoPlayback::OpenMemory(std::shared_ptr<const VideoMemorySource> source,
+                                      std::shared_ptr<const void> keeper) {
+    Command c;c.kind=CommandKind::Open;c.memoryOpen=true;c.memory=std::move(source);c.memoryKeeper=std::move(keeper);
+    return Submit(state_,std::move(c));
+}
 std::uint64_t VideoPlayback::Seek100ns(std::int64_t target) { Command c; c.kind = CommandKind::Seek; c.target = std::max<std::int64_t>(0, target); return Submit(state_, std::move(c)); }
 std::uint64_t VideoPlayback::JumpToEnd() { Command c; c.kind = CommandKind::End; return Submit(state_, std::move(c)); }
 void VideoPlayback::SetGpuAdapter(std::optional<LUID> adapter) {std::lock_guard lock(state_->mutex);state_->gpuAdapter=adapter;}
@@ -1192,12 +1419,21 @@ void VideoPlayback::SetPlaying(bool play) {
          !(state_->snapshot.state == VideoPlaybackState::Ended && state_->snapshot.activeRecording)) ||
         (state_->snapshot.state == VideoPlaybackState::Ended && !state_->snapshot.activeRecording) ||
         state_->pending.kind != CommandKind::None)) return;
+    if (!play && state_->playing && PauseAtFrameLocked(*state_, state_->snapshot.frame)) {
+        state_->changed.notify_one(); return;
+    }
     state_->playing = play; ClearAudio(*state_);
     if (play) { state_->restartAtCursor = true; state_->restartCursor100ns = state_->snapshot.frame->pts100ns;
         state_->clockStart = Clock::now(); state_->clockPts = state_->snapshot.frame->pts100ns; state_->snapshot.state = VideoPlaybackState::Playing; }
     else if (state_->snapshot.frame && (state_->snapshot.state == VideoPlaybackState::Playing || state_->snapshot.state == VideoPlaybackState::Waiting))
         state_->snapshot.state = VideoPlaybackState::Paused;
     state_->changed.notify_one();
+}
+bool VideoPlayback::PauseAtFrame(std::shared_ptr<const VideoPlaybackFrame> shown) {
+    std::lock_guard lock(state_->mutex);
+    if (!PauseAtFrameLocked(*state_, shown)) return false;
+    state_->changed.notify_one();
+    return true;
 }
 void VideoPlayback::SetMuted(bool muted) {
     std::lock_guard lock(state_->mutex);

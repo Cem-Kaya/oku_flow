@@ -55,8 +55,10 @@ Uncertain/math/handwritten text still obeys existing omission/validation rules.
 
 A private 1080p60 HEVC recording reproduced failed 3-, 7- and 23-second seeks:
 120 preroll reads finished in about 60 ms but had not reached the target frame.
-The player now permits up to 4096 reads under the same two-second request-age
-deadline, memory credit and generation-cancellation checks. Pre-target frames
+That repair permitted up to 4096 reads under a two-second request-age deadline.
+The later [audio/preroll repair](video_audio_preroll_repair.md) retains this read
+cap, memory credit and generation-cancellation checks but permits healthy
+progress within a sixty-second absolute cap. Pre-target frames
 do not allocate presentation copies. A new seek supersedes the old request;
 neither the UI nor a new seek waits to drain a frame queue. This removes an
 arbitrary short-GOP restriction without allowing unbounded work.

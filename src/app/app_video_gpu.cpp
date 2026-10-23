@@ -136,7 +136,7 @@ void OkuFlowApp::SelectedMediaGpuSceneProcessed(bool uctEnabled, uct::SharedDevi
 }
 
 bool OkuFlowApp::PresentSelectedMediaGpuFrame(const VideoPlaybackFrame& frame,
-                                              const VideoPlaybackFrame* neighbor, bool continuousPlayback) {
+                                              const VideoPlaybackFrame* /*neighbor*/, bool continuousPlayback) {
 #if !OKUFLOW_ENABLE_CUDA
     RequestMediaCpuFallback("This application build has no CUDA media output.");
     return false;
@@ -365,6 +365,8 @@ bool OkuFlowApp::PresentSelectedMediaGpuFrame(const VideoPlaybackFrame& frame,
         UpdateProcessingStatusLabel();
     }
     if (ultraClearText_) {
+        ApplyUltraClearTextDisplayColors(static_cast<int>(settings.displayColorTransform),
+                                        settings.displayColorLutGeneration);
         const bool suppressed = !mediaGpuScene_->UctCoordinatesReliable();
         if (mediaGpuAnalysisSuppressed_ && !suppressed) {
             // A completed/disabled neural presentation may restore exact OCR
@@ -380,30 +382,8 @@ bool OkuFlowApp::PresentSelectedMediaGpuFrame(const VideoPlaybackFrame& frame,
             mediaUctContinuousPlayback_ = continuousPlayback;
             return presented;
         }
-        if (mediaGpuNeighborAnalysis_ &&
-            (!neighbor || mediaGpuNeighborAnalysis_->frameSequence != neighbor->sampleId))
-            mediaGpuNeighborAnalysis_.reset();
-        if (!continuousPlayback && uctEnabled && !settings.enableStabilization && !settings.enableKeystone && neighbor && (neighbor->gpu || neighbor->bgra) &&
-            neighbor->sampleId != frame.sampleId && neighbor->width == frame.width &&
-            neighbor->height == frame.height && !mediaGpuNeighborAnalysis_ &&
-            now >= mediaGpuNeighborRetryAtMs_) {
-            // Corroboration has a separate bounded scene so an unshown neighbor
-            // can never overwrite the texture used by Save/observations.
-            if (!mediaGpuNeighborScene_)
-                mediaGpuNeighborScene_ = std::make_unique<MediaGpuScene>();
-            // Corroboration needs only independent pre-appearance analysis; it
-            // never presents an enhancement or starts a second neural producer.
-            auto neighborSettings = settings;
-            neighborSettings.enableMlSuperRes = false;
-            neighborSettings.enableTemporalSmoothing = false;
-            mediaGpuNeighborRetryAtMs_ = now + 80;
-            if (mediaGpuNeighborScene_->Prepare(presenter_->GetDevice(), width, height, cache.width(), cache.height()) ==
-                    MediaGpuScene::Status::Ready &&
-                mediaGpuNeighborScene_->Process(*neighbor, turns, neighborSettings, mediaDocumentEpoch_,
-                                                mediaSceneAppearanceRevision_,
-                                                true) == MediaGpuScene::Status::Ready)
-                mediaGpuNeighborAnalysis_ = mediaGpuNeighborScene_->TakeUctAnalysis();
-        }
+        // Paused recognition consumes only the exact displayed image.
+        mediaGpuNeighborAnalysis_.reset();
         if (mediaGpuAnalysis_) {
             if (continuousPlayback) {
                 UctAdvancingMediaScene scene;
@@ -417,6 +397,7 @@ bool OkuFlowApp::PresentSelectedMediaGpuFrame(const VideoPlaybackFrame& frame,
                 ultraClearText_->OnAdvancingMediaPresented(std::move(scene));
             } else {
                 UctImmutableScene scene;
+                scene.admission = uct::ImmutableAdmission::Standalone;
                 scene.geometry = context.geometry;
                 scene.sourceAuthority = mediaDocumentEpoch_;
                 scene.selected = {{}, frame.sampleId, frame.pts100ns / 10'000, mediaGpuAnalysis_};
@@ -424,9 +405,6 @@ bool OkuFlowApp::PresentSelectedMediaGpuFrame(const VideoPlaybackFrame& frame,
                 scene.viewportWidth = viewport.width;
                 scene.viewportHeight = viewport.height;
             scene.strokeWeight = settings.strokeWeight;
-                if (mediaGpuNeighborAnalysis_ && neighbor)
-                    scene.corroboration = UctImmutableFrame{
-                        {}, neighbor->sampleId, neighbor->pts100ns / 10'000, mediaGpuNeighborAnalysis_};
                 ultraClearText_->SetImmutableScene(std::move(scene));
             }
         } else if (continuousPlayback) {
@@ -445,6 +423,7 @@ bool OkuFlowApp::PresentSelectedMediaGpuFrame(const VideoPlaybackFrame& frame,
             // retries ended or the pool failed. Report the missing analysis
             // input as analysis health, never as a presentation failure.
             UctImmutableScene scene;
+            scene.admission = uct::ImmutableAdmission::Standalone;
             scene.geometry = context.geometry;
             scene.sourceAuthority = mediaDocumentEpoch_;
             scene.selected = {{}, frame.sampleId, frame.pts100ns / 10'000, {}};

@@ -18,8 +18,9 @@ first admission cannot erase the file selection.
 document id, the current native request generation, the last successfully
 presented owned frame, optional decoder corroboration, and recording-part
 receipts. A 16 ms timer runs only for a recording, selected file or pending
-operation. Ordinary camera view has no video timer, reader, rolling encoder,
-history ring or temporary capture archive.
+operation. Camera view now also owns the separate bounded silent RAM recap and
+its transport polling; its encoder is independent of the recording/file
+document and creates no temporary capture archive. See [live recap](live_ram_recap.md).
 
 `InitializeVideoPlayback` connects the native Open video/drop actions and the
 bottom `VideoTransport`. `ShutdownVideoPlayback` stops the timer and cancels

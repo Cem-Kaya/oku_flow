@@ -1,5 +1,22 @@
 # Selected-media UCT controller
 
+## Current app admission
+
+Paused video/manual Freeze selects `ImmutableAdmission::Standalone`. The exact
+held image supplies eligible OCR, painting and positioned text without another
+capture. A settled zoom submits one same-image detail job. Neighbour/cadence
+descriptors are discarded and cannot schedule work or change selection identity.
+Source/PTS/geometry, result authority, own references and ordinary candidate and
+protection checks still apply. Live and advancing-media temporal policy is
+unchanged. The pair-based descriptions below document the retained explicit
+`Corroborated` protocol and its historical repairs; see
+[standalone policy](uct_standalone_freeze.md).
+
+The optional [active regional executor](uct_active_regional_ocr.md) applies to
+advancing/live inputs only. It preserves the paused selected/real-neighbour
+detail pair and 32-attempt cap. Regional admission retains outside accepted
+proof and pending source tickets without renewing them.
+
 `UltraClearTextController` owns a selected-media mode independently of camera
 liveness. `SetImmutableScene(UctImmutableScene)` takes shared ownership of a
 complete processed-scene BGRA image, its real frame sequence and timestamp,
@@ -25,6 +42,23 @@ text and geometry, and a matching line or bounded word residual reference before
 replacement is eligible. Reused leases are refused before scheduling;
 different leases containing identical pixels do not provide corroboration.
 Failure or unavailable evidence ends that bounded attempt.
+
+On an explicit playback Pause, the application holds its exact last displayed
+native frame through `VideoPlayback::PauseAtFrame`. It clears a predecessor
+which could belong to the other side of a scene cut. The existing decoder
+worker may supply one actual following sample within the ordinary 250 ms,
+without advancing
+the held frame or playing audio. Late neighbour-only snapshots must still name
+that identical held lease; source or seek changes revoke it. At EOF or without
+independent evidence the original image remains visible.
+
+Paused saved files have one explicit sparse-cadence exception. A validated
+native sample duration can enlarge only the following-neighbour allowance to
+at most 2500 ms; unknown/invalid durations and earlier samples keep 250 ms.
+The private issuance lease binds duration, PTS, sample and source identity,
+and its opaque descriptor travels through selection, reference, line/word
+registration and model admission. Archive, RAM/recap and live/advancing
+policies do not change. See [initial paused video](uct_initial_paused_frame.md).
 
 Paused scrolling text has an additional word-local worker check. A neighbour
 within 250 ms may show a recognized word at a different position even though
@@ -65,6 +99,15 @@ same selection lease and identity also changes only its projection. Supplying
 new selected pixels, frame identity, geometry or source authority cancels old
 work immediately. Recognizer replacement fences the old backend and analyzes
 the retained selected image once with the replacement.
+
+The optional neighbour is ancillary evidence rather than selected-frame
+identity. Its first usable late arrival attaches without resetting the selected
+job, authority, deadline or existing artifact. Same-source refinements preserve
+already proved coverage when the complete source ticket and digest match;
+independently proved additions can extend coverage, while explicit semantic
+contradictions revoke affected proof. See the
+[continuity repair](uct_paused_continuity_repair.md) for the regression and
+diagnostic evidence boundaries.
 
 `ClearImmutableScene` revokes selected work and clears its reading text before
 returning to live mode. Live analysis waits for a truthful new camera
@@ -136,6 +179,11 @@ Presentation-fault cases cover both media modes, immediate pane/glyph/active
 accessibility revocation, blocked late readiness and recognition, view/toggle
 isolation, and exact successful receipt recovery without additional analysis.
 It requires no camera, desktop focus, external OCR runtime or media sample.
+Partial-page-change rows retain 24 unchanged lines while one real line fails
+its residual check. That invalidation now demands replacement recognition
+without waiting for the 1.5-second periodic refresh, while preserving stable
+probes, latest-only work, 350 ms media pacing and independent read/validation
+requirements. No new glyph is admitted from a probe alone.
 The zoom regression uses the cropped Fill transform, verifies its half-size
 source extent and checks the overlay's exact scene-to-view projection; Fit
 deliberately preserves the complete source and ignores magnification.
@@ -165,3 +213,14 @@ reproject without work. Invalid geometry, source/seek changes, backward PTS or
 inconsistent sequence identity revoke text immediately. Late old recognition
 cannot revive expired text. GPU input and gap tests use fake owned device images;
 the CUDA scene fixture separately verifies real device analysis ownership.
+
+## Settled paused navigation detail
+
+The immediate same-frame pan/zoom receipt remains projection-only. A supported
+backend may subsequently refine the retained selected/neighbour pair after
+300 ms of unchanged view. It uses one current visible region with at most
+eight-times detector enlargement and the existing 960-pixel long-edge cap.
+Only a materially higher detector scale triggers work; up to 32 attempted
+regions, including abandoned ones, are retained per selection without eviction.
+This preserves proved coverage while newly found glyphs still need the real
+neighbour. See [geometry/detail repair](uct_oriented_detail_repair.md).

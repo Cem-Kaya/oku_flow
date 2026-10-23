@@ -1,12 +1,316 @@
 # OkuFlow Code Reference
 
+## Source-supported text perspective
+
+`RefineWordSurface` optionally replaces an already fitted word rectangle with
+four source-supported corners. `src/common/uct_surface_geometry.hpp` shares
+bounded paper-component, robust four-side fitting and homography decisions
+between CPU and CUDA. It requires a closed enclosing surface and rescans actual
+ink in that plane; ambiguous/open/clipped evidence retains previous geometry.
+The CPU scheduler considers at most 128 candidates on its worker.
+`Refine` and `RefineContext` are generic over an execution team. The existing
+six-argument `Refine` uses `SerialTeam` and keeps the CPU evaluation order;
+CUDA's `SurfaceTeam` runs each request on one 128-thread block. Team
+combinations are limited to integer counts, minima/maxima whose ties keep the
+first serial occurrence, and exactly representable quarter-integer sums.
+`Scratch` (31,812 bytes) holds 32-bit cell states, two flood queues that keep
+the best component while later seeds flood, and the four side profiles.
+Teams whose `FilteredInk` is true (CUDA) use `FilteredInkExtremes`: an FP32
+pre-pass with conservative error bounds selects the only corners re-mapped in
+FP64. Their minima/maxima, first-occurrence ties, ink count and map failures
+are those of the all-FP64 rescan.
+
+`gpu::SurfaceRequest`, `SurfaceFit` and `SurfaceFrames` fuse the same refinement
+after existing ink fitting. Resident analysis uploads bounded descriptors and
+returns corners, with no image egress; its existing stream/ownership/quarantine
+contract remains. The renderer preserves each genuinely tapered word's own ink
+height, then shares its projective plan with exports and character bounds.
+See [surface perspective](uct_surface_perspective.md) for limits and fixtures.
+
+## Live RAM recap
+
+`common/video_memory_stream.hpp` / `src/common/video_memory_stream.cpp` provide
+`VideoMemoryStream` and immutable `VideoMemorySource`: bounded heap IStream/MF
+adapters, exact shared backing/cursor clones, actual Capacity accounting and
+successful-Finalize/mutable-cursor Seal fencing. Memory source identity is its
+opaque shared owner, never `VideoFileIdentity`. `VideoRecorder::StartMemory`
+uses silent H.264 and existing CPU/GPU input retirement/backpressure; its
+explicit output overload bypasses paths, disk probes, archives and audio.
+File Start/StartGpu retain their previous output contract.
+Native fixtures print exact sink statistics, selected transform metadata and
+the encoder's typed low-latency property on an admission failure.
+Their bounded TrackTimeScale header probe and complete compressed-frame census
+report the native container timebase and actual PTS differences separately
+from producer admission timestamps.
+Each native PTS must remain within one measured container tick plus integer
+conversion rounding, with exact 100-ns admissions and one-picture/capture
+inventory; interval/end checks also bound gap mapping and fragment drift.
+RAM CPU input reuses ConvertRecordingBgraToNv12 and, with hardware transforms
+disabled, disables automatic native converters, preventing implicit VideoProcessor frame-rate conversion from
+repeating pictures across capture holes. Its admission charge remains the
+existing conservative BGRA payload. QueueVideoSample retains actual successive
+PTS differences as durations, preserving fMP4 timing through fractional ticks
+and capture holes without adding acquisitions. File duration policy is unchanged.
+RAM GPU input already supplies NV12; it retains hardware-enabled sink
+attributes without the incompatible DISABLE_CONVERTERS flag.
+`VideoMemorySource::WithLifetime` privately wraps identical immutable backing
+for a counted ring lease; OpenReadStream and IStream/factory clones retain that
+same holder even after every public source/segment wrapper has been released.
+The mutable MF adapter preflights SetLength, SetCurrentPosition, signed Seek
+and Write/BeginWrite extents before forwarding: MF can otherwise cache an
+out-of-bounds cursor without invoking the bounded IStream immediately.
+
+`common/video_recap.hpp` / `src/common/video_recap.cpp` define `VideoRecapPolicy`,
+capture/PTS admissions, independently playable `VideoRecapSegment` receipts,
+`VideoRecapRing` and `RamVideoRecap`. ForSize admits the native 4K/1080p cadence
+policy. Ring Reset/Append/Acquire/Snapshot implement epoch-fenced whole-segment
+time/byte eviction with two counted consumer pins (including copied sources).
+SetWindow/SetDurationMinutes trim a bounded 1–5 minute preference without changing
+source identity or the compressed byte cap. Finalized Seal compacts actual
+retained capacity with at most twice the active segment limit transiently.
+The recap worker owns native Start/Add/Stop/Seal, records actual timing/losses,
+preserves capture delivery gaps and publishes only complete current-generation
+segments. WantsFrame/Submit bound input without encoder work or native joins
+on capture/UI. Reset/destruction revoke authority while native closures retire.
+Ring sequence validation tracks explicit prior-admission presence, allowing a
+real initial zero while rejecting duplicates, backward/wrapped IDs and sequence
+restart across segments in the same epoch. Reset revokes that prior authority.
+The worker copies `VideoRecorder::LastError` before writer release and latches
+failed finalization/seal/publication without starting a queued successor writer.
+Only a segment with zero actual encoder admissions is discarded as empty
+pressure work, without publication or completion credit. Snapshot's `failed`
+bit derives from permanent worker/latched error state, independently of its
+temporary native-busy diagnostic text.
+The private `RamVideoRecap::SetWriterSetupForTest` friend seam installs an
+observer before any input; the GPU fixture uses the real bounded byte stream's
+oversized SetLength refusal to verify failed native outcomes cannot publish and
+their reason survives. It has no production setting/environment selector.
+The pressure fixture uses that same observer to constrain only its first
+writer's real backlog budget, then requires a normal successor's native count,
+capture PTS and bounded bytes; it grants no fabricated encoder completion.
+
+`VideoPlayback::OpenMemory` adds an immutable-memory source to the existing
+single native reader, preserving issued frame leases, same-frame reticketing,
+seek generations, CPU/GPU fallback and real <=250 ms neighbouring samples.
+`VideoPlaybackSnapshot::memorySource` exposes opaque source identity separately
+from absent filesystem identity. Native source/read/decoded-frame lifetimes
+retain the segment's memory pin.
+
+`OkuFlowApp::VideoDocumentState::Kind::Recap` remains distinct from Camera,
+Recording and File. ObserveLiveRecapSource/ResetLiveRecap fence source/format/
+rotation transitions; SubmitLiveRecapOriginal consumes the clean producer.
+LiveRecapWantsFrame and LiveOriginalRetentionId share bounded Original leases
+with independent recording. OpenLiveRecapAt/PollLiveRecap translate absolute
+rolling capture time to segment-local native seeks and reuse the existing
+transport. ReturnVideoToCamera restores saved camera geometry/control intent.
+`ApplyLiveRecapSnapshot` applies the worker receipt and refuses a pending exact
+hold Resume that permanent failure/unsupported input cannot satisfy. The held
+scene/clock and Jump to live remain owned; transient native busy state keeps
+waiting. The test-only `PollLiveRecapForTest` applies metadata under the current
+epoch without opening a decoder or publishing a synthetic segment.
+RetainPresentedCameraScene and PresentFrozenMediaScene preserve the actual
+successful scene/view for warmup Freeze without reapplying effects or claiming
+composited pixels as an independently acquired UCT frame/neighbour.
+The retainer receives the committed receipt's explicit epoch/sequence and
+optional processed clock before latency metadata is consumed. One independent
+PresentedCameraCaptureStamp survives pixel-clone pressure and same-acquisition
+redraw/reallocation, without consulting newer ingress. A reset revokes it;
+unknown timing explicitly refuses manual recap Pause rather than waiting
+forever or inventing a resume point.
+An oversized or otherwise unretainable newer presentation revokes the previous
+scene immediately. Frozen presentation admission uses its own scene/view stamp;
+ongoing hidden camera processing does not force resampling identical held pixels.
+`FrozenSceneRecipe` / `ComposeFrozenCameraScene` are app-level model-free
+display composition: source/viewport byte admission, saved CPU/GPU sampling,
+focus-marker placement and quarter-turn/pan/zoom over the same owned pixels.
+Rapid recap seeks retain one newest deferred intent while cancellation retires
+the second reader pin. A duration shrink preserves the old selected lease's
+true out-of-window position; transport pins an amber/dashed expired-hold handle left and keeps its
+actual held-time accessibility text, rather than claiming it is the new first
+sample. Its existing Qt accessibility adapter omits ValueInterface while that
+position is outside the seek window; exposed numeric ranges always stay valid.
+
+`VideoTransport::Source::Recap`, State::Buffering, Snapshot::firstMs and
+canPauseLive represent actual rolling bounds and a pre-encoder exact Freeze.
+`VideoTransport::SetCollapsed` / `isCollapsed` own session-only visibility of
+the complete transport widget. `collapseButton()` is hosted by MainWindow in
+the quick-mode corner group, measured in both wide and compact carousel layouts.
+`ControlsChanged` updates host geometry only on source presence/collapse changes.
+The native chevron retains a 44-DIP target;
+collapse cancels an unfinished drag without a seek or playback command, parks
+hidden-control focus on the external chevron. All bar actions, metadata and
+reserved height disappear until expansion; viewport command readiness stays
+independent of widget visibility. The corner arrow disappears with no source.
+Snapshot state and global UI hide/show do not reset the collapsed choice.
+`Snapshot::diagnosticDetail` carries native failure metadata to the existing
+status label's tooltip/accessibility description without replacing its localized
+state. `SelectedVideoState` exposes recap error, source dimensions and frame rate
+alongside actual admitted/completed counts. Pending exact-hold Resume is reflected
+in the play/pause intent while the real buffered segment becomes readable.
+Rolling bounds refresh immediately on eviction; saved-file playback retains
+its focused inspection range and ordinary 1000 ms unfocused refresh contract.
+Native actions and drag-stable absolute timeline mapping remain shared with
+saved/recording media. See [full contract and limits](live_ram_recap.md).
+`MainWindow::{liveRecapMinutesCombo,setLiveRecapMinutes,setLiveRecapEstimate}`
+provide numeric stable-data duration choices and camera-dependent decimal-MB
+estimates; liveRecapMinutesChanged updates RamVideoRecap and settings-controller
+persistence. `PersistentSettings::liveRecapMinutes` defaults to five, loads/saves
+clamped 1–5, and is independent of image profiles, microphone and camera intent.
+
+`UltraClearTextOverlay::TimingTicket`, `UltraClearTextPanel::TimingTicket` and
+`UctScreenTextAccessibility::TimingTicket` return UI-thread diagnostic copies
+of the existing cached publication ticket. They do not record, publish, allocate
+or renew evidence. The pane-only fixture compares all key/revision/flag fields
+directly, so correct surface attribution can be checked even when the optional
+nonblocking trace reports contention loss. Negative-event assertions still
+require complete trace coverage; a lossy window is explicitly incomplete.
+`UltraClearTextOverlay::PaintedTimingRevision` copies the cached revision that
+actually reached paint; the fixture checks it independently of assigned tickets.
+Lossless trace assertions also require `acceptedAtSnapshot == count`; lossy
+output must serialize `eligible_for_complete_chain_latency:false`.
+
+## Supplemental regional UCT execution (2026-10-21)
+
+`RegionalOcrRequest` carries one immutable full-plan ticket, a steady full
+deadline and conservative cost estimate through the existing scheduler slot.
+The trailing `RecognitionScheduler::regionalOcr` flag enables planning and
+execution, defaults off and is ignored by probe-only workers. `State::Enqueue`
+protects queued full priority; `State::Run` rechecks current tickets, input hold
+identity, deadline/slack and pending full demand before `SetDetailFocus`.
+Only actual complete full outputs observe the planner. `RegionalPlanMatches`
+checks source/geometry/mapping/processing/authority/acquisition;
+`RegionalDetailFocus` chooses one current-focus plan region with <=480 source
+and detector edges. `DetailFocus::detectorLongEdge` defaults to 960 and flows
+through `DetectorInputSize`, `DetailRegion`, `PaddleDetectionSize` and both
+CPU/TensorRT adapters; `supplemental` prevents optional automatic-chain failover.
+
+`RecognitionResult::jobKind` and regional flags describe actual operation and
+fallback. `SchedulerStats` distinguishes attempts, actual full/regional/paused
+calls, priority refusals, failures, deadline overruns and worker maxima.
+`UltraClearTextController::{EnsureScheduler,HandleProbeOutcome,HandleResult,
+Invalidate}` implements `OKUFLOW_UCT_REGIONAL_OCR=1`, one idle-only region per
+full interval, nondecreasing 750 ms initial cost, unchanged full markers and
+optional failure/overrun latching. Existing worker-generation/source fences
+and paused selected/neighbour detail ownership remain authoritative.
+
+`OverlayModel::AdmitImpl` uses real processed coverage, retains independently
+complete crossing/outside lines with exact old references/clocks and all masks,
+and bounds regional unions. `kDetailCropEdgeMarginPx=8` is shared with
+`PaddleMergeRecognition`; ownership adds two input pixels of detector jitter
+slack and checks the retained detector union as well as fitted ink. These margins reject clipped
+candidates before agreement/pending updates; candidates intersecting retained
+lines are also ignored. No fresh probe is required to retain an unobserved line;
+if such an ignored candidate touches an otherwise owned line, the entire
+optional admission returns before changing accepted or pending evidence.
+freshness and independent validation remain unchanged. `PendingEvidence`
+is shared by pending words from the same original observation; partial results
+retain outside tickets without restamping or self-confirmation. Full reads
+replace covered pending observations. `uct_region_scheduler_tests`,
+`ultra_clear_text_tests` and `ultra_clear_text_controller_tests` maintain the
+model-free active scheduling/admission regressions. See
+[policy, constants and acceptance limits](uct_active_regional_ocr.md).
+
+Insufficient worker slack cancels the optional descriptor without inference;
+stale/unsupported tickets can still fall back to full when slack permits.
+Only actual regional durations update the controller's regional cost estimate.
+
+## Optional embedded selected-video adapter (2026-10-21)
+
+`src/common/video_ffmpeg_reader.{hpp,cpp}` defines private
+`detail::{FfmpegPlaybackRequested,CreateFfmpegVideoReader,ArmFfmpegVideoReader,
+FfmpegVideoReaderError}`. Without explicit SDK headers it compiles a native
+fallback stub. `Api`/`Library` load one private dynamic runtime identity with
+version/config/license checks. `FragmentedMp4` probes bounded held-stream boxes
+to refuse the measured fragmented-file PTS mismatch, refuses exhaustion of its
+top-level or child-box budget, and `Matrix` validates
+supported color matrices. `Track::{Open,Seek,Decode,Sample}` own one held
+AVIO/demuxer/decoder/packet/frame per track; `Read`, `SeekIo`, `Interrupt`,
+`DenyExternal` and `Canceled` fence file access and secondary I/O. `Reader`
+implements the synchronous IMFSourceReader subset and private
+`EmbeddedControl::{Arm,Failure}` COM interface. QueryInterface identifies
+system readers without RTTI. `Require`/`AvCheck` retain native/library failures.
+RAII retires contexts/conversions on the existing worker; code remains loaded
+for process lifetime.
+
+`CreateFfmpegVideoReader` uses the successfully opened video demuxer's stream
+inventory to decide whether an audio cursor is required. Failure of a known
+audio track cannot be mistaken for a genuinely silent source.
+
+`video_playback.cpp::ConfigureReader` accepts worker state and the exact
+request generation for cancellation and same-held-file fallback; it never
+adopts a successor generation while opening an older request.
+`ReadVideo`, `QueueAudio` and `SeekReader` arm the
+optional provider with generation/deadline. `Publish` fills snapshot
+`decoderBackend` independently of its reason; private `Reader::Reset` resets
+it. Existing `SealFrame`, pixel quota, PCM trimming/high-water, supersession,
+archive proof, GPU quarantine and publication own all selected-frame authority.
+Native CPU-fallback reason formatting is covered by the long-GOP regression.
+No new app/controller or OCR authority exists. See [contract](video_ffmpeg_playback.md).
+
+`cmake/FfmpegPlayback.cmake::okuflow_configure_ffmpeg_playback` explicitly adds
+optional headers/definitions, without downloading, import linking or deployment.
+`prepare_ffmpeg_playback.ps1` verifies pinned inputs/reused sources, builds private
+shared SDKs and records runtime/config/notices. `compare_video_backends.ps1`
+owns the global lease, finite child and evidence. `EmbeddedAdmissionRefusals`
+covers exhausted container probes and a failed cursor for known audio.
+`EmbeddedContract`,
+`EmbeddedMissingRuntime` and `CompareEmbedded` exercise actual backend/fallback,
+canceled I/O, issuance/retirement and same-source PTS; production PCM/4K/archive
+fixtures include continuity and embedded-specific backend assertions.
+
+## Optional UCT software-event timing (2026-10-21)
+
+`uct::timing::{Channel,Event,Flag,Key,Values,PublicationTicket,Record}` describe
+numeric-only software events and exact producer/source/acquisition/job/authority
+correlation. `Recorder::{TryRecord,CloseInto}` owns a fixed 4096-record buffer.
+Its private `ActiveAttempt` guard latches incomplete coverage when close overlaps
+an unresolved producer/drop and bounds the window by copied event timestamps;
+`Snapshot` and `ChainSummary` distinguish lost, incomplete, cancelled, faulted
+and mismatched-ticket chains. `Summarize` covers worker/controller phases only.
+`WriteJsonLines` emits a locale-stable bounded schema; `Enabled`,
+`SteadyNanoseconds`, `NewProducerId`, `RecordEvent`, `CloseForDiagnostics` and
+`FlushAtNormalTeardown` implement opt-in process lifetime, nonblocking recording
+and one uniquely created LocalAppData output. No pixels, OCR text or arbitrary
+strings enter records. `GpuBackend` describes recognizer status separately from
+resident `DeviceInput`. See [timing contract](uct_timing_trace.md).
+
+`uct::TimingKey` and `TraceTiming` adapt `SourceStamp` without mixing media PTS
+with steady nanoseconds. Recognition and probe schedulers expose
+`TimingProducerId` and record submit/dequeue/done/cancel/state/fault boundaries.
+Controller `NoteTimingAdmission` captures the actual selected result plus its
+corroborator relation; `UpdatePositionedTimingPublication` issues positioned
+revisions only when content changes. `UpdatePaneTimingPublication` owns a
+separate pane ticket and can share the revision for simultaneous changes.
+`UpdateReadingText` cannot reticket unchanged positioned content.
+`SetTimingTicket` on overlay, panel and screen-text owner copies that provenance.
+The overlay records assignment and the first real backing-store paint per
+revision; the pane records changed text; accessibility records scheduled and
+published snapshots, including coalescence. Reprojection and export cannot
+manufacture a new admission or first-content paint.
+
+`uct_timing_trace_contract` tests recorder bounds, contention, concurrency,
+closed-window accounting, metadata schema and chain classification.
+`uct_timing_controller_contract` tests actual scripted scheduler/UI/admission
+ticket correlation, and `uct_screen_text_timing_publication` tests immediate
+replacement, delayed/coalesced additions and first-paint provenance. These are
+desktop-free software contracts, not external UIA or photon timing acceptance.
+`uct_timing_pane_publication_contract` exercises the real controller's pane-only
+change and later pan, preventing a phantom content-paint sample. Its staged
+80-ms fake clock awaits exact probe-frame validation and actual recognition
+admission callbacks before advancing, so setup cannot expire otherwise current
+350-ms proof while worker/UI receipts remain queued.
+
 ## Accessible video and immutable UCT (2026-10-18, development)
 
 - `AccessibleVirtualChildren`, `MarkAccessibleVirtualChildHost` and
   `kAccessibleVirtualChildHostProperty` add virtual elements to `RenderWidget`'s
   normal accessibility tree. `UctScreenTextAccessibility::{SetEnabled,
   ContentChanged,RevokeAll,ProcessDueWork}` owns bounded per-line StaticText
-  elements, passive one/three-second semantic timing and immediate revocation.
+  elements, passive one/three-second timing for new lines and immediate
+  revocation. `Sync` replaces changed text under an existing line ID in the same
+  update, preserving unchanged interfaces and the cadence for unrelated additions.
+  `replacementDoesNotWaitBehindReadingHold` covers mixed replacement/addition
+  under an active reading hold at all three offscreen scales.
   `UctScreenTextSnapshot` and `UctScreenTextTiming` define its source/timing DTOs.
   `uct::OrderLinesForReading`, `ScreenToken`, `ScreenLine`, `ScreenTextLimits`
   and `OverlayModel::ScreenLines` project only eligible glyph text and omission
@@ -74,10 +378,21 @@
   Optional corroboration follows exact-target publication and a 50 ms quiet
   period, so immediate scrubs take priority. A reused native cursor repositions
   before corroboration/Resume; audible Resume also skips owned preroll copies.
+  `Worker` consumes held-frame rewind intent and `restartAtCursor` together
+  under the same state lock. End publication rechecks both flags, so a
+  same-generation Pause/Resume cannot strand the decoder at EOS or publish
+  Ended over a pending replay of an earlier issued frame.
   `VideoPlaybackState::Waiting` retains forward intent at a growing archive's
   verified tail; new complete fragments resume it without another user action.
   Archive `parserBoxAttempts` exposes bounded unsupported-generation work.
   No playback method finalizes a writer.
+  Native codec fixture `NativeAvcAac` fences its exact active-wait clock check
+  with a separate test-owned `RecordingArchive`. Its `appendVerifiedPrefix`
+  lambda copies only an identity/generation-validated `OpenReadStream` extent
+  through `Observe` (16 MiB total, 64 KiB scratch), requires identical parsed
+  track/configuration/sample/endpoint metadata, and explicitly appends verified
+  native suffixes. Stable mirror version/extents are prerequisites for exact
+  held PTS; delayed native output cannot invalidate that fixture precondition.
 - `VideoAudioOutput::{Configure,Push,Reset,Close,Snapshot}` provide one bounded
   WASAPI owner. `VideoAudioOutputSnapshot` reports device-consumed PTS rather
   than submitted PCM; generation changes flush obsolete sound. See
@@ -100,7 +415,8 @@
   before asynchronous atomic PNG writing. See [document lifecycle](video_document_lifecycle.md).
 - `PresentedOriginalCache::{Stage,Presented,Displayed,Reset}` keep at most the
   last successfully displayed Original and one pending successor within 96 MiB.
-  They share recorder leases without collecting unrecorded camera history.
+  They share Original leases with independent recorder/recap admission; the
+  separate compressed ring owns rolling camera history.
   `AdmitOriginalFrame` separates source admission from presentation.
   `CaptureLiveForMediaHold` uses an owned matching receipt;
   `D3D12Presenter::RequestReadback(GpuVideoFrame)` retains its resource/fence
@@ -159,20 +475,83 @@
   media. `MainWindow::videoTransport`, `openVideoButton`, `openVideoRequested`
   and `videoFileDropped` host it below the render surface. Drag mappings stay
   fixed until release; the slider supplies numeric milliseconds and human time
-  through its accessible value interface. See [transport UI](video_transport.md).
+  through its accessible value interface. Internal `TimelineSlider::SetEdge`
+  and `initStyleOption` draw the live recap/recording thumb and fill at the right
+  edge without changing numeric inspection or verified history. `RefreshTimeline`
+  restores ordinary target geometry for seeking/dragging and pins expired holds
+  left with warning styling; mouse press refreshes live bounds before hit testing.
+  Out-of-window recap time remains textual, without a numeric RangeValue.
+  `CommitSeek(positionMs, atRangeEnd)` routes a recap/recording right-end gesture
+  to the existing live command, including growth during a frozen drag; saved
+  video still seeks its endpoint normally.
+  See [transport UI](video_transport.md).
 - `TokenDisposition`, confidence and protected geometry preserve rejected OCR
   spans through Paddle decoding, `PrepareLines`, reading projection and paint.
   `RecognitionResult::sourcePixelDigest` is computed on the worker without row
-  padding. `OverlayModel::AdmitImmutable` requires distinct neighbouring frame
-  and pixel evidence before glyphs; a lone immutable result remains text-only.
+  padding. `OverlayModel::AdmitImmutable` admits eligible own-frame words in
+  `Standalone` mode. Its explicit `Corroborated` mode requires distinct
+  neighbouring frame/pixel evidence and leaves lone results text-only.
   `protectedSceneRects` keeps replacement plates away from uncertain source ink.
   See [uncertainty contracts](uct_uncertainty_repair.md).
 - `UctImmutableFrame` and `UctImmutableScene` carry owned source pixels and
   explicit media authority. `UltraClearTextController::{SetImmutableScene,
   UpdateImmutableView,ClearImmutableScene,HasImmutableScene}` share the existing
-  scheduler, submit at most a selected and optional corroborating pass, and use
+  scheduler, submit one selected pass in the app's standalone mode (or a selected
+  and optional neighbour pass for explicit corroborated callers), and use
   an independent job deadline. Unchanged completed stills schedule no periodic
   OCR/probes; view updates only reproject. See [immutable controller](uct_immutable_controller.md).
+  Initial native frame/PTS zero is valid without prior Play. The controller's
+  `initialPausedFrameZeroWaitsForReadyAndNeighbour` and
+  `initialPausedFrameZeroWithoutIndependentNeighbour` fixtures cover readiness,
+  late ancillary evidence and retained original glyphs in the explicit
+  corroborated protocol. New standalone rows require painting and positioned
+  character bounds without that evidence. `LongGopSeeking` checks actual
+  opening-frame/following-sample leases.
+  The fresh CPU gate passed these rows and native sparse playback. The actual
+  bridge-output controller replay retained two paint failures. Separate corrected
+  real capture with declared runtime inputs passed all 158 controller rows,
+  including four additive outside-window negative rows. Private clip CPU
+  provenance is separate from runtime acceptance. See
+  [initial paused source investigation](uct_initial_paused_frame.md).
+  `ImmutableCorroborationPolicy` in `common/immutable_corroboration.hpp` holds
+  opaque native issuance plus selected sample/PTS/duration. Its constructor is
+  private to `VideoPlayback` (and the narrow controller fixture friend).
+  `VideoPlayback::CorroborationPolicy` verifies its exact frame/control block
+  and sealed native metadata; default policy is returned for foreign, copied,
+  borrowed, stale, archive or memory frames. `ImmutableNeighbourWindow100ns`
+  retains 250 ms by default and clamps known saved-file duration to 2500 ms
+  for strictly following evidence only. `SelectedMediaCorroborationPolicy`
+  attaches it only to an actual selected File document. CPU/GPU scenes and
+  `SourceStamp::immutableCorroboration` carry the identical descriptor;
+  `ImmutableNeighbourAllowed` gates worker line/word and model corroboration.
+  Changing descriptor/metadata revokes selection and exact-input coverage.
+  `uct_controller_replay::Pair` and `Load` in the private test helper verify
+  absolute source image paths/SHA-256 and bounded captured recognition JSON.
+  `Rect`, `Quad` and `Output` preserve actual captured geometry, protection,
+  disposition and colors. `ImmutableScript`/`ImmutableRecognizer` can replay
+  those outputs by pixel digest, frame or bounded call index; the controller
+  fixture checks actual painted words, ScreenLines and Qt character bounds.
+  `SparseAviBytes` builds original raw AVI bytes; `InitialSparseSavedFileNeighbour`
+  and fixture-only `VideoMemoryStreamTestAccess::SealBytes` verify native saved
+  versus identical-byte memory-origin policy. The optional FILEPATH cache option
+  `OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF` initializes from its environment variable.
+  `tests/recap_components.cmake` bounds proof/image byte sizes, validates absolute
+  existing paths, declares the proof and both images as CTest `REQUIRED_FILES`,
+  and fixes the test's replay environment to that configuration. An empty option
+  selects synthetic mode. Original undeclared replay remains diagnostic evidence.
+  `NativePausedExternal` in `tests/video_playback_tests.cpp` is the opt-in
+  `--native-paused-external` zero/two-second native sparse-source fixture.
+  It clears the process-local embedded-backend request, creates a CPU player
+  without an adapter, calls OpenFile once and shares a 12-second deadline across
+  initial Paused selection and one actual following arrival. Its print helper
+  reports raw sample/PTS/duration/extent; assertions bind selected zero-frame
+  object/control block, decoder issuance, generation, file and track, requiring
+  actual native two-second duration and the genuine 2000-ms neighbour to satisfy
+  CorroborationPolicy. `OKUFLOW_TEST_VIDEO_PAUSED_FILE` defaults empty; only an
+  explicit absolute existing file registers `video_playback_native_sparse_0_2s`
+  with timeout 20, serial headless/codec labels and actual file plus helper/test
+  bytes as absolute REQUIRED_FILES. It uses the existing native codec opt-in;
+  it adds no inference, playback, seek, GPU or audio-endpoint work. Unrun.
 - `UctAdvancingMediaScene` and `OnAdvancingMediaPresented` bind successful
   playback receipts to real media PTS and independent wall-clock job deadlines.
   They pace residual probes at 80 ms and OCR at a 350 ms minimum/1,500 ms
@@ -353,6 +732,12 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   approximate, not exact glyph geometry. `gpu::{Normalize,Detect,RecognitionWindows,Rectify,
   Decode,Probe}` in `uct_kernels` implement device equivalents using
   `gpu::{Component,Quad,Token}` with finite-value checks and bounded outputs.
+- `gpu::ValidationIntegral` retains two launches: the private
+  `validation::integralRows` uses one 256-thread block per row with integer warp
+  prefix scans, eight shared warp offsets and a tile carry; `integralColumns`
+  is unchanged. Every luma/table value and zero border retain serial policy.
+  The resident `Prepare` path uses this table before references/matching.
+  See [GPU integral scope and evidence](uct_gpu_integral.md).
 - `CreateDefaultRecognizer` delegates to `CreateAutomaticRecognizer`:
   TensorRT, Paddle CPU, Windows. The candidate-vector overload supports exact
   fallback tests. Private `AutomaticRecognizer` retires unavailable/failing
@@ -360,6 +745,23 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   chain. A preparing GPU candidate is retained while CPU/Windows serves, then
   promoted between jobs. CPU device input is copied once per call across fallback.
   `CreateWindowsRecognizer` retains the original Windows.Media.Ocr adapter.
+- Private `CreateProductionTensorRtRecognizer` is used only for the app's normal
+  first GPU candidate. `runtime_precision::{Request,ReadApplicationRequest}`
+  snapshots `OKUFLOW_UCT_LOCAL_BF16_MANIFEST`; public `CreateTensorRtRecognizer`
+  never reads it. `Graph`, `Selection` and `Device` carry immutable selection
+  inputs. `Unsupported` gates the reviewed M/M N8 fixed1024 device identity.
+  `ParseManifest`/`LoadManifest`, `Hash`, `LocalAbsolute`, `Within`, `SamePath`,
+  `CanonicalWithin`, `ReadVerified`, `PlanPath` and `ReadPlan` enforce bounded,
+  role/source/hash/path-pinned cache-only artifacts. `PrecisionPlanKey` matches
+  the offline reviewed precision key. Only `ArtifactError` permits pre-inference
+  FP32 selection; CUDA/API/runtime failures retain ordinary retirement. `Network`
+  accepts an optional verified plan payload and validates FLOAT I/O plus exact
+  fixed1024/N8 profile. `State::precisionDetail` and `ActualStatus` report the
+  BF16 recognition graph/mixed arithmetic or actual FP32/fallback reason.
+  The same preparation worker loads detector/recognizer without creating another
+  candidate or altering supplemental/bridge behavior. `PaddleTests::localBf16*`
+  covers policy/key/refusal/read-only behavior without models or inference.
+  See [local precision selection](uct_local_bf16.md).
 - `CreatePaddleCpuRecognizer` uses `OpenPaddleCpuSession`/private
   `OnnxCpuSession`, runtime-loaded hash-pinned CPU ONNX Runtime, two intra-op
   threads and checked float tensor dimensions. `CreateTensorRtRecognizer`
@@ -2645,8 +3047,16 @@ Namespace `okuflow::processing`
   `smoothedProbeFallbackDownloadsOnlyTheCurrentProbe` guards the independent
   CPU probe path against an extra full-frame validation readback.
 - `CreateDefaultRecognizer()` (in `src/common/uct_default_recognizer.cpp`)
-  returns the Windows OCR adapter: grayscale, dark-background inversion and
-  the engine's maximum dimension, mapping boxes back to copy pixels.
+  returns the automatic backend chain. `CreateWindowsRecognizer()` constructs
+  its Windows adapter: grayscale, dark-background inversion and the engine's
+  maximum dimension. `windows_ocr::SourceWordQuad` in the private
+  `src/common/uct_windows_geometry.hpp` rotates native deskewed word corners
+  clockwise about the sampled image centre using `Result::textAngleDegrees`,
+  then restores the actual X/Y resize ratios. The adapter supplies that source
+  quad and its bounding rectangle before color, proof and immutable merging.
+  Null/zero angle preserves upright geometry; nonfinite geometry fails closed.
+  Windows OCR has no per-word confidence API: the default `1.0` is nominal,
+  not a measured score. Independent source/word proof remains required.
 
 ### `include/okuflow/common/uct_windows_ocr.hpp`
 `okuflow::uct::windows_ocr::Engine`
@@ -2655,7 +3065,9 @@ Namespace `okuflow::processing`
   an engine from profile languages or the first installed OCR language.
   `Recognize(...)` copies BGRA rows into a `SoftwareBitmap`, waits through its
   own completion handler, requests `Cancel()` on cancellation and still waits
-  (bounded) before returning.
+  (bounded) before returning. `Result::textAngleDegrees` preserves the optional
+  native clockwise angle: `OcrWord.BoundingRect` is in the deskewed coordinate
+  frame, not directly in the input image when this angle is nonzero.
 
 ## D3D12 Module
 
@@ -3090,10 +3502,28 @@ Namespace `okuflow`
 `okuflow::UltraClearTextOverlay`
 - Click-through, non-activating tool window over the render target that
   paints accepted scene-space words as glyph plates through the latest
-  `ViewTransform`. Measured colors are kept at â‰¥ 7:1 contrast, otherwise
-  black/white in scene polarity; weight follows Text Clarity stroke weight.
+  `ViewTransform`. Readable chromatic ink retains its hue; other ink uses
+  black/white scene polarity. Colored paper is preserved at a 3:1 solid-ink
+  floor; neutral/below-floor paper retains the 7:1 adjustment. Weight follows
+  Text Clarity stroke weight.
+- `DisplayColors` / `SetDisplayColors(mode, lut)` own the presented source,
+  inverted or 256-entry luma palette. `GlyphColors` caches that mapping after
+  readability normalization for upright/projective drawing, preservation checks
+  and snapshot export; it never changes measured word colors or admission.
+  `OkuFlowApp::ApplyUltraClearTextDisplayColors` installs it only from a
+  successful/cached presentation receipt, refusing a different requested LUT
+  generation. GPU neutral analysis is mapped once; pre-graded CPU media and
+  raw CPU camera restore `Source`. Palette mapping does not include adaptive
+  image statistics, and no post-mapping readability step overrides user colors.
   Paint is clipped away from floating panels, annotation chrome and the
   floating Assistant. `ProjectedWordRects()` exposes drawn geometry.
+- `eventFilter` tracks application activation and owner window blocking;
+  `UpdateVisibility` also checks owner enablement and the active modal widget.
+  The native overlay stays hidden during file pickers, nested modal dialogs,
+  and application deactivation, including late `SetWords` and geometry events.
+  Accepted words are retained; unblocking/reactivation restores the current
+  viewport placement without another OCR job. Hidden paints do not qualify as
+  current positioned accessibility geometry.
 - `CaptureSnapshot(transform, viewportSize)` records an independent vector
   `UctOverlaySnapshot` from eligible cached glyphs and plates at the capture's
   exact view transform. `ComputePaintPlan` shares clipping/protected-token and
@@ -4762,6 +5192,19 @@ flatten/glare combinations.
   `WrapPixels` gives a read-only QImage view with shared lifetime.
 - `PreparedWord`, `PreparedLine` and `PrepareLines` prepare scene boxes/reference
   patches on the recognition worker; the scheduler accepts owned shared pixels.
+- `IsHighRiskToken` permits ordinary letter/ASCII-digit mixtures and isolated
+  ASCII lookalikes, plus underscores and Windows path separators in file tokens
+  with a one-to-sixteen-letter ASCII extension. Empty/unsupported notation,
+  non-ASCII digits, modifier letters and symbols outside the punctuation set
+  remain rejected. It makes no spelling correction or confidence adjustment.
+  `OverlayModel::AdmitImpl`
+  retains current-validated geometry/identity through small exclusion-box
+  jitter; it unions exclusions and preserves the original reference and clocks.
+  Live/advancing detector omissions can also retain an existing shown object
+  validated at/after the OCR job, provided neither prepared observations
+  (including rejected spans) nor admitted replacements intersect it. This
+  preserves the exact identity, reference and deadline; OCR never renews proof
+  by omission. `ApplyChecks` still revokes genuinely changed regional pixels.
 - `LineReference`, `LineCheck`, `CheckLines`, `ProbeRequest`, `ProbeOutcome`,
   `ProbeWorkerStats` and `ProbeWorker` implement budgeted off-thread probe
   construction, similarity and residual matching with latest-only admission.
@@ -4872,6 +5315,10 @@ replies, testing convergence, permanent failure, exit and expiry without OBS.
 `UltraClearTextOverlay::RebuildGlyphLayout` caches ink metrics and a robust
 shared type size/baseline per accepted OCR line. `SceneWord::lineId` is carried
 from the model through the controller; unlabeled words remain independent.
+`layoutGroupId` overrides only the cached typography key, falling back to
+`lineId` for existing words. Regional additions can retain the old reading/UIA
+key while sharing type size and baseline only with their incoming OCR group.
+The geometry, proof and reading identities are unchanged by this layout key.
 `ProjectedGlyphs` exposes the same cached layout reprojected for diagnostics.
 Paint draws every original/replacement union plate before any sharp letters,
 so adjacent plates cannot erase previously drawn overhangs. The offscreen
@@ -5410,8 +5857,12 @@ ink before `PrepareLines`. Row runs isolate the dominant word body; detached
 marks are retained for matching dotted/accented tokens. Low-contrast/tiny or
 ambiguous multi-band fits retain their detector box. Native Windows OCR boxes
 are unmarked. Overlay `ReadableColors` preserves source background and polarity,
-snaps neutral ink to black/white (readable chromatic ink keeps its hue),
-and binary-searches only the minimum background adjustment still needed for 7:1.
+snaps neutral/low-chroma ink to black/white (readable chromatic ink with an RGB
+channel spread of at least 64 keeps its hue),
+and preserves clearly colored paper (RGB spread >= 64) when solid same-polarity
+ink reaches a 3:1 source-color floor. Otherwise it binary-searches only the
+minimum background adjustment still needed for 7:1. The floor preserves colored
+chat bubbles; it is not a projected-font-size accessibility certification.
 Both operations occur outside the pan/zoom paint path.
 
 `UltraClearTextController::SetEnabled` retries terminal initialization on an
@@ -5548,6 +5999,10 @@ eight-entry reuse, exact copy leases and worker-only native import retirement.
 
 `VideoTransport::IsActionReady`, `SetFocusReturnTarget` and its focus/readiness
 helpers preserve semantic focus while a transiently unavailable action is inert.
+`IsCommandReady` keeps source/busy/availability gates separate from collapsed
+chrome. MainWindow viewport Space uses command readiness; `ActionShown` and Tab
+targets continue to describe visible controls only. Unavailable recap state
+announcements include the existing native diagnostic reason.
 `SeekBaseline` and `CommitSeek` use current/pending document time for relative
 keys, wheel and accessible increments, independently of the frozen inspection
 thumb. `AnnounceSettledState` coalesces only settled states and their current time.
@@ -5884,8 +6339,23 @@ provenance to CTC decoding; cut-edge fragments cannot become complete words.
 `PaddleMergeRecognition` maps bounds/search/protected rectangles to full-scene
 coordinates, reconciles duplicates and retains stronger evidence. GPU images
 remain worker-owned strided subviews; detector profiles/models are unchanged.
-`VideoPlayback::kSeekSampleLimit` is now a 4096-read malformed-stream guard under
-its existing two-second request-age deadline and per-read generation checks.
+Row association now compares a nearby individual word's type size, vertical
+position and gap; preferred rows must qualify too. A contained literal
+prefix/suffix fragment can overlap at 65% (ordinary duplicates retain 70%),
+with the original confidence/candidate precedence and 1024-line cap. See
+[coverage and stable placement](uct_coverage_stability_repair.md).
+`VideoPlayback::kSeekSampleLimit` is a 4096-read malformed-stream guard.
+The private `detail::VideoPlaybackSeekBudget::{Deadline,Expired,Observe}`
+maintains a two-second no-progress window under an absolute sixty-second
+request cap. Only strictly increasing decoded video PTS renews it; late,
+absent, repeated or backward samples cannot. Open/seek and audio-aligned Resume
+use the same guard and per-read generation checks. `MarkNativeOperation`
+refreshes watchdog timing on real progress without publishing a frame.
+`Reader::resumeClockPending` rebases host playback after successful preroll and
+invalidates the old audio clock. `SeekReader` resets this state and PCM floors;
+`QueueAudio` keeps `audioEnd100ns` as a handoff-independent high-water, so
+`TakeAudio` cannot trigger oversupply while video waits. Output hard caps stay
+unchanged. See [video/audio repair](video_audio_preroll_repair.md).
 
 `RecordingArchive::State::provenDurationHighWater` advances only with parsed,
 producer-fenced fragment proof. `Finalized` restores that monotonic mapping
@@ -5910,7 +6380,12 @@ Production uses Windows OCR while TensorRT prepares, deferring configured CPU
 sessions until necessary. A complete bridge result can set `backendPreparing`
 to request preferred-backend refinement without bypassing evidence admission.
 `Libraries::PrepareBuilder` lazily loads compilation-only TensorRT resources;
-`TensorRtRecognizer` groups eight batch-one submissions per worker stream wait.
+`TensorRtRecognizer` groups eight batch-one submissions per worker completion
+event (or one wider neural batch). Private `State::GroupEvent` and two bounded
+pinned count/quad/token slots permit one same-size/same-canvas group of look-ahead
+while the host merges the preceding group. `RecognizeDevice` drains issued
+look-ahead before cancelled input release; shape/partial transitions stay serial.
+See [the measured candidate and acceptance limits](uct_recognition_lookahead.md).
 
 `UltraClearTextController::ScheduleImmutableRetry` retries unsuccessful selected
 or neighbour work under the same ticket with bounded timers. New geometry revokes
@@ -6021,6 +6496,33 @@ leases and the compact regions/quads already returned by detection. Its private
 source/frame/processing/history identity and detector hash. Replay uploads only
 compact descriptors and uses existing group completion waits. No automatic
 backend constructs it, and it cannot cache/reuse text or authorize admission.
+The private `detail::FrozenUploadRetirement` (`src/common/uct_frozen_upload.hpp`)
+tracks a successfully queued descriptor H2D until `Completed()` follows the
+existing successful group wait. `Cancel()` transfers the exact entire State
+through `RetireState`/`AsyncCleanup` while the upload is pending: its owned input
+lease, pinned descriptor/token storage and engines survive until completion or
+the existing failed-cleanup quarantine. The caller retains State until the
+retirement handoff succeeds. A zero-crop/no-upload region or cancellation after
+the completed first group releases only `inFlight`, keeping healthy engines.
+Later regions re-arm the guard only after their own successful descriptor upload.
+The standalone headless `uct_frozen_upload_contract` exercises that actual
+ownership decision with a gated native-completion substitute, covering all
+three lifetimes, subsequent-job isolation and failed handoff. It executes no
+CUDA/TensorRT/cache/model operations and does not certify real driver timing.
+`detail::RetireOwnedState` is the shared final, nonthrowing retirement policy
+used by `TensorRtRecognizer::Retire()` and `Preparation::~Preparation()`.
+It keeps the reusable State owner until `RetireState` accepts an actual async
+cleanup receipt. If allocation/handoff throws or refuses ownership, it assigns
+the existing owner to State's pre-existing `retirementQuarantine` shared pointer
+before clearing reusable ownership. That noexcept shared-pointer copy allocates
+no new control block and retains the complete State/input/pinned-storage closure
+until process exit, matching `AsyncCleanup`'s unknown-completion failure policy.
+No receipt is fabricated for self-quarantine, and observer exceptions remain
+contained. `RecognizeDevice` seals this retirement decision before diagnostic
+error-string formatting, which may also fail under allocation pressure.
+The headless fixture covers cancellation handoff failure followed by final
+allocation failure or refusal, plus successful gated final release through
+this exact helper; the two final-retirement call sites use the same policy.
 `Selection::frozenCrops` in `uct_resident_diagnostic.hpp` holds separate bounded
 per-source pools and recreates only metering decorators; every timed frozen job
 asserts zero detector calls. Original complete-path timing remains the default.
@@ -6057,7 +6559,7 @@ hard-clamped `maxWordUtf16Units`/`maxTotalUtf16Units` reject malformed or oversi
 metadata before content processing or evidence-clock changes. These observer
 limits never truncate authoritative OCR.
 
-`RecognitionScheduler`'s optional trailing `shadowPlanner` constructor flag
+`RecognitionScheduler`'s optional `shadowPlanner` constructor flag
 defaults false and is ignored for probe-only workers. Its existing worker owns
 one planner. Complete current jobs are observed after ordinary OCR/preparation;
 `RecognitionResult::shadowPlan`, `shadowPlannerMs` and `shadowPlannerError` carry
@@ -6069,8 +6571,8 @@ observer exception retires the observer while preserving full recognition.
 without submitting work or renewing evidence. The explicit
 `FailNextShadowObservationForTest` seam covers observer failure isolation.
 
-The controller enables observation only for
-`OKUFLOW_UCT_SHADOW_PLANNER=1`. View updates supply the normalized visible region
+The controller enables observation for `OKUFLOW_UCT_SHADOW_PLANNER=1` or
+active `OKUFLOW_UCT_REGIONAL_OCR=1`. View updates supply the normalized visible region
 as a priority hint; glyph/reading/UIA paths never consume shadow plans.
 `uct_region_planner_tests` covers metadata policy, and
 `uct_region_scheduler_tests` covers the real scheduler boundary, opt-out, focus,
@@ -6090,3 +6592,550 @@ distinct acquisition tickets; `RunScenario` times only `Observe`, while
 shifted, repeated-label, continual-churn and overlapping scenarios make no OCR
 latency or accuracy claim. `--run` is required; output is bounded JSON and no
 ordinary CTest case runs the benchmark.
+
+### Exact paused-source UCT continuity (2026-10-21)
+
+`VideoPlaybackFrame::decoderLease` is an opaque `VideoPlaybackFrameLease`
+containing weak player/object ownership and immutable file, request, archive
+and track provenance. `SealFrame` attaches it to each real native decode or
+same-pixel seek reticket; `IssuedFrame` requires the identical shared ownership
+and object as well as current document provenance. `FollowingFrame` also
+requires a distinct sample, matching geometry and a later PTS within the ordinary
+250 ms or the sealed native saved-file duration window (at most 2500 ms).
+`VideoPlayback::PauseAtFrame` / `PauseAtFrameLocked` retain that exact displayed
+frame, select the nearest already decoded future lease or request one bounded
+read on the existing worker, and clear audio without a Pause seek. The private
+`repositionOnResume` flag preserves decoder realignment when display lags;
+`neighborMayReposition` authorizes deferred seek work only for an explicit
+Open/Seek. The application clears its predecessor on Pause and adopts a later
+neighbour-only snapshot only if its selected pointer still equals the hold and
+the independent sample's PTS meets that same sealed following window. Optional preparation
+stops before native reads when queued future images already exceed that window
+or the ready queue is full. Resume consumes rewound-cursor intent before the
+EOS/empty branch, preserving the real final PTS; live-tail Waiting publication
+also requires playback to remain active under the mutex.
+
+`CorroborationInputValid` validates an optional independent neighbouring input
+before it consumes the immutable controller's bounded evidence slot.
+`UltraClearTextController::SetImmutableScene` identifies the selected acquisition
+independently of that ancillary descriptor: its first usable late arrival does
+not cancel the selected job, reset its deadline/generation or clear the model.
+`HandleImmutableResult` preserves refused refinements while allowing an explicit
+`kContentMoved` contradiction to revoke old proof without rollback.
+
+`HasProvenImmutableArtifact` checks registered glyph proof against the current
+owned selected input, geometry generation, frame and real PTS. It grants no
+analysis/admission authority. `StopImmutableRefinement` exhausts optional work,
+cancels scheduler authority and clears pending handles while retaining the
+exact old model and its clocks. This presentation-only exception applies to
+terminal refinement errors; source/seek/settings changes and unsuccessful
+presentation still revoke or hide the artifact. Reading-only candidates do
+not qualify. The backend panel keeps the actual recognizer status.
+
+`RecognitionScheduler::State::Run` selects preparation from the device's
+resident-analysis capability independently of whether OCR itself ran on CPU.
+A temporary Windows bridge therefore uses the same resident reference/color
+and GPU-tree digest protocol as the later GPU result. It retains only the CPU
+OCR backend's explicit readback; resident errors cannot trigger CPU analysis.
+
+`OverlayModel::AdmitImmutable` compares complete selected-source provenance,
+authority and full digest before retaining earlier same-frame coverage.
+`MergeImmutableCoverage` keeps old proved word identities/geometry/reference/
+validation clocks and adds only independently proved new glyphs. The union caps
+are 1024 lines, 8192 word slots and 32768 reading tokens/protected rectangles;
+retired slots count toward the bound. A fixed 64-row spatial index limits
+ordinary matching to nearby rows; a word lying in one row reuses that row's
+already-ordered index list instead of allocating a deduplication set and
+sorting it again for every incoming word. Contradictory independently proved overlap
+falls back to original ink, and source/seek changes cannot inherit old proof.
+`ApplyImmutableConflictBlocks` applies persistent word-local conflict rectangles
+through the same bounded index, including when no old glyph survives. The 8192
+rectangle cap fails closed on saturation. Only new complete selected-source
+authority/digest or `Reset` clears these blocks; repeated refinements cannot
+resurrect disputed text. Independently proved matching words may refresh only
+their stabilized colors without renewing IDs, slots, references, geometry or
+validation clocks.
+
+`MeasureLineColors` and the CUDA descriptor kernel share private integer
+`color_policy::{Rgb,BodySampleStep,Median,Compatible,Endpoint,AdjacentBackground,Background}` decisions. Three
+body passes find robust ink/paper medians and the ink's opaque quartile;
+`BodySampleStep` selects every pixel for bodies up to 4096 pixels, retaining
+stride two above that budget to avoid aliasing single-pixel stems locally;
+four bounded side strips require RGB agreement with local body clusters and
+in-box corner support before exterior color may override polarity. Scratch is
+fixed (about 8.3 KiB CPU stack and 10.2 KiB CUDA shared memory per block), with
+no per-word allocation or image download. `LocalColorFixture`,
+`LocalColorFixtures` and `ColorDistance` supply shared controlled surfaces and
+tiny/clipped bounds to CPU and exact CUDA descriptor tests. These remain solid
+neutral-source colors, separate from display grading and renderer contrast/color policy.
+All four immediately adjacent one-pixel sides can establish a compatible local
+surface without requiring paper in glyph-filled corners; that branch skips the
+farther ring. Missing or mixed adjacent sides retain the conservative fallback.
+
+`RefineWordInkBounds` and CUDA `validation::ink` retain eight-connected AA
+components with a midpoint-strength core inside the original detector, plus
+the existing bounded detached-mark allowance. The weak mask threshold is halfway
+from midpoint toward paper. Connected clipped strokes survive; disconnected
+padding ink and unanchored opposite-edge rules do not enter the row fit.
+An anchored opposite-edge component preserves detector geometry. Upright
+fitting also preserves the complete detector for substantial weak-only
+in-detector components rather than cropping a lighter letter. Existing 35%
+upright shrink, contrast/sample/row-band and downstream seven-pixel admission
+guards remain. CPU's exact queue and CUDA's fixed shared mask/labels use at most
+32768 cells, 8192 columns and 4096 rows; CUDA stops after 64 scans and returns
+detector geometry on incomplete propagation. No per-word device allocation or
+host image transfer is added; oriented filtering is unchanged.
+`uct_small_ink_test::{Fixture,Word,Fixtures,Prepare,Check,Run}` and
+`uct_book_crop_test::{Image,kPackedRgbSha256}` provide exact source and controlled
+phase/AA/mark/rule/noise/clipped-stroke/fallback checks through CPU and guarded
+resident schedulers. Execution evidence remains separate from model accuracy,
+native UI and release acceptance.
+
+`HandleProbe` records noncomposite residual invalidation in
+`probeInvalidatedSinceSubmit_`; it requests replacement OCR even while surviving
+lines cover the viewport. Successful submission or authority invalidation clears
+this demand. Stable-probe checks, 80 ms probe cadence, 350 ms advancing-media
+pacing, held-acquisition exclusion and latest-only pool ownership remain intact.
+
+`AcceptedLine::readingWordIndices` is optional. Empty retains the sequential
+token/word contract. Otherwise each reading token explicitly names its stable
+word slot, with -1 for omissions, so an immutable refinement can append newly
+proved words without renumbering old UIA identities. `ScreenLines` validates
+that mapping and exposes only eligible named glyphs; `AcceptedWordCount` counts
+active named slots rather than retired duplicate reading-only slots.
+
+`AcceptedWord::layoutGroupId`, `uct::SceneWord::layoutGroupId` and the overlay's
+matching trailing field decouple typography from reading ownership. Zero uses
+the owning `lineId`. An independently proved word appended to an older reading
+line keeps its incoming nonzero group, or its incoming candidate line ID. Old
+words keep their group, ID/index, source geometry, references and clocks.
+`UltraClearTextController::RefreshOverlay` forwards and compares this field;
+both paused-proof overlay conversions also retain it. `RebuildGlyphLayout`
+uses `layoutGroupId` when nonzero and otherwise falls back to `lineId`.
+
+`MergeImmutableCoverage` indexes ordinary uncertainty extents alongside line
+bounds. Each independently proved incoming word that is admitted or matches a
+retained glyph carves its footprint from nearby retained uncertainty, regardless
+of reading-line ownership. Residual rectangles preserve uncovered punctuation;
+the shared 32768-rectangle cap refuses an overflowing cut without changing that
+line's protection. An exact-text duplicate carves the retained displayed word's
+geometry, never the incoming detector's jittered box. `AcceptedLine` retains
+`nonCarvableSceneRects` as a subset of its ordinary masks for semantic-risk and
+invalid-geometry spans; an intersecting cut is refused without changing any
+mask. The subset cannot outgrow the capped original protection records.
+An otherwise ordinary multiword prose token may still be split into separately
+proved word tokens; this does not admit the grouped token or relax pixel proof.
+Persistent `immutableConflictRects_` never enter this carving path.
+`SceneWords` adds hidden-line fallback bounds only for eligible glyphs:
+reading-only words already have explicit masks, and retired slots must not
+restore their former full boxes over a newly proved boundary word.
+
+The explicit `uct_paused_video_test::Run` / `optionalPausedVideoProof` diagnostic
+uses existing pinned M/M N8 plans and an inference-only SDK, actual owned CUDA
+inputs, production worker corroboration and immutable admission. It records
+per-word proof alongside raw candidate output, verifies zero image egress in
+GPU-only mode and unchanged cached-plan bytes, and waits for exact TensorRT
+State retirement. Its explicit `CpuBridgeThenResident` diagnostic wrapper uses
+two real Windows OCR calls before real device recognition, checks the identical
+canonical fingerprint, and records old-word retention/revocation. That bridge
+mode counts exactly two explicit CPU OCR image readbacks. Per-word records
+require exact text and selected geometry rather than overlap matching.
+The direct `optionalDenseImage` diagnostic also waits for that receipt after
+recognizer destruction, including assertion exits. See
+`uct_paused_continuity_repair.md` for selectors, the 60 FPS source-specific frame
+mapping and the distinction from decoder/native-display acceptance.
+## Opt-in recognizer width policy
+
+`src/common/uct_recognizer_width.hpp` supplies bounded 128/256/512/1024
+canvas selection, contiguous ordered-group maxima and exact profile extent
+validation. `gpu::RecognitionGroupWidths` initializes the complete bounded
+metadata array without sorting or transferring pixels. TensorRT `Network`
+checks dynamic-width profile identity and actual output extents; `State`
+owns device/pinned group widths through the existing stream waits. Explicit
+width preparation is separate from cache-only inference and retains the
+frozen-upload / `RetireOwnedState` ownership contracts.
+`TensorRtProfile` records width policy, canvas counts and useful padding.
+The five width fixtures and resident selector are described in
+[narrower recognition inputs](uct_recognizer_width.md); defaults remain fixed.
+
+### UCT four-corner geometry and paused visible detail (2026-10-21)
+
+`TextQuad::{FromRect,Bounds,Center,Translated}` and `QuadWidth`, `QuadHeight`,
+`QuadAngle`, `QuadIsRotated`, `QuadArea`, `QuadIntersectionArea`,
+`ViewQuadToScene` and `SceneQuadToView` retain reading-order corners and exact
+normalized scene/view mappings. Invalid/nonconvex/nonfinite shapes have no
+intersection authority. `RecognizedWord::{quadPx,inkSearchQuadPx,inkFitted}`,
+`PreparedWord::sceneQuad` and the accepted/scene word quad fields carry fitted
+geometry through model retention, replacement and projection.
+`QuadIsRotated` also retains sub-two-degree geometry when any edge's transverse
+excursion exceeds half a source pixel, so wide words do not lose several pixels
+of tilt at an angle cutoff. `PreparedWord::registrationSceneQuad` separately
+maps the original neighbour-bounded `RecognizedWord::inkSearchQuadPx` into scene
+coordinates. `MatchImmutableWords` tries that frame only for words without a
+successful fitted-frame proof, retaining the same token/identity, intrinsic-size,
+NCC, visibility and two-probe-pixel checks. Its additional reference work is
+bounded by one 64-by-12 patch per remaining word; display and protection geometry
+are unchanged.
+`FitOrientedWordInk` operates in the detected local frame. The CUDA
+`gpu::OrientedInk`/`OrientedFit` descriptors and `OrientedInkBounds` preserve
+the corresponding fit without downloading image pixels.
+`FinalizeRecognizedGeometry` rejects invalid geometry and reconciles fitted
+same-ink duplicates while retaining adjacent identical tokens.
+
+`ReferencePatch::sceneQuad` optionally describes rectified sampling.
+`PlanQuadReference` creates only bounded sample geometry; its result is not a
+valid proof until CPU `BuildQuadReferencePatch` or resident
+`ResidentProbe::QuadReferences` captures and normalizes the samples.
+`gpu::Grid` retains its rectangle fields and adds `crossX/crossY/warpX/warpY`
+for bilinear row/column cross terms. CPU `ProjectPatch` and resident `Project`
+use the same cell centres and isotropic box extents. `Probe::CaptureReferences`
+shares the existing owner-retaining reference allocation/upload/completion
+path for rectangle and quad requests. Immutable `MatchImmutableWords` compares
+intrinsic source/destination edges and retains selected samples while replacing
+only their destination mapping. The existing strict proof and cancellation
+rules remain; no OCR string match alone confirms a glyph.
+
+`DetailFocus`, `kMaximumDetailMagnification`, `DetectorInputSize`,
+`DetailMagnification`, `DetailRegion` and `EstablishedDetectorScale` define
+bounded same-image visible detail. Paddle's `PaddleDetectionSize`,
+`PaddleDetailRegion`, `PaddleDetailMagnification` and
+`PaddleRecognitionRegions` share that policy in CPU/TensorRT.
+The shared maximum and `UctTiming::immutableDetailMagnification` default are
+8x, retaining a 960-pixel detector long edge. `DetailRegion` adds source context
+to `ceil(edge/magnification)` (120 pixels at 960/8), clamps to image bounds,
+and `DetectorInputSize` floors enlarged axes to 32-pixel alignment with the
+existing 32-pixel short-axis minimum. Active regional 704/480 stays separate.
+`Recognizer::SetDetailFocus` is call-scoped by the scheduler; all CPU/device
+`Submit` overloads optionally carry it, and unrequested backend region claims
+are discarded. Detail output coordinates remain full-scene coordinates.
+
+`UltraClearTextController::{ScheduleImmutableDetail,ImmutableDetailFocus,
+SubmitImmutableDetailIfUseful,FinishImmutableDetail}` use a single-shot settle
+timer and a bounded non-evicting attempt list. Selected/neighbour jobs share
+one focus but distinct acquisition identities. Completion/failure schedules
+only the latest view; authority invalidation clears timer/focus/coverage.
+A settle deadline that expired while presentation was latched failed or the
+backend was still preparing is re-asked once by the recovery event itself
+(`OnMediaPresentationSucceeded` only on an actual failure-to-success
+transition, `HandleBackendStatus` only on the transition into ready);
+ordinary receipts never restart the settle timer, and no polling is added.
+`UctTiming::{immutableDetailSettleMs,immutableDetailMagnification}` and the
+controller's detail state do not renew media timestamps or manufacture evidence.
+
+`UltraClearTextOverlay::SceneWord::sceneQuad` and `SceneGlyph`'s oriented
+ratios retain shared line size/baseline. `PlanOriented` maps glyphs and plates
+projectively into four projected corners. `ResolveOverlaps` runs on content
+changes, distinguishes duplicate observations from conflicting strings, and
+keeps the rectangle fast path. `PlannedWord` stores fixed-size polygons and
+`glyphToView`; live paint, snapshot paint and actual character geometry use the
+same plan. `ComputePaintPlan` preserves exact polygon protection for oriented
+words and caps protection closure at eight passes before keeping original ink.
+`PixelCoverage` snaps projected rectangles and polygon vertices to the same
+half-open pixel-centre grid. `ProtectedRegion` rounds original masks outward
+when either axis contains no centre. Explicitly carved masks use that fallback
+only when both axes lack centres. Fractional subtraction strips therefore cannot
+acquire a false shared row/column with the proved word and start a protection
+cascade over its neighbour, while original thin punctuation remains protected.
+See [geometry/detail repair](uct_oriented_detail_repair.md) for acceptance limits.
+
+`uct_tilted_paint_test::{CapturedWord,ButtonRow,Quad,CapturedProtectionBaseline}`
+replays factual model-to-painter metadata from retained menu19/menu25 proofs.
+The offscreen `capturedTiltedMenuProtectionBaseline` rows distinguish an
+independently proved but protected Hand from the drawn 43-pixel Hand, preserve
+all captured rejected-source mask pixels in snapshot/live software paint, and isolate
+the neighbouring-mask cause with a separate diagnostic control. They neither
+run OCR nor manufacture reference/proof flags. Source/report hashes and limits
+are recorded in [tilted repaint diagnosis](uct_tilted_paint_gaps.md).
+
+## Optional regional GPU execution proof
+
+`RegionalDetailFocus` keeps source context at most 480 pixels and supplies the
+existing engine a 704-pixel detector long edge, nominal magnification 22/15.
+Its helper-local `nextafter(704.0/480.0,+infinity)` corrects a single-ULP
+reciprocal error that otherwise asks `DetailRegion` for 481 source pixels.
+Source dimensions are checked before narrowing, and desired dimensions and
+positions are bounded as doubles before integer conversion. Common detector
+rounding, 32-pixel short-axis minimum, eight-pixel backend source-edge exclusion
+and ten-pixel conservative admission are unchanged. Paused detail separately
+permits 960/8x. This represents
+roughly 720 pixels on a crop edge, not a 1280×720 profile.
+
+`regionalRealizedInputDimensions` checks the helper descriptor through the
+backend's `DetailRegion` pass and `DetectorInputSize`, plus real bounded image
+crop/resize fixtures. It covers normal/wide/tall/square, alignment, borders,
+small and largest permitted source dimensions, tiny 32-pixel minimum axes,
+whole-source refusal and finite extreme metadata. `regionalMalformedInputsAreRefused`
+covers zero/oversized/unsigned-extreme sources and malformed rectangles.
+`ActiveRecognizer` records the actual fixture crop/resize sizes for the real
+scheduler path; controller pressure tests check 704 metadata and source caps.
+`regionalDetectorBudgetKeepsPausedDefaults` retains full 960×544 and explicit
+six-times 960×576 inputs, and checks the new eight-times 120×72-to-960×576 path.
+`pausedDetailGeometry` checks finite/nonfinite clamps, ceil/context/alignment,
+portrait/border/small-source cases and the short-axis minimum. Paddle's
+`pausedDetailNormalization` checks actual CPU tensor contents at 8x;
+`gpuAlgorithmsAndOwnedInputs` compares the same strided GPU crop with CPU output.
+`ordinaryLabelsUseIndependentProofAndPaint` checks real prepared/admitted/drawn
+labels; `ordinaryLabelsKeepPreparationGates` preserves score, size, geometry and
+backend-refusal controls. No model/profile preparation or GPU quality claim is
+part of these fixtures. The planner remains a metadata observer, not optical
+flow or multi-frame OCR stacking.
+
+`OverlayModel::AdmitImpl` stages regional line IDs and checks the complete
+post-cap proposal for withdrawal before committing lines or pending tickets.
+Every active owned word (confirmed or named by a reading token, including
+expired/hidden memory) needs its own ordered exact-text/geometry match; new
+protection intersecting a confirmed word must retain both its old geometry and
+the exact old mask and no stronger original/carved classification. An old small
+mask cannot authorize a larger one. Refusal is
+an atomic `kEmpty` no-op, preserving complete objects and clocks. Full/probe
+authority supplies corrections. `regionalWithdrawalIsAtomic` and the separate
+memory/pending regressions exercise omissions, disagreement, repeated words,
+protection/caps and unconsumed identities.
+
+`UltraClearTextController::HandleProbeOutcome` clears `regionalJob_` only after
+a newer full submission succeeds. `activeQueuedRegionalIsSupersededByFull`
+uses `RecognitionScheduler::SetBeforeDequeueForTest`, a one-shot callback
+outside the scheduler mutex, to prove queued coalescing, renewed region
+eligibility and exact-job fencing. Ordinary workers have no callback.
+`UctControllerTestAccess` is a narrow friend fixture, not a runtime enqueue API.
+`activeRegionalWithdrawalDoesNotDemandExtraFull` checks that crop disagreement
+does not create pending/full-demand churn.
+
+`NoteTimingAdmission` receives a whole COW pre-admission line snapshot for
+nonimmutable results when tracing is enabled. Actual line replacement/removal
+and retained-object color/protection changes update causal identity regardless
+of new-glyph verdict. Surviving old IDs mark mixed proof. Exact optional no-ops
+keep earlier tickets. `timingNonimmutableMutationKeepsCausalTickets` inspects
+overlay/pane/accessibility getters directly and also runs under the existing
+trace-enabled pane-publication selector, independently of trace event loss.
+
+The window-free `maxine_navigation_tests` and `media_gpu_scene_tests` targets
+compile the common UCT model, planner and timing implementation used by their
+resident analysis pool. That pool now calls the production quad projection and
+reference planners; omitting these sources leaves unresolved geometry symbols.
+The targets retain their existing fake Maxine runtime, CUDA kernels and gates.
+
+The optional `uct_active_regional_test::Run` / `optionalActiveRegionalProof`
+fixture uses cached M/M N8 plans and two real owned acquisitions for actual
+full/regional/full calls. The final full read retains the second acquisition's
+identity and digest. It records real processed coverage, profiling, counters,
+worker durations and image egress, then verifies exact retirement and unchanged
+cache bytes. It admits no text and does not measure native or screen-reader
+latency. `supplementalFailureKeepsPreferredBackend` and
+`supplementalPreparingDoesNotStartCpuBridge` exercise the automatic chain
+directly in the maintained model-free processing group.
+
+## Oriented local UCT color preparation
+
+`MeasureLineColors` accepts an optional detected `TextQuad`. Its body, corner
+and immediate/expanded exterior samples use that quad's bilinear local frame;
+the existing `color_policy` medians, compatibility votes and opaque-ink endpoint
+decisions are unchanged. The scheduler selects this frame for oriented words
+before `FitOrientedWordInk` scans the separately bounded `inkSearchQuadPx`.
+Rectangle line colors and non-oriented words retain the legacy sampling grid.
+
+`gpu::LineColors` accepts an optional parallel `OrientedInk` frame array (zero
+width selects the corresponding rectangle). The resident preparation worker
+uploads detected color frames alongside the existing search-frame ink
+descriptors within its bounded scratch. `validation::orientedPixel` provides
+the shared floor/bilinear addressing for CUDA colors and `orientedInkAt`, using
+explicit non-fused double operations to match the CPU. Out-of-image samples
+contribute neither sums nor votes; valid sample counts normalize clipped body
+means. Stream completion, input ownership and compact-only readback remain
+unchanged.
+
+`FitOrientedWordInk` and `validation::orientedInk` remove eight-connected ink
+components spanning opposite padded search edges before dominant-row fitting.
+This separates glyphs from an identically colored panel and nearby edges. CPU
+uses a queue of at most 32768 cells; CUDA packs one ink bit plus six
+component reachability bits per cell and 4096 row masses (about 46 KiB shared
+scratch). Monotone whole-run propagation has the CPU queue's fixed point when
+complete. `gpu::kOrientedInkMaxPropagationPasses` caps it at 64 scans; an
+incomplete result keeps detector geometry. `OrientedFit::propagationPasses` and
+`propagationComplete` retain compact diagnostic evidence. Contrast and
+detached-mark rules remain. Fitted width must retain 35% of the detected span;
+fitted height must retain 25% of the padded search height and at least four
+source pixels. The previous 35% height guard rejected readable small print
+inside loose detector padding and left tall boxes for painting.
+No confidence or word-proof threshold changes.
+`PrepareLines` allows 1e-5 source pixels of arithmetic error at its existing
+minimum-height boundary, so a rotated seven-pixel glyph does not become
+too-small solely through floating-point projection. `FinalizeRecognizedGeometry`
+marks a padded, unfitted single Unicode scalar as high-risk when its baseline
+is predominantly vertical (absolute cosine below 0.5). The original symbol
+remains visible instead of a stretched close-button X/4. Fitted scalars,
+ordinary multi-letter words and horizontal scalars retain their prior policy.
+`OrientedFitReason`/`OrientedFit::reason` distinguish invalid input, propagation
+cap, unanchored ink, too few samples, ambiguous row bands, the shrink guard and
+a completed fit. This uses the result struct's existing alignment space.
+`color_policy::Compatible` anchors entire components to measured ink; all raw
+luma-ink pixels of anchored glyphs remain, preserving darker/lighter cores and
+AA. Paper-enclosed interior components remain regardless of RGB variation.
+Unanchored edge-only fragments or unanchored components spanning two edges
+are excluded. An unanchored boundary component extending inside causes whole-word detector
+fallback, avoiding silent letter truncation from a gray opaque-quartile median.
+The ambiguity guard uses the existing eight-sample minimum;
+`validation::substantialInkComponent` checks at most eight cells to match the
+CPU queue's component-size decision without additional shared image storage.
+
+`uct_geometry_test::TiltedButtonColors` runs 48 real-glyph tilted/perspective
+button fixtures through CPU and resident schedulers. It checks source polarity,
+glyph rather than button bounds, all four corners, spacing/protection and exact
+GPU parity with guarded zero image egress, including dotted/descending glyphs
+touching search edges. `GpuWindingInkWorkCap` requires bounded incomplete GPU
+fallback rather than a partially pruned fit. Existing `CpuGeometry`/`GpuGeometry`
+slots include it in `uct_paddle_processing`/`uct_paddle_cuda`. Diagnostic
+`uct_batch_test::Output` includes raw per-word foreground/background colors
+alongside fitted quads in private image-proof JSON. See
+[local color evidence and limitations](uct_color_startup_repair.md).
+`uct_geometry_test::LooseInkPadding` fits real Segoe UI small-print glyphs
+inside a 32-pixel-high rotated detector box, while refusing a two-pixel rule
+with sufficient total ink to pass the separate sample-count gate. The resident
+case checks exact CPU/CUDA corners and the same refusal.
+The opt-in paused proof's `fitReplay` lambda reuses resident input/search quads
+and raw colors after actual recognition. `selectedFitReplay` and
+`neighbourFitReplay` record per-word passes/completion, a pass histogram and
+three CUDA-event kernel durations after one warmup. Replay fitted flags are
+labelled separately from production fits; these measurements are excluded
+from actual worker durations and transfer only descriptor results.
+
+
+### Immutable protection independent of word consumption (2026-10-22)
+
+`MergeImmutableCoverage` wraps each incoming candidate in one COW transaction
+and RAII rollback. All owner mutations, reading retirements, appends, masks,
+classification, storage counters, carrier, row index and proved footprints
+commit together after late carve/cap decisions, including cross-owner carving
+growth. `AdmitImmutable` restores provisional incoming ID allocation before the
+merge; candidate IDs advance only on successful transactions. Existing accepted
+identities, references, geometry and validation clocks survive refusal.
+
+`OverlayModel::RegionalWordMatch` maps old/proposed line IDs and word indices.
+The optional `RegionalPreflight` parameter on live/advancing/general admission
+receives the capped proposed model, mapping and remaining admission budget
+before IDs/pending/lines commit. Novel protection or changed protected geometry
+needs renderer proof; absent proof, exception or exhausted budget yields
+`kEmpty` without changing the model. Full/immutable admission and probes do not
+invoke this renderer check.
+
+`UltraClearTextOverlay::PreservesDrawnWords` uses the actual current old paint,
+current style/view/viewport/exclusions and one production scratch plan. It
+checks every drawn old identity against its matched proposed drawn identity,
+including retained outside lines. It never calls public `SetWords`, pumps
+events, creates widgets, changes visibility, schedules paints or publishes
+timing. A scope guard restores `words_`, `glyphs_` and `protectedInk_`; the
+paint plan/index/ticket/caret caches stay untouched. An unchanged typography
+partition reuses glyph layout. Otherwise cached font bounds and optional
+deadline-aware `RebuildGlyphLayout`, `ResolveOverlaps` and `ComputePaintPlan`
+yield on cold typography or budget exhaustion. Normal paint/export callers
+retain their existing unlimited-by-this-optional-deadline behavior. The
+controller converts the proposed scene words within the same remaining budget.
+This is cooperative bounded optional work, not a native latency/speed claim.
+
+The r19 baseline's two model and two controller rows failed before repair.
+The fixed fresh CPU/PCH-off build and four-case tracked gate passed on the
+first attempt (4/226, 121.58 seconds, zero skipped rows/skips/unresolved).
+Tests include a successful safe scratch plan, conservative thin original
+coverage with upright/tilted glyphs, exact model/ticket/paint rollback and
+future ID allocation. See [receipts and scope](uct_active_regional_ocr.md#transaction-and-raster-regressions-2026-10-22).
+
+`OverlayModel::MergeImmutableCoverage` preserves candidate protection after every
+word has been appended or deduplicated. Ordinary masks are first carved against
+retained proved shapes; incompatible non-carvable artifacts are refused. A
+containing reading owner stores the remaining masks without changing its words,
+geometry, reference or proof clocks; otherwise one bounded, deduplicated mask-only
+carrier stores them. Carrier storage shares the existing line/mask limits and
+never supplies reading text or new evidence.
+
+Carving now carries `TextQuad`, including the retained displayed shape for a
+duplicate. A mask outside that quad is untouched. A partial diagonal cut whose
+bounding rectangle includes unproved corners is refused conservatively, rather
+than uncovering punctuation through a rectangular approximation.
+
+Four consumed-word mask rows and an outside-quad punctuation case failed before
+repair. The changed-input CPU contract passes all258 Qt rows, zero skips, in
+32.69 seconds. Three integration failures from the initial carrier draft, a
+later remaining grouping failure, and a runner recheck refusal are retained;
+none was retried unchanged. This is scoped CPU validation, not combined
+CUDA/native acceptance.
+
+
+`CreateProductionTensorRtRecognizer` has a trailing optional
+`TensorRtRetirementObserver`, omitted by the application. The explicit
+`uct_active_regional_test::Run` production-factory selector uses it to require
+exact state retirement and checks actual precision plus both cache inventories.
+The public FP32 diagnostic factory remains independent of the application opt-in.
+
+### Bounded original/carved UCT protection (2026-10-22)
+
+`AcceptedLine::carvedSceneRects` is a trailing, geometry-unique subset of
+`protectedSceneRects` in the same pre-offset coordinates. `MergeImmutableCoverage`
+preserves it on uncut masks and marks only newly generated subtraction pieces.
+Refused cuts commit neither geometry nor classification. Exact collisions with
+an untouched original remove that rectangle from the carved subset, independent
+of mask order. Carrier transfer converts both lists into the target coordinates
+and retains original precedence on duplicate geometry. No mask or history cap
+is added; classification cannot exceed the existing protected-mask inventory.
+
+Private `MaskKey`, `MaskKeys` and `MaskRects` use finite exact coordinate tuples
+for bounded classification sets and reconstruction. Stable refresh compares
+classification before retaining old proof, and remaps subset membership when
+unioning measured geometry. `SceneWords` shares the offset-applied subset among
+all returned words, with conflict/hidden-source/original masks winning exact
+cross-owner collisions. The ordinary all-original path builds no tuple index.
+
+Both `uct::SceneWord` and `UltraClearTextOverlay::SceneWord` append the subset.
+`RefreshOverlay`, `NoteTimingAdmission` and all test/paused-proof conversions
+carry or compare it. The regional transaction distinguishes an unchanged carved
+mask from stronger original protection at the same geometry. The renderer's
+shared `ComputePaintPlan` keys its COW-mask deduplication on both vectors, so
+different classification of shared geometry cannot skip original coverage.
+Live paint and `CaptureSnapshot` use the same `ProtectedRegion` rule.
+
+`originalThinProtectionKeepsItsPixels` adds sixteen meaningful software-paint and
+compositing rows, including shared COW masks with different classification;
+`immutableProtectionClassificationSurvivesTransfer` adds six
+rows for carving, original precedence in both mask orders, cross-owner sharing,
+carrier reuse, offsets and reset. Existing sixteen thin-strip assertions remain;
+their fixture masks now explicitly identify subtraction remainders. Two-axis
+punctuation rows cover both original and carved masks. The fresh isolated Qt
+6.12.0 CPU/PCH-OFF build compiles the model, controller and accessibility targets
+at two jobs. The tracked eight-case serial gate passes in 128.16 seconds: 300
+model and 113 controller rows with no skips; three accessibility scales each
+25 passed/one opt-in timing skip; the accessibility and two controller timing
+selectors each three passed/no skips. Gate result: eight passed CTest cases,
+zero skipped tests/unresolved failures; 497 Qt rows passed, three scale-only
+skips covered separately by the explicit timing selector. First-attempt evidence
+is byte-verified under `Z:/Projects/OkuFlow/local-work-data/uct-original-mask-f6-20261022/evidence/`.
+No retries, GPU/native/model work or full-release/PCH-ON acceptance is claimed.
+## Standalone paused/Freeze admission (2026-10-22)
+
+`uct::ImmutableAdmission` distinguishes the app's `Standalone` held-frame policy
+from the explicit `Corroborated` protocol. `UctImmutableScene::admission` binds
+that choice to the controller selection generation. `SetImmutableScene` discards
+neighbour/cadence descriptors for standalone selections; `SubmitImmutableIfNeeded`
+submits only the selected image and completes detail without a neighbour job.
+`HandleImmutableResult` admits full and regional same-image refinements through
+`OverlayModel::AdmitImmutable(..., admission)`. The model binds retained coverage
+to that mode, exact selected frame/PTS/source, own references, preparation and
+current-input checks. Confidence, source-height, unsupported notation, geometry,
+protection and painter rules still apply. CPU and GPU app presentation explicitly
+select standalone and no longer prepare a second UCT analysis image. Live and
+advancing-media methods retain their existing temporal policy. Earlier pair-based
+descriptions in this reference document the retained explicit protocol and its
+historical evidence; they are not the current app's paused prerequisite. See
+[standalone policy](uct_standalone_freeze.md).
+
+`OverlayModel::immutableFullPreparing_` records the last full immutable read's
+preparing status independently of detail crops and controller retry state.
+For exact-input standalone admission only, the first complete preferred full
+read builds a fresh candidate model and replaces fallback coverage/conflicts
+only after accepted preparation. IDs remain monotonic; failed/empty candidates
+leave the fallback intact. Each incoming word uses its own reference/geometry.
+Regional refinements, subsequent same-engine conflicts, corroborated admission
+and live temporal policy retain their existing conservative merge behavior.
+
+The private `UctControllerTestAccess::AdvancingJob` exposes only the pending
+admission ticket to the controller fixture. Its full-deadline comparison now
+waits for the exact probe and full/regional UI callbacks before advancing the
+synthetic clock; worker completion alone is not UI admission.

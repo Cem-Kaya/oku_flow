@@ -3,8 +3,17 @@
 This development UI places `VideoTransport` in a vertical view column directly
 below `RenderWidget`, alongside the Advanced inspector. It spans the render
 column's width. The native corner-control windows remain inside the render
-rectangle, so they cannot cover the timeline. Plain unrecorded camera use has
-no transport and supplies no camera-history collection.
+rectangle, so they cannot cover the timeline. Live camera use now also has the
+same transport for a separate silent RAM recap, even with recording off.
+Its first/end values are actual rolling bounds and exact Freeze can precede
+the first coded segment. See [the recap contract](live_ram_recap.md).
+
+Collapsing the controls hides their chrome and removes hidden actions from
+Tab order. Viewport Space still issues Freeze/Resume through the same source
+and busy-state gates, without moving viewport focus or expanding the bar.
+Native Space activation on the chevron and other visible buttons is unchanged.
+Permanent recap failure uses the existing **Video unavailable** status; its
+existing native reason is also included in the polite state announcement.
 
 Saved-video selection lives in Settings > Camera. The camera dropdown includes
 `View video`; choosing it opens the local file picker. While video is selected,
@@ -28,6 +37,31 @@ accessible names and tooltips when the visible label elides. Time readouts retai
 hours for long recordings and use
 the active locale's digits. The displayed selected time can exceed the verified
 seekable range while a live scene is pending; the slider never exceeds it.
+While following live recap or an ongoing recording, the filled groove and
+playhead stay at the right edge. This indicates live viewing even when the
+camera is ahead of the last finalized segment. The displayed time and seekable
+bounds stay exact; no pending tail becomes seekable. A focused reader's numeric
+inspection remains still. Scrubbing or seeking immediately restores the target
+playhead, and Jump to live restores the right-edge marker. An expired paused
+hold keeps its exact image/time with an amber, dashed marker pinned left. That
+marker indicates an expired hold, not the first available frame; numeric
+RangeValue remains absent until a real seek returns inside history. A held
+frame ahead of finalized history still has no ordinary timestamp playhead.
+
+Releasing the scrubber at its far-right endpoint, or pressing End, requests
+Jump to live for recap and recording. It still requests live when finalized
+history grows during the drag: the frozen right endpoint represents that
+intent rather than an older timestamp. Saved video keeps ordinary end seeking.
+
+A small chevron beside the Custom Setup quick-mode controls collapses the entire
+transport, including filename, state, jump action and all reserved height. Its
+native keyboard/touch target remains 44 DIP. Collapse preserves the playback
+snapshot and running playback; it cancels an unfinished drag without seeking.
+The arrow remains in that corner group while the transport is hidden. Expanding
+restores the current timeline and Jump to live. Metadata updates cannot reopen it.
+The state survives the application's global UI hide/show for this session.
+The button reuses the translated `Hide UI` / `Show UI` action names with
+`Video controls` as its accessible description; no new translation keys are added.
 
 The step-forward icon (`>>`) requests Jump to live for the selected ongoing
 recording, and Jump to end
@@ -47,6 +81,8 @@ source label and a document `sourceGeneration`. `Source::None` hides the bar.
 Changing source or generation cancels an unfinished drag. `SetUiHidden` retains
 the snapshot while hiding the bar; MainWindow returns transport focus to the
 viewport when the user hides the UI.
+Native failure detail is metadata on the existing status tooltip and accessible
+description. It never enables an empty timeline or changes its verified bounds.
 
 `SeekRequested(qint64)`, `PlayPauseRequested`, `JumpToEndRequested`,
 `ReturnToCameraRequested`, `SaveFrameRequested` and `MutedChanged(bool)` are
@@ -62,10 +98,26 @@ readout only; releasing commits the latest absolute target exactly once.
 Snapshots do not start decode work, and source replacement discards a pending
 drag. During playback autonomous slider updates occur at most once a second
 and pause while the slider has keyboard focus.
+The internal `TimelineSlider::SetEdge` / `initStyleOption` supply endpoint markers only
+to native style painting/hit testing. Before a live pointer press, `RefreshTimeline`
+refreshes the actual range and value; dragging then uses normal slider geometry
+and freezes that mapping until release. This does not emit an autonomous seek.
+`CommitSeek` receives explicit right-end intent from drag/value interaction;
+ordinary timestamp seeks and source snapshots cannot invent a live transition.
 
 ## Keyboard and accessibility
 
-Tab order follows the row: rewind, play, jump, timeline, save, mute and return.
+The 2026-10-23 combined integration passed CPU/PCH-off SCOPED 5/240 and
+CUDA/PCH-on SCOPED 5/246 with zero skips/unresolved results. Actual-app offscreen
+rows verify full-height reclamation, wide/compact corner placement, no playback
+requests on hide/show, metadata/global-hide preservation and viewport Space.
+Saved offscreen widget captures show both layouts; they do not establish native
+desktop focus, UIA/NVDA or full release acceptance. All 24 translation catalogs
+passed source-key/format validation without new source strings.
+
+The chevron follows the quick-mode Next button. Transport Tab order follows the
+row: rewind, play, jump, timeline, save, mute and return. Collapsed transport has
+no focus targets; its corner chevron remains keyboard reachable.
 MainWindow
 bridges it with the existing corner, inspector and annotation regions. F6 moves
 between those regions and the transport. Space toggles playback only in the
@@ -137,3 +189,22 @@ drag mapping/release/cancellation, keyboard/wheel behavior, native numeric/time
 accessibility and narrow minimum targets. It opens no camera, video, native
 window, microphone or AI request. Native focus, NVDA and visual acceptance remain
 separate serial desktop work.
+
+### Live-edge validation (2026-10-22)
+
+Frozen runtime source `8fdb8d2` compiled in the separate shipping build. The
+transport contract passed all 35 Qt results with zero failures/skips in both
+CPU/PCH-off and CUDA/PCH-on builds. It covers live marker pixels, right-end
+live intent during growing-history drags, ordinary saved-file endpoints,
+light/dark expired-hold marker pixels, truthful out-of-window time and no
+autonomous seek on eviction.
+
+The final CPU selection passed four cases: transport, both actual-app offscreen
+control cases and shared-source equivalence (26.49 seconds). PCH-on transport
+and equivalence passed two cases (16.52 seconds). These are scoped background
+results. An earlier broader run on `203cb3e` passed shipping compilation and
+the CUDA delta, but its CPU gate retained an unrelated `phone_camera_contract`
+failure: the owned-child fixture PID read as zero instead of 45408. Its cause
+is unresolved; the original attempt is archived and was not retried unchanged.
+The complete matrix is therefore not a pass. Native GUI, screen-reader and
+physical-camera acceptance remain unrun for this repair.

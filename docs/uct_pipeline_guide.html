@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="A source-based, offline guide to OkuFlow Ultra Clear Text: pixels, OCR sizing, asynchronous work, proof, rendering, accessibility and live RAM recap.">
+<title>How Ultra Clear Text actually works · OkuFlow</title>
+<style>
+:root{color-scheme:light;--paper:#faf9f5;--ink:#17232d;--quiet:#46545f;--panel:#fff;--soft:#edf2f3;--line:#70818c;--accent:#06596b;--accent-soft:#d9eff1;--warn:#69400b;--warn-bg:#fff0ce;--focus:#b33200;--size:1.25rem;--radius:.65rem}
+:root[data-theme="dark"]{color-scheme:dark;--paper:#111820;--ink:#f5f4ed;--quiet:#c1cdd6;--panel:#1c2732;--soft:#253341;--line:#899eae;--accent:#9de9f5;--accent-soft:#173f4c;--warn:#ffe0a1;--warn-bg:#3c2a13;--focus:#ffb286}
+*{box-sizing:border-box}html{scroll-behavior:auto;background:var(--paper);color:var(--ink);font-family:system-ui,"Segoe UI",sans-serif;font-size:var(--size);line-height:1.65}body{margin:0}main,header,footer{max-width:76rem;margin-inline:auto;padding:1.5rem clamp(1rem,4%,3rem)}p,li,dd{max-width:70ch}p{margin:.65rem 0 1rem}a{color:var(--accent);text-decoration-thickness:.1em;text-underline-offset:.17em;overflow-wrap:anywhere}a:hover{text-decoration-thickness:.18em}a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:.2rem solid var(--focus);outline-offset:.2rem}h1,h2,h3{line-height:1.22;text-wrap:balance}h1{font-size:clamp(2rem,5vw,3.6rem);max-width:23ch;letter-spacing:-.025em;margin:.6rem 0 1.2rem}h2{font-size:1.65rem;margin:1.7rem 0 .8rem}h3{font-size:1.2rem;margin:1.4rem 0 .6rem}strong{font-weight:750}small,.small{font-size:.88rem;color:var(--quiet)}code,pre{font-family:ui-monospace,Consolas,monospace}code{font-size:.88em;overflow-wrap:anywhere;background:var(--soft);padding:.08em .22em;border-radius:.2em}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--soft);padding:1rem;border-left:.25rem solid var(--accent);font-size:.85rem}ul,ol{padding-inline-start:1.6rem}li+li{margin-top:.45rem}button,input,select{font:inherit}button,select,input[type="number"]{min-height:2.5rem;border:.08rem solid var(--line);border-radius:.35rem;padding:.4rem .7rem;background:var(--panel);color:var(--ink)}button{cursor:pointer;font-weight:650}button:hover{background:var(--accent-soft)}button:disabled{cursor:default;opacity:.55}button.primary{background:var(--accent);color:var(--paper)}input[type="number"]{width:100%;max-width:10rem}label{display:block;font-weight:650}fieldset{border:.08rem solid var(--line);border-radius:var(--radius);padding:1rem;min-width:0}legend{font-weight:750;padding-inline:.4rem}.skip{position:absolute;left:1rem;top:-8rem;background:var(--panel);padding:.7rem;z-index:2}.skip:focus{top:1rem}.eyebrow{text-transform:uppercase;letter-spacing:.13em;font-size:.8rem;font-weight:800;color:var(--accent)}.lead{font-size:1.2rem;max-width:57ch}.toolbar,.actions{display:flex;flex-wrap:wrap;gap:.55rem;align-items:center}.toolbar{padding:1rem 0;border-bottom:.08rem solid var(--line)}.toolbar span{margin-inline-end:.5rem}.tag{display:inline-block;border:.08rem solid var(--line);border-radius:2rem;padding:.15rem .65rem;font-size:.8rem;font-weight:750;margin:0 .3rem .4rem 0}.note{background:var(--accent-soft);border-left:.3rem solid var(--accent);border-radius:0 var(--radius) var(--radius) 0;padding:1rem 1.2rem;margin:1.3rem 0}.caution{background:var(--warn-bg);border-color:var(--warn);color:var(--warn)}.note p:last-child{margin-bottom:0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr));gap:1rem}.card{background:var(--panel);border:.08rem solid var(--line);border-radius:var(--radius);padding:1.1rem}.card h3{margin-top:0}.pipeline{counter-reset:stage;list-style:none;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:.8rem}.pipeline li{position:relative;padding:1rem;background:var(--panel);border:.08rem solid var(--line);border-top:.3rem solid var(--accent);border-radius:var(--radius);margin:0}.pipeline li::before{counter-increment:stage;content:counter(stage,decimal-leading-zero);font-size:.8rem;font-weight:800;color:var(--accent);display:block;letter-spacing:.08em}.pipeline strong{display:block;margin:.25rem 0}.pipeline p{font-size:.95rem;margin:0}.contents{background:var(--soft);border-radius:var(--radius);padding:1.2rem}.contents ol{columns:2 19rem;column-gap:2rem;margin:.5rem 0}.contents li{break-inside:avoid;margin:.4rem 0}.chapter{border:.08rem solid var(--line);border-radius:var(--radius);background:var(--panel);margin:1rem 0;scroll-margin-top:1rem}.chapter>summary{padding:1.1rem 1.2rem;cursor:pointer;font-size:1.2rem;font-weight:750;line-height:1.4}.chapter[open]>summary{border-bottom:.08rem solid var(--line);background:var(--soft);border-radius:var(--radius) var(--radius) 0 0}.chapter-body{padding:.25rem clamp(1rem,3%,1.7rem) 1.3rem}.chapter-body>h2:first-child{margin-top:1rem}.chapter summary .small{display:block;font-weight:450;margin-top:.3rem}.table-wrap{overflow-x:auto;max-width:100%;margin:1rem 0;border:.08rem solid var(--line);border-radius:.4rem}.table-wrap:focus-visible{outline:.2rem solid var(--focus)}table{border-collapse:collapse;width:100%;text-align:left;font-size:.95rem}caption{text-align:left;font-weight:750;padding:.8rem;background:var(--soft)}th,td{padding:.7rem .85rem;vertical-align:top;border-bottom:.06rem solid var(--line)}thead th{background:var(--soft)}tbody th{font-weight:700}tr:last-child td,tr:last-child th{border-bottom:0}.source{font-size:.85rem;color:var(--quiet);max-width:85ch;border-top:.06rem dashed var(--line);padding-top:.8rem;margin-top:1.5rem}.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr));gap:.8rem}.form-grid label small{display:block;font-weight:450}.result-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr));gap:.7rem;margin:1rem 0}.metric{background:var(--soft);padding:1rem;border-radius:.4rem}.metric dt{font-size:.9rem}.metric dd{font-weight:800;font-size:1.35rem;margin:.3rem 0 0}.metric dd.small{font-size:.95rem}.crop-bars{display:grid;gap:.55rem;margin:1rem 0}.bar-row{display:grid;grid-template-columns:8rem 1fr;gap:.5rem;align-items:center;font-size:.85rem}.bar-track{background:var(--soft);border:.06rem solid var(--line);height:1rem;position:relative}.bar-fill{height:100%;background:var(--accent);min-width:.1rem;max-width:100%}.queue-slot{border:.12rem solid var(--accent);border-radius:var(--radius);padding:1rem;background:var(--accent-soft)}.queue-slot h3{margin:0;font-size:.95rem}.queue-slot p{margin:.3rem 0 0;font-size:1.2rem;font-weight:750}.queue-slot.waiting{border-style:dashed}.step-readout{font-weight:750;color:var(--accent)}.steps-list{font-size:.9rem}.status-list{padding:0;list-style:none}.status-list li{padding:.8rem 0;border-bottom:.06rem solid var(--line)}.status-list strong{display:block}footer{border-top:.08rem solid var(--line);font-size:.85rem;color:var(--quiet)}.back{display:block;margin-top:1rem;font-size:.85rem}noscript{display:block;padding:1rem;border:.1rem solid var(--line)}
+select{width:100%;max-width:100%;min-width:0}.form-grid>*{min-width:0}
+@media screen and (max-width:40rem){.bar-row{grid-template-columns:1fr}h1{font-size:2.2rem}.toolbar{align-items:stretch}.toolbar button{flex:1}.chapter>summary{font-size:1.1rem}th,td{padding:.55rem}header,main,footer{padding-inline:1rem}.chapter-body{padding-inline:.8rem}.table-wrap table,.table-wrap caption,.table-wrap tbody,.table-wrap tbody tr,.table-wrap tbody th,.table-wrap tbody td{display:block;width:100%}.table-wrap thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}.table-wrap tbody tr{border-bottom:.08rem solid var(--line)}.table-wrap tbody tr:last-child{border-bottom:0}.table-wrap tbody th{background:var(--soft)}.table-wrap tbody td,.table-wrap tbody th{border-bottom:0}.table-wrap td::before{content:attr(data-label);display:block;font-weight:750;color:var(--quiet);font-size:.85rem;margin-bottom:.2rem}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+@media(forced-colors:active){.bar-fill{background:Highlight}.chapter,.card,.note,.queue-slot{border:2px solid CanvasText}a{color:LinkText}}
+@media print{:root,:root[data-theme="dark"]{--paper:#fff;--ink:#000;--quiet:#222;--panel:#fff;--soft:#f0f0f0;--line:#777;--accent:#000;--accent-soft:#f1f1f1;--warn:#000;--warn-bg:#fff;font-size:12pt}header,main,footer{max-width:none;padding:.5cm 0}.toolbar,.no-print,.skip,.back{display:none!important}.chapter{break-inside:auto;border:0;border-top:1px solid #777}.chapter>summary{padding:.4cm 0;background:none!important}.chapter-body{display:block!important;padding:0}.chapter::details-content{display:block!important;content-visibility:visible!important}.chapter:not([open])>*:not(summary){display:block!important}.pipeline{grid-template-columns:repeat(2,1fr)}.card,.pipeline li,.note,.queue-slot,fieldset{break-inside:avoid}.table-wrap{overflow:visible;border:0}table{font-size:10pt}thead{display:table-header-group}tr{break-inside:avoid}a{color:#000}h2,h3{break-after:avoid}.contents ol{columns:2}.lead{font-size:14pt}}
+</style>
+</head>
+<body>
+<a class="skip" href="#guide">Skip to the guide</a>
+<header id="top">
+<p class="eyebrow">OkuFlow · an implementation guide</p>
+<h1>How Ultra Clear Text actually works</h1>
+<p class="lead">From a real camera or video sample to sharp letters: what is copied, what is recognized, what can be reused, and why the same page may still need another read.</p>
+<p><span class="tag">Experimental development</span><span class="tag">Source snapshot: 22 October 2026</span><span class="tag">Works offline</span></p>
+<p class="small">Based on code through <code>40a112d1becc6f3e7062e3d2d41f30209cd8ede4</code>. This describes the implementation, including local opt-ins. It does not announce a release, establish recognition accuracy or promise a frame rate.</p>
+<div class="toolbar no-print" aria-label="Guide reading controls">
+<span>Make this guide comfortable:</span>
+<button type="button" id="smaller" aria-label="Decrease guide text size">A−</button>
+<button type="button" id="larger" aria-label="Increase guide text size">A+</button>
+<button type="button" id="theme" aria-pressed="false">Dark background</button>
+<button type="button" id="expand">Expand all chapters</button>
+<button type="button" id="collapse">Collapse all chapters</button>
+<button type="button" id="print">Print complete guide</button>
+</div>
+<p class="small no-print">Tab moves between controls and links. Enter or Space opens a chapter. Browser zoom also works. Nothing here changes OkuFlow settings, starts OCR, saves preferences or contacts a service.</p>
+</header>
+<main id="guide">
+<div class="note"><p><strong>Current paused/Freeze policy:</strong> the held image is processed on its own. Eligible OCR can draw and publish positioned text without any neighbouring capture. Live temporal confirmation is unchanged. A complete preferred standalone full read atomically replaces a preparing startup fallback using its own references; spelling/case differences between engines do not create permanent conflict masks. Failed/empty reads and detail crops cannot perform that full-read handoff. Pair-based captures below are historical evidence or the explicit corroborated protocol. See <a href="uct_standalone_freeze.md">standalone admission</a>.</p></div>
+<section aria-labelledby="overview-heading">
+<h2 id="overview-heading">The whole path, in order</h2>
+<p>UCT is local optical character recognition (OCR) plus a cautious replacement layer. The camera and the viewport keep running on their own clocks. A slow OCR read does not make every displayed frame wait for text.</p>
+<ol class="pipeline">
+<li><strong>Acquire real pixels</strong><p>A camera acquisition or decoder-issued video sample owns its source identity and time. A held copy remains that same acquisition.</p></li>
+<li><strong>Separate the image paths</strong><p>Clean Original serves recording and recap. A geometry-correct, pre-appearance, pre-zoom scene serves UCT. The enhanced scene serves the view.</p></li>
+<li><strong>Choose useful work</strong><p>Independent probes check change and freshness. The controller chooses a full read, a paused detail pair, or an optional supplemental region.</p></li>
+<li><strong>Read off the UI thread</strong><p>One automatic backend chain runs one recognition job at a time. At most one newer job waits; obsolete waiting work is replaced.</p></li>
+<li><strong>Prepare candidate words</strong><p>Detection, recognition, source geometry, local ink colors, reference patches and omission masks travel together.</p></li>
+<li><strong>Require evidence</strong><p>Authority, size, confidence, exact-text agreement and independent pixel checks decide what may become a replacement. Agreement can still repeat a wrong word.</p></li>
+<li><strong>Publish separate surfaces</strong><p>Reading-pane text, eligible scene words, actual painted glyphs and positioned accessibility text have related but different conditions.</p></li>
+<li><strong>Reproject and recheck</strong><p>Pan and zoom map retained words onto the latest successful view. New acquisitions require continued proof; full OCR remains authoritative.</p></li>
+</ol>
+<div class="note"><p><strong>The central distinction:</strong> keeping pixels is cheap compared with reading them again, but kept pixels are not new evidence. Keeping an accepted word is useful, but a word that still looks similar may have changed one character. UCT therefore reuses navigation and valid objects while continuing bounded checks and full reads.</p></div>
+</section>
+<nav class="contents" aria-label="Guide chapters">
+<h2>Choose a chapter</h2>
+<ol>
+<li><a href="#scope">What is available, local or proposed</a></li>
+<li><a href="#pixels">Original, processed and immutable pixels</a></li>
+<li><a href="#sizing">Display zoom and OCR sizing explorer</a></li>
+<li><a href="#backend">One backend chain and its exact jobs</a></li>
+<li><a href="#queue">Step through the asynchronous queue</a></li>
+<li><a href="#reuse">Four kinds of reuse; repeated work</a></li>
+<li><a href="#proof">Candidate validation and independent proof</a></li>
+<li><a href="#regional">Regional planning and atomic admission</a></li>
+<li><a href="#paused">Paused video and sparse saved files</a></li>
+<li><a href="#paint">Geometry, plates and actual glyph paint</a></li>
+<li><a href="#accessibility">Reading pane and positioned screen text</a></li>
+<li><a href="#languages">Languages, confidence and notation</a></li>
+<li><a href="#gpu">GPU transfers, caches and local BF16</a></li>
+<li><a href="#recap">Live RAM recap, Freeze and transport</a></li>
+<li><a href="#limits">Measured evidence and unfinished work</a></li>
+<li><a href="#sources">Source map and further reading</a></li>
+</ol>
+</nav>
+<noscript>All explanations and reference tables work without JavaScript. Use each chapter’s disclosure control to read it. The sizing calculator, queue buttons and guide toolbar need JavaScript; their static examples remain below.</noscript>
+
+<details class="chapter" id="scope">
+<summary>01 · What is implemented, optional or proposed<span class="small">Read the status before interpreting the rest of the guide.</span></summary>
+<div class="chapter-body">
+<h2>Development implementation is not a published download</h2>
+<p>UCT is experimental and opt-in. Its saved global preference defaults off when absent. In the development app, find it under <strong>Advanced → Image → Text clarity → Ultra Clear Text (experimental)</strong>. The Text Clarity master switch pauses UCT while retaining that preference; switching the master back on restores its use. <strong>Show original camera text</strong> hides replacement letters for comparison while recognition can continue.</p>
+<div class="table-wrap" role="region" aria-label="Implementation status" tabindex="0"><table role="table">
+<caption>Three statuses used throughout this guide</caption><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Status</th><th scope="col" role="columnheader">Meaning here</th></tr></thead><tbody role="rowgroup">
+<tr role="row"><th scope="row" role="rowheader">Implemented development path</th><td role="cell" data-label="Meaning here">Local recognition, bounded workers/probes, source-bound validation, pan/zoom reprojection, paused selected/neighbour proof, oriented paint, reading pane, passive Qt accessibility model, saved video and silent RAM recap. These still have separate native/hardware/release acceptance.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Explicit local opt-in</th><td role="cell" data-label="Meaning here">Optional installed Paddle/TensorRT components; shadow planner; supplemental regional execution; narrower recognizer canvases; the owner’s reviewed BF16 recognition cache. Their existence does not make them universal defaults or bundled dependencies.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Proposed or unimplemented</th><td role="cell" data-label="Meaning here">Optical-flow text reuse, shadow-aware smooth slide tracking, a multi-frame OCR image stack, a safe character verifier that can skip full OCR, and broad proven handwriting/math/curved-page recognition.</td></tr>
+</tbody></table></div>
+<p>UCT is separate from <strong>Read</strong>, <strong>Explain</strong>, Assistant and browser recording transcription. Those have their own models, permissions and possible provider traffic. UCT does not ask an LLM to spell-check, complete a word or guess an occluded label. Its optional model/runtime preparation is an explicit setup operation; enabling UCT does not download anything.</p>
+<p>“Production” below means the actual application code path, as opposed to a test oracle. It does not mean the feature has passed release acceptance.</p>
+<p class="source">Sources: <a href="ultra_clear_text.md">UCT contract</a>; <a href="developer_guide.md">developer guide</a>; <a href="../src/app/app_ultra_clear_text.cpp">application wiring</a>; <a href="../include/okuflow/common/uct_model_settings.hpp">saved model defaults</a>.</p>
+</div></details>
+
+<details class="chapter" id="pixels">
+<summary>02 · Which pixels enter which path?<span class="small">Original, processed scene, neutral analysis, held images and immutable selections.</span></summary>
+<div class="chapter-body">
+<h2>“Original” and “the image on screen” are different objects</h2>
+<div class="grid">
+<article class="card"><h3>Clean Original</h3><p>The decoded, rotation-correct camera image, before stabilization, Extra Stable holds, viewing effects, UCT and drawing ink. It is not sensor Bayer data or the original compressed USB bitstream. New recording and RAM recap consume this clean path.</p></article>
+<article class="card"><h3>Processed scene</h3><p>The image after the applicable geometry and display processing. The persistent completed scene is sampled by the viewport. Pan, zoom, Fill/Fit and resize can reuse it without advancing stateful camera effects.</p></article>
+<article class="card"><h3>UCT analysis scene</h3><p>A separately owned, geometry-correct scene after orientation, stabilization and keystone, before appearance effects, display zoom and Super Resolution. Recognition coordinates stay in this full scene.</p></article>
+<article class="card"><h3>Immutable media selection</h3><p>An owned selected video sample with document, track, request/generation, real PTS and native issuance identity. Pause holds that authority; another allocation or another repaint cannot turn it into another sample.</p></article>
+</div>
+<h3>Capture, processing and presentation run on different clocks</h3>
+<p>Media Foundation acquires real camera samples. The preferred accelerated route retains GPU textures and uses D3D11/D3D12/CUDA interop; compatibility routes can use CPU pixels. Processing publishes a completed scene. The viewport can present that scene repeatedly while the user navigates, up to its selected/display-limited rate. A 30 FPS camera does not acquire 120 independent pictures because navigation refreshes at 120 Hz.</p>
+<p><code>OnPresented</code> is preflight for an attempted presentation. Only <code>OnPresentationSucceeded</code> records successful presentation submission. Busy slots defer a present and retain the prior successful view; they do not certify that a newer picture reached the display. Source, rotation, extent and relevant processing changes revoke incompatible text immediately.</p>
+<h3>Temporal Smooth owns a pair, not self-confirming averaged text</h3>
+<p>On CUDA, OCR can read a neutral temporal average. The same lease also owns the exact current single-frame image. Its history epoch, seed, alpha and blend count describe the average. Fingerprints, reference patches and later motion checks use current single-frame pixels. Every candidate word must also register the averaged OCR input against that current image at NCC ≥ 0.94 and visibility ≥ 0.95, with zero translation/refinement. Otherwise an old fading word could validate its own after-image.</p>
+<p>The neutral average advances on actual processed frames, independently of the 80 ms analysis-opportunity throttle. Source/seek/history/geometry changes and alpha changes reseed it. Saved-frame replay restores pre-frame history so an unchanged held sample is not blended twice. Neighbour-only OCR does not create that temporal stack. This EMA is not a multi-frame OCR voting or super-resolution stack.</p>
+<h3>Extra Stable keeps the real acquisition identity</h3>
+<p>Extra Stable can temporarily display the last settled sharp frame during shake or focus loss. Its 32-byte acquisition record travels with the held image and is read after completion. Every repeat remains one acquisition. Previously proved words can survive only exact held-pixel validation. Starting UCT during a hold may yield reading-pane text, but a copied held frame cannot independently corroborate new glyphs. Recovery crossfades and unknown composites supply no recognition/proof authority. Clean Original recording and recap continue independently of the held view.</p>
+<p>Two owned analysis slots protect UCT copies from overwrite. The per-slot limit is 128 MiB and at most 8192 pixels per axis; a smoothed/current pair shares that limit. Busy admission skips an opportunity. Unknown GPU completion retains the full allocation/input/output closure instead of freeing memory still in use.</p>
+<p class="source">Sources: <a href="ultra_clear_text.md#temporal-smooth-analysis">paired analysis</a>; <a href="gpu_video_playback.md">GPU playback ownership</a>; <a href="original_only_recording.md">Original recording</a>; <a href="../include/okuflow/cuda/uct_analysis_pool.hpp">analysis pool</a>; <a href="../src/app/app_ultra_clear_text.cpp">scene provenance wiring</a>.</p>
+</div></details>
+
+<details class="chapter" id="sizing">
+<summary>03 · Display zoom is not OCR enlargement<span class="small">Explore the actual context, alignment, 704/480 regional policy and paused 8× limit.</span></summary>
+<div class="chapter-body">
+<h2>Two different magnifications</h2>
+<p><strong>Display zoom</strong> changes what part of the retained scene fills the window. Desktop zoom runs from 1× to 16× in Fill framing; Fit shows the whole scene at 1× while retaining the saved Fill zoom. <strong>OCR enlargement</strong> changes the detector’s input sampling for a chosen source crop. It is independently bounded. Enlarging blurred source pixels cannot recreate lost characters.</p>
+<div class="table-wrap" role="region" aria-label="OCR job sizes" tabindex="0"><table role="table">
+<caption>Actual detector policies</caption><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Work</th><th scope="col" role="columnheader">Source context</th><th scope="col" role="columnheader">Detector tensor</th></tr></thead><tbody role="rowgroup">
+<tr role="row"><th scope="row" role="rowheader">Baseline full</th><td role="cell" data-label="Source context">Whole scene, then at most 16 overlapping crops; desired crop edge 1280, overlap 160, at most four per axis.</td><td role="cell" data-label="Detector tensor">Longest edge ≤ 960. No requested enlargement above 1×; axes round to nearest multiple of 32, minimum 32.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Active supplemental region</th><td role="cell" data-label="Source context">One planned occurrence/grid region, with context, helper and realized source-crop axes ≤ 480.</td><td role="cell" data-label="Detector tensor">Longest edge ≤ 704; nominal bound is 704/480 = 22/15. Enlarged axes floor to multiples of 32, minimum 32.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Paused visible detail</th><td role="cell" data-label="Source context">Visible source rectangle, expanded around its centre if too small. Default/cap 8×: minimum requested long context <code>ceil(960/8) = 120</code>, subject to source bounds.</td><td role="cell" data-label="Detector tensor">Longest edge ≤ 960. Requested enlargement clamped to 1–8. Enlarged axes floor to multiples of 32, minimum 32.</td></tr>
+</tbody></table></div>
+<h3>Try the source-sizing calculation</h3>
+<p>The explorer reproduces <code>DetectorInputSize</code> and <code>DetailRegion</code> dimensions, plus the regional helper’s two-stage context expansion. The selection is centred inside the source; real pan changes its position and clipping. It does not run OCR or simulate admission, word quality, memory cost or timing.</p>
+<form id="crop-form">
+<fieldset><legend>Image and requested source area, in pixels</legend>
+<div class="form-grid">
+<label>Source width<input type="number" id="source-w" min="1" max="8192" step="1" value="1920" required></label>
+<label>Source height<input type="number" id="source-h" min="1" max="8192" step="1" value="1080" required></label>
+<label>Requested width<input type="number" id="crop-w" min="1" max="8192" step="1" value="160" required></label>
+<label>Requested height<input type="number" id="crop-h" min="1" max="8192" step="1" value="90" required></label>
+<label>Policy<select id="crop-mode"><option value="paused8">Paused detail · 8×</option><option value="paused6">Earlier detail · 6× comparison</option><option value="regional">Active regional · 704 / 480</option><option value="baseline">Baseline whole-scene pass</option></select></label>
+</div><p class="small">For regional mode, requested size means the planned occurrence/cell before its +96 horizontal/+64 vertical context. Baseline uses the whole image and ignores requested size.</p>
+<div class="actions"><button class="primary" type="submit">Calculate</button><button type="button" data-crop="detail">8× small view</button><button type="button" data-crop="regional">480 × 288 region</button><button type="button" data-crop="narrow">Narrow source</button><button type="button" data-crop="tiny">Tiny short axis</button></div>
+</fieldset></form>
+<div id="crop-output" role="status" aria-live="polite" aria-atomic="true">
+<dl class="result-grid">
+<div class="metric"><dt>Requested / clipped</dt><dd id="crop-requested">160 × 90</dd></div>
+<div class="metric"><dt>Helper or initial region</dt><dd id="crop-helper">160 × 90</dd></div>
+<div class="metric"><dt>Actual detector source crop</dt><dd id="crop-realized">160 × 90</dd></div>
+<div class="metric"><dt>Detector tensor</dt><dd id="crop-tensor">960 × 512</dd></div>
+<div class="metric"><dt>Realized X / Y sampling</dt><dd id="crop-ratios">6.000× / 5.689×</dd></div>
+<div class="metric"><dt>Minimum long context</dt><dd id="crop-minimum">120 px</dd></div>
+</dl>
+<p id="crop-explanation">At 160 × 90, the long edge reaches 960 before the requested 8× bound. The short edge floors from 540 to 512.</p>
+</div>
+<div class="crop-bars" aria-hidden="true"><div class="bar-row"><span>Source crop width</span><div class="bar-track"><div class="bar-fill" id="bar-crop" style="width:16.667%"></div></div></div><div class="bar-row"><span>Tensor width</span><div class="bar-track"><div class="bar-fill" id="bar-tensor" style="width:100%"></div></div></div></div>
+<p class="small">Bars compare widths against the largest displayed width; dimensions and ratios above are the accessible result.</p>
+<h3>The arithmetic, without a hidden “720p” shortcut</h3>
+<pre>edge = clamp(integerDivision(requestedEdge, 32), 1, 30) × 32
+bound = finite(requestedMagnification) ? clamp(value, 1, 8) : 1
+minimumLongContext = ceil(edge / bound)
+if the clipped crop is smaller:
+  expand both dimensions proportionally with ceil, limited by source dimensions
+
+scale = min(bound, edge / max(actualCropWidth, actualCropHeight))
+if bound &gt; 1:
+  detectorAxis = max(32, floor(sourceAxis × scale / 32) × 32)
+else:
+  detectorAxis = max(32, round(sourceAxis × scale / 32) × 32)</pre>
+<p>Regional planning first adds context: width <code>ceil(clamp(selectionWidth + 96, 160, 480))</code>, height <code>ceil(clamp(selectionHeight + 64, 96, 480))</code>, each clipped to the source. It calls <code>DetailRegion</code> in the helper; the backend calls it again on that descriptor. The guide shows both. If clamping one axis prevents proportional growth, the second call can still add context on the other axis.</p>
+<p>For 704/480, the code uses the immediately larger representable double (<code>nextafter</code> toward +infinity). This preserves the intended <code>ceil(704/bound) = 480</code>, avoiding a floating-point result of 481. The explorer does the same bit-level step. “704” is an aligned detector edge, not 1280 × 720 video or a 720p full-frame profile.</p>
+<div class="table-wrap" role="region" aria-label="Fixed sizing examples" tabindex="0"><table role="table">
+<caption>Useful fixed examples, available without JavaScript</caption><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Case</th><th scope="col" role="columnheader">Actual source crop → tensor</th><th scope="col" role="columnheader">What it demonstrates</th></tr></thead><tbody role="rowgroup">
+<tr role="row"><th scope="row" role="rowheader">Regional, normal</th><td role="cell" data-label="Actual source crop → tensor">480 × 288 → 704 × 416</td><td role="cell" data-label="What it demonstrates">Floor alignment on the short axis; nominal 1.467× is not identical on both realized axes.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Regional, square</th><td role="cell" data-label="Actual source crop → tensor">480 × 480 → 704 × 704</td><td role="cell" data-label="What it demonstrates">The aligned maximum.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Regional, 300 × 800 source; tiny selection</th><td role="cell" data-label="Actual source crop → tensor">Initial context 160 × 96 → helper 300 × 288 → backend 300 × 461 → 416 × 672</td><td role="cell" data-label="What it demonstrates">Source-width clamping means context expansion is not idempotent.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Regional, tiny short axis</th><td role="cell" data-label="Actual source crop → tensor">8 × 480 → 32 × 704</td><td role="cell" data-label="What it demonstrates">The 32-pixel minimum makes the short axis 4×, above the nominal 22/15.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Paused 8×, tiny context</th><td role="cell" data-label="Actual source crop → tensor">120 × 1 → 960 × 32</td><td role="cell" data-label="What it demonstrates">A one-pixel short axis can exceed 8× because the independent 32-pixel minimum still applies.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Paused 6× vs 8×</th><td role="cell" data-label="Actual source crop → tensor">Minimum long context 160 vs 120</td><td role="cell" data-label="What it demonstrates">8× can spend the tensor on a smaller source area. Covering a whole page may need more attempts, within the same 32-attempt cap.</td></tr>
+</tbody></table></div>
+<p>A paused detail request waits for a 300 ms settled view and must improve established detector scale by at least 25%. A containing attempted region at ≥90% of the requested scale counts as covered. At most 32 regions are attempted per immutable selection, including failed/abandoned attempts, without eviction. Source/seek/settings authority resets that coverage. Pan/zoom itself still reprojects immediately.</p>
+<p class="source">Sources: <a href="../src/common/ultra_clear_text.cpp">DetectorInputSize, DetectorRegions, DetailRegion</a>; <a href="../src/common/uct_region_planner.cpp">RegionalDetailFocus</a>; <a href="../src/app/ultra_clear_text_controller.cpp">paused detail scheduling</a>; <a href="uct_active_regional_ocr.md">regional sizing</a>; <a href="uct_oriented_detail_repair.md">paused detail</a>.</p>
+</div></details>
+
+<details class="chapter" id="backend">
+<summary>04 · One automatic backend chain, several job types<span class="small">The startup Windows bridge, preferred TensorRT and fallbacks are not parallel OCR votes.</span></summary>
+<div class="chapter-body">
+<h2>One recognizer job chooses a backend</h2>
+<p>The default <code>AutomaticRecognizer</code> has three candidates in order: the application’s production TensorRT candidate, Paddle ONNX Runtime CPU, and built-in Windows OCR. Saved GPU detector/recognizer tiers default to <strong>medium/medium</strong>; CPU fallback defaults to <strong>tiny/small</strong>. Medium/small GPU recognizers default to batch eight, tiny to batch one. Saved choices and explicit overrides win.</p>
+<p>TensorRT preparation runs asynchronously on its own owned preparation worker. While it prepares, the automatic chain uses <strong>Windows OCR at candidate index 2 as the startup bridge</strong>. It deliberately avoids occupying the OCR worker with slow CPU model initialization during that interval. If Windows has no usable OCR language, the bridge waits for preferred preparation; ordinary CPU/Windows fallback still applies afterwards. This startup bridge is more specific than the shorthand “CPU OCR while GPU prepares.”</p>
+<p>Between jobs, readiness can promote the preferred GPU candidate. If it is unavailable or genuinely fails, normal full work can advance to the configured Paddle CPU pair, then Windows. Candidates initialize at most once per session and a retired candidate is not resurrected by promotion. Cancellation or a bad input does not authorize running a fallback. Turning UCT off/on or changing model configuration revokes the old worker’s authority and creates a fresh session without joining a native call on the UI thread.</p>
+<div class="table-wrap" role="region" aria-label="Exact OCR job types" tabindex="0"><table role="table">
+<caption>What the one recognition worker is asked to do</caption><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Job</th><th scope="col" role="columnheader">Input and purpose</th><th scope="col" role="columnheader">Boundary</th></tr></thead><tbody role="rowgroup">
+<tr role="row"><th scope="row" role="rowheader">Full</th><td role="cell" data-label="Input and purpose">Current owned full scene; baseline context and overlapping detail crops when supported. Also the initially selected paused sample and its real corroborating neighbour.</td><td role="cell" data-label="Boundary">Authoritative full results feed the planner. Full reads own backend promotion/failover.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">PausedDetail</th><td role="cell" data-label="Input and purpose">One focused region from each of the retained selected and real-neighbour images after navigation settles.</td><td role="cell" data-label="Boundary">The pair refines the immutable artifact. One half alone supplies no new replacement proof.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Regional</th><td role="cell" data-label="Input and purpose">One current-input crop selected from the latest full plan, between full deadlines.</td><td role="cell" data-label="Boundary">Explicit opt-in, idle/slack gated. No promotion, startup bridge, retirement or alternate backend inside an optional call.</td></tr>
+</tbody></table></div>
+<h3>Inside a Paddle read</h3>
+<ol>
+<li>Plan whole-scene/context crops and normalize each detector input. Detection uses its pinned graph and bounded connected-region extraction.</li>
+<li>Keep four-corner text geometry. Rectify each detected line/region for recognition.</li>
+<li>Use the recognizer’s 1024 × 48 canvas by default. Very long lines can add up to eight overlapping windows; capped windows widen to retain coverage. CTC decoding reduces model output to dictionary tokens and estimated source spans.</li>
+<li>Merge duplicates/fragments carefully, retaining distinct occurrences of an identical word at different places. Group rows/columns without swallowing neighbouring type sizes.</li>
+<li>Prepare local colors, bounded source-ink fitting, scene coordinates, reference patches and candidate/omission dispositions on the worker.</li>
+</ol>
+<p>The limits include at most 128 detected regions per pass, up to 1152 compact quad descriptors per pass with long-line windows, and at most 1024 merged lines. Detector thresholds are 0.2/0.4; the separate candidate confidence threshold is 0.7. These are bounded algorithms, not quality guarantees. The optional bucketed-width experiment uses separate cached 128/256/512/1024 profiles; the fixed1024 default remains available.</p>
+<h3>Windows is a real local engine, not a model bundled with OkuFlow</h3>
+<p><code>Windows.Media.Ocr</code> uses installed Windows OCR language support. It selects profile languages, then an installed OCR-capable language. The adapter scales to the engine’s reported maximum, converts to grayscale and inverts a dark surrounding image when appropriate. It now maps the engine’s native text angle and sampled resize back to source quads. No account, network call or LLM is involved.</p>
+<p class="source">Sources: <a href="../src/common/uct_paddle.cpp">AutomaticRecognizer</a>; <a href="../src/common/uct_default_recognizer.cpp">Windows adapter</a>; <a href="../src/common/uct_paddle_processing.cpp">crop/CTC preparation</a>; <a href="../src/common/uct_tensorrt.cpp">TensorRT adapter</a>; <a href="uct_recognizer_width.md">width experiments</a>.</p>
+</div></details>
+
+<details class="chapter" id="queue">
+<summary>05 · Step through the producer/consumer queue<span class="small">One in flight, one latest pending, full priority and retained evidence.</span></summary>
+<div class="chapter-body">
+<h2>Slow OCR cannot grow an unbounded backlog</h2>
+<p>The controller produces work from eligible owned images; a worker consumes it. The recognition scheduler has <strong>one executing job and one replaceable pending slot</strong>. A newer ordinary job replaces waiting work. A full job can replace a waiting region; a region cannot replace a waiting full. Replacing pending work does not preempt a native call already running.</p>
+<p>The GPU controller is stricter than the scheduler’s capacity: it does not park a pending device OCR lease while inference holds the other analysis slot. That keeps the two-slot pool available for independent validation. CPU descriptors and scheduler contract fixtures can demonstrate the pending slot; the following illustration is not a claim that every camera frame queues GPU OCR.</p>
+<section class="card" aria-labelledby="queue-title">
+<h3 id="queue-title">A manual sequence, with no timer</h3>
+<div class="actions no-print"><button type="button" id="queue-prev">Previous step</button><button class="primary" type="button" id="queue-next">Next step</button><button type="button" id="queue-reset">Start again</button></div>
+<div id="queue-live" aria-live="polite" aria-atomic="true">
+<p class="step-readout" id="queue-step">Step 1 of 13 · Start full A</p>
+<div class="grid"><div class="queue-slot"><h3>Executing · owns its input</h3><p id="queue-flight">Full A</p></div><div class="queue-slot waiting"><h3>Pending · replaceable</h3><p id="queue-pending">Empty</p></div></div>
+<p id="queue-action">The worker takes full A from a genuine acquisition. Presentation continues independently.</p>
+<p id="queue-proof"><strong>Publication:</strong> no new glyph is authorized merely because a job started.</p>
+</div>
+</section>
+<details><summary>Read the complete sequence as text</summary><ol class="steps-list">
+<li>Full A starts from an owned acquisition.</li><li>Full B waits while A runs.</li><li>New full C replaces waiting B; there is still only one pending job.</li><li>A finishes. Its result needs authority and current proof; C begins.</li><li>C finishes. With an idle worker and sufficient optional slack, region D enters the waiting slot just before worker dequeue.</li><li>Demanded full E replaces waiting D before dequeue.</li><li>A new region F cannot replace waiting full E.</li><li>E begins; a source/geometry change revokes its publication authority and cancels any waiting work.</li><li>E’s late native return cannot publish into the new source; ownership retires only with known completion.</li><li>An immutable selection H is read once under standalone held-frame admission.</li><li>The paused app requires no neighbour job; eligible words use H itself.</li><li>Pan/zoom projects the retained artifact; it does not invent another acquisition.</li><li>An unchanged completed still stays idle; one useful same-image detail job is separately bounded.</li>
+</ol></details>
+<h3>There is also an independent validation consumer</h3>
+<p>The probe worker has one executing and one latest waiting request. It constructs/checks bounded scene probes without waiting for inference. It never runs an optional regional OCR descriptor. Probe work uses a 60 ms cooperative search budget, with cancellation between lines or bounded 64-line resident batches. Completed checks remain usable; unchecked new lines stay hidden. An old valid line retains only its own still-fresh proof.</p>
+<p>Source/seek/geometry/disable changes increment authority immediately. Input storage remains owned until native work actually finishes. Scheduler destruction waits at most 1.5 seconds, then can detach an independently owned state with callbacks revoked. Cancellation is a publication/ownership fence, not a promise to interrupt any vendor instruction at an exact time.</p>
+<p class="source">Sources: <a href="../src/common/ultra_clear_text.cpp">RecognitionScheduler::State::Enqueue and ProbeWorker</a>; <a href="../src/app/ultra_clear_text_controller.cpp">controller lease admission</a>; <a href="ultra_clear_text.md#clocks-and-non-blocking-guarantees">clock and cancellation contract</a>.</p>
+</div></details>
+
+<details class="chapter" id="reuse">
+<summary>06 · What gets reused, and why unchanged areas still get work<span class="small">Pixels, accepted objects, proof references and engine plans are four different caches.</span></summary>
+<div class="chapter-body">
+<h2>A previous frame can be useful without becoming fresh evidence</h2>
+<div class="table-wrap" role="region" aria-label="Four forms of reuse" tabindex="0"><table role="table">
+<caption>What the retained object can and cannot do</caption><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Retained thing</th><th scope="col" role="columnheader">Useful reuse</th><th scope="col" role="columnheader">What it does not prove</th></tr></thead><tbody role="rowgroup">
+<tr role="row"><th scope="row" role="rowheader">Pixels / image lease</th><td role="cell" data-label="Useful reuse">Repaint a scene, pan/zoom it, retry an explicit backend on the same job where allowed, retain a selected video frame and genuine neighbour, or share a proven same-frame seek.</td><td role="cell" data-label="What it does not prove">A new allocation, copy, timestamp, presentation or job ID is not another acquisition. Two copies of one picture cannot supply independent temporal evidence.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Accepted line/word object</th><td role="cell" data-label="Useful reuse">Keep exact text, geometry, identity, colors, reference and still-valid proof together. Reproject it immediately. A near-identical unverified refresh may leave the complete old object in place while its own proof is fresh.</td><td role="cell" data-label="What it does not prove">Old proof cannot be transferred to a newly unverified reference. Retention does not renew validation time or make an occluded word readable.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Pixel reference / probe</th><td role="cell" data-label="Useful reuse">Compare a line’s source patch with a later actual image, measure bounded translation, and revoke changed or hidden text.</td><td role="cell" data-label="What it does not prove">Similarity is not exact semantic equivalence. A one-character edit can remain highly correlated; the current character-verifier diagnostic is unsafe for authorizing skipped OCR.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Engine plan</th><td role="cell" data-label="Useful reuse">Reuse a compiled model execution plan matched to graph, profile, GPU UUID, driver, TensorRT and precision identity.</td><td role="cell" data-label="What it does not prove">It caches executable inference setup, not a page, its words or their correctness. An unchanged engine cache still runs detector/recognizer work on each admitted job.</td></tr>
+</tbody></table></div>
+<h3>Why read the same-looking page again?</h3>
+<p>The baseline full read remains the authority for new, missing and changed content. An unchanged-looking area may contain a new digit, a cursor, a hand, a slide edit or a small OCR error. The existing NCC tracker was designed for motion/persistence checks. Its character-change diagnostic found false accepts, so it cannot safely turn “this still correlates” into “skip recognition here.” The region planner’s repeated-word count is also only bookkeeping from full OCR.</p>
+<p>Consequently a stable live or advancing scene still gets full refreshes, and a baseline full job can rerun detection/recognition on overlapping context containing already accepted words. Those extra crops can recover small text lost in a downscaled full view. Preparation, source checks, color/ink fitting and admission also take work. This is deliberate conservatism plus current implementation limits, not an implemented unchanged-region inference cache.</p>
+<p>Some repeated work is already avoided: viewport movement reuses the completed scene and accepted artifact; stable scenes obey refresh scheduling; identical accepted geometry/colors can remain cached; immutable completed stills do not poll periodically; model plans are reused. Optional supplemental regions add focused work between full reads. They <strong>do not reduce the number of mandatory full reads</strong>.</p>
+<h3>What actually demands a new full read?</h3>
+<p>Initial/source/seek/geometry/processing authority changes, pending unconfirmed words, lack of accepted text, a view not covered sufficiently by the prior job, actual probe contradictions and due refresh can demand full OCR. Stable probe similarity defaults to 0.92. A repeated Extra Stable acquisition does not confirm pending text; it is reread only under the narrower lost-text/refresh recovery policy. These conditions are more specific than “OCR every N milliseconds.”</p>
+<div class="table-wrap" role="region" aria-label="Scheduling defaults" tabindex="0"><table role="table">
+<caption>Intervals and budgets are policy values, not measured latency</caption><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Default</th><th scope="col" role="columnheader">Meaning</th></tr></thead><tbody role="rowgroup">
+<tr role="row"><th scope="row" role="rowheader">80 ms</th><td role="cell" data-label="Meaning">Analysis/probe opportunity throttle. Busy ownership can skip an opportunity. This is not guaranteed 12.5 Hz completion.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">350 ms</th><td role="cell" data-label="Meaning">Minimum demanded full submission interval for advancing media. Live camera uses its own stable/demand gates, not a universal 350 ms timer.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">1500 ms</th><td role="cell" data-label="Meaning">Stable full refresh policy, still subject to input/backend readiness and demand.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">300 ms</th><td role="cell" data-label="Meaning">Paused navigation settle before considering a useful visible-detail pair.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">750 ms initially</th><td role="cell" data-label="Meaning">Conservative optional regional cost estimate; subsequent value is nondecreasing <code>max(previous, 2 × actual regional duration + 80 ms)</code>.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">3 ms / 60 ms</th><td role="cell" data-label="Meaning">Cooperative UI admission / worker probe-search budgets. They do not preempt a native or indivisible operation at an exact deadline.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">350 ms / 600 ms</th><td role="cell" data-label="Meaning">Ordinary proof freshness / successful-presentation watchdog. Same-frame and immutable rules differ; failed presentation hides immediately.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">30 seconds</th><td role="cell" data-label="Meaning">Current immutable job wall-time horizon, separate from the age of the held video sample. An otherwise valid still does not expire simply because wall time passes.</td></tr>
+</tbody></table></div>
+<p>Advancing media uses actual selected PTS for media freshness and a separate 350 ms wall-time bound for analysis gaps. Neither repeated held pixels nor a newly assigned wall timestamp renews media evidence. A source may hold its last valid picture across a real acquisition gap without fabricating another frame.</p>
+<p class="source">Sources: <a href="../src/app/ultra_clear_text_controller.cpp">HandleProbeOutcome and full-demand logic</a>; <a href="../include/okuflow/app/ultra_clear_text_controller.hpp">UctTiming</a>; <a href="uct_character_verification.md">character-verifier false accepts</a>; <a href="uct_region_planner.md">shadow repetition policy</a>; <a href="uct_paused_continuity_repair.md">retained immutable coverage</a>.</p>
+</div></details>
+
+<details class="chapter" id="proof">
+<summary>07 · How a recognized candidate earns replacement eligibility<span class="small">Confidence, source size, exact text, independent images, geometry and protection.</span></summary>
+<div class="chapter-body">
+<h2>Recognition output is a proposal</h2>
+<p>A candidate must survive both source/evidence validation and final display decisions. A high score, two agreeing OCR reads or a large accepted-word count is insufficient to prove the text is correct or painted. Failures preserve the source image and ordered omissions rather than inventing missing text.</p>
+<ol>
+<li><strong>Preserve exact authority.</strong> The copied pixels carry source epoch, geometry generation, frame/acquisition sequence, source time, applied transform and pixel extent. Jobs/results/accepted lines keep that stamp. The controller never restamps old pixels as the currently displayed source. Cancellation and incompatible source/geometry changes revoke them.</li>
+<li><strong>Require usable candidate metadata.</strong> Candidate confidence is finite, at least 0.7 and no more than the small upper tolerance 1.0001. Bounds/quads must be positive, finite and valid in their source image. Minimum word height is seven source pixels, with only 1e-5 source pixels of arithmetic tolerance. Enlarging the detector or viewport does not waive this source-size gate.</li>
+<li><strong>Apply notation policy.</strong> Unsupported symbols, non-ASCII digits and modifier-letter notation remain original. Ordinary ASCII labels and lookalikes follow the normal checks; there is no blanket veto on letters mixed with numbers.</li>
+<li><strong>Prepare source proof.</strong> The line reference comes from the job’s exact current single-frame pixels, even when OCR read an average. Textureless/untrackable references do not authorize glyphs. Rejected spans retain source-protection rectangles.</li>
+<li><strong>Require temporal agreement.</strong> Ordinary live acceptance uses exact text at an overlapping scene position, with agreement IoU ≥ 0.5, from independent recognitions or an already accepted word under its valid proof. Repeated held copies do not supply another acquisition.</li>
+<li><strong>Check current pixels.</strong> Ordinary line tracking requires NCC ≥ 0.82 within a bounded ±6-probe-pixel translation search. A newly recognized live/advancing line needs a current-frame probe at or after its OCR frame. Failed, out-of-view or unchecked new lines remain hidden. This motion tracker is distinct from strict immutable/current-input registration.</li>
+<li><strong>Use the selected admission policy.</strong> Paused video/manual Freeze admits eligible OCR from the exact held image with its own valid source references, without temporal corroboration. The explicit two-frame protocol requires exact text, distinct complete source digests, valid geometry, NCC ≥ 0.94, visible fraction ≥ 0.95 and bounded two-probe-pixel refinement. Averaged-input/current-frame registration still uses 0.94/0.95 with zero translation/refinement.</li>
+<li><strong>Keep display authority current.</strong> Ordinary results have a four-second arrival-age limit. Lines retain their validation clock and obey freshness. A 600 ms absence of successful presentation receipts hides glyphs and reading text; attempted presents, worker completions and toggles cannot restore them. A genuine successful receipt can restore an unchanged still-valid artifact.</li>
+</ol>
+<div class="note caution"><p><strong>Independent does not mean infallible.</strong> Two real frames can show the same obstruction, and an OCR model can make the same semantic mistake twice. Exact-text agreement and pixel registration establish consistency with those images, not the true spelling or meaning. UCT has no dictionary/LLM correction stage that can safely turn <code>F.ight</code> into <code>Right</code>.</p></div>
+<h3>Acquisition identity and pixel identity do separate jobs</h3>
+<p>A capture-owned acquisition record proves which actual image was held. Immutable proof additionally requires different full source content, not merely different object addresses. CPU images hash their active rows. Saved/unknown GPU input computes a domain-separated SHA-256 tree over all packed BGRA pixels on CUDA: 4096-byte leaves prefixed by 0x00, ordered groups of up to 16 child digests prefixed by 0x01. Only the 32-byte root returns. Padding is excluded. Digest kinds must match before different roots establish distinct content, so switching backend cannot manufacture independence. Live capture does not routinely hash every frame.</p>
+<h3>Proof is bounded, including on dense pages</h3>
+<p>The shared admission ceilings include 1024 lines, 8192 words and a union cap of 32768 tokens/masks in applicable merge paths. Resident reference/match requests batch at most 1024 descriptors; worker checks use 64-line chunks. Paused oriented word patches sample 8–64 columns by 4–12 rows, with margins in the word’s own detected frame. Word registration retains at least 75% of the larger intrinsic edge sizes and bounds translation to 0.25 normalized scene units per axis. These are not an expanded optical-flow motion search.</p>
+<p>Ink fitting chooses display geometry; it need not produce identical crops in neighbouring captures. In the explicit corroborated protocol, word proof first checks fitted frames, then permits one original neighbour-bounded recognition-frame check under the same thresholds. Small tilts spanning more than half a source pixel stay oriented instead of switching fitters at an angle boundary. Current paused/Freeze admission does not run this cross-frame comparison or treat a reread as independent evidence.</p>
+<p>Work stops conservatively when a budget or cap is reached. A completed worker check can be consumed after the UI’s inline match budget expires; unfinished checks are not silently counted valid. Unknown GPU completion is quarantined. These policies constrain application-owned work; they are not a total process RAM/VRAM ceiling or native-driver time guarantee.</p>
+<h3>Omissions own source protection</h3>
+<p>A rejected/uncertain token leaves an ordered <strong>…</strong> in reading order and protects its source ink from adjacent replacement plates. Protection can also live in a bounded mask-only carrier with no readable words. Candidate merging is transactional: cross-owner carving, appends, retirements, counters, pending evidence and provisional IDs must all succeed before commit. A late risk/cap refusal restores the prior state.</p>
+<p>Original protection and carved subtraction remainders are explicitly distinguished. On projection, an original thin mark rounds conservatively outward if either axis has no covered pixel centre. A carved remainder does so only if both axes lack centres. Thus a harmless thin carved strip need not suppress its adjacent proved word, while original punctuation keeps protection. If identical rectangles carry both classifications, original wins. A diagonal/ambiguous quad cut is refused rather than exposing unproved corners through a rectangular approximation.</p>
+<p class="source">Sources: <a href="../include/okuflow/common/ultra_clear_text.hpp">stamps, dispositions, references and ModelTuning</a>; <a href="../src/common/ultra_clear_text.cpp">PrepareLines, MatchPatch and OverlayModel</a>; <a href="../src/cuda/uct_kernels.cu">resident kernels</a>; <a href="uct_uncertainty_repair.md">omission protection</a>; <a href="uct_oriented_detail_repair.md">original/carved masks and quad proof</a>.</p>
+</div></details>
+
+<details class="chapter" id="regional">
+<summary>08 · Shadow planning and optional regional execution<span class="small">Metadata priority, unchanged full deadlines, and a no-withdrawal transaction.</span></summary>
+<div class="chapter-body">
+<h2>The planner observes full OCR; it does not track optical flow</h2>
+<p>With no opt-in, no planner is allocated. <code>OKUFLOW_UCT_SHADOW_PLANNER=1</code> enables an observation-only occurrence/grid prioritizer on the existing OCR worker. <code>OKUFLOW_UCT_REGIONAL_OCR=1</code> enables the supplemental executor and implicitly the planner. Shadow alone does not run a crop or publish text.</p>
+<p>Only successful complete full results update the planner. Each repeated spatial word occurrence has a separate ID; the same spelling in two places is two occurrences. Fresh full output pairs by geometry before comparing text. Repetition from two fresh verified acquisitions can mark it “stable,” meaning only that full OCR repeated it. Changed full text wins. Held duplicates, stale tickets, unregistered averaged text and partial results cannot advance occurrence ages or coverage debt.</p>
+<p>The default observer retains at most 2048 occurrences, 1024 lines and 8192 words, an 8 × 8 unseen-coverage grid, and 24 hypothetical selections with six reserved for older coverage debt. Focus is a priority hint, not evidence. The plan always keeps <code>authoritativeAction = kRunFullOcr</code>. It is not an OCR text cache, a smooth slide/shadow detector or a stack of images.</p>
+<h3>Only spend optional slack</h3>
+<p>Active mode may submit one region per full interval when the worker is idle and no full work is demanded/pending. It reads current owned pixels from a strictly later acquisition than the retained full plan. Full deadlines, last-full markers and refresh requirements remain unchanged. The controller reserves a probe period beyond the cost estimate; the worker rechecks a steady-clock full deadline and an additional 80 ms execution reserve after metadata/readback, immediately before inference.</p>
+<p>The initial estimate is 750 ms; later estimates use the nondecreasing maximum of the old estimate and <code>2 × actual regional worker duration + 80 ms</code>. Full fallbacks do not update that regional estimate. This generally fits stable 1500 ms intervals, not demanded 350 ms intervals. Measured high-water cost cannot predict every call. An overrun is counted and disables optional work until worker recreation; baseline full work continues.</p>
+<p>A queued full supersedes a queued region. Expired slack yields without inference; it cannot trigger a more expensive full call instead. With sufficient slack, unsupported detail or a stale/unusable plan can fall back once to full work on that same current input under the worker’s policy. A supplemental backend failure adds no CPU retry or bridge readback and does not retire/promote a healthy candidate; optional work latches off and the next current full read handles normal failover.</p>
+<h3>Crop ownership includes the detector’s complete union</h3>
+<p>The safe interior is ten <strong>source-crop</strong> pixels from internal edges: the backend’s shared eight-pixel exclusion plus two pixels of detector jitter slack. True image-border edges add no margin. These values are not divided by 704/480. Original detector bounds, fitted words and masks must all fit. Ink fitting cannot make a clipped detector fragment trustworthy.</p>
+<p>Admission owns complete lines. A sentence, word or mask crossing/outside safe coverage stays verbatim, with its identity, reference, offsets and proof clocks. An optional crop that never observed an outside line does not require another probe merely to retain it. Its ordinary freshness and independent contradictions still apply. Rejected edge candidates contribute no pending words or temporal observations. If a rejected candidate touches an otherwise owned line, the optional update remains wholly unapplied.</p>
+<h3>“No withdrawal” includes the actual raster</h3>
+<p>A geometric rectangle comparison alone is insufficient: conservative original punctuation can share a raster column with a nearby word even when their ideal rectangles are disjoint. Optional admission therefore prepares a bounded proposed model and checks that it does not withdraw existing eligible text/protection. When new protection or changed geometry could affect an old glyph, the controller uses the production renderer in a scratch preflight.</p>
+<p>That preflight matches old glyph identities, requires an actual current paint in the same view/style, and prepares one proposed raster plan with the same layout, exclusions, quads and protection closure. Cold typography, stale paint, exceptions or insufficient remaining budget make the optional admission a no-op. The scratch operation does not assign public content, create windows, pump events, alter visibility or publish timing. RAII restores temporary state. Model-only callers conservatively refuse novel protection while earlier glyphs exist if they cannot obtain this renderer proof.</p>
+<p>The approximate 3 ms UI admission budget is cooperative, not a hard cap on every library call. Cached warm layouts reduce work; dense closures may yield. A refused optional update changes no public artifact, pending evidence, IDs or publication ticket. Full OCR and independent pixel probes keep their authority to correct or remove text.</p>
+<p class="source">Sources: <a href="uct_region_planner.md">planner contract</a>; <a href="uct_active_regional_ocr.md">active executor and atomic raster preflight</a>; <a href="../src/common/uct_region_planner.cpp">occurrence/grid implementation</a>; <a href="../src/common/ultra_clear_text.cpp">regional queue and admission</a>; <a href="../src/ui/ultra_clear_text_overlay.cpp">scratch paint plan</a>.</p>
+</div></details>
+
+<details class="chapter" id="paused">
+<summary>09 · Paused video: the held image stands alone<span class="small">Current single-image admission, frame zero and earlier corroboration history.</span></summary>
+<div class="chapter-body">
+<h2>Opening a file can read its first frame without pressing Play</h2>
+<p>A native reader may legitimately issue selected sample ID/PTS zero. The controller waits for backend readiness and recognizes that owned sample by itself. Play, a camera heartbeat, a positive sample number and a previous/following sample are not prerequisites. The selected frame, cursor and generation stay held.</p>
+<p>A completed unchanged still gets no periodic recognition/validation loop. A bounded preferred-backend refinement can replace startup-bridge output when preparation completes. Transient unsuccessful jobs have at most three ordinary retries at 100 ms spacing; preferred-preparation waiting uses 500 ms spacing inside the existing 30-second horizon. A successful final read does not keep polling. A separately settled useful selected-image detail job has its own 32-attempt coverage bound.</p>
+<h3>Earlier independent-frame protocol and evidence</h3>
+<p>The remaining pair/duration discussion in this chapter describes the retained explicit corroborated protocol and earlier captures. It is not a prerequisite of the current paused/Freeze app path. Same-image visible detail now runs one selected-image job rather than a selected/neighbour pair.</p>
+<p>One selected recognition can supply readable text in the pane while source ink stays visible. Replacement requires a genuine corroborating acquisition, different complete source digest of the same digest kind, exact text/geometry agreement and strict registration. Separately allocated but byte-identical images fail independence. Waiting longer, replaying a still or changing its job number cannot fix that.</p>
+<h3>The ordinary time window is 250 ms</h3>
+<p>Live/advancing media, recording archives, RAM recap, unknown/invalid duration and earlier-neighbour proof keep the ordinary policy. The narrow following-only extension is available for an exact reader-issued <strong>paused SavedFile</strong> selection with validated positive duration:</p>
+<pre>followingWindow100ns = max(250 ms, min(selectedNativeDuration, 2500 ms))
+earlierWindow100ns   = 250 ms</pre>
+<p>The implementation compares integer 100-ns PTS, preserving the exact boundary. It does not derive duration from two image timestamps, elapsed wall time, a copied frame or inferred FPS. Invalid/unrepresentable duration stays ordinary. Allowing a longer real cadence does not waive distinct pixels, exact text, NCC 0.94, visibility 0.95, local refinement, geometry or work caps.</p>
+<h3>“Native-issued” means a sealed application reader lease</h3>
+<p>Only <code>VideoPlayback::CorroborationPolicy</code> can issue the opaque descriptor after checking the identical frame/shared ownership block, reader, file/track, current request and sealed sample/PTS/duration. It retains metadata, not another image/player. Foreign, copied, stale or borrowed metadata cannot issue it. The descriptor is bound through selection, reference, line/word worker checks and model admission; a change revokes old proof.</p>
+<p>Media Foundation is the default saved-file reader and supplies actual sample duration. The separately configured, opt-in first-party FFmpeg reader can also supply SavedFile origin and <code>AVFrame.duration</code> through this sealed application lease. The policy is therefore not intrinsically exclusive to Media Foundation. Archive/RAM facades remain on Media Foundation and do not gain the saved-file allowance. The actual sparse-file evidence below verified Media Foundation only; it makes no FFmpeg-duration acceptance claim.</p>
+<h3>A sparse source explains the original opening-frame failure</h3>
+<p>The private Tr 9 source contains real samples at 0 and 2000 ms with two-second duration. Under the old universal 250 ms neighbour rule, the opening sample could be readable in the pane but could not earn replacement glyphs from that real following sample. The bounded duration-backed rule accepts that cadence when the reader proves the selected duration. The source is not retimed and the held picture is not advanced to manufacture proof.</p>
+<p>The parent-reported explicit native Tr 9 probe passed with the selected 0-ms sample, native two-second duration and real 2000-ms neighbour. It used Media Foundation, one paused Open and no Play/model/GPU/audio endpoint. This is native sample/descriptor plumbing evidence, separate from OCR quality or native screen-reader behavior. The source and receipts remain private.</p>
+<p class="source">Sources: <a href="uct_initial_paused_frame.md">frame-zero, sparse cadence and captured replay</a>; <a href="../include/okuflow/common/immutable_corroboration.hpp">integer window and opaque policy</a>; <a href="../src/common/video_playback.cpp">reader issuance and following preparation</a>; <a href="video_ffmpeg_playback.md">separate optional FFmpeg reader</a>; <a href="uct_immutable_controller.md">immutable controller</a>.</p>
+</div></details>
+
+<details class="chapter" id="paint">
+<summary>10 · From source geometry to solid letters and paper plates<span class="small">The Windows angle repair, local ink fitting, color tradeoffs and residual source pixels.</span></summary>
+<div class="chapter-body">
+<h2>Correct words in the wrong coordinate frame still fail</h2>
+<p>Paddle detection retains four reading-order corners through CTC span mapping, local ink fitting and scene-space projection. Its principal-axis detector rectangle does not by itself recover a surface's shear or taper. An optional bounded worker refinement can fit four supported edges of a closed, locally uniform source surface, then project actual ink through that plane. Open, cropped or ambiguous surfaces retain the earlier geometry. The same word-independent rule runs on CPU and CUDA; it adds no image download. See <a href="uct_surface_perspective.md">source-supported perspective and its limits</a>.</p>
+<p>Tilt/perspective words use the oriented path; near-upright words can use rectangles. The painter transforms both glyph and plate through the projected quad and preserves each tapered word's local ink height, including near/far size differences. It does not interpret detector padding as the true letter height.</p>
+<p>The reproduced Windows startup-bridge defect discarded <code>OcrResult.TextAngle</code>. Windows boxes described its deskewed image, but the adapter treated them as source-image rectangles. Around a small global tilt, this displaced labels differently across the image and left duplicate or protected fragments after preferred refinement.</p>
+<p>The fix retains the optional native angle, rotates all four corners clockwise about the actual sampled-image centre, then undoes the actual X/Y resize ratios. Null/zero angle follows the upright case; nonfinite metadata refuses the geometry. No angle is guessed, and no confidence, overlap, masking or spelling rule was relaxed. On the actual +2.4-degree source, corrected Windows-bridge → BF16 proof has both Head labels once and all 21 in-focus words painted before and after detail. See <a href="#limits">the exact evidence limits</a>.</p>
+<h3>Ink fitting estimates the source body</h3>
+<p>Detector/CTC boxes often include padding. Bounded worker-side fitting samples local ink within the line and neighbouring-word limits. The oriented path removes connected components spanning opposite search edges, separating neighbouring rules/surfaces where possible. Its fit keeps at least 35% of detected width and 25% of padded search height, with a four-source-pixel height floor; the independent seven-pixel candidate height policy still applies to prepared words. Upright fitting uses its own midpoint/connected anti-aliasing policy and guard.</p>
+<p>Fitting is not character-outline segmentation. It uses bounded cells/columns/rows and propagation work; an incomplete CUDA fit conservatively retains detector geometry. A failed-fit near-vertical isolated scalar remains original under risk policy. Post-fit duplicate reconciliation and paint-time conflict protection avoid painting two observations over the same ink while retaining genuinely adjacent identical words.</p>
+<h3>One solid foreground and one local background per word</h3>
+<p>Local word colors can keep dark letters on a selected yellow button while adjacent words stay light on dark. Sampling comes from neutral source analysis before display LUTs; the replacement is not recolored from the final viewport. Worker preparation/cache work stays off the pan/zoom paint path.</p>
+<p><code>ReadableColors</code> uses black/white polarity for low-chroma foregrounds whose RGB channel spread is <strong>below 64</strong>. A clearly chromatic foreground is preserved only when the existing contrast reaches at least 7:1. Otherwise the foreground first moves to the polarity endpoint. Clearly colored paper (RGB channel spread at least 64) stays unchanged when that solid ink reaches a 3:1 source-color floor, preserving white-on-blue chat bubbles. This floor is not a font-size-dependent accessibility certification. On neutral paper or below that floor, the background moves the minimum distance toward its endpoint. Background brightness uses 64 levels and small same-polarity changes retain prior colors within an eight-channel-level hysteresis band.</p>
+<p>This creates solid, readable replacement ink. It deliberately normalizes some muted source colors: RGB spreads 17–63 now go black/white too. That is a color-fidelity tradeoff, not universal denoising. Sampling near the spread-64 boundary can still vary. Raw <code>SceneWord</code> metadata may retain a tint such as <code>#9bb6bf</code> while the actual paint color is white after <code>ReadableColors</code>.</p>
+<p>Only admitted replacement plates cover source pixels. Faint compressed source ghosts can remain above/below a plate or outside its fitted footprint. UCT does not denoise the whole video, erase an unproved word, or guarantee complete anti-aliasing/halo removal. Clearly colored source labels are not all forced white.</p>
+<h3>Eligibility and actual drawing still differ</h3>
+<p>The final paint plan checks useful rendered size, valid shape/font layout, duplicates, conflicting text, chrome/viewport clipping and source-protection closure. A word may be model-eligible but have <code>PaintedWord.drawn == false</code>. A background plate and its glyph share one drawability decision, so a hidden glyph does not leave an opaque plate hiding the source. Original ink is the conservative fallback.</p>
+<p>Live paint and saved image composition share the same protection/raster decisions. Processed photos/drawings can include admitted UCT and ink from an immutable save snapshot. Original photos and new clean Original video stay free of UCT. Export rendering uses a scratch paint plan and cannot pretend to be a new on-screen publication.</p>
+<p class="source">Sources: <a href="../src/common/uct_windows_geometry.hpp">SourceWordQuad</a>; <a href="uct_tilted_paint_gaps.md">actual Windows bridge defect and proof</a>; <a href="uct_color_startup_repair.md">local colors and small source ink</a>; <a href="../src/common/uct_color_policy.hpp">sampling decisions</a>; <a href="../src/ui/ultra_clear_text_overlay.cpp">paint plan and PaintedWord</a>; <a href="uct_oriented_detail_repair.md">oriented fitting/protection</a>.</p>
+</div></details>
+
+<details class="chapter" id="accessibility">
+<summary>11 · Reading text, eligible words, actual paint and UI Automation<span class="small">These are four observations of the pipeline, not interchangeable success counts.</span></summary>
+<div class="chapter-body">
+<h2>A readable line need not be a replacement glyph</h2>
+<div class="table-wrap" role="region" aria-label="Text publication layers" tabindex="0"><table role="table">
+<caption>Follow the evidence through each publication layer</caption><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Surface / API</th><th scope="col" role="columnheader">Conditions and meaning</th></tr></thead><tbody role="rowgroup">
+<tr role="row"><th scope="row" role="rowheader">Pane · <code>ReadingText</code></th><td role="cell" data-label="Conditions and meaning">A valid, fresh readable line with reading tokens can remain in the selectable pane, including an immutable reading-only line without a glyph reference. Ordered rejected gaps appear as … . This does not establish on-image replacement.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Model · <code>IsShown</code> / <code>SceneWords</code></th><td role="cell" data-label="Conditions and meaning">Requires a valid reference, at least one glyph-eligible word and readable/fresh line state. SceneWords exports eligible words with source-space geometry/protection. This is still before final raster drawability.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Painter · <code>PaintedWord</code></th><td role="cell" data-label="Conditions and meaning">Reports the actual current paint plan, including <code>drawn</code>, glyph geometry or original-source geometry. False can mean protection, clipping, size or conflict suppression of an otherwise eligible word.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Positioned text · <code>ScreenLines</code> and Qt accessibility</th><td role="cell" data-label="Conditions and meaning">Uses shown lines and consistent token-to-word indices; unconfirmed/read-only words become omissions. Positioned geometry depends on the last actual paint and viewport authority. A native client must still discover/query it.</td></tr>
+</tbody></table></div>
+<p><strong>Interpret the combination.</strong> Pane-only text with original video and absent positioned text can be an eligibility/publication outcome, not a font-painter failure. Conversely, <code>drawn == false</code> alone does not prove there is no positioned text: an eligible word left as original ink can expose proportional character cells inside its original projected box. To prove a replacement label reached both surfaces, check actual glyph paint and the corresponding nonempty positioned character bounds.</p>
+<h3>Screen text is passive</h3>
+<p>The render viewport hosts a read-only grouping with virtual static-text line children. It does not attach them to the click-through glyph window, request focus or start speech. Line text uses the shared reading order. Consistent eligible tokens become words; uncertainty/read-only spans become one ellipsis per omission run. A model word count or reading-pane string alone cannot demonstrate this publication.</p>
+<p>Actual painted glyph geometry uses <code>QTextLayout</code> caret/grapheme positions and the font retained by that paint plan. Words left as original ink use proportional cells within the projected source box. Spaces and ellipses occupy bounded gaps. RTL ordering keeps its corresponding visual direction. Geometry is global logical pixels through the render host; Qt’s Windows adapter applies DPI once.</p>
+<p>Semantic additions publish at a one-second cadence with a bounded three-second reader hold. Loss of validation/authority revokes text immediately. Pan/zoom geometry queries use the most recent actual paint independently of OCR cadence. Source/geometry/presentation loss, Show original, unsupported composites or a hidden/mismatched overlay remove eligibility. Size/screen/DPI mismatches hide character bounds until an authoritative paint. Export rendering does not advance on-screen paint authority.</p>
+<p>Bounds are finite: 128 screen lines, 512 UTF-16 units per line and 16 KiB total. Qt offscreen fixtures and the corrected actual-capture controller replay exercise the model, software paint and positioned Qt interfaces. <strong>Native Windows UIA-client discovery, NVDA/Narrator speech, Magnifier highlighting and mixed-monitor behavior remain separate acceptance.</strong> Qt’s adapter/event/hit-testing behavior cannot be inferred from a private protocol oracle.</p>
+<p class="source">Sources: <a href="../src/common/ultra_clear_text.cpp">IsReadable, IsShown, ReadingText, SceneWords, ScreenLines</a>; <a href="../src/ui/ultra_clear_text_overlay.cpp">PaintedWord and character geometry</a>; <a href="../src/ui/uct_screen_text_accessible.cpp">Qt accessibility model</a>; <a href="uct_screen_text_accessibility.md">positioned text contract</a>; <a href="uct_timing_trace.md">assignment/publication receipts</a>.</p>
+</div></details>
+
+<details class="chapter" id="languages">
+<summary>12 · Interface languages are not OCR language coverage<span class="small">Model dictionaries, installed Windows support, notation and uncalibrated confidence.</span></summary>
+<div class="chapter-body">
+<h2>Three language questions have different answers</h2>
+<ol>
+<li><strong>Can I use the controls in this language?</strong> OkuFlow has 25 interface languages, with a saved explicit choice or system default. That covers labels/status/localization resources, not every OCR alphabet.</li>
+<li><strong>Can the chosen engine emit these characters?</strong> Paddle recognition is limited by the pinned selected model and its dictionary/configuration; tiers have different coverage. The tiny recognizer, for example, lacks Japanese coverage offered by larger tiers. Windows uses OCR-capable language data installed on this particular computer.</li>
+<li><strong>Will UCT admit and render the recognized token well?</strong> The candidate policy, font/shaping/layout, source size and proof gates are additional restrictions. A dictionary entry or translated interface is not validated multilingual reading quality, RTL usability or screen-reader acceptance.</li>
+</ol>
+<p>When Windows has no OCR-capable language, its fallback reports that recognition is unavailable and leaves the original image. Installing a supported Windows language/OCR feature is separate from choosing the app’s interface language. Optional Paddle assets must already be prepared/verified; the application does not silently install a missing alphabet or switch to an arbitrary online engine.</p>
+<h3>The current token policy allows ordinary ASCII labels</h3>
+<p><code>GPT6</code>, <code>GPT-6</code>, <code>RTX4090</code>, <code>OCRv6</code>, <code>R2D2</code> and isolated ASCII lookalikes such as <code>l I 1 0 O o</code> are not rejected just because of their shapes. They still need confidence, source size, temporal and pixel proof. The earlier blanket ASCII lookalike/mixed-label veto is not restored.</p>
+<p>Non-ASCII digits, superscript/subscript digit forms, modifier letters and symbols outside the plain punctuation set remain excluded. Examples such as <code>|</code>, <code>x_2</code>, <code>a_b</code>, <code>a^2</code> and unsupported mathematical symbols stay original. The source policy explicitly permits a conventional file-token exception for underscores/Windows separators when a final extension contains 1–16 ASCII letters; that exception does not turn subscript expressions into prose. Combining marks and other characters outside the current letter/digit/punctuation policy can also be omitted even if a model can emit them.</p>
+<p>There is no reliable general handwriting, curved-page, mathematical-layout or diagram classifier. A token slipping through ordinary print checks is not evidence that those use cases work. UCT does not apply an LLM, dictionary autocorrect or semantic spell repair. “Show original” remains useful for comparing names, symbols and numbers.</p>
+<h3>0.7 is a cutoff, not “70% certain”</h3>
+<p>Paddle’s confidence comes from its OCR decoding evidence; it is not calibrated probability that a displayed word is correct. Windows OCR does not expose a comparable confidence score in this wrapper, so words carry the nominal default <strong>1.0, unscored</strong>. That value is not 100% semantic certainty and cannot be compared as a calibrated score with Paddle.</p>
+<p>Independent acquisitions, exact-text agreement, source registration and conservative masks improve consistency. They do not verify spelling, meaning, a hidden character or the correctness of two repeated mistakes. Lowering the cutoff can admit more fragments; raw candidate/paint counts do not establish which words are right.</p>
+<p class="source">Sources: <a href="localization.md">25-language UI contract</a>; <a href="../scripts/uct/pins.json">pinned models/configurations</a>; <a href="../src/common/uct_paddle_processing.cpp">dictionary decoding</a>; <a href="../src/common/uct_default_recognizer.cpp">unscored Windows mapping</a>; <a href="../src/common/ultra_clear_text.cpp">IsHighRiskToken / confidence policy</a>; <a href="uct_token_policy_and_detail.md">ASCII policy repair</a>.</p>
+</div></details>
+
+<details class="chapter" id="gpu">
+<summary>13 · GPU residency, engine caches and the owner’s local BF16<span class="small">Zero image readback is not zero metadata, and the reviewed BF16 graph is mixed precision.</span></summary>
+<div class="chapter-body">
+<h2>The resident path keeps images on the GPU</h2>
+<p>TensorRT device input, normalization, detection, line rectification, recognition reduction, local color/ink work, references and probes remain resident. The independent validation reader builds a resident summed-area probe with longest edge at most 960. It does not download that decimated image to the UI. A compact region count can return between networks; decoded text/tokens, boxes, colors, fitted geometry and match verdicts return afterwards.</p>
+<p>Other intentional metadata includes the held acquisition’s 32-byte record and the 32-byte full-source digest root for applicable immutable input. Thus “zero image egress” means no full/decimated image or feature/logit-array download in that resident path. It does not mean no host metadata, no device-to-device copies, or that photo/video/export and every fallback never transfer pixels.</p>
+<p>The explicit CPU fallback/Windows bridge may request an image on its worker. In the documented real Windows selected/neighbour bridge proof, there are <strong>two intentional CPU OCR image readbacks</strong> and no additional GPU image egress. That is distinct from a direct GPU-only proof with zero image readbacks. A resident-operation input fault does not silently retry through CPU; a genuine recognizer runtime failure can retire that backend and use the explicit normal CPU fallback on a full job, with its status/transfer boundary reported.</p>
+<h3>Engine caches store a compiled execution plan</h3>
+<p>Normal engine identity binds graph hash, GPU UUID, driver, TensorRT/precision, batch and width/profile policy; serialized payload integrity is checked. Plans stay in private local development storage, not capture files or Git. Normal preparation can build a missing/invalid plan on the separate preparation worker when the configured runtime permits it. This setup is distinct from a recognition cache or a proof reference.</p>
+<p>Medium/small default to N8, tiny to N1. N16 remains explicit experimental work. Detector/N1/N8 tensor allocation ceilings are 256 MiB; N16 output tensors have a 1 GiB ceiling. These are individual validation limits, not eager reservations or total VRAM usage. Model/analysis/scratch/driver resources have additional ownership and limits.</p>
+<h3>The local BF16 selection is narrow and cache-only</h3>
+<p><code>OKUFLOW_UCT_LOCAL_BF16_MANIFEST</code> is read only by the application’s private production TensorRT factory, once at construction. Empty/unset and public diagnostic factories retain the normal pinned FP32 baseline. The reviewed selection is medium detector/medium recognizer, N8, fixed1024, explicit <code>prepare=false</code>, exact graph/plan/source hashes, approved RTX 4090 UUID, driver and TensorRT identity. It is not a saved precision UI preference or another user’s default.</p>
+<p>The recognizer uses a <strong>BF16 graph with mixed BF16/FP16/FP32 arithmetic and FLOAT I/O</strong>. The detector stays the pinned FP32 graph/I/O with TF32 allowed. Calling this “pure BF16” would be inaccurate. Different graph/profile/device/driver/runtime identities do not qualify for this reviewed plan.</p>
+<p>A nonempty selector makes both networks and any pinned FP32 fallback cache-only. The bounded manifest is at most 64 KiB; each graph/plan is strictly below 256 MiB. Canonical paths, roles, profiles, hashes and policy must match. The application does not convert graphs, load a builder for this request, prepare a missing fallback plan, write caches or emit offline experiment receipts.</p>
+<p>Typed <strong>pre-inference artifact/policy/profile refusals</strong> may choose the already cached pinned FP32 path and report why. Genuine CUDA/API/allocation/context/inference faults preserve normal retirement/quarantine and automatic CPU/Windows failover; they are not permission to retry BF16 inference as if it were a bad manifest. There is still one GPU candidate and one preparation worker, with the same Windows bridge index.</p>
+<p>The owner approved this local variant despite visible recognition/geometry differences in earlier comparisons. Original failed quality-tolerance verdicts remain failures. That choice does not establish improved semantic accuracy, a general precision recommendation, 120 FPS inference or behavior on another GPU.</p>
+<p class="source">Sources: <a href="uct_local_bf16.md">reviewed BF16 identity and fallback</a>; <a href="../src/common/uct_runtime_precision.hpp">private manifest policy</a>; <a href="../src/common/uct_tensorrt.cpp">preparation/runtime implementation</a>; <a href="../src/cuda/uct_analysis_pool.cpp">resident ownership</a>; <a href="uct_gpu_batching.md">batch limits</a>; <a href="THIRD_PARTY_LICENSES.md">separately installed runtime/model terms</a>.</p>
+</div></details>
+
+<details class="chapter" id="recap">
+<summary>14 · Live RAM recap is a separate clean-Original producer<span class="small">Silent compressed history, exact Freeze, true time, scrub/resume and bounded pressure recovery.</span></summary>
+<div class="chapter-body">
+<h2>Rewind without starting a recording</h2>
+<p>Development camera use keeps an independent silent <strong>Live recap</strong> even with Record off. The bottom transport supplies Pause/Resume, Rewind 10 seconds, seeking, Save frame and Jump to live. It uses the same player/transport infrastructure as selected video but has separate source authority from a saved file or an ongoing recording’s on-disk Original archive.</p>
+<p>Clean Original is captured before stabilization, Extra Stable, viewing effects, UCT, ink and viewport zoom. One native worker encodes approximately two-second independently playable H.264 video-only fragmented-MP4 segments through Media Foundation into first-party owned heap streams. A segment becomes readable only after successful finalization, release of mutable cursors and immutable Seal. No microphone or playback audio endpoint is opened for recap.</p>
+<p>There is no application-created temporary video, disk spill, cache/index file, mapped file or RAM disk. This is application heap storage; it is not a claim about the operating system’s paging policy. Normal recording remains an independent writer with its own microphone selection, disk paths and finalization. A paused/replaying view does not stop clean camera history acquisition.</p>
+<div class="table-wrap" role="region" aria-label="RAM recap limits" tabindex="0"><table role="table">
+<caption>Independent limits; do not add them into a claimed total process ceiling</caption><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Resource</th><th scope="col" role="columnheader">Implemented bound</th></tr></thead><tbody role="rowgroup">
+<tr role="row"><th scope="row" role="rowheader">Time window</th><td role="cell" data-label="Implemented bound">1–5 minutes, default five; actual available first/end times start empty and grow.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Compressed ring</th><td role="cell" data-label="Implemented bound">768 MiB, at most 160 segments, whole-segment eviction.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Active segment</th><td role="cell" data-label="Implemented bound">8 MiB; compact Seal has a bounded old-plus-new transient up to 16 MiB.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Consumer pins</th><td role="cell" data-label="Implemented bound">At most two pinned segment leases, including evicted bytes retained by a read cursor or clone. A copied lease does not return pin credit early.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Raw input queue</th><td role="cell" data-label="Implemented bound">Two pending frames / 96 MiB, plus one native worker input. Pressure drops are counted.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Resolution and cadence</th><td role="cell" data-label="Implemented bound">Native even-sized input through 3840 × 2160 or portrait, at most 30 FPS. Unsupported formats are not silently downscaled.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Target video rate</th><td role="cell" data-label="Implemented bound">8 Mbps through 1920 × 1080-equivalent pixel count; 16 Mbps above it.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Other working allocations</th><td role="cell" data-label="Implemented bound">Separate decoded CPU 96–256 MiB / GPU 256 MiB quotas, clean Original cache 96 MiB, exact retained scene at most 48 MiB plus its in-flight readback, and codec/driver/CUDA/model allocations.</td></tr>
+</tbody></table></div>
+<h3>1440p for five minutes: an estimate, not a RAM measurement</h3>
+<pre>2560 × 1440 is above the 1080p-equivalent threshold → target 16 Mbps
+16,000,000 bits/s × 300 s ÷ 8 = 600,000,000 bytes
+                                         = 600 decimal MB
+Then add container/burst overhead and separate working allocations.</pre>
+<p>The UI estimate is 60 or 120 decimal MB per minute depending on source format; before the format is known it shows the range. Five-minute 1440p compressed payload is therefore about 600 decimal MB at target rate, plus working memory. A 768 MiB ring is about 805 decimal MB, but its byte/segment/time limits can shorten actual history. None of this is a measured five-minute process footprint.</p>
+<p>A finite synthetic 65-frame native 4K30 encode/decode fixture has its own recorded memory/PTS measurements. It proves a bounded codec path on that machine, not sustained physical-camera throughput, a filled five-minute ring, gap-free encoding or low-power performance. Native encoder setup/finalization can create counted gaps.</p>
+<h3>Real clocks, no invented acquisitions</h3>
+<p>Admission samples actual camera captures and preserves delivery-clock gaps/fractional timestamps. Capture sequence zero is valid at the start, then IDs must advance; copying/holding a picture across a gap adds no acquisition. Native fMP4 uses its own real track timebase, so decoded PTS can differ from the capture value by measured container-tick/rounding limits. A real decoder timestamp is not silently retimed to look exact.</p>
+<p>Camera stop, source/format/FPS/orientation changes or backward delivery time clear recap authority and cancel its generation. Duration preference alone persists. Reducing duration trims the ring immediately. A pin can retain an older paused image outside the new seek window; its true time stays visible and an amber, dashed marker pins left to show that it expired from history. Numeric RangeValue stays absent rather than claiming it is the first available sample. Increasing duration cannot recover evicted video.</p>
+<h3>Exact Freeze holds the scene actually committed to the view</h3>
+<p>Before any coded segment is ready, manual Pause can retain the full scene and transform from the last successful camera presentation, with its exact processed delivery clock. A newer deferred camera frame, a clone retry, a repeated redraw or a new allocation for the same capture cannot borrow a later ingress timestamp. Missing timing proof or failed/oversized retention makes Pause explicitly unavailable; it does not substitute an older frame.</p>
+<p>The retained pixels are already processed. Pan/zoom/rotation sample them without a second stabilization, EMA, enhancement or appearance pass. The display recipe keeps its focus-marker/sampling/ROI authority. A neural ROI cache can retain only its actual scene extent; Freeze cannot reconstruct off-cache camera regions.</p>
+<p>This exact composited hold has no invented encoded PTS or independent neighbour, so UCT replacement is suppressed there. Seeking into coded clean-Original recap restores ordinary immutable/advancing media UCT with actual decoded pixels and real neighbours, within the ordinary 250 ms policy. Resume after an exact scene hold waits for a genuine coded sample at/after its capture time; it does not relabel the held processed image as a lossy decoder sample. Jump to live waits for a fresh camera presentation and restores camera view intent.</p>
+<h3>Scrub, Resume and the chevron keep their meanings</h3>
+<p>The timeline shows actual retained bounds and selected time. While following live recap/current recording, its filled groove and marker stay at the right edge even when the camera is ahead of finalized history. Scrubber movement previews a target locally; release commits one absolute seek, except that the far-right endpoint requests live. That intent survives history growing during a drag. Saved-file endpoint seeking stays ordinary. Resume continues from the held position rather than jumping live. The forward action also jumps to live for recap/current recording, or to end for a saved file; it is not a speed control. Return to camera is explicit.</p>
+<p>The small chevron collapses transport controls without discarding the source, playback snapshot or running intent. An unfinished drag is canceled without seeking; hidden actions leave Tab order. Source/status and Jump to live remain visible. Space in the viewport can still Freeze/Resume through the same availability gates; Space on the chevron keeps native button activation. These command/visibility semantics survive the integrated repair without changing app settings from this guide.</p>
+<h3>Empty pressure work can recover; nonempty failed work latches</h3>
+<p>If strict encoder admission accepted no frames, the empty segment is discarded at its boundary without sample/byte/time/completion credit. A later segment can admit real frames. Once any frame was accepted, failed Stop/Seal/ring publication latches the source until reset. Temporary “native busy” diagnostic text is separate from permanent <code>VideoRecapSnapshot::failed</code>. A blocked native call retains its owned closure; UI/camera stop does not join it.</p>
+<p>When Resume waits beyond the published tail and encoding becomes permanently unavailable, waiting ends with <strong>Video unavailable</strong> and the real reason. The exact held pixels/clock stay owned, existing readable bounds remain available, and Jump to live remains usable. Temporary native busy does not cancel Resume. Neither pressure nor codec failure is repaired by repeating frames or fabricating history.</p>
+<p class="source">Sources: <a href="live_ram_recap.md">complete recap contract and measured-fixture limits</a>; <a href="../include/okuflow/common/video_recap.hpp">VideoRecapPolicy</a>; <a href="../src/common/video_recap.cpp">ring and worker</a>; <a href="../src/app/app_video_playback.cpp">committed Freeze and transport integration</a>; <a href="video_transport.md">timeline/keyboard/chevron</a>; <a href="../src/ui/video_transport.cpp">transport implementation</a>.</p>
+</div></details>
+
+<details class="chapter" id="limits">
+<summary>15 · What the evidence establishes, and what remains unfinished<span class="small">Exact captures and software receipts, not blanket accuracy, latency or release claims.</span></summary>
+<div class="chapter-body">
+<h2>Fixes and evidence are specific to their source and layer</h2>
+<p>This guide describes integrated source through <code>40a112d</code>. The documentation contribution and the parent’s application validation are separate. Earlier scoped failures remain part of the record even where a diagnosed fix has later passing evidence.</p>
+<div class="note"><p><strong>Parent background validation completed:</strong> shipping compilation passed; CPU/PCH-off reported 162 passed, 12 optional skipped cases and zero unresolved; CUDA/PCH-on delta reported 14 passed, five optional codec skips and zero unresolved. Shared-source guards passed with PCH both off and on. Four passing CPU cases contain opt-in Qt timing skips. Desktop fixtures were excluded, so this remains partial validation. Native NVDA, physical-camera/presenter and audible-device acceptance are separate. See <a href="uct_tilted_paint_gaps.md#combined-background-validation-of-the-repaired-source">the combined evidence and limits</a>.</p></div>
+<div class="table-wrap" role="region" aria-label="Specific proof and limitations" tabindex="0"><table role="table">
+<caption>Current evidence, with its practical boundary</caption><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Subject</th><th scope="col" role="columnheader">What is established</th><th scope="col" role="columnheader">What remains open</th></tr></thead><tbody role="rowgroup">
+<tr role="row"><th scope="row" role="rowheader">Windows angle / actual buttons</th><td role="cell" data-label="What is established">The corrected real +2.4° Windows-bridge → local BF16 pair paints both Head labels once and 21/21 in-focus words before/after detail. Source pixels are unchanged from the failing capture.</td><td role="cell" data-label="What remains open">It does not verify every frame, label or native reader. Literal recognition conflicts and small fit/plate artifacts remain.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Actual controller replay</th><td role="cell" data-label="What is established">The corrected captured outputs pass 158 CPU/PCH-OFF Qt rows with zero failures/skips through the actual controller, model, software paint and positioned Qt accessibility. Required Head/Left/Right/Hand surfaces have actual paint and positioned bounds.</td><td role="cell" data-label="What remains open">The resident protocol oracle is CPU-backed and replays OCR output. It is not new GPU inference, native UIA/NVDA acceptance or new detail inference: settled zoom reuses captured full outputs.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Sparse Tr 9 opening</th><td role="cell" data-label="What is established">The parent reports the explicit Media Foundation paused Open probe passed: selected 0 ms, native duration 2 s, real neighbour 2 s, sealed policy/identity retained.</td><td role="cell" data-label="What remains open">No FFmpeg-duration acceptance, model quality, Play behavior or native screen-reader claim follows.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Atlas “14”</th><td role="cell" data-label="What is established">The saved actual BF16 + real Windows-bridge proof’s zoom-after image has a genuinely sharp solid-white 14 beside “Second”; all 4/4 focus words paint. The parent visually inspected that saved image.</td><td role="cell" data-label="What remains open">Faint source-compression ghosts remain above/below plates. This proves that saved source rendering/color, not the exact earlier intermittent owner runtime state.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Pointer-occluded Right</th><td role="cell" data-label="What is established">A direct pair can repeatedly recognize and draw literal <code>F.ight</code>. The corrected bridge/preferred disagreement retains original ink there.</td><td role="cell" data-label="What remains open">Pixel agreement does not correct spelling or reveal occluded characters. No dictionary/LLM fix is applied.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">19-second Hand case</th><td role="cell" data-label="What is established">Conservative original-source protection can suppress replacement near uncertainty. That boundary is retained.</td><td role="cell" data-label="What remains open">The implementation does not bypass protection merely to make a complete-looking label count.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Regional / BF16 / recap</th><td role="cell" data-label="What is established">Finite owned-source execution, atomic model/paint contracts, cache/retirement checks and synthetic native codec fixtures have separately documented scoped receipts.</td><td role="cell" data-label="What remains open">They do not establish full-pipeline latency, semantic accuracy, a sustained five-minute camera soak, another GPU’s behavior or release acceptance.</td></tr>
+</tbody></table></div>
+<h3>Worker time is only one segment of the journey</h3>
+<p>An OCR worker duration can include its own call/preparation/reference work. It does not automatically include image arrival, queued admission, GPU handoff, waiting for a genuine neighbour, 300 ms navigation settle, UI receipt/admission, actual paint, accessibility scheduling or native client speech. A synthetic codec burst is a capability fixture, not end-to-end UCT latency or sustained camera FPS.</p>
+<p>The optional numeric timing trace separates submit, dequeue, worker done, UI receipt, admission, overlay assignment, actual backing-store paint, pane assignment and accessibility publication. Assignment is not painting; Qt publication is not a native reader receiving/speaking it; successful presentation submission is not photon arrival. Tracing uses try-lock/drop accounting and a finite 4096-record window. Loss, unresolved writes, detached late work or an incomplete close disqualify complete-chain/negative-event latency claims. Only a verified, lossless, fully closed receipt chain supports its stated software interval.</p>
+<p>The guide therefore reports policy intervals as defaults and uses no new p50/p95/p99, FPS, accuracy or release claim. Earlier cached-plan worker timings remain descriptive receipts under their own source/device/load boundaries; they are not a fair speed comparison merely because one number is lower.</p>
+<h3>Not implemented as a safe general pipeline</h3>
+<ul class="status-list">
+<li><strong>Optical-flow reuse of recognized text</strong>No flow field transports text authority across scenes. Ordinary bounded patch translation and oriented paused registration are different mechanisms.</li>
+<li><strong>Shadow-aware smooth slide following</strong>The “shadow planner” is metadata occurrence/coverage bookkeeping. It does not segment shadows, predict a slide transition or preserve text through arbitrary moving shadows.</li>
+<li><strong>Multi-frame OCR image stacking</strong>No registered stack/voting/super-resolution OCR scheme combines several acquisitions to recover characters. Neutral EMA is implemented, with separate current-frame proof, and is not that proposal.</li>
+<li><strong>Safe unchanged-region OCR skipping</strong>The current character verifier is not accepted for reuse. Full reads remain authoritative; active regions are supplemental.</li>
+<li><strong>General semantic correction</strong>No LLM/dictionary correction, occluded-character reconstruction, guaranteed math/handwriting/curved-page interpretation or calibrated word-correctness probability.</li>
+<li><strong>Complete native and release acceptance</strong>Real-camera quality, broader devices/drivers, physical sustained recap, native NVDA/Narrator/Magnifier/UIA behavior, mixed-monitor/DPI behavior and the full combined GUI/release gates remain separate work.</li>
+</ul>
+<h3>Private evidence stays outside Git</h3>
+<p>The actual source images, exported overlays and native clip are not embedded in this document or copied into the repository. Relevant private workstation records include:</p>
+<ul>
+<li><code>Z:/Projects/OkuFlow/local-work-data/uct-geometry-r3-20261021/evidence/</code> — owned-source recognition/paint/retirement receipts.</li>
+<li>Corrected bridge proof: <code>proofs/uct-pause-proof-20261022-133746-cc11f6c0-7554-4a3a-94cf-d5731222fa1c/proof.json</code>, SHA-256 <code>5de577bc630233dfa85fb5bd488dfb3a193a3dd6d8a9dbdd30a631ec1442ce62</code>.</li>
+<li>Saved atlas visual: <code>proofs/uct-pause-proof-20261022-013629-770580a3-c7e6-4daa-8ebc-ee9b3e1e70dc/zoom-after.png</code> under that evidence root. It belongs to an earlier <code>33c94df</code>-era proof, not a new native app run at this guide’s head.</li>
+<li><code>Z:/Projects/OkuFlow/local-work-data/uct-initial-frame-zero-20261022/validation-2/</code> — corrected declared-input controller gate, reports and receipt; earlier failed <code>validation-1</code> is preserved.</li>
+<li><code>Z:/Projects/OkuFlow/local-work-data/uct-windows-angle-20261022/</code> and <code>uct-atlas-solid-colors-20261022/</code> — scoped native-engine/renderer source evidence.</li>
+</ul>
+<p>These paths are provenance pointers for the owner, not installed app defaults or portable assets. The linked repository reports explain their scope. Read-only review finding no blocking defect in angle/sparse-proof/recap source is a review result, not a substitute for runtime acceptance.</p>
+<p class="source">Sources: <a href="uct_tilted_paint_gaps.md">literal errors, angle repair and actual proof</a>; <a href="uct_initial_paused_frame.md">158-row corrected controller replay</a>; <a href="uct_color_startup_repair.md">atlas color proof</a>; <a href="uct_timing_trace.md">timing receipts and loss accounting</a>; <a href="live_ram_recap.md">codec measurements and limits</a>; parent’s supplied native Tr 9 and saved-atlas observations, 22 October 2026.</p>
+</div></details>
+
+<details class="chapter" id="sources">
+<summary>16 · Follow the implementation in the repository<span class="small">Local links work when the guide stays in the docs folder; no external assets are required.</span></summary>
+<div class="chapter-body">
+<h2>Source map</h2>
+<div class="table-wrap" role="region" aria-label="Source map" tabindex="0"><table role="table">
+<caption>The main ownership boundaries</caption><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Question</th><th scope="col" role="columnheader">Files and documentation</th></tr></thead><tbody role="rowgroup">
+<tr role="row"><th scope="row" role="rowheader">Who decides when to read?</th><td role="cell" data-label="Files and documentation"><a href="../src/app/ultra_clear_text_controller.cpp">ultra_clear_text_controller.cpp</a>, <a href="../include/okuflow/app/ultra_clear_text_controller.hpp">controller contract/defaults</a>, <a href="../src/app/app_ultra_clear_text.cpp">app wiring</a>.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">What does a job/result/word own?</th><td role="cell" data-label="Files and documentation"><a href="../include/okuflow/common/ultra_clear_text.hpp">ultra_clear_text.hpp</a>, <a href="../src/common/ultra_clear_text.cpp">scheduler, probes and model</a>.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Which backend and model?</th><td role="cell" data-label="Files and documentation"><a href="../src/common/uct_paddle.cpp">automatic chain</a>, <a href="../src/common/uct_default_recognizer.cpp">Windows adapter</a>, <a href="../src/common/uct_windows_ocr.cpp">native wrapper</a>, <a href="../src/common/uct_onnx_cpu.cpp">CPU adapter</a>, <a href="../src/common/uct_tensorrt.cpp">TensorRT adapter</a>, <a href="../scripts/uct/pins.json">immutable pins</a>.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">Where do images stay resident?</th><td role="cell" data-label="Files and documentation"><a href="../include/okuflow/common/uct_device_image.hpp">owned device input</a>, <a href="../src/cuda/uct_analysis_pool.cpp">analysis pool</a>, <a href="../src/cuda/uct_kernels.cu">GPU preparation/validation</a>.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">What does regional work mean?</th><td role="cell" data-label="Files and documentation"><a href="../src/common/uct_region_planner.cpp">planner/helper</a>, <a href="uct_region_planner.md">observation contract</a>, <a href="uct_active_regional_ocr.md">executor and atomic admission</a>.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">What is actually visible/readable?</th><td role="cell" data-label="Files and documentation"><a href="../src/ui/ultra_clear_text_overlay.cpp">glyph paint</a>, <a href="../src/ui/ultra_clear_text_panel.cpp">pane/status controls</a>, <a href="../src/ui/uct_screen_text_accessible.cpp">positioned text</a>, <a href="uct_screen_text_accessibility.md">native acceptance limits</a>.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">How are paused neighbours sealed?</th><td role="cell" data-label="Files and documentation"><a href="../src/common/video_playback.cpp">VideoPlayback</a>, <a href="../include/okuflow/common/immutable_corroboration.hpp">opaque policy</a>, <a href="uct_initial_paused_frame.md">sparse source/replay</a>, <a href="uct_immutable_controller.md">immutable artifact</a>.</td></tr>
+<tr role="row"><th scope="row" role="rowheader">How does recap/Freeze work?</th><td role="cell" data-label="Files and documentation"><a href="../src/common/video_recap.cpp">RAM encoder/ring</a>, <a href="../src/app/app_video_playback.cpp">app source/Freeze clock</a>, <a href="../src/ui/video_transport.cpp">transport</a>, <a href="live_ram_recap.md">recap policy</a>, <a href="video_transport.md">keyboard/timeline</a>.</td></tr>
+</tbody></table></div>
+<h3>Companion explanations</h3>
+<p><a href="ultra_clear_text.md">Main UCT contract</a> · <a href="uct_uncertainty_repair.md">uncertainty and protection</a> · <a href="uct_coverage_stability_repair.md">coverage/stable placement</a> · <a href="uct_oriented_detail_repair.md">oriented geometry and detail</a> · <a href="uct_token_policy_and_detail.md">ordinary label policy</a> · <a href="uct_local_bf16.md">local precision selection</a> · <a href="uct_recognizer_width.md">width experiments</a> · <a href="uct_performance_roadmap_2026_10_20.md">performance roadmap</a>.</p>
+<p>General project context: <a href="../README.md">user README and published-download status</a>, <a href="README.md">documentation index</a>, <a href="developer_guide.md">developer guide</a>, <a href="code_reference.md">code reference</a>, <a href="hardcoded_paths.md">documented constants/paths</a> and <a href="THIRD_PARTY_LICENSES.md">third-party terms</a>. Historical entries can describe an earlier stage; this guide’s current-rule statements follow the inspected source and dated repair records.</p>
+<p class="small">This is first-party documentation with inline CSS/JavaScript, system fonts and no CDN, external image, tracking, service worker or network dependency. The calculations are explanatory source translations, not the application’s execution or validation gate. Reading controls affect this page only and are not persisted.</p>
+</div></details>
+</main>
+<footer><p>OkuFlow · Source-based development guide · 22 October 2026. Keep this file beside the repository’s documentation for relative source links. All chapters remain readable without the interactive examples.</p><a href="#top">Back to the beginning</a></footer>
+<script>
+"use strict";
+(() => {
+  const byId = id => document.getElementById(id);
+  const chapters = Array.from(document.querySelectorAll(".chapter"));
+  let textRem = 1.25;
+  function resizeText(delta) {
+    textRem = Math.min(2, Math.max(1, textRem + delta));
+    document.documentElement.style.setProperty("--size", `${textRem}rem`);
+    byId("smaller").disabled = textRem <= 1;
+    byId("larger").disabled = textRem >= 2;
+  }
+  byId("smaller").addEventListener("click", () => resizeText(-.125));
+  byId("larger").addEventListener("click", () => resizeText(.125));
+  byId("theme").addEventListener("click", () => {
+    const dark = document.documentElement.dataset.theme !== "dark";
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+    byId("theme").setAttribute("aria-pressed", String(dark));
+    byId("theme").textContent = dark ? "Light background" : "Dark background";
+  });
+  byId("expand").addEventListener("click", () => chapters.forEach(chapter => { chapter.open = true; }));
+  byId("collapse").addEventListener("click", () => chapters.forEach(chapter => { chapter.open = false; }));
+  function openHashTarget() {
+    const id = location.hash.slice(1);
+    if (!id) return;
+    const target = document.getElementById(id);
+    if (!target) return;
+    const chapter = target.closest(".chapter");
+    if (chapter) chapter.open = true;
+  }
+  document.querySelectorAll('.contents a[href^="#"]').forEach(link => link.addEventListener("click", () => {
+    const target = byId(link.getAttribute("href").slice(1));
+    if (target && target.matches("details")) target.open = true;
+  }));
+  window.addEventListener("hashchange", openHashTarget);
+  openHashTarget();
+  let beforePrint = null;
+  window.addEventListener("beforeprint", () => {
+    if (beforePrint) return;
+    const all = Array.from(document.querySelectorAll("details"));
+    beforePrint = all.map(detail => [detail, detail.open]);
+    all.forEach(detail => { detail.open = true; });
+  });
+  window.addEventListener("afterprint", () => {
+    if (beforePrint) beforePrint.forEach(([detail, wasOpen]) => { detail.open = wasOpen; });
+    beforePrint = null;
+  });
+  byId("print").addEventListener("click", () => window.print());
+
+  const clamp = (n, low, high) => Math.min(high, Math.max(low, n));
+  // Positive nextafter toward infinity, matching RegionalDetailFocus's one-ULP step.
+  function nextUp(value) {
+    const view = new DataView(new ArrayBuffer(8));
+    view.setFloat64(0, value, false);
+    view.setBigUint64(0, view.getBigUint64(0, false) + 1n, false);
+    return view.getFloat64(0, false);
+  }
+  function contextSize(region, source, magnification, requestedEdge) {
+    const edge = clamp(Math.trunc(requestedEdge / 32), 1, 30) * 32;
+    const bound = Number.isFinite(magnification) ? clamp(magnification, 1, 8) : 1;
+    const minimum = Math.ceil(edge / bound);
+    const long = Math.max(region.w, region.h);
+    if (long >= minimum) return {...region};
+    const factor = minimum / long;
+    return {w: Math.min(source.w, Math.ceil(region.w * factor)),
+            h: Math.min(source.h, Math.ceil(region.h * factor))};
+  }
+  function tensorSize(region, magnification, requestedEdge) {
+    const edge = clamp(Math.trunc(requestedEdge / 32), 1, 30) * 32;
+    const bound = Number.isFinite(magnification) ? clamp(magnification, 1, 8) : 1;
+    const scale = Math.min(bound, edge / Math.max(region.w, region.h));
+    const align = axis => Math.max(32, (bound > 1 ? Math.floor(axis * scale / 32) : Math.round(axis * scale / 32)) * 32);
+    return {w: align(region.w), h: align(region.h)};
+  }
+  const dimensions = size => `${size.w} × ${size.h}`;
+  function calculate() {
+    const inputIds = ["source-w", "source-h", "crop-w", "crop-h"];
+    const values = inputIds.map(id => Number(byId(id).value));
+    if (values.some(n => !Number.isInteger(n) || n < 1 || n > 8192)) {
+      byId("crop-explanation").textContent = "Enter whole pixel dimensions from 1 to 8192 in every field. The previous valid result remains visible.";
+      return;
+    }
+    const [sw, sh, cw, ch] = values;
+    const source = {w: sw, h: sh};
+    const clipped = {w: Math.min(cw, sw), h: Math.min(ch, sh)};
+    const mode = byId("crop-mode").value;
+    let bound = mode === "paused6" ? 6 : 8;
+    let edge = 960, initial = clipped, helper = clipped, realized;
+    let refused = false, explanation = "";
+    if (mode === "baseline") {
+      bound = 1; initial = helper = realized = source;
+      explanation = "This is the ordinary whole-scene detector pass: no requested enlargement, nearest-32 alignment, minimum 32. A full Paddle job may also run its bounded overlapping context crops; those are not enumerated here.";
+    } else if (mode === "regional") {
+      bound = nextUp(704 / 480); edge = 704;
+      initial = {w: Math.min(sw, Math.ceil(clamp(clipped.w + 96, 160, 480))),
+                 h: Math.min(sh, Math.ceil(clamp(clipped.h + 64, 96, 480)))};
+      helper = contextSize(initial, source, bound, edge);
+      refused = helper.w > 480 || helper.h > 480 || (helper.w === sw && helper.h === sh);
+      realized = contextSize(helper, source, bound, edge);
+      explanation = `Regional context starts at ${dimensions(initial)}. The helper's DetailRegion gives ${dimensions(helper)}; the backend's repeated DetailRegion gives ${dimensions(realized)}. The helper refuses a whole-source region or a helper axis above 480. This calculation does not decide planner tickets, slack, complete-line ownership or admission.`;
+      if (refused) explanation += " This example is refused by that helper, so no optional inference is scheduled. The source dimensions below describe sizing only.";
+    } else {
+      realized = contextSize(clipped, source, bound, edge);
+      explanation = `The ${bound}× bound requests at least ceil(960/${bound}) = ${Math.ceil(960 / bound)} source pixels on the long axis, subject to source bounds. Context becomes ${dimensions(realized)}. Detector axes floor after scaling; the 32-pixel minimum remains independent. A real request also needs useful scale improvement, a settled view and remaining pair/coverage authority.`;
+    }
+    const tensor = tensorSize(realized, bound, edge);
+    const rx = tensor.w / realized.w, ry = tensor.h / realized.h;
+    const minimumException = rx > bound + 1e-12 || ry > bound + 1e-12;
+    if (minimumException) explanation += " The 32-pixel minimum enlarges a tiny axis beyond the nominal magnification bound; this is not a promise of recoverable detail.";
+    byId("crop-requested").textContent = dimensions(mode === "baseline" ? source : clipped);
+    byId("crop-helper").textContent = dimensions(helper);
+    byId("crop-realized").textContent = dimensions(realized);
+    byId("crop-tensor").textContent = refused ? "Not scheduled" : dimensions(tensor);
+    byId("crop-ratios").textContent = refused ? "No optional call" : `${rx.toFixed(3)}× / ${ry.toFixed(3)}×`;
+    byId("crop-minimum").textContent = mode === "baseline" ? "No context expansion" : `${Math.ceil(edge / bound)} px`;
+    byId("crop-minimum").classList.toggle("small", mode === "baseline");
+    byId("crop-explanation").textContent = explanation;
+    const denominator = Math.max(realized.w, tensor.w);
+    byId("bar-crop").style.width = `${100 * realized.w / denominator}%`;
+    byId("bar-tensor").style.width = refused ? "0%" : `${100 * tensor.w / denominator}%`;
+  }
+  byId("crop-form").addEventListener("submit", event => { event.preventDefault(); calculate(); });
+  const presets = {
+    detail: [1920,1080,40,20,"paused8"],
+    regional: [1920,1080,384,224,"regional"],
+    narrow: [300,800,8,8,"regional"],
+    tiny: [8,1024,8,480,"regional"]
+  };
+  document.querySelectorAll("[data-crop]").forEach(button => button.addEventListener("click", () => {
+    const [sw,sh,cw,ch,mode] = presets[button.dataset.crop];
+    [["source-w",sw],["source-h",sh],["crop-w",cw],["crop-h",ch],["crop-mode",mode]].forEach(([id,value]) => { byId(id).value = value; });
+    calculate();
+  }));
+  calculate();
+
+  const queue = [
+    {title:"Start full A",flight:"Full A",pending:"Empty",action:"The worker takes full A from a genuine acquisition. Presentation continues independently.",proof:"No new glyph is authorized merely because a job started."},
+    {title:"B waits",flight:"Full A",pending:"Full B",action:"A newer eligible CPU input/descriptor arrives while A runs. B occupies the one waiting slot. The GPU controller avoids parking a device lease here while inference holds the other pool slot.",proof:"A, B and the displayed scene keep their own exact stamps. Waiting does not change their acquisition time."},
+    {title:"C replaces B",flight:"Full A",pending:"Full C",action:"Newer full C replaces waiting B. B is coalesced; there is no A-B-C backlog. A's native operation is still running.",proof:"Replacing a pending job cannot make A's result current or B's pixels independent."},
+    {title:"A finishes; C starts",flight:"Full C",pending:"Empty",action:"A returns and the worker begins C. A's result crosses to the controller for authority, candidate, temporal and current-pixel checks.",proof:"An output can be rejected, pending, readable-only or eligible. A completed read is not automatic paint."},
+    {title:"Idle boundary: optional D waits",flight:"Empty",pending:"Region D",action:"C has finished. Only now, with an idle worker, a valid full plan and sufficient optional slack, region D can enter the waiting slot. This depicts the brief boundary before worker dequeue.",proof:"D will read current pixels; its planner's old text supplies priority, never proof. Full deadlines are unchanged."},
+    {title:"Full E supersedes region D",flight:"Empty",pending:"Full E",action:"A demanded full E arrives before D is dequeued and replaces it. D never starts inference. Full priority is protected.",proof:"A new full request invalidates the old active plan. No skipped region renews text or coverage."},
+    {title:"Region F is refused",flight:"Empty",pending:"Full E",action:"A regional descriptor F cannot overwrite queued full E. The one-slot priority rule rejects F.",proof:"Optional work does not delay or reset the full requirement. The worker will also recheck deadline/plan before any optional call."},
+    {title:"E starts; authority changes",flight:"Full E · revoked",pending:"Empty",action:"E begins, then a source/geometry change increments authority. Any waiting work is canceled and old glyph/reading eligibility is revoked immediately.",proof:"Cancellation prevents publication. It does not promise to preempt a native library call or release input memory still in use."},
+    {title:"Late E cannot publish",flight:"Empty after known return",pending:"Empty",action:"E's native call returns after revocation. Its stale authority cannot update the new source. The exact owned input retires only after completion is known; unknown GPU completion would remain quarantined.",proof:"A late result cannot borrow the new source stamp, reference or publication ticket."},
+    {title:"Read one immutable H",flight:"Empty after H read",pending:"Empty",action:"An owned paused selection H is read once under standalone admission. Its exact source, geometry, candidate metadata and own references must be valid.",proof:"Eligible H words can become glyphs and positioned text without another frame. OCR confidence still does not guarantee spelling."},
+    {title:"No neighbour job is required",flight:"Empty",pending:"Empty",action:"The paused app ignores ancillary neighbour OCR and cadence. Missing or conflicting neighbouring images neither authorize nor veto H.",proof:"Live temporal confirmation remains separate. The explicit corroborated protocol is still available, but changing modes invalidates old eligibility."},
+    {title:"Pan and zoom reuse the artifact",flight:"Empty",pending:"Empty",action:"The retained scene and accepted objects map through the current view transform. No new acquisition is created and navigation does not wait for OCR.",proof:"Text, geometry, reference and proof clock stay together. Moving the viewport does not refresh evidence."},
+    {title:"Completed still stays idle",flight:"Empty",pending:"Empty",action:"An unchanged completed immutable selection schedules no periodic OCR or probe loop. After a 300 ms settled view, one useful selected-image detail job may run under scale-improvement and 32-attempt limits.",proof:"Detail uses the same retained image and does not claim a new acquisition. Source protection, clipping and actual paint remain separate checks."}
+  ];
+  let queueIndex = 0;
+  function showQueue() {
+    const step = queue[queueIndex];
+    byId("queue-step").textContent = `Step ${queueIndex + 1} of ${queue.length} · ${step.title}`;
+    byId("queue-flight").textContent = step.flight;
+    byId("queue-pending").textContent = step.pending;
+    byId("queue-action").textContent = step.action;
+    byId("queue-proof").textContent = `Publication: ${step.proof}`;
+    byId("queue-prev").disabled = queueIndex === 0;
+    byId("queue-next").disabled = queueIndex === queue.length - 1;
+  }
+  byId("queue-prev").addEventListener("click", () => { queueIndex = Math.max(0, queueIndex - 1); showQueue(); });
+  byId("queue-next").addEventListener("click", () => { queueIndex = Math.min(queue.length - 1, queueIndex + 1); showQueue(); });
+  byId("queue-reset").addEventListener("click", () => { queueIndex = 0; showQueue(); });
+  showQueue();
+})();
+</script>
+</body>
+</html>

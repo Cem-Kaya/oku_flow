@@ -1,8 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="id" sourcelanguage="en_US">
-    <context>
-        <name>OkuFlow</name>
+<context>
+    <name>OkuFlow</name>
+    <message>
+        <source>Live recap duration (minutes)</source>
+        <translation>Durasi putar ulang video langsung (menit)</translation>
+    </message>
+    <message>
+        <source>Estimated video history: %1 MB</source>
+        <translation>Perkiraan memori riwayat video: %1 MB</translation>
+    </message>
+    <message>
+        <source>Additional memory is used while buffering, replaying or freezing video.</source>
+        <translation>Memori tambahan digunakan saat melakukan buffering, memutar ulang, atau membekukan video.</translation>
+    </message>
+        <message>
+            <source>Live recap</source>
+            <translation>Putar ulang video langsung</translation>
+        </message>
+        <message>
+            <source>Buffering live video…</source>
+            <translation>Melakukan buffering pada video langsung…</translation>
+        </message>
         <message>
             <source>Action in progress.</source>
             <translation>Tindakan sedang berlangsung.</translation>

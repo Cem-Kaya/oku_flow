@@ -256,6 +256,17 @@ struct RegionShadowPlan {
     RegionShadowLimits limits; // effective (clamped) limits in force
 };
 
+// Supplemental execution uses only an accepted, earlier full plan on the
+// same image geometry/processing authority. No held acquisition is re-read.
+bool RegionalPlanMatches(const RegionShadowPlan& plan, const SourceStamp& current,
+                         std::uint64_t authority);
+// Select one planned occurrence/cell nearest the current focus, adding bounded
+// context. No pixels/text are reused. Source long edge <=480, detector <=704;
+// nominal enlargement is 22/15, with the existing minimum 32 tensor pixels.
+std::optional<DetailFocus> RegionalDetailFocus(const RegionShadowPlan& plan,
+                                             const SourceStamp& current,
+                                             std::optional<QRectF> focus = std::nullopt);
+
 class RegionShadowPlanner {
 public:
     explicit RegionShadowPlanner(RegionShadowLimits limits = {});

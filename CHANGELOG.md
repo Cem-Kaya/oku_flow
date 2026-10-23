@@ -2,6 +2,226 @@
 
 ## [Unreleased]
 
+- Overlap dense UCT recognition groups with host metadata merging using bounded
+  double-buffered metadata and per-group completion events. Private resident
+  FP32 measurements show a dense N8 benefit; sparse/N1 and production BF16
+  acceptance limits are recorded in `docs/uct_recognition_lookahead.md`.
+
+- Cooperatively scan resident UCT validation-integral rows on the GPU,
+  preserving exact sampled luma and table values, downstream proof policy,
+  buffers and the existing two-launch contract.
+
+- Hide the entire video transport without leaving a filename/status strip.
+  Its show/hide chevron now lives beside Custom Setup in the quick-mode corner
+  controls, with keyboard access and viewport Freeze/Resume preserved.
+
+- Apply the successfully presented display palette to sharp UCT ink and plates,
+  including inverted and custom LUT colors. Normal colors retains source colors;
+  CPU media that already contains its display colors is not recolored twice.
+
+- Recover perspective text geometry from closed, well-supported local source
+  surfaces, retaining shear/taper and near/far glyph sizes through live/export
+  painting and character bounds. Ambiguous or cropped surfaces keep prior geometry.
+
+- Replace a preparing OCR fallback atomically when the preferred engine finishes
+  a full standalone read of the same paused image. Case/spelling differences
+  between engines no longer leave permanent omission masks. Failed reads and
+  supplemental crops do not gain this replacement authority.
+
+- Preserve white text on clearly colored chat bubbles at a 3:1 source-color
+  floor instead of darkening each word's background to 7:1. Neutral surfaces
+  and colored surfaces below that floor retain the existing 7:1 adjustment.
+
+- Keep a visible right-edge playhead and filled timeline while following live
+  RAM recap or an ongoing recording. Scrubbing restores the selected position;
+  actual history bounds and focused screen-reader values remain unchanged.
+  Releasing at the far right jumps live. Keep an expired frozen image with an
+  amber/dashed left-edge marker and its actual timestamp outside the history.
+
+- Process paused video and manual Freeze as standalone images. Eligible OCR
+  can draw and expose positioned screen-reader text from the exact held frame
+  without a previous/following-frame requirement. Zoom detail uses that same
+  retained image; live temporal confirmation remains separate.
+
+- Repair paused tilted-word proof across the upright/rotated fitting boundary;
+  retain significant sub-two-degree geometry and an independent original
+  recognition sampling frame without lowering confidence or pixel agreement.
+
+- Map Windows OCR's deskewed word boxes back through its reported text angle
+  before source validation and painting. This corrects displaced startup-bridge
+  geometry on tilted text without changing OCR confidence or proof thresholds.
+
+- Normalize low-chroma UCT video text to one solid black/white foreground so
+  compression tint does not alternate between white, cyan and green across
+  words; preserve clearly chromatic readable ink and source paper.
+
+- Allow ordinary UCT ASCII letter/digit labels and isolated lookalikes through
+  the existing confidence, geometry, pixel and applicable temporal checks.
+  This removes the character veto that kept `GPT-6` original while prose could
+  be replaced; it adds no spelling correction or accuracy guarantee. Unsupported
+  notation stays protected. Raise paused visible-detail enlargement from 6x to
+  8x under the same 960-pixel detector limit; live regional limits stay 704/480.
+
+- Preserve viewport Space for Freeze/Resume while video controls are collapsed.
+  Cancel an impossible pending recap Resume with the existing unavailable
+  status and native reason, retaining the exact held scene and Jump to live.
+  Discard pressure-only encoder segments with zero accepted frames so later
+  real history can recover; nonempty finalization failures still latch.
+
+- Add a small video-transport collapse/expand chevron with a full keyboard/touch
+  target. Keep playback running and Jump to live reachable while collapsed.
+- Accept the camera's real first acquisition ID zero in Live recap while
+  preserving strict subsequent sequence validation. Preserve failed segment
+  finalization reasons and expose them with the existing status metadata.
+- Allow UCT on an initially paused sparse saved video to corroborate its exact
+  selected sample with a genuine following frame using the native sample's
+  known duration, capped at 2500 ms. Unknown duration and other source modes
+  keep 250 ms; source identity, pixel/text proof and match thresholds remain.
+
+- Add initially paused frame-zero readiness, late-neighbour and native opening
+  regression coverage. Captured controller replay checks actual glyph paint and
+  positioned text, retaining the separate bridge-to-preferred paint failure.
+
+- Commit immutable UCT refinement words together with their complete protection;
+  a late unsafe cut or storage limit leaves the previous candidate state intact.
+  Refuse optional regional changes whose conservative punctuation pixels would
+  suppress an already painted word, using a bounded scratch renderer check.
+
+- Preserve original thin UCT punctuation when one projected axis contains no
+  pixel centres. Track bounded subtraction-remainder metadata so carved strips
+  still avoid hiding adjacent proved words; original protection wins identical
+  rectangle collisions in live views and saved images.
+- Add silent camera **Live recap**, independent of recording, with a bounded
+  compressed RAM window up to five minutes and the existing video transport.
+  Preserve an exact displayed scene for Freeze during encoder warmup, keep the
+  camera buffering during review, and restore camera view intent on Jump to
+  live. No temporary media files or recap microphone capture are created.
+  Choose one to five minutes in Settings with a camera-dependent memory estimate;
+  preserve native resolution through supported 4K at a 30 FPS recap admission cap.
+  See [policy and validation limits](docs/live_ram_recap.md).
+
+- Preserve newly found UCT uncertainty even when all incoming words merge into
+  existing reading lines. Keep tilted proof from carving protection outside its
+  actual quad. Existing proved words retain their original reading identity.
+
+- Add the owner's explicit local BF16 recognition opt-in with the pinned FP32
+  medium detector. Load only the reviewed cached graph/plan for medium/medium
+  N8 fixed1024, report mixed arithmetic and actual precision/fallback, and keep
+  diagnostics and other users on the existing FP32 baseline. Missing or rejected
+  artifacts use cached FP32; production never prepares reduced-precision plans.
+  See [local selection and evidence limits](docs/uct_local_bf16.md).
+
+- Increase opt-in live regional UCT detector density to an aligned 704-pixel
+  longest edge over the same at-most 480-pixel source crop, using the existing
+  engine. Preserve source-space safety margins, baseline full scans and the
+  paused 960-pixel path. This implements roughly 720 crop pixels, not 720p
+  video; no speed or accuracy improvement has been measured.
+
+- Refuse supplemental UCT crop updates atomically when omissions, spelling
+  disagreement, protection or caps would withdraw existing owned words. Keep
+  their pending tickets, identities and freshness unchanged; full reads and
+  independent probes remain responsible for corrections. Clear superseded
+  queued-region tickets and attribute changed text publications to the current
+  causal result while identifying retained older proof.
+
+- Sample small UCT word bodies densely enough to retain narrow dark stems.
+  Fit upright connected source ink and AA while excluding disconnected padding
+  ink, preserving detector fallback and existing recognition/proof/size gates.
+
+- Keep complete UCT sentences and uncertainty masks when a supplemental crop
+  cuts their edges. Retain unobserved other-pane text without renewing its proof,
+  reject truncated edge words before pending agreement, and yield optional work
+  when its reserved time no longer fits.
+  Match regional ownership to the detector's crop-edge exclusion and preserve
+  existing lines when rejected overlapping crop fragments cannot replace them.
+
+- Keep immutable UCT duplicate carving aligned with displayed geometry and
+  preserve risky notation and invalid-geometry masks during nearby refinement.
+
+- Prevent subpixel leftover uncertainty strips from hiding proved UCT words
+  again during panning, while retaining protection for tiny punctuation.
+
+- Add opt-in supplemental regional UCT reads between baseline full scans.
+  Use current owned pixels and bounded planner regions while retaining full
+  deadlines/priority, pixel checks, per-observation pending evidence and
+  unchanged other-pane proof. Default operation and paused neighbour-pair
+  refinement remain separate; no full-frame inference saving is claimed.
+
+- Preserve incoming UCT typography groups without changing stable reading
+  ownership. Carve independently proved detail ink from nearby ordinary
+  uncertainty across retained lines, preserving uncovered punctuation and
+  genuine contradiction blocks. Retired reading-only slots no longer restore
+  their full old protection over a newly proved boundary word.
+
+- Use consistent pixel coverage for UCT refinement protection, so fractional
+  pan/zoom boundaries do not hide newly proved words or their neighbours.
+  Keep tiny uncertain punctuation protected.
+
+- Fit small tilted UCT words within loose detector padding rather than keeping
+  oversized boxes. Retain an absolute height floor and thin-rule rejection,
+  handle rounding at the minimum-height boundary, and keep original pixels
+  for isolated near-vertical characters whose ink fit failed.
+
+- Measure experimental UCT word colors in each tilted/perspective word frame.
+  Local paper and ink keep their source polarity on buttons against a dark
+  surround, so ink fitting follows letters instead of the button body.
+
+- Preserve tilted/perspective UCT word geometry through recognition, local ink
+  fit and glyph/background painting. Compare paused word evidence in its
+  detected local frame while retaining strict pixel checks. Re-detect a
+  settled paused visible region at up to eight-times enlargement under bounded
+  coverage and the existing detector size limit. Reconcile post-fit same-ink
+  duplicates without merging adjacent identical tokens. Resume a settled
+  detail request after presentation or backend recovery without adding polling
+  or restarting its timer on ordinary presentation receipts.
+
+- Add an opt-in embedded FFmpeg/dav1d saved-video CPU backend with pinned
+  private development builds, stable custom I/O and existing selected-frame,
+  PCM and retirement authority. Keep native/archive fallback and default;
+  document same-source timing/color differences and unaccepted HDR/deployment.
+  Refuse exhausted container probes and failed known-audio cursors, and bind
+  opening cancellation to its original request generation.
+  Keep held-frame rewind and Resume intent together so a quick Pause/Resume
+  cannot leave playback stuck at the final image without reaching Ended.
+
+- Keep healthy long-GOP video seeks and audio-aligned Resume active while
+  decoding advances, under a two-second progress timeout and sixty-second
+  request cap. Rebase playback after preroll and pace PCM already handed to
+  the output queue so audio cannot run ahead and trip its hard buffer limit.
+
+- Preserve UCT coverage for readable file paths and large headlines by keeping
+  independent columns/type sizes apart and removing contained crop fragments.
+  Stabilize current-validated glyph placement through small uncertainty-box
+  changes while retaining conservative cutouts and original proof deadlines.
+  Keep independently pixel-validated text through detector omissions when
+  another region scrolls; changed or conflicting ink still revokes it.
+
+- Hide the UCT glyph window while a modal file picker blocks OkuFlow or the
+  application is inactive. Late OCR results cannot draw over the dialog or
+  another app; still-valid words return when the magnifier resumes.
+
+- Add an opt-in TensorRT recognizer-width policy that reduces padding within
+  the existing ordered batches, with separate cached profile identity,
+  initialized compact device metadata and actual CUDA stride regressions.
+  Keep model choices and the fixed-width default unchanged; retain measured
+  quality differences and workload-dependent timing in the width report.
+- Preserve proved text on the same paused video frame through partial OCR
+  refinements, and attach late neighbouring evidence without restarting the
+  selection. Corroborate the exact displayed Pause frame with a real following
+  frame across scene cuts, without playing audio or advancing its held PTS.
+  Keep source/seek identity and explicit contradiction revocation.
+- Replace changed UCT accessibility lines immediately instead of withholding
+  them for one to three seconds. Preserve unchanged reader interfaces and
+  the bounded cadence for unrelated new lines.
+- Request replacement OCR promptly when a probe invalidates part of a page,
+  retaining existing stability and playback pacing limits. Sample UCT colors
+  from each word's local surface and opaque ink to reduce button-edge and
+  antialiasing errors; keep independently proved paused text through optional
+  refinement failure and CPU-to-GPU promotion.
+- Add optional bounded metadata timing for UCT worker, admission, software
+  paint, reading pane and accessibility publication. Keep input pixels and
+  recognized text out of the trace and report dropped or incomplete chains.
+
 - Add an opt-in bounded UCT shadow planner beside full OCR, with persistent
   spatial occurrences, requested-region priority, unseen-area coverage debt
   and exact source/acquisition tickets. Keep full OCR authoritative and

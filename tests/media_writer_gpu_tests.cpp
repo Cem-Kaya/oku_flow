@@ -11,6 +11,7 @@
 // no GPU-fed writer support on this machine).
 
 #include "okuflow/common/media_writer.hpp"
+#include "okuflow/common/video_recap.hpp"
 
 #include <d3d12.h>
 #include <dxgi1_4.h>
@@ -36,9 +37,43 @@
 
 namespace okuflow {
 struct VideoRecorderTestAccess {
+    static void RefuseVideoAdmission(VideoRecorder& recorder) {
+        // The actual production admission policy needs room for two frames.
+        // A private smaller first-writer budget models pressure without any
+        // fabricated input, completion/statistics credit, or writer bypass.
+        recorder.videoBacklog_ = RecordingEncoderBacklog(1);
+    }
     static void ObserveSink(VideoRecorder& recorder,
                             std::function<void(bool, IMFByteStream*)> observer) {
         recorder.sinkInitializationObserver_ = std::move(observer);
+    }
+    static void PrintRamStatistics(VideoRecorder& recorder, const char* phase) {
+        MF_SINK_WRITER_STATISTICS stats{}; stats.cb = sizeof(stats);
+        const auto hr = recorder.sinkWriter_ ? recorder.sinkWriter_->GetStatistics(recorder.streamIndex_, &stats) : E_POINTER;
+        std::cerr << "RAM statistics phase=" << phase << " hr=" << hr
+                  << " received=" << stats.qwNumSamplesReceived << " encoded=" << stats.qwNumSamplesEncoded
+                  << " submitted=" << recorder.videoSamplesWritten_ << " pending=" << bool(recorder.pendingSample_)
+                  << " queuedBytes=" << stats.dwByteCountQueued << " stage=" << VideoRecorder::StageName(recorder.ActiveStage())
+                  << " error=" << recorder.LastError() << '\n';
+    }
+};
+struct RamVideoRecapTestAccess {
+    static bool PressureFirstWriter(RamVideoRecap& recap) {
+        return recap.SetWriterSetupForTest([attempt=std::make_shared<unsigned>(0)](VideoRecorder& writer) {
+            const bool first=(*attempt)++==0;
+            VideoRecorderTestAccess::ObserveSink(writer,[&writer,first](bool nativeGpu,IMFByteStream*) {
+                if(!nativeGpu)throw std::runtime_error("pressure fixture requires actual native GPU input");
+                if(first)VideoRecorderTestAccess::RefuseVideoAdmission(writer);
+            });
+        });
+    }
+    static bool FailBoundedStreamFinalization(RamVideoRecap& recap) {
+        return recap.SetWriterSetupForTest([](VideoRecorder& writer) {
+            VideoRecorderTestAccess::ObserveSink(writer, [](bool, IMFByteStream* bytes) {
+                if(bytes->SetLength(VideoRecapPolicy::kSegmentBytes+1) != STG_E_MEDIUMFULL)
+                    throw std::runtime_error("fixture must reach the real bounded-stream refusal");
+            });
+        });
     }
 };
 } // namespace okuflow
@@ -335,6 +370,179 @@ bool CreateSharedFrame(SharedFrameContext& context)
     return context.frame.IsValid();
 }
 
+void RunRamRecapPressurePass(const okuflow::GpuVideoFrame& frame)
+{
+    const auto require=[](bool condition,const std::string& reason){if(!condition)throw std::runtime_error(reason);};
+    const auto wait=[](auto&& predicate) {
+        const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+        while(!predicate()) {
+            if(std::chrono::steady_clock::now()>=deadline)return false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        return true;
+    };
+    okuflow::RamVideoRecap recap;recap.Reset(52,0);
+    require(okuflow::RamVideoRecapTestAccess::PressureFirstWriter(recap),"pressure setup precedes input");
+    for(unsigned index=0;index<125;++index) {
+        const auto clock=1'000'000'000LL+std::int64_t(index)*333'334;
+        require(wait([&] {
+            const auto s=recap.Snapshot();
+            require(s.error.empty(),"zero-admission pressure must not latch: "+s.error);
+            return recap.Submit({{},frame,frame.width,frame.height,{clock,clock,index,30,1}});
+        }),"pressure recovery producer remains bounded");
+        if(index==59) {
+            require(wait([&]{return recap.Snapshot().droppedFrames>=60;}),"first real writer must refuse every input");
+            const auto empty=recap.Snapshot();
+            require(empty.admittedFrames==0 && empty.completedSegments==0 && !empty.available && !empty.failed &&
+                empty.compressedBytes==0,"first pressure writer supplies no fake sample or timeline credit");
+            std::cerr<<"pressure first-writer actual admitted="<<empty.admittedFrames<<" dropped="<<empty.droppedFrames
+                <<" completed="<<empty.completedSegments<<" bytes="<<empty.compressedBytes<<'\n';
+        }
+    }
+    require(wait([&] {
+        const auto s=recap.Snapshot();require(s.error.empty(),"pressure successor: "+s.error);
+        return s.completedSegments>0;
+    }),"normal successor must publish real history");
+    const auto snapshot=recap.Snapshot();auto segment=recap.Acquire(snapshot.first100ns);
+    require(snapshot.available && snapshot.pressure && snapshot.droppedFrames>=60 && segment &&
+        !segment->admissions.empty() && segment->admissions.front().sequence>=60 &&
+        segment->begin100ns>=20'000'000 && segment->source->Capacity()<=okuflow::VideoRecapPolicy::kSegmentBytes,
+        "empty pressure creates no fake admissions or earlier range");
+    ComPtr<IMFByteStream> stream;ComPtr<IMFSourceReader> reader;
+    require(SUCCEEDED(segment->source->OpenReadStream(&stream)) &&
+        SUCCEEDED(MFCreateSourceReaderFromByteStream(stream.Get(),nullptr,&reader)),"recovered native source opens");
+    unsigned pictures{};LONGLONG previous=-1;
+    while(true) {
+        DWORD flags{};LONGLONG pts{};ComPtr<IMFSample> sample;
+        require(SUCCEEDED(reader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM,0,nullptr,&flags,&pts,&sample)),"recovered picture reads");
+        if(sample) {
+            require(pictures<segment->admissions.size(),"recovered native output cannot duplicate acquisitions");
+            const auto& admitted=segment->admissions[pictures];
+            std::cerr<<"pressure recovered_picture="<<pictures<<" sequence="<<admitted.sequence
+                <<" capture_pts100ns="<<admitted.pts100ns<<" native_pts100ns="<<pts<<'\n';
+            require(pts>previous && std::abs(pts-admitted.pts100ns)<=1000,"recovered PTS preserve actual capture clock");
+            previous=pts;++pictures;
+        }
+        if(flags&MF_SOURCE_READERF_ENDOFSTREAM)break;
+    }
+    require(pictures==segment->admissions.size(),"all real admitted recovery pictures must encode");
+    std::cerr<<"pressure recovery completed="<<snapshot.completedSegments<<" admitted="<<snapshot.admittedFrames
+        <<" dropped="<<snapshot.droppedFrames<<" bytes="<<snapshot.compressedBytes<<" pictures="<<pictures<<'\n';
+}
+
+// The RAM sink and asynchronous producer have different attributes, stream
+// callbacks and finalization from the disk writer. No file/audio path is used.
+void RunRamRecapPass(const okuflow::GpuVideoFrame& frame)
+{
+    const auto require = [](bool condition, const std::string& reason) {
+        if (!condition) throw std::runtime_error(reason);
+    };
+    const auto wait = [](auto&& predicate) {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (!predicate()) {
+            if (std::chrono::steady_clock::now() >= deadline) return false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        return true;
+    };
+    auto output = std::make_shared<okuflow::VideoMemoryStream>();
+    {
+        okuflow::VideoRecorder recorder;
+        std::cerr << "RAM GPU StartMemory BGRA " << frame.width << 'x' << frame.height
+                  << " fence=" << frame.readyFenceValue << '\n';
+        const bool started = recorder.StartMemory(output, frame.width, frame.height, 30, 1, 8'000'000, &frame);
+        okuflow::VideoRecorderTestAccess::PrintRamStatistics(recorder, "start");
+        require(started, "RAM GPU StartMemory: " + recorder.LastError());
+        require(recorder.UsesGpuInput(), "RAM fixture requires native GPU NV12 input: " + recorder.LastError());
+        for (unsigned index = 0; index < 65; ++index) {
+            const std::int64_t pts = std::int64_t(index) * 10'000'000 / 30 + (index >= 32 ? 10'000'000 : 0);
+            const bool admission = wait([&] { return recorder.CanAcceptVideoFrame(); });
+            if (!admission) okuflow::VideoRecorderTestAccess::PrintRamStatistics(recorder, "admission-timeout");
+            require(admission, "RAM GPU encoder admission timed out");
+            const bool added = recorder.AddGpuFrame(frame, {pts, pts, index, 30, 1});
+            require(added, "RAM GPU AddGpuFrame: " + recorder.LastError());
+            if (index % 16 == 0) std::cerr << "RAM GPU submitted=" << index + 1 << '\n';
+        }
+        okuflow::VideoRecorderTestAccess::PrintRamStatistics(recorder, "before-finalize");
+        const auto result = recorder.Stop();
+        require(result.FullyCompleted() && result.videoSamplesWritten == 65,
+                "RAM GPU Finalize: " + recorder.LastError());
+        require(recorder.OutputPath().empty() && !recorder.Archive(), "RAM writer must not create disk/archive output");
+    }
+    const auto source = output->Seal();
+    require(source && source->ByteSize() && source->Capacity() <= okuflow::VideoRecapPolicy::kSegmentBytes,
+            "RAM GPU finalized stream must seal actual bounded bytes");
+    Microsoft::WRL::ComPtr<IMFByteStream> stream;
+    Microsoft::WRL::ComPtr<IMFSourceReader> reader;
+    require(SUCCEEDED(source->OpenReadStream(&stream)) &&
+            SUCCEEDED(MFCreateSourceReaderFromByteStream(stream.Get(), nullptr, &reader)), "RAM GPU native reader opens");
+    unsigned pictures{};
+    LONGLONG previous = -1;
+    while (true) {
+        DWORD flags{}; LONGLONG pts{}; Microsoft::WRL::ComPtr<IMFSample> sample;
+        require(SUCCEEDED(reader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, nullptr, &flags, &pts, &sample)),
+                "RAM GPU compressed sample read");
+        if (sample) {
+            const auto expected = std::int64_t(pictures) * 10'000'000 / 30 + (pictures >= 32 ? 10'000'000 : 0);
+            std::cerr << "RAM native_picture=" << pictures << " capture_pts100ns=" << expected << " native_pts100ns=" << pts << '\n';
+            require(pts > previous && std::abs(pts - expected) <= 1000, "RAM GPU retains actual capture holes and monotonic PTS");
+            previous = pts; ++pictures;
+        }
+        if (flags & MF_SOURCE_READERF_ENDOFSTREAM) break;
+        require(pictures <= 65, "RAM GPU converter must not duplicate captures");
+    }
+    require(pictures == 65, "RAM GPU contains exactly the admitted pictures");
+    std::cerr << "RAM GPU sealed=" << source->ByteSize() << " pictures=" << pictures << '\n';
+
+    okuflow::RamVideoRecap recap;
+    recap.Reset(42, 0);
+    for (unsigned index = 0; index < 140; ++index) {
+        const auto clock = 1'000'000'000LL + std::int64_t(index) * 333'334;
+        const bool submitted = wait([&] {
+            const auto snapshot = recap.Snapshot();
+            require(snapshot.error.empty(), "async RAM GPU: " + snapshot.error);
+            if (!recap.WantsFrame(frame.width, frame.height, clock)) return false;
+            return recap.Submit({{}, frame, frame.width, frame.height, {clock, clock, index, 30, 1}});
+        });
+        require(submitted, "async RAM GPU input admission timed out");
+    }
+    require(wait([&] {
+        const auto snapshot = recap.Snapshot();
+        require(snapshot.error.empty(), "async RAM GPU finalize: " + snapshot.error);
+        return snapshot.completedSegments >= 2;
+    }), "async RAM GPU must produce two independently finalized segments");
+    const auto snapshot = recap.Snapshot();
+    auto held = recap.Acquire(snapshot.first100ns);
+    require(snapshot.available && held && snapshot.compressedBytes > 0 && snapshot.end100ns > snapshot.first100ns,
+            "async RAM GPU provides real seekable history");
+    recap.Reset(43, 0);
+    require(!recap.Snapshot().available && held->source, "source reset revokes range while preserving owned pin");
+    std::cerr << "async RAM GPU completed=" << snapshot.completedSegments << " admitted=" << snapshot.admittedFrames
+              << " bytes=" << snapshot.compressedBytes << " maxNativeUs=" << snapshot.maximumNativeCallUs << '\n';
+
+    // An actual bounded stream refusal can be swallowed by an otherwise
+    // successful native Finalize. The worker must preserve that failed outcome
+    // and its reason, with no sealed/available history or automatic retry.
+    okuflow::RamVideoRecap failed;
+    require(okuflow::RamVideoRecapTestAccess::FailBoundedStreamFinalization(failed), "private writer setup precedes input");
+    failed.Reset(50, 0);
+    for(unsigned index=0;index<70 && failed.Snapshot().error.empty();++index) {
+        const auto clock=2'000'000'000LL+std::int64_t(index)*333'334;
+        require(wait([&] {
+            if(!failed.Snapshot().error.empty())return true;
+            return failed.Submit({{},frame,frame.width,frame.height,{clock,clock,index,30,1}});
+        }),"failed-stream producer admission remains bounded");
+    }
+    require(wait([&] {return !failed.Snapshot().error.empty();}),"failed finalization must surface its native reason");
+    const auto failure=failed.Snapshot();
+    require(failure.failed,"failed finalization has explicit permanent failure metadata");
+    require(!failure.available && failure.completedSegments==0 && !failed.Acquire(0),
+            "failed finalization cannot expose any timeline or playable segment");
+    require(failure.error.find("final fragment")!=std::string::npos,"native finalization reason is retained");
+    require(!failed.WantsFrame(frame.width,frame.height,3'000'000'000LL),"failed finalization latches until source reset");
+    std::cerr << "async RAM GPU failed-finalization available=" << failure.available << " error=" << failure.error << '\n';
+}
+
 // Same contract as the CPU-fed codec pass: ~3 s of frames, audio muxed,
 // playable output, exact sample accounting, and at least two completed
 // fMP4 fragments (the crash-survivability cadence) — but submitted through
@@ -608,7 +816,7 @@ bool RunGpuMetadataFallbackPass(const okuflow::GpuVideoFrame& frame)
 
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
     const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if (FAILED(com) && com != RPC_E_CHANGED_MODE) {
@@ -630,6 +838,12 @@ int main()
             std::cout << "SKIP: no D3D12 device with shared-resource "
                          "support on this machine\n";
             exitCode = kSkipExitCode;
+        } else if (argc == 2 && std::string(argv[1]) == "--ram-recap-pressure") {
+            try { RunRamRecapPressurePass(context.frame); }
+            catch (const std::exception& error) { std::cerr << "FAIL: " << error.what() << '\n'; exitCode = 1; }
+        } else if (argc == 2 && std::string(argv[1]) == "--ram-recap") {
+            try { RunRamRecapPass(context.frame); }
+            catch (const std::exception& error) { std::cerr << "FAIL: " << error.what() << '\n'; exitCode = 1; }
         } else {
             bool h264Skipped = false;
             bool passed = RunGpuCodecPass(

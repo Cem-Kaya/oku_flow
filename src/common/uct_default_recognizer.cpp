@@ -3,6 +3,7 @@
 
 #if defined(_WIN32)
 #include "okuflow/common/uct_windows_ocr.hpp"
+#include "uct_windows_geometry.hpp"
 #endif
 
 #include <QImage>
@@ -83,13 +84,20 @@ public:
         output.ok = r.ok;
         output.cancelled = r.cancelled;
         output.error = QString::fromStdString(r.error);
-        const double inverse = 1.0 / scale;
         for (const windows_ocr::Line& line : r.lines) {
             RecognizedLine out;
             for (const windows_ocr::Word& word : line.words) {
-                out.words.push_back({QString::fromStdWString(word.text),
-                                     QRectF(word.x * inverse, word.y * inverse,
-                                            word.width * inverse, word.height * inverse)});
+                const auto quad = windows_ocr::SourceWordQuad(word, prepared.size(), image.size(),
+                                                            r.textAngleDegrees);
+                if (!quad.valid) {
+                    output.ok = false;
+                    output.lines.clear();
+                    output.error = QStringLiteral("Windows OCR returned invalid word geometry.");
+                    return output;
+                }
+                RecognizedWord mapped{QString::fromStdWString(word.text), quad.Bounds()};
+                mapped.quadPx = quad;
+                out.words.push_back(std::move(mapped));
             }
             if (!out.words.isEmpty()) {
                 output.lines.push_back(std::move(out));

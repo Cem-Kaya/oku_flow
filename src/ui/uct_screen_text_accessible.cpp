@@ -617,6 +617,7 @@ void UctScreenTextAccessibility::ContentChanged()
 void UctScreenTextAccessibility::RevokeAll()
 {
     publishImmediately_ = true;
+    haveScheduledTimingTicket_ = false;
     if (lines_.isEmpty() && !pending_) return; // per-frame clear path stays trivial
     RemoveAllLines();
     pending_ = false;
@@ -690,12 +691,17 @@ void UctScreenTextAccessibility::Sync(bool publishAdditions)
                                         }),
                          snapshot.lines.end());
     languageTag_ = snapshot.languageTag;
+    // Correlate this content snapshot with admission, never with a newer view
+    // receipt. The controller updates the value ticket before ContentChanged.
+    uct::timing::PublicationTicket snapshotTicket{};
+    if (uct::timing::Enabled()) snapshotTicket = timingTicket_;
 
     const int count = static_cast<int>(snapshot.lines.size());
     QHash<std::uint64_t, int> byId;
     byId.reserve(count);
     for (int i = 0; i < count; ++i) byId.insert(snapshot.lines[i].lineId, i);
     QVector<int> claimedBy(count, -1);
+    QVector<bool> replacesExisting(count, false);
     QVector<int> unresolved;
     QVector<ExposedLine> revoked;
     // 1) Same line id, same text: identity and reader position are kept.
@@ -705,6 +711,8 @@ void UctScreenTextAccessibility::Sync(bool publishAdditions)
         if (index >= 0 && claimedBy[index] < 0 && snapshot.lines[index].text == iface->Text()) {
             claimedBy[index] = k;
         } else {
+            if (index >= 0 && snapshot.lines[index].text != iface->Text())
+                replacesExisting[index] = true;
             unresolved.push_back(k);
         }
     }
@@ -728,7 +736,9 @@ void UctScreenTextAccessibility::Sync(bool publishAdditions)
             revoked.push_back(lines_[k]);
         }
     }
-    // Rebuild in reading order. Additions wait for the cadence.
+    // Rebuild in reading order. A changed existing line is replaced in this
+    // update: its old ranges have already lost authority, so withholding the
+    // replacement cannot preserve a reader's position. New lines keep cadence.
     QVector<ExposedLine> next;
     next.reserve(count);
     QVector<UctScreenLineAccessible*> created;
@@ -739,7 +749,7 @@ void UctScreenTextAccessibility::Sync(bool publishAdditions)
             ExposedLine line = lines_[claimedBy[j]];
             line.iface->SetContent(snapshot.lines[j]);
             next.push_back(line);
-        } else if (publish) {
+        } else if (publish || replacesExisting[j]) {
             auto* iface = new UctScreenLineAccessible(this, snapshot.lines[j]);
             next.push_back({QAccessible::registerAccessibleInterface(iface), iface});
             created.push_back(iface);
@@ -754,6 +764,16 @@ void UctScreenTextAccessibility::Sync(bool publishAdditions)
     if (!created.isEmpty()) {
         ++publications_;
         publishImmediately_ = false;
+        if (uct::timing::Enabled() && snapshotTicket.admission.producer) {
+            auto flags = snapshotTicket.flags;
+            if (publishAdditions && haveScheduledTimingTicket_ &&
+                (scheduledTimingTicket_.admission.producer != snapshotTicket.admission.producer ||
+                 scheduledTimingTicket_.revision != snapshotTicket.revision))
+                flags |= uct::timing::Coalesced;
+            uct::timing::RecordEvent(uct::timing::Event::AccessibilityPublished,
+                snapshotTicket.admission, {0, static_cast<std::uint32_t>(created.size()),
+                                           flags, 0, snapshotTicket.revision});
+        }
         // Tree bookkeeping only: Qt's UIA adapter maps no event for this,
         // and nothing is announced or focused.
         for (UctScreenLineAccessible* iface : created) {
@@ -762,6 +782,17 @@ void UctScreenTextAccessibility::Sync(bool publishAdditions)
         }
     }
     if (missing) {
+        if (uct::timing::Enabled() && snapshotTicket.admission.producer &&
+            (!haveScheduledTimingTicket_ ||
+             scheduledTimingTicket_.admission.producer != snapshotTicket.admission.producer ||
+             scheduledTimingTicket_.revision != snapshotTicket.revision)) {
+            const auto flags = snapshotTicket.flags | (pending_ ? uct::timing::Coalesced : 0u);
+            scheduledTimingTicket_ = snapshotTicket;
+            haveScheduledTimingTicket_ = true;
+            uct::timing::RecordEvent(uct::timing::Event::AccessibilityScheduled,
+                snapshotTicket.admission, {0, static_cast<std::uint32_t>(count),
+                                           flags, 0, snapshotTicket.revision});
+        }
         if (!pending_) {
             pending_ = true;
             pendingSinceMs_ = clock_();
@@ -769,6 +800,7 @@ void UctScreenTextAccessibility::Sync(bool publishAdditions)
         ScheduleTick();
     } else {
         pending_ = false;
+        haveScheduledTimingTicket_ = false;
         cadence_->stop();
     }
 }
@@ -799,6 +831,7 @@ void UctScreenTextAccessibility::DestroyAll()
 {
     RemoveAllLines();
     pending_ = false;
+    haveScheduledTimingTicket_ = false;
     publishImmediately_ = true;
     if (cadence_) cadence_->stop();
     if (!root_) return;

@@ -47,7 +47,7 @@ public:
         maximumBatch_ = 0;
         enqueueMs_ = mergeMs_ = 0;
         detectorWaitMs_ = groupWaitMs_ = 0;
-        widthBins_ = {}; invalidWidths_ = oversizedWidths_ = 0;
+        widthBins_ = {}; canvasBins_ = {}; invalidWidths_ = oversizedWidths_ = 0;
         requestedWidth_ = usedWidth_ = canvasWidth_ = 0;
         if (enabled_) {
             cropHash_->reset();
@@ -99,6 +99,10 @@ public:
         requestedWidth_ += requested;
         usedWidth_ += std::min(requested, canvas);
         canvasWidth_ += canvas;
+        if (canvas == 128) ++canvasBins_[0];
+        else if (canvas == 256) ++canvasBins_[1];
+        else if (canvas == 512) ++canvasBins_[2];
+        else if (canvas == 1024) ++canvasBins_[3];
         const auto bin = std::lower_bound(kWidthBounds.begin(), kWidthBounds.end(), requested);
         if (bin == kWidthBounds.end()) ++oversizedWidths_;
         else ++widthBins_[bin - kWidthBounds.begin()];
@@ -131,7 +135,7 @@ public:
         outputLimitBytes_ = std::max(outputLimitBytes_, outputLimitBytes);
     }
     // Call only after the exact inference stream has completed successfully.
-    void Emit(int batchCapacity) {
+    void Emit(int batchCapacity, bool variableWidth = false) {
         if (!enabled_) return;
         std::array<double, StageCount> stageMs{};
         for (std::size_t i = 0; i < used_; ++i) {
@@ -157,7 +161,11 @@ public:
         Check(cudaMemGetInfo(&freeAfter, &totalAfter));
         // Stream event intervals include launch gaps and external GPU contention;
         // these are completion intervals, not an isolated sum of kernel runtimes.
+        QJsonArray canvases;
+        for (const auto n : canvasBins_) canvases.push_back(n);
         const QJsonObject report{{"batchCapacity", batchCapacity},
+            {"recognizerWidthPolicy", variableWidth ? "bucketed" : "fixed1024"},
+            {"recognizerCanvasWidths", QJsonArray{128,256,512,1024}}, {"recognizerCanvasCounts", canvases},
             {"workerWallMs", wall_.nsecsElapsed() / 1e6}, {"streamStageMs", gpu},
             {"detectorPasses", detectorPasses_}, {"recognizerCalls", recognizerCalls_},
             {"recognizerSamples", recognizerSamples_}, {"networkHostMs", enqueueMs_},
@@ -187,6 +195,7 @@ private:
     static constexpr std::size_t kMaximumPairs = 2048;
     static constexpr std::array<int, 7> kWidthBounds{64, 128, 256, 384, 512, 768, 1024};
     std::array<int, 7> widthBins_{};
+    std::array<int, 4> canvasBins_{};
     int invalidWidths_{}, oversizedWidths_{};
     std::uint64_t requestedWidth_{}, usedWidth_{}, canvasWidth_{};
     std::unique_ptr<QCryptographicHash> cropHash_;

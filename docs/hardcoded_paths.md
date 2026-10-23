@@ -1,5 +1,69 @@
 # Hard-Coded Paths and Defaults
 
+## Live RAM recap (development)
+
+`VideoRecapPolicy` keeps 300 seconds with independently playable ~2-second H.264
+segments, a 768 MiB compressed ring, 8 MiB active segment and two pinned segment
+leases. Two pending raw inputs have a 96 MiB cap; one native input may be in
+flight. Native resolution is retained through 3840×2160/portrait, at most
+30 FPS / 8 Mbps through 1080p-equivalent pixel count and 30 FPS / 16 Mbps above
+it. Queue losses retain real delivery-clock gaps. Manual exact scene retention
+caps a scene at 48 MiB, separately from the 96 MiB clean Original cache and
+existing decoded quotas. Settings JSON `liveRecapMinutes` defaults to five and
+is clamped to 1–5; changing it trims the time window without raising the byte
+cap. The UI estimates decimal 60/120 MB per minute and separates working memory.
+No media/cache/index path, file mapping or audio input exists.
+See [full policy](live_ram_recap.md).
+
+The optional `OKUFLOW_UCT_LOCAL_BF16_MANIFEST` selector is read only by the app's
+private production factory. Its schema-1/prepare=false manifest is at most
+64 KiB; converted graphs/plans are strictly below 256 MiB and hash-pinned.
+Only the reviewed RTX 4090 UUID/driver/TRT medium/medium N8 fixed1024 variant is
+eligible; detector and fallback retain FP32 and existing cache keys. A nonempty
+selector prohibits all engine preparation/cache writes. See
+[exact local identities and fallback policy](uct_local_bf16.md).
+
+Active regional UCT admission keeps a ten-source-pixel margin at internal crop
+edges: shared `kDetailCropEdgeMarginPx=8` plus two pixels of detector jitter
+slack (zero at image borders). Ownership includes original detector bounds,
+not just tighter fitted ink. It owns complete lines only, retaining crossing
+sentences and masks verbatim without renewing their validation clocks. See
+[regional policy](uct_active_regional_ocr.md).
+
+Oriented UCT ink fitting keeps at least 35% of the detected word width and
+25% of the padded search height, with a four-source-pixel height floor.
+The separate minimum word height, confidence and strict pixel-proof gates
+retain their existing defaults. See [geometry repair](uct_oriented_detail_repair.md).
+Minimum-height comparison permits 1e-5 source pixels of arithmetic error.
+An unfitted padded single-scalar baseline with absolute cosine below 0.5 keeps
+original pixels under the existing high-risk disposition.
+
+## Owner workstation work storage (2026-10-21)
+
+Large private work folders physically reside under `Z:\Projects\OkuFlow`;
+legacy LocalAppData and inactive T3 checkout paths use directory junctions.
+The active checkout retains about 20 MiB of source on C: while its build
+directory redirects to Z:. Private credentials/app state and small loose files
+remain on C:. These are local filesystem aliases, not new application defaults.
+Use Z: for new large outputs; see [storage layout](local_work_storage.md).
+
+## Optional embedded video SDK (development)
+
+`scripts/ffmpeg/pins.json` pins FFmpeg 7.1.1, dav1d 1.5.1 and private build
+tools. `prepare_ffmpeg_playback.ps1` confines source/tool/build caches to
+LocalAppData (`OkuFlow/embedded-video-sdk` by default), using existing GCC 16.2.0
+MSYS2. `OKUFLOW_FFMPEG_SDK_ROOT` enables the CMake adapter;
+`OKUFLOW_VIDEO_BACKEND=ffmpeg` and absolute `OKUFLOW_FFMPEG_RUNTIME=<sdk>/bin`
+select it at runtime. No ambient Qt/PATH DLL discovery or deployment occurs.
+Runtime majors are avcodec/avformat 61, avutil 59, swresample 5 and swscale 8.
+Decoder threads are four; AVIO reads 64 KiB; probe/index 8 MiB; streams eight;
+per-step packet attempts 65,536; dimensions 16,777,216 pixels.
+Container inspection is limited to 1,024 top-level and 1,024 child boxes;
+exhaustion refuses admission. Upstream internal
+allocations are outside the pixel quota. Finite comparison receipts use
+`OkuFlow/embedded-video-evidence/<guid>`, the global runner lease and a
+180-second child deadline. See [contract and limits](video_ffmpeg_playback.md).
+
 ## Selected-video resource limits (development)
 
 The separate GPU OCR recognizer admits true batch capacities `1`, `8`, `16`
@@ -19,14 +83,17 @@ Optional neighbor preparation waits for a 50 ms quiet period after target
 publication; immediate scrubs supersede it. Proven same-frame seeks share pixels
 and require neither native decode nor another full-frame allocation.
 Additional limits are a 64 MiB byte-read window, an 8 MiB metadata/index budget and
-4096 native reads per seek, with the unchanged two-second request-age deadline
-and generation cancellation. The read cap is a malformed-stream guard, not a
-two-second GOP limit; pre-target frames do not allocate presentation copies.
+4096 native reads per seek, generation cancellation, a two-second no-progress
+deadline and sixty-second total request cap. Only strictly advancing decoded
+video PTS renews the progress window; pre-target frames do not allocate
+presentation copies. Audio-aligned Resume uses the same bounded preroll policy.
 Audio queues include in-flight PCM and are
 bounded to 2 MiB, 32 packets and 500 ms; the native output endpoint is capped
 at 250 ms. These are admission limits, not latency promises. The selected
-transport polls at 16 ms only while a recording/file document exists; normal
-unrecorded camera mode does not run a history collector.
+reader keeps an ordinary 200 ms lead and remembers handed-off PCM independently
+of queue draining. See [video/audio repair](video_audio_preroll_repair.md). The
+transport polls at 16 ms while a recording/file/recap document exists. Camera
+recap encoding has its independent bounded worker, including with Record off.
 
 UCT screen text has at most 128 lines, 512 UTF-16 units per line and 16 KiB
 total. Semantic additions publish at one second, with a three-second maximum
@@ -41,11 +108,27 @@ One scheduler and one latest-only probe worker serve all modes; a paused still
 returns to one-shot admission. These are bounded scheduling defaults, not an
 OCR-rate or native display-latency guarantee.
 
-Immutable paused-word corroboration considers neighbours within 250 ms, limits
+Immutable paused-word corroboration ordinarily considers neighbours within 250 ms.
+Only a native-issued paused saved-file selected sample may expand following
+evidence to its known positive sample duration, clamped to 250--2500 ms.
+Integer 100-ns PTS comparisons retain the exact boundary; unknown/invalid
+duration and earlier samples remain at 250 ms. Archive, RAM/recap and live or
+advancing source policy is unchanged. The opaque native descriptor participates
+in exact immutable proof identity, never a wall-clock allowance. See
+[initial paused sources](uct_initial_paused_frame.md).
+Paused word registration limits
 translation to 0.25 normalized scene units per axis, and requires each dimension
-to retain at least 75% of the larger word box. Word registration uses NCC 0.94,
+to retain at least 75% of the larger word box (intrinsic edges for tilted
+quads). Oriented patches sample 8–64 columns by 4–12 rows in the detected
+quad frame, with 0.15-height horizontal and 0.3-height vertical margins.
+Word registration uses NCC 0.94,
 visibility 0.95 and a two-probe-pixel local refinement. Requests are capped at
 1024 selected lines / 8192 words, with resident reference/match batches <= 1024.
+An original neighbour-bounded recognition search frame may supply one additional
+patch for a word that failed fitted-frame registration; all the same limits and
+thresholds apply. Oriented fitting also preserves a sub-two-degree quad when
+any edge's transverse excursion exceeds 0.5 source pixels, avoiding a several-
+pixel geometry jump on wide text at the old angle cutoff.
 These limits do not expand the live camera's motion search. Completed worker
 checks are consumed even after the UI's 3 ms inline match budget expires.
 
@@ -110,11 +193,53 @@ at least 24 luma levels of separation, and refuses a fit under 35% of its input
 width/height. Near-identical refresh retention requires IoU >= 0.8 and edges/
 dimensions within 10% of word height, plus current independent validation.
 The existing 350 ms freshness and 600 ms presentation watchdog are unchanged.
+Optional source-plane refinement considers at most 128 fitted candidates per
+result, with source width/height 8..1024 / 8..256 and aspect ratio at most 24.
+Its 96x40 paper grid spans word width plus 16 word heights, and four heights
+vertically. Only absence of an enclosing component permits one second grid at
+eight heights and doubles horizontal padding from eight to sixteen heights per
+side; it does not override a refused plane or small shape change.
+Paper compatibility is 24 RGB levels; foreground/paper must differ
+by at least 64 in a channel. A closed enclosing component needs 64 cells and
+paper area at least 1.2 times the ink bound. Four sides use six anchors, at most
+15 hypotheses and two trimmed refits, each keeping 60% support, four observations,
+half-span support and a 1.25-grid-cell residual ceiling. Side slopes are bounded
+to 2.5 and top/bottom slopes to 0.5 in the word frame; projective denominators
+at the corners must exceed 0.25. Source ink uses at most 16K samples. A fitted
+envelope stays within the surface, within half-height vertically, and within
+`0.5 * height * (1 + measured side shear)` horizontally of the old bound; its
+bounding area must be 0.5..1.75 times the old area. Shape change must reach both
+two pixels and 10% of source height. Projective words keep local type size when corner warp exceeds
+0.5% of the shorter edge; input geometry already warped by 0.2% is not refitted.
+These are conservative optional geometry limits, not confidence or latency claims.
+The 128-thread CUDA block and 31,812-byte per-request scratch are execution
+layout, not acceptance limits; the evidence for this change lives under
+local-work-data `uct-surface-opt-20261022`.
 Source-color contrast adjustment targets 7:1 and uses 16 bounded search steps.
+Clearly colored paper (RGB channel spread >= 64) is preserved when solid
+same-polarity black/white ink reaches 3:1; otherwise the 7:1 adjustment remains.
+This source-color floor is not a font-size-dependent accessibility certification.
 Accepted background brightness uses 64 fixed levels; same-polarity foreground/
 background changes up to 8 RGB channel levels retain the prior color. A neutral
-ink channel spread up to 16 snaps to pure black/white. Only replacement colors
-are stabilized; the camera image is not quantized to a global palette.
+ink channel spread below 64 snaps to pure black/white. Source ink is retained
+only at spread >= 64 and contrast >= 7:1; otherwise the same solid black/white
+polarity policy applies. Only replacement colors are stabilized; the camera
+image is not quantized to a global palette.
+Oriented word colors use the detected bilinear frame for body/corner/perimeter
+samples. Oriented ink fitting removes eight-connected components spanning
+opposite search edges, with at most 32768 cells, 8192 columns and 4096 rows.
+CUDA uses about 46 KiB fixed shared scratch and at most 64 full propagation
+scans; incomplete propagation preserves detector geometry. CPU queue fitting
+is exact/linear; incomplete CUDA fitting is conservative, not a parity claim.
+
+Color body sampling uses stride one for at most 4096 pixels, otherwise stride
+two. Upright fitting uses a midpoint-strength detector anchor and connected AA
+up to halfway from midpoint toward paper. Detached marks keep the existing
+22%-height/two-pixel allowance. Its 35% fit guard and seven-pixel admission
+minimum remain unchanged. The upright component grid refuses more than 32768
+cells, 8192 source columns or 4096 source rows; CUDA uses fixed shared scratch
+and at most 64 propagation scans, otherwise preserving detector geometry.
+See [source diagnosis and scoped validation](uct_color_startup_repair.md#small-upright-source-ink-2026-10-22-development).
 
 ## Browser notes transcription
 
@@ -915,7 +1040,51 @@ never redistributed. Synthetic translation is (2,1) pixels; it is not physical
 camera acceptance. No ordinary-runtime setting or OCR-reuse policy is enabled.
 
 
+## Optional paused-video UCT diagnostic (2026-10-21)
+
+The separate explicit paused-video diagnostic uses
+`OKUFLOW_UCT_PAUSE_DIAGNOSTIC=1`, absolute private image paths in
+`OKUFLOW_UCT_PAUSE_SELECTED` / `OKUFLOW_UCT_PAUSE_NEIGHBOUR`, and their actual
+millisecond PTS in `OKUFLOW_UCT_PAUSE_SELECTED_MS` /
+`OKUFLOW_UCT_PAUSE_NEIGHBOUR_MS`. It writes unique
+`%LOCALAPPDATA%/OkuFlow/uct-pause-proof-<timestamp>-<uuid>` reports.
+`OKUFLOW_UCT_PAUSE_OUTPUT_ROOT` overrides only that evidence parent and must be
+absolute. The existing
+`OKUFLOW_UCT_TENSORRT_ROOT` must name an inference-only SDK, and pinned M/M N1/N8
+plans must already be cached; no download or engine build is permitted.
+`OKUFLOW_UCT_PAUSE_BRIDGE=1` adds a real Windows OCR pair before TensorRT to
+inspect same-source refinement; its two explicit CPU OCR readbacks are counted
+separately from the zero-egress GPU-only mode.
+Its frame-sequence mapping assumes this private source's 60 FPS. The selected
+and neighbour images must differ and be within 250 ms. Inputs and reports are
+never bundled, and ordinary CTest does not select the diagnostic. See
+[paused continuity repair](uct_paused_continuity_repair.md) for its scope.
+
 ## Optional UCT shadow diagnostics (2026-10-20)
+
+`OKUFLOW_UCT_REGIONAL_OCR=1` opts into supplemental execution and implicitly
+enables the planner; shadow alone stays observation-only. Active work is at
+most one region per full interval, <=480 source-crop pixels and <=704 detector
+pixels, nominal magnification 704/480 (22/15). The helper uses the immediately
+larger double via `nextafter` so reciprocal context sizing remains 480 rather
+than 481; detector axes retain 32-pixel alignment/minimum. Tiny short axes may
+interpolate more because of that minimum. Backend 8px/admission 10px margins
+remain source-crop pixels. Paused detail separately permits 960/8x; the existing
+engine profile is unchanged. The first cost estimate is 750 ms, later max(previous, 2*duration+80 ms),
+with a controller probe-period reserve and 80 ms execution reserve. It normally
+fits 1500 ms stable refreshes, not 350 ms demanded reads. Full deadlines/priority
+remain unchanged; execution rechecks steady-clock slack and counts overruns.
+Failure/overrun disables optional work until worker recreation. Outside pending
+evidence retains exact shared source tickets at an 8192-word cap; regional
+unions retain 1024 lines/8192 words/32768 tokens or masks. See
+[active policy and limits](uct_active_regional_ocr.md).
+
+`OKUFLOW_UCT_TIMING_TRACE=1` enables a cached process-wide metadata trace.
+Normal teardown writes once with exclusive creation under
+`%LOCALAPPDATA%/OkuFlow/uct-timing/uct-timing-<pid>-<steady-ns>-<n>.jsonl`.
+It retains at most 4096 numeric records, reports dropped/incomplete chains,
+and never records pixels, recognized text, source paths or credentials.
+Tracing does not request models or uploads. See [trace contract](uct_timing_trace.md).
 
 `OKUFLOW_UCT_SHADOW_PLANNER=1` opts the app's existing OCR worker into a
 metadata-only observer. Default operation allocates no planner. One optional
@@ -932,3 +1101,48 @@ The finite resident diagnostic has a separate
 `OKUFLOW_UCT_RESIDENT_SHADOW_PLANNER=1` selector that requires retained frozen
 source identities and records plans beside full outputs; it never fabricates
 fresh evidence by assigning new frame IDs to copies.
+## Experimental recognizer width profiles
+
+UCT crop merging retains 70% ordinary overlap. Contained literal prefix/suffix
+fragments smaller than 35% of the larger box can match at 65%; row association
+requires at least half the larger word height and a gap no greater than four
+smaller heights. Stable exclusion-box jitter is bounded to 10% of its smaller
+height, with unioned protection and unchanged proof clocks. File-token extension
+exceptions admit one to sixteen ASCII letters. See
+[coverage and stability](uct_coverage_stability_repair.md).
+
+`OKUFLOW_UCT_TRT_WIDTH` accepts empty/`fixed1024` (existing keys) or `bucketed`.
+`OKUFLOW_UCT_TRT_PREPARE_WIDTH=1` permits a separate one-time preparation of
+only the selected N; normal bucketed inference is cache-only. The new cache
+identity appends `-rec-width-v1-buckets128-256-512-1024-min1x3x48x128-optNx3x48x512-maxNx3x48x1024-n`
+and actual capacity, retaining model/GPU UUID/driver/TRT 11.4.0.106/FP32 pins.
+The minimum, optimum and maximum shapes must match after deserialization.
+`OKUFLOW_UCT_RESIDENT_WIDTH` selects the same two policies in the diagnostic,
+which refuses preparation. Group metadata is bounded to 144 integers / 576
+bytes in each device/host buffer. See [width validation](uct_recognizer_width.md).
+
+## Paused visible UCT detail bounds (2026-10-21)
+
+`UctTiming::immutableDetailSettleMs` defaults to 300 ms (clamped 0–60000).
+`immutableDetailMagnification` defaults to `kMaximumDetailMagnification` (8);
+region selection clamps it to 1–8 and retains the 960-pixel detector long edge.
+At 8x a tiny visible region gains context to at least a 120-source-pixel long
+edge, subject to image bounds. Detector axes floor to multiples of 32 for
+enlarged detail, with the existing 32-pixel minimum on tiny short axes.
+A detail pass needs at least 1.25 times the established detector scale.
+Coverage retains up to 32 attempted regions per immutable selection, including
+failed attempts, without eviction. A containing region at 90% of the requested
+scale counts as already covered. See [geometry/detail repair](uct_oriented_detail_repair.md).
+
+`AcceptedLine::carvedSceneRects` classifies a subset of the existing 32768
+protected-mask union cap. It adds no independent history or mask allowance.
+Original masks round outward when either projected axis has no pixel centres;
+carved remainders do so only when both axes lack centres. Exact original/carved
+rectangle collisions retain original protection through transfers/projection.
+## Standalone paused text policy (2026-10-22)
+
+Paused video/manual Freeze uses `ImmutableAdmission::Standalone`; it has no
+neighbour-time, distinct-frame or cross-frame pixel-agreement prerequisite.
+The existing confidence, seven-source-pixel, source/PTS/geometry, input/protection
+and rendering bounds still apply. Live and the explicit corroborated protocol
+retain their temporal constants. See [policy](uct_standalone_freeze.md).

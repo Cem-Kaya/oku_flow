@@ -277,6 +277,9 @@ void UltraClearTextPanel::SetReadingText(const QString& text)
     if (horizontalBar) {
         horizontalBar->setValue(std::min(horizontalScroll, horizontalBar->maximum()));
     }
+    if (uct::timing::Enabled() && timingTicket_.admission.producer)
+        uct::timing::RecordEvent(uct::timing::Event::PaneAssigned, timingTicket_.admission,
+            {0, static_cast<std::uint32_t>(text.size()), timingTicket_.flags, 0, timingTicket_.revision});
 }
 
 void UltraClearTextPanel::UpdateDependentState()

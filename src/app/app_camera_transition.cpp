@@ -5,6 +5,7 @@
 namespace okuflow {
 
 void OkuFlowApp::StopCameraCapture(bool atProcessExit) {
+    ResetLiveRecap();
     CancelAnnotationCaptures();
     if (atProcessExit) {
         pendingCameraStart_.reset();

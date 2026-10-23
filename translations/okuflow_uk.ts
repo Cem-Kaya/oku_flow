@@ -1,8 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="uk" sourcelanguage="en_US">
-    <context>
-        <name>OkuFlow</name>
+<context>
+    <name>OkuFlow</name>
+    <message>
+        <source>Live recap duration (minutes)</source>
+        <translation>Тривалість повтору прямого ефіру (хвилини)</translation>
+    </message>
+    <message>
+        <source>Estimated video history: %1 MB</source>
+        <translation>Орієнтовний обсяг пам’яті для історії відео: %1 MB</translation>
+    </message>
+    <message>
+        <source>Additional memory is used while buffering, replaying or freezing video.</source>
+        <translation>Під час буферизації, повторного перегляду або показу стоп-кадру використовується додаткова пам’ять.</translation>
+    </message>
+        <message>
+            <source>Live recap</source>
+            <translation>Повтор прямого ефіру</translation>
+        </message>
+        <message>
+            <source>Buffering live video…</source>
+            <translation>Буферизація відео в реальному часі…</translation>
+        </message>
         <message>
             <source>Action in progress.</source>
             <translation>Дія виконується.</translation>

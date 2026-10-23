@@ -15,6 +15,9 @@ if(WIN32 AND OKUFLOW_ENABLE_CUDA)
         "${PROJECT_SOURCE_DIR}/src/cuda/cuda_kernels.cu"
         "${PROJECT_SOURCE_DIR}/src/cuda/spatial_upscalers.cu"
         "${PROJECT_SOURCE_DIR}/src/common/maxine_superres.cpp"
+        "${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp"
+        "${PROJECT_SOURCE_DIR}/src/common/uct_region_planner.cpp"
+        "${PROJECT_SOURCE_DIR}/src/common/uct_timing_trace.cpp"
         "${PROJECT_SOURCE_DIR}/src/common/view_transform.cpp")
     target_include_directories(media_gpu_scene_tests PRIVATE
         "${PROJECT_SOURCE_DIR}/include" "${media_gpu_scene_fixture_include}")

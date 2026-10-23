@@ -9,7 +9,10 @@ struct Rect { int x, y, w, h; };
 struct Colors { int foreground[3], background[3]; }; // RGB
 struct Ink { Rect search; double x, y, w, h; int detached; };
 struct Fit { double x, y, w, h; };
-struct Grid { double x, y, dx, dy, halfW, halfH; int columns, rows; };
+struct Grid {
+    double x, y, dx, dy, halfW, halfH; int columns, rows;
+    double crossX{}, crossY{}, warpX{}, warpY{};
+};
 struct MatchResult { int visible, matched; double score, x, y; };
 struct ProbeMap { double x, y, sx, sy; }; // scene -> pixels: scene*scale+origin
 struct ReferenceRequest { Grid grid; float* samples; };
@@ -23,9 +26,29 @@ void MatchReference(const unsigned*, int, int, Grid, const float*, double, doubl
                     double, double, double, double, MatchResult*, cudaStream_t);
 void Similarity(const unsigned*, int, int, ProbeMap, const unsigned*, int, int, ProbeMap,
                  double, double, double, double, double*, cudaStream_t);
-void LineColors(const void*, std::size_t, int, int, const Rect*, int, Colors*, cudaStream_t);
+struct OrientedInk;
+// Optional frames have one descriptor per rectangle; width == 0 retains the
+// rectangle path. Nonzero frames sample body/corners/perimeters in local space.
+void LineColors(const void*, std::size_t, int, int, const Rect*, int, Colors*, cudaStream_t,
+                const OrientedInk* frames = nullptr);
 void InkBounds(const void*, std::size_t, int, int, const Ink*, const int*, int,
                 const Colors*, Fit*, cudaStream_t);
+// Rotated-frame counterpart of InkBounds, sample-for-sample identical to the
+// CPU FitOrientedWordInk reference. Origin/axes are the search quad's TL and
+// unit edge directions in pixels; the fit is returned in local pixel units.
+struct OrientedInk { double ox, oy, ux, uy, vx, vy, width, height, detectedWidth; int detached; double warpX{}, warpY{}; };
+inline constexpr int kOrientedInkMaxPropagationPasses = 64;
+enum class OrientedFitReason : int { InvalidInput, Incomplete, UnanchoredInk, TooFewSamples,
+                                     AmbiguousBands, ShrinkGuard, Fitted };
+struct OrientedFit { double u0, u1, v0, v1; int fitted; int propagationPasses{}, propagationComplete{};
+                     OrientedFitReason reason{OrientedFitReason::InvalidInput}; };
+void OrientedInkBounds(const void*, std::size_t, int, int, const OrientedInk*, const int*, int,
+                       const Colors*, OrientedFit*, cudaStream_t);
+struct SurfaceRequest { OrientedInk frame; int colorIndex,fitIndex,oriented; };
+struct SurfaceFit { double xy[8]; int fitted; };
+// Optional closed-surface perspective, at most 128 requests; metadata only.
+void SurfaceFrames(const void*,std::size_t,int,int,const SurfaceRequest*,int,const Colors*,
+                   const Fit*,const OrientedFit*,SurfaceFit*,cudaStream_t);
 // Domain-separated SHA-256 tree over every packed BGRA byte (padding excluded).
 void FingerprintLeaves(const void*, std::size_t, int, int, unsigned char*, cudaStream_t);
 void FingerprintParents(const unsigned char*, int, unsigned char*, cudaStream_t);
@@ -57,6 +80,9 @@ void Detect(const float *map, int width, int height, int sourceWidth, int source
             Component *components, Quad *quads, int *count, cudaStream_t stream);
 // 128 detected lines -> at most 128*(original+8 overlapping windows).
 void RecognitionWindows(const Quad* detected, int* count, Quad* windows, cudaStream_t stream);
+// Compact ordered-group canvas widths; all ceil(1152/groupSize) slots are
+// initialized. Optional width policy only, with no image transfer or sorting.
+void RecognitionGroupWidths(const Quad*, const int* count, int groupSize, int* widths, cudaStream_t);
 void Rectify(const void *image, std::size_t pitch, int width, int height, const Quad *quads,
              int index, float *out, int cropWidth, cudaStream_t stream);
 void Decode(const float *probabilities, int steps, int classes, const Quad *quads, int index,
