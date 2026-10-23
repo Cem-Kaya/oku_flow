@@ -18,6 +18,7 @@
 #include <QUuid>
 #include <QtTest>
 #include <QCheckBox>
+#include <QTimer>
 
 #include <algorithm>
 #include <atomic>
@@ -41,6 +42,16 @@ namespace okuflow {
 // Narrow fixture access: real scheduler barriers and controller receipts,
 // without adding a production enqueue/result-injection API.
 struct UctControllerTestAccess {
+    static std::optional<std::int64_t> Expiry(const UltraClearTextController& c) { return c.expiryDeadlineMs_; }
+    static bool ExpiryArmed(const UltraClearTextController& c) { return c.expiryTimer_->isActive(); }
+    static int ExpiryInterval(const UltraClearTextController& c) { return c.expiryTimer_->interval(); }
+    static void FireExpiry(UltraClearTextController& c) {
+        // Drive the production QTimer connection with the fake clock. No
+        // sleep/real-time delivery assertion and no reimplementation of expiry.
+        c.expiryTimer_->stop(); // single-shot timers are inactive before delivery
+        QMetaObject::invokeMethod(c.expiryTimer_, "timeout", Qt::DirectConnection);
+    }
+    static void StopHeartbeat(UltraClearTextController& c) { c.watchdog_->stop(); }
     static ImmutableCorroborationPolicy SavedCadence(std::uint64_t frame, std::int64_t pts100ns,
                                                     std::int64_t duration100ns) {
         return {std::make_shared<const int>(0), frame, pts100ns, duration100ns};
@@ -539,6 +550,10 @@ struct ImmutableHarness {
 class UltraClearTextControllerTests final : public QObject {
     Q_OBJECT
 private slots:
+    void deadlineExpiryWithoutReceipts_data();
+    void deadlineExpiryWithoutReceipts();
+    void deadlineExpiryResetFencesLateCallback_data();
+    void deadlineExpiryResetFencesLateCallback();
     void activeRegionalFullDeadlinesUnderContinuousFocus();
     void activeRegionalFailureKeepsBackendAndRequestsFull();
     void activeIgnoredRegionalFallbackDoesNotForceExtraFull();
@@ -640,6 +655,126 @@ private slots:
     void pausedVisibleDetailNeedsSupportNeighbourAndMagnification_data();
     void pausedVisibleDetailNeedsSupportNeighbourAndMagnification();
 };
+
+void UltraClearTextControllerTests::deadlineExpiryWithoutReceipts_data()
+{
+    QTest::addColumn<int>("mode"); // live, advancing, paused
+    QTest::addColumn<bool>("exact");
+    QTest::addColumn<bool>("original");
+    QTest::newRow("live-line") << 0 << false << false;
+    QTest::newRow("live-exact-presentation-timeout") << 0 << true << false;
+    QTest::newRow("live-original-pane") << 0 << false << true;
+    QTest::newRow("media-wall-independent-of-pts") << 1 << false << false;
+    QTest::newRow("media-exact-exempt") << 1 << true << false;
+    QTest::newRow("paused-exempt") << 2 << true << false;
+}
+
+void UltraClearTextControllerTests::deadlineExpiryWithoutReceipts()
+{
+    QFETCH(int, mode); QFETCH(bool, exact); QFETCH(bool, original);
+    AccessibilityActivation accessibility;
+    ImmutableHarness h;
+    h.Enable();
+    QTRY_COMPARE(h.controller->BackendStatusSnapshot().state, BackendState::kReady);
+    if (mode == 0) {
+        UctFrameContext context;
+        context.geometry = h.Scene().geometry; context.requested = context.geometry.settings;
+        context.transform.valid = true; context.cameraActive = true;
+        context.viewportWidth = 960; context.viewportHeight = 540;
+        QSignalSpy admitted(h.controller.get(), &UltraClearTextController::recognitionAdmitted);
+        for (std::uint64_t frame = 1; frame <= 3; ++frame) {
+            h.now += 100; context.frameSeq = frame;
+            QTRY_VERIFY(h.controller->OnPresented(context));
+            h.controller->OnPresentationSucceeded();
+            h.controller->OnCpuViewport(context, h.page.image.constBits(), 960, 540, h.page.image.bytesPerLine());
+            QTRY_COMPARE(UctControllerTestAccess::ProbeFrame(*h.controller), frame);
+            if (frame > 1) QTRY_COMPARE(admitted.size(), static_cast<int>(frame - 1));
+        }
+        QCOMPARE(h.overlay.WordCount(), h.page.words.size());
+        if (!exact) {
+            // Successful display B, no analysis, then stop receipts one ms
+            // before A's inclusive boundary. No heartbeat refresh is assumed.
+            ++context.frameSeq; h.now += 349;
+            h.controller->OnPresented(context); h.controller->OnPresentationSucceeded();
+        }
+    } else {
+        auto scene = h.Scene(); scene.admission = ImmutableAdmission::Standalone;
+        QVERIFY(h.controller->SetImmutableScene(scene));
+        QTRY_COMPARE(h.overlay.WordCount(), h.page.words.size());
+        if (mode == 1) {
+            QVERIFY(h.controller->ResumeImmutableMedia(scene.sourceAuthority, scene.selected.frameSeq,
+                                                       scene.selected.timestampMs));
+            if (!exact) {
+                h.now += 349;
+                auto receipt = h.GapReceipt(scene.selected.frameSeq + 1);
+                receipt.timestampMs = scene.selected.timestampMs + 1;
+                QVERIFY(h.controller->OnAdvancingMediaPresentedWithoutAnalysis(receipt));
+            }
+        }
+    }
+    const auto lines = h.controller->Model().Lines();
+    const auto jobs = h.controller->SchedulerStatistics().submitted;
+    const auto probes = h.controller->ProbeStatistics().submitted;
+    h.controller->SetShowOriginal(original);
+    QVERIFY(!h.Reading().isEmpty());
+    UctControllerTestAccess::StopHeartbeat(*h.controller); // phase-independent expiry
+    const auto deadline = UctControllerTestAccess::Expiry(*h.controller);
+    if (mode == 2 || (mode == 1 && exact)) {
+        QVERIFY(!deadline); QVERIFY(!UctControllerTestAccess::ExpiryArmed(*h.controller));
+        h.now += 10000;
+        UctControllerTestAccess::FireExpiry(*h.controller);
+        QCOMPARE(h.overlay.WordCount(), h.page.words.size());
+        QVERIFY(!h.Reading().isEmpty());
+    } else {
+        QVERIFY(deadline); QVERIFY(UctControllerTestAccess::ExpiryArmed(*h.controller));
+        QCOMPARE(*deadline - h.now, std::int64_t(exact ? 601 : 2));
+        h.now = *deadline - 1; // <= boundary stays readable
+        UctControllerTestAccess::FireExpiry(*h.controller);
+        QCOMPARE(UctControllerTestAccess::ExpiryInterval(*h.controller), 1);
+        QVERIFY(!h.Reading().isEmpty());
+        h.now = *deadline;
+        UctControllerTestAccess::FireExpiry(*h.controller);
+        QCOMPARE(h.overlay.WordCount(), 0);
+        QVERIFY(h.Reading().isEmpty());
+        QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
+        QCOMPARE(h.controller->ScreenTextAccessibility()->ExposedLineCount(), 0);
+        QVERIFY(!UctControllerTestAccess::ExpiryArmed(*h.controller));
+        h.controller->SetShowOriginal(false);
+        UctControllerTestAccess::FireExpiry(*h.controller); // late duplicate cannot revive
+        QCOMPARE(h.overlay.WordCount(), 0);
+    }
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, jobs);
+    QCOMPARE(h.controller->ProbeStatistics().submitted, probes);
+    QCOMPARE(h.controller->Model().Lines().first().validatedAtMs, lines.first().validatedAtMs);
+    QCOMPARE(h.controller->Model().Lines().first().validatedFrameSeq, lines.first().validatedFrameSeq);
+}
+
+void UltraClearTextControllerTests::deadlineExpiryResetFencesLateCallback_data()
+{
+    QTest::addColumn<bool>("disable");
+    QTest::newRow("disable") << true;
+    QTest::newRow("source-change") << false;
+}
+
+void UltraClearTextControllerTests::deadlineExpiryResetFencesLateCallback()
+{
+    QFETCH(bool, disable);
+    ImmutableHarness h; h.Enable();
+    auto scene = h.Scene(); scene.admission = ImmutableAdmission::Standalone;
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_VERIFY(h.overlay.WordCount() > 0);
+    QVERIFY(h.controller->ResumeImmutableMedia(scene.sourceAuthority, scene.selected.frameSeq, scene.selected.timestampMs));
+    auto receipt = h.GapReceipt(scene.selected.frameSeq + 1); receipt.timestampMs = scene.selected.timestampMs + 1;
+    QVERIFY(h.controller->OnAdvancingMediaPresentedWithoutAnalysis(receipt));
+    QVERIFY(UctControllerTestAccess::ExpiryArmed(*h.controller));
+    if (disable) h.controller->SetEnabled(false);
+    else { ++receipt.sourceAuthority; QVERIFY(!h.controller->OnAdvancingMediaPresentedWithoutAnalysis(receipt)); }
+    QVERIFY(!UctControllerTestAccess::ExpiryArmed(*h.controller));
+    h.now += 1000;
+    UctControllerTestAccess::FireExpiry(*h.controller);
+    QCOMPARE(h.overlay.WordCount(), 0); QVERIFY(h.Reading().isEmpty());
+    QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
+}
 
 void UltraClearTextControllerTests::activeRegionalFullDeadlinesUnderContinuousFocus()
 {

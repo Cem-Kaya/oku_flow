@@ -332,6 +332,16 @@ There is no second capture or render pipeline. UCT reuses:
   nor renews the watchdog. An invalid transform or changed viewport size refuses
   that reuse. A different source/geometry still invalidates at once.
   The watchdog uses successful receipts only.
+  A precise single-shot expiry also targets the earliest live line-readability
+  or presentation-availability deadline, or the independent advancing-media
+  wall deadline. The existing inclusive 350/600 ms predicates expire at the
+  first excluded integer millisecond; event-loop delivery can still be late.
+  The 200 ms heartbeat is a backstop. In the previous live path it refreshed
+  only after presentation availability failed, not on every heartbeat.
+  Exact validated frames and paused selections retain their exceptions.
+  Show original keeps the pane's deadline armed. Timer delivery creates no
+  proof, changes no media PTS and uses the existing common surface revocation.
+  New fake-clock source fixtures are unexecuted pending ROOT's finite START.
 - Analysis opportunities are throttled to 80 ms. Busy snapshot slots skip an
   opportunity instead of blocking presentation. Source/frame/processing
   provenance must match the successfully presented scene before handoff.

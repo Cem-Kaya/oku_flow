@@ -4141,6 +4141,21 @@ bool OverlayModel::IsReadable(const AcceptedLine& line, std::int64_t nowMs, std:
            (nowMs - line.validatedAtMs <= tuning_.freshnessMs || currentFrameSeq == line.validatedFrameSeq);
 }
 
+std::optional<std::int64_t> OverlayModel::NextReadabilityExpiry(
+    std::int64_t nowMs, std::uint64_t currentFrameSeq) const
+{
+    std::optional<std::int64_t> next;
+    for (const auto& line : lines_) {
+        if (line.validatedFrameSeq == currentFrameSeq || !IsReadable(line, nowMs, currentFrameSeq)) continue;
+        // IsReadable includes the boundary. Wake at its first excluded ms,
+        // never repeatedly rearm a zero-ms timer at the inclusive boundary.
+        if (line.validatedAtMs >= std::numeric_limits<std::int64_t>::max() - tuning_.freshnessMs) continue;
+        const auto expiry = line.validatedAtMs + tuning_.freshnessMs + 1;
+        if (!next || expiry < *next) next = expiry;
+    }
+    return next;
+}
+
 QVector<SceneWord> OverlayModel::SceneWords(std::int64_t nowMs, std::uint64_t currentFrameSeq) const
 {
     QVector<SceneWord> words;

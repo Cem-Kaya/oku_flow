@@ -147,12 +147,20 @@ UltraClearTextController::UltraClearTextController(UltraClearTextOverlay* overla
       pool_(uct::PixelPool::Create(kPixelPoolCapacity))
 {
     regionalOcrEnabled_ = qEnvironmentVariable("OKUFLOW_UCT_REGIONAL_OCR") == "1";
+    expiryTimer_ = new QTimer(this);
+    expiryTimer_->setSingleShot(true);
+    expiryTimer_->setTimerType(Qt::PreciseTimer);
+    connect(expiryTimer_, &QTimer::timeout, this, &UltraClearTextController::ProcessExpiry);
     // Presentation watchdog: with no presentations (camera stopped, source
     // switching, placeholder shown) cached words must not linger.
     watchdog_ = new QTimer(this);
     watchdog_->setInterval(200);
     connect(watchdog_, &QTimer::timeout, this, [this] {
         if (!enabled_) return;
+        if (expiryDeadlineMs_ && clock_() >= *expiryDeadlineMs_) {
+            ProcessExpiry();
+            return;
+        }
         if (!HasImmutableScene() && presentationAvailable_ && !PresentationAvailable(clock_())) {
             presentationAvailable_ = false;
             RefreshOverlay(clock_());
@@ -187,6 +195,8 @@ UltraClearTextController::UltraClearTextController(UltraClearTextOverlay* overla
 
 UltraClearTextController::~UltraClearTextController()
 {
+    expiryTimer_->stop();
+    expiryDeadlineMs_.reset();
     // Revoke every accessibility element on the UI thread before the
     // snapshot provider (this) disappears.
     delete screenText_.data();
@@ -822,6 +832,7 @@ void UltraClearTextController::OnMediaPresentationFailed()
     // it, while immediately revoking every currently visible text surface.
     // Keep the latch even while disabled or awaiting backend readiness.
     presentationFailed_ = true;
+    ArmExpiry(clock_());
     const bool hadWords = !overlayWords_.isEmpty();
     UpdatePositionedTimingPublication(hadWords, false, true);
     if (overlay_) overlay_->ClearWords();
@@ -996,6 +1007,7 @@ void UltraClearTextController::OnPresentationFailed()
     }
     presentationFailed_ = true;
     presentationAvailable_ = false;
+    ArmExpiry(clock_());
     const bool hadWords = !overlayWords_.isEmpty();
     UpdatePositionedTimingPublication(hadWords, false, true);
     if (overlay_) {
@@ -1155,6 +1167,8 @@ uct::SourceStamp UltraClearTextController::CurrentScene() const
 
 void UltraClearTextController::Invalidate(const QString& reason)
 {
+    expiryTimer_->stop();
+    expiryDeadlineMs_.reset();
     if (uct::timing::Enabled()) {
         uct::timing::Key key;
         key.producer = scheduler_ ? scheduler_->TimingProducerId() : 0;
@@ -1998,8 +2012,51 @@ void UltraClearTextController::UpdatePaneTimingPublication(bool sharePositionedR
     if (panel_) panel_->SetTimingTicket(timingPanePublication_);
 }
 
+void UltraClearTextController::ArmExpiry(std::int64_t nowMs)
+{
+    std::optional<std::int64_t> next;
+    if (enabled_ && !immutableScene_ && !settling_ && !compositePaused_ && !mediaOverlaySuppressed_ &&
+        !presentationFailed_ && PresentationAvailable(nowMs)) {
+        if (advancingDisplay_) {
+            // Media time advances only on a real display receipt. The timer
+            // enforces the independent wall bound, preserving exact-frame proof.
+            if (haveAdvancingValidation_ && AdvancingValidationFresh(nowMs) &&
+                advancingDisplay_->frameSeq != advancingValidatedFrameSeq_)
+                next = advancingValidatedWallMs_ + timing_.mediaValidationFreshnessMs + 1;
+        } else {
+            next = model_.NextReadabilityExpiry(nowMs, currentFrameSeq_);
+            const auto presentationExpiry = lastPresentMs_ + kPresentationWatchdogMs + 1;
+            if (!next || presentationExpiry < *next) next = presentationExpiry;
+        }
+    }
+    if (next && next == expiryDeadlineMs_ && expiryTimer_->isActive()) return;
+    expiryTimer_->stop();
+    expiryDeadlineMs_ = next;
+    if (next) expiryTimer_->start(static_cast<int>(std::clamp<std::int64_t>(
+        *next - nowMs, 1, std::numeric_limits<int>::max())));
+}
+
+void UltraClearTextController::ProcessExpiry()
+{
+    // Re-evaluate current state, including cancellation and early/late delivery.
+    // This path never validates a line, admits a result or advances media PTS.
+    const auto now = clock_();
+    if (expiryDeadlineMs_ && now < *expiryDeadlineMs_) {
+        expiryTimer_->stop();
+        ArmExpiry(now);
+        return;
+    }
+    expiryDeadlineMs_.reset();
+    if (!HasImmutableScene() && !PresentationAvailable(now)) presentationAvailable_ = false;
+    RefreshOverlay(now);
+    UpdateReadingText();
+    UpdateStatus();
+}
+
 void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
 {
+    // Pane freshness still matters under Show original or without an overlay.
+    ArmExpiry(nowMs);
     if (!overlay_) {
         return;
     }

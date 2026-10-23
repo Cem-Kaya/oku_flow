@@ -13,6 +13,10 @@
   including allocation and thread-start failures during quarantine or worker
   replacement. Release its resources only after confirmed stream completion.
 
+- Arm UCT expiry at the first excluded millisecond of its existing line,
+  advancing-wall or live-presentation deadline. Stopped receipts no longer
+  depend on the 200 ms heartbeat to clear glyphs, reading text and positioned
+  accessibility; exact displayed-frame and paused proof keep their exceptions.
 - Zoom out to show an entire wide or portrait source. Wheel/key zoom stops
   once at Fill (1x), then continues toward whole-picture Fit; the slider snaps
   near Fill. Saved 1x profiles retain their previous framing.

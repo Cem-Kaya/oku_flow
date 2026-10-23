@@ -472,6 +472,8 @@ private:
     // without pixels never refresh this.
     bool AdvancingValidationFresh(std::int64_t wallNowMs) const;
     void NoteAdvancingValidation(std::int64_t wallNowMs);
+    void ArmExpiry(std::int64_t nowMs);
+    void ProcessExpiry();
     void RefreshOverlay(std::int64_t nowMs);
     void UpdateReadingText(bool shareTimingRevision = false);
     void NoteTimingAdmission(const uct::RecognitionResult& result, uct::AdmitVerdict verdict,
@@ -610,6 +612,8 @@ private:
     int consecutiveProbeFailures_{};
     bool analysisPoolFailed_{};
     QTimer* watchdog_{};
+    QTimer* expiryTimer_{};
+    std::optional<std::int64_t> expiryDeadlineMs_;
     std::int64_t lastPresentMs_{};
     ViewTransform attemptedTransform_;
     ViewTransform presentedTransform_;
