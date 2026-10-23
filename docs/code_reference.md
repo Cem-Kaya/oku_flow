@@ -8,8 +8,11 @@ recognition-group/precision, `PaddleMergeRecognition`/quad clipping,
 production conflict resolution. `LoadPaddleAssets` retains A's one bounded
 hash/parse snapshot; the merge cache/oracle retains B's exact code, and
 `Context` retains C's complete closure. The final TensorRT implementation
-equals D's reviewed `89f839b` source, including the post-golden deadline guard.
-Root's narrow R3 closure is source acceptance only. Frozen `9bdd5d1` configured
+equals the four-repair source tip `6d5f4744b4f7e0f4c2e0d8442b58373475bb7f14`,
+including the retained post-golden guard, admitted-attempt deadline, actual-builder
+selection, native delete exclusion and per-generation pin lifetime. Root's
+Opus R4 review is pending; composition is not acceptance. The earlier narrow
+R3 closure on `89f839b` remains source acceptance only. Frozen `9bdd5d1` configured
 and compiled production CPU objects in the first root block, but the Paddle
 fixture failed to compile; no tests ran. The six CPU cases cannot compile the
 CUDA-gated adapter.
@@ -19,8 +22,12 @@ and `farQuad`, avoiding the Windows SDK's empty `near`/`far` macros after the
 public runtime header includes `Windows.h`. Only declarations and uses are
 renamed; assertions, geometry, production headers and global macros are intact.
 Reversing those eight identifier replacements restores the exact prior fixture
-bytes after LF normalization. This test-only repair is statically checked and
-unbuilt/unrun; root retains the original failed attempt and compiled cache at
+bytes after LF normalization. Root later built all three targets on `a7d4757`;
+the six-case gate passed five and failed `uct_public_bf16_contract`. The first
+public slot passed; the publication/lifetime slot threw an unhandled exception
+without `what()` text, so the failing assertion remains unattributed. All C1/C2
+logs and compiled-cache identities are retained. These four newer source repairs
+are unbuilt/unrun; root retains the original failed compile attempt at
 `Z:/Projects/OkuFlow/local-work-data/uct-combined-validation-20261023/scripts/C2-20261023-150630-6c409472eeb64f2aacf3b0d573a387af`.
 
 ## Owned synthetic BF16 crop proposal (2026-10-23)

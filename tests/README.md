@@ -4,7 +4,12 @@ The [combined source handoff](../docs/uct_combined_source_2026_10_23.md) records
 the exact A/B/C/D composition, historical scoped evidence and a held 900-second,
 eight-job CPU proposal. Statements below about implementation-time preparation
 are historical: `b002` helper gates and `c3e3fea` merge replay later ran in their
-separate root windows. This combined source and public BF16 remain UNBUILT/UNRUN.
+separate root windows. Combined `9bdd` failed C1 fixture compilation; after
+the exact `a7` identifier fix, C2 built three targets but ended **SCOPED FAIL
+6/238: five passed, public BF16 publication/lifetime failed**. The original
+exception had no `what()` text and remains unattributed. All failures are retained.
+The newer four-repair composition is UNBUILT/UNRUN with root-owned Opus R4 pending;
+see the handoff for its narrower four-case proposal and no nominal PCH-OFF repeat.
 
 `retained_cleanup_contract` is a standalone model-free lifetime/fault fixture
 for the resident UCT terminal cleanup handoff. Its 35 cases retain exact fake

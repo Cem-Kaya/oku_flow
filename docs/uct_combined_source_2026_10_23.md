@@ -1,6 +1,7 @@
 # Combined UCT source handoff (2026-10-23)
 
-This isolated integration is **SOURCE READY for root validation, UNBUILT/UNRUN**.
+The latest four-repair composition is **SOURCE READY, UNBUILT/UNRUN; Opus R4
+review pending**. Earlier root CPU attempts remain failed, as recorded below.
 It starts at `618ee9a57acb14a601d1fa60e518c0465808968f`. No configure, compiler,
 fixture, native API, GPU, inference, model preparation/download, browser, GUI,
 device, runner lease, push, PR or release operation ran during composition.
@@ -31,14 +32,24 @@ The owner checkout, preview, settings and processes were not operated on.
   report `e4fe78a2b81d8f65f38e73604343a0e8d91bcc65`. Retain complete Context
   before cache removal/cleanup setup, use the same handoff on replacement and
   release only after confirmed drain. Existing resident fences remain intact.
-- **D, public BF16:** apply only `ca9b00159ad2388381877acf79209262c6fed871`,
+- **D, original public BF16:** apply `ca9b00159ad2388381877acf79209262c6fed871`,
   `19d46605bfa9c6d18be004a6e04c181c05146244`,
   `f4fd73bf01f1fe8fcd943ab5d590445a842e493d`,
   `53be085ac336dfdc52d5ae4366baad4eaef32709`,
   `b3ba9c82e29ee8f50818d37e4f1ed591c8431dad`, and
   `89f839b03285862aa00f082e057c7a4c2d15dc70`. Preserve private-cache isolation,
   partial observations, native publication pins and the final golden deadline
-  check. The complete TensorRT source equals the final reviewed D source.
+  check. This original source was the authority before the next four repairs.
+- **D follow-up, R4 pending:** separately compose
+  `e88f526075373eaaae0e3c2ea21e8941a1806b78`,
+  `2d5c97876611753cf566f260b27aefd064ffb213`,
+  `c598537dadefebf17f8db2f5e11de2da200603bd`, and
+  `6d5f4744b4f7e0f4c2e0d8442b58373475bb7f14` onto `a7d4757`. Final TensorRT,
+  public runtime and public case-header bytes equal that source tip. Attempt
+  deadlines begin after eligibility; lookup preserves actual builder identity,
+  directory pins exclude DELETE while sharing non-delete writes, and each
+  skipped generation releases its own read pin. Earlier batching/merge/quarantine
+  bytes and the exact near/far and Qt-slots fixture repairs remain intact.
 
 The production corpus catalog and `productionGoldenCorpusPins` remain empty.
 The eight source-owned crop candidates are unchanged proposals. Root reports
@@ -113,11 +124,77 @@ model-free helper fixture does not establish it. See
 
 Root reports independent full R2 closed D's R1 cache/partial-output/publication
 findings. Focused R3 closed R2's final-N8 deadline P2 on `89f839b`, with no P1/P2;
-only that narrow source closure is accepted. Public code and golden remain
-**UNBUILT/UNRUN**. See [review history](uct_public_bf16_review.md). None of these
-earlier runs supplies a source-to-binary receipt for this combined tree.
+only that narrow source closure is accepted. The four newer repairs and actual
+model golden remain **UNBUILT/UNRUN** with R4 pending. See
+[review history](uct_public_bf16_review.md). No prior run validates the new source.
 
-## Held finite CPU proposal for root
+Root C1 on `9bdd5d1` ended `2026-10-23T15:07:17.4978576Z`: configure 0,
+expected FULL-required 2, then fixture compile failure on SDK `near`/`far`
+macros; no tests ran. Production CPU objects compiled. Separate test-only
+`a7d4757` renamed only eight Paint identifiers, with exact LF reverse-rename
+preservation and no assertion/geometry change.
+
+Root C2 on `a7d4757` ended `2026-10-23T15:13:59.8857906Z`: all three targets
+compiled, followed by **SCOPED FAIL 6/238: five passed, one failed/unresolved**.
+`retained_cleanup_contract`, precision, merge, Paddle and the shared-source guard
+passed. The first public slot passed; publication/lifetime threw an unhandled
+C++ exception (`0xe06d7363`) without `what()` text. No exact assertion is attributed.
+Child/controller exits were 1 in both attempts. Root verified job0, root exit
+and runner release after cleanup; neither attempt is an overall PASS.
+
+The read/copy/hash-only archive is
+`Z:/Projects/OkuFlow/local-work-data/uct-combined-1023/archive-C2-a7-20261023/`:
+155 files, 36,715,062 bytes; all pre/post/copy hashes matched, including 92 root
+identity rows, 22 objects, three executables and 65 compiled source inputs.
+Manifest SHA-256: `2dc2358358b6ea97b67de3b59508d724df43e58bdb13a775a4ccb9ea8377c84c`.
+The original source, logs, ledger and owned cache remain in place. Native probe
+observations are separate from the undiagnosed Qt exception and project acceptance.
+No retry, source mutation or execution occurred while archiving.
+
+The new composition receipts are in the sibling `public-R4-composition/` folder.
+Original four patches, docs-conflict hunks/resolution, fresh 551 source pins,
+root-byte equivalence, component preservation, final patch/HEAD and pending review
+are recorded separately; prior receipts were not overwritten.
+
+## Current held four-case CPU proposal
+
+After root's R4 closure and a fresh finite START, reuse its corrected job wrapper
+and retained owned `Z:/Projects/OkuFlow/local-work-data/uct4/cpu-on` cache. Maximum
+900 seconds total, eight jobs: at most 120 s configuration/identity/selection,
+480 s incremental build, 240 s gate, 60 s exact owned cleanup/evidence; remaining
+aggregate time always wins. No new controller or cache is needed.
+
+Incrementally build only `uct_paddle_tests`. Its public case header, wrapper and
+runtime header changed. Then run the affected four through the tracked gate:
+
+```powershell
+& scripts/run_test_gate.ps1 -BuildDirectory Z:/Projects/OkuFlow/local-work-data/uct4/cpu-on -Test @('uct_public_bf16_contract','uct_precision_artifact_contract','uct_paddle_processing','shared_source_equivalence') -Parallel 8 -ExcludeGui -Resume:$false
+```
+
+Retain tracked `agent_check.ps1` selection/refusal evidence if root uses it; a
+whole-root diff still includes infrastructure changes and cannot claim a full
+pass. The explicit four-case scope requires root's new grant. Rebuild before
+fingerprinting; preserve unresolved failures and changed-input provenance rather
+than removing ledgers or rerunning unchanged failures. Root owns any required
+tracked fresh/repair mode and exact selection.
+
+Merge replay and retained-cleanup bytes/targets are unchanged by these repairs;
+their prior C2 passes remain historical until their own exact fingerprints are
+verified for any reuse. Do not rerun them merely to duplicate component checks.
+If root requires a six-case inventory, it must validate that reuse explicitly;
+this four-case proposal does not claim a fresh six-case pass. Additional UCT or
+immutable contracts require a concrete finding. Zero actual selected PCH commands
+were recorded in C2; no nominal PCH-OFF or performance repeat is proposed.
+
+CPU builds cover the public model-free native-filesystem fixture, not the
+CUDA-gated real TensorRT Network or C's actual CUDA fault routing. No model,
+TensorRT engine, inference, GPU, GUI/browser/device, download or release work is
+included. The repaired project fixtures have not run, and R4 is pending.
+
+## Original six-case CPU proposal (historical; C1/C2 failed)
+
+The original plan below is retained as history. The current proposal above is
+narrower; this section is not a new execution grant.
 
 This is a proposal, with **no current execution grant or lease**. Root owns a
 fresh serialized START, deadline enforcement and any exact-child cleanup. Do not

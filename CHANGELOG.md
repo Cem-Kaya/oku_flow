@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Compose the four public BF16 policy/cache/pin repairs onto the exact fixture
+  fix, preserving C1/C2 failures and earlier component source. Opus R4 remains
+  pending; new source is unbuilt/unrun and the production catalog stays empty.
+  The next proposed CPU block covers four affected cases without a PCH repeat.
+
 - Rename the surface-paint fixture's local `near`/`far` quads to avoid Windows
   SDK macros exposed by the public runtime include. ROOT's first combined CPU
   build exposed the compile failure; no tests ran. The test-only rename keeps

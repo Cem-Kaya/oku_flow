@@ -273,12 +273,16 @@ not a diagnosis of the earlier Qt exception or a new runtime retry.
 
 Proposed finite root START C2: one frozen checkout, maximum 8 compile jobs,
 900-second total stop budget; build only affected `uct_paddle_tests` and
-`shared_source_equivalence` inputs in CPU PCH-on/off configurations, then exactly
+`shared_source_equivalence` inputs in the retained CPU configuration, then exactly
 `uct_public_bf16_contract`, `uct_precision_artifact_contract`,
 `uct_paddle_processing`, `shared_source_equivalence`. Stop on first failure,
 preserve evidence; private model-free storage fixtures may use their own temporary
 directories, with no owner/model cache preparation or GUI/GPU. Root owns runner/lease
 selection and whether this finite scope is granted. Nothing here takes a lease.
+The selected targets had zero actual PCH commands in root's prior build; do not
+repeat a nominal OFF configuration or performance work. The current combined
+proposal uses the existing `uct4/cpu-on` cache only after a fresh root grant and
+R4 closure; earlier C1/C2 failures remain blocking historical evidence.
 
 Separate proposed real-runtime START P1: frozen source/private diagnostic and
 explicit isolated model/corpus/cache/evidence roots, <=900 seconds total,

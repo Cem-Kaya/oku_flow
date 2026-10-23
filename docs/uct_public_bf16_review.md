@@ -112,8 +112,9 @@ fixture remained unchanged pending root's real fixture result. The then-probable
 attribute-only-sharing finding was not repaired or declared closed at that point.
 Root retains the initial combined CPU compile failure and owns the test-only
 `TextQuad` near/far rename needed to run the unchanged native fixture. This
-implementation checkout executes no build/test/native API and imports no such fix.
-Fresh focused independent closure of these new repairs is owned by root.
+public-author checkout did not import that separate fixture fix. The combined
+checkout retains `a7d4757`'s exact eight identifier replacements. Composition runs
+no build/test/native API; focused independent closure is owned by root.
 
 **P2, stale builder generation masks a new recipe:** `FindPlan` previously returned
 the first internally valid child regardless of the actual current builder, then
@@ -199,3 +200,21 @@ bound refusal. It creates no golden/pass record or model success. Source changes
 and fixtures remain **UNBUILT/UNRUN**; root's fresh targeted independent review
 must include this lifetime seam alongside the prior repairs. All previous probe,
 review and first-failure evidence is retained; no new execution or retry ran here.
+
+## Combined source follow-up and pending R4
+
+The combined checkout imported the four source commits through
+`6d5f4744b4f7e0f4c2e0d8442b58373475bb7f14` onto clean
+`a7d4757877278b82f42191df2e88ad6be4670a2e`. Only this review history conflicted;
+root's completed narrow R3 closure and the new findings were retained. No manual
+production conflict resolution occurred. All original C1 compile-failure and C2
+scoped 5-pass/1-failure logs, ledger and build artifacts remain archived. The
+original Qt exception remains unattributed; the separate native probe established
+only its stated platform-sharing observations. No later project fixture pass is
+implied.
+
+Root's fresh Opus R4 review of the frozen four-repair source is pending:
+`node:delegated-task:command%3Amcp%3A818e8417-f389-479c-bab6-e9b3eca72944%3Adelegate-task%3Aopus-public-bf16-four-repair-closure-20261023-r4`.
+Source composition is not review acceptance or an execution grant. The repairs
+and new cases remain UNBUILT/UNRUN; production catalogs remain empty. See the
+[current narrow CPU proposal](uct_combined_source_2026_10_23.md#current-held-four-case-cpu-proposal).
