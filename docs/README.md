@@ -1,5 +1,9 @@
 # OkuFlow Documentation Guide
 
+[Combined UCT source integration](uct_combined_source_2026_10_23.md) pins the
+batching/precision, exact host merge, durable quarantine and public BF16 series,
+preservation receipts and a held finite CPU plan. Combined execution is unrun.
+
 [Public BF16 background integration](uct_public_bf16.md) records source-only local
 model building, actual N1/full-N8 attestation, lifetime/quarantine and atomic
 driver-free cache publication. The compiled production corpus remains empty;

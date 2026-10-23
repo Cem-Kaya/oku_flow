@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Compose the reviewed UCT batching/precision, exact host merge, durable
+  quarantine and public BF16 source series in an isolated worktree. No manual
+  production conflict resolution or runtime execution; public catalog remains
+  empty. See `docs/uct_combined_source_2026_10_23.md` for preserved evidence,
+  the accepted narrow R3 source closure and held validation proposal.
+
 - Rename the batched CTC CUDA fixture's local buffer extent to avoid Qt's
   `slots` macro. ROOT's C3 build of `8f262c3` exposed the compile failure;
   the test-only repair changes no assertions. Repaired `b002b67` passed the

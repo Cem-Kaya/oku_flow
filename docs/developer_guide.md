@@ -8,8 +8,10 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
 
 - A development [host UCT merge candidate](uct_merge_optimization.md) removes
   repeated geometry/overlap work inside the existing GPU recognizer pipeline.
-  Frozen CPU replay/timing is prepared; it remains uncompiled and unmeasured
-  pending parent START, with no worker, fallback or FPS gain established.
+  Frozen `c3e3fea` passed a scoped CPU replay/Paddle/shared-source gate and
+  constructed/regrouped function timing. The combined source remains unbuilt;
+  no worker, fallback or FPS gain is established. See the
+  [scoped report](uct_merge_cpu_replay_2026_10_23.md).
 
 - Public BF16 model preparation/local attestation is authored but **UNBUILT/UNRUN**.
   Its production corpus catalog remains empty, so automatic public selection

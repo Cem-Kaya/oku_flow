@@ -75,6 +75,13 @@ publish a receipt/plan.
 Existing model-free BF16 fixtures have no clock seam exercising this final-N8
 sequence. No helper/framework or mirrored test was added solely for the check.
 The repair has source inspection only and remains **UNBUILT/UNRUN**; actual
-deadline/positive runtime behavior is unverified. Root's focused R3 closure is
-pending. ProductionCorpusCatalog remains empty, prior evidence is retained, and
-the separate `b002` test-only Qt identifier dependency is left for later composition.
+deadline/positive runtime behavior is unverified. Root reported focused R3
+complete on `89f839b03285862aa00f082e057c7a4c2d15dc70`, task
+`node:delegated-task:command%3Amcp%3A818e8417-f389-479c-bab6-e9b3eca72944%3Adelegate-task%3Auct-public-bf16-final-deadline-closure-r3-20261023`.
+R3 closed R2's P2 with no P1/P2: exactly one guard after `RunPublicGolden` and
+before `CheckGolden`, ordinary-error routing, retained incomplete observations
+and unreachable publication on expiry. Root also reported 11 preservation files
+unchanged and receipt/patch hashes matched. This narrow source closure is accepted;
+it is not runtime acceptance. ProductionCorpusCatalog remains empty and all
+previous evidence is retained. The combined source includes `b002`'s test-only
+Qt identifier repair once; see [integration scope](uct_combined_source_2026_10_23.md).

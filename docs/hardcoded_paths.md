@@ -27,15 +27,17 @@ runtime DLL/version/hash are provenance only; old artifacts remain intact.
 Decoded dictionaries now come from one hash-verified snapshot limited to 8 MiB.
 See [contract and pending finite slots](uct_precision_artifacts.md).
 
-## Exact host UCT merge candidate (unmeasured)
+## Exact host UCT merge candidate (scoped CPU replay measured)
 
 `PaddleMergeRecognition` uses a call-local geometry cache capped at 1024 rows
 and 8192 word entries/capacity. Oversize or capacity-exhausted inputs retain
 uncached decisions without a new output limit. Quad clipping uses two 64-point
 stack buffers, bounded by four points doubling at most once per each of four
 edges. Explicit CPU replay timing has five warmups per arm, 31 alternating
-ABBA/BAAB blocks and a four-minute between-call deadline. Compilation,
-correctness and gains await parent START; see [method](uct_merge_optimization.md).
+ABBA/BAAB blocks and a four-minute between-call deadline. Frozen `c3e3fea` has
+scoped CPU correctness and descriptive function timing; this combined source
+is unbuilt. See [method](uct_merge_optimization.md) and the
+[scoped report](uct_merge_cpu_replay_2026_10_23.md).
 
 The separate public BF16 preparation boundary proposes
 `app/models/uct/rec/medium/bf16-linear/inference.onnx` and versioned
