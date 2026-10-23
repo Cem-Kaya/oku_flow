@@ -774,6 +774,11 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   approximate, not exact glyph geometry. `gpu::{Normalize,Detect,RecognitionWindows,Rectify,
   Decode,Probe}` in `uct_kernels` implement device equivalents using
   `gpu::{Component,Quad,Token}` with finite-value checks and bounded outputs.
+  `gpu::RectifyBatch` maps contiguous detector-order crops to the grid's second
+  dimension with the scalar pixel arithmetic and `[N,3,48,W]` layout. The
+  original `Rectify` kernel remains the exact fixture oracle; no index staging,
+  sorting or sampling change is introduced. `issueGroup` retains the existing
+  one-stream/two-pinned-slot look-ahead, context and input retirement fences.
 - `gpu::ValidationIntegral` retains two launches: the private
   `validation::integralRows` uses one 256-thread block per row with integer warp
   prefix scans, eight shared warp offsets and a tile carry; `integralColumns`
