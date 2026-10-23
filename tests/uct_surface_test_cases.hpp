@@ -87,11 +87,11 @@ inline void Paint()
 {
     QWidget owner;owner.resize(400,220);owner.show();
     okuflow::UltraClearTextOverlay overlay(&owner,&owner);overlay.SetViewTransform({0,0,1,1,0,0,1,1,true});
-    TextQuad near{{QPointF(30,50),QPointF(150,50),QPointF(145,90),QPointF(35,100)},true};
-    TextQuad far{{QPointF(220,50),QPointF(340,50),QPointF(337,72),QPointF(223,80)},true};
-    for(auto* q:{&near,&far})for(auto& p:q->points)p={p.x()/400,p.y()/220};
-    overlay.SetWords({{QStringLiteral("READ"),near.Bounds(),{Qt::black,Qt::white},1,{},0,near},
-        {QStringLiteral("READ"),far.Bounds(),{Qt::black,Qt::white},1,{},1,far}});
+    TextQuad nearQuad{{QPointF(30,50),QPointF(150,50),QPointF(145,90),QPointF(35,100)},true};
+    TextQuad farQuad{{QPointF(220,50),QPointF(340,50),QPointF(337,72),QPointF(223,80)},true};
+    for(auto* q:{&nearQuad,&farQuad})for(auto& p:q->points)p={p.x()/400,p.y()/220};
+    overlay.SetWords({{QStringLiteral("READ"),nearQuad.Bounds(),{Qt::black,Qt::white},1,{},0,nearQuad},
+        {QStringLiteral("READ"),farQuad.Bounds(),{Qt::black,Qt::white},1,{},1,farQuad}});
     QTRY_VERIFY(overlay.PaintedGeometryCurrent());
     okuflow::UltraClearTextOverlay::PaintedWordGeometry a,b;
     QVERIFY(overlay.PaintedWord(1,0,QStringLiteral("READ"),a));QVERIFY(a.drawn);

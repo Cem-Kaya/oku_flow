@@ -1,6 +1,6 @@
 # OkuFlow Code Reference
 
-## Combined UCT source composition (unbuilt)
+## Combined UCT source composition (CPU validation incomplete)
 
 The [source handoff](uct_combined_source_2026_10_23.md) composes the existing
 recognition-group/precision, `PaddleMergeRecognition`/quad clipping,
@@ -9,8 +9,19 @@ production conflict resolution. `LoadPaddleAssets` retains A's one bounded
 hash/parse snapshot; the merge cache/oracle retains B's exact code, and
 `Context` retains C's complete closure. The final TensorRT implementation
 equals D's reviewed `89f839b` source, including the post-golden deadline guard.
-Root's narrow R3 closure is source acceptance only. All combined code remains
-unbuilt/unrun; six proposed CPU cases cannot compile the CUDA-gated adapter.
+Root's narrow R3 closure is source acceptance only. Frozen `9bdd5d1` configured
+and compiled production CPU objects in the first root block, but the Paddle
+fixture failed to compile; no tests ran. The six CPU cases cannot compile the
+CUDA-gated adapter.
+
+`uct_surface_test::Paint` now names its two local `TextQuad` values `nearQuad`
+and `farQuad`, avoiding the Windows SDK's empty `near`/`far` macros after the
+public runtime header includes `Windows.h`. Only declarations and uses are
+renamed; assertions, geometry, production headers and global macros are intact.
+Reversing those eight identifier replacements restores the exact prior fixture
+bytes after LF normalization. This test-only repair is statically checked and
+unbuilt/unrun; root retains the original failed attempt and compiled cache at
+`Z:/Projects/OkuFlow/local-work-data/uct-combined-validation-20261023/scripts/C2-20261023-150630-6c409472eeb64f2aacf3b0d573a387af`.
 
 ## Owned synthetic BF16 crop proposal (2026-10-23)
 

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Rename the surface-paint fixture's local `near`/`far` quads to avoid Windows
+  SDK macros exposed by the public runtime include. ROOT's first combined CPU
+  build exposed the compile failure; no tests ran. The test-only rename keeps
+  geometry and assertions exact and awaits a fresh root incremental gate.
+
 - Compose the reviewed UCT batching/precision, exact host merge, durable
   quarantine and public BF16 source series in an isolated worktree. No manual
   production conflict resolution or runtime execution; public catalog remains
