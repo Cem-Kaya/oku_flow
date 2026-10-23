@@ -3,11 +3,13 @@
 // Private application boundary. Diagnostics keep the public FP32 factory.
 // This policy can select an existing reviewed plan, never prepare one.
 #include "okuflow/common/uct_paddle.hpp"
+#include "uct_tensorrt_identity.hpp"
 #include <QCryptographicHash>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <filesystem>
 #include <stdexcept>
 
 namespace okuflow::uct::runtime_precision {
@@ -17,6 +19,7 @@ inline constexpr char kRecognizerSource[] = "9c09abf0957f7968c7586464b7397b84ad2
 inline constexpr char kRecognizerGraph[] = "ecd8ffc92aa1b9f7a33b0ad39757b64887c465f15bb54853936b2136f94e5835";
 inline constexpr char kPlanFileSha256[] = "155c74b5b856467e49853190c881077c9af3200203a196f9e737f7533e6f5495";
 inline constexpr char kDeviceUuid[] = "230556cb9d98d5c17318d9ac52e6697d";
+inline constexpr char kReviewedLegacyPlanKey[] = "e596b8ac0110f01e88fc94bcbdeda4511b83af90efb761aa4e194de3ea496073";
 inline constexpr qint64 kManifestLimit = 64 * 1024;
 inline constexpr qint64 kGraphLimit = 256 * 1024 * 1024;
 inline constexpr qint64 kPlanLimit = 256 * 1024 * 1024;
@@ -43,8 +46,8 @@ struct Selection {
 };
 struct Device {
     QByteArray uuid;
-    int driver{}, major{};
-    QByteArray tensorRtVersion{"11.4.0.106"};
+    int driver{}, major{}; // driver is provenance only, never key/admission data
+    QByteArray tensorRtVersion; // REQUIRED actual loaded DLL tuple, never a default label
 };
 inline bool Hash(const QByteArray& hash)
 {
@@ -69,12 +72,16 @@ inline bool SamePath(const QString& a, const QString& b)
                QDir::cleanPath(QDir::fromNativeSeparators(b)), Qt::CaseInsensitive) == 0;
 }
 inline QByteArray PrecisionPlanKey(const Graph& graph, const Device& device,
-                                   bool detection, int batch, const QByteArray& width = "fixed1024")
+                                   bool detection, int batch, const QByteArray& width = "fixed1024",
+                                   const QByteArray& builderVersion = tensorrt_identity::kBuilderVersion)
 {
-    // Byte-identical to the reviewed offline experiment for this fixed profile.
-    const auto identity = QByteArray("uct-precision-v1\n") + graph.precision.toUtf8() + '\n' +
+    // Builder metadata describes the plan, not the currently loaded runtime.
+    // A driver/runtime update cannot rename these same reviewed plan bytes.
+    if (!tensorrt_identity::RuntimeAtLeastMinimum(builderVersion))
+        throw ArtifactError("invalid precision plan builder version");
+    const auto identity = QByteArray("uct-precision-v2\n") + graph.precision.toUtf8() + '\n' +
         graph.sourceSha256 + '\n' + graph.sha256 + '\n' + device.uuid.toHex() + '\n' +
-        QByteArray::number(device.driver) + "\ntrt" + device.tensorRtVersion +
+        "trt" + builderVersion +
         "-tf32-default-opt2-workspace256MiB-aux0-" + width + '\n' +
         (detection ? "det-32-544x960-960x960" : "rec-48x1024") + '\n' + QByteArray::number(batch);
     return QCryptographicHash::hash(identity, QCryptographicHash::Sha256).toHex();
@@ -86,9 +93,11 @@ inline QString Unsupported(ModelTier detector, ModelTier recognizer, int batch,
         batch != 8 || variableWidth || prepareWidth)
         return "local BF16 supports only medium/medium, N8, fixed1024 without preparation";
     if (device.major < 8) return "local BF16 requires Ampere or newer";
-    if (device.uuid.toHex() != kDeviceUuid || device.driver != 13040 ||
-        device.tensorRtVersion != "11.4.0.106")
-        return "no approved local BF16 plan for this device/driver/TensorRT";
+    if (device.uuid.toHex() != kDeviceUuid)
+        return "no approved local BF16 plan for this device";
+    if (!tensorrt_identity::RuntimeAtLeastMinimum(device.tensorRtVersion))
+        return "local BF16 requires TensorRT ABI11 runtime 11.4.0.106 or newer (found " +
+               QString::fromLatin1(device.tensorRtVersion) + ")";
     return {};
 }
 inline Selection ParseManifest(const QByteArray& bytes, const QString& detectorPath)
@@ -158,12 +167,39 @@ inline QString PlanPath(const Selection& selection, const Device& device)
     return QDir(selection.artifactRoot).filePath("engines/bf16-linear/" +
         QString::fromLatin1(PrecisionPlanKey(selection.recognizer, device, false, 8)) + ".plan");
 }
+inline QString LegacyPlanPath(const Selection& selection)
+{
+    // Only the exact previously reviewed filename/hash is eligible. Do not
+    // derive arbitrary legacy driver keys or copy it to the stable location.
+    return QDir(selection.artifactRoot).filePath("engines/bf16-linear/" +
+        QString::fromLatin1(kReviewedLegacyPlanKey) + ".plan");
+}
+inline QString ExistingPlanPath(const Selection& selection, const Device& device)
+{
+    const auto stable=PlanPath(selection,device);
+    // An invalid/unreadable present stable artifact is a failure, not a reason
+    // to conceal corruption by trying a second file. Qt exists() conflates
+    // absence with access errors; symlink_status keeps those failures distinct.
+    std::error_code error;
+#ifdef Q_OS_WIN
+    const std::filesystem::path nativePath(stable.toStdWString());
+#else
+    const std::filesystem::path nativePath(QFile::encodeName(stable).toStdString());
+#endif
+    const auto status=std::filesystem::symlink_status(nativePath,error);
+    if (error==std::errc::no_such_file_or_directory || (!error && status.type()==std::filesystem::file_type::not_found))
+        return LegacyPlanPath(selection);
+    if (error) throw ArtifactError("cannot determine whether stable BF16 artifact is absent");
+    return stable; // includes directories and dangling symlinks, rejected on read
+}
 inline QByteArray ReadPlan(const Selection& selection, const Device& device)
 {
+    const auto reason=Unsupported(ModelTier::Medium,ModelTier::Medium,8,false,false,device);
+    if (!reason.isEmpty()) throw ArtifactError(reason.toStdString());
     CanonicalWithin(selection.artifactRoot, selection.recognizer.path);
     // Recheck converted graph bytes immediately before accepting its cached plan.
     ReadVerified(selection.recognizer.path, selection.recognizer.sha256, kGraphLimit);
-    const auto path = PlanPath(selection, device);
+    const auto path = ExistingPlanPath(selection, device);
     CanonicalWithin(selection.artifactRoot, path);
     const auto bytes = ReadVerified(path, kPlanFileSha256, kPlanLimit);
     if (bytes.size() <= 32 || QCryptographicHash::hash(bytes.sliced(32), QCryptographicHash::Sha256) != bytes.first(32))

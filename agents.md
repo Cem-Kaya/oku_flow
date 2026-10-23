@@ -1016,7 +1016,7 @@ aligned with the project goals.
 
 - Schema-2 role/profile/precision descriptors remain separate from the reviewed
   schema-1 BF16 approval. A manifest cannot approve itself; require an independent
-  exact catalog plus source/config/dictionary/graph/plan/device/driver/TRT identity.
+  exact catalog plus source/config/dictionary/graph/plan/device and builder TRT identity.
   Never rekey or alias old plans. Keep loader status separate from validated
   engine selection; commit both engines and effective width/capacity/ABI together.
 - No engine retry after genuine CUDA/API/inference uncertainty. Only typed
@@ -1025,6 +1025,12 @@ aligned with the project goals.
 - Offline readiness is not compute permission. Follow root's finite START slots,
   preserve first failures/source-to-binary receipts and measure actual production
   worker/callback plus independent quality. See docs/uct_precision_artifacts.md.
+- Owner's revised cache policy keeps driver/API/build/hash only in provenance.
+  New keys omit driver; admission accepts runtime tuples >=11.4.0.106 rather
+  than exact loaded TRT version/hash. Builder metadata remains plan-bound.
+  Keep compiled ABI11 loading and factory/deserialization/profile authority;
+  numeric admission does not guarantee newer-runtime serialization acceptance.
+  Existing caches are read-only legacy lookups, never migrated or overwritten.
 
 ## Private standalone paused diagnostics (2026-10-22)
 

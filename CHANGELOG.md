@@ -26,6 +26,11 @@
   two-slot completion/host-consumption fences. Cancellation and partial-failure
   ownership fixtures are prepared; performance and execution remain unmeasured.
 
+- Remove driver pinning from local BF16 approval and versioned precision identity;
+  retain exact read-only reviewed legacy lookup and admit runtime TensorRT at
+  least 11.4.0.106. Add pure version/cache helpers for separate ABI11 backend
+  integration; actual deserialization remains authoritative. Validation pending.
+
 - Hash and parse the same bounded OCR dictionary configuration snapshot. Prepare
   a separate role-aware precision artifact contract and read-only graph inventory
   for serialized local experiments; no new precision artifact is enabled.

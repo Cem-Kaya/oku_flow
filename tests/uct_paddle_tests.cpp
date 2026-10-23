@@ -256,7 +256,7 @@ class PaddleTests final : public QObject
         QVERIFY(quarantined->inFlight && quarantined->pins[0] && quarantined->pins[1] &&
                 quarantined->retirementQuarantine.get()==quarantined.get());
     }
-    void rolePrecisionArtifactContract() { uct_precision_artifact_test::Contract(); }
+    void rolePrecisionArtifactContract() { uct_precision_artifact_test::Contract(); uct_precision_artifact_test::VersionAndKeys(); }
     void localBf16ManifestRequiresReviewedRolesAndCacheOnlySchema()
     {
         using namespace runtime_precision;
@@ -314,21 +314,33 @@ class PaddleTests final : public QObject
     void localBf16KeyAndFallbackKeepStrictBaselineIdentity()
     {
         using namespace runtime_precision;
-        Device device{QByteArray::fromHex(kDeviceUuid),13040,8};
+        Device device{QByteArray::fromHex(kDeviceUuid),13040,8,"11.4.0.106"};
         Graph graph{"bf16-linear",{},kRecognizerSource,kRecognizerGraph};
         const auto key=PrecisionPlanKey(graph,device,false,8);
-        // Independent reviewed artifact filename, not a second implementation.
-        QCOMPARE(key,QByteArray("e596b8ac0110f01e88fc94bcbdeda4511b83af90efb761aa4e194de3ea496073"));
+        // Versioned stable identity; the reviewed legacy filename remains lookup-only.
+        QCOMPARE(key,QByteArray("6c5a22298560858aa3bb9539fe40646aa89d3eedda3ca66838210639027e8d01"));
+        QCOMPARE(QByteArray(kReviewedLegacyPlanKey),QByteArray("e596b8ac0110f01e88fc94bcbdeda4511b83af90efb761aa4e194de3ea496073"));
         auto other=graph; other.precision="fp32"; QVERIFY(PrecisionPlanKey(other,device,false,8)!=key);
         other=graph; other.sourceSha256[0]='0'; QVERIFY(PrecisionPlanKey(other,device,false,8)!=key);
         other=graph; other.sha256[0]='0'; QVERIFY(PrecisionPlanKey(other,device,false,8)!=key);
         auto gpu=device; gpu.uuid[0]^=1; QVERIFY(PrecisionPlanKey(graph,gpu,false,8)!=key);
-        gpu=device; ++gpu.driver; QVERIFY(PrecisionPlanKey(graph,gpu,false,8)!=key);
-        gpu=device; gpu.tensorRtVersion="11.4.0.107"; QVERIFY(PrecisionPlanKey(graph,gpu,false,8)!=key);
+        for (const int driver : {13040,13050,99999}) {
+            gpu=device; gpu.driver=driver; QCOMPARE(PrecisionPlanKey(graph,gpu,false,8),key);
+            QVERIFY(Unsupported(ModelTier::Medium,ModelTier::Medium,8,false,false,gpu).isEmpty());
+        }
+        for (const auto* version : {"11.4.0.107","11.4.1.0","11.5.0.0"}) {
+            gpu=device; gpu.tensorRtVersion=version; QCOMPARE(PrecisionPlanKey(graph,gpu,false,8),key);
+            QVERIFY(Unsupported(ModelTier::Medium,ModelTier::Medium,8,false,false,gpu).isEmpty());
+        }
+        QVERIFY(PrecisionPlanKey(graph,device,false,8,"fixed1024","11.5.0.0")!=key);
         QVERIFY(PrecisionPlanKey(graph,device,true,8)!=key);
         QVERIFY(PrecisionPlanKey(graph,device,false,1)!=key);
         QVERIFY(PrecisionPlanKey(graph,device,false,8,"bucketed")!=key);
         QVERIFY(Unsupported(ModelTier::Medium,ModelTier::Medium,8,false,false,device).isEmpty());
+        gpu=device; gpu.tensorRtVersion="12.0.0.0";
+        QVERIFY(!Unsupported(ModelTier::Medium,ModelTier::Medium,8,false,false,gpu).isEmpty());
+        gpu=device; gpu.tensorRtVersion.clear();
+        QVERIFY(!Unsupported(ModelTier::Medium,ModelTier::Medium,8,false,false,gpu).isEmpty());
         for (const auto tier : {ModelTier::Tiny,ModelTier::Small}) {
             QVERIFY(!Unsupported(tier,ModelTier::Medium,8,false,false,device).isEmpty());
             QVERIFY(!Unsupported(ModelTier::Medium,tier,8,false,false,device).isEmpty());
@@ -340,8 +352,8 @@ class PaddleTests final : public QObject
             gpu=device;
             if(change==0)gpu.major=7;
             if(change==1)gpu.uuid[0]^=1;
-            if(change==2)++gpu.driver;
-            if(change==3)gpu.tensorRtVersion="11.4.1.0";
+            if(change==2)gpu.tensorRtVersion="11.4.0.105";
+            if(change==3)gpu.tensorRtVersion="11.4.0.106x";
             QVERIFY(!Unsupported(ModelTier::Medium,ModelTier::Medium,8,false,false,gpu).isEmpty());
         }
         const auto fallback=ActualStatus(false,"artifact missing");
@@ -381,10 +393,30 @@ class PaddleTests final : public QObject
         QVERIFY_EXCEPTION_THROWN(CanonicalWithin(root.path(),external),ArtifactError);
         const Selection selection{root.path(),{},Graph{"bf16-linear",root.filePath("missing.onnx"),kRecognizerSource,kRecognizerGraph}};
         const auto before=QDir(root.path()).entryList(QDir::AllEntries|QDir::NoDotAndDotDot);
-        const Device device{QByteArray::fromHex(kDeviceUuid),13040,8};
+        const Device device{QByteArray::fromHex(kDeviceUuid),13040,8,"11.4.0.106"};
         QVERIFY_EXCEPTION_THROWN(ReadPlan(selection,device),ArtifactError);
         QCOMPARE(QDir(root.path()).entryList(QDir::AllEntries|QDir::NoDotAndDotDot),before);
-        QVERIFY(!QFile::exists(PlanPath(selection,device))); // never creates plan/receipt/cache directories
+        // Selection order is stable then ONE exact reviewed legacy filename.
+        QCOMPARE(ExistingPlanPath(selection,device),LegacyPlanPath(selection));
+        QVERIFY(QDir().mkpath(QFileInfo(PlanPath(selection,device)).absolutePath()));
+        { QFile file(PlanPath(selection,device)); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("tampered stable"); }
+        QCOMPARE(ExistingPlanPath(selection,device),PlanPath(selection,device));
+        QVERIFY_EXCEPTION_THROWN(ReadPlan(selection,device),ArtifactError);
+        QVERIFY(QFile::exists(PlanPath(selection,device))); // loader leaves invalid primary intact
+        { QFile file(PlanPath(selection,device)); QVERIFY(file.open(QIODevice::ReadOnly)); QCOMPARE(file.readAll(),QByteArray("tampered stable")); }
+        for (const int kind : {0,1,2}) {
+            QTemporaryDir lookupRoot; QVERIFY(lookupRoot.isValid());
+            auto lookup=selection; lookup.artifactRoot=lookupRoot.path();
+            const auto stable=PlanPath(lookup,device), legacy=LegacyPlanPath(lookup);
+            QVERIFY(QDir().mkpath(QFileInfo(legacy).absolutePath()));
+            { QFile file(legacy); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("legacy fixture; no engine"); }
+            QCOMPARE(ExistingPlanPath(lookup,device),legacy);
+            if (kind==2) QVERIFY(QDir().mkpath(stable));
+            else { QFile file(stable); QVERIFY(file.open(QIODevice::WriteOnly)); if(kind==1)file.write("invalid primary"); }
+            const auto inventory=QDir(QFileInfo(stable).absolutePath()).entryList(QDir::AllEntries|QDir::NoDotAndDotDot);
+            QCOMPARE(ExistingPlanPath(lookup,device),stable); // empty, corrupt, directory; both paths present
+            QCOMPARE(QDir(QFileInfo(stable).absolutePath()).entryList(QDir::AllEntries|QDir::NoDotAndDotDot),inventory);
+        }
     }
     void orientedInkAndMapping() { uct_geometry_test::CpuGeometry(); }
     void postFitDuplicateKeepsAdjacentIdenticalTokens() { uct_geometry_test::DuplicateInk(); }

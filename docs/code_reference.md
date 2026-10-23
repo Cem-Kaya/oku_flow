@@ -808,10 +808,15 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   never reads it. `Graph`, `Selection` and `Device` carry immutable selection
   inputs. `Unsupported` gates the reviewed M/M N8 fixed1024 device identity.
   `ParseManifest`/`LoadManifest`, `Hash`, `LocalAbsolute`, `Within`, `SamePath`,
-  `CanonicalWithin`, `ReadVerified`, `PlanPath` and `ReadPlan` enforce bounded,
-  role/source/hash/path-pinned cache-only artifacts. `PrecisionPlanKey` matches
-  the offline reviewed precision key. Only `ArtifactError` permits pre-inference
-  FP32 selection; CUDA/API/runtime failures retain ordinary retirement. `Network`
+  `CanonicalWithin`, `ReadVerified`, `PlanPath`, `LegacyPlanPath`, `ExistingPlanPath`
+  and `ReadPlan` enforce bounded role/source/hash/path-pinned cache-only artifacts.
+  `PrecisionPlanKey` is versioned and driver-independent, binding builder TRT;
+  absent stable paths may use only `kReviewedLegacyPlanKey` read-only. Driver is
+  provenance and `Unsupported` uses runtime minimum, not exact runtime equality.
+  Only `ArtifactError` permits pre-inference FP32 selection, including a null
+  deserialize refusal after no reported CUDA error. Real CUDA/API/context/allocate/
+  enqueue faults retain ordinary retirement. The batch lead owns that Network seam.
+  `Network`
   accepts an optional verified plan payload and validates FLOAT I/O plus exact
   fixed1024/N8 profile. `State::precisionDetail` and `ActualStatus` report the
   BF16 recognition graph/mixed arithmetic or actual FP32/fallback reason.
@@ -823,8 +828,11 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   separate schema-2 experiment boundary without enabling a runtime selector or
   approvals. `Identity`, `Profile`, `Runtime`, `Entry`, `Selection`,
   `VerifiedPlan`, `RecognizerPolicy` and `VerifiedSelection` bind both roles,
-  profiles, dictionary/source/converted-graph/whole-plan identity, actual driver
-  and loaded TensorRT identity. `ParseIdentity`, `ApprovedIdentity`,
+  profiles, dictionary/source/converted-graph/whole-plan identity and builder TRT
+  metadata. `Runtime`/`Receipt` separately retain driver and loaded TRT provenance;
+  neither driver nor loaded DLL hash/version equality gates approval. `CheckRuntime`
+  requires UUID/compute capability and runtime at least 11.4.0.106.
+  `ParseIdentity`, `ApprovedIdentity`,
   `ParseManifest`/`LoadManifest`, `CheckRuntime`, `ReadPlan`/`ReadSelection`
   require an independently supplied exact approval catalog and never prepare or
   write a plan. `DictionaryHash`, `Digest`, `IdentityKey`, `Integer`,
@@ -835,7 +843,7 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   `ArtifactError`. Engine/policy atomic commit remains a required integration
   step in the unmodified TensorRT backend. `LoadPaddleAssets` hashes/parses one
   bounded configuration snapshot. `PaddleTests::rolePrecisionArtifactContract`
-  delegates to `uct_precision_artifact_test::{FixtureIdentity,Contract}`.
+  delegates to `uct_precision_artifact_test::{FixtureIdentity,Contract,VersionAndKeys}`.
   `scripts/uct/inspect_precision_artifacts.py::{digest,graph_inventory,
   plan_inventory,main}` records read-only declarations/reshape dependencies and
   plan envelopes without inference or claiming executable width support. See

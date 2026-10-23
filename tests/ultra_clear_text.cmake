@@ -114,7 +114,7 @@ add_test(NAME uct_precision_artifact_contract COMMAND uct_paddle_tests rolePreci
 set_tests_properties(uct_precision_artifact_contract PROPERTIES TIMEOUT 30 LABELS "headless"
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
-    REQUIRED_FILES "${PROJECT_SOURCE_DIR}/src/common/uct_precision_artifacts.hpp;${PROJECT_SOURCE_DIR}/src/common/uct_runtime_precision.hpp;${PROJECT_SOURCE_DIR}/tests/uct_precision_artifact_cases.hpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/uct_model_pins.hpp")
+    REQUIRED_FILES "${PROJECT_SOURCE_DIR}/src/common/uct_precision_artifacts.hpp;${PROJECT_SOURCE_DIR}/src/common/uct_runtime_precision.hpp;${PROJECT_SOURCE_DIR}/src/common/uct_tensorrt_identity.hpp;${PROJECT_SOURCE_DIR}/src/common/uct_recognizer_width.hpp;${PROJECT_SOURCE_DIR}/tests/uct_precision_artifact_cases.hpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/uct_model_pins.hpp")
 set_tests_properties(uct_paddle_processing PROPERTIES TIMEOUT 30 LABELS "headless"
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
