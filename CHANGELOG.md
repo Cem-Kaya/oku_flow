@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+- Align the MCP coverage inventory with aspect-aware zoom's `0.01..16` domain,
+  retaining strict field-by-field registry validation.
+
 - Verify build cleanup survivors through held native Job/process handles and an
   independently pinned compiler telemetry image. Unknown survivors remain
   failures; classification never terminates a process by name or PID.

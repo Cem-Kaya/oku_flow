@@ -5202,6 +5202,9 @@ after 32 levels. Fixed registry schemas are trusted code; caller values are not.
 out-of-range values, duplicated arrays, nullable branches and excessive nesting
 without any desktop, account or device. The expanded native parameter inventory
 and its current integration limits are in [control_inventory.md](control_inventory.md).
+The `agent_control_coverage_contract` compares every shared inventory schema
+field against the compiled registry, including zoom's persisted `0.01..16`
+domain independently of the display slider's aspect-dependent range.
 
 FrameProcessed only refreshes the observation input-age timestamp on a new captured sequence or source epoch, so changing effects on a cached input cannot make an old camera frame fresh. The bounded 120-entry/two-second timestamp window reports processed unique-frame rate (fpsBasis processed_unique_frames), rather than negotiated camera FPS; stalled output reports zero. Image State adds requested/effective/inactiveReason for reading-color stages, and raw-passthrough preparation rejects actual image-effect changes.
 ## Expanded parameter catalog (0.3.1 development)
