@@ -1,5 +1,11 @@
 # OkuFlow Documentation Guide
 
+[Public BF16 background integration](uct_public_bf16.md) records source-only local
+model building, actual N1/full-N8 attestation, lifetime/quarantine and atomic
+driver-free cache publication. The compiled production corpus remains empty;
+candidate assets are synthetic validation inputs only. Everything newly authored
+is UNBUILT/UNRUN and heavy compute remains held pending fresh finite ROOT START.
+
 [Owned BF16 crop proposal](uct_owned_bf16_crops.md) documents eight synthetic
 source-authored GRAY8 candidates, deterministic render provenance and pending
 parent/runtime gates. It does not approve the production corpus catalog.

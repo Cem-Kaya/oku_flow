@@ -10,6 +10,13 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   repeated geometry/overlap work inside the existing GPU recognizer pipeline.
   Frozen CPU replay/timing is prepared; it remains uncompiled and unmeasured
   pending parent START, with no worker, fallback or FPS gain established.
+
+- Public BF16 model preparation/local attestation is authored but **UNBUILT/UNRUN**.
+  Its production corpus catalog remains empty, so automatic public selection
+  stays unavailable and FP32/CPU behavior remains available. The private explicit
+  candidate-validation factory takes isolated roots and compiled synthetic-corpus
+  pins; it does not read a mutable approval selector. No new model/runtime is
+  staged here. See [six-step contract and finite held validation](uct_public_bf16.md).
 - Development [live RAM recap](live_ram_recap.md) keeps up to five minutes of
   compressed, video-only camera history independently of recording. It reuses
   native codecs/player/transport, reports actual rolling bounds and warmup,

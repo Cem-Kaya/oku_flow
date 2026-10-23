@@ -1,5 +1,11 @@
 # Owned BF16 corpus source review (2026-10-23)
 
+Later root evidence reports actual 8/8 visual inspection and accepts the source
+assets as candidate synthetic validation inputs only. The historical review
+below is unchanged; its then-pending parent visual step is now satisfied only
+for that narrow candidate scope. Runtime attestation, quality and production
+activation remain unrun/unapproved. See [private integration](uct_public_bf16.md).
+
 Independent read-only review completed with **8/8 crop entries OK, zero flagged
 crop entries and zero unread entries**. This is source, exact-byte, contract,
 provenance and existing-image review, not model attestation or public approval.

@@ -1,5 +1,7 @@
 #pragma once
 #include "../src/common/uct_public_bf16.hpp"
+#include "../src/common/uct_public_bf16_runtime.hpp"
+#include "../src/common/uct_frozen_upload.hpp"
 #include <QtTest>
 
 namespace uct_public_bf16_test {
@@ -71,5 +73,97 @@ inline void Contract() {
     QVERIFY_EXCEPTION_THROWN(ReadModel("relative",assets),Refusal);
     // No synthetic readable crop, truth, approved corpus or successful golden
     // result is manufactured here. Positive attestation needs real pinned assets.
+}
+inline void PublicationAndLifetime() {
+    using namespace public_bf16;
+    QVERIFY(ProductionCorpusCatalog().empty());
+    QCOMPARE(CandidateCatalog().size(),std::size_t(1));
+    Request request;
+    request.corpusRoot=QFileInfo(QFINDTESTDATA("../assets/uct/golden/okuflow-owned-typeset-gray8-v1/manifest.json")).absolutePath();
+    request.use=CatalogUse::CandidateValidation;
+    const auto corpus=LoadCorpus(request);
+    QCOMPARE(corpus.Crops().size(),std::size_t(8));
+    QCOMPARE(corpus.Sha256(),CandidateCatalog()[0].manifestSha256);
+    request.use=CatalogUse::Production;
+    QVERIFY_EXCEPTION_THROWN(LoadCorpus(request),Refusal);
+    request.use=CatalogUse::CandidateValidation;
+    const auto manifest=ReadBounded(request.corpusRoot,"manifest.json",64*1024);
+    bool read=false;
+    QVERIFY_EXCEPTION_THROWN(ReadCorpus(manifest+" ",CandidateCatalog(),[&](const QString&){read=true;return QByteArray();}),Refusal);
+    QVERIFY(!read);
+    QVERIFY_EXCEPTION_THROWN(ReadCorpus(manifest,CandidateCatalog(),[](const QString&){return QByteArray(48,'x');}),Refusal);
+    const QStringList dictionary{"","a"," ",QString::fromUtf8("é")};
+    const std::vector<PaddleToken> raw{{2,0,0,1},{1,1,1,1},{2,2,2,1},{3,3,3,1},{2,4,4,1}};
+    QCOMPARE(RawText(raw,5,dictionary),QString::fromUtf8(" a é ")); // preserve leading/trailing spaces
+    auto bad=raw;bad[1].last=5;
+    QVERIFY_EXCEPTION_THROWN(RawText(bad,5,dictionary),Refusal);
+
+    const LocalBuild build{QByteArray(16,'x'),"11.4.0.106",QByteArray(64,'a'),8,9};
+    const precision_artifacts::Runtime runtime{build.uuid,13050,8,9,build.builderVersion,{}, {}, {}};
+    const auto failed=CheckGolden(corpus,build,{},Completion::Confirmed);
+    QVERIFY(!failed.Passed());
+    QVERIFY(failed.Record()["rows"].toArray().isEmpty());
+    std::vector<Observation> mismatches;
+    for(const int batch:{1,8})for(const auto& crop:corpus.Crops())
+        mismatches.push_back({crop.id,batch,128,18710,crop.pixelsSha256,"deliberate model-free mismatch"});
+    const auto mismatch=CheckGolden(corpus,build,mismatches,Completion::Confirmed);
+    QVERIFY(!mismatch.Passed());QCOMPARE(mismatch.Record()["rows"].toArray().size(),16);
+    QCOMPARE(mismatch.Record()["rows"].toArray()[0].toObject()["text"].toString(),QString("deliberate model-free mismatch"));
+    Publication completion;
+    QVERIFY_EXCEPTION_THROWN(ReceiptBytes(build,corpus,failed,runtime,completion),std::runtime_error);
+    completion.Confirmed();
+    QVERIFY_EXCEPTION_THROWN(ReceiptBytes(build,corpus,failed,runtime,completion),Refusal);
+    completion.Queued();
+    QVERIFY_EXCEPTION_THROWN(completion.RequireConfirmed(),std::runtime_error);
+    completion.Confirmed();
+    auto changed=build;changed.uuid[0]='y';
+    QVERIFY(CacheKey(changed,corpus)!=CacheKey(build,corpus));
+    changed=build;changed.builderVersion="11.5.0.0";
+    QVERIFY(CacheKey(changed,corpus)!=CacheKey(build,corpus));
+    Attempts attempts;
+    QVERIFY(attempts.Begin("failed-plan-A"));
+    QVERIFY(!attempts.Begin("failed-plan-A"));
+    QVERIFY(attempts.Begin("changed-plan-B"));
+    attempts.Passed("changed-plan-B");
+    QVERIFY(attempts.Begin("changed-plan-B"));
+
+    QTemporaryDir storage;
+    QVERIFY(storage.isValid());
+    request.cacheRoot=storage.path();
+    const auto parent=CacheParent(request,build,corpus);
+    const QByteArray key(64,'a');
+    // Plain storage fixture bytes: no model, real plan or passing golden record.
+    QVERIFY(PublishFilesNew(storage.path(),parent,key,"storage fixture plan","storage fixture receipt"));
+    QVERIFY(!PublishFilesNew(storage.path(),parent,key,"replacement must fail","replacement must fail"));
+    const auto generation=QDir(parent).filePath(QString::fromLatin1(key));
+    QCOMPARE(ReadBounded(generation,"recognizer.plan",1024),QByteArray("storage fixture plan"));
+    QCOMPARE(ReadBounded(generation,"ready.json",1024),QByteArray("storage fixture receipt"));
+    QCOMPARE(QDir(parent).entryList(QDir::Dirs|QDir::NoDotAndDotDot).size(),1);
+    QVERIFY_EXCEPTION_THROWN(FindPlan(request,build,corpus),Refusal); // storage receipt cannot authorize a plan
+    QVERIFY_EXCEPTION_THROWN(PublishNew(request,build,corpus,failed,runtime,completion,"storage fixture plan"),Refusal);
+    QVERIFY_EXCEPTION_THROWN(PublishFilesNew(storage.path(),QDir(storage.path()).filePath("../outside"),key,"x","y"),Refusal);
+
+    struct Owner {
+        Publication completion;
+        QByteArray model{"model lifetime"},input{"input lifetime"},staging{"staging lifetime"},output{"output lifetime"};
+        std::shared_ptr<Owner> retirementQuarantine;
+    };
+    auto owner=std::make_shared<Owner>();
+    const std::weak_ptr<Owner> retained=owner;
+    owner->completion.Queued();
+    bool discarded=false;
+    QVERIFY_EXCEPTION_THROWN(DiscardAfterCompletion(owner->completion,[&]{discarded=true;owner->model.clear();}),std::runtime_error);
+    QVERIFY(!discarded);QVERIFY(!owner->model.isEmpty());
+    const auto receipt=detail::RetireOwnedState(owner,[](std::shared_ptr<Owner>)->std::shared_ptr<okuflow::AsyncCleanup>{throw std::bad_alloc();});
+    QVERIFY(!receipt);QVERIFY(!owner);QVERIFY(!retained.expired());
+    auto quarantine=retained.lock();
+    QCOMPARE(quarantine->model,QByteArray("model lifetime"));
+    QCOMPARE(quarantine->input,QByteArray("input lifetime"));
+    QCOMPARE(quarantine->staging,QByteArray("staging lifetime"));
+    QCOMPARE(quarantine->output,QByteArray("output lifetime"));
+    // End the simulated fixture quarantine only after explicit completion.
+    quarantine->completion.Confirmed();
+    DiscardAfterCompletion(quarantine->completion,[&]{quarantine->retirementQuarantine.reset();});
+    quarantine.reset();QVERIFY(retained.expired());
 }
 } // namespace uct_public_bf16_test

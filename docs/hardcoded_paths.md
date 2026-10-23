@@ -1,5 +1,17 @@
 # Hard-Coded Paths and Defaults
 
+The source-only public BF16 integration uses `<inner-application>/models`, planned
+`uct/rec/medium/bf16-linear/inference.onnx` and a compiled corpus catalog. Production
+approval is EMPTY. The private C++ validation seam takes explicit local roots and
+candidate manifest SHA-256 `26432369ed6831431737072f857620b19c81fc9acd8c21579d50ee7bc0e9ec33`.
+New-only atomic `recognizer.plan`/`ready.json` generations belong below
+`%LOCALAPPDATA%/OkuFlow/ocr-engines/public-bf16/`; driver/DLL hashes are provenance.
+Bounds: 32 cache directories, 256-KiB receipt, plan <256 MiB, 64 failed/in-flight
+session identities, 600-second cooperative builder, 120-second golden and
+30-second completion polls, 256-MiB context/workspace/output ceilings separately.
+The frozen eight GRAY8 crops remain candidates, never automatic approval.
+See [held/unrun contract](uct_public_bf16.md).
+
 The offline schema-2 precision experiment contract in `uct_precision_artifacts.hpp`
 has no runtime selector or production approvals. It represents only medium
 detector profiles 32/544x960/960x960 and N8 medium recognition fixed1024 or

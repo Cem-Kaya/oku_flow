@@ -7360,3 +7360,34 @@ The private `UctControllerTestAccess::AdvancingJob` exposes only the pending
 admission ticket to the controller fixture. Its full-deadline comparison now
 waits for the exact probe and full/regional UI callbacks before advancing the
 synthetic clock; worker completion alone is not UI admission.
+## Public BF16 background integration (source only, 2026-10-23)
+
+- `src/common/uct_public_bf16_runtime.hpp`: private `Request`/`CatalogUse`, compiled
+  `CandidateCatalog`, bounded `ReadBounded`/`LoadCorpus`, exact compacted-token
+  `RawText`, bounded process `Attempts` latch, `Publication`/`DiscardAfterCompletion`
+  completion fence, `ReceiptBytes`, driver-free `CacheParent`/bounded `FindPlan`,
+  atomic new-only `PublishFilesNew` and golden-gated `PublishNew`.
+- `Network::PublicTag`/`PreparePublic` in `uct_tensorrt.cpp` attach the Network to
+  the retained `State` before runtime/build work. `PublicResources` owns model,
+  progress/parser/builder/configuration/serialized bytes; `PublicPlan` retains
+  exact tested bytes. `CheckPublicDetector` checks selected medium FP32 ABI/profile.
+  Context memory and serialized plans are bounded. Existing scalar/batched
+  preprocessing, CTC and two-slot recognition-group bodies are unchanged.
+- `ConfirmPublicCompletion`, `RunPublicGolden`, `PreparePublicCandidate`: bounded
+  preparation-worker event polls, owned pinned BGRA atlas, unchanged GPU
+  normalization/zero padding/CTC, eight N1 plus one full N8, actual output records,
+  private build/device/plan receipts, session failure latch and post-pass publication.
+  API/CUDA/unknown completion escapes to existing retained retirement/quarantine;
+  only a confirmed typed refusal permits FP32 construction.
+- `CreatePublicBf16ValidationRecognizer` is a private explicit C++ seam with local
+  roots and worker observer, separate from default diagnostic factories and the
+  owner's schema-1 cache-only selector. `CreateProductionTensorRtRecognizer`
+  supplies application roots but an EMPTY production catalog. `State` carries
+  golden staging/completion/records; preparation publishes both engines and
+  effective batch/width/checked CTC ABI as one state between jobs.
+- `uct_public_bf16_test::PublicationAndLifetime` / Qt slot
+  `publicBf16PublicationAndLifetime` author actual candidate-byte negative tests,
+  raw-space preservation, failed records, new-only storage, latches and exact
+  retained closure checks. CTest declares all eight raw crops/manifest/helpers as
+  inputs. No fake positive attestation is authored. **All additions UNBUILT/UNRUN**;
+  strict real golden, fault/cancel, quality and root activation remain required.

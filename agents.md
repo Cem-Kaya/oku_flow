@@ -1059,3 +1059,17 @@ aligned with the project goals.
 - Respect any parent's withheld START and finite compute grant. A SCOPED CPU
   replay never replaces shipping/CPU/CUDA acceptance. See
   `docs/uct_merge_optimization.md` for source identity and limits.
+
+## Public BF16 model validation boundary (2026-10-23)
+
+- Public model approval is separate from the owner's schema-1 cache-only plan.
+  Keep ProductionCorpusCatalog empty until actual strict N1/full-N8 attestation
+  and root activation. Owned synthetic crops are candidate inputs only; the
+  private C++ validation factory uses compiled pins and explicit isolated roots.
+- Retain candidate model/parser/build/context/input/staging/output ownership
+  through confirmed completion or existing retirement/quarantine. Only typed
+  confirmed refusals permit FP32; no API/CUDA/unknown-completion engine retry.
+  Publish local plan/receipt together, new-only, after real golden success.
+- Source-only implementation and model-free fixtures remain UNBUILT/UNRUN.
+  Follow fresh finite ROOT START boundaries in docs/uct_public_bf16.md; no
+  desktop availability, heavy-compute grant or runner lease is implied.
