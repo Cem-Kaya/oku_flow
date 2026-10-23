@@ -1040,3 +1040,15 @@ aligned with the project goals.
   extra diagnostic jobs separately from the app's selected-only paused path.
   Retain exact source hashes, fallback/preferred outputs and actual per-word
   paint decisions; a reading-pane count does not establish visible replacement.
+
+## Exact host UCT merge replay (2026-10-23)
+- Keep the bb53 merge and geometry oracle bodies frozen in the dedicated
+  `tests/uct_merge_baseline_bb53*.cpp` translation units; a candidate edit must
+  not update its reference. Compare every ordered word field after every call.
+- `uct_merge_replay` is model-free CPU correctness coverage. Explicit timing
+  uses five warmups and 31 alternating ABBA/BAAB blocks, preserves raw visits
+  and serialized inputs, and does not establish GPU/full-worker or FPS gains.
+  Historical final-output regrouping is not an original merge call trace.
+- Respect any parent's withheld START and finite compute grant. A SCOPED CPU
+  replay never replaces shipping/CPU/CUDA acceptance. See
+  `docs/uct_merge_optimization.md` for source identity and limits.

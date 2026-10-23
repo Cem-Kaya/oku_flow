@@ -1,5 +1,6 @@
 # OkuFlow Documentation Guide
 
+<<<<<<< HEAD
 [Viewport zoom and Resume](viewport_zoom_and_resume.md) documents whole-picture
 zoom-out, Fill snapping, retained UCT references, corner controls and isolated
 Assistant startup configuration.
@@ -8,6 +9,10 @@ Assistant startup configuration.
 offline schema-2 contract, driver-independent artifact approval, exact runtime
 integration seam and serialized finite benchmark/quality slots. No new artifact
 or performance acceptance is implied.
+=======
+[UCT host merge candidate](uct_merge_optimization.md) records allocation removal,
+bounded call-local geometry reuse, frozen CPU replay and the unmeasured status.
+>>>>>>> c3e3fea (Optimize exact host UCT word merging with frozen CPU replay)
 
 [Source-supported perspective text](uct_surface_perspective.md) explains bounded
 four-corner recovery, source refusals and projected glyph geometry.

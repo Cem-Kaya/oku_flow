@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+<<<<<<< HEAD
 - Rename the batched CTC CUDA fixture's local buffer extent to avoid Qt's
   `slots` macro. ROOT's C3 build of `8f262c3` exposed the compile failure;
   this test-only identifier repair changes no assertions and is unbuilt/unrun.
@@ -49,6 +50,12 @@
 - Hash and parse the same bounded OCR dictionary configuration snapshot. Prepare
   a separate role-aware precision artifact contract and read-only graph inventory
   for serialized local experiments; no new precision artifact is enabled.
+=======
+- Prepare an exact host UCT merge optimization that removes temporary polygon
+  allocations and repeated geometry/overlap work. Frozen CPU replay and paired
+  function timing are prepared; compilation, equivalence and gains remain
+  unmeasured pending the parent START. See `docs/uct_merge_optimization.md`.
+>>>>>>> c3e3fea (Optimize exact host UCT word merging with frozen CPU replay)
 
 - Overlap dense UCT recognition groups with host metadata merging using bounded
   double-buffered metadata and per-group completion events. Private resident
