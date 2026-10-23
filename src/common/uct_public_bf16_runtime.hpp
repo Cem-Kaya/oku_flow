@@ -208,7 +208,10 @@ inline CachedPlan FindPlan(const Request& request,const LocalBuild& build,const 
         if(!runtime_precision::Hash(entry.toLatin1()))throw Refusal(Reason::Model,"unknown public BF16 cache generation");
         const auto directory=parent.filePath(entry);
 #ifdef Q_OS_WIN
-        readPins.Hold(directory);
+        // Ancestors stay pinned for the whole lookup; each child is pinned only
+        // through its bounded reads, then closes on skip/return after bytes copy.
+        DirectoryPins generationPin;
+        generationPin.Hold(directory);
 #endif
         runtime_precision::CanonicalWithin(request.cacheRoot,directory);
         const auto receipt=QJsonDocument::fromJson(ReadBounded(directory,"ready.json",256*1024)).object();

@@ -207,6 +207,25 @@ inline void PublicationAndLifetime() {
         QCOMPARE(ReadBounded(currentDirectory,"recognizer.plan",1024),currentBytes);
         QCOMPARE(ReadBounded(currentDirectory,"ready.json",16*1024),currentReceipt);
 
+        // Force a full 32-generation walk, beyond the ten-handle path bound.
+        // No match must finish without accumulating skipped child handles.
+        for(int i=0;i<30;++i) {
+            auto siblingBuild=currentBuild;siblingBuild.builderVersion=QByteArray("11.5.1.")+QByteArray::number(i);
+            const auto siblingBytes=QByteArray("non-model lookup sibling ")+QByteArray::number(i);
+            siblingBuild.planFileSha256=precision_artifacts::Digest(siblingBytes);
+            QVERIFY(PublishFilesNew(lookupStorage.path(),lookupParent,CacheKey(siblingBuild,corpus),siblingBytes,fixtureReceipt(siblingBuild)));
+        }
+        const auto fullInventory=QDir(lookupParent).entryList(QDir::Dirs|QDir::NoDotAndDotDot|QDir::Hidden);
+        QCOMPARE(fullInventory.size(),32);
+        QVERIFY(FindPlan(lookupRequest,missingBuild,corpus).bytes.isEmpty());
+        QCOMPARE(FindPlan(lookupRequest,currentBuild,corpus).bytes,currentBytes);
+        QCOMPARE(QDir(lookupParent).entryList(QDir::Dirs|QDir::NoDotAndDotDot|QDir::Hidden),fullInventory);
+        auto overflowBuild=currentBuild;overflowBuild.builderVersion="11.5.2.0";
+        const QByteArray overflowBytes("non-model lookup overflow sibling");
+        overflowBuild.planFileSha256=precision_artifacts::Digest(overflowBytes);
+        QVERIFY(PublishFilesNew(lookupStorage.path(),lookupParent,CacheKey(overflowBuild,corpus),overflowBytes,fixtureReceipt(overflowBuild)));
+        QVERIFY_EXCEPTION_THROWN(FindPlan(lookupRequest,missingBuild,corpus),Refusal); // unchanged 32-entry bound
+
         // A nonmatching generation still undergoes full hash validation before
         // being skipped. Corruption is a refusal, never silently ignored.
         QTemporaryDir corruptStorage;

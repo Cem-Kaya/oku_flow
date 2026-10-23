@@ -7367,3 +7367,12 @@ unexpected `std::exception` only to report `what()` through `QFAIL`; assertions
 and production file-write-after-staging-hold order stay unchanged. Probe evidence
 covers delete exclusion/rename, not post-hold file creation or the earlier Qt
 exception's cause. These project changes remain UNBUILT/UNRUN.
+
+`FindPlan` keeps `readPins` for the root/ancestors and uses a separate local
+`generationPin` per loop iteration. Skips close the child handle immediately;
+returns first copy the plan/version/directory into `CachedPlan`, then close pins.
+All identity/digest/confinement checks remain under those pins, with the original
+ten-handle path and 32-entry inventory bounds. The existing publication slot adds
+a full 32-child missing-match walk, current selection and 33rd-entry refusal using
+labelled non-model receipts. This source repair/coverage is UNBUILT/UNRUN and is
+included in root's pending fresh independent review scope.
