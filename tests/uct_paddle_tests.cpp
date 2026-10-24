@@ -16,6 +16,7 @@
 #include "uct_batch_diagnostic.hpp"
 #include "uct_public_bf16_runtime_diagnostic.hpp"
 #include "uct_character_diagnostic.hpp"
+#include "uct_ribbon_ink_cases.hpp"
 #include "uct_resident_diagnostic.hpp"
 #include "uct_paused_video_diagnostic.hpp"
 #include "uct_active_regional_diagnostic.hpp"
@@ -1579,6 +1580,13 @@ class PaddleTests final : public QObject
     {
         uct_batch_test::TensorRtRetirementDiagnostic();
     }
+    void curvedRibbonDetectionAndSampling() {uct_ribbon_test::DetectionAndSampling();}
+    void curvedRibbonBoundsAndWindows() {uct_ribbon_test::BoundsAndWindows();}
+    void curvedRibbonWordComposition() {uct_ribbon_test::WordsAndComposition();}
+    void curvedRibbonSourceProofAndPaint() {uct_ribbon_test::SourceProofAndPaint();}
+    void currentInkOwnershipAndResidual() {uct_ribbon_test::InkOwnershipAndResidual();}
+    void currentInkHeldOutDiagnostic() {uct_ribbon_test::HeldOutInkDiagnostic();}
+    void optionalRibbonPrimitiveAB() {uct_ribbon_test::PrimitiveBenchmark();}
     void optionalCharacterChangeCpu()
     {
         SourceStamp stamp; stamp.sourceEpoch=1; stamp.geometryGeneration=1;

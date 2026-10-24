@@ -1,6 +1,7 @@
 #pragma once
 
 #include "okuflow/common/ultra_clear_text.hpp"
+#include "okuflow/common/uct_ribbon.hpp"
 #include <QByteArray>
 #include <QDir>
 #include <QStringList>
@@ -38,6 +39,7 @@ struct PaddleQuad
     std::array<QPointF, 4> points; // TL, TR, BR, BL in source pixels
     float score{};
     int internalEdges{}; // recognition-window left/right cut (1/2), not source edges
+    ribbon::Geometry ribbon;
 };
 struct PaddleTensor
 {
@@ -63,9 +65,9 @@ using TensorRtRetirementObserver = std::function<void(std::shared_ptr<AsyncClean
 // Worker-confined, including queries; never installed by the automatic backend.
 class TensorRtCropDiagnostic {
 public:
-    struct Crop { std::array<float, 8> xy{}; float score{}; int validWidth{}, internalEdges{}; };
+    struct Crop { std::array<float, 8> xy{}; float score{}; int validWidth{}, internalEdges{}; ribbon::Geometry ribbon; };
     struct Region { QRect bounds; std::vector<Crop> crops; };
-    struct Plan { SharedDeviceImage source; QByteArray detectorSha256; std::vector<Region> regions; };
+    struct Plan { SharedDeviceImage source; QByteArray detectorSha256; std::vector<Region> regions; bool curvedRibbon{}; };
     int CapturedSources() const { return int(plans_.size()); }
     std::uint64_t ReplayCalls() const { return replayCalls_; }
 private:
@@ -112,13 +114,22 @@ double PaddleDetailMagnification(const DetailFocus& focus);
 // or exactly one visible-detail region. A detail job never adds regions.
 QVector<QRect> PaddleRecognitionRegions(QSize source, const std::optional<DetailFocus>& focus);
 QVector<PaddleQuad> PaddleRecognitionWindows(const PaddleQuad& line);
+// Ribbon dimensions use a bounded centerline arc-length estimate. Rectangles
+// retain the exact previous edge-length arithmetic.
+double PaddleRecognitionWidth(const PaddleQuad& line);
+double PaddleRecognitionHeight(const PaddleQuad& line);
+// Pure selector: runtime use additionally needs the explicit environment opt-in.
+inline bool PaddleRibbonInputAllowed(const SourceStamp& stamp) {
+    return stamp.immutableSelectedInput && !stamp.liveCameraCapture && !stamp.temporallySmoothed &&
+        stamp.holdDisplay == HoldDisplay::NotHeld;
+}
 // Maps crop-local evidence back to the complete scene, excludes internal
 // crop-edge fragments and reconciles overlapping words without duplicates.
 void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line,
                              QRect region, QSize source);
 std::vector<float> PaddleNormalize(const QImage &image, QSize target, bool detection);
 QVector<PaddleQuad> PaddleDetect(std::span<const float> map, int width, int height, QSize source,
-                                 const std::atomic<bool> &cancelled);
+                                 const std::atomic<bool> &cancelled, bool curvedRibbon = false);
 std::vector<float> PaddleRectify(const QImage &image, const PaddleQuad &quad, int width,
                                  int validWidth);
 RecognizedLine PaddleDecode(std::span<const float> probabilities, int steps, int classes,

@@ -1660,6 +1660,7 @@ void UltraClearTextController::HandleBackendStatus(uct::BackendStatus status)
 uct::SourceStamp UltraClearTextController::ImmutableStamp(const UctImmutableFrame& frame) const
 {
     uct::SourceStamp stamp = CurrentScene();
+    stamp.immutableSelectedInput = immutableScene_ && frame.frameSeq == immutableScene_->selected.frameSeq;
     stamp.frameSeq = frame.frameSeq;
     stamp.timestampMs = frame.timestampMs;
     if (immutableScene_) stamp.immutableCorroboration = immutableScene_->corroborationPolicy;

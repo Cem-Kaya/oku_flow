@@ -74,3 +74,12 @@ Future verifiers must retain these baselines and add independent held-out
 documents, actual camera motion/noise and source/seek lifecycle tests.
 Region scheduling may be studied in shadow mode while full OCR remains
 authoritative; skipping recognition remains blocked by this safety result.
+
+## CPU current-ink follow-up (2026-10-24)
+
+The retained 12-edit diagnostic now appends an original-analysis-resolution
+`current-ink-cpu-offline` row to the CPU report. It does not relabel decimated
+probes or claim native GPU coverage. The separate 48-case held-out diagnostic
+reports false accepts/hides/unverifiable without a perfect-accuracy gate.
+No display, admission, reuse or full-read policy consumes these results.
+See [the implementation, bounds and current evidence](uct_ribbon_and_current_ink.md).

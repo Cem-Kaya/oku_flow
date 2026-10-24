@@ -51,6 +51,9 @@ class PaddleCpuRecognizer final : public Recognizer
     {
         detail_ = focus;
     }
+    void SetCurvedRibbonInput(bool allowed) override {
+        curvedRibbon_ = allowed && qEnvironmentVariable("OKUFLOW_UCT_CURVED_RIBBON") == "1";
+    }
     RecognitionOutput Recognize(const QImage &image, const std::atomic<bool> &cancelled) override
     {
         RecognitionOutput result;
@@ -84,7 +87,7 @@ class PaddleCpuRecognizer final : public Recognizer
                 throw std::runtime_error("Unexpected detector output dimensions.");
             const auto quads =
                 PaddleDetect(map.data, static_cast<int>(map.shape[3]),
-                             static_cast<int>(map.shape[2]), crop.size(), cancelled);
+                             static_cast<int>(map.shape[2]), crop.size(), cancelled, curvedRibbon_);
             for (const auto &detected : quads)
             for (const auto &quad : PaddleRecognitionWindows(detected))
             {
@@ -94,8 +97,8 @@ class PaddleCpuRecognizer final : public Recognizer
                     result.lines.clear();
                     return result;
                 }
-                const double w = QLineF(quad.points[0], quad.points[1]).length();
-                const double h = QLineF(quad.points[0], quad.points[3]).length();
+                const double w = PaddleRecognitionWidth(quad);
+                const double h = PaddleRecognitionHeight(quad);
                 if (w < 2 || h < 2)
                     continue;
                 constexpr int width = 1024;
@@ -135,6 +138,7 @@ class PaddleCpuRecognizer final : public Recognizer
     BackendStatus status_;
     std::unique_ptr<PaddleCpuSession> detector_, recognizer_;
     std::optional<DetailFocus> detail_;
+    bool curvedRibbon_{};
 };
 
 class AutomaticRecognizer final : public Recognizer
@@ -171,6 +175,9 @@ class AutomaticRecognizer final : public Recognizer
         // Every candidate sees the same request; only one runs this job.
         for (auto &candidate : candidates_)
             if (candidate) candidate->SetDetailFocus(focus);
+    }
+    void SetCurvedRibbonInput(bool allowed) override {
+        for (auto& candidate : candidates_) if (candidate) candidate->SetCurvedRibbonInput(allowed);
     }
     bool WantsDeviceInput() const override
     {

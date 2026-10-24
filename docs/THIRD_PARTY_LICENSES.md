@@ -1,5 +1,12 @@
 # Third-Party Licenses and Attributions
 
+The curved-line/current-ink experiment adds first-party C++/CUDA processing and
+tests only, with no new model, library or copied third-party implementation.
+Its private synthetic evidence renders installed Windows Arial/Segoe UI/Consolas
+fonts and records their local file hashes; no font binaries or generated raster
+evidence are tracked or shipped. These are diagnostic sources, not approved
+BF16 golden/public assets. See [the experiment contract](uct_ribbon_and_current_ink.md).
+
 ## Requested OCR installer payload (24 October 2026)
 
 The upcoming installer preparation includes the six original PP-OCRv6 graphs,

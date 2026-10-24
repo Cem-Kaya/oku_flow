@@ -1154,3 +1154,17 @@ aligned with the project goals.
 - Build Android plus JVM/lint and host protocol checks; the opt-in
   `native_app_phone_zoom_offscreen` fixture checks the real Windows widget
   without claiming phone optics, native screen-reader or Play acceptance.
+
+## Curved-line and current-ink experiments (2026-10-24)
+
+- Keep `OKUFLOW_UCT_CURVED_RIBBON` explicit and selected-immutable-only pending
+  review/latency acceptance. Preserve original post-geometry pixels for proof;
+  ribbon rectification must not apply rotation/keystone/stabilization twice.
+  Unsupported chords protect original ink across reading, painting and UIA.
+- The CPU current-ink oracle is offline only; unchanged never admits text or
+  defers full reads. A resident implementation needs bounded owned current-pixel
+  capture/leases, not a relabelled decimated probe. Preserve the original NCC
+  diagnostic rows and report false accepts, false hides and unverifiable cases.
+- Run `uct_ribbon_ink_contract` with the tracked CPU gate. Primitive/whole-worker
+  timing and native GPU/UI/device acceptance are separate; see
+  `docs/uct_ribbon_and_current_ink.md` for deterministic sources and opt-ins.

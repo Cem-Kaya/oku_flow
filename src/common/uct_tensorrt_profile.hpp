@@ -3,6 +3,7 @@
 // Private, explicitly enabled OCR worker instrumentation. Event resources live
 // with the inference state, including its unknown-completion quarantine.
 #include <QDebug>
+#include "okuflow/common/uct_ribbon.hpp"
 #include <QCryptographicHash>
 #include <QElapsedTimer>
 #include <QJsonDocument>
@@ -111,7 +112,7 @@ public:
     // Hash only descriptors already copied for publication, never image bytes.
     // Explicit LE words avoid C++ padding/ABI-dependent comparison evidence.
     void CropDescriptor(const float* xy, float score, int requested, int edges,
-                        const QRect& region, int canvas) {
+                        const QRect& region, int canvas, const ribbon::Geometry* curve = nullptr) {
         if (!enabled_) return;
         CropWidth(requested, canvas);
         std::array<quint32, 16> words{};
@@ -126,6 +127,19 @@ public:
         words[15] = static_cast<quint32>(edges);
         for (auto& word : words) word = qToLittleEndian(word);
         cropHash_->addData(QByteArrayView(reinterpret_cast<const char*>(words.data()), sizeof(words)));
+        if(curve && (curve->valid || curve->unsupported)) {
+            const double fields[]{curve->ox,curve->oy,curve->ux,curve->uy,curve->vx,curve->vy,
+                curve->a,curve->b,curve->c,curve->h0,curve->h1,curve->start,curve->end,
+                curve->protectLeft,curve->protectTop,curve->protectRight,curve->protectBottom};
+            cropHash_->addData(QByteArrayView("ribbon-v1",9));
+            const quint32 status=qToLittleEndian(quint32(curve->valid?1:2));
+            cropHash_->addData(QByteArrayView(reinterpret_cast<const char*>(&status),sizeof(status)));
+            for(double value:fields) {
+                quint64 bits{};std::memcpy(&bits,&value,sizeof(bits));bits=qToLittleEndian(bits);
+                cropHash_->addData(QByteArrayView(reinterpret_cast<const char*>(&bits),sizeof(bits)));
+            }
+        }
+
     }
     void Transfer(std::size_t bytes) { if (enabled_) metadataBytes_ += bytes; }
     void RecognitionHelpers(int rectify, int ctc, int copies) {

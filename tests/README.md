@@ -1,5 +1,12 @@
 # OkuFlow Tests
 
+`uct_ribbon_ink_contract` is model-free Qt-offscreen CPU coverage for the
+production curved-line detector/rectifier/CTC, source geometry/protection, worker
+proof, painting/positioned text and bounded CPU current-ink diagnostics. It does
+not run inference or native desktop/device work. The optional primitive and
+resident A/B entries require a separate compute grant; see
+[the experiment commands and limits](../docs/uct_ribbon_and_current_ink.md).
+
 Phone lens/zoom development adds `LensIdentityTest` to Android JVM checks and
 range/identity persistence checks to `phone_camera_contract` and
 `settings_store_round_trip`. With `OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE=ON`,

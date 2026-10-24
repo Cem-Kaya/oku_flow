@@ -31,6 +31,10 @@ bool Verify(const QString &file, const char *hash)
 }
 QPointF At(const PaddleQuad &q, double x, double y)
 {
+    if (q.ribbon.valid) {
+        const auto p = q.ribbon.At(x, y);
+        return {p.x, p.y};
+    }
     return q.points[0] * ((1 - x) * (1 - y)) + q.points[1] * (x * (1 - y)) + q.points[2] * (x * y) +
            q.points[3] * ((1 - x) * y);
 }
@@ -160,8 +164,8 @@ QVector<QRect> PaddleRecognitionRegions(QSize source, const std::optional<Detail
 QVector<PaddleQuad> PaddleRecognitionWindows(const PaddleQuad& line)
 {
     QVector<PaddleQuad> result{line};
-    const double width=QLineF(line.points[0],line.points[1]).length();
-    const double height=QLineF(line.points[0],line.points[3]).length();
+    const double width=PaddleRecognitionWidth(line);
+    const double height=PaddleRecognitionHeight(line);
     if(!std::isfinite(width) || !std::isfinite(height) || height<1 || width/height<=20) return result;
     const int count=std::clamp(int(std::ceil((width/height-8)/12)),2,8);
     // At the count cap, widen windows instead of leaving gaps or losing
@@ -172,10 +176,21 @@ QVector<PaddleQuad> PaddleRecognitionWindows(const PaddleQuad& line)
         const double start=i*(1-fraction)/(count-1), end=start+fraction;
         auto q=line;
         q.points={At(line,start,0),At(line,end,0),At(line,end,1),At(line,start,1)};
+        if (line.ribbon.valid) {
+            q.ribbon.start=line.ribbon.start+(line.ribbon.end-line.ribbon.start)*start;
+            q.ribbon.end=line.ribbon.start+(line.ribbon.end-line.ribbon.start)*end;
+        }
         q.internalEdges=(i>0?1:0)|(i+1<count?2:0);
         result.push_back(q);
     }
     return result;
+}
+
+double PaddleRecognitionWidth(const PaddleQuad& line) {
+    return line.ribbon.valid ? line.ribbon.Width() : QLineF(line.points[0],line.points[1]).length();
+}
+double PaddleRecognitionHeight(const PaddleQuad& line) {
+    return line.ribbon.valid ? line.ribbon.Height() : QLineF(line.points[0],line.points[3]).length();
 }
 
 void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line,
@@ -310,6 +325,7 @@ void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line
         if (!word.protectedBoundsPx.isEmpty()) word.protectedBoundsPx.translate(region.topLeft());
         if (word.quadPx.valid) word.quadPx = word.quadPx.Translated(region.topLeft());
         if (word.inkSearchQuadPx.valid) word.inkSearchQuadPx = word.inkSearchQuadPx.Translated(region.topLeft());
+        if (word.fromRibbon) word.ribbonReadingPointPx += region.topLeft();
         auto wordGeometry = makeGeometry(word);
         bool use = true;
         qsizetype target = -1;
@@ -446,7 +462,7 @@ std::vector<float> PaddleNormalize(const QImage &image, QSize target, bool detec
 }
 
 QVector<PaddleQuad> PaddleDetect(std::span<const float> map, int width, int height, QSize source,
-                                 const std::atomic<bool> &cancelled)
+                                 const std::atomic<bool> &cancelled, bool curvedRibbon)
 {
     QVector<PaddleQuad> result;
     if (width <= 0 || height <= 0 || width > 4096 || height > 4096 || source.isEmpty() ||
@@ -532,6 +548,17 @@ QVector<PaddleQuad> PaddleDetect(std::span<const float> map, int width, int heig
         if (!samples || !std::isfinite(score) || score / samples < .4)
             continue;
         const double expand = w * h * 1.4 / (2 * (w + h));
+        ribbon::Geometry curve;
+        if (curvedRibbon && component.size() <= ribbon::kMaximumFitPixels &&
+            (x1-x0+1)*(y1-y0+1) <= ribbon::kMaximumFitPixels && w >= h) {
+            ribbon::Bin bins[ribbon::kBins];
+            for (int p : component) {
+                const double u=(p%width)*c+(p/width)*s, v=-(p%width)*s+(p/width)*c;
+                ribbon::Add(bins, (u-u0)/std::max(1.0,u1-u0), v);
+            }
+            curve=ribbon::Fit(bins,u0,u1,c,s,double(source.width())/width,
+                               double(source.height())/height,source.width(),source.height());
+        }
         u0 -= expand;
         u1 += expand;
         v0 -= expand;
@@ -546,6 +573,11 @@ QVector<PaddleQuad> PaddleDetect(std::span<const float> map, int width, int heig
                      static_cast<float>(score / samples)};
         if (h > w * 1.5)
             std::rotate(q.points.begin(), q.points.begin() + 3, q.points.end());
+        if(curve.unsupported) {
+            TextQuad envelope;envelope.points=q.points;envelope.valid=true;const auto r=envelope.Bounds();
+            curve.protectLeft=r.left();curve.protectTop=r.top();curve.protectRight=r.right();curve.protectBottom=r.bottom();
+        }
+        q.ribbon=curve;
         result.push_back(q);
         if (result.size() >= 128)
             break;
@@ -562,6 +594,7 @@ std::vector<float> PaddleRectify(const QImage &image, const PaddleQuad &quad, in
 {
     if (image.isNull() || width < 32 || width > 2048 || validWidth < 1)
         return {};
+    if (quad.ribbon.valid && !quad.ribbon.Inside(image.width(),image.height())) return {};
     const auto source = image.convertToFormat(QImage::Format_ARGB32);
     std::vector<float> crop(static_cast<std::size_t>(width) * 48 * 3, 0.f);
     const int valid = std::min(width, validWidth);
@@ -614,6 +647,42 @@ RecognizedLine PaddleDecode(std::span<const float> probabilities, int steps, int
 
 RecognizedLine PaddleDecodeTokens(std::span<const PaddleToken> tokens, int steps,
                                   const PaddleQuad &quad, const QStringList &dictionary) {
+    if (quad.ribbon.valid) {
+        // Decode in u coordinates with the exact established CTC segmentation;
+        // only then map each span back to the original analysis image. The
+        // flattened recognition tensor never becomes a reference or ink image.
+        const double width=PaddleRecognitionWidth(quad), height=PaddleRecognitionHeight(quad);
+        if (!std::isfinite(width)||!std::isfinite(height)||width<2||height<2) return {};
+        PaddleQuad local{{QPointF(0,0),QPointF(width,0),QPointF(width,height),QPointF(0,height)},
+                         quad.score,quad.internalEdges};
+        auto line=PaddleDecodeTokens(tokens,steps,local,dictionary);
+        for (auto& word : line.words) {
+            const double u0=word.quadPx.points[0].x()/width, u1=word.quadPx.points[1].x()/width;
+            const double s0=word.inkSearchQuadPx.points[0].x()/width, s1=word.inkSearchQuadPx.points[1].x()/width;
+            const auto chord=[&](double a,double b) {
+                TextQuad q; q.valid=true;
+                q.points={At(quad,a,0),At(quad,b,0),At(quad,b,1),At(quad,a,1)}; return q;
+            };
+            const auto envelope=[&](double a,double b) {
+                // The whole quadratic curve lies within its chord's exact
+                // source-pixel sagitta. This AABB protects unsupported ink too.
+                const auto q=chord(a,b); const double error=quad.ribbon.Error(a,b);
+                return q.Bounds().adjusted(-error,-error,error,error);
+            };
+            word.quadPx=chord(u0,u1); word.inkSearchQuadPx=chord(s0,s1);
+            word.boundsPx=word.quadPx.Bounds(); word.inkSearchPx=word.inkSearchQuadPx.Bounds();
+            word.protectedBoundsPx=envelope(s0,s1);
+            word.fromRibbon=true; word.ribbonErrorPx=quad.ribbon.Error(u0,u1);
+            word.ribbonReadingPointPx=At(quad,(u0+u1)*.5,.5);
+            // The search frame is a chord too. Refuse its error as well so
+            // fitting cannot cross the geometry bound after a one-step widen.
+            const double limit=std::min(ribbon::kMaximumWordErrorPx,
+                                       ribbon::kMaximumWordErrorHeight*QuadHeight(word.quadPx));
+            if (quad.ribbon.Error(s0,s1)>limit || QuadArea(word.quadPx)<=0)
+                word.disposition=TokenDisposition::kInvalidGeometry;
+        }
+        return line;
+    }
     RecognizedLine line;
     if (steps <= 0)
         return line;
@@ -701,6 +770,17 @@ RecognizedLine PaddleDecodeTokens(std::span<const PaddleToken> tokens, int steps
         current.quadPx = quadAt(span.x0, span.x1);
         current.inkSearchQuadPx = quadAt(searchLeft, std::max(searchLeft, searchRight));
         if (!current.inkSearchQuadPx.valid) current.inkSearchQuadPx = current.quadPx;
+    }
+    if (quad.ribbon.unsupported) {
+        TextQuad detector;detector.points=quad.points;detector.valid=true;
+        for(auto& word:line.words) {
+            word.disposition=TokenDisposition::kInvalidGeometry;
+            word.protectedBoundsPx=quad.ribbon.protectRight>quad.ribbon.protectLeft &&
+                quad.ribbon.protectBottom>quad.ribbon.protectTop
+                ? QRectF(QPointF(quad.ribbon.protectLeft,quad.ribbon.protectTop),
+                         QPointF(quad.ribbon.protectRight,quad.ribbon.protectBottom)) : detector.Bounds();
+            word.fromRibbon=true;word.ribbonErrorPx=-1;word.ribbonReadingPointPx=word.quadPx.Center();
+        }
     }
     return line;
 }

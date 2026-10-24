@@ -82,7 +82,7 @@ struct Selection {
     QStringList images;
     int rounds{3}, passes{5};
     quint32 seed{20261020};
-    bool profile{true}, media{}, paired{}, frozenCrops{}, shadowPlanner{}, exactN8{}, localBf16{};
+    bool profile{true}, media{}, paired{}, frozenCrops{}, shadowPlanner{}, exactN8{}, localBf16{}, immutable{}, curvedRibbon{};
     QString sdk, experimentManifest, widthPolicy{QStringLiteral("fixed1024")};
     qint64 watchdogMs{};
     QString error;
@@ -104,6 +104,7 @@ struct Selection {
                 {"seed", qint64(seed)}, {"profiling", profile}, {"stamp", media ? "media" : "camera"},
                 {"input", paired ? "pair" : "single"}, {"sdk", sdk}, {"watchdogMs", watchdogMs},
                 {"frozenCrops", frozenCrops}, {"recognizerWidthPolicy", widthPolicy},
+                {"immutableSelectedInput",immutable},{"curvedRibbon",curvedRibbon},
                 {"shadowPlanner", shadowPlanner}, {"exactSameCapacityN8", exactN8},
                 {"factory", !experimentManifest.isEmpty() ? "diagnostic-bf16-experiment" : localBf16 ? "application-local-bf16" : "direct-fp32"},
                 {"maximumStartupSubmissions", exactN8 ? kExactN8MaximumStartupSubmissions : 0},
@@ -195,12 +196,20 @@ inline Selection ParseSelection(const EnvironmentReader& read)
     if (!read("OKUFLOW_UCT_TRT_PREPARE_WIDTH").isEmpty() && read("OKUFLOW_UCT_TRT_PREPARE_WIDTH") != "0")
         return refuse("The resident benchmark cannot prepare width plans; clear OKUFLOW_UCT_TRT_PREPARE_WIDTH.");
     s.media = stamp == "media";
+    const auto immutable=read("OKUFLOW_UCT_RESIDENT_IMMUTABLE"),ribbon=read("OKUFLOW_UCT_CURVED_RIBBON");
+    if((!immutable.isEmpty()&&immutable!="0"&&immutable!="1")||(!ribbon.isEmpty()&&ribbon!="0"&&ribbon!="1"))
+        return refuse("Immutable/ribbon diagnostic selectors accept only 0 or 1.");
+    s.immutable=immutable=="1";s.curvedRibbon=ribbon=="1";
+    if((s.immutable&&!s.media)||(s.curvedRibbon&&!s.immutable))
+        return refuse("Ribbon comparison requires explicit immutable media inputs.");
+
     s.paired = input == "pair";
     s.profile = profile != "0";
     const auto frozen = read("OKUFLOW_UCT_RESIDENT_FROZEN_CROPS");
     if (!frozen.isEmpty() && frozen != "0" && frozen != "1")
         return refuse("OKUFLOW_UCT_RESIDENT_FROZEN_CROPS accepts only 0 or 1.");
     s.frozenCrops = frozen == "1";
+    if(s.immutable&&(s.paired||s.frozenCrops)) return refuse("Immutable ribbon experiment requires single current input and fresh detector output.");
     const auto shadow = read("OKUFLOW_UCT_RESIDENT_SHADOW_PLANNER");
     if (!shadow.isEmpty() && shadow != "0" && shadow != "1")
         return refuse("OKUFLOW_UCT_RESIDENT_SHADOW_PLANNER accepts only 0 or 1.");
@@ -646,7 +655,9 @@ inline QJsonObject OutputJson(const RecognitionOutput& output)
         for (const auto& word : line.words) {
             QJsonObject value{{"text", word.text}, {"disposition", int(word.disposition)}, {"confidence", word.confidence},
                 {"bounds", uct_batch_test::Rect(word.boundsPx)}, {"protectedBounds", uct_batch_test::Rect(word.protectedBoundsPx)},
-                {"inkSearch", uct_batch_test::Rect(word.inkSearchPx)}, {"paddedBounds", word.paddedBounds}};
+                {"inkSearch", uct_batch_test::Rect(word.inkSearchPx)}, {"paddedBounds", word.paddedBounds},
+                {"fromRibbon",word.fromRibbon},{"ribbonErrorPx",word.ribbonErrorPx},
+                {"ribbonReadingPointPx",QJsonArray{word.ribbonReadingPointPx.x(),word.ribbonReadingPointPx.y()}}};
             if (word.colors) {
                 value["foreground"] = word.colors->foreground.name();
                 value["background"] = word.colors->background.name();
@@ -1598,6 +1609,7 @@ struct Run {
     SourceStamp Stamp(const DeviceImage& image) const
     {
         SourceStamp stamp;
+        stamp.immutableSelectedInput=selection.immutable;
         stamp.sourceEpoch = image.sourceEpoch;
         stamp.geometryGeneration = 1;
         stamp.frameSeq = image.frameSequence;

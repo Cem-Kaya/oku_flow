@@ -296,7 +296,41 @@ __global__ void emitBoxes(const Component *comps, int w, int h, int sw, int sh, 
     const float qw = hypotf(q.xy[2] - q.xy[0], q.xy[3] - q.xy[1]);
     const float qh = hypotf(q.xy[6] - q.xy[0], q.xy[7] - q.xy[1]);
     q.validWidth = max(1, static_cast<int>(ceilf(48 * qw / fmaxf(qh, 1))));
+    q.componentRoot = i;
     quads[index] = q;
+}
+// Optional immutable-input experiment. One bounded scan per selected component;
+// labels stay intact because this mode supplies separate prefix-offset scratch.
+__global__ void fitRibbons(const int* labels, const Component* comps, int w, int h,
+                          int sw, int sh, Quad* quads, const int* count)
+{
+    const int index=blockIdx.x;
+    if(index>=min(*count,128)||threadIdx.x) return;
+    auto& q=quads[index]; const int root=q.componentRoot;
+    if(root<0||root>=w*h) return;
+    const auto c=comps[root];
+    if(c.n>ribbon::kMaximumFitPixels||c.u1-c.u0<24||c.u1-c.u0<c.v1-c.v0) return;
+    float minx=1e20f,miny=1e20f,maxx=-1e20f,maxy=-1e20f;
+    for(int i=0;i<4;++i) {
+        const float u=(i==0||i==3)?c.u0:c.u1, v=i<2?c.v0:c.v1;
+        const float x=u*c.c-v*c.s,y=u*c.s+v*c.c;
+        minx=fminf(minx,x);maxx=fmaxf(maxx,x);miny=fminf(miny,y);maxy=fmaxf(maxy,y);
+    }
+    const int x0=max(0,int(floorf(minx))),x1=min(w-1,int(ceilf(maxx)));
+    const int y0=max(0,int(floorf(miny))),y1=min(h-1,int(ceilf(maxy)));
+    if((x1-x0+1)*(y1-y0+1)>ribbon::kMaximumFitPixels) return;
+    ribbon::Bin bins[ribbon::kBins];
+    for(int y=y0;y<=y1;++y)for(int x=x0;x<=x1;++x) if(labels[y*w+x]==root) {
+        const double u=x*double(c.c)+y*double(c.s),v=-x*double(c.s)+y*double(c.c);
+        ribbon::Add(bins,(u-c.u0)/(c.u1-c.u0),v);
+    }
+    q.ribbon=ribbon::Fit(bins,c.u0,c.u1,c.c,c.s,double(sw)/w,double(sh)/h,sw,sh);
+    if(q.ribbon.unsupported) {
+        auto& r=q.ribbon;r.protectLeft=r.protectRight=q.xy[0];r.protectTop=r.protectBottom=q.xy[1];
+        for(int i=1;i<4;++i){r.protectLeft=fmin(r.protectLeft,q.xy[2*i]);r.protectRight=fmax(r.protectRight,q.xy[2*i]);
+            r.protectTop=fmin(r.protectTop,q.xy[2*i+1]);r.protectBottom=fmax(r.protectBottom,q.xy[2*i+1]);}
+    }
+    if(q.ribbon.valid) q.validWidth=max(1,int(ceil(48*q.ribbon.Width()/q.ribbon.Height())));
 }
 __global__ void recognitionWindows(const Quad* detected,int* count,Quad* windows)
 {
@@ -304,12 +338,12 @@ __global__ void recognitionWindows(const Quad* detected,int* count,Quad* windows
     for(int index=0;index<min(*count,128);++index) {
         const auto q=detected[index];
         windows[written++]=q;
-        const float width=hypotf(q.xy[2]-q.xy[0],q.xy[3]-q.xy[1]);
-        const float height=hypotf(q.xy[6]-q.xy[0],q.xy[7]-q.xy[1]);
+        const float width=q.ribbon.valid?float(q.ribbon.Width()):hypotf(q.xy[2]-q.xy[0],q.xy[3]-q.xy[1]);
+        const float height=q.ribbon.valid?float(q.ribbon.Height()):hypotf(q.xy[6]-q.xy[0],q.xy[7]-q.xy[1]);
         if(!isfinite(width) || !isfinite(height) || height<1 || width/height<=20)continue;
         const int n=min(8,max(2,int(ceilf((width/height-8)/12))));
-        const float span=fmaxf(20,(width/height+8*(n-1))/n);
-        const float fraction=fminf(1,span*height/width);
+        const float span=fmaxf(20,float((width/height+8*(n-1))/n));
+        const float fraction=fminf(1,float(span*height/width));
         for(int i=0;i<n;++i) {
             const float start=i*(1-fraction)/(n-1),end=start+fraction;
             auto window=q;
@@ -322,6 +356,11 @@ __global__ void recognitionWindows(const Quad* detected,int* count,Quad* windows
             const float ww=hypotf(window.xy[2]-window.xy[0],window.xy[3]-window.xy[1]);
             const float wh=hypotf(window.xy[6]-window.xy[0],window.xy[7]-window.xy[1]);
             window.validWidth=max(1,int(ceilf(48*ww/fmaxf(wh,1))));
+            if(q.ribbon.valid) {
+                window.ribbon.start=q.ribbon.start+(q.ribbon.end-q.ribbon.start)*start;
+                window.ribbon.end=q.ribbon.start+(q.ribbon.end-q.ribbon.start)*end;
+                window.validWidth=max(1,int(ceil(48*window.ribbon.Width()/window.ribbon.Height())));
+            }
             window.internalEdges=(i>0?1:0)|(i+1<n?2:0);
             windows[written++]=window;
         }
@@ -347,10 +386,13 @@ __global__ void rectify(const unsigned char *pixels, std::size_t pitch, int w, i
     const auto q = quads[index];
     const int x = i % ow, y = i / ow, valid = min(ow, q.validWidth);
     const float u = (x + .5f) / valid, v = (y + .5f) / 48;
-    const float sx = q.xy[0] * (1 - u) * (1 - v) + q.xy[2] * u * (1 - v) + q.xy[4] * u * v +
+    float sx = q.xy[0] * (1 - u) * (1 - v) + q.xy[2] * u * (1 - v) + q.xy[4] * u * v +
                      q.xy[6] * (1 - u) * v - .5f;
-    const float sy = q.xy[1] * (1 - u) * (1 - v) + q.xy[3] * u * (1 - v) + q.xy[5] * u * v +
+    float sy = q.xy[1] * (1 - u) * (1 - v) + q.xy[3] * u * (1 - v) + q.xy[5] * u * v +
                      q.xy[7] * (1 - u) * v - .5f;
+    if (q.ribbon.valid) {
+        const auto p=q.ribbon.At(u,v); sx=float(p.x)-.5f; sy=float(p.y)-.5f;
+    }
     for (int c = 0; c < 3; ++c)
         out[c * ow * 48 + i] =
             x >= valid ? 0 : (sample(pixels, pitch, w, h, sx, sy, c) / 255 - .5f) * 2;
@@ -367,10 +409,13 @@ __global__ void rectifyBatch(const unsigned char *pixels, std::size_t pitch, int
     out += static_cast<std::size_t>(blockIdx.y) * ow * 48 * 3;
     const int x = i % ow, y = i / ow, valid = min(ow, q.validWidth);
     const float u = (x + .5f) / valid, v = (y + .5f) / 48;
-    const float sx = q.xy[0] * (1 - u) * (1 - v) + q.xy[2] * u * (1 - v) + q.xy[4] * u * v +
+    float sx = q.xy[0] * (1 - u) * (1 - v) + q.xy[2] * u * (1 - v) + q.xy[4] * u * v +
                      q.xy[6] * (1 - u) * v - .5f;
-    const float sy = q.xy[1] * (1 - u) * (1 - v) + q.xy[3] * u * (1 - v) + q.xy[5] * u * v +
+    float sy = q.xy[1] * (1 - u) * (1 - v) + q.xy[3] * u * (1 - v) + q.xy[5] * u * v +
                      q.xy[7] * (1 - u) * v - .5f;
+    if (q.ribbon.valid) {
+        const auto p=q.ribbon.At(u,v); sx=float(p.x)-.5f; sy=float(p.y)-.5f;
+    }
     for (int c = 0; c < 3; ++c)
         out[c * ow * 48 + i] =
             x >= valid ? 0 : (sample(pixels, pitch, w, h, sx, sy, c) / 255 - .5f) * 2;
@@ -544,7 +589,7 @@ void Probe(const void *p, std::size_t pitch, int w, int h, void *out, int d, cud
         static_cast<const unsigned char *>(p), pitch, w, h, static_cast<unsigned char *>(out), d);
 }
 void Detect(const float *map, int w, int h, int sw, int sh, int *labels, Component *comps,
-            Quad *quads, int *count, cudaStream_t s)
+            Quad *quads, int *count, cudaStream_t s, int* ribbonOffsets)
 {
     const int blocks = (w * h + 255) / 256;
     cudaMemsetAsync(count, 0, sizeof(int), s);
@@ -554,9 +599,11 @@ void Detect(const float *map, int w, int h, int sw, int sh, int *labels, Compone
     axes<<<blocks, 256, 0, s>>>(comps, w * h);
     extents<<<blocks, 256, 0, s>>>(labels, comps, w, h);
     boxes<<<blocks, 256, 0, s>>>(map, labels, comps, w, h, sw, sh);
-    countBoxes<<<blocks, 256, 0, s>>>(comps, w * h, labels);
-    boxOffsets<<<1, 1, 0, s>>>(labels, blocks, count);
-    emitBoxes<<<blocks, 256, 0, s>>>(comps, w, h, sw, sh, labels, quads);
+    auto* offsets=ribbonOffsets?ribbonOffsets:labels;
+    countBoxes<<<blocks, 256, 0, s>>>(comps, w * h, offsets);
+    boxOffsets<<<1, 1, 0, s>>>(offsets, blocks, count);
+    emitBoxes<<<blocks, 256, 0, s>>>(comps, w, h, sw, sh, offsets, quads);
+    if(ribbonOffsets) fitRibbons<<<128,1,0,s>>>(labels,comps,w,h,sw,sh,quads,count);
 }
 void RecognitionWindows(const Quad* detected,int* count,Quad* windows,cudaStream_t stream)
 {

@@ -383,3 +383,13 @@ Tiny has 6,906 output classes versus 18,710 for small/medium, so language covera
 is a separate quality difference. Benchmark compilation and runtime evidence
 must be recorded before claiming a result. The proposed fast-live/quality-Freeze
 policy is intentionally NOT implemented, per the owner's hold.
+
+## Optional ribbon comparison (2026-10-24)
+
+`OKUFLOW_UCT_RESIDENT_IMMUTABLE=1` requires media/single input and rejects paired
+and frozen-crop replay. It marks only the selected input for the production
+scheduler's ribbon context; `OKUFLOW_UCT_CURVED_RIBBON=0/1` selects the A/B arm.
+Selection and per-word source approximation metadata are saved. This adds no
+model preparation or precision change. The default direct diagnostic factory
+remains FP32, and existing strict diagnostics remain separate from application
+startup. See [the serial A/B recipe and limitations](uct_ribbon_and_current_ink.md).

@@ -11,8 +11,13 @@
   The companion can select physical lenses through their logical parent.
 - Remember capture format and orientation per camera. Keep media orientation,
   viewport zoom and temporary Assistant camera ownership separate.
-- Record the root/Opus curved-line and character-change proposals as future
-  experiments; no OCR model, precision or live/Freeze policy changes.
+- Add an explicit selected-Freeze/paused curved-line ribbon experiment to Paddle
+  detection, rectification and CTC geometry. Unsupported curved word quads retain
+  original ink. Defaults, models and live read cadence stay unchanged.
+- Add an owned, bounded CPU current-ink diagnostic beside the retained NCC
+  baseline, with held-out nuisance cases and deterministic A/B entry points.
+  It grants no live reuse, hide or read-deferral authority; GPU/runtime and
+  performance acceptance remain pending.
 
 - Reconcile the improvement backlog against Windows 0.3.1. Remove completed
   plans and obsolete review reports, retain actionable follow-ups, and keep

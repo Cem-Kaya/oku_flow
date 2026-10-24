@@ -649,13 +649,13 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
         // A selected button can have the opposite polarity to its neighbours.
         const int colorIndex = rects.size();
         rects.push_back(Rect(word.boundsPx, image.width, image.height));
-        colorFrames.push_back(QuadIsRotated(word.quadPx) ? descriptor(word.quadPx) : gpu::OrientedInk{});
+        colorFrames.push_back((word.fromRibbon || QuadIsRotated(word.quadPx)) ? descriptor(word.quadPx) : gpu::OrientedInk{});
         if (!word.paddedBounds || word.disposition != TokenDisposition::kCandidate) continue;
         bool marks = word.text.contains(QLatin1Char('i'), Qt::CaseInsensitive) ||
                      word.text.contains(QLatin1Char('j'), Qt::CaseInsensitive);
         for (auto ch : word.text.normalized(QString::NormalizationForm_D))
             marks = marks || ch.isMark() || QStringLiteral("!?:;").contains(ch);
-        if (QuadIsRotated(word.quadPx)) {
+        if ((word.fromRibbon || QuadIsRotated(word.quadPx))) {
             const TextQuad search = word.inkSearchQuadPx.valid ? word.inkSearchQuadPx : word.quadPx;
             if(surfaces.size()<surface_geometry::WordLimit){
                 surfaces.push_back({descriptor(search),colorIndex,int(oriented.size()),1});
@@ -766,7 +766,7 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
         for (auto& word : result.output.lines[i].words) {
             word.colors = pair(colors[colorIndex++]);
             if (!word.paddedBounds || word.disposition != TokenDisposition::kCandidate) continue;
-            if (QuadIsRotated(word.quadPx)) {
+            if ((word.fromRibbon || QuadIsRotated(word.quadPx))) {
                 const auto f = orientedFits[o];
                 const auto& d = oriented[o++];
                 if (!f.fitted) continue; // ambiguous ink keeps the detector span

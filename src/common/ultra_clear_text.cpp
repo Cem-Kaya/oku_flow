@@ -1,4 +1,5 @@
 #include "okuflow/common/ultra_clear_text.hpp"
+#include "okuflow/common/uct_paddle.hpp"
 #include "okuflow/common/uct_region_planner.hpp"
 #include "uct_color_policy.hpp"
 #include "uct_surface_geometry.hpp"
@@ -753,7 +754,7 @@ void FinalizeRecognizedGeometry(RecognitionOutput& output)
             else if (candidate(word) && word.paddedBounds && !word.inkFitted &&
                      (word.text.size() == 1 || (word.text.size() == 2 &&
                        word.text[0].isHighSurrogate() && word.text[1].isLowSurrogate())) &&
-                     QuadIsRotated(word.quadPx) && std::abs(std::cos(QuadAngle(word.quadPx))) < .5)
+                     (word.fromRibbon || QuadIsRotated(word.quadPx)) && std::abs(std::cos(QuadAngle(word.quadPx))) < .5)
                 // An isolated scalar has no reliable reading direction in a
                 // near-vertical padded box when ink fitting failed. Preserve
                 // the original symbol rather than stretching a guessed X/4.
@@ -1576,6 +1577,8 @@ QVector<PreparedLine> PrepareLines(const RecognitionResult& result, double minim
     for (const RecognizedLine& line : result.output.lines) {
         PreparedLine out;
         bool unmappedSpan = false;
+        std::vector<double> ribbonY, ribbonHeights;
+        double ribbonLeft=1e30, ribbonRight=-1e30;
         for (const RecognizedWord& word : line.words) {
             const QString text = word.text.trimmed();
             const QRectF scene = ViewRectToScene(stamp.viewTransform, width, height, word.boundsPx);
@@ -1588,12 +1591,12 @@ QVector<PreparedLine> PrepareLines(const RecognitionResult& result, double minim
             };
             // Only a genuinely rotated word carries an oriented shape forward;
             // near-horizontal words keep the established rectangle contract.
-            const TextQuad sceneQuad = QuadIsRotated(word.quadPx)
+            const TextQuad sceneQuad = (word.fromRibbon || QuadIsRotated(word.quadPx))
                 ? ViewQuadToScene(stamp.viewTransform, width, height, word.quadPx) : TextQuad{};
             // A tilted word's bounding box is taller than its text.
-            const double textHeight = QuadIsRotated(word.quadPx) ? QuadHeight(word.quadPx) : word.boundsPx.height();
+            const double textHeight = (word.fromRibbon || QuadIsRotated(word.quadPx)) ? QuadHeight(word.quadPx) : word.boundsPx.height();
             if (!usableRect(scene) || !usableRect(protectedScene) ||
-                (QuadIsRotated(word.quadPx) && !sceneQuad.valid)) {
+                ((word.fromRibbon || QuadIsRotated(word.quadPx)) && !sceneQuad.valid)) {
                 disposition = TokenDisposition::kInvalidGeometry;
                 unmappedSpan = true;
             } else if (disposition == TokenDisposition::kCandidate) {
@@ -1608,8 +1611,21 @@ QVector<PreparedLine> PrepareLines(const RecognitionResult& result, double minim
                 ? ViewQuadToScene(stamp.viewTransform, width, height, word.inkSearchQuadPx) : TextQuad{};
             out.words.push_back({text, scene, disposition, word.confidence, protectedScene, word.colors,
                                  sceneQuad, registrationQuad});
+            if (word.fromRibbon && usableRect(protectedScene)) {
+                const auto point=ViewRectToScene(stamp.viewTransform,width,height,
+                    QRectF(word.ribbonReadingPointPx-QPointF(.5,.5),QSizeF(1,1))).center();
+                ribbonY.push_back(point.y());
+                ribbonHeights.push_back(QuadHeight(word.quadPx)/height*stamp.viewTransform.sourceHeight/
+                    std::max(1e-9f,stamp.viewTransform.destinationHeight));
+                ribbonLeft=std::min(ribbonLeft,protectedScene.left());ribbonRight=std::max(ribbonRight,protectedScene.right());
+            }
             if (usableRect(protectedScene))
                 out.sceneRect = out.sceneRect.isNull() ? protectedScene : out.sceneRect.united(protectedScene);
+        }
+        if (!ribbonY.empty()) {
+            std::sort(ribbonY.begin(),ribbonY.end()); std::sort(ribbonHeights.begin(),ribbonHeights.end());
+            const double center=ribbonY[ribbonY.size()/2],h=ribbonHeights[ribbonHeights.size()/2];
+            out.ribbonReadingBand=QRectF(ribbonLeft,center-h*.5,ribbonRight-ribbonLeft,h);
         }
         const bool trackable=!out.words.isEmpty()&&!unmappedSpan;
         referenceRects.push_back(trackable?out.sceneRect:QRectF());
@@ -2123,9 +2139,10 @@ struct RecognitionScheduler::State {
                     // cancelled recognition cannot leak it into the next job.
                     struct DetailScope {
                         Recognizer& recognizer;
-                        ~DetailScope() { recognizer.SetDetailFocus(std::nullopt); }
+                        ~DetailScope() { recognizer.SetDetailFocus(std::nullopt); recognizer.SetCurvedRibbonInput(false); }
                     } detailScope{*self->recognizer};
                     self->recognizer->SetDetailFocus(job.detail);
+                    self->recognizer->SetCurvedRibbonInput(PaddleRibbonInputAllowed(job.stamp));
                     {
                         std::lock_guard lock(self->mutex);
                         if (result.jobKind == RecognitionJobKind::Regional) ++self->stats.regionalAttempts;
@@ -2221,10 +2238,10 @@ struct RecognitionScheduler::State {
                     for (RecognizedWord& word : line.words) {
                         if (word.protectedBoundsPx.isEmpty()) word.protectedBoundsPx = word.boundsPx;
                         word.colors = MeasureLineColors(pixels, word.boundsPx.toAlignedRect(),
-                            QuadIsRotated(word.quadPx) ? &word.quadPx : nullptr);
+                            (word.fromRibbon || QuadIsRotated(word.quadPx)) ? &word.quadPx : nullptr);
                         if (!word.paddedBounds || word.disposition != TokenDisposition::kCandidate) continue;
                         const bool surface=surfaceAttempts++<surface_geometry::WordLimit;
-                        if (QuadIsRotated(word.quadPx)) {
+                        if ((word.fromRibbon || QuadIsRotated(word.quadPx))) {
                             // Rows of a tilted word's bounding box mix ink and
                             // paper: fit in the word's own rotated frame.
                             word.quadPx = FitOrientedWordInk(pixels, word, *word.colors, &word.inkFitted);
@@ -3547,6 +3564,7 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         Candidate candidate;
         candidate.source = &line;
         candidate.line.sceneRect = line.sceneRect;
+        candidate.line.ribbonReadingBand = line.ribbonReadingBand;
         candidate.line.reference = line.reference;
         candidate.line.colors = StableLineColors(i < result.lineColors.size() ? result.lineColors[i] : LineColors{});
         candidate.line.provenance = stamp;
@@ -4243,7 +4261,7 @@ QVector<const AcceptedLine*> OrderLinesForReading(QVector<const AcceptedLine*> l
     QVector<Entry> entries;
     entries.reserve(lines.size());
     for (const AcceptedLine* line : lines) {
-        if (line) entries.push_back({line->sceneRect.translated(line->sceneOffset), line, 0});
+        if (line) entries.push_back({line->ribbonReadingBand.value_or(line->sceneRect).translated(line->sceneOffset), line, 0});
     }
     // 1) Strict order by vertical centre (ties: left edge, then id).
     std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) {
