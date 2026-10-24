@@ -5114,6 +5114,9 @@ The HTTP fixture uses the HTTP adapter's unprefixed `view_zoom_set` name and no
 API credential (its storage deliberately refuses credential writes). Earlier
 fixture failures and their effect on later saved-state assertions are retained.
 The native UCT row also compares receipt sources with both checkbox captions.
+The [Assistant runtime checkpoint](assistant_control_runtime_2026_10_24.md)
+records the final scoped gate, independent SDK clients, actual app build and
+remaining manual/installer acceptance.
 `CodexAgentClient` is a separate, restricted JSONL child. `Configure` retires its
 own process/session when provider identity changes; `TestCapability` explicitly
 runs bounded offline preflight and a tiny no-frame dynamic-tool round trip.
