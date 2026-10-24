@@ -5090,6 +5090,11 @@ change and disables first when requested. Getters separate requested intent from
 the Text Clarity master and effective OCR state. The catalog contains 100
 parameters (55 image), with the existing 43 tools, 17 protected entries and 46
 actions unchanged.
+
+The planner, receipt, metadata-page and MCP fixtures retain their complete
+per-field assertions with the expanded 100-parameter/55-image inventory. The
+first scoped run's obsolete count failures remain separate from its passing
+native Send/cancellation/current-view and UCT controller rows.
 `CodexAgentClient` is a separate, restricted JSONL child. `Configure` retires its
 own process/session when provider identity changes; `TestCapability` explicitly
 runs bounded offline preflight and a tiny no-frame dynamic-tool round trip.

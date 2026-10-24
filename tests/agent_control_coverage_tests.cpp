@@ -647,7 +647,7 @@ private slots:
             QCOMPARE(revisions.size(),1);
             QVERIFY2(revisions.contains(Id(p.id)),qPrintable(Id(p.id)+" missing from receipt"));
         }
-        QCOMPARE(checked, 62);
+        QCOMPARE(checked, 64);
         // Legacy receipts retain their prior vocabulary; grouped setters
         // publish registry IDs through the actual service receipt path.
         QCOMPARE(FieldName(Field::Contrast),QStringLiteral("contrast"));
@@ -719,7 +719,7 @@ private slots:
             }
             ++covered;
         }
-        QCOMPARE(covered, 58); // 62 minus the four custom-recipe components
+        QCOMPARE(covered, 60); // 64 minus the four custom-recipe components
         QVERIFY(samples > 150);
         qInfo("image/view fields: %d, accepted boundary/choice samples: %d", covered, samples);
     }

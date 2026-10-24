@@ -916,7 +916,7 @@ private slots:
         QVERIFY(cataloged(fallback));
         // Layout-only preferences without their own caption keep the neutral label.
         const QSet<QString> neutral{"ui.mode","ui.activeTab","ui.sectionExpanded","video.selection"};
-        QCOMPARE(ParameterRegistry().size(),size_t(98));
+        QCOMPARE(ParameterRegistry().size(),size_t(100));
         for (const auto& descriptor : ParameterRegistry()) {
             const auto id = QString::fromUtf8(descriptor.id.data(),static_cast<qsizetype>(descriptor.id.size()));
             QVERIFY2(cataloged(label(id)),qPrintable(id));

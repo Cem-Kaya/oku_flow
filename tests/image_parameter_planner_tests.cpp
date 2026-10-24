@@ -56,7 +56,7 @@ private slots:
                 {{"fields",QJsonArray{QString::fromUtf8(descriptor.id.data(),qsizetype(descriptor.id.size()))}}});
             QVERIFY(plan.error.isEmpty());QCOMPARE(plan.observedFields.size(),size_t(1));QCOMPARE(plan.observedFields.front(),*field);
         }
-        QCOMPARE(image,53);QCOMPARE(view,9);QVERIFY(!AppControlTarget::ImageParameterField("image.arbitrary.setting"));
+        QCOMPARE(image,55);QCOMPARE(view,9);QVERIFY(!AppControlTarget::ImageParameterField("image.arbitrary.setting"));
     }
     void uctModelsUseIndependentClosedPreferencesWithoutImageCoupling() {
         const auto fields=Defaults();
