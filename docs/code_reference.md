@@ -5110,6 +5110,10 @@ Text Clarity master preference on CPU paths so it can gate CPU OCR. They report
 CUDA enhancement as ineffective with `cuda_unavailable`; all other GPU-only
 effect refusals remain. The discovery fixture's first failed run exposed this
 dependency-admission gap and remains preserved separately from later validation.
+The CPU availability fixture checks the exact eight portable preferences and
+all 47 refused image parameters. Its context always retires through a scope
+guard, including an assertion failure; obsolete GPU-only classification/count
+assertions from the next run are retained with their cascading failures.
 Both UCT boolean rows require a ready backend for `effective:true`, returning
 `uct_backend_inactive` during initialization/failure. Receipt labels use the
 actual UCT checkbox captions; both are included in the translation catalog.

@@ -1182,7 +1182,7 @@ private slots:
         // Exercise the policy seam without creating a CUDA surface or claiming
         // that this offscreen fixture has executed any shader.
         for(const auto field:{Field::Blur,Field::BlurSigma,Field::BlurRadius,
-            Field::Spatial,Field::Upscaler,Field::Sharpness,Field::TextClarity,
+            Field::Spatial,Field::Upscaler,Field::Sharpness,
             Field::Flatten,Field::Adaptive,Field::SmartSharpen,Field::Clahe,
             Field::Glare,Field::FocusDetection,Field::Hysteresis,Field::TwoColor,
             Field::AutoContrast,Field::AutoContrastStrength,Field::Stabilization,
@@ -1193,7 +1193,7 @@ private slots:
             QVERIFY(!AppControlTarget::SelectedMediaImageFieldAvailable(field,false));
         }
         for(const auto field:{Field::BlackWhite,Field::Threshold,Field::Contrast,Field::Brightness,
-            Field::Scheme,Field::CustomColorRecipe,Field::UctCpuDetector,Field::UctGpuDetector})
+            Field::Scheme,Field::CustomColorRecipe,Field::TextClarity,Field::UctCpuDetector,Field::UctGpuDetector})
             QVERIFY(AppControlTarget::SelectedMediaImageFieldAvailable(field,false));
         QVERIFY(!AppControlTarget::SelectedMediaImageFieldAvailable(Field::DebugView,true));
     }
@@ -2339,13 +2339,19 @@ private slots:
     void unavailableCpuImageWritesHaveNoNativeEffects() {
         auto& service=NativeControlFixture::Service(app_);
         const auto context=service.Begin({ContextKind::EmbeddedTurn,"native-image-unavailable",3,{}});
+        QVERIFY(!context.isEmpty());
+        const auto cleanup=qScopeGuard([&] {service.End(context);});
         const auto rows=Call(context,"image-availability","image_settings_get").content["parameters"].toObject();
         QCOMPARE(rows.size(),55);int denied=0;
+        const QSet<QString> cpuPreferences{"image.debugView","image.textClarity.enabled",
+            "image.uct.enabled","image.uct.showOriginal","image.uct.gpu.detector",
+            "image.uct.gpu.recognizer","image.uct.cpu.detector","image.uct.cpu.recognizer"};
         for(const auto& descriptor:ParameterRegistry()) {
             if(descriptor.group!=ParameterGroup::Image)continue;
             const auto id=QString::fromUtf8(descriptor.id.data(),descriptor.id.size());
             const auto row=rows[id].toObject();
-            if(row["available"].toBool())continue; // Debug-view preference is backend-independent.
+            QCOMPARE(row["available"].toBool(),cpuPreferences.contains(id));
+            if(row["available"].toBool())continue;
             const auto schema=QJsonDocument::fromJson(QByteArray::fromStdString(std::string(descriptor.schema))).object();
             const auto current=row["requested"];QJsonValue wanted;
             const auto type=schema["type"].toString();
@@ -2359,7 +2365,7 @@ private slots:
             QVERIFY(!result.content["ok"].toBool());
             QVERIFY(NativeControlFixture::Target(app_).Fields()==before);++denied;
         }
-        QVERIFY(denied>=48);service.End(context);
+        QCOMPARE(denied,47); // Every other image parameter still refuses CPU camera writes.
     }
     void stopAndUndoRestoresOwnedSourceBeforeProviderCleanup() {
         auto& service=NativeControlFixture::Service(app_);
