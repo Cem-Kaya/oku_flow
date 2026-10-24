@@ -9,6 +9,7 @@
 #include "okuflow/ui/agent_control_panel.hpp"
 #include "okuflow/ui/ui_translation.hpp"
 #include <QCryptographicHash>
+#include <QDebug>
 #include <QUuid>
 #include <array>
 
@@ -85,8 +86,13 @@ void OkuFlowApp::InitializeAgentControl()
     connect(agentCodex_.get(),&CodexAgentClient::AvailabilityChanged,this,[this,panels](bool ready,const QString& code) {
         for (auto* panel : panels()) {
             panel->SetCapabilityStatus(ready ? "Tool support ready" : code == "checking" ? "Checking tool support..." : "Tool support unavailable");
+            if (!ready && code != "checking" && code != "configuration_changed")
+                panel->AppendAction(code);
             panel->RefreshRoutingNotice(AgentReady());
         }
+        // Internal classification only: never log RPC payloads, provider text,
+        // account details, configured endpoints or MCP inventory.
+        qInfo().noquote() << "OkuFlow control capability:" << code;
         SetAssistantBusy(assistiveManager_->Runtime().IsBusy() || assistiveManager_->Runtime().ChatSession().Busy());
         if (!ready && !agentContext_.isEmpty()) CancelAgentTurn();
     });

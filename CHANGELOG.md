@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+- Retain safe Assistant tool-test failure codes in the activity/status output,
+  distinguishing a completed response without a tool call from a rejected turn.
+
 - Keep Assistant/settings button names, approval/lease status, corner action
   captions and setup actions synchronized for screen readers. Preserve current
   action names across state, layout and language changes.

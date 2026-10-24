@@ -389,6 +389,24 @@ private slots:
         client.SetControlService(&service);QSignalSpy done(&client,&CodexAgentClient::TurnFinished);
         QVERIFY(!client.SubmitTurn("fabricated","zoom"));QCOMPARE(done.size(),0);QCOMPARE(target.effects,0);
     }
+    void probeFailuresRetainPayloadFreeReason_data() {
+        QTest::addColumn<QByteArray>("scenario");QTest::addColumn<QString>("reason");
+        QTest::newRow("no-tool-call")<<QByteArray("probe_no_call")<<QString("probe_tool_not_called");
+        QTest::newRow("rejected-turn")<<QByteArray("probe_start_rejected")<<QString("turn_start_failed");
+    }
+    void probeFailuresRetainPayloadFreeReason() {
+        QFETCH(QByteArray,scenario);QFETCH(QString,reason);
+        qputenv("OKUFLOW_FAKE_AGENT_SCENARIO",scenario);
+        AgentTarget target;AppControlService service(target);service.SetEnabled(true,false);
+        CodexAgentClient client;client.SetControlService(&service);
+        client.Configure(QStringLiteral(OKUFLOW_FAKE_AGENT_BINARY),{},"low",{});
+        QSignalSpy availability(&client,&CodexAgentClient::AvailabilityChanged);
+        client.TestCapability();
+        QTRY_VERIFY_WITH_TIMEOUT(availability.size()>=2 && !client.IsTurnActive(),10000);
+        QCOMPARE(availability.last()[1].toString(),reason);
+        QVERIFY(!client.IsReady());QCOMPARE(target.effects,0);
+        for(const auto& event:availability)QVERIFY(!event[1].toString().contains("private-provider-detail"));
+    }
     void reconfigurationInvalidatesTestedReadiness() {
         AgentTarget target;AppControlService service(target);service.SetEnabled(true,false);
         CodexAgentClient client;QVERIFY(Ready(client,service));

@@ -5063,6 +5063,10 @@ while preserving ink, undo/redo and the manual-exit clearing contract.
 
 ## Dedicated agent provider and answer ownership (0.3.1 development)
 
+`CodexAgentClient` preserves payload-free probe failure codes in
+`AvailabilityChanged`; successful prose without the required tool round trip
+reports `probe_tool_not_called`. The app records these internal classifications
+in the activity/status view and diagnostics without provider/error payloads.
 `CodexAgentClient` is a separate, restricted JSONL child. `Configure` retires its
 own process/session when provider identity changes; `TestCapability` explicitly
 runs bounded offline preflight and a tiny no-frame dynamic-tool round trip.

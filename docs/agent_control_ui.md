@@ -210,3 +210,8 @@ cannot be used as clean visual evidence; no foreign process or pixels were chang
 Streaming and reflow retain selection endpoints by message/paragraph identity
 and preserve their direction, including repeated identical text. The viewport
 keeps its top message anchor while an earlier message changes height.
+Tool-capability failures retain an internal reason code in the activity/status
+view. A completed provider response without the required tool call reports
+`probe_tool_not_called`; provider error messages, account details and request
+payloads are not copied into those diagnostics. The visible unavailable state
+still means control has not been established.

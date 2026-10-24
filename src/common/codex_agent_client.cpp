@@ -459,7 +459,8 @@ void CodexAgentClient::Finish(QString code,bool interrupted)
     calls_.clear();context_.clear();turn_.clear();text_.clear();jpeg_.clear();prompt_.clear();completedTextContext_={};
     if(probe) {
         available_=available_ && code.isEmpty();
-        emit AvailabilityChanged(available_,available_?QStringLiteral("ready"):QStringLiteral("compatibility_probe_failed"));
+        emit AvailabilityChanged(available_,available_?QStringLiteral("ready"):
+            code.isEmpty()?QStringLiteral("probe_tool_not_called"):code);
     } else {
         if(service_ && !context.isEmpty())service_->End(context,code.isEmpty() && !interrupted);
         emit TurnFinished(thread,turn,text,code,interrupted);

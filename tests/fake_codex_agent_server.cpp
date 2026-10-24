@@ -92,6 +92,15 @@ int main(int argc,char** argv) {
         } else if(method=="turn/start") {
             if(params["threadId"].toString()!=thread || thread.isEmpty())return 42;
             turn=probe?"turn_probe":QString("turn_%1").arg(++turns);
+            if(probe && scenario=="probe_no_call") {
+                result({{"turn",QJsonObject{{"id",turn}}}});
+                notify("turn/completed",{{"turn",QJsonObject{{"id",turn},{"status","completed"}}}});
+                continue;
+            }
+            if(probe && scenario=="probe_start_rejected") {
+                Send({{"id",id},{"error",QJsonObject{{"code",-32602},{"message","private-provider-detail"}}}});
+                continue;
+            }
             if(!probe && scenario=="stale_first")call("orphan_old_turn","okuflow_view_zoom_set","stale",{{"magnification",7}});
             if(!probe && scenario=="retired_first")call("turn_probe","okuflow_view_zoom_set","stale",{{"magnification",7}});
             if(!probe && scenario=="forbidden_item")notify("item/started",{{"item",QJsonObject{{"type","commandExecution"}}}});
