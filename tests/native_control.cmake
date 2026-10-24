@@ -50,6 +50,7 @@ if(OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE)
         assistantSendSeparatesRestoredProviderHistory
         assistantFailedPreparationNeverDispatchesControl
         assistantHttpPreparationContinuesOrFailsWithoutDispatch
+        assistantUctRequestUsesDiscoveredSettingsAndNativeController
         uctMasterAndOriginalUseNativeControllerWithoutClaimingReadiness)
     set_tests_properties(native_app_assistant_routing_offscreen PROPERTIES TIMEOUT 60
         LABELS "headless;native-control-opt-in" RESOURCE_LOCK okuflow_process_identity

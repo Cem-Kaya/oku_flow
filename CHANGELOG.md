@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+- Teach embedded Assistant tools that Ultra Clear Text, UCT and OCR text
+  replacement are image settings, including the Text Clarity prerequisite,
+  rather than quick-mode presets. Share discovery guidance across providers.
+
 - Keep restored provider histories separate when Send changes control routing,
   resolve refused tool preparation promptly, and report UCT backend readiness
   separately from its saved on/off preference.

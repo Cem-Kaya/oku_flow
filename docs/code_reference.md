@@ -5096,6 +5096,15 @@ change and disables first when requested. Getters separate requested intent from
 the Text Clarity master and effective OCR state. The catalog contains 100
 parameters (55 image), with the existing 43 tools, 17 protected entries and 46
 actions unchanged.
+`ControlFeatureInstructions()` supplies trusted product vocabulary to both
+embedded provider policies. Registry descriptions identify Ultra Clear Text /
+UCT / OCR text replacement as typed image settings, explain the Text Clarity
+dependency, and direct feature discovery to paged controls instead of quick
+modes. This is guidance, not a permission or readiness override.
+`assistantUctRequestUsesDiscoveredSettingsAndNativeController` verifies the
+actual child advertisement, grouped read/write path, native enablement,
+persistence and effective readiness with an injected model-free recognizer.
+It performs no model loading, device capture or inference.
 Both UCT boolean rows require a ready backend for `effective:true`, returning
 `uct_backend_inactive` during initialization/failure. Receipt labels use the
 actual UCT checkbox captions; both are included in the translation catalog.

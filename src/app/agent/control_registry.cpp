@@ -50,7 +50,9 @@ std::vector<ToolDescriptor> MakeCatalog(CatalogEdition edition) {
         "Send a camera viewport to the provider under an explicit frame grant.", Tier::Egress, false, false,
         false, Object(R"({"maxLongSide":{"type":"integer","minimum":384,"maximum":1024,"default":768}})"));
     add(ToolId::Modes, "mode.list", "mode_list",
-        "List mode and reading-color ids. Select by id and speak displayName.", Tier::Read, true, false,
+        "List quick-mode presets and reading-color ids. This is not the full feature list. "
+        "Ultra Clear Text (UCT/OCR) uses image_settings_get/set, not mode_activate. "
+        "Select presets by id and speak displayName.", Tier::Read, true, false,
         false, Object("{}"));
     add(ToolId::ModeActivate, "mode.activate", "mode_activate",
         "Apply an agent-applicable quick mode by presetId; does not move focus.", Tier::View, false, true,
@@ -170,7 +172,13 @@ std::vector<ToolDescriptor> MakeCatalog(CatalogEdition edition) {
         for (std::size_t i = 0; i < gets.size(); ++i) {
             const auto group = static_cast<ParameterGroup>(i);
             const auto getDescription =
-                group == ParameterGroup::Assistant
+                group == ParameterGroup::Image
+                    ? "Read image effects, including Ultra Clear Text (UCT/OCR text replacement), "
+                      "Text Clarity, Show original and CPU/GPU OCR model tiers. For UCT read fields "
+                      "image.uct.enabled, image.textClarity.enabled and image.uct.showOriginal. "
+                      "Use explicit fields (at most 16); requested, effective, saved and readiness "
+                      "reasons are distinct. These settings are separate from quick-mode presets."
+                : group == ParameterGroup::Assistant
                     ? "Read assistant preferences with valueKind all (default), requested or saved. Use "
                       "fields and projection after filterRequired; saved-only reads do not refresh current "
                       "mutation baselines. No credentials or grants."
@@ -182,10 +190,17 @@ std::vector<ToolDescriptor> MakeCatalog(CatalogEdition edition) {
             const auto tier = group == ParameterGroup::Camera      ? Tier::Source
                               : group == ParameterGroup::Recording ? Tier::Capture
                                                                    : Tier::View;
-            add(setter, canonical[i][1], wire[i][1],
-                "Apply a nonempty finite parameter patch through shared native setters. All revisions, "
+            const auto setDescription=group==ParameterGroup::Image
+                ? "Apply image effects through native setters after reading their current fields. "
+                  "Enable Ultra Clear Text (UCT/OCR) with image.uct.enabled=true and its required "
+                  "image.textClarity.enabled=true. Disable only image.uct.enabled for UCT off. "
+                  "image.uct.showOriginal compares original ink. Requested settings do not prove "
+                  "OCR readiness; inspect effective values/reasons. All revisions, permissions and "
+                  "availability checks still apply."
+                : "Apply a nonempty finite parameter patch through shared native setters. All revisions, "
                 "per-field permissions, coupled effects and hardware availability must pass before applying; "
-                "unsupported fields return unavailable.",
+                "unsupported fields return unavailable.";
+            add(setter, canonical[i][1], wire[i][1],setDescription,
                 tier, true, false, true, ParameterSetSchema(group));
         }
     }
@@ -263,5 +278,15 @@ const ToolDescriptor *FindControlTool(std::string_view name, CatalogEdition edit
         if (tool.canonicalId == name || tool.wireName == name)
             return &tool;
     return nullptr;
+}
+std::string_view ControlFeatureInstructions() noexcept {
+    return "Quick modes are presets, not the complete feature list. Discover individual options "
+        "with app_controls_list (follow pagination) and the grouped settings tools before saying "
+        "an option is unavailable. Ultra Clear Text, UCT and OCR text replacement name the same "
+        "feature: image.uct.enabled. Read it with image.textClarity.enabled and image.uct.showOriginal "
+        "using image_settings_get. To turn UCT on, enable both image.textClarity.enabled and "
+        "image.uct.enabled through image_settings_set; to turn UCT off, leave Text Clarity unchanged. "
+        "Show original is image.uct.showOriginal. Report requested state separately from effective "
+        "OCR readiness; do not claim recognized text is visible before the backend is ready. ";
 }
 } // namespace okuflow::agent

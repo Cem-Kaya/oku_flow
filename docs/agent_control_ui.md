@@ -238,6 +238,11 @@ Typed image controls now include `image.uct.enabled` and
 `image.uct.showOriginal`, alongside four CPU/GPU model selectors. UCT remains
 subject to the native Text Clarity master and real backend readiness. Requested
 on/off state persists; Show original is a session comparison setting.
+Both providers receive the product vocabulary: Ultra Clear Text, UCT and OCR
+text replacement refer to `image.uct.enabled`, with
+`image.textClarity.enabled` required for activation. Quick modes are presets,
+not the complete list of controllable options. The Assistant should read these
+fields and use the image settings tools rather than search `mode_list` for UCT.
 Receipts distinguish requested UCT enablement from a ready OCR backend. Sending
 from a restored provider conversation automatically starts the appropriate
 logical conversation with the same question, preserving the old history.

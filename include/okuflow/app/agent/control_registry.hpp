@@ -76,5 +76,8 @@ bool ControlToolDestructiveHint(ToolId id) noexcept;
 bool IsVideoControlTool(ToolId id) noexcept;
 std::span<const ToolDescriptor> ControlRegistry(CatalogEdition edition);
 const ToolDescriptor *FindControlTool(std::string_view name, CatalogEdition edition);
+// Trusted product vocabulary shared by embedded provider instructions.
+// Discovery guidance only: it confers no permission or runtime readiness.
+std::string_view ControlFeatureInstructions() noexcept;
 
 } // namespace okuflow::agent

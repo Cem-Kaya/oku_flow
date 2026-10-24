@@ -589,6 +589,20 @@ private slots:
         QVERIFY(FindControlTool("camera_select",CatalogEdition::DevCamera));
         QVERIFY(!FindControlTool("shell",CatalogEdition::V1));
     }
+    void uctIsDiscoverableByProductNameAndOcrWithoutQuickModes() {
+        for(const auto edition:{CatalogEdition::V1,CatalogEdition::DevFull}) {
+            for(const auto* name:{"image_settings_get","image_settings_set"}) {
+                const auto* tool=FindControlTool(name,edition);QVERIFY(tool);
+                QVERIFY(tool->description.find("Ultra Clear Text")!=std::string_view::npos);
+                QVERIFY(tool->description.find("OCR")!=std::string_view::npos);
+                QVERIFY(tool->description.find("image.uct.enabled")!=std::string_view::npos);
+            }
+            QVERIFY(FindControlTool("mode_list",edition)->description.find("image_settings")!=std::string_view::npos);
+        }
+        const auto instructions=ControlFeatureInstructions();
+        QVERIFY(instructions.find("image.textClarity.enabled")!=std::string_view::npos);
+        QVERIFY(instructions.find("follow pagination")!=std::string_view::npos);
+    }
     void configurationApprovalCannotBypassSourceOrCaptureGrants() {
         Target target; target.configurationApproval = true; target.exactApproval = true;
         AppControlService service(target,CatalogEdition::DevFull); service.SetEnabled(true,true);

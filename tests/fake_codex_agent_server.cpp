@@ -13,6 +13,11 @@ static QJsonArray ScopeActions(const QString& scenario) {
     if(scenario=="scope_center")add("view_center_set",{{"point",QJsonObject{{"space","scene"},{"x",0.25},{"y",0.75}}}});
     else if(scenario=="scope_reset")add("view_reset");
     else if(scenario=="scope_mode") {add("mode_list");add("mode_activate",{{"presetId","preset-reading"}});}
+    else if(scenario=="scope_uct") {
+        add("image_settings_get",{{"fields",QJsonArray{"image.uct.enabled","image.textClarity.enabled","image.uct.showOriginal"}}});
+        add("image_settings_set",{{"image.textClarity.enabled",true},{"image.uct.enabled",true}});
+        add("image_settings_get",{{"fields",QJsonArray{"image.uct.enabled","image.textClarity.enabled","image.uct.showOriginal"}}});
+    }
     else if(scenario.startsWith("scope_colors_")) {
         auto intent=scenario.mid(QString("scope_colors_").size());
         QJsonObject args{{"intent",intent}};if(intent=="scheme")args["schemeId"]="yellow-black";
@@ -83,6 +88,19 @@ int main(int argc,char** argv) {
         } else if(method=="thread/start") {
             const auto tools=params["dynamicTools"].toArray();
             probe=tools.size()==1 && tools[0].toObject()["name"]=="okuflow_ping";
+            if(!probe && scenario=="scope_uct") {
+                const auto policy=params["developerInstructions"].toString();
+                if(!policy.contains("Ultra Clear Text") || !policy.contains("image.uct.enabled") ||
+                   !policy.contains("image.textClarity.enabled"))return 44;
+                bool discovered=false;
+                for(const auto tool:tools)if(tool.toObject()["name"]=="okuflow_image_settings_set") {
+                    const auto descriptor=tool.toObject();
+                    discovered=descriptor["description"].toString().contains("Ultra Clear Text") &&
+                        descriptor["description"].toString().contains("OCR") &&
+                        descriptor["inputSchema"].toObject()["properties"].toObject().contains("image.uct.enabled");
+                }
+                if(!discovered)return 45;
+            }
             if(!probe)for(const auto step:scope) {
                 bool advertised=false;
                 for(const auto tool:tools)advertised|=tool.toObject()["name"]==step.toObject()["tool"];

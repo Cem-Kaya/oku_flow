@@ -290,7 +290,9 @@ public:
         app.StartNewAssistantConversationAs(ChatBackendKind::Explain);
         app.RefreshAgentControlSettings();
     }
-    static void SubmitAssistant(OkuFlowApp& app) {app.SubmitAssistantPromptText("Set zoom to 2x",false,false);}
+    static void SubmitAssistant(OkuFlowApp& app,const QString& prompt=QStringLiteral("Set zoom to 2x")) {
+        app.SubmitAssistantPromptText(prompt,false,false);
+    }
     static void ReconfigureAssistant(OkuFlowApp& app,const QString& model) {
         app.settingsController_->MutableSettings().assistive.codexModel=model;
         app.RefreshAgentControlSettings();
@@ -317,6 +319,30 @@ public:
     static CodexAgentClient& AgentClient(OkuFlowApp& app) {return *app.agentCodex_;}
     static AssistiveRuntime& Runtime(OkuFlowApp& app) {return app.assistiveManager_->Runtime();}
     static bool UctRequested(const OkuFlowApp& app) {return app.ultraClearText_->IsEnabledByUser();}
+    static bool UctReady(const OkuFlowApp& app) {
+        return app.ultraClearText_->BackendStatusSnapshot().state==uct::BackendState::kReady;
+    }
+    static void UseFixtureUctRecognizer(OkuFlowApp& app) {
+        class FixtureRecognizer final:public uct::Recognizer {
+        public:
+            uct::BackendStatus Initialize() override {
+                uct::BackendStatus status;status.state=uct::BackendState::kReady;
+                status.name="private UCT fixture";return status;
+            }
+            uct::RecognitionOutput Recognize(const QImage&,const std::atomic<bool>&) override {
+                uct::RecognitionOutput output;output.ok=true;return output;
+            }
+        };
+        app.ultraClearText_->SetEnabled(false);
+        app.ultraClearText_->ReplaceRecognizerFactory([] {return std::make_unique<FixtureRecognizer>();});
+    }
+    static void RestoreUctRecognizer(OkuFlowApp& app) {
+        app.ultraClearText_->SetEnabled(false);
+        const auto models=app.settingsController_->Settings().ultraClearTextModels;
+        app.ultraClearText_->ReplaceRecognizerFactory([models] {return uct::CreateDefaultRecognizer(models);});
+        app.settingsController_->MutableSettings().ultraClearTextEnabled=false;
+        app.SavePersistentSettings();
+    }
     static bool StartBlockedCamera(OkuFlowApp& app,CameraSourceOrigin origin,
         std::function<bool(const std::atomic<bool>&)> start) {
         CameraDescriptor camera;camera.name=L"Private startup fixture";camera.symbolicLink=L"fixture-physical-camera";
@@ -2498,6 +2524,36 @@ private slots:
         QVERIFY2(completed["complete"].toBool()==(scenario=="ready"),qPrintable(completed["errorCode"].toString()));
         QCOMPARE(NativeControlFixture::Target(app_).Fields().at(Field::ZoomAmount),scenario=="ready"?QJsonValue(2.0):zoom);
         QVERIFY(NativeControlFixture::Service(app_).PendingApproval().isEmpty());
+    }
+    void assistantUctRequestUsesDiscoveredSettingsAndNativeController() {
+        qputenv("OKUFLOW_FAKE_AGENT_SCENARIO","scope_uct");
+        const auto original=NativeControlFixture::CurrentImageConfig(app_);
+        NativeControlFixture::UseFixtureUctRecognizer(app_);
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::RestoreUctRecognizer(app_);
+            NativeControlFixture::RestoreImageConfig(app_,original);
+            qunsetenv("OKUFLOW_FAKE_AGENT_SCENARIO");
+        });
+        auto disabled=original;disabled.autoTextClarityEnabled=false;
+        NativeControlFixture::RestoreImageConfig(app_,disabled);
+        NativeControlFixture::PrepareAssistant(app_,"uct-product-name");
+        NativeControlFixture::Runtime(app_).ChatSession().SetDraft("Turn on Ultra Clear Text");
+        NativeControlFixture::SubmitAssistant(app_,"Turn on Ultra Clear Text");
+        auto& session=NativeControlFixture::Runtime(app_).ChatSession();
+        QTRY_VERIFY_WITH_TIMEOUT(!session.Busy(),10000);
+        const auto answer=session.Snapshot()["messages"].toArray().last().toObject();
+        QVERIFY2(answer["complete"].toBool(),qPrintable(answer["errorCode"].toString()));
+        QTRY_VERIFY(NativeControlFixture::UctReady(app_));
+        QVERIFY(NativeControlFixture::UctRequested(app_));
+        auto& service=NativeControlFixture::Service(app_);
+        const auto context=service.Begin({ContextKind::EmbeddedTurn,"verify-uct",1,{}});
+        QVERIFY(!context.isEmpty());
+        const auto rows=Call(context,"uct-ready-read","image_settings_get",{{"fields",QJsonArray{"image.uct.enabled","image.textClarity.enabled"}}}).content["parameters"].toObject();
+        service.End(context);
+        const auto uct=rows["image.uct.enabled"].toObject();
+        QVERIFY(uct["requested"].toBool());QVERIFY(uct["effective"].toBool());QVERIFY(uct["saved"].toBool());
+        QVERIFY(rows["image.textClarity.enabled"].toObject()["requested"].toBool());
+        QVERIFY(!NativeControlFixture::Window(app_).agentControlPanel()->routingNoticeShown());
     }
     void uctMasterAndOriginalUseNativeControllerWithoutClaimingReadiness() {
         auto& service=NativeControlFixture::Service(app_);

@@ -217,7 +217,7 @@ void CodexAgentClient::StartThread()
         {QStringLiteral("sandbox"),QStringLiteral("read-only")},
         {QStringLiteral("approvalPolicy"),QStringLiteral("never")},
         {QStringLiteral("ephemeral"),probing_},
-        {QStringLiteral("developerInstructions"),policy+instructions_},
+        {QStringLiteral("developerInstructions"),policy+QString::fromUtf8(agent::ControlFeatureInstructions().data())+instructions_},
         {QStringLiteral("dynamicTools"),Tools(probing_)}};
     if(!model_.isEmpty())params.insert(QStringLiteral("model"),model_);
     rpc_->SendRequest(QStringLiteral("thread/start"),params,
