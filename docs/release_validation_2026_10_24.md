@@ -134,3 +134,36 @@ Private evidence is under
 `Z:/Projects/OkuFlow/local-work-data/release-acceptance-20261024/`:
 `cleanup-closure-r4`, `payload-stage-r2`, `payload-runtime-r3`, and `mcp-v1-r1`
 through `mcp-v1-r4`. These paths identify local receipts, not shipped payload.
+
+## Luna live-tool failure follow-up
+
+The owner's explicit live test on the earlier rebuilt app still reported
+unavailable. A no-inference initialize/thread-start check then reproduced
+ambient MCP startup with `mcp_servers={}`. This CLI merges the empty table with
+configured entries. Two intermediate attempts remain preserved: ordering bare
+disables before the table still started servers, and bare disables after it
+failed bootstrap transport validation.
+
+Final source `fadd0df075e68edffde3724c2b6b91a9cd114dfd` places the empty table
+first, followed by complete disabled inert transport entries for every validated
+inventory name. Native offline startup accepted initialization and thread start,
+emitted zero MCP-server startup notifications, exited its owned child and left
+the owner's configuration hash unchanged. No turn/start or inference was sent.
+The evidence is `luna-mcp-child-metadata-disabled-stubs.json` in the acceptance
+work directory. Opus R2 source review found no blocking defect; URL-configured
+server behavior and duplicate failure notifications remain review limits.
+
+The final scoped run `assistant-sync-r5/C2-20261024-004614-65d3a11805e14717b8e3109ac447900d`
+passed all seven selected contracts with zero skipped Qt rows, skips or unresolved
+results. Both work and controller exited zero in 69.588 seconds, with zero owned
+Job members and verified runner/slot release. The actual application rebuilt;
+its SHA-256 is `f8d19d794dc603c29bad94898d42a5f14b65fa645d4518570877ad11dbdec9e9`.
+The earlier diagnostic-only and partial-profile builds remain separate receipts;
+their synthetic passes did not establish a working live connection.
+
+Probe failure classifications now reach the activity/status view without raw
+RPC/provider messages, account data or configuration payloads. Completed prose
+without a tool call is explicitly `probe_tool_not_called`. Final live Luna tool
+qualification and the owner's three actual control actions remain pending; no
+scoped or offline result substitutes for them. Native GUI and installer gates
+listed above are unchanged.
