@@ -112,7 +112,7 @@ When the test is available to you, install OkuFlow Camera, enable USB debugging 
 
 The magnifier works without AI. **Read** transcribes the text in view, **Explain** describes the scene, and **Assistant** supports follow-up questions. Requests run when you ask. Answers appear in large text; **Read Aloud** speaks only when you choose it, using a Windows voice installed on your PC.
 
-In the development Assistant, Send prepares app control automatically when it
+In the Assistant, Send prepares app control automatically when it
 is enabled. Your request allows the selected provider to observe OkuFlow's
 current view for that turn, without a second image-sharing prompt. External MCP
 clients, photos and recording retain their separate permission controls.
@@ -130,7 +130,7 @@ Check your provider's privacy terms before sending sensitive material. Local rec
 
 | Work | Status |
 | --- | --- |
-| Ultra Clear Text: local recognition with sharp overlaid letters | Experimental development build; recognition and rendering run independently; [scope and limits](docs/ultra_clear_text.md) |
+| Ultra Clear Text: local recognition with sharp overlaid letters | Included in Windows 0.3.1 as an experimental option; [scope and limits](docs/ultra_clear_text.md) |
 | Claude through the Anthropic CLI for Read, Explain and Assistant | In development for a future release |
 | GPU acceleration for AMD and Intel graphics | Planned |
 | Android USB camera companion | Available to invited Alpha testers; compatibility testing continues |

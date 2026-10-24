@@ -1130,3 +1130,13 @@ aligned with the project goals.
 - Keep UCT master and Show original in the typed control inventory, alongside
   model tiers. Requested intent, native persistence and effective OCR readiness
   remain distinct; changing a preference is not inference/quality acceptance.
+
+## Current improvement backlog (2026-10-24)
+
+- Keep `improvement_ideas/` focused on remaining, source-checked work. Start
+  with its README and status page; proposals and parked owner discussions are
+  not execution grants. Pending hardware coverage is not missing implementation.
+- Remove completed, superseded and disproved plans instead of keeping duplicate
+  report archives. Preserve cited evidence through immutable Git-history links;
+  keep current implementation contracts in `docs/`. Check affected relative
+  links and record the release baseline whenever reconciling the backlog.

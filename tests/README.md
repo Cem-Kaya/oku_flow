@@ -1020,7 +1020,7 @@ Invalid PCM layout, duration, timestamp arithmetic, and oversized buffers are
 rejected before submission. The opt-in `OKUFLOW_TEST_AAC_GAP_DIAGNOSTIC=1`
 branch retains a strict reproducer for the still-open playback-gap defect;
 it is expected to fail on the tested machine and is not part of the ordinary
-codec gate. See [review 47](../improvement_ideas/47-sequential-priority-fixes-2026-10-11.md)
+codec gate. See [review 47](https://github.com/Cem-Kaya/oku_flow/blob/3f7481af45639db4731395f7adb9175b4038a7a5/improvement_ideas/47-sequential-priority-fixes-2026-10-11.md)
 for results, exact scope, and the diagnostic command.
 
 Audit-46 adds deterministic encoder-statistics/admission and exact capture-loss
@@ -1033,11 +1033,11 @@ hysteresis/jitter, exact composite alias parity, and automatic document
 sharpening skip/chain parity with mixed-scene preservation. Coalescer, translation and
 presenter-readback additions remain in GUI targets for serial desktop execution.
 Generated codec fixtures use bounded test-only admission retries; production
-does not wait for credit. See [review 46](../improvement_ideas/46-additional-opus-review-2026-10-11.md)
+does not wait for credit. See [review 46](https://github.com/Cem-Kaya/oku_flow/blob/3f7481af45639db4731395f7adb9175b4038a7a5/improvement_ideas/46-additional-opus-review-2026-10-11.md)
 for actual results and limitations.
 
 Audit-45 regressions extend the tracked release/CPU/CUDA matrix. See
-[the implementation checkpoint](../improvement_ideas/45-codebase-audit-2026-10-11.md)
+[the implementation checkpoint](https://github.com/Cem-Kaya/oku_flow/blob/3f7481af45639db4731395f7adb9175b4038a7a5/improvement_ideas/45-codebase-audit-2026-10-11.md)
 for actual passes, native focus failures, and deferred checks. A non-GUI subset
 does not replace the full release gate; decoded codec fixtures remain separate
 from camera/optics validation.

@@ -961,7 +961,7 @@ manual reset requires removing both primary and backup.
   required for sustained audio recording, using the configured Microsoft raw LC
   AAC format's 1024-sample packets. Audio losses are counted separately
   from video frames. These policies do not bound internal MFT/driver allocations
-  or blocking finalization time. See [review 47](../improvement_ideas/47-sequential-priority-fixes-2026-10-11.md).
+  or blocking finalization time. See [review 47](https://github.com/Cem-Kaya/oku_flow/blob/3f7481af45639db4731395f7adb9175b4038a7a5/improvement_ideas/47-sequential-priority-fixes-2026-10-11.md).
 - When OkuFlow is launched with a Windows console attached, recording prints
   one route line per segment and one completion summary. The output names the
   processed and original MP4 paths and distinguishes direct-GPU input,
@@ -1072,7 +1072,7 @@ by Windows Credential Manager instead.
   clocks, provenance invariants and validation boundaries.
 - [`docs/hardcoded_paths.md`](../docs/hardcoded_paths.md) for machine-specific defaults.
 - [`improvement_ideas/00-status-and-priority.md`](../improvement_ideas/00-status-and-priority.md)
-  for implementation status and what to work on next — the single tracker.
+  for the remaining backlog reconciled against Windows 0.3.1. Completed plans and obsolete audits live in immutable Git history, not a duplicate ideas archive.
 - [`docs/THIRD_PARTY_LICENSES.md`](../docs/THIRD_PARTY_LICENSES.md) for redistribution notes.
 
 ## License

@@ -56,7 +56,7 @@ preview claim. API 37 exceeds the current API 36 submission floor.
   metadata is requested, but the stripped graphics-path dependency provides no
   extractable symbols. Console accepted and published code 3 with its generated
   mapping; native-warning removal remains unresolved.
-  [Diagnostic evidence](../improvement_ideas/android-crash-symbols-and-mapping.md).
+  [Diagnostic evidence](https://github.com/Cem-Kaya/oku_flow/blob/3f7481af45639db4731395f7adb9175b4038a7a5/improvement_ideas/android-crash-symbols-and-mapping.md).
 - The actual 65-entry / 64-unique-artifact runtime graph is reviewed against
   official POM/source and original license material. Native graphics-path
   source/build inputs and binary dependencies are reviewed separately. Original

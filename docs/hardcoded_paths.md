@@ -437,7 +437,7 @@ documented Qt 6.12.0 SDK; `-QtPrefix` overrides it.
   These are input estimates, not bounds on undocumented driver/MFT allocations.
 - Limits do not certify codec quality; low-latency encoding is a request.
   Synchronous COM/Finalize latency and decoded AAC playback gaps remain separate
-  issues. See [review 47](../improvement_ideas/47-sequential-priority-fixes-2026-10-11.md).
+  issues. See [review 47](https://github.com/Cem-Kaya/oku_flow/blob/3f7481af45639db4731395f7adb9175b4038a7a5/improvement_ideas/47-sequential-priority-fixes-2026-10-11.md).
 
 ## Lecture Camera Test Harness
 - `scripts/lecture_camera.ps1` uses `%LOCALAPPDATA%\OkuFlow\lecture-camera\`

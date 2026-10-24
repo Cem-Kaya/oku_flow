@@ -1808,7 +1808,7 @@ so metadata generation cannot silently accept an incomplete copy.
   black/white, surface zoom and blend kernels had no active launcher.
 - `OKUFLOW_AGENT_EXCLUDE_GUI=1` selects explicitly partial desktop-free
   validation in `scripts/agent_build.bat`; the default still runs every test.
-  See [review 49](../improvement_ideas/49-unused-code-census-2026-10-11.md)
+  See [review 49](https://github.com/Cem-Kaya/oku_flow/blob/3f7481af45639db4731395f7adb9175b4038a7a5/improvement_ideas/49-unused-code-census-2026-10-11.md)
   for the measured baseline, removal set and validation limits.
 
 ## Audit-50 alternating repairs
@@ -1831,7 +1831,7 @@ so metadata generation cannot silently accept an incomplete copy.
   feedback loop without exhausting the stack. This test is desktop-free;
   native focus/layout validation remains in the separate GUI group.
 - Author/reviewer evidence and remaining priorities are recorded in
-  [review 50](../improvement_ideas/50-alternating-opus-repairs-2026-10-11.md).
+  [review 50](https://github.com/Cem-Kaya/oku_flow/blob/3f7481af45639db4731395f7adb9175b4038a7a5/improvement_ideas/50-alternating-opus-repairs-2026-10-11.md).
 
 ## Audit-47 sequential repair contracts
 
@@ -1922,7 +1922,7 @@ so metadata generation cannot silently accept an incomplete copy.
   scenes in place return before pixel loads. Replacement consumes only the mask,
   and the existing mode-0 blend API remains.
 
-Actual validation/limits: [review 46](../improvement_ideas/46-additional-opus-review-2026-10-11.md).
+Actual validation/limits: [review 46](https://github.com/Cem-Kaya/oku_flow/blob/3f7481af45639db4731395f7adb9175b4038a7a5/improvement_ideas/46-additional-opus-review-2026-10-11.md).
 
 ## Audit-45 implementation contracts
 
@@ -2000,7 +2000,7 @@ Actual validation/limits: [review 46](../improvement_ideas/46-additional-opus-re
   `AiSettingsDialog::result` retains saved voice fields without a discovered voice.
 
 Validation results and remaining native/hardware acceptance limits are recorded
-in [audit 45](../improvement_ideas/45-codebase-audit-2026-10-11.md). Encoder-resource
+in [audit 45](https://github.com/Cem-Kaya/oku_flow/blob/3f7481af45639db4731395f7adb9175b4038a7a5/improvement_ideas/45-codebase-audit-2026-10-11.md). Encoder-resource
 pooling and per-device NIS coefficient initialization remain deferred; these
 source changes make no measured throughput or latency claim.
 

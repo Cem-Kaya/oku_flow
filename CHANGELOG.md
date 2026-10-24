@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+- Reconcile the improvement backlog against Windows 0.3.1. Remove completed
+  plans and obsolete review reports, retain actionable follow-ups, and keep
+  historical evidence links pinned to the released source.
+
 - Normalize required-file comparison paths during Windows bundle assembly so
   CMake's forward-slash CUDA license path is accepted by Windows FC.
 

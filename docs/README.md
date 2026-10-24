@@ -74,7 +74,7 @@ file-path filtering, column/type-size separation, crop-fragment suppression,
 stable validated geometry, regional detector-omission continuity and actual
 painted-glyph evidence.
 
-[OCR engine research](../improvement_ideas/55-uct-ocr-engine-research-2026-10-21.md)
+[OCR engine research](https://github.com/Cem-Kaya/oku_flow/blob/3f7481af45639db4731395f7adb9175b4038a7a5/improvement_ideas/55-uct-ocr-engine-research-2026-10-21.md)
 compares local alternatives, oriented geometry and visible-region recognition.
 It records external benchmark limits and a proposed evaluation protocol;
 it does not select a new runtime or establish quality on the owner's videos.
@@ -336,7 +336,7 @@ loads have a separate generation canceled by newer loads/turns. Credential
 deletions persist opaque pending ids before removal and retain them on failure.
 Streamed answers preserve selection/scroll; short Draw rails scroll.
 
-See [audit 45](../improvement_ideas/45-codebase-audit-2026-10-11.md) for actual
+See [audit 45](https://github.com/Cem-Kaya/oku_flow/blob/3f7481af45639db4731395f7adb9175b4038a7a5/improvement_ideas/45-codebase-audit-2026-10-11.md) for actual
 validation results and native/hardware checks still pending. Source work
 reduction does not establish an application speed improvement; encoder resource
 pooling and NIS coefficient initialization remain deferred.
@@ -344,7 +344,7 @@ pooling and NIS coefficient initialization remain deferred.
 
 ### Additional quality/performance review
 
-[Review 46](../improvement_ideas/46-additional-opus-review-2026-10-11.md) records
+[Review 46](https://github.com/Cem-Kaya/oku_flow/blob/3f7481af45639db4731395f7adb9175b4038a7a5/improvement_ideas/46-additional-opus-review-2026-10-11.md) records
 completed Opus capture, UI, and resumed GPU reports with root validation.
 Follow-ups retain camera preference during fallback, disable driver enhancement
 in conversion, catch up saturated capture bursts, and add paired video admission
@@ -356,7 +356,7 @@ fidelity remain unverified; native desktop checks remain deferred by the owner.
 Codec low latency may affect quality; internal AAC/driver allocations and
 blocking finalization remain separate limits.
 
-[Review 47](../improvement_ideas/47-sequential-priority-fixes-2026-10-11.md) adds
+[Review 47](https://github.com/Cem-Kaya/oku_flow/blob/3f7481af45639db4731395f7adb9175b4038a7a5/improvement_ideas/47-sequential-priority-fixes-2026-10-11.md) adds
 separate bounded AAC input accounting in PCM frames, including stale/padded
 packet progress, and audio-only loss counters. H.264/AV1 codec fixtures decode
 the complete audio track. The original strict playback-gap failure was later
@@ -367,14 +367,14 @@ measurements and the separate real-microphone acceptance limits. Admission does
 not depend on timestamp-derived AAC packet credit. Opus hit Claude's rate limit
 before its final review.
 
-[Review 48](../improvement_ideas/48-gemini-independent-review-2026-10-11.md)
+[Review 48](https://github.com/Cem-Kaya/oku_flow/blob/3f7481af45639db4731395f7adb9175b4038a7a5/improvement_ideas/48-gemini-independent-review-2026-10-11.md)
 records independent source/probe verdicts for all four returned Gemini reports
 and their 20 main findings. Confirmed CPU allocations and failure-lifecycle
 follow-ups are separated from known candidates, unreachable GPU scenarios,
 false error contracts and unsupported speed estimates. No application change
 or new native desktop validation is claimed by that audit.
 
-[Review 49](../improvement_ideas/49-unused-code-census-2026-10-11.md) measures
+[Review 49](https://github.com/Cem-Kaya/oku_flow/blob/3f7481af45639db4731395f7adb9175b4038a7a5/improvement_ideas/49-unused-code-census-2026-10-11.md) measures
 unused-code candidates in current first-party C++/CUDA, separating test-only
 APIs and optional configurations. Exact linker/CUDA binary evidence distinguishes
 functions already discarded from retained kernel code and the live obsolete
@@ -382,7 +382,7 @@ recording map check. Its implementation follow-up removes the verified unused
 APIs, helper kernels and pairing state, while preserving test-only APIs and
 documenting the partial desktop-free build/test gate.
 
-[Review 50](../improvement_ideas/50-alternating-opus-repairs-2026-10-11.md)
+[Review 50](https://github.com/Cem-Kaya/oku_flow/blob/3f7481af45639db4731395f7adb9175b4038a7a5/improvement_ideas/50-alternating-opus-repairs-2026-10-11.md)
 tracks alternating root/Opus implementation and independent review. The first
 round fixes camera-navigation recursion and Draw keyboard ownership with Opus
 acceptance for its original 91-check headless scope. An empty-editor focus
@@ -739,18 +739,14 @@ legacy `powershell.exe` bridge.
 - [`docs/rotation_ui_notes.md`](rotation_ui_notes.md): orientation ownership and the
   rotated-frame resample contract.
 - [`improvement_ideas/00-status-and-priority.md`](../improvement_ideas/00-status-and-priority.md):
-  the single implementation tracker — status of every plan and what to do next.
-- [`improvement_ideas/08-ml-text-sr-options.md`](../improvement_ideas/08-ml-text-sr-options.md):
-  ML text super-resolution research (supersedes the old GPU upscaling to-do).
-- [`improvement_ideas/42-pipeline-audit-2026-10-10.md`](../improvement_ideas/42-pipeline-audit-2026-10-10.md):
-  source-backed pipeline/security repair backlog, candidate validation, and
-  quality/performance measurement plans.
-- [`improvement_ideas/43-audit-verdicts-2026-10-10.md`](../improvement_ideas/43-audit-verdicts-2026-10-10.md):
-  finding-by-finding verdicts for Astra, Opus, Daybreak, and Gemini, including
-  counterevidence, duplicates, and separate implementation/validation status.
-- [`improvement_ideas/44-pipeline-optimization-plan-2026-10-10.md`](../improvement_ideas/44-pipeline-optimization-plan-2026-10-10.md):
-  current algorithms across 20 pipeline stages, Gaussian/Kawase alternatives,
-  and optimization candidates with quality and measurement requirements.
+  remaining work reconciled against Windows 0.3.1, with completed work separated.
+- [`improvement_ideas/README.md`](../improvement_ideas/README.md):
+  the compact topic map and backlog-maintenance rules. Obsolete plans/reports
+  were removed; cited evidence remains linked to immutable release history.
+- [`improvement_ideas/03-performance-gpu-cpu.md`](../improvement_ideas/03-performance-gpu-cpu.md):
+  remaining latency investigations and optional smaller-download design.
+- [`improvement_ideas/55-uct-quality-and-reading.md`](../improvement_ideas/55-uct-quality-and-reading.md):
+  current OCR quality/reading proposals and the intentionally parked model split.
 - [`docs/THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md): third-party attribution and redistribution notes.
 
 ## Current Gaps

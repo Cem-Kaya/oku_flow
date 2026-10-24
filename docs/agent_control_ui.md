@@ -1,9 +1,10 @@
 # Assistant chat and control consent
 
-This describes the local 0.3.1 implementation, not a published download or
-native acceptance. [Plan52](../improvement_ideas/52-agentic-app-control-api.md)
-remains authoritative for runtime authority. The approved visual reference is
-[the chat-first concept](../improvement_ideas/design_assets/52-chat-first-concept.png).
+This describes the Assistant implementation included in Windows 0.3.1.
+The [runtime contract](mcp_control.md) and [control inventory](control_inventory.md)
+describe current authority. [Original Plan 52](https://github.com/Cem-Kaya/oku_flow/blob/3f7481af45639db4731395f7adb9175b4038a7a5/improvement_ideas/52-agentic-app-control-api.md)
+and [the chat-first concept](https://github.com/Cem-Kaya/oku_flow/blob/3f7481af45639db4731395f7adb9175b4038a7a5/improvement_ideas/design_assets/52-chat-first-concept.png)
+remain historical design references.
 All controls are native Qt widgets; the concept is never painted as the UI.
 
 Advanced retains Image / Assistant / Settings. Assistant is one chat view with

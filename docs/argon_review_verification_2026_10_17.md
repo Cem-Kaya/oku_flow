@@ -1,6 +1,6 @@
 # Argon report verification — 2026-10-17
 
-This reconciles every item in [Argon's original report](../improvement_ideas/54-argon-codebase-analysis-2026-10-17.md)
+This reconciles every item in [Argon's original report](https://github.com/Cem-Kaya/oku_flow/blob/3f7481af45639db4731395f7adb9175b4038a7a5/improvement_ideas/54-argon-codebase-analysis-2026-10-17.md)
 against development commit `8f4567c` and the follow-up changes. The original
 review used `7dd90ac`. Meta Muse Wonderful independently read all items against
 the committed baseline; Opus verified and implemented advisory backpressure,
