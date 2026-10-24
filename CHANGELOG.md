@@ -6,9 +6,10 @@
 
 ## [Unreleased]
 
-- Use bounded curved-line OCR automatically on selected Freeze/paused frames
-  when UCT is enabled. Preserve source-registered placement, original ink for
-  unsupported words, BF16 preference and the live processing path. Add explicit
+- Use bounded curved-line OCR automatically in live camera, advancing video,
+  Freeze/paused and paired Temporal Smooth OCR jobs when UCT is enabled.
+  Preserve current-frame proof, held-acquisition identity, OCR cadence, one
+  worker, original ink for unsupported words and BF16 preference. Add explicit
   offscreen exports of actual GPU results through admission and painting.
 
 - Validate curved-line experiments with direct CUDA fit/rectification coverage
@@ -20,9 +21,6 @@
   The companion can select physical lenses through their logical parent.
 - Remember capture format and orientation per camera. Keep media orientation,
   viewport zoom and temporary Assistant camera ownership separate.
-- Add an explicit selected-Freeze/paused curved-line ribbon experiment to Paddle
-  detection, rectification and CTC geometry. Unsupported curved word quads retain
-  original ink. Defaults, models and live read cadence stay unchanged.
 - Add an owned, bounded CPU current-ink diagnostic beside the retained NCC
   baseline, with held-out nuisance cases and deterministic A/B entry points.
   It grants no live reuse, hide or read-deferral authority; GPU/runtime and

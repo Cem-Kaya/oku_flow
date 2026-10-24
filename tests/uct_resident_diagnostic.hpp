@@ -204,9 +204,9 @@ inline Selection ParseSelection(const EnvironmentReader& read)
     const auto immutable=read("OKUFLOW_UCT_RESIDENT_IMMUTABLE"),ribbon=read("OKUFLOW_UCT_CURVED_RIBBON");
     if((!immutable.isEmpty()&&immutable!="0"&&immutable!="1")||(!ribbon.isEmpty()&&ribbon!="0"&&ribbon!="1"))
         return refuse("Immutable/ribbon diagnostic selectors accept only 0 or 1.");
-    s.immutable=immutable=="1";s.curvedRibbon=PaddleRibbonEnabled(s.immutable,ribbon);
-    if((s.immutable&&!s.media)||(ribbon=="1"&&!s.immutable))
-        return refuse("Ribbon comparison requires explicit immutable media inputs.");
+    s.immutable=immutable=="1";s.curvedRibbon=PaddleRibbonEnabled(true,ribbon);
+    if(s.immutable&&!s.media)
+        return refuse("Immutable diagnostic selection requires media inputs.");
 
     s.paired = input == "pair";
     s.profile = profile != "0";

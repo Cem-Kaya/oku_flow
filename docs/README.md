@@ -1,7 +1,7 @@
 # OkuFlow Documentation Guide
 
 [Curved-line ribbon and current-ink experiments](uct_ribbon_and_current_ink.md)
-records automatic selected-immutable processing, original-pixel geometry/proof
+records automatic curved processing in every OCR mode, original-pixel geometry/proof
 composition, CPU-only ink diagnostics, measured BF16 overhead and actual OCR
 snapshot exports. Explicit ribbon `0` remains a rectangle comparison control.
 

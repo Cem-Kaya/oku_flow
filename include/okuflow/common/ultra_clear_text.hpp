@@ -58,8 +58,8 @@ struct SourceStamp {
     // Set only by the live-camera controller from capture-owned frame identity.
     // Selected media leaves this false; job/timestamp changes cannot set it.
     bool liveCameraCapture{};
-    // Processing experiment context only, issued by the selected-frame path.
-    // Never an admission/proof waiver. Advancing and ordinary live jobs are false.
+    // Selected-frame diagnostic context, never an admission/proof waiver or a
+    // curved-processing gate. Advancing and ordinary live jobs are false.
     bool immutableSelectedInput{};
     // OCR-input provenance copied from the paired device image. Validation
     // probes always describe the single exact frameSeq frame; these fields

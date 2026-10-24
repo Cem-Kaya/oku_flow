@@ -2,9 +2,12 @@
 
 ## Curved-line and current-ink experiments (development)
 
-- `PaddleRibbonEnabled` combines selected immutable eligibility with the
+- `PaddleRibbonEnabled` combines ordinary OCR acquisition eligibility with the
   diagnostic override: empty/1 enables, 0 or another explicit value disables.
-  Both CPU and TensorRT setters use it; live processing cannot opt in.
+  Both CPU and TensorRT setters use it in every OCR mode. The scheduler still
+  rejects unknown/crossfade acquisitions before inference and scopes/reset the
+  flag per job. `curvedRibbonAllFrameWorkerContexts` exercises live, advancing
+  and paired-current worker paths, current-reference ownership and reset.
 - `uct_resident_test::ExportPaintSample` optionally takes the real completed
   resident GPU result through standalone admission and the production Qt overlay.
   Its offscreen PNGs and per-word drawn receipts are separate from timed jobs;
@@ -38,11 +41,11 @@
   unresolved envelopes non-carvable through existing model admission.
   CUDA `gpu::Quad`, `fitRibbons`, optional
   `Detect` offset scratch and scalar/batch rectification carry the same compact map.
-- `SourceStamp::immutableSelectedInput` is processing context issued only for
+- `SourceStamp::immutableSelectedInput` is diagnostic context issued only for
   `UltraClearTextController::ImmutableStamp`'s selected frame. The scheduler scopes
   `Recognizer::SetCurvedRibbonInput`; `AutomaticRecognizer` forwards it without
-  changing models. `PaddleRibbonInputAllowed` excludes live/smoothed/held input and
-  Paddle adapters use `PaddleRibbonEnabled`: eligible selected input defaults on,
+  changing models. `PaddleRibbonInputAllowed` follows `EvidenceAcquisition`,
+  independent of selected/live/smoothed mode. Eligible OCR input defaults on,
   with explicit `OKUFLOW_UCT_CURVED_RIBBON=0` as the rectangle control.
 - `RecognizedWord::{fromRibbon,ribbonErrorPx,ribbonReadingPointPx}` disclose
   approximation/refusal and source centerline order. `PrepareLines` preserves

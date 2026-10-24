@@ -2,9 +2,10 @@
 
 ## Selected-frame ribbon and offline current ink (2026-10-24)
 
-Unset/`1` `OKUFLOW_UCT_CURVED_RIBBON` enables only selected immutable single-frame
-Paddle inputs; live, advancing, smoothed and held/composite inputs retain the
-baseline. Explicit `0` (or an unrecognized value) disables curved sampling.
+Unset/`1` `OKUFLOW_UCT_CURVED_RIBBON` enables curved sampling in every ordinary
+Paddle OCR job: live, advancing, selected and paired Temporal Smooth. Existing
+acquisition checks still refuse crossfade/unknown provenance. Held acquisitions
+remain the same original observation. Explicit `0` (or an unrecognized value) disables curved sampling.
 It adds no UI/settings key or model. The fit uses 24 bins (20 supported,
 including ends), 262144 component/bounding-scan pixels per selected component,
 128 lines and original-plus-eight windows. A quadratic PCA shear uses a positive

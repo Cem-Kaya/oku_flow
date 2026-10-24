@@ -118,12 +118,12 @@ QVector<PaddleQuad> PaddleRecognitionWindows(const PaddleQuad& line);
 // retain the exact previous edge-length arithmetic.
 double PaddleRecognitionWidth(const PaddleQuad& line);
 double PaddleRecognitionHeight(const PaddleQuad& line);
-// Only the controller-selected immutable acquisition may use curved sampling.
+// Curved sampling follows ordinary OCR acquisition eligibility in every mode.
+// This never grants admission or replaces current-pixel proof for a blend.
 inline bool PaddleRibbonInputAllowed(const SourceStamp& stamp) {
-    return stamp.immutableSelectedInput && !stamp.liveCameraCapture && !stamp.temporallySmoothed &&
-        stamp.holdDisplay == HoldDisplay::NotHeld;
+    return EvidenceAcquisition(stamp).has_value();
 }
-// Selected-frame default; an explicit diagnostic override can retain rectangles.
+// All-mode default; an explicit diagnostic override can retain rectangles.
 inline bool PaddleRibbonEnabled(bool allowed, const QString& overrideValue) {
     return allowed && (overrideValue.isEmpty() || overrideValue == "1");
 }

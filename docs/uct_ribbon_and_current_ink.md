@@ -1,23 +1,27 @@
 # Curved-line OCR and offline current-ink diagnostics
 
 Implementation experiment, 24 October 2026, based on `caf523e0` (Windows 0.3.1
-development). The owner subsequently requested main-app integration: curved-line
-sampling is automatic for selected immutable frames when UCT is enabled. This is
+development). The owner subsequently requested main-app integration and then
+all-mode use: curved-line sampling is automatic in every existing eligible OCR
+job when UCT is enabled. This is
 not a measured accuracy improvement, release acceptance, or a new precision policy.
 
 ## Explicit scope
 
-The model-free ribbon is enabled by default on **selected, immutable,
-single-frame** Freeze/paused inputs. The controller marks only its
-selected frame; advancing/live inputs and corroborating neighbours do not gain
-this context. Temporal Smooth, held/composite/unknown provenance cannot select
-this path. The scheduler sets and clears the processing context around
-exactly one backend call, and the automatic adapter forwards it without changing
-the selected backend or model tier. Windows OCR ignores it.
+The model-free ribbon is enabled by default on **live camera, advancing video,
+Freeze and paused OCR jobs**, including the existing paired Temporal Smooth
+path. It follows `EvidenceAcquisition`, not the selected-frame diagnostic flag.
+The scheduler still refuses unknown/crossfade pixels before recognition; a held
+acquisition never becomes a new observation. A temporal blend still requires
+its separately owned exact current frame for all existing validation/proof.
+The scheduler sets and clears the processing context around exactly one backend
+call, and the automatic adapter forwards it without changing the selected model
+tier. Windows OCR ignores it.
 `OKUFLOW_UCT_CURVED_RIBBON=0` retains the rectangle diagnostic control;
 unset/`1` uses curved sampling where eligible. Other explicit values disable it.
-No additional UI toggle, saved setting or model switch is needed. Live and
-advancing frames retain the established rectangle path. This integration is
+No additional UI toggle, saved setting or model switch is needed. The existing
+OCR cadence, full-read deadlines and worker/slot limits do not change;
+this does not run a neural read for every presented camera frame. This integration is
 development source, not the published 0.3.1 installer.
 
 Both Paddle CPU and TensorRT production paths carry the ribbon through detection,
@@ -116,9 +120,10 @@ reprojection output against the known map.
 
 Rectified tensors are recognition inputs only. Worker colors, ink fitting,
 source fingerprints, line/word references and registration continue sampling the
-original owned image. The existing paired-current-half rule is unchanged;
-smoothed inputs cannot enter this initial ribbon experiment. Nothing is read
-synchronously from the UI or present stream.
+original owned image. On the paired Temporal Smooth path, the blend is only the
+recognition input: references, source identity and current-match checks still
+come from the separately owned current half. Nothing is read synchronously from
+the UI or present stream.
 
 ## CPU current-ink oracle
 
@@ -223,7 +228,7 @@ $env:OKUFLOW_UCT_CURVED_RIBBON='0' # repeat as 1, then alternate visit order
 build/msvc-cuda-tests/tests/uct_paddle_tests.exe optionalResidentBaseline
 ```
 
-The new immutable selector refuses paired input and frozen detector-crop replay;
+Explicit immutable diagnostic selection refuses paired input and frozen detector-crop replay;
 the detector must execute afresh in each arm. Existing harness bounds/preflights
 and strict capacity diagnostics remain. Its direct default factory is FP32;
 do not label this command as a BF16 application measurement. For shipped BF16
@@ -260,6 +265,47 @@ metadata/allocation overhead also requires ROOT's separate base/candidate binary
 comparison. Pixel equality does not imply zero latency overhead.
 
 ## Validation evidence
+
+### All-mode extension (25 October 2026)
+
+The owner requested curved sampling on existing live/advancing OCR jobs as well
+as selected frames. `curvedRibbonAllFrameWorkerContexts` exercises the real
+scheduler with scripted OCR on live, advancing and paired-current inputs;
+references remain original pixels, the paired current check still runs, the
+context clears after each call and unknown provenance never enters inference.
+This is a CPU protocol fixture, not physical-camera or real live GPU inference.
+
+The scoped CPU gate passed **4/242**, including this new row. The broader tracked
+build compiled release/CPU/CUDA and the CUDA delta passed **15**, with **5
+optional skips**, zero unresolved. CPU completed **166 passed / 9 skipped /
+1 unresolved**: `video_playback_contract` failed its unmute/resume PCM assertions.
+Its production/test source is unchanged from `62d7c236`; the cause is unconfirmed.
+The first failure/logs are retained and the case was not retried unchanged. The
+overall tracked matrix is **FAILED**, not full validation or release acceptance.
+
+The separate PCH-OFF build passed the ribbon/ink contract plus source-equivalence
+guard (**2/242**, zero skips/unresolved). Native desktop/hardware validation was
+not run for this extension.
+
+An optional N8 resident invocation with camera/paired settings was refused by
+that benchmark's existing media/single contract before any model/GPU work. It is
+not live inference evidence. The separate selected-input GPU fit, rectification,
+source-proof and both-role BF16 sample evidence remains as recorded below.
+
+Word-box follow-up reuses and freshly verifies the original sample/job/PNG hashes.
+The straight control has identical ordered OCR output and identical painted PNG
+bytes (**4 → 4** words). The dense flat frame has **232 → 231** painted items:
+one long URL's replacement is withheld for invalid geometry (**1/232, 0.43%**),
+and the original pixels in that source area are unchanged. The other **231**
+spatially matched painted items retain the same text. This is a two-image sample,
+not a flat-image accuracy guarantee or a zero-loss claim. Matching uses greedy
+source-box IoU ≥0.5; split/merged words can appear as additions/omissions.
+
+Transparent SVG word-bound overlays, the box comparison gallery, exact matching
+records, full failed matrix and scoped receipts are retained under
+`Z:/Projects/OkuFlow/local-work-data/uct-ribbon-all-frames-20261025/`. No original
+image is repainted to manufacture a result. Boxes are source bounds of actually
+painted words; orange dashed references also show former omitted locations.
 
 ### Main-app integration validation (24 October 2026)
 

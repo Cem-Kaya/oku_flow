@@ -1,5 +1,11 @@
 # UCT resident SubmitDevice baseline (diagnostic)
 
+The app now enables bounded curved sampling in every eligible OCR mode. The
+diagnostic records that effective mode independently of its selected-frame
+metadata; use explicit `OKUFLOW_UCT_CURVED_RIBBON=0` for rectangle controls.
+Existing exact-N8 benchmark mode remains restricted to media/single input.
+See [curved sampling and the word-box comparison](uct_ribbon_and_current_ink.md).
+
 For the independent fixed-versus-bucketed width experiment, use
 `OKUFLOW_UCT_RESIDENT_WIDTH` and the [width comparison protocol](uct_recognizer_width.md).
 Per-run N1/batch agreement alone does not establish cross-width quality.

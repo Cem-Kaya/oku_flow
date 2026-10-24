@@ -132,10 +132,15 @@ inline void BoundsAndWindows() {
         lastEnd=windows[i].ribbon.end;
     }QVERIFY(std::abs(lastEnd-1)<1e-8);
     auto stamp=Stamp({320,160});QVERIFY(PaddleRibbonInputAllowed(stamp));
-    stamp.immutableSelectedInput=false;QVERIFY(!PaddleRibbonInputAllowed(stamp));
-    stamp.immutableSelectedInput=true;stamp.temporallySmoothed=true;QVERIFY(!PaddleRibbonInputAllowed(stamp));
-    stamp.temporallySmoothed=false;stamp.liveCameraCapture=true;QVERIFY(!PaddleRibbonInputAllowed(stamp));
-    stamp.liveCameraCapture=false;stamp.holdDisplay=HoldDisplay::Held;QVERIFY(!PaddleRibbonInputAllowed(stamp));
+    stamp.immutableSelectedInput=false;QVERIFY(PaddleRibbonInputAllowed(stamp));
+    stamp.temporallySmoothed=true;QVERIFY(PaddleRibbonInputAllowed(stamp));
+    stamp.temporallySmoothed=false;stamp.liveCameraCapture=true;QVERIFY(PaddleRibbonInputAllowed(stamp));
+    stamp.holdDisplay=HoldDisplay::Live;stamp.holdAcquisition=stamp.frameSeq;QVERIFY(PaddleRibbonInputAllowed(stamp));
+    stamp.holdAcquisition=stamp.frameSeq+1;QVERIFY(!PaddleRibbonInputAllowed(stamp));
+    stamp.holdDisplay=HoldDisplay::Held;stamp.holdAcquisition=stamp.frameSeq-1;QVERIFY(PaddleRibbonInputAllowed(stamp));
+    stamp.holdAcquisition=stamp.frameSeq;QVERIFY(!PaddleRibbonInputAllowed(stamp));
+    stamp.holdDisplay=HoldDisplay::Unknown;QVERIFY(!PaddleRibbonInputAllowed(stamp));
+    stamp.holdDisplay=HoldDisplay::Crossfade;QVERIFY(!PaddleRibbonInputAllowed(stamp));
     QVERIFY(PaddleRibbonEnabled(true, {}));
     QVERIFY(PaddleRibbonEnabled(true, "1"));
     QVERIFY(!PaddleRibbonEnabled(true, "0"));
@@ -266,6 +271,55 @@ inline void SourceProofAndPaint() {
             QVERIFY(target.rect().adjusted(-2,-2,2,2).contains(QRect(target.mapFromGlobal(box.topLeft()),box.size())));
         }
     }
+}
+
+inline void AllFrameWorkerContexts() {
+    struct Backend final : Recognizer {
+        std::atomic<int> calls{};std::atomic<bool> enabled{};RecognitionOutput output;
+        BackendStatus Initialize()override{return {BackendState::kReady,"ribbon-context-fixture","",""};}
+        void SetCurvedRibbonInput(bool value)override{enabled=value;}
+        RecognitionOutput Recognize(const QImage&,const std::atomic<bool>&)override{
+            if(!enabled.load()){RecognitionOutput refused;refused.error="Missing curved context";return refused;}
+            ++calls;return output;
+        }
+    };
+    struct Paired final : DeviceImage {
+        QImage current;mutable std::atomic<int> validations{};
+        explicit Paired(QImage image):current(std::move(image)){
+            width=current.width();height=current.height();pitch=current.bytesPerLine();kind=AnalysisKind::TemporallySmoothed;
+        }
+        const void* Data()const override{return this;}
+        bool WaitReady(void*,QString&)const override{return true;}
+        QImage Readback(const std::atomic<bool>&,QString&)const override{return current;}
+        QImage ReadValidation(const std::atomic<bool>&,QString&)const override{++validations;return current;}
+    };
+    auto backend=std::make_unique<Backend>();auto* observed=backend.get();
+    backend->output.ok=true;backend->output.lines={Words(Analytic())};
+    for(auto& word:backend->output.lines[0].words)word.paddedBounds=false;
+    const auto image=Gradient();auto stamp=Stamp(image.size());stamp.immutableSelectedInput=false;
+    RecognitionResult result;std::atomic<bool> received{};
+    RecognitionScheduler scheduler(std::move(backend),[&](auto value){result=std::move(value);received=true;},{});
+    QTRY_COMPARE(scheduler.Status().state,BackendState::kReady);
+    // Real scheduler call-scoping on live camera and advancing media, with no
+    // selected-frame flag. The original owned image still supplies references.
+    for(bool live:{true,false}){
+        stamp.liveCameraCapture=live;++stamp.frameSeq;received=false;
+        QVERIFY(scheduler.Submit(stamp,image));QTRY_VERIFY(received.load());QVERIFY(result.output.ok);
+        QVERIFY(!observed->enabled.load());
+        const auto original=MakeProbeFrame(image.constBits(),image.width(),image.height(),image.bytesPerLine(),2,stamp);
+        QCOMPARE(result.reference.luma,original.luma);
+    }
+    // Paired Temporal Smooth retains its single-current-frame validation path.
+    auto paired=std::make_shared<Paired>(image);stamp.temporallySmoothed=true;++stamp.frameSeq;received=false;
+    paired->sourceEpoch=stamp.sourceEpoch;paired->frameSequence=stamp.frameSeq;
+    QVERIFY(scheduler.SubmitDevice(stamp,paired));QTRY_VERIFY(received.load());QVERIFY(result.output.ok);
+    QCOMPARE(paired->validations.load(),1);QVERIFY(!result.currentInputMatches.isEmpty());
+    for(bool matches:result.currentInputMatches)QVERIFY(matches);
+    QCOMPARE(observed->calls.load(),3);QVERIFY(!observed->enabled.load());
+    // Unreadable provenance never enters recognition, regardless of mode.
+    stamp.holdDisplay=HoldDisplay::Unknown;++stamp.frameSeq;received=false;
+    QVERIFY(scheduler.Submit(stamp,image));QTRY_VERIFY(received.load());
+    QVERIFY(result.output.compositeInput);QVERIFY(!result.output.ok);QCOMPARE(observed->calls.load(),3);
 }
 
 inline QImage InkImage(bool changed) {

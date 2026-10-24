@@ -72,9 +72,10 @@ capture. See [quality, memory and acceptance limits](docs/live_ram_recap.md).
 Development UCT remembers your opt-in across launches. The Text Clarity switch
 pauses it without clearing your choice and restores it when switched on again.
 
-Development UCT automatically follows gently curved text on Freeze and paused
-frames. Supported words are placed back on the original page; bends it cannot
-represent keep their original ink. Live playback keeps its existing path.
+Development UCT automatically follows gently curved text in live camera,
+playing video, Freeze and paused frames. Supported words are placed back on
+the original page; bends it cannot represent keep their original ink. This
+uses the existing OCR jobs and does not run recognition on every camera frame.
 See [curved-page OCR and samples](docs/uct_ribbon_and_current_ink.md).
 
 Record microphone audio or choose no microphone for silent video. Captures, readings and explanations gather in local HTML lecture notes. The default folder is `Documents\OkuFlow\`; you can choose another location.

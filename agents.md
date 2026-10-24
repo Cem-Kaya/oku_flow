@@ -1157,9 +1157,11 @@ aligned with the project goals.
 
 ## Curved-line and current-ink experiments (2026-10-24)
 
-- The owner requested selected-immutable curved OCR integration after review
-  and latency measurements: it defaults on, with explicit `0` as a diagnostic
-  rectangle control. Keep live/advancing/paired/held inputs excluded.
+- The owner extended curved OCR to every ordinary OCR job after review and
+  latency measurements: live, advancing, selected and paired-current paths
+  default on, with explicit `0` as a diagnostic rectangle control. Preserve
+  acquisition checks for unknown/crossfade and repeated held images, plus
+  single-current-frame proof for temporal blends. This changes no OCR cadence.
   Preserve original post-geometry pixels for proof;
   ribbon rectification must not apply rotation/keystone/stabilization twice.
   Unsupported chords protect original ink across reading, painting and UIA.
