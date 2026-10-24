@@ -681,6 +681,20 @@ std::optional<PersistentSettings> ParseSettingsRoot(const QJsonObject& root)
         .toBool(!settings.cameraSymbolicLink.isEmpty() || settings.cameraIndex >= 0);
     settings.cameraFormatStableId =
         root.value(QStringLiteral("cameraFormatStableId")).toString();
+    const auto phoneZoom = root.value(QStringLiteral("phoneCameraZoom")).toObject();
+    for (auto it = phoneZoom.begin(); it != phoneZoom.end() && settings.phoneCameraZoom.size() < 64; ++it) {
+        const double ratio = it.value().toDouble(1.0);
+        if (it.key().startsWith(QStringLiteral("okuflow-phone:")) && it.key().size() <= 512 &&
+            std::isfinite(ratio) && ratio >= 0.01 && ratio <= 1000)
+            settings.phoneCameraZoom.insert(it.key(), float(ratio));
+    }
+    const auto workingSets = root.value(QStringLiteral("cameraWorkingSets")).toObject();
+    for (auto it = workingSets.begin(); it != workingSets.end() && settings.cameraWorkingSets.size() < 64; ++it) {
+        if (it.key().isEmpty() || it.key().size() > 1024 || !it.value().isObject()) continue;
+        const auto value = it.value().toObject();
+        settings.cameraWorkingSets.insert(it.key(), {value["format"].toString().left(512),
+            SnapRotation(value["rotation"].toInt())});
+    }
     settings.microphoneEndpointId =
         root.value(QStringLiteral("microphoneEndpointId")).toString();
     settings.liveRecapMinutes=std::clamp(root.value(QStringLiteral("liveRecapMinutes")).toInt(5),1,5);
@@ -1002,6 +1016,18 @@ QByteArray Serialize(const PersistentSettings& settings)
     root.insert(QStringLiteral("cameraSelectionExplicit"), settings.cameraSelectionExplicit);
     root.insert(QStringLiteral("cameraFormatStableId"),
                 settings.cameraFormatStableId);
+    QJsonObject phoneZoom;
+    for (auto it = settings.phoneCameraZoom.cbegin(); it != settings.phoneCameraZoom.cend(); ++it)
+        if (it.key().startsWith(QStringLiteral("okuflow-phone:")) && it.key().size() <= 512 &&
+            std::isfinite(it.value()) && it.value() >= 0.01f && it.value() <= 1000.0f && phoneZoom.size() < 64)
+            phoneZoom.insert(it.key(), it.value());
+    root.insert(QStringLiteral("phoneCameraZoom"), phoneZoom);
+    QJsonObject workingSets;
+    for (auto it = settings.cameraWorkingSets.cbegin(); it != settings.cameraWorkingSets.cend() && workingSets.size() < 64; ++it)
+        if (!it.key().isEmpty() && it.key().size() <= 1024)
+            workingSets.insert(it.key(), QJsonObject{{"format", it.value().formatStableId.left(512)},
+                {"rotation", SnapRotation(it.value().rotationQuarterTurns)}});
+    root.insert(QStringLiteral("cameraWorkingSets"), workingSets);
     root.insert(QStringLiteral("microphoneEndpointId"),
                 settings.microphoneEndpointId);
     root.insert(QStringLiteral("liveRecapMinutes"),std::clamp(settings.liveRecapMinutes,1,5));

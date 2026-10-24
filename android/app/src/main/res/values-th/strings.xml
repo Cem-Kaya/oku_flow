@@ -98,4 +98,7 @@
     <string name="language_system_default">ค่าเริ่มต้นของระบบ (%1$s)</string>
     <string name="language_hint">ค่าเริ่มต้นของระบบเป็นไปตามภาษาของโทรศัพท์ของคุณ อีกทางเลือกหนึ่งใช้ได้กับแอปนี้เท่านั้นและจะคงอยู่หลังจากรีสตาร์ทแล้ว</string>
     <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mbps</string>
+    <string name="camera_ultrawide">กล้องมุมกว้างพิเศษ</string>
+    <string name="camera_main">กล้องหลัก</string>
+    <string name="camera_telephoto">กล้องเทเลโฟโต้</string>
 </resources>

@@ -318,6 +318,9 @@ bool MediaCapture::HasPendingGpuReadback() const
 { return session_ && !session_->releaseNotified_ && session_->HasPendingGpuReadback(); }
 void MediaCapture::SetPhoneZoom(float ratio)
 { if (session_ && !session_->releaseNotified_ && session_->phoneTransport_) session_->phoneTransport_->SetZoom(ratio); }
+std::pair<float, float> MediaCapture::PhoneZoomRange() const
+{ return session_ && !session_->releaseNotified_ && session_->phoneTransport_
+    ? session_->phoneTransport_->ZoomRange() : std::pair{1.0f, 1.0f}; }
 void MediaCapture::SetPhoneCamera(const std::string& id)
 { if (session_ && !session_->releaseNotified_ && session_->phoneTransport_) session_->phoneTransport_->SetCamera(id); }
 void MediaCapture::SetPhoneTorch(bool enabled)

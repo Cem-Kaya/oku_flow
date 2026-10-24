@@ -32,6 +32,7 @@ class QIcon;
 class QBoxLayout;
 class QTabWidget;
 class QComboBox;
+class QDoubleSpinBox;
 class QCheckBox;
 class QListWidgetItem;
 class QParallelAnimationGroup;
@@ -80,6 +81,8 @@ public:
     void setVideoSourceSelected(bool selected, int cameraIndex);
     bool videoSourceSelected() const;
     QPushButton* phoneLightButton() const;
+    QDoubleSpinBox* phoneZoomControl() const { return phoneZoomControl_; }
+    void setPhoneZoomControls(bool visible, bool enabled, float minimum, float maximum, float requested);
     QComboBox* microphoneCombo() const;
     QComboBox* liveRecapMinutesCombo() const { return liveRecapMinutesCombo_; }
     void setLiveRecapMinutes(int minutes);
@@ -246,6 +249,7 @@ public:
     QToolButton* uiVisibilityButton() const { return uiVisibilityButton_; }
 
 signals:
+    void cameraLabelsRefreshRequested();
     void quickModeActivated(int row);
     void openUserDataFolderRequested();
     void changeUserDataFolderRequested();
@@ -328,6 +332,8 @@ private:
     QComboBox* cameraCombo_{};
     QWidget* cameraFormatControls_{};
     QPushButton* phoneLightButton_{};
+    QWidget* phoneZoomControls_{};
+    QDoubleSpinBox* phoneZoomControl_{};
     QComboBox* microphoneCombo_{};
     QListWidget* presetList_{};
     QLabel* presetDescriptionLabel_{};

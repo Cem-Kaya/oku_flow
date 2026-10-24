@@ -818,6 +818,20 @@ Update this file whenever these defaults move or new fixed paths are introduced.
 
 ## Android Companion
 
+- Development phone lens roles use reported 35-mm-equivalent focal length:
+  ultrawide below 20 mm, main below 45 mm, telephoto at least 45 mm. Unknown
+  metadata stays generic. Logical cameras are labelled automatic. Auto prefers
+  a logical rear camera, then the rear field of view nearest 26 mm; no phone ID
+  or model name is hardcoded. Enumerations retain at most 31 lens entries.
+- `automaticCameraId` is the optional protocol selector `auto`; physical output
+  IDs are opaque `physical/<encoded-parent>/<encoded-child>` strings. They are
+  selected only from advertised metadata and never interpreted by Windows.
+- Windows settings add `cameraWorkingSets` (format/orientation) and
+  `phoneCameraZoom` (requested ratio), at most 64 entries each. Zoom capabilities
+  must be finite, ordered and within 0.01–1000; absent/invalid metadata yields
+  fixed 1–1. Actual ranges, optical lens switching and encoded physical-output
+  availability remain device-specific. See [phone zoom](phone_camera_zoom.md).
+
 - Package/application id: `com.okuflow`, Kotlin namespace `com.okuflow.camera`,
   prepared version code `4`, name `0.1.3` (published code 3 / 0.1.2 is separate);
   min API `30`, compile API `37.2`, target API `37`. Pins live in

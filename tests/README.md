@@ -1,5 +1,15 @@
 # OkuFlow Tests
 
+Phone lens/zoom development adds `LensIdentityTest` to Android JVM checks and
+range/identity persistence checks to `phone_camera_contract` and
+`settings_store_round_trip`. With `OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE=ON`,
+build `native_app_control_fixture` explicitly and select
+`native_app_phone_zoom_offscreen` for the actual numeric widget's name/range
+and per-camera format/orientation bookkeeping. It opens no phone or native
+window. `shared_source_equivalence` remains mandatory. Real lens switching,
+optical quality, screen-reader interaction and replug observations are separate
+device acceptance; see [phone zoom](../docs/phone_camera_zoom.md).
+
 `uct_public_bf16_contract` checks compiled model/corpus/profile and exact golden
 contracts plus real native new-only v2 file publication, read pins, incomplete
 generations, bounds and corruption. Labelled opaque storage fixtures do not

@@ -1,5 +1,28 @@
 # OkuFlow Code Reference
 
+## Phone lens selection and camera zoom (development)
+
+- Android `CameraChoice` carries a public selection ID, logical device ID,
+  optional physical ID, lens role and equivalent focal length. `CameraCatalog`
+  discovers these independently of capture; `automaticCamera` prefers a logical
+  rear device. `equivalentFocalLength`/`lensRole` classify known field-of-view
+  metadata. `CameraEngine::openCamera` binds physical output to its held parent.
+- `PhoneCameraTransport::Enumerate` preserves capability roles in
+  `CameraDescriptor::phoneLensRole`. `ResolvePhoneZoomRange` selects the exact
+  manual or automatic camera's bounded range. `ZoomRange` and
+  `MediaCapture::PhoneZoomRange` expose a synchronized snapshot; `SetZoom`
+  coalesces requests and retains intent through same-transport reconnect.
+- `MainWindow::phoneZoomControl`/`setPhoneZoomControls` provide a labelled,
+  keyboard-operable numeric ratio control. `WheelSafeDoubleSpinBox` leaves
+  wheel scrolling to the settings panel. `PopulateCameraCombo` translates
+  known lens names without parsing IDs; `cameraLabelsRefreshRequested` lets
+  language changes refresh the picker without a UI-to-application link dependency.
+- `PersistentSettings::phoneCameraZoom` and `CameraWorkingSet` records store
+  bounded per-identity zoom, format and orientation. `RememberCameraWorkingSet`
+  excludes selected media and temporary Assistant sources. `StartCameraCapture`
+  restores saved format; successful adoption restores orientation and requests
+  the clamped phone zoom. See [the usage/protocol limits](phone_camera_zoom.md).
+
 ## BF16 app model preference (owner decision)
 
 - `engine_cache::PayloadFits` and `FileFits` share the 256 MiB file ceiling,

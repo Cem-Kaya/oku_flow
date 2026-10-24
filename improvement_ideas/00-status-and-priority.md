@@ -11,7 +11,7 @@ decisions. These are suggested priorities, not new execution grants.
 | 1 | Open a saved image or PDF and use the magnifier/UCT on it | [35](35-pdf-image-source-mode.md): selected earlier; file-source UI/PDF rendering missing |
 | 2 | Associate readable text with saved captures and navigate/search notes | [34](34-searchable-captured-notes.md): association/index missing; saving and browser transcription exist |
 | 3 | Save view positions, use a compact always-on-top view, add chapter markers | [29](29-lecture-workflow.md): product proposals |
-| 4 | Connect viewport zoom to phone zoom and add capability-based camera working sets | [51](51-okuflow-camera-android.md): transport exists; application integration remains |
+| 4 | Extend per-camera controls and saved preferences | [51](51-okuflow-camera-android.md): separate phone zoom, named lenses and saved format/orientation implemented after 0.3.1; wider hardware controls remain |
 | 5 | Reduce laptop power use and offer a smaller base download | [29](29-lecture-workflow.md), [03](03-performance-gpu-cpu.md): proposals |
 | 6 | Improve difficult-page reading and character-change detection | [55](55-uct-quality-and-reading.md): research; current BF16 preference stays |
 | 7 | Reduce validation interruptions and isolate large modules | [24](24-test-build-gates.md), [53](53-architecture-follow-ups.md): engineering work |

@@ -98,4 +98,7 @@
     <string name="language_system_default">Langue du système (%1$s)</string>
     <string name="language_hint">La valeur par défaut du système suit la langue de votre téléphone. Un autre choix s\'applique uniquement à cette application et reste après les redémarrages.</string>
     <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mbps</string>
+    <string name="camera_ultrawide">Caméra ultra grand-angle</string>
+    <string name="camera_main">Caméra principale</string>
+    <string name="camera_telephoto">Téléobjectif</string>
 </resources>

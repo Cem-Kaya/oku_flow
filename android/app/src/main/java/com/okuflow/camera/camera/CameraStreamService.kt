@@ -210,8 +210,8 @@ class CameraStreamService : Service() {
                 "zoom" -> engine.setZoom(id, command.getDouble("ratio").toFloat())
                 "camera" -> {
                     val id = if (command.has("cameraId")) command.getString("cameraId") else command.getString("id")
-                    require(CameraCatalog(this).cameras().any { it.id == id }) { "Unknown camera" }
-                    store.update { it.copy(cameraId = id) }
+                    require(id == "auto" || CameraCatalog(this).cameras().any { it.id == id }) { "Unknown camera" }
+                    store.update { it.copy(cameraId = if (id == "auto") "" else id) }
                 }
                 "torch" -> store.update { it.copy(torch = command.getBoolean("enabled")) }
                 "exposure" -> store.update { it.copy(exposure = command.getInt("steps")) }

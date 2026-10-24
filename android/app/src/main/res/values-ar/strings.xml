@@ -98,4 +98,7 @@
     <string name="language_system_default">لغة النظام (%1$s)</string>
     <string name="language_hint">يتبع النظام الافتراضي لغة هاتفك. ينطبق خيار آخر على هذا التطبيق فقط ويظل بعد إعادة التشغيل.</string>
     <string name="stream_details">%1$d × %2$d · %3$d إطارًا في الثانية · %4$s · %5$d ميجابت في الثانية</string>
+    <string name="camera_ultrawide">الكاميرا فائقة الاتساع</string>
+    <string name="camera_main">الكاميرا الرئيسية</string>
+    <string name="camera_telephoto">الكاميرا المقرِّبة</string>
 </resources>

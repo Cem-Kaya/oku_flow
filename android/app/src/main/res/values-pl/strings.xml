@@ -98,4 +98,7 @@
     <string name="language_system_default">Domyślny język systemu (%1$s)</string>
     <string name="language_hint">Domyślne ustawienia systemu są zgodne z językiem Twojego telefonu. Inny wybór dotyczy tylko tej aplikacji i pozostaje po ponownym uruchomieniu.</string>
     <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mb/s</string>
+    <string name="camera_ultrawide">Aparat ultraszerokokątny</string>
+    <string name="camera_main">Aparat główny</string>
+    <string name="camera_telephoto">Aparat z teleobiektywem</string>
 </resources>

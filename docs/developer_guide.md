@@ -479,6 +479,11 @@ vendor's alternate host without weakening verification.
 
 ## OkuFlow Camera Android Companion (in development)
 
+After Windows 0.3.1, development adds [phone zoom and named lenses](phone_camera_zoom.md):
+an explicit automatic rear-camera choice, physical-lens routing when exposed,
+a separate hardware-zoom control and saved capture format/orientation per camera.
+It does not change viewport zoom semantics or publish a new companion version.
+
 The new [`android/`](../android/README.md) project contains native Kotlin/Compose
 setup screens for Developer mode, USB debugging, camera permission, and
 connecting the cable. It follows a supported phone language by default, offers

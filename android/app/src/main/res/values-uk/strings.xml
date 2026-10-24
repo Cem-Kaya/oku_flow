@@ -98,4 +98,7 @@
     <string name="language_system_default">Мова системи (%1$s)</string>
     <string name="language_hint">За замовчуванням використовується мова вашого телефону. Інший вибір стосується лише цієї програми та залишається після перезапуску.</string>
     <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Мбіт/с</string>
+    <string name="camera_ultrawide">Надширококутна камера</string>
+    <string name="camera_main">Основна камера</string>
+    <string name="camera_telephoto">Телефотокамера</string>
 </resources>

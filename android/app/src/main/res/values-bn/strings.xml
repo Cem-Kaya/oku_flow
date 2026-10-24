@@ -98,4 +98,7 @@
     <string name="language_system_default">সিস্টেমের ডিফল্ট (%1$s)</string>
     <string name="language_hint">সিস্টেম ডিফল্ট আপনার ফোনের ভাষা অনুসরণ করে। আরেকটি পছন্দ শুধুমাত্র এই অ্যাপে প্রযোজ্য এবং রিস্টার্ট করার পরেও থাকে।</string>
     <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mbps</string>
+    <string name="camera_ultrawide">আল্ট্রাওয়াইড ক্যামেরা</string>
+    <string name="camera_main">প্রধান ক্যামেরা</string>
+    <string name="camera_telephoto">টেলিফটো ক্যামেরা</string>
 </resources>

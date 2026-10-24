@@ -170,8 +170,15 @@ fun AdvancedSettingsPanel(settings: CameraSettings, status: String, onChange: ((
                     SettingsSection(stringResource(R.string.settings_video)) {
                         ChoiceSetting(stringResource(R.string.setting_camera), settings.cameraId,
                             listOf("" to automatic) + cameras.map { camera ->
-                                camera.id to "${stringResource(if (camera.facing == CameraCharacteristics.LENS_FACING_FRONT)
-                                    R.string.camera_front else R.string.camera_back)} · ${camera.id}"
+                                val label = when (camera.role) {
+                                    "auto" -> R.string.setting_auto
+                                    "ultrawide" -> R.string.camera_ultrawide
+                                    "main" -> R.string.camera_main
+                                    "telephoto" -> R.string.camera_telephoto
+                                    "front" -> R.string.camera_front
+                                    else -> R.string.camera_back
+                                }
+                                camera.id to "${stringResource(label)} · ${camera.id}"
                             }) { onChange { current -> current.copy(cameraId = it) } }
                         SettingsDivider()
                         ModeSetting(stringResource(R.string.setting_mode), settings, mainModes, loadingModes, onChange)

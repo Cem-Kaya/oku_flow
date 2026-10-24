@@ -18,6 +18,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <utility>
 
 namespace okuflow {
 
@@ -67,6 +68,8 @@ struct CameraDescriptor {
     // Nonempty only for the optional USB-debugging companion source.
     std::string phoneSerial;
     std::string phoneCameraId;
+    // Closed capability label, never infer a lens from its opaque camera ID.
+    std::string phoneLensRole;
     std::uint64_t phoneTransportId{0};
     // True only after the running companion answers its capability handshake.
     bool phoneAppReady{false};
@@ -186,6 +189,7 @@ public:
     bool HasPendingGpuReadback() const;
     // No-op for ordinary Media Foundation webcams; writes are queued, never block the UI.
     void SetPhoneZoom(float ratio);
+    std::pair<float, float> PhoneZoomRange() const;
     void SetPhoneCamera(const std::string& id);
     void SetPhoneTorch(bool enabled);
     // Actor admission is scoped to this live phone session. The positive

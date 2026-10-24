@@ -1,5 +1,9 @@
 # OkuFlow Documentation Guide
 
+[Phone camera zoom and lens choices](phone_camera_zoom.md) describes the
+development Auto/ultrawide/main/telephoto picker, independent hardware zoom,
+saved camera settings and physical-device acceptance limits.
+
 [Pinned OCR distribution](uct_distribution.md) describes the model/runtime
 payload, new-only staging, retained licenses, sealed inventory and release SBOM.
 Byte validation is separate from native runtime and disposable-VM acceptance.

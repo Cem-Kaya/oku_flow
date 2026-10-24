@@ -273,7 +273,16 @@ times, rebased across encoder generations; `captureClock100ns` is host arrival
 time. Neither path claims measured sensor-to-display latency.
 
 The desktop source exposes queued zoom/camera APIs, and discovered camera IDs
-appear as camera-list entries. Automatic handoff of OkuFlow's viewport zoom,
+appear as camera-list entries. New companions add `automaticCameraId: "auto"`
+and `automaticCamera` (the currently resolved ID) to the capability response.
+The `camera` command accepts that automatic selector and persists empty camera
+intent; explicit IDs remain explicit. Each camera may add `role` (`auto`,
+`ultrawide`, `main`, `telephoto`, `front`, `back`), `logical` and
+`equivalentFocalMm`. Unknown/missing roles retain generic labels. Physical
+selection IDs are opaque and can contain `/`; hosts must not parse them.
+Their fixed outputs expose zoom range 1–1; logical outputs advertise their
+actual ratio range. Windows uses a separate camera-zoom control and saves intent
+per phone/lens. Automatic handoff of OkuFlow's viewport zoom,
 per-frame metadata joins, clock synchronization and high-speed capture above
 60 FPS remain separate plan-51 work.
 

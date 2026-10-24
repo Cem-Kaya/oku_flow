@@ -27,7 +27,52 @@ predate those repairs are not current bug reports.
 - **End-to-end experience:** measure first painted text and Freeze latency,
   not just worker microtime. See [03](03-performance-gpu-cpu.md).
 
-## Parked owner discussion
+## Proposed first experiments (root and Opus, 2026-10-24)
+
+These are designs, not implemented behavior or measured gains. Prioritize book
+gutters and single-character changes before adding another OCR model.
+
+**Character changes.** The current whole-line correlation averages a reference
+into at most 64×12 cells. One changed digit or stroke can be diluted by the
+unchanged line. Investigate per-word current-ink comparisons that score the
+worst small region, allow bounded alignment error and distinguish changed,
+unchanged and unverifiable. Keep the original 12-edit baseline, then add held-out
+fonts, blur, exposure/scale changes, subpixel motion and real unchanged phone
+pairs. Measure false hides and cost as well as missed edits. Native-resolution
+patches need a separately bounded capture/lease design: the existing decimated
+probe cannot recover lost pixels merely by changing its scoring function.
+
+Start offline, then shadow-only. A later conservative mode could hide a suspect
+line and request a fresh read. It would not validate new text, relax recognition
+rules or defer full reads. Thresholds and jitter tolerance remain experimental;
+one-pixel tolerance can itself conceal a one-pixel character edit. No runtime
+change is authorized by this design note.
+
+**Curved pages.** First retain a compact centreline and height profile from each
+detector component, and test sampling a straight recognition strip along that
+curve. Each sample retains its coordinate on the original image. Map recognized
+word spans back to source geometry. This resembles the curved alignment used in
+[ABCNet](https://arxiv.org/abs/2002.10200), without adopting that model or code.
+Keep the existing straight-line path as the control.
+
+A word quad is still only an approximation to a curved ribbon. Measure that
+approximation in original pixels and leave severely curved words as original
+ink; do not call four mapped corners an exact curved-glyph reconstruction.
+Reading order, ink fitting, protection, painting and positioned accessibility
+must agree on the geometry. Flattening for recognition alone does not solve the
+overlay. Strong gutter foreshortening or hidden print can remain unreadable.
+
+Use a synthetic curved-page fixture with a known coordinate map before real
+book photographs. Compare omissions, word errors, geometry/plate errors, added
+recognition windows and whole-worker time. Consider immutable Freeze inputs
+first to bound the experiment; this changes no model by mode. A whole-page mesh
+or a learned dewarper such as [UVDoc](https://arxiv.org/abs/2302.02887) is a later
+alternative with additional model, licence, memory and mapping costs.
+
+Recommended order: character-change diagnostic, curved-line geometry fixture,
+then owner review of actual error/flicker/latency results before app integration.
+
+## Parked live/Freeze model discussion
 
 **Fast recognition live / a slower accurate model on Freeze** was discussed,
 and the owner explicitly said not to implement it yet. A dual-model Freeze

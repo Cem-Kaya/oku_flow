@@ -98,4 +98,7 @@
     <string name="language_system_default">Systeemstandaard (%1$s)</string>
     <string name="language_hint">De systeemstandaard volgt de taal van uw telefoon. Een andere keuze geldt alleen voor deze app en blijft bestaan ​​na opnieuw opstarten.</string>
     <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mbps</string>
+    <string name="camera_ultrawide">Ultragroothoekcamera</string>
+    <string name="camera_main">Hoofdcamera</string>
+    <string name="camera_telephoto">Camera met telelens</string>
 </resources>

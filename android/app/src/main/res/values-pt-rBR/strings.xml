@@ -98,4 +98,7 @@
     <string name="language_system_default">Padrão do sistema (%1$s)</string>
     <string name="language_hint">O padrão do sistema segue o idioma do seu telefone. Outra opção se aplica apenas a este aplicativo e continua selecionada após reiniciar o app.</string>
     <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mbps</string>
+    <string name="camera_ultrawide">Câmera ultrawide</string>
+    <string name="camera_main">Câmera principal</string>
+    <string name="camera_telephoto">Câmera teleobjetiva</string>
 </resources>

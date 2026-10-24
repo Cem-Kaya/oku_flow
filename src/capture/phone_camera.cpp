@@ -1168,6 +1168,9 @@ std::vector<CameraDescriptor> PhoneCameraTransport::Enumerate(
                         if (id.isEmpty() || id.size() > 128) continue;
                         auto lens = discoveredPhone;
                         lens.phoneCameraId = id.toStdString();
+                        const auto role = camera.toObject()["role"].toString();
+                        if (role == "auto" || role == "ultrawide" || role == "main" || role == "telephoto" || role == "front")
+                            lens.phoneLensRole = role.toStdString();
                         lens.symbolicLink += L"/" + id.toStdWString();
                         lens.name += L" · " + id.toStdWString();
                         devices.push_back(std::move(lens));
@@ -1201,6 +1204,19 @@ std::vector<CameraDescriptor> PhoneCameraTransport::Enumerate(
     return devices;
 }
 
+std::pair<float, float> ResolvePhoneZoomRange(const QJsonObject& capabilities, const std::string& selectedCamera)
+{
+    const auto effectiveId = selectedCamera.empty() ? capabilities["automaticCamera"].toString() : QString::fromStdString(selectedCamera);
+    for (const auto& value : capabilities["cameras"].toArray()) {
+        const auto camera = value.toObject();
+        if (effectiveId.isEmpty() || camera["id"].toString() != effectiveId) continue;
+        const double low = camera["zoomMin"].toDouble(1), high = camera["zoomMax"].toDouble(1);
+        if (std::isfinite(low) && std::isfinite(high) && low >= 0.01 && high >= low && high <= 1000)
+            return {float(low), float(high)};
+    }
+    return {1.0f, 1.0f};
+}
+
 PhoneCameraTransport::~PhoneCameraTransport() { Stop(); }
 bool PhoneCameraTransport::Start(const CameraDescriptor& descriptor, IMFDXGIDeviceManager* manager,
                                  FrameCallback callback, CaptureErrorCallback errorCallback,
@@ -1229,8 +1245,10 @@ void PhoneCameraTransport::Stop() { Cancel(); if (worker_.joinable()) worker_.jo
 void PhoneCameraTransport::SetZoom(float ratio)
 {
     if (!std::isfinite(ratio) || ratio <= 0) return;
-    std::lock_guard lock(mutex_); pendingZoom_ = ratio;
+    std::lock_guard lock(mutex_); desiredZoom_ = pendingZoom_ = ratio;
 }
+std::pair<float, float> PhoneCameraTransport::ZoomRange() const
+{ std::lock_guard lock(mutex_); return zoomRange_; }
 void PhoneCameraTransport::SetCamera(const std::string& id)
 { if (id.size() <= 128) { std::lock_guard lock(mutex_); pendingCamera_ = id; } }
 void PhoneCameraTransport::SetTorch(bool enabled)
@@ -1363,7 +1381,11 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
             }
             const auto bound = ReadPacket(video, kControlLimit, &canceled_);
             if (bound.type != 1 || bound.flags || Json(bound)["channel"].toString() != "video") throw std::runtime_error("Phone video binding failed");
-            if (!descriptor.phoneCameraId.empty()) Command(control, {{"op", "camera"}, {"cameraId", QString::fromStdString(descriptor.phoneCameraId)}}, &canceled_);
+            const auto automaticId = capabilities["automaticCameraId"].toString();
+            const auto selection = descriptor.phoneCameraId.empty() ? automaticId : QString::fromStdString(descriptor.phoneCameraId);
+            if (!selection.isEmpty()) Command(control, {{"op", "camera"}, {"cameraId", selection}}, &canceled_);
+            const auto range = ResolvePhoneZoomRange(capabilities, descriptor.phoneCameraId);
+            { std::lock_guard lock(mutex_); zoomRange_ = range; }
             Command(control, {{"op", "torch"}, {"enabled", false}}, &canceled_);
             const auto now = Clock::now();
             // Initial HEVC->AVC retry shares Start's original deadline. A
@@ -1371,6 +1393,7 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
             const int cameraBudgetMs = (lastDecodedClock < 0 ? startupBudget : PhoneStartupBudget(now)).RemainingCameraMs(now);
             if (!cameraBudgetMs) throw std::runtime_error("Phone camera startup budget exhausted during USB negotiation");
             Command(control, {{"op", "start"}, {"startupBudgetMs", cameraBudgetMs}}, &canceled_);
+            { std::lock_guard lock(mutex_); pendingZoom_ = desiredZoom_; }
             std::map<quint32, QJsonObject> modes;
             std::unique_ptr<PhoneVideoDecoder> decoder;
             PhoneVideoCodec decoderCodec = PhoneVideoCodec::Avc;
@@ -1427,7 +1450,7 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
                 float zoom = -1;
                 std::string camera;
                 { std::lock_guard lock(mutex_); std::swap(zoom, pendingZoom_); camera.swap(pendingCamera_); }
-                if (zoom > 0) Command(control, {{"op", "zoom"}, {"ratio", zoom}}, &canceled_);
+                if (zoom > 0) Command(control, {{"op", "zoom"}, {"ratio", std::clamp(zoom, range.first, range.second)}}, &canceled_);
                 if (!camera.empty()) Command(control, {{"op", "camera"}, {"cameraId", QString::fromStdString(camera)}}, &canceled_);
                 SendPendingTorch(control);
                 if (control.state() != QAbstractSocket::ConnectedState || video.state() != QAbstractSocket::ConnectedState)

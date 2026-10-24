@@ -98,4 +98,7 @@
     <string name="language_system_default">सिस्टम की भाषा (%1$s)</string>
     <string name="language_hint">सिस्टम डिफॉल्ट आपके फ़ोन की भाषा का अनुसरण करता है। अन्य विकल्प केवल इस ऐप पर लागू होता है और पुनरारंभ होने के बाद भी बना रहता है।</string>
     <string name="stream_details">%1$d × %2$d · %3$d एफपीएस · %4$s · %5$d एमबीपीएस</string>
+    <string name="camera_ultrawide">अल्ट्रावाइड कैमरा</string>
+    <string name="camera_main">मुख्य कैमरा</string>
+    <string name="camera_telephoto">टेलीफ़ोटो कैमरा</string>
 </resources>

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QHelpEvent>
 #include <QSlider>
 #include <QStyleOptionComboBox>
@@ -9,6 +10,14 @@
 #include <QWheelEvent>
 
 namespace okuflow {
+
+// Camera controls must not change when the owner scrolls the settings panel.
+class WheelSafeDoubleSpinBox final : public QDoubleSpinBox {
+public:
+    explicit WheelSafeDoubleSpinBox(QWidget* parent = nullptr) : QDoubleSpinBox(parent) {}
+protected:
+    void wheelEvent(QWheelEvent* event) override { event->ignore(); }
+};
 
 // A wheel over a settings selector belongs to the surrounding scroll panel.
 // Selection remains available by click and keyboard without accidental edits.

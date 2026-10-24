@@ -18,6 +18,8 @@ class QJsonObject;
 namespace okuflow {
 // Public adb devices.proto fields only; unknown/non-USB/unauthorized transports are excluded.
 std::vector<CameraDescriptor> ParseAdbUsbDevices(std::span<const std::uint8_t> protobuf);
+// Missing/invalid capabilities expose no hardware zoom, never a guessed range.
+std::pair<float, float> ResolvePhoneZoomRange(const QJsonObject& capabilities, const std::string& selectedCamera);
 
 // adb client endpoint from ADB_SERVER_SOCKET, ANDROID_ADB_SERVER_PORT and
 // ANDROID_ADB_SERVER_ADDRESS. Only loopback TCP is supported; anything else
@@ -119,6 +121,7 @@ public:
     void Cancel();
     void Stop();
     void SetZoom(float ratio);
+    std::pair<float, float> ZoomRange() const;
     void SetCamera(const std::string& id);
     void SetTorch(bool enabled);
     // A positive steady-clock deadline and nonnull token bound actor requests.
@@ -158,6 +161,8 @@ private:
     std::string error_;
     std::string problemCode_;
     float pendingZoom_{-1.0f};
+    float desiredZoom_{1.0f};
+    std::pair<float, float> zoomRange_{1.0f, 1.0f};
     std::string pendingCamera_;
     std::optional<PendingTorchCommand> pendingTorch_;
     std::shared_ptr<std::atomic<bool>> torchCancellation_;

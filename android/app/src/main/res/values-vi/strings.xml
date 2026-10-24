@@ -98,4 +98,7 @@
     <string name="language_system_default">Mặc định hệ thống (%1$s)</string>
     <string name="language_hint">Mặc định hệ thống tuân theo ngôn ngữ điện thoại của bạn. Một lựa chọn khác chỉ áp dụng cho ứng dụng này và duy trì sau khi khởi động lại.</string>
     <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mbps</string>
+    <string name="camera_ultrawide">Camera góc siêu rộng</string>
+    <string name="camera_main">Camera chính</string>
+    <string name="camera_telephoto">Camera tele</string>
 </resources>

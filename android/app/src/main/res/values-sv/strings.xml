@@ -98,4 +98,7 @@
     <string name="language_system_default">Systemets språk (%1$s)</string>
     <string name="language_hint">Systemstandard följer din telefons språk. Ett annat val gäller endast för den här appen och kvarstår efter omstarter.</string>
     <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mbps</string>
+    <string name="camera_ultrawide">Ultravidvinkelkamera</string>
+    <string name="camera_main">Huvudkamera</string>
+    <string name="camera_telephoto">Telekamera</string>
 </resources>

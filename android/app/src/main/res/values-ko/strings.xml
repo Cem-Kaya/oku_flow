@@ -98,4 +98,7 @@
     <string name="language_system_default">시스템 기본값 (%1$s)</string>
     <string name="language_hint">시스템 기본값은 휴대전화의 언어를 따릅니다. 또 다른 선택은 이 앱에만 적용되며 다시 시작한 후에도 유지됩니다.</string>
     <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mbps</string>
+    <string name="camera_ultrawide">초광각 카메라</string>
+    <string name="camera_main">메인 카메라</string>
+    <string name="camera_telephoto">망원 카메라</string>
 </resources>

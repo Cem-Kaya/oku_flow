@@ -102,6 +102,10 @@ Optional extras, including the Codex CLI for Read and Explain and NVIDIA Super R
 
 ### Your Android phone as the camera
 
+Development builds after 0.3.1 add a separate phone-camera zoom control and
+Auto/ultrawide/main/telephoto choices where Android exposes the lenses.
+[Details and device limits](docs/phone_camera_zoom.md).
+
 OkuFlow Camera sends your phone's camera to the Windows app over USB. It is optional; compatible USB/document cameras work without it.
 
 The companion is available through Google Play closed testing. **Android 0.1.4 (version code 5) was submitted to Alpha** through the CLI. Google review and availability of this update have not been independently verified; code 3 / 0.1.2 is the last confirmed tester publication. Invited testers use the [closed-test link](https://play.google.com/apps/testing/com.okuflow).

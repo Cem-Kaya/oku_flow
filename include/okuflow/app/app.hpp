@@ -387,6 +387,7 @@ private:
     bool MicrophoneTeardownUnsafe() const;
     void RefreshCameraFormats(size_t index);
     void UpdatePhoneLightUi();
+    void RememberCameraWorkingSet();
     bool StartCameraCapture(size_t index,
                             bool interactive = true,
                             bool forceCompatibility = false,

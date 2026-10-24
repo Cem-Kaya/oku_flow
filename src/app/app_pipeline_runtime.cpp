@@ -227,12 +227,23 @@ void OkuFlowApp::EnumerateCameras() {
 }
 
 void OkuFlowApp::PopulateCameraCombo() {
-    if (!uiState_->cameraCombo_) {
+    if (!uiState_ || !uiState_->cameraCombo_) {
         return;
     }
 
     QStringList names;
-    for (const auto& camera : cameras_) names.append(QString::fromWCharArray(camera.name.c_str()));
+    for (const auto& camera : cameras_) {
+        QString name = QString::fromStdWString(camera.name);
+        if (!camera.phoneSerial.empty()) {
+            QString label;
+            if (camera.phoneCameraId.empty() || camera.phoneLensRole == "auto") label = TranslateUi(QStringLiteral("Automatic (recommended)"));
+            else if (camera.phoneLensRole == "ultrawide") label = TranslateUi(QStringLiteral("Ultrawide camera"));
+            else if (camera.phoneLensRole == "main") label = TranslateUi(QStringLiteral("Main camera"));
+            else if (camera.phoneLensRole == "telephoto") label = TranslateUi(QStringLiteral("Telephoto camera"));
+            if (!label.isEmpty()) name += QStringLiteral(" · ") + label;
+        }
+        names.append(name);
+    }
     mainWindow_->setCameraDevices(names, selectedCameraIndex_);
 }
 
@@ -255,7 +266,7 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
                 const bool changed = merged.size() != cameras_.size() ||
                     !std::equal(merged.begin(), merged.end(), cameras_.begin(),
                         [](const auto& a, const auto& b) {
-                            return a.symbolicLink == b.symbolicLink && a.name == b.name;
+                            return a.symbolicLink == b.symbolicLink && a.name == b.name && a.phoneLensRole == b.phoneLensRole;
                         });
                 cameras_ = std::move(merged);
                 selectedCameraIndex_ = -1;
@@ -1810,7 +1821,12 @@ bool OkuFlowApp::StartCameraCapture(size_t index,
         return false;
     }
     const auto link = QString::fromStdWString(cameras_[index].symbolicLink);
-    const auto format = formatOverride.value_or(settingsController_->MutableSettings().cameraFormatStableId);
+    const auto& saved = settingsController_->Settings();
+    const bool restoreWorkingSet = origin != agent::CameraSourceOrigin::AgentTemporary &&
+        cameraIntent_.TemporaryOwner().isEmpty() && link != currentCameraAccelerationKey_ && saved.cameraWorkingSets.contains(link);
+    const auto fallbackFormat = !currentCameraAccelerationKey_.isEmpty() && link != currentCameraAccelerationKey_ &&
+        origin != agent::CameraSourceOrigin::AgentTemporary ? QString() : saved.cameraFormatStableId;
+    const auto format = formatOverride.value_or(restoreWorkingSet ? saved.cameraWorkingSets.value(link).formatStableId : fallbackFormat);
     if (cameraIntent_.Requested().identity.symbolicLink != link || cameraIntent_.Requested().identity.formatStableId != format || cameraIntent_.Requested().operationId != operationId
         || cameraIntent_.Requested().origin != origin)
         cameraIntent_.Request({link,format,false},origin,operationId);
@@ -2111,10 +2127,22 @@ bool OkuFlowApp::CompleteCameraCaptureStart(bool started, bool interactive, cons
     if (selectedCameraIndex_ >= 0 && static_cast<size_t>(selectedCameraIndex_) < cameras_.size() &&
         !cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial.empty()) {
         phoneRetries_[cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial].Succeeded();
+        const auto [minimum, maximum] = mediaCapture_.PhoneZoomRange();
+        const auto key = QString::fromStdWString(cameras_[size_t(selectedCameraIndex_)].symbolicLink);
+        mediaCapture_.SetPhoneZoom(std::clamp(settingsController_->Settings().phoneCameraZoom.value(key, 1.0f), minimum, maximum));
         pipelineOrchestrator_->CancelCameraReconnect();
     }
     if (cameraIntent_.FillStartupIdentity(currentCameraAccelerationKey_,selectedCameraIndex_))
         settingsController_->InitializeLegacyCameraIdentity(selectedCameraIndex_,currentCameraAccelerationKey_);
+    if (cameraIntent_.TemporaryOwner().isEmpty()) {
+        auto& saved = settingsController_->MutableSettings();
+        saved.cameraFormatStableId = cameraIntent_.Requested().identity.formatStableId;
+        cameraIntent_.SetSavedFormat(saved.cameraFormatStableId);
+        const auto working = saved.cameraWorkingSets.constFind(currentCameraAccelerationKey_);
+        if (working != saved.cameraWorkingSets.cend()) SetRotationQuarterTurns(working->rotationQuarterTurns);
+        else if (saved.cameraWorkingSets.size() < 64)
+            saved.cameraWorkingSets.insert(currentCameraAccelerationKey_, {saved.cameraFormatStableId, CameraOriginalRotationQuarterTurns()});
+    }
     cameraFramePresented_ = false;
     pendingSceneCaptureClock100ns_.reset();
     currentCameraCaptureClock100ns_ = -1;

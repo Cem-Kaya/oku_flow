@@ -219,12 +219,13 @@ class CameraEngine(
 
     @SuppressLint("MissingPermission") // Service checks permission before constructing or starting the engine.
     private fun openCamera(run: Run) {
-        catalog.manager.openCamera(run.config.camera.id, object : CameraDevice.StateCallback() {
+        catalog.manager.openCamera(run.config.camera.deviceId, object : CameraDevice.StateCallback() {
             override fun onOpened(camera: CameraDevice) {
                 if (!startupCurrent(run)) { camera.close(); return }
                 run.camera = camera
                 try {
                     val output = OutputConfiguration(run.surface!!)
+                    run.config.camera.physicalId?.let(output::setPhysicalCameraId)
                     if (Build.VERSION.SDK_INT >= 33) output.timestampBase = OutputConfiguration.TIMESTAMP_BASE_SENSOR
                     camera.createCaptureSession(SessionConfiguration(SessionConfiguration.SESSION_REGULAR,
                         listOf(output), executor, object : CameraCaptureSession.StateCallback() {
@@ -260,7 +261,7 @@ class CameraEngine(
             addTarget(run.surface!!)
             set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
             set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, run.config.fpsRange)
-            val zoomRange = chars[CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE]
+            val zoomRange = if (run.config.camera.physicalId == null) chars[CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE] else null
             set(CaptureRequest.CONTROL_ZOOM_RATIO,
                 zoom.value(run.sessionId, run.token).coerceIn(zoomRange?.lower ?: 1f, zoomRange?.upper ?: 1f))
             val afModes = chars[CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES]?.toList().orEmpty()
@@ -289,7 +290,7 @@ class CameraEngine(
                 onMetadata(run.sessionId, JSONObject().put("generation", run.generation).put("frameNumber", result.frameNumber)
                     .put("sensorTimestampNs", result[CaptureResult.SENSOR_TIMESTAMP] ?: 0L)
                     .put("zoom", result[CaptureResult.CONTROL_ZOOM_RATIO] ?: 1f)
-                    .put("physicalCamera", result[CaptureResult.LOGICAL_MULTI_CAMERA_ACTIVE_PHYSICAL_ID] ?: run.config.camera.id)
+                    .put("physicalCamera", run.config.camera.physicalId ?: result[CaptureResult.LOGICAL_MULTI_CAMERA_ACTIVE_PHYSICAL_ID] ?: run.config.camera.deviceId)
                     .put("exposureNs", result[CaptureResult.SENSOR_EXPOSURE_TIME] ?: 0L)
                     .put("exposureCompensationSteps", result[CaptureResult.CONTROL_AE_EXPOSURE_COMPENSATION] ?: 0)
                     .put("iso", result[CaptureResult.SENSOR_SENSITIVITY] ?: 0)

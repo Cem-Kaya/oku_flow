@@ -98,4 +98,7 @@
     <string name="language_system_default">سسٹم کی ڈیفالٹ زبان (%1$s)</string>
     <string name="language_hint">سسٹم ڈیفالٹ آپ کے فون کی زبان کی پیروی کرتا ہے۔ دوسرا انتخاب صرف اس ایپ پر لاگو ہوتا ہے اور دوبارہ شروع ہونے کے بعد رہتا ہے۔</string>
     <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mbps</string>
+    <string name="camera_ultrawide">الٹرا وائیڈ کیمرہ</string>
+    <string name="camera_main">مرکزی کیمرہ</string>
+    <string name="camera_telephoto">ٹیلی فوٹو کیمرہ</string>
 </resources>

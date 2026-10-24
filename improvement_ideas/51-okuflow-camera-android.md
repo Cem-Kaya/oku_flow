@@ -9,15 +9,16 @@ phone light, source-built adb payload and Windows receiver exist. Read
 
 ## Remaining integration
 
-- **Viewport-to-phone zoom:** the transport/facade have `SetZoom` and
-  `SetPhoneZoom`, but the app does not call that facade from viewport zoom.
-  Design the optical/digital handoff, capability/range clamping and return to
-  ordinary camera-view magnification. Do not confuse the existing MCP view
-  zoom with phone optical zoom.
-- **Camera working sets:** capability-probed focus/exposure/white-balance
-  controls and per-device mode, rotation, profile and view restoration.
-  Saved camera selection and per-camera acceleration policy already exist;
-  they are not a complete hardware-control working set.
+- **Phone zoom and lenses:** implemented after 0.3.1 as a separate hardware
+  camera-zoom control, Auto/default logical camera, named lens choices and saved
+  zoom per phone/lens. Capture format and orientation also have per-camera
+  records. See [the implementation contract](../docs/phone_camera_zoom.md);
+  physical multi-lens acceptance remains separate. An automatic optical/digital
+  handoff from viewport zoom is not implemented or needed for the separate control.
+- **Further saved camera settings:** capability-probed focus/exposure/white-balance
+  controls and per-device profile/view restoration. Saved selection, capture
+  format, orientation, phone zoom and acceleration are not a complete hardware
+  control set.
 - **Adaptive phone delivery:** investigate bitrate adaptation to encoder/link
   pressure. Preserve truthful actual cadence, backpressure and source epochs.
 - **Recording experiments:** assess encoded Original-stream passthrough or

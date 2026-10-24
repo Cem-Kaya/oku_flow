@@ -31,6 +31,7 @@
 #include <QComboBox>
 #include <QCursor>
 #include <QDialog>
+#include <QDoubleSpinBox>
 #include <QDialogButtonBox>
 #include <QDropEvent>
 #include <QEvent>
@@ -1412,6 +1413,23 @@ MainWindow::MainWindow()
     phoneLightButton_->setVisible(false);
     deviceLayout->addWidget(phoneLightButton_);
 
+    phoneZoomControls_ = new QWidget();
+    auto* phoneZoomLayout = new QVBoxLayout(phoneZoomControls_);
+    phoneZoomLayout->setContentsMargins(0, 0, 0, 0);
+    auto* phoneZoomLabel = new QLabel(QStringLiteral("Phone camera zoom"));
+    phoneZoomControl_ = new WheelSafeDoubleSpinBox();
+    phoneZoomControl_->setObjectName(QStringLiteral("phoneCameraZoom"));
+    phoneZoomControl_->setDecimals(2);
+    phoneZoomControl_->setSingleStep(0.1);
+    phoneZoomControl_->setSuffix(QStringLiteral(" ×"));
+    phoneZoomControl_->setKeyboardTracking(false);
+    phoneZoomControl_->setMinimumHeight(48);
+    phoneZoomLabel->setBuddy(phoneZoomControl_);
+    phoneZoomLayout->addWidget(phoneZoomLabel);
+    phoneZoomLayout->addWidget(phoneZoomControl_);
+    phoneZoomControls_->hide();
+    deviceLayout->addWidget(phoneZoomControls_);
+
     rotationCombo_ = new WheelSafeComboBox();
     rotationCombo_->addItem("0°");
     rotationCombo_->addItem("90°");
@@ -2229,6 +2247,7 @@ MainWindow::MainWindow()
             "Select the active camera device.");
     setA11y(phoneLightButton_, "Phone light",
             "Starts off on each connection. Press to turn the phone light on or off.");
+    setA11y(phoneZoomControl_, "Phone camera zoom", "Phone camera zoom");
     setA11y(microphoneCombo_, "Recording microphone",
             "Select microphone audio for the Original MP4 recording, or choose no microphone.");
     setA11y(cameraFormatCombo_, "Resolution and frame rate",
@@ -3073,9 +3092,18 @@ void MainWindow::UpdateCameraSourceUi()
     cameraFormatControls_->setVisible(!video);
     if (video) {
         phoneLightButton_->hide();
+        phoneZoomControls_->hide();
     }
 }
 QPushButton* MainWindow::phoneLightButton() const { return phoneLightButton_; }
+void MainWindow::setPhoneZoomControls(bool visible, bool enabled, float minimum, float maximum, float requested)
+{
+    phoneZoomControls_->setVisible(visible);
+    phoneZoomControl_->setEnabled(enabled);
+    const QSignalBlocker blocker(phoneZoomControl_);
+    phoneZoomControl_->setRange(minimum, maximum);
+    if (!phoneZoomControl_->hasFocus()) phoneZoomControl_->setValue(requested);
+}
 QComboBox* MainWindow::microphoneCombo() const { return microphoneCombo_; }
 QListWidget* MainWindow::presetList() const { return presetList_; }
 QLabel* MainWindow::presetDescriptionLabel() const { return presetDescriptionLabel_; }
@@ -4448,6 +4476,7 @@ void MainWindow::changeEvent(QEvent* event)
             const QSignalBlocker blocker(cameraCombo_);
             const int videoIndex = cameraCombo_->findData(QStringLiteral("video"));
             if (videoIndex >= 0) cameraCombo_->setItemText(videoIndex, TranslateUi(QStringLiteral("View video")));
+            emit cameraLabelsRefreshRequested();
         }
         UpdateUiVisibilityControl();
         ApplyExplainBusyUi();

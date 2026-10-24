@@ -4,6 +4,22 @@
 <context>
     <name>OkuFlow</name>
     <message>
+        <source>Ultrawide camera</source>
+        <translation>Ultragroothoekcamera</translation>
+    </message>
+    <message>
+        <source>Main camera</source>
+        <translation>Hoofdcamera</translation>
+    </message>
+    <message>
+        <source>Telephoto camera</source>
+        <translation>Camera met telelens</translation>
+    </message>
+    <message>
+        <source>Phone camera zoom</source>
+        <translation>Zoom van de telefooncamera</translation>
+    </message>
+    <message>
         <source>Ultra Clear Text (experimental)</source>
         <translation>Ultra Clear Text (experimenteel)</translation>
     </message>

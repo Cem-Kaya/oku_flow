@@ -98,4 +98,7 @@
     <string name="language_system_default">系统默认 (%1$s)</string>
     <string name="language_hint">系统默认遵循您手机的语言。另一个选择仅适用于该应用程序并在重新启动后保留。</string>
     <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mbps</string>
+    <string name="camera_ultrawide">超广角摄像头</string>
+    <string name="camera_main">主摄像头</string>
+    <string name="camera_telephoto">长焦摄像头</string>
 </resources>

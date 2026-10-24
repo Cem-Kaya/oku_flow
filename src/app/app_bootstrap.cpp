@@ -458,6 +458,7 @@ bool OkuFlowApp::Initialize()
     }
 
     PopulateCameraCombo();
+    connect(mainWindow_.get(), &MainWindow::cameraLabelsRefreshRequested, this, &OkuFlowApp::PopulateCameraCombo);
     PopulateMicrophoneCombo();
     PopulatePresetList();
 
@@ -467,6 +468,17 @@ bool OkuFlowApp::Initialize()
         if (cameraActive_ && mediaCapture_.PhoneTorchAvailable())
             SetPhoneTorch(!mediaCapture_.PhoneTorchEnabled());
     });
+    connect(mainWindow_->phoneZoomControl(), &QDoubleSpinBox::valueChanged, this, [this](double ratio) {
+        if (!cameraActive_ || cameraStartupPending_ || MediaViewSelected() ||
+            selectedCameraIndex_ < 0 || size_t(selectedCameraIndex_) >= cameras_.size()) return;
+        const auto& camera = cameras_[size_t(selectedCameraIndex_)];
+        if (camera.phoneSerial.empty()) return;
+        settingsController_->MutableSettings().phoneCameraZoom[QString::fromStdWString(camera.symbolicLink)] = float(ratio);
+        if (ultraClearText_) ultraClearText_->OnSourceRetired();
+        ++uctWarpRevision_;
+        mediaCapture_.SetPhoneZoom(float(ratio));
+    });
+    connect(mainWindow_->phoneZoomControl(), &QDoubleSpinBox::editingFinished, this, &OkuFlowApp::SavePersistentSettings);
     connect(uiState_->microphoneCombo_, &QComboBox::currentIndexChanged,
             this, &OkuFlowApp::OnMicrophoneSelectionChanged);
     if (uiState_->presetList_) {

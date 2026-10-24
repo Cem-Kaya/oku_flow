@@ -1140,3 +1140,17 @@ aligned with the project goals.
   report archives. Preserve cited evidence through immutable Git-history links;
   keep current implementation contracts in `docs/`. Check affected relative
   links and record the release baseline whenever reconciling the backlog.
+
+## Phone lens and zoom development (2026-10-24)
+
+- Preserve a separately named automatic phone choice and saved explicit webcam
+  or lens intent. Classify lenses from capabilities, never numeric IDs or phone
+  model names. Physical outputs must use their advertised logical parent.
+- Keep phone camera zoom separate from viewport magnification until a measured
+  frame-bound residual handoff is designed. A requested ratio is not an applied
+  per-frame measurement; old/unknown capabilities cannot authorize a guessed range.
+- Saved camera format/orientation must respect temporary Assistant ownership
+  and selected-media orientation. Phone light stays session-only.
+- Build Android plus JVM/lint and host protocol checks; the opt-in
+  `native_app_phone_zoom_offscreen` fixture checks the real Windows widget
+  without claiming phone optics, native screen-reader or Play acceptance.

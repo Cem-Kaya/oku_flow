@@ -114,6 +114,11 @@ void OkuFlowApp::UpdatePhoneLightUi()
     SetLiveText(button, mediaCapture_.PhoneTorchEnabled()
         ? QStringLiteral("Turn off phone light") : QStringLiteral("Turn on phone light"),
         LivePoliteness::kSilent, QStringLiteral("Phone light"));
+    const auto [minimum, maximum] = mediaCapture_.PhoneZoomRange();
+    const auto key = phoneSelected ? QString::fromStdWString(cameras_[size_t(selectedCameraIndex_)].symbolicLink) : QString();
+    const float requested = std::clamp(settingsController_->Settings().phoneCameraZoom.value(key, 1.0f), minimum, maximum);
+    mainWindow_->setPhoneZoomControls(phoneSelected,
+        phoneSelected && cameraActive_ && !cameraStartupPending_ && maximum > minimum, minimum, maximum, requested);
 }
 
 void OkuFlowApp::OnTestCameraAcceleration()
@@ -335,12 +340,21 @@ void OkuFlowApp::OnCameraAccelerationModeChanged(int index)
         static_cast<size_t>(selectedCameraIndex_));
 }
 
+void OkuFlowApp::RememberCameraWorkingSet()
+{
+    if (MediaViewSelected() || currentCameraAccelerationKey_.isEmpty() || !cameraIntent_.TemporaryOwner().isEmpty()) return;
+    auto& saved = settingsController_->MutableSettings();
+    if (saved.cameraWorkingSets.contains(currentCameraAccelerationKey_) || saved.cameraWorkingSets.size() < 64)
+        saved.cameraWorkingSets[currentCameraAccelerationKey_] = {saved.cameraFormatStableId, CameraOriginalRotationQuarterTurns()};
+}
+
 void OkuFlowApp::OnCameraFormatChanged(int index) {
     if (cameraStartupPending_ || !uiState_->cameraFormatCombo_ || index < 0) {
         return;
     }
     settingsController_->MutableSettings().cameraFormatStableId =
         uiState_->cameraFormatCombo_->itemData(index).toString();
+    RememberCameraWorkingSet();
     cameraIntent_.SetSavedFormat(settingsController_->MutableSettings().cameraFormatStableId);
     SavePersistentSettings();
     if (selectedCameraIndex_ >= 0 &&
@@ -647,6 +661,7 @@ void OkuFlowApp::SetRotationQuarterTurns(int index) {
     const int delta = (clamped - previous + 4) % 4;
     rotationQuarterTurns_ = clamped;
     settingsController_->MutableSettings().rotationQuarterTurns = CameraOriginalRotationQuarterTurns();
+    RememberCameraWorkingSet();
 
     float rotatedX = zoomCenterX_;
     float rotatedY = zoomCenterY_;

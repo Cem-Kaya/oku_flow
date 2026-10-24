@@ -552,6 +552,9 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
         QStringLiteral("{0.0.1.00000000}.test-microphone");
     expected.cameraFormatStableId =
         QStringLiteral("{test-subtype}_1920x1080@60/1");
+    expected.phoneCameraZoom.insert(QStringLiteral("okuflow-phone:fixture"), 3.25f);
+    expected.phoneCameraZoom.insert(QStringLiteral("okuflow-phone:fixture/physical/0/2"), 1.0f);
+    expected.cameraWorkingSets.insert(QStringLiteral("fixture-camera-stable-link"), {expected.cameraFormatStableId, 3});
     expected.cameraAccelerationAttempt =
         QStringLiteral("\\\\?\\usb#vid_test");
     expected.cameraAcceleration.insert(
@@ -636,6 +639,10 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     QCOMPARE(loaded->language, expected.language);
     QCOMPARE(loaded->userDataRoot, expected.userDataRoot);
     QCOMPARE(loaded->cameraFormatStableId, expected.cameraFormatStableId);
+    QCOMPARE(loaded->phoneCameraZoom, expected.phoneCameraZoom);
+    QCOMPARE(loaded->cameraWorkingSets.size(), expected.cameraWorkingSets.size());
+    QCOMPARE(loaded->cameraWorkingSets.value(expected.cameraSymbolicLink).formatStableId, expected.cameraFormatStableId);
+    QCOMPARE(loaded->cameraWorkingSets.value(expected.cameraSymbolicLink).rotationQuarterTurns, 3);
     QCOMPARE(loaded->cameraAccelerationAttempt,
              expected.cameraAccelerationAttempt);
     QCOMPARE(loaded->cameraAcceleration.size(),

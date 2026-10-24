@@ -242,7 +242,7 @@ private:
         }
         const QByteArray reply = old ? QByteArray(R"({"protocol":1,"token":"old-token","cameras":[{"id":"0"}]})") :
             (busy || recoveryMode == RecoveryMode::CompanionBusy) ? QByteArray(R"({"protocol":1,"probe":true,"busy":true,"problem":null,"cameras":[{"id":"0"}]})") :
-                   QByteArray(R"({"protocol":1,"probe":true,"busy":false,"problem":null,"cameras":[{"id":"0"}]})");
+                   QByteArray(R"({"protocol":1,"probe":true,"busy":false,"problem":null,"automaticCameraId":"auto","automaticCamera":"0","cameras":[{"id":"0","role":"telephoto","zoomMin":1,"zoomMax":4}]})");
         QByteArray packet(8, 0);
         qToLittleEndian<quint16>(1, packet.data());
         qToLittleEndian<quint32>(static_cast<quint32>(reply.size()), packet.data() + 4);
@@ -358,6 +358,15 @@ struct ScopedOwnedAdbHooks {
 class PhoneCameraTests : public QObject {
     Q_OBJECT
 private slots:
+    void zoomUsesSelectedLensOrAutomaticCapabilities() {
+        const auto caps = QJsonDocument::fromJson(R"({"automaticCamera":"9","cameras":[{"id":"9","zoomMin":0.5,"zoomMax":20},{"id":"2","zoomMin":1,"zoomMax":1}]})").object();
+        QCOMPARE(okuflow::ResolvePhoneZoomRange(caps, ""), (std::pair{0.5f,20.0f}));
+        QCOMPARE(okuflow::ResolvePhoneZoomRange(caps, "2"), (std::pair{1.0f,1.0f}));
+        QCOMPARE(okuflow::ResolvePhoneZoomRange(caps, "missing"), (std::pair{1.0f,1.0f}));
+        const auto invalid = QJsonDocument::fromJson(R"({"cameras":[{"id":"9","zoomMin":2,"zoomMax":1}]})").object();
+        QCOMPARE(okuflow::ResolvePhoneZoomRange(invalid, "9"), (std::pair{1.0f,1.0f}));
+        QCOMPARE(okuflow::ResolvePhoneZoomRange({}, ""), (std::pair{1.0f,1.0f}));
+    }
     void alreadyBufferedFakeAdbRequestIsNotDiscarded() {
         FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::None,
                             FakePhoneAdb::RecoveryMode::Healthy, false, 0,
@@ -1385,6 +1394,8 @@ private slots:
         QCOMPARE(phones[0].phoneAppReady, !busy);
         QCOMPARE(phones[0].phoneBusy, busy);
         QCOMPARE(phones[1].phoneCameraId, std::string("0"));
+        QVERIFY(phones[0].phoneCameraId.empty()); // separate Auto identity
+        QCOMPARE(phones[1].phoneLensRole, old || busy ? std::string() : std::string("telephoto"));
         QCOMPARE(server.probes.load(), 1);
     }
     void canceledProbeKeepsListingAndStopsPromptly() {

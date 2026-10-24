@@ -460,6 +460,26 @@ public:
     // Metadata-only polling seam; no synthetic segment is opened or published.
     static void ApplyRecapSnapshot(OkuFlowApp& app,const VideoRecapSnapshot& snapshot) {app.PollLiveRecapForTest(snapshot);}
     static MainWindow& Window(OkuFlowApp& app) {return *app.mainWindow_;}
+    static bool RememberDistinctCameraSettings(OkuFlowApp& app) {
+        const auto previous = app.settingsController_->Settings();
+        const auto key = app.currentCameraAccelerationKey_;
+        const auto turns = app.rotationQuarterTurns_;
+        const auto restore = qScopeGuard([&] {
+            app.settingsController_->MutableSettings() = previous;
+            app.currentCameraAccelerationKey_ = key; app.rotationQuarterTurns_ = turns;
+        });
+        auto& saved = app.settingsController_->MutableSettings();
+        app.currentCameraAccelerationKey_ = "private-camera-A";
+        saved.cameraFormatStableId = "A-mode"; app.rotationQuarterTurns_ = 1;
+        app.RememberCameraWorkingSet();
+        app.currentCameraAccelerationKey_ = "private-camera-B";
+        saved.cameraFormatStableId = "B-mode"; app.rotationQuarterTurns_ = 3;
+        app.RememberCameraWorkingSet();
+        const auto a = saved.cameraWorkingSets.value("private-camera-A");
+        const auto b = saved.cameraWorkingSets.value("private-camera-B");
+        return a.formatStableId == "A-mode" && a.rotationQuarterTurns == 1 &&
+            b.formatStableId == "B-mode" && b.rotationQuarterTurns == 3;
+    }
     static bool CancelVideoPickerRestoresPhoneLight(OkuFlowApp& app,bool phone) {
         const auto previous=app.cameras_;const auto selected=app.selectedCameraIndex_;
         const auto cleanup=qScopeGuard([&]{app.cameras_=previous;app.selectedCameraIndex_=selected;app.UpdatePhoneLightUi();});
@@ -888,6 +908,26 @@ class NativeAcceptance final : public QObject {
 public:
     explicit NativeAcceptance(OkuFlowApp& app):app_(app) {}
 private slots:
+    void phoneZoomHasNativeNameBoundsAndIndependentValue() {
+        auto& window = NativeControlFixture::Window(app_);
+        const auto restore = qScopeGuard([&] { window.setPhoneZoomControls(false, false, 1, 1, 1); });
+        const auto viewportZoom = window.zoomSlider()->value();
+        window.setPhoneZoomControls(true, true, .5f, 20, 3.25f);
+        auto* zoom = window.phoneZoomControl();
+        QCOMPARE(zoom->minimum(), .5); QCOMPARE(zoom->maximum(), 20.0);
+        QCOMPARE(zoom->value(), 3.25); QVERIFY(zoom->isEnabled());
+        QCOMPARE(window.zoomSlider()->value(), viewportZoom);
+        QWheelEvent wheel(QPointF(5,5), QPointF(5,5), QPoint(), QPoint(0,120), Qt::NoButton,
+            Qt::NoModifier, Qt::NoScrollPhase, false);
+        QApplication::sendEvent(zoom, &wheel);
+        QCOMPARE(zoom->value(), 3.25);
+        QVERIFY(!zoom->accessibleName().isEmpty());
+        window.setPhoneZoomControls(true, false, 1, 1, 1);
+        QVERIFY(!zoom->isEnabled()); QCOMPARE(zoom->value(), 1.0);
+    }
+    void cameraSettingsRememberFormatAndOrientationByIdentity() {
+        QVERIFY(NativeControlFixture::RememberDistinctCameraSettings(app_));
+    }
     void processedPhotoAndDrawingIncludeUctAndInkWithCleanOriginal() {
         uct_test::RegisterFixtureFonts();
         QWidget owner;owner.resize(640,360);

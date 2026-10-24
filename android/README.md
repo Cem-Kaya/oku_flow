@@ -1,5 +1,11 @@
 # OkuFlow Camera (Android)
 
+Development after Windows 0.3.1 adds named lens choices and an explicit Auto
+rear-camera connection. The Windows app can control and remember phone zoom
+separately from viewport magnification. Hidden physical lenses use their logical
+parent where Android supports the encoded stream; actual lens availability and
+optical switching remain device-dependent. See [phone zoom](../docs/phone_camera_zoom.md).
+
 Companion app that turns an Android phone into an OkuFlow camera over the
 USB cable. Design, protocol and roadmap:
 [`improvement_ideas/51-okuflow-camera-android.md`](../improvement_ideas/51-okuflow-camera-android.md).

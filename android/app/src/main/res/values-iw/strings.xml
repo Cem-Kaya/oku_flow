@@ -98,4 +98,7 @@
     <string name="language_system_default">ברירת המחדל של המערכת (%1$s)</string>
     <string name="language_hint">ברירת המחדל של המערכת עוקבת אחר שפת הטלפון שלך. אפשרות נוספת חלה רק על אפליקציה זו ונשארת לאחר הפעלה מחדש.</string>
     <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mbps</string>
+    <string name="camera_ultrawide">מצלמה רחבה במיוחד</string>
+    <string name="camera_main">מצלמה ראשית</string>
+    <string name="camera_telephoto">מצלמת טלפוטו</string>
 </resources>

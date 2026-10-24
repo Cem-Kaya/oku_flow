@@ -98,4 +98,7 @@
     <string name="language_system_default">Predefinita del sistema (%1$s)</string>
     <string name="language_hint">Le impostazioni predefinite del sistema seguono la lingua del tuo telefono. Un\'altra scelta si applica solo a questa app e rimane dopo il riavvio.</string>
     <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mbps</string>
+    <string name="camera_ultrawide">Fotocamera ultragrandangolare</string>
+    <string name="camera_main">Fotocamera principale</string>
+    <string name="camera_telephoto">Teleobiettivo</string>
 </resources>

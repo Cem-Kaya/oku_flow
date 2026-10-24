@@ -98,4 +98,7 @@
     <string name="language_system_default">Výchozí jazyk systému (%1$s)</string>
     <string name="language_hint">Výchozí nastavení systému se řídí jazykem vašeho telefonu. Jiná možnost se vztahuje pouze na tuto aplikaci a zůstává po restartování.</string>
     <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mbps</string>
+    <string name="camera_ultrawide">Ultraširokoúhlý fotoaparát</string>
+    <string name="camera_main">Hlavní fotoaparát</string>
+    <string name="camera_telephoto">Fotoaparát s teleobjektivem</string>
 </resources>

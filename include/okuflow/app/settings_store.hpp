@@ -158,6 +158,11 @@ struct PresetDefinition {
     bool isBuiltIn{false};
 };
 
+struct CameraWorkingSet {
+    QString formatStableId;
+    int rotationQuarterTurns{0};
+};
+
 struct PersistentSettings {
     // UCT preference is shared across quick modes; Text Clarity gates runtime use.
     bool ultraClearTextEnabled{false};
@@ -181,6 +186,9 @@ struct PersistentSettings {
     bool legacyWiderCameraCompatibility{false};
     QString cameraAccelerationAttempt;
     QMap<QString, CameraAccelerationSetting> cameraAcceleration;
+    // Stable device/lens identities; independent of quick modes and viewport zoom.
+    QMap<QString, float> phoneCameraZoom;
+    QMap<QString, CameraWorkingSet> cameraWorkingSets;
     int rotationQuarterTurns{0};
     bool virtualJoystick{false};
     bool zoomWheelAcceleration{true};

@@ -98,4 +98,7 @@
     <string name="language_system_default">Bahasa sistem (%1$s)</string>
     <string name="language_hint">Default sistem mengikuti bahasa ponsel Anda. Pilihan lain hanya berlaku untuk aplikasi ini dan tetap ada setelah dimulai ulang.</string>
     <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mbps</string>
+    <string name="camera_ultrawide">Kamera ultrawide</string>
+    <string name="camera_main">Kamera utama</string>
+    <string name="camera_telephoto">Kamera telefoto</string>
 </resources>

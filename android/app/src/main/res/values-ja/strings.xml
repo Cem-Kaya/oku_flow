@@ -98,4 +98,7 @@
     <string name="language_system_default">システム既定 (%1$s)</string>
     <string name="language_hint">システムのデフォルトは携帯電話の言語に従います。もう 1 つの選択肢は、このアプリにのみ適用され、再起動後も維持されます。</string>
     <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mbps</string>
+    <string name="camera_ultrawide">超広角カメラ</string>
+    <string name="camera_main">メインカメラ</string>
+    <string name="camera_telephoto">望遠カメラ</string>
 </resources>

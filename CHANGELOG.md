@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+- Add a separate phone camera zoom control, saved per phone/lens; expose Auto
+  rear-camera selection and metadata-based ultrawide, main and telephoto names.
+  The companion can select physical lenses through their logical parent.
+- Remember capture format and orientation per camera. Keep media orientation,
+  viewport zoom and temporary Assistant camera ownership separate.
+- Record the root/Opus curved-line and character-change proposals as future
+  experiments; no OCR model, precision or live/Freeze policy changes.
+
 - Reconcile the improvement backlog against Windows 0.3.1. Remove completed
   plans and obsolete review reports, retain actionable follow-ups, and keep
   historical evidence links pinned to the released source.

@@ -105,4 +105,7 @@
     <string name="language_system_default">Sistem varsayılanı (%1$s)</string>
     <string name="language_hint">Sistem varsayılanı telefonunuzun dilini izler. Başka bir seçim yalnızca bu uygulamada geçerlidir ve yeniden başlatmalardan sonra da korunur.</string>
     <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mbps</string>
+    <string name="camera_ultrawide">Ultra geniş açılı kamera</string>
+    <string name="camera_main">Ana kamera</string>
+    <string name="camera_telephoto">Telefoto kamera</string>
 </resources>

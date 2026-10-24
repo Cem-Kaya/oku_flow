@@ -98,4 +98,7 @@
     <string name="language_system_default">پیش‌فرض سیستم (%1$s)</string>
     <string name="language_hint">پیش‌فرض سیستم از زبان تلفن شما پیروی می‌کند. انتخاب دیگری فقط برای این برنامه اعمال می شود و پس از راه اندازی مجدد باقی می ماند.</string>
     <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mbps</string>
+    <string name="camera_ultrawide">دوربین فوق عریض</string>
+    <string name="camera_main">دوربین اصلی</string>
+    <string name="camera_telephoto">دوربین تله‌فوتو</string>
 </resources>
