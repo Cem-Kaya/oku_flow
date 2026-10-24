@@ -49,8 +49,8 @@ inline std::string_view ReceiptLabelSource(std::string_view key) {
     // Canonical ids plus legacy-only receipt keys, each bound to the caption
     // users already see for that control.
     static constexpr std::pair<std::string_view, std::string_view> labels[]{
-        {"image.uct.enabled","Ultra Clear Text on this view"},
-        {"image.uct.showOriginal","Original camera text shown."},
+        {"image.uct.enabled","Ultra Clear Text (experimental)"},
+        {"image.uct.showOriginal","Show original camera text"},
         {"image.uct.gpu.detector","GPU text detector"},
         {"image.uct.gpu.recognizer","GPU text recognizer"},
         {"image.uct.cpu.detector","CPU text detector"},

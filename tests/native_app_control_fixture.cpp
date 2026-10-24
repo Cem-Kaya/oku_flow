@@ -1,6 +1,7 @@
 #include "../src/app/app_internal.hpp"
 #include "okuflow/app/agent/app_control_target.hpp"
 #include "okuflow/app/agent/parameter_registry.hpp"
+#include "okuflow/app/agent/receipt_labels.hpp"
 #include "okuflow/app/settings_controller.hpp"
 #include "okuflow/app/ui_state_manager.hpp"
 #include "okuflow/app/user_data_paths.hpp"
@@ -21,6 +22,7 @@
 #include "okuflow/common/video_recap.hpp"
 #include "okuflow/mcp/app_ipc_endpoint.hpp"
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDir>
 #include <QFile>
@@ -296,7 +298,7 @@ public:
     static void PrepareHttpAssistant(OkuFlowApp& app,const QString& endpoint) {
         auto& config=app.settingsController_->MutableSettings().assistive;
         config.aiProvider="openai";config.vlmApiUrl=endpoint;
-        config.vlmModel="private-http-fixture";config.vlmApiKey="fixture-only";
+        config.vlmModel="private-http-fixture";config.vlmApiKey.clear();
         config.agentControlEnabled=true;config.externalMcpEnabled=false;
         if(!app.agentCodex_)app.InitializeAgentControl();
         app.StartNewAssistantConversationAs(ChatBackendKind::Explain);
@@ -2470,7 +2472,7 @@ private slots:
                     if(probe || (!messages.isEmpty() && messages.last().toObject()["role"]=="user")) {
                         if(probe)++probes;else ++submissions;
                         if(!probe || scenario=="ready") {
-                            const auto name=probe?"okuflow_capability_test":"okuflow_view_zoom_set";
+                            const auto name=probe?"okuflow_capability_test":"view_zoom_set";
                             const QJsonObject args=probe?QJsonObject{{"value",1}}:QJsonObject{{"magnification",2}};
                             const QJsonObject call{{"id",QString("call-%1").arg(requests)},{"type","function"},
                                 {"function",QJsonObject{{"name",name},{"arguments",QString::fromUtf8(QJsonDocument(args).toJson(QJsonDocument::Compact))}}}};
@@ -2492,12 +2494,16 @@ private slots:
         QVERIFY(!NativeControlFixture::AssistantPending(app_));
         QCOMPARE(submissions,scenario=="ready"?1:0);QCOMPARE(probes,scenario=="invalid"?0:1);
         QCOMPARE(session.Snapshot()["messages"].toArray().size(),2);
-        QCOMPARE(session.Snapshot()["messages"].toArray().last().toObject()["complete"].toBool(),scenario=="ready");
+        const auto completed=session.Snapshot()["messages"].toArray().last().toObject();
+        QVERIFY2(completed["complete"].toBool()==(scenario=="ready"),qPrintable(completed["errorCode"].toString()));
         QCOMPARE(NativeControlFixture::Target(app_).Fields().at(Field::ZoomAmount),scenario=="ready"?QJsonValue(2.0):zoom);
         QVERIFY(NativeControlFixture::Service(app_).PendingApproval().isEmpty());
     }
     void uctMasterAndOriginalUseNativeControllerWithoutClaimingReadiness() {
         auto& service=NativeControlFixture::Service(app_);
+        const auto* panel=NativeControlFixture::Window(app_).ultraClearTextPanel();
+        QCOMPARE(QString::fromUtf8(ReceiptLabelSource("image.uct.enabled").data()),panel->enableCheckbox()->text());
+        QCOMPARE(QString::fromUtf8(ReceiptLabelSource("image.uct.showOriginal").data()),panel->showOriginalCheckbox()->text());
         service.SetEnabled(true,false);
         auto config=NativeControlFixture::CurrentImageConfig(app_);config.autoTextClarityEnabled=false;
         NativeControlFixture::RestoreImageConfig(app_,config);

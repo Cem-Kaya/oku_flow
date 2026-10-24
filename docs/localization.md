@@ -334,3 +334,13 @@ through `-3-20261019-r1`. `scripts/check_translations.ps1 -UpdateManifest` passe
 all 24 catalogs and generated all 874 finished entries per catalog. This is
 structural and linguistic model review, not native-speaker or rendered UIA/RTL
 acceptance. No Android or website strings changed.
+# UCT control captions (2026-10-24)
+
+The two UCT checkbox captions, `Ultra Clear Text (experimental)` and
+`Show original camera text`, are shared by the native controls and action
+receipts. All 48 additions across 24 catalogs received per-entry read-only
+review: 39 accepted and nine replacements applied, with no unread entries.
+Review task: `uct-checkbox-48-label-translations-review-20261024-r1`.
+This is machine-assisted linguistic review; rendered text, RTL and native-speaker
+acceptance remain separate. The English feature name stays consistent with
+the existing UCT catalog entries.

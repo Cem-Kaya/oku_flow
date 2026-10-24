@@ -4,6 +4,14 @@
 <context>
     <name>OkuFlow</name>
     <message>
+        <source>Ultra Clear Text (experimental)</source>
+        <translation>Ultra Clear Text (ניסיוני)</translation>
+    </message>
+    <message>
+        <source>Show original camera text</source>
+        <translation>הצג את הטקסט המקורי בתמונת המצלמה</translation>
+    </message>
+    <message>
         <source>Live recap duration (minutes)</source>
         <translation>משך הצפייה החוזרת בווידאו החי (דקות)</translation>
     </message>

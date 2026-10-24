@@ -5097,8 +5097,8 @@ the Text Clarity master and effective OCR state. The catalog contains 100
 parameters (55 image), with the existing 43 tools, 17 protected entries and 46
 actions unchanged.
 Both UCT boolean rows require a ready backend for `effective:true`, returning
-`uct_backend_inactive` during initialization/failure. Receipt labels reuse the
-existing localized UCT/view captions rather than adding untranslated keys.
+`uct_backend_inactive` during initialization/failure. Receipt labels use the
+actual UCT checkbox captions; both are included in the translation catalog.
 
 The planner, receipt, metadata-page and MCP fixtures retain their complete
 per-field assertions with the expanded 100-parameter/55-image inventory. The
@@ -5110,6 +5110,10 @@ Native routing rows exercise restored histories, direct configuration refresh,
 a diagnostic click during preparation, and loopback HTTP probe success,
 no-tool completion and invalid-configuration refusal. All providers are private
 fixtures; these rows do not submit account-backed inference or open devices.
+The HTTP fixture uses the HTTP adapter's unprefixed `view_zoom_set` name and no
+API credential (its storage deliberately refuses credential writes). Earlier
+fixture failures and their effect on later saved-state assertions are retained.
+The native UCT row also compares receipt sources with both checkbox captions.
 `CodexAgentClient` is a separate, restricted JSONL child. `Configure` retires its
 own process/session when provider identity changes; `TestCapability` explicitly
 runs bounded offline preflight and a tiny no-frame dynamic-tool round trip.
