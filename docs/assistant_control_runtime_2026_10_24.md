@@ -1,5 +1,44 @@
 # Assistant Send and UCT control checkpoint — 2026-10-24
 
+## UCT discovery follow-up
+
+The owner's live Luna request searched quick-mode presets instead of the UCT
+settings. Source `d7dad4fc4508324947124b0dc0b7797d3c6185c5` adds shared product
+vocabulary and explicit UCT/OCR field guidance for both providers. It also
+permits the native Text Clarity master preference on CPU paths, because that
+master gates CPU OCR. CUDA enhancement still reports ineffective there;
+the other 47 CPU-camera image mutations remain refused.
+
+Final follow-up: **12/245 scoped PASS**, no skipped rows/unresolved results;
+**17/17 synthetic** and **9/9 actual-target offscreen V1 SDK scenarios PASS**.
+The actual CUDA application build passed. SHA-256:
+`9f6468ceff0441538cb085a5fc84920e3e4778a4d5933eb76a65b8f3e368c519`.
+Child/controller both exited **0**, 114.326 seconds, final Job active zero,
+runner release and independent probe verified, no cleanup issues.
+
+Evidence:
+`Z:/Projects/OkuFlow/local-work-data/release-acceptance-20261024/assistant-uct-discovery-r3/C2-20261024-015351-7a59a179643540ad896798bc12e21ba9`.
+Earlier discovery `r1` and `r2` failures are preserved: the dependency admission
+gap, then obsolete CPU classification/count assertions and a failed fixture's
+unretired context. The fixture now always retires that context on assertion
+failure. The passing end-to-end row checks actual child instructions/tool schema,
+get/set/get success, native enablement, saved intent and ready/effective state
+with a private recognizer. The fixture is CPU-only and creates no CUDA surface;
+this does not depend on whether the host has a GPU.
+
+Read-only Opus review `opus-uct-discovery-cpu-master-review-20261024-r1`
+(same parent command as below) found no P1/P2 in the production repairs at
+`f598b2a`; the subsequent commit changes tests/docs only. Nonblocking follow-ups
+include a direct HTTP guidance-payload assertion and the Text Clarity reason
+on GPU-capable media awaiting its first processed frame (currently it can say
+`disabled`). Neither changes UCT's separate backend-readiness check.
+
+The rebuilt app still needs the owner's natural-language Luna retry. These
+model-free passes do not establish model reasoning, GPU OCR, spoken
+accessibility or installer acceptance.
+
+## Earlier Send checkpoint
+
 Tested source: `f7ccf77fe0e07b747ad98ce119b3e329d5efbe14`.
 This is scoped background validation, not installer or full release acceptance.
 
