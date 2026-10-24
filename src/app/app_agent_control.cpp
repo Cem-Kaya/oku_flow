@@ -12,6 +12,7 @@
 #include <QDebug>
 #include <QUuid>
 #include <array>
+#include <utility>
 
 namespace okuflow {
 namespace {
@@ -93,6 +94,10 @@ void OkuFlowApp::InitializeAgentControl()
         // Internal classification only: never log RPC payloads, provider text,
         // account details, configured endpoints or MCP inventory.
         qInfo().noquote() << "OkuFlow control capability:" << code;
+        if (code != "checking") {
+            agentCapabilityTesting_=false;
+            FinishAgentPreparation(ready);
+        }
         SetAssistantBusy(assistiveManager_->Runtime().IsBusy() || assistiveManager_->Runtime().ChatSession().Busy());
         if (!ready && !agentContext_.isEmpty()) CancelAgentTurn();
     });
@@ -175,7 +180,6 @@ void OkuFlowApp::InitializeAgentControl()
                     assistiveManager_->Runtime().ChatSession().OwnsTicket(*agentReceiptTicket_));
             if (matching) {
                 agentFrames_ = state.value("grants").toObject().value("frames").toBool() || state.value("nextTurnFrames").toBool();
-                assistiveManager_->Runtime().ChatSession().SetAttachCurrentView(agentFrames_);
             }
         }
         const auto approval = controlService_->PendingApproval();
@@ -245,19 +249,40 @@ void OkuFlowApp::RefreshAgentControlSettings()
 }
 void OkuFlowApp::TestAgentCapability()
 {
-    if(assistiveManager_->Runtime().IsBusy() || assistiveManager_->Runtime().ChatSession().Busy())return;
+    if(agentCapabilityTesting_ || assistiveManager_->Runtime().IsBusy() ||
+       (assistiveManager_->Runtime().ChatSession().Busy() && !pendingAgentSubmission_))return;
     RefreshAgentControlSettings();
+    agentCapabilityTesting_=true;
     for (auto* panel : AgentPanels(mainWindow_.get(),assistiveManager_.get()))
         panel->SetCapabilityStatus(QStringLiteral("Checking tool support..."));
     if(Codex(settingsController_->MutableSettings().assistive))agentCodex_->TestCapability();
-    else agentHttp_->TestCapability([self=QPointer<OkuFlowApp>(this)](HttpAgentCapability capability,QString) {
+    else if (!agentHttp_->TestCapability([self=QPointer<OkuFlowApp>(this)](HttpAgentCapability capability,QString) {
         if(!self)return;
+        self->agentCapabilityTesting_=false;
         for (auto* panel : AgentPanels(self->mainWindow_.get(),self->assistiveManager_.get())) {
             panel->SetCapabilityStatus(capability.available?QStringLiteral("Tool support ready"):QStringLiteral("Tool support unavailable"));
             panel->RefreshRoutingNotice(self->AgentReady());
         }
         self->SetAssistantBusy(self->assistiveManager_->Runtime().IsBusy() || self->assistiveManager_->Runtime().ChatSession().Busy());
-    });
+        self->FinishAgentPreparation(capability.available);
+    })) {
+        agentCapabilityTesting_=false;
+        for(auto* panel : AgentPanels(mainWindow_.get(),assistiveManager_.get()))
+            panel->SetCapabilityStatus(QStringLiteral("Tool support unavailable"));
+        FinishAgentPreparation(false);
+    }
+}
+void OkuFlowApp::FinishAgentPreparation(bool ready)
+{
+    const auto pending=std::exchange(pendingAgentSubmission_,std::nullopt);
+    if(!pending)return;
+    auto& runtime=assistiveManager_->Runtime();
+    if(!runtime.ChatSession().Current(pending->ticket))return;
+    if(ready && AgentReady() && agentConversationSelected_ &&
+       pending->configuration==agentConfigDigest_ && pending->generation==agentGeneration_)
+        SubmitAgentPrompt(pending->prompt);
+    else runtime.FailPreparedChat("agent_unavailable");
+    SetAssistantBusy(runtime.IsBusy() || runtime.ChatSession().Busy());
 }
 void OkuFlowApp::StartAgentConversation()
 {
@@ -281,7 +306,7 @@ void OkuFlowApp::SubmitAgentPrompt(const QString& prompt)
         assistiveManager_->Runtime().FailPreparedChat("agent_unavailable"); return;
     }
     agentContext_=controlService_->Begin({agent::ContextKind::EmbeddedTurn,agentOwner_,
-        ++agentGeneration_,{agentFrames_,agentPhotos_,agentRecording_,false}});
+        ++agentGeneration_,{agentFrames_,agentPhotos_,agentRecording_,false},true});
     if(agentContext_.isEmpty()) {
         // No context was granted: retire only the pending answer presentation.
         assistiveManager_->Runtime().BeginControlAnswer(prompt,{});
@@ -336,7 +361,7 @@ void OkuFlowApp::SubmitAgentPrompt(const QString& prompt)
         }
     };
     const bool frames=controlService_->ContextStatus().value("grants").toObject().value("frames").toBool();
-    if(!frames) {start({},{});return;}
+    if(!frames || !runtime.ChatSession().AttachCurrentView()) {start({},{});return;}
     controlService_->Submit({agentContext_,QStringLiteral("initial-%1").arg(generation),"view_observe",{}},
         [self=QPointer<OkuFlowApp>(this),generation,start](agent::ControlResult result) {
         if(!self || generation!=self->agentGeneration_ || self->agentContext_.isEmpty())return;
@@ -361,6 +386,8 @@ void OkuFlowApp::SubmitAgentPrompt(const QString& prompt)
 void OkuFlowApp::CancelAgentTurn(bool undo)
 {
     CancelAgentScene();
+    const auto pending=std::exchange(pendingAgentSubmission_,std::nullopt);
+    const bool cancelPreparation=std::exchange(agentCapabilityTesting_,false);
     ++agentGeneration_;
     const auto context=agentContext_;
     agentContext_.clear();
@@ -368,11 +395,13 @@ void OkuFlowApp::CancelAgentTurn(bool undo)
     // restore is requested and reported. StopAndUndo ends the context first;
     // the provider and lease cleanup below then find nothing left to end.
     if(undo && controlService_)controlService_->StopAndUndo();
-    if(agentCodex_)agentCodex_->Cancel();
+    if(agentCodex_) {if(cancelPreparation)agentCodex_->Shutdown();else agentCodex_->Cancel();}
     if(agentHttp_)agentHttp_->Cancel();
     if(controlService_ && !context.isEmpty())controlService_->End(context);
     if(undo && agentIpc_)agentIpc_->Revoke();
     if(assistiveManager_)assistiveManager_->Runtime().CompleteControlAnswer(agentConversationId_,{}, {},QStringLiteral("Assistant stopped."),true);
+    if(pending && assistiveManager_ && assistiveManager_->Runtime().ChatSession().Current(pending->ticket))
+        assistiveManager_->Runtime().FailPreparedChat("canceled");
     agentFrames_=false;
     for (auto* panel : AgentPanels(mainWindow_.get(),assistiveManager_.get()))
         if (panel) panel->SetSessionGrants(false,agentPhotos_,agentRecording_);

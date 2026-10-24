@@ -13,7 +13,8 @@
 namespace okuflow {
 // Dedicated restricted child. No ordinary Assistant history, thread/resume,
 // shell, external MCP, account management or implicit inference is exposed.
-// TestCapability is the sole tiny inference probe and requires a UI action.
+// TestCapability is the sole tiny inference probe, initiated by native Send or
+// the optional diagnostic button; configuration/startup never initiates it.
 class CodexAgentClient final : public QObject {
     Q_OBJECT
 public:

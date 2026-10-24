@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+- Start Assistant tool setup automatically on Send and continue the pending
+  request without separate test/conversation buttons. Allow current-view image
+  observations for that embedded request without an extra consent card.
+- Expose Ultra Clear Text on/off and Show original camera text through typed
+  AI/MCP image controls, alongside the existing CPU/GPU model choices.
+
 - Explicitly disable configured MCP servers in restricted Assistant children;
   the installed Codex CLI merges an empty table with ambient configuration.
 

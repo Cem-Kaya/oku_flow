@@ -131,6 +131,7 @@ private:
     QString fieldPlanPreset_;
     bool fieldPlanWritesPreset_{};
     bool uctModelsPending_{};
+    std::optional<bool> uctEnabledPending_;
     std::map<Field,QJsonValue> observed_;
     mutable OperationTracker operations_;
     std::map<QString,QString> recordingOperations_;

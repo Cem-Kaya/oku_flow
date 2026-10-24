@@ -25,6 +25,7 @@ bool AppControlTarget::SelectedMediaImageFieldAvailable(Field field, bool gpuAva
     case Field::BlackWhite:case Field::Threshold:case Field::Contrast:case Field::Brightness:
     case Field::Scheme:case Field::CustomColorMode:case Field::CustomColorStopCount:
     case Field::CustomColorStops:case Field::CustomColorStepped:case Field::CustomColorRecipe:
+    case Field::UctEnabled:case Field::UctShowOriginal:
     case Field::UctGpuDetector:case Field::UctGpuRecognizer:case Field::UctCpuDetector:case Field::UctCpuRecognizer:
         return true;
     default:return false;
@@ -33,6 +34,8 @@ bool AppControlTarget::SelectedMediaImageFieldAvailable(Field field, bool gpuAva
 namespace {
 struct ParameterField { std::string_view id; Field field; };
 constexpr ParameterField kImageViewFields[] = {
+    {"image.uct.enabled",Field::UctEnabled},
+    {"image.uct.showOriginal",Field::UctShowOriginal},
     {"image.uct.gpu.detector",Field::UctGpuDetector},
     {"image.uct.gpu.recognizer",Field::UctGpuRecognizer},
     {"image.uct.cpu.detector",Field::UctCpuDetector},
@@ -117,6 +120,9 @@ bool TextHandler(Field f) {
 bool IsUctModel(Field f) {
     return f==Field::UctGpuDetector || f==Field::UctGpuRecognizer ||
            f==Field::UctCpuDetector || f==Field::UctCpuRecognizer;
+}
+bool IsUctControl(Field f) {
+    return IsUctModel(f) || f==Field::UctEnabled || f==Field::UctShowOriginal;
 }
 QJsonValue Value(const std::map<Field,QJsonValue>& fields,Field f) {
     const auto found=fields.find(f);return found==fields.end()?QJsonValue(QJsonValue::Null):found->second;
@@ -314,6 +320,10 @@ ControlPlan AppControlTarget::PlanImageParameterDependencies(const std::map<Fiel
 #ifndef OKUFLOW_IMAGE_PARAMETER_PLANNER_ONLY
 namespace {
 QObject* ParameterWidget(Field field,UIStateManager& ui,MainWindow* window) {
+    if(field==Field::UctEnabled || field==Field::UctShowOriginal) {
+        auto* panel=window?window->ultraClearTextPanel():nullptr;
+        return !panel?nullptr:field==Field::UctEnabled?panel->enableCheckbox():panel->showOriginalCheckbox();
+    }
     if(IsUctModel(field)) {
         auto* panel=window?window->ultraClearTextPanel():nullptr;if(!panel)return nullptr;
         if(field==Field::UctGpuDetector)return panel->gpuDetectorCombo();
@@ -478,6 +488,9 @@ std::map<Field,QJsonValue> AppControlTarget::ImageParameterFields() const {
     const auto& custom=app_.uiState_ && app_.uiState_->displayColorPicker_
         ? app_.uiState_->displayColorPicker_->customScheme():app_.settingsController_->Settings().customColorScheme;
     auto fields=ImageProfileFields(app_.CaptureCurrentAdvancedConfig(),custom);
+    const auto* panel=app_.mainWindow_?app_.mainWindow_->ultraClearTextPanel():nullptr;
+    fields[Field::UctEnabled]=panel?panel->IsEnabledByUser():app_.settingsController_->Settings().ultraClearTextEnabled;
+    fields[Field::UctShowOriginal]=panel && panel->IsShowingOriginal();
     const auto models=app_.mainWindow_ && app_.mainWindow_->ultraClearTextPanel()
         ?app_.mainWindow_->ultraClearTextPanel()->ModelSettings():app_.settingsController_->Settings().ultraClearTextModels;
     fields[Field::UctGpuDetector]=uct::ModelTierToken(models.gpuDetector);
@@ -510,6 +523,7 @@ QJsonObject AppControlTarget::QueryImageParameters(ToolId tool,const QJsonObject
     std::map<Field,QJsonValue> saved;
     if(committed) {
         saved=ImageProfileFields(committed->currentConfig,committed->customColorScheme);
+        saved[Field::UctEnabled]=committed->ultraClearTextEnabled;
         saved[Field::UctGpuDetector]=uct::ModelTierToken(committed->ultraClearTextModels.gpuDetector);
         saved[Field::UctGpuRecognizer]=uct::ModelTierToken(committed->ultraClearTextModels.gpuRecognizer);
         saved[Field::UctCpuDetector]=uct::ModelTierToken(committed->ultraClearTextModels.cpuDetector);
@@ -541,7 +555,7 @@ QJsonObject AppControlTarget::QueryImageParameters(ToolId tool,const QJsonObject
             (ParameterWidget(field,*app_.uiState_,app_.mainWindow_.get()) || field==Field::KeystonePaused || field==Field::SuperResPerformanceOverride);
         QString unsupported=available?QString():QString("native_control_unavailable");
         if(group==ParameterGroup::Image && media && !SelectedMediaImageFieldAvailable(field,mediaGpu)) {available=false;unsupported="selected_media_unsupported_effect";}
-        else if(group==ParameterGroup::Image && !media && field!=Field::DebugView && !IsUctModel(field) && !cuda) {available=false;unsupported="cuda_unavailable";}
+        else if(group==ParameterGroup::Image && !media && field!=Field::DebugView && !IsUctControl(field) && !cuda) {available=false;unsupported="cuda_unavailable";}
         if(field==Field::KeystonePaused && mediaGpu && (!app_.mediaGpuScene_ || !app_.mediaGpuScene_->SceneReady())) {
             available=false;unsupported="no_processed_frame";
         }
@@ -588,6 +602,11 @@ QJsonObject AppControlTarget::QueryImageParameters(ToolId tool,const QJsonObject
             intent=true;inactive=active?QString():QString("uct_backend_inactive");
         }
         QJsonValue effective=requested.isBool()?QJsonValue(active && intent):active && intent?requested:QJsonValue(QJsonValue::Null);
+        if(field==Field::UctEnabled || field==Field::UctShowOriginal) {
+            const bool enabled=app_.ultraClearText_ && app_.ultraClearText_->IsEnabled();
+            effective=enabled && requested.toBool();
+            inactive=enabled?QString():Value(fields,Field::TextClarity).toBool()?QString("uct_disabled"):QString("text_clarity_disabled");
+        }
         if(field==Field::ZoomEnabled && Value(fields,Field::Framing)=="fit") {effective=false;inactive="view_layout";}
         if((field==Field::CenterX || field==Field::CenterY) && Value(fields,Field::Framing)=="fit") {effective=0.5;inactive="view_layout";}
         if(field==Field::ZoomAmount)effective=app_.cameraActive_ || media?QJsonValue(app_.EffectiveZoomAmount()):QJsonValue(QJsonValue::Null);
@@ -794,6 +813,15 @@ std::optional<bool> AppControlTarget::ApplyImageParameter(const FieldWrite& writ
         if(!fieldPlanActive_)FinalizeUctModelParameters();
         return true;
     }
+    if(write.field==Field::UctEnabled) {
+        uctEnabledPending_=write.value.toBool();
+        if(!fieldPlanActive_)FinalizeUctModelParameters();
+        return true;
+    }
+    if(write.field==Field::UctShowOriginal) {
+        if(!app_.ultraClearText_)return false;
+        app_.ultraClearText_->SetShowOriginal(write.value.toBool());return true;
+    }
     const int steps=int(std::lround(write.value.toDouble()*Scale(write.field)));
     if(TextHandler(write.field)) {
         if(write.field==Field::TextClarity && app_.uiState_->simpleTextClarityCheckbox_) {
@@ -836,9 +864,16 @@ std::optional<bool> AppControlTarget::ApplyImageParameter(const FieldWrite& writ
     return true;
 }
 void AppControlTarget::FinalizeUctModelParameters() {
-    if(!uctModelsPending_)return;
-    uctModelsPending_=false;
-    app_.OnUltraClearTextModelsChanged();
+    if(uctEnabledPending_ && !*uctEnabledPending_ && app_.ultraClearText_)
+        app_.ultraClearText_->SetEnabled(false);
+    if(uctModelsPending_) {
+        uctModelsPending_=false;app_.OnUltraClearTextModelsChanged();
+    }
+    if(uctEnabledPending_) {
+        const bool enabled=*uctEnabledPending_;uctEnabledPending_.reset();
+        app_.settingsController_->MutableSettings().ultraClearTextEnabled=enabled;
+        if(app_.ultraClearText_)app_.ultraClearText_->SetEnabled(enabled);
+    }
 }
 #endif // OKUFLOW_IMAGE_PARAMETER_PLANNER_ONLY
 } // namespace okuflow::agent

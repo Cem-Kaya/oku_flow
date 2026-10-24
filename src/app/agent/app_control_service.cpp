@@ -100,7 +100,8 @@ QString FieldName(Field field) {
         "ui.setupPromptDeclined","ui.activeTab","annotation.color","annotation.width","annotation.textSize","annotation.dashed",
         "annotation.shape","annotation.captureOnExit","annotation.tool","annotation.enabled",
         "camera.format","camera.acceleration","camera.phoneTorch","recording.microphone","recording.canvas","notes_output.root",
-        "image.uct.gpu.detector","image.uct.gpu.recognizer","image.uct.cpu.detector","image.uct.cpu.recognizer","video.selection"};
+        "image.uct.gpu.detector","image.uct.gpu.recognizer","image.uct.cpu.detector","image.uct.cpu.recognizer","video.selection",
+        "image.uct.enabled","image.uct.showOriginal"};
     const auto index = static_cast<std::size_t>(field);
     return index < std::size(names) ? QString::fromLatin1(names[index]) : QString();
 }
@@ -141,6 +142,8 @@ QString AppControlService::Begin(const ContextSpec& spec) {
     approval_.reset();
     Context context;
     context.id = Id(); context.spec = spec;
+    if(spec.kind==ContextKind::ExternalLease)context.spec.currentViewFrames=false;
+    else if(spec.currentViewFrames)context.spec.grants.frames=true;
     context.operationAuthority=std::make_shared<AdmittedControlAuthority>();
     context.operationAuthority->owner=spec.owner;context.operationAuthority->kind=spec.kind;
     operationAuthorities_.push_back(context.operationAuthority);
@@ -218,7 +221,10 @@ void AppControlService::SourceChanged() {
     auto& selected=revisions_[Field::VideoSelection];++selected.value;selected.user=true;
     approval_.reset();
     nextFrameOwner_.clear();
-    if (context_) { context_->spec.grants.frames = false; Event(*context_, "source_changed"); }
+    if (context_) {
+        if(!context_->spec.currentViewFrames)context_->spec.grants.frames=false;
+        Event(*context_, "source_changed");
+    }
 }
 void AppControlService::RevokeFrameGrant(const QString& owner) {
     Q_ASSERT(QThread::currentThread() == thread());
@@ -510,6 +516,10 @@ void AppControlService::Continue(const ControlRequest& request, ToolId tool) {
     if (descriptor->tier != Tier::Read && descriptor->tier != Tier::Egress && target_.UserInteracting()) { Finish(context.id, request.callKey, ControlResult::Failure("user_interacting", true)); return; }
     if (Stale(context, plan)) { Finish(context.id, request.callKey, ControlResult::Failure("stale_state")); return; }
     if (!Authorized(context, tool, plan)) {
+        if(context.spec.currentViewFrames && !context.spec.grants.frames &&
+           (tool==ToolId::Observe || plan.requiresFrames)) {
+            Finish(context.id,request.callKey,ControlResult::Failure("consent_denied"));return;
+        }
         Finish(context.id, request.callKey, context.spec.kind == ContextKind::ExternalLease
             && !(plan.approvalDomain == ApprovalDomain::Configuration && HasDomainGrant(context,tool,plan))
             ? ControlResult::Failure("denied_by_policy") : Ask(context, tool, *args, plan, digest)); return;

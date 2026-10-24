@@ -1357,3 +1357,11 @@ AAC gap compaction on the tested Windows codec. Missing PCM intervals now use
 bounded worker-side silence with sample-count accounting. The fixed synthetic
 markers differed by about -0.633 ms; this does not establish physical microphone
 clock accuracy or long-soak fidelity. See the linked timeline evidence.
+
+Embedded Assistant Send performs first-use tool initialization and automatically
+continues the admitted message. It authorizes current-view observations for that
+turn without an extra image consent prompt. This native policy grants no
+external MCP, photo or recording rights. Stop/New/provider changes fence pending
+initialization; configuration alone does not trigger inference. Optional tool
+checks remain in settings. The control catalog also exposes UCT enabled and
+Show original preferences, separating requested state from effective readiness.

@@ -217,3 +217,24 @@ payloads are not copied into those diagnostics. The visible unavailable state
 still means control has not been established.
 
 Restricted Codex children replace each inventoried MCP entry with a complete disabled inert transport. This is process-local; it does not edit the user's Codex configuration. Offline startup verification must see no MCP-server startup notifications before the explicit live tool test.
+
+## Send and current-view policy (owner revision, 2026-10-24)
+
+With embedded Assistant control enabled, sending a message initializes tool
+support when needed and continues that exact pending message. The capability
+button in settings is optional diagnostics. The user no longer has to choose a
+separate control conversation; visible completed text remains bounded context,
+not a reused permission or backend authority. No startup/configuration change
+alone sends a model request.
+
+The submitted embedded request permits the selected AI to observe the current
+view during that turn without an image-sharing approval card. The attachment
+checkbox only chooses an initial image. A later source/geometry change still
+invalidates old image authority; explicit revocation denies subsequent delivery.
+External MCP leases, photos and recordings retain their independent grants.
+The former mandatory routing/attachment-grant descriptions above are historical.
+
+Typed image controls now include `image.uct.enabled` and
+`image.uct.showOriginal`, alongside four CPU/GPU model selectors. UCT remains
+subject to the native Text Clarity master and real backend readiness. Requested
+on/off state persists; Show original is a session comparison setting.

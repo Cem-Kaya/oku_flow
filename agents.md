@@ -1114,3 +1114,19 @@ aligned with the project goals.
   __VSCMD_PREINIT_PATH before reinitializing VS2022. Keep independent installed
   root/compiler validation and the long-PATH plus forged-environment fixture;
   do not replace setup with trust in inherited version or root declarations.
+
+## Owner Assistant Send and current-view policy (2026-10-24)
+
+- The native Send action may initialize the selected embedded Assistant's tool
+  capability and continue that same submitted request without requiring separate
+  Test endpoint or Start control conversation clicks. Startup and configuration
+  changes alone must never submit inference. The optional explicit test remains
+  a diagnostic action. Preserve one pending ticket, cancellation, provider/config
+  fencing and real readiness; do not claim readiness or send a stale request.
+- An embedded Assistant request authorizes current-view image observations for
+  its turn without an additional image consent card. Keep image provenance,
+  freshness, source/geometry stamps, explicit revocation and bounded observations.
+  This does not grant external MCP image access, photo or recording permission.
+- Keep UCT master and Show original in the typed control inventory, alongside
+  model tiers. Requested intent, native persistence and effective OCR readiness
+  remain distinct; changing a preference is not inference/quality acceptance.

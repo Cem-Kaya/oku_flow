@@ -116,6 +116,7 @@ std::map<Field, QJsonValue> ImageDefaults() {
             {Field::CustomColorStops, QJsonArray{"#000000", "#ffffff"}}, {Field::CustomColorStepped, false},
             {Field::CustomColorRecipe, QJsonObject{}},
             {Field::UctGpuDetector,"medium"},{Field::UctGpuRecognizer,"medium"},
+            {Field::UctEnabled,false},{Field::UctShowOriginal,false},
             {Field::UctCpuDetector,"tiny"},{Field::UctCpuRecognizer,"small"}};
 }
 ControlPlan PlanImage(const std::map<Field, QJsonValue>& current, ToolId tool, const QJsonObject& args) {
@@ -310,7 +311,7 @@ private slots:
             shared(control["schema"].toObject(), Object(p->schema), id);
         }
         for (const auto& p : ParameterRegistry()) ++registryGroups[Id(ParameterGroupName(p.group))];
-        const std::map<QString, int> expected{{"image", 53}, {"view", 9}, {"camera", 5}, {"recording", 2},
+        const std::map<QString, int> expected{{"image", 55}, {"view", 9}, {"camera", 5}, {"recording", 2},
             {"assistant_preferences", 10}, {"notes_output", 2}, {"ui", 9}, {"annotation", 8}};
         QVERIFY(registryGroups == inventoryGroups);
         QVERIFY(registryGroups == expected);
@@ -435,7 +436,7 @@ private slots:
         for (const auto& p : ParameterRegistry()) QVERIFY(expected.insert(Id(p.id)).second);
         for (const auto& p : ProtectedControlRegistry()) QVERIFY(expected.insert(Id(p.id)).second);
         for (const auto& a : ControlActionRegistry()) QVERIFY(expected.insert(Id(a.id)).second);
-        QCOMPARE(expected.size(), std::size_t(98 + 17 + 46));
+        QCOMPARE(expected.size(), std::size_t(100 + 17 + 46));
         for (const std::size_t limit : {std::size_t(16), std::size_t(7), std::size_t(1)}) {
             int pages = 0; qsizetype largest = 0;
             const auto items = MetadataItems({}, limit, &pages, &largest);
@@ -606,7 +607,7 @@ private slots:
         QVERIFY2(appAccepts.isEmpty(), qPrintable(appAccepts.join(", ")));
     }
 
-    // [planner] The image planner owns exactly the 53 image and 9 view fields.
+    // [planner] The image planner owns exactly the 55 image and 9 view fields.
     void imagePlannerOwnsEveryImageAndViewField() {
         std::set<Field> fields; int owned = 0;
         for (const auto& p : ParameterRegistry()) {
@@ -617,7 +618,7 @@ private slots:
             QVERIFY(!FieldName(*field).isEmpty());
             ++owned;
         }
-        QCOMPARE(owned, 62);
+        QCOMPARE(owned, 64);
         QVERIFY(!AppControlTarget::ImageParameterField("image.colors.custom"));
         QVERIFY(!AppControlTarget::ImageParameterField("assistant.apiKey"));
     }
@@ -907,7 +908,7 @@ private slots:
         const auto two = PlanImage(defaults, ToolId::ImageSettingsGet, {{"fields", QJsonArray{"image.brightness", "image.contrast"}}});
         QVERIFY(two.error.isEmpty() && two.writes.empty());
         QVERIFY(std::set<Field>(two.observedFields.begin(), two.observedFields.end()) == (std::set<Field>{Field::Contrast, Field::Brightness}));
-        QCOMPARE(PlanImage(defaults, ToolId::ImageSettingsGet, {}).observedFields.size(), std::size_t(53));
+        QCOMPARE(PlanImage(defaults, ToolId::ImageSettingsGet, {}).observedFields.size(), std::size_t(55));
         QCOMPARE(PlanImage(defaults, ToolId::ViewSettingsGet, {}).observedFields.size(), std::size_t(9));
     }
 

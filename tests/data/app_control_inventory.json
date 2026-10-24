@@ -4923,6 +4923,92 @@
         "tests/native_app_control_fixture.cpp"
       ],
       "agentCoverage": "native_offscreen_fixture"
+    },
+    {
+      "fieldId": "image.uct.enabled",
+      "group": "image",
+      "nativePersistence": "shared_saved_immediate",
+      "units": "none",
+      "schema": {
+        "type": "boolean"
+      },
+      "native": {
+        "source": "src/app/ultra_clear_text_controller.cpp",
+        "handler": "SetEnabled",
+        "widget": "ultraClearTextCheckbox",
+        "settingsMember": "ultraClearTextEnabled"
+      },
+      "kind": "preference",
+      "permissionDomain": "view",
+      "effects": [
+        "local_ocr_state",
+        "invalidate_pending_text"
+      ],
+      "availability": "requested preference; requires Text Clarity; effective OCR readiness reported separately",
+      "mcpAccess": "typed_get_set",
+      "serviceField": "UctEnabled",
+      "nativeDefault": false,
+      "validation": {
+        "native": "Native UCT controller and checkbox state; requested and effective state remain separate.",
+        "required": [
+          "unknown_field_rejected",
+          "wrong_type_nonfinite_out_of_range_rejected",
+          "native_and_agent_effect_equivalence",
+          "revision_user_wins",
+          "undo_skips_native_changes",
+          "no_privilege_or_grant_widening",
+          "unavailable_has_no_side_effect"
+        ]
+      },
+      "existingTestFiles": [
+        "tests/uct_paddle_tests.cpp",
+        "tests/settings_store_tests.cpp",
+        "tests/native_app_control_fixture.cpp"
+      ],
+      "agentCoverage": "native_offscreen_fixture"
+    },
+    {
+      "fieldId": "image.uct.showOriginal",
+      "group": "image",
+      "nativePersistence": "session_only",
+      "units": "none",
+      "schema": {
+        "type": "boolean"
+      },
+      "native": {
+        "source": "src/app/ultra_clear_text_controller.cpp",
+        "handler": "SetShowOriginal",
+        "widget": "ultraClearTextShowOriginal",
+        "settingsMember": ""
+      },
+      "kind": "preference",
+      "permissionDomain": "view",
+      "effects": [
+        "local_ocr_state",
+        "invalidate_pending_text"
+      ],
+      "availability": "comparison preference; effective only while Ultra Clear Text is enabled",
+      "mcpAccess": "typed_get_set",
+      "serviceField": "UctShowOriginal",
+      "nativeDefault": false,
+      "validation": {
+        "native": "Native UCT controller and checkbox state; requested and effective state remain separate.",
+        "required": [
+          "unknown_field_rejected",
+          "wrong_type_nonfinite_out_of_range_rejected",
+          "native_and_agent_effect_equivalence",
+          "revision_user_wins",
+          "undo_skips_native_changes",
+          "no_privilege_or_grant_widening",
+          "unavailable_has_no_side_effect"
+        ]
+      },
+      "existingTestFiles": [
+        "tests/uct_paddle_tests.cpp",
+        "tests/settings_store_tests.cpp",
+        "tests/native_app_control_fixture.cpp"
+      ],
+      "agentCoverage": "native_offscreen_fixture"
     }
   ],
   "protectedControls": [

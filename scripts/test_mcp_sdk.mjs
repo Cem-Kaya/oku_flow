@@ -82,7 +82,7 @@ try {
                     else{++actions;assert(['existing-tool-runtime-gated','native-ui-only'].includes(item.status));}}
                 if(!result.hasMore)break;assert(result.afterField);assert.notEqual(result.afterField,afterField);afterField=result.afterField;
             }
-            assert.equal(fields,98);assert.equal(protectedEntries,17);assert.equal(actions,46);
+            assert.equal(fields,100);assert.equal(protectedEntries,17);assert.equal(actions,46);
             failure(await call('app.controls.list',{afterField:'unknown.field'}),'invalid_argument');
         });
         await check('expanded schema admission with explicit synthetic read subset',async()=>{

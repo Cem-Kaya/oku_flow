@@ -189,23 +189,21 @@ void OkuFlowApp::SubmitAssistantPromptText(const QString& prompt,
     const auto kind = runtime.ChatSession().Snapshot().value("kind").toString();
     const bool attachFrame = runtime.ChatSession().AttachCurrentView();
     const bool embedded = settingsController_->MutableSettings().assistive.agentControlEnabled && !withoutControl;
-    const bool legacy = kind == "assistant" || kind == "coding";
-    if (kind == "agent" || (legacy && embedded)) {
-        mainWindow_->agentControlPanel()->SetRoutingNotice(true,AgentReady());
-        assistiveManager_->Overlay().SetControlRoutingNotice(true,AgentReady());
-        return;
-    }
-    if (embedded && !AgentReady()) {
-        mainWindow_->agentControlPanel()->SetRoutingNotice(true,false);
-        assistiveManager_->Overlay().SetControlRoutingNotice(true,false);
-        return;
-    }
+    if (embedded) RefreshAgentControlSettings();
     const auto backend = embedded ? ChatBackendKind::Agent : kind == "coding" ? ChatBackendKind::Coding :
         kind == "assistant" ? ChatBackendKind::Assistant : ChatBackendKind::Explain;
     if (!runtime.PrepareChatTurn(prompt,backend)) return;
+    if (embedded && !agentConversationSelected_) {
+        agentConversationId_.clear();
+        agentCodex_->ResetConversation();
+    }
     agentConversationSelected_ = embedded;
     if (embedded) {
-        agentFrames_ = attachFrame; // explicit composer action, source-scoped by Begin
+        // Sending an embedded request authorizes observations of the current
+        // view for this turn. The checkbox only attaches an initial image.
+        agentFrames_ = true;
+        mainWindow_->agentControlPanel()->SetRoutingNotice(false);
+        assistiveManager_->Overlay().SetControlRoutingNotice(false);
         DispatchAssistantPrompt(prompt,clearAdvancedEditor,nullptr,0,0,false);
         return;
     }
@@ -243,7 +241,14 @@ void OkuFlowApp::DispatchAssistantPrompt(const QString& prompt,
     pendingAssistantPrompt_ = submittedPrompt;
     assistantResponseOpen_ = true; assistantResponseReceivedText_ = false;
     SetAssistantBusy(true);
-    if (agentConversationSelected_) { SubmitAgentPrompt(submittedPrompt); return; }
+    if (agentConversationSelected_) {
+        if (AgentReady()) SubmitAgentPrompt(submittedPrompt);
+        else if (const auto ticket=assistiveManager_->Runtime().ChatSession().ActiveTicket()) {
+            pendingAgentSubmission_=PendingAgentSubmission{submittedPrompt,*ticket,agentConfigDigest_,agentGeneration_};
+            TestAgentCapability();
+        }
+        return;
+    }
     auto& runtime = assistiveManager_->Runtime();
     const auto kind = runtime.ChatSession().Snapshot().value("kind").toString();
     if (kind == "coding" || kind == "assistant")
@@ -254,6 +259,7 @@ void OkuFlowApp::DispatchAssistantPrompt(const QString& prompt,
 
 void OkuFlowApp::StopAssistantRequest()
 {
+    if (pendingAgentSubmission_) { CancelAgentTurn(); return; }
     if (pendingOnDemandAnalysis_ || pendingAssistantFramePrompt_) {
         CancelPendingAssistantCaptures();
         ShowStatusMessage(QStringLiteral("Assistant request stopped."), 3000);
@@ -399,8 +405,9 @@ void OkuFlowApp::LoadAssistantConversationById(const QString& threadId)
         const auto messages = QJsonDocument::fromJson(agentTranscripts_.value(threadId).toUtf8()).array();
         runtime.ChatSession().Restore(threadId,ChatBackendKind::Agent,messages);
         agentConversationSelected_ = false;
-        mainWindow_->agentControlPanel()->SetRoutingNotice(true,AgentReady());
-        assistiveManager_->Overlay().SetControlRoutingNotice(true,AgentReady()); return;
+        agentConversationId_.clear();agentCodex_->ResetConversation();
+        mainWindow_->agentControlPanel()->SetRoutingNotice(false);
+        assistiveManager_->Overlay().SetControlRoutingNotice(false); return;
     }
     pendingAssistantHistoryThreadId_ = threadId;
     runtime.LoadAssistantConversation(threadId);

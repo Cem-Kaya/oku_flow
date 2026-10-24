@@ -5,6 +5,12 @@
 namespace okuflow::agent {
 namespace {
 constexpr ParameterDescriptor kParameters[] = {
+    {"image.uct.enabled",ParameterGroup::Image,R"parameter({"type":"boolean"})parameter","none",
+     "shared_saved_immediate",ParameterPermission::View,ParameterAccess::WritableWithPolicy,false,
+     "src/app/ultra_clear_text_controller.cpp","SetEnabled","requested preference; requires Text Clarity; effective OCR readiness reported separately"},
+    {"image.uct.showOriginal",ParameterGroup::Image,R"parameter({"type":"boolean"})parameter","none",
+     "session_only",ParameterPermission::View,ParameterAccess::WritableWithPolicy,false,
+     "src/app/ultra_clear_text_controller.cpp","SetShowOriginal","comparison preference; effective only while Ultra Clear Text is enabled"},
     {"image.uct.gpu.detector",ParameterGroup::Image,R"parameter({"type":"string","enum":["tiny","small","medium"]})parameter","model_tier",
      "shared_saved_immediate",ParameterPermission::View,ParameterAccess::WritableWithPolicy,false,
      "src/app/app_ultra_clear_text.cpp","OnUltraClearTextModelsChanged","preference; active backend and model readiness reported separately"},

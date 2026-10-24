@@ -35,7 +35,7 @@ enum class Field {
     AnnotationShape, AnnotationCaptureOnExit, AnnotationTool, AnnotationEnabled,
     CameraFormat, CameraAcceleration, CameraTorch, RecordingMicrophone, RecordingCanvas, NotesRoot,
     UctGpuDetector, UctGpuRecognizer, UctCpuDetector, UctCpuRecognizer,
-    VideoSelection
+    VideoSelection, UctEnabled, UctShowOriginal
 };
 enum class ContextKind { EmbeddedTurn, ExternalLease };
 // Native admitted work may outlive a normally completed embedded turn. This
@@ -135,6 +135,9 @@ struct ContextSpec {
     QString owner; // app-created control-session/lease identity, never model text
     quint64 epoch{};
     ControlGrants grants;
+    // Trusted native Send policy, never a provider argument or external lease.
+    // Current-view observations need no additional consent card for this turn.
+    bool currentViewFrames{};
 };
 struct ControlRequest {
     QString contextId;

@@ -184,10 +184,19 @@ private:
     QByteArray agentConfigDigest_;
     quint64 agentGeneration_{};
     bool agentConversationSelected_{}, sendWithoutControlOnce_{};
+    struct PendingAgentSubmission {
+        QString prompt;
+        ChatTurnTicket ticket;
+        QByteArray configuration;
+        quint64 generation{};
+    };
+    std::optional<PendingAgentSubmission> pendingAgentSubmission_;
+    bool agentCapabilityTesting_{};
     bool agentFrames_{}, agentPhotos_{}, agentRecording_{};
     void InitializeAgentControl();
     void RefreshAgentControlSettings();
     void TestAgentCapability();
+    void FinishAgentPreparation(bool ready);
     void StartAgentConversation();
     void SubmitAgentPrompt(const QString& prompt);
     void CancelAgentTurn(bool undo = false);

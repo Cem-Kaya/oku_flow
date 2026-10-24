@@ -112,6 +112,11 @@ When the test is available to you, install OkuFlow Camera, enable USB debugging 
 
 The magnifier works without AI. **Read** transcribes the text in view, **Explain** describes the scene, and **Assistant** supports follow-up questions. Requests run when you ask. Answers appear in large text; **Read Aloud** speaks only when you choose it, using a Windows voice installed on your PC.
 
+In the development Assistant, Send prepares app control automatically when it
+is enabled. Your request allows the selected provider to observe OkuFlow's
+current view for that turn, without a second image-sharing prompt. External MCP
+clients, photos and recording retain their separate permission controls.
+
 Choose where the requested image goes:
 
 | Provider | What to expect |

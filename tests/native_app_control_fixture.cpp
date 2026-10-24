@@ -14,6 +14,8 @@
 #include "okuflow/ui/ultra_clear_text_panel.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "okuflow/ui/video_transport.hpp"
+#include "okuflow/ui/agent_control_panel.hpp"
+#include "okuflow/common/codex_agent_client.hpp"
 #include "okuflow/common/uct_device_image.hpp"
 #include "okuflow/common/video_playback.hpp"
 #include "okuflow/common/video_recap.hpp"
@@ -275,6 +277,21 @@ public:
     }
     static void CancelAgentTurn(OkuFlowApp& app,const QString& context,bool undo) {app.agentContext_=context;app.CancelAgentTurn(undo);}
     static QString AgentContext(OkuFlowApp& app) {return app.agentContext_;}
+    static void PrepareAssistant(OkuFlowApp& app,const QString& model) {
+        auto& config=app.settingsController_->MutableSettings().assistive;
+        config.aiProvider="codex";config.codexExecutablePath=QStringLiteral(OKUFLOW_FAKE_AGENT_BINARY);
+        config.codexModel=model;config.codexReasoningEffort="low";
+        config.agentControlEnabled=true;config.externalMcpEnabled=false;
+        if(!app.agentCodex_)app.InitializeAgentControl();
+        app.StartNewAssistantConversationAs(ChatBackendKind::Explain);
+        app.RefreshAgentControlSettings();
+    }
+    static void SubmitAssistant(OkuFlowApp& app) {app.SubmitAssistantPromptText("Set zoom to 2x",false,false);}
+    static void StopAssistant(OkuFlowApp& app) {app.StopAssistantRequest();}
+    static bool AssistantPending(const OkuFlowApp& app) {return app.pendingAgentSubmission_.has_value();}
+    static CodexAgentClient& AgentClient(OkuFlowApp& app) {return *app.agentCodex_;}
+    static AssistiveRuntime& Runtime(OkuFlowApp& app) {return app.assistiveManager_->Runtime();}
+    static bool UctRequested(const OkuFlowApp& app) {return app.ultraClearText_->IsEnabledByUser();}
     static bool StartBlockedCamera(OkuFlowApp& app,CameraSourceOrigin origin,
         std::function<bool(const std::atomic<bool>&)> start) {
         CameraDescriptor camera;camera.name=L"Private startup fixture";camera.symbolicLink=L"fixture-physical-camera";
@@ -2212,7 +2229,7 @@ private slots:
             const auto result=Call(context,tool,tool);QVERIFY2(result.content["ok"].toBool(),tool);
             QVERIFY(QJsonDocument(result.content).toJson(QJsonDocument::Compact).size()<=32768);
         }
-        QCOMPARE(ParameterRegistry().size(),size_t(98));
+        QCOMPARE(ParameterRegistry().size(),size_t(100));
         const auto state=NativeControlFixture::NativeState(app_);
         QVERIFY(!state["cameraActive"].toBool());QCOMPARE(state["cameraCount"].toInt(),0);
         QVERIFY(!state["platformInitialized"].toBool());QVERIFY(!state["recording"].toBool());
@@ -2265,7 +2282,7 @@ private slots:
         auto& service=NativeControlFixture::Service(app_);
         const auto context=service.Begin({ContextKind::EmbeddedTurn,"native-image-unavailable",3,{}});
         const auto rows=Call(context,"image-availability","image_settings_get").content["parameters"].toObject();
-        QCOMPARE(rows.size(),53);int denied=0;
+        QCOMPARE(rows.size(),55);int denied=0;
         for(const auto& descriptor:ParameterRegistry()) {
             if(descriptor.group!=ParameterGroup::Image)continue;
             const auto id=QString::fromUtf8(descriptor.id.data(),descriptor.id.size());
@@ -2315,6 +2332,82 @@ private slots:
         const auto revision=service.FieldRevision(Field::Camera);
         target.NoticeNativeChanges();QCoreApplication::processEvents();
         QCOMPARE(service.FieldRevision(Field::Camera),revision);QCOMPARE(userChanges,0);
+    }
+    void assistantSendPreparesToolsAndContinuesWithoutRoutingButtons() {
+        qunsetenv("OKUFLOW_FAKE_AGENT_SCENARIO");
+        NativeControlFixture::PrepareAssistant(app_,"automatic-control");
+        auto& runtime=NativeControlFixture::Runtime(app_);
+        auto& client=NativeControlFixture::AgentClient(app_);
+        QSignalSpy availability(&client,&CodexAgentClient::AvailabilityChanged);
+        bool frames=false,photos=true,recording=true;
+        const auto capture=connect(&client,&CodexAgentClient::TurnStarted,this,[&] {
+            const auto grants=NativeControlFixture::Service(app_).ContextStatus()["grants"].toObject();
+            frames=grants["frames"].toBool();photos=grants["photos"].toBool();recording=grants["recording"].toBool();
+        });
+        const auto cleanup=qScopeGuard([&] {disconnect(capture);});
+        NativeControlFixture::SubmitAssistant(app_);
+        QVERIFY(NativeControlFixture::AssistantPending(app_));QVERIFY(runtime.ChatSession().Busy());
+        QTRY_VERIFY_WITH_TIMEOUT(!runtime.ChatSession().Busy(),10000);
+        QVERIFY(!NativeControlFixture::AssistantPending(app_));QVERIFY(client.IsReady());
+        QVERIFY(frames);QVERIFY(!photos);QVERIFY(!recording);
+        QVERIFY(!NativeControlFixture::Window(app_).agentControlPanel()->routingNoticeShown());
+        QVERIFY(NativeControlFixture::Service(app_).PendingApproval().isEmpty());
+        QCOMPARE(NativeControlFixture::Target(app_).Fields().at(Field::ZoomAmount).toDouble(),2.0);
+        const auto first=runtime.ChatSession().Snapshot()["messages"].toArray();
+        QCOMPARE(first.size(),2);QVERIFY(first.last().toObject()["complete"].toBool());
+        const auto readinessEvents=availability.size();
+        NativeControlFixture::SubmitAssistant(app_);
+        QVERIFY(!NativeControlFixture::AssistantPending(app_));
+        QTRY_VERIFY_WITH_TIMEOUT(!runtime.ChatSession().Busy(),10000);
+        QCOMPARE(availability.size(),readinessEvents);
+        QCOMPARE(runtime.ChatSession().Snapshot()["messages"].toArray().size(),4);
+    }
+    void assistantPreparationCanBeStoppedOrReconfigured_data() {
+        QTest::addColumn<bool>("reconfigure");QTest::newRow("Stop")<<false;QTest::newRow("new-settings")<<true;
+    }
+    void assistantPreparationCanBeStoppedOrReconfigured() {
+        QFETCH(bool,reconfigure);qunsetenv("OKUFLOW_FAKE_AGENT_SCENARIO");
+        NativeControlFixture::PrepareAssistant(app_,reconfigure?"before-change":"before-stop");
+        const auto zoom=NativeControlFixture::Target(app_).Fields().at(Field::ZoomAmount);
+        NativeControlFixture::SubmitAssistant(app_);QVERIFY(NativeControlFixture::AssistantPending(app_));
+        if(reconfigure)NativeControlFixture::PrepareAssistant(app_,"after-change");
+        else NativeControlFixture::StopAssistant(app_);
+        QVERIFY(!NativeControlFixture::AssistantPending(app_));
+        QVERIFY(!NativeControlFixture::Runtime(app_).ChatSession().Busy());
+        QTest::qWait(100);
+        QCOMPARE(NativeControlFixture::Target(app_).Fields().at(Field::ZoomAmount),zoom);
+        QVERIFY(NativeControlFixture::AgentContext(app_).isEmpty());
+    }
+    void assistantFailedPreparationNeverDispatchesControl() {
+        qputenv("OKUFLOW_FAKE_AGENT_SCENARIO","probe_start_rejected");
+        const auto cleanup=qScopeGuard([] {qunsetenv("OKUFLOW_FAKE_AGENT_SCENARIO");});
+        NativeControlFixture::PrepareAssistant(app_,"rejected-automatic-control");
+        const auto zoom=NativeControlFixture::Target(app_).Fields().at(Field::ZoomAmount);
+        NativeControlFixture::SubmitAssistant(app_);
+        QTRY_VERIFY_WITH_TIMEOUT(!NativeControlFixture::Runtime(app_).ChatSession().Busy(),10000);
+        QVERIFY(!NativeControlFixture::AssistantPending(app_));QVERIFY(NativeControlFixture::AgentContext(app_).isEmpty());
+        QCOMPARE(NativeControlFixture::Target(app_).Fields().at(Field::ZoomAmount),zoom);
+        QVERIFY(!NativeControlFixture::Runtime(app_).ChatSession().Snapshot()["messages"].toArray().last().toObject()["complete"].toBool());
+    }
+    void uctMasterAndOriginalUseNativeControllerWithoutClaimingReadiness() {
+        auto& service=NativeControlFixture::Service(app_);
+        service.SetEnabled(true,false);
+        auto config=NativeControlFixture::CurrentImageConfig(app_);config.autoTextClarityEnabled=false;
+        NativeControlFixture::RestoreImageConfig(app_,config);
+        const auto context=service.Begin({ContextKind::EmbeddedTurn,"uct-controls",99,{}});
+        QVERIFY(!context.isEmpty());
+        const auto enabled=Call(context,"uct-on","image_settings_set",{{"image.uct.enabled",true}});
+        QVERIFY(enabled.content["ok"].toBool());QVERIFY(NativeControlFixture::UctRequested(app_));
+        QVERIFY(NativeControlFixture::Window(app_).ultraClearTextPanel()->IsEnabledByUser());
+        QVERIFY(Call(context,"uct-original","image_settings_set",{{"image.uct.showOriginal",true}}).content["ok"].toBool());
+        QVERIFY(NativeControlFixture::Window(app_).ultraClearTextPanel()->IsShowingOriginal());
+        const auto rows=Call(context,"uct-read","image_settings_get",{{"fields",QJsonArray{"image.uct.enabled","image.uct.showOriginal"}}}).content["parameters"].toObject();
+        QVERIFY(rows["image.uct.enabled"].toObject()["requested"].toBool());
+        QVERIFY(!rows["image.uct.enabled"].toObject()["effective"].toBool());
+        QVERIFY(rows["image.uct.enabled"].toObject()["saved"].toBool());
+        QCOMPARE(rows["image.uct.showOriginal"].toObject()["persistence"].toString(),"session_only");
+        QVERIFY(Call(context,"uct-off","image_settings_set",{{"image.uct.enabled",false}}).content["ok"].toBool());
+        QVERIFY(!NativeControlFixture::UctRequested(app_));service.End(context);
     }
 };
 }

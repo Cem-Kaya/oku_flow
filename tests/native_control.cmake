@@ -14,6 +14,9 @@ if(OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE)
     endforeach()
     target_link_libraries(native_app_control_fixture PRIVATE Qt6::Test)
     target_compile_definitions(native_app_control_fixture PRIVATE OKUFLOW_VIDEO_DOCUMENT_TESTS=1)
+    target_compile_definitions(native_app_control_fixture PRIVATE
+        OKUFLOW_FAKE_AGENT_BINARY="$<TARGET_FILE:fake_codex_agent_server>")
+    add_dependencies(native_app_control_fixture fake_codex_agent_server)
     set_target_properties(native_app_control_fixture PROPERTIES WIN32_EXECUTABLE FALSE OUTPUT_NAME ${MCP_FIXTURE_IMAGE_NAME}
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/native-control")
     add_dependencies(native_app_control_fixture release_okuflow_translations okuflow_mcp)
@@ -41,4 +44,16 @@ if(OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE)
         LABELS "headless;native-control-opt-in" RESOURCE_LOCK okuflow_process_identity
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+    add_test(NAME native_app_assistant_routing_offscreen COMMAND native_app_control_fixture
+        assistantSendPreparesToolsAndContinuesWithoutRoutingButtons
+        assistantPreparationCanBeStoppedOrReconfigured
+        assistantFailedPreparationNeverDispatchesControl
+        uctMasterAndOriginalUseNativeControllerWithoutClaimingReadiness)
+    set_tests_properties(native_app_assistant_routing_offscreen PROPERTIES TIMEOUT 60
+        LABELS "headless;native-control-opt-in" RESOURCE_LOCK okuflow_process_identity
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
+        REQUIRED_FILES "$<TARGET_FILE:fake_codex_agent_server>;${PROJECT_SOURCE_DIR}/assets/codex-agent/0.160.1-profile.json;${PROJECT_SOURCE_DIR}/tests/native_app_control_fixture.cpp")
+    set_property(TEST native_app_control_offscreen APPEND PROPERTY REQUIRED_FILES
+        "$<TARGET_FILE:fake_codex_agent_server>" "${PROJECT_SOURCE_DIR}/assets/codex-agent/0.160.1-profile.json")
 endif()

@@ -79,7 +79,7 @@ try{
                 }else if(item.kind==='protected'){++protectedItems;assert.equal(item.requiresUi,true);assert.equal(item.writable,false);}
                 else ++actions;}
             if(!result.hasMore)break;assert(result.afterField);assert.notEqual(result.afterField,afterField);afterField=result.afterField;}
-        assert.equal(parameters,98);assert.equal(protectedItems,17);assert.equal(actions,46);
+        assert.equal(parameters,100);assert.equal(protectedItems,17);assert.equal(actions,46);
     });
     await check('all eight native grouped reads without bootstrap or hardware',async()=>{
         for(const group of ['image.settings','view.settings','camera.settings','recording.settings','assistant.preferences',

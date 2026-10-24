@@ -5070,6 +5070,26 @@ while preserving ink, undo/redo and the manual-exit clearing contract.
 `AvailabilityChanged`; successful prose without the required tool round trip
 reports `probe_tool_not_called`. The app records these internal classifications
 in the activity/status view and diagnostics without provider/error payloads.
+
+`OkuFlowApp::DispatchAssistantPrompt` retains a single `PendingAgentSubmission`
+ticket while first-use tools initialize. `FinishAgentPreparation` dispatches it
+only while its chat ticket, provider configuration and generation still match.
+Stop, New and configuration changes cancel that preparation; readiness never
+creates a replacement turn. Normal Send replaces the former routing gate.
+`ContextSpec::currentViewFrames` is trusted native Send authority for an embedded
+turn. It is cleared for external leases, retains fresh current-view access over
+source changes, and never validates an old stamp. Explicit revocation still
+denies delivery and further frame requests without another consent card.
+The attachment checkbox controls the initial image; tool observations need not
+be attached eagerly to view-only control requests.
+
+`image.uct.enabled` and `image.uct.showOriginal` bind to the native UCT controller
+and its checkbox states. Enable intent persists; comparison is session-only.
+`FinalizeUctModelParameters` applies deferred enable state after a grouped model
+change and disables first when requested. Getters separate requested intent from
+the Text Clarity master and effective OCR state. The catalog contains 100
+parameters (55 image), with the existing 43 tools, 17 protected entries and 46
+actions unchanged.
 `CodexAgentClient` is a separate, restricted JSONL child. `Configure` retires its
 own process/session when provider identity changes; `TestCapability` explicitly
 runs bounded offline preflight and a tiny no-frame dynamic-tool round trip.

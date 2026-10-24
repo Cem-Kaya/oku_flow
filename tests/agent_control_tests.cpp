@@ -123,6 +123,25 @@ class AgentControlTests : public QObject {
     }
     QString Error(const ControlResult& r) { return r.content["error"].toObject()["code"].toString(); }
 private slots:
+    void embeddedCurrentViewPolicyKeepsFreshnessAndExternalIsolation() {
+        Target target;AppControlService service(target,CatalogEdition::DevCamera);
+        service.SetEnabled(true,true);
+        const auto embedded=service.Begin({ContextKind::EmbeddedTurn,"user-send",1,{},true});
+        QVERIFY(!embedded.isEmpty());QVERIFY(service.ContextStatus()["grants"].toObject()["frames"].toBool());
+        const auto oldStamp=service.Stamp();QVERIFY(service.AuthorizeFrameDelivery(embedded,oldStamp));
+        service.SourceChanged();
+        QVERIFY(!service.AuthorizeFrameDelivery(embedded,oldStamp));
+        QVERIFY(service.AuthorizeFrameDelivery(embedded,service.Stamp()));
+        service.RevokeFrameGrant("user-send");
+        const auto denied=Call(service,embedded,"revoked-observe","view_observe");
+        QCOMPARE(Error(denied),"consent_denied");QVERIFY(service.PendingApproval().isEmpty());
+        service.SourceChanged();QVERIFY(!service.ContextStatus()["grants"].toObject()["frames"].toBool());
+        service.End(embedded);
+        const auto external=service.Begin({ContextKind::ExternalLease,"external",2,{},true});
+        QVERIFY(!external.isEmpty());QVERIFY(!service.ContextStatus()["grants"].toObject()["frames"].toBool());
+        QCOMPARE(Error(Call(service,external,"external-observe","view_observe")),"denied_by_policy");
+        QVERIFY(service.PendingApproval().isEmpty());
+    }
     void approvedAsyncReceiptsTrackAdmissionAndActualOutcome_data() {
         QTest::addColumn<QString>("terminal");
         QTest::newRow("committed")<<QStringLiteral("committed");
