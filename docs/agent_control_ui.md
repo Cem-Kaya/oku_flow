@@ -215,3 +215,5 @@ view. A completed provider response without the required tool call reports
 `probe_tool_not_called`; provider error messages, account details and request
 payloads are not copied into those diagnostics. The visible unavailable state
 still means control has not been established.
+
+Restricted Codex children replace each inventoried MCP entry with a complete disabled inert transport. This is process-local; it does not edit the user's Codex configuration. Offline startup verification must see no MCP-server startup notifications before the explicit live tool test.

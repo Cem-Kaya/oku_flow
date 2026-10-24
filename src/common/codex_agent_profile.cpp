@@ -89,11 +89,13 @@ CodexAgentLaunchProfile CodexAgentProfile::Validate(
             return Unavailable("invalid_mcp_server_name");
         seen.insert(name);
         args << QStringLiteral("-c")
-             << QStringLiteral("mcp_servers.%1.enabled=false").arg(name);
+             << QStringLiteral("mcp_servers.%1={enabled=false,command=\"codex.exe\"}").arg(name);
     }
     // CLI table overrides merge with configured tables: {} alone does not
     // remove ambient servers. Explicitly disable every inventoried bare key.
-    // Existing transport/schema errors still fail closed; never edit config.toml.
+    // Supply a complete inert transport: enabled=false alone can replace a
+    // configured transport with an invalid partial record. This command is
+    // never started. Never copy configured transports or edit config.toml.
     return {true, {}, args};
 }
 

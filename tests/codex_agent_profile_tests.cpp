@@ -39,7 +39,7 @@ private slots:
             QCOMPARE(result.arguments[index - 1], QStringLiteral("--disable"));
         }
         QVERIFY(result.arguments.contains("mcp_servers={}"));
-        QVERIFY(result.arguments.contains("mcp_servers.approved-server.enabled=false"));
+        QVERIFY(result.arguments.contains("mcp_servers.approved-server={enabled=false,command=\"codex.exe\"}"));
         QVERIFY(!result.arguments.join(' ').contains("secret"));
     }
     void codeModeOnlyModelsRetainRestrictedToolTransport() {
@@ -66,11 +66,12 @@ private slots:
             {"enabled", false}, {"transport", "invalid"}}};
         const auto result = CodexAgentProfile::Validate("codex-cli 0.160.1", Features(), malformed);
         QVERIFY(result.available);
-        QVERIFY(result.arguments.contains("mcp_servers.code-review.enabled=false"));
+        const QString disabled = "mcp_servers.code-review={enabled=false,command=\"codex.exe\"}";
+        QVERIFY(result.arguments.contains(disabled));
         QVERIFY(result.arguments.indexOf("mcp_servers={}") <
-                result.arguments.indexOf("mcp_servers.code-review.enabled=false"));
+                result.arguments.indexOf(disabled));
         QCOMPARE(result.arguments.count("mcp_servers={}"), 1);
-        QCOMPARE(result.arguments.count("mcp_servers.code-review.enabled=false"),1);
+        QCOMPARE(result.arguments.count(disabled),1);
     }
     void futureVersionFailsClosed() {
         const auto result = CodexAgentProfile::Validate("codex-cli 0.161.0", Features(), {});

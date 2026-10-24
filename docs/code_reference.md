@@ -169,8 +169,10 @@ No Python/ONNX/NumPy, conversion, download or inference is introduced at app sta
   at a camera width of at most 400 pixels for the four-action group.
 - `CodexAgentProfile::Validate` explicitly disables every validated inventory
   server in restricted children. An empty CLI table merges ambient entries
-  instead of removing them. Inventory/version/feature guards remain; existing
-  transport errors fail closed and the user's configuration is never edited.
+  instead of removing them. Each name receives a complete disabled inert stdio
+  entry: a bare enabled=false override can leave an invalid partial transport.
+  Configured transports/credentials are never copied into launch arguments;
+  inventory/version/feature guards remain and user configuration is unchanged.
 
 See [behavior and ownership](viewport_zoom_and_resume.md). Background fixtures
 are separate from native desktop, live provider/GPU and release acceptance.
