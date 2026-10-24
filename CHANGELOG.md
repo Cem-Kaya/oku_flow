@@ -18,6 +18,12 @@
   baseline, with held-out nuisance cases and deterministic A/B entry points.
   It grants no live reuse, hide or read-deferral authority; GPU/runtime and
   performance acceptance remain pending.
+- Review round for the ribbon experiment: preserve refused-curve ink
+  protection across overlapping-word merge, parallelize the GPU ribbon fit
+  with defined reductions, lean disabled-path rectification, demote
+  blur-only current-ink changes to unverifiable, and add a warm-plan-only
+  production-factory (BF16) resident benchmark selection. Defaults and
+  straight-line output stay unchanged; latency remains unmeasured.
 
 - Reconcile the improvement backlog against Windows 0.3.1. Remove completed
   plans and obsolete review reports, retain actionable follow-ups, and keep

@@ -1168,3 +1168,8 @@ aligned with the project goals.
 - Run `uct_ribbon_ink_contract` with the tracked CPU gate. Primitive/whole-worker
   timing and native GPU/UI/device acceptance are separate; see
   `docs/uct_ribbon_and_current_ink.md` for deterministic sources and opt-ins.
+- Merge replacement must inherit refused-ribbon ink protection; GPU ribbon
+  fitting keeps fixed-order defined reductions with no atomics/transfers.
+  Matched-blur ink scoring may only demote Changed to Unverifiable. Use
+  `OKUFLOW_UCT_RESIDENT_PRODUCTION_FACTORY=1` for shipped-BF16 resident
+  timings (warm plans only); never label the direct FP32 factory as BF16.

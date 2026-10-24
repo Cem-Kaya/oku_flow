@@ -393,3 +393,16 @@ Selection and per-word source approximation metadata are saved. This adds no
 model preparation or precision change. The default direct diagnostic factory
 remains FP32, and existing strict diagnostics remain separate from application
 startup. See [the serial A/B recipe and limitations](uct_ribbon_and_current_ink.md).
+
+`OKUFLOW_UCT_RESIDENT_PRODUCTION_FACTORY=1` instead creates the recognizer
+through the shipped production factory, whose BF16-preference catalog chooses
+each role with same-tier FP32 fallback. It is exclusive of the private local
+BF16 artifact, experiment manifests, exact-N8 and frozen/shadow modes, and it
+has no crop diagnostic. Direct-FP32 plan-key preflight does not apply to
+catalog-chosen BF16 graphs and is skipped; cold caches are refused by the
+inference-only SDK requirement, the ordinary cached-startup deadline and the
+unchanged plan-cache inventory gate. No engine is built. Actual per-role
+precision is pinned from the backend detail recorded in every job file, and
+validation requires the recognizer BF16 marker; the direct factory must never
+be labelled BF16. Ribbon fit cost is inside the existing Regions profile
+stage; ribbon sampling cost is inside Rectify.

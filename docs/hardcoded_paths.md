@@ -17,13 +17,18 @@ three-pixel halo, at original analysis-image density. It refuses oversize rather
 than decimating, uses 2%/98% photometric quantiles (contrast >=32; ratio .6..1.6),
 edge-energy ratio .6..1.65, symmetric global +/-2-pixel half-step jitter, 4..12-pixel
 worst windows and provisional residual .035/.10 unchanged/changed cutoffs.
+A matched `[1,2,1]/4` blur of both grids can only demote Changed to
+Unverifiable at the same .035 level; it never creates Unchanged.
 No application hide/admission/cadence authority or native GPU capture is wired.
 
 `OKUFLOW_UCT_RIBBON_EVIDENCE` selects a fresh private diagnostic output directory;
 `OKUFLOW_UCT_RIBBON_BENCHMARK=1` selects the unregistered model-free A/B microtime
 slot (5 warmups plus 31 AB/BA pairs). `OKUFLOW_UCT_RESIDENT_IMMUTABLE=1` selects
 immutable media context in the existing resident worker benchmark, refusing
-paired/frozen-crop modes. See [the experiment contract](uct_ribbon_and_current_ink.md).
+paired/frozen-crop modes. `OKUFLOW_UCT_RESIDENT_PRODUCTION_FACTORY=1` selects
+the shipped BF16-preference production factory in that benchmark (warm plans
+only, actual precision pinned per job). See
+[the experiment contract](uct_ribbon_and_current_ink.md).
 
 
 ## Shipping OCR payload inputs (24 October 2026)

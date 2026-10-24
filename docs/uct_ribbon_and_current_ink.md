@@ -54,9 +54,9 @@ and original-plus-eight recognition-window limit remain. Both component and
 bounding scan are capped at 262,144 detector pixels per fit; no per-map-pixel
 bin array is allocated. The GPU experiment retains labels with a separate
 prefix-offset buffer, then scans at most 128 selected components on its existing
-stream. It downloads only the existing compact crop/token metadata. The serial
-per-component scan is intentionally a candidate for the separately commissioned
-Opus cost review.
+stream. It downloads only the existing compact crop/token metadata. The GPU
+scan uses one 256-thread block per component with a fixed-order reduction;
+see the review round below (cost UNMEASURED).
 
 The straightness gate is the larger of 0.75 detector pixels and 8% local height.
 Below it, rectangle coordinates, rectification/zero padding and CTC output retain
@@ -222,9 +222,16 @@ build/msvc-cuda-tests/tests/uct_paddle_tests.exe optionalResidentBaseline
 The new immutable selector refuses paired input and frozen detector-crop replay;
 the detector must execute afresh in each arm. Existing harness bounds/preflights
 and strict capacity diagnostics remain. Its direct default factory is FP32;
-do not label this command as a BF16 application measurement. A separately
-approved production-factory experiment is needed for both-role BF16 timings.
-This does not alter the application's BF16 defaults.
+do not label this command as a BF16 application measurement. For shipped BF16
+timings repeat the same recipe with
+`$env:OKUFLOW_UCT_RESIDENT_PRODUCTION_FACTORY='1'`, which uses the production
+factory's BF16-preference catalog (same-tier FP32 fallback per role) and pins
+the actual per-role precision from each job's recorded backend detail. Use
+only prepared warm plans: the harness refuses builder-capable SDKs, applies
+the ordinary cached-startup deadline and fails if the plan-cache inventory
+changes, so a cold cache is a refusal, never a build. Capacity 1 with the
+shipped tiny pair is the N1-relevant arm; do not relabel direct-FP32 numbers
+as BF16. This does not alter the application's BF16 defaults.
 
 The harness records scheduler whole-worker and submit-to-callback time separately
 from CUDA stage intervals, resident preparation and host waits, plus source/model/
@@ -277,3 +284,55 @@ The separate PCH-OFF configuration also compiled `uct_paddle_tests` and passed
 UCT fixture itself does not use PCH in either configuration; the sharing guard
 checks the wider consumer environments. This is not a complete PCH-OFF app or
 release matrix.
+
+## Post-implementation review and optimization round
+
+An independent source-only review of the imported implementation followed; it
+built and ran nothing, so every statement below about cost is UNMEASURED and
+all new tests are UNRUN until the tracked gates execute them.
+
+Correctness fix: overlapping-word merge could drop a refused ribbon word's
+non-carvable envelope when a duplicate candidate won or replaced it.
+`PaddleMergeRecognition` now unions inheritable protection (ribbon words, or
+any protection extending beyond the word's own bounds) into the overlap
+winner in both directions; baseline words protect exactly their bounds, so
+straight-path merge results are unchanged. `curvedRibbonMergeProtection`
+covers both orders, the unchanged baseline, windowed decode against an
+independent analytic map, and bin fill-order invariance (counts/extrema
+exact, fit coefficients within summation rounding), which bounds CPU/GPU fit
+parity to tolerance rather than byte equality.
+
+Optimizations, with straight outputs and all refusal bounds preserved: the
+GPU ribbon fit now uses one 256-thread block per selected component with
+fixed strided pixel ownership and a fixed-order reduction instead of one
+serial thread scanning up to 262,144 labels; counts and extrema stay exact
+and no atomics, transfers or extra buffers appear. The fit cost lands in the
+existing Regions profile stage. Scalar/batch GPU rectification reads its
+quad by reference and evaluates only the selected sampling branch, so the
+disabled path no longer copies the enlarged descriptor per pixel. CPU
+detection skips bin filling when the unchanged length refusal already
+applies, and CPU ribbon rectification evaluates centerline terms once per
+column with the same double operation order as `ribbon::Geometry::At`.
+Host/device `gpu::Quad`/`ribbon::Geometry` layout is locked by
+`static_assert`s. The 32-segment arc estimate is recomputed per line/window;
+caching it would change the descriptor ABI for negligible per-line work and
+was left alone.
+
+Current-ink robustness: imported counts stand as the baseline record
+(72/72 with 0/0/0; held-out 24/24 with 0 false accepts, 12 false hides,
+0 unverifiable). A matched `[1,2,1]/4` blur of both normalized grids now
+demotes a sharp Changed verdict to Unverifiable (Blur) when the blurred
+worst residual reaches the existing 0.035 unchanged level; Unchanged still
+requires the sharp residual, so false accepts cannot increase by
+construction. `Result::blurredResidual` records the second score (-1 when
+not scored) in both diagnostics. Independent defocus controls assert a
+blurred unchanged word is never Changed and a blurred edit is never
+Unchanged. Scale drift beyond blur tolerance is candidly unresolved, no
+scale search or cutoff retuning was added, and the verifier remains
+offline-only with no live authority.
+
+Residual review notes: the straightness gate is in detector pixels while
+word error is limited in source pixels, so heavily downscaled sub-gate
+curves keep the pre-existing baseline rectangle behavior; tightening it
+would change straight outputs and needs measured evidence. Vertical lines
+(width < height in the PCA frame) never fit on either backend.

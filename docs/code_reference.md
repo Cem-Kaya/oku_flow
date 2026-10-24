@@ -12,7 +12,9 @@
   `PaddleRecognitionWidth/Height`, `PaddleRecognitionWindows`, `PaddleRectify` and
   `PaddleDecodeTokens` share that geometry. Supported word chords have an explicit
   source-pixel error; invalid ones protect original ink. `PaddleMergeRecognition`
-  also translates ribbon reading anchors. CUDA `gpu::Quad`, `fitRibbons`, optional
+  also translates ribbon reading anchors and unions inheritable ink protection
+  into overlap winners so merge replacement cannot drop a refused envelope.
+  CUDA `gpu::Quad`, `fitRibbons`, optional
   `Detect` offset scratch and scalar/batch rectification carry the same compact map.
 - `SourceStamp::immutableSelectedInput` is processing context issued only for
   `UltraClearTextController::ImmutableStamp`'s selected frame. The scheduler scopes
@@ -27,13 +29,16 @@
 - `current_ink::{Patch,Reference,Result,Verdict,Reason}` are CPU/offline diagnostic
   types. `Capture` owns a bounded analysis-resolution word grid; `Build` retains
   stamped source geometry; `Compare` scores photometrically normalized symmetric
-  jitter plus the worst local residual; `Check` enforces source/view compatibility.
+  jitter plus the worst local residual, with a matched-blur second score
+  (`Result::blurredResidual`) that can only demote Changed to Unverifiable;
+  `Check` enforces source/view compatibility.
   None participates in application admission, tracking or full-read scheduling.
 - `TensorRtCropDiagnostic::Plan` binds ribbon mode and each crop retains its map.
   `TensorRtProfile::CropDescriptor` hashes compact ribbon metadata only when used.
   `uct_ribbon_ink_cases.hpp` tests the actual processing/model/paint/Qt positioned
   text path and supplies `PrimitiveBenchmark`/`ExportTypesetFixture`. The existing
-  resident diagnostic adds explicit immutable selection and source error metadata.
+  resident diagnostic adds explicit immutable selection, source error metadata
+  and an opt-in production-factory (shipped BF16 catalog) benchmark selection.
   See [scope, bounds, composition and commands](uct_ribbon_and_current_ink.md).
 
 ## Phone lens selection and camera zoom (development)
