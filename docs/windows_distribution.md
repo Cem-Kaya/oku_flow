@@ -22,7 +22,25 @@ assertion is refused. Older build trees need reconfiguration and a successful
 application build. These checks do
 not establish GPU, driver, installer-guest or public-release acceptance.
 
-## Published channels (2026-10-14)
+## Published channels (2026-10-24)
+
+[GitHub v0.3.1](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.3.1)
+contains the unsigned-preview MSI and portable EXE package from clean source
+`3f7481af45639db4731395f7adb9175b4038a7a5`. GitHub's server SHA-256 digests
+and byte lengths matched all uploaded assets before publication.
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `OkuFlow-0.3.1-x64.msi` | 1,176,977,408 | `4468d714f58319cda7f41176a6ea11372ae7f8725df0905bb10777f5ff639f35` |
+| `OkuFlow-0.3.1-windows-x64.zip` | 1,611,117,972 | `74ca1346c0a0bed650afdcc84544b96bdced2dece19fd4482bc363846dd5c595` |
+
+The 204-file package includes MCP V1, Ultra Clear Text, all OCR model tiers,
+BF16 preference with same-tier FP32 fallback, pinned private OCR runtimes and
+required notices. Extract the complete portable ZIP and run its root
+`oku_flow.exe`; the MSI creates desktop and Start menu shortcuts. The README
+links to these downloads. Earlier release assets remain unchanged.
+
+### Earlier 0.2.5 preview
 
 [GitHub v0.2.5](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.5)
 contains the immutable unsigned-preview MSI and portable ZIP from clean source
@@ -40,7 +58,7 @@ owner-authorized free desktop. The separate GitHub VM also passed standard
 CPU/GUI checks and the panel-movement diagnostic at 125%, 150% and 200%.
 MSI extraction verified 152 payload files; the disposable Windows guest
 passed all 167 install/upgrade/downgrade/shortcut/uninstall/user-data checks.
-The website and public README point to 0.2.5. No new winget PR or Store
+At publication, the website and public README pointed to 0.2.5. No new winget PR or Store
 submission was made. The MCP/agent-control API is under development and is
 not part of this release.
 
