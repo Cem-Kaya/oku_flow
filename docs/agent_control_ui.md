@@ -243,6 +243,9 @@ text replacement refer to `image.uct.enabled`, with
 `image.textClarity.enabled` required for activation. Quick modes are presets,
 not the complete list of controllable options. The Assistant should read these
 fields and use the image settings tools rather than search `mode_list` for UCT.
+The Text Clarity master preference is writable on CPU camera/media paths because
+it also gates CPU OCR. Its CUDA enhancement still reports ineffective with
+`cuda_unavailable` there; GPU-only refinement controls remain unavailable.
 Receipts distinguish requested UCT enablement from a ready OCR backend. Sending
 from a restored provider conversation automatically starts the appropriate
 logical conversation with the same question, preserving the old history.

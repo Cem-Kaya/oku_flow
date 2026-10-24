@@ -5105,6 +5105,11 @@ modes. This is guidance, not a permission or readiness override.
 actual child advertisement, grouped read/write path, native enablement,
 persistence and effective readiness with an injected model-free recognizer.
 It performs no model loading, device capture or inference.
+`SelectedMediaImageFieldAvailable` and `QueryImageParameters` allow the native
+Text Clarity master preference on CPU paths so it can gate CPU OCR. They report
+CUDA enhancement as ineffective with `cuda_unavailable`; all other GPU-only
+effect refusals remain. The discovery fixture's first failed run exposed this
+dependency-admission gap and remains preserved separately from later validation.
 Both UCT boolean rows require a ready backend for `effective:true`, returning
 `uct_backend_inactive` during initialization/failure. Receipt labels use the
 actual UCT checkbox captions; both are included in the translation catalog.

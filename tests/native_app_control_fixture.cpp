@@ -1211,7 +1211,7 @@ private slots:
         auto& target=NativeControlFixture::Target(app_);
         const auto rows=target.QueryImageParameters(ToolId::ImageSettingsGet,{})["parameters"].toObject();
         const auto before=target.ImageParameterFields();
-        for(const auto* id:{"image.blur.enabled","image.spatial.enabled","image.textClarity.enabled",
+        for(const auto* id:{"image.blur.enabled","image.spatial.enabled",
             "image.autoContrast.enabled","image.stabilization.enabled","image.keystone.enabled",
             "image.temporal.enabled","image.superResolution.enabled"}) {
             const auto row=rows[id].toObject();
@@ -1227,6 +1227,13 @@ private slots:
         }
         QVERIFY(rows["image.contrast"].toObject()["writable"].toBool());
         QVERIFY(rows["image.blackWhite.enabled"].toObject()["writable"].toBool());
+        const auto master=rows["image.textClarity.enabled"].toObject();
+        QVERIFY(master["writable"].toBool());QVERIFY(master["requested"].toBool());
+        QVERIFY(!master["effective"].toBool());
+        QCOMPARE(master["effectiveReason"].toString(),"cuda_unavailable");
+        const auto masterPlan=target.PrepareImageParameters(ToolId::ImageSettingsSet,{{"image.textClarity.enabled",false}});
+        QVERIFY(masterPlan.error.isEmpty());QVERIFY(!masterPlan.writes.empty());
+        QVERIFY(target.ValidateImageParameterBatch(masterPlan));
         // Unsupported requested adaptive text must not shadow the actual CPU
         // threshold/color recipe, even though those GPU preferences are kept.
         QVERIFY(rows["image.blackWhite.enabled"].toObject()["effective"].toBool());
@@ -2543,6 +2550,12 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(!session.Busy(),10000);
         const auto answer=session.Snapshot()["messages"].toArray().last().toObject();
         QVERIFY2(answer["complete"].toBool(),qPrintable(answer["errorCode"].toString()));
+        const auto replies=QJsonDocument::fromJson(answer["text"].toString().toUtf8()).object()["replies"].toArray();
+        QCOMPARE(replies.size(),3);
+        for(const auto reply:replies) {
+            const auto data=reply.toObject()["data"].toObject();
+            QVERIFY2(data["ok"].toBool(),qPrintable(data["error"].toObject()["code"].toString()));
+        }
         QTRY_VERIFY(NativeControlFixture::UctReady(app_));
         QVERIFY(NativeControlFixture::UctRequested(app_));
         auto& service=NativeControlFixture::Service(app_);

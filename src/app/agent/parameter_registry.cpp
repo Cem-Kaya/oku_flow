@@ -137,7 +137,7 @@ constexpr ParameterDescriptor kParameters[] = {
     {"image.textClarity.enabled", ParameterGroup::Image, R"parameter({"type":"boolean"})parameter", "none",
      "live_profile", ParameterPermission::View, ParameterAccess::WritableWithPolicy, false,
      "src/app/app_controls.cpp", "OnTextClarityControlsChanged",
-     "fine tuning retained; MainWindow::refreshTextClarityUi gates refinements while master off; CPU/CUDA "
+     "master preference also gates CPU OCR; CUDA enhancement readiness is separate; fine tuning retained; MainWindow::refreshTextClarityUi gates refinements while master off; CPU/CUDA "
      "support must be truthful"},
     {"image.textClarity.flatten.enabled", ParameterGroup::Image, R"parameter({"type":"boolean"})parameter",
      "none", "live_profile", ParameterPermission::View, ParameterAccess::WritableWithPolicy, false,

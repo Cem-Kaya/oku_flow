@@ -25,6 +25,7 @@ bool AppControlTarget::SelectedMediaImageFieldAvailable(Field field, bool gpuAva
     case Field::BlackWhite:case Field::Threshold:case Field::Contrast:case Field::Brightness:
     case Field::Scheme:case Field::CustomColorMode:case Field::CustomColorStopCount:
     case Field::CustomColorStops:case Field::CustomColorStepped:case Field::CustomColorRecipe:
+    case Field::TextClarity: // requested master also gates CPU OCR; GPU effect readiness stays separate
     case Field::UctEnabled:case Field::UctShowOriginal:
     case Field::UctGpuDetector:case Field::UctGpuRecognizer:case Field::UctCpuDetector:case Field::UctCpuRecognizer:
         return true;
@@ -555,7 +556,7 @@ QJsonObject AppControlTarget::QueryImageParameters(ToolId tool,const QJsonObject
             (ParameterWidget(field,*app_.uiState_,app_.mainWindow_.get()) || field==Field::KeystonePaused || field==Field::SuperResPerformanceOverride);
         QString unsupported=available?QString():QString("native_control_unavailable");
         if(group==ParameterGroup::Image && media && !SelectedMediaImageFieldAvailable(field,mediaGpu)) {available=false;unsupported="selected_media_unsupported_effect";}
-        else if(group==ParameterGroup::Image && !media && field!=Field::DebugView && !IsUctControl(field) && !cuda) {available=false;unsupported="cuda_unavailable";}
+        else if(group==ParameterGroup::Image && !media && field!=Field::DebugView && field!=Field::TextClarity && !IsUctControl(field) && !cuda) {available=false;unsupported="cuda_unavailable";}
         if(field==Field::KeystonePaused && mediaGpu && (!app_.mediaGpuScene_ || !app_.mediaGpuScene_->SceneReady())) {
             available=false;unsupported="no_processed_frame";
         }
@@ -602,6 +603,11 @@ QJsonObject AppControlTarget::QueryImageParameters(ToolId tool,const QJsonObject
             intent=true;inactive=active?QString():QString("uct_backend_inactive");
         }
         QJsonValue effective=requested.isBool()?QJsonValue(active && intent):active && intent?requested:QJsonValue(QJsonValue::Null);
+        if(field==Field::TextClarity && !cuda) {
+            // The native master preference enables CPU UCT too. It does not
+            // make CUDA image enhancement available on a CPU display path.
+            effective=false;inactive="cuda_unavailable";
+        }
         if(field==Field::UctEnabled || field==Field::UctShowOriginal) {
             const auto* controller=app_.ultraClearText_.get();
             const bool enabled=controller && controller->IsEnabled();

@@ -9,6 +9,8 @@
 - Teach embedded Assistant tools that Ultra Clear Text, UCT and OCR text
   replacement are image settings, including the Text Clarity prerequisite,
   rather than quick-mode presets. Share discovery guidance across providers.
+- Allow the Text Clarity master preference used by CPU OCR through AI controls
+  while retaining truthful CUDA-effect status and GPU-only effect refusals.
 
 - Keep restored provider histories separate when Send changes control routing,
   resolve refused tool preparation promptly, and report UCT backend readiness
