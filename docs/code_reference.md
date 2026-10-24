@@ -167,9 +167,10 @@ No Python/ONNX/NumPy, conversion, download or inference is introduced at app sta
   face and keyboard focus ring after reparenting.
   The rectangular-layout and native resize-stability fixtures exercise folding
   at a camera width of at most 400 pixels for the four-action group.
-- `CodexAgentProfile::Validate` overrides `mcp_servers={}` in restricted
-  children instead of adding individually disabled entries. Inventory/version/
-  feature guards remain, and the user's configuration is never edited.
+- `CodexAgentProfile::Validate` explicitly disables every validated inventory
+  server in restricted children. An empty CLI table merges ambient entries
+  instead of removing them. Inventory/version/feature guards remain; existing
+  transport errors fail closed and the user's configuration is never edited.
 
 See [behavior and ownership](viewport_zoom_and_resume.md). Background fixtures
 are separate from native desktop, live provider/GPU and release acceptance.

@@ -85,10 +85,12 @@ CodexAgentLaunchProfile CodexAgentProfile::Validate(
         if (!kBareMcpName.match(name).hasMatch() || seen.contains(name))
             return Unavailable("invalid_mcp_server_name");
         seen.insert(name);
+        args << QStringLiteral("-c")
+             << QStringLiteral("mcp_servers.%1.enabled=false").arg(name);
     }
-    // Disabled entries still undergo transport/schema validation in Codex.
-    // Replace the child's complete table so an unrelated broken user entry
-    // cannot prevent this MCP-free profile from starting. Never edit config.toml.
+    // CLI table overrides merge with configured tables: {} alone does not
+    // remove ambient servers. Explicitly disable every inventoried bare key.
+    // Existing transport/schema errors still fail closed; never edit config.toml.
     args << QStringLiteral("-c") << QStringLiteral("mcp_servers={}");
     return {true, {}, args};
 }

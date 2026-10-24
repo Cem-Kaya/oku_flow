@@ -39,7 +39,7 @@ private slots:
             QCOMPARE(result.arguments[index - 1], QStringLiteral("--disable"));
         }
         QVERIFY(result.arguments.contains("mcp_servers={}"));
-        QVERIFY(!result.arguments.join(' ').contains("approved-server"));
+        QVERIFY(result.arguments.contains("mcp_servers.approved-server.enabled=false"));
         QVERIFY(!result.arguments.join(' ').contains("secret"));
     }
     void codeModeOnlyModelsRetainRestrictedToolTransport() {
@@ -59,16 +59,16 @@ private slots:
         QVERIFY(result.arguments.contains("approval_policy=\"never\""));
         QVERIFY(result.arguments.contains("mcp_servers={}"));
     }
-    void invalidDisabledTransportCannotBreakChildConfiguration() {
-        // Codex validates the transport even on enabled=false entries. The
-        // restricted child must discard the entire table, not rebuild entries.
+    void everyConfiguredServerGetsAnExplicitChildDisable() {
+        // Empty table overrides are merged by the real CLI. Retain the exact
+        // offline inventory and disable each server in the child, not on disk.
         const QJsonArray malformed{QJsonObject{{"name", "code-review"},
             {"enabled", false}, {"transport", "invalid"}}};
         const auto result = CodexAgentProfile::Validate("codex-cli 0.160.1", Features(), malformed);
         QVERIFY(result.available);
-        QCOMPARE(result.arguments, CodexAgentProfile::Validate("codex-cli 0.160.1", Features(), {}).arguments);
+        QVERIFY(result.arguments.contains("mcp_servers.code-review.enabled=false"));
         QCOMPARE(result.arguments.count("mcp_servers={}"), 1);
-        QVERIFY(!result.arguments.join(' ').contains("code-review"));
+        QCOMPARE(result.arguments.count("mcp_servers.code-review.enabled=false"),1);
     }
     void futureVersionFailsClosed() {
         const auto result = CodexAgentProfile::Validate("codex-cli 0.161.0", Features(), {});

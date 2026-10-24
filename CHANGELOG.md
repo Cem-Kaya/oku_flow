@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+- Explicitly disable configured MCP servers in restricted Assistant children;
+  the installed Codex CLI merges an empty table with ambient configuration.
+
 - Retain safe Assistant tool-test failure codes in the activity/status output,
   distinguishing a completed response without a tool call from a rejected turn.
 
