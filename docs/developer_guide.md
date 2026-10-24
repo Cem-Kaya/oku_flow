@@ -1,5 +1,10 @@
 # OkuFlow developer guide
 
+[Curved-line ribbon and current-ink experiments](uct_ribbon_and_current_ink.md)
+records explicit immutable-input opt-in, original-pixel geometry/proof composition,
+CPU-only ink diagnostics, correctness limits and unmeasured A/B entry points.
+
+
 Public BF16 preparation and its versioned new-only cache are documented in
 [uct_public_bf16.md](uct_public_bf16.md). The production corpus catalog is empty;
 the private validation factory does not activate public BF16. Actual worker

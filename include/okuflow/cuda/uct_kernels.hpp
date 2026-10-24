@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <cuda_runtime_api.h>
+#include "okuflow/common/uct_ribbon.hpp"
 
 namespace okuflow::uct::gpu
 {
@@ -59,6 +60,8 @@ struct Quad
     float score;
     int validWidth;
     int internalEdges{};
+    ribbon::Geometry ribbon;
+    int componentRoot{-1}; // worker-private detector component identity
 };
 struct Token
 {
@@ -77,7 +80,8 @@ void Probe(const void *image, std::size_t pitch, int width, int height, void *ou
 void Normalize(const void *image, std::size_t pitch, int width, int height, float *out,
                int outWidth, int outHeight, cudaStream_t stream);
 void Detect(const float *map, int width, int height, int sourceWidth, int sourceHeight, int *labels,
-            Component *components, Quad *quads, int *count, cudaStream_t stream);
+            Component *components, Quad *quads, int *count, cudaStream_t stream,
+            int* ribbonOffsets = nullptr);
 // 128 detected lines -> at most 128*(original+8 overlapping windows).
 void RecognitionWindows(const Quad* detected, int* count, Quad* windows, cudaStream_t stream);
 // Compact ordered-group canvas widths; all ceil(1152/groupSize) slots are

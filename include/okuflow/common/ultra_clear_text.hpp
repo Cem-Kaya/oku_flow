@@ -58,6 +58,9 @@ struct SourceStamp {
     // Set only by the live-camera controller from capture-owned frame identity.
     // Selected media leaves this false; job/timestamp changes cannot set it.
     bool liveCameraCapture{};
+    // Processing experiment context only, issued by the selected-frame path.
+    // Never an admission/proof waiver. Advancing and ordinary live jobs are false.
+    bool immutableSelectedInput{};
     // OCR-input provenance copied from the paired device image. Validation
     // probes always describe the single exact frameSeq frame; these fields
     // disclose that the recognized pixels were a neutral temporal blend.
@@ -325,6 +328,11 @@ struct RecognizedWord {
     TextQuad quadPx;          // CTC span over the line height; fitted ink after preparation
     TextQuad inkSearchQuadPx; // span widened by one CTC step, bounded by neighbours
     bool inkFitted{};         // worker ink fitting replaced the padded span
+    // Experimental ribbon diagnostics in original analysis-image pixels.
+    // A refused chord remains kInvalidGeometry with a conservative ink mask.
+    bool fromRibbon{};
+    double ribbonErrorPx{};
+    QPointF ribbonReadingPointPx;
 };
 
 struct RecognizedLine {
@@ -362,6 +370,7 @@ public:
     // recognition and clears it afterwards. Backends without detail support
     // ignore it and leave RecognitionOutput::detailRegionPx empty.
     virtual void SetDetailFocus(const std::optional<DetailFocus>& focus) { Q_UNUSED(focus); }
+    virtual void SetCurvedRibbonInput(bool allowed) { Q_UNUSED(allowed); }
     virtual RecognitionOutput Recognize(const QImage& image,
                                         const std::atomic<bool>& cancelled) = 0;
     virtual RecognitionOutput RecognizeDevice(const DeviceImage& image,
@@ -417,6 +426,7 @@ struct PreparedLine {
     QVector<PreparedWord> words; // every known span, including rejected ones
     QRectF sceneRect;
     ReferencePatch reference;    // invalid when untrackable
+    std::optional<QRectF> ribbonReadingBand;
 };
 
 struct MatchTuning {
@@ -771,6 +781,7 @@ struct AcceptedLine {
     // Original masks win exact-geometry collisions; this subset shares the
     // existing mask cap and permits pixel-centre rounding of carved strips.
     QVector<QRectF> carvedSceneRects;
+    std::optional<QRectF> ribbonReadingBand; // centerline-based row ordering only
 };
 
 struct SceneWord {

@@ -54,7 +54,7 @@ namespace okuflow::uct
 {
 struct TensorRtCropDiagnosticAccess {
     static const TensorRtCropDiagnostic::Plan* Find(TensorRtCropDiagnostic& diagnostic,
-                                                    const DeviceImage& image, const QByteArray& detector) {
+                                                    const DeviceImage& image, const QByteArray& detector, bool curvedRibbon) {
         for (const auto& plan : diagnostic.plans_) {
             const auto& held = *plan.source;
             if (held.Data() == image.Data() && held.ValidationData() == image.ValidationData() &&
@@ -62,7 +62,7 @@ struct TensorRtCropDiagnosticAccess {
                 held.device == image.device && held.sourceEpoch == image.sourceEpoch &&
                 held.frameSequence == image.frameSequence && held.processingGeneration == image.processingGeneration &&
                 held.kind == image.kind && held.historyEpoch == image.historyEpoch &&
-                plan.detectorSha256 == detector) return &plan;
+                plan.detectorSha256 == detector && plan.curvedRibbon == curvedRibbon) return &plan;
         }
         return nullptr;
     }
@@ -757,7 +757,7 @@ struct State
     std::unique_ptr<Libraries> libraries;
     std::unique_ptr<Network> detector, recognizer;
     DeviceBuffer<float> detectorInput, recognizerInput, scores;
-    DeviceBuffer<int> labels, count, ids, tokenCount, groupWidths;
+    DeviceBuffer<int> labels, count, ids, tokenCount, groupWidths, ribbonOffsets;
     DeviceBuffer<gpu::Component> components;
     DeviceBuffer<gpu::Quad> detectedQuads, quads;
     DeviceBuffer<gpu::Token> tokens;
@@ -1170,6 +1170,9 @@ class TensorRtRecognizer final : public Recognizer
     {
         detail_ = focus;
     }
+    void SetCurvedRibbonInput(bool allowed) override {
+        curvedRibbon_ = allowed && qEnvironmentVariable("OKUFLOW_UCT_CURVED_RIBBON") == "1";
+    }
     RecognitionOutput Recognize(const QImage &image, const std::atomic<bool> &cancelled) override
     {
         // System-memory camera input needs one upload, on this worker only.
@@ -1259,13 +1262,13 @@ class TensorRtRecognizer final : public Recognizer
             const int submissionGroup = state_->recognizerBatch == 16 ? 16 : kRecognitionSubmissionGroup;
             // Frozen crop replay/capture describes whole-image regions only.
             const auto* frozen = cropDiagnostic_ && !detail_
-                ? TensorRtCropDiagnosticAccess::Find(*cropDiagnostic_, image, assets_.detectorSha256) : nullptr;
+                ? TensorRtCropDiagnosticAccess::Find(*cropDiagnostic_, image, assets_.detectorSha256, curvedRibbon_) : nullptr;
             TensorRtCropDiagnostic::Plan captured;
             bool captureCrops = cropDiagnostic_ && !frozen && !detail_ &&
                 TensorRtCropDiagnosticAccess::HasCapacity(*cropDiagnostic_);
             if (captureCrops) {
                 captured.source = state_->inFlight;
-                captured.detectorSha256 = assets_.detectorSha256;
+                captured.detectorSha256 = assets_.detectorSha256; captured.curvedRibbon=curvedRibbon_;
             }
             QVector<QRect> regions;
             if (frozen) for (const auto& region : frozen->regions) regions.push_back(region.bounds);
@@ -1300,7 +1303,7 @@ class TensorRtRecognizer final : public Recognizer
                 for (const auto& crop : recorded.crops) {
                     gpu::Quad q{};
                     std::copy(crop.xy.begin(), crop.xy.end(), q.xy);
-                    q.score = crop.score; q.validWidth = crop.validWidth; q.internalEdges = crop.internalEdges;
+                    q.score = crop.score; q.validWidth = crop.validWidth; q.internalEdges = crop.internalEdges; q.ribbon=crop.ribbon;
                     quads.push_back(q);
                 }
                 count = int(quads.size());
@@ -1336,7 +1339,8 @@ class TensorRtRecognizer final : public Recognizer
             profile.Measure(TensorRtProfile::Regions, state_->stream, [&] {
                 gpu::Detect(state_->detector->Output(), w, h, region.width(), region.height(),
                             state_->labels.Reserve(w * h), state_->components.Reserve(w * h),
-                            state_->detectedQuads.Reserve(128), state_->count.Reserve(1), state_->stream);
+                            state_->detectedQuads.Reserve(128), state_->count.Reserve(1), state_->stream,
+                            curvedRibbon_ ? state_->ribbonOffsets.Reserve((w*h+255)/256) : nullptr);
                 gpu::RecognitionWindows(state_->detectedQuads.Get(),state_->count.Get(),
                                          state_->quads.Reserve(128*9),state_->stream);
                 if (state_->variableWidth)
@@ -1500,7 +1504,7 @@ class TensorRtRecognizer final : public Recognizer
                         TensorRtCropDiagnostic::Crop record;
                         std::copy(std::begin(quad.xy), std::end(quad.xy), record.xy.begin());
                         record.score = quad.score; record.validWidth = quad.validWidth;
-                        record.internalEdges = quad.internalEdges;
+                        record.internalEdges = quad.internalEdges; record.ribbon=quad.ribbon;
                         // This group's CUDA completion was already confirmed.
                         try {
                             captured.regions.back().crops.push_back(record);
@@ -1510,7 +1514,7 @@ class TensorRtRecognizer final : public Recognizer
                         }
                     }
                     profile.CropDescriptor(quad.xy, quad.score, quad.validWidth,
-                                           quad.internalEdges, region, width);
+                                           quad.internalEdges, region, width, &quad.ribbon);
                     const auto *tokens = group.tokens + static_cast<std::size_t>(slot) * steps;
                     if (tokenCount < 0)
                         continue; // untrustworthy crop, same policy as CPU decoder
@@ -1518,7 +1522,7 @@ class TensorRtRecognizer final : public Recognizer
                         throw std::runtime_error("GPU CTC output exceeds capacity.");
                     PaddleQuad box{};
                     box.score = quad.score;
-                    box.internalEdges = quad.internalEdges;
+                    box.internalEdges = quad.internalEdges; box.ribbon=quad.ribbon;
                     for (int k = 0; k < 4; ++k)
                         box.points[k] = {quad.xy[k * 2], quad.xy[k * 2 + 1]};
                     std::vector<PaddleToken> decoded;
@@ -1947,7 +1951,8 @@ class TensorRtRecognizer final : public Recognizer
     const public_bf16::Request publicRequest_;
     const public_bf16::AttestationObserver attestationObserver_;
     const std::shared_ptr<const PrecisionExperimentPlan> experiment_;
-    std::optional<DetailFocus> detail_; // worker-confined, one recognition at a time
+    std::optional<DetailFocus> detail_;
+    bool curvedRibbon_{}; // worker-confined, one recognition at a time
     PaddleAssets assets_;
     BackendStatus status_;
     std::shared_ptr<State> state_;

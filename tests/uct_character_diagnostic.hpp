@@ -3,6 +3,7 @@
 // Explicit, finite verifier baseline. This measures the existing matcher; a
 // successful diagnostic is NOT a passing character-safety gate for OCR reuse.
 #include "ultra_clear_text_test_support.hpp"
+#include "okuflow/common/uct_current_ink.hpp"
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -40,6 +41,7 @@ inline void Run(const std::function<ProbeFrame(const QImage&, int)>& prepare, bo
     QJsonArray rows;
     std::array<int, 6> falseAccepts{}, falseHides{}, changedCounts{}, unchangedCounts{};
     int invalidReferences = 0;
+    int inkFalseAccepts=0,inkFalseHides=0,inkUnverifiable=0,inkChanged=0,inkUnchanged=0;
     for (int edit = 0; edit < int(edits.size()); ++edit) {
         for (const int pixelSize : {14, 24, 44}) {
             QFont font(families.front()); font.setPixelSize(pixelSize);
@@ -94,6 +96,23 @@ inline void Run(const std::function<ProbeFrame(const QImage&, int)>& prepare, bo
                     QCOMPARE(probe.Height(), current.height()/decimation);
                     if (resident) { QVERIFY(probe.resident); QVERIFY(probe.luma.isNull()); }
                     const auto digest = QString::fromLatin1(uct_test::SourcePixelsDigest(current).toHex());
+                    // New CPU oracle is evaluated ONCE at original analysis
+                    // resolution, never relabel a D2/D4 probe as native pixels.
+                    if (!resident && decimation==1) {
+                        SourceStamp inkStamp=reference.stamp;
+                        inkStamp.viewportWidth=before.width();inkStamp.viewportHeight=before.height();
+                        const auto sourceBox=QRectF(tokenX,top,tokenWidth,metrics.height());
+                        const auto inkReference=current_ink::Build(before,inkStamp,TextQuad::FromRect(sourceBox));
+                        const auto ink=current_ink::Check(inkReference,current,inkStamp);
+                        if(changed){++inkChanged;inkFalseAccepts+=ink.verdict==current_ink::Verdict::Unchanged;}
+                        else{++inkUnchanged;inkFalseHides+=ink.verdict==current_ink::Verdict::Changed;}
+                        inkUnverifiable+=ink.verdict==current_ink::Verdict::Unverifiable;
+                        rows.push_back(QJsonObject{{"edit",edit},{"pixelSize",pixelSize},{"changed",changed},
+                            {"jitterPx",QJsonArray{jitter.x(),jitter.y()}},{"extent","edited-token"},
+                            {"policy","current-ink-cpu-offline"},{"analysisSamplingDecimation",1},
+                            {"verdict",int(ink.verdict)},{"reason",int(ink.reason)},{"worstResidual",ink.worstResidual},
+                            {"currentActiveRowSha256",digest},{"nativeGpuCoverage",false}});
+                    }
                     for (int policy = 0; policy < int(policies.size()); ++policy) {
                         QVector<PatchMatch> matches;
                         if (resident) matches = probe.resident->Matches(probe.stamp, patches, policies[policy], {});
@@ -127,7 +146,11 @@ inline void Run(const std::function<ProbeFrame(const QImage&, int)>& prepare, bo
             {"changed", changedCounts[group]}, {"unchanged", unchangedCounts[group]},
             {"falseAccepts", falseAccepts[group]}, {"falseHides", falseHides[group]}});
     }
-    const auto outputDir = QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath("OkuFlow/uct-character-" +
+    if(!resident) totals.push_back(QJsonObject{{"policy","current-ink-cpu-offline"},{"extent","edited-token"},
+        {"changed",inkChanged},{"unchanged",inkUnchanged},{"falseAccepts",inkFalseAccepts},
+        {"falseHides",inkFalseHides},{"unverifiable",inkUnverifiable},{"nativeGpuCoverage",false}});
+    const auto evidenceRoot=qEnvironmentVariable("OKUFLOW_UCT_RIBBON_EVIDENCE");
+    const auto outputDir = QDir(evidenceRoot.isEmpty()?QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath("OkuFlow"):evidenceRoot).filePath("uct-character-" +
         QDateTime::currentDateTimeUtc().toString("yyyyMMdd-HHmmss") + "-" + QUuid::createUuid().toString(QUuid::WithoutBraces));
     QVERIFY(QDir().mkpath(outputDir));
     const QJsonObject report{{"resident", resident}, {"fontPath", fontPath},

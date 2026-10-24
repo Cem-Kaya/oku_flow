@@ -9,14 +9,14 @@ predate those repairs are not current bug reports.
 
 ## Remaining research
 
-- **Character-sensitive change detection:** the current pixel/NCC verifier can
-  miss single-character edits. Preserve the measured
-  [baseline](../docs/uct_character_verification.md); investigate a better
-  current-ink verifier before using tracking to skip authoritative full reads.
-  This is separate from accepting ordinary ML recognition errors.
-- **Curved pages:** investigate dewarping as a recognition aid with a verified
-  inverse mapping back to the original page. Rotation/perspective quads do not
-  make glyphs follow a curved line. No dewarping model is integrated.
+- **Character-sensitive change detection:** review/calibrate the new offline CPU
+  current-ink oracle and design bounded native GPU leases before shadow/live use.
+  Preserve the measured [NCC baseline](../docs/uct_character_verification.md).
+  Skipping authoritative full reads remains unaccepted, independently of ordinary
+  ML recognition errors.
+- **Curved pages:** review the explicit selected-frame ribbon experiment and
+  measure its actual quality/cost. Four-corner painting remains approximate;
+  per-glyph/page-mesh alternatives and learned dewarping are unimplemented.
 - **Detection/recognition quality:** compare contour/word-level geometry or
   alternative engines on the same difficult images if misses remain. Verify
   scripts/dictionaries and retain omissions, boxes and wrong words. No
@@ -27,50 +27,49 @@ predate those repairs are not current bug reports.
 - **End-to-end experience:** measure first painted text and Freeze latency,
   not just worker microtime. See [03](03-performance-gpu-cpu.md).
 
-## Proposed first experiments (root and Opus, 2026-10-24)
+## Implemented first experiments, pending review/measurement (2026-10-24)
 
-These are designs, not implemented behavior or measured gains. Prioritize book
-gutters and single-character changes before adding another OCR model.
+The model-free [ribbon/current-ink experiment](../docs/uct_ribbon_and_current_ink.md)
+is implemented in the production Paddle processing chain. It adds no model,
+automatic live/Freeze tier switch or new UI strings. The initial execution scope
+is an explicit `OKUFLOW_UCT_CURVED_RIBBON=1` opt-in on the controller's exact
+selected immutable single frame. Live/advancing/smoothed/held inputs stay on the
+baseline. CPU correctness is separate from the unrun GPU/latency acceptance.
 
-**Character changes.** The current whole-line correlation averages a reference
-into at most 64×12 cells. One changed digit or stroke can be diluted by the
-unchanged line. Investigate per-word current-ink comparisons that score the
-worst small region, allow bounded alignment error and distinguish changed,
-unchanged and unverifiable. Keep the original 12-edit baseline, then add held-out
-fonts, blur, exposure/scale changes, subpixel motion and real unchanged phone
-pairs. Measure false hides and cost as well as missed edits. Native-resolution
-patches need a separately bounded capture/lease design: the existing decimated
-probe cannot recover lost pixels merely by changing its scoring function.
+**Character changes.** A bounded owned CPU oracle compares a word's original
+analysis-resolution ink, with global symmetric jitter/photometric handling and
+the worst small-region residual. It returns changed, unchanged or unverifiable.
+It is offline only: no runtime hiding, reuse or read deferral is wired, and full
+reads remain authoritative. The old six NCC summary rows remain intact; a new
+CPU row covers the original 12 edits, with a separate 48-case held-out
+font/subpixel/blur/scale/exposure diagnostic. Report false accepts, false hides
+and unverifiable, not a perfect-accuracy pass. Thresholds remain provisional.
+Native GPU current-ink capture/reference leases and shadow telemetry remain work;
+changing the scorer cannot recover pixels already lost in the decimated probe.
 
-Start offline, then shadow-only. A later conservative mode could hide a suspect
-line and request a fresh read. It would not validate new text, relax recognition
-rules or defer full reads. Thresholds and jitter tolerance remain experimental;
-one-pixel tolerance can itself conceal a one-pixel character edit. No runtime
-change is authorized by this design note.
+**Curved pages.** CPU and resident CUDA source now retain a compact quadratic
+centerline/height ribbon from detector components. Recognition windows and CTC
+word spans use the same backward source map. CPU analytic tests cover actual
+production fitting/sampling, straight-path byte equality, component bounds,
+refusals and rotation/crop/keystone-to-present composition. The CUDA source is
+not yet compiled/executed in this implementation phase.
 
-**Curved pages.** First retain a compact centreline and height profile from each
-detector component, and test sampling a straight recognition strip along that
-curve. Each sample retains its coordinate on the original image. Map recognized
-word spans back to source geometry. This resembles the curved alignment used in
-[ABCNet](https://arxiv.org/abs/2002.10200), without adopting that model or code.
-Keep the existing straight-line path as the control.
+Word quads remain approximations to curved ribbons. Both word and widened search
+span chord error must remain <= min(1 original analysis pixel, 8% word height).
+Unsupported word geometry retains non-carvable source protection and omissions,
+not reading-pane-only guessed words. Identified but unsupported curve fits also
+retain ink. Median centerline row geometry, original-pixel proof, paint and Qt
+positioned text share the production model path. Detector and CTC inaccuracies,
+gutter foreshortening and hidden print remain ordinary limitations; this is not
+an exact curved-glyph renderer or a whole-page learned dewarper.
 
-A word quad is still only an approximation to a curved ribbon. Measure that
-approximation in original pixels and leave severely curved words as original
-ink; do not call four mapped corners an exact curved-glyph reconstruction.
-Reading order, ink fitting, protection, painting and positioned accessibility
-must agree on the geometry. Flattening for recognition alone does not solve the
-overlay. Strong gutter foreshortening or hidden print can remain unreadable.
-
-Use a synthetic curved-page fixture with a known coordinate map before real
-book photographs. Compare omissions, word errors, geometry/plate errors, added
-recognition windows and whole-worker time. Consider immutable Freeze inputs
-first to bound the experiment; this changes no model by mode. A whole-page mesh
-or a learned dewarper such as [UVDoc](https://arxiv.org/abs/2302.02887) is a later
-alternative with additional model, licence, memory and mapping costs.
-
-Recommended order: character-change diagnostic, curved-line geometry fixture,
-then owner review of actual error/flicker/latency results before app integration.
+ROOT will commission Opus review/optimization in the frozen implementation
+checkout, then serial latency and quality measurements using the deterministic
+A/B entries and source/pixel hashes. No performance measurements, inference,
+model downloads or native desktop/phone validation occurred during implementation.
+Measure actual whole-worker/callback and first painted Freeze latency separately
+from primitive stage microtime. Review omissions, word errors, source geometry,
+plates and false hides before promoting any scope/default.
 
 ## Parked live/Freeze model discussion
 

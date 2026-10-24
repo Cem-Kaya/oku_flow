@@ -1,5 +1,41 @@
 # OkuFlow Code Reference
 
+## Curved-line and current-ink experiments (development)
+
+- `ribbon::Geometry` stores the compact PCA-frame quadratic centerline, affine
+  height and recognition-window interval; `At`, `Width`, `Height`, `Error` and
+  `Inside` provide bounded backward sampling, arc approximation, exact chord
+  sagitta and exact quadratic-boundary checks. `Bin`, `Add` and `Fit` fit bounded
+  detector components. `unsupported` distinguishes an identified but unrepresentable
+  curve from the unchanged straight branch.
+- `PaddleQuad::ribbon`, `PaddleDetect(..., curvedRibbon)`,
+  `PaddleRecognitionWidth/Height`, `PaddleRecognitionWindows`, `PaddleRectify` and
+  `PaddleDecodeTokens` share that geometry. Supported word chords have an explicit
+  source-pixel error; invalid ones protect original ink. `PaddleMergeRecognition`
+  also translates ribbon reading anchors. CUDA `gpu::Quad`, `fitRibbons`, optional
+  `Detect` offset scratch and scalar/batch rectification carry the same compact map.
+- `SourceStamp::immutableSelectedInput` is processing context issued only for
+  `UltraClearTextController::ImmutableStamp`'s selected frame. The scheduler scopes
+  `Recognizer::SetCurvedRibbonInput`; `AutomaticRecognizer` forwards it without
+  changing models. `PaddleRibbonInputAllowed` excludes live/smoothed/held input and
+  Paddle adapters additionally require `OKUFLOW_UCT_CURVED_RIBBON=1`.
+- `RecognizedWord::{fromRibbon,ribbonErrorPx,ribbonReadingPointPx}` disclose
+  approximation/refusal and source centerline order. `PrepareLines` preserves
+  nearly horizontal ribbon quads and produces `PreparedLine::ribbonReadingBand`;
+  `AcceptedLine` and `OrderLinesForReading` use that band for both text surfaces.
+  CPU/resident fitting and proof still sample the original analysis image.
+- `current_ink::{Patch,Reference,Result,Verdict,Reason}` are CPU/offline diagnostic
+  types. `Capture` owns a bounded analysis-resolution word grid; `Build` retains
+  stamped source geometry; `Compare` scores photometrically normalized symmetric
+  jitter plus the worst local residual; `Check` enforces source/view compatibility.
+  None participates in application admission, tracking or full-read scheduling.
+- `TensorRtCropDiagnostic::Plan` binds ribbon mode and each crop retains its map.
+  `TensorRtProfile::CropDescriptor` hashes compact ribbon metadata only when used.
+  `uct_ribbon_ink_cases.hpp` tests the actual processing/model/paint/Qt positioned
+  text path and supplies `PrimitiveBenchmark`/`ExportTypesetFixture`. The existing
+  resident diagnostic adds explicit immutable selection and source error metadata.
+  See [scope, bounds, composition and commands](uct_ribbon_and_current_ink.md).
+
 ## Phone lens selection and camera zoom (development)
 
 - Android `CameraChoice` carries a public selection ID, logical device ID,

@@ -1,5 +1,31 @@
 # Hard-Coded Paths and Defaults
 
+## Selected-frame ribbon and offline current ink (2026-10-24)
+
+`OKUFLOW_UCT_CURVED_RIBBON=1` enables only selected immutable single-frame
+Paddle inputs; live, advancing, smoothed and held/composite inputs retain the
+baseline. It adds no UI/settings key or model. The fit uses 24 bins (20 supported,
+including ends), 262144 component/bounding-scan pixels per selected component,
+128 lines and original-plus-eight windows. A quadratic PCA shear uses a positive
+affine half-height, 32-segment arc estimate, straightness gate max(0.75 detector
+pixels, 0.08 local height), and exact source-boundary extrema. Chord/search error
+must be <= min(1 source-analysis pixel, 0.08 word height). Identified unsupported
+curves protect original detector ink; unmeasurable error is recorded as -1.
+
+The offline `current_ink` oracle owns <=32768 luma samples, <=512x96 including a
+three-pixel halo, at original analysis-image density. It refuses oversize rather
+than decimating, uses 2%/98% photometric quantiles (contrast >=32; ratio .6..1.6),
+edge-energy ratio .6..1.65, symmetric global +/-2-pixel half-step jitter, 4..12-pixel
+worst windows and provisional residual .035/.10 unchanged/changed cutoffs.
+No application hide/admission/cadence authority or native GPU capture is wired.
+
+`OKUFLOW_UCT_RIBBON_EVIDENCE` selects a fresh private diagnostic output directory;
+`OKUFLOW_UCT_RIBBON_BENCHMARK=1` selects the unregistered model-free A/B microtime
+slot (5 warmups plus 31 AB/BA pairs). `OKUFLOW_UCT_RESIDENT_IMMUTABLE=1` selects
+immutable media context in the existing resident worker benchmark, refusing
+paired/frozen-crop modes. See [the experiment contract](uct_ribbon_and_current_ink.md).
+
+
 ## Shipping OCR payload inputs (24 October 2026)
 
 `build_release_bundle.bat` requires prepared physical absolute input paths.
