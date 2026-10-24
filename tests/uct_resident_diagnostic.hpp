@@ -15,6 +15,7 @@
 #include "../src/common/uct_recognizer_width.hpp"
 #include "../src/common/uct_tensorrt_identity.hpp"
 #include "../src/common/uct_runtime_precision.hpp"
+#include "../src/common/uct_bf16_detector.hpp"
 #include "../src/common/uct_precision_experiment.hpp"
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -228,7 +229,7 @@ inline Selection ParseSelection(const EnvironmentReader& read)
         (s.pairs.front().recognizer == ModelTier::Medium || s.pairs.front().recognizer == ModelTier::Small ||
          s.pairs.front().recognizer == ModelTier::Tiny);
     if (s.exactN8 && (s.capacities != QVector<int>{8} || !oneMediumDetector ||
-        s.widthPolicy != "fixed1024" || s.profile || s.frozenCrops || s.shadowPlanner || !s.media || s.paired || s.rounds != 1))
+        s.widthPolicy != "fixed1024" || (s.profile && !s.productionFactory) || s.frozenCrops || s.shadowPlanner || !s.media || s.paired || s.rounds != 1))
         return refuse("Same-capacity N8 visits require a medium detector and medium/small/tiny recognizer, capacity 8, fixed1024, media/single, one round, "
                       "and profiling/frozen-crops/shadow disabled.");
     if (s.localBf16 && (!s.exactN8 || s.pairs.front().recognizer != ModelTier::Medium))
@@ -236,8 +237,8 @@ inline Selection ParseSelection(const EnvironmentReader& read)
     if (!s.experimentManifest.isEmpty() && (!s.exactN8 || s.localBf16 ||
         s.pairs.front().recognizer == ModelTier::Medium || !runtime_precision::LocalAbsolute(s.experimentManifest)))
         return refuse("The experimental BF16 manifest requires an explicit local small/tiny same-capacity N8 selection.");
-    if (s.productionFactory && (s.localBf16 || !s.experimentManifest.isEmpty() || s.exactN8 || s.frozenCrops || s.shadowPlanner))
-        return refuse("The production-factory benchmark is exclusive of private/experimental BF16, exact-N8 and frozen/shadow modes; the production factory has no crop diagnostic.");
+    if (s.productionFactory && (s.localBf16 || !s.experimentManifest.isEmpty() || s.frozenCrops || s.shadowPlanner))
+        return refuse("The production-factory benchmark is exclusive of private/experimental BF16 and frozen/shadow modes; the production factory has no crop diagnostic.");
     s.sdk = read("OKUFLOW_UCT_TENSORRT_ROOT");
     if (s.sdk.isEmpty()) return refuse("Select the existing inference-only TensorRT SDK with OKUFLOW_UCT_TENSORRT_ROOT.");
     if (s.Blocks() > kMaximumBlocks || qint64(s.Blocks()) * s.JobsPerBlock() > kMaximumJobs)
@@ -551,6 +552,26 @@ inline bool MatchesPlanReceipt(const QString& detail, const PlanRecord& prefligh
     return false;
 }
 
+// The production loader's BF16 locators, with the same bounded payload digest
+// check as the direct benchmark. No driver alias, build or writable receipt.
+inline PlanRecord InspectBf16CachedPlan(const QString& cache,const QString& role,ModelTier tier,int capacity,
+                                      const QByteArray& graphHex,const QByteArray& uuid,const QByteArray& runtime)
+{
+    QStringList keys;
+    for(const auto& builder:{runtime,QByteArray(tensorrt_identity::kBuilderVersion)}) {
+        const auto key=QString::fromLatin1(bf16_runtime::PlanKey(QByteArray::fromHex(graphHex),uuid,
+            role=="detector",capacity,false,builder));
+        if(!keys.contains(key))keys.push_back(key);
+    }
+    PlanRecord result;QJsonArray candidates;
+    for(const auto& key:keys) {
+        const auto candidate=InspectPlan(cache,role,tier,capacity,key);
+        candidates.push_back(candidate.Json());
+        if(result.key.isEmpty() || (!result.valid&&candidate.valid))result=candidate;
+    }
+    result.candidates=candidates;return result;
+}
+
 // Fresh full-file hashes, not metadata/header equality, prove unchanged bytes.
 inline QJsonArray CacheInventory(const QString& cache)
 {
@@ -744,13 +765,18 @@ inline QString Validate(const Completion& completion, const MeteredImage::Meters
     if (!output.ok || output.cancelled || output.backendPreparing || output.inputFault || output.compositeInput)
         return "The resident job did not complete successfully: " + output.error + " Backend: " +
                completion.backend.detail;
-    if (!completion.backend.usesGpu || completion.backend.name != QStringLiteral("PaddleOCR / TensorRT CUDA"))
+    const auto expectedBackend=selection.productionFactory
+        ? QStringLiteral("PaddleOCR / TensorRT CUDA [BF16 / BF16]")
+        : QStringLiteral("PaddleOCR / TensorRT CUDA");
+    if (!completion.backend.usesGpu || completion.backend.name != expectedBackend)
         return "The result did not come from the TensorRT GPU backend: " + completion.backend.name;
     if (!completion.backend.detail.contains(QStringLiteral("recognizer batch=%1.").arg(capacity)))
         return "The actual recognizer capacity differs from the request; a fallback is not benchmarked: " +
                completion.backend.detail;
     if ((selection.localBf16 || selection.productionFactory || !selection.experimentManifest.isEmpty()) && !completion.backend.detail.contains("Recognition graph=BF16-linear,"))
         return "The BF16 selection did not actually select BF16: " + completion.backend.detail;
+    if(selection.productionFactory && !completion.backend.detail.contains("detector=BF16-linear,"))
+        return "The production BF16 detector fell back; it is not the requested both-role timing: "+completion.backend.detail;
     if (!result.deviceInput) return "The scheduler did not take the device-input path.";
     if (selection.shadowPlanner && (!result.shadowPlan || !result.shadowPlannerError.isEmpty() ||
         result.shadowPlan->authoritativeAction != RegionAuthoritativeAction::kRunFullOcr ||
@@ -1178,6 +1204,17 @@ inline void SelectionAndComparisonSelfTest()
         QVERIFY2(parsed.error.isEmpty(), qPrintable(parsed.error));
         QVERIFY(parsed.productionFactory && !parsed.localBf16 && !parsed.exactN8);
         QCOMPARE(parsed.Json()["factory"].toString(), QStringLiteral("production"));
+    }
+    {
+        auto production=values;
+        production["OKUFLOW_UCT_RESIDENT_PRODUCTION_FACTORY"]="1";
+        production["OKUFLOW_UCT_RESIDENT_EXACT_N8"]="1";
+        production["OKUFLOW_UCT_RESIDENT_CAPACITIES"]="8";
+        production["OKUFLOW_UCT_RESIDENT_ROUNDS"]="1";
+        production["OKUFLOW_UCT_RESIDENT_STAMP"]="media";
+        production["OKUFLOW_UCT_RESIDENT_INPUT"]="single";
+        production["OKUFLOW_UCT_RESIDENT_PAIRS"]="medium:medium";
+        QVERIFY(ParseSelection([&](const char* key){return production.value(QByteArray(key));}).error.isEmpty());
     }
     QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_PRODUCTION_FACTORY", "yes"}}));
     QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_PRODUCTION_FACTORY", "1"}, {"OKUFLOW_UCT_RESIDENT_FROZEN_CROPS", "1"}}));
@@ -1729,8 +1766,9 @@ inline void RunBlock(Run& run, const Block& block, ProfileCapture& capture)
         // precision from the backend detail recorded with every job; the
         // inference-only SDK, startup deadline and unchanged-cache gate
         // refuse any cold build.
-        if (run.selection.productionFactory)
-            return detail.contains(QStringLiteral("Recognition graph=BF16-linear,"));
+        if (run.selection.productionFactory &&
+            (!detail.contains(QStringLiteral("Recognition graph=BF16-linear,")) ||
+             !detail.contains(QStringLiteral("detector=BF16-linear,")))) return false;
         for (const auto& preflight : run.pairs[std::size_t(block.pair)].plans) {
             if (preflight.role == "recognizer" && preflight.capacity != block.capacity) continue;
             if ((run.selection.localBf16 || run.experiment) && preflight.role == "recognizer") {
@@ -1970,7 +2008,20 @@ inline void ResidentBaselineDiagnostic()
                 QByteArray::fromHex(detection ? entry.assets.detectorSha256 : entry.assets.recognizerSha256),
                 uuid, detection, capacity, false, 13050)) : QString();
         };
-        if (!selection.productionFactory) entry.plans.push_back(InspectCachedPlan(cache, "detector", pair.detector, 1,
+        if(selection.productionFactory) {
+            const auto modelRoot=QDir(QCoreApplication::applicationDirPath()).filePath("models");
+            try {
+                bf16_detector::ReadGraphPath(modelRoot,entry.assets,pair.detector);
+                public_bf16::ReadModel(modelRoot,entry.assets,pair.recognizer);
+            } catch(const runtime_precision::ArtifactError& error) { QFAIL(error.what()); }
+            const auto detHash=QByteArray(bf16_detector::GraphHash(pair.detector));
+            const auto recHash=QByteArray(public_bf16::Model(pair.recognizer).graphSha256);
+            entry.models["bf16DetectorGraphSha256"]=QString::fromLatin1(detHash);
+            entry.models["bf16RecognizerGraphSha256"]=QString::fromLatin1(recHash);
+            entry.plans.push_back(InspectBf16CachedPlan(cache,"detector",pair.detector,1,detHash,uuid,trtVersion));
+            for(const auto capacity:selection.capacities)
+                entry.plans.push_back(InspectBf16CachedPlan(cache,"recognizer",pair.recognizer,capacity,recHash,uuid,trtVersion));
+        } else entry.plans.push_back(InspectCachedPlan(cache, "detector", pair.detector, 1,
                                               entry.assets.detectorSha256, uuid, trtVersion, false, requiredLegacy(true, 1)));
         if (!selection.experimentManifest.isEmpty()) {
             try {

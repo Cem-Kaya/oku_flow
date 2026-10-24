@@ -312,13 +312,15 @@ void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line
         }
         return best;
     };
-    // Ribbon words protect more ink than their own span (a refused chord's
-    // curve envelope, or protection inherited from an earlier replacement).
-    // Losing an overlap contest may drop their text, never that mask.
-    // Baseline words protect exactly their bounds and never qualify.
+    // Only refused ribbon geometry carries a hard envelope. Ordinary padded
+    // rectangle words may also have larger protection: that is not evidence
+    // of a curve. A replacement carrying an unresolved ribbon mask remains
+    // invalid geometry with unknown error (-1), retaining non-carvable ink
+    // through PrepareLines/model admission and further merge replacements.
     const auto inheritableProtection = [](const RecognizedWord& value) {
         return !value.protectedBoundsPx.isEmpty() &&
-            (value.fromRibbon || !value.boundsPx.contains(value.protectedBoundsPx));
+            value.disposition==TokenDisposition::kInvalidGeometry &&
+            (value.fromRibbon || value.ribbonErrorPx<0);
     };
     qsizetype preferredLine = -1;
     for (auto word : line.words) {
@@ -366,6 +368,8 @@ void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line
                 winner.protectedBoundsPx = winner.protectedBoundsPx.isEmpty()
                     ? word.protectedBoundsPx
                     : winner.protectedBoundsPx.united(word.protectedBoundsPx);
+                winner.disposition=TokenDisposition::kInvalidGeometry;
+                winner.ribbonErrorPx=-1;
             }
             continue;
         }
@@ -432,10 +436,13 @@ void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line
                 }), words.end());
             }
         }
-        if (!inheritedProtection.isEmpty())
+        if (!inheritedProtection.isEmpty()) {
             word.protectedBoundsPx = word.protectedBoundsPx.isEmpty()
                 ? inheritedProtection
                 : word.protectedBoundsPx.united(inheritedProtection);
+            word.disposition=TokenDisposition::kInvalidGeometry;
+            word.ribbonErrorPx=-1;
+        }
         output[target].words.push_back(std::move(word));
         if (cached) {
             auto& row = cache[std::size_t(target)];

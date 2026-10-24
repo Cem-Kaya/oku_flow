@@ -2834,6 +2834,51 @@ class PaddleTests final : public QObject
         QSKIP("CUDA adapter not compiled.");
 #endif
     }
+    void gpuRibbonFitsAndRectifiesOriginalPixels()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        int devices{};QVERIFY(cudaGetDeviceCount(&devices)==cudaSuccess&&devices>0);
+        constexpr int w=320,h=160;
+        FixtureStream stream;
+        GpuBuffer<float> mapDevice(w*h),tensor(1024*48*3);
+        GpuBuffer<int> labels(w*h),count(1),offsets((w*h+255)/256);
+        GpuBuffer<gpu::Component> components(w*h);
+        GpuBuffer<gpu::Quad> detected(128),windows(128*9);
+        const auto image=uct_ribbon_test::Gradient().copy(0,0,w,h);
+        GpuBuffer<unsigned char> pixels(image.sizeInBytes());
+        QCOMPARE(cudaMemcpyAsync(pixels.data,image.constBits(),image.sizeInBytes(),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+        std::atomic<bool> cancelled{};
+        for(bool curved:{false,true}) {
+            const auto map=uct_ribbon_test::DetectorMap(curved);
+            const auto cpu=PaddleDetect(map,w,h,{w,h},cancelled,true);
+            QCOMPARE(cpu.size(),1);
+            QCOMPARE(cudaMemcpyAsync(mapDevice.data,map.data(),map.size()*sizeof(float),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+            gpu::Detect(mapDevice.data,w,h,w,h,labels.data,components.data,detected.data,count.data,stream.value,offsets.data);
+            gpu::RecognitionWindows(detected.data,count.data,windows.data,stream.value);
+            gpu::Quad actual{};int total{};
+            QCOMPARE(cudaMemcpyAsync(&total,count.data,sizeof(total),cudaMemcpyDeviceToHost,stream.value),cudaSuccess);
+            QCOMPARE(cudaMemcpyAsync(&actual,windows.data,sizeof(actual),cudaMemcpyDeviceToHost,stream.value),cudaSuccess);
+            QCOMPARE(cudaStreamSynchronize(stream.value),cudaSuccess);
+            QVERIFY(total>=1);QCOMPARE(actual.ribbon.valid,curved);QVERIFY(!actual.ribbon.unsupported);
+            if(curved)for(int i=0;i<=32;++i) {
+                const auto p=actual.ribbon.At(i/32.,.5),q=cpu[0].ribbon.At(i/32.,.5);
+                QVERIFY(std::hypot(p.x-q.x,p.y-q.y)<.15);
+                QVERIFY(std::abs(p.y-(60+.0006*(p.x-160)*(p.x-160)))<.8);
+            }
+            gpu::Rectify(pixels.data,image.bytesPerLine(),w,h,windows.data,0,tensor.data,1024,stream.value);
+            std::vector<float> values(1024*48*3);
+            QCOMPARE(cudaMemcpyAsync(values.data(),tensor.data,values.size()*sizeof(float),cudaMemcpyDeviceToHost,stream.value),cudaSuccess);
+            QCOMPARE(cudaStreamSynchronize(stream.value),cudaSuccess);
+            PaddleQuad sameGeometry{};sameGeometry.score=actual.score;sameGeometry.ribbon=actual.ribbon;
+            for(int k=0;k<4;++k)sameGeometry.points[k]={actual.xy[k*2],actual.xy[k*2+1]};
+            const auto expected=PaddleRectify(image,sameGeometry,1024,actual.validWidth);
+            QCOMPARE(values.size(),expected.size());
+            for(std::size_t i=0;i<values.size();++i)QVERIFY(std::abs(values[i]-expected[i])<3e-5);
+        }
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
     void gpuOrientedRegionsMatchCpuCornerOrder()
     {
 #if OKUFLOW_ENABLE_CUDA

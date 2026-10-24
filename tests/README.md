@@ -1,5 +1,10 @@
 # OkuFlow Tests
 
+`uct_ribbon_cuda_contract` executes the actual parallel ribbon fit and original-
+pixel rectification against analytic/CPU oracles on CUDA. It is serialized with
+other GPU cases. The frozen `uct_merge_replay` oracle remains unchanged and
+checks that default rectangle merges are preserved.
+
 `uct_ribbon_ink_contract` is model-free Qt-offscreen CPU coverage for the
 production curved-line detector/rectifier/CTC, source geometry/protection, worker
 proof, painting/positioned text and bounded CPU current-ink diagnostics. It does

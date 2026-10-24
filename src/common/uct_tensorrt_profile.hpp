@@ -44,6 +44,7 @@ public:
         used_ = omitted_ = detectorPasses_ = recognizerCalls_ = recognizerSamples_ = 0;
         shapeSets_ = addressSets_ = 0;
         rectifyLaunches_ = ctcLaunches_ = recognitionCopies_ = 0;
+        ribbonCrops_ = unsupportedRibbonCrops_ = 0;
         metadataBytes_ = 0;
         inputBytes_ = outputBytes_ = outputLimitBytes_ = 0;
         maximumBatch_ = 0;
@@ -128,6 +129,8 @@ public:
         for (auto& word : words) word = qToLittleEndian(word);
         cropHash_->addData(QByteArrayView(reinterpret_cast<const char*>(words.data()), sizeof(words)));
         if(curve && (curve->valid || curve->unsupported)) {
+            ribbonCrops_ += curve->valid;
+            unsupportedRibbonCrops_ += curve->unsupported;
             const double fields[]{curve->ox,curve->oy,curve->ux,curve->uy,curve->vx,curve->vy,
                 curve->a,curve->b,curve->c,curve->h0,curve->h1,curve->start,curve->end,
                 curve->protectLeft,curve->protectTop,curve->protectRight,curve->protectBottom};
@@ -188,6 +191,7 @@ public:
             {"workerWallMs", wall_.nsecsElapsed() / 1e6}, {"streamStageMs", gpu},
             {"detectorPasses", detectorPasses_}, {"recognizerCalls", recognizerCalls_},
             {"recognizerSamples", recognizerSamples_}, {"networkHostMs", enqueueMs_},
+            {"ribbonRecognitionCrops",ribbonCrops_},{"unsupportedRibbonRecognitionCrops",unsupportedRibbonCrops_},
             {"mergeHostMs", mergeMs_}, {"shapeSets", shapeSets_}, {"addressSets", addressSets_},
             {"detectorCountHostWaitMs", detectorWaitMs_}, {"recognizerGroupHostWaitMs", groupWaitMs_},
             {"cropWidthHistogram", widths},
@@ -227,6 +231,7 @@ private:
     int omitted_{}, detectorPasses_{}, recognizerCalls_{}, recognizerSamples_{};
     int shapeSets_{}, addressSets_{};
     int rectifyLaunches_{}, ctcLaunches_{}, recognitionCopies_{};
+    int ribbonCrops_{}, unsupportedRibbonCrops_{};
     double enqueueMs_{}, mergeMs_{};
     std::size_t metadataBytes_{};
     std::size_t inputBytes_{}, outputBytes_{}, outputLimitBytes_{}, freeBefore_{}, totalBytes_{};

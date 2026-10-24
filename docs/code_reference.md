@@ -2,6 +2,18 @@
 
 ## Curved-line and current-ink experiments (development)
 
+- `InspectBf16CachedPlan` in the resident diagnostic preflights the production
+  builder locators and full plan payload digests for both roles; actual backend
+  receipts must match. `gpuRibbonFitsAndRectifiesOriginalPixels` exercises the
+  parallel device fit and rectification against source-coordinate CPU oracles.
+- `current_ink::Compare` can demote a Changed result using a fixed raw-luma
+  box-defocus model; it never derives Unchanged from softened pixels. The
+  TensorRT profiler records valid/unsupported ribbon crop counts from compact
+  descriptors already downloaded by recognition.
+- Its bounded half-pixel search hoists integer offsets and selects integer,
+  horizontal, vertical or bilinear averaging outside the sample loop; search
+  positions, symmetric score and tie policy remain unchanged.
+
 - `ribbon::Geometry` stores the compact PCA-frame quadratic centerline, affine
   height and recognition-window interval; `At`, `Width`, `Height`, `Error` and
   `Inside` provide bounded backward sampling, arc approximation, exact chord
@@ -12,8 +24,10 @@
   `PaddleRecognitionWidth/Height`, `PaddleRecognitionWindows`, `PaddleRectify` and
   `PaddleDecodeTokens` share that geometry. Supported word chords have an explicit
   source-pixel error; invalid ones protect original ink. `PaddleMergeRecognition`
-  also translates ribbon reading anchors and unions inheritable ink protection
-  into overlap winners so merge replacement cannot drop a refused envelope.
+  also translates ribbon reading anchors and carries refused-ribbon protection
+  through overlap replacement as invalid geometry with unknown error (-1).
+  Ordinary padded rectangle protection does not trigger that rule. This keeps
+  unresolved envelopes non-carvable through existing model admission.
   CUDA `gpu::Quad`, `fitRibbons`, optional
   `Detect` offset scratch and scalar/batch rectification carry the same compact map.
 - `SourceStamp::immutableSelectedInput` is processing context issued only for

@@ -14,8 +14,8 @@ predate those repairs are not current bug reports.
   Preserve the measured [NCC baseline](../docs/uct_character_verification.md).
   Skipping authoritative full reads remains unaccepted, independently of ordinary
   ML recognition errors.
-- **Curved pages:** review the explicit selected-frame ribbon experiment and
-  measure its actual quality/cost. Four-corner painting remains approximate;
+- **Curved pages:** evaluate quality of the reviewed, measured selected-frame
+  ribbon experiment. Four-corner painting remains approximate;
   per-glyph/page-mesh alternatives and learned dewarping are unimplemented.
 - **Detection/recognition quality:** compare contour/word-level geometry or
   alternative engines on the same difficult images if misses remain. Verify
@@ -27,14 +27,15 @@ predate those repairs are not current bug reports.
 - **End-to-end experience:** measure first painted text and Freeze latency,
   not just worker microtime. See [03](03-performance-gpu-cpu.md).
 
-## Implemented first experiments, pending review/measurement (2026-10-24)
+## Implemented and measured first experiments (2026-10-24)
 
 The model-free [ribbon/current-ink experiment](../docs/uct_ribbon_and_current_ink.md)
 is implemented in the production Paddle processing chain. It adds no model,
 automatic live/Freeze tier switch or new UI strings. The initial execution scope
 is an explicit `OKUFLOW_UCT_CURVED_RIBBON=1` opt-in on the controller's exact
 selected immutable single frame. Live/advancing/smoothed/held inputs stay on the
-baseline. CPU correctness is separate from the unrun GPU/latency acceptance.
+baseline. Scoped CPU/CUDA correctness and resident worker measurements passed;
+native Freeze-to-paint and real curved-page quality remain unmeasured.
 
 **Character changes.** A bounded owned CPU oracle compares a word's original
 analysis-resolution ink, with global symmetric jitter/photometric handling and
@@ -51,8 +52,8 @@ changing the scorer cannot recover pixels already lost in the decimated probe.
 centerline/height ribbon from detector components. Recognition windows and CTC
 word spans use the same backward source map. CPU analytic tests cover actual
 production fitting/sampling, straight-path byte equality, component bounds,
-refusals and rotation/crop/keystone-to-present composition. The CUDA source is
-not yet compiled/executed in this implementation phase.
+refusals and rotation/crop/keystone-to-present composition. The CUDA fit and
+source rectifier also pass direct analytic/CPU comparison on the test GPU.
 
 Word quads remain approximations to curved ribbons. Both word and widened search
 span chord error must remain <= min(1 original analysis pixel, 8% word height).
@@ -63,13 +64,15 @@ positioned text share the production model path. Detector and CTC inaccuracies,
 gutter foreshortening and hidden print remain ordinary limitations; this is not
 an exact curved-glyph renderer or a whole-page learned dewarper.
 
-ROOT will commission Opus review/optimization in the frozen implementation
-checkout, then serial latency and quality measurements using the deterministic
-A/B entries and source/pixel hashes. No performance measurements, inference,
-model downloads or native desktop/phone validation occurred during implementation.
-Measure actual whole-worker/callback and first painted Freeze latency separately
-from primitive stage microtime. Review omissions, word errors, source geometry,
-plates and false hides before promoting any scope/default.
+Muse Wonder Full (max) reviewed/optimized the implementation. ROOT repaired its
+defocus canary, a default-rectangle merge regression and benchmark identity
+checks, then measured the actual medium BF16 detector/recognizer worker.
+On/off median cost was +0.16 ms for a curved synthetic line, +0.61 ms for the book
+and +0.82 ms for dense frame 55. These are same-binary resident worker results,
+not native Freeze-to-paint measurements. The ink CPU oracle improved from
+3.59 to 2.05 ms per tested word but still falsely flags 8/24 unchanged held-out
+cases (four more are uncertain); it remains offline. The experiment document
+retains the full scope, p95s, original failures and private evidence locations.
 
 ## Parked live/Freeze model discussion
 

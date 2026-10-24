@@ -14,13 +14,13 @@ the experiment. The scheduler sets and clears the processing context around
 exactly one backend call, and the automatic adapter forwards it without changing
 the selected backend or model tier. Windows OCR ignores it. Unset/`0` preserves
 the established rectangle path. This setting is deliberately absent from the UI
-and saved settings pending review and measurements.
+and saved settings; the measured development experiment remains opt-in.
 
 Both Paddle CPU and TensorRT production paths carry the ribbon through detection,
-recognition windows, rectification and CTC source geometry. The CUDA implementation
-has not yet been compiled or exercised in this task: only CPU compilation and
-desktop-free correctness work were authorized. Keep its native GPU correctness,
-runtime ownership, quality and cost acceptance pending.
+recognition windows, rectification and CTC source geometry. CPU and CUDA scoped
+checks and resident BF16 measurements have completed, as recorded below. Real
+curved-page quality, native Freeze-to-paint latency and device/release acceptance
+remain separate.
 
 The **current-ink verifier is CPU/offline only**. No per-frame application call,
 hide trigger, native GPU capture, scheduling change or reuse permission is wired.
@@ -56,7 +56,7 @@ bin array is allocated. The GPU experiment retains labels with a separate
 prefix-offset buffer, then scans at most 128 selected components on its existing
 stream. It downloads only the existing compact crop/token metadata. The GPU
 scan uses one 256-thread block per component with a fixed-order reduction;
-see the review round below (cost UNMEASURED).
+see the review round and measured whole-worker cost below.
 
 The straightness gate is the larger of 0.75 detector pixels and 8% local height.
 Below it, rectangle coordinates, rectification/zero padding and CTC output retain
@@ -233,6 +233,16 @@ changes, so a cold cache is a refusal, never a build. Capacity 1 with the
 shipped tiny pair is the N1-relevant arm; do not relabel direct-FP32 numbers
 as BF16. This does not alter the application's BF16 defaults.
 
+The measured production run used `OKUFLOW_UCT_RESIDENT_EXACT_N8=1`,
+`OKUFLOW_UCT_RESIDENT_CAPACITIES=8`, one round, 20 passes and
+`QTEST_FUNCTION_TIMEOUT=600000`; profiling was off for the main comparison.
+The separate stage visits used two passes with profiling on. The selected
+converted graphs must exist under the test executable's `models/` directory,
+which is the production factory's actual discovery path. Use explicit original
+model and inference-only SDK roots. ROOT used a private process-local
+`LOCALAPPDATA` containing verified copies of existing warm plans; the owner's
+model/cache directories were never inference write targets.
+
 The harness records scheduler whole-worker and submit-to-callback time separately
 from CUDA stage intervals, resident preparation and host waits, plus source/model/
 plan/executable identities, ordered output, geometry refusals and crop hashes.
@@ -247,9 +257,67 @@ comparison. Pixel equality does not imply zero latency overhead.
 
 ## Validation evidence
 
+### Final root measurements and scope
+
+RTX 4090, TensorRT 11.4.0.106, CUDA 12.9.86 and Qt 6.12.0. Both selected
+medium roles loaded warm BF16 plans, verified by graph/key/payload hashes on
+every successful job. No engine was compiled. The same final CUDA executable
+(`a999b6811b3d2a5e9c16adbfff4a2d5343de1fa255b2b2f03a1d1b363ec6aadf`)
+ran off/on/on/off, one warmup plus 20 timed passes per source/visit. The first
+four timed passes were excluded in advance and retained: 32 steady samples per
+arm/source, 256 total. Nearest-rank p95s are descriptive shared-desktop results.
+
+Resident worker milliseconds, median / p95:
+
+| Input | Ribbon off | Ribbon on | Median added | Candidate words off/on |
+| --- | ---: | ---: | ---: | ---: |
+| Synthetic curved line | 8.838 / 12.572 | 8.998 / 10.783 | +0.160 (+1.81%) | 4 / 4 |
+| Synthetic straight line | 9.558 / 11.314 | 9.314 / 10.106 | -0.244 (-2.56%) | 4 / 4 |
+| Book photo | 38.617 / 39.878 | 39.225 / 40.471 | +0.607 (+1.57%) | 373 / 449 |
+| Dense frame 55 | 142.868 / 146.685 | 143.691 / 145.829 | +0.823 (+0.58%) | 263 / 262 |
+
+The straight result is timing variation, not evidence of a speed optimization.
+The separate two-pass profiled visits prove active ribbon work: 1 curved-line,
+0 straight-line, 27 book and 2 dense recognition crops; no unsupported crop in
+these four sources. More candidates are not verified correct words. No new
+human-truth book score or actual painting/reading acceptance is inferred.
+
+Recognizer input/output capacities stayed 4,718,592 / 76,636,160 bytes in both
+arms; this is not a peak-memory measurement. Descriptors grow even when off;
+their default-off cost against the pre-feature binary remains unmeasured.
+These timings cover the actual scheduler/resident worker and callback, with
+owned upload/capture setup outside steady time. They do not include camera,
+decoder, UI admission or paint, and do not establish native Freeze latency/FPS.
+
+The CPU component comparison alternated original/optimized/optimized/original,
+with 31 measured AB/BA pairs per visit. Original and optimized source/map/crop
+hashes matched. Current-ink median fell from 3.590 to 2.055 ms per tested word
+(about 43%); p95 3.822 to 2.247 ms. The original 72 changed/72 unchanged controls
+still have zero false accepts/hides/uncertain. Held-out 24/24 retain zero false
+accepts, **8 false hides and 4 uncertain**, improved from 12 false hides. The
+oracle remains offline; cost and nuisance errors do not justify live authority.
+
+Final tracked CPU selection: **12/242 PASS**, including the unchanged frozen
+merge oracle, controller and source-equivalence guard. Three accessibility
+suites skip only their independently selected timing row, which passed. Final
+CUDA selection: **4/254 PASS**, including the real ribbon fit/rectifier and
+existing GPU OCR regressions. Original build/refusal/defocus/merge failures and
+the benchmark's stale backend-name expectation are preserved. No native desktop,
+physical phone, installer, full release gate or publication ran.
+
+All 19 changed code/build-input pins and 18 private plan copies matched after
+execution; owner/source plans were unchanged. Raw visits, profile/callback
+records, code/binary seals, cache inventories, exact commands and failed attempts:
+`Z:/Projects/OkuFlow/local-work-data/uct-ribbon-ink-20261024/root-final/`.
+Start with `worker-summary.json`, `primitive-summary.json`, `source-frozen.json`
+and `final-preservation.json`. The feature remains an opt-in selected-immutable
+experiment. Measured compute cost is small here; real curved-page geometry and
+word quality still need evaluation before expanding that scope.
+
 See the frozen implementation handoff for exact head/binary hashes, commands and
-preserved original failures. Performance, GPU inference, native desktop, phone,
-release/bundle and installed-app acceptance are intentionally unmeasured here.
+preserved original failures. The following paragraphs describe the earlier
+implementation-only validation; the final root results above supersede its
+then-unrun GPU/performance status.
 
 The CPU diagnostic on this machine completed 72 changed and 72 unchanged
 Consolas controls with 0 false accepts, 0 false hides and 0 unverifiable. The
@@ -287,16 +355,51 @@ release matrix.
 
 ## Post-implementation review and optimization round
 
-An independent source-only review of the imported implementation followed; it
-built and ran nothing, so every statement below about cost is UNMEASURED and
-all new tests are UNRUN until the tracked gates execute them.
+### Root validation repairs
+
+The first post-review CPU run preserved a real defocus-control failure: matched
+blur of both normalized grids still called unchanged box-defocused ink Changed.
+The diagnostic now also evaluates a fixed 3x3 box point-spread model before
+contrast normalization, in either direction. It can only demote Changed to
+Unverifiable at the existing cutoff. This is an offline nuisance model, not
+permission to accept text or a claim that scale/defocus is solved.
+
+The GPU fit uses fundamental shared arrays and constructs its `Bin` objects on
+the reducing thread; shared storage requires no dynamic object initialization.
+`uct_ribbon_cuda_contract` runs the actual parallel fit, analytic centerline and
+CPU/GPU source rectification checks. Profiles now count valid and unsupported
+ribbon recognition crops so an inactive branch cannot be reported as curved work.
+
+Production-factory diagnostics verify both converted graphs and digest-valid
+warm BF16 plans before model work, then match both role keys/payload hashes and
+actual precision on successful jobs. Exact-N8 production visits may profile the
+stages; direct/private exact-N8 restrictions stay unchanged. Use an isolated
+process-local LocalAppData cache snapshot for measurement, not owner cache writes.
+The recorded root CPU/CUDA gates exercised these repairs; earlier failures
+remain intact. The first CUDA build also exposed a mixed float/double extrema
+overload unavailable to device code, repaired with explicit double operands.
+
+The frozen merge replay subsequently exposed an ordinary-rectangle regression:
+larger padded protection is not unique to ribbons. Inheritance now requires
+refused ribbon geometry (or its invalid, unknown-error carrier), not merely an
+expanded rectangle. A replacement overlapping that unresolved envelope remains
+invalid geometry, so existing model admission retains a non-carvable original
+mask. Tests cover replacement chains and preparation as well as bounds; the
+frozen baseline oracle is unchanged.
+
+The ink alignment loop specializes its four exact integer/half-pixel phases
+outside the inner sample loop. It retains all 81 shifts and symmetric/tie rules;
+it does not subsample, approximate a search or add per-pixel deformation.
+
+Muse Wonder Full at maximum reasoning performed the independent source review
+and initial optimizations. It built and ran nothing. Its predictions were
+subsequently checked by ROOT's builds, regressions and measurements below.
 
 Correctness fix: overlapping-word merge could drop a refused ribbon word's
 non-carvable envelope when a duplicate candidate won or replaced it.
-`PaddleMergeRecognition` now unions inheritable protection (ribbon words, or
-any protection extending beyond the word's own bounds) into the overlap
-winner in both directions; baseline words protect exactly their bounds, so
-straight-path merge results are unchanged. `curvedRibbonMergeProtection`
+The initial fix inherited any enlarged protection. ROOT's frozen replay
+disproved its assumption about baseline rectangles; the narrower rule above
+replaces it. `curvedRibbonMergeProtection`
 covers both orders, the unchanged baseline, windowed decode against an
 independent analytic map, and bin fill-order invariance (counts/extrema
 exact, fit coefficients within summation rounding), which bounds CPU/GPU fit

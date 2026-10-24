@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+- Validate curved-line experiments with direct CUDA fit/rectification coverage
+  and per-role warm BF16 plan identity checks. Keep defocus uncertainty in the
+  offline ink diagnostic; softened evidence cannot accept unchanged text.
+
 - Add a separate phone camera zoom control, saved per phone/lens; expose Auto
   rear-camera selection and metadata-based ultrawide, main and telephoto names.
   The companion can select physical lenses through their logical parent.

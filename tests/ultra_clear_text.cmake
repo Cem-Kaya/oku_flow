@@ -156,6 +156,11 @@ set_tests_properties(uct_paddle_processing PROPERTIES TIMEOUT 30 LABELS "headles
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 if(OKUFLOW_ENABLE_CUDA)
+    add_test(NAME uct_ribbon_cuda_contract COMMAND uct_paddle_tests gpuRibbonFitsAndRectifiesOriginalPixels)
+    set_tests_properties(uct_ribbon_cuda_contract PROPERTIES TIMEOUT 30 LABELS "gpu"
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
+        REQUIRED_FILES "${PROJECT_SOURCE_DIR}/tests/uct_ribbon_ink_cases.hpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/uct_ribbon.hpp")
     add_test(NAME uct_paddle_cuda COMMAND uct_paddle_tests gpuQuadReferencesNormalizeRotationAndMatchCpuWithoutImageEgress gpuOrientedInkMatchesCpu gpuLocalColorDescriptorsMatchCpu gpuRecognizerWidthMetadataDoesNotReorderOrReadPastCount gpuRecognizerWidthRectificationMatchesCpuAcrossCanvasTransitions gpuBatchedRectificationMatchesScalarCapacityAndTails gpuBatchedCtcMatchesScalarActualShapesAndFailures gpuResidentSchedulerKeepsPixelsAndDescriptorsOnDevice gpuResidentShiftedWordReferenceKeepsSamplesOnDevice gpuResidentFingerprintCoversEveryByteAndReleasesCaptureSlots gpuResidentValidationMatchesCpuUnderMotionOcclusionAndCrop gpuResidentBatchMappingMatchesDistinctCpuLines gpuPairedCaptureKeepsSmoothedOcrAndCurrentValidationApart gpuHoldRecordTravelsWithCaptureAndResolvesOnWorker gpuAnalysisFaultSeamLatchesPressureAndQuarantinesUnknownCompletion gpuAlgorithmsAndOwnedInputs gpuDenseRegionSelectionIsDeterministic gpuOrientedRegionsMatchCpuCornerOrder)
     set_tests_properties(uct_paddle_cuda PROPERTIES TIMEOUT 60 LABELS "gpu"
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen"

@@ -282,7 +282,9 @@ inline void InkOwnershipAndResidual() {
     // Independent defocus controls: matched blur may only demote a sharp
     // Changed to Unverifiable; it can never manufacture Unchanged.
     const auto defocused=[](const QImage& input) {auto out=input;for(int y=1;y<95;++y)for(int x=1;x<255;++x){int r=0,g=0,b=0;for(int dy=-1;dy<=1;++dy)for(int dx=-1;dx<=1;++dx){const auto c=input.pixelColor(x+dx,y+dy);r+=c.red();g+=c.green();b+=c.blue();}out.setPixelColor(x,y,QColor(r/9,g/9,b/9));}return out;};
-    QVERIFY(Check(reference,defocused(InkImage(false)),stamp).verdict!=Verdict::Changed);
+    const auto defocus=Check(reference,defocused(InkImage(false)),stamp);
+    QVERIFY2(defocus.verdict!=Verdict::Changed,qPrintable(QString("sharp=%1 softened=%2 shift=%3,%4")
+        .arg(defocus.worstResidual).arg(defocus.blurredResidual).arg(defocus.jitterPx.x()).arg(defocus.jitterPx.y())));
     QVERIFY(Check(reference,defocused(InkImage(true)),stamp).verdict!=Verdict::Unchanged);
     auto stale=stamp;++stale.geometryGeneration;QCOMPARE(Check(reference,InkImage(false),stale).verdict,Verdict::Unverifiable);
     stale=stamp;stale.temporallySmoothed=true;QCOMPARE(Check(reference,InkImage(false),stale).verdict,Verdict::Unverifiable);
@@ -419,7 +421,7 @@ inline void MergeProtectionAndWindows() {
         PaddleMergeRecognition(output,candidate,whole,source);
         PaddleMergeRecognition(output,refused,whole,source);
         QCOMPARE(output.size(),1);QCOMPARE(output[0].words.size(),1);
-        QCOMPARE(output[0].words[0].disposition,TokenDisposition::kCandidate);
+        QCOMPARE(output[0].words[0].disposition,TokenDisposition::kInvalidGeometry);
         QVERIFY(output[0].words[0].protectedBoundsPx.contains(envelope));
     }
     {   // Refused first: the replacing candidate inherits the envelope.
@@ -429,16 +431,28 @@ inline void MergeProtectionAndWindows() {
         PaddleMergeRecognition(output,refused,whole,source);
         PaddleMergeRecognition(output,candidate,whole,source);
         QCOMPARE(output.size(),1);QCOMPARE(output[0].words.size(),1);
-        QCOMPARE(output[0].words[0].disposition,TokenDisposition::kCandidate);
+        QCOMPARE(output[0].words[0].disposition,TokenDisposition::kInvalidGeometry);
         QVERIFY(output[0].words[0].protectedBoundsPx.contains(envelope));
     }
     {   // Baseline replacement keeps exactly the winner's own protection.
         QVector<RecognizedLine> output;RecognizedLine first,second;
-        first.words={MergeWord(TokenDisposition::kCandidate,false,own)};
+        first.words={MergeWord(TokenDisposition::kCandidate,false,envelope)};
         second.words={MergeWord(TokenDisposition::kCandidate,false,own)};
         PaddleMergeRecognition(output,first,whole,source);
         PaddleMergeRecognition(output,second,whole,source);
         QCOMPARE(output[0].words.size(),1);QCOMPARE(output[0].words[0].protectedBoundsPx,own);
+    }
+    {   // The carrier remains invalid through ordinary replacement and scene preparation.
+        QVector<RecognizedLine> output;RecognizedLine refused,candidate;
+        refused.words={MergeWord(TokenDisposition::kInvalidGeometry,true,envelope)};
+        candidate.words={MergeWord(TokenDisposition::kCandidate,false,own)};
+        PaddleMergeRecognition(output,refused,whole,source);
+        for(int repeat=0;repeat<3;++repeat)PaddleMergeRecognition(output,candidate,whole,source);
+        RecognitionResult result;result.stamp=Stamp(source);result.output.ok=true;result.output.lines=output;
+        const auto prepared=PrepareLines(result,7);
+        QCOMPARE(prepared.size(),1);QCOMPARE(prepared[0].words.size(),1);
+        QCOMPARE(prepared[0].words[0].disposition,TokenDisposition::kInvalidGeometry);
+        QVERIFY(output[0].words[0].protectedBoundsPx.contains(envelope));
     }
     // Windowed decode against the independent analytic map x=32+2000t,
     // y=64-80t+80t*t +/- 12. Production At/windowing is not its own oracle.

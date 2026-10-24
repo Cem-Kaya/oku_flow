@@ -113,10 +113,29 @@ inline Result Compare(const Patch& reference,const Patch& current) {
     // at every pixel. Symmetric half-pixel search, radius two native grid pixels.
     double best=1e30; int bestX=0,bestY=0;
     for(int sy=-4;sy<=4;++sy)for(int sx=-4;sx<=4;++sx) {
-        double sum=0; for(int y=kHalo;y<h-kHalo;++y)for(int x=kHalo;x<w-kHalo;++x) {
-            sum+=std::abs(a[y*w+x]-sample(b,x+sx*.5,y+sy*.5));
-            sum+=std::abs(b[y*w+x]-sample(a,x-sx*.5,y-sy*.5));
-        }
+        // The search phases are exactly integers or halves. Hoist offsets
+        // and specialize those four bilinear cases outside the pixel loop;
+        // do not recompute floor/fractions/multiplications per sample.
+        const int forward=int(std::floor(sy*.5))*w+int(std::floor(sx*.5));
+        const int backward=int(std::floor(-sy*.5))*w+int(std::floor(-sx*.5));
+        const auto accumulate=[&](const auto& at) {
+            double sum=0;
+            for(int y=kHalo;y<h-kHalo;++y)for(int x=kHalo;x<w-kHalo;++x) {
+                const int i=y*w+x;
+                sum+=std::abs(double(a[i])-at(b,i+forward));
+                sum+=std::abs(double(b[i])-at(a,i+backward));
+            }
+            return sum;
+        };
+        double sum;
+        if(sx%2==0 && sy%2==0)
+            sum=accumulate([](const auto& v,int i){return double(v[i]);});
+        else if(sy%2==0)
+            sum=accumulate([](const auto& v,int i){return (double(v[i])+v[i+1])*.5;});
+        else if(sx%2==0)
+            sum=accumulate([w](const auto& v,int i){return (double(v[i])+v[i+w])*.5;});
+        else
+            sum=accumulate([w](const auto& v,int i){return ((double(v[i])+v[i+1])+(double(v[i+w])+v[i+w+1]))*.25;});
         const int distance=sx*sx+sy*sy,oldDistance=bestX*bestX+bestY*bestY;
         if(sum<best-1e-9||(std::abs(sum-best)<=1e-9&&distance<oldDistance)) {best=sum;bestX=sx;bestY=sy;}
     }
@@ -125,14 +144,14 @@ inline Result Compare(const Patch& reference,const Patch& current) {
     const int side=std::clamp((h-2*kHalo)/3,4,12);
     // Exhaustive small windows through a summed-area table. Fixed image/sample
     // bounds cap both memory and visits; score the worst region of either direction.
-    const auto worstOf=[&](const std::vector<float>& first,const std::vector<float>& second) {
+    const auto worstOf=[&](const std::vector<float>& first,const std::vector<float>& second,bool zeroShift=false) {
         double worst=0;
         std::vector<double> integral(std::size_t(w+1)*(h+1));
         for(int direction:{-1,1}) {
             std::fill(integral.begin(),integral.end(),0.);
             const auto& ref=direction==1?first:second;const auto& cur=direction==1?second:first;
             for(int y=kHalo;y<h-kHalo;++y)for(int x=kHalo;x<w-kHalo;++x) {
-                const double residual=std::abs(ref[y*w+x]-sample(cur,x+direction*bestX*.5,y+direction*bestY*.5));
+                const double residual=std::abs(ref[y*w+x]-sample(cur,x+(zeroShift?0:direction*bestX*.5),y+(zeroShift?0:direction*bestY*.5)));
                 const auto i=(y+1)*(w+1)+x+1;
                 integral[i]=residual+integral[i-1]+integral[i-w-1]-integral[i-w-2];
             }
@@ -165,6 +184,28 @@ inline Result Compare(const Patch& reference,const Patch& current) {
             return out;
         };
         result.blurredResidual=worstOf(blurred(a),blurred(b));
+        // Model defocus before contrast normalization. Blurring already
+        // normalized images together does not explain unequal point-spread
+        // functions and left ordinary box defocus classified as an edit.
+        // Test a fixed 3x3 box PSF in either direction; a compatible blur can
+        // only withhold a Changed verdict, never grant Unchanged.
+        const auto boxBlur=[&](const std::vector<float>& values) {
+            std::vector<float> out(values.size());
+            for(int y=0;y<h;++y)for(int x=0;x<w;++x) {
+                double sum=0;
+                for(int dy=-1;dy<=1;++dy)for(int dx=-1;dx<=1;++dx)
+                    sum+=values[std::size_t(std::clamp(y+dy,0,h-1))*w+std::clamp(x+dx,0,w-1)];
+                out[std::size_t(y)*w+x]=float(sum/9);
+            }
+            return out;
+        };
+        auto softReference=boxBlur(reference.luma),softCurrent=boxBlur(current.luma);
+        // Sharp-to-defocused alignment may prefer a half-pixel phase. The
+        // fixed zero-phase PSF hypothesis must be checked independently too.
+        if(normalize(softReference)>0)
+            result.blurredResidual=std::min({result.blurredResidual,worstOf(softReference,b),worstOf(softReference,b,true)});
+        if(normalize(softCurrent)>0)
+            result.blurredResidual=std::min({result.blurredResidual,worstOf(a,softCurrent),worstOf(a,softCurrent,true)});
         if(result.blurredResidual<=.035) {result.reason=Reason::Blur;return result;}
         result.verdict=Verdict::Changed;
     }

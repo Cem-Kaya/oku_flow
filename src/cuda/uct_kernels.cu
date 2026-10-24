@@ -333,7 +333,9 @@ __global__ void fitRibbons(const int* labels, const Component* comps, int w, int
     }
     __shared__ int counts[256];
     __shared__ double lows[256],highs[256],sums[256];
-    __shared__ ribbon::Bin bins[ribbon::kBins];
+    // Fundamental shared arrays need no device-side dynamic initialization.
+    __shared__ int mergedCounts[ribbon::kBins];
+    __shared__ double mergedLows[ribbon::kBins],mergedHighs[ribbon::kBins],mergedSums[ribbon::kBins];
     for(int bin=0;bin<ribbon::kBins;++bin) {
         counts[threadIdx.x]=mine[bin].count; lows[threadIdx.x]=mine[bin].low;
         highs[threadIdx.x]=mine[bin].high; sums[threadIdx.x]=mine[bin].sumU;
@@ -345,17 +347,23 @@ __global__ void fitRibbons(const int* labels, const Component* comps, int w, int
                 if(lows[thread]<merged.low) merged.low=lows[thread];
                 if(highs[thread]>merged.high) merged.high=highs[thread];
             }
-            bins[bin]=merged;
+            mergedCounts[bin]=merged.count; mergedLows[bin]=merged.low;
+            mergedHighs[bin]=merged.high; mergedSums[bin]=merged.sumU;
         }
         __syncthreads();
     }
     if(threadIdx.x) return;
+    ribbon::Bin bins[ribbon::kBins]{};
+    for(int bin=0;bin<ribbon::kBins;++bin) {
+        bins[bin].count=mergedCounts[bin]; bins[bin].low=mergedLows[bin];
+        bins[bin].high=mergedHighs[bin]; bins[bin].sumU=mergedSums[bin];
+    }
     auto& q=quads[index];
     q.ribbon=ribbon::Fit(bins,c.u0,c.u1,c.c,c.s,double(sw)/w,double(sh)/h,sw,sh);
     if(q.ribbon.unsupported) {
         auto& r=q.ribbon;r.protectLeft=r.protectRight=q.xy[0];r.protectTop=r.protectBottom=q.xy[1];
-        for(int i=1;i<4;++i){r.protectLeft=fmin(r.protectLeft,q.xy[2*i]);r.protectRight=fmax(r.protectRight,q.xy[2*i]);
-            r.protectTop=fmin(r.protectTop,q.xy[2*i+1]);r.protectBottom=fmax(r.protectBottom,q.xy[2*i+1]);}
+        for(int i=1;i<4;++i){r.protectLeft=fmin(r.protectLeft,double(q.xy[2*i]));r.protectRight=fmax(r.protectRight,double(q.xy[2*i]));
+            r.protectTop=fmin(r.protectTop,double(q.xy[2*i+1]));r.protectBottom=fmax(r.protectBottom,double(q.xy[2*i+1]));}
     }
     if(q.ribbon.valid) q.validWidth=max(1,int(ceil(48*q.ribbon.Width()/q.ribbon.Height())));
 }
