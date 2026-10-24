@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+- Normalize required-file comparison paths during Windows bundle assembly so
+  CMake's forward-slash CUDA license path is accepted by Windows FC.
+
 - Teach embedded Assistant tools that Ultra Clear Text, UCT and OCR text
   replacement are image settings, including the Text Clarity prerequisite,
   rather than quick-mode presets. Share discovery guidance across providers.

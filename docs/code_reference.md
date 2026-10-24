@@ -1403,7 +1403,9 @@ coverage includes fractional stationary input and a one-pixel native wake.
 
 Authoritative code map for the current repository state as of 2026-10-13. Update this file whenever classes, public structs, or significant functions change.
 
-The release-bundle `copy_required_file` subroutine verifies destination
+The release-bundle `copy_required_file` subroutine normalizes both arguments
+with CMD's full-path expansion before copying and byte comparison, accepting
+CMake's forward-slash notice paths. It verifies destination
 existence and byte equality immediately after copying required notices,
 so metadata generation cannot silently accept an incomplete copy.
 

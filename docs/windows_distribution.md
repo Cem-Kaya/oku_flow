@@ -108,6 +108,10 @@ a running OkuFlow. Finish a recording and close the app before upgrading.
 
 ## Build and validate an MSI
 
+Bundle assembly normalizes required-file comparison arguments to native full
+Windows paths. CMake may record CUDA notice paths with forward slashes, which
+Windows FC otherwise refuses even when copying the same file succeeds.
+
 ### Automated build, package and publication
 
 `scripts/publish_windows_release.ps1` joins the existing release steps into one
