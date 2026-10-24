@@ -397,6 +397,80 @@ inline void HeldOutInkDiagnostic() {
     qInfo().noquote()<<"UCT_INK_HELD_OUT"<<QJsonDocument(report).toJson(QJsonDocument::Compact);
 }
 
+inline RecognizedWord MergeWord(TokenDisposition disposition,bool ribbon,const QRectF& protection) {
+    RecognizedWord word;word.text="read";word.boundsPx={40,40,100,24};word.paddedBounds=true;
+    word.inkSearchPx=word.boundsPx;word.disposition=disposition;word.confidence=.99;
+    word.protectedBoundsPx=protection;word.quadPx=TextQuad::FromRect(word.boundsPx);
+    word.inkSearchQuadPx=word.quadPx;word.fromRibbon=ribbon;word.ribbonErrorPx=ribbon?-1:0;
+    word.ribbonReadingPointPx=word.boundsPx.center();return word;
+}
+inline void MergeProtectionAndWindows() {
+    const QRectF envelope(10,20,400,60),own(40,40,100,24);
+    const QRect whole(0,0,480,260);const QSize source(480,260);
+    {   // Candidate first: the refused ribbon word loses its slot, not its mask.
+        QVector<RecognizedLine> output;RecognizedLine candidate,refused;
+        candidate.words={MergeWord(TokenDisposition::kCandidate,false,own)};
+        refused.words={MergeWord(TokenDisposition::kInvalidGeometry,true,envelope)};
+        PaddleMergeRecognition(output,candidate,whole,source);
+        PaddleMergeRecognition(output,refused,whole,source);
+        QCOMPARE(output.size(),1);QCOMPARE(output[0].words.size(),1);
+        QCOMPARE(output[0].words[0].disposition,TokenDisposition::kCandidate);
+        QVERIFY(output[0].words[0].protectedBoundsPx.contains(envelope));
+    }
+    {   // Refused first: the replacing candidate inherits the envelope.
+        QVector<RecognizedLine> output;RecognizedLine candidate,refused;
+        candidate.words={MergeWord(TokenDisposition::kCandidate,false,own)};
+        refused.words={MergeWord(TokenDisposition::kInvalidGeometry,true,envelope)};
+        PaddleMergeRecognition(output,refused,whole,source);
+        PaddleMergeRecognition(output,candidate,whole,source);
+        QCOMPARE(output.size(),1);QCOMPARE(output[0].words.size(),1);
+        QCOMPARE(output[0].words[0].disposition,TokenDisposition::kCandidate);
+        QVERIFY(output[0].words[0].protectedBoundsPx.contains(envelope));
+    }
+    {   // Baseline replacement keeps exactly the winner's own protection.
+        QVector<RecognizedLine> output;RecognizedLine first,second;
+        first.words={MergeWord(TokenDisposition::kCandidate,false,own)};
+        second.words={MergeWord(TokenDisposition::kCandidate,false,own)};
+        PaddleMergeRecognition(output,first,whole,source);
+        PaddleMergeRecognition(output,second,whole,source);
+        QCOMPARE(output[0].words.size(),1);QCOMPARE(output[0].words[0].protectedBoundsPx,own);
+    }
+    // Windowed decode against the independent analytic map x=32+2000t,
+    // y=64-80t+80t*t +/- 12. Production At/windowing is not its own oracle.
+    PaddleQuad line{{QPointF(32,52),QPointF(2032,52),QPointF(2032,76),QPointF(32,76)},.98f};
+    line.ribbon={32,64,2000,0,0,1,0,-80,80,12,0,0,1,true};
+    const auto windows=PaddleRecognitionWindows(line);QVERIFY(windows.size()>1);
+    const auto& window=windows[1];QVERIFY(window.ribbon.valid);
+    const auto decoded=Words(window);QVERIFY(!decoded.words.isEmpty());
+    const double t0=window.ribbon.start+(window.ribbon.end-window.ribbon.start)*.095;
+    const double t1=window.ribbon.start+(window.ribbon.end-window.ribbon.start)*.165;
+    const auto& word=decoded.words[0];
+    QVERIFY(std::abs(word.quadPx.points[0].x()-(32+2000*t0))<1e-9);
+    QVERIFY(std::abs(word.quadPx.points[0].y()-(64-80*t0+80*t0*t0-12))<1e-9);
+    QVERIFY(std::abs(word.quadPx.points[1].x()-(32+2000*t1))<1e-9);
+    QVERIFY(std::abs(word.quadPx.points[2].y()-(64-80*t1+80*t1*t1+12))<1e-9);
+    // Bin fill order (CPU component order vs GPU scan order) may change only
+    // summation rounding: support counts and extrema stay exact.
+    std::vector<std::pair<double,double>> samples;
+    for(int repeat=0;repeat<40;++repeat)for(int i=0;i<ribbon::kBins;++i) {
+        const double middle=(i+.5)/ribbon::kBins;
+        for(double t:{middle-.01,middle,middle+.01}) {
+            const double center=80-80*t+80*t*t;
+            samples.push_back({t,center-5});samples.push_back({t,center+5});
+        }
+    }
+    ribbon::Bin forward[ribbon::kBins]{},reverse[ribbon::kBins]{};
+    for(const auto& sample:samples)ribbon::Add(forward,sample.first,sample.second);
+    for(auto it=samples.rbegin();it!=samples.rend();++it)ribbon::Add(reverse,it->first,it->second);
+    for(int i=0;i<ribbon::kBins;++i) {
+        QCOMPARE(forward[i].count,reverse[i].count);QCOMPARE(forward[i].low,reverse[i].low);
+        QCOMPARE(forward[i].high,reverse[i].high);
+    }
+    const auto fitA=ribbon::Fit(forward,20,420,1,0,1,1,500,200);
+    const auto fitB=ribbon::Fit(reverse,20,420,1,0,1,1,500,200);
+    QVERIFY(fitA.valid&&fitB.valid);
+    QVERIFY(std::abs(fitA.c-fitB.c)<1e-6);QVERIFY(std::abs(fitA.h0-fitB.h0)<1e-6);
+}
 inline void PrimitiveBenchmark() {
     if(qEnvironmentVariable("OKUFLOW_UCT_RIBBON_BENCHMARK")!="1")QSKIP("Explicit model-free A/B benchmark not selected.");
     const auto root=qEnvironmentVariable("OKUFLOW_UCT_RIBBON_EVIDENCE");QVERIFY(!root.isEmpty());QVERIFY(QDir().mkpath(root));

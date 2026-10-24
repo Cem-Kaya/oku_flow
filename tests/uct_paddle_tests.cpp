@@ -1582,6 +1582,7 @@ class PaddleTests final : public QObject
     }
     void curvedRibbonDetectionAndSampling() {uct_ribbon_test::DetectionAndSampling();}
     void curvedRibbonBoundsAndWindows() {uct_ribbon_test::BoundsAndWindows();}
+    void curvedRibbonMergeProtection() {uct_ribbon_test::MergeProtectionAndWindows();}
     void curvedRibbonWordComposition() {uct_ribbon_test::WordsAndComposition();}
     void curvedRibbonSourceProofAndPaint() {uct_ribbon_test::SourceProofAndPaint();}
     void currentInkOwnershipAndResidual() {uct_ribbon_test::InkOwnershipAndResidual();}

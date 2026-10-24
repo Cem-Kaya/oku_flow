@@ -312,6 +312,14 @@ void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line
         }
         return best;
     };
+    // Ribbon words protect more ink than their own span (a refused chord's
+    // curve envelope, or protection inherited from an earlier replacement).
+    // Losing an overlap contest may drop their text, never that mask.
+    // Baseline words protect exactly their bounds and never qualify.
+    const auto inheritableProtection = [](const RecognizedWord& value) {
+        return !value.protectedBoundsPx.isEmpty() &&
+            (value.fromRibbon || !value.boundsPx.contains(value.protectedBoundsPx));
+    };
     qsizetype preferredLine = -1;
     for (auto word : line.words) {
         // Overlapping crops supply complete words instead of cut-edge fragments.
@@ -328,6 +336,8 @@ void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line
         if (word.fromRibbon) word.ribbonReadingPointPx += region.topLeft();
         auto wordGeometry = makeGeometry(word);
         bool use = true;
+        qsizetype dropLine = -1, dropWord = -1;
+        QRectF inheritedProtection;
         qsizetype target = -1;
         for (qsizetype index = 0; index < output.size(); ++index) {
             const auto& words = std::as_const(output)[index].words;
@@ -342,13 +352,23 @@ void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line
                 if (word.confidence < old.confidence ||
                     (word.disposition != TokenDisposition::kCandidate && old.disposition == TokenDisposition::kCandidate)) {
                     use = false;
+                    dropLine = index;
+                    dropWord = wi;
                     break;
                 }
             }
             if (!use) break;
         }
         if (target >= 0) preferredLine = target;
-        if (!use) continue;
+        if (!use) {
+            if (inheritableProtection(word) && dropLine >= 0) {
+                auto& winner = output[dropLine].words[dropWord];
+                winner.protectedBoundsPx = winner.protectedBoundsPx.isEmpty()
+                    ? word.protectedBoundsPx
+                    : winner.protectedBoundsPx.united(word.protectedBoundsPx);
+            }
+            continue;
+        }
         if (target < 0 && preferredLine >= 0 &&
             rowDistance(preferredLine, wordGeometry) < std::numeric_limits<double>::max())
             target = preferredLine;
@@ -385,7 +405,13 @@ void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line
                 auto& row = cache[std::size_t(index)];
                 qsizetype kept = 0;
                 for (qsizetype wi = 0; wi < words.size(); ++wi) {
-                    if (row[std::size_t(wi)].overlap) { --cachedWords; continue; }
+                    if (row[std::size_t(wi)].overlap) {
+                        if (inheritableProtection(words[wi]))
+                            inheritedProtection = inheritedProtection.isEmpty()
+                                ? words[wi].protectedBoundsPx
+                                : inheritedProtection.united(words[wi].protectedBoundsPx);
+                        --cachedWords; continue;
+                    }
                     if (kept != wi) {
                         words[kept] = std::move(words[wi]);
                         row[std::size_t(kept)] = std::move(row[std::size_t(wi)]);
@@ -397,10 +423,19 @@ void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line
             } else {
                 words.erase(std::remove_if(words.begin(), words.end(), [&](const auto& old) {
                     auto oldGeometry = makeGeometry(old);
-                    return overlaps(word, old, wordGeometry, oldGeometry);
+                    const bool hit = overlaps(word, old, wordGeometry, oldGeometry);
+                    if (hit && inheritableProtection(old))
+                        inheritedProtection = inheritedProtection.isEmpty()
+                            ? old.protectedBoundsPx
+                            : inheritedProtection.united(old.protectedBoundsPx);
+                    return hit;
                 }), words.end());
             }
         }
+        if (!inheritedProtection.isEmpty())
+            word.protectedBoundsPx = word.protectedBoundsPx.isEmpty()
+                ? inheritedProtection
+                : word.protectedBoundsPx.united(inheritedProtection);
         output[target].words.push_back(std::move(word));
         if (cached) {
             auto& row = cache[std::size_t(target)];
