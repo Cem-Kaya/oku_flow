@@ -110,7 +110,7 @@ inline void Run(const std::function<ProbeFrame(const QImage&, int)>& prepare, bo
                         rows.push_back(QJsonObject{{"edit",edit},{"pixelSize",pixelSize},{"changed",changed},
                             {"jitterPx",QJsonArray{jitter.x(),jitter.y()}},{"extent","edited-token"},
                             {"policy","current-ink-cpu-offline"},{"analysisSamplingDecimation",1},
-                            {"verdict",int(ink.verdict)},{"reason",int(ink.reason)},{"worstResidual",ink.worstResidual},
+                            {"verdict",int(ink.verdict)},{"reason",int(ink.reason)},{"worstResidual",ink.worstResidual},{"blurredResidual",ink.blurredResidual},
                             {"currentActiveRowSha256",digest},{"nativeGpuCoverage",false}});
                     }
                     for (int policy = 0; policy < int(policies.size()); ++policy) {

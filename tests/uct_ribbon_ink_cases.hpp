@@ -279,6 +279,11 @@ inline void InkOwnershipAndResidual() {
     const auto jittered=[](const QImage& image) {QImage copy(image.size(),image.format());copy.fill(QColor(242,240,230));QPainter p(&copy);p.drawImage(QPoint(2,1),image);return copy;};
     const auto jitter=Check(reference,jittered(InkImage(false)),stamp);QCOMPARE(jitter.verdict,Verdict::Unchanged);QCOMPARE(jitter.jitterPx,QPointF(2,1));
     QCOMPARE(Check(reference,jittered(InkImage(true)),stamp).verdict,Verdict::Changed);
+    // Independent defocus controls: matched blur may only demote a sharp
+    // Changed to Unverifiable; it can never manufacture Unchanged.
+    const auto defocused=[](const QImage& input) {auto out=input;for(int y=1;y<95;++y)for(int x=1;x<255;++x){int r=0,g=0,b=0;for(int dy=-1;dy<=1;++dy)for(int dx=-1;dx<=1;++dx){const auto c=input.pixelColor(x+dx,y+dy);r+=c.red();g+=c.green();b+=c.blue();}out.setPixelColor(x,y,QColor(r/9,g/9,b/9));}return out;};
+    QVERIFY(Check(reference,defocused(InkImage(false)),stamp).verdict!=Verdict::Changed);
+    QVERIFY(Check(reference,defocused(InkImage(true)),stamp).verdict!=Verdict::Unchanged);
     auto stale=stamp;++stale.geometryGeneration;QCOMPARE(Check(reference,InkImage(false),stale).verdict,Verdict::Unverifiable);
     stale=stamp;stale.temporallySmoothed=true;QCOMPARE(Check(reference,InkImage(false),stale).verdict,Verdict::Unverifiable);
     QVERIFY(!Capture(InkImage(false).scaled(128,48),stamp,quad).Valid());
@@ -383,7 +388,7 @@ inline void HeldOutInkDiagnostic() {
                 unverifiable+=verdict.verdict==Verdict::Unverifiable;
                 rows.push_back(QJsonObject{{"font",family},{"fontSha256",QString::fromLatin1(fontHash)},{"size",size},
                     {"nuisance",nuisance},{"changed",changed},{"verdict",int(verdict.verdict)},{"reason",int(verdict.reason)},
-                    {"worstResidual",verdict.worstResidual},{"referencePixelSha256",QString::fromLatin1(uct_test::SourcePixelsDigest(original).toHex())},
+                    {"worstResidual",verdict.worstResidual},{"blurredResidual",verdict.blurredResidual},{"referencePixelSha256",QString::fromLatin1(uct_test::SourcePixelsDigest(original).toHex())},
                     {"currentPixelSha256",QString::fromLatin1(uct_test::SourcePixelsDigest(current).toHex())}});
             }
         }

@@ -27,6 +27,7 @@ struct Result {
     Verdict verdict{Verdict::Unverifiable};
     Reason reason{Reason::InvalidInput};
     double worstResidual{}, alignmentResidual{}, contrastRatio{}, edgeRatio{};
+    double blurredResidual{-1}; // matched-blur worst residual, -1 when not scored
     QPointF jitterPx;
 };
 
@@ -124,24 +125,49 @@ inline Result Compare(const Patch& reference,const Patch& current) {
     const int side=std::clamp((h-2*kHalo)/3,4,12);
     // Exhaustive small windows through a summed-area table. Fixed image/sample
     // bounds cap both memory and visits; score the worst region of either direction.
-    std::vector<double> integral(std::size_t(w+1)*(h+1));
-    for(int direction:{-1,1}) {
-        std::fill(integral.begin(),integral.end(),0.);
-        const auto& ref=direction==1?a:b;const auto& cur=direction==1?b:a;
-        for(int y=kHalo;y<h-kHalo;++y)for(int x=kHalo;x<w-kHalo;++x) {
-            const double residual=std::abs(ref[y*w+x]-sample(cur,x+direction*bestX*.5,y+direction*bestY*.5));
-            const auto i=(y+1)*(w+1)+x+1;
-            integral[i]=residual+integral[i-1]+integral[i-w-1]-integral[i-w-2];
+    const auto worstOf=[&](const std::vector<float>& first,const std::vector<float>& second) {
+        double worst=0;
+        std::vector<double> integral(std::size_t(w+1)*(h+1));
+        for(int direction:{-1,1}) {
+            std::fill(integral.begin(),integral.end(),0.);
+            const auto& ref=direction==1?first:second;const auto& cur=direction==1?second:first;
+            for(int y=kHalo;y<h-kHalo;++y)for(int x=kHalo;x<w-kHalo;++x) {
+                const double residual=std::abs(ref[y*w+x]-sample(cur,x+direction*bestX*.5,y+direction*bestY*.5));
+                const auto i=(y+1)*(w+1)+x+1;
+                integral[i]=residual+integral[i-1]+integral[i-w-1]-integral[i-w-2];
+            }
+            for(int y=kHalo;y<h-kHalo;++y)for(int x=kHalo;x<w-kHalo;++x) {
+                const int x1=std::min(w-kHalo,x+side),y1=std::min(h-kHalo,y+side);
+                if(x1-x<side||y1-y<side) continue;
+                const double sum=integral[y1*(w+1)+x1]-integral[y*(w+1)+x1]-integral[y1*(w+1)+x]+integral[y*(w+1)+x];
+                worst=std::max(worst,sum/((x1-x)*(y1-y)));
+            }
         }
-        for(int y=kHalo;y<h-kHalo;++y)for(int x=kHalo;x<w-kHalo;++x) {
-            const int x1=std::min(w-kHalo,x+side),y1=std::min(h-kHalo,y+side);
-            if(x1-x<side||y1-y<side) continue;
-            const double sum=integral[y1*(w+1)+x1]-integral[y*(w+1)+x1]-integral[y1*(w+1)+x]+integral[y*(w+1)+x];
-            result.worstResidual=std::max(result.worstResidual,sum/((x1-x)*(y1-y)));
-        }
-    }
+        return worst;
+    };
+    result.worstResidual=worstOf(a,b);
     // Deliberately provisional offline thresholds, not calibrated safety policy.
-    if(result.worstResidual>=.10) result.verdict=Verdict::Changed;
+    if(result.worstResidual>=.10) {
+        // Identical [1,2,1]/4 smoothing of both grids removes defocus and
+        // resampling mismatch. It can only demote Changed to Unverifiable:
+        // Unchanged still requires the sharp residual above, so no edit can
+        // gain acceptance from this second look.
+        const auto blurred=[&](const std::vector<float>& values) {
+            std::vector<float> pass(values.size()),out(values.size());
+            for(int y=0;y<h;++y)for(int x=0;x<w;++x) {
+                const int xm=std::max(0,x-1),xp=std::min(w-1,x+1);
+                pass[std::size_t(y)*w+x]=(values[std::size_t(y)*w+xm]+2*values[std::size_t(y)*w+x]+values[std::size_t(y)*w+xp])*.25f;
+            }
+            for(int y=0;y<h;++y)for(int x=0;x<w;++x) {
+                const int ym=std::max(0,y-1),yp=std::min(h-1,y+1);
+                out[std::size_t(y)*w+x]=(pass[std::size_t(ym)*w+x]+2*pass[std::size_t(y)*w+x]+pass[std::size_t(yp)*w+x])*.25f;
+            }
+            return out;
+        };
+        result.blurredResidual=worstOf(blurred(a),blurred(b));
+        if(result.blurredResidual<=.035) {result.reason=Reason::Blur;return result;}
+        result.verdict=Verdict::Changed;
+    }
     else if(result.worstResidual<=.035) result.verdict=Verdict::Unchanged;
     else {result.reason=Reason::Ambiguous;return result;}
     result.reason=Reason::Compared;return result;
