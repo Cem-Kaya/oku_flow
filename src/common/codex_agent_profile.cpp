@@ -75,6 +75,9 @@ CodexAgentLaunchProfile CodexAgentProfile::Validate(
     args << QStringLiteral("-c") << (allowWebSearch ? QStringLiteral("web_search=\"live\"") : QStringLiteral("web_search=\"disabled\""))
          << QStringLiteral("-c") << QStringLiteral("approval_policy=\"never\"")
          << QStringLiteral("-c") << QStringLiteral("sandbox_mode=\"read-only\"");
+    // Apply the table override first: a later {} would erase the explicit
+    // child disables before Codex merges configured servers into the table.
+    args << QStringLiteral("-c") << QStringLiteral("mcp_servers={}");
     QSet<QString> seen;
     for (const QJsonValue& value : mcp) {
         if (!value.isObject()) return Unavailable("invalid_mcp_inventory");
@@ -91,7 +94,6 @@ CodexAgentLaunchProfile CodexAgentProfile::Validate(
     // CLI table overrides merge with configured tables: {} alone does not
     // remove ambient servers. Explicitly disable every inventoried bare key.
     // Existing transport/schema errors still fail closed; never edit config.toml.
-    args << QStringLiteral("-c") << QStringLiteral("mcp_servers={}");
     return {true, {}, args};
 }
 

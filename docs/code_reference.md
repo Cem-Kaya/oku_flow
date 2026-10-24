@@ -7643,3 +7643,5 @@ FP32; actual inference/API/CUDA/deadline uncertainty retains ordinary retirement
 validation factory opts into it explicitly. Detector observations are separate
 from recognition golden records; `ActualStatus` and the production backend's
 `[detector / recognizer]` precision suffix report actual selected arithmetic.
+
+Restricted MCP launch overrides place the empty table before the explicit per-server disabled keys. A later table override erases those child disables before CLI configuration merging.

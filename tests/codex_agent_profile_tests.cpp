@@ -67,6 +67,8 @@ private slots:
         const auto result = CodexAgentProfile::Validate("codex-cli 0.160.1", Features(), malformed);
         QVERIFY(result.available);
         QVERIFY(result.arguments.contains("mcp_servers.code-review.enabled=false"));
+        QVERIFY(result.arguments.indexOf("mcp_servers={}") <
+                result.arguments.indexOf("mcp_servers.code-review.enabled=false"));
         QCOMPARE(result.arguments.count("mcp_servers={}"), 1);
         QCOMPARE(result.arguments.count("mcp_servers.code-review.enabled=false"),1);
     }
