@@ -52,7 +52,7 @@ class PaddleCpuRecognizer final : public Recognizer
         detail_ = focus;
     }
     void SetCurvedRibbonInput(bool allowed) override {
-        curvedRibbon_ = allowed && qEnvironmentVariable("OKUFLOW_UCT_CURVED_RIBBON") == "1";
+        curvedRibbon_ = PaddleRibbonEnabled(allowed, qEnvironmentVariable("OKUFLOW_UCT_CURVED_RIBBON"));
     }
     RecognitionOutput Recognize(const QImage &image, const std::atomic<bool> &cancelled) override
     {

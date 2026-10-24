@@ -2,9 +2,10 @@
 
 ## Selected-frame ribbon and offline current ink (2026-10-24)
 
-`OKUFLOW_UCT_CURVED_RIBBON=1` enables only selected immutable single-frame
+Unset/`1` `OKUFLOW_UCT_CURVED_RIBBON` enables only selected immutable single-frame
 Paddle inputs; live, advancing, smoothed and held/composite inputs retain the
-baseline. It adds no UI/settings key or model. The fit uses 24 bins (20 supported,
+baseline. Explicit `0` (or an unrecognized value) disables curved sampling.
+It adds no UI/settings key or model. The fit uses 24 bins (20 supported,
 including ends), 262144 component/bounding-scan pixels per selected component,
 128 lines and original-plus-eight windows. A quadratic PCA shear uses a positive
 affine half-height, 32-segment arc estimate, straightness gate max(0.75 detector

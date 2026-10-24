@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+- Use bounded curved-line OCR automatically on selected Freeze/paused frames
+  when UCT is enabled. Preserve source-registered placement, original ink for
+  unsupported words, BF16 preference and the live processing path. Add explicit
+  offscreen exports of actual GPU results through admission and painting.
+
 - Validate curved-line experiments with direct CUDA fit/rectification coverage
   and per-role warm BF16 plan identity checks. Keep defocus uncertainty in the
   offline ink diagnostic; softened evidence cannot accept unchanged text.

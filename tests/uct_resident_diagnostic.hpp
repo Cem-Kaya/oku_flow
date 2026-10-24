@@ -204,8 +204,8 @@ inline Selection ParseSelection(const EnvironmentReader& read)
     const auto immutable=read("OKUFLOW_UCT_RESIDENT_IMMUTABLE"),ribbon=read("OKUFLOW_UCT_CURVED_RIBBON");
     if((!immutable.isEmpty()&&immutable!="0"&&immutable!="1")||(!ribbon.isEmpty()&&ribbon!="0"&&ribbon!="1"))
         return refuse("Immutable/ribbon diagnostic selectors accept only 0 or 1.");
-    s.immutable=immutable=="1";s.curvedRibbon=ribbon=="1";
-    if((s.immutable&&!s.media)||(s.curvedRibbon&&!s.immutable))
+    s.immutable=immutable=="1";s.curvedRibbon=PaddleRibbonEnabled(s.immutable,ribbon);
+    if((s.immutable&&!s.media)||(ribbon=="1"&&!s.immutable))
         return refuse("Ribbon comparison requires explicit immutable media inputs.");
 
     s.paired = input == "pair";
@@ -1749,6 +1749,65 @@ struct Run {
 // One scheduler/recognizer lifetime for one pair and capacity: cached-plan
 // startup, then per source one warmup and `passes` timed jobs, then exact
 // State retirement before the next configuration may start.
+// Explicit, offscreen-only visual evidence from the actual completed GPU job.
+// Runs after callback/stage timing and only on source warmups. No new inference
+// or invented OCR text: the production immutable admission and painter decide
+// which glyphs appear; all other pixels remain the original source image.
+inline void ExportPaintSample(const Run& run, const Block& block, int source,
+                              const Completion& completion, const QString& jobFile)
+{
+    if (qEnvironmentVariable("OKUFLOW_UCT_RESIDENT_PAINT_SAMPLES") != "1") return;
+    QVERIFY(run.selection.immutable && !run.selection.paired && !run.selection.frozenCrops);
+    QCOMPARE(QGuiApplication::platformName(), QStringLiteral("offscreen"));
+    uct_test::RegisterFixtureFonts();
+    const auto& result = completion.result;
+    const auto& input = run.sources[std::size_t(source)];
+    OverlayModel model;
+    QCOMPARE(model.AdmitImmutable(result, result.stamp, result.stamp.timestampMs,
+        nullptr, ImmutableAdmission::Standalone), AdmitVerdict::kAccepted);
+    const auto words = model.SceneWords(result.stamp.timestampMs, result.stamp.frameSeq);
+    QWidget target;
+    target.resize(input.image.size());
+    target.show();
+    okuflow::UltraClearTextOverlay overlay(&target, &target);
+    overlay.SetViewTransform(result.stamp.viewTransform);
+    QVector<okuflow::UltraClearTextOverlay::SceneWord> paint;
+    for (const auto& word : words)
+        paint.push_back({word.text, word.sceneRect, word.colors, word.lineId,
+            word.protectedSceneRects, word.wordIndex, word.sceneQuad,
+            word.layoutGroupId, word.carvedSceneRects});
+    overlay.SetWords(std::move(paint));
+    if (!words.isEmpty()) QTRY_VERIFY(overlay.PaintedGeometryCurrent());
+    QJsonArray painted;
+    int drawn = 0;
+    for (const auto& word : words) {
+        okuflow::UltraClearTextOverlay::PaintedWordGeometry geometry;
+        const bool shown = overlay.PaintedWord(word.lineId, word.wordIndex, word.text, geometry) && geometry.drawn;
+        drawn += shown;
+        painted.push_back(QJsonObject{{"text", word.text}, {"drawn", shown},
+            {"sceneBounds", uct_batch_test::Rect(word.sceneRect)}});
+    }
+    auto output = input.image.copy();
+    QPainter painter(&output);
+    overlay.CaptureSnapshot(result.stamp.viewTransform, output.size()).Paint(painter, output.size());
+    painter.end();
+    const auto directory = QDir(run.evidence).filePath(QString("paint/block-%1-source-%2").arg(block.index).arg(source));
+    QVERIFY(QDir().mkpath(directory));
+    const auto originalFile = QDir(directory).filePath("original.png");
+    const auto paintedFile = QDir(directory).filePath("uct.png");
+    QVERIFY(!QFileInfo::exists(originalFile) && !QFileInfo::exists(paintedFile));
+    QVERIFY(input.image.save(originalFile));
+    QVERIFY(output.save(paintedFile));
+    const QJsonObject receipt{{"schema", 1}, {"source", input.Json()}, {"jobFile", jobFile},
+        {"jobSha256", FileSha256(jobFile)}, {"backend", completion.backend.name},
+        {"ribbon", run.selection.curvedRibbon}, {"candidateWords", CandidateWords(result.output)},
+        {"admittedWords", words.size()}, {"paintedWords", drawn}, {"words", painted},
+        {"readingText", model.ReadingText(result.stamp.timestampMs, result.stamp.frameSeq)},
+        {"originalSha256", FileSha256(originalFile)}, {"paintedSha256", FileSha256(paintedFile)},
+        {"scope", "Actual GPU OCR, production standalone admission and Qt offscreen snapshot; no native desktop or quality claim."}};
+    QVERIFY(uct_batch_test::Save(QDir(directory).filePath("sample.json"), receipt));
+}
+
 inline void RunBlock(Run& run, const Block& block, ProfileCapture& capture)
 {
     const auto& pair = run.selection.pairs[block.pair];
@@ -1882,6 +1941,10 @@ inline void RunBlock(Run& run, const Block& block, ProfileCapture& capture)
             QVERIFY2(invalid.isEmpty(), qPrintable(invalid + " Evidence: " + file));
             if (run.selection.exactN8)
                 QVERIFY2(matchesPlans(completion->backend.detail), qPrintable(completion->backend.detail));
+            if (pass == 0) {
+                ExportPaintSample(run, block, source, *completion, file);
+                if (QTest::currentTestFailed()) return;
+            }
             if (run.selection.shadowPlanner) {
                 const auto& plan = *completion->result.shadowPlan;
                 // Startup already observed the first frozen acquisition.

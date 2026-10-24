@@ -1,20 +1,24 @@
-# Curved-line ribbon and current-ink experiments
+# Curved-line OCR and offline current-ink diagnostics
 
 Implementation experiment, 24 October 2026, based on `caf523e0` (Windows 0.3.1
-development). Defaults stay unchanged. This is not a measured OCR improvement,
-release acceptance, or a new model/precision policy.
+development). The owner subsequently requested main-app integration: curved-line
+sampling is automatic for selected immutable frames when UCT is enabled. This is
+not a measured accuracy improvement, release acceptance, or a new precision policy.
 
 ## Explicit scope
 
-`OKUFLOW_UCT_CURVED_RIBBON=1` enables the model-free ribbon on **selected,
-immutable, single-frame** Freeze/paused inputs. The controller marks only its
+The model-free ribbon is enabled by default on **selected, immutable,
+single-frame** Freeze/paused inputs. The controller marks only its
 selected frame; advancing/live inputs and corroborating neighbours do not gain
 this context. Temporal Smooth, held/composite/unknown provenance cannot select
-the experiment. The scheduler sets and clears the processing context around
+this path. The scheduler sets and clears the processing context around
 exactly one backend call, and the automatic adapter forwards it without changing
-the selected backend or model tier. Windows OCR ignores it. Unset/`0` preserves
-the established rectangle path. This setting is deliberately absent from the UI
-and saved settings; the measured development experiment remains opt-in.
+the selected backend or model tier. Windows OCR ignores it.
+`OKUFLOW_UCT_CURVED_RIBBON=0` retains the rectangle diagnostic control;
+unset/`1` uses curved sampling where eligible. Other explicit values disable it.
+No additional UI toggle, saved setting or model switch is needed. Live and
+advancing frames retain the established rectangle path. This integration is
+development source, not the published 0.3.1 installer.
 
 Both Paddle CPU and TensorRT production paths carry the ribbon through detection,
 recognition windows, rectification and CTC source geometry. CPU and CUDA scoped
@@ -257,6 +261,31 @@ comparison. Pixel equality does not imply zero latency overhead.
 
 ## Validation evidence
 
+### Visual samples from actual OCR
+
+Set `OKUFLOW_UCT_RESIDENT_PAINT_SAMPLES=1` alongside the existing resident
+diagnostic's explicit immutable/single/media settings and Qt offscreen. Each
+source warmup exports `paint/block-<block>-source-<index>/original.png`,
+`uct.png` and `sample.json` under that run's new evidence directory. The actual
+completed GPU result goes through production standalone admission and the Qt
+snapshot painter. The receipt binds the source, job, PNG hashes, candidate,
+admitted and actually drawn counts, and individual word positions/text. This
+extra work occurs after job/callback timing; use a separate run for visuals.
+Compare explicit ribbon `0` with unset/`1` using identical models and source
+pixels. More candidate or painted words do not establish higher accuracy.
+These offscreen exports omit application chrome and are not native screenshots.
+
+The 24 October integration sample run used the same warmed medium BF16 pair and
+unchanged private plans in both arms, with explicit `0` versus the unset default.
+Actual candidate/admitted/painted words were book **373/347/276 → 449/388/362**,
+dense frame **263/243/232 → 262/242/231**, and both synthetic controls **4/4/4**.
+The curved synthetic line regressed from the correct `Curved page reading 18`
+to `Curved page reading 1`; the straight control kept `18`. The gallery includes
+this error, original ink, both actual PNGs and admitted text. No accuracy claim
+or new startup quality gate follows from these samples. Their fresh receipts,
+commands and interactive gallery are under
+`Z:/Projects/OkuFlow/local-work-data/uct-ribbon-integration-20261024/`.
+
 ### Final root measurements and scope
 
 RTX 4090, TensorRT 11.4.0.106, CUDA 12.9.86 and Qt 6.12.0. Both selected
@@ -310,8 +339,8 @@ execution; owner/source plans were unchanged. Raw visits, profile/callback
 records, code/binary seals, cache inventories, exact commands and failed attempts:
 `Z:/Projects/OkuFlow/local-work-data/uct-ribbon-ink-20261024/root-final/`.
 Start with `worker-summary.json`, `primitive-summary.json`, `source-frozen.json`
-and `final-preservation.json`. The feature remains an opt-in selected-immutable
-experiment. Measured compute cost is small here; real curved-page geometry and
+and `final-preservation.json`. These measurements preceded the owner's automatic
+selected-frame integration request. Measured compute cost is small here; real curved-page geometry and
 word quality still need evaluation before expanding that scope.
 
 See the frozen implementation handoff for exact head/binary hashes, commands and

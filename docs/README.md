@@ -1,8 +1,9 @@
 # OkuFlow Documentation Guide
 
 [Curved-line ribbon and current-ink experiments](uct_ribbon_and_current_ink.md)
-records explicit immutable-input opt-in, original-pixel geometry/proof composition,
-CPU-only ink diagnostics, correctness limits and unmeasured A/B entry points.
+records automatic selected-immutable processing, original-pixel geometry/proof
+composition, CPU-only ink diagnostics, measured BF16 overhead and actual OCR
+snapshot exports. Explicit ribbon `0` remains a rectangle comparison control.
 
 
 [Phone camera zoom and lens choices](phone_camera_zoom.md) describes the

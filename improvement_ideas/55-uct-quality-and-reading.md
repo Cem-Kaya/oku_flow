@@ -32,8 +32,9 @@ predate those repairs are not current bug reports.
 The model-free [ribbon/current-ink experiment](../docs/uct_ribbon_and_current_ink.md)
 is implemented in the production Paddle processing chain. It adds no model,
 automatic live/Freeze tier switch or new UI strings. The initial execution scope
-is an explicit `OKUFLOW_UCT_CURVED_RIBBON=1` opt-in on the controller's exact
-selected immutable single frame. Live/advancing/smoothed/held inputs stay on the
+now defaults on for the controller's exact selected immutable single frame,
+following the owner's integration request. `OKUFLOW_UCT_CURVED_RIBBON=0` retains
+the diagnostic control. Live/advancing/smoothed/held inputs stay on the
 baseline. Scoped CPU/CUDA correctness and resident worker measurements passed;
 native Freeze-to-paint and real curved-page quality remain unmeasured.
 

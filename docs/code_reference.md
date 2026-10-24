@@ -2,6 +2,14 @@
 
 ## Curved-line and current-ink experiments (development)
 
+- `PaddleRibbonEnabled` combines selected immutable eligibility with the
+  diagnostic override: empty/1 enables, 0 or another explicit value disables.
+  Both CPU and TensorRT setters use it; live processing cannot opt in.
+- `uct_resident_test::ExportPaintSample` optionally takes the real completed
+  resident GPU result through standalone admission and the production Qt overlay.
+  Its offscreen PNGs and per-word drawn receipts are separate from timed jobs;
+  no OCR output is synthesized and native desktop acceptance is not implied.
+
 - `InspectBf16CachedPlan` in the resident diagnostic preflights the production
   builder locators and full plan payload digests for both roles; actual backend
   receipts must match. `gpuRibbonFitsAndRectifiesOriginalPixels` exercises the
@@ -34,7 +42,8 @@
   `UltraClearTextController::ImmutableStamp`'s selected frame. The scheduler scopes
   `Recognizer::SetCurvedRibbonInput`; `AutomaticRecognizer` forwards it without
   changing models. `PaddleRibbonInputAllowed` excludes live/smoothed/held input and
-  Paddle adapters additionally require `OKUFLOW_UCT_CURVED_RIBBON=1`.
+  Paddle adapters use `PaddleRibbonEnabled`: eligible selected input defaults on,
+  with explicit `OKUFLOW_UCT_CURVED_RIBBON=0` as the rectangle control.
 - `RecognizedWord::{fromRibbon,ribbonErrorPx,ribbonReadingPointPx}` disclose
   approximation/refusal and source centerline order. `PrepareLines` preserves
   nearly horizontal ribbon quads and produces `PreparedLine::ribbonReadingBand`;

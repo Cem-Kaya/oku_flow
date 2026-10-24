@@ -1157,8 +1157,10 @@ aligned with the project goals.
 
 ## Curved-line and current-ink experiments (2026-10-24)
 
-- Keep `OKUFLOW_UCT_CURVED_RIBBON` explicit and selected-immutable-only pending
-  review/latency acceptance. Preserve original post-geometry pixels for proof;
+- The owner requested selected-immutable curved OCR integration after review
+  and latency measurements: it defaults on, with explicit `0` as a diagnostic
+  rectangle control. Keep live/advancing/paired/held inputs excluded.
+  Preserve original post-geometry pixels for proof;
   ribbon rectification must not apply rotation/keystone/stabilization twice.
   Unsupported chords protect original ink across reading, painting and UIA.
 - The CPU current-ink oracle is offline only; unchanged never admits text or

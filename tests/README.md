@@ -1,5 +1,11 @@
 # OkuFlow Tests
 
+`OKUFLOW_UCT_RESIDENT_PAINT_SAMPLES=1` exports actual completed GPU results
+through standalone admission and the production Qt snapshot painter on each
+source warmup. It requires explicit immutable/single input and Qt offscreen;
+new evidence contains original/UCT PNGs and hash-bound per-word drawn receipts.
+Use a separate visual run rather than treating exports as timing evidence.
+
 `uct_ribbon_cuda_contract` executes the actual parallel ribbon fit and original-
 pixel rectification against analytic/CPU oracles on CUDA. It is serialized with
 other GPU cases. The frozen `uct_merge_replay` oracle remains unchanged and

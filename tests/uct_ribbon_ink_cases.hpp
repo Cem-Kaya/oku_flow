@@ -136,6 +136,12 @@ inline void BoundsAndWindows() {
     stamp.immutableSelectedInput=true;stamp.temporallySmoothed=true;QVERIFY(!PaddleRibbonInputAllowed(stamp));
     stamp.temporallySmoothed=false;stamp.liveCameraCapture=true;QVERIFY(!PaddleRibbonInputAllowed(stamp));
     stamp.liveCameraCapture=false;stamp.holdDisplay=HoldDisplay::Held;QVERIFY(!PaddleRibbonInputAllowed(stamp));
+    QVERIFY(PaddleRibbonEnabled(true, {}));
+    QVERIFY(PaddleRibbonEnabled(true, "1"));
+    QVERIFY(!PaddleRibbonEnabled(true, "0"));
+    QVERIFY(!PaddleRibbonEnabled(true, "invalid"));
+    QVERIFY(!PaddleRibbonEnabled(false, {}));
+    QVERIFY(!PaddleRibbonEnabled(false, "1"));
 }
 inline RecognizedLine Words(const PaddleQuad& q,bool longWord=false) {
     const QStringList dictionary{"","READ"," ","ink"};

@@ -72,6 +72,11 @@ capture. See [quality, memory and acceptance limits](docs/live_ram_recap.md).
 Development UCT remembers your opt-in across launches. The Text Clarity switch
 pauses it without clearing your choice and restores it when switched on again.
 
+Development UCT automatically follows gently curved text on Freeze and paused
+frames. Supported words are placed back on the original page; bends it cannot
+represent keep their original ink. Live playback keeps its existing path.
+See [curved-page OCR and samples](docs/uct_ribbon_and_current_ink.md).
+
 Record microphone audio or choose no microphone for silent video. Captures, readings and explanations gather in local HTML lecture notes. The default folder is `Documents\OkuFlow\`; you can choose another location.
 
 **Privacy-respecting local transcription:** open recorded-video notes in Chrome and choose Transcribe. Grant access to the folder containing your recording, then explicitly choose a speech model and processor in the [OkuFlow transcription tool](https://okuflow.com/transcribe/). First use downloads the selected model and runtime. Speech recognition runs on your own computer, without an inference server or audio/text upload. Returned text appears beneath the recording and is saved beside it as a transcript sidecar. Browser caches can be cleared or evicted, so a later session may need another download.
