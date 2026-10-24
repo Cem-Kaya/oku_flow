@@ -82,7 +82,7 @@ struct Selection {
     QStringList images;
     int rounds{3}, passes{5};
     quint32 seed{20261020};
-    bool profile{true}, media{}, paired{}, frozenCrops{}, shadowPlanner{}, exactN8{}, localBf16{}, immutable{}, curvedRibbon{};
+    bool profile{true}, media{}, paired{}, frozenCrops{}, shadowPlanner{}, exactN8{}, localBf16{}, productionFactory{}, immutable{}, curvedRibbon{};
     QString sdk, experimentManifest, widthPolicy{QStringLiteral("fixed1024")};
     qint64 watchdogMs{};
     QString error;
@@ -106,7 +106,7 @@ struct Selection {
                 {"frozenCrops", frozenCrops}, {"recognizerWidthPolicy", widthPolicy},
                 {"immutableSelectedInput",immutable},{"curvedRibbon",curvedRibbon},
                 {"shadowPlanner", shadowPlanner}, {"exactSameCapacityN8", exactN8},
-                {"factory", !experimentManifest.isEmpty() ? "diagnostic-bf16-experiment" : localBf16 ? "application-local-bf16" : "direct-fp32"},
+                {"factory", !experimentManifest.isEmpty() ? "diagnostic-bf16-experiment" : localBf16 ? "application-local-bf16" : productionFactory ? "production" : "direct-fp32"},
                 {"maximumStartupSubmissions", exactN8 ? kExactN8MaximumStartupSubmissions : 0},
                 {"startupDeadlineMs", kStartupDeadlineMs}, {"jobDeadlineMs", kJobDeadlineMs}};
     }
@@ -141,6 +141,10 @@ inline Selection ParseSelection(const EnvironmentReader& read)
     if (!localBf16.isEmpty() && localBf16 != "0" && localBf16 != "1")
         return refuse("OKUFLOW_UCT_RESIDENT_LOCAL_BF16 accepts only 0 or 1.");
     s.localBf16 = localBf16 == "1";
+    const auto productionFactory = read("OKUFLOW_UCT_RESIDENT_PRODUCTION_FACTORY");
+    if (!productionFactory.isEmpty() && productionFactory != "0" && productionFactory != "1")
+        return refuse("OKUFLOW_UCT_RESIDENT_PRODUCTION_FACTORY accepts only 0 or 1.");
+    s.productionFactory = productionFactory == "1";
     s.experimentManifest = read("OKUFLOW_UCT_RESIDENT_EXPERIMENT_MANIFEST");
 
     auto capacities = read("OKUFLOW_UCT_RESIDENT_CAPACITIES");
@@ -232,6 +236,8 @@ inline Selection ParseSelection(const EnvironmentReader& read)
     if (!s.experimentManifest.isEmpty() && (!s.exactN8 || s.localBf16 ||
         s.pairs.front().recognizer == ModelTier::Medium || !runtime_precision::LocalAbsolute(s.experimentManifest)))
         return refuse("The experimental BF16 manifest requires an explicit local small/tiny same-capacity N8 selection.");
+    if (s.productionFactory && (s.localBf16 || !s.experimentManifest.isEmpty() || s.exactN8 || s.frozenCrops || s.shadowPlanner))
+        return refuse("The production-factory benchmark is exclusive of private/experimental BF16, exact-N8 and frozen/shadow modes; the production factory has no crop diagnostic.");
     s.sdk = read("OKUFLOW_UCT_TENSORRT_ROOT");
     if (s.sdk.isEmpty()) return refuse("Select the existing inference-only TensorRT SDK with OKUFLOW_UCT_TENSORRT_ROOT.");
     if (s.Blocks() > kMaximumBlocks || qint64(s.Blocks()) * s.JobsPerBlock() > kMaximumJobs)
@@ -743,8 +749,8 @@ inline QString Validate(const Completion& completion, const MeteredImage::Meters
     if (!completion.backend.detail.contains(QStringLiteral("recognizer batch=%1.").arg(capacity)))
         return "The actual recognizer capacity differs from the request; a fallback is not benchmarked: " +
                completion.backend.detail;
-    if ((selection.localBf16 || !selection.experimentManifest.isEmpty()) && !completion.backend.detail.contains("Recognition graph=BF16-linear,"))
-        return "The private BF16 request did not actually select BF16: " + completion.backend.detail;
+    if ((selection.localBf16 || selection.productionFactory || !selection.experimentManifest.isEmpty()) && !completion.backend.detail.contains("Recognition graph=BF16-linear,"))
+        return "The BF16 selection did not actually select BF16: " + completion.backend.detail;
     if (!result.deviceInput) return "The scheduler did not take the device-input path.";
     if (selection.shadowPlanner && (!result.shadowPlan || !result.shadowPlannerError.isEmpty() ||
         result.shadowPlan->authoritativeAction != RegionAuthoritativeAction::kRunFullOcr ||
@@ -1165,6 +1171,17 @@ inline void SelectionAndComparisonSelfTest()
         for (auto it = changes.begin(); it != changes.end(); ++it) changed[it.key()] = it.value();
         return !ParseSelection([&changed](const char* key) { return changed.value(QByteArray(key)); }).error.isEmpty();
     };
+    {
+        auto production = values;
+        production["OKUFLOW_UCT_RESIDENT_PRODUCTION_FACTORY"] = "1";
+        const auto parsed = ParseSelection([&production](const char* key) { return production.value(QByteArray(key)); });
+        QVERIFY2(parsed.error.isEmpty(), qPrintable(parsed.error));
+        QVERIFY(parsed.productionFactory && !parsed.localBf16 && !parsed.exactN8);
+        QCOMPARE(parsed.Json()["factory"].toString(), QStringLiteral("production"));
+    }
+    QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_PRODUCTION_FACTORY", "yes"}}));
+    QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_PRODUCTION_FACTORY", "1"}, {"OKUFLOW_UCT_RESIDENT_FROZEN_CROPS", "1"}}));
+    QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_PRODUCTION_FACTORY", "1"}, {"OKUFLOW_UCT_RESIDENT_LOCAL_BF16", "1"}}));
     QVERIFY(refused({{"OKUFLOW_UCT_RESIDENT_WIDTH", "auto"}}));
     QVERIFY(refused({{"OKUFLOW_UCT_TRT_PREPARE_WIDTH", "1"}}));
     values["OKUFLOW_UCT_RESIDENT_WIDTH"] = "bucketed";
@@ -1707,6 +1724,13 @@ inline void RunBlock(Run& run, const Block& block, ProfileCapture& capture)
     capture.Take();
     const auto constructed = Clock::now();
     const auto matchesPlans = [&](const QString& detail) {
+        // Production plan keys are chosen by the shipped catalog, not the
+        // direct-FP32 cache keys inspected below. Pin the actual recognizer
+        // precision from the backend detail recorded with every job; the
+        // inference-only SDK, startup deadline and unchanged-cache gate
+        // refuse any cold build.
+        if (run.selection.productionFactory)
+            return detail.contains(QStringLiteral("Recognition graph=BF16-linear,"));
         for (const auto& preflight : run.pairs[std::size_t(block.pair)].plans) {
             if (preflight.role == "recognizer" && preflight.capacity != block.capacity) continue;
             if ((run.selection.localBf16 || run.experiment) && preflight.role == "recognizer") {
@@ -1719,7 +1743,7 @@ inline void RunBlock(Run& run, const Block& block, ProfileCapture& capture)
     };
     auto recognizer = run.experiment
         ? CreatePrecisionExperimentRecognizer(assets.root,run.selection.sdk,pair.recognizer,run.experiment,retirement.Observer())
-        : run.selection.localBf16
+        : (run.selection.localBf16 || run.selection.productionFactory)
         ? CreateProductionTensorRtRecognizer(pair.detector, pair.recognizer, retirement.Observer())
         : CreateTensorRtRecognizer(assets.root, run.selection.sdk, pair.detector, pair.recognizer,
                                   retirement.Observer(), run.cropDiagnostic);
@@ -1895,7 +1919,10 @@ inline QJsonArray Caveats()
         "This process runs OCR without decoder or presenter work; other GPU clients on the machine are not controlled here.",
         "Candidate counts and cross-pair agreement are not accuracy. Truth-file CER is reading-order-sensitive and candidate-only.",
         "The recognizer is created directly: a fallback, preparing or capacity-reduced result fails the run instead of being "
-        "timed. The production automatic CPU fallback is unchanged."};
+        "timed. The production automatic CPU fallback is unchanged.",
+        "With factory=production the shipped BF16-preference catalog chooses each role; the actual per-role precision is the "
+        "backend detail recorded in every job file, never the direct-FP32 plan keys. Warm prepared plans only: the SDK is "
+        "inference-only and any plan-cache change fails the run."};
 }
 
 inline void ResidentBaselineDiagnostic()
@@ -1943,7 +1970,7 @@ inline void ResidentBaselineDiagnostic()
                 QByteArray::fromHex(detection ? entry.assets.detectorSha256 : entry.assets.recognizerSha256),
                 uuid, detection, capacity, false, 13050)) : QString();
         };
-        entry.plans.push_back(InspectCachedPlan(cache, "detector", pair.detector, 1,
+        if (!selection.productionFactory) entry.plans.push_back(InspectCachedPlan(cache, "detector", pair.detector, 1,
                                               entry.assets.detectorSha256, uuid, trtVersion, false, requiredLegacy(true, 1)));
         if (!selection.experimentManifest.isEmpty()) {
             try {
@@ -1966,7 +1993,7 @@ inline void ResidentBaselineDiagnostic()
                     {"payloadSha256",QString::fromLatin1(p.planSha256)},
                     {"planPath",p.planPath},{"scope","Diagnostic-only converted small/tiny graph; no production/model approval"}};
             } catch(const runtime_precision::ArtifactError& error) { QFAIL(error.what()); }
-        } else for (const int capacity : selection.capacities)
+        } else if (!selection.productionFactory) for (const int capacity : selection.capacities)
             entry.plans.push_back(InspectCachedPlan(cache, "recognizer", pair.recognizer, capacity,
                 entry.assets.recognizerSha256, uuid, trtVersion, selection.widthPolicy == "bucketed", requiredLegacy(false, capacity)));
         for (const auto& plan : entry.plans)
