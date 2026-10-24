@@ -5076,12 +5076,18 @@ ticket while first-use tools initialize. `FinishAgentPreparation` dispatches it
 only while its chat ticket, provider configuration and generation still match.
 Stop, New and configuration changes cancel that preparation; readiness never
 creates a replacement turn. Normal Send replaces the former routing gate.
+Restored Assistant/Coding/old Agent histories start a fresh logical chat when
+their backend differs, preserving the submitted draft and initial-attachment
+choice. `CodexAgentClient::TestCapability` returns probe admission; a refused
+probe cannot leave a pending Send waiting for a callback that will never arrive.
 `ContextSpec::currentViewFrames` is trusted native Send authority for an embedded
 turn. It is cleared for external leases, retains fresh current-view access over
 source changes, and never validates an old stamp. Explicit revocation still
 denies delivery and further frame requests without another consent card.
 The attachment checkbox controls the initial image; tool observations need not
 be attached eagerly to view-only control requests.
+Changing that initial-attachment preference does not revoke a running turn's
+view authority; the control permissions panel retains explicit revocation.
 
 `image.uct.enabled` and `image.uct.showOriginal` bind to the native UCT controller
 and its checkbox states. Enable intent persists; comparison is session-only.
@@ -5090,11 +5096,20 @@ change and disables first when requested. Getters separate requested intent from
 the Text Clarity master and effective OCR state. The catalog contains 100
 parameters (55 image), with the existing 43 tools, 17 protected entries and 46
 actions unchanged.
+Both UCT boolean rows require a ready backend for `effective:true`, returning
+`uct_backend_inactive` during initialization/failure. Receipt labels reuse the
+existing localized UCT/view captions rather than adding untranslated keys.
 
 The planner, receipt, metadata-page and MCP fixtures retain their complete
 per-field assertions with the expanded 100-parameter/55-image inventory. The
 first scoped run's obsolete count failures remain separate from its passing
 native Send/cancellation/current-view and UCT controller rows.
+The second attempt's uncataloged UCT receipt caption is preserved as a separate
+failure; its eleven passing contracts do not make that attempt a pass.
+Native routing rows exercise restored histories, direct configuration refresh,
+a diagnostic click during preparation, and loopback HTTP probe success,
+no-tool completion and invalid-configuration refusal. All providers are private
+fixtures; these rows do not submit account-backed inference or open devices.
 `CodexAgentClient` is a separate, restricted JSONL child. `Configure` retires its
 own process/session when provider identity changes; `TestCapability` explicitly
 runs bounded offline preflight and a tiny no-frame dynamic-tool round trip.

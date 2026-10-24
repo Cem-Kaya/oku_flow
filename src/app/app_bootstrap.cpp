@@ -265,14 +265,9 @@ bool OkuFlowApp::Initialize()
             if (attached && runtime.IsForegroundBusy()) {
                 runtime.ChatSession().Refresh(); return; // A running turn cannot acquire a broader grant.
             }
-            if (!attached) {
-                agentFrames_ = false;
-                if (controlService_) controlService_->RevokeFrameGrant(agentOwner_);
-                if (controlService_ && !agentContext_.isEmpty())
-                    controlService_->SetGrants(agentContext_,{false,agentPhotos_,agentRecording_,false});
-                for (auto* panel : {mainWindow_->agentControlPanel(),assistiveManager_->Overlay().agentControlPanel()})
-                    if (panel) panel->SetSessionGrants(false,agentPhotos_,agentRecording_);
-            }
+            // Initial attachment is independent of the submitted turn's
+            // current-view authority. Explicit frame revocation lives in the
+            // control permissions panel, not this attachment preference.
             runtime.ChatSession().SetAttachCurrentView(attached);
         });
         connect(chat,&AssistantChatView::ChatSelected,this,&OkuFlowApp::LoadAssistantConversationById);

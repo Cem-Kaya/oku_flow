@@ -603,9 +603,12 @@ QJsonObject AppControlTarget::QueryImageParameters(ToolId tool,const QJsonObject
         }
         QJsonValue effective=requested.isBool()?QJsonValue(active && intent):active && intent?requested:QJsonValue(QJsonValue::Null);
         if(field==Field::UctEnabled || field==Field::UctShowOriginal) {
-            const bool enabled=app_.ultraClearText_ && app_.ultraClearText_->IsEnabled();
-            effective=enabled && requested.toBool();
-            inactive=enabled?QString():Value(fields,Field::TextClarity).toBool()?QString("uct_disabled"):QString("text_clarity_disabled");
+            const auto* controller=app_.ultraClearText_.get();
+            const bool enabled=controller && controller->IsEnabled();
+            const bool ready=enabled && controller->BackendStatusSnapshot().state==uct::BackendState::kReady;
+            effective=ready && requested.toBool();
+            inactive=!enabled?Value(fields,Field::TextClarity).toBool()?QString("uct_disabled"):QString("text_clarity_disabled"):
+                !ready?QString("uct_backend_inactive"):QString();
         }
         if(field==Field::ZoomEnabled && Value(fields,Field::Framing)=="fit") {effective=false;inactive="view_layout";}
         if((field==Field::CenterX || field==Field::CenterY) && Value(fields,Field::Framing)=="fit") {effective=0.5;inactive="view_layout";}

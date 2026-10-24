@@ -255,7 +255,14 @@ void OkuFlowApp::TestAgentCapability()
     agentCapabilityTesting_=true;
     for (auto* panel : AgentPanels(mainWindow_.get(),assistiveManager_.get()))
         panel->SetCapabilityStatus(QStringLiteral("Checking tool support..."));
-    if(Codex(settingsController_->MutableSettings().assistive))agentCodex_->TestCapability();
+    if(Codex(settingsController_->MutableSettings().assistive)) {
+        if(!agentCodex_->TestCapability()) {
+            agentCapabilityTesting_=false;
+            for(auto* panel : AgentPanels(mainWindow_.get(),assistiveManager_.get()))
+                panel->SetCapabilityStatus(QStringLiteral("Tool support unavailable"));
+            FinishAgentPreparation(false);
+        }
+    }
     else if (!agentHttp_->TestCapability([self=QPointer<OkuFlowApp>(this)](HttpAgentCapability capability,QString) {
         if(!self)return;
         self->agentCapabilityTesting_=false;

@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+- Keep restored provider histories separate when Send changes control routing,
+  resolve refused tool preparation promptly, and report UCT backend readiness
+  separately from its saved on/off preference.
+
 - Start Assistant tool setup automatically on Send and continue the pending
   request without separate test/conversation buttons. Allow current-view image
   observations for that embedded request without an extra consent card.

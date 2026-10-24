@@ -238,3 +238,6 @@ Typed image controls now include `image.uct.enabled` and
 `image.uct.showOriginal`, alongside four CPU/GPU model selectors. UCT remains
 subject to the native Text Clarity master and real backend readiness. Requested
 on/off state persists; Show original is a session comparison setting.
+Receipts distinguish requested UCT enablement from a ready OCR backend. Sending
+from a restored provider conversation automatically starts the appropriate
+logical conversation with the same question, preserving the old history.

@@ -186,9 +186,17 @@ void OkuFlowApp::SubmitAssistantPromptText(const QString& prompt,
         runtime.ChatSession().Busy() || pendingAssistantFramePrompt_) return;
     CancelAssistantHistoryLoad();
     runtime.ChatSession().SetDraft(prompt);
-    const auto kind = runtime.ChatSession().Snapshot().value("kind").toString();
+    auto kind = runtime.ChatSession().Snapshot().value("kind").toString();
     const bool attachFrame = runtime.ChatSession().AttachCurrentView();
     const bool embedded = settingsController_->MutableSettings().assistive.agentControlEnabled && !withoutControl;
+    // Restored provider threads cannot contain turns from a different backend.
+    // Continue Send in a fresh logical chat instead of requiring a routing click.
+    if ((embedded && kind != "explain") || (!embedded && kind == "agent")) {
+        StartNewAssistantConversationAs(ChatBackendKind::Explain);
+        runtime.ChatSession().SetDraft(prompt);
+        runtime.ChatSession().SetAttachCurrentView(attachFrame);
+        kind = "explain";
+    }
     if (embedded) RefreshAgentControlSettings();
     const auto backend = embedded ? ChatBackendKind::Agent : kind == "coding" ? ChatBackendKind::Coding :
         kind == "assistant" ? ChatBackendKind::Assistant : ChatBackendKind::Explain;

@@ -34,6 +34,8 @@
 #include <QScopeGuard>
 #include <QSlider>
 #include <QTemporaryDir>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QUuid>
 #include <QElapsedTimer>
 #include <QtTest>
@@ -287,6 +289,27 @@ public:
         app.RefreshAgentControlSettings();
     }
     static void SubmitAssistant(OkuFlowApp& app) {app.SubmitAssistantPromptText("Set zoom to 2x",false,false);}
+    static void ReconfigureAssistant(OkuFlowApp& app,const QString& model) {
+        app.settingsController_->MutableSettings().assistive.codexModel=model;
+        app.RefreshAgentControlSettings();
+    }
+    static void PrepareHttpAssistant(OkuFlowApp& app,const QString& endpoint) {
+        auto& config=app.settingsController_->MutableSettings().assistive;
+        config.aiProvider="openai";config.vlmApiUrl=endpoint;
+        config.vlmModel="private-http-fixture";config.vlmApiKey="fixture-only";
+        config.agentControlEnabled=true;config.externalMcpEnabled=false;
+        if(!app.agentCodex_)app.InitializeAgentControl();
+        app.StartNewAssistantConversationAs(ChatBackendKind::Explain);
+        app.RefreshAgentControlSettings();
+    }
+    static void RestoreAssistantHistory(OkuFlowApp& app,ChatBackendKind kind) {
+        app.assistiveManager_->Runtime().ChatSession().Restore("restored-provider-thread",kind,
+            {QJsonObject{{"role","user"},{"text","Old provider question"}},
+             QJsonObject{{"role","assistant"},{"text","Old provider answer"}}});
+        app.currentAssistantThreadId_="restored-provider-thread";
+    }
+    static QString AssistantProviderThread(const OkuFlowApp& app) {return app.currentAssistantThreadId_;}
+    static void TestAssistantTools(OkuFlowApp& app) {app.TestAgentCapability();}
     static void StopAssistant(OkuFlowApp& app) {app.StopAssistantRequest();}
     static bool AssistantPending(const OkuFlowApp& app) {return app.pendingAgentSubmission_.has_value();}
     static CodexAgentClient& AgentClient(OkuFlowApp& app) {return *app.agentCodex_;}
@@ -2347,6 +2370,9 @@ private slots:
         const auto cleanup=qScopeGuard([&] {disconnect(capture);});
         NativeControlFixture::SubmitAssistant(app_);
         QVERIFY(NativeControlFixture::AssistantPending(app_));QVERIFY(runtime.ChatSession().Busy());
+        const auto pendingEvents=availability.size();
+        NativeControlFixture::TestAssistantTools(app_);
+        QCOMPARE(availability.size(),pendingEvents); // diagnostic click shares the existing preparation
         QTRY_VERIFY_WITH_TIMEOUT(!runtime.ChatSession().Busy(),10000);
         QVERIFY(!NativeControlFixture::AssistantPending(app_));QVERIFY(client.IsReady());
         QVERIFY(frames);QVERIFY(!photos);QVERIFY(!recording);
@@ -2370,13 +2396,35 @@ private slots:
         NativeControlFixture::PrepareAssistant(app_,reconfigure?"before-change":"before-stop");
         const auto zoom=NativeControlFixture::Target(app_).Fields().at(Field::ZoomAmount);
         NativeControlFixture::SubmitAssistant(app_);QVERIFY(NativeControlFixture::AssistantPending(app_));
-        if(reconfigure)NativeControlFixture::PrepareAssistant(app_,"after-change");
+        if(reconfigure)NativeControlFixture::ReconfigureAssistant(app_,"after-change");
         else NativeControlFixture::StopAssistant(app_);
         QVERIFY(!NativeControlFixture::AssistantPending(app_));
         QVERIFY(!NativeControlFixture::Runtime(app_).ChatSession().Busy());
         QTest::qWait(100);
         QCOMPARE(NativeControlFixture::Target(app_).Fields().at(Field::ZoomAmount),zoom);
         QVERIFY(NativeControlFixture::AgentContext(app_).isEmpty());
+    }
+    void assistantSendSeparatesRestoredProviderHistory_data() {
+        QTest::addColumn<int>("kind");
+        QTest::newRow("assistant")<<int(ChatBackendKind::Assistant);
+        QTest::newRow("coding")<<int(ChatBackendKind::Coding);
+        QTest::newRow("old-agent")<<int(ChatBackendKind::Agent);
+    }
+    void assistantSendSeparatesRestoredProviderHistory() {
+        QFETCH(int,kind);qunsetenv("OKUFLOW_FAKE_AGENT_SCENARIO");
+        NativeControlFixture::PrepareAssistant(app_,"history-"+QString::number(kind));
+        NativeControlFixture::RestoreAssistantHistory(app_,static_cast<ChatBackendKind>(kind));
+        NativeControlFixture::SubmitAssistant(app_);
+        auto& session=NativeControlFixture::Runtime(app_).ChatSession();
+        QCOMPARE(session.Snapshot()["kind"].toString(),"explain");
+        QVERIFY(session.Snapshot()["conversationId"].toString()!="restored-provider-thread");
+        QVERIFY(NativeControlFixture::AssistantProviderThread(app_).isEmpty());
+        QVERIFY(session.Draft().isEmpty());
+        QTRY_VERIFY_WITH_TIMEOUT(!session.Busy(),10000);
+        const auto messages=session.Snapshot()["messages"].toArray();
+        QCOMPARE(messages.size(),2);
+        QCOMPARE(messages.first().toObject()["text"].toString(),"Set zoom to 2x");
+        QVERIFY(messages.last().toObject()["complete"].toBool());
     }
     void assistantFailedPreparationNeverDispatchesControl() {
         qputenv("OKUFLOW_FAKE_AGENT_SCENARIO","probe_start_rejected");
@@ -2388,6 +2436,65 @@ private slots:
         QVERIFY(!NativeControlFixture::AssistantPending(app_));QVERIFY(NativeControlFixture::AgentContext(app_).isEmpty());
         QCOMPARE(NativeControlFixture::Target(app_).Fields().at(Field::ZoomAmount),zoom);
         QVERIFY(!NativeControlFixture::Runtime(app_).ChatSession().Snapshot()["messages"].toArray().last().toObject()["complete"].toBool());
+    }
+    void assistantHttpPreparationContinuesOrFailsWithoutDispatch_data() {
+        QTest::addColumn<QString>("scenario");
+        QTest::newRow("ready")<<QString("ready");
+        QTest::newRow("no-tool")<<QString("no-tool");
+        QTest::newRow("invalid-configuration")<<QString("invalid");
+    }
+    void assistantHttpPreparationContinuesOrFailsWithoutDispatch() {
+        QFETCH(QString,scenario);
+        QTcpServer server;QVERIFY(server.listen(QHostAddress::LocalHost,0));
+        int requests=0,probes=0,submissions=0;
+        connect(&server,&QTcpServer::newConnection,&server,[&] {
+            while(server.hasPendingConnections()) {
+                auto* socket=server.nextPendingConnection();auto bytes=std::make_shared<QByteArray>();
+                connect(socket,&QTcpSocket::disconnected,socket,&QObject::deleteLater);
+                connect(socket,&QTcpSocket::readyRead,socket,[&,socket,bytes] {
+                    bytes->append(socket->readAll());
+                    const auto boundary=bytes->indexOf("\r\n\r\n");
+                    if(boundary<0 || socket->property("received").toBool())return;
+                    int length=0;
+                    for(const auto line:bytes->left(boundary).split('\n'))
+                        if(line.toLower().startsWith("content-length:"))length=line.mid(15).trimmed().toInt();
+                    if(bytes->size()<boundary+4+length)return;
+                    socket->setProperty("received",true);++requests;
+                    const auto body=QJsonDocument::fromJson(bytes->mid(boundary+4,length)).object();
+                    const auto messages=body["messages"].toArray();
+                    bool probe=false;
+                    for(const auto tool:body["tools"].toArray())
+                        probe|=tool.toObject()["function"].toObject()["name"]=="okuflow_capability_test";
+                    QJsonObject message{{"role","assistant"},{"content","Done"}};
+                    QString reason="stop";
+                    if(probe || (!messages.isEmpty() && messages.last().toObject()["role"]=="user")) {
+                        if(probe)++probes;else ++submissions;
+                        if(!probe || scenario=="ready") {
+                            const auto name=probe?"okuflow_capability_test":"okuflow_view_zoom_set";
+                            const QJsonObject args=probe?QJsonObject{{"value",1}}:QJsonObject{{"magnification",2}};
+                            const QJsonObject call{{"id",QString("call-%1").arg(requests)},{"type","function"},
+                                {"function",QJsonObject{{"name",name},{"arguments",QString::fromUtf8(QJsonDocument(args).toJson(QJsonDocument::Compact))}}}};
+                            message["content"]=QJsonValue::Null;message["tool_calls"]=QJsonArray{call};reason="tool_calls";
+                        }
+                    }
+                    const auto answer=QJsonDocument(QJsonObject{{"choices",QJsonArray{QJsonObject{{"message",message},{"finish_reason",reason}}}}}).toJson(QJsonDocument::Compact);
+                    socket->write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: "+QByteArray::number(answer.size())+"\r\n\r\n"+answer);
+                    socket->disconnectFromHost();
+                });
+            }
+        });
+        NativeControlFixture::PrepareHttpAssistant(app_,scenario=="invalid"?QString("http://"):
+            QString("http://127.0.0.1:%1/v1/chat/completions").arg(server.serverPort()));
+        const auto zoom=NativeControlFixture::Target(app_).Fields().at(Field::ZoomAmount);
+        NativeControlFixture::SubmitAssistant(app_);
+        auto& session=NativeControlFixture::Runtime(app_).ChatSession();
+        QTRY_VERIFY_WITH_TIMEOUT(!session.Busy(),10000);
+        QVERIFY(!NativeControlFixture::AssistantPending(app_));
+        QCOMPARE(submissions,scenario=="ready"?1:0);QCOMPARE(probes,scenario=="invalid"?0:1);
+        QCOMPARE(session.Snapshot()["messages"].toArray().size(),2);
+        QCOMPARE(session.Snapshot()["messages"].toArray().last().toObject()["complete"].toBool(),scenario=="ready");
+        QCOMPARE(NativeControlFixture::Target(app_).Fields().at(Field::ZoomAmount),scenario=="ready"?QJsonValue(2.0):zoom);
+        QVERIFY(NativeControlFixture::Service(app_).PendingApproval().isEmpty());
     }
     void uctMasterAndOriginalUseNativeControllerWithoutClaimingReadiness() {
         auto& service=NativeControlFixture::Service(app_);

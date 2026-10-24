@@ -22,7 +22,7 @@ public:
     ~CodexAgentClient() override;
     void Configure(QString executable, QString model, QString effort, QString instructions);
     void SetControlService(agent::AppControlService* service);
-    void TestCapability();
+    bool TestCapability(); // false means no probe was admitted and no completion is owed
     bool IsReady() const { return available_; }
     bool IsTurnActive() const { return active_; }
     bool SubmitTurn(QString contextId, QString prompt, QByteArray jpeg = {},

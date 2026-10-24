@@ -147,6 +147,17 @@ class CodexAgentClientTests final : public QObject {
     static QJsonObject Data(const QJsonArray& replies,int row=0){return replies[row].toObject()["data"].toObject();}
 private slots:
     void init(){qunsetenv("OKUFLOW_FAKE_AGENT_SCENARIO");}
+    void duplicateCapabilityProbeReportsAdmission() {
+        AgentTarget target;AppControlService service(target);CodexAgentClient client;
+        client.SetControlService(&service);
+        client.Configure(QStringLiteral(OKUFLOW_FAKE_AGENT_BINARY),{},"low",{});
+        QSignalSpy availability(&client,&CodexAgentClient::AvailabilityChanged);
+        QVERIFY(client.TestCapability());QVERIFY(!client.TestCapability());
+        QTRY_VERIFY_WITH_TIMEOUT(client.IsReady() && !client.IsTurnActive(),10000);
+        int checking=0;
+        for(const auto& event:availability)checking+=event[1].toString()=="checking";
+        QCOMPARE(checking,1);
+    }
     void declaredViewScope_data() {
         QTest::addColumn<QByteArray>("scenario");QTest::addColumn<int>("field");QTest::addColumn<QJsonValue>("expected");
         QTest::newRow("center")<<QByteArray("scope_center")<<int(Field::CenterX)<<QJsonValue(0.25);

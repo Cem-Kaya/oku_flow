@@ -95,17 +95,18 @@ void CodexAgentClient::SetControlService(agent::AppControlService* service)
     service_=service;
 }
 
-void CodexAgentClient::TestCapability()
+bool CodexAgentClient::TestCapability()
 {
-    if(active_ || preflight_.state()!=QProcess::NotRunning)return;
+    if(active_ || probing_ || preflight_.state()!=QProcess::NotRunning)return false;
     available_=false; probing_=true; const auto epoch=++epoch_; anomalies_=0;
     emit AvailabilityChanged(false,QStringLiteral("checking"));
-    if(epoch!=epoch_ || !probing_ || stopping_)return;
+    if(epoch!=epoch_ || !probing_ || stopping_)return false;
     if(initialized_) {
         thread_.clear(); active_=true; ++generation_; started_=activity_=Now();
-        watchdog_.start(); StartThread(); return;
+        watchdog_.start(); StartThread(); return true;
     }
     retired_.clear();version_.clear();features_.clear();Preflight(0);
+    return true;
 }
 void CodexAgentClient::Preflight(int stage)
 {

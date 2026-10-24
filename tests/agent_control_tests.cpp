@@ -923,7 +923,7 @@ private slots:
             QVERIFY2(neutral.contains(id) || label(id) != fallback,qPrintable(id));
         }
         // Every legacy receipt spelling resolves to the caption of its canonical id.
-        for (int index = 0; index <= static_cast<int>(Field::VideoSelection); ++index) {
+        for (int index = 0; index <= static_cast<int>(Field::UctShowOriginal); ++index) {
             const auto field = static_cast<Field>(index);
             const auto legacy = FieldName(field), canonical = ParameterId(field);
             QVERIFY2(!legacy.isEmpty() && cataloged(label(legacy)),qPrintable(legacy));
