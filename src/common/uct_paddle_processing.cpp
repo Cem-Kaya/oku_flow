@@ -584,9 +584,9 @@ QVector<PaddleQuad> PaddleDetect(std::span<const float> map, int width, int heig
             continue;
         const double expand = w * h * 1.4 / (2 * (w + h));
         ribbon::Geometry curve;
-        if (curvedRibbon && component.size() <= ribbon::kMaximumFitPixels &&
+        if (curvedRibbon && u1 - u0 >= 24 && component.size() <= ribbon::kMaximumFitPixels &&
             (x1-x0+1)*(y1-y0+1) <= ribbon::kMaximumFitPixels && w >= h) {
-            ribbon::Bin bins[ribbon::kBins];
+            ribbon::Bin bins[ribbon::kBins]{};
             for (int p : component) {
                 const double u=(p%width)*c+(p/width)*s, v=-(p%width)*s+(p/width)*c;
                 ribbon::Add(bins, (u-u0)/std::max(1.0,u1-u0), v);
@@ -633,6 +633,34 @@ std::vector<float> PaddleRectify(const QImage &image, const PaddleQuad &quad, in
     const auto source = image.convertToFormat(QImage::Format_ARGB32);
     std::vector<float> crop(static_cast<std::size_t>(width) * 48 * 3, 0.f);
     const int valid = std::min(width, validWidth);
+    if (quad.ribbon.valid) {
+        // Per-column centerline terms, evaluated once per crop with the same
+        // double operation order as ribbon::Geometry::At.
+        const auto& g = quad.ribbon;
+        std::vector<double> baseX(valid), baseY(valid), center(valid), half(valid);
+        for (int x = 0; x < valid; ++x) {
+            const double u = (x + .5f) / valid;
+            const double t = g.start + (g.end - g.start) * u;
+            center[x] = g.a + t * (g.b + t * g.c);
+            half[x] = g.h0 + g.h1 * t;
+            baseX[x] = g.ox + g.ux * t;
+            baseY[x] = g.oy + g.uy * t;
+        }
+        for (int y = 0; y < 48; ++y) {
+            const double v = (y + .5f) / 48;
+            const double side = 2 * v - 1;
+            for (int x = 0; x < valid; ++x) {
+                const double cross = center[x] + side * half[x];
+                const double px = baseX[x] + g.vx * cross;
+                const double py = baseY[x] + g.vy * cross;
+                for (int ch = 0; ch < 3; ++ch)
+                    crop[ch * width * 48 + y * width + x] =
+                        (Sample(source, static_cast<float>(px) - .5f,
+                                static_cast<float>(py) - .5f, ch) / 255 - .5f) * 2;
+            }
+        }
+        return crop;
+    }
     for (int y = 0; y < 48; ++y)
         for (int x = 0; x < valid; ++x)
         {

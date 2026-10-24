@@ -301,12 +301,15 @@ __global__ void emitBoxes(const Component *comps, int w, int h, int sw, int sh, 
 }
 // Optional immutable-input experiment. One bounded scan per selected component;
 // labels stay intact because this mode supplies separate prefix-offset scratch.
+// Launch contract: 128 blocks x 256 threads, one block per component. Fixed
+// strided pixel ownership plus a fixed-order reduction keep counts/extrema
+// exact and every sum defined; no atomics or extra transfers are introduced.
 __global__ void fitRibbons(const int* labels, const Component* comps, int w, int h,
                           int sw, int sh, Quad* quads, const int* count)
 {
     const int index=blockIdx.x;
-    if(index>=min(*count,128)||threadIdx.x) return;
-    auto& q=quads[index]; const int root=q.componentRoot;
+    if(blockDim.x!=256||index>=min(*count,128)) return;
+    const int root=quads[index].componentRoot;
     if(root<0||root>=w*h) return;
     const auto c=comps[root];
     if(c.n>ribbon::kMaximumFitPixels||c.u1-c.u0<24||c.u1-c.u0<c.v1-c.v0) return;
@@ -318,12 +321,36 @@ __global__ void fitRibbons(const int* labels, const Component* comps, int w, int
     }
     const int x0=max(0,int(floorf(minx))),x1=min(w-1,int(ceilf(maxx)));
     const int y0=max(0,int(floorf(miny))),y1=min(h-1,int(ceilf(maxy)));
-    if((x1-x0+1)*(y1-y0+1)>ribbon::kMaximumFitPixels) return;
-    ribbon::Bin bins[ribbon::kBins];
-    for(int y=y0;y<=y1;++y)for(int x=x0;x<=x1;++x) if(labels[y*w+x]==root) {
+    const long long scanTotal=static_cast<long long>(x1-x0+1)*(y1-y0+1);
+    if(scanTotal>ribbon::kMaximumFitPixels) return;
+    const int scanWidth=x1-x0+1, scanPixels=static_cast<int>(scanTotal);
+    ribbon::Bin mine[ribbon::kBins]{};
+    for(int pixel=threadIdx.x;pixel<scanPixels;pixel+=blockDim.x) {
+        const int x=x0+pixel%scanWidth,y=y0+pixel/scanWidth;
+        if(labels[y*w+x]!=root) continue;
         const double u=x*double(c.c)+y*double(c.s),v=-x*double(c.s)+y*double(c.c);
-        ribbon::Add(bins,(u-c.u0)/(c.u1-c.u0),v);
+        ribbon::Add(mine,(u-c.u0)/(c.u1-c.u0),v);
     }
+    __shared__ int counts[256];
+    __shared__ double lows[256],highs[256],sums[256];
+    __shared__ ribbon::Bin bins[ribbon::kBins];
+    for(int bin=0;bin<ribbon::kBins;++bin) {
+        counts[threadIdx.x]=mine[bin].count; lows[threadIdx.x]=mine[bin].low;
+        highs[threadIdx.x]=mine[bin].high; sums[threadIdx.x]=mine[bin].sumU;
+        __syncthreads();
+        if(!threadIdx.x) {
+            ribbon::Bin merged{};
+            for(int thread=0;thread<blockDim.x;++thread) {
+                merged.count+=counts[thread]; merged.sumU+=sums[thread];
+                if(lows[thread]<merged.low) merged.low=lows[thread];
+                if(highs[thread]>merged.high) merged.high=highs[thread];
+            }
+            bins[bin]=merged;
+        }
+        __syncthreads();
+    }
+    if(threadIdx.x) return;
+    auto& q=quads[index];
     q.ribbon=ribbon::Fit(bins,c.u0,c.u1,c.c,c.s,double(sw)/w,double(sh)/h,sw,sh);
     if(q.ribbon.unsupported) {
         auto& r=q.ribbon;r.protectLeft=r.protectRight=q.xy[0];r.protectTop=r.protectBottom=q.xy[1];
@@ -383,15 +410,17 @@ __global__ void rectify(const unsigned char *pixels, std::size_t pitch, int w, i
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= ow * 48)
         return;
-    const auto q = quads[index];
+    const Quad& q = quads[index];
     const int x = i % ow, y = i / ow, valid = min(ow, q.validWidth);
     const float u = (x + .5f) / valid, v = (y + .5f) / 48;
-    float sx = q.xy[0] * (1 - u) * (1 - v) + q.xy[2] * u * (1 - v) + q.xy[4] * u * v +
-                     q.xy[6] * (1 - u) * v - .5f;
-    float sy = q.xy[1] * (1 - u) * (1 - v) + q.xy[3] * u * (1 - v) + q.xy[5] * u * v +
-                     q.xy[7] * (1 - u) * v - .5f;
+    float sx, sy;
     if (q.ribbon.valid) {
         const auto p=q.ribbon.At(u,v); sx=float(p.x)-.5f; sy=float(p.y)-.5f;
+    } else {
+        sx = q.xy[0] * (1 - u) * (1 - v) + q.xy[2] * u * (1 - v) + q.xy[4] * u * v +
+             q.xy[6] * (1 - u) * v - .5f;
+        sy = q.xy[1] * (1 - u) * (1 - v) + q.xy[3] * u * (1 - v) + q.xy[5] * u * v +
+             q.xy[7] * (1 - u) * v - .5f;
     }
     for (int c = 0; c < 3; ++c)
         out[c * ow * 48 + i] =
@@ -405,16 +434,18 @@ __global__ void rectifyBatch(const unsigned char *pixels, std::size_t pitch, int
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= ow * 48)
         return;
-    const auto q = quads[first + blockIdx.y];
+    const Quad& q = quads[first + blockIdx.y];
     out += static_cast<std::size_t>(blockIdx.y) * ow * 48 * 3;
     const int x = i % ow, y = i / ow, valid = min(ow, q.validWidth);
     const float u = (x + .5f) / valid, v = (y + .5f) / 48;
-    float sx = q.xy[0] * (1 - u) * (1 - v) + q.xy[2] * u * (1 - v) + q.xy[4] * u * v +
-                     q.xy[6] * (1 - u) * v - .5f;
-    float sy = q.xy[1] * (1 - u) * (1 - v) + q.xy[3] * u * (1 - v) + q.xy[5] * u * v +
-                     q.xy[7] * (1 - u) * v - .5f;
+    float sx, sy;
     if (q.ribbon.valid) {
         const auto p=q.ribbon.At(u,v); sx=float(p.x)-.5f; sy=float(p.y)-.5f;
+    } else {
+        sx = q.xy[0] * (1 - u) * (1 - v) + q.xy[2] * u * (1 - v) + q.xy[4] * u * v +
+             q.xy[6] * (1 - u) * v - .5f;
+        sy = q.xy[1] * (1 - u) * (1 - v) + q.xy[3] * u * (1 - v) + q.xy[5] * u * v +
+             q.xy[7] * (1 - u) * v - .5f;
     }
     for (int c = 0; c < 3; ++c)
         out[c * ow * 48 + i] =
@@ -603,7 +634,7 @@ void Detect(const float *map, int w, int h, int sw, int sh, int *labels, Compone
     countBoxes<<<blocks, 256, 0, s>>>(comps, w * h, offsets);
     boxOffsets<<<1, 1, 0, s>>>(offsets, blocks, count);
     emitBoxes<<<blocks, 256, 0, s>>>(comps, w, h, sw, sh, offsets, quads);
-    if(ribbonOffsets) fitRibbons<<<128,1,0,s>>>(labels,comps,w,h,sw,sh,quads,count);
+    if(ribbonOffsets) fitRibbons<<<128,256,0,s>>>(labels,comps,w,h,sw,sh,quads,count);
 }
 void RecognitionWindows(const Quad* detected,int* count,Quad* windows,cudaStream_t stream)
 {

@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <cuda_runtime_api.h>
+#include <type_traits>
 #include "okuflow/common/uct_ribbon.hpp"
 
 namespace okuflow::uct::gpu
@@ -63,6 +64,14 @@ struct Quad
     ribbon::Geometry ribbon;
     int componentRoot{-1}; // worker-private detector component identity
 };
+// Quad arrays cross the MSVC/nvcc boundary by byte copy; lock the layout.
+static_assert(std::is_standard_layout_v<ribbon::Geometry>);
+static_assert(sizeof(ribbon::Bin) == 32);
+static_assert(sizeof(ribbon::Geometry) == 144);
+static_assert(std::is_standard_layout_v<Quad>);
+static_assert(offsetof(Quad, ribbon) == 48);
+static_assert(offsetof(Quad, componentRoot) == 192);
+static_assert(sizeof(Quad) == 200);
 struct Token
 {
     int id, first, last;
