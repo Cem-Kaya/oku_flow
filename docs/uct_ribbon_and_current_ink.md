@@ -261,6 +261,27 @@ comparison. Pixel equality does not imply zero latency overhead.
 
 ## Validation evidence
 
+### Main-app integration validation (24 October 2026)
+
+`scripts/agent_check.ps1 -Files tests/uct_paddle_tests.cpp` passed its four CPU
+cases. The tracked `scripts/agent_build.bat` then compiled the shipping CUDA
+application, all CPU targets and all CUDA test targets with Qt 6.12.0, VS2022,
+CUDA 12.9.86 and the actual OCR adapter headers. Its explicitly desktop-free
+matrix completed: CPU **167 passed / 9 skipped / 0 unresolved** (five passing
+cases contain optional skipped Qt rows); CUDA delta **15 passed / 5 skipped /
+0 unresolved**. Reuse required matching per-test fingerprints. The actual
+`uct_ribbon_cuda_contract` and `uct_paddle_cuda` passed. Optional GPU playback
+cases remain skipped; native GUI was explicitly excluded. This is background
+development validation, not full shipping/installer acceptance.
+
+A separate PCH-OFF configuration compiled `uct_paddle_tests` and passed both
+`uct_ribbon_ink_contract` and `shared_source_equivalence` (SCOPED **2/242**,
+zero skips/unresolved). Frozen merge oracle bodies are unchanged from `caf523e0`.
+The real BF16 sample runs also completed both State retirements normally and
+left all 18 private cache files unchanged. Logs, ledgers, sample/code/image
+hashes and the self-contained gallery remain in the integration evidence root
+named below. No native desktop, phone, installer or public release ran.
+
 ### Visual samples from actual OCR
 
 Set `OKUFLOW_UCT_RESIDENT_PAINT_SAMPLES=1` alongside the existing resident
