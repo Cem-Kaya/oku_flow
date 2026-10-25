@@ -2,8 +2,10 @@
 
 Development implementation, 26 October 2026; separate from published 0.3.1.
 
-Settings > Camera > **View file**, **Select file**, Ctrl+O and a single local-file
-drop accept videos, PNG/JPEG/BMP/WebP/TIFF pictures, and PDFs. Camera discovery
+Settings > Camera offers **View video or picture** and a separate **View PDF**.
+Their selection buttons open the matching file filter. Ctrl+O opens the selected
+file category; from a camera it accepts any supported file. A single local-file
+drop also accepts videos, PNG/JPEG/BMP/WebP/TIFF pictures, and PDFs. Camera discovery
 continues without owning the file selection. A slow phone startup leaves the
 source picker usable. An explicit webcam choice cancels the old startup and
 automatic phone selection; an explicit file choice temporarily suspends new
@@ -29,6 +31,13 @@ pixels and 16 megapixels (64 MiB BGRA). This is bounded raster presentation of
 PDF vectors, not unlimited-resolution rendering. The selected file must be at
 most 256 MiB; encrypted/password PDFs are currently refused. TIFF uses its first
 image. Unsupported/invalid files report failure rather than becoming a camera.
+
+Presentation validates one owned BGRA frame with a 64-MiB limit. It must not use
+the video decoder's multi-frame queue budget: an ordinary 4096-pixel portrait
+PDF fits the page limit but cannot fit six such video buffers. That mismatch
+previously left the preceding source visible despite successful text extraction.
+Video decode queue limits remain unchanged. A document GPU refusal keeps the
+same owned page for CPU presentation instead of reopening it as a video.
 
 ## Reading and accessibility
 
@@ -83,3 +92,13 @@ These desktop-free checks do not establish physical USB recovery, actual
 screen-reader speech, GUI focus or installer acceptance. Run the tracked full
 matrix and hosted native GUI inventory before integration; preserve failed
 receipts and source/binary identity.
+
+`documentPixelsReplacePreviousSourceInHiddenPresenter` submits real picture/PDF
+pixels through the application and D3D12 into an unshown, non-activating private
+window, checking the viewport pixel buffer through picture → PDF → next page.
+The original failing run retained correct green PDF pixels while the viewport
+remained red. `media_gpu_scene_cuda` additionally reads back two 4096-pixel
+portrait BGRA scenes after a smaller scene, checking every output pixel. These
+are presentation/texture checks, not visible desktop or screen-reader speech
+acceptance. Source-choice tests retain each category through camera discovery
+and synchronize the selection button's visible and accessible names.

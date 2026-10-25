@@ -32,7 +32,7 @@ Assistive technology is too often expensive, tied to special hardware and hard t
 
 OkuFlow is a **live camera magnifier**, for a page on your desk, a whiteboard or a projected slide. It does not magnify your computer's desktop.
 
-Development builds also open pictures and PDFs through **View file** or Ctrl+O,
+Development builds offer **View video or picture** and a separate **View PDF**,
 with PDF page navigation and accessible embedded text. Enabled Ultra Clear Text
 can read scanned content. See [file viewing](docs/file_documents.md); these
 changes are separate from the published 0.3.1 downloads above.

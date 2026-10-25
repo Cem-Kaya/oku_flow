@@ -1,6 +1,7 @@
 #ifdef _WIN32
 
 #include "okuflow/app/media_gpu_scene.hpp"
+#include "okuflow/common/media_frame_layout.hpp"
 
 #include "okuflow/common/async_cleanup.hpp"
 #include "okuflow/common/uct_device_image.hpp"
@@ -488,7 +489,7 @@ MediaGpuScene::Status MediaGpuScene::Process(const VideoPlaybackFrame& frame,
         const std::uint64_t layoutBytes = std::uint64_t(frame.strideBytes) * frame.height;
         const std::uint64_t minimumBytes =
             std::uint64_t(frame.strideBytes) * (frame.height - 1) + rowBytes;
-        if (!frame.bgra || frame.strideBytes < rowBytes ||
+        if (!frame.bgra || !MediaFrameLayoutFits(frame.width, frame.height, frame.strideBytes) || frame.strideBytes < rowBytes ||
             layoutBytes > VideoPlayback::kDecodedByteLimit || frame.bgra->size() < minimumBytes) {
             s.error = "Media CPU BGRA frame has an invalid stride, truncated pixels or an oversized layout.";
             return Status::Failed;

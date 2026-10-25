@@ -3653,5 +3653,29 @@ Pilih Hubungkan ChatGPT di tab Asisten pada mode Tingkat Lanjut untuk masuk.</tr
         <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
         <translation>Berkas media (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;Semua berkas (*)</translation>
     </message>
+    <message>
+        <source>View PDF</source>
+        <translation>Lihat PDF</translation>
+    </message>
+    <message>
+        <source>Select PDF</source>
+        <translation>Pilih PDF</translation>
+    </message>
+    <message>
+        <source>PDF (*.pdf)</source>
+        <translation>PDF (*.pdf)</translation>
+    </message>
+    <message>
+        <source>View video or picture</source>
+        <translation>Lihat video atau gambar</translation>
+    </message>
+    <message>
+        <source>Select video or picture</source>
+        <translation>Pilih video atau gambar</translation>
+    </message>
+    <message>
+        <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
+        <translation>Video dan gambar (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
+    </message>
 </context>
 </TS>

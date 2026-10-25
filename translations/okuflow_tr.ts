@@ -3653,5 +3653,29 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
         <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
         <translation>Medya dosyaları (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;Tüm dosyalar (*)</translation>
     </message>
+    <message>
+        <source>View PDF</source>
+        <translation>PDF görüntüle</translation>
+    </message>
+    <message>
+        <source>Select PDF</source>
+        <translation>PDF seç</translation>
+    </message>
+    <message>
+        <source>PDF (*.pdf)</source>
+        <translation>PDF (*.pdf)</translation>
+    </message>
+    <message>
+        <source>View video or picture</source>
+        <translation>Video veya resim görüntüle</translation>
+    </message>
+    <message>
+        <source>Select video or picture</source>
+        <translation>Video veya resim seç</translation>
+    </message>
+    <message>
+        <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
+        <translation>Videolar ve resimler (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
+    </message>
 </context>
 </TS>

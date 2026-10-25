@@ -2,6 +2,19 @@
 
 ## File documents and source selection (26 October 2026)
 
+- `common/media_frame_layout.hpp::MediaFrameLayoutFits` validates a single
+  selected BGRA source (64 MiB, bounded extents/stride). CPU preparation,
+  presentation and GPU host-input admission use it independently of the
+  unchanged `PlanVideoPlaybackMemory` multi-buffer decoder budget.
+- `MainWindow::{fileSourceType,setFileSourceSelected}` keep combined video/picture
+  and PDF choices distinct during discovery, polling and language changes.
+  `UpdateCameraSourceUi` keeps dynamic button text/accessibility synchronized.
+  The older `videoSourceSelected` query continues to mean any selected file.
+- `RequestMediaCpuFallback` retains static-document pixels rather than issuing
+  a video reopen. `documentPixelsReplacePreviousSourceInHiddenPresenter` uses
+  an unshown native D3D12 presenter for actual app viewport-buffer assertions;
+  `CpuBgraTests` covers 4096-pixel portrait texture replacements on CUDA.
+
 - `common/file_document.hpp` / `.cpp`: `FileDocumentSnapshot` carries state,
   request/document generations, page/count, image, embedded text and failure.
   `FileDocument::{Open,SelectPage,Close,Snapshot,TakeSnapshot,SupportsPath}`

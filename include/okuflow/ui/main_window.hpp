@@ -82,6 +82,8 @@ public:
     void setCameraDevices(const QStringList& names, int selectedCamera);
     void setVideoSourceSelected(bool selected, int cameraIndex);
     bool videoSourceSelected() const;
+    QString fileSourceType() const;
+    void setFileSourceSelected(const QString& type, int cameraIndex);
     void setDocumentText(const QString& text);
     QPushButton* phoneLightButton() const;
     QDoubleSpinBox* phoneZoomControl() const { return phoneZoomControl_; }

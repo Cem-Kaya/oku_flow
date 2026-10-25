@@ -2537,3 +2537,8 @@ embedded text through the native accessibility text interface, and PDF/picture/
 video/camera transitions. Explicitly build `native_app_control_fixture` before
 running its cases: it is excluded from the default build. No devices, adb,
 providers or desktop focus participate. See [file sources](../docs/file_documents.md).
+The same selection includes an unshown, non-activating native D3D12 presenter
+checking actual viewport-buffer replacement by a full-size PDF and its next
+page. A separate window-free `media_gpu_scene_cuda` case reads back full portrait
+BGRA scenes after a smaller source. Retain these pixel assertions independently
+of extracted text and selected-frame metadata; video queue limits stay strict.

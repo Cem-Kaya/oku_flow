@@ -1188,6 +1188,11 @@ aligned with the project goals.
   failures after native admission and strict release capability requirements.
 
 ## File sources and phone recovery (2026-10-26)
+- Keep single-frame presentation bounds separate from multi-buffer video decode
+  admission. Test actual viewport pixels after replacing an existing source,
+  including full-size PDF pages; text extraction or selected-frame counts alone
+  do not establish rendering. Private unshown presenters must never activate
+  or focus a native window. Keep combined video/picture and separate PDF choices.
 - Source discovery is independent of source intent. Keep the source picker usable
   during camera startup, cancel the exact superseded worker/generation on manual
   changes, and retain saved phone intent through temporary file review and fallback.

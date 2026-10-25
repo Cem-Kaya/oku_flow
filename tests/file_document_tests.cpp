@@ -1,4 +1,5 @@
 #include "okuflow/common/file_document.hpp"
+#include "okuflow/common/media_frame_layout.hpp"
 #include <QApplication>
 #include <QFile>
 #include <QDir>
@@ -29,6 +30,15 @@ bool MakePdf(const QString& path) {
 class FileDocumentTests final : public QObject {
     Q_OBJECT
 private slots:
+    void singleFrameLayoutHasItsOwnBound() {
+        QVERIFY(MediaFrameLayoutFits(2894,4096,2894*4));
+        QVERIFY(MediaFrameLayoutFits(4096,4096,4096*4));
+        QVERIFY(!MediaFrameLayoutFits(4096,4097,4096*4));
+        QVERIFY(!MediaFrameLayoutFits(1,1,INT64_MAX));
+        QVERIFY(!MediaFrameLayoutFits(1,1,-4));
+        QVERIFY(!MediaFrameLayoutFits(640,480,640*4-1));
+        QVERIFY(!MediaFrameLayoutFits(0,480,2560));
+    }
     void picturesAndInvalidInputs() {
         QTemporaryDir dir; QVERIFY(dir.isValid());
         QImage image(96, 48, QImage::Format_RGB32); image.fill(QColor(22, 103, 177));

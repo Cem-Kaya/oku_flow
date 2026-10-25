@@ -10,7 +10,8 @@ namespace okuflow {
 
 void OkuFlowApp::OnCameraSelectionChanged(int index) {
     if (uiState_ && uiState_->cameraCombo_ &&
-        uiState_->cameraCombo_->itemData(index).toString() == QStringLiteral("video")) {
+        (uiState_->cameraCombo_->itemData(index).toString() == QStringLiteral("video") ||
+         uiState_->cameraCombo_->itemData(index).toString() == QStringLiteral("pdf"))) {
         emit mainWindow_->openVideoRequested();
         return;
     }

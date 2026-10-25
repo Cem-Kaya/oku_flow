@@ -11,6 +11,10 @@
 
 ## [Unreleased]
 
+- Fix large PDF/picture rendering retaining the preceding source: validate the
+  selected frame independently of video queue memory and preserve its pixels
+  on GPU fallback. Combine video/picture in one source choice and keep PDF separate.
+
 - Keep source selection available during phone startup. Explicit webcams and
   files win over background discovery; saved phone intent still reconnects
   after a drop or a return from file review.

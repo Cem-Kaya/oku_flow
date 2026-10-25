@@ -141,7 +141,7 @@ bool OkuFlowApp::PresentSelectedMediaGpuFrame(const VideoPlaybackFrame& frame,
     RequestMediaCpuFallback("This application build has no CUDA media output.");
     return false;
 #else
-    const bool cpuPixels = frame.bgra && VideoPlaybackLayoutFits(frame.width, frame.height, frame.strideBytes) &&
+    const bool cpuPixels = frame.bgra && MediaFrameLayoutFits(frame.width, frame.height, frame.strideBytes) &&
         frame.bgra->size() >= std::size_t(frame.strideBytes) * (frame.height - 1) + std::size_t(frame.width) * 4;
     if ((!cpuPixels && (!frame.gpu || !frame.gpu->texture)) || !presenter_ || !presenter_->GetDevice() ||
         !uiState_->renderWidget_ || !uiState_->renderWidget_->isPresenterReady())

@@ -3653,5 +3653,29 @@ Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u
         <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
         <translation>Mediabestanden (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;Alle bestanden (*)</translation>
     </message>
+    <message>
+        <source>View PDF</source>
+        <translation>PDF bekijken</translation>
+    </message>
+    <message>
+        <source>Select PDF</source>
+        <translation>PDF selecteren</translation>
+    </message>
+    <message>
+        <source>PDF (*.pdf)</source>
+        <translation>PDF (*.pdf)</translation>
+    </message>
+    <message>
+        <source>View video or picture</source>
+        <translation>Video of afbeelding bekijken</translation>
+    </message>
+    <message>
+        <source>Select video or picture</source>
+        <translation>Video of afbeelding selecteren</translation>
+    </message>
+    <message>
+        <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
+        <translation>Video’s en afbeeldingen (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
+    </message>
 </context>
 </TS>

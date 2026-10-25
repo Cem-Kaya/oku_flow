@@ -3097,26 +3097,38 @@ QComboBox* MainWindow::cameraCombo() const { return cameraCombo_; }
 
 void MainWindow::setCameraDevices(const QStringList& names, int selectedCamera)
 {
-    const bool video = videoSourceSelected();
+    const QString fileType = fileSourceType();
     const QSignalBlocker blocker(cameraCombo_);
     cameraCombo_->clear();
     cameraCombo_->addItems(names);
-    cameraCombo_->addItem(TranslateUi(QStringLiteral("View file")), QStringLiteral("video"));
-    cameraCombo_->setCurrentIndex(video ? names.size()
+    cameraCombo_->addItem(TranslateUi(QStringLiteral("View video or picture")), QStringLiteral("video"));
+    cameraCombo_->addItem(TranslateUi(QStringLiteral("View PDF")), QStringLiteral("pdf"));
+    cameraCombo_->setCurrentIndex(!fileType.isEmpty() ? cameraCombo_->findData(fileType)
         : selectedCamera >= 0 && selectedCamera < names.size() ? selectedCamera : -1);
     UpdateCameraSourceUi();
 }
 
 bool MainWindow::videoSourceSelected() const
 {
-    return cameraCombo_ && cameraCombo_->currentData().toString() == QStringLiteral("video");
+    return !fileSourceType().isEmpty();
+}
+
+QString MainWindow::fileSourceType() const
+{
+    const auto type = cameraCombo_ ? cameraCombo_->currentData().toString() : QString();
+    return type == "video" || type == "pdf" ? type : QString();
 }
 
 void MainWindow::setVideoSourceSelected(bool selected, int cameraIndex)
 {
+    setFileSourceSelected(selected ? QStringLiteral("video") : QString(), cameraIndex);
+}
+
+void MainWindow::setFileSourceSelected(const QString& type, int cameraIndex)
+{
     const QSignalBlocker blocker(cameraCombo_);
     const int videoIndex = cameraCombo_->findData(QStringLiteral("video"));
-    const int target = selected ? videoIndex
+    const int target = !type.isEmpty() ? cameraCombo_->findData(type)
         : cameraIndex >= 0 && cameraIndex < videoIndex ? cameraIndex : -1;
     if (cameraCombo_->currentIndex() != target) cameraCombo_->setCurrentIndex(target);
     UpdateCameraSourceUi();
@@ -3131,6 +3143,10 @@ void MainWindow::UpdateCameraSourceUi()
 {
     const bool video = videoSourceSelected();
     openVideoButton_->setVisible(video);
+    const auto type = fileSourceType();
+    const auto source = type == "pdf" ? QStringLiteral("Select PDF") : QStringLiteral("Select video or picture");
+    SetLiveTranslationSource(openVideoButton_, source);
+    RetranslateWidget(openVideoButton_);
     cameraFormatControls_->setVisible(!video);
     if (video) {
         phoneLightButton_->hide();
@@ -4518,8 +4534,11 @@ void MainWindow::changeEvent(QEvent* event)
         }
         if (cameraCombo_) {
             const QSignalBlocker blocker(cameraCombo_);
-            const int videoIndex = cameraCombo_->findData(QStringLiteral("video"));
-            if (videoIndex >= 0) cameraCombo_->setItemText(videoIndex, TranslateUi(QStringLiteral("View file")));
+            for (const auto& entry : {std::pair{"video", "View video or picture"}, std::pair{"pdf", "View PDF"}}) {
+                const int index = cameraCombo_->findData(QString::fromLatin1(entry.first));
+                if (index >= 0) cameraCombo_->setItemText(index, TranslateUi(QString::fromLatin1(entry.second)));
+            }
+            UpdateCameraSourceUi();
             emit cameraLabelsRefreshRequested();
         }
         UpdateUiVisibilityControl();

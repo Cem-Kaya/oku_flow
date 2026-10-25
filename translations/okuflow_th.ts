@@ -3653,5 +3653,29 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
         <translation>ไฟล์สื่อ (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;ไฟล์ทั้งหมด (*)</translation>
     </message>
+    <message>
+        <source>View PDF</source>
+        <translation>ดู PDF</translation>
+    </message>
+    <message>
+        <source>Select PDF</source>
+        <translation>เลือก PDF</translation>
+    </message>
+    <message>
+        <source>PDF (*.pdf)</source>
+        <translation>PDF (*.pdf)</translation>
+    </message>
+    <message>
+        <source>View video or picture</source>
+        <translation>ดูวิดีโอหรือรูปภาพ</translation>
+    </message>
+    <message>
+        <source>Select video or picture</source>
+        <translation>เลือกวิดีโอหรือรูปภาพ</translation>
+    </message>
+    <message>
+        <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
+        <translation>วิดีโอและรูปภาพ (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
+    </message>
 </context>
 </TS>

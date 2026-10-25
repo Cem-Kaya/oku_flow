@@ -47,7 +47,7 @@ uct::SharedPixels PrepareMediaScene(const uint8_t* data, UINT width, UINT height
                                    const color_schemes::ColorLut& lut,
                                    float contrast, float brightness)
 {
-    if (!data || !VideoPlaybackLayoutFits(width, height, stride)) return {};
+    if (!data || !MediaFrameLayoutFits(width, height, stride)) return {};
     auto result = std::make_shared<uct::PixelBuffer>();
     turns = ((turns % 4) + 4) % 4;
     result->width = (turns & 1) ? height : width;
@@ -2883,7 +2883,7 @@ bool OkuFlowApp::PresentSelectedMediaPixels(const uint8_t* data, UINT width, UIN
                                            std::int64_t pts100ns,
                                            bool continuousPlayback,
                                            uct::ImmutableCorroborationPolicy /*corroborationPolicy*/) {
-    if (!data || !VideoPlaybackLayoutFits(width, height, stride) || !presenter_ ||
+    if (!data || !MediaFrameLayoutFits(width, height, stride) || !presenter_ ||
         !uiState_->renderWidget_ || !uiState_->renderWidget_->isPresenterReady()) return false;
     if (HandlePresenterFault()) return false;
     const int turns = ((rotationQuarterTurns_ % 4) + 4) % 4;

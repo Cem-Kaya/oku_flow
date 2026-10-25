@@ -205,9 +205,13 @@ void OkuFlowApp::InitializeVideoPlayback()
     connect(mainWindow_.get(), &MainWindow::openVideoRequested, this, [this] {
         if (filePickerActive_) return;
         filePickerActive_ = true;
+        const auto type = mainWindow_->fileSourceType();
+        const auto filter = type == "pdf" ? QStringLiteral("PDF (*.pdf)") :
+            type == "video" ? QStringLiteral("Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)") :
+            QStringLiteral("Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)");
         const auto path = QFileDialog::getOpenFileName(mainWindow_.get(),
             QCoreApplication::translate("OkuFlow", "Open file"), {},
-            QCoreApplication::translate("OkuFlow", "Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)"));
+            TranslateUi(filter));
         filePickerActive_ = false;
         if (!path.isEmpty()) OpenVideoFile(path);
         else PollVideoPlayback(); // Cancel keeps the actual viewed source selected.
@@ -691,7 +695,9 @@ void OkuFlowApp::PollFileDocument() {
     if (doc.transportDocumentId != doc.documentId) { doc.transportDocumentId = doc.documentId; ++doc.transportGeneration; }
     ui.sourceGeneration = doc.transportGeneration;
     mainWindow_->videoTransport()->SetSnapshot(ui);
-    if (!filePickerActive_) mainWindow_->setVideoSourceSelected(true, CameraPickerIndex());
+    if (!filePickerActive_) mainWindow_->setFileSourceSelected(
+        (doc.openingDocument ? result.pdf : doc.documentPage.pdf)
+            ? QStringLiteral("pdf") : QStringLiteral("video"), CameraPickerIndex());
     UpdatePhoneLightUi();
     // Re-render PDF vectors after magnification settles, without reallocating
     // on every pan/present. The worker enforces the 16-Mpixel page ceiling.
@@ -840,6 +846,15 @@ void OkuFlowApp::RequestMediaCpuFallback(const std::string& reason)
     MarkMediaCudaAdapterUnavailable(reason);
     if (!videoDocument_ || videoDocument_->gpuFallbackPending) return;
     auto& doc = *videoDocument_;
+    if (doc.kind == VideoDocumentState::Kind::Still) {
+        // These pixels already belong to the document worker. A CUDA refusal
+        // must present that same page on CPU, never reopen a PDF/image as video.
+        InvalidateMediaSelection();
+        if (mediaGpuScene_) mediaGpuScene_->Invalidate();
+        if (mediaGpuNeighborScene_) mediaGpuNeighborScene_->Invalidate();
+        mediaPresentedWithCuda_ = mediaSuperResPresented_ = false;
+        return;
+    }
     // An unfinished open, seek or live hold owns the decoder cursor. Replacing
     // it would discard that selection; its own GPU result requests this again.
     const bool settled = doc.pausedDisplayHold ||

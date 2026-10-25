@@ -39,6 +39,7 @@ if(OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE)
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
         REQUIRED_FILES "${PROJECT_SOURCE_DIR}/tests/native_app_control_fixture.cpp;${PROJECT_SOURCE_DIR}/src/ui/main_window.cpp;${PROJECT_SOURCE_DIR}/src/app/app_controls.cpp")
     add_test(NAME native_app_file_sources_offscreen COMMAND native_app_control_fixture
+        documentPixelsReplacePreviousSourceInHiddenPresenter
         videoSourceControlsBelongToCameraSettings
         pendingPhoneDoesNotLockWebcamSelection
         documentPaneFitsSettingsAfterTabSwitch

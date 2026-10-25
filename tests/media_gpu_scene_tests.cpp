@@ -533,6 +533,25 @@ okuflow::VideoPlaybackFrame MakeCpuFrame(UINT width, UINT height, unsigned seed,
 
 void CpuBgraTests(Harness& harness)
 {
+    {
+        // A portrait PDF render is much larger than the old video scene.
+        // Replace that scene, then replace the page at the same dimensions;
+        // neither path may keep the previous texture or lose the host pixels.
+        okuflow::MediaGpuScene document;
+        auto previous = MakeCpuFrame(64, 48, 51, 1);
+        PrepareUntilReady(document, harness.Device(), previous.width, previous.height);
+        ProcessUntilReady(document, previous, 0, {}, 501, 1, false);
+        harness.ReadScene(document);
+        for (unsigned page = 0; page != 2; ++page) {
+            auto frame = MakeCpuFrame(2895, 4096, 52 + page, page + 2);
+            frame.pts100ns = 0; // Static pages have no video clock.
+            frame.requestGeneration = page + 1;
+            PrepareUntilReady(document, harness.Device(), frame.width, frame.height);
+            ProcessUntilReady(document, frame, 0, {}, 502 + page, 2 + page, false);
+            ComparePixels(harness.ReadScene(document).pixels, Pattern(frame.width, frame.height, 52 + page),
+                          frame.width, 0, "portrait document replaces the previous scene/page");
+        }
+    }
     Require(!okuflow::ProcessingInput{}.rotateBgraOnGpu, "camera host BGRA rotation default changed");
     for (const UINT padding : {0u, 13u}) for (int turns = 0; turns < 4; ++turns) {
         constexpr UINT width = 59, height = 37;
