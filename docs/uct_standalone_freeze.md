@@ -19,7 +19,7 @@ own playback/seek responsibilities.
 
 Standalone does not mean unconditional painting. The selected image, result
 ticket, source generation, frame identity, real PTS and processed geometry must
-match. Recognition confidence and the seven-source-pixel minimum remain; invalid
+match. Recognition confidence and the five-source-pixel minimum remain; invalid
 geometry, unsupported notation and non-reproducible/composite input remain
 refused. Smoothed recognition still needs correspondence to its own current
 single-frame pixels. Source protection, quad projection, clipping and actual

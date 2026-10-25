@@ -85,7 +85,8 @@ OKUFLOW_RIBBON_HD inline void Add(Bin* bins, double t, double v) {
 // Refuse holes, degenerate shapes, poorly fitted envelopes and image edges;
 // a refusal means the established rectangle, never guessed curved geometry.
 OKUFLOW_RIBBON_HD inline Geometry Fit(const Bin* bins, double u0, double u1,
-    double cosAxis, double sinAxis, double scaleX, double scaleY, int sw, int sh) {
+    double cosAxis, double sinAxis, double scaleX, double scaleY, int sw, int sh,
+    bool endpointPadding = true) {
     Geometry g;
     const double length = u1 - u0;
     if (!Finite(length) || length < 24 || scaleX <= 0 || scaleY <= 0) return g;
@@ -144,6 +145,18 @@ OKUFLOW_RIBBON_HD inline Geometry Fit(const Bin* bins, double u0, double u1,
     g.ox=u0*cosAxis*scaleX; g.oy=u0*sinAxis*scaleY;
     g.ux=length*cosAxis*scaleX; g.uy=length*sinAxis*scaleY;
     g.vx=-sinAxis*scaleX; g.vy=cosAxis*scaleY;
+    if (endpointPadding) {
+        // Restore the local unclip margin along the line as well as across it.
+        // Rebase the polynomial onto [0,1], preserving Inside's exact domain,
+        // positive-height and image-extrema checks for the entire padded crop.
+        const double first=-padding/length, span=1-2*first;
+        const double oldB=g.b, oldC=g.c, oldH1=g.h1;
+        g.ox+=g.ux*first; g.oy+=g.uy*first;
+        g.ux*=span; g.uy*=span;
+        g.a+=first*(oldB+first*oldC);
+        g.b=span*(oldB+2*first*oldC); g.c=oldC*span*span;
+        g.h0+=oldH1*first; g.h1=oldH1*span;
+    }
     // Stay inside the actual source. Clamping a ribbon would destroy its map.
     if(!g.Inside(sw,sh)) return g;
     g.valid=true; g.unsupported=false; return g;

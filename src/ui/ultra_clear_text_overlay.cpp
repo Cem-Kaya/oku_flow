@@ -583,6 +583,7 @@ bool UltraClearTextOverlay::PlanOriented(PlannedWord& planned, const SceneGlyph&
                                          const uct::TextQuad& viewQuad) const
 {
     planned.oriented = true;
+    planned.omission = PaintOmission::kGeometryOrSize;
     planned.originalRect = planned.inkRect = planned.plateRect = {};
     planned.original = planned.ink = planned.plate = {};
     if (viewQuad.valid) {
@@ -633,10 +634,15 @@ bool UltraClearTextOverlay::PlanOriented(PlannedWord& planned, const SceneGlyph&
         return std::isfinite(r.x()) && std::isfinite(r.y()) && std::isfinite(r.width()) && std::isfinite(r.height());
     };
     // Size gates use the word's own height/width, not its rotated bound.
-    return finite(planned.originalRect) && finite(planned.inkRect) && finite(planned.plateRect) &&
-           std::isfinite(planned.scaleX) && std::isfinite(planned.scaleY) &&
-           h >= kMinProjectedHeight && w >= kMinProjectedWidth &&
-           planned.inkBottom - planned.inkTop >= kMinProjectedHeight;
+    if (!finite(planned.originalRect) || !finite(planned.inkRect) || !finite(planned.plateRect) ||
+        !std::isfinite(planned.scaleX) || !std::isfinite(planned.scaleY)) return false;
+    if (!(h >= kMinProjectedHeight && w >= kMinProjectedWidth &&
+          planned.inkBottom - planned.inkTop >= kMinProjectedHeight)) {
+        planned.omission = PaintOmission::kProjectedSize;
+        return false;
+    }
+    planned.omission = PaintOmission::kNone;
+    return true;
 }
 
 bool UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransform& transform,
@@ -722,6 +728,11 @@ bool UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransfor
             planned.drawn = shaped && glyph.valid && !glyph.duplicate && !glyph.collision &&
                             clip.intersects(planned.plateRect.intersected(surface).toAlignedRect()) &&
                             clip.intersects(planned.inkRect.intersected(surface).toAlignedRect());
+            planned.omission = planned.drawn ? PaintOmission::kNone :
+                !glyph.valid ? PaintOmission::kInvalidGlyph :
+                glyph.duplicate ? PaintOmission::kDuplicate :
+                glyph.collision ? PaintOmission::kCollision :
+                !shaped ? planned.omission : PaintOmission::kClipped;
             if (!planned.drawn && !glyph.duplicate && !planned.originalRect.isEmpty())
                 protectedInk += PolygonRegion(planned.original, bounds);
             continue;
@@ -739,6 +750,13 @@ bool UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransfor
         planned.drawn = ReplacementIsDrawable(glyph.valid, glyph.referenceInk, view, ink,
                                               planned.plateRect, clip) &&
                         !glyph.duplicate && !glyph.collision;
+        planned.omission = planned.drawn ? PaintOmission::kNone :
+            !glyph.valid ? PaintOmission::kInvalidGlyph :
+            glyph.duplicate ? PaintOmission::kDuplicate :
+            glyph.collision ? PaintOmission::kCollision :
+            (!clip.intersects(planned.plateRect.toAlignedRect()) ||
+             !clip.intersects(ink.toAlignedRect())) ? PaintOmission::kClipped :
+                PaintOmission::kGeometryOrSize;
         if (!planned.drawn && !glyph.duplicate && !view.isEmpty() && std::isfinite(view.x()) &&
             std::isfinite(view.y()) && std::isfinite(view.width()) && std::isfinite(view.height()))
             protectedInk += ProtectedRegion(view, bounds);
@@ -769,6 +787,7 @@ bool UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransfor
             PlannedWord& planned = plan.words[i];
             if (planned.drawn && touchesProtection(planned)) {
                 planned.drawn = false;
+                planned.omission = PaintOmission::kProtectedInk;
                 protectSource(planned);
                 changed = true;
             }
@@ -777,7 +796,10 @@ bool UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransfor
     // Pathological overlapping detector boxes cannot make paint quadratic.
     // If the closure is still growing, this frame keeps all original pixels.
     if (changed) {
-        for (PlannedWord& planned : plan.words) planned.drawn = false;
+        for (PlannedWord& planned : plan.words) {
+            if (planned.drawn) planned.omission = PaintOmission::kProtectionLimit;
+            planned.drawn = false;
+        }
     }
     plan.visibleClip = clip;
     plan.paintClip = clip - protectedInk;
@@ -1047,6 +1069,7 @@ bool UltraClearTextOverlay::PaintedWord(std::uint64_t lineId, int wordIndex, con
     }
     const PlannedWord& planned = plan_.words[found.value()];
     out.drawn = planned.drawn;
+    out.omission = planned.omission;
     out.box = planned.drawn ? planned.inkRect : planned.originalRect;
     const QVector<qreal>& carets = CaretPositions(text, plan_.font);
     // Visual caret extent over every shaped position. For right-to-left

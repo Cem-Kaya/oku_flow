@@ -29,10 +29,12 @@ Windows misreads. The owner's removal of ASCII vetoes also applies to that
 fallback; ordinary labels still require its independent-pair/pixel proof.
 Neither that proof nor a high Paddle score can exclude a repeatable spelling
 error. No score is invented from agreement, and no ASCII veto is reinstated.
-Explicit backend rejection, seven-source-pixel minimum height, valid finite
+Explicit backend rejection, five-source-pixel minimum height, valid finite
 geometry, source/acquisition identity, independent observations and pixel
-registration all retain their existing rules. Paused replacement still needs
-the real selected/neighbour pair. Repeated held pixels do not supply evidence.
+registration all retain their existing rules. Paused/Freeze replacement uses
+selected-frame standalone admission; live and explicitly corroborated protocols
+retain their independent-observation rules. Repeated held pixels do not supply
+independent evidence.
 The character change does not alter glyph rendering, color, startup or memory
 ownership.
 
@@ -66,7 +68,7 @@ reference registration, immutable admission and production offscreen painting
 for every listed ordinary-label/isolated-lookalike row. It checks that no
 neighbour, duplicate source pixels and changed source ink cannot enable glyphs.
 `ordinaryLabelsKeepPreparationGates` covers low/nonfinite/out-of-range score,
-sub-seven-pixel height, nonfinite geometry and explicit backend rejection.
+sub-five-pixel height, nonfinite geometry and explicit backend rejection.
 These use synthetic known text, not a claim about an OCR engine's accuracy.
 
 `pausedDetailGeometry` covers 8x default/clamps, fractional/ceil sizing,

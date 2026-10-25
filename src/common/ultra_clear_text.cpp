@@ -1918,7 +1918,7 @@ struct RecognitionScheduler::State {
     std::optional<QRectF> shadowFocus;
     std::uint64_t shadowAuthority{}; // worker-only
     std::atomic<bool> shadowFault{};
-    double minimumWordHeightPx{7.0};
+    double minimumWordHeightPx{kDefaultMinimumWordHeightPx};
     std::optional<Job> pending;
     std::function<void()> beforeDequeueForTest;
     std::function<void()> beforeCompletionForTest;

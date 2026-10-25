@@ -133,7 +133,7 @@ native UI and original reported runtime state remain unvalidated here.
 
 No production geometry, protection, font-size or overlap threshold is changed
 by this evidence-only contribution. Source/current-pixel, distinct-neighbour,
-0.70 confidence, seven-source-pixel and atomic optional-admission gates remain
+0.70 confidence, then-current seven-source-pixel and atomic optional-admission gates remain
 intact. The two new fixture rows are **UNRUN** in this child. By explicit
 coordination, the parent will compile and run them after import into its warm
 CPU build/combined gate; the child performed no configure, build or test run.

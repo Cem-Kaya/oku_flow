@@ -82,6 +82,39 @@ inline void DetectionAndSampling() {
     auto rectangular=q;rectangular.ribbon={};
     const auto wrong=PaddleRectify(source,rectangular,canvas,valid);QVERIFY(raw!=wrong);
 }
+inline void EndpointPadding() {
+    ribbon::Bin bins[ribbon::kBins]{};
+    for(int i=0;i<ribbon::kBins;++i) {
+        const double t=(i+.5)/ribbon::kBins,center=80-80*t+80*t*t;
+        ribbon::Add(bins,t,center-5);ribbon::Add(bins,t,center+5);
+    }
+    const auto old=ribbon::Fit(bins,20,420,1,0,1,1,500,200,false);
+    const auto padded=ribbon::Fit(bins,20,420,1,0,1,1,500,200);
+    QVERIFY(old.valid);QVERIFY(padded.valid);QVERIFY(padded.Inside(500,200));
+    QCOMPARE(padded.start,0.0);QCOMPARE(padded.end,1.0);
+    const double margin=400*11*1.4/(2*(400+11)),delta=margin/400;
+    for(int i=0;i<=32;++i) {
+        const double u=i/32.0,t=-delta+(1+2*delta)*u;
+        const auto p=padded.At(u,.5);
+        QVERIFY(std::abs(p.x-(20+400*t))<1e-9);
+        QVERIFY(std::abs(p.y-(80-80*t+80*t*t))<1e-9);
+    }
+    QVERIFY(std::abs(padded.Error(.2,.3)-80*std::pow((1+2*delta)*.1,2)/4)<1e-10);
+    QImage image(500,200,QImage::Format_ARGB32);image.fill(Qt::white);
+    for(int y=70;y<90;++y)for(int x:{13,14,15,16,17,18,423,424,425,426})image.setPixelColor(x,y,Qt::red);
+    PaddleQuad q{{QPointF(20,40),QPointF(420,40),QPointF(420,120),QPointF(20,120)},.99f};
+    q.ribbon=old;const auto before=PaddleRectify(image,q,512,512);
+    q.ribbon=padded;const auto after=PaddleRectify(image,q,512,512);
+    const auto plane=std::size_t(512*48);
+    QVERIFY(std::all_of(before.begin(),before.begin()+plane,[](float v){return v==1.f;}));
+    bool left=false,right=false;
+    for(int y=0;y<48;++y)for(int x=0;x<512;++x)if(after[y*512+x]<0){left|=x<256;right|=x>=256;}
+    QVERIFY(left);QVERIFY(right);
+    QVERIFY(ribbon::Fit(bins,20,420,1,0,1,1,425,200,false).valid);
+    const auto edge=ribbon::Fit(bins,20,420,1,0,1,1,425,200);
+    QVERIFY(!edge.valid);QVERIFY(edge.unsupported); // no clamped/extrapolated out-of-source pixels
+}
+
 inline void BoundsAndWindows() {
     std::atomic<bool> cancelled{};
     std::vector<float> tiny(32*32);
@@ -273,6 +306,55 @@ inline void SourceProofAndPaint() {
     }
 }
 
+inline void SmallWordsAndPaintReasons() {
+    RecognitionResult result;result.stamp=Stamp(Gradient().size());result.output.ok=true;
+    for (const double height : {4.99,5.0,6.0}) {
+        RecognizedWord word;word.text="read";word.boundsPx={30,30,40,height};
+        word.quadPx=TextQuad::FromRect(word.boundsPx);word.fromRibbon=true;
+        result.output.lines.push_back({{word}});
+    }
+    const auto prepared=PrepareLines(result,ModelTuning{}.minimumWordHeightPx);
+    QCOMPARE(prepared[0].words[0].disposition,TokenDisposition::kTooSmall);
+    QCOMPARE(prepared[1].words[0].disposition,TokenDisposition::kCandidate);
+    QCOMPARE(prepared[2].words[0].disposition,TokenDisposition::kCandidate);
+    const auto control=PrepareLines(result,7);
+    for(const auto& line:control)QCOMPARE(line.words[0].disposition,TokenDisposition::kTooSmall);
+    // The change admits small OCR candidates; the painter retains its own
+    // projected-size, collision and source-ink decisions.
+    QCOMPARE(QGuiApplication::platformName(),QStringLiteral("offscreen"));
+    uct_test::RegisterFixtureFonts();QWidget target;target.resize(384,160);target.show();
+    using Overlay=okuflow::UltraClearTextOverlay;using Reason=Overlay::PaintOmission;
+    Overlay overlay(&target,&target);overlay.SetViewTransform(result.stamp.viewTransform);
+    const auto make=[](QRectF pixels,int index,QString text="read") {
+        const QRectF scene(pixels.x()/384,pixels.y()/160,pixels.width()/384,pixels.height()/160);
+        Overlay::SceneWord word{text,scene,{Qt::black,Qt::white},1,{},index};
+        word.sceneQuad=TextQuad::FromRect(scene);return word;
+    };
+    const auto check=[&](QVector<Overlay::SceneWord> words,QVector<Reason> expected) {
+        const auto generation=overlay.PaintedGeneration();
+        overlay.SetWords(words);QTRY_VERIFY(overlay.PaintedGeneration()>generation);
+        QVERIFY(overlay.PaintedGeometryCurrent());
+        QCOMPARE(words.size(),expected.size());
+        for(int i=0;i<words.size();++i) {
+            Overlay::PaintedWordGeometry actual;
+            QVERIFY(overlay.PaintedWord(words[i].lineId,words[i].wordIndex,words[i].text,actual));
+            QCOMPARE(actual.omission,expected[i]);QCOMPARE(actual.drawn,expected[i]==Reason::kNone);
+        }
+    };
+    const auto word=make({30,30,100,20},0);
+    check({word},{Reason::kNone});
+    auto protectedWord=word;protectedWord.protectedSceneRects={word.sceneRect};
+    check({protectedWord},{Reason::kProtectedInk});
+    check({word,make({30,30,100,20},1,"ink")},{Reason::kCollision,Reason::kCollision});
+    check({word,make({30,30,100,20},1)},{Reason::kNone,Reason::kDuplicate});
+    check({make({500,30,100,20},0)},{Reason::kClipped});
+    check({make({30,30,100,5},0)},{Reason::kProjectedSize});
+    // The same five source pixels become drawable when magnified.
+    auto zoom=result.stamp.viewTransform;zoom.sourceWidth=.5;zoom.sourceHeight=.5;
+    overlay.SetViewTransform(zoom);
+    check({make({30,30,100,5},0)},{Reason::kNone});
+}
+
 inline void AllFrameWorkerContexts() {
     struct Backend final : Recognizer {
         std::atomic<int> calls{};std::atomic<bool> enabled{};RecognitionOutput output;
@@ -296,7 +378,15 @@ inline void AllFrameWorkerContexts() {
     auto backend=std::make_unique<Backend>();auto* observed=backend.get();
     backend->output.ok=true;backend->output.lines={Words(Analytic())};
     for(auto& word:backend->output.lines[0].words)word.paddedBounds=false;
-    const auto image=Gradient();auto stamp=Stamp(image.size());stamp.immutableSelectedInput=false;
+    RecognizedWord small;small.text="small";small.boundsPx={30,30,40,5};
+    small.quadPx=TextQuad::FromRect(small.boundsPx);small.fromRibbon=true;
+    backend->output.lines.push_back({{small}});
+    auto image=Gradient();
+    // The five-pixel word still needs real contrast for paired-current proof;
+    // a smooth gradient over this small patch is intentionally untrackable.
+    for(int y=30;y<35;++y)for(int x=30;x<70;++x)
+        image.setPixel(x,y,((x/4)%2)?qRgb(255,255,255):qRgb(0,0,0));
+    auto stamp=Stamp(image.size());stamp.immutableSelectedInput=false;
     RecognitionResult result;std::atomic<bool> received{};
     RecognitionScheduler scheduler(std::move(backend),[&](auto value){result=std::move(value);received=true;},{});
     QTRY_COMPARE(scheduler.Status().state,BackendState::kReady);
@@ -305,6 +395,7 @@ inline void AllFrameWorkerContexts() {
     for(bool live:{true,false}){
         stamp.liveCameraCapture=live;++stamp.frameSeq;received=false;
         QVERIFY(scheduler.Submit(stamp,image));QTRY_VERIFY(received.load());QVERIFY(result.output.ok);
+        QCOMPARE(result.prepared.back().words[0].disposition,TokenDisposition::kCandidate);
         QVERIFY(!observed->enabled.load());
         const auto original=MakeProbeFrame(image.constBits(),image.width(),image.height(),image.bytesPerLine(),2,stamp);
         QCOMPARE(result.reference.luma,original.luma);
@@ -313,6 +404,7 @@ inline void AllFrameWorkerContexts() {
     auto paired=std::make_shared<Paired>(image);stamp.temporallySmoothed=true;++stamp.frameSeq;received=false;
     paired->sourceEpoch=stamp.sourceEpoch;paired->frameSequence=stamp.frameSeq;
     QVERIFY(scheduler.SubmitDevice(stamp,paired));QTRY_VERIFY(received.load());QVERIFY(result.output.ok);
+    QCOMPARE(result.prepared.back().words[0].disposition,TokenDisposition::kCandidate);
     QCOMPARE(paired->validations.load(),1);QVERIFY(!result.currentInputMatches.isEmpty());
     for(bool matches:result.currentInputMatches)QVERIFY(matches);
     QCOMPARE(observed->calls.load(),3);QVERIFY(!observed->enabled.load());

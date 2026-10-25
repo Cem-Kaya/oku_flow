@@ -29,7 +29,7 @@ The former 35% height guard rejected readable small print and kept oversized
 detector boxes, producing tall letters on book pages. The 35% width guard,
 sample-count, contrast and detached-mark checks remain. A controlled real-font
 fixture reproduces the rejection; a thin-rule control must still fall back.
-The seven-pixel word-size boundary permits only 1e-5 source pixels of arithmetic
+The five-pixel word-size boundary (lowered from seven on 25 October) permits only 1e-5 source pixels of arithmetic
 error. A failed-fit isolated near-vertical character retains the original
 symbol, preventing the close-button X from becoming a stretched X or 4.
 

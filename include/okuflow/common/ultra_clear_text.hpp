@@ -309,6 +309,8 @@ enum class TokenDisposition : std::uint8_t {
     kUnrecognized,
 };
 
+inline constexpr double kDefaultMinimumWordHeightPx = 5.0;
+
 struct LineColors {
     QColor foreground{Qt::black};
     QColor background{Qt::white};
@@ -531,7 +533,7 @@ public:
                          Completion completion,
                          StatusChanged statusChanged,
                          int referenceDecimation = 2,
-                         double minimumWordHeightPx = 7.0,
+                         double minimumWordHeightPx = kDefaultMinimumWordHeightPx,
                          bool probeOnly = false,
                          bool shadowPlanner = false,
                          bool regionalOcr = false);
@@ -839,7 +841,7 @@ struct DisplayWord {
 struct ModelTuning {
     std::int64_t maxResultAgeMs{4000};
     std::int64_t freshnessMs{350};
-    double minimumWordHeightPx{7.0};
+    double minimumWordHeightPx{kDefaultMinimumWordHeightPx};
     double agreementIou{0.5};
     // UI-thread budget for checking a result against a newer probe. Lines not
     // reached stay hidden until the next off-thread probe validates them.

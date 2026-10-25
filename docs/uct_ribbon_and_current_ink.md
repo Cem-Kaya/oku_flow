@@ -8,6 +8,26 @@ not a measured accuracy improvement, release acceptance, or a new precision poli
 
 ## Explicit scope
 
+The owner lowered the default minimum recognized word height from seven to
+five analysis-source pixels on 25 October. Confidence, independent source proof,
+glyph collisions, original-ink protection and the painter's six-pixel projected
+minimum remain separate. A five-pixel source word can become drawable when
+magnified; admission alone does not promise a replacement at 1x.
+
+Offscreen paint receipts now include every prepared word's source height,
+confidence, disposition and ink-fit status, plus the terminal omission reason
+of every admitted word. `OKUFLOW_UCT_RESIDENT_PAINT_HEIGHT_CONTROL=7` adds a
+`paint-height7/` control alongside `paint/`, using the exact same completed
+OCR result and source. This does not perform another inference or manufacture
+a temporal observation. It isolates the height rule from recognition variance.
+An independent follow-up restores ribbon crop padding at both line ends using
+the fit's existing local unclip margin. The quadratic and affine height are
+rebased onto the same [0,1] interval; exact image-boundary/positive-height checks
+remain in force. An extended crop outside the source is refused and protects
+original ink. Straight components retain the rectangle arithmetic. The
+diagnostic-only `Fit(..., false)` control omits endpoint padding; app callers
+use the default. Comparisons retain separate pre-padding and padded binaries.
+
 The model-free ribbon is enabled by default on **live camera, advancing video,
 Freeze and paused OCR jobs**, including the existing paired Temporal Smooth
 path. It follows `EvidenceAcquisition`, not the selected-frame diagnostic flag.
@@ -265,6 +285,72 @@ metadata/allocation overhead also requires ROOT's separate base/candidate binary
 comparison. Pixel equality does not imply zero latency overhead.
 
 ## Validation evidence
+
+### Five-pixel admission and crop-end padding (25 October 2026)
+
+Both changes use the existing shared worker path in live camera, advancing
+video, Freeze/paused and paired-current OCR. No new read, worker, model switch
+or presentation wait is added. Live/paired source proof is unchanged;
+`curvedRibbonAllFrameWorkerContexts` now also checks five-pixel candidates on
+live, advancing and paired-current submissions. Its high-contrast source patch
+retains the original current-frame match assertions. The initial smooth-gradient
+fixture could not provide enough contrast for that additional small patch;
+the failed attempt is preserved, rather than weakening proof.
+
+The combined follow-up was measured against clean `b4930956`, with the original
+ribbon already enabled in both executables. RTX 4090, TensorRT 11.4.0.106,
+CUDA 12.9.86, Qt 6.12.0, medium BF16 detector/recognizer, fixed1024 N8. Four
+visits used baseline/candidate/candidate/baseline; each source had one warmup
+and 20 timed passes per visit. The first four timed passes were excluded in
+advance and retained in raw evidence: 32 steady samples per arm/source, 256
+total. Profiling and paint export were off. All retained steady jobs confirmed
+the same actual BF16 plan keys/payloads and zero image-egress calls. All four
+visits confirmed completed State retirement;
+all 18 private cache files stayed byte-identical. No engine was built.
+
+Resident worker milliseconds, median / descriptive nearest-rank p95:
+
+| Input | Prior curved path | Five-pixel + padded ends | Added median |
+| --- | ---: | ---: | ---: |
+| Synthetic curved line | 8.661 / 9.568 | 8.710 / 10.105 | +0.050 (+0.57%) |
+| Synthetic straight line | 8.903 / 9.631 | 8.919 / 9.742 | +0.016 (+0.18%) |
+| Book photo | 38.979 / 39.736 | 39.377 / 41.387 | +0.398 (+1.02%) |
+| Dense frame 55 | 144.147 / 151.913 | 144.214 / 152.965 | +0.067 (+0.05%) |
+
+These are combined worker costs on this GPU, including scheduler preparation;
+the two changes were not timed independently. Shared-desktop timing variation
+remains possible. More admitted words may also affect model/paint work, which
+this worker timer excludes. This does not measure native live camera latency,
+Freeze-to-paint time or FPS, and must not be added to the earlier separate
+ribbon-off/on comparison as though it were one controlled experiment.
+
+The earlier offscreen sample isolates the height rule with the identical OCR
+result: whole-book painted words 362 at seven pixels, 381 at five. Adding end
+padding gives 386. The bottom four left-page lines show 25, 33 and 31 drawn
+words respectively; padding fixes `ranslation` to `translation` and the curved
+synthetic `1` to `18`, but other spellings change in both directions. Dense-frame
+counts are 231, 242 and 241; straight-control PNG bytes are identical. Counts
+are coverage, not accuracy. Actual omission tracing attributes the original
+11 bottom-line admitted omissions to 10 protected-ink decisions and one
+geometry/projected-size decision. Neither protection nor the independent
+six-pixel projected painting minimum was lowered.
+
+Final tracked scoped validation: CPU **5/242 PASS**, CUDA **4/254 PASS**,
+PCH-OFF **2/242 PASS**, zero skips/unresolved in those selections. The shipping
+release compiled. The broader tracked matrix remains **FAILED**: CPU resume
+refused changed shared `PATH` inputs for the pre-existing unresolved
+`video_playback_contract`; that case was not retried unchanged or cleared.
+The CUDA delta retained **15 passed / 5 optional skipped / 0 unresolved**.
+Native GUI and installer checks were not run; these are development results,
+not full release acceptance.
+
+Commands, source/binary seals, failed attempts, ledgers, unchanged cache hashes
+and the four raw visits are under
+`Z:/Projects/OkuFlow/local-work-data/uct-height5-integration-20261025-r1/`.
+The measured campaign is `worker-20261025T103406Z-b9d7668933dd47b2921c6af15b8b39bd/`
+(`plan.json`, `summary.json`, `complete.json`); the earlier actual paint samples
+and comparison are under `uct-height5-paint-20261025/`. No public release or
+native desktop operation is implied.
 
 ### All-mode extension (25 October 2026)
 

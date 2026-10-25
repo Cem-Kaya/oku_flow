@@ -6,6 +6,15 @@
 
 ## [Unreleased]
 
+- Lower the development UCT source word-height minimum from seven to five
+  pixels, and record exact preparation/paint omission reasons in diagnostic
+  samples with a same-result seven-pixel comparison control.
+- Restore curved recognition crop margins at both line ends while preserving
+  exact source-boundary checks and original ink for unsupported geometry.
+  Both follow-ups apply to live/advancing and Freeze/paused OCR. A warm RTX 4090
+  BF16 comparison measured combined median worker additions of 0.398 ms on the
+  book and 0.067 ms on dense frame 55; native camera/paint latency is unmeasured.
+
 - Use bounded curved-line OCR automatically in live camera, advancing video,
   Freeze/paused and paired Temporal Smooth OCR jobs when UCT is enabled.
   Preserve current-frame proof, held-acquisition identity, OCR cadence, one

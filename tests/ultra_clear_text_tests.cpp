@@ -2284,7 +2284,7 @@ void UltraClearTextTests::ordinaryLabelsKeepPreparationGates_data()
     QTest::newRow("below-confidence-floor") << 0 << int(TokenDisposition::kLowConfidence);
     QTest::newRow("nonfinite-confidence") << 1 << int(TokenDisposition::kLowConfidence);
     QTest::newRow("above-confidence-range") << 2 << int(TokenDisposition::kLowConfidence);
-    QTest::newRow("below-seven-source-pixels") << 3 << int(TokenDisposition::kTooSmall);
+    QTest::newRow("below-five-source-pixels") << 3 << int(TokenDisposition::kTooSmall);
     QTest::newRow("nonfinite-geometry") << 4 << int(TokenDisposition::kInvalidGeometry);
     QTest::newRow("backend-rejection") << 5 << int(TokenDisposition::kHighRisk);
 }
@@ -2302,10 +2302,10 @@ void UltraClearTextTests::ordinaryLabelsKeepPreparationGates()
         if (fault == 0) word.confidence = .699;
         if (fault == 1) word.confidence = std::numeric_limits<double>::quiet_NaN();
         if (fault == 2) word.confidence = 1.1;
-        if (fault == 3) word.boundsPx.setHeight(6.99);
+        if (fault == 3) word.boundsPx.setHeight(4.99);
         if (fault == 4) word.boundsPx.setX(std::numeric_limits<double>::quiet_NaN());
         if (fault == 5) word.disposition = TokenDisposition::kHighRisk;
-        result->prepared = PrepareLines(*result, 7);
+        result->prepared = PrepareLines(*result, ModelTuning{}.minimumWordHeightPx);
         QCOMPARE(result->prepared[0].words[0].disposition, static_cast<TokenDisposition>(disposition));
     }
     OverlayModel model;

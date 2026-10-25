@@ -101,8 +101,15 @@ public:
     // drew a plan, the overlay is visible and exactly covers the render
     // target, and neither size, screen nor device pixel ratio changed since.
     bool PaintedGeometryCurrent() const;
+    // Terminal decision from the actual cached paint plan. Diagnostic only;
+    // it never changes glyph eligibility or grants source-pixel authority.
+    enum class PaintOmission : std::uint8_t {
+        kNone, kInvalidGlyph, kDuplicate, kCollision,
+        kGeometryOrSize, kClipped, kProtectedInk, kProtectionLimit, kProjectedSize
+    };
     struct PaintedWordGeometry {
         bool drawn{};  // replacement plate and glyph were painted
+        PaintOmission omission{PaintOmission::kNone};
         QRectF box;    // fitted ink when drawn, otherwise the projected source box
         // One rect per UTF-16 code unit (code units of one grapheme cluster
         // share a rect), unclipped. Drawn words use the QTextLayout caret
@@ -199,6 +206,7 @@ private:
         qreal scaleX{};
         qreal scaleY{};
         bool drawn{};
+        PaintOmission omission{PaintOmission::kNone};
         // Rotated words: exact view polygons and baseline frame. Fixed-size
         // arrays keep per-paint planning allocation-free.
         bool oriented{};

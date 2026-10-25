@@ -1753,16 +1753,16 @@ struct Run {
 // Runs after callback/stage timing and only on source warmups. No new inference
 // or invented OCR text: the production immutable admission and painter decide
 // which glyphs appear; all other pixels remain the original source image.
-inline void ExportPaintSample(const Run& run, const Block& block, int source,
-                              const Completion& completion, const QString& jobFile)
+inline void ExportPaintSampleAtHeight(const Run& run, const Block& block, int source,
+                                     const Completion& completion, const QString& jobFile,
+                                     double minimumHeight, const QString& prefix)
 {
-    if (qEnvironmentVariable("OKUFLOW_UCT_RESIDENT_PAINT_SAMPLES") != "1") return;
-    QVERIFY(run.selection.immutable && !run.selection.paired && !run.selection.frozenCrops);
-    QCOMPARE(QGuiApplication::platformName(), QStringLiteral("offscreen"));
-    uct_test::RegisterFixtureFonts();
-    const auto& result = completion.result;
+    auto result = completion.result;
+    result.prepared = PrepareLines(result, minimumHeight);
     const auto& input = run.sources[std::size_t(source)];
-    OverlayModel model;
+    ModelTuning tuning;
+    tuning.minimumWordHeightPx = minimumHeight;
+    OverlayModel model(tuning);
     QCOMPARE(model.AdmitImmutable(result, result.stamp, result.stamp.timestampMs,
         nullptr, ImmutableAdmission::Standalone), AdmitVerdict::kAccepted);
     const auto words = model.SceneWords(result.stamp.timestampMs, result.stamp.frameSeq);
@@ -1779,19 +1779,53 @@ inline void ExportPaintSample(const Run& run, const Block& block, int source,
     overlay.SetWords(std::move(paint));
     if (!words.isEmpty()) QTRY_VERIFY(overlay.PaintedGeometryCurrent());
     QJsonArray painted;
+    QJsonArray prepared;
+    for (int line = 0; line < result.output.lines.size(); ++line) {
+        const auto& raw = result.output.lines[line].words;
+        const auto& ready = result.prepared[line].words;
+        QCOMPARE(raw.size(), ready.size());
+        for (int index = 0; index < raw.size(); ++index) {
+            const auto& word = raw[index];
+            const double height = (word.fromRibbon || QuadIsRotated(word.quadPx))
+                ? QuadHeight(word.quadPx) : word.boundsPx.height();
+            prepared.push_back(QJsonObject{{"line", line}, {"word", index},
+                {"text", word.text}, {"sourceDisposition", int(word.disposition)},
+                {"preparedDisposition", int(ready[index].disposition)},
+                {"sourceHeightPx", height}, {"confidence", word.confidence},
+                {"inkFitted", word.inkFitted}, {"fromRibbon", word.fromRibbon},
+                {"sourceBounds", uct_batch_test::Rect(word.boundsPx)}});
+        }
+    }
+    const auto omissionCode = [](okuflow::UltraClearTextOverlay::PaintOmission reason) {
+        using Reason = okuflow::UltraClearTextOverlay::PaintOmission;
+        switch (reason) {
+        case Reason::kNone: return "drawn";
+        case Reason::kInvalidGlyph: return "invalid_glyph";
+        case Reason::kDuplicate: return "duplicate";
+        case Reason::kCollision: return "collision";
+        case Reason::kGeometryOrSize: return "geometry_or_projected_size";
+        case Reason::kClipped: return "clipped";
+        case Reason::kProtectedInk: return "protected_ink";
+        case Reason::kProtectionLimit: return "protection_pass_limit";
+        case Reason::kProjectedSize: return "projected_size";
+        }
+        return "unknown";
+    };
     int drawn = 0;
     for (const auto& word : words) {
         okuflow::UltraClearTextOverlay::PaintedWordGeometry geometry;
-        const bool shown = overlay.PaintedWord(word.lineId, word.wordIndex, word.text, geometry) && geometry.drawn;
+        QVERIFY(overlay.PaintedWord(word.lineId, word.wordIndex, word.text, geometry));
+        const bool shown = geometry.drawn;
         drawn += shown;
         painted.push_back(QJsonObject{{"text", word.text}, {"drawn", shown},
+            {"omission", QString::fromLatin1(omissionCode(geometry.omission))},
             {"sceneBounds", uct_batch_test::Rect(word.sceneRect)}});
     }
     auto output = input.image.copy();
     QPainter painter(&output);
     overlay.CaptureSnapshot(result.stamp.viewTransform, output.size()).Paint(painter, output.size());
     painter.end();
-    const auto directory = QDir(run.evidence).filePath(QString("paint/block-%1-source-%2").arg(block.index).arg(source));
+    const auto directory = QDir(run.evidence).filePath(QString("%1/block-%2-source-%3").arg(prefix).arg(block.index).arg(source));
     QVERIFY(QDir().mkpath(directory));
     const auto originalFile = QDir(directory).filePath("original.png");
     const auto paintedFile = QDir(directory).filePath("uct.png");
@@ -1802,10 +1836,29 @@ inline void ExportPaintSample(const Run& run, const Block& block, int source,
         {"jobSha256", FileSha256(jobFile)}, {"backend", completion.backend.name},
         {"ribbon", run.selection.curvedRibbon}, {"candidateWords", CandidateWords(result.output)},
         {"admittedWords", words.size()}, {"paintedWords", drawn}, {"words", painted},
+        {"minimumSourceWordHeightPx", minimumHeight}, {"prepared", prepared},
         {"readingText", model.ReadingText(result.stamp.timestampMs, result.stamp.frameSeq)},
         {"originalSha256", FileSha256(originalFile)}, {"paintedSha256", FileSha256(paintedFile)},
         {"scope", "Actual GPU OCR, production standalone admission and Qt offscreen snapshot; no native desktop or quality claim."}};
     QVERIFY(uct_batch_test::Save(QDir(directory).filePath("sample.json"), receipt));
+}
+
+inline void ExportPaintSample(const Run& run, const Block& block, int source,
+                              const Completion& completion, const QString& jobFile)
+{
+    if (qEnvironmentVariable("OKUFLOW_UCT_RESIDENT_PAINT_SAMPLES") != "1") return;
+    QVERIFY(run.selection.immutable && !run.selection.paired && !run.selection.frozenCrops);
+    QCOMPARE(QGuiApplication::platformName(), QStringLiteral("offscreen"));
+    uct_test::RegisterFixtureFonts();
+    ExportPaintSampleAtHeight(run, block, source, completion, jobFile,
+                             ModelTuning{}.minimumWordHeightPx, "paint");
+    const auto control = qEnvironmentVariable("OKUFLOW_UCT_RESIDENT_PAINT_HEIGHT_CONTROL");
+    QVERIFY(control.isEmpty() || control == "7");
+    if (control == "7") {
+        // Identical completed OCR output/source pixels; only preparation and
+        // model minimum differ. No second inference or temporal observation.
+        ExportPaintSampleAtHeight(run, block, source, completion, jobFile, 7.0, "paint-height7");
+    }
 }
 
 inline void RunBlock(Run& run, const Block& block, ProfileCapture& capture)

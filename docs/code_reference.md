@@ -2,6 +2,24 @@
 
 ## Curved-line and current-ink experiments (development)
 
+- `kDefaultMinimumWordHeightPx` sets the scheduler and model default to five
+  analysis-source pixels. Projected paint size, confidence and source proof
+  remain separate decisions. `curvedRibbonSmallWordsAndPaintReasons` checks
+  the boundary, magnification and actual cached omission decisions.
+  `curvedRibbonAllFrameWorkerContexts` also checks the five-pixel scheduler
+  default on live, advancing and paired-current input.
+- `UltraClearTextOverlay::PaintOmission` records the terminal cached paint
+  decision in `PlannedWord`/`PaintedWordGeometry`: typography, duplicate,
+  collision, geometry/size, clipping, protected ink or bounded closure. It is
+  metadata only. `ExportPaintSampleAtHeight` exports preparation and paint
+  reasons; optional `OKUFLOW_UCT_RESIDENT_PAINT_HEIGHT_CONTROL=7` repeats
+  admission/painting from the identical completed result, without inference.
+- `ribbon::Fit` restores the local unclip margin along both endpoints by
+  rebasing its quadratic/height/basis onto [0,1]. It retains exact `Inside`
+  checks and the existing straight branch. Its optional false parameter is a
+  model-free comparison control; `curvedRibbonEndpointPadding` checks analytic
+  coordinates/sagitta, actual end-pixel sampling and out-of-image refusal.
+
 - `PaddleRibbonEnabled` combines ordinary OCR acquisition eligibility with the
   diagnostic override: empty/1 enables, 0 or another explicit value disables.
   Both CPU and TensorRT setters use it in every OCR mode. The scheduler still
@@ -7254,7 +7272,7 @@ padding ink and unanchored opposite-edge rules do not enter the row fit.
 An anchored opposite-edge component preserves detector geometry. Upright
 fitting also preserves the complete detector for substantial weak-only
 in-detector components rather than cropping a lighter letter. Existing 35%
-upright shrink, contrast/sample/row-band and downstream seven-pixel admission
+upright shrink, contrast/sample/row-band and downstream five-pixel admission
 guards remain. CPU's exact queue and CUDA's fixed shared mask/labels use at most
 32768 cells, 8192 columns and 4096 rows; CUDA stops after 64 scans and returns
 detector geometry on incomplete propagation. No per-word device allocation or
@@ -7533,7 +7551,7 @@ source pixels. The previous 35% height guard rejected readable small print
 inside loose detector padding and left tall boxes for painting.
 No confidence or word-proof threshold changes.
 `PrepareLines` allows 1e-5 source pixels of arithmetic error at its existing
-minimum-height boundary, so a rotated seven-pixel glyph does not become
+minimum-height boundary, so a rotated five-pixel glyph does not become
 too-small solely through floating-point projection. `FinalizeRecognizedGeometry`
 marks a padded, unfitted single Unicode scalar as high-risk when its baseline
 is predominantly vertical (absolute cosine below 0.5). The original symbol

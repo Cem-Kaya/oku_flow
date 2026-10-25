@@ -13,6 +13,9 @@ affine half-height, 32-segment arc estimate, straightness gate max(0.75 detector
 pixels, 0.08 local height), and exact source-boundary extrema. Chord/search error
 must be <= min(1 source-analysis pixel, 0.08 word height). Identified unsupported
 curves protect original detector ink; unmeasurable error is recorded as -1.
+Curved sampling also extends both endpoints by the existing local unclip
+margin `length*meanHeight*1.4/(2*(length+meanHeight))` in detector pixels.
+The map is rebased onto [0,1]; source extrema, height and chord bounds remain.
 
 The offline `current_ink` oracle owns <=32768 luma samples, <=512x96 including a
 three-pixel halo, at original analysis-image density. It refuses oversize rather
@@ -147,6 +150,11 @@ slack (zero at image borders). Ownership includes original detector bounds,
 not just tighter fitted ink. It owns complete lines only, retaining crossing
 sentences and masks verbatim without renewing their validation clocks. See
 [regional policy](uct_active_regional_ocr.md).
+
+UCT's default minimum recognized word height is five analysis-source pixels
+(owner decision, 25 October), shared by scheduler/model. The independent paint
+minimum remains six projected logical pixels; magnification can make an
+admitted small word drawable. Confidence/proof/protection are separate.
 
 Oriented UCT ink fitting keeps at least 35% of the detected word width and
 25% of the padded search height, with a four-source-pixel height floor.
@@ -369,7 +377,7 @@ is exact/linear; incomplete CUDA fitting is conservative, not a parity claim.
 Color body sampling uses stride one for at most 4096 pixels, otherwise stride
 two. Upright fitting uses a midpoint-strength detector anchor and connected AA
 up to halfway from midpoint toward paper. Detached marks keep the existing
-22%-height/two-pixel allowance. Its 35% fit guard and seven-pixel admission
+22%-height/two-pixel allowance. Its 35% fit guard and five-pixel admission
 minimum remain unchanged. The upright component grid refuses more than 32768
 cells, 8192 source columns or 4096 source rows; CUDA uses fixed shared scratch
 and at most 64 propagation scans, otherwise preserving detector geometry.
@@ -1295,6 +1303,6 @@ rectangle collisions retain original protection through transfers/projection.
 
 Paused video/manual Freeze uses `ImmutableAdmission::Standalone`; it has no
 neighbour-time, distinct-frame or cross-frame pixel-agreement prerequisite.
-The existing confidence, seven-source-pixel, source/PTS/geometry, input/protection
+The existing confidence, five-source-pixel, source/PTS/geometry, input/protection
 and rendering bounds still apply. Live and the explicit corroborated protocol
 retain their temporal constants. See [policy](uct_standalone_freeze.md).

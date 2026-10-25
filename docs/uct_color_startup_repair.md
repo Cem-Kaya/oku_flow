@@ -1,5 +1,9 @@
 # UCT local colors, backend status and readiness recovery
 
+> The historical measurements below used the then-current seven-pixel admission
+> minimum. On 25 October the owner lowered the shared default to five source
+> pixels in every OCR mode; see [current policy](uct_ribbon_and_current_ink.md).
+
 UCT keeps logical lines for reading order and validation, but each recognized
 word now carries its own optional foreground/background pair through preparation,
 admission and scene/export projection. A yellow selected button therefore keeps
