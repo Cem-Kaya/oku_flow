@@ -24,6 +24,7 @@ if(WIN32)
             REQUIRED_FILES "${embedded_runtime_inputs};${PROJECT_SOURCE_DIR}/src/common/video_ffmpeg_reader.cpp;${PROJECT_SOURCE_DIR}/src/common/video_ffmpeg_reader.hpp;${PROJECT_SOURCE_DIR}/scripts/ffmpeg/pins.json;${PROJECT_SOURCE_DIR}/tests/data/embedded-pool-4k.mp4;${PROJECT_SOURCE_DIR}/tests/data/long-gop-h264.mp4;${PROJECT_SOURCE_DIR}/tests/data/uct-scene-cut-h264.mp4;${PROJECT_SOURCE_DIR}/tests/data/paced-audio-h264.mp4")
     endif()
     add_test(NAME video_playback_contract COMMAND video_playback_tests)
+    add_test(NAME video_playback_audio_unmute_handoff COMMAND video_playback_tests --audio-unmute-handoff)
     add_test(NAME video_archive_native_avc_aac COMMAND video_playback_tests --native-avc)
     add_test(NAME video_archive_native_av1_aac COMMAND video_playback_tests --native-av1)
     add_test(NAME video_playback_native_4k COMMAND video_playback_tests --native-4k)
@@ -39,7 +40,7 @@ if(WIN32)
     set_tests_properties(video_archive_native_avc_aac video_archive_native_av1_aac video_playback_native_4k video_playback_native_dci_4k
         PROPERTIES TIMEOUT 120 LABELS "codec" SKIP_RETURN_CODE 77 RUN_SERIAL TRUE
         REQUIRED_FILES "${PROJECT_SOURCE_DIR}/src/common/video_playback.cpp;${PROJECT_SOURCE_DIR}/src/common/video_archive.cpp;${PROJECT_SOURCE_DIR}/src/common/media_writer.cpp")
-    set_tests_properties(video_playback_contract PROPERTIES TIMEOUT 60 LABELS "codec"
+    set_tests_properties(video_playback_contract video_playback_audio_unmute_handoff PROPERTIES TIMEOUT 60 LABELS "codec"
         REQUIRED_FILES "${PROJECT_SOURCE_DIR}/src/common/video_playback.cpp;${PROJECT_SOURCE_DIR}/src/common/video_playback_seek_budget.hpp;${PROJECT_SOURCE_DIR}/src/common/video_archive.cpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/video_playback.hpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/video_archive.hpp;${PROJECT_SOURCE_DIR}/tests/data/long-gop-h264.mp4;${PROJECT_SOURCE_DIR}/tests/data/uct-scene-cut-h264.mp4;${PROJECT_SOURCE_DIR}/tests/data/paced-audio-h264.mp4")
     # One explicit private two-second sparse source; no default/sample discovery.
     set(OKUFLOW_TEST_VIDEO_PAUSED_FILE "" CACHE FILEPATH "Absolute private file for native sparse 0/2-second paused fixture")

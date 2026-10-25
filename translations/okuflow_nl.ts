@@ -3585,5 +3585,9 @@ Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u
         <source>Using CPU backend: %1</source>
         <translation>CPU-backend actief: %1</translation>
     </message>
+    <message>
+        <source>Playback volume</source>
+        <translation>Afspeelvolume</translation>
+    </message>
 </context>
 </TS>

@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+- Fix a saved-video Unmute/Resume race that could read a deselected audio
+  stream and leave playback silent. Keep the original PCM timing and limits.
+- Show the muted playback speaker in yellow/amber and restore its normal theme
+  color when unmuted. Add a keyboard-accessible playback volume slider with
+  a synchronized percentage and translated screen-reader label.
+
 - Lower the development UCT source word-height minimum from seven to five
   pixels, and record exact preparation/paint omission reasons in diagnostic
   samples with a same-result seven-pixel comparison control.

@@ -20,9 +20,15 @@
 #include <limits>
 #include <set>
 #include <numeric>
+#include <mutex>
 #include <thread>
 
 namespace okuflow {
+struct VideoPlaybackTestAccess {
+    static std::unique_ptr<VideoPlayback> WithAudioPumpHook(std::function<void(bool)> hook) {
+        return std::unique_ptr<VideoPlayback>(new VideoPlayback(std::move(hook)));
+    }
+};
 struct VideoMemoryStreamTestAccess {
     static std::shared_ptr<const VideoMemorySource> SealBytes(const std::vector<char>& bytes) {
         VideoMemoryStream output(bytes.size()+64);
@@ -1372,6 +1378,7 @@ void PacedAudioDelivery(VideoPlayback& player) {
         }
         return heard || player.Snapshot().state==VideoPlaybackState::Unavailable;
     },1000) && heard,"unmute repositions the decoded audio high-water and resumes PCM");
+    s=player.Snapshot();std::cout<<"Audio unmute state="<<int(s.state)<<" available="<<s.audioAvailable<<" frame="<<(s.frame?s.frame->pts100ns:-1)<<" error="<<s.error<<'\n';
     player.SetPlaying(false);Expect(player.TakeAudio().empty(),"paused pacing fixture revokes pending PCM");
     const auto pausedFloor=player.Snapshot().frame->pts100ns;
     std::this_thread::sleep_for(std::chrono::milliseconds(80));
@@ -1383,7 +1390,46 @@ void PacedAudioDelivery(VideoPlayback& player) {
         }
         return heard || player.Snapshot().state==VideoPlaybackState::Unavailable;
     },1000) && heard,"Resume resets the high-water at the paused cursor rather than remaining silent");
+    s=player.Snapshot();std::cout<<"Audio resume state="<<int(s.state)<<" available="<<s.audioAvailable<<" frame="<<(s.frame?s.frame->pts100ns:-1)<<" error="<<s.error<<'\n';
     player.Close();
+}
+void AudioUnmuteHandoffRace() {
+    struct Handoff { std::mutex mutex;VideoPlayback* player{};bool fired{}; };
+    auto handoff=std::make_shared<Handoff>();
+    auto player=VideoPlaybackTestAccess::WithAudioPumpHook([handoff](bool nativeSelected) {
+        std::lock_guard lock(handoff->mutex);
+        if(nativeSelected || handoff->fired || !handoff->player)return;
+        handoff->fired=true;
+        // Force Unmute after the worker's muted restart selected no audio,
+        // immediately before its next QueueAudio admission check.
+        handoff->player->SetMuted(false);
+    });
+    {std::lock_guard lock(handoff->mutex);handoff->player=player.get();}
+    const auto path=std::filesystem::path(__FILE__).parent_path()/"data"/"paced-audio-h264.mp4";
+    const auto request=player->OpenFile(path.wstring());
+    const bool ready=Wait([&]{const auto s=player->Snapshot();return s.requestGeneration==request &&
+        (s.state==VideoPlaybackState::Paused || s.state==VideoPlaybackState::Unavailable);});
+    auto snapshot=player->Snapshot();
+    Expect(ready && snapshot.state==VideoPlaybackState::Paused && snapshot.frame && snapshot.audioAvailable,
+        "audio handoff race opens its real AAC source");
+    if(ready && snapshot.state==VideoPlaybackState::Paused && snapshot.frame && snapshot.audioAvailable) {
+        const auto floor=snapshot.frame->pts100ns;
+        player->SetPlaying(true); // default mute deliberately keeps the native stream deselected
+        bool heard{};
+        Expect(Wait([&]{
+            for(const auto& packet:player->TakeAudio()) {
+                Expect(packet.requestGeneration==request && packet.pts100ns>=floor,
+                    "handoff PCM retains its exact request and held-cursor floor");
+                heard=true;
+            }
+            return heard || player->Snapshot().state==VideoPlaybackState::Unavailable;
+        },1000) && heard,"Unmute before audio admission waits for native stream selection and delivers PCM");
+        snapshot=player->Snapshot();
+        std::cout<<"Audio handoff race available="<<snapshot.audioAvailable<<" state="<<int(snapshot.state)<<" error="<<snapshot.error<<'\n';
+        Expect(snapshot.audioAvailable,"a pending Unmute cannot permanently disable decoded audio");
+    }
+    {std::lock_guard lock(handoff->mutex);Expect(handoff->fired,"the native deselected-stream race was exercised");handoff->player=nullptr;}
+    player->Close();
 }
 // Private owner-media diagnostic: decode PCM into memory only. It never
 // creates an audio endpoint, GUI, recorder or temporary copy of the input.
@@ -1612,7 +1658,8 @@ int main(int argc, char** argv) {
     if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) return 2;
     if (FAILED(MFStartup(MF_VERSION))) return 2;
     const std::string mode = argc > 1 ? argv[1] : "";
-    if (!mode.empty()) {
+    if (mode=="--audio-unmute-handoff") AudioUnmuteHandoffRace();
+    else if (!mode.empty()) {
         if (!GetEnvironmentVariableW(L"OKUFLOW_TEST_VIDEO_PLAYBACK_CODEC", nullptr, 0)) {
             std::cout << "SKIP opt-in native codec run requires OKUFLOW_TEST_VIDEO_PLAYBACK_CODEC=1\n";
             MFShutdown(); CoUninitialize(); return 77;

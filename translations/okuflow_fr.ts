@@ -3585,5 +3585,9 @@ Utilisez Connect ChatGPT dans l'onglet Assistant avancé pour vous connecter.</t
         <source>Using CPU backend: %1</source>
         <translation>Moteur CPU utilisé : %1</translation>
     </message>
+    <message>
+        <source>Playback volume</source>
+        <translation>Volume de lecture</translation>
+    </message>
 </context>
 </TS>

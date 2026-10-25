@@ -3585,5 +3585,9 @@ Melden Sie sich auf der erweiterten Registerkarte Assistent über ChatGPT verbin
         <source>Using CPU backend: %1</source>
         <translation>CPU-Backend aktiv: %1</translation>
     </message>
+    <message>
+        <source>Playback volume</source>
+        <translation>Wiedergabelautstärke</translation>
+    </message>
 </context>
 </TS>

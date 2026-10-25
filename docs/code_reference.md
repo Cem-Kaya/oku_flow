@@ -6943,6 +6943,26 @@ invalidates the old audio clock. `SeekReader` resets this state and PCM floors;
 `TakeAudio` cannot trigger oversupply while video waits. Output hard caps stay
 unchanged. See [video/audio repair](video_audio_preroll_repair.md).
 
+`QueueAudio` also checks `State::restartAtCursor` before native reads and before
+PCM publication. A pending Unmute/Resume must pass through worker-owned stream
+selection and seek before more audio is admitted. The private friend
+`VideoPlaybackTestAccess` constructs a per-instance `beforeAudioPumpForTest`
+hook for `AudioUnmuteHandoffRace`; the public constructor leaves it empty.
+The hook inspects native stream selection only in that fixture and has no
+application or environment entry point.
+
+`VideoAudioOutput::SetVolumePercent` clamps a session-only gain to 0–100 and
+reports it through `VideoAudioOutputSnapshot::volumePercent`. The worker's
+owned `detail::CopyPlaybackPcm16` attenuates whole signed PCM16 samples while
+copying to WASAPI, with byte-identical 100% and zero-fill 0% paths. It never
+changes decoded source bytes, media PTS, output epoch or system/microphone
+volume. `VideoTransport::Snapshot::volumePercent`, `VolumeChanged` and
+`RefreshVolumeText` keep the slider, percentage, tooltip and accessible name
+current without emitting intent from snapshots. `InitializeVideoPlayback`
+routes actual user gain to the existing sink, and `PollVideoPlayback` publishes
+the requested session level. `ApplyFace` uses warning ink for a muted speaker
+and ordinary theme ink when unmuted.
+
 `RecordingArchive::State::provenDurationHighWater` advances only with parsed,
 producer-fenced fragment proof. `Finalized` restores that monotonic mapping
 metadata after finalizer backwrites/SetLength, while revoking generation, sample

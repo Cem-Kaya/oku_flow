@@ -416,6 +416,14 @@ named below. No native desktop, phone, installer or public release ran.
 
 ### Visual samples from actual OCR
 
+The later 2026-10-25 audio handoff repair closes the retained background
+`video_playback_contract` blocker above. A forced deselected-stream Unmute
+fixture failed before repair and passed afterward; the rebuilt background
+matrix passed **168 CPU / 15 CUDA** cases, with **9 / 5 optional skips** and
+zero unresolved. GUI remained excluded. Earlier failures and their original
+unconfirmed attribution remain historical evidence; see
+[the source diagnosis and validation](video_audio_preroll_repair.md).
+
 Set `OKUFLOW_UCT_RESIDENT_PAINT_SAMPLES=1` alongside the existing resident
 diagnostic's explicit immutable/single/media settings and Qt offscreen. Each
 source warmup exports `paint/block-<block>-source-<index>/original.png`,

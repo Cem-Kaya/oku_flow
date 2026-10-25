@@ -3585,5 +3585,9 @@ Seleziona Connetti a ChatGPT nella scheda Assistente della modalità Avanzata pe
         <source>Using CPU backend: %1</source>
         <translation>Motore CPU in uso: %1</translation>
     </message>
+    <message>
+        <source>Playback volume</source>
+        <translation>Volume di riproduzione</translation>
+    </message>
 </context>
 </TS>

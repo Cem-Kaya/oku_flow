@@ -58,6 +58,49 @@ The sink retains its hard caps and explicit failure behavior.
 
 ## Validation scope
 
+### Unmute/Resume stream-selection handoff (2026-10-25)
+
+The later background matrix exposed intermittent silence after Unmute and
+Pause/Resume. A deterministic private per-instance worker hook reproduced a
+specific race: the worker had deselected native audio for muted playback,
+then Unmute arrived after its restart preflight but before `QueueAudio` checked
+admission. Reading the still-deselected stream returned `0xc00d36b2` and
+permanently cleared `audioAvailable`. The pending restart consequently kept
+audio disabled. This establishes a real source defect; the historical matrix
+did not record enough detail to prove its exact interleaving was identical.
+
+`QueueAudio` now refuses both reading and queue publication while
+`restartAtCursor` is pending. The same worker applies selection/seek first,
+then pumps PCM. It does not retry a native fault or extend the one-second
+fixture assertion, progress deadline, queue caps or media-time floor.
+`video_playback_audio_unmute_handoff` forces Unmute immediately before audio
+admission while actual stream selection is off. It failed before the repair,
+then passed with real AAC-to-PCM delivery and preserved request/cursor identity.
+The ordinary constructor has no hook and makes no test-only selection query.
+
+Saved-video output also has session-only 0–100% volume, initially 100%. Signed
+PCM16 is attenuated in the existing output worker as it copies the next native
+buffer. Full volume preserves exact bytes; zero produces silence. Changing
+volume preserves decoding, packet timing, output generation and the device
+clock. Already submitted native audio can retain its previous gain until the
+bounded device buffer drains. Mute remains a separate flush/control operation.
+Neither control changes system volume, microphone gain or recorded media.
+
+Before/after logs, the original failed matrix and the 24-language label review
+are retained outside Git under
+`Z:/Projects/OkuFlow/local-work-data/video-audio-resume-20261025-r1/`.
+
+The final tracked background matrix compiled shipping Release, CPU and CUDA
+targets and passed: CPU **168 passed / 9 optional skipped / 0 unresolved**;
+CUDA delta **15 passed / 5 optional skipped / 0 unresolved**. Five passing CPU
+cases contain optional skipped Qt rows. Both the original playback contract
+and the forced audio handoff case passed. With PCH disabled, playback/transport/
+audio-output targets compiled and transport, audio-output and source-equivalence
+contracts passed (**SCOPED 3/243**, no skips). All 24 translation catalogs passed
+with 891 complete keys. Offscreen wide/narrow captures were inspected. Native
+desktop, spoken screen-reader, acoustic endpoint and installer checks were not
+run; this is background development validation, not full release acceptance.
+
 `video_playback_contract` exercises progress windows with synthetic time,
 including repeated/backward samples, a late native return and the absolute cap.
 It retains the existing actual-decoder rapid-seek supersession test. Its original

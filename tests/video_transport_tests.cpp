@@ -99,6 +99,8 @@ public:
             return QStringLiteral("Videoyu s\u00fcrd\u00fcr");
         if (QByteArray(context) == "OkuFlow" && QByteArray(source) == "Unmute playback")
             return QStringLiteral("Wiedergabeton einschalten");
+        if (QByteArray(context) == "OkuFlow" && QByteArray(source) == "Playback volume")
+            return QStringLiteral("Wiedergabelautst\u00e4rke");
         return {};
     }
     bool isEmpty() const override { return false; }
@@ -690,7 +692,7 @@ private slots:
         auto* transport = fixture.transport;
         auto* returnButton = fixture.Button("videoReturnCameraButton");
         const auto targets = transport->FocusTargets();
-        QCOMPARE(targets.size(), std::size_t(7));
+        QCOMPARE(targets.size(), std::size_t(8));
         QCOMPARE(targets.back(), returnButton);
         fixture.Focus(fixture.Button("videoCollapseButton"));
         for (std::size_t index = 0; index < targets.size(); ++index) {
@@ -915,6 +917,77 @@ private slots:
         QVERIFY(face(play) != playingFace);
         QVERIFY(face(mute) != unmutedFace);
         QCOMPARE(play->accessibleName(), QStringLiteral("Resume video"));
+    }
+
+    void playbackVolumeIsAccessibleAndIndependentOfMuteAndSeek()
+    {
+        FocusFixture fixture;
+        auto* transport=fixture.transport;
+        auto* volume=transport->findChild<QSlider*>(QStringLiteral("videoVolumeSlider"));
+        auto* value=transport->findChild<QLabel*>(QStringLiteral("videoVolumeValue"));
+        QVERIFY(volume && value && volume->isVisible());
+        QSignalSpy gain(transport,&VideoTransport::VolumeChanged);
+        QSignalSpy mute(transport,&VideoTransport::MutedChanged);
+        QSignalSpy seek(transport,&VideoTransport::SeekRequested);
+        auto snapshot=Video();snapshot.volumePercent=50;transport->SetSnapshot(snapshot);
+        QCOMPARE(volume->value(),50);QCOMPARE(gain.size(),0);
+        QCOMPARE(volume->accessibleName(),QStringLiteral("Playback volume"));
+        QCOMPARE(volume->accessibleDescription(),QStringLiteral("50%"));
+        auto* accessible=QAccessible::queryAccessibleInterface(volume);
+        QVERIFY(accessible && accessible->valueInterface());
+        QCOMPARE(accessible->valueInterface()->minimumValue().toInt(),0);
+        QCOMPARE(accessible->valueInterface()->maximumValue().toInt(),100);
+        QCOMPARE(accessible->valueInterface()->currentValue().toInt(),50);
+        fixture.Focus(volume);fixture.Key(Qt::Key_Left);
+        QCOMPARE(gain.size(),1);QCOMPARE(gain.front().front().toInt(),45);
+        QCOMPARE(value->text(),QStringLiteral("45%"));
+        QCOMPARE(volume->accessibleDescription(),value->text());
+        QCOMPARE(mute.size(),0);QCOMPARE(seek.size(),0);
+        snapshot.volumePercent=55;transport->SetSnapshot(snapshot);
+        QCOMPARE(volume->value(),55);QCOMPARE(gain.size(),1);
+        // Ordinary polling must not erase the announced percentage.
+        transport->SetSnapshot(snapshot);
+        QCOMPARE(volume->accessibleDescription(),QStringLiteral("55%"));
+        ActionTranslator translator;QApplication::installTranslator(&translator);
+        QApplication::processEvents();
+        QCOMPARE(volume->accessibleName(),QStringLiteral("Wiedergabelautst\u00e4rke"));
+        QVERIFY(volume->toolTip().startsWith(volume->accessibleName()));
+        QApplication::removeTranslator(&translator);
+        snapshot.volumePercent=120;transport->SetSnapshot(snapshot);QCOMPARE(volume->value(),100);
+        snapshot.volumePercent=-1;transport->SetSnapshot(snapshot);QCOMPARE(volume->value(),0);
+        snapshot.hasAudio=false;transport->SetSnapshot(snapshot);
+        QVERIFY(!volume->isVisible());QVERIFY(QApplication::focusWidget()!=volume);
+        volume->setValue(25);QCOMPARE(volume->value(),0);QCOMPARE(gain.size(),1);
+        transport->SetSnapshot(Recording());QVERIFY(!volume->isVisible());
+        transport->SetSnapshot(Video());transport->SetCollapsed(true);
+        QVERIFY(!volume->isVisible());
+    }
+
+    void mutedSpeakerUsesYellowAndRestoresThemeInk()
+    {
+        for(bool light : {false,true}) {
+            auto palette=light?QApplication::palette():
+                okuflow::theme_contrast::PinnedDarkPalette(QApplication::palette());
+            palette.setColor(QPalette::Window,QColor(light?"#ffffff":"#202020"));
+            palette.setColor(QPalette::ButtonText,QColor(light?"#171717":"#f0f0f0"));
+            VideoTransport transport;
+            transport.setPalette(palette);
+            auto* mute=transport.findChild<QPushButton*>(QStringLiteral("videoMuteButton"));
+            auto snapshot=Video();snapshot.muted=true;transport.SetSnapshot(snapshot);
+            const auto mutedPixels=mute->icon().pixmap(28,28).toImage();
+            const auto countColor=[](const QImage& image,const QColor& color) {
+                int count{};
+                for(int y=0;y<image.height();++y)for(int x=0;x<image.width();++x)
+                    if(image.pixelColor(x,y)==color)++count;
+                return count;
+            };
+            QVERIFY(countColor(mutedPixels,okuflow::theme_contrast::WarningTextColor(light))>8);
+            snapshot.muted=false;transport.SetSnapshot(snapshot);
+            const auto unmutedPixels=mute->icon().pixmap(28,28).toImage();
+            QVERIFY(countColor(unmutedPixels,palette.color(QPalette::Active,QPalette::ButtonText))>8);
+            QVERIFY(mutedPixels!=unmutedPixels);
+            QCOMPARE(mute->accessibleName(),QStringLiteral("Mute playback"));
+        }
     }
 
     void liveBadgesHaveReadableContrast()

@@ -42,6 +42,7 @@ public:
         bool playing{};
         bool seekable{};
         bool muted{true};
+        int volumePercent{100};
         bool hasAudio{};
         bool canSaveFrame{};
         bool canReturnToCamera{true};
@@ -80,6 +81,7 @@ signals:
     void ReturnToCameraRequested();
     void SaveFrameRequested();
     void MutedChanged(bool muted);
+    void VolumeChanged(int percent);
 
 protected:
     void changeEvent(QEvent* event) override;
@@ -95,6 +97,7 @@ private:
     void MoveFocusFrom(QWidget* leaving, QWidget* preferred);
     void ReturnFocus();
     void RefreshText();
+    void RefreshVolumeText();
     void ApplyButtonFaces();
     void ApplyFace(QPushButton* button);
     void ApplyStyle();
@@ -113,6 +116,10 @@ private:
     QLabel* stateLabel_{};
     QLabel* timeLabel_{};
     QSlider* timeline_{};
+    QSlider* volume_{};
+    QLabel* volumeLabel_{};
+    QLabel* volumeValue_{};
+    QWidget* audioRow_{};
     QPushButton* rewindButton_{};
     QPushButton* playPauseButton_{};
     QPushButton* jumpButton_{};

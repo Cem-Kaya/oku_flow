@@ -117,7 +117,7 @@ target_compile_definitions(video_audio_output_tests PRIVATE NOMINMAX WIN32_LEAN_
 target_link_libraries(video_audio_output_tests PRIVATE ole32)
 add_test(NAME video_audio_output_contract COMMAND video_audio_output_tests)
 set_tests_properties(video_audio_output_contract PROPERTIES TIMEOUT 30 LABELS "headless"
-    REQUIRED_FILES "${PROJECT_SOURCE_DIR}/include/okuflow/common/video_audio_output.hpp;${PROJECT_SOURCE_DIR}/src/common/video_audio_output.cpp")
+    REQUIRED_FILES "${PROJECT_SOURCE_DIR}/include/okuflow/common/video_audio_output.hpp;${PROJECT_SOURCE_DIR}/src/common/video_audio_output.cpp;${PROJECT_SOURCE_DIR}/src/common/video_audio_gain.hpp")
 
 add_executable(video_agent_control_tests video_agent_control_tests.cpp
     ${PROJECT_SOURCE_DIR}/src/app/agent/control_registry.cpp

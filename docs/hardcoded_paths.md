@@ -1167,6 +1167,18 @@ COM/driver calls retain their separate watchdog limits. See
 
 ## GPU selected-video resource policy
 
+Saved-video playback volume is session-only, defaults to 100%, and clamps to
+0–100 without amplification. The native slider uses five-point arrow steps,
+ten-point page steps and the existing 44-DIP touch height. Gain applies to the
+next WASAPI PCM buffer; previously submitted audio retains the old gain until
+the existing at-most-250-ms device buffer drains. It does not reset media time,
+change the system mixer or affect microphone/recording audio. Mute uses the
+existing theme warning colors (`#ffd166` dark / `#7a4d00` light) and restores
+normal ButtonText ink when unmuted. The silent
+`video_playback_audio_unmute_handoff` fixture forces the private pre-admission
+race using the existing pinned AAC asset and unchanged one-second PCM wait;
+ordinary playback has no test hook or additional stream-selection query.
+
 Extra Stable's analysis lease includes one 32-byte acquisition record copied
 with its pixels into pinned slot storage. Workers consume it after the same
 completion fence; this is metadata egress, not an image download. Held copies

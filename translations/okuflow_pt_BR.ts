@@ -3585,5 +3585,9 @@ Use “Conectar ao ChatGPT” na guia Assistente do modo Avançado para fazer lo
         <source>Using CPU backend: %1</source>
         <translation>Backend de CPU em uso: %1</translation>
     </message>
+    <message>
+        <source>Playback volume</source>
+        <translation>Volume de reprodução</translation>
+    </message>
 </context>
 </TS>

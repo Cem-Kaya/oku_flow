@@ -344,3 +344,15 @@ Review task: `uct-checkbox-48-label-translations-review-20261024-r1`.
 This is machine-assisted linguistic review; rendered text, RTL and native-speaker
 acceptance remain separate. The English feature name stays consistent with
 the existing UCT catalog entries.
+
+## Playback volume (2026-10-25)
+
+The new `Playback volume` source key is both the saved-video slider's visible
+label and accessible name. A read-only Luna task reviewed every one of its 24
+target strings: 23 OK, one Hebrew replacement applied, none unread. Task ID:
+`playback-volume-translations-review-20261025-r1`. Review JSON is retained under
+the private `video-audio-resume-20261025-r1` evidence folder. Translation parity
+and Qt compilation passed for all 24 catalogs with 891 complete keys each.
+This is model-assisted linguistic review; native-speaker, rendered RTL and
+spoken screen-reader acceptance remain separate. Android and website catalogs
+are unchanged.

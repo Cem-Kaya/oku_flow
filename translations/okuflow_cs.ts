@@ -3585,5 +3585,9 @@ Přihlaste se přes Connect ChatGPT na kartě Asistent v režimu Upřesnit.</tra
         <source>Using CPU backend: %1</source>
         <translation>Používá se backend CPU: %1</translation>
     </message>
+    <message>
+        <source>Playback volume</source>
+        <translation>Hlasitost přehrávání</translation>
+    </message>
 </context>
 </TS>

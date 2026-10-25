@@ -3585,5 +3585,9 @@ Wybierz „Połącz z ChatGPT” na karcie Asystent w trybie zaawansowanym, aby 
         <source>Using CPU backend: %1</source>
         <translation>Używany silnik CPU: %1</translation>
     </message>
+    <message>
+        <source>Playback volume</source>
+        <translation>Głośność odtwarzania</translation>
+    </message>
 </context>
 </TS>

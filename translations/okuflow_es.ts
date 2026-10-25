@@ -3585,5 +3585,9 @@ Use «Connect ChatGPT» en la pestaña Asistente del modo avanzado para iniciar 
         <source>Using CPU backend: %1</source>
         <translation>Motor CPU en uso: %1</translation>
     </message>
+    <message>
+        <source>Playback volume</source>
+        <translation>Volumen de reproducción</translation>
+    </message>
 </context>
 </TS>

@@ -12,6 +12,7 @@ namespace okuflow {
 struct VideoAudioOutputSnapshot {
     std::uint64_t requestGeneration{};
     bool available{}, clockValid{}, playing{}, muted{true}, flushPending{};
+    int volumePercent{100}; // requested playback gain, independent of mute
     // Device-consumed media time, never the PTS of merely queued PCM. The
     // timestamp uses steady_clock's epoch; callers must reject stale samples.
     std::int64_t renderedPts100ns{}, sampledAtSteady100ns{};
@@ -48,6 +49,9 @@ public:
     // publication immediately; native Stop/Reset is asynchronous. Repeating
     // an unchanged configuration does not reset the playback clock.
     void Configure(std::uint64_t requestGeneration, bool playing, bool muted);
+    // Session-only 0..100% gain, applied to the next native PCM buffer without
+    // restarting decoding, changing the device clock or changing system volume.
+    void SetVolumePercent(int percent);
     // Takes owned, interleaved signed PCM16. Rejected/over-budget packets are
     // discarded; false requires the caller to use its video-clock fallback.
     bool Push(VideoPlaybackAudio packet);

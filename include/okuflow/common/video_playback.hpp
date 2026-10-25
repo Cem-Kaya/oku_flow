@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -132,6 +133,8 @@ public:
     // packets are returned. Pause/seek/close/mute discard pending output.
     std::vector<VideoPlaybackAudio> TakeAudio();
 private:
+    friend struct VideoPlaybackTestAccess;
+    explicit VideoPlayback(std::function<void(bool)> beforeAudioPumpForTest);
     std::shared_ptr<State> state_;
 };
 

@@ -1,5 +1,7 @@
 #ifdef _WIN32
 #include "okuflow/common/video_audio_output.hpp"
+#include "../src/common/video_audio_gain.hpp"
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -132,6 +134,36 @@ void ConcurrentSupersessionRemainsBounded() {
     Expect(!sink.Push(Pcm(1000)) && !sink.Snapshot().queuedBytes,
         "retired producer cannot restore old audio after supersession");
 }
+void PlaybackGainPreservesSourceAndTiming() {
+    const std::array<std::int16_t,8> source{-32768,-32767,-3,-1,0,1,3,32767};
+    std::array<std::int16_t,8> output{};
+    detail::CopyPlaybackPcm16(output.data(),source.data(),sizeof(source),50);
+    Expect(output==std::array<std::int16_t,8>{-16384,-16383,-1,0,0,0,1,16383},
+        "50 percent attenuates signed PCM16 including extrema without overflow");
+    detail::CopyPlaybackPcm16(output.data(),source.data(),sizeof(source),150);
+    Expect(output==source,"100 percent and above preserve exact PCM bytes");
+    detail::CopyPlaybackPcm16(output.data(),source.data(),sizeof(source),-10);
+    Expect(output==std::array<std::int16_t,8>{},"zero percent and below produce silence");
+    Expect(source==std::array<std::int16_t,8>{-32768,-32767,-3,-1,0,1,3,32767},
+        "gain never changes decoded source PCM");
+
+    VideoAudioOutput sink(AdmissionOnly());
+    Expect(sink.Snapshot().volumePercent==100,"playback starts at full volume");
+    sink.Configure(41,true,false);
+    Expect(sink.Push(Pcm(41,480,900'000)),"volume fixture admits timed PCM");
+    const auto before=sink.Snapshot();
+    sink.SetVolumePercent(25);
+    const auto after=sink.Snapshot();
+    Expect(after.volumePercent==25 && after.requestGeneration==before.requestGeneration &&
+        after.queuedBytes==before.queuedBytes && after.queuedPackets==before.queuedPackets &&
+        after.queuedDuration100ns==before.queuedDuration100ns && after.playing==before.playing &&
+        after.muted==before.muted && after.clockValid==before.clockValid,
+        "gain leaves queued timing, mute, playback and generation intact");
+    sink.SetVolumePercent(-1);Expect(sink.Snapshot().volumePercent==0,"minimum volume is clamped");
+    sink.SetVolumePercent(101);Expect(sink.Snapshot().volumePercent==100,"maximum volume is clamped");
+    sink.SetVolumePercent(35);sink.Reset(42);sink.Close();
+    Expect(sink.Snapshot().volumePercent==35,"session volume survives seek and document close");
+}
 void NativeEndpointOptIn() {
     wchar_t enabled[8]{};
     if (GetEnvironmentVariableW(L"OKUFLOW_TEST_VIDEO_AUDIO_OUTPUT", enabled, 8) != 1 || enabled[0] != L'1') {
@@ -163,7 +195,8 @@ void NativeEndpointOptIn() {
 }
 int main() {
     SilentUntilExplicitPlayback(); PauseSeekMuteAndCloseRevoke(); ResourceCapsAndRecovery();
-    MalformedPcmFailsClosed(); ConcurrentSupersessionRemainsBounded(); NativeEndpointOptIn();
+    MalformedPcmFailsClosed(); ConcurrentSupersessionRemainsBounded();
+    PlaybackGainPreservesSourceAndTiming(); NativeEndpointOptIn();
     std::cout << (failures ? "FAIL" : "PASS") << " video audio output contracts\n";
     return failures ? 1 : 0;
 }

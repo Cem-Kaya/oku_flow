@@ -3585,5 +3585,9 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Using CPU backend: %1</source>
         <translation>CPU 백엔드 사용 중: %1</translation>
     </message>
+    <message>
+        <source>Playback volume</source>
+        <translation>재생 음량</translation>
+    </message>
 </context>
 </TS>

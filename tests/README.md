@@ -2148,6 +2148,18 @@ an audio endpoint; bounded lead and mute/Resume floors are asserted. Its
 provenance, opt-in private-file playback diagnostics and limits are in
 `docs/video_audio_preroll_repair.md`. PCM delivery does not prove audible
 speaker/device continuity.
+The separate `video_playback_audio_unmute_handoff` case forces Unmute while
+the native stream is still deselected immediately before audio admission. It
+requires PCM within the unchanged one-second bound, stable request/cursor
+identity and continuing audio availability. Its private per-instance hook is
+absent in ordinary construction; the fixture opens no endpoint. The initial
+failing log is retained with the 2026-10-25 repair evidence.
+`video_audio_output_contract` checks exact signed PCM16 attenuation, full-volume
+byte identity, zero silence, clamping and unchanged queue/timing/mute state.
+`video_transport_contract` checks volume keyboard/value accessibility, translated
+labels, snapshot updates, no unintended seek/mute, audio-source visibility and
+yellow/normal speaker ink on both palette schemes. These use Qt offscreen and
+do not establish spoken screen-reader or acoustic endpoint acceptance.
 The scene-cut portion also holds an earlier issued frame while the decoder is
 ahead, resumes to actual EOS, then replays the same-generation tail. This covers
 the shared worker's atomic restart/rewind handoff and pending-Resume End guard.

@@ -3585,5 +3585,9 @@ Pilih Hubungkan ChatGPT di tab Asisten pada mode Tingkat Lanjut untuk masuk.</tr
         <source>Using CPU backend: %1</source>
         <translation>Menggunakan backend CPU: %1</translation>
     </message>
+    <message>
+        <source>Playback volume</source>
+        <translation>Volume pemutaran</translation>
+    </message>
 </context>
 </TS>

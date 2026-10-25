@@ -3585,5 +3585,9 @@ Chọn Kết nối ChatGPT trong tab Trợ lý của chế độ Nâng cao để
         <source>Using CPU backend: %1</source>
         <translation>Đang dùng bộ xử lý OCR trên CPU: %1</translation>
     </message>
+    <message>
+        <source>Playback volume</source>
+        <translation>Âm lượng phát</translation>
+    </message>
 </context>
 </TS>

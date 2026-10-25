@@ -276,6 +276,21 @@ VideoTransport::VideoTransport(QWidget* parent) : QWidget(parent)
     secondaryLayout_->setContentsMargins(0, 0, 0, 0);
     secondaryLayout_->setSpacing(kRowSpacing);
     layout->addWidget(secondaryRow_);
+    audioRow_=new QWidget(this);
+    audioRow_->setObjectName(QStringLiteral("videoAudioRow"));
+    auto* audioLayout=new QHBoxLayout(audioRow_);
+    audioLayout->setContentsMargins(0,0,0,0);audioLayout->setSpacing(kRowSpacing);
+    volumeLabel_=new QLabel(audioRow_);volumeLabel_->setWordWrap(true);
+    volumeLabel_->setMinimumWidth(0);
+    volume_=new QSlider(Qt::Horizontal,audioRow_);
+    volume_->setObjectName(QStringLiteral("videoVolumeSlider"));
+    volume_->setRange(0,100);volume_->setValue(100);volume_->setSingleStep(5);volume_->setPageStep(10);
+    volume_->setMinimumSize(80,kButtonExtent);volume_->installEventFilter(this);
+    volumeLabel_->setBuddy(volume_);
+    volumeValue_=new QLabel(QStringLiteral("100%"),audioRow_);
+    volumeValue_->setObjectName(QStringLiteral("videoVolumeValue"));
+    audioLayout->addWidget(volumeLabel_);audioLayout->addWidget(volume_,1);audioLayout->addWidget(volumeValue_);
+    layout->addWidget(audioRow_);
 
     announcementTimer_ = new QTimer(this);
     announcementTimer_->setSingleShot(true);
@@ -300,6 +315,13 @@ VideoTransport::VideoTransport(QWidget* parent) : QWidget(parent)
     });
     connect(muteButton_, &QPushButton::clicked, this, [this]() {
         if (IsActionReady(muteButton_)) emit MutedChanged(!snapshot_.muted);
+    });
+    connect(volume_,&QSlider::valueChanged,this,[this](int percent) {
+        if(updating_)return;
+        if(!IsActionReady(volume_)) {
+            const QSignalBlocker block(volume_);volume_->setValue(snapshot_.volumePercent);
+        } else emit VolumeChanged(percent);
+        RefreshVolumeText();
     });
     connect(collapseButton_, &QPushButton::clicked, this, [this]() {
         SetCollapsed(!collapsed_);
@@ -410,6 +432,7 @@ void VideoTransport::SetSnapshot(const Snapshot& snapshot)
          snapshot_.positionMs != snapshot.positionMs);
     const bool changedText = changedState || snapshot_.playing != snapshot.playing ||
         snapshot_.muted != snapshot.muted || snapshot_.hasAudio != snapshot.hasAudio ||
+        snapshot_.volumePercent != std::clamp(snapshot.volumePercent,0,100) ||
         snapshot_.diagnosticDetail != snapshot.diagnosticDetail;
     if (changedDocument && dragging_) {
         dragging_ = false;
@@ -427,6 +450,7 @@ void VideoTransport::SetSnapshot(const Snapshot& snapshot)
         wheelRemainder_ = 0;
     }
     snapshot_ = snapshot;
+    snapshot_.volumePercent = std::clamp(snapshot_.volumePercent,0,100);
     snapshot_.durationMs = std::max<qint64>(0, snapshot_.durationMs);
     snapshot_.firstMs = std::clamp<qint64>(snapshot_.firstMs,0,snapshot_.durationMs);
     snapshot_.positionMs = std::max<qint64>(0, snapshot_.positionMs);
@@ -491,7 +515,7 @@ void VideoTransport::SetFocusReturnTarget(QWidget* target)
 bool VideoTransport::ActionShown(const QWidget* control) const
 {
     if (collapsed_ && control != collapseButton_) return false;
-    if (control == muteButton_) return muteShown_;
+    if (control == muteButton_ || control == volume_) return muteShown_;
     if (control == returnButton_) return returnShown_;
     return true;
 }
@@ -504,7 +528,7 @@ bool VideoTransport::IsActionReady(const QWidget* control) const
 bool VideoTransport::IsCommandReady(const QWidget* control) const
 {
     return control && snapshot_.source != Source::None && !uiHidden_ &&
-        (control != muteButton_ || muteShown_) && (control != returnButton_ || returnShown_) &&
+        ((control != muteButton_ && control != volume_) || muteShown_) && (control != returnButton_ || returnShown_) &&
         control->isEnabled() &&
         control->property("okuflowTransportGate").toInt() == static_cast<int>(Gate::Ready);
 }
@@ -516,7 +540,7 @@ void VideoTransport::ApplyGate(QWidget* control, Gate gate)
     // Qt transfers focus immediately when setEnabled(false) is called. Keep
     // the semantic focus owner inert until the user leaves it or it is ready.
     control->setEnabled(gate == Gate::Ready || control->hasFocus());
-    if (control != timeline_ && control != collapseButton_) {
+    if (control != timeline_ && control != volume_ && control != collapseButton_) {
         SetLiveAccessibleDescription(control, gate == Gate::Ready ? QString() : StateText());
     }
     if (changed) {
@@ -557,8 +581,11 @@ void VideoTransport::UpdateActions()
     ApplyGate(returnButton_, hasSource && snapshot_.canReturnToCamera ? Gate::Ready : Gate::Unavailable);
     ApplyGate(saveFrameButton_, gate(snapshot_.canSaveFrame && !pending, pending));
     ApplyGate(muteButton_, gate(snapshot_.source == Source::Video && snapshot_.hasAudio));
+    ApplyGate(volume_,gate(snapshot_.source==Source::Video && snapshot_.hasAudio));
     const bool changedReturn = SetActionShown(returnButton_, snapshot_.source == Source::Video);
     const bool changedMute = SetActionShown(muteButton_, snapshot_.source == Source::Video && snapshot_.hasAudio);
+    if(changedMute && !muteShown_)MoveFocusFrom(volume_,playPauseButton_);
+    audioRow_->setVisible(!collapsed_ && muteShown_);
     if (changedReturn || changedMute) UpdateLayout();
 }
 
@@ -615,6 +642,13 @@ void VideoTransport::RefreshText()
     NameButton(saveFrameButton_, QStringLiteral("Save frame"));
     NameButton(muteButton_, snapshot_.muted ? QStringLiteral("Unmute playback")
                                           : QStringLiteral("Mute playback"));
+    volumeLabel_->setText(TranslateUi(QStringLiteral("Playback volume")));
+    volume_->setAccessibleName(TranslateUi(QStringLiteral("Playback volume")));
+    {
+        const QSignalBlocker block(volume_);
+        if(!volume_->isSliderDown())volume_->setValue(std::clamp(snapshot_.volumePercent,0,100));
+    }
+    RefreshVolumeText();
     NameButton(collapseButton_, collapsed_ ? QStringLiteral("Show UI") : QStringLiteral("Hide UI"));
     collapseButton_->setAccessibleDescription(TranslateUi(QStringLiteral("Video controls")));
     setAccessibleName(TranslateUi(QStringLiteral("Video controls")));
@@ -632,6 +666,14 @@ void VideoTransport::RefreshText()
     }
     UpdateLayout();
     ApplyStyle();
+}
+
+void VideoTransport::RefreshVolumeText()
+{
+    const auto value=QLocale().toString(volume_->value())+QLatin1Char('%');
+    volumeValue_->setText(value);
+    volume_->setAccessibleDescription(value);
+    volume_->setToolTip(TranslateUi(QStringLiteral("Playback volume"))+QStringLiteral(": ")+value);
 }
 
 void VideoTransport::RequestAnnouncement()
@@ -753,6 +795,7 @@ std::vector<QWidget*> VideoTransport::FocusTargets() const
                                   saveFrameButton_};
     if (collapseButton_->parentWidget() == this) targets.insert(targets.begin(), collapseButton_);
     if (muteShown_) targets.push_back(muteButton_);
+    if (muteShown_) targets.push_back(volume_);
     if (returnShown_) targets.push_back(returnButton_);
     return targets;
 }
@@ -853,7 +896,9 @@ void VideoTransport::ApplyFace(QPushButton* button)
     }
     const bool slashed = button == muteButton_ && snapshot_.muted;
     const QPalette pal = palette();
-    const QColor readyInk = pal.color(QPalette::Active, QPalette::ButtonText);
+    const QColor readyInk = slashed
+        ? theme_contrast::WarningTextColor(theme_contrast::IsLightTheme(pal))
+        : pal.color(QPalette::Active, QPalette::ButtonText);
     const QColor dimInk = pal.color(QPalette::Disabled, QPalette::ButtonText);
     const bool ready = button->property("okuflowTransportGate").toInt() ==
                        static_cast<int>(Gate::Ready);
@@ -877,6 +922,10 @@ void VideoTransport::ApplyFace(QPushButton* button)
     } else {
         // Hosts without the compiled icon resources (unit fixtures) keep
         // the previous unicode glyphs instead of blank buttons.
+        auto buttonPalette=button->palette();
+        buttonPalette.setColor(QPalette::Active,QPalette::ButtonText,ink);
+        buttonPalette.setColor(QPalette::Inactive,QPalette::ButtonText,ink);
+        if(button->palette()!=buttonPalette)button->setPalette(buttonPalette);
         button->setIcon(QIcon());
         if (button->text() != glyph) button->setText(glyph);
     }
@@ -980,6 +1029,7 @@ void VideoTransport::UpdateLayout()
     for (auto* widget : std::vector<QWidget*>{rewindButton_, playPauseButton_, timeline_,
                          timeLabel_, saveFrameButton_}) widget->setVisible(!collapsed_);
     muteButton_->setVisible(!collapsed_ && muteShown_);
+    audioRow_->setVisible(!collapsed_ && muteShown_);
     returnButton_->setVisible(!collapsed_ && returnShown_);
     secondaryRow_->setVisible(!collapsed_ && below);
     if(focused && focused->isEnabled() && focused->isVisibleTo(this) && !focused->hasFocus())

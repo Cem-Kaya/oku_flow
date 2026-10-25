@@ -3585,5 +3585,9 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
         <source>Using CPU backend: %1</source>
         <translation>CPU ile çalışıyor: %1</translation>
     </message>
+    <message>
+        <source>Playback volume</source>
+        <translation>Oynatma ses düzeyi</translation>
+    </message>
 </context>
 </TS>

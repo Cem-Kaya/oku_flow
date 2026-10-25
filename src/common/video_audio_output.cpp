@@ -1,5 +1,6 @@
 #ifdef _WIN32
 #include "okuflow/common/video_audio_output.hpp"
+#include "video_audio_gain.hpp"
 #include <audioclient.h>
 #include <mmdeviceapi.h>
 #include <wrl/client.h>
@@ -69,6 +70,7 @@ struct VideoAudioOutput::State {
     VideoAudioOutputSnapshot snapshot;
     std::deque<Packet> pending;
     std::atomic<bool> stop{}, active{}, failed{};
+    std::atomic<int> volumePercent{100};
     std::atomic<std::uint64_t> epoch{1};
     std::atomic<std::int64_t> nativeCallStarted{};
     bool nativePlayback{}, ownsWorker{};
@@ -334,7 +336,7 @@ void Run(const std::shared_ptr<VideoAudioOutput::State>& s) noexcept {
                         Check(Call(*s, epoch, [&] { return device.render->GetBuffer(
                             static_cast<UINT32>(frames), &destination); }), "Acquire playback audio buffer");
                         const auto bytes = frames * p.channels * 2;
-                        std::memcpy(destination, p.pcm.data() + offsetBytes, bytes);
+                        detail::CopyPlaybackPcm16(destination,p.pcm.data()+offsetBytes,bytes,s->volumePercent.load());
                         // An acquired native buffer must always be released,
                         // including cancellation while GetBuffer was blocked.
                         HRESULT release{};
@@ -415,6 +417,12 @@ VideoAudioOutput::~VideoAudioOutput() {
         Invalidate(*state_);
     }
     state_->changed.notify_all();
+}
+void VideoAudioOutput::SetVolumePercent(int percent) {
+    percent=std::clamp(percent,0,100);
+    std::lock_guard lock(state_->mutex);
+    state_->volumePercent.store(percent);
+    state_->snapshot.volumePercent=percent;
 }
 void VideoAudioOutput::Configure(std::uint64_t generation, bool playing, bool muted) {
     {

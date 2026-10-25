@@ -3585,5 +3585,9 @@ Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</
         <source>Using CPU backend: %1</source>
         <translation>OCR använder CPU: %1</translation>
     </message>
+    <message>
+        <source>Playback volume</source>
+        <translation>Uppspelningsvolym</translation>
+    </message>
 </context>
 </TS>

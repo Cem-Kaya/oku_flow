@@ -124,6 +124,7 @@ bool HasDecodeCredit(const Reader& r, const std::shared_ptr<PixelBudget>& pool) 
 }
 }
 struct VideoPlayback::State {
+    std::function<void(bool)> beforeAudioPumpForTest;
     mutable std::mutex mutex; std::condition_variable changed;
     std::atomic<bool> stop{}; std::atomic<std::uint64_t> generation{};
     Command pending;
@@ -694,6 +695,11 @@ void MarkNativeOperation(VideoPlayback::State& s, std::uint64_t generation, bool
 void QueueAudio(Reader& r, VideoPlayback::State& s, std::uint64_t gen,
                 std::int64_t until, Clock::time_point deadline) {
     if (!r.audioAvailable || r.audioEos) return;
+    if (s.beforeAudioPumpForTest) {
+        BOOL selected{};
+        Check(r.source->GetStreamSelection(MF_SOURCE_READER_FIRST_AUDIO_STREAM,&selected),"Inspect fixture audio selection");
+        s.beforeAudioPumpForTest(selected != FALSE);
+    }
     // Keep audio independent from microphone settings. Up to eight short
     // decoder samples per pass, 500 ms and 2 MiB total remain queued.
     for (unsigned i = 0; i < 8 && Clock::now() < deadline && s.Current(gen); ++i) {
@@ -703,7 +709,10 @@ void QueueAudio(Reader& r, VideoPlayback::State& s, std::uint64_t gen,
         // future audio faster than its consumed/host playback clock.
         if (r.audioEnd100ns >= until) return;
         { std::lock_guard lock(s.mutex);
-          if (s.muted || !s.playing || s.audio.size() >= 32 || s.audioBytes >= VideoPlayback::kAudioByteLimit ||
+          // Unmute may arrive after the playback-loop preflight while the
+          // native audio stream is still deselected. Let the same worker apply
+          // its restart/stream selection before another native audio read.
+          if (s.muted || !s.playing || s.restartAtCursor || s.audio.size() >= 32 || s.audioBytes >= VideoPlayback::kAudioByteLimit ||
               s.audioDuration100ns >= 5'000'000 ||
               (!s.audio.empty() && s.audio.back().pts100ns > until + 5'000'000)) return;
         }
@@ -754,7 +763,7 @@ void QueueAudio(Reader& r, VideoPlayback::State& s, std::uint64_t gen,
         BYTE* data{}; if (FAILED(buffer->Lock(&data, nullptr, nullptr))) return;
         std::memcpy(packet.pcm.data(), data + skipBytes, keptBytes); buffer->Unlock();
         std::lock_guard lock(s.mutex);
-        if (!s.Current(gen) || s.muted || !s.playing) return;
+        if (!s.Current(gen) || s.muted || !s.playing || s.restartAtCursor) return;
         if (s.audioBytes + keptBytes > VideoPlayback::kAudioByteLimit || s.audio.size() >= 32 ||
             s.audioDuration100ns + keptDuration > 5'000'000) return;
         s.audioBytes += keptBytes; s.audioDuration100ns += keptDuration; s.audio.push_back(std::move(packet));
@@ -1386,7 +1395,11 @@ bool VideoPlaybackLayoutFits(std::uint32_t width,std::uint32_t height,std::int64
 bool VideoPlaybackTimestampFits(std::int64_t pts, std::int64_t duration) {
     return pts >= 0 && pts <= kMaximumClock100ns && duration >= 0 && duration <= kMaximumClock100ns - pts;
 }
-VideoPlayback::VideoPlayback() : state_(std::make_shared<State>()) { std::thread(Worker, state_).detach(); }
+VideoPlayback::VideoPlayback() : VideoPlayback(std::function<void(bool)>{}) {}
+VideoPlayback::VideoPlayback(std::function<void(bool)> beforeAudioPumpForTest) : state_(std::make_shared<State>()) {
+    state_->beforeAudioPumpForTest=std::move(beforeAudioPumpForTest);
+    std::thread(Worker, state_).detach();
+}
 VideoPlayback::~VideoPlayback() { state_->stop.store(true); state_->generation.fetch_add(1); state_->changed.notify_one(); }
 std::uint64_t VideoPlayback::OpenFile(std::wstring path) { Command c; c.kind = CommandKind::Open; c.path = std::move(path); return Submit(state_, std::move(c)); }
 uct::ImmutableCorroborationPolicy VideoPlayback::CorroborationPolicy(

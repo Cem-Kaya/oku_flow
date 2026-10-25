@@ -26,6 +26,20 @@ microphone audio. Necessary conversion and orientation are allowed; viewport
 crop, reading colours, UCT glyphs, neural enhancement and annotation ink are not.
 Paired photos and existing paired-video notes/transcripts stay compatible.
 
+Saved videos with an audio track show a separate **Playback volume** slider
+from 0 to 100%, initially 100%. It changes only playback output in this app
+session; Mute remains independent. Arrow keys change five percentage points,
+Page Up/Down ten, and Home/End select the limits. The visible percentage,
+translated accessible name and native slider value stay synchronized during
+keyboard, pointer, snapshot and language updates. The slider follows Mute in
+the Tab sequence, with Return to camera last; it hides for silent sources,
+recording review and collapsed controls. The muted speaker is yellow on dark
+surfaces and contrast-adjusted amber on light surfaces; unmuting restores the
+normal theme icon color. Existing recording feedback protection stays in force.
+
+The 2026-10-25 audio handoff repair and silent decoder/output test scope are
+documented in [the audio repair record](video_audio_preroll_repair.md).
+
 ## Ownership and review plan
 
 - Separate Original admission, selected-scene presentation and UCT admission.

@@ -69,6 +69,7 @@ struct OkuFlowApp::VideoDocumentState {
     std::optional<std::int64_t> savePts100ns;
     QString documentId, recordingDocumentId, saveDocumentId, saveState{QStringLiteral("idle")};
     bool active{}, finishing{}, followingLive{}, playing{}, muted{true};
+    int volumePercent{100};
     bool pendingHold{}, heldLive{}, pausedDisplayHold{}, resumePending{}, waitingNextPart{}, heldUnrecorded{}, heldMappingUnavailable{};
     std::optional<RecordingFrameAdmission> heldAdmission;
     std::uint64_t heldSequence{};
@@ -214,6 +215,12 @@ void OkuFlowApp::InitializeVideoPlayback()
         // feed the microphone and playback mute never changes capture mute.
         videoDocument_->muted = videoDocument_->kind == VideoDocumentState::Kind::Recording || muted;
         videoDocument_->player.SetMuted(videoDocument_->muted);
+        PollVideoPlayback();
+    });
+    connect(transport,&VideoTransport::VolumeChanged,this,[this](int percent) {
+        if(!videoDocument_)return;
+        videoDocument_->volumePercent=std::clamp(percent,0,100);
+        videoDocument_->audio.SetVolumePercent(videoDocument_->volumePercent);
         PollVideoPlayback();
     });
     PollVideoPlayback();
@@ -1312,7 +1319,7 @@ void OkuFlowApp::PollVideoPlayback()
 
     VideoTransport::Snapshot ui;
     ui.sourceGeneration = doc.transportGeneration;
-    ui.muted = outputMuted; ui.playing = doc.playing || doc.waitingNextPart;
+    ui.muted = outputMuted; ui.volumePercent=doc.volumePercent; ui.playing = doc.playing || doc.waitingNextPart;
     ui.canSaveFrame = MediaViewSelected() && doc.presented && !doc.savePending;
     if (doc.kind == VideoDocumentState::Kind::Recording) {
         ui.source = doc.active || doc.finishing ? VideoTransport::Source::Recording : VideoTransport::Source::Video;
