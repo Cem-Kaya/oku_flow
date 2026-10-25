@@ -3677,5 +3677,13 @@ Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</
         <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
         <translation>Videor och bilder (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
     </message>
+    <message>
+        <source>Save document</source>
+        <translation>Spara dokument</translation>
+    </message>
+    <message>
+        <source>Saved document copy.</source>
+        <translation>En kopia av dokumentet har sparats.</translation>
+    </message>
 </context>
 </TS>

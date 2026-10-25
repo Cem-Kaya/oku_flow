@@ -59,7 +59,71 @@ existing immutable single-frame OCR path, including scanned content and images
 inside mixed pages. No video neighbor is invented. Changing pages revokes old
 OCR source authority. Embedded text and OCR reading text remain separate.
 
+## Page drawings and one saved copy
+
+PDFs render one selected page at a time, including long documents. **Previous
+page**, **Next page**, and the page-number field navigate without decoding every
+page. Drawings belong to their PDF page or picture, in normalized source
+coordinates. They remain visible after leaving Draw and follow pan, zoom and
+rotation. Returning to a page restores its drawing and in-session undo history.
+Camera and video drawing behavior is unchanged.
+
+**Save document**, the Draw save action, and Photo while viewing a static file
+save the entire annotated document into `OkuFlow/Documents` under the configured
+OkuFlow folder. The first save creates one working copy; subsequent saves update
+that same file. A drawing on page 1 and another on page 3 are saved together in
+one PDF. Clearing a drawing and saving removes that drawing from the copy. The
+original is never replaced. A matching `.ink.json` sidecar preserves editable
+page ink when reopening the original in OkuFlow; keep it beside the working
+copy. A modified original has a different content identity and working-copy name.
+An externally changed working copy is preserved and reported instead of being
+overwritten. If another program locks the destination, saving fails without
+creating a succession of new copies.
+
+Qt writes vector drawing overlays and qpdf merges them into the original PDF.
+This preserves all pages and native text instead of rasterizing the document.
+Only edited pages need overlay pages; unrelated pages are retained. Pictures
+save as full-picture PNG copies with the drawing embedded, independent of the
+current viewport crop. Picture export has the same 16-Mpixel bound as document
+presentation. Save runs on the image I/O worker and takes a snapshot of every
+page's ink at the time of the request. Later drawing edits require another Save.
+PDF parsing and the export subprocess are local; no provider receives the file.
+
+### PDF export runtime
+
+Run `scripts/stage_pdf_export.ps1 -Install` once for development and tests.
+It installs the pinned upstream qpdf 12.4.2 Windows runtime into
+`%LOCALAPPDATA%/OkuFlow/qpdf/12.4.2`; `OKUFLOW_QPDF_ROOT` selects an explicit
+development cache. There are no configure-time or application-time downloads.
+The release bundle stages the verified runtime at `app/qpdf/`, including exact
+qpdf, OpenSSL, zlib and libjpeg-turbo notices. The runtime uses the existing
+supported system VC runtime; vendor CRT copies are not deployed. Only the
+bundled path or explicit/versioned cache is used, never a tool found on PATH.
+
+`file_document_contract` checks a 600-page PDF using first/last/middle page
+requests, repeated saves into one PDF, retained native text and page count,
+rotated/cropped PDF placement, source-coordinate picture export, restored ink,
+cleared drawings, and refusal to overwrite an externally changed output.
+`pdf_export_distribution_contract` checks actual pinned runtime staging, SPDX
+membership and tamper/extra-file refusals. The opt-in native file fixture
+checks page ink and the real application's two-save path with an unshown D3D12
+presenter. These headless checks do not claim spoken screen-reader acceptance.
+
 ## Build and validation
+
+Local validation on 26 October: the tracked release compile, complete selected
+non-GUI CPU suite (262 passing, 9 skipped, four passes with skipped Qt rows),
+and CUDA delta (15 passing, 5 skipped) completed with zero unresolved cases.
+This used `OKUFLOW_AGENT_EXCLUDE_GUI=1` and remains partial desktop validation.
+PCH-disabled document, transport, distribution and shared-source checks passed
+4/331. All 24 catalogs have 915 complete source keys; the 48 added translations
+received a complete model review with the flagged Dutch wording corrected.
+Native screen-reader speech and GUI acceptance are separate from these results.
+Failed receipts remain preserved: the first PDF-copy test held its output open,
+the file-release assertion initially repeated a successful rename, and the
+cleared-ink test initially expected white from Qt's default transparent render.
+The repaired checks close the reader, make release polling idempotent, and use
+the same explicit white PDF background as production, respectively.
 
 Qt PDF 6.12.0 is required alongside the existing Qt SDK. Run
 `scripts/install_qt_pdf.ps1 -QtPrefix C:/Qt/6.12.0/msvc2022_64` to add the pinned

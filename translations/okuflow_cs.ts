@@ -3677,5 +3677,13 @@ Přihlaste se přes Connect ChatGPT na kartě Asistent v režimu Upřesnit.</tra
         <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
         <translation>Videa a obrázky (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
     </message>
+    <message>
+        <source>Save document</source>
+        <translation>Uložit dokument</translation>
+    </message>
+    <message>
+        <source>Saved document copy.</source>
+        <translation>Kopie dokumentu byla uložena.</translation>
+    </message>
 </context>
 </TS>

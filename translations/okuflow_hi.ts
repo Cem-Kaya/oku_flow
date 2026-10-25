@@ -3677,5 +3677,13 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
         <translation>वीडियो और चित्र (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
     </message>
+    <message>
+        <source>Save document</source>
+        <translation>दस्तावेज़ सहेजें</translation>
+    </message>
+    <message>
+        <source>Saved document copy.</source>
+        <translation>दस्तावेज़ की कॉपी सहेजी गई.</translation>
+    </message>
 </context>
 </TS>

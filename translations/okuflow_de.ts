@@ -3677,5 +3677,13 @@ Melden Sie sich auf der erweiterten Registerkarte Assistent über ChatGPT verbin
         <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
         <translation>Videos und Bilder (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
     </message>
+    <message>
+        <source>Save document</source>
+        <translation>Dokument speichern</translation>
+    </message>
+    <message>
+        <source>Saved document copy.</source>
+        <translation>Dokumentkopie gespeichert.</translation>
+    </message>
 </context>
 </TS>

@@ -3677,5 +3677,13 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
         <translation>動画と画像 (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
     </message>
+    <message>
+        <source>Save document</source>
+        <translation>文書を保存</translation>
+    </message>
+    <message>
+        <source>Saved document copy.</source>
+        <translation>文書のコピーを保存しました。</translation>
+    </message>
 </context>
 </TS>

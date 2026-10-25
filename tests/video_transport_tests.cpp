@@ -129,6 +129,11 @@ private slots:
         QCOMPARE(page->accessibleName(),QStringLiteral("Page"));
         QVERIFY(transport.playPauseButton()->isHidden());QVERIFY(transport.timeline()->isHidden());
         auto* previous=transport.findChild<QPushButton*>("videoRewindButton");
+        QVERIFY(previous->text().contains("Previous page"));
+        QVERIFY(transport.jumpButton()->text().contains("Next page"));
+        auto* save=transport.findChild<QPushButton*>("videoSaveFrameButton"); QVERIFY(save);
+        QCOMPARE(save->accessibleName(),QStringLiteral("Save document"));
+        QVERIFY(save->text().contains("Save document"));
         QVERIFY(!previous->isEnabled());QVERIFY(transport.jumpButton()->isEnabled());
         QSignalSpy changes(&transport,&VideoTransport::PageRequested);
         QSignalSpy plays(&transport,&VideoTransport::PlayPauseRequested);

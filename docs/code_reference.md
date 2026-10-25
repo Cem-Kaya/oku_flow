@@ -1,5 +1,47 @@
 # OkuFlow Code Reference
 
+## Document page ink and saved copies (26 October 2026)
+
+- `FilePageInk` maps zero-based page indices to normalized source-space vector
+  strokes. `LoadFileAnnotations` restores the content-bound working-copy
+  sidecar; `SaveFileAnnotations` snapshots the original, checks source/output
+  hashes, serializes bounded ink, writes sparse Qt vector overlay pages, and
+  runs the pinned qpdf subprocess with a finite timeout. It atomically replaces
+  the same owned output on repeated saves. The original is never an output.
+  A final sidecar records the output hash and all page strokes. A crash between
+  the two commits can leave a hash mismatch; later saves refuse it and preserve
+  the output rather than silently replacing an unrecognized file.
+- `FileAnnotationPdfTool` resolves `qpdf/bin/qpdf.exe` under the application,
+  then the explicit `OKUFLOW_QPDF_ROOT` or versioned LocalAppData cache. It never
+  searches PATH or downloads. Export preserves PDF content/text and overlays
+  drawings; it does not regenerate pages from extracted text or screenshots.
+- `FileDocument::Open` optionally loads saved ink on its existing worker once
+  per document generation. Page requests retain the parser and render one page.
+  `FileDocumentSnapshot::annotations` is consumed on adoption, not retained with
+  every full-resolution page buffer.
+- `AnnotationModel::RestoreStrokes` restores stable drawing content with fresh
+  IDs and no stale gesture/selection. `AnnotationOverlay::{CopyModel,
+  RestoreModel,SetDocumentInk,DocumentInk}` retain per-page models and their undo
+  history. Document ink remains passively visible outside Draw, without its
+  toolbars/selection handles or mouse interception. Existing view transforms
+  anchor strokes during pan/zoom; canonical page storage rebases rotation once.
+- `OkuFlowApp::StoreDocumentAnnotations` snapshots the current page before
+  adoption/source changes and saves. `SaveSelectedFileDocument` queues all page
+  ink through the existing image I/O pool and reports the real save receipt.
+  Native Photo, transport Save and Draw snapshots route there only for static
+  documents. Video/camera capture paths and external photo-operation ownership
+  remain unchanged. `UserDataPaths::Documents` owns the output directory.
+  `MainWindow::setDocumentAnnotationMode` also synchronizes the former Photo
+  control's Save document caption, icon, tooltip and accessible description.
+- `VideoTransport` gives PDF navigation visible Previous/Next page captions and
+  a synchronized Save document accessible name. Pictures keep page navigation
+  hidden. Static sources never acquire video seek/play semantics.
+- `stage_pdf_export.ps1` installs/stages pinned binaries and original notices;
+  `Get-OkuFlowPdfBundleMetadata` verifies the closed inventory and emits qpdf
+  plus static dependency SPDX relationships. `test_pdf_export.ps1` exercises
+  actual staging and tamper refusals. CTest declares both helper binaries,
+  notices and scripts as runtime fingerprint inputs.
+
 ## File documents and source selection (26 October 2026)
 
 - `common/media_frame_layout.hpp::MediaFrameLayoutFits` validates a single

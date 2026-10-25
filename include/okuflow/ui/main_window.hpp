@@ -238,6 +238,7 @@ public:
                                   int textSizePixels);
     void setAnnotationViewTransform(const ViewTransform& transform);
     void setAnnotationMode(bool enabled, std::optional<AnnotationTool> initialTool = {}, bool preserveFocus = false);
+    void setDocumentAnnotationMode(bool enabled);
     // Centered camera-state message shown over the view while no camera
     // picture is presented (starting, offline, reconnecting). An empty title
     // hides it. Visual only: the pipeline status label owns announcements.

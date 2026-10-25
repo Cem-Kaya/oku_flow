@@ -3677,5 +3677,13 @@ Use “Conectar ao ChatGPT” na guia Assistente do modo Avançado para fazer lo
         <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
         <translation>Vídeos e imagens (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
     </message>
+    <message>
+        <source>Save document</source>
+        <translation>Salvar documento</translation>
+    </message>
+    <message>
+        <source>Saved document copy.</source>
+        <translation>Cópia do documento salva.</translation>
+    </message>
 </context>
 </TS>

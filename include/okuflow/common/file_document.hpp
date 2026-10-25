@@ -1,6 +1,7 @@
 #pragma once
 #ifdef _WIN32
 #include <QImage>
+#include "okuflow/common/file_annotations.hpp"
 #include <QString>
 #include <cstdint>
 #include <memory>
@@ -16,6 +17,7 @@ struct FileDocumentSnapshot {
     std::shared_ptr<const std::vector<std::uint8_t>> pixels;
     int page{}, pageCount{}, longEdge{};
     bool pdf{};
+    std::shared_ptr<const FileAnnotationCopy> annotations;
 };
 
 // One serial, latest-request-only worker owns the held file and PDF parser.
@@ -26,7 +28,7 @@ public:
     ~FileDocument();
     FileDocument(const FileDocument&) = delete;
     FileDocument& operator=(const FileDocument&) = delete;
-    std::uint64_t Open(QString path, int longEdge = 4096);
+    std::uint64_t Open(QString path, int longEdge = 4096, QString annotationDirectory = {});
     std::uint64_t SelectPage(int page, int longEdge = 4096);
     void Close();
     FileDocumentSnapshot Snapshot() const;

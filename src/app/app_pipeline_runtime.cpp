@@ -3529,6 +3529,7 @@ void OkuFlowApp::CancelAnnotationCaptures()
 
 void OkuFlowApp::QueueAnnotationSnapshot(int reason)
 {
+    if (SaveSelectedFileDocument()) return;
     if (!mainWindow_ || !mainWindow_->annotationOverlay() || !mainWindow_->annotationOverlay()->IsActive() ||
         !mainWindow_->annotationOverlay()->HasInk()) {
         return;

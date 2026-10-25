@@ -3677,5 +3677,13 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
         <translation>视频和图片 (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
     </message>
+    <message>
+        <source>Save document</source>
+        <translation>保存文档</translation>
+    </message>
+    <message>
+        <source>Saved document copy.</source>
+        <translation>文档副本已保存。</translation>
+    </message>
 </context>
 </TS>

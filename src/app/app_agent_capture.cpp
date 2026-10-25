@@ -12,7 +12,7 @@ ViewOverlaySnapshot OkuFlowApp::CaptureViewOverlays(const ViewTransform& transfo
     if (!mainWindow_ || !transform.valid) return snapshot;
     if (auto* text = mainWindow_->ultraClearTextOverlay())
         snapshot.text = text->CaptureSnapshot(transform, text->size());
-    if (auto* ink = mainWindow_->annotationOverlay(); ink && ink->IsActive() && ink->HasInk())
+    if (auto* ink = mainWindow_->annotationOverlay(); ink && (ink->IsActive() || ink->DocumentInk()) && ink->HasInk())
         snapshot.strokes = ink->Strokes();
     return snapshot;
 }

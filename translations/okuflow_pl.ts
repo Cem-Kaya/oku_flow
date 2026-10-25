@@ -3677,5 +3677,13 @@ Wybierz „Połącz z ChatGPT” na karcie Asystent w trybie zaawansowanym, aby 
         <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
         <translation>Wideo i obrazy (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
     </message>
+    <message>
+        <source>Save document</source>
+        <translation>Zapisz dokument</translation>
+    </message>
+    <message>
+        <source>Saved document copy.</source>
+        <translation>Zapisano kopię dokumentu.</translation>
+    </message>
 </context>
 </TS>

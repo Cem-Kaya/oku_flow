@@ -3677,5 +3677,13 @@ Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u
         <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
         <translation>Video’s en afbeeldingen (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
     </message>
+    <message>
+        <source>Save document</source>
+        <translation>Document opslaan</translation>
+    </message>
+    <message>
+        <source>Saved document copy.</source>
+        <translation>Kopie van het document opgeslagen.</translation>
+    </message>
 </context>
 </TS>

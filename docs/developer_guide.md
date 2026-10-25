@@ -1,5 +1,12 @@
 # OkuFlow developer guide
 
+PDF/picture drawings and one-copy saves are described in
+[file_documents.md](file_documents.md). Install the pinned local PDF export
+runtime before validation with `scripts/stage_pdf_export.ps1 -Install`.
+The tracked Windows CI does this explicitly; CMake and the app do not download.
+Bundles stage the verified runtime/notices and include their SPDX relationships.
+Use the existing matching Qt PDF module for viewing and vector overlay authoring.
+
 [Curved-line ribbon and current-ink experiments](uct_ribbon_and_current_ink.md)
 records automatic curved processing in every OCR mode, original-pixel geometry/proof
 composition, CPU-only ink diagnostics, measured BF16 overhead and actual OCR

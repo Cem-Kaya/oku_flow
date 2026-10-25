@@ -11,6 +11,11 @@
 
 ## [Unreleased]
 
+- Keep drawings attached to PDF pages and pictures across navigation and zoom.
+  Save one annotated working copy under OkuFlow/Documents, updating it on later
+  saves with all edited PDF pages while preserving the original and native text.
+  Add visible page navigation and a pinned local qpdf export runtime/notices.
+
 - Fix large PDF/picture rendering retaining the preceding source: validate the
   selected frame independently of video queue memory and preserve its pixels
   on GPU fallback. Combine video/picture in one source choice and keep PDF separate.

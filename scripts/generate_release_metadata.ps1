@@ -29,6 +29,7 @@ $bundle = (Resolve-Path -LiteralPath $BundlePath).Path
 . (Join-Path $PSScriptRoot 'windows-installer/mcp_bundle.ps1')
 . (Join-Path $PSScriptRoot 'windows-installer/release_build_facts.ps1')
 . (Join-Path $PSScriptRoot 'windows-installer/uct_bundle.ps1')
+. (Join-Path $PSScriptRoot 'windows-installer/pdf_bundle.ps1')
 $layout = Get-OkuFlowBundleLayout $bundle
 $payload = $layout.PayloadRoot
 $buildFacts = Get-OkuFlowReleaseBuildFacts $BuildDirectory $Configuration (Join-Path $bundle $layout.ApplicationRelativePath)
@@ -49,6 +50,7 @@ if (Test-Path -LiteralPath $mcpExecutable -PathType Leaf) {
 $repository = (Resolve-Path -LiteralPath $RepositoryPath).Path
 if ([IO.Path]::GetFullPath($buildFacts.sourceDirectory) -ne $repository) { throw 'Build facts belong to a different source checkout.' }
 $uctInfo = Get-OkuFlowUctBundleMetadata -BundleRoot $bundle -RepositoryRoot $repository -Required:$RequireUctPayload
+$pdfInfo = Get-OkuFlowPdfBundleMetadata -PayloadRoot $payload -RepositoryRoot $repository -Prefix $layout.Prefix
 if ($uctInfo -and $cudaIsEnabled) {
     $nvrtcLicense = @($uctInfo.Inventory | Where-Object path -CEQ 'app/ocr/tensorrt/cuda/LICENSE')
     if ($nvrtcLicense.Count -ne 1 -or $nvrtcLicense[0].sha256 -cne $buildFacts.cuda.licenseSha256) {
@@ -126,6 +128,14 @@ if ($uctInfo) {
         $actual = @($fileRecords | Where-Object path -CEQ $ocrRecord.path)
         if ($actual.Count -ne 1 -or $actual[0].bytes -ne $ocrRecord.bytes -or $actual[0].sha256 -cne $ocrRecord.sha256) {
             throw "UCT payload changed during release inventory generation: $($ocrRecord.path)"
+        }
+    }
+}
+if ($pdfInfo) {
+    foreach ($record in $pdfInfo.Files) {
+        $actual = @($fileRecords | Where-Object path -CEQ $record.fileName.Substring(2))
+        if ($actual.Count -ne 1 -or $actual[0].sha256 -cne $record.checksums[0].checksumValue) {
+            throw 'PDF export runtime changed during release inventory generation.'
         }
     }
 }
@@ -410,9 +420,11 @@ if ($mcpInfo) {
     }
 }
 if ($uctInfo) { $packages += @($uctInfo.Packages) }
+if ($pdfInfo) { $packages += @($pdfInfo.Packages) }
 $packageIds = @($packages | ForEach-Object { $_.SPDXID })
 $relationships = @()
 if ($uctInfo) { $relationships += @($uctInfo.Relationships) }
+if ($pdfInfo) { $relationships += @($pdfInfo.Relationships) }
 if ($mcpInfo) {
     $relationships += [ordered]@{spdxElementId='SPDXRef-Package-OkuFlow';
         relationshipType='CONTAINS';relatedSpdxElement='SPDXRef-Package-OkuFlow-MCP'}
@@ -562,6 +574,10 @@ $sbom = [ordered]@{
 if ($uctInfo) {
     $sbom.files = @($uctInfo.Files)
     $sbom.hasExtractedLicensingInfos += @($uctInfo.Licenses)
+}
+if ($pdfInfo) {
+    if (!$sbom.Contains('files')) { $sbom.files = @() }
+    $sbom.files = @($sbom.files) + @($pdfInfo.Files)
 }
 $sbom | ConvertTo-Json -Depth 8 |
     Set-Content -LiteralPath (Join-Path $bundle 'SBOM.spdx.json') -Encoding utf8NoBOM

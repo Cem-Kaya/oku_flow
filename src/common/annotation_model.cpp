@@ -616,6 +616,13 @@ bool AnnotationModel::Clear()
     return true;
 }
 
+void AnnotationModel::RestoreStrokes(const QVector<AnnotationStroke>& strokes)
+{
+    ResetSession();
+    strokes_ = strokes;
+    for (auto& stroke : strokes_) stroke.id = nextId_++;
+}
+
 void AnnotationModel::ResetSession()
 {
     strokes_.clear();

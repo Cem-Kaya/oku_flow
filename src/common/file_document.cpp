@@ -31,6 +31,7 @@ struct FileDocument::Shared {
     FileDocumentSnapshot requested, result;
     std::uint64_t generation{}, documentGeneration{};
     bool pending{}, stop{};
+    QString annotationDirectory;
 };
 bool FileDocument::SupportsPath(const QString& path) {
     const auto suffix = QFileInfo(path).suffix().toLower();
@@ -44,11 +45,13 @@ FileDocument::FileDocument() : shared_(std::make_shared<Shared>()) {
         std::uint64_t opened{};
         for (;;) {
             FileDocumentSnapshot request;
+            QString annotationDirectory;
             {
                 std::unique_lock lock(s->mutex);
                 s->changed.wait(lock, [&] { return s->stop || s->pending; });
                 if (s->stop) return;
                 request = s->requested; s->pending = false;
+                annotationDirectory = s->annotationDirectory;
             }
             if (request.path.isEmpty()) { pdf.close(); file.close(); opened = 0; continue; }
             const auto current = [&] {
@@ -67,6 +70,8 @@ FileDocument::FileDocument() : shared_(std::make_shared<Shared>()) {
                             throw QStringLiteral("The PDF is invalid, encrypted, or unsupported.");
                     }
                     opened = request.documentGeneration;
+                    if (!annotationDirectory.isEmpty())
+                        request.annotations = std::make_shared<FileAnnotationCopy>(LoadFileAnnotations(request.path, annotationDirectory));
                 }
                 request.pageCount = request.pdf ? pdf.pageCount() : 1;
                 if (request.page < 0 || request.page >= request.pageCount)
@@ -120,7 +125,7 @@ FileDocument::~FileDocument() {
     std::lock_guard lock(shared_->mutex);
     shared_->stop = true; ++shared_->generation; shared_->changed.notify_one();
 }
-std::uint64_t FileDocument::Open(QString path, int longEdge) {
+std::uint64_t FileDocument::Open(QString path, int longEdge, QString annotationDirectory) {
     std::lock_guard lock(shared_->mutex);
     auto& request = shared_->requested;
     request = {}; request.generation = ++shared_->generation;
@@ -128,6 +133,7 @@ std::uint64_t FileDocument::Open(QString path, int longEdge) {
     request.path = std::move(path); request.pdf = QFileInfo(request.path).suffix().compare("pdf", Qt::CaseInsensitive) == 0;
     request.longEdge = std::clamp(longEdge, 512, 8192); request.state = FileDocumentSnapshot::State::Opening;
     shared_->result = request; shared_->pending = true; shared_->changed.notify_one();
+    shared_->annotationDirectory = std::move(annotationDirectory);
     return request.generation;
 }
 std::uint64_t FileDocument::SelectPage(int page, int longEdge) {
@@ -154,6 +160,7 @@ FileDocumentSnapshot FileDocument::TakeSnapshot() {
     auto result = shared_->result;
     shared_->result.image = {};
     shared_->result.pixels.reset();
+    shared_->result.annotations.reset();
     return result;
 }
 }

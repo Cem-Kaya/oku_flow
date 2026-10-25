@@ -1,5 +1,16 @@
 # OkuFlow Tests
 
+`file_document_contract` now checks a 600-page document without eager page
+rendering, multi-page ink saved repeatedly into one copy, native text retention,
+cropped/rotated page placement, source-coordinate PNG export and changed-output
+refusal. Run `scripts/stage_pdf_export.ps1 -Install` first; the qpdf executable
+and DLL are declared CTest runtime inputs. `pdf_export_distribution_contract`
+checks actual pinned staging/SPDX and tamper/extra-file refusal without GUI.
+The opt-in `native_app_file_sources_offscreen` additionally drives page ink and
+the app's actual two-save path using a private unshown presenter. Build its
+excluded target explicitly. Native focus/spoken screen-reader checks remain
+separate from these headless assertions.
+
 `OKUFLOW_UCT_RESIDENT_PAINT_SAMPLES=1` exports actual completed GPU results
 through standalone admission and the production Qt snapshot painter on each
 source warmup. It requires explicit immutable/single input and Qt offscreen;

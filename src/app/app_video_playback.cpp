@@ -43,6 +43,9 @@ struct OkuFlowApp::VideoDocumentState {
     bool openingDocument{};
     int desiredDocumentEdge{};
     QElapsedTimer documentZoomSettled;
+    QMap<QString, QMap<int, AnnotationModel>> documentInk;
+    QString documentInkKey;
+    QString documentSourceSha256;
     struct Part {
         int index{1};
         std::shared_ptr<RecordingArchive> archive;
@@ -594,7 +597,8 @@ void OkuFlowApp::OpenPendingVideoFile()
     if (FileDocument::SupportsPath(doc.openingPath)) {
         doc.openingDocument = true;
         doc.openingFile = doc.openingArchive = false;
-        doc.documentRequest = doc.document.Open(doc.openingPath);
+        const QString directory = userDataPaths_ ? QDir(userDataPaths_->Root()).filePath("Documents") : QString();
+        doc.documentRequest = doc.document.Open(doc.openingPath,4096,directory);
         videoPlaybackTimer_->start();
         PollFileDocument();
         return;
@@ -629,6 +633,57 @@ void OkuFlowApp::SelectDocumentPage(int page) {
     PollFileDocument();
 }
 
+void OkuFlowApp::StoreDocumentAnnotations()
+{
+    if (!videoDocument_ || videoDocument_->kind != VideoDocumentState::Kind::Still || !mainWindow_) return;
+    auto* ink = mainWindow_->annotationOverlay();
+    if (!ink || !ink->DocumentInk()) return;
+    auto model = ink->CopyModel();
+    model.RotateClockwise((4 - rotationQuarterTurns_ % 4) % 4);
+    videoDocument_->documentInk[videoDocument_->documentInkKey][videoDocument_->documentPage.page] = std::move(model);
+}
+
+bool OkuFlowApp::SaveSelectedFileDocument()
+{
+    if (!videoDocument_ || videoDocument_->kind != VideoDocumentState::Kind::Still) return false;
+    auto& doc = *videoDocument_;
+    if (doc.openingDocument || doc.savePending || !doc.presented || !userDataPaths_) return true;
+    StoreDocumentAnnotations();
+    FilePageInk pages;
+    const auto& models = doc.documentInk[doc.documentInkKey];
+    for (auto it = models.cbegin(); it != models.cend(); ++it) pages.insert(it.key(),it->strokes());
+    const QString source = doc.filePath;
+    const QString expectedSourceSha256 = doc.documentSourceSha256;
+    const QString configuredRoot = userDataPaths_->ConfiguredRoot();
+    const QString installDirectory = QCoreApplication::applicationDirPath();
+    const auto document = videoDocument_;
+    QPointer<OkuFlowApp> owner(this);
+    BeginSelectedVideoSaveReceipt();
+    const bool queued = imageIoPool_ && imageIoPool_->tryStart([owner,document,source,expectedSourceSha256,configuredRoot,installDirectory,pages] {
+        FileAnnotationCopy saved;
+        try {
+            const UserDataPaths paths(configuredRoot,installDirectory);
+            QString error;
+            const QString directory = paths.Documents(&error);
+            if (!directory.isEmpty()) saved = SaveFileAnnotations(source,directory,pages,expectedSourceSha256);
+            else saved.error = error;
+        } catch (...) { saved.error = QStringLiteral("The document writer failed."); }
+        if (!owner) return;
+        QMetaObject::invokeMethod(owner,[owner,document,saved] {
+            document->savePending = false;
+            document->saveState = saved.committed ? QStringLiteral("committed") : QStringLiteral("failed");
+            if (!owner) return;
+            owner->ShowStatusMessage(saved.committed
+                ? TranslateUi(QStringLiteral("Saved document copy.")) + QStringLiteral(" ") + QDir::toNativeSeparators(saved.path)
+                : TranslateUi(QStringLiteral("File unavailable")) + QStringLiteral(": ") + saved.error);
+            owner->PollVideoPlayback();
+        },Qt::QueuedConnection);
+    });
+    if (!queued) { doc.savePending = false; doc.saveState = QStringLiteral("failed");
+        ShowStatusMessage(TranslateUi(QStringLiteral("File unavailable"))); }
+    return true;
+}
+
 void OkuFlowApp::PollFileDocument() {
     auto& doc = *videoDocument_;
     const auto result = doc.document.TakeSnapshot();
@@ -651,6 +706,7 @@ void OkuFlowApp::PollFileDocument() {
         frame->sampleId = ++doc.documentSample; frame->requestGeneration = result.generation;
         const bool newDocument = doc.kind != VideoDocumentState::Kind::Still ||
             doc.documentPage.documentGeneration != result.documentGeneration;
+        StoreDocumentAnnotations();
         if (newDocument && !doc.cameraView)
             doc.cameraView = VideoDocumentState::CameraView{zoomAmount_, zoomCenterX_, zoomCenterY_, zoomEnabled_, pipelineOrchestrator_->ViewportFitMode()};
         if (!doc.cameraRotationSaved) { doc.cameraRotation = rotationQuarterTurns_; doc.cameraRotationSaved = true; }
@@ -666,10 +722,26 @@ void OkuFlowApp::PollFileDocument() {
             doc.documentId = QStringLiteral("media-") + QUuid::createUuid().toString(QUuid::Id128);
             rotationQuarterTurns_ = 0; UpdateRotationUi();
         }
+        const QString inkKey = newDocument ? NormalizedVideoPath(result.path).toCaseFolded() +
+            QStringLiteral(":") + (result.annotations ? result.annotations->sourceSha256 : QString()) : doc.documentInkKey;
+        doc.documentInkKey = inkKey;
+        if (newDocument) doc.documentSourceSha256 = result.annotations ? result.annotations->sourceSha256 : QString();
+        if (newDocument && !doc.documentInk.contains(inkKey) && result.annotations && result.annotations->error.isEmpty()) {
+            auto& models = doc.documentInk[inkKey];
+            for (auto it = result.annotations->pages.cbegin(); it != result.annotations->pages.cend(); ++it)
+                models[it.key()].RestoreStrokes(it.value());
+        }
+        if (auto* ink = mainWindow_->annotationOverlay()) {
+            mainWindow_->setDocumentAnnotationMode(true);
+            auto model = doc.documentInk[inkKey].value(result.page);
+            model.RotateClockwise(rotationQuarterTurns_);
+            ink->RestoreModel(model);
+        }
         doc.documentPage = result;
         // The owned frame is the sole full-resolution page buffer after adoption.
         doc.documentPage.image = {};
         doc.documentPage.pixels.reset();
+        doc.documentPage.annotations.reset();
         doc.frame = std::move(frame); doc.neighbor.reset(); doc.presented.reset(); doc.presentedNeighbor.reset();
         doc.requestGeneration = result.generation;
         doc.completedRequestGeneration = 0;
@@ -721,6 +793,8 @@ void OkuFlowApp::ReturnVideoToCamera()
     if(mediaGpuScene_)mediaGpuScene_->Invalidate();
     if(mediaGpuNeighborScene_)mediaGpuNeighborScene_->Invalidate();
     auto& doc = *videoDocument_;
+    StoreDocumentAnnotations();
+    mainWindow_->setDocumentAnnotationMode(false);
     doc.document.Close(); doc.openingDocument = false; doc.documentPage = {};
     mainWindow_->setDocumentText({});
     mediaHoldBakedScene_=false;
@@ -1367,6 +1441,8 @@ void OkuFlowApp::PollVideoPlayback()
             const bool wasOpening = doc.openingFile || doc.openingArchive;
             if (doc.openingFile) {
                 if (!doc.restoringFile) {
+                    StoreDocumentAnnotations();
+                    mainWindow_->setDocumentAnnotationMode(false);
                     InvalidateMediaSelection();
                     if (!doc.cameraRotationSaved) { doc.cameraRotation = rotationQuarterTurns_; doc.cameraRotationSaved = true; }
                     doc.kind = VideoDocumentState::Kind::File;
@@ -1574,6 +1650,7 @@ void OkuFlowApp::BeginSelectedVideoSaveReceipt()
 
 void OkuFlowApp::SaveSelectedVideoFrame()
 {
+    if (SaveSelectedFileDocument()) return;
     if (!videoDocument_ || videoDocument_->savePending || !PresentSelectedMediaFrameForCapture() ||
         !presentationWidth_ || !presentationHeight_) {
         ShowStatusMessage(QStringLiteral("Frame not saved: the selected view is unavailable.")); return;

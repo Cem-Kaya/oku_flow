@@ -94,6 +94,7 @@ public:
 
     bool Clear();
     void ResetSession();
+    void RestoreStrokes(const QVector<AnnotationStroke>& strokes);
     // Rebase current ink and edit history when the camera orientation changes.
     // Text anchors follow the image; labels remain upright for readability.
     void RotateClockwise(int quarterTurns);

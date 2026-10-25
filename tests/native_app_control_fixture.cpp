@@ -15,6 +15,8 @@
 #include "okuflow/ui/ultra_clear_text_panel.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "okuflow/ui/video_transport.hpp"
+#include "okuflow/ui/annotation_overlay.hpp"
+#include "okuflow/common/file_annotations.hpp"
 #include "okuflow/ui/agent_control_panel.hpp"
 #include "okuflow/common/codex_agent_client.hpp"
 #include "okuflow/common/uct_device_image.hpp"
@@ -382,6 +384,7 @@ public:
         app.currentCameraAccelerationKey_.clear();app.cameraIntent_.LoadSaved({});
         app.automaticPhoneSelectionAllowed_=false;app.preferredPhoneCamera_.clear();app.pendingCameraStart_.reset();
     }
+    static QString DocumentDirectory(OkuFlowApp& app) { return app.userDataPaths_->Documents(); }
     static void SeedPhoneSources(OkuFlowApp& app, std::function<bool(const std::atomic<bool>&)> start) {
         CameraDescriptor webcam, phone;
         webcam.name=L"Private webcam"; webcam.symbolicLink=L"fixture-webcam";
@@ -2379,6 +2382,46 @@ private slots:
         NativeControlFixture::ReturnVideo(app_);
         QVERIFY(!window.videoSourceSelected());QVERIFY(text->isHidden());
         QTRY_VERIFY_WITH_TIMEOUT(!QFile::exists(path) || QFile::remove(path),5000);
+    }
+    void documentPageInkSurvivesNavigationAndUpdatesOneCopy() {
+        QTemporaryDir dir;
+        const auto source=dir.filePath("page-ink-fixture.pdf");
+        { QPdfWriter writer(source); QPainter painter(&writer);
+          for(int page=0;page<3;++page) { if(page)QVERIFY(writer.newPage()); painter.drawText(100,100,QString::number(page+1)); } }
+        const HWND hwnd=NativeControlFixture::BeginHiddenFilePresenter(app_); QVERIFY(hwnd);
+        auto& window=NativeControlFixture::Window(app_);
+        const auto cleanup=qScopeGuard([&] {
+            window.setAnnotationMode(false,{},true);
+            NativeControlFixture::ReturnVideo(app_); NativeControlFixture::EndHiddenFilePresenter(app_,hwnd);
+        });
+        NativeControlFixture::OpenVideo(app_,source);
+        QTRY_VERIFY_WITH_TIMEOUT(window.videoTransport()->snapshot().pageCount==3 && window.videoTransport()->snapshot().canSaveFrame,5000);
+        auto* ink=window.annotationOverlay(); QVERIFY(ink); QVERIFY(ink->DocumentInk());
+        QCOMPARE(window.capturePhotoButton()->accessibleName(),QStringLiteral("Save document"));
+        AnnotationModel heart; heart.BeginStroke({0.2,0.3},Qt::red,0.02);
+        heart.AppendStrokePoint({0.4,0.3},0.001); heart.EndStroke();
+        ink->RestoreModel(heart);
+        window.setAnnotationMode(true,AnnotationTool::kPen,true); window.setAnnotationMode(false,{},true);
+        QVERIFY(ink->HasInk()); QVERIFY(!ink->IsActive()); QVERIFY(ink->testAttribute(Qt::WA_TransparentForMouseEvents));
+        NativeControlFixture::SaveVideo(app_);
+        QTRY_COMPARE_WITH_TIMEOUT(NativeControlFixture::VideoState(app_)["saveState"].toString(),QStringLiteral("committed"),5000);
+        auto* page=window.videoTransport()->findChild<QSpinBox*>("documentPage"); QVERIFY(page); page->setValue(3);
+        QTRY_VERIFY_WITH_TIMEOUT(window.videoTransport()->snapshot().page==2 && window.videoTransport()->snapshot().canSaveFrame,5000);
+        QVERIFY(!ink->HasInk());
+        AnnotationModel star; star.BeginStroke({0.6,0.7},Qt::blue,0.02);
+        star.AppendStrokePoint({0.8,0.7},0.001); star.EndStroke(); ink->RestoreModel(star);
+        NativeControlFixture::SaveVideo(app_);
+        QTRY_COMPARE_WITH_TIMEOUT(NativeControlFixture::VideoState(app_)["saveState"].toString(),QStringLiteral("committed"),5000);
+        const auto restored=LoadFileAnnotations(source,NativeControlFixture::DocumentDirectory(app_));
+        QVERIFY2(restored.error.isEmpty(),qPrintable(restored.error)); QCOMPARE(restored.pages.size(),2);
+        QCOMPARE(restored.pages[0][0].points,heart.strokes()[0].points);
+        QCOMPARE(restored.pages[2][0].points,star.strokes()[0].points);
+        QCOMPARE(QDir(NativeControlFixture::DocumentDirectory(app_)).entryList({"page-ink-fixture-*.pdf"},QDir::Files).size(),1);
+        page->setValue(1);
+        QTRY_VERIFY_WITH_TIMEOUT(window.videoTransport()->snapshot().page==0 && window.videoTransport()->snapshot().canSaveFrame,5000);
+        QCOMPARE(ink->Strokes()[0].points,heart.strokes()[0].points);
+        NativeControlFixture::ReturnVideo(app_); QVERIFY(!ink->DocumentInk()); QVERIFY(!ink->HasInk());
+        QCOMPARE(window.capturePhotoButton()->accessibleName(),QStringLiteral("Photo"));
     }
     void documentPixelsReplacePreviousSourceInHiddenPresenter() {
         QTemporaryDir dir;

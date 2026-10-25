@@ -304,6 +304,11 @@ QString UserDataPaths::Notes(QString* error) const
     return EnsureRelative(QStringLiteral("Notes"), error);
 }
 
+QString UserDataPaths::Documents(QString* error) const
+{
+    return EnsureRelative(QStringLiteral("Documents"), error);
+}
+
 QString UserDataPaths::Analysis(QString* error) const
 {
     return EnsureRelative(QStringLiteral("Analysis"), error);

@@ -36,6 +36,9 @@ Development builds offer **View video or picture** and a separate **View PDF**,
 with PDF page navigation and accessible embedded text. Enabled Ultra Clear Text
 can read scanned content. See [file viewing](docs/file_documents.md); these
 changes are separate from the published 0.3.1 downloads above.
+Drawings stay attached to pictures and individual PDF pages. Save updates one
+annotated copy in the OkuFlow Documents folder, including all edited pages,
+while keeping your original file unchanged.
 
 ## One live view. Every adjustment within reach.
 

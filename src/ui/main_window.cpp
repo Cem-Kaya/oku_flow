@@ -2023,7 +2023,7 @@ MainWindow::MainWindow()
             annotationOverlay_->CaptureOnExit()) {
             emit annotationSnapshotRequested(2);
         }
-        if (annotationOverlay_) {
+        if (annotationOverlay_ && !annotationOverlay_->DocumentInk()) {
             annotationOverlay_->ClearInk();
         }
         setAnnotationMode(false);
@@ -2031,7 +2031,7 @@ MainWindow::MainWindow()
     connect(annotationOverlay_, &AnnotationOverlay::SnapshotRequested,
             this, [this]() {
                 annotationOverlay_->CommitPendingText();
-                if (annotationOverlay_->HasInk()) {
+                if (annotationOverlay_->HasInk() || annotationOverlay_->DocumentInk()) {
                     emit annotationSnapshotRequested(0);
                 }
             });
@@ -2050,7 +2050,7 @@ MainWindow::MainWindow()
                     annotationOverlay_->CaptureOnExit()) {
                     emit annotationSnapshotRequested(2);
                 }
-                annotationOverlay_->ClearInk();
+                if (!annotationOverlay_->DocumentInk()) annotationOverlay_->ClearInk();
                 setAnnotationMode(false);
             });
     connect(annotationOverlay_, &AnnotationOverlay::CleanPhotoRequested,
@@ -3311,6 +3311,17 @@ void MainWindow::setAnnotationViewTransform(const ViewTransform& transform)
     }
 }
 
+void MainWindow::setDocumentAnnotationMode(bool enabled)
+{
+    if (!annotationOverlay_) return;
+    annotationOverlay_->SetDocumentInk(enabled);
+    capturePhotoButton_->setToolTip(enabled ? QStringLiteral("Save document") : QStringLiteral("Capture original and processed photos"));
+    SetLiveAccessibleDescription(capturePhotoButton_, enabled ? QStringLiteral("Save document") : QStringLiteral("Capture original and processed photos"));
+    SetThemedIcon(capturePhotoButton_,enabled ? QStringLiteral(":/okuflow/icons/save.svg") : QStringLiteral(":/okuflow/icons/camera.svg"));
+    UpdateSimpleChromeGeometry();
+    RetranslateWidget(capturePhotoButton_);
+}
+
 void MainWindow::setAnnotationMode(bool enabled, std::optional<AnnotationTool> initialTool, bool preserveFocus)
 {
     if (!annotationOverlay_ || !annotationButton_) {
@@ -3807,7 +3818,7 @@ void MainWindow::UpdateSimpleChromeGeometry()
     const QPoint viewOrigin = renderWidget_->mapToGlobal(QPoint(0, 0));
     UpdateUiVisibilityControl();
     const std::array<std::pair<QPushButton*, QString>, 4> actionButtons{{
-        {capturePhotoButton_, QStringLiteral("Photo")},
+        {capturePhotoButton_, annotationOverlay_ && annotationOverlay_->DocumentInk() ? QStringLiteral("Save document") : QStringLiteral("Photo")},
         {recordButton_, !recordButton_->isEnabled() ? QStringLiteral("Finishing")
                          : recordButton_->isChecked() ? QStringLiteral("Stop") : QStringLiteral("Record")},
         {explainNowButton_, explainBusy_ ? QStringLiteral("Stop") : QStringLiteral("Explain")},

@@ -3677,5 +3677,13 @@ Pilih Hubungkan ChatGPT di tab Asisten pada mode Tingkat Lanjut untuk masuk.</tr
         <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
         <translation>Video dan gambar (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
     </message>
+    <message>
+        <source>Save document</source>
+        <translation>Simpan dokumen</translation>
+    </message>
+    <message>
+        <source>Saved document copy.</source>
+        <translation>Salinan dokumen disimpan.</translation>
+    </message>
 </context>
 </TS>

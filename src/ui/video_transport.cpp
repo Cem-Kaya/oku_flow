@@ -747,7 +747,7 @@ void VideoTransport::RefreshText()
     NameButton(jumpButton_, snapshot_.source == Source::Document ? QStringLiteral("Next page") : snapshot_.source == Source::Recording || snapshot_.source == Source::Recap
                                ? QStringLiteral("Jump to live") : QStringLiteral("Jump to end"));
     NameButton(returnButton_, QStringLiteral("Return to camera"));
-    NameButton(saveFrameButton_, QStringLiteral("Save frame"));
+    NameButton(saveFrameButton_, snapshot_.source == Source::Document ? QStringLiteral("Save document") : QStringLiteral("Save frame"));
     NameButton(muteButton_, volumePopup_->isVisible()
         ? (snapshot_.muted?QStringLiteral("Unmute playback"):QStringLiteral("Mute playback"))
         : QStringLiteral("Playback volume"));
@@ -782,6 +782,11 @@ void VideoTransport::RefreshText()
         rewindButton_->fontMetrics().horizontalAdvance(rewindButton_->text()));
     if (rewindButton_->minimumWidth() != rewindWidth) {
         rewindButton_->setFixedWidth(rewindWidth);
+    }
+    for (auto* button : {jumpButton_,saveFrameButton_}) {
+        const int width = snapshot_.source == Source::Document ? std::max(kButtonExtent,
+            kIconExtent + 24 + button->fontMetrics().horizontalAdvance(button->text())) : kButtonExtent;
+        button->setFixedWidth(width);
     }
     UpdateLayout();
     ApplyStyle();
@@ -1041,6 +1046,7 @@ void VideoTransport::ApplyFace(QPushButton* button)
         resource = snapshot_.source == Source::Document ? QStringLiteral(":/okuflow/icons/previous.svg") : QStringLiteral(":/okuflow/icons/undo.svg");
         glyph = snapshot_.source == Source::Document ? QStringLiteral("‹") : QStringLiteral("\u21b6 10");
         if (snapshot_.source != Source::Document) caption = QLocale().toString(10);
+        else caption = TranslateUi(QStringLiteral("Previous page"));
     } else if (button == playPauseButton_) {
         resource = snapshot_.playing ? QStringLiteral(":/okuflow/icons/pause.svg")
                                      : QStringLiteral(":/okuflow/icons/play.svg");
@@ -1048,7 +1054,9 @@ void VideoTransport::ApplyFace(QPushButton* button)
     } else if (button == jumpButton_) {
         resource = QStringLiteral(":/okuflow/icons/step-forward.svg");
         glyph = QStringLiteral(">>");
+        if (snapshot_.source == Source::Document) caption = TranslateUi(QStringLiteral("Next page"));
     } else if (button == saveFrameButton_) {
+        if (snapshot_.source == Source::Document) caption = TranslateUi(QStringLiteral("Save document"));
         resource = QStringLiteral(":/okuflow/icons/save.svg");
         glyph = QStringLiteral("\u25a3");
     } else if (button == muteButton_) {
@@ -1096,7 +1104,7 @@ void VideoTransport::ApplyFace(QPushButton* button)
         buttonPalette.setColor(QPalette::Inactive,QPalette::ButtonText,ink);
         if(button->palette()!=buttonPalette)button->setPalette(buttonPalette);
         button->setIcon(QIcon());
-        if (button->text() != glyph) button->setText(glyph);
+        if (button->text() != glyph + caption) button->setText(glyph + caption);
     }
 }
 
@@ -1164,6 +1172,8 @@ void VideoTransport::UpdateLayout()
     // row; buttons never shrink under their fixed touch-target size.
     int required = 20 + rewindButton_->minimumWidth() + kPlayWidth + kButtonExtent +
                    timeLabel_->minimumWidth() + kMinTimelineWidth;
+    if (document) required = 20 + (snapshot_.pageCount > 1 ? rewindButton_->minimumWidth() +
+        jumpButton_->minimumWidth() + page_->sizeHint().width() + kRowSpacing * 2 : 0);
     for (auto* button : secondaries) required += button->minimumWidth();
     required += kRowSpacing * (4 + static_cast<int>(secondaries.size()));
     const bool below = width() > 0 && width() < required && !secondaries.empty();
