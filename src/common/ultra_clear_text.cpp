@@ -3671,6 +3671,13 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
     QVector<AcceptedLine> admitted;
     auto regionalNextLineId = nextLineId_; // optional transactions allocate only on commit
     QSet<std::uint64_t> retainedIds;
+    const auto independentlyCurrent = [&](const AcceptedLine& line) {
+        return !immutable && latestProbe && latestProbe->IsValid() &&
+            EvidenceAcquisition(latestProbe->stamp) && latestProbe->stamp.SameScene(current) &&
+            latestProbe->stamp.frameSeq >= stamp.frameSeq &&
+            line.validatedAtMs >= stamp.timestampMs && line.validatedFrameSeq >= stamp.frameSeq &&
+            IsShown(line, nowMs, latestProbe->stamp.frameSeq);
+    };
     QVector<PendingWord> nextPending;
     const auto pendingTicket = std::make_shared<const PendingEvidence>(PendingEvidence{
         stamp, result.sourcePixelDigest.size() == 32 ? result.sourcePixelDigest : QByteArray{},
@@ -3753,7 +3760,7 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                 // pixels or coordinates: retain the old reference, geometry,
                 // line identity and validation clock together. The next probe
                 // still checks that object and real content changes remove it.
-                const auto stableProtection = [&](const AcceptedLine& old) {
+                const auto stableProtection = [&](const AcceptedLine& old, bool currentProof) {
                     if (old.protectedSceneRects.size() != candidate.line.protectedSceneRects.size()) return false;
                     const auto oldCarved = MaskKeys(old.carvedSceneRects);
                     const auto newCarved = MaskKeys(candidate.line.carvedSceneRects);
@@ -3769,18 +3776,20 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                         const double tolerance = .1 * std::min(a.height(), b.height());
                         if (!finite(a) || !finite(b) || a.isEmpty() || b.isEmpty() ||
                             !std::isfinite(tolerance) || tolerance <= 0 ||
-                            std::abs(a.left() - b.left()) > tolerance ||
+                            (currentProof ? Iou(a, b) < tuning_.agreementIou :
+                            (std::abs(a.left() - b.left()) > tolerance ||
                             std::abs(a.right() - b.right()) > tolerance ||
                             std::abs(a.top() - b.top()) > tolerance ||
-                            std::abs(a.bottom() - b.bottom()) > tolerance) return false;
+                            std::abs(a.bottom() - b.bottom()) > tolerance))) return false;
                     }
                     return true;
                 };
                 for (const AcceptedLine& old : lines_) {
+                    const bool currentProof = independentlyCurrent(old);
                     if (!old.valid || !old.provenance.SameScene(current) ||
                         old.words.size() != candidate.line.words.size() ||
                         old.readingTokens != candidate.line.readingTokens ||
-                        !stableProtection(old) ||
+                        !stableProtection(old, currentProof) ||
                         old.reference.valid != candidate.line.reference.valid) {
                         continue;
                     }
@@ -3789,11 +3798,18 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
                         const QRectF a = old.words[i].sceneRect.translated(old.sceneOffset);
                         const QRectF b = candidate.line.words[i].sceneRect.translated(candidate.line.sceneOffset);
                         const double tolerance = std::min(a.height(), b.height()) * 0.1;
-                        if (old.words[i].text != candidate.line.words[i].text || Iou(a,b) < 0.8 ||
-                            std::abs(a.left()-b.left()) > tolerance ||
+                        // A current independent check proves the OLD pixels and
+                        // geometry, so detector jitter need not replace them with
+                        // an unchecked reference. Keep the same spatial agreement
+                        // bound as temporal word confirmation; never copy proof
+                        // onto the new boxes. Without that check retain the narrow
+                        // historical near-identical-draft allowance.
+                        if (old.words[i].text != candidate.line.words[i].text ||
+                            Iou(a,b) < (currentProof ? tuning_.agreementIou : 0.8) ||
+                            (!currentProof && (std::abs(a.left()-b.left()) > tolerance ||
                             std::abs(a.top()-b.top()) > tolerance ||
                             std::abs(a.width()-b.width()) > tolerance ||
-                            std::abs(a.height()-b.height()) > tolerance) {
+                            std::abs(a.height()-b.height()) > tolerance))) {
                             sameWords = false;
                             break;
                         }
@@ -3858,12 +3874,7 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
             continue;
         }
         const QRectF oldRect = line.sceneRect.translated(line.sceneOffset);
-        const bool currentProof = !immutable && latestProbe && latestProbe->IsValid() &&
-            EvidenceAcquisition(latestProbe->stamp) && latestProbe->stamp.SameScene(current) &&
-            latestProbe->stamp.frameSeq >= stamp.frameSeq &&
-            line.validatedAtMs >= stamp.timestampMs &&
-            line.validatedFrameSeq >= stamp.frameSeq &&
-            IsShown(line, nowMs, latestProbe->stamp.frameSeq);
+        const bool currentProof = independentlyCurrent(line);
         if (currentProof &&
             (std::any_of(failedRegistrationRects.begin(), failedRegistrationRects.end(),
                 [&](const QRectF& r) { return r.intersects(oldRect); }) ||

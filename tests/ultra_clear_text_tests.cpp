@@ -909,6 +909,8 @@ private slots:
     void refreshRetainsLineOnceAndStabilizesColors();
     void refreshKeepsProvenGeometryThroughOmissionBoxJitter();
     void refreshKeepsIndependentlyValidatedOmissionsDuringRegionalScroll();
+    void refreshDetectorJitterRetainsOnlyIndependentlyCurrentObject_data();
+    void refreshDetectorJitterRetainsOnlyIndependentlyCurrentObject();
     void regionalContradictionKeepsCurrentOtherPane();
     void regionalSpanningProtectionKeepsUncoveredResidual();
     void regionalPendingKeepsPerObservationTickets_data();
@@ -4829,6 +4831,83 @@ void UltraClearTextTests::refreshKeepsIndependentlyValidatedOmissionsDuringRegio
     refresh.stamp = at(10, 600);
     stale.Admit(refresh, current, &probe, 610);
     QVERIFY(stale.SceneWords(610, 10).isEmpty());
+}
+
+void UltraClearTextTests::refreshDetectorJitterRetainsOnlyIndependentlyCurrentObject_data()
+{
+    QTest::addColumn<bool>("advancing");
+    QTest::addColumn<QString>("change");
+    for (const bool advancing : {false, true})
+        for (const char* change : {"jitter", "older-proof", "changed-text", "changed-ink", "distant-box", "low-overlap-mask", "extra-omission"})
+            QTest::newRow(qPrintable(QString("%1-%2").arg(advancing ? "video" : "camera", change)))
+                << advancing << QString::fromLatin1(change);
+}
+
+void UltraClearTextTests::refreshDetectorJitterRetainsOnlyIndependentlyCurrentObject()
+{
+    QFETCH(bool, advancing);
+    QFETCH(QString, change);
+    const auto page = MakePage({QStringLiteral("Reading glasses help x²")});
+    const auto t = Transform(1, .5, .5);
+    const auto current = Stamp(3, 4, 0, t);
+    ModelTuning tuning; tuning.admitMatchBudgetMs = 0; // resident admission never checks new references inline
+    OverlayModel model(tuning);
+    const auto admit = [&](const RecognitionResult& result, const ProbeFrame* probe, int now) {
+        return advancing ? model.AdmitAdvancingMedia(result, current, probe, now)
+                         : model.AdmitLiveCamera(result, current, probe, now);
+    };
+    const auto at = [&](int frame, int ms) {
+        auto stamp = Stamp(3, 4, ms, t);
+        stamp.frameSeq = frame;
+        stamp.liveCameraCapture = !advancing;
+        return stamp;
+    };
+    auto first = ResultFor(page, t, at(1, 100));
+    auto second = ResultFor(page, t, at(2, 200));
+    admit(first, nullptr, 110);
+    admit(second, nullptr, 210);
+    QCOMPARE(model.AcceptedWordCount(), 3);
+    auto probe = ProbeOf(RenderView(page.image, t, kViewWidth, kViewHeight), t, 3, 4, 9, 500);
+    if (change != "older-proof") model.Validate(probe, 500);
+    const auto old = model.Lines().first();
+    auto refresh = ResultFor(page, t, at(7, 300));
+    refresh.prepared = PrepareLines(refresh, tuning.minimumWordHeightPx);
+    for (auto& word : refresh.prepared[0].words) {
+        const auto delta = word.sceneRect.height() * (change == "distant-box" ? 3.0 : .25);
+        const double dx = change == "low-overlap-mask" ? delta : 0;
+        word.sceneRect.translate(dx, delta);
+        word.protectedSceneRect.translate(dx, delta);
+    }
+    if (change == "changed-text") refresh.prepared[0].words[0].text = QStringLiteral("Changed");
+    if (change == "extra-omission") {
+        auto uncertain = refresh.prepared[0].words.last();
+        uncertain.disposition = TokenDisposition::kLowConfidence;
+        refresh.prepared[0].words.push_back(uncertain);
+    }
+    if (change == "changed-ink") {
+        auto blank = page.image.copy(); blank.fill(Qt::white);
+        probe = ProbeOf(RenderView(blank, t, kViewWidth, kViewHeight), t, 3, 4, 10, 510);
+        model.Validate(probe, 510);
+    }
+    admit(refresh, &probe, 520);
+    if (change != "jitter") {
+        QVERIFY(model.SceneWords(520, probe.stamp.frameSeq).isEmpty());
+        return;
+    }
+    QCOMPARE(model.SceneWords(520, probe.stamp.frameSeq).size(), 3);
+    const auto& kept = model.Lines().first();
+    QCOMPARE(kept.id, old.id);
+    QCOMPARE(kept.sceneRect, old.sceneRect);
+    QCOMPARE(kept.reference.values, old.reference.values);
+    QCOMPARE(kept.validatedAtMs, old.validatedAtMs);
+    QCOMPARE(kept.validatedFrameSeq, old.validatedFrameSeq);
+    for (int i = 0; i < old.words.size(); ++i)
+        QCOMPARE(kept.words[i].sceneRect, old.words[i].sceneRect);
+    for (int i = 0; i < old.protectedSceneRects.size(); ++i) {
+        QVERIFY(kept.protectedSceneRects[i].contains(old.protectedSceneRects[i]));
+        QVERIFY(kept.protectedSceneRects[i].contains(refresh.prepared[0].words.last().protectedSceneRect));
+    }
+    QVERIFY(model.SceneWords(851, 11).isEmpty()); // OCR did not renew the old proof clock
 }
 
 void UltraClearTextTests::regionalContradictionKeepsCurrentOtherPane()

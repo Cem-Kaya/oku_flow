@@ -329,6 +329,14 @@ There is no second capture or render pipeline. UCT reuses:
   worker. Each old identity is retained at most once. Probe checks prioritize
   unverified lines, then the oldest proof, so dense-page tails can progress.
   These are scheduling budgets, not sensor-to-photon guarantees.
+  If an independent probe at or after the OCR acquisition has already validated
+  the old object, exact ordered text/token agreement and the existing 0.5 word
+  overlap bound allow detector-box jitter beyond the narrow 10%-of-height draft
+  allowance. The old boxes, reference, identity and clock stay intact; corresponding
+  original-ink exclusions are united, never reduced. Changed omission structure,
+  mask kind, spelling or non-overlapping boxes cannot use this path. Without
+  current independent proof the existing narrow allowance remains. A full OCR
+  refresh does not grant extra lifetime or skip any independent pixel check.
 - Source retirement immediately revokes both worker generations and clears
   glyphs/reading text. If presentations otherwise stop for 600 ms, a watchdog
   hides cached words and reading-pane text. Only an explicit successful

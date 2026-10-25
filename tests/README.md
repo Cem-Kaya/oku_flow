@@ -1658,6 +1658,11 @@ held recognizers. It covers geometry/DPI, residual tracking and rejection,
 high-risk tokens, temporal agreement, stale/late/moved results, freshness,
 latest-only coalescing, cancellation ownership, bounded destruction, and the
 controller's presentation-clock independence while OCR is held.
+The detector-jitter refresh rows cover both live and advancing-media admission:
+current independent pixel proof retains the complete old object through 25%
+vertical box jitter, unions original-ink masks and never renews its clock.
+Older proof, spelling changes, changed pixels, distant boxes, insufficient
+mask overlap and new uncertain spans cannot use that retention path.
 `ultra_clear_text_windows_ocr` (labels `headless;ocr-runtime`) exercises the
 real built-in Windows OCR engine on synthetic dark-on-light and light-on-dark
 pages, plus clockwise/counterclockwise tilted pages. Its pure mapping row

@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+- Keep independently current-validated OCR text visible through detector-box
+  jitter during saved-video playback and live capture. Retain the old geometry,
+  reference and proof clock; conflicting text, changed ink and expired checks
+  still revoke it. This adds no inference or pixel-copy work.
 - Replace the permanent playback-volume row with a compact vertical popover
   above the speaker. Open first; activate again to mute/unmute. Zero volume
   mutes; unmuting restores the last audible level. Escape and Tab leave cleanly.

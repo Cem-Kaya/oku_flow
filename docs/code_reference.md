@@ -5755,6 +5755,13 @@ flatten/glare combinations.
   `OverlayModel::AdmitImpl`
   retains current-validated geometry/identity through small exclusion-box
   jitter; it unions exclusions and preserves the original reference and clocks.
+  Its local `independentlyCurrent` predicate requires real same-scene pixel
+  validation at or after the OCR job. With that proof, exact ordered words,
+  reading tokens and exclusion kinds may retain the old complete object using
+  the existing word-agreement IoU instead of the narrow 10%-height jitter bound.
+  New boxes/references never inherit proof. Without current proof the narrow
+  draft allowance is unchanged; expired proof and contradictory spans still
+  revoke. The same predicate governs full-result omission retention below.
   Live/advancing detector omissions can also retain an existing shown object
   validated at/after the OCR job, provided neither prepared observations
   (including rejected spans) nor admitted replacements intersect it. This
