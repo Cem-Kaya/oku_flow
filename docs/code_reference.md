@@ -14,6 +14,9 @@
   a video reopen. `documentPixelsReplacePreviousSourceInHiddenPresenter` uses
   an unshown native D3D12 presenter for actual app viewport-buffer assertions;
   `CpuBgraTests` covers 4096-pixel portrait texture replacements on CUDA.
+  Its `Harness::ReadTexture` grows private staging to the actual copy footprint
+  only after the preceding consumer completed; the old 512-pixel staging bound
+  is retained as failed diagnostic evidence rather than a production GPU fault.
 
 - `common/file_document.hpp` / `.cpp`: `FileDocumentSnapshot` carries state,
   request/document generations, page/count, image, embedded text and failure.

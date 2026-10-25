@@ -386,7 +386,18 @@ public:
 
         const auto desc = texture->GetDesc();
         D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
-        d3d12_->GetCopyableFootprints(&desc, 0, 1, 0, &footprint, nullptr, nullptr, nullptr);
+        UINT64 requiredBytes{};
+        d3d12_->GetCopyableFootprints(&desc, 0, 1, 0, &footprint, nullptr, nullptr, &requiredBytes);
+        Require(!pending_, "cannot replace staging while a consumer is pending");
+        if (requiredBytes > readback_->GetDesc().Width) {
+            D3D12_HEAP_PROPERTIES heap{}; heap.Type = D3D12_HEAP_TYPE_READBACK;
+            auto buffer = readback_->GetDesc(); buffer.Width = requiredBytes;
+            ComPtr<ID3D12Resource> replacement;
+            Hr(d3d12_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &buffer,
+                D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&replacement)),
+                "expanded readback staging creation failed");
+            readback_ = std::move(replacement);
+        }
 
         Hr(allocator_->Reset(), "consumer allocator reset failed");
         Hr(commands_->Reset(allocator_.Get(), nullptr), "consumer list reset failed");
@@ -432,8 +443,7 @@ public:
         result.pixels.resize(size_t(desc.Width) * desc.Height);
         std::uint8_t* mapped = nullptr;
         const D3D12_RANGE range{static_cast<SIZE_T>(footprint.Offset),
-                                static_cast<SIZE_T>(footprint.Offset +
-                                                    footprint.Footprint.RowPitch * desc.Height)};
+                                static_cast<SIZE_T>(requiredBytes)};
         Hr(readback_->Map(0, &range, reinterpret_cast<void**>(&mapped)), "staging map failed");
         for (UINT64 y = 0; y < desc.Height; ++y)
             std::memcpy(result.pixels.data() + size_t(y) * desc.Width,
