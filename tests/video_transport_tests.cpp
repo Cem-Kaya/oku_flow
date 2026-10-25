@@ -13,6 +13,7 @@
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QSlider>
+#include <QSpinBox>
 #include <QTranslator>
 #include <QVBoxLayout>
 #include <QWheelEvent>
@@ -116,6 +117,34 @@ private slots:
     {
         announcements.clear();
         announcementTarget = nullptr;
+    }
+    void documentPagesUseNativeControlsWithoutPlayback() {
+        VideoTransport transport; transport.resize(520,160);
+        VideoTransport::Snapshot snapshot;
+        snapshot.source=VideoTransport::Source::Document; snapshot.sourceName="book.pdf";
+        snapshot.sourceGeneration=15; snapshot.pageCount=3;
+        transport.SetSnapshot(snapshot); transport.show();
+        auto* page=transport.findChild<QSpinBox*>("documentPage");QVERIFY(page);
+        QVERIFY(!page->isHidden());QCOMPARE(page->minimum(),1);QCOMPARE(page->maximum(),3);
+        QCOMPARE(page->accessibleName(),QStringLiteral("Page"));
+        QVERIFY(transport.playPauseButton()->isHidden());QVERIFY(transport.timeline()->isHidden());
+        auto* previous=transport.findChild<QPushButton*>("videoRewindButton");
+        QVERIFY(!previous->isEnabled());QVERIFY(transport.jumpButton()->isEnabled());
+        QSignalSpy changes(&transport,&VideoTransport::PageRequested);
+        QSignalSpy plays(&transport,&VideoTransport::PlayPauseRequested);
+        page->setValue(2);QCOMPARE(changes.count(),1);QCOMPARE(changes.takeFirst()[0].toInt(),1);
+        snapshot.page=1;transport.SetSnapshot(snapshot);
+        QCOMPARE(page->value(),2);QVERIFY(previous->isEnabled());
+        snapshot.state=VideoTransport::State::Opening;transport.SetSnapshot(snapshot);
+        page->setValue(3);QCOMPARE(page->value(),2);QCOMPARE(changes.count(),0);
+        snapshot.state=VideoTransport::State::Paused;transport.SetSnapshot(snapshot);
+        transport.jumpButton()->click();QCOMPARE(changes.count(),1);QCOMPARE(changes.takeFirst()[0].toInt(),2);
+        snapshot.page=2;transport.SetSnapshot(snapshot);QVERIFY(!transport.jumpButton()->isEnabled());
+        snapshot.pageCount=1;snapshot.page=0;transport.SetSnapshot(snapshot);
+        QVERIFY(page->isHidden());QVERIFY(previous->isHidden());QVERIFY(transport.jumpButton()->isHidden());
+        QCOMPARE(plays.count(),0);
+        transport.SetSnapshot(Video());QVERIFY(page->isHidden());QVERIFY(!transport.timeline()->isHidden());
+        QVERIFY(!transport.playPauseButton()->isHidden());
     }
     void ordinaryCameraHasNoTimeline()
     {

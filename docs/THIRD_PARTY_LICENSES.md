@@ -1,5 +1,23 @@
 # Third-Party Licenses and Attributions
 
+## Qt PDF file-source dependency (26 October 2026, development)
+
+File viewing now links Qt PDF 6.12.0 in addition to the existing Qt modules.
+The official module headers declare `LicenseRef-Qt-Commercial OR LGPL-3.0-only
+OR GPL-2.0-only OR GPL-3.0-only`; this is compatible with OkuFlow's GPL build
+and the existing dynamic Qt LGPL/commercial distribution arrangements. PDFium
+and the module's other third-party components retain their upstream terms;
+OkuFlow's commercial license does not relicense those dependencies.
+`scripts/install_qt_pdf.ps1` pins the original Qt MSVC x64 extension archive
+and retains its exact `qtpdf-6.12.0.spdx.json` with package/file relationships
+and license declarations. The archive source identity is qtpdf commit
+`9a169a5eeded781fd7690fd4edd330be0302efaa`, as recorded by Qt's original SBOM.
+The deployment script requires that SPDX document when `Qt6Pdf.dll` is staged.
+No Qt/PDFium binary or implementation is copied into this repository.
+Corresponding Qt sources and complete third-party notices remain required
+for a redistributable bundle; a successful SDK or unit-test install alone is
+not installer/license-inventory acceptance. See [file documents](file_documents.md).
+
 The curved-line/current-ink experiment adds first-party C++/CUDA processing and
 tests only, with no new model, library or copied third-party implementation.
 Its private synthetic evidence renders installed Windows Arial/Segoe UI/Consolas
@@ -129,8 +147,8 @@ binaries and caches are not added to Windows/Android release inventories.
     document by namespace and checksum instead of flattening or weakening Qt's
     detailed component-level license declarations.
   - Qt PDF's exact `qtpdf` document is also retained when present, and is
-    mandatory if the bundle deploys `Qt6Pdf.dll`. Qt PDF is not an application
-    dependency; an installation without it can still produce a complete bundle.
+    mandatory for current file-viewing builds, which deploy `Qt6Pdf.dll`.
+    Earlier releases without PDF remain separate inventories.
   - If you modify Qt itself, those changes must be handled under Qt's licensing terms.
   - Development builds expect the user to provide a local Qt installation.
   - Hosted checks install the matching `qtmultimedia` source archive alongside

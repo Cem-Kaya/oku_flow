@@ -9,7 +9,8 @@
 namespace okuflow {
 
 void OkuFlowApp::OnCameraSelectionChanged(int index) {
-    if (mainWindow_ && mainWindow_->videoSourceSelected()) {
+    if (uiState_ && uiState_->cameraCombo_ &&
+        uiState_->cameraCombo_->itemData(index).toString() == QStringLiteral("video")) {
         emit mainWindow_->openVideoRequested();
         return;
     }
@@ -41,6 +42,14 @@ void OkuFlowApp::OnCameraSelectionChanged(int index) {
     }
     StartCameraCapture(static_cast<size_t>(index),true,false,false,agent::CameraSourceOrigin::Manual);
     SavePersistentSettings();
+}
+
+int OkuFlowApp::CameraPickerIndex() const {
+    const auto& requested = cameraIntent_.Requested().identity.symbolicLink;
+    for (size_t i = 0; i < cameras_.size(); ++i)
+        if (QString::fromStdWString(cameras_[i].symbolicLink) == requested)
+            return static_cast<int>(i);
+    return selectedCameraIndex_;
 }
 
 void OkuFlowApp::UpdateCameraAccelerationUi()

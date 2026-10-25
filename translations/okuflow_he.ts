@@ -3605,5 +3605,53 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Whiteboard</source>
         <translation>לוח מחיק</translation>
     </message>
+    <message>
+        <source>View file</source>
+        <translation>הצגת קובץ</translation>
+    </message>
+    <message>
+        <source>Select file</source>
+        <translation>בחירת קובץ</translation>
+    </message>
+    <message>
+        <source>Open a video, picture, or PDF (Ctrl+O)</source>
+        <translation>פתיחת סרטון, תמונה או PDF (Ctrl+O)</translation>
+    </message>
+    <message>
+        <source>Open file</source>
+        <translation>פתיחת קובץ</translation>
+    </message>
+    <message>
+        <source>Document text</source>
+        <translation>טקסט המסמך</translation>
+    </message>
+    <message>
+        <source>Page</source>
+        <translation>עמוד</translation>
+    </message>
+    <message>
+        <source>Previous page</source>
+        <translation>העמוד הקודם</translation>
+    </message>
+    <message>
+        <source>Next page</source>
+        <translation>העמוד הבא</translation>
+    </message>
+    <message>
+        <source>Opening file…</source>
+        <translation>הקובץ נפתח…</translation>
+    </message>
+    <message>
+        <source>File unavailable</source>
+        <translation>הקובץ אינו זמין</translation>
+    </message>
+    <message>
+        <source>Page %1 of %2</source>
+        <translation>עמוד %1 מתוך %2</translation>
+    </message>
+    <message>
+        <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
+        <translation>קובצי מדיה (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;כל הקבצים (*)</translation>
+    </message>
 </context>
 </TS>

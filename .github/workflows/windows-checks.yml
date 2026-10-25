@@ -100,6 +100,10 @@ jobs:
           setup-python: false
           # Released aqt 3.3.0 lacks Qt 6.11+ split Windows repositories.
           aqtsource: git+https://github.com/miurahr/aqtinstall.git@076e1659807d0b362a3ed684d54c2e9c775eb9c7
+      - name: Install pinned Qt PDF extension
+        if: ${{ steps.plan.outputs.build == 'true' }}
+        shell: pwsh
+        run: ./scripts/install_qt_pdf.ps1 -QtPrefix $env:QT_ROOT_DIR -CacheRoot "$env:RUNNER_TEMP/qt-pdf"
       - name: Install compiler cache
         if: ${{ steps.plan.outputs.build == 'true' }}
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11

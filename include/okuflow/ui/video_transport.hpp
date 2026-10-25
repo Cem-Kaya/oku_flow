@@ -16,6 +16,7 @@ class QFrame;
 class QHBoxLayout;
 class QPushButton;
 class QSlider;
+class QSpinBox;
 class QEvent;
 class QResizeEvent;
 class QTimer;
@@ -28,7 +29,7 @@ namespace okuflow {
 class VideoTransport final : public QWidget {
     Q_OBJECT
 public:
-    enum class Source { None, Recording, Video, Recap };
+    enum class Source { None, Recording, Video, Recap, Document };
     enum class State {
         Live, BehindLive, Paused, Video, End, Opening, Seeking,
         Waiting, Finishing, Unavailable, Buffering
@@ -50,6 +51,7 @@ public:
         QString sourceName;
         QString diagnosticDetail; // Native failure metadata; not a translated state key.
         quint64 sourceGeneration{};
+        int page{}, pageCount{}; // Document pages, zero-based internally.
     };
 
     explicit VideoTransport(QWidget* parent = nullptr);
@@ -84,6 +86,7 @@ signals:
     void SaveFrameRequested();
     void MutedChanged(bool muted);
     void VolumeChanged(int percent);
+    void PageRequested(int page);
 
 protected:
     void changeEvent(QEvent* event) override;
@@ -120,6 +123,7 @@ private:
     QLabel* stateLabel_{};
     QLabel* timeLabel_{};
     QSlider* timeline_{};
+    QSpinBox* page_{};
     QSlider* volume_{};
     QLabel* volumeLabel_{};
     QLabel* volumeValue_{};
@@ -146,6 +150,8 @@ private:
     bool uiHidden_{};
     bool collapsed_{};
     bool layoutCollapsed_{};
+    bool layoutDocument_{};
+    bool layoutDocumentPages_{};
     bool secondariesBelow_{};
     bool muteShown_{true};
     bool returnShown_{true};

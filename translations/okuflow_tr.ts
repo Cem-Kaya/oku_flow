@@ -3605,5 +3605,53 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
         <source>Whiteboard</source>
         <translation>Beyaz tahta</translation>
     </message>
+    <message>
+        <source>View file</source>
+        <translation>Dosyayı görüntüle</translation>
+    </message>
+    <message>
+        <source>Select file</source>
+        <translation>Dosya seç</translation>
+    </message>
+    <message>
+        <source>Open a video, picture, or PDF (Ctrl+O)</source>
+        <translation>Video, resim veya PDF aç (Ctrl+O)</translation>
+    </message>
+    <message>
+        <source>Open file</source>
+        <translation>Dosya aç</translation>
+    </message>
+    <message>
+        <source>Document text</source>
+        <translation>Belge metni</translation>
+    </message>
+    <message>
+        <source>Page</source>
+        <translation>Sayfa</translation>
+    </message>
+    <message>
+        <source>Previous page</source>
+        <translation>Önceki sayfa</translation>
+    </message>
+    <message>
+        <source>Next page</source>
+        <translation>Sonraki sayfa</translation>
+    </message>
+    <message>
+        <source>Opening file…</source>
+        <translation>Dosya açılıyor…</translation>
+    </message>
+    <message>
+        <source>File unavailable</source>
+        <translation>Dosya kullanılamıyor</translation>
+    </message>
+    <message>
+        <source>Page %1 of %2</source>
+        <translation>Sayfa %1 / %2</translation>
+    </message>
+    <message>
+        <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
+        <translation>Medya dosyaları (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;Tüm dosyalar (*)</translation>
+    </message>
 </context>
 </TS>

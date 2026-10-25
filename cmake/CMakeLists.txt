@@ -178,7 +178,7 @@ if (WIN32)
         ${PROJECT_SOURCE_DIR}/assets/okuflow_resources.qrc
     )
 
-    find_package(Qt6 QUIET COMPONENTS Widgets Network LinguistTools)
+    find_package(Qt6 QUIET COMPONENTS Widgets Network LinguistTools Pdf)
     if (NOT Qt6_FOUND)
         message(FATAL_ERROR
             "Qt6 was not found. Set QT_PREFIX to the Qt msvc2022_64 root "
@@ -201,6 +201,7 @@ if (WIN32)
     target_link_libraries(oku_flow PRIVATE
         Qt6::Widgets
         Qt6::Network
+        Qt6::Pdf
         iphlpapi
         ws2_32
         d3d11

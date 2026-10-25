@@ -3605,5 +3605,53 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Whiteboard</source>
         <translation>Маркерная доска</translation>
     </message>
+    <message>
+        <source>View file</source>
+        <translation>Просмотреть файл</translation>
+    </message>
+    <message>
+        <source>Select file</source>
+        <translation>Выбрать файл</translation>
+    </message>
+    <message>
+        <source>Open a video, picture, or PDF (Ctrl+O)</source>
+        <translation>Открыть видео, изображение или PDF (Ctrl+O)</translation>
+    </message>
+    <message>
+        <source>Open file</source>
+        <translation>Открыть файл</translation>
+    </message>
+    <message>
+        <source>Document text</source>
+        <translation>Текст документа</translation>
+    </message>
+    <message>
+        <source>Page</source>
+        <translation>Страница</translation>
+    </message>
+    <message>
+        <source>Previous page</source>
+        <translation>Предыдущая страница</translation>
+    </message>
+    <message>
+        <source>Next page</source>
+        <translation>Следующая страница</translation>
+    </message>
+    <message>
+        <source>Opening file…</source>
+        <translation>Открытие файла…</translation>
+    </message>
+    <message>
+        <source>File unavailable</source>
+        <translation>Файл недоступен</translation>
+    </message>
+    <message>
+        <source>Page %1 of %2</source>
+        <translation>Страница %1 из %2</translation>
+    </message>
+    <message>
+        <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
+        <translation>Медиафайлы (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;Все файлы (*)</translation>
+    </message>
 </context>
 </TS>

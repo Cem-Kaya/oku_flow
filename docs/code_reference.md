@@ -1,5 +1,32 @@
 # OkuFlow Code Reference
 
+## File documents and source selection (26 October 2026)
+
+- `common/file_document.hpp` / `.cpp`: `FileDocumentSnapshot` carries state,
+  request/document generations, page/count, image, embedded text and failure.
+  `FileDocument::{Open,SelectPage,Close,Snapshot,TakeSnapshot,SupportsPath}`
+  wrap Qt PDF and image readers on one serial latest-only worker. `RenderSize`
+  applies the long-edge/16-Mpixel cap; `Shared` owns cancellation/publication.
+- `OkuFlowApp::{FileSourceRequested,CameraPickerIndex}` distinguish explicit
+  file review and newest camera intent from the currently active capture.
+  `QueueInitialCameraStart` leaves the source picker enabled; discovery and
+  fallback retain phone retry intent without reclaiming a selected file.
+- `VideoDocumentState::Still`, `PollFileDocument` and `SelectDocumentPage`
+  adopt immutable pages into the existing media renderer/UCT/capture pipeline.
+  `OpenPendingVideoFile` routes file types without changing recording ownership.
+  `ReturnVideoToCamera` fences the worker and restores camera framing.
+  `SelectedVideoState` reports static-document/page metadata;
+  `PrepareVideoControl` refuses time-based actions for it.
+- `MainWindow::setDocumentText` owns the native read-only PDF text pane.
+  `VideoTransport::Document` snapshots, `PageRequested`, `page_`, and document
+  branches in actions, layout, naming, announcements and focus use standard Qt
+  page controls. Existing camera/video controls retain their behavior.
+- `install_qt_pdf.ps1` pins the official 6.12.0 SDK extension and refuses
+  differing installed files. `build_release_bundle.bat` requires the deployed
+  Qt PDF DLL and original version-matched qtpdf SPDX document.
+  The document, transport and native app fixtures
+  cover decoder/state/UI boundaries. See [usage and bounds](file_documents.md).
+
 ## Regional stability and distant text runs (25 October 2026)
 
 - `SplitDistantTextRuns(RecognitionOutput&)` runs before scheduler preparation,

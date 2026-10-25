@@ -293,7 +293,8 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
                 const bool recording = recordingManager_ && recordingManager_->IsActive();
                 const bool sameRecordedSource = target >= 0 &&
                     cameras_[static_cast<size_t>(target)].symbolicLink == mediaCapture_.LastSymbolicLink();
-                if (!streamingPhone && target >= 0 && !mediaCapture_.WasAbandoned() &&
+                if (!FileSourceRequested() && !pendingCameraStart_ && !cameraStopPending_ &&
+                    !streamingPhone && target >= 0 && !mediaCapture_.WasAbandoned() &&
                     (!recording || sameRecordedSource) &&
                     phoneRetries_[cameras_[static_cast<size_t>(target)].phoneSerial]
                         .CanAttempt(static_cast<std::int64_t>(GetTickCount64()))) {
@@ -353,7 +354,8 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
 
 void OkuFlowApp::StartFallbackCamera()
 {
-    if (!cameraIntent_.TemporaryOwner().isEmpty() || !automaticPhoneSelectionAllowed_ || cameraActive_ || cameraStartupPending_ ||
+    if (FileSourceRequested() || pendingCameraStart_ || cameraStopPending_ ||
+        !cameraIntent_.TemporaryOwner().isEmpty() || !automaticPhoneSelectionAllowed_ || cameraActive_ || cameraStartupPending_ ||
         mediaCapture_.WasAbandoned() || (startupWorkers_ && startupWorkers_->active.load() != 0) ||
         (recordingManager_ && recordingManager_->IsActive())) return;
     // A fallback is temporary; only an explicit camera pick changes the saved intent.

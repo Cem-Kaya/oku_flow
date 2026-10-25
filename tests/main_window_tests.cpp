@@ -11,6 +11,7 @@
 #include "okuflow/ui/ultra_clear_text_panel.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "okuflow/ui/render_widget.hpp"
+#include "okuflow/ui/video_transport.hpp"
 
 #include <QApplication>
 #include <QAccessible>
@@ -46,6 +47,7 @@
 #include <QTextCursor>
 #include <QSignalBlocker>
 #include <QSlider>
+#include <QSpinBox>
 #include <QSplitter>
 #include <QStyleHints>
 #include <QStringList>
@@ -425,6 +427,7 @@ private slots:
     void desktopZoomSliderReachesSixteenX();
     void textClarityMasterPreservesRefinements();
     void ultraClearTextControlsHaveNativeGeometry();
+    void documentControlsHaveNativeGeometry();
     void ultraClearTextOverlayFollowsNativeViewport();
     void ultraClearTextOverlayYieldsToModalDialogs_data();
     void ultraClearTextOverlayYieldsToModalDialogs();
@@ -1191,6 +1194,52 @@ void MainWindowTests::ultraClearTextControlsHaveNativeGeometry()
     QTRY_VERIFY(GlobalRect(scroll->viewport()).contains(GlobalRect(enabled)));
     QString problem;
     QVERIFY2(NativeHitBelongsTo(enabled, &problem), qPrintable(problem));
+}
+
+void MainWindowTests::documentControlsHaveNativeGeometry()
+{
+    MainWindow window;
+    QVERIFY(PrepareVisualWindow(window));
+    window.show();
+    const QString fit = FitVisualWindow(window, QSize(1380, 1000));
+    QVERIFY2(fit.isEmpty(), qPrintable(fit));
+    QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
+    window.setSimpleMode(false);
+    auto* tabs = Named<QTabWidget>(window, "advancedPage");
+    QVERIFY(tabs); tabs->setCurrentIndex(2);
+    window.setCameraDevices({QStringLiteral("Fixture webcam"), QStringLiteral("Fixture phone")}, 1);
+    window.setVideoSourceSelected(true, 1);
+    window.setDocumentText(QStringLiteral("Embedded PDF text remains available without OCR."));
+    VideoTransport::Snapshot snapshot;
+    snapshot.source = VideoTransport::Source::Document; snapshot.sourceName = QStringLiteral("Fixture.pdf");
+    snapshot.sourceGeneration = 1; snapshot.pageCount = 3;
+    window.videoTransport()->SetSnapshot(snapshot);
+    auto* page = window.videoTransport()->findChild<QSpinBox*>("documentPage");
+    auto* text = window.findChild<QPlainTextEdit*>("documentText");
+    QVERIFY(page && text);
+    QTRY_VERIFY(page->isVisible()); QTRY_VERIFY(text->isVisible());
+    QScrollArea* scroll = nullptr;
+    for (auto* parent = text->parentWidget(); parent; parent = parent->parentWidget())
+        if ((scroll = qobject_cast<QScrollArea*>(parent))) break;
+    QVERIFY(scroll); scroll->ensureWidgetVisible(text);
+    QTRY_VERIFY(GlobalRect(scroll->viewport()).intersects(GlobalRect(text)));
+    for (auto* widget : {static_cast<QWidget*>(page), static_cast<QWidget*>(text)}) {
+        auto* accessible = QAccessible::queryAccessibleInterface(widget);
+        QVERIFY(accessible && accessible->isValid()); QVERIFY(!accessible->rect().isEmpty());
+        QVERIFY(GlobalRect(widget).contains(accessible->rect())); QVERIFY(!accessible->state().invisible);
+        QString problem; QVERIFY2(NativeHitBelongsTo(widget, &problem), qPrintable(problem));
+    }
+    auto* accessible = QAccessible::queryAccessibleInterface(text);
+    QVERIFY(accessible->state().readOnly && accessible->textInterface());
+    QCOMPARE(accessible->textInterface()->text(0, accessible->textInterface()->characterCount()), text->toPlainText());
+    QVERIFY2(ActivateFixtureWindow(page), test::ActivationFailureMessage());
+    page->setFocus(); QTRY_VERIFY(page->hasFocus());
+    QSignalSpy changes(window.videoTransport(), &VideoTransport::PageRequested);
+    QTest::keyClick(page, Qt::Key_Up);
+    QCOMPARE(changes.count(), 1); QCOMPARE(changes.at(0).at(0).toInt(), 1);
+    QVERIFY(window.videoTransport()->playPauseButton()->isHidden());
+    QVERIFY(window.videoTransport()->timeline()->isHidden());
+    QVERIFY(SaveScreenshot(window, QStringLiteral("desktop-en-document-controls")));
 }
 
 void MainWindowTests::disabledSlidersHaveDistinctAppearance()

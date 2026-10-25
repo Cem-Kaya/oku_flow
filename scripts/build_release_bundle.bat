@@ -211,14 +211,10 @@ if errorlevel 1 goto :fail
 call :copy_required_file "%QT_FFMPEG_LICENSE_FILE%" "%STAGING_DIR%\licenses\QT_FFMPEG_LGPL_2_1.txt"
 if errorlevel 1 goto :fail
 mkdir "%STAGING_DIR%\licenses\qt-sbom" 2>nul
-for %%M in (qtbase qtimageformats qtmultimedia qtspeech qtsvg) do (
+for %%M in (qtbase qtimageformats qtmultimedia qtspeech qtsvg qtpdf) do (
     call :copy_required_file "%QT_SBOM_DIR%\%%M-%QT_RUNTIME_VERSION%.spdx.json" "%STAGING_DIR%\licenses\qt-sbom\%%M-%QT_RUNTIME_VERSION%.spdx.json"
     if errorlevel 1 goto :fail
 )
-rem Qt PDF is not needed by this desktop build. Preserve its
-rem exact notice when installed, and require it if deployment includes PDF.
-if exist "%QT_SBOM_DIR%\qtpdf-%QT_RUNTIME_VERSION%.spdx.json" call :copy_required_file "%QT_SBOM_DIR%\qtpdf-%QT_RUNTIME_VERSION%.spdx.json" "%STAGING_DIR%\licenses\qt-sbom\qtpdf-%QT_RUNTIME_VERSION%.spdx.json"
-if errorlevel 1 goto :fail
 call :copy_required_file "%ROOT_DIR%\assets\icons\lucide\LICENSE" "%STAGING_DIR%\licenses\LUCIDE_LICENSE.txt"
 if errorlevel 1 goto :fail
 if /I "%BUNDLE_EFFECTIVE_CUDA%"=="ON" call :copy_required_file "%ROOT_DIR%\third_party\amd_fsr1\LICENSE.txt" "%STAGING_DIR%\licenses\AMD_FSR1_LICENSE.txt"
@@ -350,7 +346,7 @@ if not defined QT_RUNTIME_VERSION (
     exit /b 1
 )
 set "QT_SBOM_DIR=%QT_ROOT%\sbom"
-for %%M in (qtbase qtimageformats qtmultimedia qtspeech qtsvg) do if not exist "%QT_SBOM_DIR%\%%M-%QT_RUNTIME_VERSION%.spdx.json" (
+for %%M in (qtbase qtimageformats qtmultimedia qtspeech qtsvg qtpdf) do if not exist "%QT_SBOM_DIR%\%%M-%QT_RUNTIME_VERSION%.spdx.json" (
     echo ERROR: Required Qt module SBOM is missing: "%QT_SBOM_DIR%\%%M-%QT_RUNTIME_VERSION%.spdx.json".
     exit /b 1
 )
@@ -424,14 +420,14 @@ if not exist "%STAGING_DIR%\app\Qt6Core.dll" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\app\Qt6Gui.dll" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\app\Qt6Widgets.dll" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\app\Qt6Network.dll" goto :deploy_incomplete
+if not exist "%STAGING_DIR%\app\Qt6Pdf.dll" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\app\platforms\qwindows.dll" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\LICENSE" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\COMMERCIAL.md" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\THIRD_PARTY_LICENSES.md" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\app\licenses\QT_LICENSE.txt" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\app\licenses\QT_FFMPEG_LGPL_2_1.txt" goto :deploy_incomplete
-for %%M in (qtbase qtimageformats qtmultimedia qtspeech qtsvg) do if not exist "%STAGING_DIR%\app\licenses\qt-sbom\%%M-%QT_RUNTIME_VERSION%.spdx.json" goto :deploy_incomplete
-if exist "%STAGING_DIR%\app\Qt6Pdf.dll" if not exist "%STAGING_DIR%\app\licenses\qt-sbom\qtpdf-%QT_RUNTIME_VERSION%.spdx.json" goto :deploy_incomplete
+for %%M in (qtbase qtimageformats qtmultimedia qtspeech qtsvg qtpdf) do if not exist "%STAGING_DIR%\app\licenses\qt-sbom\%%M-%QT_RUNTIME_VERSION%.spdx.json" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\app\licenses\LUCIDE_LICENSE.txt" goto :deploy_incomplete
 if /I "%BUNDLE_EFFECTIVE_CUDA%"=="ON" if not exist "%STAGING_DIR%\app\licenses\AMD_FSR1_LICENSE.txt" goto :deploy_incomplete
 if /I "%BUNDLE_EFFECTIVE_CUDA%"=="ON" if not exist "%STAGING_DIR%\app\licenses\NVIDIA_NIS_LICENSE.txt" goto :deploy_incomplete
@@ -464,7 +460,7 @@ exit /b 0
 :deploy_incomplete
 echo ERROR: Qt deployment or ancillary-file staging is incomplete.
 echo Required files include oku_flow.exe, mf_dxva_minimal.exe,
-echo Qt6Core/Gui/Widgets/Network.dll,
+echo Qt6Core/Gui/Widgets/Network/Pdf.dll,
 echo platforms\qwindows.dll, LICENSE, COMMERCIAL.md, THIRD_PARTY_LICENSES.md,
 echo complete Qt/FFmpeg/module-SPDX, Lucide, CUDA-upscaler, Maxine-header,
 echo and CUDA Toolkit notices,

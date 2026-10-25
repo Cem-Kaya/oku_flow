@@ -3605,5 +3605,53 @@ Melden Sie sich auf der erweiterten Registerkarte Assistent über ChatGPT verbin
         <source>Whiteboard</source>
         <translation>Whiteboard</translation>
     </message>
+    <message>
+        <source>View file</source>
+        <translation>Datei anzeigen</translation>
+    </message>
+    <message>
+        <source>Select file</source>
+        <translation>Datei auswählen</translation>
+    </message>
+    <message>
+        <source>Open a video, picture, or PDF (Ctrl+O)</source>
+        <translation>Video, Bild oder PDF öffnen (Ctrl+O)</translation>
+    </message>
+    <message>
+        <source>Open file</source>
+        <translation>Datei öffnen</translation>
+    </message>
+    <message>
+        <source>Document text</source>
+        <translation>Dokumenttext</translation>
+    </message>
+    <message>
+        <source>Page</source>
+        <translation>Seite</translation>
+    </message>
+    <message>
+        <source>Previous page</source>
+        <translation>Vorherige Seite</translation>
+    </message>
+    <message>
+        <source>Next page</source>
+        <translation>Nächste Seite</translation>
+    </message>
+    <message>
+        <source>Opening file…</source>
+        <translation>Datei wird geöffnet…</translation>
+    </message>
+    <message>
+        <source>File unavailable</source>
+        <translation>Datei nicht verfügbar</translation>
+    </message>
+    <message>
+        <source>Page %1 of %2</source>
+        <translation>Seite %1 von %2</translation>
+    </message>
+    <message>
+        <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
+        <translation>Mediendateien (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;Alle Dateien (*)</translation>
+    </message>
 </context>
 </TS>

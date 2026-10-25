@@ -3605,5 +3605,53 @@ Use «Connect ChatGPT» en la pestaña Asistente del modo avanzado para iniciar 
         <source>Whiteboard</source>
         <translation>Pizarra blanca</translation>
     </message>
+    <message>
+        <source>View file</source>
+        <translation>Ver archivo</translation>
+    </message>
+    <message>
+        <source>Select file</source>
+        <translation>Seleccionar archivo</translation>
+    </message>
+    <message>
+        <source>Open a video, picture, or PDF (Ctrl+O)</source>
+        <translation>Abrir un vídeo, una imagen o un PDF (Ctrl+O)</translation>
+    </message>
+    <message>
+        <source>Open file</source>
+        <translation>Abrir archivo</translation>
+    </message>
+    <message>
+        <source>Document text</source>
+        <translation>Texto del documento</translation>
+    </message>
+    <message>
+        <source>Page</source>
+        <translation>Página</translation>
+    </message>
+    <message>
+        <source>Previous page</source>
+        <translation>Página anterior</translation>
+    </message>
+    <message>
+        <source>Next page</source>
+        <translation>Página siguiente</translation>
+    </message>
+    <message>
+        <source>Opening file…</source>
+        <translation>Abriendo archivo…</translation>
+    </message>
+    <message>
+        <source>File unavailable</source>
+        <translation>Archivo no disponible</translation>
+    </message>
+    <message>
+        <source>Page %1 of %2</source>
+        <translation>Página %1 de %2</translation>
+    </message>
+    <message>
+        <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
+        <translation>Archivos multimedia (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;Todos los archivos (*)</translation>
+    </message>
 </context>
 </TS>

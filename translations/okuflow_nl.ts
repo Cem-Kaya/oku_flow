@@ -3605,5 +3605,53 @@ Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u
         <source>Whiteboard</source>
         <translation>Whiteboard</translation>
     </message>
+    <message>
+        <source>View file</source>
+        <translation>Bestand bekijken</translation>
+    </message>
+    <message>
+        <source>Select file</source>
+        <translation>Bestand selecteren</translation>
+    </message>
+    <message>
+        <source>Open a video, picture, or PDF (Ctrl+O)</source>
+        <translation>Een video, afbeelding of PDF openen (Ctrl+O)</translation>
+    </message>
+    <message>
+        <source>Open file</source>
+        <translation>Bestand openen</translation>
+    </message>
+    <message>
+        <source>Document text</source>
+        <translation>Documenttekst</translation>
+    </message>
+    <message>
+        <source>Page</source>
+        <translation>Pagina</translation>
+    </message>
+    <message>
+        <source>Previous page</source>
+        <translation>Vorige pagina</translation>
+    </message>
+    <message>
+        <source>Next page</source>
+        <translation>Volgende pagina</translation>
+    </message>
+    <message>
+        <source>Opening file…</source>
+        <translation>Bestand wordt geopend…</translation>
+    </message>
+    <message>
+        <source>File unavailable</source>
+        <translation>Bestand niet beschikbaar</translation>
+    </message>
+    <message>
+        <source>Page %1 of %2</source>
+        <translation>Pagina %1 van %2</translation>
+    </message>
+    <message>
+        <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
+        <translation>Mediabestanden (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;Alle bestanden (*)</translation>
+    </message>
 </context>
 </TS>

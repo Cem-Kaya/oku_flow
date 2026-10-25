@@ -18,6 +18,13 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
 
 ## Current Capabilities
 
+- Development file sources now include pictures and PDF pages. Install the
+  matching Qt PDF module with `scripts/install_qt_pdf.ps1`; its renderer and
+  extractor feed existing selected-media controls, UCT and a native read-only
+  embedded-text pane. Phone recovery remains active for phone intent while
+  explicit source changes win. See [file documents](file_documents.md) for
+  limits, SDK provenance and scoped/full validation commands.
+
 - A development [host UCT merge candidate](uct_merge_optimization.md) removes
   repeated geometry/overlap work inside the existing GPU recognizer pipeline.
   Frozen CPU replay/timing is prepared; it remains uncompiled and unmeasured

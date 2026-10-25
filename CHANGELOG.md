@@ -11,6 +11,13 @@
 
 ## [Unreleased]
 
+- Keep source selection available during phone startup. Explicit webcams and
+  files win over background discovery; saved phone intent still reconnects
+  after a drop or a return from file review.
+- Open pictures and PDFs through the file source picker. Reuse Qt PDF rendering
+  and embedded-text extraction, native page controls and a read-only accessible
+  document-text pane; enabled UCT also processes scanned content.
+
 - Let settled text regions start fresh OCR while another pane keeps moving.
   Split distant text runs before building line proof, preserving every word
   and omission. Keep independent pixel validation, paced single-worker work

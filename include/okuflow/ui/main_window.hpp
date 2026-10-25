@@ -82,6 +82,7 @@ public:
     void setCameraDevices(const QStringList& names, int selectedCamera);
     void setVideoSourceSelected(bool selected, int cameraIndex);
     bool videoSourceSelected() const;
+    void setDocumentText(const QString& text);
     QPushButton* phoneLightButton() const;
     QDoubleSpinBox* phoneZoomControl() const { return phoneZoomControl_; }
     void setPhoneZoomControls(bool visible, bool enabled, float minimum, float maximum, float requested);
@@ -378,6 +379,7 @@ private:
     QPushButton* recordButton_{};
     QPushButton* openVideoButton_{};
     VideoTransport* videoTransport_{};
+    QPlainTextEdit* documentText_{};
     QPushButton* annotationButton_{};
     AnnotationOverlay* annotationOverlay_{};
     UltraClearTextOverlay* ultraClearTextOverlay_{};

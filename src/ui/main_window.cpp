@@ -795,9 +795,9 @@ MainWindow::MainWindow()
     capturePhotoButton_ = new ChromeActionButton("Photo");
     recordButton_ = new ChromeActionButton("Record");
     recordButton_->setCheckable(true);
-    openVideoButton_ = new QPushButton(QStringLiteral("Select video"));
+    openVideoButton_ = new QPushButton(QStringLiteral("Select file"));
     openVideoButton_->setObjectName(QStringLiteral("openVideoButton"));
-    openVideoButton_->setToolTip(QStringLiteral("Open a saved video (Ctrl+O)"));
+    openVideoButton_->setToolTip(QStringLiteral("Open a video, picture, or PDF (Ctrl+O)"));
     connect(openVideoButton_, &QPushButton::clicked, this, &MainWindow::openVideoRequested);
     explainNowButton_ = new ChromeActionButton("Explain");
     annotationButton_ = new ChromeActionButton(QStringLiteral("Draw"));
@@ -1409,6 +1409,14 @@ MainWindow::MainWindow()
     deviceLayout->addWidget(cameraLabel);
     deviceLayout->addWidget(cameraCombo_);
     deviceLayout->addWidget(openVideoButton_);
+    documentText_ = new QPlainTextEdit();
+    documentText_->setObjectName(QStringLiteral("documentText"));
+    documentText_->setReadOnly(true);
+    documentText_->setMaximumHeight(220);
+    documentText_->setMinimumHeight(96);
+    documentText_->setAccessibleName(TranslateUi(QStringLiteral("Document text")));
+    documentText_->hide();
+    deviceLayout->addWidget(documentText_);
     openVideoButton_->hide();
     connect(cameraCombo_, &QComboBox::currentIndexChanged, this,
             &MainWindow::UpdateCameraSourceUi);
@@ -2256,7 +2264,7 @@ MainWindow::MainWindow()
             "Save synchronized original and processed camera photos");
     setA11y(recordButton_, "Record Video",
             "Start or stop an Original MP4 recording");
-    setA11y(openVideoButton_, "Select video", "Open a saved video (Ctrl+O)");
+    setA11y(openVideoButton_, "Select file", "Open a video, picture, or PDF (Ctrl+O)");
     setA11y(annotationButton_, "Draw on camera view",
             "Open annotation mode to mark the lecture view with scene-anchored ink.");
     setA11y(joystickCheckbox_, "Virtual Joystick",
@@ -3093,7 +3101,7 @@ void MainWindow::setCameraDevices(const QStringList& names, int selectedCamera)
     const QSignalBlocker blocker(cameraCombo_);
     cameraCombo_->clear();
     cameraCombo_->addItems(names);
-    cameraCombo_->addItem(TranslateUi(QStringLiteral("View video")), QStringLiteral("video"));
+    cameraCombo_->addItem(TranslateUi(QStringLiteral("View file")), QStringLiteral("video"));
     cameraCombo_->setCurrentIndex(video ? names.size()
         : selectedCamera >= 0 && selectedCamera < names.size() ? selectedCamera : -1);
     UpdateCameraSourceUi();
@@ -3108,9 +3116,15 @@ void MainWindow::setVideoSourceSelected(bool selected, int cameraIndex)
 {
     const QSignalBlocker blocker(cameraCombo_);
     const int videoIndex = cameraCombo_->findData(QStringLiteral("video"));
-    cameraCombo_->setCurrentIndex(selected ? videoIndex
-        : cameraIndex >= 0 && cameraIndex < videoIndex ? cameraIndex : -1);
+    const int target = selected ? videoIndex
+        : cameraIndex >= 0 && cameraIndex < videoIndex ? cameraIndex : -1;
+    if (cameraCombo_->currentIndex() != target) cameraCombo_->setCurrentIndex(target);
     UpdateCameraSourceUi();
+}
+
+void MainWindow::setDocumentText(const QString& text) {
+    if (documentText_->toPlainText() != text) documentText_->setPlainText(text);
+    documentText_->setVisible(!text.isEmpty());
 }
 
 void MainWindow::UpdateCameraSourceUi()
@@ -4505,10 +4519,11 @@ void MainWindow::changeEvent(QEvent* event)
         if (cameraCombo_) {
             const QSignalBlocker blocker(cameraCombo_);
             const int videoIndex = cameraCombo_->findData(QStringLiteral("video"));
-            if (videoIndex >= 0) cameraCombo_->setItemText(videoIndex, TranslateUi(QStringLiteral("View video")));
+            if (videoIndex >= 0) cameraCombo_->setItemText(videoIndex, TranslateUi(QStringLiteral("View file")));
             emit cameraLabelsRefreshRequested();
         }
         UpdateUiVisibilityControl();
+        documentText_->setAccessibleName(TranslateUi(QStringLiteral("Document text")));
         ApplyExplainBusyUi();
         UpdateAdvancedTabToolTips();
         UpdateProfileButtonLayout();

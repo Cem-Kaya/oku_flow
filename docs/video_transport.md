@@ -15,9 +15,9 @@ Native Space activation on the chevron and other visible buttons is unchanged.
 Permanent recap failure uses the existing **Video unavailable** status; its
 existing native reason is also included in the polite state announcement.
 
-Saved-video selection lives in Settings > Camera. The camera dropdown includes
-`View video`; choosing it opens the local file picker. While video is selected,
-`Select video` appears directly beneath the dropdown. Orientation stays available
+File selection lives in Settings > Camera. The camera dropdown includes
+`View file`; choosing it opens the local file picker for videos, pictures and PDFs.
+`Select file` appears directly beneath the dropdown. Orientation stays available
 for the video; camera-only format controls and the phone light are hidden.
 Camera discovery preserves this selection. Choosing a physical/phone camera
 leaves file review, and canceling the picker keeps the previous viewed source.
@@ -27,6 +27,12 @@ also be dropped on the view or its owned chrome. Drag handling inspects MIME
 data only and commits a CopyAction; asynchronous format validation and opening
 belong to the application. Opening a saved file stops/finalizes a current
 recording first. It does not start a recording.
+
+Picture/PDF documents share this layout with native page selection and
+Previous/Next buttons replacing the timeline/play/audio controls. Single-page
+pictures show only Save frame and Return to camera. PDF embedded text is
+accessible through the native read-only pane in Camera settings. See
+[file documents](file_documents.md) for the Qt renderer, bounds and UCT behavior.
 
 The bar uses a slim source/status line above one horizontal row of icon actions,
 a scrubber and the time readout. Actions have 44-DIP minimum targets; play and
@@ -186,10 +192,10 @@ string; existing keys may already be present in the catalogs.
 | `Video timeline` | Slider accessible name |
 | `Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.` | Timeline help |
 | `%1 of %2` | Accessible current time and total time; preserve both placeholders |
-| `Open video` | File dialog title |
-| `View video` | Camera/source dropdown option |
-| `Select video` | Conditional file selection button under the source dropdown |
-| `Open a saved video (Ctrl+O)` | Open action help; preserve shortcut |
+| `Open file` | Video/picture/PDF dialog title |
+| `View file` | Camera/source dropdown option |
+| `Select file` | File selection button under the source dropdown |
+| `Open a video, picture, or PDF (Ctrl+O)` | Open action help; preserve shortcut |
 | `Record Original video` | Record tooltip |
 | `Start or stop an Original MP4 recording` | Record accessible description |
 | `Select sound for the Original video recording. The microphone is used only while recording.` | Recording microphone tooltip |

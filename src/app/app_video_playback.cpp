@@ -5,6 +5,7 @@
 #include "okuflow/common/video_audio_output.hpp"
 #include "okuflow/common/video_playback.hpp"
 #include "okuflow/common/video_recap.hpp"
+#include "okuflow/common/file_document.hpp"
 #include "okuflow/ui/annotation_overlay.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "okuflow/ui/video_transport.hpp"
@@ -35,7 +36,13 @@ std::uint64_t PackedAdapter(const LUID& luid)
 }
 
 struct OkuFlowApp::VideoDocumentState {
-    enum class Kind { Camera, Recap, Recording, File };
+    enum class Kind { Camera, Recap, Recording, File, Still };
+    FileDocument document;
+    FileDocumentSnapshot documentPage;
+    std::uint64_t documentRequest{}, documentSample{};
+    bool openingDocument{};
+    int desiredDocumentEdge{};
+    QElapsedTimer documentZoomSettled;
     struct Part {
         int index{1};
         std::shared_ptr<RecordingArchive> archive;
@@ -196,14 +203,18 @@ void OkuFlowApp::InitializeVideoPlayback()
     videoPlaybackTimer_->setInterval(16);
     connect(videoPlaybackTimer_, &QTimer::timeout, this, &OkuFlowApp::PollVideoPlayback);
     connect(mainWindow_.get(), &MainWindow::openVideoRequested, this, [this] {
+        if (filePickerActive_) return;
+        filePickerActive_ = true;
         const auto path = QFileDialog::getOpenFileName(mainWindow_.get(),
-            QCoreApplication::translate("OkuFlow", "Open video"), {},
-            QCoreApplication::translate("OkuFlow", "Video files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;All files (*)"));
+            QCoreApplication::translate("OkuFlow", "Open file"), {},
+            QCoreApplication::translate("OkuFlow", "Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)"));
+        filePickerActive_ = false;
         if (!path.isEmpty()) OpenVideoFile(path);
         else PollVideoPlayback(); // Cancel keeps the actual viewed source selected.
     });
     connect(mainWindow_.get(), &MainWindow::videoFileDropped, this, &OkuFlowApp::OpenVideoFile);
     auto* transport = mainWindow_->videoTransport();
+    connect(transport, &VideoTransport::PageRequested, this, &OkuFlowApp::SelectDocumentPage);
     connect(transport, &VideoTransport::SeekRequested, this, &OkuFlowApp::SeekSelectedVideo);
     connect(transport, &VideoTransport::PlayPauseRequested, this, &OkuFlowApp::ToggleSelectedVideoPlayback);
     connect(transport, &VideoTransport::JumpToEndRequested, this, &OkuFlowApp::JumpSelectedVideoToEnd);
@@ -410,7 +421,7 @@ void OkuFlowApp::ApplyLiveRecapSnapshot(const VideoRecapSnapshot& recap) {
         ui.state=VideoTransport::State::Unavailable;
     if(snapshot.state==VideoPlaybackState::Unavailable && !d.followingLive && !d.heldLive)ui.state=VideoTransport::State::Unavailable;
     mainWindow_->videoTransport()->SetSnapshot(ui);
-    mainWindow_->setVideoSourceSelected(MediaViewSelected(),selectedCameraIndex_);
+    if (!filePickerActive_) mainWindow_->setVideoSourceSelected(MediaViewSelected(),CameraPickerIndex());
     const bool selected=MediaViewSelected(),gpu=SelectedMediaGpuProcessingAvailable();
     if(!d.controlsInitialized || d.controlsMediaSelected!=selected || d.controlsMediaGpuAvailable!=gpu) {
         d.controlsInitialized=true;d.controlsMediaSelected=selected;d.controlsMediaGpuAvailable=gpu;
@@ -538,6 +549,11 @@ void OkuFlowApp::OpenVideoFile(const QString& path)
         ShowStatusMessage(QStringLiteral("Video could not be opened: select one existing local file."));
         return;
     }
+    // Suspend recovery only for the explicit file choice. Saved phone intent
+    // is retained, so returning to Camera resumes its normal discovery/retry.
+    pipelineOrchestrator_->CancelCameraReconnect();
+    pendingCameraStart_.reset();
+    if (cameraStartupPending_) StopCameraCapture();
     auto& doc = *videoDocument_;
     doc.pendingOpenPath = NormalizedVideoPath(path); // newest request owns completion
     if (recordingManager_) {
@@ -571,6 +587,16 @@ void OkuFlowApp::OpenPendingVideoFile()
     doc.gpuFallbackPending=false;
     if (!doc.waitingSession.isEmpty() || doc.pendingOpenPath.isEmpty()) return;
     doc.openingPath = std::exchange(doc.pendingOpenPath, {});
+    if (FileDocument::SupportsPath(doc.openingPath)) {
+        doc.openingDocument = true;
+        doc.openingFile = doc.openingArchive = false;
+        doc.documentRequest = doc.document.Open(doc.openingPath);
+        videoPlaybackTimer_->start();
+        PollFileDocument();
+        return;
+    }
+    doc.openingDocument = false;
+    if (doc.kind != VideoDocumentState::Kind::Still) doc.document.Close();
     // Even a matching label is probed by the native worker. A path can have
     // been replaced; only a held Windows file identity proves own output.
     doc.beforeOpenPlaying = doc.playing;
@@ -590,6 +616,96 @@ void OkuFlowApp::OpenPendingVideoFile()
     PollVideoPlayback();
 }
 
+void OkuFlowApp::SelectDocumentPage(int page) {
+    if (!videoDocument_ || videoDocument_->kind != VideoDocumentState::Kind::Still ||
+        page < 0 || page >= videoDocument_->documentPage.pageCount) return;
+    auto& doc = *videoDocument_;
+    doc.documentRequest = doc.document.SelectPage(page, std::max(4096, doc.documentPage.longEdge));
+    doc.openingDocument = doc.documentRequest != 0;
+    PollFileDocument();
+}
+
+void OkuFlowApp::PollFileDocument() {
+    auto& doc = *videoDocument_;
+    const auto result = doc.document.TakeSnapshot();
+    if (result.generation == doc.documentRequest && result.state == FileDocumentSnapshot::State::Failed) {
+        doc.openingDocument = false;
+        if (doc.lastError != result.error) {
+            doc.lastError = result.error;
+            ShowStatusMessage(TranslateUi(QStringLiteral("File unavailable")) + QStringLiteral(": ") + result.error);
+        }
+        if (doc.kind != VideoDocumentState::Kind::Still) {
+            doc.document.Close(); PollVideoPlayback(); return;
+        }
+    }
+    if (result.generation == doc.documentRequest && result.state == FileDocumentSnapshot::State::Ready &&
+        result.generation != doc.documentPage.generation) {
+        const auto& image = result.image;
+        auto frame = std::make_shared<VideoPlaybackFrame>();
+        frame->width = image.width(); frame->height = image.height(); frame->strideBytes = image.width() * 4;
+        frame->bgra = result.pixels;
+        frame->sampleId = ++doc.documentSample; frame->requestGeneration = result.generation;
+        const bool newDocument = doc.kind != VideoDocumentState::Kind::Still ||
+            doc.documentPage.documentGeneration != result.documentGeneration;
+        if (newDocument && !doc.cameraView)
+            doc.cameraView = VideoDocumentState::CameraView{zoomAmount_, zoomCenterX_, zoomCenterY_, zoomEnabled_, pipelineOrchestrator_->ViewportFitMode()};
+        if (!doc.cameraRotationSaved) { doc.cameraRotation = rotationQuarterTurns_; doc.cameraRotationSaved = true; }
+        doc.player.Close(); doc.audio.Close();
+        InvalidateMediaSelection();
+        doc.kind = VideoDocumentState::Kind::Still;
+        doc.followingLive = doc.playing = doc.afterOperationPlay = doc.waitingNextPart = false;
+        doc.pendingHold = doc.heldLive = doc.pausedDisplayHold = doc.resumePending = false;
+        doc.openingDocument = false; doc.lastError.clear();
+        doc.filePath = result.path;
+        doc.fileDuration100ns = 0; doc.fileHasAudio = doc.fileAudioAvailable = false;
+        if (newDocument) {
+            doc.documentId = QStringLiteral("media-") + QUuid::createUuid().toString(QUuid::Id128);
+            rotationQuarterTurns_ = 0; UpdateRotationUi();
+        }
+        doc.documentPage = result;
+        // The owned frame is the sole full-resolution page buffer after adoption.
+        doc.documentPage.image = {};
+        doc.documentPage.pixels.reset();
+        doc.frame = std::move(frame); doc.neighbor.reset(); doc.presented.reset(); doc.presentedNeighbor.reset();
+        doc.requestGeneration = result.generation;
+        doc.completedRequestGeneration = 0;
+        mediaHoldBakedScene_ = mediaPresentedWithCuda_ = mediaSuperResPresented_ = false;
+        mainWindow_->setDocumentText(result.text);
+        if (newDocument) {
+            zoomEnabled_ = true; zoomAmount_ = kWholeSourceZoom;
+            SetZoomCenter(0.5f, 0.5f, true, true, false);
+            if (uiState_->zoomCheckbox_) { const QSignalBlocker b(uiState_->zoomCheckbox_); uiState_->zoomCheckbox_->setChecked(true); }
+            if (uiState_->zoomSlider_) { const QSignalBlocker b(uiState_->zoomSlider_); uiState_->zoomSlider_->setValue(1); }
+        }
+        UpdateControlEnabledStates(); UpdateCameraPlaceholder();
+    }
+    if (doc.kind == VideoDocumentState::Kind::Still && doc.frame) PresentMediaView();
+    VideoTransport::Snapshot ui;
+    ui.source = VideoTransport::Source::Document;
+    ui.sourceName = QFileInfo(doc.openingDocument ? result.path : doc.filePath).fileName();
+    ui.state = doc.openingDocument ? VideoTransport::State::Opening :
+        result.state == FileDocumentSnapshot::State::Failed ? VideoTransport::State::Unavailable : VideoTransport::State::Paused;
+    ui.page = doc.documentPage.page; ui.pageCount = doc.documentPage.pageCount;
+    ui.canSaveFrame = bool(doc.presented) && !doc.openingDocument && !doc.savePending;
+    ui.diagnosticDetail = result.error;
+    if (doc.transportDocumentId != doc.documentId) { doc.transportDocumentId = doc.documentId; ++doc.transportGeneration; }
+    ui.sourceGeneration = doc.transportGeneration;
+    mainWindow_->videoTransport()->SetSnapshot(ui);
+    if (!filePickerActive_) mainWindow_->setVideoSourceSelected(true, CameraPickerIndex());
+    UpdatePhoneLightUi();
+    // Re-render PDF vectors after magnification settles, without reallocating
+    // on every pan/present. The worker enforces the 16-Mpixel page ceiling.
+    if (doc.kind == VideoDocumentState::Kind::Still && doc.documentPage.pdf && !doc.openingDocument) {
+        const int edge = std::clamp(int(std::ceil(std::max(1.0f, zoomEnabled_ ? zoomAmount_ : 1.0f) *
+            std::max(1024, std::max(mainWindow_->renderWidget()->width(), mainWindow_->renderWidget()->height())))), 4096, 8192);
+        if (edge != doc.desiredDocumentEdge) { doc.desiredDocumentEdge = edge; doc.documentZoomSettled.start(); }
+        if (edge > doc.documentPage.longEdge && doc.documentZoomSettled.isValid() && doc.documentZoomSettled.elapsed() >= 250) {
+            doc.documentRequest = doc.document.SelectPage(doc.documentPage.page, edge);
+            doc.openingDocument = true;
+        }
+    }
+}
+
 void OkuFlowApp::ReturnVideoToCamera()
 {
     if (!videoDocument_) return;
@@ -599,6 +715,8 @@ void OkuFlowApp::ReturnVideoToCamera()
     if(mediaGpuScene_)mediaGpuScene_->Invalidate();
     if(mediaGpuNeighborScene_)mediaGpuNeighborScene_->Invalidate();
     auto& doc = *videoDocument_;
+    doc.document.Close(); doc.openingDocument = false; doc.documentPage = {};
+    mainWindow_->setDocumentText({});
     mediaHoldBakedScene_=false;
     if (doc.followingLive) doc.cameraRotation = rotationQuarterTurns_;
     InvalidateMediaSelection();
@@ -644,6 +762,14 @@ bool OkuFlowApp::MediaViewSelected() const
 {
     return videoDocument_ && videoDocument_->kind != VideoDocumentState::Kind::Camera &&
         !videoDocument_->followingLive;
+}
+
+bool OkuFlowApp::FileSourceRequested() const {
+    return filePickerActive_ || (videoDocument_ &&
+        (videoDocument_->kind == VideoDocumentState::Kind::File ||
+         videoDocument_->kind == VideoDocumentState::Kind::Still || videoDocument_->openingDocument ||
+         videoDocument_->openingFile || !videoDocument_->pendingOpenPath.isEmpty() ||
+         !videoDocument_->waitingSession.isEmpty()));
 }
 
 bool OkuFlowApp::MediaPlaybackPlaying() const
@@ -803,7 +929,7 @@ bool OkuFlowApp::PresentMediaView()
         doc.presentedPart = doc.framePart;
         if(doc.kind==VideoDocumentState::Kind::Recap)doc.recapPresented=doc.recapFrame;
         if (!doc.heldLive && !doc.pendingHold && doc.frame->requestGeneration == doc.requestGeneration)
-            doc.completedRequestGeneration = doc.requestGeneration;
+        doc.completedRequestGeneration = doc.requestGeneration;
     }
     return presented;
 }
@@ -936,7 +1062,7 @@ void OkuFlowApp::SeekSelectedVideo(qint64 positionMs)
     if (!videoDocument_) return;
     auto& doc = *videoDocument_;
     if(doc.kind==VideoDocumentState::Kind::Recap){OpenLiveRecapAt(std::clamp<std::int64_t>(positionMs,0,INT64_MAX/kTicksPerMs)*kTicksPerMs,false);PollVideoPlayback();return;}
-    if (doc.kind == VideoDocumentState::Kind::Camera || doc.openingFile) return;
+    if (doc.kind == VideoDocumentState::Kind::Camera || doc.kind == VideoDocumentState::Kind::Still || doc.openingDocument || doc.openingFile) return;
     if (doc.followingLive) { doc.cameraRotation = rotationQuarterTurns_; doc.cameraRotationSaved = true; }
     InvalidateMediaSelection();
     doc.followingLive = doc.pendingHold = doc.heldLive = doc.pausedDisplayHold = doc.resumePending = doc.heldUnrecorded = false;
@@ -972,7 +1098,8 @@ void OkuFlowApp::ToggleSelectedVideoPlayback()
 {
     if (!videoDocument_) return;
     auto& doc = *videoDocument_;
-    if (doc.openingFile || doc.openingArchive || doc.kind == VideoDocumentState::Kind::Camera) return;
+    if (doc.openingDocument || doc.kind == VideoDocumentState::Kind::Still ||
+        doc.openingFile || doc.openingArchive || doc.kind == VideoDocumentState::Kind::Camera) return;
     if(doc.kind==VideoDocumentState::Kind::Recap && !doc.followingLive) {
         if(doc.pendingHold || doc.heldLive){doc.resumePending=!doc.resumePending;PollVideoPlayback();return;}
         if(doc.playing || doc.waitingNextPart || doc.afterOperationPlay) {
@@ -1111,6 +1238,10 @@ void OkuFlowApp::PollVideoPlayback()
     if (!videoDocument_ || !mainWindow_) return;
     ExpireAnnotationReadback();
     auto& doc = *videoDocument_;
+    if (doc.openingDocument || (doc.kind == VideoDocumentState::Kind::Still &&
+        !doc.openingFile && doc.waitingSession.isEmpty())) {
+        PollFileDocument(); return;
+    }
     doc.player.SetGpuAdapter(SelectedMediaGpuAdapter());
     if(doc.kind==VideoDocumentState::Kind::Recap && !doc.openingFile && doc.waitingSession.isEmpty()){PollLiveRecap();return;}
     if (recordingManager_ && !doc.session.id.isEmpty()) {
@@ -1224,6 +1355,8 @@ void OkuFlowApp::PollVideoPlayback()
                     InvalidateMediaSelection();
                     if (!doc.cameraRotationSaved) { doc.cameraRotation = rotationQuarterTurns_; doc.cameraRotationSaved = true; }
                     doc.kind = VideoDocumentState::Kind::File;
+                    doc.document.Close(); doc.documentPage = {};
+                    mainWindow_->setDocumentText({});
                     mediaHoldBakedScene_=false;
                     doc.documentId = QStringLiteral("media-") + QUuid::createUuid().toString(QUuid::Id128);
                     // The preceding document may remain physically visible until
@@ -1377,7 +1510,7 @@ void OkuFlowApp::PollVideoPlayback()
     mainWindow_->videoTransport()->SetSnapshot(ui);
     const bool videoSource = MediaViewSelected() || doc.openingFile || !doc.waitingSession.isEmpty();
     const bool sourceUiChanged = mainWindow_->videoSourceSelected() != videoSource;
-    mainWindow_->setVideoSourceSelected(videoSource, selectedCameraIndex_);
+    if (!filePickerActive_) mainWindow_->setVideoSourceSelected(videoSource, CameraPickerIndex());
     const bool selectedMedia = MediaViewSelected();
     const bool mediaGpuAvailable = selectedMedia && SelectedMediaGpuProcessingAvailable();
     if (!doc.controlsInitialized || sourceUiChanged || doc.controlsMediaSelected != selectedMedia ||
@@ -1566,6 +1699,7 @@ void OkuFlowApp::QueueSelectedVideoFrameImage(QImage owned,bool receiptStarted)
 bool OkuFlowApp::SetSelectedVideoPlaying(bool playing)
 {
     if (!videoDocument_ || videoDocument_->kind == VideoDocumentState::Kind::Camera) return false;
+    if (videoDocument_->kind == VideoDocumentState::Kind::Still || videoDocument_->openingDocument) return !playing;
     auto& doc = *videoDocument_;
     if (doc.openingFile || doc.openingArchive) {
         if (!playing) { InvalidateMediaSelection(); doc.afterOperationPlay = false; doc.playing = false; doc.audio.Close(); return true; }
@@ -1587,7 +1721,7 @@ QJsonObject OkuFlowApp::SelectedVideoState() const
         : doc.kind == VideoDocumentState::Kind::Recap ? "recap" : doc.kind == VideoDocumentState::Kind::Recording ? "recording" : "file";
     const char* state = doc.kind == VideoDocumentState::Kind::Camera ? "camera"
         : doc.finishing ? "finishing" : doc.pendingHold ? "holding"
-        : doc.resumePending || doc.waitingNextPart ? "waiting" : doc.openingFile || doc.openingArchive ? "opening"
+        : doc.resumePending || doc.waitingNextPart ? "waiting" : doc.openingFile || doc.openingArchive || doc.openingDocument ? "opening"
         : doc.followingLive ? (cameraActive_ && cameraFramePresented_ ? "live" : "waiting")
         : snapshot.state == VideoPlaybackState::Seeking ? "seeking"
         : doc.heldUnrecorded ? "held_unrecorded"
@@ -1602,6 +1736,9 @@ QJsonObject OkuFlowApp::SelectedVideoState() const
     const auto liveSequence = liveFrame && lastAnnotationPresentation_
         ? lastAnnotationPresentation_->frameSeq : 0;
     QJsonObject result{{"kind", kind}, {"state", state}, {"documentId", doc.documentId},
+        {"staticDocument", doc.kind == VideoDocumentState::Kind::Still},
+        {"page", doc.kind == VideoDocumentState::Kind::Still ? doc.documentPage.page + 1 : 0},
+        {"pageCount", doc.kind == VideoDocumentState::Kind::Still ? doc.documentPage.pageCount : 0},
         {"selectionGeneration", static_cast<qint64>(mediaDocumentEpoch_)},
         {"requestGeneration", static_cast<qint64>(doc.requestGeneration)},
         {"completedRequestGeneration", static_cast<qint64>(doc.completedRequestGeneration)},
@@ -1641,7 +1778,8 @@ QJsonObject OkuFlowApp::SelectedVideoState() const
             result["selectedPts100ns"]=static_cast<qint64>(doc.recapPresented->begin100ns+doc.presented->pts100ns);
     } else result["selectedPts100ns"] = QJsonValue::Null;
     if (doc.heldLive) result["provisionalCaptureClock100ns"] = static_cast<qint64>(doc.heldCaptureClock100ns);
-    result["sourceName"] = doc.kind == VideoDocumentState::Kind::File ? QFileInfo(doc.filePath).fileName()
+    if (doc.kind == VideoDocumentState::Kind::Still) result["seekableEnd100ns"] = QJsonValue::Null;
+    result["sourceName"] = doc.kind == VideoDocumentState::Kind::File || doc.kind == VideoDocumentState::Kind::Still ? QFileInfo(doc.filePath).fileName()
         : doc.kind == VideoDocumentState::Kind::Recording ? QStringLiteral("Current recording")
         : doc.kind == VideoDocumentState::Kind::Recap ? QStringLiteral("Live recap") : QString();
     if(doc.kind==VideoDocumentState::Kind::Recap) {

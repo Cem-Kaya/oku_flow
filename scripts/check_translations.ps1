@@ -41,7 +41,7 @@ $identicalByLanguage = @{
     # Reviewed native video labels: these are established local UI terms.
     tr = @("Video")
     de = @("Details", "Video", "Live")
-    fr = @("Simple", "Orientation", "Conversation", "Application", "Assistant", "Image", "Rectangle", "Microphone", "Photo", " [REC original, %1]")
+    fr = @("Simple", "Orientation", "Conversation", "Application", "Assistant", "Image", "Rectangle", "Microphone", "Photo", "Page", " [REC original, %1]")
     es = @(" [REC original, %1]")
     pt_BR = @(" [REC original, %1]")
     nl = @("Details", "Camera", "Stop", "Focus X:", "Focus Y:", "Pen", "Later", "Contrast", "Video", "Live")

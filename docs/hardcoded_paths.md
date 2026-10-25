@@ -1,5 +1,20 @@
 # Hard-Coded Paths and Defaults
 
+## File documents (26 October 2026)
+
+`install_qt_pdf.ps1` pins Qt PDF 6.12.0's official MSVC x64 extension archive
+`6.12.0-0-202607081026qtpdf-Windows-Windows_11_24H2-MSVC2022-Windows-Windows_11_24H2-X86_64.7z`
+at download.qt.io, SHA-256
+`2de49f8cee61bd6d77bbb0fbdc57157340becdb8adb0a4a6dc4bd9ae6639a5d6`.
+The default cache is `%LOCALAPPDATA%/OkuFlow/tool-cache/qt-pdf-6.12.0`;
+`-QtPrefix` and `-CacheRoot` are explicit SDK/cache pointers. No binaries are
+tracked. The SDK retains `sbom/qtpdf-6.12.0.spdx.json` unchanged.
+File sources cap files at 256 MiB, rendered pages at 16 Mpixels and 8192 pixels
+per long edge (4096 initially), extracted text at 512 Ki UTF-16 units, and PDF
+zoom rerenders at a 250-ms settle. One serial worker and one newest pending
+request belong to each app's selected-document controller. See
+[file documents](file_documents.md).
+
 ## Regional scheduling probes (25 October 2026)
 
 Below global stability 0.92, the ordinary probe worker may compare 64 common-view

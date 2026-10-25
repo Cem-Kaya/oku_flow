@@ -58,7 +58,10 @@ QJsonObject AppControlTarget::QueryVideoState() const {
         state[key]=value.isDouble() && std::isfinite(value.toDouble()) && value.toDouble()>=0 &&
             value.toDouble()<=9007199254740991.0?value:QJsonValue(QJsonValue::Null);
     }
-    for(const auto* key:{"playing","hasFrame","canSaveFrame","pendingHold","heldUnrecorded"})state[key]=native[key].toBool();
+    for(const auto* key:{"playing","hasFrame","canSaveFrame","pendingHold","heldUnrecorded","staticDocument"})state[key]=native[key].toBool();
+    if (state["staticDocument"].toBool()) {
+        state["page"] = native["page"]; state["pageCount"] = native["pageCount"];
+    }
     const auto save=native["saveState"].toString();
     state["saveState"]=QStringList{"idle","writing","committed","failed"}.contains(save)?save:QStringLiteral("idle");
     // User-selected filenames are untrusted content. Discovery exposes only an
@@ -89,6 +92,7 @@ ControlPlan AppControlTarget::PrepareVideoControl(ToolId tool,const QJsonObject&
     if(!operations_.HasCapacity()) {plan.error="budget_exhausted";return plan;}
     if(state["state"]=="opening" || state["state"]=="finishing") {plan.error="busy";return plan;}
     if(tool==ToolId::VideoSaveFrame && !state["canSaveFrame"].toBool()) {plan.error="unavailable";return plan;}
+    if(state["staticDocument"].toBool() && tool!=ToolId::VideoSaveFrame) {plan.error="unavailable";return plan;}
     if(tool==ToolId::VideoSeek && state["seekableEnd100ns"].isNull()) {plan.error="unavailable";return plan;}
     plan.targetIdentity=state["documentId"].toString();
     plan.requiredFields.push_back(Field::VideoSelection);

@@ -131,7 +131,7 @@ aligned with the project goals.
   compilation, profiling, and deployment; do not install Qt 6.9.3 to satisfy
   old cache paths. Regenerate stale Qt CMake caches during an SDK migration.
 - Keep Multimedia, TextToSpeech, SVG, Image Formats, and matching source
-  license material installed. PDF is not an OkuFlow dependency; its exact
+  license material installed. PDF file viewing requires matching Qt PDF; its exact
   SPDX document remains mandatory whenever PDF is deployed.
 - `OKUFLOW_BUNDLE_BUILD_DIR` selects a local build directory for the tracked
   bundle script when the synced build tree has stale paths or file locks.
@@ -1186,3 +1186,18 @@ aligned with the project goals.
 - Probe the real RAM sink's native GPU input before pressure/failure injection.
   Compatibility readback is prerequisite skip 77, never a GPU pass. Retain
   failures after native admission and strict release capability requirements.
+
+## File sources and phone recovery (2026-10-26)
+- Source discovery is independent of source intent. Keep the source picker usable
+  during camera startup, cancel the exact superseded worker/generation on manual
+  changes, and retain saved phone intent through temporary file review and fallback.
+  Selected-phone reconnect after a drop remains automatic; an explicit webcam wins.
+- File viewing uses the matching Qt PDF extension and Qt image readers, not a new
+  parser/codec. Install the pinned SDK with scripts/install_qt_pdf.ps1 before
+  configure; keep its original qtpdf SPDX document in every current bundle.
+  Preserve selected-media UCT identity, one latest worker request, finite image
+  bounds and native read-only embedded-text accessibility. See docs/file_documents.md.
+- Build native_app_control_fixture explicitly before its opt-in offscreen cases;
+  an all-target build does not rebuild excluded targets. Preserve stale-binary
+  and failed evidence. These fixtures use private capture callbacks/discovery
+  snapshots and files, never the owner's adb server, phone, camera or AI account.

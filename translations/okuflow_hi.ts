@@ -3605,5 +3605,53 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Whiteboard</source>
         <translation>व्हाइटबोर्ड</translation>
     </message>
+    <message>
+        <source>View file</source>
+        <translation>फ़ाइल देखें</translation>
+    </message>
+    <message>
+        <source>Select file</source>
+        <translation>फ़ाइल चुनें</translation>
+    </message>
+    <message>
+        <source>Open a video, picture, or PDF (Ctrl+O)</source>
+        <translation>वीडियो, चित्र या PDF खोलें (Ctrl+O)</translation>
+    </message>
+    <message>
+        <source>Open file</source>
+        <translation>फ़ाइल खोलें</translation>
+    </message>
+    <message>
+        <source>Document text</source>
+        <translation>दस्तावेज़ का पाठ</translation>
+    </message>
+    <message>
+        <source>Page</source>
+        <translation>पृष्ठ</translation>
+    </message>
+    <message>
+        <source>Previous page</source>
+        <translation>पिछला पृष्ठ</translation>
+    </message>
+    <message>
+        <source>Next page</source>
+        <translation>अगला पृष्ठ</translation>
+    </message>
+    <message>
+        <source>Opening file…</source>
+        <translation>फ़ाइल खुल रही है…</translation>
+    </message>
+    <message>
+        <source>File unavailable</source>
+        <translation>फ़ाइल उपलब्ध नहीं है</translation>
+    </message>
+    <message>
+        <source>Page %1 of %2</source>
+        <translation>पृष्ठ %1 / %2</translation>
+    </message>
+    <message>
+        <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
+        <translation>मीडिया फ़ाइलें (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;सभी फ़ाइलें (*)</translation>
+    </message>
 </context>
 </TS>

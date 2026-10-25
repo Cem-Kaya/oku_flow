@@ -369,3 +369,13 @@ to English; the validator explicitly allows these two source keys. The
 disclosure, feature names and accessible labels use the same catalog strings.
 This does not establish native-speaker, spoken screen-reader or rendered RTL
 acceptance. Review JSON remains in the private ui-cleanup-20261025-r1 folder.
+
+## File-source controls (26 October 2026)
+
+The 12 file/PDF source, dialog, page and status keys bring the catalogs to 907
+entries each. Both read-only small-agent reviews covered all 288 new target
+strings exactly once (four flagged replacements applied, none unread). French
+Page is an established identical UI term with a language-specific validator
+exception. Structural/model review is separate from native-speaker, RTL rendering
+and spoken screen-reader acceptance. The new PDF pane uses native Qt read-only
+text accessibility independently of OCR. See file_documents.md.

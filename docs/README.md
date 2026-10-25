@@ -1,5 +1,9 @@
 # OkuFlow Documentation Guide
 
+[File sources and phone recovery](file_documents.md) describes development
+picture/PDF viewing, native embedded-text accessibility, Qt dependencies and
+explicit source priority while preserving selected-phone recovery.
+
 [Player and quick-mode UI cleanup](ui_cleanup_2026_10_25.md) records the volume
 popover, collapsed UCT details, four featured modes and review/validation limits.
 

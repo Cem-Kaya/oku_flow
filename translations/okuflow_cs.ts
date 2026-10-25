@@ -3605,5 +3605,53 @@ Přihlaste se přes Connect ChatGPT na kartě Asistent v režimu Upřesnit.</tra
         <source>Whiteboard</source>
         <translation>Bílá tabule</translation>
     </message>
+    <message>
+        <source>View file</source>
+        <translation>Zobrazit soubor</translation>
+    </message>
+    <message>
+        <source>Select file</source>
+        <translation>Vybrat soubor</translation>
+    </message>
+    <message>
+        <source>Open a video, picture, or PDF (Ctrl+O)</source>
+        <translation>Otevřít video, obrázek nebo PDF (Ctrl+O)</translation>
+    </message>
+    <message>
+        <source>Open file</source>
+        <translation>Otevřít soubor</translation>
+    </message>
+    <message>
+        <source>Document text</source>
+        <translation>Text dokumentu</translation>
+    </message>
+    <message>
+        <source>Page</source>
+        <translation>Stránka</translation>
+    </message>
+    <message>
+        <source>Previous page</source>
+        <translation>Předchozí stránka</translation>
+    </message>
+    <message>
+        <source>Next page</source>
+        <translation>Další stránka</translation>
+    </message>
+    <message>
+        <source>Opening file…</source>
+        <translation>Otevírání souboru…</translation>
+    </message>
+    <message>
+        <source>File unavailable</source>
+        <translation>Soubor není dostupný</translation>
+    </message>
+    <message>
+        <source>Page %1 of %2</source>
+        <translation>Stránka %1 z %2</translation>
+    </message>
+    <message>
+        <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
+        <translation>Multimediální soubory (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;Všechny soubory (*)</translation>
+    </message>
 </context>
 </TS>

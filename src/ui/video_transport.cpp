@@ -24,6 +24,7 @@
 #include <QMouseEvent>
 #include <QSignalBlocker>
 #include <QSlider>
+#include <QSpinBox>
 #include <QStyle>
 #include <QStyleOptionSlider>
 #include <QTimer>
@@ -265,6 +266,16 @@ VideoTransport::VideoTransport(QWidget* parent) : QWidget(parent)
     timeLabel_->setTextFormat(Qt::PlainText);
     timeLabel_->setAlignment(Qt::AlignCenter);
     timeLabel_->setLayoutDirection(Qt::LeftToRight);
+    page_ = new QSpinBox(this);
+    page_->setObjectName(QStringLiteral("documentPage"));
+    page_->setMinimumHeight(kButtonExtent);
+    page_->setKeyboardTracking(false);
+    page_->hide();
+    connect(page_, &QSpinBox::valueChanged, this, [this](int page) {
+        if (updating_) return;
+        if (IsActionReady(page_)) emit PageRequested(page - 1);
+        else { const QSignalBlocker block(page_); page_->setValue(snapshot_.page + 1); }
+    });
 
     // The one transport line: primary actions, scrubber, readout, then the
     // secondary actions. UpdateLayout owns widget placement from here on;
@@ -317,13 +328,17 @@ VideoTransport::VideoTransport(QWidget* parent) : QWidget(parent)
     ApplyStyle();
 
     connect(rewindButton_, &QPushButton::clicked, this, [this]() {
-        if (IsActionReady(rewindButton_)) CommitSeek(std::max<qint64>(0, SeekBaseline() - 10000));
+        if (!IsActionReady(rewindButton_)) return;
+        if (snapshot_.source == Source::Document) emit PageRequested(snapshot_.page - 1);
+        else CommitSeek(std::max<qint64>(0, SeekBaseline() - 10000));
     });
     connect(playPauseButton_, &QPushButton::clicked, this, [this]() {
         if (IsActionReady(playPauseButton_)) emit PlayPauseRequested();
     });
     connect(jumpButton_, &QPushButton::clicked, this, [this]() {
-        if (IsActionReady(jumpButton_)) emit JumpToEndRequested();
+        if (!IsActionReady(jumpButton_)) return;
+        if (snapshot_.source == Source::Document) emit PageRequested(snapshot_.page + 1);
+        else emit JumpToEndRequested();
     });
     connect(returnButton_, &QPushButton::clicked, this, [this]() {
         if (IsActionReady(returnButton_)) emit ReturnToCameraRequested();
@@ -470,6 +485,12 @@ QString VideoTransport::TimeText(qint64 milliseconds)
 
 QString VideoTransport::StateText() const
 {
+    if (snapshot_.source == Source::Document) {
+        if (snapshot_.state == State::Opening || snapshot_.state == State::Seeking) return QStringLiteral("Opening file…");
+        if (snapshot_.state == State::Unavailable) return QStringLiteral("File unavailable");
+        return snapshot_.pageCount > 1 ? TranslateUi(QStringLiteral("Page %1 of %2"))
+            .arg(QLocale().toString(snapshot_.page + 1), QLocale().toString(snapshot_.pageCount)) : QString();
+    }
     switch (snapshot_.state) {
     case State::Live: return QStringLiteral("Live");
     case State::BehindLive: return QStringLiteral("Behind live");
@@ -500,6 +521,7 @@ void VideoTransport::SetSnapshot(const Snapshot& snapshot)
         (!snapshot.playing && snapshot.state != State::Seeking &&
          snapshot_.positionMs != snapshot.positionMs);
     const bool changedText = changedState || snapshot_.playing != snapshot.playing ||
+        snapshot_.page != snapshot.page || snapshot_.pageCount != snapshot.pageCount ||
         snapshot_.muted != snapshot.muted || snapshot_.hasAudio != snapshot.hasAudio ||
         snapshot_.volumePercent != std::clamp(snapshot.volumePercent,0,100) ||
         snapshot_.diagnosticDetail != snapshot.diagnosticDetail;
@@ -649,6 +671,7 @@ bool VideoTransport::SetActionShown(QPushButton* button, bool shown)
 
 void VideoTransport::UpdateActions()
 {
+    const bool document = snapshot_.source == Source::Document;
     const bool hasSource = snapshot_.source != Source::None;
     const bool pending = snapshot_.state == State::Opening || snapshot_.state == State::Seeking;
     const bool available = hasSource && (snapshot_.state != State::Unavailable || snapshot_.canPauseLive || snapshot_.canSaveFrame);
@@ -656,17 +679,18 @@ void VideoTransport::UpdateActions()
         return available && ready ? Gate::Ready : busy && available ? Gate::Busy : Gate::Unavailable;
     };
     ApplyGate(collapseButton_, hasSource ? Gate::Ready : Gate::Unavailable);
-    ApplyGate(rewindButton_, gate(snapshot_.seekable && SeekBaseline() > snapshot_.firstMs));
-    ApplyGate(playPauseButton_, gate(!pending && snapshot_.state != State::End &&
+    ApplyGate(rewindButton_, gate(document ? !pending && snapshot_.page > 0 : snapshot_.seekable && SeekBaseline() > snapshot_.firstMs));
+    ApplyGate(page_, gate(document && !pending && snapshot_.pageCount > 1, pending));
+    ApplyGate(playPauseButton_, gate(!document && !pending && snapshot_.state != State::End &&
         (snapshot_.canPauseLive || snapshot_.canSaveFrame || snapshot_.seekable), pending));
     ApplyGate(jumpButton_, snapshot_.source==Source::Recap && snapshot_.canReturnToCamera ? Gate::Ready :
-        gate(!pending && (snapshot_.source == Source::Recording || snapshot_.seekable), pending));
+        gate(!pending && (document ? snapshot_.page + 1 < snapshot_.pageCount : snapshot_.source == Source::Recording || snapshot_.seekable), pending));
     ApplyGate(timeline_, gate(snapshot_.seekable && snapshot_.durationMs > 0));
     ApplyGate(returnButton_, hasSource && snapshot_.canReturnToCamera ? Gate::Ready : Gate::Unavailable);
     ApplyGate(saveFrameButton_, gate(snapshot_.canSaveFrame && !pending, pending));
     ApplyGate(muteButton_, gate(snapshot_.source == Source::Video && snapshot_.hasAudio));
     ApplyGate(volume_,gate(snapshot_.source==Source::Video && snapshot_.hasAudio));
-    const bool changedReturn = SetActionShown(returnButton_, snapshot_.source == Source::Video);
+    const bool changedReturn = SetActionShown(returnButton_, snapshot_.source == Source::Video || document);
     const bool changedMute = SetActionShown(muteButton_, snapshot_.source == Source::Video && snapshot_.hasAudio);
     if(changedMute && !muteShown_)MoveFocusFrom(volume_,playPauseButton_);
     if(!muteShown_ || !available)HideVolumePopup();
@@ -717,10 +741,10 @@ void VideoTransport::RefreshText()
                 QStringLiteral("Video playback"));
     stateLabel_->setToolTip(snapshot_.diagnosticDetail);
     stateLabel_->setAccessibleDescription(snapshot_.diagnosticDetail);
-    NameButton(rewindButton_, QStringLiteral("Rewind 10 seconds"));
+    NameButton(rewindButton_, snapshot_.source == Source::Document ? QStringLiteral("Previous page") : QStringLiteral("Rewind 10 seconds"));
     NameButton(playPauseButton_, snapshot_.playing ? QStringLiteral("Pause video")
                                                  : QStringLiteral("Resume video"));
-    NameButton(jumpButton_, snapshot_.source == Source::Recording || snapshot_.source == Source::Recap
+    NameButton(jumpButton_, snapshot_.source == Source::Document ? QStringLiteral("Next page") : snapshot_.source == Source::Recording || snapshot_.source == Source::Recap
                                ? QStringLiteral("Jump to live") : QStringLiteral("Jump to end"));
     NameButton(returnButton_, QStringLiteral("Return to camera"));
     NameButton(saveFrameButton_, QStringLiteral("Save frame"));
@@ -740,6 +764,14 @@ void VideoTransport::RefreshText()
     collapseButton_->setAccessibleDescription(TranslateUi(QStringLiteral("Video controls")));
     setAccessibleName(TranslateUi(QStringLiteral("Video controls")));
     timeline_->setAccessibleName(TranslateUi(QStringLiteral("Video timeline")));
+    page_->setAccessibleName(TranslateUi(QStringLiteral("Page")));
+    page_->setToolTip(TranslateUi(QStringLiteral("Page")));
+    {
+        const QSignalBlocker blocker(page_);
+        page_->setRange(1, std::max(1, snapshot_.pageCount));
+        page_->setValue(snapshot_.page + 1);
+        page_->setSuffix(QStringLiteral(" / ") + QLocale().toString(std::max(1, snapshot_.pageCount)));
+    }
     timeline_->setToolTip(TranslateUi(QStringLiteral(
         "Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.")));
     ApplyButtonFaces();
@@ -781,6 +813,7 @@ void VideoTransport::AnnounceSettledState()
     announcementPending_ = false;
     QString message = QStringLiteral("%1: %2, %3")
         .arg(sourceLabel_->accessibleName(), TranslateUi(StateText()), TimeText(snapshot_.positionMs));
+    if (snapshot_.source == Source::Document) message = sourceLabel_->accessibleName() + QStringLiteral(": ") + TranslateUi(StateText());
     if (snapshot_.source == Source::Recap && snapshot_.state == State::Unavailable &&
         !snapshot_.diagnosticDetail.isEmpty()) message += QStringLiteral(". ") + snapshot_.diagnosticDetail;
     if (message == lastAnnouncement_) return;
@@ -880,6 +913,10 @@ std::vector<QWidget*> VideoTransport::FocusTargets() const
     if (collapsed_) return {};
     std::vector<QWidget*> targets{rewindButton_, playPauseButton_, jumpButton_, timeline_,
                                   saveFrameButton_};
+    if (snapshot_.source == Source::Document) {
+        targets = snapshot_.pageCount > 1 ? std::vector<QWidget*>{rewindButton_, page_, jumpButton_, saveFrameButton_}
+            : std::vector<QWidget*>{saveFrameButton_};
+    }
     if (collapseButton_->parentWidget() == this) targets.insert(targets.begin(), collapseButton_);
     if (muteShown_) targets.push_back(muteButton_);
     if (returnShown_) targets.push_back(returnButton_);
@@ -1001,9 +1038,9 @@ void VideoTransport::ApplyFace(QPushButton* button)
     QString glyph;
     QString caption; // Short badge kept beside the icon; never a full label.
     if (button == rewindButton_) {
-        resource = QStringLiteral(":/okuflow/icons/undo.svg");
-        glyph = QStringLiteral("\u21b6 10");
-        caption = QLocale().toString(10);
+        resource = snapshot_.source == Source::Document ? QStringLiteral(":/okuflow/icons/previous.svg") : QStringLiteral(":/okuflow/icons/undo.svg");
+        glyph = snapshot_.source == Source::Document ? QStringLiteral("‹") : QStringLiteral("\u21b6 10");
+        if (snapshot_.source != Source::Document) caption = QLocale().toString(10);
     } else if (button == playPauseButton_) {
         resource = snapshot_.playing ? QStringLiteral(":/okuflow/icons/pause.svg")
                                      : QStringLiteral(":/okuflow/icons/play.svg");
@@ -1120,6 +1157,7 @@ void VideoTransport::ApplyStyle()
 
 void VideoTransport::UpdateLayout()
 {
+    const bool document = snapshot_.source == Source::Document;
     const auto secondaries = SecondaryButtons();
     // Everything stays on the main line while the scrubber can keep its
     // minimum width. Below that the secondaries drop to a second compact
@@ -1130,12 +1168,15 @@ void VideoTransport::UpdateLayout()
     required += kRowSpacing * (4 + static_cast<int>(secondaries.size()));
     const bool below = width() > 0 && width() < required && !secondaries.empty();
     if (below == secondariesBelow_ && secondaries == layoutSecondaries_ &&
-        collapsed_ == layoutCollapsed_ && mainLayout_->count() > 0) {
+        collapsed_ == layoutCollapsed_ && document == layoutDocument_ &&
+        (snapshot_.pageCount > 1) == layoutDocumentPages_ && mainLayout_->count() > 0) {
         return;
     }
     secondariesBelow_ = below;
     layoutSecondaries_ = secondaries;
     layoutCollapsed_ = collapsed_;
+    layoutDocument_ = document;
+    layoutDocumentPages_ = snapshot_.pageCount > 1;
     const QPointer<QWidget> focused = isAncestorOf(QApplication::focusWidget())
         ? QApplication::focusWidget() : nullptr;
     const auto strip = [](QLayout* stripLayout) {
@@ -1145,6 +1186,23 @@ void VideoTransport::UpdateLayout()
     strip(secondaryLayout_);
     metadataLayout_->removeWidget(timeLabel_);
     metadataLayout_->removeWidget(jumpButton_);
+    if (document) {
+        mainLayout_->addWidget(rewindButton_);
+        mainLayout_->addWidget(page_);
+        mainLayout_->addWidget(jumpButton_);
+        mainLayout_->addStretch(1);
+        (below ? secondaryLayout_ : mainLayout_)->addWidget(saveFrameButton_);
+        (below ? secondaryLayout_ : mainLayout_)->addWidget(returnButton_);
+        for (auto* widget : std::vector<QWidget*>{playPauseButton_, timeline_, timeLabel_, muteButton_}) widget->hide();
+        const bool pages = !collapsed_ && snapshot_.pageCount > 1;
+        rewindButton_->setVisible(pages); page_->setVisible(pages); jumpButton_->setVisible(pages);
+        saveFrameButton_->setVisible(!collapsed_); returnButton_->setVisible(!collapsed_);
+        secondaryRow_->setVisible(!collapsed_ && below);
+        const auto targets = FocusTargets();
+        for (size_t i = 1; i < targets.size(); ++i) QWidget::setTabOrder(targets[i-1], targets[i]);
+        return;
+    }
+    page_->hide();
     mainLayout_->addWidget(rewindButton_);
     mainLayout_->addWidget(playPauseButton_);
     mainLayout_->addWidget(jumpButton_);

@@ -2525,3 +2525,15 @@ actual BF16 engine receipts; FP32 fallback is not timed as BF16. This opt-in
 factory seam has no public-corpus activation, engine preparation or GUI behavior.
 See [resident measurement](../docs/uct_resident_baseline.md) for the remaining
 constraints and the distinction between same-model equality and model quality.
+
+## File documents and phone selection (26 October 2026)
+
+`file_document_contract` runs the Qt PDF/image worker against private generated
+PDFs and pictures. `video_transport_contract` includes native page controls,
+static-file action gates and return-to-video coverage. The opt-in
+`native_app_file_sources_offscreen` additionally covers cancellable phone startup,
+manual webcam priority, retained phone recovery through file review, mixed-PDF
+embedded text through the native accessibility text interface, and PDF/picture/
+video/camera transitions. Explicitly build `native_app_control_fixture` before
+running its cases: it is excluded from the default build. No devices, adb,
+providers or desktop focus participate. See [file sources](../docs/file_documents.md).

@@ -3605,5 +3605,53 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Whiteboard</source>
         <translation>ホワイトボード</translation>
     </message>
+    <message>
+        <source>View file</source>
+        <translation>ファイルを表示</translation>
+    </message>
+    <message>
+        <source>Select file</source>
+        <translation>ファイルを選択</translation>
+    </message>
+    <message>
+        <source>Open a video, picture, or PDF (Ctrl+O)</source>
+        <translation>動画、画像、PDFを開く (Ctrl+O)</translation>
+    </message>
+    <message>
+        <source>Open file</source>
+        <translation>ファイルを開く</translation>
+    </message>
+    <message>
+        <source>Document text</source>
+        <translation>文書のテキスト</translation>
+    </message>
+    <message>
+        <source>Page</source>
+        <translation>ページ</translation>
+    </message>
+    <message>
+        <source>Previous page</source>
+        <translation>前のページ</translation>
+    </message>
+    <message>
+        <source>Next page</source>
+        <translation>次のページ</translation>
+    </message>
+    <message>
+        <source>Opening file…</source>
+        <translation>ファイルを開いています…</translation>
+    </message>
+    <message>
+        <source>File unavailable</source>
+        <translation>ファイルを利用できません</translation>
+    </message>
+    <message>
+        <source>Page %1 of %2</source>
+        <translation>%2ページ中%1ページ</translation>
+    </message>
+    <message>
+        <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
+        <translation>メディアファイル (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;すべてのファイル (*)</translation>
+    </message>
 </context>
 </TS>

@@ -311,7 +311,8 @@ void OkuFlowApp::QueueInitialCameraStart(
     cameraStartupPending_ = true;
     UpdateCameraPlaceholder();
     UpdateCameraAccelerationUi();
-    if (uiState_->cameraCombo_) uiState_->cameraCombo_->setEnabled(false);
+    // Keep the source picker usable while a slow phone/driver opens.
+    // Manual changes cancel this exact startup through its generation/ingress.
     if (uiState_->cameraFormatCombo_) uiState_->cameraFormatCombo_->setEnabled(false);
     qInfo() << "Startup timing: camera worker dispatched" << startupTimer_.elapsed() << "ms";
     const auto startForTest = cameraStartForTest_;

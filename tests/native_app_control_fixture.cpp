@@ -20,6 +20,7 @@
 #include "okuflow/common/uct_device_image.hpp"
 #include "okuflow/common/video_playback.hpp"
 #include "okuflow/common/video_recap.hpp"
+#include "okuflow/capture/phone_camera.hpp"
 #include "okuflow/mcp/app_ipc_endpoint.hpp"
 #include <QApplication>
 #include <QCheckBox>
@@ -27,6 +28,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFontDatabase>
+#include <QPdfWriter>
+#include <QSpinBox>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLayout>
@@ -375,7 +378,37 @@ public:
         app.pipelineOrchestrator_->CancelCameraReconnect();
         app.cameraStartForTest_={};app.cameras_.clear();app.selectedCameraIndex_=-1;
         app.currentCameraAccelerationKey_.clear();app.cameraIntent_.LoadSaved({});
+        app.automaticPhoneSelectionAllowed_=false;app.preferredPhoneCamera_.clear();app.pendingCameraStart_.reset();
     }
+    static void SeedPhoneSources(OkuFlowApp& app, std::function<bool(const std::atomic<bool>&)> start) {
+        CameraDescriptor webcam, phone;
+        webcam.name=L"Private webcam"; webcam.symbolicLink=L"fixture-webcam";
+        phone.name=L"Private phone"; phone.symbolicLink=L"okuflow-phone:fixture-only";
+        phone.phoneSerial="fixture-only"; phone.phoneAppReady=true; phone.phoneTransportId=91;
+        app.cameras_={webcam,phone}; app.selectedCameraIndex_=1;
+        app.preferredPhoneCamera_=QString::fromStdWString(phone.symbolicLink);
+        app.automaticPhoneSelectionAllowed_=true;
+        app.cameraIntent_.LoadSaved({app.preferredPhoneCamera_,{},1,true});
+        app.cameraStartForTest_=std::move(start);
+        app.PopulateCameraCombo();
+    }
+    static bool StartFixturePhone(OkuFlowApp& app) {return app.StartCameraCapture(1,false,false,true);}
+    static void PickFixtureWebcam(OkuFlowApp& app) {
+        app.mainWindow_->setVideoSourceSelected(false,0); app.OnCameraSelectionChanged(0);
+    }
+    static void DiscoverFixturePhone(OkuFlowApp& app) {
+        auto phone=app.cameras_.at(1);
+        std::promise<std::pair<PhoneDiscoveryStatus,std::vector<CameraDescriptor>>> ready;
+        app.phoneDiscovery_=ready.get_future();
+        ready.set_value({PhoneDiscoveryStatus::Listed,{phone}});
+        app.phoneDiscoveryTimer_.start(); // No real discovery can be dispatched by this fixture.
+        const bool initialized=app.initialized_; app.initialized_=true;
+        app.PollPhoneCameraDiscovery(); app.initialized_=initialized;
+    }
+    static bool PhoneIntentRetained(const OkuFlowApp& app) {
+        return app.automaticPhoneSelectionAllowed_ && app.preferredPhoneCamera_=="okuflow-phone:fixture-only";
+    }
+    static void PollVideo(OkuFlowApp& app) {app.PollVideoPlayback();}
     static std::optional<RecordingSessionInfo> RecordWithMicrophone(OkuFlowApp& app,bool selected,
         std::function<bool(const std::atomic<bool>&)> start={},std::function<void()> stop={}) {
         app.cameraActive_=true;app.microphoneStartForTest_=std::move(start);app.microphoneStopForTest_=std::move(stop);
@@ -1106,12 +1139,12 @@ private slots:
         QVERIFY(select->parentWidget()!=window.annotationButton()->parentWidget());
         QCOMPARE(window.annotationButton()->parentWidget()->layout()->indexOf(select),-1);
         QVERIFY(select->isHidden());QVERIFY(!window.cameraFormatCombo()->parentWidget()->isHidden());
-        QCOMPARE(combo->count(),3);QCOMPARE(combo->itemText(2),QStringLiteral("View video"));
+        QCOMPARE(combo->count(),3);QCOMPARE(combo->itemText(2),QStringLiteral("View file"));
         QSignalSpy changes(combo,&QComboBox::currentIndexChanged);
         QSignalSpy opens(&window,&MainWindow::openVideoRequested);
         combo->setCurrentIndex(2);
         QVERIFY(window.videoSourceSelected());QVERIFY(!select->isHidden());
-        QCOMPARE(select->text(),QStringLiteral("Select video"));
+        QCOMPARE(select->text(),QStringLiteral("Select file"));
         QVERIFY(window.cameraFormatCombo()->parentWidget()->isHidden());
         QVERIFY(!window.rotationCombo()->isHidden());QVERIFY(window.rotationCombo()->isEnabled());
         QCOMPARE(combo->nextInFocusChain(),static_cast<QWidget*>(select));
@@ -2209,6 +2242,113 @@ private slots:
         QTRY_VERIFY(result.has_value());
         QVERIFY(result->content["met"].toBool());
         QVERIFY(!target.Query(ToolId::Operation,{{"operationId",id}})["preferencesPending"].toBool());
+    }
+    void pendingPhoneDoesNotLockWebcamSelection() {
+        auto calls=std::make_shared<std::atomic<int>>(0);
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::StopCamera(app_);
+            QElapsedTimer timer;timer.start();
+            while(NativeControlFixture::CameraPending(app_) && timer.elapsed()<3000) {QCoreApplication::processEvents();QTest::qWait(1);}
+            NativeControlFixture::ResetCameraFixture(app_);
+        });
+        NativeControlFixture::SeedPhoneSources(app_,[calls](const std::atomic<bool>& canceled) {
+            if(calls->fetch_add(1)>0)return true;
+            const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+            while(!canceled && std::chrono::steady_clock::now()<until)std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            return false;
+        });
+        QVERIFY(NativeControlFixture::StartFixturePhone(app_));
+        QTRY_COMPARE(calls->load(),1);
+        QVERIFY(NativeControlFixture::Window(app_).cameraCombo()->isEnabled());
+        NativeControlFixture::PickFixtureWebcam(app_);
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QCOMPARE(calls->load(),2); QVERIFY(NativeControlFixture::CameraActive(app_));
+        QVERIFY(!NativeControlFixture::PhoneIntentRetained(app_));
+        NativeControlFixture::DiscoverFixturePhone(app_);
+        QCOMPARE(calls->load(),2);
+        QCOMPARE(NativeControlFixture::Window(app_).cameraCombo()->currentIndex(),0);
+    }
+    void pdfTextAndPicturesShareTheFilePickerWithoutVideoCommands() {
+        QTemporaryDir dir;
+        const auto cleanup=qScopeGuard([&] {NativeControlFixture::ReturnVideo(app_);});
+        uct_test::RegisterFixtureFonts();
+        const auto path=dir.filePath("document.pdf");
+        {
+            QPdfWriter writer(path);writer.setResolution(144);
+            QPainter painter(&writer);QVERIFY(painter.isActive());
+            painter.setFont(QFont("Arial",24));painter.drawText(QRect(100,100,1000,180),"Native PDF text");
+            QVERIFY(writer.newPage());
+            QImage scan(120,80,QImage::Format_RGB32);scan.fill(Qt::yellow);
+            painter.drawImage(QRect(100,100,600,400),scan);QVERIFY(painter.end());
+        }
+        NativeControlFixture::OpenVideo(app_,path);
+        QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::SelectedVideoFrame(app_),5000);
+        auto& window=NativeControlFixture::Window(app_);
+        auto* text=window.findChild<QPlainTextEdit*>("documentText");QVERIFY(text);
+        QVERIFY(text->isReadOnly());QVERIFY(text->toPlainText().contains("Native PDF text"));
+        auto* accessible=QAccessible::queryAccessibleInterface(text);QVERIFY(accessible);
+        QVERIFY(accessible->textInterface());QVERIFY(accessible->state().readOnly);
+        const int characters=accessible->textInterface()->characterCount();
+        QCOMPARE(characters,text->toPlainText().size());
+        QVERIFY(accessible->textInterface()->text(0,characters).contains("Native PDF text"));
+        auto* pages=window.videoTransport()->findChild<QSpinBox*>("documentPage");QVERIFY(pages);
+        QCOMPARE(pages->maximum(),2);QVERIFY(!pages->isHidden());
+        QVERIFY(window.videoTransport()->playPauseButton()->isHidden());
+        const auto first=NativeControlFixture::SelectedVideoFrame(app_);
+        pages->setValue(2);
+        QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::SelectedVideoFrame(app_)!=first,5000);
+        QCOMPARE(pages->value(),2);QVERIFY(text->toPlainText().trimmed().isEmpty());QVERIFY(text->isHidden());
+        const auto video=dir.filePath("video.avi");QVERIFY(WritePrivateVideoFixture(video));
+        NativeControlFixture::OpenVideo(app_,video);
+        QTRY_VERIFY_WITH_TIMEOUT(!NativeControlFixture::VideoState(app_)["staticDocument"].toBool(),5000);
+        QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::SelectedVideoFrame(app_) && NativeControlFixture::SelectedVideoFrame(app_)->width==32,5000);
+        QVERIFY(!window.videoTransport()->playPauseButton()->isHidden());QVERIFY(pages->isHidden());
+        const auto imagePath=dir.filePath("picture.png");QImage image(96,48,QImage::Format_RGB32);image.fill(Qt::red);QVERIFY(image.save(imagePath));
+        NativeControlFixture::OpenVideo(app_,imagePath);
+        QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::VideoState(app_)["staticDocument"].toBool(),5000);
+        QCOMPARE(NativeControlFixture::SelectedVideoFrame(app_)->width,96);
+        QVERIFY(text->isHidden());QVERIFY(pages->isHidden());
+        NativeControlFixture::ReturnVideo(app_);
+        QVERIFY(!window.videoSourceSelected());QVERIFY(text->isHidden());
+        QTRY_VERIFY_WITH_TIMEOUT(!QFile::exists(path) || QFile::remove(path),5000);
+    }
+    void phoneRecoverySurvivesFileReviewAndConnectionLoss() {
+        QTemporaryDir dir;
+        auto calls=std::make_shared<std::atomic<int>>(0);
+        auto sawCancel=std::make_shared<std::atomic<bool>>(false);
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::ReturnVideo(app_);NativeControlFixture::StopCamera(app_);
+            QElapsedTimer timer;timer.start();
+            while(NativeControlFixture::CameraPending(app_) && timer.elapsed()<3000) {QCoreApplication::processEvents();QTest::qWait(1);}
+            NativeControlFixture::ResetCameraFixture(app_);
+        });
+        NativeControlFixture::SeedPhoneSources(app_,[calls,sawCancel](const std::atomic<bool>& canceled) {
+            if(calls->fetch_add(1)>0)return true;
+            const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+            while(!canceled && std::chrono::steady_clock::now()<until)std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            *sawCancel=canceled.load();return false;
+        });
+        QVERIFY(NativeControlFixture::StartFixturePhone(app_));
+        QTRY_COMPARE(calls->load(),1);
+        QImage image(96,48,QImage::Format_RGB32);image.fill(Qt::white);
+        const auto path=dir.filePath("picture.png");QVERIFY(image.save(path));
+        NativeControlFixture::OpenVideo(app_,path);
+        QTRY_VERIFY(NativeControlFixture::SelectedVideoFrame(app_)!=nullptr);
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QVERIFY(sawCancel->load());
+        QVERIFY(NativeControlFixture::PhoneIntentRetained(app_));
+        NativeControlFixture::DiscoverFixturePhone(app_);
+        QCOMPARE(calls->load(),1);
+        QVERIFY(NativeControlFixture::Window(app_).videoSourceSelected());
+        NativeControlFixture::ReturnVideo(app_);
+        NativeControlFixture::DiscoverFixturePhone(app_);
+        QTRY_VERIFY(NativeControlFixture::CameraActive(app_));
+        QCOMPARE(calls->load(),2);QVERIFY(NativeControlFixture::PhoneIntentRetained(app_));
+        NativeControlFixture::StopCamera(app_);
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        NativeControlFixture::DiscoverFixturePhone(app_);
+        QTRY_VERIFY(NativeControlFixture::CameraActive(app_));
+        QCOMPARE(calls->load(),3);QVERIFY(NativeControlFixture::PhoneIntentRetained(app_));
     }
     void physicalCameraOpenStaysOffUiAndStopRetiresItsOwnWorker_data() {
         QTest::addColumn<int>("origin");

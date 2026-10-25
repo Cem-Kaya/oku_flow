@@ -3605,5 +3605,53 @@ Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</
         <source>Whiteboard</source>
         <translation>Whiteboard</translation>
     </message>
+    <message>
+        <source>View file</source>
+        <translation>Visa fil</translation>
+    </message>
+    <message>
+        <source>Select file</source>
+        <translation>Välj fil</translation>
+    </message>
+    <message>
+        <source>Open a video, picture, or PDF (Ctrl+O)</source>
+        <translation>Öppna en video, bild eller PDF (Ctrl+O)</translation>
+    </message>
+    <message>
+        <source>Open file</source>
+        <translation>Öppna fil</translation>
+    </message>
+    <message>
+        <source>Document text</source>
+        <translation>Dokumenttext</translation>
+    </message>
+    <message>
+        <source>Page</source>
+        <translation>Sida</translation>
+    </message>
+    <message>
+        <source>Previous page</source>
+        <translation>Föregående sida</translation>
+    </message>
+    <message>
+        <source>Next page</source>
+        <translation>Nästa sida</translation>
+    </message>
+    <message>
+        <source>Opening file…</source>
+        <translation>Öppnar fil…</translation>
+    </message>
+    <message>
+        <source>File unavailable</source>
+        <translation>Filen är inte tillgänglig</translation>
+    </message>
+    <message>
+        <source>Page %1 of %2</source>
+        <translation>Sida %1 av %2</translation>
+    </message>
+    <message>
+        <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
+        <translation>Mediefiler (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;Alla filer (*)</translation>
+    </message>
 </context>
 </TS>

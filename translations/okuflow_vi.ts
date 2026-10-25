@@ -3605,5 +3605,53 @@ Chọn Kết nối ChatGPT trong tab Trợ lý của chế độ Nâng cao để
         <source>Whiteboard</source>
         <translation>Bảng trắng</translation>
     </message>
+    <message>
+        <source>View file</source>
+        <translation>Xem tệp</translation>
+    </message>
+    <message>
+        <source>Select file</source>
+        <translation>Chọn tệp</translation>
+    </message>
+    <message>
+        <source>Open a video, picture, or PDF (Ctrl+O)</source>
+        <translation>Mở video, hình ảnh hoặc PDF (Ctrl+O)</translation>
+    </message>
+    <message>
+        <source>Open file</source>
+        <translation>Mở tệp</translation>
+    </message>
+    <message>
+        <source>Document text</source>
+        <translation>Văn bản tài liệu</translation>
+    </message>
+    <message>
+        <source>Page</source>
+        <translation>Trang</translation>
+    </message>
+    <message>
+        <source>Previous page</source>
+        <translation>Trang trước</translation>
+    </message>
+    <message>
+        <source>Next page</source>
+        <translation>Trang sau</translation>
+    </message>
+    <message>
+        <source>Opening file…</source>
+        <translation>Đang mở tệp…</translation>
+    </message>
+    <message>
+        <source>File unavailable</source>
+        <translation>Tệp không khả dụng</translation>
+    </message>
+    <message>
+        <source>Page %1 of %2</source>
+        <translation>Trang %1 trên %2</translation>
+    </message>
+    <message>
+        <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
+        <translation>Tệp đa phương tiện (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;Tất cả tệp (*)</translation>
+    </message>
 </context>
 </TS>

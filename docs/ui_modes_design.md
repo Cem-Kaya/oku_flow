@@ -25,10 +25,13 @@ pixels. Its source label distinguishes the current recording from a saved file;
 live camera use also has a distinct silent RAM recap timeline. Native Pause/Resume, timeline,
 forward-to-live/end, Return to camera, Mute and Save frame controls retain
 keyboard and accessibility semantics. Opening a file first finalizes recording.
-Open a file through Settings > Camera > View video, Ctrl+O or a single local-file
-drop. The conditional Select video button sits below the source dropdown;
+Open a video, picture or PDF through Settings > Camera > View file, Ctrl+O or a
+single local-file drop. The conditional Select file button sits below the source dropdown;
 the four corner actions are Photo, Record, Explain and Draw. See
 [transport layout](video_transport.md).
+Documents use Previous/Page/Next controls instead of video playback/audio.
+Embedded PDF text has a native read-only pane in Camera settings; UCT remains
+available for rendered scanned content. See [file documents](file_documents.md).
 The neutral video-controls chevron is the leading cell of the quick-mode carousel. Hiding
 it removes the entire transport row and returns that height to the image; the
 corner chevron remains available to restore it without changing playback.

@@ -3605,5 +3605,53 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Whiteboard</source>
         <translation>ไวท์บอร์ด</translation>
     </message>
+    <message>
+        <source>View file</source>
+        <translation>ดูไฟล์</translation>
+    </message>
+    <message>
+        <source>Select file</source>
+        <translation>เลือกไฟล์</translation>
+    </message>
+    <message>
+        <source>Open a video, picture, or PDF (Ctrl+O)</source>
+        <translation>เปิดวิดีโอ รูปภาพ หรือ PDF (Ctrl+O)</translation>
+    </message>
+    <message>
+        <source>Open file</source>
+        <translation>เปิดไฟล์</translation>
+    </message>
+    <message>
+        <source>Document text</source>
+        <translation>ข้อความในเอกสาร</translation>
+    </message>
+    <message>
+        <source>Page</source>
+        <translation>หน้า</translation>
+    </message>
+    <message>
+        <source>Previous page</source>
+        <translation>หน้าก่อนหน้า</translation>
+    </message>
+    <message>
+        <source>Next page</source>
+        <translation>หน้าถัดไป</translation>
+    </message>
+    <message>
+        <source>Opening file…</source>
+        <translation>กำลังเปิดไฟล์…</translation>
+    </message>
+    <message>
+        <source>File unavailable</source>
+        <translation>ไม่สามารถใช้ไฟล์นี้ได้</translation>
+    </message>
+    <message>
+        <source>Page %1 of %2</source>
+        <translation>หน้า %1 จาก %2</translation>
+    </message>
+    <message>
+        <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
+        <translation>ไฟล์สื่อ (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;ไฟล์ทั้งหมด (*)</translation>
+    </message>
 </context>
 </TS>

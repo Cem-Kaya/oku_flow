@@ -215,6 +215,8 @@ private:
     void ShutdownVideoPlayback();
     void OpenVideoFile(const QString& path);
     void PollVideoPlayback();
+    void PollFileDocument();
+    void SelectDocumentPage(int page);
     bool LiveRecapActive() const;
     bool LiveRecapWantsFrame(UINT width, UINT height, std::int64_t clock) const;
     void ObserveLiveRecapSource(const MediaFrame& frame);
@@ -238,6 +240,8 @@ private:
     bool BeforeRequestRecording() const;
     void ReturnVideoToCamera();
     bool MediaViewSelected() const;
+    bool FileSourceRequested() const;
+    int CameraPickerIndex() const;
     bool MediaPlaybackPlaying() const;
     bool PresentMediaView();
     std::int64_t SelectedMediaDocumentPts100ns(std::int64_t localPts100ns) const;
@@ -708,6 +712,7 @@ private:
     std::unique_ptr<QThreadPool> imageIoPool_;
     struct VideoDocumentState;
     std::shared_ptr<VideoDocumentState> videoDocument_;
+    bool filePickerActive_{};
     QTimer* videoPlaybackTimer_{};
     std::uint64_t mediaDocumentEpoch_{1};
     uct::SharedPixels mediaScenePixels_;

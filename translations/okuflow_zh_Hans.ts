@@ -3605,5 +3605,53 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Whiteboard</source>
         <translation>白板</translation>
     </message>
+    <message>
+        <source>View file</source>
+        <translation>查看文件</translation>
+    </message>
+    <message>
+        <source>Select file</source>
+        <translation>选择文件</translation>
+    </message>
+    <message>
+        <source>Open a video, picture, or PDF (Ctrl+O)</source>
+        <translation>打开视频、图片或 PDF (Ctrl+O)</translation>
+    </message>
+    <message>
+        <source>Open file</source>
+        <translation>打开文件</translation>
+    </message>
+    <message>
+        <source>Document text</source>
+        <translation>文档文本</translation>
+    </message>
+    <message>
+        <source>Page</source>
+        <translation>页</translation>
+    </message>
+    <message>
+        <source>Previous page</source>
+        <translation>上一页</translation>
+    </message>
+    <message>
+        <source>Next page</source>
+        <translation>下一页</translation>
+    </message>
+    <message>
+        <source>Opening file…</source>
+        <translation>正在打开文件…</translation>
+    </message>
+    <message>
+        <source>File unavailable</source>
+        <translation>文件不可用</translation>
+    </message>
+    <message>
+        <source>Page %1 of %2</source>
+        <translation>第 %1 页，共 %2 页</translation>
+    </message>
+    <message>
+        <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
+        <translation>媒体文件 (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;所有文件 (*)</translation>
+    </message>
 </context>
 </TS>
