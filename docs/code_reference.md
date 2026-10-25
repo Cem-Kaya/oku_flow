@@ -26,6 +26,10 @@
   Qt PDF DLL and original version-matched qtpdf SPDX document.
   The document, transport and native app fixtures
   cover decoder/state/UI boundaries. See [usage and bounds](file_documents.md).
+- `documentPaneFitsSettingsAfterTabSwitch` checks complete document-pane
+  containment after queued Settings layout at wide/narrow sizes; the hosted
+  `documentControlsHaveNativeGeometry` adds native hit testing, accessibility
+  bounds and one-command keyboard page navigation after that layout settles.
 
 ## Regional stability and distant text runs (25 October 2026)
 

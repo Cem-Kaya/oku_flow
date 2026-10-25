@@ -30,6 +30,8 @@
 #include <QFontDatabase>
 #include <QPdfWriter>
 #include <QSpinBox>
+#include <QScrollArea>
+#include <QTabWidget>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLayout>
@@ -2267,6 +2269,38 @@ private slots:
         NativeControlFixture::DiscoverFixturePhone(app_);
         QCOMPARE(calls->load(),2);
         QCOMPARE(NativeControlFixture::Window(app_).cameraCombo()->currentIndex(),0);
+    }
+    void documentPaneFitsSettingsAfterTabSwitch() {
+        uct_test::RegisterFixtureFonts();
+        MainWindow window;window.setFont(QFont(QStringLiteral("Segoe UI")));window.resize(1380,985);window.show();
+        window.setSimpleMode(false);
+        auto* tabs=window.findChild<QTabWidget*>("advancedPage");QVERIFY(tabs);tabs->setCurrentIndex(2);
+        window.setCameraDevices({QStringLiteral("Fixture webcam")},0);
+        window.setVideoSourceSelected(true,0);
+        window.setDocumentText(QStringLiteral("Embedded PDF text remains available without OCR. ").repeated(100));
+        auto* text=window.findChild<QPlainTextEdit*>("documentText");QVERIFY(text);
+        auto* scroll=window.findChild<QScrollArea*>("sharedSettingsScroll");QVERIFY(scroll);
+        const int initialWidth=text->width();
+        for(const int width:{1380,720}) {
+            window.resize(width,720);window.setAdvancedPanelWidth(360);
+            const bool fits=QTest::qWaitFor([&] {return scroll->widget()->width()<=scroll->viewport()->width()+1;},1000);
+            if(!fits) {
+                QList<QPair<int,QString>> minimums;
+                for(auto* child:scroll->widget()->findChildren<QWidget*>()) {
+                    if(!child->isVisible())continue;
+                    minimums.append({std::max(child->minimumWidth(),child->minimumSizeHint().width()),
+                        child->objectName().isEmpty()?QString::fromLatin1(child->metaObject()->className()):child->objectName()});
+                }
+                std::sort(minimums.begin(),minimums.end(),[](const auto& a,const auto& b) {return a.first>b.first;});
+                qInfo()<<"Document settings widths: content/viewport/editor"<<scroll->widget()->width()<<scroll->viewport()->width()<<text->width();
+                for(int i=0;i<std::min(12,int(minimums.size()));++i)qInfo()<<minimums[i];
+            }
+            QVERIFY(fits);
+            scroll->ensureWidgetVisible(text);
+            QTRY_VERIFY_WITH_TIMEOUT(QRect(scroll->viewport()->mapToGlobal(QPoint(0,0)),scroll->viewport()->size())
+                .contains(QRect(text->mapToGlobal(QPoint(0,0)),text->size())),1000);
+        }
+        qInfo()<<"Document pane width before/after queued Settings layout:"<<initialWidth<<text->width();
     }
     void pdfTextAndPicturesShareTheFilePickerWithoutVideoCommands() {
         QTemporaryDir dir;

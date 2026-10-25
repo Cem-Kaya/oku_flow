@@ -41,6 +41,7 @@ if(OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE)
     add_test(NAME native_app_file_sources_offscreen COMMAND native_app_control_fixture
         videoSourceControlsBelongToCameraSettings
         pendingPhoneDoesNotLockWebcamSelection
+        documentPaneFitsSettingsAfterTabSwitch
         pdfTextAndPicturesShareTheFilePickerWithoutVideoCommands
         phoneRecoverySurvivesFileReviewAndConnectionLoss)
     set_tests_properties(native_app_file_sources_offscreen PROPERTIES TIMEOUT 30

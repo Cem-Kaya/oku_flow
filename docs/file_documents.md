@@ -74,6 +74,11 @@ cmake --build build/msvc-cpu --target native_app_control_fixture
 scripts/agent_build.bat --scoped msvc-cpu file_document_contract video_transport_contract native_app_file_sources_offscreen
 ```
 
+The document-pane geometry checks wait for Qt's queued first layout after
+showing Settings, then require the whole pane inside its scroll viewport at
+wide and narrow sizes. The hosted native case additionally checks accessibility
+bounds, native hit testing and keyboard page navigation.
+
 These desktop-free checks do not establish physical USB recovery, actual
 screen-reader speech, GUI focus or installer acceptance. Run the tracked full
 matrix and hosted native GUI inventory before integration; preserve failed

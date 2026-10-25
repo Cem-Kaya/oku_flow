@@ -1221,8 +1221,12 @@ void MainWindowTests::documentControlsHaveNativeGeometry()
     QScrollArea* scroll = nullptr;
     for (auto* parent = text->parentWidget(); parent; parent = parent->parentWidget())
         if ((scroll = qobject_cast<QScrollArea*>(parent))) break;
-    QVERIFY(scroll); scroll->ensureWidgetVisible(text);
-    QTRY_VERIFY(GlobalRect(scroll->viewport()).intersects(GlobalRect(text)));
+    QVERIFY(scroll);
+    // Showing the previously hidden Settings tab queues its first layout.
+    // Wait for the inspector's real width before scrolling or native hit tests.
+    QTRY_VERIFY_WITH_TIMEOUT(scroll->widget()->width() <= scroll->viewport()->width() + 1, 1000);
+    scroll->ensureWidgetVisible(text);
+    QTRY_VERIFY_WITH_TIMEOUT(GlobalRect(scroll->viewport()).contains(GlobalRect(text)), 1000);
     for (auto* widget : {static_cast<QWidget*>(page), static_cast<QWidget*>(text)}) {
         auto* accessible = QAccessible::queryAccessibleInterface(widget);
         QVERIFY(accessible && accessible->isValid()); QVERIFY(!accessible->rect().isEmpty());
@@ -1237,6 +1241,7 @@ void MainWindowTests::documentControlsHaveNativeGeometry()
     QSignalSpy changes(window.videoTransport(), &VideoTransport::PageRequested);
     QTest::keyClick(page, Qt::Key_Up);
     QCOMPARE(changes.count(), 1); QCOMPARE(changes.at(0).at(0).toInt(), 1);
+    snapshot.page = 1; window.videoTransport()->SetSnapshot(snapshot);
     QVERIFY(window.videoTransport()->playPauseButton()->isHidden());
     QVERIFY(window.videoTransport()->timeline()->isHidden());
     QVERIFY(SaveScreenshot(window, QStringLiteral("desktop-en-document-controls")));
