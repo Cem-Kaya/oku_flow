@@ -4,9 +4,12 @@
 #if defined(_WIN32)
 
 #include "okuflow/ui/live_status_text.hpp"
+#include "okuflow/ui/ui_translation.hpp"
 #include "okuflow/ui/wheel_safe_combo_box.hpp"
 
 #include <QCheckBox>
+#include <QApplication>
+#include <QAccessible>
 #include <QComboBox>
 #include <QLabel>
 #include <QPlainTextEdit>
@@ -68,6 +71,7 @@ UltraClearTextPanel::UltraClearTextPanel(QWidget* parent)
     layout->addWidget(showOriginalCheckbox_);
 
     auto* advanced = new QToolButton(this);
+    advancedToggle_=advanced;
     advanced->setObjectName(QStringLiteral("uctAdvancedSettings"));
     advanced->setText(QStringLiteral("UCT advanced settings"));
     advanced->setAccessibleName(advanced->text());
@@ -77,6 +81,7 @@ UltraClearTextPanel::UltraClearTextPanel(QWidget* parent)
     advanced->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Preferred);
     layout->addWidget(advanced);
     auto* modelControls = new QWidget(this);
+    modelControls->setObjectName(QStringLiteral("uctAdvancedContents"));
     auto* modelLayout = new QVBoxLayout(modelControls);
     modelLayout->setContentsMargins(12,0,0,0);
     const auto addModel = [&](const QString& label,const char* name) {
@@ -103,6 +108,8 @@ UltraClearTextPanel::UltraClearTextPanel(QWidget* parent)
     SetModelSettings({});
     layout->addWidget(modelControls);modelControls->hide();
     connect(advanced,&QToolButton::toggled,this,[advanced,modelControls](bool expanded){
+        if(!expanded && modelControls->isAncestorOf(QApplication::focusWidget()))
+            advanced->setFocus(Qt::OtherFocusReason);
         advanced->setArrowType(expanded?Qt::DownArrow:Qt::RightArrow);
         modelControls->setVisible(expanded);
     });
@@ -113,7 +120,7 @@ UltraClearTextPanel::UltraClearTextPanel(QWidget* parent)
     backendLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
     backendLabel_->setFocusPolicy(Qt::TabFocus);
     backendLabel_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-    layout->addWidget(backendLabel_);
+    modelLayout->addWidget(backendLabel_);
     backendLabel_->hide();
 
     statusLabel_ = new QLabel();
@@ -122,7 +129,7 @@ UltraClearTextPanel::UltraClearTextPanel(QWidget* parent)
     statusLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
     statusLabel_->setFocusPolicy(Qt::TabFocus);
     statusLabel_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-    layout->addWidget(statusLabel_);
+    modelLayout->addWidget(statusLabel_);
 
     auto* paneLabel = new QLabel(QStringLiteral("Recognized text"));
     readingPane_ = new QPlainTextEdit();
@@ -136,8 +143,8 @@ UltraClearTextPanel::UltraClearTextPanel(QWidget* parent)
     readingPane_->setMinimumHeight(96);
     readingPane_->setMaximumHeight(220);
     paneLabel->setBuddy(readingPane_);
-    layout->addWidget(paneLabel);
-    layout->addWidget(readingPane_);
+    modelLayout->addWidget(paneLabel);
+    modelLayout->addWidget(readingPane_);
 
     connect(enableCheckbox_, &QCheckBox::toggled, this, [this](bool checked) {
         UpdateDependentState();
@@ -197,11 +204,18 @@ void UltraClearTextPanel::SetStatus(const QString& sourceText, bool important)
         return;
     }
     statusSource_ = sourceText;
+    SetLiveAccessibleDescription(advancedToggle_,sourceText);
+    const bool collapsed=!advancedToggle_->isChecked();
+    if(important && collapsed) {
+        QAccessibleAnnouncementEvent event(advancedToggle_,TranslateUi(sourceText));
+        event.setPoliteness(QAccessible::AnnouncementPoliteness::Polite);
+        QAccessible::updateAccessibility(&event);
+    }
     // Semantic state is current immediately, including for an already cached
     // accessibility interface. Silence controls unsolicited speech, not tree
     // freshness; only rapidly changing numerical diagnostics need coalescing.
     SetLiveText(statusLabel_, sourceText,
-                important ? LivePoliteness::kPolite : LivePoliteness::kSilent);
+                important && !collapsed ? LivePoliteness::kPolite : LivePoliteness::kSilent);
 }
 
 void UltraClearTextPanel::SetBackendStatus(const uct::BackendStatus& status)

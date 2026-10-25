@@ -58,6 +58,8 @@ QT_END_NAMESPACE
 
 namespace okuflow {
 
+inline constexpr int kQuickModeShortcutRole = Qt::UserRole + 2;
+
 class OkuFlowApp;
 class ColorSchemePicker;
 class UltraClearTextOverlay;
@@ -88,6 +90,7 @@ public:
     void setLiveRecapMinutes(int minutes);
     void setLiveRecapEstimate(std::uint32_t bitrate = 0);
     QListWidget* presetList() const;
+    bool moreQuickModesShown() const;
     QLabel* presetDescriptionLabel() const;
     QPushButton* promotePresetButton() const;
     QCheckBox* blackWhiteCheckbox() const;
@@ -251,6 +254,7 @@ public:
 signals:
     void cameraLabelsRefreshRequested();
     void quickModeActivated(int row);
+    void quickModeOptionsChanged();
     void openUserDataFolderRequested();
     void changeUserDataFolderRequested();
     void keystoneStepBackRequested();
@@ -336,6 +340,7 @@ private:
     QDoubleSpinBox* phoneZoomControl_{};
     QComboBox* microphoneCombo_{};
     QListWidget* presetList_{};
+    QToolButton* moreQuickModesButton_{};
     QLabel* presetDescriptionLabel_{};
     QPushButton* promotePresetButton_{};
     QCheckBox* bwCheckbox_{};

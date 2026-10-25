@@ -85,7 +85,18 @@ Simple mode is the normal operating view:
   and number badges. The carousel paints a separate shortcut badge and elides
   its label within the available width; an unmatched configuration shows
   `Custom Setup` without a badge.
-- Number keys `1` through `9` apply the first nine quick modes from the
+- The default grid features Read a Page, Document, Projector Screen and
+  Whiteboard, followed by the owner's custom modes. More modes reveals the
+  other six built-ins. A saved legacy selection stays visible even while that
+  disclosure is closed. All stored IDs/configurations and the complete agent
+  inventory remain available; merely expanding/collapsing never applies a mode.
+  Featured/custom shortcuts follow their displayed order; legacy tiles never
+  take number keys or badges. Four featured tiles use two columns where space
+  permits, reducing to one column on narrow views. Read a Page remains the
+  new-install default; Document exposes the existing adaptive Text Clarity
+  recipe. No mode silently enables the independent UCT preference.
+- Number keys `1` through `4` apply featured modes; `5` through `9` apply
+  available custom modes from the
   Simple camera controls, without intercepting typing or dialog input.
   `Tab` and `Shift+Tab` move across the separate corner clusters. `F6` and
   `Shift+F6` move between regions in both modes. In the grid, arrows browse;
@@ -122,6 +133,19 @@ Simple mode is the normal operating view:
 Adding a new profile must not create persistent chrome. It joins the mode grid
 and remains reachable by scrolling; only the first nine entries receive
 number shortcuts.
+
+UCT keeps its enable checkbox and Show original comparison together. The four
+model selectors, backend identity, recognition status and selectable transcript
+share the UCT advanced settings disclosure, collapsed by default. Collapsing
+returns descendant focus to that header and does not clear recognition or
+reading position. Its accessible description carries the current status;
+important collapsed changes announce from the header. Positioned viewport
+accessibility remains independent of the optional transcript. This layout
+does not change OCR models, cadence, proof, BF16 preference or reprojection.
+
+Playback volume is similarly temporary: the speaker opens a narrow vertical
+popover over the image, above its anchor when space permits. No additional
+permanent row reduces the magnified view. See [the transport contract](video_transport.md).
 
 ## Advanced Mode
 

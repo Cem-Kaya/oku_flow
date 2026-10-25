@@ -6963,6 +6963,50 @@ routes actual user gain to the existing sink, and `PollVideoPlayback` publishes
 the requested session level. `ApplyFace` uses warning ink for a muted speaker
 and ordinary theme ink when unmuted.
 
+The later UI cleanup moves that slider into owned `volumePopup_`.
+`VideoTransport::{ShowVolumePopup,HideVolumePopup}` anchor/clamp the transient
+vertical control without participating in transport layout height. Its global
+event filter handles the speaker's second click, outside dismissal, Escape,
+Tab/Backtab and source/hide transitions; destruction unregisters the filter
+before child deletion. The closed speaker names its real action, Playback
+volume; while open it names Mute/Unmute playback. `VideoDocumentState` owns
+`lastAudibleVolumePercent`; zero and positive UI adjustments coordinate the
+existing decoder mute and output gain, while Unmute restores a nonzero gain
+before opening the gate. It does not change system or recording audio.
+Both mutation handlers refuse edits during active/finishing recording, keeping
+the stored listening intent intact under forced silence. The test-only
+`SetVideoRecordingGuardForTest` covers both predicates without an audio device.
+Popup close captures focus ownership before hide and selects a valid speaker,
+play, chevron or viewport destination. Outside clicks are exempt. Global input
+handling is restricted to owned windows and excludes modals; mute edges while
+open generate one polite announcement using existing localized labels.
+`SetSnapshot` reconciles effective slider value even for identical snapshots,
+so refused edits cannot leave stale percentages/accessibility values. Held
+drags remain protected; the next snapshot after release resynchronizes them.
+
+`UltraClearTextPanel::advancedToggle_` owns the disclosure whose content now
+includes model selectors, backend/status labels and the reading pane.
+`SetStatus` keeps the header's translated accessible description current and
+announces an important collapsed update on that visible header. Recognition
+and caret-preserving text updates continue while the disclosure is closed.
+
+`MainWindow::moreQuickModesShown` / `quickModeOptionsChanged` expose a
+session-only list disclosure. `OkuFlowApp::OnQuickModeOptionsChanged` repopulates
+and restores selection without applying processing. `PopulatePresetList` orders
+the four featured built-in IDs, owner custom modes, then expanded or selected
+legacy entries. Its member connection is unique across rebuilds. Opening the
+grid refreshes this view; the built-in store and MCP inventory stay complete.
+`kQuickModeShortcutRole` marks featured/custom items; `PresetShortcut` gates
+tile/carousel badges and number-key activation consistently. More retains the
+browsed candidate by stable ID while keeping the applied row for Cancel.
+Four-mode layouts cap at two columns, with one column for narrow views.
+
+`CameraSourceIntent::RememberAdoptedFormat(generation, format)` updates saved
+format intent after accepted adoption without issuing a new Manual request.
+It rejects stale and temporary-owner writes. `CompleteCameraCaptureStart` uses this
+instead of manual-only `SetSavedFormat`, preserving recovery origin/generation
+until the first frame or expiry. Native format edits still supersede requests.
+
 `RecordingArchive::State::provenDurationHighWater` advances only with parsed,
 producer-fenced fragment proof. `Finalized` restores that monotonic mapping
 metadata after finalizer backwrites/SetLength, while revoking generation, sample

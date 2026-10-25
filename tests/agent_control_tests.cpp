@@ -307,6 +307,24 @@ private slots:
         QCOMPARE(intent.Saved().symbolicLink,"user-new");
         QCOMPARE(intent.Saved().formatStableId,"user-format");
     }
+    void adoptedCameraFormatPreservesRecoveryAuthority() {
+        for(const auto origin:{CameraSourceOrigin::Startup,CameraSourceOrigin::Manual,CameraSourceOrigin::Reconnect,CameraSourceOrigin::Fallback}) {
+            CameraSourceIntent intent;intent.LoadSaved({"camera","old",0,true});
+            const auto generation=intent.Request({"camera","new",false},origin,"operation");
+            QVERIFY(intent.Activate(generation,{"camera","new",false}));
+            QVERIFY(intent.RememberAdoptedFormat(generation,"new"));
+            QCOMPARE(intent.Saved().formatStableId,"new");QCOMPARE(intent.Requested().generation,generation);
+            QCOMPARE(intent.Requested().origin,origin);QCOMPARE(intent.Requested().operationId,"operation");
+            QVERIFY(intent.MarkFirstFrame(generation));
+            QVERIFY(!intent.RememberAdoptedFormat(generation-1,"stale"));
+            QCOMPARE(intent.Saved().formatStableId,"new");
+            QVERIFY(intent.RequestTemporary("owner",{"temporary","",false},"temporary-operation"));
+            const auto temporary=intent.Requested().generation;
+            QVERIFY(intent.Activate(temporary,{"temporary","",false}));
+            QVERIFY(!intent.RememberAdoptedFormat(temporary,"private"));
+            QCOMPARE(intent.Saved().formatStableId,"new");
+        }
+    }
     void cameraIntentSeparatesSavedRequestedAndActive() {
         CameraSourceIntent intent;
         intent.LoadSaved({"saved-webcam","saved-format",4,true});

@@ -10,6 +10,7 @@
 #include <QAccessibleWidget>
 #include <QApplication>
 #include <QEvent>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QKeyEvent>
@@ -19,6 +20,8 @@
 #include <QPalette>
 #include <QPushButton>
 #include <QResizeEvent>
+#include <QScreen>
+#include <QMouseEvent>
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QStyle>
@@ -276,21 +279,36 @@ VideoTransport::VideoTransport(QWidget* parent) : QWidget(parent)
     secondaryLayout_->setContentsMargins(0, 0, 0, 0);
     secondaryLayout_->setSpacing(kRowSpacing);
     layout->addWidget(secondaryRow_);
-    audioRow_=new QWidget(this);
-    audioRow_->setObjectName(QStringLiteral("videoAudioRow"));
-    auto* audioLayout=new QHBoxLayout(audioRow_);
-    audioLayout->setContentsMargins(0,0,0,0);audioLayout->setSpacing(kRowSpacing);
-    volumeLabel_=new QLabel(audioRow_);volumeLabel_->setWordWrap(true);
-    volumeLabel_->setMinimumWidth(0);
-    volume_=new QSlider(Qt::Horizontal,audioRow_);
+    volumePopup_=new QFrame(this,Qt::Popup | Qt::FramelessWindowHint);
+    volumePopup_->setObjectName(QStringLiteral("videoVolumePopup"));
+    volumePopup_->setAutoFillBackground(true);
+    volumePopup_->setAttribute(Qt::WA_TranslucentBackground,false);
+    volumePopup_->setFrameShape(QFrame::StyledPanel);
+    volumePopup_->setLineWidth(2);
+    volumePopup_->setStyleSheet(QStringLiteral(
+        "QFrame#videoVolumePopup { border:2px solid palette(mid); background:palette(window); }"
+        "QSlider#videoVolumeSlider:focus { border:2px solid palette(highlight); }"
+        "QSlider#videoVolumeSlider::groove:vertical { width:6px; background:palette(mid); border-radius:3px; }"
+        "QSlider#videoVolumeSlider::add-page:vertical { background:palette(highlight); border-radius:3px; }"
+        "QSlider#videoVolumeSlider::handle:vertical { height:44px; margin:0 -19px; "
+        "border:2px solid palette(highlight); border-radius:6px; background:palette(button); }"));
+    volumePopup_->installEventFilter(this);
+    auto* audioLayout=new QVBoxLayout(volumePopup_);
+    audioLayout->setContentsMargins(12,12,12,12);audioLayout->setSpacing(8);
+    volumeLabel_=new QLabel(volumePopup_);volumeLabel_->setWordWrap(true);
+    volumeLabel_->setAlignment(Qt::AlignCenter);
+    volumeLabel_->hide(); // The speaker and percentage identify this compact player popover.
+    volume_=new QSlider(Qt::Vertical,volumePopup_);
     volume_->setObjectName(QStringLiteral("videoVolumeSlider"));
     volume_->setRange(0,100);volume_->setValue(100);volume_->setSingleStep(5);volume_->setPageStep(10);
-    volume_->setMinimumSize(80,kButtonExtent);volume_->installEventFilter(this);
+    volume_->setMinimumSize(kButtonExtent,160);volume_->installEventFilter(this);
     volumeLabel_->setBuddy(volume_);
-    volumeValue_=new QLabel(QStringLiteral("100%"),audioRow_);
+    volumeValue_=new QLabel(QStringLiteral("100%"),volumePopup_);
     volumeValue_->setObjectName(QStringLiteral("videoVolumeValue"));
-    audioLayout->addWidget(volumeLabel_);audioLayout->addWidget(volume_,1);audioLayout->addWidget(volumeValue_);
-    layout->addWidget(audioRow_);
+    volumeValue_->setAlignment(Qt::AlignCenter);
+    audioLayout->addWidget(volumeLabel_);audioLayout->addWidget(volume_,1,Qt::AlignHCenter);
+    audioLayout->addWidget(volumeValue_);
+    qApp->installEventFilter(this);
 
     announcementTimer_ = new QTimer(this);
     announcementTimer_->setSingleShot(true);
@@ -314,12 +332,14 @@ VideoTransport::VideoTransport(QWidget* parent) : QWidget(parent)
         if (IsActionReady(saveFrameButton_)) emit SaveFrameRequested();
     });
     connect(muteButton_, &QPushButton::clicked, this, [this]() {
-        if (IsActionReady(muteButton_)) emit MutedChanged(!snapshot_.muted);
+        if (!IsActionReady(muteButton_)) return;
+        if(volumePopup_->isVisible()) emit MutedChanged(!snapshot_.muted);
+        else ShowVolumePopup();
     });
     connect(volume_,&QSlider::valueChanged,this,[this](int percent) {
         if(updating_)return;
         if(!IsActionReady(volume_)) {
-            const QSignalBlocker block(volume_);volume_->setValue(snapshot_.volumePercent);
+            const QSignalBlocker block(volume_);volume_->setValue(snapshot_.muted?0:snapshot_.volumePercent);
         } else emit VolumeChanged(percent);
         RefreshVolumeText();
     });
@@ -380,6 +400,53 @@ VideoTransport::VideoTransport(QWidget* parent) : QWidget(parent)
     hide();
 }
 
+VideoTransport::~VideoTransport()
+{
+    if(qApp)qApp->removeEventFilter(this);
+    volumePopup_->removeEventFilter(this);
+    volumePopup_->hide();
+}
+
+void VideoTransport::ShowVolumePopup()
+{
+    if(!IsActionReady(muteButton_))return;
+    volumePopup_->setPalette(palette());
+    volumePopup_->setFont(font());
+    const auto available=muteButton_->screen()->availableGeometry();
+    const int widthLimit=std::max(44,available.width()-16);
+    volumePopup_->setMaximumWidth(widthLimit);
+    volumePopup_->setMinimumWidth(std::min(widthLimit,std::max(76,
+        fontMetrics().horizontalAdvance(QLocale().toString(100)+QLatin1Char('%'))+28)));
+    volumePopup_->adjustSize();
+    const auto top=muteButton_->mapToGlobal(QPoint(muteButton_->width()/2,0));
+    const int x=std::clamp(top.x()-volumePopup_->width()/2,available.left(),
+        std::max(available.left(),available.right()-volumePopup_->width()+1));
+    int y=top.y()-volumePopup_->height()-6;
+    if(y<available.top())y=top.y()+muteButton_->height()+6;
+    y=std::clamp(y,available.top(),std::max(available.top(),available.bottom()-volumePopup_->height()+1));
+    volumePopup_->move(x,y);
+    volumePopup_->show();volumePopup_->raise();
+    RefreshText();
+    volume_->setFocus(Qt::PopupFocusReason);
+}
+
+void VideoTransport::HideVolumePopup(bool restoreFocus,QWidget* preferred)
+{
+    if(!volumePopup_->isVisible())return;
+    const auto* focus=QApplication::focusWidget();
+    const bool ownsFocus=focus && (focus==volumePopup_ || volumePopup_->isAncestorOf(focus));
+    QPointer<QWidget> target;
+    if(restoreFocus && ownsFocus) {
+        if(preferred && preferred->isVisible() && preferred->isEnabled())target=preferred;
+        else if(IsActionReady(muteButton_))target=muteButton_;
+        else if(IsActionReady(playPauseButton_))target=playPauseButton_;
+        else if(focusReturnTarget_ && focusReturnTarget_->isVisible() && focusReturnTarget_->isEnabled())target=focusReturnTarget_;
+        else if(parentWidget())target=parentWidget();
+    }
+    volumePopup_->hide();
+    if(target)target->setFocus(Qt::PopupFocusReason);
+}
+
 QString VideoTransport::TimeText(qint64 milliseconds)
 {
     const qint64 seconds = std::max<qint64>(0, milliseconds) / 1000;
@@ -424,6 +491,8 @@ void VideoTransport::SetSnapshot(const Snapshot& snapshot)
     const bool hadSource = snapshot_.source != Source::None;
     const bool changedDocument = snapshot_.sourceGeneration != snapshot.sourceGeneration ||
                                  snapshot_.source != snapshot.source;
+    if(changedDocument)HideVolumePopup();
+    const bool muteEdge=!changedDocument && snapshot_.muted!=snapshot.muted && volumePopup_->isVisible();
     const bool changedState = changedDocument || snapshot_.state != snapshot.state ||
         (snapshot.source == Source::Recap && snapshot.state == State::Unavailable &&
          snapshot_.diagnosticDetail != snapshot.diagnosticDetail) ||
@@ -467,6 +536,18 @@ void VideoTransport::SetSnapshot(const Snapshot& snapshot)
     setVisible(hasSource && !uiHidden_ && !collapsed_);
     UpdateActions();
     if (changedText) RefreshText();
+    const int effectiveVolume=snapshot_.muted?0:snapshot_.volumePercent;
+    if(!volume_->isSliderDown() && volume_->value()!=effectiveVolume) {
+        const QSignalBlocker block(volume_);volume_->setValue(effectiveVolume);
+        RefreshVolumeText(); // Identical snapshots also acknowledge a refused edit.
+    }
+    if(muteEdge && volumePopup_->isVisible()) {
+        const auto action=TranslateUi(snapshot_.muted?QStringLiteral("Unmute playback"):QStringLiteral("Mute playback"));
+        const auto percent=QLocale().toString(snapshot_.muted?0:snapshot_.volumePercent)+QLatin1Char('%');
+        QAccessibleAnnouncementEvent event(this,TranslateUi(QStringLiteral("Playback volume"))+
+            QStringLiteral(": ")+percent+QStringLiteral(". ")+action);
+        event.setPoliteness(QAccessible::AnnouncementPoliteness::Polite);QAccessible::updateAccessibility(&event);
+    }
     RefreshTimeline(changedDocument || !snapshot_.playing);
     if (changedState) RequestAnnouncement();
     if (hadSource != hasSource) emit ControlsChanged();
@@ -474,6 +555,7 @@ void VideoTransport::SetSnapshot(const Snapshot& snapshot)
 
 void VideoTransport::SetUiHidden(bool hidden)
 {
+    if(hidden)HideVolumePopup(true,focusReturnTarget_);
     if (hidden) ReturnFocus();
     uiHidden_ = hidden;
     collapseButton_->setVisible(!hidden && snapshot_.source != Source::None);
@@ -483,6 +565,7 @@ void VideoTransport::SetUiHidden(bool hidden)
 
 void VideoTransport::SetCollapsed(bool collapsed)
 {
+    if(collapsed)HideVolumePopup(true,collapseButton_->parentWidget()!=this?collapseButton_:focusReturnTarget_.data());
     if (collapsed_ == collapsed) return;
     if (dragging_) {
         dragging_ = false;
@@ -515,7 +598,8 @@ void VideoTransport::SetFocusReturnTarget(QWidget* target)
 bool VideoTransport::ActionShown(const QWidget* control) const
 {
     if (collapsed_ && control != collapseButton_) return false;
-    if (control == muteButton_ || control == volume_) return muteShown_;
+    if (control == volume_) return muteShown_ && volumePopup_->isVisible();
+    if (control == muteButton_) return muteShown_;
     if (control == returnButton_) return returnShown_;
     return true;
 }
@@ -585,7 +669,7 @@ void VideoTransport::UpdateActions()
     const bool changedReturn = SetActionShown(returnButton_, snapshot_.source == Source::Video);
     const bool changedMute = SetActionShown(muteButton_, snapshot_.source == Source::Video && snapshot_.hasAudio);
     if(changedMute && !muteShown_)MoveFocusFrom(volume_,playPauseButton_);
-    audioRow_->setVisible(!collapsed_ && muteShown_);
+    if(!muteShown_ || !available)HideVolumePopup();
     if (changedReturn || changedMute) UpdateLayout();
 }
 
@@ -640,13 +724,16 @@ void VideoTransport::RefreshText()
                                ? QStringLiteral("Jump to live") : QStringLiteral("Jump to end"));
     NameButton(returnButton_, QStringLiteral("Return to camera"));
     NameButton(saveFrameButton_, QStringLiteral("Save frame"));
-    NameButton(muteButton_, snapshot_.muted ? QStringLiteral("Unmute playback")
-                                          : QStringLiteral("Mute playback"));
+    NameButton(muteButton_, volumePopup_->isVisible()
+        ? (snapshot_.muted?QStringLiteral("Unmute playback"):QStringLiteral("Mute playback"))
+        : QStringLiteral("Playback volume"));
+    volumePopup_->setWindowTitle(TranslateUi(QStringLiteral("Playback volume")));
+    volumePopup_->setAccessibleName(TranslateUi(QStringLiteral("Playback volume")));
     volumeLabel_->setText(TranslateUi(QStringLiteral("Playback volume")));
     volume_->setAccessibleName(TranslateUi(QStringLiteral("Playback volume")));
     {
         const QSignalBlocker block(volume_);
-        if(!volume_->isSliderDown())volume_->setValue(std::clamp(snapshot_.volumePercent,0,100));
+        if(!volume_->isSliderDown())volume_->setValue(snapshot_.muted?0:std::clamp(snapshot_.volumePercent,0,100));
     }
     RefreshVolumeText();
     NameButton(collapseButton_, collapsed_ ? QStringLiteral("Show UI") : QStringLiteral("Hide UI"));
@@ -795,14 +882,40 @@ std::vector<QWidget*> VideoTransport::FocusTargets() const
                                   saveFrameButton_};
     if (collapseButton_->parentWidget() == this) targets.insert(targets.begin(), collapseButton_);
     if (muteShown_) targets.push_back(muteButton_);
-    if (muteShown_) targets.push_back(volume_);
     if (returnShown_) targets.push_back(returnButton_);
     return targets;
 }
 
 bool VideoTransport::eventFilter(QObject* watched, QEvent* event)
 {
-    if (event->type() == QEvent::FocusOut) {
+    if(volumePopup_ && volumePopup_->isVisible()) {
+        const auto* widget=qobject_cast<QWidget*>(watched);
+        const bool ownedWindow=widget && (widget->window()==volumePopup_ || widget->window()==window());
+        const bool modalBlocked=QApplication::activeModalWidget() && QApplication::activeModalWidget()!=volumePopup_;
+        if(ownedWindow && !modalBlocked && event->type()==QEvent::MouseButtonPress) {
+            auto* mouse=static_cast<QMouseEvent*>(event);
+            const QRect speaker(muteButton_->mapToGlobal(QPoint()),muteButton_->size());
+            if(mouse->button()==Qt::LeftButton && speaker.contains(mouse->globalPosition().toPoint())) {
+                if(IsActionReady(muteButton_))emit MutedChanged(!snapshot_.muted);
+                return true;
+            }
+            if(!volumePopup_->geometry().contains(mouse->globalPosition().toPoint()))HideVolumePopup(false);
+        }
+        if(!ownedWindow && event->type()==QEvent::MouseButtonPress)HideVolumePopup(false);
+        if(ownedWindow && !modalBlocked && event->type()==QEvent::KeyPress && static_cast<QKeyEvent*>(event)->key()==Qt::Key_Escape) {
+            HideVolumePopup();return true;
+        }
+        if(event->type()==QEvent::ApplicationDeactivate)HideVolumePopup(false);
+    }
+    if(watched==volumePopup_ && event->type()==QEvent::Hide) {
+        NameButton(muteButton_,QStringLiteral("Playback volume"));
+
+    }
+    if(watched==this && event->type()==QEvent::Hide)HideVolumePopup(false);
+    if(volumePopup_->isVisible() && watched==window() &&
+        (event->type()==QEvent::Move || event->type()==QEvent::Resize))HideVolumePopup();
+    if (event->type() == QEvent::FocusOut && qobject_cast<QWidget*>(watched) &&
+        isAncestorOf(static_cast<QWidget*>(watched))) {
         QTimer::singleShot(0, this, &VideoTransport::UpdateActions);
     }
     if (watched == timeline_) {
@@ -851,6 +964,25 @@ bool VideoTransport::eventFilter(QObject* watched, QEvent* event)
                 return true;
             }
         }
+    }
+    if(watched==volume_ && event->type()==QEvent::KeyPress) {
+        auto* key=static_cast<QKeyEvent*>(event);
+        if(key->key()==Qt::Key_Tab || key->key()==Qt::Key_Backtab) {
+            const bool backwards=key->key()==Qt::Key_Backtab || key->modifiers().testFlag(Qt::ShiftModifier);
+            HideVolumePopup(false);
+            auto* next=backwards?muteButton_:returnButton_;
+            if(IsActionReady(next))next->setFocus(Qt::TabFocusReason);
+            else if(IsActionReady(playPauseButton_))playPauseButton_->setFocus(Qt::TabFocusReason);
+            return true;
+        }
+        if(key->key()==Qt::Key_Space && key->modifiers()==Qt::NoModifier) {
+            if(!key->isAutoRepeat() && IsActionReady(muteButton_))emit MutedChanged(!snapshot_.muted);
+            return true;
+        }
+    }
+    if(watched==volume_ && event->type()==QEvent::Wheel &&
+        (!volumePopup_->isVisible() || !volume_->hasFocus())) {
+        event->ignore();return true;
     }
     return QWidget::eventFilter(watched, event);
 }
@@ -1029,7 +1161,6 @@ void VideoTransport::UpdateLayout()
     for (auto* widget : std::vector<QWidget*>{rewindButton_, playPauseButton_, timeline_,
                          timeLabel_, saveFrameButton_}) widget->setVisible(!collapsed_);
     muteButton_->setVisible(!collapsed_ && muteShown_);
-    audioRow_->setVisible(!collapsed_ && muteShown_);
     returnButton_->setVisible(!collapsed_ && returnShown_);
     secondaryRow_->setVisible(!collapsed_ && below);
     if(focused && focused->isEnabled() && focused->isVisibleTo(this) && !focused->hasFocus())

@@ -2137,7 +2137,7 @@ bool OkuFlowApp::CompleteCameraCaptureStart(bool started, bool interactive, cons
     if (cameraIntent_.TemporaryOwner().isEmpty()) {
         auto& saved = settingsController_->MutableSettings();
         saved.cameraFormatStableId = cameraIntent_.Requested().identity.formatStableId;
-        cameraIntent_.SetSavedFormat(saved.cameraFormatStableId);
+        cameraIntent_.RememberAdoptedFormat(startingCameraIntentGeneration_,saved.cameraFormatStableId);
         const auto working = saved.cameraWorkingSets.constFind(currentCameraAccelerationKey_);
         if (working != saved.cameraWorkingSets.cend()) SetRotationQuarterTurns(working->rotationQuarterTurns);
         else if (saved.cameraWorkingSets.size() < 64)

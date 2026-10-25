@@ -69,7 +69,7 @@ struct OkuFlowApp::VideoDocumentState {
     std::optional<std::int64_t> savePts100ns;
     QString documentId, recordingDocumentId, saveDocumentId, saveState{QStringLiteral("idle")};
     bool active{}, finishing{}, followingLive{}, playing{}, muted{true};
-    int volumePercent{100};
+    int volumePercent{100},lastAudibleVolumePercent{100};
     bool pendingHold{}, heldLive{}, pausedDisplayHold{}, resumePending{}, waitingNextPart{}, heldUnrecorded{}, heldMappingUnavailable{};
     std::optional<RecordingFrameAdmission> heldAdmission;
     std::uint64_t heldSequence{};
@@ -211,16 +211,29 @@ void OkuFlowApp::InitializeVideoPlayback()
     connect(transport, &VideoTransport::SaveFrameRequested, this, &OkuFlowApp::SaveSelectedVideoFrame);
     connect(transport, &VideoTransport::MutedChanged, this, [this](bool muted) {
         if (!videoDocument_) return;
+        if(videoDocument_->kind!=VideoDocumentState::Kind::File || videoDocument_->active || videoDocument_->finishing) {
+            PollVideoPlayback();return; // Forced recording silence cannot edit the saved listening intent.
+        }
         // Reviewing a recording is always silent: speaker output must not
         // feed the microphone and playback mute never changes capture mute.
         videoDocument_->muted = videoDocument_->kind == VideoDocumentState::Kind::Recording || muted;
+        if(!videoDocument_->muted && videoDocument_->volumePercent==0) {
+            videoDocument_->volumePercent=videoDocument_->lastAudibleVolumePercent;
+            videoDocument_->audio.SetVolumePercent(videoDocument_->volumePercent);
+        }
         videoDocument_->player.SetMuted(videoDocument_->muted);
         PollVideoPlayback();
     });
     connect(transport,&VideoTransport::VolumeChanged,this,[this](int percent) {
         if(!videoDocument_)return;
+        if(videoDocument_->kind!=VideoDocumentState::Kind::File || videoDocument_->active || videoDocument_->finishing) {
+            PollVideoPlayback();return;
+        }
         videoDocument_->volumePercent=std::clamp(percent,0,100);
+        if(percent>0)videoDocument_->lastAudibleVolumePercent=videoDocument_->volumePercent;
+        videoDocument_->muted=videoDocument_->kind==VideoDocumentState::Kind::Recording || percent<=0;
         videoDocument_->audio.SetVolumePercent(videoDocument_->volumePercent);
+        videoDocument_->player.SetMuted(videoDocument_->muted);
         PollVideoPlayback();
     });
     PollVideoPlayback();
@@ -1672,6 +1685,14 @@ void OkuFlowApp::SeedVideoDocumentForTest(const RecordingSessionInfo& session,
     doc.filePath = QStringLiteral("C:/private-fixture/lecture.mp4");
     doc.fileDuration100ns = 90'000'000;
     videoPlaybackTimer_->start();
+}
+
+void OkuFlowApp::SetVideoRecordingGuardForTest(bool active,bool finishing)
+{
+    if(!videoDocument_)return;
+    videoDocument_->active=active;videoDocument_->finishing=finishing;
+    videoDocument_->fileHasAudio=videoDocument_->fileAudioAvailable=true;
+    PollVideoPlayback();
 }
 
 QString OkuFlowApp::PendingVideoOpenForTest() const

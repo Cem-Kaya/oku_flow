@@ -253,6 +253,7 @@ private:
                                  std::shared_ptr<const VideoPlaybackFrame> frame,
                                  bool recording, bool playing);
     QString PendingVideoOpenForTest() const;
+    void SetVideoRecordingGuardForTest(bool active, bool finishing);
     void SeedPendingLiveHoldForTest(bool finishing);
     std::shared_ptr<const VideoPlaybackFrame> HeldVideoFrameForTest() const;
     void SeedCommittedVideoSaveForTest();
@@ -332,6 +333,7 @@ private:
     void ApplyAdvancedConfig(const settings::AdvancedConfig& config,
                              bool preservePresetSelection = false);
     void PopulatePresetList();
+    void OnQuickModeOptionsChanged();
     void RefreshPresetSelection(bool preserveCurrentSelection = false);
     void UpdatePresetDescription();
     void SyncCurrentConfigToPersistence(bool preservePresetSelection = false);

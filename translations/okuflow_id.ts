@@ -3589,5 +3589,21 @@ Pilih Hubungkan ChatGPT di tab Asisten pada mode Tingkat Lanjut untuk masuk.</tr
         <source>Playback volume</source>
         <translation>Volume pemutaran</translation>
     </message>
+    <message>
+        <source>More modes</source>
+        <translation>Mode lainnya</translation>
+    </message>
+    <message>
+        <source>Document</source>
+        <translation>Dokumen</translation>
+    </message>
+    <message>
+        <source>Projector Screen</source>
+        <translation>Layar proyektor</translation>
+    </message>
+    <message>
+        <source>Whiteboard</source>
+        <translation>Papan tulis putih</translation>
+    </message>
 </context>
 </TS>

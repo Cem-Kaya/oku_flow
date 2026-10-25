@@ -3589,5 +3589,21 @@ Přihlaste se přes Connect ChatGPT na kartě Asistent v režimu Upřesnit.</tra
         <source>Playback volume</source>
         <translation>Hlasitost přehrávání</translation>
     </message>
+    <message>
+        <source>More modes</source>
+        <translation>Další režimy</translation>
+    </message>
+    <message>
+        <source>Document</source>
+        <translation>Dokument</translation>
+    </message>
+    <message>
+        <source>Projector Screen</source>
+        <translation>Projekční plátno</translation>
+    </message>
+    <message>
+        <source>Whiteboard</source>
+        <translation>Bílá tabule</translation>
+    </message>
 </context>
 </TS>

@@ -3589,5 +3589,21 @@ Seleziona Connetti a ChatGPT nella scheda Assistente della modalità Avanzata pe
         <source>Playback volume</source>
         <translation>Volume di riproduzione</translation>
     </message>
+    <message>
+        <source>More modes</source>
+        <translation>Altre modalità</translation>
+    </message>
+    <message>
+        <source>Document</source>
+        <translation>Documento</translation>
+    </message>
+    <message>
+        <source>Projector Screen</source>
+        <translation>Schermo di proiezione</translation>
+    </message>
+    <message>
+        <source>Whiteboard</source>
+        <translation>Lavagna bianca</translation>
+    </message>
 </context>
 </TS>

@@ -3589,5 +3589,21 @@ Utilisez Connect ChatGPT dans l'onglet Assistant avancé pour vous connecter.</t
         <source>Playback volume</source>
         <translation>Volume de lecture</translation>
     </message>
+    <message>
+        <source>More modes</source>
+        <translation>Plus de modes</translation>
+    </message>
+    <message>
+        <source>Document</source>
+        <translation>Document</translation>
+    </message>
+    <message>
+        <source>Projector Screen</source>
+        <translation>Écran de projection</translation>
+    </message>
+    <message>
+        <source>Whiteboard</source>
+        <translation>Tableau blanc</translation>
+    </message>
 </context>
 </TS>

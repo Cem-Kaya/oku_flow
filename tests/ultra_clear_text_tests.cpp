@@ -8,6 +8,7 @@
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "okuflow/ui/ultra_clear_text_panel.hpp"
 #include "okuflow/ui/uct_screen_text_accessible.hpp"
+#include "okuflow/ui/ui_translation.hpp"
 #include "ultra_clear_text_test_support.hpp"
 #include "uct_capture_test_cases.hpp"
 #include "uct_color_test_support.hpp"
@@ -31,6 +32,7 @@
 #include <QScopeGuard>
 #include <QSet>
 #include <QTextCursor>
+#include <QTranslator>
 #include <QtTest>
 
 #include <algorithm>
@@ -52,6 +54,12 @@ constexpr int kViewWidth = 960;
 constexpr int kViewHeight = 540;
 constexpr int kSceneWidth = 1600;
 constexpr int kSceneHeight = 900;
+QVector<std::pair<QObject*,QString>> disclosureAnnouncements;
+void CaptureDisclosureAnnouncement(QAccessibleEvent* event)
+{
+    if(event->type()==QAccessible::Announcement)
+        disclosureAnnouncements.push_back({event->object(),static_cast<QAccessibleAnnouncementEvent*>(event)->message()});
+}
 
 ViewTransform Transform(float zoom, float fx, float fy, ViewportFitMode mode = ViewportFitMode::kFit)
 {
@@ -791,6 +799,60 @@ private slots:
         const auto changed=panel.ModelSettings();
         QCOMPARE(changed.cpuDetector,ModelTier::Medium);QCOMPARE(changed.cpuRecognizer,ModelTier::Medium);
         panel.SetModelSettings(initial);QCOMPARE(changes.size(),4);QVERIFY(panel.ModelSettings()==initial);
+    }
+    void advancedDetailsStayCollapsedWithoutLosingReadingText() {
+        UltraClearTextPanel panel;
+        auto* advanced=panel.findChild<QToolButton*>("uctAdvancedSettings");
+        QVERIFY(advanced);panel.show();
+        panel.SetEnabledByUser(true);
+        BackendStatus backend;backend.state=BackendState::kReady;backend.name="Fixture GPU";backend.usesGpu=true;
+        panel.SetBackendStatus(backend);panel.SetReadingText(QStringLiteral("Retained accepted words"));
+        QVERIFY(panel.enableCheckbox()->isVisible());QVERIFY(panel.showOriginalCheckbox()->isVisible());
+        QVERIFY(!panel.backendLabel()->isVisible());QVERIFY(!panel.statusLabel()->isVisible());
+        QVERIFY(!panel.readingPane()->isVisible());
+        const auto previews=qEnvironmentVariable("OKUFLOW_UI_CLEANUP_PREVIEW_DIR");
+        if(!previews.isEmpty()) {
+            QVERIFY(QDir().mkpath(previews));panel.resize(420,panel.sizeHint().height());
+            QVERIFY(panel.grab().save(QDir(previews).filePath("uct-collapsed.png")));
+        }
+        advanced->setChecked(true);
+        QVERIFY(panel.backendLabel()->isVisible());QVERIFY(panel.statusLabel()->isVisible());
+        QVERIFY(panel.readingPane()->isVisible());
+        QCOMPARE(panel.readingPane()->toPlainText(),QStringLiteral("Retained accepted words"));
+        panel.readingPane()->setFocus();QCoreApplication::processEvents();
+        advanced->setChecked(false);
+        QCOMPARE(QApplication::focusWidget(),advanced);
+        QVERIFY(!panel.readingPane()->isVisible());
+        panel.SetReadingText(QStringLiteral("Updated while collapsed"));
+        advanced->setChecked(true);
+        QCOMPARE(panel.readingPane()->toPlainText(),QStringLiteral("Updated while collapsed"));
+    }
+
+    void collapsedUctStatusKeepsDescriptionAndAnnouncementsSynchronized() {
+        const bool active=QAccessible::isActive();QAccessible::setActive(true);
+        auto previous=QAccessible::installUpdateHandler(CaptureDisclosureAnnouncement);
+        const auto cleanup=qScopeGuard([&]{QAccessible::installUpdateHandler(previous);QAccessible::setActive(active);disclosureAnnouncements.clear();});
+        UltraClearTextPanel panel;panel.show();
+        auto* advanced=panel.findChild<QToolButton*>("uctAdvancedSettings");QVERIFY(advanced);
+        disclosureAnnouncements.clear();panel.SetStatus(QStringLiteral("Reading text…"),true);
+        QCOMPARE(advanced->accessibleDescription(),QStringLiteral("Reading text…"));
+        QCOMPARE(disclosureAnnouncements.size(),1);QCOMPARE(disclosureAnnouncements.front().first,advanced);
+        panel.SetStatus(QStringLiteral("Reading text…"),true);QCOMPARE(disclosureAnnouncements.size(),1);
+        class StatusTranslator final:public QTranslator {
+        public:bool isEmpty() const override {return false;}
+            QString translate(const char* context,const char* source,const char*,int) const override {
+                return QByteArray(context)=="OkuFlow" && QString::fromUtf8(source)==QStringLiteral("Reading text…")
+                    ?QStringLiteral("Fixture translated reading"):QString();
+            }
+        } translator;
+        QApplication::installTranslator(&translator);RetranslateWidgetTree(&panel);
+        QCOMPARE(advanced->accessibleDescription(),QStringLiteral("Fixture translated reading"));
+        QApplication::removeTranslator(&translator);RetranslateWidgetTree(&panel);
+        QCOMPARE(advanced->accessibleDescription(),QStringLiteral("Reading text…"));
+        advanced->setChecked(true);disclosureAnnouncements.clear();
+        panel.SetStatus(QStringLiteral("Ultra Clear Text is off."),true);
+        QCOMPARE(disclosureAnnouncements.size(),1);QCOMPARE(disclosureAnnouncements.front().first,panel.statusLabel());
+        QCOMPARE(advanced->accessibleDescription(),panel.statusLabel()->text());
     }
 
     // --- Geometry -----------------------------------------------------------

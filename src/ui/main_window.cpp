@@ -103,6 +103,12 @@ constexpr int kSimpleChromeIdleMs = 5000;
 constexpr int kSimpleChromeFadeMs = 260;
 constexpr int kModeToastMs = 1200;
 constexpr int kSimpleShortcutCount = 9;
+int PresetShortcut(const QListWidgetItem* item,int row)
+{
+    if(!item || row<0 || row>=kSimpleShortcutCount)return 0;
+    const auto eligible=item->data(kQuickModeShortcutRole);
+    return !eligible.isValid() || eligible.toBool()?row+1:0;
+}
 constexpr int kAdvancedPanelMinimumWidth = 360;
 constexpr int kAdvancedPanelDefaultWidth = 520;
 
@@ -2069,6 +2075,28 @@ MainWindow::MainWindow()
     auto* modeGridLayout = new QVBoxLayout(modeGridPopup_);
     modeGridLayout->setContentsMargins(8, 8, 8, 8);
     modeGridLayout->addWidget(presetList_);
+    moreQuickModesButton_=new QToolButton(modeGridPopup_);
+    moreQuickModesButton_->setObjectName(QStringLiteral("moreQuickModesButton"));
+    moreQuickModesButton_->setText(QStringLiteral("More modes"));
+    moreQuickModesButton_->setAccessibleName(moreQuickModesButton_->text());
+    moreQuickModesButton_->setCheckable(true);
+    moreQuickModesButton_->setArrowType(Qt::RightArrow);
+    moreQuickModesButton_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    moreQuickModesButton_->setMinimumHeight(44);
+    moreQuickModesButton_->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
+    modeGridLayout->addWidget(moreQuickModesButton_);
+    connect(moreQuickModesButton_,&QToolButton::toggled,this,[this](bool expanded) {
+        const auto candidate=gridBrowsing_ && presetList_->currentItem()
+            ?presetList_->currentItem()->data(Qt::UserRole+1).toString():QString();
+        moreQuickModesButton_->setArrowType(expanded?Qt::DownArrow:Qt::RightArrow);
+        emit quickModeOptionsChanged();
+        gridOriginalRow_=presetList_->currentRow();
+        if(!candidate.isEmpty())for(int row=0;row<presetList_->count();++row)
+            if(presetList_->item(row)->data(Qt::UserRole+1).toString()==candidate) {
+                presetList_->setCurrentRow(row);break;
+            }
+        UpdateSimpleChromeGeometry();
+    });
     modeGridPopup_->hide();
 
     modeToast_ = new QWidget(this, Qt::ToolTip |
@@ -2155,7 +2183,7 @@ MainWindow::MainWindow()
                     const QString plain = PlainPresetLabel(original);
                     item->setData(Qt::AccessibleTextRole, plain);
                     item->setData(Qt::StatusTipRole, original);
-                    item->setText(row < kSimpleShortcutCount
+                    item->setText(PresetShortcut(item,row)>0
                                       ? QStringLiteral("%1\n%2").arg(row + 1).arg(plain)
                                       : plain);
                     item->setTextAlignment(Qt::AlignCenter);
@@ -3106,6 +3134,7 @@ void MainWindow::setPhoneZoomControls(bool visible, bool enabled, float minimum,
 }
 QComboBox* MainWindow::microphoneCombo() const { return microphoneCombo_; }
 QListWidget* MainWindow::presetList() const { return presetList_; }
+bool MainWindow::moreQuickModesShown() const { return moreQuickModesButton_->isChecked(); }
 QLabel* MainWindow::presetDescriptionLabel() const { return presetDescriptionLabel_; }
 QPushButton* MainWindow::promotePresetButton() const { return promotePresetButton_; }
 QCheckBox* MainWindow::blackWhiteCheckbox() const { return bwCheckbox_; }
@@ -3614,6 +3643,7 @@ void MainWindow::ToggleModeGrid()
     }
     const bool show = !modeGridPopup_->isVisible();
     if (show) {
+        emit quickModeOptionsChanged();
         gridOriginalRow_ = presetList_->currentRow();
         gridBrowsing_ = true;
         if (isSimpleMode()) {
@@ -3665,7 +3695,7 @@ void MainWindow::UpdateCurrentPresetUi(QListWidgetItem* current, QListWidgetItem
                     QStringLiteral("Current quick mode"));
     }
     const int row = presetList_->row(current);
-    const int shortcut = row >= 0 && row < kSimpleShortcutCount ? row + 1 : 0;
+    const int shortcut = PresetShortcut(current,row);
     carousel->setShortcutNumber(shortcut);
     SetLiveAccessibleDescription(
         currentModeButton_,
@@ -3981,9 +4011,9 @@ void MainWindow::UpdateSimpleChromeGeometry()
 
     if (modeGridPopup_) {
         const int popupWidth = std::min(viewWidth, std::max(420, std::min(860, viewWidth * 3 / 4)));
-        const int columns = std::max(2, (popupWidth - 28) / 220);
+        const int columns = std::clamp((popupWidth - 28) / 220,1,presetList_->count()<=4?2:3);
         const int rows = std::max(1, (presetList_->count() + columns - 1) / columns);
-        const int popupHeight = std::min(std::max(126, rows * 106 + 16),
+        const int popupHeight = std::min(std::max(170, rows * 106 + 24 + moreQuickModesButton_->sizeHint().height()),
                                         std::max(126, viewHeight - leftChromeHeight));
         const QSize gridSize(std::max(150, (popupWidth - 32) / columns), 102);
         presetList_->setGridSize(gridSize);
@@ -4815,7 +4845,8 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
         const bool plainKey = key->modifiers() == Qt::NoModifier || key->modifiers() == Qt::KeypadModifier;
         if (isSimpleMode() && plainKey && !HasEditableTextFocus() &&
             key->key() >= Qt::Key_1 && key->key() <= Qt::Key_9) {
-            ActivatePresetRow(key->key() - Qt::Key_1);
+            const int row=key->key()-Qt::Key_1;
+            if(PresetShortcut(presetList_->item(row),row)>0)ActivatePresetRow(row);
             event->accept();
             return true;
         }

@@ -32,7 +32,22 @@ The bar uses a slim source/status line above one horizontal row of icon actions,
 a scrubber and the time readout. Actions have 44-DIP minimum targets; play and
 the rewind badge are wider. The scrubber takes the remaining width. At narrow
 widths save, mute and return move below, leaving play and the scrubber together.
-Time moves to the metadata line at that width. Full source names remain in
+Time moves to the metadata line at that width.
+
+Audio adds no permanent volume row. A saved video's speaker opens a compact
+vertical popover above the button (screen-clamped, flipping below only when
+needed). First activation only opens; activating the speaker again, or Space
+on the slider, toggles mute and leaves the popover open. A zero thumb mutes;
+a positive adjustment restores sound at that value. Unmute restores the last
+nonzero session level when necessary. The slashed amber/yellow icon continues
+to indicate mute; audible playback uses ordinary theme ink. The percentage is
+visible, while the full translated Playback volume name is exposed to assistive
+technology. The handle and keyboard targets stay large. Escape closes and
+returns to the speaker; Tab/Shift+Tab leave the popup without trapping focus.
+Outside clicks, source replacement and hidden controls dismiss without changing
+gain or mute. Existing recording-feedback protection remains in force.
+
+Full source names remain in
 accessible names and tooltips when the visible label elides. Time readouts retain
 hours for long recordings and use
 the active locale's digits. The displayed selected time can exceed the verified

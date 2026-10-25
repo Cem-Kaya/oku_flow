@@ -3589,5 +3589,21 @@ Wybierz „Połącz z ChatGPT” na karcie Asystent w trybie zaawansowanym, aby 
         <source>Playback volume</source>
         <translation>Głośność odtwarzania</translation>
     </message>
+    <message>
+        <source>More modes</source>
+        <translation>Więcej trybów</translation>
+    </message>
+    <message>
+        <source>Document</source>
+        <translation>Dokument</translation>
+    </message>
+    <message>
+        <source>Projector Screen</source>
+        <translation>Ekran projekcyjny</translation>
+    </message>
+    <message>
+        <source>Whiteboard</source>
+        <translation>Biała tablica</translation>
+    </message>
 </context>
 </TS>

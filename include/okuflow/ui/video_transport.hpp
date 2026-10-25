@@ -12,6 +12,7 @@
 
 QT_BEGIN_NAMESPACE
 class QLabel;
+class QFrame;
 class QHBoxLayout;
 class QPushButton;
 class QSlider;
@@ -52,6 +53,7 @@ public:
     };
 
     explicit VideoTransport(QWidget* parent = nullptr);
+    ~VideoTransport() override;
     void SetSnapshot(const Snapshot& snapshot);
     const Snapshot& snapshot() const { return snapshot_; }
     void SetUiHidden(bool hidden);
@@ -98,6 +100,8 @@ private:
     void ReturnFocus();
     void RefreshText();
     void RefreshVolumeText();
+    void ShowVolumePopup();
+    void HideVolumePopup(bool restoreFocus = true, QWidget* preferred = nullptr);
     void ApplyButtonFaces();
     void ApplyFace(QPushButton* button);
     void ApplyStyle();
@@ -119,7 +123,7 @@ private:
     QSlider* volume_{};
     QLabel* volumeLabel_{};
     QLabel* volumeValue_{};
-    QWidget* audioRow_{};
+    QFrame* volumePopup_{};
     QPushButton* rewindButton_{};
     QPushButton* playPauseButton_{};
     QPushButton* jumpButton_{};

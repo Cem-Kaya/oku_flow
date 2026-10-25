@@ -3589,5 +3589,21 @@ Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</
         <source>Playback volume</source>
         <translation>Uppspelningsvolym</translation>
     </message>
+    <message>
+        <source>More modes</source>
+        <translation>Fler lägen</translation>
+    </message>
+    <message>
+        <source>Document</source>
+        <translation>Dokument</translation>
+    </message>
+    <message>
+        <source>Projector Screen</source>
+        <translation>Projektorduk</translation>
+    </message>
+    <message>
+        <source>Whiteboard</source>
+        <translation>Whiteboard</translation>
+    </message>
 </context>
 </TS>

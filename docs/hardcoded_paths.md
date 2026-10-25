@@ -1168,8 +1168,11 @@ COM/driver calls retain their separate watchdog limits. See
 ## GPU selected-video resource policy
 
 Saved-video playback volume is session-only, defaults to 100%, and clamps to
-0–100 without amplification. The native slider uses five-point arrow steps,
-ten-point page steps and the existing 44-DIP touch height. Gain applies to the
+0–100 without amplification. Its temporary vertical popover uses five-point
+arrow steps, ten-point page steps, a 160-DIP minimum track, 44-DIP handle and
+at least 76-DIP width (growing for localized percentages). It sits six DIPs
+above the speaker, flipping/clamping to the screen when needed. Zero mutes;
+Unmute restores the last nonzero level (initially 100%). Gain applies to the
 next WASAPI PCM buffer; previously submitted audio retains the old gain until
 the existing at-most-250-ms device buffer drains. It does not reset media time,
 change the system mixer or affect microphone/recording audio. Mute uses the
@@ -1178,6 +1181,15 @@ normal ButtonText ink when unmuted. The silent
 `video_playback_audio_unmute_handoff` fixture forces the private pre-admission
 race using the existing pinned AAC asset and unchanged one-second PCM wait;
 ordinary playback has no test hook or additional stream-selection query.
+
+The four featured quick-mode IDs are `preset-reading`, `preset-document`,
+`preset-projector`, `preset-whiteboard`, in that order. More modes is a
+session-only disclosure; custom modes and a saved selected legacy mode remain
+reachable when it is closed. No built-in ID or saved recipe is deleted.
+The explicit fixture-only `OKUFLOW_UI_CLEANUP_PREVIEW_DIR` writes actual
+offscreen UCT and four-mode component PNGs, complementing
+`OKUFLOW_TRANSPORT_PREVIEW_DIR` for the bar/popover. These are not native
+desktop or camera captures, are never bundled, and remain outside Git.
 
 Extra Stable's analysis lease includes one 32-byte acquisition record copied
 with its pixels into pinned slot storage. Workers consume it after the same

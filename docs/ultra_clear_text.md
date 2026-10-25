@@ -80,7 +80,13 @@ GUI gate; an offscreen pass alone does not establish Windows stacking behavior.
   Changing a choice while UCT is on cancels the old worker's authority and
   starts a fresh backend chain asynchronously. Camera presentation keeps running;
   recognition must become ready and revalidate text before replacement glyphs return.
-- A polite status line (starting, waiting for steady text, reading, showing N
+- That disclosure also contains backend details, the status line and the
+  recognized-text pane. It stays collapsed until opened. Collapse preserves
+  text and recognition; it returns focus to the disclosure if needed. Important
+  status changes are announced politely from the visible disclosure when closed,
+  and its accessible description retains the current status. Positioned text
+  over the viewport remains a separate accessible surface.
+- Inside the disclosure, a status line (starting, waiting for steady text, reading, showing N
   words, text moved, paused, unavailable) and a read-only, keyboard-selectable
   **Recognized text** pane with the accepted words in reading order. An
   ellipsis (Ã¢â‚¬Â¦) marks words that were left as the original image.

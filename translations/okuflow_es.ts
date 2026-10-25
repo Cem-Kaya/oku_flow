@@ -3589,5 +3589,21 @@ Use «Connect ChatGPT» en la pestaña Asistente del modo avanzado para iniciar 
         <source>Playback volume</source>
         <translation>Volumen de reproducción</translation>
     </message>
+    <message>
+        <source>More modes</source>
+        <translation>Más modos</translation>
+    </message>
+    <message>
+        <source>Document</source>
+        <translation>Documento</translation>
+    </message>
+    <message>
+        <source>Projector Screen</source>
+        <translation>Pantalla de proyección</translation>
+    </message>
+    <message>
+        <source>Whiteboard</source>
+        <translation>Pizarra blanca</translation>
+    </message>
 </context>
 </TS>

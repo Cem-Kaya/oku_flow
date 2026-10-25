@@ -18,21 +18,35 @@ void OkuFlowApp::PopulatePresetList()
     }
 
     SuspendGuard suspendPresetSelection(presetSelectionSyncSuspended_);
+    connect(mainWindow_.get(),&MainWindow::quickModeOptionsChanged,this,
+        &OkuFlowApp::OnQuickModeOptionsChanged,Qt::UniqueConnection);
     uiState_->presetList_->clear();
 
-    auto appendPreset = [this](const settings::PresetDefinition& preset) {
+    auto appendPreset = [this](const settings::PresetDefinition& preset, bool shortcut) {
         auto* item = new QListWidgetItem(preset.name);
         item->setData(kPresetIdRole, preset.id);
+        item->setData(kQuickModeShortcutRole,shortcut);
         item->setToolTip(preset.description);
         uiState_->presetList_->addItem(item);
     };
 
-    for (const settings::PresetDefinition& preset : settings::BuiltInPresets()) {
-        appendPreset(preset);
-    }
+    const QStringList featured{QStringLiteral("preset-reading"),QStringLiteral("preset-document"),
+        QStringLiteral("preset-projector"),QStringLiteral("preset-whiteboard")};
+    const auto& presets=settings::BuiltInPresets();
+    for(const auto& id:featured)
+        for(const auto& preset:presets)if(preset.id==id)appendPreset(preset,true);
     for (const settings::PresetDefinition& preset : settingsController_->MutableSettings().customPresets) {
-        appendPreset(preset);
+        appendPreset(preset,true);
     }
+    const auto selected=settingsController_->MutableSettings().selectedPresetId;
+    for(const auto& preset:presets)
+        if(!featured.contains(preset.id) && (mainWindow_->moreQuickModesShown() || preset.id==selected))
+            appendPreset(preset,false);
+}
+
+void OkuFlowApp::OnQuickModeOptionsChanged()
+{
+    PopulatePresetList();RefreshPresetSelection(true);UpdatePresetDescription();
 }
 
 void OkuFlowApp::RefreshPresetSelection(bool preserveCurrentSelection)

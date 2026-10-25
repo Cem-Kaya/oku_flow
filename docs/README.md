@@ -1,5 +1,8 @@
 # OkuFlow Documentation Guide
 
+[Player and quick-mode UI cleanup](ui_cleanup_2026_10_25.md) records the volume
+popover, collapsed UCT details, four featured modes and review/validation limits.
+
 [Curved-line ribbon and current-ink experiments](uct_ribbon_and_current_ink.md)
 records automatic curved processing in every OCR mode, original-pixel geometry/proof
 composition, CPU-only ink diagnostics, measured BF16 overhead and actual OCR

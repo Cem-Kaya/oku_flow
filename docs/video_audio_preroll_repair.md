@@ -85,6 +85,10 @@ volume preserves decoding, packet timing, output generation and the device
 clock. Already submitted native audio can retain its previous gain until the
 bounded device buffer drains. Mute remains a separate flush/control operation.
 Neither control changes system volume, microphone gain or recorded media.
+The player UI now opens volume above its speaker instead of reserving a row.
+At that UI boundary, zero also requests mute, a positive adjustment unmutes,
+and Unmute restores the session's last nonzero gain before restarting audio.
+The underlying output gain API still preserves its independent mute state.
 
 Before/after logs, the original failed matrix and the 24-language label review
 are retained outside Git under

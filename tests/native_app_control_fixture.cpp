@@ -33,6 +33,8 @@
 #include <QGridLayout>
 #include <QMap>
 #include <QPushButton>
+#include <QToolButton>
+#include <QListWidget>
 #include <QScopeGuard>
 #include <QSlider>
 #include <QTemporaryDir>
@@ -457,9 +459,22 @@ public:
     static void VideoSaved(OkuFlowApp& app,const SavedRecordingSegment& part) {app.OnVideoSegmentSaved(part);}
     static bool VideoTimerActive(const OkuFlowApp& app) {return app.videoPlaybackTimer_ && app.videoPlaybackTimer_->isActive();}
     static VideoTransport::Snapshot VideoUi(const OkuFlowApp& app) {return app.mainWindow_->videoTransport()->snapshot();}
+    static void RecordingAudioGuard(OkuFlowApp& app,bool active,bool finishing) {app.SetVideoRecordingGuardForTest(active,finishing);}
+    static void BrowseQuickMode(OkuFlowApp& app,int row) {
+        auto& window=*app.mainWindow_;window.gridOriginalRow_=window.presetList_->currentRow();
+        window.gridBrowsing_=true;window.presetList_->setCurrentRow(row);
+    }
+    static void EndQuickModeBrowse(OkuFlowApp& app) {app.mainWindow_->gridBrowsing_=false;}
     // Metadata-only polling seam; no synthetic segment is opened or published.
     static void ApplyRecapSnapshot(OkuFlowApp& app,const VideoRecapSnapshot& snapshot) {app.PollLiveRecapForTest(snapshot);}
     static MainWindow& Window(OkuFlowApp& app) {return *app.mainWindow_;}
+    static settings::PersistentSettings QuickModeSettings(const OkuFlowApp& app) {
+        return app.settingsController_->Settings();
+    }
+    static void QuickModeSettings(OkuFlowApp& app,const settings::PersistentSettings& settings) {
+        app.settingsController_->MutableSettings()=settings;
+        app.OnQuickModeOptionsChanged();
+    }
     static bool RememberDistinctCameraSettings(OkuFlowApp& app) {
         const auto previous = app.settingsController_->Settings();
         const auto key = app.currentCameraAccelerationKey_;
@@ -908,6 +923,100 @@ class NativeAcceptance final : public QObject {
 public:
     explicit NativeAcceptance(OkuFlowApp& app):app_(app) {}
 private slots:
+    void quickModePickerShowsFourTasksAndPreservesLegacyAndCustoms() {
+        auto saved=NativeControlFixture::QuickModeSettings(app_);
+        auto& window=NativeControlFixture::Window(app_);
+        auto* more=window.findChild<QToolButton*>("moreQuickModesButton");QVERIFY(more);
+        const auto restore=qScopeGuard([&]{NativeControlFixture::EndQuickModeBrowse(app_);more->setChecked(false);NativeControlFixture::QuickModeSettings(app_,saved);});
+        auto settings=saved;settings.selectedPresetId="preset-reading";settings.customPresets.clear();
+        settings.customConfigs.clear();more->setChecked(false);
+        NativeControlFixture::QuickModeSettings(app_,settings);
+        auto* list=window.presetList();QCOMPARE(list->count(),4);
+        const QStringList ids{"preset-reading","preset-document","preset-projector","preset-whiteboard"};
+        for(int row=0;row<ids.size();++row)QCOMPARE(list->item(row)->data(kPresetIdRole).toString(),ids[row]);
+        const auto before=NativeControlFixture::QuickModeSettings(app_).currentConfig;
+        const auto previews=qEnvironmentVariable("OKUFLOW_UI_CLEANUP_PREVIEW_DIR");
+        if(!previews.isEmpty()) {
+            QVERIFY(QDir().mkpath(previews));
+            const bool wasVisible=window.isVisible();window.resize(1400,900);window.show();
+            QCoreApplication::processEvents();
+            auto* trigger=window.findChild<QToolButton*>("modeGridButton");QVERIFY(trigger);
+            // Capture the actual widget immediately. The offscreen plugin
+            // cannot activate native tool windows and may later deactivate it.
+            trigger->click();
+            auto* grid=window.findChild<QWidget*>("modeGridPopup");QVERIFY(grid && grid->isVisible());
+            list->doItemsLayout();
+            QCOMPARE(list->visualItemRect(list->item(0)).top(),list->visualItemRect(list->item(1)).top());
+            QVERIFY(list->visualItemRect(list->item(2)).top()>list->visualItemRect(list->item(0)).top());
+            QVERIFY(grid->grab().save(QDir(previews).filePath("four-quick-modes.png")));
+            trigger->click();if(!wasVisible)window.hide();
+        }
+        NativeControlFixture::BrowseQuickMode(app_,2);
+        more->setChecked(true);QCOMPARE(list->count(),10);
+        QCOMPARE(list->currentRow(),2); // More must not discard the inspected candidate.
+        for(int row=4;row<list->count();++row) {
+            QVERIFY(!list->item(row)->data(kQuickModeShortcutRole).toBool());
+            QVERIFY(!list->item(row)->text().contains('\n'));
+        }
+        NativeControlFixture::EndQuickModeBrowse(app_);
+        QVERIFY(settings::AreConfigsEquivalent(before,NativeControlFixture::QuickModeSettings(app_).currentConfig));
+        more->setChecked(false);QCOMPARE(list->count(),4);
+        settings.selectedPresetId="preset-low-light";NativeControlFixture::QuickModeSettings(app_,settings);
+        QCOMPARE(list->count(),5);QCOMPARE(list->currentItem()->data(kPresetIdRole).toString(),QStringLiteral("preset-low-light"));
+        settings.selectedPresetId="fixture-custom";
+        auto config=settings.currentConfig;config.id="fixture-custom-config";config.name="Owner setup";
+        settings.customConfigs.push_back(config);
+        settings.customPresets.push_back({"fixture-custom","Owner setup","Saved user choices",config.id,false});
+        NativeControlFixture::QuickModeSettings(app_,settings);
+        QCOMPARE(list->count(),5);QCOMPARE(list->currentRow(),4);
+        QCOMPARE(list->currentItem()->data(kPresetIdRole).toString(),QStringLiteral("fixture-custom"));
+        QVERIFY(list->item(4)->data(kQuickModeShortcutRole).toBool());QVERIFY(list->item(4)->text().startsWith("5\n"));
+    }
+
+#if defined(OKUFLOW_VIDEO_DOCUMENT_TESTS)
+    void playbackVolumeZeroMutesAndUnmuteRestoresLastAudibleLevel() {
+        const auto before=NativeControlFixture::VideoUi(app_);
+        const auto restore=qScopeGuard([&]{
+            auto* transport=NativeControlFixture::Window(app_).videoTransport();
+            transport->VolumeChanged(before.volumePercent);transport->MutedChanged(true);
+            NativeControlFixture::ResetVideo(app_);
+        });
+        NativeControlFixture::ResetVideo(app_);
+        NativeControlFixture::SeedVideo(app_,{},OwnedVideoPolicyFrame(),false,false);
+        auto* transport=NativeControlFixture::Window(app_).videoTransport();
+        transport->VolumeChanged(35);
+        auto snapshot=NativeControlFixture::VideoUi(app_);
+        QCOMPARE(snapshot.volumePercent,35);QVERIFY(!snapshot.muted);QVERIFY(!snapshot.playing);
+        transport->VolumeChanged(0);snapshot=NativeControlFixture::VideoUi(app_);
+        QCOMPARE(snapshot.volumePercent,0);QVERIFY(snapshot.muted);
+        transport->MutedChanged(false);snapshot=NativeControlFixture::VideoUi(app_);
+        QCOMPARE(snapshot.volumePercent,35);QVERIFY(!snapshot.muted);
+        transport->MutedChanged(true);transport->VolumeChanged(65);
+        snapshot=NativeControlFixture::VideoUi(app_);
+        QCOMPARE(snapshot.volumePercent,65);QVERIFY(!snapshot.muted);QVERIFY(!snapshot.playing);
+        for(const auto guard:{std::pair{true,false},std::pair{false,true}}) {
+            transport->MutedChanged(true);
+            NativeControlFixture::RecordingAudioGuard(app_,guard.first,guard.second);
+            transport->VolumeChanged(5);transport->MutedChanged(false);
+            snapshot=NativeControlFixture::VideoUi(app_);QVERIFY(snapshot.muted);QCOMPARE(snapshot.volumePercent,65);
+            auto& window=NativeControlFixture::Window(app_);
+            window.show();
+            auto* speaker=transport->findChild<QPushButton*>("videoMuteButton");QVERIFY(speaker);
+            auto* slider=transport->findChild<QSlider*>("videoVolumeSlider");QVERIFY(slider);
+            speaker->click();QVERIFY(slider->isVisible());QCOMPARE(slider->value(),0);
+            slider->setValue(5);QCOMPARE(slider->value(),0);
+            QCOMPARE(slider->accessibleDescription(),QLocale().toString(0)+"%");
+            NativeControlFixture::RecordingAudioGuard(app_,false,false);
+            snapshot=NativeControlFixture::VideoUi(app_);QVERIFY(snapshot.muted);QCOMPARE(snapshot.volumePercent,65);
+            transport->MutedChanged(false);snapshot=NativeControlFixture::VideoUi(app_);
+            QVERIFY(!snapshot.muted);QCOMPARE(snapshot.volumePercent,65);
+            QCOMPARE(slider->value(),65);
+            slider->setValue(70);snapshot=NativeControlFixture::VideoUi(app_);
+            QCOMPARE(snapshot.volumePercent,70);QVERIFY(!snapshot.muted);
+            QTest::keyClick(slider,Qt::Key_Escape);window.hide();transport->VolumeChanged(65);
+        }
+    }
+#endif
     void phoneZoomHasNativeNameBoundsAndIndependentValue() {
         auto& window = NativeControlFixture::Window(app_);
         const auto restore = qScopeGuard([&] { window.setPhoneZoomControls(false, false, 1, 1, 1); });

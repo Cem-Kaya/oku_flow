@@ -356,3 +356,16 @@ and Qt compilation passed for all 24 catalogs with 891 complete keys each.
 This is model-assisted linguistic review; native-speaker, rendered RTL and
 spoken screen-reader acceptance remain separate. Android and website catalogs
 are unchanged.
+
+## UI hierarchy and featured modes (2026-10-25)
+
+Four additional source keys bring each of the 24 catalogs to 895: More modes,
+Document, Projector Screen and Whiteboard. Small-agent tasks
+`quick-more-modes-l10n-20261025-r1` and `featured-modes-l10n-20261025-r1`
+reviewed every target (24 + 72): seven replacements applied, none unread.
+The latter fixes Arabic projection terminology. Reviewed French/Dutch Document
+and German/Dutch/Swedish Whiteboard are natural established terms identical
+to English; the validator explicitly allows these two source keys. The
+disclosure, feature names and accessible labels use the same catalog strings.
+This does not establish native-speaker, spoken screen-reader or rendered RTL
+acceptance. Review JSON remains in the private ui-cleanup-20261025-r1 folder.

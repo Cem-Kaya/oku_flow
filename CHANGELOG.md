@@ -6,6 +6,21 @@
 
 ## [Unreleased]
 
+- Replace the permanent playback-volume row with a compact vertical popover
+  above the speaker. Open first; activate again to mute/unmute. Zero volume
+  mutes; unmuting restores the last audible level. Escape and Tab leave cleanly.
+- Keep UCT model, backend, status and recognized-text details inside its
+  collapsed advanced settings. Keep the enable/comparison controls accessible;
+  important collapsed status is announced from the disclosure header.
+- Feature four quick modes: Read a Page, Document, Projector Screen and
+  Whiteboard. Put other built-ins behind More modes, retain custom modes and
+  saved selections, and update visible number shortcuts to the new order.
+  New-install processing defaults and existing preset recipes are unchanged.
+- Preserve camera reconnect authority while remembering an adopted format, so
+  a reader that never presents video is retired at the existing deadline.
+- Preserve saved playback mute/gain during forced recording silence and add
+  synchronized popup focus, mute announcements and featured/custom shortcuts.
+
 - Fix a saved-video Unmute/Resume race that could read a deselected audio
   stream and leave playback silent. Keep the original PCM timing and limits.
 - Show the muted playback speaker in yellow/amber and restore its normal theme

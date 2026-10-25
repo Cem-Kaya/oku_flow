@@ -2160,6 +2160,17 @@ byte identity, zero silence, clamping and unchanged queue/timing/mute state.
 labels, snapshot updates, no unintended seek/mute, audio-source visibility and
 yellow/normal speaker ink on both palette schemes. These use Qt offscreen and
 do not establish spoken screen-reader or acoustic endpoint acceptance.
+The UI follow-up changes those assertions to a hidden-by-default vertical
+popover, first-open/second-mute behavior, no added bar height, translated
+value/name, above-anchor placement, source dismissal and Escape focus return.
+`advancedDetailsStayCollapsedWithoutLosingReadingText` covers UCT disclosure
+visibility, retained text and descendant focus return. With the existing
+opt-in CPU V1 native fixture enabled, `native_app_ui_cleanup_offscreen` exercises
+the actual app's zero/mute/nonzero restoration wiring without playback or an
+audio endpoint, and checks four featured modes, More modes, unchanged processing,
+custom entries and selected legacy retention. The conditional preview variables
+in hardcoded_paths.md export actual offscreen widgets; they are not native
+desktop screenshots. Earlier failed attempts remain archived.
 The scene-cut portion also holds an earlier issued frame while the decoder is
 ahead, resumes to actual EOS, then replays the same-generation tail. This covers
 the shared worker's atomic restart/rewind handoff and pending-Resume End guard.

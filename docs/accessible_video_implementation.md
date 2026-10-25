@@ -26,16 +26,23 @@ microphone audio. Necessary conversion and orientation are allowed; viewport
 crop, reading colours, UCT glyphs, neural enhancement and annotation ink are not.
 Paired photos and existing paired-video notes/transcripts stay compatible.
 
-Saved videos with an audio track show a separate **Playback volume** slider
-from 0 to 100%, initially 100%. It changes only playback output in this app
-session; Mute remains independent. Arrow keys change five percentage points,
-Page Up/Down ten, and Home/End select the limits. The visible percentage,
-translated accessible name and native slider value stay synchronized during
-keyboard, pointer, snapshot and language updates. The slider follows Mute in
-the Tab sequence, with Return to camera last; it hides for silent sources,
-recording review and collapsed controls. The muted speaker is yellow on dark
+Saved videos with an audio track show a speaker button. Its first activation
+opens **Playback volume** vertically above it, without reserving another
+transport row or changing sound. A subsequent activation toggles mute while
+the popover stays open. Adjusting to zero mutes; a positive value unmutes at
+that level. Unmuting from zero restores the session's last audible level
+(initially 100%). Up/Down change five percentage points, Page Up/Down ten,
+and Home/End select the limits. Space toggles mute from the slider. Escape
+returns focus to the speaker; Tab continues to Return to camera and Shift+Tab
+returns to the speaker. Outside clicks, source changes and hidden controls
+dismiss it. The translated name, percentage and native slider value stay
+synchronized. It is absent for silent sources and recording/recap review.
+The muted speaker is yellow on dark
 surfaces and contrast-adjusted amber on light surfaces; unmuting restores the
 normal theme icon color. Existing recording feedback protection stays in force.
+While recording forces silence, volume/mute edits leave the saved listening
+intent unchanged and the slider resynchronizes to its effective muted value.
+One polite announcement reports a mute edge while the popover is open.
 
 The 2026-10-25 audio handoff repair and silent decoder/output test scope are
 documented in [the audio repair record](video_audio_preroll_repair.md).

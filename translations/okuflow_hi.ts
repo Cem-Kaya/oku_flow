@@ -3589,5 +3589,21 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Playback volume</source>
         <translation>प्लेबैक की आवाज़</translation>
     </message>
+    <message>
+        <source>More modes</source>
+        <translation>और मोड</translation>
+    </message>
+    <message>
+        <source>Document</source>
+        <translation>दस्तावेज़</translation>
+    </message>
+    <message>
+        <source>Projector Screen</source>
+        <translation>प्रोजेक्टर स्क्रीन</translation>
+    </message>
+    <message>
+        <source>Whiteboard</source>
+        <translation>व्हाइटबोर्ड</translation>
+    </message>
 </context>
 </TS>

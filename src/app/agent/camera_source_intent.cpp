@@ -13,6 +13,10 @@ void CameraSourceIntent::SetSavedFormat(const QString& format) {
     temporaryOwner_.clear(); temporaryRequestedLink_.clear(); beforeTemporary_.reset();
     Request({link,format,false},CameraSourceOrigin::Manual);
 }
+bool CameraSourceIntent::RememberAdoptedFormat(quint64 generation, const QString& format) {
+    if(generation!=requested_.generation || !active_ || !temporaryOwner_.isEmpty())return false;
+    saved_.formatStableId=format;return true;
+}
 bool CameraSourceIntent::FillStartupIdentity(const QString& link, int index) {
     if (!saved_.symbolicLink.isEmpty() || !temporaryOwner_.isEmpty() || link.isEmpty() ||
         (requested_.origin != CameraSourceOrigin::Startup && requested_.origin != CameraSourceOrigin::Manual)) return false;

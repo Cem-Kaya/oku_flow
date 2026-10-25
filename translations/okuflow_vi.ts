@@ -3589,5 +3589,21 @@ Chọn Kết nối ChatGPT trong tab Trợ lý của chế độ Nâng cao để
         <source>Playback volume</source>
         <translation>Âm lượng phát</translation>
     </message>
+    <message>
+        <source>More modes</source>
+        <translation>Thêm chế độ</translation>
+    </message>
+    <message>
+        <source>Document</source>
+        <translation>Tài liệu</translation>
+    </message>
+    <message>
+        <source>Projector Screen</source>
+        <translation>Màn chiếu</translation>
+    </message>
+    <message>
+        <source>Whiteboard</source>
+        <translation>Bảng trắng</translation>
+    </message>
 </context>
 </TS>

@@ -3589,5 +3589,21 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Playback volume</source>
         <translation>بلندی صدای پخش</translation>
     </message>
+    <message>
+        <source>More modes</source>
+        <translation>حالت‌های بیشتر</translation>
+    </message>
+    <message>
+        <source>Document</source>
+        <translation>سند</translation>
+    </message>
+    <message>
+        <source>Projector Screen</source>
+        <translation>پردهٔ نمایش</translation>
+    </message>
+    <message>
+        <source>Whiteboard</source>
+        <translation>تختهٔ سفید</translation>
+    </message>
 </context>
 </TS>

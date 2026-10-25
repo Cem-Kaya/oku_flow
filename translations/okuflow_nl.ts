@@ -3589,5 +3589,21 @@ Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u
         <source>Playback volume</source>
         <translation>Afspeelvolume</translation>
     </message>
+    <message>
+        <source>More modes</source>
+        <translation>Meer modi</translation>
+    </message>
+    <message>
+        <source>Document</source>
+        <translation>Document</translation>
+    </message>
+    <message>
+        <source>Projector Screen</source>
+        <translation>Projectiescherm</translation>
+    </message>
+    <message>
+        <source>Whiteboard</source>
+        <translation>Whiteboard</translation>
+    </message>
 </context>
 </TS>

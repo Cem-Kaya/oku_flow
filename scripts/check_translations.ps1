@@ -30,6 +30,7 @@ foreach ($source in @(
     "Sigma", "Normal", "Model", "Codex CLI", "NVIDIA Video Effects",
     "NVIDIA Super Resolution", "Zoom", "Radius", "Backend", "Text",
     "Minimal", "Ellipse", "%1 px", "API Key", "Assistant", "Status",
+    "Document", "Whiteboard", # Reviewed established terms in the featured-mode catalogs.
     ("%1 " + [char]0x00D7 + " %2 @ %3 fps"), "OK")) {
     [void]$identicalAllowed.Add($source)
 }

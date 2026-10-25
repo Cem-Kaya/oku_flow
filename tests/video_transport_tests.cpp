@@ -8,6 +8,8 @@
 #include <QLabel>
 #include <QLocale>
 #include <QMouseEvent>
+#include <QKeyEvent>
+#include <QScopeGuard>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QSlider>
@@ -692,7 +694,7 @@ private slots:
         auto* transport = fixture.transport;
         auto* returnButton = fixture.Button("videoReturnCameraButton");
         const auto targets = transport->FocusTargets();
-        QCOMPARE(targets.size(), std::size_t(8));
+        QCOMPARE(targets.size(), std::size_t(7));
         QCOMPARE(targets.back(), returnButton);
         fixture.Focus(fixture.Button("videoCollapseButton"));
         for (std::size_t index = 0; index < targets.size(); ++index) {
@@ -764,7 +766,7 @@ private slots:
         QCOMPARE(seeks.last().front().toLongLong(), 0);
     }
 
-    void muteIsAnOrdinarySnapshotDrivenAction()
+    void speakerOpensVolumeThenMutesWithoutOptimisticState()
     {
         FocusFixture fixture;
         auto* mute = fixture.Button("videoMuteButton");
@@ -775,17 +777,90 @@ private slots:
         QVERIFY(!accessible->state().checkable);
         QSignalSpy changes(fixture.transport, &VideoTransport::MutedChanged);
         fixture.Focus(mute);
-        QCOMPARE(mute->accessibleName(), QStringLiteral("Unmute playback"));
+        auto* popup=fixture.transport->findChild<QWidget*>(QStringLiteral("videoVolumePopup"));
+        auto* volume=fixture.transport->findChild<QSlider*>("videoVolumeSlider");QVERIFY(volume);
+        QVERIFY(popup && !popup->isVisible());
+        QCOMPARE(mute->accessibleName(), QStringLiteral("Playback volume"));
         fixture.Key(Qt::Key_Space);
+        QVERIFY(popup->isVisible());QCOMPARE(changes.size(),0);
+        QCOMPARE(QApplication::focusWidget(),volume);
+        QCOMPARE(mute->accessibleName(),QStringLiteral("Unmute playback"));
+        QTest::mouseClick(mute,Qt::LeftButton);
+        QCOMPARE(changes.size(),1);QVERIFY(popup->isVisible());
         QCOMPARE(changes.last().front().toBool(), false);
-        fixture.Key(Qt::Key_Space);
+        QTest::mouseClick(mute,Qt::LeftButton);
+        QCOMPARE(changes.size(),2);QVERIFY(popup->isVisible());
         QCOMPARE(changes.last().front().toBool(), false); // No optimistic toggle.
         auto snapshot = Video();
         snapshot.muted = false;
         fixture.transport->SetSnapshot(snapshot);
         QCOMPARE(mute->accessibleName(), QStringLiteral("Mute playback"));
-        fixture.Key(Qt::Key_Space);
+        QTest::mouseClick(mute,Qt::LeftButton);
+        QCOMPARE(changes.size(),3);QVERIFY(popup->isVisible());
         QCOMPARE(changes.last().front().toBool(), true);
+        volume->setFocus(); // Mouse activation focuses the speaker; exercise Space on the slider separately.
+        QTest::keyClick(volume,Qt::Key_Space);
+        QCOMPARE(changes.size(),4);QVERIFY(popup->isVisible());
+        QTest::keyClick(popup,Qt::Key_Escape);
+        QVERIFY(!popup->isVisible());
+        QCOMPARE(mute->accessibleName(),QStringLiteral("Playback volume"));
+        QCOMPARE(QApplication::focusWidget(),mute);
+    }
+
+    void volumePopupOwnsFocusAndIgnoresForeignWindows()
+    {
+        FocusFixture fixture;auto* transport=fixture.transport;
+        auto* mute=fixture.Button("videoMuteButton");auto* back=fixture.Button("videoReturnCameraButton");
+        auto* slider=transport->findChild<QSlider*>("videoVolumeSlider");
+        auto* popup=transport->findChild<QWidget*>("videoVolumePopup");
+        QSignalSpy changes(transport,&VideoTransport::MutedChanged);
+        const auto open=[&]{mute->click();QVERIFY(popup->isVisible());QCOMPARE(QApplication::focusWidget(),slider);};
+        open();QTest::keyClick(slider,Qt::Key_Tab);QVERIFY(!popup->isVisible());QCOMPARE(QApplication::focusWidget(),back);
+        open();QTest::keyClick(slider,Qt::Key_Backtab);QVERIFY(!popup->isVisible());QCOMPARE(QApplication::focusWidget(),mute);
+        open();fixture.host.resize(1150,400);QVERIFY(!popup->isVisible());QCOMPARE(QApplication::focusWidget(),mute);
+        open();transport->SetCollapsed(true);QVERIFY(!popup->isVisible());QCOMPARE(QApplication::focusWidget(),transport->collapseButton());
+        transport->SetCollapsed(false);open();transport->SetUiHidden(true);
+        QVERIFY(!popup->isVisible());QCOMPARE(QApplication::focusWidget(),fixture.viewport);
+        transport->SetUiHidden(false);open();transport->SetSnapshot({});
+        QVERIFY(!popup->isVisible());QCOMPARE(QApplication::focusWidget(),fixture.viewport);
+        transport->SetSnapshot(Video());open();
+        class ForeignWindow final:public QWidget {
+        public:bool escaped{},pressed{};
+            void keyPressEvent(QKeyEvent* event) override {escaped=event->key()==Qt::Key_Escape;}
+            void mousePressEvent(QMouseEvent*) override {pressed=true;}
+        } foreign;
+        QTest::keyClick(&foreign,Qt::Key_Escape);QVERIFY(foreign.escaped);QVERIFY(popup->isVisible());
+        const auto global=mute->mapToGlobal(mute->rect().center());
+        QMouseEvent press(QEvent::MouseButtonPress,QPointF(1,1),QPointF(global),Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);
+        QApplication::sendEvent(&foreign,&press);QVERIFY(foreign.pressed);QCOMPARE(changes.size(),0);
+        QMouseEvent release(QEvent::MouseButtonRelease,QPointF(1,1),QPointF(global),Qt::LeftButton,Qt::NoButton,Qt::NoModifier);
+        QApplication::sendEvent(&foreign,&release);
+        QVERIFY(!popup->isVisible());
+        // Outside delivery is tested independently of native activation:
+        // the offscreen plugin cannot restore an OS active window after a grab.
+        QApplication::setActiveWindow(&fixture.host);
+        fixture.Focus(fixture.viewport);open();
+        QSignalSpy outsideClicks(fixture.viewport,&QPushButton::clicked);
+        QTest::mouseClick(fixture.viewport,Qt::LeftButton);
+        QVERIFY(!popup->isVisible());QCOMPARE(outsideClicks.size(),1);
+        QVERIFY(QApplication::focusWidget()!=mute);
+        QCOMPARE(changes.size(),0);
+    }
+
+    void volumeMuteEdgesAnnounceOnceWhilePopupIsOpen()
+    {
+        FocusFixture fixture;auto* transport=fixture.transport;
+        fixture.Button("videoMuteButton")->click();
+        announcementTarget=transport;announcements.clear();
+        const auto cleanup=qScopeGuard([]{announcementTarget=nullptr;announcements.clear();});
+        auto snapshot=Video();snapshot.muted=false;snapshot.volumePercent=55;
+        transport->SetSnapshot(snapshot);QCOMPARE(announcements.size(),1);
+        QVERIFY(announcements.back().contains("55%"));QVERIFY(announcements.back().contains("Mute playback"));
+        transport->SetSnapshot(snapshot);QCOMPARE(announcements.size(),1);
+        snapshot.muted=true;transport->SetSnapshot(snapshot);QCOMPARE(announcements.size(),2);
+        QVERIFY(announcements.back().contains("0%"));QVERIFY(announcements.back().contains("Unmute playback"));
+        QTest::keyClick(transport->findChild<QWidget*>("videoVolumePopup"),Qt::Key_Escape);
+        snapshot.muted=false;transport->SetSnapshot(snapshot);QCOMPARE(announcements.size(),2);
     }
 
     void iconFacesKeepTranslatedNamesAtWideAndNarrowWidths()
@@ -800,7 +875,7 @@ private slots:
         // Faces are icons (or glyphs without compiled resources); the full
         // translated action lives in the accessible name and tooltip only.
         QCOMPARE(play->accessibleName(), QStringLiteral("Videoyu s\u00fcrd\u00fcr"));
-        QCOMPARE(mute->accessibleName(), QStringLiteral("Wiedergabeton einschalten"));
+        QCOMPARE(mute->accessibleName(), QStringLiteral("Wiedergabelautst\u00e4rke"));
         for (auto* button : fixture.transport->findChildren<QPushButton*>()) {
             QVERIFY(button->text() != button->accessibleName());
             QCOMPARE(button->toolTip(), button->accessibleName());
@@ -910,7 +985,7 @@ private slots:
         transport.SetSnapshot(snapshot);
         QVERIFY(face(play) != pausedFace);
         QVERIFY(face(mute) != mutedFace);
-        QCOMPARE(mute->accessibleName(), QStringLiteral("Mute playback"));
+        QCOMPARE(mute->accessibleName(), QStringLiteral("Playback volume"));
         const QString playingFace = face(play);
         const QString unmutedFace = face(mute);
         transport.SetSnapshot(Video());
@@ -919,17 +994,25 @@ private slots:
         QCOMPARE(play->accessibleName(), QStringLiteral("Resume video"));
     }
 
-    void playbackVolumeIsAccessibleAndIndependentOfMuteAndSeek()
+    void playbackVolumePopoverKeepsAccessibleValueAndDoesNotSeek()
     {
         FocusFixture fixture;
         auto* transport=fixture.transport;
         auto* volume=transport->findChild<QSlider*>(QStringLiteral("videoVolumeSlider"));
         auto* value=transport->findChild<QLabel*>(QStringLiteral("videoVolumeValue"));
-        QVERIFY(volume && value && volume->isVisible());
+        QVERIFY(volume && value && !volume->isVisible());
+        auto* speaker=fixture.Button("videoMuteButton");
+        auto* popup=transport->findChild<QWidget*>(QStringLiteral("videoVolumePopup"));
         QSignalSpy gain(transport,&VideoTransport::VolumeChanged);
         QSignalSpy mute(transport,&VideoTransport::MutedChanged);
         QSignalSpy seek(transport,&VideoTransport::SeekRequested);
-        auto snapshot=Video();snapshot.volumePercent=50;transport->SetSnapshot(snapshot);
+        auto snapshot=Video();snapshot.volumePercent=50;snapshot.muted=false;transport->SetSnapshot(snapshot);
+        fixture.host.move(100,380);QApplication::processEvents();
+        const auto barHeight=transport->sizeHint().height();
+        QTest::mouseClick(speaker,Qt::LeftButton);
+        QVERIFY(volume->isVisible());QCOMPARE(volume->orientation(),Qt::Vertical);
+        QCOMPARE(transport->sizeHint().height(),barHeight);
+        QVERIFY(popup->geometry().bottom()<speaker->mapToGlobal(QPoint()).y());
         QCOMPARE(volume->value(),50);QCOMPARE(gain.size(),0);
         QCOMPARE(volume->accessibleName(),QStringLiteral("Playback volume"));
         QCOMPARE(volume->accessibleDescription(),QStringLiteral("50%"));
@@ -938,7 +1021,7 @@ private slots:
         QCOMPARE(accessible->valueInterface()->minimumValue().toInt(),0);
         QCOMPARE(accessible->valueInterface()->maximumValue().toInt(),100);
         QCOMPARE(accessible->valueInterface()->currentValue().toInt(),50);
-        fixture.Focus(volume);fixture.Key(Qt::Key_Left);
+        volume->setFocus();QTest::keyClick(volume,Qt::Key_Down);
         QCOMPARE(gain.size(),1);QCOMPARE(gain.front().front().toInt(),45);
         QCOMPARE(value->text(),QStringLiteral("45%"));
         QCOMPARE(volume->accessibleDescription(),value->text());
@@ -953,6 +1036,11 @@ private slots:
         QCOMPARE(volume->accessibleName(),QStringLiteral("Wiedergabelautst\u00e4rke"));
         QVERIFY(volume->toolTip().startsWith(volume->accessibleName()));
         QApplication::removeTranslator(&translator);
+        const auto previews=qEnvironmentVariable("OKUFLOW_TRANSPORT_PREVIEW_DIR");
+        if(!previews.isEmpty()) {
+            QVERIFY(QDir().mkpath(previews));
+            QVERIFY(popup->grab().save(QDir(previews).filePath("playback-volume-popover.png")));
+        }
         snapshot.volumePercent=120;transport->SetSnapshot(snapshot);QCOMPARE(volume->value(),100);
         snapshot.volumePercent=-1;transport->SetSnapshot(snapshot);QCOMPARE(volume->value(),0);
         snapshot.hasAudio=false;transport->SetSnapshot(snapshot);
@@ -986,7 +1074,7 @@ private slots:
             const auto unmutedPixels=mute->icon().pixmap(28,28).toImage();
             QVERIFY(countColor(unmutedPixels,palette.color(QPalette::Active,QPalette::ButtonText))>8);
             QVERIFY(mutedPixels!=unmutedPixels);
-            QCOMPARE(mute->accessibleName(),QStringLiteral("Mute playback"));
+            QCOMPARE(mute->accessibleName(),QStringLiteral("Playback volume"));
         }
     }
 

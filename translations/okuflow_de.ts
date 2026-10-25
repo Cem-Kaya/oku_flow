@@ -3589,5 +3589,21 @@ Melden Sie sich auf der erweiterten Registerkarte Assistent über ChatGPT verbin
         <source>Playback volume</source>
         <translation>Wiedergabelautstärke</translation>
     </message>
+    <message>
+        <source>More modes</source>
+        <translation>Weitere Modi</translation>
+    </message>
+    <message>
+        <source>Document</source>
+        <translation>Dokument</translation>
+    </message>
+    <message>
+        <source>Projector Screen</source>
+        <translation>Projektionsfläche</translation>
+    </message>
+    <message>
+        <source>Whiteboard</source>
+        <translation>Whiteboard</translation>
+    </message>
 </context>
 </TS>

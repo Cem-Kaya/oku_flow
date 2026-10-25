@@ -3589,5 +3589,21 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
         <source>Playback volume</source>
         <translation>Oynatma ses düzeyi</translation>
     </message>
+    <message>
+        <source>More modes</source>
+        <translation>Daha fazla mod</translation>
+    </message>
+    <message>
+        <source>Document</source>
+        <translation>Belge</translation>
+    </message>
+    <message>
+        <source>Projector Screen</source>
+        <translation>Projeksiyon perdesi</translation>
+    </message>
+    <message>
+        <source>Whiteboard</source>
+        <translation>Beyaz tahta</translation>
+    </message>
 </context>
 </TS>

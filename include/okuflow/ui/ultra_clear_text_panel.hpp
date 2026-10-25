@@ -11,6 +11,7 @@ class QCheckBox;
 class QComboBox;
 class QLabel;
 class QPlainTextEdit;
+class QToolButton;
 QT_END_NAMESPACE
 
 namespace okuflow {
@@ -64,6 +65,7 @@ private:
     void UpdateDependentState();
 
     QCheckBox* enableCheckbox_{};
+    QToolButton* advancedToggle_{};
     QCheckBox* showOriginalCheckbox_{};
     QLabel* statusLabel_{};
     QLabel* backendLabel_{};

@@ -32,6 +32,7 @@ public:
     const std::optional<CameraSourceIdentity>& Active() const { return active_; }
     void SelectManual(const QString& link, int index);
     void SetSavedFormat(const QString& format);
+    bool RememberAdoptedFormat(quint64 generation, const QString& format);
     bool FillStartupIdentity(const QString& link, int index);
     void ReindexSaved(const QStringList& enumeration);
     quint64 Request(CameraSourceIdentity identity, CameraSourceOrigin origin, const QString& operationId = {});
