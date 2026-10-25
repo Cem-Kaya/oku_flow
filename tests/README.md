@@ -2110,9 +2110,26 @@ uses distinct line contents, different motion/occlusion outcomes, an invalid
 middle entry and a CPU descriptor; each slot is compared with the CPU oracle.
 
 PR10's original CI evidence retained a 60-second aggregate timeout after 31
-completed `immutable_uct_contract` rows. Its suite deadline is now 120 seconds;
-per-row QTRY limits/assertions and the full inventory remain unchanged. This does
-not classify a timeout as a pass or erase the archived attempt. The native German
+completed controller rows. Run 40203886484 later exceeded the 120-second aggregate
+without a failed Qt row. Controller slots now register independently as
+`immutable_uct_contract.<slot>`, each with a 30-second limit and all its data rows.
+Select the complete family with `-Label immutable_uct_contract` or the
+`^immutable_uct_contract\\.` regex. Per-row QTRY limits and assertions are unchanged;
+both original timeouts remain failed evidence. Native RAM-recap GPU fixtures
+probe their real memory sink first: compatibility readback skips with 77, while
+initialization faults or failures after native admission still fail. Release
+capability profiles continue to reject missing required hardware coverage.
+The 25 October repair verified all 86 registered controller slots against the
+executable's `-functions` inventory. The tracked background matrix passed release
+compilation, CPU 259 passed/9 optional skips and CUDA delta 15 passed/5 optional
+skips, all with zero unresolved results. PCH-off scoped coverage passed 90/90
+without skips, including all controller slots and source equivalence. The new
+standalone preferred-paint check owns its word ticket across event delivery and
+waits for that exact paint record. First configuration/selection refusals, the
+isolated paint failure and the subsequent shared-runtime resume refusal remain
+archived; a diagnosed fresh gate and final rebuilt checks passed. Native GUI
+verification runs separately on the hosted VM, not the owner's desktop.
+The native German
 bottom-toolbar regression remains required; offscreen cell-minimum and cancelled
 video-picker/phone-light cases complement it without desktop or real-device claims.
 

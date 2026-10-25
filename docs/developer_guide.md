@@ -250,6 +250,15 @@ If Windows reports missing `Qt6*.dll` files, add the Qt `bin` directory to `PATH
 
 ## Alternative Builds
 
+Hosted run 40203886484 compiled successfully but exposed a controller-suite
+aggregate timeout, unavailable native NV12 recap input and a geometry assertion
+on the now-collapsed UCT reading pane. Controller slots now have independent
+30-second CTest cases under the `immutable_uct_contract` label, retaining every
+row. RAM GPU prerequisites explicitly skip compatibility readback; required
+release hardware coverage still cannot skip. The native geometry fixture opens
+the disclosure before checking visible pane bounds. Original failed artifacts
+are retained separately from repaired validation.
+
 Routine checks now run in [GitHub Actions](https://github.com/Cem-Kaya/oku_flow/actions/workflows/windows-checks.yml)
 on a disposable Windows VM, including a CPU build and serial native GUI tests.
 MSVC setup uses Microsoft's installed Visual Studio 2022 developer shell through

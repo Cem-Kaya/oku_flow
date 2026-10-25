@@ -1177,3 +1177,12 @@ aligned with the project goals.
   Matched-blur ink scoring may only demote Changed to Unverifiable. Use
   `OKUFLOW_UCT_RESIDENT_PRODUCTION_FACTORY=1` for shipped-BF16 resident
   timings (warm plans only); never label the direct FP32 factory as BF16.
+
+## Controller and RAM GPU fixture registration (2026-10-25)
+- Register every controller Qt slot through the existing headless helper under
+  `immutable_uct_contract`, preserving all data rows, 30-second slot bounds,
+  offscreen environment and exact private replay runtime inputs. Compare the
+  configured inventory with the executable's `-functions` list after changes.
+- Probe the real RAM sink's native GPU input before pressure/failure injection.
+  Compatibility readback is prerequisite skip 77, never a GPU pass. Retain
+  failures after native admission and strict release capability requirements.

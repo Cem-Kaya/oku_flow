@@ -1,5 +1,10 @@
 # Changelog
 
+- Repair hosted Windows checks: bound each OCR-controller slot independently,
+  identify unavailable native RAM GPU input before fault injection, and test UCT
+  reading-pane geometry after expanding its advanced settings. Assertions and
+  hardware release requirements remain intact.
+
 - Include the native desktop TensorRT builder resources needed for local OCR
   engine creation; an isolated SM75/PTX-only cold start exposed the missing Ada
   builder dependency before installer publication.

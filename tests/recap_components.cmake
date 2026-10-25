@@ -37,18 +37,17 @@ add_executable(ultra_clear_text_controller_tests ultra_clear_text_controller_tes
 target_include_directories(ultra_clear_text_controller_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
 target_compile_definitions(ultra_clear_text_controller_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 target_link_libraries(ultra_clear_text_controller_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test)
-add_test(NAME immutable_uct_contract COMMAND ultra_clear_text_controller_tests)
-# Aggregate deadline for the whole Qt suite; individual QTRY limits remain.
-# The loaded CI runner completed 31 cases before the old 60 s suite deadline.
-set_tests_properties(immutable_uct_contract PROPERTIES TIMEOUT 120 LABELS "headless"
-    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
-    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+# Keep each Qt slot (and every one of its data rows) independently bounded.
+# The growing aggregate exceeded 120 s on the hosted VM without a failed row.
+okuflow_add_headless_cases(immutable_uct_contract ultra_clear_text_controller_tests UltraClearTextControllerTests)
+set_tests_properties(${immutable_uct_contract_cases} PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1")
 
 # Private controller replay is opt-in at configure, not an ambient runtime
 # override. Bind the actual proof and both source images into tracked evidence.
 set(OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF "$ENV{OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}"
     CACHE FILEPATH "Optional absolute private captured UCT controller proof JSON")
-set_property(TEST immutable_uct_contract APPEND PROPERTY ENVIRONMENT
+set_property(TEST ${immutable_uct_contract_cases} APPEND PROPERTY ENVIRONMENT
     "OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF=${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}")
 if(OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF)
     if(NOT IS_ABSOLUTE "${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}" OR
@@ -76,7 +75,7 @@ if(OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF)
         endif()
         list(APPEND replay_required_files "${replay_image}")
     endforeach()
-    set_property(TEST immutable_uct_contract APPEND PROPERTY REQUIRED_FILES ${replay_required_files})
+    set_property(TEST ${immutable_uct_contract_cases} APPEND PROPERTY REQUIRED_FILES ${replay_required_files})
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         "${OKUFLOW_UCT_CONTROLLER_REPLAY_PROOF}")
 endif()
@@ -132,6 +131,6 @@ add_test(NAME video_agent_control_contract COMMAND video_agent_control_tests)
 set_tests_properties(video_agent_control_contract PROPERTIES TIMEOUT 30 LABELS "headless"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 
-foreach(recap_qt_test immutable_uct_contract video_transport_contract video_agent_control_contract recording_original_native)
+foreach(recap_qt_test video_transport_contract video_agent_control_contract recording_original_native)
     set_property(TEST ${recap_qt_test} APPEND PROPERTY ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1")
 endforeach()

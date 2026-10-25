@@ -6922,9 +6922,22 @@ Live. It compares each frame's Original texture to current raw input exactly,
 and the held display to the stored pixels of its named acquisition. Its private
 bundle proves idle before destruction and retains unknown GPU work on failure.
 
-The complete `immutable_uct_contract` Qt suite has a 120-second aggregate CTest
-deadline after archived CI evidence showed 31 completed cases before its old
-60-second limit. Individual QTRY/assertion limits and all rows remain intact.
+`recap_components.cmake` registers the controller suite through
+`okuflow_add_headless_cases`: `immutable_uct_contract.<slot>` cases have individual
+30-second deadlines, include every data row and share the `immutable_uct_contract`
+label. Source declarations automatically update the inventory at configure.
+The old aggregate exceeded 120 seconds on the hosted VM without a failed row;
+no QTRY limit or assertion was increased. Replay inputs remain bound to every case.
+The helper accepts both ordinary and `final` QObject fixture declarations;
+the controller executable registers its fixture fonts before widget creation.
+Its preferred-handoff paint check waits for the exact preferred word's paint
+record, since viewport geometry alone can still describe an earlier bridge paint.
+`HasNativeRamGpuInput` in `media_writer_gpu_tests.cpp` checks the actual RAM sink
+before fault injection; compatibility readback returns prerequisite skip 77,
+while startup failures and faults after native admission still fail.
+`MainWindowTests::ultraClearTextControlsHaveNativeGeometry` checks the collapsed
+reading pane's invisible accessibility state, opens UCT advanced settings, then
+checks each visible control's native/accessibility bounds after scrolling to it.
 
 ### Rejected held-acquisition retry (2026-10-20)
 

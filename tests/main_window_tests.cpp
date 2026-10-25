@@ -1161,8 +1161,17 @@ void MainWindowTests::ultraClearTextControlsHaveNativeGeometry()
     QVERIFY(!enabled->isEnabled() && !original->isEnabled());
     window.textClarityCheckbox()->setChecked(true);
     QVERIFY(enabled->isChecked() && enabled->isEnabled() && original->isEnabled());
+    auto* advanced = Named<QToolButton>(window, "uctAdvancedSettings");
+    QVERIFY(advanced && !advanced->isChecked());
+    QVERIFY(!panel->readingPane()->isVisible());
+    auto* hiddenPane = QAccessible::queryAccessibleInterface(panel->readingPane());
+    QVERIFY(hiddenPane && hiddenPane->state().invisible);
+    advanced->click();
+    QTRY_VERIFY(panel->readingPane()->isVisible());
     for (QWidget* widget : {static_cast<QWidget*>(enabled), static_cast<QWidget*>(original),
                             static_cast<QWidget*>(panel->readingPane())}) {
+        scroll->ensureWidgetVisible(widget);
+        QTRY_VERIFY(GlobalRect(scroll->viewport()).intersects(GlobalRect(widget)));
         auto* accessible = QAccessible::queryAccessibleInterface(widget);
         QVERIFY(accessible && accessible->isValid());
         // Native styles expose the indicator/label click area for a checkbox,
@@ -1178,6 +1187,8 @@ void MainWindowTests::ultraClearTextControlsHaveNativeGeometry()
     QVERIFY(toggle->state().checked);
     QVERIFY(panel->readingPane()->isReadOnly());
     QVERIFY(SaveScreenshot(window, QStringLiteral("desktop-en-ultra-clear-controls")));
+    scroll->ensureWidgetVisible(enabled);
+    QTRY_VERIFY(GlobalRect(scroll->viewport()).contains(GlobalRect(enabled)));
     QString problem;
     QVERIFY2(NativeHitBelongsTo(enabled, &problem), qPrintable(problem));
 }

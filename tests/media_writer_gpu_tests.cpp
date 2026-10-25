@@ -430,6 +430,23 @@ void RunRamRecapPressurePass(const okuflow::GpuVideoFrame& frame)
         <<" dropped="<<snapshot.droppedFrames<<" bytes="<<snapshot.compressedBytes<<" pictures="<<pictures<<'\n';
 }
 
+// Probe the actual RAM sink before installing pressure/failure injections.
+// A D3D12 device (including WARP on hosted VMs) does not establish native
+// NV12 encoder input. Compatibility readback is an unavailable prerequisite,
+// never a passing GPU test. Startup failures and later faults still fail.
+bool HasNativeRamGpuInput(const okuflow::GpuVideoFrame& frame)
+{
+    auto output = std::make_shared<okuflow::VideoMemoryStream>();
+    okuflow::VideoRecorder recorder;
+    if (!recorder.StartMemory(output, frame.width, frame.height, 30, 1, 8'000'000, &frame))
+        throw std::runtime_error("RAM GPU prerequisite initialization: " + recorder.LastError());
+    const bool native = recorder.UsesGpuInput();
+    recorder.Stop();
+    if (!native)
+        std::cout << "SKIP: RAM GPU fixture requires native NV12 input; this machine uses compatibility readback.\n";
+    return native;
+}
+
 // The RAM sink and asynchronous producer have different attributes, stream
 // callbacks and finalization from the disk writer. No file/audio path is used.
 void RunRamRecapPass(const okuflow::GpuVideoFrame& frame)
@@ -839,10 +856,16 @@ int main(int argc, char** argv)
                          "support on this machine\n";
             exitCode = kSkipExitCode;
         } else if (argc == 2 && std::string(argv[1]) == "--ram-recap-pressure") {
-            try { RunRamRecapPressurePass(context.frame); }
+            try {
+                if (HasNativeRamGpuInput(context.frame)) RunRamRecapPressurePass(context.frame);
+                else exitCode = kSkipExitCode;
+            }
             catch (const std::exception& error) { std::cerr << "FAIL: " << error.what() << '\n'; exitCode = 1; }
         } else if (argc == 2 && std::string(argv[1]) == "--ram-recap") {
-            try { RunRamRecapPass(context.frame); }
+            try {
+                if (HasNativeRamGpuInput(context.frame)) RunRamRecapPass(context.frame);
+                else exitCode = kSkipExitCode;
+            }
             catch (const std::exception& error) { std::cerr << "FAIL: " << error.what() << '\n'; exitCode = 1; }
         } else {
             bool h264Skipped = false;

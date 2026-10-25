@@ -2489,9 +2489,12 @@ void UltraClearTextControllerTests::standalonePreferredHandoffPublishesPaintAndP
     QCOMPARE(h.Reading(),QStringLiteral("i will recod"));
     QTRY_VERIFY(h.overlay.PaintedGeometryCurrent());
     bool drawn=false;
-    for(const auto& word:h.overlay.Words()) if(word.text==QStringLiteral("will")) {
+    const auto preferredWords=h.overlay.Words(); // Own the ticket across QTRY event delivery.
+    for(const auto& word:preferredWords) if(word.text==QStringLiteral("will")) {
         UltraClearTextOverlay::PaintedWordGeometry geometry;
-        QVERIFY(h.overlay.PaintedWord(word.lineId,word.wordIndex,word.text,geometry));
+        // Matching viewport geometry can still belong to the bridge paint.
+        // Wait for this exact preferred word rather than a prior paint plan.
+        QTRY_VERIFY(h.overlay.PaintedWord(word.lineId,word.wordIndex,word.text,geometry));
         drawn=geometry.drawn;
     }
     QVERIFY(drawn);
@@ -4368,6 +4371,7 @@ int main(int argc, char** argv)
 {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QApplication app(argc, argv);
+    RegisterFixtureFonts(); // Every independently selected slot owns its fonts.
     // Preserve an explicit file logger and replay its bytes through the
     // executable's stdout. The implicit QtTest logger left the first tracked
     // invocation with a failure code and no captured diagnostics.
