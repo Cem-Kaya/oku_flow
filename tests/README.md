@@ -1658,6 +1658,19 @@ held recognizers. It covers geometry/DPI, residual tracking and rejection,
 high-risk tokens, temporal agreement, stale/late/moved results, freshness,
 latest-only coalescing, cancellation ownership, bounded destruction, and the
 controller's presentation-clock independence while OCR is held.
+`regionalStabilityRequiresFreshTexturedPixels` and
+`distantTextRunsKeepIndependentReferencesAndAllOmissions` cover local scheduling
+identity/flat-region refusal and independent references across large gaps.
+`immutable_uct_contract::movingPaneDoesNotBlockSettledText` covers continuous
+unrelated motion, initial OCR, an edit, busy inference, static-line identity and
+periodic full reads in live CPU, advancing CPU and resident protocol rows.
+`uct_paddle_cuda` compares regional CPU/GPU scores under motion/occlusion/crop.
+The unregistered `optionalRegionalProbeTiming` slot accepts 2..16 semicolon-
+separated `OKUFLOW_UCT_REGION_TIMING_IMAGES` paths and a new-only
+`OKUFLOW_UCT_REGION_TIMING_OUTPUT` JSON path. It measures warm global versus
+global-plus-grid probe processing (5 warmups, 31 ABBA/BAAB blocks), not model,
+whole-worker or presentation latency. Private images are never bundled.
+
 The detector-jitter refresh rows cover both live and advancing-media admission:
 current independent pixel proof retains the complete old object through 25%
 vertical box jitter, unions original-ink masks and never renews its clock.

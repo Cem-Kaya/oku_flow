@@ -1,5 +1,19 @@
 # Hard-Coded Paths and Defaults
 
+## Regional scheduling probes (25 October 2026)
+
+Below global stability 0.92, the ordinary probe worker may compare 64 common-view
+cells (8x8), with 12x8 box-averaged samples each. Both cells need variance >=16
+and >=64 usable samples. Flat/unknown/repeated/composite evidence supplies no
+local scheduling hint. The new partially moving live-camera path has an idle
+worker and 350-ms minimum; existing global scheduling/full deadlines remain.
+Distant text runs split at an along-baseline gap >3 times the larger word height,
+unless their original-ink envelopes intersect, with a 1024-line ceiling.
+`OKUFLOW_UCT_REGION_TIMING_IMAGES` and `OKUFLOW_UCT_REGION_TIMING_OUTPUT` are
+private diagnostic inputs only (2..16 images; new-only JSON output), consumed
+by the unregistered `optionalRegionalProbeTiming` test slot. See
+[regional scheduling and scope](uct_active_regional_ocr.md).
+
 ## Selected-frame ribbon and offline current ink (2026-10-24)
 
 Unset/`1` `OKUFLOW_UCT_CURVED_RIBBON` enables curved sampling in every ordinary

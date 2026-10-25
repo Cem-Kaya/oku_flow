@@ -28,6 +28,8 @@ void MatchReference(const unsigned*, int, int, Grid, const float*, double, doubl
                     double, double, double, double, MatchResult*, cudaStream_t);
 void Similarity(const unsigned*, int, int, ProbeMap, const unsigned*, int, int, ProbeMap,
                  double, double, double, double, double*, cudaStream_t);
+void RegionalSimilarities(const unsigned*, int, int, ProbeMap, const unsigned*, int, int, ProbeMap,
+                          double, double, double, double, double*, cudaStream_t);
 struct OrientedInk;
 // Optional frames have one descriptor per rectangle; width == 0 retains the
 // rectangle path. Nonzero frames sample body/corners/perimeters in local space.

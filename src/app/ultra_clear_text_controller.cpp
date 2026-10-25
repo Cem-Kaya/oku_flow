@@ -266,6 +266,7 @@ void UltraClearTextController::EnsureScheduler()
                     request.preparedProbe=std::make_shared<uct::ProbeFrame>(std::move(result.reference));
                     request.previous=self->latestProbe_;request.lines=self->model_.LineReferences(self->CurrentScene());
                     request.tuning=uct::ModelTuning{}.match;request.budgetMs=self->timing_.probeCheckBudgetMs;
+                    request.stableSimilarity=self->timing_.stableSimilarity;
                     self->probeWorker_->Submit(std::move(request));
                 },Qt::QueuedConnection);
             },uct::RecognitionScheduler::StatusChanged{},1,uct::ModelTuning{}.minimumWordHeightPx,true);
@@ -1258,6 +1259,7 @@ void UltraClearTextController::SubmitProbe(const uct::SourceStamp& stamp, uct::S
                                   (pixels->width + kMaximumProbeWidth - 1) / kMaximumProbeWidth);
     request.pixels = std::move(pixels);
     request.previous = latestProbe_;
+    request.stableSimilarity = timing_.stableSimilarity;
     request.lines = model_.LineReferences(CurrentScene());
     request.tuning = uct::ModelTuning{}.match;
     request.budgetMs = timing_.probeCheckBudgetMs;
@@ -1391,6 +1393,12 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
     }
     const bool stable = outcome.similarity && *outcome.similarity >= timing_.stableSimilarity;
     stableProbes_ = stable ? stableProbes_ + 1 : 0;
+    // A moving pane must not prevent OCR of another settled, textured pane.
+    // This is input scheduling, never proof that old text can be reused.
+    const auto settled = std::find_if(outcome.regions.cbegin(),outcome.regions.cend(),[&](const auto& region) {
+        return region.score >= timing_.stableSimilarity;
+    });
+    const bool locallyStable = settled != outcome.regions.cend();
     if (!stable) {
         changedSinceSubmit_ = true;
     }
@@ -1398,7 +1406,7 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
 
     auto candidate=deviceCandidate_ && deviceCandidate_->frameSequence==outcome.stamp.frameSeq
         ? std::exchange(deviceCandidate_,{}) : uct::SharedDeviceImage{};
-    if (scheduler_ && BackendUsable(backend_) && stableProbes_ >= 1 && (outcome.pixels||candidate)) {
+    if (scheduler_ && BackendUsable(backend_) && (stableProbes_ >= 1 || locallyStable) && (outcome.pixels||candidate)) {
         const int width = candidate?candidate->width:outcome.pixels->width;
         const int height = candidate?candidate->height:outcome.pixels->height;
         const QRectF viewScene =
@@ -1416,10 +1424,14 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
         // pixels move on without a copy.
         // Device snapshots share a two-slot pool with validation. Never park
         // a pending OCR lease while inference holds the other slot.
-        const bool canSubmit = advancingMediaScene_
+        // Local stability must not turn a busy live scene into per-probe OCR
+        // or a replacement backlog. Use the existing media minimum for this
+        // new live-camera path; ordinary globally stable behavior is unchanged.
+        const bool localPaced = stable || (!scheduler_->HasWork() && sinceSubmit >= timing_.mediaRecognitionIntervalMs);
+        const bool canSubmit = localPaced && (advancingMediaScene_
             ? advancingMediaJob_ == 0 && (!scheduler_->HasWork() || (!candidate && regionalJob_)) &&
                 now - advancingMediaLastSubmitMs_ >= timing_.mediaRecognitionIntervalMs
-            : !scheduler_->HasWork() || (!candidate && (changedSinceSubmit_ || regionalJob_));
+            : !scheduler_->HasWork() || (!candidate && (changedSinceSubmit_ || regionalJob_)));
         if (advancingMediaScene_ && needed && !canSubmit && advancingMediaJob_ &&
             sinceSubmit >= timing_.mediaRecognitionIntervalMs &&
             (outcome.stamp.holdDisplay == uct::HoldDisplay::NotHeld || outcome.stamp.holdDisplay == uct::HoldDisplay::Live) &&
@@ -1462,7 +1474,23 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
             // fit before it; its time source is wall time, not held-frame PTS.
             const auto slack = timing_.refreshIntervalMs - sinceSubmit;
             if (slack > regionalEstimateMs_ + timing_.probeIntervalMs) {
-                const auto detail = uct::RegionalDetailFocus(*regionalPlan_, outcome.stamp, viewScene);
+                // Supplemental work remains opt-in and bounded to one call
+                // per full interval. During partial motion, prefer a settled
+                // cell containing changed/candidate planner occurrences.
+                QRectF focus = viewScene;
+                if (!stable && locallyStable) {
+                    focus = settled->sceneRect;
+                    for (const auto& selection : regionalPlan_->selections) {
+                        if (selection.priority != uct::RegionPriorityClass::kChanged &&
+                            selection.priority != uct::RegionPriorityClass::kCandidate) continue;
+                        const auto cell = std::find_if(outcome.regions.cbegin(),outcome.regions.cend(),[&](const auto& region) {
+                            return region.score >= timing_.stableSimilarity && region.sceneRect.contains(selection.sceneRect.center());
+                        });
+                        if (cell != outcome.regions.cend()) { focus = cell->sceneRect; break; }
+                    }
+                }
+                scheduler_->SetShadowFocus(focus);
+                const auto detail = uct::RegionalDetailFocus(*regionalPlan_, outcome.stamp, focus);
                 if (detail) {
                     uct::RegionalOcrRequest request{regionalPlan_,
                         std::chrono::steady_clock::now() + std::chrono::milliseconds(slack), regionalEstimateMs_};

@@ -2021,6 +2021,7 @@ class PaddleTests final : public QObject
             }
             auto gpuProbe=prepare(image,phase+2);QVERIFY(gpuProbe.IsValid());
             auto cpuProbe=MakeProbeFrame(image.constBits(),640,360,image.bytesPerLine(),decimation,stamp);
+            cpuProbe.stamp.frameSeq=phase+2; // same actual acquisition as prepare(image, phase+2)
             if(phase==3){ // Reproject both references through a cropped/panned view.
                 gpuProbe.stamp.viewTransform={.1f,.05f,.8f,.9f,0,0,1,1,true};cpuProbe.stamp=gpuProbe.stamp;
             }
@@ -2039,9 +2040,78 @@ class PaddleTests final : public QObject
             }
             const auto a=SceneSimilarity(base,gpuProbe),b=SceneSimilarity(cpuBase,cpuProbe);
             QCOMPARE(a.has_value(),b.has_value());if(a)QVERIFY2(std::abs(*a-*b)<1e-5,qPrintable(QString("similarity phase %1 GPU %2 CPU %3").arg(phase).arg(*a,0,'g',15).arg(*b,0,'g',15)));
+            const auto gpuRegions=SceneRegionSimilarities(base,gpuProbe);
+            const auto cpuRegions=SceneRegionSimilarities(cpuBase,cpuProbe);
+            QCOMPARE(gpuRegions.size(),cpuRegions.size());
+            for(int i=0;i<cpuRegions.size();++i) {
+                QCOMPARE(gpuRegions[i].sceneRect,cpuRegions[i].sceneRect);
+                QVERIFY2(std::abs(gpuRegions[i].score-cpuRegions[i].score)<1e-5,
+                    qPrintable(QString("regional similarity d=%1 phase=%2 cell=%3 GPU=%4 CPU=%5")
+                        .arg(decimation).arg(phase).arg(i).arg(gpuRegions[i].score,0,'g',15).arg(cpuRegions[i].score,0,'g',15)));
+            }
+            if(phase==4) QVERIFY(std::any_of(gpuRegions.begin(),gpuRegions.end(),[](const auto& region) {
+                return region.sceneRect.right()<=.5 && region.score>.99;
+            }));
             if(phase==4){QVERIFY(a.has_value());QVERIFY(*a<.92);} // globally moving, locally unchanged
         }
         }
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
+    // Explicit private diagnostic, not a default CTest case. No models,
+    // decoder, presentation or image readback; owned probes are prepared once.
+    void optionalRegionalProbeTiming()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        const auto paths=qEnvironmentVariable("OKUFLOW_UCT_REGION_TIMING_IMAGES").split(';',Qt::SkipEmptyParts);
+        if(paths.size()<2 || paths.size()>16)QSKIP("Select 2..16 private timing images.");
+        const auto target=qEnvironmentVariable("OKUFLOW_UCT_REGION_TIMING_OUTPUT");
+        QVERIFY(!target.isEmpty()); QVERIFY(!QFileInfo::exists(target));
+        int devices{}; QVERIFY(cudaGetDeviceCount(&devices)==cudaSuccess && devices>0);
+        FixtureStream stream; AnalysisPool pool; std::atomic<bool> cancel{false};
+        QVector<ProbeFrame> cpu,gpu; QJsonArray inputs,visits,pairs;
+        for(int i=0;i<paths.size();++i) {
+            QImage pixels(paths[i]); QVERIFY(!pixels.isNull()); pixels=pixels.convertToFormat(QImage::Format_ARGB32);
+            SourceStamp stamp; stamp.sourceEpoch=1;stamp.geometryGeneration=1;stamp.frameSeq=i+1;
+            stamp.timestampMs=500*i;stamp.viewportWidth=pixels.width();stamp.viewportHeight=pixels.height();
+            stamp.viewTransform.valid=true;stamp.liveCameraCapture=true;
+            const int decimation=std::max(2,(std::max(pixels.width(),pixels.height())+959)/960);
+            cpu.push_back(MakeProbeFrame(pixels.constBits(),pixels.width(),pixels.height(),pixels.bytesPerLine(),decimation,stamp));
+            GpuBuffer<unsigned char> uploaded(pixels.sizeInBytes());
+            QVERIFY(cudaMemcpyAsync(uploaded.data,pixels.constBits(),pixels.sizeInBytes(),cudaMemcpyHostToDevice,stream.value)==cudaSuccess);
+            auto owned=pool.Capture(uploaded.data,pixels.bytesPerLine(),pixels.width(),pixels.height(),stream.value,1,i+1,1);
+            QVERIFY(owned); RecognitionResult prepared; prepared.stamp=stamp; QString error;
+            QVERIFY2(owned->PrepareResidentAnalysis(prepared,decimation,true,cancel,error),qPrintable(error));
+            gpu.push_back(prepared.reference);
+            QFile file(paths[i]); QVERIFY(file.open(QIODevice::ReadOnly));
+            inputs.push_back(QJsonObject{{"path",paths[i]},{"sha256",QString(QCryptographicHash::hash(file.readAll(),QCryptographicHash::Sha256).toHex())}});
+        }
+        for(int i=1;i<paths.size();++i) for(const bool resident:{false,true}) {
+            const auto& a=resident?gpu[i-1]:cpu[i-1]; const auto& b=resident?gpu[i]:cpu[i];
+            const auto regions=SceneRegionSimilarities(a,b); int stable=0;
+            for(const auto& region:regions)if(region.score>=.92)++stable;
+            const double global=SceneSimilarity(a,b).value_or(2);
+            pairs.push_back(QJsonObject{{"pair",i},{"resident",resident},{"global",global},
+                {"texturedCells",regions.size()},{"stableCells",stable},{"localSchedulingNeeded",global<.92&&stable>0}});
+            for(int block=-5;block<31;++block) {
+                const bool reverse=block%2!=0;
+                for(const bool candidate : {reverse,!reverse,!reverse,reverse}) {
+                    QElapsedTimer timer;timer.start();
+                    const auto score=SceneSimilarity(a,b);
+                    int count=0; if(candidate)count=SceneRegionSimilarities(a,b).size();
+                    const double ms=timer.nsecsElapsed()/1e6;
+                    QVERIFY(score.has_value()); if(candidate)QCOMPARE(count,regions.size());
+                    if(block>=0)visits.push_back(QJsonObject{{"pair",i},{"resident",resident},
+                        {"block",block},{"candidate",candidate},{"ms",ms}});
+                }
+            }
+        }
+        QFile output(target); QVERIFY(output.open(QIODevice::WriteOnly|QIODevice::NewOnly));
+        const QJsonObject report{{"schema",1},{"inputs",inputs},{"pairs",pairs},{"visits",visits},
+            {"scope","ABBA/BAAB global similarity versus global plus regional scheduling stage, warm owned probes; no OCR or presentation timing"}};
+        QVERIFY(output.write(QJsonDocument(report).toJson())>0);
+        qInfo("Regional probe timing written: %s",qPrintable(target));
 #else
         QSKIP("CUDA adapter not compiled.");
 #endif

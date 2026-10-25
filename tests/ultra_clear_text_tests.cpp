@@ -625,6 +625,72 @@ class UltraClearTextTests final : public QObject {
     Q_OBJECT
 
 private slots:
+    void regionalStabilityRequiresFreshTexturedPixels()
+    {
+        const auto page = MakeLayoutPage({{"Stationary",{30,80},30},{"Reading",{30,200},30}},960,540);
+        auto changed = page.image.copy();
+        { QPainter p(&changed); p.fillRect(480,0,480,540,Qt::black); }
+        SourceStamp stamp; stamp.sourceEpoch=1; stamp.geometryGeneration=1;
+        stamp.frameSeq=1; stamp.timestampMs=100; stamp.viewTransform.valid=true;
+        stamp.viewportWidth=960; stamp.viewportHeight=540;
+        const auto a = MakeProbeFrame(page.image.constBits(),960,540,page.image.bytesPerLine(),2,stamp);
+        ++stamp.frameSeq; ++stamp.timestampMs;
+        auto b = MakeProbeFrame(changed.constBits(),960,540,changed.bytesPerLine(),2,stamp);
+        QVERIFY(SceneSimilarity(a,b).value_or(1) < .92);
+        const auto cells = SceneRegionSimilarities(a,b);
+        QVERIFY(!cells.isEmpty()); QVERIFY(cells.size()<=64);
+        QVERIFY(std::any_of(cells.begin(),cells.end(),[](const auto& cell) {
+            return cell.sceneRect.right()<=.5 && cell.score>.99;
+        }));
+        b.stamp=a.stamp; QVERIFY(SceneRegionSimilarities(a,b).isEmpty());
+        b.stamp=stamp; ++b.stamp.sourceEpoch; QVERIFY(SceneRegionSimilarities(a,b).isEmpty());
+        b.stamp=stamp; b.stamp.timestampMs=a.stamp.timestampMs-1; QVERIFY(SceneRegionSimilarities(a,b).isEmpty());
+        b.stamp=stamp; b.stamp.holdDisplay=HoldDisplay::Crossfade; QVERIFY(SceneRegionSimilarities(a,b).isEmpty());
+        std::atomic<bool> cancelled{true}; QVERIFY(SceneRegionSimilarities(a,a,&cancelled).isEmpty());
+        QImage flat(960,540,QImage::Format_ARGB32); flat.fill(Qt::white);
+        auto f=MakeProbeFrame(flat.constBits(),960,540,flat.bytesPerLine(),2,a.stamp);
+        auto g=f; g.stamp=stamp; QVERIFY(SceneRegionSimilarities(f,g).isEmpty());
+    }
+    void distantTextRunsKeepIndependentReferencesAndAllOmissions()
+    {
+        const auto page=MakeLayoutPage({{"Stationary",{30,150},30},{"Before",{700,150},30}},960,540);
+        const auto changed=MakeLayoutPage({{"Stationary",{30,150},30},{"Afterward",{700,150},30}},960,540);
+        RecognitionResult result; result.output.ok=true;
+        result.stamp.sourceEpoch=1; result.stamp.geometryGeneration=1;
+        result.stamp.frameSeq=1; result.stamp.timestampMs=100; result.stamp.viewTransform.valid=true;
+        result.stamp.viewportWidth=960; result.stamp.viewportHeight=540;
+        for(const auto& word:page.words) result.output.lines.push_back({{{word.text,
+            QRectF(word.sceneRect.x()*960,word.sceneRect.y()*540,word.sceneRect.width()*960,word.sceneRect.height()*540)}}});
+        result.reference=MakeProbeFrame(page.image.constBits(),960,540,page.image.bytesPerLine(),2,result.stamp);
+        // Deliberately reproduce a backend joining two independent panes.
+        RecognizedLine joined;
+        for(const auto& line:result.output.lines) joined.words+=line.words;
+        result.output.lines={joined}; result.prepared.clear();
+        SplitDistantTextRuns(result.output);
+        QCOMPARE(result.output.lines.size(),2);
+        QCOMPARE(result.output.lines[0].words[0].text,QStringLiteral("Stationary"));
+        QCOMPARE(result.output.lines[1].words[0].boundsPx,joined.words[1].boundsPx);
+        result.prepared=PrepareLines(result,5);
+        QCOMPARE(result.prepared.size(),2);
+        auto stamp=result.stamp; ++stamp.frameSeq; ++stamp.timestampMs;
+        const auto probe=MakeProbeFrame(changed.image.constBits(),960,540,changed.image.bytesPerLine(),2,stamp);
+        QVERIFY(MatchPatch(result.prepared[0].reference,probe).matched);
+        QVERIFY(!MatchPatch(result.prepared[1].reference,probe).matched);
+        joined.words[1].disposition=TokenDisposition::kHighRisk;
+        joined.words[1].protectedBoundsPx=joined.words[1].boundsPx.adjusted(-2,-2,2,2);
+        RecognitionOutput risk; risk.lines={joined}; SplitDistantTextRuns(risk);
+        QCOMPARE(risk.lines.size(),2);
+        QCOMPARE(risk.lines[1].words[0].disposition,TokenDisposition::kHighRisk);
+        QCOMPARE(risk.lines[1].words[0].protectedBoundsPx,joined.words[1].protectedBoundsPx);
+        // Ordinary spaces and omitted ink crossing the gap keep one run.
+        joined.words[1].boundsPx.moveLeft(joined.words[0].boundsPx.right()+15);
+        joined.words[1].protectedBoundsPx=joined.words[1].boundsPx;
+        risk.lines={joined}; SplitDistantTextRuns(risk); QCOMPARE(risk.lines.size(),1);
+        joined.words[1].boundsPx.moveLeft(700);
+        joined.words[1].protectedBoundsPx=QRectF(0,100,850,80);
+        risk.lines={joined}; SplitDistantTextRuns(risk); QCOMPARE(risk.lines.size(),1);
+        risk.lines.fill(joined,1024); SplitDistantTextRuns(risk); QCOMPARE(risk.lines.size(),1024);
+    }
     void quadReferenceNormalizesRotationWithoutAcceptingChangedInk()
     {
         using namespace uct_quad_reference_test;

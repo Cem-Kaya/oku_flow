@@ -1,5 +1,30 @@
 # OkuFlow Code Reference
 
+## Regional stability and distant text runs (25 October 2026)
+
+- `SplitDistantTextRuns(RecognitionOutput&)` runs before scheduler preparation,
+  splitting large along-baseline gaps without changing words, omitted ink or
+  their source geometry. Colors/references/proof vectors are then made for the
+  resulting runs. The cap is 1024; ordinary spaces and crossing ink envelopes
+  keep their run.
+- `RegionSimilarity` and `SceneRegionSimilarities` describe textured cells of
+  an 8x8 common-view grid. They require distinct ordered same-scene evidence;
+  flat, unknown, held-duplicate and composite inputs supply no scheduling hint.
+  CPU integral sampling and `ResidentProbe::RegionalSimilarities` use 12x8
+  samples per cell with no registration search. CUDA's templated `similarity`
+  kernel preserves the original full-view specialization and adds a 64-block
+  specialization returning only 512 bytes of scores.
+- `ProbeRequest::stableSimilarity`, `ProbeOutcome::{regions,regionalMs}` and
+  `ProbeWorker` perform local scheduling comparisons only when global stability
+  fails and the line-check budget has time left. No cell result is line proof.
+- `UltraClearTextController::HandleProbeOutcome` admits fresh demanded OCR
+  scheduling from a settled cell without waiting for other panes. Its new live
+  path is idle-only and paced at the media minimum; full refresh, independent
+  per-line pixel proof and the single recognition worker remain authoritative.
+  Existing opt-in crops prefer settled changed/candidate cells, retaining all
+  full-priority, source, slack and one-region-per-interval checks. See
+  [the behavior and measurement scope](uct_active_regional_ocr.md).
+
 ## Curved-line and current-ink experiments (development)
 
 - `kDefaultMinimumWordHeightPx` sets the scheduler and model default to five

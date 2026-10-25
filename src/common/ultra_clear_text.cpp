@@ -742,6 +742,52 @@ TextQuad RefineWordSurface(const QImage& image,const RecognizedWord& word,
     if(fitted)*fitted=true;return result;
 }
 
+void SplitDistantTextRuns(RecognitionOutput& output)
+{
+    if (output.lines.size() >= 1024) return;
+    QVector<RecognizedLine> split;
+    split.reserve(output.lines.size());
+    int remaining = 1024 - int(output.lines.size());
+    for (auto& line : output.lines) {
+        RecognizedLine run;
+        for (auto& word : line.words) {
+            bool separate = false;
+            if (remaining > 0 && !run.words.isEmpty()) {
+                const auto& previous = run.words.back();
+                const auto shape = [](const RecognizedWord& w) {
+                    return w.quadPx.valid ? w.quadPx : TextQuad::FromRect(w.boundsPx);
+                };
+                const auto a = shape(previous), b = shape(word);
+                const double height = std::max(QuadHeight(a), QuadHeight(b));
+                // Use the preceding baseline, not screen x: rotated reading
+                // stays ordered. Never split through an omission's envelope.
+                const QPointF axis = a.points[1] - a.points[0];
+                const double length = std::hypot(axis.x(), axis.y());
+                if (QuadArea(a) > 0 && QuadArea(b) > 0 && height > 0 && length > 0) {
+                    const auto extent = [&](const TextQuad& q) {
+                        double lo = std::numeric_limits<double>::max(), hi = -lo;
+                        for (const auto& p : q.points) {
+                            const double t = QPointF::dotProduct(p, axis) / length;
+                            lo = std::min(lo,t); hi = std::max(hi,t);
+                        }
+                        return std::pair{lo,hi};
+                    };
+                    const auto [al,ar] = extent(a); const auto [bl,br] = extent(b);
+                    const auto protection = [](const RecognizedWord& w) {
+                        return w.protectedBoundsPx.isEmpty() ? w.boundsPx : w.protectedBoundsPx;
+                    };
+                    separate = std::max({0., bl-ar, al-br}) > 3 * height &&
+                        !protection(previous).intersects(protection(word));
+                }
+            }
+            if (separate) { split.push_back(std::move(run)); run = {}; --remaining; }
+            run.words.push_back(std::move(word));
+        }
+        split.push_back(std::move(run));
+    }
+    output.lines = std::move(split);
+}
+
 void FinalizeRecognizedGeometry(RecognitionOutput& output)
 {
     const auto candidate = [](const RecognizedWord& word) {
@@ -1843,6 +1889,50 @@ std::optional<double> SceneSimilarity(const ProbeFrame& a, const ProbeFrame& b)
     return (sumAB - sumA * sumB / n) / std::sqrt(varA * varB);
 }
 
+QVector<RegionSimilarity> SceneRegionSimilarities(const ProbeFrame& a, const ProbeFrame& b,
+                                                 const std::atomic<bool>* cancelled)
+{
+    QVector<RegionSimilarity> out;
+    const auto first = EvidenceAcquisition(a.stamp), next = EvidenceAcquisition(b.stamp);
+    if (!a.IsValid() || !b.IsValid() || !a.stamp.SameScene(b.stamp) ||
+        !first || !next || *next <= *first || b.stamp.timestampMs < a.stamp.timestampMs ||
+        (cancelled && cancelled->load())) return out;
+    const auto visible = [](const ProbeFrame& p) {
+        return ViewRectToScene(p.stamp.viewTransform,p.Width(),p.Height(),QRectF(0,0,p.Width(),p.Height()))
+            .intersected(QRectF(0,0,1,1));
+    };
+    const QRectF va = visible(a), common = va.intersected(visible(b));
+    if (common.isEmpty() || va.isEmpty() || common.width()*common.height() < .25*va.width()*va.height()) return out;
+    QVector<double> scores;
+    if (a.resident && b.resident) scores = a.resident->RegionalSimilarities(a.stamp,*b.resident,b.stamp,common);
+    else if (a.resident || b.resident) return out;
+    if ((a.resident && scores.size() != 64) || (cancelled && cancelled->load())) return out;
+    out.reserve(64);
+    const double w = common.width()/8, h = common.height()/8;
+    for (int cell = 0; cell < 64; ++cell) {
+        if (cancelled && cancelled->load()) return {};
+        const QRectF r(common.x()+(cell%8)*w,common.y()+(cell/8)*h,w,h);
+        double score = a.resident ? scores[cell] : 2.;
+        if (!a.resident) {
+            double u=0,v=0,uu=0,vv=0,uv=0,n=0;
+            for (int i=0;i<12*8;++i) {
+                const QPointF scene(r.x()+(i%12+.5)*w/12,r.y()+(i/12+.5)*h/8);
+                const auto pa=SceneToViewPixel(a.stamp.viewTransform,a.Width(),a.Height(),scene);
+                const auto pb=SceneToViewPixel(b.stamp.viewTransform,b.Width(),b.Height(),scene);
+                float p=0,q=0;
+                if (!BoxAverage(a,pa.x(),pa.y(),.5*w/12*PixelsPerSceneX(a),.5*h/8*PixelsPerSceneY(a),p) ||
+                    !BoxAverage(b,pb.x(),pb.y(),.5*w/12*PixelsPerSceneX(b),.5*h/8*PixelsPerSceneY(b),q)) continue;
+                u+=p;v+=q;uu+=double(p)*p;vv+=double(q)*q;uv+=double(p)*q;++n;
+            }
+            const double varA=uu-u*u/std::max(1.,n),varB=vv-v*v/std::max(1.,n);
+            if(n>=64 && varA>=n*16 && varB>=n*16) score=(uv-u*v/n)/std::sqrt(varA*varB);
+        }
+        if (std::isfinite(score) && score >= -1.00001 && score <= 1.00001)
+            out.push_back({r,std::clamp(score,-1.,1.)});
+    }
+    return out;
+}
+
 bool IsHighRiskToken(const QString& text)
 {
     const QString token = text.trimmed();
@@ -2193,6 +2283,9 @@ struct RecognitionScheduler::State {
                 if (currentStatus.state != BackendState::kNotStarted) self->Publish(currentStatus);
             }
             if (result.output.ok && !self->cancelInFlight.load()) {
+                // Split before preparing any line-parallel metadata. The
+                // backend's words, omissions and source pixels stay intact.
+                if (!self->probeOnly) SplitDistantTextRuns(result.output);
                 // The owned analysis image chooses provenance preparation,
                 // independently of the recognizer. A CPU bridge may need its
                 // existing image readback for OCR while the same selected
@@ -2642,6 +2735,15 @@ struct ProbeWorker::State {
                                             &self->cancelInFlight);
                 for (const LineCheck& check : outcome.checks) {
                     outcome.uncheckedLines += check.checked ? 0 : 1;
+                }
+                // Line proof has first use of the budget. These coarse cells
+                // only allow fresh OCR to start; they never validate glyphs.
+                const double spent = timer.nsecsElapsed()/1e6;
+                if (request.previous && outcome.similarity && *outcome.similarity < request.stableSimilarity &&
+                    (request.budgetMs <= 0 || spent < request.budgetMs) && !self->cancelInFlight.load()) {
+                    QElapsedTimer regionalTimer; regionalTimer.start();
+                    outcome.regions = SceneRegionSimilarities(*request.previous,*outcome.probe,&self->cancelInFlight);
+                    outcome.regionalMs = regionalTimer.nsecsElapsed()/1e6;
                 }
             }
             outcome.checkMs = timer.nsecsElapsed() / 1e6;

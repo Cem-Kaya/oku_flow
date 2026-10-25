@@ -559,6 +559,22 @@ class Probe final : public ResidentProbe
                    ? std::nullopt
                    : std::optional<double>(std::clamp(value, -1., 1.));
     }
+    QVector<double> RegionalSimilarities(const SourceStamp& a, const ResidentProbe& other,
+                                         const SourceStamp& b, const QRectF& common) const override
+    {
+        const auto* p = dynamic_cast<const Probe*>(&other);
+        if (!available.load() || !p || !p->available.load() || p->device != device || common.isEmpty()) return {};
+        constexpr size_t bytes = 64 * sizeof(double);
+        auto c = Worker(device, bytes);
+        if (!c) { available = false; return {}; }
+        c->owners = {integral, p->integral};
+        gpu::RegionalSimilarities(static_cast<unsigned*>(integral->data), width, height, Mapping(a,width,height),
+            static_cast<unsigned*>(p->integral->data), p->width, p->height, Mapping(b,p->width,p->height),
+            common.x(), common.y(), common.width(), common.height(), static_cast<double*>(c->scratch), c->stream);
+        if (!CopyResult(c,c->scratch,bytes)) { available = false; return {}; }
+        const auto* scores = static_cast<const double*>(c->host);
+        return QVector<double>(scores, scores + 64);
+    }
 };
 inline gpu::Rect Rect(const QRectF &rect, int w, int h)
 {

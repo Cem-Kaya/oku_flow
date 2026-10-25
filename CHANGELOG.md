@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+- Let settled text regions start fresh OCR while another pane keeps moving.
+  Split distant text runs before building line proof, preserving every word
+  and omission. Keep independent pixel validation, paced single-worker work
+  and periodic full-view discovery.
 - Keep independently current-validated OCR text visible through detector-box
   jitter during saved-video playback and live capture. Retain the old geometry,
   reference and proof clock; conflicting text, changed ink and expired checks

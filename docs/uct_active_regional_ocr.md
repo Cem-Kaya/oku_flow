@@ -1,5 +1,95 @@
 # Supplemental regional UCT execution (development)
 
+## Settled regions during partial motion (25 October 2026)
+
+Ordinary live/advancing OCR no longer requires the entire view to settle.
+When global probe correlation is below the existing 0.92 stability threshold,
+`ProbeWorker` can compare an **8x8 grid over the common visible scene**, with
+12x8 averaged samples per cell. This is a separate scheduling snapshot from
+the metadata-only shadow planner's scene coverage grid. Flat or unavailable
+cells do not qualify; different source/geometry, repeated/unknown/composite
+acquisitions and backwards evidence do not produce regional hints. CPU and
+resident CUDA use the same sampling policy. The resident path launches one
+bounded 64-block kernel and returns 64 scores (512 bytes), with no image egress
+or retained full-image lease. Ordinary line checks retain budget priority;
+local hints are omitted when that work has exhausted the probe budget.
+
+One settled textured cell can allow a demanded **fresh full read**, including
+initial discovery, without waiting for motion elsewhere to stop. The new
+partially moving live-camera path uses the existing media 350-ms minimum and
+an idle worker; advancing media retains its pacing. No busy replacement queue
+is created by this path. Global stability behavior, 1500-ms full refresh and
+the full-demand rules below remain. Grid agreement never admits/reuses text,
+renews proof, extends freshness, skips a full deadline or certifies individual
+character changes. Accepted lines keep their own current-pixel checks.
+
+Before colors, references or line-parallel proof vectors are prepared,
+`SplitDistantTextRuns` separates adjacent OCR words whose along-baseline gap
+exceeds three times the larger word height, provided their original-ink
+envelopes do not intersect. It preserves word order, all fields/omissions and
+the 1024-line cap. It infers no semantic pane boundaries and does not split a
+continuous word or an envelope crossing the gap. Each resulting run obtains
+its own reference, so changing a distant pane cannot revoke the other run.
+Nearby UI groups can still share a run; this is not a general page-layout model.
+
+The optional crop executor below remains explicitly enabled, bounded to one
+call per full interval. During partial motion it prefers a settled cell with
+a changed/candidate planner occurrence; full work still takes priority. The
+default improvement is independent **line validation and regional stability
+admission to fresh full work**, not a promise that all OCR is now ROI-only or
+that separate recognizers run for each pane. Immutable/Freeze paths retain
+their existing selected-source behavior; distant-run preparation is shared.
+
+`movingPaneDoesNotBlockSettledText` exercises live CPU, advancing CPU and the
+resident controller protocol with continuous unrelated motion, initial reads,
+a real left-side edit, busy inference, retained static-line identity and periodic
+full discovery. GPU fixtures compare cell scores against CPU under translation,
+occlusion and cropped view transforms. The private `optionalRegionalProbeTiming`
+slot measures warm global versus global-plus-grid probe work on supplied images
+using five warmups and 31 ABBA/BAAB blocks. It measures neither OCR inference nor
+end-to-end display latency. Native playback remains a separate manual check.
+
+### Measured scheduling-stage cost
+
+Eight 1920x1080 frames from the owner's recorded regression clip (0.5-second
+spacing) supplied seven consecutive image pairs. Six pairs had global score
+below 0.92 (0.10..0.78), while retaining 24..31 settled textured cells; the
+seventh was globally stable (0.955). CPU and resident GPU reported identical
+counts of textured and settled cells.
+With warm prepared probes, five warmups and 31 alternating ABBA/BAAB blocks
+per pair/device, paired mean differences were **0.525 ms median / 0.623 ms p95**
+on the resident GPU path and **0.601 ms / 0.667 ms** on CPU (217 block differences
+per path). The grid was explicitly timed for every pair, including the globally
+stable pair; normal production skips it on globally stable probes. These are
+host-call scheduling-stage times, including GPU result delivery, not kernel-only,
+OCR, sensor-to-display or FPS measurements. Additional OCR becomes possible
+where the former global gate starved it, so these numbers do not bound the
+change in total inference utilization. Line-splitting/full-worker overhead was
+not isolated by this probe experiment.
+
+Raw input hashes, 1736 timed visits, scores and the retained first GPU fixture
+failure are in private `uct-regional-stability-20261025` evidence. The first
+GPU comparison used an old CPU fixture frame number against a newer real GPU
+acquisition; correcting that fixture identity made the strict parity case pass.
+No comparison tolerance or production evidence fence was relaxed.
+
+The first combined background matrix retained a resident-protocol fixture
+failure after inference was released: its fake media clock advanced on fixed
+15-ms sleeps before the submitted probe's two worker hops had reached the
+controller under load. The fixture now waits for that exact requested probe
+receipt before advancing its fake clock; input pixels, media-time limits,
+busy-worker assertions and production deadlines remain unchanged.
+
+Final tracked background matrix: release compile passed; CPU **174 passed,
+9 optional skipped, 0 unresolved** (four passing fixtures contain skipped Qt
+rows); CUDA delta **15 passed, 5 optional skipped, 0 unresolved**. PCH OFF
+`ultra_clear_text_contract`, `immutable_uct_contract` and
+`shared_source_equivalence` passed **3/3**, with no skipped rows or unresolved
+cases. GUI was excluded throughout. These checks and the image-pair timings
+do not establish native playback, camera, screen-reader or installer acceptance.
+
+## Optional cropped execution
+
 `OKUFLOW_UCT_REGIONAL_OCR=1` explicitly enables the first production executor
 for `RegionShadowPlan` selections. Default is off. The separate
 `OKUFLOW_UCT_SHADOW_PLANNER=1` switch remains observation-only; active mode

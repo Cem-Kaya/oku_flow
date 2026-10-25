@@ -69,6 +69,9 @@ struct UctControllerTestAccess {
     static std::uint64_t RegionalJob(const UltraClearTextController& c) { return c.regionalJob_; }
     static std::uint64_t AdvancingJob(const UltraClearTextController& c) { return c.advancingMediaJob_; }
     static std::uint64_t ProbeFrame(const UltraClearTextController& c) { return c.latestProbe_ ? c.latestProbe_->stamp.frameSeq : 0; }
+    static std::uint64_t RequestedMediaProbeFrame(const UltraClearTextController& c) {
+        return c.advancingMediaHaveProbe_ ? c.advancingMediaProbeFrame_ : 0;
+    }
     static SourceStamp Stamp(const UltraClearTextController& c) {
         return c.CurrentScene();
     }
@@ -339,6 +342,18 @@ public:
     std::optional<double> Similarity(const SourceStamp& a,const ResidentProbe& other,const SourceStamp& b) const override {
         Note();auto* oracle=dynamic_cast<const ResidentOracle*>(&other);if(!oracle)return {};
         auto x=cpu,y=oracle->cpu;x.stamp=a;y.stamp=b;return SceneSimilarity(x,y);
+    }
+    QVector<double> RegionalSimilarities(const SourceStamp& a,const ResidentProbe& other,
+                                         const SourceStamp& b,const QRectF& common) const override {
+        Note();auto* oracle=dynamic_cast<const ResidentOracle*>(&other);if(!oracle)return {};
+        auto x=cpu,y=oracle->cpu;x.stamp=a;y.stamp=b;
+        QVector<double> out(64,2.);
+        for(const auto& cell:SceneRegionSimilarities(x,y)) {
+            const int column=int(std::lround((cell.sceneRect.x()-common.x())*8/common.width()));
+            const int row=int(std::lround((cell.sceneRect.y()-common.y())*8/common.height()));
+            if(column>=0&&column<8&&row>=0&&row<8)out[row*8+column]=cell.score;
+        }
+        return out;
     }
 };
 
@@ -617,6 +632,8 @@ private slots:
     void advancingMediaPacesOcrAndValidatesLatestFrames();
     void partialProbeInvalidationRequestsPromptReplacement_data();
     void partialProbeInvalidationRequestsPromptReplacement();
+    void movingPaneDoesNotBlockSettledText_data();
+    void movingPaneDoesNotBlockSettledText();
     void advancingMediaValidatesWhileOcrHeldAndRejectsChangedPixels();
     void advancingMediaAuthorityRevokesAndSuppressesLiveInput();
     void advancingMediaPauseReturnsToOneShotAnalysis();
@@ -2812,6 +2829,96 @@ void UltraClearTextControllerTests::advancingMediaPacesOcrAndValidatesLatestFram
     QCOMPARE(h.controller->GeometryGeneration(),generation);
     QCOMPARE(h.controller->ProbeStatistics().submitted,submitted);
     QCOMPARE(h.controller->SchedulerStatistics().submitted,jobs);
+}
+
+void UltraClearTextControllerTests::movingPaneDoesNotBlockSettledText_data()
+{
+    QTest::addColumn<bool>("advancing"); QTest::addColumn<bool>("resident");
+    QTest::newRow("live-cpu") << false << false;
+    QTest::newRow("video-cpu") << true << false;
+    QTest::newRow("video-resident-protocol") << true << true;
+}
+
+void UltraClearTextControllerTests::movingPaneDoesNotBlockSettledText()
+{
+    QFETCH(bool,advancing); QFETCH(bool,resident);
+    RegionalFlag noOptionalRegions(false); // ordinary default must work
+    UctTiming timing; ImmutableHarness h(timing);
+    const auto original=MakeLayoutPage({{"Stationary",{30,100},30},{"Before",{30,220},30}},960,540);
+    const auto edited=MakeLayoutPage({{"Stationary",{30,100},30},{"Afterward",{30,220},30}},960,540);
+    h.script->separateWordLines=true;
+    h.devices->resident=resident; h.script->wantsDevice=resident;
+    h.page=original;
+    const auto geometry=h.Scene().geometry;
+    std::uint64_t sequence=0;
+    bool edit=false;
+    auto previous=QImage();
+    const auto present=[&] {
+        ++sequence; h.now+=timing.probeIntervalMs;
+        h.page=edit?edited:original;
+        QImage pixels=IndependentFramePixels(h.page.image,sequence);
+        { QPainter p(&pixels); p.fillRect(480,0,480,540,sequence%2?Qt::black:Qt::white); }
+        if(!previous.isNull()) {
+            SourceStamp a; a.viewTransform.valid=true; a.viewportWidth=960; a.viewportHeight=540;
+            const auto before=MakeProbeFrame(previous.constBits(),960,540,previous.bytesPerLine(),2,a);
+            const auto after=MakeProbeFrame(pixels.constBits(),960,540,pixels.bytesPerLine(),2,a);
+            QVERIFY(SceneSimilarity(before,after).value_or(1)<timing.stableSimilarity);
+        }
+        previous=pixels;
+        const auto probesBefore=h.controller->ProbeStatistics().submitted;
+        bool requested=false;
+        { std::lock_guard lock(h.script->mutex); h.script->words=h.page.words; }
+        if(advancing) {
+            const auto pts=10000+static_cast<std::int64_t>(sequence)*timing.probeIntervalMs;
+            UctAdvancingMediaScene scene; scene.geometry=geometry; scene.sourceAuthority=3;
+            scene.transform.valid=true; scene.viewportWidth=960; scene.viewportHeight=540;
+            scene.current=resident ? UctImmutableFrame{{},sequence,pts,h.Device(pixels,sequence,pts)}
+                                   : UctImmutableFrame{OwnedPixels(pixels),sequence,pts};
+            h.controller->OnAdvancingMediaPresented(std::move(scene));
+            requested=UctControllerTestAccess::RequestedMediaProbeFrame(*h.controller)==sequence;
+        } else {
+            UctFrameContext c; c.geometry=geometry; c.requested=geometry.settings; c.frameSeq=sequence;
+            c.cameraActive=true; c.transform.valid=true; c.viewportWidth=960; c.viewportHeight=540;
+            const bool wanted=h.controller->OnPresented(c); h.controller->OnPresentationSucceeded();
+            if(wanted)h.controller->OnCpuViewport(c,pixels.constBits(),960,540,pixels.bytesPerLine());
+            requested=h.controller->ProbeStatistics().submitted>probesBefore;
+        }
+        QTest::qWait(15);
+        // Advance the fake media clock only after this actual submitted
+        // probe reaches the controller. A fixed sleep can otherwise race
+        // both worker hops under matrix load and age every proof artificially.
+        if(requested)QTRY_COMPARE_WITH_TIMEOUT(UctControllerTestAccess::ProbeFrame(*h.controller),sequence,3000);
+    };
+    h.Enable(); QTRY_COMPARE(h.controller->BackendStatusSnapshot().state,BackendState::kReady);
+    for(int tick=0;tick<35&&!h.Reading().contains("Before");++tick)present();
+    QVERIFY2(h.Reading().contains("Before"),"A moving pane blocked initial OCR of settled text");
+    QVERIFY(h.Reading().contains("Stationary"));
+    const auto old=h.controller->Model().Lines().first();
+    const auto jobs=h.controller->SchedulerStatistics().submitted;
+    const auto start=h.now;
+    { std::lock_guard lock(h.script->mutex); h.script->holdRecognition=true; }
+    edit=true;
+    for(int tick=0;tick<6&&h.controller->SchedulerStatistics().submitted==jobs;++tick) {
+        present(); QVERIFY(h.Reading().contains("Stationary"));
+    }
+    QVERIFY(h.controller->SchedulerStatistics().submitted>jobs);
+    QVERIFY(h.now-start<timing.refreshIntervalMs);
+    QVERIFY(!h.Reading().contains("Before"));
+    const auto heldJobs=h.controller->SchedulerStatistics().submitted;
+    for(int tick=0;tick<5;++tick) { present(); QVERIFY(h.Reading().contains("Stationary")); }
+    QCOMPARE(h.controller->SchedulerStatistics().submitted,heldJobs); // no busy backlog
+    h.script->Release();
+    for(int tick=0;tick<15&&!h.Reading().contains("Afterward");++tick)present();
+    QVERIFY(h.Reading().contains("Afterward"));
+    QVERIFY(!h.Reading().contains("Before"));
+    QVERIFY(std::any_of(h.controller->Model().Lines().begin(),h.controller->Model().Lines().end(),[&](const auto& line) {
+        return line.id==old.id && line.reference.sceneRect==old.reference.sceneRect;
+    }));
+    const auto fulls=h.controller->SchedulerStatistics().fullCalls;
+    for(int tick=0;tick<24;++tick) { present(); QVERIFY(h.Reading().contains("Stationary")); }
+    QVERIFY(h.controller->SchedulerStatistics().fullCalls>fulls); // full discovery never deferred
+    QVERIFY(h.controller->SchedulerStatistics().submitted<=sequence/4+2);
+    QVERIFY(!h.devices->readOnUiThread.load());
 }
 
 void UltraClearTextControllerTests::partialProbeInvalidationRequestsPromptReplacement_data()

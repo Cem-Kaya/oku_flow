@@ -357,6 +357,10 @@ struct RecognitionOutput {
     QRect detailRegionPx;
 };
 
+// Separate distant runs before any per-line colors/references/proof vectors
+// are made. Keeps word order/fields and every omission; at most 1024 lines.
+void SplitDistantTextRuns(RecognitionOutput& output);
+
 // Runs only on the scheduler's worker thread. Implementations must honor
 // `cancelled` promptly where the platform allows, but may finish the native
 // call; the scheduler keeps the input image alive until Recognize returns.
@@ -608,6 +612,10 @@ public:
                               std::optional<QPointF>) const = 0;
     virtual std::optional<double> Similarity(const SourceStamp&, const ResidentProbe&,
                                              const SourceStamp&) const = 0;
+    // Scheduling only: 8x8 cells over `common`, 12x8 samples per cell.
+    // 2 means unavailable/flat. No translation search or admission authority.
+    virtual QVector<double> RegionalSimilarities(const SourceStamp&, const ResidentProbe&,
+                                                 const SourceStamp&, const QRectF&) const { return {}; }
     // Native CUDA batches one block per line and returns one metadata array.
     // Defaults retain compatibility with hardware-free protocol oracles.
     virtual QVector<ReferencePatch> References(const SourceStamp& stamp, const QVector<QRectF>& rects) const {
@@ -666,6 +674,16 @@ QVector<LineCheck> CheckLines(const QVector<LineReference>& lines, const ProbeFr
 // a correlation in [-1, 1], or nullopt when they share too little area.
 std::optional<double> SceneSimilarity(const ProbeFrame& a, const ProbeFrame& b);
 
+struct RegionSimilarity {
+    QRectF sceneRect;
+    double score{};
+};
+// Textured common-view cells only, from distinct ordered single acquisitions.
+// Used to start fresh OCR despite activity elsewhere; never to reuse text,
+// renew proof or postpone full reads. Work is bounded to 64 * 96 samples.
+QVector<RegionSimilarity> SceneRegionSimilarities(const ProbeFrame& a, const ProbeFrame& b,
+                                                 const std::atomic<bool>* cancelled = nullptr);
+
 // True for empty text or unsupported notation (non-ASCII digits, superscripts,
 // modifier letters and symbols outside ordinary punctuation). Ordinary letters
 // and ASCII digits, mixed or isolated, still require all normal evidence gates.
@@ -685,6 +703,7 @@ struct ProbeRequest {
     QVector<LineReference> lines;
     MatchTuning tuning;
     double budgetMs{60.0}; // residual checks stop here; the rest stay unverified
+    double stableSimilarity{0.92}; // local scheduling is needed only below this global score
 };
 
 struct ProbeOutcome {
@@ -698,6 +717,8 @@ struct ProbeOutcome {
     int uncheckedLines{};
     double probeMs{};
     double checkMs{};
+    QVector<RegionSimilarity> regions; // scheduling hints, not line validation
+    double regionalMs{};
 };
 
 struct ProbeWorkerStats {

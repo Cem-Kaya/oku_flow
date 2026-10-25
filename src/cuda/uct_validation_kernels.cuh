@@ -288,22 +288,29 @@ __global__ void matches(const unsigned *p, int w, int h, const MatchRequest *req
     matchBody(p, w, h, r.grid, r.samples, score, visible, radius, r.seedX, r.seedY, r.sceneX,
               r.sceneY, out + blockIdx.x);
 }
+template<bool regional = false>
 __global__ void similarity(const unsigned *a, int aw, int ah, ProbeMap ma, const unsigned *b,
                            int bw, int bh, ProbeMap mb, double x, double y, double w, double h,
                            double *out)
 {
+    constexpr int columns = regional ? 12 : 48, rows = regional ? 8 : 27;
+    if constexpr (regional) {
+        w /= 8; h /= 8;
+        x += (blockIdx.x % 8) * w; y += (blockIdx.x / 8) * h;
+        out += blockIdx.x;
+    }
     // One block, per-thread correlations then a bounded block reduction.
     __shared__ double sums[6][128];
     const int t = threadIdx.x;
     double u = 0, v = 0, uu = 0, vv = 0, uv = 0, n = 0;
-    for (int i = t; i < 48 * 27; i += 128)
+    for (int i = t; i < columns * rows; i += 128)
     {
         float p, q;
-        double sx = x + (i % 48 + .5) * w / 48, sy = y + (i / 48 + .5) * h / 27;
-        if (!box(a, aw, ah, sx * ma.sx + ma.x, sy * ma.sy + ma.y, .5 * w / 48 * ma.sx,
-                 .5 * h / 27 * ma.sy, p) ||
-            !box(b, bw, bh, sx * mb.sx + mb.x, sy * mb.sy + mb.y, .5 * w / 48 * mb.sx,
-                 .5 * h / 27 * mb.sy, q))
+        double sx = x + (i % columns + .5) * w / columns, sy = y + (i / columns + .5) * h / rows;
+        if (!box(a, aw, ah, sx * ma.sx + ma.x, sy * ma.sy + ma.y, .5 * w / columns * ma.sx,
+                 .5 * h / rows * ma.sy, p) ||
+            !box(b, bw, bh, sx * mb.sx + mb.x, sy * mb.sy + mb.y, .5 * w / columns * mb.sx,
+                 .5 * h / rows * mb.sy, q))
             continue;
         u += p;
         v += q;
@@ -335,7 +342,7 @@ __global__ void similarity(const unsigned *a, int aw, int ah, ProbeMap ma, const
         uv = sums[4][0];
         n = sums[5][0];
         const double va = uu - u * u / fmax(n, 1.), vb = vv - v * v / fmax(n, 1.);
-        *out = n < 64 ? 2.
+        *out = n < 64 || (regional && (va < n * 16 || vb < n * 16)) ? 2.
                       : (va < n * 16 && vb < n * 16
                              ? (fabs(u / n - v / n) < 8 ? 1. : 0.)
                              : (va <= 1e-9 || vb <= 1e-9 ? 0. : (uv - u * v / n) / sqrt(va * vb)));
@@ -1131,7 +1138,12 @@ void MatchReferences(const unsigned *p, int w, int h, const MatchRequest *reques
 void Similarity(const unsigned *a, int aw, int ah, ProbeMap ma, const unsigned *b, int bw, int bh,
                 ProbeMap mb, double x, double y, double w, double h, double *out, cudaStream_t s)
 {
-    validation::similarity<<<1, 128, 0, s>>>(a, aw, ah, ma, b, bw, bh, mb, x, y, w, h, out);
+    validation::similarity<false><<<1, 128, 0, s>>>(a, aw, ah, ma, b, bw, bh, mb, x, y, w, h, out);
+}
+void RegionalSimilarities(const unsigned *a, int aw, int ah, ProbeMap ma, const unsigned *b, int bw, int bh,
+                         ProbeMap mb, double x, double y, double w, double h, double *out, cudaStream_t s)
+{
+    validation::similarity<true><<<64, 128, 0, s>>>(a, aw, ah, ma, b, bw, bh, mb, x, y, w, h, out);
 }
 void LineColors(const void *p, size_t pitch, int w, int h, const Rect *rects, int n, Colors *out,
                 cudaStream_t s, const OrientedInk* frames)

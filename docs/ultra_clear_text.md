@@ -310,7 +310,10 @@ There is no second capture or render pipeline. UCT reuses:
   (Auto/120 FPS is capped by the display). No independent OCR or 120 Hz idle
   repaint loop is added; scanout cadence still depends on Windows/the display.
 - Probe construction, similarity and residual searching run on `ProbeWorker`,
-  with one executing and one latest-only waiting request. A 60 ms per-probe
+  with [regional stability scheduling](uct_active_regional_ocr.md) when one pane
+  moves and another settles. Large gaps between text runs receive independent
+  line references; a cell comparison itself never validates or retains text.
+  The worker keeps one executing and one latest-only waiting request. A 60 ms per-probe
   search budget leaves new unchecked lines hidden; an already validated line
   retains its prior proof only until the unchanged freshness deadline. A cancellation is
   checked between line searches. OCR preparation also runs on its worker.
