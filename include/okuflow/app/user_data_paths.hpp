@@ -57,6 +57,7 @@ public:
     QString Recordings(QString* error = nullptr) const;
     QString RecordingsForDate(const QDate& date, QString* error = nullptr) const;
     QString Notes(QString* error = nullptr) const;
+    QString Documents(QString* error = nullptr) const;
     QString Analysis(QString* error = nullptr) const;
     QString Debug(QString* error = nullptr) const;
 

@@ -3653,5 +3653,37 @@ Chọn Kết nối ChatGPT trong tab Trợ lý của chế độ Nâng cao để
         <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
         <translation>Tệp đa phương tiện (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;Tất cả tệp (*)</translation>
     </message>
+    <message>
+        <source>View PDF</source>
+        <translation>Xem PDF</translation>
+    </message>
+    <message>
+        <source>Select PDF</source>
+        <translation>Chọn PDF</translation>
+    </message>
+    <message>
+        <source>PDF (*.pdf)</source>
+        <translation>PDF (*.pdf)</translation>
+    </message>
+    <message>
+        <source>View video or picture</source>
+        <translation>Xem video hoặc hình ảnh</translation>
+    </message>
+    <message>
+        <source>Select video or picture</source>
+        <translation>Chọn video hoặc hình ảnh</translation>
+    </message>
+    <message>
+        <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
+        <translation>Video và hình ảnh (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
+    </message>
+    <message>
+        <source>Save document</source>
+        <translation>Lưu tài liệu</translation>
+    </message>
+    <message>
+        <source>Saved document copy.</source>
+        <translation>Đã lưu bản sao tài liệu.</translation>
+    </message>
 </context>
 </TS>

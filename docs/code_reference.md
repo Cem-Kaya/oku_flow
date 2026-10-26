@@ -1,6 +1,76 @@
 # OkuFlow Code Reference
 
+## Document page ink and saved copies (26 October 2026)
+
+- `FilePageInk` maps zero-based page indices to normalized source-space vector
+  strokes. `LoadFileAnnotations` restores the content-bound working-copy
+  sidecar; `SaveFileAnnotations` snapshots the original, checks source/output
+  hashes, serializes bounded ink, writes sparse Qt vector overlay pages, and
+  runs the pinned qpdf subprocess with a finite timeout. It atomically replaces
+  the same owned output on repeated saves. The original is never an output.
+  A final sidecar records the output hash and all page strokes. Before output
+  publication, an atomically published `.ink.pending.json` records the old pair's
+  hashes and the complete next metadata. Under the same working-copy lock,
+  loading/saving completes a missing sidecar commit only when the output matches
+  that exact next hash; an unpublished transaction keeps the old pair. Unexpected
+  output or metadata hashes remain refused. `recoveryPending` permits loading
+  editable ink from a valid pending record while a filesystem lock still prevents
+  metadata commit; another Save waits for recovery instead of losing that ink.
+  `FileAnnotationSaveHooks::documentPublished` is a narrow native filesystem-test
+  seam, empty in production, for faults between the two commits.
+- `AnnotationRenderMode::Document` preserves normalized text height and stroke
+  width at the full export resolution in `BuildStrokePath` and both
+  `RenderAnnotationStrokes` overloads. File PDF/PNG export selects it explicitly;
+  existing viewport, camera, video and hit-test callers retain the default
+  `Viewport` mode and its display pixel limits.
+- `FileAnnotationPdfTool` resolves `qpdf/bin/qpdf.exe` under the application,
+  then the explicit `OKUFLOW_QPDF_ROOT` or versioned LocalAppData cache. It never
+  searches PATH or downloads. Export preserves PDF content/text and overlays
+  drawings; it does not regenerate pages from extracted text or screenshots.
+- `FileDocument::Open` optionally loads saved ink on its existing worker once
+  per document generation. Page requests retain the parser and render one page.
+  `FileDocumentSnapshot::annotations` is consumed on adoption, not retained with
+  every full-resolution page buffer.
+- `AnnotationModel::RestoreStrokes` restores stable drawing content with fresh
+  IDs and no stale gesture/selection. `AnnotationOverlay::{CopyModel,
+  RestoreModel,SetDocumentInk,DocumentInk}` retain per-page models and their undo
+  history. Document ink remains passively visible outside Draw, without its
+  toolbars/selection handles or mouse interception. Existing view transforms
+  anchor strokes during pan/zoom; canonical page storage rebases rotation once.
+- `OkuFlowApp::StoreDocumentAnnotations` snapshots the current page before
+  adoption/source changes and saves. `SaveSelectedFileDocument` queues all page
+  ink through the existing image I/O pool and reports the real save receipt.
+  Native Photo, transport Save and Draw snapshots route there only for static
+  documents. Video/camera capture paths and external photo-operation ownership
+  remain unchanged. `UserDataPaths::Documents` owns the output directory.
+  `MainWindow::setDocumentAnnotationMode` also synchronizes the former Photo
+  control's Save document caption, icon, tooltip and accessible description.
+- `VideoTransport` gives PDF navigation visible Previous/Next page captions and
+  a synchronized Save document accessible name. Pictures keep page navigation
+  hidden. Static sources never acquire video seek/play semantics.
+- `stage_pdf_export.ps1` installs/stages pinned binaries and original notices;
+  `Get-OkuFlowPdfBundleMetadata` verifies the closed inventory and emits qpdf
+  plus static dependency SPDX relationships. `test_pdf_export.ps1` exercises
+  actual staging and tamper refusals. CTest declares both helper binaries,
+  notices and scripts as runtime fingerprint inputs.
+
 ## File documents and source selection (26 October 2026)
+
+- `common/media_frame_layout.hpp::MediaFrameLayoutFits` validates a single
+  selected BGRA source (64 MiB, bounded extents/stride). CPU preparation,
+  presentation and GPU host-input admission use it independently of the
+  unchanged `PlanVideoPlaybackMemory` multi-buffer decoder budget.
+- `MainWindow::{fileSourceType,setFileSourceSelected}` keep combined video/picture
+  and PDF choices distinct during discovery, polling and language changes.
+  `UpdateCameraSourceUi` keeps dynamic button text/accessibility synchronized.
+  The older `videoSourceSelected` query continues to mean any selected file.
+- `RequestMediaCpuFallback` retains static-document pixels rather than issuing
+  a video reopen. `documentPixelsReplacePreviousSourceInHiddenPresenter` uses
+  an unshown native D3D12 presenter for actual app viewport-buffer assertions;
+  `CpuBgraTests` covers 4096-pixel portrait texture replacements on CUDA.
+  Its `Harness::ReadTexture` grows private staging to the actual copy footprint
+  only after the preceding consumer completed; the old 512-pixel staging bound
+  is retained as failed diagnostic evidence rather than a production GPU fault.
 
 - `common/file_document.hpp` / `.cpp`: `FileDocumentSnapshot` carries state,
   request/document generations, page/count, image, embedded text and failure.

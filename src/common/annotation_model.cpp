@@ -52,15 +52,15 @@ QPointF SceneToView(const QPointF& point,
 
 qreal StrokePixelWidth(const AnnotationStroke& stroke,
                        const ViewTransform& transform,
-                       const QSizeF& size)
+                       const QSizeF& size,
+                       AnnotationRenderMode mode)
 {
     const qreal xScale =
         transform.destinationWidth * size.width() / transform.sourceWidth;
     const qreal yScale =
         transform.destinationHeight * size.height() / transform.sourceHeight;
-    return std::clamp(stroke.sceneWidth * std::sqrt(xScale * yScale),
-                      2.0,
-                      72.0);
+    const qreal width = stroke.sceneWidth * std::sqrt(xScale * yScale);
+    return mode == AnnotationRenderMode::Document ? width : std::clamp(width, 2.0, 72.0);
 }
 
 QRectF ApproximateTextSceneBounds(const AnnotationStroke& stroke)
@@ -100,7 +100,8 @@ QRectF StrokeSceneBounds(const AnnotationStroke& stroke)
 
 QPainterPath BuildStrokePath(const AnnotationStroke& stroke,
                              const ViewTransform& transform,
-                             const QSizeF& destinationSize)
+                             const QSizeF& destinationSize,
+                             AnnotationRenderMode mode)
 {
     QPainterPath path;
     if (!transform.valid || destinationSize.isEmpty() ||
@@ -115,10 +116,10 @@ QPainterPath BuildStrokePath(const AnnotationStroke& stroke,
                              transform.sourceHeight;
         QFont font;
         font.setBold(true);
-        font.setPixelSize(
-            std::clamp(static_cast<int>(std::lround(stroke.sceneWidth * yScale)),
-                       12,
-                       144));
+        const auto pixels = std::clamp<qreal>(std::round(stroke.sceneWidth * yScale),
+            1.0, std::numeric_limits<int>::max());
+        font.setPixelSize(mode == AnnotationRenderMode::Document ? static_cast<int>(pixels)
+            : std::clamp(static_cast<int>(pixels), 12, 144));
         const QFontMetricsF metrics(font);
         path.addText(origin + QPointF(0.0, metrics.ascent()),
                      font,
@@ -616,6 +617,13 @@ bool AnnotationModel::Clear()
     return true;
 }
 
+void AnnotationModel::RestoreStrokes(const QVector<AnnotationStroke>& strokes)
+{
+    ResetSession();
+    strokes_ = strokes;
+    for (auto& stroke : strokes_) stroke.id = nextId_++;
+}
+
 void AnnotationModel::ResetSession()
 {
     strokes_.clear();
@@ -719,7 +727,8 @@ void RenderAnnotationStrokes(QPainter& painter,
                              const QVector<AnnotationStroke>& strokes,
                              const ViewTransform& transform,
                              const QSizeF& destinationSize,
-                             std::optional<std::uint64_t> selectedStroke)
+                             std::optional<std::uint64_t> selectedStroke,
+                             AnnotationRenderMode mode)
 {
     QVector<std::uint64_t> selection;
     if (selectedStroke) {
@@ -729,7 +738,8 @@ void RenderAnnotationStrokes(QPainter& painter,
                             strokes,
                             transform,
                             destinationSize,
-                            selection);
+                            selection,
+                            mode);
 }
 
 void RenderAnnotationStrokes(
@@ -737,7 +747,8 @@ void RenderAnnotationStrokes(
     const QVector<AnnotationStroke>& strokes,
     const ViewTransform& transform,
     const QSizeF& destinationSize,
-    const QVector<std::uint64_t>& selectedStrokes)
+    const QVector<std::uint64_t>& selectedStrokes,
+    AnnotationRenderMode mode)
 {
     if (!transform.valid || destinationSize.isEmpty()) {
         return;
@@ -765,11 +776,11 @@ void RenderAnnotationStrokes(
             continue;
         }
         const QPainterPath path =
-            BuildStrokePath(stroke, transform, destinationSize);
+            BuildStrokePath(stroke, transform, destinationSize, mode);
         const qreal coreWidth =
             stroke.kind == AnnotationItemKind::kText
                 ? 2.0
-                : StrokePixelWidth(stroke, transform, destinationSize);
+                : StrokePixelWidth(stroke, transform, destinationSize, mode);
         QPen halo(QColor(8, 8, 8, 235),
                   coreWidth + 6.0,
                   Qt::SolidLine,

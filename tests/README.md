@@ -1,5 +1,19 @@
 # OkuFlow Tests
 
+`file_document_contract` now checks a 600-page document without eager page
+rendering, export-size parity for large PDF/PNG text and pen widths, and real
+Windows sharing-lock failures between document and sidecar publication. Recovery
+checks keep the same copy, restore editable ink and refuse external changes.
+It also checks multi-page ink saved repeatedly into one copy, native text retention,
+cropped/rotated page placement, source-coordinate PNG export and changed-output
+refusal. Run `scripts/stage_pdf_export.ps1 -Install` first; the qpdf executable
+and DLL are declared CTest runtime inputs. `pdf_export_distribution_contract`
+checks actual pinned staging/SPDX and tamper/extra-file refusal without GUI.
+The opt-in `native_app_file_sources_offscreen` additionally drives page ink and
+the app's actual two-save path using a private unshown presenter. Build its
+excluded target explicitly. Native focus/spoken screen-reader checks remain
+separate from these headless assertions.
+
 `OKUFLOW_UCT_RESIDENT_PAINT_SAMPLES=1` exports actual completed GPU results
 through standalone admission and the production Qt snapshot painter on each
 source warmup. It requires explicit immutable/single input and Qt offscreen;
@@ -2537,3 +2551,8 @@ embedded text through the native accessibility text interface, and PDF/picture/
 video/camera transitions. Explicitly build `native_app_control_fixture` before
 running its cases: it is excluded from the default build. No devices, adb,
 providers or desktop focus participate. See [file sources](../docs/file_documents.md).
+The same selection includes an unshown, non-activating native D3D12 presenter
+checking actual viewport-buffer replacement by a full-size PDF and its next
+page. A separate window-free `media_gpu_scene_cuda` case reads back full portrait
+BGRA scenes after a smaller source. Retain these pixel assertions independently
+of extracted text and selected-frame metadata; video queue limits stay strict.

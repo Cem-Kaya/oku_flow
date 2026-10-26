@@ -43,6 +43,10 @@ public:
     bool IsActive() const noexcept;
     bool HasInk() const noexcept;
     const QVector<AnnotationStroke>& Strokes() const noexcept;
+    AnnotationModel CopyModel();
+    void RestoreModel(const AnnotationModel& model);
+    void SetDocumentInk(bool enabled);
+    bool DocumentInk() const noexcept { return documentInk_; }
     void SetViewTransform(const ViewTransform& transform);
 
     void SetPreferences(const QColor& color,
@@ -138,6 +142,7 @@ private:
     bool dashed_{};
     AnnotationItemKind shapeKind_{AnnotationItemKind::kRectangle};
     bool active_{};
+    bool documentInk_{};
     bool pointerDragging_{};
     bool scalingSelection_{};
     bool marqueeSelecting_{};

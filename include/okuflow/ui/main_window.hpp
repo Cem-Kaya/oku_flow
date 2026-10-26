@@ -82,6 +82,8 @@ public:
     void setCameraDevices(const QStringList& names, int selectedCamera);
     void setVideoSourceSelected(bool selected, int cameraIndex);
     bool videoSourceSelected() const;
+    QString fileSourceType() const;
+    void setFileSourceSelected(const QString& type, int cameraIndex);
     void setDocumentText(const QString& text);
     QPushButton* phoneLightButton() const;
     QDoubleSpinBox* phoneZoomControl() const { return phoneZoomControl_; }
@@ -236,6 +238,7 @@ public:
                                   int textSizePixels);
     void setAnnotationViewTransform(const ViewTransform& transform);
     void setAnnotationMode(bool enabled, std::optional<AnnotationTool> initialTool = {}, bool preserveFocus = false);
+    void setDocumentAnnotationMode(bool enabled);
     // Centered camera-state message shown over the view while no camera
     // picture is presented (starting, offline, reconnecting). An empty title
     // hides it. Visual only: the pipeline status label owns announcements.

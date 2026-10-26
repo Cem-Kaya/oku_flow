@@ -15,6 +15,8 @@
 #include "okuflow/ui/ultra_clear_text_panel.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "okuflow/ui/video_transport.hpp"
+#include "okuflow/ui/annotation_overlay.hpp"
+#include "okuflow/common/file_annotations.hpp"
 #include "okuflow/ui/agent_control_panel.hpp"
 #include "okuflow/common/codex_agent_client.hpp"
 #include "okuflow/common/uct_device_image.hpp"
@@ -382,6 +384,7 @@ public:
         app.currentCameraAccelerationKey_.clear();app.cameraIntent_.LoadSaved({});
         app.automaticPhoneSelectionAllowed_=false;app.preferredPhoneCamera_.clear();app.pendingCameraStart_.reset();
     }
+    static QString DocumentDirectory(OkuFlowApp& app) { return app.userDataPaths_->Documents(); }
     static void SeedPhoneSources(OkuFlowApp& app, std::function<bool(const std::atomic<bool>&)> start) {
         CameraDescriptor webcam, phone;
         webcam.name=L"Private webcam"; webcam.symbolicLink=L"fixture-webcam";
@@ -750,6 +753,25 @@ public:
     // Same entry used by an actual app-side media CUDA scene failure.
     static void MediaSceneFailed(OkuFlowApp& app,const std::string& reason) {app.RequestMediaCpuFallback(reason);}
     static bool HasMediaGpuScene(const OkuFlowApp& app) {return static_cast<bool>(app.mediaGpuScene_);}
+    static HWND BeginHiddenFilePresenter(OkuFlowApp& app) {
+        const HWND hwnd=CreateWindowExW(WS_EX_NOACTIVATE|WS_EX_TOOLWINDOW,L"STATIC",L"OkuFlow private file fixture",
+            WS_POPUP,0,0,640,480,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
+        if (!hwnd) return nullptr;
+        app.presenter_=std::make_unique<D3D12Presenter>();
+        app.presenter_->Initialize(hwnd,640,480);
+        app.uiState_->renderWidget_->setPresenter(app.presenter_.get());
+        return hwnd;
+    }
+    static void EndHiddenFilePresenter(OkuFlowApp& app,HWND hwnd) {
+        app.uiState_->renderWidget_->setPresenter(nullptr);
+        app.presenter_.reset();
+        if (hwnd) DestroyWindow(hwnd);
+    }
+    static QImage FileViewport(const OkuFlowApp& app) {
+        if (app.presentationBuffer_.empty()) return {};
+        return QImage(app.presentationBuffer_.data(),app.presentationWidth_,app.presentationHeight_,
+            app.presentationWidth_*4,QImage::Format_ARGB32).copy();
+    }
     // Owned lease metadata only; no CUDA call ever touches this image.
     static uct::SharedDeviceImage MetadataAnalysis(const OkuFlowApp& app,std::uint64_t frameSequence,
                                                    std::uint64_t appearance) {
@@ -1141,12 +1163,20 @@ private slots:
         QVERIFY(select->parentWidget()!=window.annotationButton()->parentWidget());
         QCOMPARE(window.annotationButton()->parentWidget()->layout()->indexOf(select),-1);
         QVERIFY(select->isHidden());QVERIFY(!window.cameraFormatCombo()->parentWidget()->isHidden());
-        QCOMPARE(combo->count(),3);QCOMPARE(combo->itemText(2),QStringLiteral("View file"));
+        QCOMPARE(combo->count(),4);QCOMPARE(combo->itemText(2),QStringLiteral("View video or picture"));
         QSignalSpy changes(combo,&QComboBox::currentIndexChanged);
         QSignalSpy opens(&window,&MainWindow::openVideoRequested);
         combo->setCurrentIndex(2);
         QVERIFY(window.videoSourceSelected());QVERIFY(!select->isHidden());
-        QCOMPARE(select->text(),QStringLiteral("Select file"));
+        QCOMPARE(select->text(),QStringLiteral("Select video or picture"));
+        for (const auto& type : {QStringLiteral("video"),QStringLiteral("pdf")}) {
+            window.setFileSourceSelected(type,0);
+            QCOMPARE(window.fileSourceType(),type);
+            QCOMPARE(select->accessibleName(),select->text());
+            window.setCameraDevices({"Fixture webcam","Fixture phone"},0);
+            QCOMPARE(window.fileSourceType(),type);
+        }
+        window.setVideoSourceSelected(true,0);
         QVERIFY(window.cameraFormatCombo()->parentWidget()->isHidden());
         QVERIFY(!window.rotationCombo()->isHidden());QVERIFY(window.rotationCombo()->isEnabled());
         QCOMPARE(combo->nextInFocusChain(),static_cast<QWidget*>(select));
@@ -2329,6 +2359,12 @@ private slots:
         QCOMPARE(pages->maximum(),2);QVERIFY(!pages->isHidden());
         QVERIFY(window.videoTransport()->playPauseButton()->isHidden());
         const auto first=NativeControlFixture::SelectedVideoFrame(app_);
+        QCOMPARE(window.fileSourceType(),QStringLiteral("pdf"));
+        const auto decoderBefore=NativeControlFixture::DecoderSnapshot(app_).requestGeneration;
+        NativeControlFixture::MediaSceneFailed(app_,"private document GPU failure");
+        QCOMPARE(NativeControlFixture::SelectedVideoFrame(app_),first);
+        QCOMPARE(NativeControlFixture::DecoderSnapshot(app_).requestGeneration,decoderBefore);
+        QVERIFY(NativeControlFixture::VideoState(app_)["staticDocument"].toBool());
         pages->setValue(2);
         QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::SelectedVideoFrame(app_)!=first,5000);
         QCOMPARE(pages->value(),2);QVERIFY(text->toPlainText().trimmed().isEmpty());QVERIFY(text->isHidden());
@@ -2341,10 +2377,92 @@ private slots:
         NativeControlFixture::OpenVideo(app_,imagePath);
         QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::VideoState(app_)["staticDocument"].toBool(),5000);
         QCOMPARE(NativeControlFixture::SelectedVideoFrame(app_)->width,96);
+        QCOMPARE(window.fileSourceType(),QStringLiteral("video"));
         QVERIFY(text->isHidden());QVERIFY(pages->isHidden());
         NativeControlFixture::ReturnVideo(app_);
         QVERIFY(!window.videoSourceSelected());QVERIFY(text->isHidden());
         QTRY_VERIFY_WITH_TIMEOUT(!QFile::exists(path) || QFile::remove(path),5000);
+    }
+    void documentPageInkSurvivesNavigationAndUpdatesOneCopy() {
+        QTemporaryDir dir;
+        const auto source=dir.filePath("page-ink-fixture.pdf");
+        { QPdfWriter writer(source); QPainter painter(&writer);
+          for(int page=0;page<3;++page) { if(page)QVERIFY(writer.newPage()); painter.drawText(100,100,QString::number(page+1)); } }
+        const HWND hwnd=NativeControlFixture::BeginHiddenFilePresenter(app_); QVERIFY(hwnd);
+        auto& window=NativeControlFixture::Window(app_);
+        const auto cleanup=qScopeGuard([&] {
+            window.setAnnotationMode(false,{},true);
+            NativeControlFixture::ReturnVideo(app_); NativeControlFixture::EndHiddenFilePresenter(app_,hwnd);
+        });
+        NativeControlFixture::OpenVideo(app_,source);
+        QTRY_VERIFY_WITH_TIMEOUT(window.videoTransport()->snapshot().pageCount==3 && window.videoTransport()->snapshot().canSaveFrame,5000);
+        auto* ink=window.annotationOverlay(); QVERIFY(ink); QVERIFY(ink->DocumentInk());
+        QCOMPARE(window.capturePhotoButton()->accessibleName(),QStringLiteral("Save document"));
+        AnnotationModel heart; heart.BeginStroke({0.2,0.3},Qt::red,0.02);
+        heart.AppendStrokePoint({0.4,0.3},0.001); heart.EndStroke();
+        ink->RestoreModel(heart);
+        window.setAnnotationMode(true,AnnotationTool::kPen,true); window.setAnnotationMode(false,{},true);
+        QVERIFY(ink->HasInk()); QVERIFY(!ink->IsActive()); QVERIFY(ink->testAttribute(Qt::WA_TransparentForMouseEvents));
+        NativeControlFixture::SaveVideo(app_);
+        QTRY_COMPARE_WITH_TIMEOUT(NativeControlFixture::VideoState(app_)["saveState"].toString(),QStringLiteral("committed"),5000);
+        auto* page=window.videoTransport()->findChild<QSpinBox*>("documentPage"); QVERIFY(page); page->setValue(3);
+        QTRY_VERIFY_WITH_TIMEOUT(window.videoTransport()->snapshot().page==2 && window.videoTransport()->snapshot().canSaveFrame,5000);
+        QVERIFY(!ink->HasInk());
+        AnnotationModel star; star.BeginStroke({0.6,0.7},Qt::blue,0.02);
+        star.AppendStrokePoint({0.8,0.7},0.001); star.EndStroke(); ink->RestoreModel(star);
+        NativeControlFixture::SaveVideo(app_);
+        QTRY_COMPARE_WITH_TIMEOUT(NativeControlFixture::VideoState(app_)["saveState"].toString(),QStringLiteral("committed"),5000);
+        const auto restored=LoadFileAnnotations(source,NativeControlFixture::DocumentDirectory(app_));
+        QVERIFY2(restored.error.isEmpty(),qPrintable(restored.error)); QCOMPARE(restored.pages.size(),2);
+        QCOMPARE(restored.pages[0][0].points,heart.strokes()[0].points);
+        QCOMPARE(restored.pages[2][0].points,star.strokes()[0].points);
+        QCOMPARE(QDir(NativeControlFixture::DocumentDirectory(app_)).entryList({"page-ink-fixture-*.pdf"},QDir::Files).size(),1);
+        page->setValue(1);
+        QTRY_VERIFY_WITH_TIMEOUT(window.videoTransport()->snapshot().page==0 && window.videoTransport()->snapshot().canSaveFrame,5000);
+        QCOMPARE(ink->Strokes()[0].points,heart.strokes()[0].points);
+        NativeControlFixture::ReturnVideo(app_); QVERIFY(!ink->DocumentInk()); QVERIFY(!ink->HasInk());
+        QCOMPARE(window.capturePhotoButton()->accessibleName(),QStringLiteral("Photo"));
+    }
+    void documentPixelsReplacePreviousSourceInHiddenPresenter() {
+        QTemporaryDir dir;
+        const HWND hwnd=NativeControlFixture::BeginHiddenFilePresenter(app_);
+        QVERIFY(hwnd);
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::ReturnVideo(app_);NativeControlFixture::EndHiddenFilePresenter(app_,hwnd);
+        });
+        // No window is shown, activated or focused. These are real D3D12
+        // submissions from the actual application, rather than decoder counts.
+        QVERIFY(!IsWindowVisible(hwnd));
+        const auto picture=dir.filePath("previous.png");
+        QImage image(640,480,QImage::Format_RGB32);image.fill(Qt::red);QVERIFY(image.save(picture));
+        NativeControlFixture::OpenVideo(app_,picture);
+        QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::FileViewport(app_).pixelColor(320,240)==QColor(Qt::red),5000);
+        const auto pdf=dir.filePath("replacement.pdf");
+        {
+            QPdfWriter writer(pdf);writer.setResolution(72);
+            QPainter painter(&writer);QVERIFY(painter.isActive());
+            painter.fillRect(QRect(0,0,writer.width(),writer.height()),Qt::green);
+            QVERIFY(writer.newPage());painter.fillRect(QRect(0,0,writer.width(),writer.height()),Qt::blue);
+            QVERIFY(painter.end());
+        }
+        NativeControlFixture::OpenVideo(app_,pdf);
+        QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::VideoState(app_)["staticDocument"].toBool() &&
+            NativeControlFixture::Window(app_).fileSourceType()==QStringLiteral("pdf"),5000);
+        QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::SelectedVideoFrame(app_)->height>640,5000);
+        {
+            const auto frame=NativeControlFixture::SelectedVideoFrame(app_);
+            QVERIFY(MediaFrameLayoutFits(frame->width,frame->height,frame->strideBytes));
+            QVERIFY(!VideoPlaybackLayoutFits(frame->width,frame->height,frame->strideBytes));
+            const QImage decoded(frame->bgra->data(),frame->width,frame->height,frame->strideBytes,QImage::Format_ARGB32);
+            const auto shown=NativeControlFixture::FileViewport(app_);
+            qInfo()<<"PDF source / viewport:"<<decoded.size()<<decoded.pixelColor(decoded.width()/2,decoded.height()/2)
+                <<shown.size()<<shown.pixelColor(shown.width()/2,shown.height()/2)
+                <<NativeControlFixture::VideoState(app_);
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::FileViewport(app_).pixelColor(320,240)==QColor(Qt::green),5000);
+        auto* page=NativeControlFixture::Window(app_).videoTransport()->findChild<QSpinBox*>("documentPage");
+        QVERIFY(page);page->setValue(2);
+        QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::FileViewport(app_).pixelColor(320,240)==QColor(Qt::blue),5000);
     }
     void phoneRecoverySurvivesFileReviewAndConnectionLoss() {
         QTemporaryDir dir;

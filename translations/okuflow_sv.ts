@@ -3653,5 +3653,37 @@ Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</
         <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
         <translation>Mediefiler (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;Alla filer (*)</translation>
     </message>
+    <message>
+        <source>View PDF</source>
+        <translation>Visa PDF</translation>
+    </message>
+    <message>
+        <source>Select PDF</source>
+        <translation>Välj PDF</translation>
+    </message>
+    <message>
+        <source>PDF (*.pdf)</source>
+        <translation>PDF (*.pdf)</translation>
+    </message>
+    <message>
+        <source>View video or picture</source>
+        <translation>Visa video eller bild</translation>
+    </message>
+    <message>
+        <source>Select video or picture</source>
+        <translation>Välj video eller bild</translation>
+    </message>
+    <message>
+        <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
+        <translation>Videor och bilder (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
+    </message>
+    <message>
+        <source>Save document</source>
+        <translation>Spara dokument</translation>
+    </message>
+    <message>
+        <source>Saved document copy.</source>
+        <translation>En kopia av dokumentet har sparats.</translation>
+    </message>
 </context>
 </TS>

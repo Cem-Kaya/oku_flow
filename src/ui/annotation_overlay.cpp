@@ -2,6 +2,7 @@
 
 #include "okuflow/ui/annotation_overlay.hpp"
 #include "okuflow/ui/live_status_text.hpp"
+#include "okuflow/ui/ui_translation.hpp"
 #include "okuflow/ui/theme_contrast.hpp"
 
 #include <QAccessible>
@@ -546,6 +547,7 @@ void AnnotationOverlay::SetActive(bool active, std::optional<AnnotationTool> ini
         return;
     }
     active_ = active;
+    setAttribute(Qt::WA_TransparentForMouseEvents, !active_);
     if (active_) {
         setAttribute(Qt::WA_ShowWithoutActivating, preserveFocus);
         SyncGeometryToRenderTarget();
@@ -569,15 +571,49 @@ void AnnotationOverlay::SetActive(bool active, std::optional<AnnotationTool> ini
         model_.EndStroke();
         model_.EndMoveSelection();
         model_.EndScaleSelection();
-        if (!retainInk) model_.ResetSession();
+        if (!retainInk && !documentInk_) model_.ResetSession();
         ShowToolOptions(false, preserveFocus);
         UpdateUndoButtons();
-        hide();
+        toolbar_->hide();
+        actionToolbar_->hide();
+        if (!documentInk_ || !model_.hasInk()) hide();
+        else { setAttribute(Qt::WA_ShowWithoutActivating); update(); }
         Announce(QStringLiteral("Draw mode off."));
     }
 }
 
 bool AnnotationOverlay::IsActive() const noexcept { return active_; }
+AnnotationModel AnnotationOverlay::CopyModel()
+{
+    CommitPendingText();
+    auto copy = model_;
+    copy.EndStroke(); copy.EndMoveSelection(); copy.EndScaleSelection();
+    copy.ClearSelection(); return copy;
+}
+void AnnotationOverlay::RestoreModel(const AnnotationModel& model)
+{
+    CancelPendingText();
+    model_ = model; model_.ClearSelection();
+    pointerDragging_ = scalingSelection_ = marqueeSelecting_ = false;
+    marqueeRectView_ = {};
+    UpdateUndoButtons(); update();
+    if (documentInk_ && !active_) {
+        setAttribute(Qt::WA_ShowWithoutActivating);
+        SyncGeometryToRenderTarget();
+        setVisible(model_.hasInk() && renderTarget_ && renderTarget_->isVisible());
+    }
+}
+void AnnotationOverlay::SetDocumentInk(bool enabled)
+{
+    if (documentInk_ == enabled) return;
+    documentInk_ = enabled;
+    setAttribute(Qt::WA_TransparentForMouseEvents, !active_);
+    if (!enabled) { model_.ResetSession(); if (!active_) hide(); update(); }
+    SetAccessible(snapshotButton_, enabled ? QStringLiteral("Save document") : QStringLiteral("Save annotated view"),
+        enabled ? QStringLiteral("Save document") : QStringLiteral("Save the marked view to lecture notes. Shortcut Control S."));
+    RetranslateWidget(snapshotButton_);
+    UpdateUndoButtons();
+}
 bool AnnotationOverlay::HasInk() const noexcept { return model_.hasInk(); }
 const QVector<AnnotationStroke>& AnnotationOverlay::Strokes() const noexcept
 {
@@ -801,6 +837,7 @@ bool AnnotationOverlay::nativeEvent(const QByteArray& eventType,
 {
     auto* nativeMessage = static_cast<MSG*>(message);
     if (nativeMessage && nativeMessage->message == WM_NCHITTEST) {
+        if (!active_) { *result = HTTRANSPARENT; return true; }
         const POINT nativeScreenPoint{
             GET_X_LPARAM(nativeMessage->lParam),
             GET_Y_LPARAM(nativeMessage->lParam)};
@@ -843,7 +880,7 @@ void AnnotationOverlay::paintEvent(QPaintEvent*)
                             model_.strokes(),
                             transform_,
                             size(),
-                            model_.selectedStrokeIds());
+                            active_ ? model_.selectedStrokeIds() : QVector<std::uint64_t>{});
     if (marqueeSelecting_ && !marqueeRectView_.isEmpty()) {
         painter.setRenderHint(QPainter::Antialiasing, true);
         painter.setBrush(QColor(0, 229, 255, 30));
@@ -1633,7 +1670,7 @@ void AnnotationOverlay::keyPressEvent(QKeyEvent* event)
         return;
     }
     if (control && event->key() == Qt::Key_S) {
-        if (model_.hasInk()) {
+        if (model_.hasInk() || documentInk_) {
             emit SnapshotRequested();
         }
         event->accept();
@@ -1843,7 +1880,7 @@ void AnnotationOverlay::UpdateUndoButtons()
 {
     undoButton_->setEnabled(model_.canUndo());
     redoButton_->setEnabled(model_.canRedo());
-    snapshotButton_->setEnabled(model_.hasInk());
+    snapshotButton_->setEnabled(model_.hasInk() || documentInk_);
     clearButton_->setEnabled(model_.hasInk());
 }
 

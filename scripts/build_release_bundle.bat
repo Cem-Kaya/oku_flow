@@ -240,6 +240,10 @@ if errorlevel 1 (
     goto :fail
 )
 
+echo ===== STAGE PINNED PDF EXPORT RUNTIME =====
+pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\stage_pdf_export.ps1" -BundlePath "%STAGING_DIR%"
+if errorlevel 1 goto :fail
+
 echo ===== ORGANIZE PORTABLE LAUNCH PATH =====
 pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\organize_release_bundle.ps1" -BundlePath "%STAGING_DIR%"
 if errorlevel 1 goto :fail

@@ -3653,5 +3653,37 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
         <translation>ملفات الوسائط (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;جميع الملفات (*)</translation>
     </message>
+    <message>
+        <source>View PDF</source>
+        <translation>عرض ملف PDF</translation>
+    </message>
+    <message>
+        <source>Select PDF</source>
+        <translation>اختيار ملف PDF</translation>
+    </message>
+    <message>
+        <source>PDF (*.pdf)</source>
+        <translation>PDF (*.pdf)</translation>
+    </message>
+    <message>
+        <source>View video or picture</source>
+        <translation>عرض فيديو أو صورة</translation>
+    </message>
+    <message>
+        <source>Select video or picture</source>
+        <translation>اختيار فيديو أو صورة</translation>
+    </message>
+    <message>
+        <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
+        <translation>الفيديوهات والصور (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
+    </message>
+    <message>
+        <source>Save document</source>
+        <translation>حفظ المستند</translation>
+    </message>
+    <message>
+        <source>Saved document copy.</source>
+        <translation>تم حفظ نسخة من المستند.</translation>
+    </message>
 </context>
 </TS>

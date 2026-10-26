@@ -94,6 +94,7 @@ public:
 
     bool Clear();
     void ResetSession();
+    void RestoreStrokes(const QVector<AnnotationStroke>& strokes);
     // Rebase current ink and edit history when the camera orientation changes.
     // Text anchors follow the image; labels remain upright for readability.
     void RotateClockwise(int quarterTurns);
@@ -125,11 +126,14 @@ private:
     std::optional<AnnotationStroke> scaleStartStroke_;
 };
 
+enum class AnnotationRenderMode { Viewport, Document };
+
 // Builds the exact painter path used by live rendering, snapshots, selection
 // bounds, and handle hit testing.
 QPainterPath BuildStrokePath(const AnnotationStroke& stroke,
                              const ViewTransform& transform,
-                             const QSizeF& destinationSize);
+                             const QSizeF& destinationSize,
+                             AnnotationRenderMode mode = AnnotationRenderMode::Viewport);
 
 // Shared overlay/snapshot renderer. The destination size is the viewport in
 // logical pixels for the live overlay or image pixels for a saved snapshot.
@@ -137,12 +141,14 @@ void RenderAnnotationStrokes(QPainter& painter,
                              const QVector<AnnotationStroke>& strokes,
                              const ViewTransform& transform,
                              const QSizeF& destinationSize,
-                             std::optional<std::uint64_t> selectedStroke = {});
+                             std::optional<std::uint64_t> selectedStroke = {},
+                             AnnotationRenderMode mode = AnnotationRenderMode::Viewport);
 void RenderAnnotationStrokes(QPainter& painter,
                              const QVector<AnnotationStroke>& strokes,
                              const ViewTransform& transform,
                              const QSizeF& destinationSize,
-                             const QVector<std::uint64_t>& selectedStrokes);
+                             const QVector<std::uint64_t>& selectedStrokes,
+                             AnnotationRenderMode mode = AnnotationRenderMode::Viewport);
 
 qreal AnnotationSceneTolerance(const ViewTransform& transform,
                                const QSizeF& destinationSize,

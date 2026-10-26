@@ -6,6 +6,7 @@
 #include "okuflow/cuda/cuda_interop.hpp"
 #include "okuflow/d3d12/presenter.hpp"
 #include "okuflow/app/media_gpu_scene.hpp"
+#include "okuflow/common/media_frame_layout.hpp"
 #include "okuflow/app/constants.hpp"
 #include "okuflow/app/interaction_controller.hpp"
 #include "okuflow/app/language_manager.hpp"

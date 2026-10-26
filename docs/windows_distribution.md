@@ -1,5 +1,13 @@
 # Windows installers, signing and updates
 
+Development bundles now include pinned qpdf 12.4.2 at `app/qpdf` for local
+content-preserving annotated PDF copies. Run `scripts/stage_pdf_export.ps1
+-Install` before packaging; `build_release_bundle.bat` stages verified binaries
+and exact notices before organization and metadata. The MSI/portable inventory
+retains all seven files and SPDX records for qpdf and its static dependencies.
+No qpdf source, dependency cache, upstream CRT copy or test executable is staged.
+Published releases do not acquire this feature until rebuilt and released.
+
 ## Exact package and CUDA provenance (audit RB-001/RB-002)
 
 MSI authoring and extraction execute WiX's own apphost from the SHA-256-pinned

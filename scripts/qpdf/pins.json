@@ -1,0 +1,40 @@
+{
+  "url": "https://github.com/qpdf/qpdf/releases/download/v12.4.2/qpdf-12.4.2-msvc64.zip",
+  "files": [
+    {
+      "archivePath": "qpdf-12.4.2-msvc64/bin/qpdf.exe",
+      "sha256": "1bdaf878f37eaffea1ea3c30591214c77636a0f2fc7432427516b6e22e36c0ff",
+      "path": "bin/qpdf.exe"
+    },
+    {
+      "archivePath": "qpdf-12.4.2-msvc64/bin/qpdf30.dll",
+      "sha256": "8812952678de93e0750308a113aa650e9161af466f9770679ea9673adeb61041",
+      "path": "bin/qpdf30.dll"
+    }
+  ],
+  "notices": [
+    {
+      "path": "licenses/LIBJPEG_TURBO_LICENSE.txt",
+      "sha256": "ba6bceebcba0fdd35488477c2cca8c4632ce82c74dbfbc87d886ce6fc4433579"
+    },
+    {
+      "path": "licenses/LICENSE.txt",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "licenses/NOTICE.md",
+      "sha256": "b207f65a9e5491195ded63b2941199b19a4d30148871f2742c88eae7bfc513a6"
+    },
+    {
+      "path": "licenses/OPENSSL_LICENSE.txt",
+      "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a"
+    },
+    {
+      "path": "licenses/ZLIB_LICENSE.txt",
+      "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2"
+    }
+  ],
+  "sha256": "db87077e683630c1217e0e8f9a20a9749d952ab676e881c3689187763a5de25d",
+  "version": "12.4.2",
+  "schema": 1
+}

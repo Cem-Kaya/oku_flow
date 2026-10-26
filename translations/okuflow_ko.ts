@@ -3653,5 +3653,37 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
         <translation>미디어 파일 (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;모든 파일 (*)</translation>
     </message>
+    <message>
+        <source>View PDF</source>
+        <translation>PDF 보기</translation>
+    </message>
+    <message>
+        <source>Select PDF</source>
+        <translation>PDF 선택</translation>
+    </message>
+    <message>
+        <source>PDF (*.pdf)</source>
+        <translation>PDF (*.pdf)</translation>
+    </message>
+    <message>
+        <source>View video or picture</source>
+        <translation>동영상 또는 이미지 보기</translation>
+    </message>
+    <message>
+        <source>Select video or picture</source>
+        <translation>동영상 또는 이미지 선택</translation>
+    </message>
+    <message>
+        <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
+        <translation>동영상 및 이미지 (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
+    </message>
+    <message>
+        <source>Save document</source>
+        <translation>문서 저장</translation>
+    </message>
+    <message>
+        <source>Saved document copy.</source>
+        <translation>문서 사본을 저장했습니다.</translation>
+    </message>
 </context>
 </TS>

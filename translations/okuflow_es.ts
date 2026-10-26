@@ -3653,5 +3653,37 @@ Use «Connect ChatGPT» en la pestaña Asistente del modo avanzado para iniciar 
         <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
         <translation>Archivos multimedia (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;Todos los archivos (*)</translation>
     </message>
+    <message>
+        <source>View PDF</source>
+        <translation>Ver PDF</translation>
+    </message>
+    <message>
+        <source>Select PDF</source>
+        <translation>Seleccionar PDF</translation>
+    </message>
+    <message>
+        <source>PDF (*.pdf)</source>
+        <translation>PDF (*.pdf)</translation>
+    </message>
+    <message>
+        <source>View video or picture</source>
+        <translation>Ver vídeo o imagen</translation>
+    </message>
+    <message>
+        <source>Select video or picture</source>
+        <translation>Seleccionar vídeo o imagen</translation>
+    </message>
+    <message>
+        <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
+        <translation>Vídeos e imágenes (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
+    </message>
+    <message>
+        <source>Save document</source>
+        <translation>Guardar documento</translation>
+    </message>
+    <message>
+        <source>Saved document copy.</source>
+        <translation>Copia del documento guardada.</translation>
+    </message>
 </context>
 </TS>

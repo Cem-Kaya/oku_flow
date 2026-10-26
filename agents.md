@@ -1188,6 +1188,18 @@ aligned with the project goals.
   failures after native admission and strict release capability requirements.
 
 ## File sources and phone recovery (2026-10-26)
+- Static-document drawings belong to normalized source/page coordinates, not
+  video time or viewport pixels. Preserve camera/video Draw semantics. Save all
+  page ink into one working copy per original under OkuFlow/Documents; never
+  overwrite the original or create a new output for each Save. Keep native PDF
+  content/text using Qt vector overlays and the pinned qpdf tool. Install/stage
+  it only through scripts/stage_pdf_export.ps1; retain exact dependency notices,
+  SPDX relationships and CTest runtime pins. Do not rasterize an entire long PDF.
+- Keep single-frame presentation bounds separate from multi-buffer video decode
+  admission. Test actual viewport pixels after replacing an existing source,
+  including full-size PDF pages; text extraction or selected-frame counts alone
+  do not establish rendering. Private unshown presenters must never activate
+  or focus a native window. Keep combined video/picture and separate PDF choices.
 - Source discovery is independent of source intent. Keep the source picker usable
   during camera startup, cancel the exact superseded worker/generation on manual
   changes, and retain saved phone intent through temporary file review and fallback.

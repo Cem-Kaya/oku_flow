@@ -41,7 +41,7 @@ if(WIN32 AND OKUFLOW_ENABLE_CUDA)
     add_test(NAME media_gpu_scene_cuda COMMAND media_gpu_scene_tests)
     set_tests_properties(media_gpu_scene_cuda PROPERTIES
         TIMEOUT 60 SKIP_RETURN_CODE 77 LABELS gpu RUN_SERIAL TRUE
-        REQUIRED_FILES "${media_gpu_scene_required_files}${PROJECT_SOURCE_DIR}/src/app/media_gpu_scene.cpp;${PROJECT_SOURCE_DIR}/include/okuflow/app/media_gpu_scene.hpp"
+        REQUIRED_FILES "${media_gpu_scene_required_files}${PROJECT_SOURCE_DIR}/src/app/media_gpu_scene.cpp;${PROJECT_SOURCE_DIR}/include/okuflow/app/media_gpu_scene.hpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/media_frame_layout.hpp"
         ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 endif()

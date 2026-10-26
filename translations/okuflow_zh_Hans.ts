@@ -3653,5 +3653,37 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
         <translation>媒体文件 (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;所有文件 (*)</translation>
     </message>
+    <message>
+        <source>View PDF</source>
+        <translation>查看 PDF</translation>
+    </message>
+    <message>
+        <source>Select PDF</source>
+        <translation>选择 PDF</translation>
+    </message>
+    <message>
+        <source>PDF (*.pdf)</source>
+        <translation>PDF (*.pdf)</translation>
+    </message>
+    <message>
+        <source>View video or picture</source>
+        <translation>查看视频或图片</translation>
+    </message>
+    <message>
+        <source>Select video or picture</source>
+        <translation>选择视频或图片</translation>
+    </message>
+    <message>
+        <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
+        <translation>视频和图片 (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
+    </message>
+    <message>
+        <source>Save document</source>
+        <translation>保存文档</translation>
+    </message>
+    <message>
+        <source>Saved document copy.</source>
+        <translation>文档副本已保存。</translation>
+    </message>
 </context>
 </TS>

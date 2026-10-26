@@ -386,7 +386,18 @@ public:
 
         const auto desc = texture->GetDesc();
         D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
-        d3d12_->GetCopyableFootprints(&desc, 0, 1, 0, &footprint, nullptr, nullptr, nullptr);
+        UINT64 requiredBytes{};
+        d3d12_->GetCopyableFootprints(&desc, 0, 1, 0, &footprint, nullptr, nullptr, &requiredBytes);
+        Require(!pending_, "cannot replace staging while a consumer is pending");
+        if (requiredBytes > readback_->GetDesc().Width) {
+            D3D12_HEAP_PROPERTIES heap{}; heap.Type = D3D12_HEAP_TYPE_READBACK;
+            auto buffer = readback_->GetDesc(); buffer.Width = requiredBytes;
+            ComPtr<ID3D12Resource> replacement;
+            Hr(d3d12_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &buffer,
+                D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&replacement)),
+                "expanded readback staging creation failed");
+            readback_ = std::move(replacement);
+        }
 
         Hr(allocator_->Reset(), "consumer allocator reset failed");
         Hr(commands_->Reset(allocator_.Get(), nullptr), "consumer list reset failed");
@@ -432,8 +443,7 @@ public:
         result.pixels.resize(size_t(desc.Width) * desc.Height);
         std::uint8_t* mapped = nullptr;
         const D3D12_RANGE range{static_cast<SIZE_T>(footprint.Offset),
-                                static_cast<SIZE_T>(footprint.Offset +
-                                                    footprint.Footprint.RowPitch * desc.Height)};
+                                static_cast<SIZE_T>(requiredBytes)};
         Hr(readback_->Map(0, &range, reinterpret_cast<void**>(&mapped)), "staging map failed");
         for (UINT64 y = 0; y < desc.Height; ++y)
             std::memcpy(result.pixels.data() + size_t(y) * desc.Width,
@@ -533,6 +543,25 @@ okuflow::VideoPlaybackFrame MakeCpuFrame(UINT width, UINT height, unsigned seed,
 
 void CpuBgraTests(Harness& harness)
 {
+    {
+        // A portrait PDF render is much larger than the old video scene.
+        // Replace that scene, then replace the page at the same dimensions;
+        // neither path may keep the previous texture or lose the host pixels.
+        okuflow::MediaGpuScene document;
+        auto previous = MakeCpuFrame(64, 48, 51, 1);
+        PrepareUntilReady(document, harness.Device(), previous.width, previous.height);
+        ProcessUntilReady(document, previous, 0, {}, 501, 1, false);
+        harness.ReadScene(document);
+        for (unsigned page = 0; page != 2; ++page) {
+            auto frame = MakeCpuFrame(2895, 4096, 52 + page, page + 2);
+            frame.pts100ns = 0; // Static pages have no video clock.
+            frame.requestGeneration = page + 1;
+            PrepareUntilReady(document, harness.Device(), frame.width, frame.height);
+            ProcessUntilReady(document, frame, 0, {}, 502 + page, 2 + page, false);
+            ComparePixels(harness.ReadScene(document).pixels, Pattern(frame.width, frame.height, 52 + page),
+                          frame.width, 0, "portrait document replaces the previous scene/page");
+        }
+    }
     Require(!okuflow::ProcessingInput{}.rotateBgraOnGpu, "camera host BGRA rotation default changed");
     for (const UINT padding : {0u, 13u}) for (int turns = 0; turns < 4; ++turns) {
         constexpr UINT width = 59, height = 37;

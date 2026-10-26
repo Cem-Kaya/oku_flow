@@ -1208,7 +1208,7 @@ void MainWindowTests::documentControlsHaveNativeGeometry()
     auto* tabs = Named<QTabWidget>(window, "advancedPage");
     QVERIFY(tabs); tabs->setCurrentIndex(2);
     window.setCameraDevices({QStringLiteral("Fixture webcam"), QStringLiteral("Fixture phone")}, 1);
-    window.setVideoSourceSelected(true, 1);
+    window.setFileSourceSelected(QStringLiteral("pdf"), 1);
     window.setDocumentText(QStringLiteral("Embedded PDF text remains available without OCR."));
     VideoTransport::Snapshot snapshot;
     snapshot.source = VideoTransport::Source::Document; snapshot.sourceName = QStringLiteral("Fixture.pdf");

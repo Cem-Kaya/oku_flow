@@ -1,5 +1,12 @@
 # OkuFlow developer guide
 
+PDF/picture drawings and one-copy saves are described in
+[file_documents.md](file_documents.md). Install the pinned local PDF export
+runtime before validation with `scripts/stage_pdf_export.ps1 -Install`.
+The tracked Windows CI does this explicitly; CMake and the app do not download.
+Bundles stage the verified runtime/notices and include their SPDX relationships.
+Use the existing matching Qt PDF module for viewing and vector overlay authoring.
+
 [Curved-line ribbon and current-ink experiments](uct_ribbon_and_current_ink.md)
 records automatic curved processing in every OCR mode, original-pixel geometry/proof
 composition, CPU-only ink diagnostics, measured BF16 overhead and actual OCR
@@ -24,6 +31,9 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   embedded-text pane. Phone recovery remains active for phone intent while
   explicit source changes win. See [file documents](file_documents.md) for
   limits, SDK provenance and scoped/full validation commands.
+  The picker combines video/picture and keeps PDF separate. Single-frame
+  rendering has its own 64-MiB bound; decoder queue admission is not a page
+  layout check. A hidden D3D12 fixture verifies replacement viewport pixels.
 
 - A development [host UCT merge candidate](uct_merge_optimization.md) removes
   repeated geometry/overlap work inside the existing GPU recognizer pipeline.

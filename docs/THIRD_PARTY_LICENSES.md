@@ -1,5 +1,35 @@
 # Third-Party Licenses and Attributions
 
+## qpdf PDF drawing export (26 October 2026, development)
+
+Annotated PDF copies use the unmodified upstream qpdf **12.4.2** Windows MSVC x64
+runtime (Apache-2.0), separate from Qt's existing PDF viewing. The source PDF is
+never an output. Qt creates vector ink overlays; qpdf retains native PDF content
+and unedited pages. No PDF content is sent to a service.
+
+`scripts/qpdf/pins.json` pins the upstream release ZIP SHA-256
+`db87077e683630c1217e0e8f9a20a9749d952ab676e881c3689187763a5de25d`
+and the exact two shipped binaries, `qpdf.exe` and `qpdf30.dll`.
+The archive comes from
+<https://github.com/qpdf/qpdf/releases/tag/v12.4.2>. Original upstream
+`LICENSE.txt` and `NOTICE.md` are retained byte-for-byte. Its release's
+`vcpkg.zip` (SHA-256
+`82005252fee032135d07c85ad7626a38f26fb253c1e098d1d185f315bea15ebb`)
+supplies the exact Windows static dependency notices and SPDX versions:
+OpenSSL **3.6.4** (Apache-2.0), zlib **1.3.2** (Zlib), and libjpeg-turbo
+**3.2.0** (IJG, BSD-3-Clause, Zlib). All five notices are tracked under
+`scripts/qpdf/` and staged at `app/qpdf/licenses/`; the release SBOM records the
+four packages, static links and pinned files. qpdf's own NOTICE also retains
+the embedded-code attribution. No upstream test executables are shipped.
+
+Static import inspection of both binaries found Windows/system VC runtime
+imports and the sibling qpdf DLL. Vendor CRT DLLs in the upstream ZIP are not
+deployed; OkuFlow's existing supported centrally installed runtime remains the
+prerequisite. `stage_pdf_export.ps1` verifies all bytes before install/staging;
+it downloads only when explicitly called with `-Install`. Application startup
+and CMake never download this dependency. This records redistribution inputs,
+not installer-guest acceptance of a newly assembled release.
+
 ## Qt PDF file-source dependency (26 October 2026, development)
 
 File viewing now links Qt PDF 6.12.0 in addition to the existing Qt modules.

@@ -507,6 +507,7 @@ bool OkuFlowApp::Initialize()
     }
     if (uiState_->capturePhotoButton_) {
         connect(uiState_->capturePhotoButton_, &QPushButton::clicked, this, [this]() {
+            if (SaveSelectedFileDocument()) return;
             RequestPhotoCapture();
         });
     }

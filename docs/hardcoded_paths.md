@@ -1,5 +1,26 @@
 # Hard-Coded Paths and Defaults
 
+## PDF drawing copies and runtime (26 October 2026)
+
+`UserDataPaths::Documents()` creates `Documents` under the configured OkuFlow
+data root. Document save chooses `<stem>-OkuFlow-<16-hex-identity>.pdf` (or PNG)
+once per original path/content identity; every later save updates that same
+owned copy and its `.ink.json` sidecar. It never writes the original. File
+content hashes and a private lock protect saved copies from accidental reuse.
+Metadata is bounded to 32 MiB / two million points; original input is bounded
+to 256 MiB and picture export to 16 Mpixels. qpdf has a 60-second work timeout.
+A same-basename `.ink.pending.json` contains only fixed-schema previous hashes
+and next metadata, with no destination paths. Loading/saving uses it under the
+working-copy lock to recover an interrupted pair publication; unexpected bytes
+are preserved. The journal is removed after the two commits finish.
+
+The shipped export tool is `app/qpdf/bin/qpdf.exe` with sibling `qpdf30.dll`
+and exact `app/qpdf/licenses/` notices. Development defaults to
+`%LOCALAPPDATA%/OkuFlow/qpdf/12.4.2`; `OKUFLOW_QPDF_ROOT` overrides that cache.
+Only these paths are resolved, never PATH. Version, archive/member and notice
+SHA-256 pins live in `scripts/qpdf/pins.json`; the explicit install helper and
+bundle stager use the same catalog. No binary or ZIP is tracked in Git.
+
 ## File documents (26 October 2026)
 
 `install_qt_pdf.ps1` pins Qt PDF 6.12.0's official MSVC x64 extension archive

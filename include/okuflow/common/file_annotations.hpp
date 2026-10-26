@@ -1,0 +1,28 @@
+#pragma once
+#ifdef _WIN32
+#include "okuflow/common/annotation_model.hpp"
+#include <QMap>
+#include <QString>
+#include <functional>
+
+namespace okuflow {
+using FilePageInk = QMap<int, QVector<AnnotationStroke>>;
+struct FileAnnotationCopy {
+    QString path, sourceSha256, error;
+    FilePageInk pages;
+    bool committed{};
+    bool recoveryPending{};
+};
+// A narrow filesystem-test seam; production leaves this empty.
+struct FileAnnotationSaveHooks {
+    std::function<void()> documentPublished;
+};
+// Worker-only I/O. One content-bound working copy per original, never the
+// original itself. PDF export overlays vector ink without rasterizing pages.
+FileAnnotationCopy LoadFileAnnotations(const QString& source, const QString& directory);
+FileAnnotationCopy SaveFileAnnotations(const QString& source, const QString& directory,
+                                      const FilePageInk& pages, const QString& expectedSourceSha256 = {},
+                                      const FileAnnotationSaveHooks& hooks = {});
+QString FileAnnotationPdfTool();
+}
+#endif

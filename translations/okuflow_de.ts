@@ -3653,5 +3653,37 @@ Melden Sie sich auf der erweiterten Registerkarte Assistent über ChatGPT verbin
         <source>Media files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;All files (*)</source>
         <translation>Mediendateien (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff *.pdf);;Alle Dateien (*)</translation>
     </message>
+    <message>
+        <source>View PDF</source>
+        <translation>PDF ansehen</translation>
+    </message>
+    <message>
+        <source>Select PDF</source>
+        <translation>PDF auswählen</translation>
+    </message>
+    <message>
+        <source>PDF (*.pdf)</source>
+        <translation>PDF (*.pdf)</translation>
+    </message>
+    <message>
+        <source>View video or picture</source>
+        <translation>Video oder Bild ansehen</translation>
+    </message>
+    <message>
+        <source>Select video or picture</source>
+        <translation>Video oder Bild auswählen</translation>
+    </message>
+    <message>
+        <source>Videos and pictures (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</source>
+        <translation>Videos und Bilder (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv *.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)</translation>
+    </message>
+    <message>
+        <source>Save document</source>
+        <translation>Dokument speichern</translation>
+    </message>
+    <message>
+        <source>Saved document copy.</source>
+        <translation>Dokumentkopie gespeichert.</translation>
+    </message>
 </context>
 </TS>

@@ -217,6 +217,8 @@ private:
     void PollVideoPlayback();
     void PollFileDocument();
     void SelectDocumentPage(int page);
+    void StoreDocumentAnnotations();
+    bool SaveSelectedFileDocument();
     bool LiveRecapActive() const;
     bool LiveRecapWantsFrame(UINT width, UINT height, std::int64_t clock) const;
     void ObserveLiveRecapSource(const MediaFrame& frame);

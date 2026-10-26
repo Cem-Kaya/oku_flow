@@ -2,8 +2,10 @@
 
 Development implementation, 26 October 2026; separate from published 0.3.1.
 
-Settings > Camera > **View file**, **Select file**, Ctrl+O and a single local-file
-drop accept videos, PNG/JPEG/BMP/WebP/TIFF pictures, and PDFs. Camera discovery
+Settings > Camera offers **View video or picture** and a separate **View PDF**.
+Their selection buttons open the matching file filter. Ctrl+O opens the selected
+file category; from a camera it accepts any supported file. A single local-file
+drop also accepts videos, PNG/JPEG/BMP/WebP/TIFF pictures, and PDFs. Camera discovery
 continues without owning the file selection. A slow phone startup leaves the
 source picker usable. An explicit webcam choice cancels the old startup and
 automatic phone selection; an explicit file choice temporarily suspends new
@@ -30,6 +32,13 @@ PDF vectors, not unlimited-resolution rendering. The selected file must be at
 most 256 MiB; encrypted/password PDFs are currently refused. TIFF uses its first
 image. Unsupported/invalid files report failure rather than becoming a camera.
 
+Presentation validates one owned BGRA frame with a 64-MiB limit. It must not use
+the video decoder's multi-frame queue budget: an ordinary 4096-pixel portrait
+PDF fits the page limit but cannot fit six such video buffers. That mismatch
+previously left the preceding source visible despite successful text extraction.
+Video decode queue limits remain unchanged. A document GPU refusal keeps the
+same owned page for CPU presentation instead of reopening it as a video.
+
 ## Reading and accessibility
 
 PDF page controls use a native Qt spin box with one-based page numbers and
@@ -50,7 +59,86 @@ existing immutable single-frame OCR path, including scanned content and images
 inside mixed pages. No video neighbor is invented. Changing pages revokes old
 OCR source authority. Embedded text and OCR reading text remain separate.
 
+## Page drawings and one saved copy
+
+PDFs render one selected page at a time, including long documents. **Previous
+page**, **Next page**, and the page-number field navigate without decoding every
+page. Drawings belong to their PDF page or picture, in normalized source
+coordinates. They remain visible after leaving Draw and follow pan, zoom and
+rotation. Returning to a page restores its drawing and in-session undo history.
+Camera and video drawing behavior is unchanged.
+
+**Save document**, the Draw save action, and Photo while viewing a static file
+save the entire annotated document into `OkuFlow/Documents` under the configured
+OkuFlow folder. The first save creates one working copy; subsequent saves update
+that same file. A drawing on page 1 and another on page 3 are saved together in
+one PDF. Clearing a drawing and saving removes that drawing from the copy. The
+original is never replaced. A matching `.ink.json` sidecar preserves editable
+page ink when reopening the original in OkuFlow; keep it beside the working
+copy. A modified original has a different content identity and working-copy name.
+An externally changed working copy is preserved and reported instead of being
+overwritten. If another program locks the destination, saving fails without
+creating a succession of new copies.
+
+Each save first records a recovery journal (`.ink.pending.json`) beside
+the copy. If the document is written but the ink sidecar cannot be committed,
+the journal retains the exact new ink and output hash. Reopening the original
+can still restore that ink; retrying after the filesystem problem clears
+finishes the same copy. An interrupted save that never published its document
+keeps the previous copy and ink. Recovery never overwrites an unexpectedly
+changed document or sidecar. Normally the journal disappears after both commits.
+
+Qt writes vector drawing overlays and qpdf merges them into the original PDF.
+This preserves all pages and native text instead of rasterizing the document.
+Only edited pages need overlay pages; unrelated pages are retained. Pictures
+save as full-picture PNG copies with the drawing embedded, independent of the
+current viewport crop. Picture export has the same 16-Mpixel bound as document
+presentation. Save runs on the image I/O worker and takes a snapshot of every
+page's ink at the time of the request. Later drawing edits require another Save.
+PDF parsing and the export subprocess are local; no provider receives the file.
+Export preserves the normalized size of text and pen strokes on large pages
+and pictures; viewport-specific pixel caps do not shrink them in the saved copy.
+
+### PDF export runtime
+
+Run `scripts/stage_pdf_export.ps1 -Install` once for development and tests.
+It installs the pinned upstream qpdf 12.4.2 Windows runtime into
+`%LOCALAPPDATA%/OkuFlow/qpdf/12.4.2`; `OKUFLOW_QPDF_ROOT` selects an explicit
+development cache. There are no configure-time or application-time downloads.
+The release bundle stages the verified runtime at `app/qpdf/`, including exact
+qpdf, OpenSSL, zlib and libjpeg-turbo notices. The runtime uses the existing
+supported system VC runtime; vendor CRT copies are not deployed. Only the
+bundled path or explicit/versioned cache is used, never a tool found on PATH.
+
+`file_document_contract` checks a 600-page PDF using first/last/middle page
+requests, repeated saves into one PDF, retained native text and page count,
+rotated/cropped PDF placement, source-coordinate picture export, restored ink,
+cleared drawings, and refusal to overwrite an externally changed output.
+Additional regressions compare relative text/stroke sizes at 1000 and 4000
+pixels and on a large PDF page. Native Windows file-sharing locks force a
+sidecar commit failure after document publication, verify editable ink recovery
+and the next successful Save, and cover an unpublished output, completed-commit
+journal cleanup, and external changes during a pending transaction.
+`pdf_export_distribution_contract` checks actual pinned runtime staging, SPDX
+membership and tamper/extra-file refusals. The opt-in native file fixture
+checks page ink and the real application's two-save path with an unshown D3D12
+presenter. These headless checks do not claim spoken screen-reader acceptance.
+
 ## Build and validation
+
+Local validation on 26 October: the tracked release compile, complete selected
+non-GUI CPU suite (262 passing, 9 skipped, four passes with skipped Qt rows),
+and CUDA delta (15 passing, 5 skipped) completed with zero unresolved cases.
+This used `OKUFLOW_AGENT_EXCLUDE_GUI=1` and remains partial desktop validation.
+PCH-disabled document, transport, distribution and shared-source checks passed
+4/331. All 24 catalogs have 915 complete source keys; the 48 added translations
+received a complete model review with the flagged Dutch wording corrected.
+Native screen-reader speech and GUI acceptance are separate from these results.
+Failed receipts remain preserved: the first PDF-copy test held its output open,
+the file-release assertion initially repeated a successful rename, and the
+cleared-ink test initially expected white from Qt's default transparent render.
+The repaired checks close the reader, make release polling idempotent, and use
+the same explicit white PDF background as production, respectively.
 
 Qt PDF 6.12.0 is required alongside the existing Qt SDK. Run
 `scripts/install_qt_pdf.ps1 -QtPrefix C:/Qt/6.12.0/msvc2022_64` to add the pinned
@@ -83,3 +171,13 @@ These desktop-free checks do not establish physical USB recovery, actual
 screen-reader speech, GUI focus or installer acceptance. Run the tracked full
 matrix and hosted native GUI inventory before integration; preserve failed
 receipts and source/binary identity.
+
+`documentPixelsReplacePreviousSourceInHiddenPresenter` submits real picture/PDF
+pixels through the application and D3D12 into an unshown, non-activating private
+window, checking the viewport pixel buffer through picture → PDF → next page.
+The original failing run retained correct green PDF pixels while the viewport
+remained red. `media_gpu_scene_cuda` additionally reads back two 4096-pixel
+portrait BGRA scenes after a smaller scene, checking every output pixel. These
+are presentation/texture checks, not visible desktop or screen-reader speech
+acceptance. Source-choice tests retain each category through camera discovery
+and synchronize the selection button's visible and accessible names.
