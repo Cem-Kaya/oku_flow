@@ -1,5 +1,8 @@
 # OkuFlow developer guide
 
+[Source-ink outlines](uct_ink_outlines.md) documents the worker's non-text contour
+path, bounded CPU/CUDA arithmetic, current-pixel validation and A/B diagnostics.
+
 PDF/picture drawings and one-copy saves are described in
 [file_documents.md](file_documents.md). Install the pinned local PDF export
 runtime before validation with `scripts/stage_pdf_export.ps1 -Install`.

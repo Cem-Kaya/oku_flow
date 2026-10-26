@@ -175,11 +175,19 @@ struct FixtureStream
 } // namespace
 #include "uct_geometry_test_cases.hpp"
 #include "uct_surface_test_cases.hpp"
+#include "uct_ink_outline_cuda_cases.hpp"
 
 class PaddleTests final : public QObject
 {
     Q_OBJECT
   private slots:
+    void gpuInkOutlineKeepsSourceTopologyWithoutRasterEgress() {
+#if OKUFLOW_ENABLE_CUDA
+        uct_ink_outline_test::Parity();
+#else
+        QSKIP("CUDA build required.");
+#endif
+    }
     void engineCachePersistsWithoutReplacing()
     {
         using namespace engine_cache;

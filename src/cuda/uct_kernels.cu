@@ -699,3 +699,4 @@ void DecodeBatch(const float *p, int samples, int steps, int classes, const Quad
 } // namespace okuflow::uct::gpu
 
 #include "uct_validation_kernels.cuh"
+#include "uct_ink_outline_kernels.cuh"

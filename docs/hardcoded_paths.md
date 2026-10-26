@@ -93,6 +93,23 @@ only, actual precision pinned per job). See
 [the experiment contract](uct_ribbon_and_current_ink.md).
 
 
+## Source-ink contour limits (26 October 2026, development)
+
+`OKUFLOW_UCT_INK_OUTLINE` is an A/B control, not a persisted user preference:
+unset or `1` enables bounded source-ink extraction; every other nonempty value
+disables it. UCT itself still defaults off. `uct_ink_outline_core.hpp` fixes
+regions at 12..512 by 12..256 pixels, <=65,536 pixels each; <=8 nonoverlapping
+regions and <=131,072 pixels per job. Four contour levels have <=8,192 segments
+each, <=256 loops, <=64 resolved ink components and <=16,384 final vertices per
+job. Coverage projection requires squared RGB contrast >=4,096, p98-p20 span
+>=64; thresholds are low+30% span and midpoint +/-10% span. Structural area is
+>=4 source pixels squared and median estimated stroke width >=1.5 pixels.
+Intersections are fixed-point 24.8 with odd doubled thresholds. GPU POD sizes
+are asserted (Region 40, Segment 16, Summary 44 bytes); scratch remains inside
+the existing 4 MiB worker context. Only segments and scalar diagnostics leave
+the GPU. `OKUFLOW_UCT_INK_OUTLINE_MANIFEST` names an explicit private frozen-image
+diagnostic input. See [the contract](uct_ink_outlines.md).
+
 ## Shipping OCR payload inputs (24 October 2026)
 
 `build_release_bundle.bat` requires prepared physical absolute input paths.

@@ -51,8 +51,10 @@ retains UCT and fine-tune preferences; turning it on restores their use. Existin
 settings without a UCT preference default to off. It is **not** release-accepted, and
 nothing here claims recognition accuracy beyond the fixtures listed below.
 
-OCR is not optical sharpening. UCT replaces only words it has recognized and
-validated; other pixels stay as the original image. It is intended for steady,
+Recognized-word replacement draws only words UCT has recognized and validated.
+Development [source-ink outlines](uct_ink_outlines.md) can separately sharpen
+some unread shapes without interpreting them or covering their background.
+They add no recognized or accessible text. OCR remains intended for steady,
 flat printed words. Token filters conservatively omit some risky notation, but
 there is no reliable handwriting/math/diagram classifier: two agreeing OCR
 reads can repeat the same mistake. Complex notation and curved pages are not

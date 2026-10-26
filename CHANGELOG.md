@@ -16,6 +16,11 @@
 
 ## [Unreleased]
 
+- Sharpen bounded source-ink contours in some unread UCT spans, preserving
+  stacked fractions and raised marks without guessing characters or adding
+  reading text. Retain original backgrounds, pixel validation and reprojection;
+  CUDA exports contour geometry only. See [scope and limits](docs/uct_ink_outlines.md).
+
 - Let recognized mathematical operators, Unicode superscript/subscript numbers,
   fraction glyphs and triangular delta pass UCT's character filter. Preserve
   literal recognition output and existing geometry, font and pixel-proof rules.

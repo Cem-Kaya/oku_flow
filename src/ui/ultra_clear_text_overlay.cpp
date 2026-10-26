@@ -218,7 +218,7 @@ void UltraClearTextOverlay::SetViewTransform(const ViewTransform& transform)
         return;
     }
     transform_ = transform;
-    if (!words_.isEmpty()) {
+    if (!words_.isEmpty() || !inkOutlines_.isEmpty()) {
         update();
     }
 }
@@ -241,15 +241,48 @@ void UltraClearTextOverlay::SetWords(QVector<SceneWord> words)
     update();
 }
 
+void UltraClearTextOverlay::SetInkOutlines(QVector<uct::ink::SceneOutline> outlines)
+{
+    bool same = outlines.size() == inkOutlines_.size();
+    for (int i = 0; same && i < outlines.size(); ++i)
+    {
+        const auto &a = outlines[i];
+        const auto &b = inkOutlines_[i];
+        same = a.outline.geometry == b.outline.geometry && a.outline.bounds == b.outline.bounds &&
+               a.offset == b.offset && a.lineId == b.lineId && a.outline.foreground == b.outline.foreground &&
+               a.outline.background == b.outline.background;
+    }
+    if (same)
+        return;
+    inkOutlines_ = std::move(outlines);
+    inkOutlineColors_.clear();
+    for (const auto &outline : inkOutlines_)
+        inkOutlineColors_.push_back(GlyphColors({outline.outline.foreground, outline.outline.background}));
+    UpdateVisibility();
+    update();
+}
+
 void UltraClearTextOverlay::ClearWords()
 {
-    if (words_.isEmpty() && !isVisible()) {
+    if (words_.isEmpty() && inkOutlines_.isEmpty() && !isVisible()) {
         return;
     }
     words_.clear();
     glyphs_.clear();
+    inkOutlines_.clear();inkOutlineColors_.clear();
     UpdateVisibility();
     update();
+}
+
+QVector<QRectF> UltraClearTextOverlay::PaintedInkOutlineRects() const
+{
+    QVector<QRectF> result;
+    if (!PaintedGeometryCurrent())
+        return result;
+    for (const auto &ink : plan_.ink)
+        if (ink.drawn)
+            result.push_back(ink.bounds);
+    return result;
 }
 
 void UltraClearTextOverlay::SetStrokeWeight(int weight)
@@ -281,6 +314,8 @@ void UltraClearTextOverlay::SetDisplayColors(
     displayColorLut_ = lut; // owned palette; never borrow mutable application settings
     for (int i = 0; i < glyphs_.size(); ++i)
         glyphs_[i].colors = GlyphColors(words_[i].colors);
+    for(int i=0;i<inkOutlines_.size();++i)
+        inkOutlineColors_[i]=GlyphColors({inkOutlines_[i].outline.foreground,inkOutlines_[i].outline.background});
     update(); // colors only: no shaping, recognition, proof or geometry changes
 }
 
@@ -405,7 +440,7 @@ void UltraClearTextOverlay::UpdateVisibility()
     // picker or another application. Keep the words for a normal resume.
     const bool wanted = targetShown && applicationActive_ && !ownerBlocked_ &&
                         window->isEnabled() && !QApplication::activeModalWidget() &&
-                        !words_.isEmpty();
+                        (!words_.isEmpty() || !inkOutlines_.isEmpty());
     if (wanted && !isVisible()) {
         SyncGeometryToRenderTarget();
         show();
@@ -803,6 +838,17 @@ bool UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransfor
     }
     plan.visibleClip = clip;
     plan.paintClip = clip - protectedInk;
+    plan.ink.resize(inkOutlines_.size());
+    const auto origin=uct::SceneToViewPixel(transform,viewportSize.width(),viewportSize.height(),QPointF(0,0));
+    const auto unit=uct::SceneToViewPixel(transform,viewportSize.width(),viewportSize.height(),QPointF(1,1));
+    const auto sx=unit.x()-origin.x(),sy=unit.y()-origin.y();
+    for(int i=0;i<inkOutlines_.size();++i){
+        const auto& outline=inkOutlines_[i];auto& planned=plan.ink[i];
+        planned.transform=QTransform(sx,0,0,sy,origin.x()+sx*outline.offset.x(),origin.y()+sy*outline.offset.y());
+        planned.bounds=planned.transform.mapRect(outline.outline.bounds);
+        planned.drawn=outline.outline.geometry&&std::isfinite(sx)&&std::isfinite(sy)&&sx>0&&sy>0&&
+            !planned.bounds.isEmpty()&&clip.intersects(planned.bounds.toAlignedRect());
+    }
     return !deadline || !deadline->hasExpired();
 }
 
@@ -903,7 +949,7 @@ void UltraClearTextOverlay::paintEvent(QPaintEvent* event)
         savedPlan = plan_;
     }
     plan_.valid = false;
-    if (words_.isEmpty() || glyphs_.size() != words_.size() || !transform_.valid) {
+    if ((words_.isEmpty() && inkOutlines_.isEmpty()) || glyphs_.size() != words_.size() || !transform_.valid) {
         if (offscreenPaint) {
             plan_ = std::move(savedPlan);
         }
@@ -954,6 +1000,15 @@ void UltraClearTextOverlay::PaintWords(QPainter& painter, const PaintPlan& plan)
             painter.fillRect(planned.plateRect, glyphs_[i].colors.background);
         }
     }
+    // Re-emphasize only the actual source contours. There is deliberately no
+    // opaque sketch plate: faint source marks and camera texture remain intact.
+    // Its own non-text reference/ownership was checked before assignment.
+    painter.save();painter.setClipRegion(plan.visibleClip);
+    for(int i=0;i<plan.ink.size();++i)if(plan.ink[i].drawn){
+        painter.save();painter.setWorldTransform(plan.ink[i].transform,true);
+        painter.fillPath(inkOutlines_[i].outline.geometry->path,inkOutlineColors_[i].foreground);painter.restore();
+    }
+    painter.restore();
     painter.setBrush(Qt::NoBrush);
     for (int i = 0; i < words_.size(); ++i) {
         const PlannedWord& planned = plan.words[i];
@@ -977,12 +1032,13 @@ UctOverlaySnapshot UltraClearTextOverlay::CaptureSnapshot(const ViewTransform& t
                                                           const QSize& viewportSize)
 {
     UctOverlaySnapshot snapshot;
-    if (!isVisible() || words_.isEmpty() || glyphs_.size() != words_.size() ||
+    if (!isVisible() || (words_.isEmpty() && inkOutlines_.isEmpty()) || glyphs_.size() != words_.size() ||
         !transform.valid || viewportSize.isEmpty()) return snapshot;
     PaintPlan capturePlan;
     ComputePaintPlan(capturePlan, transform, viewportSize, false);
     if (std::none_of(capturePlan.words.cbegin(), capturePlan.words.cend(),
-                     [](const PlannedWord& word) { return word.drawn; })) return snapshot;
+                     [](const PlannedWord& word) { return word.drawn; }) &&
+        std::none_of(capturePlan.ink.cbegin(),capturePlan.ink.cend(),[](const auto& ink){return ink.drawn;})) return snapshot;
     snapshot.viewportSize = viewportSize;
     QPainter recorder(&snapshot.picture);
     PaintWords(recorder, capturePlan);

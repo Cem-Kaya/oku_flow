@@ -1,5 +1,11 @@
 # Third-Party Licenses and Attributions
 
+The source-ink contour implementation in `uct_ink_outline*` is original OkuFlow
+code under the project's dual contribution license. It adds no third-party
+model, library, font payload or downloaded asset. Existing Qt and CUDA notices
+continue to apply. Test font registration uses fonts installed with Windows;
+those fonts are not copied into the repository or release bundle.
+
 ## qpdf PDF drawing export (26 October 2026, development)
 
 Annotated PDF copies use the unmodified upstream qpdf **12.4.2** Windows MSVC x64

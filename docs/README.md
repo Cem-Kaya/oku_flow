@@ -1,5 +1,8 @@
 # OkuFlow Documentation Guide
 
+[Source-ink outlines](uct_ink_outlines.md) describes bounded sharpening of unread
+ink, geometry-only GPU export, source/presentation ownership and semantic limits.
+
 [File sources and phone recovery](file_documents.md) describes development
 picture/PDF viewing, native embedded-text accessibility, Qt dependencies and
 explicit source priority while preserving selected-phone recovery.

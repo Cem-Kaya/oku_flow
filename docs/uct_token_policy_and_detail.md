@@ -25,6 +25,11 @@ digits), modifier letters, controls and unsupported symbols still fail closed.
 file-token exception is unchanged. Font, geometry and source proof still apply;
 this is not a two-dimensional handwritten-math recognition engine.
 
+[Source-ink outlines](uct_ink_outlines.md) add a separate visual outcome for
+some rejected spans. They trace current source shapes, including a written
+1 over 2 and raised 2, without admitting or rewriting recognition output.
+The text alphabet, confidence and word-proof requirements below are unchanged.
+
 Confidence must still be finite and in the existing accepted range, starting
 at 0.7. That engine score is not a calibrated 70% probability of correctness.
 Windows.Media.Ocr provides no per-word score: its adapter's default `1.0` is

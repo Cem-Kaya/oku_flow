@@ -129,6 +129,10 @@ class Image final : public DeviceImage
     {
         return resident::Prepare(*this, result, decimation, probeOnly, cancelled, error);
     }
+    bool PrepareResidentInkOutlines(RecognitionResult& result,const std::atomic<bool>& cancelled,QString& error) const override
+    {
+        return resident::PrepareInkOutlines(*this,result,cancelled,error);
+    }
     QImage Readback(const std::atomic<bool> &cancelled, QString &error) const override
     {
         return DownloadImage(storage, cancelled, error, 1);

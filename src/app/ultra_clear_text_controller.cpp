@@ -2224,16 +2224,13 @@ void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
     if (!same) {
         overlayWords_ = next;
         UpdatePositionedTimingPublication(true, !next.isEmpty());
-        if (next.isEmpty()) {
-            overlay_->ClearWords();
-        } else {
-            overlay_->SetWords(std::move(next));
-        }
+        overlay_->SetWords(std::move(next));
         // Removals apply at once; additions wait for the semantic cadence.
         // Pan/zoom never reaches here: geometry is answered from paint.
         if (screenText_) screenText_->ContentChanged();
         UpdateReadingText(true);
     }
+    overlay_->SetInkOutlines(model_.SceneInkOutlines(ModelTime(nowMs),currentFrameSeq_));
     shownWords_ = overlayWords_.size();
 }
 

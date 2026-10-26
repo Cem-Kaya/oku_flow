@@ -86,6 +86,10 @@ the original page; bends it cannot represent keep their original ink. This
 uses the existing OCR jobs and does not run recognition on every camera frame.
 See [curved-page OCR and samples](docs/uct_ribbon_and_current_ink.md).
 
+Development UCT can also sharpen some unread source ink, including stacked and
+raised marks, while preserving its original shape and position. These outlines
+add no recognized or screen-reader text. See [scope and limits](docs/uct_ink_outlines.md).
+
 Record microphone audio or choose no microphone for silent video. Captures, readings and explanations gather in local HTML lecture notes. The default folder is `Documents\OkuFlow\`; you can choose another location.
 
 **Privacy-respecting local transcription:** open recorded-video notes in Chrome and choose Transcribe. Grant access to the folder containing your recording, then explicitly choose a speech model and processor in the [OkuFlow transcription tool](https://okuflow.com/transcribe/). First use downloads the selected model and runtime. Speech recognition runs on your own computer, without an inference server or audio/text upload. Returned text appears beneath the recording and is saved beside it as a transcript sidecar. Browser caches can be cleared or evicted, so a later session may need another download.

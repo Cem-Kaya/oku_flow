@@ -5,6 +5,7 @@
 
 #include "okuflow/app/ultra_clear_text_controller.hpp"
 #include "okuflow/common/ultra_clear_text.hpp"
+#include "okuflow/common/uct_ink_outline.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "okuflow/ui/ultra_clear_text_panel.hpp"
 #include "okuflow/ui/uct_screen_text_accessible.hpp"
@@ -1007,6 +1008,7 @@ private slots:
     void residentAnalysisRefusalNeverFallsBackToCpu();
     void residentProbePreparationRemainsSinglePass();
     void highRiskTokensFailClosed();
+    void protectedInkOutlinesSharpenWithoutAddingText();
     void ordinaryLabelsUseIndependentProofAndPaint_data();
     void ordinaryLabelsUseIndependentProofAndPaint();
     void ordinaryLabelsKeepPreparationGates_data();
@@ -2319,27 +2321,209 @@ void UltraClearTextTests::patchRejectsChangedContent()
     QVERIFY(!BuildReferencePatch(reference, QRectF(0.05, 0.9, 0.1, 0.04)).valid);
 }
 
+void UltraClearTextTests::protectedInkOutlinesSharpenWithoutAddingText()
+{
+    QImage image(kViewWidth, kViewHeight, QImage::Format_ARGB32);
+    image.fill(QColor(40, 40, 40));
+    QPainter inkPainter(&image);
+    inkPainter.fillRect(QRect(120, 116, 5, 16), QColor(220, 220, 220));
+    inkPainter.fillRect(QRect(114, 140, 22, 5), QColor(220, 220, 220));
+    inkPainter.fillRect(QRect(120, 154, 14, 6), QColor(220, 220, 220));
+    inkPainter.fillRect(QRect(202, 118, 8, 7), QColor(220, 220, 220));
+    inkPainter.end();
+    const ink::Region region{100, 100, 160, 96, {220, 220, 220}, {40, 40, 40}};
+    const auto outline = ink::Build(image, region);
+    QVERIFY2(outline.geometry, ink::Name(outline.refusal));
+    RecognitionResult result;
+    result.output.ok = true;
+    result.jobId = 1;
+    result.authority = 1;
+    result.stamp = Stamp(1, 1, 100, {0, 0, 1, 1, 0, 0, 1, 1, true});
+    result.stamp.immutableSelectedInput = true;
+    RecognizedWord rejected;
+    rejected.text = "unread";
+    rejected.boundsPx = {100, 100, 160, 96};
+    rejected.protectedBoundsPx = rejected.boundsPx;
+    rejected.disposition = TokenDisposition::kInvalidGeometry;
+    result.output.lines.push_back({{rejected}, {outline}});
+    QCOMPARE(PlanInkOutlines(result).size(), 1);
+    auto unknown = result;
+    unknown.stamp.holdDisplay = HoldDisplay::Crossfade;
+    QVERIFY(PlanInkOutlines(unknown).isEmpty()); // no attribution for mixed acquisitions
+    auto ordinary = result;
+    ordinary.output.lines[0].words[0].disposition = TokenDisposition::kCandidate;
+    QVERIFY(PlanInkOutlines(ordinary).isEmpty()); // normal recognized text keeps its existing path
+    {
+        const auto prior = qgetenv("OKUFLOW_UCT_INK_OUTLINE");
+        const bool existed = qEnvironmentVariableIsSet("OKUFLOW_UCT_INK_OUTLINE");
+        const auto restore = qScopeGuard([&] {
+            if (existed)
+                qputenv("OKUFLOW_UCT_INK_OUTLINE", prior);
+            else
+                qunsetenv("OKUFLOW_UCT_INK_OUTLINE");
+        });
+        qputenv("OKUFLOW_UCT_INK_OUTLINE", "0");
+        QVERIFY(PlanInkOutlines(result).isEmpty());
+    }
+    result.reference = MakeProbeFrame(image.constBits(), image.width(), image.height(), image.bytesPerLine(),
+                                      2, result.stamp);
+    result.sourcePixelDigest = SourcePixelsDigest(image);
+    result.prepared = PrepareLines(result, 5);
+    QVERIFY(result.prepared[0].reference.valid);
+    QCOMPARE(result.prepared[0].inkOutlines.size(), 1);
+    OverlayModel model;
+    model.AdmitImmutable(result, result.stamp, 100, nullptr, ImmutableAdmission::Standalone);
+    QVERIFY(model.SceneWords(100, result.stamp.frameSeq).isEmpty());
+    QVERIFY(model.ScreenLines(100, result.stamp.frameSeq).isEmpty());
+    const auto reading = model.ReadingText(100, result.stamp.frameSeq);
+    QVERIFY(!reading.contains("unread"));
+    const auto outlines = model.SceneInkOutlines(100, result.stamp.frameSeq);
+    QCOMPARE(outlines.size(), 1);
+    QWidget target;
+    target.resize(kViewWidth, kViewHeight);
+    target.show();
+    UltraClearTextOverlay overlay(&target, &target);
+    overlay.SetViewTransform(result.stamp.viewTransform);
+    overlay.SetInkOutlines(outlines);
+    QTRY_VERIFY(overlay.PaintedGeometryCurrent());
+    QCOMPARE(overlay.WordCount(), 0);
+    QCOMPARE(overlay.PaintedInkOutlineRects().size(), 1);
+    auto painted = image.copy();
+    QPainter painter(&painted);
+    overlay.CaptureSnapshot(result.stamp.viewTransform, painted.size()).Paint(painter, painted.size());
+    painter.end();
+    QVERIFY(painted.pixelColor(122, 122).red() > image.pixelColor(122, 122).red());
+    QCOMPARE(painted.pixelColor(125, 138),
+             image.pixelColor(125, 138)); // no opaque plate between the stacked marks
+    QCOMPARE(painted.pixelColor(50, 50), image.pixelColor(50, 50));
+    QCOMPARE(model.ReadingText(100, result.stamp.frameSeq), reading);
+    QWidget chrome(&target);
+    chrome.setGeometry(110, 110, 40, 60);
+    chrome.show();
+    overlay.SetExcludedWidget(&chrome);
+    std::array<std::uint32_t, 256> palette{};
+    for (int i = 0; i < 256; ++i)
+        palette[i] = qRgb(i, i, 0);
+    overlay.SetDisplayColors(UltraClearTextOverlay::DisplayColors::LumaLut, palette);
+    QCoreApplication::processEvents();
+    QImage liveLayer(image.size(), QImage::Format_ARGB32_Premultiplied);
+    liveLayer.fill(Qt::transparent);
+    overlay.render(&liveLayer); // native paint excludes chrome; exported snapshots deliberately omit it
+    auto clipped = image.copy();
+    QPainter clippedPainter(&clipped);
+    clippedPainter.drawImage(QPoint(0, 0), liveLayer);
+    clippedPainter.end();
+    QCOMPARE(clipped.pixelColor(122, 122), image.pixelColor(122, 122)); // native chrome remains excluded
+    QCOMPARE(clipped.pixelColor(206, 122),
+             QColor(255, 255, 0)); // selected palette also applies to source contours
+    chrome.hide();
+    overlay.SetExcludedWidget(nullptr);
+    const ViewTransform zoom{0, 0, .5f, .5f, 0, 0, 1, 1, true};
+    overlay.SetViewTransform(zoom);
+    QCoreApplication::processEvents();
+    auto zoomed = RenderView(image, zoom, kViewWidth, kViewHeight);
+    QPainter zoomPainter(&zoomed);
+    overlay.CaptureSnapshot(zoom, zoomed.size()).Paint(zoomPainter, zoomed.size());
+    zoomPainter.end();
+    QCOMPARE(zoomed.pixelColor(413, 245), QColor(255, 255, 0)); // geometry is reprojected exactly once
+    QCOMPARE(overlay.WordCount(), 0);
+    QVERIFY(model.ScreenLines(100, result.stamp.frameSeq).isEmpty());
+    QVERIFY(model.SceneInkOutlines(1000, result.stamp.frameSeq + 1).isEmpty());
+    QCOMPARE(model.SceneInkOutlines(1000, result.stamp.frameSeq).size(), 1); // immutable exact frame
+    const auto line = model.Lines().front().id;
+    SourceStamp probe = result.stamp;
+    probe.frameSeq++;
+    probe.timestampMs = 120;
+    LineCheck changed;
+    changed.lineId = line;
+    changed.checked = true;
+    changed.match.visible = true;
+    changed.match.matched = false;
+    model.ApplyChecks({changed}, probe);
+    QVERIFY(model.SceneInkOutlines(120, probe.frameSeq).isEmpty());
+    overlay.ClearWords();
+    QVERIFY(overlay.InkOutlineCount() == 0);
+    QVERIFY(overlay.CaptureSnapshot(result.stamp.viewTransform, image.size()).IsEmpty());
+    auto live = result;
+    live.stamp.immutableSelectedInput = false;
+    live.stamp.liveCameraCapture = true;
+    live.stamp.temporallySmoothed = true;
+    live.stamp.historyEpoch = 1;
+    live.stamp.seedFrameSeq = 1;
+    live.stamp.blendFrameCount = 2;
+    live.currentInputMatches = {false};
+    live.sourcePixelDigest.clear();
+    live.reference =
+        MakeProbeFrame(image.constBits(), image.width(), image.height(), image.bytesPerLine(), 2, live.stamp);
+    live.prepared = PrepareLines(live, 5);
+    OverlayModel liveModel;
+    liveModel.AdmitLiveCamera(live, live.stamp, nullptr, 100);
+    QVERIFY(liveModel.SceneInkOutlines(100, live.stamp.frameSeq).isEmpty()); // EMA never proves itself
+    QVERIFY(!liveModel.Lines().isEmpty());
+    LineCheck fresh;
+    fresh.lineId = liveModel.Lines().front().id;
+    fresh.checked = true;
+    fresh.match.visible = true;
+    fresh.match.matched = true;
+    fresh.match.score = 1;
+    auto current = live.stamp;
+    current.temporallySmoothed = false;
+    current.frameSeq++;
+    current.timestampMs = 120;
+    liveModel.ApplyChecks({fresh}, current);
+    QCOMPARE(liveModel.SceneInkOutlines(120, current.frameSeq).size(), 1);
+    QVERIFY(liveModel.ScreenLines(120, current.frameSeq).isEmpty());
+    fresh.match.matched = false;
+    current.frameSeq++;
+    current.timestampMs = 140;
+    liveModel.ApplyChecks({fresh}, current);
+    QVERIFY(liveModel.SceneInkOutlines(140, current.frameSeq).isEmpty());
+}
+
 void UltraClearTextTests::highRiskTokensFailClosed()
 {
-    for (const QString& risky : {QStringLiteral("xʰ"), QStringLiteral("♞"), QStringLiteral("|"),
-                                 QStringLiteral("a^2"), QStringLiteral("x_2"),
-                                 QStringLiteral("GPT-６"), QStringLiteral("a_b"),
-                                 QStringLiteral("x\u200b"), QStringLiteral("x\ny"), QString()}) {
+    for (const QString &risky :
+         {QStringLiteral("xʰ"), QStringLiteral("♞"), QStringLiteral("|"), QStringLiteral("a^2"),
+          QStringLiteral("x_2"), QStringLiteral("GPT-６"), QStringLiteral("a_b"), QStringLiteral("x\u200b"),
+          QStringLiteral("x\ny"), QString()})
+    {
         QVERIFY2(IsHighRiskToken(risky), qPrintable(risky));
     }
-    for (const QString& safe : {QStringLiteral("Hello"), QStringLiteral("3.14"), QStringLiteral("-12"),
-                                QStringLiteral("1,000"), QStringLiteral("page"), QStringLiteral("(see)"),
-                                QStringLiteral("42"), QStringLiteral("Grüße"),
-                                QStringLiteral("GPT-6"), QStringLiteral("GPT6"), QStringLiteral("RTX4090"),
-                                QStringLiteral("OCRv6"), QStringLiteral("R2D2"), QStringLiteral("COVID-19"),
-                                QStringLiteral("l0O"), QStringLiteral("B2"), QStringLiteral("5S"),
-                                QStringLiteral("l"), QStringLiteral("I"), QStringLiteral("1"),
-                                QStringLiteral("0"), QStringLiteral("O"), QStringLiteral("o"),
+    for (const QString &safe : {QStringLiteral("Hello"),
+                                QStringLiteral("3.14"),
+                                QStringLiteral("-12"),
+                                QStringLiteral("1,000"),
+                                QStringLiteral("page"),
+                                QStringLiteral("(see)"),
+                                QStringLiteral("42"),
+                                QStringLiteral("Grüße"),
+                                QStringLiteral("GPT-6"),
+                                QStringLiteral("GPT6"),
+                                QStringLiteral("RTX4090"),
+                                QStringLiteral("OCRv6"),
+                                QStringLiteral("R2D2"),
+                                QStringLiteral("COVID-19"),
+                                QStringLiteral("l0O"),
+                                QStringLiteral("B2"),
+                                QStringLiteral("5S"),
+                                QStringLiteral("l"),
+                                QStringLiteral("I"),
+                                QStringLiteral("1"),
+                                QStringLiteral("0"),
+                                QStringLiteral("O"),
+                                QStringLiteral("o"),
                                 QStringLiteral("scripts/integrate_castle_runtime.py"),
                                 QStringLiteral("C:\\My_Files\\paper.txt"),
-                                QStringLiteral("W=△K"), QStringLiteral("x²"), QStringLiteral("x₆"),
-                                QStringLiteral("½"), QStringLiteral("√2"), QStringLiteral("∑"),
-                                QStringLiteral("1−O"), QStringLiteral("20°C"), QStringLiteral("a≤b")}) {
+                                QStringLiteral("W=△K"),
+                                QStringLiteral("x²"),
+                                QStringLiteral("x₆"),
+                                QStringLiteral("½"),
+                                QStringLiteral("√2"),
+                                QStringLiteral("∑"),
+                                QStringLiteral("1−O"),
+                                QStringLiteral("20°C"),
+                                QStringLiteral("a≤b")})
+    {
         QVERIFY2(!IsHighRiskToken(safe), qPrintable(safe));
     }
 }

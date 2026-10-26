@@ -54,6 +54,10 @@ public:
         QVector<QRectF> carvedSceneRects; // protected subtraction remainders; original otherwise
     };
     void SetWords(QVector<SceneWord> words);
+    // Source-derived non-text outlines; never contribute words or UIA geometry.
+    void SetInkOutlines(QVector<uct::ink::SceneOutline> outlines);
+    int InkOutlineCount() const noexcept { return inkOutlines_.size(); }
+    QVector<QRectF> PaintedInkOutlineRects() const;
     // Optional diagnostic provenance of this content assignment, never a view
     // receipt or a replacement for the model's independent word proof.
     void SetTimingTicket(uct::timing::PublicationTicket ticket) { timingTicket_ = ticket; }
@@ -169,6 +173,8 @@ private:
     bool ownerBlocked_{};
     ViewTransform transform_;
     QVector<SceneWord> words_;
+    QVector<uct::ink::SceneOutline> inkOutlines_;
+    QVector<uct::LineColors> inkOutlineColors_;
     // Fitted glyph cached when words or style change; paint only reprojects
     // it. A word whose glyph is not valid is never drawn in either pass, so
     // an opaque plate can never erase the original without its replacement.
@@ -221,6 +227,8 @@ private:
         std::uint64_t generation{};
         QVector<PlannedWord> words; // parallel to words_ at paint time
         QVector<QString> texts;     // word text at paint time
+        struct Ink { QTransform transform; QRectF bounds; bool drawn{}; };
+        QVector<Ink> ink;
         QRegion visibleClip;        // viewport minus floating chrome
         QRegion paintClip;          // visibleClip minus protected source ink
         ViewTransform transform;

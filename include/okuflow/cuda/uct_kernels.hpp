@@ -3,6 +3,7 @@
 #include <cuda_runtime_api.h>
 #include <type_traits>
 #include "okuflow/common/uct_ribbon.hpp"
+#include "okuflow/common/uct_ink_outline_core.hpp"
 
 namespace okuflow::uct::gpu
 {
@@ -86,6 +87,10 @@ struct Component
     float c, s, u0, u1, v0, v1;
     float score;
 };
+// One bounded original-ink region. Raster coverage and scan scratch stay on
+// device. Output is four fixed-capacity lists of contour segments + scalars.
+void InkOutline(const void*,std::size_t,int,int,ink::Region,unsigned char*,int*,int*,
+                ink::Summary*,ink::Segment*,cudaStream_t);
 void Probe(const void *image, std::size_t pitch, int width, int height, void *out, int decimation,
            cudaStream_t stream);
 void Normalize(const void *image, std::size_t pitch, int width, int height, float *out,

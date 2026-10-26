@@ -5,6 +5,7 @@
 #include "okuflow/common/uct_device_image.hpp"
 #include "okuflow/common/uct_model_settings.hpp"
 #include "okuflow/common/uct_timing_trace.hpp"
+#include "okuflow/common/uct_ink_outline_types.hpp"
 
 #include <QColor>
 #include <QByteArray>
@@ -339,6 +340,7 @@ struct RecognizedWord {
 
 struct RecognizedLine {
     QVector<RecognizedWord> words;
+    QVector<ink::Outline> inkOutlines; // worker-only original-ink contours, not OCR words
 };
 
 struct RecognitionOutput {
@@ -433,6 +435,7 @@ struct PreparedLine {
     QRectF sceneRect;
     ReferencePatch reference;    // invalid when untrackable
     std::optional<QRectF> ribbonReadingBand;
+    QVector<ink::Outline> inkOutlines;
 };
 
 struct MatchTuning {
@@ -503,7 +506,12 @@ struct RecognitionResult {
     bool regionalFallback{}; // stale/unsupported/no slack: full, or yielded to queued full
     bool regionalFailed{};   // request a full read without retiring healthy backend/text
     bool regionalDeadlineOverrun{};
+    std::uint64_t inkOutlineBytes{}; // contour/scalar egress only; no coverage raster
+    double inkOutlineMs{}; // included in durationMs, never an additional worker
 };
+
+struct InkOutlineRequest { ink::Region region; int line{}; };
+QVector<InkOutlineRequest> PlanInkOutlines(const RecognitionResult& result);
 
 // Maps recognized words into scene coordinates and builds per-line residual
 // references from `result.reference`. CPU work is pure; resident input is worker-only.
@@ -805,6 +813,7 @@ struct AcceptedLine {
     // existing mask cap and permits pixel-centre rounding of carved strips.
     QVector<QRectF> carvedSceneRects;
     std::optional<QRectF> ribbonReadingBand; // centerline-based row ordering only
+    QVector<ink::Outline> inkOutlines; // shares this line's exact reference and lifetime
 };
 
 struct SceneWord {
@@ -956,6 +965,7 @@ public:
     // latest validation is fresh, or no newer camera frame has been
     // presented since it.
     QVector<SceneWord> SceneWords(std::int64_t nowMs, std::uint64_t currentFrameSeq) const;
+    QVector<ink::SceneOutline> SceneInkOutlines(std::int64_t nowMs, std::uint64_t currentFrameSeq) const;
     // SceneWords projected through a transform onto a pixel surface.
     QVector<DisplayWord> DisplayWords(const ViewTransform& transform, double width,
                                       double height, std::int64_t nowMs,

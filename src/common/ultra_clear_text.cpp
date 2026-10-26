@@ -1,6 +1,7 @@
 #include "okuflow/common/ultra_clear_text.hpp"
 #include "okuflow/common/uct_paddle.hpp"
 #include "okuflow/common/uct_region_planner.hpp"
+#include "okuflow/common/uct_ink_outline.hpp"
 #include "uct_color_policy.hpp"
 #include "uct_surface_geometry.hpp"
 #include <QCryptographicHash>
@@ -1612,6 +1613,56 @@ QVector<LineCheck> CheckLines(const QVector<LineReference>& lines, const ProbeFr
     return checks;
 }
 
+QVector<InkOutlineRequest> PlanInkOutlines(const RecognitionResult &result)
+{
+    QVector<InkOutlineRequest> requests;
+    const auto mode = qEnvironmentVariable("OKUFLOW_UCT_INK_OUTLINE");
+    if ((!mode.isEmpty() && mode != QStringLiteral("1")) || !EvidenceAcquisition(result.stamp) ||
+        !result.stamp.viewTransform.valid)
+        return requests;
+    const int width = result.stamp.viewportWidth, height = result.stamp.viewportHeight;
+    if (width < 1 || height < 1 || width > 8192 || height > 8192)
+        return requests;
+    int total = 0;
+    for (int i = 0; i < result.output.lines.size(); ++i)
+        for (const auto &word : result.output.lines[i].words)
+        {
+            if (word.disposition != TokenDisposition::kInvalidGeometry &&
+                word.disposition != TokenDisposition::kLowConfidence &&
+                word.disposition != TokenDisposition::kUnrecognized)
+                continue;
+            const auto box = word.protectedBoundsPx.isEmpty() ? word.boundsPx : word.protectedBoundsPx;
+            if (!std::isfinite(box.x()) || !std::isfinite(box.y()) || !std::isfinite(box.width()) ||
+                !std::isfinite(box.height()))
+                continue;
+            const int left = int(std::ceil(std::clamp(box.left(), 0., double(width)))),
+                      top = int(std::ceil(std::clamp(box.top(), 0., double(height))));
+            const int right = int(std::floor(std::clamp(box.right(), 0., double(width)))),
+                      bottom = int(std::floor(std::clamp(box.bottom(), 0., double(height))));
+            const auto colors =
+                word.colors.value_or(i < result.lineColors.size() ? result.lineColors[i] : LineColors{});
+            ink::Region region{
+                left,
+                top,
+                right - left,
+                bottom - top,
+                {colors.foreground.red(), colors.foreground.green(), colors.foreground.blue()},
+                {colors.background.red(), colors.background.green(), colors.background.blue()}};
+            if (!ink::Valid(region) || total + region.w * region.h > ink::MaximumJobPixels)
+                continue;
+            const QRect rect(left, top, region.w, region.h);
+            if (std::any_of(requests.begin(), requests.end(), [&](const auto &r) {
+                    return QRect(r.region.x, r.region.y, r.region.w, r.region.h).intersects(rect);
+                }))
+                continue;
+            requests.push_back({region, i});
+            total += region.w * region.h;
+            if (requests.size() == ink::MaximumRegions)
+                return requests;
+        }
+    return requests;
+}
+
 QVector<PreparedLine> PrepareLines(const RecognitionResult& result, double minimumWordHeightPx)
 {
     QVector<PreparedLine> prepared;
@@ -1673,7 +1724,31 @@ QVector<PreparedLine> PrepareLines(const RecognitionResult& result, double minim
             const double center=ribbonY[ribbonY.size()/2],h=ribbonHeights[ribbonHeights.size()/2];
             out.ribbonReadingBand=QRectF(ribbonLeft,center-h*.5,ribbonRight-ribbonLeft,h);
         }
-        const bool trackable=!out.words.isEmpty()&&!unmappedSpan;
+        for (const auto &outline : line.inkOutlines)
+            if (outline.geometry)
+            {
+                auto scene = outline;
+                scene.bounds = ViewRectToScene(stamp.viewTransform, width, height, outline.bounds);
+                if (scene.bounds.isEmpty() || !out.sceneRect.contains(scene.bounds))
+                    continue;
+                auto geometry = std::make_shared<ink::Geometry>();
+                geometry->path.setFillRule(Qt::WindingFill);
+                for (const auto &loop : outline.geometry->loops)
+                {
+                    QPolygonF mapped;
+                    mapped.reserve(loop.size());
+                    for (const auto p : loop)
+                        mapped.push_back(
+                            ViewRectToScene(stamp.viewTransform, width, height, QRectF(p, QSizeF(1, 1)))
+                                .topLeft());
+                    geometry->loops.push_back(mapped);
+                    geometry->path.addPolygon(mapped);
+                    geometry->path.closeSubpath();
+                }
+                scene.geometry = std::move(geometry);
+                out.inkOutlines.push_back(std::move(scene));
+            }
+        const bool trackable = !out.words.isEmpty() && !unmappedSpan;
         referenceRects.push_back(trackable?out.sceneRect:QRectF());
         if(trackable&&!result.reference.resident)out.reference=BuildReferencePatch(result.reference,out.sceneRect);
         prepared.push_back(std::move(out));
@@ -2301,6 +2376,7 @@ struct RecognitionScheduler::State {
                 // lease still supplies resident references/colors and the
                 // canonical GPU-tree fingerprint used by preferred inference.
                 const bool resident = job.device && job.device->HasResidentAnalysis();
+                const QImage* inkPixels=nullptr;
                 if (resident && !self->probeOnly) {
                     result.output.ok=job.device->PrepareResidentAnalysis(result,
                         self->referenceDecimation, false, self->cancelInFlight, result.output.error);
@@ -2320,6 +2396,7 @@ struct RecognitionScheduler::State {
                     if (validationPixels.isNull()) { result.output.ok = false; result.output.inputFault = true; }
                     else referencePixels = &validationPixels;
                 }
+                inkPixels=referencePixels;
                 // Camera acquisition identity already comes from its owner.
                 // Validation-only results are never temporal OCR evidence.
                 // Hash only saved/unknown recognition inputs, on this worker.
@@ -2363,9 +2440,48 @@ struct RecognitionScheduler::State {
                 }
                 if (result.output.ok && !self->cancelInFlight.load()) {
                     FinalizeRecognizedGeometry(result.output);
+                    for (auto &line : result.output.lines)
+                        line.inkOutlines.clear(); // backend text is not contour authority
+                    if (!self->probeOnly)
+                    {
+                        QElapsedTimer outlineTimer;
+                        outlineTimer.start();
+                        if (resident)
+                        {
+                            result.output.ok = job.device->PrepareResidentInkOutlines(
+                                result, self->cancelInFlight, result.output.error);
+                            if (!result.output.ok)
+                                result.output.inputFault = true;
+                        }
+                        else if (inkPixels)
+                        {
+                            int vertices = 0;
+                            for (const auto &request : PlanInkOutlines(result))
+                            {
+                                if (self->cancelInFlight.load())
+                                    break;
+                                auto outline = ink::Build(*inkPixels, request.region);
+                                if (outline.geometry && vertices + outline.vertices > ink::MaximumVertices)
+                                {
+                                    outline.geometry.reset();
+                                    outline.refusal = ink::Refusal::ContourLimit;
+                                }
+                                if (outline.geometry)
+                                    vertices += outline.vertices;
+                                result.output.lines[request.line].inkOutlines.push_back(std::move(outline));
+                            }
+                        }
+                        result.inkOutlineMs = outlineTimer.nsecsElapsed() / 1e6;
+                    }
+                    if (!result.output.ok)
+                    {
+                        result.output.lines.clear();
+                        result.prepared.clear();
+                    }
                     result.prepared = PrepareLines(result, self->minimumWordHeightPx);
                     if (!self->probeOnly && job.device &&
-                        job.device->kind == AnalysisKind::TemporallySmoothed && !resident) {
+                        job.device->kind == AnalysisKind::TemporallySmoothed && !resident)
+                    {
                         const auto recognized = MakeProbeFrame(pixels.constBits(), pixels.width(),
                             pixels.height(), static_cast<int>(pixels.bytesPerLine()),
                             self->referenceDecimation, job.stamp);
@@ -3666,7 +3782,12 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         if (regional && !regionalCandidateComplete(line)) continue;
         const bool currentInputMatches = !stamp.temporallySmoothed ||
             (result.currentInputMatches.size() == prepared.size() && result.currentInputMatches[i]);
-        if (!currentInputMatches) {
+        const bool originalInkOnly = !line.inkOutlines.isEmpty() &&
+                                     std::none_of(line.words.begin(), line.words.end(), [](const auto &word) {
+                                         return word.disposition == TokenDisposition::kCandidate;
+                                     });
+        if (!currentInputMatches && !originalInkOnly)
+        {
             // No new evidence: do not transfer recognition or its clock. A
             // separately current-validated old line may survive below.
             failedRegistrationRects.push_back(line.sceneRect);
@@ -3677,6 +3798,7 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         candidate.line.sceneRect = line.sceneRect;
         candidate.line.ribbonReadingBand = line.ribbonReadingBand;
         candidate.line.reference = line.reference;
+        candidate.line.inkOutlines = line.inkOutlines;
         candidate.line.colors = StableLineColors(i < result.lineColors.size() ? result.lineColors[i] : LineColors{});
         candidate.line.provenance = stamp;
         candidate.line.valid = !newerProbe || line.reference.valid;
@@ -4354,12 +4476,55 @@ QVector<SceneWord> OverlayModel::SceneWords(std::int64_t nowMs, std::uint64_t cu
     return words;
 }
 
-QVector<DisplayWord> OverlayModel::DisplayWords(const ViewTransform& transform, double width,
-                                                double height, std::int64_t nowMs,
-                                                std::uint64_t currentFrameSeq) const
+QVector<ink::SceneOutline> OverlayModel::SceneInkOutlines(std::int64_t nowMs, std::uint64_t frame) const
+{
+    QVector<ink::SceneOutline> result;
+    int vertices = 0;
+    for (const auto &line : lines_)
+    {
+        if (!line.reference.valid || !IsReadable(line, nowMs, frame))
+            continue;
+        for (const auto &outline : line.inkOutlines)
+        {
+            if (!outline.geometry || outline.refusal != ink::Refusal::None || outline.vertices < 3 ||
+                vertices + outline.vertices > ink::MaximumVertices)
+                continue;
+            if (std::none_of(line.protectedSceneRects.begin(), line.protectedSceneRects.end(),
+                             [&](const auto &mask) { return mask.contains(outline.bounds); }))
+                continue;
+            const auto bounds = outline.bounds.translated(line.sceneOffset);
+            if (std::any_of(immutableConflictRects_.begin(), immutableConflictRects_.end(),
+                            [&](const auto &r) { return r.intersects(bounds); }))
+                continue;
+            bool collision = false;
+            for (const auto &other : lines_)
+                if (IsShown(other, nowMs, frame))
+                    for (const auto &word : other.words)
+                        if (word.glyphEligible &&
+                            word.sceneRect.translated(other.sceneOffset).intersects(bounds))
+                        {
+                            collision = true;
+                            break;
+                        }
+            if (collision || std::any_of(result.begin(), result.end(), [&](const auto &existing) {
+                    return existing.outline.bounds.translated(existing.offset).intersects(bounds);
+                }))
+                continue;
+            result.push_back({outline, line.sceneOffset, line.id});
+            vertices += outline.vertices;
+            if (result.size() == ink::MaximumRegions)
+                return result;
+        }
+    }
+    return result;
+}
+
+QVector<DisplayWord> OverlayModel::DisplayWords(const ViewTransform &transform, double width, double height,
+                                                std::int64_t nowMs, std::uint64_t currentFrameSeq) const
 {
     QVector<DisplayWord> words;
-    if (!UsableTransform(transform, width, height)) {
+    if (!UsableTransform(transform, width, height))
+    {
         return words;
     }
     const QRectF surface(0.0, 0.0, width, height);

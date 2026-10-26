@@ -392,6 +392,10 @@ public:
         return owned_->WaitValidationReady(stream, error);
     }
     bool HasResidentAnalysis() const override { return owned_->HasResidentAnalysis(); }
+    bool PrepareResidentInkOutlines(RecognitionResult& result,const std::atomic<bool>& cancelled,QString& error) const override
+    {
+        return owned_->PrepareResidentInkOutlines(result,cancelled,error);
+    }
     bool PrepareResidentAnalysis(RecognitionResult& result, int decimation, bool probeOnly,
                                  const std::atomic<bool>& cancelled, QString& error) const override
     {
@@ -1694,6 +1698,7 @@ struct Run {
         const auto& result = completion.result;
         const double submitToCallback = Ms(completion.at - submitted);
         QJsonObject measured{{"submitToCallbackMs", submitToCallback}, {"schedulerWorkerMs", result.durationMs},
+            {"inkOutlineMs",result.inkOutlineMs},{"inkOutlineBytes",double(result.inkOutlineBytes)},
             {"shadowPlannerMs", result.shadowPlannerMs},
             {"residentAnalysisMs", meters.residentMs}, {"inputWaitReadyMs", meters.waitMs},
             {"workerMinusResidentMs", result.durationMs - meters.residentMs},
@@ -1777,7 +1782,8 @@ inline void ExportPaintSampleAtHeight(const Run& run, const Block& block, int so
             word.protectedSceneRects, word.wordIndex, word.sceneQuad,
             word.layoutGroupId, word.carvedSceneRects});
     overlay.SetWords(std::move(paint));
-    if (!words.isEmpty()) QTRY_VERIFY(overlay.PaintedGeometryCurrent());
+    overlay.SetInkOutlines(model.SceneInkOutlines(result.stamp.timestampMs,result.stamp.frameSeq));
+    if (!words.isEmpty()||overlay.InkOutlineCount()) QTRY_VERIFY(overlay.PaintedGeometryCurrent());
     QJsonArray painted;
     QJsonArray prepared;
     for (int line = 0; line < result.output.lines.size(); ++line) {
@@ -1832,10 +1838,19 @@ inline void ExportPaintSampleAtHeight(const Run& run, const Block& block, int so
     QVERIFY(!QFileInfo::exists(originalFile) && !QFileInfo::exists(paintedFile));
     QVERIFY(input.image.save(originalFile));
     QVERIFY(output.save(paintedFile));
+    QJsonArray outlines;
+    for(int line=0;line<result.output.lines.size();++line)for(const auto& outline:result.output.lines[line].inkOutlines){
+        QJsonArray components,holes;for(int k=0;k<ink::Levels;++k){components.push_back(outline.components[k]);holes.push_back(outline.holes[k]);}
+        outlines.push_back(QJsonObject{{"line",line},{"decision",ink::Name(outline.refusal)},
+            {"bounds",uct_batch_test::Rect(outline.bounds)},{"vertices",outline.vertices},
+            {"components",components},{"holes",holes},{"transferBytes",double(outline.transferBytes)}});
+    }
     const QJsonObject receipt{{"schema", 1}, {"source", input.Json()}, {"jobFile", jobFile},
         {"jobSha256", FileSha256(jobFile)}, {"backend", completion.backend.name},
         {"ribbon", run.selection.curvedRibbon}, {"candidateWords", CandidateWords(result.output)},
         {"admittedWords", words.size()}, {"paintedWords", drawn}, {"words", painted},
+        {"inkOutlines",outlines},{"sketchedRegions",overlay.PaintedInkOutlineRects().size()},
+        {"inkOutlineMs",result.inkOutlineMs},{"inkOutlineBytes",double(result.inkOutlineBytes)},
         {"minimumSourceWordHeightPx", minimumHeight}, {"prepared", prepared},
         {"readingText", model.ReadingText(result.stamp.timestampMs, result.stamp.frameSeq)},
         {"originalSha256", FileSha256(originalFile)}, {"paintedSha256", FileSha256(paintedFile)},

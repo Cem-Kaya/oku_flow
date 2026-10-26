@@ -1218,3 +1218,19 @@ aligned with the project goals.
   an all-target build does not rebuild excluded targets. Preserve stale-binary
   and failed evidence. These fixtures use private capture callbacks/discovery
   snapshots and files, never the owner's adb server, phone, camera or AI account.
+
+## Source-ink outline validation (2026-10-26)
+- Source-ink paths are non-text drawing geometry. Keep recognized/readable/UIA
+  text and painted-word counts unchanged; never label a traced symbol as math
+  recognition. Fill original contours only, without opaque background plates.
+- CUDA may publish capped contour segments and scalar metadata, never coverage
+  grids or source-image readback. Keep the existing worker, owned exact current
+  validation input, completion/quarantine, freshness, protected-mask and single
+  analysis-to-scene-to-view mapping contracts. Smoothed OCR cannot prove itself.
+- Preserve every central contour, including tiny dots and holes. Document the
+  four-source-pixel structural-count limit separately from pixel/semantic proof;
+  refusal keeps the original image. Do not relax OCR gates to make a sample draw.
+- Run `uct_ink_outline_contract`, `uct_ink_outline_cuda_contract` and the normal
+  model/overlay contracts. Compare warm production-factory whole-worker off/on
+  visits separately from synthetic microtimes and native presentation evidence.
+  Keep original failed attempts and require genuine native captures for promotion.

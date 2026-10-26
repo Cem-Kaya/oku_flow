@@ -70,6 +70,9 @@ class DeviceImage : public std::enable_shared_from_this<DeviceImage>
     virtual bool HasResidentAnalysis() const { return false; }
     virtual bool PrepareResidentAnalysis(RecognitionResult&, int, bool,
                                          const std::atomic<bool>&, QString&) const { return false; }
+    // Optional contour-only extraction after final recognition geometry.
+    // Missing implementations leave protected ink original; never download it.
+    virtual bool PrepareResidentInkOutlines(RecognitionResult&,const std::atomic<bool>&,QString&) const { return true; }
     virtual QImage Readback(const std::atomic<bool> &cancelled, QString &error) const = 0;
     // Full-resolution validation pixels, for explicit CPU fallback reference
     // and fingerprint work only. Defaults to the OCR pixels.

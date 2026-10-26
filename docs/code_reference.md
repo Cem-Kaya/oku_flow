@@ -8061,3 +8061,59 @@ from recognition golden records; `ActualStatus` and the production backend's
 `[detector / recognizer]` precision suffix report actual selected arithmetic.
 
 Restricted MCP launch overrides place the empty table before the explicit per-server disabled keys. A later table override erases those child disables before CLI configuration merging.
+
+## Source-ink outlines (26 October 2026, development)
+
+`uct_ink_outline_core.hpp` owns CPU/CUDA-compatible POD `ink::Region`, `Segment`
+and `Summary`, layout assertions, extraction caps, integer `Contrast`, `Coverage`
+and quantile `Thresholds`, and directed fixed-point marching-squares `Cell`.
+`uct_ink_outline_types.hpp` supplies typed `Refusal`/`Name`, shared immutable
+`Geometry` (path plus loops), `Outline` metadata and offset-bearing `SceneOutline`.
+These types carry drawing geometry rather than recognized/accessible text.
+
+`uct_ink_outline.hpp::Valid` bounds regions and colors. `Trace` joins directed
+segments into closed contours with a typed limit result; `Contains` supports
+nesting. `Assemble` checks border/contrast, resolved component/hole correspondence,
+faint-ink loss, stroke width and budgets before retaining every central contour.
+It assigns each hole to its nearest ink owner once. `Build` implements the same
+grid and contour stages on CPU, using subtraction bounds checks before indexing.
+
+`PlanInkOutlines(RecognitionResult)` selects bounded nonoverlapping rejected
+spans only with attributable acquisitions. `RecognizedLine::inkOutlines` is
+cleared after backend finalization before worker-owned extraction. The worker
+uses exact validation pixels, records `inkOutlineMs`/`inkOutlineBytes`, enforces
+the job vertex budget and preserves cancellation/error authority. Device inputs
+call `DeviceImage::PrepareResidentInkOutlines`; the default implementation leaves
+original pixels intact. `resident::OwnedImage` and diagnostic `MeteredImage`
+forward to `resident::PrepareInkOutlines` on the existing worker context.
+
+CUDA `gpu::InkOutline` launches `inkCoverage`, `inkCounts`, `inkRowOffsets` and
+`inkSegments`, preserving fixed cell order with row/warp prefix sums. Raster
+coverage and prefix buffers remain on device. The resident wrapper retains the
+exact input, waits for validation readiness, downloads only bounded segments and
+scalars, calls shared `Assemble`, and retains existing completion/quarantine rules.
+
+`PrepareLines` maps contours from analysis to scene once into
+`PreparedLine::inkOutlines`; `AcceptedLine::inkOutlines` retains their line's
+reference and tracking authority. All-rejected smoothed lines may retain
+source-ink geometry but stay invalid until a current probe validates them.
+`OverlayModel::SceneInkOutlines` checks readability, reference, protected owner
+mask, immutable conflicts, glyph collisions and budgets. It adds no `SceneWords`,
+`ScreenLines` or reading text.
+
+`UltraClearTextOverlay::SetInkOutlines` caches geometry identity and colors;
+`InkOutlineCount` counts assignments and `PaintedInkOutlineRects` reports only
+the current drawn plan. `ClearWords` revokes glyphs and outlines together.
+Visibility, display colors, view transforms, `PaintPlan`, `ComputePaintPlan`,
+`PaintWords` and `CaptureSnapshot` support outlines-only artifacts. Ink fills
+have no background plate; native chrome clips live painting, while snapshots
+retain the established chrome-free export contract. Controller refresh assigns
+both glyphs and outlines; its existing revocation gates clear both.
+
+`uct_ink_outline_tests`, the CUDA case header and
+`protectedInkOutlinesSharpenWithoutAddingText` cover primitive, geometry-only
+CPU/CUDA parity and model/paint/freshness semantics. `RegisterFixtureFonts` adds
+installed Segoe UI Symbol to offscreen fixture fallback. Resident diagnostic
+jobs record outline time/bytes and `ExportPaintSampleAtHeight` exports region
+refusals and actual `sketchedRegions` separately from painted words. See
+[source-ink contract and validation limits](uct_ink_outlines.md).

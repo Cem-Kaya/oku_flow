@@ -61,7 +61,10 @@ inline void RegisterFixtureFonts()
         return;
     }
     registered = true;
-    for (const char* path : {"C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf"}) {
+    // Offscreen Qt has no Windows font discovery. Include the symbol fallback
+    // used by the native desktop, so math glyphs are tested as glyphs, not tofu.
+    for (const char* path : {"C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf",
+                             "C:/Windows/Fonts/seguisym.ttf"}) {
         QFontDatabase::addApplicationFont(QString::fromLatin1(path));
     }
 }
