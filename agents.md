@@ -1239,3 +1239,12 @@ aligned with the project goals.
   model/overlay contracts. Compare warm production-factory whole-worker off/on
   visits separately from synthetic microtimes and native presentation evidence.
   Keep original failed attempts and require genuine native captures for promotion.
+
+## Native formula-model experiments (2026-10-27)
+- Formula latency for the Windows product must use native Windows GPU execution;
+  keep WSL research labelled separately. An export/parse or TensorRT-enabled flag
+  is not proof of TensorRT execution. Use the pinned developer backend's actual
+  engine receipts, completed timings and token comparisons; no hidden fallback.
+- Keep formula models/engines and Python environments outside Git and release
+  staging. Preserve the cropped-model versus app/detection/display timing scope
+  and retain failed attempts. This experiment enables no shipping Math mode.

@@ -1,0 +1,3 @@
+# Install TensorRT's matching cp310 Windows wheel from the explicit SDK separately.
+numpy==1.26.4
+cuda-python==12.9.4

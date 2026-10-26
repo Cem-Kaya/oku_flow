@@ -1405,3 +1405,10 @@ external MCP, photo or recording rights. Stop/New/provider changes fence pending
 initialization; configuration alone does not trigger inference. Optional tool
 checks remain in settings. The control catalog also exposes UCT enabled and
 Show original preferences, separating requested state from effective readiness.
+
+## Native Windows formula TensorRT experiment
+
+For cropped-formula research, see [the separate developer-only TensorRT backend](formula_tensorrt_experiment.md).
+It uses explicit native Windows SDK roots and pinned exports, with two GPU
+engines and a bounded token loop. Its timings exclude image preprocessing and
+app rendering. It adds no Math mode, shipping dependency or automatic inference.

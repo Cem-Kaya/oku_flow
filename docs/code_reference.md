@@ -8133,3 +8133,21 @@ installed Segoe UI Symbol to offscreen fixture fallback. Resident diagnostic
 jobs record outline time/bytes and `ExportPaintSampleAtHeight` exports region
 refusals and actual `sketchedRegions` separately from painted words. See
 [source-ink contract and validation limits](uct_ink_outlines.md).
+
+## Developer formula TensorRT backend
+
+`scripts/uct/formula_trt/model_pins.py` verifies exact upstream model files and
+export/rewrite lineage. `rewrite_mask.rewrite` proves binary recurrent masking
+before replacing unsupported integer bitwise ops. `partition_formula.partition`,
+`lower_branches`, `node_uses` and `needed_nodes` extract the invariant encoder and
+minimal one-step decoder, honor recurrent-input shadowing, specialize pure scalar
+controls and verify original tokens with a preparation-only CPU oracle.
+`build_engines.py` compiles explicit native Windows, strongly typed FP32 plans.
+`artifacts.write_seal`/`verify_seal` bind exact source, state, profiles and plans.
+`benchmark.FormulaRuntime`, `Buffer` and `OutputAllocator` own bounded CUDA
+allocations and ping-pong recurrent state; completed stop feedback drives the
+original token loop. Faults quarantine rather than reuse uncertain GPU resources.
+`capture_reference.py` archives exact native Paddle arrays/tokens;
+`test_contracts.py` exercises masking, branch refusal and content binding without
+GPU/models. None is linked to the application. See
+[scope and measurements](formula_tensorrt_experiment.md).

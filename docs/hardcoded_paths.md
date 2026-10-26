@@ -1408,3 +1408,17 @@ neighbour-time, distinct-frame or cross-frame pixel-agreement prerequisite.
 The existing confidence, five-source-pixel, source/PTS/geometry, input/protection
 and rendering bounds still apply. Live and the explicit corroborated protocol
 retain their temporal constants. See [policy](uct_standalone_freeze.md).
+
+## Formula TensorRT experiment (2026-10-27)
+
+`scripts/uct/formula_trt/` accepts explicit `--work-dir`, `--model-root`/`--assets`,
+`--sdk` and `--cuda-bin` paths; no machine path is a runtime default. Private
+references use `reference/MODEL/CASE-{input,tokens}.npy`; prepared artifacts use
+`partition-v2/MODEL` (override with `--partition`). Preserve old plans/evidence.
+Model/ONNX revision hashes are in its `models.json`. The experiment defaults to
+batch one, three warmups/twelve timed calls and four named supplied fixtures.
+Decoder profiles use the pinned model configuration's sequence bound plus eight
+slots; exceeded bounds fail. Buffer banks retain a small growth/alignment margin;
+host control bridges refuse more than 256 bytes. No camera, user setting or app
+model tier is changed. Local measurements live at the private path recorded in
+[the experiment contract](formula_tensorrt_experiment.md).

@@ -837,3 +837,6 @@ experiment preserves one history and leaves the app default unchanged.
 [Standalone Freeze](uct_standalone_freeze.md) describes held-frame recognition
 without a neighbouring capture. Earlier pair-based repair reports retain their
 historical evidence and explicit-protocol scope.
+
+- [Native Windows formula TensorRT experiment](formula_tensorrt_experiment.md):
+  pinned cropped-formula backend, developer-only commands and measured limits.

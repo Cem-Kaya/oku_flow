@@ -1,0 +1,178 @@
+[
+  {
+    "name": "PP-FormulaNet_plus-S",
+    "revision": "3d46f557e3a1752f4bf81202395af3b5ecfadfd2",
+    "license": "Apache-2.0 (model card)",
+    "files": [
+      {
+        "file": "README.md",
+        "bytes": 20557,
+        "sha256": "a87ec34da0925e6ad3e4e80b426dc58cfce2fc6d196261650c1c988bcf9e2a0a",
+        "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-S/resolve/3d46f557e3a1752f4bf81202395af3b5ecfadfd2/README.md",
+        "upstreamLfsSha256": null
+      },
+      {
+        "file": "config.json",
+        "bytes": 3951676,
+        "sha256": "ddf1f951ceeb10c2b9de3ae255b62de59299b1028f87878177e86c9604fe3610",
+        "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-S/resolve/3d46f557e3a1752f4bf81202395af3b5ecfadfd2/config.json",
+        "upstreamLfsSha256": null
+      },
+      {
+        "file": "inference.json",
+        "bytes": 506956,
+        "sha256": "01238434e33df83588e2627f350559b576e34551d2b2ffea148345032de56c00",
+        "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-S/resolve/3d46f557e3a1752f4bf81202395af3b5ecfadfd2/inference.json",
+        "upstreamLfsSha256": null
+      },
+      {
+        "file": "inference.pdiparams",
+        "bytes": 256845006,
+        "sha256": "e464f94412feaa98f8791eacc84684f887b3569e30e80c52b8112e9cf7d4069b",
+        "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-S/resolve/3d46f557e3a1752f4bf81202395af3b5ecfadfd2/inference.pdiparams",
+        "upstreamLfsSha256": "e464f94412feaa98f8791eacc84684f887b3569e30e80c52b8112e9cf7d4069b"
+      },
+      {
+        "file": "inference.yml",
+        "bytes": 2244564,
+        "sha256": "96062655d94c21d39274328dbc82c1a487e66addb8425f5a7fd5b7dfb2421ec3",
+        "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-S/resolve/3d46f557e3a1752f4bf81202395af3b5ecfadfd2/inference.yml",
+        "upstreamLfsSha256": null
+      }
+    ],
+    "privateBenchmarkOnly": true,
+    "nativeExportSha256": "1ce006aa41569e92bca7719f9da878e57fb3dbbf800a59e99faea51ed5f8b031"
+  },
+  {
+    "name": "PP-FormulaNet_plus-M",
+    "revision": "712e6e2e4c313b1ea163be5c350127b82662c58d",
+    "license": "Apache-2.0 (model card)",
+    "files": [
+      {
+        "file": "README.md",
+        "bytes": 22829,
+        "sha256": "20ecf881e6fdbc0f8bc3091d1197d30bcdbea143dc015ee05a8e039d6441346d",
+        "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-M/resolve/712e6e2e4c313b1ea163be5c350127b82662c58d/README.md",
+        "upstreamLfsSha256": null
+      },
+      {
+        "file": "config.json",
+        "bytes": 3951676,
+        "sha256": "aaa40c3c54b25b157c46f937043f2223874f01fc7e2060f3d1d5d08ffb9bc12f",
+        "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-M/resolve/712e6e2e4c313b1ea163be5c350127b82662c58d/config.json",
+        "upstreamLfsSha256": null
+      },
+      {
+        "file": "inference.json",
+        "bytes": 1130158,
+        "sha256": "8333a7f650766a748e273c550d278601dd19dfeee1c4b01038ff632f134d9884",
+        "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-M/resolve/712e6e2e4c313b1ea163be5c350127b82662c58d/inference.json",
+        "upstreamLfsSha256": null
+      },
+      {
+        "file": "inference.pdiparams",
+        "bytes": 617064962,
+        "sha256": "f16ef9b5c8227da70d3ec969a5195f4d62c1154427b883f4d6cff07633654041",
+        "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-M/resolve/712e6e2e4c313b1ea163be5c350127b82662c58d/inference.pdiparams",
+        "upstreamLfsSha256": "f16ef9b5c8227da70d3ec969a5195f4d62c1154427b883f4d6cff07633654041"
+      },
+      {
+        "file": "inference.yml",
+        "bytes": 2244564,
+        "sha256": "87b5f3d7f2b2fe553627d77b37f496608ca150ebd0ef62d362591edca47b5538",
+        "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-M/resolve/712e6e2e4c313b1ea163be5c350127b82662c58d/inference.yml",
+        "upstreamLfsSha256": null
+      }
+    ],
+    "privateBenchmarkOnly": true,
+    "nativeExportSha256": "a1156de374089ec2edddd0aecf5e4255df65ffe94eb126f4d5d81e95aa520c6f"
+  },
+  {
+    "name": "PP-FormulaNet-L",
+    "revision": "9994c2af5c2070b239f1fd2ecc2b40fbf378ea1d",
+    "license": "Apache-2.0 (model card)",
+    "files": [
+      {
+        "file": "README.md",
+        "bytes": 20277,
+        "sha256": "c72f8aac864c5ac636fe6a8bd9fd6ae441b8d5edd2f259def01287e4777a6ce9",
+        "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet-L/resolve/9994c2af5c2070b239f1fd2ecc2b40fbf378ea1d/README.md",
+        "upstreamLfsSha256": null
+      },
+      {
+        "file": "config.json",
+        "bytes": 3951671,
+        "sha256": "8e6313450139b595f2655dad52e0d373f6a5f41a985e3d8348926dd03b163ca4",
+        "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet-L/resolve/9994c2af5c2070b239f1fd2ecc2b40fbf378ea1d/config.json",
+        "upstreamLfsSha256": null
+      },
+      {
+        "file": "inference.json",
+        "bytes": 1650354,
+        "sha256": "67d356d53daa3df256acc3ac47c34b72399fe3df7debd6990be5129e3fd4b8f3",
+        "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet-L/resolve/9994c2af5c2070b239f1fd2ecc2b40fbf378ea1d/inference.json",
+        "upstreamLfsSha256": null
+      },
+      {
+        "file": "inference.pdiparams",
+        "bytes": 724452527,
+        "sha256": "039b320b0d1b64361a053f7496b05db9f53fabd22d27c80ccfab4c59d3881318",
+        "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet-L/resolve/9994c2af5c2070b239f1fd2ecc2b40fbf378ea1d/inference.pdiparams",
+        "upstreamLfsSha256": "039b320b0d1b64361a053f7496b05db9f53fabd22d27c80ccfab4c59d3881318"
+      },
+      {
+        "file": "inference.yml",
+        "bytes": 2244559,
+        "sha256": "39bcdd283d08c4328ae853a62da1c6d2a4966360dae0ff0524670ae65ae91af9",
+        "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet-L/resolve/9994c2af5c2070b239f1fd2ecc2b40fbf378ea1d/inference.yml",
+        "upstreamLfsSha256": null
+      }
+    ],
+    "privateBenchmarkOnly": true,
+    "nativeExportSha256": "62a0eff0bdc617f20afbeb4888de299b354e52be02d12ea506ab9226074491fb"
+  },
+  {
+    "name": "PP-FormulaNet_plus-L",
+    "revision": "0809597a77f735bfb35354edb632f2e6dff606f3",
+    "license": "Apache-2.0 (model card)",
+    "files": [
+      {
+        "file": "README.md",
+        "bytes": 22453,
+        "sha256": "81ec2f66f8d28536523010af80d0162b9c7dc0b0497acd6216cda44a2aac224d",
+        "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-L/resolve/0809597a77f735bfb35354edb632f2e6dff606f3/README.md",
+        "upstreamLfsSha256": null
+      },
+      {
+        "file": "config.json",
+        "bytes": 3951676,
+        "sha256": "44e0be0fd39b676cc409c2ef537b4a52509db55cc79bacbbe65b55fe8d64c6a4",
+        "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-L/resolve/0809597a77f735bfb35354edb632f2e6dff606f3/config.json",
+        "upstreamLfsSha256": null
+      },
+      {
+        "file": "inference.json",
+        "bytes": 1650354,
+        "sha256": "ad259c4b896d99aa3479336b9121112fb40ff1ababfbf8765a3428a3b86df582",
+        "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-L/resolve/0809597a77f735bfb35354edb632f2e6dff606f3/inference.json",
+        "upstreamLfsSha256": null
+      },
+      {
+        "file": "inference.pdiparams",
+        "bytes": 727598255,
+        "sha256": "4245c39c181d1d21e472bc85c7434df9b23f177be46552c0542bf153addbc355",
+        "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-L/resolve/0809597a77f735bfb35354edb632f2e6dff606f3/inference.pdiparams",
+        "upstreamLfsSha256": "4245c39c181d1d21e472bc85c7434df9b23f177be46552c0542bf153addbc355"
+      },
+      {
+        "file": "inference.yml",
+        "bytes": 2244564,
+        "sha256": "afc92a2737268da0499c37b0b6741da268c369fd7424667fcfeb8fa6c7b22d30",
+        "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-L/resolve/0809597a77f735bfb35354edb632f2e6dff606f3/inference.yml",
+        "upstreamLfsSha256": null
+      }
+    ],
+    "privateBenchmarkOnly": true,
+    "nativeExportSha256": "fb028597b852e3521b90dc776970d052465afc85474052d7e523ec5d173a26b8"
+  }
+]

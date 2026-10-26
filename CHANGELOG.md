@@ -16,6 +16,10 @@
 
 ## [Unreleased]
 
+- Add a developer-only native Windows TensorRT formula benchmark with pinned
+  models, bounded GPU decoder state and reference-token checks. This enables
+  no application Math mode or new release dependency.
+
 - Sharpen bounded source-ink contours in some unread UCT spans, preserving
   stacked fractions and raised marks without guessing characters or adding
   reading text. Retain original backgrounds, pixel validation and reprojection;

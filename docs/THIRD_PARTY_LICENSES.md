@@ -621,3 +621,15 @@ music or fonts, follows the project's contribution/license terms, and is
 test-only. Generation, exact bytes and its silent use are recorded in
 `docs/video_audio_preroll_repair.md`; no generation tool or codec library is
 bundled with the application.
+
+## Developer-only formula TensorRT research
+
+The opt-in Python backend under `scripts/uct/formula_trt/` adds no bundled
+weights or runtime. Its exact upstream PaddlePaddle PP-FormulaNet plus-S, plus-M,
+L and plus-L revisions/model-card files are pinned in `models.json`; those cards
+declare Apache-2.0. Native export uses Apache-2.0 Paddle/Paddle2ONNX; CPU oracle
+preparation uses MIT ONNX Runtime and Apache-2.0 ONNX, with BSD-3-Clause NumPy.
+Measured execution uses the already licensed, explicitly selected NVIDIA
+TensorRT/CUDA SDK and CUDA Python bindings in a private environment. None is
+copied into application/installer payloads by these scripts. Any future model
+staging/app integration needs its own notices, distribution review and acceptance.
