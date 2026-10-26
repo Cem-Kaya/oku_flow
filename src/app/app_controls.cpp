@@ -27,11 +27,7 @@ void OkuFlowApp::OnCameraSelectionChanged(int index) {
         pendingCameraStart_.reset();
         StopCameraCapture();
         selectedCameraIndex_ = -1;
-        mainWindow_->setFileSourceSelected({},-1);
-        {
-            auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
-            uiState_->cameraCombo_->setCurrentIndex(uiState_->cameraCombo_->findData(QStringLiteral("phone")));
-        }
+        mainWindow_->setFileSourceSelected({},uiState_->cameraCombo_->findData(QStringLiteral("phone")));
         phoneDiscoveryTimer_.invalidate();
         SavePersistentSettings();
         UpdateCameraPlaceholder();

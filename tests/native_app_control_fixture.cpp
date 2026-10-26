@@ -2341,6 +2341,7 @@ private slots:
         auto& window=NativeControlFixture::Window(app_);
         QVERIFY(window.cameraCombo()->findData(QStringLiteral("phone"))>=0);
         NativeControlFixture::PickAutomaticPhone(app_);
+        QVERIFY(window.cameraFormatCombo()->parentWidget()->isHidden());
         QCOMPARE(window.cameraCombo()->currentData().toString(),QStringLiteral("phone"));
         QCOMPARE(NativeControlFixture::QuickModeSettings(app_).cameraSymbolicLink,QStringLiteral("okuflow-phone:"));
         QVERIFY(NativeControlFixture::QuickModeSettings(app_).cameraSelectionExplicit);

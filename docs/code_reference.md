@@ -16,6 +16,8 @@
   Assistant ownership and ignores duplicate notifications for an active phone.
   `OnCameraSelectionChanged` stores the pending `okuflow-phone:` selector, cancels
   the exact superseded camera/file request and retains asynchronous retirement.
+  It selects the pending entry through `setFileSourceSelected`, immediately
+  reconciling format-control visibility before discovery returns.
   `PollPhoneCameraDiscovery` requires a result from the current request generation
   before replacing that selector with an actual discovered phone and saving it.
   Ordinary polls cannot override a subsequent manual webcam choice. USB server
