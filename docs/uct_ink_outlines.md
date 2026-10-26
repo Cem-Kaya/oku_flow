@@ -181,3 +181,45 @@ analysis remain under the private `uct-math-layout-20261026` and
 before later source formatting. Formatting changes no arithmetic or decisions;
 the final source is rebuilt and gated separately. No native promotional capture
 or hardware release acceptance is claimed by these offscreen exports.
+
+## Review repairs and repeated measurement
+
+The Opus review identified a smoothed-admission bypass and unverified emphasis
+of tiny/faint marks. The repair removes that bypass, registers eligible rejected
+spans independently of optional geometry in both CPU and resident paths, requires
+strong tiny islands and central support across faint extents, and handles nested
+contours by smallest owner. Model tests cover old current-proof preservation and
+reading equality; actual CPU scheduler and resident paired-image fixtures cover
+matching and mismatching source pixels. Other conservative limits (whole-region
+glyph collisions, no extraction margin, planner skips without per-region receipts,
+and refusing a job after non-cancelled resident input failure) remain explicit.
+
+The repeated production-factory experiment used clean implementation
+`a3854495196d7a9dc7ad52611c016640efc1da20`, archived test executable
+`eccbd60fbdfcedffe3fb5dbde5d9aa221a4e99a448a66f8d69dfe2da98263f61`,
+the same sources/models/hardware and off/on/on/off design, 40 timed jobs again.
+
+| Input | Worker off median | Worker on median | Observed difference | Outline-stage on median |
+|---|---:|---:|---:|---:|
+| Original board | 65.12 ms | 67.67 ms | +2.55 ms | 2.21 ms |
+| Decoded video frame | 27.68 ms | 30.93 ms | +3.25 ms | 1.22 ms |
+
+Callback differences were +2.55/+3.25 ms. There was noticeable inter-visit drift:
+the two off-visit worker medians were 70.18/62.02 ms for the original and
+30.40/25.71 ms for the video frame. Treat pooled differences as descriptive
+observations on these inputs, not a fixed overhead or a worst-case guarantee.
+All 40 jobs had zero image-egress calls; warm plans were unchanged and observed
+retirement receipts completed. Metadata bytes remained 91,064/69,868 per job.
+The separate repaired correctness run retained one drawn ink region, eight OCR
+words and the original 1,414/1,086 contour vertices on both sources.
+
+A separate PR finding showed that immutable detail merges treated new outlines
+as mask metadata and discarded their reference. Outline-only detail carriers now
+retain their own selected-frame reference and lifetime with empty reading tokens.
+They never borrow a containing text owner's proof. Repeated matching detail
+artifacts reuse their carrier and preserve original risk masks; selected-source
+outline storage shares the eight-region/16,384-vertex cap. Pixel freshness is
+checked independently of reading tokens. Tests cover both disjoint and containing
+mask owners, repeated refinement, stable existing glyph references and unchanged
+reading output with outlines enabled/disabled. This model merge happens after the
+measured worker stage; no native presentation or merge-latency claim is made.

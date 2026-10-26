@@ -23,6 +23,8 @@
   Protected smoothed spans must register against current pixels independently
   of outline success. Weak tiny islands remain original rather than amplified;
   holes and nested marks retain their source geometry.
+  Paused-image/PDF detail merges retain an outline's own reference and lifetime
+  without changing existing text or adding reading placeholders.
 
 - Let recognized mathematical operators, Unicode superscript/subscript numbers,
   fraction glyphs and triangular delta pass UCT's character filter. Preserve

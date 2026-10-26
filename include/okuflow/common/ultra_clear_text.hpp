@@ -996,6 +996,7 @@ public:
     // Glyphs additionally require a valid registration reference. Reading-only
     // evidence shares the same source freshness but cannot renew from a probe.
     bool IsShown(const AcceptedLine& line, std::int64_t nowMs, std::uint64_t currentFrameSeq) const;
+    bool HasCurrentPixels(const AcceptedLine& line, std::int64_t nowMs, std::uint64_t currentFrameSeq) const;
     bool IsReadable(const AcceptedLine& line, std::int64_t nowMs, std::uint64_t currentFrameSeq) const;
 
 private:

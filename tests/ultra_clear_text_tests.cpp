@@ -1009,6 +1009,8 @@ private slots:
     void residentProbePreparationRemainsSinglePass();
     void highRiskTokensFailClosed();
     void protectedInkOutlinesSharpenWithoutAddingText();
+    void smoothedProtectedCpuRegistrationIsIndependentOfOutlines();
+    void immutableDetailKeepsOutlineReferenceWithoutReadingChanges();
     void ordinaryLabelsUseIndependentProofAndPaint_data();
     void ordinaryLabelsUseIndependentProofAndPaint();
     void ordinaryLabelsKeepPreparationGates_data();
@@ -2544,6 +2546,208 @@ void UltraClearTextTests::protectedInkOutlinesSharpenWithoutAddingText()
             QCOMPARE(omission, matchedReading);
         else
             matchedReading = omission;
+    }
+}
+
+void UltraClearTextTests::smoothedProtectedCpuRegistrationIsIndependentOfOutlines()
+{
+    class PairedImage final : public DeviceImage
+    {
+      public:
+        QImage smoothed, current;
+        PairedImage(QImage recognized, QImage raw) : smoothed(std::move(recognized)), current(std::move(raw))
+        {
+            width = smoothed.width();
+            height = smoothed.height();
+            pitch = smoothed.bytesPerLine();
+            sourceEpoch = 7;
+            processingGeneration = 3;
+            kind = AnalysisKind::TemporallySmoothed;
+            historyEpoch = 1;
+            seedFrameSequence = 1;
+            blendFrameCount = 2;
+            temporalAlpha = .25f;
+        }
+        const void *Data() const override
+        {
+            return this;
+        }
+        bool WaitReady(void *, QString &) const override
+        {
+            return true;
+        }
+        QImage Readback(const std::atomic<bool> &, QString &) const override
+        {
+            return smoothed;
+        }
+        QImage ReadValidation(const std::atomic<bool> &, QString &) const override
+        {
+            return current;
+        }
+    };
+    class ProtectedRecognizer final : public Recognizer
+    {
+      public:
+        BackendStatus Initialize() override
+        {
+            BackendStatus status;
+            status.state = BackendState::kReady;
+            return status;
+        }
+        RecognitionOutput Recognize(const QImage &, const std::atomic<bool> &) override
+        {
+            RecognizedWord word;
+            word.boundsPx = word.protectedBoundsPx = QRectF(16, 16, 160, 96);
+            word.disposition = TokenDisposition::kInvalidGeometry;
+            word.colors = LineColors{QColor(220, 220, 220), QColor(40, 40, 40)};
+            RecognitionOutput output;
+            output.ok = true;
+            output.lines.push_back({{word}, {}});
+            return output;
+        }
+    };
+    QImage image(192, 128, QImage::Format_ARGB32);
+    image.fill(QColor(40, 40, 40));
+    QPainter p(&image);
+    p.fillRect(QRect(36, 36, 80, 10), QColor(220, 220, 220));
+    p.fillRect(QRect(120, 75, 10, 8), QColor(220, 220, 220));
+    p.end();
+    QImage changed(image.size(), image.format());
+    for (int y = 0; y < changed.height(); ++y)
+        for (int x = 0; x < changed.width(); ++x)
+            changed.setPixelColor(x, y, ((x / 3 + y / 3) % 2) ? QColor(220, 220, 220) : QColor(40, 40, 40));
+    const auto prior = qgetenv("OKUFLOW_UCT_INK_OUTLINE");
+    const bool existed = qEnvironmentVariableIsSet("OKUFLOW_UCT_INK_OUTLINE");
+    const auto restore = qScopeGuard([&] {
+        if (existed)
+            qputenv("OKUFLOW_UCT_INK_OUTLINE", prior);
+        else
+            qunsetenv("OKUFLOW_UCT_INK_OUTLINE");
+    });
+    RecognitionResult completed;
+    std::atomic<int> count{};
+    RecognitionScheduler scheduler(std::make_unique<ProtectedRecognizer>(),
+                                   [&](RecognitionResult result) {
+                                       completed = std::move(result);
+                                       ++count;
+                                   },
+                                   {});
+    QTRY_COMPARE(scheduler.Status().state, BackendState::kReady);
+    int expected = 0;
+    for (bool enabled : {false, true})
+        for (bool matches : {false, true})
+        {
+            qputenv("OKUFLOW_UCT_INK_OUTLINE", enabled ? "1" : "0");
+            auto input = std::make_shared<PairedImage>(image, matches ? image : changed);
+            input->frameSequence = 10 + expected;
+            SourceStamp stamp;
+            stamp.sourceEpoch = 7;
+            stamp.geometryGeneration = 3;
+            stamp.frameSeq = input->frameSequence;
+            stamp.timestampMs = 100 + expected * 100;
+            stamp.viewportWidth = 192;
+            stamp.viewportHeight = 128;
+            stamp.viewTransform = {0, 0, 1, 1, 0, 0, 1, 1, true};
+            stamp.liveCameraCapture = true;
+            QVERIFY(scheduler.SubmitDevice(stamp, input));
+            ++expected;
+            QTRY_COMPARE(count.load(), expected);
+            QVERIFY2(completed.output.ok, qPrintable(completed.output.error));
+            QCOMPARE(completed.currentInputMatches, QVector<bool>({matches}));
+            if (!enabled)
+                QVERIFY(completed.output.lines[0].inkOutlines.isEmpty());
+            if (enabled && matches)
+            {
+                QCOMPARE(completed.output.lines[0].inkOutlines.size(), 1);
+                QVERIFY(completed.output.lines[0].inkOutlines[0].geometry);
+            }
+        }
+}
+
+void UltraClearTextTests::immutableDetailKeepsOutlineReferenceWithoutReadingChanges()
+{
+    QImage image(kViewWidth, kViewHeight, QImage::Format_ARGB32);
+    image.fill(QColor(40, 40, 40));
+    QPainter p(&image);
+    for (int x : {100, 400})
+    {
+        p.fillRect(QRect(x + 20, 116, 80, 10), QColor(220, 220, 220));
+        p.fillRect(QRect(x + 105, 152, 10, 8), QColor(220, 220, 220));
+    }
+    p.end();
+    const auto stamp = Stamp(1, 1, 100, {0, 0, 1, 1, 0, 0, 1, 1, true});
+    const ink::Region region{400, 100, 160, 96, {220, 220, 220}, {40, 40, 40}};
+    const auto outline = ink::Build(image, region);
+    QVERIFY2(outline.geometry, ink::Name(outline.refusal));
+    for (bool containingOwner : {false, true})
+    {
+        QString baselineReading;
+        for (bool enabled : {false, true})
+        {
+            RecognitionResult seed;
+            seed.output.ok = true;
+            seed.authority = 1;
+            seed.jobId = 1;
+            seed.stamp = stamp;
+            seed.stamp.immutableSelectedInput = true;
+            seed.sourcePixelDigest = SourcePixelsDigest(image);
+            seed.reference = MakeProbeFrame(image.constBits(), image.width(), image.height(),
+                                            image.bytesPerLine(), 2, seed.stamp);
+            RecognizedWord glyph;
+            glyph.text = "Read";
+            glyph.boundsPx = {100, 100, 160, 96};
+            glyph.protectedBoundsPx = glyph.boundsPx;
+            RecognizedWord rejected;
+            rejected.boundsPx = {400, 100, 160, 96};
+            rejected.protectedBoundsPx = rejected.boundsPx;
+            rejected.disposition = TokenDisposition::kInvalidGeometry;
+            seed.output.lines.push_back({{glyph}, {}});
+            if (containingOwner)
+                seed.output.lines[0].words.push_back(rejected);
+            seed.prepared = PrepareLines(seed, 5);
+            OverlayModel model;
+            model.AdmitImmutable(seed, seed.stamp, 100, nullptr, ImmutableAdmission::Standalone);
+            QCOMPARE(model.SceneWords(100, seed.stamp.frameSeq).size(), 1);
+            const auto prior = model.Lines().front();
+            auto detail = seed;
+            detail.jobId = 2;
+            detail.output.lines = {{{rejected}, {}}};
+            if (enabled)
+                detail.output.lines[0].inkOutlines.push_back(outline);
+            detail.prepared = PrepareLines(detail, 5);
+            model.AdmitImmutable(detail, detail.stamp, 110, nullptr, ImmutableAdmission::Standalone);
+            QCOMPARE(model.SceneWords(110, detail.stamp.frameSeq).size(), 1);
+            QCOMPARE(model.SceneInkOutlines(110, detail.stamp.frameSeq).size(), enabled ? 1 : 0);
+            QCOMPARE(model.Lines().front().id, prior.id);
+            QCOMPARE(model.Lines().front().reference.values, prior.reference.values);
+            QCOMPARE(model.Lines().front().validatedAtMs, prior.validatedAtMs);
+            const auto reading = model.ReadingText(110, detail.stamp.frameSeq);
+            if (enabled)
+                QCOMPARE(reading, baselineReading);
+            else
+                baselineReading = reading;
+            QCOMPARE(model.ScreenLines(110, detail.stamp.frameSeq).size(), 1);
+            const auto count = model.Lines().size();
+            for (int repeat = 0; repeat < 12; ++repeat)
+            {
+                ++detail.jobId;
+                model.AdmitImmutable(detail, detail.stamp, 120 + repeat, nullptr,
+                                     ImmutableAdmission::Standalone);
+                QCOMPARE(model.Lines().size(), count);
+                QCOMPARE(model.ReadingText(120 + repeat, detail.stamp.frameSeq), reading);
+                QCOMPARE(model.SceneInkOutlines(120 + repeat, detail.stamp.frameSeq).size(), enabled ? 1 : 0);
+            }
+            if (enabled)
+            {
+                const auto sketch = model.SceneInkOutlines(140, detail.stamp.frameSeq).front();
+                QVERIFY(sketch.lineId != prior.id); // independent geometry owner, never borrowed glyph proof
+                const auto found = std::find_if(model.Lines().begin(), model.Lines().end(),
+                                                [&](const auto &line) { return line.id == sketch.lineId; });
+                QVERIFY(found != model.Lines().end());
+                QVERIFY(found->reference.valid);
+                QVERIFY(found->readingTokens.isEmpty());
+            }
+        }
     }
 }
 

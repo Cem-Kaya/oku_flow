@@ -3388,7 +3388,7 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
     QVector<TextQuad> provedFootprints;
     std::optional<qsizetype> protectionCarrier;
     for (qsizetype i=0;i<retained.size();++i)
-        if (retained[i].words.isEmpty() && retained[i].readingTokens.isEmpty()) { protectionCarrier=i; break; }
+        if (retained[i].words.isEmpty() && retained[i].readingTokens.isEmpty()&&retained[i].inkOutlines.isEmpty()) { protectionCarrier=i; break; }
     for (qsizetype n = 0; n < incoming.size(); ++n) {
         auto& candidate = incoming[n];
         const auto before = retained; // one bounded COW snapshot per candidate, never per word
@@ -3531,20 +3531,95 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
             protectedCount -= masks.protectedSceneRects.size();
             if (!fits) return false;
             if (masks.protectedSceneRects.isEmpty()) return true;
+            // Optional ink is not mask metadata: retain its own exact-input
+            // reference and lifetime, never borrow a containing reading owner's.
+            // Empty reading tokens preserve the mask-only branch's semantics.
+            if (!candidate.inkOutlines.isEmpty() && candidate.reference.valid &&
+                HasCurrentPixels(candidate, nowMs, selectedFrameSeq))
+            {
+                std::optional<qsizetype> owner;
+                for (const auto o : nearby(candidate.sceneRect.translated(candidate.sceneOffset)))
+                    if (retained[o].words.isEmpty() && retained[o].readingTokens.isEmpty() &&
+                        !retained[o].inkOutlines.isEmpty() && retained[o].sceneRect == masks.sceneRect &&
+                        retained[o].sceneOffset == masks.sceneOffset &&
+                        MaskKeys(retained[o].protectedSceneRects) == MaskKeys(masks.protectedSceneRects))
+                    {
+                        owner = o;
+                        break;
+                    }
+                int regions = 0, vertices = 0;
+                for (qsizetype o = 0; o < retained.size(); ++o)
+                    if (!owner || o != *owner)
+                        for (const auto &outline : retained[o].inkOutlines)
+                            if (outline.geometry)
+                            {
+                                ++regions;
+                                vertices += outline.vertices;
+                            }
+                for (const auto &outline : masks.inkOutlines)
+                    if (outline.geometry)
+                    {
+                        ++regions;
+                        vertices += outline.vertices;
+                    }
+                if (regions <= ink::MaximumRegions && vertices <= ink::MaximumVertices &&
+                    (owner || retained.size() < maximumLines))
+                {
+                    masks.reference = candidate.reference;
+                    masks.valid = candidate.valid;
+                    if (owner)
+                    {
+                        const auto &old = retained[*owner];
+                        for (const auto &risk : old.nonCarvableSceneRects)
+                            if (!masks.nonCarvableSceneRects.contains(risk))
+                                masks.nonCarvableSceneRects.push_back(risk);
+                        auto carved = MaskKeys(masks.carvedSceneRects);
+                        const auto priorCarved = MaskKeys(old.carvedSceneRects);
+                        for (auto it = carved.begin(); it != carved.end();)
+                            if (!priorCarved.contains(*it))
+                                it = carved.erase(it);
+                            else
+                                ++it;
+                        masks.carvedSceneRects = MaskRects(carved);
+                        masks.id = old.id;
+                        protectedCount -= old.protectedSceneRects.size();
+                        retained[*owner] = std::move(masks);
+                        protectedCount += retained[*owner].protectedSceneRects.size();
+                    }
+                    else
+                    {
+                        protectedCount += masks.protectedSceneRects.size();
+                        retained.push_back(std::move(masks));
+                    }
+                    for (auto &row : rows)
+                        row.clear();
+                    for (qsizetype i = 0; i < retained.size(); ++i)
+                        indexLine(i);
+                    return true;
+                }
+            }
+            masks.inkOutlines.clear(); // storage refusal keeps ordinary protection intact
             // Reuse a containing reading owner without altering its words,
             // typography, reference or clocks. A mask-only carrier is needed
             // only when there is no such owner.
             auto maskOwner = protectionCarrier;
             for (const auto o : nearby(candidate.sceneRect.translated(candidate.sceneOffset)))
-                if (!retained[o].words.isEmpty() && retained[o].sceneRect.translated(retained[o].sceneOffset)
-                        .contains(candidate.sceneRect.translated(candidate.sceneOffset))) {
-                    maskOwner = o; break;
+                if (!retained[o].words.isEmpty() &&
+                    retained[o]
+                        .sceneRect.translated(retained[o].sceneOffset)
+                        .contains(candidate.sceneRect.translated(candidate.sceneOffset)))
+                {
+                    maskOwner = o;
+                    break;
                 }
-            if (!maskOwner) {
+            if (!maskOwner)
+            {
                 protectionCarrier = retained.size();
                 protectedCount += masks.protectedSceneRects.size();
                 retained.push_back(std::move(masks));
-            } else {
+            }
+            else
+            {
                 auto& carrier = retained[*maskOwner];
                 auto carrierMasks = MaskKeys(carrier.protectedSceneRects);
                 auto carrierCarved = MaskKeys(carrier.carvedSceneRects);
@@ -3610,9 +3685,23 @@ AdmitVerdict OverlayModel::MergeImmutableCoverage(const QVector<AcceptedLine>& p
                     !unprotect(retained[index], provedFootprints[f])) { committed = false; break; }
     }
     lines_ = std::move(retained);
-    if (std::any_of(lines_.begin(), lines_.end(), [&](const auto& line) {
-            return IsShown(line, nowMs, selectedFrameSeq);
-        })) return AdmitVerdict::kAccepted;
+    int outlineRegions = 0, outlineVertices = 0;
+    for (auto &line : lines_)
+    {
+        QVector<ink::Outline> bounded;
+        for (auto &outline : line.inkOutlines)
+            if (outline.geometry && outlineRegions < ink::MaximumRegions &&
+                outlineVertices + outline.vertices <= ink::MaximumVertices)
+            {
+                ++outlineRegions;
+                outlineVertices += outline.vertices;
+                bounded.push_back(std::move(outline));
+            }
+        line.inkOutlines = std::move(bounded);
+    }
+    if (std::any_of(lines_.begin(), lines_.end(),
+                    [&](const auto &line) { return IsShown(line, nowMs, selectedFrameSeq); }))
+        return AdmitVerdict::kAccepted;
     return conflict ? AdmitVerdict::kContentMoved : verdict;
 }
 
@@ -4418,23 +4507,36 @@ bool OverlayModel::IsShown(const AcceptedLine& line, std::int64_t nowMs, std::ui
            IsReadable(line, nowMs, currentFrameSeq);
 }
 
-bool OverlayModel::IsReadable(const AcceptedLine& line, std::int64_t nowMs, std::uint64_t currentFrameSeq) const
+bool OverlayModel::HasCurrentPixels(const AcceptedLine &line, std::int64_t nowMs,
+                                    std::uint64_t currentFrameSeq) const
 {
-    return line.valid && !line.readingTokens.isEmpty() &&
+    return line.valid &&
            (nowMs - line.validatedAtMs <= tuning_.freshnessMs || currentFrameSeq == line.validatedFrameSeq);
 }
 
-std::optional<std::int64_t> OverlayModel::NextReadabilityExpiry(
-    std::int64_t nowMs, std::uint64_t currentFrameSeq) const
+bool OverlayModel::IsReadable(const AcceptedLine &line, std::int64_t nowMs,
+                              std::uint64_t currentFrameSeq) const
+{
+    return !line.readingTokens.isEmpty() && HasCurrentPixels(line, nowMs, currentFrameSeq);
+}
+
+std::optional<std::int64_t> OverlayModel::NextReadabilityExpiry(std::int64_t nowMs,
+                                                                std::uint64_t currentFrameSeq) const
 {
     std::optional<std::int64_t> next;
-    for (const auto& line : lines_) {
-        if (line.validatedFrameSeq == currentFrameSeq || !IsReadable(line, nowMs, currentFrameSeq)) continue;
-        // IsReadable includes the boundary. Wake at its first excluded ms,
+    for (const auto &line : lines_)
+    {
+        if (line.validatedFrameSeq == currentFrameSeq ||
+            (line.readingTokens.isEmpty() && line.inkOutlines.isEmpty()) ||
+            !HasCurrentPixels(line, nowMs, currentFrameSeq))
+            continue;
+        // Current pixel authority includes the boundary. Wake at its first excluded ms,
         // never repeatedly rearm a zero-ms timer at the inclusive boundary.
-        if (line.validatedAtMs >= std::numeric_limits<std::int64_t>::max() - tuning_.freshnessMs) continue;
+        if (line.validatedAtMs >= std::numeric_limits<std::int64_t>::max() - tuning_.freshnessMs)
+            continue;
         const auto expiry = line.validatedAtMs + tuning_.freshnessMs + 1;
-        if (!next || expiry < *next) next = expiry;
+        if (!next || expiry < *next)
+            next = expiry;
     }
     return next;
 }
@@ -4493,7 +4595,7 @@ QVector<ink::SceneOutline> OverlayModel::SceneInkOutlines(std::int64_t nowMs, st
     int vertices = 0;
     for (const auto &line : lines_)
     {
-        if (!line.reference.valid || !IsReadable(line, nowMs, frame))
+        if (!line.reference.valid || !HasCurrentPixels(line, nowMs, frame))
             continue;
         for (const auto &outline : line.inkOutlines)
         {

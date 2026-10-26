@@ -8106,6 +8106,13 @@ candidate bounds or rejected protected bounds, independent of optional geometry.
 CPU and resident workers require that support to match current pixels before
 smoothed admission; no contour bypass exists. Admitted smoothed lines stay invalid
 until a current probe validates them. Outline enablement cannot change reading output.
+`MergeImmutableCoverage` retains outline-only detail artifacts as separate empty-text
+carriers with their own reference/lifetime, reuses matching carriers, preserves old
+non-carvable/original masks and enforces a selected-source outline budget. It never
+transfers a reading owner's reference to optional geometry. `HasCurrentPixels`
+centralizes validity/freshness for both text and non-text artifacts; `IsReadable`
+additionally requires reading tokens. `NextReadabilityExpiry` includes outline-only
+carriers, without adding them to reading or screen text.
 `OverlayModel::SceneInkOutlines` checks readability, reference, protected owner
 mask, immutable conflicts, glyph collisions and budgets. It adds no `SceneWords`,
 `ScreenLines` or reading text.
