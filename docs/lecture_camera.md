@@ -1,5 +1,10 @@
 # Lecture test camera
 
+Startup waits for both the virtual output and a positive decoded-media duration
+within the same 40-second deadline. An opening source can initially report zero
+duration even after output readiness. Decoder errors and permanent protocol
+errors still fail immediately; no owner process is used for this wait.
+
 Double-click `scripts/start_lecture_camera.bat`. It starts a private OBS
 instance, loops the downloaded lecture through **OBS Virtual Camera** and the
 **DroidCam Video** Media Foundation output, and

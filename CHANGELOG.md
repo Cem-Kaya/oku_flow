@@ -16,6 +16,9 @@
 
 ## [Unreleased]
 
+- Wait for the private lecture-demo source to finish opening before checking
+  its duration. Output readiness alone can precede decoder initialization.
+
 - Keep drawings attached to PDF pages and pictures across navigation and zoom.
   Save one annotated working copy under OkuFlow/Documents, updating it on later
   saves with all edited PDF pages while preserving the original and native text.
