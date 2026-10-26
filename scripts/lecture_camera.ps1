@@ -119,6 +119,23 @@ function Wait-ObsCameraReady($State, $Process, [DateTime]$Deadline) {
     throw 'OBS output readiness deadline expired; inspect its private logs.'
 }
 
+function Wait-ObsMediaReady($Process, [DateTime]$Deadline) {
+    while ([DateTime]::UtcNow -lt $Deadline) {
+        if ($Process.HasExited) { throw 'OBS exited while opening the video; inspect its private logs.' }
+        try {
+            $media = Invoke-ObsRequest 'GetMediaInputStatus' @{ inputName = 'Lecture video' }
+            if ($media.mediaState -eq 'OBS_MEDIA_STATE_ERROR') { throw 'OBS could not decode the video.' }
+            if ($media.mediaDuration -gt 0) { return $media }
+        } catch {
+            if ($_.Exception.Data['ObsStatusCode'] -ne 207) { throw }
+        }
+        # Output initialization can finish before the source opens its decoder.
+        # A zero duration is pending, not proof of an invalid local video.
+        Start-Sleep -Milliseconds 100
+    }
+    throw 'OBS media readiness deadline expired; inspect its private logs.'
+}
+
 function Stop-OwnedObs($State, $Process) {
     try {
         if (-not $script:socket) { Connect-Obs $State }
@@ -363,8 +380,7 @@ AutoStart=true
         $deadline = [DateTime]::UtcNow.AddSeconds(40)
         $camera = Wait-ObsCameraReady $state $process $deadline
         if (-not $camera.outputActive) { Invoke-ObsRequest 'StartVirtualCam' | Out-Null }
-        $media = Invoke-ObsRequest 'GetMediaInputStatus' @{ inputName = 'Lecture video' }
-        if ($media.mediaDuration -le 0) { throw 'OBS could not decode the video.' }
+        $media = Wait-ObsMediaReady $process $deadline
         if ($StartSeconds * 1000 -ge $media.mediaDuration) { throw 'StartSeconds exceeds the video duration. Use -StartSeconds 0 for short clips.' }
         Invoke-ObsRequest 'SetMediaInputCursor' @{ inputName = 'Lecture video'; mediaCursor = $StartSeconds * 1000 } | Out-Null
         $cameraDeadline = [DateTime]::UtcNow.AddSeconds(10)

@@ -1,5 +1,9 @@
 # OkuFlow Code Reference
 
+`scripts/lecture_camera.ps1::Wait-ObsMediaReady` waits for a positive source
+duration after output initialization, sharing the existing startup deadline.
+It preserves decoder/protocol errors and owner-exit/deadline refusals.
+
 ## USB phone arrival and explicit discovery (26 October 2026)
 
 - `MainWindow::showEvent` registers the standard Android USB interface with
