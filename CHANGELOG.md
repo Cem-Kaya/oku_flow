@@ -16,6 +16,10 @@
 
 ## [Unreleased]
 
+- Let recognized mathematical operators, Unicode superscript/subscript numbers,
+  fraction glyphs and triangular delta pass UCT's character filter. Preserve
+  literal recognition output and existing geometry, font and pixel-proof rules.
+
 - Wait for the private lecture-demo source to finish opening before checking
   its duration. Output readiness alone can precede decoder initialization.
 

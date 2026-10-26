@@ -438,11 +438,14 @@ A word is drawn only when all of these hold:
    (IoU Ã¢â€°Â¥ 0.5) from two separate recognitions, or a previously accepted word.
    This checks stability, not correctness: the same engine can repeat a
    mistake.
-5. **Unsupported notation fails closed**: non-ASCII digits, superscripts,
-   modifier letters and symbols outside the existing punctuation set keep
-   original pixels. Ordinary letter/digit labels (`GPT-6`, `GPT6`, `RTX4090`,
+5. **Unsupported characters fail closed**: controls, unsupported decimal digit
+   scripts, modifier letters and symbols outside the supported alphabet keep
+   original pixels. Recognized mathematical operators, precomposed Unicode
+   fraction/superscript/subscript numbers, `△` and `°` may qualify without a
+   character-class veto; this does not reconstruct a stacked equation.
+   Ordinary letter/digit labels (`GPT-6`, `GPT6`, `RTX4090`,
    `OCRv6`, `R2D2`) and isolated ASCII lookalikes (`l I 1 0 O o`) use the same
-   evidence gates as prose. `|`, `x_2`, `a_b`, `a^2` and unsupported math symbols
+   evidence gates as prose. `|`, `x_2`, `a_b`, `a^2` and other unsupported symbols
    remain excluded. See [the policy change and paused 8x limits](uct_token_policy_and_detail.md).
 
 Afterwards every probe revalidates accepted lines. A line that no longer
@@ -880,10 +883,11 @@ Validation does not run a language-specific grammar checker, spelling dictionary
 or LLM correction. It checks confidence, size, geometry, independent observations
 and current source pixels. The conservative character policy is nevertheless
 not fully language-neutral: it accepts Unicode letters and a fixed common
-punctuation set, but rejects non-ASCII digits, combining marks, modifier letters
-and unsupported symbols. Ordinary ASCII letter/digit combinations and isolated
-lookalikes are eligible for the same proof as other text. Valid multilingual text can
-therefore remain original ink even if the backend recognized it. The model's
+punctuation set and supported math glyphs, but rejects other decimal digit
+scripts, combining marks, modifier letters and unsupported symbols. Ordinary
+ASCII letter/digit combinations and isolated lookalikes are eligible for the
+same proof as other text. Valid multilingual text can therefore remain original
+ink even if the backend recognized it. The model's
 character dictionary and the Windows fallback's installed recognizer languages
 are separate limits; the application's 25 interface languages do not establish
 OCR coverage. Protection masks preserve unproved punctuation/symbol pixels

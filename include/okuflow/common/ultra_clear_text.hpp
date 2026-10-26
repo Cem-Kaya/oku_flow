@@ -684,10 +684,10 @@ struct RegionSimilarity {
 QVector<RegionSimilarity> SceneRegionSimilarities(const ProbeFrame& a, const ProbeFrame& b,
                                                  const std::atomic<bool>* cancelled = nullptr);
 
-// True for empty text or unsupported notation (non-ASCII digits, superscripts,
-// modifier letters and symbols outside ordinary punctuation). Ordinary letters
-// and ASCII digits, mixed or isolated, still require all normal evidence gates.
-// Unsupported tokens fail closed to original pixels.
+// True for empty text, unsupported decimal scripts/modifier letters, controls
+// and symbols outside ordinary punctuation or the supported math alphabet.
+// Literal mathematical operators, Unicode fraction/superscript numbers, degree
+// and triangular delta may qualify; all font, geometry and proof gates remain.
 bool IsHighRiskToken(const QString& text);
 
 // --- Probe worker -------------------------------------------------------------
