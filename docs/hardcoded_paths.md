@@ -9,6 +9,10 @@ owned copy and its `.ink.json` sidecar. It never writes the original. File
 content hashes and a private lock protect saved copies from accidental reuse.
 Metadata is bounded to 32 MiB / two million points; original input is bounded
 to 256 MiB and picture export to 16 Mpixels. qpdf has a 60-second work timeout.
+A same-basename `.ink.pending.json` contains only fixed-schema previous hashes
+and next metadata, with no destination paths. Loading/saving uses it under the
+working-copy lock to recover an interrupted pair publication; unexpected bytes
+are preserved. The journal is removed after the two commits finish.
 
 The shipped export tool is `app/qpdf/bin/qpdf.exe` with sibling `qpdf30.dll`
 and exact `app/qpdf/licenses/` notices. Development defaults to

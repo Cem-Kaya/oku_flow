@@ -8,9 +8,21 @@
   hashes, serializes bounded ink, writes sparse Qt vector overlay pages, and
   runs the pinned qpdf subprocess with a finite timeout. It atomically replaces
   the same owned output on repeated saves. The original is never an output.
-  A final sidecar records the output hash and all page strokes. A crash between
-  the two commits can leave a hash mismatch; later saves refuse it and preserve
-  the output rather than silently replacing an unrecognized file.
+  A final sidecar records the output hash and all page strokes. Before output
+  publication, an atomically published `.ink.pending.json` records the old pair's
+  hashes and the complete next metadata. Under the same working-copy lock,
+  loading/saving completes a missing sidecar commit only when the output matches
+  that exact next hash; an unpublished transaction keeps the old pair. Unexpected
+  output or metadata hashes remain refused. `recoveryPending` permits loading
+  editable ink from a valid pending record while a filesystem lock still prevents
+  metadata commit; another Save waits for recovery instead of losing that ink.
+  `FileAnnotationSaveHooks::documentPublished` is a narrow native filesystem-test
+  seam, empty in production, for faults between the two commits.
+- `AnnotationRenderMode::Document` preserves normalized text height and stroke
+  width at the full export resolution in `BuildStrokePath` and both
+  `RenderAnnotationStrokes` overloads. File PDF/PNG export selects it explicitly;
+  existing viewport, camera, video and hit-test callers retain the default
+  `Viewport` mode and its display pixel limits.
 - `FileAnnotationPdfTool` resolves `qpdf/bin/qpdf.exe` under the application,
   then the explicit `OKUFLOW_QPDF_ROOT` or versioned LocalAppData cache. It never
   searches PATH or downloads. Export preserves PDF content/text and overlays

@@ -15,6 +15,8 @@
   Save one annotated working copy under OkuFlow/Documents, updating it on later
   saves with all edited PDF pages while preserving the original and native text.
   Add visible page navigation and a pinned local qpdf export runtime/notices.
+  Preserve normalized ink/text sizes in large exports and recover interrupted
+  document/sidecar commits without creating another working copy.
 
 - Fix large PDF/picture rendering retaining the preceding source: validate the
   selected frame independently of video queue memory and preserve its pixels

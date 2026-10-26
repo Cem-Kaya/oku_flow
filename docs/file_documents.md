@@ -80,6 +80,14 @@ An externally changed working copy is preserved and reported instead of being
 overwritten. If another program locks the destination, saving fails without
 creating a succession of new copies.
 
+Each save first records a recovery journal (`.ink.pending.json`) beside
+the copy. If the document is written but the ink sidecar cannot be committed,
+the journal retains the exact new ink and output hash. Reopening the original
+can still restore that ink; retrying after the filesystem problem clears
+finishes the same copy. An interrupted save that never published its document
+keeps the previous copy and ink. Recovery never overwrites an unexpectedly
+changed document or sidecar. Normally the journal disappears after both commits.
+
 Qt writes vector drawing overlays and qpdf merges them into the original PDF.
 This preserves all pages and native text instead of rasterizing the document.
 Only edited pages need overlay pages; unrelated pages are retained. Pictures
@@ -88,6 +96,8 @@ current viewport crop. Picture export has the same 16-Mpixel bound as document
 presentation. Save runs on the image I/O worker and takes a snapshot of every
 page's ink at the time of the request. Later drawing edits require another Save.
 PDF parsing and the export subprocess are local; no provider receives the file.
+Export preserves the normalized size of text and pen strokes on large pages
+and pictures; viewport-specific pixel caps do not shrink them in the saved copy.
 
 ### PDF export runtime
 
@@ -104,6 +114,11 @@ bundled path or explicit/versioned cache is used, never a tool found on PATH.
 requests, repeated saves into one PDF, retained native text and page count,
 rotated/cropped PDF placement, source-coordinate picture export, restored ink,
 cleared drawings, and refusal to overwrite an externally changed output.
+Additional regressions compare relative text/stroke sizes at 1000 and 4000
+pixels and on a large PDF page. Native Windows file-sharing locks force a
+sidecar commit failure after document publication, verify editable ink recovery
+and the next successful Save, and cover an unpublished output, completed-commit
+journal cleanup, and external changes during a pending transaction.
 `pdf_export_distribution_contract` checks actual pinned runtime staging, SPDX
 membership and tamper/extra-file refusals. The opt-in native file fixture
 checks page ink and the real application's two-save path with an unshown D3D12

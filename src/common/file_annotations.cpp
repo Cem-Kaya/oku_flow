@@ -17,6 +17,7 @@
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QTemporaryFile>
 #include <cmath>
 #include <windows.h>
 
@@ -92,15 +93,93 @@ bool DecodeInk(const QJsonArray& input, FilePageInk& pages) {
     }
     return true;
 }
-bool ReadState(FileAnnotationCopy& r) {
+bool ReadObject(const QString& path, QJsonObject& object) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly) || file.size() > kMaxInkBytes + 4096) return false;
+    const auto document = QJsonDocument::fromJson(file.readAll());
+    if (!document.isObject()) return false;
+    object = document.object(); return true;
+}
+bool ValidHash(const QString& hash) {
+    if (hash.size() != 64) return false;
+    for (const auto c : hash) if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return false;
+    return true;
+}
+bool DecodeState(const QJsonObject& object, const QString& sourceHash,
+                 const QString& outputHash, FilePageInk& pages) {
+    if (object["schema"].toInt() != 1 || object["sourceSha256"].toString() != sourceHash ||
+        !ValidHash(outputHash) || object["outputSha256"].toString() != outputHash ||
+        !object["pages"].isArray()) return false;
+    FilePageInk decoded;
+    if (!DecodeInk(object["pages"].toArray(),decoded)) return false;
+    pages = std::move(decoded); return true;
+}
+bool WriteState(const QString& path, const QByteArray& bytes) {
+    QSaveFile state(path); state.setDirectWriteFallback(false);
+    return state.open(QIODevice::WriteOnly) && state.write(bytes) == bytes.size() && state.commit();
+}
+bool PublishPending(const QString& path, const QByteArray& bytes) {
+    QString temporary;
+    {
+        QTemporaryFile file(QFileInfo(path).dir().filePath(".okuflow-ink-XXXXXX"));
+        if (!file.open() || file.write(bytes) != bytes.size() || !file.flush()) return false;
+        temporary = file.fileName(); file.setAutoRemove(false);
+    } // QTemporaryFile::close alone retains its native Windows handle.
+    // Same-volume atomic publication, with no replacement of an existing journal.
+    const bool published = MoveFileExW(reinterpret_cast<LPCWSTR>(temporary.utf16()),
+        reinterpret_cast<LPCWSTR>(path.utf16()),MOVEFILE_WRITE_THROUGH) != FALSE;
+    if (!published) QFile::remove(temporary); // Only this freshly created private file.
+    return published;
+}
+bool ReadCommittedState(FileAnnotationCopy& r) {
     const QString sidecar = r.path + ".ink.json";
     if (!QFileInfo::exists(r.path) && !QFileInfo::exists(sidecar)) return true;
-    QFile file(sidecar);
-    if (!file.open(QIODevice::ReadOnly) || file.size() > kMaxInkBytes) return false;
-    const auto object = QJsonDocument::fromJson(file.readAll()).object();
-    return object["schema"].toInt() == 1 && object["sourceSha256"].toString() == r.sourceSha256 &&
-        object["outputSha256"].toString() == HashFile(r.path) &&
-        !object["outputSha256"].toString().isEmpty() && DecodeInk(object["pages"].toArray(), r.pages);
+    QJsonObject object;
+    return ReadObject(sidecar,object) && DecodeState(object,r.sourceSha256,HashFile(r.path),r.pages);
+}
+bool ReadState(FileAnnotationCopy& r, bool saving = false) {
+    const QString pending = r.path + ".ink.pending.json", sidecar = r.path + ".ink.json";
+    if (!QFileInfo::exists(pending)) return ReadCommittedState(r);
+    QJsonObject journal;
+    const auto journalHash = HashFile(pending);
+    if (journalHash.isEmpty() || !ReadObject(pending,journal) || journal["schema"].toInt() != 1 ||
+        journal["sourceSha256"].toString() != r.sourceSha256) return false;
+    const auto previousOutput = journal["previousOutputSha256"].toString();
+    const auto previousState = journal["previousStateSha256"].toString();
+    if (previousOutput.isEmpty() != previousState.isEmpty() ||
+        (!previousOutput.isEmpty() && (!ValidHash(previousOutput) || !ValidHash(previousState)))) return false;
+    const auto next = journal["nextState"].toObject();
+    const auto nextOutput = next["outputSha256"].toString();
+    FilePageInk nextPages;
+    if (!DecodeState(next,r.sourceSha256,nextOutput,nextPages)) return false;
+    const auto outputHash = HashFile(r.path), stateHash = HashFile(sidecar);
+    if ((QFileInfo::exists(r.path) && outputHash.isEmpty()) ||
+        (QFileInfo::exists(sidecar) && stateHash.isEmpty())) return false;
+    const auto finish = [&] {
+        r.recoveryPending = HashFile(pending) != journalHash || !QFile::remove(pending);
+        if (saving && r.recoveryPending) {
+            r.error = QStringLiteral("The document save is awaiting sidecar recovery."); return false;
+        }
+        return true;
+    };
+    if (outputHash == nextOutput) {
+        const auto bytes = QJsonDocument(next).toJson(QJsonDocument::Compact);
+        const auto nextState = QString::fromLatin1(QCryptographicHash::hash(bytes,QCryptographicHash::Sha256).toHex());
+        if (stateHash != previousState && stateHash != nextState) return false;
+        r.pages = std::move(nextPages);
+        if (stateHash != nextState && !WriteState(sidecar,bytes)) {
+            r.recoveryPending = true;
+            if (saving) r.error = QStringLiteral("The document save is awaiting sidecar recovery.");
+            // Reading still restores editable ink from the validated journal.
+            return !saving;
+        }
+        return finish();
+    }
+    if (outputHash == previousOutput && stateHash == previousState) {
+        // The output was never published. Keep the preceding pair unchanged.
+        return finish() && ReadCommittedState(r);
+    }
+    return false; // An unexpected output/sidecar is never overwritten by recovery.
 }
 bool RunPdfTool(const QStringList& args) {
     const QString tool = FileAnnotationPdfTool();
@@ -142,12 +221,16 @@ QString FileAnnotationPdfTool() {
 }
 FileAnnotationCopy LoadFileAnnotations(const QString& source, const QString& directory) {
     auto r = Identify(source,directory);
-    if (r.error.isEmpty() && !ReadState(r))
+    if (!r.error.isEmpty() || (!QFileInfo::exists(r.path) && !QFileInfo::exists(r.path+".ink.json") &&
+        !QFileInfo::exists(r.path+".ink.pending.json"))) return r;
+    QLockFile lock(r.path+".lock");
+    if (!lock.tryLock(0)) { r.error = QStringLiteral("This working copy is already being saved."); return r; }
+    if (!ReadState(r))
         r.error = QStringLiteral("The saved working copy was changed outside OkuFlow; it has been preserved.");
     return r;
 }
 FileAnnotationCopy SaveFileAnnotations(const QString& source, const QString& directory, const FilePageInk& pages,
-                                      const QString& expectedSourceSha256) {
+                                      const QString& expectedSourceSha256, const FileAnnotationSaveHooks& hooks) {
     auto r = Identify(source,directory);
     if (!r.error.isEmpty()) return r;
     if (!expectedSourceSha256.isEmpty() && r.sourceSha256 != expectedSourceSha256) {
@@ -156,8 +239,13 @@ FileAnnotationCopy SaveFileAnnotations(const QString& source, const QString& dir
     if (!QDir().mkpath(directory)) { r.error = QStringLiteral("The OkuFlow Documents folder is unavailable."); return r; }
     QLockFile lock(r.path + ".lock");
     if (!lock.tryLock(0)) { r.error = QStringLiteral("This working copy is already being saved."); return r; }
-    if (!ReadState(r)) { r.error = QStringLiteral("The saved working copy was changed outside OkuFlow; it has been preserved."); return r; }
+    if (!ReadState(r,true)) {
+        if (r.error.isEmpty()) r.error = QStringLiteral("The saved working copy was changed outside OkuFlow; it has been preserved.");
+        return r;
+    }
+    r.recoveryPending = false;
     const auto previousOutputHash = HashFile(r.path);
+    const auto previousStateHash = HashFile(r.path+".ink.json");
     r.pages = pages;
     // Apply the same validation to authored and restored ink, before creating a PDF.
     FilePageInk validated;
@@ -190,7 +278,8 @@ FileAnnotationCopy SaveFileAnnotations(const QString& source, const QString& dir
                 if (!painter.isActive()) {
                     if (!painter.begin(&writer)) { r.error = QStringLiteral("The PDF drawing could not be encoded."); return r; }
                 } else if (!writer.newPage()) { r.error = QStringLiteral("The PDF drawing page could not be encoded."); return r; }
-                RenderAnnotationStrokes(painter,page.value(),ViewTransform{0,0,1,1,0,0,1,1,true},QSizeF(writer.width(),writer.height()));
+                RenderAnnotationStrokes(painter,page.value(),ViewTransform{0,0,1,1,0,0,1,1,true},
+                    QSizeF(writer.width(),writer.height()),std::nullopt,AnnotationRenderMode::Document);
                 destinations.append(QString::number(page.key()+1));
             }
             if (painter.isActive() && !painter.end()) { r.error = QStringLiteral("The PDF drawing could not be finalized."); return r; }
@@ -214,7 +303,8 @@ FileAnnotationCopy SaveFileAnnotations(const QString& source, const QString& dir
         }
         auto image = reader.read().convertToFormat(QImage::Format_ARGB32);
         if (image.isNull()) { r.error = QStringLiteral("The original picture could not be read."); return r; }
-        { QPainter painter(&image); RenderAnnotationStrokes(painter,validated.value(0),ViewTransform{0,0,1,1,0,0,1,1,true},image.size()); }
+        { QPainter painter(&image); RenderAnnotationStrokes(painter,validated.value(0),ViewTransform{0,0,1,1,0,0,1,1,true},
+            image.size(),std::nullopt,AnnotationRenderMode::Document); }
         ready = staging.filePath("annotated.png");
         if (!image.save(ready,"PNG")) { r.error = QStringLiteral("The picture copy could not be encoded."); return r; }
     }
@@ -222,11 +312,21 @@ FileAnnotationCopy SaveFileAnnotations(const QString& source, const QString& dir
     const QJsonObject metadata{{"schema",1},{"sourceSha256",r.sourceSha256},
         {"outputSha256",outputHash},{"pages",encoded}};
     const auto bytes = QJsonDocument(metadata).toJson(QJsonDocument::Compact);
-    QSaveFile state(r.path + ".ink.json"); state.setDirectWriteFallback(false);
-    if (HashFile(r.path) != previousOutputHash || outputHash.isEmpty() || !state.open(QIODevice::WriteOnly) || state.write(bytes) != bytes.size() ||
-        !PublishFile(ready,r.path) || !state.commit()) {
+    const QJsonObject journal{{"schema",1},{"sourceSha256",r.sourceSha256},
+        {"previousOutputSha256",previousOutputHash},{"previousStateSha256",previousStateHash},{"nextState",metadata}};
+    const auto journalBytes = QJsonDocument(journal).toJson(QJsonDocument::Compact);
+    const QString pending = r.path+".ink.pending.json";
+    if (HashFile(r.path) != previousOutputHash || HashFile(r.path+".ink.json") != previousStateHash ||
+        outputHash.isEmpty() || !PublishPending(pending,journalBytes) || !PublishFile(ready,r.path)) {
         r.error = QStringLiteral("The document copy could not be committed."); return r;
     }
+    if (hooks.documentPublished) hooks.documentPublished();
+    if (!WriteState(r.path+".ink.json",bytes)) {
+        r.recoveryPending = true;
+        r.error = QStringLiteral("The document copy could not be committed."); return r;
+    }
+    r.recoveryPending = HashFile(pending) != QString::fromLatin1(QCryptographicHash::hash(journalBytes,QCryptographicHash::Sha256).toHex()) ||
+        !QFile::remove(pending);
     r.committed = true; return r;
 }
 }

@@ -10,7 +10,9 @@
 #include <QPdfSelection>
 #include <QCryptographicHash>
 #include <QTemporaryDir>
+#include <QScopeGuard>
 #include <QTest>
+#include <windows.h>
 
 using namespace okuflow;
 namespace {
@@ -47,10 +49,136 @@ bool MakeCroppedRotatedPdf(const QString& path) {
     bytes+="trailer\n<< /Size "+QByteArray::number(objects.size()+1)+" /Root 1 0 R >>\nstartxref\n"+QByteArray::number(xref)+"\n%%EOF\n";
     QFile file(path); return file.open(QIODevice::WriteOnly) && file.write(bytes)==bytes.size();
 }
+QByteArray Bytes(const QString& path) {
+    QFile file(path); if (!file.open(QIODevice::ReadOnly)) return {};
+    return file.readAll();
+}
+QRect RedTextBounds(const QImage& input) {
+    const auto image=input.convertToFormat(QImage::Format_ARGB32);
+    QRect result;
+    for(int y=0;y<image.height()/2;++y) {
+        const auto* row=reinterpret_cast<const QRgb*>(image.constScanLine(y));
+        for(int x=0;x<image.width();++x) if(qRed(row[x])>200 && qGreen(row[x])<80 && qBlue(row[x])<80)
+            result=result.isNull()?QRect(x,y,1,1):result.united(QRect(x,y,1,1));
+    }
+    return result;
+}
+int RedLineWidth(const QImage& image) {
+    int count=0;
+    for(int y=image.height()/2;y<image.height();++y) {
+        const auto color=image.pixelColor(image.width()/2,y);
+        if(color.red()>200 && color.green()<80 && color.blue()<80) ++count;
+    }
+    return count;
+}
 }
 class FileDocumentTests final : public QObject {
     Q_OBJECT
 private slots:
+    void highResolutionExportsPreserveRelativeTextAndStrokeSizes() {
+        QTemporaryDir dir;
+        AnnotationModel model; model.AddText({0.1,0.1},"M",Qt::red,0.1);
+        model.BeginStroke({0.2,0.75},Qt::red,0.05); model.AppendStrokePoint({0.8,0.75},0.001); model.EndStroke();
+        const auto savePicture=[&](int size) {
+            const auto source=dir.filePath(QString::number(size)+".png");
+            QImage image(size,size,QImage::Format_RGB32); image.fill(Qt::white);
+            if(!image.save(source))return FileAnnotationCopy{};
+            return SaveFileAnnotations(source,dir.filePath("copies"),{{0,model.strokes()}});
+        };
+        const auto small=savePicture(1000),large=savePicture(4000);
+        QVERIFY2(small.committed,qPrintable(small.error)); QVERIFY2(large.committed,qPrintable(large.error));
+        const QImage reference(small.path),full(large.path);
+        const auto smallText=RedTextBounds(reference),largeText=RedTextBounds(full);
+        QVERIFY(smallText.height()>40);
+        QVERIFY(std::abs(largeText.height()/4.0-smallText.height())<3.0);
+        QVERIFY(std::abs(largeText.width()/4.0-smallText.width())<3.0);
+        QVERIFY(std::abs(RedLineWidth(reference)-50)<=2);
+        QVERIFY(std::abs(RedLineWidth(full)-200)<=2);
+        const auto source=dir.filePath("large-page.pdf");
+        { QPdfWriter writer(source); writer.setResolution(144);
+          writer.setPageSize(QPageSize(QSizeF(2000,2000),QPageSize::Point));
+          writer.setPageMargins(QMarginsF(0,0,0,0));
+          QPainter painter(&writer); painter.fillRect(QRect(0,0,writer.width(),writer.height()),Qt::white); }
+        const auto pdfCopy=SaveFileAnnotations(source,dir.filePath("copies"),{{0,model.strokes()}});
+        QVERIFY2(pdfCopy.committed,qPrintable(pdfCopy.error));
+        QPdfDocument pdf; QCOMPARE(pdf.load(pdfCopy.path),QPdfDocument::Error::None);
+        const auto page=pdf.render(0,QSize(1000,1000),{},QImage::Format_ARGB32,Qt::white);
+        QVERIFY(std::abs(RedTextBounds(page).height()-smallText.height())<3);
+        QVERIFY(std::abs(RedLineWidth(page)-50)<=2);
+    }
+    void failedSidecarCommitRecoversTheSameWorkingCopy() {
+        QTemporaryDir dir; const auto source=dir.filePath("original.png"),directory=dir.filePath("copies");
+        QImage image(128,128,QImage::Format_RGB32); image.fill(Qt::white); QVERIFY(image.save(source));
+        AnnotationModel model; model.BeginStroke({0.1,0.3},Qt::red,0.05);
+        model.AppendStrokePoint({0.4,0.3},0.001); model.EndStroke();
+        const auto first=SaveFileAnnotations(source,directory,{{0,model.strokes()}}); QVERIFY(first.committed);
+        const auto oldOutput=Bytes(first.path),oldState=Bytes(first.path+".ink.json");
+        model.BeginStroke({0.6,0.7},Qt::blue,0.05); model.AppendStrokePoint({0.9,0.7},0.001); model.EndStroke();
+        HANDLE held=INVALID_HANDLE_VALUE;
+        const auto release=qScopeGuard([&] {if(held!=INVALID_HANDLE_VALUE)CloseHandle(held);});
+        QByteArray pendingBytes;
+        FileAnnotationSaveHooks hooks;
+        hooks.documentPublished=[&] {
+            pendingBytes=Bytes(first.path+".ink.pending.json");
+            held=CreateFileW(reinterpret_cast<LPCWSTR>((first.path+".ink.json").utf16()),
+                GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+        };
+        const auto failed=SaveFileAnnotations(source,directory,{{0,model.strokes()}},{},hooks);
+        QVERIFY(held!=INVALID_HANDLE_VALUE); QVERIFY(!failed.committed); QVERIFY(failed.recoveryPending);
+        QVERIFY(!pendingBytes.isEmpty()); QVERIFY(Bytes(first.path)!=oldOutput); QCOMPARE(Bytes(first.path+".ink.json"),oldState);
+        const auto readBlocked=LoadFileAnnotations(source,directory);
+        QVERIFY2(readBlocked.error.isEmpty(),qPrintable(readBlocked.error)); QVERIFY(readBlocked.recoveryPending);
+        QCOMPARE(readBlocked.pages[0].size(),2);
+        const auto retryBlocked=SaveFileAnnotations(source,directory,{{0,model.strokes()}});
+        QVERIFY(!retryBlocked.committed); QVERIFY(retryBlocked.recoveryPending);
+        CloseHandle(held); held=INVALID_HANDLE_VALUE;
+        const auto recovered=LoadFileAnnotations(source,directory);
+        QVERIFY2(recovered.error.isEmpty(),qPrintable(recovered.error)); QVERIFY(!recovered.recoveryPending);
+        QCOMPARE(recovered.path,first.path); QCOMPARE(recovered.pages[0].size(),2);
+        QVERIFY(!QFileInfo::exists(first.path+".ink.pending.json"));
+        // Replay a crash after both commits but before journal cleanup.
+        { QFile pending(first.path+".ink.pending.json"); QVERIFY(pending.open(QIODevice::WriteOnly|QIODevice::NewOnly));
+          QCOMPARE(pending.write(pendingBytes),pendingBytes.size()); }
+        QVERIFY(LoadFileAnnotations(source,directory).error.isEmpty());
+        QVERIFY(!QFileInfo::exists(first.path+".ink.pending.json"));
+        const auto next=SaveFileAnnotations(source,directory,{{0,model.strokes()}});
+        QVERIFY2(next.committed,qPrintable(next.error)); QCOMPARE(next.path,first.path);
+        QCOMPARE(QDir(directory).entryList({"*.png"},QDir::Files).size(),1);
+        QCOMPARE(QImage(source),image);
+    }
+    void unpublishedSaveKeepsThePreviousPairAndExternalChangesArePreserved() {
+        QTemporaryDir dir; const auto source=dir.filePath("original.png"),directory=dir.filePath("copies");
+        QImage image(128,128,QImage::Format_RGB32); image.fill(Qt::white); QVERIFY(image.save(source));
+        AnnotationModel model; model.BeginStroke({0.1,0.3},Qt::red,0.05);
+        model.AppendStrokePoint({0.4,0.3},0.001); model.EndStroke();
+        const auto first=SaveFileAnnotations(source,directory,{{0,model.strokes()}}); QVERIFY(first.committed);
+        const auto oldOutput=Bytes(first.path),oldState=Bytes(first.path+".ink.json");
+        HANDLE held=CreateFileW(reinterpret_cast<LPCWSTR>(first.path.utf16()),GENERIC_READ,
+            FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+        QVERIFY(held!=INVALID_HANDLE_VALUE);
+        const auto release=qScopeGuard([&] {if(held!=INVALID_HANDLE_VALUE)CloseHandle(held);});
+        model.Clear();
+        const auto failed=SaveFileAnnotations(source,directory,{}); QVERIFY(!failed.committed);
+        QCOMPARE(Bytes(first.path),oldOutput); QCOMPARE(Bytes(first.path+".ink.json"),oldState);
+        CloseHandle(held); held=INVALID_HANDLE_VALUE;
+        const auto restored=LoadFileAnnotations(source,directory);
+        QVERIFY2(restored.error.isEmpty(),qPrintable(restored.error)); QCOMPARE(restored.pages[0].size(),1);
+        QVERIFY(!QFileInfo::exists(first.path+".ink.pending.json"));
+        FileAnnotationSaveHooks hooks;
+        hooks.documentPublished=[&] {
+            held=CreateFileW(reinterpret_cast<LPCWSTR>((first.path+".ink.json").utf16()),
+                GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+        };
+        const auto interrupted=SaveFileAnnotations(source,directory,{}, {},hooks);
+        QVERIFY(!interrupted.committed); QVERIFY(interrupted.recoveryPending);
+        CloseHandle(held); held=INVALID_HANDLE_VALUE;
+        { QFile external(first.path); QVERIFY(external.open(QIODevice::Append)); external.write("external change"); }
+        const auto changed=Bytes(first.path);
+        QVERIFY(!LoadFileAnnotations(source,directory).error.isEmpty());
+        QVERIFY(!SaveFileAnnotations(source,directory,{}).committed);
+        QCOMPARE(Bytes(first.path),changed); QCOMPARE(Bytes(first.path+".ink.json"),oldState);
+        QVERIFY(QFileInfo::exists(first.path+".ink.pending.json"));
+    }
     void pdfInkTracksCropBoxesAndPageRotation() {
         QTemporaryDir dir; const auto path=dir.filePath("rotated.pdf"); QVERIFY(MakeCroppedRotatedPdf(path));
         AnnotationModel ink; ink.BeginStroke({0.2,0.3},Qt::red,0.03);

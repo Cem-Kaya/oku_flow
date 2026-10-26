@@ -1,7 +1,10 @@
 # OkuFlow Tests
 
 `file_document_contract` now checks a 600-page document without eager page
-rendering, multi-page ink saved repeatedly into one copy, native text retention,
+rendering, export-size parity for large PDF/PNG text and pen widths, and real
+Windows sharing-lock failures between document and sidecar publication. Recovery
+checks keep the same copy, restore editable ink and refuse external changes.
+It also checks multi-page ink saved repeatedly into one copy, native text retention,
 cropped/rotated page placement, source-coordinate PNG export and changed-output
 refusal. Run `scripts/stage_pdf_export.ps1 -Install` first; the qpdf executable
 and DLL are declared CTest runtime inputs. `pdf_export_distribution_contract`
