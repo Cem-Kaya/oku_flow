@@ -17,8 +17,13 @@ def write_seal(directory):
     target=directory/'runtime-seal.json'
     if target.exists(): raise FileExistsError(target)
     meta=json.loads((directory/'partition.json').read_text(encoding='utf-8'))
-    if not meta.get('oracleKineticTokensEqual'): raise ValueError('reference partition has not matched Paddle')
+    if not (meta.get('oracleKineticTokensEqual') or meta.get('sourcePartitionOracleKineticTokensEqual')): raise ValueError('reference partition has not matched Paddle')
     required=['partition.json','initial-states.npz']
+    if 'precisionPolicy' in meta:
+        variant=json.loads((directory/'precision-variant.json').read_text(encoding='utf-8'))
+        for part,entry in variant['graphs'].items():
+            if digest(directory/(part+'.onnx'))!=entry['resultSha256']: raise ValueError('precision graph changed')
+        required.append('precision-variant.json')
     for part in ('encoder','decoder'):
         receipt=json.loads((directory/(part+'.plan.json')).read_text(encoding='utf-8'))
         if receipt['model']!=meta['model'] or receipt['part']!=part: raise ValueError('wrong engine identity')
@@ -35,6 +40,7 @@ def verify_seal(directory):
     directory=Path(directory)
     seal=json.loads((directory/'runtime-seal.json').read_text(encoding='utf-8'))
     expected={'partition.json','initial-states.npz'}|{p+s for p in ('encoder','decoder') for s in ('.onnx','.plan','.plan.json')}
+    if (directory/'precision-variant.json').exists(): expected.add('precision-variant.json')
     if seal.get('version')!=1 or set(seal['files'])!=expected: raise ValueError('incomplete runtime seal')
     for name,expected_hash in seal['files'].items():
         if digest(directory/name)!=expected_hash: raise ValueError('runtime artifact changed: '+name)

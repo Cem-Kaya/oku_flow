@@ -59,6 +59,7 @@ class FormulaRuntime:
         from artifacts import verify_seal
         verify_seal(self.directory)
         self.meta=json.loads((self.directory/'partition.json').read_text(encoding='utf-8'))
+        self.precision=json.loads((self.directory/'decoder.plan.json').read_text(encoding='utf-8'))['precision']
         self.log=trt.Logger(trt.Logger.WARNING)
         self.runtime=trt.Runtime(self.log)
         self.encoder=self.runtime.deserialize_cuda_engine((self.directory/'encoder.plan').read_bytes())
@@ -204,7 +205,7 @@ def main():
     output=Path(a.output); assert not output.exists(), 'preserve prior benchmark'
     start=time.perf_counter(); runtime=FormulaRuntime(root/a.partition/a.model); load=time.perf_counter()-start
     cases=['chalk-kinetic-normalized','chalk-work-normalized','chalk-delta-normalized','official-complex'] if a.case is None else [a.case]
-    receipt={'platform':platform.platform(),'backend':'native Windows TensorRT only; no Paddle/ORT runtime fallback','model':a.model,'trtVersion':trt.__version__,'precision':'strongly typed FP32, TF32 disabled','loadSeconds':load,'warmup':a.warmup,'repeat':a.repeat,'scope':'Preprocessed tensor H2D + encoder + bounded autoregressive decoder + control synchronization + final tokens D2H; excludes preprocessing and LaTeX detokenization.','engineIo':runtime.io,'cases':[]}
+    receipt={'platform':platform.platform(),'backend':'native Windows TensorRT only; no Paddle/ORT runtime fallback','model':a.model,'trtVersion':trt.__version__,'precision':runtime.precision,'loadSeconds':load,'warmup':a.warmup,'repeat':a.repeat,'scope':'Preprocessed tensor H2D + encoder + bounded autoregressive decoder + control synchronization + final tokens D2H; excludes preprocessing and LaTeX detokenization.','engineIo':runtime.io,'cases':[]}
     try:
         for case in cases:
             x=np.load(root/'reference'/a.model/(case+'-input.npy'))

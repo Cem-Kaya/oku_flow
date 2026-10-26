@@ -1422,3 +1422,11 @@ slots; exceeded bounds fail. Buffer banks retain a small growth/alignment margin
 host control bridges refuse more than 256 bytes. No camera, user setting or app
 model tier is changed. Local measurements live at the private path recorded in
 [the experiment contract](formula_tensorrt_experiment.md).
+
+Formula precision variants use explicit new `partition-bf16`, `partition-tf32`
+or candidate directories selected with `--partition`. `--optimization-level`
+accepts 0..5 (default 2). Renderer dependencies are pinned under the source
+`render-deps/package*.json`, installed only into an explicit private directory.
+Overlay request/source/prediction hashes, eight-region/8192-character/64-Mpixel
+bounds and 64 cached vectors are independent of shipping UCT budgets. See the
+formula experiment contract for native timings and outside-region validation.

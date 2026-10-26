@@ -633,3 +633,11 @@ Measured execution uses the already licensed, explicitly selected NVIDIA
 TensorRT/CUDA SDK and CUDA Python bindings in a private environment. None is
 copied into application/installer payloads by these scripts. Any future model
 staging/app integration needs its own notices, distribution review and acceptance.
+
+The developer formula overlay additionally uses Apache-2.0 Hugging Face
+Tokenizers 0.23.3, MathJax 3.2.2 and Sharp 0.34.5 with a pinned npm lock. The
+Windows Sharp binary package declares `Apache-2.0 AND LGPL-3.0-or-later` and
+includes its own dependency notices. These tools/binaries stay in a private
+node/Python environment; no Node, MathJax, Sharp/libvips or model payload is
+staged into OkuFlow. Generated demo SVG/PNG and developer provenance remain
+separate from a future application distribution/notices review.

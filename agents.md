@@ -1248,3 +1248,12 @@ aligned with the project goals.
 - Keep formula models/engines and Python environments outside Git and release
   staging. Preserve the cropped-model versus app/detection/display timing scope
   and retain failed attempts. This experiment enables no shipping Math mode.
+
+- Formula BF16/TF32 names must match actual graph types/builder permissions.
+  Keep FP32 interfaces/stable math explicit, compare output changes without
+  claiming exact backend agreement is semantic correctness, and preserve slow
+  tuning candidates. Counterbalance launch optimizations before choosing them.
+- Developer math overlays render actual token output in source-bound formula
+  regions; they may not repair a sample by hand or claim per-symbol geometry.
+  Cache vectors only, never frame authority. Keep immutable demonstrations,
+  live UCT admission, native UIA and promotional desktop captures distinct.

@@ -16,6 +16,10 @@
 
 ## [Unreleased]
 
+- Extend the developer formula experiment with measured BF16/TF32 variants,
+  optional launch tuning and source-bound vector formula overlays. Shipping
+  OCR behavior and public payloads remain unchanged.
+
 - Add a developer-only native Windows TensorRT formula benchmark with pinned
   models, bounded GPU decoder state and reference-token checks. This enables
   no application Math mode or new release dependency.

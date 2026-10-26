@@ -2,3 +2,6 @@
 numpy==1.26.4
 onnx==1.17.0
 onnxruntime==1.23.2
+
+# Source-bound overlay request decoding (not GPU execution).
+tokenizers==0.23.3

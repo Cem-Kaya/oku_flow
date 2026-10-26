@@ -8151,3 +8151,17 @@ original token loop. Faults quarantine rather than reuse uncertain GPU resources
 `test_contracts.py` exercises masking, branch refusal and content binding without
 GPU/models. None is linked to the application. See
 [scope and measurements](formula_tensorrt_experiment.md).
+
+`precision_variants.convert_bf16` inserts explicit BF16 linear islands;
+`convert_bf16_wide` keeps wider neural subgraphs in BF16 while retaining FP32
+normalization/Softmax/control. `prepare` creates new source-bound precision arms.
+The builder reads their TF32 policy and explicit optimization level. Seals bind
+precision receipts without pretending a source FP32 oracle is BF16 validation.
+`EncoderReplay` owns fixed-address capture/replay; `DecoderBindings` caches two
+separate context/bank binding sets. `OptimizedFormulaRuntime` changes dispatch
+only, preserves the base model logic, and records cache/replay counts.
+`prepare_overlay.make_request` decodes actual EOS-terminated result tokens and
+binds immutable image/crop/prediction provenance. JavaScript `validateRegion`,
+`makeRenderer`/`typeset` and `render` produce bounded cached MathJax paths and
+source-owned black-plate composites, verifying outside-region RGB identity.
+This is an immutable-file developer demonstration, not UCT admission or live UIA.

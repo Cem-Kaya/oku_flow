@@ -26,9 +26,10 @@ autoregressive decoder, synchronized control feedback and final tokens download.
 They exclude decoding, normalization, standard preprocessing, LaTeX detokenization,
 detection, composition and display. They are not pure kernel, whole-page OCR or
 live-camera latency. The earlier native Paddle model-call equation medians were
-55.89/297.71/423.34/405.32 ms respectively (about 3.3â€“3.5 times these timings).
+55.89/297.71/423.34/405.32 ms respectively (about 3.3Ã¢â‚¬â€œ3.5 times these timings).
 Those earlier-run comparisons are not interleaved ABBA or exclusive-GPU results.
-No FP16/BF16 formula measurement or general accuracy result is claimed.
+This first pass used FP32 only. BF16/TF32 measurements follow below; no general
+accuracy result is claimed.
 
 The kinetic crop was normalized by a monotonic grayscale percentile stretch and
 inversion before standard model preprocessing, without thresholding or symbol
@@ -95,3 +96,78 @@ Primary documentation: [Paddle formula recognition](https://www.paddleocr.ai/mai
 [Paddle2ONNX Windows release](https://github.com/PaddlePaddle/Paddle2ONNX/releases/tag/v2.1.0),
 [exporter ABI pin](https://github.com/PaddlePaddle/Paddle2ONNX/blob/v2.1.0/pyproject.toml),
 [TensorRT loops](https://docs.nvidia.com/deeplearning/tensorrt/latest/inference-library/work-with-loops.html).
+
+## BF16, TF32 and launch tuning (2026-10-27)
+
+The original timings above were FP32 with TF32 disabled. Explicit precision
+variants now preserve FP32 public interfaces, normalization, Softmax and control
+math while reducing Conv/MatMul/Gemm to BF16. TF32 uses the unchanged FP32 graph
+with the builder's Tensor Core permission; individual tactics remain TensorRT's
+choice. Strongly typed TensorRT 11 needs actual BF16 graph types, not a BF16 flag.
+
+Same native hardware, three warmups/twelve timed calls per case:
+
+| Model | TF32 equation | BF16 equation | TF32 complex formula | BF16 complex formula |
+|---|---:|---:|---:|---:|
+| plus-S | 11.36 ms | 12.04 ms | 65.70 ms | 70.65 ms |
+| plus-M | 53.30 ms | 64.55 ms | 381.99 ms | 458.49 ms |
+| L | 78.10 ms | 88.55 ms | 492.02 ms | 578.92 ms |
+| plus-L | 77.58 ms | 86.69 ms | 496.33 ms | 580.19 ms |
+
+TF32 matches all reference token arrays. Conservative BF16 matches except the
+small work-equation case: `cos` becomes `\operatorname{cos}`, with a longer token
+sequence; source W is still misread as N. This is not an equal-token-length
+comparison for that case. Equations' fractions/superscripts remain identical.
+These focused diagnostics are not model-startup or application accuracy gates.
+
+The optional tuned runner captures only the fixed encoder, whose shapes and
+addresses remain stable. Two decoder contexts cache separate output-bank
+bindings, updating changed state shapes/addresses only. Decoder execution is not
+captured across changing shapes. Host EOS checks and finite token bounds remain.
+A failed capture/completion quarantines resources, without hidden retries/fallback.
+
+Counterbalanced baseline/tuned/tuned/baseline plus-S visits (24 samples per mode
+per case) measured the kinetic equation at 12.42 -> 10.84 ms for TF32 and
+12.93 -> 10.82 ms for BF16. The tuned precisions are effectively tied here.
+The complex formula showed no TF32 gain. Medium-model launch tuning regressed
+on some cases. A wider BF16 neural graph and optimization-level-5 medium build
+were slower (111.37 ms equation versus 53.30 ms TF32), so these remain explicit
+experiments and do not replace a default. Full receipts are in
+`precision-comparison.json` / `precision-report.md` under the evidence root above.
+
+## Source-bound formula rendering
+
+`prepare_overlay.py` decodes actual completed TensorRT tokens with the pinned
+model tokenizer, ending at the first EOS. It binds source and prediction hashes
+and takes formula regions from the existing crop manifest. It neither inserts
+an equation template nor repairs recognition mistakes. The observed lowercase k
+is retained. Formula-region detection is still supplied, not automatic.
+
+`render_overlay.mjs` uses pinned MathJax 3.2.2 to produce self-contained SVG paths,
+then Sharp 0.34.5 to demonstrate composition over the source in white/yellow on
+black. Only supplied formula rectangles receive plates. Hash/bounds checks and
+RGB comparison establish zero changed pixels outside those rectangles; original
+files stay untouched. Output includes SVG per formula and lossless PNG copies.
+Whole-formula placement does not claim per-symbol source alignment. SVGs can
+scale without enlarging bitmap glyphs. Render vectors are cached by exact LaTeX
+with a 64-entry bound; a cached vector grants no source/frame authority.
+
+The plus-M BF16 example recognizes the stacked 1/2, m, v and raised 2, while
+retaining the capital-K recognition error. `overlay-bf16/comparison.html` exposes
+original/white/yellow views and the unchanged board diagram. This is computed
+prototype evidence, not a native application screenshot or website gallery
+acceptance. Cold Node/MathJax startup (~168 ms) and full PNG artifact export
+(~103–126 ms for three formulas) are separate from GPU timings and native vector
+painting. Cache lookup microtimes are not rendering latency.
+
+Only immutable RGB/RGBA file examples are implemented. Future app integration
+must reuse source/geometry stamps, fresh-current-frame authority, revocation and
+one analysis-to-scene-to-view mapping. LaTeX/SVG does not bypass existing UCT
+proof, automatically replace source-ink outlines, or contribute math UIA speech.
+No live-frame detection, model selection or shipping payload is enabled here.
+
+Thirteen CPU contracts and three Node contracts cover conversion types,
+normalization/control boundaries, binding banks, capture ordering, source/bounds
+refusal, genuine fraction/superscript vector output and cache reuse. All four
+models have real BF16/TF32 GPU measurements, plus focused tuned/counterbalanced
+visits. The full compiled app matrix and native desktop remain unclaimed.

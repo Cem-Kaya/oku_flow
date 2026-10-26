@@ -84,3 +84,52 @@ CPU-only contracts, no GPU/model/download/GUI:
 See [the measured contract](../../../docs/formula_tensorrt_experiment.md). The
 complete Windows application matrix and native desktop acceptance remain separate
 from this developer-only Python experiment.
+
+
+## BF16 / TF32 / tuning and formula overlays
+
+Keep the original FP32 partition. Create immutable precision variants:
+
+```powershell
+& $prepPython -B scripts/uct/formula_trt/precision_variants.py "$work/partition-v2/PP-FormulaNet_plus-S" "$work/partition-bf16/PP-FormulaNet_plus-S" --precision bf16
+& $prepPython -B scripts/uct/formula_trt/precision_variants.py "$work/partition-v2/PP-FormulaNet_plus-S" "$work/partition-tf32/PP-FormulaNet_plus-S" --precision tf32
+```
+
+Build/seal/benchmark as above, supplying the new `--partition`. Metadata carries
+the precision policy and source-only oracle scope; BF16 validation is performed
+by actual GPU output comparison. `--precision bf16-wide` is a separately measured,
+slower candidate with BF16 neural residuals/activations and FP32 stable/control
+math. `build_engines.py --optimization-level 0..5` defaults to 2; level 5 is not
+assumed faster and its slower medium-model result is preserved. New compiler
+receipts record policy and optimization level. No old plan/seal is overwritten.
+
+`benchmark_optimized.py` accepts the same arguments as `benchmark.py`. It adds a
+fixed encoder CUDA graph and two cached decoder binding sets. Use alternating
+baseline/optimized/optimized/baseline visits; retain differing outputs and
+non-improvements. Unknown CUDA faults quarantine rather than reuse allocations.
+The tuned runner improves some plus-S visits but is not a universal default.
+
+Create a source-bound request from an actual completed result, then render:
+
+```powershell
+& $prepPython -B scripts/uct/formula_trt/prepare_overlay.py "$work/PP-FormulaNet_plus-M-bf16.json" --model-root "$assets/models" --assets $assets --output "$work/overlay-request.json"
+# Copy render-deps/package*.json into a private $renderDeps directory, then:
+npm ci --prefix $renderDeps --ignore-scripts --no-audit --no-fund
+node scripts/uct/formula_trt/render_overlay.mjs "$work/overlay-request.json" "$work/overlay-output" $renderDeps
+$env:OKUFLOW_FORMULA_RENDER_DEPS=$renderDeps
+node --test scripts/uct/formula_trt/test_render_overlay.mjs
+& $prepPython -B -m unittest discover -s scripts/uct/formula_trt -p 'test_*.py' -v
+```
+
+All regions come from `assets/inputs.json`, not an automatic detector. The code
+renders literal decoded LaTeX, including model mistakes, in the supplied source
+rectangle. It does not invent a corrected equation or per-character geometry.
+Immutable RGB/RGBA files only; eight regions, finite integer source rectangles,
+8192-character formulas, 64-Mpixel images and a 64-entry vector cache. Source and
+prediction hashes must still match. Original files are never overwritten.
+Outside-region RGB bytes are checked before a derivative is published.
+
+MathJax/Sharp and the tokenizer are development dependencies, never deployment
+inputs. Cold process setup and PNG export are not native overlay painting cost.
+No app Math mode, model selection, live-frame authority or website publication is
+added by this renderer.
