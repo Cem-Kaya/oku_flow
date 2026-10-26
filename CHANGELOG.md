@@ -20,6 +20,9 @@
   stacked fractions and raised marks without guessing characters or adding
   reading text. Retain original backgrounds, pixel validation and reprojection;
   CUDA exports contour geometry only. See [scope and limits](docs/uct_ink_outlines.md).
+  Protected smoothed spans must register against current pixels independently
+  of outline success. Weak tiny islands remain original rather than amplified;
+  holes and nested marks retain their source geometry.
 
 - Let recognized mathematical operators, Unicode superscript/subscript numbers,
   fraction glyphs and triangular delta pass UCT's character filter. Preserve

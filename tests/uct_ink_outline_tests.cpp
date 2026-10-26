@@ -72,6 +72,48 @@ class InkOutlineTests : public QObject
         painter.end();
         QCOMPARE(ink::Build(image, Region()).refusal, ink::Refusal::FaintInk);
     }
+    void partlyFaintStrokeDoesNotBecomeADot()
+    {
+        auto image = Image();
+        QPainter p(&image);
+        p.fillRect(QRect(20, 20, 90, 8), QColor(220, 220, 220));
+        p.fillRect(QRect(20, 55, 90, 5), QColor(105, 105, 105));
+        p.fillRect(QRect(63, 57, 1, 1), QColor(220, 220, 220));
+        p.end();
+        QCOMPARE(ink::Build(image, Region()).refusal, ink::Refusal::FaintInk);
+    }
+    void weakTinyIslandKeepsOriginalInsteadOfAmplifyingTexture()
+    {
+        auto image = Image();
+        QPainter p(&image);
+        p.fillRect(QRect(20, 20, 100, 8), QColor(220, 220, 220));
+        p.end();
+        image.setPixelColor(60, 60, QColor(140, 140, 140));
+        image.setPixelColor(100, 60, QColor(220, 220, 220));
+        const auto outline = ink::Build(image, Region());
+        QVERIFY2(outline.geometry, ink::Name(outline.refusal));
+        QVERIFY(!outline.geometry->path.contains(QPointF(60.5, 60.5)));
+        QVERIFY(outline.geometry->path.contains(QPointF(100.5, 60.5)));
+        QCOMPARE(image.pixelColor(60, 60), QColor(140, 140, 140)); // omission leaves source pixels intact
+    }
+    void nestedRingsAndInnerMarksKeepTheirOwners()
+    {
+        auto image = Image();
+        QPainter p(&image);
+        p.setPen(QPen(QColor(220, 220, 220), 5));
+        p.drawEllipse(QRectF(43, 8, 76, 80));
+        p.drawEllipse(QRectF(69, 23, 24, 20));
+        p.drawEllipse(QRectF(69, 54, 24, 20));
+        p.fillRect(QRect(104, 46, 4, 4), QColor(220, 220, 220));
+        p.end();
+        const auto outline = ink::Build(image, Region());
+        QVERIFY2(outline.geometry, ink::Name(outline.refusal));
+        QCOMPARE(outline.components[2], 4);
+        QCOMPARE(outline.holes[2], 3);
+        QVERIFY(outline.geometry->path.contains(QPointF(105, 47)));
+        QVERIFY(!outline.geometry->path.contains(QPointF(81, 33)));
+        QVERIFY(!outline.geometry->path.contains(QPointF(81, 64)));
+    }
     void thinResolvedStrokesRefuse()
     {
         auto image = Image();

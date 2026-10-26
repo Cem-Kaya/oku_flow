@@ -1613,6 +1613,17 @@ QVector<LineCheck> CheckLines(const QVector<LineReference>& lines, const ProbeFr
     return checks;
 }
 
+QRectF CurrentInputRegistrationBounds(const RecognizedWord &word)
+{
+    if (word.disposition == TokenDisposition::kCandidate)
+        return word.boundsPx;
+    if (word.disposition == TokenDisposition::kInvalidGeometry ||
+        word.disposition == TokenDisposition::kLowConfidence ||
+        word.disposition == TokenDisposition::kUnrecognized)
+        return word.protectedBoundsPx.isEmpty() ? word.boundsPx : word.protectedBoundsPx;
+    return {};
+}
+
 QVector<InkOutlineRequest> PlanInkOutlines(const RecognitionResult &result)
 {
     QVector<InkOutlineRequest> requests;
@@ -2451,7 +2462,10 @@ struct RecognitionScheduler::State {
                             result.output.ok = job.device->PrepareResidentInkOutlines(
                                 result, self->cancelInFlight, result.output.error);
                             if (!result.output.ok)
-                                result.output.inputFault = true;
+                            {
+                                result.output.cancelled = self->cancelInFlight.load();
+                                result.output.inputFault = !result.output.cancelled;
+                            }
                         }
                         else if (inkPixels)
                         {
@@ -2487,17 +2501,18 @@ struct RecognitionScheduler::State {
                             self->referenceDecimation, job.stamp);
                         for (const auto& line : result.output.lines) {
                             if (self->cancelInFlight.load()) break;
-                            bool matches = true, hasCandidate = false;
+                            bool matches = true, hasReference = false;
                             for (const auto& word : line.words) {
-                                if (word.disposition != TokenDisposition::kCandidate) continue;
-                                hasCandidate = true;
+                                const auto bounds=CurrentInputRegistrationBounds(word);
+                                if(bounds.isEmpty())continue;
+                                hasReference = true;
                                 const auto rect = ViewRectToScene(job.stamp.viewTransform,
-                                    pixels.width(), pixels.height(), word.boundsPx);
+                                    pixels.width(), pixels.height(), bounds);
                                 const auto patch = BuildReferencePatch(recognized, rect);
                                 const auto match = MatchPatch(patch, result.reference, kInputRegistrationTuning);
                                 matches &= match.matched && match.sceneOffset.isNull();
                             }
-                            result.currentInputMatches.push_back(hasCandidate && matches);
+                            result.currentInputMatches.push_back(hasReference && matches);
                         }
                     }
                     // Line and word proof use the identical source-bound
@@ -3782,11 +3797,7 @@ AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const Sour
         if (regional && !regionalCandidateComplete(line)) continue;
         const bool currentInputMatches = !stamp.temporallySmoothed ||
             (result.currentInputMatches.size() == prepared.size() && result.currentInputMatches[i]);
-        const bool originalInkOnly = !line.inkOutlines.isEmpty() &&
-                                     std::none_of(line.words.begin(), line.words.end(), [](const auto &word) {
-                                         return word.disposition == TokenDisposition::kCandidate;
-                                     });
-        if (!currentInputMatches && !originalInkOnly)
+        if (!currentInputMatches)
         {
             // No new evidence: do not transfer recognition or its clock. A
             // separately current-validated old line may survive below.

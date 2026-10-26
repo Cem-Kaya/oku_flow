@@ -599,89 +599,107 @@ inline bool PrepareInkOutlines(const DeviceImage &image, RecognitionResult &resu
         return false;
     }
     int vertices = 0;
-    for (const auto &request : requests)
+    try
     {
-        if (cancel.load())
+        for (const auto &request : requests)
         {
-            Quarantine(context);
-            return false;
-        }
-        const auto region = request.region;
-        const std::size_t cells = std::size_t(region.w - 1) * (region.h - 1), coverageAt = 128;
-        const auto prefixAt = (coverageAt + std::size_t(region.w) * region.h + 3) & ~std::size_t(3);
-        const auto rowsAt = prefixAt + ink::Levels * cells * sizeof(int);
-        const auto segmentsAt = (rowsAt + ink::Levels * (region.h - 1) * sizeof(int) + 7) & ~std::size_t(7);
-        if (segmentsAt + ink::Levels * ink::MaximumSegments * sizeof(ink::Segment) > context->capacity)
-        {
-            Quarantine(context);
-            error = "Source-ink scratch bound exceeded.";
-            return false;
-        }
-        auto at = [&](std::size_t offset) { return static_cast<char *>(context->scratch) + offset; };
-        context->owners = {image.shared_from_this()};
-        gpu::InkOutline(image.ValidationData(), image.ValidationPitch(), image.width, image.height, region,
-                        reinterpret_cast<unsigned char *>(at(coverageAt)),
-                        reinterpret_cast<int *>(at(prefixAt)), reinterpret_cast<int *>(at(rowsAt)),
-                        reinterpret_cast<ink::Summary *>(at(0)),
-                        reinterpret_cast<ink::Segment *>(at(segmentsAt)), context->stream);
-        if (!CopyResult(context, at(0), sizeof(ink::Summary), &cancel))
-        {
-            error = "Source-ink contour metadata did not complete.";
-            return false;
-        }
-        const auto summary = *static_cast<const ink::Summary *>(context->host);
-        ink::Segments segments;
-        std::size_t bytes = sizeof(summary), hostOffset = 0;
-        if (!summary.invalid && !summary.border)
-        {
-            for (int k = 0; k < ink::Levels; ++k)
+            if (cancel.load())
             {
-                if (summary.counts[k] < 0 || summary.counts[k] > ink::MaximumSegments)
-                {
-                    // Assemble reports the bounded refusal without copying a raster or oversize list.
-                    segments[k].resize(ink::MaximumSegments + 1);
-                    continue;
-                }
-                const std::size_t count = summary.counts[k], size = count * sizeof(ink::Segment);
-                segments[k].resize(count);
-                if (size && cudaMemcpyAsync(static_cast<char *>(context->host) + hostOffset,
-                                            at(segmentsAt + k * ink::MaximumSegments * sizeof(ink::Segment)),
-                                            size, cudaMemcpyDeviceToHost, context->stream) != cudaSuccess)
-                {
-                    Quarantine(context);
-                    error = "Source-ink contour copy failed.";
-                    return false;
-                }
-                hostOffset += size;
-                bytes += size;
-            }
-            if (!Finish(context, &cancel))
-            {
-                error = "Source-ink contour copy did not complete.";
+                Quarantine(context);
                 return false;
             }
-            hostOffset = 0;
+            const auto region = request.region;
+            const std::size_t cells = std::size_t(region.w - 1) * (region.h - 1), coverageAt = 128;
+            const auto prefixAt = (coverageAt + std::size_t(region.w) * region.h + 3) & ~std::size_t(3);
+            const auto rowsAt = prefixAt + ink::Levels * cells * sizeof(int);
+            const auto segmentsAt =
+                (rowsAt + ink::Levels * (region.h - 1) * sizeof(int) + 7) & ~std::size_t(7);
+            if (segmentsAt + ink::Levels * ink::MaximumSegments * sizeof(ink::Segment) > context->capacity)
+            {
+                Quarantine(context);
+                error = "Source-ink scratch bound exceeded.";
+                return false;
+            }
+            auto at = [&](std::size_t offset) { return static_cast<char *>(context->scratch) + offset; };
+            context->owners = {image.shared_from_this()};
+            gpu::InkOutline(image.ValidationData(), image.ValidationPitch(), image.width, image.height,
+                            region, reinterpret_cast<unsigned char *>(at(coverageAt)),
+                            reinterpret_cast<int *>(at(prefixAt)), reinterpret_cast<int *>(at(rowsAt)),
+                            reinterpret_cast<ink::Summary *>(at(0)),
+                            reinterpret_cast<ink::Segment *>(at(segmentsAt)), context->stream);
+            if (!CopyResult(context, at(0), sizeof(ink::Summary), &cancel))
+            {
+                error = "Source-ink contour metadata did not complete.";
+                return false;
+            }
+            const auto summary = *static_cast<const ink::Summary *>(context->host);
+            ink::Segments segments;
+            std::size_t bytes = sizeof(summary), hostOffset = 0;
+            bool overCap = false;
             for (int k = 0; k < ink::Levels; ++k)
-                if (segments[k].size() <= ink::MaximumSegments)
+                if (summary.counts[k] < 0 || summary.counts[k] > ink::MaximumSegments)
                 {
-                    const auto size = segments[k].size() * sizeof(ink::Segment);
-                    if (size)
-                        std::memcpy(segments[k].data(), static_cast<const char *>(context->host) + hostOffset,
-                                    size);
-                    hostOffset += size;
+                    segments[k].resize(ink::MaximumSegments + 1);
+                    overCap = true;
                 }
+            if (!summary.invalid && !summary.border && !overCap)
+            {
+                for (int k = 0; k < ink::Levels; ++k)
+                {
+                    if (summary.counts[k] < 0 || summary.counts[k] > ink::MaximumSegments)
+                    {
+                        // Assemble reports the bounded refusal without copying a raster or oversize list.
+                        segments[k].resize(ink::MaximumSegments + 1);
+                        continue;
+                    }
+                    const std::size_t count = summary.counts[k], size = count * sizeof(ink::Segment);
+                    segments[k].resize(count);
+                    if (size &&
+                        cudaMemcpyAsync(static_cast<char *>(context->host) + hostOffset,
+                                        at(segmentsAt + k * ink::MaximumSegments * sizeof(ink::Segment)),
+                                        size, cudaMemcpyDeviceToHost, context->stream) != cudaSuccess)
+                    {
+                        Quarantine(context);
+                        error = "Source-ink contour copy failed.";
+                        return false;
+                    }
+                    hostOffset += size;
+                    bytes += size;
+                }
+                if (!Finish(context, &cancel))
+                {
+                    error = "Source-ink contour copy did not complete.";
+                    return false;
+                }
+                hostOffset = 0;
+                for (int k = 0; k < ink::Levels; ++k)
+                    if (segments[k].size() <= ink::MaximumSegments)
+                    {
+                        const auto size = segments[k].size() * sizeof(ink::Segment);
+                        if (size)
+                            std::memcpy(segments[k].data(),
+                                        static_cast<const char *>(context->host) + hostOffset, size);
+                        hostOffset += size;
+                    }
+            }
+            auto outline = ink::Assemble(region, summary, segments);
+            outline.transferBytes = bytes;
+            result.inkOutlineBytes += bytes;
+            if (outline.geometry && vertices + outline.vertices > ink::MaximumVertices)
+            {
+                outline.geometry.reset();
+                outline.refusal = ink::Refusal::ContourLimit;
+            }
+            if (outline.geometry)
+                vertices += outline.vertices;
+            result.output.lines[request.line].inkOutlines.push_back(std::move(outline));
         }
-        auto outline = ink::Assemble(region, summary, segments);
-        outline.transferBytes = bytes;
-        result.inkOutlineBytes += bytes;
-        if (outline.geometry && vertices + outline.vertices > ink::MaximumVertices)
-        {
-            outline.geometry.reset();
-            outline.refusal = ink::Refusal::ContourLimit;
-        }
-        if (outline.geometry)
-            vertices += outline.vertices;
-        result.output.lines[request.line].inkOutlines.push_back(std::move(outline));
+    }
+    catch (const std::exception &exception)
+    {
+        Quarantine(context);
+        error = QString::fromUtf8(exception.what());
+        return false;
     }
     return true;
 }
@@ -932,14 +950,14 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
         if (!Finish(c, &cancel)) { error = "Smoothed UCT registration did not complete."; return false; }
         QVector<QRectF> sceneRects;
         QVector<int> lineIndices;
-        QVector<bool> hasCandidate(result.output.lines.size(), false);
+        QVector<bool> hasReference(result.output.lines.size(), false);
         result.currentInputMatches.fill(true, result.output.lines.size());
         const auto map = Mapping(result.stamp, image.width, image.height);
         for (int i = 0; i < result.output.lines.size(); ++i) {
             for (const auto& word : result.output.lines[i].words) {
-                if (word.disposition != TokenDisposition::kCandidate) continue;
-                hasCandidate[i] = true;
-                const auto pixels = word.boundsPx;
+                const auto pixels = CurrentInputRegistrationBounds(word);
+                if(pixels.isEmpty())continue;
+                hasReference[i] = true;
                 const QRectF r((pixels.x() - map.x) / map.sx, (pixels.y() - map.y) / map.sy,
                     pixels.width() / map.sx, pixels.height() / map.sy);
                 if (r.isEmpty() || !std::isfinite(r.x()) || !std::isfinite(r.y()) ||
@@ -950,7 +968,7 @@ inline bool Prepare(const DeviceImage &image, RecognitionResult &result, int dec
                 sceneRects.push_back(r);
                 lineIndices.push_back(i);
             }
-            if (!hasCandidate[i]) result.currentInputMatches[i] = false;
+            if (!hasReference[i]) result.currentInputMatches[i] = false;
         }
         if (sceneRects.size() > 8192) { error = "Smoothed UCT registration budget exceeded."; return false; }
         // Per-word proof prevents a mostly unchanged line hiding one stale

@@ -104,6 +104,10 @@ each, <=256 loops, <=64 resolved ink components and <=16,384 final vertices per
 job. Coverage projection requires squared RGB contrast >=4,096, p98-p20 span
 >=64; thresholds are low+30% span and midpoint +/-10% span. Structural area is
 >=4 source pixels squared and median estimated stroke width >=1.5 pixels.
+Faint-level extents need resolved central support within max(2 pixels, 15% of
+each extent). Tiny positive islands need a strict-threshold survivor; holes in
+painted components remain holes. Transfer upper bounds are 524,332 bytes per
+region and 4,194,656 bytes per eight-region job, including scalar summaries.
 Intersections are fixed-point 24.8 with odd doubled thresholds. GPU POD sizes
 are asserted (Region 40, Segment 16, Summary 44 bytes); scratch remains inside
 the existing 4 MiB worker context. Only segments and scalar diagnostics leave

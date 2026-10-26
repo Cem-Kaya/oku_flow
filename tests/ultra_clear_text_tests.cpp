@@ -2451,7 +2451,7 @@ void UltraClearTextTests::protectedInkOutlinesSharpenWithoutAddingText()
     live.stamp.historyEpoch = 1;
     live.stamp.seedFrameSeq = 1;
     live.stamp.blendFrameCount = 2;
-    live.currentInputMatches = {false};
+    live.currentInputMatches = {true}; // worker registered this protected span against current pixels
     live.sourcePixelDigest.clear();
     live.reference =
         MakeProbeFrame(image.constBits(), image.width(), image.height(), image.bytesPerLine(), 2, live.stamp);
@@ -2478,6 +2478,73 @@ void UltraClearTextTests::protectedInkOutlinesSharpenWithoutAddingText()
     current.timestampMs = 140;
     liveModel.ApplyChecks({fresh}, current);
     QVERIFY(liveModel.SceneInkOutlines(140, current.frameSeq).isEmpty());
+
+    // Contour success may neither evict a currently proven glyph on an EMA
+    // mismatch nor change reading output. Exercise both extraction outcomes.
+    QString unmatchedReading, matchedReading;
+    for (bool withOutline : {false, true})
+    {
+        auto glyph = live;
+        glyph.stamp.temporallySmoothed = false;
+        glyph.currentInputMatches.clear();
+        glyph.output.lines[0].inkOutlines.clear();
+        glyph.output.lines[0].words[0].text = "Read";
+        glyph.output.lines[0].words[0].disposition = TokenDisposition::kCandidate;
+        glyph.reference.stamp = glyph.stamp;
+        glyph.prepared = PrepareLines(glyph, 5);
+        OverlayModel protectedModel;
+        protectedModel.AdmitLiveCamera(glyph, glyph.stamp, nullptr, 100);
+        ++glyph.jobId;
+        ++glyph.stamp.frameSeq;
+        glyph.stamp.timestampMs = 110;
+        glyph.reference.stamp = glyph.stamp;
+        glyph.prepared = PrepareLines(glyph, 5);
+        protectedModel.AdmitLiveCamera(glyph, glyph.stamp, nullptr, 110);
+        QCOMPARE(protectedModel.SceneWords(110, glyph.stamp.frameSeq).size(), 1);
+        auto rejectedLive = live;
+        rejectedLive.jobId = glyph.jobId + 1;
+        rejectedLive.stamp.frameSeq = glyph.stamp.frameSeq + 1;
+        rejectedLive.stamp.timestampMs = 120;
+        rejectedLive.reference.stamp = rejectedLive.stamp;
+        if (!withOutline)
+            rejectedLive.output.lines[0].inkOutlines.clear();
+        rejectedLive.prepared = PrepareLines(rejectedLive, 5);
+        rejectedLive.currentInputMatches = {false};
+        auto proof = fresh;
+        proof.lineId = protectedModel.Lines().front().id;
+        proof.match.matched = true;
+        auto rawProof = rejectedLive.stamp;
+        rawProof.temporallySmoothed = false;
+        protectedModel.ApplyChecks({proof}, rawProof);
+        QCOMPARE(protectedModel.SceneWords(120, rawProof.frameSeq).size(), 1);
+        const auto currentProbe = MakeProbeFrame(image.constBits(), image.width(), image.height(),
+                                                 image.bytesPerLine(), 2, rawProof);
+        QVERIFY(currentProbe.IsValid());
+        protectedModel.AdmitLiveCamera(rejectedLive, rawProof, &currentProbe, 120);
+        QCOMPARE(protectedModel.SceneWords(120, rejectedLive.stamp.frameSeq).size(), 1);
+        const auto kept = protectedModel.ReadingText(120, rejectedLive.stamp.frameSeq);
+        QCOMPARE(kept, QStringLiteral("Read"));
+        if (withOutline)
+            QCOMPARE(kept, unmatchedReading);
+        else
+            unmatchedReading = kept;
+        OverlayModel empty;
+        rejectedLive.currentInputMatches = {true};
+        empty.AdmitLiveCamera(rejectedLive, rejectedLive.stamp, nullptr, 120);
+        QVERIFY(!empty.Lines().isEmpty());
+        proof.lineId = empty.Lines().front().id;
+        auto checked = rejectedLive.stamp;
+        ++checked.frameSeq;
+        checked.timestampMs = 140;
+        checked.temporallySmoothed = false;
+        empty.ApplyChecks({proof}, checked);
+        const auto omission = empty.ReadingText(140, checked.frameSeq);
+        QVERIFY(empty.ScreenLines(140, checked.frameSeq).isEmpty());
+        if (withOutline)
+            QCOMPARE(omission, matchedReading);
+        else
+            matchedReading = omission;
+    }
 }
 
 void UltraClearTextTests::highRiskTokensFailClosed()

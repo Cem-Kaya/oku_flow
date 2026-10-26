@@ -87,8 +87,9 @@ uses the existing OCR jobs and does not run recognition on every camera frame.
 See [curved-page OCR and samples](docs/uct_ribbon_and_current_ink.md).
 
 Development UCT can also sharpen some unread source ink, including stacked and
-raised marks, while preserving its original shape and position. These outlines
-add no recognized or screen-reader text. See [scope and limits](docs/uct_ink_outlines.md).
+raised marks, by tracing source edges without repositioning them. Blurred strokes
+can look thinner. These outlines add no recognized or screen-reader text.
+See [scope and limits](docs/uct_ink_outlines.md).
 
 Record microphone audio or choose no microphone for silent video. Captures, readings and explanations gather in local HTML lecture notes. The default folder is `Documents\OkuFlow\`; you can choose another location.
 

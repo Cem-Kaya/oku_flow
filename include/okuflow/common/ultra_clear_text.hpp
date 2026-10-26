@@ -510,6 +510,10 @@ struct RecognitionResult {
     double inkOutlineMs{}; // included in durationMs, never an additional worker
 };
 
+// Registration support is independent of optional contour extraction outcomes.
+// Rejected protected spans must agree with current pixels before EMA admission.
+QRectF CurrentInputRegistrationBounds(const RecognizedWord& word);
+
 struct InkOutlineRequest { ink::Region region; int line{}; };
 QVector<InkOutlineRequest> PlanInkOutlines(const RecognitionResult& result);
 

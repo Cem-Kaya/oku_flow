@@ -19,6 +19,7 @@ struct Contour
 {
     QPolygonF points;
     double area{}, perimeter{};
+    QRectF bounds;
 };
 using Segments = std::array<std::vector<Segment>, Levels>;
 inline bool Valid(const Region &r)
@@ -69,6 +70,7 @@ inline std::vector<Contour> Trace(const std::vector<Segment> &segments, bool &ok
         if (loop.points.size() < 3 || !area)
             return {};
         loop.area = area / (2. * 256 * 256);
+        loop.bounds = loop.points.boundingRect();
         loops.push_back(std::move(loop));
         if (loops.size() > 256)
         {
@@ -81,13 +83,24 @@ inline std::vector<Contour> Trace(const std::vector<Segment> &segments, bool &ok
 }
 inline bool Contains(const Contour &outer, const Contour &inner)
 {
-    return !inner.points.empty() && outer.points.boundingRect().contains(inner.points[0]) &&
+    return !inner.points.empty() && outer.bounds.contains(inner.points[0]) &&
            outer.points.containsPoint(inner.points[0], Qt::OddEvenFill);
 }
-// Structural comparisons ignore sub-four-pixel islands/pinholes. They are NOT
-// filled or removed: every central-level contour, including tiny holes/dots,
-// remains in the output. This avoids turning compression texture into a gate
-// while still rejecting disappearance/splitting of source-resolved strokes.
+inline int Owner(const Contour &inner, const std::vector<Contour> &outers, bool positive)
+{
+    int owner = -1;
+    for (int i = 0; i < int(outers.size()); ++i)
+    {
+        const auto &outer = outers[i];
+        if ((outer.area > 0) == positive &&
+            (owner < 0 || std::abs(outer.area) < std::abs(outers[owner].area)) && Contains(outer, inner))
+            owner = i;
+    }
+    return owner;
+}
+// Resolved structure must correspond across thresholds. Tiny islands need a
+// strict-level survivor before amplification; omitted islands remain original.
+// Holes in every painted component stay holes, including sub-four-pixel ones.
 inline Outline Assemble(const Region &region, const Summary &summary, const Segments &segments)
 {
     Outline out;
@@ -106,6 +119,12 @@ inline Outline Assemble(const Region &region, const Summary &summary, const Segm
         out.refusal = Refusal::BorderInk;
         return out;
     }
+    for (const auto &level : segments)
+        if (level.size() > MaximumSegments)
+        {
+            out.refusal = Refusal::ContourLimit;
+            return out;
+        }
     std::array<std::vector<Contour>, Levels> contours;
     for (int k = 0; k < Levels; ++k)
     {
@@ -137,13 +156,24 @@ inline Outline Assemble(const Region &region, const Summary &summary, const Segm
         out.refusal = Refusal::Components;
         return out;
     }
-    for (const auto &low : contours[0])
-        if (low.area >= 4 && std::none_of(contours[2].begin(), contours[2].end(), [&](const auto &center) {
-                return center.area > 0 && Contains(low, center);
-            }))
+    for (int i = 0; i < int(contours[0].size()); ++i)
+        if (const auto &low = contours[0][i]; low.area >= 4)
         {
-            out.refusal = Refusal::FaintInk;
-            return out;
+            QRectF centralBounds;
+            for (const auto &center : contours[2])
+                if (center.area >= 4 && Owner(center, contours[0], true) == i)
+                    centralBounds =
+                        centralBounds.isNull() ? center.bounds : centralBounds.united(center.bounds);
+            const double dx = std::max(2., .15 * low.bounds.width()),
+                         dy = std::max(2., .15 * low.bounds.height());
+            if (centralBounds.isEmpty() || centralBounds.left() - low.bounds.left() > dx ||
+                low.bounds.right() - centralBounds.right() > dx ||
+                centralBounds.top() - low.bounds.top() > dy ||
+                low.bounds.bottom() - centralBounds.bottom() > dy)
+            {
+                out.refusal = Refusal::FaintInk;
+                return out;
+            }
         }
     for (int k : {1, 3})
     {
@@ -158,31 +188,40 @@ inline Outline Assemble(const Region &region, const Summary &summary, const Segm
             return out;
         }
         const int loose = k == 1 ? 1 : 2, strict = k == 1 ? 2 : 3;
-        for (const auto &a : contours[loose])
-            if (a.area >= 4)
+        std::vector<int> components(contours[loose].size()), holes(contours[strict].size());
+        for (const auto &b : contours[strict])
+            if (b.area >= 4)
             {
-                int contained = 0;
-                for (const auto &b : contours[strict])
-                    if (b.area >= 4 && Contains(a, b))
-                        ++contained;
-                if (contained != 1)
+                const int owner = Owner(b, contours[loose], true);
+                if (owner < 0)
                 {
                     out.refusal = Refusal::Components;
                     return out;
                 }
+                ++components[owner];
             }
-        for (const auto &a : contours[strict])
-            if (a.area <= -4)
+        for (const auto &b : contours[loose])
+            if (b.area <= -4)
             {
-                int contained = 0;
-                for (const auto &b : contours[loose])
-                    if (b.area <= -4 && Contains(a, b))
-                        ++contained;
-                if (contained != 1)
+                const int owner = Owner(b, contours[strict], false);
+                if (owner < 0)
                 {
                     out.refusal = Refusal::Holes;
                     return out;
                 }
+                ++holes[owner];
+            }
+        for (int i = 0; i < int(components.size()); ++i)
+            if (contours[loose][i].area >= 4 && components[i] != 1)
+            {
+                out.refusal = Refusal::Components;
+                return out;
+            }
+        for (int i = 0; i < int(holes.size()); ++i)
+            if (contours[strict][i].area <= -4 && holes[i] != 1)
+            {
+                out.refusal = Refusal::Holes;
+                return out;
             }
     }
     std::vector<double> areas, perimeters, strokes;
@@ -221,8 +260,25 @@ inline Outline Assemble(const Region &region, const Summary &summary, const Segm
     }
     auto geometry = std::make_shared<Geometry>();
     geometry->path.setFillRule(Qt::WindingFill);
-    for (auto &contour : contours[2])
+    std::vector<bool> paint(contours[2].size(), true);
+    for (int i = 0; i < int(contours[2].size()); ++i)
+        if (contours[2][i].area > 0 && contours[2][i].area < 4)
+        {
+            paint[i] = std::any_of(contours[3].begin(), contours[3].end(), [&](const auto &strict) {
+                return strict.area > 0 && Owner(strict, contours[2], true) == i;
+            });
+        }
+    for (int i = 0; i < int(contours[2].size()); ++i)
+        if (contours[2][i].area < 0)
+        {
+            const int owner = Owner(contours[2][i], contours[2], true);
+            paint[i] = owner >= 0 && paint[owner]; // never emit a negative contour without its ink owner
+        }
+    for (int i = 0; i < int(contours[2].size()); ++i)
     {
+        if (!paint[i])
+            continue;
+        auto &contour = contours[2][i];
         out.vertices += contour.points.size();
         if (out.vertices > MaximumVertices)
         {

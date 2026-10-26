@@ -1227,9 +1227,14 @@ aligned with the project goals.
   grids or source-image readback. Keep the existing worker, owned exact current
   validation input, completion/quarantine, freshness, protected-mask and single
   analysis-to-scene-to-view mapping contracts. Smoothed OCR cannot prove itself.
-- Preserve every central contour, including tiny dots and holes. Document the
-  four-source-pixel structural-count limit separately from pixel/semantic proof;
-  refusal keeps the original image. Do not relax OCR gates to make a sample draw.
+- Never fill source holes or hide original background. Paint tiny islands only
+  with a strict-threshold survivor; omitted weak islands stay as original pixels.
+  Resolved faint components need central support across their extents. Document
+  the four-source-pixel structural-count limit separately from pixel/semantic
+  proof. Do not relax OCR gates to make a sample draw.
+- Smoothed protected spans require direct OCR-to-current registration regardless
+  of contour enablement, success or refusal. Optional geometry cannot bypass
+  admission, evict independently current glyphs on mismatch or change reading output.
 - Run `uct_ink_outline_contract`, `uct_ink_outline_cuda_contract` and the normal
   model/overlay contracts. Compare warm production-factory whole-worker off/on
   visits separately from synthetic microtimes and native presentation evidence.

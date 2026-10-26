@@ -10,7 +10,9 @@ target_include_directories(uct_ink_outline_tests PRIVATE ${PROJECT_SOURCE_DIR}/i
 target_link_libraries(uct_ink_outline_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
 add_test(NAME uct_ink_outline_contract COMMAND uct_ink_outline_tests
     outlinesKeepStacksExponentsAndHoles borderAndContrastRefuse faintResolvedStrokeRefuses thinResolvedStrokesRefuse
-    fractionalEdgesAndTinyPinholesRemain noisySaddlesRemainClosed)
+    fractionalEdgesAndTinyPinholesRemain noisySaddlesRemainClosed
+    partlyFaintStrokeDoesNotBecomeADot weakTinyIslandKeepsOriginalInsteadOfAmplifyingTexture
+    nestedRingsAndInnerMarksKeepTheirOwners)
 set_tests_properties(uct_ink_outline_contract PROPERTIES TIMEOUT 30 LABELS "headless"
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
@@ -167,7 +169,7 @@ set_tests_properties(uct_paddle_processing PROPERTIES TIMEOUT 30 LABELS "headles
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 if(OKUFLOW_ENABLE_CUDA)
-    add_test(NAME uct_ink_outline_cuda_contract COMMAND uct_paddle_tests gpuInkOutlineKeepsSourceTopologyWithoutRasterEgress)
+    add_test(NAME uct_ink_outline_cuda_contract COMMAND uct_paddle_tests gpuInkOutlineKeepsSourceTopologyWithoutRasterEgress gpuResidentInkOutlineBudgetAndCancellation)
     set_tests_properties(uct_ink_outline_cuda_contract PROPERTIES TIMEOUT 30 LABELS "gpu"
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"

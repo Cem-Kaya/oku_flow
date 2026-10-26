@@ -3655,7 +3655,8 @@ Namespace `okuflow::processing`
   new smoothed line. `smoothedResultsNeedCurrentFrameProbeProof` covers
   deferred visibility, older-probe refusal and removal on motion.
   `RecognitionResult::currentInputMatches` contains worker-computed smoothed
-  versus current-frame registration per line: every candidate word must match
+  versus current-frame registration per line: every candidate word and eligible
+  rejected protected span must match
   in place. `kInputRegistrationTuning` requires 0.94 correlation, 0.95 visibility
   and zero search/refinement on CPU and GPU. `MatchTuning::searchRadiusPx` now
   admits zero as an explicit static-registration mode; motion defaults stay
@@ -8072,10 +8073,12 @@ and quantile `Thresholds`, and directed fixed-point marching-squares `Cell`.
 These types carry drawing geometry rather than recognized/accessible text.
 
 `uct_ink_outline.hpp::Valid` bounds regions and colors. `Trace` joins directed
-segments into closed contours with a typed limit result; `Contains` supports
+segments into closed contours with a typed limit result; cached contour bounds,
+`Contains` and smallest-containing `Owner` support
 nesting. `Assemble` checks border/contrast, resolved component/hole correspondence,
-faint-ink loss, stroke width and budgets before retaining every central contour.
-It assigns each hole to its nearest ink owner once. `Build` implements the same
+faint-ink extent support, stroke width and budgets. Smallest containing owners
+handle nested components and holes. Tiny islands require a strict-level survivor;
+holes remain unfilled in every painted component. `Build` implements the same
 grid and contour stages on CPU, using subtraction bounds checks before indexing.
 
 `PlanInkOutlines(RecognitionResult)` selects bounded nonoverlapping rejected
@@ -8091,12 +8094,18 @@ CUDA `gpu::InkOutline` launches `inkCoverage`, `inkCounts`, `inkRowOffsets` and
 `inkSegments`, preserving fixed cell order with row/warp prefix sums. Raster
 coverage and prefix buffers remain on device. The resident wrapper retains the
 exact input, waits for validation readiness, downloads only bounded segments and
-scalars, calls shared `Assemble`, and retains existing completion/quarantine rules.
+scalars, skips all segment copies after any over-cap count, calls shared
+`Assemble`, and retains existing completion/quarantine rules including exceptions.
+Cancellation is distinguished from input faults; other unknown completion/input
+faults continue to refuse the job rather than publish after unverified GPU work.
 
 `PrepareLines` maps contours from analysis to scene once into
 `PreparedLine::inkOutlines`; `AcceptedLine::inkOutlines` retains their line's
-reference and tracking authority. All-rejected smoothed lines may retain
-source-ink geometry but stay invalid until a current probe validates them.
+reference and tracking authority. `CurrentInputRegistrationBounds` selects
+candidate bounds or rejected protected bounds, independent of optional geometry.
+CPU and resident workers require that support to match current pixels before
+smoothed admission; no contour bypass exists. Admitted smoothed lines stay invalid
+until a current probe validates them. Outline enablement cannot change reading output.
 `OverlayModel::SceneInkOutlines` checks readability, reference, protected owner
 mask, immutable conflicts, glyph collisions and budgets. It adds no `SceneWords`,
 `ScreenLines` or reading text.

@@ -188,6 +188,13 @@ class PaddleTests final : public QObject
         QSKIP("CUDA build required.");
 #endif
     }
+    void gpuResidentInkOutlineBudgetAndCancellation() {
+#if OKUFLOW_ENABLE_CUDA
+        uct_ink_outline_test::ResidentHost();
+#else
+        QSKIP("CUDA build required.");
+#endif
+    }
     void engineCachePersistsWithoutReplacing()
     {
         using namespace engine_cache;
@@ -2350,7 +2357,7 @@ class PaddleTests final : public QObject
                 smoothed.setPixelColor(x,y,((cell*2654435761u)>>(cell%19))&1 ? Qt::white : Qt::black);
                 current.setPixelColor(x,y,((cell*2246822519u+3266489917u)>>(cell%17))&1 ? Qt::white : Qt::black);
             }
-            const auto prepare=[&](bool same,RecognitionResult& result) {
+            const auto prepare=[&](bool same,RecognitionResult& result,TokenDisposition disposition=TokenDisposition::kCandidate) {
                 const auto& raw=same?smoothed:current;
                 if(cudaMemcpyAsync(smoothedPx.data,smoothed.constBits(),smoothed.sizeInBytes(),cudaMemcpyHostToDevice,stream.value)!=cudaSuccess ||
                    cudaMemcpyAsync(currentPx.data,raw.constBits(),raw.sizeInBytes(),cudaMemcpyHostToDevice,stream.value)!=cudaSuccess)return false;
@@ -2359,6 +2366,7 @@ class PaddleTests final : public QObject
                 if(!input)return false;
                 result.stamp=r.stamp;
                 RecognizedLine line;line.words.push_back({QStringLiteral("recognized"),QRectF(8,8,112,48)});
+                line.words[0].disposition=disposition;line.words[0].protectedBoundsPx=QRectF(8,8,112,48);
                 result.output.lines.push_back(line);
                 return input->PrepareResidentAnalysis(result,1,false,cancel,error);
             };
@@ -2367,6 +2375,13 @@ class PaddleTests final : public QObject
             QVERIFY(BuildReferencePatch(stale.reference,QRectF(8.0/128,8.0/64,112.0/128,48.0/64)).valid);
             RecognitionResult exact;QVERIFY2(prepare(true,exact),qPrintable(error));
             QCOMPARE(exact.currentInputMatches.size(),1);QVERIFY(exact.currentInputMatches.front());
+            for(const auto disposition:{TokenDisposition::kInvalidGeometry,TokenDisposition::kLowConfidence,TokenDisposition::kUnrecognized}){
+                RecognitionResult mismatch;QVERIFY2(prepare(false,mismatch,disposition),qPrintable(error));
+                QCOMPARE(mismatch.currentInputMatches,QVector<bool>({false}));
+                RecognitionResult match;QVERIFY2(prepare(true,match,disposition),qPrintable(error));
+                QCOMPARE(match.currentInputMatches,QVector<bool>({true}));
+                QVERIFY(match.output.lines[0].inkOutlines.isEmpty()); // proof never depends on contour extraction
+            }
         }
         {
             QVERIFY(QFontDatabase::addApplicationFont("C:/Windows/Fonts/arial.ttf")>=0);
