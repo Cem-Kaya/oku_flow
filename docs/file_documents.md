@@ -14,6 +14,18 @@ normal reconnect/fallback behavior. A cable drop while the phone remains the
 intended source still retries that phone. Temporary fallback never saves a new
 camera preference.
 
+The picker always includes **OkuFlow Camera · Automatic (recommended)**, even
+when USB discovery has not found a phone. Selecting it permits the existing
+owned-server bootstrap and waits for a freshly discovered USB phone, then saves
+that actual phone identity. It never uses the placeholder as a transport serial.
+A native Android USB/ADB interface arrival also selects this mode: unplugging
+and replugging the phone is a new source-selection intent. Ordinary discovery
+polls still respect a manual webcam selection on the same connection.
+If a phone/lens was already selected, its saved identity survives reconnection.
+Unrelated USB devices, Wi-Fi interfaces and removal notifications do not select a source.
+An active temporary Assistant camera owner is retained; the arrival signal does
+not bypass transport authorization, companion readiness or camera startup.
+
 ## Qt components
 
 `FileDocument` uses Qt's `QImageReader` for pictures and `QPdfDocument` for PDF

@@ -277,7 +277,8 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
                 if (changed && uiState_->cameraCombo_) {
                     auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
                     PopulateCameraCombo();
-                    if (!mainWindow_->videoSourceSelected()) uiState_->cameraCombo_->setCurrentIndex(selectedCameraIndex_);
+                    if (!mainWindow_->videoSourceSelected() && preferredPhoneCamera_ != QStringLiteral("okuflow-phone:"))
+                        uiState_->cameraCombo_->setCurrentIndex(selectedCameraIndex_);
                 }
                 UpdatePhoneLightUi();
                 for (const auto& phone : discovered) {
@@ -287,7 +288,10 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
                 }
                 const bool streamingPhone = cameraActive_ && selectedCameraIndex_ >= 0 &&
                     !cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial.empty();
-                const int target = cameraIntent_.TemporaryOwner().isEmpty()
+                const bool selectingAnyPhone = preferredPhoneCamera_ == QStringLiteral("okuflow-phone:");
+                const bool freshIntent = !selectingAnyPhone ||
+                    phoneDiscoveryIntentGeneration_ == cameraIntent_.Requested().generation;
+                const int target = freshIntent && cameraIntent_.TemporaryOwner().isEmpty()
                     ? ResolveAutomaticPhoneIndex(cameras_, preferredPhoneCamera_.toStdWString(),
                         automaticPhoneSelectionAllowed_, cameraActive_) : -1;
                 const bool recording = recordingManager_ && recordingManager_->IsActive();
@@ -311,7 +315,8 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
                         preferredPhoneCamera_ = saved.cameraSymbolicLink;
                     }
                     qInfo() << "Automatically connecting to USB phone camera";
-                    StartCameraCapture(static_cast<size_t>(target), false, false, true);
+                    if (selectingAnyPhone) OnCameraSelectionChanged(target);
+                    else StartCameraCapture(static_cast<size_t>(target), false, false, true);
                 } else if (!cameraActive_) {
                     StartFallbackCamera();
                     UpdateCameraPlaceholder();
@@ -337,6 +342,7 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
     if (permitPhone && connectedSerial.empty() && phoneIntent.startsWith(phonePrefix))
         recoverySerial = phoneIntent.mid(phonePrefix.size()).section('/', 0, 0).toStdString();
     phoneDiscoveryTimer_.start();
+    phoneDiscoveryIntentGeneration_ = cameraIntent_.Requested().generation;
     try {
         phoneDiscovery_ = std::async(std::launch::async, [connectedSerial, recoverySerial,
             serverIntent = permitPhone ? PhoneServerIntent::PhoneUse
@@ -363,7 +369,8 @@ void OkuFlowApp::StartFallbackCamera()
         if (!cameras_[i].phoneSerial.empty()) continue;
         if (uiState_->cameraCombo_) {
             auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
-            if (!mainWindow_->videoSourceSelected()) uiState_->cameraCombo_->setCurrentIndex(static_cast<int>(i));
+            if (!mainWindow_->videoSourceSelected() && preferredPhoneCamera_ != QStringLiteral("okuflow-phone:"))
+                uiState_->cameraCombo_->setCurrentIndex(static_cast<int>(i));
         }
         StartCameraCapture(i, false, false, true,agent::CameraSourceOrigin::Fallback);
         return;

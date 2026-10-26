@@ -464,6 +464,7 @@ bool OkuFlowApp::Initialize()
 
     connect(uiState_->cameraCombo_, &QComboBox::currentIndexChanged,
             this, &OkuFlowApp::OnCameraSelectionChanged);
+    connect(mainWindow_.get(), &MainWindow::phoneUsbArrived, this, &OkuFlowApp::OnPhoneUsbArrival);
     connect(uiState_->phoneLightButton_, &QPushButton::clicked, this, [this]() {
         if (cameraActive_ && mediaCapture_.PhoneTorchAvailable())
             SetPhoneTorch(!mediaCapture_.PhoneTorchEnabled());
@@ -1327,9 +1328,12 @@ bool OkuFlowApp::Initialize()
         ? savedCamera.cameraSymbolicLink : QString();
     const int initialCameraIndex = ResolveSavedCameraIndex(cameras_,
         savedCamera.cameraSymbolicLink.toStdWString(), savedCamera.cameraIndex);
-    if (!cameras_.empty()) {
+    {
         auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
-        uiState_->cameraCombo_->setCurrentIndex(initialCameraIndex);
+        uiState_->cameraCombo_->setCurrentIndex(preferredPhoneCamera_ == QStringLiteral("okuflow-phone:")
+            ? uiState_->cameraCombo_->findData(QStringLiteral("phone")) : initialCameraIndex);
+    }
+    if (!cameras_.empty()) {
         if (!startupSynchronousProfile_) {
             // All app services/settings now exist. Open the camera while show()
             // initializes the native presenter; completion still returns via Qt.

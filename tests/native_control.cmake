@@ -43,6 +43,8 @@ if(OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE)
         documentPixelsReplacePreviousSourceInHiddenPresenter
         videoSourceControlsBelongToCameraSettings
         pendingPhoneDoesNotLockWebcamSelection
+        automaticPhoneChoiceWorksBeforeUsbDiscovery
+        usbReplugSelectsPhoneAfterManualWebcamButRepeatedDiscoveryDoesNot
         documentPaneFitsSettingsAfterTabSwitch
         pdfTextAndPicturesShareTheFilePickerWithoutVideoCommands
         phoneRecoverySurvivesFileReviewAndConnectionLoss)

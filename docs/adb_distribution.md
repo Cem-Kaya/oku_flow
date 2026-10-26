@@ -100,6 +100,13 @@ responsive default server after its sessions finish. An explicit webcam choice p
 relinquishes an idle owned server. The Python probe does not own server startup
 or shutdown.
 
+The always-available automatic phone picker entry supplies explicit phone-use
+intent even when no server or discovered phone entry exists. A new native USB/ADB
+interface arrival supplies that intent too, following the owner's reconnect
+policy. Repeated discovery on an unchanged connection preserves a manual webcam
+choice. Neither event authorizes stopping a borrowed server or bypassing USB
+authorization and companion readiness.
+
 An owned server's WinUSB connection is exclusive: a second adb server may not
 see its phones until that owned server releases them. Start SDK adb first to
 have OkuFlow borrow it, or point cooperating tools at the private port printed

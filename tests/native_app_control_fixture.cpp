@@ -56,6 +56,7 @@
 #include <cstdio>
 #include <iostream>
 #include <thread>
+#include <dbt.h>
 
 #if defined(OKUFLOW_VIDEO_DOCUMENT_TESTS)
 namespace okuflow {
@@ -123,6 +124,7 @@ public:
         app.languageManager_=std::make_unique<LanguageManager>(*app.qtApp_,&app);
         app.mainWindow_=std::make_unique<MainWindow>();
         app.uiState_=std::make_unique<UIStateManager>(*app.mainWindow_,app);
+        QObject::connect(app.mainWindow_.get(),&MainWindow::phoneUsbArrived,&app,&OkuFlowApp::OnPhoneUsbArrival);
         app.pipelineOrchestrator_=std::make_unique<PipelineOrchestrator>(app,PipelineOrchestrator::Callbacks{});
         app.interactionController_=std::make_unique<InteractionController>(app);
         app.assistiveManager_=std::make_unique<AssistiveFeatureManager>(*app.uiState_->renderWidget_,app,
@@ -385,7 +387,7 @@ public:
         app.automaticPhoneSelectionAllowed_=false;app.preferredPhoneCamera_.clear();app.pendingCameraStart_.reset();
     }
     static QString DocumentDirectory(OkuFlowApp& app) { return app.userDataPaths_->Documents(); }
-    static void SeedPhoneSources(OkuFlowApp& app, std::function<bool(const std::atomic<bool>&)> start) {
+    static CameraDescriptor SeedPhoneSources(OkuFlowApp& app, std::function<bool(const std::atomic<bool>&)> start) {
         CameraDescriptor webcam, phone;
         webcam.name=L"Private webcam"; webcam.symbolicLink=L"fixture-webcam";
         phone.name=L"Private phone"; phone.symbolicLink=L"okuflow-phone:fixture-only";
@@ -396,19 +398,45 @@ public:
         app.cameraIntent_.LoadSaved({app.preferredPhoneCamera_,{},1,true});
         app.cameraStartForTest_=std::move(start);
         app.PopulateCameraCombo();
+        return phone;
     }
     static bool StartFixturePhone(OkuFlowApp& app) {return app.StartCameraCapture(1,false,false,true);}
     static void PickFixtureWebcam(OkuFlowApp& app) {
         app.mainWindow_->setVideoSourceSelected(false,0); app.OnCameraSelectionChanged(0);
     }
-    static void DiscoverFixturePhone(OkuFlowApp& app) {
-        auto phone=app.cameras_.at(1);
+    static void DiscoverFixturePhone(OkuFlowApp& app,const CameraDescriptor* incoming=nullptr,bool current=true) {
+        auto phone=incoming?*incoming:app.cameras_.at(1);
         std::promise<std::pair<PhoneDiscoveryStatus,std::vector<CameraDescriptor>>> ready;
         app.phoneDiscovery_=ready.get_future();
+        app.phoneDiscoveryIntentGeneration_=app.cameraIntent_.Requested().generation+(current?0:1);
         ready.set_value({PhoneDiscoveryStatus::Listed,{phone}});
         app.phoneDiscoveryTimer_.start(); // No real discovery can be dispatched by this fixture.
         const bool initialized=app.initialized_; app.initialized_=true;
         app.PollPhoneCameraDiscovery(); app.initialized_=initialized;
+    }
+    static void PickAutomaticPhone(OkuFlowApp& app) {
+        const auto index=app.mainWindow_->cameraCombo()->findData(QStringLiteral("phone"));
+        app.mainWindow_->cameraCombo()->setCurrentIndex(index);
+        app.OnCameraSelectionChanged(index);
+    }
+    static void UsbArrival(OkuFlowApp& app,bool adb=true,bool usb=true,WPARAM action=DBT_DEVICEARRIVAL) {
+        const QString name=usb?QStringLiteral("\\\\?\\USB#fixture-adb"):QStringLiteral("\\\\?\\SWD#fixture-wifi");
+        constexpr auto offset=offsetof(DEV_BROADCAST_DEVICEINTERFACE_W,dbcc_name);
+        QByteArray bytes(int(offset+(name.size()+1)*sizeof(wchar_t)),0);
+        auto* device=reinterpret_cast<DEV_BROADCAST_DEVICEINTERFACE_W*>(bytes.data());
+        device->dbcc_size=DWORD(bytes.size());device->dbcc_devicetype=DBT_DEVTYP_DEVICEINTERFACE;
+        device->dbcc_classguid=adb?GUID{0xf72fe0d4,0xcbcb,0x407d,{0x88,0x14,0x9e,0xd6,0x73,0xd0,0xdd,0x6b}}:GUID{};
+        std::memcpy(bytes.data()+offset,name.utf16(),name.size()*sizeof(wchar_t));
+        MSG message{};message.hwnd=reinterpret_cast<HWND>(app.mainWindow_->effectiveWinId());
+        message.message=WM_DEVICECHANGE;message.wParam=action;message.lParam=reinterpret_cast<LPARAM>(device);
+        const auto initialized=app.initialized_;app.initialized_=true;
+        app.mainWindow_->nativeEvent({},&message,nullptr);app.initialized_=initialized;
+    }
+    static void WebcamOnly(OkuFlowApp& app) {
+        app.cameras_.resize(1);app.selectedCameraIndex_=0;
+        app.automaticPhoneSelectionAllowed_=false;app.preferredPhoneCamera_.clear();
+        app.cameraIntent_.LoadSaved({QString::fromStdWString(app.cameras_[0].symbolicLink),{},0,true});
+        app.PopulateCameraCombo();
     }
     static bool PhoneIntentRetained(const OkuFlowApp& app) {
         return app.automaticPhoneSelectionAllowed_ && app.preferredPhoneCamera_=="okuflow-phone:fixture-only";
@@ -1163,10 +1191,11 @@ private slots:
         QVERIFY(select->parentWidget()!=window.annotationButton()->parentWidget());
         QCOMPARE(window.annotationButton()->parentWidget()->layout()->indexOf(select),-1);
         QVERIFY(select->isHidden());QVERIFY(!window.cameraFormatCombo()->parentWidget()->isHidden());
-        QCOMPARE(combo->count(),4);QCOMPARE(combo->itemText(2),QStringLiteral("View video or picture"));
+        QCOMPARE(combo->count(),5);QVERIFY(combo->itemText(2).contains(QStringLiteral("OkuFlow Camera")));
+        QCOMPARE(combo->itemText(3),QStringLiteral("View video or picture"));
         QSignalSpy changes(combo,&QComboBox::currentIndexChanged);
         QSignalSpy opens(&window,&MainWindow::openVideoRequested);
-        combo->setCurrentIndex(2);
+        combo->setCurrentIndex(combo->findData(QStringLiteral("video")));
         QVERIFY(window.videoSourceSelected());QVERIFY(!select->isHidden());
         QCOMPARE(select->text(),QStringLiteral("Select video or picture"));
         for (const auto& type : {QStringLiteral("video"),QStringLiteral("pdf")}) {
@@ -1182,7 +1211,7 @@ private slots:
         QCOMPARE(combo->nextInFocusChain(),static_cast<QWidget*>(select));
         select->click();QCOMPARE(opens.count(),1);
         window.setCameraDevices({"Fixture webcam","Fixture phone","New phone"},1);
-        QVERIFY(window.videoSourceSelected());QCOMPARE(combo->currentIndex(),3);
+        QVERIFY(window.videoSourceSelected());QCOMPARE(combo->currentIndex(),4);
         QCOMPARE(changes.count(),1);QCOMPARE(opens.count(),1); // refresh cannot open a dialog
         window.setVideoSourceSelected(false,1);
         QVERIFY(!window.videoSourceSelected());QCOMPARE(combo->currentIndex(),1);
@@ -2299,6 +2328,73 @@ private slots:
         NativeControlFixture::DiscoverFixturePhone(app_);
         QCOMPARE(calls->load(),2);
         QCOMPARE(NativeControlFixture::Window(app_).cameraCombo()->currentIndex(),0);
+    }
+    void automaticPhoneChoiceWorksBeforeUsbDiscovery() {
+        auto calls=std::make_shared<std::atomic<int>>(0);
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::StopCamera(app_);
+            QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+            NativeControlFixture::ResetCameraFixture(app_);
+        });
+        const auto phone=NativeControlFixture::SeedPhoneSources(app_,[calls](const std::atomic<bool>&) {++*calls;return true;});
+        NativeControlFixture::WebcamOnly(app_);
+        auto& window=NativeControlFixture::Window(app_);
+        QVERIFY(window.cameraCombo()->findData(QStringLiteral("phone"))>=0);
+        NativeControlFixture::PickAutomaticPhone(app_);
+        QVERIFY(window.cameraFormatCombo()->parentWidget()->isHidden());
+        QCOMPARE(window.cameraCombo()->currentData().toString(),QStringLiteral("phone"));
+        QCOMPARE(NativeControlFixture::QuickModeSettings(app_).cameraSymbolicLink,QStringLiteral("okuflow-phone:"));
+        QVERIFY(NativeControlFixture::QuickModeSettings(app_).cameraSelectionExplicit);
+        QCOMPARE(calls->load(),0); // Selecting intent itself cannot open a guessed camera.
+        window.setCameraDevices({"Private webcam"},0);
+        QCOMPARE(window.cameraCombo()->currentData().toString(),QStringLiteral("phone"));
+        QVERIFY(window.cameraFormatCombo()->parentWidget()->isHidden());
+        NativeControlFixture::DiscoverFixturePhone(app_,&phone,false);
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QCOMPARE(calls->load(),1); // Only the fallback, never the old discovery's phone.
+        QCOMPARE(window.cameraCombo()->currentData().toString(),QStringLiteral("phone"));
+        NativeControlFixture::DiscoverFixturePhone(app_,&phone);
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QVERIFY(NativeControlFixture::CameraActive(app_));
+        QCOMPARE(calls->load(),2);
+        QVERIFY(NativeControlFixture::PhoneIntentRetained(app_));
+        QCOMPARE(NativeControlFixture::QuickModeSettings(app_).cameraSymbolicLink,QStringLiteral("okuflow-phone:fixture-only"));
+    }
+    void usbReplugSelectsPhoneAfterManualWebcamButRepeatedDiscoveryDoesNot() {
+        auto calls=std::make_shared<std::atomic<int>>(0);
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::StopCamera(app_);
+            QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+            NativeControlFixture::ResetCameraFixture(app_);
+        });
+        NativeControlFixture::SeedPhoneSources(app_,[calls](const std::atomic<bool>&) {++*calls;return true;});
+        NativeControlFixture::PickFixtureWebcam(app_);
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));QCOMPARE(calls->load(),1);
+        NativeControlFixture::DiscoverFixturePhone(app_);
+        QCOMPARE(calls->load(),1); // Ordinary polling respects manual webcam intent.
+        NativeControlFixture::UsbArrival(app_,false);
+        NativeControlFixture::UsbArrival(app_,true,false);
+        NativeControlFixture::UsbArrival(app_,true,true,DBT_DEVICEREMOVECOMPLETE);
+        QCOMPARE(NativeControlFixture::Window(app_).cameraCombo()->currentIndex(),0);
+        NativeControlFixture::UsbArrival(app_);
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QCOMPARE(NativeControlFixture::Window(app_).cameraCombo()->currentData().toString(),QStringLiteral("phone"));
+        NativeControlFixture::DiscoverFixturePhone(app_);
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QCOMPARE(calls->load(),2);QVERIFY(NativeControlFixture::PhoneIntentRetained(app_));
+        NativeControlFixture::UsbArrival(app_);NativeControlFixture::DiscoverFixturePhone(app_);
+        QCOMPARE(calls->load(),2); // No restart of an already active phone.
+        NativeControlFixture::StopCamera(app_);
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        const auto phoneChoice=NativeControlFixture::QuickModeSettings(app_).cameraSymbolicLink;
+        NativeControlFixture::UsbArrival(app_);
+        QCOMPARE(NativeControlFixture::QuickModeSettings(app_).cameraSymbolicLink,phoneChoice);
+        QVERIFY(NativeControlFixture::PhoneIntentRetained(app_));
+        NativeControlFixture::DiscoverFixturePhone(app_);
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));QCOMPARE(calls->load(),3);
+        NativeControlFixture::PickFixtureWebcam(app_);
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));QCOMPARE(calls->load(),4);
+        NativeControlFixture::DiscoverFixturePhone(app_);QCOMPARE(calls->load(),4);
     }
     void documentPaneFitsSettingsAfterTabSwitch() {
         uct_test::RegisterFixtureFonts();

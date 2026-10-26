@@ -1,5 +1,12 @@
 # Hard-Coded Paths and Defaults
 
+The camera picker data key `phone` is an explicit USB-phone discovery mode.
+Its saved selector `okuflow-phone:` has an empty serial by design and is never
+opened as a transport; fresh discovery replaces it with the real phone identity.
+Windows arrival registration uses the standard Android USB interface GUID
+`{F72FE0D4-CBCB-407D-8814-9ED673D0DD6B}` and accepts only USB interface paths.
+It adds no phone model/serial default or new polling interval.
+
 ## PDF drawing copies and runtime (26 October 2026)
 
 `UserDataPaths::Documents()` creates `Documents` under the configured OkuFlow

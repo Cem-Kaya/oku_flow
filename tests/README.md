@@ -1,5 +1,12 @@
 # OkuFlow Tests
 
+`native_app_file_sources_offscreen` additionally checks selecting automatic phone
+mode with no listed phone, refusal of stale discovery for that intent, and native
+USB-arrival routing after a manual webcam choice. Synthetic messages refuse other
+interface GUIDs, non-USB paths and removal events. Repeated discovery and duplicate
+arrivals retain the selected source. These private fake-camera checks do not use
+an actual USB device, adb server or native desktop focus.
+
 `file_document_contract` now checks a 600-page document without eager page
 rendering, export-size parity for large PDF/PNG text and pen widths, and real
 Windows sharing-lock failures between document and sidecar publication. Recovery

@@ -256,6 +256,7 @@ public:
     QToolButton* uiVisibilityButton() const { return uiVisibilityButton_; }
 
 signals:
+    void phoneUsbArrived();
     void cameraLabelsRefreshRequested();
     void quickModeActivated(int row);
     void quickModeOptionsChanged();
@@ -281,6 +282,7 @@ signals:
     void liveRecapMinutesChanged(int minutes);
 
 protected:
+    void showEvent(QShowEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void keyReleaseEvent(QKeyEvent* event) override;
     void changeEvent(QEvent* event) override;
@@ -289,6 +291,8 @@ protected:
     bool nativeEventFilter(const QByteArray& eventType, void* message, qintptr* result) override;
 
 private:
+    void* phoneDeviceNotification_{};
+    quintptr phoneDeviceNotificationWindow_{};
     friend class agent::NativeControlFixture;
     void ActivatePresetRow(int row);
     void ActivateRelativePreset(int offset);

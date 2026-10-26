@@ -1,5 +1,28 @@
 # OkuFlow Code Reference
 
+## USB phone arrival and explicit discovery (26 October 2026)
+
+- `MainWindow::showEvent` registers the standard Android USB interface with
+  Windows on the existing native window; destruction unregisters it. The native
+  event handler emits `phoneUsbArrived` only for a bounded, terminated USB path
+  with the matching interface GUID and arrival event. Offscreen fixtures do not
+  register a native notification or open a device.
+- `MainWindow::setCameraDevices` retains an always-available `phone` choice,
+  preserving its selection through enumeration updates and hiding format controls
+  until a concrete source is chosen. Its caption combines the product name and
+  the existing localized automatic-camera label.
+- `OkuFlowApp::OnPhoneUsbArrival` turns a new cable/ADB-interface connection into
+  the same explicit phone-selection intent as the picker. It preserves temporary
+  Assistant ownership and ignores duplicate notifications for an active phone.
+  `OnCameraSelectionChanged` stores the pending `okuflow-phone:` selector, cancels
+  the exact superseded camera/file request and retains asynchronous retirement.
+  It selects the pending entry through `setFileSourceSelected`, immediately
+  reconciling format-control visibility before discovery returns.
+  `PollPhoneCameraDiscovery` requires a result from the current request generation
+  before replacing that selector with an actual discovered phone and saving it.
+  Ordinary polls cannot override a subsequent manual webcam choice. USB server
+  ownership, authorization, readiness and retry rules are unchanged.
+
 ## Document page ink and saved copies (26 October 2026)
 
 - `FilePageInk` maps zero-based page indices to normalized source-space vector
