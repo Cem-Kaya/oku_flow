@@ -124,6 +124,7 @@ public:
 private slots:
     void OnPresetSelectionChanged(QListWidgetItem* current, QListWidgetItem* previous);
     void OnCameraSelectionChanged(int index);
+    void OnPhoneUsbArrival();
     void OnCameraFormatChanged(int index);
     void OnMicrophoneSelectionChanged(int index);
     void SetRecordingCanvasMode(RecordingCanvasMode mode);
@@ -549,6 +550,7 @@ private:
     PhoneDiscoveryStatus phoneDiscoveryStatus_{};
     std::atomic<bool> phoneDiscoveryCanceled_{false};
     QElapsedTimer phoneDiscoveryTimer_;
+    quint64 phoneDiscoveryIntentGeneration_{};
     QString preferredPhoneCamera_;
     bool automaticPhoneSelectionAllowed_{};
     std::shared_ptr<std::atomic<bool>> pendingCameraStartupCancel_;

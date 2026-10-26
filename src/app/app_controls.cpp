@@ -10,6 +10,34 @@ namespace okuflow {
 
 void OkuFlowApp::OnCameraSelectionChanged(int index) {
     if (uiState_ && uiState_->cameraCombo_ &&
+        uiState_->cameraCombo_->itemData(index) == QStringLiteral("phone")) {
+        pipelineOrchestrator_->CancelCameraReconnect();
+        automaticPhoneSelectionAllowed_ = true;
+        preferredPhoneCamera_ = QStringLiteral("okuflow-phone:"); // Any newly discovered USB phone.
+        auto& saved = settingsController_->MutableSettings();
+        saved.cameraIndex = -1;
+        saved.cameraSelectionExplicit = true;
+        saved.cameraSymbolicLink = preferredPhoneCamera_;
+        cameraIntent_.SelectManual(preferredPhoneCamera_,-1);
+        if (controlService_) controlService_->SourceChanged();
+        if (recordingManager_) {
+            if (const auto session = recordingManager_->CurrentSessionInfo()) StopRecording(session->id);
+        }
+        ReturnVideoToCamera();
+        pendingCameraStart_.reset();
+        StopCameraCapture();
+        selectedCameraIndex_ = -1;
+        mainWindow_->setFileSourceSelected({},-1);
+        {
+            auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
+            uiState_->cameraCombo_->setCurrentIndex(uiState_->cameraCombo_->findData(QStringLiteral("phone")));
+        }
+        phoneDiscoveryTimer_.invalidate();
+        SavePersistentSettings();
+        UpdateCameraPlaceholder();
+        return;
+    }
+    if (uiState_ && uiState_->cameraCombo_ &&
         (uiState_->cameraCombo_->itemData(index).toString() == QStringLiteral("video") ||
          uiState_->cameraCombo_->itemData(index).toString() == QStringLiteral("pdf"))) {
         emit mainWindow_->openVideoRequested();
@@ -46,11 +74,29 @@ void OkuFlowApp::OnCameraSelectionChanged(int index) {
 }
 
 int OkuFlowApp::CameraPickerIndex() const {
+    if (preferredPhoneCamera_ == QStringLiteral("okuflow-phone:") && mainWindow_)
+        return mainWindow_->cameraCombo()->findData(QStringLiteral("phone"));
     const auto& requested = cameraIntent_.Requested().identity.symbolicLink;
     for (size_t i = 0; i < cameras_.size(); ++i)
         if (QString::fromStdWString(cameras_[i].symbolicLink) == requested)
             return static_cast<int>(i);
     return selectedCameraIndex_;
+}
+
+void OkuFlowApp::OnPhoneUsbArrival()
+{
+    if (!initialized_ || phoneDiscoveryCanceled_.load() || !cameraIntent_.TemporaryOwner().isEmpty()) return;
+    // Existing phone/lens intent survives reconnect; duplicate notifications
+    // only accelerate discovery and never restart a connected phone.
+    if (automaticPhoneSelectionAllowed_ && preferredPhoneCamera_.startsWith(QStringLiteral("okuflow-phone:"))) {
+        if (FileSourceRequested()) {
+            ReturnVideoToCamera();
+            mainWindow_->setFileSourceSelected({},CameraPickerIndex());
+        }
+        phoneDiscoveryTimer_.invalidate();
+        return;
+    }
+    OnCameraSelectionChanged(mainWindow_->cameraCombo()->findData(QStringLiteral("phone")));
 }
 
 void OkuFlowApp::UpdateCameraAccelerationUi()

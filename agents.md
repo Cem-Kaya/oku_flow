@@ -1188,6 +1188,11 @@ aligned with the project goals.
   failures after native admission and strict release capability requirements.
 
 ## File sources and phone recovery (2026-10-26)
+- The owner's USB reconnect policy treats a newly arrived Android USB/ADB
+  interface as explicit phone-use intent, even after a manual webcam choice.
+  Unchanged discovery still respects that webcam. Keep the automatic phone picker
+  available before discovery, fence old results, preserve temporary Assistant
+  ownership and never treat the pending selector as a physical device identity.
 - Static-document drawings belong to normalized source/page coordinates, not
   video time or viewport pixels. Preserve camera/video Draw semantics. Save all
   page ink into one working copy per original under OkuFlow/Documents; never

@@ -1,5 +1,9 @@
 # Changelog
 
+- Keep an automatic OkuFlow Camera choice available before USB discovery starts.
+  Reconnecting a USB phone selects it again, while ordinary polling preserves a
+  manually selected webcam. Preserve existing USB ownership and recovery guards.
+
 - Repair hosted Windows checks: bound each OCR-controller slot independently,
   identify unavailable native RAM GPU input before fault injection, and test UCT
   reading-pane geometry after expanding its advanced settings. Assertions and

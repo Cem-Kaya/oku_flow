@@ -92,6 +92,7 @@
 #include <vector>
 
 #include <windows.h>
+#include <dbt.h>
 
 namespace okuflow {
 
@@ -102,6 +103,8 @@ namespace {
 constexpr int kSimpleChromeIdleMs = 5000;
 constexpr int kSimpleChromeFadeMs = 260;
 constexpr int kModeToastMs = 1200;
+// The standard Android USB/ADB interface, including Samsung's WinUSB driver.
+constexpr GUID kPhoneUsbInterfaceGuid{0xf72fe0d4,0xcbcb,0x407d,{0x88,0x14,0x9e,0xd6,0x73,0xd0,0xdd,0x6b}};
 constexpr int kSimpleShortcutCount = 9;
 int PresetShortcut(const QListWidgetItem* item,int row)
 {
@@ -2515,6 +2518,7 @@ MainWindow::MainWindow()
 
 MainWindow::~MainWindow()
 {
+    if (phoneDeviceNotification_) UnregisterDeviceNotification(phoneDeviceNotification_);
     if (qApp) {
         qApp->removeNativeEventFilter(this);
         qApp->removeEventFilter(this);
@@ -3098,12 +3102,16 @@ QComboBox* MainWindow::cameraCombo() const { return cameraCombo_; }
 void MainWindow::setCameraDevices(const QStringList& names, int selectedCamera)
 {
     const QString fileType = fileSourceType();
+    const bool phonePending = cameraCombo_->currentData() == QStringLiteral("phone");
     const QSignalBlocker blocker(cameraCombo_);
     cameraCombo_->clear();
     cameraCombo_->addItems(names);
+    cameraCombo_->addItem(QStringLiteral("OkuFlow Camera · ") +
+        TranslateUi(QStringLiteral("Automatic (recommended)")), QStringLiteral("phone"));
     cameraCombo_->addItem(TranslateUi(QStringLiteral("View video or picture")), QStringLiteral("video"));
     cameraCombo_->addItem(TranslateUi(QStringLiteral("View PDF")), QStringLiteral("pdf"));
     cameraCombo_->setCurrentIndex(!fileType.isEmpty() ? cameraCombo_->findData(fileType)
+        : phonePending ? cameraCombo_->findData(QStringLiteral("phone"))
         : selectedCamera >= 0 && selectedCamera < names.size() ? selectedCamera : -1);
     UpdateCameraSourceUi();
 }
@@ -3147,7 +3155,7 @@ void MainWindow::UpdateCameraSourceUi()
     const auto source = type == "pdf" ? QStringLiteral("Select PDF") : QStringLiteral("Select video or picture");
     SetLiveTranslationSource(openVideoButton_, source);
     RetranslateWidget(openVideoButton_);
-    cameraFormatControls_->setVisible(!video);
+    cameraFormatControls_->setVisible(!video && cameraCombo_->currentData() != QStringLiteral("phone"));
     if (video) {
         phoneLightButton_->hide();
         phoneZoomControls_->hide();
@@ -4973,9 +4981,43 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
     return QMainWindow::eventFilter(watched, event);
 }
 
+void MainWindow::showEvent(QShowEvent* event)
+{
+    QMainWindow::showEvent(event);
+    if (QGuiApplication::platformName() != QStringLiteral("windows")) return;
+    const auto handle = effectiveWinId();
+    if (phoneDeviceNotificationWindow_ == handle && phoneDeviceNotification_) return;
+    if (phoneDeviceNotification_) UnregisterDeviceNotification(phoneDeviceNotification_);
+    DEV_BROADCAST_DEVICEINTERFACE_W filter{};
+    filter.dbcc_size = sizeof(filter);
+    filter.dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE;
+    filter.dbcc_classguid = kPhoneUsbInterfaceGuid;
+    phoneDeviceNotification_ = RegisterDeviceNotificationW(reinterpret_cast<HWND>(handle),
+        &filter,DEVICE_NOTIFY_WINDOW_HANDLE);
+    phoneDeviceNotificationWindow_ = handle;
+    if (!phoneDeviceNotification_) qWarning() << "Android USB arrival registration failed:" << GetLastError();
+}
+
 bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr* result)
 {
     const auto* nativeMessage = static_cast<const MSG*>(message);
+    if (nativeMessage && nativeMessage->hwnd == reinterpret_cast<HWND>(effectiveWinId()) &&
+        nativeMessage->message == WM_DEVICECHANGE && nativeMessage->wParam == DBT_DEVICEARRIVAL &&
+        nativeMessage->lParam) {
+        const auto* header = reinterpret_cast<const DEV_BROADCAST_HDR*>(nativeMessage->lParam);
+        constexpr auto offset = offsetof(DEV_BROADCAST_DEVICEINTERFACE_W,dbcc_name);
+        if (header->dbch_devicetype == DBT_DEVTYP_DEVICEINTERFACE &&
+            header->dbch_size >= offset + sizeof(wchar_t) && header->dbch_size <= 65536) {
+            const auto* device = reinterpret_cast<const DEV_BROADCAST_DEVICEINTERFACE_W*>(header);
+            const auto count = (header->dbch_size-offset)/sizeof(wchar_t);
+            const auto* end = std::find(device->dbcc_name,device->dbcc_name+count,L'\0');
+            if (IsEqualGUID(device->dbcc_classguid,kPhoneUsbInterfaceGuid) &&
+                end != device->dbcc_name+count &&
+                QString::fromWCharArray(device->dbcc_name,int(end-device->dbcc_name))
+                    .startsWith(QStringLiteral("\\\\?\\usb#"),Qt::CaseInsensitive))
+                emit phoneUsbArrived();
+        }
+    }
     // Snapshot the actual viewport origin before Windows changes the owner.
     // Full fitting can precede a native child-origin rounding adjustment;
     // using that earlier origin would add an unrelated pixel to the first
