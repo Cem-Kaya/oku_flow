@@ -1954,8 +1954,17 @@ bool IsHighRiskToken(const QString& text)
         fileToken = (token[i] >= QChar('a') && token[i] <= QChar('z')) ||
                     (token[i] >= QChar('A') && token[i] <= QChar('Z'));
     for (const QChar ch : token) {
+        // A bare vertical stroke remains ambiguous with I/l/1 in notation.
+        if (ch == QChar('|')) return true;
+        // A recognized mathematical glyph is not a layout reconstruction.
+        // Keep its literal character; source geometry, font support and pixel
+        // proof still decide whether it can be shown. In particular, Unicode
+        // superscripts and fractions already carry their own glyph shape.
+        if (ch.category() == QChar::Symbol_Math ||
+            ch.category() == QChar::Number_Other || ch == QChar(0x25b3) || ch == QChar(0x00b0))
+            continue;
         if (ch.isDigit()) {
-            // Superscript/subscript and other non-ASCII digit forms are notation.
+            // Other decimal digit scripts retain the existing policy.
             if (ch.unicode() > 0x7f) {
                 return true;
             }
@@ -1969,7 +1978,7 @@ bool IsHighRiskToken(const QString& text)
         }
         if (!kPlainPunctuation.contains(ch) &&
             !(fileToken && (ch == QChar('_') || ch == QChar('\\')))) {
-            return true; // math operators, superscripts, symbols: never claimed
+            return true; // Unsupported/control characters keep their original pixels.
         }
     }
     return false;

@@ -726,7 +726,7 @@ private slots:
         };
         for(const int variant : {0,1,2,3}) {
             auto backend=std::make_unique<Backend>();
-            backend->word.text=variant==3 ? QStringLiteral("x²") : QStringLiteral("Reading");
+            backend->word.text=variant==3 ? QStringLiteral("xʰ") : QStringLiteral("Reading");
             backend->word.boundsPx=target.pixels.Bounds(); backend->word.quadPx=target.pixels;
             auto word=backend->word; word.boundsPx=source.pixels.Bounds(); word.quadPx=source.pixels;
             RecognitionResult selected; selected.stamp=uct_quad_reference_test::Stamp(1);
@@ -2321,10 +2321,10 @@ void UltraClearTextTests::patchRejectsChangedContent()
 
 void UltraClearTextTests::highRiskTokensFailClosed()
 {
-    for (const QString& risky : {QStringLiteral("x²"), QStringLiteral("∑"), QStringLiteral("|"),
-                                 QStringLiteral("a^2"), QStringLiteral("√2"), QStringLiteral("x₆"),
-                                 QStringLiteral("GPT-６"), QStringLiteral("xʰ"), QStringLiteral("1−O"),
-                                 QStringLiteral("x_2"), QStringLiteral("a_b"), QString()}) {
+    for (const QString& risky : {QStringLiteral("xʰ"), QStringLiteral("♞"), QStringLiteral("|"),
+                                 QStringLiteral("a^2"), QStringLiteral("x_2"),
+                                 QStringLiteral("GPT-６"), QStringLiteral("a_b"),
+                                 QStringLiteral("x\u200b"), QStringLiteral("x\ny"), QString()}) {
         QVERIFY2(IsHighRiskToken(risky), qPrintable(risky));
     }
     for (const QString& safe : {QStringLiteral("Hello"), QStringLiteral("3.14"), QStringLiteral("-12"),
@@ -2336,7 +2336,10 @@ void UltraClearTextTests::highRiskTokensFailClosed()
                                 QStringLiteral("l"), QStringLiteral("I"), QStringLiteral("1"),
                                 QStringLiteral("0"), QStringLiteral("O"), QStringLiteral("o"),
                                 QStringLiteral("scripts/integrate_castle_runtime.py"),
-                                QStringLiteral("C:\\My_Files\\paper.txt")}) {
+                                QStringLiteral("C:\\My_Files\\paper.txt"),
+                                QStringLiteral("W=△K"), QStringLiteral("x²"), QStringLiteral("x₆"),
+                                QStringLiteral("½"), QStringLiteral("√2"), QStringLiteral("∑"),
+                                QStringLiteral("1−O"), QStringLiteral("20°C"), QStringLiteral("a≤b")}) {
         QVERIFY2(!IsHighRiskToken(safe), qPrintable(safe));
     }
 }
@@ -2348,7 +2351,10 @@ void UltraClearTextTests::ordinaryLabelsUseIndependentProofAndPaint_data()
                                 QStringLiteral("OCRv6"), QStringLiteral("R2D2"), QStringLiteral("COVID-19"),
                                 QStringLiteral("l0O"), QStringLiteral("B2"), QStringLiteral("5S"),
                                 QStringLiteral("l"), QStringLiteral("I"), QStringLiteral("1"),
-                                QStringLiteral("0"), QStringLiteral("O"), QStringLiteral("o")})
+                                QStringLiteral("0"), QStringLiteral("O"), QStringLiteral("o"),
+                                QStringLiteral("W=△K"), QStringLiteral("mv²"), QStringLiteral("x₆"),
+                                QStringLiteral("½"), QStringLiteral("√2"), QStringLiteral("∑"),
+                                QStringLiteral("1−O"), QStringLiteral("20°C"), QStringLiteral("a≤b")})
         QTest::newRow(qPrintable(label)) << label;
 }
 
@@ -2867,7 +2873,7 @@ void UltraClearTextTests::modelReprojectsWithCurrentTransform()
 
 void UltraClearTextTests::modelOmitsHighRiskWordsFromReadingText()
 {
-    const SyntheticPage page = MakePage({QStringLiteral("Total is 3.14 and x² ok")});
+    const SyntheticPage page = MakePage({QStringLiteral("Total is 3.14 and xʰ ok")});
     const ViewTransform t = Transform(1.0f, 0.5f, 0.5f);
     OverlayModel model;
     const SourceStamp current = Stamp(1, 1, 0, t);
@@ -2875,7 +2881,7 @@ void UltraClearTextTests::modelOmitsHighRiskWordsFromReadingText()
     model.Admit(ResultFor(page, t, Stamp(1, 1, 200, t)), current, nullptr, 210);
     const QString text = model.ReadingText(210, model.Lines().first().validatedFrameSeq);
     QVERIFY2(text.contains(QStringLiteral("3.14")), qPrintable(text));
-    QVERIFY2(!text.contains(QStringLiteral("x²")), qPrintable(text));
+    QVERIFY2(!text.contains(QStringLiteral("xʰ")), qPrintable(text));
     QCOMPARE(text, QStringLiteral("Total is 3.14 and \u2026 ok"));
 }
 
@@ -2883,15 +2889,15 @@ void UltraClearTextTests::readingTextPreservesOmissionPositions_data()
 {
     QTest::addColumn<QString>("source");
     QTest::addColumn<QString>("expected");
-    QTest::newRow("beginning") << QStringLiteral("x² tablet daily")
+    QTest::newRow("beginning") << QStringLiteral("xʰ tablet daily")
                                << QStringLiteral("\u2026 tablet daily");
-    QTest::newRow("middle") << QStringLiteral("Take x² tablet")
+    QTest::newRow("middle") << QStringLiteral("Take xʰ tablet")
                             << QStringLiteral("Take \u2026 tablet");
-    QTest::newRow("end") << QStringLiteral("Take tablet x²")
+    QTest::newRow("end") << QStringLiteral("Take tablet xʰ")
                          << QStringLiteral("Take tablet \u2026");
-    QTest::newRow("consecutive") << QStringLiteral("Take x² x₆ tablet")
+    QTest::newRow("consecutive") << QStringLiteral("Take xʰ x_2 tablet")
                                  << QStringLiteral("Take \u2026 tablet");
-    QTest::newRow("separate-gaps") << QStringLiteral("x² Take x₆ tablet x²")
+    QTest::newRow("separate-gaps") << QStringLiteral("xʰ Take x_2 tablet xʰ")
                                    << QStringLiteral("\u2026 Take \u2026 tablet \u2026");
 }
 
@@ -2920,7 +2926,7 @@ void UltraClearTextTests::readingTextPreservesOmissionPositions()
 
 void UltraClearTextTests::rejectedTinyAndDenseSpansKeepOrderedOmissions()
 {
-    const auto page=MakePage({QStringLiteral("Read x\u00b2 page")});
+    const auto page=MakePage({QStringLiteral("Read xʰ page")});
     const auto t=Transform(1,.5f,.5f);
     const auto make=[&](std::int64_t time) {
         auto result=ResultFor(page,t,Stamp(1,1,time,t));
@@ -4787,7 +4793,7 @@ void UltraClearTextTests::refreshRetainsLineOnceAndStabilizesColors() {
 
 void UltraClearTextTests::refreshKeepsProvenGeometryThroughOmissionBoxJitter()
 {
-    const auto page = MakePage({QStringLiteral("Reading x² glasses")});
+    const auto page = MakePage({QStringLiteral("Reading xʰ glasses")});
     const auto t = Transform(1, .5, .5);
     const auto current = Stamp(3, 4, 0, t);
     ModelTuning tuning;
@@ -4913,7 +4919,7 @@ void UltraClearTextTests::refreshDetectorJitterRetainsOnlyIndependentlyCurrentOb
 {
     QFETCH(bool, advancing);
     QFETCH(QString, change);
-    const auto page = MakePage({QStringLiteral("Reading glasses help x²")});
+    const auto page = MakePage({QStringLiteral("Reading glasses help xʰ")});
     const auto t = Transform(1, .5, .5);
     const auto current = Stamp(3, 4, 0, t);
     ModelTuning tuning; tuning.admitMatchBudgetMs = 0; // resident admission never checks new references inline

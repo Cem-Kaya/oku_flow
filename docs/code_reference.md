@@ -5902,9 +5902,11 @@ flatten/glare combinations.
   patches on the recognition worker; the scheduler accepts owned shared pixels.
 - `IsHighRiskToken` permits ordinary letter/ASCII-digit mixtures and isolated
   ASCII lookalikes, plus underscores and Windows path separators in file tokens
-  with a one-to-sixteen-letter ASCII extension. Empty/unsupported notation,
-  non-ASCII digits, modifier letters and symbols outside the punctuation set
-  remain rejected. It makes no spelling correction or confidence adjustment.
+  with a one-to-sixteen-letter ASCII extension. Unicode mathematical operators,
+  Number_Other fraction/superscript/subscript glyphs, triangular delta and degree
+  pass this lexical filter. Empty text, other decimal scripts, modifier letters,
+  controls and unsupported symbols remain rejected. It makes no spelling
+  correction, layout reconstruction or confidence adjustment.
   `OverlayModel::AdmitImpl`
   retains current-validated geometry/identity through small exclusion-box
   jitter; it unions exclusions and preserves the original reference and clocks.

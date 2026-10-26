@@ -304,12 +304,12 @@ void UctScreenTextAccessibilityTests::projectionIsDrawnTokensWithCollapsedOmissi
 {
     const auto t = Transform(1.0f, 0.5f, 0.5f);
     OverlayModel model;
-    AdmitTwice(model, MakePage({QStringLiteral("Total is 3.14 and x² ok")}), t);
+    AdmitTwice(model, MakePage({QStringLiteral("Total is 3.14 and xʰ ok")}), t);
     const std::uint64_t frame = model.Lines().first().validatedFrameSeq;
     const QVector<ScreenLine> lines = model.ScreenLines(210, frame);
     QCOMPARE(lines.size(), 1);
     QCOMPARE(lines[0].text, QStringLiteral("Total is 3.14 and \u2026 ok"));
-    QVERIFY(!lines[0].text.contains(QStringLiteral("x²")));
+    QVERIFY(!lines[0].text.contains(QStringLiteral("xʰ")));
     QVERIFY(!lines[0].text.contains(QLatin1Char('\n')));
     // Every glyph token is exactly a word the overlay draws.
     const QVector<SceneWord> drawn = model.SceneWords(210, frame);
@@ -441,7 +441,7 @@ void UctScreenTextAccessibilityTests::wordAndLineUnitsMatchTokens()
     Harness h;
     QVERIFY(QTest::qWaitForWindowExposed(&h.window));
     const auto t = Transform(1.0f, 0.5f, 0.5f);
-    AdmitTwice(h.model, MakePage({QStringLiteral("Total is 3.14 and x² ok")}), t);
+    AdmitTwice(h.model, MakePage({QStringLiteral("Total is 3.14 and xʰ ok")}), t);
     h.frameSeq = h.model.Lines().first().validatedFrameSeq;
     h.ShowModelWords(t);
     h.a11y->SetEnabled(true);
