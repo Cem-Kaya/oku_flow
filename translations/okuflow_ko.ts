@@ -3685,5 +3685,81 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Saved document copy.</source>
         <translation>문서 사본을 저장했습니다.</translation>
     </message>
+    <message>
+        <source>Install and set up</source>
+        <translation>설치 및 설정</translation>
+    </message>
+    <message>
+        <source>Downloads missing models and prepares them on this computer. Your current models stay active until setup succeeds.</source>
+        <translation>누락된 모델을 다운로드하고 이 컴퓨터에서 준비합니다. 설정이 완료될 때까지 현재 모델이 계속 활성화됩니다.</translation>
+    </message>
+    <message>
+        <source>Downloading models: %1%</source>
+        <translation>모델 다운로드 중: %1%</translation>
+    </message>
+    <message>
+        <source>Setting up models...</source>
+        <translation>모델 설정 중...</translation>
+    </message>
+    <message>
+        <source>Models are ready.</source>
+        <translation>모델이 준비되었습니다.</translation>
+    </message>
+    <message>
+        <source>Model setup failed. Your previous models are still active.</source>
+        <translation>모델 설정에 실패했습니다. 이전 모델이 계속 활성화되어 있습니다.</translation>
+    </message>
+    <message>
+        <source>Model setup cancelled. Your previous models are still active.</source>
+        <translation>모델 설정이 취소되었습니다. 이전 모델이 계속 활성화되어 있습니다.</translation>
+    </message>
+    <message>
+        <source>Math (experimental)</source>
+        <translation>수식 (실험적)</translation>
+    </message>
+    <message>
+        <source>Model choices take effect after Install and set up succeeds.</source>
+        <translation>설치 및 설정이 성공적으로 완료된 후 선택한 모델이 적용됩니다.</translation>
+    </message>
+    <message>
+        <source>Math model (TF32)</source>
+        <translation>수식 모델 (TF32)</translation>
+    </message>
+    <message>
+        <source>Read formula in this view</source>
+        <translation>이 화면의 수식 읽기</translation>
+    </message>
+    <message>
+        <source>Pause or freeze the view, then zoom to one complete formula.</source>
+        <translation>화면을 일시 정지하거나 고정한 다음 수식 하나가 온전히 보이도록 확대하세요.</translation>
+    </message>
+    <message>
+        <source>Clear formula</source>
+        <translation>수식 지우기</translation>
+    </message>
+    <message>
+        <source>Recognized formula (LaTeX)</source>
+        <translation>인식된 수식 (LaTeX)</translation>
+    </message>
+    <message>
+        <source>Install and set up Math first.</source>
+        <translation>먼저 수식 기능을 설치하고 설정하세요.</translation>
+    </message>
+    <message>
+        <source>Reading formula...</source>
+        <translation>수식 읽는 중...</translation>
+    </message>
+    <message>
+        <source>Formula reading stopped. The original image is unchanged.</source>
+        <translation>수식 읽기가 중지되었습니다. 원본 이미지는 변경되지 않았습니다.</translation>
+    </message>
+    <message>
+        <source>Formula ready. Compare with the original image.</source>
+        <translation>수식이 준비되었습니다. 원본 이미지와 비교하세요.</translation>
+    </message>
+    <message>
+        <source>Formula could not be read. The original image is unchanged.</source>
+        <translation>수식을 읽을 수 없습니다. 원본 이미지는 변경되지 않았습니다.</translation>
+    </message>
 </context>
 </TS>

@@ -1,12 +1,12 @@
 {
   "schema": 1,
-  "description": "Private Windows x64 UCT payload; exact file inventory, no model-quality gate",
+  "description": "Private Windows x64 UCT payload; medium detector and recognizer only, exact file inventory, no model-quality gate",
   "maxFileBytes": 536870912,
   "maxTotalBytes": 3221225472,
   "packages": [
     {
       "id": "paddleocr",
-      "version": "PP-OCRv6 six pinned source and BF16 graphs",
+      "version": "PP-OCRv6 medium FP32 source graphs; native BF16 engine preparation",
       "licenseDeclared": "Apache-2.0",
       "noticePaths": [
         "app/ocr/MODEL_LICENSES.txt",
@@ -80,54 +80,6 @@
   "files": [
     {
       "root": "runtime",
-      "source": "det/inference.onnx",
-      "path": "app/ocr/det/inference.onnx",
-      "bytes": 1780590,
-      "sha256": "193bab7a04fca699a6c82e6abb5b81bdb28177f0abd4062552b04908dafb19f8",
-      "package": "paddleocr"
-    },
-    {
-      "root": "runtime",
-      "source": "det/inference.yml",
-      "path": "app/ocr/det/inference.yml",
-      "bytes": 883,
-      "sha256": "3ac018be6f97499a08faa3bbdeb33640968d9307f6736d152902747a9f259593",
-      "package": "paddleocr"
-    },
-    {
-      "root": "runtime",
-      "source": "det/README.md",
-      "path": "app/ocr/det/README.md",
-      "bytes": 16064,
-      "sha256": "f48628931a5dc994ce5c67e32c94d71b4a7e96b8c5c1b00663284999c3c566bc",
-      "package": "paddleocr"
-    },
-    {
-      "root": "runtime",
-      "source": "rec/inference.onnx",
-      "path": "app/ocr/rec/inference.onnx",
-      "bytes": 21159378,
-      "sha256": "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634",
-      "package": "paddleocr"
-    },
-    {
-      "root": "runtime",
-      "source": "rec/inference.yml",
-      "path": "app/ocr/rec/inference.yml",
-      "bytes": 150579,
-      "sha256": "ab078671bb49f06228eadccd34f1bb501e157f7a047095ffb943ba81512c77d1",
-      "package": "paddleocr"
-    },
-    {
-      "root": "runtime",
-      "source": "rec/README.md",
-      "path": "app/ocr/rec/README.md",
-      "bytes": 16585,
-      "sha256": "7d46dbd183ac09bd5a2e6b4577dcb29240751b1c00eb6813eca308d529f86806",
-      "package": "paddleocr"
-    },
-    {
-      "root": "runtime",
       "source": "det/medium/inference.onnx",
       "path": "app/ocr/det/medium/inference.onnx",
       "bytes": 62032837,
@@ -172,102 +124,6 @@
       "path": "app/ocr/rec/medium/README.md",
       "bytes": 16587,
       "sha256": "ebce8d28436623ecab4952e24935aed86b3f8ecaf8f8736b92d5544f60fae1e9",
-      "package": "paddleocr"
-    },
-    {
-      "root": "runtime",
-      "source": "det/small/inference.onnx",
-      "path": "app/ocr/det/small/inference.onnx",
-      "bytes": 9880512,
-      "sha256": "d73e0058b7a8086bbd57f3d10b8bcd4ff95363f67e06e2762b5e814fe9c9410e",
-      "package": "paddleocr"
-    },
-    {
-      "root": "runtime",
-      "source": "det/small/inference.yml",
-      "path": "app/ocr/det/small/inference.yml",
-      "bytes": 885,
-      "sha256": "193f435274bf9f0b5f71a929bbfbcf148282df7e633b34e7c373e8f44741b516",
-      "package": "paddleocr"
-    },
-    {
-      "root": "runtime",
-      "source": "det/small/README.md",
-      "path": "app/ocr/det/small/README.md",
-      "bytes": 16076,
-      "sha256": "e9403667f0f92055d8ce9e73a2beb1002fc489d9342697db74039eb7178bb5fb",
-      "package": "paddleocr"
-    },
-    {
-      "root": "runtime",
-      "source": "rec/tiny/inference.onnx",
-      "path": "app/ocr/rec/tiny/inference.onnx",
-      "bytes": 4462639,
-      "sha256": "9ef676d6ed3c88256a2d92c640c44f25b0c40947e111b14b8be8f594091563e6",
-      "package": "paddleocr"
-    },
-    {
-      "root": "runtime",
-      "source": "rec/tiny/inference.yml",
-      "path": "app/ocr/rec/tiny/inference.yml",
-      "bytes": 55571,
-      "sha256": "66170210bad538e83fff3c4a3867e547d6bf20b50d64b20347c4b913f3034ea1",
-      "package": "paddleocr"
-    },
-    {
-      "root": "runtime",
-      "source": "rec/tiny/README.md",
-      "path": "app/ocr/rec/tiny/README.md",
-      "bytes": 16600,
-      "sha256": "e83dd03e515a2d064eaba8ec82248f21dbf6a0813550bafe4c70ee2f6e8fdf2a",
-      "package": "paddleocr"
-    },
-    {
-      "root": "models",
-      "source": "uct/det/medium/bf16-linear/inference.onnx",
-      "path": "app/models/uct/det/medium/bf16-linear/inference.onnx",
-      "bytes": 31130490,
-      "sha256": "5699b5d662f046d7fcad339b351263f154a13c67a11ee797f45074f8876db10c",
-      "package": "paddleocr"
-    },
-    {
-      "root": "models",
-      "source": "uct/det/small/bf16-linear/inference.onnx",
-      "path": "app/models/uct/det/small/bf16-linear/inference.onnx",
-      "bytes": 5004430,
-      "sha256": "05f643581c6662b1e04f201be302aeb4d3fd5f0b03bf65d483e420d977ab06e6",
-      "package": "paddleocr"
-    },
-    {
-      "root": "models",
-      "source": "uct/det/tiny/bf16-linear/inference.onnx",
-      "path": "app/models/uct/det/tiny/bf16-linear/inference.onnx",
-      "bytes": 951756,
-      "sha256": "cfb0aadcc7efb452cb830b30540d5d2468a79b2b59ffba0ec0e986dceaad5833",
-      "package": "paddleocr"
-    },
-    {
-      "root": "models",
-      "source": "uct/rec/medium/bf16-linear/inference.onnx",
-      "path": "app/models/uct/rec/medium/bf16-linear/inference.onnx",
-      "bytes": 38456512,
-      "sha256": "ecd8ffc92aa1b9f7a33b0ad39757b64887c465f15bb54853936b2136f94e5835",
-      "package": "paddleocr"
-    },
-    {
-      "root": "models",
-      "source": "uct/rec/small/bf16-linear/inference.onnx",
-      "path": "app/models/uct/rec/small/bf16-linear/inference.onnx",
-      "bytes": 10713780,
-      "sha256": "483b257a64da0b493e64dc58cc3827070eb11a9c7ee8ae0b1ffad7a61aeb03f1",
-      "package": "paddleocr"
-    },
-    {
-      "root": "models",
-      "source": "uct/rec/tiny/bf16-linear/inference.onnx",
-      "path": "app/models/uct/rec/tiny/bf16-linear/inference.onnx",
-      "bytes": 2289563,
-      "sha256": "7fce45ba34121940382e59fd6a81c78ffab85d80b3fd51d01a9b66c5372f31ad",
       "package": "paddleocr"
     },
     {
@@ -454,5 +310,8 @@
       "sha256": "6c9100e8c4ddc55b0ecf8fa878968559a5bab17b84f8d5c64080a1f38d332be1",
       "package": "tensorrt"
     }
+  ],
+  "modelTiers": [
+    "medium"
   ]
 }

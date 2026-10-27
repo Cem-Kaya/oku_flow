@@ -65,6 +65,7 @@ include(media_gpu_scene.cmake)
 set_tests_properties(deadline_worker PROPERTIES TIMEOUT 15
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 add_executable(launcher_fixture launcher_fixture.cpp)
+target_include_directories(launcher_fixture PRIVATE ${PROJECT_SOURCE_DIR}/include)
 set_property(TARGET launcher_fixture PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 add_executable(windows_runtime_tests windows_runtime_tests.cpp ${PROJECT_SOURCE_DIR}/src/app/windows_runtime_contract.cpp)
 target_include_directories(windows_runtime_tests PRIVATE ${PROJECT_SOURCE_DIR}/include ${OKUFLOW_RUNTIME_GENERATED_DIR})
@@ -76,6 +77,7 @@ add_dependencies(windows_runtime_tests okuflow_launcher launcher_fixture)
 target_compile_options(windows_runtime_tests PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
 add_test(NAME windows_runtime_contract COMMAND windows_runtime_tests)
 set_tests_properties(windows_runtime_contract PROPERTIES TIMEOUT 30
+    REQUIRED_FILES "${PROJECT_SOURCE_DIR}/include/okuflow/app/process_exit.hpp;$<TARGET_FILE:launcher_fixture>;$<TARGET_FILE:okuflow_launcher>"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 add_executable(setup_assistant_tests setup_assistant_tests.cpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/app/setup_assistant.hpp

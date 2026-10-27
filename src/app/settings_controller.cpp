@@ -307,6 +307,27 @@ std::optional<settings::PresetDefinition> SettingsController::PromoteCurrentConf
     return preset;
 }
 
+bool SettingsController::SaveModelSelection(const settings::AdvancedConfig& current,const uct::ModelSettings& models)
+{
+    lastError_.clear();
+    if(!PrepareProtectedSecrets())return false;
+    auto persisted=settings_;
+    persisted.currentConfig=DecorateLiveConfig(current);
+    persisted.ultraClearTextModels=models;
+    persisted.assistive.pendingCredentialRemovals=pendingCredentialRemovals_;
+    if(pendingCredentialRemovals_.contains(persisted.assistive.vlmCredentialId.trimmed()))
+        persisted.assistive.vlmCredentialId.clear();
+    if(storage_.saveSettings(settingsPath_,persisted)!=settings::SaveStatus::Saved) {
+        lastError_=QStringLiteral("OkuFlow could not save settings.");return false;
+    }
+    settings_.ultraClearTextModels=models;
+    settings_.currentConfig=persisted.currentConfig;
+    settings_.assistive.vlmCredentialId=persisted.assistive.vlmCredentialId;
+    settings_.assistive.pendingCredentialRemovals=pendingCredentialRemovals_;
+    RememberCommittedSettings(persisted);
+    return true;
+}
+
 bool SettingsController::Save(const settings::AdvancedConfig& current)
 {
     lastError_.clear();

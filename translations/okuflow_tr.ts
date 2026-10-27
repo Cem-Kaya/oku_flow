@@ -3685,5 +3685,81 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
         <source>Saved document copy.</source>
         <translation>Belgenin kopyası kaydedildi.</translation>
     </message>
+    <message>
+        <source>Install and set up</source>
+        <translation>Kur ve yapılandır</translation>
+    </message>
+    <message>
+        <source>Downloads missing models and prepares them on this computer. Your current models stay active until setup succeeds.</source>
+        <translation>Eksik modelleri indirir ve bu bilgisayarda hazırlar. Kurulum başarıyla tamamlanana kadar mevcut modelleriniz etkin kalır.</translation>
+    </message>
+    <message>
+        <source>Downloading models: %1%</source>
+        <translation>Modeller indiriliyor: %1%</translation>
+    </message>
+    <message>
+        <source>Setting up models...</source>
+        <translation>Modeller hazırlanıyor...</translation>
+    </message>
+    <message>
+        <source>Models are ready.</source>
+        <translation>Modeller hazır.</translation>
+    </message>
+    <message>
+        <source>Model setup failed. Your previous models are still active.</source>
+        <translation>Model kurulumu başarısız oldu. Önceki modelleriniz hâlâ etkin.</translation>
+    </message>
+    <message>
+        <source>Model setup cancelled. Your previous models are still active.</source>
+        <translation>Model kurulumu iptal edildi. Önceki modelleriniz hâlâ etkin.</translation>
+    </message>
+    <message>
+        <source>Math (experimental)</source>
+        <translation>Matematik (deneysel)</translation>
+    </message>
+    <message>
+        <source>Model choices take effect after Install and set up succeeds.</source>
+        <translation>Model seçimleri, Kur ve yapılandır başarıyla tamamlandıktan sonra uygulanır.</translation>
+    </message>
+    <message>
+        <source>Math model (TF32)</source>
+        <translation>Matematik modeli (TF32)</translation>
+    </message>
+    <message>
+        <source>Read formula in this view</source>
+        <translation>Bu görünümdeki formülü oku</translation>
+    </message>
+    <message>
+        <source>Pause or freeze the view, then zoom to one complete formula.</source>
+        <translation>Görünümü duraklatın veya dondurun, ardından tek bir formülün tamamını görecek şekilde yakınlaştırın.</translation>
+    </message>
+    <message>
+        <source>Clear formula</source>
+        <translation>Formülü temizle</translation>
+    </message>
+    <message>
+        <source>Recognized formula (LaTeX)</source>
+        <translation>Tanınan formül (LaTeX)</translation>
+    </message>
+    <message>
+        <source>Install and set up Math first.</source>
+        <translation>Önce Matematik için Kur ve yapılandır işlemini tamamlayın.</translation>
+    </message>
+    <message>
+        <source>Reading formula...</source>
+        <translation>Formül okunuyor...</translation>
+    </message>
+    <message>
+        <source>Formula reading stopped. The original image is unchanged.</source>
+        <translation>Formül okuma durduruldu. Orijinal görüntü değiştirilmedi.</translation>
+    </message>
+    <message>
+        <source>Formula ready. Compare with the original image.</source>
+        <translation>Formül hazır. Orijinal görüntüyle karşılaştırın.</translation>
+    </message>
+    <message>
+        <source>Formula could not be read. The original image is unchanged.</source>
+        <translation>Formül okunamadı. Orijinal görüntü değiştirilmedi.</translation>
+    </message>
 </context>
 </TS>

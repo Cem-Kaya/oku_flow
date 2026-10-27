@@ -700,3 +700,4 @@ void DecodeBatch(const float *p, int samples, int steps, int classes, const Quad
 
 #include "uct_validation_kernels.cuh"
 #include "uct_ink_outline_kernels.cuh"
+#include "uct_formula_kernels.cuh"

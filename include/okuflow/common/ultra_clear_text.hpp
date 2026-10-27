@@ -6,6 +6,7 @@
 #include "okuflow/common/uct_model_settings.hpp"
 #include "okuflow/common/uct_timing_trace.hpp"
 #include "okuflow/common/uct_ink_outline_types.hpp"
+#include "okuflow/common/uct_formula_artifact.hpp"
 
 #include <QColor>
 #include <QByteArray>
@@ -468,7 +469,9 @@ struct RegionalOcrRequest {
     std::chrono::steady_clock::time_point fullDeadline;
     double estimatedMs{750.0};
 };
-enum class RecognitionJobKind : std::uint8_t { Full, PausedDetail, Regional };
+struct FormulaObservation { bool ok{},cancelled{};QString error;formula::Artifact artifact; };
+using FormulaWork = std::function<FormulaObservation(const SourceStamp&,const QImage&,SharedDeviceImage,const std::atomic<bool>&)>;
+enum class RecognitionJobKind : std::uint8_t { Full, PausedDetail, Regional, Formula };
 struct RecognitionResult {
     std::uint64_t jobId{};
     std::uint64_t authority{};
@@ -502,6 +505,7 @@ struct RecognitionResult {
     double shadowPlannerMs{}; // excluded from ordinary OCR worker duration
     QString shadowPlannerError;
     RecognitionJobKind jobKind{RecognitionJobKind::Full}; // actual backend operation
+    std::optional<FormulaObservation> formula;
     bool regionalRequested{};
     bool regionalFallback{}; // stale/unsupported/no slack: full, or yielded to queued full
     bool regionalFailed{};   // request a full read without retiring healthy backend/text
@@ -576,6 +580,8 @@ public:
                                std::optional<DetailFocus> detail = std::nullopt,
                                std::optional<RegionalOcrRequest> regional = std::nullopt);
     void Cancel();
+    std::uint64_t SubmitFormula(const SourceStamp&,SharedPixels,SharedDeviceImage,FormulaWork,
+                                std::shared_ptr<std::atomic<bool>> cancelled);
     // Overwrites one optional priority descriptor for the next job only.
     // Does not submit work, reset/renew evidence or alter recognition policy.
     void SetShadowFocus(std::optional<QRectF> sceneRect);

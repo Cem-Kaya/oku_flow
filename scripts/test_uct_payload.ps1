@@ -72,7 +72,8 @@ try {
         $detector = Get-Content (Join-Path $repo 'src/common/uct_bf16_detector.hpp') -Raw
         $recognizer = Get-Content (Join-Path $repo 'src/common/uct_public_bf16.hpp') -Raw
         $precision = Get-Content (Join-Path $repo 'src/common/uct_runtime_precision.hpp') -Raw
-        foreach ($m in $catalog.models) {
+        $allBf16 = Get-Content (Join-Path $PSScriptRoot 'uct/bf16-models.json') -Raw | ConvertFrom-Json -AsHashtable
+        foreach ($m in $allBf16.models) {
             $tier = "$([char]::ToUpperInvariant($m.tier[0]))$($m.tier.Substring(1))"
             if ($m.role -ceq 'detector') {
                 $pattern = 'case ModelTier::' + $tier + ':return "([0-9a-f]{64})"'
@@ -98,16 +99,25 @@ try {
             'app/ocr/pins.json','app/models/uct/bf16-models.json','app/ocr/sources/precision_models.py',
             'app/ocr/MODEL_LICENSES.txt','app/models/uct/MODEL_LICENSES.txt')
         $expected = @($extra)
-        foreach ($m in $pins.models) { foreach ($name in $m.files.Keys) { $expected += "app/ocr/$($m.directory)/$name" } }
-        foreach ($m in $catalog.models) { $expected += "app/models/$($m.bundlePath)" }
-        Assert-Fixture ($manifest.files.Count -eq 47 -and !(Compare-Object ($expected | Sort-Object) ($manifest.files.path | Sort-Object))) 'Unexpected distribution file set.'
+        foreach ($m in @($pins.models | Where-Object tier -CEQ 'medium')) { foreach ($name in $m.files.Keys) { $expected += "app/ocr/$($m.directory)/$name" } }
+        Assert-Fixture ($manifest.files.Count -eq 29 -and !(Compare-Object ($expected | Sort-Object) ($manifest.files.path | Sort-Object))) 'Unexpected medium-only FP32 distribution file set.'
         foreach ($f in $manifest.files) {
             Assert-UctRelativePath $f.source
             Assert-UctRelativePath $f.path
             Assert-Fixture ($f.sha256 -cmatch '^[0-9a-f]{64}$' -and $f.bytes -gt 0 -and $f.bytes -le $manifest.maxFileBytes) 'Every manifest file needs a bounded exact pin.'
         }
         $notice = [Text.Encoding]::UTF8.GetString((Get-UctModificationBytes $catalog))
-        foreach ($m in $catalog.models) { Assert-Fixture ($notice.Contains($m.sourceSha256) -and $notice.Contains($m.convertedGraphSha256)) 'Modification notice misses a graph.' }
+        Assert-Fixture ($catalog.models.Count -eq 2) 'Modification notice must describe only the shipped medium pair.'
+        foreach ($m in $catalog.models) { Assert-Fixture ($notice.Contains($m.sourceSha256)) 'Preparation notice misses a source graph.' }
+        Assert-Fixture ($notice.Contains('okuflow-native-bf16-conv-matmul-v1')) 'Native preparation recipe missing.'
+        $extra = $manifest | ConvertTo-Json -Depth 12 | ConvertFrom-Json -AsHashtable
+        $tiny = @($pins.models | Where-Object { $_.kind -ceq 'det' -and $_.tier -ceq 'tiny' })[0]
+        $extra.files += @{root='runtime';source='det/inference.onnx';path='app/ocr/det/inference.onnx';
+            bytes=1780590;sha256=$tiny.files['inference.onnx'];package='paddleocr'}
+        Assert-Refused { Test-UctPayloadCatalog $extra $repo } 'unselected model graph'
+        $missing = $manifest | ConvertTo-Json -Depth 12 | ConvertFrom-Json -AsHashtable
+        $missing.files = @($missing.files | Where-Object path -CNE 'app/ocr/det/medium/inference.onnx')
+        Assert-Refused { Test-UctPayloadCatalog $missing $repo } 'distribution parity|unselected model graph'
     }
     Invoke-Fixture 'successful streaming copy and portable receipt seals' {
         $f = New-Fixture 'success'

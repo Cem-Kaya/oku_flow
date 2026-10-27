@@ -2083,6 +2083,8 @@ struct RecognitionScheduler::State {
         std::optional<QRectF> shadowFocus;
         std::optional<DetailFocus> detail;
         std::optional<RegionalOcrRequest> regional;
+        FormulaWork formula;
+        std::shared_ptr<std::atomic<bool>> formulaStop;
     };
 
     std::mutex mutex;
@@ -2109,6 +2111,7 @@ struct RecognitionScheduler::State {
     std::function<void()> beforeCompletionForTest;
     bool inFlight{};
     std::atomic<bool> cancelInFlight{false};
+    std::shared_ptr<std::atomic<bool>> formulaInFlightStop;
     std::uint64_t authority{1};
     std::uint64_t nextJobId{1};
     bool shutdown{};
@@ -2154,15 +2157,17 @@ struct RecognitionScheduler::State {
     std::uint64_t Enqueue(const SourceStamp& stamp, QImage owned, SharedDeviceImage device = {},
                           CorroborationRequest corroboration = {},
                           std::optional<DetailFocus> detail = std::nullopt,
-                          std::optional<RegionalOcrRequest> regional = std::nullopt)
+                          std::optional<RegionalOcrRequest> regional = std::nullopt,
+                          FormulaWork formula = {},std::shared_ptr<std::atomic<bool>> formulaStop = {})
     {
         std::lock_guard lock(mutex);
-        if (shutdown || status.state == BackendState::kUnavailable ||
-            status.state == BackendState::kFailed) {
+        if (shutdown || (!formula && (status.state == BackendState::kUnavailable ||
+            status.state == BackendState::kFailed))) {
             return 0;
         }
         // Disabled and validation-only schedulers never accept active work.
         if (regional && (!regionalRequested || probeOnly)) return 0;
+        if(formula && (probeOnly || pending))return 0; // optional Math never replaces queued OCR
         if (regional && pending && !pending->regional) {
             ++stats.regionalPriorityRefusals;
             return 0; // one slot: a region can never overwrite a queued full
@@ -2180,9 +2185,10 @@ struct RecognitionScheduler::State {
         job.device = std::move(device);
         job.corroboration = std::move(corroboration);
         job.regional = std::move(regional);
+        job.formula=std::move(formula);job.formulaStop=std::move(formulaStop);
         if (detail && !probeOnly) job.detail = detail;
         if (shadowRequested) job.shadowFocus = shadowFocus;
-        if (!job.regional) latestFullPlan.reset(); // baseline request outranks the old plan
+        if (!job.regional && !job.formula) latestFullPlan.reset(); // baseline request outranks the old plan
         const std::uint64_t id = job.id;
         TraceTiming(timing::Event::Submit, timingProducer, TimingChannel(), stamp, id, authority,
             {0, 0, (job.device ? timing::DeviceInput : 0u) |
@@ -2224,6 +2230,8 @@ struct RecognitionScheduler::State {
                 self->pending.reset();
                 self->inFlight = true;
                 self->cancelInFlight.store(job.authority != self->authority);
+                self->formulaInFlightStop=job.formulaStop;
+                if(job.formulaStop && self->cancelInFlight.load())job.formulaStop->store(true);
                 ++self->stats.started;
                 if (timing::Enabled()) self->activeTiming = TimingKey(self->timingProducer,
                     self->TimingChannel(), job.stamp, job.id, job.authority);
@@ -2256,6 +2264,12 @@ struct RecognitionScheduler::State {
                 ApplyHoldProvenance(job.stamp, {HoldDisplay::Unknown, 0, 0.0f});
             }
             result.stamp = job.stamp;
+            if(job.formula) {
+                result.jobKind=RecognitionJobKind::Formula;
+                if(!EvidenceAcquisition(job.stamp) || self->cancelInFlight.load())
+                    result.formula=FormulaObservation{false,true,QStringLiteral("Formula acquisition was revoked."),{}};
+                else result.formula=job.formula(job.stamp,pixels,job.device,*job.formulaStop);
+            } else {
             const BackendState state = [&] {
                 std::lock_guard lock(self->mutex);
                 if (timing::Enabled()) timingBackendFlags =
@@ -2546,7 +2560,11 @@ struct RecognitionScheduler::State {
                     }
                 }
             }
-            }catch(const std::exception& error){result.output.ok=false;result.output.lines.clear();result.output.error=QString::fromUtf8(error.what());}
+            }
+            }catch(const std::exception& error){
+                if(job.formula){result.jobKind=RecognitionJobKind::Formula;result.formula=FormulaObservation{false,job.formulaStop->load(),QString::fromUtf8(error.what()),{}};}
+                else {result.output.ok=false;result.output.lines.clear();result.output.error=QString::fromUtf8(error.what());}
+            }
             result.durationMs = timer.nsecsElapsed() / 1e6;
             result.regionalFailed = result.regionalRequested && !result.output.ok && !result.output.cancelled &&
                 !result.output.compositeInput;
@@ -2558,6 +2576,7 @@ struct RecognitionScheduler::State {
             {
                 std::lock_guard lock(self->mutex);
                 self->inFlight = false;
+                self->formulaInFlightStop.reset();
                 if (result.regionalFallback) ++self->stats.regionalFallbacks;
                 if (result.regionalFailed) ++self->stats.regionalFailures;
                 if (result.regionalDeadlineOverrun) ++self->stats.regionalDeadlineOverruns;
@@ -2679,6 +2698,7 @@ RecognitionScheduler::~RecognitionScheduler()
         state_->pending.reset();
         ++state_->authority;
         state_->cancelInFlight.store(true);
+        if(state_->formulaInFlightStop)state_->formulaInFlightStop->store(true);
     }
     state_->wake.notify_all();
     {
@@ -2758,6 +2778,18 @@ void RecognitionScheduler::Cancel()
         ++state_->stats.revoked;
     }
     state_->cancelInFlight.store(true);
+    if(state_->formulaInFlightStop)state_->formulaInFlightStop->store(true);
+}
+
+std::uint64_t RecognitionScheduler::SubmitFormula(const SourceStamp& stamp,SharedPixels pixels,SharedDeviceImage image,
+                                                  FormulaWork work,std::shared_ptr<std::atomic<bool>> stop)
+{
+    if(!work || !stop || stop->load())return 0;
+    if(image && (!image->ValidationData() || image->width!=int(stamp.viewportWidth) || image->height!=int(stamp.viewportHeight) ||
+        image->sourceEpoch!=stamp.sourceEpoch || image->frameSequence!=stamp.frameSeq))return 0;
+    QImage view=image?QImage{}:WrapPixels(pixels);
+    if(!image && view.isNull())return 0;
+    return state_->Enqueue(stamp,std::move(view),std::move(image),{},std::nullopt,std::nullopt,std::move(work),std::move(stop));
 }
 
 std::uint64_t RecognitionScheduler::Authority() const

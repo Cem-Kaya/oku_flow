@@ -1,5 +1,11 @@
 # Application languages
 
+The development model setup flow adds seven Windows source keys (922 total).
+All 168 targets received per-entry read-only Luna review: 163 OK, five flagged
+with replacements applied, zero unread. Structural parity passed in all 24
+catalogs. This is model-assisted review, not native-speaker, rendered RTL or
+screen-reader acceptance. Android and website strings are unchanged.
+
 The unreleased live RAM recap adds five Windows source keys (884 total per
 catalog), including duration and decimal-MB estimates. All 120 targets received
 per-entry model review: initial48 plus72 settings entries, with the latter's
@@ -379,3 +385,5 @@ Page is an established identical UI term with a language-specific validator
 exception. Structural/model review is separate from native-speaker, RTL rendering
 and spoken screen-reader acceptance. The new PDF pane uses native Qt read-only
 text accessibility independently of OCR. See file_documents.md.
+
+Math adds 12 source strings (934 total). Two small read-only agents reviewed all 288 target strings: twelve replacements applied, zero unread. This is model linguistic review, not native-speaker or rendered RTL acceptance.

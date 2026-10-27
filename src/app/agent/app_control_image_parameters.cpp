@@ -492,8 +492,9 @@ std::map<Field,QJsonValue> AppControlTarget::ImageParameterFields() const {
     const auto* panel=app_.mainWindow_?app_.mainWindow_->ultraClearTextPanel():nullptr;
     fields[Field::UctEnabled]=panel?panel->IsEnabledByUser():app_.settingsController_->Settings().ultraClearTextEnabled;
     fields[Field::UctShowOriginal]=panel && panel->IsShowingOriginal();
-    const auto models=app_.mainWindow_ && app_.mainWindow_->ultraClearTextPanel()
-        ?app_.mainWindow_->ultraClearTextPanel()->ModelSettings():app_.settingsController_->Settings().ultraClearTextModels;
+    // Native selectors may contain an uncommitted installation draft. Agent
+    // state describes the committed selection, never a not-yet-prepared tier.
+    const auto models=app_.settingsController_->Settings().ultraClearTextModels;
     fields[Field::UctGpuDetector]=uct::ModelTierToken(models.gpuDetector);
     fields[Field::UctGpuRecognizer]=uct::ModelTierToken(models.gpuRecognizer);
     fields[Field::UctCpuDetector]=uct::ModelTierToken(models.cpuDetector);

@@ -1,5 +1,32 @@
 # Third-Party Licenses and Attributions
 
+## Native Math rendering and optional model downloads (27 October 2026)
+
+The native C++ TF32 runner reuses the reviewed TensorRT/CUDA/Qt runtimes.
+Optional PaddlePaddle PP-FormulaNet plus-S/plus-M/L/plus-L FP32 encoder/decoder
+partitions derive from the exact Apache-2.0 upstream revisions in
+`scripts/uct/formula-packs.json`. Downloads retain original model cards/configs,
+the complete Apache license and a NOTICE identifying the first-party partition
+modification. Model assets are separate from application releases; no graphs or
+GPU engines enter Git or the standard medium-only OCR bundle.
+
+Native vector formula layout vendors MicroTeX at
+`0e3707f6dafebb121d98b53c64364d16fefe481d` (MIT, Nano Michael), and tinyxml2
+at `9148bdf719e997d1f474be6bcc7943881046dba1` (11.0.0, Zlib, Lee Thomason).
+Exact original file hashes are in `third_party/microtex/upstream-inventory.json`.
+OkuFlow modifications pin the embedded resource root, use Qt 6 static font APIs,
+refuse missing math fonts and route text through the abstract graphics adapter.
+No external TeX installation, shell execution or downloaded script is used.
+Sources and MIT/Zlib notices remain in their `third_party` directories.
+
+Only the unmodified base/Latin/Euler/maths font sets ship, embedded as Qt
+resources. Retain the included AMS SIL OFL-1.1, Knuth permission/rename and dsrom
+permission/rename notices in `third_party/microtex/res/fonts/licences/`. Greek and
+Cyrillic external font bundles are excluded. The bundle stages these font notices,
+MicroTeX MIT, tinyxml2 Zlib, and an OkuFlow modification notice under
+`app/licenses/math/`. These compatible third-party licenses remain independent
+of OkuFlow's GPL/commercial contribution license.
+
 The source-ink contour implementation in `uct_ink_outline*` is original OkuFlow
 code under the project's dual contribution license. It adds no third-party
 model, library, font payload or downloaded asset. Existing Qt and CUDA notices
@@ -63,11 +90,14 @@ BF16 golden/public assets. See [the experiment contract](uct_ribbon_and_current_
 
 ## Requested OCR installer payload (24 October 2026)
 
-The upcoming installer preparation includes the six original PP-OCRv6 graphs,
-their configurations/dictionaries and model cards, and the six converted BF16
-graphs identified by `scripts/uct/pins.json` and `scripts/uct/bf16-models.json`.
-Apache-2.0 notices and a conversion/modification record accompany the models.
-The first-party converter is included as provenance, not executed by installers.
+Current development staging includes only original medium PP-OCRv6 detector and
+recognizer graphs, configurations/dictionaries and model cards. Tiny/small are
+optional immutable upstream downloads retaining their model cards and existing
+Apache-2.0 notices. Original and historical BF16 pins remain provenance; converted
+graphs are no longer staged. OkuFlow's first-party native recipe prepares BF16
+inside TensorRT and caches engines locally. The source/recipe notice accompanies
+the models. The historical Python converter is provenance, never app/installer
+execution. See [model setup](model_installation.md).
 No OCR accuracy or golden-corpus requirement controls app precision selection.
 
 The private TensorRT payload is restricted to the runtime, ONNX parser and
@@ -621,3 +651,5 @@ music or fonts, follows the project's contribution/license terms, and is
 test-only. Generation, exact bytes and its silent use are recorded in
 `docs/video_audio_preroll_repair.md`; no generation tool or codec library is
 bundled with the application.
+
+The Windows release SBOM explicitly lists MicroTeX, tinyxml2 and the embedded unmodified font collection with their static-link/containment relationships. Exact staged Math notices are compared against tracked sources before metadata is generated; Knuth/dsrom terms are retained as extracted SPDX license records.

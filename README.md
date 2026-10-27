@@ -10,7 +10,7 @@
 
 Point a webcam, a document camera or your phone at the board. OkuFlow magnifies it live, sharpens the text and holds the picture steady. When you ask, its assistant reads the text, explains what it shows and keeps your lecture notes. Choose Read Aloud to hear an answer.
 
-[Website](https://okuflow.com) · [Download MSI](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.3.1/OkuFlow-0.3.1-x64.msi) · [Portable ZIP](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.3.1/OkuFlow-0.3.1-windows-x64.zip) · [Release notes](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.3.1)
+[Website](https://okuflow.com) · [Download MSI](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.4.0/OkuFlow-0.4.0-x64.msi) · [Portable ZIP](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.4.0/OkuFlow-0.4.0-windows-x64.zip) · [Release notes](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.4.0)
 
 ![OkuFlow Simple view showing a classroom chalkboard, with large camera controls](https://okuflow.com/media/okuflow-simple-206165dcd785.webp)
 
@@ -32,10 +32,9 @@ Assistive technology is too often expensive, tied to special hardware and hard t
 
 OkuFlow is a **live camera magnifier**, for a page on your desk, a whiteboard or a projected slide. It does not magnify your computer's desktop.
 
-Development builds offer **View video or picture** and a separate **View PDF**,
+Choose **View video or picture** or the separate **View PDF** source,
 with PDF page navigation and accessible embedded text. Enabled Ultra Clear Text
-can read scanned content. See [file viewing](docs/file_documents.md); these
-changes are separate from the published 0.3.1 downloads above.
+can read scanned content. See [file viewing](docs/file_documents.md).
 Drawings stay attached to pictures and individual PDF pages. Save updates one
 annotated copy in the OkuFlow Documents folder, including all edited pages,
 while keeping your original file unchanged.
@@ -60,36 +59,47 @@ while keeping your original file unchanged.
 
 ## Keep the whole lecture
 
-Photos and recordings are saved in pairs: the original camera image and OkuFlow's processed view. Draw on the picture to mark what matters. Recorded ink goes into the processed copy while the original stays clean.
-
-**Development builds:** new recordings save one clean Original video with
-optional microphone audio; photos still save both views. You can open a saved
+Photos save the original camera image and OkuFlow's processed view. New recordings
+save one clean Original video with optional microphone audio. You can open a saved
 video or rewind an ongoing recording, magnify it and use UCT. Opening a saved
 video first finishes the current recording. The bottom transport names the
 selected source and keeps your held position. Processed photos and saved drawings
-include eligible UCT text and ink; Original photos stay clean. These changes are not yet a
-published installer; see [development status](docs/accessible_video_implementation.md).
+include eligible UCT text and ink; Original photos stay clean.
+See [video playback](docs/accessible_video_implementation.md).
 
-Development builds also keep a silent **Live recap** while the camera is on,
+OkuFlow also keeps a silent **Live recap** while the camera is on,
 even with recording off. Pause the displayed scene, rewind or scrub the actual
 available window, then jump back to live. Up to five minutes of compressed
 video stays in a bounded RAM buffer; it starts empty and resets when the camera
 stops or changes source/format. It creates no temporary video file or microphone
 capture. See [quality, memory and acceptance limits](docs/live_ram_recap.md).
 
-Development UCT remembers your opt-in across launches. The Text Clarity switch
+UCT remembers your opt-in across launches. The Text Clarity switch
 pauses it without clearing your choice and restores it when switched on again.
 
-Development UCT automatically follows gently curved text in live camera,
+UCT ships medium OCR models by default. Choose other tiers in UCT
+advanced settings and select **Install and set up** to download and prepare them
+locally. Your current OCR stays active until setup succeeds.
+See [model setup](docs/model_installation.md).
+
+UCT automatically follows gently curved text in live camera,
 playing video, Freeze and paused frames. Supported words are placed back on
 the original page; bends it cannot represent keep their original ink. This
 uses the existing OCR jobs and does not run recognition on every camera frame.
 See [curved-page OCR and samples](docs/uct_ribbon_and_current_ink.md).
 
-Development UCT can also sharpen some unread source ink, including stacked and
+UCT can also sharpen some unread source ink, including stacked and
 raised marks, by tracing source edges without repositioning them. Blurred strokes
 can look thinner. These outlines add no recognized or screen-reader text.
 See [scope and limits](docs/uct_ink_outlines.md).
+
+Optional local **Math (experimental)** lives under UCT advanced settings. Select
+a model and **Install and set up**, pause/freeze and frame one whole formula,
+then choose **Read formula in this view**. The default plus-L model uses TF32
+on a compatible NVIDIA GPU. Fractions and exponents keep their 2D layout;
+source colors and selected reading palettes apply. Compare predictions with
+the original. Math downloads separately and stays off until you request it.
+See [Math setup and limits](docs/uct_native_formula.md).
 
 Record microphone audio or choose no microphone for silent video. Captures, readings and explanations gather in local HTML lecture notes. The default folder is `Documents\OkuFlow\`; you can choose another location.
 
@@ -101,11 +111,11 @@ Ask permission before recording a lecture or other people.
 
 You need three things:
 
-1. **A Windows 10 or 11 x64 PC.** Download the [v0.3.1 MSI installer](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.3.1/OkuFlow-0.3.1-x64.msi), or extract the complete [portable ZIP](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.3.1/OkuFlow-0.3.1-windows-x64.zip) and run `oku_flow.exe`. Keep its adjacent runtime files together.
+1. **A Windows 10 or 11 x64 PC.** Download the [v0.4.0 MSI installer](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.4.0/OkuFlow-0.4.0-x64.msi), or extract the complete [portable ZIP](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.4.0/OkuFlow-0.4.0-windows-x64.zip) and run `oku_flow.exe`. Keep its adjacent runtime files together.
 2. **A compatible camera.** Use a USB or document camera with Windows Media Foundation support, or the optional Android companion described below.
 3. **A compatible NVIDIA GPU for enhancement.** CUDA powers Text Clarity, stabilization, screen correction and colors. Without it, OkuFlow shows raw, unprocessed camera video with a clear on-screen notice.
 
-**v0.3.1 is an unsigned preview.** Windows SmartScreen may warn about an unrecognized app. Check the [release notes and known issues](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.3.1) before installing. Development documentation may describe changes newer than this download.
+**v0.4.0 is an unsigned preview.** Windows SmartScreen may warn about an unrecognized app. Check the [release notes and known issues](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.4.0) before installing. Development documentation may describe changes newer than this download.
 
 In the portable ZIP, open **oku_flow.exe**. It starts the required
 `app/OkuFlowApp.exe` component automatically. Keep all ZIP contents together.
@@ -121,7 +131,7 @@ Optional extras, including the Codex CLI for Read and Explain and NVIDIA Super R
 
 ### Your Android phone as the camera
 
-Development builds after 0.3.1 add a separate phone-camera zoom control and
+The phone source has a separate phone-camera zoom control and
 Auto/ultrawide/main/telephoto choices where Android exposes the lenses.
 [Details and device limits](docs/phone_camera_zoom.md).
 
@@ -153,7 +163,7 @@ Check your provider's privacy terms before sending sensitive material. Local rec
 
 | Work | Status |
 | --- | --- |
-| Ultra Clear Text: local recognition with sharp overlaid letters | Included in Windows 0.3.1 as an experimental option; [scope and limits](docs/ultra_clear_text.md) |
+| Ultra Clear Text: local recognition with sharp overlaid letters | Included as an experimental option; [scope and limits](docs/ultra_clear_text.md) |
 | Claude through the Anthropic CLI for Read, Explain and Assistant | In development for a future release |
 | GPU acceleration for AMD and Intel graphics | Planned |
 | Android USB camera companion | Available to invited Alpha testers; compatibility testing continues |

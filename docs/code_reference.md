@@ -1,5 +1,78 @@
 # OkuFlow Code Reference
 
+`FinishWindowsApplication` (`app/process_exit.hpp`) is the final Windows
+application boundary, after `OkuFlowApp` destruction, settings/capture writes,
+owned-child shutdown and log/stdio flushing. It preserves the application exit
+status while letting Windows reclaim detached or quarantined vendor work without
+running CRT/DLL teardown concurrently with that work. It is never an in-session
+recovery mechanism. The runtime contract launches a child with pending cleanup
+and verifies both explicit application cleanup and success/failure status.
+`OkuFlowApp` cancels model setup immediately and destroys the UCT controller
+before its native windows, graphics and QApplication are released.
+
+`WrappingUctCheckBox` in `ultra_clear_text_panel.cpp` keeps a single native
+checkbox and its full caption/accessibility identity. Height-for-width text
+layout wraps localized UCT/Math labels without widening the settings scroll
+area; keyboard and full-row click behavior retain the ordinary checkbox state.
+The native geometry fixture also checks Math draft selection, readiness, action
+dispatch and read-only LaTeX controls. `generate_release_metadata.ps1` verifies
+the six Math notices against tracked sources and records MicroTeX, tinyxml2 and
+embedded fonts with static-link/containment relationships and exact font terms.
+
+## Native formula backend (27 October 2026)
+
+- `uct_formula.hpp`: `formula::{Model,Result,Engine,Prepared}`, `ModelName` and
+  worker-only `Prepare` separate TF32 formula execution from OCR authority.
+- `uct_formula.cpp`/`uct_formula_internal.hpp`: `Definition`, `Profile`, `Describe`,
+  `TensorBytes`, `ShapeWithin`, `ReadPinned`, `VerifySources`, `LoadVocabulary`,
+  `DecodeTokens`, `CacheKey` implement compiled pins, bounds and native decoding.
+- Private `uct_formula_tensorrt.hpp` reuses `uct_tensorrt.cpp`'s exact loader.
+  `NativeFormulaEngine` owns `State`, `Build`, `BuildProgress`, `Buffer`, `Allocator`,
+  identity-bound `Plan`, preparation/recognition and asynchronous `Retire`.
+  CPU builds report GPU-unavailable. `okuflow_configure_ocr` adds the portable
+  implementation to OCR consumers. See [contracts and limits](uct_native_formula.md).
+  `scripts/uct/generate_formula_catalog.ps1` regenerates the chunked compiled
+  JSON from the reviewed manifest without converting models or adding downloads.
+
+## Native OCR installation (27 October 2026)
+
+- `uct_model_installation.hpp/.cpp`: `installation::{File,Model,Progress,Preparation,Result}`
+  describe immutable sources and results. `Catalog` parses the compiled inventory;
+  `Select` deduplicates roles; `Model::Bytes`, `DefaultCacheRoot`, `CachedDirectory`,
+  `VerifyDirectory` and `SourceDirectory` implement discovery. `Run` validates all
+  fields against compiled pins before transport. Private `detail::RunPinned`
+  separates transport/storage for tests. Complete sources and ready receipts
+  commit atomically; owned damaged packages are preserved before repair.
+- `uct_model_preparation.hpp/.cpp`: `PreparedModels`/`PrepareInstalledModels`
+  prepare GPU and CPU backends, run real compatibility probes and return a
+  tested recognizer. `ReadyRecognizer` delegates recognition/context operations
+  and returns the tested status from Initialize, avoiding repeated preparation.
+- `app_model_setup.cpp`: `ModelSetupState` holds previous/desired models,
+  cancellation, generation, result and ready object. `ModelSetupWorker` posts
+  progress/completion through QObject-bound delivery; it captures no app/UI
+  pointer. `StartUltraClearTextModelSetup` commits only after current generation,
+  configuration and settings-save checks. App destruction cancels without joining
+  vendor work. `SavePersistentSettings` ignores model-selector drafts.
+  `SettingsController::SaveModelSelection` commits the model in one atomic file
+  save, updates memory only on success, and defers unrelated credential cleanup;
+  cleanup failure therefore cannot occur after a successful model commit.
+- `uct_native_precision.hpp`: `Bfloat16` uses finite bounded RNE; `GraphIdentity`
+  binds source digest to recipe. `Weights` retains converted kernels/bias;
+  `Apply` inserts BF16 linear operands and FLOAT restoration inside TensorRT.
+  `Network::PreparePinned(nativeBf16)` consumes original graphs; production
+  detector/recognizer caches use recipe identities, while historical validation
+  remains separate. `CreateProductionTensorRtRecognizer` has an isolated-cache
+  override. `LoadPaddleAssets` resolves downloaded pinned production roles while
+  retaining original runtime DLL roots and isolated explicit diagnostic roots.
+- `stage_uct_payload.ps1::{Test-UctPayloadCatalog,Get-UctModificationBytes,Invoke-UctPayloadStage}`
+  enforce medium-only FP32 staging, native-recipe notices and required input
+  roots. Historical converted pins remain provenance; unselected graphs fail.
+  `uct_bundle.ps1::Assert-OkuFlowUctSourcePaths` requires only roots referenced by
+  the manifest; `Get-OkuFlowUctBundleMetadata` reports selected bundled tiers
+  separately from optional downloads. The batch preflight no longer requires
+  converted-model inputs and retains its CRLF contract.
+  See [transaction and validation](model_installation.md).
+
 `scripts/lecture_camera.ps1::Wait-ObsMediaReady` waits for a positive source
 duration after output initialization, sharing the existing startup deadline.
 It preserves decoder/protocol errors and owner-exit/deadline refusals.
@@ -1069,7 +1142,7 @@ save clicks leave that receipt unchanged; queued payloads receive fresh identity
 
 - `uct_model_settings.hpp`: `ModelTier`, `ModelSettings`, `ModelTierToken` and
   strict `ParseModelTier` define three finite tiers and independent GPU M/M,
-  CPU T/S defaults. `settings::PersistentSettings::ultraClearTextModels` is an
+  CPU M/M defaults. `settings::PersistentSettings::ultraClearTextModels` is an
   additive root setting. `ParseSettingsRoot` defaults each invalid/missing member
   independently; serialization stores only the four tokens, never activation.
 - `uct_model_pins.hpp`: `PaddleModelPin`, `kPaddleModelPins` and
@@ -1086,9 +1159,12 @@ save clicks leave that receipt unchanged; queued payloads receive fresh identity
   `gpuDetectorCombo`, `gpuRecognizerCombo`, `cpuDetectorCombo` and
   `cpuRecognizerCombo` expose their native controls. Setters block signals.
   The collapsed advanced foldout retains normal keyboard
-  navigation and translated captions. `modelSettingsChanged` reaches
-  `OkuFlowApp::OnUltraClearTextModelsChanged`, which saves current preferences and
-  calls `UltraClearTextController::ReplaceRecognizerFactory`. This retires the old
+  navigation and translated captions. Native choices are drafts until
+  `installModelsRequested` starts `StartUltraClearTextModelSetup`.
+  `SetModelSetupProgress`/`FinishModelSetup` update pending controls/status;
+  `cancelModelSetupRequested` cancels. Typed-control
+  `OnUltraClearTextModelsChanged` still saves preferences and calls
+  `UltraClearTextController::ReplaceRecognizerFactory`. This retires the old
   generation asynchronously, preserving UCT enabled/Show original preferences.
 - `AppControlTarget::FinalizeUctModelParameters` coalesces a batch's model
   changes into one worker replacement. The four `image.uct.{gpu,cpu}.{detector,recognizer}`
@@ -8133,3 +8209,20 @@ installed Segoe UI Symbol to offscreen fixture fallback. Resident diagnostic
 jobs record outline time/bytes and `ExportPaintSampleAtHeight` exports region
 refusals and actual `sketchedRegions` separately from painted words. See
 [source-ink contract and validation limits](uct_ink_outlines.md).
+
+### Native Math selected-view integration (27 October 2026)
+- `uct_formula_settings.hpp`: staged model identity and persistent opt-in.
+- `installation::FormulaPackage`: immutable graph/config/card/license/notice pins.
+- `RestoreUltraClearTextMath`: worker-only verified-cache restore; no startup network.
+- `uct_formula_input_policy.hpp`: bounded whole-formula ink sampling with shared CPU/CUDA color-policy primitives; it separates sparse ink from textured paper without detector boxes.
+- `formula::Engine::RecognizeImage/RecognizeDevice`: corrected-image normalization;
+  the device path uses exact current validation pixels and returns compact descriptors only.
+- `formula::Typeset`, `Artifact`, `Work`: bounded native vector layout and source-to-scene
+  mapping on the existing worker. Formula jobs stay outside ordinary OCR admission.
+- `UltraClearTextController` formula methods: immutable acquisition fences, worker
+  scheduling, separate LaTeX pane and immediate source/cancellation revocation.
+- `UltraClearTextOverlay::SetFormula`: UCT colors, scene reprojection, chrome exclusion
+  and snapshot painter; no per-paint model execution or typesetting.
+- `cmake/MathRender.cmake`: reviewed MicroTeX/tinyxml2 and embedded math fonts.
+
+ConfigureStartupProfiling permits a native capture delay up to 600000 ms, bounded by the existing profiling deadline minus 100 ms. This accommodates model preparation and manual Math selection without changing the foreground, overlap, composed-pixel or isolated-settings checks.

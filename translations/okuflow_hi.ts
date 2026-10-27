@@ -3685,5 +3685,81 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Saved document copy.</source>
         <translation>दस्तावेज़ की कॉपी सहेजी गई.</translation>
     </message>
+    <message>
+        <source>Install and set up</source>
+        <translation>इंस्टॉल करें और सेट अप करें</translation>
+    </message>
+    <message>
+        <source>Downloads missing models and prepares them on this computer. Your current models stay active until setup succeeds.</source>
+        <translation>जो मॉडल उपलब्ध नहीं हैं उन्हें डाउनलोड करके इस कंप्यूटर पर तैयार करता है। सेटअप सफल होने तक आपके मौजूदा मॉडल सक्रिय रहते हैं।</translation>
+    </message>
+    <message>
+        <source>Downloading models: %1%</source>
+        <translation>मॉडल डाउनलोड हो रहे हैं: %1%</translation>
+    </message>
+    <message>
+        <source>Setting up models...</source>
+        <translation>मॉडल सेट अप हो रहे हैं...</translation>
+    </message>
+    <message>
+        <source>Models are ready.</source>
+        <translation>मॉडल तैयार हैं।</translation>
+    </message>
+    <message>
+        <source>Model setup failed. Your previous models are still active.</source>
+        <translation>मॉडल का सेटअप विफल रहा। आपके पिछले मॉडल अभी भी सक्रिय हैं।</translation>
+    </message>
+    <message>
+        <source>Model setup cancelled. Your previous models are still active.</source>
+        <translation>मॉडल का सेटअप रद्द किया गया। आपके पिछले मॉडल अभी भी सक्रिय हैं।</translation>
+    </message>
+    <message>
+        <source>Math (experimental)</source>
+        <translation>गणित (प्रायोगिक)</translation>
+    </message>
+    <message>
+        <source>Model choices take effect after Install and set up succeeds.</source>
+        <translation>मॉडल के चुनाव इंस्टॉल और सेटअप सफल होने के बाद लागू होते हैं।</translation>
+    </message>
+    <message>
+        <source>Math model (TF32)</source>
+        <translation>गणित मॉडल (TF32)</translation>
+    </message>
+    <message>
+        <source>Read formula in this view</source>
+        <translation>इस दृश्य में फ़ॉर्मूला पढ़ें</translation>
+    </message>
+    <message>
+        <source>Pause or freeze the view, then zoom to one complete formula.</source>
+        <translation>दृश्य को रोकें या फ़्रीज़ करें, फिर एक पूरे फ़ॉर्मूले पर ज़ूम करें।</translation>
+    </message>
+    <message>
+        <source>Clear formula</source>
+        <translation>फ़ॉर्मूला हटाएँ</translation>
+    </message>
+    <message>
+        <source>Recognized formula (LaTeX)</source>
+        <translation>पहचाना गया फ़ॉर्मूला (LaTeX)</translation>
+    </message>
+    <message>
+        <source>Install and set up Math first.</source>
+        <translation>पहले गणित मॉडल को इंस्टॉल करके सेटअप पूरा करें।</translation>
+    </message>
+    <message>
+        <source>Reading formula...</source>
+        <translation>फ़ॉर्मूला पढ़ा जा रहा है...</translation>
+    </message>
+    <message>
+        <source>Formula reading stopped. The original image is unchanged.</source>
+        <translation>फ़ॉर्मूला पढ़ना रोक दिया गया। मूल छवि में कोई बदलाव नहीं हुआ।</translation>
+    </message>
+    <message>
+        <source>Formula ready. Compare with the original image.</source>
+        <translation>फ़ॉर्मूला तैयार है। मूल छवि से तुलना करें।</translation>
+    </message>
+    <message>
+        <source>Formula could not be read. The original image is unchanged.</source>
+        <translation>फ़ॉर्मूला पढ़ा नहीं जा सका। मूल छवि में कोई बदलाव नहीं हुआ।</translation>
+    </message>
 </context>
 </TS>

@@ -1194,6 +1194,58 @@ void MainWindowTests::ultraClearTextControlsHaveNativeGeometry()
     QTRY_VERIFY(GlobalRect(scroll->viewport()).contains(GlobalRect(enabled)));
     QString problem;
     QVERIFY2(NativeHitBelongsTo(enabled, &problem), qPrintable(problem));
+
+    auto* math = Named<QCheckBox>(window, "uctMathIncluded");
+    auto* models = panel->mathModelCombo();
+    auto* read = Named<QPushButton>(window, "uctReadFormula");
+    auto* clear = Named<QPushButton>(window, "uctClearFormula");
+    auto* install = Named<QPushButton>(window, "uctInstallModels");
+    QVERIFY(math && models && read && clear && install);
+    QCOMPARE(models->count(), 4);
+    QCOMPARE(models->currentData().toString(), QStringLiteral("plus-l"));
+    QVERIFY(!math->isChecked() && !read->isEnabled() && !clear->isEnabled());
+    QSignalSpy drafts(panel, &UltraClearTextPanel::modelSettingsChanged);
+    scroll->ensureWidgetVisible(models);
+    QVERIFY2(ActivateFixtureWindow(models), test::ActivationFailureMessage());
+    models->setFocus();
+    QTest::keyClick(models, Qt::Key_Up);
+    QCOMPARE(models->currentData().toString(), QStringLiteral("l"));
+    QCOMPARE(drafts.count(), 1);
+    scroll->ensureWidgetVisible(math);
+    math->setFocus();
+    QTest::keyClick(math, Qt::Key_Space);
+    QVERIFY(panel->ModelSettings().installMath);
+    QVERIFY(!read->isEnabled()); // A draft alone is never readiness.
+    QCOMPARE(drafts.count(), 2);
+    panel->SetFormulaReady(true); // UI-only fixture; no download or inference.
+    QSignalSpy reads(panel, &UltraClearTextPanel::readFormulaRequested);
+    QSignalSpy clears(panel, &UltraClearTextPanel::clearFormulaRequested);
+    for (QWidget* widget : {static_cast<QWidget*>(models), static_cast<QWidget*>(math),
+                            static_cast<QWidget*>(read), static_cast<QWidget*>(install)}) {
+        scroll->ensureWidgetVisible(widget);
+        QTRY_VERIFY(GlobalRect(scroll->viewport()).contains(GlobalRect(widget)));
+        QVERIFY2(ActivateFixtureWindow(widget), test::ActivationFailureMessage());
+        QVERIFY2(NativeHitBelongsTo(widget, &problem), qPrintable(problem));
+        auto* accessible = QAccessible::queryAccessibleInterface(widget);
+        QVERIFY(accessible && !accessible->state().invisible);
+        QVERIFY(!accessible->text(QAccessible::Name).isEmpty());
+    }
+    scroll->ensureWidgetVisible(read);
+    read->setFocus();
+    QTest::keyClick(read, Qt::Key_Space);
+    QCOMPARE(reads.count(), 1);
+    panel->SetFormulaBusy(true);
+    QVERIFY(!read->isEnabled() && clear->isEnabled());
+    clear->setFocus();
+    QTest::keyClick(clear, Qt::Key_Space);
+    QCOMPARE(clears.count(), 1);
+    panel->SetFormulaBusy(false);
+    panel->SetFormulaText(QStringLiteral("k = \\frac{1}{2} m v^{2}"));
+    auto* latex = Named<QPlainTextEdit>(window, "uctFormulaText");
+    QVERIFY(latex && latex->isReadOnly() && latex->isVisible());
+    QCOMPARE(latex->toPlainText(), QStringLiteral("k = \\frac{1}{2} m v^{2}"));
+    scroll->ensureWidgetVisible(read);
+    QVERIFY(SaveScreenshot(window, QStringLiteral("desktop-en-math-controls")));
 }
 
 void MainWindowTests::documentControlsHaveNativeGeometry()
@@ -1261,6 +1313,7 @@ void MainWindowTests::disabledSlidersHaveDistinctAppearance()
     auto expanded = window.sectionStates();
     for (auto it = expanded.begin(); it != expanded.end(); ++it) it.value() = true;
     window.setSectionStates(expanded);
+    Named<QToolButton>(window, "uctAdvancedSettings")->setChecked(true);
     QCoreApplication::processEvents();
     const auto filledColor = [](QSlider* slider) {
         // Sample the centre of the visible filled track, away from its handle

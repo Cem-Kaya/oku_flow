@@ -1,5 +1,23 @@
 # Hard-Coded Paths and Defaults
 
+Native formula development pins four source pairs in `scripts/uct/formula-packs.json`
+and `uct_formula_catalog.hpp`; model-data download URLs are versioned and hash-pinned. TF32 uses recipe
+`okuflow-formula-tf32-partitions-v1`. Formula-only bounds: 512-MiB plan, 1-GiB
+context per partition, 64-MiB individual/512-MiB total explicit buffers, 768x768
+FLOAT input, up to model-bound 2560 tokens (1024 for L). Cache roots are explicit
+ordinary local directories. See [native formula backend](uct_native_formula.md).
+
+Development OCR defaults are medium/medium for CPU and GPU; saved explicit tiers
+survive. New staging selects only medium FP32 sources. The six optional source
+downloads are pinned by revision/length/SHA in `scripts/uct/download-models.json`
+and its compiled copy `uct_download_catalog.hpp`. Maximum model file: 256 MiB;
+three files per role; at most six roles. Download timeout: 30 seconds idle and
+15 minutes total per file. Native preparation keeps the existing ten-minute limit.
+Source cache: `%LOCALAPPDATA%/OkuFlow/model-cache/sources/ocr-ROLE-TIER-REVISION/`;
+native BF16 engine cache: `%LOCALAPPDATA%/OkuFlow/model-cache/engines/`.
+Recipe `okuflow-native-bf16-conv-matmul-v1` is part of engine identity. Historical
+FP32 caches/explicit BF16 manifests remain separate. See [model setup](model_installation.md).
+
 The camera picker data key `phone` is an explicit USB-phone discovery mode.
 Its saved selector `okuflow-phone:` has an empty serial by design and is never
 opened as a transport; fresh discovery replaces it with the real phone identity.
@@ -125,9 +143,9 @@ Its bounded payload budget is 3 GiB total and 512 MiB per file.
 `%LOCALAPPDATA%\OkuFlow\ocr-deps` and selects both ONNX Runtime headers and
 `TensorRT-11.4.0.106-cuda12.9\TensorRT-11.4.0.106`. Set these explicit pointers
 to physical targets when the default paths are workstation junctions; the
-script does not resolve aliases or encode a workstation drive. The mandatory
-`OKUFLOW_UCT_PAYLOAD_MODELS` points to the converted-models parent containing
-`uct/`. Optional `OKUFLOW_UCT_PAYLOAD_CUDA` selects a physical toolkit root;
+script does not resolve aliases or encode a workstation drive.
+`OKUFLOW_UCT_PAYLOAD_MODELS` is retained for historical manifests but is no longer
+required by the medium FP32-only inventory. Optional `OKUFLOW_UCT_PAYLOAD_CUDA` selects a physical toolkit root;
 otherwise the successful build's effective CUDA license directory supplies it.
 A CUDA override must have the same exact license bytes as that selected build.
 CPU-only builds require an explicit CUDA payload pointer for the private NVRTC
@@ -1408,3 +1426,5 @@ neighbour-time, distinct-frame or cross-frame pixel-agreement prerequisite.
 The existing confidence, five-source-pixel, source/PTS/geometry, input/protection
 and rendering bounds still apply. Live and the explicit corroborated protocol
 retain their temporal constants. See [policy](uct_standalone_freeze.md).
+
+Math model-data URLs use versioned `uct-formula-tf32-v1` prerelease assets and pinned Hugging Face revisions in `scripts/uct/formula-packs.json`. Sources and separate Math engine caches stay in LocalAppData. The fixed embedded font root is `:/okuflow-math`; external resource environment discovery is bypassed.

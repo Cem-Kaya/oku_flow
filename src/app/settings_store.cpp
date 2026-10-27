@@ -666,6 +666,8 @@ std::optional<PersistentSettings> ParseSettingsRoot(const QJsonObject& root)
     settings.ultraClearTextModels.gpuRecognizer=loadTier("gpuRecognizer",settings.ultraClearTextModels.gpuRecognizer);
     settings.ultraClearTextModels.cpuDetector=loadTier("cpuDetector",settings.ultraClearTextModels.cpuDetector);
     settings.ultraClearTextModels.cpuRecognizer=loadTier("cpuRecognizer",settings.ultraClearTextModels.cpuRecognizer);
+    settings.ultraClearTextModels.installMath=models.value("installMath").toBool(false);
+    settings.ultraClearTextModels.mathModel=uct::formula::ParseModel(models.value("mathModel").toString()).value_or(uct::formula::Model::PlusL);
     // A supported code is an explicit choice; "system", a missing key, or an
     // unknown value follows the Windows display language.
     settings.language = NormalizeLanguagePreference(
@@ -1001,7 +1003,9 @@ QByteArray Serialize(const PersistentSettings& settings)
         {QStringLiteral("gpuDetector"),uct::ModelTierToken(models.gpuDetector)},
         {QStringLiteral("gpuRecognizer"),uct::ModelTierToken(models.gpuRecognizer)},
         {QStringLiteral("cpuDetector"),uct::ModelTierToken(models.cpuDetector)},
-        {QStringLiteral("cpuRecognizer"),uct::ModelTierToken(models.cpuRecognizer)}});
+        {QStringLiteral("cpuRecognizer"),uct::ModelTierToken(models.cpuRecognizer)},
+        {QStringLiteral("installMath"),models.installMath},
+        {QStringLiteral("mathModel"),uct::formula::ModelToken(models.mathModel)}});
     const QString language = NormalizeLanguagePreference(settings.language);
     root.insert(QStringLiteral("language"),
                 language.isEmpty()

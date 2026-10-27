@@ -1,5 +1,27 @@
 # Changelog
 
+## [Unreleased]
+
+## [0.4.0] - 2026-10-27
+
+- Prevent normal app close from racing CUDA module unload with asynchronous
+  TensorRT cleanup. Cancel model setup and revoke OCR/Math callbacks before
+  releasing their native windows; finish persistence before process exit.
+
+- Add optional native TF32 Math with a model dropdown, one-button setup and
+  source-colored vector fractions/exponents. Explicit paused/frozen-view reads
+  reuse UCT correction, scene projection and snapshots; no Python inference.
+- Wrap translated UCT checkbox captions in narrow inspectors while retaining
+  the complete native checkbox caption and accessibility identity.
+- Include MicroTeX, tinyxml2 and the embedded math fonts in the release SBOM,
+  retaining exact notices, static-link relationships and font terms.
+
+- Add one-button ordinary OCR model installation: verified pinned downloads,
+  native BF16 engine preparation and real compatibility checks before activation.
+  Retain the working recognizer on failure/cancel; preserve damaged owned source
+  caches before repair. Ship medium FP32 sources only, with tiny/small optional.
+  New CPU defaults also use medium; existing saved explicit choices survive.
+
 - Keep an automatic OkuFlow Camera choice available before USB discovery starts.
   Reconnecting a USB phone selects it again, while ordinary polling preserves a
   manually selected webcam. Preserve existing USB ownership and recovery guards.
@@ -13,8 +35,6 @@
 - Include the native desktop TensorRT builder resources needed for local OCR
   engine creation; an isolated SM75/PTX-only cold start exposed the missing Ada
   builder dependency before installer publication.
-
-## [Unreleased]
 
 - Sharpen bounded source-ink contours in some unread UCT spans, preserving
   stacked fractions and raised marks without guessing characters or adding

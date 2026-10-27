@@ -3685,5 +3685,81 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Saved document copy.</source>
         <translation>บันทึกสำเนาเอกสารแล้ว</translation>
     </message>
+    <message>
+        <source>Install and set up</source>
+        <translation>ติดตั้งและตั้งค่า</translation>
+    </message>
+    <message>
+        <source>Downloads missing models and prepares them on this computer. Your current models stay active until setup succeeds.</source>
+        <translation>ดาวน์โหลดโมเดลที่ยังไม่มีและเตรียมให้พร้อมบนคอมพิวเตอร์เครื่องนี้ โมเดลปัจจุบันจะยังทำงานอยู่จนกว่าการตั้งค่าจะสำเร็จ</translation>
+    </message>
+    <message>
+        <source>Downloading models: %1%</source>
+        <translation>กำลังดาวน์โหลดโมเดล: %1%</translation>
+    </message>
+    <message>
+        <source>Setting up models...</source>
+        <translation>กำลังตั้งค่าโมเดล...</translation>
+    </message>
+    <message>
+        <source>Models are ready.</source>
+        <translation>โมเดลพร้อมแล้ว</translation>
+    </message>
+    <message>
+        <source>Model setup failed. Your previous models are still active.</source>
+        <translation>ตั้งค่าโมเดลไม่สำเร็จ โมเดลเดิมยังคงทำงานอยู่</translation>
+    </message>
+    <message>
+        <source>Model setup cancelled. Your previous models are still active.</source>
+        <translation>ยกเลิกการตั้งค่าโมเดลแล้ว โมเดลเดิมยังคงทำงานอยู่</translation>
+    </message>
+    <message>
+        <source>Math (experimental)</source>
+        <translation>คณิตศาสตร์ (ทดลอง)</translation>
+    </message>
+    <message>
+        <source>Model choices take effect after Install and set up succeeds.</source>
+        <translation>ตัวเลือกโมเดลจะมีผลหลังจากติดตั้งและตั้งค่าสำเร็จแล้ว</translation>
+    </message>
+    <message>
+        <source>Math model (TF32)</source>
+        <translation>โมเดลคณิตศาสตร์ (TF32)</translation>
+    </message>
+    <message>
+        <source>Read formula in this view</source>
+        <translation>อ่านสูตรในมุมมองนี้</translation>
+    </message>
+    <message>
+        <source>Pause or freeze the view, then zoom to one complete formula.</source>
+        <translation>หยุดชั่วคราวหรือตรึงมุมมอง แล้วซูมให้เห็นสูตรหนึ่งสูตรครบถ้วน</translation>
+    </message>
+    <message>
+        <source>Clear formula</source>
+        <translation>ล้างสูตร</translation>
+    </message>
+    <message>
+        <source>Recognized formula (LaTeX)</source>
+        <translation>สูตรที่รู้จำได้ (LaTeX)</translation>
+    </message>
+    <message>
+        <source>Install and set up Math first.</source>
+        <translation>ติดตั้งและตั้งค่าคณิตศาสตร์ก่อน</translation>
+    </message>
+    <message>
+        <source>Reading formula...</source>
+        <translation>กำลังอ่านสูตร...</translation>
+    </message>
+    <message>
+        <source>Formula reading stopped. The original image is unchanged.</source>
+        <translation>หยุดอ่านสูตรแล้ว ภาพต้นฉบับไม่เปลี่ยนแปลง</translation>
+    </message>
+    <message>
+        <source>Formula ready. Compare with the original image.</source>
+        <translation>สูตรพร้อมแล้ว เปรียบเทียบกับภาพต้นฉบับ</translation>
+    </message>
+    <message>
+        <source>Formula could not be read. The original image is unchanged.</source>
+        <translation>ไม่สามารถอ่านสูตรได้ ภาพต้นฉบับไม่เปลี่ยนแปลง</translation>
+    </message>
 </context>
 </TS>

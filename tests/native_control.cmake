@@ -23,6 +23,13 @@ if(OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE)
     add_custom_command(TARGET native_app_control_fixture POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:okuflow_mcp> $<TARGET_FILE_DIR:native_app_control_fixture>/okuflow_mcp.exe)
     add_test(NAME native_app_control_offscreen COMMAND native_app_control_fixture)
+    add_test(NAME native_app_model_setup_offscreen COMMAND native_app_control_fixture
+        uctModelDraftDoesNotChangeSavedOrAgentSelection uctModelSettingsShareNativePersistenceApiUndoAndUserWins)
+    set_tests_properties(native_app_model_setup_offscreen PROPERTIES TIMEOUT 30
+        LABELS "headless;native-control-opt-in" RESOURCE_LOCK okuflow_process_identity
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
+        REQUIRED_FILES "${PROJECT_SOURCE_DIR}/tests/native_app_control_fixture.cpp;${PROJECT_SOURCE_DIR}/src/app/app_settings.cpp;${PROJECT_SOURCE_DIR}/src/app/app_model_setup.cpp;${PROJECT_SOURCE_DIR}/src/app/agent/app_control_image_parameters.cpp")
     add_test(NAME native_app_ui_cleanup_offscreen COMMAND native_app_control_fixture
         quickModePickerShowsFourTasksAndPreservesLegacyAndCustoms
         playbackVolumeZeroMutesAndUnmuteRestoresLastAudibleLevel)

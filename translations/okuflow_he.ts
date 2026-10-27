@@ -3685,5 +3685,81 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Saved document copy.</source>
         <translation>עותק המסמך נשמר.</translation>
     </message>
+    <message>
+        <source>Install and set up</source>
+        <translation>התקנה והגדרה</translation>
+    </message>
+    <message>
+        <source>Downloads missing models and prepares them on this computer. Your current models stay active until setup succeeds.</source>
+        <translation>מוריד מודלים חסרים ומכין אותם במחשב הזה. המודלים הנוכחיים נשארים פעילים עד להשלמת ההגדרה בהצלחה.</translation>
+    </message>
+    <message>
+        <source>Downloading models: %1%</source>
+        <translation>הורדת מודלים: %1%</translation>
+    </message>
+    <message>
+        <source>Setting up models...</source>
+        <translation>הגדרת מודלים...</translation>
+    </message>
+    <message>
+        <source>Models are ready.</source>
+        <translation>המודלים מוכנים.</translation>
+    </message>
+    <message>
+        <source>Model setup failed. Your previous models are still active.</source>
+        <translation>הגדרת המודלים נכשלה. המודלים הקודמים עדיין פעילים.</translation>
+    </message>
+    <message>
+        <source>Model setup cancelled. Your previous models are still active.</source>
+        <translation>הגדרת המודלים בוטלה. המודלים הקודמים עדיין פעילים.</translation>
+    </message>
+    <message>
+        <source>Math (experimental)</source>
+        <translation>מתמטיקה (ניסיוני)</translation>
+    </message>
+    <message>
+        <source>Model choices take effect after Install and set up succeeds.</source>
+        <translation>בחירת המודלים נכנסת לתוקף לאחר סיום מוצלח של ההתקנה וההגדרה.</translation>
+    </message>
+    <message>
+        <source>Math model (TF32)</source>
+        <translation>מודל מתמטי (TF32)</translation>
+    </message>
+    <message>
+        <source>Read formula in this view</source>
+        <translation>קרא את הנוסחה בתצוגה זו</translation>
+    </message>
+    <message>
+        <source>Pause or freeze the view, then zoom to one complete formula.</source>
+        <translation>יש להשהות או להקפיא את התצוגה ואז להגדיל נוסחה שלמה אחת.</translation>
+    </message>
+    <message>
+        <source>Clear formula</source>
+        <translation>נקה את הנוסחה</translation>
+    </message>
+    <message>
+        <source>Recognized formula (LaTeX)</source>
+        <translation>נוסחה שזוהתה (LaTeX)</translation>
+    </message>
+    <message>
+        <source>Install and set up Math first.</source>
+        <translation>תחילה יש להתקין ולהגדיר את המתמטיקה.</translation>
+    </message>
+    <message>
+        <source>Reading formula...</source>
+        <translation>קריאת נוסחה...</translation>
+    </message>
+    <message>
+        <source>Formula reading stopped. The original image is unchanged.</source>
+        <translation>קריאת הנוסחה הופסקה. התמונה המקורית לא השתנתה.</translation>
+    </message>
+    <message>
+        <source>Formula ready. Compare with the original image.</source>
+        <translation>הנוסחה מוכנה. יש להשוות לתמונה המקורית.</translation>
+    </message>
+    <message>
+        <source>Formula could not be read. The original image is unchanged.</source>
+        <translation>לא ניתן לקרוא את הנוסחה. התמונה המקורית לא השתנתה.</translation>
+    </message>
 </context>
 </TS>

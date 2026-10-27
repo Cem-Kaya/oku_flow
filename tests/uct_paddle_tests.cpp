@@ -6,6 +6,9 @@
 #include "../src/common/uct_frozen_upload.hpp"
 #include "../src/common/uct_tensorrt_failures.hpp"
 #include "../src/common/uct_engine_cache.hpp"
+#include "../src/common/uct_native_precision.hpp"
+#include "okuflow/common/uct_model_preparation.hpp"
+#include "okuflow/common/uct_model_installation.hpp"
 #include "uct_public_bf16_cases.hpp"
 #include "okuflow/cuda/uct_analysis_pool.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
@@ -21,6 +24,9 @@
 #include "uct_paused_video_diagnostic.hpp"
 #include "uct_active_regional_diagnostic.hpp"
 #include "uct_precision_artifact_cases.hpp"
+#include "uct_formula_cases.hpp"
+#include "okuflow/common/uct_formula_workflow.hpp"
+#include "../src/common/uct_formula_image.hpp"
 #include <QFontDatabase>
 #include <QLineF>
 #include <QPainter>
@@ -181,6 +187,215 @@ class PaddleTests final : public QObject
 {
     Q_OBJECT
   private slots:
+    void formulaCatalogBoundsAndCacheIdentity() { uct_formula_test::CatalogContract(); }
+    void formulaByteLevelTokenizerKeepsFractions() { uct_formula_test::TokenizerContract(); }
+    void optionalNativeFormulaSetup() { uct_formula_test::NativeDiagnostic(); }
+    void formulaWholeImagePreparationKeepsSparseInkAndBounds()
+    {
+        std::atomic<bool> stop=false;
+        for(const bool lightInk:{false,true}) {
+            QImage image(400,180,QImage::Format_ARGB32);
+            for(int y=0;y<image.height();++y)for(int x=0;x<image.width();++x) {
+                const int value=(lightInk?50:230)+(x*17+y*7)%9;image.setPixelColor(x,y,QColor(value,value,value));
+            }
+            QPainter painter(&image);painter.setPen(QPen(lightInk?Qt::white:Qt::black,4));
+            painter.drawLine(130,30,130,60);painter.drawLine(115,75,155,75);
+            painter.drawLine(120,90,145,115);painter.drawLine(145,115,118,130);
+            painter.drawEllipse(QRect(210,50,60,60));painter.drawLine(285,25,305,40);painter.end();
+            const auto input=formula::PrepareImageInput(image,image.rect(),stop);
+            QVERIFY2(!input.tensor.empty(),qPrintable(input.error));QCOMPARE(input.tensor.size(),size_t(768*768));
+            QVERIFY(input.bounds.contains(QPoint(130,30)));QVERIFY(input.bounds.contains(QPoint(305,40)));
+#if OKUFLOW_ENABLE_CUDA
+            int devices{};if(cudaGetDeviceCount(&devices)==cudaSuccess && devices>0) {
+                GpuBuffer<unsigned char> pixels(image.sizeInBytes());GpuBuffer<gpu::Rect> rect(1);
+                GpuBuffer<gpu::FormulaInputInfo> info(1);GpuBuffer<float> tensor(768*768+16);FixtureStream stream;
+                const gpu::Rect roi{0,0,image.width(),image.height()};
+                QCOMPARE(cudaMemcpyAsync(pixels.data,image.constBits(),image.sizeInBytes(),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+                QCOMPARE(cudaMemcpyAsync(rect.data,&roi,sizeof(roi),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+                QCOMPARE(cudaMemsetAsync(tensor.data,0x5a,(768*768+16)*sizeof(float),stream.value),cudaSuccess);
+                gpu::FormulaInput(pixels.data,image.bytesPerLine(),image.width(),image.height(),rect.data,info.data,tensor.data,stream.value);
+                gpu::FormulaInputInfo actual;std::vector<float> values(768*768+16);
+                QCOMPARE(cudaMemcpyAsync(&actual,info.data,sizeof(actual),cudaMemcpyDeviceToHost,stream.value),cudaSuccess);
+                QCOMPARE(cudaMemcpyAsync(values.data(),tensor.data,values.size()*4,cudaMemcpyDeviceToHost,stream.value),cudaSuccess);
+                QCOMPARE(cudaStreamSynchronize(stream.value),cudaSuccess);QVERIFY(actual.valid);
+                QCOMPARE(QRect(actual.bounds.x,actual.bounds.y,actual.bounds.w,actual.bounds.h),input.bounds);
+                QCOMPARE(QColor(actual.colors.foreground[0],actual.colors.foreground[1],actual.colors.foreground[2]),input.colors.foreground);
+                QCOMPARE(QColor(actual.colors.background[0],actual.colors.background[1],actual.colors.background[2]),input.colors.background);
+                float error=0;for(int i=0;i<768*768;++i)error=std::max(error,std::abs(values[i]-input.tensor[i]));
+                QVERIFY2(error<1e-4f,qPrintable(QString::number(error)));
+                const auto* tail=reinterpret_cast<const unsigned char*>(values.data()+768*768);
+                for(int i=0;i<16*4;++i)QCOMPARE(tail[i],static_cast<unsigned char>(0x5a));
+            }
+#endif
+            image.setPixelColor(0,40,lightInk?Qt::white:Qt::black);
+            QVERIFY(formula::PrepareImageInput(image,image.rect(),stop).tensor.empty());
+        }
+    }
+    void optionalInstalledFormulaView()
+    {
+        if(qEnvironmentVariable("OKUFLOW_UCT_FORMULA_VIEW_TEST")!="1")QSKIP("Explicit model setup-to-overlay GPU diagnostic not selected.");
+#if OKUFLOW_UCT_TRT
+        namespace f=okuflow::uct::formula;
+        namespace install=okuflow::uct::installation;
+        const auto evidence=qEnvironmentVariable("OKUFLOW_UCT_FORMULA_EVIDENCE");
+        const auto cache=qEnvironmentVariable("OKUFLOW_UCT_FORMULA_CACHE");
+        const auto images=qEnvironmentVariable("OKUFLOW_UCT_FORMULA_IMAGES");
+        QVERIFY(QDir::isAbsolutePath(evidence) && QDir::isAbsolutePath(cache) && QDir::isAbsolutePath(images));
+        QVERIFY(!QFileInfo::exists(evidence));QVERIFY(QDir().mkpath(evidence));
+        std::atomic<bool> stop=false;const auto package=install::FormulaPackage(f::Model::PlusL);
+        std::shared_ptr<f::Engine> engine;QElapsedTimer setup;setup.start();
+        const auto suppliedSources=qEnvironmentVariable("OKUFLOW_UCT_FORMULA_VIEW_SOURCE_CACHE");
+        const auto sourceCache=suppliedSources.isEmpty()?QDir(evidence).filePath("sources"):suppliedSources;
+        QVERIFY(QDir::isAbsolutePath(sourceCache));
+        const auto result=install::Run({package},QDir(evidence).filePath("empty-bundle"),sourceCache,stop,{},[&](const std::atomic<bool>& cancel) {
+            auto prepared=f::Prepare(f::Model::PlusL,install::CachedDirectory(sourceCache,package),cache,cancel,std::chrono::steady_clock::now()+std::chrono::minutes(10));
+            engine=std::move(prepared.engine);return install::Preparation{bool(engine),prepared.detail};
+        });
+        QJsonObject receipt{{"setupOk",result.ok},{"setupCode",result.code},{"setupDetail",result.detail},{"setupMs",setup.elapsed()},
+            {"precision","TF32"},{"model",package.name},{"sourceBytes",package.Bytes()},{"reusedVerifiedSourceCache",!suppliedSources.isEmpty()}};
+        const auto save=[&]{QFile file(QDir(evidence).filePath("formula-view.json"));if(file.open(QIODevice::WriteOnly))file.write(QJsonDocument(receipt).toJson());};
+        save();QVERIFY2(result.ok,qPrintable(result.detail));QVERIFY(engine);
+        QJsonArray cases;
+        for(const auto& name:{QStringLiteral("chalk-kinetic"),QStringLiteral("chalk-work"),QStringLiteral("chalk-delta")}) {
+            QImage image(QDir(images).filePath(name+".png"));QVERIFY(!image.isNull());image=image.convertToFormat(QImage::Format_ARGB32);
+            for(const bool resident:{false,true}) {
+                SourceStamp stamp;stamp.sourceEpoch=1;stamp.geometryGeneration=1;stamp.frameSeq=1;stamp.timestampMs=1000;
+                stamp.viewportWidth=image.width();stamp.viewportHeight=image.height();stamp.viewTransform.valid=true;stamp.immutableSelectedInput=true;
+                SharedDeviceImage device;
+                GpuBuffer<unsigned char> upload(image.sizeInBytes()),smoothed(image.sizeInBytes());FixtureStream stream;AnalysisPool pool;
+                if(resident) {
+                    if(cudaMemcpyAsync(upload.data,image.constBits(),image.sizeInBytes(),cudaMemcpyHostToDevice,stream.value)!=cudaSuccess)throw std::runtime_error("fixture upload failed");
+                    if(cudaMemsetAsync(smoothed.data,0,image.sizeInBytes(),stream.value)!=cudaSuccess)throw std::runtime_error("fixture smoothed input failed");
+                    device=pool.CapturePair(smoothed.data,image.bytesPerLine(),upload.data,image.bytesPerLine(),image.width(),image.height(),stream.value,1,1,1,1,0,2,.25f);
+                    if(!device)throw std::runtime_error("fixture capture failed");
+                }
+                auto pixels=PixelPool::Create(1)->Copy(image.constBits(),image.width(),image.height(),image.bytesPerLine());
+                std::mutex mutex;std::condition_variable completed;std::optional<RecognitionResult> outcome;
+                RecognitionScheduler scheduler(nullptr,[&](RecognitionResult r){std::lock_guard lock(mutex);outcome=std::move(r);completed.notify_one();},{});
+                const auto run=[&]() -> RecognitionResult {
+                    {std::lock_guard lock(mutex);outcome.reset();}
+                    auto cancel=std::make_shared<std::atomic<bool>>(false);
+                    const auto id=scheduler.SubmitFormula(stamp,pixels,device,f::Work(engine,image.rect()),cancel);
+                    std::unique_lock lock(mutex);
+                    if(!id || !completed.wait_for(lock,std::chrono::seconds(40),[&]{return outcome.has_value();}))throw std::runtime_error("formula scheduler did not complete");
+                    return std::move(*outcome);
+                };
+                auto recognized=run();QVector<double> timings;
+                if(recognized.formula && recognized.formula->ok)for(int repeat=0;repeat<9;++repeat) {
+                    auto sample=run();QVERIFY2(sample.formula && sample.formula->ok,"Repeated real Math workflow failed.");
+                    if(repeat>=2)timings.push_back(sample.durationMs);
+                }
+                std::sort(timings.begin(),timings.end());
+                QJsonObject row{{"name",name},{"resident",resident},{"workerMs",recognized.durationMs},{"medianWorkerMs",timings.isEmpty()?0:timings[timings.size()/2]},
+                    {"ok",recognized.formula && recognized.formula->ok},
+                    {"error",recognized.formula?recognized.formula->error:QStringLiteral("no outcome")}};
+                if(recognized.formula && recognized.formula->ok) {
+                    const auto& artifact=recognized.formula->artifact;row["latex"]=artifact.latex;
+                    row["sourceInk"]=artifact.foreground.name();row["sourceBackground"]=artifact.background.name();
+                    QWidget owner;owner.resize(image.size()*3);QWidget target(&owner);target.resize(owner.size());
+                    okuflow::UltraClearTextOverlay overlay(&target,&owner);owner.show();QCoreApplication::processEvents();
+                    okuflow::ViewTransform transform;transform.valid=true;overlay.SetViewTransform(transform);overlay.SetFormula(artifact);QCoreApplication::processEvents();
+                    auto output=image.scaled(target.size());QPainter painter(&output);
+                    overlay.CaptureSnapshot(transform,target.size()).Paint(painter,output.size());painter.end();
+                    const auto suffix=resident?"-resident":"-cpu-input";
+                    QVERIFY(output.save(QDir(evidence).filePath(name+suffix+".png")));
+                    row["fractionRecognized"]=artifact.latex.contains(QStringLiteral("\\frac"));
+                }
+                cases.append(row);receipt["cases"]=cases;save();
+                QVERIFY2(recognized.formula && recognized.formula->ok,qPrintable(row["error"].toString()));
+            }
+        }
+#else
+        QSKIP("Native TensorRT CUDA build required.");
+#endif
+    }
+    void nativePrecisionRoundingAndCacheIdentity()
+    {
+        using namespace native_precision;
+        QCOMPARE(Bfloat16(0x3f800000), std::uint16_t(0x3f80)); // one
+        QCOMPARE(Bfloat16(0x3f808000), std::uint16_t(0x3f80)); // even tie
+        QCOMPARE(Bfloat16(0x3f818000), std::uint16_t(0x3f82)); // odd tie
+        QCOMPARE(Bfloat16(0x80000000), std::uint16_t(0x8000)); // signed zero
+        QVERIFY_EXCEPTION_THROWN(Bfloat16(0x7f800000), std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(Bfloat16(0x7fc00001), std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(Bfloat16(0x7f7fffff), std::runtime_error);
+        const QByteArray source(32, 'x');
+        QCOMPARE(GraphIdentity(source), GraphIdentity(source));
+        QVERIFY(GraphIdentity(source) != source);
+        QVERIFY(GraphIdentity(source) != GraphIdentity(QByteArray(32, 'y')));
+        QVERIFY(bf16_runtime::PlanKey(GraphIdentity(source), QByteArray(16, 'd'), true, 1, false) !=
+                bf16_runtime::PlanKey(source, QByteArray(16, 'd'), true, 1, false));
+    }
+    void optionalNativePrecisionSetup()
+    {
+        if (qEnvironmentVariable("OKUFLOW_UCT_NATIVE_SETUP_TEST") != "1")
+            QSKIP("Explicit native precision setup diagnostic not selected.");
+#if OKUFLOW_UCT_TRT
+        const auto evidence=qEnvironmentVariable("OKUFLOW_UCT_NATIVE_SETUP_EVIDENCE");
+        QVERIFY(QDir::isAbsolutePath(evidence));
+        QVERIFY(!QFileInfo::exists(evidence));
+        uct_batch_test::RetirementReceipts retirement;
+        const auto cache=QFileInfo(evidence).absolutePath()+"/native-engine-cache";
+        QVERIFY(QDir().mkpath(cache));
+        auto recognizer=CreateProductionTensorRtRecognizer(ModelTier::Medium,ModelTier::Medium,retirement.Observer(),cache);
+        QVERIFY(recognizer);
+        const auto initialized=recognizer->Initialize();
+        QVERIFY(initialized.usesGpu);
+        QImage image(96,96,QImage::Format_ARGB32); image.fill(Qt::white);
+        std::atomic<bool> cancelled{false};
+        RecognitionOutput output;
+        QElapsedTimer elapsed; elapsed.start();
+        do {
+            output=recognizer->Recognize(image,cancelled);
+            if(!output.backendPreparing) break;
+            QTest::qWait(10);
+        } while(elapsed.elapsed()<600000);
+        const auto backend=recognizer->Status();
+        cancelled=true; recognizer.reset();
+        const auto closed=retirement.Wait();
+        const QJsonObject receipt{{"ok",output.ok},{"error",output.error},{"detail",backend.detail},
+            {"usesGpu",backend.usesGpu},{"elapsedMs",elapsed.elapsed()},{"retirement",closed.Json()},
+            {"nativeRecipe",native_precision::kRecipe}};
+        QFile file(evidence); QVERIFY(file.open(QIODevice::WriteOnly|QIODevice::NewOnly));
+        const auto bytes=QJsonDocument(receipt).toJson(); QCOMPARE(file.write(bytes),qint64(bytes.size())); file.close();
+        QVERIFY2(output.ok,qPrintable(output.error));
+        QVERIFY2(backend.detail.contains(native_precision::kRecipe),qPrintable(backend.detail));
+        QVERIFY(closed.Passed());
+#else
+        QFAIL("A TensorRT CUDA build is required for an explicitly requested setup diagnostic.");
+#endif
+    }
+    void optionalInstalledModelSetup()
+    {
+        if(qEnvironmentVariable("OKUFLOW_UCT_INSTALL_SETUP_TEST")!="1")QSKIP("Explicit real setup transaction not selected.");
+        const auto evidence=qEnvironmentVariable("OKUFLOW_UCT_INSTALL_SETUP_EVIDENCE");
+        const auto cache=qEnvironmentVariable("OKUFLOW_UCT_INSTALL_SETUP_CACHE");
+        QVERIFY(QDir::isAbsolutePath(evidence));QVERIFY(!QFileInfo::exists(evidence));
+        QVERIFY(QDir::isAbsolutePath(cache));
+        std::atomic<bool> cancelled{false};
+        std::unique_ptr<Recognizer> ready;
+        QElapsedTimer elapsed;elapsed.start();
+        const auto transaction=installation::Run(installation::Select({}),DefaultPaddleRoot(),
+            QFileInfo(evidence).absolutePath()+"/setup-source-cache",cancelled,{},[&](const std::atomic<bool>& cancel) {
+                auto prepared=PrepareInstalledModels({},cancel,cache);
+                const bool ok=bool(prepared.recognizer);ready=std::move(prepared.recognizer);
+                return installation::Preparation{ok,ok?prepared.backend.detail:prepared.error};
+            });
+        QVERIFY2(transaction.ok,qPrintable(transaction.detail));QVERIFY(ready);
+        // The real scheduler transfers the ready recognizer to another worker.
+        // Initialize must retain the prepared object instead of starting over.
+        auto handoff=std::async(std::launch::async,[recognizer=std::move(ready)]() mutable {
+            const auto initial=recognizer->Initialize();
+            QImage image(96,96,QImage::Format_ARGB32);image.fill(Qt::white);
+            std::atomic<bool> stop{false};const auto output=recognizer->Recognize(image,stop);
+            return QJsonObject{{"ok",output.ok},{"preparing",output.backendPreparing},
+                {"usesGpu",initial.usesGpu},{"detail",recognizer->Status().detail},{"error",output.error}};
+        }).get();
+        const auto receipt=QJsonObject{{"setup",transaction.receipt},{"handoff",handoff},{"elapsedMs",elapsed.elapsed()}};
+        QFile file(evidence);QVERIFY(file.open(QIODevice::WriteOnly|QIODevice::NewOnly));
+        const auto bytes=QJsonDocument(receipt).toJson();QCOMPARE(file.write(bytes),qint64(bytes.size()));file.close();
+        QVERIFY(handoff["ok"].toBool());QVERIFY(!handoff["preparing"].toBool());
+    }
     void gpuInkOutlineKeepsSourceTopologyWithoutRasterEgress() {
 #if OKUFLOW_ENABLE_CUDA
         uct_ink_outline_test::Parity();

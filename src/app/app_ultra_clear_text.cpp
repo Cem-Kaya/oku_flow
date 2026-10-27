@@ -26,8 +26,14 @@ void OkuFlowApp::InitializeUltraClearText()
                 settingsController_->MutableSettings().ultraClearTextEnabled = enabled;
                 SavePersistentSettings();
             });
-    connect(mainWindow_->ultraClearTextPanel(),&UltraClearTextPanel::modelSettingsChanged,
-            this,&OkuFlowApp::OnUltraClearTextModelsChanged);
+    // Selectors stage a choice. Only the explicit button downloads/prepares
+    // and commits it; an unrelated settings save cannot activate the draft.
+    connect(mainWindow_->ultraClearTextPanel(),&UltraClearTextPanel::installModelsRequested,
+            this,&OkuFlowApp::StartUltraClearTextModelSetup);
+    connect(mainWindow_->ultraClearTextPanel(),&UltraClearTextPanel::cancelModelSetupRequested,this,[this] {
+        if(uctModelSetupCancel_)uctModelSetupCancel_->store(true);
+    });
+    RestoreUltraClearTextMath();
     if (assistiveManager_ && mainWindow_->ultraClearTextOverlay()) {
         mainWindow_->ultraClearTextOverlay()->SetExcludedWidget(&assistiveManager_->Overlay());
     }
@@ -36,7 +42,13 @@ void OkuFlowApp::InitializeUltraClearText()
 void OkuFlowApp::OnUltraClearTextModelsChanged()
 {
     if(!mainWindow_ || !ultraClearText_)return;
-    const auto models=mainWindow_->ultraClearTextPanel()->ModelSettings();
+    ++uctModelSetupGeneration_;
+    if(uctModelSetupCancel_)uctModelSetupCancel_->store(true);
+    auto models=mainWindow_->ultraClearTextPanel()->ModelSettings();
+    // Ordinary OCR automation cannot commit the separate Math UI draft.
+    // Only the verified setup transaction may change its active identity.
+    const auto& committed=settingsController_->Settings().ultraClearTextModels;
+    models.installMath=committed.installMath;models.mathModel=committed.mathModel;
     settingsController_->MutableSettings().ultraClearTextModels=models;
     // Capture an immutable value, never an app/settings pointer on the OCR worker.
     ultraClearText_->ReplaceRecognizerFactory([models]{return uct::CreateDefaultRecognizer(models);});

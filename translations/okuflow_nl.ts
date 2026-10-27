@@ -3685,5 +3685,81 @@ Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u
         <source>Saved document copy.</source>
         <translation>Kopie van het document opgeslagen.</translation>
     </message>
+    <message>
+        <source>Install and set up</source>
+        <translation>Installeren en instellen</translation>
+    </message>
+    <message>
+        <source>Downloads missing models and prepares them on this computer. Your current models stay active until setup succeeds.</source>
+        <translation>Downloadt ontbrekende modellen en bereidt ze voor op deze computer. Uw huidige modellen blijven actief totdat de configuratie is geslaagd.</translation>
+    </message>
+    <message>
+        <source>Downloading models: %1%</source>
+        <translation>Modellen downloaden: %1%</translation>
+    </message>
+    <message>
+        <source>Setting up models...</source>
+        <translation>Modellen instellen...</translation>
+    </message>
+    <message>
+        <source>Models are ready.</source>
+        <translation>De modellen zijn gereed.</translation>
+    </message>
+    <message>
+        <source>Model setup failed. Your previous models are still active.</source>
+        <translation>Het instellen van de modellen is mislukt. Uw vorige modellen zijn nog actief.</translation>
+    </message>
+    <message>
+        <source>Model setup cancelled. Your previous models are still active.</source>
+        <translation>Het instellen van de modellen is geannuleerd. Uw vorige modellen zijn nog actief.</translation>
+    </message>
+    <message>
+        <source>Math (experimental)</source>
+        <translation>Wiskunde (experimenteel)</translation>
+    </message>
+    <message>
+        <source>Model choices take effect after Install and set up succeeds.</source>
+        <translation>De modelkeuze wordt toegepast nadat de installatie en configuratie zijn geslaagd.</translation>
+    </message>
+    <message>
+        <source>Math model (TF32)</source>
+        <translation>Wiskundemodel (TF32)</translation>
+    </message>
+    <message>
+        <source>Read formula in this view</source>
+        <translation>Formule in deze weergave lezen</translation>
+    </message>
+    <message>
+        <source>Pause or freeze the view, then zoom to one complete formula.</source>
+        <translation>Pauzeer of bevries de weergave en zoom vervolgens in op één volledige formule.</translation>
+    </message>
+    <message>
+        <source>Clear formula</source>
+        <translation>Formule wissen</translation>
+    </message>
+    <message>
+        <source>Recognized formula (LaTeX)</source>
+        <translation>Herkende formule (LaTeX)</translation>
+    </message>
+    <message>
+        <source>Install and set up Math first.</source>
+        <translation>Installeer Wiskunde eerst via Installeren en instellen.</translation>
+    </message>
+    <message>
+        <source>Reading formula...</source>
+        <translation>Formule wordt gelezen...</translation>
+    </message>
+    <message>
+        <source>Formula reading stopped. The original image is unchanged.</source>
+        <translation>Het lezen van de formule is gestopt. De oorspronkelijke afbeelding is ongewijzigd.</translation>
+    </message>
+    <message>
+        <source>Formula ready. Compare with the original image.</source>
+        <translation>Formule gereed. Vergelijk met de oorspronkelijke afbeelding.</translation>
+    </message>
+    <message>
+        <source>Formula could not be read. The original image is unchanged.</source>
+        <translation>De formule kon niet worden gelezen. De oorspronkelijke afbeelding is ongewijzigd.</translation>
+    </message>
 </context>
 </TS>

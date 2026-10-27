@@ -49,6 +49,18 @@ function New-MetadataFixture([string]$Bundle, [string]$Build, [string]$Source, [
         installer=@{name='vc_redist.x64.exe';sha256=(Get-FileHash -LiteralPath (Join-Path $Bundle 'vc_redist.x64.exe')).Hash.ToLowerInvariant()};
         licenseSha256=(Get-FileHash -LiteralPath (Join-Path $Bundle 'licenses/MICROSOFT_VC_RUNTIME_LICENSE.rtf')).Hash.ToLowerInvariant()}
     Write-FixtureFile (Join-Path $Source 'scripts/vc-runtime/pins.json') ($pin | ConvertTo-Json)
+    Write-FixtureFile (Join-Path $Source 'scripts/qpdf/pins.json') '{"version":"synthetic","files":[],"notices":[]}'
+    $mathNotices = @{
+        'MICROTEX_MIT.txt'='third_party/microtex/LICENSE';'TINYXML2_ZLIB.txt'='third_party/tinyxml2/LICENSE.txt'
+        'OKUFLOW_MODIFICATIONS.txt'='third_party/microtex/OKUFLOW_MODIFICATIONS.txt'
+        'OFL.txt'='third_party/microtex/res/fonts/licences/OFL.txt'
+        'Knuth_License.txt'='third_party/microtex/res/fonts/licences/Knuth_License.txt'
+        'License_for_dsrom.txt'='third_party/microtex/res/fonts/licences/License_for_dsrom.txt'
+    }
+    foreach ($name in $mathNotices.Keys) {
+        Write-FixtureFile (Join-Path $Source $mathNotices[$name]) "synthetic reviewed notice: $name"
+        Write-FixtureFile (Join-Path $Bundle "licenses/math/$name") "synthetic reviewed notice: $name"
+    }
     if ($Cuda) { Copy-Item -LiteralPath (Join-Path $toolkit 'LICENSE') -Destination (Join-Path $Bundle 'licenses/NVIDIA_CUDA_EULA.txt') }
 }
 function New-SyntheticWix([string]$Name) {
@@ -145,6 +157,16 @@ try {
         & (Join-Path $PSScriptRoot 'generate_release_metadata.ps1') -BundlePath $bundle -RepositoryPath $source -BuildDirectory $build -QtVersion '6.12.0'
         $manifest = Get-Content -LiteralPath (Join-Path $bundle 'release-manifest.json') -Raw | ConvertFrom-Json
         $sbom = Get-Content -LiteralPath (Join-Path $bundle 'SBOM.spdx.json') -Raw | ConvertFrom-Json
+        foreach ($id in @('MicroTeX','tinyxml2','Math-Fonts')) {
+            Assert-Provenance (@($sbom.packages | Where-Object SPDXID -eq "SPDXRef-Package-$id").Count -eq 1) "Missing Math dependency: $id"
+            Assert-Provenance (@($sbom.relationships | Where-Object relatedSpdxElement -eq "SPDXRef-Package-$id").Count -eq 1) "Missing Math relationship: $id"
+        }
+        Assert-Provenance (@($sbom.hasExtractedLicensingInfos | Where-Object licenseId -like 'LicenseRef-MicroTeX-*').Count -eq 2) 'Missing embedded font terms.'
+        $mathNotice = Join-Path $bundle 'licenses/math/MICROTEX_MIT.txt'
+        $mathNoticeBytes = [IO.File]::ReadAllBytes($mathNotice)
+        [IO.File]::AppendAllText($mathNotice, 'changed staged notice')
+        Assert-Refused { & (Join-Path $PSScriptRoot 'generate_release_metadata.ps1') -BundlePath $bundle -RepositoryPath $source -BuildDirectory $build } 'Changed Math notice was accepted.'
+        [IO.File]::WriteAllBytes($mathNotice, $mathNoticeBytes)
         $cudaPackages = @($sbom.packages | Where-Object SPDXID -eq 'SPDXRef-Package-CUDA')
         Assert-Provenance ($manifest.buildFacts.cuda.enabled -eq ($mode -eq 'ON') -and
             $cudaPackages.Count -eq $(if($mode -eq 'ON'){1}else{0})) 'Generated metadata claimed the wrong CUDA tier.'

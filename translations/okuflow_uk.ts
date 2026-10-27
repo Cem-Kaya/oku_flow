@@ -3685,5 +3685,81 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Saved document copy.</source>
         <translation>Копію документа збережено.</translation>
     </message>
+    <message>
+        <source>Install and set up</source>
+        <translation>Установити й налаштувати</translation>
+    </message>
+    <message>
+        <source>Downloads missing models and prepares them on this computer. Your current models stay active until setup succeeds.</source>
+        <translation>Завантажує відсутні моделі й готує їх на цьому комп’ютері. Поточні моделі залишаються активними до успішного завершення налаштування.</translation>
+    </message>
+    <message>
+        <source>Downloading models: %1%</source>
+        <translation>Завантаження моделей: %1%</translation>
+    </message>
+    <message>
+        <source>Setting up models...</source>
+        <translation>Налаштування моделей...</translation>
+    </message>
+    <message>
+        <source>Models are ready.</source>
+        <translation>Моделі готові.</translation>
+    </message>
+    <message>
+        <source>Model setup failed. Your previous models are still active.</source>
+        <translation>Не вдалося налаштувати моделі. Попередні моделі залишаються активними.</translation>
+    </message>
+    <message>
+        <source>Model setup cancelled. Your previous models are still active.</source>
+        <translation>Налаштування моделей скасовано. Попередні моделі залишаються активними.</translation>
+    </message>
+    <message>
+        <source>Math (experimental)</source>
+        <translation>Математика (експериментально)</translation>
+    </message>
+    <message>
+        <source>Model choices take effect after Install and set up succeeds.</source>
+        <translation>Вибрані моделі застосовуються після успішного встановлення й налаштування.</translation>
+    </message>
+    <message>
+        <source>Math model (TF32)</source>
+        <translation>Математична модель (TF32)</translation>
+    </message>
+    <message>
+        <source>Read formula in this view</source>
+        <translation>Прочитати формулу в цій області</translation>
+    </message>
+    <message>
+        <source>Pause or freeze the view, then zoom to one complete formula.</source>
+        <translation>Призупиніть або заморозьте зображення, а потім збільште одну формулу повністю.</translation>
+    </message>
+    <message>
+        <source>Clear formula</source>
+        <translation>Прибрати формулу</translation>
+    </message>
+    <message>
+        <source>Recognized formula (LaTeX)</source>
+        <translation>Розпізнана формула (LaTeX)</translation>
+    </message>
+    <message>
+        <source>Install and set up Math first.</source>
+        <translation>Спочатку встановіть і налаштуйте модуль математики.</translation>
+    </message>
+    <message>
+        <source>Reading formula...</source>
+        <translation>Читання формули...</translation>
+    </message>
+    <message>
+        <source>Formula reading stopped. The original image is unchanged.</source>
+        <translation>Читання формули зупинено. Початкове зображення не змінено.</translation>
+    </message>
+    <message>
+        <source>Formula ready. Compare with the original image.</source>
+        <translation>Формула готова. Порівняйте з початковим зображенням.</translation>
+    </message>
+    <message>
+        <source>Formula could not be read. The original image is unchanged.</source>
+        <translation>Не вдалося прочитати формулу. Початкове зображення не змінено.</translation>
+    </message>
 </context>
 </TS>

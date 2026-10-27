@@ -145,9 +145,9 @@ void OkuFlowApp::ConfigureStartupProfiling() {
         if (!destination.isAbsolute() || destination.suffix().compare(
                 QStringLiteral("png"), Qt::CaseInsensitive) != 0 ||
             !destination.dir().exists() || !validDelay || captureDelay < 1 ||
-            captureDelay > 60000 || captureDelay + 100 >= durationMs) {
+            captureDelay > 600000 || captureDelay + 100 >= durationMs) {
             qWarning() << "UI capture skipped: require an absolute .png path with an existing"
-                          " parent and a 1..60000 ms delay at least 100 ms before profiling ends";
+                          " parent and a 1..600000 ms delay at least 100 ms before profiling ends";
         } else {
             QTimer::singleShot(captureDelay, this, [this, capturePath]() {
                 if (startupFirstPresentMs_ < 0 ||

@@ -3685,5 +3685,81 @@ Pilih Hubungkan ChatGPT di tab Asisten pada mode Tingkat Lanjut untuk masuk.</tr
         <source>Saved document copy.</source>
         <translation>Salinan dokumen disimpan.</translation>
     </message>
+    <message>
+        <source>Install and set up</source>
+        <translation>Instal dan siapkan</translation>
+    </message>
+    <message>
+        <source>Downloads missing models and prepares them on this computer. Your current models stay active until setup succeeds.</source>
+        <translation>Mengunduh model yang belum tersedia dan menyiapkannya di komputer ini. Model Anda saat ini tetap aktif hingga penyiapan berhasil.</translation>
+    </message>
+    <message>
+        <source>Downloading models: %1%</source>
+        <translation>Mengunduh model: %1%</translation>
+    </message>
+    <message>
+        <source>Setting up models...</source>
+        <translation>Menyiapkan model...</translation>
+    </message>
+    <message>
+        <source>Models are ready.</source>
+        <translation>Model siap digunakan.</translation>
+    </message>
+    <message>
+        <source>Model setup failed. Your previous models are still active.</source>
+        <translation>Penyiapan model gagal. Model Anda sebelumnya masih aktif.</translation>
+    </message>
+    <message>
+        <source>Model setup cancelled. Your previous models are still active.</source>
+        <translation>Penyiapan model dibatalkan. Model Anda sebelumnya masih aktif.</translation>
+    </message>
+    <message>
+        <source>Math (experimental)</source>
+        <translation>Matematika (eksperimental)</translation>
+    </message>
+    <message>
+        <source>Model choices take effect after Install and set up succeeds.</source>
+        <translation>Pilihan model diterapkan setelah pemasangan dan penyiapan berhasil.</translation>
+    </message>
+    <message>
+        <source>Math model (TF32)</source>
+        <translation>Model matematika (TF32)</translation>
+    </message>
+    <message>
+        <source>Read formula in this view</source>
+        <translation>Baca rumus dalam tampilan ini</translation>
+    </message>
+    <message>
+        <source>Pause or freeze the view, then zoom to one complete formula.</source>
+        <translation>Jeda atau bekukan tampilan, lalu perbesar satu rumus secara utuh.</translation>
+    </message>
+    <message>
+        <source>Clear formula</source>
+        <translation>Hapus rumus</translation>
+    </message>
+    <message>
+        <source>Recognized formula (LaTeX)</source>
+        <translation>Rumus yang dikenali (LaTeX)</translation>
+    </message>
+    <message>
+        <source>Install and set up Math first.</source>
+        <translation>Instal dan siapkan Matematika terlebih dahulu.</translation>
+    </message>
+    <message>
+        <source>Reading formula...</source>
+        <translation>Membaca rumus...</translation>
+    </message>
+    <message>
+        <source>Formula reading stopped. The original image is unchanged.</source>
+        <translation>Pembacaan rumus dihentikan. Gambar asli tidak berubah.</translation>
+    </message>
+    <message>
+        <source>Formula ready. Compare with the original image.</source>
+        <translation>Rumus siap. Bandingkan dengan gambar asli.</translation>
+    </message>
+    <message>
+        <source>Formula could not be read. The original image is unchanged.</source>
+        <translation>Rumus tidak dapat dibaca. Gambar asli tidak berubah.</translation>
+    </message>
 </context>
 </TS>

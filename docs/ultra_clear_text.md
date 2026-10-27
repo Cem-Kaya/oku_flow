@@ -135,6 +135,12 @@ GUI gate; an offscreen pass alone does not establish Windows stacking behavior.
 
 ## Recognition backend
 
+The development [model setup transaction](model_installation.md) now ships
+medium FP32 sources only and prepares BF16 natively inside TensorRT. Model
+selectors stage a draft until Install and set up succeeds; failures keep the
+previous recognizer. Older preparation descriptions below retain historical
+development provenance; the linked current policy governs ordinary app setup.
+
 ### PaddleOCR development backend (2026-10-18)
 
 New builds select **TensorRT CUDA Ã¢â€ â€™ ONNX Runtime CPU Ã¢â€ â€™ Windows OCR**. The GPU
@@ -894,3 +900,13 @@ character dictionary and the Windows fallback's installed recognizer languages
 are separate limits; the application's 25 interface languages do not establish
 OCR coverage. Protection masks preserve unproved punctuation/symbol pixels
 against neighbouring replacement plates; they are not grammatical judgements.
+
+### Math selected-view rendering (development, 27 October 2026)
+
+Math shares UCT correction and projection instead of recapturing or warping a
+screenshot. One explicit immutable viewport runs on UCT's existing worker with
+owned pixels/stamps. The GPU uses current validation pixels, preserving stacked
+fractions and superscripts; predicted LaTeX is a separate result, not ordinary
+OCR proof. Native vector layout follows source colors and UCT's selected palette,
+scene pan/zoom, visibility gates and snapshot painter. Resume/source changes
+revoke it. See [native Math](uct_native_formula.md) for setup, limits and evidence.

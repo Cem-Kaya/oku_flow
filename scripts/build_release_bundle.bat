@@ -73,11 +73,7 @@ if defined OKUFLOW_UCT_PAYLOAD_SDK set "BUNDLE_UCT_SDK=%OKUFLOW_UCT_PAYLOAD_SDK%
 set "BUNDLE_UCT_TENSORRT=%BUNDLE_UCT_SDK%\TensorRT-11.4.0.106-cuda12.9\TensorRT-11.4.0.106"
 set "BUNDLE_UCT_MODELS=%OKUFLOW_UCT_PAYLOAD_MODELS%"
 set "BUNDLE_UCT_CUDA=%OKUFLOW_UCT_PAYLOAD_CUDA%"
-if not defined BUNDLE_UCT_MODELS (
-    echo ERROR: Set OKUFLOW_UCT_PAYLOAD_MODELS to the physical converted-models parent containing uct.
-    echo The bundle script never downloads, converts, prepares or cold-compiles OCR payloads.
-    goto :fail
-)
+rem Medium FP32-only payload needs no converted-model source root.
 pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\windows-installer\uct_bundle.ps1" -Action Preflight ^
     -OcrRuntimePath "%BUNDLE_UCT_RUNTIME%" -OcrSdkPath "%BUNDLE_UCT_SDK%" ^
     -OcrTensorRtPath "%BUNDLE_UCT_TENSORRT%" -OcrModelsPath "%BUNDLE_UCT_MODELS%" -OcrCudaPath "%BUNDLE_UCT_CUDA%"
@@ -210,6 +206,17 @@ call :copy_required_file "%QT_LICENSE_FILE%" "%STAGING_DIR%\licenses\QT_LICENSE.
 if errorlevel 1 goto :fail
 call :copy_required_file "%QT_FFMPEG_LICENSE_FILE%" "%STAGING_DIR%\licenses\QT_FFMPEG_LGPL_2_1.txt"
 if errorlevel 1 goto :fail
+mkdir "%STAGING_DIR%\licenses\math" 2>nul
+call :copy_required_file "%ROOT_DIR%\third_party\microtex\LICENSE" "%STAGING_DIR%\licenses\math\MICROTEX_MIT.txt"
+if errorlevel 1 goto :fail
+call :copy_required_file "%ROOT_DIR%\third_party\tinyxml2\LICENSE.txt" "%STAGING_DIR%\licenses\math\TINYXML2_ZLIB.txt"
+if errorlevel 1 goto :fail
+call :copy_required_file "%ROOT_DIR%\third_party\microtex\OKUFLOW_MODIFICATIONS.txt" "%STAGING_DIR%\licenses\math\OKUFLOW_MODIFICATIONS.txt"
+if errorlevel 1 goto :fail
+for %%F in (OFL.txt Knuth_License.txt License_for_dsrom.txt) do (
+    call :copy_required_file "%ROOT_DIR%\third_party\microtex\res\fonts\licences\%%F" "%STAGING_DIR%\licenses\math\%%F"
+    if errorlevel 1 goto :fail
+)
 mkdir "%STAGING_DIR%\licenses\qt-sbom" 2>nul
 for %%M in (qtbase qtimageformats qtmultimedia qtspeech qtsvg qtpdf) do (
     call :copy_required_file "%QT_SBOM_DIR%\%%M-%QT_RUNTIME_VERSION%.spdx.json" "%STAGING_DIR%\licenses\qt-sbom\%%M-%QT_RUNTIME_VERSION%.spdx.json"
@@ -433,6 +440,7 @@ if not exist "%STAGING_DIR%\app\licenses\QT_LICENSE.txt" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\app\licenses\QT_FFMPEG_LGPL_2_1.txt" goto :deploy_incomplete
 for %%M in (qtbase qtimageformats qtmultimedia qtspeech qtsvg qtpdf) do if not exist "%STAGING_DIR%\app\licenses\qt-sbom\%%M-%QT_RUNTIME_VERSION%.spdx.json" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\app\licenses\LUCIDE_LICENSE.txt" goto :deploy_incomplete
+for %%F in (MICROTEX_MIT.txt TINYXML2_ZLIB.txt OKUFLOW_MODIFICATIONS.txt OFL.txt Knuth_License.txt License_for_dsrom.txt) do if not exist "%STAGING_DIR%\app\licenses\math\%%F" goto :deploy_incomplete
 if /I "%BUNDLE_EFFECTIVE_CUDA%"=="ON" if not exist "%STAGING_DIR%\app\licenses\AMD_FSR1_LICENSE.txt" goto :deploy_incomplete
 if /I "%BUNDLE_EFFECTIVE_CUDA%"=="ON" if not exist "%STAGING_DIR%\app\licenses\NVIDIA_NIS_LICENSE.txt" goto :deploy_incomplete
 if /I "%BUNDLE_EFFECTIVE_CUDA%"=="ON" if not exist "%STAGING_DIR%\app\licenses\NVIDIA_MAXINE_SDK_HEADERS_LICENSE.txt" goto :deploy_incomplete

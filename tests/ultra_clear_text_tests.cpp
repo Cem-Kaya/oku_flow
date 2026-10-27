@@ -29,6 +29,7 @@
 #include <QHash>
 #include <QLabel>
 #include <QPlainTextEdit>
+#include <QPushButton>
 #include <QScrollBar>
 #include <QScopeGuard>
 #include <QSet>
@@ -626,6 +627,59 @@ class UltraClearTextTests final : public QObject {
     Q_OBJECT
 
 private slots:
+    void formulaUsesSelectedSceneProjectionAndSourceRevocation()
+    {
+        Harness h;h.Enable();auto pool=PixelPool::Create(1);
+        UctImmutableScene scene;scene.geometry=h.context.geometry;scene.sourceAuthority=91;
+        scene.selected={pool->Copy(h.page.image.constBits(),h.page.image.width(),h.page.image.height(),h.page.image.bytesPerLine()),55,55000};
+        scene.transform=h.context.transform;scene.viewportWidth=kViewWidth;scene.viewportHeight=kViewHeight;
+        scene.admission=ImmutableAdmission::Standalone;QVERIFY(h.controller->SetImmutableScene(scene));
+        auto calls=std::make_shared<std::atomic<int>>(0);auto offUi=std::make_shared<std::atomic<bool>>(false);
+        h.controller->SetFormulaFactory([calls,offUi](const QRect& region)->FormulaWork {
+            return [calls,offUi,region](const SourceStamp& stamp,const QImage& pixels,SharedDeviceImage,const std::atomic<bool>& stop) {
+                ++*calls;offUi->store(QThread::currentThread()!=qApp->thread());
+                FormulaObservation result;if(stop.load())return result;
+                if(stamp.frameSeq!=55 || stamp.timestampMs!=55000 || pixels.size()!=QSize(kSceneWidth,kSceneHeight) || region.isEmpty())return result;
+                auto path=std::make_shared<QPainterPath>();path->addRect(.1,.1,.8,.8);
+                result.ok=true;result.artifact={QStringLiteral("x^2"),path,QRectF(.3,.3,.2,.12),QRectF(.3,.3,.2,.12),Qt::white,QColor(20,40,30)};
+                return result;
+            };
+        });
+        QTest::mouseClick(h.panel->findChild<QPushButton*>("uctReadFormula"),Qt::LeftButton);
+        QTRY_VERIFY_WITH_TIMEOUT(h.overlay->HasFormula(),3000);QCOMPARE(calls->load(),1);QVERIFY(offUi->load());
+        QCOMPARE(h.panel->findChild<QPlainTextEdit*>("uctFormulaText")->toPlainText(),QStringLiteral("x^2"));
+        h.controller->UpdateImmutableView(Transform(2,.4f,.36f),kViewWidth,kViewHeight);
+        QCOMPARE(calls->load(),1);QVERIFY(h.overlay->HasFormula());QTRY_VERIFY(h.overlay->isVisible());
+        const auto snapshot=h.overlay->CaptureSnapshot(h.overlay->CurrentViewTransform(),QSize(kViewWidth,kViewHeight));QVERIFY(!snapshot.IsEmpty());
+        h.controller->SetShowOriginal(true);QVERIFY(!h.overlay->HasFormula());
+        h.controller->SetShowOriginal(false);QVERIFY(h.overlay->HasFormula());
+        h.controller->OnMediaPresentationFailed();QVERIFY(!h.overlay->HasFormula());
+        QVERIFY(h.panel->findChild<QPlainTextEdit*>("uctFormulaText")->toPlainText().isEmpty());
+        h.controller->OnMediaPresentationSucceeded();QVERIFY(h.overlay->HasFormula());
+        ++scene.sourceAuthority;++scene.selected.frameSeq;++scene.selected.timestampMs;
+        QVERIFY(h.controller->SetImmutableScene(scene));QVERIFY(!h.overlay->HasFormula());
+        QVERIFY(h.panel->findChild<QPlainTextEdit*>("uctFormulaText")->toPlainText().isEmpty());
+    }
+    void cancelledFormulaCannotReappearOnAnotherSource()
+    {
+        Harness h;h.Enable();auto pool=PixelPool::Create(1);
+        UctImmutableScene scene;scene.geometry=h.context.geometry;scene.sourceAuthority=92;
+        scene.selected={pool->Copy(h.page.image.constBits(),h.page.image.width(),h.page.image.height(),h.page.image.bytesPerLine()),55,55000};
+        scene.transform=h.context.transform;scene.viewportWidth=kViewWidth;scene.viewportHeight=kViewHeight;scene.admission=ImmutableAdmission::Standalone;
+        QVERIFY(h.controller->SetImmutableScene(scene));
+        auto began=std::make_shared<std::atomic<bool>>(false),ended=std::make_shared<std::atomic<bool>>(false);
+        h.controller->SetFormulaFactory([began,ended](const QRect&)->FormulaWork {
+            return [began,ended](const SourceStamp&,const QImage&,SharedDeviceImage,const std::atomic<bool>& stop) {
+                began->store(true);for(int i=0;i<1000 && !stop.load();++i)QThread::msleep(1);
+                FormulaObservation out;out.cancelled=stop.load();ended->store(true);return out;
+            };
+        });
+        h.controller->RequestFormula();QTRY_VERIFY_WITH_TIMEOUT(began->load(),3000);
+        ++scene.sourceAuthority;++scene.selected.frameSeq;
+        QVERIFY(h.controller->SetImmutableScene(scene));QTRY_VERIFY_WITH_TIMEOUT(ended->load(),1000);
+        QTest::qWait(50);QVERIFY(!h.overlay->HasFormula());
+        QVERIFY(h.panel->findChild<QPlainTextEdit*>("uctFormulaText")->toPlainText().isEmpty());
+    }
     void regionalStabilityRequiresFreshTexturedPixels()
     {
         const auto page = MakeLayoutPage({{"Stationary",{30,80},30},{"Reading",{30,200},30}},960,540);
@@ -798,7 +852,7 @@ private slots:
         QCOMPARE(DefaultTensorRtBatchCapacity(ModelTier::Small),8);
         QCOMPARE(DefaultTensorRtBatchCapacity(ModelTier::Medium),8);
         QCOMPARE(DefaultTensorRtBatchCapacity(ModelTier::Tiny),1);
-        QCOMPARE(defaults.cpuDetector,ModelTier::Tiny);QCOMPARE(defaults.cpuRecognizer,ModelTier::Small);
+        QCOMPARE(defaults.cpuDetector,ModelTier::Medium);QCOMPARE(defaults.cpuRecognizer,ModelTier::Medium);
         QSignalSpy changes(&panel,&UltraClearTextPanel::modelSettingsChanged);
         panel.cpuDetectorCombo()->setCurrentIndex(1);
         QCOMPARE(changes.size(),1);QCOMPARE(panel.ModelSettings().cpuDetector,ModelTier::Small);
@@ -807,6 +861,25 @@ private slots:
         auto* advanced=panel.findChild<QToolButton*>("uctAdvancedSettings");QVERIFY(advanced);
         QVERIFY(advanced->isCheckable());QVERIFY(!advanced->isChecked());
         QVERIFY(!panel.gpuDetectorCombo()->accessibleName().isEmpty());QCOMPARE(panel.gpuRecognizerCombo()->count(),3);
+    }
+    void modelSetupButtonStagesAndCanBeCancelledWithoutEnablingUct() {
+        UltraClearTextPanel panel;
+        auto* install=panel.findChild<QPushButton*>("uctInstallModels");
+        auto* cancel=panel.findChild<QPushButton*>("uctCancelModelSetup");
+        auto* status=panel.findChild<QLabel*>("uctModelSetupStatus");
+        QVERIFY(install);QVERIFY(cancel);QVERIFY(status);
+        QSignalSpy starts(&panel,&UltraClearTextPanel::installModelsRequested);
+        QSignalSpy stops(&panel,&UltraClearTextPanel::cancelModelSetupRequested);
+        panel.cpuDetectorCombo()->setCurrentIndex(0);QCOMPARE(starts.size(),0);
+        install->click();QCOMPARE(starts.size(),1);QVERIFY(!panel.IsEnabledByUser());
+        panel.SetModelSetupProgress(false,37);
+        QVERIFY(!install->isEnabled());QVERIFY(!panel.cpuDetectorCombo()->isEnabled());
+        QVERIFY(status->text().contains("37%"));
+        install->click();QCOMPARE(starts.size(),1);
+        cancel->click();QCOMPARE(stops.size(),1);
+        panel.FinishModelSetup(false,true,"cancelled");
+        QVERIFY(install->isEnabled());QVERIFY(panel.cpuDetectorCombo()->isEnabled());
+        QVERIFY(status->text().contains("previous models"));QVERIFY(!panel.IsEnabledByUser());
     }
     void modelSwitchRetiresHeldWorkerWithoutBlockingOrDisablingUct() {
         Harness h;

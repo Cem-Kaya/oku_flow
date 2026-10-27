@@ -1,5 +1,11 @@
 # OkuFlow Documentation Guide
 
+[Native formula backend](uct_native_formula.md) records the separate development
+TF32 C++ runner, selected-view Math controls, shared UCT projection and GPU diagnostics.
+
+[Model setup](model_installation.md) describes verified OCR downloads, native
+BF16 preparation, activation/rollback and medium-only shipping sources.
+
 [Source-ink outlines](uct_ink_outlines.md) describes bounded sharpening of unread
 ink, geometry-only GPU export, source/presentation ownership and semantic limits.
 
@@ -837,3 +843,5 @@ experiment preserves one history and leaves the app default unchanged.
 [Standalone Freeze](uct_standalone_freeze.md) describes held-frame recognition
 without a neighbouring capture. Earlier pair-based repair reports retain their
 historical evidence and explicit-protocol scope.
+
+[Native Math](uct_native_formula.md) describes optional model setup and selected-view rendering through UCT correction/projection.

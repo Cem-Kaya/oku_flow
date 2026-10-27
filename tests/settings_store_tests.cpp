@@ -166,6 +166,8 @@ class SettingsStoreTests : public QObject {
 
 private slots:
     void uctModelDefaultsMigrationAndRoundTrip();
+    void uctModelSelectionCommitPreservesPreviousOnSaveFailure();
+    void uctModelSelectionDefersUnrelatedCleanup();
     void controlSettingsAndConversationKinds();
     void liveRecapDurationIsBoundedAndPreservesOtherPreferences();
     void defaultsUseLunaLow();
@@ -243,8 +245,8 @@ void SettingsStoreTests::uctModelDefaultsMigrationAndRoundTrip()
     QVERIFY(!defaults.ultraClearTextEnabled);
     QCOMPARE(defaults.ultraClearTextModels.gpuDetector,ModelTier::Medium);
     QCOMPARE(defaults.ultraClearTextModels.gpuRecognizer,ModelTier::Medium);
-    QCOMPARE(defaults.ultraClearTextModels.cpuDetector,ModelTier::Tiny);
-    QCOMPARE(defaults.ultraClearTextModels.cpuRecognizer,ModelTier::Small);
+    QCOMPARE(defaults.ultraClearTextModels.cpuDetector,ModelTier::Medium);
+    QCOMPARE(defaults.ultraClearTextModels.cpuRecognizer,ModelTier::Medium);
     QTemporaryDir directory;QVERIFY(directory.isValid());const auto path=directory.filePath("settings.json");
     auto root=QJsonDocument::fromJson(Serialize(defaults)).object();root.remove("ultraClearTextModels");
     root.remove("ultraClearTextEnabled");
@@ -263,6 +265,7 @@ void SettingsStoreTests::uctModelDefaultsMigrationAndRoundTrip()
     QVERIFY(write());loaded=Load(path);QVERIFY(loaded);
     QCOMPARE(loaded->ultraClearTextModels.gpuRecognizer,ModelTier::Small);
     loaded->ultraClearTextModels={ModelTier::Small,ModelTier::Tiny,ModelTier::Medium,ModelTier::Medium};
+    loaded->ultraClearTextModels.installMath=true;loaded->ultraClearTextModels.mathModel=uct::formula::Model::PlusM;
     loaded->ultraClearTextEnabled=true;
     QVERIFY(Save(path,*loaded));const auto saved=Load(path);QVERIFY(saved);
     QVERIFY(saved->ultraClearTextModels==loaded->ultraClearTextModels);
@@ -272,6 +275,37 @@ void SettingsStoreTests::uctModelDefaultsMigrationAndRoundTrip()
     const auto json=QJsonDocument::fromJson(Serialize(*saved)).object()["ultraClearTextModels"].toObject();
     QCOMPARE(json["gpuDetector"].toString(),"small");QCOMPARE(json["gpuRecognizer"].toString(),"tiny");
     QVERIFY(!json.contains("enabled"));
+}
+
+void SettingsStoreTests::uctModelSelectionCommitPreservesPreviousOnSaveFailure()
+{
+    QTemporaryDir dir;QVERIFY(dir.isValid());const auto path=dir.filePath("models.json");
+    bool refuse=false;SettingsController::StorageOperations storage;
+    storage.saveSettings=[&](const QString& file,const PersistentSettings& value) {
+        return refuse ? SaveStatus::Failed : SaveDetailed(file,value);
+    };
+    SettingsController controller(path,storage);const auto original=controller.Settings().ultraClearTextModels;
+    QVERIFY(controller.Save(controller.Settings().currentConfig));const auto oldBytes=ReadBytes(path);
+    auto desired=original;desired.cpuDetector=uct::ModelTier::Tiny;
+    refuse=true;QVERIFY(!controller.SaveModelSelection(controller.Settings().currentConfig,desired));
+    QVERIFY(controller.Settings().ultraClearTextModels==original);
+    QVERIFY(controller.LastCommittedSettings()->ultraClearTextModels==original);QCOMPARE(ReadBytes(path),oldBytes);
+    refuse=false;QVERIFY(controller.SaveModelSelection(controller.Settings().currentConfig,desired));
+    QVERIFY(controller.Settings().ultraClearTextModels==desired);
+    QVERIFY(Load(path)->ultraClearTextModels==desired);
+}
+void SettingsStoreTests::uctModelSelectionDefersUnrelatedCleanup()
+{
+    QTemporaryDir dir;QVERIFY(dir.isValid());const auto path=dir.filePath("models.json");
+    PersistentSettings initial;initial.assistive.pendingCredentialRemovals={"private-fixture-removal"};
+    QVERIFY(Save(path,initial));int removals=0;
+    SettingsController::StorageOperations storage;
+    storage.removeSecret=[&](const QString&,QString*){++removals;return false;};
+    SettingsController controller(path,storage);
+    auto desired=controller.Settings().ultraClearTextModels;desired.cpuDetector=uct::ModelTier::Small;
+    QVERIFY(controller.SaveModelSelection(controller.Settings().currentConfig,desired));QCOMPARE(removals,0);
+    const auto persisted=Load(path);QVERIFY(persisted);QVERIFY(persisted->ultraClearTextModels==desired);
+    QVERIFY(persisted->assistive.pendingCredentialRemovals.contains("private-fixture-removal"));
 }
 
 void SettingsStoreTests::controlSettingsAndConversationKinds()

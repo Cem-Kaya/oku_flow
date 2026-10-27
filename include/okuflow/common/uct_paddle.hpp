@@ -139,8 +139,8 @@ std::vector<float> PaddleRectify(const QImage &image, const PaddleQuad &quad, in
 RecognizedLine PaddleDecode(std::span<const float> probabilities, int steps, int classes,
                             const PaddleQuad &quad, const QStringList &dictionary);
 std::unique_ptr<Recognizer> CreatePaddleCpuRecognizer(const QString &root = {},
-                                                    ModelTier detector = ModelTier::Tiny,
-                                                    ModelTier recognizer = ModelTier::Small);
+                                                    ModelTier detector = ModelTier::Medium,
+                                                    ModelTier recognizer = ModelTier::Medium);
 std::unique_ptr<Recognizer> CreateWindowsRecognizer();
 
 // Chooses TensorRT, Paddle CPU, then Windows OCR. A failed backend is retired

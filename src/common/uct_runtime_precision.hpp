@@ -218,5 +218,5 @@ inline QString ActualStatus(bool bf16, const QString& fallback = {},bool detecto
 
 namespace okuflow::uct {
 std::unique_ptr<Recognizer> CreateProductionTensorRtRecognizer(ModelTier detector, ModelTier recognizer,
-    TensorRtRetirementObserver retirementObserver = {});
+    TensorRtRetirementObserver retirementObserver = {}, const QString& preparationCache = {});
 } // namespace okuflow::uct

@@ -1,0 +1,5 @@
+MicroTeX upstream: 0e3707f6dafebb121d98b53c64364d16fefe481d, MIT (Nano Michael).
+OkuFlow changes: fixed embedded resource discovery in src/latex.cpp; Qt 6 static font registration, fail-closed embedded font loading and abstract vector-text dispatch in src/platform/qt/graphic_qt.cpp.
+Only base/Latin/Euler/maths fonts are embedded. Font files are unmodified. External Greek/Cyrillic font resource bundles are excluded. Original font notices must accompany the binary.
+The first-party vector collector, formula safety limits, source colors, scheduler and scene projection live outside the vendored source.
+tinyxml2 11.0.0 is unmodified and licensed under Zlib; retain its adjacent LICENSE.txt.

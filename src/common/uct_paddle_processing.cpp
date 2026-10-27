@@ -64,9 +64,21 @@ PaddleAssets LoadPaddleAssets(const QString &root, ModelTier detector, ModelTier
     const auto* det=FindPaddleModelPin(true,detector);
     const auto* rec=FindPaddleModelPin(false,recognizer);
     if(!det || !rec) {assets.error="Unsupported PaddleOCR model tier.";return assets;}
-    assets.detector = QDir(root).filePath(QString::fromUtf8(det->directory.data(),qsizetype(det->directory.size()))+"/inference.onnx");
-    assets.recognizer = QDir(root).filePath(QString::fromUtf8(rec->directory.data(),qsizetype(rec->directory.size()))+"/inference.onnx");
-    const QString config=QDir(root).filePath(QString::fromUtf8(rec->directory.data(),qsizetype(rec->directory.size()))+"/inference.yml");
+    const auto directory = [&](const PaddleModelPin& pin) {
+        const auto original = QDir(root).filePath(QString::fromUtf8(pin.directory.data(),qsizetype(pin.directory.size())));
+        // Explicit diagnostic roots remain isolated. The production source root
+        // may use an optional downloaded role without relocating runtime DLLs.
+        if (QDir::cleanPath(root).compare(QDir::cleanPath(DefaultPaddleRoot()),Qt::CaseInsensitive) != 0 ||
+            (Verify(QDir(original).filePath("inference.onnx"),pin.modelSha256.data()) &&
+             Verify(QDir(original).filePath("inference.yml"),pin.configSha256.data()))) return original;
+        const auto revision=QString::fromUtf8(pin.revision.data(),qsizetype(pin.revision.size()));
+        return QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath("OkuFlow/model-cache/sources/ocr-"+
+            QString(pin.detection ? "det-" : "rec-")+ModelTierToken(pin.tier)+"-"+revision);
+    };
+    const auto detectorDirectory=directory(*det), recognizerDirectory=directory(*rec);
+    assets.detector = QDir(detectorDirectory).filePath("inference.onnx");
+    assets.recognizer = QDir(recognizerDirectory).filePath("inference.onnx");
+    const QString config=QDir(recognizerDirectory).filePath("inference.yml");
     assets.detectorSha256=QByteArray(det->modelSha256.data(),qsizetype(det->modelSha256.size()));
     assets.recognizerSha256=QByteArray(rec->modelSha256.data(),qsizetype(rec->modelSha256.size()));
     if (!Verify(assets.detector,det->modelSha256.data()) ||

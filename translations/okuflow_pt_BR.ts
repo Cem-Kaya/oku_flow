@@ -3685,5 +3685,81 @@ Use “Conectar ao ChatGPT” na guia Assistente do modo Avançado para fazer lo
         <source>Saved document copy.</source>
         <translation>Cópia do documento salva.</translation>
     </message>
+    <message>
+        <source>Install and set up</source>
+        <translation>Instalar e configurar</translation>
+    </message>
+    <message>
+        <source>Downloads missing models and prepares them on this computer. Your current models stay active until setup succeeds.</source>
+        <translation>Baixa os modelos que faltam e os prepara neste computador. Os modelos atuais continuam ativos até a configuração ser concluída com sucesso.</translation>
+    </message>
+    <message>
+        <source>Downloading models: %1%</source>
+        <translation>Baixando modelos: %1%</translation>
+    </message>
+    <message>
+        <source>Setting up models...</source>
+        <translation>Configurando modelos...</translation>
+    </message>
+    <message>
+        <source>Models are ready.</source>
+        <translation>Os modelos estão prontos.</translation>
+    </message>
+    <message>
+        <source>Model setup failed. Your previous models are still active.</source>
+        <translation>Falha na configuração dos modelos. Os modelos anteriores continuam ativos.</translation>
+    </message>
+    <message>
+        <source>Model setup cancelled. Your previous models are still active.</source>
+        <translation>Configuração dos modelos cancelada. Os modelos anteriores continuam ativos.</translation>
+    </message>
+    <message>
+        <source>Math (experimental)</source>
+        <translation>Matemática (experimental)</translation>
+    </message>
+    <message>
+        <source>Model choices take effect after Install and set up succeeds.</source>
+        <translation>A seleção de modelos é aplicada após a instalação e configuração serem concluídas com sucesso.</translation>
+    </message>
+    <message>
+        <source>Math model (TF32)</source>
+        <translation>Modelo matemático (TF32)</translation>
+    </message>
+    <message>
+        <source>Read formula in this view</source>
+        <translation>Ler a fórmula nesta visualização</translation>
+    </message>
+    <message>
+        <source>Pause or freeze the view, then zoom to one complete formula.</source>
+        <translation>Pause ou congele a visualização e amplie uma fórmula completa.</translation>
+    </message>
+    <message>
+        <source>Clear formula</source>
+        <translation>Limpar fórmula</translation>
+    </message>
+    <message>
+        <source>Recognized formula (LaTeX)</source>
+        <translation>Fórmula reconhecida (LaTeX)</translation>
+    </message>
+    <message>
+        <source>Install and set up Math first.</source>
+        <translation>Primeiro instale e configure o módulo de Matemática.</translation>
+    </message>
+    <message>
+        <source>Reading formula...</source>
+        <translation>Lendo fórmula...</translation>
+    </message>
+    <message>
+        <source>Formula reading stopped. The original image is unchanged.</source>
+        <translation>A leitura da fórmula foi interrompida. A imagem original não foi alterada.</translation>
+    </message>
+    <message>
+        <source>Formula ready. Compare with the original image.</source>
+        <translation>Fórmula pronta. Compare com a imagem original.</translation>
+    </message>
+    <message>
+        <source>Formula could not be read. The original image is unchanged.</source>
+        <translation>Não foi possível ler a fórmula. A imagem original não foi alterada.</translation>
+    </message>
 </context>
 </TS>

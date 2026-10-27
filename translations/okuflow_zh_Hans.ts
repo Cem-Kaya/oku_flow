@@ -3685,5 +3685,81 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Saved document copy.</source>
         <translation>文档副本已保存。</translation>
     </message>
+    <message>
+        <source>Install and set up</source>
+        <translation>安装并设置</translation>
+    </message>
+    <message>
+        <source>Downloads missing models and prepares them on this computer. Your current models stay active until setup succeeds.</source>
+        <translation>下载缺失的模型并在此计算机上完成准备。设置成功前，当前模型会保持启用。</translation>
+    </message>
+    <message>
+        <source>Downloading models: %1%</source>
+        <translation>正在下载模型：%1%</translation>
+    </message>
+    <message>
+        <source>Setting up models...</source>
+        <translation>正在设置模型...</translation>
+    </message>
+    <message>
+        <source>Models are ready.</source>
+        <translation>模型已就绪。</translation>
+    </message>
+    <message>
+        <source>Model setup failed. Your previous models are still active.</source>
+        <translation>模型设置失败。之前的模型仍保持启用。</translation>
+    </message>
+    <message>
+        <source>Model setup cancelled. Your previous models are still active.</source>
+        <translation>模型设置已取消。之前的模型仍保持启用。</translation>
+    </message>
+    <message>
+        <source>Math (experimental)</source>
+        <translation>数学（实验性）</translation>
+    </message>
+    <message>
+        <source>Model choices take effect after Install and set up succeeds.</source>
+        <translation>模型选择将在安装和设置成功后生效。</translation>
+    </message>
+    <message>
+        <source>Math model (TF32)</source>
+        <translation>数学模型（TF32）</translation>
+    </message>
+    <message>
+        <source>Read formula in this view</source>
+        <translation>识别当前视图中的公式</translation>
+    </message>
+    <message>
+        <source>Pause or freeze the view, then zoom to one complete formula.</source>
+        <translation>请暂停或冻结视图，然后放大一个完整的公式。</translation>
+    </message>
+    <message>
+        <source>Clear formula</source>
+        <translation>清除公式</translation>
+    </message>
+    <message>
+        <source>Recognized formula (LaTeX)</source>
+        <translation>识别的公式（LaTeX）</translation>
+    </message>
+    <message>
+        <source>Install and set up Math first.</source>
+        <translation>请先安装并设置数学功能。</translation>
+    </message>
+    <message>
+        <source>Reading formula...</source>
+        <translation>正在识别公式...</translation>
+    </message>
+    <message>
+        <source>Formula reading stopped. The original image is unchanged.</source>
+        <translation>公式识别已停止。原始图像未更改。</translation>
+    </message>
+    <message>
+        <source>Formula ready. Compare with the original image.</source>
+        <translation>公式已就绪。请与原始图像对比。</translation>
+    </message>
+    <message>
+        <source>Formula could not be read. The original image is unchanged.</source>
+        <translation>无法识别公式。原始图像未更改。</translation>
+    </message>
 </context>
 </TS>

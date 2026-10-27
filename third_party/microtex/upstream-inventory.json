@@ -1,0 +1,1006 @@
+{
+  "files": [
+    {
+      "bytes": 1096,
+      "sha256": "bc05c564a978284269047da23db39cdc1db811a88670989dc48cacfd54f203d9",
+      "path": "third_party/microtex/LICENSE"
+    },
+    {
+      "bytes": 19240,
+      "sha256": "7b2b08616ff6c98ab58c1db654e22f24af17b47fbdd2d99443228d2bc66c3502",
+      "path": "third_party/microtex/res/fonts/base/cmex10.ttf"
+    },
+    {
+      "bytes": 26576,
+      "sha256": "429148cd695008b52a2981e1e2fd94b62794c42fa007096b69299083ee0a2063",
+      "path": "third_party/microtex/res/fonts/base/cmmi10.ttf"
+    },
+    {
+      "bytes": 24348,
+      "sha256": "71f6917c54829ddf7abf34741d7d6d67598166692ce8560f29574336e972cb53",
+      "path": "third_party/microtex/res/fonts/base/cmmib10.ttf"
+    },
+    {
+      "bytes": 23744,
+      "sha256": "881440a3d0b72a2986278cd8ca68d4fecbe5304e5727bce168028de702db273f",
+      "path": "third_party/microtex/res/fonts/euler/eufb10.ttf"
+    },
+    {
+      "bytes": 23668,
+      "sha256": "db2e9aa9408a418ba59ef76ff61dd62a7f87e13803363b92cf8b12637bd9c183",
+      "path": "third_party/microtex/res/fonts/euler/eufm10.ttf"
+    },
+    {
+      "bytes": 3080,
+      "sha256": "aeb76088f5b7ca779a33871909f0732775365827320cfd95e868ac47ae214b0b",
+      "path": "third_party/microtex/res/fonts/latin/bi10.ttf"
+    },
+    {
+      "bytes": 2948,
+      "sha256": "170a94f0c00fe322ced684bcae3c0651595b1634cc8087dab14c5ce41ce9101a",
+      "path": "third_party/microtex/res/fonts/latin/bx10.ttf"
+    },
+    {
+      "bytes": 25236,
+      "sha256": "303ba1ef9f3485a60201cb16cc263566820e872d8c982825accc0df53d3796d8",
+      "path": "third_party/microtex/res/fonts/latin/cmr10.ttf"
+    },
+    {
+      "bytes": 3080,
+      "sha256": "87b2cfbfc8ce21aee68673240ba61f440f2699b3b83b962144d1c935d5a869cd",
+      "path": "third_party/microtex/res/fonts/latin/i10.ttf"
+    },
+    {
+      "bytes": 3944,
+      "sha256": "fd414c01ad9266f39d68196f95397c127d1e38b3751fcadb65fb6aeff5f5995a",
+      "path": "third_party/microtex/res/fonts/latin/r10.ttf"
+    },
+    {
+      "bytes": 2968,
+      "sha256": "fa664e667c2972e298d6597547a519d9522ce7e4f8d31fa0d4c48d1de33ebcec",
+      "path": "third_party/microtex/res/fonts/latin/sb10.ttf"
+    },
+    {
+      "bytes": 2968,
+      "sha256": "90d7d516a74d938940fd78b061c90328ebc4064275a087866ef3d9d5e18fe081",
+      "path": "third_party/microtex/res/fonts/latin/sbi10.ttf"
+    },
+    {
+      "bytes": 2716,
+      "sha256": "65307d12b16ae89a17354b88c8f71e97eb4c8b6af7f66a1f5f9e6fbb98760d77",
+      "path": "third_party/microtex/res/fonts/latin/si10.ttf"
+    },
+    {
+      "bytes": 2536,
+      "sha256": "b21fbc77551f79fd906c6ea091979e840108b301d41677becf4bf669fa7f1241",
+      "path": "third_party/microtex/res/fonts/latin/ss10.ttf"
+    },
+    {
+      "bytes": 2652,
+      "sha256": "d408234bf41f51f98d109d41900b02b5cfff0e38b624bfbabeed0867f5888b44",
+      "path": "third_party/microtex/res/fonts/latin/tt10.ttf"
+    },
+    {
+      "bytes": 18004,
+      "sha256": "83911bd4d1d40ff8cb0d21b774ce9a58046b7eb7950ddaf658edc18cb1bf8269",
+      "path": "third_party/microtex/res/fonts/latin/optional/cmbx10.ttf"
+    },
+    {
+      "bytes": 24324,
+      "sha256": "b1ea9eb622cc7169cfee11af84b53c2f2a85b0b95261577f70034f97528e3469",
+      "path": "third_party/microtex/res/fonts/latin/optional/cmbxti10.ttf"
+    },
+    {
+      "bytes": 12956,
+      "sha256": "de04c3410627816a1414f577fcfcf2be19da92017b6bbba52931256e8bd66d2c",
+      "path": "third_party/microtex/res/fonts/latin/optional/cmss10.ttf"
+    },
+    {
+      "bytes": 25600,
+      "sha256": "945ee3d582cf5d8334f16bc4b647f4166e461c38173060e6b1a8013d79a9f558",
+      "path": "third_party/microtex/res/fonts/latin/optional/cmssbx10.ttf"
+    },
+    {
+      "bytes": 13920,
+      "sha256": "7cd4403d0c1e77bac0592fd7f63b876a272429b5c3ea452179f7261d146b725b",
+      "path": "third_party/microtex/res/fonts/latin/optional/cmssi10.ttf"
+    },
+    {
+      "bytes": 32524,
+      "sha256": "6b89f04bd485bc43a4ab0be4a78ae70b0a09f165f9ce5a7baf7ca04179587c94",
+      "path": "third_party/microtex/res/fonts/latin/optional/cmti10.ttf"
+    },
+    {
+      "bytes": 28160,
+      "sha256": "04dc44c52573e1580c5bf9550b2a03fccfb02b848e568ec7e24210ece06c9933",
+      "path": "third_party/microtex/res/fonts/latin/optional/cmtt10.ttf"
+    },
+    {
+      "bytes": 395,
+      "sha256": "8dfa2050f50d341636748e7ab0ed175dde130e33d722678cfa99351c6aded331",
+      "path": "third_party/microtex/res/fonts/licences/Knuth_License.txt"
+    },
+    {
+      "bytes": 260,
+      "sha256": "6c4321c24c91ce63ce7f77286207eddf59066b1daa9e393f3e697d578ce4789e",
+      "path": "third_party/microtex/res/fonts/licences/License_for_dsrom.txt"
+    },
+    {
+      "bytes": 4630,
+      "sha256": "c5f826ca32b56a30e0f22467be9f51068b747a6e461314b7650238c3b90ee819",
+      "path": "third_party/microtex/res/fonts/licences/OFL.txt"
+    },
+    {
+      "bytes": 19804,
+      "sha256": "4187e269273d0f0c261e05a839c27496e60a69e8bd573ebe9970c29daed62395",
+      "path": "third_party/microtex/res/fonts/maths/cmbsy10.ttf"
+    },
+    {
+      "bytes": 22076,
+      "sha256": "fbec0615cc79ac80a439b71e44fb486b0b80fc82a3a370343dcb9a83190d3bf3",
+      "path": "third_party/microtex/res/fonts/maths/cmsy10.ttf"
+    },
+    {
+      "bytes": 21684,
+      "sha256": "896a21b5d61124cdd6a390ac76af6b13f5748a6b4a4cea2fb63c7ad412837ff4",
+      "path": "third_party/microtex/res/fonts/maths/msam10.ttf"
+    },
+    {
+      "bytes": 29728,
+      "sha256": "8ed7494575a25da918de700334b68fc4a6c608f734d5ecec5295acc86e303192",
+      "path": "third_party/microtex/res/fonts/maths/msbm10.ttf"
+    },
+    {
+      "bytes": 10592,
+      "sha256": "a32ac550c63959794542959b5e31de7b5a9b10d45fcbf4d204f0fb4fa68c24ff",
+      "path": "third_party/microtex/res/fonts/maths/rsfs10.ttf"
+    },
+    {
+      "bytes": 2760,
+      "sha256": "affff5b681d69ffee7bd219500656fc83a5e462d1111dade37a388cef19b9ce2",
+      "path": "third_party/microtex/res/fonts/maths/special.ttf"
+    },
+    {
+      "bytes": 17416,
+      "sha256": "6fbb2fa122c5b14b1e8aa818657a3a31a7f22144aac22e21e57288defa6b66ea",
+      "path": "third_party/microtex/res/fonts/maths/stmary10.ttf"
+    },
+    {
+      "bytes": 9316,
+      "sha256": "ef05119469bb897a609d6d00e7dcbc289e25f6d094c69bbe2ff403684648c909",
+      "path": "third_party/microtex/res/fonts/maths/optional/dsrom10.ttf"
+    },
+    {
+      "bytes": 1266,
+      "sha256": "bc9b1177baa28c1c216ac9abe76270ebe10344b901be90a189073834cc65ddbf",
+      "path": "third_party/microtex/src/common.h"
+    },
+    {
+      "bytes": 1083,
+      "sha256": "89c5ce5047fd9dfc12aa02643812e8602fd8f22ede1da86c0b34da06b20251fc",
+      "path": "third_party/microtex/src/config.h"
+    },
+    {
+      "bytes": 4089,
+      "sha256": "4d0c29a4281270892e7d1f10ada900bcd69a37fc412d7bb3cc8fffd0c0a21ed7",
+      "path": "third_party/microtex/src/latex.cpp"
+    },
+    {
+      "bytes": 1304,
+      "sha256": "b0d4784bc1ab737be6eef9e9fa80ad3c136e8328873b149ac566c2b642c4eacd",
+      "path": "third_party/microtex/src/latex.h"
+    },
+    {
+      "bytes": 1966,
+      "sha256": "11f98d281b8017c513095082064448be2ddcdf48b27f87f51df7ce278a0cd510",
+      "path": "third_party/microtex/src/meson.build"
+    },
+    {
+      "bytes": 3768,
+      "sha256": "f4f2970d2c80e137874e0b0407ed999d3d3e5a4f9f11a39eea295e00f47a0635",
+      "path": "third_party/microtex/src/QtLatex.pri"
+    },
+    {
+      "bytes": 5729,
+      "sha256": "c24e445028db25ac7c125a4da5063a05485af3525a18abff9762761363884452",
+      "path": "third_party/microtex/src/render.cpp"
+    },
+    {
+      "bytes": 4029,
+      "sha256": "3bfce4dd85bdf6b0eec80f247364307423f1b614c8588f307b6249c8b63787f4",
+      "path": "third_party/microtex/src/render.h"
+    },
+    {
+      "bytes": 27669,
+      "sha256": "5e0aee2bb96bfa1b3b33a2545ceb3e15f94ec45923c40a8cfbe7002fbde8378a",
+      "path": "third_party/microtex/src/atom/atom_basic.cpp"
+    },
+    {
+      "bytes": 17027,
+      "sha256": "7c07f82699a16b167c5322e84a8e1994e1db22f6c4956065ee767fc2bf12a6ef",
+      "path": "third_party/microtex/src/atom/atom_basic.h"
+    },
+    {
+      "bytes": 3137,
+      "sha256": "32caea81e233d7538d891fcfa9ffe5d76584b44892733939590a9c1d4af19fbe",
+      "path": "third_party/microtex/src/atom/atom_char.cpp"
+    },
+    {
+      "bytes": 5107,
+      "sha256": "4b28a74d4e69d71e7686aefb0960625284bf2e41e78ad0b7fd0c50129a09c204",
+      "path": "third_party/microtex/src/atom/atom_char.h"
+    },
+    {
+      "bytes": 14100,
+      "sha256": "2df7c8aa39b8f31c90ad0b5a11439e575a8e31393fd16ea074d67b642cbeafa5",
+      "path": "third_party/microtex/src/atom/atom_impl.cpp"
+    },
+    {
+      "bytes": 28651,
+      "sha256": "54da4cf891c4776d94ef49ef528a11223ed844f63324bf877f42eec9dcb9ec69",
+      "path": "third_party/microtex/src/atom/atom_impl.h"
+    },
+    {
+      "bytes": 21237,
+      "sha256": "59002c4336b920e861c8736d225c6023e0300ec81e3edb28374cde4d108de758",
+      "path": "third_party/microtex/src/atom/atom_matrix.cpp"
+    },
+    {
+      "bytes": 6735,
+      "sha256": "edd779f80d87a5738b30de8f58cb82c085fde44f2adc0720d02cf9fb4e3b4510",
+      "path": "third_party/microtex/src/atom/atom_matrix.h"
+    },
+    {
+      "bytes": 6991,
+      "sha256": "697afd3d3d7ceaaa450566d0c0b722263f750855e594a7461d61b6081360c642",
+      "path": "third_party/microtex/src/atom/atom_row.cpp"
+    },
+    {
+      "bytes": 4924,
+      "sha256": "971d632bd066fe8d895b5da7eecffe4105284a2d8aac54d6a95633506e8c2188",
+      "path": "third_party/microtex/src/atom/atom_row.h"
+    },
+    {
+      "bytes": 1260,
+      "sha256": "5c949df83913b08cc88c8137ec767be34a84ae2e684fb3007638af854a5bb5e8",
+      "path": "third_party/microtex/src/atom/atom_space.cpp"
+    },
+    {
+      "bytes": 2300,
+      "sha256": "fff572c862b9d182bde97b508947d93d90beacc39f8e0a2f38f4a71ad2133d8f",
+      "path": "third_party/microtex/src/atom/atom_space.h"
+    },
+    {
+      "bytes": 2888,
+      "sha256": "43dee68bb3334db01d2b9d4e67fa981dcaa7f43db1f32b9b3ad43c375c404f44",
+      "path": "third_party/microtex/src/atom/atom.h"
+    },
+    {
+      "bytes": 4831,
+      "sha256": "199141af410da2cfdc17e7b4d24fd38cfe769031e95a53d25baa60f37057f492",
+      "path": "third_party/microtex/src/atom/colors_def.cpp"
+    },
+    {
+      "bytes": 404,
+      "sha256": "647f38fc919ab9b5a6856ee9c7911048d04578d2ee097e4c414e9aebef62ead5",
+      "path": "third_party/microtex/src/atom/meson.build"
+    },
+    {
+      "bytes": 2631,
+      "sha256": "0cf3378ef5755e7026aa0199c4943422bfaf8e859f0968e8a7b055b0c13ef7f6",
+      "path": "third_party/microtex/src/atom/unit_conversion.cpp"
+    },
+    {
+      "bytes": 5064,
+      "sha256": "4c5b4d64c4831f2a33ea9b5ca494b61ad5c6bfa4f94f2034215f3fc803eda1f6",
+      "path": "third_party/microtex/src/box/box_factory.cpp"
+    },
+    {
+      "bytes": 1280,
+      "sha256": "0de9feca61e79a1e1574a42cdac40500ee2fee564bb4ba02b666d679b96a1adb",
+      "path": "third_party/microtex/src/box/box_factory.h"
+    },
+    {
+      "bytes": 12362,
+      "sha256": "ae02d1f76374f498af0ac919b444634bbb780b278410797244b7f73d93670ad0",
+      "path": "third_party/microtex/src/box/box_group.cpp"
+    },
+    {
+      "bytes": 7214,
+      "sha256": "71740fcc01ad6eb41cc96c3595355fd9ef2e4a1137b68c3281c03a963f658565",
+      "path": "third_party/microtex/src/box/box_group.h"
+    },
+    {
+      "bytes": 3361,
+      "sha256": "b1537700cfda0529a7946e208da748a12b8301781d96fab4b61b630c8d3e7118",
+      "path": "third_party/microtex/src/box/box_single.cpp"
+    },
+    {
+      "bytes": 3118,
+      "sha256": "033449186ce01bc297d757c196eb41b7d8236b09b4f6dd853fa3a623e5cb0c14",
+      "path": "third_party/microtex/src/box/box_single.h"
+    },
+    {
+      "bytes": 571,
+      "sha256": "d1ca4838e8d8f4bc12db92386c9d695ba5579604bf880928b1e76645fff4262f",
+      "path": "third_party/microtex/src/box/box.cpp"
+    },
+    {
+      "bytes": 4314,
+      "sha256": "a6396cd11aea29eaef4f57ed17760bdfd81a72ee460d6d48acb83f869136a783",
+      "path": "third_party/microtex/src/box/box.h"
+    },
+    {
+      "bytes": 241,
+      "sha256": "d90b42a36122a02ca1b1d7ec1d1832c038f77b378073b32310417ff7a439bb41",
+      "path": "third_party/microtex/src/box/meson.build"
+    },
+    {
+      "bytes": 7161,
+      "sha256": "029bbfeb26da7cd74529357a08e580df9bf467701e10aa8bf094dc241a1689e1",
+      "path": "third_party/microtex/src/core/core.cpp"
+    },
+    {
+      "bytes": 4140,
+      "sha256": "1ffddcb59db819aa0925d8e15c7c3992cf633b4c625053eca45080b18c31b978",
+      "path": "third_party/microtex/src/core/core.h"
+    },
+    {
+      "bytes": 7456,
+      "sha256": "bd3cb59a1c390f2b41419ac0390a83fe0819a694b9ed9c157fed13ec927a81c3",
+      "path": "third_party/microtex/src/core/formula_def.cpp"
+    },
+    {
+      "bytes": 7063,
+      "sha256": "acc74bab6e5275dc9e67d971aae7e2f402b06fb36967fd298dcc93d6685562cd",
+      "path": "third_party/microtex/src/core/formula.cpp"
+    },
+    {
+      "bytes": 5524,
+      "sha256": "3098654922f39f2a5e01afacc9d86d2f63594298db08a0043adf4544a5dde279",
+      "path": "third_party/microtex/src/core/formula.h"
+    },
+    {
+      "bytes": 3481,
+      "sha256": "d94a07b263c69c731cdcc68ccea5840224013d377bd647da9bd10d8a02de6286",
+      "path": "third_party/microtex/src/core/glue.cpp"
+    },
+    {
+      "bytes": 1924,
+      "sha256": "354f070e2d4800a954dee50b61b28c7841426ce437ddd136a79733240b0482dd",
+      "path": "third_party/microtex/src/core/glue.h"
+    },
+    {
+      "bytes": 2108,
+      "sha256": "5056c5576d4b03c0d2f42525e65f5d9268737f77f7417d5662f75f889393fa89",
+      "path": "third_party/microtex/src/core/localized_num.cpp"
+    },
+    {
+      "bytes": 16270,
+      "sha256": "c21823fde854359edaec4bec5f8ee8fe18f67ebb56da535facc5e5d24388ae60",
+      "path": "third_party/microtex/src/core/macro_def.cpp"
+    },
+    {
+      "bytes": 12221,
+      "sha256": "8b21293721f032db8b43f146e416f430203da762a4200b5cc8fbb51dbd1609be",
+      "path": "third_party/microtex/src/core/macro_impl.cpp"
+    },
+    {
+      "bytes": 40074,
+      "sha256": "17b553325c1150bc57eed50ee2322996cecccbac172a7562e7ddb01849848a4a",
+      "path": "third_party/microtex/src/core/macro_impl.h"
+    },
+    {
+      "bytes": 4037,
+      "sha256": "972c55d6ce850ca123d6924ab75d9150ce3822864244f2021ef2f2ca7f0a3875",
+      "path": "third_party/microtex/src/core/macro.cpp"
+    },
+    {
+      "bytes": 3932,
+      "sha256": "f92957bb4bbc8583912bad8de8f5b63db80dde4dc5b0ee29d2500aefc1cee526",
+      "path": "third_party/microtex/src/core/macro.h"
+    },
+    {
+      "bytes": 372,
+      "sha256": "9297390d71cf3f4c420a2361ddaa3dff137b29cad77866ea6b0a6765f23be969",
+      "path": "third_party/microtex/src/core/meson.build"
+    },
+    {
+      "bytes": 26722,
+      "sha256": "6b6367d98264b3366383f7fce014023f93c7fab3ceb5be9dac90c019b7442d72",
+      "path": "third_party/microtex/src/core/parser.cpp"
+    },
+    {
+      "bytes": 10251,
+      "sha256": "f249bc2a78d5e6350e8e28103b899f25197ddb2bae8b6de47e574bfb81bbc8bb",
+      "path": "third_party/microtex/src/core/parser.h"
+    },
+    {
+      "bytes": 2737,
+      "sha256": "ff4583f29097ae67e05a5c8b8725085dc84b54547edce140dec4b127980b5677",
+      "path": "third_party/microtex/src/fonts/alphabet.cpp"
+    },
+    {
+      "bytes": 1994,
+      "sha256": "0b887f8d07a53525ac6cfb86e8df02f6f4ca8e35c275628a97b2d2433b8c79a8",
+      "path": "third_party/microtex/src/fonts/alphabet.h"
+    },
+    {
+      "bytes": 655,
+      "sha256": "4d54b6ce79cb49a960ba7a452ad3527f5b10fb97f3bb5540c9fa73353f5ddabf",
+      "path": "third_party/microtex/src/fonts/font_basic.cpp"
+    },
+    {
+      "bytes": 2749,
+      "sha256": "940039cc6ffd9349f49c25a5d6e43f98e2b02188830827509e4dba83cad6516a",
+      "path": "third_party/microtex/src/fonts/font_basic.h"
+    },
+    {
+      "bytes": 3301,
+      "sha256": "2eb19f8572150d07fb5f635fbdb3ff43d663af759dcafa95bd99f66e0ade507b",
+      "path": "third_party/microtex/src/fonts/font_info.cpp"
+    },
+    {
+      "bytes": 5560,
+      "sha256": "2ec4cd5c9e3d6d2224d6460384092c9c3b4d79673a4f8fbd8b2715d06703d260",
+      "path": "third_party/microtex/src/fonts/font_info.h"
+    },
+    {
+      "bytes": 1118,
+      "sha256": "27c46028f10dbddeb83df4e5dd382ea1643be5d0c2ccbd3c7afa662876f082e9",
+      "path": "third_party/microtex/src/fonts/font_reg.h"
+    },
+    {
+      "bytes": 10624,
+      "sha256": "9c721969a3305b39c626181e0c23c4c7a72064720c7888dc71288dcae12f9dea",
+      "path": "third_party/microtex/src/fonts/fonts.cpp"
+    },
+    {
+      "bytes": 8224,
+      "sha256": "d1a2c6c062505895ce45d0b68407b0dc092116753533ff6e88e2271cb3294a2a",
+      "path": "third_party/microtex/src/fonts/fonts.h"
+    },
+    {
+      "bytes": 301,
+      "sha256": "589c1f30154db9ad00a08c7d6705608803d3e95ab9040b5e8f25b0ad1b295a05",
+      "path": "third_party/microtex/src/fonts/meson.build"
+    },
+    {
+      "bytes": 1078,
+      "sha256": "f91197289b5440f6d7c2b829077fcfe614bb64f3b0cf10f8946af7b107e173a6",
+      "path": "third_party/microtex/src/fonts/symbol_reg.h"
+    },
+    {
+      "bytes": 6774,
+      "sha256": "a229f81074df3c030c37335e3618379033004e179ef793e340c43bdad408f9c2",
+      "path": "third_party/microtex/src/fonts/tex_font.h"
+    },
+    {
+      "bytes": 3294,
+      "sha256": "774f54bb8a2db37c295aa1bfbee67262f1611f1b2e4991597b32d7300c812383",
+      "path": "third_party/microtex/src/graphic/graphic_basic.h"
+    },
+    {
+      "bytes": 6083,
+      "sha256": "9db2f2068610f5396d1d1c1e212f1afa888ec44616d8bfaa60f02f0e6e754141",
+      "path": "third_party/microtex/src/graphic/graphic.h"
+    },
+    {
+      "bytes": 117,
+      "sha256": "8292abe11fdbee251da73216a4cf91c8cbfff865bbd9610e44e23c048169e4f7",
+      "path": "third_party/microtex/src/graphic/meson.build"
+    },
+    {
+      "bytes": 53,
+      "sha256": "80f7ff8ffc515eb780153386a31ea1ad0fd441dac3e970945d4ae6e3abf7cc79",
+      "path": "third_party/microtex/src/platform/meson.build"
+    },
+    {
+      "bytes": 8663,
+      "sha256": "6aaeeb52aba4d764dee94295e1d95d4f36a44f607c2f4a59b30a56327be001bf",
+      "path": "third_party/microtex/src/platform/cairo/graphic_cairo.cpp"
+    },
+    {
+      "bytes": 3187,
+      "sha256": "8d8e556341db95f6a05eae495b79c6b379e81611dffd632b0e16393127a47f93",
+      "path": "third_party/microtex/src/platform/cairo/graphic_cairo.h"
+    },
+    {
+      "bytes": 292,
+      "sha256": "18c5b903536979b7bab497f719461cf22de7fc415bf86dfc8c39c21254a21c99",
+      "path": "third_party/microtex/src/platform/cairo/meson.build"
+    },
+    {
+      "bytes": 9755,
+      "sha256": "6673eb7f491c10ca83f0dcd7f4b1f062146514a267c008650859ec0fa8ebea6f",
+      "path": "third_party/microtex/src/platform/gdi_win/graphic_win32.cpp"
+    },
+    {
+      "bytes": 3331,
+      "sha256": "2c83bc3ad0e0482e30dfbaf1d46b2c10bae6f4f1210c15b103f9172116fa18bb",
+      "path": "third_party/microtex/src/platform/gdi_win/graphic_win32.h"
+    },
+    {
+      "bytes": 7768,
+      "sha256": "53308d5b1426b62ed75f1080adb2414b72f5013e14ac59b5e61120247c4baa47",
+      "path": "third_party/microtex/src/platform/qt/graphic_qt.cpp"
+    },
+    {
+      "bytes": 3104,
+      "sha256": "af81ff4bbde60c315ca438dd794a2a13e6638327c8bc16cfdd2411628d7b47ad",
+      "path": "third_party/microtex/src/platform/qt/graphic_qt.h"
+    },
+    {
+      "bytes": 376,
+      "sha256": "54778bc396dbf1cb6081248a57d4feae19ecfa8b07c912e5cbd5dc7089205916",
+      "path": "third_party/microtex/src/platform/qt/meson.build"
+    },
+    {
+      "bytes": 8098,
+      "sha256": "fd119083054267f145af3f7ec8669096beacdfdb54f36cbdeee3ce959c3cd174",
+      "path": "third_party/microtex/src/platform/skia/graphic_skia.cpp"
+    },
+    {
+      "bytes": 3534,
+      "sha256": "c7a8d95bb9e719812ec91ffd53e329c6c0f3c1cd497b860d9d2e70cc597a8654",
+      "path": "third_party/microtex/src/platform/skia/graphic_skia.h"
+    },
+    {
+      "bytes": 2177,
+      "sha256": "7de7f11b75bd517af28cd16bfdcc75386fbfeee41b0fd890e0b85c2bcb3da8a5",
+      "path": "third_party/microtex/src/res/font_def.res.h"
+    },
+    {
+      "bytes": 315,
+      "sha256": "5d3d7e84a87f76b6bd586ba12ab281d3af124c39b4c9a98b087aeb76fabf8ff4",
+      "path": "third_party/microtex/src/res/meson.build"
+    },
+    {
+      "bytes": 659,
+      "sha256": "ce4b0c277a1bc5e48169c41b45803e58d4b61effa8c57d0da8fb1a1685cd43aa",
+      "path": "third_party/microtex/src/res/symbol_def.res.h"
+    },
+    {
+      "bytes": 21873,
+      "sha256": "a944678778b0ef9b491f532d1aab589907f8ce6427dcd92e8d90d5400e111ce6",
+      "path": "third_party/microtex/src/res/builtin/formula_mappings.res.cpp"
+    },
+    {
+      "bytes": 167,
+      "sha256": "f13576f7a1e1fa8caf7debc916418b65c37ced6aebe2cde3cd74932b9aedefe1",
+      "path": "third_party/microtex/src/res/builtin/meson.build"
+    },
+    {
+      "bytes": 2538,
+      "sha256": "5e088abbbdeddf81c3bda75c79004de4dec652b1974f2f2715a4038202a86827",
+      "path": "third_party/microtex/src/res/builtin/symbol_mapping.res.cpp"
+    },
+    {
+      "bytes": 1897,
+      "sha256": "9cb2ab3076c912e73644f2bc2eedc6985ebb37d443a1cd8ac1d4500c3a5bbcd3",
+      "path": "third_party/microtex/src/res/builtin/tex_param.res.cpp"
+    },
+    {
+      "bytes": 16092,
+      "sha256": "d8213a235da73d364bc79ab375f63b9cfbcdb8659953012409bbc55c4fab307e",
+      "path": "third_party/microtex/src/res/builtin/tex_symbols.res.cpp"
+    },
+    {
+      "bytes": 346,
+      "sha256": "d8ea5741e131b11357c800d0406f7c5c8391a3caee4c461639fbb28f45d9fb25",
+      "path": "third_party/microtex/src/res/font/bi10.def.cpp"
+    },
+    {
+      "bytes": 330,
+      "sha256": "f255e4a8b78834da55c8217702f101aaa0ade7771116e885b7f00527757ea0d6",
+      "path": "third_party/microtex/src/res/font/bx10.def.cpp"
+    },
+    {
+      "bytes": 5354,
+      "sha256": "6c1325a274edf78359c98b404f66c96e503e0be3ddc5976b5a0f7a2f7cf6a7e9",
+      "path": "third_party/microtex/src/res/font/cmbsy10.def.cpp"
+    },
+    {
+      "bytes": 8192,
+      "sha256": "52c66ca17fe09eb2f039d478856326b7b5819ebadc95ddc8470857d704065af4",
+      "path": "third_party/microtex/src/res/font/cmbx10.def.cpp"
+    },
+    {
+      "bytes": 8924,
+      "sha256": "526774b8338df1626a9d6de232fe313a9d00f9afa1524604ec765538f5f18d77",
+      "path": "third_party/microtex/src/res/font/cmbxti10.def.cpp"
+    },
+    {
+      "bytes": 6203,
+      "sha256": "40d5c4e1703e70911ea2337bcf6a6056f4f584a9bf68dafd91cc6ab7b4181d50",
+      "path": "third_party/microtex/src/res/font/cmex10.def.cpp"
+    },
+    {
+      "bytes": 3095,
+      "sha256": "df29234421c9de676c0d462e3c69663c453c5c8e72acf07133d17579f357608d",
+      "path": "third_party/microtex/src/res/font/cmmi10_unchanged.def.cpp"
+    },
+    {
+      "bytes": 8147,
+      "sha256": "52570da61ef8d30e679e488587dfef54c9860d38d51812001924e2b60c250c87",
+      "path": "third_party/microtex/src/res/font/cmmi10.def.cpp"
+    },
+    {
+      "bytes": 3388,
+      "sha256": "4f8d1e425392aad14caa1f896a72dab9f435faea3a30f845e4d36e2f3139544c",
+      "path": "third_party/microtex/src/res/font/cmmib10_unchanged.def.cpp"
+    },
+    {
+      "bytes": 8120,
+      "sha256": "c1a5ac804d63c7796633d980c95cbe9d61ab96d4fc0c20f0aedd1b0174e8be14",
+      "path": "third_party/microtex/src/res/font/cmmib10.def.cpp"
+    },
+    {
+      "bytes": 8191,
+      "sha256": "660d5ef5eb25ff968ddc793166385b6f1a6e7bcf7495d648555f237d2b2efc20",
+      "path": "third_party/microtex/src/res/font/cmr10.def.cpp"
+    },
+    {
+      "bytes": 7384,
+      "sha256": "8b410642e159270ec05bd27c7203cf926840e366d9bd2988f6f3eee4292d81b8",
+      "path": "third_party/microtex/src/res/font/cmss10.def.cpp"
+    },
+    {
+      "bytes": 7385,
+      "sha256": "d32e9813a235e47e1e26b7b2110b5ed3d40cd5d4dc6c3cbd23ca5879211b44f9",
+      "path": "third_party/microtex/src/res/font/cmssbx10.def.cpp"
+    },
+    {
+      "bytes": 8119,
+      "sha256": "6eb80e2cf2cc5e4dc5c3657b25dcb1c31a185b1e2e8fba0147d123e3d5de8a41",
+      "path": "third_party/microtex/src/res/font/cmssi10.def.cpp"
+    },
+    {
+      "bytes": 5557,
+      "sha256": "78886c8ae0d2ac04b15785e6ae6637c4a83c044ce2c533b337238b083296e5fe",
+      "path": "third_party/microtex/src/res/font/cmsy10.def.cpp"
+    },
+    {
+      "bytes": 222,
+      "sha256": "5d0959746621f8f9ff2a9678096e4c82ace17eb487344751e4da10bd97002ff8",
+      "path": "third_party/microtex/src/res/font/cmti10_unchanged.def.cpp"
+    },
+    {
+      "bytes": 8942,
+      "sha256": "23570c57e58dd10e0ff65c9ae26793b517d685aa1892533f2fa36ab1d3f71ccf",
+      "path": "third_party/microtex/src/res/font/cmti10.def.cpp"
+    },
+    {
+      "bytes": 4448,
+      "sha256": "15d22ff3274f83293cfeef73b6abee50eeb7b77a3230cb808049b3e4b10d6cdb",
+      "path": "third_party/microtex/src/res/font/cmtt10.def.cpp"
+    },
+    {
+      "bytes": 1088,
+      "sha256": "21f8a33cbf6425efa1778f6f51fe88c900fbf9d68757cfe85488da6d8a4dcdf2",
+      "path": "third_party/microtex/src/res/font/dsrom10.def.cpp"
+    },
+    {
+      "bytes": 3151,
+      "sha256": "6404477a0ecd5e89ae42fdffda2264e6cdd55d2e58fcd6065772f2ab3dd45f8f",
+      "path": "third_party/microtex/src/res/font/eufb10.def.cpp"
+    },
+    {
+      "bytes": 3164,
+      "sha256": "0092b43f11948a0b958df91d56ba31ff7c1ad2b4b7ace68ee5601d00953fa8ae",
+      "path": "third_party/microtex/src/res/font/eufm10.def.cpp"
+    },
+    {
+      "bytes": 355,
+      "sha256": "ff5ca32f6203fe808ad56aad9f7d6b2dd22a00b67945ccee918a1010dd7cbc59",
+      "path": "third_party/microtex/src/res/font/i10.def.cpp"
+    },
+    {
+      "bytes": 1027,
+      "sha256": "42c2955bdf3ed2c806b46bf495fde94568b48fb1870f0f2300daa9eab241dcac",
+      "path": "third_party/microtex/src/res/font/meson.build"
+    },
+    {
+      "bytes": 438,
+      "sha256": "4426e5fabdfa8b8ee477aa602419a32bce3353d5654c4cb9c79fd7c7d2868102",
+      "path": "third_party/microtex/src/res/font/moustache.def.cpp"
+    },
+    {
+      "bytes": 4597,
+      "sha256": "4cbfe54be7557daec8851086983bed9ba43e02528d1e98e0d40d710e2ed26566",
+      "path": "third_party/microtex/src/res/font/msam10.def.cpp"
+    },
+    {
+      "bytes": 4492,
+      "sha256": "3328eeb13458f53e783f317ece505b4a564ae04ba038b510469277c378a00ee9",
+      "path": "third_party/microtex/src/res/font/msbm10.def.cpp"
+    },
+    {
+      "bytes": 206,
+      "sha256": "49626a5d0326ee93e48ccae98d8612a14872efaf58b52185ab72e8d33ff4b78e",
+      "path": "third_party/microtex/src/res/font/r10_unchanged.def.cpp"
+    },
+    {
+      "bytes": 332,
+      "sha256": "67d1c135f3f2f00a4b953f0d133ef8e695a841e1c95d8cccd010d812b2aab821",
+      "path": "third_party/microtex/src/res/font/r10.def.cpp"
+    },
+    {
+      "bytes": 86,
+      "sha256": "18b3a59e0f83881bd3705c7e49154e25b2f7f7a168071302bfe5a4499932f2cb",
+      "path": "third_party/microtex/src/res/font/README"
+    },
+    {
+      "bytes": 1530,
+      "sha256": "918d9c32ed134200a42fa5ae571a30d0e63c1f4020a1c05e27d330437af3bfe3",
+      "path": "third_party/microtex/src/res/font/rsfs10.def.cpp"
+    },
+    {
+      "bytes": 322,
+      "sha256": "ba13cf1de28eca15e4d0790a05c2bd3c62cf1e46b69a9dc6905d14cbc6ce489e",
+      "path": "third_party/microtex/src/res/font/sb10.def.cpp"
+    },
+    {
+      "bytes": 339,
+      "sha256": "17fa9a3e02cc0bce9f31b789b2387d4a42ef9b4acfe0cb0fd73186db2a992622",
+      "path": "third_party/microtex/src/res/font/sbi10.def.cpp"
+    },
+    {
+      "bytes": 346,
+      "sha256": "351d400cf3c31e9dbdf21759790a076f953fac11674f91ddd3ec7d998a6d8c7c",
+      "path": "third_party/microtex/src/res/font/si10.def.cpp"
+    },
+    {
+      "bytes": 346,
+      "sha256": "e2606b43eb98dfe13d5513901e2f157704f376121637ea7e50f118bf9afffa69",
+      "path": "third_party/microtex/src/res/font/special.def.cpp"
+    },
+    {
+      "bytes": 332,
+      "sha256": "186d4a9a01b23824bfc3b192b9a49a32e9ec99fc2f1ec6c8d8f9610bca809a86",
+      "path": "third_party/microtex/src/res/font/ss10.def.cpp"
+    },
+    {
+      "bytes": 5037,
+      "sha256": "dda827fe15b4e3f1fc7960a749f241099e13c8da6aa4998e4458e4c09bc2fa3e",
+      "path": "third_party/microtex/src/res/font/stmary10.def.cpp"
+    },
+    {
+      "bytes": 291,
+      "sha256": "c94cce3f8b70ddb74480781afd17cc80585e4d8b0647caca83608b73673f834e",
+      "path": "third_party/microtex/src/res/font/tt10.def.cpp"
+    },
+    {
+      "bytes": 16721,
+      "sha256": "4dbdb04b5a6d13f60b1f6b95a9f50eeddc1b5f8616eae7dccdfe79d7ed523379",
+      "path": "third_party/microtex/src/res/parser/font_parser.cpp"
+    },
+    {
+      "bytes": 5636,
+      "sha256": "0365fa7b621da70c85e15b2b265a79803e089466a787e3721014067f43f98519",
+      "path": "third_party/microtex/src/res/parser/font_parser.h"
+    },
+    {
+      "bytes": 4326,
+      "sha256": "3ed5a1a272bf764ea041bf2e37724148974254ed69e09b2ee337d923488a20d8",
+      "path": "third_party/microtex/src/res/parser/formula_parser.cpp"
+    },
+    {
+      "bytes": 1710,
+      "sha256": "2bc134254a5948471f2ac3354edf4ad15b365bd2e06393fbef76049b7841b86f",
+      "path": "third_party/microtex/src/res/parser/formula_parser.h"
+    },
+    {
+      "bytes": 207,
+      "sha256": "5dc18319dc28a19cacd35d7d3791e0ee2f6ee6473f90ee244ba65f43792910fb",
+      "path": "third_party/microtex/src/res/parser/meson.build"
+    },
+    {
+      "bytes": 729,
+      "sha256": "53b06bbe8f1ea73bc13ddea4d9b983c18a8cc42931108e5a63c8dab2d474fc0e",
+      "path": "third_party/microtex/src/res/reg/builtin_font_reg.cpp"
+    },
+    {
+      "bytes": 1099,
+      "sha256": "ab0ad978fc4b0e2efb60f83b6b6b636b2969dbca09617b0f287ba0fba6ebdb8e",
+      "path": "third_party/microtex/src/res/reg/builtin_font_reg.h"
+    },
+    {
+      "bytes": 212,
+      "sha256": "71a33a7bb71e54b417cc7c3b69e990aed0117e03d21c8c9a8394b943e583bb20",
+      "path": "third_party/microtex/src/res/reg/builtin_syms_reg.cpp"
+    },
+    {
+      "bytes": 312,
+      "sha256": "b27b70091f541fe2221ddcd92a38cd6b3cef8b1d42941f9756a5f24a4e61bafa",
+      "path": "third_party/microtex/src/res/reg/builtin_syms_reg.h"
+    },
+    {
+      "bytes": 205,
+      "sha256": "601a130f0f9014b691c7015ef1536c7348df0caa51cdcc5acd6022b736fb6de6",
+      "path": "third_party/microtex/src/res/reg/meson.build"
+    },
+    {
+      "bytes": 317,
+      "sha256": "dfc27135ee72736cbd60580925906174f101c8095890afab5c1a9841e8751ec2",
+      "path": "third_party/microtex/src/res/sym/amsfonts.def.cpp"
+    },
+    {
+      "bytes": 4481,
+      "sha256": "0d79cc6e30822907f0904f350fbf7036d173cf1a05dfdf922fc06655033a57df",
+      "path": "third_party/microtex/src/res/sym/amssymb.def.cpp"
+    },
+    {
+      "bytes": 5071,
+      "sha256": "40e8d3608dd8ff995d62a5bc5f0b083b2097663bf7eccd65e83bb56cf529de9d",
+      "path": "third_party/microtex/src/res/sym/base.def.cpp"
+    },
+    {
+      "bytes": 155,
+      "sha256": "498b1a8db9c551490d6a9721c3ea206f310613a9b96b4d238cdae0f31fabda63",
+      "path": "third_party/microtex/src/res/sym/meson.build"
+    },
+    {
+      "bytes": 2281,
+      "sha256": "cb8a19cf006d7558c5a651e458a6427fd24798d52c0708c050a81a0d806cb762",
+      "path": "third_party/microtex/src/res/sym/stmaryrd.def.cpp"
+    },
+    {
+      "bytes": 286,
+      "sha256": "75e1865bc0d8a2418f3596de1f548fa2ed9881b55c6efbc5e56ffe1a460296af",
+      "path": "third_party/microtex/src/res/sym/symspecial.def.cpp"
+    },
+    {
+      "bytes": 13323,
+      "sha256": "cfba4df8bdcd21f8bd7fde6f8301d3101036f08eef9f35db5590e3cd08b7c556",
+      "path": "third_party/microtex/src/samples/gtkmm_main.cpp"
+    },
+    {
+      "bytes": 3243,
+      "sha256": "7546b3957601823ac00a169ec43cbfc2a560fcba8a8327864aaf38048d977a8a",
+      "path": "third_party/microtex/src/samples/mem_check_main.cpp"
+    },
+    {
+      "bytes": 198,
+      "sha256": "3c222f64c101788c75f9af2f99fc5487a6de5e085b297c75a7441dc6393d7f15",
+      "path": "third_party/microtex/src/samples/meson.build"
+    },
+    {
+      "bytes": 408,
+      "sha256": "dc651ebce8bfeb47188fb6b737a57d60bdbe3489bb1872665145b467c05dd598",
+      "path": "third_party/microtex/src/samples/qt_main.cpp"
+    },
+    {
+      "bytes": 4197,
+      "sha256": "ae4696d410ef16e9a30e23acd41cc28b3fe6ad61de476be32d50c1ea499bc432",
+      "path": "third_party/microtex/src/samples/qt_mainwindow.cpp"
+    },
+    {
+      "bytes": 715,
+      "sha256": "d7bfe4e618f3cd299aeaf1a5df9faf84893f4fb699c53379f080582319f3f446",
+      "path": "third_party/microtex/src/samples/qt_mainwindow.h"
+    },
+    {
+      "bytes": 3796,
+      "sha256": "4b3a7dac448481094043b8e9ee0a84747885d96e05e6070960b5bc972930fbb5",
+      "path": "third_party/microtex/src/samples/qt_skiatexwidget.cpp"
+    },
+    {
+      "bytes": 987,
+      "sha256": "e279219ac028c9621f48271a06d4962db878e3b27b4dad252ea84aae367b97ed",
+      "path": "third_party/microtex/src/samples/qt_skiatexwidget.h"
+    },
+    {
+      "bytes": 1313,
+      "sha256": "6dc08c8e881220239672b97106d56a80d4b21854bd9cc3999f08eb5cc67ea561",
+      "path": "third_party/microtex/src/samples/qt_texqmlitem.cpp"
+    },
+    {
+      "bytes": 725,
+      "sha256": "fe4b8073ba388a9f1fe557d83c696db80367f41b843a667f203f940fd9956bf2",
+      "path": "third_party/microtex/src/samples/qt_texqmlitem.h"
+    },
+    {
+      "bytes": 2240,
+      "sha256": "c06ac9458aa589508a3eb17a757eaa6e568f961a86b51c6ff9840cb447bdacb5",
+      "path": "third_party/microtex/src/samples/qt_texwidget.cpp"
+    },
+    {
+      "bytes": 761,
+      "sha256": "8d5cac469fc96df198b640096e1958bfd985fd53ea11941784b45b0b6c327b33",
+      "path": "third_party/microtex/src/samples/qt_texwidget.h"
+    },
+    {
+      "bytes": 1529,
+      "sha256": "ad2fd191ebec35cae891a832d6f13f1e45518188d70300f5e5f5219bbc7df6a1",
+      "path": "third_party/microtex/src/samples/samples.h"
+    },
+    {
+      "bytes": 9072,
+      "sha256": "6c8ad048c41055963a250ed10a0a5b610b17c8ae8d80ea9accf9a142edb33906",
+      "path": "third_party/microtex/src/samples/win32_main.cpp"
+    },
+    {
+      "bytes": 1767,
+      "sha256": "087dc719709ef9f37460df6780742d97ba1e55165b1f3e3c4ccceaab8e237e46",
+      "path": "third_party/microtex/src/utils/dict_tree.h"
+    },
+    {
+      "bytes": 2810,
+      "sha256": "0b3362d846d3c69998981a6ac37ef02bcd5ea56b030aef27de24db7423a87bc3",
+      "path": "third_party/microtex/src/utils/enums.h"
+    },
+    {
+      "bytes": 6072,
+      "sha256": "b9c8ec55d1dc3d4ce38b427251a829d0e39183cfa5ec0966ee69e5e56f7b48a8",
+      "path": "third_party/microtex/src/utils/exceptions.h"
+    },
+    {
+      "bytes": 2075,
+      "sha256": "c749921439b638af4ca053cf61c9722d9ec12aefd225c8751f7c1acd51152d1d",
+      "path": "third_party/microtex/src/utils/indexed_arr.h"
+    },
+    {
+      "bytes": 1020,
+      "sha256": "7fc701090e9d94c2910bb710be396f63f3e2e9c324d7c890d4af8459e6661e91",
+      "path": "third_party/microtex/src/utils/log.h"
+    },
+    {
+      "bytes": 294,
+      "sha256": "111a66c1ade2bba04457340b87edf389274f925013e4c822991f8f4863daa1b6",
+      "path": "third_party/microtex/src/utils/meson.build"
+    },
+    {
+      "bytes": 600,
+      "sha256": "69b98bfff8fc3e768e0eab581617023ce740edaa5eff179fd12e511021c7e94b",
+      "path": "third_party/microtex/src/utils/nums.h"
+    },
+    {
+      "bytes": 1903,
+      "sha256": "58cbb4903801c507d4e517de86d264bdbb748d8b49307cc441d782f39ac62e17",
+      "path": "third_party/microtex/src/utils/string_utils.cpp"
+    },
+    {
+      "bytes": 5211,
+      "sha256": "6a00f953848d3d64027a4936b961b73ccb407d368b626a5bfb280e29127fdbcd",
+      "path": "third_party/microtex/src/utils/string_utils.h"
+    },
+    {
+      "bytes": 2255,
+      "sha256": "6a549a26d4fac6c14caec190d051765ae7c536cda6fd9d6ddac532ef3c3b31d3",
+      "path": "third_party/microtex/src/utils/utf.cpp"
+    },
+    {
+      "bytes": 405,
+      "sha256": "a06db527fc870e397c16fc745ea32f0a6a36cb2bbc76ef23ad0c37f5f3ea4f02",
+      "path": "third_party/microtex/src/utils/utf.h"
+    },
+    {
+      "bytes": 395,
+      "sha256": "c24e8b77895fc192ef840cbf11dea5f44844dd105855de079bcdfef4146847f4",
+      "path": "third_party/microtex/src/utils/utils.cpp"
+    },
+    {
+      "bytes": 1491,
+      "sha256": "60ae6e14917b226c923443f178e2f33240d081e4c68fb8b4b79962c23a09b062",
+      "path": "third_party/microtex/src/utils/utils.h"
+    },
+    {
+      "bytes": 808,
+      "sha256": "9332252e9b9e46db8285d4a3f0bf25f139bf1dca6781b956d57f2302efca6432",
+      "path": "third_party/tinyxml2/LICENSE.txt"
+    },
+    {
+      "bytes": 78553,
+      "sha256": "95f64e4cb06c9e147d5b12e8860c88898944858dfbc38fed92ebf918f1436554",
+      "path": "third_party/tinyxml2/tinyxml2.cpp"
+    },
+    {
+      "bytes": 74466,
+      "sha256": "0f3c6e5a91b6d65caca3cc7239926455f21e488cff80ac3d27c74f5262fd2602",
+      "path": "third_party/tinyxml2/tinyxml2.h"
+    }
+  ],
+  "microtexRevision": "0e3707f6dafebb121d98b53c64364d16fefe481d",
+  "tinyxml2Revision": "9148bdf719e997d1f474be6bcc7943881046dba1"
+}

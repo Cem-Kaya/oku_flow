@@ -3685,5 +3685,81 @@ Chọn Kết nối ChatGPT trong tab Trợ lý của chế độ Nâng cao để
         <source>Saved document copy.</source>
         <translation>Đã lưu bản sao tài liệu.</translation>
     </message>
+    <message>
+        <source>Install and set up</source>
+        <translation>Cài đặt và thiết lập</translation>
+    </message>
+    <message>
+        <source>Downloads missing models and prepares them on this computer. Your current models stay active until setup succeeds.</source>
+        <translation>Tải các mô hình còn thiếu và chuẩn bị chúng trên máy tính này. Các mô hình hiện tại vẫn hoạt động cho đến khi thiết lập thành công.</translation>
+    </message>
+    <message>
+        <source>Downloading models: %1%</source>
+        <translation>Đang tải mô hình: %1%</translation>
+    </message>
+    <message>
+        <source>Setting up models...</source>
+        <translation>Đang thiết lập mô hình...</translation>
+    </message>
+    <message>
+        <source>Models are ready.</source>
+        <translation>Các mô hình đã sẵn sàng.</translation>
+    </message>
+    <message>
+        <source>Model setup failed. Your previous models are still active.</source>
+        <translation>Không thể thiết lập mô hình. Các mô hình trước đó vẫn hoạt động.</translation>
+    </message>
+    <message>
+        <source>Model setup cancelled. Your previous models are still active.</source>
+        <translation>Đã hủy thiết lập mô hình. Các mô hình trước đó vẫn hoạt động.</translation>
+    </message>
+    <message>
+        <source>Math (experimental)</source>
+        <translation>Toán học (thử nghiệm)</translation>
+    </message>
+    <message>
+        <source>Model choices take effect after Install and set up succeeds.</source>
+        <translation>Lựa chọn mô hình được áp dụng sau khi cài đặt và thiết lập thành công.</translation>
+    </message>
+    <message>
+        <source>Math model (TF32)</source>
+        <translation>Mô hình toán học (TF32)</translation>
+    </message>
+    <message>
+        <source>Read formula in this view</source>
+        <translation>Đọc công thức trong chế độ xem này</translation>
+    </message>
+    <message>
+        <source>Pause or freeze the view, then zoom to one complete formula.</source>
+        <translation>Tạm dừng hoặc đóng băng chế độ xem, rồi phóng to một công thức đầy đủ.</translation>
+    </message>
+    <message>
+        <source>Clear formula</source>
+        <translation>Xóa công thức</translation>
+    </message>
+    <message>
+        <source>Recognized formula (LaTeX)</source>
+        <translation>Công thức đã nhận dạng (LaTeX)</translation>
+    </message>
+    <message>
+        <source>Install and set up Math first.</source>
+        <translation>Trước tiên, hãy cài đặt và thiết lập Toán học.</translation>
+    </message>
+    <message>
+        <source>Reading formula...</source>
+        <translation>Đang đọc công thức...</translation>
+    </message>
+    <message>
+        <source>Formula reading stopped. The original image is unchanged.</source>
+        <translation>Đã dừng đọc công thức. Ảnh gốc không thay đổi.</translation>
+    </message>
+    <message>
+        <source>Formula ready. Compare with the original image.</source>
+        <translation>Công thức đã sẵn sàng. Hãy so sánh với ảnh gốc.</translation>
+    </message>
+    <message>
+        <source>Formula could not be read. The original image is unchanged.</source>
+        <translation>Không thể đọc công thức. Ảnh gốc không thay đổi.</translation>
+    </message>
 </context>
 </TS>

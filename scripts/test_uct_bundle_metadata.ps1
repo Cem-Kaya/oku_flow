@@ -71,7 +71,7 @@ function Write-FixtureReceipt([hashtable]$Fixture, [System.Collections.IDictiona
 function New-MetadataFixture([string]$Name) {
     $case = Join-Path $run $Name
     $f = @{bundle=(Join-Path $case 'bundle');repo=(Join-Path $case 'repo');catalog=@{
-        schema=1;maxFileBytes=1048576;maxTotalBytes=2097152;files=@();packages=@(
+        schema=1;modelTiers=@('medium');maxFileBytes=1048576;maxTotalBytes=2097152;files=@();packages=@(
             @{id='paddleocr';version='synthetic';licenseDeclared='Apache-2.0';noticePaths=@('app/ocr/MODEL_LICENSES.txt','app/models/uct/MODIFICATIONS.txt')},
             @{id='onnxruntime';version='synthetic';licenseDeclared='MIT';archiveSha256=('1'*64);noticePaths=@('app/ocr/cpu/LICENSE')},
             @{id='tensorrt';version='synthetic';licenseDeclared='LicenseRef-NVIDIA-TensorRT-11.4';archiveSha256=('2'*64);
@@ -92,9 +92,15 @@ function New-MetadataFixture([string]$Name) {
     foreach ($kind in @('det','rec')) {
         foreach ($tier in @('tiny','small','medium')) {
             $dir = "$kind/$tier"
-            $graph = Add-FixtureFile $f "app/ocr/$dir/inference.onnx" runtime "$dir/inference.onnx" paddleocr "Synthetic FP32 $dir"
-            $config = Add-FixtureFile $f "app/ocr/$dir/inference.yml" runtime "$dir/inference.yml" paddleocr "Synthetic configuration $dir"
-            $modified = Add-FixtureFile $f "app/models/uct/$dir/bf16-linear/inference.onnx" models "uct/$dir/bf16-linear/inference.onnx" paddleocr "Synthetic BF16 $dir"
+            if ($tier -ceq 'medium') {
+                $graph = Add-FixtureFile $f "app/ocr/$dir/inference.onnx" runtime "$dir/inference.onnx" paddleocr "Synthetic FP32 $dir"
+                $config = Add-FixtureFile $f "app/ocr/$dir/inference.yml" runtime "$dir/inference.yml" paddleocr "Synthetic configuration $dir"
+            } else {
+                # Keep all historical pin identities without distributing their graphs.
+                $graph = @{sha256=(Get-UctBytesHash ([Text.Encoding]::UTF8.GetBytes("Synthetic FP32 $dir")))}
+                $config = @{sha256=(Get-UctBytesHash ([Text.Encoding]::UTF8.GetBytes("Synthetic configuration $dir")))}
+            }
+            $modified = @{sha256=(Get-UctBytesHash ([Text.Encoding]::UTF8.GetBytes("Synthetic BF16 $dir")))}
             $pins.models += @{directory=$dir;kind=$kind;tier=$tier;repository="synthetic/$dir";revision=('3'*40);
                 files=@{'inference.onnx'=$graph.sha256;'inference.yml'=$config.sha256}}
             $bf16.models += @{role=$(if($kind -ceq 'det'){'detector'}else{'recognizer'});tier=$tier;
@@ -102,7 +108,8 @@ function New-MetadataFixture([string]$Name) {
                 license='Apache-2.0';bundlePath="uct/$dir/bf16-linear/inference.onnx";convertedGraphSha256=$modified.sha256}
         }
     }
-    $f.bf16 = $bf16
+    $f.bf16 = $bf16.Clone()
+    $f.bf16.models = @($bf16.models | Where-Object tier -CEQ 'medium')
     $null = Add-FixtureFile $f 'app/ocr/pins.json' repo 'scripts/uct/pins.json' okuflow ($pins | ConvertTo-Json -Depth 15)
     $null = Add-FixtureFile $f 'app/models/uct/bf16-models.json' repo 'scripts/uct/bf16-models.json' okuflow ($bf16 | ConvertTo-Json -Depth 15)
     foreach ($notice in @(
@@ -131,6 +138,7 @@ try {
         $f = New-MetadataFixture 'valid'
         $m = Read-FixtureMetadata $f
         Assert-Metadata ($m.Manifest.precision.cpu -ceq 'FP32' -and !$m.Manifest.precision.accuracyGate) 'Precision declarations changed.'
+        Assert-Metadata (@($m.Manifest.precision.modelTiers).Count -eq 1 -and $m.Manifest.precision.modelTiers[0] -ceq 'medium') 'Bundled tiers must come from the selected inventory.'
         Assert-Metadata ($m.Packages.Count -eq 5 -and $m.Files.Count -eq ($f.catalog.files.Count + 6)) 'SPDX inventory coverage mismatch.'
         Assert-Metadata (@($m.Packages | Where-Object filesAnalyzed -NE $false).Count -eq 0) 'Do not invent package verification codes.'
         Assert-Metadata (@($m.Relationships | Where-Object relationshipType -CEQ 'CONTAINS').Count -eq (5 + $m.Files.Count)) 'Missing CONTAINS relationships.'

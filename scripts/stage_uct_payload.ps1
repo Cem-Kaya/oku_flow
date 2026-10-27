@@ -183,7 +183,11 @@ function Test-UctPayloadCatalog([hashtable]$Manifest, [string]$RepoRoot) {
     $pins = [Text.Encoding]::UTF8.GetString($snapshots['scripts/uct/pins.json']) | ConvertFrom-Json -AsHashtable
     $bf16 = [Text.Encoding]::UTF8.GetString($snapshots['scripts/uct/bf16-models.json']) | ConvertFrom-Json -AsHashtable
     if ($pins.models.Count -ne 6 -or $bf16.models.Count -ne 6) { throw 'UCT requires all six source and BF16 model pins.' }
+    if (!$Manifest.ContainsKey('modelTiers') -or @($Manifest.modelTiers).Count -ne 1 -or $Manifest.modelTiers[0] -cne 'medium') {
+        throw 'UCT distribution must select only the medium model tier.'
+    }
     foreach ($model in $pins.models) {
+        if ($model.tier -cne 'medium') { continue }
         foreach ($name in $model.files.Keys) {
             $relative = "$($model.directory)/$name"
             $expected["app/ocr/$relative"] = @('runtime', $relative, $model.files[$name], 'paddleocr')
@@ -196,7 +200,12 @@ function Test-UctPayloadCatalog([hashtable]$Manifest, [string]$RepoRoot) {
             $source[0].files['inference.yml'] -cne $model.configSha256 -or $source[0].repository -cne $model.repository -or
             $source[0].revision -cne $model.revision -or $model.license -cne 'Apache-2.0' -or
             $model.bundlePath -cne "uct/$kind/$($model.tier)/bf16-linear/inference.onnx") { throw 'BF16 source/catalog parity failed.' }
-        $expected["app/models/$($model.bundlePath)"] = @('models', $model.bundlePath, $model.convertedGraphSha256, 'paddleocr')
+        # Historical BF16 catalogs remain independently reconciled. Shipped
+        # graphs are FP32 only; native application preparation owns BF16 now.
+    }
+    $actualModels = @($Manifest.files | Where-Object { $_.package -ceq 'paddleocr' -and $_.path -clike '*.onnx' })
+    if ($actualModels.Count -ne 2 -or @($actualModels | Where-Object { !$expected.ContainsKey($_.path) }).Count) {
+        throw 'UCT distribution includes an unselected model graph.'
     }
     foreach ($path in $expected.Keys) {
         $entries = @($Manifest.files | Where-Object path -CEQ $path)
@@ -212,20 +221,22 @@ function Test-UctPayloadCatalog([hashtable]$Manifest, [string]$RepoRoot) {
         $ortPackage.archiveSha256 -cne $pins.ort.sha256 -or $trtPackage.archiveSha256 -cne $pins.tensorrt.sha256) {
         throw 'UCT converter/runtime archive pin parity failed.'
     }
-    return $bf16
+    $selected = $bf16.Clone()
+    $selected.models = @($bf16.models | Where-Object tier -CEQ 'medium')
+    return $selected
 }
 
 function Get-UctModificationBytes([hashtable]$Catalog) {
-    $lines = @('OkuFlow modifications to the Apache-2.0 PP-OCRv6 model graphs',
+    $lines = @('OkuFlow local precision preparation for Apache-2.0 PP-OCRv6 models',
         'Original model cards/configurations and MODEL_LICENSES.txt are retained unchanged.',
-        "Converter SHA-256: $($Catalog.converterSha256)",
-        "Method: $($Catalog.conversion). FLOAT I/O is retained; arithmetic is mixed BF16/FP16/FP32.",
-        'These graphs are modified by OkuFlow, not original upstream FP32 models.', '')
+        'Distributed ONNX graphs are the unmodified pinned FP32 originals.',
+        'OkuFlow prepares BF16 convolution/matrix products natively with FLOAT interfaces.',
+        'Recipe: okuflow-native-bf16-conv-matmul-v1. Other operations retain their original types.',
+        'Prepared TensorRT engines are device-local caches, not distributed model graphs.', '')
     foreach ($m in $Catalog.models) {
         $lines += "$($m.role)/$($m.tier): $($m.repository)@$($m.revision)"
         $lines += "  original SHA-256: $($m.sourceSha256)"
         $lines += "  configuration SHA-256: $($m.configSha256)"
-        $lines += "  modified BF16 graph SHA-256: $($m.convertedGraphSha256)"
     }
     return ,([Text.Encoding]::UTF8.GetBytes(($lines -join "`n") + "`n"))
 }
@@ -359,7 +370,11 @@ function Invoke-UctPayloadStage([string]$Bundle, [string]$Runtime, [string]$Tens
     $manifest = [Text.Encoding]::UTF8.GetString($bytes) | ConvertFrom-Json -AsHashtable
     $catalog = Test-UctPayloadCatalog $manifest $repo
     $generated = @{'app/ocr/distribution.json'=$bytes; 'app/models/uct/MODIFICATIONS.txt'=(Get-UctModificationBytes $catalog)}
-    Invoke-UctPayloadCopy $manifest @{repo=$repo;runtime=$Runtime;tensorrt=$TensorRt;models=$Models;cuda=$Cuda} $Bundle $generated $hash
+    $roots = @{repo=$repo;runtime=$Runtime;tensorrt=$TensorRt;models=$Models;cuda=$Cuda}
+    foreach ($key in @($roots.Keys)) {
+        if (!@($manifest.files | Where-Object root -CEQ $key).Count) { $roots.Remove($key) }
+    }
+    Invoke-UctPayloadCopy $manifest $roots $Bundle $generated $hash
 }
 
 if ($MyInvocation.InvocationName -ne '.') {

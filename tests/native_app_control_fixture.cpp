@@ -235,6 +235,17 @@ public:
     static AppControlService& Service(OkuFlowApp& app) {return *app.controlService_;}
     static AppControlTarget& Target(OkuFlowApp& app) {return *app.controlTarget_;}
     static uct::ModelSettings UctModels(OkuFlowApp& app) {return app.mainWindow_->ultraClearTextPanel()->ModelSettings();}
+    static bool DraftUctModelsAndSave(OkuFlowApp& app,const uct::ModelSettings& models) {
+        const auto previous=app.settingsController_->Settings().ultraClearTextModels;
+        app.mainWindow_->ultraClearTextPanel()->SetModelSettings(models);
+        app.SavePersistentSettings();
+        const auto& committed=app.settingsController_->LastCommittedSettings();
+        return app.settingsController_->Settings().ultraClearTextModels==previous &&
+            committed && committed->ultraClearTextModels==previous;
+    }
+    static uct::ModelSettings ActiveUctModels(OkuFlowApp& app) {
+        return app.settingsController_->Settings().ultraClearTextModels;
+    }
     static void NativeUctModels(OkuFlowApp& app,const uct::ModelSettings& models) {
         app.mainWindow_->ultraClearTextPanel()->SetModelSettings(models);app.OnUltraClearTextModelsChanged();
     }
@@ -2844,6 +2855,26 @@ private slots:
         QCOMPARE(NativeControlFixture::NativeState(app_)["zoomSlider"].toInt(),175);
         service.End(context);
     }
+    void uctModelDraftDoesNotChangeSavedOrAgentSelection() {
+        auto& service=NativeControlFixture::Service(app_);
+        const auto original=NativeControlFixture::UctModels(app_);
+        const auto restore=qScopeGuard([&]{service.StopAndUndo();NativeControlFixture::NativeUctModels(app_,original);});
+        NativeControlFixture::NativeUctModels(app_,{});
+        const auto context=service.Begin({ContextKind::EmbeddedTurn,"uct-model-draft",1,{}});
+        auto draft=uct::ModelSettings{};draft.cpuDetector=uct::ModelTier::Tiny;draft.installMath=true;draft.mathModel=uct::formula::Model::PlusS;
+        QVERIFY(NativeControlFixture::DraftUctModelsAndSave(app_,draft));
+        const auto rows=Call(context,"uct-draft-read","image_settings_get").content["parameters"].toObject();
+        QCOMPARE(rows["image.uct.cpu.detector"].toObject()["requested"],QJsonValue("medium"));
+        QCOMPARE(rows["image.uct.cpu.detector"].toObject()["saved"],QJsonValue("medium"));
+        QCOMPARE(NativeControlFixture::UctModels(app_).cpuDetector,uct::ModelTier::Tiny);
+        const auto committed=NativeControlFixture::ActiveUctModels(app_);
+        QVERIFY(!committed.installMath);QCOMPARE(committed.mathModel,uct::formula::Model::PlusL);
+        const auto changed=Call(context,"uct-draft-agent-set","image_settings_set",{{"image.uct.cpu.detector","tiny"}});
+        QVERIFY(changed.content["ok"].toBool());
+        QVERIFY(!NativeControlFixture::ActiveUctModels(app_).installMath);
+        QCOMPARE(NativeControlFixture::ActiveUctModels(app_).mathModel,uct::formula::Model::PlusL);
+        service.End(context);
+    }
     void uctModelSettingsShareNativePersistenceApiUndoAndUserWins() {
         auto& service=NativeControlFixture::Service(app_);
         const auto original=NativeControlFixture::UctModels(app_);
@@ -2852,7 +2883,7 @@ private slots:
         const auto context=service.Begin({ContextKind::EmbeddedTurn,"native-uct-models",1,{}});
         auto rows=Call(context,"uct-initial","image_settings_get").content["parameters"].toObject();
         QCOMPARE(rows["image.uct.gpu.detector"].toObject()["requested"],QJsonValue("medium"));
-        QCOMPARE(rows["image.uct.cpu.recognizer"].toObject()["saved"],QJsonValue("small"));
+        QCOMPARE(rows["image.uct.cpu.recognizer"].toObject()["saved"],QJsonValue("medium"));
         QVERIFY(rows["image.uct.gpu.detector"].toObject()["effective"].isNull());
         const QJsonObject changes{{"image.uct.gpu.detector","small"},{"image.uct.gpu.recognizer","tiny"},
             {"image.uct.cpu.detector","medium"},{"image.uct.cpu.recognizer","medium"}};

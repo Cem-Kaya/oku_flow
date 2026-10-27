@@ -302,3 +302,5 @@ Sources: [Microsoft signing options](https://learn.microsoft.com/en-us/windows/a
 [distribution and updates](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/choose-distribution-path),
 [desktop packaging prerequisites](https://learn.microsoft.com/en-us/windows/msix/desktop/desktop-to-uwp-prepare),
 [winget contribution workflow](https://learn.microsoft.com/en-us/windows/package-manager/package/repository).
+
+Current Math-enabled shipping bundles retain six exact notices under app/licenses/math. Metadata verifies them against tracked source and records MicroTeX MIT, tinyxml2 Zlib and the unmodified embedded font collection, including static-link/containment relationships and the full Knuth/dsrom terms. Missing or altered notices refuse release metadata; model weights remain optional downloads.

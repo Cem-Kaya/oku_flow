@@ -304,6 +304,9 @@ public:
     bool IsEnabled() const noexcept { return enabled_; }
     // Retire a previous worker asynchronously and fence its queued callbacks.
     void ReplaceRecognizerFactory(RecognizerFactory factory);
+    void SetFormulaFactory(std::function<uct::FormulaWork(const QRect&)> factory);
+    void RequestFormula();
+    void ClearFormula();
     void SetShowOriginal(bool showOriginal);
 
     // Selected media uses the same recognition scheduler as live input.
@@ -444,6 +447,9 @@ signals:
 
 private:
     void EnsureScheduler();
+    void TrySubmitFormula();
+    void CancelFormula();
+    void HandleFormulaResult(uct::RecognitionResult result);
     void Invalidate(const QString& statusSource);
     void SubmitProbe(const uct::SourceStamp& stamp, uct::SharedPixels pixels);
     void HandleProbeOutcome(uct::ProbeOutcome outcome);
@@ -501,6 +507,13 @@ private:
     QPointer<UltraClearTextPanel> panel_;
     QPointer<UctScreenTextAccessibility> screenText_;
     RecognizerFactory factory_;
+    std::function<uct::FormulaWork(const QRect&)> formulaFactory_;
+    std::shared_ptr<std::atomic<bool>> formulaStop_;
+    std::optional<uct::formula::Artifact> formulaArtifact_;
+    QTimer* formulaTimer_{};
+    QRect formulaRegion_;
+    std::uint64_t formulaJob_{};
+    std::int64_t formulaRequestedAtMs_{};
     Clock clock_;
     UctTiming timing_;
     std::shared_ptr<uct::PixelPool> pool_;

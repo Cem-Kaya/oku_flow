@@ -146,6 +146,8 @@ UltraClearTextController::UltraClearTextController(UltraClearTextOverlay* overla
       timing_(timing),
       pool_(uct::PixelPool::Create(kPixelPoolCapacity))
 {
+    formulaTimer_=new QTimer(this);formulaTimer_->setInterval(50);
+    connect(formulaTimer_,&QTimer::timeout,this,&UltraClearTextController::TrySubmitFormula);
     regionalOcrEnabled_ = qEnvironmentVariable("OKUFLOW_UCT_REGIONAL_OCR") == "1";
     expiryTimer_ = new QTimer(this);
     expiryTimer_->setSingleShot(true);
@@ -186,6 +188,8 @@ UltraClearTextController::UltraClearTextController(UltraClearTextOverlay* overla
             overlay_, overlay_->RenderTarget(), [this] { return ScreenTextSnapshot(); }, clock_);
     }
     if (panel_) {
+        connect(panel_, &UltraClearTextPanel::readFormulaRequested,this,&UltraClearTextController::RequestFormula);
+        connect(panel_, &UltraClearTextPanel::clearFormulaRequested,this,&UltraClearTextController::ClearFormula);
         connect(panel_, &UltraClearTextPanel::enabledChanged, this, &UltraClearTextController::SetEnabled);
         connect(panel_, &UltraClearTextPanel::showOriginalChanged, this,
                 &UltraClearTextController::SetShowOriginal);
@@ -195,6 +199,7 @@ UltraClearTextController::UltraClearTextController(UltraClearTextOverlay* overla
 
 UltraClearTextController::~UltraClearTextController()
 {
+    CancelFormula();
     expiryTimer_->stop();
     expiryDeadlineMs_.reset();
     // Revoke every accessibility element on the UI thread before the
@@ -206,6 +211,77 @@ UltraClearTextController::~UltraClearTextController()
     scheduler_.reset();
     uct::timing::RecordEvent(uct::timing::Event::WindowClosed, {});
     uct::timing::FlushAtNormalTeardown(); // opt-in only; never waits for detached workers
+}
+
+void UltraClearTextController::SetFormulaFactory(std::function<uct::FormulaWork(const QRect&)> factory)
+{
+    CancelFormula();formulaFactory_=std::move(factory);
+    if(panel_)panel_->SetFormulaReady(bool(formulaFactory_));
+    RefreshOverlay(clock_());
+}
+void UltraClearTextController::CancelFormula()
+{
+    if(formulaStop_)formulaStop_->store(true);
+    formulaStop_.reset();formulaJob_=0;formulaArtifact_.reset();
+    if(formulaTimer_)formulaTimer_->stop();
+    if(panel_){panel_->SetFormulaBusy(false);panel_->SetFormulaText({});panel_->SetFormulaStatus({});}
+}
+void UltraClearTextController::ClearFormula()
+{
+    CancelFormula();RefreshOverlay(clock_());ScheduleImmutableDetail();
+}
+void UltraClearTextController::RequestFormula()
+{
+    if(!enabled_) {if(panel_)panel_->SetFormulaStatus(QStringLiteral("Ultra Clear Text is off."));return;}
+    if(!formulaFactory_) {if(panel_)panel_->SetFormulaStatus(QStringLiteral("Install and set up Math first."));return;}
+    if(!immutableScene_ || presentationFailed_ || mediaOverlaySuppressed_) {
+        if(panel_)panel_->SetFormulaStatus(QStringLiteral("Pause or freeze the view, then zoom to one complete formula."));return;
+    }
+    const auto& scene=*immutableScene_;
+    if(!FrameInputValid(scene.selected,scene.geometry))return;
+    const auto visible=uct::ViewRectToScene(scene.transform,1,1,QRectF(0,0,1,1)).intersected(QRectF(0,0,1,1));
+    if(visible.isEmpty())return;
+    // Store the user's region in the exact corrected analysis pixels, not a
+    // screenshot, reprojected drawing or temporally blended image.
+    const QSize size(int(scene.geometry.sceneWidth),int(scene.geometry.sceneHeight));
+    const QRect region=QRectF(visible.x()*size.width(),visible.y()*size.height(),
+        visible.width()*size.width(),visible.height()*size.height()).toAlignedRect().intersected(QRect(QPoint(),size));
+    CancelFormula();formulaRegion_=region;formulaStop_=std::make_shared<std::atomic<bool>>(false);
+    formulaRequestedAtMs_=clock_();immutableDetailTimer_->stop();
+    if(panel_){panel_->SetFormulaBusy(true);panel_->SetFormulaStatus(QStringLiteral("Reading formula..."));}
+    formulaTimer_->start();TrySubmitFormula();
+}
+void UltraClearTextController::TrySubmitFormula()
+{
+    if(!formulaStop_)return;
+    if(!enabled_ || !immutableScene_ || !formulaFactory_ || clock_()-formulaRequestedAtMs_>35000) {
+        CancelFormula();if(panel_)panel_->SetFormulaStatus(QStringLiteral("Formula reading stopped. The original image is unchanged."));return;
+    }
+    if(formulaJob_)return;
+    if(presentationFailed_ || mediaOverlaySuppressed_)return;
+    EnsureScheduler();if(scheduler_->HasWork() || immutableSelectedJob_ || immutableCorroborationJob_)return;
+    const auto& scene=*immutableScene_;
+    formulaJob_=scheduler_->SubmitFormula(ImmutableStamp(scene.selected),scene.selected.pixels,
+        EffectiveDevice(scene.selected,scene.geometry),formulaFactory_(formulaRegion_),formulaStop_);
+}
+void UltraClearTextController::HandleFormulaResult(uct::RecognitionResult result)
+{
+    if(!formulaStop_ || result.jobId!=formulaJob_ || !formulaJob_)return;
+    const bool current=enabled_ && immutableScene_ && scheduler_ && scheduler_->IsCurrent(result) &&
+        result.stamp.SameScene(ImmutableStamp(immutableScene_->selected)) &&
+        result.stamp.frameSeq==immutableScene_->selected.frameSeq &&
+        result.stamp.timestampMs==immutableScene_->selected.timestampMs && !formulaStop_->load();
+    formulaJob_=0;formulaStop_.reset();formulaTimer_->stop();
+    if(panel_)panel_->SetFormulaBusy(false);
+    if(!current)return;
+    if(result.formula && result.formula->ok && !result.formula->cancelled && result.formula->artifact.IsValid()) {
+        formulaArtifact_=std::move(result.formula->artifact);
+        if(panel_){panel_->SetFormulaText(formulaArtifact_->latex);panel_->SetFormulaStatus(QStringLiteral("Formula ready. Compare with the original image."));}
+    } else if(panel_) {
+        panel_->SetFormulaStatus(QStringLiteral("Formula could not be read. The original image is unchanged."));
+        panel_->SetFormulaDiagnostic(result.formula?result.formula->error:QString{});
+    }
+    RefreshOverlay(clock_());UpdateReadingText();ScheduleImmutableDetail();
 }
 
 void UltraClearTextController::EnsureScheduler()
@@ -501,6 +577,7 @@ bool UltraClearTextController::ResumeImmutableMedia(std::uint64_t sourceAuthorit
     UctAdvancingMediaScene scene{immutableScene_->geometry, immutableScene_->sourceAuthority,
         immutableScene_->selected, immutableScene_->transform, immutableScene_->viewportWidth,
         immutableScene_->viewportHeight, immutableScene_->strokeWeight};
+    CancelFormula();
     StopImmutableRefinement(); // fences jobs and regional plans; not accepted references
     ClearCompletionAdmission();
     if (probeWorker_) probeWorker_->Cancel();
@@ -846,6 +923,7 @@ void UltraClearTextController::OnMediaPresentationFailed()
     ArmExpiry(clock_());
     const bool hadWords = !overlayWords_.isEmpty();
     UpdatePositionedTimingPublication(hadWords, false, true);
+    if(panel_)panel_->SetFormulaText({});
     if (overlay_) overlay_->ClearWords();
     if (screenText_) screenText_->RevokeAll();
     overlayWords_.clear();
@@ -1180,6 +1258,7 @@ uct::SourceStamp UltraClearTextController::CurrentScene() const
 
 void UltraClearTextController::Invalidate(const QString& reason)
 {
+    CancelFormula();
     ClearCompletionAdmission();
     creditedJob_ = 0;
     expiryTimer_->stop();
@@ -1514,6 +1593,7 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
 
 void UltraClearTextController::HandleResult(uct::RecognitionResult result)
 {
+    if(result.jobKind==uct::RecognitionJobKind::Formula) {HandleFormulaResult(std::move(result));return;}
     TraceRecognition(uct::timing::Event::UiReceipt, scheduler_.get(), result);
     if (immutableScene_) {
         HandleImmutableResult(std::move(result));
@@ -1981,7 +2061,7 @@ void UltraClearTextController::HandleImmutableResult(uct::RecognitionResult resu
 
 void UltraClearTextController::ScheduleImmutableDetail()
 {
-    if (!immutableScene_ || !enabled_ || !immutableDetailTimer_) return;
+    if (formulaStop_ || !immutableScene_ || !enabled_ || !immutableDetailTimer_) return;
     // Restarted by every view change: only a settled view is re-detected.
     immutableDetailTimer_->start(static_cast<int>(std::clamp<std::int64_t>(
         timing_.immutableDetailSettleMs, 0, 60000)));
@@ -2014,7 +2094,7 @@ std::optional<uct::DetailFocus> UltraClearTextController::ImmutableDetailFocus()
 
 void UltraClearTextController::SubmitImmutableDetailIfUseful()
 {
-    if (!enabled_ || !immutableScene_ || !scheduler_ || mediaOverlaySuppressed_ || presentationFailed_ ||
+    if (formulaStop_ || !enabled_ || !immutableScene_ || !scheduler_ || mediaOverlaySuppressed_ || presentationFailed_ ||
         backend_.state != uct::BackendState::kReady || !backend_.detailFocus || !AnalysisHealthy() ||
         immutableRetryScheduled_ || immutableRetryExhausted_ || immutableDetailFocus_ ||
         immutableSelectedJob_ || immutableCorroborationJob_ ||
@@ -2182,10 +2262,13 @@ void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
 {
     // Pane freshness still matters under Show original or without an overlay.
     ArmExpiry(nowMs);
+    if(panel_)panel_->SetFormulaText(enabled_ && immutableScene_ && formulaArtifact_ &&
+        !compositePaused_ && !mediaOverlaySuppressed_ && !settling_ && PresentationAvailable(nowMs) ?
+        formulaArtifact_->latex : QString{});
     if (!overlay_) {
         return;
     }
-    const bool provenImmutable = HasProvenImmutableArtifact();
+    const bool provenImmutable = HasProvenImmutableArtifact() || (immutableScene_ && formulaArtifact_);
     if (!enabled_ || (!provenImmutable && (!AnalysisHealthy() || !BackendUsable(backend_))) ||
         showOriginal_ || compositePaused_ || mediaOverlaySuppressed_ || settling_ || !PresentationAvailable(nowMs) ||
         !AdvancingValidationFresh(nowMs)) {
@@ -2204,6 +2287,7 @@ void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
     QVector<UltraClearTextOverlay::SceneWord> next;
     next.reserve(words.size());
     for (const uct::SceneWord& word : words) {
+        if(formulaArtifact_ && formulaArtifact_->sceneRect.intersects(word.sceneRect))continue;
         next.push_back({word.text, word.sceneRect, word.colors, word.lineId, word.protectedSceneRects,
                         word.wordIndex, word.sceneQuad, word.layoutGroupId, word.carvedSceneRects});
     }
@@ -2230,7 +2314,12 @@ void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
         if (screenText_) screenText_->ContentChanged();
         UpdateReadingText(true);
     }
-    overlay_->SetInkOutlines(model_.SceneInkOutlines(ModelTime(nowMs),currentFrameSeq_));
+    auto outlines=model_.SceneInkOutlines(ModelTime(nowMs),currentFrameSeq_);
+    if(formulaArtifact_)outlines.erase(std::remove_if(outlines.begin(),outlines.end(),[&](const auto& outline){
+        return formulaArtifact_->sceneRect.intersects(outline.outline.bounds.translated(outline.offset));
+    }),outlines.end());
+    overlay_->SetInkOutlines(std::move(outlines));
+    overlay_->SetFormula(formulaArtifact_);
     shownWords_ = overlayWords_.size();
 }
 
@@ -2269,7 +2358,14 @@ void UltraClearTextController::UpdateReadingText(bool shareTimingRevision)
     if (enabled_ && (HasProvenImmutableArtifact() || (AnalysisHealthy() && BackendUsable(backend_))) &&
         PresentationAvailable(clock_()) && AdvancingValidationFresh(clock_()) &&
         !compositePaused_ && !mediaOverlaySuppressed_ && !settling_) {
-        text = model_.ReadingText(ModelTime(clock_()), currentFrameSeq_);
+        if(formulaArtifact_) {
+            // A separate LaTeX pane owns the formula. Do not expose ordinary
+            // left-to-right OCR of the pixels its formula plate replaces.
+            for(const auto& line:model_.ScreenLines(ModelTime(clock_()),currentFrameSeq_)) {
+                if(formulaArtifact_->sceneRect.intersects(line.sceneRect))continue;
+                if(!text.isEmpty())text+='\n';text+=line.text;
+            }
+        } else text = model_.ReadingText(ModelTime(clock_()), currentFrameSeq_);
     }
     if (text == readingText_) {
         return;

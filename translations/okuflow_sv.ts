@@ -3685,5 +3685,81 @@ Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</
         <source>Saved document copy.</source>
         <translation>En kopia av dokumentet har sparats.</translation>
     </message>
+    <message>
+        <source>Install and set up</source>
+        <translation>Installera och konfigurera</translation>
+    </message>
+    <message>
+        <source>Downloads missing models and prepares them on this computer. Your current models stay active until setup succeeds.</source>
+        <translation>Hämtar saknade modeller och förbereder dem på den här datorn. Dina nuvarande modeller förblir aktiva tills konfigurationen har slutförts.</translation>
+    </message>
+    <message>
+        <source>Downloading models: %1%</source>
+        <translation>Hämtar modeller: %1%</translation>
+    </message>
+    <message>
+        <source>Setting up models...</source>
+        <translation>Konfigurerar modeller...</translation>
+    </message>
+    <message>
+        <source>Models are ready.</source>
+        <translation>Modellerna är klara.</translation>
+    </message>
+    <message>
+        <source>Model setup failed. Your previous models are still active.</source>
+        <translation>Det gick inte att konfigurera modellerna. Dina tidigare modeller är fortfarande aktiva.</translation>
+    </message>
+    <message>
+        <source>Model setup cancelled. Your previous models are still active.</source>
+        <translation>Konfigurationen av modellerna avbröts. Dina tidigare modeller är fortfarande aktiva.</translation>
+    </message>
+    <message>
+        <source>Math (experimental)</source>
+        <translation>Matematik (experimentell)</translation>
+    </message>
+    <message>
+        <source>Model choices take effect after Install and set up succeeds.</source>
+        <translation>Modellvalen tillämpas när installationen och konfigurationen har slutförts.</translation>
+    </message>
+    <message>
+        <source>Math model (TF32)</source>
+        <translation>Matematikmodell (TF32)</translation>
+    </message>
+    <message>
+        <source>Read formula in this view</source>
+        <translation>Läs formeln i den här vyn</translation>
+    </message>
+    <message>
+        <source>Pause or freeze the view, then zoom to one complete formula.</source>
+        <translation>Pausa eller frys vyn och zooma sedan in på en hel formel.</translation>
+    </message>
+    <message>
+        <source>Clear formula</source>
+        <translation>Rensa formel</translation>
+    </message>
+    <message>
+        <source>Recognized formula (LaTeX)</source>
+        <translation>Identifierad formel (LaTeX)</translation>
+    </message>
+    <message>
+        <source>Install and set up Math first.</source>
+        <translation>Installera och konfigurera Matematik först.</translation>
+    </message>
+    <message>
+        <source>Reading formula...</source>
+        <translation>Läser formel...</translation>
+    </message>
+    <message>
+        <source>Formula reading stopped. The original image is unchanged.</source>
+        <translation>Formelläsningen stoppades. Originalbilden är oförändrad.</translation>
+    </message>
+    <message>
+        <source>Formula ready. Compare with the original image.</source>
+        <translation>Formeln är klar. Jämför med originalbilden.</translation>
+    </message>
+    <message>
+        <source>Formula could not be read. The original image is unchanged.</source>
+        <translation>Formeln kunde inte läsas. Originalbilden är oförändrad.</translation>
+    </message>
 </context>
 </TS>

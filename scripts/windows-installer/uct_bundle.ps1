@@ -17,7 +17,10 @@ function Assert-OkuFlowUctSourcePaths([string]$Runtime, [string]$Sdk, [string]$T
     [string]$Models, [string]$Cuda = '') {
     $roots = @{runtime=$Runtime;tensorrt=$TensorRt;models=$Models;
         repo=(Split-Path (Split-Path $PSScriptRoot -Parent) -Parent)}
-    foreach ($key in @('runtime','tensorrt','models')) {
+    $manifest = Get-Content -LiteralPath (Join-Path $roots.repo 'scripts/uct/distribution.json') -Raw | ConvertFrom-Json -AsHashtable
+    $null = Test-UctPayloadCatalog $manifest $roots.repo
+    $requiredRoots = @($manifest.files.root | Sort-Object -Unique | Where-Object { $_ -notin @('repo','cuda') })
+    foreach ($key in $requiredRoots) {
         if (!$roots[$key]) { throw "Missing UCT $key source. Set the corresponding OKUFLOW_UCT_PAYLOAD_RUNTIME/SDK/MODELS pointer to a prepared physical directory; no download or preparation is automatic." }
         $roots[$key] = Get-UctAbsolutePath $roots[$key]
         Assert-UctRegularPath $roots[$key] -Directory
@@ -32,8 +35,6 @@ function Assert-OkuFlowUctSourcePaths([string]$Runtime, [string]$Sdk, [string]$T
         $roots.cuda = Get-UctAbsolutePath $Cuda
         Assert-UctRegularPath $roots.cuda -Directory
     }
-    $manifest = Get-Content -LiteralPath (Join-Path $roots.repo 'scripts/uct/distribution.json') -Raw | ConvertFrom-Json -AsHashtable
-    $null = Test-UctPayloadCatalog $manifest $roots.repo
     foreach ($entry in $manifest.files) {
         # CUDA may be resolved from the effective sealed build facts later.
         if ($entry.root -ceq 'cuda' -and !$Cuda) { continue }
@@ -230,7 +231,7 @@ function Get-OkuFlowUctBundleMetadata([string]$BundleRoot, [string]$RepositoryRo
             sourceSealSha256=$receipt.sourceSealSha256;stagedSealSha256=$receipt.stagedSealSha256;
             inventoryFileCount=$stagedRecords.Count;totalBytes=$total;packages=@($catalog.packages);
             precision=[ordered]@{gpuPreference='BF16';gpuFallback='same-tier FP32';cpu='FP32';
-                modelTiers=@('tiny','small','medium');roles=@('detector','recognizer');
+                modelTiers=@($catalog.modelTiers);optionalModelTiers=@('tiny','small');roles=@('detector','recognizer');
                 arithmetic='Mixed BF16/FP16/FP32 with FLOAT I/O';accuracyGate=$false};
             acceptance='Byte inventory and provenance only; no runtime, GPU, model-quality or installer acceptance.'};
         Packages=$spdxPackages;Files=$spdxFiles;Relationships=$relationships;Licenses=$licenses;Inventory=$allFiles

@@ -1390,6 +1390,8 @@ bool OkuFlowApp::Initialize()
 }
 
 OkuFlowApp::~OkuFlowApp() {
+    if (uctModelSetupCancel_) uctModelSetupCancel_->store(true);
+    ++uctModelSetupGeneration_;
     ShutdownVideoPlayback();
     CancelAgentTurn();
     if (visibleChatSaveTimer_) visibleChatSaveTimer_->stop();
@@ -1481,6 +1483,9 @@ OkuFlowApp::~OkuFlowApp() {
         }
     }
 
+    // Revoke OCR/Math callbacks and accessibility while their native windows
+    // and Qt application still exist. Vendor retirement stays asynchronous.
+    ultraClearText_.reset();
     interactionController_.reset();
     pipelineOrchestrator_.reset();
     assistiveManager_.reset();

@@ -1,5 +1,23 @@
 # OkuFlow Tests
 
+`windows_runtime_contract` also checks final application exit in a private child:
+explicit application cleanup must persist, pending vendor work must not block
+exit, unsafe global teardown must not run, and both success and failure statuses
+must reach the parent. This headless contract complements real native Math
+read/close validation and never terminates another application instance.
+
+`uct_formula_contract` is desktop/model-free and validates native formula pins,
+profiles, cache identity and ByteLevel token decoding. The opt-in real TF32
+setup/handoff diagnostic is separate; see [native formula backend](../docs/uct_native_formula.md).
+
+`uct_model_installation_contract` uses private synthetic source packages and
+transport to check verification, cancellation, failure, cache repair/preservation
+and concurrent-setup refusal. It never downloads or builds engines. The normal
+offscreen UCT contract checks Install and set up dispatch and pending controls.
+Explicit real GPU/setup and prepared-object handoff diagnostics are documented in
+[model setup](../docs/model_installation.md); their results remain separate from
+native desktop/release acceptance.
+
 `native_app_file_sources_offscreen` additionally checks selecting automatic phone
 mode with no listed phone, refusal of stale discovery for that intent, and native
 USB-arrival routing after a manual webcam choice. Synthetic messages refuse other
@@ -2563,3 +2581,20 @@ checking actual viewport-buffer replacement by a full-size PDF and its next
 page. A separate window-free `media_gpu_scene_cuda` case reads back full portrait
 BGRA scenes after a smaller source. Retain these pixel assertions independently
 of extracted text and selected-frame metadata; video queue limits stay strict.
+
+Math's `uct_formula_layout_contract` validates bounded native vector fractions
+and superscripts, unsafe-command refusal and embedded fonts under offscreen Qt.
+The UCT contract covers selected-scene projection, no repeat inference on zoom,
+source-change cancellation, Show original and presentation/pane revocation.
+`uct_model_installation_contract` also checks the six-file Math notice/source
+pins and staged selection. Normal tests never download models or build cold TRT.
+
+The explicit real `uct_paddle_tests optionalInstalledFormulaView` needs
+`OKUFLOW_UCT_FORMULA_VIEW_TEST=1`, a fresh absolute `OKUFLOW_UCT_FORMULA_EVIDENCE`,
+absolute `OKUFLOW_UCT_FORMULA_CACHE`, and `OKUFLOW_UCT_FORMULA_IMAGES` containing
+archived source crops. It downloads plus-L from the public pinned catalog,
+prepares and checks actual TF32 execution, then runs CPU-image and resident
+current-frame input through the existing scheduler/workflow and snapshot painter.
+It records predictions and worker costs separately from setup. Original source
+crops, not edited predictions, determine what the model sees. This is desktop-free
+GPU evidence, not native desktop or installer acceptance.

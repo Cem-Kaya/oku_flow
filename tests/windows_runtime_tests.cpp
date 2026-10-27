@@ -14,6 +14,26 @@
 class WindowsRuntimeTests : public QObject {
     Q_OBJECT
 private slots:
+    void applicationExitPreservesCleanupAndStatus_data() {
+        QTest::addColumn<int>("status");
+        QTest::newRow("success") << 0;
+        QTest::newRow("failure") << 42;
+    }
+    void applicationExitPreservesCleanupAndStatus() {
+        QFETCH(int, status);
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto receipt = directory.filePath("application-exit.txt");
+        QProcess child;
+        child.start(QString::fromUtf8(OKUFLOW_LAUNCHER_TEST_CHILD),
+            {"--application-exit", receipt, QString::number(status)});
+        QVERIFY(child.waitForStarted());
+        QVERIFY(child.waitForFinished(5000));
+        QCOMPARE(child.exitCode(), status);
+        QFile file(receipt);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QCOMPARE(file.readAll(), QByteArray("application cleanup complete\n"));
+    }
     void versions() {
         QVERIFY(!okuflow::SupportsWindowsRuntimeVersion({14, 43, 0, 0}));
         QVERIFY(okuflow::SupportsWindowsRuntimeVersion({14, 99, 0, 0}));

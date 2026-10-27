@@ -1,0 +1,6 @@
+OkuFlow native formula partitions, recipe okuflow-formula-tf32-partitions-v1.
+Derived from PaddlePaddle PP-FormulaNet official model revisions recorded in formula-packs.json.
+Models and original cards/configurations are Apache-2.0; retain LICENSE.txt and each model's README.md.
+OkuFlow partitions split encoder and recurrent decoder for native TensorRT execution. Original FP32 values are retained; TF32 is a TensorRT compute policy.
+First-party exporter provenance: experimental commit 9a0f9a9a (formula-tensorrt-20261027), not executed on end-user machines.
+No TensorRT engines, training data or third-party executable runtime are included in this model download.

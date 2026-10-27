@@ -40,7 +40,9 @@ lecture capture. Keep the provenance of content intended for a public website.
 
 The hook requires an absolute `.png` output path whose parent already exists.
 `OKUFLOW_UI_CAPTURE_DELAY_MS` defaults to `15000`; explicit values must be
-integers from `1` through `60000`, strictly before `--startup-profile-ms`.
+integers from `1` through `600000`, strictly before `--startup-profile-ms`.
+Longer delays allow native model setup and manual Math selection to finish;
+the profiling session remains bounded to ten minutes and exits normally.
 Leave more than 100 ms before that deadline: visible owned native peers are
 repainted at the requested delay, and the unmodified desktop grab follows
 100 ms later so their layered backing stores can settle.

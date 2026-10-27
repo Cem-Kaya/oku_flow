@@ -1,0 +1,3419 @@
+#pragma once
+#include <QByteArray>
+// Pinned native partition identities and immutable model download URLs.
+namespace okuflow::uct::formula {
+inline const QByteArray kCatalog = QByteArray(R"FORMULA({
+  "schema": 1,
+  "recipe": "okuflow-formula-tf32-partitions-v1",
+  "models": [
+    {
+      "name": "PP-FormulaNet_plus-S",
+      "tokens": "p2o.sub_block.pd_op.concat.4.0",
+      "files": [
+        {
+          "bytes": 59990876,
+          "sha256": "1708b63d62e7a8083ee9818271d34e10ec1663238661040b20378237bf526b84",
+          "name": "encoder.onnx",
+          "url": "https://github.com/Cem-Kaya/oku_flow/releases/download/uct-formula-tf32-v1/PP-FormulaNet_plus-S-encoder.onnx"
+        },
+        {
+          "bytes": 171860131,
+          "sha256": "dc0fbca3163038a412b6ae9a7e8bc600331496dc73ceb0c9d0006494c16ff65b",
+          "name": "decoder.onnx",
+          "url": "https://github.com/Cem-Kaya/oku_flow/releases/download/uct-formula-tf32-v1/PP-FormulaNet_plus-S-decoder.onnx"
+        },
+        {
+          "bytes": 20557,
+          "sha256": "a87ec34da0925e6ad3e4e80b426dc58cfce2fc6d196261650c1c988bcf9e2a0a",
+          "name": "README.md",
+          "upstreamUrl": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-S/resolve/3d46f557e3a1752f4bf81202395af3b5ecfadfd2/README.md",
+          "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-S/resolve/3d46f557e3a1752f4bf81202395af3b5ecfadfd2/README.md"
+        },
+        {
+          "bytes": 3951676,
+          "sha256": "ddf1f951ceeb10c2b9de3ae255b62de59299b1028f87878177e86c9604fe3610",
+          "name": "config.json",
+          "upstreamUrl": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-S/resolve/3d46f557e3a1752f4bf81202395af3b5ecfadfd2/config.json",
+          "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-S/resolve/3d46f557e3a1752f4bf81202395af3b5ecfadfd2/config.json"
+        }
+      ],
+      "maxTokens": 1024,
+      "states": [
+        {
+          "output": "p2o.sub_block.pd_op.if.2.0",
+          "initialHex": "00",
+          "input": "p2o.pd_op.full.26.0",
+          "profile": {
+            "min": [
+              1
+            ],
+            "opt": [
+              1
+            ],
+            "max": [
+              1
+            ],
+            "initialShape": [
+              1
+            ],
+            "dtype": "bool"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.add.33.0",
+          "initialHex": "000000000000000000000000000000000000000000000000",
+          "input": "p2o.pd_op.scale.0.0",
+          "profile": {
+            "min": [
+              1,
+              3
+            ],
+            "opt": [
+              1,
+              3
+            ],
+            "max": [
+              1,
+              3
+            ],
+            "initialShape": [
+              1,
+              3
+            ],
+            "dtype": "int64"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.if.3.0",
+          "initialHex": "00000000",
+          "input": "p2o.pd_op.full.17.0",
+          "profile": {
+            "min": [
+              1
+            ],
+            "opt": [
+              1
+            ],
+            "max": [
+              1
+            ],
+            "initialShape": [
+              1
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.4.0",
+          "initialHex": "000000000000000000000000000000000000000000000000",
+          "input": "Identity.149",
+          "profile": {
+            "min": [
+              1,
+              3
+            ],
+            "opt": [
+              1,
+              51
+            ],
+            "max": [
+              1,
+              1032
+            ],
+            "initialShape": [
+              1,
+              3
+            ],
+            "dtype": "int64"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.0.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.2.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              24
+            ],
+            "opt": [
+              1,
+              16,
+              48,
+              24
+            ],
+            "max": [
+              1,
+              16,
+              1032,
+              24
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              24
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.1.0",
+          "initialHex": "",
+          "input": "Identity.151",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              24
+            ],
+            "opt": [
+              1,
+              16,
+              48,
+              24
+            ],
+            "max": [
+              1,
+              16,
+              1032,
+              24
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              24
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.2.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.3.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              24
+            ],
+            "opt": [
+              1,
+              16,
+              48,
+              24
+            ],
+            "max": [
+              1,
+              16,
+              1032,
+              24
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              24
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.3.0",
+          "initialHex": "",
+          "input": "Identity.157",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              24
+            ],
+            "opt": [
+              1,
+              16,
+              48,
+              24
+            ],
+            "max": [
+              1,
+              16,
+              1032,
+              24
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              24
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.bitwise_and.0.0",
+          "initialHex": "010000000000000001000000000000000100000000000000",
+          "input": "p2o.pd_op.full_with_tensor.1.0",
+          "profile": {
+            "min": [
+              1,
+              3
+            ],
+            "opt": [
+              1,
+              3
+            ],
+            "max": [
+              1,
+              3
+            ],
+            "initialShape": [
+              1,
+              3
+            ],
+            "dtype": "int64"
+          }
+        }
+      ],
+      "precision": "tf32",
+      "revision": "3d46f557e3a1752f4bf81202395af3b5ecfadfd2",
+      "invariants": [
+        {
+          "input": "p2o.sub_block.pd_op.add.34.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              384
+            ],
+            "opt": [
+              1,
+              144,
+              384
+            ],
+            "max": [
+              1,
+              144,
+              384
+            ],
+            "initialShape": [
+              1,
+              144,
+              384
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.35.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              384
+            ],
+            "opt": [
+              1,
+              144,
+              384
+            ],
+            "max": [
+              1,
+              144,
+              384
+            ],
+            "initialShape": [
+              1,
+              144,
+              384
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op)FORMULA") +
+QByteArray(R"FORMULA(.add.36.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              384
+            ],
+            "opt": [
+              1,
+              144,
+              384
+            ],
+            "max": [
+              1,
+              144,
+              384
+            ],
+            "initialShape": [
+              1,
+              144,
+              384
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.37.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              384
+            ],
+            "opt": [
+              1,
+              144,
+              384
+            ],
+            "max": [
+              1,
+              144,
+              384
+            ],
+            "initialShape": [
+              1,
+              144,
+              384
+            ],
+            "dtype": "float32"
+          }
+        }
+      ],
+      "condition": "p2o.sub_block.pd_op.logical_and.0.0",
+      "downloadAvailable": true
+    },
+    {
+      "name": "PP-FormulaNet_plus-M",
+      "tokens": "p2o.sub_block.pd_op.concat.12.0",
+      "files": [
+        {
+          "bytes": 293701839,
+          "sha256": "db2b0b46c90c35f2cc1f7ae0b4afc115386ee1f7d88c8fce774f14317abc0d23",
+          "name": "encoder.onnx",
+          "url": "https://github.com/Cem-Kaya/oku_flow/releases/download/uct-formula-tf32-v1/PP-FormulaNet_plus-M-encoder.onnx"
+        },
+        {
+          "bytes": 298609068,
+          "sha256": "5f30344cc8420e1ad1d200afb76b717f0968ba2a876a6ff2b3234e0092c070db",
+          "name": "decoder.onnx",
+          "url": "https://github.com/Cem-Kaya/oku_flow/releases/download/uct-formula-tf32-v1/PP-FormulaNet_plus-M-decoder.onnx"
+        },
+        {
+          "bytes": 22829,
+          "sha256": "20ecf881e6fdbc0f8bc3091d1197d30bcdbea143dc015ee05a8e039d6441346d",
+          "name": "README.md",
+          "upstreamUrl": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-M/resolve/712e6e2e4c313b1ea163be5c350127b82662c58d/README.md",
+          "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-M/resolve/712e6e2e4c313b1ea163be5c350127b82662c58d/README.md"
+        },
+        {
+          "bytes": 3951676,
+          "sha256": "aaa40c3c54b25b157c46f937043f2223874f01fc7e2060f3d1d5d08ffb9bc12f",
+          "name": "config.json",
+          "upstreamUrl": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-M/resolve/712e6e2e4c313b1ea163be5c350127b82662c58d/config.json",
+          "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-M/resolve/712e6e2e4c313b1ea163be5c350127b82662c58d/config.json"
+        }
+      ],
+      "maxTokens": 2560,
+      "states": [
+        {
+          "output": "p2o.sub_block.pd_op.if.6.0",
+          "initialHex": "00",
+          "input": "p2o.pd_op.full.49.0",
+          "profile": {
+            "min": [
+              1
+            ],
+            "opt": [
+              1
+            ],
+            "max": [
+              1
+            ],
+            "initialShape": [
+              1
+            ],
+            "dtype": "bool"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.unsqueeze.2.0",
+          "initialHex": "0000000000000000",
+          "input": "p2o.pd_op.reshape.1.0",
+          "profile": {
+            "min": [
+              1,
+              1
+            ],
+            "opt": [
+              1,
+              1
+            ],
+            "max": [
+              1,
+              1
+            ],
+            "initialShape": [
+              1,
+              1
+            ],
+            "dtype": "int64"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.if.7.0",
+          "initialHex": "00000000",
+          "input": "p2o.pd_op.full.24.0",
+          "profile": {
+            "min": [
+              1
+            ],
+            "opt": [
+              1
+            ],
+            "max": [
+              1
+            ],
+            "initialShape": [
+              1
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.12.0",
+          "initialHex": "0000000000000000",
+          "input": "Identity.317",
+          "profile": {
+            "min": [
+              1,
+              1
+            ],
+            "opt": [
+              1,
+              17
+            ],
+            "max": [
+              1,
+              2568
+            ],
+            "initialShape": [
+              1,
+              1
+            ],
+            "dtype": "int64"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.0.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.2.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.1.0",
+          "initialHex": "",
+          "input": "Identity.319",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.2.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.3.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.3.0",
+          "initialHex": "",
+          "input": "Identity.325",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.4.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.4.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.5.0",
+          "initialHex": "",
+          "input": "Identity.331",
+          "profile": {
+)FORMULA") +
+QByteArray(R"FORMULA(            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.6.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.5.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.7.0",
+          "initialHex": "",
+          "input": "Identity.337",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.8.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.6.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.9.0",
+          "initialHex": "",
+          "input": "Identity.343",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.10.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.7.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.11.0",
+          "initialHex": "",
+          "input": "Identity.349",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.bitwise_and.0.0",
+          "initialHex": "0100000000000000",
+          "input": "p2o.pd_op.full_with_tensor.1.0",
+          "profile": {
+            "min": [
+              1
+            ],
+            "opt": [
+              1
+            ],
+            "max": [
+              1
+            ],
+            "initialShape": [
+              1
+            ],
+            "dtype": "int64"
+          }
+        }
+      ],
+      "precision": "tf32",
+      "revision": "712e6e2e4c313b1ea163be5c350127b82662c58d",
+      "invariants": [
+        {
+          "input": "p2o.sub_block.pd_op.add.82.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.83.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.84.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.85.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.86.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.87.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+      )FORMULA") +
+QByteArray(R"FORMULA(    "input": "p2o.sub_block.pd_op.add.88.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.89.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.90.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.91.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.92.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.93.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        }
+      ],
+      "condition": "p2o.sub_block.pd_op.logical_and.0.0",
+      "downloadAvailable": true
+    },
+    {
+      "name": "PP-FormulaNet-L",
+      "tokens": "p2o.sub_block.pd_op.concat.16.0",
+      "files": [
+        {
+          "bytes": 400370567,
+          "sha256": "266dc2fde0b7f22f90068618b00da1a8449851a144cec03e3e5d508a92764fe3",
+          "name": "encoder.onnx",
+          "url": "https://github.com/Cem-Kaya/oku_flow/releases/download/uct-formula-tf32-v1/PP-FormulaNet-L-encoder.onnx"
+        },
+        {
+          "bytes": 324979171,
+          "sha256": "747f8c5ee385fbe4b08dfc69f759b2d6e6aa5d6144b2cf0df9e5a0480722322f",
+          "name": "decoder.onnx",
+          "url": "https://github.com/Cem-Kaya/oku_flow/releases/download/uct-formula-tf32-v1/PP-FormulaNet-L-decoder.onnx"
+        },
+        {
+          "bytes": 20277,
+          "sha256": "c72f8aac864c5ac636fe6a8bd9fd6ae441b8d5edd2f259def01287e4777a6ce9",
+          "name": "README.md",
+          "upstreamUrl": "https://huggingface.co/PaddlePaddle/PP-FormulaNet-L/resolve/9994c2af5c2070b239f1fd2ecc2b40fbf378ea1d/README.md",
+          "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet-L/resolve/9994c2af5c2070b239f1fd2ecc2b40fbf378ea1d/README.md"
+        },
+        {
+          "bytes": 3951671,
+          "sha256": "8e6313450139b595f2655dad52e0d373f6a5f41a985e3d8348926dd03b163ca4",
+          "name": "config.json",
+          "upstreamUrl": "https://huggingface.co/PaddlePaddle/PP-FormulaNet-L/resolve/9994c2af5c2070b239f1fd2ecc2b40fbf378ea1d/config.json",
+          "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet-L/resolve/9994c2af5c2070b239f1fd2ecc2b40fbf378ea1d/config.json"
+        }
+      ],
+      "maxTokens": 1024,
+      "states": [
+        {
+          "output": "p2o.sub_block.pd_op.if.8.0",
+          "initialHex": "00",
+          "input": "p2o.pd_op.full.666.0",
+          "profile": {
+            "min": [
+              1
+            ],
+            "opt": [
+              1
+            ],
+            "max": [
+              1
+            ],
+            "initialShape": [
+              1
+            ],
+            "dtype": "bool"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.unsqueeze.2.0",
+          "initialHex": "0000000000000000",
+          "input": "p2o.pd_op.reshape.117.0",
+          "profile": {
+            "min": [
+              1,
+              1
+            ],
+            "opt": [
+              1,
+              1
+            ],
+            "max": [
+              1,
+              1
+            ],
+            "initialShape": [
+              1,
+              1
+            ],
+            "dtype": "int64"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.if.9.0",
+          "initialHex": "00000000",
+          "input": "p2o.pd_op.full.633.0",
+          "profile": {
+            "min": [
+              1
+            ],
+            "opt": [
+              1
+            ],
+            "max": [
+              1
+            ],
+            "initialShape": [
+              1
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.16.0",
+          "initialHex": "0000000000000000",
+          "input": "Identity.2021",
+          "profile": {
+            "min": [
+              1,
+              1
+            ],
+            "opt": [
+              1,
+              17
+            ],
+            "max": [
+              1,
+              1032
+            ],
+            "initialShape": [
+              1,
+              1
+            ],
+            "dtype": "int64"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.0.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.2.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              1032,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.1.0",
+          "initialHex": "",
+          "input": "Identity.2023",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              1032,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.2.0",
+ )FORMULA") +
+QByteArray(R"FORMULA(         "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.3.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              1032,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.3.0",
+          "initialHex": "",
+          "input": "Identity.2029",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              1032,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.4.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.4.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              1032,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.5.0",
+          "initialHex": "",
+          "input": "Identity.2035",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              1032,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.6.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.5.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              1032,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.7.0",
+          "initialHex": "",
+          "input": "Identity.2041",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              1032,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.8.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.6.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              1032,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.9.0",
+          "initialHex": "",
+          "input": "Identity.2047",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              1032,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.10.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.7.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              1032,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.11.0",
+          "initialHex": "",
+          "input": "Identity.2053",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              1032,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.12.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.8.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              1032,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.13.0",
+          "initialHex": "",
+          "input": "Identity.2059",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              1032,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.14.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.9.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+        )FORMULA") +
+QByteArray(R"FORMULA(      1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              1032,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.15.0",
+          "initialHex": "",
+          "input": "Identity.2065",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              1032,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.bitwise_and.0.0",
+          "initialHex": "0100000000000000",
+          "input": "p2o.pd_op.full_with_tensor.1.0",
+          "profile": {
+            "min": [
+              1
+            ],
+            "opt": [
+              1
+            ],
+            "max": [
+              1
+            ],
+            "initialShape": [
+              1
+            ],
+            "dtype": "int64"
+          }
+        }
+      ],
+      "precision": "tf32",
+      "revision": "9994c2af5c2070b239f1fd2ecc2b40fbf378ea1d",
+      "invariants": [
+        {
+          "input": "p2o.sub_block.pd_op.add.106.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.107.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.108.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.109.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.110.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.111.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.112.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.113.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.114.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.115.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.116.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.117.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.118.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+             )FORMULA") +
+QByteArray(R"FORMULA( 512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.119.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.120.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.121.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        }
+      ],
+      "condition": "p2o.sub_block.pd_op.logical_and.0.0",
+      "downloadAvailable": true
+    },
+    {
+      "name": "PP-FormulaNet_plus-L",
+      "tokens": "p2o.sub_block.pd_op.concat.16.0",
+      "files": [
+        {
+          "bytes": 400370567,
+          "sha256": "f3daac66073faa4e6237322aa392bb47a99859f98badc252af8388cb943a3adb",
+          "name": "encoder.onnx",
+          "url": "https://github.com/Cem-Kaya/oku_flow/releases/download/uct-formula-tf32-v1/PP-FormulaNet_plus-L-encoder.onnx"
+        },
+        {
+          "bytes": 328124899,
+          "sha256": "dfbc39ce9a8a7ac2cf0bc88308fc8fc44d97ab99fa494eaff5e83aff1c4023b0",
+          "name": "decoder.onnx",
+          "url": "https://github.com/Cem-Kaya/oku_flow/releases/download/uct-formula-tf32-v1/PP-FormulaNet_plus-L-decoder.onnx"
+        },
+        {
+          "bytes": 22453,
+          "sha256": "81ec2f66f8d28536523010af80d0162b9c7dc0b0497acd6216cda44a2aac224d",
+          "name": "README.md",
+          "upstreamUrl": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-L/resolve/0809597a77f735bfb35354edb632f2e6dff606f3/README.md",
+          "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-L/resolve/0809597a77f735bfb35354edb632f2e6dff606f3/README.md"
+        },
+        {
+          "bytes": 3951676,
+          "sha256": "44e0be0fd39b676cc409c2ef537b4a52509db55cc79bacbbe65b55fe8d64c6a4",
+          "name": "config.json",
+          "upstreamUrl": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-L/resolve/0809597a77f735bfb35354edb632f2e6dff606f3/config.json",
+          "url": "https://huggingface.co/PaddlePaddle/PP-FormulaNet_plus-L/resolve/0809597a77f735bfb35354edb632f2e6dff606f3/config.json"
+        }
+      ],
+      "maxTokens": 2560,
+      "states": [
+        {
+          "output": "p2o.sub_block.pd_op.if.8.0",
+          "initialHex": "00",
+          "input": "p2o.pd_op.full.666.0",
+          "profile": {
+            "min": [
+              1
+            ],
+            "opt": [
+              1
+            ],
+            "max": [
+              1
+            ],
+            "initialShape": [
+              1
+            ],
+            "dtype": "bool"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.unsqueeze.2.0",
+          "initialHex": "0000000000000000",
+          "input": "p2o.pd_op.reshape.117.0",
+          "profile": {
+            "min": [
+              1,
+              1
+            ],
+            "opt": [
+              1,
+              1
+            ],
+            "max": [
+              1,
+              1
+            ],
+            "initialShape": [
+              1,
+              1
+            ],
+            "dtype": "int64"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.if.9.0",
+          "initialHex": "00000000",
+          "input": "p2o.pd_op.full.633.0",
+          "profile": {
+            "min": [
+              1
+            ],
+            "opt": [
+              1
+            ],
+            "max": [
+              1
+            ],
+            "initialShape": [
+              1
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.16.0",
+          "initialHex": "0000000000000000",
+          "input": "Identity.2021",
+          "profile": {
+            "min": [
+              1,
+              1
+            ],
+            "opt": [
+              1,
+              17
+            ],
+            "max": [
+              1,
+              2568
+            ],
+            "initialShape": [
+              1,
+              1
+            ],
+            "dtype": "int64"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.0.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.2.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.1.0",
+          "initialHex": "",
+          "input": "Identity.2023",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.2.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.3.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.3.0",
+          "initialHex": "",
+          "input": "Identity.2029",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.4.0",
+  )FORMULA") +
+QByteArray(R"FORMULA(        "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.4.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.5.0",
+          "initialHex": "",
+          "input": "Identity.2035",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.6.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.5.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.7.0",
+          "initialHex": "",
+          "input": "Identity.2041",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.8.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.6.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.9.0",
+          "initialHex": "",
+          "input": "Identity.2047",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.10.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.7.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.11.0",
+          "initialHex": "",
+          "input": "Identity.2053",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.12.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.8.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.13.0",
+          "initialHex": "",
+          "input": "Identity.2059",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.14.0",
+          "initialHex": "",
+          "input": "p2o.pd_op.full_with_tensor.9.0",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.concat.15.0",
+          "initialHex": "",
+          "input": "Identity.2065",
+          "profile": {
+            "min": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "opt": [
+              1,
+              16,
+              16,
+              32
+            ],
+            "max": [
+              1,
+              16,
+              2568,
+              32
+            ],
+            "initialShape": [
+              1,
+              16,
+              0,
+              32
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "output": "p2o.sub_block.pd_op.bitwise_and.0.0",
+          "initialHex": "0100000000000000",
+          "input": "p2o.pd_op.full_with_tensor.1.0",
+          "profile": {
+            "min": [
+              1
+            ],
+            "opt": [
+              1
+            ],
+         )FORMULA") +
+QByteArray(R"FORMULA(   "max": [
+              1
+            ],
+            "initialShape": [
+              1
+            ],
+            "dtype": "int64"
+          }
+        }
+      ],
+      "precision": "tf32",
+      "revision": "0809597a77f735bfb35354edb632f2e6dff606f3",
+      "invariants": [
+        {
+          "input": "p2o.sub_block.pd_op.add.106.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.107.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.108.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.109.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.110.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.111.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.112.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.113.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.114.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.115.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.116.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.117.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.118.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.119.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.120.0",
+          "profile": {
+            "min": [
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        },
+        {
+          "input": "p2o.sub_block.pd_op.add.121.0",
+          "profile": {
+            "min": [)FORMULA") +
+QByteArray(R"FORMULA(
+              1,
+              144,
+              512
+            ],
+            "opt": [
+              1,
+              144,
+              512
+            ],
+            "max": [
+              1,
+              144,
+              512
+            ],
+            "initialShape": [
+              1,
+              144,
+              512
+            ],
+            "dtype": "float32"
+          }
+        }
+      ],
+      "condition": "p2o.sub_block.pd_op.logical_and.0.0",
+      "downloadAvailable": true
+    }
+  ],
+  "notices": [
+    {
+      "name": "LICENSE.txt",
+      "url": "https://github.com/Cem-Kaya/oku_flow/releases/download/uct-formula-tf32-v1/formula-pack-LICENSE.txt",
+      "bytes": 11376,
+      "sha256": "3840c5c0c61c294264d2dd77b8777be6ddd90121ef4e0e64abcd22edea581d6e"
+    },
+    {
+      "name": "NOTICE.txt",
+      "url": "https://github.com/Cem-Kaya/oku_flow/releases/download/uct-formula-tf32-v1/formula-pack-NOTICE.txt",
+      "bytes": 667,
+      "sha256": "de0a8a7669adf14e04db094a6311a228f170cc9c060c1de2e01e05eb8dba6063"
+    }
+  ]
+}
+)FORMULA");
+}

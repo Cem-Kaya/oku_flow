@@ -3685,5 +3685,81 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Saved document copy.</source>
         <translation>نسخه‌ای از سند ذخیره شد.</translation>
     </message>
+    <message>
+        <source>Install and set up</source>
+        <translation>نصب و راه‌اندازی</translation>
+    </message>
+    <message>
+        <source>Downloads missing models and prepares them on this computer. Your current models stay active until setup succeeds.</source>
+        <translation>مدل‌های نصب‌نشده را دانلود و در این رایانه آماده می‌کند. مدل‌های فعلی شما تا زمانی که راه‌اندازی با موفقیت انجام شود، فعال می‌مانند.</translation>
+    </message>
+    <message>
+        <source>Downloading models: %1%</source>
+        <translation>در حال بارگیری مدل‌ها: %1%</translation>
+    </message>
+    <message>
+        <source>Setting up models...</source>
+        <translation>در حال راه‌اندازی مدل‌ها...</translation>
+    </message>
+    <message>
+        <source>Models are ready.</source>
+        <translation>مدل‌ها آماده‌اند.</translation>
+    </message>
+    <message>
+        <source>Model setup failed. Your previous models are still active.</source>
+        <translation>راه‌اندازی مدل‌ها ناموفق بود. مدل‌های قبلی شما همچنان فعال‌اند.</translation>
+    </message>
+    <message>
+        <source>Model setup cancelled. Your previous models are still active.</source>
+        <translation>راه‌اندازی مدل‌ها لغو شد. مدل‌های قبلی شما همچنان فعال‌اند.</translation>
+    </message>
+    <message>
+        <source>Math (experimental)</source>
+        <translation>ریاضی (آزمایشی)</translation>
+    </message>
+    <message>
+        <source>Model choices take effect after Install and set up succeeds.</source>
+        <translation>انتخاب مدل‌ها پس از نصب و راه‌اندازی موفق اعمال می‌شود.</translation>
+    </message>
+    <message>
+        <source>Math model (TF32)</source>
+        <translation>مدل ریاضی (TF32)</translation>
+    </message>
+    <message>
+        <source>Read formula in this view</source>
+        <translation>خواندن فرمول در این نما</translation>
+    </message>
+    <message>
+        <source>Pause or freeze the view, then zoom to one complete formula.</source>
+        <translation>نما را متوقف یا ثابت کنید، سپس روی یک فرمول کامل بزرگ‌نمایی کنید.</translation>
+    </message>
+    <message>
+        <source>Clear formula</source>
+        <translation>پاک کردن فرمول</translation>
+    </message>
+    <message>
+        <source>Recognized formula (LaTeX)</source>
+        <translation>فرمول شناسایی‌شده (LaTeX)</translation>
+    </message>
+    <message>
+        <source>Install and set up Math first.</source>
+        <translation>ابتدا ریاضی را نصب و راه‌اندازی کنید.</translation>
+    </message>
+    <message>
+        <source>Reading formula...</source>
+        <translation>در حال خواندن فرمول...</translation>
+    </message>
+    <message>
+        <source>Formula reading stopped. The original image is unchanged.</source>
+        <translation>خواندن فرمول متوقف شد. تصویر اصلی تغییری نکرده است.</translation>
+    </message>
+    <message>
+        <source>Formula ready. Compare with the original image.</source>
+        <translation>فرمول آماده است. آن را با تصویر اصلی مقایسه کنید.</translation>
+    </message>
+    <message>
+        <source>Formula could not be read. The original image is unchanged.</source>
+        <translation>فرمول خوانده نشد. تصویر اصلی تغییری نکرده است.</translation>
+    </message>
 </context>
 </TS>

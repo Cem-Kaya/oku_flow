@@ -3685,5 +3685,81 @@ Use «Connect ChatGPT» en la pestaña Asistente del modo avanzado para iniciar 
         <source>Saved document copy.</source>
         <translation>Copia del documento guardada.</translation>
     </message>
+    <message>
+        <source>Install and set up</source>
+        <translation>Instalar y configurar</translation>
+    </message>
+    <message>
+        <source>Downloads missing models and prepares them on this computer. Your current models stay active until setup succeeds.</source>
+        <translation>Descarga los modelos que faltan y los prepara en este equipo. Los modelos actuales siguen activos hasta que la configuración finalice correctamente.</translation>
+    </message>
+    <message>
+        <source>Downloading models: %1%</source>
+        <translation>Descargando modelos: %1%</translation>
+    </message>
+    <message>
+        <source>Setting up models...</source>
+        <translation>Configurando modelos...</translation>
+    </message>
+    <message>
+        <source>Models are ready.</source>
+        <translation>Los modelos están listos.</translation>
+    </message>
+    <message>
+        <source>Model setup failed. Your previous models are still active.</source>
+        <translation>No se pudieron configurar los modelos. Los modelos anteriores siguen activos.</translation>
+    </message>
+    <message>
+        <source>Model setup cancelled. Your previous models are still active.</source>
+        <translation>Se canceló la configuración de los modelos. Los modelos anteriores siguen activos.</translation>
+    </message>
+    <message>
+        <source>Math (experimental)</source>
+        <translation>Matemáticas (experimental)</translation>
+    </message>
+    <message>
+        <source>Model choices take effect after Install and set up succeeds.</source>
+        <translation>La selección de modelos se aplica cuando la instalación y configuración finalizan correctamente.</translation>
+    </message>
+    <message>
+        <source>Math model (TF32)</source>
+        <translation>Modelo matemático (TF32)</translation>
+    </message>
+    <message>
+        <source>Read formula in this view</source>
+        <translation>Leer la fórmula de esta vista</translation>
+    </message>
+    <message>
+        <source>Pause or freeze the view, then zoom to one complete formula.</source>
+        <translation>Pausa o congela la vista y amplía una fórmula completa.</translation>
+    </message>
+    <message>
+        <source>Clear formula</source>
+        <translation>Borrar fórmula</translation>
+    </message>
+    <message>
+        <source>Recognized formula (LaTeX)</source>
+        <translation>Fórmula reconocida (LaTeX)</translation>
+    </message>
+    <message>
+        <source>Install and set up Math first.</source>
+        <translation>Primero instala y configura el módulo de Matemáticas.</translation>
+    </message>
+    <message>
+        <source>Reading formula...</source>
+        <translation>Leyendo fórmula...</translation>
+    </message>
+    <message>
+        <source>Formula reading stopped. The original image is unchanged.</source>
+        <translation>Se detuvo la lectura de la fórmula. La imagen original no ha cambiado.</translation>
+    </message>
+    <message>
+        <source>Formula ready. Compare with the original image.</source>
+        <translation>Fórmula lista. Compárala con la imagen original.</translation>
+    </message>
+    <message>
+        <source>Formula could not be read. The original image is unchanged.</source>
+        <translation>No se pudo leer la fórmula. La imagen original no ha cambiado.</translation>
+    </message>
 </context>
 </TS>

@@ -12,6 +12,7 @@ class QComboBox;
 class QLabel;
 class QPlainTextEdit;
 class QToolButton;
+class QPushButton;
 QT_END_NAMESPACE
 
 namespace okuflow {
@@ -36,6 +37,14 @@ public:
     QComboBox* cpuRecognizerCombo() const { return cpuRecognizerCombo_; }
     uct::ModelSettings ModelSettings() const;
     void SetModelSettings(const uct::ModelSettings& models);
+    void SetModelSetupProgress(bool preparing, int percent);
+    void FinishModelSetup(bool success, bool cancelled, const QString& detail);
+    void SetFormulaReady(bool ready);
+    void SetFormulaBusy(bool busy);
+    void SetFormulaStatus(const QString& source);
+    void SetFormulaDiagnostic(const QString& detail);
+    void SetFormulaText(const QString& latex);
+    QComboBox* mathModelCombo() const { return mathModelCombo_; }
 
     bool IsEnabledByUser() const;
     void SetEnabledByUser(bool enabled);
@@ -59,6 +68,10 @@ signals:
     void enabledChanged(bool enabled);
     void showOriginalChanged(bool showOriginal);
     void modelSettingsChanged();
+    void installModelsRequested();
+    void cancelModelSetupRequested();
+    void readFormulaRequested();
+    void clearFormulaRequested();
 
 private:
     uct::timing::PublicationTicket timingTicket_{};
@@ -71,6 +84,14 @@ private:
     QLabel* backendLabel_{};
     QPlainTextEdit* readingPane_{};
     QComboBox *gpuDetectorCombo_{}, *gpuRecognizerCombo_{}, *cpuDetectorCombo_{}, *cpuRecognizerCombo_{};
+    QPushButton *installModels_{}, *cancelModelSetup_{};
+    QLabel* modelSetupStatus_{};
+    QCheckBox* mathIncluded_{};
+    QComboBox* mathModelCombo_{};
+    QPushButton *readFormula_{}, *clearFormula_{};
+    QLabel* formulaStatus_{};
+    QPlainTextEdit* formulaPane_{};
+    bool formulaReady_{},formulaBusy_{};
     QString statusSource_;
     QString backendSource_;
     bool textClarityEnabled_{true};

@@ -1,5 +1,43 @@
 # Agent Operation Guide
 
+## Native vendor exit ownership (27 October 2026)
+- Complete application RAII, settings/capture writes, owned-child shutdown and
+  log flushing before `FinishWindowsApplication`. It preserves the real status
+  and targets only the current process. Detached/quarantined GPU work is reclaimed
+  by Windows without racing CRT/DLL unload; never use it for in-session recovery.
+- Cancel model setup at destructor entry and reset the UCT controller before
+  windows, graphics and Qt. Keep vendor work off the UI thread with no joins.
+- Preserve the native close-crash evidence and test the headless child exit
+  contract plus a real Math read/normal close before claiming the repair.
+
+## Native Math integration (27 October 2026)
+- Keep Math optional, TF32 and plus-L by default. Model drafts share the atomic
+  OCR setup transaction. Verified sources alone never activate a worker.
+- Reuse UCT owned corrected analysis/current-validation inputs, one worker,
+  acquisition fences, source colors, scene projection, chrome clipping and
+  snapshots. Math never becomes ordinary OCR proof or a source-ink sketch.
+- Keep 2D fraction/exponent layout. Current Math reads one explicit immutable
+  viewport; Resume/source changes revoke it, while pan/zoom only reprojects.
+- Retain MicroTeX MIT, tinyxml2 Zlib and embedded unmodified font notices.
+  Refuse unsafe macros, missing fonts and oversized layouts. No external TeX,
+  Python or subprocess conversion. Report tensor-only and integrated costs
+  separately; no native desktop acceptance from offscreen/GPU diagnostics.
+
+## Native model installation (27 October 2026)
+- Keep ordinary OCR shipping sources medium-only and FP32. Optional tier
+  downloads must match compiled immutable URL/revision/length/hash pins and retain
+  notices. Runtime preparation belongs to the app, never a Python/subprocess
+  converter. Recipe identity must separate native BF16 engine caches.
+- Model selector edits are drafts until Install and set up succeeds. Retain the
+  old worker/settings through download, compatibility checks, cancellation and
+  stale generations. Never activate based on files alone or call an accuracy
+  comparison a compatibility check. Preserve owned damaged sources before repair;
+  refuse unknown/redirected installation directories. Keep network and vendor work
+  off the UI thread and do not join it during app shutdown.
+- Run the desktop-free installation contract and explicit real setup/handoff
+  diagnostics separately. Formula raw weights are not a native-ready model pack;
+  Math precision remains the owner's TF32 choice. See docs/model_installation.md.
+
 OkuFlow evolves as an **AI-assisted, GPU-accelerated magnifier** for people
 with low vision. Agents help us deliver that mission by building features,
 keeping the pipeline fast, and ensuring the docs stay accurate. Read this
@@ -1239,3 +1277,6 @@ aligned with the project goals.
   model/overlay contracts. Compare warm production-factory whole-worker off/on
   visits separately from synthetic microtimes and native presentation evidence.
   Keep original failed attempts and require genuine native captures for promotion.
+
+## Native Math capture sessions (2026-10-27)
+- Native capture delays may extend to 600000 ms within the existing ten-minute profiling deadline, leaving more than 100 ms before normal exit. Use this for real model preparation/manual selection; retain isolated settings, a free desktop, exact raw captures and all foreground/foreign-overlay refusals. Reset computer use before the capture. Never replace native capture evidence with edited pixels.

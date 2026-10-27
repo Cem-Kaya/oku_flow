@@ -5,6 +5,8 @@
 #include "uct_bf16_detector.hpp"
 #include "uct_runtime_paths.hpp"
 #include "uct_engine_cache.hpp"
+#include "uct_native_precision.hpp"
+#include "uct_formula_internal.hpp"
 #include <QCoreApplication>
 #include <new>
 #include <utility>
@@ -39,6 +41,8 @@ bool TensorRtCropDiagnostic::TryCommit(Plan&& plan) noexcept
 #include <QElapsedTimer>
 #include <QFile>
 #include <QJsonObject>
+#include <QLockFile>
+#include <QSaveFile>
 #include <QTemporaryFile>
 #include <Windows.h>
 #include <algorithm>
@@ -315,6 +319,7 @@ class Network
     struct PublicResources {
         QByteArray model; // parser/build may retain this exact bounded snapshot
         PublicProgress progress;
+        native_precision::Weights nativeWeights;
         std::unique_ptr<nvinfer1::IBuilder> builder;
         std::unique_ptr<nvinfer1::INetworkDefinition> network;
         std::unique_ptr<nvonnxparser::IParser> parser;
@@ -447,7 +452,8 @@ class Network
             cudaStream_t stream, const std::function<bool()>& stop, int maximumBatch = 1,
             bool variableWidth = false, bool allowPreparation = true,
             const QByteArray* precisionPlan = nullptr,const QString& explicitCacheRoot = {},
-            const QByteArray& verifiedPlanKey = "verified-local-bf16",bool bf16Graph=false,int expectedClasses=0)
+            const QByteArray& verifiedPlanKey = "verified-local-bf16",bool bf16Graph=false,int expectedClasses=0,
+            bool nativeBf16=false)
     {
         detection_=detection;variableWidth_=variableWidth;maximumBatch_=maximumBatch;
         maximumOutputFloats_=!detection && maximumBatch==16 ? 256ull*1024*1024 : 64ull*1024*1024;
@@ -469,7 +475,8 @@ class Network
         detail::RequireTensorRtApi(runtime_.get(),"TensorRT runtime creation failed.");
         cudaDeviceProp properties{};
         Check(cudaGetDeviceProperties(&properties, device));
-        const auto graphHash = QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
+        const auto sourceHash = QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
+        const auto graphHash = nativeBf16 ? native_precision::GraphIdentity(sourceHash) : sourceHash;
         const auto uuid = QByteArray(reinterpret_cast<const char *>(&properties.uuid), sizeof(properties.uuid));
         // A new build binds its actual builder version. Loading an older key
         // never requires that builder version to equal the loaded runtime.
@@ -536,6 +543,12 @@ class Network
             detail::RequireTensorRtApi(parser.get(), "TensorRT parser creation failed.");
             if (!parser->parse(bytes.constData(), bytes.size()))
                 artifact("PaddleOCR graph is unsupported by TensorRT: " + logger.Error());
+            if (nativeBf16) {
+                if (!bf16Graph) artifact("Native BF16 requires the precision preparation path.");
+                try { native_precision::Apply(*network, resources.nativeWeights, stop); }
+                catch (const TensorRtApiFailure&) { throw; }
+                catch (const std::runtime_error& error) { artifact(error.what()); }
+            }
             if (network->getNbInputs() != 1 || network->getNbOutputs() != 1)
                 artifact("Unexpected TensorRT OCR graph I/O.");
             auto& config=resources.config;config.reset(builder->createBuilderConfig());
@@ -984,16 +997,21 @@ void PrepareRuntimeRecognizer(State& state,const PaddleAssets& assets,const QStr
     const std::function<bool()>& stop,const std::function<bool()>& cancelled,const public_bf16::AttestationObserver& observer) {
     using namespace public_bf16;
     const auto spec=Model(tier);
-    ReadModel(request.modelRoot,assets,tier); // graph/config/dictionary integrity, no text expectations
-    const auto key=bf16_runtime::PlanKey(QByteArray::fromHex(spec.graphSha256),uuid,false,capacity,false,state.libraries->tensorRtVersion);
+    const bool native = request.use == CatalogUse::Production;
+    if (!native) ReadModel(request.modelRoot,assets,tier); // explicit historical graph diagnostic only
+    const auto graphIdentity = native ? native_precision::GraphIdentity(QByteArray::fromHex(assets.recognizerSha256))
+                                      : QByteArray::fromHex(spec.graphSha256);
+    const auto key=bf16_runtime::PlanKey(graphIdentity,uuid,false,capacity,false,state.libraries->tensorRtVersion);
     const auto attempt="runtime-recognizer:"+key;
     RefuseRememberedFailure(request.cacheRoot,attempt);
     if(!SessionAttempts().Begin(attempt))throw Refusal(Reason::BuildRefused,"BF16 recognizer already failed/in flight this session");
     state.ownedAttempts[1]=attempt;
     state.recognizer=std::make_unique<Network>(Network::PublicTag{});
     state.publicCompletion.Queued();
-    state.recognizer->PreparePinned(*state.libraries,state.logger,sdk,QDir(request.modelRoot).filePath(GraphRelativePath(tier)),
-        spec.graphSha256,false,state.device,state.stream,stop,capacity,false,true,nullptr,request.cacheRoot,{},true,spec.classes);
+    state.recognizer->PreparePinned(*state.libraries,state.logger,sdk,
+        native ? assets.recognizer : QDir(request.modelRoot).filePath(GraphRelativePath(tier)),
+        native ? assets.recognizerSha256 : QByteArray(spec.graphSha256),false,state.device,state.stream,
+        stop,capacity,false,true,nullptr,request.cacheRoot,{},true,spec.classes,native);
     ConfirmPublicCompletion(state,cancelled);
     RefuseStoppedCandidate(state.publicCompletion,stop(),"BF16 recognizer build deadline");
     const auto elements=std::size_t(capacity)*3*48*1024;
@@ -1008,10 +1026,12 @@ void PrepareRuntimeRecognizer(State& state,const PaddleAssets& assets,const QStr
     state.recognizerBf16=true;state.recognizerBatch=capacity;state.variableWidth=false;
     SessionAttempts().Passed(attempt);state.ownedAttempts[1].clear();
     state.precisionDetail=runtime_precision::ActualStatus(true,{},state.detectorBf16,detector)+
-        "BF16 model selected; no accuracy or word-agreement startup requirement. Recognizer graphSha256="+QString::fromLatin1(spec.graphSha256)+". ";
+        "BF16 model selected; no accuracy or word-agreement startup requirement. Recognizer graphIdentity="+QString::fromLatin1(graphIdentity.toHex())+". "+
+        (native ? QString::fromLatin1(native_precision::kRecipe)+"; original graph converted inside OkuFlow. " : QString{});
     if(observer) {try {observer(QJsonObject{{"role","recognizer"},{"tier",ModelTierToken(tier)},
         {"effectivePrecision","BF16-linear"},{"runtimePreference",true},{"expectedTextChecked",false},
-        {"batch",capacity},{"T",int(shape.d[1])},{"classes",spec.classes},{"graphSha256",spec.graphSha256},
+        {"batch",capacity},{"T",int(shape.d[1])},{"classes",spec.classes},{"graphSha256",QString::fromLatin1(graphIdentity.toHex())},
+        {"nativePreparation",native},
         {"acceptedPlan",state.recognizer->PlanReceipt("recognizer")}});}catch(...) {}}
 }
 void PreparePublicCandidate(State& state,const PaddleAssets& assets,const QString& sdk,
@@ -1679,16 +1699,19 @@ class TensorRtRecognizer final : public Recognizer
                         QByteArray attempt;
                         bool validating=false;
                         try {
-                            const auto path=bf16_detector::ReadGraphPath(publicRequest.modelRoot,assets,detectorTier);
-                            attempt="detector:"+bf16_detector::PlanKey(QByteArray::fromHex(bf16_detector::GraphHash(detectorTier)),
+                            const bool native = publicRequest.use == public_bf16::CatalogUse::Production;
+                            const auto path=native ? assets.detector : bf16_detector::ReadGraphPath(publicRequest.modelRoot,assets,detectorTier);
+                            const auto expected=native ? assets.detectorSha256 : QByteArray(bf16_detector::GraphHash(detectorTier));
+                            const auto identity=native ? native_precision::GraphIdentity(QByteArray::fromHex(expected)) : QByteArray::fromHex(expected);
+                            attempt="detector:"+bf16_detector::PlanKey(identity,
                                 QByteArray(reinterpret_cast<const char*>(&properties.uuid),sizeof(properties.uuid)),state->libraries->tensorRtVersion);
                             public_bf16::RefuseRememberedFailure(publicRequest.cacheRoot,attempt);
                             if(!public_bf16::SessionAttempts().Begin(attempt))throw runtime_precision::ArtifactError("BF16 detector already failed or in flight this session");
                             state->ownedAttempts[0]=attempt;
                             state->detector=std::make_unique<Network>(Network::PublicTag{});
                             state->publicCompletion.Queued();
-                            state->detector->PreparePinned(*state->libraries,state->logger,sdk,path,bf16_detector::GraphHash(detectorTier),true,state->device,
-                                state->stream,detectorStop,1,false,true,nullptr,baselineCache,{},true);
+                            state->detector->PreparePinned(*state->libraries,state->logger,sdk,path,expected,true,state->device,
+                                state->stream,detectorStop,1,false,true,nullptr,baselineCache,{},true,0,native);
                             ConfirmPublicCompletion(*state,cancelled);
                             public_bf16::RefuseStoppedCandidate(state->publicCompletion,detectorStop(),"BF16 detector build deadline");
                             validating=true;
@@ -1727,7 +1750,9 @@ class TensorRtRecognizer final : public Recognizer
                     if(attestationObserver && publicRequest.enabled) {
                         try {attestationObserver(QJsonObject{{"role","detector"},{"tier",ModelTierToken(detectorTier)},
                             {"requestedBf16",publicRequest.preferDetector},{"effectivePrecision",state->detectorBf16 ? "BF16-linear" : "FP32"},
-                            {"graphSha256",state->detectorBf16 ? QString::fromLatin1(bf16_detector::GraphHash(detectorTier)) : QString::fromLatin1(assets.detectorSha256)},
+                            {"graphSha256",state->detectorBf16 && publicRequest.use!=public_bf16::CatalogUse::Production
+                                ? QString::fromLatin1(bf16_detector::GraphHash(detectorTier)) : QString::fromLatin1(assets.detectorSha256)},
+                            {"nativePreparation",state->detectorBf16 && publicRequest.use==public_bf16::CatalogUse::Production},
                             {"smoke",state->detectorSmoke},{"qualityAttested",false},{"fallback",state->detectorFallback},
                             {"acceptedPlan",state->detector->PlanReceipt("detector")}});}catch(...) {}
                     }
@@ -1866,7 +1891,9 @@ class TensorRtRecognizer final : public Recognizer
                         .arg(ModelTierToken(detectorTier),state->detectorBf16 ? "BF16-linear" : "FP32",ModelTierToken(recognizerTier))
                         .arg(state->detectorSmoke.size());
                     if(!state->detectorFallback.isEmpty())state->precisionDetail+="Detector FP32 fallback: "+state->detectorFallback+". ";
-                    if(state->detectorBf16)state->precisionDetail+="Detector graphSha256="+QString::fromLatin1(bf16_detector::GraphHash(detectorTier))+". ";
+                    if(state->detectorBf16)state->precisionDetail+= publicRequest.use==public_bf16::CatalogUse::Production
+                        ? "Detector sourceGraphSha256="+QString::fromLatin1(assets.detectorSha256)+"; "+QString::fromLatin1(native_precision::kRecipe)+". "
+                        : "Detector graphSha256="+QString::fromLatin1(bf16_detector::GraphHash(detectorTier))+". ";
                     state->precisionDetail += state->detector->PlanReceipt("detector") +
                                               state->recognizer->PlanReceipt("recognizer");
                     preparation->phase.store(1, std::memory_order_release);
@@ -1958,7 +1985,31 @@ class TensorRtRecognizer final : public Recognizer
     std::shared_ptr<State> state_;
     std::shared_ptr<Preparation> preparation_;
 };
+#include "uct_formula_tensorrt.hpp"
 } // namespace
+
+formula::Prepared formula::Prepare(formula::Model model, const QString& sourceRoot, const QString& cacheRoot,
+                                   const std::atomic<bool>& cancelled,
+                                   std::chrono::steady_clock::time_point deadline)
+{
+    formula::Prepared result;
+    try {
+        const auto definition=formula::Describe(model);
+        formula::VerifySources(definition,sourceRoot,cancelled);
+        auto engine=std::make_unique<NativeFormulaEngine>(definition);
+        engine->Prepare(sourceRoot,cacheRoot,cancelled,deadline);
+        const std::vector<float> neutral(768*768,(1.f-.7931f)/.1738f);
+        const auto probe=engine->Recognize(neutral,cancelled,deadline,2);
+        if(cancelled.load() || !probe.compatible)throw std::runtime_error("Formula execution compatibility check failed.");
+        result.engine=std::move(engine);
+        result.detail="Native TensorRT; FP32 graph, TF32 permitted. Compatibility is checked separately from text accuracy.";
+    } catch(const std::exception& error) {
+        result.cancelled=cancelled.load();
+        result.code=result.cancelled ? "cancelled" : "formula_setup_failed";
+        result.detail=QString::fromUtf8(error.what());
+    }
+    return result;
+}
 // Private diagnostic seam: identical Libraries admission/loading, no factory
 // invocation, context, CUDA call, cache access or model preparation.
 std::unique_ptr<Recognizer> CreatePrecisionExperimentRecognizer(const QString& root,const QString& sdk,
@@ -1983,13 +2034,15 @@ std::unique_ptr<Recognizer> CreateTensorRtRecognizer(const QString &root, const 
                                                 selected,detector,recognizer,std::move(retirementObserver),std::move(cropDiagnostic));
 }
 std::unique_ptr<Recognizer> CreateProductionTensorRtRecognizer(ModelTier detector, ModelTier recognizer,
-                                                              TensorRtRetirementObserver retirementObserver)
+                                                              TensorRtRetirementObserver retirementObserver,
+                                                              const QString& preparationCache)
 {
     const auto sdk=runtime_paths::TensorRtRoot(qEnvironmentVariable("OKUFLOW_UCT_TENSORRT_ROOT"),
         QCoreApplication::applicationDirPath(),qEnvironmentVariable("LOCALAPPDATA"));
     const auto modelRoot=QDir(QCoreApplication::applicationDirPath()).filePath("models");
     const public_bf16::Request publicRequest{modelRoot,{},
-        QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath("OkuFlow/ocr-engines"),public_bf16::CatalogUse::Production,true,true,false,true};
+        preparationCache.isEmpty() ? QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath("OkuFlow/model-cache/engines")
+                                   : preparationCache,public_bf16::CatalogUse::Production,true,true,false,true};
     return std::make_unique<TensorRtRecognizer>(DefaultPaddleRoot(), sdk, detector, recognizer,
         std::move(retirementObserver), std::shared_ptr<TensorRtCropDiagnostic>{},
         runtime_precision::ReadApplicationRequest(),publicRequest);
@@ -2009,6 +2062,11 @@ std::unique_ptr<Recognizer> CreatePublicBf16ValidationRecognizer(const QString& 
 #else
 namespace okuflow::uct
 {
+formula::Prepared formula::Prepare(formula::Model, const QString&, const QString&, const std::atomic<bool>&,
+                                   std::chrono::steady_clock::time_point)
+{
+    return {{},"formula_gpu_unavailable","Math requires the native TensorRT CUDA build.",false};
+}
 std::unique_ptr<Recognizer> CreatePrecisionExperimentRecognizer(const QString&,const QString&,ModelTier,
     std::shared_ptr<const PrecisionExperimentPlan>,TensorRtRetirementObserver)
 {
@@ -2020,7 +2078,8 @@ std::unique_ptr<Recognizer> CreatePublicBf16ValidationRecognizer(const QString&,
     return {};
 }
 std::unique_ptr<Recognizer> CreateProductionTensorRtRecognizer(ModelTier detector, ModelTier recognizer,
-                                                              TensorRtRetirementObserver retirementObserver)
+                                                              TensorRtRetirementObserver retirementObserver,
+                                                              const QString&)
 {
     return CreateTensorRtRecognizer({}, {}, detector, recognizer, std::move(retirementObserver));
 }

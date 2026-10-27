@@ -3685,5 +3685,81 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Saved document copy.</source>
         <translation>دستاویز کی نقل محفوظ کر دی گئی۔</translation>
     </message>
+    <message>
+        <source>Install and set up</source>
+        <translation>انسٹال اور سیٹ اپ کریں</translation>
+    </message>
+    <message>
+        <source>Downloads missing models and prepares them on this computer. Your current models stay active until setup succeeds.</source>
+        <translation>جو ماڈل موجود نہیں ہیں انہیں ڈاؤن لوڈ کر کے اس کمپیوٹر پر تیار کرتا ہے۔ سیٹ اپ کامیاب ہونے تک آپ کے موجودہ ماڈل فعال رہتے ہیں۔</translation>
+    </message>
+    <message>
+        <source>Downloading models: %1%</source>
+        <translation>ماڈل ڈاؤن لوڈ ہو رہے ہیں: %1%</translation>
+    </message>
+    <message>
+        <source>Setting up models...</source>
+        <translation>ماڈل سیٹ اپ ہو رہے ہیں...</translation>
+    </message>
+    <message>
+        <source>Models are ready.</source>
+        <translation>ماڈل تیار ہیں۔</translation>
+    </message>
+    <message>
+        <source>Model setup failed. Your previous models are still active.</source>
+        <translation>ماڈل کا سیٹ اپ ناکام ہو گیا۔ آپ کے پچھلے ماڈل اب بھی فعال ہیں۔</translation>
+    </message>
+    <message>
+        <source>Model setup cancelled. Your previous models are still active.</source>
+        <translation>ماڈل کا سیٹ اپ منسوخ ہو گیا۔ آپ کے پچھلے ماڈل اب بھی فعال ہیں۔</translation>
+    </message>
+    <message>
+        <source>Math (experimental)</source>
+        <translation>ریاضی (تجرباتی)</translation>
+    </message>
+    <message>
+        <source>Model choices take effect after Install and set up succeeds.</source>
+        <translation>ماڈل کا انتخاب انسٹالیشن اور سیٹ اپ کامیاب ہونے کے بعد لاگو ہوگا۔</translation>
+    </message>
+    <message>
+        <source>Math model (TF32)</source>
+        <translation>ریاضی کا ماڈل (TF32)</translation>
+    </message>
+    <message>
+        <source>Read formula in this view</source>
+        <translation>اس منظر میں فارمولا پڑھیں</translation>
+    </message>
+    <message>
+        <source>Pause or freeze the view, then zoom to one complete formula.</source>
+        <translation>منظر کو روکیں یا منجمد کریں، پھر ایک مکمل فارمولے پر زوم کریں۔</translation>
+    </message>
+    <message>
+        <source>Clear formula</source>
+        <translation>فارمولا صاف کریں</translation>
+    </message>
+    <message>
+        <source>Recognized formula (LaTeX)</source>
+        <translation>شناخت شدہ فارمولا (LaTeX)</translation>
+    </message>
+    <message>
+        <source>Install and set up Math first.</source>
+        <translation>پہلے ریاضی انسٹال کر کے سیٹ اپ مکمل کریں۔</translation>
+    </message>
+    <message>
+        <source>Reading formula...</source>
+        <translation>فارمولا پڑھا جا رہا ہے...</translation>
+    </message>
+    <message>
+        <source>Formula reading stopped. The original image is unchanged.</source>
+        <translation>فارمولا پڑھنا روک دیا گیا۔ اصل تصویر تبدیل نہیں ہوئی۔</translation>
+    </message>
+    <message>
+        <source>Formula ready. Compare with the original image.</source>
+        <translation>فارمولا تیار ہے۔ اصل تصویر سے موازنہ کریں۔</translation>
+    </message>
+    <message>
+        <source>Formula could not be read. The original image is unchanged.</source>
+        <translation>فارمولا پڑھا نہیں جا سکا۔ اصل تصویر تبدیل نہیں ہوئی۔</translation>
+    </message>
 </context>
 </TS>

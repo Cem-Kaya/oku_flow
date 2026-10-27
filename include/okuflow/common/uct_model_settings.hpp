@@ -1,14 +1,17 @@
 #pragma once
 #include <QString>
 #include <optional>
+#include "okuflow/common/uct_formula_settings.hpp"
 
 namespace okuflow::uct {
 enum class ModelTier { Tiny, Small, Medium };
 struct ModelSettings {
     ModelTier gpuDetector{ModelTier::Medium};
     ModelTier gpuRecognizer{ModelTier::Medium};
-    ModelTier cpuDetector{ModelTier::Tiny};
-    ModelTier cpuRecognizer{ModelTier::Small};
+    ModelTier cpuDetector{ModelTier::Medium};
+    ModelTier cpuRecognizer{ModelTier::Medium};
+    formula::Model mathModel{formula::Model::PlusL};
+    bool installMath{};
     bool operator==(const ModelSettings&) const = default;
 };
 inline constexpr int DefaultTensorRtBatchCapacity(ModelTier recognizer) {

@@ -1,5 +1,18 @@
 # OkuFlow developer guide
 
+On Windows, normal close completes application RAII, persistence, owned-child
+shutdown and log flushing before the final self-process termination boundary.
+Detached/quarantined vendor cleanup must not race CUDA's CRT/DLL unload. Do not
+use this boundary to recover in-session faults or bypass application cleanup.
+See Microsoft's [process-exit remarks](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-exitprocess)
+for the deadlock risk when DLL detach encounters locks held by remaining threads.
+
+[Native formula backend](uct_native_formula.md) replaces the private Python
+inference loop with C++ TensorRT and connects selected-view Math to UCT correction and projection.
+
+[Model setup](model_installation.md) documents the explicit one-button OCR
+transaction, optional Math downloads and native precision preparation.
+
 [Source-ink outlines](uct_ink_outlines.md) documents the worker's non-text contour
 path, bounded CPU/CUDA arithmetic, current-pixel validation and A/B diagnostics.
 
@@ -75,7 +88,7 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   settling, up to eight-times detector enlargement under the existing 960-pixel
   limit. See [geometry and detail repair](uct_oriented_detail_repair.md).
 - UCT advanced settings persist separate PP-OCRv6 detector/recognizer tiers
-  for GPU (medium/medium by default) and CPU fallback (tiny/small).
+  for GPU and CPU fallback (both medium/medium by default).
   Medium/small GPU recognizers default to batch eight; tiny retains batch one.
   Existing saved model choices and explicit batch overrides win. All three
   tiers use compiled immutable pins, native combo data and the same four
@@ -105,8 +118,10 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   `ocr/tensorrt/bin/` (optional CUDA dependency directory `ocr/tensorrt/cuda/bin/`).
   Explicit OCR/TensorRT/CUDA environment overrides take priority; legacy
   LocalAppData development installations remain the fallback. Graphs and corpus
-  assets live separately under `models/uct/`. Discovery does not stage or approve
-  these payloads. Keep the reviewed license/dependency/SBOM and clean-VM gates.
+  historical converted assets remain under `models/uct/` for diagnostics.
+  New payloads contain medium FP32 sources only; production prepares BF16 inside
+  TensorRT. Optional tiers download into LocalAppData, separate from DLLs.
+  Discovery does not approve payloads. Keep license/SBOM and clean-VM gates.
   The exact first-party converter source is retained in
   `scripts/uct/precision_models.py`; Python tooling is developer-only.
 - Lecture notes have larger text, remembered text-size and colour controls,
@@ -1405,3 +1420,5 @@ external MCP, photo or recording rights. Stop/New/provider changes fence pending
 initialization; configuration alone does not trigger inference. Optional tool
 checks remain in settings. The control catalog also exposes UCT enabled and
 Show original preferences, separating requested state from effective readiness.
+
+Native Math development uses `docs/uct_native_formula.md`: compiled source/download pins, native TF32 preparation, shared UCT selected-view worker and source-colored vector overlay. Preserve tensor-only versus integrated image/drawing evidence. `uct_formula_layout_contract` is offscreen; real native GPU diagnostics remain explicit opt-in.

@@ -3685,5 +3685,81 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Saved document copy.</source>
         <translation>文書のコピーを保存しました。</translation>
     </message>
+    <message>
+        <source>Install and set up</source>
+        <translation>インストールしてセットアップ</translation>
+    </message>
+    <message>
+        <source>Downloads missing models and prepares them on this computer. Your current models stay active until setup succeeds.</source>
+        <translation>不足しているモデルをダウンロードし、このコンピューターで準備します。セットアップが成功するまで、現在のモデルは有効なままです。</translation>
+    </message>
+    <message>
+        <source>Downloading models: %1%</source>
+        <translation>モデルをダウンロード中: %1%</translation>
+    </message>
+    <message>
+        <source>Setting up models...</source>
+        <translation>モデルをセットアップ中...</translation>
+    </message>
+    <message>
+        <source>Models are ready.</source>
+        <translation>モデルの準備ができました。</translation>
+    </message>
+    <message>
+        <source>Model setup failed. Your previous models are still active.</source>
+        <translation>モデルのセットアップに失敗しました。以前のモデルは引き続き有効です。</translation>
+    </message>
+    <message>
+        <source>Model setup cancelled. Your previous models are still active.</source>
+        <translation>モデルのセットアップをキャンセルしました。以前のモデルは引き続き有効です。</translation>
+    </message>
+    <message>
+        <source>Math (experimental)</source>
+        <translation>数式（試験的）</translation>
+    </message>
+    <message>
+        <source>Model choices take effect after Install and set up succeeds.</source>
+        <translation>モデルの選択は、インストールとセットアップが正常に完了してから適用されます。</translation>
+    </message>
+    <message>
+        <source>Math model (TF32)</source>
+        <translation>数式モデル（TF32）</translation>
+    </message>
+    <message>
+        <source>Read formula in this view</source>
+        <translation>この表示範囲の数式を読み取る</translation>
+    </message>
+    <message>
+        <source>Pause or freeze the view, then zoom to one complete formula.</source>
+        <translation>表示を一時停止または固定してから、1つの数式全体を拡大してください。</translation>
+    </message>
+    <message>
+        <source>Clear formula</source>
+        <translation>数式を消去</translation>
+    </message>
+    <message>
+        <source>Recognized formula (LaTeX)</source>
+        <translation>認識された数式（LaTeX）</translation>
+    </message>
+    <message>
+        <source>Install and set up Math first.</source>
+        <translation>先に数式機能のインストールとセットアップを完了してください。</translation>
+    </message>
+    <message>
+        <source>Reading formula...</source>
+        <translation>数式を読み取り中...</translation>
+    </message>
+    <message>
+        <source>Formula reading stopped. The original image is unchanged.</source>
+        <translation>数式の読み取りを停止しました。元の画像は変更されていません。</translation>
+    </message>
+    <message>
+        <source>Formula ready. Compare with the original image.</source>
+        <translation>数式の準備ができました。元の画像と比較してください。</translation>
+    </message>
+    <message>
+        <source>Formula could not be read. The original image is unchanged.</source>
+        <translation>数式を読み取れませんでした。元の画像は変更されていません。</translation>
+    </message>
 </context>
 </TS>

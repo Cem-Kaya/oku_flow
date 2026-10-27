@@ -3685,5 +3685,81 @@ Přihlaste se přes Connect ChatGPT na kartě Asistent v režimu Upřesnit.</tra
         <source>Saved document copy.</source>
         <translation>Kopie dokumentu byla uložena.</translation>
     </message>
+    <message>
+        <source>Install and set up</source>
+        <translation>Nainstalovat a nastavit</translation>
+    </message>
+    <message>
+        <source>Downloads missing models and prepares them on this computer. Your current models stay active until setup succeeds.</source>
+        <translation>Stáhne chybějící modely a připraví je v tomto počítači. Stávající modely zůstanou aktivní, dokud se nastavení úspěšně nedokončí.</translation>
+    </message>
+    <message>
+        <source>Downloading models: %1%</source>
+        <translation>Stahování modelů: %1%</translation>
+    </message>
+    <message>
+        <source>Setting up models...</source>
+        <translation>Nastavování modelů...</translation>
+    </message>
+    <message>
+        <source>Models are ready.</source>
+        <translation>Modely jsou připravené.</translation>
+    </message>
+    <message>
+        <source>Model setup failed. Your previous models are still active.</source>
+        <translation>Nastavení modelů se nezdařilo. Předchozí modely jsou stále aktivní.</translation>
+    </message>
+    <message>
+        <source>Model setup cancelled. Your previous models are still active.</source>
+        <translation>Nastavení modelů bylo zrušeno. Předchozí modely jsou stále aktivní.</translation>
+    </message>
+    <message>
+        <source>Math (experimental)</source>
+        <translation>Matematika (experimentální)</translation>
+    </message>
+    <message>
+        <source>Model choices take effect after Install and set up succeeds.</source>
+        <translation>Vybrané modely se použijí po úspěšné instalaci a nastavení.</translation>
+    </message>
+    <message>
+        <source>Math model (TF32)</source>
+        <translation>Matematický model (TF32)</translation>
+    </message>
+    <message>
+        <source>Read formula in this view</source>
+        <translation>Přečíst vzorec v tomto zobrazení</translation>
+    </message>
+    <message>
+        <source>Pause or freeze the view, then zoom to one complete formula.</source>
+        <translation>Pozastavte nebo zmrazte zobrazení a poté přibližte jeden celý vzorec.</translation>
+    </message>
+    <message>
+        <source>Clear formula</source>
+        <translation>Vymazat vzorec</translation>
+    </message>
+    <message>
+        <source>Recognized formula (LaTeX)</source>
+        <translation>Rozpoznaný vzorec (LaTeX)</translation>
+    </message>
+    <message>
+        <source>Install and set up Math first.</source>
+        <translation>Nejprve nainstalujte a nastavte matematiku.</translation>
+    </message>
+    <message>
+        <source>Reading formula...</source>
+        <translation>Čtení vzorce...</translation>
+    </message>
+    <message>
+        <source>Formula reading stopped. The original image is unchanged.</source>
+        <translation>Čtení vzorce zastaveno. Původní obraz se nezměnil.</translation>
+    </message>
+    <message>
+        <source>Formula ready. Compare with the original image.</source>
+        <translation>Vzorec je připraven. Porovnejte jej s původním obrazem.</translation>
+    </message>
+    <message>
+        <source>Formula could not be read. The original image is unchanged.</source>
+        <translation>Vzorec se nepodařilo přečíst. Původní obraz se nezměnil.</translation>
+    </message>
 </context>
 </TS>

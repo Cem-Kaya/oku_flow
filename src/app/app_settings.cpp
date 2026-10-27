@@ -316,8 +316,8 @@ void OkuFlowApp::ApplyPersistentSettings(const settings::PersistentSettings sett
 void OkuFlowApp::SavePersistentSettings() {
     if (ultraClearText_)
         settingsController_->MutableSettings().ultraClearTextEnabled = ultraClearText_->IsEnabledByUser();
-    if(mainWindow_ && mainWindow_->ultraClearTextPanel())
-        settingsController_->MutableSettings().ultraClearTextModels=mainWindow_->ultraClearTextPanel()->ModelSettings();
+    // Model selectors are a draft until Install and set up completes. The
+    // dedicated model transaction owns the committed selection.
     // Only an explicit native source selection changes saved startup intent.
     // Runtime fallback, temporary agent selection, and safety-marker saves
     // must preserve the last saved camera identity.

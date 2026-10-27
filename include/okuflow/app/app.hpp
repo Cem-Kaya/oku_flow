@@ -518,6 +518,8 @@ private:
     void ApplyUltraClearTextDisplayColors(int transform, std::uint64_t lutGeneration = 0);
     void InitializeUltraClearText();
     void OnUltraClearTextModelsChanged();
+    void StartUltraClearTextModelSetup();
+    void RestoreUltraClearTextMath();
 
     QApplication* qtApp_{};
     bool initialized_{false};
@@ -877,9 +879,10 @@ private:
     UctSceneProvenance uctProvenance_;
     std::uint64_t uctWarpRevision_{};
 
-    // Declared last so it is destroyed first: its worker callbacks retire
-    // before the windows it draws into and the presenter go away.
+    // Explicitly reset in the destructor before native windows and Qt retire.
     std::unique_ptr<UltraClearTextController> ultraClearText_;
+    std::shared_ptr<std::atomic<bool>> uctModelSetupCancel_;
+    std::uint64_t uctModelSetupGeneration_{};
 };
 
 } // namespace okuflow

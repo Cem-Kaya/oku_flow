@@ -3685,5 +3685,81 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Saved document copy.</source>
         <translation>تم حفظ نسخة من المستند.</translation>
     </message>
+    <message>
+        <source>Install and set up</source>
+        <translation>تثبيت وإعداد</translation>
+    </message>
+    <message>
+        <source>Downloads missing models and prepares them on this computer. Your current models stay active until setup succeeds.</source>
+        <translation>ينزّل النماذج الناقصة ويجهّزها على هذا الكمبيوتر. تظل نماذجك الحالية نشطة حتى يكتمل الإعداد بنجاح.</translation>
+    </message>
+    <message>
+        <source>Downloading models: %1%</source>
+        <translation>جارٍ تنزيل النماذج: %1%</translation>
+    </message>
+    <message>
+        <source>Setting up models...</source>
+        <translation>جارٍ إعداد النماذج...</translation>
+    </message>
+    <message>
+        <source>Models are ready.</source>
+        <translation>النماذج جاهزة.</translation>
+    </message>
+    <message>
+        <source>Model setup failed. Your previous models are still active.</source>
+        <translation>فشل إعداد النماذج. لا تزال نماذجك السابقة نشطة.</translation>
+    </message>
+    <message>
+        <source>Model setup cancelled. Your previous models are still active.</source>
+        <translation>أُلغي إعداد النماذج. لا تزال نماذجك السابقة نشطة.</translation>
+    </message>
+    <message>
+        <source>Math (experimental)</source>
+        <translation>الرياضيات (تجريبية)</translation>
+    </message>
+    <message>
+        <source>Model choices take effect after Install and set up succeeds.</source>
+        <translation>تُطبَّق خيارات النماذج بعد نجاح التثبيت والإعداد.</translation>
+    </message>
+    <message>
+        <source>Math model (TF32)</source>
+        <translation>نموذج الرياضيات (TF32)</translation>
+    </message>
+    <message>
+        <source>Read formula in this view</source>
+        <translation>قراءة المعادلة في هذا العرض</translation>
+    </message>
+    <message>
+        <source>Pause or freeze the view, then zoom to one complete formula.</source>
+        <translation>أوقف العرض مؤقتًا أو جمّده، ثم كبّر معادلة واحدة كاملة.</translation>
+    </message>
+    <message>
+        <source>Clear formula</source>
+        <translation>مسح المعادلة</translation>
+    </message>
+    <message>
+        <source>Recognized formula (LaTeX)</source>
+        <translation>المعادلة المتعرّف عليها (LaTeX)</translation>
+    </message>
+    <message>
+        <source>Install and set up Math first.</source>
+        <translation>ثبّت ميزة الرياضيات وأعدّها أولًا.</translation>
+    </message>
+    <message>
+        <source>Reading formula...</source>
+        <translation>جارٍ قراءة المعادلة...</translation>
+    </message>
+    <message>
+        <source>Formula reading stopped. The original image is unchanged.</source>
+        <translation>توقفت قراءة المعادلة. لم تتغير الصورة الأصلية.</translation>
+    </message>
+    <message>
+        <source>Formula ready. Compare with the original image.</source>
+        <translation>المعادلة جاهزة. قارنها بالصورة الأصلية.</translation>
+    </message>
+    <message>
+        <source>Formula could not be read. The original image is unchanged.</source>
+        <translation>تعذّرت قراءة المعادلة. لم تتغير الصورة الأصلية.</translation>
+    </message>
 </context>
 </TS>

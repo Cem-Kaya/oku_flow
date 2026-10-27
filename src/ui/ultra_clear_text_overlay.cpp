@@ -218,7 +218,7 @@ void UltraClearTextOverlay::SetViewTransform(const ViewTransform& transform)
         return;
     }
     transform_ = transform;
-    if (!words_.isEmpty() || !inkOutlines_.isEmpty()) {
+    if (!words_.isEmpty() || !inkOutlines_.isEmpty() || formula_) {
         update();
     }
 }
@@ -262,14 +262,26 @@ void UltraClearTextOverlay::SetInkOutlines(QVector<uct::ink::SceneOutline> outli
     update();
 }
 
+void UltraClearTextOverlay::SetFormula(std::optional<uct::formula::Artifact> formula)
+{
+    if(formula && !formula->IsValid())formula.reset();
+    if(!formula && !formula_)return;
+    if(formula && formula_ && formula->path==formula_->path && formula->sceneRect==formula_->sceneRect &&
+       formula->glyphSceneRect==formula_->glyphSceneRect && formula->foreground==formula_->foreground &&
+       formula->background==formula_->background)return;
+    formula_=std::move(formula);
+    if(formula_)formulaColors_=GlyphColors({formula_->foreground,formula_->background});
+    UpdateVisibility();update();
+}
+
 void UltraClearTextOverlay::ClearWords()
 {
-    if (words_.isEmpty() && inkOutlines_.isEmpty() && !isVisible()) {
+    if (words_.isEmpty() && inkOutlines_.isEmpty() && !formula_ && !isVisible()) {
         return;
     }
     words_.clear();
     glyphs_.clear();
-    inkOutlines_.clear();inkOutlineColors_.clear();
+    inkOutlines_.clear();inkOutlineColors_.clear();formula_.reset();
     UpdateVisibility();
     update();
 }
@@ -316,6 +328,7 @@ void UltraClearTextOverlay::SetDisplayColors(
         glyphs_[i].colors = GlyphColors(words_[i].colors);
     for(int i=0;i<inkOutlines_.size();++i)
         inkOutlineColors_[i]=GlyphColors({inkOutlines_[i].outline.foreground,inkOutlines_[i].outline.background});
+    if(formula_)formulaColors_=GlyphColors({formula_->foreground,formula_->background});
     update(); // colors only: no shaping, recognition, proof or geometry changes
 }
 
@@ -440,7 +453,7 @@ void UltraClearTextOverlay::UpdateVisibility()
     // picker or another application. Keep the words for a normal resume.
     const bool wanted = targetShown && applicationActive_ && !ownerBlocked_ &&
                         window->isEnabled() && !QApplication::activeModalWidget() &&
-                        (!words_.isEmpty() || !inkOutlines_.isEmpty());
+                        (!words_.isEmpty() || !inkOutlines_.isEmpty() || formula_);
     if (wanted && !isVisible()) {
         SyncGeometryToRenderTarget();
         show();
@@ -849,6 +862,13 @@ bool UltraClearTextOverlay::ComputePaintPlan(PaintPlan& plan, const ViewTransfor
         planned.drawn=outline.outline.geometry&&std::isfinite(sx)&&std::isfinite(sy)&&sx>0&&sy>0&&
             !planned.bounds.isEmpty()&&clip.intersects(planned.bounds.toAlignedRect());
     }
+    plan.formulaDrawn=false;
+    if(formula_ && formula_->IsValid()) {
+        plan.formulaPlate=uct::SceneRectToView(transform,viewportSize.width(),viewportSize.height(),formula_->sceneRect);
+        plan.formulaGlyph=uct::SceneRectToView(transform,viewportSize.width(),viewportSize.height(),formula_->glyphSceneRect);
+        plan.formulaDrawn=plan.formulaPlate.isValid() && plan.formulaGlyph.isValid() &&
+            clip.intersects(plan.formulaPlate.toAlignedRect());
+    }
     return !deadline || !deadline->hasExpired();
 }
 
@@ -949,7 +969,7 @@ void UltraClearTextOverlay::paintEvent(QPaintEvent* event)
         savedPlan = plan_;
     }
     plan_.valid = false;
-    if ((words_.isEmpty() && inkOutlines_.isEmpty()) || glyphs_.size() != words_.size() || !transform_.valid) {
+    if ((words_.isEmpty() && inkOutlines_.isEmpty() && !formula_) || glyphs_.size() != words_.size() || !transform_.valid) {
         if (offscreenPaint) {
             plan_ = std::move(savedPlan);
         }
@@ -1026,19 +1046,26 @@ void UltraClearTextOverlay::PaintWords(QPainter& painter, const PaintPlan& plan)
         painter.drawText(QPointF(0.0, 0.0), words_[i].text);
         painter.restore();
     }
+    if(plan.formulaDrawn && formula_) {
+        painter.save();painter.setClipRegion(plan.visibleClip);
+        painter.fillRect(plan.formulaPlate,formulaColors_.background);
+        painter.translate(plan.formulaGlyph.topLeft());
+        painter.scale(plan.formulaGlyph.width(),plan.formulaGlyph.height());
+        painter.fillPath(*formula_->path,formulaColors_.foreground);painter.restore();
+    }
 }
 
 UctOverlaySnapshot UltraClearTextOverlay::CaptureSnapshot(const ViewTransform& transform,
                                                           const QSize& viewportSize)
 {
     UctOverlaySnapshot snapshot;
-    if (!isVisible() || (words_.isEmpty() && inkOutlines_.isEmpty()) || glyphs_.size() != words_.size() ||
+    if (!isVisible() || (words_.isEmpty() && inkOutlines_.isEmpty() && !formula_) || glyphs_.size() != words_.size() ||
         !transform.valid || viewportSize.isEmpty()) return snapshot;
     PaintPlan capturePlan;
     ComputePaintPlan(capturePlan, transform, viewportSize, false);
     if (std::none_of(capturePlan.words.cbegin(), capturePlan.words.cend(),
                      [](const PlannedWord& word) { return word.drawn; }) &&
-        std::none_of(capturePlan.ink.cbegin(),capturePlan.ink.cend(),[](const auto& ink){return ink.drawn;})) return snapshot;
+        std::none_of(capturePlan.ink.cbegin(),capturePlan.ink.cend(),[](const auto& ink){return ink.drawn;}) && !capturePlan.formulaDrawn) return snapshot;
     snapshot.viewportSize = viewportSize;
     QPainter recorder(&snapshot.picture);
     PaintWords(recorder, capturePlan);

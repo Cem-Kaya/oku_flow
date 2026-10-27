@@ -7,8 +7,9 @@ inline QString PaddleRoot(const QString& configured,const QString& application,c
     if(!configured.isEmpty())return QDir(configured).absolutePath();
     const auto bundled=QDir(application).filePath("ocr");
     // An explicit bundle marker selects even a partial/damaged inventory so
-    // LoadPaddleAssets reports its exact missing pin instead of borrowing a
-    // developer's LocalAppData models. Preserve legacy flat bundles as well.
+    // LoadPaddleAssets retains this runtime root; optional pinned downloaded
+    // roles may resolve from model-cache without borrowing a developer runtime.
+    // Preserve legacy flat bundles as well.
     if(QFileInfo::exists(QDir(bundled).filePath("pins.json")) ||
        QFileInfo::exists(QDir(bundled).filePath("det/inference.onnx")))return bundled;
     return QDir(localData).filePath("OkuFlow/ocr-runtime");

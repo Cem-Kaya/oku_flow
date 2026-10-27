@@ -10,6 +10,7 @@
 
 #include "debug_log.hpp"
 #include "okuflow/app/app.hpp"
+#include "okuflow/app/process_exit.hpp"
 #endif
 
 int main(int argc, char* argv[]) {
@@ -43,7 +44,9 @@ int main(int argc, char* argv[]) {
         qCritical() << "Fatal error:" << ex.what();
     }
     okuflow::debug_log::Shutdown();
-    return exitCode;
+    std::fflush(stdout);
+    std::fflush(stderr);
+    okuflow::FinishWindowsApplication(exitCode);
 #else
     std::cerr << "OkuFlow currently supports Windows with CUDA, Qt, and Direct3D12 only.\n";
     return EXIT_FAILURE;

@@ -41,6 +41,9 @@ public:
         settings::AdvancedConfig config, const QString& name);
 
     bool Save(const settings::AdvancedConfig& current);
+    // One model-selection commit. Credential cleanup stays queued for ordinary
+    // Save, so a post-commit cleanup error cannot be mistaken for model rollback.
+    bool SaveModelSelection(const settings::AdvancedConfig& current,const uct::ModelSettings& models);
     QString TakeStartupNotice();
     QString LastError() const;
 

@@ -56,6 +56,10 @@ public:
     void SetWords(QVector<SceneWord> words);
     // Source-derived non-text outlines; never contribute words or UIA geometry.
     void SetInkOutlines(QVector<uct::ink::SceneOutline> outlines);
+    // Explicit formula result, already bound to the selected source acquisition.
+    // Reuses UCT colors, clipping, scene projection and snapshot drawing.
+    void SetFormula(std::optional<uct::formula::Artifact> formula);
+    bool HasFormula() const noexcept { return formula_.has_value(); }
     int InkOutlineCount() const noexcept { return inkOutlines_.size(); }
     QVector<QRectF> PaintedInkOutlineRects() const;
     // Optional diagnostic provenance of this content assignment, never a view
@@ -175,6 +179,8 @@ private:
     QVector<SceneWord> words_;
     QVector<uct::ink::SceneOutline> inkOutlines_;
     QVector<uct::LineColors> inkOutlineColors_;
+    std::optional<uct::formula::Artifact> formula_;
+    uct::LineColors formulaColors_;
     // Fitted glyph cached when words or style change; paint only reprojects
     // it. A word whose glyph is not valid is never drawn in either pass, so
     // an opaque plate can never erase the original without its replacement.
@@ -229,6 +235,8 @@ private:
         QVector<QString> texts;     // word text at paint time
         struct Ink { QTransform transform; QRectF bounds; bool drawn{}; };
         QVector<Ink> ink;
+        QRectF formulaPlate, formulaGlyph;
+        bool formulaDrawn{};
         QRegion visibleClip;        // viewport minus floating chrome
         QRegion paintClip;          // visibleClip minus protected source ink
         ViewTransform transform;

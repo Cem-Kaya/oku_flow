@@ -51,6 +51,25 @@ $repository = (Resolve-Path -LiteralPath $RepositoryPath).Path
 if ([IO.Path]::GetFullPath($buildFacts.sourceDirectory) -ne $repository) { throw 'Build facts belong to a different source checkout.' }
 $uctInfo = Get-OkuFlowUctBundleMetadata -BundleRoot $bundle -RepositoryRoot $repository -Required:$RequireUctPayload
 $pdfInfo = Get-OkuFlowPdfBundleMetadata -PayloadRoot $payload -RepositoryRoot $repository -Prefix $layout.Prefix
+$mathNotices = [ordered]@{
+    'MICROTEX_MIT.txt' = 'third_party/microtex/LICENSE'
+    'TINYXML2_ZLIB.txt' = 'third_party/tinyxml2/LICENSE.txt'
+    'OKUFLOW_MODIFICATIONS.txt' = 'third_party/microtex/OKUFLOW_MODIFICATIONS.txt'
+    'OFL.txt' = 'third_party/microtex/res/fonts/licences/OFL.txt'
+    'Knuth_License.txt' = 'third_party/microtex/res/fonts/licences/Knuth_License.txt'
+    'License_for_dsrom.txt' = 'third_party/microtex/res/fonts/licences/License_for_dsrom.txt'
+}
+$mathIncluded = $RequireUctPayload -or (Test-Path -LiteralPath (Join-Path $payload 'licenses/math'))
+if ($mathIncluded) {
+    foreach ($name in $mathNotices.Keys) {
+        $staged = Get-Item -LiteralPath (Join-Path $payload "licenses/math/$name")
+        $original = Get-Item -LiteralPath (Join-Path $repository $mathNotices[$name])
+        if ($staged.Length -gt 1048576 -or $staged.Length -ne $original.Length -or
+            (Get-FileHash -LiteralPath $staged.FullName).Hash -cne (Get-FileHash -LiteralPath $original.FullName).Hash) {
+            throw "Math dependency notice differs from reviewed source: $name"
+        }
+    }
+}
 if ($uctInfo -and $cudaIsEnabled) {
     $nvrtcLicense = @($uctInfo.Inventory | Where-Object path -CEQ 'app/ocr/tensorrt/cuda/LICENSE')
     if ($nvrtcLicense.Count -ne 1 -or $nvrtcLicense[0].sha256 -cne $buildFacts.cuda.licenseSha256) {
@@ -421,10 +440,34 @@ if ($mcpInfo) {
 }
 if ($uctInfo) { $packages += @($uctInfo.Packages) }
 if ($pdfInfo) { $packages += @($pdfInfo.Packages) }
+if ($mathIncluded) {
+    foreach ($dependency in @(
+        @{id='MicroTeX';name='MicroTeX native formula layout';version='0e3707f6dafebb121d98b53c64364d16fefe481d';license='MIT';url='https://github.com/NanoMichael/MicroTeX';notice='MICROTEX_MIT.txt; OKUFLOW_MODIFICATIONS.txt'},
+        @{id='tinyxml2';name='tinyxml2';version='11.0.0 (9148bdf719e997d1f474be6bcc7943881046dba1)';license='Zlib';url='https://github.com/leethomason/tinyxml2';notice='TINYXML2_ZLIB.txt'},
+        @{id='Math-Fonts';name='MicroTeX unmodified base, Latin, Euler and maths fonts';version='0e3707f6dafebb121d98b53c64364d16fefe481d';license='OFL-1.1 AND LicenseRef-MicroTeX-Knuth AND LicenseRef-MicroTeX-dsrom';url='https://github.com/NanoMichael/MicroTeX';notice='OFL.txt; Knuth_License.txt; License_for_dsrom.txt'})) {
+        $packages += [ordered]@{
+            SPDXID = 'SPDXRef-Package-' + $dependency.id
+            name = $dependency.name
+            versionInfo = $dependency.version
+            downloadLocation = $dependency.url
+            filesAnalyzed = $false
+            licenseConcluded = $dependency.license
+            licenseDeclared = $dependency.license
+            copyrightText = 'See complete retained upstream notices.'
+            comment = 'Embedded in the native application; retained notices under licenses/math/: ' + $dependency.notice
+        }
+    }
+}
 $packageIds = @($packages | ForEach-Object { $_.SPDXID })
 $relationships = @()
 if ($uctInfo) { $relationships += @($uctInfo.Relationships) }
 if ($pdfInfo) { $relationships += @($pdfInfo.Relationships) }
+if ($mathIncluded) {
+    $relationships += @(
+        [ordered]@{spdxElementId='SPDXRef-Package-OkuFlow';relationshipType='STATIC_LINK';relatedSpdxElement='SPDXRef-Package-MicroTeX'},
+        [ordered]@{spdxElementId='SPDXRef-Package-MicroTeX';relationshipType='STATIC_LINK';relatedSpdxElement='SPDXRef-Package-tinyxml2'},
+        [ordered]@{spdxElementId='SPDXRef-Package-OkuFlow';relationshipType='CONTAINS';relatedSpdxElement='SPDXRef-Package-Math-Fonts'})
+}
 if ($mcpInfo) {
     $relationships += [ordered]@{spdxElementId='SPDXRef-Package-OkuFlow';
         relationshipType='CONTAINS';relatedSpdxElement='SPDXRef-Package-OkuFlow-MCP'}
@@ -578,6 +621,16 @@ if ($uctInfo) {
 if ($pdfInfo) {
     if (!$sbom.Contains('files')) { $sbom.files = @() }
     $sbom.files = @($sbom.files) + @($pdfInfo.Files)
+}
+if ($mathIncluded) {
+    foreach ($license in @(
+        @{id='LicenseRef-MicroTeX-Knuth';file='Knuth_License.txt';name='Knuth font permission and rename notice'},
+        @{id='LicenseRef-MicroTeX-dsrom';file='License_for_dsrom.txt';name='dsrom font permission and rename notice'})) {
+        $sbom.hasExtractedLicensingInfos += [ordered]@{
+            licenseId=$license.id;name=$license.name
+            extractedText=(Get-Content -LiteralPath (Join-Path $payload ('licenses/math/' + $license.file)) -Raw)
+        }
+    }
 }
 $sbom | ConvertTo-Json -Depth 8 |
     Set-Content -LiteralPath (Join-Path $bundle 'SBOM.spdx.json') -Encoding utf8NoBOM

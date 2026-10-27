@@ -8,12 +8,13 @@ CPU recognition remains FP32. Model errors and BF16/FP32 disagreement are not
 startup, packaging or precision-selection gates. Saved tiers and tiny N1 service
 remain the application's responsibility.
 
-The inventory includes all six original FP32 graphs, original configurations
-(including recognition dictionaries) and model cards, all six converted BF16
-graphs, the original Apache-2.0 model license, the pinned BF16 catalog and exact
-first-party converter source. The generated `MODIFICATIONS.txt` names every
-original/converted graph, configuration, upstream revision and converter hash.
-The converter is retained as source; staging and the application never run it.
+The inventory now includes only original medium FP32 detector/recognizer graphs,
+their configurations/dictionaries and model cards, the original Apache-2.0 model
+license and historical conversion provenance. `MODIFICATIONS.txt` identifies the
+native BF16 recipe, source/config hashes and upstream revisions. The app prepares
+BF16 inside TensorRT rather than shipping duplicate converted graphs. The Python
+converter remains source provenance and is never executed by app/staging.
+Tiny/small tiers are optional verified downloads; see [model setup](model_installation.md).
 
 CPU ONNX Runtime 1.31.0 retains `LICENSE`, `ThirdPartyNotices.txt` and
 `Privacy.md`. The private TensorRT 11.4.0.106 CUDA12.9 subset contains only
@@ -44,7 +45,7 @@ This is the desktop GPU inventory: native Turing, consumer/workstation Ampere,
 Ada and Blackwell resources, plus PTX. Server-only SM80/90/100 builder DLLs are
 not bundled; a separately installed full SDK remains an explicit runtime
 override. This payload does not claim fresh-build support on those server GPUs.
-All six model tiers/roles remain included.
+Only the two medium FP32 model roles are included; other tiers download on demand.
 
 No SDK headers, static/import libraries, SDK tools, `trtexec`, unlisted DLL
 expansions, Python environments, archives, plans, timing caches, model review
@@ -52,8 +53,9 @@ receipts or golden corpora are staged.
 
 ## Integration API
 
-Supply physical, absolute local directories. `ModelsRoot` is the directory
-**containing** `uct/`, not `uct/` itself. `CudaRoot` contains `bin/` and `LICENSE`;
+Supply physical, absolute local directories. `ModelsRoot` is no longer required
+by the medium FP32-only inventory; its parameter remains for historical inputs.
+`CudaRoot` contains `bin/` and `LICENSE`;
 `TensorRtRoot` contains `bin/` and `doc/`; `RuntimeRoot` contains `det/`, `rec/`
 and `cpu/`. Repository inputs resolve from the script location.
 
@@ -62,7 +64,6 @@ $receipt = & "$repo/scripts/stage_uct_payload.ps1" `
     -BundleRoot $freshBundle `
     -RuntimeRoot $physicalOcrRuntime `
     -TensorRtRoot $physicalTensorRtSdk `
-    -ModelsRoot $convertedModelsParent `
     -CudaRoot $physicalCudaToolkit
 # Before signing/metadata generation, retain receipt seals in release evidence.
 $receipt.ReceiptPath

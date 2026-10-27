@@ -10,6 +10,10 @@ namespace okuflow::uct::gpu
 // Worker-only resident validation primitives. Rectangles are half-open pixels.
 struct Rect { int x, y, w, h; };
 struct Colors { int foreground[3], background[3]; }; // RGB
+struct FormulaInputInfo { Rect bounds;Colors colors;int valid; };
+// Current validation pixels only. Bounded source-ink colours, 2D bounds and
+// model normalization; only the compact descriptor returns to the host.
+void FormulaInput(const void*,std::size_t,int,int,const Rect*,FormulaInputInfo*,float*,cudaStream_t);
 struct Ink { Rect search; double x, y, w, h; int detached; };
 struct Fit { double x, y, w, h; };
 struct Grid {

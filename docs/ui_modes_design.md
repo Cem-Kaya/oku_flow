@@ -140,6 +140,10 @@ number shortcuts.
 UCT keeps its enable checkbox and Show original comparison together. The four
 model selectors, backend identity, recognition status and selectable transcript
 share the UCT advanced settings disclosure, collapsed by default. Collapsing
+does not commit model drafts: Install and set up performs the explicit local
+transaction, with progress/cancel inside that disclosure. Current OCR remains
+active until successful setup. Typed state reports the committed model selection.
+Collapsing
 returns descendant focus to that header and does not clear recognition or
 reading position. Its accessible description carries the current status;
 important collapsed changes announce from the header. Positioned viewport
@@ -441,3 +445,7 @@ the button hidden. Wrapped action rows use independent horizontal layouts with e
 minimums derived from translated content. Each row owns its spacing, including
 a three-button row above two wider buttons; mixed grid spans cannot suppress
 internal gaps or make neighbouring buttons uneven.
+
+UCT advanced settings now stages optional Math and a Math model (TF32), sharing Install and set up. Explicit Read/Clear formula actions operate on one immutable viewport, with separate selectable LaTeX. Math starts off; setup never enables ordinary UCT.
+
+UCT and Math checkbox captions wrap at the available inspector width while retaining one native checkbox, its complete accessible name and ordinary keyboard behavior. Native geometry coverage includes staged model selection and Math actions, without running downloads or inference in that UI fixture.

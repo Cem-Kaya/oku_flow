@@ -13,16 +13,82 @@
 #include <QComboBox>
 #include <QLabel>
 #include <QPlainTextEdit>
+#include <QPushButton>
 #include <QScrollBar>
 #include <QTextCursor>
 #include <QSignalBlocker>
 #include <QToolButton>
+#include <QStylePainter>
+#include <QStyleOptionButton>
+#include <QTextLayout>
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <cmath>
+#include <memory>
 
 namespace okuflow {
 namespace {
+
+// Keep one native checkbox/accessibility node, including its unchanged caption,
+// while allowing translated labels to wrap in a narrow inspector.
+class WrappingUctCheckBox final : public QCheckBox {
+public:
+    explicit WrappingUctCheckBox(const QString& text, QWidget* parent = nullptr)
+        : QCheckBox(text, parent) {
+        auto policy = sizePolicy();
+        policy.setHorizontalPolicy(QSizePolicy::Preferred);
+        policy.setHeightForWidth(true);
+        setSizePolicy(policy);
+    }
+    bool hasHeightForWidth() const override { return true; }
+    QSize minimumSizeHint() const override {
+        return {64, QCheckBox::minimumSizeHint().height()};
+    }
+    int heightForWidth(int width) const override {
+        QStyleOptionButton option;
+        initStyleOption(&option);
+        option.rect = QRect(0, 0, width, QCheckBox::sizeHint().height());
+        const auto contents = style()->subElementRect(QStyle::SE_CheckBoxContents, &option, this);
+        auto text = WrappedText(contents.width());
+        return std::max(QCheckBox::sizeHint().height(),
+            int(std::ceil(text->boundingRect().height())) +
+            std::max(0, QCheckBox::sizeHint().height() - fontMetrics().height()));
+    }
+protected:
+    bool hitButton(const QPoint& point) const override { return rect().contains(point); }
+    void paintEvent(QPaintEvent*) override {
+        QStyleOptionButton option;
+        initStyleOption(&option);
+        const auto contents = style()->subElementRect(QStyle::SE_CheckBoxContents, &option, this);
+        option.text.clear();
+        QStylePainter painter(this);
+        painter.drawControl(QStyle::CE_CheckBox, option);
+        auto text = WrappedText(contents.width());
+        painter.setPen(palette().color(isEnabled() ? QPalette::Active : QPalette::Disabled,
+                                       QPalette::WindowText));
+        painter.setClipRect(contents);
+        text->draw(&painter, QPointF(contents.x(),
+            contents.y() + (contents.height() - text->boundingRect().height()) / 2.0));
+    }
+private:
+    std::unique_ptr<QTextLayout> WrappedText(int width) const {
+        auto result = std::make_unique<QTextLayout>(text(), font());
+        QTextOption option;
+        option.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+        option.setTextDirection(layoutDirection());
+        result->setTextOption(option);
+        result->beginLayout();
+        qreal y = 0;
+        for (auto line = result->createLine(); line.isValid(); line = result->createLine()) {
+            line.setLineWidth(std::max(1, width));
+            line.setPosition(QPointF(0, y));
+            y += line.height();
+        }
+        result->endLayout();
+        return result;
+    }
+};
 
 // Maps one document offset from the previous pane text onto refreshed text
 // through their common prefix and suffix. Offsets in the unchanged prefix
@@ -52,7 +118,7 @@ UltraClearTextPanel::UltraClearTextPanel(QWidget* parent)
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
 
-    enableCheckbox_ = new QCheckBox(QStringLiteral("Ultra Clear Text (experimental)"));
+    enableCheckbox_ = new WrappingUctCheckBox(QStringLiteral("Ultra Clear Text (experimental)"));
     enableCheckbox_->setObjectName(QStringLiteral("ultraClearTextCheckbox"));
     enableCheckbox_->setChecked(false);
     enableCheckbox_->setAccessibleName(QStringLiteral("Ultra Clear Text (experimental)"));
@@ -62,7 +128,7 @@ UltraClearTextPanel::UltraClearTextPanel(QWidget* parent)
     enableCheckbox_->setToolTip(enableCheckbox_->accessibleDescription());
     layout->addWidget(enableCheckbox_);
 
-    showOriginalCheckbox_ = new QCheckBox(QStringLiteral("Show original camera text"));
+    showOriginalCheckbox_ = new WrappingUctCheckBox(QStringLiteral("Show original camera text"));
     showOriginalCheckbox_->setObjectName(QStringLiteral("ultraClearTextShowOriginal"));
     showOriginalCheckbox_->setAccessibleName(QStringLiteral("Show original camera text"));
     showOriginalCheckbox_->setAccessibleDescription(QStringLiteral(
@@ -105,6 +171,52 @@ UltraClearTextPanel::UltraClearTextPanel(QWidget* parent)
     gpuRecognizerCombo_=addModel(QStringLiteral("GPU text recognizer"),"uctGpuRecognizer");
     cpuDetectorCombo_=addModel(QStringLiteral("CPU text detector"),"uctCpuDetector");
     cpuRecognizerCombo_=addModel(QStringLiteral("CPU text recognizer"),"uctCpuRecognizer");
+    mathIncluded_=new WrappingUctCheckBox(QStringLiteral("Math (experimental)"),modelControls);
+    mathIncluded_->setObjectName(QStringLiteral("uctMathIncluded"));
+    mathIncluded_->setAccessibleDescription(QStringLiteral("Model choices take effect after Install and set up succeeds."));
+    modelLayout->addWidget(mathIncluded_);
+    auto* mathLabel=new QLabel(QStringLiteral("Math model (TF32)"),modelControls);
+    mathModelCombo_=new WheelSafeComboBox(modelControls);
+    mathModelCombo_->setObjectName(QStringLiteral("uctMathModel"));mathModelCombo_->setAccessibleName(mathLabel->text());
+    for(const auto model:{uct::formula::Model::PlusS,uct::formula::Model::PlusM,uct::formula::Model::L,uct::formula::Model::PlusL}) {
+        const auto name=model==uct::formula::Model::L?QStringLiteral("PP-FormulaNet-L"):
+            QStringLiteral("PP-FormulaNet_plus-")+(model==uct::formula::Model::PlusS?"S":model==uct::formula::Model::PlusM?"M":"L");
+        mathModelCombo_->addItem(name,uct::formula::ModelToken(model));
+    }
+    mathLabel->setBuddy(mathModelCombo_);modelLayout->addWidget(mathLabel);modelLayout->addWidget(mathModelCombo_);
+    connect(mathIncluded_,&QCheckBox::toggled,this,&UltraClearTextPanel::modelSettingsChanged);
+    connect(mathModelCombo_,&QComboBox::currentIndexChanged,this,[this]{emit modelSettingsChanged();});
+    readFormula_=new QPushButton(QStringLiteral("Read formula in this view"),modelControls);
+    readFormula_->setObjectName(QStringLiteral("uctReadFormula"));readFormula_->setEnabled(false);
+    readFormula_->setAccessibleDescription(QStringLiteral("Pause or freeze the view, then zoom to one complete formula."));
+    modelLayout->addWidget(readFormula_);
+    clearFormula_=new QPushButton(QStringLiteral("Clear formula"),modelControls);
+    clearFormula_->setObjectName(QStringLiteral("uctClearFormula"));clearFormula_->setEnabled(false);modelLayout->addWidget(clearFormula_);
+    formulaStatus_=new QLabel(modelControls);formulaStatus_->setObjectName(QStringLiteral("uctFormulaStatus"));
+    formulaStatus_->setWordWrap(true);formulaStatus_->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Preferred);
+    modelLayout->addWidget(formulaStatus_);
+    formulaPane_=new QPlainTextEdit(modelControls);formulaPane_->setObjectName(QStringLiteral("uctFormulaText"));
+    formulaPane_->setAccessibleName(QStringLiteral("Recognized formula (LaTeX)"));formulaPane_->setReadOnly(true);
+    formulaPane_->setTabChangesFocus(true);formulaPane_->setMaximumHeight(100);formulaPane_->hide();modelLayout->addWidget(formulaPane_);
+    connect(readFormula_,&QPushButton::clicked,this,&UltraClearTextPanel::readFormulaRequested);
+    connect(clearFormula_,&QPushButton::clicked,this,&UltraClearTextPanel::clearFormulaRequested);
+    installModels_=new QPushButton(QStringLiteral("Install and set up"),modelControls);
+    installModels_->setObjectName(QStringLiteral("uctInstallModels"));
+    installModels_->setAccessibleName(installModels_->text());
+    installModels_->setAccessibleDescription(QStringLiteral(
+        "Downloads missing models and prepares them on this computer. Your current models stay active until setup succeeds."));
+    installModels_->setToolTip(installModels_->accessibleDescription());
+    modelLayout->addWidget(installModels_);
+    cancelModelSetup_=new QPushButton(QStringLiteral("Cancel"),modelControls);
+    cancelModelSetup_->setObjectName(QStringLiteral("uctCancelModelSetup"));
+    cancelModelSetup_->hide();modelLayout->addWidget(cancelModelSetup_);
+    modelSetupStatus_=new QLabel(modelControls);
+    modelSetupStatus_->setObjectName(QStringLiteral("uctModelSetupStatus"));
+    modelSetupStatus_->setWordWrap(true);
+    modelSetupStatus_->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Preferred);
+    modelSetupStatus_->hide();modelLayout->addWidget(modelSetupStatus_);
+    connect(installModels_,&QPushButton::clicked,this,&UltraClearTextPanel::installModelsRequested);
+    connect(cancelModelSetup_,&QPushButton::clicked,this,&UltraClearTextPanel::cancelModelSetupRequested);
     SetModelSettings({});
     layout->addWidget(modelControls);modelControls->hide();
     connect(advanced,&QToolButton::toggled,this,[advanced,modelControls](bool expanded){
@@ -155,6 +267,40 @@ UltraClearTextPanel::UltraClearTextPanel(QWidget* parent)
     UpdateDependentState();
 }
 
+void UltraClearTextPanel::SetModelSetupProgress(bool preparing,int percent) {
+    installModels_->setEnabled(false);cancelModelSetup_->show();mathIncluded_->setEnabled(false);mathModelCombo_->setEnabled(false);
+    for(auto* combo:{gpuDetectorCombo_,gpuRecognizerCombo_,cpuDetectorCombo_,cpuRecognizerCombo_})combo->setEnabled(false);
+    const auto source=preparing ? QStringLiteral("Setting up models...") :
+        QStringLiteral("Downloading models: %1%").arg(std::clamp(percent,0,100));
+    SetLiveTranslationSource(modelSetupStatus_,source);
+    modelSetupStatus_->setText(TranslateUi(source));modelSetupStatus_->setAccessibleName(modelSetupStatus_->text());
+    modelSetupStatus_->show();
+}
+void UltraClearTextPanel::FinishModelSetup(bool success,bool cancelled,const QString& detail) {
+    installModels_->setEnabled(true);cancelModelSetup_->hide();mathIncluded_->setEnabled(true);mathModelCombo_->setEnabled(true);
+    for(auto* combo:{gpuDetectorCombo_,gpuRecognizerCombo_,cpuDetectorCombo_,cpuRecognizerCombo_})combo->setEnabled(true);
+    const auto source=success ? QStringLiteral("Models are ready.") : cancelled ?
+        QStringLiteral("Model setup cancelled. Your previous models are still active.") :
+        QStringLiteral("Model setup failed. Your previous models are still active.");
+    SetLiveTranslationSource(modelSetupStatus_,source);
+    modelSetupStatus_->setText(TranslateUi(source));modelSetupStatus_->setAccessibleName(modelSetupStatus_->text());
+    // Technical diagnostics are not spoken as UI copy or sent to providers.
+    modelSetupStatus_->setToolTip(detail.left(4096));modelSetupStatus_->show();
+    QAccessibleEvent event(modelSetupStatus_,QAccessible::NameChanged);QAccessible::updateAccessibility(&event);
+}
+
+void UltraClearTextPanel::SetFormulaReady(bool ready) {formulaReady_=ready;readFormula_->setEnabled(ready && !formulaBusy_);}
+void UltraClearTextPanel::SetFormulaBusy(bool busy) {
+    formulaBusy_=busy;readFormula_->setEnabled(formulaReady_ && !busy);
+    clearFormula_->setEnabled(busy || !formulaPane_->toPlainText().isEmpty());
+}
+void UltraClearTextPanel::SetFormulaStatus(const QString& source) {SetLiveText(formulaStatus_,source,LivePoliteness::kPolite);}
+void UltraClearTextPanel::SetFormulaDiagnostic(const QString& detail) {formulaStatus_->setToolTip(detail.left(4096));}
+void UltraClearTextPanel::SetFormulaText(const QString& latex) {
+    if(formulaPane_->toPlainText()!=latex)formulaPane_->setPlainText(latex);
+    formulaPane_->setVisible(!latex.isEmpty());clearFormula_->setEnabled(formulaBusy_ || !latex.isEmpty());
+}
+
 bool UltraClearTextPanel::IsEnabledByUser() const
 {
     return enableCheckbox_->isChecked();
@@ -187,6 +333,8 @@ uct::ModelSettings UltraClearTextPanel::ModelSettings() const {
     models.gpuRecognizer=tier(gpuRecognizerCombo_,models.gpuRecognizer);
     models.cpuDetector=tier(cpuDetectorCombo_,models.cpuDetector);
     models.cpuRecognizer=tier(cpuRecognizerCombo_,models.cpuRecognizer);
+    models.installMath=mathIncluded_->isChecked();
+    models.mathModel=uct::formula::ParseModel(mathModelCombo_->currentData().toString()).value_or(uct::formula::Model::PlusL);
     return models;
 }
 void UltraClearTextPanel::SetModelSettings(const uct::ModelSettings& models) {
@@ -196,6 +344,9 @@ void UltraClearTextPanel::SetModelSettings(const uct::ModelSettings& models) {
     };
     set(gpuDetectorCombo_,models.gpuDetector);set(gpuRecognizerCombo_,models.gpuRecognizer);
     set(cpuDetectorCombo_,models.cpuDetector);set(cpuRecognizerCombo_,models.cpuRecognizer);
+    const QSignalBlocker mathBlock(mathIncluded_), modelBlock(mathModelCombo_);
+    mathIncluded_->setChecked(models.installMath);
+    mathModelCombo_->setCurrentIndex(mathModelCombo_->findData(uct::formula::ModelToken(models.mathModel)));
 }
 
 void UltraClearTextPanel::SetStatus(const QString& sourceText, bool important)
