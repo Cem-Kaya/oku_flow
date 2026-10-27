@@ -1280,3 +1280,4 @@ aligned with the project goals.
 
 ## Native Math capture sessions (2026-10-27)
 - Native capture delays may extend to 600000 ms within the existing ten-minute profiling deadline, leaving more than 100 ms before normal exit. Use this for real model preparation/manual selection; retain isolated settings, a free desktop, exact raw captures and all foreground/foreign-overlay refusals. Reset computer use before the capture. Never replace native capture evidence with edited pixels.
+- Native visual fixture checkpoints must settle layout/composition even with `OKUFLOW_UI_TEST_SCREENSHOTS` unset. Optional image output cannot supply readiness for a subsequent geometry/hit assertion. Preserve the original failed attempt and validate both configurations after repairing this dependency.

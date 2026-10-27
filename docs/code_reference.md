@@ -9,6 +9,9 @@ recovery mechanism. The runtime contract launches a child with pending cleanup
 and verifies both explicit application cleanup and success/failure status.
 `OkuFlowApp` cancels model setup immediately and destroys the UCT controller
 before its native windows, graphics and QApplication are released.
+The native `SaveScreenshot` fixture checkpoint settles Qt layout and native
+peer composition before subsequent hit assertions whether or not optional image
+output is enabled. Diagnostic screenshots never supply a missing precondition.
 
 `WrappingUctCheckBox` in `ultra_clear_text_panel.cpp` keeps a single native
 checkbox and its full caption/accessibility identity. Height-for-width text

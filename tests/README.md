@@ -1,5 +1,9 @@
 # OkuFlow Tests
 
+Native visual checkpoints settle layout/composition regardless of
+`OKUFLOW_UI_TEST_SCREENSHOTS`. Keep hit-test assertions identical with image
+output on or off; enabling diagnostic captures must not change their readiness.
+
 `windows_runtime_contract` also checks final application exit in a private child:
 explicit application cleanup must persist, pending vendor work must not block
 exit, unsafe global teardown must not run, and both success and failure statuses

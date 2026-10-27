@@ -362,13 +362,15 @@ bool NativeHitBelongsTo(QWidget* widget, QString* problem)
 
 bool SaveScreenshot(QWidget& window, const QString& name)
 {
+    // Native tool windows can be exposed before their first compositor frame.
+    // Settle layout/native peers even when image output is disabled: assertions
+    // after this checkpoint must not depend on a diagnostic environment flag.
+    QTest::qWait(80);
+    QCoreApplication::processEvents();
     const QString root = qEnvironmentVariable("OKUFLOW_UI_TEST_SCREENSHOTS");
     if (root.isEmpty()) {
         return true;
     }
-    // Native tool windows can be exposed before their first compositor frame.
-    QTest::qWait(80);
-    QCoreApplication::processEvents();
     QDir directory(root);
     if (!directory.exists() && !directory.mkpath(QStringLiteral("."))) {
         qWarning().noquote() << "Cannot create screenshot directory:" << root;
