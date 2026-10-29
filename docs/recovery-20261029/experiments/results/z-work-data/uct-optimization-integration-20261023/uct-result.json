@@ -1,0 +1,1 @@
+{"finishedUtc":"2026-10-23T01:24:56.4332762+00:00","deadlineUtc":"2026-10-23T01:35:56.0902147+00:00","exitCode":0,"ownedExited":true,"guiExcluded":true,"maxCompileJobs":2,"runner":"tracked scripts/run_test_gate.ps1, exact combined UCT selection","note":"Parent serial compute allocation; tracked test gate owns runner.lock during test execution."}

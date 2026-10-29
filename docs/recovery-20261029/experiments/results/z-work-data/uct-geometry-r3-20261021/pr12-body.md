@@ -1,0 +1,19 @@
+Paused-video refinement could lose already proved text, miss a settled zoomed view after a presentation/backend recovery, and render tilted words using upright boxes or colors sampled from the surrounding panel. Playback could also reject healthy long-GOP seeks and overfeed audio until its output queue failed.
+
+UCT now retains four-corner geometry through CTC mapping, local ink fitting, strict neighbouring-frame registration and painting. Local CPU/CUDA color sampling follows the detected word frame. Small print can fit inside loose detector padding, the minimum-height comparison tolerates projection roundoff, and unresolved isolated near-vertical characters keep their original pixels rather than becoming stretched symbols. Existing word identities, independent current-pixel validation, regional omission continuity and modal/inactive-window suppression remain in place.
+
+Paused pan/zoom immediately reprojects existing text, then may request one selected/neighbour detail pair after 300 ms. Detail uses the visible region at up to 6x under the 960-pixel detector cap, with bounded non-evicting coverage. Genuine presentation recovery and backend-ready transitions rearm a lost request; ordinary presentation receipts do not restart the timer. Held copies never manufacture independent evidence.
+
+The optional recognition-width policy retains ordered 128/256/512/1024 canvases and separate cached profiles. Fixed 1024, the model defaults and batch-eight choice remain unchanged. The owner's word-difference allowance is comparison evidence, not ground-truth accuracy.
+
+Native video seeking/Resume use bounded progress-aware preroll and pace already handed-off PCM. The optional embedded FFmpeg/dav1d saved-file backend uses a pinned private development SDK with explicit opt-in; Media Foundation remains default and owns recording archives. Request-generation fencing, container-probe exhaustion and known-audio cursor failures preserve native fallback. No runtime is downloaded or silently deployed.
+
+Validation:
+
+- The integrated UCT code/test Git blobs match isolated source `0bb7f27`: three focused CPU cases with PCH OFF and four CUDA cases with PCH ON passed, with no skipped Qt rows. These cover processing, scheduling, paused controller recovery, geometry and actual CUDA parity. Original regression failures are retained.
+- Real menu, book and gallery proofs retain exact TensorRT retirement/cache inventory and report zero image egress. Raw token text/order is unchanged across the final geometry repair. The X button remains original, the lower Hand fits at about 43 source pixels, and the book no longer has giant padded letters. The book still has recognition errors and undrawn words; painted counts are not accuracy.
+- The brown gallery heading is already recognized in the full-scene pass. A narrow focus exercises actual 4x/6x scales without adding words in that example. A 6x book region completes selected/neighbour work in about 19/20 ms; this excludes settling, presentation and screen-reader latency.
+- Native/embedded playback repair `de9209b` passed seven focused SDK cases and three no-SDK/PCH-off cases. These create no audio endpoint and do not establish audible-device continuity.
+- The earlier `876ff4a` baseline passed shipping compilation, 151 background CPU cases and 17 CUDA delta cases. That historical result is not current-head release acceptance. Current `agent_check` correctly requires FULL because validation infrastructure changed; it is recorded as a refusal, not a pass.
+
+This remains a draft stacked on PR #11. Current full-matrix/shared-source-equivalence, native GUI/UIA, physical-camera, audible-device and packaged-runtime acceptance remain pending. Original optional strict N1/N8 failures remain failures; no RTX 3050, 120 FPS or end-to-end speedup is claimed. See `docs/uct_oriented_detail_repair.md`, `docs/uct_color_startup_repair.md` and `docs/video_ffmpeg_playback.md` for evidence and limits.

@@ -1,0 +1,2 @@
+name, uuid, driver_version, temperature.gpu, utilization.gpu [%], utilization.memory [%], memory.used [MiB], power.draw [W]
+NVIDIA GeForce RTX 4090, GPU-230556cb-9d98-d5c1-7318-d9ac52e6697d, 617.42, 41, 8 %, 1 %, 3972 MiB, 65.01 W

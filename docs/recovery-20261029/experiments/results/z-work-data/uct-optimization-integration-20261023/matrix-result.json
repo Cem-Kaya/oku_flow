@@ -1,0 +1,1 @@
+{"finishedUtc":"2026-10-23T01:19:52.6155780+00:00","deadlineUtc":"2026-10-23T01:19:52.2927980+00:00","exitCode":124,"ownedExited":true,"guiExcluded":true,"maxCompileJobs":2,"runner":"tracked scripts/agent_build.bat","note":"Parent serial compute allocation; tracked test gate owns runner.lock during test execution."}

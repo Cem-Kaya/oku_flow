@@ -1,0 +1,2 @@
+index, name, uuid, driver_version, temperature.gpu, clocks.current.graphics [MHz], clocks.current.memory [MHz], memory.total [MiB], memory.free [MiB], power.draw [W]
+0, NVIDIA GeForce RTX 4090, GPU-230556cb-9d98-d5c1-7318-d9ac52e6697d, 617.42, 37, 405 MHz, 405 MHz, 24564 MiB, 20377 MiB, 23.56 W

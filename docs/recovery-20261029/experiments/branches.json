@@ -1,0 +1,803 @@
+[
+  {
+    "ref": "refs/heads/bench/uct-fp32-A-20261023",
+    "sha": "cf98331b55428b55cbe02296823ed1372b05e25e",
+    "commitsNotOnOrigin": 1,
+    "log": [
+      "cf98331b Freeze scalar-helper FP32 arm A with exact N8 worker receipts"
+    ],
+    "patchComparisonToMain": [
+      "+ cf98331b55428b55cbe02296823ed1372b05e25e"
+    ]
+  },
+  {
+    "ref": "refs/heads/bench/uct-fp32-A-20261023-r2",
+    "sha": "c926e3d9896793658573c33dd39eaeb2287c2457",
+    "commitsNotOnOrigin": 2,
+    "log": [
+      "c926e3d9 Bound and retain exact N8 startup preparation submissions",
+      "cf98331b Freeze scalar-helper FP32 arm A with exact N8 worker receipts"
+    ],
+    "patchComparisonToMain": [
+      "+ cf98331b55428b55cbe02296823ed1372b05e25e",
+      "+ c926e3d9896793658573c33dd39eaeb2287c2457"
+    ]
+  },
+  {
+    "ref": "refs/heads/bench/uct-fp32-B-20261023",
+    "sha": "96ac911aeb372ab45947b00087e7db2ffc717ba8",
+    "commitsNotOnOrigin": 2,
+    "log": [
+      "96ac911a Prepare cumulative FP32 arm B with exact host merge",
+      "cf98331b Freeze scalar-helper FP32 arm A with exact N8 worker receipts"
+    ],
+    "patchComparisonToMain": [
+      "+ cf98331b55428b55cbe02296823ed1372b05e25e",
+      "+ 96ac911aeb372ab45947b00087e7db2ffc717ba8"
+    ]
+  },
+  {
+    "ref": "refs/heads/bench/uct-fp32-B-20261023-r2",
+    "sha": "44683b3e55d8c1ab9254482291988acc38923f93",
+    "commitsNotOnOrigin": 3,
+    "log": [
+      "44683b3e Prepare cumulative FP32 arm B with exact host merge",
+      "c926e3d9 Bound and retain exact N8 startup preparation submissions",
+      "cf98331b Freeze scalar-helper FP32 arm A with exact N8 worker receipts"
+    ],
+    "patchComparisonToMain": [
+      "+ cf98331b55428b55cbe02296823ed1372b05e25e",
+      "+ c926e3d9896793658573c33dd39eaeb2287c2457",
+      "+ 44683b3e55d8c1ab9254482291988acc38923f93"
+    ]
+  },
+  {
+    "ref": "refs/heads/bench/uct-fp32-C-20261023",
+    "sha": "91d3b63bda4e03634b1bc24453e90c2911f10ced",
+    "commitsNotOnOrigin": 3,
+    "log": [
+      "91d3b63b Prepare cumulative FP32 arm C with batched recognition helpers",
+      "96ac911a Prepare cumulative FP32 arm B with exact host merge",
+      "cf98331b Freeze scalar-helper FP32 arm A with exact N8 worker receipts"
+    ],
+    "patchComparisonToMain": [
+      "+ cf98331b55428b55cbe02296823ed1372b05e25e",
+      "+ 96ac911aeb372ab45947b00087e7db2ffc717ba8",
+      "+ 91d3b63bda4e03634b1bc24453e90c2911f10ced"
+    ]
+  },
+  {
+    "ref": "refs/heads/bench/uct-fp32-C-20261023-r2",
+    "sha": "f3864541b8f59004022d0bedabdfb944e18c74ff",
+    "commitsNotOnOrigin": 4,
+    "log": [
+      "f3864541 Prepare cumulative FP32 arm C with batched recognition helpers",
+      "44683b3e Prepare cumulative FP32 arm B with exact host merge",
+      "c926e3d9 Bound and retain exact N8 startup preparation submissions",
+      "cf98331b Freeze scalar-helper FP32 arm A with exact N8 worker receipts"
+    ],
+    "patchComparisonToMain": [
+      "+ cf98331b55428b55cbe02296823ed1372b05e25e",
+      "+ c926e3d9896793658573c33dd39eaeb2287c2457",
+      "+ 44683b3e55d8c1ab9254482291988acc38923f93",
+      "+ f3864541b8f59004022d0bedabdfb944e18c74ff"
+    ]
+  },
+  {
+    "ref": "refs/heads/experiment/formula-tensorrt-20261027",
+    "sha": "9a0f9a9abf69db4862aa66e1bb9cf998d5ed55df",
+    "commitsNotOnOrigin": 2,
+    "log": [
+      "9a0f9a9a Benchmark BF16 and TF32 formulas and render source-bound math overlays",
+      "fb2196f2 Add native Windows TensorRT formula experiment and measurements"
+    ],
+    "patchComparisonToMain": [
+      "+ fb2196f280b043201780b2ac46c0f608ac0d9333",
+      "+ 9a0f9a9abf69db4862aa66e1bb9cf998d5ed55df"
+    ]
+  },
+  {
+    "ref": "refs/heads/grok-window2-fusion-groupslots",
+    "sha": "a8ed43c07d7185e1e40cd7049a2a94fd980d7b89",
+    "commitsNotOnOrigin": 4,
+    "log": [
+      "a8ed43c0 Rename the metadata slot array to groupSlots.",
+      "25e91089 Name the batched rectify crop index sampleIndex.",
+      "1b128ea9 Fuse recognition rectify and CTC into one launch per batch.",
+      "78335a69 Overlap one TensorRT recognition group with the next."
+    ],
+    "patchComparisonToMain": [
+      "+ 78335a69651640292879723a20c3a387d54a1bfb",
+      "+ 1b128ea949e083ac1565fc078e5272e5aadff9f2",
+      "+ 25e91089efbbbc171c076cc6816f19af30ddd296",
+      "+ a8ed43c07d7185e1e40cd7049a2a94fd980d7b89"
+    ]
+  },
+  {
+    "ref": "refs/heads/grok-window2-fusion-init",
+    "sha": "8b3b374bb00b3fc0c25e240a7547474a6d8edafe",
+    "commitsNotOnOrigin": 4,
+    "log": [
+      "8b3b374b Value-initialize local metadata slots so MSVC parses the array.",
+      "25e91089 Name the batched rectify crop index sampleIndex.",
+      "1b128ea9 Fuse recognition rectify and CTC into one launch per batch.",
+      "78335a69 Overlap one TensorRT recognition group with the next."
+    ],
+    "patchComparisonToMain": [
+      "+ 78335a69651640292879723a20c3a387d54a1bfb",
+      "+ 1b128ea949e083ac1565fc078e5272e5aadff9f2",
+      "+ 25e91089efbbbc171c076cc6816f19af30ddd296",
+      "+ 8b3b374bb00b3fc0c25e240a7547474a6d8edafe"
+    ]
+  },
+  {
+    "ref": "refs/heads/grok-window2-lookahead-groupslots",
+    "sha": "976885e7322cfb0de444c277a2291b74ceac193c",
+    "commitsNotOnOrigin": 2,
+    "log": [
+      "976885e7 Rename the metadata slot array to groupSlots.",
+      "78335a69 Overlap one TensorRT recognition group with the next."
+    ],
+    "patchComparisonToMain": [
+      "+ 78335a69651640292879723a20c3a387d54a1bfb",
+      "+ 976885e7322cfb0de444c277a2291b74ceac193c"
+    ]
+  },
+  {
+    "ref": "refs/heads/grok-window2-lookahead-init",
+    "sha": "a0cc18c29323920dcf752f1823c4494916bc5de6",
+    "commitsNotOnOrigin": 2,
+    "log": [
+      "a0cc18c2 Value-initialize local metadata slots so MSVC parses the array.",
+      "78335a69 Overlap one TensorRT recognition group with the next."
+    ],
+    "patchComparisonToMain": [
+      "+ 78335a69651640292879723a20c3a387d54a1bfb",
+      "+ a0cc18c29323920dcf752f1823c4494916bc5de6"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/active-regional-ocr",
+    "sha": "32b72ed219b267f19bf90a46da1badb297bb568d",
+    "commitsNotOnOrigin": 1,
+    "log": [
+      "32b72ed2 feat(uct): supplement full scans with opt-in regional OCR"
+    ],
+    "patchComparisonToMain": [
+      "+ 32b72ed219b267f19bf90a46da1badb297bb568d"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/batch-uct-inference",
+    "sha": "60f89502249046e80c6d37e7a1553bd466ef8b2c",
+    "commitsNotOnOrigin": 5,
+    "log": [
+      "60f89502 Keep TensorRT factory faults out of capacity fallback",
+      "679f16d6 Decouple UCT plan lookup from driver and admit newer ABI11 runtimes",
+      "48f0b284 refactor(uct): extract driver-independent TensorRT identity policy",
+      "3eccb934 Batch UCT CTC and metadata with explicit slot lifetime guards",
+      "0c3433f4 Batch contiguous UCT crop rectification"
+    ],
+    "patchComparisonToMain": [
+      "+ 0c3433f44bbc8ba5340cfd590dff17aae85ae262",
+      "+ 3eccb934ba47b870db8ef383464204068f673a98",
+      "+ 48f0b284e4cea93e1bcdc9b3ffce97f929e85c34",
+      "+ 679f16d6675172fcd03a6a8960cdc4a55788c6b6",
+      "+ 60f89502249046e80c6d37e7a1553bd466ef8b2c"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/bf16-golden-crop-assets",
+    "sha": "59a00d851364cbaa4a8024ac6c6caa154486261b",
+    "commitsNotOnOrigin": 1,
+    "log": [
+      "59a00d85 Add unapproved owned BF16 crop corpus proposal"
+    ],
+    "patchComparisonToMain": [
+      "+ 59a00d851364cbaa4a8024ac6c6caa154486261b"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/book-word-ink-fitting",
+    "sha": "cca1cef59fbe25ed2176de020f74370494e93ef0",
+    "commitsNotOnOrigin": 1,
+    "log": [
+      "cca1cef5 fix(uct): sample and fit anchored small upright ink"
+    ],
+    "patchComparisonToMain": [
+      "+ cca1cef59fbe25ed2176de020f74370494e93ef0"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/controller-expiry-readmission-fixes",
+    "sha": "077ce9dde8f0e75b344f0272068445896b00848e",
+    "commitsNotOnOrigin": 3,
+    "log": [
+      "077ce9dd test(uct): retain remaining live presentation expiry",
+      "a8b84714 fix(uct): credit one current probe after OCR completion",
+      "dbbfb1a5 fix(uct): arm expiry at existing proof deadlines"
+    ],
+    "patchComparisonToMain": [
+      "+ dbbfb1a5f6809a0fdfe77c342e2c5525d85b3010",
+      "+ a8b84714e2b17799d70a2f336bd5f385004e3a0e",
+      "+ 077ce9dde8f0e75b344f0272068445896b00848e"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/curved-page-ink-diagnostics",
+    "sha": "6d4e29e9da8b7aa367cd5fdadb288623e524f56b",
+    "commitsNotOnOrigin": 1,
+    "log": [
+      "6d4e29e9 feat: add opt-in immutable UCT ribbons and offline ink diagnostics"
+    ],
+    "patchComparisonToMain": [
+      "- 6d4e29e9da8b7aa367cd5fdadb288623e524f56b"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/embedded-video-playback-backend",
+    "sha": "86db49d9c91786ce1083261cd92700046f6b7da6",
+    "commitsNotOnOrigin": 1,
+    "log": [
+      "86db49d9 feat(video): prototype optional embedded FFmpeg dav1d playback"
+    ],
+    "patchComparisonToMain": [
+      "- 86db49d9c91786ce1083261cd92700046f6b7da6"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/fix-tilted-uct-paint-gaps",
+    "sha": "80d74741680f2358d7bd2e1ed4151b08751b1ff4",
+    "commitsNotOnOrigin": 2,
+    "log": [
+      "80d74741 docs: keep actual UCT video and positioned-reader bug open",
+      "3fabb3c5 test: retain captured tilted UCT paint evidence"
+    ],
+    "patchComparisonToMain": [
+      "- 3fabb3c577d0a29200e0d845b1e12822b4899d6a",
+      "- 80d74741680f2358d7bd2e1ed4151b08751b1ff4"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/fix-uct-pause-text-geometry",
+    "sha": "8d259da609408d198851f2c15d0b7634ebbb69b5",
+    "commitsNotOnOrigin": 13,
+    "log": [
+      "8d259da6 fix(uct): preserve complete lines across regional OCR boundaries",
+      "9bea79e4 test(uct): validate active regional GPU and backend ownership",
+      "84173b25 feat(uct): integrate supplemental regional OCR for GPU validation",
+      "438a2424 fix(uct): preserve immutable risk masks during detail merging",
+      "0267b163 fix(uct): keep subpixel protection strips from hiding text",
+      "051b0f2c fix(uct): retain detail typography and uncovered source protection",
+      "59a2be9c fix(uct): align fractional protection with word coverage",
+      "69d58cc8 docs: record combined UCT geometry validation and limits",
+      "0bb7f271 fix(uct): fit small print inside padded detections",
+      "7b5c6721 fix(uct): fit local oriented ink without panel contamination",
+      "8fb00636 fix(uct): re-ask for settled paused detail after presentation/backend recovery",
+      "a5db9238 fix(uct): register paused tilted words in detected local geometry",
+      "88fc93bb WIP: apply Sol's UCT geometry draft (tree 9126fc85 on a548b6d)"
+    ],
+    "patchComparisonToMain": [
+      "+ 88fc93bb4b15e1e4db2a909f874fc0979cfed86a",
+      "+ a5db92382ec0d75ac8eaac178a0b9db901ccabef",
+      "+ 8fb00636da17e416d64df520e78f56ca2d6c589d",
+      "+ 7b5c6721247879d2e919a05e1950bd0f7ca2ccbd",
+      "+ 0bb7f2715ead82c266663bba19ac81fa5c13ee45",
+      "+ 69d58cc881f58649cc37b2db561513a388e54769",
+      "+ 59a2be9c4c0348a597d430611e9fce0db6108ceb",
+      "+ 051b0f2c631c8a57ef064329f3328297f122583a",
+      "- 0267b16326a5e140680269f491c0e3010760abea",
+      "- 438a24240c7b787442addfb7d4e970fa9907af81",
+      "- 84173b25132dcdd4b91dd591f4f3802cd2be79fa",
+      "- 9bea79e4777d6ab88753c242d0c094007457da91",
+      "+ 8d259da609408d198851f2c15d0b7634ebbb69b5"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/fix-video-uct-initial-frame",
+    "sha": "8a584631c2cb7497936635b638bbda1111696f81",
+    "commitsNotOnOrigin": 4,
+    "log": [
+      "8a584631 test(video): add opt-in native sparse zero-to-two-second probe",
+      "26b6ecad test(uct): bind private controller replay inputs to tracked evidence",
+      "fd6f3fd5 fix(uct): admit native sparse saved-file neighbours at paused frame zero",
+      "3a78eb25 test(uct): cover initial paused frame zero and sparse-source limits"
+    ],
+    "patchComparisonToMain": [
+      "+ 3a78eb252726fd9f231c52e8836ce8ef7f062109",
+      "+ fd6f3fd507a4f17195af6b140e29ef3e913d168c",
+      "+ 26b6ecad7e926585ccbea6778872b339febafe2f",
+      "- 8a584631c2cb7497936635b638bbda1111696f81"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/gpt6-token-8x-zoom",
+    "sha": "969b7eb669ea1268b2f9fa0c61c67090fcdb3a4e",
+    "commitsNotOnOrigin": 1,
+    "log": [
+      "969b7eb6 Allow ordinary UCT labels and raise paused detail to 8x"
+    ],
+    "patchComparisonToMain": [
+      "+ 969b7eb669ea1268b2f9fa0c61c67090fcdb3a4e"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/gpu-cleanup-quarantine-retention",
+    "sha": "e4fe78a2b81d8f65f38e73604343a0e8d91bcc65",
+    "commitsNotOnOrigin": 2,
+    "log": [
+      "e4fe78a2 Document scoped resident cleanup CPU validation",
+      "356583f8 Retain resident UCT contexts before cleanup handoff"
+    ],
+    "patchComparisonToMain": [
+      "+ 356583f8e1aeb546bc501978d06b384a36885d9b",
+      "- e4fe78a2b81d8f65f38e73604343a0e8d91bcc65"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/immutable-detail-model-fixes",
+    "sha": "5c7127c1059426e71e357d4d6a963c59b1556bff",
+    "commitsNotOnOrigin": 1,
+    "log": [
+      "5c7127c1 Preserve paused UCT detail layout and carve retained uncertainty"
+    ],
+    "patchComparisonToMain": [
+      "+ 5c7127c1059426e71e357d4d6a963c59b1556bff"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/independent-opus-gpu-review",
+    "sha": "a6f041ff3d5cdbafc9d40b39d71c5b5c5461c740",
+    "commitsNotOnOrigin": 1,
+    "log": [
+      "a6f041ff docs(uct): independent Opus GPU pipeline review"
+    ],
+    "patchComparisonToMain": [
+      "+ a6f041ff3d5cdbafc9d40b39d71c5b5c5461c740"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/live-ram-recap",
+    "sha": "0e7ab292fa1932564dba169973c52a13053399b8",
+    "commitsNotOnOrigin": 2,
+    "log": [
+      "0e7ab292 Bind live Freeze timing to the committed scene receipt",
+      "88064e80 Add bounded silent live RAM video recap"
+    ],
+    "patchComparisonToMain": [
+      "+ 88064e8033a45ddf769989b2574f7ee1e34db651",
+      "+ 0e7ab292fa1932564dba169973c52a13053399b8"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/local-bf16-recognition",
+    "sha": "d19218c6ab60b838a85049f31872bfef7cac556b",
+    "commitsNotOnOrigin": 1,
+    "log": [
+      "d19218c6 feat(uct): select reviewed local BF16 recognition cache explicitly"
+    ],
+    "patchComparisonToMain": [
+      "- d19218c6ab60b838a85049f31872bfef7cac556b"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/memory-recap-core",
+    "sha": "258d7c7a09619c9dd2e0124722f56343f15ecd2b",
+    "commitsNotOnOrigin": 2,
+    "log": [
+      "258d7c7a Compact sealed RAM video allocation for recap retention",
+      "5f66e296 Add bounded RAM H264 recording stream core"
+    ],
+    "patchComparisonToMain": [
+      "+ 5f66e296a8e52169f11a48af6cc3bb09ba22be38",
+      "+ 258d7c7a09619c9dd2e0124722f56343f15ecd2b"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/ocr-engine-research",
+    "sha": "14bf18c61e5181c8a93dc10f14992eae1047ccd5",
+    "commitsNotOnOrigin": 1,
+    "log": [
+      "14bf18c6 Record the Ultra Clear Text OCR engine research."
+    ],
+    "patchComparisonToMain": [
+      "- 14bf18c61e5181c8a93dc10f14992eae1047ccd5"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/ocr-precision-benchmark",
+    "sha": "999d0583776dd8c945eb53d42f43a687a7b22631",
+    "commitsNotOnOrigin": 3,
+    "log": [
+      "999d0583 test(uct): report finite precision results and OCR overlays",
+      "c34d2d1e test(uct): bind calibration crops to exact source leases",
+      "b77760c0 test(uct): add isolated explicit precision experiment"
+    ],
+    "patchComparisonToMain": [
+      "+ b77760c070822a9735eb0278df0cda83c06aa231",
+      "+ c34d2d1ee5d474ff69f5b1237ea08dbf76ecd185",
+      "+ 999d0583776dd8c945eb53d42f43a687a7b22631"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/offline-integration-compose",
+    "sha": "4c3966a52bdd43bb544d66be12aed5263de4a463",
+    "commitsNotOnOrigin": 1,
+    "log": [
+      "4c3966a5 Document scoped composed UCT validation and preserved controller exit 125"
+    ],
+    "patchComparisonToMain": [
+      "+ 4c3966a52bdd43bb544d66be12aed5263de4a463"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/optimize-projective-geometry-checks",
+    "sha": "b05496dbf675e6acc2a23ec30e649d5f4d74e651",
+    "commitsNotOnOrigin": 2,
+    "log": [
+      "b05496db Filter CUDA ink-plane maps through bounded FP32 before FP64",
+      "87a8f03e Run CUDA surface geometry cooperatively across a 128-thread block"
+    ],
+    "patchComparisonToMain": [
+      "- 87a8f03e29f721e533ed8640a7a7db81f82b463a",
+      "- b05496dbf675e6acc2a23ec30e649d5f4d74e651"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/preserve-original-subpixel-masks",
+    "sha": "00dd9036caa95524c6462fe7f6a05529b2dfc72f",
+    "commitsNotOnOrigin": 1,
+    "log": [
+      "00dd9036 fix(uct): preserve original subpixel protection apart from carved strips"
+    ],
+    "patchComparisonToMain": [
+      "+ 00dd9036caa95524c6462fe7f6a05529b2dfc72f"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/public-bf16-golden-path",
+    "sha": "26ebfb835fc62ac690d9240e6f71fc2e10d07d8c",
+    "commitsNotOnOrigin": 11,
+    "log": [
+      "26ebfb83 fix(uct): exclude reparse writers from BF16 directory pins",
+      "6d5f4744 fix(uct): release BF16 cache generation pins per lookup iteration",
+      "c598537d fix(uct): enforce native BF16 cache directory delete exclusion",
+      "2d5c9787 fix(uct): select public BF16 cache by actual builder recipe",
+      "e88f5260 fix(uct): scope public BF16 deadline to admitted attempts",
+      "89f839b0 fix(uct): recheck final BF16 golden deadline before validation",
+      "b3ba9c82 Normalize public BF16 handoff documentation whitespace",
+      "53be085a Repair BF16 validation isolation partial evidence and confined publication",
+      "f4fd73bf Implement private public BF16 local build and golden attestation path",
+      "19d46605 Add unapproved owned BF16 crop corpus proposal",
+      "ca9b0015 feat(uct): prepare public BF16 model attestation boundary"
+    ],
+    "patchComparisonToMain": [
+      "+ ca9b00159ad2388381877acf79209262c6fed871",
+      "+ 19d46605bfa9c6d18be004a6e04c181c05146244",
+      "+ f4fd73bf01f1fe8fcd943ab5d590445a842e493d",
+      "+ 53be085ac336dfdc52d5ae4366baad4eaef32709",
+      "+ b3ba9c82e29ee8f50818d37e4f1ed591c8431dad",
+      "+ 89f839b03285862aa00f082e057c7a4c2d15dc70",
+      "+ e88f526075373eaaae0e3c2ea21e8941a1806b78",
+      "+ 2d5c97876611753cf566f260b27aefd064ffb213",
+      "+ c598537dadefebf17f8db2f5e11de2da200603bd",
+      "+ 6d5f4744b4f7e0f4c2e0d8442b58373475bb7f14",
+      "+ 26ebfb835fc62ac690d9240e6f71fc2e10d07d8c"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/public-bf16-v2-ready-last",
+    "sha": "109870d4ed9f3c428c7c3c42e17e8fc643c695d1",
+    "commitsNotOnOrigin": 12,
+    "log": [
+      "109870d4 Version public BF16 cache with ready-last admission",
+      "26ebfb83 fix(uct): exclude reparse writers from BF16 directory pins",
+      "6d5f4744 fix(uct): release BF16 cache generation pins per lookup iteration",
+      "c598537d fix(uct): enforce native BF16 cache directory delete exclusion",
+      "2d5c9787 fix(uct): select public BF16 cache by actual builder recipe",
+      "e88f5260 fix(uct): scope public BF16 deadline to admitted attempts",
+      "89f839b0 fix(uct): recheck final BF16 golden deadline before validation",
+      "b3ba9c82 Normalize public BF16 handoff documentation whitespace",
+      "53be085a Repair BF16 validation isolation partial evidence and confined publication",
+      "f4fd73bf Implement private public BF16 local build and golden attestation path",
+      "19d46605 Add unapproved owned BF16 crop corpus proposal",
+      "ca9b0015 feat(uct): prepare public BF16 model attestation boundary"
+    ],
+    "patchComparisonToMain": [
+      "+ ca9b00159ad2388381877acf79209262c6fed871",
+      "+ 19d46605bfa9c6d18be004a6e04c181c05146244",
+      "+ f4fd73bf01f1fe8fcd943ab5d590445a842e493d",
+      "+ 53be085ac336dfdc52d5ae4366baad4eaef32709",
+      "+ b3ba9c82e29ee8f50818d37e4f1ed591c8431dad",
+      "+ 89f839b03285862aa00f082e057c7a4c2d15dc70",
+      "+ e88f526075373eaaae0e3c2ea21e8941a1806b78",
+      "+ 2d5c97876611753cf566f260b27aefd064ffb213",
+      "+ c598537dadefebf17f8db2f5e11de2da200603bd",
+      "+ 6d5f4744b4f7e0f4c2e0d8442b58373475bb7f14",
+      "+ 26ebfb835fc62ac690d9240e6f71fc2e10d07d8c",
+      "+ 109870d4ed9f3c428c7c3c42e17e8fc643c695d1"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/ram-video-recap-controls",
+    "sha": "9125635426cc5c80288efd53659d5d63bf77c7ca",
+    "commitsNotOnOrigin": 2,
+    "log": [
+      "91256354 Preserve collapsed recap commands and recover empty pressure segments",
+      "ef49d366 Fix zero-based live recap publication and add transport collapse"
+    ],
+    "patchComparisonToMain": [
+      "+ ef49d36666bb01d4d8ecb7d8c6695f9889244480",
+      "+ 9125635426cc5c80288efd53659d5d63bf77c7ca"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/regional-admission-tickets",
+    "sha": "0d7dc63da6f0be8c86dc6987008b61a7552a80aa",
+    "commitsNotOnOrigin": 2,
+    "log": [
+      "0d7dc63d Raise supplemental OCR detector density to 704 pixels",
+      "6a9f3014 Make optional regional OCR withdrawal atomic and repair causal tickets"
+    ],
+    "patchComparisonToMain": [
+      "+ 6a9f3014aa95a03edb747e1ce3a67772504facb6",
+      "+ 0d7dc63da6f0be8c86dc6987008b61a7552a80aa"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/uct-artifact-precision",
+    "sha": "faa7fbfe7b87983802c881411a856328bc873dfd",
+    "commitsNotOnOrigin": 4,
+    "log": [
+      "faa7fbfe feat(uct): prepare public BF16 model attestation boundary",
+      "0035c6fb fix(uct): decouple precision approval from driver provenance",
+      "0f72f8d4 refactor(uct): extract driver-independent TensorRT identity policy",
+      "5c2bc526 feat(uct): prepare role-aware precision artifact contracts"
+    ],
+    "patchComparisonToMain": [
+      "+ 5c2bc526f0ad5b82eaeab244bd82f3af0416a363",
+      "- 0f72f8d41137935577888b0baec314705a2f964d",
+      "+ 0035c6fb865eca27d717aa5fc0b40c6a58c94abf",
+      "+ faa7fbfe7b87983802c881411a856328bc873dfd"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/uct-bf16-packaging-inventory",
+    "sha": "22f98991a706af7b61699795745fe882f6e878e8",
+    "commitsNotOnOrigin": 4,
+    "log": [
+      "22f98991 Record root UCT repair fixtures and independent source closure",
+      "2294e69a Repair offline UCT path identities and PE backing bounds",
+      "da56becd Record root model-free UCT payload fixture evidence",
+      "5975fe0d Add unrun offline UCT payload inventory boundary"
+    ],
+    "patchComparisonToMain": [
+      "+ 5975fe0d05271906fe1616ab7cc2aa85461f5c3c",
+      "+ da56becdfe71779f6ab22163bd392b2d0aa0168a",
+      "+ 2294e69aefecd52d2910889dd0dfb47960fd5837",
+      "+ 22f98991a706af7b61699795745fe882f6e878e8"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/uct-geometry-detail-fixes",
+    "sha": "0409631c60921a7ea245e06face5321230985d69",
+    "commitsNotOnOrigin": 1,
+    "log": [
+      "0409631c WIP: apply Sol's UCT geometry draft (tree 9126fc85 on a548b6d)"
+    ],
+    "patchComparisonToMain": [
+      "+ 0409631c60921a7ea245e06face5321230985d69"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/uct-latency-optimization",
+    "sha": "ec25a6c7e51015889a668007a251c67b187ada01",
+    "commitsNotOnOrigin": 2,
+    "log": [
+      "ec25a6c7 perf(uct): cooperatively scan resident GPU integral rows",
+      "c85bc589 perf(uct): share CPU sample addressing as secondary candidate"
+    ],
+    "patchComparisonToMain": [
+      "+ c85bc5896e986671bd210a3c572e2fd162dbd771",
+      "+ ec25a6c7e51015889a668007a251c67b187ada01"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/uct-merge-optimization",
+    "sha": "2bbd44a85a83add05b82fba8c01e11b8cca49665",
+    "commitsNotOnOrigin": 2,
+    "log": [
+      "2bbd44a8 Document measured UCT merge CPU replay and limits",
+      "c3e3fea7 Optimize exact host UCT word merging with frozen CPU replay"
+    ],
+    "patchComparisonToMain": [
+      "+ c3e3fea7321aa251d9c341366a2714c5eb3e67e1",
+      "+ 2bbd44a85a83add05b82fba8c01e11b8cca49665"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/uct-merge-raster-atomicity",
+    "sha": "a674998d4dd0b7080fea64fca10d37c165fce4f1",
+    "commitsNotOnOrigin": 1,
+    "log": [
+      "a674998d fix(uct): commit protection atomically through raster preflight"
+    ],
+    "patchComparisonToMain": [
+      "- a674998d4dd0b7080fea64fca10d37c165fce4f1"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/uct-offline-integration",
+    "sha": "b70c4bc5202f50969fa7d80190aebc3890a93291",
+    "commitsNotOnOrigin": 15,
+    "log": [
+      "b70c4bc5 fix(uct): exclude reparse writers from BF16 directory pins",
+      "00dd9f9d Document four-repair UCT composition and retained CPU failures",
+      "937c412f fix(uct): release BF16 cache generation pins per lookup iteration",
+      "8ab27e46 fix(uct): enforce native BF16 cache directory delete exclusion",
+      "856ca07b fix(uct): select public BF16 cache by actual builder recipe",
+      "5cdb30f3 fix(uct): scope public BF16 deadline to admitted attempts",
+      "a7d47578 Avoid Windows near and far macros in surface paint fixture",
+      "9bdd5d13 Limit proposed UCT CPU block to six functional cases",
+      "acafbd7d Document combined UCT source authority and held CPU validation",
+      "7d315408 fix(uct): recheck final BF16 golden deadline before validation",
+      "517acb08 Normalize public BF16 handoff documentation whitespace",
+      "64407947 Repair BF16 validation isolation partial evidence and confined publication",
+      "d559cbed Implement private public BF16 local build and golden attestation path",
+      "75204988 Add unapproved owned BF16 crop corpus proposal",
+      "296b7df6 feat(uct): prepare public BF16 model attestation boundary"
+    ],
+    "patchComparisonToMain": [
+      "+ 296b7df6d31b1c9c3d69711e6e0e62175f89bc87",
+      "+ 75204988ce31fd8c4f36fc8d2b4073cc2395601e",
+      "+ d559cbed7782de6af51def16d859b2c34b6e49c3",
+      "+ 64407947c46af572c79b138b7e9dfc72e5b38ffb",
+      "+ 517acb083d3399c7b245933b7c1d6400773176e4",
+      "+ 7d315408d55d1343f48aa65540d33b09fd120f24",
+      "+ acafbd7d237b0dfcfd8f0abb3d0610f204753001",
+      "+ 9bdd5d13f2352342860ba146ad164c7e46645d05",
+      "+ a7d4757877278b82f42191df2e88ad6be4670a2e",
+      "+ 5cdb30f3a0f916e108c8cef8e7b228e42f1d8514",
+      "+ 856ca07b4dbd3264fc72dd73a6a37d000f46e81b",
+      "+ 8ab27e4600e924418549ad9b589963b5071afc70",
+      "+ 937c412f2d97131532c08f598f8ecbfa829fc2ac",
+      "+ 00dd9f9da9a0bce37e8f7e123a804d16720753c5",
+      "+ b70c4bc5202f50969fa7d80190aebc3890a93291"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/uct-oriented-ink-fitting",
+    "sha": "4f5ea6b7308ca69859fd70bb7a39a2a57e6c9668",
+    "commitsNotOnOrigin": 2,
+    "log": [
+      "4f5ea6b7 fix(uct): fit local oriented ink without panel contamination",
+      "6fc5d649 WIP: apply Sol's UCT geometry draft (tree 9126fc85 on a548b6d)"
+    ],
+    "patchComparisonToMain": [
+      "+ 6fc5d64906d59572d8496f836f30ddae7ab6727f",
+      "+ 4f5ea6b7308ca69859fd70bb7a39a2a57e6c9668"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/uct-paused-refinement",
+    "sha": "396cd13e3e9e1db4944e74bd750d2529e682b22d",
+    "commitsNotOnOrigin": 3,
+    "log": [
+      "396cd13e fix(uct): re-ask for settled paused detail after presentation/backend recovery",
+      "f8778474 import: bring UCT draft a5db923 build-support files",
+      "53816fb6 import: bring UCT geometry draft a5db923 relevant files"
+    ],
+    "patchComparisonToMain": [
+      "+ 53816fb6c05214340ae449acfd8f407bd2290a0a",
+      "+ f87784740aa4a56b2b937a1e2906f5070e81b5ca",
+      "+ 396cd13e3e9e1db4944e74bd750d2529e682b22d"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/uct-text-latency-optimization",
+    "sha": "25e91089efbbbc171c076cc6816f19af30ddd296",
+    "commitsNotOnOrigin": 3,
+    "log": [
+      "25e91089 Name the batched rectify crop index sampleIndex.",
+      "1b128ea9 Fuse recognition rectify and CTC into one launch per batch.",
+      "78335a69 Overlap one TensorRT recognition group with the next."
+    ],
+    "patchComparisonToMain": [
+      "+ 78335a69651640292879723a20c3a387d54a1bfb",
+      "+ 1b128ea949e083ac1565fc078e5272e5aadff9f2",
+      "+ 25e91089efbbbc171c076cc6816f19af30ddd296"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/uct-text-throughput-optimization",
+    "sha": "9899f0eacd672b0f3cabed114f15789075e1aaec",
+    "commitsNotOnOrigin": 7,
+    "log": [
+      "9899f0ea Record window-3 sorted-grouping measurement",
+      "88a07ff2 Record Muse race outcomes and driver-identity limit",
+      "cbdffe91 Rename batched-kernel fixture order variable off the Qt slots macro",
+      "8157b1e3 Keep sorted grouping inert under fixed1024",
+      "bc8c3786 Document width-sorted grouping guardrails in agent guide",
+      "3778c27c Add opt-in width-sorted UCT recognizer grouping",
+      "e7b06682 Batch UCT GPU rectify/CTC launches and metadata transfers"
+    ],
+    "patchComparisonToMain": [
+      "+ e7b0668290af383e5d2a2409e2190202108b7c37",
+      "+ 3778c27ccd9dfb7c7dc703b36320f42f43540111",
+      "+ bc8c37866b9180083470edf4252cde9b9b27b8a0",
+      "+ 8157b1e36a13f92818f6f21d1d163e7200e193ec",
+      "+ cbdffe91624023c380d082d07912303265ba9d3f",
+      "+ 88a07ff290938c0d8512a5aad6017519eb35deba",
+      "+ 9899f0eacd672b0f3cabed114f15789075e1aaec"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/uct-throughput-latency-research",
+    "sha": "c7f4cdc225bdae85c270eb5da85ded1319a21921",
+    "commitsNotOnOrigin": 3,
+    "log": [
+      "c7f4cdc2 docs(uct): report resident latency probes and bounded optimization priorities",
+      "34e5f725 perf(uct): add default-off context-bound TensorRT graph experiment",
+      "94e106e8 perf(uct): overlap dense recognition groups with host merging"
+    ],
+    "patchComparisonToMain": [
+      "+ 94e106e8a16c11dd684a4fcc8d25214591868c72",
+      "+ 34e5f7256dc815b4439cfe519f9783414f0f7126",
+      "+ c7f4cdc225bdae85c270eb5da85ded1319a21921"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/uct-whole-worker-fp32-arms",
+    "sha": "91d3b63bda4e03634b1bc24453e90c2911f10ced",
+    "commitsNotOnOrigin": 3,
+    "log": [
+      "91d3b63b Prepare cumulative FP32 arm C with batched recognition helpers",
+      "96ac911a Prepare cumulative FP32 arm B with exact host merge",
+      "cf98331b Freeze scalar-helper FP32 arm A with exact N8 worker receipts"
+    ],
+    "patchComparisonToMain": [
+      "+ cf98331b55428b55cbe02296823ed1372b05e25e",
+      "+ 96ac911aeb372ab45947b00087e7db2ffc717ba8",
+      "+ 91d3b63bda4e03634b1bc24453e90c2911f10ced"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/uct-whole-worker-fp32-final",
+    "sha": "f3864541b8f59004022d0bedabdfb944e18c74ff",
+    "commitsNotOnOrigin": 4,
+    "log": [
+      "f3864541 Prepare cumulative FP32 arm C with batched recognition helpers",
+      "44683b3e Prepare cumulative FP32 arm B with exact host merge",
+      "c926e3d9 Bound and retain exact N8 startup preparation submissions",
+      "cf98331b Freeze scalar-helper FP32 arm A with exact N8 worker receipts"
+    ],
+    "patchComparisonToMain": [
+      "+ cf98331b55428b55cbe02296823ed1372b05e25e",
+      "+ c926e3d9896793658573c33dd39eaeb2287c2457",
+      "+ 44683b3e55d8c1ab9254482291988acc38923f93",
+      "+ f3864541b8f59004022d0bedabdfb944e18c74ff"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/ultra-clear-text-overlay",
+    "sha": "19b901d875ec93a1a562dda805dc5dfcbb557bf6",
+    "commitsNotOnOrigin": 1,
+    "log": [
+      "19b901d8 Add experimental Ultra Clear Text OCR glyph overlay"
+    ],
+    "patchComparisonToMain": [
+      "+ 19b901d875ec93a1a562dda805dc5dfcbb557bf6"
+    ]
+  },
+  {
+    "ref": "refs/heads/t3/ultra-clear-text-review-repair",
+    "sha": "ca0e09ebe088c02b44698a194efedb0559441707",
+    "commitsNotOnOrigin": 1,
+    "log": [
+      "ca0e09eb Add experimental Ultra Clear Text OCR glyph overlay"
+    ],
+    "patchComparisonToMain": [
+      "+ ca0e09ebe088c02b44698a194efedb0559441707"
+    ]
+  }
+]

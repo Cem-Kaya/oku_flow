@@ -1,0 +1,1 @@
+{"kind":"DIAGNOSTIC ONLY - direct Qt function selection, not tracked CTest acceptance","startedUtc":"2026-10-21T23:28:30.9442891Z","finishedUtc":"2026-10-21T23:28:31.3411451Z","modelExit":2,"controllerExit":2,"source":"30c6538 + frozen repro fixtures","expectedRows":4,"binarySourceReceipt":"baseline-compiler-ready-input-binary-receipt.json","preRunHashVerification":"all matched"}

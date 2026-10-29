@@ -1,0 +1,15 @@
+UCT could lose already proved text after paused-video refinements or seeks, show incorrect local colors, and delay accessibility updates. This change preserves exact-source continuity through optional refinement failures, refreshes existing screen-reader lines promptly, and samples word-local paper/ink colors. Independent validation, source revocation and asynchronous resource ownership remain authoritative.
+
+The optional TensorRT recognition path now chooses 128/256/512/1024-pixel canvases within the existing ordered batches. It copies only bounded width metadata, preserves useful crop pixels, checks distinct cached dynamic profiles, and keeps preparation separate from inference. The fixed-width default and model choices remain unchanged because performance varies by workload.
+
+Measured on RTX 4090 with medium detection/recognition and batch eight: the two problem video frames improved from 217.30/216.49 ms to 182.16/183.26 ms for identical frozen crop work. Complete-path medians improved from 234.28/224.06 ms to 216.67/206.45 ms. Some full-width workloads regressed about 2–4%. Known-text candidate words and truth WER were unchanged. Video baseline word-edit rates were 3.37–4.89%, within the owner's later 5% allowance; this is agreement evidence, not ground-truth accuracy. Original strict failures, omissions, changed words and spatial diagnostics remain retained separately. See docs/uct_recognizer_width.md for the finite protocol, defaults, limits and evidence index.
+
+Validation:
+- Shipping Release compilation, 151 CPU CTest cases and 17 CUDA delta cases passed. Five CPU cases contain optional skipped Qt rows; no whole-case skips or unresolved blockers.
+- PCH-off rebuilt uct_paddle_processing and shared_source_equivalence passed separately. Previous continuity/controller/accessibility PCH-off checks remain documented.
+- Five new model-free width slots cover scalar/profile policy plus actual device width metadata and reused-buffer CUDA rectification/stride transitions.
+- Six finite real-GPU runs completed 252 timed reads and 28 exact State closures, with unchanged plan caches and zero image egress. Exactly two new profiles were prepared once before timing. Original optional strict assertions still exit one and are not converted into passes.
+- Offline cross-width comparator: 25 synthetic checks passed. All 54 frozen N8 pairings meet the 5% text side policy; matched common-word edge drift stays below ten pixels. Unmatched/disposition changes remain separate.
+- The initial N1 preparation command's log-argument failure is preserved; inference/retirement passed in that child, and later cache-only N1 blocks completed normally.
+
+Native GUI/current-head screen-reader delivery remains pending, so local results are partial release validation. No dense 120 FPS or RTX 3050 measurement is claimed. The remaining single-character OCR matching limitation and solid-fill color limitation remain documented. No report-only Astra cleanup recommendations were implemented. This draft remains stacked on PR #11.

@@ -1,0 +1,1 @@
+{"kind":"cuda","exitCode":0,"source":"01697be71f6d1ddfbc11bf56a42dd966fa54291b","target":"uct_paddle_tests","parallel":2,"buildDirectory":"Z:\\Projects\\OkuFlow\\local-work-data\\uct-small-ink-20261022\\build\\msvc-cuda-tests","testsRun":false,"gpuExecution":false,"completedUtc":"2026-10-21T22:57:13.5146785Z"}
