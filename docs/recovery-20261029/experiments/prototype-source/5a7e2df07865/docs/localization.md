@@ -1,0 +1,387 @@
+# Application languages
+
+The development model setup flow adds seven Windows source keys (922 total).
+All 168 targets received per-entry read-only Luna review: 163 OK, five flagged
+with replacements applied, zero unread. Structural parity passed in all 24
+catalogs. This is model-assisted review, not native-speaker, rendered RTL or
+screen-reader acceptance. Android and website strings are unchanged.
+
+The unreleased live RAM recap adds five Windows source keys (884 total per
+catalog), including duration and decimal-MB estimates. All 120 targets received
+per-entry model review: initial48 plus72 settings entries, with the latter's
+21 unread Luna judgments replaced by a focused language-capable Sol review.
+See [the complete retained reconciliation](live_ram_recap_language_review.md).
+Qt 6.12 structural validation passed all24 catalogs after manifest regeneration;
+this does not establish native-speaker, rendered RTL, font or screen-reader
+acceptance. Android and website surfaces are unchanged by this feature.
+
+Windows 0.2.4 and the Android companion source support 25 UI languages. This
+includes the website's 14 homepage languages, Dutch and ten additional widely
+used languages. The browser transcription tool and newly generated local notes
+use the same 25-language set. Marketing homepages remain at 14 languages.
+
+Published Windows v0.2.4 includes the completed wording review. Play Android
+0.1.2 (code 3), the last independently verified tester build, predates this work.
+Android 0.1.4 (code 5), with the completed wording review, passed signed
+release checks and was committed to Alpha through the CLI on 2026-10-14.
+The API reads active code 5; Google review approval and tester availability
+are separate and have not been independently verified. Code 4 remains an
+archived earlier signed inventory.
+
+| Language | Stable code | Android resource qualifier |
+| --- | --- | --- |
+| English | `en` | unqualified `values` |
+| Turkish | `tr` | `values-tr` |
+| German | `de` | `values-de` |
+| French | `fr` | `values-fr` |
+| Spanish | `es` | `values-es` |
+| Italian | `it` | `values-it` |
+| Portuguese (Brazil) | `pt-BR` | `values-pt-rBR` |
+| Russian | `ru` | `values-ru` |
+| Ukrainian | `uk` | `values-uk` |
+| Arabic | `ar` | `values-ar` |
+| Hindi | `hi` | `values-hi` |
+| Japanese | `ja` | `values-ja` |
+| Korean | `ko` | `values-ko` |
+| Chinese (Simplified) | `zh-Hans` | `values-b+zh+Hans` |
+| Dutch | `nl` | `values-nl` |
+| Polish | `pl` | `values-pl` |
+| Czech | `cs` | `values-cs` |
+| Swedish | `sv` | `values-sv` |
+| Indonesian | `id` | `values-in` |
+| Vietnamese | `vi` | `values-vi` |
+| Thai | `th` | `values-th` |
+| Bengali | `bn` | `values-bn` |
+| Persian | `fa` | `values-fa` |
+| Hebrew | `he` | `values-iw` |
+| Urdu | `ur` | `values-ur` |
+
+## Defaults and controls
+
+Windows offers **System default** followed by native language names and
+decorative flags in **Advanced → Settings → Language**. A supported saved
+choice wins over Windows display preferences; missing/unknown settings follow
+the system, falling back to English. The `system` token keeps following the
+system on later launches. Existing explicit `en`, `tr` and `de` choices survive.
+Labels, accessibility names, numeric formatting and subsequent AI response
+directives change in place. A running AI request retains its original language.
+Read still preserves the source text's language. Installed Windows speech voices
+remain a separate system capability; translations do not install new voices.
+
+Android's outlined **Advanced settings** entry includes a decorative gear and
+a localized accessible name. Its first section offers **System default** and
+the native language names. Android 13+ persists the selection through
+`LocaleManager` and exposes it in system per-app language settings; changing it
+recreates the activity. Android 11–12 use a private preference and wrapped
+Activity/Service contexts. The default follows the phone's language. AGP
+generates the locale configuration from the packaged resources. Device behavior
+on those older versions still needs acceptance testing.
+
+Locale matching accepts regional variants and legacy `iw`/`in` tags. Portuguese
+variants use the Brazilian catalog. An explicit Chinese script wins over its
+territory: `zh-Hans-TW` selects Simplified, while `zh-Hant`, `zh-TW`, `zh-HK`
+and `zh-MO` continue to the next supported preference. Traditional Chinese is
+not offered as Simplified Chinese. Canonical saved codes retain `pt-BR` and
+`zh-Hans`, rather than truncating them to primary subtags.
+
+Arabic, Persian, Hebrew and Urdu select right-to-left UI direction. Camera
+pixels and physical viewport coordinates are unchanged. Notes use logical
+spacing and per-entry `lang`/`dir`, and Android navigation arrows follow layout
+direction. The owner's centered headings and justified instructions remain.
+
+The small native runtime launcher has its own compiled 25-language table and
+uses Windows UI language before Qt starts. It cannot read the Qt app's saved
+language preference at that point. Newly written notes contain all viewer and
+handoff labels inline; existing notes are not rewritten. The browser tool uses
+the notes' requested language or supported browser preferences.
+
+## Translation authoring and review policy
+
+Future translations must express the intended meaning naturally in the target
+language. Do not translate word for word or accept unchecked automatic output.
+Machine-generated drafts require contextual rewriting and review before use.
+Use a familiar local phrase, or an established English term when forcing a
+literal translation would sound unnatural.
+
+Every new or changed translated string must be checked by a small,
+language-capable review agent, such as Luna. For large catalogs, assign chunks
+of about 100-200 entries per agent. Supply the English source, stable key,
+target text and UI context. Cover every affected surface: Qt, Android, launcher,
+notes, transcription bridge, marketing pages and browser transcription.
+
+Reviewers remain read-only and return an OK/flagged/unread verdict for each
+assigned entry, with a proposed natural replacement and reason for each finding.
+Do not substitute sampling or a worst-issues cap for complete assigned coverage.
+Reconcile actual key inventories with the verdicts, and replace failed or
+incomplete reviews. The coordinating developer applies vetted corrections while
+preserving semantics, privacy claims, placeholders, markup, keyboard shortcuts
+and consistency between visible labels and instructions, then runs the relevant
+validators below. Model review and structural checks do not establish native-
+speaker approval or rendered-layout and screen-reader acceptance.
+
+## Coverage and provenance
+
+Each of the 24 non-English Qt catalogs contains 728 complete source entries;
+each Android locale contains the same 98 keys as English. The Transcribe UI
+contains 57 keys per language. Qt catalogs, Android resources, launcher strings
+and inline notes labels are packaged locally. No runtime translation API or new
+third-party runtime dependency is introduced.
+
+The 22 newly added translations are machine-assisted drafts of first-party
+public UI text, generated during development with Google's translation service.
+No credentials, recordings or private user text were submitted. Source-key,
+placeholder and markup checks plus focused wording corrections establish
+structural coverage, not fluent translation quality. Native-speaker review,
+font coverage, screen readers and narrow/large-type layouts remain required.
+
+### Multi-model naturalness review and correction pass, 2026-10-14
+
+53 read-only reviewer agents (25 GPT-6-Luna and 25 Claude Haiku 5.5, one pair
+per language, plus 3 Gemini 3.8 Flash cross-checks for Android, the website
+and the Windows executable) audited every surface above for native
+naturalness. The reviewers did not edit files; the corrections were applied
+by the coordinating developer agent from their reports. The review found
+systematic meaning-changing machine-translation errors in the new drafts
+(typical surface scores 4–8/10), driven by ambiguous English source words.
+Corrections (roughly 800 strings) cover: Android setup strings whose meaning
+was inverted or lost (“Starts off” rendered as “Begins”, declining a
+permission rendered as a physical fall in 20 locales, “Build number”
+rendered as construction, stabilization rendered as political stability or
+an eBook edition); Qt polysemy (Draw as a sports tie/lottery, Record as a
+log/inscription, Export as cargo, crop as a farm harvest, speech as an
+oration, transcript as a school report card, the collapsed accessibility
+state as a building collapse, the image writer as a human author, the
+Ukrainian runtime error reading “Wednesday of execution”); register errors
+(rude or informal imperatives); notes/Transcribe label errors of the same
+families; and website calques, applying the owner's rule: where a literal
+translation sounds unnatural, use a natural local phrasing or the
+established English term, never a word-for-word calque (for example Turkish
+“yapay zekâ destekli erişilebilirlik” replaces “etmen tabanlı
+erişilebilirlik” on the homepage).
+
+This pass fixes the reviewers' highest-severity findings and the shared
+polysemy patterns; it is not exhaustive line-by-line proofreading, and the
+translations remain machine-assisted drafts pending native-speaker review.
+Known structural leftovers recorded by the reviewers: Qt strings have no
+plural forms (`%n`) for inflected count grammars, some guidance strings
+embed button names as literal text, `Zoom %L1 times`-style English source
+wording limits natural translation, and the website's “legally blind”
+positioning is kept as the owner's wording. Local validation after the
+pass: `scripts/check_translations.ps1` passed (24 catalogs × 728 entries;
+French “Application” added to its identical-cognate allowlist),
+`scripts/build_android.ps1 -Lint` passed (resource parity, unit tests and
+lint), and website key/placeholder parity was verified locally; the
+website's `npm run check` was not run because Node.js is not installed on
+the current PATH. No build of the Windows application was run for these
+string-only changes.
+
+### Full catalog review continuation, 2026-10-14
+
+The subsequent Luna round assigned all 17,472 non-English Qt entries to 96
+182-entry review scopes, plus 24 scopes for Android, launcher, notes and website
+surfaces. Failed Unicode/file-tool attempts were replaced; an additional review
+covered the Russian tables explicitly left unread. The coordinating developer
+applied 4,383 distinct locale/key corrections relative to the preceding app
+commit and website HEAD. Reviewers remained read-only and the cancelled Spark
+fixer was not used. See the [coverage, per-language counts and decisions](localization_review_2026-10-14.md).
+
+Qt catalog validation, Android debug assembly/68 JVM tests/lint and the
+website's complete `npm run check` passed. The existing portable Node toolchain
+made website validation available despite Node being absent from the normal
+PATH. Windows background compilation/tests use the tracked matrix with GUI
+excluded; inspect the retained matrix log for its result. Full assigned model
+review coverage does not establish native-speaker approval, rendered layouts,
+screen-reader quality or a public release.
+
+## Validation
+
+Run `scripts/check_translations.ps1` for exact source keys, complete translations,
+format tokens, line breaks and compiled catalogs. Use `-UpdateManifest` only
+after deliberate source-key changes. `scripts/build_android.ps1 -Lint` checks
+all Android keys and assembles/tests/lints the APK.
+
+`language_catalog_contract` loads every real compiled catalog without creating
+a window, checks locale/direction and saved/system precedence, and verifies that
+a missing replacement catalog preserves the active translator, locale and
+direction. Android `AppLanguageTest` checks tags and regional/script matching.
+The website's `npm run check` includes `test-transcribe-languages.mjs` for all
+UI keys, formatting tokens and locale selection.
+
+Use `scripts/agent_build.bat` for normal Windows validation. When the desktop is
+reserved, `OKUFLOW_AGENT_EXCLUDE_GUI=1` compiles the shipping release and runs
+CPU/CUDA tests without native GUI fixtures. That result is partial validation;
+it does not establish the complete publication gate or actual device rendering.
+
+### Local results, 2026-10-13
+
+- Shipping Windows release compilation passed. The background matrix passed
+  25 CPU and 30 CUDA CTest entries, with zero skipped Qt rows. Native `gui`
+  entries were excluded to respect the reserved desktop; this is partial
+  validation, not a publication gate.
+- Android debug assembly, 67 JVM tests and lint passed. The host protocol's
+  11 standard-library tests passed without claiming the live adb server.
+- Qt validation compiled all 24 non-English catalogs, each with 726 complete
+  entries. Website checks passed 14 marketing pages and 25 Transcribe UI tables.
+- The tracked headless Chrome fixture passed notes media, filtering,
+  conversation grouping, theme/text-size persistence, EN/TR/DE/NL/AR controls,
+  Arabic direction and 200% text at 320px. It also passed production CSP,
+  variable-count carousel navigation, reduced motion and static icon caching.
+  This used synthetic fixture media, not real recordings or model inference.
+
+Logs and private profiles are under `%LOCALAPPDATA%\OkuFlow\language-work\`.
+The APK is under `android-multilingual-build\app\outputs\apk\debug\app-debug.apk`
+and the compiled Qt executable under `build-multilingual-release\cmake\oku_flow.exe`,
+both relative to `%LOCALAPPDATA%\OkuFlow\`. These are development outputs, not
+a staged portable bundle or Play upload. Their SHA-256 identities are:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| Debug APK | `B6B9BC78901BCA22917EF22D3BE970A30BF9BCF0A29C5A138058BA3F0B5F9358` |
+| Compiled Qt EXE | `A1DECA56594058A3EAA0D67A7829EE615625824CEBDE5A71708F68AD02B557CB` |
+
+The first compiled-catalog run caught the Chinese-script lookup bug; it was
+repaired before the passing runs. A notes attribute-order check was preserved
+when adding per-entry direction. One background attempt was invalidated by a
+concurrent edit to test documentation; subsequent runs used settled inputs.
+The Chrome fixture's obsolete four-slide expectations were replaced with
+one-dot-per-slide assertions in both the default and localized-page checks.
+Initial failed evidence remains retained separately from passing attempts.
+
+The subsequent cable-screen wording update explicitly names the required
+Windows app, its download website and the data-capable USB cable. All 25
+Android catalogs and the three-language illustrative draft were updated;
+debug assembly, JVM tests and lint passed again. The APK hash above includes
+that wording. Native phone rendering and Play publication remain pending.
+The Qt EXE hash reflects the subsequent nested-bundle data-folder protection.
+
+The later Settings-navigation fix reuses the translated Developer-mode and
+USB-debugging labels in two independent connection-help controls; no new
+catalog keys were needed. Debug assembly, 68 JVM tests and lint passed. That
+newer debug APK is `6981E0D3A186AB9E97A79317DFE6B920DBAF837839A2D7FB5913C426FCE4BA09`;
+the earlier table remains the preceding wording/localization artifact. No
+device was listed at that earlier build checkpoint. A later isolated
+production-component fixture verified both Settings destinations on the Pixel
+without replacing its Play installation; see `android/DEVICE_VALIDATION.md`.
+Two new desktop USB recovery messages bring current Qt coverage to 728 keys.
+Native GUI validation now uses the current simplified German Zoom and six-color
+labels as sentinels. The language roundtrip, locale number formatting and
+current-selection retranslation assertions remain intact; older wording was
+stale after the expanded catalogs were generated.
+The debug AAB's actual BundleConfig metadata also disables LANGUAGE splitting,
+so manual language choices remain installed offline. This is debug-bundle
+evidence, not a Google Play rollout or native-speaker acceptance.
+
+## Assistant/control wording (local 0.3.1 implementation)
+
+The active manifests retain 39 reviewed control sources and add 32 chat-first
+sources across24 non-English catalogs. The new 768 entries have unique independent
+Luna verdicts, no unread entries and73 vetted replacements. Rechecks clarified
+that composer questions are addressed to Assistant, rotation is an absolute
+clockwise displayed-content angle, skipped undo preserves later user edits and
+save failures do not imply rollback. Five obsolete nested-tab/approval sources
+were removed. Historical initial 44-key review remains in local evidence.
+
+Evidence lives under `%LOCALAPPDATA%/OkuFlow/agentic-control/`, including
+`ui-chat-redesign-reconciliation.json`. Parity/lrelease passes24 catalogs with 799
+finished sources. German/Dutch Details are reviewed cognates with narrow
+validator exceptions. This establishes model review and structural parity,
+not native-speaker, rendered RTL, font or screen-reader acceptance. Published
+release claims remain unchanged.
+
+## Ultra Clear Text strings (pending review)
+
+The experimental Ultra Clear Text status uses live-text routing; its static
+control labels and descriptions are still English literals without a language-
+change hook. Their sources are **not yet in the catalogs**, so every language
+currently shows English. They were not machine-translated or added to the manifest
+without the required small-agent review. Add them through
+`scripts/check_translations.ps1 -UpdateManifest` with per-entry review before
+calling the feature localized. English sources:
+
+- Controls: `Ultra Clear Text (experimental)`, `Show original camera text`,
+  `Recognized text`.
+- Descriptions/tooltips: `Recognizes steady printed text on this computer and
+  draws sharp letters over it. Recognition can be wrong. Use Show original
+  to compare with the camera image.`; `Temporarily hides the sharp letters so
+  you can compare with the camera image.`; `Text accepted by Ultra Clear Text,
+  in reading order. An ellipsis marks words left as the original image.`;
+  overlay `Ultra Clear Text overlay` / `Visual glyph overlay. The recognized
+  text is available in the Ultra Clear Text reading pane.`
+- Status: `Ultra Clear Text is off.`, `Starting text recognition…`,
+  `Text recognition is unavailable: Windows has no OCR language installed. The
+  original camera image is shown.`, `Text recognition is unavailable on this
+  computer. The original camera image is shown.`, `Text recognition stopped
+  working. The original camera image is shown.`, `Paused while Temporal Smooth
+  or Extra Stable is on. The original camera image is shown.`, `Waiting for the
+  camera.`, `Original camera text shown.`, `Showing sharp text for %1 words.`,
+  `Text moved. Showing the original until it is steady again.`,
+  `Reading text…`, `No steady printed text recognized yet.`,
+  `Waiting for steady text…`; `Image settings changed. Showing the camera image until the new image is read.`.
+
+Recognized words in the reading pane are camera content, not UI text, and are
+never translated. Recognition languages come from the Windows OCR languages
+installed on the computer, independent of the UI language.
+
+The 2026-10-17 approval-receipt additions bring the current Windows source
+catalog to 807 keys. All 48 additions received small-agent review; see
+[the complete review record](localization_review_2026_10_17.md).
+
+
+## Video source selector (2026-10-19)
+
+The two new native keys, View video and Select video, bring every non-English
+catalog to 874 entries. Three read-only GPT-6-Luna review tasks covered all
+48 targets, 16 entries each, with an explicit per-entry verdict. The Czech
+View video label was changed from Přehrát video to Zobrazit video, and Polish
+from Odtwórz wideo to Wyświetl wideo, following the reviewers' distinction
+between selecting a view source and starting playback. All other targets were
+accepted. Task request identities are `okuflow-video-source-ui-l10n-1-20261019-r1`
+through `-3-20261019-r1`. `scripts/check_translations.ps1 -UpdateManifest` passed
+all 24 catalogs and generated all 874 finished entries per catalog. This is
+structural and linguistic model review, not native-speaker or rendered UIA/RTL
+acceptance. No Android or website strings changed.
+# UCT control captions (2026-10-24)
+
+The two UCT checkbox captions, `Ultra Clear Text (experimental)` and
+`Show original camera text`, are shared by the native controls and action
+receipts. All 48 additions across 24 catalogs received per-entry read-only
+review: 39 accepted and nine replacements applied, with no unread entries.
+Review task: `uct-checkbox-48-label-translations-review-20261024-r1`.
+This is machine-assisted linguistic review; rendered text, RTL and native-speaker
+acceptance remain separate. The English feature name stays consistent with
+the existing UCT catalog entries.
+
+## Playback volume (2026-10-25)
+
+The new `Playback volume` source key is both the saved-video slider's visible
+label and accessible name. A read-only Luna task reviewed every one of its 24
+target strings: 23 OK, one Hebrew replacement applied, none unread. Task ID:
+`playback-volume-translations-review-20261025-r1`. Review JSON is retained under
+the private `video-audio-resume-20261025-r1` evidence folder. Translation parity
+and Qt compilation passed for all 24 catalogs with 891 complete keys each.
+This is model-assisted linguistic review; native-speaker, rendered RTL and
+spoken screen-reader acceptance remain separate. Android and website catalogs
+are unchanged.
+
+## UI hierarchy and featured modes (2026-10-25)
+
+Four additional source keys bring each of the 24 catalogs to 895: More modes,
+Document, Projector Screen and Whiteboard. Small-agent tasks
+`quick-more-modes-l10n-20261025-r1` and `featured-modes-l10n-20261025-r1`
+reviewed every target (24 + 72): seven replacements applied, none unread.
+The latter fixes Arabic projection terminology. Reviewed French/Dutch Document
+and German/Dutch/Swedish Whiteboard are natural established terms identical
+to English; the validator explicitly allows these two source keys. The
+disclosure, feature names and accessible labels use the same catalog strings.
+This does not establish native-speaker, spoken screen-reader or rendered RTL
+acceptance. Review JSON remains in the private ui-cleanup-20261025-r1 folder.
+
+## File-source controls (26 October 2026)
+
+The 12 file/PDF source, dialog, page and status keys bring the catalogs to 907
+entries each. Both read-only small-agent reviews covered all 288 new target
+strings exactly once (four flagged replacements applied, none unread). French
+Page is an established identical UI term with a language-specific validator
+exception. Structural/model review is separate from native-speaker, RTL rendering
+and spoken screen-reader acceptance. The new PDF pane uses native Qt read-only
+text accessibility independently of OCR. See file_documents.md.
