@@ -1,0 +1,19 @@
+ M include/okuflow/app/ultra_clear_text_controller.hpp
+ M include/okuflow/common/uct_paddle.hpp
+ M include/okuflow/common/ultra_clear_text.hpp
+ M include/okuflow/cuda/uct_kernels.hpp
+ M include/okuflow/ui/ultra_clear_text_overlay.hpp
+ M src/app/ultra_clear_text_controller.cpp
+ M src/common/uct_paddle.cpp
+ M src/common/uct_paddle_processing.cpp
+ M src/common/uct_tensorrt.cpp
+ M src/common/ultra_clear_text.cpp
+ M src/cuda/uct_device_analysis.hpp
+ M src/cuda/uct_validation_kernels.cuh
+ M src/ui/ultra_clear_text_overlay.cpp
+ M tests/uct_batch_diagnostic.hpp
+ M tests/uct_paddle_tests.cpp
+ M tests/uct_paused_video_diagnostic.hpp
+ M tests/ultra_clear_text.cmake
+ M tests/ultra_clear_text_controller_tests.cpp
+?? tests/uct_geometry_test_cases.hpp

@@ -1,0 +1,36 @@
+diff --git a/include/okuflow/ui/video_transport.hpp b/include/okuflow/ui/video_transport.hpp
+index ee49992c..16480d7d 100644
+--- a/include/okuflow/ui/video_transport.hpp
++++ b/include/okuflow/ui/video_transport.hpp
+@@ -54,8 +54,13 @@ public:
+     void SetSnapshot(const Snapshot& snapshot);
+     const Snapshot& snapshot() const { return snapshot_; }
+     void SetUiHidden(bool hidden);
++    // Collapsing hides this widget entirely: no metadata strip or jump
++    // action remains in the view column. The host reparents
++    // collapseButton() into its always-available corner chrome so the
++    // show/hide chevron stays reachable while the bar is hidden.
+     void SetCollapsed(bool collapsed);
+     bool isCollapsed() const { return collapsed_; }
++    QPushButton* collapseButton() const { return collapseButton_; }
+     // Keyboard focus held inside the bar moves here when the bar hides,
+     // instead of to whichever control Qt would pick next.
+     void SetFocusReturnTarget(QWidget* target);
+@@ -76,6 +81,9 @@ signals:
+     void ReturnToCameraRequested();
+     void SaveFrameRequested();
+     void MutedChanged(bool muted);
++    void CollapsedChanged(bool collapsed);
++    // The external chevron is shown only while a source exists.
++    void SourcePresenceChanged(bool hasSource);
+ 
+ protected:
+     void changeEvent(QEvent* event) override;
+@@ -97,6 +105,7 @@ private:
+     void RequestAnnouncement();
+     void AnnounceSettledState();
+     void RefreshTimeline(bool force);
++    void UpdateVisibility();
+     void UpdateLayout();
+     void CommitSeek(qint64 positionMs, bool atRangeEnd = false);
+     qint64 SeekBaseline() const;

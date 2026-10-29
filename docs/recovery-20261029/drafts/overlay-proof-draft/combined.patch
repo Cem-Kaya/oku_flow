@@ -1,0 +1,2499 @@
+diff --git a/include/okuflow/app/app.hpp b/include/okuflow/app/app.hpp
+index 2b29a642..0794651e 100644
+--- a/include/okuflow/app/app.hpp
++++ b/include/okuflow/app/app.hpp
+@@ -350,9 +350,11 @@ private:
+     void ApplyPersistentSettings(settings::PersistentSettings settings);
+     void SavePersistentSettings();
+     // Ultra Clear Text: presentation-clock context and production wiring.
+-    UctFrameContext UltraClearTextContext(const ViewTransform& transform,
+-                                          UINT sceneWidth, UINT sceneHeight,
++    // The context describes the cached scene actually presented (CUDA or
++    // CPU snapshot) plus the current request.
++    UctFrameContext UltraClearTextContext(bool cudaScene, const ViewTransform& transform,
+                                           UINT viewportWidth, UINT viewportHeight) const;
++    UctSceneSettings UltraClearTextRequest() const;
+     void InitializeUltraClearText();
+ 
+     QApplication* qtApp_{};
+@@ -590,6 +592,12 @@ private:
+ 
+     bool cudaSceneReady_{false};
+ 
++    // Ultra Clear Text provenance of the cached CUDA/CPU scenes, snapshotted
++    // only when processing succeeded, and the discrete warp revision bumped
++    // whenever keystone/stabilization warps are reset or stepped.
++    UctSceneProvenance uctProvenance_;
++    std::uint64_t uctWarpRevision_{};
++
+     // Declared last so it is destroyed first: its worker callbacks retire
+     // before the windows it draws into and the presenter go away.
+     std::unique_ptr<UltraClearTextController> ultraClearText_;
+diff --git a/include/okuflow/app/ultra_clear_text_controller.hpp b/include/okuflow/app/ultra_clear_text_controller.hpp
+index 1f4ac0ca..94e54bd9 100644
+--- a/include/okuflow/app/ultra_clear_text_controller.hpp
++++ b/include/okuflow/app/ultra_clear_text_controller.hpp
+@@ -18,40 +18,151 @@ QT_END_NAMESPACE
+ #include <limits>
+ #include <memory>
+ #include <optional>
++#include <vector>
+ 
+ namespace okuflow {
+ 
+ class UltraClearTextPanel;
+ 
++// Processing settings that decide where text lands in the processed scene
++// or how it looks. Used twice: as *applied* (what a cached scene was really
++// built with) and as *requested* (what the user asks for now, mapped to what
++// the active pipeline path would apply).
++struct UctSceneSettings {
++    std::uint64_t sourceEpoch{};
++    int rotationQuarterTurns{};
++    bool keystone{};        // CUDA keystone warp applied
++    bool stabilization{};   // CUDA stabilization warp applied
++    // Discrete warp resets/steps (keystone step, stabilization/keystone
++    // reset). Continuous keystone/stabilization tracking between those is
++    // not exposed by the CUDA surface; residual validation covers it.
++    std::uint64_t warpRevision{};
++    std::uint32_t colorScheme{}; // display color scheme baked into pixels
++    bool operator==(const UctSceneSettings&) const = default;
++};
++
+ // Everything that defines the processed-scene geometry. Any change starts a
+ // new geometry generation and immediately revokes recognized text.
+ struct UctGeometryKey {
+-    std::uint64_t sourceEpoch{};
++    UctSceneSettings settings;
+     std::uint32_t sceneWidth{};
+     std::uint32_t sceneHeight{};
+-    int rotationQuarterTurns{};
+-    bool keystoneEnabled{};
+-    bool stabilizationEnabled{};
+ 
+     bool operator==(const UctGeometryKey&) const = default;
+ };
+ 
+ // Per-presentation inputs, sampled on the Qt UI thread at present time.
+ struct UctFrameContext {
+-    UctGeometryKey geometry;
+-    std::uint64_t frameSeq{};
+-    ViewTransform transform;     // full-scene -> viewport (not the SR ROI remap)
++    UctGeometryKey geometry;      // applied: baked into the presented scene
++    UctSceneSettings requested;   // requested now; a mismatch revokes text
++    std::uint64_t frameSeq{};     // camera frame baked into the presented scene
++    ViewTransform transform;      // full-scene -> viewport (not the SR ROI remap)
+     std::uint32_t viewportWidth{};
+     std::uint32_t viewportHeight{};
+     bool cameraActive{};
+     // Temporal Smooth / Extra Stable present multi-frame composites whose
+-    // provenance UCT cannot state truthfully; UCT pauses instead.
++    // provenance UCT cannot state truthfully; UCT pauses instead. True when
++    // either the cached scene or the request is a composite.
+     bool compositeFrames{};
+     int strokeWeight{};
+ };
+ 
++// Snapshot of what one cached processed scene was built with. Taken only
++// when processing succeeded, so deferred, busy or failed processing and
++// re-presents of cached pixels keep the old scene's provenance.
++struct UctSceneSnapshot {
++    bool valid{};
++    UctGeometryKey geometry;
++    std::uint64_t frameSeq{};
++    bool composite{};
++};
++
++// The production seam between OkuFlowApp's processing paths and Ultra Clear
++// Text. One snapshot per cached scene (CUDA shared texture, CPU scene
++// buffer); presentation builds the context from the snapshot of the scene it
++// actually presents plus the current request.
++class UctSceneProvenance {
++public:
++    // CUDA processing was admitted and queued for `frameSeq`. `applied`
++    // carries the settings actually submitted with this frame.
++    void OnCudaSceneProcessed(const UctSceneSettings& applied, std::uint32_t width,
++                              std::uint32_t height, std::uint64_t frameSeq, bool composite)
++    {
++        cuda_ = {true, {Normalize(applied), width, height}, frameSeq, composite};
++    }
++    // CPU fallback: rotation is applied on the CPU; keystone,
++    // stabilization and display colors are not.
++    void OnCpuSceneProcessed(std::uint64_t sourceEpoch, int rotationQuarterTurns,
++                             std::uint32_t width, std::uint32_t height, std::uint64_t frameSeq,
++                             bool composite)
++    {
++        UctSceneSettings applied;
++        applied.sourceEpoch = sourceEpoch;
++        applied.rotationQuarterTurns = NormalizeTurns(rotationQuarterTurns);
++        cpu_ = {true, {applied, width, height}, frameSeq, composite};
++    }
++    void InvalidateCuda() { cuda_ = {}; }
++    void Reset()
++    {
++        cuda_ = {};
++        cpu_ = {};
++    }
++
++    const UctSceneSnapshot& Cuda() const noexcept { return cuda_; }
++    const UctSceneSnapshot& Cpu() const noexcept { return cpu_; }
++
++    // `requested` is the full user request; the CPU path maps it to what
++    // that path can apply so a lasting CPU fallback is not "settling".
++    static UctSceneSettings RequestFor(bool cudaPath, UctSceneSettings requested)
++    {
++        if (!cudaPath) {
++            requested.keystone = false;
++            requested.stabilization = false;
++            requested.colorScheme = 0;
++        }
++        return Normalize(requested);
++    }
++
++    // Warp revisions only matter while a warp is applied; rotation is mod 4.
++    static UctSceneSettings Normalize(UctSceneSettings settings)
++    {
++        settings.rotationQuarterTurns = NormalizeTurns(settings.rotationQuarterTurns);
++        if (!settings.keystone && !settings.stabilization) {
++            settings.warpRevision = 0;
++        }
++        return settings;
++    }
++
++    UctFrameContext Context(bool cudaPath, const UctSceneSettings& requested, bool requestedComposite,
++                            const ViewTransform& transform, std::uint32_t viewportWidth,
++                            std::uint32_t viewportHeight, bool cameraActive, int strokeWeight) const
++    {
++        const UctSceneSnapshot& scene = cudaPath ? cuda_ : cpu_;
++        UctFrameContext context;
++        context.geometry = scene.geometry;
++        context.requested = RequestFor(cudaPath, requested);
++        context.frameSeq = scene.frameSeq;
++        context.transform = transform;
++        context.viewportWidth = viewportWidth;
++        context.viewportHeight = viewportHeight;
++        // Without a snapshot there is no truthful provenance: behave as if
++        // no camera image were shown.
++        context.cameraActive = cameraActive && scene.valid;
++        context.compositeFrames = scene.composite || requestedComposite;
++        context.strokeWeight = strokeWeight;
++        return context;
++    }
++
++    static int NormalizeTurns(int turns) { return ((turns % 4) + 4) % 4; }
++
++private:
++    UctSceneSnapshot cuda_;
++    UctSceneSnapshot cpu_;
++};
++
+ struct UctTiming {
+     std::int64_t probeIntervalMs{80};
++    double probeCheckBudgetMs{60.0}; // off-thread residual budget per probe
+     std::int64_t readbackTimeoutMs{1000};
+     std::int64_t refreshIntervalMs{1500};
+     double stableSimilarity{0.92};
+@@ -84,18 +195,35 @@ public:
+     // Presentation clock. Never blocks; returns true when a viewport copy
+     // should be requested with this presentation.
+     bool OnPresented(const UctFrameContext& context);
++    // The presenter rejected the frame: the screen still shows older pixels,
++    // so words reprojected for this context are hidden until the next
++    // successful presentation.
++    void OnPresentationFailed();
+     // requestId 0 means the presenter's readback ring was full.
+     void OnReadbackRequested(std::uint64_t requestId, const UctFrameContext& context);
+     bool OwnsReadback(std::uint64_t requestId) const noexcept;
++    // Takes ownership of the presenter's readback vector by swapping it with
++    // a recycled one (no copy). Call after every other consumer of the same
++    // readback has read the pixels.
++    void OnReadbackCompleted(std::uint64_t requestId, std::vector<std::uint8_t>& bgra, int width,
++                             int height, int strideBytes);
++    // Copying variant for caller-owned memory (fixtures).
+     void OnReadbackCompleted(std::uint64_t requestId, const std::uint8_t* bgra, int width,
+                              int height, int strideBytes);
+-    // CPU presentation path: pixels are already in system memory.
++    // CPU presentation path: the presentation buffer is reused by the app,
++    // so its pixels are copied once into a pooled buffer.
+     void OnCpuViewport(const UctFrameContext& context, const std::uint8_t* bgra, int width,
+                        int height, int strideBytes);
+ 
+     // Diagnostics and fixtures.
+     const uct::OverlayModel& Model() const noexcept { return model_; }
+     uct::SchedulerStats SchedulerStatistics() const;
++    uct::ProbeWorkerStats ProbeStatistics() const;
++    std::uint64_t PixelAllocations() const { return pool_->Allocations(); }
++    bool IsSettling() const noexcept { return settling_; }
++    // Wall time of the latest UI-thread probe-outcome handling (diagnostics).
++    double LastOutcomeHandlingMs() const noexcept { return lastOutcomeMs_; }
++    double LastResultHandlingMs() const noexcept { return lastResultMs_; }
+     uct::BackendStatus BackendStatusSnapshot() const { return backend_; }
+     std::uint64_t GeometryGeneration() const noexcept { return geometryGeneration_; }
+     std::uint64_t PresentCount() const noexcept { return presentCount_; }
+@@ -110,8 +238,8 @@ signals:
+ private:
+     void EnsureScheduler();
+     void Invalidate(const QString& statusSource);
+-    void HandleProbe(const uct::SourceStamp& stamp, const std::uint8_t* bgra, int width,
+-                     int height, int strideBytes);
++    void SubmitProbe(const uct::SourceStamp& stamp, uct::SharedPixels pixels);
++    void HandleProbeOutcome(uct::ProbeOutcome outcome);
+     void HandleResult(uct::RecognitionResult result);
+     void HandleBackendStatus(uct::BackendStatus status);
+     void RefreshOverlay(std::int64_t nowMs);
+@@ -126,7 +254,9 @@ private:
+     RecognizerFactory factory_;
+     Clock clock_;
+     UctTiming timing_;
++    std::shared_ptr<uct::PixelPool> pool_;
+     std::unique_ptr<uct::RecognitionScheduler> scheduler_;
++    std::unique_ptr<uct::ProbeWorker> probeWorker_;
+     uct::OverlayModel model_;
+     uct::BackendStatus backend_;
+ 
+@@ -135,6 +265,8 @@ private:
+     bool compositePaused_{};
+     bool cameraActive_{};
+     bool haveGeometry_{};
++    bool settling_{};
++    bool presentationFailed_{};
+     UctGeometryKey geometry_;
+     std::uint64_t geometryGeneration_{};
+     std::uint64_t currentFrameSeq_{};
+@@ -144,7 +276,7 @@ private:
+     std::int64_t pendingSinceMs_{};
+     std::int64_t lastProbeRequestMs_{std::numeric_limits<std::int64_t>::min() / 2};
+ 
+-    std::optional<uct::ProbeFrame> latestProbe_;
++    std::shared_ptr<const uct::ProbeFrame> latestProbe_;
+     int stableProbes_{};
+     bool changedSinceSubmit_{true};
+     std::int64_t lastSubmitMs_{std::numeric_limits<std::int64_t>::min() / 2};
+@@ -162,6 +294,9 @@ private:
+     std::uint64_t acceptedResults_{};
+     int shownWords_{-1};
+     QString statusSource_;
++    QString readingText_;
++    double lastOutcomeMs_{};
++    double lastResultMs_{};
+ };
+ 
+ } // namespace okuflow
+diff --git a/include/okuflow/common/ultra_clear_text.hpp b/include/okuflow/common/ultra_clear_text.hpp
+index 98800538..a09c8ccc 100644
+--- a/include/okuflow/common/ultra_clear_text.hpp
++++ b/include/okuflow/common/ultra_clear_text.hpp
+@@ -13,7 +13,9 @@
+ #include <cstdint>
+ #include <functional>
+ #include <memory>
++#include <mutex>
+ #include <optional>
++#include <vector>
+ 
+ // Ultra Clear Text (UCT): local OCR of stable printed camera text, accepted
+ // only after provenance, temporal-agreement and pixel-residual checks, and
+@@ -60,6 +62,51 @@ QRectF ViewRectToScene(const ViewTransform& transform, double width, double heig
+ QRectF SceneRectToView(const ViewTransform& transform, double width, double height,
+                        const QRectF& sceneRect);
+ 
++// Owned BGRA pixels handed from the UI thread to workers without copying.
++// After hand-off nobody writes to the buffer; workers only read it.
++struct PixelBuffer {
++    std::vector<std::uint8_t> bytes;
++    int width{};
++    int height{};
++    int strideBytes{};
++    bool IsValid() const noexcept
++    {
++        return width > 0 && height > 0 && strideBytes >= width * 4 &&
++               bytes.size() >= static_cast<std::size_t>(strideBytes) * static_cast<std::size_t>(height);
++    }
++};
++using SharedPixels = std::shared_ptr<const PixelBuffer>;
++
++// Recycles viewport-sized byte vectors so the steady-state hand-off of a
++// presenter readback is a vector swap, never a 4K copy or allocation. A
++// buffer returns to the pool when its last owner (UI, probe worker or OCR
++// worker) releases it, on whichever thread that happens.
++class PixelPool : public std::enable_shared_from_this<PixelPool> {
++public:
++    static std::shared_ptr<PixelPool> Create(int capacity = 4);
++    // Takes ownership of `bytes` (e.g. the presenter's reusable readback
++    // vector) and refills it with a recycled vector when one is free.
++    SharedPixels Adopt(std::vector<std::uint8_t>& bytes, int width, int height, int strideBytes);
++    // Copies caller-owned pixels into a pooled buffer.
++    SharedPixels Copy(const std::uint8_t* bgra, int width, int height, int strideBytes);
++    int FreeCount() const;
++    std::uint64_t Allocations() const;
++
++private:
++    explicit PixelPool(int capacity) : capacity_(capacity) {}
++    SharedPixels Wrap(PixelBuffer* buffer);
++    std::vector<std::uint8_t> Take(std::size_t minimumSize);
++    void Give(std::vector<std::uint8_t>&& bytes);
++
++    mutable std::mutex mutex_;
++    std::vector<std::vector<std::uint8_t>> free_;
++    int capacity_{};
++    std::uint64_t allocations_{};
++};
++
++// QImage view of shared pixels; the image keeps the buffer alive.
++QImage WrapPixels(const SharedPixels& pixels);
++
+ // Low-resolution luma copy used for residual validation and scene stability.
+ // The image can be any size; mapping uses the stamp's normalized transform.
+ struct ProbeFrame {
+@@ -78,6 +125,14 @@ struct ProbeFrame {
+ ProbeFrame MakeProbeFrame(const std::uint8_t* bgra, int width, int height, int strideBytes,
+                           int decimation, const SourceStamp& stamp);
+ 
++struct ReferencePatch {
++    QRectF sceneRect; // sampled area (line box plus margin), scene units
++    int columns{};
++    int rows{};
++    QVector<float> values; // zero-mean, unit-variance samples
++    bool valid{};
++};
++
+ // --- Recognition backend -------------------------------------------------
+ 
+ enum class BackendState : std::uint8_t {
+@@ -132,6 +187,20 @@ struct LineColors {
+     QColor background{Qt::white};
+ };
+ 
++// A recognized line already mapped to scene coordinates with its residual
++// reference, prepared on the recognition worker so admission on the UI
++// thread does no pixel work.
++struct PreparedWord {
++    QString text;
++    QRectF sceneRect;
++};
++
++struct PreparedLine {
++    QVector<PreparedWord> words; // usable words only (non-empty, tall enough)
++    QRectF sceneRect;
++    ReferencePatch reference;    // invalid when untrackable
++};
++
+ struct RecognitionResult {
+     std::uint64_t jobId{};
+     std::uint64_t authority{};
+@@ -141,9 +210,16 @@ struct RecognitionResult {
+     // acceptance validates against the exact recognized content.
+     ProbeFrame reference;
+     QVector<LineColors> lineColors; // parallel to output.lines
++    // Parallel to output.lines when filled by the scheduler; Admit prepares
++    // lines itself when this is empty (hand-built fixtures).
++    QVector<PreparedLine> prepared;
+     double durationMs{};
+ };
+ 
++// Maps recognized words into scene coordinates and builds per-line residual
++// references from `result.reference`. Pure; safe on any thread.
++QVector<PreparedLine> PrepareLines(const RecognitionResult& result, double minimumWordHeightPx);
++
+ struct SchedulerStats {
+     std::uint64_t submitted{};
+     std::uint64_t coalesced{}; // pending jobs replaced before starting
+@@ -166,7 +242,8 @@ public:
+     RecognitionScheduler(std::unique_ptr<Recognizer> recognizer,
+                          Completion completion,
+                          StatusChanged statusChanged,
+-                         int referenceDecimation = 2);
++                         int referenceDecimation = 2,
++                         double minimumWordHeightPx = 7.0);
+     ~RecognitionScheduler();
+     RecognitionScheduler(const RecognitionScheduler&) = delete;
+     RecognitionScheduler& operator=(const RecognitionScheduler&) = delete;
+@@ -174,6 +251,8 @@ public:
+     // Takes an independently owned copy (detached by the caller or here).
+     // Returns the job id, or 0 when the backend is unavailable/failed.
+     std::uint64_t Submit(const SourceStamp& stamp, QImage pixels);
++    // Zero-copy hand-off of already shared, immutable pixels.
++    std::uint64_t Submit(const SourceStamp& stamp, SharedPixels pixels);
+     void Cancel();
+     std::uint64_t Authority() const;
+     bool IsCurrent(const RecognitionResult& result) const;
+@@ -189,14 +268,6 @@ private:
+ 
+ // --- Acceptance and registration ------------------------------------------
+ 
+-struct ReferencePatch {
+-    QRectF sceneRect; // sampled area (line box plus margin), scene units
+-    int columns{};
+-    int rows{};
+-    QVector<float> values; // zero-mean, unit-variance samples
+-    bool valid{};
+-};
+-
+ ReferencePatch BuildReferencePatch(const ProbeFrame& reference, const QRectF& sceneRect);
+ 
+ struct PatchMatch {
+@@ -212,8 +283,33 @@ struct MatchTuning {
+     int searchRadiusPx{6}; // probe pixels
+ };
+ 
++// `seedSceneOffset` (e.g. the line's last validated offset) is tried before
++// the coarse grid; it never widens the bounded search window.
+ PatchMatch MatchPatch(const ReferencePatch& patch, const ProbeFrame& probe,
+-                      const MatchTuning& tuning = {});
++                      const MatchTuning& tuning = {},
++                      std::optional<QPointF> seedSceneOffset = std::nullopt);
++
++// One accepted line to revalidate, snapshotted for a worker thread.
++// ReferencePatch values are implicitly shared and never mutated after
++// creation, so the snapshot is a reference-count copy.
++struct LineReference {
++    std::uint64_t lineId{};
++    ReferencePatch reference;
++    QPointF lastSceneOffset;
++};
++
++struct LineCheck {
++    std::uint64_t lineId{};
++    bool checked{}; // false: budget exhausted or cancelled, so unverified
++    PatchMatch match;
++};
++
++// Residual-checks lines against a probe until `budgetMs` elapses (<= 0 is
++// unlimited) or `cancelled` is set. Unchecked lines are reported, never
++// silently treated as valid.
++QVector<LineCheck> CheckLines(const QVector<LineReference>& lines, const ProbeFrame& probe,
++                              const MatchTuning& tuning, double budgetMs,
++                              const std::atomic<bool>* cancelled = nullptr);
+ 
+ // Scene-registered similarity of two probes over their common area. Returns
+ // a correlation in [-1, 1], or nullopt when they share too little area.
+@@ -225,6 +321,67 @@ std::optional<double> SceneSimilarity(const ProbeFrame& a, const ProbeFrame& b);
+ // arithmetic). Such words fail closed to original pixels.
+ bool IsHighRiskToken(const QString& text);
+ 
++// --- Probe worker -------------------------------------------------------------
++
++// Everything one probe needs, owned by the request: the viewport pixels, the
++// previous probe for scene stability, and snapshots of the lines to check.
++struct ProbeRequest {
++    SourceStamp stamp;
++    SharedPixels pixels;
++    int decimation{2};
++    std::shared_ptr<const ProbeFrame> previous;
++    QVector<LineReference> lines;
++    MatchTuning tuning;
++    double budgetMs{60.0}; // residual checks stop here; the rest stay unverified
++};
++
++struct ProbeOutcome {
++    std::uint64_t jobId{};
++    std::uint64_t authority{};
++    SourceStamp stamp;
++    SharedPixels pixels; // handed back for a possible zero-copy OCR submit
++    std::shared_ptr<const ProbeFrame> probe; // null when the pixels were unusable
++    std::optional<double> similarity;        // against `previous`
++    QVector<LineCheck> checks;
++    int uncheckedLines{};
++    double probeMs{};
++    double checkMs{};
++};
++
++struct ProbeWorkerStats {
++    std::uint64_t submitted{};
++    std::uint64_t coalesced{}; // pending requests replaced before starting
++    std::uint64_t completed{};
++    std::uint64_t revoked{};
++    double maxCheckMs{};
++};
++
++// Builds probes and runs residual validation off the UI thread. One worker,
++// at most one request in flight plus one latest-only pending slot; Submit
++// never blocks on work. Cancel() revokes authority immediately and stops the
++// in-flight check loop at the next line. Work is CPU-only and budgeted, so
++// destruction joins.
++class ProbeWorker {
++public:
++    using Completion = std::function<void(ProbeOutcome)>; // worker thread
++
++    explicit ProbeWorker(Completion completion);
++    ~ProbeWorker();
++    ProbeWorker(const ProbeWorker&) = delete;
++    ProbeWorker& operator=(const ProbeWorker&) = delete;
++
++    std::uint64_t Submit(ProbeRequest request);
++    void Cancel();
++    bool IsCurrent(const ProbeOutcome& outcome) const;
++    bool HasPending() const;
++    bool HasWork() const;
++    ProbeWorkerStats Stats() const;
++
++private:
++    struct State;
++    std::shared_ptr<State> state_;
++};
++
+ enum class AdmitVerdict : std::uint8_t {
+     kAccepted,      // at least one word now displayed
+     kPending,       // awaiting temporal agreement
+@@ -274,6 +431,9 @@ struct ModelTuning {
+     std::int64_t freshnessMs{350};
+     double minimumWordHeightPx{7.0};
+     double agreementIou{0.5};
++    // UI-thread budget for checking a result against a newer probe. Lines not
++    // reached stay hidden until the next off-thread probe validates them.
++    double admitMatchBudgetMs{3.0};
+     MatchTuning match;
+ };
+ 
+@@ -282,6 +442,7 @@ struct ValidationSummary {
+     int valid{};
+     int invalid{};
+     int notVisible{};
++    int unchecked{}; // budget exhausted: unverified, hidden
+ };
+ 
+ class OverlayModel {
+@@ -293,8 +454,15 @@ public:
+                        const SourceStamp& current,
+                        const ProbeFrame* latestProbe,
+                        std::int64_t nowMs);
+-    // Revalidates every accepted line against a newer probe of the same scene.
++    // Revalidates every accepted line against a newer probe of the same scene
++    // (synchronous: CheckLines + ApplyChecks).
+     ValidationSummary Validate(const ProbeFrame& probe, std::int64_t nowMs);
++    // Snapshots of lines of `scene` for an off-thread CheckLines.
++    QVector<LineReference> LineReferences(const SourceStamp& scene) const;
++    // Applies off-thread checks made against a probe stamped `probeStamp`.
++    // Lines removed or re-admitted meanwhile are ignored; lines validated by
++    // newer pixels than the probe keep that newer state.
++    ValidationSummary ApplyChecks(const QVector<LineCheck>& checks, const SourceStamp& probeStamp);
+     // Words safe to draw now, in scene units. A line is shown only if its
+     // latest validation is fresh, or no newer camera frame has been
+     // presented since it.
+@@ -303,14 +471,20 @@ public:
+     QVector<DisplayWord> DisplayWords(const ViewTransform& transform, double width,
+                                       double height, std::int64_t nowMs,
+                                       std::uint64_t currentFrameSeq) const;
+-    // Plain reading-order text of accepted lines; omitted words become "…".
+-    QString ReadingText() const;
++    // Plain reading-order text of the lines that SceneWords would show now;
++    // omitted words become "…". Rows are clustered explicitly, then each row
++    // is ordered left to right, so the order is deterministic and strict.
++    QString ReadingText(std::int64_t nowMs, std::uint64_t currentFrameSeq) const;
+     const QVector<AcceptedLine>& Lines() const noexcept { return lines_; }
+     int AcceptedWordCount() const;
+     int PendingWordCount() const noexcept { return pending_.size(); }
+     bool HasAcceptedText() const;
+ 
++    // Single display predicate shared by SceneWords and ReadingText.
++    bool IsShown(const AcceptedLine& line, std::int64_t nowMs, std::uint64_t currentFrameSeq) const;
++
+ private:
++
+     struct PendingWord {
+         QString text;
+         QRectF sceneRect;
+diff --git a/include/okuflow/ui/ultra_clear_text_overlay.hpp b/include/okuflow/ui/ultra_clear_text_overlay.hpp
+index 5ca46aac..37d01236 100644
+--- a/include/okuflow/ui/ultra_clear_text_overlay.hpp
++++ b/include/okuflow/ui/ultra_clear_text_overlay.hpp
+@@ -36,6 +36,7 @@ public:
+     void SetWords(QVector<SceneWord> words);
+     void ClearWords();
+     int WordCount() const noexcept { return words_.size(); }
++    const QVector<SceneWord>& Words() const noexcept { return words_; }
+ 
+     // User style: -3..3 maps onto font weight, reusing Text Clarity's
+     // existing stroke-weight preference.
+diff --git a/src/app/app_camera_transition.cpp b/src/app/app_camera_transition.cpp
+index 3896feb1..829e1a4f 100644
+--- a/src/app/app_camera_transition.cpp
++++ b/src/app/app_camera_transition.cpp
+@@ -40,6 +40,7 @@ void OkuFlowApp::StopCameraCapture(bool atProcessExit) {
+     currentCameraCaptureClock100ns_ = -1; currentCameraFrameSequence_ = 0;
+     pendingSceneCaptureClock100ns_.reset();
+     cudaSceneReady_ = cpuSceneReady_ = false;
++    uctProvenance_.Reset();
+     mediaCapture_.BeginStopCapture();
+     UpdateProcessingStatusLabel();
+     QTimer::singleShot(0,this,&OkuFlowApp::DriveCameraRetirement);
+diff --git a/src/app/app_controls.cpp b/src/app/app_controls.cpp
+index a27cea51..d46ab3ff 100644
+--- a/src/app/app_controls.cpp
++++ b/src/app/app_controls.cpp
+@@ -619,6 +619,7 @@ void OkuFlowApp::SetRotationQuarterTurns(int index) {
+         cudaSurface_->ResetTemporalHistory();
+         cudaSurface_->ResetStabilization();
+         cudaSurface_->ResetKeystone();
++        ++uctWarpRevision_;
+         cudaSurface_->ResetTextClarityHistory();
+     }
+     UpdateKeystoneTrackingUi();
+@@ -777,6 +778,7 @@ void OkuFlowApp::OnStabilizationToggled(bool checked) {
+     if (cudaSurface_) {
+         cudaSurface_->ResetStabilization();
+         cudaSurface_->ResetKeystone();
++        ++uctWarpRevision_;
+         cudaSurface_->ResetTextClarityHistory();
+     }
+     UpdateKeystoneTrackingUi();
+@@ -794,6 +796,7 @@ void OkuFlowApp::OnKeystoneToggled(bool checked) {
+     UpdateControlEnabledStates();
+     if (cudaSurface_) {
+         cudaSurface_->ResetKeystone();
++        ++uctWarpRevision_;
+         cudaSurface_->ResetTextClarityHistory();
+     }
+     UpdateKeystoneTrackingUi();
+@@ -922,6 +925,7 @@ void OkuFlowApp::OnKeystoneStepBack() {
+         return;
+     }
+     if (cudaSurface_->StepKeystoneCorrection(-1)) {
++        ++uctWarpRevision_;
+         cudaSurface_->ResetTextClarityHistory();
+         ShowStatusMessage(QStringLiteral("Screen correction moved back and tracking stopped."), 3500);
+     }
+@@ -943,6 +947,7 @@ void OkuFlowApp::OnKeystoneStepForward() {
+         return;
+     }
+     if (cudaSurface_->StepKeystoneCorrection(1)) {
++        ++uctWarpRevision_;
+         cudaSurface_->ResetTextClarityHistory();
+         const bool pending = cudaSurface_->GetKeystoneTrackingState().stepPending;
+         ShowStatusMessage(pending ? QStringLiteral("Finding one new screen correction...")
+diff --git a/src/app/app_pipeline_runtime.cpp b/src/app/app_pipeline_runtime.cpp
+index 34edfa47..4d0ad2b1 100644
+--- a/src/app/app_pipeline_runtime.cpp
++++ b/src/app/app_pipeline_runtime.cpp
+@@ -1080,10 +1080,19 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
+ 
+     cudaPipelineAvailable_ = true;
+     UpdateKeystoneTrackingUi();
+-    Q_UNUSED(presentWidth);
+-    Q_UNUSED(presentHeight);
+     usingCudaLastFrame_ = true;
+     cudaSceneReady_ = true;
++    // Ultra Clear Text provenance: exactly what this admitted scene was built
++    // with. Busy/failed submissions above keep the previous snapshot, so
++    // re-presents of the cached texture never borrow a newer frame/setting.
++    {
++        UctSceneSettings applied = UltraClearTextRequest();
++        applied.keystone = settings.enableKeystone;
++        applied.stabilization = settings.enableStabilization;
++        uctProvenance_.OnCudaSceneProcessed(
++            applied, presentWidth, presentHeight, currentCameraFrameSequence_,
++            settings.enableTemporalSmoothing || settings.enableBumpHold);
++    }
+     if (controlTarget_) controlTarget_->FrameProcessed();
+     // CPU pixels belong to the last CPU presentation, not this GPU scene.
+     presentationBuffer_.clear();
+@@ -1132,8 +1141,7 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
+     // Ultra Clear Text reprojects cached words on this presentation clock and
+     // at most asks for one more asynchronous copy of the presented viewport.
+     const UctFrameContext uctContext = UltraClearTextContext(
+-        annotationTransform, processedFrameWidth_, processedFrameHeight_,
+-        viewportWidth, viewportHeight);
++        true, annotationTransform, viewportWidth, viewportHeight);
+     const bool uctWanted = ultraClearText_ && ultraClearText_->OnPresented(uctContext);
+ 
+     ID3D12Resource* presentationTexture = cudaSharedTexture_.Get();
+@@ -1265,6 +1273,9 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
+         static_cast<float>(presentationTimer.nsecsElapsed()) * 1e-6f);
+     if (!presented) {
+         pipelineOrchestrator_->MarkViewportDirty();
++        if (ultraClearText_) {
++            ultraClearText_->OnPresentationFailed();
++        }
+         if (presenter_->IsFaulted()) {
+             HandlePresenterFault();
+             return;
+@@ -1435,11 +1446,6 @@ void OkuFlowApp::DrainCompletedGpuReadbacks() {
+                                                &requestId)) {
+         if (controlTarget_) controlTarget_->ConsumeObservationReadback(requestId,QImage(asyncReadbackBuffer_.data(),
+             readbackWidth,readbackHeight,readbackWidth*4,QImage::Format_ARGB32));
+-        if (ultraClearText_ && ultraClearText_->OwnsReadback(requestId)) {
+-            ultraClearText_->OnReadbackCompleted(
+-                requestId, asyncReadbackBuffer_.data(), static_cast<int>(readbackWidth),
+-                static_cast<int>(readbackHeight), static_cast<int>(readbackWidth * 4));
+-        }
+         if (requestId == pendingPhotoReadbackId_ &&
+             pendingPhotoOriginal_.HasCpuPixels()) {
+             SaveCapturedPhotoPair(asyncReadbackBuffer_.data(),
+@@ -1510,6 +1516,13 @@ void OkuFlowApp::DrainCompletedGpuReadbacks() {
+                                                  debugViewEnabled_,
+                                                  focusGateEnabled,
+                                                  focusAcceptable);
++        // Last consumer: Ultra Clear Text takes the pixels by swapping the
++        // vector with a recycled one, so no 4K copy happens on this thread.
++        if (ultraClearText_ && ultraClearText_->OwnsReadback(requestId)) {
++            ultraClearText_->OnReadbackCompleted(
++                requestId, asyncReadbackBuffer_, static_cast<int>(readbackWidth),
++                static_cast<int>(readbackHeight), static_cast<int>(readbackWidth * 4));
++        }
+     }
+ }
+ 
+@@ -1554,6 +1567,7 @@ bool OkuFlowApp::StartCameraCapture(size_t index,
+         cudaSurface_->ResetTemporalHistory();
+         cudaSurface_->ResetStabilization();
+         cudaSurface_->ResetKeystone();
++        ++uctWarpRevision_;
+         cudaSurface_->ResetTextClarityHistory();
+     }
+     UpdateKeystoneTrackingUi();
+@@ -1948,6 +1962,7 @@ void OkuFlowApp::StopCameraCaptureAtExit() {
+         cudaSurface_->ResetTemporalHistory();
+         cudaSurface_->ResetStabilization();
+         cudaSurface_->ResetKeystone();
++        ++uctWarpRevision_;
+         cudaSurface_->ResetTextClarityHistory();
+     }
+     UpdateKeystoneTrackingUi();
+@@ -2399,6 +2414,10 @@ void OkuFlowApp::BuildCompositeAndPresent(UINT width,
+         cpuSceneWidth_ = width;
+         cpuSceneHeight_ = height;
+         cpuSceneReady_ = true;
++        // CPU fallback applies rotation only: no keystone, stabilization,
++        // color scheme or temporal composite.
++        uctProvenance_.OnCpuSceneProcessed(cameraSessionId_, rotationQuarterTurns_, width, height,
++                                           currentCameraFrameSequence_, false);
+         if (controlTarget_) controlTarget_->FrameProcessed();
+         pendingSceneCaptureClock100ns_ = currentCameraCaptureClock100ns_;
+         ++startupProcessedScenes_;
+@@ -2445,6 +2464,9 @@ void OkuFlowApp::BuildCompositeAndPresent(UINT width,
+     cpuSceneWidth_ = output.width;
+     cpuSceneHeight_ = output.height;
+     cpuSceneReady_ = true;
++    uctProvenance_.OnCpuSceneProcessed(cameraSessionId_, rotationQuarterTurns_, output.width,
++                                       output.height, currentCameraFrameSequence_,
++                                       config.enableTemporalSmooth);
+     if (controlTarget_) controlTarget_->FrameProcessed();
+     pendingSceneCaptureClock100ns_ = currentCameraCaptureClock100ns_;
+     ++startupProcessedScenes_;
+@@ -2535,7 +2557,7 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
+     // for Ultra Clear Text before the focus marker is drawn into them.
+     if (ultraClearText_) {
+         const UctFrameContext uctContext = UltraClearTextContext(
+-            transform, srcWidth, srcHeight, mapping.targetWidth, mapping.targetHeight);
++            false, transform, mapping.targetWidth, mapping.targetHeight);
+         if (ultraClearText_->OnPresented(uctContext)) {
+             ultraClearText_->OnCpuViewport(
+                 uctContext, presentationBuffer_.data(), static_cast<int>(mapping.targetWidth),
+@@ -2623,6 +2645,11 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
+         }
+     }
+     presenter_->Present(presentationBuffer_.data(), mapping.targetWidth, mapping.targetHeight);
++    if (presenter_->IsFaulted() || presenter_->NeedsScenePresent()) {
++        if (ultraClearText_) {
++            ultraClearText_->OnPresentationFailed();
++        }
++    }
+     if (presenter_->IsFaulted()) return;
+     if (presenter_->NeedsScenePresent()) {
+         pipelineOrchestrator_->MarkViewportDirty();
+diff --git a/src/app/app_ultra_clear_text.cpp b/src/app/app_ultra_clear_text.cpp
+index c4a11713..ef28c162 100644
+--- a/src/app/app_ultra_clear_text.cpp
++++ b/src/app/app_ultra_clear_text.cpp
+@@ -4,6 +4,8 @@
+ #include "okuflow/ui/ultra_clear_text_overlay.hpp"
+ #include "okuflow/ui/ultra_clear_text_panel.hpp"
+ 
++#include <QHash>
++
+ namespace okuflow {
+ 
+ // Ultra Clear Text attaches to the existing presenter readback ring and the
+@@ -22,25 +24,38 @@ void OkuFlowApp::InitializeUltraClearText()
+     }
+ }
+ 
+-UctFrameContext OkuFlowApp::UltraClearTextContext(const ViewTransform& transform,
+-                                                  UINT sceneWidth, UINT sceneHeight,
++// What the user asks for now, as the CUDA path would apply it. The CPU path
++// narrows this in UctSceneProvenance::RequestFor.
++UctSceneSettings OkuFlowApp::UltraClearTextRequest() const
++{
++    UctSceneSettings request;
++    request.sourceEpoch = cameraSessionId_;
++    request.rotationQuarterTurns = rotationQuarterTurns_;
++    request.keystone = keystoneEnabled_;
++    request.stabilization = stabilizationEnabled_;
++    request.warpRevision = uctWarpRevision_;
++    // "normal" leaves pixels untouched; every other scheme recolors them, and
++    // the LUT generation changes whenever its colors do.
++    request.colorScheme =
++        displayColorScheme_.id == QStringLiteral("normal")
++            ? 0u
++            : static_cast<std::uint32_t>(qHash(displayColorScheme_.id) ^
++                                         qHash(displayColorLutGeneration_)) | 1u;
++    return request;
++}
++
++UctFrameContext OkuFlowApp::UltraClearTextContext(bool cudaScene, const ViewTransform& transform,
+                                                   UINT viewportWidth, UINT viewportHeight) const
+ {
+-    UctFrameContext context;
+-    context.geometry.sourceEpoch = cameraSessionId_;
+-    context.geometry.sceneWidth = sceneWidth;
+-    context.geometry.sceneHeight = sceneHeight;
+-    context.geometry.rotationQuarterTurns = rotationQuarterTurns_;
+-    context.geometry.keystoneEnabled = keystoneEnabled_;
+-    context.geometry.stabilizationEnabled = stabilizationEnabled_;
+-    context.frameSeq = currentCameraFrameSequence_;
+-    context.transform = transform;
+-    context.viewportWidth = viewportWidth;
+-    context.viewportHeight = viewportHeight;
+-    context.cameraActive = cameraActive_ && cameraFramePresented_;
+-    context.compositeFrames = temporalSmoothEnabled_ || (stabilizationEnabled_ && bumpHoldEnabled_);
+-    context.strokeWeight = strokeWeight_;
+-    return context;
++    // Composites the path would produce for the current request: CUDA runs
++    // Temporal Smooth and Extra Stable; the CPU fallback only blends in the
++    // legacy debug view.
++    const bool requestedComposite =
++        cudaScene ? (temporalSmoothEnabled_ || (stabilizationEnabled_ && bumpHoldEnabled_))
++                  : (debugViewEnabled_ && temporalSmoothEnabled_);
++    return uctProvenance_.Context(cudaScene, UltraClearTextRequest(), requestedComposite, transform,
++                                  viewportWidth, viewportHeight, cameraActive_ && cameraFramePresented_,
++                                  strokeWeight_);
+ }
+ 
+ } // namespace okuflow
+diff --git a/src/app/ultra_clear_text_controller.cpp b/src/app/ultra_clear_text_controller.cpp
+index 35e03e7d..3cce98c9 100644
+--- a/src/app/ultra_clear_text_controller.cpp
++++ b/src/app/ultra_clear_text_controller.cpp
+@@ -6,7 +6,7 @@
+ #include "okuflow/ui/ultra_clear_text_panel.hpp"
+ 
+ #include <QCheckBox>
+-#include <QImage>
++#include <QElapsedTimer>
+ #include <QMetaObject>
+ #include <QSignalBlocker>
+ #include <QTimer>
+@@ -34,11 +34,19 @@ double Area(const QRectF& rect)
+     return rect.isEmpty() ? 0.0 : rect.width() * rect.height();
+ }
+ 
++bool SameColors(const uct::LineColors& a, const uct::LineColors& b)
++{
++    return a.foreground == b.foreground && a.background == b.background;
++}
++
+ constexpr int kMaximumConsecutiveFailures = 3;
+ constexpr std::int64_t kPresentationWatchdogMs = 600;
+-// Probes are decimated to at most about this width, bounding UI-thread work
++// Probes are decimated to at most about this width, bounding worker cost
+ // independently of the viewport resolution.
+ constexpr int kMaximumProbeWidth = 960;
++// Readback buffers alive at once: probe in flight + pending, OCR in flight +
++// pending, and one spare for the presenter.
++constexpr int kPixelPoolCapacity = 5;
+ 
+ } // namespace
+ 
+@@ -53,7 +61,8 @@ UltraClearTextController::UltraClearTextController(UltraClearTextOverlay* overla
+       panel_(panel),
+       factory_(std::move(factory)),
+       clock_(clock ? std::move(clock) : Clock(&SteadyNowMs)),
+-      timing_(timing)
++      timing_(timing),
++      pool_(uct::PixelPool::Create(kPixelPoolCapacity))
+ {
+     // Presentation watchdog: with no presentations (camera stopped, source
+     // switching, placeholder shown) cached words must not linger.
+@@ -79,20 +88,36 @@ UltraClearTextController::UltraClearTextController(UltraClearTextOverlay* overla
+ UltraClearTextController::~UltraClearTextController()
+ {
+     // Disables worker callbacks before this object's members disappear.
++    probeWorker_.reset();
+     scheduler_.reset();
+ }
+ 
+ void UltraClearTextController::EnsureScheduler()
+ {
++    QPointer<UltraClearTextController> self(this);
++    if (!probeWorker_) {
++        probeWorker_ = std::make_unique<uct::ProbeWorker>([self](uct::ProbeOutcome outcome) {
++            // Worker thread: hand the owned outcome to the UI thread only.
++            if (!self) {
++                return;
++            }
++            QMetaObject::invokeMethod(
++                self.data(),
++                [self, outcome = std::move(outcome)]() mutable {
++                    if (self) {
++                        self->HandleProbeOutcome(std::move(outcome));
++                    }
++                },
++                Qt::QueuedConnection);
++        });
++    }
+     if (scheduler_) {
+         return;
+     }
+     backend_ = {};
+-    QPointer<UltraClearTextController> self(this);
+     scheduler_ = std::make_unique<uct::RecognitionScheduler>(
+         factory_ ? factory_() : std::unique_ptr<uct::Recognizer>{},
+         [self](uct::RecognitionResult result) {
+-            // Worker thread: hand the owned result to the UI thread only.
+             if (!self) {
+                 return;
+             }
+@@ -118,7 +143,7 @@ void UltraClearTextController::EnsureScheduler()
+                 },
+                 Qt::QueuedConnection);
+         },
+-        timing_.probeDecimation);
++        timing_.probeDecimation, uct::ModelTuning{}.minimumWordHeightPx);
+ }
+ 
+ void UltraClearTextController::SetEnabled(bool enabled)
+@@ -139,6 +164,7 @@ void UltraClearTextController::SetEnabled(bool enabled)
+             backend_ = scheduler_->Status();
+         }
+         haveGeometry_ = false; // the next presentation starts a fresh generation
++        settling_ = false;
+         consecutiveFailures_ = 0;
+     } else {
+         watchdog_->stop();
+@@ -166,12 +192,23 @@ bool UltraClearTextController::OnPresented(const UctFrameContext& context)
+     }
+     const std::int64_t now = clock_();
+     lastPresentMs_ = now;
++    presentationFailed_ = false;
+     cameraActive_ = context.cameraActive;
+     currentFrameSeq_ = context.frameSeq;
+     if (overlay_) {
+         overlay_->SetStrokeWeight(context.strokeWeight);
+         overlay_->SetViewTransform(context.transform);
+     }
++    // A requested change revokes text at once: the presented scene is still
++    // built with the old settings, so nothing recognized before the change
++    // may stay up, and nothing recognized until the matching scene arrives
++    // belongs to the new request.
++    const bool settling = context.cameraActive && !(context.requested == context.geometry.settings);
++    if (settling && !settling_) {
++        ++geometryGeneration_;
++        Invalidate(QStringLiteral("settling"));
++    }
++    settling_ = settling;
+     if (!haveGeometry_ || !(context.geometry == geometry_)) {
+         const bool hadGeometry = haveGeometry_;
+         geometry_ = context.geometry;
+@@ -192,17 +229,35 @@ bool UltraClearTextController::OnPresented(const UctFrameContext& context)
+     // Freshness is enforced on the presentation clock, not the OCR clock.
+     RefreshOverlay(now);
+     UpdateStatus();
+-    if (compositePaused_ || !cameraActive_ || pendingReadbackId_ != 0 ||
++    if (settling_ || compositePaused_ || !cameraActive_ || pendingReadbackId_ != 0 ||
+         (scheduler_ && !BackendUsable(backend_))) {
+         return false;
+     }
++    // Latest-only end to end: no new viewport copy while the probe worker
++    // still has one waiting to start.
++    if (probeWorker_ && probeWorker_->HasPending()) {
++        return false;
++    }
+     return now - lastProbeRequestMs_ >= timing_.probeIntervalMs;
+ }
+ 
++void UltraClearTextController::OnPresentationFailed()
++{
++    if (!enabled_) {
++        return;
++    }
++    presentationFailed_ = true;
++    if (overlay_) {
++        overlay_->ClearWords();
++    }
++    overlayWords_.clear();
++    shownWords_ = 0;
++}
++
+ void UltraClearTextController::OnReadbackRequested(std::uint64_t requestId,
+                                                    const UctFrameContext& context)
+ {
+-    if (!enabled_ || requestId == 0) {
++    if (!enabled_ || requestId == 0 || settling_) {
+         return; // ring full: the next presentation retries
+     }
+     const std::int64_t now = clock_();
+@@ -217,6 +272,22 @@ bool UltraClearTextController::OwnsReadback(std::uint64_t requestId) const noexc
+     return requestId != 0 && requestId == pendingReadbackId_;
+ }
+ 
++void UltraClearTextController::OnReadbackCompleted(std::uint64_t requestId, std::vector<std::uint8_t>& bgra,
++                                                   int width, int height, int strideBytes)
++{
++    if (!OwnsReadback(requestId)) {
++        return;
++    }
++    pendingReadbackId_ = 0;
++    if (!enabled_) {
++        return;
++    }
++    uct::SourceStamp stamp = pendingStamp_;
++    stamp.viewportWidth = static_cast<std::uint32_t>(std::max(0, width));
++    stamp.viewportHeight = static_cast<std::uint32_t>(std::max(0, height));
++    SubmitProbe(stamp, pool_->Adopt(bgra, width, height, strideBytes));
++}
++
+ void UltraClearTextController::OnReadbackCompleted(std::uint64_t requestId, const std::uint8_t* bgra,
+                                                    int width, int height, int strideBytes)
+ {
+@@ -230,13 +301,13 @@ void UltraClearTextController::OnReadbackCompleted(std::uint64_t requestId, cons
+     uct::SourceStamp stamp = pendingStamp_;
+     stamp.viewportWidth = static_cast<std::uint32_t>(std::max(0, width));
+     stamp.viewportHeight = static_cast<std::uint32_t>(std::max(0, height));
+-    HandleProbe(stamp, bgra, width, height, strideBytes);
++    SubmitProbe(stamp, pool_->Copy(bgra, width, height, strideBytes));
+ }
+ 
+ void UltraClearTextController::OnCpuViewport(const UctFrameContext& context, const std::uint8_t* bgra,
+                                              int width, int height, int strideBytes)
+ {
+-    if (!enabled_) {
++    if (!enabled_ || settling_) {
+         return;
+     }
+     const std::int64_t now = clock_();
+@@ -244,7 +315,7 @@ void UltraClearTextController::OnCpuViewport(const UctFrameContext& context, con
+     uct::SourceStamp stamp = MakeStamp(context, now);
+     stamp.viewportWidth = static_cast<std::uint32_t>(std::max(0, width));
+     stamp.viewportHeight = static_cast<std::uint32_t>(std::max(0, height));
+-    HandleProbe(stamp, bgra, width, height, strideBytes);
++    SubmitProbe(stamp, pool_->Copy(bgra, width, height, strideBytes));
+ }
+ 
+ uct::SchedulerStats UltraClearTextController::SchedulerStatistics() const
+@@ -252,11 +323,16 @@ uct::SchedulerStats UltraClearTextController::SchedulerStatistics() const
+     return scheduler_ ? scheduler_->Stats() : uct::SchedulerStats{};
+ }
+ 
++uct::ProbeWorkerStats UltraClearTextController::ProbeStatistics() const
++{
++    return probeWorker_ ? probeWorker_->Stats() : uct::ProbeWorkerStats{};
++}
++
+ uct::SourceStamp UltraClearTextController::MakeStamp(const UctFrameContext& context,
+                                                      std::int64_t nowMs) const
+ {
+     uct::SourceStamp stamp;
+-    stamp.sourceEpoch = context.geometry.sourceEpoch;
++    stamp.sourceEpoch = context.geometry.settings.sourceEpoch;
+     stamp.geometryGeneration = geometryGeneration_;
+     stamp.frameSeq = context.frameSeq;
+     stamp.timestampMs = nowMs;
+@@ -269,7 +345,7 @@ uct::SourceStamp UltraClearTextController::MakeStamp(const UctFrameContext& cont
+ uct::SourceStamp UltraClearTextController::CurrentScene() const
+ {
+     uct::SourceStamp stamp;
+-    stamp.sourceEpoch = geometry_.sourceEpoch;
++    stamp.sourceEpoch = geometry_.settings.sourceEpoch;
+     stamp.geometryGeneration = geometryGeneration_;
+     return stamp;
+ }
+@@ -279,6 +355,9 @@ void UltraClearTextController::Invalidate(const QString& reason)
+     if (scheduler_) {
+         scheduler_->Cancel(); // in-flight input stays owned by the worker
+     }
++    if (probeWorker_) {
++        probeWorker_->Cancel();
++    }
+     model_.Reset();
+     latestProbe_.reset();
+     stableProbes_ = 0;
+@@ -292,51 +371,65 @@ void UltraClearTextController::Invalidate(const QString& reason)
+     if (overlay_) {
+         overlay_->ClearWords();
+     }
++    readingText_.clear();
+     if (panel_) {
+         panel_->SetReadingText({});
+     }
+     Q_UNUSED(reason);
+ }
+ 
+-void UltraClearTextController::HandleProbe(const uct::SourceStamp& stamp, const std::uint8_t* bgra,
+-                                           int width, int height, int strideBytes)
++void UltraClearTextController::SubmitProbe(const uct::SourceStamp& stamp, uct::SharedPixels pixels)
+ {
+-    if (!stamp.SameScene(CurrentScene()) || compositePaused_) {
++    if (!pixels || !probeWorker_ || settling_ || compositePaused_ || !stamp.SameScene(CurrentScene())) {
+         return; // the scene changed while this copy was in flight
+     }
+-    const int decimation =
+-        std::max(timing_.probeDecimation, (width + kMaximumProbeWidth - 1) / kMaximumProbeWidth);
+-    uct::ProbeFrame probe = uct::MakeProbeFrame(bgra, width, height, strideBytes, decimation, stamp);
+-    if (!probe.IsValid()) {
++    uct::ProbeRequest request;
++    request.stamp = stamp;
++    request.decimation = std::max(timing_.probeDecimation,
++                                  (pixels->width + kMaximumProbeWidth - 1) / kMaximumProbeWidth);
++    request.pixels = std::move(pixels);
++    request.previous = latestProbe_;
++    request.lines = model_.LineReferences(CurrentScene());
++    request.tuning = uct::ModelTuning{}.match;
++    request.budgetMs = timing_.probeCheckBudgetMs;
++    probeWorker_->Submit(std::move(request));
++}
++
++void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
++{
++    QElapsedTimer handling;
++    handling.start();
++    if (!enabled_ || !probeWorker_ || !probeWorker_->IsCurrent(outcome) || settling_ || compositePaused_ ||
++        !outcome.stamp.SameScene(CurrentScene()) || !outcome.probe) {
+         return;
+     }
+     const std::int64_t now = clock_();
+-    if (!model_.Lines().isEmpty()) {
+-        model_.Validate(probe, now);
+-        UpdateReadingText();
++    const uct::ValidationSummary summary = model_.ApplyChecks(outcome.checks, outcome.stamp);
++    if (summary.invalid > 0 && summary.valid == 0) {
++        lastResultMoved_ = true;
+     }
+-    const std::optional<double> similarity =
+-        latestProbe_ ? uct::SceneSimilarity(*latestProbe_, probe) : std::nullopt;
+-    const bool stable = similarity && *similarity >= timing_.stableSimilarity;
++    const bool stable = outcome.similarity && *outcome.similarity >= timing_.stableSimilarity;
+     stableProbes_ = stable ? stableProbes_ + 1 : 0;
+     if (!stable) {
+         changedSinceSubmit_ = true;
+     }
+-    latestProbe_ = std::move(probe);
++    latestProbe_ = outcome.probe;
+ 
+-    if (scheduler_ && BackendUsable(backend_) && stableProbes_ >= 1) {
++    if (scheduler_ && BackendUsable(backend_) && stableProbes_ >= 1 && outcome.pixels) {
++        const int width = outcome.pixels->width;
++        const int height = outcome.pixels->height;
+         const QRectF viewScene =
+-            uct::ViewRectToScene(stamp.viewTransform, width, height, QRectF(0, 0, width, height))
++            uct::ViewRectToScene(outcome.stamp.viewTransform, width, height, QRectF(0, 0, width, height))
+                 .intersected(QRectF(0.0, 0.0, 1.0, 1.0));
+         const bool covered = Area(viewScene) > 0.0 &&
+                              Area(lastJobCoverage_.intersected(viewScene)) >= 0.8 * Area(viewScene);
+         const bool needed = model_.PendingWordCount() > 0 || !model_.HasAcceptedText() || !covered ||
+                             now - lastSubmitMs_ >= timing_.refreshIntervalMs;
+         // Latest-only: a busy worker only receives a replacement after the
+-        // scene changed, so slow recognition cannot accumulate work.
++        // scene changed, so slow recognition cannot accumulate work. The
++        // pixels move on without a copy.
+         if (needed && (!scheduler_->HasWork() || changedSinceSubmit_)) {
+-            const QImage view(bgra, width, height, strideBytes, QImage::Format_ARGB32);
+-            if (scheduler_->Submit(stamp, view) != 0) {
++            if (scheduler_->Submit(outcome.stamp, std::move(outcome.pixels)) != 0) {
+                 lastSubmitMs_ = now;
+                 lastJobCoverage_ = viewScene;
+                 changedSinceSubmit_ = false;
+@@ -344,12 +437,16 @@ void UltraClearTextController::HandleProbe(const uct::SourceStamp& stamp, const
+         }
+     }
+     RefreshOverlay(now);
++    UpdateReadingText();
+     UpdateStatus();
++    lastOutcomeMs_ = handling.nsecsElapsed() / 1e6;
+ }
+ 
+ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
+ {
+-    if (!enabled_ || !scheduler_ || !scheduler_->IsCurrent(result)) {
++    QElapsedTimer handling;
++    handling.start();
++    if (!enabled_ || !scheduler_ || !scheduler_->IsCurrent(result) || settling_) {
+         ++rejectedResults_;
+         return;
+     }
+@@ -363,8 +460,7 @@ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
+     } else if (result.output.ok) {
+         consecutiveFailures_ = 0;
+     }
+-    const uct::AdmitVerdict verdict =
+-        model_.Admit(result, CurrentScene(), latestProbe_ ? &*latestProbe_ : nullptr, now);
++    const uct::AdmitVerdict verdict = model_.Admit(result, CurrentScene(), latestProbe_.get(), now);
+     switch (verdict) {
+     case uct::AdmitVerdict::kAccepted:
+         ++acceptedResults_;
+@@ -387,9 +483,10 @@ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
+         ++rejectedResults_;
+         break;
+     }
+-    UpdateReadingText();
+     RefreshOverlay(now);
++    UpdateReadingText();
+     UpdateStatus();
++    lastResultMs_ = handling.nsecsElapsed() / 1e6;
+     emit recognitionAdmitted(static_cast<int>(verdict));
+ }
+ 
+@@ -407,10 +504,12 @@ void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
+     if (!overlay_) {
+         return;
+     }
+-    if (!enabled_ || showOriginal_ || compositePaused_ || !BackendUsable(backend_)) {
++    if (!enabled_ || showOriginal_ || compositePaused_ || settling_ || presentationFailed_ ||
++        !BackendUsable(backend_)) {
+         overlay_->ClearWords();
+         overlayWords_.clear();
+         shownWords_ = 0;
++        UpdateReadingText();
+         return;
+     }
+     const QVector<uct::SceneWord> words = model_.SceneWords(nowMs, currentFrameSeq_);
+@@ -419,10 +518,13 @@ void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
+     for (const uct::SceneWord& word : words) {
+         next.push_back({word.text, word.sceneRect, word.colors});
+     }
++    // Text, position and colors all decide what is drawn; a re-recognized
++    // word in a new color scheme must not keep its old plate.
+     bool same = next.size() == overlayWords_.size();
+     for (int i = 0; same && i < next.size(); ++i) {
+         same = next[i].text == overlayWords_[i].text &&
+-               next[i].sceneRect == overlayWords_[i].sceneRect;
++               next[i].sceneRect == overlayWords_[i].sceneRect &&
++               SameColors(next[i].colors, overlayWords_[i].colors);
+     }
+     if (!same) {
+         overlayWords_ = next;
+@@ -431,14 +533,25 @@ void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
+         } else {
+             overlay_->SetWords(std::move(next));
+         }
++        UpdateReadingText();
+     }
+     shownWords_ = overlayWords_.size();
+ }
+ 
+ void UltraClearTextController::UpdateReadingText()
+ {
++    // The pane offers exactly the lines verified on screen now (also while
++    // Show original hides the glyph plates).
++    QString text;
++    if (enabled_ && !compositePaused_ && !settling_ && BackendUsable(backend_)) {
++        text = model_.ReadingText(clock_(), currentFrameSeq_);
++    }
++    if (text == readingText_) {
++        return;
++    }
++    readingText_ = text;
+     if (panel_) {
+-        panel_->SetReadingText(model_.ReadingText());
++        panel_->SetReadingText(readingText_);
+     }
+ }
+ 
+@@ -481,6 +594,8 @@ void UltraClearTextController::UpdateStatus()
+                   true);
+     } else if (!cameraActive_) {
+         SetStatus(QStringLiteral("Waiting for the camera."));
++    } else if (settling_) {
++        SetStatus(QStringLiteral("Image settings changed. Showing the camera image until the new image is read."));
+     } else if (showOriginal_) {
+         SetStatus(QStringLiteral("Original camera text shown."));
+     } else if (shownWords_ > 0) {
+diff --git a/src/common/ultra_clear_text.cpp b/src/common/ultra_clear_text.cpp
+index c338d72d..398031ae 100644
+--- a/src/common/ultra_clear_text.cpp
++++ b/src/common/ultra_clear_text.cpp
+@@ -1,6 +1,7 @@
+ #include "okuflow/common/ultra_clear_text.hpp"
+ 
+ #include <QElapsedTimer>
++#include <QHash>
+ 
+ #include <algorithm>
+ #include <chrono>
+@@ -235,6 +236,120 @@ QImage ToOwnedArgb(const std::uint8_t* bgra, int width, int height, int stride)
+ 
+ } // namespace
+ 
++// --- Pixel hand-off -----------------------------------------------------------
++
++std::shared_ptr<PixelPool> PixelPool::Create(int capacity)
++{
++    return std::shared_ptr<PixelPool>(new PixelPool(std::max(1, capacity)));
++}
++
++std::vector<std::uint8_t> PixelPool::Take(std::size_t minimumSize)
++{
++    std::lock_guard lock(mutex_);
++    for (auto it = free_.begin(); it != free_.end(); ++it) {
++        if (it->size() >= minimumSize) {
++            std::vector<std::uint8_t> bytes = std::move(*it);
++            free_.erase(it);
++            return bytes;
++        }
++    }
++    return {};
++}
++
++void PixelPool::Give(std::vector<std::uint8_t>&& bytes)
++{
++    std::lock_guard lock(mutex_);
++    if (static_cast<int>(free_.size()) < capacity_ && !bytes.empty()) {
++        free_.push_back(std::move(bytes));
++    }
++}
++
++SharedPixels PixelPool::Wrap(PixelBuffer* buffer)
++{
++    std::weak_ptr<PixelPool> weak = weak_from_this();
++    return SharedPixels(buffer, [weak](const PixelBuffer* owned) {
++        auto* mutableBuffer = const_cast<PixelBuffer*>(owned);
++        if (const std::shared_ptr<PixelPool> pool = weak.lock()) {
++            pool->Give(std::move(mutableBuffer->bytes));
++        }
++        delete mutableBuffer;
++    });
++}
++
++SharedPixels PixelPool::Adopt(std::vector<std::uint8_t>& bytes, int width, int height, int strideBytes)
++{
++    const std::size_t needed = static_cast<std::size_t>(std::max(0, strideBytes)) *
++                               static_cast<std::size_t>(std::max(0, height));
++    if (width <= 0 || height <= 0 || strideBytes < width * 4 || bytes.size() < needed) {
++        return {};
++    }
++    auto* buffer = new PixelBuffer;
++    buffer->bytes.swap(bytes);
++    buffer->width = width;
++    buffer->height = height;
++    buffer->strideBytes = strideBytes;
++    // A recycled vector of the same size makes the presenter's next resize()
++    // a no-op; otherwise it allocates once, as before.
++    bytes = Take(needed);
++    if (bytes.empty()) {
++        std::lock_guard lock(mutex_);
++        ++allocations_; // the caller's next fill allocates once
++    }
++    if (bytes.size() > needed) {
++        bytes.resize(needed);
++    }
++    return Wrap(buffer);
++}
++
++SharedPixels PixelPool::Copy(const std::uint8_t* bgra, int width, int height, int strideBytes)
++{
++    if (!bgra || width <= 0 || height <= 0 || strideBytes < width * 4) {
++        return {};
++    }
++    const std::size_t rowBytes = static_cast<std::size_t>(width) * 4;
++    const std::size_t needed = rowBytes * static_cast<std::size_t>(height);
++    auto* buffer = new PixelBuffer;
++    buffer->bytes = Take(needed);
++    if (buffer->bytes.size() < needed) {
++        std::lock_guard lock(mutex_);
++        ++allocations_;
++    }
++    buffer->bytes.resize(needed);
++    for (int y = 0; y < height; ++y) {
++        std::copy_n(bgra + static_cast<std::size_t>(y) * strideBytes, rowBytes,
++                    buffer->bytes.data() + static_cast<std::size_t>(y) * rowBytes);
++    }
++    buffer->width = width;
++    buffer->height = height;
++    buffer->strideBytes = static_cast<int>(rowBytes);
++    return Wrap(buffer);
++}
++
++int PixelPool::FreeCount() const
++{
++    std::lock_guard lock(mutex_);
++    return static_cast<int>(free_.size());
++}
++
++std::uint64_t PixelPool::Allocations() const
++{
++    std::lock_guard lock(mutex_);
++    return allocations_;
++}
++
++QImage WrapPixels(const SharedPixels& pixels)
++{
++    if (!pixels || !pixels->IsValid()) {
++        return {};
++    }
++    // Read-only constructor: any non-const access deep-copies instead of
++    // writing into the shared buffer.
++    auto* keepAlive = new SharedPixels(pixels);
++    return QImage(
++        static_cast<const uchar*>(pixels->bytes.data()), pixels->width, pixels->height, pixels->strideBytes,
++        QImage::Format_ARGB32, [](void* info) { delete static_cast<SharedPixels*>(info); }, keepAlive);
++}
++
+ // --- Geometry ----------------------------------------------------------------
+ 
+ bool ViewPixelToScene(const ViewTransform& t, double width, double height,
+@@ -382,7 +497,8 @@ ReferencePatch BuildReferencePatch(const ProbeFrame& reference, const QRectF& li
+     return patch;
+ }
+ 
+-PatchMatch MatchPatch(const ReferencePatch& patch, const ProbeFrame& probe, const MatchTuning& tuning)
++PatchMatch MatchPatch(const ReferencePatch& patch, const ProbeFrame& probe, const MatchTuning& tuning,
++                      std::optional<QPointF> seedSceneOffset)
+ {
+     PatchMatch match;
+     if (!patch.valid || !probe.IsValid()) {
+@@ -394,34 +510,57 @@ PatchMatch MatchPatch(const ReferencePatch& patch, const ProbeFrame& probe, cons
+     if (!match.visible) {
+         return match;
+     }
++    const double confident = tuning.minimumScore + 0.08;
++    const int radius = std::max(1, tuning.searchRadiusPx);
+     double bestScore = zero.score;
+     double bestX = 0.0, bestY = 0.0;
+     // Static fast path: an unmoved, unchanged line is the common case.
+-    if (zero.score < tuning.minimumScore + 0.08) {
+-        const int radius = std::max(1, tuning.searchRadiusPx);
+-        for (int dy = -radius; dy <= radius; dy += 2) {
+-            for (int dx = -radius; dx <= radius; dx += 2) {
+-                const Correlation c = Correlate(patch, g, probe, dx, dy, 3);
+-                if (c.visibleFraction >= tuning.minimumVisibleFraction && c.score > bestScore) {
++    if (zero.score < confident) {
++        bool seeded = false;
++        if (seedSceneOffset) {
++            // Motion continuity: try the last validated offset first, but only
++            // inside the same bounded window the grid would search.
++            const double sx = std::round(seedSceneOffset->x() / g.sceneUnitsPerPixelX);
++            const double sy = std::round(seedSceneOffset->y() / g.sceneUnitsPerPixelY);
++            if ((sx != 0.0 || sy != 0.0) && std::abs(sx) <= radius && std::abs(sy) <= radius) {
++                const Correlation c = Correlate(patch, g, probe, sx, sy, 1);
++                if (c.visibleFraction >= tuning.minimumVisibleFraction && c.score >= confident) {
+                     bestScore = c.score;
+-                    bestX = dx;
+-                    bestY = dy;
++                    bestX = sx;
++                    bestY = sy;
++                    seeded = true;
++                }
++            }
++        }
++        if (!seeded) {
++            for (int dy = -radius; dy <= radius; dy += 2) {
++                for (int dx = -radius; dx <= radius; dx += 2) {
++                    const Correlation c = Correlate(patch, g, probe, dx, dy, 3);
++                    if (c.visibleFraction >= tuning.minimumVisibleFraction && c.score > bestScore) {
++                        bestScore = c.score;
++                        bestX = dx;
++                        bestY = dy;
++                    }
+                 }
+             }
++            bestScore = Correlate(patch, g, probe, bestX, bestY, 1).score;
+         }
+         const double coarseX = bestX, coarseY = bestY;
+-        bestScore = Correlate(patch, g, probe, coarseX, coarseY, 1).score;
+         for (int dy = -1; dy <= 1; ++dy) {
+             for (int dx = -1; dx <= 1; ++dx) {
+                 if (dx == 0 && dy == 0) {
+                     continue;
+                 }
+-                const Correlation c =
+-                    Correlate(patch, g, probe, coarseX + dx, coarseY + dy, 1);
++                const double x = coarseX + dx;
++                const double y = coarseY + dy;
++                if (std::abs(x) > radius + 1 || std::abs(y) > radius + 1) {
++                    continue;
++                }
++                const Correlation c = Correlate(patch, g, probe, x, y, 1);
+                 if (c.visibleFraction >= tuning.minimumVisibleFraction && c.score > bestScore) {
+                     bestScore = c.score;
+-                    bestX = coarseX + dx;
+-                    bestY = coarseY + dy;
++                    bestX = x;
++                    bestY = y;
+                 }
+             }
+         }
+@@ -448,6 +587,62 @@ PatchMatch MatchPatch(const ReferencePatch& patch, const ProbeFrame& probe, cons
+     return match;
+ }
+ 
++QVector<LineCheck> CheckLines(const QVector<LineReference>& lines, const ProbeFrame& probe,
++                              const MatchTuning& tuning, double budgetMs,
++                              const std::atomic<bool>* cancelled)
++{
++    QVector<LineCheck> checks;
++    checks.reserve(lines.size());
++    QElapsedTimer timer;
++    timer.start();
++    bool stopped = !probe.IsValid();
++    for (const LineReference& line : lines) {
++        LineCheck check;
++        check.lineId = line.lineId;
++        if (!stopped && ((cancelled && cancelled->load(std::memory_order_relaxed)) ||
++                         (budgetMs > 0.0 && timer.nsecsElapsed() / 1e6 >= budgetMs))) {
++            stopped = true;
++        }
++        if (!stopped) {
++            check.checked = true;
++            const bool hasSeed = line.lastSceneOffset != QPointF();
++            check.match = MatchPatch(line.reference, probe, tuning,
++                                     hasSeed ? std::optional<QPointF>(line.lastSceneOffset) : std::nullopt);
++        }
++        checks.push_back(check);
++    }
++    return checks;
++}
++
++QVector<PreparedLine> PrepareLines(const RecognitionResult& result, double minimumWordHeightPx)
++{
++    QVector<PreparedLine> prepared;
++    prepared.reserve(result.output.lines.size());
++    const SourceStamp& stamp = result.stamp;
++    const double width = stamp.viewportWidth;
++    const double height = stamp.viewportHeight;
++    for (const RecognizedLine& line : result.output.lines) {
++        PreparedLine out;
++        for (const RecognizedWord& word : line.words) {
++            const QString text = word.text.trimmed();
++            if (text.isEmpty() || word.boundsPx.height() < minimumWordHeightPx) {
++                continue;
++            }
++            const QRectF scene = ViewRectToScene(stamp.viewTransform, width, height, word.boundsPx);
++            if (scene.isEmpty()) {
++                continue;
++            }
++            out.words.push_back({text, scene});
++            out.sceneRect = out.sceneRect.isNull() ? scene : out.sceneRect.united(scene);
++        }
++        if (!out.words.isEmpty()) {
++            out.reference = BuildReferencePatch(result.reference, out.sceneRect);
++        }
++        prepared.push_back(std::move(out));
++    }
++    return prepared;
++}
++
+ std::optional<double> SceneSimilarity(const ProbeFrame& a, const ProbeFrame& b)
+ {
+     if (!a.IsValid() || !b.IsValid()) {
+@@ -566,6 +761,7 @@ struct RecognitionScheduler::State {
+     Completion completion;
+     StatusChanged statusChanged;
+     int referenceDecimation{2};
++    double minimumWordHeightPx{7.0};
+     std::optional<Job> pending;
+     bool inFlight{};
+     std::atomic<bool> cancelInFlight{false};
+@@ -589,6 +785,28 @@ struct RecognitionScheduler::State {
+         }
+     }
+ 
++    std::uint64_t Enqueue(const SourceStamp& stamp, QImage owned)
++    {
++        std::lock_guard lock(mutex);
++        if (shutdown || status.state == BackendState::kUnavailable ||
++            status.state == BackendState::kFailed) {
++            return 0;
++        }
++        if (pending) {
++            ++stats.coalesced;
++        }
++        Job job;
++        job.id = nextJobId++;
++        job.authority = authority;
++        job.stamp = stamp;
++        job.pixels = std::move(owned);
++        const std::uint64_t id = job.id;
++        pending = std::move(job);
++        ++stats.submitted;
++        wake.notify_one();
++        return id;
++    }
++
+     static void Run(std::shared_ptr<State> self)
+     {
+         BackendStatus initial;
+@@ -640,6 +858,9 @@ struct RecognitionScheduler::State {
+                     }
+                     result.lineColors.push_back(MeasureLineColors(job.pixels, bounds.toAlignedRect()));
+                 }
++                // Scene mapping and residual references are pixel work too:
++                // done here so UI-thread admission stays cheap.
++                result.prepared = PrepareLines(result, self->minimumWordHeightPx);
+             }
+             result.durationMs = timer.nsecsElapsed() / 1e6;
+             bool current = false;
+@@ -670,9 +891,11 @@ struct RecognitionScheduler::State {
+ RecognitionScheduler::RecognitionScheduler(std::unique_ptr<Recognizer> recognizer,
+                                            Completion completion,
+                                            StatusChanged statusChanged,
+-                                           int referenceDecimation)
++                                           int referenceDecimation,
++                                           double minimumWordHeightPx)
+     : state_(std::make_shared<State>())
+ {
++    state_->minimumWordHeightPx = minimumWordHeightPx;
+     state_->recognizer = std::move(recognizer);
+     state_->completion = std::move(completion);
+     state_->statusChanged = std::move(statusChanged);
+@@ -723,24 +946,18 @@ std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, QImage pixe
+     if (owned.isNull()) {
+         return 0;
+     }
+-    std::lock_guard lock(state_->mutex);
+-    if (state_->shutdown || state_->status.state == BackendState::kUnavailable ||
+-        state_->status.state == BackendState::kFailed) {
++    return state_->Enqueue(stamp, std::move(owned));
++}
++
++std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, SharedPixels pixels)
++{
++    // Shared pixels are immutable after hand-off, so a read-only view is an
++    // owned input: the worker keeps the buffer alive until it is done.
++    QImage view = WrapPixels(pixels);
++    if (view.isNull()) {
+         return 0;
+     }
+-    if (state_->pending) {
+-        ++state_->stats.coalesced;
+-    }
+-    State::Job job;
+-    job.id = state_->nextJobId++;
+-    job.authority = state_->authority;
+-    job.stamp = stamp;
+-    job.pixels = std::move(owned);
+-    const std::uint64_t id = job.id;
+-    state_->pending = std::move(job);
+-    ++state_->stats.submitted;
+-    state_->wake.notify_one();
+-    return id;
++    return state_->Enqueue(stamp, std::move(view));
+ }
+ 
+ void RecognitionScheduler::Cancel()
+@@ -789,6 +1006,166 @@ SchedulerStats RecognitionScheduler::Stats() const
+     return state_->stats;
+ }
+ 
++// --- Probe worker ------------------------------------------------------------
++
++struct ProbeWorker::State {
++    std::mutex mutex;
++    std::condition_variable wake;
++    std::mutex callbackMutex;
++    bool callbacksEnabled{true};
++    Completion completion;
++    std::optional<std::pair<std::uint64_t, ProbeRequest>> pending;
++    std::uint64_t pendingAuthority{};
++    bool inFlight{};
++    std::atomic<bool> cancelInFlight{false};
++    std::uint64_t authority{1};
++    std::uint64_t nextJobId{1};
++    bool shutdown{};
++    ProbeWorkerStats stats;
++    std::thread thread;
++
++    static void Run(std::shared_ptr<State> self)
++    {
++        for (;;) {
++            std::uint64_t jobId = 0;
++            std::uint64_t jobAuthority = 0;
++            ProbeRequest request;
++            {
++                std::unique_lock lock(self->mutex);
++                self->wake.wait(lock, [&] { return self->shutdown || self->pending.has_value(); });
++                if (self->shutdown) {
++                    break;
++                }
++                jobId = self->pending->first;
++                request = std::move(self->pending->second);
++                jobAuthority = self->pendingAuthority;
++                self->pending.reset();
++                self->inFlight = true;
++                self->cancelInFlight.store(jobAuthority != self->authority);
++            }
++            ProbeOutcome outcome;
++            outcome.jobId = jobId;
++            outcome.authority = jobAuthority;
++            outcome.stamp = request.stamp;
++            QElapsedTimer timer;
++            timer.start();
++            if (request.pixels && request.pixels->IsValid()) {
++                auto probe = std::make_shared<ProbeFrame>(MakeProbeFrame(
++                    request.pixels->bytes.data(), request.pixels->width, request.pixels->height,
++                    request.pixels->strideBytes, std::max(1, request.decimation), request.stamp));
++                if (probe->IsValid()) {
++                    outcome.probe = std::move(probe);
++                }
++            }
++            outcome.probeMs = timer.nsecsElapsed() / 1e6;
++            timer.restart();
++            if (outcome.probe) {
++                if (request.previous) {
++                    outcome.similarity = SceneSimilarity(*request.previous, *outcome.probe);
++                }
++                outcome.checks = CheckLines(request.lines, *outcome.probe, request.tuning, request.budgetMs,
++                                            &self->cancelInFlight);
++                for (const LineCheck& check : outcome.checks) {
++                    outcome.uncheckedLines += check.checked ? 0 : 1;
++                }
++            }
++            outcome.checkMs = timer.nsecsElapsed() / 1e6;
++            outcome.pixels = std::move(request.pixels);
++            bool current = false;
++            {
++                std::lock_guard lock(self->mutex);
++                self->inFlight = false;
++                current = jobAuthority == self->authority && !self->shutdown;
++                ++(current ? self->stats.completed : self->stats.revoked);
++                self->stats.maxCheckMs = std::max(self->stats.maxCheckMs, outcome.checkMs);
++            }
++            if (current) {
++                std::lock_guard callbackLock(self->callbackMutex);
++                if (self->callbacksEnabled && self->completion) {
++                    self->completion(std::move(outcome));
++                }
++            }
++        }
++    }
++};
++
++ProbeWorker::ProbeWorker(Completion completion)
++    : state_(std::make_shared<State>())
++{
++    state_->completion = std::move(completion);
++    state_->thread = std::thread(&State::Run, state_);
++}
++
++ProbeWorker::~ProbeWorker()
++{
++    {
++        std::lock_guard lock(state_->mutex);
++        state_->shutdown = true;
++        state_->pending.reset();
++        ++state_->authority;
++        state_->cancelInFlight.store(true);
++    }
++    state_->wake.notify_all();
++    {
++        std::lock_guard callbackLock(state_->callbackMutex);
++        state_->callbacksEnabled = false;
++    }
++    // Budgeted CPU work that stops at the next line once cancelled.
++    state_->thread.join();
++}
++
++std::uint64_t ProbeWorker::Submit(ProbeRequest request)
++{
++    std::lock_guard lock(state_->mutex);
++    if (state_->shutdown) {
++        return 0;
++    }
++    if (state_->pending) {
++        ++state_->stats.coalesced;
++    }
++    const std::uint64_t id = state_->nextJobId++;
++    state_->pending.emplace(id, std::move(request));
++    state_->pendingAuthority = state_->authority;
++    ++state_->stats.submitted;
++    state_->wake.notify_one();
++    return id;
++}
++
++void ProbeWorker::Cancel()
++{
++    std::lock_guard lock(state_->mutex);
++    ++state_->authority;
++    if (state_->pending) {
++        state_->pending.reset();
++        ++state_->stats.revoked;
++    }
++    state_->cancelInFlight.store(true);
++}
++
++bool ProbeWorker::IsCurrent(const ProbeOutcome& outcome) const
++{
++    std::lock_guard lock(state_->mutex);
++    return outcome.authority == state_->authority;
++}
++
++bool ProbeWorker::HasPending() const
++{
++    std::lock_guard lock(state_->mutex);
++    return state_->pending.has_value();
++}
++
++bool ProbeWorker::HasWork() const
++{
++    std::lock_guard lock(state_->mutex);
++    return state_->inFlight || state_->pending.has_value();
++}
++
++ProbeWorkerStats ProbeWorker::Stats() const
++{
++    std::lock_guard lock(state_->mutex);
++    return state_->stats;
++}
++
+ // --- Overlay model -----------------------------------------------------------
+ 
+ OverlayModel::OverlayModel(ModelTuning tuning)
+@@ -823,55 +1200,55 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
+     const bool newerProbe = latestProbe && latestProbe->IsValid() &&
+                             latestProbe->stamp.SameScene(current) &&
+                             latestProbe->stamp.timestampMs > stamp.timestampMs;
++    // The scheduler prepares lines on its worker; hand-built results are
++    // prepared here.
++    const QVector<PreparedLine> prepared =
++        result.prepared.size() == result.output.lines.size()
++            ? result.prepared
++            : PrepareLines(result, tuning_.minimumWordHeightPx);
+ 
+     struct Candidate {
+         AcceptedLine line;
+-        QVector<AcceptedWord> words; // all usable words, job scene coords
++        const PreparedLine* source{};
+     };
+     QVector<Candidate> candidates;
+     int movedLines = 0;
+     int trackableLines = 0;
+-    for (int i = 0; i < result.output.lines.size(); ++i) {
+-        Candidate candidate;
+-        QRectF lineRect;
+-        for (const RecognizedWord& word : result.output.lines[i].words) {
+-            const QString text = word.text.trimmed();
+-            if (text.isEmpty() || word.boundsPx.height() < tuning_.minimumWordHeightPx) {
+-                continue;
+-            }
+-            const QRectF scene = ViewRectToScene(stamp.viewTransform, jobWidth, jobHeight, word.boundsPx);
+-            if (scene.isEmpty()) {
+-                continue;
+-            }
+-            candidate.words.push_back({text, scene});
+-            lineRect = lineRect.isNull() ? scene : lineRect.united(scene);
+-        }
+-        if (candidate.words.isEmpty()) {
+-            continue;
+-        }
+-        candidate.line.sceneRect = lineRect;
+-        candidate.line.reference = BuildReferencePatch(result.reference, lineRect);
+-        if (!candidate.line.reference.valid) {
++    QElapsedTimer matchTimer;
++    matchTimer.start();
++    for (int i = 0; i < prepared.size(); ++i) {
++        const PreparedLine& line = prepared[i];
++        if (line.words.isEmpty() || !line.reference.valid) {
+             continue; // untrackable: never displayed
+         }
+         ++trackableLines;
++        Candidate candidate;
++        candidate.source = &line;
++        candidate.line.sceneRect = line.sceneRect;
++        candidate.line.reference = line.reference;
+         candidate.line.colors = i < result.lineColors.size() ? result.lineColors[i] : LineColors{};
+         candidate.line.provenance = stamp;
+         candidate.line.valid = true;
+         candidate.line.validatedAtMs = stamp.timestampMs;
+         candidate.line.validatedFrameSeq = stamp.frameSeq;
+         if (newerProbe) {
+-            const PatchMatch m = MatchPatch(candidate.line.reference, *latestProbe, tuning_.match);
+-            if (m.visible && !m.matched) {
+-                ++movedLines;
+-                continue;
+-            }
+-            if (m.matched) {
+-                candidate.line.sceneOffset = m.sceneOffset;
+-                candidate.line.validatedAtMs = latestProbe->stamp.timestampMs;
+-                candidate.line.validatedFrameSeq = latestProbe->stamp.frameSeq;
++            if (matchTimer.nsecsElapsed() / 1e6 >= tuning_.admitMatchBudgetMs) {
++                // Budget spent on the UI thread: admit unverified. The line
++                // stays hidden until an off-thread probe validates it.
++                candidate.line.valid = false;
+             } else {
+-                candidate.line.valid = false; // out of the newer view: unverified
++                const PatchMatch m = MatchPatch(candidate.line.reference, *latestProbe, tuning_.match);
++                if (m.visible && !m.matched) {
++                    ++movedLines;
++                    continue;
++                }
++                if (m.matched) {
++                    candidate.line.sceneOffset = m.sceneOffset;
++                    candidate.line.validatedAtMs = latestProbe->stamp.timestampMs;
++                    candidate.line.validatedFrameSeq = latestProbe->stamp.frameSeq;
++                } else {
++                    candidate.line.valid = false; // out of the newer view: unverified
++                }
+             }
+         }
+         candidates.push_back(std::move(candidate));
+@@ -884,23 +1261,30 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
+     }
+ 
+     // Temporal agreement: a word is shown only after two independent
+-    // recognitions of the same scene agree on its text and position.
++    // recognitions of the same scene agree on its text and position. Earlier
++    // words are indexed by text so dense pages stay linear, not quadratic.
++    QHash<QString, QVector<QRectF>> earlier;
++    for (const AcceptedLine& line : lines_) {
++        if (!line.provenance.SameScene(current)) {
++            continue;
++        }
++        for (const AcceptedWord& word : line.words) {
++            earlier[word.text].push_back(word.sceneRect.translated(line.sceneOffset));
++        }
++    }
++    for (const PendingWord& word : pending_) {
++        if (word.sourceEpoch == current.sourceEpoch &&
++            word.geometryGeneration == current.geometryGeneration) {
++            earlier[word.text].push_back(word.sceneRect);
++        }
++    }
+     const auto confirmedBefore = [&](const QString& text, const QRectF& currentRect) {
+-        for (const AcceptedLine& line : lines_) {
+-            if (!line.provenance.SameScene(current)) {
+-                continue;
+-            }
+-            for (const AcceptedWord& word : line.words) {
+-                if (word.text == text &&
+-                    Iou(word.sceneRect.translated(line.sceneOffset), currentRect) >= tuning_.agreementIou) {
+-                    return true;
+-                }
+-            }
++        const auto it = earlier.constFind(text);
++        if (it == earlier.constEnd()) {
++            return false;
+         }
+-        for (const PendingWord& word : pending_) {
+-            if (word.sourceEpoch == current.sourceEpoch &&
+-                word.geometryGeneration == current.geometryGeneration && word.text == text &&
+-                Iou(word.sceneRect, currentRect) >= tuning_.agreementIou) {
++        for (const QRectF& rect : it.value()) {
++            if (Iou(rect, currentRect) >= tuning_.agreementIou) {
+                 return true;
+             }
+         }
+@@ -910,14 +1294,14 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
+     QVector<AcceptedLine> admitted;
+     QVector<PendingWord> nextPending;
+     for (Candidate& candidate : candidates) {
+-        for (const AcceptedWord& word : candidate.words) {
++        for (const PreparedWord& word : candidate.source->words) {
+             const QRectF currentRect = word.sceneRect.translated(candidate.line.sceneOffset);
+             if (IsHighRiskToken(word.text)) {
+                 ++candidate.line.omittedWords;
+                 continue;
+             }
+             if (confirmedBefore(word.text, currentRect)) {
+-                candidate.line.words.push_back(word);
++                candidate.line.words.push_back({word.text, word.sceneRect});
+             } else {
+                 ++candidate.line.omittedWords;
+                 nextPending.push_back({word.text, currentRect, current.sourceEpoch,
+@@ -952,42 +1336,61 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
+                               : AdmitVerdict::kPending;
+ }
+ 
+-ValidationSummary OverlayModel::Validate(const ProbeFrame& probe, std::int64_t nowMs)
++QVector<LineReference> OverlayModel::LineReferences(const SourceStamp& scene) const
++{
++    QVector<LineReference> references;
++    references.reserve(lines_.size());
++    for (const AcceptedLine& line : lines_) {
++        if (line.provenance.SameScene(scene)) {
++            references.push_back({line.id, line.reference, line.sceneOffset});
++        }
++    }
++    return references;
++}
++
++ValidationSummary OverlayModel::ApplyChecks(const QVector<LineCheck>& checks, const SourceStamp& probeStamp)
+ {
+-    Q_UNUSED(nowMs);
+     ValidationSummary summary;
+-    if (!probe.IsValid()) {
+-        return summary;
++    QHash<std::uint64_t, const LineCheck*> byId;
++    byId.reserve(checks.size());
++    for (const LineCheck& check : checks) {
++        byId.insert(check.lineId, &check);
+     }
+-    constexpr int kMaximumCheckedLines = 48;
+     QVector<AcceptedLine> kept;
+     kept.reserve(lines_.size());
+     for (AcceptedLine& line : lines_) {
+-        if (!line.provenance.SameScene(probe.stamp)) {
++        if (!line.provenance.SameScene(probeStamp)) {
+             ++summary.invalid;
+             continue;
+         }
+-        if (summary.checked >= kMaximumCheckedLines) {
+-            line.valid = false;
++        const LineCheck* check = byId.value(line.id, nullptr);
++        // Not part of this probe (admitted after it was taken), or already
++        // validated against newer pixels: keep the newer state.
++        if (!check || probeStamp.timestampMs < line.validatedAtMs) {
++            kept.push_back(line);
++            continue;
++        }
++        if (!check->checked) {
++            line.valid = false; // budget exhausted: unverified, hidden
++            ++summary.unchecked;
+             kept.push_back(line);
+             continue;
+         }
+         ++summary.checked;
+-        const PatchMatch m = MatchPatch(line.reference, probe, tuning_.match);
+-        if (!m.visible) {
++        if (!check->match.visible) {
+             line.valid = false;
+             ++summary.notVisible;
+             kept.push_back(line);
+             continue;
+         }
+-        if (!m.matched) {
++        if (!check->match.matched) {
+             ++summary.invalid; // content changed, occluded or moved too far
+             continue;
+         }
+         line.valid = true;
+-        line.sceneOffset = m.sceneOffset;
+-        line.validatedAtMs = probe.stamp.timestampMs;
+-        line.validatedFrameSeq = probe.stamp.frameSeq;
++        line.sceneOffset = check->match.sceneOffset;
++        line.validatedAtMs = probeStamp.timestampMs;
++        line.validatedFrameSeq = probeStamp.frameSeq;
+         ++summary.valid;
+         kept.push_back(line);
+     }
+@@ -995,16 +1398,26 @@ ValidationSummary OverlayModel::Validate(const ProbeFrame& probe, std::int64_t n
+     return summary;
+ }
+ 
++ValidationSummary OverlayModel::Validate(const ProbeFrame& probe, std::int64_t nowMs)
++{
++    Q_UNUSED(nowMs);
++    if (!probe.IsValid()) {
++        return {};
++    }
++    return ApplyChecks(CheckLines(LineReferences(probe.stamp), probe, tuning_.match, 0.0), probe.stamp);
++}
++
++bool OverlayModel::IsShown(const AcceptedLine& line, std::int64_t nowMs, std::uint64_t currentFrameSeq) const
++{
++    return line.valid && !line.words.isEmpty() &&
++           (nowMs - line.validatedAtMs <= tuning_.freshnessMs || currentFrameSeq == line.validatedFrameSeq);
++}
++
+ QVector<SceneWord> OverlayModel::SceneWords(std::int64_t nowMs, std::uint64_t currentFrameSeq) const
+ {
+     QVector<SceneWord> words;
+     for (const AcceptedLine& line : lines_) {
+-        if (!line.valid) {
+-            continue;
+-        }
+-        const bool fresh = nowMs - line.validatedAtMs <= tuning_.freshnessMs ||
+-                           currentFrameSeq == line.validatedFrameSeq;
+-        if (!fresh) {
++        if (!IsShown(line, nowMs, currentFrameSeq)) {
+             continue;
+         }
+         for (const AcceptedWord& word : line.words) {
+@@ -1033,29 +1446,64 @@ QVector<DisplayWord> OverlayModel::DisplayWords(const ViewTransform& transform,
+     return words;
+ }
+ 
+-QString OverlayModel::ReadingText() const
++QString OverlayModel::ReadingText(std::int64_t nowMs, std::uint64_t currentFrameSeq) const
+ {
+-    QVector<const AcceptedLine*> ordered;
++    // Only text that is verified on screen now is offered for reading;
++    // unverified, moved or stale lines are left out rather than guessed.
++    struct Entry {
++        QRectF rect;
++        std::uint64_t id{};
++        const AcceptedLine* line{};
++        int row{};
++    };
++    QVector<Entry> entries;
+     for (const AcceptedLine& line : lines_) {
+-        ordered.push_back(&line);
+-    }
+-    std::sort(ordered.begin(), ordered.end(), [](const AcceptedLine* a, const AcceptedLine* b) {
+-        const QRectF ra = a->sceneRect.translated(a->sceneOffset);
+-        const QRectF rb = b->sceneRect.translated(b->sceneOffset);
+-        const double band = std::min(ra.height(), rb.height()) * 0.5;
+-        if (std::abs(ra.center().y() - rb.center().y()) > band) {
+-            return ra.center().y() < rb.center().y();
++        if (IsShown(line, nowMs, currentFrameSeq)) {
++            entries.push_back({line.sceneRect.translated(line.sceneOffset), line.id, &line, 0});
++        }
++    }
++    // 1) Strict order by vertical centre (ties: left edge, then id).
++    std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) {
++        const double ay = a.rect.center().y();
++        const double by = b.rect.center().y();
++        if (ay != by) {
++            return ay < by;
++        }
++        if (a.rect.left() != b.rect.left()) {
++            return a.rect.left() < b.rect.left();
++        }
++        return a.id < b.id;
++    });
++    // 2) Explicit row clustering: a line joins the current row while its
++    //    centre lies inside the row anchor's vertical extent. The anchor is
++    //    the row's first line, so membership never depends on pair order.
++    int row = -1;
++    double anchorBottom = 0.0;
++    for (Entry& entry : entries) {
++        if (row < 0 || entry.rect.center().y() > anchorBottom) {
++            ++row;
++            anchorBottom = entry.rect.bottom();
++        }
++        entry.row = row;
++    }
++    // 3) Strict order within rows by left edge (ties: id).
++    std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) {
++        if (a.row != b.row) {
++            return a.row < b.row;
++        }
++        if (a.rect.left() != b.rect.left()) {
++            return a.rect.left() < b.rect.left();
+         }
+-        return ra.left() < rb.left();
++        return a.id < b.id;
+     });
+     QStringList out;
+-    for (const AcceptedLine* line : ordered) {
++    for (const Entry& entry : entries) {
+         QStringList words;
+-        for (const AcceptedWord& word : line->words) {
++        for (const AcceptedWord& word : entry.line->words) {
+             words.push_back(word.text);
+         }
+         QString text = words.join(QLatin1Char(' '));
+-        if (line->omittedWords > 0) {
++        if (entry.line->omittedWords > 0) {
+             text += QStringLiteral(" …");
+         }
+         out.push_back(text);
+diff --git a/tests/ultra_clear_text_test_support.hpp b/tests/ultra_clear_text_test_support.hpp
+index bc688f8f..64be6b72 100644
+--- a/tests/ultra_clear_text_test_support.hpp
++++ b/tests/ultra_clear_text_test_support.hpp
+@@ -55,18 +55,20 @@ inline SyntheticPage MakePage(const QStringList& lines,
+                               QPointF shift = {},
+                               int width = 1600,
+                               int height = 900,
+-                              int pixelSize = 64)
++                              int pixelSize = 64,
++                              QColor ink = QColor(18, 18, 22),
++                              QColor paper = QColor(246, 244, 236))
+ {
+     RegisterFixtureFonts();
+     SyntheticPage page;
+     page.image = QImage(width, height, QImage::Format_ARGB32);
+-    page.image.fill(QColor(246, 244, 236));
++    page.image.fill(paper);
+     QPainter painter(&page.image);
+     painter.setRenderHint(QPainter::TextAntialiasing, true);
+     painter.setRenderHint(QPainter::Antialiasing, true);
+     const QFont font = PageFont(pixelSize);
+     painter.setFont(font);
+-    painter.setPen(QColor(18, 18, 22));
++    painter.setPen(ink);
+     const QFontMetricsF metrics(font);
+     const qreal space = metrics.horizontalAdvance(QLatin1Char(' '));
+     qreal baseline = 110.0 + shift.y();
+@@ -99,6 +101,38 @@ inline SyntheticPage MakePage(const QStringList& lines,
+     return page;
+ }
+ 
++// Words drawn at explicit scene-pixel boxes (each box's height sets its
++// font size), for reading-order fixtures with mixed line heights.
++struct LayoutWord {
++    QString text;
++    QPointF topLeftPx;
++    int pixelSize{};
++};
++
++inline SyntheticPage MakeLayoutPage(const QVector<LayoutWord>& layout, int width = 1600, int height = 900)
++{
++    RegisterFixtureFonts();
++    SyntheticPage page;
++    page.image = QImage(width, height, QImage::Format_ARGB32);
++    page.image.fill(QColor(246, 244, 236));
++    QPainter painter(&page.image);
++    painter.setRenderHint(QPainter::TextAntialiasing, true);
++    painter.setPen(QColor(18, 18, 22));
++    for (const LayoutWord& word : layout) {
++        const QFont font = PageFont(word.pixelSize);
++        painter.setFont(font);
++        const QFontMetricsF metrics(font);
++        const qreal baseline = word.topLeftPx.y() + metrics.ascent();
++        painter.drawText(QPointF(word.topLeftPx.x(), baseline), word.text);
++        const QRectF box(word.topLeftPx.x(), word.topLeftPx.y(), metrics.horizontalAdvance(word.text),
++                         metrics.ascent() + metrics.descent());
++        page.words.push_back({word.text, QRectF(box.x() / width, box.y() / height, box.width() / width,
++                                                box.height() / height)});
++    }
++    painter.end();
++    return page;
++}
++
+ // Renders the scene through a ViewTransform into a viewport, as the
+ // presenter does (letterbox black).
+ inline QImage RenderView(const QImage& scene, const okuflow::ViewTransform& t, int width, int height)
+diff --git a/tests/ultra_clear_text_tests.cpp b/tests/ultra_clear_text_tests.cpp
+index 8141f0eb..17859c66 100644
+--- a/tests/ultra_clear_text_tests.cpp
++++ b/tests/ultra_clear_text_tests.cpp
+@@ -17,7 +17,9 @@
+ #include <QPlainTextEdit>
+ #include <QtTest>
+ 
++#include <algorithm>
+ #include <cmath>
++#include <cstring>
+ #include <condition_variable>
+ #include <memory>
+ #include <mutex>
+@@ -154,6 +156,10 @@ struct Harness {
+     double maxPresentMs{};
+     double maxProbeMs{};
+     bool completeReadbacks{true};
++    // Emulates the presenter's reusable readback vector.
++    std::vector<std::uint8_t> readback;
++    QVector<double> presentMs;
++    QVector<double> readbackMs;
+ 
+     explicit Harness(BackendState initState = BackendState::kReady)
+     {
+@@ -170,7 +176,10 @@ struct Harness {
+             overlay, panel, [sharedCopy] { return std::make_unique<ScriptedRecognizer>(sharedCopy); },
+             nullptr, [this] { return now; });
+         SetPage(MakePage(kLines));
+-        context.geometry = {7, kSceneWidth, kSceneHeight, 0, false, false};
++        context.geometry.settings.sourceEpoch = 7;
++        context.geometry.sceneWidth = kSceneWidth;
++        context.geometry.sceneHeight = kSceneHeight;
++        context.requested = context.geometry.settings;
+         context.transform = Transform(1.0f, 0.5f, 0.5f);
+         context.viewportWidth = kViewWidth;
+         context.viewportHeight = kViewHeight;
+@@ -183,6 +192,13 @@ struct Harness {
+         controller.reset();
+     }
+ 
++    // A newly processed scene with these settings, matching the request.
++    void SetSceneSettings(const UctSceneSettings& settings)
++    {
++        context.geometry.settings = settings;
++        context.requested = settings;
++    }
++
+     void SetPage(const SyntheticPage& value)
+     {
+         page = value;
+@@ -206,23 +222,29 @@ struct Harness {
+         QElapsedTimer timer;
+         timer.start();
+         const bool wanted = controller->OnPresented(context);
+-        maxPresentMs = std::max(maxPresentMs, timer.nsecsElapsed() / 1e6);
++        presentMs.push_back(timer.nsecsElapsed() / 1e6);
++        maxPresentMs = std::max(maxPresentMs, presentMs.last());
+         if (!wanted) {
+             return false;
+         }
+         const std::uint64_t id = nextReadback++;
+         controller->OnReadbackRequested(id, context);
+         if (completeReadbacks) {
+-            const QImage view = RenderView(page.image, context.transform, kViewWidth, kViewHeight);
++            const int w = static_cast<int>(context.viewportWidth);
++            const int hgt = static_cast<int>(context.viewportHeight);
++            const QImage view = RenderView(page.image, context.transform, w, hgt);
+             {
+                 std::lock_guard lock(shared->mutex);
+                 shared->transforms.insert(Checksum(view), context.transform);
+             }
++            // The presenter's own mapped copy into its reusable vector.
++            readback.resize(static_cast<std::size_t>(w) * hgt * 4);
++            std::memcpy(readback.data(), view.constBits(), readback.size());
+             QElapsedTimer probeTimer;
+             probeTimer.start();
+-            controller->OnReadbackCompleted(id, view.constBits(), view.width(), view.height(),
+-                                            static_cast<int>(view.bytesPerLine()));
+-            maxProbeMs = std::max(maxProbeMs, probeTimer.nsecsElapsed() / 1e6);
++            controller->OnReadbackCompleted(id, readback, w, hgt, w * 4);
++            readbackMs.push_back(probeTimer.nsecsElapsed() / 1e6);
++            maxProbeMs = std::max(maxProbeMs, readbackMs.last());
+         }
+         return true;
+     }
+@@ -331,6 +353,66 @@ RecognitionResult ResultFor(const SyntheticPage& page, const ViewTransform& t, c
+     return result;
+ }
+ 
++// Dense printed page: many long rows of small print, as on a textbook page.
++QStringList DenseLines(int rows)
++{
++    static const QStringList kWords{
++        QStringLiteral("reading"), QStringLiteral("page"),    QStringLiteral("camera"),
++        QStringLiteral("glasses"), QStringLiteral("people"),  QStringLiteral("printed"),
++        QStringLiteral("morning"), QStringLiteral("letters"), QStringLiteral("window"),
++        QStringLiteral("teacher"), QStringLiteral("board"),   QStringLiteral("notes"),
++        QStringLiteral("market"),  QStringLiteral("river"),   QStringLiteral("garden"),
++        QStringLiteral("evening"), QStringLiteral("travel"),  QStringLiteral("number")};
++    QStringList lines;
++    for (int r = 0; r < rows; ++r) {
++        QStringList words;
++        for (int w = 0; w < 30; ++w) {
++            words.push_back(kWords[(r * 7 + w * 5 + (w * w) % 11) % kWords.size()]);
++        }
++        lines.push_back(words.join(QLatin1Char(' ')));
++    }
++    return lines;
++}
++
++// Generalized ResultFor for any viewport size.
++RecognitionResult ResultForView(const SyntheticPage& page, const ViewTransform& t, const SourceStamp& stamp,
++                                int width, int height)
++{
++    const QImage view = RenderView(page.image, t, width, height);
++    RecognitionResult result;
++    result.stamp = stamp;
++    result.stamp.viewTransform = t;
++    result.stamp.viewportWidth = static_cast<std::uint32_t>(width);
++    result.stamp.viewportHeight = static_cast<std::uint32_t>(height);
++    result.output.ok = true;
++    for (const PageWord& word : page.words) {
++        const QRectF px = SceneRectToView(t, width, height, word.sceneRect);
++        if (!QRectF(0, 0, width, height).contains(px)) {
++            continue;
++        }
++        if (result.output.lines.isEmpty() ||
++            std::abs(result.output.lines.last().words.first().boundsPx.top() - px.top()) > px.height() * 0.5) {
++            result.output.lines.push_back({});
++            result.lineColors.push_back({});
++        }
++        result.output.lines.last().words.push_back({word.text, px});
++    }
++    result.reference = MakeProbeFrame(view.constBits(), view.width(), view.height(),
++                                      static_cast<int>(view.bytesPerLine()), 4, result.stamp);
++    return result;
++}
++
++double Percentile(QVector<double> values, double p)
++{
++    if (values.isEmpty()) {
++        return 0.0;
++    }
++    std::sort(values.begin(), values.end());
++    const int index = std::clamp(static_cast<int>(std::ceil(p * values.size())) - 1, 0,
++                                 static_cast<int>(values.size()) - 1);
++    return values[index];
++}
++
+ } // namespace
+ 
+ class UltraClearTextTests final : public QObject {
+@@ -372,6 +454,7 @@ private slots:
+     void originalPixelsAndNonTextGraphicsArePreserved();
+     void presentationWatchdogHidesTextWithoutPresents();
+     void probeWorkIsBoundedForLargeViewports();
++    void denseMovingPageValidationCostAt4K();
+     void panelExposesAccessibleControls();
+ };
+ 
+@@ -582,7 +665,7 @@ void UltraClearTextTests::modelOmitsHighRiskWordsFromReadingText()
+     const SourceStamp current = Stamp(1, 1, 0, t);
+     model.Admit(ResultFor(page, t, Stamp(1, 1, 100, t)), current, nullptr, 110);
+     model.Admit(ResultFor(page, t, Stamp(1, 1, 200, t)), current, nullptr, 210);
+-    const QString text = model.ReadingText();
++    const QString text = model.ReadingText(210, model.Lines().first().validatedFrameSeq);
+     QVERIFY2(text.contains(QStringLiteral("3.14")), qPrintable(text));
+     QVERIFY2(!text.contains(QStringLiteral("l0O")), qPrintable(text));
+     QVERIFY2(text.endsWith(QStringLiteral("…")), qPrintable(text));
+@@ -769,7 +852,11 @@ void UltraClearTextTests::sourceSwitchAndGeometryChangeInvalidateImmediately()
+     }
+     QVERIFY(h.controller->SchedulerStatistics().started > startedBefore);
+     const std::uint64_t generation = h.controller->GeometryGeneration();
+-    h.context.geometry.sourceEpoch = 8;
++    {
++        UctSceneSettings settings = h.context.geometry.settings;
++        settings.sourceEpoch = 8;
++        h.SetSceneSettings(settings);
++    }
+     h.Present(true, 1);
+     QCOMPARE(h.overlay->WordCount(), 0);
+     QVERIFY(h.controller->Model().Lines().isEmpty());
+@@ -784,7 +871,11 @@ void UltraClearTextTests::sourceSwitchAndGeometryChangeInvalidateImmediately()
+     QCOMPARE(h.overlay->WordCount(), 0);
+ 
+     QVERIFY(h.RunUntilShown());
+-    h.context.geometry.rotationQuarterTurns = 1;
++    {
++        UctSceneSettings settings = h.context.geometry.settings;
++        settings.rotationQuarterTurns = 1;
++        h.SetSceneSettings(settings);
++    }
+     h.Present(true, 1);
+     QCOMPARE(h.overlay->WordCount(), 0);
+ }
+@@ -924,6 +1015,58 @@ void UltraClearTextTests::probeWorkIsBoundedForLargeViewports()
+     QVERIFY2(worst < 80.0, qPrintable(QString::number(worst)));
+ }
+ 
++void UltraClearTextTests::denseMovingPageValidationCostAt4K()
++{
++    // Worst case for residual validation: a dense 4K page whose lines are all
++    // accepted, then moving a little every probe so no line takes the static
++    // fast path. Reports the per-probe core cost (probe build + validation).
++    constexpr int kW = 3840;
++    constexpr int kH = 2160;
++    const QStringList lines = DenseLines(52);
++    const SyntheticPage page = MakePage(lines, {}, kW, kH, 24);
++    const ViewTransform t = ComputeViewTransform(kW, kH, kW, kH, 1.0f, 0.5f, 0.5f, ViewportFitMode::kFit);
++    OverlayModel model;
++    const SourceStamp current = Stamp(1, 1, 0, t);
++    model.Admit(ResultForView(page, t, Stamp(1, 1, 100, t), kW, kH), current, nullptr, 110);
++    model.Admit(ResultForView(page, t, Stamp(1, 1, 200, t), kW, kH), current, nullptr, 210);
++    const int acceptedLines = model.Lines().size();
++    QVERIFY2(acceptedLines >= 48, qPrintable(QString::number(acceptedLines)));
++    QVector<double> probeMs;
++    QVector<double> validateMs;
++    int searched = 0;
++    for (int i = 0; i < 12; ++i) {
++        // Alternating small shifts: every line needs the full translation search.
++        const QPointF shift((i % 2) ? 12.0 : -12.0, (i % 2) ? 7.0 : -7.0);
++        const SyntheticPage moved = MakePage(lines, shift, kW, kH, 24);
++        const QImage view = RenderView(moved.image, t, kW, kH);
++        SourceStamp stamp = Stamp(1, 1, 300 + i * 80, t);
++        stamp.viewportWidth = kW;
++        stamp.viewportHeight = kH;
++        stamp.frameSeq = 10 + i;
++        QElapsedTimer timer;
++        timer.start();
++        const ProbeFrame probe = MakeProbeFrame(view.constBits(), kW, kH, static_cast<int>(view.bytesPerLine()),
++                                                4, stamp);
++        probeMs.push_back(timer.nsecsElapsed() / 1e6);
++        timer.restart();
++        const ValidationSummary summary = model.Validate(probe, stamp.timestampMs);
++        validateMs.push_back(timer.nsecsElapsed() / 1e6);
++        searched += summary.valid + summary.invalid;
++        // Re-admit so later iterations still have every line to validate.
++        if (model.Lines().size() < acceptedLines) {
++            model.Reset();
++            model.Admit(ResultForView(page, t, Stamp(1, 1, stamp.timestampMs, t), kW, kH), current, nullptr,
++                        stamp.timestampMs);
++            model.Admit(ResultForView(page, t, Stamp(1, 1, stamp.timestampMs, t), kW, kH), current, nullptr,
++                        stamp.timestampMs);
++        }
++    }
++    qInfo("dense 4K moving page, %d lines: probe build p50 %.2f / max %.2f ms; validation p50 %.2f / "
++          "p95 %.2f / max %.2f ms (%d line checks)",
++          acceptedLines, Percentile(probeMs, 0.5), Percentile(probeMs, 1.0), Percentile(validateMs, 0.5),
++          Percentile(validateMs, 0.95), Percentile(validateMs, 1.0), searched);
++}
++
+ void UltraClearTextTests::panelExposesAccessibleControls()
+ {
+     UltraClearTextPanel panel;

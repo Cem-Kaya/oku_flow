@@ -1,0 +1,13 @@
+{
+  "label": "transport-header-fragment",
+  "base": "4fa8ffb775556ce9b4084221f5c9918755a9bb9c",
+  "review": "Nine declaration/comment additions without a complete implementation in this dirty draft. Not ready for integration; retained because it is tiny.",
+  "files": [
+    {
+      "path": "include/okuflow/ui/video_transport.hpp",
+      "status": " M",
+      "bytes": 5478,
+      "sha256": "0aa2c4f85f00b3de65441eec15bd9c4c9c0ab0770e353ea3e8719eeb360615ba"
+    }
+  ]
+}

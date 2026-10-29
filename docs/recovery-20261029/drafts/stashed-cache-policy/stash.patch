@@ -1,0 +1,492 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 6112a620..d501303b 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -2,6 +2,11 @@
+ 
+ ## [Unreleased]
+ 
++- Keep ordinary UCT TensorRT plan keys independent of driver updates, with
++  read-only historical lookup, and admit runtimes at least 11.4.0.106 before
++  normal ABI/engine validation. This separate offline policy candidate is
++  untested; see `docs/uct_tensorrt_cache_policy.md`.
++
+ - Batch contiguous UCT recognition crop rectification while preserving scalar
+   sampling arithmetic and existing recognition look-ahead. This exact-change
+   candidate awaits serialized build, CUDA parity and whole-worker measurement;
+diff --git a/docs/README.md b/docs/README.md
+index 7b239f28..7edfc697 100644
+--- a/docs/README.md
++++ b/docs/README.md
+@@ -87,6 +87,9 @@ allocation ceilings and the finite latency/quality comparison.
+ [Contiguous helper batching](uct_helper_batching.md) documents the exact
+ rectification/CTC/metadata candidate, slot-lifetime fixtures and frozen paired
+ whole-worker benchmark plan. Execution and performance remain pending.
++[Ordinary TensorRT cache policy](uct_tensorrt_cache_policy.md) covers stable
++driver-independent FP32 keys, historical read-only lookup and the minimum
++runtime check, separately from exact batching and binary compatibility.
+ [Recognition-group look-ahead](uct_recognition_lookahead.md) records bounded
+ host/GPU overlap and its dense-worker measurement; the
+ [resident GPU integral scan](uct_gpu_integral.md) records exact cooperative
+diff --git a/docs/code_reference.md b/docs/code_reference.md
+index b67c2bc8..ca01d045 100644
+--- a/docs/code_reference.md
++++ b/docs/code_reference.md
+@@ -781,8 +781,18 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
+   `OnnxCpuSession`, runtime-loaded hash-pinned CPU ONNX Runtime, two intra-op
+   threads and checked float tensor dimensions. `CreateTensorRtRecognizer`
+   creates private `TensorRtRecognizer`: `BeginPreparation` launches an owned
+-  `Preparation` worker for exact-version SDK factories, low-priority stream and
+-  model/GPU/driver-bound cached `Network` engines. `Progress` cooperatively
++  `Preparation` worker for ABI-11 SDK factories, a minimum loaded runtime tuple,
++  low-priority stream and model/GPU/profile/builder-bound cached `Network`
++  engines. Ordinary FP32 lookup tries stable keys before read-only historical
++  13050/13040 locators; only new compiled bytes may be published to an unused
++  stable path. `Libraries::tensorRtVersion` records the actual exported DLL
++  tuple; `BeginPreparation` supplies it to precision selection and includes it
++  with the driver in status provenance. Private `CudaFailure` and
++  `TensorRtApiFailure` prevent capacity retries after reported CUDA, runtime
++  factory or execution-context failure. BF16 deserialization refusal without
++  reported CUDA error is a pre-inference `ArtifactError`, preserving cached
++  FP32 fallback. See [cache policy](uct_tensorrt_cache_policy.md).
++  `Progress` cooperatively
+   checks preparation cancellation; `Ensure` only adopts ready state. `Retire`
+   and `RetireState` own asynchronous completion/cleanup. Private `State`,
+   `DeviceBuffer`, `HostBuffer`, `Libraries`, `DllDirectory` and mutex-protected
+diff --git a/docs/hardcoded_paths.md b/docs/hardcoded_paths.md
+index 225956d7..2e87a5d0 100644
+--- a/docs/hardcoded_paths.md
++++ b/docs/hardcoded_paths.md
+@@ -161,8 +161,13 @@ runtime `OKUFLOW_UCT_CUDA_BIN`, then `CUDA_PATH_V12_9/bin`, then the documented
+ private CUDA-12.9.2 toolkit `bin` supplies optional CUDA DLL dependencies.
+ No compiler-machine absolute path is baked into the OCR loader.
+ 
+-Engine plans stay in `%LOCALAPPDATA%/OkuFlow/ocr-engines`, keyed by graph hash,
+-GPU UUID, driver and TensorRT/precision identity, with a payload integrity hash.
++Engine plans stay in `%LOCALAPPDATA%/OkuFlow/ocr-engines`. New ordinary FP32
++keys bind graph hash, GPU UUID, profile/precision and actual builder TensorRT
++identity, with a payload integrity hash. Driver and loaded-runtime facts are
++provenance, not approval gates. Stable keys are tried before read-only exact
++historical 13050/13040 locators; old plans are never rekeyed or overwritten.
++ABI-11 runtime admission is an ordered minimum of 11.4.0.106; deserialization
++still controls compatibility. See [cache policy](uct_tensorrt_cache_policy.md).
+ Model/license data never belongs in Git or capture output. The analysis pool
+ has two slots, at most 128 MiB each; input dimensions are limited to 8192 per
+ axis. A Temporal Smooth lease counts both OCR and current-validation images
+@@ -1115,7 +1120,8 @@ exceptions admit one to sixteen ASCII letters. See
+ `OKUFLOW_UCT_TRT_PREPARE_WIDTH=1` permits a separate one-time preparation of
+ only the selected N; normal bucketed inference is cache-only. The new cache
+ identity appends `-rec-width-v1-buckets128-256-512-1024-min1x3x48x128-optNx3x48x512-maxNx3x48x1024-n`
+-and actual capacity, retaining model/GPU UUID/driver/TRT 11.4.0.106/FP32 pins.
++and actual capacity, retaining model/GPU UUID/builder-TRT/FP32 identity. The
++driver-independent policy preserves exact old 13050/13040 lookup read-only.
+ The minimum, optimum and maximum shapes must match after deserialization.
+ `OKUFLOW_UCT_RESIDENT_WIDTH` selects the same two policies in the diagnostic,
+ which refuses preparation. Group metadata is bounded to 144 integers / 576
+diff --git a/docs/uct_helper_batching.md b/docs/uct_helper_batching.md
+index 6ed50d49..27d0cf62 100644
+--- a/docs/uct_helper_batching.md
++++ b/docs/uct_helper_batching.md
+@@ -108,6 +108,34 @@ and results remain pending until a serialized START slot.
+    agreement and historical cross-capacity tolerances. This exact patch has
+    no intentional quality budget; approximate width/model work stays separate.
+ 
++## Owner runtime-policy update and separate arm
++
++The exact helper commits remain `0c3433f` and `3eccb93`; their source review
++does not cover the later [ordinary cache/runtime policy](uct_tensorrt_cache_policy.md).
++Keep that policy in its own commit and arm. The original bb53ac8-versus-helper
++comparison can use the same existing 13050 plan paths and exact payload bytes
++on both sides. If a shared diagnostic/precision-policy seam is required for the
++actual production backend, record its identical diff on both sides. Never
++attribute a backend, precision, cache-policy or merge change to helper batching.
++
++Driver identity is provenance, not a new plan key or approval condition. The
++TensorRT runtime floor is 11.4.0.106, while plan builder identity stays bound
++to each artifact. Newer runtimes may attempt verified older plans; factories,
++deserialization, profiles and I/O remain authoritative. Freeze actual loaded
++DLL/version/hash and driver facts for each visit, without treating a changed
++driver as an automatic invalidation or rebuild request. This also revises the
++schema-1 BF16 policy through the precision lead's separate work; do not describe
++that approval policy as unchanged.
++
++The independent Opus report at docs-only commit `a6f041f` supports the batch
++mapping and same-shape lifetime guard. It identifies host merge cost as a
++separate, potentially larger target. Its archived merge/precision numbers
++predate this exact candidate and do not establish a new gain. The merge lead
++owns that implementation; fresh combined measurements must retain the full
++worker/callback protocol. Equal canvas and group size remain mandatory for
++look-ahead because growing `Reserve()` can free queued device buffers. No
++extra slot, cross-shape look-ahead or prefix-skip change belongs to this arm.
++
+ New large evidence/build artifacts belong under
+ `Z:/Projects/OkuFlow/local-work-data`; the owner app, desktop, settings,
+ devices and credentials remain untouched. Shared desktop/video load is allowed
+diff --git a/docs/uct_recognizer_width.md b/docs/uct_recognizer_width.md
+index 2870fd1c..075fd05b 100644
+--- a/docs/uct_recognizer_width.md
++++ b/docs/uct_recognizer_width.md
+@@ -2,7 +2,9 @@
+ 
+ Status: opt-in development implementation; measured acceptance is recorded below.
+ `OKUFLOW_UCT_TRT_WIDTH=bucketed` selects the experimental TensorRT policy.
+-An empty value or `fixed1024` retains the existing path and cache identities.
++An empty value or `fixed1024` retains the fixed-width path. The separate
++[cache policy](uct_tensorrt_cache_policy.md) preserves read-only historical
++lookup while making new ordinary keys independent of driver updates.
+ Model tiers, detector coverage, FP32 precision and publication safeguards are
+ unchanged. No model, SDK or dependency is downloaded or bundled by this option.
+ 
+@@ -32,8 +34,9 @@ the removed padding.
+ One dynamic profile per selected capacity uses MIN 1x3x48x128,
+ OPT Nx3x48x512 and MAX Nx3x48x1024. Deserialized dimensions must match exactly.
+ The versioned width-policy cache tag includes every bucket/profile dimension
+-and N, in addition to the pinned model, device UUID, driver and TensorRT
+-identity. Fixed-width plans remain untouched. N8 and N16 maximum input sizes
++and N, in addition to the pinned model, device UUID and builder TensorRT
++identity. Driver/runtime facts are provenance. Existing fixed-width plan files
++remain untouched. N8 and N16 maximum input sizes
+ remain 4.5 MiB and 9 MiB; high-water allocations are retained, so this does not
+ promise lower peak VRAM. Existing output/workspace ceilings remain unchanged.
+ 
+diff --git a/docs/uct_tensorrt_cache_policy.md b/docs/uct_tensorrt_cache_policy.md
+new file mode 100644
+index 00000000..696607d8
+--- /dev/null
++++ b/docs/uct_tensorrt_cache_policy.md
+@@ -0,0 +1,53 @@
++# Ordinary UCT TensorRT cache and runtime policy
++
++This is a separate offline policy candidate after the exact helper batching
++commits. No compiler, configure, test, inference, GPU job, model preparation or
++download has run for it. Root's finite START and tracked runner lease remain
++required. The precision lead owns the shared pure identity/version helpers,
++their fixtures, schema-1 BF16 approval and schema-2 artifacts; this change owns
++the ordinary `Network` cache and `Libraries` wiring in `uct_tensorrt.cpp`.
++
++New ordinary FP32 keys exclude the CUDA driver. They retain the graph SHA-256,
++GPU UUID, role, exact batch/width profile, precision and TensorRT builder recipe
++identity. New builds bind the actual loaded builder version, never a stale
++11.4 literal. Lookup tries the stable key for that builder, the original 11.4
++builder's stable key, then exact historical keys for 13050 and 13040. A
++recorded builder version need not equal the current loaded runtime. Historical keys
++are locators only. Loading one does not copy, alias, rekey, delete or overwrite
++it. Payload digest/size checks remain mandatory. Existing files remain intact;
++only a genuinely new compiled plan can be written at an unused stable path.
++
++`Libraries` reads all four exported inference DLL version components and
++admits versions at least 11.4.0.106, compared numerically in component order.
++The DLL basename remains `nvinfer_11.dll`; the compiled major-11 factory ABI,
++parser/builder APIs, engine deserialization, FLOAT I/O and exact profiles still
++control actual usability. The current driver, loaded TensorRT version and DLL
++hashes belong in provenance, not key/approval equality. The artifact's builder
++version and digest remain bound to that artifact.
++
++Removing an app-level precheck does not make every old plan work on every
++newer runtime. NVIDIA's [TensorRT 11.4 engine compatibility documentation](https://docs.nvidia.com/deeplearning/tensorrt/11.4.0/inference-library/engine-compatibility.html)
++states that default plans normally need their builder runtime version; later
++runtime support requires appropriate build-time version compatibility. A
++runtime/factory/deserialization/profile/ABI rejection must remain visible.
++BF16 deserialization refusal without a reported CUDA error is a typed
++pre-inference artifact refusal, allowing cached FP32 fallback. CUDA faults,
++runtime-factory/execution-context failures and enqueue failures never authorize
++another plan attempt. There is no scalar-helper or alternate-engine retry
++after uncertain GPU work.
++
++Before START, freeze exact source/helper commits and raw hashes. Authorized
++validation must run the shared pure version/key fixtures, including lower,
++equal and newer tuples, invalid versions, driver independence and unchanged
++historical keys. Separately validate real ABI11 loading and same-plan reuse on
++the actual current driver, preserving every first failure and full cache
++inventories/hashes before and after. Do not change the owner's caches to make
++a fixture pass. Prepare any cold plan only in an explicitly authorized slot
++and private cache; no preparation belongs in a timing visit.
++
++The [helper benchmark plan](uct_helper_batching.md) remains paired ABBA/BAAB,
++unprofiled whole-worker and submit-to-callback measurement. A cache-policy arm
++uses the same helper source and exact plan bytes on both sides. Schema-1 BF16
++changes and future schema-2 runtime integration are separately identified.
++Shared desktop/video load is allowed and recorded. No performance, quality,
++release or universal binary-compatibility acceptance is claimed.
+diff --git a/src/common/uct_tensorrt.cpp b/src/common/uct_tensorrt.cpp
+index 05e02a85..acc3c9de 100644
+--- a/src/common/uct_tensorrt.cpp
++++ b/src/common/uct_tensorrt.cpp
+@@ -25,12 +25,13 @@ bool TensorRtCropDiagnostic::TryCommit(Plan&& plan) noexcept
+ #include "uct_frozen_upload.hpp"
+ #include "uct_recognition_groups.hpp"
+ #include "uct_recognizer_width.hpp"
++#include "uct_tensorrt_identity.hpp"
+ #include <NvInfer.h>
+ #include <NvOnnxParser.h>
+ #include <QCryptographicHash>
+ #include <QElapsedTimer>
+ #include <QFile>
+-#include <QSaveFile>
++#include <QTemporaryFile>
+ #include <Windows.h>
+ #include <algorithm>
+ #include <cmath>
+@@ -66,10 +67,20 @@ struct TensorRtCropDiagnosticAccess {
+ };
+ namespace
+ {
++class CudaFailure final : public std::runtime_error
++{
++  public:
++    using std::runtime_error::runtime_error;
++};
++class TensorRtApiFailure final : public std::runtime_error
++{
++  public:
++    using std::runtime_error::runtime_error;
++};
+ void Check(cudaError_t status)
+ {
+     if (status != cudaSuccess)
+-        throw std::runtime_error(cudaGetErrorString(status));
++        throw CudaFailure(cudaGetErrorString(status));
+ }
+ template <class T> class DeviceBuffer
+ {
+@@ -172,6 +183,7 @@ struct DllDirectory
+ struct Libraries
+ {
+     HMODULE inference{}, parser{}, builderResource{};
++    QByteArray tensorRtVersion;
+     DllDirectory sdkDirectory, cudaDirectory;
+     using Factory = void *(*)(void *, int);
+     using ParserFactory = void *(*)(void *, void *, int);
+@@ -202,14 +214,19 @@ struct Libraries
+         using Version = int32_t (*)();
+         const char *versionNames[]{"getInferLibMajorVersion", "getInferLibMinorVersion",
+                                    "getInferLibPatchVersion", "getInferLibBuildVersion"};
+-        const int expected[]{11, 4, 0, 106};
++        tensorrt_identity::Version actual{};
+         for (int i = 0; i < 4; ++i)
+         {
+             const auto version =
+                 reinterpret_cast<Version>(GetProcAddress(inference, versionNames[i]));
+-            if (!version || version() != expected[i])
+-                throw std::runtime_error("TensorRT must match the pinned 11.4.0.106 SDK.");
++            if (!version)
++                throw std::runtime_error("TensorRT runtime version API is unavailable.");
++            actual[i] = version();
+         }
++        tensorRtVersion = tensorrt_identity::VersionString(actual);
++        if (actual[0] != 11 || !tensorrt_identity::RuntimeAtLeastMinimum(actual))
++            throw std::runtime_error("TensorRT ABI 11 runtime at least 11.4.0.106 is required; found " +
++                                     tensorRtVersion.toStdString());
+         runtime =
+             reinterpret_cast<Factory>(GetProcAddress(inference, "createInferRuntime_INTERNAL"));
+         if (!runtime)
+@@ -292,7 +309,7 @@ class Network
+         runtime_.reset(
+             static_cast<nvinfer1::IRuntime *>(libraries.runtime(&logger, NV_TENSORRT_VERSION)));
+         if (!runtime_)
+-            throw std::runtime_error("TensorRT runtime creation failed.");
++            throw TensorRtApiFailure("TensorRT runtime creation failed.");
+         QFile modelFile(model);
+         if (!modelFile.open(QIODevice::ReadOnly))
+             throw std::runtime_error("Cannot read pinned OCR graph.");
+@@ -301,43 +318,44 @@ class Network
+             throw std::runtime_error("Pinned OCR graph changed before preparation.");
+         cudaDeviceProp properties{};
+         Check(cudaGetDeviceProperties(&properties, device));
+-        int driver{};
+-        Check(cudaDriverGetVersion(&driver));
+-        QByteArray identity =
+-            QCryptographicHash::hash(bytes, QCryptographicHash::Sha256) +
+-            QByteArray(reinterpret_cast<const char *>(&properties.uuid), sizeof(properties.uuid)) +
+-            QByteArray::number(driver) + "-trt11.4.0.106-fp32-v1";
+-        if (variableWidth_) {
+-            if (detection || (maximumBatch != 1 && maximumBatch != 8 && maximumBatch != 16))
+-                throw std::runtime_error("Unsupported variable-width recognizer profile.");
+-            identity += recognizer_width::kCacheTag + QByteArray::number(maximumBatch);
+-        }
+-        else if (!detection && (maximumBatch == 8 || maximumBatch == 16))
+-            identity += "-rec-min1x3x48x1024-opt" + QByteArray::number(maximumBatch) +
+-                        "x3x48x1024-max" + QByteArray::number(maximumBatch) + "x3x48x1024-v2";
+-        else if (maximumBatch != 1)
+-            throw std::runtime_error("Unsupported TensorRT OCR batch profile.");
+-        const auto key = QCryptographicHash::hash(identity, QCryptographicHash::Sha256).toHex();
++        const auto graphHash = QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
++        const auto uuid = QByteArray(reinterpret_cast<const char *>(&properties.uuid), sizeof(properties.uuid));
++        // A new build binds its actual builder version. Loading an older key
++        // never requires that builder version to equal the loaded runtime.
++        const auto key = tensorrt_identity::Fp32PlanKey(graphHash, uuid, detection,
++            maximumBatch, variableWidth_, libraries.tensorRtVersion);
++        QList<QByteArray> readKeys{key};
++        const auto originalBuilderKey = tensorrt_identity::Fp32PlanKey(graphHash, uuid,
++            detection, maximumBatch, variableWidth_);
++        if (!readKeys.contains(originalBuilderKey)) readKeys.push_back(originalBuilderKey);
++        for (const int historicalDriver : {13050, 13040})
++            readKeys.push_back(tensorrt_identity::LegacyFp32PlanKey(graphHash, uuid,
++                detection, maximumBatch, variableWidth_, historicalDriver));
+         const auto cache =
+             QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath("OkuFlow/ocr-engines");
+         if (allowPreparation && !precisionPlan) QDir().mkpath(cache);
+         const auto path = QDir(cache).filePath(QString::fromLatin1(key) + ".plan");
+-        QFile cached(path);
+         if (precisionPlan) {
+             engine_.reset(runtime_->deserializeCudaEngine(precisionPlan->constData(), precisionPlan->size()));
++            Check(cudaPeekAtLastError());
+             if (!engine_) {
+-                Check(cudaPeekAtLastError());
+-                // Exact file/device/runtime checks already passed. A runtime API
+-                // failure now follows normal failover, never an engine retry.
+-                throw std::runtime_error("Verified local BF16 cached plan could not be deserialized.");
++                // Pre-inference refusal without a CUDA fault permits the
++                // existing cache-only FP32 selection. Context faults do not.
++                throw runtime_precision::ArtifactError("Local BF16 plan refused by TensorRT " +
++                    libraries.tensorRtVersion.toStdString() + ": " + logger.Error());
+             }
+         }
+-        else if (cached.open(QIODevice::ReadOnly) && cached.size() > 32 &&
+-            cached.size() < 256 * 1024 * 1024)
+-        {
++        else for (const auto& readKey : readKeys) {
++            QFile cached(QDir(cache).filePath(QString::fromLatin1(readKey) + ".plan"));
++            if (!cached.open(QIODevice::ReadOnly) || cached.size() <= 32 ||
++                cached.size() >= 256 * 1024 * 1024) continue;
+             const auto digest = cached.read(32), plan = cached.readAll();
+-            if (QCryptographicHash::hash(plan, QCryptographicHash::Sha256) == digest)
+-                engine_.reset(runtime_->deserializeCudaEngine(plan.constData(), plan.size()));
++            if (cached.error() != QFileDevice::NoError || !cached.atEnd() ||
++                QCryptographicHash::hash(plan, QCryptographicHash::Sha256) != digest) continue;
++            engine_.reset(runtime_->deserializeCudaEngine(plan.constData(), plan.size()));
++            // A reported CUDA fault is terminal, even if another locator exists.
++            Check(cudaPeekAtLastError());
++            if (engine_) break;
+         }
+         if (!engine_)
+         {
+@@ -390,16 +408,24 @@ class Network
+             if (!plan)
+                 throw std::runtime_error("TensorRT OCR compilation failed: " + logger.Error());
+             engine_.reset(runtime_->deserializeCudaEngine(plan->data(), plan->size()));
++            Check(cudaPeekAtLastError());
+             if (!engine_)
+-                throw std::runtime_error("TensorRT OCR engine creation failed.");
++                throw TensorRtApiFailure("TensorRT OCR engine creation failed.");
+             const auto blob = QByteArray::fromRawData(static_cast<const char *>(plan->data()),
+                                                       static_cast<qsizetype>(plan->size()));
+-            QSaveFile saved(path);
+-            if (saved.open(QIODevice::WriteOnly))
++            // Publish only genuinely new bytes. Historical/stable cache files
++            // are never replaced, even on a corrupt entry or a racing writer.
++            QTemporaryFile saved(QDir(cache).filePath(".uct-plan-XXXXXX"));
++            if (saved.open())
+             {
+-                saved.write(QCryptographicHash::hash(blob, QCryptographicHash::Sha256));
+-                saved.write(blob);
+-                saved.commit();
++                const auto digest = QCryptographicHash::hash(blob, QCryptographicHash::Sha256);
++                if (saved.write(digest) == digest.size() && saved.write(blob) == blob.size() && saved.flush()) {
++                    const auto temporaryPath = saved.fileName().toStdWString();
++                    const auto stablePath = path.toStdWString();
++                    saved.close();
++                    // No MOVEFILE_REPLACE_EXISTING: an existing destination wins.
++                    MoveFileExW(temporaryPath.c_str(), stablePath.c_str(), 0);
++                }
+             }
+         }
+         const auto reject = [&](const char* reason) {
+@@ -447,7 +473,7 @@ class Network
+         }
+         context_.reset(engine_->createExecutionContext());
+         if (!context_)
+-            throw std::runtime_error("TensorRT execution context creation failed.");
++            throw TensorRtApiFailure("TensorRT execution context creation failed.");
+     }
+     nvinfer1::Dims Run(float *input, int width, int height, cudaStream_t stream,
+                        TensorRtProfile &profile, int batch = 1)
+@@ -654,7 +680,7 @@ class TensorRtRecognizer final : public Recognizer
+         }
+         if (!QFile::exists(QDir(sdk_).filePath("bin/nvinfer_11.dll")))
+         {
+-            status_.detail = "TensorRT 11.4 runtime is not installed.";
++            status_.detail = "TensorRT ABI 11 runtime (minimum 11.4.0.106) is not installed.";
+             return status_;
+         }
+         int count = 0;
+@@ -1149,14 +1175,31 @@ class TensorRtRecognizer final : public Recognizer
+                     Check(cudaGetDeviceProperties(&properties, preparation->device));
+                     if (properties.major * 10 + properties.minor < 75)
+                         throw std::runtime_error("TensorRT requires Turing or newer.");
++                    auto state = std::make_shared<State>();
++                    state->device = preparation->device;
++                    state->variableWidth = variableWidth;
++                    state->precisionDetail = runtime_precision::ActualStatus(false);
++                    {
++                        std::lock_guard lock(preparation->mutex);
++                        preparation->state = state;
++                    }
++                    int low{}, high{};
++                    Check(cudaDeviceGetStreamPriorityRange(&low, &high));
++                    Check(cudaStreamCreateWithPriority(&state->stream, cudaStreamNonBlocking, low));
++                    state->libraries = std::make_unique<Libraries>(sdk);
++                    int driver{};
++                    Check(cudaDriverGetVersion(&driver));
++                    const auto precisionDetail = [&](bool bf16, const QString& fallback = QString()) {
++                        return runtime_precision::ActualStatus(bf16, fallback) +
++                            QString("TensorRT runtime=%1; CUDA driver API=%2. ")
++                                .arg(QString::fromLatin1(state->libraries->tensorRtVersion)).arg(driver);
++                    };
+                     QByteArray precisionPlan;
+                     QString precisionFallback;
+                     if (precisionRequest.Requested()) {
+-                        int driver{};
+-                        Check(cudaDriverGetVersion(&driver));
+                         const runtime_precision::Device device{
+                             QByteArray(reinterpret_cast<const char*>(&properties.uuid), sizeof(properties.uuid)),
+-                            driver, properties.major};
++                            driver, properties.major, state->libraries->tensorRtVersion};
+                         precisionFallback = runtime_precision::Unsupported(detectorTier, recognizerTier,
+                             recognizerBatch, variableWidth, allowWidthPreparation, device);
+                         if (precisionFallback.isEmpty()) {
+@@ -1168,18 +1211,7 @@ class TensorRtRecognizer final : public Recognizer
+                             }
+                         }
+                     }
+-                    auto state = std::make_shared<State>();
+-                    state->device = preparation->device;
+-                    state->variableWidth = variableWidth;
+-                    state->precisionDetail = runtime_precision::ActualStatus(false, precisionFallback);
+-                    {
+-                        std::lock_guard lock(preparation->mutex);
+-                        preparation->state = state;
+-                    }
+-                    int low{}, high{};
+-                    Check(cudaDeviceGetStreamPriorityRange(&low, &high));
+-                    Check(cudaStreamCreateWithPriority(&state->stream, cudaStreamNonBlocking, low));
+-                    state->libraries = std::make_unique<Libraries>(sdk);
++                    state->precisionDetail = precisionDetail(false, precisionFallback);
+                     state->detector = std::make_unique<Network>(
+                         *state->libraries, state->logger, sdk, assets.detector, assets.detectorSha256, true, state->device,
+                         state->stream, preparation->cancel, 1, false,
+@@ -1194,12 +1226,12 @@ class TensorRtRecognizer final : public Recognizer
+                                 assets.recognizerSha256, false, state->device,
+                                 state->stream, preparation->cancel, 8, false, false, &precisionPlan);
+                             state->recognizerBatch = 8;
+-                            state->precisionDetail = runtime_precision::ActualStatus(true);
++                            state->precisionDetail = precisionDetail(true);
+                         } catch (const runtime_precision::ArtifactError& error) {
+                             // Only pre-inference artifact rejection permits FP32.
+                             // API/allocation/context faults reach the outer failure path.
+                             Check(cudaStreamSynchronize(state->stream));
+-                            state->precisionDetail = runtime_precision::ActualStatus(false, QString::fromUtf8(error.what()));
++                            state->precisionDetail = precisionDetail(false, QString::fromUtf8(error.what()));
+                         }
+                     }
+                     if (!state->recognizer)
+@@ -1215,6 +1247,9 @@ class TensorRtRecognizer final : public Recognizer
+                             state->recognizerBatch = capacity;
+                             break;
+                         }
++                        catch (const CudaFailure&) { throw; }
++                        catch (const TensorRtApiFailure&) { throw; }
++                        catch (const std::bad_alloc&) { throw; }
+                         catch (const std::exception &error)
+                         {
+                             // An explicit width-profile preparation authorizes

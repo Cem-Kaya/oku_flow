@@ -1,0 +1,79 @@
+{
+  "label": "overlay-proof-draft",
+  "base": "ca0e09ebe088c02b44698a194efedb0559441707",
+  "review": "Early overlay/controller lifecycle and pixel-proof draft. Substantial later evolution exists on main. Preserve for recovery, do not merge blindly.",
+  "files": [
+    {
+      "path": "include/okuflow/app/app.hpp",
+      "status": " M",
+      "bytes": 26212,
+      "sha256": "642b5796f066fc3766e34fe284e4338c6cc255eb8d96885bba6c53380f424c19"
+    },
+    {
+      "path": "include/okuflow/app/ultra_clear_text_controller.hpp",
+      "status": " M",
+      "bytes": 12803,
+      "sha256": "d2b35bd5154ffec759e4f28f720de54561cde8fd36a5695cbc44df9779705edc"
+    },
+    {
+      "path": "include/okuflow/common/ultra_clear_text.hpp",
+      "status": " M",
+      "bytes": 19991,
+      "sha256": "7e362a0148b4d00113aa87384b728acebf155f426f0e7b408a268fb999662841"
+    },
+    {
+      "path": "include/okuflow/ui/ultra_clear_text_overlay.hpp",
+      "status": " M",
+      "bytes": 2347,
+      "sha256": "4ea6d4b726e5cd218e802b1b16baebfb389649fe069888a809efc952f30063c6"
+    },
+    {
+      "path": "src/app/app_camera_transition.cpp",
+      "status": " M",
+      "bytes": 9280,
+      "sha256": "c95fec2af864bcd822a39fe4c3410460275f13765e5bf75eadf724a440c343ac"
+    },
+    {
+      "path": "src/app/app_controls.cpp",
+      "status": " M",
+      "bytes": 53624,
+      "sha256": "31690ca31f858bb28584d25f9cbe42d123eb1f7a83d725337276b051d516687a"
+    },
+    {
+      "path": "src/app/app_pipeline_runtime.cpp",
+      "status": " M",
+      "bytes": 136673,
+      "sha256": "d0cf1d2e7f875c638644afdbbbafb0aea94ad89d7a027920add36c40e97b991b"
+    },
+    {
+      "path": "src/app/app_ultra_clear_text.cpp",
+      "status": " M",
+      "bytes": 2706,
+      "sha256": "b395c2eaa22a0bd1c87228ddd7abef8c10a80ffb6bda7919cb2e87701d8c1f79"
+    },
+    {
+      "path": "src/app/ultra_clear_text_controller.cpp",
+      "status": " M",
+      "bytes": 22316,
+      "sha256": "b30880377f75ac6ea8101cfb16f27d39156cc389a25d2bc7382187f84f5f2985"
+    },
+    {
+      "path": "src/common/ultra_clear_text.cpp",
+      "status": " M",
+      "bytes": 57082,
+      "sha256": "cb1257ba64b983eaadab763fe5374fb885deb2d1d1733e24d83b360343cb4d0b"
+    },
+    {
+      "path": "tests/ultra_clear_text_test_support.hpp",
+      "status": " M",
+      "bytes": 6863,
+      "sha256": "22dc5240987fadcc98eed7c08c6ae58d783aeffbe115eda53b24eeb47fa95ae6"
+    },
+    {
+      "path": "tests/ultra_clear_text_tests.cpp",
+      "status": " M",
+      "bytes": 47477,
+      "sha256": "6d7514d3374f6086ab3455e01f63a1c5cf909b0498e142701dd5bc8aed7a881f"
+    }
+  ]
+}

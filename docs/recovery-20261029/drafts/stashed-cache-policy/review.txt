@@ -1,0 +1,1 @@
+Saved TensorRT cache lookup, ABI identity and batching policy draft. Historical integration overlaps this work. Preserve the exact stash for future comparison; not a tested current-main change.

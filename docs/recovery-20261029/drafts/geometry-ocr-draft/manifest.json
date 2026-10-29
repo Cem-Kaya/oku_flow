@@ -1,0 +1,121 @@
+{
+  "label": "geometry-ocr-draft",
+  "base": "a548b6dd98cc9aca89d1e1cb9abfbae188fee312",
+  "review": "Related geometry draft, including an untracked geometry test helper. Overlaps later integrated work; preserve original code/tests for comparison rather than overwrite current implementation.",
+  "files": [
+    {
+      "path": "include/okuflow/app/ultra_clear_text_controller.hpp",
+      "status": " M",
+      "bytes": 31102,
+      "sha256": "108d18c995b8f81106357f89b22014925db720bdf3a792f8661215a90f343488"
+    },
+    {
+      "path": "include/okuflow/common/uct_paddle.hpp",
+      "status": " M",
+      "bytes": 7360,
+      "sha256": "47be1fbaee46b32085ee0ef55142f11ba36440ffc2ed9a909eda2e619c6d95bb"
+    },
+    {
+      "path": "include/okuflow/common/ultra_clear_text.hpp",
+      "status": " M",
+      "bytes": 44000,
+      "sha256": "569a06e19659fe8f217787361cd6d76d8ee5a94d798314cc9c7c2a93de64706b"
+    },
+    {
+      "path": "include/okuflow/cuda/uct_kernels.hpp",
+      "status": " M",
+      "bytes": 4164,
+      "sha256": "5f23f96188a3d8b767734a546afd6eeb5aceeb8017b575b3f6c5ce23a14654ed"
+    },
+    {
+      "path": "include/okuflow/ui/ultra_clear_text_overlay.hpp",
+      "status": " M",
+      "bytes": 10621,
+      "sha256": "a3321c9ca8e71e22fbb57fb129be24fb8762a95d8a78bf98fd78ba833d14d254"
+    },
+    {
+      "path": "src/app/ultra_clear_text_controller.cpp",
+      "status": " M",
+      "bytes": 96455,
+      "sha256": "20c91e339764acc3d260b69b54c7a4c97243b404c4eecd84a5f4ba7624002a03"
+    },
+    {
+      "path": "src/common/uct_paddle.cpp",
+      "status": " M",
+      "bytes": 17711,
+      "sha256": "fcbd8464c223ffbed693a42818c40eaa50fa48f4b7c74c2fa63f88d9b6f0069b"
+    },
+    {
+      "path": "src/common/uct_paddle_processing.cpp",
+      "status": " M",
+      "bytes": 27758,
+      "sha256": "fa9775c4d33641663e8671bb19c214abbe8cda3cef5555cede83e5bd8a5003e9"
+    },
+    {
+      "path": "src/common/uct_tensorrt.cpp",
+      "status": " M",
+      "bytes": 58455,
+      "sha256": "14f5fae6e962ec44322127e6312355eea8cdbb5d0aa8d19dafab51b288659317"
+    },
+    {
+      "path": "src/common/ultra_clear_text.cpp",
+      "status": " M",
+      "bytes": 172180,
+      "sha256": "410fe4063de484a3926f286fc07b93b56e9b4ceb6a6b9b1e5982c2963e224cb6"
+    },
+    {
+      "path": "src/cuda/uct_device_analysis.hpp",
+      "status": " M",
+      "bytes": 36313,
+      "sha256": "e554192a7b0f9991922da25d5b67555c9468b51802916d050605699a24d83086"
+    },
+    {
+      "path": "src/cuda/uct_validation_kernels.cuh",
+      "status": " M",
+      "bytes": 35076,
+      "sha256": "389abffac3c13a78348bdd756bd798347e63c2e478b5e8c8943e0fb585c388c1"
+    },
+    {
+      "path": "src/ui/ultra_clear_text_overlay.cpp",
+      "status": " M",
+      "bytes": 43696,
+      "sha256": "9e1321e6000c3c9180b9c2bf10468bb1440b4114cb5c1761c9cdfea62236e773"
+    },
+    {
+      "path": "tests/uct_batch_diagnostic.hpp",
+      "status": " M",
+      "bytes": 24569,
+      "sha256": "a99b505f84d197b3dc18b557747b688582d9a6d359a1aefcb77d270d971e166f"
+    },
+    {
+      "path": "tests/uct_paddle_tests.cpp",
+      "status": " M",
+      "bytes": 129474,
+      "sha256": "f5ac962eb1dc672ddaf7c560fbb654ba36692412d2d4de34eacb9e6b6ee28c42"
+    },
+    {
+      "path": "tests/uct_paused_video_diagnostic.hpp",
+      "status": " M",
+      "bytes": 26405,
+      "sha256": "3076cfbf7ead8bfe093b70125b41a3af17d0057034e28fbba081b68f60422576"
+    },
+    {
+      "path": "tests/ultra_clear_text.cmake",
+      "status": " M",
+      "bytes": 11050,
+      "sha256": "233aa1ee7685bfc5e6d7098cda9322fb17d27eac10b73a85d216aca04fc147e5"
+    },
+    {
+      "path": "tests/ultra_clear_text_controller_tests.cpp",
+      "status": " M",
+      "bytes": 149571,
+      "sha256": "2afc7f47a49de038ceec902eef019f6ee111043f46a44400f2d296a9c48ac207"
+    },
+    {
+      "path": "tests/uct_geometry_test_cases.hpp",
+      "status": "??",
+      "bytes": 9863,
+      "sha256": "5650c8bdc24c8ac1e0fb72ecd9839a92642cf607734e8a4c096454ee658af594"
+    }
+  ]
+}

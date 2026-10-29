@@ -1,0 +1,379 @@
+{
+  "label": "wording-and-translations",
+  "base": "d23f871aa8838edbe52b641375ec584ac7c7a0ac",
+  "review": "Potentially useful natural-language and accessibility wording across catalogs, plus two research reports. Based on old main d23f871a; do not apply wholesale to 0.4.0. Translation review and source-key parity would be required before integration.",
+  "files": [
+    {
+      "path": "android/app/src/main/res/values-ar/strings.xml",
+      "status": " M",
+      "bytes": 14957,
+      "sha256": "08dc76ea7404b070c33a3c72d570af0f02e1b7043ce0d14f70fa315801e6a9ef"
+    },
+    {
+      "path": "android/app/src/main/res/values-b+zh+Hans/strings.xml",
+      "status": " M",
+      "bytes": 10504,
+      "sha256": "1e0a77a76daff338a0540323581b3f0c07c3f858041992c46fe80e31f2a4bfd2"
+    },
+    {
+      "path": "android/app/src/main/res/values-bn/strings.xml",
+      "status": " M",
+      "bytes": 19278,
+      "sha256": "385e403586478913c550ce4ed2aa64bb107e8b4e1b6ad2eff58672035ca82b16"
+    },
+    {
+      "path": "android/app/src/main/res/values-cs/strings.xml",
+      "status": " M",
+      "bytes": 12136,
+      "sha256": "7dcd80dd8170677af1207f54ebfed32a7f7ef401f371baf028a9b9ed3f49c953"
+    },
+    {
+      "path": "android/app/src/main/res/values-de/strings.xml",
+      "status": " M",
+      "bytes": 11939,
+      "sha256": "1bc3d8ef245ab1f68b51c5b70049a7fffb87e7b447ff765c163d1ba778878778"
+    },
+    {
+      "path": "android/app/src/main/res/values-es/strings.xml",
+      "status": " M",
+      "bytes": 12333,
+      "sha256": "040fa93914e113c87ff11d8a49aa4ced640f08e53267d91d22bbf1b3a9dccc4d"
+    },
+    {
+      "path": "android/app/src/main/res/values-fa/strings.xml",
+      "status": " M",
+      "bytes": 15729,
+      "sha256": "28b6eea4e55443ed385d377605fd0ee0a75e94ade58588467957a83b7832d3ab"
+    },
+    {
+      "path": "android/app/src/main/res/values-fr/strings.xml",
+      "status": " M",
+      "bytes": 12906,
+      "sha256": "8c8c6bf82be8ab5b3938e8335930e421af171dd78671542273c4c2c3e4b2bef6"
+    },
+    {
+      "path": "android/app/src/main/res/values-hi/strings.xml",
+      "status": " M",
+      "bytes": 20318,
+      "sha256": "ab4bed0f4f8728101ce7273b306fb63fc6c99ed8ef7b8ed505af7572425eed5e"
+    },
+    {
+      "path": "android/app/src/main/res/values-in/strings.xml",
+      "status": " M",
+      "bytes": 11087,
+      "sha256": "bb1a07deb3201047df5a022b0c13374289a56f65fe3d4dc77500dc693512e088"
+    },
+    {
+      "path": "android/app/src/main/res/values-it/strings.xml",
+      "status": " M",
+      "bytes": 12254,
+      "sha256": "750d8ec93895019221ae6471d1f359fea61228a6497f76397eccfe61623f948b"
+    },
+    {
+      "path": "android/app/src/main/res/values-iw/strings.xml",
+      "status": " M",
+      "bytes": 13528,
+      "sha256": "c814e3a32d60567f54b6c4e5b1e8e5e984550df6327b641cdf886bb72d53f5ff"
+    },
+    {
+      "path": "android/app/src/main/res/values-ja/strings.xml",
+      "status": " M",
+      "bytes": 14067,
+      "sha256": "2498fff67e49bce43f81cc9f0e11bf502c0a96dba153ecab404dd9d42ce10b76"
+    },
+    {
+      "path": "android/app/src/main/res/values-ko/strings.xml",
+      "status": " M",
+      "bytes": 12331,
+      "sha256": "f3f09a7195f9bb656d1e7fffe27ada7140c687bfe31e423a8b8eba3315219b27"
+    },
+    {
+      "path": "android/app/src/main/res/values-nl/strings.xml",
+      "status": " M",
+      "bytes": 11785,
+      "sha256": "1b06fbc0f1c648db336fe30a5c8881fc7ca8c14b4a5972abe29834636f52e8cc"
+    },
+    {
+      "path": "android/app/src/main/res/values-pl/strings.xml",
+      "status": " M",
+      "bytes": 11822,
+      "sha256": "1733c0ba1fa9c87b1414b82d8415bea51608e406657d45c0211f2ba26c4b94d0"
+    },
+    {
+      "path": "android/app/src/main/res/values-pt-rBR/strings.xml",
+      "status": " M",
+      "bytes": 12040,
+      "sha256": "20dcd3a22c6150d3ea2a97493dd8b404caeb7a97063cc398c064a7d173bd9bbd"
+    },
+    {
+      "path": "android/app/src/main/res/values-ru/strings.xml",
+      "status": " M",
+      "bytes": 16697,
+      "sha256": "33dffd1536a8322579ef513b02d25bf188b6ac58128cbeb71c30ce20d6d2a694"
+    },
+    {
+      "path": "android/app/src/main/res/values-sv/strings.xml",
+      "status": " M",
+      "bytes": 11334,
+      "sha256": "fb6769fb9e0886a3a844ba191a6dd3c1acff7196af0b5916d4cd489ab8d625a1"
+    },
+    {
+      "path": "android/app/src/main/res/values-th/strings.xml",
+      "status": " M",
+      "bytes": 20283,
+      "sha256": "17bd8dc5a4be4d54f8a47224e71561fa4dd8b84da54c67dcdb1a33ebeb02b047"
+    },
+    {
+      "path": "android/app/src/main/res/values-tr/strings.xml",
+      "status": " M",
+      "bytes": 11640,
+      "sha256": "4774b3bb5eb237bef02274f3071c6c43c4342640ed34a8263ecce42f58bcae8c"
+    },
+    {
+      "path": "android/app/src/main/res/values-uk/strings.xml",
+      "status": " M",
+      "bytes": 16930,
+      "sha256": "a868ebed7d4d2ec2fe88f1b2aa763f25f214e016c48746da9d7f20277c5d9477"
+    },
+    {
+      "path": "android/app/src/main/res/values-ur/strings.xml",
+      "status": " M",
+      "bytes": 15512,
+      "sha256": "95fd6cb62a8a1fdef4160b0274e5666c28394edaf3ed94a6e3917b11367dda71"
+    },
+    {
+      "path": "android/app/src/main/res/values-vi/strings.xml",
+      "status": " M",
+      "bytes": 12783,
+      "sha256": "9189f07ed93e5eac11f170a4202de784e7325787fdb5f0604c9a2cceccd7690e"
+    },
+    {
+      "path": "android/app/src/main/res/values/strings.xml",
+      "status": " M",
+      "bytes": 10825,
+      "sha256": "ed0cd2d231a43749d1c2af78ea527f2249ab8c443d529ad3a81cab05f6525c2f"
+    },
+    {
+      "path": "docs/localization.md",
+      "status": " M",
+      "bytes": 19373,
+      "sha256": "f59df66dc61f90c6c096c9b986adb0ce1c10b92018f3263779bdaf5be39bd1ab"
+    },
+    {
+      "path": "improvement_ideas/54-argon-codebase-analysis-2026-10-17.md",
+      "status": " M",
+      "bytes": 12467,
+      "sha256": "6ed955792000aec104f144f2c39a41813cf58bf5fde1c53057713ef28e9d8f6d"
+    },
+    {
+      "path": "include/okuflow/common/notes_document_template.hpp",
+      "status": " M",
+      "bytes": 41644,
+      "sha256": "99b05800fcb673fbcebb917dc87eecaee6a8fd4888df4715d75c3728806138ef"
+    },
+    {
+      "path": "include/okuflow/common/notes_transcribe_bridge.hpp",
+      "status": " M",
+      "bytes": 52622,
+      "sha256": "6d121cc58661bbaf8d18f423da7d4c5ef1c4a5ab6c01caba2564b9d375fe7c96"
+    },
+    {
+      "path": "scripts/check_translations.ps1",
+      "status": " M",
+      "bytes": 10080,
+      "sha256": "bbab464883b2f1b1f28dfa0dd2c2cb460fed3396c7e04aed5847f835402ce194"
+    },
+    {
+      "path": "src/app/app_pipeline_runtime.cpp",
+      "status": " M",
+      "bytes": 146864,
+      "sha256": "288522a32f3384fafee1917fd75abe7ea07f0455f749b4b8a784081cbac7528e"
+    },
+    {
+      "path": "src/app/app_settings.cpp",
+      "status": " M",
+      "bytes": 16225,
+      "sha256": "7489cba1465d41a978f0a4a8bf39884831ab81816a6333488ce202ffed330b1b"
+    },
+    {
+      "path": "src/launcher/launcher_text.hpp",
+      "status": " M",
+      "bytes": 33522,
+      "sha256": "e1aff4c07369441ad77eb45ba6fe4f6accb2a3bf17997b2370aef72b37a628bd"
+    },
+    {
+      "path": "src/ui/main_window.cpp",
+      "status": " M",
+      "bytes": 229076,
+      "sha256": "d1ea594c5fd4d703ff60363a112e168bd1fb35406f508f9ff2e894eb47c1557a"
+    },
+    {
+      "path": "src/ui/translation_catalog.cpp",
+      "status": " M",
+      "bytes": 55626,
+      "sha256": "4cf943cc46599ccc361a8ec8935f65ecf53f5db764eb86dcbb46ab0d61dd7a78"
+    },
+    {
+      "path": "src/ui/ultra_clear_text_panel.cpp",
+      "status": " M",
+      "bytes": 11493,
+      "sha256": "b8ab838f52fe275209f23966c3eda4cdd510afe35a27531822be0e9b8792b6ca"
+    },
+    {
+      "path": "translations/okuflow_ar.ts",
+      "status": " M",
+      "bytes": 152425,
+      "sha256": "5ff47e2d991321d2312425d97f4642175854acbb5a14a672a8d8b41772d79bbc"
+    },
+    {
+      "path": "translations/okuflow_bn.ts",
+      "status": " M",
+      "bytes": 176327,
+      "sha256": "a4c5a5e13766bd5a247b5d914551e107c5640fd014cd6de844aabc7b91284d44"
+    },
+    {
+      "path": "translations/okuflow_cs.ts",
+      "status": " M",
+      "bytes": 142047,
+      "sha256": "33e1030b45c9e4b03d1b44efdea7c2a914a3b0afa3784ea82b27adb63cd29285"
+    },
+    {
+      "path": "translations/okuflow_de.ts",
+      "status": " M",
+      "bytes": 143159,
+      "sha256": "9991b3a4d3b43c141496b406df3be426c414d59a95753cf179a1c81e64eef6bf"
+    },
+    {
+      "path": "translations/okuflow_es.ts",
+      "status": " M",
+      "bytes": 142735,
+      "sha256": "f54eefec7fc90a411bebcfe2bdf9ca8ff75e0adecdd0ec7b7e3be0fbee3051f1"
+    },
+    {
+      "path": "translations/okuflow_fa.ts",
+      "status": " M",
+      "bytes": 156846,
+      "sha256": "43c537a45e9c3206ca4223628de9f331955be8d20d7b233d2ec5b728ba86e2f1"
+    },
+    {
+      "path": "translations/okuflow_fr.ts",
+      "status": " M",
+      "bytes": 144652,
+      "sha256": "6521d34f4f344d59c612e924de7fc2f5a8b02620eed2d06683018bb6d2e22032"
+    },
+    {
+      "path": "translations/okuflow_he.ts",
+      "status": " M",
+      "bytes": 148120,
+      "sha256": "cd73dd78f838a853c872ee4dd995dcca17779eba055fb3361f4f79db39d5e5b4"
+    },
+    {
+      "path": "translations/okuflow_hi.ts",
+      "status": " M",
+      "bytes": 177197,
+      "sha256": "0d1b912b54c71d8a7461c1290de6c661a6766ea6fb74cb06a53d9f20bdd656bb"
+    },
+    {
+      "path": "translations/okuflow_id.ts",
+      "status": " M",
+      "bytes": 138347,
+      "sha256": "c3ac49d01c3e8170c02fb4638a74e3ff682b2f2b0f4f7aa5eea944b2e64be98d"
+    },
+    {
+      "path": "translations/okuflow_it.ts",
+      "status": " M",
+      "bytes": 143972,
+      "sha256": "01c803a3eaeb54df7067d6db9f45c4b8302cbc10c9c2d169ca2686e0da524e50"
+    },
+    {
+      "path": "translations/okuflow_ja.ts",
+      "status": " M",
+      "bytes": 149688,
+      "sha256": "527f7bec2e0041fc894aa0393be147055489beb432ae79f1abceb2c31acbda44"
+    },
+    {
+      "path": "translations/okuflow_ko.ts",
+      "status": " M",
+      "bytes": 143215,
+      "sha256": "ce6fb2845846646a3186cd2c7fa208426b2eb12c5ecd4881a0054743f7ec652d"
+    },
+    {
+      "path": "translations/okuflow_nl.ts",
+      "status": " M",
+      "bytes": 140855,
+      "sha256": "33829978c231137efaf6c1be6c357569776bdd87d243e9dd2ecf6c1e29eb3db1"
+    },
+    {
+      "path": "translations/okuflow_pl.ts",
+      "status": " M",
+      "bytes": 142011,
+      "sha256": "06409ec2639f8671ec1e3dcb9bde7f94eae4de12ffb5613e4c24b32dda100532"
+    },
+    {
+      "path": "translations/okuflow_pt_BR.ts",
+      "status": " M",
+      "bytes": 141891,
+      "sha256": "c369b4b4e7e58e6c391f085dc0a51776f06b3805902bfef56889b14a07c294ab"
+    },
+    {
+      "path": "translations/okuflow_ru.ts",
+      "status": " M",
+      "bytes": 164342,
+      "sha256": "b40826384a2b72b44633f3ea81e908b067f123fe642bdc262753271dda880568"
+    },
+    {
+      "path": "translations/okuflow_sv.ts",
+      "status": " M",
+      "bytes": 139886,
+      "sha256": "1c578550b5b04c16c537c816b560e30003000a2bf6894fa8c20e0547c7bd9bcb"
+    },
+    {
+      "path": "translations/okuflow_th.ts",
+      "status": " M",
+      "bytes": 178548,
+      "sha256": "da8858cf7c3459f42524910b0457f73cbf753f35fd7050be09fd80ca14697e07"
+    },
+    {
+      "path": "translations/okuflow_tr.ts",
+      "status": " M",
+      "bytes": 140227,
+      "sha256": "a06048094b8c2b990de3345200e29e7dc34167c85e203b2efdd768a36f97c4e3"
+    },
+    {
+      "path": "translations/okuflow_uk.ts",
+      "status": " M",
+      "bytes": 163913,
+      "sha256": "d0aede3d6dbbeaeaf41b598b270a3184fedc1ceffa46ce5eaffc1254b5a8c7d5"
+    },
+    {
+      "path": "translations/okuflow_ur.ts",
+      "status": " M",
+      "bytes": 157296,
+      "sha256": "c8532056d3c2bf4a290e7ac64acc149611db71fe40ca23a9e4e3764f75c82d6a"
+    },
+    {
+      "path": "translations/okuflow_vi.ts",
+      "status": " M",
+      "bytes": 146794,
+      "sha256": "c0490d8fe979bee6a9d1071e37e39cf19bc31d0071011349dbc0256da17587d2"
+    },
+    {
+      "path": "translations/okuflow_zh_Hans.ts",
+      "status": " M",
+      "bytes": 134971,
+      "sha256": "4e950ed9653a030c43976edf52254c1a19218ec996cb783d64f19ddd8367446e"
+    },
+    {
+      "path": "docs/grok report 2026-10-18 1717.md",
+      "status": "??",
+      "bytes": 8003,
+      "sha256": "d8f141c719a5d1bc2abc441ecee062f6802843259d6b9f7456b5ad6d79ed0aa2"
+    },
+    {
+      "path": "improvement_ideas/55-compiler-toolchain-cheap-gains-2026-10-22.md",
+      "status": "??",
+      "bytes": 13895,
+      "sha256": "1c30383d2121a3afe6d170e69f364f26fb4abf56b1c0b188bf514a2d2fc76005"
+    }
+  ]
+}

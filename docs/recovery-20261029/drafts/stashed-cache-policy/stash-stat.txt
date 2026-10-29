@@ -1,0 +1,9 @@
+ CHANGELOG.md                      |   5 ++
+ docs/README.md                    |   3 +
+ docs/code_reference.md            |  14 +++-
+ docs/hardcoded_paths.md           |  12 ++-
+ docs/uct_helper_batching.md       |  28 +++++++
+ docs/uct_recognizer_width.md      |   9 ++-
+ docs/uct_tensorrt_cache_policy.md |  53 +++++++++++++
+ src/common/uct_tensorrt.cpp       | 151 +++++++++++++++++++++++---------------
+ 8 files changed, 209 insertions(+), 66 deletions(-)

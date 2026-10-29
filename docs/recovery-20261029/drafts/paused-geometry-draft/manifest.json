@@ -1,0 +1,109 @@
+{
+  "label": "paused-geometry-draft",
+  "base": "876ff4a3fb672979953344eb7cab83664d093790",
+  "review": "Earlier UCT geometry, projection, reference/validation and diagnostic draft. Current main has later geometry repairs. Preserve as research, not a verified replacement.",
+  "files": [
+    {
+      "path": "include/okuflow/app/ultra_clear_text_controller.hpp",
+      "status": " M",
+      "bytes": 30489,
+      "sha256": "7acb048de7e96fd6a9f95efb80970a3254db7fddff0c5918778011a185bcbea3"
+    },
+    {
+      "path": "include/okuflow/common/uct_paddle.hpp",
+      "status": " M",
+      "bytes": 7442,
+      "sha256": "e900b4f76145100319a17e9fcdc555de6f855ed07a9e811b71846ad7dae9c0af"
+    },
+    {
+      "path": "include/okuflow/common/ultra_clear_text.hpp",
+      "status": " M",
+      "bytes": 44454,
+      "sha256": "6a4ea2ea6754de24481bf38efc6c4ea11e6af2f57800de2c1833e8b42db30225"
+    },
+    {
+      "path": "include/okuflow/cuda/uct_kernels.hpp",
+      "status": " M",
+      "bytes": 4152,
+      "sha256": "3607ed4e6e86c0accbadf60426a0a1db5d1eceeaf4535e08cd899998cb69d699"
+    },
+    {
+      "path": "include/okuflow/ui/ultra_clear_text_overlay.hpp",
+      "status": " M",
+      "bytes": 10312,
+      "sha256": "74bb7fcde7b8cc27c27a7cd7a4064fa988d45ef66d38b3b8efe9e24d6ffd4960"
+    },
+    {
+      "path": "src/app/ultra_clear_text_controller.cpp",
+      "status": " M",
+      "bytes": 93679,
+      "sha256": "7cfe8abbc4349ac8bf3ae33d2e213881da34b19b2ba9e20405f29f41c240ec6e"
+    },
+    {
+      "path": "src/common/uct_paddle.cpp",
+      "status": " M",
+      "bytes": 17282,
+      "sha256": "dad10dd13c7ce5bd41114d2e0a0885ef788707346596e9c682c2f7cd3d53e3f6"
+    },
+    {
+      "path": "src/common/uct_paddle_processing.cpp",
+      "status": " M",
+      "bytes": 27579,
+      "sha256": "cc730ea0bb2ce5fa78b7b58e7d4fb3165452d877efed05dfb10ab67b1a8c9071"
+    },
+    {
+      "path": "src/common/uct_tensorrt.cpp",
+      "status": " M",
+      "bytes": 57318,
+      "sha256": "bf54ed765f1b891412656829ea0a4830cb4251f3d6988154bd44e31320b7910d"
+    },
+    {
+      "path": "src/common/ultra_clear_text.cpp",
+      "status": " M",
+      "bytes": 168421,
+      "sha256": "95bb8f1930a99f368462806906992936ea39830004d7ee8dd49d39cb8fbf74c2"
+    },
+    {
+      "path": "src/cuda/uct_device_analysis.hpp",
+      "status": " M",
+      "bytes": 35228,
+      "sha256": "3f5f53f93b3e82497502df4792272f71fecc708fa822f69a73f8bf424c942abe"
+    },
+    {
+      "path": "src/cuda/uct_kernels.cu",
+      "status": " M",
+      "bytes": 18860,
+      "sha256": "493e67cce03336d819979e345bf8f4d4f44b9eddc109091eaf9f6d4f7238b9ec"
+    },
+    {
+      "path": "src/cuda/uct_validation_kernels.cuh",
+      "status": " M",
+      "bytes": 34074,
+      "sha256": "55b1bcd571696be1687b08ce0646b62fd1f249f96805b8c4775fa3700b8be5d6"
+    },
+    {
+      "path": "src/ui/ultra_clear_text_overlay.cpp",
+      "status": " M",
+      "bytes": 42023,
+      "sha256": "1e5b9648638d3f63bcec897e80350191910bc50259048a609ed28c56aeb62415"
+    },
+    {
+      "path": "tests/uct_batch_diagnostic.hpp",
+      "status": " M",
+      "bytes": 24623,
+      "sha256": "79fc867b439e3743b18c10f64da9a6122d9010ca129eddc230a58815fa45bf4f"
+    },
+    {
+      "path": "tests/uct_paused_video_diagnostic.hpp",
+      "status": " M",
+      "bytes": 26012,
+      "sha256": "7121dc3b3bc14b52b2a2ecfe1b19f837077369ca9d4998aaab48ce7daa908000"
+    },
+    {
+      "path": "tests/ultra_clear_text_controller_tests.cpp",
+      "status": " M",
+      "bytes": 141301,
+      "sha256": "0d01511ee5f62b654258b0650b66f85808a0c1c1166bcaff176fb30e3b79d690"
+    }
+  ]
+}
