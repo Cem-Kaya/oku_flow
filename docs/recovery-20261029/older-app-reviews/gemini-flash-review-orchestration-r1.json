@@ -1,0 +1,45 @@
+{
+  "date": "2026-10-11",
+  "requestCorrection": "User corrected Gemini 3.5 to 3.6 Flash High.",
+  "task": "Additional read-only reviews; root verifies and documents individual verdicts.",
+  "delegations": [
+    {
+      "clientRequestId": "okuflow-gemini37-boundary-audit-20261011-r1",
+      "taskId": "node:delegated-task:command%3Amcp%3A566c877f-d50a-488a-8331-3b0c90f51531%3Adelegate-task%3Aokuflow-gemini37-boundary-audit-20261011-r1",
+      "childThreadId": "thread:delegated-task:command%3Amcp%3A566c877f-d50a-488a-8331-3b0c90f51531%3Adelegate-task%3Aokuflow-gemini37-boundary-audit-20261011-r1",
+      "childRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A566c877f-d50a-488a-8331-3b0c90f51531%253Adelegate-task%253Aokuflow-gemini37-boundary-audit-20261011-r1:ordinal:1",
+      "childNodeId": "node:delegated-task:command%3Amcp%3A566c877f-d50a-488a-8331-3b0c90f51531%3Adelegate-task%3Aokuflow-gemini37-boundary-audit-20261011-r1",
+      "status": "running",
+      "workState": "working",
+      "hasPendingChildRuns": false,
+      "latestTerminalRunId": null,
+      "latestTerminalStatus": null,
+      "latestTerminalSummary": null,
+      "latestTerminalResultContextTransferId": null,
+      "providerInstanceId": "antigravity",
+      "model": "gemini-3.7-flash-high",
+      "summary": null,
+      "resultContextTransferId": null,
+      "waitTimedOut": false
+    },
+    {
+      "clientRequestId": "okuflow-gemini36-cpu-io-audit-20261011-r1",
+      "taskId": "node:delegated-task:command%3Amcp%3A566c877f-d50a-488a-8331-3b0c90f51531%3Adelegate-task%3Aokuflow-gemini36-cpu-io-audit-20261011-r1",
+      "childThreadId": "thread:delegated-task:command%3Amcp%3A566c877f-d50a-488a-8331-3b0c90f51531%3Adelegate-task%3Aokuflow-gemini36-cpu-io-audit-20261011-r1",
+      "childRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A566c877f-d50a-488a-8331-3b0c90f51531%253Adelegate-task%253Aokuflow-gemini36-cpu-io-audit-20261011-r1:ordinal:1",
+      "childNodeId": "node:delegated-task:command%3Amcp%3A566c877f-d50a-488a-8331-3b0c90f51531%3Adelegate-task%3Aokuflow-gemini36-cpu-io-audit-20261011-r1",
+      "status": "running",
+      "workState": "working",
+      "hasPendingChildRuns": false,
+      "latestTerminalRunId": null,
+      "latestTerminalStatus": null,
+      "latestTerminalSummary": null,
+      "latestTerminalResultContextTransferId": null,
+      "providerInstanceId": "antigravity",
+      "model": "gemini-3.6-flash-high",
+      "summary": null,
+      "resultContextTransferId": null,
+      "waitTimedOut": false
+    }
+  ]
+}

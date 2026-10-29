@@ -1,0 +1,48 @@
+{
+  "date": "2026-10-11",
+  "modelLabel": "Gemini 3.1 Pro (High)",
+  "task": "Read-only bug, performance and quality scan; root must independently verify every finding.",
+  "baselineCommit": "8c07e0b0deb67a06fb8179e534c04c8813b84a21",
+  "workingTree": "Contains prior authorized, uncommitted repairs from audits 45–47.",
+  "desktopTests": "Deferred by owner; no GUI tests or app/camera launch authorized in this review.",
+  "delegations": [
+    {
+      "clientRequestId": "okuflow-gemini31-capture-gpu-audit-20261011-r1",
+      "taskId": "node:delegated-task:command%3Amcp%3A566c877f-d50a-488a-8331-3b0c90f51531%3Adelegate-task%3Aokuflow-gemini31-capture-gpu-audit-20261011-r1",
+      "childThreadId": "thread:delegated-task:command%3Amcp%3A566c877f-d50a-488a-8331-3b0c90f51531%3Adelegate-task%3Aokuflow-gemini31-capture-gpu-audit-20261011-r1",
+      "childRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A566c877f-d50a-488a-8331-3b0c90f51531%253Adelegate-task%253Aokuflow-gemini31-capture-gpu-audit-20261011-r1:ordinal:1",
+      "childNodeId": "node:delegated-task:command%3Amcp%3A566c877f-d50a-488a-8331-3b0c90f51531%3Adelegate-task%3Aokuflow-gemini31-capture-gpu-audit-20261011-r1",
+      "status": "running",
+      "workState": "working",
+      "hasPendingChildRuns": false,
+      "latestTerminalRunId": null,
+      "latestTerminalStatus": null,
+      "latestTerminalSummary": null,
+      "latestTerminalResultContextTransferId": null,
+      "providerInstanceId": "antigravity",
+      "model": "gemini-pro-agent",
+      "summary": null,
+      "resultContextTransferId": null,
+      "waitTimedOut": false
+    },
+    {
+      "clientRequestId": "okuflow-gemini31-app-recording-audit-20261011-r1",
+      "taskId": "node:delegated-task:command%3Amcp%3A566c877f-d50a-488a-8331-3b0c90f51531%3Adelegate-task%3Aokuflow-gemini31-app-recording-audit-20261011-r1",
+      "childThreadId": "thread:delegated-task:command%3Amcp%3A566c877f-d50a-488a-8331-3b0c90f51531%3Adelegate-task%3Aokuflow-gemini31-app-recording-audit-20261011-r1",
+      "childRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A566c877f-d50a-488a-8331-3b0c90f51531%253Adelegate-task%253Aokuflow-gemini31-app-recording-audit-20261011-r1:ordinal:1",
+      "childNodeId": "node:delegated-task:command%3Amcp%3A566c877f-d50a-488a-8331-3b0c90f51531%3Adelegate-task%3Aokuflow-gemini31-app-recording-audit-20261011-r1",
+      "status": "running",
+      "workState": "working",
+      "hasPendingChildRuns": false,
+      "latestTerminalRunId": null,
+      "latestTerminalStatus": null,
+      "latestTerminalSummary": null,
+      "latestTerminalResultContextTransferId": null,
+      "providerInstanceId": "antigravity",
+      "model": "gemini-pro-agent",
+      "summary": null,
+      "resultContextTransferId": null,
+      "waitTimedOut": false
+    }
+  ]
+}
