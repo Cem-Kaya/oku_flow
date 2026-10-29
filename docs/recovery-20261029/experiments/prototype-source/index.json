@@ -3,7 +3,7 @@
     "archiveSha256": "995ce76082e8cc9911746629e5720834263fade5112bb1daddb7f5eee31a60a1",
     "archiveName": "math-integrated-source.zip",
     "originalPath": "CHANGELOG.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/7073c35234d2/CHANGELOG.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/7073c35234d2-CHANGELOG.md",
     "gitBlob": "7073c35234d20df11cfe4750924fc171cf1a6eaf"
   },
   {
@@ -17,63 +17,63 @@
     "archiveSha256": "995ce76082e8cc9911746629e5720834263fade5112bb1daddb7f5eee31a60a1",
     "archiveName": "math-integrated-source.zip",
     "originalPath": "agents.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/0322e4f92206/agents.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/0322e4f92206-agents.md",
     "gitBlob": "0322e4f92206dddfb11cbf7eecb6a65fa239dce2"
   },
   {
     "archiveSha256": "995ce76082e8cc9911746629e5720834263fade5112bb1daddb7f5eee31a60a1",
     "archiveName": "math-integrated-source.zip",
     "originalPath": "docs/THIRD_PARTY_LICENSES.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/c4f9408be050/docs/THIRD_PARTY_LICENSES.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/c4f9408be050-THIRD_PARTY_LICENSES.md",
     "gitBlob": "c4f9408be0505c8b685e3399982e418010f7dd01"
   },
   {
     "archiveSha256": "995ce76082e8cc9911746629e5720834263fade5112bb1daddb7f5eee31a60a1",
     "archiveName": "math-integrated-source.zip",
     "originalPath": "docs/code_reference.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/e2aede971d06/docs/code_reference.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/e2aede971d06-code_reference.md",
     "gitBlob": "e2aede971d0603fe4ba26d8881a0f0c1d8ee6fad"
   },
   {
     "archiveSha256": "995ce76082e8cc9911746629e5720834263fade5112bb1daddb7f5eee31a60a1",
     "archiveName": "math-integrated-source.zip",
     "originalPath": "docs/developer_guide.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/6b1e3fd7698c/docs/developer_guide.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/6b1e3fd7698c-developer_guide.md",
     "gitBlob": "6b1e3fd7698c3d2a67986d57b308cae29afc0b98"
   },
   {
     "archiveSha256": "995ce76082e8cc9911746629e5720834263fade5112bb1daddb7f5eee31a60a1",
     "archiveName": "math-integrated-source.zip",
     "originalPath": "docs/uct_native_formula.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/db2ab5821fb9/docs/uct_native_formula.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/db2ab5821fb9-uct_native_formula.md",
     "gitBlob": "db2ab5821fb96bf5e8e8b96e8467305e82af0dac"
   },
   {
     "archiveSha256": "995ce76082e8cc9911746629e5720834263fade5112bb1daddb7f5eee31a60a1",
     "archiveName": "math-integrated-source.zip",
     "originalPath": "docs/ui_modes_design.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/5528eb760ba7/docs/ui_modes_design.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/5528eb760ba7-ui_modes_design.md",
     "gitBlob": "5528eb760ba713100828777e0d22c0c974051104"
   },
   {
     "archiveSha256": "995ce76082e8cc9911746629e5720834263fade5112bb1daddb7f5eee31a60a1",
     "archiveName": "math-integrated-source.zip",
     "originalPath": "include/okuflow/app/app.hpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/0d6755c9d629/include/okuflow/app/app.hpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/0d6755c9d629-app.hpp",
     "gitBlob": "0d6755c9d629aaa2fbec77702ed2ac06fc97a5ec"
   },
   {
     "archiveSha256": "995ce76082e8cc9911746629e5720834263fade5112bb1daddb7f5eee31a60a1",
     "archiveName": "math-integrated-source.zip",
     "originalPath": "scripts/uct/generate_formula_catalog.ps1",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a13b5e2b3ea1/scripts/uct/generate_formula_catalog.ps1",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a13b5e2b3ea1-generate_formula_catalog.ps1",
     "gitBlob": "a13b5e2b3ea16551d788a36b74deae8b298226e3"
   },
   {
     "archiveSha256": "995ce76082e8cc9911746629e5720834263fade5112bb1daddb7f5eee31a60a1",
     "archiveName": "math-integrated-source.zip",
     "originalPath": "src/ui/ultra_clear_text_panel.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/311f1c7f4e76/src/ui/ultra_clear_text_panel.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/311f1c7f4e76-ultra_clear_text_panel.cpp",
     "gitBlob": "311f1c7f4e76beece9b6348c009e2f9bf406a491"
   },
   {
@@ -87,7 +87,7 @@
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "CHANGELOG.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/df974fa3d0f3/CHANGELOG.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/df974fa3d0f3-CHANGELOG.md",
     "gitBlob": "df974fa3d0f3f926596045eed98b799a5754838f"
   },
   {
@@ -101,7 +101,7 @@
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "agents.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/3ebd6d036ce5/agents.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/3ebd6d036ce5-agents.md",
     "gitBlob": "3ebd6d036ce55804e1e49284e59492db5db71a8d"
   },
   {
@@ -115,133 +115,133 @@
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "docs/THIRD_PARTY_LICENSES.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/93588025d7f5/docs/THIRD_PARTY_LICENSES.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/93588025d7f5-THIRD_PARTY_LICENSES.md",
     "gitBlob": "93588025d7f5b9df68e4df64e8d421e5c9dd348a"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "docs/code_reference.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/97b34b99ca4c/docs/code_reference.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/97b34b99ca4c-code_reference.md",
     "gitBlob": "97b34b99ca4c125bfee25d9e5e24bf2869fe9ff1"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "docs/developer_guide.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/bb9ee4620c9f/docs/developer_guide.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/bb9ee4620c9f-developer_guide.md",
     "gitBlob": "bb9ee4620c9f3f84e7ab056b2ff8280a80c718f3"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "docs/hardcoded_paths.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/9379c3f8434c/docs/hardcoded_paths.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/9379c3f8434c-hardcoded_paths.md",
     "gitBlob": "9379c3f8434c3d6a982ec0e9289d5a0dbd52ec37"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "docs/localization.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/5a7e2df07865/docs/localization.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/5a7e2df07865-localization.md",
     "gitBlob": "5a7e2df078653da6b6b67d98b1af8a5b432f1287"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "docs/model_installation.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/dce0fa65030f/docs/model_installation.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/dce0fa65030f-model_installation.md",
     "gitBlob": "dce0fa65030fe2dec1b9ef26207d01bd929e1dab"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "docs/ui_modes_design.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/3340a4c2d4b4/docs/ui_modes_design.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/3340a4c2d4b4-ui_modes_design.md",
     "gitBlob": "3340a4c2d4b4332de2cf205e697da4f709814bb1"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "docs/ultra_clear_text.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/e370e90bac94/docs/ultra_clear_text.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/e370e90bac94-ultra_clear_text.md",
     "gitBlob": "e370e90bac94b40a4648402fbe26763b19d995d5"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "include/okuflow/app/app.hpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/17085a508325/include/okuflow/app/app.hpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/17085a508325-app.hpp",
     "gitBlob": "17085a50832582106181f859cee8860619492f9c"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "include/okuflow/common/uct_model_installation.hpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/7d5fba6428b2/include/okuflow/common/uct_model_installation.hpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/7d5fba6428b2-uct_model_installation.hpp",
     "gitBlob": "7d5fba6428b272d2c83d71805289a5f3b958d9ab"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "include/okuflow/common/uct_model_settings.hpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/9429277d456c/include/okuflow/common/uct_model_settings.hpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/9429277d456c-uct_model_settings.hpp",
     "gitBlob": "9429277d456c77e59584f86a4b8fade07097c46b"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "include/okuflow/ui/ultra_clear_text_panel.hpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/89ae71bb42ab/include/okuflow/ui/ultra_clear_text_panel.hpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/89ae71bb42ab-ultra_clear_text_panel.hpp",
     "gitBlob": "89ae71bb42abeaea864a9541108b865c6f33fc32"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "scripts/build_release_bundle.bat",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/52f03e02198a/scripts/build_release_bundle.bat",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/52f03e02198a-build_release_bundle.bat",
     "gitBlob": "52f03e02198a6c015bf211dc177849ad6df37dbf"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "src/app/app_model_setup.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/7d1650f8d257/src/app/app_model_setup.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/7d1650f8d257-app_model_setup.cpp",
     "gitBlob": "7d1650f8d257f33f35e38f5dcd4435424a0fb08a"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "src/app/app_ultra_clear_text.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/8a232c2ec17e/src/app/app_ultra_clear_text.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/8a232c2ec17e-app_ultra_clear_text.cpp",
     "gitBlob": "8a232c2ec17e95ec35d71e7a1634ddc2454ebac3"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "src/common/uct_model_installation.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/18fc4a3e9ffd/src/common/uct_model_installation.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/18fc4a3e9ffd-uct_model_installation.cpp",
     "gitBlob": "18fc4a3e9ffde9d926a9e6d77fe973c47957027b"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "src/common/uct_tensorrt.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/74ef8659c076/src/common/uct_tensorrt.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/74ef8659c076-uct_tensorrt.cpp",
     "gitBlob": "74ef8659c0766d789e95a1708936ceeec003b2cf"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "src/ui/translation_catalog.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/d6dde1f230c6/src/ui/translation_catalog.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/d6dde1f230c6-translation_catalog.cpp",
     "gitBlob": "d6dde1f230c605c51ad6bf9eea1a30bb63d67323"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "src/ui/ultra_clear_text_panel.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a5c9e07e6e84/src/ui/ultra_clear_text_panel.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a5c9e07e6e84-ultra_clear_text_panel.cpp",
     "gitBlob": "a5c9e07e6e84af1f1759d8951718d60ba8bcc7d9"
   },
   {
@@ -255,266 +255,266 @@
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "tests/native_app_control_fixture.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/0b338c715795/tests/native_app_control_fixture.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/0b338c715795-native_app_control_fixture.cpp",
     "gitBlob": "0b338c715795bcfa14a0d62b4275b792379a0926"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "tests/settings_store_tests.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/c443a48af857/tests/settings_store_tests.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/c443a48af857-settings_store_tests.cpp",
     "gitBlob": "c443a48af8577a046ad060159cfbe79b1a164b64"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "tests/uct_model_installation_tests.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/abb293682a0d/tests/uct_model_installation_tests.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/abb293682a0d-uct_model_installation_tests.cpp",
     "gitBlob": "abb293682a0db661d34b2b70565d5129e9e088fa"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "tests/uct_paddle_tests.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/8255017ad676/tests/uct_paddle_tests.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/8255017ad676-uct_paddle_tests.cpp",
     "gitBlob": "8255017ad6760fb46a3c2cc3aae7284af7c722ef"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "tests/ultra_clear_text.cmake",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/e51073d63eed/tests/ultra_clear_text.cmake",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/e51073d63eed-ultra_clear_text.cmake",
     "gitBlob": "e51073d63eed1e605034b29ef708d2bef7cbc16e"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "tests/ultra_clear_text_tests.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/20af0b9db9b1/tests/ultra_clear_text_tests.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/20af0b9db9b1-ultra_clear_text_tests.cpp",
     "gitBlob": "20af0b9db9b12c872c96ff558755c937aee48c0e"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_ar.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/6797ce282dbe/translations/okuflow_ar.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/6797ce282dbe-okuflow_ar.ts",
     "gitBlob": "6797ce282dbeba27e23a490997b303eb92c6e3f9"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_bn.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a0f11de70ee5/translations/okuflow_bn.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a0f11de70ee5-okuflow_bn.ts",
     "gitBlob": "a0f11de70ee55d9053239f316ed6e565a0775c6a"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_cs.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/80a2869f1467/translations/okuflow_cs.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/80a2869f1467-okuflow_cs.ts",
     "gitBlob": "80a2869f146710d12a86de46276cd04259422d6b"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_de.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a45b2df48dba/translations/okuflow_de.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a45b2df48dba-okuflow_de.ts",
     "gitBlob": "a45b2df48dbadfd77e5effdc382d26c4e20ac162"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_es.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/dc8056a8eaa3/translations/okuflow_es.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/dc8056a8eaa3-okuflow_es.ts",
     "gitBlob": "dc8056a8eaa3d8dc26c69b70d0b7d9ae1489a966"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_fa.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/3000b9c3d7ae/translations/okuflow_fa.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/3000b9c3d7ae-okuflow_fa.ts",
     "gitBlob": "3000b9c3d7ae86ce6fe0342cb1abfe93370ff03b"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_fr.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a0fc8bf92b87/translations/okuflow_fr.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a0fc8bf92b87-okuflow_fr.ts",
     "gitBlob": "a0fc8bf92b87915ca708d85a318bca356e32059a"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_he.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/6638826dbf49/translations/okuflow_he.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/6638826dbf49-okuflow_he.ts",
     "gitBlob": "6638826dbf494e5dd285b6275a979756573f0f80"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_hi.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/60770f169af1/translations/okuflow_hi.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/60770f169af1-okuflow_hi.ts",
     "gitBlob": "60770f169af11602d79e91d39132055814795086"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_id.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/e795d49e284f/translations/okuflow_id.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/e795d49e284f-okuflow_id.ts",
     "gitBlob": "e795d49e284f21f36ee7461fe731239b9b235790"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_it.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/299d6dca0482/translations/okuflow_it.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/299d6dca0482-okuflow_it.ts",
     "gitBlob": "299d6dca0482ee92a21a9a53dc34d5884fc293e4"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_ja.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/cbb519b25c63/translations/okuflow_ja.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/cbb519b25c63-okuflow_ja.ts",
     "gitBlob": "cbb519b25c63fe033a228e383678ee1ae7308da0"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_ko.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/e342d0cd134f/translations/okuflow_ko.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/e342d0cd134f-okuflow_ko.ts",
     "gitBlob": "e342d0cd134fc6391eee3021154a657a4a9f307d"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_nl.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a6d7ca4fef23/translations/okuflow_nl.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a6d7ca4fef23-okuflow_nl.ts",
     "gitBlob": "a6d7ca4fef230e802c3032f12a168cde3d38b397"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_pl.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/07a8064fdfd3/translations/okuflow_pl.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/07a8064fdfd3-okuflow_pl.ts",
     "gitBlob": "07a8064fdfd34e379108e18f46b492018b82cf40"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_pt_BR.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/4aa977265cc6/translations/okuflow_pt_BR.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/4aa977265cc6-okuflow_pt_BR.ts",
     "gitBlob": "4aa977265cc6a7b34615d4c6853746957d5978a1"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_ru.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/c03a9e1cc68c/translations/okuflow_ru.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/c03a9e1cc68c-okuflow_ru.ts",
     "gitBlob": "c03a9e1cc68c6380f9f89e3e1b92076bb1a236ec"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_sv.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/e86faaf71efd/translations/okuflow_sv.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/e86faaf71efd-okuflow_sv.ts",
     "gitBlob": "e86faaf71efd56e1995518bcc02ca50fcc52b472"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_th.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/c7c375403ce5/translations/okuflow_th.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/c7c375403ce5-okuflow_th.ts",
     "gitBlob": "c7c375403ce52e7cd6ecdcb74a02d09aca870680"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_tr.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/86a470b75ab1/translations/okuflow_tr.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/86a470b75ab1-okuflow_tr.ts",
     "gitBlob": "86a470b75ab1b7e53d83c4fd7b1cb3bd5b2e43a4"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_uk.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/ae55fac6cfa9/translations/okuflow_uk.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/ae55fac6cfa9-okuflow_uk.ts",
     "gitBlob": "ae55fac6cfa982c40d26ee33ecfd28018518b3d2"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_ur.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/74e6d06302a3/translations/okuflow_ur.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/74e6d06302a3-okuflow_ur.ts",
     "gitBlob": "74e6d06302a3f5b9366e9d0a852e2b6e847505a6"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_vi.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/12b3c33e574f/translations/okuflow_vi.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/12b3c33e574f-okuflow_vi.ts",
     "gitBlob": "12b3c33e574f8e4943275c2ae8881ac4daff8570"
   },
   {
     "archiveSha256": "6a631f94587bccbe70f2de75aaef07abb9f2f059a2951b7a4fcd12ee9068f030",
     "archiveName": "ocr-model-setup-source.zip",
     "originalPath": "translations/okuflow_zh_Hans.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/8cd16227fc5c/translations/okuflow_zh_Hans.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/8cd16227fc5c-okuflow_zh_Hans.ts",
     "gitBlob": "8cd16227fc5ca7c9f558640ebfc6744881dd3d6b"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "agents.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/2a65508a278e/agents.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/2a65508a278e-agents.md",
     "gitBlob": "2a65508a278ea53cc032e8f13ce555ac39afc29b"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "CHANGELOG.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/f1b1c0155b97/CHANGELOG.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/f1b1c0155b97-CHANGELOG.md",
     "gitBlob": "f1b1c0155b97cf53e4992cb52d7d90591590bdc0"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "cmake/UctOcr.cmake",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/df4bbfd92a35/cmake/UctOcr.cmake",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/df4bbfd92a35-UctOcr.cmake",
     "gitBlob": "df4bbfd92a35a75f1594e8f45f984c5a77f701e7"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "docs/code_reference.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/cbb424a1fa5b/docs/code_reference.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/cbb424a1fa5b-code_reference.md",
     "gitBlob": "cbb424a1fa5b68f8358cdf74e78dbcab22d70768"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "docs/developer_guide.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/6f9eb763f307/docs/developer_guide.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/6f9eb763f307-developer_guide.md",
     "gitBlob": "6f9eb763f3074b3aa62d7ba6dc5434eea82dfa48"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "docs/hardcoded_paths.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/5b26e3f0eba2/docs/hardcoded_paths.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/5b26e3f0eba2-hardcoded_paths.md",
     "gitBlob": "5b26e3f0eba2f8d8e795bce3bac8f2bab7493c38"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "docs/localization.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/5a7e2df07865/docs/localization.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/5a7e2df07865-localization.md",
     "gitBlob": "5a7e2df078653da6b6b67d98b1af8a5b432f1287"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "docs/model_installation.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/68c02d9c0d4e/docs/model_installation.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/68c02d9c0d4e-model_installation.md",
     "gitBlob": "68c02d9c0d4ed87a890b00a99d4f98e03506b909"
   },
   {
@@ -528,63 +528,63 @@
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "docs/THIRD_PARTY_LICENSES.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/83af86aedbef/docs/THIRD_PARTY_LICENSES.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/83af86aedbef-THIRD_PARTY_LICENSES.md",
     "gitBlob": "83af86aedbef61ef9287d16d10268353b41dbd8e"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "docs/uct_native_formula.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/d5c63d641868/docs/uct_native_formula.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/d5c63d641868-uct_native_formula.md",
     "gitBlob": "d5c63d64186825f3d083c62544d74cd8756227d1"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "docs/ui_modes_design.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/3340a4c2d4b4/docs/ui_modes_design.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/3340a4c2d4b4-ui_modes_design.md",
     "gitBlob": "3340a4c2d4b4332de2cf205e697da4f709814bb1"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "docs/ultra_clear_text.md",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/e370e90bac94/docs/ultra_clear_text.md",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/e370e90bac94-ultra_clear_text.md",
     "gitBlob": "e370e90bac94b40a4648402fbe26763b19d995d5"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "include/okuflow/app/app.hpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/17085a508325/include/okuflow/app/app.hpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/17085a508325-app.hpp",
     "gitBlob": "17085a50832582106181f859cee8860619492f9c"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "include/okuflow/common/uct_formula.hpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/5a0354a3e7fa/include/okuflow/common/uct_formula.hpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/5a0354a3e7fa-uct_formula.hpp",
     "gitBlob": "5a0354a3e7faf0f29d3906c20177fb8a339009c4"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "include/okuflow/common/uct_model_installation.hpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/7d5fba6428b2/include/okuflow/common/uct_model_installation.hpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/7d5fba6428b2-uct_model_installation.hpp",
     "gitBlob": "7d5fba6428b272d2c83d71805289a5f3b958d9ab"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "include/okuflow/common/uct_model_settings.hpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/9429277d456c/include/okuflow/common/uct_model_settings.hpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/9429277d456c-uct_model_settings.hpp",
     "gitBlob": "9429277d456c77e59584f86a4b8fade07097c46b"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "include/okuflow/ui/ultra_clear_text_panel.hpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/89ae71bb42ab/include/okuflow/ui/ultra_clear_text_panel.hpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/89ae71bb42ab-ultra_clear_text_panel.hpp",
     "gitBlob": "89ae71bb42abeaea864a9541108b865c6f33fc32"
   },
   {
@@ -598,84 +598,84 @@
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "scripts/build_release_bundle.bat",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/52f03e02198a/scripts/build_release_bundle.bat",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/52f03e02198a-build_release_bundle.bat",
     "gitBlob": "52f03e02198a6c015bf211dc177849ad6df37dbf"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "scripts/uct/formula-packs.json",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/97f6dc920c27/scripts/uct/formula-packs.json",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/97f6dc920c27-formula-packs.json",
     "gitBlob": "97f6dc920c276ccc723cc4db18b1f93f4232c82e"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "scripts/uct/generate_formula_catalog.ps1",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/f01596a01ebf/scripts/uct/generate_formula_catalog.ps1",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/f01596a01ebf-generate_formula_catalog.ps1",
     "gitBlob": "f01596a01ebfa8d12e0d66c02525e54670215766"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "src/app/app_model_setup.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/7d1650f8d257/src/app/app_model_setup.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/7d1650f8d257-app_model_setup.cpp",
     "gitBlob": "7d1650f8d257f33f35e38f5dcd4435424a0fb08a"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "src/app/app_ultra_clear_text.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/8a232c2ec17e/src/app/app_ultra_clear_text.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/8a232c2ec17e-app_ultra_clear_text.cpp",
     "gitBlob": "8a232c2ec17e95ec35d71e7a1634ddc2454ebac3"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "src/common/uct_formula_catalog.hpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/5a123861ccfa/src/common/uct_formula_catalog.hpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/5a123861ccfa-uct_formula_catalog.hpp",
     "gitBlob": "5a123861ccfaecf67ac5fdcc29cefd6a849843e4"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "src/common/uct_formula_tensorrt.hpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/3593d67a7091/src/common/uct_formula_tensorrt.hpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/3593d67a7091-uct_formula_tensorrt.hpp",
     "gitBlob": "3593d67a70910a75069ba76999abd02f68abf647"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "src/common/uct_model_installation.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/18fc4a3e9ffd/src/common/uct_model_installation.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/18fc4a3e9ffd-uct_model_installation.cpp",
     "gitBlob": "18fc4a3e9ffde9d926a9e6d77fe973c47957027b"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "src/common/uct_tensorrt.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/1c83595c97e5/src/common/uct_tensorrt.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/1c83595c97e5-uct_tensorrt.cpp",
     "gitBlob": "1c83595c97e5a0e27a9b5f2f39241896a0073e20"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "src/ui/translation_catalog.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/d6dde1f230c6/src/ui/translation_catalog.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/d6dde1f230c6-translation_catalog.cpp",
     "gitBlob": "d6dde1f230c605c51ad6bf9eea1a30bb63d67323"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "src/ui/ultra_clear_text_panel.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a5c9e07e6e84/src/ui/ultra_clear_text_panel.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a5c9e07e6e84-ultra_clear_text_panel.cpp",
     "gitBlob": "a5c9e07e6e84af1f1759d8951718d60ba8bcc7d9"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "tests/native_app_control_fixture.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/0b338c715795/tests/native_app_control_fixture.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/0b338c715795-native_app_control_fixture.cpp",
     "gitBlob": "0b338c715795bcfa14a0d62b4275b792379a0926"
   },
   {
@@ -689,203 +689,203 @@
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "tests/settings_store_tests.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/c443a48af857/tests/settings_store_tests.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/c443a48af857-settings_store_tests.cpp",
     "gitBlob": "c443a48af8577a046ad060159cfbe79b1a164b64"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "tests/uct_model_installation_tests.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/abb293682a0d/tests/uct_model_installation_tests.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/abb293682a0d-uct_model_installation_tests.cpp",
     "gitBlob": "abb293682a0db661d34b2b70565d5129e9e088fa"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "tests/uct_paddle_tests.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/7b28261e8038/tests/uct_paddle_tests.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/7b28261e8038-uct_paddle_tests.cpp",
     "gitBlob": "7b28261e8038e48c846c8d8f6e7ab239690c0b84"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "tests/ultra_clear_text_tests.cpp",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/20af0b9db9b1/tests/ultra_clear_text_tests.cpp",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/20af0b9db9b1-ultra_clear_text_tests.cpp",
     "gitBlob": "20af0b9db9b12c872c96ff558755c937aee48c0e"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "tests/ultra_clear_text.cmake",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/6605cce5cd2a/tests/ultra_clear_text.cmake",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/6605cce5cd2a-ultra_clear_text.cmake",
     "gitBlob": "6605cce5cd2acc0d5236b98ab68f3562045d54eb"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_ar.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/6797ce282dbe/translations/okuflow_ar.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/6797ce282dbe-okuflow_ar.ts",
     "gitBlob": "6797ce282dbeba27e23a490997b303eb92c6e3f9"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_bn.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a0f11de70ee5/translations/okuflow_bn.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a0f11de70ee5-okuflow_bn.ts",
     "gitBlob": "a0f11de70ee55d9053239f316ed6e565a0775c6a"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_cs.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/80a2869f1467/translations/okuflow_cs.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/80a2869f1467-okuflow_cs.ts",
     "gitBlob": "80a2869f146710d12a86de46276cd04259422d6b"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_de.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a45b2df48dba/translations/okuflow_de.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a45b2df48dba-okuflow_de.ts",
     "gitBlob": "a45b2df48dbadfd77e5effdc382d26c4e20ac162"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_es.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/dc8056a8eaa3/translations/okuflow_es.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/dc8056a8eaa3-okuflow_es.ts",
     "gitBlob": "dc8056a8eaa3d8dc26c69b70d0b7d9ae1489a966"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_fa.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/3000b9c3d7ae/translations/okuflow_fa.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/3000b9c3d7ae-okuflow_fa.ts",
     "gitBlob": "3000b9c3d7ae86ce6fe0342cb1abfe93370ff03b"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_fr.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a0fc8bf92b87/translations/okuflow_fr.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a0fc8bf92b87-okuflow_fr.ts",
     "gitBlob": "a0fc8bf92b87915ca708d85a318bca356e32059a"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_he.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/6638826dbf49/translations/okuflow_he.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/6638826dbf49-okuflow_he.ts",
     "gitBlob": "6638826dbf494e5dd285b6275a979756573f0f80"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_hi.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/60770f169af1/translations/okuflow_hi.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/60770f169af1-okuflow_hi.ts",
     "gitBlob": "60770f169af11602d79e91d39132055814795086"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_id.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/e795d49e284f/translations/okuflow_id.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/e795d49e284f-okuflow_id.ts",
     "gitBlob": "e795d49e284f21f36ee7461fe731239b9b235790"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_it.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/299d6dca0482/translations/okuflow_it.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/299d6dca0482-okuflow_it.ts",
     "gitBlob": "299d6dca0482ee92a21a9a53dc34d5884fc293e4"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_ja.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/cbb519b25c63/translations/okuflow_ja.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/cbb519b25c63-okuflow_ja.ts",
     "gitBlob": "cbb519b25c63fe033a228e383678ee1ae7308da0"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_ko.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/e342d0cd134f/translations/okuflow_ko.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/e342d0cd134f-okuflow_ko.ts",
     "gitBlob": "e342d0cd134fc6391eee3021154a657a4a9f307d"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_nl.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a6d7ca4fef23/translations/okuflow_nl.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/a6d7ca4fef23-okuflow_nl.ts",
     "gitBlob": "a6d7ca4fef230e802c3032f12a168cde3d38b397"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_pl.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/07a8064fdfd3/translations/okuflow_pl.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/07a8064fdfd3-okuflow_pl.ts",
     "gitBlob": "07a8064fdfd34e379108e18f46b492018b82cf40"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_pt_BR.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/4aa977265cc6/translations/okuflow_pt_BR.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/4aa977265cc6-okuflow_pt_BR.ts",
     "gitBlob": "4aa977265cc6a7b34615d4c6853746957d5978a1"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_ru.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/c03a9e1cc68c/translations/okuflow_ru.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/c03a9e1cc68c-okuflow_ru.ts",
     "gitBlob": "c03a9e1cc68c6380f9f89e3e1b92076bb1a236ec"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_sv.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/e86faaf71efd/translations/okuflow_sv.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/e86faaf71efd-okuflow_sv.ts",
     "gitBlob": "e86faaf71efd56e1995518bcc02ca50fcc52b472"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_th.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/c7c375403ce5/translations/okuflow_th.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/c7c375403ce5-okuflow_th.ts",
     "gitBlob": "c7c375403ce52e7cd6ecdcb74a02d09aca870680"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_tr.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/86a470b75ab1/translations/okuflow_tr.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/86a470b75ab1-okuflow_tr.ts",
     "gitBlob": "86a470b75ab1b7e53d83c4fd7b1cb3bd5b2e43a4"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_uk.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/ae55fac6cfa9/translations/okuflow_uk.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/ae55fac6cfa9-okuflow_uk.ts",
     "gitBlob": "ae55fac6cfa982c40d26ee33ecfd28018518b3d2"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_ur.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/74e6d06302a3/translations/okuflow_ur.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/74e6d06302a3-okuflow_ur.ts",
     "gitBlob": "74e6d06302a3f5b9366e9d0a852e2b6e847505a6"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_vi.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/12b3c33e574f/translations/okuflow_vi.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/12b3c33e574f-okuflow_vi.ts",
     "gitBlob": "12b3c33e574f8e4943275c2ae8881ac4daff8570"
   },
   {
     "archiveSha256": "f38305a7e2f97f02588b90824bf610b291c0526a67f8ce35f2f44f2abdfb9f02",
     "archiveName": "source-wip.zip",
     "originalPath": "translations/okuflow_zh_Hans.ts",
-    "savedAs": "docs/recovery-20261029/experiments/prototype-source/8cd16227fc5c/translations/okuflow_zh_Hans.ts",
+    "savedAs": "docs/recovery-20261029/experiments/prototype-source/8cd16227fc5c-okuflow_zh_Hans.ts",
     "gitBlob": "8cd16227fc5ca7c9f558640ebfc6744881dd3d6b"
   }
 ]
