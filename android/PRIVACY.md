@@ -1,9 +1,27 @@
 # OkuFlow Camera privacy policy
 
-Provider: **Cem Kaya**. Updated: **12 October 2026**.
+Provider: **Cem Kaya**. Updated: **5 November 2026**.
 
-This policy covers `com.okuflow`, the Android companion to OkuFlow for Windows,
-and explains the related desktop data flows. Older development installations used
+OkuFlow Camera turns your Android phone into a USB camera for OkuFlow on
+Windows. It is designed to help people with low vision use their phone camera
+for live magnification and accessible reading on their computer.
+
+## Privacy at a glance
+
+- Your camera stream goes through the USB connection to the computer you
+  authorize. Normal camera viewing does not upload your images to the developer
+  or to an AI service.
+- The Android app buffers video in memory for streaming; it does not save camera
+  recordings on the phone or upload your stream to developer-operated storage.
+- The Windows app can save photos, recordings, notes and diagnostic logs on your
+  computer. You control those files and can delete them through Windows.
+- AI features are optional. When you choose them on Windows, images and questions
+  can go to the provider you selected. That provider's own retention and deletion
+  rules apply. A local vision endpoint is also supported.
+- No account with OkuFlow is needed to use the camera companion.
+
+This policy covers `com.okuflow`, the Android companion, and explains the related
+desktop data flows. Older development installations used
 `com.okuflow.camera`; their camera data flows are the same. The Kotlin namespace
 does not identify the Play/install package.
 
@@ -55,12 +73,32 @@ retention terms. Clearing phone storage does not delete data held by a provider;
 use that provider's deletion/account controls. Normal USB camera viewing does not
 require an AI request.
 
+## Understanding the Google Play Data safety labels
+
+Google Play uses "collected" to include data transmitted off the phone, even
+when the destination is your own computer rather than the developer's servers.
+For this app, the USB stream includes camera video, camera capabilities and the
+diagnostic information described above. This label does not mean the developer
+keeps a copy of your camera images.
+
+Your local photos, recordings, notes and logs can be deleted from your computer.
+The developer does not operate storage for your camera stream and cannot delete
+files on your devices or data held by your selected AI provider. Use Windows or
+Android storage controls for local data and the provider's own controls for
+provider-held data. A Play label about the absence of a deletion request
+mechanism should not be read as saying that your local files cannot be deleted.
+
+The USB stream has no additional application-level encryption. Computer
+authorization controls access but is not a promise of encrypted transmission.
+Optional AI services have their own connection and security practices.
+
 ## Public links and contact
 
-This policy is also readable offline in Advanced settings → Privacy policy in
-English, Turkish and German. Opening its public link or the contact link delegates
-to the user's browser; GitHub and the browser handle that connection under their
-own terms.
+An offline privacy explanation is available in Advanced settings → Privacy
+policy. Its wording reflects the installed app version; this public page contains
+the latest clarification. Opening the public policy or contact link delegates to
+the user's browser; GitHub and the browser handle that connection under their own
+terms.
 
 Contact Cem Kaya at [info@okuflow.com](mailto:info@okuflow.com), or through
 [OkuFlow repository issues](https://github.com/Cem-Kaya/oku_flow/issues).

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Clarify the public Android privacy policy: OkuFlow Camera is an accessibility-focused
+  USB companion, normal viewing does not upload camera images to the developer,
+  users control local files, and optional Windows AI requests follow the selected
+  provider's retention/deletion rules. Explain Play Data safety labels without
+  changing the app's permissions, transport or data-handling declarations.
+
 ## [0.4.0] - 2026-10-27
 
 - Prevent normal app close from racing CUDA module unload with asynchronous
