@@ -75,6 +75,7 @@ class PaddleCpuRecognizer final : public Recognizer
             }
             const double magnification = detail_ ? PaddleDetailMagnification(*detail_) : 1.0;
             if (detail_) result.detailRegionPx = regions.first();
+            PaddleMergeContext mergeContext; // one per read: result.lines
             for (const QRect& region : regions) {
             if (cancelled.load()) { result.cancelled=true; result.lines.clear(); return result; }
             const QImage crop = region.size()==image.size() ? image : image.copy(region);
@@ -118,7 +119,7 @@ class PaddleCpuRecognizer final : public Recognizer
                 auto line = PaddleDecode(
                     std::span(logits.data).first(static_cast<std::size_t>(validSteps) * classes),
                     validSteps, classes, quad, assets_.dictionary);
-                PaddleMergeRecognition(result.lines,std::move(line),region,image.size());
+                PaddleMergeRecognition(result.lines,std::move(line),region,image.size(),mergeContext);
             }
             }
             result.ok = !cancelled.load();

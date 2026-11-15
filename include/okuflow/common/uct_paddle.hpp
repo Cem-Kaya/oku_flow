@@ -131,6 +131,32 @@ inline bool PaddleRibbonEnabled(bool allowed, const QString& overrideValue) {
 // crop-edge fragments and reconciles overlapping words without duplicates.
 void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line,
                              QRect region, QSize source);
+// Word geometry, a spatial index and row sort state for the merges of one
+// read, so each call only works on the words near its own. It never changes a
+// decision: every call first compares the geometry of every word in `output`
+// bit for bit with what it cached and rebuilds on any difference (a different
+// output, words added, removed or moved by anyone else). Above 1024 rows or
+// 8192 words it is released and the call takes the uncached path.
+class PaddleMergeContext
+{
+  public:
+    PaddleMergeContext();
+    ~PaddleMergeContext();
+    PaddleMergeContext(PaddleMergeContext&&) noexcept;
+    PaddleMergeContext& operator=(PaddleMergeContext&&) noexcept;
+    PaddleMergeContext(const PaddleMergeContext&) = delete;
+    PaddleMergeContext& operator=(const PaddleMergeContext&) = delete;
+    struct State;
+
+  private:
+    friend void PaddleMergeRecognition(QVector<RecognizedLine>&, RecognizedLine, QRect, QSize,
+                                       PaddleMergeContext&);
+    std::unique_ptr<State> state_;
+};
+// Same result as the overload above after every call; keep one context for
+// all merges into one output.
+void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line,
+                             QRect region, QSize source, PaddleMergeContext& context);
 std::vector<float> PaddleNormalize(const QImage &image, QSize target, bool detection);
 QVector<PaddleQuad> PaddleDetect(std::span<const float> map, int width, int height, QSize source,
                                  const std::atomic<bool> &cancelled, bool curvedRibbon = false);
