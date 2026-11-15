@@ -6,6 +6,8 @@
 #include "../src/common/uct_frozen_upload.hpp"
 #include "../src/common/uct_tensorrt_failures.hpp"
 #include "../src/common/uct_engine_cache.hpp"
+#include "../src/common/uct_sha256.hpp"
+#include <QBuffer>
 #include "../src/common/uct_native_precision.hpp"
 #include "okuflow/common/uct_model_preparation.hpp"
 #include "okuflow/common/uct_model_installation.hpp"
@@ -190,6 +192,62 @@ class PaddleTests final : public QObject
 {
     Q_OBJECT
   private slots:
+    void startupSha256MatchesQtAndRefusesErrors()
+    {
+        for (const int size : {0, 1, 1048575, 1048576, 1048577, 3 * 1048576 + 17}) {
+            QByteArray bytes(size, 'x');
+            if (size) bytes[size / 2] = '\0';
+            const auto expected = QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
+            QCOMPARE(sha256::Bytes(bytes), expected);
+            QBuffer input(&bytes);
+            QVERIFY(input.open(QIODevice::ReadOnly));
+            QCOMPARE(sha256::Read(input), expected);
+            QVERIFY(sha256::Bytes(bytes, [] { return true; }).isEmpty());
+            input.seek(0);
+            int polls = 0;
+            QVERIFY(sha256::Read(input, [&] { return ++polls >= 2; }).isEmpty());
+        }
+        // A large logical input, with bounded scratch and an independent Qt oracle.
+        class Generated final : public QIODevice {
+        public:
+            qint64 remaining = 257ll * 1024 * 1024 + 19;
+            bool fail = false, stall = false;
+            Generated() { open(QIODevice::ReadOnly); }
+            bool isSequential() const override { return true; }
+            bool atEnd() const override { return remaining == 0; }
+            qint64 readData(char* data, qint64 maximum) override {
+                if (fail) return -1;
+                if (stall) return 0;
+                const auto count = std::min(maximum, remaining);
+                std::memset(data, 'z', size_t(count)); remaining -= count; return count;
+            }
+            qint64 writeData(const char*, qint64) override { return -1; }
+        } generated, oracle;
+        QCryptographicHash qt(QCryptographicHash::Sha256);
+        QVERIFY(qt.addData(&oracle));
+        QCOMPARE(sha256::Read(generated), qt.result());
+        Generated broken; broken.fail = true;
+        QVERIFY(sha256::Read(broken).isEmpty());
+        Generated stalled; stalled.stall = true;
+        QVERIFY(sha256::Read(stalled).isEmpty());
+        QBuffer closed;
+        QVERIFY(sha256::Read(closed).isEmpty());
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        QFile file(directory.filePath("artifact"));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QByteArray bytes(1048577, 'a');
+        const auto pinned = QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
+        QCOMPARE(file.write(bytes), qint64(bytes.size())); file.close();
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QCOMPARE(sha256::Read(file), pinned); file.close();
+        QVERIFY(file.open(QIODevice::ReadWrite)); QVERIFY(file.seek(1048576));
+        QCOMPARE(file.write("b", 1), qint64(1)); file.close();
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const auto altered = sha256::Read(file);
+        QVERIFY(!altered.isEmpty()); QVERIFY(altered != pinned);
+    }
+
     void formulaCatalogBoundsAndCacheIdentity() { uct_formula_test::CatalogContract(); }
     void formulaByteLevelTokenizerKeepsFractions() { uct_formula_test::TokenizerContract(); }
     void optionalNativeFormulaSetup() { uct_formula_test::NativeDiagnostic(); }

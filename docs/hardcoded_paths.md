@@ -1448,3 +1448,13 @@ unavailable with an explanatory status. It changes recognized output and is
 never a default. Bounds: at most the regions `DetectorRegions` produces (17),
 1,152 windows per region read back as compact descriptors, no image transfer.
 See `docs/uct_okuread_port.md`.
+
+
+## UCT preparation profile (round 5)
+
+Existing private `OKUFLOW_UCT_TRT_PROFILE=1` also emits bounded per-preparation
+`UCT_TRT_PREPARE` JSON lines (schema 1, role, phase, wallMs, elapsedMs).
+It introduces no new switch or path. `sha256::Read` and `Bytes` use 1 MiB
+chunks; CNG hash-object scratch is refused above 1 MiB. These are scratch
+bounds, not changed model/plan limits. No cross-process verification cache is
+introduced. See [round evidence](uct_okuread_port.md).

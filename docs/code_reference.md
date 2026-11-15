@@ -8265,3 +8265,23 @@ first, reads each region's windows back, and uploads the kept windows per
 region through the frozen-replay path. `TensorRtProfile::Reconcile` adds a
 `regionReconcile` object to the profile line. Rules are covered by
 `regionReconcileRules` (`tests/uct_region_reconcile_cases.hpp`).
+
+
+### UCT startup loader instrumentation and SHA-256 (round 5)
+
+`uct_preparation_profile.hpp` defines `PreparationProfile::Mark`: opt-in wall
+intervals and elapsed time, with role/phase/schema fields in `UCT_TRT_PREPARE`
+JSON lines. It uses `OKUFLOW_UCT_TRT_PROFILE=1`, performs no timer/JSON work
+when off, and cannot throw from diagnostic emission. Nested network and outer
+preparation intervals overlap; they must not be added together.
+
+`uct_sha256.hpp` defines per-call `sha256::Digest`, `Bytes` and `Read`.
+Windows uses system CNG SHA-256, linked by `okuflow_configure_ocr`; other
+platforms retain Qt SHA-256. Memory and streaming inputs use 1 MiB chunks;
+cancellation, read/stall and CNG errors return no digest. No verified-file
+cache exists. `LoadPaddleAssets` retains every existing check and its exact
+source-selection sequence. `Network::PreparePinned` verifies its owned source
+snapshot once and reuses that same digest for recipe identity. It retains the
+snapshot for building, and still hashes every loaded plan before deserializing.
+`startupSha256MatchesQtAndRefusesErrors` covers Qt differential digests,
+boundary/empty/257 MiB inputs, cancellation, read errors and a tampered file.

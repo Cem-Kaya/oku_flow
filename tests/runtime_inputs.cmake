@@ -42,6 +42,7 @@ if(OKUFLOW_ENABLE_CUDA)
 endif()
 
 set_property(TEST uct_paddle_processing APPEND PROPERTY REQUIRED_FILES
+    "${PROJECT_SOURCE_DIR}/src/common/uct_sha256.hpp"
     "${PROJECT_SOURCE_DIR}/src/common/uct_engine_cache.hpp"
     "${PROJECT_SOURCE_DIR}/scripts/uct/pins.json"
     "${PROJECT_SOURCE_DIR}/include/okuflow/common/uct_model_pins.hpp")

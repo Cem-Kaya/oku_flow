@@ -1,6 +1,7 @@
 #include "okuflow/common/uct_paddle.hpp"
 #include "okuflow/common/uct_model_pins.hpp"
 #include "uct_runtime_paths.hpp"
+#include "uct_sha256.hpp"
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -26,8 +27,8 @@ bool Verify(const QString &file, const char *hash)
     QFile input(file);
     if (!input.open(QIODevice::ReadOnly))
         return false;
-    QCryptographicHash digest(QCryptographicHash::Sha256);
-    return digest.addData(&input) && digest.result().toHex() == hash;
+    const auto digest = sha256::Read(input);
+    return !digest.isEmpty() && input.error() == QFileDevice::NoError && digest.toHex() == hash;
 }
 QPointF At(const PaddleQuad &q, double x, double y)
 {
