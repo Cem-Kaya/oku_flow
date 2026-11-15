@@ -2628,3 +2628,11 @@ ribbon fits, applied and refused groups, ties, binade landings). They execute
 on the test GPU only. The new box kernel is enabled by default only on sm_86
 and sm_89 under the CUDA 12.9 toolkit, where it is verified against the
 original; see [the port record](../docs/uct_okuread_port.md).
+
+`regionReconcileRules` (model-free, in `uct_paddle_processing`) checks the
+private cross-region reconciliation rules on constructed detections: clipped
+fragments contained by a larger detection, whole-frame detections reproduced by
+a tile, duplicate tile detections, every case where nothing may be dropped, and
+independence from detection order. The experiment itself runs only with
+`OKUFLOW_UCT_TEST_REGION_RECONCILE=1`; its speed and labelled-page results are
+in [the port record](../docs/uct_okuread_port.md).

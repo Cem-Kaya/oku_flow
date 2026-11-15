@@ -50,6 +50,7 @@ public:
         maximumBatch_ = 0;
         enqueueMs_ = mergeMs_ = 0;
         detectorWaitMs_ = groupWaitMs_ = 0;
+        reconcile_ = {}; reconciled_ = false;
         widthBins_ = {}; canvasBins_ = {}; invalidWidths_ = oversizedWidths_ = 0;
         requestedWidth_ = usedWidth_ = canvasWidth_ = 0;
         if (enabled_) {
@@ -89,6 +90,10 @@ public:
         addressSets_ += addressSets;
     }
     void Merge(double hostMs) { if (enabled_) mergeMs_ += hostMs; }
+    // Private region-reconciliation experiment: detections and why some were not recognized.
+    void Reconcile(int detections, int clipped, int whole, int tile, double hostMs) {
+        if (enabled_) { reconcile_ = {detections, clipped, whole, tile}; reconcileMs_ = hostMs; reconciled_ = true; }
+    }
     template<class Operation> void Wait(bool detectorCount, Operation operation) {
         if (!enabled_) { operation(); return; }
         QElapsedTimer timer;timer.start();
@@ -210,7 +215,11 @@ public:
             {"cudaDeviceTotalBytes", static_cast<qint64>(totalBytes_)},
             {"memoryDeltaIsNotPeakOrExclusiveOwned", true},
             {"eventPairs", static_cast<int>(used_)}, {"omittedEventPairs", omitted_}};
-        qInfo().noquote() << "UCT_TRT_PROFILE" << QJsonDocument(report).toJson(QJsonDocument::Compact);
+        auto complete = report;
+        if (reconciled_)
+            complete["regionReconcile"] = QJsonObject{{"detections", reconcile_[0]}, {"clippedDropped", reconcile_[1]},
+                {"wholeDropped", reconcile_[2]}, {"tileDropped", reconcile_[3]}, {"hostMs", reconcileMs_}};
+        qInfo().noquote() << "UCT_TRT_PROFILE" << QJsonDocument(complete).toJson(QJsonDocument::Compact);
     }
 private:
     static void Check(cudaError_t status) {
@@ -225,6 +234,9 @@ private:
     std::uint64_t requestedWidth_{}, usedWidth_{}, canvasWidth_{};
     std::unique_ptr<QCryptographicHash> cropHash_;
     double detectorWaitMs_{}, groupWaitMs_{};
+    std::array<int, 4> reconcile_{};
+    double reconcileMs_{};
+    bool reconciled_{};
     bool enabled_{};
     std::vector<EventPair> events_;
     std::size_t used_{};

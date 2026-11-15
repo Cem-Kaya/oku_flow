@@ -184,6 +184,7 @@ struct FixtureStream
 #include "uct_surface_test_cases.hpp"
 #include "uct_ink_outline_cuda_cases.hpp"
 #include "uct_detect_kernel_cases.hpp"
+#include "uct_region_reconcile_cases.hpp"
 
 class PaddleTests final : public QObject
 {
@@ -481,6 +482,7 @@ class PaddleTests final : public QObject
         QVERIFY(!detail::AllowsTensorRtCapacityFallback({}));
         QVERIFY(!detail::AllowsTensorRtCapacityFallback(std::make_exception_ptr(7)));
     }
+    void regionReconcileRules() { uct_region_reconcile_test::Rules(); }
     void recognitionGroupSlotsRequireCompletionAndConsumption()
     {
         detail::RecognitionGroups groups;

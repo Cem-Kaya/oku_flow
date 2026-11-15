@@ -1438,3 +1438,13 @@ of `roots`, `boxes`, `ribbons` and `tree` enables individual kernels on top of
 the originals. `tree` rounds box scores differently and is never a default. An
 empty or unknown value leaves the GPU backend unavailable with an explanatory
 status. It adds no setting, file or model. See `docs/uct_okuread_port.md`.
+
+## Cross-region reconciliation switch (2026-11-16)
+
+`OKUFLOW_UCT_TEST_REGION_RECONCILE=1` selects the private experiment that
+detects every region of a full read first and recognizes each line once.
+Unset or `0` keeps the ordinary path; any other value leaves the GPU backend
+unavailable with an explanatory status. It changes recognized output and is
+never a default. Bounds: at most the regions `DetectorRegions` produces (17),
+1,152 windows per region read back as compact descriptors, no image transfer.
+See `docs/uct_okuread_port.md`.
