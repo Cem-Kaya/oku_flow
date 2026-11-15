@@ -129,6 +129,7 @@ add_executable(uct_paddle_tests
     ${PROJECT_SOURCE_DIR}/src/ui/translation_catalog.cpp
     uct_character_diagnostic.hpp
     uct_resident_diagnostic.hpp
+    uct_corpus_timing.hpp
     uct_active_regional_diagnostic.hpp
     ${PROJECT_SOURCE_DIR}/src/common/uct_timing_trace.cpp
     ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp

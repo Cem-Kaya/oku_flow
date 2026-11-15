@@ -21,6 +21,7 @@
 #include "uct_character_diagnostic.hpp"
 #include "uct_ribbon_ink_cases.hpp"
 #include "uct_resident_diagnostic.hpp"
+#include "uct_corpus_timing.hpp"
 #include "uct_paused_video_diagnostic.hpp"
 #include "uct_active_regional_diagnostic.hpp"
 #include "uct_precision_artifact_cases.hpp"
@@ -1801,6 +1802,10 @@ class PaddleTests final : public QObject
     void optionalResidentBaseline()
     {
         uct_resident_test::ResidentBaselineDiagnostic();
+    }
+    void optionalCorpusTiming()
+    {
+        uct_corpus_test::CorpusTiming();
     }
     void optionalPublicBf16Preparation()
     {

@@ -2602,3 +2602,15 @@ current-frame input through the existing scheduler/workflow and snapshot painter
 It records predictions and worker costs separately from setup. Original source
 crops, not edited predictions, determine what the model sees. This is desktop-free
 GPU evidence, not native desktop or installer acceptance.
+
+## Opt-in corpus timing (15 November 2026)
+
+`optionalCorpusTiming` in `uct_paddle_tests` reads selected image files through
+the shipped GPU factory and the real scheduler worker, one first read and the
+requested warm reads per image, and writes worker times plus complete outputs.
+It is unregistered, never prepares an engine and skips unless
+`OKUFLOW_UCT_CORPUS_TIMING=1`. `scripts/uct/perf_measure.py` runs it in reversed
+cohorts for same-binary switch comparisons and `scripts/uct/perf_corpus.py`
+builds the local scene set. See [corpus timing](../docs/uct_corpus_timing.md)
+for selectors, the protocol, the baseline profile and its limits. These are
+file-fixture worker timings, not camera, presentation or release acceptance.

@@ -8229,3 +8229,11 @@ refusals and actual `sketchedRegions` separately from painted words. See
 - `cmake/MathRender.cmake`: reviewed MicroTeX/tinyxml2 and embedded math fonts.
 
 ConfigureStartupProfiling permits a native capture delay up to 600000 ms, bounded by the existing profiling deadline minus 100 ms. This accommodates model preparation and manual Math selection without changing the foreground, overlap, composed-pixel or isolated-settings checks.
+
+`tests/uct_corpus_timing.hpp::CorpusTiming` is the opt-in `optionalCorpusTiming`
+slot: production GPU factory, `RecognitionScheduler::SubmitDevice`, fresh owned
+captures, one first read and N warm reads per selected image, with worker time,
+optional `TensorRtProfile` lines and the complete output per scene in one JSON
+report. `scripts/uct/perf_measure.py` runs it per arm and cohort and compares
+arms; `scripts/uct/perf_corpus.py` generates the scene set outside the
+repository. See `docs/uct_corpus_timing.md`.

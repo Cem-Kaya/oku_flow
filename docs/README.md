@@ -130,6 +130,9 @@ quality prerequisites before regional reuse.
 [Character verification](uct_character_verification.md) records the finite
 CPU/resident change-sensitivity diagnostic and its blocked OCR-reuse gate.
 
+[UCT corpus timing](uct_corpus_timing.md) describes the opt-in file-fixture
+worker timing, its reversed-cohort protocol, scene set and baseline profile.
+
 [Resident UCT baseline](uct_resident_baseline.md) describes the owned-device
 model/batch comparison and exact measurement boundaries.
 
