@@ -51,6 +51,7 @@ public:
         enqueueMs_ = mergeMs_ = 0;
         detectorWaitMs_ = groupWaitMs_ = 0;
         reconcile_ = {}; reconciled_ = false;
+        graph_ = {}; graphUsed_ = false; graphReceipt_ = {};
         widthBins_ = {}; canvasBins_ = {}; invalidWidths_ = oversizedWidths_ = 0;
         requestedWidth_ = usedWidth_ = canvasWidth_ = 0;
         if (enabled_) {
@@ -89,6 +90,16 @@ public:
         shapeSets_ += shapeSets;
         addressSets_ += addressSets;
     }
+    // Private graph-replay experiment: how one network call ran (0 plain,
+    // 1 captured then launched, 2 replayed) and what it cost on the host.
+    void GraphCall(int launch, bool created, double contextMs, double captureMs, bool drained, bool evicted) {
+        if (!enabled_) return;
+        graphUsed_ = true;
+        ++graph_.launches[std::clamp(launch, 0, 2)];
+        graph_.contexts += created; graph_.drains += drained; graph_.evictions += evicted;
+        graph_.contextMs += contextMs; graph_.captureMs += captureMs;
+    }
+    void GraphReceipt(QJsonObject receipt) { if (enabled_) graphReceipt_ = std::move(receipt); }
     void Merge(double hostMs) { if (enabled_) mergeMs_ += hostMs; }
     // Private region-reconciliation experiment: detections and why some were not recognized.
     void Reconcile(int detections, int clipped, int whole, int tile, double hostMs) {
@@ -219,6 +230,14 @@ public:
         if (reconciled_)
             complete["regionReconcile"] = QJsonObject{{"detections", reconcile_[0]}, {"clippedDropped", reconcile_[1]},
                 {"wholeDropped", reconcile_[2]}, {"tileDropped", reconcile_[3]}, {"hostMs", reconcileMs_}};
+        if (graphUsed_) {
+            auto graph = graphReceipt_;
+            graph["read"] = QJsonObject{{"plain", graph_.launches[0]}, {"captures", graph_.launches[1]},
+                {"replays", graph_.launches[2]}, {"slotsOpened", graph_.contexts},
+                {"contextCreateMs", graph_.contextMs}, {"captureMs", graph_.captureMs},
+                {"drains", graph_.drains}, {"evictions", graph_.evictions}};
+            complete["graphReplay"] = graph;
+        }
         qInfo().noquote() << "UCT_TRT_PROFILE" << QJsonDocument(complete).toJson(QJsonDocument::Compact);
     }
 private:
@@ -235,6 +254,10 @@ private:
     std::unique_ptr<QCryptographicHash> cropHash_;
     double detectorWaitMs_{}, groupWaitMs_{};
     std::array<int, 4> reconcile_{};
+    struct GraphCounts { std::array<int, 3> launches{}; int contexts{}, drains{}, evictions{}; double contextMs{}, captureMs{}; };
+    GraphCounts graph_{};
+    bool graphUsed_{};
+    QJsonObject graphReceipt_;
     double reconcileMs_{};
     bool reconciled_{};
     bool enabled_{};
