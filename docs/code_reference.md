@@ -8265,3 +8265,30 @@ first, reads each region's windows back, and uploads the kept windows per
 region through the frozen-replay path. `TensorRtProfile::Reconcile` adds a
 `regionReconcile` object to the profile line. Rules are covered by
 `regionReconcileRules` (`tests/uct_region_reconcile_cases.hpp`).
+
+`graph_cache::Policy` (`src/common/uct_graph_cache.hpp`) is the bookkeeping of
+the private graph-replay experiment selected by `OKUFLOW_UCT_TEST_TRT_GRAPH=1`.
+It owns no CUDA or TensorRT resource. `Plan(shape, input, output, mayCapture)`
+returns a `Decision`: which slot runs the call, whether that slot is new
+(`create`), must wait for the stream first (`drain`), loses its graph
+(`dropGraph`), is reshaped or readdressed (`reshape`, `rebind`), and whether the
+call runs as a plain enqueue, is captured, or replays the slot's graph
+(`Launch`). `Bound`, `Ran` and `Refuse` report what actually happened. Slots
+are bounded (`kDefaultShapes` 8, at most `kMaximumShapes` 16) and recycled
+least recently used first; a refused shape is never captured again and capture
+stops after `kMaximumRefusedShapes` distinct refusals. `Network::EnableReplay`
+(in `src/common/uct_tensorrt.cpp`) switches a prepared network to this path
+once its preparation stream is complete: it releases the preparation context,
+allocates one activation arena (`getDeviceMemorySizeV2`), sizes the output
+tensor once for the profile's largest shape, and creates the first contexts
+(`ExecutionContextAllocationStrategy::kUSER_MANAGED`, `setDeviceMemoryV2`).
+`Network::RunReplay` carries out each decision; `Network::Capture` records one
+`enqueueV3` with `cudaStreamCaptureModeThreadLocal`, always ends the capture,
+and turns only the capture-specific CUDA statuses into a refusal.
+`Network::ReplayReceipt` and `TensorRtProfile::GraphCall`/`GraphReceipt` add a
+`graphReplay` object to the profile line. `Network::Run` takes a `mayCapture`
+argument that `RecognizeDevice` sets to false for recognition look-ahead and
+for detections queued behind an earlier detection. The policy is covered by
+`graphReplayCachePolicy` (`tests/uct_graph_cache_cases.hpp`); cancellation and
+retirement with real engines by the opt-in `optionalGraphReplayLifetime`
+(`tests/uct_graph_replay_lifetime.hpp`).

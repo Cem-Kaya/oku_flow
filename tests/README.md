@@ -2636,3 +2636,17 @@ a tile, duplicate tile detections, every case where nothing may be dropped, and
 independence from detection order. The experiment itself runs only with
 `OKUFLOW_UCT_TEST_REGION_RECONCILE=1`; its speed and labelled-page results are
 in [the port record](../docs/uct_okuread_port.md).
+
+`graphReplayCachePolicy` (model-free, in `uct_paddle_processing`) checks the
+bookkeeping of the private TensorRT graph replay
+(`OKUFLOW_UCT_TEST_TRT_GRAPH=1`): one context per cached shape, a plain enqueue
+before any capture, no capture where the caller forbids it, drains before a
+graph is dropped or a used context is reshaped, least-recently-used recycling
+within the bound, refused shapes that are never retried, and failed bindings
+that are never reused as hits. The opt-in `optionalGraphReplayLifetime`
+(`OKUFLOW_UCT_GRAPH_LIFETIME_TEST=1`, `OKUFLOW_UCT_TEST_IMAGE`, prepared
+medium plans, GPU lease) reads one image with the switch off, with one graph
+per engine and with the default cache, cancels reads from another thread at
+spread delays, requires every completed read to reproduce the switch-off output
+byte for byte and the State to retire cleanly. Results are in
+[the port record](../docs/uct_okuread_port.md).

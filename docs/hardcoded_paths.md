@@ -1448,3 +1448,18 @@ unavailable with an explanatory status. It changes recognized output and is
 never a default. Bounds: at most the regions `DetectorRegions` produces (17),
 1,152 windows per region read back as compact descriptors, no image transfer.
 See `docs/uct_okuread_port.md`.
+
+## TensorRT graph-replay switch (2026-11-16)
+
+`OKUFLOW_UCT_TEST_TRT_GRAPH=1` selects the private experiment that replays each
+TensorRT detector and recognizer enqueue as a CUDA graph, with one execution
+context per cached input shape. Unset or `0` keeps the plain enqueue; any other
+value leaves the GPU backend unavailable with an explanatory status.
+`OKUFLOW_UCT_TEST_TRT_GRAPH_SHAPES` (1 to 16, default 8, valid only together
+with `OKUFLOW_UCT_TEST_TRT_GRAPH=1`) bounds the shapes cached per engine for
+comparisons; 1 is one graph per engine. Recognized output is unchanged on every
+scene it was measured on, but the switch stays off by default. It adds no
+setting, file or model; device memory per engine is one activation arena (it
+replaces the preparation context's own) plus about 2 MiB per context and per
+graph. `OKUFLOW_UCT_GRAPH_LIFETIME_TEST=1` with `OKUFLOW_UCT_TEST_IMAGE` runs
+the opt-in `optionalGraphReplayLifetime` check. See `docs/uct_okuread_port.md`.
