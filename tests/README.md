@@ -2615,11 +2615,16 @@ builds the local scene set. See [corpus timing](../docs/uct_corpus_timing.md)
 for selectors, the protocol, the baseline profile and its limits. These are
 file-fixture worker timings, not camera, presentation or release acceptance.
 
-`gpuDetectKernelsMatchReferenceBytes` (in `uct_paddle_cuda`) holds the default
-detector post-processing kernels to the original kernels bit for bit on 216
-synthetic probability maps: long parent chains, more than 128 components,
+`uct_detect_kernels_cuda` is a serial `gpu` case with its own 60-second
+budget. `gpuDetectKernelsMatchReferenceBytes` holds the new detector
+post-processing kernels to the original kernels bit for bit on 60 distinct
+synthetic probability maps, with and without ribbon fitting: long parent
+chains, more than 128 components, dozens of roots in one block,
 threshold-sensitive rotated boxes, rounding ties, curved bands and non-finite or
-out-of-range values. It also fails when the maps stop reaching eligible boxes
-or valid ribbon fits. It runs on the test GPU only; other architectures are
-covered by inspection of generated code, as described in
-[the port record](../docs/uct_okuread_port.md).
+out-of-range values. `gpuBoxSumMatchesSequentialFloatAdds` compares the exact
+group sum with one-at-a-time float adds on 160,000 crafted groups. Both fail
+when their inputs stop reaching the code under test (eligible boxes, valid
+ribbon fits, applied and refused groups, ties, binade landings). They execute
+on the test GPU only. The new box kernel is enabled by default only on sm_86
+and sm_89 under the CUDA 12.9 toolkit, where it is verified against the
+original; see [the port record](../docs/uct_okuread_port.md).

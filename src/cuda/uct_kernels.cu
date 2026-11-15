@@ -118,7 +118,12 @@ template <bool compress> __global__ void moments(int *labels, Component *comps, 
     if (i >= w * h || labels[i] < 0)
         return;
     const int r = root<compress>(labels, i);
-    labels[i] = r;
+    // Other threads may still be shortening this link atomically; r is the
+    // smallest value it can ever hold, so an atomic minimum publishes it.
+    if (compress)
+        atomicMin(labels + i, r);
+    else
+        labels[i] = r;
     // Local moments avoid cancellation from large absolute image coordinates.
     const long long x = (i % w) - (r % w), y = (i / w) - (r / w);
     atomicAdd(&comps[r].n, 1);
@@ -245,17 +250,22 @@ __global__ void boxes(const float *map, const int *labels, Component *comps, int
     comps[i].score = q.score;
 }
 // The rotated-frame test of the original boxes kernel, with the rounding its
-// compiled form actually has under CUDA 12.9.86. The compiler hoists the row
-// products and unrolls the column loop. For sm_61 through sm_90 it unrolls by
-// four: the unrolled columns fuse the column product into the sum, while the
-// leading width % 4 columns of each row add two separately rounded products.
-// For sm_100 and later it fuses every column. A pixel that defined an extent
-// can sit exactly on the bound, so this difference decides membership and
-// therefore the score. It is written out here so the cooperative kernel
-// selects the same pixels as the original on each architecture.
+// compiled form has under the CUDA 12.9 toolkit for sm_61 through sm_90. The
+// compiler hoists the row products and unrolls the column loop by four: the
+// unrolled columns fuse the column product into the sum, while the leading
+// width % 4 columns of each row add two separately rounded products. A pixel
+// that defined an extent can sit exactly on the bound, so this difference
+// decides membership and therefore the score. It is written out here so the
+// cooperative kernel selects the same pixels as the original.
+//
+// This is tied to that toolkit. For sm_100 and later the same compiler fuses
+// every column, and for the other architectures only the generated
+// intermediate code was compared, which does not settle the final rounding.
+// DetectKernels::ForDevice therefore enables this kernel only where it ran
+// against the original bit for bit (sm_89) or has identical machine code
+// (sm_86); everywhere else the original kernel remains in use.
 // gpuDetectKernelsMatchReferenceBytes holds the two kernels to the same bits
-// on the GPU it runs on and fails if a compiler changes the original's
-// arithmetic; the sm_100+ rule was read from generated code, not executed.
+// on the GPU it runs on and fails if a compiler changes either one.
 __device__ __forceinline__ bool boxesInside(const Component &c, int x, int y, bool fused)
 {
     const float column = static_cast<float>(x), negated = static_cast<float>(-x), row = static_cast<float>(y);
@@ -274,8 +284,9 @@ __device__ __forceinline__ bool boxesInside(const Component &c, int x, int y, bo
 // odd non-tie steps) and the steps are summed as integers. The caller falls
 // back to the serial fold whenever this returns false: a value that is
 // negative, non-finite or above 4, a sum that is not yet a normal positive
-// number, or a sum that would leave its binade within this group (including
-// any single value of at least 64 U, which is refused before it is shifted).
+// number, or a sum that would leave its binade within this group. A single
+// value of 2^30 U or more is refused before it is shifted; smaller values that
+// leave the binade are caught by the final mantissa check.
 __device__ __forceinline__ bool boxesAddGroup(float &score, unsigned mask, float value, int lane)
 {
     const unsigned bits = __float_as_uint(score);
@@ -293,7 +304,7 @@ __device__ __forceinline__ bool boxesAddGroup(float &score, unsigned mask, float
         const unsigned mantissa = (valueBits & 0x7fffffu) | 0x800000u;
         const int shift = valueExponent - 150 - unit; // exponent of the value's last bit, in units of U
         if (shift > 6)
-            large = true; // at least 2^29 U: far outside this binade
+            large = true; // at least 2^30 U: far outside this binade
         else if (shift >= 0)
             step = static_cast<long long>(mantissa) << shift; // below 2^30
         else if (shift > -25)
@@ -322,6 +333,23 @@ __device__ __forceinline__ bool boxesAddGroup(float &score, unsigned mask, float
         return false; // leaves the binade: U changes, so replay this group serially
     score = __uint_as_float((bits & 0xff800000u) | (static_cast<unsigned>(mantissa) & 0x7fffffu));
     return true;
+}
+// Test support for BoxSumGroups: one warp per group, no fallback.
+__global__ void boxSumGroups(const float *scores, const unsigned *masks, const float *values,
+                             float *results, int *fast, int groups)
+{
+    const int group = blockIdx.x, lane = threadIdx.x;
+    if (blockDim.x != 32 || group >= groups)
+        return;
+    float score = scores[group];
+    const unsigned mask = masks[group];
+    const float value = (mask >> lane & 1u) ? values[static_cast<std::size_t>(group) * 32 + lane] : 0.f;
+    const bool exact = boxesAddGroup(score, mask, value, lane);
+    if (!lane)
+    {
+        results[group] = score;
+        fast[group] = exact;
+    }
 }
 // One warp scores one component. Lanes load and test 32 consecutive pixels of
 // the bounding scan in parallel. With tree == false the accepted values are
@@ -352,11 +380,7 @@ __device__ void boxesWarp(int i, const float *map, Component *comps, int w, int 
     const int x0 = max(0, static_cast<int>(floorf(minx))), x1 = min(w - 1, static_cast<int>(ceilf(maxx)));
     const int y0 = max(0, static_cast<int>(floorf(miny))), y1 = min(h - 1, static_cast<int>(ceilf(maxy)));
     const int width = x1 - x0 + 1, total = width > 0 && y1 >= y0 ? width * (y1 - y0 + 1) : 0;
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1000
-    const int unfused = 0;
-#else
     const int unfused = width & 3; // leading columns of every row, as compiled in the original
-#endif
     float score = 0;
     int samples = 0;
     if (tree)
@@ -897,6 +921,13 @@ void Detect(const float *map, int w, int h, int sw, int sh, int *labels, Compone
         if(kernels.parallelRibbonMerge) fitRibbons<4><<<128,256,0,s>>>(labels,comps,w,h,sw,sh,quads,count);
         else fitRibbons<1><<<128,256,0,s>>>(labels,comps,w,h,sw,sh,quads,count);
     }
+}
+void BoxSumGroups(const float *scores, const unsigned *masks, const float *values, int groups,
+                  float *results, int *fast, cudaStream_t s)
+{
+    if (!scores || !masks || !values || !results || !fast || groups < 1 || groups > (1 << 22))
+        throw std::invalid_argument("Unsupported box-sum group count.");
+    boxSumGroups<<<groups, 32, 0, s>>>(scores, masks, values, results, fast, groups);
 }
 void RecognitionWindows(const Quad* detected,int* count,Quad* windows,cudaStream_t stream)
 {

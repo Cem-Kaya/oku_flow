@@ -5,8 +5,11 @@
 - Speed up GPU text-region extraction with identical results: shorter
   component-root walks, per-warp box scoring with an exact parallel float sum
   and a wider ribbon merge. Measured on an RTX 4090, OCR worker time fell from
-  80.9 to 45.7 ms on a frame without text and by 6 to 21 percent on real
-  lecture frames; dense documents moved by about 3 percent. See
+  80.9 to 45.7 ms on a generated frame without text and by 5 to 17 percent on
+  six real lecture frames; dense documents moved by about 3 percent, which is
+  at the edge of what the measurement can show. The new box scoring is used
+  on RTX 30 and 40 series GPUs, where it is verified identical; other GPUs
+  keep the original box kernel and gain only the root and ribbon changes. See
   docs/uct_okuread_port.md.
 
 - Clarify the public Android privacy policy: OkuFlow Camera is an accessibility-focused
