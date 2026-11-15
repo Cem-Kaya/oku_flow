@@ -1109,6 +1109,19 @@ class TensorRtRecognizer final : public Recognizer
         allowWidthPreparation_ = prepareWidth == "1";
         invalidWidth_ = invalidWidth_ || (!prepareWidth.isEmpty() && prepareWidth != "0" && prepareWidth != "1") ||
                         (allowWidthPreparation_ && !variableWidth_);
+        // Private comparison switch. "reference" selects the original detector
+        // post-processing kernels; a comma list enables individual ones.
+        const auto kernels = qEnvironmentVariable("OKUFLOW_UCT_TEST_DETECT_KERNELS");
+        if (!kernels.isEmpty()) {
+            detectKernels_ = gpu::DetectKernels::Reference();
+            for (const auto& name : kernels.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+                if (name == "roots") detectKernels_.compressRoots = true;
+                else if (name == "boxes") detectKernels_.cooperativeBoxes = true;
+                else if (name == "ribbons") detectKernels_.parallelRibbonMerge = true;
+                else if (name == "tree") detectKernels_.treeBoxes = true;
+                else if (name != "reference") invalidDetectKernels_ = true;
+            }
+        }
     }
     ~TensorRtRecognizer() override
     {
@@ -1126,6 +1139,10 @@ class TensorRtRecognizer final : public Recognizer
         }
         if (invalidWidth_) {
             status_.detail = "OKUFLOW_UCT_TRT_WIDTH must be fixed1024 or bucketed; explicit PREPARE_WIDTH=1 requires bucketed.";
+            return status_;
+        }
+        if (invalidDetectKernels_) {
+            status_.detail = "OKUFLOW_UCT_TEST_DETECT_KERNELS accepts reference, roots, boxes, ribbons and tree.";
             return status_;
         }
         assets_ = LoadPaddleAssets(root_,detectorTier_,recognizerTier_);
@@ -1360,7 +1377,8 @@ class TensorRtRecognizer final : public Recognizer
                 gpu::Detect(state_->detector->Output(), w, h, region.width(), region.height(),
                             state_->labels.Reserve(w * h), state_->components.Reserve(w * h),
                             state_->detectedQuads.Reserve(128), state_->count.Reserve(1), state_->stream,
-                            curvedRibbon_ ? state_->ribbonOffsets.Reserve((w*h+255)/256) : nullptr);
+                            curvedRibbon_ ? state_->ribbonOffsets.Reserve((w*h+255)/256) : nullptr,
+                            detectKernels_);
                 gpu::RecognitionWindows(state_->detectedQuads.Get(),state_->count.Get(),
                                          state_->quads.Reserve(128*9),state_->stream);
                 if (state_->variableWidth)
@@ -1973,6 +1991,8 @@ class TensorRtRecognizer final : public Recognizer
     TensorRtRetirementObserver retirementObserver_;
     int recognizerBatch_{1};
     bool invalidBatch_{}, invalidWidth_{}, variableWidth_{}, allowWidthPreparation_{};
+    gpu::DetectKernels detectKernels_{};
+    bool invalidDetectKernels_{};
     std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic_;
     const runtime_precision::Request precisionRequest_;
     const public_bf16::Request publicRequest_;
