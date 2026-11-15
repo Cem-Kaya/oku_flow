@@ -130,6 +130,7 @@ add_executable(uct_paddle_tests
     uct_character_diagnostic.hpp
     uct_resident_diagnostic.hpp
     uct_corpus_timing.hpp
+    uct_graph_replay_lifetime.hpp
     uct_detect_kernel_cases.hpp
     uct_region_reconcile_cases.hpp
     uct_graph_cache_cases.hpp
