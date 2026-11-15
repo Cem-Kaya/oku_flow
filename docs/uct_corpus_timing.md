@@ -50,8 +50,9 @@ detail, so check that it names the precision you meant to measure.
 the scenes forward with the arms in the given order; cohort 1 walks them in
 reverse with the arms reversed. With the defaults (two cohorts, five warm
 passes) each arm has ten warm reads per scene. An arm is a set of
-`OKUFLOW_UCT_*` switches on the same executable, or a different executable
-through `--arm-exe`. `--lease` wraps each process in a shared GPU lease script
+`OKUFLOW_UCT_*` switches on the same executable (`name=KEY=VALUE;KEY=VALUE`,
+separated by semicolons because values may contain commas), or a different
+executable through `--arm-exe`. `--lease` wraps each process in a shared GPU lease script
 and retries exit code 75.
 
 For each scene and arm the summary gives the median of the pooled warm reads,
@@ -83,8 +84,9 @@ establish behaviour on real documents, boards or handwriting.
 RTX 4090, driver 621.14, Ryzen 9 5900X, MSVC 19.44 Release, CUDA 12.9.86,
 TensorRT 11.4.0.106, medium detector and medium recognizer, both BF16-linear,
 recognizer batch eight, fixed 1024 canvas, source `8bc2c4a` plus this tooling.
-Display on. One profiled process, three warm reads per scene; stage columns are
-CUDA event intervals for the last read and include launch gaps.
+`nvidia-smi` reported `display_active: Disabled` (display asleep or not driven).
+One profiled process, three warm reads per scene; stage columns are CUDA event
+intervals for the last read and include launch gaps.
 
 | Scene | Size | Worker ms | Detector passes | Detector | Regions | Recognizer | Recognizer calls / crops | Words | Host enqueue | Host merge | Resident |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: |

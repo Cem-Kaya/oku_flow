@@ -183,6 +183,7 @@ struct FixtureStream
 #include "uct_geometry_test_cases.hpp"
 #include "uct_surface_test_cases.hpp"
 #include "uct_ink_outline_cuda_cases.hpp"
+#include "uct_detect_kernel_cases.hpp"
 
 class PaddleTests final : public QObject
 {
@@ -3191,6 +3192,22 @@ class PaddleTests final : public QObject
             QCOMPARE(values.size(),expected.size());
             for(std::size_t i=0;i<values.size();++i)QVERIFY(std::abs(values[i]-expected[i])<3e-5);
         }
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
+    void gpuDetectKernelsMatchReferenceBytes()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        uct_detect_test::KernelsMatchReference();
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
+    void gpuBoxSumMatchesSequentialFloatAdds()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        uct_detect_test::BoxSumMatchesSequentialAdds();
 #else
         QSKIP("CUDA adapter not compiled.");
 #endif

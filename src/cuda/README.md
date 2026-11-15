@@ -40,3 +40,12 @@ Resident UCT validation-integral rows use one cooperating 256-thread block per
 row, retaining the serial table's exact unsigned values and unchanged column
 pass. No extra global buffer, transfer or launch is added. See
 [GPU integral scope and validation](../../docs/uct_gpu_integral.md).
+
+`uct_kernels.cu` holds the OCR kernels: detector normalization, text-region
+extraction (`Detect`), recognition windows, rectification and CTC decoding,
+followed by the validation, ink-outline and formula kernel includes. `Detect`
+takes a `DetectKernels` selection; the original region kernels stay compiled as
+the oracle for the bit-for-bit contract in `uct_detect_kernels_cuda`. The box
+kernel reproduces compiled rounding of the original and is therefore enabled by
+default only for the CUDA 12.9 toolkit on sm_86 and sm_89; see
+`docs/uct_okuread_port.md`.

@@ -8237,3 +8237,19 @@ optional `TensorRtProfile` lines and the complete output per scene in one JSON
 report. `scripts/uct/perf_measure.py` runs it per arm and cohort and compares
 arms; `scripts/uct/perf_corpus.py` generates the scene set outside the
 repository. See `docs/uct_corpus_timing.md`.
+
+`gpu::DetectKernels` (`include/okuflow/cuda/uct_kernels.hpp`) selects the
+detector post-processing kernels passed to `gpu::Detect`: `compressRoots`
+(path-compressing `root`), `cooperativeBoxes` (`boxesCooperative`, one warp per
+component with `boxesAddGroup`'s exact parallel float sum), `parallelRibbonMerge`
+(`fitRibbons<4>`) and the private, differently rounded `treeBoxes`.
+`cooperativeBoxes` is off in a default-constructed selection;
+`DetectKernels::ForDevice(computeMajor, computeMinor)` turns it on only under
+the CUDA 12.9 toolkit (`kCooperativeBoxesToolkit`) for compute capability 8.6
+and 8.9. `DetectKernels::Reference()` is the original
+kernel set, kept as the oracle for `gpuDetectKernelsMatchReferenceBytes`;
+`gpu::BoxSumGroups` is test support for `gpuBoxSumMatchesSequentialFloatAdds`
+(both in `tests/uct_detect_kernel_cases.hpp`, CTest `uct_detect_kernels_cuda`).
+`TensorRtRecognizer` applies `ForDevice` in `Initialize` unless the private
+`OKUFLOW_UCT_TEST_DETECT_KERNELS` comparison switch names the kernels. See
+`docs/uct_okuread_port.md`.

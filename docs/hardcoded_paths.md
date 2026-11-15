@@ -1428,3 +1428,13 @@ and rendering bounds still apply. Live and the explicit corroborated protocol
 retain their temporal constants. See [policy](uct_standalone_freeze.md).
 
 Math model-data URLs use versioned `uct-formula-tf32-v1` prerelease assets and pinned Hugging Face revisions in `scripts/uct/formula-packs.json`. Sources and separate Math engine caches stay in LocalAppData. The fixed embedded font root is `:/okuflow-math`; external resource environment discovery is bypassed.
+
+## Detector post-processing comparison switch (2026-11-16)
+
+`OKUFLOW_UCT_TEST_DETECT_KERNELS` is a private comparison switch read once by
+the TensorRT recognizer. Unset selects `DetectKernels::ForDevice` for the GPU.
+`reference` selects the original detector post-processing kernels; a comma list
+of `roots`, `boxes`, `ribbons` and `tree` enables individual kernels on top of
+the originals. `tree` rounds box scores differently and is never a default. An
+empty or unknown value leaves the GPU backend unavailable with an explanatory
+status. It adds no setting, file or model. See `docs/uct_okuread_port.md`.

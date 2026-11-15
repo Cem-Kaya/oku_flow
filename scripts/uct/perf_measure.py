@@ -39,7 +39,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def parse_arm(text):
     name, _, rest = text.partition("=")
     switches = {}
-    for item in filter(None, rest.split(",")):
+    for item in filter(None, rest.split(";")):
         key, _, value = item.partition("=")
         if not key.startswith("OKUFLOW_UCT_"):
             sys.exit(f"Arm switch {key!r} must be an OKUFLOW_UCT_ variable.")
@@ -229,7 +229,7 @@ def main():
     parser.add_argument("--arm-exe", action="append", default=[], help="name=path: a different build for one arm")
     parser.add_argument("--corpus", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
-    parser.add_argument("--arm", action="append", required=True, help="name=KEY=VALUE,... (first arm is the base)")
+    parser.add_argument("--arm", action="append", required=True, help="name=KEY=VALUE;KEY=VALUE (first arm is the base)")
     parser.add_argument("--scenes", help="comma-separated scene names (default: all)")
     parser.add_argument("--passes", type=int, default=5)
     parser.add_argument("--cohorts", type=int, default=2)

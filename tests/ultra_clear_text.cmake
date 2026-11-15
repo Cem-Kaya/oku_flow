@@ -130,6 +130,7 @@ add_executable(uct_paddle_tests
     uct_character_diagnostic.hpp
     uct_resident_diagnostic.hpp
     uct_corpus_timing.hpp
+    uct_detect_kernel_cases.hpp
     uct_active_regional_diagnostic.hpp
     ${PROJECT_SOURCE_DIR}/src/common/uct_timing_trace.cpp
     ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp
@@ -217,6 +218,13 @@ if(OKUFLOW_ENABLE_CUDA)
         REQUIRED_FILES "${PROJECT_SOURCE_DIR}/tests/uct_ribbon_ink_cases.hpp;${PROJECT_SOURCE_DIR}/include/okuflow/common/uct_ribbon.hpp")
     add_test(NAME uct_paddle_cuda COMMAND uct_paddle_tests formulaWholeImagePreparationKeepsSparseInkAndBounds gpuQuadReferencesNormalizeRotationAndMatchCpuWithoutImageEgress gpuOrientedInkMatchesCpu gpuLocalColorDescriptorsMatchCpu gpuRecognizerWidthMetadataDoesNotReorderOrReadPastCount gpuRecognizerWidthRectificationMatchesCpuAcrossCanvasTransitions gpuBatchedRectificationMatchesScalarCapacityAndTails gpuBatchedCtcMatchesScalarActualShapesAndFailures gpuResidentSchedulerKeepsPixelsAndDescriptorsOnDevice gpuResidentShiftedWordReferenceKeepsSamplesOnDevice gpuResidentFingerprintCoversEveryByteAndReleasesCaptureSlots gpuResidentValidationMatchesCpuUnderMotionOcclusionAndCrop gpuResidentBatchMappingMatchesDistinctCpuLines gpuPairedCaptureKeepsSmoothedOcrAndCurrentValidationApart gpuHoldRecordTravelsWithCaptureAndResolvesOnWorker gpuAnalysisFaultSeamLatchesPressureAndQuarantinesUnknownCompletion gpuAlgorithmsAndOwnedInputs gpuDenseRegionSelectionIsDeterministic gpuOrientedRegionsMatchCpuCornerOrder)
     set_tests_properties(uct_paddle_cuda PROPERTIES TIMEOUT 60 LABELS "gpu"
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+    # Detector post-processing against its original kernels and the exact box
+    # sum against sequential float adds. Its own case and budget: several
+    # hundred Detect launches would otherwise share uct_paddle_cuda's deadline.
+    add_test(NAME uct_detect_kernels_cuda COMMAND uct_paddle_tests gpuDetectKernelsMatchReferenceBytes gpuBoxSumMatchesSequentialFloatAdds)
+    set_tests_properties(uct_detect_kernels_cuda PROPERTIES TIMEOUT 60 LABELS "gpu"
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 endif()

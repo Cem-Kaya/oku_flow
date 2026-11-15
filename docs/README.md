@@ -130,6 +130,9 @@ quality prerequisites before regional reuse.
 [Character verification](uct_character_verification.md) records the finite
 CPU/resident change-sensitivity diagnostic and its blocked OCR-reuse gate.
 
+[OkuRead latency ideas](uct_okuread_port.md) records the measured rounds that
+brought applicable OkuRead optimizations back, with what stays switched off.
+
 [UCT corpus timing](uct_corpus_timing.md) describes the opt-in file-fixture
 worker timing, its reversed-cohort protocol, scene set and baseline profile.
 

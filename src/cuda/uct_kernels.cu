@@ -60,22 +60,38 @@ __global__ void init(const float *map, int *labels, Component *comps, int n)
     c.u1 = c.v1 = -1e20f;
     comps[i] = c;
 }
-__device__ int root(int *labels, int i)
+// Parent links only ever decrease towards the component's smallest index, so
+// the root a walk reaches does not depend on which links other threads have
+// already shortened. The compressing walk replaces each visited link with its
+// grandparent (atomic, monotone); the plain walk is the original oracle.
+template <bool compress> __device__ int root(int *labels, int i)
 {
-    int next = labels[i];
+    if (!compress)
+    {
+        int next = labels[i];
+        while (next != i)
+        {
+            i = next;
+            next = labels[i];
+        }
+        return i;
+    }
+    int next = atomicOr(labels + i, 0);
     while (next != i)
     {
+        const int ancestor = atomicOr(labels + next, 0);
+        atomicMin(labels + i, ancestor);
         i = next;
-        next = labels[i];
+        next = ancestor;
     }
     return i;
 }
-__device__ void join(int *labels, int a, int b)
+template <bool compress> __device__ void join(int *labels, int a, int b)
 {
     for (;;)
     {
-        a = root(labels, a);
-        b = root(labels, b);
+        a = root<compress>(labels, a);
+        b = root<compress>(labels, b);
         if (a == b)
             return;
         const int high = max(a, b), low = min(a, b);
@@ -83,26 +99,31 @@ __device__ void join(int *labels, int a, int b)
             return;
     }
 }
-__global__ void connect(int *labels, int w, int h)
+template <bool compress> __global__ void connect(int *labels, int w, int h)
 {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= w * h || labels[i] < 0)
         return;
     const int x = i % w, y = i / w;
     if (x && labels[i - 1] >= 0)
-        join(labels, i, i - 1);
+        join<compress>(labels, i, i - 1);
     if (y)
         for (int dx = -1; dx <= 1; ++dx)
             if (x + dx >= 0 && x + dx < w && labels[i - w + dx] >= 0)
-                join(labels, i, i - w + dx);
+                join<compress>(labels, i, i - w + dx);
 }
-__global__ void moments(int *labels, Component *comps, int w, int h)
+template <bool compress> __global__ void moments(int *labels, Component *comps, int w, int h)
 {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= w * h || labels[i] < 0)
         return;
-    const int r = root(labels, i);
-    labels[i] = r;
+    const int r = root<compress>(labels, i);
+    // Other threads may still be shortening this link atomically; r is the
+    // smallest value it can ever hold, so an atomic minimum publishes it.
+    if (compress)
+        atomicMin(labels + i, r);
+    else
+        labels[i] = r;
     // Local moments avoid cancellation from large absolute image coordinates.
     const long long x = (i % w) - (r % w), y = (i / w) - (r / w);
     atomicAdd(&comps[r].n, 1);
@@ -228,6 +249,241 @@ __global__ void boxes(const float *map, const int *labels, Component *comps, int
         return;
     comps[i].score = q.score;
 }
+// The rotated-frame test of the original boxes kernel, with the rounding its
+// compiled form has under the CUDA 12.9 toolkit for sm_61 through sm_90. The
+// compiler hoists the row products and unrolls the column loop by four: the
+// unrolled columns fuse the column product into the sum, while the leading
+// width % 4 columns of each row add two separately rounded products. A pixel
+// that defined an extent can sit exactly on the bound, so this difference
+// decides membership and therefore the score. It is written out here so the
+// cooperative kernel selects the same pixels as the original.
+//
+// This is tied to that toolkit. For sm_100 and later the same compiler fuses
+// every column, and for the other architectures only the generated
+// intermediate code was compared, which does not settle the final rounding.
+// DetectKernels::ForDevice therefore enables this kernel only where it ran
+// against the original bit for bit (sm_89) or has identical machine code
+// (sm_86); everywhere else the original kernel remains in use.
+// gpuDetectKernelsMatchReferenceBytes holds the two kernels to the same bits
+// on the GPU it runs on and fails if a compiler changes either one.
+__device__ __forceinline__ bool boxesInside(const Component &c, int x, int y, bool fused)
+{
+    const float column = static_cast<float>(x), negated = static_cast<float>(-x), row = static_cast<float>(y);
+    const float rowU = __fmul_rn(c.s, row), rowV = __fmul_rn(c.c, row);
+    const float u = fused ? fmaf(c.c, column, rowU) : __fadd_rn(rowU, __fmul_rn(c.c, column));
+    const float v = fused ? fmaf(c.s, negated, rowV) : __fadd_rn(rowV, __fmul_rn(c.s, negated));
+    return u >= c.u0 && u <= c.u1 && v >= c.v0 && v <= c.v1;
+}
+// Adds up to 32 staged values to `score` with exactly the result of adding
+// them one at a time in lane order with round-to-nearest-even float adds, but
+// without the serial chain. While the running sum stays inside one binade its
+// unit in the last place U is fixed, so each addition is the integer step
+// "mantissa += x / U rounded to nearest". Only an exact half depends on what
+// came before, and only through the mantissa's parity: a tie rounds to an even
+// mantissa. Lanes therefore derive their own step from two ballots (ties and
+// odd non-tie steps) and the steps are summed as integers. The caller falls
+// back to the serial fold whenever this returns false: a value that is
+// negative, non-finite or above 4, a sum that is not yet a normal positive
+// number, or a sum that would leave its binade within this group. A single
+// value of 2^30 U or more is refused before it is shifted; smaller values that
+// leave the binade are caught by the final mantissa check.
+__device__ __forceinline__ bool boxesAddGroup(float &score, unsigned mask, float value, int lane)
+{
+    const unsigned bits = __float_as_uint(score);
+    const int exponent = static_cast<int>(bits >> 23) - 127; // sign bit clear is checked below
+    const bool usable = !(mask >> lane & 1u) || (value >= 0.f && value <= 4.f);
+    if (__ballot_sync(0xffffffffu, usable) != 0xffffffffu || !(score >= 1e-30f) || exponent > 100)
+        return false;
+    const int unit = exponent - 23; // U == 2^unit
+    long long step = 0;
+    bool tie = false, large = false;
+    const unsigned valueBits = __float_as_uint(value);
+    const int valueExponent = static_cast<int>(valueBits >> 23 & 0xffu);
+    if ((mask >> lane & 1u) && valueExponent) // zero and subnormal values are far below U / 2
+    {
+        const unsigned mantissa = (valueBits & 0x7fffffu) | 0x800000u;
+        const int shift = valueExponent - 150 - unit; // exponent of the value's last bit, in units of U
+        if (shift > 6)
+            large = true; // at least 2^30 U: far outside this binade
+        else if (shift >= 0)
+            step = static_cast<long long>(mantissa) << shift; // below 2^30
+        else if (shift > -25)
+        {
+            const unsigned remainder = mantissa & ((1u << -shift) - 1u), half = 1u << (-shift - 1);
+            step = mantissa >> -shift;
+            tie = remainder == half;
+            step += remainder > half;
+        }
+    }
+    if (__ballot_sync(0xffffffffu, large))
+        return false;
+    const unsigned ties = __ballot_sync(0xffffffffu, tie);
+    const unsigned odds = __ballot_sync(0xffffffffu, !tie && (step & 1));
+    const unsigned below = (1u << lane) - 1u, tiesBelow = ties & below;
+    // Mantissa parity just before this lane: even after the nearest earlier
+    // tie, otherwise the incoming parity; then toggled by each odd step since.
+    const unsigned since = tiesBelow ? odds & below & ~((2u << (31 - __clz(tiesBelow))) - 1u) : odds & below;
+    const unsigned parity = ((tiesBelow ? 0u : bits & 1u) + __popc(since)) & 1u;
+    if (tie)
+        step += (parity + static_cast<unsigned>(step)) & 1u;
+    for (int distance = 16; distance; distance /= 2)
+        step += __shfl_xor_sync(0xffffffffu, step, distance);
+    const long long mantissa = static_cast<long long>((bits & 0x7fffffu) | 0x800000u) + step;
+    if (mantissa >= 0x1000000ll)
+        return false; // leaves the binade: U changes, so replay this group serially
+    score = __uint_as_float((bits & 0xff800000u) | (static_cast<unsigned>(mantissa) & 0x7fffffu));
+    return true;
+}
+// Test support for BoxSumGroups: one warp per group, no fallback.
+__global__ void boxSumGroups(const float *scores, const unsigned *masks, const float *values,
+                             float *results, int *fast, int groups)
+{
+    const int group = blockIdx.x, lane = threadIdx.x;
+    if (blockDim.x != 32 || group >= groups)
+        return;
+    float score = scores[group];
+    const unsigned mask = masks[group];
+    const float value = (mask >> lane & 1u) ? values[static_cast<std::size_t>(group) * 32 + lane] : 0.f;
+    const bool exact = boxesAddGroup(score, mask, value, lane);
+    if (!lane)
+    {
+        results[group] = score;
+        fast[group] = exact;
+    }
+}
+// One warp scores one component. Lanes load and test 32 consecutive pixels of
+// the bounding scan in parallel. With tree == false the accepted values are
+// added in the original raster order, group by group, with the float sum and
+// count the boxes kernel computes: boxesAddGroup where it applies, otherwise
+// lane zero folds the staged values serially. With tree == true each lane
+// keeps a double partial sum over its fixed stride and a fixed shuffle tree
+// combines them: defined and repeatable, but not the original rounding, so it
+// is a private comparison only.
+__device__ void boxesWarp(int i, const float *map, Component *comps, int w, int h, int sw, int sh,
+                          bool tree, float *staged)
+{
+    const auto c = comps[i];
+    const float bw = c.u1 - c.u0 + 1, bh = c.v1 - c.v0 + 1;
+    if (bw < 3 || bh < 3)
+        return;
+    float minx = 1e20f, miny = 1e20f, maxx = -1e20f, maxy = -1e20f;
+    for (int k = 0; k < 4; ++k)
+    {
+        const float u = (k == 0 || k == 3) ? c.u0 : c.u1, v = k < 2 ? c.v0 : c.v1;
+        const float x = u * c.c - v * c.s, y = u * c.s + v * c.c;
+        minx = fminf(minx, x);
+        maxx = fmaxf(maxx, x);
+        miny = fminf(miny, y);
+        maxy = fmaxf(maxy, y);
+    }
+    const int lane = threadIdx.x & 31;
+    const int x0 = max(0, static_cast<int>(floorf(minx))), x1 = min(w - 1, static_cast<int>(ceilf(maxx)));
+    const int y0 = max(0, static_cast<int>(floorf(miny))), y1 = min(h - 1, static_cast<int>(ceilf(maxy)));
+    const int width = x1 - x0 + 1, total = width > 0 && y1 >= y0 ? width * (y1 - y0 + 1) : 0;
+    const int unfused = width & 3; // leading columns of every row, as compiled in the original
+    float score = 0;
+    int samples = 0;
+    if (tree)
+    {
+        double partial = 0;
+        int number = 0;
+        for (int index = lane; index < total; index += 32)
+        {
+            const int column = index % width, x = x0 + column, y = y0 + index / width;
+            if (boxesInside(c, x, y, column >= unfused))
+            {
+                partial += map[y * w + x];
+                ++number;
+            }
+        }
+        for (int step = 16; step; step /= 2)
+        {
+            partial += __shfl_down_sync(0xffffffffu, partial, step);
+            number += __shfl_down_sync(0xffffffffu, number, step);
+        }
+        score = static_cast<float>(partial);
+        samples = number;
+    }
+    else
+    {
+        for (int base = 0; base < total; base += 32)
+        {
+            const int index = base + lane;
+            bool accepted = false;
+            float value = 0;
+            if (index < total)
+            {
+                const int column = index % width, x = x0 + column, y = y0 + index / width;
+                accepted = boxesInside(c, x, y, column >= unfused);
+                if (accepted)
+                    value = map[y * w + x];
+            }
+            // Ascending lane index is ascending raster index within this group
+            // of 32, and bases ascend, so lane zero folds in the original order.
+            // Each lane owns one slot; the warp barriers order the stores before
+            // lane zero's reads and those reads before the next group's stores.
+            const unsigned mask = __ballot_sync(0xffffffffu, accepted);
+            if (!mask)
+                continue;
+            samples += __popc(mask);
+            if (boxesAddGroup(score, mask, accepted ? value : 0.f, lane))
+                continue;
+            staged[lane] = value;
+            __syncwarp();
+            if (!lane)
+                for (unsigned rest = mask; rest; rest &= rest - 1)
+                    score += staged[__ffs(rest) - 1];
+            __syncwarp();
+            score = __shfl_sync(0xffffffffu, score, 0);
+        }
+    }
+    if (lane)
+        return;
+    if (!samples || !isfinite(score) || score / samples < .4f)
+        return;
+    const float d = bw * bh * 1.4f / (2 * (bw + bh));
+    Quad q{};
+    q.score = score / samples;
+    for (int k = 0; k < 4; ++k)
+    {
+        const float u = (k == 0 || k == 3) ? c.u0 - d : c.u1 + d, v = k < 2 ? c.v0 - d : c.v1 + d;
+        q.xy[k * 2] = fminf(fmaxf((u * c.c - v * c.s) * sw / w, 0), static_cast<float>(sw));
+        q.xy[k * 2 + 1] = fminf(fmaxf((u * c.s + v * c.c) * sh / h, 0), static_cast<float>(sh));
+    }
+    if (bh > bw * 1.5f)
+    {
+        Quad old = q;
+        for (int k = 0; k < 4; ++k)
+        {
+            q.xy[k * 2] = old.xy[((k + 3) % 4) * 2];
+            q.xy[k * 2 + 1] = old.xy[((k + 3) % 4) * 2 + 1];
+        }
+    }
+    const float qw = hypotf(q.xy[2] - q.xy[0], q.xy[3] - q.xy[1]),
+                qh = hypotf(q.xy[6] - q.xy[0], q.xy[7] - q.xy[1]);
+    if (qw < 2 || qh < 2)
+        return;
+    comps[i].score = q.score;
+}
+// Launch contract: 256 threads per block. The block lists its own roots (their
+// order is irrelevant: each is scored independently) and its eight warps take
+// them in turn.
+__global__ void boxesCooperative(const float *map, const int *labels, Component *comps, int w,
+                                 int h, int sw, int sh, bool tree)
+{
+    __shared__ int roots[256];
+    __shared__ float staged[256];
+    __shared__ int count;
+    if (!threadIdx.x)
+        count = 0;
+    __syncthreads();
+    const int i = blockIdx.x * 256 + threadIdx.x;
+    if (blockDim.x == 256 && i < w * h && labels[i] == i && comps[i].n >= 9)
+        roots[atomicAdd(&count, 1)] = i;
+    __syncthreads();
+    for (int j = threadIdx.x / 32; j < count; j += 8)
+        boxesWarp(roots[j], map, comps, w, h, sw, sh, tree, staged + (threadIdx.x & ~31));
+}
 // Select the first 128 valid connected components in raster/root order, just
 // like the CPU detector. Atomic arrival order must never choose a dense page's
 // visible text. The label scratch becomes block offsets after boxes finishes.
@@ -304,7 +560,10 @@ __global__ void emitBoxes(const Component *comps, int w, int h, int sw, int sh, 
 // Launch contract: 128 blocks x 256 threads, one block per component. Fixed
 // strided pixel ownership plus a fixed-order reduction keep counts/extrema
 // exact and every sum defined; no atomics or extra transfers are introduced.
-__global__ void fitRibbons(const int* labels, const Component* comps, int w, int h,
+// `slots` bins are merged per round by threads 0..slots-1; every bin still
+// receives the original fixed thread-order fold, so slots only changes how
+// many rounds the block needs. One slot is the original kernel.
+template <int slots> __global__ void fitRibbons(const int* labels, const Component* comps, int w, int h,
                           int sw, int sh, Quad* quads, const int* count)
 {
     const int index=blockIdx.x;
@@ -331,21 +590,26 @@ __global__ void fitRibbons(const int* labels, const Component* comps, int w, int
         const double u=x*double(c.c)+y*double(c.s),v=-x*double(c.s)+y*double(c.c);
         ribbon::Add(mine,(u-c.u0)/(c.u1-c.u0),v);
     }
-    __shared__ int counts[256];
-    __shared__ double lows[256],highs[256],sums[256];
+    __shared__ int counts[256*slots];
+    __shared__ double lows[256*slots],highs[256*slots],sums[256*slots];
     // Fundamental shared arrays need no device-side dynamic initialization.
     __shared__ int mergedCounts[ribbon::kBins];
     __shared__ double mergedLows[ribbon::kBins],mergedHighs[ribbon::kBins],mergedSums[ribbon::kBins];
-    for(int bin=0;bin<ribbon::kBins;++bin) {
-        counts[threadIdx.x]=mine[bin].count; lows[threadIdx.x]=mine[bin].low;
-        highs[threadIdx.x]=mine[bin].high; sums[threadIdx.x]=mine[bin].sumU;
+    for(int base=0;base<ribbon::kBins;base+=slots) {
+        for(int slot=0;slot<slots&&base+slot<ribbon::kBins;++slot) {
+            const int bin=base+slot,at=slot*256+threadIdx.x;
+            counts[at]=mine[bin].count; lows[at]=mine[bin].low;
+            highs[at]=mine[bin].high; sums[at]=mine[bin].sumU;
+        }
         __syncthreads();
-        if(!threadIdx.x) {
+        if(threadIdx.x<slots&&base+threadIdx.x<ribbon::kBins) {
+            const int slot=threadIdx.x,bin=base+slot;
             ribbon::Bin merged{};
             for(int thread=0;thread<blockDim.x;++thread) {
-                merged.count+=counts[thread]; merged.sumU+=sums[thread];
-                if(lows[thread]<merged.low) merged.low=lows[thread];
-                if(highs[thread]>merged.high) merged.high=highs[thread];
+                const int at=slot*256+thread;
+                merged.count+=counts[at]; merged.sumU+=sums[at];
+                if(lows[at]<merged.low) merged.low=lows[at];
+                if(highs[at]>merged.high) merged.high=highs[at];
             }
             mergedCounts[bin]=merged.count; mergedLows[bin]=merged.low;
             mergedHighs[bin]=merged.high; mergedSums[bin]=merged.sumU;
@@ -628,21 +892,42 @@ void Probe(const void *p, std::size_t pitch, int w, int h, void *out, int d, cud
         static_cast<const unsigned char *>(p), pitch, w, h, static_cast<unsigned char *>(out), d);
 }
 void Detect(const float *map, int w, int h, int sw, int sh, int *labels, Component *comps,
-            Quad *quads, int *count, cudaStream_t s, int* ribbonOffsets)
+            Quad *quads, int *count, cudaStream_t s, int* ribbonOffsets, DetectKernels kernels)
 {
     const int blocks = (w * h + 255) / 256;
     cudaMemsetAsync(count, 0, sizeof(int), s);
     init<<<blocks, 256, 0, s>>>(map, labels, comps, w * h);
-    connect<<<blocks, 256, 0, s>>>(labels, w, h);
-    moments<<<blocks, 256, 0, s>>>(labels, comps, w, h);
+    if (kernels.compressRoots)
+    {
+        connect<true><<<blocks, 256, 0, s>>>(labels, w, h);
+        moments<true><<<blocks, 256, 0, s>>>(labels, comps, w, h);
+    }
+    else
+    {
+        connect<false><<<blocks, 256, 0, s>>>(labels, w, h);
+        moments<false><<<blocks, 256, 0, s>>>(labels, comps, w, h);
+    }
     axes<<<blocks, 256, 0, s>>>(comps, w * h);
     extents<<<blocks, 256, 0, s>>>(labels, comps, w, h);
-    boxes<<<blocks, 256, 0, s>>>(map, labels, comps, w, h, sw, sh);
+    if (kernels.cooperativeBoxes || kernels.treeBoxes)
+        boxesCooperative<<<blocks, 256, 0, s>>>(map, labels, comps, w, h, sw, sh, kernels.treeBoxes);
+    else
+        boxes<<<blocks, 256, 0, s>>>(map, labels, comps, w, h, sw, sh);
     auto* offsets=ribbonOffsets?ribbonOffsets:labels;
     countBoxes<<<blocks, 256, 0, s>>>(comps, w * h, offsets);
     boxOffsets<<<1, 1, 0, s>>>(offsets, blocks, count);
     emitBoxes<<<blocks, 256, 0, s>>>(comps, w, h, sw, sh, offsets, quads);
-    if(ribbonOffsets) fitRibbons<<<128,256,0,s>>>(labels,comps,w,h,sw,sh,quads,count);
+    if(ribbonOffsets) {
+        if(kernels.parallelRibbonMerge) fitRibbons<4><<<128,256,0,s>>>(labels,comps,w,h,sw,sh,quads,count);
+        else fitRibbons<1><<<128,256,0,s>>>(labels,comps,w,h,sw,sh,quads,count);
+    }
+}
+void BoxSumGroups(const float *scores, const unsigned *masks, const float *values, int groups,
+                  float *results, int *fast, cudaStream_t s)
+{
+    if (!scores || !masks || !values || !results || !fast || groups < 1 || groups > (1 << 22))
+        throw std::invalid_argument("Unsupported box-sum group count.");
+    boxSumGroups<<<groups, 32, 0, s>>>(scores, masks, values, results, fast, groups);
 }
 void RecognitionWindows(const Quad* detected,int* count,Quad* windows,cudaStream_t stream)
 {
