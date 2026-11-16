@@ -22,6 +22,7 @@ chalkboard lecture frames. Worker time is not camera-to-paint latency.
 | Path-compressing component roots, four-bin ribbon merge | Round 1, on by default, identical output |
 | Cooperative box scoring | Round 1, rewritten: OkuRead's exact variant gave no gain here. Exact, selectable; superseded as the default by the tree sum in round 9 |
 | Fixed-tree box scoring | Round 9, on by default on every GPU: it rounds differently, which the owner accepted; no corpus page changed |
+| Conditional flat fallback for curved lines (issue #18) | Rounds 12 and 12b: the cause here is false curve refusals on long flat lines; a length-scaled, capped straight-line bound for region-edge refusals behind a private switch, off (placement criteria not met); the fallback itself was not needed |
 | Collect detections across tiles before recognition; a complete detection supersedes its covered edge fragment | Round 2, private switch, off: changes output |
 | Replay TensorRT enqueue as CUDA graphs, one execution context per cached shape | Round 3, made robust in round 10 and its follow-up (no startup or first-read cost, failures fall back, contexts made in idle gaps), private switch, off: identical output; back to back, reads that overlap a context creation pay for it |
 | Small recognizer first, Medium retries for doubtful crops | Round 4, built and measured, not merged: misreads `O0` as `00`, slower on sparse frames |
@@ -2045,3 +2046,397 @@ the engine runs in order on the State's one stream. Round 8, which runs
 recognition groups concurrently, must give each context that can run beside
 another its own arena (or keep both on one stream) before it is combined with
 replay.
+
+## Round 12: readable text withheld on flat pages (issue #18; private switch, off)
+
+Targets stated before the work: on the 20 tuning pages at least +300 exact
+label matches with curved processing on (no page worse by more than 3); on
+every confirmation set no fewer exact matches than today; on the bent book
+pages also no lower recall and the same or more ribbon-read words; no title
+placement that is complete today becoming incomplete; every protection box of a
+line that is still refused still present; no `v1` scene slower beyond the noise
+floor, and a stated cost for any added recognition.
+
+Result: met with `OKUFLOW_UCT_TEST_FLAT_RIBBON=straight-refused`, which stays
+off by default. Tuning pages +386 with no page worse; development pages +566
+and +172; fresh pages 0, +8, +13 and +17; this repository's scenes unchanged;
+nine new bent book pages +555; titles 43 of 62 in every arm; no protection box
+of a still-refused line lost on any page; speed unchanged. The flat fallback
+the issue proposes was not built: in OkuFlow it would re-read the crop a
+refused line is already read from (below). The speed target's wish that flat
+pages get faster is not met: neither mode removes measurable work.
+
+### Where the words were lost
+
+Curved processing on against off showed the defect at scale on flat labelled
+pages (`issue18-flat-*`, round 6 review). Counted on the tuning pages with
+temporary instrumentation (`r12-diag-tune`, one read, RTX 4090):
+
+| Detection fit outcome | Detections | Words decoded (detection crops) |
+| --- | ---: | ---: |
+| Straight (ordinary rectangle) | 859 | 2,877 |
+| Fitted ribbon | 230 | 851, 66 over the chord limit |
+| Refused: ribbon outside its source region | 60 | 276, all withheld |
+| Refused: residual 8, height 1 | 9 | 12, all withheld |
+| Fit not tried (short, gaps) | 76 | 82 |
+
+Every flagged line on these pages is a false curve: they are flat screen
+pages. The 584 withheld (invalid-geometry) words in the final output are 268
+straight words that inherited a refused line's protection in the merge, 315
+ribbon words (a refused line's own words, or fitted words that inherited) and 1
+fitted word over its chord limit. Attribution arms on the same build
+(`r12-tune-k`): leaving refused lines unmarked recovers +435 exact matches, no
+chord limit +45, both +483. So the loss is refusal protection, mostly reached
+through the region-edge check, not bad fits.
+
+Why straight lines are flagged: the straight-line test is a fixed sagitta,
+max(0.75 px, 8% of the mean envelope height) in detector pixels, whatever the
+line's length. A long line has a large sagitta for a tiny curvature. The falsely
+flagged flat lines have a median fitted bow of 0.15 of their height over a
+median of 91 heights; the real curves of `book-curved-1080`, which the detector
+cuts into short pieces, have the same bow (median 0.13) over 20 heights, a
+curvature about 13 times larger. A significance test of the quadratic term did
+not separate them (median z about 5.6 for both); length does.
+
+### What changed
+
+`ribbon::StraightBound` scales the established bound by
+max(1, length / (K x mean height)) with K = 20. Lines up to K heights are judged
+exactly as today. For a longer parabolic line under the scaled bound, every
+piece of K heights departs from its own chord by less than the established
+bound (a sub-span's sagitta falls with its squared length), and the end angle
+between curve and chord (4 x sagitta / length) stays within what the
+established bound accepts on a line K heights long. Words and the recognition
+windows of a long line are therefore at most as curved as lines today's rule
+already sends to the rectangle path.
+
+`ribbon::StraightRule` applies it two ways, each its own switch value:
+
+- `straight-refused`: the scaled bound replaces only a refusal. A valid ribbon
+  fit stays a ribbon, and a line that is still refused keeps exactly today's
+  geometry and protection box. A moved line was already read from its
+  rectangle crop (refused ribbons always were), so recognition work does not
+  change; it loses the ribbon flag and protection box.
+- `straight`: the scaled bound applies before any ribbon check, so long flat
+  lines with a valid fit become rectangles too.
+
+`ribbon::Fit` now records its outcome (straight, fitted, the first failed
+check, or moved by a rule) and the fitted bow in former padding bytes; the
+layout keeps its 144 bytes. With `OKUFLOW_UCT_TRT_PROFILE=1` the profile line
+gains `ribbonFit`: crops and decoded words per outcome for detections and
+their sub-windows, a bow histogram per outcome class, and (bounded) the
+protection box of each refused detection and the box of each moved one.
+`PaddleDetect` mirrors the rule for the CPU path.
+
+K was chosen on the tuning pages and fresh set 1 only (`r12-tune-k`,
+`r12-fresh1-k`, `r12-sr-tune`, `r12-sr-fresh1`):
+
+| K | `straight-refused` tuning | `straight` tuning (worst page) | Fresh set 1 (both) |
+| ---: | ---: | --- | ---: |
+| 10 | +429 | +369 (-15) | +13 |
+| 15 | +407 | +347 (-15) | +13 |
+| 20 | +386 | +328 (-15) | +13 |
+| 25 | +363 | +305 (-15) | +13 |
+| 30 | +350 | +292 (-15) | +13 |
+
+`straight-refused` makes no tuning page worse at any K. Smaller K reads more,
+but moves lines whose curvature is larger: at K = 10 the end angle may reach
+twice what today's rule accepts on a 20-height line. K = 20 keeps the
+statements above at the scale of a recognition window and of any word, and
+costs 43 tuning words against K = 10. `straight` loses up to 15 words on three
+dense portrait pages with mixed type sizes in one line: there the valid
+ribbon reads better because its crop height follows the size change.
+
+The diagnosis also ran on `v1` (which holds the bent page) before the
+confirmation, so `v1` is not untouched in this round.
+
+### Not built: the flat fallback and a narrower inheritance
+
+The issue's fallback keeps the rectangular candidate of a curve-related
+detection and re-reads it when the curved read lacks confident coverage. In
+OkuFlow a refused ribbon is already recognized from its original rectangle;
+only its words are withheld. A re-read would decode the same crop, and its
+words would meet the same protection in the merge. For fitted lines the most a
+rectangle re-read could add, page by page (the better of `straight` and
+`straight-refused`), is 7 words on the tuning pages. After `straight-refused`,
+122 words remain withheld there: 27 refused detections (24 at a region edge, 2
+residual, 1 height) and 43 straight words that inherited their protection.
+Neither the inheritance share nor the fallback's ceiling justified changing
+the owner's protection design, so neither was built. Making such words
+readable but not drawable would be a reading-path change (every non-candidate
+word is omitted from reading), not a ribbon change.
+
+### Confirmation (final binary)
+
+All rows: build `3379ffa` (`uct_paddle_tests.exe` SHA-256
+`f8f67268de7cfd71d0df702172a8dafb207a761c18ab600ab6bd957501a7eabb`), RTX 4090,
+driver 621.14, Ryzen 9 5900X, MSVC 19.44 Release, Qt 6.12.0, CUDA 12.9.86,
+TensorRT 11.4.0.106, medium/medium BF16, one first read per page, profiled
+(`r12-final2-q-*`). Fresh sets 5 and 6 and bent set 1
+(`perf_corpus.py --bent 1`, new in this round) were generated after the final
+source was committed. Exact = case-sensitive label matches; invalid = withheld
+words; boxes = distinct protection boxes in the output.
+
+| Set | Labels | Exact today | `straight-refused` | `straight` | Worse pages (refused / straight) | Invalid words today / refused | Protection boxes today / refused |
+| --- | ---: | ---: | ---: | ---: | --- | --- | --- |
+| Tuning, 20 | 8,154 | 6,163 | 6,549 (+386) | 6,491 (+328) | 0 / 3 (worst -15) | 584 / 122 | 399 / 95 |
+| Fresh 1, 12 | 7,381 | 7,328 | 7,341 (+13) | 7,341 (+13) | 0 / 0 | 13 / 0 | 10 / 0 |
+| Development A, 40 | 12,180 | 9,225 | 9,791 (+566) | 9,809 (+584) | 0 / 2 (worst -11) | 946 / 267 | 580 / 223 |
+| Development B, 48 | 5,323 | 3,076 | 3,248 (+172) | 3,222 (+146) | 0 / 5 (worst -4) | 805 / 541 | 586 / 439 |
+| `v1`, 12 labelled | 4,394 | 4,106 | 4,106 (0) | 4,106 (0) | 0 / 0 | 36 / 36 | 13 / 13 |
+| Fresh 2, 12 | 6,610 | 6,577 | 6,577 (0) | 6,577 (0) | 0 / 0 | 0 / 0 | 0 / 0 |
+| Fresh 5, 12 | 6,967 | 6,912 | 6,920 (+8) | 6,923 (+11) | 0 / 0 | 10 / 2 | 9 / 2 |
+| Fresh 6, 12 | 6,016 | 5,954 | 5,971 (+17) | 5,971 (+17) | 0 / 0 | 20 / 0 | 15 / 0 |
+| Bent book pages, 9 | 5,976 | 3,648 | 4,203 (+555) | 4,189 (+541) | 0 / 2 (worst -7) | 1,863 / 1,293 | 783 / 445 |
+
+- `book-curved-1080`: 163 exact matches, recall 0.396, in all three arms.
+  Ribbon-read candidate words: `v1` 114 today and with `straight-refused`, 74
+  with `straight`; bent set 1,173 today, 1,215 with `straight-refused`, 439
+  with `straight`. Bent-set recall 0.610 today, 0.703 with `straight-refused`.
+  The bent set gains most on its milder pages (one goes from 150 to 379 of 394
+  words), where today's rule refuses long, slightly bent lines at region edges.
+- Titles (62 private placements, counts only): complete in 43 in every arm;
+  none changes.
+- Protection, per page (`r12_protection.py`): every refused detection's box of
+  today's read is, with the switch, either a refused detection's box again or
+  the box of a line the rule moved; none is missing on any set. Moved/kept
+  refused detections: tuning 42/27, development A 63/51, development B 36/139,
+  `v1` 0/14, fresh 1 4/4, fresh 2 1/0, fresh 5 3/0, fresh 6 4/0, bent 73/233,
+  titles 0/9.
+- Work: `straight-refused` changes no crop. On the tuning pages the read keeps
+  880 ribbon crops and 3,811 recognizer samples; refused crops fall from 168 to
+  27. `straight` cuts ribbon crops to 32 and samples to 3,736.
+
+Speed (`r12-final2-speed-v1`: two reversed cohorts of five warm reads;
+`r12-final2-speed-tune`: two cohorts of two), same build and machine:
+
+| Arm against today | `v1` warm | `v1` first read | Tuning warm | Tuning first read |
+| --- | ---: | ---: | ---: | ---: |
+| `straight-refused` | 0.999x | 0.993x | 1.000x | 1.002x |
+| `straight` | 0.955x | 0.959x | 1.008x | 1.001x |
+
+`straight-refused` gives byte-identical output on 18 of 18 `v1` scenes, so its
+`v1` differences are noise: the largest dense-scene change is doc-camera-1080
+at 1.8 percent (inside the 2 percent floor); sparse lecture scenes move by up
+to 6 percent (inside 12). `straight` is slower on several sparse scenes in one
+cohort only; that run was not repeated. Neither mode makes flat pages
+measurably faster: `straight-refused` removes no ribbon work, and the ribbon
+crops that `straight` removes cost no more to rectify than rectangles.
+
+The first confirmation attempt measured the previous diagnostic build: the
+build of `3379ffa` had stopped on a misnamed target. Its quality results
+(`r12-final-q-*`) are identical to the rerun; its speed runs
+(`r12-final-speed-*`) were heavily contended and are not used.
+
+Tests: `curvedRibbonStraightSpanBound` (model-free: the bound and its two
+geometric statements, the outcome of each refusal, and over a sweep of
+lengths, bows, slopes and source sizes that a rule only ever moves a component
+to the rectangle path, never changes a fitted or refused geometry or its
+protection, and under `straight-refused` never changes a valid fit);
+`gpuRibbonStraightRuleMatchesCpu` (GPU and CPU agree on the outcome for each
+rule). Existing ribbon, reconcile and detector-kernel slots and the exact merge
+replay (`uct_merge_replay_tests`, frozen baseline unchanged) pass. The merge
+itself is unchanged; with the switch on it decides differently only because
+moved lines' words arrive as ordinary candidates without a protection box.
+SCOPED: no full matrix, GUI or native-app run.
+
+### Not established
+
+No pixel-level check that words drawn on a moved line sit on their ink: the
+argument is geometric (the bound above, plus the per-word ink fit every
+rectangle word already gets), and the moved lines on the bent set are real,
+mildly curved lines. No owner camera or document capture is in any set. The
+issue's OkuRead title failure does not reproduce in OkuFlow (0 of 62
+placements change with curved processing on or off).
+
+### Default
+
+Off. Recommendation: make `straight-refused` the default. It meets every
+quality and protection target on every set, makes no page worse anywhere,
+keeps every valid ribbon and every protection box of a line that is still
+refused, and costs no time. `straight` should stay off: it loses words on
+mixed-size lines and ribbon-read words on bent pages.
+
+### Round 12b: the rule narrowed to what its argument covers, and where moved words are drawn
+
+The round 12 council (GPT-6.1 Sol 6/10, Claude Opus 5.5 7/10, Gemini 4
+Hydrogen 7/10; Sol for keeping it off, the other two for turning it on after a
+placement check) accepted the reading gains and the
+argument against the flat re-read, and found that the rule went further than
+its argument: `straight-refused` turned every refusal into a rectangle when the
+fitted bow was under the scaled bound, including steep and residual refusals,
+where the parabola says nothing about the line's real shape; the scaled bound
+had no ceiling and its 0.75 px floor grew with length, loosening it for small
+type; and nothing measured where the newly shown words are drawn. The owner's
+condition is that replacement text is never drawn over ink that could not be
+rectified. Changes (switch still off):
+
+- **Only region-edge refusals move.** `straight-refused` now moves only a line
+  refused because its padded ribbon leaves its source region (`kOutside`), the
+  one refusal after every shape check. Steep and residual refusals stay
+  refused; so do height refusals (the envelope tapers by more than half its
+  height, so one rectangle height cannot fit its words, the failure measured
+  below) and degenerate ones (the height regression failed; unreachable with
+  at least 20 distinct bins, and the rule moves only lines whose fit completed
+  every check). The review's photographed line (flat, dropping half a text
+  height near the gutter: least-squares bow under the bound, residual over its
+  limit) is a test case and stays refused.
+- **A cap and a floor that does not scale.** No line whose fitted sagitta
+  exceeds 0.32 mean heights is treated as straight, whatever its length
+  (`ribbon::kStraightMaximumBow`, an edge of the existing bow histogram). Only
+  the 8% part of the bound scales with length; the 0.75 px floor is a fixed
+  noise allowance. At a detector height of 5 px and 100 heights the bound was
+  0.75 h, now 0.4 h; above 80 heights the cap binds.
+- **Words drawn only on their ink.** A word of a moved line that the worker's
+  ink fitting cannot place (`RefineWordInkBounds` / `FitOrientedWordInk`
+  keep the detector span) is withheld as invalid geometry over that span, as
+  when its line was refused (`FinalizeRecognizedGeometry`). Words of other
+  lines keep today's disposition, fitted or not.
+- **Both readers.** `PaddleFlatRibbonRule` parses the switch for the TensorRT
+  and the CPU reader; the CPU reader ignored it before.
+
+Each step was committed with a test: `curvedRibbonStraightSpanBound` (floor,
+cap, the residual and height cases kept refused, only `kOutside` moves),
+`curvedRibbonFlatSwitchBothReaders` (one parser; both readers refuse an
+invalid value with the same message; `PaddleDetect` moves a region-edge line
+and its words carry the bow), `curvedRibbonMovedWordsHeldToInk` (only an
+unfitted word of a moved line changes disposition) and
+`gpuRibbonStraightRuleMatchesCpu`, which now also covers the region-edge case
+and both sides of the cap, with the default kernels (`parallelRibbonMerge`) and
+the reference ones. Over its 40 comparisons GPU and CPU agree exactly on
+outcome and status and bit for bit on the bow; 24 geometries are
+bit-identical and the others differ by at most 4.5e-5 px, which is the
+intended agreement (the GPU sums bin positions in float per thread and merges,
+the CPU in double).
+
+The cap was chosen on the tuning pages and fresh set 1 only: no moved line
+there bows more than 0.32 h, and fitted moved words show no placement trend
+with bow up to it (edges within 0.1 h: 88%, 95% and 85% for bows up to 0.16,
+0.24 and 0.32 h). Narrowing to region-edge refusals costs 32 tuning words
+(+386 to +354 before the placement fix).
+
+#### Where moved words are drawn
+
+Measured after the worker's ink fitting, from the read's own output (the
+corpus timing evidence now records `inkFitted`, the final quad and
+`movedLineBow` per word) and the page pixels (`r12b_placement.py` in the
+program's tools). Ink is the pixels on the word's own side of the midpoint
+between its measured foreground and background; h is the height of the
+word's ink. "Same pages" weights the ordinary straight-line words (not ribbon,
+not moved) of each page by that page's moved words, because moved words
+cluster on a few pages: on the tuning pages 47 of 246 are on one dark, noisy
+page where ordinary words fit at 28 percent.
+
+Before the fix, 34 of 246 moved tuning words (33 on that page) failed ink
+fitting and were painted with the unrefined detector span, up to three times
+their ink height. Ordinary words on the same pages fail at the same rate and
+are painted the same way. Under the narrowed rule the case the review found on
+tuning page 18's top line no longer occurs: 48 of its 49 moved words fit. Final
+binary, painted words, moved / ordinary on the same pages:
+
+| Set | Moved (fit-eligible) | Fit rate | Withheld by the fix | Edges within 0.1 h | Box over another row by more than 0.1 h | Another line's ink in the box |
+| --- | ---: | --- | ---: | --- | --- | --- |
+| Tuning | 246 | 86.2% / 83.8% | 34 | 90.1% / 82.0% | 1.4% / 2.3% | 0.5% / 0.2% |
+| Development A | 356 | 82.9% / 83.2% | 61 | 92.2% / 81.7% | 1.4% / 1.0% | 0% / 0.2% |
+| Development B | 111 | 89.2% / 95.7% | 12 | 92.9% / 90.0% | 6.1% / 2.8% | 0% / 1.0% |
+| Bent | 497 | 99.6% / 99.2% | 2 | 96.6% / 97.5% | 21.2% / 13.7% | 0.2% / 0.7% |
+| Gutter | 313 | 99.0% / 99.6% | 3 | 97.1% / 98.2% | 7.4% / 2.6% | 1.0% / 0.1% |
+
+Fresh sets 1, 5 and 6 move 8, 6 and 9 words: all fitted, all within 0.1 h,
+none over another row. The median box height equals the ink height in both
+groups. The row overlaps inspected are on dense pages with tight leading,
+where fitted boxes of ascenders and descenders touch the adjacent row; ordinary
+words do the same, and on the tuning pages one overlap is a title word's own
+box reaching down onto a moved line.
+
+Against the review's pass criteria: the fit rate is within two points of
+ordinary words on the tuning, development A, bent and gutter pages, but 6.5
+points below on development B (12 words over 14 pages). Final boxes are within
+0.1 h of their ink for 90 to 97 percent of drawn moved words: as often as
+ordinary words on the flat sets, slightly less often on the bent and gutter
+pages, and not for every word. Boxes of moved words do intersect neighbouring
+rows' boxes, and more often than ordinary words on the development B, bent and
+gutter pages. **The criteria are not met.**
+
+#### Protection in the final output
+
+`r12b_protection.py` checks, per page of every set, that every detection that
+is still refused has its protection box inside the union of the
+`protectedBounds` of the read's invalid-geometry words. Today's read already
+fails this on some pages (tuning 4 detections plus 3 that decoded no word,
+fresh 1 6, development A 15, development B 26, bent 8, gutter 3, `v1` 1,
+titles 7): a cut-edge fragment at an internal region edge loses its words in
+the merge and the overlapping region's complete read is kept. The decisive
+figure is a detection covered today and not with the switch: 0 on tuning,
+fresh 1, 2, 5 and 6, development B, `v1`, gutter and titles; 1 on development A
+(`held2-12`) and 2 on the bent set (`bent-1440-b1`, `bent-2160-b1`). In all
+three the still-refused detection is a shorter fragment (99 to 100 percent of
+its area inside) of a line that an overlapping detection reads in full, and in
+neither arm does any word carry the fragment's own box. Today the coverage came
+from the full line's refusal. The rule moves that line, because every shape
+check passed over its full length, and its words are drawn fitted to their
+ink. Round 12's detector-level check is still clean: every refused box of
+today's read is refused again or moved, and none is missing.
+
+#### Confirmation (final binary)
+
+Build `fcc12a7` (code as of `5187f54`; `uct_paddle_tests.exe` SHA-256
+`28827ae7f1ecbbe89ee6c778a3d88e290d5bd8053b61c2e0fd2afd07af029188`), RTX 4090,
+driver 621.14, Ryzen 9 5900X, MSVC 19.44 Release, Qt 6.12.0, CUDA 12.9.86,
+TensorRT 11.4.0.106, medium/medium BF16, one first read per page, profiled
+(`r12b-final-q-*`). The gutter set (`perf_corpus.py --gutter 1`, new) was
+generated after this build. `straight` was not re-measured.
+
+| Set | Labels | Exact today | `straight-refused` | Worse / better pages | Invalid words today / switch | Protection boxes | Moved / still refused |
+| --- | ---: | ---: | ---: | --- | --- | --- | --- |
+| Tuning, 20 | 8,154 | 6,163 | 6,487 (+324) | 0 / 10 | 584 / 198 | 399 / 148 | 36 / 33 |
+| Fresh 1, 12 | 7,381 | 7,328 | 7,341 (+13) | 0 / 2 | 13 / 0 | 10 / 0 | 4 / 4 |
+| Development A, 40 | 12,180 | 9,225 | 9,679 (+454) | 0 / 18 | 946 / 391 | 580 / 307 | 53 / 61 |
+| Development B, 48 | 5,323 | 3,076 | 3,193 (+117) | 0 / 18 | 805 / 617 | 586 / 487 | 29 / 146 |
+| `v1`, 12 labelled | 4,394 | 4,106 | 4,106 (0) | 0 / 0 | 36 / 36 | 13 / 13 | 0 / 14 |
+| Fresh 2, 12 | 6,610 | 6,577 | 6,577 (0) | 0 / 0 | 0 / 0 | 0 / 0 | 1 / 0 |
+| Fresh 5, 12 | 6,967 | 6,912 | 6,920 (+8) | 0 / 2 | 10 / 2 | 9 / 2 | 3 / 0 |
+| Fresh 6, 12 | 6,016 | 5,954 | 5,971 (+17) | 0 / 2 | 20 / 0 | 15 / 0 | 4 / 0 |
+| Bent, 9 | 5,976 | 3,648 | 4,193 (+545) | 0 / 5 | 1,863 / 1,304 | 783 / 448 | 72 / 234 |
+| Gutter, 9 (new) | 5,440 | 4,464 | 4,949 (+485) | 0 / 7 | 871 / 373 | 280 / 119 | 52 / 53 |
+
+- Titles (62 private placements, counts only): complete in 43 in both arms;
+  none of their refused detections moves.
+- Recall: bent 0.610 to 0.702, gutter 0.821 to 0.910; `book-curved-1080`
+  unchanged.
+- Newly shown words that match no label ("other words"): tuning 14.1% against
+  14.7% for the rest of the shown words, development A 15.9 against 14.6,
+  development B 29.6 against 31.3, bent 1.1 against 2.6, gutter 1.0 against
+  1.5, fresh sets 0.
+- Speed (`r12b-final-speed-v1`, two reversed cohorts of five;
+  `r12b-final-speed-tune`, two of two): `v1` warm 1.000x, first read 1.007x,
+  output byte-identical on 18 of 18 scenes and no line moved on any `v1`
+  scene, so every difference is noise; the largest is `book-curved-1080` at
+  3.3 percent warm (1.9 first read), above the 2 percent dense floor in this
+  run. Tuning pages warm 0.985x, first read 0.996x; the cohorts
+  of sparse pages disagree by up to 38 percent there (contention), so that
+  run shows no change beyond the noise and no more.
+
+Interaction with region reconciliation: a moved line is no longer `curved`
+(`detection.curved` means a valid or refused ribbon), so with
+`OKUFLOW_UCT_TEST_REGION_RECONCILE` also on it becomes eligible for reconcile
+drops like any rectangle. The two switches were not measured together.
+
+Correction to round 12: the bent pages have one or two columns, not one to
+three.
+
+#### Default after 12b
+
+Off. The reading gains hold (+324, +454 and +117 on the flat groups, +545 and
++485 on bent and one-sided gutter pages, no page worse anywhere, speed
+unchanged), no drawn moved word uses an unrefined box any more, and drawn
+moved words sit on their ink about as often as ordinary words. But the
+review's pass criteria are not met: the fit rate on development B, boxes
+touching neighbouring rows more often than ordinary words on the bent, gutter
+and development B pages, and three fragments of moved lines that lose the
+output protection they had through the full line. As the brief asks in that
+case, the recommendation is to keep the switch off. Pages to look at by hand:
+`bent-1080-mild-b1`, `bent-1440-b1`, `bent-2160-b1`, tuning pages 18 and 01,
+`gutter-1080-late-g1`, and the development pages whose moved lines bow most
+(`held-out-07`, `held-out-03`, `held5-02`, `held4-02`; `held2-12` for the
+protection case).

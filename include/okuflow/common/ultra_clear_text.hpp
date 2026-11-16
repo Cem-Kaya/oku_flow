@@ -337,6 +337,10 @@ struct RecognizedWord {
     bool fromRibbon{};
     double ribbonErrorPx{};
     QPointF ribbonReadingPointPx;
+    // Private round 12 experiment (OKUFLOW_UCT_TEST_FLAT_RIBBON): the fitted
+    // bow, in mean heights, of the line a straight rule moved to the rectangle
+    // path when this word was read from it; 0 for every other word.
+    double movedLineBow{};
 };
 
 struct RecognizedLine {

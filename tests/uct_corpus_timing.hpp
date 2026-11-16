@@ -187,6 +187,26 @@ inline void CorpusTiming()
                 firstSha = sha;
                 firstOutput = OutputJson(result.output);
                 firstOutput.remove("exactOrderedOutputV1");
+                // Placement evidence (round 12b): the worker's ink-fit result,
+                // the final quad and the private straight rule's provenance.
+                QJsonArray lines = firstOutput["lines"].toArray();
+                for (int i = 0; i < lines.size() && i < result.output.lines.size(); ++i) {
+                    QJsonArray words = lines[i].toArray();
+                    const auto& source = result.output.lines[i].words;
+                    for (int j = 0; j < words.size() && j < source.size(); ++j) {
+                        QJsonObject word = words[j].toObject();
+                        word["inkFitted"] = source[j].inkFitted;
+                        if (source[j].movedLineBow > 0) word["movedLineBow"] = source[j].movedLineBow;
+                        if (source[j].quadPx.valid) {
+                            QJsonArray quad;
+                            for (const auto& point : source[j].quadPx.points) { quad.push_back(point.x()); quad.push_back(point.y()); }
+                            word["quad"] = quad;
+                        }
+                        words[j] = word;
+                    }
+                    lines[i] = words;
+                }
+                firstOutput["lines"] = lines;
             } else identical = identical && sha == firstSha;
             int words = 0, candidates = 0;
             for (const auto& line : result.output.lines)
