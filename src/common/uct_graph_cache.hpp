@@ -45,6 +45,7 @@ constexpr int kMaximumShapes = 16;
 // two to four region shapes per frame size.
 constexpr int kDefaultShapes = 8;
 constexpr int kMaximumRefusedShapes = 32;
+constexpr int kMaximumSeenShapes = 64;
 
 // How many shapes each engine caches; 0 runs that engine as a plain enqueue.
 // `requested` is 0 (replay off), kDefaultShapes, or the explicit comparison
@@ -106,9 +107,13 @@ class Policy
     {
         slots_.reserve(std::size_t(capacity_));
         refused_.reserve(kMaximumRefusedShapes);
+        seen_.reserve(kMaximumSeenShapes);
     }
     int Capacity() const { return capacity_; }
     int Slots() const { return int(slots_.size()); }
+    // Distinct shapes asked for so far, counted up to kMaximumSeenShapes: how
+    // many execution contexts this engine could use.
+    int Seen() const { return int(seen_.size()); }
     const Counters& Count() const { return counters_; }
     bool Blocked() const { return blocked_; }
 
@@ -121,6 +126,8 @@ class Policy
                   bool canCreate = true)
     {
         Decision decision;
+        if (int(seen_.size()) < kMaximumSeenShapes && std::find(seen_.begin(), seen_.end(), shape) == seen_.end())
+            seen_.push_back(shape);
         int index = -1;
         for (int i = 0; i < int(slots_.size()); ++i)
             if (slots_[std::size_t(i)].bound && slots_[std::size_t(i)].shape == shape) { index = i; break; }
@@ -217,7 +224,7 @@ class Policy
     };
     int capacity_;
     std::vector<Slot> slots_;
-    std::vector<Shape> refused_;
+    std::vector<Shape> refused_, seen_;
     std::uint64_t clock_{};
     bool blocked_{};
     Counters counters_;
