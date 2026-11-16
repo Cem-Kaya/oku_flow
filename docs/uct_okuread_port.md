@@ -3032,3 +3032,39 @@ latch rule and is not part of this round.
 - No GUI run and no full build matrix (the orchestrator runs them). CTest
   `uct_paddle_processing`, `uct_precision_artifact_contract`,
   `uct_model_installation_contract` and `uct_merge_replay` pass 4/4.
+
+### Review
+
+First council pass (`aff2b2a`): Claude Opus 5.5 7/10, GPT-6.1 Sol 7/10, Gemini 4
+Hydrogen 8/10. All three accepted the parallel hashing and the completion
+wait; the recognizer overlap was held for the seven items the follow-up above
+closes. Second pass (`708a968`): Opus 8/10, Sol 7/10, Gemini 9/10. All three
+confirmed the seven items closed; Opus and Gemini recommended merging it on,
+Sol wanted the latch race below handled first.
+
+Applied at the merge: both Opus and Sol found one path on which a cancelled
+preparation still joined its helper before releasing the detector attempt (a
+cancellation first seen inside the detector's fallback handler); the
+cancellation check now comes before the helper is settled there, in the code
+and in the test driver. The recognizer loaded ahead and the detector rebuilt
+after a cache miss are constructed with graph replay's arena flag, and the
+helper's wait for the detector's context stays immediately before round 10's
+arena-aware context creation.
+
+Known and not fixed, the detector attempt race. When a preparation is
+cancelled and another with the same detector starts at once (text reading
+switched off and on, or only the recognizer tier changed, while a preparation
+is still running), the new one can find the cancelled one's detector attempt
+still in flight and then runs the FP32 detector for the life of that reader.
+The rule is the existing one; the base build never met it in 48 test points,
+parallel hashing alone meets it in 4 and the full round in 8, because the new
+preparation now arrives about 75 ms after the cancellation instead of about
+190 ms while the old one is still inside a vendor call it cannot interrupt. In
+all 8 cases the output differed from the BF16 reference. No failure memo is
+written and the next preparation tries BF16 again. The reviewers agree on the
+remedy and that it changes the session latch's rule: a preparation that finds
+an attempt in flight, as distinct from failed, waits a bounded, cancellable
+time for it to resolve and then decides again; releasing the attempt at the
+cancellation itself is unsound while a vendor call or a build may still be
+running. Sol wanted that before the merge; Opus and Gemini as its own change.
+It is not in this program and is listed as remaining work.
