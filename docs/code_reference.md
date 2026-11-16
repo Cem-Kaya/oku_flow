@@ -8257,11 +8257,18 @@ kernel set, kept as the oracle for `gpuDetectKernelsMatchReferenceBytes`;
 `region_reconcile::Reconcile` (`src/common/uct_region_reconcile.hpp`) is the
 private cross-region experiment selected by `OKUFLOW_UCT_TEST_REGION_RECONCILE=1`:
 given `DetectorRegions` and every region's detections in frame pixels, it marks
-clipped tile fragments contained by a larger detection (`Contains`,
+clipped tile fragments contained by a larger detection (`Replaces`,
 `ContinuesPast`, `kWholeFrameMinimumHeight`), whole-frame detections an
 unclipped tile detection reproduces, and duplicate tile detections as not to be
 recognized. `TensorRtRecognizer::RecognizeDevice` then detects all regions
 first, reads each region's windows back, and uploads the kept windows per
 region through the frozen-replay path. `TensorRtProfile::Reconcile` adds a
 `regionReconcile` object to the profile line. Rules are covered by
-`regionReconcileRules` (`tests/uct_region_reconcile_cases.hpp`).
+`regionReconcileRules` (`tests/uct_region_reconcile_cases.hpp`). `Replaces`
+excludes fitted/refused ribbons and requires comparable heights, a shared
+baseline and containment along that baseline. A final coverage pass restores
+any dropped detection without a kept stand-in. Round 6 retains these rules;
+the tests additionally exercise unequal-tolerance chain restoration and check
+curved retention, unchanged input geometry, statistics and permutation
+independence on every random layout. See the negative-result diagnosis in
+`docs/uct_okuread_port.md`.
