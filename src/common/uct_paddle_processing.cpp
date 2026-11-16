@@ -13,9 +13,11 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <future>
 #include <limits>
 #include <numbers>
 #include <stdexcept>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -66,25 +68,65 @@ PaddleAssets LoadPaddleAssets(const QString &root, ModelTier detector, ModelTier
     const auto* det=FindPaddleModelPin(true,detector);
     const auto* rec=FindPaddleModelPin(false,recognizer);
     if(!det || !rec) {assets.error="Unsupported PaddleOCR model tier.";return assets;}
-    const auto directory = [&](const PaddleModelPin& pin) {
-        const auto original = QDir(root).filePath(QString::fromUtf8(pin.directory.data(),qsizetype(pin.directory.size())));
-        // Explicit diagnostic roots remain isolated. The production source root
-        // may use an optional downloaded role without relocating runtime DLLs.
-        if (QDir::cleanPath(root).compare(QDir::cleanPath(DefaultPaddleRoot()),Qt::CaseInsensitive) != 0 ||
-            (Verify(QDir(original).filePath("inference.onnx"),pin.modelSha256.data()) &&
-             Verify(QDir(original).filePath("inference.yml"),pin.configSha256.data()))) return original;
+    // Explicit diagnostic roots remain isolated. The production source root
+    // may use an optional downloaded role without relocating runtime DLLs.
+    const bool productionRoot =
+        QDir::cleanPath(root).compare(QDir::cleanPath(DefaultPaddleRoot()),Qt::CaseInsensitive) == 0;
+    const auto original = [&](const PaddleModelPin& pin) {
+        return QDir(root).filePath(QString::fromUtf8(pin.directory.data(),qsizetype(pin.directory.size())));
+    };
+    const auto downloaded = [](const PaddleModelPin& pin) {
         const auto revision=QString::fromUtf8(pin.revision.data(),qsizetype(pin.revision.size()));
         return QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath("OkuFlow/model-cache/sources/ocr-"+
             QString(pin.detection ? "det-" : "rec-")+ModelTierToken(pin.tier)+"-"+revision);
     };
-    const auto detectorDirectory=directory(*det), recognizerDirectory=directory(*rec);
+    // The same checks as one after the other, hashed side by side (each file
+    // read and hashed by its own task, all joined before this returns):
+    // choosing a role's directory (its original graph, then its original
+    // config) and then verifying that directory's graph. The second graph
+    // check is started on the original path at once and is used only when the
+    // original directory is chosen; otherwise the chosen path is verified
+    // afterwards. Every result is evaluated in the original order, so the
+    // chosen paths and the error are those of the sequential checks.
+    const auto start = [](const QString& file, const char* hash) {
+        const auto check = [file, hash] { return Verify(file, hash); };
+        try { return std::async(std::launch::async, check); }
+        catch (const std::system_error&) { return std::async(std::launch::deferred, check); }
+    };
+    struct Role {
+        QString original;
+        std::future<bool> graph, config, speculative;
+    };
+    const auto begin = [&](const PaddleModelPin& pin) {
+        Role role{original(pin), {}, {}, {}};
+        const auto graph = QDir(role.original).filePath("inference.onnx");
+        if (productionRoot) {
+            role.graph = start(graph, pin.modelSha256.data());
+            role.config = start(QDir(role.original).filePath("inference.yml"), pin.configSha256.data());
+        }
+        role.speculative = start(graph, pin.modelSha256.data());
+        return role;
+    };
+    auto detectorRole = begin(*det);
+    auto recognizerRole = begin(*rec);
+    const auto directory = [&](const PaddleModelPin& pin, Role& role) {
+        if (!productionRoot) return role.original;
+        if (role.graph.get() && role.config.get()) return role.original;
+        return downloaded(pin);
+    };
+    const auto detectorDirectory=directory(*det, detectorRole), recognizerDirectory=directory(*rec, recognizerRole);
     assets.detector = QDir(detectorDirectory).filePath("inference.onnx");
     assets.recognizer = QDir(recognizerDirectory).filePath("inference.onnx");
     const QString config=QDir(recognizerDirectory).filePath("inference.yml");
     assets.detectorSha256=QByteArray(det->modelSha256.data(),qsizetype(det->modelSha256.size()));
     assets.recognizerSha256=QByteArray(rec->modelSha256.data(),qsizetype(rec->modelSha256.size()));
-    if (!Verify(assets.detector,det->modelSha256.data()) ||
-        !Verify(assets.recognizer,rec->modelSha256.data()))
+    const auto verified = [](const QString& chosen, Role& role, const char* hash) {
+        const bool speculative = role.speculative.get();
+        return chosen == role.original ? speculative : Verify(QDir(chosen).filePath("inference.onnx"), hash);
+    };
+    const bool detectorVerified = verified(detectorDirectory, detectorRole, det->modelSha256.data());
+    const bool recognizerVerified = verified(recognizerDirectory, recognizerRole, rec->modelSha256.data());
+    if (!detectorVerified || !recognizerVerified)
     {
         assets.error = "Pinned PaddleOCR model/config files are missing or changed.";
         return assets;
