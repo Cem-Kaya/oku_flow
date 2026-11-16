@@ -8278,6 +8278,23 @@ recognized) to the profile line. Rules are covered by `regionReconcileRules`
 (`tests/uct_region_reconcile_cases.hpp`), the GPU window layout the parser
 relies on by `gpuRecognitionWindowsMarkEverySubWindow`.
 
+`ribbon::FitOutcome` (`include/okuflow/common/uct_ribbon.hpp`) records how
+`ribbon::Fit` decided for each component: not tried, straight, fitted, refused by
+the first failed check (steep, residual, degenerate, height, outside), or straight
+only under a private `StraightRule` (`kSpanStraight`). It is stored with the fitted
+bow (`Geometry::outcome`, `Geometry::bow`: centre sagitta over mean envelope
+height) in what was padding, so the 144-byte layout is unchanged; no decision
+reads it. `ribbon::StraightBound(meanHeight, length, span)` is the straight-line
+sagitta bound: the established max(0.75 px, 8% of the mean height), scaled by
+max(1, length / (span x meanHeight)) when `span` is positive.
+`ribbon::StraightRule{span, refusedOnly}` is the private round 12 experiment
+(`OKUFLOW_UCT_TEST_FLAT_RIBBON`), passed through `ribbon::Fit`, `gpu::Detect` and
+`PaddleDetect`; `{}` is the shipped rule. `TensorRtProfile::RibbonCrop` adds a
+`ribbonFit` object to the profile line: crops and decoded words per outcome,
+separately for detections and their sub-windows, and a bow histogram per outcome
+class. Covered by `curvedRibbonStraightSpanBound` (model-free) and
+`gpuRibbonStraightRuleMatchesCpu`.
+
 `graph_cache::Policy` (`src/common/uct_graph_cache.hpp`) is the bookkeeping of
 the private graph-replay experiment selected by `OKUFLOW_UCT_TEST_TRT_GRAPH=1`.
 It owns no CUDA or TensorRT resource. `Plan(shape, input, output, mayCapture)`

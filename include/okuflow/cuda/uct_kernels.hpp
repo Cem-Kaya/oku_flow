@@ -141,9 +141,11 @@ struct DetectKernels
 // group serially and results[group] is unspecified.
 void BoxSumGroups(const float *scores, const unsigned *masks, const float *values, int groups,
                   float *results, int *fast, cudaStream_t stream);
+// `straight` is a private experiment (ribbon::StraightRule): long lines with
+// small fitted curvature take the rectangle path. {} is the shipped rule.
 void Detect(const float *map, int width, int height, int sourceWidth, int sourceHeight, int *labels,
             Component *components, Quad *quads, int *count, cudaStream_t stream,
-            int* ribbonOffsets = nullptr, DetectKernels kernels = {});
+            int* ribbonOffsets = nullptr, DetectKernels kernels = {}, ribbon::StraightRule straight = {});
 // 128 detected lines -> at most 128*(original+8 overlapping windows).
 void RecognitionWindows(const Quad* detected, int* count, Quad* windows, cudaStream_t stream);
 // Compact ordered-group canvas widths; all ceil(1152/groupSize) slots are

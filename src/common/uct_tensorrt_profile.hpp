@@ -45,6 +45,7 @@ public:
         shapeSets_ = addressSets_ = 0;
         rectifyLaunches_ = ctcLaunches_ = recognitionCopies_ = 0;
         ribbonCrops_ = unsupportedRibbonCrops_ = 0;
+        ribbonOutcomes_ = {}; ribbonBows_ = {}; ribbonWords_ = {}; ribbonBoxes_ = {};
         metadataBytes_ = 0;
         inputBytes_ = outputBytes_ = outputLimitBytes_ = 0;
         maximumBatch_ = 0;
@@ -163,6 +164,42 @@ public:
         }
 
     }
+    // Ribbon fit outcome of each recognized crop and the words its decode
+    // produced, split by detections (a detection's own crop, internalEdges 0)
+    // and all crops (detections plus their overlapping sub-windows). Bounded
+    // counters; nothing is kept per crop. `confident` counts words at the
+    // ordinary 0.7 confidence whatever their disposition, `invalid` those the
+    // decode itself marked invalid geometry (before any merge inheritance).
+    // Refused detections also record their protection box, and detections a
+    // StraightRule moved to the rectangle path the same box of their quad, in
+    // frame pixels (bounded): today's boxes can then be matched per page.
+    void RibbonCrop(const ribbon::Geometry& curve, int edges, int words, int confident, int invalid,
+                    const float* xy = nullptr, QPoint origin = {}) {
+        if (!enabled_) return;
+        if (edges == 0 && xy && (curve.unsupported || curve.outcome == ribbon::kSpanStraight) &&
+            ribbonBoxes_.size() < kMaximumRibbonBoxes) {
+            double left = xy[0], top = xy[1], right = xy[0], bottom = xy[1];
+            for (int i = 1; i < 4; ++i) {
+                left = std::min(left, double(xy[2*i])); right = std::max(right, double(xy[2*i]));
+                top = std::min(top, double(xy[2*i+1])); bottom = std::max(bottom, double(xy[2*i+1]));
+            }
+            if (curve.unsupported) { left = curve.protectLeft; top = curve.protectTop;
+                                     right = curve.protectRight; bottom = curve.protectBottom; }
+            ribbonBoxes_.push_back(QJsonArray{curve.unsupported ? 1 : 0, left + origin.x(), top + origin.y(),
+                                              right + origin.x(), bottom + origin.y()});
+        }
+        const int outcome = curve.outcome < ribbon::kFitOutcomes ? curve.outcome : 0;
+        const int scope = edges == 0 ? 0 : 1;
+        ++ribbonOutcomes_[scope][outcome];
+        auto& counts = ribbonWords_[std::size_t(scope * ribbon::kFitOutcomes + outcome)];
+        counts[0] += words; counts[1] += confident; counts[2] += invalid;
+        if (scope == 0 && outcome != ribbon::kNotTried) {
+            const int kind = outcome == ribbon::kStraight ? 0 : outcome == ribbon::kSpanStraight ? 1
+                           : outcome == ribbon::kFitted ? 2 : 3;
+            const auto bin = std::upper_bound(kBowBounds.begin(), kBowBounds.end(), curve.bow);
+            ++ribbonBows_[std::size_t(kind)][std::size_t(bin - kBowBounds.begin())];
+        }
+    }
     void Transfer(std::size_t bytes) { if (enabled_) metadataBytes_ += bytes; }
     void RecognitionHelpers(int rectify, int ctc, int copies) {
         if (!enabled_) return;
@@ -230,6 +267,35 @@ public:
             {"memoryDeltaIsNotPeakOrExclusiveOwned", true},
             {"eventPairs", static_cast<int>(used_)}, {"omittedEventPairs", omitted_}};
         auto complete = report;
+        {
+            const char* outcomes[]{"notTried","straight","fitted","steep","residual","degenerate","height","outside",
+                                   "spanStraight"};
+            static_assert(std::size(outcomes) == ribbon::kFitOutcomes);
+            QJsonObject ribbon;
+            const char* scopes[]{"detections","windows"};
+            for (int scope = 0; scope < 2; ++scope) {
+                QJsonObject byOutcome;
+                for (int o = 0; o < ribbon::kFitOutcomes; ++o) {
+                    const auto& words = ribbonWords_[std::size_t(scope * ribbon::kFitOutcomes + o)];
+                    if (!ribbonOutcomes_[scope][o]) continue;
+                    byOutcome[outcomes[o]] = QJsonArray{ribbonOutcomes_[scope][o], words[0], words[1], words[2]};
+                }
+                ribbon[scopes[scope]] = byOutcome;
+            }
+            ribbon["encoding"] = "outcome: [crops, words, words with confidence >= 0.7, words marked invalid geometry by the decode]";
+            QJsonArray bounds;
+            for (const float b : kBowBounds) bounds.push_back(b);
+            ribbon["bowUpperBounds"] = bounds;
+            const char* kinds[]{"straight","spanStraight","fitted","refused"};
+            for (int k = 0; k < 4; ++k) {
+                QJsonArray bins;
+                for (const int n : ribbonBows_[std::size_t(k)]) bins.push_back(n);
+                ribbon[QString("bow_") + kinds[k]] = bins;
+            }
+            ribbon["boxes"] = ribbonBoxes_;
+            ribbon["boxesEncoding"] = "[refused 1 (protection box) or moved by a straight rule 0 (quad box), left, top, right, bottom], frame pixels";
+            complete["ribbonFit"] = ribbon;
+        }
         if (reconciled_)
             complete["regionReconcile"] = QJsonObject{{"detections", reconcile_[0]}, {"clippedDropped", reconcile_[1]},
                 {"wholeDropped", reconcile_[2]}, {"tileDropped", reconcile_[3]}, {"restored", reconcile_[4]},
@@ -271,6 +337,14 @@ private:
     int shapeSets_{}, addressSets_{};
     int rectifyLaunches_{}, ctcLaunches_{}, recognitionCopies_{};
     int ribbonCrops_{}, unsupportedRibbonCrops_{};
+    // Fitted sagitta over mean height of detections whose fit reached the
+    // curvature test; the last bin is open.
+    static constexpr std::array<float, 9> kBowBounds{.04f, .08f, .12f, .16f, .24f, .32f, .48f, .64f, 1.f};
+    std::array<std::array<int, ribbon::kFitOutcomes>, 2> ribbonOutcomes_{};
+    std::array<std::array<int, kBowBounds.size() + 1>, 4> ribbonBows_{};
+    std::array<std::array<int, 3>, 2 * ribbon::kFitOutcomes> ribbonWords_{};
+    static constexpr qsizetype kMaximumRibbonBoxes = 512;
+    QJsonArray ribbonBoxes_;
     double enqueueMs_{}, mergeMs_{};
     std::size_t metadataBytes_{};
     std::size_t inputBytes_{}, outputBytes_{}, outputLimitBytes_{}, freeBefore_{}, totalBytes_{};

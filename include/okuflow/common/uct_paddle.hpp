@@ -132,8 +132,10 @@ inline bool PaddleRibbonEnabled(bool allowed, const QString& overrideValue) {
 void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line,
                              QRect region, QSize source);
 std::vector<float> PaddleNormalize(const QImage &image, QSize target, bool detection);
+// `straight` mirrors gpu::Detect's private round 12 rule; {} is the shipped rule.
 QVector<PaddleQuad> PaddleDetect(std::span<const float> map, int width, int height, QSize source,
-                                 const std::atomic<bool> &cancelled, bool curvedRibbon = false);
+                                 const std::atomic<bool> &cancelled, bool curvedRibbon = false,
+                                 ribbon::StraightRule straight = {});
 std::vector<float> PaddleRectify(const QImage &image, const PaddleQuad &quad, int width,
                                  int validWidth);
 RecognizedLine PaddleDecode(std::span<const float> probabilities, int steps, int classes,

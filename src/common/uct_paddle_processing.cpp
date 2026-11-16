@@ -517,7 +517,8 @@ std::vector<float> PaddleNormalize(const QImage &image, QSize target, bool detec
 }
 
 QVector<PaddleQuad> PaddleDetect(std::span<const float> map, int width, int height, QSize source,
-                                 const std::atomic<bool> &cancelled, bool curvedRibbon)
+                                 const std::atomic<bool> &cancelled, bool curvedRibbon,
+                                 ribbon::StraightRule straight)
 {
     QVector<PaddleQuad> result;
     if (width <= 0 || height <= 0 || width > 4096 || height > 4096 || source.isEmpty() ||
@@ -612,7 +613,7 @@ QVector<PaddleQuad> PaddleDetect(std::span<const float> map, int width, int heig
                 ribbon::Add(bins, (u-u0)/std::max(1.0,u1-u0), v);
             }
             curve=ribbon::Fit(bins,u0,u1,c,s,double(source.width())/width,
-                               double(source.height())/height,source.width(),source.height());
+                               double(source.height())/height,source.width(),source.height(),true,straight);
         }
         u0 -= expand;
         u1 += expand;

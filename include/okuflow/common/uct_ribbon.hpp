@@ -15,6 +15,14 @@ inline constexpr int kMaximumFitPixels = 262144;
 inline constexpr double kMaximumWordErrorPx = 1.0;
 inline constexpr double kMaximumWordErrorHeight = .08;
 struct Point { double x{}, y{}; };
+// How Fit decided, recorded for the profile only (no decision reads it).
+// kNotTried: the component never reached the curvature test (too short, too
+// few occupied bins, a hole at an end). kStraight: the fitted bow is below the
+// straight-line bound, the ordinary rectangle path. kFitted: a valid ribbon.
+// The others are refusals (unsupported), by the first check that failed.
+// kSpanStraight: straight only under a StraightRule (private experiment).
+enum FitOutcome : unsigned char { kNotTried, kStraight, kFitted, kSteep, kResidual,
+                                  kDegenerate, kHeight, kOutside, kSpanStraight, kFitOutcomes };
 struct Bin { int count{}; double low{1e30}, high{-1e30}, sumU{}; };
 
 // t is the detector PCA coordinate, not arc length. Cross sections use the
@@ -26,6 +34,10 @@ struct Geometry {
     double start{}, end{1};
     bool valid{};
     bool unsupported{}; // curved hypothesis failed a support check; keep source ink
+    // Profile-only record of the decision; these sit in what was padding, so
+    // the layout (and every byte copy of it) keeps its size.
+    unsigned char outcome{kNotTried};
+    float bow{}; // fitted center sagitta over mean envelope height, detector pixels
     // Full detector envelope survives overlapping recognition windows, so a
     // partial window cannot shrink protection for an unsupported curve.
     double protectLeft{},protectTop{},protectRight{},protectBottom{};
@@ -81,12 +93,31 @@ OKUFLOW_RIBBON_HD inline void Add(Bin* bins, double t, double v) {
     if (v < bin.low) bin.low = v; if (v > bin.high) bin.high = v;
 }
 
+// Sagitta (detector pixels) below which a fitted center line counts as
+// straight. The established bound is max(0.75 px, 8% of the mean envelope
+// height), whatever the line's length. A positive span K (in mean heights)
+// scales it by max(1, length / (K * meanHeight)): lines up to K heights are
+// judged exactly as before, and for a longer parabolic line under the scaled
+// bound every piece of K heights departs from its own chord by less than the
+// established bound (the sagitta over a sub-span falls with its squared
+// length), and the angle between curve and chord (4 * sagitta / length at the
+// ends) stays below what the established bound accepts on a line K heights
+// long. Small fitted curvature on long flat lines is then the rectangle path.
+OKUFLOW_RIBBON_HD inline double StraightBound(double meanHeight, double length, double straightSpan) {
+    const double bound = ::fmax(.75, meanHeight * .08);
+    return straightSpan > 0 ? bound * ::fmax(1., length / (straightSpan * meanHeight)) : bound;
+}
+// Private round 12 experiment, off when span is 0. span: K in StraightBound.
+// refusedOnly: apply the scaled bound only to a line whose ribbon would be
+// refused; a valid ribbon fit stays a ribbon. Otherwise it applies before any
+// ribbon check.
+struct StraightRule { double span{}; bool refusedOnly{}; };
 // Bounded least-squares center fit to component cross-section envelopes.
 // Refuse holes, degenerate shapes, poorly fitted envelopes and image edges;
 // a refusal means the established rectangle, never guessed curved geometry.
 OKUFLOW_RIBBON_HD inline Geometry Fit(const Bin* bins, double u0, double u1,
     double cosAxis, double sinAxis, double scaleX, double scaleY, int sw, int sh,
-    bool endpointPadding = true) {
+    bool endpointPadding = true, StraightRule rule = {}) {
     Geometry g;
     const double length = u1 - u0;
     if (!Finite(length) || length < 24 || scaleX <= 0 || scaleY <= 0) return g;
@@ -122,10 +153,23 @@ OKUFLOW_RIBBON_HD inline Geometry Fit(const Bin* bins, double u0, double u1,
         }
     }
     g.a = matrix[0][3]; g.b = matrix[1][3]; g.c = matrix[2][3];
+    const float bow = float(::fabs(g.c) * .25 / meanHeight);
+    const auto straight = [&](FitOutcome outcome) {
+        Geometry line; line.outcome = outcome; line.bow = Finite(g.c) ? bow : 0.f;
+        return line;
+    };
     // Do not perturb the existing straight-line branch, even when opted in.
-    if (!Finite(g.c) || ::fabs(g.c) * .25 < ::fmax(.75, meanHeight * .08)) return {};
-    g.unsupported=true;
-    if (::fmax(::fabs(g.b), ::fabs(g.b + 2*g.c)) / length > 1) return g;
+    if (!Finite(g.c) || ::fabs(g.c) * .25 < StraightBound(meanHeight, length, 0)) return straight(kStraight);
+    // Private experiment (StraightRule): a long line under the length-scaled
+    // bound is straight, before any ribbon check or only instead of a refusal.
+    const bool spanStraight = rule.span > 0 && ::fabs(g.c) * .25 < StraightBound(meanHeight, length, rule.span);
+    if (spanStraight && !rule.refusedOnly) return straight(kSpanStraight);
+    const auto refuse = [&](FitOutcome outcome) {
+        if (spanStraight) return straight(kSpanStraight);
+        g.outcome = outcome; return g;
+    };
+    g.unsupported=true; g.bow=bow;
+    if (::fmax(::fabs(g.b), ::fabs(g.b + 2*g.c)) / length > 1) return refuse(kSteep);
     double sumT=0, sumTT=0, sumH=0, sumTH=0, maxResidual=0;
     for (int i=0; i<kBins; ++i) if (bins[i].count >= 2) {
         const auto& bin=bins[i]; const double t=bin.sumU/bin.count;
@@ -134,14 +178,14 @@ OKUFLOW_RIBBON_HD inline Geometry Fit(const Bin* bins, double u0, double u1,
         if (residual>maxResidual) maxResidual=residual;
         sumT+=t; sumTT+=t*t; sumH+=h; sumTH+=t*h;
     }
-    if (maxResidual > ::fmax(1.5, meanHeight * .15)) return g;
+    if (maxResidual > ::fmax(1.5, meanHeight * .15)) return refuse(kResidual);
     const double denominator=occupied*sumTT-sumT*sumT;
-    if (denominator <= 1e-8) return g;
+    if (denominator <= 1e-8) return refuse(kDegenerate);
     g.h1=(occupied*sumTH-sumT*sumH)/denominator;
     // Same unclip ratio as the rectangle, using local rather than curved AABB height.
     const double padding=length*meanHeight*1.4/(2*(length+meanHeight));
     g.h0=(sumH-g.h1*sumT)/occupied + padding + maxResidual;
-    if (g.h0 < 1 || g.h0+g.h1 < 1 || ::fabs(g.h1) > .5*meanHeight) return g;
+    if (g.h0 < 1 || g.h0+g.h1 < 1 || ::fabs(g.h1) > .5*meanHeight) return refuse(kHeight);
     g.ox=u0*cosAxis*scaleX; g.oy=u0*sinAxis*scaleY;
     g.ux=length*cosAxis*scaleX; g.uy=length*sinAxis*scaleY;
     g.vx=-sinAxis*scaleX; g.vy=cosAxis*scaleY;
@@ -158,8 +202,8 @@ OKUFLOW_RIBBON_HD inline Geometry Fit(const Bin* bins, double u0, double u1,
         g.h0+=oldH1*first; g.h1=oldH1*span;
     }
     // Stay inside the actual source. Clamping a ribbon would destroy its map.
-    if(!g.Inside(sw,sh)) return g;
-    g.valid=true; g.unsupported=false; return g;
+    if(!g.Inside(sw,sh)) return refuse(kOutside);
+    g.valid=true; g.unsupported=false; g.outcome=kFitted; return g;
 }
 } // namespace okuflow::uct::ribbon
 #undef OKUFLOW_RIBBON_HD

@@ -642,6 +642,111 @@ inline void MergeProtectionAndWindows() {
     QVERIFY(fitA.valid&&fitB.valid);
     QVERIFY(std::abs(fitA.c-fitB.c)<1e-6);QVERIFY(std::abs(fitA.h0-fitB.h0)<1e-6);
 }
+// Envelope of a detector component along its PCA axis: centre
+// a + b t + bow * 4 t (t - 1) ... (sagitta `sagitta` at the middle),
+// half height `half`. One sample pair per position, `per` positions per bin.
+inline void BowedBins(ribbon::Bin* bins, double sagitta, double half, double slope = 0, int per = 3) {
+    for(int i=0;i<ribbon::kBins;++i)bins[i]={};
+    for(int i=0;i<ribbon::kBins;++i)for(int k=0;k<per;++k) {
+        const double t=(i+(k+.5)/per)/ribbon::kBins,center=100+slope*t-4*sagitta*t*(1-t);
+        ribbon::Add(bins,t,center-half);ribbon::Add(bins,t,center+half);
+    }
+}
+inline bool SameFit(const ribbon::Geometry& a,const ribbon::Geometry& b) {
+    const double fa[]{a.ox,a.oy,a.ux,a.uy,a.vx,a.vy,a.a,a.b,a.c,a.h0,a.h1,a.start,a.end,
+                      a.protectLeft,a.protectTop,a.protectRight,a.protectBottom};
+    const double fb[]{b.ox,b.oy,b.ux,b.uy,b.vx,b.vy,b.a,b.b,b.c,b.h0,b.h1,b.start,b.end,
+                      b.protectLeft,b.protectTop,b.protectRight,b.protectBottom};
+    return std::memcmp(fa,fb,sizeof(fa))==0 && a.valid==b.valid && a.unsupported==b.unsupported &&
+           a.outcome==b.outcome && std::memcmp(&a.bow,&b.bow,sizeof(a.bow))==0;
+}
+// Round 12: the straight-line bound scaled by length (private experiment).
+inline void StraightSpanBound() {
+    constexpr double K=20;
+    // Lines up to K heights keep the established bound exactly; longer lines
+    // scale it linearly, and only then.
+    for(double height:{3.,5.,9.375,12.,40.})for(double heights:{2.,10.,19.99,20.,20.01,45.,200.}) {
+        const double length=heights*height,established=std::max(.75,.08*height);
+        QCOMPARE(ribbon::StraightBound(height,length,0),established);
+        const double scaled=ribbon::StraightBound(height,length,K);
+        if(length<=K*height)QCOMPARE(scaled,established);
+        else QVERIFY(std::abs(scaled-established*length/(K*height))<1e-12*scaled);
+        // What the scaled bound guarantees for a parabola at the bound: each
+        // K-height piece departs from its own chord by at most the established
+        // bound, and the end angle (4 sagitta / length) stays at or below the
+        // one the established bound allows on a K-height line.
+        const double piece=std::min(length,K*height);
+        QVERIFY(scaled*(piece/length)*(piece/length)<=established*(1+1e-12));
+        QVERIFY(4*scaled/length<=4*established/piece*(1+1e-12));
+    }
+    QCOMPARE(ribbon::StraightBound(10,1000,-1),.8); // non-positive span: shipped rule
+    ribbon::Bin bins[ribbon::kBins];
+    const ribbon::StraightRule before{K,false},refusedOnly{K,true};
+    // A long flat line with the small fitted bow seen on flat pages (0.15 of
+    // its height over 90 heights): a ribbon today, the rectangle path with
+    // `before`; `refusedOnly` keeps a valid ribbon.
+    const double half=4.5,height=2*half+1,length=90*height;
+    BowedBins(bins,.15*height,half);
+    const auto today=ribbon::Fit(bins,20,20+length,1,0,1,1,2000,400);
+    QVERIFY(today.valid);QCOMPARE(int(today.outcome),int(ribbon::kFitted));
+    QVERIFY(std::abs(today.bow-.15)<.02);
+    const auto relieved=ribbon::Fit(bins,20,20+length,1,0,1,1,2000,400,true,before);
+    QVERIFY(!relieved.valid);QVERIFY(!relieved.unsupported);QCOMPARE(int(relieved.outcome),int(ribbon::kSpanStraight));
+    QCOMPARE(relieved.protectRight,0.);QCOMPARE(relieved.protectBottom,0.); // no ribbon, no protection
+    QVERIFY(SameFit(today,ribbon::Fit(bins,20,20+length,1,0,1,1,2000,400,true,refusedOnly)));
+    // The same line touching the bottom of its source: refused today (outside),
+    // the rectangle path under both rules.
+    const auto edge=ribbon::Fit(bins,20,20+length,1,0,1,1,2000,104);
+    QVERIFY(edge.unsupported);QCOMPARE(int(edge.outcome),int(ribbon::kOutside));
+    for(const auto& rule:{before,refusedOnly}) {
+        const auto moved=ribbon::Fit(bins,20,20+length,1,0,1,1,2000,104,true,rule);
+        QVERIFY(!moved.valid&&!moved.unsupported);QCOMPARE(int(moved.outcome),int(ribbon::kSpanStraight));
+    }
+    // A book-page component: the same bow over 20 heights stays curved, unchanged.
+    const auto bookToday=ribbon::Fit(bins,20,20+20*height,1,0,1,1,2000,400);
+    QVERIFY(bookToday.valid);
+    for(const auto& rule:{before,refusedOnly})
+        QVERIFY(SameFit(bookToday,ribbon::Fit(bins,20,20+20*height,1,0,1,1,2000,400,true,rule)));
+    // Invariant over a sweep: a rule only ever moves a component to the
+    // straight outcome. Any component still fitted or refused under a rule has
+    // exactly the geometry, status and protection it has today, so a line
+    // that is still refused keeps its protection box. refusedOnly never
+    // changes a valid fit. Lines up to K heights never change.
+    int moved=0,kept=0,refusedKept=0,validKept=0;
+    std::array<int,ribbon::kFitOutcomes> outcomes{};
+    for(double heights:{4.,8.,15.,20.,25.,40.,90.,160.})
+    for(double bow:{0.,.05,.09,.12,.2,.35,.6,1.,2.,4.})
+    for(double slope:{0.,40.,600.})
+    for(int sourceHeight:{400,108})
+    for(const auto& rule:{before,refusedOnly}) {
+        BowedBins(bins,bow*height,half,slope);
+        const double u1=20+heights*height;
+        const auto a=ribbon::Fit(bins,20,u1,1,0,1,1,2000,sourceHeight);
+        const auto b=ribbon::Fit(bins,20,u1,1,0,1,1,2000,sourceHeight,true,rule);
+        ++outcomes[a.outcome];
+        if(b.outcome==ribbon::kSpanStraight) {
+            QVERIFY(!b.valid&&!b.unsupported);QVERIFY(a.valid||a.unsupported);
+            QVERIFY(u1-20>K*height); // only lines longer than K heights move
+            if(rule.refusedOnly)QVERIFY(a.unsupported);
+            ++moved;
+        } else {
+            QVERIFY(SameFit(a,b));++kept;refusedKept+=b.unsupported;validKept+=b.valid;
+        }
+        if(heights<=K)QVERIFY(SameFit(a,b));
+        if(rule.refusedOnly&&a.valid)QVERIFY(SameFit(a,b));
+    }
+    QVERIFY(moved>10);QVERIFY(kept>10);QVERIFY(refusedKept>3);QVERIFY(validKept>3);
+    for(auto o:{ribbon::kStraight,ribbon::kFitted,ribbon::kSteep,ribbon::kOutside})QVERIFY(outcomes[o]>0);
+    // Refusal reasons are recorded by the first failed check.
+    BowedBins(bins,8,5);
+    QCOMPARE(int(ribbon::Fit(bins,20,420,1,0,1,1,500,200).outcome),int(ribbon::kFitted));
+    QCOMPARE(int(ribbon::Fit(bins,20,420,1,0,1,1,425,200).outcome),int(ribbon::kOutside));
+    BowedBins(bins,8,5,900);
+    QCOMPARE(int(ribbon::Fit(bins,20,420,1,0,1,1,500,2000).outcome),int(ribbon::kSteep));
+    BowedBins(bins,8,5);
+    for(int i=0;i<ribbon::kBins;i+=2){bins[i].low-=6;bins[i].high-=6;} // a comb: no quadratic centre
+    QCOMPARE(int(ribbon::Fit(bins,20,420,1,0,1,1,500,2000).outcome),int(ribbon::kResidual));
+}
 inline void PrimitiveBenchmark() {
     if(qEnvironmentVariable("OKUFLOW_UCT_RIBBON_BENCHMARK")!="1")QSKIP("Explicit model-free A/B benchmark not selected.");
     const auto root=qEnvironmentVariable("OKUFLOW_UCT_RIBBON_EVIDENCE");QVERIFY(!root.isEmpty());QVERIFY(QDir().mkpath(root));

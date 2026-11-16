@@ -1417,6 +1417,16 @@ class TensorRtRecognizer final : public Recognizer
         reconcile_ = reconcile == "1" || reconcile == "keep";
         reconcileKeepAll_ = reconcile == "keep";
         invalidReconcile_ = !reconcile.isEmpty() && reconcile != "0" && !reconcile_;
+        // Private experiment, off by default (docs/uct_okuread_port.md, round 12).
+        // The ribbon fit's straight-line bound grows with a line's length
+        // (ribbon::StraightBound), so long flat lines with a small fitted bow
+        // take the ordinary rectangle path: "straight" before any ribbon check,
+        // "straight-refused" only where the ribbon would be refused (a valid
+        // ribbon fit stays a ribbon).
+        const auto flat = qEnvironmentVariable("OKUFLOW_UCT_TEST_FLAT_RIBBON");
+        if (flat == "straight" || flat == "straight-refused")
+            straightRule_ = {kStraightSpanHeights, flat == "straight-refused"};
+        else invalidFlatRibbon_ = !flat.isEmpty() && flat != "0";
         // Private experiment, off by default. See uct_graph_cache.hpp. The
         // shape count exists to compare cache sizes; 1 is one graph per engine.
         const auto graph = qEnvironmentVariable("OKUFLOW_UCT_TEST_TRT_GRAPH");
@@ -1455,6 +1465,10 @@ class TensorRtRecognizer final : public Recognizer
         }
         if (invalidReconcile_) {
             status_.detail = "OKUFLOW_UCT_TEST_REGION_RECONCILE accepts only 0, 1 or keep.";
+            return status_;
+        }
+        if (invalidFlatRibbon_) {
+            status_.detail = "OKUFLOW_UCT_TEST_FLAT_RIBBON accepts only 0, straight or straight-refused.";
             return status_;
         }
         if (invalidGraph_) {
@@ -1692,7 +1706,7 @@ class TensorRtRecognizer final : public Recognizer
                                     state_->labels.Reserve(w * h), state_->components.Reserve(w * h),
                                     state_->detectedQuads.Reserve(128), state_->count.Reserve(1), state_->stream,
                                     curvedRibbon_ ? state_->ribbonOffsets.Reserve((w*h+255)/256) : nullptr,
-                                    detectKernels_);
+                                    detectKernels_, straightRule_);
                         gpu::RecognitionWindows(state_->detectedQuads.Get(),state_->count.Get(),
                                                  state_->quads.Reserve(128*9),state_->stream);
                         Check(cudaGetLastError());
@@ -1833,7 +1847,7 @@ class TensorRtRecognizer final : public Recognizer
                             state_->labels.Reserve(w * h), state_->components.Reserve(w * h),
                             state_->detectedQuads.Reserve(128), state_->count.Reserve(1), state_->stream,
                             curvedRibbon_ ? state_->ribbonOffsets.Reserve((w*h+255)/256) : nullptr,
-                            detectKernels_);
+                            detectKernels_, straightRule_);
                 gpu::RecognitionWindows(state_->detectedQuads.Get(),state_->count.Get(),
                                          state_->quads.Reserve(128*9),state_->stream);
                 if (state_->variableWidth)
@@ -2031,6 +2045,15 @@ class TensorRtRecognizer final : public Recognizer
                         steps, static_cast<int>(std::ceil(steps * std::min(width, quad.validWidth) /
                                                           static_cast<double>(width))));
                     auto line = PaddleDecodeTokens(decoded, validSteps, box, assets_.dictionary);
+                    if (profile.Enabled()) {
+                        int confident = 0, invalid = 0;
+                        for (const auto& word : line.words) {
+                            confident += word.confidence >= .7;
+                            invalid += word.disposition == TokenDisposition::kInvalidGeometry;
+                        }
+                        profile.RibbonCrop(quad.ribbon, quad.internalEdges, int(line.words.size()), confident, invalid,
+                                           quad.xy, region.topLeft());
+                    }
                     PaddleMergeRecognition(output.lines, std::move(line), region,
                                            {image.width, image.height});
                 }
@@ -2481,6 +2504,10 @@ class TensorRtRecognizer final : public Recognizer
     gpu::DetectKernels detectKernels_{};
     bool invalidDetectKernels_{};
     bool reconcile_{}, reconcileKeepAll_{}, invalidReconcile_{};
+    // Private round 12 experiment; 0 keeps the shipped straight-line bound.
+    static constexpr double kStraightSpanHeights = 20;
+    ribbon::StraightRule straightRule_{};
+    bool invalidFlatRibbon_{};
     int graphShapes_{}; // 0: plain enqueue (default)
     bool invalidGraph_{};
     std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic_;

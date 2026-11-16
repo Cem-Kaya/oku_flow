@@ -1927,6 +1927,7 @@ class PaddleTests final : public QObject
     void curvedRibbonAllFrameWorkerContexts() {uct_ribbon_test::AllFrameWorkerContexts();}
     void curvedRibbonSmallWordsAndPaintReasons() {uct_ribbon_test::SmallWordsAndPaintReasons();}
     void curvedRibbonEndpointPadding() {uct_ribbon_test::EndpointPadding();}
+    void curvedRibbonStraightSpanBound() {uct_ribbon_test::StraightSpanBound();}
     void currentInkOwnershipAndResidual() {uct_ribbon_test::InkOwnershipAndResidual();}
     void currentInkHeldOutDiagnostic() {uct_ribbon_test::HeldOutInkDiagnostic();}
     void optionalRibbonPrimitiveAB() {uct_ribbon_test::PrimitiveBenchmark();}
@@ -3294,6 +3295,50 @@ class PaddleTests final : public QObject
             const auto expected=PaddleRectify(image,sameGeometry,1024,actual.validWidth);
             QCOMPARE(values.size(),expected.size());
             for(std::size_t i=0;i<values.size();++i)QVERIFY(std::abs(values[i]-expected[i])<3e-5);
+        }
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
+    // Round 12 rule on the GPU path: the same outcome as the CPU detector on a
+    // long, slightly bowed line (a ribbon today), and no ribbon flag when a
+    // rule moves it to the rectangle path.
+    void gpuRibbonStraightRuleMatchesCpu()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        int devices{};QVERIFY(cudaGetDeviceCount(&devices)==cudaSuccess&&devices>0);
+        constexpr int w=1200,h=120;
+        std::vector<float> map(w*h);
+        for(int y=0;y<h;++y)for(int x=20;x<=1180;++x) {
+            const double t=(x-20)/1160.,center=60-4*1.6*t*(1-t); // 1.6 px sagitta over 1160 px
+            if(std::abs(y-center)<=4)map[y*w+x]=.95f;
+        }
+        FixtureStream stream;
+        GpuBuffer<float> mapDevice(w*h);
+        GpuBuffer<int> labels(w*h),count(1),offsets((w*h+255)/256);
+        GpuBuffer<gpu::Component> components(w*h);
+        GpuBuffer<gpu::Quad> detected(128);
+        QCOMPARE(cudaMemcpyAsync(mapDevice.data,map.data(),map.size()*sizeof(float),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+        std::atomic<bool> cancelled{};
+        const ribbon::StraightRule rules[]{{},{20,false},{20,true}};
+        for(const auto& rule:rules) {
+            const auto cpu=PaddleDetect(map,w,h,{w,h},cancelled,true,rule);
+            QCOMPARE(cpu.size(),1);
+            gpu::Detect(mapDevice.data,w,h,w,h,labels.data,components.data,detected.data,count.data,stream.value,
+                        offsets.data,{},rule);
+            gpu::Quad actual{};int total{};
+            QCOMPARE(cudaMemcpyAsync(&total,count.data,sizeof(total),cudaMemcpyDeviceToHost,stream.value),cudaSuccess);
+            QCOMPARE(cudaMemcpyAsync(&actual,detected.data,sizeof(actual),cudaMemcpyDeviceToHost,stream.value),cudaSuccess);
+            QCOMPARE(cudaStreamSynchronize(stream.value),cudaSuccess);
+            QCOMPARE(total,1);
+            QCOMPARE(int(actual.ribbon.outcome),int(cpu[0].ribbon.outcome));
+            QCOMPARE(actual.ribbon.valid,cpu[0].ribbon.valid);QCOMPARE(actual.ribbon.unsupported,cpu[0].ribbon.unsupported);
+            if(rule.span==0)QCOMPARE(int(actual.ribbon.outcome),int(ribbon::kFitted));
+            else if(rule.refusedOnly)QVERIFY(actual.ribbon.valid); // a valid fit stays a ribbon
+            else {
+                QCOMPARE(int(actual.ribbon.outcome),int(ribbon::kSpanStraight));
+                QVERIFY(!actual.ribbon.valid&&!actual.ribbon.unsupported);
+            }
         }
 #else
         QSKIP("CUDA adapter not compiled.");
