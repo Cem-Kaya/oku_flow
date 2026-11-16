@@ -47,11 +47,13 @@ struct KeepWarmSettings {
     // Defaults from the round 13 and 14 characterization (RTX 4090): the
     // clocks hold at 40 percent or more time utilization and step up from the
     // lowest state in about 180 to 300 ms whenever a kernel is resident all
-    // the time (one napping warp climbs as fast as every SM spinning). A spin
-    // longer than the period, with one queued behind the running one, keeps
-    // the stream occupied even when the worker wakes up to two spins late
-    // (20 ms, more than a coarse 15.6 ms Windows timer tick). The spin length
-    // also bounds how long a context-wide CUDA call made on another thread
+    // the time (one napping warp climbs as fast as every SM spinning). The
+    // worker's timed wait is only as fine as the Windows timer tick (15.6 ms),
+    // longer than one spin, so at each wake it queues a second spin behind the
+    // one it launches: 20 ms of spins per wake keep the stream occupied about
+    // 94 percent of the time (one spin per wake measured 67 percent, which
+    // holds the clocks but raises them too slowly). The spin length also
+    // bounds how long a context-wide CUDA call made on another thread
     // waits behind keep-warm: cudaFree waits for the running and the queued
     // spin (at most 17.8 ms measured with 10 ms spins, 99 ms with round 13's
     // 50 ms), cudaFreeHost for about one spin; cudaMalloc and cudaMallocHost

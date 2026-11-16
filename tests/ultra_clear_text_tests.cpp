@@ -1164,6 +1164,7 @@ private slots:
     void keepWarmPolicyVisibilityPowerGateAndRegionalReads();
     void schedulerKeepWarmDisarmStopsRunningSpins();
     void schedulerKeepWarmChangeModeFollowsViewChanges();
+    void schedulerKeepWarmQueuesASecondSpinPerWake();
     void schedulerCoalescesLatestOnly();
     void schedulerCancelRevokesWithoutReleasingInput();
     void schedulerDestructionIsBoundedWhileHeld();
@@ -7039,6 +7040,7 @@ public:
         std::atomic<bool> reading{};
         KeepWarmResult result{KeepWarmResult::Launched};
         std::atomic<long long> lastBusyUs{};
+        std::vector<std::chrono::steady_clock::time_point> launchTimes; // guarded by mutex
     };
     explicit WarmingRecognizer(std::shared_ptr<Shared> shared) : shared_(std::move(shared)) {}
     BackendStatus Initialize() override { BackendStatus s; s.state = BackendState::kReady; return s; }
@@ -7061,7 +7063,13 @@ public:
     {
         if (shared_->reading) ++shared_->launchesDuringRead;
         shared_->lastBusyUs = busy.count();
-        if (shared_->result == KeepWarmResult::Launched) ++shared_->launches;
+        if (shared_->result == KeepWarmResult::Launched) {
+            {
+                std::lock_guard lock(shared_->mutex);
+                shared_->launchTimes.push_back(std::chrono::steady_clock::now());
+            }
+            ++shared_->launches;
+        }
         return shared_->result;
     }
     void InterruptKeepWarm() noexcept override { ++shared_->interrupts; }
@@ -7297,6 +7305,48 @@ void UltraClearTextTests::schedulerKeepWarmNeverRunsDuringReadsAndStopsOnCancel(
     QCOMPARE(shared->launchesDuringRead.load(), 0);
     QCOMPARE(scheduler.Stats().keepWarmLaunches, std::uint64_t(shared->launches.load()));
     QVERIFY(scheduler.Stats().keepWarmBusyMs > 0);
+}
+
+void UltraClearTextTests::schedulerKeepWarmQueuesASecondSpinPerWake()
+{
+    // The worker's timed wait is only as fine as the system timer tick, which
+    // is longer than one spin, so every due launch is followed at once by a
+    // second one queued behind it, and by no third before the next period.
+    // A period far above the tick makes the pairs visible in the launch times.
+    auto shared = std::make_shared<WarmingRecognizer::Shared>();
+    RecognitionScheduler scheduler(std::make_unique<WarmingRecognizer>(shared), {}, {});
+    QTRY_COMPARE(scheduler.Status().state, BackendState::kReady);
+    auto settings = FastContinuous(5000);
+    settings.period = std::chrono::milliseconds(120);
+    scheduler.SetKeepWarm(settings);
+    scheduler.ExpectNextRead(std::chrono::steady_clock::now() + std::chrono::milliseconds(350));
+    QTRY_VERIFY_WITH_TIMEOUT(shared->launches.load() >= 6, 5000);
+    scheduler.StopKeepWarm();
+    std::vector<std::chrono::steady_clock::time_point> times;
+    {
+        std::lock_guard lock(shared->mutex);
+        times = shared->launchTimes;
+    }
+    QVERIFY(times.size() >= 6);
+    for (std::size_t i = 0; i + 1 < 6; ++i) {
+        const auto gap = std::chrono::duration_cast<std::chrono::milliseconds>(times[i + 1] - times[i]).count();
+        if (i % 2 == 0) QVERIFY2(gap < 60, qPrintable(QString("pair %1: second spin %2 ms after the first").arg(i / 2).arg(gap)));
+        else QVERIFY2(gap >= 60, qPrintable(QString("after pair %1: next launch only %2 ms later").arg(i / 2).arg(gap)));
+    }
+    // A backend that does not launch (a context creation in progress, not
+    // ready) is not asked twice per wake.
+    auto pendingShared = std::make_shared<WarmingRecognizer::Shared>();
+    pendingShared->result = Recognizer::KeepWarmResult::Pending;
+    RecognitionScheduler waiting(std::make_unique<WarmingRecognizer>(pendingShared), {}, {});
+    QTRY_COMPARE(waiting.Status().state, BackendState::kReady);
+    waiting.SetKeepWarm(settings);
+    waiting.ExpectNextRead(std::chrono::steady_clock::now() + std::chrono::milliseconds(350));
+    QTRY_VERIFY_WITH_TIMEOUT(waiting.Stats().keepWarmPending >= 3, 5000);
+    const auto pendingBefore = waiting.Stats().keepWarmPending;
+    QTest::qWait(300);
+    waiting.StopKeepWarm();
+    const auto asked = waiting.Stats().keepWarmPending - pendingBefore;
+    QVERIFY2(asked <= 4, qPrintable(QString("%1 requests in 300 ms at a 120 ms period").arg(asked)));
 }
 
 void UltraClearTextTests::schedulerKeepWarmIdleTimeoutAndDestruction()

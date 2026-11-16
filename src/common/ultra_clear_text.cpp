@@ -2237,10 +2237,19 @@ struct RecognitionScheduler::State {
     }
 
     // Worker only, mutex held. Waits for a job. While keep-warm is due it
-    // queues one short spin per period through the recognizer, releasing the
-    // mutex around that call; a submitted job ends the wait at once.
+    // queues short spins through the recognizer, releasing the mutex around
+    // that call; a submitted job ends the wait at once.
+    //
+    // A timed wait here is only as fine as the system timer tick (15.6 ms by
+    // default), which is longer than one spin. One spin per wake would leave
+    // the stream empty about a third of the time (measured: 67 percent
+    // utilization), which holds the clocks but does not raise them fast enough
+    // after a view change. So each due launch is followed at once by a second
+    // one, queued behind it: the recognizer keeps at most two outstanding, and
+    // two spins outlast the wait to the next wake.
     void WaitForJob(std::unique_lock<std::mutex>& lock)
     {
+        bool topUp = false;
         for (;;) {
             HandleKeepWarmStop();
             if (shutdown || pending) return;
@@ -2252,7 +2261,8 @@ struct RecognitionScheduler::State {
                 continue;
             }
             const auto next = keepWarm.NextWarm(now);
-            if (!next || *next > now) {
+            if (!next || (*next > now && !topUp)) {
+                topUp = false;
                 // Wake for the next launch or, armed but idle, for the time-out.
                 auto wakeAt = next;
                 if (const auto idle = keepWarm.IdleDeadline()) wakeAt = wakeAt ? std::min(*wakeAt, *idle) : *idle;
@@ -2260,6 +2270,8 @@ struct RecognitionScheduler::State {
                 else wake.wait(lock);
                 continue;
             }
+            const bool second = topUp; // the spin queued behind the one just launched
+            topUp = false;
             const auto busy = keepWarm.Busy(now);
             keepWarm.Warmed(now);
             lock.unlock();
@@ -2273,6 +2285,7 @@ struct RecognitionScheduler::State {
             case Recognizer::KeepWarmResult::Launched:
                 ++stats.keepWarmLaunches;
                 stats.keepWarmBusyMs += busy.count() / 1000.0;
+                topUp = !second;
                 break;
             case Recognizer::KeepWarmResult::Pending: ++stats.keepWarmPending; break;
             case Recognizer::KeepWarmResult::NotReady: ++stats.keepWarmNotReady; break;
