@@ -26,6 +26,7 @@
 #include "uct_corpus_timing.hpp"
 #include "uct_graph_replay_lifetime.hpp"
 #include "uct_graph_replay_faults.hpp"
+#include "uct_stream_probe.hpp"
 #include "uct_paused_video_diagnostic.hpp"
 #include "uct_active_regional_diagnostic.hpp"
 #include "uct_precision_artifact_cases.hpp"
@@ -1928,6 +1929,10 @@ class PaddleTests final : public QObject
     void optionalGraphReplayConfigurations()
     {
         uct_graph_faults_test::Configurations();
+    }
+    void optionalStreamConcurrency()
+    {
+        uct_stream_probe_test::StreamConcurrency();
     }
     void optionalPublicBf16Preparation()
     {

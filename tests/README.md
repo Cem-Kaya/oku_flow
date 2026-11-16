@@ -2731,5 +2731,21 @@ and (except the first) `OKUFLOW_UCT_TEST_IMAGE_2`, an image of another size;
   so the caches fill up; every configuration records free device memory after
   its reads, so switch-on minus switch-off is what replay keeps allocated.
   It may prepare plans that are missing (full SDK).
+- `optionalStreamConcurrency` (`OKUFLOW_UCT_STREAM_PROBE=1`, a new absolute
+  report file in `OKUFLOW_UCT_STREAM_PROBE_EVIDENCE`, optional
+  `OKUFLOW_UCT_STREAM_PROBE_REPEATS` 5 to 50, default 7; round 8) reads one
+  blank 1920x1080 frame with replay off so the reader's State is adopted, then
+  times sets of inferences of the prepared engines (the recognizer at batch
+  eight on the 1024 canvas, 64 per set; the detector at each distinct shape of
+  a 1920x1080 read, 32 per set) on one, two and three execution contexts with
+  their own activation memory, buffers and streams, fed alternately from one
+  thread, with plain enqueues and with graph launches. Configurations
+  alternate their order between repeats after one untimed set. Every output
+  of a timed set's last inference per context and of a full untimed pass is
+  compared byte for byte with the single-stream output of the same input; the
+  slot fails on any difference. The report also has the device memory each
+  added context and its buffers took. It never uses the reader's own
+  contexts, stream or buffers, and the reader must still read and retire
+  cleanly afterwards.
 
 Results are in [the port record](../docs/uct_okuread_port.md).

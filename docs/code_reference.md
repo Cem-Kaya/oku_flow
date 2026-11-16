@@ -8406,6 +8406,20 @@ covered by `graphReplayCachePolicy`, the creation policy by
 `optionalGraphReplayRetireUnadopted` and `optionalGraphReplayConfigurations`
 (`tests/uct_graph_replay_faults.hpp`).
 
+`TensorRtStreamProbeForTest` and `StreamProbeRequest`
+(`src/common/uct_stream_probe.hpp`, round 8) exist only where
+`OKUFLOW_UCT_GRAPH_FAULT_HOOKS` is defined, that is in `uct_paddle_tests`.
+Given a ready TensorRT reader that has completed a read, with replay off and no
+read in flight, it calls `TensorRtRecognizer::StreamProbeForTest`, which waits
+for the State's stream and passes each engine to `Network::StreamProbeForTest`
+and from there to `stream_probe::Run` (in `uct_tensorrt.cpp`). `Run` makes its
+own execution contexts (`stream_probe::Lane`: context with the engine's own
+activation memory, input, output, pinned staging, stream and one captured
+graph; the destructor synchronizes the stream before anything is released),
+times the configured sets and compares outputs, and returns a JSON report. The
+reader's contexts, stream and buffers are not touched. The opt-in slot is
+`optionalStreamConcurrency` (`tests/uct_stream_probe.hpp`).
+
 
 ### UCT startup loader instrumentation and SHA-256 (round 5)
 
