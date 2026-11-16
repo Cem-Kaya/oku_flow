@@ -8,6 +8,7 @@
 #include "uct_sha256.hpp"
 #include "uct_native_precision.hpp"
 #include "uct_formula_internal.hpp"
+#include "uct_stream_probe.hpp"
 #include <QCoreApplication>
 #include <new>
 #include <utility>
@@ -57,6 +58,9 @@ bool TensorRtCropDiagnostic::TryCommit(Plan&& plan) noexcept
 #include <stdexcept>
 #include <thread>
 #include <chrono>
+#include <cstring>
+#include <map>
+#include <QJsonArray>
 
 namespace okuflow::uct
 {
@@ -334,6 +338,232 @@ class Progress final : public nvinfer1::IProgressMonitor
   private:
     const std::atomic<bool> &cancelled_;
 };
+#if defined(OKUFLOW_UCT_GRAPH_FAULT_HOOKS)
+// Round 8, step 1 (uct_stream_probe.hpp; test builds only).
+namespace stream_probe
+{
+// One execution context with its own activation memory (the engine's default
+// allocation), input, output, stream and optional graph.
+struct Lane {
+    std::unique_ptr<nvinfer1::IExecutionContext> context;
+    DeviceBuffer<float> input, output;
+    HostBuffer<float> staged;
+    cudaStream_t stream{};
+    cudaGraphExec_t graph{};
+    std::int64_t contextBytes{}, bufferBytes{}, graphBytes{};
+    Lane() = default;
+    Lane(const Lane&) = delete;
+    Lane& operator=(const Lane&) = delete;
+    ~Lane()
+    {
+        // Nothing of this lane may still run when its memory goes.
+        if (stream) cudaStreamSynchronize(stream);
+        if (graph) cudaGraphExecDestroy(graph);
+        context.reset();
+        if (stream) cudaStreamDestroy(stream);
+    }
+};
+inline std::int64_t FreeBytes()
+{
+    std::size_t free{}, total{};
+    Check(cudaMemGetInfo(&free, &total));
+    return std::int64_t(free);
+}
+inline double Median(std::vector<double> values)
+{
+    if (values.empty()) return 0;
+    std::sort(values.begin(), values.end());
+    const auto n = values.size();
+    return n % 2 ? values[n / 2] : (values[n / 2 - 1] + values[n / 2]) / 2;
+}
+// Times `inferences` inferences of `engine` at one input shape on 1 to
+// `maximumStreams` lanes, fed round robin from this thread: plain enqueues,
+// then graph launches of the same enqueue. Every configuration also runs
+// untimed with each output copied back and compared with the output of the
+// same input on one lane, byte for byte.
+inline QJsonObject Run(nvinfer1::ICudaEngine& engine, const std::string& inputName, const std::string& outputName,
+                       int batch, int height, int width, int inferences, const StreamProbeRequest& request)
+{
+    const int distinct = std::clamp(request.distinctInputs, 1, 16);
+    const int maximumStreams = std::clamp(request.maximumStreams, 1, 4);
+    const int repeats = std::clamp(request.repeats, 1, 50);
+    const nvinfer1::Dims4 dims(batch, 3, height, width);
+    const std::size_t inputCount = std::size_t(batch) * 3 * std::size_t(height) * std::size_t(width);
+    const std::size_t inputBytes = inputCount * sizeof(float);
+    // Deterministic inputs in [-1, 1). Inference time does not depend on the
+    // values; identity is checked per input.
+    std::vector<std::unique_ptr<DeviceBuffer<float>>> sources;
+    {
+        std::vector<float> host(inputCount);
+        std::uint32_t seed = 0x9e3779b9u;
+        for (int j = 0; j < distinct; ++j) {
+            for (auto& value : host) {
+                seed = seed * 1664525u + 1013904223u;
+                value = float(std::int32_t(seed >> 8) - (1 << 23)) / float(1 << 23);
+            }
+            sources.push_back(std::make_unique<DeviceBuffer<float>>());
+            Check(cudaMemcpy(sources.back()->Reserve(inputCount), host.data(), inputBytes, cudaMemcpyHostToDevice));
+        }
+    }
+    std::vector<std::unique_ptr<Lane>> lanes;
+    std::size_t outputCount = 0;
+    for (int k = 0; k < maximumStreams; ++k) {
+        auto lane = std::make_unique<Lane>();
+        const auto before = FreeBytes();
+        lane->context.reset(engine.createExecutionContext());
+        Check(cudaGetLastError());
+        if (!lane->context) throw TensorRtApiFailure("Stream probe: execution context creation failed.");
+        const auto made = FreeBytes();
+        if (!lane->context->setInputShape(inputName.c_str(), dims))
+            throw std::runtime_error("Stream probe: TensorRT rejected the shape.");
+        const auto shape = lane->context->getTensorShape(outputName.c_str());
+        std::size_t count = 1;
+        for (int i = 0; i < shape.nbDims; ++i) {
+            if (shape.d[i] <= 0) throw std::runtime_error("Stream probe: invalid output extent.");
+            count *= std::size_t(shape.d[i]);
+        }
+        if (outputCount && count != outputCount) throw std::logic_error("Stream probe: output size differs between lanes.");
+        outputCount = count;
+        Check(cudaStreamCreateWithFlags(&lane->stream, cudaStreamNonBlocking));
+        lane->input.Reserve(inputCount);
+        lane->output.Reserve(outputCount);
+        const auto buffered = FreeBytes();
+        lane->staged.Reserve(outputCount);
+        if (!lane->context->setTensorAddress(inputName.c_str(), lane->input.Get()) ||
+            !lane->context->setTensorAddress(outputName.c_str(), lane->output.Get()))
+            throw std::runtime_error("Stream probe: binding failed.");
+        lane->contextBytes = before - made;
+        lane->bufferBytes = made - buffered;
+        lanes.push_back(std::move(lane));
+    }
+    const std::size_t outputBytes = outputCount * sizeof(float);
+    const auto issue = [&](Lane& lane, int index, bool graph) {
+        Check(cudaMemcpyAsync(lane.input.Get(), sources[std::size_t(index % distinct)]->Get(), inputBytes,
+                              cudaMemcpyDeviceToDevice, lane.stream));
+        if (graph) Check(cudaGraphLaunch(lane.graph, lane.stream));
+        else if (!lane.context->enqueueV3(lane.stream)) throw std::runtime_error("Stream probe: enqueue failed.");
+    };
+    const auto synchronize = [&](int count) {
+        for (int c = 0; c < count; ++c) Check(cudaStreamSynchronize(lanes[std::size_t(c)]->stream));
+    };
+    // Reference: every distinct input once on lane 0, one after another.
+    std::vector<std::vector<float>> reference(static_cast<std::size_t>(distinct));
+    for (int j = 0; j < distinct; ++j) {
+        auto& lane = *lanes.front();
+        issue(lane, j, false);
+        Check(cudaMemcpyAsync(lane.staged.Get(), lane.output.Get(), outputBytes, cudaMemcpyDeviceToHost, lane.stream));
+        Check(cudaStreamSynchronize(lane.stream));
+        reference[std::size_t(j)].assign(lane.staged.Get(), lane.staged.Get() + outputCount);
+    }
+    // One graph per lane, captured after a plain enqueue of the same binding.
+    for (auto& lane : lanes) {
+        issue(*lane, 0, false);
+        Check(cudaStreamSynchronize(lane->stream));
+        const auto before = FreeBytes();
+        Check(cudaStreamBeginCapture(lane->stream, cudaStreamCaptureModeThreadLocal));
+        const bool enqueued = lane->context->enqueueV3(lane->stream);
+        cudaGraph_t graph{};
+        const auto ended = cudaStreamEndCapture(lane->stream, &graph);
+        if (!enqueued || ended != cudaSuccess || !graph) {
+            if (graph) cudaGraphDestroy(graph);
+            throw std::runtime_error("Stream probe: graph capture failed.");
+        }
+        const auto instantiated = cudaGraphInstantiateWithFlags(&lane->graph, graph, 0);
+        cudaGraphDestroy(graph);
+        Check(instantiated);
+        Check(cudaGraphUpload(lane->graph, lane->stream));
+        Check(cudaStreamSynchronize(lane->stream));
+        lane->graphBytes = before - FreeBytes();
+    }
+    const auto matches = [&](Lane& lane, int index) {
+        return std::memcmp(lane.staged.Get(), reference[std::size_t(index % distinct)].data(), outputBytes) == 0;
+    };
+    struct Result {
+        std::vector<double> wallMs, hostMs;
+        int verified{}, mismatches{};
+    };
+    std::map<std::pair<bool, int>, Result> results;
+    const auto timed = [&](int streams, bool graph, bool keep) {
+        synchronize(maximumStreams);
+        QElapsedTimer timer;
+        timer.start();
+        for (int i = 0; i < inferences; ++i) issue(*lanes[std::size_t(i % streams)], i, graph);
+        const double host = timer.nsecsElapsed() / 1e6;
+        synchronize(streams);
+        const double wall = timer.nsecsElapsed() / 1e6;
+        auto& result = results[{graph, streams}];
+        if (keep) { result.wallMs.push_back(wall); result.hostMs.push_back(host); }
+        // The last output of each lane, from the timed set itself.
+        for (int c = 0; c < streams && c < inferences; ++c) {
+            auto& lane = *lanes[std::size_t(c)];
+            const int last = c + ((inferences - 1 - c) / streams) * streams;
+            Check(cudaMemcpy(lane.staged.Get(), lane.output.Get(), outputBytes, cudaMemcpyDeviceToHost));
+            ++result.verified;
+            if (!matches(lane, last)) ++result.mismatches;
+        }
+    };
+    // Every inference of the set, `streams` at a time, each output compared.
+    const auto verify = [&](int streams, bool graph) {
+        auto& result = results[{graph, streams}];
+        synchronize(maximumStreams);
+        for (int first = 0; first < inferences; first += streams) {
+            const int count = std::min(streams, inferences - first);
+            for (int c = 0; c < count; ++c) issue(*lanes[std::size_t(c)], first + c, graph);
+            for (int c = 0; c < count; ++c) {
+                auto& lane = *lanes[std::size_t(c)];
+                Check(cudaMemcpyAsync(lane.staged.Get(), lane.output.Get(), outputBytes, cudaMemcpyDeviceToHost, lane.stream));
+            }
+            synchronize(count);
+            for (int c = 0; c < count; ++c) {
+                ++result.verified;
+                if (!matches(*lanes[std::size_t(c)], first + c)) ++result.mismatches;
+            }
+        }
+    };
+    std::vector<std::pair<bool, int>> order;
+    for (const bool graph : {false, true})
+        for (int streams = 1; streams <= maximumStreams; ++streams) order.push_back({graph, streams});
+    for (const auto& [graph, streams] : order) timed(streams, graph, false); // untimed warm-up set
+    // Alternate the order of the configurations between repeats.
+    for (int r = 0; r < repeats; ++r) {
+        if (r % 2) for (auto it = order.rbegin(); it != order.rend(); ++it) timed(it->second, it->first, true);
+        else for (const auto& [graph, streams] : order) timed(streams, graph, true);
+    }
+    for (const auto& [graph, streams] : order) verify(streams, graph);
+
+    QJsonObject modes;
+    for (const bool graph : {false, true}) {
+        const auto& single = results[{graph, 1}];
+        QJsonArray rows;
+        for (int streams = 1; streams <= maximumStreams; ++streams) {
+            const auto& result = results[{graph, streams}];
+            QJsonArray wall, paired;
+            double lowest = 1e300, highest = 0;
+            for (std::size_t r = 0; r < result.wallMs.size(); ++r) {
+                wall.append(result.wallMs[r]);
+                lowest = std::min(lowest, result.wallMs[r]);
+                highest = std::max(highest, result.wallMs[r]);
+                paired.append(single.wallMs[r] / result.wallMs[r]);
+            }
+            const double median = Median(result.wallMs);
+            rows.append(QJsonObject{{"streams", streams}, {"wallMs", wall}, {"medianMs", median},
+                {"minMs", lowest}, {"maxMs", highest}, {"hostEnqueueMedianMs", Median(result.hostMs)},
+                {"perInferenceMs", median / inferences}, {"speedup", Median(single.wallMs) / median},
+                {"pairedSpeedups", paired}, {"verifiedOutputs", result.verified}, {"mismatches", result.mismatches}});
+        }
+        modes[graph ? "graph" : "plain"] = rows;
+    }
+    QJsonArray memory;
+    for (const auto& lane : lanes)
+        memory.append(QJsonObject{{"contextBytes", qint64(lane->contextBytes)}, {"bufferBytes", qint64(lane->bufferBytes)},
+                                  {"graphBytes", qint64(lane->graphBytes)}});
+    return {{"shape", QJsonArray{batch, 3, height, width}}, {"inferences", inferences}, {"repeats", repeats},
+            {"distinctInputs", distinct}, {"outputFloats", qint64(outputCount)},
+            {"deviceMemorySizeV2", qint64(engine.getDeviceMemorySizeV2())},
+            {"lanes", memory}, {"modes", modes}};
+}
+} // namespace stream_probe
+#endif
 using graph_cache::ReplayWork;
 class Network
 {
@@ -918,6 +1148,13 @@ class Network
         return outputBuffer_.Get();
     }
     std::size_t OutputCapacityBytes() const { return outputBuffer_.Capacity() * sizeof(float); }
+#if defined(OKUFLOW_UCT_GRAPH_FAULT_HOOKS)
+    // Round 8, step 1: this engine with the probe's own contexts and streams.
+    QJsonObject StreamProbeForTest(int batch, int height, int width, int inferences, const StreamProbeRequest& request)
+    {
+        return stream_probe::Run(*engine_, input_, output_, batch, height, width, inferences, request);
+    }
+#endif
 
   private:
     // The plain enqueue on the one plain context: the whole path with replay
@@ -2430,6 +2667,36 @@ class TensorRtRecognizer final : public Recognizer
         }
         return output;
     }
+#if defined(OKUFLOW_UCT_GRAPH_FAULT_HOOKS)
+    // Round 8, step 1 (uct_stream_probe.hpp). Worker thread, no read in flight.
+    QJsonObject StreamProbeForTest(const StreamProbeRequest& request)
+    {
+        if (!state_) throw std::logic_error("The stream probe needs a reader that has completed a read.");
+        if (state_->detector->ReplayEnabled() || state_->recognizer->ReplayEnabled())
+            throw std::logic_error("The stream probe runs with graph replay off.");
+        if (state_->variableWidth) throw std::logic_error("The stream probe measures the fixed 1024 canvas.");
+        Check(cudaSetDevice(state_->device));
+        Check(cudaStreamSynchronize(state_->stream));
+        QJsonObject result;
+        result["recognizerBatch"] = state_->recognizerBatch;
+        result["precision"] = state_->precisionDetail;
+        result["recognizer"] = state_->recognizer->StreamProbeForTest(state_->recognizerBatch, 48, 1024,
+                                                                       request.recognizerInferences, request);
+        QJsonArray detector;
+        QList<QSize> sizes;
+        for (const auto& region : PaddleRecognitionRegions({1920, 1080}, std::nullopt)) {
+            const auto size = PaddleDetectionSize(region.size(), 1.0, 960);
+            if (sizes.contains(size)) continue;
+            sizes.push_back(size);
+            auto row = state_->detector->StreamProbeForTest(1, size.height(), size.width(),
+                                                            request.detectorInferences, request);
+            row["region"] = QJsonArray{region.x(), region.y(), region.width(), region.height()};
+            detector.append(row);
+        }
+        result["detector"] = detector;
+        return result;
+    }
+#endif
 
   private:
     void BeginPreparation(int device)
@@ -3005,6 +3272,14 @@ std::unique_ptr<Recognizer> CreatePublicBf16ValidationRecognizer(const QString& 
         std::move(retirementObserver),std::shared_ptr<TensorRtCropDiagnostic>{},runtime_precision::Request{},
         public_bf16::Request{modelRoot,corpusRoot,cacheRoot,public_bf16::CatalogUse::CandidateValidation,true,preferDetector,fp32Control,runtimePreference},std::move(observer));
 }
+#if defined(OKUFLOW_UCT_GRAPH_FAULT_HOOKS)
+QJsonObject TensorRtStreamProbeForTest(Recognizer& recognizer, const StreamProbeRequest& request)
+{
+    auto* tensorRt = dynamic_cast<TensorRtRecognizer*>(&recognizer);
+    if (!tensorRt) throw std::invalid_argument("The stream probe needs the TensorRT reader.");
+    return tensorRt->StreamProbeForTest(request);
+}
+#endif
 } // namespace okuflow::uct
 #else
 namespace okuflow::uct
