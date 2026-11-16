@@ -1146,6 +1146,38 @@ struct Preparation
         ObserveRetirement(retirementObserver, detail::RetireOwnedState(state, RetireState));
     }
 };
+// The pause between completion polls. Windows rounds a 1 ms sleep up to the
+// system timer tick (15.6 ms by default, measured on the test machine), which
+// made every wait for a few milliseconds of preparation GPU work cost a whole
+// tick. A high-resolution waitable timer waits about the requested quarter
+// millisecond without changing the system timer resolution. Without one the
+// original 1 ms sleep is used. The poll, its cancellation and its deadline
+// checks are unchanged.
+class CompletionPollPause
+{
+  public:
+    CompletionPollPause()
+        : timer_(CreateWaitableTimerExW(nullptr, nullptr, kHighResolution, TIMER_ALL_ACCESS)) {}
+    ~CompletionPollPause() { if (timer_) CloseHandle(timer_); }
+    CompletionPollPause(const CompletionPollPause&) = delete;
+    CompletionPollPause& operator=(const CompletionPollPause&) = delete;
+    void Wait() noexcept
+    {
+        LARGE_INTEGER due{};
+        due.QuadPart = -2500; // relative, 100 ns units: 250 us
+        if (timer_ && SetWaitableTimer(timer_, &due, 0, nullptr, nullptr, FALSE) &&
+            WaitForSingleObject(timer_, 20) == WAIT_OBJECT_0)
+            return;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+  private:
+#ifdef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
+    static constexpr DWORD kHighResolution = CREATE_WAITABLE_TIMER_HIGH_RESOLUTION;
+#else
+    static constexpr DWORD kHighResolution = 0x00000002;
+#endif
+    HANDLE timer_{};
+};
 // Worker-only bounded polling. A deadline/cancellation/fault keeps the complete
 // State attached to Preparation and reaches its ordinary drain/quarantine.
 void ConfirmPublicCompletion(State& state,const std::function<bool()>& stop)
@@ -1153,13 +1185,14 @@ void ConfirmPublicCompletion(State& state,const std::function<bool()>& stop)
     state.publicCompletion.Queued();
     Check(cudaEventRecord(state.GroupEvent(0),state.stream));
     const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(30);
+    CompletionPollPause pause;
     for(;;) {
         const auto result=cudaEventQuery(state.groupEvents[0]);
         if(result==cudaSuccess)break;
         if(result!=cudaErrorNotReady)Check(result);
         if(stop() || std::chrono::steady_clock::now()>=deadline)
             throw std::runtime_error("public BF16 completion cancelled/unknown at deadline; retire/quarantine");
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        pause.Wait();
     }
     state.publicCompletion.Confirmed();
 }
