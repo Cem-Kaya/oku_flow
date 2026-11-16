@@ -984,6 +984,61 @@ void DecodeBatch(const float *p, int samples, int steps, int classes, const Quad
         throw std::runtime_error(cudaGetErrorString(launched));
     compactBatch<<<1, samples, 0, s>>>(ids, scores, steps, quads, first, cropWidth, tokens, counts);
 }
+namespace
+{
+__device__ __forceinline__ unsigned long long globalNanoseconds()
+{
+    unsigned long long value;
+    asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(value));
+    return value;
+}
+__global__ void keepWarm(const volatile int *stop, unsigned long long durationNs, unsigned sleepNs)
+{
+    const unsigned long long start = globalNanoseconds();
+    if (sleepNs) {
+        // Resident but mostly asleep: one flag read per nap.
+        while (globalNanoseconds() - start < durationNs) {
+            if (stop && *stop)
+                break;
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700
+            __nanosleep(sleepNs);
+#endif
+        }
+        return;
+    }
+    // Spinning: the host-mapped flag is read once per 64 timer reads, about a
+    // microsecond apart, not one PCIe read per loop iteration.
+    for (unsigned polls = 0; globalNanoseconds() - start < durationNs; ++polls)
+        if (stop && (polls & 63u) == 0 && *stop)
+            break;
+}
+__global__ void sampleClock(ClockSample *out, unsigned long long durationNs)
+{
+    const unsigned long long start = globalNanoseconds();
+    const long long cycles = clock64();
+    unsigned long long now = start;
+    while (now - start < durationNs)
+        now = globalNanoseconds();
+    const long long end = clock64();
+    if (threadIdx.x == 0)
+        *out = ClockSample{static_cast<unsigned long long>(end - cycles), now - start, start};
+}
+// Far below the Windows GPU watchdog (TDR, two seconds by default): no single
+// diagnostic or keep-warm launch may come near it (round 14).
+constexpr unsigned long long kMaximumSpinNs = 250000000ull;
+} // namespace
+void KeepWarm(const volatile int *stop, unsigned long long durationNs, int blocks, cudaStream_t s, unsigned sleepNs)
+{
+    if (durationNs == 0 || durationNs > kMaximumSpinNs || blocks < 1 || blocks > 4096 || sleepNs > 1000000)
+        throw std::invalid_argument("Unsupported keep-warm duration, block count or nap.");
+    keepWarm<<<blocks, 32, 0, s>>>(stop, durationNs, sleepNs);
+}
+void SampleClock(ClockSample *out, unsigned long long durationNs, cudaStream_t s)
+{
+    if (!out || durationNs == 0 || durationNs > kMaximumSpinNs)
+        throw std::invalid_argument("Unsupported clock sample.");
+    sampleClock<<<1, 32, 0, s>>>(out, durationNs);
+}
 } // namespace okuflow::uct::gpu
 
 #include "uct_validation_kernels.cuh"

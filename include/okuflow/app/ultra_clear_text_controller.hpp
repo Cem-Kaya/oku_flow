@@ -308,6 +308,16 @@ public:
     void RequestFormula();
     void ClearFormula();
     void SetShowOriginal(bool showOriginal);
+    // The viewport was hidden or minimized (false) or shown again (true); the
+    // overlay reports it (UltraClearTextOverlay::targetShownChanged). Text
+    // reading that is not visible never keeps the GPU warm: hiding stops the
+    // private keep-warm at once, and showing again arms nothing until the next
+    // announced read or view change (round 14).
+    void SetViewVisible(bool visible);
+    bool ViewVisible() const noexcept { return viewVisible_; }
+    // Test seam: replaces the query "is the computer on external power" that
+    // gates the default keep-warm. Set before text reading is enabled.
+    void SetExternalPowerQueryForTest(std::function<bool()> query) { externalPowerForTest_ = std::move(query); }
 
     // Selected media uses the same recognition scheduler as live input.
     // A successful selection recognizes its owned complete scene once, then
@@ -456,6 +466,9 @@ private:
     void HandleResult(uct::RecognitionResult result);
     void HandleBackendStatus(uct::BackendStatus status);
     void ApplyEnabled(bool enabled);
+    // The view changed and a read will follow: arms the private change-driven
+    // keep-warm (no effect while it is off, hidden or disabled).
+    void NoteViewChange();
     void SubmitImmutableIfNeeded();
     void ScheduleImmutableRetry(bool selected, bool preparing = false);
     // Exact selected-frame proof survives a failed optional refinement. This
@@ -608,6 +621,8 @@ private:
     // lines still cover the view. Persist across the existing pacing delay;
     // an unchecked/out-of-view/composite probe does not create this demand.
     bool probeInvalidatedSinceSubmit_{};
+    bool viewVisible_{true};
+    std::function<bool()> externalPowerForTest_;
     std::int64_t lastSubmitMs_{std::numeric_limits<std::int64_t>::min() / 2};
     QRectF lastJobCoverage_;
     // Acquisition of the last submitted live/advancing OCR job. A held image

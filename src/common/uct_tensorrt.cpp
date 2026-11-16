@@ -1355,6 +1355,14 @@ class Network
             ++replayDeferrals_;
             return Captured::Deferred;
         }
+        // "Never behind queued work" (round 3) is about inference: no earlier
+        // network call of the read may still be queued. A keep-warm spin may
+        // still be ending when a capture begins (the worker interrupts spins
+        // before every read; one ends within a 10 us nap, a queued one exits
+        // at once). That is safe: a spin reads only the host-mapped stop flag
+        // and touches no tensor, arena or binding memory, a thread-local
+        // capture records only work enqueued after it begins, and the
+        // captured graph launches behind the spin in stream order.
         const auto began = cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal);
         if (began != cudaSuccess) return refuse(began);
         // Test builds only: an illegal call inside the capture, which CUDA
@@ -1641,6 +1649,15 @@ struct State
     QImage uploadPixels;
     AnalysisPool uploadPool;
     SharedDeviceImage inFlight;
+    // Keep-warm (private, off by default): a host-mapped stop flag the worker
+    // sets before every read, and events marking the last two spins (one may
+    // run while the next waits behind it). Created on first use, on this
+    // State's stream only, and released in ~State, which runs only after
+    // RetireState has found the stream complete.
+    volatile LONG* warmStopHost{};
+    int* warmStopDevice{};
+    cudaEvent_t warmDone[2]{};
+    int warmNext{};
     // Pre-existing empty slot: final retirement can self-quarantine without
     // allocation if asynchronous cleanup cannot accept the resource closure.
     std::shared_ptr<State> retirementQuarantine;
@@ -1649,6 +1666,11 @@ struct State
         for (auto event : groupEvents)
             if (event)
                 cudaEventDestroy(event);
+        for (auto event : warmDone)
+            if (event)
+                cudaEventDestroy(event);
+        if (warmStopHost)
+            cudaFreeHost(const_cast<LONG*>(warmStopHost));
         if (stream)
             cudaStreamDestroy(stream);
     }
@@ -2182,6 +2204,82 @@ class TensorRtRecognizer final : public Recognizer
     bool WantsDeviceInput() const override
     {
         return true;
+    }
+    KeepWarmResult KeepWarm(std::chrono::microseconds busy) override
+    {
+        // Only a promoted, ready State; never Ensure() (that would prepare).
+        if (warmFailed_) return KeepWarmResult::Unsupported;
+        if (!state_ || preparation_) return KeepWarmResult::NotReady;
+        auto& state = *state_;
+        if (cudaSetDevice(state.device) != cudaSuccess) return KeepWarmResult::NotReady;
+        // Graph replay (round 10) creates execution contexts on its own thread
+        // in idle gaps, which is when spins run. TensorRT's allocations there
+        // may wait for all queued GPU work of the context, so no spin starts
+        // while a creation runs, and a creation stops any running spin first
+        // (it raises the flag below under this mutex). Deferred counts as
+        // Pending.
+        std::lock_guard creation(state.replayWork.mutex);
+        if (state.replayWork.creating) return KeepWarmResult::Pending;
+        if (!state.warmStopDevice) {
+            void* host{};
+            if (cudaHostAlloc(&host, sizeof(LONG), cudaHostAllocMapped) != cudaSuccess) {
+                warmFailed_ = true;
+                return KeepWarmResult::Unsupported;
+            }
+            state.warmStopHost = static_cast<volatile LONG*>(host);
+            *state.warmStopHost = 1;
+            void* device{};
+            if (cudaHostGetDevicePointer(&device, host, 0) != cudaSuccess ||
+                cudaEventCreateWithFlags(&state.warmDone[0], cudaEventDisableTiming) != cudaSuccess ||
+                cudaEventCreateWithFlags(&state.warmDone[1], cudaEventDisableTiming) != cudaSuccess) {
+                warmFailed_ = true; // the flag and events are released with the State
+                return KeepWarmResult::Unsupported;
+            }
+            state.warmStopDevice = static_cast<int*>(device);
+        }
+        // At most two spins outstanding: the running one and one queued behind
+        // it, so the stream stays occupied even when this worker wakes late.
+        const auto older = cudaEventQuery(state.warmDone[state.warmNext]);
+        if (older == cudaErrorNotReady) return KeepWarmResult::Pending;
+        if (older != cudaSuccess) {
+            warmFailed_ = true; // the next read reports and retires a real fault
+            return KeepWarmResult::Unsupported;
+        }
+        // A raised stop flag ends the spins that are outstanding. Lowering it
+        // again while one of them still runs would let that spin carry on to
+        // its bound (a stop followed at once by a re-arm, as on a source or
+        // geometry change), so a launch after a stop waits until both are done:
+        // one ends within a nap of the flag, a queued one exits at once.
+        if (*state.warmStopHost != 0) {
+            const auto newer = cudaEventQuery(state.warmDone[state.warmNext ^ 1]);
+            if (newer == cudaErrorNotReady) return KeepWarmResult::Pending;
+            if (newer != cudaSuccess) {
+                warmFailed_ = true;
+                return KeepWarmResult::Unsupported;
+            }
+        }
+        InterlockedExchange(state.warmStopHost, 0);
+        try {
+            // One resident warp that naps 10 us between flag reads: it holds the
+            // clocks like a spinning warp and ends within a nap of an interrupt.
+            gpu::KeepWarm(state.warmStopDevice, static_cast<unsigned long long>(busy.count()) * 1000ull, 1,
+                          state.stream, kKeepWarmNapNs);
+        } catch (const std::exception&) {
+            warmFailed_ = true;
+            return KeepWarmResult::Unsupported;
+        }
+        if (cudaGetLastError() != cudaSuccess ||
+            cudaEventRecord(state.warmDone[state.warmNext], state.stream) != cudaSuccess) {
+            InterlockedExchange(state.warmStopHost, 1);
+            warmFailed_ = true;
+            return KeepWarmResult::Unsupported;
+        }
+        state.warmNext ^= 1;
+        return KeepWarmResult::Launched;
+    }
+    void InterruptKeepWarm() noexcept override
+    {
+        if (state_ && state_->warmStopHost) InterlockedExchange(state_->warmStopHost, 1);
     }
     void SetDetailFocus(const std::optional<DetailFocus> &focus) override
     {
@@ -3296,6 +3394,11 @@ class TensorRtRecognizer final : public Recognizer
                                     std::unique_lock lock(work.mutex);
                                     if (!work.Turn(lock, needed, cancelling, since)) break;
                                     work.creating = true;
+                                    // Keep-warm (round 14): end a running spin and
+                                    // skip a queued one before the creation's
+                                    // allocations, which may wait for all queued
+                                    // work; no spin starts until it is done.
+                                    if (state->warmStopHost) InterlockedExchange(state->warmStopHost, 1);
                                 }
                                 auto& first = recognizerNext ? *state->recognizer : *state->detector;
                                 auto& second = recognizerNext ? *state->detector : *state->recognizer;
@@ -3379,6 +3482,7 @@ class TensorRtRecognizer final : public Recognizer
             } catch (...) {}
             preparation_.reset();
         }
+        InterruptKeepWarm(); // the drain below then waits for at most a few microseconds of spin
         ObserveRetirement(retirementObserver_, detail::RetireOwnedState(state_, RetireState));
     }
     QString root_, sdk_;
@@ -3401,6 +3505,8 @@ class TensorRtRecognizer final : public Recognizer
     const std::shared_ptr<const PrecisionExperimentPlan> experiment_;
     std::optional<DetailFocus> detail_;
     bool curvedRibbon_{}; // worker-confined, one recognition at a time
+    bool warmFailed_{};   // worker-confined: keep-warm disabled for this recognizer
+    static constexpr unsigned kKeepWarmNapNs = 10000;
     PaddleAssets assets_;
     BackendStatus status_;
     std::shared_ptr<State> state_;

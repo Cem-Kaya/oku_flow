@@ -130,6 +130,7 @@ add_executable(uct_paddle_tests
     uct_character_diagnostic.hpp
     uct_resident_diagnostic.hpp
     uct_corpus_timing.hpp
+    uct_gpu_clock_probe.hpp
     uct_graph_replay_lifetime.hpp
     uct_graph_replay_faults.hpp
     uct_stream_probe.hpp
@@ -154,6 +155,9 @@ target_include_directories(uct_paddle_tests PRIVATE ${PROJECT_SOURCE_DIR}/includ
 # Only this executable compiles the hooks; the application never does.
 target_compile_definitions(uct_paddle_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE OKUFLOW_UCT_GRAPH_FAULT_HOOKS)
 target_link_libraries(uct_paddle_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::Test windowsapp)
+# The one test translation unit includes every OCR fixture header and exceeds
+# the default COFF section limit.
+target_compile_options(uct_paddle_tests PRIVATE $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/bigobj>)
 okuflow_configure_ocr(uct_paddle_tests)
 add_test(NAME uct_formula_contract COMMAND uct_paddle_tests formulaCatalogBoundsAndCacheIdentity formulaByteLevelTokenizerKeepsFractions formulaWholeImagePreparationKeepsSparseInkAndBounds)
 set_tests_properties(uct_formula_contract PROPERTIES TIMEOUT 30 LABELS "headless"

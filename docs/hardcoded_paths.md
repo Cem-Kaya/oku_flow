@@ -1531,6 +1531,50 @@ chunks; CNG hash-object scratch is refused above 1 MiB. These are scratch
 bounds, not changed model/plan limits. No cross-process verification cache is
 introduced. See [round evidence](uct_okuread_port.md).
 
+
+## UCT keep-warm switch (rounds 13 and 14, 2026-11-17)
+
+`OKUFLOW_UCT_TEST_KEEP_WARM` selects the GPU clock keep-warm around paced
+reads. Not set, the application runs `change` while the computer is on
+external power (the owner's decision of 2026-11-17; `GetSystemPowerStatus`,
+read-only, no setting is changed) and the test slots run nothing; `0` is off
+everywhere; a named mode runs regardless of the power source. `change` (round
+14) keeps one
+napping GPU warp resident on the recognizer's stream from a view change that a
+read will follow until that read, its follow-ups and a short tail are done,
+and never warms a periodic refresh of an unchanged view (a run of changes
+that no full read follows warms for at most two change windows); `continuous`
+does so from an announced paced read until no read has been submitted for the
+idle time-out; and
+`preroll` only from a lead time before the announced read. Any other value is
+ignored with a warning and stays off.
+`OKUFLOW_UCT_TEST_KEEP_WARM_SHAPE=periodMs,busyUs,leadMs,idleMs[,windowMs,tailMs]`
+(period 1-1000, busy 10-250000, lead 0-2000, idle 100-10000, change window
+100-10000, tail 0-5000; default 5,10000,350,2500,1500,400; four or six fields)
+changes the shape, only together with the mode. A spin is at most 250 ms, far
+below the Windows GPU watchdog. Keep-warm never runs while the viewport is
+hidden or its window minimized. It changes no recognized output and no system,
+driver or GPU setting; it raises GPU power draw while it warms (see the round
+13 and 14 tables). It adds no file, setting or model.
+
+Measurement-only variables of the opt-in test slots: `OKUFLOW_UCT_CORPUS_FRAME_LOAD`
+(`fps:passes`, emulated per-frame video GPU work), `OKUFLOW_UCT_CORPUS_TAIL_MS`
+(0-20000, idle time after the last read), `OKUFLOW_UCT_CORPUS_CHANGE_EACH=1`
+(the slot reports a view change after every paced read, as a playing video
+whose text keeps changing does), `OKUFLOW_UCT_CORPUS_SESSION=refreshMs,changeMs,settleMs,durationMs`
+(a live-view timeline per scene instead of passes: refresh reads 0-10000 ms
+apart, a view change every 0-60000 ms, its read 0-5000 ms later, for
+1000-600000 ms; refresh or change must be set), `OKUFLOW_UCT_CLOCK_PROBE=1` with
+`OKUFLOW_UCT_CLOCK_PROBE_EVIDENCE` (a new absolute file) and
+`OKUFLOW_UCT_CLOCK_PROBE_PLAN` (now also `climb`, `stall` and `interrupt`) for
+`optionalGpuClockProbe`, and
+`OKUFLOW_UCT_KEEP_WARM_GPU_TEST=1` with `OKUFLOW_UCT_CORPUS_IMAGES` for
+`optionalKeepWarmGpuContract`. `OKUFLOW_UCT_CORPUS_STABLE_POWER=1` makes the
+corpus slot hold `ID3D12Device::SetStablePowerState(TRUE)` on the CUDA
+adapter for the life of that test process (comparison only; it needs Windows
+Developer Mode, applies to the whole adapter while the process lives, and the
+application never calls it). See `docs/uct_okuread_port.md`.
+
 ## UCT preparation diagnostics (round 11)
 
 Three opt-in, unregistered slots of `uct_paddle_tests`; none changes a default

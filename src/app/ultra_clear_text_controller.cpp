@@ -9,11 +9,13 @@
 #include "okuflow/common/uct_region_planner.hpp"
 
 #include <QCheckBox>
+#include <QDebug>
 #include <QElapsedTimer>
 #include <QHash>
 #include <QMetaObject>
 #include <QSignalBlocker>
 #include <QTimer>
+#include <qt_windows.h>
 
 #include <algorithm>
 #include <chrono>
@@ -21,6 +23,13 @@
 
 namespace okuflow {
 namespace {
+// On external power, or unknown (a desktop without a battery reports
+// "online"). Cheap: read from the scheduler worker before every launch.
+bool OnExternalPower() noexcept
+{
+    SYSTEM_POWER_STATUS status{};
+    return !GetSystemPowerStatus(&status) || status.ACLineStatus != 0;
+}
 
 std::int64_t SteadyNowMs()
 {
@@ -183,6 +192,11 @@ UltraClearTextController::UltraClearTextController(UltraClearTextOverlay* overla
     // Screen readers reach the drawn text through the viewport itself. The
     // object is a QObject child of the render target (the host interface
     // finds it there) and does no work while accessibility is inactive.
+    if (overlay_) {
+        viewVisible_ = overlay_->TargetShown();
+        connect(overlay_, &UltraClearTextOverlay::targetShownChanged, this,
+                &UltraClearTextController::SetViewVisible);
+    }
     if (overlay_ && overlay_->RenderTarget()) {
         screenText_ = new UctScreenTextAccessibility(
             overlay_, overlay_->RenderTarget(), [this] { return ScreenTextSnapshot(); }, clock_);
@@ -379,6 +393,38 @@ void UltraClearTextController::EnsureScheduler()
         },
         timing_.probeDecimation, uct::ModelTuning{}.minimumWordHeightPx, false,
         qEnvironmentVariable("OKUFLOW_UCT_SHADOW_PLANNER") == "1", regionalOcrEnabled_);
+    // GPU clock keep-warm (rounds 13 and 14 of docs/uct_okuread_port.md).
+    // The default is change mode on external power; OKUFLOW_UCT_TEST_KEEP_WARM
+    // overrides it (0 turns it off). continuous and preroll run after a paced live
+    // or advancing-media read announced the next one; change runs from a view
+    // change that a read will follow (NoteViewChange) until that read, its
+    // follow-ups and a short tail are done.
+    // Invalidate's Cancel() stops it for pause, suppression, composites and
+    // source loss; hiding or minimizing the view stops it too.
+    const auto keepWarm = uct::KeepWarmForApplication();
+    if (!keepWarm.error.isEmpty()) qWarning().noquote() << keepWarm.error;
+    if (keepWarm.settings.Enabled()) scheduler_->SetKeepWarm(keepWarm.settings);
+    // The default (no variable set) raises the GPU's clocks for the read after
+    // a view change only on external power: on battery the power it costs is
+    // not the user's choice to make by default. A mode named in the variable
+    // runs regardless.
+    if (keepWarm.applicationDefault) {
+        if (externalPowerForTest_) scheduler_->SetKeepWarmPowerGate(externalPowerForTest_);
+        else scheduler_->SetKeepWarmPowerGate([] { return OnExternalPower(); });
+    }
+    scheduler_->SetKeepWarmVisible(viewVisible_);
+}
+
+void UltraClearTextController::SetViewVisible(bool visible)
+{
+    viewVisible_ = visible;
+    if (scheduler_) scheduler_->SetKeepWarmVisible(visible);
+}
+
+void UltraClearTextController::NoteViewChange()
+{
+    // Suppressed media reads nothing, so nothing is warmed for it either.
+    if (enabled_ && viewVisible_ && !mediaOverlaySuppressed_ && scheduler_) scheduler_->NoteViewChange();
 }
 
 void UltraClearTextController::SetEnabled(bool enabled)
@@ -442,6 +488,7 @@ void UltraClearTextController::ApplyEnabled(bool enabled)
             SubmitAdvancingMediaProbe();
             RefreshOverlay(clock_());
         }
+        NoteViewChange(); // text reading switched on: a first read follows
     } else {
         presentationAvailable_ = false;
         watchdog_->stop();
@@ -490,6 +537,7 @@ void UltraClearTextController::SetMediaOverlaySuppressed(bool suppressed, bool e
     mediaOverlaySuppressed_ = suppressed;
     if (!suppressed && enabled_) {
         EnsureScheduler();
+        NoteViewChange(); // suppression lifted: reading resumes with a first read
         SubmitImmutableIfNeeded();
         SubmitAdvancingMediaProbe();
     }
@@ -533,6 +581,7 @@ bool UltraClearTextController::SetImmutableScene(UctImmutableScene scene)
 
     ++geometryGeneration_;
     Invalidate(QStringLiteral("scene"));
+    NoteViewChange(); // a new selection: its read follows
     advancingMediaScene_.reset();
     advancingDisplay_.reset();
     advancingDeviceIdentity_.reset();
@@ -602,6 +651,7 @@ bool UltraClearTextController::ResumeImmutableMedia(std::uint64_t sourceAuthorit
     // clock survives; this records only the transition's wall-clock deadline.
     NoteAdvancingValidation(clock_());
     watchdog_->start();
+    NoteViewChange(); // resume from pause: paced media reads follow
     RefreshOverlay(clock_()); UpdateReadingText(); UpdateStatus();
     return true;
 }
@@ -643,6 +693,7 @@ bool UltraClearTextController::OnAdvancingMediaPresented(UctAdvancingMediaScene 
     if (discontinuity) {
         ++geometryGeneration_;
         Invalidate(QStringLiteral("scene"));
+        NoteViewChange(); // seek, new source or geometry: a media read follows
         immutableScene_.reset();
         consecutiveFailures_ = 0;
         consecutiveInputFailures_ = 0;
@@ -699,6 +750,7 @@ bool UltraClearTextController::OnAdvancingMediaPresentedWithoutAnalysis(
     if (discontinuity) {
         ++geometryGeneration_;
         Invalidate(QStringLiteral("scene"));
+        NoteViewChange(); // a new display chain: its first analysis read follows
         immutableScene_.reset();
         advancingMediaScene_.reset(); // old analysis belongs to the old chain
         advancingDeviceIdentity_.reset();
@@ -871,7 +923,12 @@ void UltraClearTextController::UpdateImmutableView(const ViewTransform& transfor
     RefreshOverlay(clock_());
     UpdateReadingText();
     UpdateStatus();
-    if (detailViewChanged) ScheduleImmutableDetail();
+    if (detailViewChanged) {
+        ScheduleImmutableDetail();
+        // A paused view panned or zoomed: one detail read may follow once it
+        // settles (the change window bounds the warming when none does).
+        if (immutableScene_ && immutableScene_->transform.valid) NoteViewChange();
+    }
 }
 
 void UltraClearTextController::ClearImmutableScene()
@@ -880,6 +937,7 @@ void UltraClearTextController::ClearImmutableScene()
     if (!HasImmutableScene()) { UpdateStatus(); return; }
     ++geometryGeneration_;
     Invalidate(QStringLiteral("scene"));
+    NoteViewChange(); // back to the live view: its first read follows
     immutableScene_.reset();
     advancingMediaScene_.reset();
     advancingDisplay_.reset();
@@ -958,6 +1016,7 @@ bool UltraClearTextController::OnPresented(const UctFrameContext& context)
     if (settling && !settling_) {
         ++geometryGeneration_;
         Invalidate(QStringLiteral("settling"));
+        NoteViewChange(); // pan or zoom of the camera: a read follows once it settles
     }
     settling_ = settling;
     if (!haveGeometry_ || !(context.geometry == geometry_)) {
@@ -966,6 +1025,7 @@ bool UltraClearTextController::OnPresented(const UctFrameContext& context)
         haveGeometry_ = true;
         ++geometryGeneration_;
         Invalidate(hadGeometry ? QStringLiteral("scene") : QString());
+        NoteViewChange(); // new geometry or a new source: a read follows
     }
     // Name the pause truthfully: an unsupported composite from a stabilized
     // scene is Extra Stable's held frames; the CPU debug composite (applied
@@ -975,6 +1035,8 @@ bool UltraClearTextController::OnPresented(const UctFrameContext& context)
         compositePaused_ = context.unsupportedCompositeFrames;
         if (compositePaused_) {
             Invalidate(QStringLiteral("composite"));
+        } else {
+            NoteViewChange(); // composite frames ended: a first read follows
         }
     }
     if (pendingReadbackId_ != 0 && now - pendingSinceMs_ > timing_.readbackTimeoutMs) {
@@ -1481,6 +1543,9 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
     if (!stable) {
         changedSinceSubmit_ = true;
     }
+    // The picture changed (a slide or scene change seen by the camera, moving
+    // video) or a shown line no longer matches: a read follows once stable.
+    if (!stable || summary.invalid > 0) NoteViewChange();
     latestProbe_ = outcome.probe;
 
     auto candidate=deviceCandidate_ && deviceCandidate_->frameSequence==outcome.stamp.frameSeq
@@ -1543,6 +1608,12 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
                     advancingMediaSubmittedAtMs_ = now;
                     advancingMediaLastSubmitMs_ = now;
                 }
+                // The next paced read: the media interval, or a live view's
+                // refresh (a changing scene reads sooner). No-op unless the
+                // private keep-warm switch is on, and ignored in change mode
+                // (a refresh of an unchanged view stays cold).
+                if (viewVisible_) scheduler_->ExpectNextRead(std::chrono::steady_clock::now() + std::chrono::milliseconds(
+                    advancingMediaScene_ ? timing_.mediaRecognitionIntervalMs : timing_.refreshIntervalMs));
             }
         } else if (!needed && regionalOcrEnabled_ && !regionalSuppressed_ && !regionalAttempted_ &&
                    !regionalJob_ && !scheduler_->HasWork() && backend_.detailFocus &&

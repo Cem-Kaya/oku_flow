@@ -197,6 +197,13 @@ UltraClearTextOverlay::UltraClearTextOverlay(QWidget* renderTarget, QWidget* own
     setAccessibleDescription(QStringLiteral(
         "Visual glyph overlay. The recognized text is available in the Ultra Clear Text reading pane."));
     applicationActive_ = QGuiApplication::applicationState() == Qt::ApplicationActive;
+    // The overlay is usually built before its window is shown: start from the
+    // target's real state, so nothing treats a hidden view as visible until
+    // the first show reports the change.
+    if (QWidget* window = renderTarget_ ? renderTarget_->window() : nullptr)
+        targetShown_ = renderTarget_->isVisible() && !(window->windowState() & Qt::WindowMinimized);
+    else
+        targetShown_ = false;
     // One application filter sees activation as well as target/ancestor
     // geometry and modality events, without duplicate per-widget filters.
     qApp->installEventFilter(this);
@@ -448,6 +455,10 @@ void UltraClearTextOverlay::UpdateVisibility()
     QWidget* window = renderTarget_ ? renderTarget_->window() : nullptr;
     const bool targetShown = renderTarget_ && renderTarget_->isVisible() && window &&
                              !(window->windowState() & Qt::WindowMinimized);
+    if (targetShown != targetShown_) {
+        targetShown_ = targetShown;
+        emit targetShownChanged(targetShown);
+    }
     // The tool window is a sibling of native dialogs, not part of their
     // client area. A late OCR completion must not show it above a modal file
     // picker or another application. Keep the words for a normal resume.

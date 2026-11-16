@@ -96,6 +96,9 @@ public:
     UctOverlaySnapshot CaptureSnapshot(const ViewTransform& transform, const QSize& viewportSize);
     std::uint64_t PaintCount() const noexcept { return paintCount_; }
     QWidget* RenderTarget() const noexcept { return renderTarget_; }
+    // Whether the render target is on screen: visible and its window not
+    // minimized (another application being active does not hide it).
+    bool TargetShown() const noexcept { return targetShown_; }
 
     // --- Last-painted geometry (UCT screen text accessibility, UI thread) ---
     // Every query answers from the plan the most recent paintEvent actually
@@ -146,6 +149,11 @@ public:
     // clip to the viewport minus floating chrome. Empty when nothing shows.
     QRectF VisiblePart(const QRectF& local, bool replacement) const;
 
+signals:
+    // The render target was hidden or minimized (false) or shown again (true).
+    // Text reading that is not visible must not keep the GPU warm (round 14).
+    void targetShownChanged(bool shown);
+
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
@@ -175,6 +183,7 @@ private:
     QPointer<QWidget> excludedWidget_;
     bool applicationActive_{};
     bool ownerBlocked_{};
+    bool targetShown_{true}; // last value reported by targetShownChanged
     ViewTransform transform_;
     QVector<SceneWord> words_;
     QVector<uct::ink::SceneOutline> inkOutlines_;

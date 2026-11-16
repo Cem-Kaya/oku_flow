@@ -742,7 +742,6 @@ the same one that kept the Small recognizer from being promoted before, and a
 better scheduler would not change it, so the code is not carried in the
 reader. The branch and its evidence are kept.
 
-
 ## Round 5: cached-engine startup verification
 
 Target: construction to first GPU result <=2800 ms (median of at least five
@@ -1428,6 +1427,154 @@ four-argument overload to the uncached merge, and the oracle cases the
 reviewers listed as still missing (mixed rectangle and quad words on a tilted
 row, a sort that changes the first word's angle, a check that the context is
 actually reused).
+
+## Round 8: two inferences in flight on two streams (negative result, not built)
+
+After rounds 1 to 3 most of a read is GPU time inside the two networks, and
+every inference runs after the previous one on the State's one CUDA stream.
+The reader already keeps two recognition groups in flight, but both are
+queued on that stream and run in sequence. One recognizer call (at most eight
+crops on the fixed 8x3x48x1024 canvas) and one detector pass (at most 960
+pixels on the long edge) each take about 4 ms on the RTX 4090. The hypothesis:
+one such inference does not fill the GPU, so two of them on two streams, each
+with its own execution context, finish sooner than one after the other, with
+identical results.
+
+The brief made a measurement the first step, with a stop rule fixed before
+anything was built: two streams must finish a set of recognizer inferences at
+least 1.25x sooner AND a set of detector inferences at least 1.15x sooner than
+one stream, or the round ends with the measurement and this record. **Result:
+not met, by a wide margin.** Two streams are no faster for the recognizer
+(0.89x to 1.01x) and slower for the detector (0.42x to 0.88x). Nothing in the
+reader changed, no switch was added, and the targets of step 2 (warm worker
+time, first reads, startup, identical corpus output) were not attempted.
+
+### What was measured
+
+`optionalStreamConcurrency` (`tests/uct_stream_probe.hpp`; the probe is in
+`src/common/uct_tensorrt.cpp` and compiled only into `uct_paddle_tests`) takes
+the prepared engines of a ready reader and creates its own execution
+contexts, each with its own activation memory (the engine's default
+allocation), input and output buffers and its own non-blocking stream; the
+reader's contexts, stream and buffers are not used. For each engine and shape
+it times a set of inferences on one context and one stream (today's
+arrangement), on two contexts fed alternately from one host thread, and on
+three. Each inference first copies one of four deterministic inputs into its
+context's input buffer on that context's stream, as the reader writes its
+canvas before each call. Each configuration runs with the plain `enqueueV3`
+(the reader's default) and with each context's enqueue captured once as a
+CUDA graph and launched, which takes the host's enqueue cost out and leaves
+what the GPU does. One untimed set comes first; the configurations alternate
+their order between the nine timed repeats. Afterwards every inference of
+every configuration runs again untimed and its output is copied back and
+compared byte for byte with the output of the same input on one stream, as is
+each context's last output of every timed set.
+
+Shapes: the recognizer at batch eight on the 1024 canvas, 64 inferences per
+set; the detector at the two shapes of a 1920x1080 read, 32 per set: the whole
+frame (544x960) and one of the two equal tiles (1040x1080 pixels, detector
+input 960x928).
+
+RTX 4090 (driver 621.14), Ryzen 9 5900X, MSVC 19.44 Release, CUDA 12.9.86
+runtime, TensorRT 11.4.0.106, medium BF16 detector and recognizer, branch
+`perf/okuread-port-r8` at `f04a60d`. The GPU was held through the shared lease,
+so no other job used it. Evidence `r8-stream-probe-1` and `r8-stream-probe-2`;
+the second sampled `nvidia-smi` every 100 ms: with the GPU busy (utilisation
+at least 50 percent, 457 samples) it ran in P2 at a median 2,640 MHz (10th
+percentile 2,505 MHz), display not driven. The sets ran back to back, so the
+GPU had no idle gap to clock down in (round 13).
+
+Median wall time of a set over nine repeats on one stream, and the speedup of
+two and three streams against it, run 1 / run 2; in brackets the range of the
+paired per-repeat speedups over both runs:
+
+| Engine, shape, set | Launch | One stream ms | Two streams | Three streams |
+| --- | --- | --- | --- | --- |
+| Recognizer 8x3x48x1024, 64 | plain | 272.9 / 271.3 | 1.010x / 0.998x (0.985 to 1.016) | 0.941x / 0.935x (0.924 to 0.955) |
+| Recognizer 8x3x48x1024, 64 | graph | 252.2 / 251.5 | 0.896x / 0.893x (0.888 to 0.905) | 0.838x / 0.833x (0.827 to 0.845) |
+| Detector 544x960 (whole frame), 32 | plain | 106.3 / 102.5 | 0.882x / 0.801x (0.708 to 1.143) | 0.819x / 0.725x (0.633 to 1.153) |
+| Detector 544x960 (whole frame), 32 | graph | 80.2 / 80.3 | 0.621x / 0.616x (0.570 to 0.677) | 0.463x / 0.447x (0.429 to 0.491) |
+| Detector 960x928 (tile), 32 | plain | 162.2 / 160.6 | 0.720x / 0.792x (0.537 to 0.888) | 0.513x / 0.538x (0.465 to 0.715) |
+| Detector 960x928 (tile), 32 | graph | 143.0 / 142.8 | 0.424x / 0.430x (0.416 to 0.467) | 0.414x / 0.416x (0.392 to 0.430) |
+
+Output: every compared output was byte-identical to the single-stream output
+of the same input, 1,128 comparisons per run over every engine, shape, stream
+count and launch mode, 0 differences; the slot fails on any. Of those, 316 are
+the one-stream configurations compared with themselves (repeatability) and
+812 compare a second or third context with the first. For the patterns and
+configurations tested, the inferences themselves would therefore not change if
+they ran concurrently. The reader read again after the probe and its State retired
+cleanly.
+
+### What the numbers say
+
+- **Overlapping inferences of one engine loses throughput.** With graph
+  launches the host does almost nothing (under 1 ms per set). One stream then takes 3.93 ms per
+  recognizer inference, 2.51 ms per whole-frame detection and 4.46 ms per tile
+  detection; two streams take 4.40, 4.07 and 10.4 ms per inference.
+  The loss is small for the recognizer and large for the detector at the tile
+  shape, where two streams take more than twice as long as one after the
+  other: the overlapping inferences get in each other's way. Why is not
+  established: one inference filling the GPU, the working set of two detector
+  inferences (about 280 MiB of activation memory each) against the 72 MB L2
+  cache, and TensorRT tactics chosen for a GPU of their own are candidates; no
+  kernel profile was taken. What is shown is that this way of overlapping does
+  not help, not that the GPU is saturated.
+- **Host time in the plain submission loop is not all CPU work.** On one
+  stream the host spends about 250 of the recognizer set's 272 ms in the loop
+  that copies the input and calls `enqueueV3` (about 3.9 ms per call when 64
+  are issued back to back; round 3 measured about 2 ms per call inside a
+  read). That time falls as streams are added for the recognizer (250, 223,
+  214 ms) and rises for the tile detector (147, 172, 225 ms), which a fixed
+  CPU cost per call would not do: part of it is the host waiting for room in
+  the GPU's queue. It should not be read as 3.9 ms of removable CPU work per
+  call. The graph rows, where the host is out of the picture, carry the
+  verdict.
+- **Memory.** Each added context with its own activation memory took 164 to
+  166 MiB for the recognizer (plus 80 MiB for its input and its 19.2-million
+  float output) and 280 to 282 MiB for the detector (plus 8 or 16 MiB of
+  buffers), as the change in free device memory (2 MiB granularity); a
+  captured graph up to 2 MiB more. A dual-stream reader would have needed
+  roughly 440 MiB more before any scratch.
+
+### Not established
+
+- One GPU, the RTX 4090, and the medium BF16 pair. The small and tiny tiers
+  and recognizer batch one, which make smaller inferences, were not probed.
+- Overlapping the two different engines (the next region's detection beside
+  the current region's recognition) was not measured; the brief's hypothesis
+  and stop rule concern two inferences of one engine. Whatever overlap would
+  do there, its ceiling is low: on the dense 1920x1080 document the detector
+  is 11.7 of 193.5 ms, so hiding all of it gives about 1.06x, and on a lecture
+  frame the recognizer is 2.6 of 19.8 ms; detection also has to precede
+  recognition of the same region.
+- The inputs are deterministic patterns, not image crops. Inference time does
+  not depend on the values, but the outputs compared are those of the
+  patterns.
+- Stream priorities, other TensorRT tactic choices per context and limiting
+  each context to part of the GPU were not tried.
+
+### Default and code
+
+Nothing in the read path changed and there is no new reader switch. The
+measurement slot stays (opt-in, not in any CTest list, compiled only into
+`uct_paddle_tests` through `OKUFLOW_UCT_GRAPH_FAULT_HOOKS`). Round 10's note
+about one activation arena per engine stands unchanged: nothing runs the
+contexts of one engine concurrently.
+
+### Review
+
+Council on `8efffd1`: Claude Opus 5.5 8/10, GPT-6.1 Sol 8/10, Gemini 4 Hydrogen
+9/10. All three found the measurement sound (separate contexts, activation
+memory, buffers and streams; timing to completion of all work; graph mode
+isolating the GPU) and the stop correct under the rule; two recommended
+merging the slot and the record, one after the corrections below. Applied
+while merging: the headline no longer claims the GPU is saturated; the host
+time of the plain loop is described without attributing it to CPU work; the
+count of cross-context comparisons is stated; the ceiling argument for
+overlapping the two engines replaces "unpromising"; the slot now fails unless
+both plans were loaded from the cache, and its description says it initializes
+the ordinary reader instead of promising that nothing is ever prepared.
 
 ## Round 9: the faster box score as the default, on every GPU
 
@@ -2131,548 +2278,6 @@ recognition groups concurrently, must give each context that can run beside
 another its own arena (or keep both on one stream) before it is combined with
 replay.
 
-## Round 12: readable text withheld on flat pages (issue #18; private switch, off)
-
-Targets stated before the work: on the 20 tuning pages at least +300 exact
-label matches with curved processing on (no page worse by more than 3); on
-every confirmation set no fewer exact matches than today; on the bent book
-pages also no lower recall and the same or more ribbon-read words; no title
-placement that is complete today becoming incomplete; every protection box of a
-line that is still refused still present; no `v1` scene slower beyond the noise
-floor, and a stated cost for any added recognition.
-
-Result: met with `OKUFLOW_UCT_TEST_FLAT_RIBBON=straight-refused`, which stays
-off by default. Tuning pages +386 with no page worse; development pages +566
-and +172; fresh pages 0, +8, +13 and +17; this repository's scenes unchanged;
-nine new bent book pages +555; titles 43 of 62 in every arm; no protection box
-of a still-refused line lost on any page; speed unchanged. The flat fallback
-the issue proposes was not built: in OkuFlow it would re-read the crop a
-refused line is already read from (below). The speed target's wish that flat
-pages get faster is not met: neither mode removes measurable work.
-
-### Where the words were lost
-
-Curved processing on against off showed the defect at scale on flat labelled
-pages (`issue18-flat-*`, round 6 review). Counted on the tuning pages with
-temporary instrumentation (`r12-diag-tune`, one read, RTX 4090):
-
-| Detection fit outcome | Detections | Words decoded (detection crops) |
-| --- | ---: | ---: |
-| Straight (ordinary rectangle) | 859 | 2,877 |
-| Fitted ribbon | 230 | 851, 66 over the chord limit |
-| Refused: ribbon outside its source region | 60 | 276, all withheld |
-| Refused: residual 8, height 1 | 9 | 12, all withheld |
-| Fit not tried (short, gaps) | 76 | 82 |
-
-Every flagged line on these pages is a false curve: they are flat screen
-pages. The 584 withheld (invalid-geometry) words in the final output are 268
-straight words that inherited a refused line's protection in the merge, 315
-ribbon words (a refused line's own words, or fitted words that inherited) and 1
-fitted word over its chord limit. Attribution arms on the same build
-(`r12-tune-k`): leaving refused lines unmarked recovers +435 exact matches, no
-chord limit +45, both +483. So the loss is refusal protection, mostly reached
-through the region-edge check, not bad fits.
-
-Why straight lines are flagged: the straight-line test is a fixed sagitta,
-max(0.75 px, 8% of the mean envelope height) in detector pixels, whatever the
-line's length. A long line has a large sagitta for a tiny curvature. The falsely
-flagged flat lines have a median fitted bow of 0.15 of their height over a
-median of 91 heights; the real curves of `book-curved-1080`, which the detector
-cuts into short pieces, have the same bow (median 0.13) over 20 heights, a
-curvature about 13 times larger. A significance test of the quadratic term did
-not separate them (median z about 5.6 for both); length does.
-
-### What changed
-
-`ribbon::StraightBound` scales the established bound by
-max(1, length / (K x mean height)) with K = 20. Lines up to K heights are judged
-exactly as today. For a longer parabolic line under the scaled bound, every
-piece of K heights departs from its own chord by less than the established
-bound (a sub-span's sagitta falls with its squared length), and the end angle
-between curve and chord (4 x sagitta / length) stays within what the
-established bound accepts on a line K heights long. Words and the recognition
-windows of a long line are therefore at most as curved as lines today's rule
-already sends to the rectangle path.
-
-`ribbon::StraightRule` applies it two ways, each its own switch value:
-
-- `straight-refused`: the scaled bound replaces only a refusal. A valid ribbon
-  fit stays a ribbon, and a line that is still refused keeps exactly today's
-  geometry and protection box. A moved line was already read from its
-  rectangle crop (refused ribbons always were), so recognition work does not
-  change; it loses the ribbon flag and protection box.
-- `straight`: the scaled bound applies before any ribbon check, so long flat
-  lines with a valid fit become rectangles too.
-
-`ribbon::Fit` now records its outcome (straight, fitted, the first failed
-check, or moved by a rule) and the fitted bow in former padding bytes; the
-layout keeps its 144 bytes. With `OKUFLOW_UCT_TRT_PROFILE=1` the profile line
-gains `ribbonFit`: crops and decoded words per outcome for detections and
-their sub-windows, a bow histogram per outcome class, and (bounded) the
-protection box of each refused detection and the box of each moved one.
-`PaddleDetect` mirrors the rule for the CPU path.
-
-K was chosen on the tuning pages and fresh set 1 only (`r12-tune-k`,
-`r12-fresh1-k`, `r12-sr-tune`, `r12-sr-fresh1`):
-
-| K | `straight-refused` tuning | `straight` tuning (worst page) | Fresh set 1 (both) |
-| ---: | ---: | --- | ---: |
-| 10 | +429 | +369 (-15) | +13 |
-| 15 | +407 | +347 (-15) | +13 |
-| 20 | +386 | +328 (-15) | +13 |
-| 25 | +363 | +305 (-15) | +13 |
-| 30 | +350 | +292 (-15) | +13 |
-
-`straight-refused` makes no tuning page worse at any K. Smaller K reads more,
-but moves lines whose curvature is larger: at K = 10 the end angle may reach
-twice what today's rule accepts on a 20-height line. K = 20 keeps the
-statements above at the scale of a recognition window and of any word, and
-costs 43 tuning words against K = 10. `straight` loses up to 15 words on three
-dense portrait pages with mixed type sizes in one line: there the valid
-ribbon reads better because its crop height follows the size change.
-
-The diagnosis also ran on `v1` (which holds the bent page) before the
-confirmation, so `v1` is not untouched in this round.
-
-### Not built: the flat fallback and a narrower inheritance
-
-The issue's fallback keeps the rectangular candidate of a curve-related
-detection and re-reads it when the curved read lacks confident coverage. In
-OkuFlow a refused ribbon is already recognized from its original rectangle;
-only its words are withheld. A re-read would decode the same crop, and its
-words would meet the same protection in the merge. For fitted lines the most a
-rectangle re-read could add, page by page (the better of `straight` and
-`straight-refused`), is 7 words on the tuning pages. After `straight-refused`,
-122 words remain withheld there: 27 refused detections (24 at a region edge, 2
-residual, 1 height) and 43 straight words that inherited their protection.
-Neither the inheritance share nor the fallback's ceiling justified changing
-the owner's protection design, so neither was built. Making such words
-readable but not drawable would be a reading-path change (every non-candidate
-word is omitted from reading), not a ribbon change.
-
-### Confirmation (final binary)
-
-All rows: build `3379ffa` (`uct_paddle_tests.exe` SHA-256
-`f8f67268de7cfd71d0df702172a8dafb207a761c18ab600ab6bd957501a7eabb`), RTX 4090,
-driver 621.14, Ryzen 9 5900X, MSVC 19.44 Release, Qt 6.12.0, CUDA 12.9.86,
-TensorRT 11.4.0.106, medium/medium BF16, one first read per page, profiled
-(`r12-final2-q-*`). Fresh sets 5 and 6 and bent set 1
-(`perf_corpus.py --bent 1`, new in this round) were generated after the final
-source was committed. Exact = case-sensitive label matches; invalid = withheld
-words; boxes = distinct protection boxes in the output.
-
-| Set | Labels | Exact today | `straight-refused` | `straight` | Worse pages (refused / straight) | Invalid words today / refused | Protection boxes today / refused |
-| --- | ---: | ---: | ---: | ---: | --- | --- | --- |
-| Tuning, 20 | 8,154 | 6,163 | 6,549 (+386) | 6,491 (+328) | 0 / 3 (worst -15) | 584 / 122 | 399 / 95 |
-| Fresh 1, 12 | 7,381 | 7,328 | 7,341 (+13) | 7,341 (+13) | 0 / 0 | 13 / 0 | 10 / 0 |
-| Development A, 40 | 12,180 | 9,225 | 9,791 (+566) | 9,809 (+584) | 0 / 2 (worst -11) | 946 / 267 | 580 / 223 |
-| Development B, 48 | 5,323 | 3,076 | 3,248 (+172) | 3,222 (+146) | 0 / 5 (worst -4) | 805 / 541 | 586 / 439 |
-| `v1`, 12 labelled | 4,394 | 4,106 | 4,106 (0) | 4,106 (0) | 0 / 0 | 36 / 36 | 13 / 13 |
-| Fresh 2, 12 | 6,610 | 6,577 | 6,577 (0) | 6,577 (0) | 0 / 0 | 0 / 0 | 0 / 0 |
-| Fresh 5, 12 | 6,967 | 6,912 | 6,920 (+8) | 6,923 (+11) | 0 / 0 | 10 / 2 | 9 / 2 |
-| Fresh 6, 12 | 6,016 | 5,954 | 5,971 (+17) | 5,971 (+17) | 0 / 0 | 20 / 0 | 15 / 0 |
-| Bent book pages, 9 | 5,976 | 3,648 | 4,203 (+555) | 4,189 (+541) | 0 / 2 (worst -7) | 1,863 / 1,293 | 783 / 445 |
-
-- `book-curved-1080`: 163 exact matches, recall 0.396, in all three arms.
-  Ribbon-read candidate words: `v1` 114 today and with `straight-refused`, 74
-  with `straight`; bent set 1,173 today, 1,215 with `straight-refused`, 439
-  with `straight`. Bent-set recall 0.610 today, 0.703 with `straight-refused`.
-  The bent set gains most on its milder pages (one goes from 150 to 379 of 394
-  words), where today's rule refuses long, slightly bent lines at region edges.
-- Titles (62 private placements, counts only): complete in 43 in every arm;
-  none changes.
-- Protection, per page (`r12_protection.py`): every refused detection's box of
-  today's read is, with the switch, either a refused detection's box again or
-  the box of a line the rule moved; none is missing on any set. Moved/kept
-  refused detections: tuning 42/27, development A 63/51, development B 36/139,
-  `v1` 0/14, fresh 1 4/4, fresh 2 1/0, fresh 5 3/0, fresh 6 4/0, bent 73/233,
-  titles 0/9.
-- Work: `straight-refused` changes no crop. On the tuning pages the read keeps
-  880 ribbon crops and 3,811 recognizer samples; refused crops fall from 168 to
-  27. `straight` cuts ribbon crops to 32 and samples to 3,736.
-
-Speed (`r12-final2-speed-v1`: two reversed cohorts of five warm reads;
-`r12-final2-speed-tune`: two cohorts of two), same build and machine:
-
-| Arm against today | `v1` warm | `v1` first read | Tuning warm | Tuning first read |
-| --- | ---: | ---: | ---: | ---: |
-| `straight-refused` | 0.999x | 0.993x | 1.000x | 1.002x |
-| `straight` | 0.955x | 0.959x | 1.008x | 1.001x |
-
-`straight-refused` gives byte-identical output on 18 of 18 `v1` scenes, so its
-`v1` differences are noise: the largest dense-scene change is doc-camera-1080
-at 1.8 percent (inside the 2 percent floor); sparse lecture scenes move by up
-to 6 percent (inside 12). `straight` is slower on several sparse scenes in one
-cohort only; that run was not repeated. Neither mode makes flat pages
-measurably faster: `straight-refused` removes no ribbon work, and the ribbon
-crops that `straight` removes cost no more to rectify than rectangles.
-
-The first confirmation attempt measured the previous diagnostic build: the
-build of `3379ffa` had stopped on a misnamed target. Its quality results
-(`r12-final-q-*`) are identical to the rerun; its speed runs
-(`r12-final-speed-*`) were heavily contended and are not used.
-
-Tests: `curvedRibbonStraightSpanBound` (model-free: the bound and its two
-geometric statements, the outcome of each refusal, and over a sweep of
-lengths, bows, slopes and source sizes that a rule only ever moves a component
-to the rectangle path, never changes a fitted or refused geometry or its
-protection, and under `straight-refused` never changes a valid fit);
-`gpuRibbonStraightRuleMatchesCpu` (GPU and CPU agree on the outcome for each
-rule). Existing ribbon, reconcile and detector-kernel slots and the exact merge
-replay (`uct_merge_replay_tests`, frozen baseline unchanged) pass. The merge
-itself is unchanged; with the switch on it decides differently only because
-moved lines' words arrive as ordinary candidates without a protection box.
-SCOPED: no full matrix, GUI or native-app run.
-
-### Not established
-
-No pixel-level check that words drawn on a moved line sit on their ink: the
-argument is geometric (the bound above, plus the per-word ink fit every
-rectangle word already gets), and the moved lines on the bent set are real,
-mildly curved lines. No owner camera or document capture is in any set. The
-issue's OkuRead title failure does not reproduce in OkuFlow (0 of 62
-placements change with curved processing on or off).
-
-### Default
-
-Off. Recommendation: make `straight-refused` the default. It meets every
-quality and protection target on every set, makes no page worse anywhere,
-keeps every valid ribbon and every protection box of a line that is still
-refused, and costs no time. `straight` should stay off: it loses words on
-mixed-size lines and ribbon-read words on bent pages.
-
-### Round 12b: the rule narrowed to what its argument covers, and where moved words are drawn
-
-The round 12 council (GPT-6.1 Sol 6/10, Claude Opus 5.5 7/10, Gemini 4
-Hydrogen 7/10; Sol for keeping it off, the other two for turning it on after a
-placement check) accepted the reading gains and the
-argument against the flat re-read, and found that the rule went further than
-its argument: `straight-refused` turned every refusal into a rectangle when the
-fitted bow was under the scaled bound, including steep and residual refusals,
-where the parabola says nothing about the line's real shape; the scaled bound
-had no ceiling and its 0.75 px floor grew with length, loosening it for small
-type; and nothing measured where the newly shown words are drawn. The owner's
-condition is that replacement text is never drawn over ink that could not be
-rectified. Changes (switch still off):
-
-- **Only region-edge refusals move.** `straight-refused` now moves only a line
-  refused because its padded ribbon leaves its source region (`kOutside`), the
-  one refusal after every shape check. Steep and residual refusals stay
-  refused; so do height refusals (the envelope tapers by more than half its
-  height, so one rectangle height cannot fit its words, the failure measured
-  below) and degenerate ones (the height regression failed; unreachable with
-  at least 20 distinct bins, and the rule moves only lines whose fit completed
-  every check). The review's photographed line (flat, dropping half a text
-  height near the gutter: least-squares bow under the bound, residual over its
-  limit) is a test case and stays refused.
-- **A cap and a floor that does not scale.** No line whose fitted sagitta
-  exceeds 0.32 mean heights is treated as straight, whatever its length
-  (`ribbon::kStraightMaximumBow`, an edge of the existing bow histogram). Only
-  the 8% part of the bound scales with length; the 0.75 px floor is a fixed
-  noise allowance. At a detector height of 5 px and 100 heights the bound was
-  0.75 h, now 0.4 h; above 80 heights the cap binds.
-- **Words drawn only on their ink.** A word of a moved line that the worker's
-  ink fitting cannot place (`RefineWordInkBounds` / `FitOrientedWordInk`
-  keep the detector span) is withheld as invalid geometry over that span, as
-  when its line was refused (`FinalizeRecognizedGeometry`). Words of other
-  lines keep today's disposition, fitted or not.
-- **Both readers.** `PaddleFlatRibbonRule` parses the switch for the TensorRT
-  and the CPU reader; the CPU reader ignored it before.
-
-Each step was committed with a test: `curvedRibbonStraightSpanBound` (floor,
-cap, the residual and height cases kept refused, only `kOutside` moves),
-`curvedRibbonFlatSwitchBothReaders` (one parser; both readers refuse an
-invalid value with the same message; `PaddleDetect` moves a region-edge line
-and its words carry the bow), `curvedRibbonMovedWordsHeldToInk` (only an
-unfitted word of a moved line changes disposition) and
-`gpuRibbonStraightRuleMatchesCpu`, which now also covers the region-edge case
-and both sides of the cap, with the default kernels (`parallelRibbonMerge`) and
-the reference ones. Over its 40 comparisons GPU and CPU agree exactly on
-outcome and status and bit for bit on the bow; 24 geometries are
-bit-identical and the others differ by at most 4.5e-5 px, which is the
-intended agreement (the GPU sums bin positions in float per thread and merges,
-the CPU in double).
-
-The cap was chosen on the tuning pages and fresh set 1 only: no moved line
-there bows more than 0.32 h, and fitted moved words show no placement trend
-with bow up to it (edges within 0.1 h: 88%, 95% and 85% for bows up to 0.16,
-0.24 and 0.32 h). Narrowing to region-edge refusals costs 32 tuning words
-(+386 to +354 before the placement fix).
-
-#### Where moved words are drawn
-
-Measured after the worker's ink fitting, from the read's own output (the
-corpus timing evidence now records `inkFitted`, the final quad and
-`movedLineBow` per word) and the page pixels (`r12b_placement.py` in the
-program's tools). Ink is the pixels on the word's own side of the midpoint
-between its measured foreground and background; h is the height of the
-word's ink. "Same pages" weights the ordinary straight-line words (not ribbon,
-not moved) of each page by that page's moved words, because moved words
-cluster on a few pages: on the tuning pages 47 of 246 are on one dark, noisy
-page where ordinary words fit at 28 percent.
-
-Before the fix, 34 of 246 moved tuning words (33 on that page) failed ink
-fitting and were painted with the unrefined detector span, up to three times
-their ink height. Ordinary words on the same pages fail at the same rate and
-are painted the same way. Under the narrowed rule the case the review found on
-tuning page 18's top line no longer occurs: 48 of its 49 moved words fit. Final
-binary, painted words, moved / ordinary on the same pages:
-
-| Set | Moved (fit-eligible) | Fit rate | Withheld by the fix | Edges within 0.1 h | Box over another row by more than 0.1 h | Another line's ink in the box |
-| --- | ---: | --- | ---: | --- | --- | --- |
-| Tuning | 246 | 86.2% / 83.8% | 34 | 90.1% / 82.0% | 1.4% / 2.3% | 0.5% / 0.2% |
-| Development A | 356 | 82.9% / 83.2% | 61 | 92.2% / 81.7% | 1.4% / 1.0% | 0% / 0.2% |
-| Development B | 111 | 89.2% / 95.7% | 12 | 92.9% / 90.0% | 6.1% / 2.8% | 0% / 1.0% |
-| Bent | 497 | 99.6% / 99.2% | 2 | 96.6% / 97.5% | 21.2% / 13.7% | 0.2% / 0.7% |
-| Gutter | 313 | 99.0% / 99.6% | 3 | 97.1% / 98.2% | 7.4% / 2.6% | 1.0% / 0.1% |
-
-Fresh sets 1, 5 and 6 move 8, 6 and 9 words: all fitted, all within 0.1 h,
-none over another row. The median box height equals the ink height in both
-groups. The row overlaps inspected are on dense pages with tight leading,
-where fitted boxes of ascenders and descenders touch the adjacent row; ordinary
-words do the same, and on the tuning pages one overlap is a title word's own
-box reaching down onto a moved line.
-
-Against the review's pass criteria: the fit rate is within two points of
-ordinary words on the tuning, development A, bent and gutter pages, but 6.5
-points below on development B (12 words over 14 pages). Final boxes are within
-0.1 h of their ink for 90 to 97 percent of drawn moved words: as often as
-ordinary words on the flat sets, slightly less often on the bent and gutter
-pages, and not for every word. Boxes of moved words do intersect neighbouring
-rows' boxes, and more often than ordinary words on the development B, bent and
-gutter pages. **The criteria are not met.**
-
-#### Protection in the final output
-
-`r12b_protection.py` checks, per page of every set, that every detection that
-is still refused has its protection box inside the union of the
-`protectedBounds` of the read's invalid-geometry words. Today's read already
-fails this on some pages (tuning 4 detections plus 3 that decoded no word,
-fresh 1 6, development A 15, development B 26, bent 8, gutter 3, `v1` 1,
-titles 7): a cut-edge fragment at an internal region edge loses its words in
-the merge and the overlapping region's complete read is kept. The decisive
-figure is a detection covered today and not with the switch: 0 on tuning,
-fresh 1, 2, 5 and 6, development B, `v1`, gutter and titles; 1 on development A
-(`held2-12`) and 2 on the bent set (`bent-1440-b1`, `bent-2160-b1`). In all
-three the still-refused detection is a shorter fragment (99 to 100 percent of
-its area inside) of a line that an overlapping detection reads in full, and in
-neither arm does any word carry the fragment's own box. Today the coverage came
-from the full line's refusal. The rule moves that line, because every shape
-check passed over its full length, and its words are drawn fitted to their
-ink. Round 12's detector-level check is still clean: every refused box of
-today's read is refused again or moved, and none is missing.
-
-#### Confirmation (final binary)
-
-Build `fcc12a7` (code as of `5187f54`; `uct_paddle_tests.exe` SHA-256
-`28827ae7f1ecbbe89ee6c778a3d88e290d5bd8053b61c2e0fd2afd07af029188`), RTX 4090,
-driver 621.14, Ryzen 9 5900X, MSVC 19.44 Release, Qt 6.12.0, CUDA 12.9.86,
-TensorRT 11.4.0.106, medium/medium BF16, one first read per page, profiled
-(`r12b-final-q-*`). The gutter set (`perf_corpus.py --gutter 1`, new) was
-generated after this build. `straight` was not re-measured.
-
-| Set | Labels | Exact today | `straight-refused` | Worse / better pages | Invalid words today / switch | Protection boxes | Moved / still refused |
-| --- | ---: | ---: | ---: | --- | --- | --- | --- |
-| Tuning, 20 | 8,154 | 6,163 | 6,487 (+324) | 0 / 10 | 584 / 198 | 399 / 148 | 36 / 33 |
-| Fresh 1, 12 | 7,381 | 7,328 | 7,341 (+13) | 0 / 2 | 13 / 0 | 10 / 0 | 4 / 4 |
-| Development A, 40 | 12,180 | 9,225 | 9,679 (+454) | 0 / 18 | 946 / 391 | 580 / 307 | 53 / 61 |
-| Development B, 48 | 5,323 | 3,076 | 3,193 (+117) | 0 / 18 | 805 / 617 | 586 / 487 | 29 / 146 |
-| `v1`, 12 labelled | 4,394 | 4,106 | 4,106 (0) | 0 / 0 | 36 / 36 | 13 / 13 | 0 / 14 |
-| Fresh 2, 12 | 6,610 | 6,577 | 6,577 (0) | 0 / 0 | 0 / 0 | 0 / 0 | 1 / 0 |
-| Fresh 5, 12 | 6,967 | 6,912 | 6,920 (+8) | 0 / 2 | 10 / 2 | 9 / 2 | 3 / 0 |
-| Fresh 6, 12 | 6,016 | 5,954 | 5,971 (+17) | 0 / 2 | 20 / 0 | 15 / 0 | 4 / 0 |
-| Bent, 9 | 5,976 | 3,648 | 4,193 (+545) | 0 / 5 | 1,863 / 1,304 | 783 / 448 | 72 / 234 |
-| Gutter, 9 (new) | 5,440 | 4,464 | 4,949 (+485) | 0 / 7 | 871 / 373 | 280 / 119 | 52 / 53 |
-
-- Titles (62 private placements, counts only): complete in 43 in both arms;
-  none of their refused detections moves.
-- Recall: bent 0.610 to 0.702, gutter 0.821 to 0.910; `book-curved-1080`
-  unchanged.
-- Newly shown words that match no label ("other words"): tuning 14.1% against
-  14.7% for the rest of the shown words, development A 15.9 against 14.6,
-  development B 29.6 against 31.3, bent 1.1 against 2.6, gutter 1.0 against
-  1.5, fresh sets 0.
-- Speed (`r12b-final-speed-v1`, two reversed cohorts of five;
-  `r12b-final-speed-tune`, two of two): `v1` warm 1.000x, first read 1.007x,
-  output byte-identical on 18 of 18 scenes and no line moved on any `v1`
-  scene, so every difference is noise; the largest is `book-curved-1080` at
-  3.3 percent warm (1.9 first read), above the 2 percent dense floor in this
-  run. Tuning pages warm 0.985x, first read 0.996x; the cohorts
-  of sparse pages disagree by up to 38 percent there (contention), so that
-  run shows no change beyond the noise and no more.
-
-Interaction with region reconciliation: a moved line is no longer `curved`
-(`detection.curved` means a valid or refused ribbon), so with
-`OKUFLOW_UCT_TEST_REGION_RECONCILE` also on it becomes eligible for reconcile
-drops like any rectangle. The two switches were not measured together.
-
-Correction to round 12: the bent pages have one or two columns, not one to
-three.
-
-#### Default after 12b
-
-Off. The reading gains hold (+324, +454 and +117 on the flat groups, +545 and
-+485 on bent and one-sided gutter pages, no page worse anywhere, speed
-unchanged), no drawn moved word uses an unrefined box any more, and drawn
-moved words sit on their ink about as often as ordinary words. But the
-review's pass criteria are not met: the fit rate on development B, boxes
-touching neighbouring rows more often than ordinary words on the bent, gutter
-and development B pages, and three fragments of moved lines that lose the
-output protection they had through the full line. As the brief asks in that
-case, the recommendation is to keep the switch off. Pages to look at by hand:
-`bent-1080-mild-b1`, `bent-1440-b1`, `bent-2160-b1`, tuning pages 18 and 01,
-`gutter-1080-late-g1`, and the development pages whose moved lines bow most
-(`held-out-07`, `held-out-03`, `held5-02`, `held4-02`; `held2-12` for the
-protection case).
-
-## Round 8: two inferences in flight on two streams (negative result, not built)
-
-After rounds 1 to 3 most of a read is GPU time inside the two networks, and
-every inference runs after the previous one on the State's one CUDA stream.
-The reader already keeps two recognition groups in flight, but both are
-queued on that stream and run in sequence. One recognizer call (at most eight
-crops on the fixed 8x3x48x1024 canvas) and one detector pass (at most 960
-pixels on the long edge) each take about 4 ms on the RTX 4090. The hypothesis:
-one such inference does not fill the GPU, so two of them on two streams, each
-with its own execution context, finish sooner than one after the other, with
-identical results.
-
-The brief made a measurement the first step, with a stop rule fixed before
-anything was built: two streams must finish a set of recognizer inferences at
-least 1.25x sooner AND a set of detector inferences at least 1.15x sooner than
-one stream, or the round ends with the measurement and this record. **Result:
-not met, by a wide margin.** Two streams are no faster for the recognizer
-(0.89x to 1.01x) and slower for the detector (0.42x to 0.88x). Nothing in the
-reader changed, no switch was added, and the targets of step 2 (warm worker
-time, first reads, startup, identical corpus output) were not attempted.
-
-### What was measured
-
-`optionalStreamConcurrency` (`tests/uct_stream_probe.hpp`; the probe is in
-`src/common/uct_tensorrt.cpp` and compiled only into `uct_paddle_tests`) takes
-the prepared engines of a ready reader and creates its own execution
-contexts, each with its own activation memory (the engine's default
-allocation), input and output buffers and its own non-blocking stream; the
-reader's contexts, stream and buffers are not used. For each engine and shape
-it times a set of inferences on one context and one stream (today's
-arrangement), on two contexts fed alternately from one host thread, and on
-three. Each inference first copies one of four deterministic inputs into its
-context's input buffer on that context's stream, as the reader writes its
-canvas before each call. Each configuration runs with the plain `enqueueV3`
-(the reader's default) and with each context's enqueue captured once as a
-CUDA graph and launched, which takes the host's enqueue cost out and leaves
-what the GPU does. One untimed set comes first; the configurations alternate
-their order between the nine timed repeats. Afterwards every inference of
-every configuration runs again untimed and its output is copied back and
-compared byte for byte with the output of the same input on one stream, as is
-each context's last output of every timed set.
-
-Shapes: the recognizer at batch eight on the 1024 canvas, 64 inferences per
-set; the detector at the two shapes of a 1920x1080 read, 32 per set: the whole
-frame (544x960) and one of the two equal tiles (1040x1080 pixels, detector
-input 960x928).
-
-RTX 4090 (driver 621.14), Ryzen 9 5900X, MSVC 19.44 Release, CUDA 12.9.86
-runtime, TensorRT 11.4.0.106, medium BF16 detector and recognizer, branch
-`perf/okuread-port-r8` at `f04a60d`. The GPU was held through the shared lease,
-so no other job used it. Evidence `r8-stream-probe-1` and `r8-stream-probe-2`;
-the second sampled `nvidia-smi` every 100 ms: with the GPU busy (utilisation
-at least 50 percent, 457 samples) it ran in P2 at a median 2,640 MHz (10th
-percentile 2,505 MHz), display not driven. The sets ran back to back, so the
-GPU had no idle gap to clock down in (round 13).
-
-Median wall time of a set over nine repeats on one stream, and the speedup of
-two and three streams against it, run 1 / run 2; in brackets the range of the
-paired per-repeat speedups over both runs:
-
-| Engine, shape, set | Launch | One stream ms | Two streams | Three streams |
-| --- | --- | --- | --- | --- |
-| Recognizer 8x3x48x1024, 64 | plain | 272.9 / 271.3 | 1.010x / 0.998x (0.985 to 1.016) | 0.941x / 0.935x (0.924 to 0.955) |
-| Recognizer 8x3x48x1024, 64 | graph | 252.2 / 251.5 | 0.896x / 0.893x (0.888 to 0.905) | 0.838x / 0.833x (0.827 to 0.845) |
-| Detector 544x960 (whole frame), 32 | plain | 106.3 / 102.5 | 0.882x / 0.801x (0.708 to 1.143) | 0.819x / 0.725x (0.633 to 1.153) |
-| Detector 544x960 (whole frame), 32 | graph | 80.2 / 80.3 | 0.621x / 0.616x (0.570 to 0.677) | 0.463x / 0.447x (0.429 to 0.491) |
-| Detector 960x928 (tile), 32 | plain | 162.2 / 160.6 | 0.720x / 0.792x (0.537 to 0.888) | 0.513x / 0.538x (0.465 to 0.715) |
-| Detector 960x928 (tile), 32 | graph | 143.0 / 142.8 | 0.424x / 0.430x (0.416 to 0.467) | 0.414x / 0.416x (0.392 to 0.430) |
-
-Output: every compared output was byte-identical to the single-stream output
-of the same input, 1,128 comparisons per run over every engine, shape, stream
-count and launch mode, 0 differences; the slot fails on any. Of those, 316 are
-the one-stream configurations compared with themselves (repeatability) and
-812 compare a second or third context with the first. For the patterns and
-configurations tested, the inferences themselves would therefore not change if
-they ran concurrently. The reader read again after the probe and its State retired
-cleanly.
-
-### What the numbers say
-
-- **Overlapping inferences of one engine loses throughput.** With graph
-  launches the host does almost nothing (under 1 ms per set). One stream then takes 3.93 ms per
-  recognizer inference, 2.51 ms per whole-frame detection and 4.46 ms per tile
-  detection; two streams take 4.40, 4.07 and 10.4 ms per inference.
-  The loss is small for the recognizer and large for the detector at the tile
-  shape, where two streams take more than twice as long as one after the
-  other: the overlapping inferences get in each other's way. Why is not
-  established: one inference filling the GPU, the working set of two detector
-  inferences (about 280 MiB of activation memory each) against the 72 MB L2
-  cache, and TensorRT tactics chosen for a GPU of their own are candidates; no
-  kernel profile was taken. What is shown is that this way of overlapping does
-  not help, not that the GPU is saturated.
-- **Host time in the plain submission loop is not all CPU work.** On one
-  stream the host spends about 250 of the recognizer set's 272 ms in the loop
-  that copies the input and calls `enqueueV3` (about 3.9 ms per call when 64
-  are issued back to back; round 3 measured about 2 ms per call inside a
-  read). That time falls as streams are added for the recognizer (250, 223,
-  214 ms) and rises for the tile detector (147, 172, 225 ms), which a fixed
-  CPU cost per call would not do: part of it is the host waiting for room in
-  the GPU's queue. It should not be read as 3.9 ms of removable CPU work per
-  call. The graph rows, where the host is out of the picture, carry the
-  verdict.
-- **Memory.** Each added context with its own activation memory took 164 to
-  166 MiB for the recognizer (plus 80 MiB for its input and its 19.2-million
-  float output) and 280 to 282 MiB for the detector (plus 8 or 16 MiB of
-  buffers), as the change in free device memory (2 MiB granularity); a
-  captured graph up to 2 MiB more. A dual-stream reader would have needed
-  roughly 440 MiB more before any scratch.
-
-### Not established
-
-- One GPU, the RTX 4090, and the medium BF16 pair. The small and tiny tiers
-  and recognizer batch one, which make smaller inferences, were not probed.
-- Overlapping the two different engines (the next region's detection beside
-  the current region's recognition) was not measured; the brief's hypothesis
-  and stop rule concern two inferences of one engine. Whatever overlap would
-  do there, its ceiling is low: on the dense 1920x1080 document the detector
-  is 11.7 of 193.5 ms, so hiding all of it gives about 1.06x, and on a lecture
-  frame the recognizer is 2.6 of 19.8 ms; detection also has to precede
-  recognition of the same region.
-- The inputs are deterministic patterns, not image crops. Inference time does
-  not depend on the values, but the outputs compared are those of the
-  patterns.
-- Stream priorities, other TensorRT tactic choices per context and limiting
-  each context to part of the GPU were not tried.
-
-### Default and code
-
-Nothing in the read path changed and there is no new reader switch. The
-measurement slot stays (opt-in, not in any CTest list, compiled only into
-`uct_paddle_tests` through `OKUFLOW_UCT_GRAPH_FAULT_HOOKS`). Round 10's note
-about one activation arena per engine stands unchanged: nothing runs the
-contexts of one engine concurrently.
-
-### Review
-
-Council on `8efffd1`: Claude Opus 5.5 8/10, GPT-6.1 Sol 8/10, Gemini 4 Hydrogen
-9/10. All three found the measurement sound (separate contexts, activation
-memory, buffers and streams; timing to completion of all work; graph mode
-isolating the GPU) and the stop correct under the rule; two recommended
-merging the slot and the record, one after the corrections below. Applied
-while merging: the headline no longer claims the GPU is saturated; the host
-time of the plain loop is described without attributing it to CPU work; the
-count of cross-context comparisons is stated; the ceiling argument for
-overlapping the two engines replaces "unpromising"; the slot now fails unless
-both plans were loaded from the cache, and its description says it initializes
-the ordinary reader instead of promising that nothing is ever prepared.
-
 ## Round 11: detector and recognizer prepared side by side (on by default, exact)
 
 Target: startup to first result (unprofiled, median of at least five fresh
@@ -3150,3 +2755,1112 @@ time for it to resolve and then decides again; releasing the attempt at the
 cancellation itself is unsound while a vendor call or a build may still be
 running. Sol wanted that before the merge; Opus and Gemini as its own change.
 It is not in this program and is listed as remaining work.
+
+## Round 12: readable text withheld on flat pages (issue #18; private switch, off)
+
+Targets stated before the work: on the 20 tuning pages at least +300 exact
+label matches with curved processing on (no page worse by more than 3); on
+every confirmation set no fewer exact matches than today; on the bent book
+pages also no lower recall and the same or more ribbon-read words; no title
+placement that is complete today becoming incomplete; every protection box of a
+line that is still refused still present; no `v1` scene slower beyond the noise
+floor, and a stated cost for any added recognition.
+
+Result: met with `OKUFLOW_UCT_TEST_FLAT_RIBBON=straight-refused`, which stays
+off by default. Tuning pages +386 with no page worse; development pages +566
+and +172; fresh pages 0, +8, +13 and +17; this repository's scenes unchanged;
+nine new bent book pages +555; titles 43 of 62 in every arm; no protection box
+of a still-refused line lost on any page; speed unchanged. The flat fallback
+the issue proposes was not built: in OkuFlow it would re-read the crop a
+refused line is already read from (below). The speed target's wish that flat
+pages get faster is not met: neither mode removes measurable work.
+
+### Where the words were lost
+
+Curved processing on against off showed the defect at scale on flat labelled
+pages (`issue18-flat-*`, round 6 review). Counted on the tuning pages with
+temporary instrumentation (`r12-diag-tune`, one read, RTX 4090):
+
+| Detection fit outcome | Detections | Words decoded (detection crops) |
+| --- | ---: | ---: |
+| Straight (ordinary rectangle) | 859 | 2,877 |
+| Fitted ribbon | 230 | 851, 66 over the chord limit |
+| Refused: ribbon outside its source region | 60 | 276, all withheld |
+| Refused: residual 8, height 1 | 9 | 12, all withheld |
+| Fit not tried (short, gaps) | 76 | 82 |
+
+Every flagged line on these pages is a false curve: they are flat screen
+pages. The 584 withheld (invalid-geometry) words in the final output are 268
+straight words that inherited a refused line's protection in the merge, 315
+ribbon words (a refused line's own words, or fitted words that inherited) and 1
+fitted word over its chord limit. Attribution arms on the same build
+(`r12-tune-k`): leaving refused lines unmarked recovers +435 exact matches, no
+chord limit +45, both +483. So the loss is refusal protection, mostly reached
+through the region-edge check, not bad fits.
+
+Why straight lines are flagged: the straight-line test is a fixed sagitta,
+max(0.75 px, 8% of the mean envelope height) in detector pixels, whatever the
+line's length. A long line has a large sagitta for a tiny curvature. The falsely
+flagged flat lines have a median fitted bow of 0.15 of their height over a
+median of 91 heights; the real curves of `book-curved-1080`, which the detector
+cuts into short pieces, have the same bow (median 0.13) over 20 heights, a
+curvature about 13 times larger. A significance test of the quadratic term did
+not separate them (median z about 5.6 for both); length does.
+
+### What changed
+
+`ribbon::StraightBound` scales the established bound by
+max(1, length / (K x mean height)) with K = 20. Lines up to K heights are judged
+exactly as today. For a longer parabolic line under the scaled bound, every
+piece of K heights departs from its own chord by less than the established
+bound (a sub-span's sagitta falls with its squared length), and the end angle
+between curve and chord (4 x sagitta / length) stays within what the
+established bound accepts on a line K heights long. Words and the recognition
+windows of a long line are therefore at most as curved as lines today's rule
+already sends to the rectangle path.
+
+`ribbon::StraightRule` applies it two ways, each its own switch value:
+
+- `straight-refused`: the scaled bound replaces only a refusal. A valid ribbon
+  fit stays a ribbon, and a line that is still refused keeps exactly today's
+  geometry and protection box. A moved line was already read from its
+  rectangle crop (refused ribbons always were), so recognition work does not
+  change; it loses the ribbon flag and protection box.
+- `straight`: the scaled bound applies before any ribbon check, so long flat
+  lines with a valid fit become rectangles too.
+
+`ribbon::Fit` now records its outcome (straight, fitted, the first failed
+check, or moved by a rule) and the fitted bow in former padding bytes; the
+layout keeps its 144 bytes. With `OKUFLOW_UCT_TRT_PROFILE=1` the profile line
+gains `ribbonFit`: crops and decoded words per outcome for detections and
+their sub-windows, a bow histogram per outcome class, and (bounded) the
+protection box of each refused detection and the box of each moved one.
+`PaddleDetect` mirrors the rule for the CPU path.
+
+K was chosen on the tuning pages and fresh set 1 only (`r12-tune-k`,
+`r12-fresh1-k`, `r12-sr-tune`, `r12-sr-fresh1`):
+
+| K | `straight-refused` tuning | `straight` tuning (worst page) | Fresh set 1 (both) |
+| ---: | ---: | --- | ---: |
+| 10 | +429 | +369 (-15) | +13 |
+| 15 | +407 | +347 (-15) | +13 |
+| 20 | +386 | +328 (-15) | +13 |
+| 25 | +363 | +305 (-15) | +13 |
+| 30 | +350 | +292 (-15) | +13 |
+
+`straight-refused` makes no tuning page worse at any K. Smaller K reads more,
+but moves lines whose curvature is larger: at K = 10 the end angle may reach
+twice what today's rule accepts on a 20-height line. K = 20 keeps the
+statements above at the scale of a recognition window and of any word, and
+costs 43 tuning words against K = 10. `straight` loses up to 15 words on three
+dense portrait pages with mixed type sizes in one line: there the valid
+ribbon reads better because its crop height follows the size change.
+
+The diagnosis also ran on `v1` (which holds the bent page) before the
+confirmation, so `v1` is not untouched in this round.
+
+### Not built: the flat fallback and a narrower inheritance
+
+The issue's fallback keeps the rectangular candidate of a curve-related
+detection and re-reads it when the curved read lacks confident coverage. In
+OkuFlow a refused ribbon is already recognized from its original rectangle;
+only its words are withheld. A re-read would decode the same crop, and its
+words would meet the same protection in the merge. For fitted lines the most a
+rectangle re-read could add, page by page (the better of `straight` and
+`straight-refused`), is 7 words on the tuning pages. After `straight-refused`,
+122 words remain withheld there: 27 refused detections (24 at a region edge, 2
+residual, 1 height) and 43 straight words that inherited their protection.
+Neither the inheritance share nor the fallback's ceiling justified changing
+the owner's protection design, so neither was built. Making such words
+readable but not drawable would be a reading-path change (every non-candidate
+word is omitted from reading), not a ribbon change.
+
+### Confirmation (final binary)
+
+All rows: build `3379ffa` (`uct_paddle_tests.exe` SHA-256
+`f8f67268de7cfd71d0df702172a8dafb207a761c18ab600ab6bd957501a7eabb`), RTX 4090,
+driver 621.14, Ryzen 9 5900X, MSVC 19.44 Release, Qt 6.12.0, CUDA 12.9.86,
+TensorRT 11.4.0.106, medium/medium BF16, one first read per page, profiled
+(`r12-final2-q-*`). Fresh sets 5 and 6 and bent set 1
+(`perf_corpus.py --bent 1`, new in this round) were generated after the final
+source was committed. Exact = case-sensitive label matches; invalid = withheld
+words; boxes = distinct protection boxes in the output.
+
+| Set | Labels | Exact today | `straight-refused` | `straight` | Worse pages (refused / straight) | Invalid words today / refused | Protection boxes today / refused |
+| --- | ---: | ---: | ---: | ---: | --- | --- | --- |
+| Tuning, 20 | 8,154 | 6,163 | 6,549 (+386) | 6,491 (+328) | 0 / 3 (worst -15) | 584 / 122 | 399 / 95 |
+| Fresh 1, 12 | 7,381 | 7,328 | 7,341 (+13) | 7,341 (+13) | 0 / 0 | 13 / 0 | 10 / 0 |
+| Development A, 40 | 12,180 | 9,225 | 9,791 (+566) | 9,809 (+584) | 0 / 2 (worst -11) | 946 / 267 | 580 / 223 |
+| Development B, 48 | 5,323 | 3,076 | 3,248 (+172) | 3,222 (+146) | 0 / 5 (worst -4) | 805 / 541 | 586 / 439 |
+| `v1`, 12 labelled | 4,394 | 4,106 | 4,106 (0) | 4,106 (0) | 0 / 0 | 36 / 36 | 13 / 13 |
+| Fresh 2, 12 | 6,610 | 6,577 | 6,577 (0) | 6,577 (0) | 0 / 0 | 0 / 0 | 0 / 0 |
+| Fresh 5, 12 | 6,967 | 6,912 | 6,920 (+8) | 6,923 (+11) | 0 / 0 | 10 / 2 | 9 / 2 |
+| Fresh 6, 12 | 6,016 | 5,954 | 5,971 (+17) | 5,971 (+17) | 0 / 0 | 20 / 0 | 15 / 0 |
+| Bent book pages, 9 | 5,976 | 3,648 | 4,203 (+555) | 4,189 (+541) | 0 / 2 (worst -7) | 1,863 / 1,293 | 783 / 445 |
+
+- `book-curved-1080`: 163 exact matches, recall 0.396, in all three arms.
+  Ribbon-read candidate words: `v1` 114 today and with `straight-refused`, 74
+  with `straight`; bent set 1,173 today, 1,215 with `straight-refused`, 439
+  with `straight`. Bent-set recall 0.610 today, 0.703 with `straight-refused`.
+  The bent set gains most on its milder pages (one goes from 150 to 379 of 394
+  words), where today's rule refuses long, slightly bent lines at region edges.
+- Titles (62 private placements, counts only): complete in 43 in every arm;
+  none changes.
+- Protection, per page (`r12_protection.py`): every refused detection's box of
+  today's read is, with the switch, either a refused detection's box again or
+  the box of a line the rule moved; none is missing on any set. Moved/kept
+  refused detections: tuning 42/27, development A 63/51, development B 36/139,
+  `v1` 0/14, fresh 1 4/4, fresh 2 1/0, fresh 5 3/0, fresh 6 4/0, bent 73/233,
+  titles 0/9.
+- Work: `straight-refused` changes no crop. On the tuning pages the read keeps
+  880 ribbon crops and 3,811 recognizer samples; refused crops fall from 168 to
+  27. `straight` cuts ribbon crops to 32 and samples to 3,736.
+
+Speed (`r12-final2-speed-v1`: two reversed cohorts of five warm reads;
+`r12-final2-speed-tune`: two cohorts of two), same build and machine:
+
+| Arm against today | `v1` warm | `v1` first read | Tuning warm | Tuning first read |
+| --- | ---: | ---: | ---: | ---: |
+| `straight-refused` | 0.999x | 0.993x | 1.000x | 1.002x |
+| `straight` | 0.955x | 0.959x | 1.008x | 1.001x |
+
+`straight-refused` gives byte-identical output on 18 of 18 `v1` scenes, so its
+`v1` differences are noise: the largest dense-scene change is doc-camera-1080
+at 1.8 percent (inside the 2 percent floor); sparse lecture scenes move by up
+to 6 percent (inside 12). `straight` is slower on several sparse scenes in one
+cohort only; that run was not repeated. Neither mode makes flat pages
+measurably faster: `straight-refused` removes no ribbon work, and the ribbon
+crops that `straight` removes cost no more to rectify than rectangles.
+
+The first confirmation attempt measured the previous diagnostic build: the
+build of `3379ffa` had stopped on a misnamed target. Its quality results
+(`r12-final-q-*`) are identical to the rerun; its speed runs
+(`r12-final-speed-*`) were heavily contended and are not used.
+
+Tests: `curvedRibbonStraightSpanBound` (model-free: the bound and its two
+geometric statements, the outcome of each refusal, and over a sweep of
+lengths, bows, slopes and source sizes that a rule only ever moves a component
+to the rectangle path, never changes a fitted or refused geometry or its
+protection, and under `straight-refused` never changes a valid fit);
+`gpuRibbonStraightRuleMatchesCpu` (GPU and CPU agree on the outcome for each
+rule). Existing ribbon, reconcile and detector-kernel slots and the exact merge
+replay (`uct_merge_replay_tests`, frozen baseline unchanged) pass. The merge
+itself is unchanged; with the switch on it decides differently only because
+moved lines' words arrive as ordinary candidates without a protection box.
+SCOPED: no full matrix, GUI or native-app run.
+
+### Not established
+
+No pixel-level check that words drawn on a moved line sit on their ink: the
+argument is geometric (the bound above, plus the per-word ink fit every
+rectangle word already gets), and the moved lines on the bent set are real,
+mildly curved lines. No owner camera or document capture is in any set. The
+issue's OkuRead title failure does not reproduce in OkuFlow (0 of 62
+placements change with curved processing on or off).
+
+### Default
+
+Off. Recommendation: make `straight-refused` the default. It meets every
+quality and protection target on every set, makes no page worse anywhere,
+keeps every valid ribbon and every protection box of a line that is still
+refused, and costs no time. `straight` should stay off: it loses words on
+mixed-size lines and ribbon-read words on bent pages.
+
+### Round 12b: the rule narrowed to what its argument covers, and where moved words are drawn
+
+The round 12 council (GPT-6.1 Sol 6/10, Claude Opus 5.5 7/10, Gemini 4
+Hydrogen 7/10; Sol for keeping it off, the other two for turning it on after a
+placement check) accepted the reading gains and the
+argument against the flat re-read, and found that the rule went further than
+its argument: `straight-refused` turned every refusal into a rectangle when the
+fitted bow was under the scaled bound, including steep and residual refusals,
+where the parabola says nothing about the line's real shape; the scaled bound
+had no ceiling and its 0.75 px floor grew with length, loosening it for small
+type; and nothing measured where the newly shown words are drawn. The owner's
+condition is that replacement text is never drawn over ink that could not be
+rectified. Changes (switch still off):
+
+- **Only region-edge refusals move.** `straight-refused` now moves only a line
+  refused because its padded ribbon leaves its source region (`kOutside`), the
+  one refusal after every shape check. Steep and residual refusals stay
+  refused; so do height refusals (the envelope tapers by more than half its
+  height, so one rectangle height cannot fit its words, the failure measured
+  below) and degenerate ones (the height regression failed; unreachable with
+  at least 20 distinct bins, and the rule moves only lines whose fit completed
+  every check). The review's photographed line (flat, dropping half a text
+  height near the gutter: least-squares bow under the bound, residual over its
+  limit) is a test case and stays refused.
+- **A cap and a floor that does not scale.** No line whose fitted sagitta
+  exceeds 0.32 mean heights is treated as straight, whatever its length
+  (`ribbon::kStraightMaximumBow`, an edge of the existing bow histogram). Only
+  the 8% part of the bound scales with length; the 0.75 px floor is a fixed
+  noise allowance. At a detector height of 5 px and 100 heights the bound was
+  0.75 h, now 0.4 h; above 80 heights the cap binds.
+- **Words drawn only on their ink.** A word of a moved line that the worker's
+  ink fitting cannot place (`RefineWordInkBounds` / `FitOrientedWordInk`
+  keep the detector span) is withheld as invalid geometry over that span, as
+  when its line was refused (`FinalizeRecognizedGeometry`). Words of other
+  lines keep today's disposition, fitted or not.
+- **Both readers.** `PaddleFlatRibbonRule` parses the switch for the TensorRT
+  and the CPU reader; the CPU reader ignored it before.
+
+Each step was committed with a test: `curvedRibbonStraightSpanBound` (floor,
+cap, the residual and height cases kept refused, only `kOutside` moves),
+`curvedRibbonFlatSwitchBothReaders` (one parser; both readers refuse an
+invalid value with the same message; `PaddleDetect` moves a region-edge line
+and its words carry the bow), `curvedRibbonMovedWordsHeldToInk` (only an
+unfitted word of a moved line changes disposition) and
+`gpuRibbonStraightRuleMatchesCpu`, which now also covers the region-edge case
+and both sides of the cap, with the default kernels (`parallelRibbonMerge`) and
+the reference ones. Over its 40 comparisons GPU and CPU agree exactly on
+outcome and status and bit for bit on the bow; 24 geometries are
+bit-identical and the others differ by at most 4.5e-5 px, which is the
+intended agreement (the GPU sums bin positions in float per thread and merges,
+the CPU in double).
+
+The cap was chosen on the tuning pages and fresh set 1 only: no moved line
+there bows more than 0.32 h, and fitted moved words show no placement trend
+with bow up to it (edges within 0.1 h: 88%, 95% and 85% for bows up to 0.16,
+0.24 and 0.32 h). Narrowing to region-edge refusals costs 32 tuning words
+(+386 to +354 before the placement fix).
+
+#### Where moved words are drawn
+
+Measured after the worker's ink fitting, from the read's own output (the
+corpus timing evidence now records `inkFitted`, the final quad and
+`movedLineBow` per word) and the page pixels (`r12b_placement.py` in the
+program's tools). Ink is the pixels on the word's own side of the midpoint
+between its measured foreground and background; h is the height of the
+word's ink. "Same pages" weights the ordinary straight-line words (not ribbon,
+not moved) of each page by that page's moved words, because moved words
+cluster on a few pages: on the tuning pages 47 of 246 are on one dark, noisy
+page where ordinary words fit at 28 percent.
+
+Before the fix, 34 of 246 moved tuning words (33 on that page) failed ink
+fitting and were painted with the unrefined detector span, up to three times
+their ink height. Ordinary words on the same pages fail at the same rate and
+are painted the same way. Under the narrowed rule the case the review found on
+tuning page 18's top line no longer occurs: 48 of its 49 moved words fit. Final
+binary, painted words, moved / ordinary on the same pages:
+
+| Set | Moved (fit-eligible) | Fit rate | Withheld by the fix | Edges within 0.1 h | Box over another row by more than 0.1 h | Another line's ink in the box |
+| --- | ---: | --- | ---: | --- | --- | --- |
+| Tuning | 246 | 86.2% / 83.8% | 34 | 90.1% / 82.0% | 1.4% / 2.3% | 0.5% / 0.2% |
+| Development A | 356 | 82.9% / 83.2% | 61 | 92.2% / 81.7% | 1.4% / 1.0% | 0% / 0.2% |
+| Development B | 111 | 89.2% / 95.7% | 12 | 92.9% / 90.0% | 6.1% / 2.8% | 0% / 1.0% |
+| Bent | 497 | 99.6% / 99.2% | 2 | 96.6% / 97.5% | 21.2% / 13.7% | 0.2% / 0.7% |
+| Gutter | 313 | 99.0% / 99.6% | 3 | 97.1% / 98.2% | 7.4% / 2.6% | 1.0% / 0.1% |
+
+Fresh sets 1, 5 and 6 move 8, 6 and 9 words: all fitted, all within 0.1 h,
+none over another row. The median box height equals the ink height in both
+groups. The row overlaps inspected are on dense pages with tight leading,
+where fitted boxes of ascenders and descenders touch the adjacent row; ordinary
+words do the same, and on the tuning pages one overlap is a title word's own
+box reaching down onto a moved line.
+
+Against the review's pass criteria: the fit rate is within two points of
+ordinary words on the tuning, development A, bent and gutter pages, but 6.5
+points below on development B (12 words over 14 pages). Final boxes are within
+0.1 h of their ink for 90 to 97 percent of drawn moved words: as often as
+ordinary words on the flat sets, slightly less often on the bent and gutter
+pages, and not for every word. Boxes of moved words do intersect neighbouring
+rows' boxes, and more often than ordinary words on the development B, bent and
+gutter pages. **The criteria are not met.**
+
+#### Protection in the final output
+
+`r12b_protection.py` checks, per page of every set, that every detection that
+is still refused has its protection box inside the union of the
+`protectedBounds` of the read's invalid-geometry words. Today's read already
+fails this on some pages (tuning 4 detections plus 3 that decoded no word,
+fresh 1 6, development A 15, development B 26, bent 8, gutter 3, `v1` 1,
+titles 7): a cut-edge fragment at an internal region edge loses its words in
+the merge and the overlapping region's complete read is kept. The decisive
+figure is a detection covered today and not with the switch: 0 on tuning,
+fresh 1, 2, 5 and 6, development B, `v1`, gutter and titles; 1 on development A
+(`held2-12`) and 2 on the bent set (`bent-1440-b1`, `bent-2160-b1`). In all
+three the still-refused detection is a shorter fragment (99 to 100 percent of
+its area inside) of a line that an overlapping detection reads in full, and in
+neither arm does any word carry the fragment's own box. Today the coverage came
+from the full line's refusal. The rule moves that line, because every shape
+check passed over its full length, and its words are drawn fitted to their
+ink. Round 12's detector-level check is still clean: every refused box of
+today's read is refused again or moved, and none is missing.
+
+#### Confirmation (final binary)
+
+Build `fcc12a7` (code as of `5187f54`; `uct_paddle_tests.exe` SHA-256
+`28827ae7f1ecbbe89ee6c778a3d88e290d5bd8053b61c2e0fd2afd07af029188`), RTX 4090,
+driver 621.14, Ryzen 9 5900X, MSVC 19.44 Release, Qt 6.12.0, CUDA 12.9.86,
+TensorRT 11.4.0.106, medium/medium BF16, one first read per page, profiled
+(`r12b-final-q-*`). The gutter set (`perf_corpus.py --gutter 1`, new) was
+generated after this build. `straight` was not re-measured.
+
+| Set | Labels | Exact today | `straight-refused` | Worse / better pages | Invalid words today / switch | Protection boxes | Moved / still refused |
+| --- | ---: | ---: | ---: | --- | --- | --- | --- |
+| Tuning, 20 | 8,154 | 6,163 | 6,487 (+324) | 0 / 10 | 584 / 198 | 399 / 148 | 36 / 33 |
+| Fresh 1, 12 | 7,381 | 7,328 | 7,341 (+13) | 0 / 2 | 13 / 0 | 10 / 0 | 4 / 4 |
+| Development A, 40 | 12,180 | 9,225 | 9,679 (+454) | 0 / 18 | 946 / 391 | 580 / 307 | 53 / 61 |
+| Development B, 48 | 5,323 | 3,076 | 3,193 (+117) | 0 / 18 | 805 / 617 | 586 / 487 | 29 / 146 |
+| `v1`, 12 labelled | 4,394 | 4,106 | 4,106 (0) | 0 / 0 | 36 / 36 | 13 / 13 | 0 / 14 |
+| Fresh 2, 12 | 6,610 | 6,577 | 6,577 (0) | 0 / 0 | 0 / 0 | 0 / 0 | 1 / 0 |
+| Fresh 5, 12 | 6,967 | 6,912 | 6,920 (+8) | 0 / 2 | 10 / 2 | 9 / 2 | 3 / 0 |
+| Fresh 6, 12 | 6,016 | 5,954 | 5,971 (+17) | 0 / 2 | 20 / 0 | 15 / 0 | 4 / 0 |
+| Bent, 9 | 5,976 | 3,648 | 4,193 (+545) | 0 / 5 | 1,863 / 1,304 | 783 / 448 | 72 / 234 |
+| Gutter, 9 (new) | 5,440 | 4,464 | 4,949 (+485) | 0 / 7 | 871 / 373 | 280 / 119 | 52 / 53 |
+
+- Titles (62 private placements, counts only): complete in 43 in both arms;
+  none of their refused detections moves.
+- Recall: bent 0.610 to 0.702, gutter 0.821 to 0.910; `book-curved-1080`
+  unchanged.
+- Newly shown words that match no label ("other words"): tuning 14.1% against
+  14.7% for the rest of the shown words, development A 15.9 against 14.6,
+  development B 29.6 against 31.3, bent 1.1 against 2.6, gutter 1.0 against
+  1.5, fresh sets 0.
+- Speed (`r12b-final-speed-v1`, two reversed cohorts of five;
+  `r12b-final-speed-tune`, two of two): `v1` warm 1.000x, first read 1.007x,
+  output byte-identical on 18 of 18 scenes and no line moved on any `v1`
+  scene, so every difference is noise; the largest is `book-curved-1080` at
+  3.3 percent warm (1.9 first read), above the 2 percent dense floor in this
+  run. Tuning pages warm 0.985x, first read 0.996x; the cohorts
+  of sparse pages disagree by up to 38 percent there (contention), so that
+  run shows no change beyond the noise and no more.
+
+Interaction with region reconciliation: a moved line is no longer `curved`
+(`detection.curved` means a valid or refused ribbon), so with
+`OKUFLOW_UCT_TEST_REGION_RECONCILE` also on it becomes eligible for reconcile
+drops like any rectangle. The two switches were not measured together.
+
+Correction to round 12: the bent pages have one or two columns, not one to
+three.
+
+#### Default after 12b
+
+Off. The reading gains hold (+324, +454 and +117 on the flat groups, +545 and
++485 on bent and one-sided gutter pages, no page worse anywhere, speed
+unchanged), no drawn moved word uses an unrefined box any more, and drawn
+moved words sit on their ink about as often as ordinary words. But the
+review's pass criteria are not met: the fit rate on development B, boxes
+touching neighbouring rows more often than ordinary words on the bent, gutter
+and development B pages, and three fragments of moved lines that lose the
+output protection they had through the full line. As the brief asks in that
+case, the recommendation is to keep the switch off. Pages to look at by hand:
+`bent-1080-mild-b1`, `bent-1440-b1`, `bent-2160-b1`, tuning pages 18 and 01,
+`gutter-1080-late-g1`, and the development pages whose moved lines bow most
+(`held-out-07`, `held-out-03`, `held5-02`, `held4-02`; `held2-12` for the
+protection case).
+
+## Round 13: reads at the application's pacing on a clocked-down GPU (private switch, off)
+
+Every earlier timing in this record issues reads back to back. The
+application does not: it reads on timers (`UctTiming`: 350 ms between reads of
+advancing media, a 1500 ms refresh of a live view, 300 ms settling of a paused
+view). Between such reads the GPU's power management lowers its clocks, and a
+sparse frame's read takes four to five times as long as every table above
+says: about 110 ms instead of 23 ms for a real lecture frame.
+
+Targets stated before the work: with the remedy on, at gaps of 350 and 1000
+ms, the median of reads 6 to 25 of each real lecture frame at most 1.25 times
+its back-to-back median, in two fresh processes each; no read delayed
+(back-to-back medians of all 18 scenes unchanged within the noise floor, first
+reads included); byte-identical complete output on the 18 scenes at gaps 0 and
+350; the cost reported (added power and GPU utilization, and zero when text
+reading is off or idle past the time-out); and whether the application's own
+video load changes the picture, answered with numbers.
+
+Result: all met, at a cost of 45 to 63 W more GPU power while text reading is
+active at the application's pacings. `OKUFLOW_UCT_TEST_KEEP_WARM=continuous`
+or `=preroll` selects it; it stays off by default (see "Default").
+
+Hardware and build for every number below: RTX 4090, driver 621.14, Ryzen 9
+5900X, MSVC 19.44 Release, CUDA 12.9.86, TensorRT 11.4.0.106, medium detector
+and recognizer in BF16, build `b3e1ce3` (corpus executable SHA-256
+`a3308495…`; `r13-frameload-350-b`, `r13-tail-long` and `r13-stable-350` used
+`4cb32cb`, which changes only the test slot), `display_active: Disabled`. GPU state
+sampled every 50 or 100 ms with read-only `nvidia-smi` queries.
+
+### Paced measurement
+
+`perf_measure.py` records the gap, every read's time in order, the median of
+reads 6 to 25 ("settled") and, with `--gpu-sample-ms`, the P-state, clocks,
+utilization and power draw over the timed reads; `--frame-load` and
+`--tail-ms` emulate the application's video work and keep an idle tail. See
+[corpus timing](uct_corpus_timing.md), "Paced runs". Tooling is commit
+`63e53f1` plus the options in `0ca6b30`.
+
+### How the governor behaves
+
+`optionalGpuClockProbe` (`scripts/uct/gpu_clock_probe.py`, evidence
+`r13-clock-2`, `r13-clock-3-refine`) measures the SM clock with an in-kernel
+meter (one warp, 100 µs, SM cycles over `%globaltimer` nanoseconds) and needs
+no engine.
+
+| Question | Answer |
+| --- | --- |
+| Step-down | After a busy period the clock stays at 2,630 to 2,650 MHz through 1,500 ms of idle and is at 713 to 730 MHz after 2,000 ms (both repeats). Light work in between does not change that: 1 to 25 percent duty drops at 1.75 to 2.0 s. P-state P2 for about 1.6 s, then P5 (720 to 870 MHz), then P8 |
+| What holds the high state | Time utilization of at least 40 percent: one warp busy 40 or 45 percent of every 16 or 33 ms holds 2,630 MHz for 4 s; 35 percent decays to 2,215 MHz, 30 percent to 2,500 MHz, 25 percent to about 1,400 MHz, 10 percent or less to 715 MHz. 256 blocks at 2 or 10 percent drop just the same: it is the time a kernel is resident, not how much of the GPU it uses |
+| Step-up | From P8 (5 s idle) under continuous load, one warp or every SM: at or above 2,400 MHz after 263 to 273 ms. From 3 s idle: 100 percent duty 256 to 301 ms, 75 percent 512 ms, 60 percent 1,264 ms, 50 percent and below never |
+| Spin or nap | A resident warp that naps 10 µs between flag reads holds and steps up exactly like a spinning one, at the same power |
+| Power | P8 idle 12 to 17 W; one warp holding P2 at 40 percent 78 W, 50 percent 72 to 82 W, 100 percent 85 to 88 W (spinning or napping). The cost is the high clock state itself, not the warp's work |
+
+Paced reads without a remedy show the governor oscillating: a lecture frame
+reads at 23 to 27 ms for about 1.5 to 2 s after denser work, then at 45 to 60
+ms (P3), then at 105 to 125 ms (P5); a read at the lowest clock occasionally
+takes about 200 ms, and that sustained burst steps the clocks up again for the
+next few reads (`r13-paced-350`, base series).
+
+### The application's own GPU load
+
+The application's per-frame video work while text reading is on is a camera or
+decoder upload, colour conversion, zoom, grading or sharpening, and the
+presenter's copy and draw: about one read and one write of a 1920x1080 frame
+per step. The emulation (`FrameLoad`) uploads one NV12 1920x1080 frame from
+pinned memory and makes 6 or 16 full-frame BGRA device copies per frame on its
+own stream, at 30 or 60 fps: 0.7 to 1.75 ms of GPU time per frame, 4 to 8
+percent utilization. It neither holds nor raises the clocks: from the high
+state they drop at 1.75 to 2.0 s exactly as with no load, from idle they stay
+at P8 (`r13-clock-2`, "frames"). With the load running during paced reads the
+base arm is as slow as without it, 2.2 to 4.9 times its back-to-back median
+(`r13-frameload-350`). With continuous keep-warm and the
+load running, the six lecture frames read at 0.97 to 1.08 times their
+back-to-back median in both processes of `r13-frameload-350-b`. In the first
+run (`r13-frameload-350`) one process read frames 03 and 04 at 1.46 and 1.36
+times, at full clock (P2, 2,655 MHz, reads of 35 to 38 ms where the other
+process and every other run read 25 to 27 ms); that was not a clock effect and
+did not repeat, so it is reported as a disturbed process. The emulated video
+load therefore does not change the picture: without a remedy the reads are as
+slow as with no load.
+
+Not emulated: the display. These runs had no driven display, so there was no
+desktop composition, scan-out or presentation through D3D12 to a real swap
+chain; Extra Stable, keystone or neural video enhancement, which add more GPU
+work per frame, were not emulated either. A real display and those effects add
+load, but nothing here suggests they reach the 40 percent utilization that
+holds the clocks; the owner's check in the real application (below) settles
+it.
+
+### What changed
+
+- **Policy** (`include/okuflow/common/uct_keep_warm.hpp`, pure, model-free).
+  Armed only when a paced reader announces its next read
+  (`RecognitionScheduler::ExpectNextRead`); ordinary submissions never arm it.
+  `continuous` warms from the announcement until the next read and between
+  reads; `preroll` only from a lead before the announced read until it arrives
+  (or the lead, at least 100 ms, after it is due). Never while a read runs.
+  Disarmed by `Cancel()` (the controller's `Invalidate`: pause, media
+  suppression, settling, composites, source loss, geometry change), by
+  `StopKeepWarm()`, by destruction, and by an idle time-out of 2.5 s after the
+  last submitted read; it stays disarmed until the next announcement.
+- **Where the work runs.** No new thread and no new stream: the recognition
+  worker, while it waits for a job, asks the recognizer to queue one spin
+  (`Recognizer::KeepWarm`) on the TensorRT `State`'s own stream. A spin is one
+  warp that naps 10 µs between reads of a host-mapped stop flag and lasts at
+  most 50 ms; the worker tops up every 25 ms with at most one spin waiting
+  behind the running one, so a late wake-up (Windows timer granularity) leaves
+  no gap. Before every job the worker sets the flag
+  (`InterruptKeepWarm`); both spins end within one nap, and the job's first
+  GPU work follows them on the same stream. The flag and two events belong to
+  the `State`; `Retire` sets the flag before `RetireState` drains the stream,
+  and they are released in `~State`, which runs only after that drain. A CUDA
+  failure in this path disables keep-warm for that recognizer and leaves fault
+  handling to the next read. A backend that is still preparing is never
+  forced; a CPU backend is asked once and keep-warm then stays off.
+- **The controller** announces the next read after each paced live or
+  advancing-media full submission (media interval 350 ms, live refresh 1500
+  ms). Paused stills are read without an announcement, so a paused view never
+  warms.
+- **The corpus slot** announces each read before its gap, as the application
+  does.
+
+### Measured: paced lecture frames
+
+Median of reads 6 to 25, each of two fresh processes (cohorts walk the scenes
+in opposite orders), against the back-to-back base median of that scene
+(`r13-b2b-v1`, 22.1 to 26.2 ms). Arms: base, `continuous`, `preroll`, all at
+the defaults.
+
+| Gap | Arm | Six lecture frames, ratio range (per process) | Target 1.25x |
+| --- | --- | --- | --- |
+| 350 ms (`r13-paced-350`) | base | 1.09 to 5.12 (most 4.4 to 4.9) | not met |
+| 350 ms | continuous | 0.97 to 1.05 | met, every frame, both processes |
+| 350 ms | preroll | 0.96 to 1.04 | met |
+| 1000 ms (`r13-paced-1000`) | base | 4.25 to 5.16 | not met |
+| 1000 ms | continuous | 0.98 to 1.06 | met |
+| 1000 ms | preroll | 0.98 to 1.06 | met |
+| 1500 ms (`r13-paced-1500`, frames 00 and 03) | base | 4.49 to 4.93 | not met |
+| 1500 ms | continuous | 1.00 to 1.02 | met |
+| 1500 ms | preroll | 1.00 to 1.02 | met |
+
+Per frame, 350 ms, ms (process 0, process 1):
+
+| Frame | Back-to-back | Base | Continuous | Preroll |
+| --- | ---: | --- | --- | --- |
+| board-lecture-00 | 22.80 | 110.0, 111.8 | 23.6, 23.0 | 22.8, 23.0 |
+| board-lecture-01 | 22.30 | 53.5, 53.4 | 23.4, 22.9 | 23.0, 23.3 |
+| board-lecture-02 | 25.41 | 117.8, 116.7 | 25.8, 25.7 | 25.9, 25.5 |
+| board-lecture-03 | 26.15 | 116.6, 66.3 | 26.1, 26.1 | 26.2, 26.0 |
+| board-lecture-04 | 25.65 | 113.2, 60.0 | 24.9, 24.9 | 25.0, 24.5 |
+| board-lecture-05 | 22.09 | 113.1, 24.0 | 21.8, 22.0 | 21.8, 22.0 |
+| doc-camera-1080 (dense) | 203.87 | 202.3, 200.6 | 203.8, 201.2 | 202.3, 203.0 |
+
+The dense page is not affected by pacing (its own 200 ms reads keep the GPU
+busy) and not by the remedy. First reads of each scene at 350 ms: base 23.7 to
+119.4 ms depending on where the governor was, continuous and preroll 22.1 to
+28.9 ms; at 1000 ms base 23.4 to 196.7 ms, continuous 22.3 to 29.6 ms, preroll
+22.3 to 29.4 ms (the dense page 201 to 208 ms with the remedy, 201.7 and 503.0
+ms base).
+
+### Measured: no read delayed, output identical
+
+Back-to-back, all 18 scenes, two cohorts of five warm reads (`r13-b2b-v1`):
+continuous 0.994x warm and 0.993x first read (geometric mean), preroll 1.005x
+and 1.004x. Dense scenes within 2 percent; the short lecture frames 0.957 to
+1.046x warm and 0.924 to 1.037x first, inside their 12 percent noise floor.
+Identical complete output on 18 of 18 scenes for both arms. At gap 350, all 18
+scenes, base against continuous: identical on 18 of 18 (`r13-id-v1-gap350`);
+every paced run above also compared identical on every scene. The GPU contract
+`optionalKeepWarmGpuContract` read board-lecture-00 and -03, doc-camera-1080
+and no-text-1080 sixteen times with spins running or queued and matched a
+scheduler that never warms byte for byte; destroying the scheduler with spins
+outstanding took 0.92 ms and the TensorRT State closure completed
+(`$w\logs\r13-gpu-contract-1.log`).
+
+### Cost
+
+Mean power and utilization over the timed reads (`nvidia-smi`, 100 ms), per
+process; the scene list includes the dense page, whose reads dominate the
+base arm's power at 350 ms.
+
+| Gap | Base W (util %) | Continuous W (util %) | Preroll W (util %) | Added, continuous / preroll |
+| --- | --- | --- | --- | --- |
+| 350 ms | 64.7, 65.8 (20, 21) | 115.5, 113.8 (98) | 116.4, 113.5 (98) | +49 / +50 W |
+| 1000 ms | 40.6, 40.6 (11) | 95.9, 94.7 (99) | 86.5, 85.4 (37) | +55 / +45 W |
+| 1500 ms (two sparse frames) | 22.8, 23.9 (7) | 86.2, 85.7 (99.5) | 75.4, 75.2 (24) | +63 / +52 W |
+
+With either arm the GPU stays in P2 for the whole run (every sample), against
+P2 for a third of the samples and P5/P8 for most of the rest in the base arm.
+Preroll saves 10 to 11 W against continuous at 1000 and 1500 ms and nothing at
+350 ms: the lead (350 ms) covers the whole gap, and at 1000 or 1500 ms the
+clocks hold through the gap anyway (step-down needs 1.75 to 2 s), so the saving
+is only the warp's own work. Utilization reads 98 to 99 percent with
+continuous because a resident warp counts as busy.
+
+Zero when off or idle: with the switch off nothing is launched (base arms, 0
+launches; the scheduler and controller tests check that announcements and
+reads never warm when it is off, and the controller retires the worker when
+text reading is turned off). When reads stop, continuous keeps warming until
+the 2.5 s idle time-out (about 50 more spins) and then disarms; preroll stops
+at the end of its window. With a 15 s idle tail after the last read
+(`r13-tail-long`, board-lecture-00), the 12 s after the time-out average
+22.7 W with continuous (the clocks hold P2 for about 1.75 s more, then 82 of
+110 samples are P8), 11.9 W with preroll and 10.5 W with base: once idle past
+the time-out, keep-warm adds nothing.
+
+### The other candidates
+
+- **Pre-roll** is measured above: it meets the target at every pacing, saves
+  10 to 11 W at 1000 and 1500 ms and nothing at 350 ms. Its weakness is a read
+  earlier than announced (a changing live scene reads before the 1500 ms
+  refresh); then only the hold from the previous read helps.
+- **A process-lifetime request for the high state without administrator
+  rights.** CUDA has no clock or power API. NVML's clock and power setters
+  (`nvmlDeviceSetGpuLockedClocks`, `SetApplicationsClocks`,
+  `SetPowerManagementLimit`, persistence mode) need administrator rights and
+  apply to the whole device until reset, so they are out of scope. DXGI's
+  `SetGPUThreadPriority` and Windows' process power throttling change
+  scheduling, not clocks. The one candidate is D3D12's
+  `ID3D12Device::SetStablePowerState(TRUE)`: no administrator rights, ends with
+  the device, but it requires Windows Developer Mode (without it the call
+  removes the device), applies to the whole adapter, fixes the clock at a
+  "stable" value rather than the boost clock and is documented for profiling,
+  not for applications. Developer Mode is on on this PC, so it was measured as
+  a test-only comparison (`OKUFLOW_UCT_CORPUS_STABLE_POWER=1`,
+  `r13-stable-350`): the call succeeded (`hr=0`) and held P2 at a fixed
+  2,235 MHz for the whole process. Lecture frames read at 1.06 to 1.49 times
+  their back-to-back median (target missed on three of six frames in one
+  process each), and dense pages were 11 to 16 percent slower (doc-camera-1080
+  228 to 230 ms against 202 to 204 ms, doc-camera-2160 517 to 537 ms against
+  458 to 467 ms) because the stable clock is below the boost clock. Power while
+  reading was about the base arm's (102 W against 103 to 105 W with the dense
+  pages in the list), and the state lasts as long as the device: 53 W in the
+  idle tail. Slower than keep-warm, not a remedy for dense pages, and not
+  available to users without Developer Mode; the application does not use it.
+- **The driver's "Power management mode"** (NVIDIA Control Panel, "Prefer
+  maximum performance", per program or global) is a persistent driver profile
+  setting and out of scope for the application. The owner can choose it by
+  hand for `OkuFlowApp.exe`; it was not changed or measured here.
+
+### Default
+
+Off. Both variants meet every target, but they buy the latency with 45 to 63 W
+more GPU power for as long as text reading is active on live or playing media,
+and that trade is the owner's decision. Recommendation: turn on
+`OKUFLOW_UCT_TEST_KEEP_WARM=continuous` if the owner wants lecture and sign
+text to appear at back-to-back speed during playback and live viewing, and
+accepts about 50 to 60 W more GPU power while text reading is active (on this
+RTX 4090; nothing while it is off, paused or idle past 2.5 s). It meets every
+target at every pacing the application uses and covers reads that come
+earlier than announced. `preroll` saves 10 to 11 W at 1000 ms or longer gaps
+and nothing at the 350 ms media pacing; it is the better choice only if the
+live refresh is lengthened. If the extra power is not wanted, leave it off:
+reads stay correct, only 2 to 5 times slower on sparse frames between denser
+work. Making it a user setting (with a plain power note) would be the next
+step, not part of this round.
+
+What to check by hand in the real application, with the switch set in the
+environment before starting it: a live board view and a playing lecture video
+with Ultra Clear Text on, (1) `nvidia-smi -q -d PERFORMANCE,POWER` (read-only)
+or the overlay's own timing trace with and without the switch to see whether
+the real display and video work already hold P2 on this PC, (2) how fast new
+text appears after a pan or a slide change, (3) the GPU power draw with the
+switch on, and that it falls back when Ultra Clear Text is turned off, the
+video is paused or the window is minimized.
+
+### Not established
+
+- The display: no run had a driven display, presentation or desktop
+  composition; the application's video work was emulated with CUDA copies.
+- Other GPUs and drivers: the governor's thresholds and timings above are the
+  RTX 4090's with driver 621.14. A laptop GPU or another generation may step
+  down faster, need a different duty or cost different power.
+- Real-application latency: worker time on file fixtures, not camera-to-paint.
+- The `UctTiming` pacing was emulated with sleeps in the corpus slot; the
+  controller's announcement is covered by tests, not by a timed run of the
+  application.
+
+## Round 14: warm the GPU when the view changes, not all the time (on by default on external power)
+
+Round 13's continuous keep-warm is armed by every paced read, and a live view
+re-reads every 1500 ms even when nothing changed, so it never reaches its idle
+time-out: about 50 W for the whole session, spent on refreshes that mostly
+confirm text already on screen. And the controller's `Invalidate` (a pan, a
+scene change, a new source) disarmed it, which is exactly when a fast read
+matters. Round 14 adds a mode that turns this around
+(`OKUFLOW_UCT_TEST_KEEP_WARM=change`), closes round 13's review, and measures
+the program's switches at the application's pacing. As reviewed, everything
+was off by default; "Default" below says what the owner changed afterwards.
+
+Hardware and build for every number below: RTX 4090, driver 621.14, Ryzen 9
+5900X, MSVC 19.44 Release, CUDA 12.9.86, TensorRT 11.4.0.106, medium detector
+and recognizer in BF16, `display_active: Disabled`, GPU state sampled every
+100 ms with read-only `nvidia-smi` queries. Corpus executable SHA-256
+`1ffe4bcd…`, built from this round's sources as committed in `032dc5f` (the
+executable predates only a comment and a model-free test of that commit). A
+first campaign with one spin per worker wake is kept under `r14a-*`; see "Two
+spins per wake".
+
+### Targets
+
+| Target stated before the work | Result |
+| --- | --- |
+| First read after a view change that follows at least 3 s of static view: at most 1.25 times the scene's back-to-back median, six lecture frames, three fresh processes | **Not met.** Per frame and process the median is 1.08 to 2.22 times (switch off: 6.5 to 8.4 times). Reads alternate between climbed (about 1.0 to 1.2 times) and not yet climbed (2 to 3.4 times). With the read 600 ms after the change instead of the controller's 300 ms it is within the bound in the two processes that were run: 0.97 to 1.18 times. On a live view that is being refreshed every 1.5 s, the read after a change is at 0.96, 1.00 and 1.63 times in three processes (off: 2.2 to 4.1 times) |
+| Static live view with warm-on-change: average power within 3 W of switch-off | Nothing is launched (0 launches in three 60 s processes and in every static paced run). The measurement cannot confirm 3 W: session means are 25.2, 35.2 and 24.1 W against 18.8, 35.0 and 34.8 W, and the switch-off processes alone differ by 16 W |
+| One view change every 10 s: added power reported, well under continuous | +6 to +14 W (6.3, 6.8, 14.3 in three processes whose switch-off baselines themselves differ by 9 W) against +48 to +58 W for continuous |
+| No read delayed and byte-identical output at gap 0 and 350 in every mode, also with graph replay | Identical on 18 of 18 scenes in every run where spins ran (see "Output"); no detectable delay of back-to-back reads |
+| Not visible means not warming; a disarm stops running spins within a stated, measured bound | Met in model-free and offscreen tests and on the GPU; the bounds are under "Stopping" |
+| Every item of round 13's review closed or stated open | Five closed, one open (other threads' reallocations are not coordinated with spins) |
+
+### What changed
+
+- **Change mode** (`KeepWarmMode::Change`). A view change that a read will
+  follow arms it: text reading switched on, a new selection, resume from
+  pause, a seek, a new source or geometry, a pan or zoom of the camera or of a
+  paused view, the return to the live view, and a probe that reports a changed
+  picture or a shown line that no longer matches
+  (`UltraClearTextController::NoteViewChange`, called after `Invalidate`).
+  It warms until the change's own full read has been submitted and 400 ms
+  (`tail`) have passed since the last read that finished while it was armed,
+  which covers follow-ups; when no read follows, it stops 1500 ms
+  (`changeWindow`) after the latest change. Announced refresh reads never arm
+  or extend it, so a static view stays cold.
+- **Continuous and pre-roll** keep round 13's arming. Continuous is the mode
+  for media whose text changes all the time; see "Where change mode becomes
+  continuous".
+- **Spin shape.** 10 ms spins instead of 50 ms, because other threads' CUDA
+  calls wait behind them (below), and no spin may exceed 250 ms
+  (`kKeepWarmMaximumBusy`; the kernels refuse more), far below the Windows GPU
+  watchdog.
+- **Stop request.** Every disarm (`Cancel`, `StopKeepWarm`, reconfiguration,
+  a time-out, hiding, a refusing power gate) raises a request and wakes the
+  worker, which interrupts any running or queued spin before it decides the
+  next launch. A launch that was outside the scheduler's mutex when the
+  request came is interrupted when it returns.
+- **Visibility.** `UltraClearTextOverlay::targetShownChanged` reports that
+  the viewport was hidden or its window minimized;
+  `UltraClearTextController::SetViewVisible` passes it on. Not visible disarms,
+  drops the announcement and interrupts; showing again arms nothing until the
+  next announced read or view change.
+- **Power gate.** `RecognitionScheduler::SetKeepWarmPowerGate` takes a
+  callable consulted before every launch (empty means allowed). The scheduler
+  never queries the system; nothing installs a gate today. It is the hook for
+  a later user-visible setting such as "not on battery".
+- **Regional reads.** A regional pass or a formula no longer fulfils an
+  announced read (round 13's pre-roll ended early) and is not the read a view
+  change waits for.
+- **Graph replay together with keep-warm** (rounds 3 and 10 had never run
+  with it). The capture rule "never behind queued work" is about inference:
+  a spin may still be ending when a capture begins, which is safe because a
+  spin reads only its stop flag and touches no tensor, arena or binding
+  memory, and a thread-local capture records only work enqueued after it
+  begins. Context creation is different: TensorRT's allocations there can wait
+  for all queued work, so no spin starts while a creation runs
+  (`KeepWarm` returns `Pending`) and the creator raises the stop flag first.
+- **Harness.** The corpus slot announces the next read only after a read, as
+  the application does, so first reads are cold and each read records whether
+  keep-warm was armed when it was submitted. `--change-each` reports a view
+  change after every read; `--session` runs a live-view timeline of refresh
+  reads and view changes. The clock probe gains `climb`, `stall` and
+  `interrupt`.
+
+### What raises the clocks, and what it costs other GPU work
+
+`optionalGpuClockProbe`, evidence `r14-clock-1` (model-free):
+
+| Question | Answer |
+| --- | --- |
+| Fastest climb from 3.5 s of idle to 2,400 MHz | One resident warp, napping or spinning: 177 to 213 ms in three repeats. Every SM spinning: 177 to 213 ms. Every SM plus 64 MiB copies: 217 to 262 ms. Copies alone: 183 to 385 ms. Nothing climbs faster than one resident warp |
+| Wait of another thread's `cudaFree` (4 MiB) while one spin runs and one is queued, median / maximum | No spins 0.4 / 0.5 ms; 2 ms spins 2.3 / 3.4; 5 ms 6.0 / 8.9; 10 ms 10.9 / 17.8; 25 ms 31.9 / 47.9; 50 ms (round 13's shape) 61.9 / 99.1 ms |
+| Other calls | `cudaFreeHost` waits about one spin; `cudaMalloc` and `cudaMallocHost` do not wait |
+| Stop flag raised to both spins done | Napping warp median 12.6 µs, maximum 73.8 µs; spinning 7.5 and 46.6 µs |
+
+So the spins that are outstanding are what one such call on another thread
+can wait for, and round 13's 50 ms spins could hold a `cudaFree` for 99 ms.
+The default is now 10 ms: a single `cudaFree` waited at most 20.1 ms with two
+spins outstanding. That is per call, not per reallocation: a reallocation
+frees several buffers in a row, and each further free can wait again behind
+spins queued in the meantime. A sequence of frees was not measured.
+
+### Two spins per wake
+
+The first campaign (`r14a-*`) queued one 10 ms spin each time the worker woke.
+The worker's timed wait is only as fine as the Windows timer tick, 15.6 ms,
+so the stream was occupied 67 percent of the time. That holds the clocks
+(playing media read at 0.99 to 1.16 times its back-to-back median) but raises
+them too slowly: the first read after a view change took 3.8 to 5.0 times its
+back-to-back median, with the GPU still in P5.
+
+The worker now queues a second spin directly behind each one it launches; the
+recognizer keeps at most two outstanding. Measured utilization while warming
+is 93.6 to 93.9 percent. Everything below is the second campaign.
+
+### Measured: the first read after a view change
+
+`r14-change`: per scene a 31 s session with no refresh reads, a view change
+every 3.5 s (`Cancel`, then `NoteViewChange`) and its read 300 ms later, the
+controller's settle delay; about 3.1 s of idle GPU before each change; three
+fresh processes per arm. Ratio of the read to the scene's back-to-back median
+(`r14-b2b-v1`, switch off), median of the eight change reads per process:
+
+| Scene | Back to back, ms | Switch off | Change mode | Change mode, first campaign |
+| --- | ---: | --- | --- | --- |
+| board-lecture-00 | 25.1 | 8.02, 7.66, 7.96 | 2.22, 1.08, 1.10 | 4.95, 4.45, 4.56 |
+| board-lecture-01 | 23.6 | 7.90, 8.25, 8.25 | 2.14, 1.09, 1.26 | 4.82, 4.21, 4.43 |
+| board-lecture-02 | 27.1 | 8.03, 7.62, 7.58 | 1.82, 1.21, 1.99 | 4.72, 4.20, 4.41 |
+| board-lecture-03 | 28.2 | 7.78, 7.48, 7.18 | 1.70, 1.38, 1.86 | 4.31, 3.94, 4.15 |
+| board-lecture-04 | 28.1 | 7.54, 6.89, 6.88 | 1.37, 1.53, 1.68 | 3.83, 3.81, 3.94 |
+| board-lecture-05 | 23.8 | 8.40, 6.49, 6.92 | 1.27, 1.76, 1.58 | 4.54, 4.63, 4.67 |
+| doc-camera-1080 (dense) | 207.1 | 1.68, 1.90, 1.60 | 1.02, 1.03, 1.01 | |
+| slide-light-1080 | 70.9 | 3.92, 3.80, 4.16 | 0.99, 1.02, 1.05 | |
+
+Continuous mode is not armed in this scenario (no paced read announces
+another) and reads like switch-off: 5.4 to 9.0 times.
+
+The medians hide the shape. Within a session the lecture-frame reads
+alternate: 23 to 36 ms, then 35 to 89 ms, then fast again
+(board-lecture-00, first process: 86, 28, 85, 24, 85, 28, 83, 28 ms). In the
+slow reads the sampled clock is at 1,000 to 1,250 MHz just after the read and
+at 2,520 MHz after the fast ones: the governor was part of the way up when
+the read started. The same alternation is in the switch-off arm (the dense
+page reads 350, 400, 347, 397 ms), which is consistent with a rhythm of the
+governor rather than of the warm-up, but its cause was not isolated: the
+pattern repeats every two reads (7 s) at this 3.5 s cadence, the cadence may
+be beating against the governor, and the slow reads get faster through a
+process (86 to 83 ms, 80 to 72 ms, 51 to 35 ms in the first one). The slide
+and the dense page, whose reads are long enough to finish the climb
+themselves, are at full speed.
+
+Two further runs on the six lecture frames, two processes each, tested what
+would close the gap.
+
+- Longer spins (`r14-change-shapes`). Spins of 20 ms and 50 ms, which leave
+  no gap between worker wakes, give the same picture as the default 10 ms:
+  per-frame medians 1.06 to 1.92 times (20 ms) and 1.04 to 1.86 times (50 ms)
+  against 1.01 to 2.02 times (10 ms, same run), with the same alternation. The
+  remaining slow reads are therefore not gaps in the warm-up, and the default
+  stays at 10 ms, which holds up other GPU calls least.
+- A longer lead (`r14-change-lead600`). With the read 600 ms after the change
+  instead of 300 ms, every frame in both processes reads at 0.97 to 1.18 times
+  its back-to-back median (largest single read 1.28 times; switch off 5.9 to
+  8.5 times).
+
+So on about every second change the clocks were not up after 300 ms of
+continuous occupancy, and nothing measured raises them faster (above). A pan
+or zoom whose motion lasts longer than the settle delay should get a longer
+lead, because warming starts with the first movement, but that was not
+measured, and a settle longer than the 1500 ms change window lets warming
+lapse before its end. A cut to different content gets only the settle delay.
+
+On a live view the GPU is never idle for 3 s, because the view is re-read
+every 1.5 s. `r14-power-duty10` runs that: board-lecture-00, a refresh read
+every 1.5 s and a view change every 10 s for 60 s, three processes. The five
+change reads per process, ms:
+
+| Arm | Process 0 | Process 1 | Process 2 | Refresh reads, median |
+| --- | --- | --- | --- | ---: |
+| Switch off | 26, 114, 54, 113, 54 | 198, 111, 25, 103, 103 | 58, 113, 105, 104, 104 | 112 |
+| Change | 24, 25, 25, 24, 28 | 24, 24, 25, 24, 24 | 55, 50, 39, 30, 41 | 113 |
+| Continuous | 27, 28, 24, 26, 27 | 24, 28, 27, 28, 27 | 27, 28, 27, 24, 27 | 24 |
+
+Two processes read at back-to-back speed after every change, the third at
+1.2 to 2.2 times. Refresh reads of the unchanged view stay at about 112 ms in
+change mode, by design: they confirm text that is already drawn. What that
+costs a user was not measured; a word that changed without the probe
+noticing would appear about 90 ms later than with continuous warming.
+
+### Measured: playing media and a static view
+
+Median of reads 6 to 24 against the back-to-back median, six lecture frames,
+three processes each (`r14-paced-350` with a view change reported after every
+read, `r14-paced-1500` without):
+
+| Pacing | Switch off | Change | Continuous |
+| --- | --- | --- | --- |
+| 350 ms, text changing after every read | 1.09 to 4.50 | 0.97 to 1.07 | 0.96 to 1.14 |
+| 1500 ms, static view | 3.98 to 4.74 | 4.08 to 4.76 (not armed, by design) | 0.95 to 1.14 |
+
+Mean GPU power over the reads (the scene list includes the dense page and the
+slide): at 350 ms 64.8 to 67.0 W off, 113.5 to 115.2 W change, 112.7 to
+115.0 W continuous; at 1500 ms 36.9 to 38.8 W off, 34.8 to 38.8 W change (0
+launches), 89.6 to 91.3 W continuous. The first read of a process is never
+armed and is reported cold: 23 to 234 ms depending on where the governor was.
+
+### Where change mode becomes continuous
+
+When the text changes after every read, change mode is armed all the time and
+costs what continuous costs (+48 W at 350 ms above). It saves power only when
+changes are separated by more than the read, its follow-ups and the 400 ms
+tail. Averaged over 60 s sessions of one frame (`r14-power-static`,
+`r14-power-duty10`), added to switch-off in the same cohort:
+
+| Session | Change | Continuous |
+| --- | --- | --- |
+| Static view, refresh every 1.5 s | 0 launches; +6.4, +0.2, -10.6 W (the baseline's own spread) | +63.7, +48.8, +49.4 W |
+| The same with one view change every 10 s | +6.3, +6.8, +14.3 W | +48.1, +56.7, +57.6 W |
+
+### Camera motion
+
+The controller reports a change for every probe that finds the picture
+unstable or a shown line no longer matching. That is picture motion, not text
+change: a person walking in front of a board, camera noise, auto-exposure. No
+measurement here drives that path (the harness reports changes itself), so
+what change mode costs on a live camera is unknown. Two properties are fixed
+by the policy and tested model-free
+(`keepWarmPolicyChangesWithoutReadsAreBounded`):
+
+- A run of changes that no full read follows warms for at most two change
+  windows (3 s) from its first change. Then it stays cold until a full read
+  is submitted, the changes pause for one change window, or the application
+  cancels for a change of the user's own.
+- Changes that reads do follow are not limited. Motion in front of a static
+  board that keeps producing reads therefore warms like continuous mode, at
+  continuous mode's cost.
+
+### Stopping
+
+- Not visible: `keepWarmStopsWhenHiddenOrMinimizedAndRestoreArmsNothing`
+  (controller, offscreen) and `keepWarmPolicyVisibilityPowerGateAndRegionalReads`
+  cover hide, minimize and restore without depending on frame arrival. Not
+  checked on a real desktop.
+- Running spins: `schedulerKeepWarmDisarmStopsRunningSpins` uses a recognizer
+  whose spins are running, not launch counters, for every disarm path. In the
+  campaign the longest time from a stop request to the worker's interrupt was
+  16 to 71 µs per process.
+- On the GPU (`optionalKeepWarmGpuContract`, `r14-tests-6` and `r14-tests-7`,
+  with and without graph replay): a `cudaFree` of 8 MiB issued right after
+  `StopKeepWarm()` returns after 0.6 to 0.8 ms (median; 10.1 to 10.8 ms
+  maximum), against 10.0 to 20.1 ms without the stop (the running spin and the
+  one queued behind it). The 10 ms cases are a stop raised while the worker
+  was itself inside a CUDA call that the free held up: the request is handled
+  when that call returns, so one spin's length is the bound. 20 reads taken while spins ran or waited, also
+  after view changes, matched a scheduler that never warms byte for byte, with
+  and without graph replay; the graph fault, checkpoint and lifetime tests
+  pass with the switch set.
+
+### Output
+
+Complete-output hashes against switch-off, all 18 scenes. Back to back
+(`r14-b2b-v1`, `r14-id-v1-graph-gap0`) continuous is identical on 18 of 18,
+also with graph replay; the change arm of those two runs reports no view
+change and launched nothing, so it only repeats switch-off. Where change mode
+did launch: at 350 ms with a change after every read (`r14-id-v1-gap350`,
+1,850 to 1,910 launches per process) 18 of 18 for both modes, and the same
+with graph replay on (`r14-id-v1-graph-gap350`). Every arm was deterministic
+on every scene. Back-to-back warm medians of continuous: 1.003x of switch-off
+(geometric mean), first reads 0.988x. That shows no detectable delay at the
+noise floor of these scenes (about 7 percent on the short lecture frames); it
+is not a microsecond bound.
+
+After the review's fixes (`3dec09b`, executable SHA-256 `007fbf47…`): with a
+20 ms gap and a change after every read, so that spins run between nearly
+back-to-back reads (`r14c-id-gap20`, 384 to 400 launches per process), both
+modes are identical on 18 of 18 scenes, and warm reads take 0.994 (change) and
+1.003 (continuous) times as long as with the switch off, first reads 0.993
+and 1.012 times. At 350 ms (`r14c-id-gap350`) and at 350 ms with graph replay
+(`r14c-id-graph-gap350`) both are again identical on 18 of 18. The change
+scenario repeated on the fixed build reads as before (`r14c-change`, six
+lecture frames, two processes: 1.10 to 2.13 times; switch off 4.5 to 9.2
+times).
+
+### The two earlier switches at the application's pacing
+
+`r14-switches-350`: 350 ms between reads, static content, median of reads 6 to
+12 pooled over three processes, each switch against switch-off in the same
+warming state.
+
+| Scene | Off, ms | Reconcile | Graph replay | Off warmed, ms | Reconcile warmed | Graph replay warmed |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| board-lecture-00 | 112.8 | 0.995 | 0.471 | 24.1 | 1.045 | 0.799 |
+| board-lecture-01 | 54.3 | 2.029 | 0.944 | 25.1 | 0.990 | 0.766 |
+| board-lecture-02 | 67.0 | 1.668 | 1.714 | 26.8 | 0.966 | 0.830 |
+| board-lecture-03 | 120.3 | 0.413 | 0.514 | 28.0 | 0.940 | 0.790 |
+| board-lecture-04 | 59.5 | 1.933 | 1.915 | 27.4 | 1.004 | 0.782 |
+| board-lecture-05 | 83.3 | 0.655 | 0.928 | 22.6 | 1.062 | 0.839 |
+| doc-camera-1080 | 205.8 | 0.520 | 0.901 | 205.0 | 0.523 | 0.905 |
+| slide-light-1080 | 84.7 | 1.015 | 0.968 | 67.9 | 0.796 | 0.879 |
+
+Without warming the unwarmed arms ran in every clock state (P2 for 108 to 129
+of 288 reads, P3, P5 and P8 for the rest), and the lecture-frame ratios
+between 0.41 and 2.03 are the clock state of the moment, not the switch. They
+support no claim. Two things do hold:
+
+- Region reconciliation halves the dense page at this pacing with or without
+  warming (205.8 to 107.0 ms), because a dense page keeps the GPU busy. With
+  the clocks held it also takes the slide from 67.9 to 54.0 ms. It changes
+  recognized text (round 2), so it stays off.
+- Graph replay with the clocks held (every read in P2) takes 0.77 to 0.84
+  times as long on the lecture frames (1.19 to 1.31 times as fast: 19.0 to
+  22.2 ms against 22.6 to 28.0 ms), 0.88 on the slide and 0.91 on the dense
+  page, with identical output. That is the paced evidence rounds 3 and 10
+  lacked, and it is larger than the back-to-back gain. It exists only while
+  something holds the clocks.
+
+### Round 13's review, item by item
+
+| Finding | State |
+| --- | --- |
+| Warming continued while hidden or minimized | Closed: visibility is wired and tested model-free and offscreen |
+| Disarming did not interrupt running spins | Closed: worker-handled stop request, tested against running spins, measured on the GPU |
+| Spins can stall other GPU calls | Measured per call (10 ms spins: a `cudaFree` waited at most 17.8 ms in the probe and 20.1 ms in the contract test). Open: nothing coordinates reallocations with spins. `RecognitionScheduler::InterruptKeepWarm` ends the outstanding spins but is not a hold-off (warming resumes at the next period) and has no caller, and change mode starts warming on a new source or geometry, which is when buffers are reallocated |
+| A regional read ended the pre-roll | Closed: only a full read fulfils an announcement |
+| The harness armed before the first read | Closed: first reads are cold and marked |
+| The record claimed more than was measured | Corrected here, see below |
+
+Corrections to round 13's record. "No read delayed" means no detectable
+change of the medians at the noise floor, not a bound in microseconds. "Zero
+when idle" holds for launches, not for power: after the time-out the governor
+still holds the high state for about 1.75 s, and the 12 s after it averaged
+22.7 W with continuous against 10.5 W without. The emulated video load shows
+that copies and uploads of that size do not hold the clocks; what the real
+application's display and video path do is unknown. The one slow process in
+`r13-frameload-350` remains unexplained. Round 13's diagnostic kernels could
+run up to 2 s; the cap is now 250 ms.
+
+### Default
+
+As reviewed, every mode was off: the first target was missed, the trade is
+power against latency, nothing here was measured with a driven display, and
+the three reviewers recommended keeping it off until the open items are
+closed.
+
+The owner then asked for the ramp-up before the read to be in the code by
+default (2026-11-17). Since `c998af6` the application, with neither variable
+set, runs change mode while the computer is on external power
+(`KeepWarmForApplication`; the controller installs a power gate that reads
+`GetSystemPowerStatus`, and a desktop without a battery counts as external
+power). `OKUFLOW_UCT_TEST_KEEP_WARM=0` turns it off; `=continuous` and
+`=preroll` select round 13's modes; a mode named in the variable runs on
+battery too. Test slots still read the variable strictly: not set is off, so
+every measurement above is unchanged in meaning.
+
+What this default does, from the measurements above: the read after a view
+change takes 1.1 to 2.2 times its back-to-back time instead of 6 to 9 times
+when the GPU had been idle for 3 s, and about its back-to-back time on a view
+that is being refreshed (two of three processes). Refresh reads of an
+unchanged view stay slow. It costs about 6 to 14 W at one change per 10 s on
+this card, and up to continuous mode's 50 W while the picture keeps changing
+and reads follow. Risks taken with this default, all listed above as open: a
+buffer reallocation at a source or geometry change can wait about 20 ms per
+freed buffer behind spins, which may show as a hitch of the video at that
+moment; nothing was measured with a driven display, on another GPU, or on a
+live camera, whose picture motion counts as change.
+
+If the owner wants it as a setting, the measurements suggest two choices
+rather than one switch. "Faster text after the view changes" (change mode):
+on a live board or camera view it brings the read after a pan, zoom or slide
+change from about 105 ms to about 25 ms in most sessions, for about 6 to 14 W
+averaged over a session with one change every 10 s on this card. On the
+fixtures an unchanged view launched nothing; on a real camera, picture motion
+counts as change (see "Camera motion"). "Fastest text during playback" (continuous):
+every paced read at back-to-back speed, for about 50 W more for as long as
+text reading is active. Graph replay is worth turning on together with either
+of them; without held clocks its effect at this pacing could not be resolved.
+
+What to check by hand in the real application, with the variable set before
+starting it: (1) whether the driven display and the video path already hold
+the clocks on this PC (read-only `nvidia-smi -q -d PERFORMANCE,POWER` while a
+live view is static), in which case none of this is needed; (2) how fast text
+appears after a pan and after a slide change in each mode; (3) frame pacing
+of the video while warming, especially when changing the source or the
+resolution; (4) GPU power with the window minimized, the view paused and text
+reading off.
+
+### Not established
+
+- Everything under round 13's "Not established" still applies: no driven
+  display, one GPU and driver, worker time on file fixtures.
+- Why the governor alternates on a 3.5 s cycle, and whether another card does.
+- Whether a stall of up to two spins per call, repeated over the several
+  frees of one reallocation, reaches the video path's frame pacing in the
+  application; no run had video presentation.
+- How often a real camera or a playing video reports change without the user
+  doing anything (`keepWarmChanges` per minute), and so what change mode costs
+  there.
+- The user-visible cost of slow refresh reads on a static view.
+- Laptop GPUs and battery operation; the power gate has no caller.
+
+### Review
+
+Three independent read-only reviews of `45cc22c`: Claude Opus 5.5 7/10,
+GPT-6.1 Sol 7/10, Gemini 4 Hydrogen 8/10; all three recommended merging with
+every mode off. Fixed in `3dec09b` (not reviewed again):
+
+- The scheduler decided whether a submission is the awaited full read after
+  it had moved the job, so a formula always counted as one and ended the
+  warming that waited for the change's read (two reviewers). It now decides
+  before the move; a scheduler test submits a formula in change mode.
+- A stop request could be undone at once: the next launch lowered the stop
+  flag while the interrupted spin was still running, which is what a source or
+  geometry change does (cancel, then re-arm in the same call). A launch after a
+  stop now waits until both outstanding spins are done.
+- Unstable probes could keep change mode warm without any read (all three):
+  see "Camera motion" for the bound that was added and what stays unknown.
+- A power gate that changes its own answer to refusing only prevented new
+  launches. The worker now ends outstanding spins at its next wake.
+- Suppressed media armed warming and the end of suppression or of composite
+  frames did not. The overlay reported a hidden target as shown until its
+  first event.
+- The record: the back-to-back comparison of change mode launched nothing and
+  is now described as such, with a run that does exercise it; the alternating
+  reads are called consistent with the governor, not proven; the 600 ms result
+  is two processes; the added power at one change per 10 s is a range; the
+  stall bound is per call; the pan sentence and the graph replay sentence
+  claim less; the `agents.md` rule no longer contradicts change mode.
+
+Left open, and agreed by all three to be acceptable only while the switch is
+off: nothing coordinates other threads' buffer reallocations with spins, and
+`InterruptKeepWarm` is not a hold-off. Before change mode could be offered as
+a setting the reviewers ask for: that coordination, with frame pacing of the
+real video path measured while warming; the probe trigger measured on a real
+camera and a playing video; the hand check with a driven display; a decision
+on the missed 300 ms target; and a power gate that something installs for
+battery operation.

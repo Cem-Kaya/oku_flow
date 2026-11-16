@@ -71,6 +71,55 @@ read in the process, and `startupWorkerMs` records its worker time. The
 measure true first reads, run one scene per process (`--scenes`) and read
 `startupWorkerMs`.
 
+## Paced runs
+
+The application does not read back to back. It reads on timers (`UctTiming`:
+a full read every 350 ms of advancing media, a 1500 ms refresh of a live view,
+300 ms settling of a paused view), and between reads the GPU's power
+management lowers its clocks. A back-to-back median says nothing about that
+case, so paced runs are part of the protocol:
+
+| Option | Meaning |
+| --- | --- |
+| `--gap-ms N` | Sleep N ms before every read (the slot's `OKUFLOW_UCT_CORPUS_GAP_MS`). Use 350 and 1000 next to 0 |
+| `--passes 24 --cohorts 2` | 25 reads per scene and process; the effect develops over seconds, so five passes are too few |
+| `--settled-from K` | Also report the median of the reads from pass K on (default 5: reads 6 onwards) |
+| `--gpu-sample-ms N` | Sample `nvidia-smi` (power state, graphics and memory clock, utilization, power draw) every N ms, 50 to 1000, while each process runs; off by default |
+| `--frame-load fps:passes` | Emulate the application's per-frame video GPU work during the reads: one NV12 1920x1080 upload and `passes` full-frame device copies per frame, on its own stream (`OKUFLOW_UCT_CORPUS_FRAME_LOAD`) |
+| `--tail-ms N` | Keep the process idle N ms after the last read (`OKUFLOW_UCT_CORPUS_TAIL_MS`), to show that keep-warm stops and what the GPU then draws |
+| `--change-each` | Report a view change after every paced read (`OKUFLOW_UCT_CORPUS_CHANGE_EACH`): a playing video whose text keeps changing. Without it a paced run is a static view being refreshed |
+| `--session refreshMs,changeMs,settleMs,durationMs` | A live-view timeline per scene instead of passes (`OKUFLOW_UCT_CORPUS_SESSION`): a refresh read every `refreshMs` (0 for none), a view change every `changeMs` (`Cancel` then `NoteViewChange`, as the controller does; 0 for none) with its read `settleMs` later, for `durationMs`. Each read is tagged `refresh` or `change` with the time since the change; with sampling the report carries the mean power and utilization of each session |
+
+The summary always records the gap, the settled medians and every read's time
+in order (`series` in `summary.json`, "Per-read series" in `summary.md`). With
+sampling, each process keeps its raw samples next to its report
+(`cohortN-arm.smi.csv`), the summary gives P-state counts, median clock, mean
+utilization and mean power over the timed reads, and each read in the series
+carries the P-state sampled last before it. Each read records its wall-clock
+submission time (`submittedUnixMs`) for that alignment. Sampling uses
+read-only `nvidia-smi` queries and stops with its process; it changes no GPU
+setting.
+
+Paced timings are sensitive to anything else that uses the GPU: other jobs on
+the shared lease, a driven display, video playback. Take them under the lease,
+look at the per-read series before trusting a median, and say when a run looks
+disturbed.
+
+Like the application, the slot announces the next read after each read
+(`RecognitionScheduler::ExpectNextRead`), which is what arms the continuous
+and pre-roll keep-warm of round 13; the first read of a process is therefore
+never armed, and each read records whether keep-warm was armed when it was
+submitted (`armedAtSubmit`). The change-driven keep-warm of round 14 is armed
+only by a reported view change (`--change-each`, or the changes of a
+`--session`). The report records keep-warm activity (launches, stop requests,
+time-outs) and the tail.
+
+`scripts/uct/gpu_clock_probe.py` runs the model-free `optionalGpuClockProbe`
+slot with `nvidia-smi` sampling: an in-kernel clock meter while the GPU idles
+after load (step-down), under continuous load from a low state (step-up),
+under periodic load of a chosen busy fraction (`duty`, `refine`) and under the
+emulated frame load (`frames`). It needs no engine.
+
 ## Scene set, version 1
 
 Eighteen scenes. Twelve are generated from this repository's documentation

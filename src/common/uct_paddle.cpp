@@ -189,6 +189,20 @@ class AutomaticRecognizer final : public Recognizer
     void SetCurvedRibbonInput(bool allowed) override {
         for (auto& candidate : candidates_) if (candidate) candidate->SetCurvedRibbonInput(allowed);
     }
+    // Only the backend that serves reads now may warm; while a GPU candidate
+    // prepares behind a fallback nothing is warmed.
+    KeepWarmResult KeepWarm(std::chrono::microseconds busy) override
+    {
+        if (preparing_ || active_ >= candidates_.size() || !candidates_[active_])
+            return KeepWarmResult::NotReady;
+        // A GPU candidate is promoted only out of preparation (NotReady above),
+        // so an Unsupported serving backend means nothing here will warm.
+        return candidates_[active_]->KeepWarm(busy);
+    }
+    void InterruptKeepWarm() noexcept override
+    {
+        for (auto& candidate : candidates_) if (candidate) candidate->InterruptKeepWarm();
+    }
     bool WantsDeviceInput() const override
     {
         if (preparing_ && !candidates_[*preparing_]->Preparing() &&
