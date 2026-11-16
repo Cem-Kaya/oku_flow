@@ -587,6 +587,7 @@ class PaddleTests final : public QObject
     void preparationOverlapAbandonedOwnerDoesNotRefuseAnother() { uct_preparation_overlap_test::AbandonedOwnerDoesNotRefuseAnother(); }
     void optionalAssetVerificationMatchesSequential() { uct_preparation_diagnostic::AssetsMatchSequential(); }
     void optionalPreparationCancellation() { uct_preparation_diagnostic::PreparationCancellation(); }
+    void optionalOverlappingPreparation() { uct_preparation_diagnostic::OverlappingPreparation(); }
     void recognitionGroupSlotsRequireCompletionAndConsumption()
     {
         detail::RecognitionGroups groups;

@@ -201,6 +201,14 @@ inline Observed Prepare(World& world, const Scenario& s, bool helper)
             while (!helperDone && Clock::now() < until) std::this_thread::yield();
         }
     }
+    // The production cancellation release (outer handler, and the detector
+    // side before it settles the helper).
+    const auto releaseCancelled = [&](const std::exception_ptr& failure) {
+        if (!cancelled() || !(detail::AllowsTensorRtCapacityFallback(failure) || detail::IsVerificationInterrupted(failure)))
+            return;
+        for (auto* key : {&state.owned, &state.ownedDetector})
+            if (!key->empty()) { world.Erase(*key); key->clear(); }
+    };
     const auto arrive = [&] {
         mainArrived = true;
         if (s.timing == Timing::Together) std::this_thread::yield();
@@ -234,7 +242,7 @@ inline Observed Prepare(World& world, const Scenario& s, bool helper)
                 throw detail::VerificationInterrupted("detector stopped while verifying");
             }
             throw detail::CudaFailure("detector device fault");
-        });
+        }, releaseCancelled);
         // The recognizer point.
         {
             std::lock_guard lock(world.mutex);
@@ -272,11 +280,7 @@ inline Observed Prepare(World& world, const Scenario& s, bool helper)
     } catch (...) {
         const auto failure = std::current_exception();
         observed.message = preparation_overlap::Message(failure);
-        // The production outer catch: a cancellation releases what it owns.
-        if (cancelled() && (detail::AllowsTensorRtCapacityFallback(failure) || detail::IsVerificationInterrupted(failure))) {
-            for (auto* key : {&state.owned, &state.ownedDetector})
-                if (!key->empty()) { world.Erase(*key); key->clear(); }
-        }
+        releaseCancelled(failure); // the production outer catch
         observed.decision = Classify(failure, cancelled());
     }
     (void)ahead.Abandon(); // resolved on every path above; makes the helper's writes visible
@@ -330,9 +334,9 @@ inline Observed AfterHelperFault(const Scenario& s)
     // (memo read there, which is the start's: none, or no helper would run).
     const bool remembered = s.detector == Detector::Ready ? s.memoAtRecognizer : s.memoAtStart;
     want.latchHeld = s.heldElsewhere || !remembered;
-    // A detector attempt that was in flight when the fault was raised stays held.
-    want.detectorLatchHeld = s.detector == Detector::FallsBack || s.detector == Detector::Fails ||
-                             s.detector == Detector::Cancelled;
+    // A failed detector attempt stays held; a cancelled one was released by
+    // the detector side before the helper was settled, as in the sequential order.
+    want.detectorLatchHeld = s.detector == Detector::FallsBack || s.detector == Detector::Fails;
     return want;
 }
 
@@ -425,7 +429,7 @@ inline void AbandonedOwnerDoesNotRefuseAnother()
                     cancelA = true;
                     aSettling = true;
                     throw detail::VerificationInterrupted("detector stopped while verifying");
-                });
+                }, [](const std::exception_ptr&) {});
             } catch (...) {
                 const auto failure = std::current_exception();
                 a.message = preparation_overlap::Message(failure);

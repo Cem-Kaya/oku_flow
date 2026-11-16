@@ -13,6 +13,13 @@
 //   OKUFLOW_UCT_PREPARATION_CANCEL=1, OKUFLOW_UCT_TEST_IMAGE, optional
 //   OKUFLOW_UCT_PREPARATION_CANCEL_POINTS (2-64, default 24) and
 //   OKUFLOW_UCT_PREPARATION_CANCEL_EVIDENCE (new absolute JSON file).
+// - optionalOverlappingPreparation: cancels preparation A at spread points up
+//   to the end of its detector stage and starts preparation B with the same
+//   models at once, without waiting for A's retirement; B must become ready
+//   with the backend detail and output of an undisturbed start.
+//   OKUFLOW_UCT_OVERLAP_PREPARATION=1, OKUFLOW_UCT_TEST_IMAGE, optional
+//   OKUFLOW_UCT_OVERLAP_POINTS (2-64, default 16) and
+//   OKUFLOW_UCT_OVERLAP_EVIDENCE (new absolute JSON file).
 #include "okuflow/common/uct_paddle.hpp"
 #include "okuflow/common/uct_model_pins.hpp"
 #include "../src/common/uct_sha256.hpp"
@@ -25,6 +32,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QTemporaryDir>
 #include <QtTest>
 #include <chrono>
@@ -325,11 +333,138 @@ inline void PreparationCancellation()
     qInfo().noquote() << "UCT_PREPARATION_CANCEL" << QJsonDocument(report).toJson(QJsonDocument::Compact);
     if (!evidence.isEmpty()) QVERIFY(uct_batch_test::Save(evidence, report));
 }
+
+// Follow-up of round 11: preparation A is cancelled part-way (its reader is
+// destroyed, which never waits) and preparation B with the same detector and
+// recognizer starts at once, while A may still be inside a detector or helper
+// vendor call. A's helper holds no latch, so B's recognizer must always come
+// up on BF16 with the plan receipt of an undisturbed start. B's whole backend
+// detail and output must be those of an undisturbed start, except where B's
+// BF16 detector met A's own detector attempt still in flight: that latch rule
+// is the sequential code's (unchanged since before round 11) and selects the
+// FP32 detector, which such a point reports instead.
+inline void OverlappingPreparation()
+{
+    using Clock = std::chrono::steady_clock;
+    if (qEnvironmentVariable("OKUFLOW_UCT_OVERLAP_PREPARATION") != "1")
+        QSKIP("Explicit overlapping preparation diagnostic not selected.");
+    const auto source = qEnvironmentVariable("OKUFLOW_UCT_TEST_IMAGE");
+    const auto image = QImage(source).convertToFormat(QImage::Format_ARGB32);
+    QVERIFY2(!image.isNull(), "OKUFLOW_UCT_TEST_IMAGE must select an image.");
+    bool ok = true;
+    const int points = qEnvironmentVariableIsSet("OKUFLOW_UCT_OVERLAP_POINTS")
+        ? qEnvironmentVariable("OKUFLOW_UCT_OVERLAP_POINTS").toInt(&ok) : 16;
+    QVERIFY2(ok && points >= 2 && points <= 64, "OKUFLOW_UCT_OVERLAP_POINTS must be 2-64.");
+    const auto evidence = qEnvironmentVariable("OKUFLOW_UCT_OVERLAP_EVIDENCE");
+    QVERIFY2(evidence.isEmpty() || (QDir::isAbsolutePath(evidence) && !QFileInfo::exists(evidence)),
+             "The evidence file must be a new absolute path.");
+    const auto ms = [](auto d) { return std::chrono::duration<double, std::milli>(d).count(); };
+    const auto recognizerReceipt = [](const QString& detail) {
+        const QRegularExpression receipt("recognizerPlanKey=[^;]*;recognizerPlanPayloadSha256=[^;]*;"
+                                         "recognizerPlanCache=[^;]*;recognizerContextBytes=[^;]*;");
+        return detail.contains("BF16 model selected") ? receipt.match(detail).captured(0) : QString();
+    };
+    std::atomic<bool> never{};
+    struct Ready { QString detail; QByteArray output; double readyMs{}; QString error; };
+    const auto ready = [&](Recognizer& reader, Clock::time_point started) {
+        Ready result;
+        while (reader.Preparing() && Clock::now() - started < std::chrono::seconds(120))
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        result.readyMs = ms(Clock::now() - started);
+        if (reader.Preparing()) { result.error = "Not ready within 120 s."; return result; }
+        const auto output = reader.Recognize(image, never);
+        if (!output.ok) { result.error = "Recognize: " + output.error + " / " + reader.Status().detail; return result; }
+        result.output = uct_resident_test::ExactOutputBytes(output);
+        result.detail = reader.Status().detail;
+        return result;
+    };
+    uct_batch_test::RetirementReceipts referenceRetirement;
+    Ready reference;
+    {
+        auto reader = CreateProductionTensorRtRecognizer(ModelTier::Medium, ModelTier::Medium, referenceRetirement.Observer());
+        const auto started = Clock::now();
+        const auto status = reader->Initialize();
+        QVERIFY2(status.state == BackendState::kReady, qPrintable(status.detail));
+        reference = ready(*reader, started);
+    }
+    QVERIFY2(reference.error.isEmpty(), qPrintable(reference.error));
+    QVERIFY2(reference.detail.contains("Selected detector=medium/BF16-linear") &&
+             reference.detail.contains("BF16 model selected") && reference.detail.contains("smoke=4/4"),
+             qPrintable(reference.detail));
+    QVERIFY(referenceRetirement.Wait().Passed());
+    const auto referenceReceipt = recognizerReceipt(reference.detail);
+    QVERIFY2(!referenceReceipt.isEmpty(), qPrintable(reference.detail));
+    int identical = 0, detectorInFlight = 0;
+    // A's cancellation points: from the start of its preparation thread to the
+    // end of its detector stage (about 90 percent of an undisturbed start).
+    const double span = reference.readyMs * 0.9;
+    QJsonArray rows;
+    for (int point = 0; point < points; ++point) {
+        const double delayMs = span * point / (points - 1);
+        uct_batch_test::RetirementReceipts retirementA, retirementB;
+        bool preparingAtCancel{};
+        double destroyMs{};
+        Ready b;
+        {
+            auto a = CreateProductionTensorRtRecognizer(ModelTier::Medium, ModelTier::Medium, retirementA.Observer());
+            const auto startedA = Clock::now();
+            const auto statusA = a->Initialize();
+            QVERIFY2(statusA.state == BackendState::kReady, qPrintable(statusA.detail));
+            while (ms(Clock::now() - startedA) < delayMs) std::this_thread::yield();
+            preparingAtCancel = a->Preparing();
+            const auto destroying = Clock::now();
+            a.reset(); // cancels A; never waits for its preparation thread
+            destroyMs = ms(Clock::now() - destroying);
+            // B at once, without waiting for A's retirement.
+            auto readerB = CreateProductionTensorRtRecognizer(ModelTier::Medium, ModelTier::Medium, retirementB.Observer());
+            const auto startedB = Clock::now();
+            const auto statusB = readerB->Initialize();
+            QVERIFY2(statusB.state == BackendState::kReady, qPrintable(statusB.detail));
+            b = ready(*readerB, startedB);
+        }
+        QVERIFY2(b.error.isEmpty(), qPrintable(QString("point %1: %2").arg(point).arg(b.error)));
+        const auto& retiredA = retirementA.Wait();
+        const auto& retiredB = retirementB.Wait();
+        const bool sameDetail = b.detail == reference.detail, sameOutput = b.output == reference.output;
+        const bool sameRecognizer = recognizerReceipt(b.detail) == referenceReceipt;
+        const bool inFlight = b.detail.contains("Detector FP32 fallback: BF16 detector already failed or in flight this session");
+        rows.push_back(QJsonObject{{"point", point}, {"cancelAAfterMs", delayMs}, {"aPreparingAtCancel", preparingAtCancel},
+            {"aDestroyMs", destroyMs}, {"aRetirement", retiredA.Json()}, {"bReadyMs", b.readyMs},
+            {"bSameBackendDetail", sameDetail}, {"bSameOutput", sameOutput},
+            {"bRecognizerBf16SameReceipt", sameRecognizer}, {"bDetectorMetAInFlight", inFlight},
+            {"bDetail", sameDetail ? QString() : b.detail}, {"bRetirement", retiredB.Json()}});
+        QVERIFY2(sameRecognizer, qPrintable(QString("point %1 recognizer differs:\n%2\n%3").arg(point).arg(b.detail, reference.detail)));
+        if (sameDetail) {
+            QVERIFY2(sameOutput, qPrintable(QString("point %1 output differs").arg(point)));
+            ++identical;
+        } else {
+            QVERIFY2(inFlight && preparingAtCancel,
+                     qPrintable(QString("point %1 detail differs:\n%2\n%3").arg(point).arg(b.detail, reference.detail)));
+            ++detectorInFlight;
+        }
+        QVERIFY2(destroyMs < 50, qPrintable(QString("point %1: destruction took %2 ms").arg(point).arg(destroyMs)));
+        QVERIFY2(!retiredA.cleanupFailed && (!retiredA.observed || retiredA.allCompleted),
+                 qPrintable(QString("point %1: cancelled State did not close").arg(point)));
+        QVERIFY(retiredB.Passed());
+    }
+    const QJsonObject report{{"schema", 1}, {"image", source}, {"referenceReadyMs", reference.readyMs},
+        {"referenceDetail", reference.detail}, {"points", rows}, {"identical", identical},
+        {"detectorMetAInFlight", detectorInFlight},
+        {"outputSha256", QString::fromLatin1(QCryptographicHash::hash(reference.output, QCryptographicHash::Sha256).toHex())}};
+    qInfo().noquote() << "UCT_OVERLAP_PREPARATION" << QJsonDocument(report).toJson(QJsonDocument::Compact);
+    if (!evidence.isEmpty()) QVERIFY(uct_batch_test::Save(evidence, report));
+}
 #else
 inline void PreparationCancellation()
 {
     if (qEnvironmentVariable("OKUFLOW_UCT_PREPARATION_CANCEL") != "1")
         QSKIP("Explicit preparation cancellation diagnostic not selected.");
+    QFAIL("This build lacks the TensorRT adapter.");
+}
+inline void OverlappingPreparation()
+{
+    if (qEnvironmentVariable("OKUFLOW_UCT_OVERLAP_PREPARATION") != "1")
+        QSKIP("Explicit overlapping preparation diagnostic not selected.");
     QFAIL("This build lacks the TensorRT adapter.");
 }
 #endif

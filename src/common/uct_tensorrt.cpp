@@ -2223,6 +2223,26 @@ class TensorRtRecognizer final : public Recognizer
             std::thread([preparation, assets, sdk, recognizerBatch, variableWidth, allowWidthPreparation,
                          precisionRequest, publicRequest, attestationObserver, experiment, detectorTier, recognizerTier,
                          graphShapes] {
+                // A user abort is not a failed model. Release only this
+                // preparation's latch keys after a fresh bounded drain;
+                // unknown completion or real CUDA/API faults keep them held.
+                // A verification interrupted by this cancellation is a
+                // cancellation too: its attempts must not stay latched.
+                // Idempotent: the detector side runs it before joining a
+                // recognizer load beside it (preparation_overlap::DetectorSide),
+                // the outer handler after.
+                const auto releaseCancelled=[preparation](const std::exception_ptr& failure) noexcept {
+                    if(!preparation->cancel.load() || !preparation->state ||
+                       !(detail::AllowsTensorRtCapacityFallback(failure) || detail::IsVerificationInterrupted(failure)))
+                        return;
+                    try {
+                        auto& state=*preparation->state;Check(cudaPeekAtLastError());
+                        ConfirmPublicCompletion(state,[]{return false;});
+                        for(auto& key:state.ownedAttempts)if(!key.isEmpty()) {
+                            public_bf16::SessionAttempts().Cancelled(key,public_bf16::Completion::Confirmed);key.clear();
+                        }
+                    }catch(...) {} // preserve original failure and retained ownership
+                };
                 try
                 {
                     PreparationProfile preparationProfile("preparation");
@@ -2423,7 +2443,7 @@ class TensorRtRecognizer final : public Recognizer
                     }
                     if (preparation->cancel.load())
                         throw std::runtime_error("GPU preparation cancelled.");
-                    }); // DetectorSide: the stage above keeps its original indentation
+                    },releaseCancelled); // DetectorSide: the stage above keeps its original indentation
                     preparationProfile.Mark("detector-finish");
                     int capacity = recognizerBatch;
                     if(publicRequest.enabled && publicRequest.runtimePreference && !publicRequest.fp32Control && !experiment && !precisionRequest.Requested()) {
@@ -2593,22 +2613,7 @@ class TensorRtRecognizer final : public Recognizer
                 }
                 catch (const std::exception &error)
                 {
-                    // A user abort is not a failed model. Release only this
-                    // preparation's latch keys after a fresh bounded drain;
-                    // unknown completion or real CUDA/API faults keep them held.
-                    // A verification interrupted by this cancellation is a
-                    // cancellation too: its attempts must not stay latched.
-                    if(preparation->cancel.load() && preparation->state &&
-                       (detail::AllowsTensorRtCapacityFallback(std::current_exception()) ||
-                        detail::IsVerificationInterrupted(std::current_exception()))) {
-                        try {
-                            auto& state=*preparation->state;Check(cudaPeekAtLastError());
-                            ConfirmPublicCompletion(state,[]{return false;});
-                            for(auto& key:state.ownedAttempts)if(!key.isEmpty()) {
-                                public_bf16::SessionAttempts().Cancelled(key,public_bf16::Completion::Confirmed);key.clear();
-                            }
-                        }catch(...) {} // preserve original failure and retained ownership
-                    }
+                    releaseCancelled(std::current_exception());
                     if(preparation->state)ReportPublicPartial(*preparation->state,attestationObserver,"unknown",error.what());
                     {
                         std::lock_guard lock(preparation->mutex);

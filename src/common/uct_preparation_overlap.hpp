@@ -27,7 +27,8 @@
 //   (CUDA, TensorRT API, allocation, unknown) is attached to the State and
 //   raised, as the sequential code's own load would have raised it.
 // - `Settle` abandons the helper (stop, join) whenever the detector side ends
-//   first (`DetectorSide`), before the detector falls back to FP32, before any
+//   first (`DetectorSide`, after a cancellation has released what the
+//   detector side owns), before the detector falls back to FP32, before any
 //   detector build (so a build never shares the device with the helper), and
 //   after the recognizer point as a guard. Without a fault the helper's
 //   Network is discarded and the preparation continues exactly as the
@@ -203,11 +204,17 @@ inline void Settle(Ahead& ahead, const Point& point, const std::exception_ptr& c
 
 // The detector side: on any failure the helper is settled before the failure
 // leaves, so a helper fault is raised with it and nothing else changes.
-template<class Stage> void DetectorSide(Ahead& ahead, const Point& point, Stage&& stage)
+// `ended` runs first with the failure. Production passes its cancellation
+// release (the attempts this preparation owns are released once its stream
+// is confirmed complete, as its outer handler does), so joining a helper that
+// is inside a vendor call never holds the detector's latch longer than the
+// sequential code did; another preparation may be waiting for it.
+template<class Stage, class Ended> void DetectorSide(Ahead& ahead, const Point& point, Stage&& stage, Ended&& ended)
 {
     try {
         std::forward<Stage>(stage)();
     } catch (...) {
+        std::forward<Ended>(ended)(std::current_exception());
         Settle(ahead, point, std::current_exception());
         throw;
     }
