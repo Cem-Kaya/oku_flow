@@ -1092,9 +1092,10 @@ titles (5 and 1); every other call of a new shape ran on the overflow context.
 `slide-light-2160` (the paused-detail rows: eight detail views of them) in one
 process with the switch off, on, and on with the profile, in three rounds, and
 requires every read to equal the switch-off read and, except for detail reads,
-no eviction in the last round. All eight pass on the final build
-(`r10-configurations-2`; the first build of the test, `r10-configurations-1`,
-also passed identity in all eight):
+no eviction in the last round. All eight pass on the measurement build
+(`r10-configurations-2`) and again on the final one (`r10-configurations-3`);
+the test's first build, before the overflow context, also passed identity in
+all eight (`r10-configurations-1`):
 
 | Configuration | Engines selected | Replay | Contexts made (detector, recognizer) |
 | --- | --- | --- | --- |
@@ -1115,13 +1116,34 @@ The plans that did not exist were prepared on the way under the GPU lease: the
 small and tiny BF16 pairs, the medium BF16 recognizer at batch one, an FP32
 recognizer at batch sixteen (the existing context-memory bound refuses the BF16
 recognizer at batch sixteen, so that configuration runs an FP32 recognizer) and
-the FP32 bucketed recognizer. The timings of these runs are not quoted: in the
-same processes switch-off reads were two to three times slower than in an
-earlier run of the same test, so other work had the machine.
+the FP32 bucketed recognizer.
+
+Timing from the repeat on the final build (`r10-configurations-3`, all eight
+identical again), indicative only: one process per arm, `Recognize` wall time
+including the upload, and only nine reads per image, so most of each run falls
+in the stretch where contexts are still being made (the configuration with
+"4 of 7" above ended before it had them all). Settled is the median of the
+last four reads of each image (`slide-light-1080` / `-2160`); the run before it
+(`r10-configurations-2`) was disturbed by other load and is not quoted.
+
+| Configuration | Settled ms, off / on, 1080 | 2160 | Speedup 1080 / 2160 |
+| --- | --- | --- | --- |
+| Medium BF16, batch 8 | 59.8 / 61.1 | 104.8 / 93.3 | 0.98 / 1.12 |
+| Medium BF16, batch 1 | 123.8 / 77.5 | 170.8 / 116.1 | 1.60 / 1.47 |
+| Medium, batch 16 (FP32 recognizer) | 101.3 / 115.2 | 144.3 / 157.2 | 0.88 / 0.92 |
+| Medium FP32 | 92.4 / 91.6 | 144.7 / 141.3 | 1.01 / 1.02 |
+| Small BF16 | 45.2 / 37.0 | 67.7 / 67.6 | 1.22 / 1.00 |
+| Tiny BF16 | 65.6 / 25.1 | 84.0 / 38.7 | 2.61 / 2.17 |
+| Bucketed width (detector replay only) | 94.2 / 91.7 | 139.5 / 135.0 | 1.03 / 1.03 |
+
+Batch one and the tiny tier, which make many small recognizer calls, gain the
+most; batch sixteen was slower in this short run, with three of its seven
+recognizer shapes still on the overflow context. None of this is a warm
+measurement under the corpus protocol.
 
 ### Failure paths
 
-`optionalGraphReplayFaults` (`r10-faults-3`; `slide-light-1080` and
+`optionalGraphReplayFaults` (`r10-faults-3`, final build; `slide-light-1080` and
 `slide-light-2160`, ten reads over both sizes per case) drives each path on the
 GPU and asserts the outcome. In every case no replay call returned or threw
 with its stream capturing.
@@ -1150,8 +1172,9 @@ captured, drained or launched, on both sizes. Cancelled reads: 13 at planned, 2
 at captured, 6 at drained, 13 at launched (2,164 calls planned in all). Every
 cancelled read returned cancelled with no error and the reader ready; every
 completed read, and the read after each cancellation, equalled the switch-off
-output; the State retired cleanly. `optionalGraphReplayLifetime` passes
-unchanged (`r10-lifetime-2`).
+output; the State retired cleanly (again on the final build, `r10-checkpoints-3`).
+`optionalGraphReplayLifetime` passes unchanged (`r10-lifetime-2`,
+`r10-lifetime-3`).
 
 ### Device memory
 
@@ -1217,6 +1240,8 @@ to the owner and the council.
 - No owner camera capture; no measurement with the application's own pacing.
 - Why creating a context slows concurrent inference is not isolated beyond
   "not allocation, not CPU load"; TensorRT does not document it.
-- Timing of the configurations other than the default pair.
+- Warm timing of the configurations other than the default pair under the
+  corpus protocol; the batch-sixteen configuration was slower in its short
+  run and needs that measurement before it could be on.
 - Spaced reads on this machine are disturbed by other desktop software; no
   clean paced run of the whole scene set exists.
