@@ -1502,4 +1502,8 @@ Measurement-only variables of the opt-in test slots: `OKUFLOW_UCT_CORPUS_FRAME_L
 `OKUFLOW_UCT_CLOCK_PROBE_EVIDENCE` (a new absolute file) and
 `OKUFLOW_UCT_CLOCK_PROBE_PLAN` for `optionalGpuClockProbe`, and
 `OKUFLOW_UCT_KEEP_WARM_GPU_TEST=1` with `OKUFLOW_UCT_CORPUS_IMAGES` for
-`optionalKeepWarmGpuContract`. See `docs/uct_okuread_port.md`.
+`optionalKeepWarmGpuContract`. `OKUFLOW_UCT_CORPUS_STABLE_POWER=1` makes the
+corpus slot hold `ID3D12Device::SetStablePowerState(TRUE)` on the CUDA
+adapter for the life of that test process (comparison only; it needs Windows
+Developer Mode, applies to the whole adapter while the process lives, and the
+application never calls it). See `docs/uct_okuread_port.md`.

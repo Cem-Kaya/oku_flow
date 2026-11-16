@@ -8411,4 +8411,6 @@ the scheduler cases `schedulerKeepWarmNeverRunsDuringReadsAndStopsOnCancel`,
 Measurement: `optionalGpuClockProbe` (`tests/uct_gpu_clock_probe.hpp::ClockProbe`,
 with `PreciseSleep`, `FrameLoad` and `ParseFrameLoad`) and
 `scripts/uct/gpu_clock_probe.py`; `CorpusTiming` announces each read, can run
-`FrameLoad` and keeps an idle tail. See `docs/uct_okuread_port.md`, round 13.
+`FrameLoad` and keeps an idle tail; its test-only `StablePowerState` holds
+`SetStablePowerState(TRUE)` on the CUDA adapter when
+`OKUFLOW_UCT_CORPUS_STABLE_POWER=1`. See `docs/uct_okuread_port.md`, round 13.

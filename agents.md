@@ -1283,3 +1283,16 @@ aligned with the project goals.
 ## Native Math capture sessions (2026-10-27)
 - Native capture delays may extend to 600000 ms within the existing ten-minute profiling deadline, leaving more than 100 ms before normal exit. Use this for real model preparation/manual selection; retain isolated settings, a free desktop, exact raw captures and all foreground/foreign-overlay refusals. Reset computer use before the capture. Never replace native capture evidence with edited pixels.
 - Native visual fixture checkpoints must settle layout/composition even with `OKUFLOW_UI_TEST_SCREENSHOTS` unset. Optional image output cannot supply readiness for a subsequent geometry/hit assertion. Preserve the original failed attempt and validate both configurations after repairing this dependency.
+
+## Paced UCT measurement and keep-warm (2026-11-16)
+- The application reads on timers, and between reads the GPU lowers its
+  clocks: back-to-back corpus timing alone overstates paced read speed by up
+  to five times on sparse frames. Measure latency changes also with
+  `perf_measure.py --gap-ms 350` and `1000` (25 reads, per-read series,
+  `--gpu-sample-ms`), under the GPU lease, and say when a run looks disturbed.
+- `OKUFLOW_UCT_TEST_KEEP_WARM` (private, off) trades 45 to 63 W for paced
+  speed on the RTX 4090. Keep its work on the recognizer's own stream through
+  the scheduler worker, interrupt it before every job, and never arm it from
+  paused stills or without an announced paced read. Never change NVIDIA
+  driver profiles, power plans or clocks to measure it. See
+  `docs/uct_okuread_port.md`, round 13.
