@@ -23,9 +23,10 @@
 //   look-ahead, detection of equal-shaped regions queued behind each other).
 // - The cache is bounded. When it is full the least recently used slot is
 //   recycled: its context is reshaped, it is never destroyed and recreated.
-// - A shape whose capture was refused is not tried again; after
-//   kMaximumRefusedShapes distinct refusals capture stops altogether. A refused
-//   shape still runs, as a plain enqueue.
+// - A shape whose capture was refused is not tried again; with the
+//   kMaximumRefusedShapes-th distinct refusal capture stops altogether. A
+//   refused shape still runs, as a plain enqueue. A capture that is only put
+//   off (too little free device memory at that moment) is not a refusal.
 
 #include <algorithm>
 #include <cstdint>
@@ -89,10 +90,11 @@ class Policy
             ++counters_.hits;
             auto& slot = slots_[std::size_t(index)];
             if (slot.input != input || slot.output != output) {
-                // New addresses: the graph has the old ones baked in.
+                // New addresses: the graph has the old ones baked in, and a
+                // plain enqueue of this context may still be queued.
                 decision.rebind = true;
                 decision.dropGraph = slot.graph;
-                decision.drain = slot.graph;
+                decision.drain = slot.used;
                 slot.graph = false;
                 slot.warmed = false;
                 slot.bound = false;
@@ -155,8 +157,8 @@ class Policy
         slot.graph = false;
         ++counters_.refusals;
         if (Refused(slot.shape)) return;
+        refused_.push_back(slot.shape);
         if (int(refused_.size()) == kMaximumRefusedShapes) blocked_ = true;
-        else refused_.push_back(slot.shape);
     }
     bool Refused(const Shape& shape) const
     {

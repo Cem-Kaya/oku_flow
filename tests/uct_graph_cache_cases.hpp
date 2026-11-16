@@ -65,11 +65,14 @@ inline void Policies()
     QVERIFY(!policy.HasGraph(0));
     d = Run(policy, n8, &other, &out);
     QCOMPARE(d.launch, Launch::Capture);
-    // A moved address on a slot without a graph needs no drain.
+    // A moved address on a slot without a graph still drains: its plain
+    // enqueue may be queued. The same for a moved output alone.
     d = Run(policy, tile, &in, &out);
     QVERIFY(d.create && d.slot == 3);
     d = Run(policy, tile, &other, &out);
-    QVERIFY(d.rebind && !d.drain && !d.dropGraph && d.launch == Launch::Plain);
+    QVERIFY(d.rebind && d.drain && !d.dropGraph && d.launch == Launch::Plain);
+    d = Run(policy, tile, &other, &in);
+    QVERIFY(d.rebind && d.drain && !d.dropGraph && !d.reshape && d.launch == Launch::Plain);
 
     // Full cache: the least recently used slot is recycled (reshaped, its
     // graph dropped after a drain), never a new context.
@@ -113,9 +116,23 @@ inline void Policies()
     Run(refusing, n8, &in, &out);
     QCOMPARE(Run(refusing, n8, &in, &out).launch, Launch::Plain);
     QCOMPARE(refusing.Count().refusals, std::uint64_t(1));
-    // After 32 distinct refused shapes capture stops altogether.
+    // Refusing the same shape again changes nothing.
+    refusing.Refuse(0);
+    QVERIFY(!refusing.Blocked());
+    // A capture that was only put off (the caller ran the call plainly
+    // without refusing) is offered again on the next call.
+    Policy deferring(1);
+    Run(deferring, n8, &in, &out);
+    d = deferring.Plan(n8, &in, &out, true);
+    QCOMPARE(d.launch, Launch::Capture);
+    deferring.Bound(d.slot);
+    deferring.Ran(d.slot, Launch::Plain);
+    QCOMPARE(deferring.Plan(n8, &in, &out, true).launch, Launch::Capture);
+    QCOMPARE(deferring.Count().refusals, std::uint64_t(0));
+    // With the 32nd distinct refused shape capture stops altogether.
     Policy blocking(2);
-    for (int i = 1; i <= kMaximumRefusedShapes + 1; ++i) {
+    for (int i = 1; i <= kMaximumRefusedShapes; ++i) {
+        QVERIFY(!blocking.Blocked());
         const Shape shape{1, 32, 32 * i};
         Run(blocking, shape, &in, &out);
         d = blocking.Plan(shape, &in, &out, true);
