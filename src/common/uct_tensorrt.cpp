@@ -886,9 +886,11 @@ class Network
     Captured Capture(nvinfer1::IExecutionContext& context, cudaGraphExec_t& executable, cudaStream_t stream,
                      double& captureMs)
     {
+        // Running out of memory while capturing is a passing condition, like
+        // the headroom check below: put the capture off, do not refuse the shape.
         const auto refuse = [&](cudaError_t status, bool structural = false) {
             RefuseCapture(status, stream, structural);
-            return Captured::Refused;
+            return status == cudaErrorMemoryAllocation ? Captured::Deferred : Captured::Refused;
         };
         QElapsedTimer timer;
         timer.start();
@@ -965,9 +967,16 @@ class Network
         }
         replay_->Bound(decision.slot);
         auto launch = decision.launch;
+        if (launch == graph_cache::Launch::Capture && captureHoldOff_ > 0) {
+            // A capture was put off recently: do not ask the device for its
+            // free memory again on every call while it stays short.
+            --captureHoldOff_;
+            launch = graph_cache::Launch::Plain;
+        }
         if (launch == graph_cache::Launch::Capture) {
             const auto captured = Capture(*slot.context, slot.graph, stream, captureMs);
             if (captured == Captured::Refused) replay_->Refuse(decision.slot);
+            if (captured == Captured::Deferred) captureHoldOff_ = kCaptureHoldOffCalls;
             if (captured != Captured::Yes) launch = graph_cache::Launch::Plain;
         }
         if (launch == graph_cache::Launch::Plain) {
@@ -1018,6 +1027,8 @@ class Network
     DeviceBuffer<unsigned char> replayArena_;
     std::int64_t replayArenaBytes_{}, replayContextBytes_{}, replayGraphBytes_{};
     std::int64_t replayContextsCreated_{};
+    static constexpr int kCaptureHoldOffCalls = 64; // network calls skipped after a deferred capture
+    int captureHoldOff_{};
     double replayContextMs_{};
     const float* replayOutput_{};
     std::optional<graph_cache::Policy> replay_;
@@ -2394,8 +2405,11 @@ class TensorRtRecognizer final : public Recognizer
                     // A user abort is not a failed model. Release only this
                     // preparation's latch keys after a fresh bounded drain;
                     // unknown completion or real CUDA/API faults keep them held.
+                    // A verification interrupted by this cancellation is a
+                    // cancellation too: its attempts must not stay latched.
                     if(preparation->cancel.load() && preparation->state &&
-                       detail::AllowsTensorRtCapacityFallback(std::current_exception())) {
+                       (detail::AllowsTensorRtCapacityFallback(std::current_exception()) ||
+                        detail::IsVerificationInterrupted(std::current_exception()))) {
                         try {
                             auto& state=*preparation->state;Check(cudaPeekAtLastError());
                             ConfirmPublicCompletion(state,[]{return false;});

@@ -16,7 +16,8 @@
   accepted for the speed; no page of the test corpora (212 scenes and pages)
   changed. Measured on an RTX 4090, OCR worker time fell from 47.4 to 31.8 ms
   on a generated frame without text and from 73.5 to 65.2 ms on a bent page;
-  other scenes are unchanged. See docs/uct_okuread_port.md, round 9.
+  other scenes moved by less than the measurement noise. See
+  docs/uct_okuread_port.md, round 9.
 
 - Speed up GPU text-region extraction with identical results: shorter
   component-root walks, per-warp box scoring with an exact parallel float sum

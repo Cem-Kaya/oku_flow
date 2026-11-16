@@ -88,8 +88,8 @@ rounding is the one `boxesInside` reproduces. What is established:
 | Original fuses every column | sm_100, 103, 120, 121 |
 
 Equal intermediate code and equal instruction counts do not settle the final
-rounding, so they are not treated as proof. `DetectKernels::ForDevice` enables
-the new box kernel only when built with the CUDA 12.9 toolkit
+rounding, so they are not treated as proof. `DetectKernels::ForDevice` (since round 9: `DetectKernels::Exact`) enables
+the exact box kernel only when built with the CUDA 12.9 toolkit
 (`kCooperativeBoxesToolkit`) and running on compute capability 8.6 or 8.9, that
 is RTX 30 and RTX 40 series cards. On everything else, including the GTX 10
 series test system, RTX 20 and RTX 50 series, and under any other toolkit, the
@@ -854,9 +854,11 @@ Target (round 1's, carried over): "regions" stage of the textless scene under
 What changed: `DetectKernels` defaults to `treeBoxes` on every device, and the
 device-specific selection is gone from the reader. Each lane of a warp sums its
 pixels in double and a fixed shuffle tree combines the lanes. The kernel spells
-out its own membership test and summation order, so its score is the same on
-every GPU generation, which the original kernel's was not (its membership test
-depends on how the compiler built it for each architecture, see round 1). The
+out its own membership test and summation order, so the sum itself no longer
+depends on how the compiler built it for each architecture, as the original's
+did (round 1). A component's extents and scan bounds are still ordinary
+compiled float arithmetic, so scores are not claimed equal across GPU
+generations. The
 exact raster-order variant remains selectable with
 `OKUFLOW_UCT_TEST_DETECT_KERNELS=roots,boxes,ribbons`, and
 `DetectKernels::Exact` names where that variant equals the original bit for
@@ -866,7 +868,10 @@ How large the difference is: the original adds the values of a component one
 at a time in float, so its own sum drifts with the number of pixels; the
 double tree does not. The scores therefore differ by the original's
 accumulated rounding, which is far more than one last bit on a large
-component: on the kernel test's 60 crafted detector maps 930 of 2,179 compared box scores differ in their bits, the largest by 0.025 percent of the score, and no map's box count changed. A difference
+component: on the kernel test's 50 crafted detector maps with
+values in [0, 1], 16,605 of 58,451 components that both kernels accept have
+scores with other bits, the largest difference is 0.025 percent of the score,
+and no component is accepted by one kernel only (`int3-gpu.log`). A difference
 reaches the output only when a component's mean lands that close to the 0.4
 acceptance threshold.
 
@@ -883,6 +888,12 @@ Geometric mean 1.031x warm and 1.035x for first reads. On the merged
 integration build the same comparison in the other direction gives 1.067x for
 the default against the exact selection (`int1-ab-v1`).
 
+Detector scores do change on real pages: the profile's crop-descriptor hash,
+which includes them, differs between the two sums on 5 of 5 profiled scenes
+(`r1-kernels-attribution-4`). The score is used only for acceptance and is not
+part of the output, so a page changes only if a component is accepted by one
+sum and not the other, and that can add or remove a whole line.
+
 Output, tree sum against the exact default, same executable: one identical
 complete-output hash on 18 of 18 scenes (two cohorts), 20 tuning pages, 88
 development pages, 24 fresh generated pages and 62 title placements, 212 in
@@ -893,3 +904,27 @@ to a script update under them and were compared from their raw reports with
 Not established: the kernel ran only on the RTX 4090. It uses no
 architecture-specific code, but RTX 20, 30 and 50 series cards were not run.
 The corpora contain no owner camera capture.
+
+### Review
+
+Council on the default (`8686ca3`, `7b6ed8a`): Claude Opus 5.5 7/10, GPT-6.1
+Sol 8/10, Gemini 4 Hydrogen 8/10; all three for keeping it as the default.
+None found a defect in the tree kernel. Applied: the kernel test now matches
+components by root and checks every one (same labels, moments and extents;
+scores within 2^-24 per pixel of the component's own box, twice over, instead
+of per pixel of the whole map; a component only one kernel accepts must sit on
+the threshold; repeatability including labels and components; the same boxes
+without ribbon scratch); the exact box kernel is compared only on devices
+where `DetectKernels::Exact` selects it, so the test can run on other GPU
+generations; the claim that scores are equal across GPU generations is
+withdrawn (extents and scan bounds are still compiled float arithmetic); the
+record states that detector scores do change on real pages. In the same pass
+the reviewers checked the fixes made for rounds 3 and 5 (7/10, 7/10, 6/10) and
+found one defect in them, now fixed: a verification interrupted by a
+cancellation left its BF16 attempt latched for the session, so the next setup
+of the same model would have fallen back to FP32. Also applied for round 3: a
+capture put off for lack of memory is not retried for the next 64 network
+calls, and running out of memory during a capture puts it off instead of
+refusing the shape. Kept as it is: a TensorRT enqueue that fails inside a
+capture with no CUDA status is treated as a fault, not a refusal, as the round
+3 reviewers asked; round 10 exercises captures on the other model tiers.

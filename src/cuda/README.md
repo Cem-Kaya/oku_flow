@@ -46,7 +46,8 @@ extraction (`Detect`), recognition windows, rectification and CTC decoding,
 followed by the validation, ink-outline and formula kernel includes. `Detect`
 takes a `DetectKernels` selection; the original region kernels stay compiled as
 the oracle for the contract in `uct_detect_kernels_cuda`. The default box
-kernel sums each component through a fixed double tree: the same score on
-every GPU, not the original's float rounding. The exact variant reproduces the
+kernel sums each component through a fixed double tree: a defined, repeatable
+sum, not the original's float rounding (component extents still follow the
+compiler's rounding per architecture). The exact variant reproduces the
 original's compiled rounding and equals it bit for bit only for the CUDA 12.9
 toolkit on sm_86 and sm_89; see `docs/uct_okuread_port.md`.

@@ -2616,8 +2616,8 @@ for selectors, the protocol, the baseline profile and its limits. These are
 file-fixture worker timings, not camera, presentation or release acceptance.
 
 `uct_detect_kernels_cuda` is a serial `gpu` case with its own 60-second
-budget. `gpuDetectKernelsMatchReferenceBytes` holds the new detector
-post-processing kernels to the original kernels bit for bit on 60 distinct
+budget. `gpuDetectKernelsMatchReferenceBytes` holds the exact detector
+post-processing kernel selections to the original kernels bit for bit on 60 distinct
 synthetic probability maps, with and without ribbon fitting: long parent
 chains, more than 128 components, dozens of roots in one block,
 threshold-sensitive rotated boxes, rounding ties, curved bands and non-finite or
@@ -2628,9 +2628,12 @@ ribbon fits, applied and refused groups, ties, binade landings). They execute
 on the test GPU only. The exact box kernel is verified against the original on
 sm_86 and sm_89 under the CUDA 12.9 toolkit. The default tree box sum is held
 to a different contract in the same test: repeatable, the same labels and box
-geometry as the original, and scores within the original's own accumulated
-float rounding (n * 2^-24 for n pixels); maps whose box count changes are
-counted. See [the port record](../docs/uct_okuread_port.md).
+moments as the original for every component (matched by root), scores of
+components both kernels accept within the original's own accumulated float
+rounding (2^-24 per pixel of the component's oriented box, twice over), and
+every component only one kernel accepts within that bound of the 0.4
+threshold. The exact box kernel is compared only on devices where
+`DetectKernels::Exact` selects it. See [the port record](../docs/uct_okuread_port.md).
 
 `regionReconcileRules` (model-free, in `uct_paddle_processing`) checks the
 private cross-region reconciliation rules on constructed detections: clipped

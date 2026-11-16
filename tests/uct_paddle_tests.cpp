@@ -264,6 +264,10 @@ class PaddleTests final : public QObject
         // engine or a rebuild, and it is not an artifact failure.
         QVERIFY(!detail::AllowsTensorRtCapacityFallback(
             std::make_exception_ptr(detail::VerificationInterrupted("stopped"))));
+        QVERIFY(detail::IsVerificationInterrupted(
+            std::make_exception_ptr(detail::VerificationInterrupted("stopped"))));
+        QVERIFY(!detail::IsVerificationInterrupted(std::make_exception_ptr(std::runtime_error("other"))));
+        QVERIFY(!detail::IsVerificationInterrupted({}));
         QBuffer closed;
         QVERIFY(sha256::Read(closed).isEmpty());
         QTemporaryDir directory;

@@ -1,6 +1,7 @@
 #pragma once
-// Detector post-processing: the default kernels must reproduce the original
-// kernels bit for bit. Included after GpuBuffer/FixtureStream are defined.
+// Detector post-processing: the exact kernel selections must reproduce the
+// original kernels bit for bit; the default tree box sum is held to its own
+// contract. Included after GpuBuffer/FixtureStream are defined.
 #include <QPainter>
 #include <QPainterPath>
 #include <cstring>
@@ -184,8 +185,14 @@ inline void KernelsMatchReference()
     int devices{};
     if (cudaGetDeviceCount(&devices) != cudaSuccess || devices < 1) QSKIP("CUDA device unavailable.");
     FixtureStream stream;
+    cudaDeviceProp properties{};
+    QCOMPARE(cudaGetDeviceProperties(&properties, 0), cudaSuccess);
+    const bool exactBoxes = gpu::DetectKernels::Exact(properties.major, properties.minor).cooperativeBoxes;
+    if (!exactBoxes)
+        qInfo() << "exact box kernel not compared on this device: compute capability"
+                << properties.major << properties.minor;
     int ribbonFits = 0, ribbonRefusals = 0, eligible = 0, largest = 0;
-    int treeMaps = 0, treeCountChanges = 0, treeBoxes = 0, treeScoreChanges = 0;
+    int treeMaps = 0, treeCountChanges = 0, treeBoxes = 0, treeScoreChanges = 0, treeFlips = 0;
     double treeLargest = 0;
     QStringList failures;
     bool every = true; // the first size runs every variant, the others the ten clean shapes
@@ -226,11 +233,14 @@ inline void KernelsMatchReference()
                     ribbonRefusals += reference.quads[std::size_t(i)].ribbon.unsupported;
                 }
                 // The exact selections, named explicitly (the default is the
-                // tree sum, checked separately below).
+                // tree sum, checked separately below). The exact box kernel
+                // equals the original only where DetectKernels::Exact says so;
+                // elsewhere it is skipped and the rest still runs.
                 const gpu::DetectKernels candidates[]{{true, true, true, false}, {true, false, false, false},
                                                       {false, true, false, false}, {false, false, true, false}};
                 for (const auto& kernels : candidates)
                     for (int repeat = 0; repeat < (&kernels == candidates ? 2 : 1); ++repeat) { // arrival order must not matter
+                        if (kernels.cooperativeBoxes && !exactBoxes) continue;
                         Output actual;
                         QVERIFY(run(values, ribbons, kernels, actual));
                         const auto difference = Difference(reference, actual, ribbons);
@@ -242,42 +252,61 @@ inline void KernelsMatchReference()
             }
         }
         // The default tree sum is not the original's rounding. What it must
-        // hold: the same result on every run, and against the original the
-        // same labels and box geometry with scores that differ by no more
-        // than the original's own accumulated rounding: adding n values in
-        // [0, 1] one at a time in float is off by at most n * 2^-24 of the
-        // sum, and the double tree is exact to far below that. A score that
-        // crosses the acceptance threshold changes the count; those maps are
-        // counted, not compared further.
+        // hold: the same result on every run (labels, components and quads),
+        // and against the original, component by component (matched by root,
+        // so a changed count hides nothing): the same labels, moments and
+        // extents; for a component both accept, scores that differ by no more
+        // than the original's own accumulated rounding; and a component only
+        // one of them accepts must have its score within that bound of the 0.4
+        // threshold. The bound is per component: adding n values in [0, 1] one
+        // at a time in float is off by at most n * 2^-24 of the sum, the double
+        // tree is exact to far below that, and n is at most the pixels of the
+        // oriented box (taken twice over for the rounding of its edges).
         for (int variant = 0; variant < (every ? 30 : 10); ++variant) {
             const auto values = Map(w, h, variant);
             const bool plain = std::all_of(values.begin(), values.end(),
                 [](float value) { return std::isfinite(value) && value >= 0.f && value <= 1.f; });
-            const float bound = float(pixels) * 0x1p-24f;
             Output reference, tree, again;
             QVERIFY(run(values, true, gpu::DetectKernels::Reference(), reference));
             QVERIFY(run(values, true, gpu::DetectKernels{}, tree));
             QVERIFY(run(values, true, gpu::DetectKernels{}, again));
-            QVERIFY2(Difference(tree, again, false).isEmpty(), "tree sum is not repeatable");
+            QVERIFY2(Difference(tree, again, true).isEmpty(), "tree sum is not repeatable");
+            // Without ribbon scratch (curved reading off) the boxes are the same.
+            Output bare;
+            QVERIFY(run(values, false, gpu::DetectKernels{}, bare));
+            QVERIFY2(bare.count == tree.count, "tree sum depends on ribbon scratch");
+            for (int i = 0; i < std::min(tree.count, 128); ++i)
+                QVERIFY2(SameBits(bare.quads[std::size_t(i)].xy, tree.quads[std::size_t(i)].xy, sizeof(bare.quads[0].xy)) &&
+                         SameBits(&bare.quads[std::size_t(i)].score, &tree.quads[std::size_t(i)].score, sizeof(float)),
+                         "tree sum depends on ribbon scratch");
+            QVERIFY2(tree.labels == reference.labels, "tree sum changed labels");
             ++treeMaps;
-            if (tree.count != reference.count) {
-                ++treeCountChanges;
-                continue;
-            }
-            for (int i = 0; i < std::min(tree.count, 128); ++i) {
-                const auto &p = reference.quads[std::size_t(i)], &q = tree.quads[std::size_t(i)];
-                QVERIFY2(SameBits(p.xy, q.xy, sizeof(p.xy)) && p.componentRoot == q.componentRoot,
-                         "tree sum changed box geometry");
-                if (plain) {
-                    const float difference = std::abs(p.score - q.score);
-                    QVERIFY2(difference <= bound * p.score,
-                             qPrintable(QStringLiteral("tree score %1 against %2").arg(q.score).arg(p.score)));
-                    treeLargest = std::max(treeLargest, double(difference) / p.score);
-                    treeScoreChanges += !SameBits(&p.score, &q.score, sizeof(float));
+            treeCountChanges += tree.count != reference.count;
+            for (std::size_t i = 0; i < reference.components.size(); ++i) {
+                if (reference.labels[i] != int(i)) continue; // roots carry the component
+                const auto &c = reference.components[i], &d = tree.components[i];
+                const float left[]{c.c, c.s, c.u0, c.u1, c.v0, c.v1}, right[]{d.c, d.s, d.u0, d.u1, d.v0, d.v1};
+                QVERIFY2(c.n == d.n && c.x == d.x && c.y == d.y && SameBits(left, right, sizeof(left)),
+                         "tree sum changed a component's moments or extents");
+                const bool accepted = c.score > 0, treeAccepted = d.score > 0;
+                if (!plain) continue; // overflow and cancellation maps: structure only
+                const float bound = 2.f * (c.u1 - c.u0 + 1) * (c.v1 - c.v0 + 1) * 0x1p-24f;
+                if (accepted && treeAccepted) {
+                    const float difference = std::abs(c.score - d.score);
+                    QVERIFY2(difference <= bound * c.score,
+                             qPrintable(QStringLiteral("tree score %1 against %2, bound %3").arg(d.score).arg(c.score).arg(bound)));
+                    treeLargest = std::max(treeLargest, double(difference) / c.score);
+                    treeScoreChanges += !SameBits(&c.score, &d.score, sizeof(float));
                     ++treeBoxes;
+                } else if (accepted != treeAccepted) {
+                    // Rejected components keep score 0, so only the accepted
+                    // side's mean is known; it must sit on the threshold.
+                    const float score = accepted ? c.score : d.score;
+                    QVERIFY2(std::abs(score - .4f) <= bound * .4f + 0x1p-22f,
+                             qPrintable(QStringLiteral("acceptance changed at score %1, bound %2").arg(score).arg(bound)));
+                    ++treeFlips;
                 }
             }
-            QVERIFY2(tree.labels == reference.labels, "tree sum changed labels");
         }
         every = false;
     }
@@ -290,10 +319,11 @@ inline void KernelsMatchReference()
             << "valid ribbons" << ribbonFits << "refused ribbons" << ribbonRefusals;
     // The crafted maps put many components on the threshold on purpose, so
     // count changes are expected here; the corpus runs measure real pages.
-    QVERIFY2(treeBoxes > 1000 && treeCountChanges * 2 <= treeMaps,
-             qPrintable(QStringLiteral("tree maps %1 count changes %2 boxes %3").arg(treeMaps).arg(treeCountChanges).arg(treeBoxes)));
+    QVERIFY2(treeBoxes > 1000 && treeScoreChanges > 0,
+             qPrintable(QStringLiteral("tree maps %1 boxes %2 changed scores %3").arg(treeMaps).arg(treeBoxes).arg(treeScoreChanges)));
     qInfo() << "tree box sum: maps" << treeMaps << "maps with another count" << treeCountChanges
-            << "boxes compared" << treeBoxes << "scores with other bits" << treeScoreChanges
+            << "components accepted by one kernel only" << treeFlips
+            << "accepted components compared" << treeBoxes << "scores with other bits" << treeScoreChanges
             << "largest relative score difference" << treeLargest;
 }
 
