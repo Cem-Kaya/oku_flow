@@ -99,33 +99,37 @@ void Probe(const void *image, std::size_t pitch, int width, int height, void *ou
            cudaStream_t stream);
 void Normalize(const void *image, std::size_t pitch, int width, int height, float *out,
                int outWidth, int outHeight, cudaStream_t stream);
-// Detector post-processing implementations. The defaults produce the same
-// bytes as the original kernels, which stay selectable as the comparison
-// oracle: path-compressing union-find roots, one warp per component for box
-// scoring (original raster-order float sum) and four ribbon bins merged per
-// round (original per-bin thread order). treeBoxes replaces the box sum with a
-// fixed double tree; it is repeatable but rounds differently, so it is a
-// private comparison only and never a default.
+// Detector post-processing implementations. The original kernels stay
+// selectable as the comparison oracle (Reference()).
 //
-// Roots and ribbons are exact by construction and are on everywhere. Box
-// scoring also has to select the same pixels as the original kernel, whose
-// inclusion test rounds the way one compiler happened to compile it. That was
-// executed bit for bit on sm_89 with the CUDA 12.9 toolkit, and sm_86 has the
-// same machine code for both kernels. Nothing else is established, so a
-// default-constructed selection keeps the original box kernel and ForDevice
-// enables the new one only for that toolkit and those two architectures.
+// Defaults, on every GPU: path-compressing union-find roots and four ribbon
+// bins merged per round, both exact by construction, and treeBoxes: one warp
+// per component whose lanes sum their pixels in double and combine through a
+// fixed shuffle tree. That sum is repeatable and spells out its own rounding,
+// so it gives the same score on every GPU generation, but it is not the
+// original raster-order float sum: a score can differ in its last bits, which
+// reaches the output only when a component's mean lands within a rounding
+// step of the 0.4 acceptance threshold. The owner accepted differences of
+// that size for the speed (docs/uct_okuread_port.md, round 9).
+//
+// cooperativeBoxes without treeBoxes is the exact variant: the original
+// raster-order float sum, reproduced without the serial chain. It also has to
+// select the same pixels as the original kernel, whose inclusion test rounds
+// the way one compiler happened to compile it. That was executed bit for bit
+// on sm_89 with the CUDA 12.9 toolkit, and sm_86 has the same machine code for
+// both kernels; Exact() selects it only there and the original box kernel
+// everywhere else.
 inline constexpr bool kCooperativeBoxesToolkit = CUDART_VERSION >= 12090 && CUDART_VERSION < 12100;
 struct DetectKernels
 {
-    bool compressRoots{true}, cooperativeBoxes{false}, parallelRibbonMerge{true}, treeBoxes{false};
+    bool compressRoots{true}, cooperativeBoxes{false}, parallelRibbonMerge{true}, treeBoxes{true};
     static constexpr DetectKernels Reference() { return {false, false, false, false}; }
-    // Defaults for a device with this compute capability.
-    static constexpr DetectKernels ForDevice(int computeMajor, int computeMinor)
+    // The fastest selection whose output equals Reference() bit for bit on a
+    // device with this compute capability.
+    static constexpr DetectKernels Exact(int computeMajor, int computeMinor)
     {
-        DetectKernels kernels;
-        kernels.cooperativeBoxes = kCooperativeBoxesToolkit && computeMajor == 8 &&
-                                   (computeMinor == 6 || computeMinor == 9);
-        return kernels;
+        return {true, kCooperativeBoxesToolkit && computeMajor == 8 && (computeMinor == 6 || computeMinor == 9),
+                true, false};
     }
 };
 // Test support. For each of `groups` warps: adds the masked values (32 per

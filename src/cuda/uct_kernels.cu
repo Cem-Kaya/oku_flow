@@ -261,9 +261,10 @@ __global__ void boxes(const float *map, const int *labels, Component *comps, int
 // This is tied to that toolkit. For sm_100 and later the same compiler fuses
 // every column, and for the other architectures only the generated
 // intermediate code was compared, which does not settle the final rounding.
-// DetectKernels::ForDevice therefore enables this kernel only where it ran
-// against the original bit for bit (sm_89) or has identical machine code
-// (sm_86); everywhere else the original kernel remains in use.
+// DetectKernels::Exact therefore selects the exact sum of this kernel only
+// where it ran against the original bit for bit (sm_89) or has identical
+// machine code (sm_86). The default tree sum uses the same inclusion test on
+// every GPU; it does not claim the original's bits.
 // gpuDetectKernelsMatchReferenceBytes holds the two kernels to the same bits
 // on the GPU it runs on and fails if a compiler changes either one.
 __device__ __forceinline__ bool boxesInside(const Component &c, int x, int y, bool fused)
@@ -355,10 +356,10 @@ __global__ void boxSumGroups(const float *scores, const unsigned *masks, const f
 // the bounding scan in parallel. With tree == false the accepted values are
 // added in the original raster order, group by group, with the float sum and
 // count the boxes kernel computes: boxesAddGroup where it applies, otherwise
-// lane zero folds the staged values serially. With tree == true each lane
-// keeps a double partial sum over its fixed stride and a fixed shuffle tree
-// combines them: defined and repeatable, but not the original rounding, so it
-// is a private comparison only.
+// lane zero folds the staged values serially. With tree == true (the default)
+// each lane keeps a double partial sum over its fixed stride and a fixed
+// shuffle tree combines them: defined, repeatable and the same on every GPU,
+// but not the original rounding.
 __device__ void boxesWarp(int i, const float *map, Component *comps, int w, int h, int sw, int sh,
                           bool tree, float *staged)
 {

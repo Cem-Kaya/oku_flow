@@ -185,6 +185,7 @@ inline void KernelsMatchReference()
     if (cudaGetDeviceCount(&devices) != cudaSuccess || devices < 1) QSKIP("CUDA device unavailable.");
     FixtureStream stream;
     int ribbonFits = 0, ribbonRefusals = 0, eligible = 0, largest = 0;
+    int treeMaps = 0, treeCountChanges = 0, treeBoxes = 0, treeScoreChanges = 0;
     QStringList failures;
     bool every = true; // the first size runs every variant, the others the ten clean shapes
     for (const QSize size : {QSize(960, 544), QSize(928, 960), QSize(333, 257), QSize(96, 64)}) {
@@ -223,7 +224,8 @@ inline void KernelsMatchReference()
                     ribbonFits += reference.quads[std::size_t(i)].ribbon.valid;
                     ribbonRefusals += reference.quads[std::size_t(i)].ribbon.unsupported;
                 }
-                // Named explicitly: the defaults depend on the toolkit and device.
+                // The exact selections, named explicitly (the default is the
+                // tree sum, checked separately below).
                 const gpu::DetectKernels candidates[]{{true, true, true, false}, {true, false, false, false},
                                                       {false, true, false, false}, {false, false, true, false}};
                 for (const auto& kernels : candidates)
@@ -238,12 +240,35 @@ inline void KernelsMatchReference()
                     }
             }
         }
-        if (every) {
-            // The differently rounded tree sum is a private comparison only: it
-            // must run and report a plausible count, nothing more.
-            Output tree;
-            QVERIFY(run(Map(w, h, 0), true, {true, false, true, true}, tree));
-            QVERIFY(tree.count > 128);
+        // The default tree sum is not the original's rounding. What it must
+        // hold: the same result on every run, and against the original the
+        // same labels, components and box geometry with scores that differ
+        // only by rounding. A score that crosses the acceptance threshold
+        // changes the count; those maps are counted, not compared further.
+        for (int variant = 0; variant < (every ? 30 : 10); ++variant) {
+            const auto values = Map(w, h, variant);
+            Output reference, tree, again;
+            QVERIFY(run(values, true, gpu::DetectKernels::Reference(), reference));
+            QVERIFY(run(values, true, gpu::DetectKernels{}, tree));
+            QVERIFY(run(values, true, gpu::DetectKernels{}, again));
+            QVERIFY2(Difference(tree, again, false).isEmpty(), "tree sum is not repeatable");
+            ++treeMaps;
+            if (tree.count != reference.count) {
+                ++treeCountChanges;
+                continue;
+            }
+            for (int i = 0; i < std::min(tree.count, 128); ++i) {
+                const auto &p = reference.quads[std::size_t(i)], &q = tree.quads[std::size_t(i)];
+                QVERIFY2(SameBits(p.xy, q.xy, sizeof(p.xy)) && p.componentRoot == q.componentRoot,
+                         "tree sum changed box geometry");
+                if (std::isfinite(p.score)) {
+                    QVERIFY2(std::abs(p.score - q.score) <= 4e-6f * std::max(1.f, std::abs(p.score)),
+                             qPrintable(QStringLiteral("tree score %1 against %2").arg(q.score).arg(p.score)));
+                    treeScoreChanges += !SameBits(&p.score, &q.score, sizeof(float));
+                    ++treeBoxes;
+                }
+            }
+            QVERIFY2(tree.labels == reference.labels, "tree sum changed labels");
         }
         every = false;
     }
@@ -254,6 +279,12 @@ inline void KernelsMatchReference()
                  .arg(eligible).arg(largest).arg(ribbonFits).arg(ribbonRefusals)));
     qInfo() << "detector kernel comparison: eligible" << eligible << "largest count" << largest
             << "valid ribbons" << ribbonFits << "refused ribbons" << ribbonRefusals;
+    // The crafted maps put many components on the threshold on purpose, so
+    // count changes are expected here; the corpus runs measure real pages.
+    QVERIFY2(treeBoxes > 1000 && treeCountChanges * 2 <= treeMaps,
+             qPrintable(QStringLiteral("tree maps %1 count changes %2 boxes %3").arg(treeMaps).arg(treeCountChanges).arg(treeBoxes)));
+    qInfo() << "tree box sum: maps" << treeMaps << "maps with another count" << treeCountChanges
+            << "boxes compared" << treeBoxes << "scores with other bits" << treeScoreChanges;
 }
 
 // boxesAddGroup against the definition it claims to equal: adding the masked

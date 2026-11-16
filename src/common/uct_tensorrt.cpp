@@ -1359,11 +1359,11 @@ class TensorRtRecognizer final : public Recognizer
         invalidWidth_ = invalidWidth_ || (!prepareWidth.isEmpty() && prepareWidth != "0" && prepareWidth != "1") ||
                         (allowWidthPreparation_ && !variableWidth_);
         // Private comparison switch. "reference" selects the original detector
-        // post-processing kernels; a comma list enables individual ones.
+        // post-processing kernels; a comma list enables individual ones on top
+        // of them ("roots,boxes,ribbons" is the exact round 1 selection).
         const auto kernels = qEnvironmentVariable("OKUFLOW_UCT_TEST_DETECT_KERNELS");
         if (!kernels.isEmpty()) {
             detectKernels_ = gpu::DetectKernels::Reference();
-            explicitDetectKernels_ = true;
             const auto names = kernels.split(QLatin1Char(','), Qt::SkipEmptyParts);
             invalidDetectKernels_ = names.isEmpty();
             for (const auto& name : names) {
@@ -1453,8 +1453,6 @@ class TensorRtRecognizer final : public Recognizer
             status_.detail = "TensorRT requires Turing or newer; CPU OCR remains available.";
             return status_;
         }
-        if (!explicitDetectKernels_)
-            detectKernels_ = gpu::DetectKernels::ForDevice(properties.major, properties.minor);
         BeginPreparation(0);
         status_.state = BackendState::kReady;
         status_.usesGpu = true;
@@ -2431,7 +2429,7 @@ class TensorRtRecognizer final : public Recognizer
     int recognizerBatch_{1};
     bool invalidBatch_{}, invalidWidth_{}, variableWidth_{}, allowWidthPreparation_{};
     gpu::DetectKernels detectKernels_{};
-    bool invalidDetectKernels_{}, explicitDetectKernels_{};
+    bool invalidDetectKernels_{};
     bool reconcile_{}, reconcileKeepAll_{}, invalidReconcile_{};
     int graphShapes_{}; // 0: plain enqueue (default)
     bool invalidGraph_{};
