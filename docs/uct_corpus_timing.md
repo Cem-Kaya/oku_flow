@@ -87,6 +87,8 @@ case, so paced runs are part of the protocol:
 | `--gpu-sample-ms N` | Sample `nvidia-smi` (power state, graphics and memory clock, utilization, power draw) every N ms, 50 to 1000, while each process runs; off by default |
 | `--frame-load fps:passes` | Emulate the application's per-frame video GPU work during the reads: one NV12 1920x1080 upload and `passes` full-frame device copies per frame, on its own stream (`OKUFLOW_UCT_CORPUS_FRAME_LOAD`) |
 | `--tail-ms N` | Keep the process idle N ms after the last read (`OKUFLOW_UCT_CORPUS_TAIL_MS`), to show that keep-warm stops and what the GPU then draws |
+| `--change-each` | Report a view change after every paced read (`OKUFLOW_UCT_CORPUS_CHANGE_EACH`): a playing video whose text keeps changing. Without it a paced run is a static view being refreshed |
+| `--session refreshMs,changeMs,settleMs,durationMs` | A live-view timeline per scene instead of passes (`OKUFLOW_UCT_CORPUS_SESSION`): a refresh read every `refreshMs` (0 for none), a view change every `changeMs` (`Cancel` then `NoteViewChange`, as the controller does; 0 for none) with its read `settleMs` later, for `durationMs`. Each read is tagged `refresh` or `change` with the time since the change; with sampling the report carries the mean power and utilization of each session |
 
 The summary always records the gap, the settled medians and every read's time
 in order (`series` in `summary.json`, "Per-read series" in `summary.md`). With
@@ -103,9 +105,14 @@ the shared lease, a driven display, video playback. Take them under the lease,
 look at the per-read series before trusting a median, and say when a run looks
 disturbed.
 
-Like the application, the slot announces each read before waiting for it
-(`RecognitionScheduler::ExpectNextRead`), which is what arms the private
-keep-warm of round 13; the report records keep-warm activity and the tail.
+Like the application, the slot announces the next read after each read
+(`RecognitionScheduler::ExpectNextRead`), which is what arms the continuous
+and pre-roll keep-warm of round 13; the first read of a process is therefore
+never armed, and each read records whether keep-warm was armed when it was
+submitted (`armedAtSubmit`). The change-driven keep-warm of round 14 is armed
+only by a reported view change (`--change-each`, or the changes of a
+`--session`). The report records keep-warm activity (launches, stop requests,
+time-outs) and the tail.
 
 `scripts/uct/gpu_clock_probe.py` runs the model-free `optionalGpuClockProbe`
 slot with `nvidia-smi` sampling: an in-kernel clock meter while the GPU idles

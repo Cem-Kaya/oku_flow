@@ -8579,3 +8579,60 @@ with `PreciseSleep`, `FrameLoad` and `ParseFrameLoad`) and
 `FrameLoad` and keeps an idle tail; its test-only `StablePowerState` holds
 `SetStablePowerState(TRUE)` on the CUDA adapter when
 `OKUFLOW_UCT_CORPUS_STABLE_POWER=1`. See `docs/uct_okuread_port.md`, round 13.
+
+Round 14 additions. `KeepWarmMode::Change` and `KeepWarmSettings::changeWindow`
+and `tail`: `KeepWarmPolicy::ViewChanged` arms it (announcements never do), it
+warms until `tail` after the last read that finished while armed once the
+change's own full read was submitted, or `changeWindow` after the latest
+change when no read followed (`ChangeUntil`, `AwaitingChangeRead`).
+`ReadSubmitted(now, fulfils)` tells the policy whether a submission is a full
+read: a regional pass or a formula neither fulfils an announced read nor is
+the read a view change waits for. `SetVisible(false)` disarms and drops any
+announcement, and showing again arms nothing. `SetPowerGate` installs an
+optional callable consulted before every launch (`PowerAllowed`; empty means
+allowed), the hook for a later user-visible power setting; nothing installs
+one today. `Configure` keeps visibility and the gate. The default shape is a
+10 ms spin with a 5 ms period, and `kKeepWarmMaximumBusy` (250 ms) bounds a
+spin; `gpu::KeepWarm` and `gpu::SampleClock` refuse more.
+
+`RecognitionScheduler::NoteViewChange`, `InterruptKeepWarm`,
+`SetKeepWarmVisible` and `SetKeepWarmPowerGate` expose these. Every disarm
+(`Cancel`, `StopKeepWarm`, reconfiguration, a time-out, hiding, a refusing
+power gate) raises a stop request (`State::RaiseKeepWarmStop`) and wakes the
+worker; `State::HandleKeepWarmStop` runs before every launch decision and
+interrupts any running or queued spin, so a launch that was outside the mutex
+when the request came is interrupted when it returns. `State::WaitForJob`
+queues a second spin directly behind each launch it makes, because its timed
+wait is only as fine as the system timer tick. `SchedulerStats` gains
+`keepWarmStops`, `keepWarmChanges` and `keepWarmStopMaxUs`.
+`TensorRtRecognizer::KeepWarm` returns `Pending` while graph replay's creator
+makes a context (`ReplayWork::creating`), and the creator raises the stop flag
+before its allocations.
+
+`UltraClearTextOverlay::targetShownChanged(bool)` and `TargetShown()` report
+whether the render target is visible and its window not minimized;
+`UltraClearTextController::SetViewVisible` forwards that to the scheduler and
+`ViewVisible()` reads it. `UltraClearTextController::NoteViewChange` (private)
+is called where a read will follow a change: text reading switched on, a new
+selection, resume from pause, a seek or new source or geometry, a pan or zoom
+of the camera or of a paused view, return to the live view, and a probe that
+reports a changed picture or an invalid shown line. The next-read announcement
+is skipped while the view is not visible.
+
+Round 14 tests: `keepWarmPolicyChangeWindowTailAndColdRefresh`,
+`keepWarmPolicyVisibilityPowerGateAndRegionalReads`,
+`schedulerKeepWarmDisarmStopsRunningSpins` (a recognizer that models spins
+that are running, not only launch counts),
+`schedulerKeepWarmChangeModeFollowsViewChanges` and
+`schedulerKeepWarmQueuesASecondSpinPerWake` (`tests/ultra_clear_text_tests.cpp`);
+`keepWarmStopsWhenHiddenOrMinimizedAndRestoreArmsNothing`
+(`tests/ultra_clear_text_controller_tests.cpp`). `optionalKeepWarmGpuContract`
+also reads after view changes in change mode and times a `cudaFree` issued
+right after `StopKeepWarm()`. `optionalGpuClockProbe` gains the plans `climb`
+(time to full clock from idle under different loads), `stall` (how long CUDA
+calls on another thread wait behind spins) and `interrupt` (stop flag to both
+spins done). `CorpusTiming` now announces the next read only after a read (so
+first reads are cold, as in the application), can report a view change after
+each read (`OKUFLOW_UCT_CORPUS_CHANGE_EACH`) and can run a live-view session
+of refresh and change reads (`OKUFLOW_UCT_CORPUS_SESSION`). See
+`docs/uct_okuread_port.md`, round 14.

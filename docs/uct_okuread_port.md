@@ -3427,3 +3427,335 @@ video is paused or the window is minimized.
 - The `UctTiming` pacing was emulated with sleeps in the corpus slot; the
   controller's announcement is covered by tests, not by a timed run of the
   application.
+
+## Round 14: warm the GPU when the view changes, not all the time (private switch, off)
+
+Round 13's continuous keep-warm is armed by every paced read, and a live view
+re-reads every 1500 ms even when nothing changed, so it never reaches its idle
+time-out: about 50 W for the whole session, spent on refreshes that mostly
+confirm text already on screen. And the controller's `Invalidate` (a pan, a
+scene change, a new source) disarmed it, which is exactly when a fast read
+matters. Round 14 adds a mode that turns this around
+(`OKUFLOW_UCT_TEST_KEEP_WARM=change`), closes round 13's review, and measures
+the program's switches at the application's pacing. Everything stays off by
+default.
+
+Hardware and build for every number below: RTX 4090, driver 621.14, Ryzen 9
+5900X, MSVC 19.44 Release, CUDA 12.9.86, TensorRT 11.4.0.106, medium detector
+and recognizer in BF16, `display_active: Disabled`, GPU state sampled every
+100 ms with read-only `nvidia-smi` queries. Corpus executable SHA-256
+`1ffe4bcd…`, built from this round's sources as committed in `032dc5f` (the
+executable predates only a comment and a model-free test of that commit). A
+first campaign with one spin per worker wake is kept under `r14a-*`; see "Two
+spins per wake".
+
+### Targets
+
+| Target stated before the work | Result |
+| --- | --- |
+| First read after a view change that follows at least 3 s of static view: at most 1.25 times the scene's back-to-back median, six lecture frames, three fresh processes | **Not met.** Per frame and process the median is 1.08 to 2.22 times (switch off: 6.5 to 8.4 times). Reads alternate between climbed (about 1.0 to 1.2 times) and not yet climbed (2 to 3.4 times). With the read 600 ms after the change instead of the controller's 300 ms it is met: 0.97 to 1.18 times. On a live view that is being refreshed every 1.5 s, the read after a change is at 0.96, 1.00 and 1.63 times in three processes (off: 2.2 to 4.1 times) |
+| Static live view with warm-on-change: average power within 3 W of switch-off | Nothing is launched (0 launches in three 60 s processes and in every static paced run). The measurement cannot confirm 3 W: session means are 25.2, 35.2 and 24.1 W against 18.8, 35.0 and 34.8 W, and the switch-off processes alone differ by 16 W |
+| One view change every 10 s: added power reported, well under continuous | +9.1 W on average (6.3, 6.8, 14.3) against +54.1 W for continuous |
+| No read delayed and byte-identical output at gap 0 and 350 in every mode, also with graph replay | Met: 18 of 18 scenes identical in four runs; back-to-back warm medians 0.997x and 1.003x of switch-off |
+| Not visible means not warming; a disarm stops running spins within a stated, measured bound | Met in model-free and offscreen tests and on the GPU; the bounds are under "Stopping" |
+| Every item of round 13's review closed or stated open | Five closed, one partly open (reallocation events do not raise the interrupt) |
+
+### What changed
+
+- **Change mode** (`KeepWarmMode::Change`). A view change that a read will
+  follow arms it: text reading switched on, a new selection, resume from
+  pause, a seek, a new source or geometry, a pan or zoom of the camera or of a
+  paused view, the return to the live view, and a probe that reports a changed
+  picture or a shown line that no longer matches
+  (`UltraClearTextController::NoteViewChange`, called after `Invalidate`).
+  It warms until the change's own full read has been submitted and 400 ms
+  (`tail`) have passed since the last read that finished while it was armed,
+  which covers follow-ups; when no read follows, it stops 1500 ms
+  (`changeWindow`) after the latest change. Announced refresh reads never arm
+  or extend it, so a static view stays cold.
+- **Continuous and pre-roll** keep round 13's arming. Continuous is the mode
+  for media whose text changes all the time; see "Where change mode becomes
+  continuous".
+- **Spin shape.** 10 ms spins instead of 50 ms, because other threads' CUDA
+  calls wait behind them (below), and no spin may exceed 250 ms
+  (`kKeepWarmMaximumBusy`; the kernels refuse more), far below the Windows GPU
+  watchdog.
+- **Stop request.** Every disarm (`Cancel`, `StopKeepWarm`, reconfiguration,
+  a time-out, hiding, a refusing power gate) raises a request and wakes the
+  worker, which interrupts any running or queued spin before it decides the
+  next launch. A launch that was outside the scheduler's mutex when the
+  request came is interrupted when it returns.
+- **Visibility.** `UltraClearTextOverlay::targetShownChanged` reports that
+  the viewport was hidden or its window minimized;
+  `UltraClearTextController::SetViewVisible` passes it on. Not visible disarms,
+  drops the announcement and interrupts; showing again arms nothing until the
+  next announced read or view change.
+- **Power gate.** `RecognitionScheduler::SetKeepWarmPowerGate` takes a
+  callable consulted before every launch (empty means allowed). The scheduler
+  never queries the system; nothing installs a gate today. It is the hook for
+  a later user-visible setting such as "not on battery".
+- **Regional reads.** A regional pass or a formula no longer fulfils an
+  announced read (round 13's pre-roll ended early) and is not the read a view
+  change waits for.
+- **Graph replay together with keep-warm** (rounds 3 and 10 had never run
+  with it). The capture rule "never behind queued work" is about inference:
+  a spin may still be ending when a capture begins, which is safe because a
+  spin reads only its stop flag and touches no tensor, arena or binding
+  memory, and a thread-local capture records only work enqueued after it
+  begins. Context creation is different: TensorRT's allocations there can wait
+  for all queued work, so no spin starts while a creation runs
+  (`KeepWarm` returns `Pending`) and the creator raises the stop flag first.
+- **Harness.** The corpus slot announces the next read only after a read, as
+  the application does, so first reads are cold and each read records whether
+  keep-warm was armed when it was submitted. `--change-each` reports a view
+  change after every read; `--session` runs a live-view timeline of refresh
+  reads and view changes. The clock probe gains `climb`, `stall` and
+  `interrupt`.
+
+### What raises the clocks, and what it costs other GPU work
+
+`optionalGpuClockProbe`, evidence `r14-clock-1` (model-free):
+
+| Question | Answer |
+| --- | --- |
+| Fastest climb from 3.5 s of idle to 2,400 MHz | One resident warp, napping or spinning: 177 to 213 ms in three repeats. Every SM spinning: 177 to 213 ms. Every SM plus 64 MiB copies: 217 to 262 ms. Copies alone: 183 to 385 ms. Nothing climbs faster than one resident warp |
+| Wait of another thread's `cudaFree` (4 MiB) while one spin runs and one is queued, median / maximum | No spins 0.4 / 0.5 ms; 2 ms spins 2.3 / 3.4; 5 ms 6.0 / 8.9; 10 ms 10.9 / 17.8; 25 ms 31.9 / 47.9; 50 ms (round 13's shape) 61.9 / 99.1 ms |
+| Other calls | `cudaFreeHost` waits about one spin; `cudaMalloc` and `cudaMallocHost` do not wait |
+| Stop flag raised to both spins done | Napping warp median 12.6 µs, maximum 73.8 µs; spinning 7.5 and 46.6 µs |
+
+So the spins that are outstanding are what a buffer reallocation on another
+thread can wait for, and round 13's 50 ms spins could hold a `cudaFree` for
+99 ms. The default is now 10 ms, which bounds that wait at about 20 ms.
+
+### Two spins per wake
+
+The first campaign (`r14a-*`) queued one 10 ms spin each time the worker woke.
+The worker's timed wait is only as fine as the Windows timer tick, 15.6 ms,
+so the stream was occupied 67 percent of the time. That holds the clocks
+(playing media read at 0.99 to 1.16 times its back-to-back median) but raises
+them too slowly: the first read after a view change took 3.8 to 5.0 times its
+back-to-back median, with the GPU still in P5.
+
+The worker now queues a second spin directly behind each one it launches; the
+recognizer keeps at most two outstanding. Measured utilization while warming
+is 93.6 to 93.9 percent. Everything below is the second campaign.
+
+### Measured: the first read after a view change
+
+`r14-change`: per scene a 31 s session with no refresh reads, a view change
+every 3.5 s (`Cancel`, then `NoteViewChange`) and its read 300 ms later, the
+controller's settle delay; about 3.1 s of idle GPU before each change; three
+fresh processes per arm. Ratio of the read to the scene's back-to-back median
+(`r14-b2b-v1`, switch off), median of the eight change reads per process:
+
+| Scene | Back to back, ms | Switch off | Change mode | Change mode, first campaign |
+| --- | ---: | --- | --- | --- |
+| board-lecture-00 | 25.1 | 8.02, 7.66, 7.96 | 2.22, 1.08, 1.10 | 4.95, 4.45, 4.56 |
+| board-lecture-01 | 23.6 | 7.90, 8.25, 8.25 | 2.14, 1.09, 1.26 | 4.82, 4.21, 4.43 |
+| board-lecture-02 | 27.1 | 8.03, 7.62, 7.58 | 1.82, 1.21, 1.99 | 4.72, 4.20, 4.41 |
+| board-lecture-03 | 28.2 | 7.78, 7.48, 7.18 | 1.70, 1.38, 1.86 | 4.31, 3.94, 4.15 |
+| board-lecture-04 | 28.1 | 7.54, 6.89, 6.88 | 1.37, 1.53, 1.68 | 3.83, 3.81, 3.94 |
+| board-lecture-05 | 23.8 | 8.40, 6.49, 6.92 | 1.27, 1.76, 1.58 | 4.54, 4.63, 4.67 |
+| doc-camera-1080 (dense) | 207.1 | 1.68, 1.90, 1.60 | 1.02, 1.03, 1.01 | |
+| slide-light-1080 | 70.9 | 3.92, 3.80, 4.16 | 0.99, 1.02, 1.05 | |
+
+Continuous mode is not armed in this scenario (no paced read announces
+another) and reads like switch-off: 5.4 to 9.0 times.
+
+The medians hide the shape. Within a session the lecture-frame reads
+alternate: 23 to 36 ms, then 35 to 89 ms, then fast again
+(board-lecture-00, first process: 86, 28, 85, 24, 85, 28, 83, 28 ms). In the
+slow reads the sampled clock is at 1,000 to 1,250 MHz just after the read and
+at 2,520 MHz after the fast ones: the governor was part of the way up when
+the read started. The same alternation is in the switch-off arm (the dense
+page reads 350, 400, 347, 397 ms), so it is the governor's own rhythm on a
+3.5 s cycle, not the warm-up's. The slide and the dense page, whose reads are
+long enough to finish the climb themselves, are at full speed.
+
+Two further runs on the six lecture frames, two processes each, tested what
+would close the gap.
+
+- Longer spins (`r14-change-shapes`). Spins of 20 ms and 50 ms, which leave
+  no gap between worker wakes, give the same picture as the default 10 ms:
+  per-frame medians 1.06 to 1.92 times (20 ms) and 1.04 to 1.86 times (50 ms)
+  against 1.01 to 2.02 times (10 ms, same run), with the same alternation. The
+  remaining slow reads are therefore not gaps in the warm-up, and the default
+  stays at 10 ms, which holds up other GPU calls least.
+- A longer lead (`r14-change-lead600`). With the read 600 ms after the change
+  instead of 300 ms, every frame in both processes reads at 0.97 to 1.18 times
+  its back-to-back median (largest single read 1.28 times; switch off 5.9 to
+  8.5 times).
+
+So on about every second change the governor needs more than 300 ms of
+continuous occupancy before it raises the clocks, and nothing measured raises
+them faster (above). A pan or zoom whose motion lasts longer than the settle
+delay gets the longer lead for free, because warming starts with the first
+movement; a cut to different content does not.
+
+On a live view the GPU is never idle for 3 s, because the view is re-read
+every 1.5 s. `r14-power-duty10` runs that: board-lecture-00, a refresh read
+every 1.5 s and a view change every 10 s for 60 s, three processes. The five
+change reads per process, ms:
+
+| Arm | Process 0 | Process 1 | Process 2 | Refresh reads, median |
+| --- | --- | --- | --- | ---: |
+| Switch off | 26, 114, 54, 113, 54 | 198, 111, 25, 103, 103 | 58, 113, 105, 104, 104 | 112 |
+| Change | 24, 25, 25, 24, 28 | 24, 24, 25, 24, 24 | 55, 50, 39, 30, 41 | 113 |
+| Continuous | 27, 28, 24, 26, 27 | 24, 28, 27, 28, 27 | 27, 28, 27, 24, 27 | 24 |
+
+Two processes read at back-to-back speed after every change, the third at
+1.2 to 2.2 times. Refresh reads of the unchanged view stay at about 112 ms in
+change mode, by design: they confirm text that is already drawn. What that
+costs a user was not measured; a word that changed without the probe
+noticing would appear about 90 ms later than with continuous warming.
+
+### Measured: playing media and a static view
+
+Median of reads 6 to 24 against the back-to-back median, six lecture frames,
+three processes each (`r14-paced-350` with a view change reported after every
+read, `r14-paced-1500` without):
+
+| Pacing | Switch off | Change | Continuous |
+| --- | --- | --- | --- |
+| 350 ms, text changing after every read | 1.09 to 4.50 | 0.97 to 1.07 | 0.96 to 1.14 |
+| 1500 ms, static view | 3.98 to 4.74 | 4.08 to 4.76 (not armed, by design) | 0.95 to 1.14 |
+
+Mean GPU power over the reads (the scene list includes the dense page and the
+slide): at 350 ms 64.8 to 67.0 W off, 113.5 to 115.2 W change, 112.7 to
+115.0 W continuous; at 1500 ms 36.9 to 38.8 W off, 34.8 to 38.8 W change (0
+launches), 89.6 to 91.3 W continuous. The first read of a process is never
+armed and is reported cold: 23 to 234 ms depending on where the governor was.
+
+### Where change mode becomes continuous
+
+When the text changes after every read, change mode is armed all the time and
+costs what continuous costs (+48 W at 350 ms above). It saves power only when
+changes are separated by more than the read, its follow-ups and the 400 ms
+tail. Averaged over 60 s sessions of one frame (`r14-power-static`,
+`r14-power-duty10`), added to switch-off in the same cohort:
+
+| Session | Change | Continuous |
+| --- | --- | --- |
+| Static view, refresh every 1.5 s | 0 launches; +6.4, +0.2, -10.6 W (the baseline's own spread) | +63.7, +48.8, +49.4 W |
+| The same with one view change every 10 s | +6.3, +6.8, +14.3 W | +48.1, +56.7, +57.6 W |
+
+### Stopping
+
+- Not visible: `keepWarmStopsWhenHiddenOrMinimizedAndRestoreArmsNothing`
+  (controller, offscreen) and `keepWarmPolicyVisibilityPowerGateAndRegionalReads`
+  cover hide, minimize and restore without depending on frame arrival. Not
+  checked on a real desktop.
+- Running spins: `schedulerKeepWarmDisarmStopsRunningSpins` uses a recognizer
+  whose spins are running, not launch counters, for every disarm path. In the
+  campaign the longest time from a stop request to the worker's interrupt was
+  16 to 71 µs per process.
+- On the GPU (`optionalKeepWarmGpuContract`, `r14-tests-6` and `r14-tests-7`,
+  with and without graph replay): a `cudaFree` of 8 MiB issued right after
+  `StopKeepWarm()` returns after 0.6 to 0.8 ms (median; 10.1 to 10.8 ms
+  maximum), against 10.0 to 20.1 ms without the stop (the running spin and the
+  one queued behind it). The 10 ms cases are a stop raised while the worker
+  was itself inside a CUDA call that the free held up: the request is handled
+  when that call returns, so one spin's length is the bound. 20 reads taken while spins ran or waited, also
+  after view changes, matched a scheduler that never warms byte for byte, with
+  and without graph replay; the graph fault, checkpoint and lifetime tests
+  pass with the switch set.
+
+### Output
+
+Complete-output hashes against switch-off, all 18 scenes: back to back
+(`r14-b2b-v1`) change and continuous 18 of 18; at 350 ms with a change after
+every read (`r14-id-v1-gap350`) 18 of 18 for both; with graph replay on, back
+to back and at 350 ms (`r14-id-v1-graph-gap0`, `r14-id-v1-graph-gap350`) 18
+of 18 for both. Every arm was deterministic on every scene. Back-to-back warm
+medians: change 0.997x, continuous 1.003x of switch-off (geometric mean);
+first reads 0.990x and 0.988x. That shows no detectable delay at the noise
+floor of these scenes (about 7 percent on the short lecture frames); it is
+not a microsecond bound.
+
+### The two earlier switches at the application's pacing
+
+`r14-switches-350`: 350 ms between reads, static content, median of reads 6 to
+12 pooled over three processes, each switch against switch-off in the same
+warming state.
+
+| Scene | Off, ms | Reconcile | Graph replay | Off warmed, ms | Reconcile warmed | Graph replay warmed |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| board-lecture-00 | 112.8 | 0.995 | 0.471 | 24.1 | 1.045 | 0.799 |
+| board-lecture-01 | 54.3 | 2.029 | 0.944 | 25.1 | 0.990 | 0.766 |
+| board-lecture-02 | 67.0 | 1.668 | 1.714 | 26.8 | 0.966 | 0.830 |
+| board-lecture-03 | 120.3 | 0.413 | 0.514 | 28.0 | 0.940 | 0.790 |
+| board-lecture-04 | 59.5 | 1.933 | 1.915 | 27.4 | 1.004 | 0.782 |
+| board-lecture-05 | 83.3 | 0.655 | 0.928 | 22.6 | 1.062 | 0.839 |
+| doc-camera-1080 | 205.8 | 0.520 | 0.901 | 205.0 | 0.523 | 0.905 |
+| slide-light-1080 | 84.7 | 1.015 | 0.968 | 67.9 | 0.796 | 0.879 |
+
+Without warming the unwarmed arms ran in every clock state (P2 for 108 to 129
+of 288 reads, P3, P5 and P8 for the rest), and the lecture-frame ratios
+between 0.41 and 2.03 are the clock state of the moment, not the switch. They
+support no claim. Two things do hold:
+
+- Region reconciliation halves the dense page at this pacing with or without
+  warming (205.8 to 107.0 ms), because a dense page keeps the GPU busy. With
+  the clocks held it also takes the slide from 67.9 to 54.0 ms. It changes
+  recognized text (round 2), so it stays off.
+- Graph replay with the clocks held (every read in P2) takes 0.77 to 0.84
+  times as long on the lecture frames (1.19 to 1.31 times as fast: 19.0 to
+  22.2 ms against 22.6 to 28.0 ms), 0.88 on the slide and 0.91 on the dense
+  page, with identical output. That is the paced evidence rounds 3 and 10
+  lacked, and it is larger than the back-to-back gain. It exists only while
+  something holds the clocks.
+
+### Round 13's review, item by item
+
+| Finding | State |
+| --- | --- |
+| Warming continued while hidden or minimized | Closed: visibility is wired and tested model-free and offscreen |
+| Disarming did not interrupt running spins | Closed: worker-handled stop request, tested against running spins, measured on the GPU |
+| Spins can stall other GPU calls | Measured and bounded by two spin lengths (10 ms spins: a `cudaFree` waited at most 17.8 ms in the probe and 20.1 ms in the contract test). Partly open: `RecognitionScheduler::InterruptKeepWarm` exists for events that make other threads reallocate, but nothing calls it yet, and change mode starts warming on a new source or geometry, which is when buffers are reallocated |
+| A regional read ended the pre-roll | Closed: only a full read fulfils an announcement |
+| The harness armed before the first read | Closed: first reads are cold and marked |
+| The record claimed more than was measured | Corrected here, see below |
+
+Corrections to round 13's record. "No read delayed" means no detectable
+change of the medians at the noise floor, not a bound in microseconds. "Zero
+when idle" holds for launches, not for power: after the time-out the governor
+still holds the high state for about 1.75 s, and the 12 s after it averaged
+22.7 W with continuous against 10.5 W without. The emulated video load shows
+that copies and uploads of that size do not hold the clocks; what the real
+application's display and video path do is unknown. The one slow process in
+`r13-frameload-350` remains unexplained. Round 13's diagnostic kernels could
+run up to 2 s; the cap is now 250 ms.
+
+### Default
+
+Off, all modes. The first target was missed, the trade is power against
+latency, and nothing here was measured with a driven display.
+
+If the owner wants it as a setting, the measurements suggest two choices
+rather than one switch. "Faster text after the view changes" (change mode):
+on a live board or camera view it brings the read after a pan, zoom or slide
+change from about 105 ms to about 25 ms in most sessions, for about 6 to 14 W
+averaged over a session with one change every 10 s on this card, and nothing
+on a view that does not change. "Fastest text during playback" (continuous):
+every paced read at back-to-back speed, for about 50 W more for as long as
+text reading is active. Graph replay is worth turning on together with either
+of them and not otherwise.
+
+What to check by hand in the real application, with the variable set before
+starting it: (1) whether the driven display and the video path already hold
+the clocks on this PC (read-only `nvidia-smi -q -d PERFORMANCE,POWER` while a
+live view is static), in which case none of this is needed; (2) how fast text
+appears after a pan and after a slide change in each mode; (3) frame pacing
+of the video while warming, especially when changing the source or the
+resolution; (4) GPU power with the window minimized, the view paused and text
+reading off.
+
+### Not established
+
+- Everything under round 13's "Not established" still applies: no driven
+  display, one GPU and driver, worker time on file fixtures.
+- Why the governor alternates on a 3.5 s cycle, and whether another card does.
+- Whether a stall of up to two spins reaches the video path's frame pacing in
+  the application; no run had video presentation.
+- The user-visible cost of slow refresh reads on a static view.
+- Laptop GPUs and battery operation; the power gate has no caller.

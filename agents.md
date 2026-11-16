@@ -1296,3 +1296,12 @@ aligned with the project goals.
   paused stills or without an announced paced read. Never change NVIDIA
   driver profiles, power plans or clocks to measure it. See
   `docs/uct_okuread_port.md`, round 13.
+- Round 14: `change` mode warms from a view change to its read and stays cold
+  on a static view. A worker's timed wait is only as fine as the Windows timer
+  tick (15.6 ms): count how much GPU time each wake queues before trusting a
+  "period". The governor raises the clocks only under nearly continuous
+  occupancy, and the climb takes about as long as the 300 ms settle delay, so
+  check the per-read series, not only medians: reads alternate between
+  climbed and not climbed. Keep spins short (other threads' `cudaFree` waits
+  behind them), never warm a hidden or minimized view, and end running spins
+  on every disarm through the worker's stop request.
