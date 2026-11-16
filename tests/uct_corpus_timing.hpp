@@ -8,6 +8,7 @@
 // cohorts and compares arms. It never prepares an engine, changes a default
 // or runs in ordinary CTest. See docs/uct_corpus_timing.md.
 #include "uct_resident_diagnostic.hpp"
+#include "uct_gpu_clock_probe.hpp"
 
 namespace okuflow::uct::uct_corpus_test {
 #if OKUFLOW_ENABLE_CUDA && OKUFLOW_UCT_TRT
@@ -40,6 +41,17 @@ inline void CorpusTiming()
     const auto cache = qEnvironmentVariable("OKUFLOW_UCT_CORPUS_ENGINE_CACHE");
     QVERIFY2(cache.isEmpty() || QDir::isAbsolutePath(cache), "The engine cache override must be absolute.");
     const bool profile = qEnvironmentVariable("OKUFLOW_UCT_CORPUS_PROFILE") == "1";
+    // Round 13: the private keep-warm switch as the application reads it, an
+    // optional emulation of the application's per-frame video GPU work, and an
+    // idle tail after the last read that shows keep-warm stopping.
+    const auto keepWarm = KeepWarmFromEnvironment();
+    QVERIFY2(keepWarm.error.isEmpty(), qPrintable(keepWarm.error));
+    bool frameLoadValid = true;
+    const auto frameLoadShape = uct_clock_probe_test::ParseFrameLoad(
+        qEnvironmentVariable("OKUFLOW_UCT_CORPUS_FRAME_LOAD"), frameLoadValid);
+    QVERIFY2(frameLoadValid, "OKUFLOW_UCT_CORPUS_FRAME_LOAD must be fps:passes (1-240, 0-64).");
+    const int tailMs = qEnvironmentVariable("OKUFLOW_UCT_CORPUS_TAIL_MS").toInt();
+    QVERIFY2(tailMs >= 0 && tailMs <= 20000, "OKUFLOW_UCT_CORPUS_TAIL_MS must be 0-20000.");
 
     QVERIFY(cudaSetDevice(0) == cudaSuccess);
     cudaDeviceProp properties{};
@@ -95,6 +107,12 @@ inline void CorpusTiming()
             mailbox->backend = std::move(status);
         },
         2, ModelTuning{}.minimumWordHeightPx, false, false);
+    if (keepWarm.settings.Enabled()) scheduler->SetKeepWarm(keepWarm.settings);
+    std::unique_ptr<uct_clock_probe_test::FrameLoad> frameLoad;
+    if (frameLoadShape) {
+        frameLoad = std::make_unique<uct_clock_probe_test::FrameLoad>(frameLoadShape->first, frameLoadShape->second);
+        QVERIFY2(frameLoad->Start(), "Frame load emulation could not start.");
+    }
 
     std::uint64_t frame = 1;
     struct Read {
@@ -177,6 +195,9 @@ inline void CorpusTiming()
         QString firstSha;
         bool identical = true;
         for (int pass = 0; pass <= passes; ++pass) { // pass 0 is this scene's first read in this process
+            // As the application does: announce when the next paced read is due
+            // (no effect unless keep-warm is on), then wait for it.
+            scheduler->ExpectNextRead(Clock::now() + std::chrono::milliseconds(gapMs));
             if (gapMs) std::this_thread::sleep_for(std::chrono::milliseconds(gapMs));
             auto attempt = read(index);
             QVERIFY2(attempt.completion, qPrintable(attempt.error));
@@ -213,6 +234,27 @@ inline void CorpusTiming()
             {"repeatedOutputsIdentical", identical}, {"firstOutputSha256", firstSha}, {"firstOutput", firstOutput}});
     }
 
+    const auto statsJson = [](const SchedulerStats& stats) {
+        return QJsonObject{{"launches", double(stats.keepWarmLaunches)}, {"pending", double(stats.keepWarmPending)},
+            {"notReady", double(stats.keepWarmNotReady)}, {"timeouts", double(stats.keepWarmTimeouts)},
+            {"busyMs", stats.keepWarmBusyMs}};
+    };
+    QJsonObject keepWarmRecord{{"mode", int(keepWarm.settings.mode)},
+        {"periodMs", double(keepWarm.settings.period.count())}, {"busyUs", double(keepWarm.settings.busy.count())},
+        {"leadMs", double(keepWarm.settings.lead.count())}, {"idleTimeoutMs", double(keepWarm.settings.idleTimeout.count())},
+        {"afterReads", statsJson(scheduler->Stats())}};
+    QJsonObject tail;
+    if (tailMs) {
+        // No more reads: keep-warm must stop by its idle time-out and stay
+        // stopped; the frame load (if any) keeps running as the app's would.
+        tail["startUnixMs"] = QDateTime::currentMSecsSinceEpoch();
+        tail["armedAtStart"] = scheduler->KeepWarmArmed();
+        std::this_thread::sleep_for(std::chrono::milliseconds(tailMs));
+        tail["endUnixMs"] = QDateTime::currentMSecsSinceEpoch();
+        tail["armedAtEnd"] = scheduler->KeepWarmArmed();
+        tail["stats"] = statsJson(scheduler->Stats());
+    }
+    if (frameLoad) frameLoad->Stop();
     scheduler->Cancel();
     scheduler.reset();
     const auto closed = retirement.Wait();
@@ -231,6 +273,8 @@ inline void CorpusTiming()
         {"executableSha256", Hex(executableHash.result())},
         {"gpu", QString::fromLatin1(properties.name)}, {"cudaDriverApi", driver},
         {"retirement", closed.Json()}, {"profileLinesMalformed", capture.Malformed()},
+        {"keepWarm", keepWarmRecord}, {"tail", tail},
+        {"frameLoad", frameLoad ? frameLoad->Json() : QJsonObject{}},
         {"scope", "Scheduler worker time on file fixtures: no camera, decoder, presenter, paint or accessibility."}};
     QVERIFY(uct_batch_test::Save(evidence, report));
     QVERIFY(closed.Passed());

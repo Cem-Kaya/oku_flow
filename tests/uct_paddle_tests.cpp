@@ -24,6 +24,7 @@
 #include "uct_ribbon_ink_cases.hpp"
 #include "uct_resident_diagnostic.hpp"
 #include "uct_corpus_timing.hpp"
+#include "uct_gpu_clock_probe.hpp"
 #include "uct_graph_replay_lifetime.hpp"
 #include "uct_paused_video_diagnostic.hpp"
 #include "uct_active_regional_diagnostic.hpp"
@@ -1906,6 +1907,10 @@ class PaddleTests final : public QObject
     void optionalCorpusTiming()
     {
         uct_corpus_test::CorpusTiming();
+    }
+    void optionalGpuClockProbe()
+    {
+        uct_clock_probe_test::ClockProbe();
     }
     void optionalGraphReplayLifetime()
     {

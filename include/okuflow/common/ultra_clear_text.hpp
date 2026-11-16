@@ -7,6 +7,7 @@
 #include "okuflow/common/uct_timing_trace.hpp"
 #include "okuflow/common/uct_ink_outline_types.hpp"
 #include "okuflow/common/uct_formula_artifact.hpp"
+#include "okuflow/common/uct_keep_warm.hpp"
 
 #include <QColor>
 #include <QByteArray>
@@ -390,6 +391,16 @@ public:
         if(pixels.isNull()) {RecognitionOutput output;output.error=error;output.cancelled=cancelled.load();output.inputFault=true;return output;}
         return Recognize(pixels,cancelled);
     }
+    // Optional GPU clock keep-warm between paced reads (uct_keep_warm.hpp,
+    // private switch, off by default). Worker-confined like Recognize: queues
+    // one spin of at most `busy` on the backend's own stream without waiting
+    // for it. Pending: the previous spin has not finished, nothing queued.
+    // NotReady: no prepared GPU backend right now (never starts preparation).
+    // Unsupported: this backend never warms.
+    enum class KeepWarmResult : std::uint8_t { Launched, Pending, NotReady, Unsupported };
+    virtual KeepWarmResult KeepWarm(std::chrono::microseconds busy) { Q_UNUSED(busy); return KeepWarmResult::Unsupported; }
+    // Worker-confined; called before every job. Ends a running spin promptly.
+    virtual void InterruptKeepWarm() noexcept {}
 };
 
 // Optional TensorRT -> Paddle CPU -> built-in Windows OCR, selected on worker.
@@ -536,6 +547,11 @@ struct SchedulerStats {
     std::uint64_t regionalFallbacks{}, regionalFailures{}, regionalDeadlineOverruns{};
     std::uint64_t regionalPriorityRefusals{};
     double maximumFullMs{}, maximumRegionalMs{}; // worker call through preparation
+    // Keep-warm (private, off by default): spins queued, attempts that found the
+    // previous spin still running or no ready GPU backend, idle time-outs, and
+    // the spin time requested by all launches.
+    std::uint64_t keepWarmLaunches{}, keepWarmPending{}, keepWarmNotReady{}, keepWarmTimeouts{};
+    double keepWarmBusyMs{};
 };
 
 // One worker thread, at most one job in flight plus one latest-only pending
@@ -580,6 +596,15 @@ public:
                                std::optional<DetailFocus> detail = std::nullopt,
                                std::optional<RegionalOcrRequest> regional = std::nullopt);
     void Cancel();
+    // Private GPU clock keep-warm (uct_keep_warm.hpp); off unless configured.
+    // Configure replaces any earlier settings and disarms.
+    void SetKeepWarm(KeepWarmSettings settings);
+    // A paced reader announces when its next read is due. Arms keep-warm; has
+    // no effect while it is off. Cancel(), StopKeepWarm(), the idle time-out
+    // and destruction disarm it until the next announcement.
+    void ExpectNextRead(std::chrono::steady_clock::time_point due);
+    void StopKeepWarm();
+    bool KeepWarmArmed() const;
     std::uint64_t SubmitFormula(const SourceStamp&,SharedPixels,SharedDeviceImage,FormulaWork,
                                 std::shared_ptr<std::atomic<bool>> cancelled);
     // Overwrites one optional priority descriptor for the next job only.

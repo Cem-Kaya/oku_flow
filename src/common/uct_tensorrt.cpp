@@ -1083,6 +1083,13 @@ struct State
     QImage uploadPixels;
     AnalysisPool uploadPool;
     SharedDeviceImage inFlight;
+    // Keep-warm (private, off by default): a host-mapped stop flag the worker
+    // sets before every read and an event marking the last spin. Created on
+    // first use, on this State's stream only, and released in ~State, which
+    // runs only after RetireState has found the stream complete.
+    volatile LONG* warmStopHost{};
+    int* warmStopDevice{};
+    cudaEvent_t warmDone{};
     // Pre-existing empty slot: final retirement can self-quarantine without
     // allocation if asynchronous cleanup cannot accept the resource closure.
     std::shared_ptr<State> retirementQuarantine;
@@ -1091,6 +1098,10 @@ struct State
         for (auto event : groupEvents)
             if (event)
                 cudaEventDestroy(event);
+        if (warmDone)
+            cudaEventDestroy(warmDone);
+        if (warmStopHost)
+            cudaFreeHost(const_cast<LONG*>(warmStopHost));
         if (stream)
             cudaStreamDestroy(stream);
     }
@@ -1522,6 +1533,53 @@ class TensorRtRecognizer final : public Recognizer
     bool WantsDeviceInput() const override
     {
         return true;
+    }
+    KeepWarmResult KeepWarm(std::chrono::microseconds busy) override
+    {
+        // Only a promoted, ready State; never Ensure() (that would prepare).
+        if (warmFailed_) return KeepWarmResult::Unsupported;
+        if (!state_ || preparation_) return KeepWarmResult::NotReady;
+        auto& state = *state_;
+        if (cudaSetDevice(state.device) != cudaSuccess) return KeepWarmResult::NotReady;
+        if (!state.warmDone) {
+            void* host{};
+            if (cudaHostAlloc(&host, sizeof(LONG), cudaHostAllocMapped) != cudaSuccess) {
+                warmFailed_ = true;
+                return KeepWarmResult::Unsupported;
+            }
+            state.warmStopHost = static_cast<volatile LONG*>(host);
+            *state.warmStopHost = 1;
+            void* device{};
+            if (cudaHostGetDevicePointer(&device, host, 0) != cudaSuccess ||
+                cudaEventCreateWithFlags(&state.warmDone, cudaEventDisableTiming) != cudaSuccess) {
+                warmFailed_ = true; // the flag is released with the State
+                return KeepWarmResult::Unsupported;
+            }
+            state.warmStopDevice = static_cast<int*>(device);
+        }
+        const auto previous = cudaEventQuery(state.warmDone);
+        if (previous == cudaErrorNotReady) return KeepWarmResult::Pending;
+        if (previous != cudaSuccess) {
+            warmFailed_ = true; // the next read reports and retires a real fault
+            return KeepWarmResult::Unsupported;
+        }
+        InterlockedExchange(state.warmStopHost, 0);
+        try {
+            gpu::KeepWarm(state.warmStopDevice, static_cast<unsigned long long>(busy.count()) * 1000ull, 1, state.stream);
+        } catch (const std::exception&) {
+            warmFailed_ = true;
+            return KeepWarmResult::Unsupported;
+        }
+        if (cudaGetLastError() != cudaSuccess || cudaEventRecord(state.warmDone, state.stream) != cudaSuccess) {
+            InterlockedExchange(state.warmStopHost, 1);
+            warmFailed_ = true;
+            return KeepWarmResult::Unsupported;
+        }
+        return KeepWarmResult::Launched;
+    }
+    void InterruptKeepWarm() noexcept override
+    {
+        if (state_ && state_->warmStopHost) InterlockedExchange(state_->warmStopHost, 1);
     }
     void SetDetailFocus(const std::optional<DetailFocus> &focus) override
     {
@@ -2473,6 +2531,7 @@ class TensorRtRecognizer final : public Recognizer
             preparation_->cancel = true;
             preparation_.reset();
         }
+        InterruptKeepWarm(); // the drain below then waits for at most a few microseconds of spin
         ObserveRetirement(retirementObserver_, detail::RetireOwnedState(state_, RetireState));
     }
     QString root_, sdk_;
@@ -2492,6 +2551,7 @@ class TensorRtRecognizer final : public Recognizer
     const std::shared_ptr<const PrecisionExperimentPlan> experiment_;
     std::optional<DetailFocus> detail_;
     bool curvedRibbon_{}; // worker-confined, one recognition at a time
+    bool warmFailed_{};   // worker-confined: keep-warm disabled for this recognizer
     PaddleAssets assets_;
     BackendStatus status_;
     std::shared_ptr<State> state_;

@@ -110,6 +110,24 @@ struct RegionalFlag {
     ~RegionalFlag() { if(existed) qputenv("OKUFLOW_UCT_REGIONAL_OCR",previous); else qunsetenv("OKUFLOW_UCT_REGIONAL_OCR"); }
 };
 
+// Scoped private keep-warm switch (round 13); restores the previous values.
+struct KeepWarmFlag {
+    bool modeExisted{qEnvironmentVariableIsSet("OKUFLOW_UCT_TEST_KEEP_WARM")};
+    QByteArray mode{qgetenv("OKUFLOW_UCT_TEST_KEEP_WARM")};
+    bool shapeExisted{qEnvironmentVariableIsSet("OKUFLOW_UCT_TEST_KEEP_WARM_SHAPE")};
+    QByteArray shape{qgetenv("OKUFLOW_UCT_TEST_KEEP_WARM_SHAPE")};
+    KeepWarmFlag(const char* value, const char* settings)
+    {
+        qputenv("OKUFLOW_UCT_TEST_KEEP_WARM", value);
+        qputenv("OKUFLOW_UCT_TEST_KEEP_WARM_SHAPE", settings);
+    }
+    ~KeepWarmFlag()
+    {
+        if (modeExisted) qputenv("OKUFLOW_UCT_TEST_KEEP_WARM", mode); else qunsetenv("OKUFLOW_UCT_TEST_KEEP_WARM");
+        if (shapeExisted) qputenv("OKUFLOW_UCT_TEST_KEEP_WARM_SHAPE", shape); else qunsetenv("OKUFLOW_UCT_TEST_KEEP_WARM_SHAPE");
+    }
+};
+
 struct AccessibilityActivation {
     bool previous{QAccessible::isActive()};
     AccessibilityActivation() { QAccessible::setActive(true); }
@@ -134,6 +152,7 @@ struct ImmutableScript {
     std::atomic<int> initialized{};
     std::atomic<int> calls{};
     std::atomic<int> deviceCalls{};
+    std::atomic<int> warmCalls{}; // keep-warm launches requested by the scheduler
     std::atomic<int> transientFailures{};
     int transientKind{};
     std::atomic<int> completeBridgeResults{};
@@ -180,6 +199,12 @@ public:
     }
 
     void SetDetailFocus(const std::optional<DetailFocus>& focus) override { focus_ = focus; }
+
+    KeepWarmResult KeepWarm(std::chrono::microseconds) override
+    {
+        ++script_->warmCalls;
+        return KeepWarmResult::Launched;
+    }
 
     bool WantsDeviceInput() const override
     {
@@ -637,6 +662,7 @@ private slots:
     void advancingMediaValidatesWhileOcrHeldAndRejectsChangedPixels();
     void advancingMediaAuthorityRevokesAndSuppressesLiveInput();
     void advancingMediaPauseReturnsToOneShotAnalysis();
+    void keepWarmFollowsPacedMediaAndStopsOnPauseAndDisable();
     void sameFrameResumeKeepsTextWhileProbesRevalidate();
     void sameFrameResumeRejectsOtherAcquisitionAndExpiresWithoutAnalysis();
     void sameFrameResumeNeverReprobesTheHeldAcquisition();
@@ -3163,6 +3189,53 @@ void UltraClearTextControllerTests::advancingMediaPauseReturnsToOneShotAnalysis(
     QCOMPARE(h.controller->ProbeStatistics().submitted,probes);
     QVERIFY(h.controller->SetImmutableScene(paused));
     QCOMPARE(h.controller->SchedulerStatistics().submitted,before+2);
+}
+
+void UltraClearTextControllerTests::keepWarmFollowsPacedMediaAndStopsOnPauseAndDisable()
+{
+    const auto staysAt = [](const std::atomic<int>& counter, int ms) {
+        const int before = counter.load();
+        QTest::qWait(ms);
+        return counter.load() == before;
+    };
+    {
+        // Default: off. Paced media reads never ask the backend to warm.
+        ImmutableHarness h;
+        h.Enable();
+        for (std::uint64_t frame = 1; frame <= 40; ++frame) h.PlayFrame(frame);
+        QTRY_VERIFY(h.controller->SchedulerStatistics().submitted >= 2);
+        QTest::qWait(30);
+        QCOMPARE(h.script->warmCalls.load(), 0);
+    }
+    KeepWarmFlag flag("continuous", "5,200,0,2500");
+    ImmutableHarness h;
+    h.Enable();
+    UctAdvancingMediaScene last;
+    for (std::uint64_t frame = 1; frame <= 40; ++frame) last = h.PlayFrame(frame);
+    QTRY_VERIFY(h.controller->SchedulerStatistics().submitted >= 2);
+    // A paced media read announced the next one: the backend is warmed between reads.
+    QTRY_VERIFY(h.script->warmCalls.load() > 3);
+
+    // Pause: the selected still is read once and nothing warms.
+    UctImmutableScene paused;
+    paused.geometry = last.geometry; paused.sourceAuthority = last.sourceAuthority;
+    paused.selected = last.current; paused.transform = last.transform;
+    paused.viewportWidth = last.viewportWidth; paused.viewportHeight = last.viewportHeight;
+    paused.admission = ImmutableAdmission::Standalone;
+    QVERIFY(h.controller->SetImmutableScene(paused));
+    QTest::qWait(20); // a launch decided before the pause may still land
+    QVERIFY(staysAt(h.script->warmCalls, 120));
+
+    // Resume: playback reads announce again.
+    h.controller->ClearImmutableScene();
+    const int beforeResume = h.script->warmCalls.load();
+    for (std::uint64_t frame = 100; frame <= 140; ++frame) last = h.PlayFrame(frame);
+    QTRY_VERIFY(h.script->warmCalls.load() > beforeResume + 3);
+
+    // Disable: the worker is retired and nothing warms afterwards.
+    h.controller->SetEnabled(false);
+    QTest::qWait(20);
+    QVERIFY(staysAt(h.script->warmCalls, 120));
 }
 
 void UltraClearTextControllerTests::sameFrameResumeKeepsTextWhileProbesRevalidate()

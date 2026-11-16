@@ -16,6 +16,8 @@ public:
     void SetCurvedRibbonInput(bool allowed) override{ready_->SetCurvedRibbonInput(allowed);}
     RecognitionOutput Recognize(const QImage& image,const std::atomic<bool>& cancel) override{return ready_->Recognize(image,cancel);}
     RecognitionOutput RecognizeDevice(const DeviceImage& image,const std::atomic<bool>& cancel) override{return ready_->RecognizeDevice(image,cancel);}
+    KeepWarmResult KeepWarm(std::chrono::microseconds busy) override{return ready_->KeepWarm(busy);}
+    void InterruptKeepWarm() noexcept override{ready_->InterruptKeepWarm();}
 private:std::unique_ptr<Recognizer> ready_;
 };
 }

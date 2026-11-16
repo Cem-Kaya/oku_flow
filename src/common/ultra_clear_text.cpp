@@ -2110,6 +2110,7 @@ struct RecognitionScheduler::State {
     std::function<void()> beforeDequeueForTest;
     std::function<void()> beforeCompletionForTest;
     bool inFlight{};
+    KeepWarmPolicy keepWarm; // guarded by mutex; launches only from the worker
     std::atomic<bool> cancelInFlight{false};
     std::shared_ptr<std::atomic<bool>> formulaInFlightStop;
     std::uint64_t authority{1};
@@ -2195,8 +2196,51 @@ struct RecognitionScheduler::State {
                 (job.corroboration.selectedJobId ? timing::Corroboration : 0u), job.corroboration.selectedJobId});
         pending = std::move(job);
         ++stats.submitted;
+        keepWarm.ReadSubmitted(KeepWarmPolicy::Clock::now());
         wake.notify_one();
         return id;
+    }
+
+    // Worker only, mutex held. Waits for a job. While keep-warm is due it
+    // queues one short spin per period through the recognizer, releasing the
+    // mutex around that call; a submitted job ends the wait at once.
+    void WaitForJob(std::unique_lock<std::mutex>& lock)
+    {
+        for (;;) {
+            if (shutdown || pending) return;
+            const auto now = KeepWarmPolicy::Clock::now();
+            if (keepWarm.TimedOut(now)) {
+                keepWarm.Disarm();
+                ++stats.keepWarmTimeouts;
+            }
+            const auto next = keepWarm.NextWarm(now);
+            if (!next || *next > now) {
+                // Wake for the next launch or, armed but idle, for the time-out.
+                auto wakeAt = next;
+                if (const auto idle = keepWarm.IdleDeadline()) wakeAt = wakeAt ? std::min(*wakeAt, *idle) : *idle;
+                if (wakeAt) wake.wait_until(lock, *wakeAt);
+                else wake.wait(lock);
+                continue;
+            }
+            const auto busy = keepWarm.Busy(now);
+            keepWarm.Warmed(now);
+            lock.unlock();
+            auto outcome = Recognizer::KeepWarmResult::Unsupported;
+            if (recognizer) {
+                try { outcome = recognizer->KeepWarm(busy); }
+                catch (...) { outcome = Recognizer::KeepWarmResult::Unsupported; }
+            }
+            lock.lock();
+            switch (outcome) {
+            case Recognizer::KeepWarmResult::Launched:
+                ++stats.keepWarmLaunches;
+                stats.keepWarmBusyMs += busy.count() / 1000.0;
+                break;
+            case Recognizer::KeepWarmResult::Pending: ++stats.keepWarmPending; break;
+            case Recognizer::KeepWarmResult::NotReady: ++stats.keepWarmNotReady; break;
+            case Recognizer::KeepWarmResult::Unsupported: keepWarm.Configure({}); break; // never again here
+            }
+        }
     }
 
     static void Run(std::shared_ptr<State> self)
@@ -2213,9 +2257,10 @@ struct RecognitionScheduler::State {
         self->Publish(initial);
         for (;;) {
             Job job;
+            bool warming = false;
             {
                 std::unique_lock lock(self->mutex);
-                self->wake.wait(lock, [&] { return self->shutdown || self->pending.has_value(); });
+                self->WaitForJob(lock);
                 if (self->shutdown) {
                     break;
                 }
@@ -2229,6 +2274,8 @@ struct RecognitionScheduler::State {
                 job = std::move(*self->pending);
                 self->pending.reset();
                 self->inFlight = true;
+                self->keepWarm.ReadStarted();
+                warming = self->keepWarm.Settings().Enabled();
                 self->cancelInFlight.store(job.authority != self->authority);
                 self->formulaInFlightStop=job.formulaStop;
                 if(job.formulaStop && self->cancelInFlight.load())job.formulaStop->store(true);
@@ -2239,6 +2286,9 @@ struct RecognitionScheduler::State {
             TraceTiming(timing::Event::Dequeue, self->timingProducer, self->TimingChannel(),
                 job.stamp, job.id, job.authority, {0, 0, job.device ? timing::DeviceInput : 0u,
                                                 job.corroboration.selectedJobId});
+            // A spin still running on the recognizer's stream ends before this
+            // job's first GPU work behind it (worker-confined, no wait).
+            if (warming && self->recognizer) self->recognizer->InterruptKeepWarm();
             QElapsedTimer timer;
             timer.start();
             RecognitionResult result;
@@ -2576,6 +2626,7 @@ struct RecognitionScheduler::State {
             {
                 std::lock_guard lock(self->mutex);
                 self->inFlight = false;
+                self->keepWarm.ReadFinished();
                 self->formulaInFlightStop.reset();
                 if (result.regionalFallback) ++self->stats.regionalFallbacks;
                 if (result.regionalFailed) ++self->stats.regionalFailures;
@@ -2696,6 +2747,7 @@ RecognitionScheduler::~RecognitionScheduler()
         state_->TraceCancellation(timing::Shutdown);
         state_->shutdown = true;
         state_->pending.reset();
+        state_->keepWarm.Disarm();
         ++state_->authority;
         state_->cancelInFlight.store(true);
         if(state_->formulaInFlightStop)state_->formulaInFlightStop->store(true);
@@ -2779,6 +2831,44 @@ void RecognitionScheduler::Cancel()
     }
     state_->cancelInFlight.store(true);
     if(state_->formulaInFlightStop)state_->formulaInFlightStop->store(true);
+    state_->keepWarm.Disarm(); // re-armed only by the next announced paced read
+}
+
+void RecognitionScheduler::SetKeepWarm(KeepWarmSettings settings)
+{
+    if (state_->probeOnly) return; // validation-only workers never run recognition
+    {
+        std::lock_guard lock(state_->mutex);
+        const bool reading = state_->keepWarm.Reading();
+        state_->keepWarm.Configure(settings);
+        if (reading) state_->keepWarm.ReadStarted();
+    }
+    state_->wake.notify_one();
+}
+
+void RecognitionScheduler::ExpectNextRead(std::chrono::steady_clock::time_point due)
+{
+    {
+        std::lock_guard lock(state_->mutex);
+        if (state_->shutdown || !state_->keepWarm.Settings().Enabled()) return;
+        state_->keepWarm.ExpectRead(due, KeepWarmPolicy::Clock::now());
+    }
+    state_->wake.notify_one();
+}
+
+void RecognitionScheduler::StopKeepWarm()
+{
+    {
+        std::lock_guard lock(state_->mutex);
+        state_->keepWarm.Disarm();
+    }
+    state_->wake.notify_one();
+}
+
+bool RecognitionScheduler::KeepWarmArmed() const
+{
+    std::lock_guard lock(state_->mutex);
+    return state_->keepWarm.Armed();
 }
 
 std::uint64_t RecognitionScheduler::SubmitFormula(const SourceStamp& stamp,SharedPixels pixels,SharedDeviceImage image,

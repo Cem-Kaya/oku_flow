@@ -9,6 +9,7 @@
 #include "okuflow/common/uct_region_planner.hpp"
 
 #include <QCheckBox>
+#include <QDebug>
 #include <QElapsedTimer>
 #include <QHash>
 #include <QMetaObject>
@@ -379,6 +380,13 @@ void UltraClearTextController::EnsureScheduler()
         },
         timing_.probeDecimation, uct::ModelTuning{}.minimumWordHeightPx, false,
         qEnvironmentVariable("OKUFLOW_UCT_SHADOW_PLANNER") == "1", regionalOcrEnabled_);
+    // Private GPU clock keep-warm between paced reads, off by default
+    // (round 13 of docs/uct_okuread_port.md). It runs only after a paced live
+    // or advancing-media read announced the next one; Invalidate's Cancel()
+    // stops it for pause, suppression, settling, composites and source loss.
+    const auto keepWarm = uct::KeepWarmFromEnvironment();
+    if (!keepWarm.error.isEmpty()) qWarning().noquote() << keepWarm.error;
+    if (keepWarm.settings.Enabled()) scheduler_->SetKeepWarm(keepWarm.settings);
 }
 
 void UltraClearTextController::SetEnabled(bool enabled)
@@ -1543,6 +1551,11 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
                     advancingMediaSubmittedAtMs_ = now;
                     advancingMediaLastSubmitMs_ = now;
                 }
+                // The next paced read: the media interval, or a live view's
+                // refresh (a changing scene reads sooner). No-op unless the
+                // private keep-warm switch is on.
+                scheduler_->ExpectNextRead(std::chrono::steady_clock::now() + std::chrono::milliseconds(
+                    advancingMediaScene_ ? timing_.mediaRecognitionIntervalMs : timing_.refreshIntervalMs));
             }
         } else if (!needed && regionalOcrEnabled_ && !regionalSuppressed_ && !regionalAttempted_ &&
                    !regionalJob_ && !scheduler_->HasWork() && backend_.detailFocus &&

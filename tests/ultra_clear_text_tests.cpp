@@ -1151,6 +1151,12 @@ private slots:
     void protectedAdjacentInkSurvivesCompositing();
 
     // --- Scheduler ----------------------------------------------------------
+    void keepWarmSwitchParsesStrictlyAndDefaultsOff();
+    void keepWarmPolicyContinuousWindowAndTimeout();
+    void keepWarmPolicyPreRollWindow();
+    void schedulerKeepWarmNeverRunsDuringReadsAndStopsOnCancel();
+    void schedulerKeepWarmIdleTimeoutAndDestruction();
+    void schedulerKeepWarmPreRollAndUnsupportedBackends();
     void schedulerCoalescesLatestOnly();
     void schedulerCancelRevokesWithoutReleasingInput();
     void schedulerDestructionIsBoundedWhileHeld();
@@ -7007,6 +7013,359 @@ void UltraClearTextTests::panelStatusUpdatesCachedAccessibleTextImmediately()
     QCOMPARE(pane->textInterface()->text(0, pane->textInterface()->characterCount()), QStringLiteral("first result"));
     panel.SetReadingText(QStringLiteral("new result"));
     QCOMPARE(pane->textInterface()->text(0, pane->textInterface()->characterCount()), QStringLiteral("new result"));
+}
+
+// --- Keep-warm (round 13) ---------------------------------------------------
+
+namespace {
+// Counts keep-warm launches and interrupts, and records any launch made while
+// a recognition runs (which must never happen).
+class WarmingRecognizer final : public Recognizer {
+public:
+    struct Shared {
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool hold{};
+        std::atomic<int> launches{}, interrupts{}, recognitions{};
+        std::atomic<int> launchesDuringRead{};
+        std::atomic<int> interruptsBeforeRead{}; // interrupts seen when each read began
+        std::atomic<bool> reading{};
+        KeepWarmResult result{KeepWarmResult::Launched};
+        std::atomic<long long> lastBusyUs{};
+    };
+    explicit WarmingRecognizer(std::shared_ptr<Shared> shared) : shared_(std::move(shared)) {}
+    BackendStatus Initialize() override { BackendStatus s; s.state = BackendState::kReady; return s; }
+    RecognitionOutput Recognize(const QImage&, const std::atomic<bool>& cancelled) override
+    {
+        shared_->reading = true;
+        shared_->interruptsBeforeRead = shared_->interrupts.load();
+        ++shared_->recognitions;
+        {
+            std::unique_lock lock(shared_->mutex);
+            shared_->cv.wait(lock, [&] { return !shared_->hold; });
+        }
+        shared_->reading = false;
+        RecognitionOutput out;
+        out.ok = !cancelled.load();
+        out.cancelled = cancelled.load();
+        return out;
+    }
+    KeepWarmResult KeepWarm(std::chrono::microseconds busy) override
+    {
+        if (shared_->reading) ++shared_->launchesDuringRead;
+        shared_->lastBusyUs = busy.count();
+        if (shared_->result == KeepWarmResult::Launched) ++shared_->launches;
+        return shared_->result;
+    }
+    void InterruptKeepWarm() noexcept override { ++shared_->interrupts; }
+private:
+    std::shared_ptr<Shared> shared_;
+};
+
+KeepWarmSettings FastContinuous(int idleMs = 2000)
+{
+    KeepWarmSettings settings;
+    settings.mode = KeepWarmMode::Continuous;
+    settings.period = std::chrono::milliseconds(2);
+    settings.busy = std::chrono::microseconds(500);
+    settings.lead = std::chrono::milliseconds(0);
+    settings.idleTimeout = std::chrono::milliseconds(idleMs);
+    return settings;
+}
+
+// True when `counter` does not move over `ms` milliseconds of real time.
+bool StaysAt(const std::atomic<int>& counter, int ms)
+{
+    const int before = counter.load();
+    QTest::qWait(ms);
+    return counter.load() == before;
+}
+} // namespace
+
+void UltraClearTextTests::keepWarmSwitchParsesStrictlyAndDefaultsOff()
+{
+    QVERIFY(!KeepWarmSettings{}.Enabled());
+    QVERIFY(!ParseKeepWarm({}, {}).settings.Enabled());
+    QVERIFY(ParseKeepWarm({}, {}).error.isEmpty());
+    QVERIFY(!ParseKeepWarm("0", {}).settings.Enabled());
+    QCOMPARE(ParseKeepWarm("continuous", {}).settings.mode, KeepWarmMode::Continuous);
+    QCOMPARE(ParseKeepWarm("preroll", {}).settings.mode, KeepWarmMode::PreRoll);
+    const auto shaped = ParseKeepWarm("preroll", "20,1500,250,3000");
+    QVERIFY(shaped.error.isEmpty());
+    QCOMPARE(shaped.settings.period, std::chrono::milliseconds(20));
+    QCOMPARE(shaped.settings.busy, std::chrono::microseconds(1500));
+    QCOMPARE(shaped.settings.lead, std::chrono::milliseconds(250));
+    QCOMPARE(shaped.settings.idleTimeout, std::chrono::milliseconds(3000));
+    // Invalid text is off and reported, never a guess.
+    for (const auto& [mode, shape] : std::vector<std::pair<QString, QString>>{
+             {"1", {}}, {"on", {}}, {"Continuous", {}}, {"continuous", "20,1500,250"},
+             {"continuous", "0,10,0,1000"}, {"continuous", "10,10001,0,1000"}, {"continuous", "10,9,0,1000"},
+             {"continuous", "10,100,2001,1000"}, {"continuous", "10,100,0,99"}, {"continuous", "10,100,0,10001"},
+             {"continuous", "10,-1,0,1000"}, {"continuous", "10, 100,0,1000"}, {"0", "10,100,0,1000"}}) {
+        const auto parsed = ParseKeepWarm(mode, shape);
+        QVERIFY2(!parsed.settings.Enabled(), qPrintable(mode + " " + shape));
+        QVERIFY2(!parsed.error.isEmpty(), qPrintable(mode + " " + shape));
+    }
+}
+
+void UltraClearTextTests::keepWarmPolicyContinuousWindowAndTimeout()
+{
+    using namespace std::chrono_literals;
+    const auto t0 = KeepWarmPolicy::Clock::now();
+    KeepWarmPolicy off;
+    off.ExpectRead(t0 + 350ms, t0);
+    QVERIFY(!off.Armed());
+    QVERIFY(!off.NextWarm(t0));
+
+    KeepWarmSettings settings;
+    settings.mode = KeepWarmMode::Continuous;
+    settings.period = 16ms;
+    settings.busy = 4000us;
+    settings.idleTimeout = 1000ms;
+    KeepWarmPolicy policy(settings);
+    // An ordinary submission never arms it.
+    policy.ReadSubmitted(t0);
+    QVERIFY(!policy.Armed());
+    QVERIFY(!policy.NextWarm(t0));
+    policy.ExpectRead(t0 + 350ms, t0);
+    QVERIFY(policy.Armed());
+    QVERIFY(policy.Due(t0));
+    policy.Warmed(t0);
+    QCOMPARE(*policy.NextWarm(t0 + 1ms), t0 + 16ms);
+    QVERIFY(!policy.Due(t0 + 15ms));
+    QVERIFY(policy.Due(t0 + 16ms));
+    QCOMPARE(policy.Busy(t0 + 16ms), std::chrono::microseconds(4000));
+    // Never while a read runs.
+    policy.ReadStarted();
+    QVERIFY(!policy.NextWarm(t0 + 20ms));
+    policy.ReadFinished();
+    QVERIFY(policy.Due(t0 + 20ms));
+    // Submissions keep it alive; repeated announcements alone do not.
+    policy.ReadSubmitted(t0 + 500ms);
+    policy.ExpectRead(t0 + 2000ms, t0 + 1400ms);
+    QVERIFY(policy.Due(t0 + 1400ms));
+    QVERIFY(!policy.TimedOut(t0 + 1500ms));
+    QVERIFY(policy.TimedOut(t0 + 1501ms));
+    QVERIFY(!policy.NextWarm(t0 + 1501ms));
+    // The last launch time never extends the idle bound.
+    policy.Warmed(t0 + 1495ms);
+    QVERIFY(!policy.NextWarm(t0 + 1496ms)); // next would be 1511 ms, past 1500 ms
+    // Disarm (cancel, pause, source loss) holds until the next announcement.
+    policy.Disarm();
+    QVERIFY(!policy.Armed());
+    QVERIFY(!policy.NextWarm(t0 + 600ms));
+    policy.ReadSubmitted(t0 + 1600ms);
+    QVERIFY(!policy.NextWarm(t0 + 1600ms));
+    policy.ExpectRead(t0 + 1950ms, t0 + 1600ms);
+    QVERIFY(policy.Due(t0 + 1600ms));
+    // Reconfiguring resets everything, including the armed state.
+    policy.Configure(settings);
+    QVERIFY(!policy.Armed());
+}
+
+void UltraClearTextTests::keepWarmPolicyPreRollWindow()
+{
+    using namespace std::chrono_literals;
+    const auto t0 = KeepWarmPolicy::Clock::now();
+    KeepWarmSettings settings;
+    settings.mode = KeepWarmMode::PreRoll;
+    settings.period = 10ms;
+    settings.busy = 8000us;
+    settings.lead = 150ms;
+    settings.idleTimeout = 2500ms;
+    KeepWarmPolicy policy(settings);
+    policy.ExpectRead(t0 + 1000ms, t0);
+    // Nothing before due - lead; the first launch is exactly then.
+    QVERIFY(!policy.Due(t0 + 849ms));
+    QCOMPARE(*policy.NextWarm(t0), t0 + 850ms);
+    QVERIFY(policy.Due(t0 + 850ms));
+    policy.Warmed(t0 + 850ms);
+    QCOMPARE(*policy.NextWarm(t0 + 851ms), t0 + 860ms);
+    // An early unrelated read (a regional pass) keeps the announcement.
+    policy.ReadSubmitted(t0 + 500ms);
+    QVERIFY(policy.Expected().has_value());
+    // A late read: warming continues up to due + max(lead, 100 ms), not beyond.
+    QVERIFY(policy.Due(t0 + 1149ms));
+    QVERIFY(!policy.NextWarm(t0 + 1151ms));
+    // A spin never outlasts the window.
+    QCOMPARE(policy.Busy(t0 + 1146ms), std::chrono::microseconds(4000));
+    QCOMPARE(policy.Busy(t0 + 900ms), std::chrono::microseconds(8000));
+    // The announced read arriving fulfils it: no warming until the next one.
+    policy.ReadSubmitted(t0 + 1010ms);
+    QVERIFY(!policy.Expected());
+    QVERIFY(!policy.NextWarm(t0 + 1020ms));
+    policy.ExpectRead(t0 + 1360ms, t0 + 1012ms);
+    QCOMPARE(*policy.NextWarm(t0 + 1012ms), t0 + 1210ms);
+    // The idle bound still applies to a pre-roll announced far ahead.
+    policy.ExpectRead(t0 + 5000ms, t0 + 1100ms);
+    QVERIFY(!policy.NextWarm(t0 + 1100ms)); // its window starts after the 3510 ms idle bound
+}
+
+void UltraClearTextTests::schedulerKeepWarmNeverRunsDuringReadsAndStopsOnCancel()
+{
+    auto shared = std::make_shared<WarmingRecognizer::Shared>();
+    std::atomic<int> completions{0};
+    RecognitionScheduler scheduler(std::make_unique<WarmingRecognizer>(shared),
+                                   [&](RecognitionResult) { ++completions; }, {});
+    QTRY_COMPARE(scheduler.Status().state, BackendState::kReady);
+    // Off by default: announcements and reads never warm.
+    scheduler.ExpectNextRead(std::chrono::steady_clock::now() + std::chrono::milliseconds(350));
+    QVERIFY(!scheduler.KeepWarmArmed());
+    QVERIFY(scheduler.Submit({}, SolidImage(1)));
+    QTRY_COMPARE(completions.load(), 1);
+    QVERIFY(StaysAt(shared->launches, 60));
+    QCOMPARE(shared->launches.load(), 0);
+
+    scheduler.SetKeepWarm(FastContinuous());
+    // Configured but not armed: plain submissions do not start it.
+    QVERIFY(scheduler.Submit({}, SolidImage(2)));
+    QTRY_COMPARE(completions.load(), 2);
+    QVERIFY(StaysAt(shared->launches, 60));
+    QCOMPARE(shared->launches.load(), 0);
+
+    scheduler.ExpectNextRead(std::chrono::steady_clock::now() + std::chrono::milliseconds(350));
+    QVERIFY(scheduler.KeepWarmArmed());
+    QTRY_VERIFY(shared->launches.load() >= 5);
+    QCOMPARE(shared->lastBusyUs.load(), 500LL);
+
+    // A read interrupts the spin before it starts and nothing launches while it runs.
+    {
+        std::lock_guard lock(shared->mutex);
+        shared->hold = true;
+    }
+    const int interruptsBefore = shared->interrupts.load();
+    QVERIFY(scheduler.Submit({}, SolidImage(3)));
+    QTRY_VERIFY(scheduler.InFlight());
+    QTRY_COMPARE(shared->recognitions.load(), 3);
+    QVERIFY(shared->interruptsBeforeRead.load() > interruptsBefore);
+    QVERIFY(StaysAt(shared->launches, 60));
+    {
+        std::lock_guard lock(shared->mutex);
+        shared->hold = false;
+    }
+    shared->cv.notify_all();
+    QTRY_COMPARE(completions.load(), 3);
+    // Still armed after the read (the idle bound counts from it): warming resumes.
+    const int afterRead = shared->launches.load();
+    QTRY_VERIFY(shared->launches.load() > afterRead);
+    QCOMPARE(shared->launchesDuringRead.load(), 0);
+
+    // Cancel (pause, source change, suppression, settling) stops it until the
+    // next announced read; a submission alone does not resume it.
+    scheduler.Cancel();
+    QVERIFY(!scheduler.KeepWarmArmed());
+    QTest::qWait(10); // a launch decided just before Cancel may still land
+    QVERIFY(StaysAt(shared->launches, 80));
+    QVERIFY(scheduler.Submit({}, SolidImage(4)));
+    QTRY_COMPARE(completions.load(), 4);
+    QVERIFY(StaysAt(shared->launches, 60));
+    // Resume: the next paced read re-arms it.
+    scheduler.ExpectNextRead(std::chrono::steady_clock::now() + std::chrono::milliseconds(350));
+    const int resumed = shared->launches.load();
+    QTRY_VERIFY(shared->launches.load() > resumed + 3);
+    // Explicit stop (hidden view) holds as well.
+    scheduler.StopKeepWarm();
+    QTest::qWait(10);
+    QVERIFY(StaysAt(shared->launches, 80));
+    QCOMPARE(shared->launchesDuringRead.load(), 0);
+    QCOMPARE(scheduler.Stats().keepWarmLaunches, std::uint64_t(shared->launches.load()));
+    QVERIFY(scheduler.Stats().keepWarmBusyMs > 0);
+}
+
+void UltraClearTextTests::schedulerKeepWarmIdleTimeoutAndDestruction()
+{
+    auto shared = std::make_shared<WarmingRecognizer::Shared>();
+    {
+        RecognitionScheduler scheduler(std::make_unique<WarmingRecognizer>(shared), {}, {});
+        QTRY_COMPARE(scheduler.Status().state, BackendState::kReady);
+        scheduler.SetKeepWarm(FastContinuous(200));
+        const auto armedAt = std::chrono::steady_clock::now();
+        scheduler.ExpectNextRead(armedAt + std::chrono::milliseconds(350));
+        QTRY_VERIFY(shared->launches.load() > 0);
+        // No read submitted: it stops by itself within the idle bound.
+        QTRY_VERIFY_WITH_TIMEOUT(!scheduler.KeepWarmArmed(), 2000);
+        QVERIFY(std::chrono::steady_clock::now() - armedAt >= std::chrono::milliseconds(200));
+        QCOMPARE(scheduler.Stats().keepWarmTimeouts, std::uint64_t{1});
+        QVERIFY(StaysAt(shared->launches, 100));
+        // Re-armed by the next announcement, then destroyed while warming.
+        const auto launched = scheduler.Stats().keepWarmLaunches;
+        scheduler.ExpectNextRead(std::chrono::steady_clock::now() + std::chrono::milliseconds(350));
+        QVERIFY(scheduler.KeepWarmArmed());
+        QTRY_VERIFY(scheduler.Stats().keepWarmLaunches > launched);
+    }
+    // Nothing launches after destruction.
+    const int final = shared->launches.load();
+    QVERIFY(StaysAt(shared->launches, 60));
+    QCOMPARE(shared->launches.load(), final);
+    QCOMPARE(shared->launchesDuringRead.load(), 0);
+
+    // Destruction is bounded while warming (no join on a spinning launch).
+    auto second = std::make_shared<WarmingRecognizer::Shared>();
+    auto scheduler = std::make_unique<RecognitionScheduler>(std::make_unique<WarmingRecognizer>(second),
+                                                            RecognitionScheduler::Completion{},
+                                                            RecognitionScheduler::StatusChanged{});
+    QTRY_COMPARE(scheduler->Status().state, BackendState::kReady);
+    scheduler->SetKeepWarm(FastContinuous());
+    scheduler->ExpectNextRead(std::chrono::steady_clock::now() + std::chrono::milliseconds(350));
+    QTRY_VERIFY(second->launches.load() > 0);
+    QElapsedTimer timer;
+    timer.start();
+    scheduler.reset();
+    QVERIFY2(timer.elapsed() < 500, "Destroying a warming scheduler must not wait for keep-warm.");
+    QVERIFY(StaysAt(second->launches, 60));
+}
+
+void UltraClearTextTests::schedulerKeepWarmPreRollAndUnsupportedBackends()
+{
+    // Pre-roll: nothing until due - lead, then warming, then nothing once the
+    // window passes without the read.
+    auto shared = std::make_shared<WarmingRecognizer::Shared>();
+    RecognitionScheduler scheduler(std::make_unique<WarmingRecognizer>(shared), {}, {});
+    QTRY_COMPARE(scheduler.Status().state, BackendState::kReady);
+    auto settings = FastContinuous(3000);
+    settings.mode = KeepWarmMode::PreRoll;
+    settings.lead = std::chrono::milliseconds(100);
+    scheduler.SetKeepWarm(settings);
+    const auto announced = std::chrono::steady_clock::now();
+    scheduler.ExpectNextRead(announced + std::chrono::milliseconds(400));
+    QTest::qWait(150);
+    if (std::chrono::steady_clock::now() - announced < std::chrono::milliseconds(290))
+        QCOMPARE(shared->launches.load(), 0);
+    QTRY_VERIFY_WITH_TIMEOUT(shared->launches.load() > 0, 2000);
+    QVERIFY(std::chrono::steady_clock::now() - announced >= std::chrono::milliseconds(300));
+    QTest::qWait(400); // past due + max(lead, 100 ms)
+    QVERIFY(StaysAt(shared->launches, 80));
+    QVERIFY(scheduler.KeepWarmArmed()); // still armed: the next announcement warms again
+
+    // A backend that never warms is asked once, then keep-warm stays off.
+    auto cpu = std::make_shared<WarmingRecognizer::Shared>();
+    cpu->result = Recognizer::KeepWarmResult::Unsupported;
+    RecognitionScheduler unsupported(std::make_unique<WarmingRecognizer>(cpu), {}, {});
+    QTRY_COMPARE(unsupported.Status().state, BackendState::kReady);
+    unsupported.SetKeepWarm(FastContinuous());
+    unsupported.ExpectNextRead(std::chrono::steady_clock::now() + std::chrono::milliseconds(350));
+    QTest::qWait(60);
+    QVERIFY(!unsupported.KeepWarmArmed());
+    QCOMPARE(unsupported.Stats().keepWarmLaunches, std::uint64_t{0});
+    unsupported.ExpectNextRead(std::chrono::steady_clock::now() + std::chrono::milliseconds(350));
+    QVERIFY(!unsupported.KeepWarmArmed());
+
+    // A GPU backend that is still preparing is retried at the period, never forced.
+    auto preparing = std::make_shared<WarmingRecognizer::Shared>();
+    preparing->result = Recognizer::KeepWarmResult::NotReady;
+    RecognitionScheduler waiting(std::make_unique<WarmingRecognizer>(preparing), {}, {});
+    QTRY_COMPARE(waiting.Status().state, BackendState::kReady);
+    waiting.SetKeepWarm(FastContinuous());
+    waiting.ExpectNextRead(std::chrono::steady_clock::now() + std::chrono::milliseconds(350));
+    QTRY_VERIFY(waiting.Stats().keepWarmNotReady > 3);
+    QVERIFY(waiting.KeepWarmArmed());
+    QCOMPARE(waiting.Stats().keepWarmLaunches, std::uint64_t{0});
+
+    // Validation-only workers have no recognizer and ignore the setting.
+    RecognitionScheduler probeOnly(nullptr, {}, {}, 1, kDefaultMinimumWordHeightPx, true);
+    probeOnly.SetKeepWarm(FastContinuous());
+    probeOnly.ExpectNextRead(std::chrono::steady_clock::now() + std::chrono::milliseconds(350));
+    QVERIFY(!probeOnly.KeepWarmArmed());
 }
 
 int main(int argc, char** argv)

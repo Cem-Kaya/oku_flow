@@ -159,6 +159,14 @@ def attach_samples(report, samples):
     end = max(read["submittedUnixMs"] + read["submitToCallbackMs"] for read in reads)
     report["gpuSamples"] = sample_summary([s for s in samples if first <= s["unixMs"] <= end])
     report["gpuSampleWindowUnixMs"] = [first, end]
+    tail = report.get("tail") or {}
+    if tail.get("startUnixMs"):
+        # The idle tail after the last read, split at the keep-warm time-out.
+        timeout = (report.get("keepWarm") or {}).get("idleTimeoutMs", 0)
+        split = end + timeout + 500
+        report["tailSamples"] = {
+            "beforeTimeout": sample_summary([s for s in samples if end < s["unixMs"] <= split]),
+            "afterTimeout": sample_summary([s for s in samples if split < s["unixMs"] <= tail["endUnixMs"]])}
     for read in reads:
         before = [sample for sample in samples if sample["unixMs"] <= read["submittedUnixMs"]]
         if before:
@@ -176,6 +184,8 @@ def run_process(arguments, exe, switches, scenes, evidence, log):
         "OKUFLOW_UCT_CORPUS_PROFILE": "1" if arguments.profile else "0",
         "OKUFLOW_UCT_CORPUS_STAMP": arguments.stamp,
         "OKUFLOW_UCT_CORPUS_GAP_MS": str(arguments.gap_ms),
+        "OKUFLOW_UCT_CORPUS_FRAME_LOAD": arguments.frame_load or "",
+        "OKUFLOW_UCT_CORPUS_TAIL_MS": str(arguments.tail_ms),
     }
     command = [str(exe), "optionalCorpusTiming"]
     if arguments.lease:
@@ -357,6 +367,30 @@ def markdown(summary, arms, records):
                 values = [f"{ms:g}" + (f"/{state}" if state else "")
                           for ms, state in zip(item["workerMs"], item["gpuBefore"])]
                 lines.append(f"- {row['scene']} {name} cohort {item['cohort']}: " + " ".join(values))
+    tails = [record for record in records if record["report"].get("tail")]
+    if tails:
+        lines += ["\n## Idle tail after the last read\n",
+                  "| Cohort | Arm | Armed at start / end | Keep-warm launches after reads / at end | Time-outs | "
+                  "Power W before / after time-out | P-states after time-out |", "|---|---|---|---|---|---|---|"]
+        for record in tails:
+            report = record["report"]
+            tail, keep = report["tail"], report.get("keepWarm", {})
+            samples = report.get("tailSamples") or {}
+            before, after = samples.get("beforeTimeout"), samples.get("afterTimeout")
+            power = " / ".join("-" if value is None else f"{value['powerWMean']:.1f}" for value in (before, after))
+            states = " ".join(f"{key}:{count}" for key, count in (after or {}).get("pstates", {}).items()) or "-"
+            lines.append(f"| {record['cohort']} | {record['arm']} | {tail.get('armedAtStart')} / {tail.get('armedAtEnd')} | "
+                         f"{keep.get('afterReads', {}).get('launches')} / {tail.get('stats', {}).get('launches')} | "
+                         f"{tail.get('stats', {}).get('timeouts')} | {power} | {states} |")
+    keeps = [record for record in records if (record["report"].get("keepWarm") or {}).get("mode")]
+    if keeps:
+        lines += ["\n## Keep-warm activity during the reads\n",
+                  "| Cohort | Arm | Launches | Previous still running | Not ready | Spin requested ms |",
+                  "|---|---|---|---|---|---|"]
+        for record in keeps:
+            value = record["report"]["keepWarm"]["afterReads"]
+            lines.append(f"| {record['cohort']} | {record['arm']} | {value['launches']:.0f} | {value['pending']:.0f} | "
+                         f"{value['notReady']:.0f} | {value['busyMs']:.1f} |")
     sampled = [record for record in records if record["report"].get("gpuSamples")]
     if sampled:
         lines += ["\n## GPU state during the timed reads (nvidia-smi samples)\n",
@@ -390,6 +424,9 @@ def main():
                         help="median of the reads from this pass on (pass 0 is the first read)")
     parser.add_argument("--gpu-sample-ms", type=int, default=0,
                         help="sample GPU state with nvidia-smi at this interval (50-1000 ms; off by default)")
+    parser.add_argument("--frame-load", help="emulated per-frame video GPU work during the reads, fps:passes")
+    parser.add_argument("--tail-ms", type=int, default=0,
+                        help="idle time after the last read, to show keep-warm stopping (0-20000)")
     parser.add_argument("--qt-bin", required=True, type=Path)
     parser.add_argument("--tensorrt-root", required=True, type=Path)
     parser.add_argument("--cuda-bin", required=True, type=Path)
@@ -413,7 +450,8 @@ def main():
     identity = {"arms": {name: switches for name, switches in arms}, "passes": arguments.passes,
                 "cohorts": arguments.cohorts, "profile": arguments.profile, "stamp": arguments.stamp,
                 "gapMs": arguments.gap_ms, "settledFrom": arguments.settled_from,
-                "gpuSampleMs": arguments.gpu_sample_ms, "scenes": manifest, "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                "gpuSampleMs": arguments.gpu_sample_ms, "frameLoad": arguments.frame_load,
+                "tailMs": arguments.tail_ms, "scenes": manifest, "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
                 "executables": {}}
     for name, _ in arms:
         exe = Path(executables.get(name, arguments.exe))
