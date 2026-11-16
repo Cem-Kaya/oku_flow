@@ -23,7 +23,7 @@ chalkboard lecture frames. Worker time is not camera-to-paint latency.
 | Cooperative box scoring | Round 1, rewritten: OkuRead's exact variant gave no gain here. Exact, selectable; superseded as the default by the tree sum in round 9 |
 | Fixed-tree box scoring | Round 9, on by default on every GPU: it rounds differently, which the owner accepted; no corpus page changed |
 | Collect detections across tiles before recognition; a complete detection supersedes its covered edge fragment | Round 2, private switch, off: changes output |
-| Replay TensorRT enqueue as CUDA graphs, one execution context per cached shape | Round 3, private switch, off: identical output; startup and the first read of a new frame size cost more |
+| Replay TensorRT enqueue as CUDA graphs, one execution context per cached shape | Round 3, made robust in round 10 (no startup or first-read cost, failures fall back), private switch, off: identical output; reads right after new shapes appear pay for making contexts |
 | Small recognizer first, Medium retries for doubtful crops | Round 4, built and measured, not merged: misreads `O0` as `00`, slower on sparse frames |
 | Streaming verification, hashing each file once, faster SHA-256 | Round 5, on by default: startup to first GPU result 3.85 s to 0.85 s, identical output |
 | Composition flush before capture, capture targets, overlay raster | Not applicable: OkuFlow analyses camera, video and file frames it already owns |
@@ -588,7 +588,8 @@ generation. The council (below) agreed on merging it switched off and named
 what is missing before it can be on: the configurations and failure paths
 listed under "Not established", memory pressure that today retires the reader
 where the plain path would carry on, and true first-read measurements. Round
-10 takes those conditions.
+10 takes those conditions. Round 10 below meets all of them except the speed target and leaves
+the default off.
 
 ### Not established
 
@@ -893,3 +894,329 @@ to a script update under them and were compared from their raw reports with
 Not established: the kernel ran only on the RTX 4090. It uses no
 architecture-specific code, but RTX 20, 30 and 50 series cards were not run.
 The corpora contain no owner camera capture.
+
+## Round 10: graph replay made robust; default left off
+
+Round 3's replay stayed behind `OKUFLOW_UCT_TEST_TRT_GRAPH=1` because its
+council named what was missing before it could be on by default. This round
+closes those points and then measures whether it can be on. Targets, stated
+before the work, and the result:
+
+| Target | Result |
+| --- | --- |
+| Byte-identical complete output against switch-off on scene set v1 (two cohorts of five passes), labelled sets A and B and the 62 title placements, each also with region reconciliation in both arms, and in every configuration that runs replay | Met: 18/18, 40/40, 48/48, 62/62, the same with reconciliation, and all eight configurations |
+| Warm geometric mean on v1 at least 1.17x, every lecture frame at least 1.20x | **Not met**: 1.123x; lecture frames 0.975x to 1.260x, three of six below 1.20x |
+| Startup to first result with replay at most 100 ms above switch-off (median of five fresh processes) | Met: -39 to +3 ms on six scenes of six frame sizes |
+| First read of a frame size not seen before at most 30 ms above switch-off | Met: true first reads in fresh processes -3.3 to +6.0 ms on the same six; in the v1 processes the worst first read of a new frame size is +19.5 ms |
+| Every failure path driven on the GPU at least once, outcome asserted | Met: ten paths, `optionalGraphReplayFaults` |
+| If all hold, replay on by default | **Not done**: the warm target does not hold, so the default stays off |
+
+Measured on the RTX 4090 (driver 621.14, display not driven), Ryzen 9 5900X,
+MSVC 19.44 Release, CUDA 12.9.86, TensorRT 11.4.0.106, medium BF16 detector and
+recognizer unless a row says otherwise, branch `perf/okuread-port-r10` at
+`af7ff1f` (reader code as of `6d79985`), two reversed cohorts of five warm
+reads. Other agents' jobs shared the machine through the GPU lease, and the
+desktop ran remote-desktop, game-launcher and GPU-monitoring software.
+
+### What a context costs, measured first
+
+Round 3 made every execution context while preparing: three detector and
+eight recognizer contexts at 91 ms and 63 ms each, 0.81 s in all
+(`completion-and-receipts` 812.6 ms against 5.0 ms with the switch off,
+`r10-titles-slowstart-profile-1`). Three ways of moving that cost were measured
+before one was built:
+
+| Measurement | Result |
+| --- | --- |
+| Every context made before ready on 1, 4 or 14 threads (`r10-diag-parallel-1`, profiled) | startup 1.75 to 1.90 s, 1.99 to 2.12 s and 2.58 to 2.82 s, against 0.70 to 0.85 s off: creation is serialised inside TensorRT or the driver, and more threads make it slower |
+| Contexts created and destroyed on another thread while full-replay reads run (`r10-diag-churn-1`) | doc-camera-1080 reads 223 ms, against 188 ms with that thread idle; allocating and freeing 2.5 MB at the same rate 192 ms; a CPU-bound thread 188 ms |
+| Every context made on the preparation thread right after the reader is published (commit `f5b2e85`, `r10-smoke-timing-1`) | startup within 18 to 45 ms of switch-off, but for about 1.5 s reads are slower than the plain enqueue (doc-camera 200 to 235 ms against 206 ms off), fast afterwards (188 ms) |
+
+So creating a TensorRT execution context slows inference running at the same
+time by about a fifth, from whichever thread, and allocation is not the reason.
+Nothing in the TensorRT 11.4 API makes a context cheaper: there is no clone, and
+the runtime configuration only selects the allocation strategy. The cost can be
+moved, not removed. The two diagnostics were temporary code; their patch is kept
+with the evidence.
+
+### What changed
+
+In `src/common/uct_tensorrt.cpp` and `src/common/uct_graph_cache.hpp`:
+
+- **No context at preparation.** With replay requested, each engine's
+  preparation context is created on the activation arena that the engine's
+  replay contexts share (`CreatePreparationContext`, `kUSER_MANAGED`). It stays
+  as the engine's plain **overflow** context. `EnableReplay` only sizes the
+  fixed output storage; it creates no context.
+- **A shape without a slot runs plainly.** A miss while the cache is not full
+  and no context is ready (`Plan(..., canCreate)`) runs on the overflow context
+  exactly as the plain path would (`RunPlain`) and evicts or drains nothing. A
+  reader that is still waiting for contexts is never slower than the plain
+  enqueue for want of one; it is slower only while a context is being created.
+- **Contexts on demand, made while no read runs.** Each distinct shape asked
+  for (`Policy::Seen`) raises the number of contexts the engine wants, up to
+  what it can use (`UsefulContexts`). The preparation thread stays alive after
+  publishing the State, sleeps until a context is wanted and makes them one at
+  a time, each started only while no read is in flight (`ReplayWork`,
+  `ReplayReading` in `RecognizeDevice`, which is the only change there). The
+  read path never creates a context. The thread ends when both engines have
+  every context they can use, or at the latest one creation after the State
+  retires.
+- **Allocation failures fall back instead of retiring.** An activation arena
+  that cannot be allocated leaves the preparation context owning its memory and
+  that engine on the plain enqueue; so does replay output storage that cannot
+  be allocated (`DeviceBuffer::TryReserve`). A failed background creation stops
+  the production; misses then run on the overflow context. Real device faults
+  are still fatal and retire the State as before.
+- **Configurations by construction.** With the bucketed recognizer width (up to
+  32 shapes at batch eight) the recognizer runs plainly and the detector
+  replays. A fixed-canvas recognizer gets at least one slot per batch size,
+  sixteen at batch sixteen (`ForConfiguration`). The comparison bound
+  `OKUFLOW_UCT_TEST_TRT_GRAPH_SHAPES` applies to both engines as given.
+- **Test-only fault hooks** (`graph_cache::FaultPlan`, `Checkpoint`), called
+  only where `OKUFLOW_UCT_GRAPH_FAULT_HOOKS` is defined, which is the
+  `uct_paddle_tests` executable. No environment variable reaches them.
+- The corpus harness records `startupWorkerMs`, the worker time of its startup
+  read, which is scene zero's true first read in a fresh process (its own
+  commit, `7526eb8`).
+
+With the switch off, `Run` takes the original plain path (`RunPlain` is that
+code, moved) and no replay code runs.
+
+### Startup and true first reads
+
+One scene per fresh process, five processes per arm, the reader built and read
+from nothing each time (`r10-first-<scene>-1`). Medians over the five:
+
+| Scene | Frame size | Startup to first result, off / on ms | Difference | True first read, off / on ms | Difference | Output |
+| --- | --- | --- | ---: | --- | ---: | --- |
+| board-lecture-01 (real) | 1920x1080 | 669 / 670 | +0 | 34.5 / 33.6 | -0.9 | identical |
+| doc-camera-1080 | 1920x1080 | 864 / 867 | +3 | 216.9 / 219.8 | +2.8 | identical |
+| slide-light-2160 | 3840x2160 | 762 / 758 | -4 | 121.1 / 124.2 | +3.1 | identical |
+| page-portrait-1654x2339 | 1654x2339 | 1073 / 1035 | -39 | 396.2 / 392.9 | -3.3 | identical |
+| title-1225x292-1280-1.0-centre (private) | 1280x720 | 718 / 706 | -12 | 24.6 / 30.7 | +6.0 | identical |
+| title-1225x292-raw (private) | 1225x292 | 724 / 689 | -36 | 23.1 / 22.8 | -0.4 | identical |
+
+Startup includes the first read. Single first reads vary by several
+milliseconds from process to process in both arms (the 1280x720 title: 24.5 to
+33.1 ms off, 26.3 to 36.1 ms on), so the differences are within noise; none is
+near the 30 ms bound. Round 3, which made its contexts while preparing, added
+0.36 to 0.98 s to startup.
+
+### Warm reads
+
+Scene set v1, standard protocol (`r10-v1-ab-1`). First reads are the first
+timed read of the scene in each process, after the harness's startup read.
+
+| Scene | Off ms | On ms (cohorts) | Warm speedup | First read ms, off / on (forward, reverse cohort) |
+| --- | ---: | ---: | ---: | --- |
+| doc-camera-1080 | 207.13 | 190.23 (216.89, 189.44) | 1.089 | 209.6, 205.2 / 230.5, 189.5 |
+| doc-camera-tilt-1080 | 160.74 | 147.67 (148.08, 147.63) | 1.089 | 157.7, 161.4 / 145.9, 151.6 |
+| doc-camera-2160 | 483.44 | 448.91 (469.81, 448.46) | 1.077 | 484.2, 482.8 / 445.7, 450.0 |
+| doc-camera-turkish-1080 | 181.09 | 167.88 (165.34, 168.31) | 1.079 | 181.8, 178.2 / 166.9, 167.9 |
+| book-curved-1080 | 63.87 | 56.83 (56.25, 57.75) | 1.124 | 64.5, 68.2 / 57.9, 56.6 |
+| slide-light-1080 | 69.16 | 61.23 (60.70, 62.03) | 1.130 | 73.2, 70.6 / 60.5, 61.7 |
+| slide-dark-1080 | 72.71 | 61.90 (61.56, 62.72) | 1.175 | 72.6, 73.4 / 61.9, 64.5 |
+| slide-light-2160 | 120.24 | 99.88 (98.61, 101.93) | 1.204 | 119.3, 117.2 / 98.8, 109.7 |
+| table-1080 | 142.01 | 128.03 (127.59, 130.47) | 1.109 | 141.6, 142.8 / 127.4, 147.8 |
+| page-portrait-1654x2339 | 381.70 | 386.85 (362.49, 426.57) | 0.987 | 379.7, 381.8 / 357.6, 401.3 |
+| signs-sparse-1080 | 31.61 | 28.21 (26.76, 34.38) | 1.121 | 31.5, 31.3 / 27.0, 27.8 |
+| no-text-1080 | 30.33 | 25.93 (25.80, 25.99) | 1.170 | 30.7, 30.9 / 26.2, 26.0 |
+| board-lecture-00 (real) | 23.37 | 18.77 (18.83, 18.70) | 1.245 | 22.9, 25.3 / 18.3, 18.6 |
+| board-lecture-01 (real) | 22.87 | 18.14 (18.07, 18.24) | 1.260 | 22.3, 21.4 / 17.7, 18.3 |
+| board-lecture-02 (real) | 25.07 | 21.56 (21.18, 21.61) | 1.163 | 25.7, 25.8 / 21.5, 22.1 |
+| board-lecture-03 (real) | 26.58 | 21.40 (21.00, 26.77) | 1.242 | 26.4, 27.7 / 21.0, 27.4 |
+| board-lecture-04 (real) | 25.45 | 24.69 (19.57, 37.69) | 1.031 | 24.5, 25.3 / 19.5, 59.0 |
+| board-lecture-05 (real) | 22.81 | 23.41 (18.82, 30.29) | 0.975 | 21.8, 22.7 / 18.5, 35.2 |
+
+Geometric mean 1.123x warm and 1.070x for first reads; identical output on 18
+of 18 scenes. With region reconciliation in both arms (`r10-v1-reconcile-ab-1`)
+1.149x warm and 1.077x for first reads, identical on 18 of 18 (round 3:
+1.196x).
+
+Where the target is missed each cohort's own median shows why. The reverse
+cohort opens with the lecture frames, and its first scenes are read while the
+reader is still creating the contexts for their shapes: board-lecture-05 and
+-04 take 30.3 and 37.7 ms in that cohort and 18.8 and 19.6 ms in the forward
+one. The first scenes of a new frame size pay the same (doc-camera-2160 in the
+forward cohort, page-portrait in the reverse one). Where a cohort read a scene
+with its contexts made, the gains match round 3: lecture frames 1.21x to 1.30x,
+dense documents 1.08x to 1.11x, slides 1.12x to 1.22x (each cohort's median
+against the pooled switch-off median). board-lecture-02 is the exception at
+1.18x and 1.16x in its two cohorts; its switch-off time is lower than in
+round 3 (25.1 against 27.2 ms) after rounds 5 and 9. A v1 process creates 13 contexts in all,
+5 for the detector and 8 for the recognizer (`r10-v1-profile-1`).
+
+The harness reads back to back, so there is no gap for a context to be made
+in. The application paces its reads (`UctTiming`: a refresh interval of 1.5 s,
+paced media every 350 ms), so it normally makes them between reads. A v1 run
+with a 350 ms gap before every read (`r10-v1-gap350-ab-1`) was meant to show
+that and is not usable: reads of both arms slowed by up to five times in bursts
+(board-lecture-00 switch-off reads of 108 ms against 23 ms back to back) while
+other software on the desktop was active. A shorter run of three scenes with
+the same gap (`r10-idle-gap350-1`) measured 1.089x (doc-camera-1080), 1.140x
+(slide-light-2160) and 1.267x (board-lecture-01), identical output; it is too
+small to stand in for the target. With a 500 ms gap before every read (`r10-gap500-repeat-1`, two scenes, two
+cohorts) replay settles within two or three reads: doc-camera-1080 at 187 to
+191 ms against 205 ms off, board-lecture-01 at 19.1 to 19.2 ms against 24 ms
+(one cohort of each arm was disturbed at the same time by other load).
+
+### Output
+
+| Set | Arms | Result |
+| --- | --- | --- |
+| v1, 18 scenes, two cohorts, six reads each | off, on | identical 18/18 (`r10-v1-ab-1`) |
+| v1 with region reconciliation in both arms | off, on | identical 18/18 (`r10-v1-reconcile-ab-1`) |
+| Labelled set A, 40 pages, two cohorts | off, on; and both with reconciliation | identical 40/40 and 40/40 (`r10-labelled-a-1`, `-reconcile-1`) |
+| Labelled set B, 48 pages, two cohorts | off, on; and both with reconciliation | identical 48/48 and 48/48 (`r10-labelled-b-1`, `-reconcile-1`) |
+| 62 title placements (private owner crops), two cohorts | off, on; and both with reconciliation | identical 62/62 and 62/62 (`r10-titles-1`, `-reconcile-1`) |
+| Eight configurations (below) | off, on, on with the profile | identical (`r10-configurations-2`) |
+
+"Identical" is one `ExactOutputBytes` hash (text, order, dispositions,
+geometry, confidence, colours and ribbon diagnostics) for every read of a scene
+in every process of both arms. Warm geometric means on these sets, for the
+record: 1.092x, 1.076x and 1.094x, with reconciliation 1.070x, 1.042x and
+1.079x; one warm pass each, so each process spends a large share of its reads
+in the creation transient.
+
+Receipts from separate profiled runs, never used for timing: on v1, labelled sets A and B and the titles, each with and without
+reconciliation (`r10-v1-profile-1`, `r10-labelled-a-profile-1`,
+`r10-labelled-b-profile-1`, `r10-titles-profile-1`), no process evicted or
+refused anything after a scene's first read. A process creates 13 contexts on
+v1 (5 detector, 8 recognizer), 15 on the labelled sets (7 and 8) and 6 on the
+titles (5 and 1); every other call of a new shape ran on the overflow context.
+
+### Configurations
+
+`optionalGraphReplayConfigurations` reads `slide-light-1080` and
+`slide-light-2160` (the paused-detail rows: eight detail views of them) in one
+process with the switch off, on, and on with the profile, in three rounds, and
+requires every read to equal the switch-off read and, except for detail reads,
+no eviction in the last round. All eight pass on the final build
+(`r10-configurations-2`; the first build of the test, `r10-configurations-1`,
+also passed identity in all eight):
+
+| Configuration | Engines selected | Replay | Contexts made (detector, recognizer) |
+| --- | --- | --- | --- |
+| Medium, batch 8 | BF16 detector, BF16 recognizer | 8 + 8 shapes | 3, 6 |
+| Medium, batch 1 (`OKUFLOW_UCT_TRT_BATCH=1`) | BF16, BF16 at batch 1 | 8 + 8 | 3, 1 |
+| Medium, batch 16 | BF16 detector, FP32 recognizer at batch 16 | 8 + 16 | 3, 4 of 7 shapes |
+| Medium, FP32 plans (pinned FP32 factory) | FP32, FP32 | 8 + 8 | 3, 4 of 6 |
+| Small tier | BF16, BF16 | 8 + 8 | 3, 5 of 6 |
+| Tiny tier | BF16, BF16 | 8 + 8 | 3, 1 |
+| Bucketed recognizer width | BF16 detector, FP32 bucketed recognizer | detector only, recognizer plain by construction | 3, none |
+| Paused-detail reads, eight views at 704 and 960 long edges | BF16, BF16 | 8 + 8 | 3, 6 |
+
+No refusal and no capture blocked anywhere; no eviction at all, also in the
+detail and two-size reads. "Of n shapes" means the process ended before every
+shape had its context (the rest ran on the overflow context).
+
+The plans that did not exist were prepared on the way under the GPU lease: the
+small and tiny BF16 pairs, the medium BF16 recognizer at batch one, an FP32
+recognizer at batch sixteen (the existing context-memory bound refuses the BF16
+recognizer at batch sixteen, so that configuration runs an FP32 recognizer) and
+the FP32 bucketed recognizer. The timings of these runs are not quoted: in the
+same processes switch-off reads were two to three times slower than in an
+earlier run of the same test, so other work had the machine.
+
+### Failure paths
+
+`optionalGraphReplayFaults` (`r10-faults-3`; `slide-light-1080` and
+`slide-light-2160`, ten reads over both sizes per case) drives each path on the
+GPU and asserts the outcome. In every case no replay call returned or threw
+with its stream capturing.
+
+| Path | How it is driven | Outcome asserted |
+| --- | --- | --- |
+| Capture refused by CUDA | an illegal synchronize inside the capture, which CUDA answers by invalidating it | identical output; one refusal; that shape is not captured again, others are |
+| Capture put off for low free memory | the free-memory check reads zero, three times | identical output; three deferrals, no refusal; captures follow |
+| Capture enqueue fails with a capture status | the enqueue reported failed after a real invalidation | identical output; one refusal |
+| Capture enqueue fails with no CUDA reason | the enqueue reported failed with the capture intact | that read fails closed with its reason; the State retires (two retirements, both complete); the reader prepares again and every later read is identical |
+| Eviction with work still queued | a 30 ms host function queued on the stream before each eviction drain (bound 1) | identical output; every drain finished after the queued work |
+| Input buffer moved | the input copied to another address on twenty calls on cache slots | identical output; rebinds counted |
+| Fatal error between Plan and Bound | TensorRT rejects an out-of-profile shape while a slot is reshaped | the read fails closed; the State retires; later reads identical |
+| Background context creation fails | the first recognizer creation reports failure | identical output; recognizer production stops and misses run on the overflow context; the detector keeps its contexts; no retirement |
+| Activation arena unavailable | the detector's arena allocation reports failure | identical output; detector plain, recognizer replays; no retirement |
+| Replay output storage unavailable | the recognizer's output allocation reports failure | identical output; recognizer plain, detector replays; no retirement |
+
+The moved buffer is injected because no real buffer moves at these sizes: the
+detector input is sized for 960x960 by the preparation smoke check and the
+recognizer input for a full batch at preparation.
+
+`optionalGraphReplayCheckpoints` (`r10-checkpoints-2`; `doc-camera-1080` and
+`slide-light-2160`, region reconciliation on, bound 2 so slots are recycled)
+cancels a read at the k-th time, k from 1 to 34, that a replay call is planned,
+captured, drained or launched, on both sizes. Cancelled reads: 13 at planned, 2
+at captured, 6 at drained, 13 at launched (2,164 calls planned in all). Every
+cancelled read returned cancelled with no error and the reader ready; every
+completed read, and the read after each cancellation, equalled the switch-off
+output; the State retired cleanly. `optionalGraphReplayLifetime` passes
+unchanged (`r10-lifetime-2`).
+
+### Device memory
+
+Measured as free device memory after the same reads with the switch on minus
+off, in one process each (`r10-memory-1`, `optionalGraphReplayConfigurations`,
+`cudaMemGetInfo`, 2 MiB granularity):
+
+| Reads | Slots in use (detector, recognizer) | Replay keeps |
+| --- | --- | ---: |
+| `slide-light-1080` and `-2160` | 3, 6 | 42 MiB |
+| the same plus twelve paused-detail views, with 300 ms between reads (`medium-bf16-fill`) | 6, 8 | 50 MiB |
+
+That is the contexts, their graphs and the larger fixed detector output
+storage (3.7 MB instead of 2.1 MB for a 1920x1080 frame). The activation arena
+adds nothing: it replaces the memory the preparation context would own, and
+the overflow context is that preparation context. The marginal slot (a
+context and its graph) costs about 1.6 MiB, so all sixteen slots of both
+engines in use come to about 53 MiB; that full case was not reached in a run
+(the detector used at most 7 of its 8 slots on any set). The receipts' own
+per-context figures (`contextBytesObservedApprox`) are taken on the creating
+thread while the worker allocates and overstate it.
+
+### Round 3's slow first reads
+
+Round 3's title run (`r3-graph-titles-1`) had the first three 1280x720
+placements of the reverse cohort at 31 to 41 ms with the switch on against 18
+ms off, and 15 to 16 ms later in the process. Rerun on the round 3 code
+(`7b6ed8a`) with the profile on (`r10-titles-slowstart-profile-1`, the same
+placements and the 3840x2160 ones, two cohorts) it did not occur: the first
+reads were 16 to 18 ms, and the receipts show no capture, drain, eviction or
+context creation in them beyond each shape's first use. Rerun without the
+profile (`r10-titles-slowstart-timing-1`) a milder form occurred in one of the
+two processes: for about 1.3 s after a 1.6 s startup reads ran at switch-off
+speed and then sped up within a scene.
+
+The likely candidate, GPU clocks after the long CPU-only preparation, was not
+what this machine showed: sampled every 50 ms with `nvidia-smi` around reads
+spaced by idle gaps (`r10-clocks-gap2000-1`), the GPU stayed in P2 at 2.5 to
+2.65 GHz. What the gap runs did show is that on this machine reads of either
+arm slow two- to five-fold in bursts while other desktop software is active,
+in whichever process is reading at the time (`r10-clocks-gap2000-1`: the
+replay process; its repeat `r10-gap2000-repeat-1`: the switch-off process).
+The cause in round 3 is therefore not isolated. With this round's design the
+reader's startup is the switch-off startup and the effect is gone from the
+same title run (`r10-titles-1`): the first three 1280x720 placements of the
+reverse cohort read 17 to 21 ms against 17 to 18 ms off, with two slower
+reads (41.7 and 23.3 ms) in the stretch where the process makes its contexts.
+
+### Default
+
+Off. Every condition the round 3 council set is now met except the speed
+target under the standard protocol. Moving context creation out of startup
+moved its cost to the reads that meet new shapes, and with reads back to back
+that costs three of six lecture frames their 1.20x and the geometric mean its
+1.17x. Making the contexts before ready would meet the speed target and miss
+the startup one by about a second. Startup, first reads and output are
+unchanged with it on, so whether the one-time transient is acceptable is left
+to the owner and the council.
+
+### Not established
+
+- One GPU, the RTX 4090. Other generations and drivers were not run.
+- No owner camera capture; no measurement with the application's own pacing.
+- Why creating a context slows concurrent inference is not isolated beyond
+  "not allocation, not CPU load"; TensorRT does not document it.
+- Timing of the configurations other than the default pair.
+- Spaced reads on this machine are disturbed by other desktop software; no
+  clean paced run of the whole scene set exists.

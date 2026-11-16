@@ -2681,6 +2681,9 @@ and (except the first) `OKUFLOW_UCT_TEST_IMAGE_2`, an image of another size;
   switch-on output, timing and receipts for the medium BF16 pair at batch 8,
   1 and 16, FP32 plans, the small and tiny tiers, the bucketed recognizer
   width and paused-detail reads, and requires no eviction in the last round.
+  `medium-bf16-fill` reads both images and twelve detail views with idle gaps
+  so the caches fill up; every configuration records free device memory after
+  its reads, so switch-on minus switch-off is what replay keeps allocated.
   It may prepare plans that are missing (full SDK).
 
 Results are in [the port record](../docs/uct_okuread_port.md).

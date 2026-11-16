@@ -339,6 +339,7 @@ inline void Configurations()
         bool fp32; // the pinned FP32 factory instead of the production (BF16) one
         ModelTier detector, recognizer;
         bool detail; // paused-detail reads instead of full reads
+        bool fill{};  // full and detail reads with idle gaps: every slot of both engines in use
     };
     const std::vector<Configuration> all{
         {"medium-bf16-batch8", {}, false, ModelTier::Medium, ModelTier::Medium, false},
@@ -350,6 +351,7 @@ inline void Configurations()
         {"medium-bucketed", {{"OKUFLOW_UCT_TRT_WIDTH", "bucketed"}, {"OKUFLOW_UCT_TRT_PREPARE_WIDTH", "1"}},
          false, ModelTier::Medium, ModelTier::Medium, false},
         {"medium-bf16-detail", {}, false, ModelTier::Medium, ModelTier::Medium, true},
+        {"medium-bf16-fill", {}, false, ModelTier::Medium, ModelTier::Medium, true, true},
     };
     const auto selected = qEnvironmentVariable("OKUFLOW_UCT_GRAPH_CONFIGS").split(QLatin1Char(','), Qt::SkipEmptyParts);
     // Paused-detail focuses: other detector shapes and long edges.
@@ -369,9 +371,15 @@ inline void Configurations()
         // One read job: an image, and for detail reads a focus.
         struct Job { const QImage* image; std::optional<DetailFocus> focus; };
         std::vector<Job> jobs;
+        if (configuration.fill) jobs = {{&images.a, {}}, {&images.b, {}}};
         if (configuration.detail) {
             for (const auto* image : {&images.a, &images.b})
                 for (const auto& focus : focuses(*image)) jobs.push_back({image, focus});
+            if (configuration.fill)
+                for (const auto* image : {&images.a, &images.b})
+                    for (const double scale : {0.6, 0.85})
+                        jobs.push_back({image, DetailFocus{QRect(0, 0, int(image->width() * scale), int(image->height() * scale)),
+                                                           1.0, 960, false}});
         } else jobs = {{&images.a, {}}, {&images.b, {}}};
         std::vector<QByteArray> reference(jobs.size());
         QJsonObject arms;
@@ -406,6 +414,8 @@ inline void Configurations()
                     recognizer->SetDetailFocus(job.focus);
                     QJsonArray reads;
                     for (int pass = 0; pass < (round == 0 ? 5 : 2); ++pass) {
+                        // Idle gaps, as the application paces its reads: contexts are made in them.
+                        if (configuration.fill) QTest::qWait(300);
                         QElapsedTimer timer;
                         timer.start();
                         const auto output = Read(*recognizer, *job.image, never);
@@ -421,7 +431,12 @@ inline void Configurations()
                 }
             }
             recognizer->SetDetailFocus(std::nullopt);
-            QJsonObject row{{"preparationMs", preparationMs}, {"detail", detail}, {"reads", times}};
+            // Free device memory after the same reads in every arm: the
+            // difference to the switch-off arm is what replay keeps allocated.
+            std::size_t freeBytes{}, totalBytes{};
+            QVERIFY(cudaMemGetInfo(&freeBytes, &totalBytes) == cudaSuccess);
+            QJsonObject row{{"preparationMs", preparationMs}, {"detail", detail}, {"reads", times},
+                            {"freeBytesAfterReads", qint64(freeBytes)}};
             if (QByteArray(arm) == "graph-profiled") {
                 const auto receipt = LastReceipt(capture.Take());
                 QVERIFY2(!receipt.isEmpty(), "No graph receipt was emitted.");
