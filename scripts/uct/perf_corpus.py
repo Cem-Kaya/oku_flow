@@ -17,8 +17,13 @@ scene: other text, fonts, type sizes and camera poses, plus small and large
 type at 3840x2160. Use a variant that nobody has looked at when a rule chosen
 on other pages needs an untouched check. Variant 0 is the standard set.
 
+`--bent N` (N >= 1) writes a labelled set of bent book pages only, drawn the
+way `book-curved-1080` is (rows bent like an open book) but with other text,
+fonts, type sizes, columns, frame sizes and bend strengths, from barely bent to
+strongly bent. Use it to check that really curved material is not read worse.
+
 Requires Pillow and NumPy. Usage:
-    python scripts/uct/perf_corpus.py --out <dir> [--lecture <mp4>] [--ffmpeg <exe>] [--variant N]
+    python scripts/uct/perf_corpus.py --out <dir> [--lecture <mp4>] [--ffmpeg <exe>] [--variant N | --bent N]
 """
 import argparse
 import hashlib
@@ -308,7 +313,42 @@ def variant_scenes(out, variant, add):
     add(f"page-portrait-v{variant}", page.image, page.truth, {"kind": "generated-rendered-page", "variant": variant})
 
 
-def build(out, lecture, ffmpeg, variant=0):
+def bent_scenes(out, bent, add):
+    """Bent book pages only: other text, fonts, sizes, columns and bend strengths."""
+    rng = random.Random(20261116 + bent * 6271)
+    faces = ["times.ttf", "georgia.ttf", "segoeui.ttf", "arial.ttf", "calibri.ttf", "verdana.ttf", "tahoma.ttf"]
+    sources = [repo_words(name) for name in ("docs/developer_guide.md", "docs/ultra_clear_text.md", "README.md",
+                                             "docs/hardcoded_paths.md")]
+
+    def words(index):
+        # Any N gives text: the start wraps inside the source instead of running past its end.
+        text = sources[(index + bent) % len(sources)]
+        start = rng.randrange(0, max(1, len(text) - 1500))
+        return (text[start:] + text)[:4000]
+
+    # name, frame, page, body px, columns, bend strength (cylinder_warp; book-curved-1080 uses 0.085)
+    for index, (name, size, page_size, body, columns, strength) in enumerate((
+            ("bent-1080-strong", (1920, 1080), (2200, 1300), 34, 1, rng.uniform(.08, .11)),
+            ("bent-1080-medium", (1920, 1080), (2200, 1300), 32, 1, rng.uniform(.03, .05)),
+            ("bent-1080-mild", (1920, 1080), (2200, 1300), 34, 1, rng.uniform(.010, .016)),
+            ("bent-1080-slight", (1920, 1080), (2200, 1300), 30, 1, rng.uniform(.003, .006)),
+            ("bent-1080-2col", (1920, 1080), (2200, 1300), 28, 2, rng.uniform(.05, .09)),
+            ("bent-1080-small", (1920, 1080), (2200, 1300), 24, 1, rng.uniform(.02, .04)),
+            ("bent-1440", (2560, 1440), (2900, 1700), 34, 1, rng.uniform(.02, .05)),
+            ("bent-2160", (3840, 2160), (4200, 2400), 44, 2, rng.uniform(.03, .06)),
+            ("bent-2160-slight", (3840, 2160), (4200, 2400), 40, 1, rng.uniform(.004, .008)))):
+        page = document_page(words(index), page_size, body, faces[(index + bent) % len(faces)], columns)
+        spread = .03
+        pose = [(rng.uniform(.03, .03 + spread), rng.uniform(.02, .02 + spread)),
+                (rng.uniform(.97 - spread, .97), rng.uniform(.02, .02 + spread)),
+                (rng.uniform(.97 - spread, .97), rng.uniform(.98 - spread, .98)),
+                (rng.uniform(.03, .03 + spread), rng.uniform(.98 - spread, .98))]
+        add(f"{name}-b{bent}", camera(cylinder_warp(page.image, strength), size, pose, rng, blur=rng.uniform(.6, 1.1),
+                                       noise=rng.uniform(2, 4)),
+            page.truth, {"kind": "generated-curved-book", "bent": bent, "strength": round(strength, 4)})
+
+
+def build(out, lecture, ffmpeg, variant=0, bent=0):
     out.mkdir(parents=True, exist_ok=True)
     rng = random.Random(20261115)
     guide = repo_words("docs/developer_guide.md", 400)
@@ -324,6 +364,9 @@ def build(out, lecture, ffmpeg, variant=0):
 
     if variant:
         variant_scenes(out, variant, add)
+        return write_manifest(out, scenes)
+    if bent:
+        bent_scenes(out, bent, add)
         return write_manifest(out, scenes)
     flat = [(0.06, 0.03), (0.95, 0.05), (0.97, 0.98), (0.04, 0.96)]
     tilt = [(0.16, 0.06), (0.90, 0.02), (0.99, 0.93), (0.05, 0.99)]
@@ -383,11 +426,14 @@ def main():
     parser.add_argument("--lecture", type=Path, help="local copy of the documented public lecture sample")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     parser.add_argument("--variant", type=int, default=0, help="0: standard set; N >= 1: another labelled set")
+    parser.add_argument("--bent", type=int, default=0, help="N >= 1: a labelled set of bent book pages only")
     arguments = parser.parse_args()
+    if arguments.variant and arguments.bent:
+        sys.exit("--variant and --bent select different sets; pass one.")
     out = arguments.out.resolve()
     if ROOT in out.parents or out == ROOT:
         sys.exit("Refusing to write the corpus inside the repository.")
-    manifest = build(out, arguments.lecture, arguments.ffmpeg, arguments.variant)
+    manifest = build(out, arguments.lecture, arguments.ffmpeg, arguments.variant, arguments.bent)
     print(json.dumps({"scenes": len(manifest["scenes"]), "out": str(out)}))
 
 

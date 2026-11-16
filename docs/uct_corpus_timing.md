@@ -74,6 +74,12 @@ chalkboard frames from the documented public lecture sample
 (`scripts/lecture_camera_sample.json`), enlarged to 1920x1080 as the private
 OBS feed presents them.
 
+`perf_corpus.py --variant N` writes another labelled set of the generated
+kinds with other text, fonts, sizes and poses, and `--bent N` a labelled set of
+nine bent book pages only (one to three columns of type from 24 to 44 px, frames
+from 1920x1080 to 3840x2160, bends from barely visible to stronger than
+`book-curved-1080`), for checking that really curved text is not read worse.
+
 These are stand-ins. No owner camera capture is in the set: the owner's
 existing OkuFlow captures on this workstation are lecture test frames and a
 room photograph with almost no text. Results on generated pages do not
