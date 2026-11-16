@@ -8298,32 +8298,127 @@ recognized) to the profile line. Rules are covered by `regionReconcileRules`
 (`tests/uct_region_reconcile_cases.hpp`), the GPU window layout the parser
 relies on by `gpuRecognitionWindowsMarkEverySubWindow`.
 
+`ribbon::FitOutcome` (`include/okuflow/common/uct_ribbon.hpp`) records how
+`ribbon::Fit` decided for each component: not tried, straight, fitted, refused by
+the first failed check (steep, residual, degenerate, height, outside), or straight
+only under a private `StraightRule` (`kSpanStraight`). It is stored with the fitted
+bow (`Geometry::outcome`, `Geometry::bow`: centre sagitta over mean envelope
+height) in what was padding, so the 144-byte layout is unchanged; no decision
+reads it. `ribbon::StraightBound(meanHeight, length, span)` is the straight-line
+sagitta bound: the established max(0.75 px, 8% of the mean height); when `span`
+is positive the 8% part is scaled by max(1, length / (span x meanHeight)) and the
+0.75 px floor is not. `ribbon::StraightRule{span, refusedOnly, maximumBow}` is
+the private round 12 experiment (`OKUFLOW_UCT_TEST_FLAT_RIBBON`), passed through
+`ribbon::Fit`, `gpu::Detect` and `PaddleDetect`; `{}` is the shipped rule.
+`refusedOnly` moves only a line refused because its padded ribbon leaves the
+source (`kOutside`, after every shape check); `maximumBow` caps, in mean
+heights, the bow of any line the rule treats as straight
+(`ribbon::kStraightMaximumBow` = 0.32; `ribbon::kStraightSpanHeights` = 20).
+`PaddleFlatRibbonRule(value, rule)` (`include/okuflow/common/uct_paddle.hpp`)
+parses the switch for both the TensorRT and the CPU reader; an invalid value
+returns false and the reader refuses to start with `kPaddleFlatRibbonError`.
+`PaddleDecodeTokens` gives each word of a moved line the line's bow in
+`RecognizedWord::movedLineBow` (0 for every other word; not part of the exact
+output bytes), and `FinalizeRecognizedGeometry` withholds such a word as
+invalid geometry over its detector span when the worker's ink fitting could not
+place it. `TensorRtProfile::RibbonCrop` adds a `ribbonFit` object to the
+profile line: crops and decoded words per outcome, separately for detections
+and their sub-windows, a bow histogram per outcome class, and every
+detection's box with its kind, bow and decoded word count. The corpus timing
+evidence also records `inkFitted`, the final quad and `movedLineBow` per word.
+Covered by `curvedRibbonStraightSpanBound`, `curvedRibbonFlatSwitchBothReaders`,
+`curvedRibbonMovedWordsHeldToInk` (model-free) and
+`gpuRibbonStraightRuleMatchesCpu`.
+
 `graph_cache::Policy` (`src/common/uct_graph_cache.hpp`) is the bookkeeping of
-the private graph-replay experiment selected by `OKUFLOW_UCT_TEST_TRT_GRAPH=1`.
-It owns no CUDA or TensorRT resource. `Plan(shape, input, output, mayCapture)`
-returns a `Decision`: which slot runs the call, whether that slot is new
-(`create`), must wait for the stream first (`drain`), loses its graph
-(`dropGraph`), is reshaped or readdressed (`reshape`, `rebind`), and whether the
-call runs as a plain enqueue, is captured, or replays the slot's graph
-(`Launch`). `Bound`, `Ran` and `Refuse` report what actually happened. Slots
-are bounded (`kDefaultShapes` 8, at most `kMaximumShapes` 16) and recycled
-least recently used first; a refused shape is never captured again and capture
-stops after `kMaximumRefusedShapes` distinct refusals. `Network::EnableReplay`
-(in `src/common/uct_tensorrt.cpp`) switches a prepared network to this path
-once its preparation stream is complete: it releases the preparation context,
-allocates one activation arena (`getDeviceMemorySizeV2`), sizes the output
-tensor once for the profile's largest shape, and creates the first contexts
-(`ExecutionContextAllocationStrategy::kUSER_MANAGED`, `setDeviceMemoryV2`).
-`Network::RunReplay` carries out each decision; `Network::Capture` records one
-`enqueueV3` with `cudaStreamCaptureModeThreadLocal`, always ends the capture,
-and turns only the capture-specific CUDA statuses into a refusal.
-`Network::ReplayReceipt` and `TensorRtProfile::GraphCall`/`GraphReceipt` add a
-`graphReplay` object to the profile line. `Network::Run` takes a `mayCapture`
-argument that `RecognizeDevice` sets to false for recognition look-ahead and
-for detections queued behind an earlier detection. The policy is covered by
-`graphReplayCachePolicy` (`tests/uct_graph_cache_cases.hpp`); cancellation and
-retirement with real engines by the opt-in `optionalGraphReplayLifetime`
-(`tests/uct_graph_replay_lifetime.hpp`).
+TensorRT graph replay (`OKUFLOW_UCT_TEST_TRT_GRAPH`). It owns no CUDA or
+TensorRT resource. `Plan(shape, input, output, mayCapture, canCreate)` returns
+a `Decision`: which slot runs the call, whether that slot is new (`create`),
+must wait for the stream first (`drain`), loses its graph (`dropGraph`), is
+reshaped or readdressed (`reshape`, `rebind`), whether the call runs beside
+the cache on the plain overflow context (`overflow`: a miss while the cache is
+not full and the caller has no ready context), and whether it runs as a plain
+enqueue, is captured, or replays the slot's graph (`Launch`). `Bound`, `Ran`,
+`RanOverflow` and `Refuse` report what actually happened; `Seen` counts the
+distinct shapes asked for (up to `kMaximumSeenShapes`). Slots are bounded
+(`kDefaultShapes` 8, at most `kMaximumShapes` 16) and recycled least recently
+used first; a refused shape is never captured again and capture stops after
+`kMaximumRefusedShapes` distinct refusals. `ForConfiguration` gives each
+engine's bound (the bucketed recognizer width runs its recognizer plainly, a
+fixed-canvas recognizer gets at least one slot per batch size) and
+`UsefulContexts` how many contexts each engine can use.
+
+In `src/common/uct_tensorrt.cpp`, `Network(PublicTag, replayArena)` makes
+`CreatePreparationContext` create the preparation context on the activation
+arena all replay contexts of the engine share (`kUSER_MANAGED`,
+`setDeviceMemoryV2`); if the arena cannot be allocated the context owns its
+memory and that engine stays plain. `Network::EnableReplay(capacity, contexts,
+work)` switches a prepared network to replay once its preparation stream is
+complete: it sizes the output tensor once for the profile's largest shape and
+keeps the preparation context as the plain overflow context; it creates no
+context and returns why the engine stays plain when an allocation fails.
+`Network::RunReplay` carries out each decision and never creates a context:
+new slots take one made by `Network::CreateSpareContext`, which the
+preparation thread calls after the State is published, one context at a time,
+for the distinct shapes asked for; a failed creation stops the production and
+never throws. When a creation may start is `ReplayWork::Turn`'s policy: in an
+idle gap (no read in flight and `ReplayWork::kQuiet`, 10 ms, after the last
+read ended), or under continuous load once `kReadsUnderLoad` (2) reads have
+ended since the last creation; a read that begins while a creation runs
+proceeds. `ReplayReading` marks a read in flight: `Recognize` (including its
+upload) and `RecognizeDevice` hold it outside their `try`, so a failing read
+retires its State, which stops the thread (`ReplayWork::Stop`), before the
+marker ends. The thread holds the State, never the `Preparation`: it drops its
+reference when it publishes, so a reader destroyed or reselected before its
+first read destroys the `Preparation`, which retires the unadopted State;
+`TensorRtRecognizer::Retire` also stops that State's thread directly.
+`Network::RunPlain` is the plain enqueue (the whole path with replay off, the
+overflow path with it on).
+`Network::Capture` records one `enqueueV3` with
+`cudaStreamCaptureModeThreadLocal`, always ends the capture, turns only the
+capture-specific CUDA statuses into a refusal and puts a capture off below
+256 MiB of free memory or when the device runs out of memory during the
+capture; after either deferral `Network::CaptureHeldOff` runs every call that
+would capture plainly for `graph_cache::kCaptureHoldOffReads` (16) reads,
+counted by `Network::ReplayReadBegins` once per `RecognizeDevice`. `Network::ReplayReceipt` and
+`TensorRtProfile::GraphCall`/`GraphReceipt` add a `graphReplay` object to the
+profile line. `Network::Run` takes a `mayCapture` argument that
+`RecognizeDevice` sets to false for recognition look-ahead and for detections
+queued behind an earlier detection. `DeviceBuffer::TryReserve` makes the
+larger allocation before it releases the old buffer and reports an allocation
+failure instead of throwing, keeping the old buffer; `EnableReplay` then keeps
+the engine's plain output buffer (receipt `outputBytesKeptAfterFailure`). The
+profile receipt also carries, per read, the overflow calls (`read.overflow`)
+and whether a context creation overlapped the read (`creation`).
+
+`graph_cache::FaultPlan`, `Fault`, `Checkpoint`, `FaultPlanForTest` (a shared
+reference each hook loads, so a plan outlives its last reader) and
+`CreatorThreadsForTest` (context-creation threads not yet ended) are test-only
+fault injection: `Network` and the context-creation thread call the hooks only
+where `OKUFLOW_UCT_GRAPH_FAULT_HOOKS` is defined, which is the
+`uct_paddle_tests` executable alone; `FaultPlan::creatorWaiting` runs on that
+thread between its completion check and its wait. `ReplayWork` lives in
+`src/common/uct_graph_cache.hpp` with the cache policy. The cache policy is
+covered by `graphReplayCachePolicy`, the creation policy by
+`graphReplayCreationTurns` (both `tests/uct_graph_cache_cases.hpp`, model-free); real engines by the opt-in
+`optionalGraphReplayLifetime` (`tests/uct_graph_replay_lifetime.hpp`) and
+`optionalGraphReplayFaults`, `optionalGraphReplayCheckpoints`,
+`optionalGraphReplayRetireUnadopted` and `optionalGraphReplayConfigurations`
+(`tests/uct_graph_replay_faults.hpp`).
+
+`TensorRtStreamProbeForTest` and `StreamProbeRequest`
+(`src/common/uct_stream_probe.hpp`, round 8) exist only where
+`OKUFLOW_UCT_GRAPH_FAULT_HOOKS` is defined, that is in `uct_paddle_tests`.
+Given a ready TensorRT reader that has completed a read, with replay off and no
+read in flight, it calls `TensorRtRecognizer::StreamProbeForTest`, which waits
+for the State's stream and passes each engine to `Network::StreamProbeForTest`
+and from there to `stream_probe::Run` (in `uct_tensorrt.cpp`). `Run` makes its
+own execution contexts (`stream_probe::Lane`: context with the engine's own
+activation memory, input, output, pinned staging, stream and one captured
+graph; the destructor synchronizes the stream before anything is released),
+times the configured sets and compares outputs, and returns a JSON report. The
+reader's contexts, stream and buffers are not touched. The opt-in slot is
+`optionalStreamConcurrency` (`tests/uct_stream_probe.hpp`).
 
 
 ### UCT startup loader instrumentation and SHA-256 (round 5)

@@ -127,6 +127,21 @@ inline bool PaddleRibbonInputAllowed(const SourceStamp& stamp) {
 inline bool PaddleRibbonEnabled(bool allowed, const QString& overrideValue) {
     return allowed && (overrideValue.isEmpty() || overrideValue == "1");
 }
+// Private round 12 switch OKUFLOW_UCT_TEST_FLAT_RIBBON, read the same way by
+// the TensorRT and the CPU reader: empty or "0" is the shipped rule, "straight"
+// and "straight-refused" select ribbon::StraightRule with the round 12
+// constants. Returns false (and the shipped rule) for any other value; a
+// reader then refuses to start with kPaddleFlatRibbonError.
+inline constexpr const char* kPaddleFlatRibbonError =
+    "OKUFLOW_UCT_TEST_FLAT_RIBBON accepts only 0, straight or straight-refused.";
+inline bool PaddleFlatRibbonRule(const QString& value, ribbon::StraightRule& rule) {
+    rule = {};
+    if (value == "straight" || value == "straight-refused") {
+        rule = {ribbon::kStraightSpanHeights, value == "straight-refused", ribbon::kStraightMaximumBow};
+        return true;
+    }
+    return value.isEmpty() || value == "0";
+}
 // Maps crop-local evidence back to the complete scene, excludes internal
 // crop-edge fragments and reconciles overlapping words without duplicates.
 void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line,
@@ -161,8 +176,10 @@ class PaddleMergeContext
 void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line,
                              QRect region, QSize source, PaddleMergeContext& context);
 std::vector<float> PaddleNormalize(const QImage &image, QSize target, bool detection);
+// `straight` mirrors gpu::Detect's private round 12 rule; {} is the shipped rule.
 QVector<PaddleQuad> PaddleDetect(std::span<const float> map, int width, int height, QSize source,
-                                 const std::atomic<bool> &cancelled, bool curvedRibbon = false);
+                                 const std::atomic<bool> &cancelled, bool curvedRibbon = false,
+                                 ribbon::StraightRule straight = {});
 std::vector<float> PaddleRectify(const QImage &image, const PaddleQuad &quad, int width,
                                  int validWidth);
 RecognizedLine PaddleDecode(std::span<const float> probabilities, int steps, int classes,

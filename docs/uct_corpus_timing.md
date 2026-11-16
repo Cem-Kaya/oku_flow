@@ -63,6 +63,14 @@ words lost and gained, and the largest box-edge change when the ordered text
 agrees. Scenes with a truth file are scored by exact match against the words
 that were drawn. There is no confidence interval or outlier rejection.
 
+Before its timed reads each process reads scene zero until the GPU reader is
+ready; `startupFirstResultMs` in the report is construction to that first GPU
+result. That startup read inherits nothing, so it is scene zero's true first
+read in the process, and `startupWorkerMs` records its worker time. The
+"first read" in the summary is the first timed read and comes after it. To
+measure true first reads, run one scene per process (`--scenes`) and read
+`startupWorkerMs`.
+
 ## Paced runs
 
 The application does not read back to back. It reads on timers (`UctTiming`:
@@ -115,6 +123,18 @@ portrait page, a sparse sign scene and a frame without text. Six are real
 chalkboard frames from the documented public lecture sample
 (`scripts/lecture_camera_sample.json`), enlarged to 1920x1080 as the private
 OBS feed presents them.
+
+`perf_corpus.py --variant N` writes another labelled set of the generated
+kinds with other text, fonts, sizes and poses, and `--bent N` a labelled set of
+nine bent book pages only (one or two columns of type from 24 to 44 px, frames
+from 1920x1080 to 3840x2160, bends from barely visible to stronger than
+`book-curved-1080`), for checking that really curved text is not read worse.
+Every row of a `--bent` page follows the same symmetric arc, the shape the
+ribbon fit assumes. `--gutter N` writes nine pages curled one-sidedly instead,
+as a single photographed page of an open book is: flat for most of the width,
+then dropping towards the gutter on the left or right (from about half a text
+height to several), with the depth varying from line to line; one or two
+columns, 24 to 44 px type, 1920x1080 to 3840x2160.
 
 These are stand-ins. No owner camera capture is in the set: the owner's
 existing OkuFlow captures on this workstation are lecture test frames and a

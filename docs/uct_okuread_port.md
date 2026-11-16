@@ -22,14 +22,16 @@ chalkboard lecture frames. Worker time is not camera-to-paint latency.
 | Path-compressing component roots, four-bin ribbon merge | Round 1, on by default, identical output |
 | Cooperative box scoring | Round 1, rewritten: OkuRead's exact variant gave no gain here. Exact, selectable; superseded as the default by the tree sum in round 9 |
 | Fixed-tree box scoring | Round 9, on by default on every GPU: it rounds differently, which the owner accepted; no corpus page changed |
+| Conditional flat fallback for curved lines (issue #18) | Rounds 12 and 12b: the cause here is false curve refusals on long flat lines; a length-scaled, capped straight-line bound for region-edge refusals behind a private switch, off (placement criteria not met); the fallback itself was not needed |
 | Collect detections across tiles before recognition; a complete detection supersedes its covered edge fragment | Round 2, private switch, off: changes output |
-| Replay TensorRT enqueue as CUDA graphs, one execution context per cached shape | Round 3, private switch, off: identical output; startup and the first read of a new frame size cost more |
+| Replay TensorRT enqueue as CUDA graphs, one execution context per cached shape | Round 3, made robust in round 10 and its follow-up (no startup or first-read cost, failures fall back, contexts made in idle gaps), private switch, off: identical output; back to back, reads that overlap a context creation pay for it |
 | Small recognizer first, Medium retries for doubtful crops | Round 4, built and measured, not merged: misreads `O0` as `00`, slower on sparse frames |
 | Streaming verification, hashing each file once, faster SHA-256 | Round 5, on by default: startup to first GPU result 3.85 s to 0.85 s, identical output |
 | Composition flush before capture, capture targets, overlay raster | Not applicable: OkuFlow analyses camera, video and file frames it already owns |
 | Speculative ink retries | Not applicable: OkuFlow has no retry fits |
 | Reuse-cache crop order defect | Not applicable: OkuFlow has no OCR reuse cache and never reorders crops |
 | Keep word-merge state across one read instead of rebuilding it per crop | Round 7, on by default, identical output |
+| Run two inferences of one engine at once on two streams (not an OkuRead idea; this program's own) | Round 8, measured first and not built: on the RTX 4090 two streams finish a set of recognizer or detector inferences no sooner, and graph launches show the GPU loses throughput when they overlap |
 
 ## Round 1: detector post-processing
 
@@ -589,7 +591,8 @@ generation. The council (below) agreed on merging it switched off and named
 what is missing before it can be on: the configurations and failure paths
 listed under "Not established", memory pressure that today retires the reader
 where the plain path would carry on, and true first-read measurements. Round
-10 takes those conditions.
+10 takes those conditions. Round 10 below meets all of them except the speed target and leaves
+the default off.
 
 ### Not established
 
@@ -1343,6 +1346,154 @@ reviewers listed as still missing (mixed rectangle and quad words on a tilted
 row, a sort that changes the first word's angle, a check that the context is
 actually reused).
 
+## Round 8: two inferences in flight on two streams (negative result, not built)
+
+After rounds 1 to 3 most of a read is GPU time inside the two networks, and
+every inference runs after the previous one on the State's one CUDA stream.
+The reader already keeps two recognition groups in flight, but both are
+queued on that stream and run in sequence. One recognizer call (at most eight
+crops on the fixed 8x3x48x1024 canvas) and one detector pass (at most 960
+pixels on the long edge) each take about 4 ms on the RTX 4090. The hypothesis:
+one such inference does not fill the GPU, so two of them on two streams, each
+with its own execution context, finish sooner than one after the other, with
+identical results.
+
+The brief made a measurement the first step, with a stop rule fixed before
+anything was built: two streams must finish a set of recognizer inferences at
+least 1.25x sooner AND a set of detector inferences at least 1.15x sooner than
+one stream, or the round ends with the measurement and this record. **Result:
+not met, by a wide margin.** Two streams are no faster for the recognizer
+(0.89x to 1.01x) and slower for the detector (0.42x to 0.88x). Nothing in the
+reader changed, no switch was added, and the targets of step 2 (warm worker
+time, first reads, startup, identical corpus output) were not attempted.
+
+### What was measured
+
+`optionalStreamConcurrency` (`tests/uct_stream_probe.hpp`; the probe is in
+`src/common/uct_tensorrt.cpp` and compiled only into `uct_paddle_tests`) takes
+the prepared engines of a ready reader and creates its own execution
+contexts, each with its own activation memory (the engine's default
+allocation), input and output buffers and its own non-blocking stream; the
+reader's contexts, stream and buffers are not used. For each engine and shape
+it times a set of inferences on one context and one stream (today's
+arrangement), on two contexts fed alternately from one host thread, and on
+three. Each inference first copies one of four deterministic inputs into its
+context's input buffer on that context's stream, as the reader writes its
+canvas before each call. Each configuration runs with the plain `enqueueV3`
+(the reader's default) and with each context's enqueue captured once as a
+CUDA graph and launched, which takes the host's enqueue cost out and leaves
+what the GPU does. One untimed set comes first; the configurations alternate
+their order between the nine timed repeats. Afterwards every inference of
+every configuration runs again untimed and its output is copied back and
+compared byte for byte with the output of the same input on one stream, as is
+each context's last output of every timed set.
+
+Shapes: the recognizer at batch eight on the 1024 canvas, 64 inferences per
+set; the detector at the two shapes of a 1920x1080 read, 32 per set: the whole
+frame (544x960) and one of the two equal tiles (1040x1080 pixels, detector
+input 960x928).
+
+RTX 4090 (driver 621.14), Ryzen 9 5900X, MSVC 19.44 Release, CUDA 12.9.86
+runtime, TensorRT 11.4.0.106, medium BF16 detector and recognizer, branch
+`perf/okuread-port-r8` at `f04a60d`. The GPU was held through the shared lease,
+so no other job used it. Evidence `r8-stream-probe-1` and `r8-stream-probe-2`;
+the second sampled `nvidia-smi` every 100 ms: with the GPU busy (utilisation
+at least 50 percent, 457 samples) it ran in P2 at a median 2,640 MHz (10th
+percentile 2,505 MHz), display not driven. The sets ran back to back, so the
+GPU had no idle gap to clock down in (round 13).
+
+Median wall time of a set over nine repeats on one stream, and the speedup of
+two and three streams against it, run 1 / run 2; in brackets the range of the
+paired per-repeat speedups over both runs:
+
+| Engine, shape, set | Launch | One stream ms | Two streams | Three streams |
+| --- | --- | --- | --- | --- |
+| Recognizer 8x3x48x1024, 64 | plain | 272.9 / 271.3 | 1.010x / 0.998x (0.985 to 1.016) | 0.941x / 0.935x (0.924 to 0.955) |
+| Recognizer 8x3x48x1024, 64 | graph | 252.2 / 251.5 | 0.896x / 0.893x (0.888 to 0.905) | 0.838x / 0.833x (0.827 to 0.845) |
+| Detector 544x960 (whole frame), 32 | plain | 106.3 / 102.5 | 0.882x / 0.801x (0.708 to 1.143) | 0.819x / 0.725x (0.633 to 1.153) |
+| Detector 544x960 (whole frame), 32 | graph | 80.2 / 80.3 | 0.621x / 0.616x (0.570 to 0.677) | 0.463x / 0.447x (0.429 to 0.491) |
+| Detector 960x928 (tile), 32 | plain | 162.2 / 160.6 | 0.720x / 0.792x (0.537 to 0.888) | 0.513x / 0.538x (0.465 to 0.715) |
+| Detector 960x928 (tile), 32 | graph | 143.0 / 142.8 | 0.424x / 0.430x (0.416 to 0.467) | 0.414x / 0.416x (0.392 to 0.430) |
+
+Output: every compared output was byte-identical to the single-stream output
+of the same input, 1,128 comparisons per run over every engine, shape, stream
+count and launch mode, 0 differences; the slot fails on any. Of those, 316 are
+the one-stream configurations compared with themselves (repeatability) and
+812 compare a second or third context with the first. For the patterns and
+configurations tested, the inferences themselves would therefore not change if
+they ran concurrently. The reader read again after the probe and its State retired
+cleanly.
+
+### What the numbers say
+
+- **Overlapping inferences of one engine loses throughput.** With graph
+  launches the host does almost nothing (under 1 ms per set). One stream then takes 3.93 ms per
+  recognizer inference, 2.51 ms per whole-frame detection and 4.46 ms per tile
+  detection; two streams take 4.40, 4.07 and 10.4 ms per inference.
+  The loss is small for the recognizer and large for the detector at the tile
+  shape, where two streams take more than twice as long as one after the
+  other: the overlapping inferences get in each other's way. Why is not
+  established: one inference filling the GPU, the working set of two detector
+  inferences (about 280 MiB of activation memory each) against the 72 MB L2
+  cache, and TensorRT tactics chosen for a GPU of their own are candidates; no
+  kernel profile was taken. What is shown is that this way of overlapping does
+  not help, not that the GPU is saturated.
+- **Host time in the plain submission loop is not all CPU work.** On one
+  stream the host spends about 250 of the recognizer set's 272 ms in the loop
+  that copies the input and calls `enqueueV3` (about 3.9 ms per call when 64
+  are issued back to back; round 3 measured about 2 ms per call inside a
+  read). That time falls as streams are added for the recognizer (250, 223,
+  214 ms) and rises for the tile detector (147, 172, 225 ms), which a fixed
+  CPU cost per call would not do: part of it is the host waiting for room in
+  the GPU's queue. It should not be read as 3.9 ms of removable CPU work per
+  call. The graph rows, where the host is out of the picture, carry the
+  verdict.
+- **Memory.** Each added context with its own activation memory took 164 to
+  166 MiB for the recognizer (plus 80 MiB for its input and its 19.2-million
+  float output) and 280 to 282 MiB for the detector (plus 8 or 16 MiB of
+  buffers), as the change in free device memory (2 MiB granularity); a
+  captured graph up to 2 MiB more. A dual-stream reader would have needed
+  roughly 440 MiB more before any scratch.
+
+### Not established
+
+- One GPU, the RTX 4090, and the medium BF16 pair. The small and tiny tiers
+  and recognizer batch one, which make smaller inferences, were not probed.
+- Overlapping the two different engines (the next region's detection beside
+  the current region's recognition) was not measured; the brief's hypothesis
+  and stop rule concern two inferences of one engine. Whatever overlap would
+  do there, its ceiling is low: on the dense 1920x1080 document the detector
+  is 11.7 of 193.5 ms, so hiding all of it gives about 1.06x, and on a lecture
+  frame the recognizer is 2.6 of 19.8 ms; detection also has to precede
+  recognition of the same region.
+- The inputs are deterministic patterns, not image crops. Inference time does
+  not depend on the values, but the outputs compared are those of the
+  patterns.
+- Stream priorities, other TensorRT tactic choices per context and limiting
+  each context to part of the GPU were not tried.
+
+### Default and code
+
+Nothing in the read path changed and there is no new reader switch. The
+measurement slot stays (opt-in, not in any CTest list, compiled only into
+`uct_paddle_tests` through `OKUFLOW_UCT_GRAPH_FAULT_HOOKS`). Round 10's note
+about one activation arena per engine stands unchanged: nothing runs the
+contexts of one engine concurrently.
+
+### Review
+
+Council on `8efffd1`: Claude Opus 5.5 8/10, GPT-6.1 Sol 8/10, Gemini 4 Hydrogen
+9/10. All three found the measurement sound (separate contexts, activation
+memory, buffers and streams; timing to completion of all work; graph mode
+isolating the GPU) and the stop correct under the rule; two recommended
+merging the slot and the record, one after the corrections below. Applied
+while merging: the headline no longer claims the GPU is saturated; the host
+time of the plain loop is described without attributing it to CPU work; the
+count of cross-context comparisons is stated; the ceiling argument for
+overlapping the two engines replaces "unpromising"; the slot now fails unless
+both plans were loaded from the cache, and its description says it initializes
+the ordinary reader instead of promising that nothing is ever prepared.
+
 ## Round 9: the faster box score as the default, on every GPU
 
 Round 1 missed its target for the textless scene because its exact box score
@@ -1433,6 +1584,1010 @@ calls, and running out of memory during a capture puts it off instead of
 refusing the shape. Kept as it is: a TensorRT enqueue that fails inside a
 capture with no CUDA status is treated as a fault, not a refusal, as the round
 3 reviewers asked; round 10 exercises captures on the other model tiers.
+## Round 10: graph replay made robust; default left off
+
+Round 3's replay stayed behind `OKUFLOW_UCT_TEST_TRT_GRAPH=1` because its
+council named what was missing before it could be on by default. This round
+closes those points and then measures whether it can be on. Targets, stated
+before the work, and the result:
+
+| Target | Result |
+| --- | --- |
+| Byte-identical complete output against switch-off on scene set v1 (two cohorts of five passes), labelled sets A and B and the 62 title placements, each also with region reconciliation in both arms, and in every configuration that runs replay | Met: 18/18, 40/40, 48/48, 62/62, the same with reconciliation, and all eight configurations |
+| Warm geometric mean on v1 at least 1.17x, every lecture frame at least 1.20x | **Not met**: 1.123x; lecture frames 0.975x to 1.260x, three of six below 1.20x |
+| Startup to first result with replay at most 100 ms above switch-off (median of five fresh processes) | Met: -39 to +3 ms on six scenes of six frame sizes |
+| First read of a frame size not seen before at most 30 ms above switch-off | Met: true first reads in fresh processes -3.3 to +6.0 ms on the same six; in the v1 processes the worst first read of a new frame size is +19.5 ms |
+| Every failure path driven on the GPU at least once, outcome asserted | Met: ten paths, `optionalGraphReplayFaults` |
+| If all hold, replay on by default | **Not done**: the warm target does not hold, so the default stays off |
+
+Measured on the RTX 4090 (driver 621.14, display not driven), Ryzen 9 5900X,
+MSVC 19.44 Release, CUDA 12.9.86, TensorRT 11.4.0.106, medium BF16 detector and
+recognizer unless a row says otherwise, branch `perf/okuread-port-r10` at
+`af7ff1f` (reader code as of `6d79985`), two reversed cohorts of five warm
+reads. Other agents' jobs shared the machine through the GPU lease, and the
+desktop ran remote-desktop, game-launcher and GPU-monitoring software. Every
+timing in this section comes from the `uct_paddle_tests` executable, which
+compiles the test-only fault hooks (`OKUFLOW_UCT_GRAPH_FAULT_HOOKS`): with
+replay on, each network call also loads the (empty) fault plan a few times.
+The application does not compile them. The follow-up below supersedes the
+creation policy and some statements of this section; where it does, it says so.
+
+### What a context costs, measured first
+
+Round 3 made every execution context while preparing: three detector and
+eight recognizer contexts at 91 ms and 63 ms each, 0.81 s in all
+(`completion-and-receipts` 812.6 ms against 5.0 ms with the switch off,
+`r10-titles-slowstart-profile-1`). Three ways of moving that cost were measured
+before one was built:
+
+| Measurement | Result |
+| --- | --- |
+| Every context made before ready on 1, 4 or 14 threads (`r10-diag-parallel-1`, profiled) | startup 1.75 to 1.90 s, 1.99 to 2.12 s and 2.58 to 2.82 s, against 0.70 to 0.85 s off: creation is serialised inside TensorRT or the driver, and more threads make it slower |
+| Contexts created and destroyed on another thread while full-replay reads run (`r10-diag-churn-1`) | doc-camera-1080 reads 223 ms, against 188 ms with that thread idle; allocating and freeing 2.5 MB at the same rate 192 ms; a CPU-bound thread 188 ms |
+| Every context made on the preparation thread right after the reader is published (commit `f5b2e85`, `r10-smoke-timing-1`) | startup within 18 to 45 ms of switch-off, but for about 1.5 s reads are slower than the plain enqueue (doc-camera 200 to 235 ms against 206 ms off), fast afterwards (188 ms) |
+
+So creating a TensorRT execution context slows inference running at the same
+time by about a fifth, from whichever thread, and allocation is not the reason.
+Nothing in the TensorRT 11.4 API makes a context cheaper: there is no clone, and
+the runtime configuration only selects the allocation strategy. The cost can be
+moved, not removed. The two diagnostics were temporary code; their patch is kept
+with the evidence.
+
+### What changed
+
+In `src/common/uct_tensorrt.cpp` and `src/common/uct_graph_cache.hpp`:
+
+- **No context at preparation.** With replay requested, each engine's
+  preparation context is created on the activation arena that the engine's
+  replay contexts share (`CreatePreparationContext`, `kUSER_MANAGED`). It stays
+  as the engine's plain **overflow** context. `EnableReplay` only sizes the
+  fixed output storage; it creates no context.
+- **A shape without a slot runs plainly.** A miss while the cache is not full
+  and no context is ready (`Plan(..., canCreate)`) runs on the overflow context
+  exactly as the plain path would (`RunPlain`) and evicts or drains nothing. A
+  reader that is still waiting for contexts is never slower than the plain
+  enqueue for want of one; it is slower only while a context is being created.
+- **Contexts on demand, made while no read runs.** Each distinct shape asked
+  for (`Policy::Seen`) raises the number of contexts the engine wants, up to
+  what it can use (`UsefulContexts`). The preparation thread stays alive after
+  publishing the State, sleeps until a context is wanted and makes them one at
+  a time, each started only while no read is in flight (`ReplayWork`,
+  `ReplayReading` in `RecognizeDevice`, which is the only change there). The
+  read path never creates a context. The thread ends when both engines have
+  every context they can use, or at the latest one creation after the State
+  retires. As built in this round neither of the last two statements held
+  everywhere, as the council found: a creation could start just before a read
+  and run beside it, a failing read let one start on its doomed State, and a
+  reader destroyed between "ready" and its first read left the thread asleep
+  for good with the State never retired. The follow-up below fixes both and
+  states the policy that now holds.
+- **Allocation failures fall back instead of retiring.** An activation arena
+  that cannot be allocated leaves the preparation context owning its memory and
+  that engine on the plain enqueue; so does replay output storage that cannot
+  be allocated (`DeviceBuffer::TryReserve`; as built here it released the
+  plain buffer before the larger allocation, fixed in the follow-up). A failed
+  background creation stops the production; misses below capacity then run on
+  the overflow context. Real device faults are still fatal and retire the
+  State as before.
+- **Configurations by construction.** With the bucketed recognizer width (up to
+  32 shapes at batch eight) the recognizer runs plainly and the detector
+  replays. A fixed-canvas recognizer gets at least one slot per batch size,
+  sixteen at batch sixteen (`ForConfiguration`). The comparison bound
+  `OKUFLOW_UCT_TEST_TRT_GRAPH_SHAPES` applies to both engines as given.
+- **Test-only fault hooks** (`graph_cache::FaultPlan`, `Checkpoint`), called
+  only where `OKUFLOW_UCT_GRAPH_FAULT_HOOKS` is defined, which is the
+  `uct_paddle_tests` executable. No environment variable reaches them.
+- The corpus harness records `startupWorkerMs`, the worker time of its startup
+  read, which is scene zero's true first read in a fresh process (its own
+  commit, `7526eb8`).
+
+With the switch off, `Run` takes the original plain path (`RunPlain` is that
+code, moved) and no replay code runs.
+
+### Startup and true first reads
+
+One scene per fresh process, five processes per arm, the reader built and read
+from nothing each time (`r10-first-<scene>-1`). Medians over the five:
+
+| Scene | Frame size | Startup to first result, off / on ms | Difference | True first read, off / on ms | Difference | Output |
+| --- | --- | --- | ---: | --- | ---: | --- |
+| board-lecture-01 (real) | 1920x1080 | 669 / 670 | +0 | 34.5 / 33.6 | -0.9 | identical |
+| doc-camera-1080 | 1920x1080 | 864 / 867 | +3 | 216.9 / 219.8 | +2.8 | identical |
+| slide-light-2160 | 3840x2160 | 762 / 758 | -4 | 121.1 / 124.2 | +3.1 | identical |
+| page-portrait-1654x2339 | 1654x2339 | 1073 / 1035 | -39 | 396.2 / 392.9 | -3.3 | identical |
+| title-1225x292-1280-1.0-centre (private) | 1280x720 | 718 / 706 | -12 | 24.6 / 30.7 | +6.0 | identical |
+| title-1225x292-raw (private) | 1225x292 | 724 / 689 | -36 | 23.1 / 22.8 | -0.4 | identical |
+
+Startup includes the first read. Single first reads vary by several
+milliseconds from process to process in both arms (the 1280x720 title: 24.5 to
+33.1 ms off, 26.3 to 36.1 ms on), so the differences are within noise; none is
+near the 30 ms bound. Round 3, which made its contexts while preparing, added
+0.36 to 0.98 s to startup.
+
+### Warm reads
+
+Scene set v1, standard protocol (`r10-v1-ab-1`). First reads are the first
+timed read of the scene in each process, after the harness's startup read.
+
+| Scene | Off ms | On ms (cohorts) | Warm speedup | First read ms, off / on (forward, reverse cohort) |
+| --- | ---: | ---: | ---: | --- |
+| doc-camera-1080 | 207.13 | 190.23 (216.89, 189.44) | 1.089 | 209.6, 205.2 / 230.5, 189.5 |
+| doc-camera-tilt-1080 | 160.74 | 147.67 (148.08, 147.63) | 1.089 | 157.7, 161.4 / 145.9, 151.6 |
+| doc-camera-2160 | 483.44 | 448.91 (469.81, 448.46) | 1.077 | 484.2, 482.8 / 445.7, 450.0 |
+| doc-camera-turkish-1080 | 181.09 | 167.88 (165.34, 168.31) | 1.079 | 181.8, 178.2 / 166.9, 167.9 |
+| book-curved-1080 | 63.87 | 56.83 (56.25, 57.75) | 1.124 | 64.5, 68.2 / 57.9, 56.6 |
+| slide-light-1080 | 69.16 | 61.23 (60.70, 62.03) | 1.130 | 73.2, 70.6 / 60.5, 61.7 |
+| slide-dark-1080 | 72.71 | 61.90 (61.56, 62.72) | 1.175 | 72.6, 73.4 / 61.9, 64.5 |
+| slide-light-2160 | 120.24 | 99.88 (98.61, 101.93) | 1.204 | 119.3, 117.2 / 98.8, 109.7 |
+| table-1080 | 142.01 | 128.03 (127.59, 130.47) | 1.109 | 141.6, 142.8 / 127.4, 147.8 |
+| page-portrait-1654x2339 | 381.70 | 386.85 (362.49, 426.57) | 0.987 | 379.7, 381.8 / 357.6, 401.3 |
+| signs-sparse-1080 | 31.61 | 28.21 (26.76, 34.38) | 1.121 | 31.5, 31.3 / 27.0, 27.8 |
+| no-text-1080 | 30.33 | 25.93 (25.80, 25.99) | 1.170 | 30.7, 30.9 / 26.2, 26.0 |
+| board-lecture-00 (real) | 23.37 | 18.77 (18.83, 18.70) | 1.245 | 22.9, 25.3 / 18.3, 18.6 |
+| board-lecture-01 (real) | 22.87 | 18.14 (18.07, 18.24) | 1.260 | 22.3, 21.4 / 17.7, 18.3 |
+| board-lecture-02 (real) | 25.07 | 21.56 (21.18, 21.61) | 1.163 | 25.7, 25.8 / 21.5, 22.1 |
+| board-lecture-03 (real) | 26.58 | 21.40 (21.00, 26.77) | 1.242 | 26.4, 27.7 / 21.0, 27.4 |
+| board-lecture-04 (real) | 25.45 | 24.69 (19.57, 37.69) | 1.031 | 24.5, 25.3 / 19.5, 59.0 |
+| board-lecture-05 (real) | 22.81 | 23.41 (18.82, 30.29) | 0.975 | 21.8, 22.7 / 18.5, 35.2 |
+
+Geometric mean 1.123x warm and 1.070x for first reads; identical output on 18
+of 18 scenes. With region reconciliation in both arms (`r10-v1-reconcile-ab-1`)
+1.149x warm and 1.077x for first reads, identical on 18 of 18 (round 3:
+1.196x).
+
+Where the target is missed each cohort's own median shows why. The reverse
+cohort opens with the lecture frames, and its first scenes are read while the
+reader is still creating the contexts for their shapes: board-lecture-05 and
+-04 take 30.3 and 37.7 ms in that cohort and 18.8 and 19.6 ms in the forward
+one. The first scenes of a new frame size pay the same (doc-camera-2160 in the
+forward cohort, page-portrait in the reverse one). Where a cohort read a scene
+with its contexts made, the gains match round 3: lecture frames 1.21x to 1.30x,
+dense documents 1.08x to 1.11x, slides 1.12x to 1.22x (each cohort's median
+against the pooled switch-off median). board-lecture-02 is the exception at
+1.18x and 1.16x in its two cohorts; its switch-off time is lower than in
+round 3 (25.1 against 27.2 ms) after rounds 5 and 9. A v1 process creates 13 contexts in all,
+5 for the detector and 8 for the recognizer (`r10-v1-profile-1`).
+
+The harness reads back to back, so there is no gap for a context to be made
+in. The application paces its reads (`UctTiming`: a refresh interval of 1.5 s,
+paced media every 350 ms), so it normally makes them between reads. A v1 run
+with a 350 ms gap before every read (`r10-v1-gap350-ab-1`) was meant to show
+that and is not usable: reads of both arms slowed by up to five times in bursts
+(board-lecture-00 switch-off reads of 108 ms against 23 ms back to back) while
+other software on the desktop was active. A shorter run of three scenes with
+the same gap (`r10-idle-gap350-1`) measured 1.089x (doc-camera-1080), 1.140x
+(slide-light-2160) and 1.267x (board-lecture-01), identical output; it is too
+small to stand in for the target. With a 500 ms gap before every read (`r10-gap500-repeat-1`, two scenes, two
+cohorts) replay settles within two or three reads: doc-camera-1080 at 187 to
+191 ms against 205 ms off, board-lecture-01 at 19.1 to 19.2 ms against 24 ms
+(one cohort of each arm was disturbed at the same time by other load). The
+orchestrator's own paced runs of the whole set on this build show the same
+bursts in both arms and are not usable either: `r10c-v1-gap350-ab-1` (warm
+1.021x), `r10c-v1-gap350-ab-2` (1.298x) and `r10c-v1-gap1000-ab-1` (0.663x),
+identical output in all three. Round 13 later traced the bursts to the GPU
+clocking itself down between sparse reads (`gapdiag-1-*`).
+
+### Output
+
+| Set | Arms | Result |
+| --- | --- | --- |
+| v1, 18 scenes, two cohorts, six reads each | off, on | identical 18/18 (`r10-v1-ab-1`) |
+| v1 with region reconciliation in both arms | off, on | identical 18/18 (`r10-v1-reconcile-ab-1`) |
+| Labelled set A, 40 pages, two cohorts | off, on; and both with reconciliation | identical 40/40 and 40/40 (`r10-labelled-a-1`, `-reconcile-1`) |
+| Labelled set B, 48 pages, two cohorts | off, on; and both with reconciliation | identical 48/48 and 48/48 (`r10-labelled-b-1`, `-reconcile-1`) |
+| 62 title placements (private owner crops), two cohorts | off, on; and both with reconciliation | identical 62/62 and 62/62 (`r10-titles-1`, `-reconcile-1`) |
+| Eight configurations (below) | off, on, on with the profile | identical (`r10-configurations-2`) |
+
+"Identical" is one `ExactOutputBytes` hash (text, order, dispositions,
+geometry, confidence, colours and ribbon diagnostics) for every read of a scene
+in every process of both arms. Warm geometric means on these sets, for the
+record: 1.092x, 1.076x and 1.094x, with reconciliation 1.070x, 1.042x and
+1.079x; one warm pass each, so each process spends a large share of its reads
+in the creation transient.
+
+Receipts from separate profiled runs, never used for timing: on v1, labelled sets A and B and the titles, each with and without
+reconciliation (`r10-v1-profile-1`, `r10-labelled-a-profile-1`,
+`r10-labelled-b-profile-1`, `r10-titles-profile-1`), no process evicted or
+refused anything after a scene's first read. A process creates 13 contexts on
+v1 (5 detector, 8 recognizer), 15 on the labelled sets (7 and 8) and 6 on the
+titles (5 and 1); every other call of a new shape ran on the overflow context.
+
+### Configurations
+
+`optionalGraphReplayConfigurations` reads `slide-light-1080` and
+`slide-light-2160` (the paused-detail rows: eight detail views of them) in one
+process with the switch off, on, and on with the profile, in three rounds, and
+requires every read to equal the switch-off read and, except for detail reads,
+no eviction in the last round. All eight pass on the measurement build
+(`r10-configurations-2`) and again on the final one (`r10-configurations-3`);
+the test's first build, before the overflow context, also passed identity in
+all eight (`r10-configurations-1`):
+
+| Configuration | Engines selected | Replay | Contexts made (detector, recognizer) |
+| --- | --- | --- | --- |
+| Medium, batch 8 | BF16 detector, BF16 recognizer | 8 + 8 shapes | 3, 6 |
+| Medium, batch 1 (`OKUFLOW_UCT_TRT_BATCH=1`) | BF16, BF16 at batch 1 | 8 + 8 | 3, 1 |
+| Medium, batch 16 | BF16 detector, FP32 recognizer at batch 16 | 8 + 16 | 3, 4 of 7 shapes |
+| Medium, FP32 plans (pinned FP32 factory) | FP32, FP32 | 8 + 8 | 3, 4 of 6 |
+| Small tier | BF16, BF16 | 8 + 8 | 3, 5 of 6 |
+| Tiny tier | BF16, BF16 | 8 + 8 | 3, 1 |
+| Bucketed recognizer width | BF16 detector, FP32 bucketed recognizer | detector only, recognizer plain by construction | 3, none |
+| Paused-detail reads, eight views at 704 and 960 long edges | BF16, BF16 | 8 + 8 | 3, 6 |
+
+No refusal and no capture blocked anywhere; no eviction at all, also in the
+detail and two-size reads. "Of n shapes" means the process ended before every
+shape had its context (the rest ran on the overflow context).
+
+The plans that did not exist were prepared on the way under the GPU lease: the
+small and tiny BF16 pairs, the medium BF16 recognizer at batch one, an FP32
+recognizer at batch sixteen (the existing context-memory bound refuses the BF16
+recognizer at batch sixteen, so that configuration runs an FP32 recognizer) and
+the FP32 bucketed recognizer.
+
+Timing from the repeat on the final build (`r10-configurations-3`, all eight
+identical again), indicative only: one process per arm, `Recognize` wall time
+including the upload, and only nine reads per image, so most of each run falls
+in the stretch where contexts are still being made (the configuration with
+"4 of 7" above ended before it had them all). Settled is the median of the
+last four reads of each image (`slide-light-1080` / `-2160`); the run before it
+(`r10-configurations-2`) was disturbed by other load and is not quoted.
+
+| Configuration | Settled ms, off / on, 1080 | 2160 | Speedup 1080 / 2160 |
+| --- | --- | --- | --- |
+| Medium BF16, batch 8 | 59.8 / 61.1 | 104.8 / 93.3 | 0.98 / 1.12 |
+| Medium BF16, batch 1 | 123.8 / 77.5 | 170.8 / 116.1 | 1.60 / 1.47 |
+| Medium, batch 16 (FP32 recognizer) | 101.3 / 115.2 | 144.3 / 157.2 | 0.88 / 0.92 |
+| Medium FP32 | 92.4 / 91.6 | 144.7 / 141.3 | 1.01 / 1.02 |
+| Small BF16 | 45.2 / 37.0 | 67.7 / 67.6 | 1.22 / 1.00 |
+| Tiny BF16 | 65.6 / 25.1 | 84.0 / 38.7 | 2.61 / 2.17 |
+| Bucketed width (detector replay only) | 94.2 / 91.7 | 139.5 / 135.0 | 1.03 / 1.03 |
+
+Batch one and the tiny tier, which make many small recognizer calls, gain the
+most; batch sixteen was slower in this short run, with three of its seven
+recognizer shapes still on the overflow context. None of this is a warm
+measurement under the corpus protocol.
+
+### Failure paths
+
+`optionalGraphReplayFaults` (`r10-faults-3`, final build; `slide-light-1080` and
+`slide-light-2160`, ten reads over both sizes per case) drives each path on the
+GPU and asserts the outcome. In every case no replay call returned or threw
+with its stream capturing.
+
+| Path | How it is driven | Outcome asserted |
+| --- | --- | --- |
+| Capture refused by CUDA | an illegal synchronize inside the capture, which CUDA answers by invalidating it | identical output; one refusal; that shape is not captured again, others are |
+| Capture put off for low free memory | the free-memory check reads zero, three times | identical output; three deferrals, no refusal; captures follow |
+| Capture enqueue fails with a capture status | the enqueue reported failed after a real invalidation | identical output; one refusal |
+| Capture enqueue fails with no CUDA reason | the enqueue reported failed with the capture intact | that read fails closed with its reason; the State retires (two retirements, both complete); the reader prepares again and every later read is identical |
+| Eviction with work still queued | a 30 ms host function queued on the stream before each eviction drain (bound 1) | identical output; every drain finished after the queued work |
+| Input buffer moved | the input copied to another address on twenty calls on cache slots | identical output; rebinds counted |
+| Fatal error between Plan and Bound | TensorRT rejects an out-of-profile shape while a slot is reshaped | the read fails closed; the State retires; later reads identical |
+| Background context creation fails | the first recognizer creation reports failure | identical output; recognizer production stops and misses run on the overflow context; the detector keeps its contexts; no retirement |
+| Activation arena unavailable | the detector's arena allocation reports failure | identical output; detector plain, recognizer replays; no retirement |
+| Replay output storage unavailable | the recognizer's output allocation reports failure | identical output; recognizer plain, detector replays; no retirement |
+
+The moved buffer is injected because no real buffer moves at these sizes: the
+detector input is sized for 960x960 by the preparation smoke check and the
+recognizer input for a full batch at preparation.
+
+`optionalGraphReplayCheckpoints` (`r10-checkpoints-2`; `doc-camera-1080` and
+`slide-light-2160`, region reconciliation on, bound 2 so slots are recycled)
+cancels a read at the k-th time, k from 1 to 34, that a replay call is planned,
+captured, drained or launched, on both sizes. Cancelled reads: 13 at planned, 2
+at captured, 6 at drained, 13 at launched (2,164 calls planned in all). Every
+cancelled read returned cancelled with no error and the reader ready; every
+completed read, and the read after each cancellation, equalled the switch-off
+output; the State retired cleanly (again on the final build, `r10-checkpoints-3`).
+`optionalGraphReplayLifetime` passes unchanged (`r10-lifetime-2`,
+`r10-lifetime-3`).
+
+### Device memory
+
+Measured as free device memory after the same reads with the switch on minus
+off, in one process each (`r10-memory-1`, `optionalGraphReplayConfigurations`,
+`cudaMemGetInfo`, 2 MiB granularity):
+
+| Reads | Slots in use (detector, recognizer) | Replay keeps |
+| --- | --- | ---: |
+| `slide-light-1080` and `-2160` | 3, 6 | 42 MiB |
+| the same plus twelve paused-detail views, with 300 ms between reads (`medium-bf16-fill`) | 6, 8 | 50 MiB |
+
+That is the contexts, their graphs and the larger fixed detector output
+storage (3.7 MB instead of 2.1 MB for a 1920x1080 frame). The activation arena
+adds nothing: it replaces the memory the preparation context would own, and
+the overflow context is that preparation context. The marginal slot (a
+context and its graph) costs about 1.6 MiB, so all sixteen slots of both
+engines in use come to about 53 MiB; that full case was not reached in a run
+(the detector used at most 7 of its 8 slots on any set). The receipts' own
+per-context figures (`contextBytesObservedApprox`) are taken on the creating
+thread while the worker allocates and overstate it. The 53 MiB for all
+sixteen slots is an extrapolation, not a measurement.
+
+### Round 3's slow first reads
+
+Round 3's title run (`r3-graph-titles-1`) had the first three 1280x720
+placements of the reverse cohort at 31 to 41 ms with the switch on against 18
+ms off, and 15 to 16 ms later in the process. Rerun on the round 3 code
+(`7b6ed8a`) with the profile on (`r10-titles-slowstart-profile-1`, the same
+placements and the 3840x2160 ones, two cohorts) it did not occur: the first
+reads were 16 to 18 ms, and the receipts show no capture, drain, eviction or
+context creation in them beyond each shape's first use. Rerun without the
+profile (`r10-titles-slowstart-timing-1`) a milder form occurred in one of the
+two processes: for about 1.3 s after a 1.6 s startup reads ran at switch-off
+speed and then sped up within a scene.
+
+The likely candidate, GPU clocks after the long CPU-only preparation, was not
+what this machine showed: sampled every 50 ms with `nvidia-smi` around reads
+spaced by idle gaps (`r10-clocks-gap2000-1`), the GPU stayed in P2 at 2.5 to
+2.65 GHz. What the gap runs did show is that on this machine reads of either
+arm slow two- to five-fold in bursts while other desktop software is active,
+in whichever process is reading at the time (`r10-clocks-gap2000-1`: the
+replay process; its repeat `r10-gap2000-repeat-1`: the switch-off process).
+The cause in round 3 is therefore not isolated, and this round does not close
+that condition; round 13's finding that this GPU clocks down between sparse
+reads is a candidate it did not test. With this round's design the
+reader's startup is the switch-off startup and the effect is gone from the
+same title run (`r10-titles-1`): the first three 1280x720 placements of the
+reverse cohort read 17 to 21 ms against 17 to 18 ms off, with two slower
+reads (41.7 and 23.3 ms) in the stretch where the process makes its contexts.
+
+### Default
+
+Off. Most conditions the round 3 council set are met; the speed target under
+the standard protocol is not, the slow start of round 3 is not isolated, the
+memory with every slot in use is extrapolated, and no clean paced run exists
+(this section originally said every other condition was met; see the
+follow-up for what its council found). Moving context creation out of startup
+moved its cost to the reads that meet new shapes, and with reads back to back
+that costs three of six lecture frames their 1.20x and the geometric mean its
+1.17x. Making the contexts before ready would meet the speed target and miss
+the startup one by about a second. Startup, first reads and output are
+unchanged with it on, so whether the one-time transient is acceptable is left
+to the owner and the council.
+
+### Not established
+
+- One GPU, the RTX 4090. Other generations and drivers were not run.
+- No owner camera capture; no measurement with the application's own pacing.
+- Why creating a context slows concurrent inference is not isolated beyond
+  "not allocation, not CPU load"; TensorRT does not document it.
+- Warm timing of the configurations other than the default pair under the
+  corpus protocol; the batch-sixteen configuration was slower in its short
+  run and needs that measurement before it could be on.
+- Spaced reads on this machine are disturbed by other desktop software; no
+  clean paced run of the whole scene set exists.
+
+### Follow-up after the council review
+
+Council on this round (`c65bb1b`): GPT-6.1 Sol 6/10, Gemini 4 Hydrogen 7/10,
+Claude Opus 5.5 7/10; Sol for keeping replay off, the other two for turning it
+on once their findings were fixed. The follow-up itself was not sent through a
+second council pass; the switch is off, and a targeted review belongs with any
+later decision to turn it on. The
+follow-up, on the same branch, first merged the integration branch (rounds 5,
+6, 7 and 9 and the fixes other councils asked for) and then worked through the
+findings. Replay stays off; the orchestrator decides the default after this
+follow-up and round 13.
+
+**Merge.** The integration branch's capture changes are kept: a failed
+`enqueueV3` inside a capture is a refusal only with a capture-specific CUDA
+status; less than 256 MiB of free memory, or running out of memory during the
+capture, puts the capture off (both now count as `deferrals` in the receipt);
+after a deferral the engine holds captures off. So are the cancellation of an
+interrupted verification, round 7's per-read merge context and round 5's
+preparation profile and hashing. The hold-off is now counted in reads, not in
+network calls: after a deferral every call of that engine that would capture
+runs plainly for the rest of the read and the next fifteen reads
+(`graph_cache::kCaptureHoldOffReads`). How many calls want a capture per read
+depends on the scene; a read count does not, and the low-memory fault test
+reads long enough for it (below).
+
+**What was fixed.**
+
+| Finding | Fix | Shown by |
+| --- | --- | --- |
+| Blocker (all three reviewers): after "ready" and before the first read, the context thread slept on a condition that cancellation never woke, while holding the last reference to the `Preparation`. Destroying the reader in that window left the State unretired for the rest of the session | The thread lets go of the `Preparation` when it publishes the State and keeps only the State. Destroying a reader whose State was never adopted destroys the `Preparation`, which retires that State and so stops and wakes the thread (`ReplayWork::Stop`); `Retire` also stops it directly. A cancelled live `Preparation` is part of the wait's condition | `optionalGraphReplayRetireUnadopted` (`r10b-retire-1`): ready, destroyed without a read, once while the thread waits for a wanted context and once with the thread held between its completion check and its wait; the State retires (one completed receipt, also while the thread is held), the thread ends, and a fresh reader of the same model is ready and reads on `[BF16 / BF16]`. The same test on a build without the fix fails ("the unadopted State was not retired", no receipt; `r10b-retire-negative-control-1`, build not kept) |
+| "Only while no read is in flight" was not enforced | A stated policy (`ReplayWork::Turn`, below), a read marker that also covers `Recognize`'s upload, and a marker held past `Retire` on a failing read, so a retiring State stops the thread before its read ends | `graphReplayCreationTurns` (model-free); receipts per read (`creation`) |
+| The output-storage fallback freed the plain buffer before the larger allocation | `DeviceBuffer::TryReserve` allocates first and keeps the old buffer when that fails; the bound addresses are cleared before any early return. The fault hook now makes that larger allocation fail | `optionalGraphReplayFaults` (`r10b-faults-1`): the recognizer runs plainly, its plain output buffer survives (`outputBytesKeptAfterFailure`), output identical, no retirement |
+| The fault test freed its plan after a fixed 500 ms delay | Fault plans are shared references each hook loads (`FaultPlanForTest`); the tests also wait for every context thread to end (`CreatorThreadsForTest`) | every GPU slot above |
+| The missed warm target was not attributed per call | Receipts per read: overflow calls, warm-up, captures, and whether a creation ran at the read's start or end or started during it | below |
+| Record and comments | Corrected in place above (marked) and in the code comments; the round 8 note below | — |
+
+**The creation policy.** A context creation starts only (a) in an idle gap: no
+read in flight and at least 10 ms since the last read ended, or (b) under
+continuous load: once two reads have ended since the last creation, or since a
+context became wanted, without such a gap; then it starts at once. A read that
+begins while a creation runs proceeds and is slowed. One creation runs at a
+time. With the application's pacing (a read submitted every 350 ms) any read
+shorter than about 340 ms leaves a gap, so creations land between reads; a read
+of 350 ms or more leaves none, and rule (b) bounds the wait at two reads.
+
+Measured on scene set v1 back to back (`r10b-v1-profile-1` receipts mapped by
+scene and pass onto the timed processes of `r10b-v1-ab-1`): every process made
+the contexts it wanted (detector 5 of 5, recognizer 8 of 8) with no eviction,
+refusal or deferral. A creation took 136 to 281 ms beside reads (63 to 91 ms
+at preparation with nothing running). The cost lands on the reads it overlaps:
+
+| Read | Reads | Excess over settled replay, median | Range |
+| --- | ---: | --- | --- |
+| overlaps a creation, settled 50 ms or more | 23 | +26.9 ms (+13 %) | +0.1 to +128 ms (+0 to +36 %) |
+| overlaps a creation, settled under 50 ms | 19 | +16.8 ms (+76 %) | +4.3 to +45 ms (+20 to +207 %) |
+| only overflow calls (the plain path) | 22 | at switch-off speed | |
+| neither | 152 | +0.0 ms | |
+
+**Attribution of the missed target.** In round 10's own run the reverse
+cohort's lecture frames were slow over whole scenes (board-lecture-04 59.0,
+44.0, 30.1, 29.2, 78.1, 37.7 ms against 19.4 to 20.1 in the forward cohort),
+which the "about a fifth" of the churn diagnostic does not explain. The new
+receipts do: a read whose shapes still run on the overflow context runs at the
+switch-off time (board-lecture-05's 22.9 and 22.5 ms reads, switch-off 22.3),
+and of the 13 lecture reads 10 ms or more above settled replay (+10.4 to +45
+ms), 12 had a creation running (the flags come from the separate profiled
+process, mapped by scene and pass).
+On short reads a creation acts as a stall of tens of milliseconds, not as a
+proportional slowdown. In reads (reads more than 8 % above settled replay; `r10b_transition.py`):
+
+| Process | Transition | Excess over settled replay | Against switch-off, same reads |
+| --- | --- | ---: | ---: |
+| forward cohort (dense documents first) | first 25 reads (6.1 s), 11 of them slow | +469 ms | -40 ms |
+| reverse cohort (lecture frames first) | until read 97 (10.2 s), 38 slow | +870 ms | -6 ms |
+| round 10's design, forward (`r10-v1-ab-1`) | first 20 reads, 8 slow | +329 ms | -107 ms |
+| round 10's design, reverse | until read 63, 32 slow | +831 ms | +320 ms |
+
+So a v1 process pays about half a second to 0.9 s over settled replay while it
+makes its 13 contexts; with this policy that is spread over more reads, and
+over the transition the replay process is no slower in total than the
+switch-off process, where round 10's design was 0.3 s behind it.
+
+**Timing after the fixes.** RTX 4090 (driver 621.14), Ryzen 9 5900X, MSVC
+19.44 Release, CUDA 12.9.86, TensorRT 11.4.0.106, medium BF16 pair; build of
+`253c676` (later commits move the creation policy into the cache header, skip
+the read marker with replay off and add tests and documentation), the
+`uct_paddle_tests` executable with the fault hooks compiled in. Arms
+`OKUFLOW_UCT_TEST_TRT_GRAPH=0` and `=1`. `nvidia-smi` sampled P-state, clocks,
+power and utilisation every 100 ms (read-only query) in every run.
+
+Back to back, the standard two reversed cohorts of five (`r10b-v1-ab-1`) and a
+second run of six cohorts alternating direction and arm order, three each way
+(`r10b-v1-alt-1`). Warm median of all warm reads per arm, the range of the
+replay arm's cohort medians, and warm and first-read speedups:
+
+| Scene | two cohorts: off / on warm ms (on cohorts) | warm / first | six cohorts: off / on warm ms (on cohorts) | warm / first |
+|---|---|---|---|---|
+| doc-camera-1080 | 205.0 / 192.4 (188.4..211.7) | 1.065 / 1.045 | 203.9 / 193.0 (188.1..233.2) | 1.056 / 1.024 |
+| doc-camera-tilt-1080 | 156.9 / 145.8 (144.1..154.8) | 1.076 / 1.035 | 156.7 / 147.7 (144.1..164.4) | 1.061 / 1.066 |
+| doc-camera-2160 | 464.4 / 431.9 (431.0..459.2) | 1.075 / 1.019 | 464.2 / 435.3 (432.1..462.0) | 1.066 / 1.049 |
+| doc-camera-turkish-1080 | 177.7 / 164.0 (163.8..164.2) | 1.084 / 0.956 | 178.1 / 164.5 (164.0..166.0) | 1.083 / 1.086 |
+| book-curved-1080 | 63.3 / 55.1 (55.0..55.1) | 1.149 / 1.064 | 63.0 / 55.6 (55.0..57.6) | 1.134 / 1.141 |
+| slide-light-1080 | 68.9 / 59.9 (59.7..60.4) | 1.150 / 1.110 | 67.4 / 60.1 (60.0..63.2) | 1.122 / 1.188 |
+| slide-dark-1080 | 69.8 / 60.9 (60.7..60.9) | 1.146 / 1.090 | 69.8 / 61.1 (60.4..63.7) | 1.142 / 1.113 |
+| slide-light-2160 | 113.0 / 98.3 (98.2..102.8) | 1.149 / 1.120 | 113.6 / 98.4 (97.8..107.4) | 1.154 / 1.097 |
+| table-1080 | 140.3 / 127.8 (127.0..142.9) | 1.098 / 1.033 | 140.5 / 127.9 (126.9..150.9) | 1.098 / 1.100 |
+| page-portrait-1654x2339 | 371.6 / 377.5 (356.1..420.2) | 0.984 / 0.997 | 373.2 / 367.5 (352.5..400.3) | 1.016 / 1.021 |
+| signs-sparse-1080 | 32.0 / 27.7 (27.3..36.3) | 1.155 / 1.126 | 31.0 / 28.2 (26.8..33.2) | 1.099 / 1.067 |
+| no-text-1080 | 30.9 / 26.3 (26.1..26.5) | 1.176 / 1.195 | 30.4 / 26.1 (25.7..26.3) | 1.166 / 1.189 |
+| board-lecture-00 | 23.7 / 18.8 (18.7..18.8) | 1.265 / 1.240 | 22.7 / 18.6 (18.6..18.8) | 1.223 / 1.250 |
+| board-lecture-01 | 23.7 / 18.5 (18.3..18.5) | 1.284 / 1.276 | 23.1 / 18.2 (17.9..20.5) | 1.266 / 1.251 |
+| board-lecture-02 | 25.4 / 21.8 (21.8..22.0) | 1.166 / 0.801 | 26.0 / 21.5 (21.3..29.2) | 1.210 / 1.049 |
+| board-lecture-03 | 26.1 / 23.7 (21.4..34.0) | 1.104 / 1.126 | 27.2 / 22.0 (20.9..28.8) | 1.237 / 1.094 |
+| board-lecture-04 | 25.3 / 23.0 (20.0..36.5) | 1.100 / 0.839 | 24.9 / 21.5 (19.4..51.2) | 1.157 / 0.910 |
+| board-lecture-05 | 22.3 / 20.8 (18.9..33.2) | 1.067 / 1.090 | 22.8 / 20.3 (18.4..39.0) | 1.123 / 1.119 |
+| geometric mean | | 1.125 / 1.058 | | 1.132 / 1.098 |
+
+Identical output on 18 of 18 scenes in both runs. Every process of both arms
+ran in P2 at a median 2.57 to 2.64 GHz with no sample below 1.5 GHz; the last
+switch-off process of the six-cohort run was slower on every scene at lower
+utilisation (other load), not at lower clocks. The warm target (1.17x, each
+lecture frame 1.20x) is still not met back to back: 1.125x and 1.132x, and the
+lecture frames that open the reverse cohorts carry the creation transient
+(board-lecture-04's replay cohort medians 19.4 to 51.2 ms). Where a cohort
+read a lecture frame with its contexts made, it ran at 17.9 to 21.4 ms against
+22.3 to 27.6 ms off.
+
+Paced like the application's advancing media, 350 ms before every read, six
+alternating cohorts (`r10b-v1-gap350-1`):
+
+| Scene | paced: off / on warm ms (on cohorts) | warm / first |
+|---|---|---|
+| doc-camera-1080 | 202.7 / 185.6 (185.3..185.7) | 1.092 / 1.002 |
+| doc-camera-tilt-1080 | 155.8 / 142.5 (142.1..142.8) | 1.093 / 1.089 |
+| doc-camera-2160 | 461.8 / 425.6 (423.9..426.5) | 1.085 / 1.079 |
+| doc-camera-turkish-1080 | 175.8 / 162.6 (161.9..163.5) | 1.081 / 1.037 |
+| book-curved-1080 | 79.6 / 77.2 (55.4..79.6) | 1.031 / 1.100 |
+| slide-light-1080 | 82.4 / 81.3 (80.2..81.7) | 1.014 / 1.200 |
+| slide-dark-1080 | 84.3 / 80.9 (60.2..81.9) | 1.042 / 1.092 |
+| slide-light-2160 | 112.0 / 97.9 (97.5..98.5) | 1.143 / 1.076 |
+| table-1080 | 137.9 / 125.9 (125.8..126.6) | 1.095 / 1.097 |
+| page-portrait-1654x2339 | 368.2 / 344.2 (342.0..344.7) | 1.070 / 1.209 |
+| signs-sparse-1080 | 59.3 / 61.1 (26.8..137.4) | 0.972 / 0.406 |
+| no-text-1080 | 70.7 / 67.2 (66.9..124.5) | 1.052 / 1.057 |
+| board-lecture-00 | 108.5 / 53.0 (43.1..109.9) | 2.047 / 1.067 |
+| board-lecture-01 | 53.4 / 51.7 (19.1..107.9) | 1.033 / 1.018 |
+| board-lecture-02 | 67.3 / 63.7 (22.3..112.4) | 1.055 / 0.709 |
+| board-lecture-03 | 113.7 / 110.5 (57.3..120.0) | 1.029 / 1.517 |
+| board-lecture-04 | 68.6 / 31.2 (20.7..114.4) | 2.200 / 1.019 |
+| board-lecture-05 | 23.1 / 19.6 (19.5..111.1) | 1.177 / 1.571 |
+| geometric mean | | 1.150 / 1.040 |
+
+Identical output on 18 of 18. The clock state was the same in both arms:
+P2 for 70 and 71 percent of the samples, P3 12 and 12, P5 16 and 14, P8 2 and
+2; 29 and 28 percent of the samples below 1.5 GHz (10th percentile 660 and 705
+MHz). That is round 13's finding: between the reads of a sparse frame the GPU
+clocks itself down, and a short read then runs at a fraction of its speed. So
+the sparse scenes (the lecture frames, signs, no-text, the 1080 slides, the
+curved book) swing between about 19 and 120 ms within an arm and support no
+paced gain or loss. The dense scenes, whose reads keep the clocks up, are
+consistent within 2 percent across cohorts and agree with back to back:
+doc-camera 1.08x to 1.09x, table 1.10x, slide-light-2160 1.14x, page-portrait
+1.07x. The geometric mean, 1.150x, is not a claim. In the paced profiled pass
+(`r10b-v1-gap350-profile-1`) all 13 creations of each process landed in idle
+gaps (59 to 90 ms each, as at preparation), no creation started under load,
+and over each whole paced process the replay arm took 0.25 to 1.5 s less than
+the switch-off arm of the same cohort.
+
+Receipts from separate profiled passes, never used for timing
+(`r10b-v1-profile-1`, back to back, with and without region reconciliation,
+and `r10b-v1-gap350-profile-1`): in every process contexts created equal
+contexts wanted (detector 5 of 5, recognizer 8 of 8), no eviction, no refusal,
+no deferral.
+
+**Tests on the final build** (`c8cbb5a`): `optionalGraphReplayFaults`
+(`r10b-faults-2`, all ten paths; the low-memory case reads 78 times, its three
+deferrals pass and captures follow the last one), `optionalGraphReplayRetireUnadopted`
+(`r10b-retire-2`), `optionalGraphReplayCheckpoints` (`r10b-checkpoints-2`:
+cancelled 13, 2, 6 and 13 reads at planned, captured, drained and launched),
+`optionalGraphReplayLifetime` (`r10b-lifetime-2`) and all nine
+`optionalGraphReplayConfigurations` (`r10b-configurations-2`) pass, every one
+with identical output against the switch-off read; the model-free
+`graphReplayCreationTurns` passed 20 runs of 20. Contexts made by the end of
+each configuration's process (about 26 reads back to back), detector and
+recognizer, against those wanted:
+
+| Configuration | Contexts made / wanted | Evictions, refusals | Replay keeps (switch-on minus off, free memory) |
+| --- | --- | --- | ---: |
+| Medium BF16, batch 8 | 3/3, 6/6 | 0, 0 | 42 MiB |
+| Medium BF16, batch 1 | 3/3, 1/1 | 0, 0 | 16 MiB |
+| Medium, batch 16 (FP32 recognizer) | 3/3, 4/7 | 0, 0 | 24 MiB |
+| Medium FP32 | 3/3, 4/6 | 0, 0 | 14 MiB |
+| Small BF16 | 3/3, 6/6 | 0, 0 | 30 MiB |
+| Tiny BF16 | 3/3, 1/1 | 0, 0 | 12 MiB |
+| Bucketed width (recognizer plain) | 3/3, - | 0, 0 | 12 MiB |
+| Paused-detail reads | 3/3, 6/6 | 0, 0 | 42 MiB |
+| `medium-bf16-fill` (both images and twelve detail views, 300 ms gaps) | 6/6, 8/8 | 0, 0 | 66 MiB |
+
+In round 10 the same short runs ended with the small tier at 3 of 6 recognizer
+contexts; under continuous load the policy now makes one context per two
+reads, so a process needs about twice as many reads as it wants contexts, and
+the two configurations with the most (batch 16, FP32, whose creations are also
+the slowest) end these runs short of them, their remaining shapes on the
+overflow context. `medium-bf16-fill` was run: 14 slots in use (6 of the
+detector's 8, all 8 of the recognizer's), 66 MiB, where round 10's run of the
+same configuration measured 50 MiB for the same slot count. Free device memory
+on this shared desktop varies by that much between runs, so the figure is an
+upper reading, not a precise one; all sixteen slots were not reached and the
+53 MiB extrapolation of round 10 is withdrawn in favour of "between 50 and 66
+MiB measured with 14 slots".
+
+**Which conditions are closed.**
+
+| Condition | State |
+| --- | --- |
+| Council blocker: unadopted State never retired | Closed: fixed, GPU test, negative control |
+| Creation "only while no read runs" not enforced | Closed: stated policy, enforced, tested without a model, measured cost per overlapped read |
+| Creator starved under continuous load | Closed with a bound: one creation per two reads; short processes with many contexts wanted still end before all exist |
+| Output-storage fallback freed the plain buffer | Closed: fixed, the fault reaches the allocation |
+| Fault test freed its plan after a delay | Closed |
+| Attribution of the missed warm target | Closed: per-read receipts; the excess sits on reads that overlap a creation |
+| Hold-off and the low-memory test | Closed: hold-off in reads, test reads long enough and asserts recovery |
+| Warm target back to back (1.17x, lecture frames 1.20x) | **Not met**: 1.125x and 1.132x |
+| Paced gain | **Not established**: the GPU clocks down between sparse reads in both arms (round 13); dense scenes 1.07x to 1.14x |
+| Round 3's slow start | **Not isolated** |
+| Memory with every slot in use | **Not reached** (14 of 16 slots, 50 to 66 MiB) |
+
+Default: off, as the brief requires; the orchestrator decides after this and
+round 13.
+
+**Round 8 note.** The contexts of one engine share one activation arena,
+including its plain overflow context. That is safe only while every context of
+the engine runs in order on the State's one stream. Round 8, which runs
+recognition groups concurrently, must give each context that can run beside
+another its own arena (or keep both on one stream) before it is combined with
+replay.
+
+## Round 12: readable text withheld on flat pages (issue #18; private switch, off)
+
+Targets stated before the work: on the 20 tuning pages at least +300 exact
+label matches with curved processing on (no page worse by more than 3); on
+every confirmation set no fewer exact matches than today; on the bent book
+pages also no lower recall and the same or more ribbon-read words; no title
+placement that is complete today becoming incomplete; every protection box of a
+line that is still refused still present; no `v1` scene slower beyond the noise
+floor, and a stated cost for any added recognition.
+
+Result: met with `OKUFLOW_UCT_TEST_FLAT_RIBBON=straight-refused`, which stays
+off by default. Tuning pages +386 with no page worse; development pages +566
+and +172; fresh pages 0, +8, +13 and +17; this repository's scenes unchanged;
+nine new bent book pages +555; titles 43 of 62 in every arm; no protection box
+of a still-refused line lost on any page; speed unchanged. The flat fallback
+the issue proposes was not built: in OkuFlow it would re-read the crop a
+refused line is already read from (below). The speed target's wish that flat
+pages get faster is not met: neither mode removes measurable work.
+
+### Where the words were lost
+
+Curved processing on against off showed the defect at scale on flat labelled
+pages (`issue18-flat-*`, round 6 review). Counted on the tuning pages with
+temporary instrumentation (`r12-diag-tune`, one read, RTX 4090):
+
+| Detection fit outcome | Detections | Words decoded (detection crops) |
+| --- | ---: | ---: |
+| Straight (ordinary rectangle) | 859 | 2,877 |
+| Fitted ribbon | 230 | 851, 66 over the chord limit |
+| Refused: ribbon outside its source region | 60 | 276, all withheld |
+| Refused: residual 8, height 1 | 9 | 12, all withheld |
+| Fit not tried (short, gaps) | 76 | 82 |
+
+Every flagged line on these pages is a false curve: they are flat screen
+pages. The 584 withheld (invalid-geometry) words in the final output are 268
+straight words that inherited a refused line's protection in the merge, 315
+ribbon words (a refused line's own words, or fitted words that inherited) and 1
+fitted word over its chord limit. Attribution arms on the same build
+(`r12-tune-k`): leaving refused lines unmarked recovers +435 exact matches, no
+chord limit +45, both +483. So the loss is refusal protection, mostly reached
+through the region-edge check, not bad fits.
+
+Why straight lines are flagged: the straight-line test is a fixed sagitta,
+max(0.75 px, 8% of the mean envelope height) in detector pixels, whatever the
+line's length. A long line has a large sagitta for a tiny curvature. The falsely
+flagged flat lines have a median fitted bow of 0.15 of their height over a
+median of 91 heights; the real curves of `book-curved-1080`, which the detector
+cuts into short pieces, have the same bow (median 0.13) over 20 heights, a
+curvature about 13 times larger. A significance test of the quadratic term did
+not separate them (median z about 5.6 for both); length does.
+
+### What changed
+
+`ribbon::StraightBound` scales the established bound by
+max(1, length / (K x mean height)) with K = 20. Lines up to K heights are judged
+exactly as today. For a longer parabolic line under the scaled bound, every
+piece of K heights departs from its own chord by less than the established
+bound (a sub-span's sagitta falls with its squared length), and the end angle
+between curve and chord (4 x sagitta / length) stays within what the
+established bound accepts on a line K heights long. Words and the recognition
+windows of a long line are therefore at most as curved as lines today's rule
+already sends to the rectangle path.
+
+`ribbon::StraightRule` applies it two ways, each its own switch value:
+
+- `straight-refused`: the scaled bound replaces only a refusal. A valid ribbon
+  fit stays a ribbon, and a line that is still refused keeps exactly today's
+  geometry and protection box. A moved line was already read from its
+  rectangle crop (refused ribbons always were), so recognition work does not
+  change; it loses the ribbon flag and protection box.
+- `straight`: the scaled bound applies before any ribbon check, so long flat
+  lines with a valid fit become rectangles too.
+
+`ribbon::Fit` now records its outcome (straight, fitted, the first failed
+check, or moved by a rule) and the fitted bow in former padding bytes; the
+layout keeps its 144 bytes. With `OKUFLOW_UCT_TRT_PROFILE=1` the profile line
+gains `ribbonFit`: crops and decoded words per outcome for detections and
+their sub-windows, a bow histogram per outcome class, and (bounded) the
+protection box of each refused detection and the box of each moved one.
+`PaddleDetect` mirrors the rule for the CPU path.
+
+K was chosen on the tuning pages and fresh set 1 only (`r12-tune-k`,
+`r12-fresh1-k`, `r12-sr-tune`, `r12-sr-fresh1`):
+
+| K | `straight-refused` tuning | `straight` tuning (worst page) | Fresh set 1 (both) |
+| ---: | ---: | --- | ---: |
+| 10 | +429 | +369 (-15) | +13 |
+| 15 | +407 | +347 (-15) | +13 |
+| 20 | +386 | +328 (-15) | +13 |
+| 25 | +363 | +305 (-15) | +13 |
+| 30 | +350 | +292 (-15) | +13 |
+
+`straight-refused` makes no tuning page worse at any K. Smaller K reads more,
+but moves lines whose curvature is larger: at K = 10 the end angle may reach
+twice what today's rule accepts on a 20-height line. K = 20 keeps the
+statements above at the scale of a recognition window and of any word, and
+costs 43 tuning words against K = 10. `straight` loses up to 15 words on three
+dense portrait pages with mixed type sizes in one line: there the valid
+ribbon reads better because its crop height follows the size change.
+
+The diagnosis also ran on `v1` (which holds the bent page) before the
+confirmation, so `v1` is not untouched in this round.
+
+### Not built: the flat fallback and a narrower inheritance
+
+The issue's fallback keeps the rectangular candidate of a curve-related
+detection and re-reads it when the curved read lacks confident coverage. In
+OkuFlow a refused ribbon is already recognized from its original rectangle;
+only its words are withheld. A re-read would decode the same crop, and its
+words would meet the same protection in the merge. For fitted lines the most a
+rectangle re-read could add, page by page (the better of `straight` and
+`straight-refused`), is 7 words on the tuning pages. After `straight-refused`,
+122 words remain withheld there: 27 refused detections (24 at a region edge, 2
+residual, 1 height) and 43 straight words that inherited their protection.
+Neither the inheritance share nor the fallback's ceiling justified changing
+the owner's protection design, so neither was built. Making such words
+readable but not drawable would be a reading-path change (every non-candidate
+word is omitted from reading), not a ribbon change.
+
+### Confirmation (final binary)
+
+All rows: build `3379ffa` (`uct_paddle_tests.exe` SHA-256
+`f8f67268de7cfd71d0df702172a8dafb207a761c18ab600ab6bd957501a7eabb`), RTX 4090,
+driver 621.14, Ryzen 9 5900X, MSVC 19.44 Release, Qt 6.12.0, CUDA 12.9.86,
+TensorRT 11.4.0.106, medium/medium BF16, one first read per page, profiled
+(`r12-final2-q-*`). Fresh sets 5 and 6 and bent set 1
+(`perf_corpus.py --bent 1`, new in this round) were generated after the final
+source was committed. Exact = case-sensitive label matches; invalid = withheld
+words; boxes = distinct protection boxes in the output.
+
+| Set | Labels | Exact today | `straight-refused` | `straight` | Worse pages (refused / straight) | Invalid words today / refused | Protection boxes today / refused |
+| --- | ---: | ---: | ---: | ---: | --- | --- | --- |
+| Tuning, 20 | 8,154 | 6,163 | 6,549 (+386) | 6,491 (+328) | 0 / 3 (worst -15) | 584 / 122 | 399 / 95 |
+| Fresh 1, 12 | 7,381 | 7,328 | 7,341 (+13) | 7,341 (+13) | 0 / 0 | 13 / 0 | 10 / 0 |
+| Development A, 40 | 12,180 | 9,225 | 9,791 (+566) | 9,809 (+584) | 0 / 2 (worst -11) | 946 / 267 | 580 / 223 |
+| Development B, 48 | 5,323 | 3,076 | 3,248 (+172) | 3,222 (+146) | 0 / 5 (worst -4) | 805 / 541 | 586 / 439 |
+| `v1`, 12 labelled | 4,394 | 4,106 | 4,106 (0) | 4,106 (0) | 0 / 0 | 36 / 36 | 13 / 13 |
+| Fresh 2, 12 | 6,610 | 6,577 | 6,577 (0) | 6,577 (0) | 0 / 0 | 0 / 0 | 0 / 0 |
+| Fresh 5, 12 | 6,967 | 6,912 | 6,920 (+8) | 6,923 (+11) | 0 / 0 | 10 / 2 | 9 / 2 |
+| Fresh 6, 12 | 6,016 | 5,954 | 5,971 (+17) | 5,971 (+17) | 0 / 0 | 20 / 0 | 15 / 0 |
+| Bent book pages, 9 | 5,976 | 3,648 | 4,203 (+555) | 4,189 (+541) | 0 / 2 (worst -7) | 1,863 / 1,293 | 783 / 445 |
+
+- `book-curved-1080`: 163 exact matches, recall 0.396, in all three arms.
+  Ribbon-read candidate words: `v1` 114 today and with `straight-refused`, 74
+  with `straight`; bent set 1,173 today, 1,215 with `straight-refused`, 439
+  with `straight`. Bent-set recall 0.610 today, 0.703 with `straight-refused`.
+  The bent set gains most on its milder pages (one goes from 150 to 379 of 394
+  words), where today's rule refuses long, slightly bent lines at region edges.
+- Titles (62 private placements, counts only): complete in 43 in every arm;
+  none changes.
+- Protection, per page (`r12_protection.py`): every refused detection's box of
+  today's read is, with the switch, either a refused detection's box again or
+  the box of a line the rule moved; none is missing on any set. Moved/kept
+  refused detections: tuning 42/27, development A 63/51, development B 36/139,
+  `v1` 0/14, fresh 1 4/4, fresh 2 1/0, fresh 5 3/0, fresh 6 4/0, bent 73/233,
+  titles 0/9.
+- Work: `straight-refused` changes no crop. On the tuning pages the read keeps
+  880 ribbon crops and 3,811 recognizer samples; refused crops fall from 168 to
+  27. `straight` cuts ribbon crops to 32 and samples to 3,736.
+
+Speed (`r12-final2-speed-v1`: two reversed cohorts of five warm reads;
+`r12-final2-speed-tune`: two cohorts of two), same build and machine:
+
+| Arm against today | `v1` warm | `v1` first read | Tuning warm | Tuning first read |
+| --- | ---: | ---: | ---: | ---: |
+| `straight-refused` | 0.999x | 0.993x | 1.000x | 1.002x |
+| `straight` | 0.955x | 0.959x | 1.008x | 1.001x |
+
+`straight-refused` gives byte-identical output on 18 of 18 `v1` scenes, so its
+`v1` differences are noise: the largest dense-scene change is doc-camera-1080
+at 1.8 percent (inside the 2 percent floor); sparse lecture scenes move by up
+to 6 percent (inside 12). `straight` is slower on several sparse scenes in one
+cohort only; that run was not repeated. Neither mode makes flat pages
+measurably faster: `straight-refused` removes no ribbon work, and the ribbon
+crops that `straight` removes cost no more to rectify than rectangles.
+
+The first confirmation attempt measured the previous diagnostic build: the
+build of `3379ffa` had stopped on a misnamed target. Its quality results
+(`r12-final-q-*`) are identical to the rerun; its speed runs
+(`r12-final-speed-*`) were heavily contended and are not used.
+
+Tests: `curvedRibbonStraightSpanBound` (model-free: the bound and its two
+geometric statements, the outcome of each refusal, and over a sweep of
+lengths, bows, slopes and source sizes that a rule only ever moves a component
+to the rectangle path, never changes a fitted or refused geometry or its
+protection, and under `straight-refused` never changes a valid fit);
+`gpuRibbonStraightRuleMatchesCpu` (GPU and CPU agree on the outcome for each
+rule). Existing ribbon, reconcile and detector-kernel slots and the exact merge
+replay (`uct_merge_replay_tests`, frozen baseline unchanged) pass. The merge
+itself is unchanged; with the switch on it decides differently only because
+moved lines' words arrive as ordinary candidates without a protection box.
+SCOPED: no full matrix, GUI or native-app run.
+
+### Not established
+
+No pixel-level check that words drawn on a moved line sit on their ink: the
+argument is geometric (the bound above, plus the per-word ink fit every
+rectangle word already gets), and the moved lines on the bent set are real,
+mildly curved lines. No owner camera or document capture is in any set. The
+issue's OkuRead title failure does not reproduce in OkuFlow (0 of 62
+placements change with curved processing on or off).
+
+### Default
+
+Off. Recommendation: make `straight-refused` the default. It meets every
+quality and protection target on every set, makes no page worse anywhere,
+keeps every valid ribbon and every protection box of a line that is still
+refused, and costs no time. `straight` should stay off: it loses words on
+mixed-size lines and ribbon-read words on bent pages.
+
+### Round 12b: the rule narrowed to what its argument covers, and where moved words are drawn
+
+The round 12 council (GPT-6.1 Sol 6/10, Claude Opus 5.5 7/10, Gemini 4
+Hydrogen 7/10; Sol for keeping it off, the other two for turning it on after a
+placement check) accepted the reading gains and the
+argument against the flat re-read, and found that the rule went further than
+its argument: `straight-refused` turned every refusal into a rectangle when the
+fitted bow was under the scaled bound, including steep and residual refusals,
+where the parabola says nothing about the line's real shape; the scaled bound
+had no ceiling and its 0.75 px floor grew with length, loosening it for small
+type; and nothing measured where the newly shown words are drawn. The owner's
+condition is that replacement text is never drawn over ink that could not be
+rectified. Changes (switch still off):
+
+- **Only region-edge refusals move.** `straight-refused` now moves only a line
+  refused because its padded ribbon leaves its source region (`kOutside`), the
+  one refusal after every shape check. Steep and residual refusals stay
+  refused; so do height refusals (the envelope tapers by more than half its
+  height, so one rectangle height cannot fit its words, the failure measured
+  below) and degenerate ones (the height regression failed; unreachable with
+  at least 20 distinct bins, and the rule moves only lines whose fit completed
+  every check). The review's photographed line (flat, dropping half a text
+  height near the gutter: least-squares bow under the bound, residual over its
+  limit) is a test case and stays refused.
+- **A cap and a floor that does not scale.** No line whose fitted sagitta
+  exceeds 0.32 mean heights is treated as straight, whatever its length
+  (`ribbon::kStraightMaximumBow`, an edge of the existing bow histogram). Only
+  the 8% part of the bound scales with length; the 0.75 px floor is a fixed
+  noise allowance. At a detector height of 5 px and 100 heights the bound was
+  0.75 h, now 0.4 h; above 80 heights the cap binds.
+- **Words drawn only on their ink.** A word of a moved line that the worker's
+  ink fitting cannot place (`RefineWordInkBounds` / `FitOrientedWordInk`
+  keep the detector span) is withheld as invalid geometry over that span, as
+  when its line was refused (`FinalizeRecognizedGeometry`). Words of other
+  lines keep today's disposition, fitted or not.
+- **Both readers.** `PaddleFlatRibbonRule` parses the switch for the TensorRT
+  and the CPU reader; the CPU reader ignored it before.
+
+Each step was committed with a test: `curvedRibbonStraightSpanBound` (floor,
+cap, the residual and height cases kept refused, only `kOutside` moves),
+`curvedRibbonFlatSwitchBothReaders` (one parser; both readers refuse an
+invalid value with the same message; `PaddleDetect` moves a region-edge line
+and its words carry the bow), `curvedRibbonMovedWordsHeldToInk` (only an
+unfitted word of a moved line changes disposition) and
+`gpuRibbonStraightRuleMatchesCpu`, which now also covers the region-edge case
+and both sides of the cap, with the default kernels (`parallelRibbonMerge`) and
+the reference ones. Over its 40 comparisons GPU and CPU agree exactly on
+outcome and status and bit for bit on the bow; 24 geometries are
+bit-identical and the others differ by at most 4.5e-5 px, which is the
+intended agreement (the GPU sums bin positions in float per thread and merges,
+the CPU in double).
+
+The cap was chosen on the tuning pages and fresh set 1 only: no moved line
+there bows more than 0.32 h, and fitted moved words show no placement trend
+with bow up to it (edges within 0.1 h: 88%, 95% and 85% for bows up to 0.16,
+0.24 and 0.32 h). Narrowing to region-edge refusals costs 32 tuning words
+(+386 to +354 before the placement fix).
+
+#### Where moved words are drawn
+
+Measured after the worker's ink fitting, from the read's own output (the
+corpus timing evidence now records `inkFitted`, the final quad and
+`movedLineBow` per word) and the page pixels (`r12b_placement.py` in the
+program's tools). Ink is the pixels on the word's own side of the midpoint
+between its measured foreground and background; h is the height of the
+word's ink. "Same pages" weights the ordinary straight-line words (not ribbon,
+not moved) of each page by that page's moved words, because moved words
+cluster on a few pages: on the tuning pages 47 of 246 are on one dark, noisy
+page where ordinary words fit at 28 percent.
+
+Before the fix, 34 of 246 moved tuning words (33 on that page) failed ink
+fitting and were painted with the unrefined detector span, up to three times
+their ink height. Ordinary words on the same pages fail at the same rate and
+are painted the same way. Under the narrowed rule the case the review found on
+tuning page 18's top line no longer occurs: 48 of its 49 moved words fit. Final
+binary, painted words, moved / ordinary on the same pages:
+
+| Set | Moved (fit-eligible) | Fit rate | Withheld by the fix | Edges within 0.1 h | Box over another row by more than 0.1 h | Another line's ink in the box |
+| --- | ---: | --- | ---: | --- | --- | --- |
+| Tuning | 246 | 86.2% / 83.8% | 34 | 90.1% / 82.0% | 1.4% / 2.3% | 0.5% / 0.2% |
+| Development A | 356 | 82.9% / 83.2% | 61 | 92.2% / 81.7% | 1.4% / 1.0% | 0% / 0.2% |
+| Development B | 111 | 89.2% / 95.7% | 12 | 92.9% / 90.0% | 6.1% / 2.8% | 0% / 1.0% |
+| Bent | 497 | 99.6% / 99.2% | 2 | 96.6% / 97.5% | 21.2% / 13.7% | 0.2% / 0.7% |
+| Gutter | 313 | 99.0% / 99.6% | 3 | 97.1% / 98.2% | 7.4% / 2.6% | 1.0% / 0.1% |
+
+Fresh sets 1, 5 and 6 move 8, 6 and 9 words: all fitted, all within 0.1 h,
+none over another row. The median box height equals the ink height in both
+groups. The row overlaps inspected are on dense pages with tight leading,
+where fitted boxes of ascenders and descenders touch the adjacent row; ordinary
+words do the same, and on the tuning pages one overlap is a title word's own
+box reaching down onto a moved line.
+
+Against the review's pass criteria: the fit rate is within two points of
+ordinary words on the tuning, development A, bent and gutter pages, but 6.5
+points below on development B (12 words over 14 pages). Final boxes are within
+0.1 h of their ink for 90 to 97 percent of drawn moved words: as often as
+ordinary words on the flat sets, slightly less often on the bent and gutter
+pages, and not for every word. Boxes of moved words do intersect neighbouring
+rows' boxes, and more often than ordinary words on the development B, bent and
+gutter pages. **The criteria are not met.**
+
+#### Protection in the final output
+
+`r12b_protection.py` checks, per page of every set, that every detection that
+is still refused has its protection box inside the union of the
+`protectedBounds` of the read's invalid-geometry words. Today's read already
+fails this on some pages (tuning 4 detections plus 3 that decoded no word,
+fresh 1 6, development A 15, development B 26, bent 8, gutter 3, `v1` 1,
+titles 7): a cut-edge fragment at an internal region edge loses its words in
+the merge and the overlapping region's complete read is kept. The decisive
+figure is a detection covered today and not with the switch: 0 on tuning,
+fresh 1, 2, 5 and 6, development B, `v1`, gutter and titles; 1 on development A
+(`held2-12`) and 2 on the bent set (`bent-1440-b1`, `bent-2160-b1`). In all
+three the still-refused detection is a shorter fragment (99 to 100 percent of
+its area inside) of a line that an overlapping detection reads in full, and in
+neither arm does any word carry the fragment's own box. Today the coverage came
+from the full line's refusal. The rule moves that line, because every shape
+check passed over its full length, and its words are drawn fitted to their
+ink. Round 12's detector-level check is still clean: every refused box of
+today's read is refused again or moved, and none is missing.
+
+#### Confirmation (final binary)
+
+Build `fcc12a7` (code as of `5187f54`; `uct_paddle_tests.exe` SHA-256
+`28827ae7f1ecbbe89ee6c778a3d88e290d5bd8053b61c2e0fd2afd07af029188`), RTX 4090,
+driver 621.14, Ryzen 9 5900X, MSVC 19.44 Release, Qt 6.12.0, CUDA 12.9.86,
+TensorRT 11.4.0.106, medium/medium BF16, one first read per page, profiled
+(`r12b-final-q-*`). The gutter set (`perf_corpus.py --gutter 1`, new) was
+generated after this build. `straight` was not re-measured.
+
+| Set | Labels | Exact today | `straight-refused` | Worse / better pages | Invalid words today / switch | Protection boxes | Moved / still refused |
+| --- | ---: | ---: | ---: | --- | --- | --- | --- |
+| Tuning, 20 | 8,154 | 6,163 | 6,487 (+324) | 0 / 10 | 584 / 198 | 399 / 148 | 36 / 33 |
+| Fresh 1, 12 | 7,381 | 7,328 | 7,341 (+13) | 0 / 2 | 13 / 0 | 10 / 0 | 4 / 4 |
+| Development A, 40 | 12,180 | 9,225 | 9,679 (+454) | 0 / 18 | 946 / 391 | 580 / 307 | 53 / 61 |
+| Development B, 48 | 5,323 | 3,076 | 3,193 (+117) | 0 / 18 | 805 / 617 | 586 / 487 | 29 / 146 |
+| `v1`, 12 labelled | 4,394 | 4,106 | 4,106 (0) | 0 / 0 | 36 / 36 | 13 / 13 | 0 / 14 |
+| Fresh 2, 12 | 6,610 | 6,577 | 6,577 (0) | 0 / 0 | 0 / 0 | 0 / 0 | 1 / 0 |
+| Fresh 5, 12 | 6,967 | 6,912 | 6,920 (+8) | 0 / 2 | 10 / 2 | 9 / 2 | 3 / 0 |
+| Fresh 6, 12 | 6,016 | 5,954 | 5,971 (+17) | 0 / 2 | 20 / 0 | 15 / 0 | 4 / 0 |
+| Bent, 9 | 5,976 | 3,648 | 4,193 (+545) | 0 / 5 | 1,863 / 1,304 | 783 / 448 | 72 / 234 |
+| Gutter, 9 (new) | 5,440 | 4,464 | 4,949 (+485) | 0 / 7 | 871 / 373 | 280 / 119 | 52 / 53 |
+
+- Titles (62 private placements, counts only): complete in 43 in both arms;
+  none of their refused detections moves.
+- Recall: bent 0.610 to 0.702, gutter 0.821 to 0.910; `book-curved-1080`
+  unchanged.
+- Newly shown words that match no label ("other words"): tuning 14.1% against
+  14.7% for the rest of the shown words, development A 15.9 against 14.6,
+  development B 29.6 against 31.3, bent 1.1 against 2.6, gutter 1.0 against
+  1.5, fresh sets 0.
+- Speed (`r12b-final-speed-v1`, two reversed cohorts of five;
+  `r12b-final-speed-tune`, two of two): `v1` warm 1.000x, first read 1.007x,
+  output byte-identical on 18 of 18 scenes and no line moved on any `v1`
+  scene, so every difference is noise; the largest is `book-curved-1080` at
+  3.3 percent warm (1.9 first read), above the 2 percent dense floor in this
+  run. Tuning pages warm 0.985x, first read 0.996x; the cohorts
+  of sparse pages disagree by up to 38 percent there (contention), so that
+  run shows no change beyond the noise and no more.
+
+Interaction with region reconciliation: a moved line is no longer `curved`
+(`detection.curved` means a valid or refused ribbon), so with
+`OKUFLOW_UCT_TEST_REGION_RECONCILE` also on it becomes eligible for reconcile
+drops like any rectangle. The two switches were not measured together.
+
+Correction to round 12: the bent pages have one or two columns, not one to
+three.
+
+#### Default after 12b
+
+Off. The reading gains hold (+324, +454 and +117 on the flat groups, +545 and
++485 on bent and one-sided gutter pages, no page worse anywhere, speed
+unchanged), no drawn moved word uses an unrefined box any more, and drawn
+moved words sit on their ink about as often as ordinary words. But the
+review's pass criteria are not met: the fit rate on development B, boxes
+touching neighbouring rows more often than ordinary words on the bent, gutter
+and development B pages, and three fragments of moved lines that lose the
+output protection they had through the full line. As the brief asks in that
+case, the recommendation is to keep the switch off. Pages to look at by hand:
+`bent-1080-mild-b1`, `bent-1440-b1`, `bent-2160-b1`, tuning pages 18 and 01,
+`gutter-1080-late-g1`, and the development pages whose moved lines bow most
+(`held-out-07`, `held-out-03`, `held5-02`, `held4-02`; `held2-12` for the
+protection case).
 
 ## Round 13: reads at the application's pacing on a clocked-down GPU (private switch, off)
 

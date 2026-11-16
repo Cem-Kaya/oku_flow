@@ -566,7 +566,7 @@ __global__ void emitBoxes(const Component *comps, int w, int h, int sw, int sh, 
 // receives the original fixed thread-order fold, so slots only changes how
 // many rounds the block needs. One slot is the original kernel.
 template <int slots> __global__ void fitRibbons(const int* labels, const Component* comps, int w, int h,
-                          int sw, int sh, Quad* quads, const int* count)
+                          int sw, int sh, Quad* quads, const int* count, ribbon::StraightRule straight)
 {
     const int index=blockIdx.x;
     if(blockDim.x!=256||index>=min(*count,128)) return;
@@ -625,7 +625,7 @@ template <int slots> __global__ void fitRibbons(const int* labels, const Compone
         bins[bin].high=mergedHighs[bin]; bins[bin].sumU=mergedSums[bin];
     }
     auto& q=quads[index];
-    q.ribbon=ribbon::Fit(bins,c.u0,c.u1,c.c,c.s,double(sw)/w,double(sh)/h,sw,sh);
+    q.ribbon=ribbon::Fit(bins,c.u0,c.u1,c.c,c.s,double(sw)/w,double(sh)/h,sw,sh,true,straight);
     if(q.ribbon.unsupported) {
         auto& r=q.ribbon;r.protectLeft=r.protectRight=q.xy[0];r.protectTop=r.protectBottom=q.xy[1];
         for(int i=1;i<4;++i){r.protectLeft=fmin(r.protectLeft,double(q.xy[2*i]));r.protectRight=fmax(r.protectRight,double(q.xy[2*i]));
@@ -894,7 +894,8 @@ void Probe(const void *p, std::size_t pitch, int w, int h, void *out, int d, cud
         static_cast<const unsigned char *>(p), pitch, w, h, static_cast<unsigned char *>(out), d);
 }
 void Detect(const float *map, int w, int h, int sw, int sh, int *labels, Component *comps,
-            Quad *quads, int *count, cudaStream_t s, int* ribbonOffsets, DetectKernels kernels)
+            Quad *quads, int *count, cudaStream_t s, int* ribbonOffsets, DetectKernels kernels,
+            ribbon::StraightRule straight)
 {
     const int blocks = (w * h + 255) / 256;
     cudaMemsetAsync(count, 0, sizeof(int), s);
@@ -920,8 +921,8 @@ void Detect(const float *map, int w, int h, int sw, int sh, int *labels, Compone
     boxOffsets<<<1, 1, 0, s>>>(offsets, blocks, count);
     emitBoxes<<<blocks, 256, 0, s>>>(comps, w, h, sw, sh, offsets, quads);
     if(ribbonOffsets) {
-        if(kernels.parallelRibbonMerge) fitRibbons<4><<<128,256,0,s>>>(labels,comps,w,h,sw,sh,quads,count);
-        else fitRibbons<1><<<128,256,0,s>>>(labels,comps,w,h,sw,sh,quads,count);
+        if(kernels.parallelRibbonMerge) fitRibbons<4><<<128,256,0,s>>>(labels,comps,w,h,sw,sh,quads,count,straight);
+        else fitRibbons<1><<<128,256,0,s>>>(labels,comps,w,h,sw,sh,quads,count,straight);
     }
 }
 void BoxSumGroups(const float *scores, const unsigned *masks, const float *values, int groups,

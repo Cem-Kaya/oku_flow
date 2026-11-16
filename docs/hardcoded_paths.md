@@ -1457,20 +1457,70 @@ only for boxes at least 24 px tall. Bounds: at most the regions `DetectorRegions
 1,152 windows per region read back as compact descriptors, no image transfer.
 See `docs/uct_okuread_port.md`.
 
-## TensorRT graph-replay switch (2026-11-16)
+## Flat-line ribbon switch (2026-11-16)
+
+`OKUFLOW_UCT_TEST_FLAT_RIBBON` selects the private round 12 experiment on the
+ribbon fit (`ribbon::StraightRule`), read the same way by the TensorRT and the
+CPU reader. `straight-refused` lets the 8% part of the fit's straight-line
+bound grow linearly with a line's length beyond `kStraightSpanHeights` (20)
+mean heights, up to an absolute cap of `kStraightMaximumBow` (0.32) mean
+heights, but only for a line refused because its padded ribbon leaves its
+source region (every shape check passed): such a line takes the ordinary
+rectangle path with no ribbon flag and no protection box, and its words are
+drawn only where the worker fits them to their ink. A valid ribbon fit stays a
+ribbon and every other refusal stays refused. `straight` applies the same
+bound and cap before any ribbon check, so long lines with a small fitted bow
+lose a valid ribbon too. Unset or `0` keeps the shipped rule; any other value
+leaves either backend unavailable with an explanatory status.
+Both values change recognized output and neither is a default. It adds no
+setting, file or model and only takes effect where curved processing is on
+(`OKUFLOW_UCT_CURVED_RIBBON`). See `docs/uct_okuread_port.md`, round 12.
+
+## TensorRT graph-replay switch (2026-11-16, revised in round 10)
 
 `OKUFLOW_UCT_TEST_TRT_GRAPH=1` selects the private experiment that replays each
 TensorRT detector and recognizer enqueue as a CUDA graph, with one execution
 context per cached input shape. Unset or `0` keeps the plain enqueue; any other
-value leaves the GPU backend unavailable with an explanatory status.
-`OKUFLOW_UCT_TEST_TRT_GRAPH_SHAPES` (1 to 16, default 8, valid only together
-with `OKUFLOW_UCT_TEST_TRT_GRAPH=1`) bounds the shapes cached per engine for
-comparisons; 1 is one graph per engine. Recognized output is unchanged on every
-scene it was measured on, but the switch stays off by default. It adds no
-setting, file or model; device memory per engine is one activation arena (it
-replaces the preparation context's own) plus about 2.5 MB per context and
-about 2 MB per graph, and 1.6 MB more detector output storage. `OKUFLOW_UCT_GRAPH_LIFETIME_TEST=1` with `OKUFLOW_UCT_TEST_IMAGE` runs
-the opt-in `optionalGraphReplayLifetime` check. See `docs/uct_okuread_port.md`.
+value leaves the GPU backend unavailable with an explanatory status. It stays
+off by default (see `docs/uct_okuread_port.md`, round 10, for why).
+`OKUFLOW_UCT_TEST_TRT_GRAPH_SHAPES` (1 to 16, valid only together with
+`OKUFLOW_UCT_TEST_TRT_GRAPH=1`) bounds the shapes cached per engine for
+comparisons and then applies to both engines as given; 1 is one graph per
+engine. Without it the detector caches 8 shapes and a fixed-canvas recognizer
+at least one per batch size (8, or 16 at batch sixteen); with the bucketed
+recognizer width the recognizer always runs plainly and only the detector
+replays. Recognized output is unchanged on every scene it was measured on. It
+adds no setting, file or model and creates no execution context before the
+reader is ready: contexts are made afterwards, one per shape asked for, in
+idle gaps between reads, or under continuous load one per two reads. Device memory per engine is one activation arena (it
+replaces the preparation context's own), about 2.5 MB per context and 2 MB per
+graph as round 3 measured them, and 1.6 MB more detector output storage.
+
+The opt-in GPU checks `optionalGraphReplayLifetime`
+(`OKUFLOW_UCT_GRAPH_LIFETIME_TEST=1`), `optionalGraphReplayFaults`
+(`OKUFLOW_UCT_GRAPH_FAULT_TEST=1`), `optionalGraphReplayCheckpoints`
+(`OKUFLOW_UCT_GRAPH_CHECKPOINT_TEST=1`), `optionalGraphReplayRetireUnadopted`
+(`OKUFLOW_UCT_GRAPH_RETIRE_TEST=1`) and `optionalGraphReplayConfigurations`
+(`OKUFLOW_UCT_GRAPH_CONFIG_TEST=1`, optional `OKUFLOW_UCT_GRAPH_CONFIGS`) read
+`OKUFLOW_UCT_TEST_IMAGE`, `OKUFLOW_UCT_TEST_IMAGE_2` (another frame size) and
+optionally write `OKUFLOW_UCT_GRAPH_TEST_EVIDENCE`. They are test inputs only.
+The replay fault hooks have no environment switch: they exist only in the
+`uct_paddle_tests` executable (`OKUFLOW_UCT_GRAPH_FAULT_HOOKS`). The corpus
+harness report's `startupWorkerMs` is the worker time of its startup read.
+
+## Stream-concurrency measurement (round 8)
+
+`OKUFLOW_UCT_STREAM_PROBE=1` selects the opt-in GPU measurement
+`optionalStreamConcurrency` in `uct_paddle_tests`;
+`OKUFLOW_UCT_STREAM_PROBE_EVIDENCE` must name a new absolute JSON file and
+`OKUFLOW_UCT_STREAM_PROBE_REPEATS` (5 to 50, default 7) sets the timed repeats.
+They are test inputs only and reach nothing in the application: the probe code
+exists only in that executable (`OKUFLOW_UCT_GRAPH_FAULT_HOOKS`). It
+initializes the ordinary reader, so it expects the prepared plans under
+`LOCALAPPDATA`, and it fails before measuring unless both plans were loaded
+from the cache. Round 8 added
+no reader switch: its measurement ended the round before one was built
+(`docs/uct_okuread_port.md`).
 
 ## UCT preparation profile (round 5)
 

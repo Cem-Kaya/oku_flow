@@ -2671,16 +2671,81 @@ the GPU window layout the experiment's host parser relies on. The experiment its
 `OKUFLOW_UCT_TEST_REGION_RECONCILE=1`; its speed and labelled-page results are
 in [the port record](../docs/uct_okuread_port.md).
 
+`graphReplayCreationTurns` (model-free, real threads) checks when the replay
+context-creation thread may create (`graph_cache::ReplayWork::Turn`): in an
+idle gap no earlier than `kQuiet` after the last read ended; with reads back
+to back not after one read end and at once after `kReadsUnderLoad`; reads that
+end while nothing is wanted not counted; no turn once stopped or cancelled.
+Its assertions are lower bounds or generous upper bounds, not timings.
+
 `graphReplayCachePolicy` (model-free, in `uct_paddle_processing`) checks the
-bookkeeping of the private TensorRT graph replay
-(`OKUFLOW_UCT_TEST_TRT_GRAPH=1`): one context per cached shape, a plain enqueue
-before any capture, no capture where the caller forbids it, drains before a
-graph is dropped or a used context is reshaped, least-recently-used recycling
-within the bound, refused shapes that are never retried, and failed bindings
-that are never reused as hits. The opt-in `optionalGraphReplayLifetime`
-(`OKUFLOW_UCT_GRAPH_LIFETIME_TEST=1`, `OKUFLOW_UCT_TEST_IMAGE`, prepared
-medium plans, GPU lease) reads one image with the switch off, with one graph
-per engine and with the default cache, cancels reads from another thread at
-spread delays, requires every completed read to reproduce the switch-off output
-byte for byte and the State to retire cleanly. Results are in
-[the port record](../docs/uct_okuread_port.md).
+bookkeeping of TensorRT graph replay (`OKUFLOW_UCT_TEST_TRT_GRAPH`): one
+context per cached shape, a plain enqueue before any capture, no capture where
+the caller forbids it, drains before a graph is dropped or a used context is
+reshaped, least-recently-used recycling within the bound, the plain overflow
+context for a miss without a ready context (nothing evicted), the distinct
+shapes counted for context creation, the per-engine bounds (bucketed width,
+batch sixteen, explicit bound), refused shapes that are never retried, failed
+bindings that are never reused as hits, and the test-only fault plan. The
+opt-in GPU slots use prepared plans, the GPU lease, `OKUFLOW_UCT_TEST_IMAGE`
+and (except the first) `OKUFLOW_UCT_TEST_IMAGE_2`, an image of another size;
+`OKUFLOW_UCT_GRAPH_TEST_EVIDENCE` names an optional JSON report:
+
+- `optionalGraphReplayLifetime` (`OKUFLOW_UCT_GRAPH_LIFETIME_TEST=1`) reads one
+  image with the switch off, with one graph per engine and with the default
+  cache, cancels reads from another thread at spread delays, requires every
+  completed read to reproduce the switch-off output byte for byte and the State
+  to retire cleanly.
+- `optionalGraphReplayFaults` (`OKUFLOW_UCT_GRAPH_FAULT_TEST=1`) drives each
+  failure path through the test-only hooks that only this executable compiles
+  (`OKUFLOW_UCT_GRAPH_FAULT_HOOKS`): a capture CUDA refuses, a capture put off
+  for low free memory, a capture enqueue that fails with and without a capture
+  status, an eviction drain with work still queued, a moved input, a shape
+  TensorRT rejects between planning and binding, a failed background context
+  creation, and an activation arena or replay output storage that cannot be
+  allocated. Every read must return the switch-off bytes or fail closed
+  through State retirement, no call may end with its stream capturing, the
+  receipt counters must show the path ran, and every context-creation thread
+  must end after its State retires. The low-memory case reads long enough for
+  the capture hold-off (`graph_cache::kCaptureHoldOffReads`) to expire after
+  each injected deferral and requires captures after the last one; the
+  output-storage case requires the plain output buffer to survive the failed
+  allocation.
+- `optionalGraphReplayCheckpoints` (`OKUFLOW_UCT_GRAPH_CHECKPOINT_TEST=1`)
+  cancels reads at named points of replay calls (planned, captured, drained,
+  launched) across two frame sizes with region reconciliation on and a
+  two-shape bound.
+- `optionalGraphReplayRetireUnadopted` (`OKUFLOW_UCT_GRAPH_RETIRE_TEST=1`)
+  makes a reader ready and destroys it before its first read, twice: once
+  while the State's context-creation thread waits for a wanted context, once
+  with the thread held (test hook) between its completion check and its wait.
+  The unadopted State must retire (one completed receipt, also while the
+  thread is held), the thread must end, and a fresh reader of the same model
+  must become ready and read on BF16 (`[BF16 / BF16]`).
+- `optionalGraphReplayConfigurations` (`OKUFLOW_UCT_GRAPH_CONFIG_TEST=1`,
+  optional `OKUFLOW_UCT_GRAPH_CONFIGS` comma list) compares switch-off and
+  switch-on output, timing and receipts for the medium BF16 pair at batch 8,
+  1 and 16, FP32 plans, the small and tiny tiers, the bucketed recognizer
+  width and paused-detail reads, and requires no eviction in the last round.
+  `medium-bf16-fill` reads both images and twelve detail views with idle gaps
+  so the caches fill up; every configuration records free device memory after
+  its reads, so switch-on minus switch-off is what replay keeps allocated.
+  It may prepare plans that are missing (full SDK).
+- `optionalStreamConcurrency` (`OKUFLOW_UCT_STREAM_PROBE=1`, a new absolute
+  report file in `OKUFLOW_UCT_STREAM_PROBE_EVIDENCE`, optional
+  `OKUFLOW_UCT_STREAM_PROBE_REPEATS` 5 to 50, default 7; round 8) reads one
+  blank 1920x1080 frame with replay off so the reader's State is adopted, then
+  times sets of inferences of the prepared engines (the recognizer at batch
+  eight on the 1024 canvas, 64 per set; the detector at each distinct shape of
+  a 1920x1080 read, 32 per set) on one, two and three execution contexts with
+  their own activation memory, buffers and streams, fed alternately from one
+  thread, with plain enqueues and with graph launches. Configurations
+  alternate their order between repeats after one untimed set. Every output
+  of a timed set's last inference per context and of a full untimed pass is
+  compared byte for byte with the single-stream output of the same input; the
+  slot fails on any difference. The report also has the device memory each
+  added context and its buffers took. It never uses the reader's own
+  contexts, stream or buffers, and the reader must still read and retire
+  cleanly afterwards.
+
+Results are in [the port record](../docs/uct_okuread_port.md).

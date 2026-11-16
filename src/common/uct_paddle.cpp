@@ -22,6 +22,13 @@ class PaddleCpuRecognizer final : public Recognizer
         status_.name = "PaddleOCR / ONNX CPU";
         status_.languageTag = "multilingual";
         status_.state = BackendState::kUnavailable;
+        // Private round 12 experiment, read exactly as the TensorRT reader
+        // reads it (PaddleFlatRibbonRule); an invalid value refuses to start.
+        if (!PaddleFlatRibbonRule(qEnvironmentVariable("OKUFLOW_UCT_TEST_FLAT_RIBBON"), straightRule_))
+        {
+            status_.detail = kPaddleFlatRibbonError;
+            return status_;
+        }
         assets_ = LoadPaddleAssets(root_,detectorTier_,recognizerTier_);
         if (!assets_.IsValid())
         {
@@ -88,7 +95,8 @@ class PaddleCpuRecognizer final : public Recognizer
                 throw std::runtime_error("Unexpected detector output dimensions.");
             const auto quads =
                 PaddleDetect(map.data, static_cast<int>(map.shape[3]),
-                             static_cast<int>(map.shape[2]), crop.size(), cancelled, curvedRibbon_);
+                             static_cast<int>(map.shape[2]), crop.size(), cancelled, curvedRibbon_,
+                             straightRule_);
             for (const auto &detected : quads)
             for (const auto &quad : PaddleRecognitionWindows(detected))
             {
@@ -140,6 +148,7 @@ class PaddleCpuRecognizer final : public Recognizer
     std::unique_ptr<PaddleCpuSession> detector_, recognizer_;
     std::optional<DetailFocus> detail_;
     bool curvedRibbon_{};
+    ribbon::StraightRule straightRule_{}; // private round 12 experiment; {} is shipped
 };
 
 class AutomaticRecognizer final : public Recognizer

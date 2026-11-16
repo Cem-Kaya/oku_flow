@@ -45,6 +45,7 @@ public:
         shapeSets_ = addressSets_ = 0;
         rectifyLaunches_ = ctcLaunches_ = recognitionCopies_ = 0;
         ribbonCrops_ = unsupportedRibbonCrops_ = 0;
+        ribbonOutcomes_ = {}; ribbonBows_ = {}; ribbonWords_ = {}; ribbonBoxes_ = {};
         metadataBytes_ = 0;
         inputBytes_ = outputBytes_ = outputLimitBytes_ = 0;
         maximumBatch_ = 0;
@@ -92,10 +93,13 @@ public:
     }
     // Private graph-replay experiment: how one network call ran (0 plain,
     // 1 captured then launched, 2 replayed) and what it cost on the host.
-    void GraphCall(int launch, bool created, double contextMs, double captureMs, bool drained, bool evicted) {
+    // `overflow`: a plain call on the overflow context (no slot for its shape).
+    void GraphCall(int launch, bool created, double contextMs, double captureMs, bool drained, bool evicted,
+                   bool overflow = false) {
         if (!enabled_) return;
         graphUsed_ = true;
         ++graph_.launches[std::clamp(launch, 0, 2)];
+        graph_.overflow += overflow;
         graph_.contexts += created; graph_.drains += drained; graph_.evictions += evicted;
         graph_.contextMs += contextMs; graph_.captureMs += captureMs;
     }
@@ -162,6 +166,45 @@ public:
             }
         }
 
+    }
+    // Ribbon fit outcome of each recognized crop and the words its decode
+    // produced, split by detections (a detection's own crop, internalEdges 0)
+    // and all crops (detections plus their overlapping sub-windows). Bounded
+    // counters; nothing is kept per crop. `confident` counts words at the
+    // ordinary 0.7 confidence whatever their disposition, `invalid` those the
+    // decode itself marked invalid geometry (before any merge inheritance).
+    // Every detection also records (bounded) a box in frame pixels with its
+    // kind, fitted bow and decoded word count: a refused detection its
+    // protection box, every other detection the box of its quad. Today's boxes
+    // can then be matched per page and with the read's output.
+    void RibbonCrop(const ribbon::Geometry& curve, int edges, int words, int confident, int invalid,
+                    const float* xy = nullptr, QPoint origin = {}) {
+        if (!enabled_) return;
+        if (edges == 0 && xy && ribbonBoxes_.size() < kMaximumRibbonBoxes) {
+            double left = xy[0], top = xy[1], right = xy[0], bottom = xy[1];
+            for (int i = 1; i < 4; ++i) {
+                left = std::min(left, double(xy[2*i])); right = std::max(right, double(xy[2*i]));
+                top = std::min(top, double(xy[2*i+1])); bottom = std::max(bottom, double(xy[2*i+1]));
+            }
+            if (curve.unsupported) { left = curve.protectLeft; top = curve.protectTop;
+                                     right = curve.protectRight; bottom = curve.protectBottom; }
+            const int kind = curve.unsupported ? 1 : curve.outcome == ribbon::kSpanStraight ? 0
+                           : curve.outcome == ribbon::kStraight ? 2 : curve.valid ? 3 : 4;
+            ribbonBoxes_.push_back(QJsonArray{kind, left + origin.x(), top + origin.y(),
+                                              right + origin.x(), bottom + origin.y(), curve.bow, words,
+                                              int(curve.outcome)});
+        }
+        const int outcome = curve.outcome < ribbon::kFitOutcomes ? curve.outcome : 0;
+        const int scope = edges == 0 ? 0 : 1;
+        ++ribbonOutcomes_[scope][outcome];
+        auto& counts = ribbonWords_[std::size_t(scope * ribbon::kFitOutcomes + outcome)];
+        counts[0] += words; counts[1] += confident; counts[2] += invalid;
+        if (scope == 0 && outcome != ribbon::kNotTried) {
+            const int kind = outcome == ribbon::kStraight ? 0 : outcome == ribbon::kSpanStraight ? 1
+                           : outcome == ribbon::kFitted ? 2 : 3;
+            const auto bin = std::upper_bound(kBowBounds.begin(), kBowBounds.end(), curve.bow);
+            ++ribbonBows_[std::size_t(kind)][std::size_t(bin - kBowBounds.begin())];
+        }
     }
     void Transfer(std::size_t bytes) { if (enabled_) metadataBytes_ += bytes; }
     void RecognitionHelpers(int rectify, int ctc, int copies) {
@@ -230,13 +273,45 @@ public:
             {"memoryDeltaIsNotPeakOrExclusiveOwned", true},
             {"eventPairs", static_cast<int>(used_)}, {"omittedEventPairs", omitted_}};
         auto complete = report;
+        {
+            const char* outcomes[]{"notTried","straight","fitted","steep","residual","degenerate","height","outside",
+                                   "spanStraight"};
+            static_assert(std::size(outcomes) == ribbon::kFitOutcomes);
+            QJsonObject ribbon;
+            const char* scopes[]{"detections","windows"};
+            for (int scope = 0; scope < 2; ++scope) {
+                QJsonObject byOutcome;
+                for (int o = 0; o < ribbon::kFitOutcomes; ++o) {
+                    const auto& words = ribbonWords_[std::size_t(scope * ribbon::kFitOutcomes + o)];
+                    if (!ribbonOutcomes_[scope][o]) continue;
+                    byOutcome[outcomes[o]] = QJsonArray{ribbonOutcomes_[scope][o], words[0], words[1], words[2]};
+                }
+                ribbon[scopes[scope]] = byOutcome;
+            }
+            ribbon["encoding"] = "outcome: [crops, words, words with confidence >= 0.7, words marked invalid geometry by the decode]";
+            QJsonArray bounds;
+            for (const float b : kBowBounds) bounds.push_back(b);
+            ribbon["bowUpperBounds"] = bounds;
+            const char* kinds[]{"straight","spanStraight","fitted","refused"};
+            for (int k = 0; k < 4; ++k) {
+                QJsonArray bins;
+                for (const int n : ribbonBows_[std::size_t(k)]) bins.push_back(n);
+                ribbon[QString("bow_") + kinds[k]] = bins;
+            }
+            ribbon["boxes"] = ribbonBoxes_;
+            ribbon["boxesEncoding"] = "[kind: moved by a straight rule 0, refused 1 (protection box), straight 2, fitted 3, "
+                                      "not tried 4; left, top, right, bottom in frame pixels; fitted bow in mean heights; "
+                                      "words decoded; fit outcome]";
+            complete["ribbonFit"] = ribbon;
+        }
         if (reconciled_)
             complete["regionReconcile"] = QJsonObject{{"detections", reconcile_[0]}, {"clippedDropped", reconcile_[1]},
                 {"wholeDropped", reconcile_[2]}, {"tileDropped", reconcile_[3]}, {"restored", reconcile_[4]},
                 {"windowLayoutRecognized", reconcile_[5] != 0}, {"hostMs", reconcileMs_}};
         if (graphUsed_) {
             auto graph = graphReceipt_;
-            graph["read"] = QJsonObject{{"plain", graph_.launches[0]}, {"captures", graph_.launches[1]},
+            graph["read"] = QJsonObject{{"plain", graph_.launches[0]}, {"overflow", graph_.overflow},
+                {"captures", graph_.launches[1]},
                 {"replays", graph_.launches[2]}, {"slotsOpened", graph_.contexts},
                 {"contextCreateMs", graph_.contextMs}, {"captureMs", graph_.captureMs},
                 {"drains", graph_.drains}, {"evictions", graph_.evictions}};
@@ -258,7 +333,7 @@ private:
     std::unique_ptr<QCryptographicHash> cropHash_;
     double detectorWaitMs_{}, groupWaitMs_{};
     std::array<int, 6> reconcile_{};
-    struct GraphCounts { std::array<int, 3> launches{}; int contexts{}, drains{}, evictions{}; double contextMs{}, captureMs{}; };
+    struct GraphCounts { std::array<int, 3> launches{}; int contexts{}, drains{}, evictions{}, overflow{}; double contextMs{}, captureMs{}; };
     GraphCounts graph_{};
     bool graphUsed_{};
     QJsonObject graphReceipt_;
@@ -271,6 +346,14 @@ private:
     int shapeSets_{}, addressSets_{};
     int rectifyLaunches_{}, ctcLaunches_{}, recognitionCopies_{};
     int ribbonCrops_{}, unsupportedRibbonCrops_{};
+    // Fitted sagitta over mean height of detections whose fit reached the
+    // curvature test; the last bin is open.
+    static constexpr std::array<float, 9> kBowBounds{.04f, .08f, .12f, .16f, .24f, .32f, .48f, .64f, 1.f};
+    std::array<std::array<int, ribbon::kFitOutcomes>, 2> ribbonOutcomes_{};
+    std::array<std::array<int, kBowBounds.size() + 1>, 4> ribbonBows_{};
+    std::array<std::array<int, 3>, 2 * ribbon::kFitOutcomes> ribbonWords_{};
+    static constexpr qsizetype kMaximumRibbonBoxes = 128 * 16; // detections of up to 16 detector passes
+    QJsonArray ribbonBoxes_;
     double enqueueMs_{}, mergeMs_{};
     std::size_t metadataBytes_{};
     std::size_t inputBytes_{}, outputBytes_{}, outputLimitBytes_{}, freeBefore_{}, totalBytes_{};
