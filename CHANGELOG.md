@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+- Shorten GPU text-engine startup further: the pinned model files are hashed
+  side by side, the recognizer's cached engine is verified and loaded while the
+  detector is prepared, and waits for preparation GPU work no longer last a
+  whole Windows timer tick. Every check still runs on the same bytes before
+  use. Each preparation takes its failure, fallback and cancellation decisions
+  at the same points and in the same order as before. A device fault met by the
+  early recognizer load ends the preparation as a fault. Because startup is
+  shorter, a preparation started right after cancelling another one with the
+  same detector can find that detector attempt still in flight more often and
+  then uses the FP32 detector until its next preparation, as before. Measured in the OCR
+  test harness on an RTX 4090 with a warm file cache: about 0.89 s to 0.61 s
+  from creating the GPU reader to its first result (docs/uct_okuread_port.md,
+  round 11 and its follow-up).
+
 - Shorten cached GPU text-engine startup using system SHA-256 on Windows and
   reusing the verified owned source digest for recipe identity. All pins,
   plan checks and detector smoke shapes remain required before activation.

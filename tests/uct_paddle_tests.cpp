@@ -191,6 +191,8 @@ struct FixtureStream
 #include "uct_detect_kernel_cases.hpp"
 #include "uct_region_reconcile_cases.hpp"
 #include "uct_graph_cache_cases.hpp"
+#include "uct_preparation_overlap_cases.hpp"
+#include "uct_preparation_diagnostic.hpp"
 
 class PaddleTests final : public QObject
 {
@@ -583,6 +585,12 @@ class PaddleTests final : public QObject
     void regionReconcileRules() { uct_region_reconcile_test::Rules(); }
     void graphReplayCachePolicy() { uct_graph_cache_test::Policies(); }
     void graphReplayCreationTurns() { uct_graph_cache_test::CreationTurns(); }
+    void preparationOverlapMatchesSequentialDecisions() { uct_preparation_overlap_test::MatchesSequential(); }
+    void preparationOverlapAbandonStopsJoinsAndReleases() { uct_preparation_overlap_test::AbandonStopsJoinsAndReleases(); }
+    void preparationOverlapAbandonedOwnerDoesNotRefuseAnother() { uct_preparation_overlap_test::AbandonedOwnerDoesNotRefuseAnother(); }
+    void optionalAssetVerificationMatchesSequential() { uct_preparation_diagnostic::AssetsMatchSequential(); }
+    void optionalPreparationCancellation() { uct_preparation_diagnostic::PreparationCancellation(); }
+    void optionalOverlappingPreparation() { uct_preparation_diagnostic::OverlappingPreparation(); }
     void recognitionGroupSlotsRequireCompletionAndConsumption()
     {
         detail::RecognitionGroups groups;
