@@ -9,9 +9,71 @@
 // or runs in ordinary CTest. See docs/uct_corpus_timing.md.
 #include "uct_resident_diagnostic.hpp"
 #include "uct_gpu_clock_probe.hpp"
+#include <d3d12.h>
+#include <dxgi1_4.h>
+#ifdef small
+#undef small // rpcndr.h; later headers use it as a name
+#endif
 
 namespace okuflow::uct::uct_corpus_test {
 #if OKUFLOW_ENABLE_CUDA && OKUFLOW_UCT_TRT
+// Measurement only (round 13): ID3D12Device::SetStablePowerState on the CUDA
+// device's adapter for the life of this test process. It needs Windows
+// Developer Mode, applies to the whole adapter while the device lives and is
+// documented for profiling, so the application never calls it. Loaded at run
+// time; the state ends when the device is released (here, or at exit).
+class StablePowerState {
+public:
+    bool Enable(const char (&luid)[8])
+    {
+        dxgi_ = LoadLibraryW(L"dxgi.dll");
+        d3d12_ = LoadLibraryW(L"d3d12.dll");
+        if (!dxgi_ || !d3d12_) return Fail("dxgi.dll or d3d12.dll unavailable");
+        using CreateFactory = HRESULT(WINAPI*)(REFIID, void**);
+        const auto createFactory = reinterpret_cast<CreateFactory>(GetProcAddress(dxgi_, "CreateDXGIFactory1"));
+        const auto createDevice = reinterpret_cast<PFN_D3D12_CREATE_DEVICE>(GetProcAddress(d3d12_, "D3D12CreateDevice"));
+        if (!createFactory || !createDevice) return Fail("entry points unavailable");
+        IDXGIFactory4* factory{};
+        if (FAILED(createFactory(__uuidof(IDXGIFactory4), reinterpret_cast<void**>(&factory)))) return Fail("no DXGI factory");
+        LUID id{};
+        std::memcpy(&id, luid, sizeof(id));
+        IDXGIAdapter1* adapter{};
+        const HRESULT found = factory->EnumAdapterByLuid(id, __uuidof(IDXGIAdapter1), reinterpret_cast<void**>(&adapter));
+        factory->Release();
+        if (FAILED(found)) return Fail("no adapter with the CUDA device's LUID");
+        const HRESULT created = createDevice(adapter, D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device),
+                                             reinterpret_cast<void**>(&device_));
+        adapter->Release();
+        if (FAILED(created)) return Fail("D3D12CreateDevice failed");
+        result_ = device_->SetStablePowerState(TRUE);
+        detail_ = QStringLiteral("SetStablePowerState(TRUE) hr=0x%1, device removed reason 0x%2")
+                      .arg(quint32(result_), 8, 16, QLatin1Char('0'))
+                      .arg(quint32(device_->GetDeviceRemovedReason()), 8, 16, QLatin1Char('0'));
+        return SUCCEEDED(result_);
+    }
+    ~StablePowerState()
+    {
+        if (device_) {
+            if (SUCCEEDED(result_)) device_->SetStablePowerState(FALSE);
+            device_->Release();
+        }
+        if (d3d12_) FreeLibrary(d3d12_);
+        if (dxgi_) FreeLibrary(dxgi_);
+    }
+    QString Detail() const { return detail_; }
+
+private:
+    bool Fail(const char* why)
+    {
+        detail_ = QString::fromLatin1(why);
+        return false;
+    }
+    HMODULE dxgi_{}, d3d12_{};
+    ID3D12Device* device_{};
+    HRESULT result_{E_FAIL};
+    QString detail_;
+};
+
 inline void CorpusTiming()
 {
     using namespace uct_resident_test;
@@ -52,12 +114,18 @@ inline void CorpusTiming()
     QVERIFY2(frameLoadValid, "OKUFLOW_UCT_CORPUS_FRAME_LOAD must be fps:passes (1-240, 0-64).");
     const int tailMs = qEnvironmentVariable("OKUFLOW_UCT_CORPUS_TAIL_MS").toInt();
     QVERIFY2(tailMs >= 0 && tailMs <= 20000, "OKUFLOW_UCT_CORPUS_TAIL_MS must be 0-20000.");
+    const bool stablePower = qEnvironmentVariable("OKUFLOW_UCT_CORPUS_STABLE_POWER") == "1";
 
     QVERIFY(cudaSetDevice(0) == cudaSuccess);
     cudaDeviceProp properties{};
     QVERIFY(cudaGetDeviceProperties(&properties, 0) == cudaSuccess);
     int driver{};
     QVERIFY(cudaDriverGetVersion(&driver) == cudaSuccess);
+    std::unique_ptr<StablePowerState> stable;
+    if (stablePower) {
+        stable = std::make_unique<StablePowerState>();
+        QVERIFY2(stable->Enable(properties.luid), qPrintable(stable->Detail()));
+    }
 
     struct Scene {
         QString path, sha256;
@@ -274,6 +342,7 @@ inline void CorpusTiming()
         {"gpu", QString::fromLatin1(properties.name)}, {"cudaDriverApi", driver},
         {"retirement", closed.Json()}, {"profileLinesMalformed", capture.Malformed()},
         {"keepWarm", keepWarmRecord}, {"tail", tail},
+        {"stablePowerState", stable ? stable->Detail() : QString()},
         {"frameLoad", frameLoad ? frameLoad->Json() : QJsonObject{}},
         {"scope", "Scheduler worker time on file fixtures: no camera, decoder, presenter, paint or accessibility."}};
     QVERIFY(uct_batch_test::Save(evidence, report));
