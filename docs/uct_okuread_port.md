@@ -1330,6 +1330,13 @@ Applied while merging:
   format-1 corpus cannot pass after being rewritten as format 2; the check now
   applies to the current format only.
 
+The merged build with these fixes was compared with the integration build
+from before the merge (`int6-r7-*`): one identical complete-output hash on 18
+scenes (two cohorts of five passes), 88 development pages and 62 title
+placements, each with region reconciliation off and on in both arms, 336
+comparisons in all; warm 1.023x and 1.010x on the scene set; the replay test
+passes.
+
 Not done: moving the per-call scratch vectors into the context, routing the
 four-argument overload to the uncached merge, and the oracle cases the
 reviewers listed as still missing (mixed rectangle and quad words on a tilted
