@@ -1811,8 +1811,11 @@ to the owner and the council.
 
 ### Follow-up after the council review
 
-Council on this round (`c65bb1b`): 6, 7 and 7 out of 10; one reviewer for
-keeping replay off, two for turning it on once their findings were fixed. The
+Council on this round (`c65bb1b`): GPT-6.1 Sol 6/10, Gemini 4 Hydrogen 7/10,
+Claude Opus 5.5 7/10; Sol for keeping replay off, the other two for turning it
+on once their findings were fixed. The follow-up itself was not sent through a
+second council pass; the switch is off, and a targeted review belongs with any
+later decision to turn it on. The
 follow-up, on the same branch, first merged the integration branch (rounds 5,
 6, 7 and 9 and the fixes other councils asked for) and then worked through the
 findings. Replay stays off; the orchestrator decides the default after this
