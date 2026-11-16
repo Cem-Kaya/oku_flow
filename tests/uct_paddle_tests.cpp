@@ -6,6 +6,8 @@
 #include "../src/common/uct_frozen_upload.hpp"
 #include "../src/common/uct_tensorrt_failures.hpp"
 #include "../src/common/uct_engine_cache.hpp"
+#include "../src/common/uct_sha256.hpp"
+#include <QBuffer>
 #include "../src/common/uct_native_precision.hpp"
 #include "okuflow/common/uct_model_preparation.hpp"
 #include "okuflow/common/uct_model_installation.hpp"
@@ -192,6 +194,94 @@ class PaddleTests final : public QObject
 {
     Q_OBJECT
   private slots:
+    void startupSha256MatchesQtAndRefusesErrors()
+    {
+        for (const int size : {0, 1, 1048575, 1048576, 1048577, 3 * 1048576 + 17}) {
+            // Varied content: equal chunks swapped or dropped must change the digest.
+            QByteArray bytes(size, '\0');
+            quint32 state = 0x9e3779b9u ^ quint32(size);
+            for (auto& byte : bytes) { state = state * 1664525u + 1013904223u; byte = char(state >> 24); }
+            const auto expected = QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
+            QCOMPARE(sha256::Bytes(bytes), expected);
+            QBuffer input(&bytes);
+            QVERIFY(input.open(QIODevice::ReadOnly));
+            QCOMPARE(sha256::Read(input), expected);
+            QVERIFY(sha256::Bytes(bytes, [] { return true; }).isEmpty());
+            input.seek(0);
+            int polls = 0;
+            QVERIFY(sha256::Read(input, [&] { return ++polls >= 2; }).isEmpty());
+        }
+        // A large logical input, with bounded scratch and an independent Qt oracle.
+        class Generated final : public QIODevice {
+        public:
+            qint64 remaining = 257ll * 1024 * 1024 + 19, failAt = -1;
+            bool fail = false, stall = false;
+            Generated() { open(QIODevice::ReadOnly); }
+            bool isSequential() const override { return true; }
+            bool atEnd() const override { return remaining == 0; }
+            qint64 readData(char* data, qint64 maximum) override {
+                if (fail || (failAt >= 0 && remaining <= failAt)) return -1;
+                if (stall) return 0;
+                const auto count = std::min(maximum, remaining);
+                std::memset(data, 'z', size_t(count)); remaining -= count; return count;
+            }
+            qint64 writeData(const char*, qint64) override { return -1; }
+        } generated, oracle;
+        QCryptographicHash qt(QCryptographicHash::Sha256);
+        QVERIFY(qt.addData(&oracle));
+        QCOMPARE(sha256::Read(generated), qt.result());
+        Generated broken; broken.fail = true;
+        QVERIFY(sha256::Read(broken).isEmpty());
+        Generated stalled; stalled.stall = true;
+        QVERIFY(sha256::Read(stalled).isEmpty());
+        // A read error after several chunks were hashed gives no digest either.
+        Generated late; late.remaining = 5 * 1048576; late.failAt = 2 * 1048576;
+        QVERIFY(sha256::Read(late).isEmpty());
+        // Every rejected operation latches the object: no partial digest,
+        // one result per object, and an empty digest never equals a pin.
+        {
+            const QByteArray chunk(4096, 'q'), oversized(1048577, 'q');
+            sha256::Digest good;
+            QVERIFY(good.Add(chunk.constData(), chunk.size()));
+            QCOMPARE(good.Finish(), QCryptographicHash::hash(chunk, QCryptographicHash::Sha256));
+            QVERIFY(good.Finish().isEmpty());
+            QVERIFY(!good.Add(chunk.constData(), chunk.size()));
+            sha256::Digest oversize;
+            QVERIFY(oversize.Add(chunk.constData(), chunk.size()));
+            QVERIFY(!oversize.Add(oversized.constData(), oversized.size()));
+            QVERIFY(!oversize.Add(chunk.constData(), chunk.size()));
+            QVERIFY(oversize.Finish().isEmpty());
+            sha256::Digest negative;
+            QVERIFY(!negative.Add(chunk.constData(), -1));
+            QVERIFY(negative.Finish().isEmpty());
+            sha256::Digest null;
+            QVERIFY(!null.Add(nullptr, 1));
+            QVERIFY(null.Finish().isEmpty());
+            sha256::Digest empty;
+            QCOMPARE(empty.Finish(), QCryptographicHash::hash(QByteArray(), QCryptographicHash::Sha256));
+        }
+        // An interrupted verification is terminal: it never selects another
+        // engine or a rebuild, and it is not an artifact failure.
+        QVERIFY(!detail::AllowsTensorRtCapacityFallback(
+            std::make_exception_ptr(detail::VerificationInterrupted("stopped"))));
+        QBuffer closed;
+        QVERIFY(sha256::Read(closed).isEmpty());
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        QFile file(directory.filePath("artifact"));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QByteArray bytes(1048577, 'a');
+        const auto pinned = QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
+        QCOMPARE(file.write(bytes), qint64(bytes.size())); file.close();
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QCOMPARE(sha256::Read(file), pinned); file.close();
+        QVERIFY(file.open(QIODevice::ReadWrite)); QVERIFY(file.seek(1048576));
+        QCOMPARE(file.write("b", 1), qint64(1)); file.close();
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const auto altered = sha256::Read(file);
+        QVERIFY(!altered.isEmpty()); QVERIFY(altered != pinned);
+    }
+
     void formulaCatalogBoundsAndCacheIdentity() { uct_formula_test::CatalogContract(); }
     void formulaByteLevelTokenizerKeepsFractions() { uct_formula_test::TokenizerContract(); }
     void optionalNativeFormulaSetup() { uct_formula_test::NativeDiagnostic(); }

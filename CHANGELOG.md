@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Shorten cached GPU text-engine startup using system SHA-256 on Windows and
+  reusing the verified owned source digest for recipe identity. All pins,
+  plan checks and detector smoke shapes remain required before activation.
+  Existing private TensorRT profiling now reports preparation wall phases.
+
 - Speed up GPU text-region extraction with identical results: shorter
   component-root walks, per-warp box scoring with an exact parallel float sum
   and a wider ribbon merge. Measured on an RTX 4090, OCR worker time fell from

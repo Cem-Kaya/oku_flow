@@ -582,3 +582,151 @@ would create or evict detector contexts. No capture refusal or 256 MiB
 headroom refusal was observed, so those fallbacks are read and covered by the
 model-free test, not exercised on the GPU. No owner camera capture was
 available.
+
+## Round 5: cached-engine startup verification
+
+Target: construction to first GPU result <=2800 ms (median of at least five
+fresh warm-file-cache processes), identical complete output on all 18 scenes,
+unchanged plan keys/payload digests, warm worker time within noise, no slower
+first worker read per scene, and continued refusal of tampered artifacts.
+
+Windows CNG SHA-256 replaces Qt's hashing in the existing source-file checks,
+owned source-snapshot check and cached plan check. Every original check runs
+in the original order before activation; pins, engine recipes, cache bounds,
+ownership and all four detector smoke shapes are unchanged. The exact source
+snapshot digest is reused for pin equality and recipe identity, eliminating a
+second hash of the same bytes. Streaming verification uses 1 MiB scratch;
+no verified-file receipt survives the call or process. Source bytes are still
+retained through preparation, as before. This exact change is on by default;
+there is no new environment switch. System CNG failures fail closed.
+
+`OKUFLOW_UCT_TRT_PROFILE=1` emits separate `UCT_TRT_PREPARE` JSON wall phases.
+No timer or JSON work runs when off. Network and outer preparation intervals
+are nested, so do not sum them. Logging overhead is excluded from the next
+wall interval. Phase rows identify work completed at checkpoints, not vendor
+CPU sampling. Failure retains preceding checkpoints; no success is inferred
+from a partial trace. The cached production path does not call DLL provenance
+hashing or golden attestation; provenance code remains unchanged. DLL loading
+already was runtime-only and its provenance hashing already streamed.
+
+### Startup and phase evidence
+
+RTX 4090, driver 621.14, Ryzen 9 5900X, MSVC 19.44 Release, Qt 6.12.0,
+CUDA 12.9.86, TensorRT 11.4.0.106, medium/medium BF16 cached plans, batch eight,
+fixed1024. GPU use serialized through the shared lease; no GUI/camera load.
+Evidence `r5-startup-ab-five`: five reversed cohorts, five warm reads per
+scene/build/cohort, immutable r2 executable versus this checkout. Unprofiled
+startup median **3854.97 -> 847.74 ms**, 78.0% less, meeting the 2800 ms target.
+Forward/reverse cohorts begin on different scenes, hence their different
+initial worker cost. These are fresh processes with warm files, not cold disk.
+
+| Process / corpus order | r2 startup ms | r5 startup ms |
+| --- | ---: | ---: |
+| 0 / forward | 3898.11 | 862.56 |
+| 1 / reverse | 3790.40 | 703.55 |
+| 2 / forward | 3854.97 | 866.10 |
+| 3 / reverse | 3766.67 | 673.20 |
+| 4 / forward | 4131.09 | 847.74 |
+
+Evidence `r5-preparation-profile-before-2` and `r5-preparation-profile-after`:
+five fresh processes each on doc-camera-1080. The first before process is the
+first instrumented process in this task, after baseline reads and a build; it
+is NOT a first-session or cold-file-cache measurement. The owner was already
+using the machine and caches were not purged. Processes 1-4 are repeated
+warm-file-cache observations. The first after process likewise has warm files.
+The harness initializes CUDA/uploads before constructing the recognizer, so
+these traces do not measure cold process CUDA-context creation. Profile timing
+is attribution only; it is not substituted for unprofiled startup timing.
+
+| Role / wall phase | Before median ms | After median ms |
+| --- | ---: | ---: |
+| assets: verify-and-dictionary | 1579.86 | 174.29 |
+| preparation: cuda-device | 0.01 | 0.01 |
+| preparation: state-and-stream | 0.04 | 0.05 |
+| preparation: runtime-dll-load | 21.38 | 20.23 |
+| detector: source-read-and-verify | 342.79 | 42.85 |
+| detector: runtime-and-source-rehash | 338.75 | 6.80 |
+| detector: plan-read-and-verify | 190.02 | 23.43 |
+| detector: deserialize | 21.04 | 17.65 |
+| detector: engine-contract | 1.55 | 1.17 |
+| detector: execution-context | 99.40 | 93.54 |
+| preparation: detector-prepare | 998.94 | 186.12 |
+| preparation: detector-smoke-four-shapes | 64.62 | 67.71 |
+| preparation: detector-finish | 0.02 | 0.02 |
+| recognizer: source-read-and-verify | 420.84 | 52.90 |
+| recognizer: runtime-and-source-rehash | 402.35 | 0.02 |
+| recognizer: plan-read-and-verify | 225.73 | 28.73 |
+| recognizer: deserialize | 5.99 | 5.41 |
+| recognizer: engine-contract | 1.92 | 1.37 |
+| recognizer: execution-context | 78.16 | 72.88 |
+| preparation: recognizer-prepare | 1166.27 | 172.06 |
+| preparation: completion-and-receipts | 4.83 | 4.93 |
+
+Hashing, rather than deserialization, dominated the old path. CNG and digest
+reuse were measured together, so their isolated gains are unproven. The
+remaining context creation and smoke work is retained.
+
+### Worker and correctness evidence
+
+Complete ordered output is byte-identical on **18/18** scenes, with repeated
+outputs deterministic. Every backend detail string in all ten processes is
+identical, including both plan keys and payload digests, loaded cache status,
+source graph identity and four detector smoke shapes. This is fixture output
+identity, not new camera quality acceptance.
+
+Warm worker geometric-mean speedup is **0.99348x** and first-scene worker
+geometric-mean speedup **0.99306x**. Warm change is within the ~1% overall noise
+floor (dense scenes about 2%, sparse scenes up to 12%). The literal requirement
+that no scene's first-read point estimate increases is **not established**:
+several do, with a largest relative increase of about 6% on a short real-board
+scene. There is no established overall first-worker regression, but neither
+an equivalence confidence bound nor a claim that every read is faster.
+The table includes medians and each cohort's own warm median; first reads are
+the harness's first timed per-scene reads after its startup probe.
+
+| Scene | base warm ms (cohorts) | new warm ms (cohorts) | base first ms | new first ms | speedup warm / first | output | words lost/gained | truth recall |
+|---|---|---|---|---|---|---|---|---|
+| doc-camera-1080 | 207.19 (205.95, 206.94, 207.99, 205.85, 207.82) | 206.73 (205.73, 208.49, 208.94, 206.31, 206.06) | 207.22 | 207.05 | 1.002 / 1.001 | identical | 0/0 | 1.0000 / 1.0000 |
+| doc-camera-tilt-1080 | 158.85 (159.38, 160.16, 157.57, 158.85, 158.54) | 159.90 (157.80, 159.98, 161.06, 159.06, 160.44) | 158.89 | 160.29 | 0.993 / 0.991 | identical | 0/0 | 1.0000 / 1.0000 |
+| doc-camera-2160 | 477.88 (479.97, 479.03, 475.85, 477.30, 476.58) | 483.50 (484.52, 479.50, 485.86, 480.31, 483.80) | 475.14 | 484.60 | 0.988 / 0.980 | identical | 0/0 | 0.9916 / 0.9916 |
+| doc-camera-turkish-1080 | 181.16 (180.25, 178.37, 181.42, 181.84, 181.67) | 181.84 (186.20, 180.24, 185.46, 179.61, 179.12) | 181.48 | 181.34 | 0.996 / 1.001 | identical | 0/0 | 0.9463 / 0.9463 |
+| book-curved-1080 | 75.67 (74.87, 74.03, 76.03, 76.28, 76.06) | 76.74 (78.08, 77.62, 82.12, 75.24, 75.32) | 76.38 | 77.06 | 0.986 / 0.991 | identical | 0/0 | 0.3956 / 0.3956 |
+| slide-light-1080 | 70.57 (70.74, 68.26, 70.36, 69.00, 70.78) | 69.67 (70.93, 69.85, 70.28, 68.01, 69.37) | 69.29 | 69.16 | 1.013 / 1.002 | identical | 0/0 | 0.9934 / 0.9934 |
+| slide-dark-1080 | 71.51 (73.88, 69.75, 71.51, 71.47, 80.32) | 71.44 (72.35, 70.93, 75.20, 70.35, 70.01) | 70.95 | 71.61 | 1.001 / 0.991 | identical | 0/0 | 0.9934 / 0.9934 |
+| slide-light-2160 | 118.95 (123.28, 116.94, 120.89, 116.75, 121.25) | 116.85 (133.74, 116.92, 118.50, 115.00, 115.49) | 119.45 | 117.55 | 1.018 / 1.016 | identical | 0/0 | 0.9737 / 0.9737 |
+| table-1080 | 141.56 (144.06, 140.48, 142.35, 139.69, 143.53) | 141.67 (144.28, 140.89, 143.96, 141.31, 141.68) | 141.77 | 144.73 | 0.999 / 0.980 | identical | 0/0 | 1.0000 / 1.0000 |
+| page-portrait-1654x2339 | 380.81 (384.49, 378.65, 382.08, 379.55, 382.00) | 381.69 (384.11, 382.62, 381.69, 381.53, 378.07) | 382.65 | 382.39 | 0.998 / 1.001 | identical | 0/0 | 0.9949 / 0.9949 |
+| signs-sparse-1080 | 32.32 (34.73, 31.28, 33.52, 31.06, 32.19) | 32.73 (33.58, 32.76, 33.35, 32.23, 30.86) | 33.14 | 33.64 | 0.987 / 0.985 | identical | 0/0 | 1.0000 / 1.0000 |
+| no-text-1080 | 46.68 (46.80, 45.23, 47.39, 46.48, 48.34) | 46.92 (47.29, 46.92, 50.98, 46.36, 46.53) | 47.49 | 48.73 | 0.995 / 0.975 | identical | 0/0 | - / - |
+| board-lecture-00 | 24.09 (24.07, 23.48, 24.88, 23.74, 25.41) | 24.32 (24.82, 23.75, 25.13, 25.21, 23.33) | 24.95 | 24.24 | 0.990 / 1.029 | identical | 0/0 | - / - |
+| board-lecture-01 | 24.20 (24.32, 24.06, 24.45, 23.95, 24.15) | 24.99 (25.09, 24.70, 26.22, 24.54, 23.48) | 23.70 | 24.24 | 0.969 / 0.978 | identical | 0/0 | - / - |
+| board-lecture-02 | 26.96 (28.52, 26.22, 28.35, 26.33, 27.77) | 27.26 (27.90, 28.43, 27.15, 26.57, 26.50) | 27.06 | 28.67 | 0.989 / 0.944 | identical | 0/0 | - / - |
+| board-lecture-03 | 26.78 (26.99, 25.55, 27.05, 26.08, 27.32) | 27.71 (27.81, 28.58, 27.72, 26.60, 26.60) | 27.26 | 27.51 | 0.967 / 0.991 | identical | 0/0 | - / - |
+| board-lecture-04 | 25.48 (27.41, 24.63, 26.85, 24.27, 26.05) | 25.66 (27.01, 25.99, 25.40, 25.71, 24.19) | 24.99 | 24.37 | 0.993 / 1.025 | identical | 0/0 | - / - |
+| board-lecture-05 | 23.34 (23.42, 22.37, 23.53, 23.38, 22.81) | 23.36 (23.26, 24.34, 23.73, 24.71, 21.83) | 24.23 | 24.27 | 0.999 / 0.998 | identical | 0/0 | - / - |
+
+Geometric mean new versus base: warm 0.993x, first read 0.993x; identical output on 18/18 scenes.
+
+
+### Validation and limits
+
+Prepared-toolchain `uct_paddle_tests` and `uct_model_installation_tests` built.
+CTest `uct_paddle_processing`, `uct_model_installation_contract` and
+`uct_precision_artifact_contract` pass (3/3). The new model-free SHA contract
+compares Qt digests for empty/boundary/257 MiB logical inputs, cancelled reads,
+closed/error/stalled devices and an on-disk tampered artifact. Existing
+manifest, pin and artifact tamper refusals also pass. CNG failure injection,
+non-Windows fallback compilation and real app model handoff are unproven.
+
+`scripts/agent_check.ps1` requested FULL due to validation infrastructure edits;
+it did not report a SCOPED pass. The delegate guide forbids the complete
+matrix, so shipping/CPU/CUDA matrix, shared-source PCH ON/OFF, native desktop,
+normal-close and cold-disk acceptance remain for the orchestrator. No GUI was
+run. No source model, engine plan, installer or measurement tool was changed.
+
+Failed attempts are retained: `r5-preparation-profile-before` was started before
+the initial executable existed; a direct CTest call used a nonexistent default
+CMake path, then passed via the prepared Visual Studio CTest. Initial edits
+also hit a documentation encoding error before any document write; UTF-8 append
+fixed it. No preload, verification deferral, concurrency, context cache or
+smoke-shape removal was attempted. No default changed recognized output.

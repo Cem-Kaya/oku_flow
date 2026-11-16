@@ -1468,3 +1468,12 @@ setting, file or model; device memory per engine is one activation arena (it
 replaces the preparation context's own) plus about 2 MiB per context and per
 graph. `OKUFLOW_UCT_GRAPH_LIFETIME_TEST=1` with `OKUFLOW_UCT_TEST_IMAGE` runs
 the opt-in `optionalGraphReplayLifetime` check. See `docs/uct_okuread_port.md`.
+
+## UCT preparation profile (round 5)
+
+Existing private `OKUFLOW_UCT_TRT_PROFILE=1` also emits bounded per-preparation
+`UCT_TRT_PREPARE` JSON lines (schema 1, role, phase, wallMs, elapsedMs).
+It introduces no new switch or path. `sha256::Read` and `Bytes` use 1 MiB
+chunks; CNG hash-object scratch is refused above 1 MiB. These are scratch
+bounds, not changed model/plan limits. No cross-process verification cache is
+introduced. See [round evidence](uct_okuread_port.md).

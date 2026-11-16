@@ -653,3 +653,10 @@ test-only. Generation, exact bytes and its silent use are recorded in
 bundled with the application.
 
 The Windows release SBOM explicitly lists MicroTeX, tinyxml2 and the embedded unmodified font collection with their static-link/containment relationships. Exact staged Math notices are compared against tracked sources before metadata is generated; Knuth/dsrom terms are retained as extracted SPDX license records.
+
+
+UCT startup verification uses Windows' built-in CNG SHA-256 (`bcrypt`), as the
+runtime installer verifier already does. No CNG binary or third-party hash
+implementation is copied or redistributed; non-Windows builds use the existing
+Qt hash implementation. Model/runtime notices and redistribution gates remain
+unchanged.

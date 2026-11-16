@@ -17,6 +17,15 @@ public:
     using std::runtime_error::runtime_error;
 };
 
+// A digest could not be produced: the hash was stopped (cancellation or a
+// deadline) or the system hash failed. That is no verdict on the artifact, so
+// it must neither be reported or remembered as a changed file nor select
+// another engine or a rebuild.
+class VerificationInterrupted final : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
+
 // Shared by the production factory checks and the model-free failure fixture.
 template<class T> T* RequireTensorRtApi(T* value, std::string_view message) {
     if (!value) throw TensorRtApiFailure(std::string(message));
@@ -30,6 +39,7 @@ inline bool AllowsTensorRtCapacityFallback(const std::exception_ptr& failure) {
     try { std::rethrow_exception(failure); }
     catch (const CudaFailure&) { return false; }
     catch (const TensorRtApiFailure&) { return false; }
+    catch (const VerificationInterrupted&) { return false; }
     catch (const std::bad_alloc&) { return false; }
     catch (const std::exception&) { return true; }
     catch (...) { return false; }

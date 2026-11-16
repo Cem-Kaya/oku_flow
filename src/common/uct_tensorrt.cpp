@@ -5,6 +5,7 @@
 #include "uct_bf16_detector.hpp"
 #include "uct_runtime_paths.hpp"
 #include "uct_engine_cache.hpp"
+#include "uct_sha256.hpp"
 #include "uct_native_precision.hpp"
 #include "uct_formula_internal.hpp"
 #include <QCoreApplication>
@@ -30,6 +31,7 @@ bool TensorRtCropDiagnostic::TryCommit(Plan&& plan) noexcept
 #include "okuflow/cuda/uct_analysis_pool.hpp"
 #include "okuflow/cuda/uct_kernels.hpp"
 #include "uct_tensorrt_profile.hpp"
+#include "uct_preparation_profile.hpp"
 #include "uct_frozen_upload.hpp"
 #include "uct_graph_cache.hpp"
 #include "uct_recognition_groups.hpp"
@@ -457,6 +459,7 @@ class Network
             const QByteArray& verifiedPlanKey = "verified-local-bf16",bool bf16Graph=false,int expectedClasses=0,
             bool nativeBf16=false)
     {
+        PreparationProfile loadProfile(detection ? "detector" : "recognizer");
         detection_=detection;variableWidth_=variableWidth;maximumBatch_=maximumBatch;
         maximumOutputFloats_=!detection && maximumBatch==16 ? 256ull*1024*1024 : 64ull*1024*1024;
         const auto artifact=[&](const std::string& reason) {
@@ -468,8 +471,17 @@ class Network
         if (!modelFile.open(QIODevice::ReadOnly))
             artifact("Cannot read pinned OCR graph.");
         const auto bytes = modelFile.readAll();
-        if (QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex() != expected)
+        // This digest binds both pin verification and recipe identity to the
+        // SAME owned snapshot. Never substitute the earlier path-only check.
+        const auto sourceHash = sha256::Bytes(bytes, stop);
+        // An empty digest is no verdict on the file (uct_sha256.hpp).
+        if (sourceHash.size() != 32)
+            throw detail::VerificationInterrupted(stop()
+                ? "GPU preparation stopped while verifying the pinned OCR graph."
+                : "System SHA-256 failed; the pinned OCR graph was not verified.");
+        if (sourceHash.toHex() != expected)
             artifact("Pinned OCR graph changed before preparation.");
+        loadProfile.Mark("source-read-and-verify");
         publicResources_=std::make_unique<PublicResources>(bytes,stop);
         auto& resources=*publicResources_;
         runtime_.reset(static_cast<nvinfer1::IRuntime *>(libraries.runtime(&logger,NV_TENSORRT_VERSION)));
@@ -477,7 +489,7 @@ class Network
         detail::RequireTensorRtApi(runtime_.get(),"TensorRT runtime creation failed.");
         cudaDeviceProp properties{};
         Check(cudaGetDeviceProperties(&properties, device));
-        const auto sourceHash = QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
+        loadProfile.Mark("runtime-create");
         const auto graphHash = nativeBf16 ? native_precision::GraphIdentity(sourceHash) : sourceHash;
         const auto uuid = QByteArray(reinterpret_cast<const char *>(&properties.uuid), sizeof(properties.uuid));
         // A new build binds its actual builder version. Loading an older key
@@ -512,8 +524,18 @@ class Network
             if (!cached.open(QIODevice::ReadOnly) || !engine_cache::FileFits(cached.size())) continue;
             const auto digest = cached.read(32), plan = cached.readAll();
             if (cached.error() != QFileDevice::NoError || !cached.atEnd() ||
-                QCryptographicHash::hash(plan, QCryptographicHash::Sha256) != digest) continue;
+                digest.size() != 32 || plan.isEmpty()) continue;
+            // A stopped or failed hash must not look like a missing plan and
+            // fall through to another locator or to a build.
+            const auto planHash = sha256::Bytes(plan, stop);
+            if (planHash.size() != 32)
+                throw detail::VerificationInterrupted(stop()
+                    ? "GPU preparation stopped while verifying a cached OCR plan."
+                    : "System SHA-256 failed; a cached OCR plan was not verified.");
+            if (planHash != digest) continue;
+            loadProfile.Mark("plan-read-and-verify");
             engine_.reset(runtime_->deserializeCudaEngine(plan.constData(), plan.size()));
+            loadProfile.Mark("deserialize");
             // A reported CUDA fault is terminal, even if another locator exists.
             Check(cudaPeekAtLastError());
             if (engine_) {
@@ -659,7 +681,9 @@ class Network
         contextBytes_ = engine_->getDeviceMemorySizeV2();
         if (bf16Graph && (contextBytes_ < 0 || (!detection && !engine_cache::ContextFits(contextBytes_))))
             reject("BF16 recognizer context exceeds its supported memory bound.");
+        loadProfile.Mark("engine-contract");
         context_.reset(engine_->createExecutionContext());
+        loadProfile.Mark("execution-context");
         Check(cudaPeekAtLastError());
         if (!context_)
             throw TensorRtApiFailure("TensorRT execution context creation failed.");
@@ -1427,7 +1451,9 @@ class TensorRtRecognizer final : public Recognizer
                              "accepts 1 to 16 and only with OKUFLOW_UCT_TEST_TRT_GRAPH=1.";
             return status_;
         }
+        PreparationProfile assetsProfile("assets");
         assets_ = LoadPaddleAssets(root_,detectorTier_,recognizerTier_);
+        assetsProfile.Mark("verify-and-dictionary");
         if (!assets_.IsValid())
         {
             status_.detail = assets_.error;
@@ -1453,6 +1479,7 @@ class TensorRtRecognizer final : public Recognizer
             status_.detail = "TensorRT requires Turing or newer; CPU OCR remains available.";
             return status_;
         }
+        assetsProfile.Mark("cuda-probe");
         BeginPreparation(0);
         status_.state = BackendState::kReady;
         status_.usesGpu = true;
@@ -2079,6 +2106,7 @@ class TensorRtRecognizer final : public Recognizer
                          graphShapes] {
                 try
                 {
+                    PreparationProfile preparationProfile("preparation");
                     const auto baselinePolicy=public_bf16::BaselinePolicy(publicRequest);
                     const std::weak_ptr<Preparation> weak=preparation;
                     const auto cancelled=[weak] {
@@ -2091,6 +2119,7 @@ class TensorRtRecognizer final : public Recognizer
                     Check(cudaGetDeviceProperties(&properties, preparation->device));
                     if (properties.major * 10 + properties.minor < 75)
                         throw std::runtime_error("TensorRT requires Turing or newer.");
+                    preparationProfile.Mark("cuda-device");
                     auto state = std::make_shared<State>();
                     state->device = preparation->device;
                     state->variableWidth = variableWidth;
@@ -2102,7 +2131,9 @@ class TensorRtRecognizer final : public Recognizer
                     int low{}, high{};
                     Check(cudaDeviceGetStreamPriorityRange(&low, &high));
                     Check(cudaStreamCreateWithPriority(&state->stream, cudaStreamNonBlocking, low));
+                    preparationProfile.Mark("state-and-stream");
                     state->libraries = std::make_unique<Libraries>(sdk);
+                    preparationProfile.Mark("runtime-dll-load");
                     int driver{};
                     Check(cudaDriverGetVersion(&driver));
                     const auto precisionDetail = [&](bool bf16, const QString& fallback = QString()) {
@@ -2159,7 +2190,9 @@ class TensorRtRecognizer final : public Recognizer
                             ConfirmPublicCompletion(*state,cancelled);
                             public_bf16::RefuseStoppedCandidate(state->publicCompletion,detectorStop(),"BF16 detector build deadline");
                             validating=true;
+                            preparationProfile.Mark("detector-prepare");
                             SmokeDetector(*state,detectorStop);
+                            preparationProfile.Mark("detector-smoke-four-shapes");
                             public_bf16::RefuseStoppedCandidate(state->publicCompletion,detectorStop(),"BF16 detector deadline after smoke check");
                             state->detectorBf16=true;
                             public_bf16::SessionAttempts().Passed(attempt);
@@ -2202,6 +2235,7 @@ class TensorRtRecognizer final : public Recognizer
                     }
                     if (preparation->cancel.load())
                         throw std::runtime_error("GPU preparation cancelled.");
+                    preparationProfile.Mark("detector-finish");
                     int capacity = recognizerBatch;
                     if(publicRequest.enabled && publicRequest.runtimePreference && !publicRequest.fp32Control && !experiment && !precisionRequest.Requested()) {
                         if(properties.major<8 || variableWidth) {
@@ -2329,6 +2363,7 @@ class TensorRtRecognizer final : public Recognizer
                         RecordFp32Control(*state,assets,publicRequest,recognizerTier,cancelled,attestationObserver);
                         state->precisionDetail+="FP32 control only; no BF16 activation or publication. ";
                     }
+                    preparationProfile.Mark("recognizer-prepare");
                     ConfirmPublicCompletion(*state,cancelled);
                     state->detector->ReleaseBuildResources();state->recognizer->ReleaseBuildResources();
                     if (graphShapes > 0) {
@@ -2351,6 +2386,7 @@ class TensorRtRecognizer final : public Recognizer
                         : "Detector graphSha256="+QString::fromLatin1(bf16_detector::GraphHash(detectorTier))+". ";
                     state->precisionDetail += state->detector->PlanReceipt("detector") +
                                               state->recognizer->PlanReceipt("recognizer");
+                    preparationProfile.Mark("completion-and-receipts");
                     preparation->phase.store(1, std::memory_order_release);
                 }
                 catch (const std::exception &error)
