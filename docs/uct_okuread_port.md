@@ -838,6 +838,239 @@ failure injection, an input above 4 GiB, an end-to-end GPU run with a tampered
 plan, and reporting a failed system hash as such where assets are loaded (it
 reports as missing or changed files and disables both Paddle readers).
 
+## Round 6: reconcile safety versus reading gain (negative result)
+
+Targets: tuning gain at least 150 exact words with no page losing more than
+three; each confirmation set must retain total exact matches, not increase
+unmatched words, and lose at most five per page; at least 57/62 complete titles
+without regression; v1 warm geometric mean at least 1.28x and dense 1080p at
+least 1.8x, without a scene regression beyond the noise floor. Retain coverage,
+order independence and all fitted/refused ribbons.
+
+Result: retain the reviewed `1b580f5` rules. No production code or threshold
+changes. The experiment remains OFF by default. The earlier reading gain
+cannot be recovered simply by weakening containment: adding only the required
+curved/refused-ribbon protection to the original rules removes its aggregate
+tuning gain, before adding the reviewed height/span/coverage restrictions.
+This is a negative result for that mechanism, not a proof that every future
+geometry-only design must fail.
+
+### Diagnosis
+
+Built `ec7282d` and `1b580f5` in separate external source/build trees. Temporary
+geometry-only dumps were removed from the final binary. Evidence:
+`r6-diagnosis-tune2`, `r6-diagnosis-decisions`, `r6-tune-ablation` under the
+private program evidence root documented above. No recognized title text or
+owner imagery enters Git.
+
+The external CPU replay checks both builds' actual decisions against the
+reconstructed rules, verifies equal detector geometry, and records every
+input quad, rule witness and restoration in `all-detections.json` (2,468
+records, first and warm reads). `actual-old-witnesses.json` lists each
+old-drop/reviewed-keep decision and every old-rule witness's failed reviewed
+conditions. Counts below use first reads only and each detection once; where
+several old witnesses exist, classify by the one with fewest failed conditions.
+
+| Obstruction to the best old witness | Detections |
+| --- | ---: |
+| Curved/refused ribbon, alone or with another condition | 201 |
+| Height ratio alone | 46 |
+| Baseline span alone | 5 |
+| Height ratio and span | 2 |
+| Final coverage/rule selection | 2 |
+| Total old-drop/reviewed-keep | 256 |
+
+There is no offset-only obstruction in this classification; one combined
+curved/height/offset case occurs. This distinguishes relevant old witnesses
+from arbitrary nearby boxes. Both valid and refused ribbon flags were
+collapsed to the existing `Detection::curved`; this diagnosis does not
+identify which of those two flags accounts for each difference.
+
+RTX 4090, driver 621.14, Ryzen 9 5900X; MSVC 19.44 Release, Qt 6.12,
+CUDA 12.9.86, TensorRT 11.4.0.106, medium/medium cached BF16-linear plans,
+mixed arithmetic, N8 fixed1024. Tuning-only ablation `r6-tune-ablation`,
+one first and one warm read, identical executable across these arms:
+
+| Rules | Exact / 8,154 labels | Other | Worse / better pages | Worst delta |
+| --- | ---: | ---: | --- | ---: |
+| Switch off | 6,163 | 1,065 | 0 / 0 | 0 |
+| Original, unprotected | 6,369 | 1,052 | 1 / 14 | -1 |
+| Original plus curved/refused protection only | 6,163 | 1,032 | 7 / 5 | -3 |
+
+For example, tuning pages 07, 08 and 18 have off/original/protected exact counts
+104/133/104, 440/458/437 and 426/459/423 respectively. The exact quads and
+witnesses are in private evidence. Keeping envelope geometry that looks
+straight is insufficient reason to discard the refused-ribbon ink-protection
+contract. No asymmetric tolerance or joint-span rule was selected: only five
+changed straight detections are blocked solely by the span condition, while
+the required ribbon protection alone removes all aggregate old-rule gain.
+
+### Retained contract and tests
+
+Invariant: no detection is omitted unless a kept straight detection from
+another region spans its baseline extent within the stated tolerance and
+passes the same-line/height/whole-frame-resolution checks. This is detector
+geometry coverage, not a proof of correct recognized text or pixel coverage.
+The strict `Replaces` relation and final monotone restoration pass remain
+unchanged; fitted and refused ribbons take no part in any removal.
+
+`regionReconcileRules` adds a chain where unequal height-based tolerances
+require restoring a fragment, plus a large straight-looking ribbon-envelope
+case. All 300 deterministic random layouts now also check shuffled keep
+choices, unchanged quads/regions/ribbon flags, retained curved detections and
+statistics conservation. Existing two-line, large-title, 3840-wide and other
+chain tests remain. The final slot passes; this is scoped model-free evidence,
+not the shipping matrix. No GUI tests, installed OkuRead, Magnifier, camera,
+network publishing or default activation were used.
+
+### Final confirmation
+
+Final binary SHA-256:
+`dc9b8f4edacef577479759929ca1808bc235eec7440203bdda5f15cbaa222ad9`.
+The command transcript and complete results are in the private `r6-handback.md`.
+Variants 3 and 4 were generated only after that binary existed; constants were
+not changed after confirmation. Quality runs use one first and one warm read
+with profiling; their timings are not performance evidence. Speed uses the
+separate unprofiled two reversed cohorts of five warm reads.
+
+All numbers: RTX 4090 / driver 621.14 / Ryzen 9 5900X; MSVC 19.44 Release, Qt 6.12.0, CUDA 12.9.86, TRT 11.4.0.106, cached medium/medium BF16-linear mixed arithmetic, N8 fixed1024.
+
+| Set | Exact off / on | Other off / on | Worse / better | Worst | Restorations first / all reads | Quality target |
+|---|---:|---:|---:|---:|---:|---|
+| okuread-tune | 6163 / 6166 | 1065 / 1042 | 6 / 6 | -4 | 2 / 4 | NOT MET |
+| v1-variant1 | 7328 / 7338 | 65 / 39 | 2 / 7 | -1 | 2 / 4 | MET |
+| okuread-labelled-a | 9225 / 9218 | 1581 / 1537 | 14 / 11 | -6 | 2 / 4 | NOT MET |
+| okuread-labelled-b | 3076 / 3094 | 1399 / 1346 | 3 / 17 | -1 | 3 / 6 | MET |
+| v1-variant3 | 7889 / 7901 | 95 / 66 | 1 / 6 | -1 | 4 / 8 | MET |
+| v1-variant4 | 7256 / 7268 | 77 / 42 | 2 / 7 | -1 | 4 / 8 | MET |
+| v1-speed | 4106 / 4117 | 81 / 62 | 1 / 3 | -2 | 2 / 4 | MET |
+
+Keep complete ordered output identical: okuread-labelled-a: 40/40 scenes.
+
+
+Keep complete ordered output identical: v1-speed: 18/18 scenes.
+
+
+Titles (counts only): base 43/62, on 55/62, keep 43/62; complete-off becoming incomplete-on: 0.
+Title restorations first / all reads: 0 / 0.
+Keep byte identity on titles: 62/62.
+
+Unprofiled worker timing (ms); two reversed cohorts, five warm passes each.
+
+| Scene | Warm off / on | First off / on | Warm x | Cohort 0 / 1 warm x |
+|---|---:|---:|---:|---:|
+| doc-camera-1080 | 208.67 / 109.29 | 208.86 / 109.75 | 1.909 | 1.919 / 1.895 |
+| doc-camera-tilt-1080 | 159.84 / 95.64 | 160.00 / 96.43 | 1.671 | 1.668 / 1.674 |
+| doc-camera-2160 | 479.16 / 272.66 | 478.38 / 280.30 | 1.757 | 1.795 / 1.718 |
+| doc-camera-turkish-1080 | 180.39 / 102.12 | 179.27 / 104.69 | 1.766 | 1.787 / 1.749 |
+| book-curved-1080 | 75.66 / 76.68 | 73.48 / 75.00 | 0.987 | 0.983 / 1.029 |
+| slide-light-1080 | 67.91 / 57.38 | 72.96 / 62.35 | 1.184 | 1.186 / 1.179 |
+| slide-dark-1080 | 69.80 / 58.81 | 70.66 / 61.12 | 1.187 | 1.213 / 1.180 |
+| slide-light-2160 | 117.56 / 92.06 | 115.62 / 94.27 | 1.277 | 1.256 / 1.305 |
+| table-1080 | 141.25 / 82.27 | 142.16 / 81.94 | 1.717 | 1.742 / 1.712 |
+| page-portrait-1654x2339 | 380.17 / 229.27 | 381.63 / 225.21 | 1.658 | 1.635 / 1.664 |
+| signs-sparse-1080 | 32.46 / 30.93 | 32.50 / 29.85 | 1.049 | 1.063 / 1.103 |
+| no-text-1080 | 46.07 / 47.64 | 47.45 / 49.02 | 0.967 | 0.967 / 0.966 |
+| board-lecture-00 | 23.50 / 25.03 | 25.13 / 26.06 | 0.939 | 0.929 / 0.971 |
+| board-lecture-01 | 24.59 / 25.31 | 25.63 / 24.82 | 0.971 | 0.957 / 0.988 |
+| board-lecture-02 | 27.36 / 26.36 | 27.90 / 26.89 | 1.038 | 1.005 / 1.013 |
+| board-lecture-03 | 28.10 / 26.56 | 27.53 / 35.47 | 1.058 | 1.051 / 1.054 |
+| board-lecture-04 | 27.10 / 27.15 | 25.71 / 27.42 | 0.998 | 0.944 / 1.049 |
+| board-lecture-05 | 23.23 / 24.79 | 23.42 / 24.87 | 0.937 | 0.953 / 0.977 |
+
+Geometric means: {"warm": 1.2391162151378239, "firstRead": 1.2142088106554645, "scenesIdentical": 6, "scenes": 18}
+Cohort warm geometric means: [1.235631167111847, 1.2515299168366205]
+
+Target decisions: tuning NOT MET (+3, worst -4); labelled A NOT MET (total -7,
+worst -6); labelled B, v1, fresh variants 3 and 4 quality MET; titles NOT MET
+(55 rather than 57, no regression). V1 warm aggregate NOT MET (1.239x versus
+1.28x); dense 1080p MET (1.909x versus 1.8x). The no-scene-regression target
+is NOT MET conservatively: no-text is 3.4% slower in both cohorts, beyond the
+2% dense-scene reference floor. Sparse lecture regressions remain within the
+12% sparse-scene floor. First-read geometric mean is 1.214x; the first-read
+columns exclude engine startup and are not cold-cache measurements.
+
+The geometry invariant is retained by construction and passes all random
+layouts and the complete tuning-geometry replay. Final corpus profile lines
+show the restorations above (v1 uses its separate profile run); they are not
+an independent pixel/text coverage audit of every confirmation page. No
+recognition correctness follows from the relation. The retained coverage
+algorithm ensures every omitted detection has a kept `Replaces` witness;
+curved/refused detections are always kept. No general camera safety claim is
+made from that formal invariant.
+
+`uct_paddle_processing` through `run_test_gate.ps1` is SCOPED PASS: 1/349
+CTest cases, no skipped Qt rows or unresolved failures; full matrix and GUI
+acceptance were not run. `agent_check.ps1` configured CPU then returned
+FULL-required for missing dependency inventory; the delegate guide forbids
+starting that full matrix. The first chain fixture had incorrect tile-edge
+geometry and failed; its corrected, rebuilt fixture passes. All failed logs
+remain external. An initial dump hit QtTest's warning cap and was replaced
+by direct diagnostic output; its evidence remains, but only the second full
+dump supports the diagnosis. Variant generation initially failed because the
+lease helper's Python lacked NumPy; the existing Anaconda Python generated
+both untouched sets without installing packages or changing system settings.
+
+All 24 final arm/cohort receipts bind the same executable and report cached
+medium BF16 plans, deterministic output and zero malformed profile lines.
+Private diagnostic and ablation binaries were rebuilt during investigation;
+their evidence hashes identify those historical builds, not the final binary.
+No new runtime switch was shipped and no default or dependency changed.
+
+Turning this experiment on still needs the missed tuning/held-out/title/speed
+criteria resolved while retaining ribbon protection and the geometry invariant,
+plus independent coverage review and owner camera/document captures. The
+corpora contain no owner camera capture. Worker timing, generated-page scores,
+model-free geometry tests and private title counts do not establish native
+presentation, real-camera quality, accessibility or release acceptance.
+
+### Review
+
+Council on `83e2b30`: Claude Opus 5.5 7/10, GPT-6.1 Sol 8/10, Gemini 4 Hydrogen
+8/10; all three accept the negative result and keep the reviewed rules. They
+recounted the diagnosis table and the ablation from the evidence and found
+both correct, and they supplied what the diagnosis above leaves open:
+
+- **What the first version's gain was.** The scorer counts only confident
+  words. Every word read from a refused ribbon is marked invalid geometry with
+  a protection box, and word merging passes that mark to whichever overlapping
+  word wins. In the first reads of the tuning ablation the three arms have 584,
+  333 and 584 invalid-geometry words (switch off, first rules, first rules
+  with curved detections excluded) against 7,228, 7,421 and 7,195 confident
+  ones. So most of the +206 was about 251 withheld words counted again because
+  their protection never reached the merge: the bypass the first council
+  objected to, not better reading.
+- **Which side was curved.** Of the 201 blocked decisions, 100 drop a straight
+  detection whose stand-in is curved-flagged, 47 drop a curved-flagged
+  detection in favour of a straight one (the bypass), and 54 are curved on
+  both sides. The ablation excluded curved detections in every role, so "the
+  exclusion alone removes the gain" holds for that combination, not for each
+  role.
+- **Fitted and refused ribbons are different cases** and were not separated. A
+  refused ribbon keeps the ordinary rectangle as its box, so as a stand-in its
+  geometry is as good as a straight detection's; a fitted ribbon's box is only
+  an envelope.
+- **Flat text is flagged as curved very often.** On the 20 flat tuning pages
+  299 of 1,234 detections carry a ribbon flag, and one read has about 880
+  fitted and 168 refused ribbon crops. This is a reading question before it is
+  a speed question; see round 12.
+
+Applied while merging: the random-layout test also compares `quad.valid` and
+every statistics counter under the shuffle, shuffles with its own generator,
+and fails unless the layouts actually drop and keep curved detections. Not
+done: an independent span check in the test file (the coverage check still
+calls the production `Replaces`).
+
+Measured afterwards on the merged build, curved processing on (default)
+against off (`OKUFLOW_UCT_CURVED_RIBBON=0`), one read per page, RTX 4090
+(`issue18-flat-*`): with curved processing off, exact label matches rise from 6,163
+to 6,544 on the 20 tuning pages, from 9,225 to 9,965 and from 3,076 to 3,523 on
+the two development groups and from 7,328 to 7,341 on fresh set 1, and fall
+from 4,106 to 4,101 on this repository's scenes, which include a really bent
+page. With curved processing on those sets have 584, 946, 805, 13 and 36
+invalid-geometry words. That is the defect of issue #18, at scale on flat
+pages, and it is what round 12 addresses.
+
 ## Round 9: the faster box score as the default, on every GPU
 
 Round 1 missed its target for the textless scene because its exact box score

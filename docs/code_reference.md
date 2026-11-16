@@ -8324,3 +8324,9 @@ snapshot once and reuses that same digest for recipe identity. It retains the
 snapshot for building, and still hashes every loaded plan before deserializing.
 `startupSha256MatchesQtAndRefusesErrors` covers Qt differential digests,
 boundary/empty/257 MiB inputs, cancellation, read errors and a tampered file.
+
+Round 6 retains these rules;
+the tests additionally exercise unequal-tolerance chain restoration and check
+curved retention, unchanged input geometry, statistics and permutation
+independence on every random layout. See the negative-result diagnosis in
+`docs/uct_okuread_port.md`.
