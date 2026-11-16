@@ -650,7 +650,7 @@ inline QByteArray ExactOutputBytes(const RecognitionOutput& output)
     QByteArray bytes;
     QDataStream out(&bytes, QIODevice::WriteOnly);
     out.setVersion(QDataStream::Qt_6_0);
-    out << quint32(0x55435431) << output.ok << output.cancelled << output.inputFault
+    out << quint32(0x55435432) << output.ok << output.cancelled << output.inputFault
         << output.backendPreparing << output.compositeInput << output.error << output.detailRegionPx;
     const auto bits = [&](double value) { out << std::bit_cast<quint64>(value); };
     const auto rect = [&](const QRectF& r) { bits(r.x()); bits(r.y()); bits(r.width()); bits(r.height()); };
@@ -673,6 +673,10 @@ inline QByteArray ExactOutputBytes(const RecognitionOutput& output)
             if (word.colors) out << word.colors->foreground << word.colors->background;
             quad(word.quadPx); quad(word.inkSearchQuadPx);
             out << word.inkFitted;
+            // Ribbon diagnostics are part of the published word as well.
+            out << word.fromRibbon;
+            bits(word.ribbonErrorPx);
+            bits(word.ribbonReadingPointPx.x()); bits(word.ribbonReadingPointPx.y());
         }
     }
     return bytes;
