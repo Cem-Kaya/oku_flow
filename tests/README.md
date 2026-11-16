@@ -2639,8 +2639,10 @@ builds the local scene set. See [corpus timing](../docs/uct_corpus_timing.md)
 for selectors, the protocol, the baseline profile and its limits. These are
 file-fixture worker timings, not camera, presentation or release acceptance.
 
-The private GPU clock keep-warm (rounds 13 and 14 of
-[the port record](../docs/uct_okuread_port.md), off by default) is covered
+The GPU clock keep-warm (rounds 13 and 14 of
+[the port record](../docs/uct_okuread_port.md); the application runs change
+mode on external power by default, test slots run it only when the variable
+names a mode) is covered
 without a model by the `keepWarm...` and `schedulerKeepWarm...` cases of
 `ultra_clear_text_tests`: strict parsing of the two variables, the policy's
 windows for continuous, pre-roll and change modes, no launch while a read
@@ -2649,7 +2651,9 @@ ends spins which are running (the fake recognizer models running spins, not
 only launch counts), the second spin queued behind each launch, time-outs and
 destruction. `keepWarmFollowsPacedMediaAndStopsOnPauseAndDisable` and
 `keepWarmStopsWhenHiddenOrMinimizedAndRestoreArmsNothing` in
-`ultra_clear_text_controller_tests` cover the controller's wiring offscreen.
+`ultra_clear_text_controller_tests` cover the controller's wiring offscreen,
+including the default (no variable set) with an injected external-power
+answer.
 On a GPU, the unregistered `optionalKeepWarmGpuContract`
 (`OKUFLOW_UCT_KEEP_WARM_GPU_TEST=1` with `OKUFLOW_UCT_CORPUS_IMAGES`) compares
 reads taken while spins run or wait, also after view changes in change mode,

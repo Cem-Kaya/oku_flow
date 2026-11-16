@@ -8522,7 +8522,7 @@ independence on every random layout. See the negative-result diagnosis in
 `include/okuflow/common/uct_keep_warm.hpp` is the pure decision logic of the
 private keep-warm experiment. `KeepWarmMode` (`Off`, `Continuous`, `PreRoll`)
 and `KeepWarmSettings` (period, spin length `busy`, pre-roll `lead`,
-`idleTimeout`; off by default) are parsed strictly from
+`idleTimeout`) are parsed strictly from
 `OKUFLOW_UCT_TEST_KEEP_WARM` and `OKUFLOW_UCT_TEST_KEEP_WARM_SHAPE` by
 `ParseKeepWarm`/`KeepWarmFromEnvironment` (`KeepWarmParse` carries the error
 for invalid text, which stays off). `KeepWarmPolicy` decides when a launch is
@@ -8591,7 +8591,10 @@ the read a view change waits for. `SetVisible(false)` disarms and drops any
 announcement, and showing again arms nothing. `SetPowerGate` installs an
 optional callable consulted before every launch (`PowerAllowed`; empty means
 allowed), the hook for a later user-visible power setting; nothing installs
-one today. `Configure` keeps visibility and the gate. The default shape is a
+one today. A run of `ViewChanged` calls that no full read follows warms for at
+most two change windows from its first call; `Expire` (the worker's time-out)
+keeps that record, `Disarm` (cancel, stop, hiding) and a full read clear it,
+and so does a pause of the changes for one change window. `Configure` keeps visibility and the gate. The default shape is a
 10 ms spin with a 5 ms period, and `kKeepWarmMaximumBusy` (250 ms) bounds a
 spin; `gpu::KeepWarm` and `gpu::SampleClock` refuse more.
 
@@ -8607,7 +8610,19 @@ wait is only as fine as the system timer tick. `SchedulerStats` gains
 `keepWarmStops`, `keepWarmChanges` and `keepWarmStopMaxUs`.
 `TensorRtRecognizer::KeepWarm` returns `Pending` while graph replay's creator
 makes a context (`ReplayWork::creating`), and the creator raises the stop flag
-before its allocations.
+before its allocations. After a stop it also returns `Pending` until both
+outstanding spins are done, so a stop followed at once by a re-arm cannot
+lower the flag under a spin that is still running. The worker ends outstanding
+spins when the power gate's own answer turns to refusing
+(`State::keepWarmPowerAllowed`).
+
+`KeepWarmForApplication` is what the application uses: with neither variable
+set it returns change mode with `KeepWarmParse::applicationDefault`
+(`kKeepWarmApplicationDefault`), otherwise exactly `KeepWarmFromEnvironment`,
+which test slots keep using (not set is off). For the default,
+`UltraClearTextController::EnsureScheduler` installs a power gate that allows
+warming only on external power (`GetSystemPowerStatus`; unknown counts as
+external); `SetExternalPowerQueryForTest` replaces that query in tests.
 
 `UltraClearTextOverlay::targetShownChanged(bool)` and `TargetShown()` report
 whether the render target is visible and its window not minimized;
@@ -8623,8 +8638,9 @@ Round 14 tests: `keepWarmPolicyChangeWindowTailAndColdRefresh`,
 `keepWarmPolicyVisibilityPowerGateAndRegionalReads`,
 `schedulerKeepWarmDisarmStopsRunningSpins` (a recognizer that models spins
 that are running, not only launch counts),
-`schedulerKeepWarmChangeModeFollowsViewChanges` and
-`schedulerKeepWarmQueuesASecondSpinPerWake` (`tests/ultra_clear_text_tests.cpp`);
+`schedulerKeepWarmChangeModeFollowsViewChanges` (including a formula, which
+is not the awaited read), `schedulerKeepWarmQueuesASecondSpinPerWake` and
+`keepWarmPolicyChangesWithoutReadsAreBounded` (`tests/ultra_clear_text_tests.cpp`);
 `keepWarmStopsWhenHiddenOrMinimizedAndRestoreArmsNothing`
 (`tests/ultra_clear_text_controller_tests.cpp`). `optionalKeepWarmGpuContract`
 also reads after view changes in change mode and times a `cudaFree` issued

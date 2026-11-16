@@ -1534,12 +1534,18 @@ introduced. See [round evidence](uct_okuread_port.md).
 
 ## UCT keep-warm switch (rounds 13 and 14, 2026-11-17)
 
-`OKUFLOW_UCT_TEST_KEEP_WARM` selects the private GPU clock keep-warm around
-paced reads: unset or `0` is off (the default); `change` (round 14) keeps one
+`OKUFLOW_UCT_TEST_KEEP_WARM` selects the GPU clock keep-warm around paced
+reads. Not set, the application runs `change` while the computer is on
+external power (the owner's decision of 2026-11-17; `GetSystemPowerStatus`,
+read-only, no setting is changed) and the test slots run nothing; `0` is off
+everywhere; a named mode runs regardless of the power source. `change` (round
+14) keeps one
 napping GPU warp resident on the recognizer's stream from a view change that a
 read will follow until that read, its follow-ups and a short tail are done,
-and never warms a periodic refresh of an unchanged view; `continuous` does so
-from an announced paced read until the next read or the idle time-out; and
+and never warms a periodic refresh of an unchanged view (a run of changes
+that no full read follows warms for at most two change windows); `continuous`
+does so from an announced paced read until no read has been submitted for the
+idle time-out; and
 `preroll` only from a lead time before the announced read. Any other value is
 ignored with a warning and stays off.
 `OKUFLOW_UCT_TEST_KEEP_WARM_SHAPE=periodMs,busyUs,leadMs,idleMs[,windowMs,tailMs]`

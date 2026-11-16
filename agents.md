@@ -1290,10 +1290,13 @@ aligned with the project goals.
   to five times on sparse frames. Measure latency changes also with
   `perf_measure.py --gap-ms 350` and `1000` (25 reads, per-read series,
   `--gpu-sample-ms`), under the GPU lease, and say when a run looks disturbed.
-- `OKUFLOW_UCT_TEST_KEEP_WARM` (private, off) trades 45 to 63 W for paced
+- `OKUFLOW_UCT_TEST_KEEP_WARM` (the application defaults to `change` on
+  external power since round 14; `0` is off) trades 45 to 63 W for paced
   speed on the RTX 4090. Keep its work on the recognizer's own stream through
-  the scheduler worker, interrupt it before every job, and never arm it from
-  paused stills or without an announced paced read. Never change NVIDIA
+  the scheduler worker and interrupt it before every job. `continuous` and
+  `preroll` arm only from an announced paced read, never from paused stills;
+  `change` (round 14) arms only from a view change that a read will follow,
+  which includes a new paused selection and a pan or zoom of a paused view. Never change NVIDIA
   driver profiles, power plans or clocks to measure it. See
   `docs/uct_okuread_port.md`, round 13.
 - Round 14: `change` mode warms from a view change to its read and stays cold
