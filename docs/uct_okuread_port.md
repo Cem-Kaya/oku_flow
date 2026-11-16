@@ -31,6 +31,7 @@ chalkboard lecture frames. Worker time is not camera-to-paint latency.
 | Speculative ink retries | Not applicable: OkuFlow has no retry fits |
 | Reuse-cache crop order defect | Not applicable: OkuFlow has no OCR reuse cache and never reorders crops |
 | Keep word-merge state across one read instead of rebuilding it per crop | Round 7, on by default, identical output |
+| Run two inferences of one engine at once on two streams (not an OkuRead idea; this program's own) | Round 8, measured first and not built: on the RTX 4090 two streams finish a set of recognizer or detector inferences no sooner, and graph launches show the GPU loses throughput when they overlap |
 
 ## Round 1: detector post-processing
 
@@ -2440,3 +2441,124 @@ case, the recommendation is to keep the switch off. Pages to look at by hand:
 `gutter-1080-late-g1`, and the development pages whose moved lines bow most
 (`held-out-07`, `held-out-03`, `held5-02`, `held4-02`; `held2-12` for the
 protection case).
+
+## Round 8: two inferences in flight on two streams (negative result, not built)
+
+After rounds 1 to 3 most of a read is GPU time inside the two networks, and
+every inference runs after the previous one on the State's one CUDA stream.
+The reader already keeps two recognition groups in flight, but both are
+queued on that stream and run in sequence. One recognizer call (at most eight
+crops on the fixed 8x3x48x1024 canvas) and one detector pass (at most 960
+pixels on the long edge) each take about 4 ms on the RTX 4090. The hypothesis:
+one such inference does not fill the GPU, so two of them on two streams, each
+with its own execution context, finish sooner than one after the other, with
+identical results.
+
+The brief made a measurement the first step, with a stop rule fixed before
+anything was built: two streams must finish a set of recognizer inferences at
+least 1.25x sooner AND a set of detector inferences at least 1.15x sooner than
+one stream, or the round ends with the measurement and this record. **Result:
+not met, by a wide margin.** Two streams are no faster for the recognizer
+(0.89x to 1.01x) and slower for the detector (0.42x to 0.88x). Nothing in the
+reader changed, no switch was added, and the targets of step 2 (warm worker
+time, first reads, startup, identical corpus output) were not attempted.
+
+### What was measured
+
+`optionalStreamConcurrency` (`tests/uct_stream_probe.hpp`; the probe is in
+`src/common/uct_tensorrt.cpp` and compiled only into `uct_paddle_tests`) takes
+the prepared engines of a ready reader and creates its own execution
+contexts, each with its own activation memory (the engine's default
+allocation), input and output buffers and its own non-blocking stream; the
+reader's contexts, stream and buffers are not used. For each engine and shape
+it times a set of inferences on one context and one stream (today's
+arrangement), on two contexts fed alternately from one host thread, and on
+three. Each inference first copies one of four deterministic inputs into its
+context's input buffer on that context's stream, as the reader writes its
+canvas before each call. Each configuration runs with the plain `enqueueV3`
+(the reader's default) and with each context's enqueue captured once as a
+CUDA graph and launched, which takes the host's enqueue cost out and leaves
+what the GPU does. One untimed set comes first; the configurations alternate
+their order between the nine timed repeats. Afterwards every inference of
+every configuration runs again untimed and its output is copied back and
+compared byte for byte with the output of the same input on one stream, as is
+each context's last output of every timed set.
+
+Shapes: the recognizer at batch eight on the 1024 canvas, 64 inferences per
+set; the detector at the two shapes of a 1920x1080 read, 32 per set: the whole
+frame (544x960) and one of the two equal tiles (1040x1080 pixels, detector
+input 960x928).
+
+RTX 4090 (driver 621.14), Ryzen 9 5900X, MSVC 19.44 Release, CUDA 12.9.86
+runtime, TensorRT 11.4.0.106, medium BF16 detector and recognizer, branch
+`perf/okuread-port-r8` at `f04a60d`. The GPU was held through the shared lease,
+so no other job used it. Evidence `r8-stream-probe-1` and `r8-stream-probe-2`;
+the second sampled `nvidia-smi` every 100 ms: with the GPU busy (utilisation
+at least 50 percent, 457 samples) it ran in P2 at a median 2,640 MHz (10th
+percentile 2,505 MHz), display not driven. The sets ran back to back, so the
+GPU had no idle gap to clock down in (round 13).
+
+Median wall time of a set over nine repeats on one stream, and the speedup of
+two and three streams against it, run 1 / run 2; in brackets the range of the
+paired per-repeat speedups over both runs:
+
+| Engine, shape, set | Launch | One stream ms | Two streams | Three streams |
+| --- | --- | --- | --- | --- |
+| Recognizer 8x3x48x1024, 64 | plain | 272.9 / 271.3 | 1.010x / 0.998x (0.985 to 1.016) | 0.941x / 0.935x (0.924 to 0.955) |
+| Recognizer 8x3x48x1024, 64 | graph | 252.2 / 251.5 | 0.896x / 0.893x (0.888 to 0.905) | 0.838x / 0.833x (0.827 to 0.845) |
+| Detector 544x960 (whole frame), 32 | plain | 106.3 / 102.5 | 0.882x / 0.801x (0.708 to 1.143) | 0.819x / 0.725x (0.633 to 1.153) |
+| Detector 544x960 (whole frame), 32 | graph | 80.2 / 80.3 | 0.621x / 0.616x (0.570 to 0.677) | 0.463x / 0.447x (0.429 to 0.491) |
+| Detector 960x928 (tile), 32 | plain | 162.2 / 160.6 | 0.720x / 0.792x (0.537 to 0.888) | 0.513x / 0.538x (0.465 to 0.715) |
+| Detector 960x928 (tile), 32 | graph | 143.0 / 142.8 | 0.424x / 0.430x (0.416 to 0.467) | 0.414x / 0.416x (0.392 to 0.430) |
+
+Output: every compared output on several streams was byte-identical to the
+single-stream output of the same input, 1,128 compared outputs per run over
+every engine, shape, stream count and launch mode, 0 differences; the slot
+fails on any. The inferences themselves would therefore not change if they
+ran concurrently. The reader read again after the probe and its State retired
+cleanly.
+
+### What the numbers say
+
+- **One inference already occupies the GPU.** With graph launches the host
+  does almost nothing (under 1 ms per set). One stream then takes 3.93 ms per
+  recognizer inference, 2.51 ms per whole-frame detection and 4.46 ms per tile
+  detection; two streams take 4.40, 4.07 and 10.4 ms per inference.
+  Overlapping two inferences of one engine loses throughput: a little for the
+  recognizer, badly for the detector at the tile shape. Why is not established
+  (the working set of two detector inferences, about 280 MiB of activation
+  memory each, against the 72 MB L2 cache, and TensorRT tactics chosen for a
+  GPU of their own are candidates); no kernel profile was taken.
+- **The plain enqueue is nearly host-bound.** On one stream the host spends
+  about 250 of the recognizer set's 272 ms inside `enqueueV3` (about 3.9 ms
+  per call) and the GPU runs just behind it. A second stream fed from the same
+  thread cannot shorten that, and the plain recognizer's 1.01x is the host
+  cost hiding the GPU's own loss.
+- **Memory.** Each added context with its own activation memory took 164 to
+  166 MiB for the recognizer (plus 80 MiB for its input and its 19.2-million
+  float output) and 280 to 282 MiB for the detector (plus 8 or 16 MiB of
+  buffers), as the change in free device memory (2 MiB granularity); a
+  captured graph up to 2 MiB more. A dual-stream reader would have needed
+  roughly 440 MiB more before any scratch.
+
+### Not established
+
+- One GPU, the RTX 4090, and the medium BF16 pair. The small and tiny tiers
+  and recognizer batch one, which make smaller inferences, were not probed.
+- Overlapping the two different engines (the next region's detection beside
+  the current region's recognition) was not measured; the brief's hypothesis
+  and stop rule concern two inferences of one engine, and the losses above
+  make it an unpromising lead.
+- The inputs are deterministic patterns, not image crops. Inference time does
+  not depend on the values, but the outputs compared are those of the
+  patterns.
+- Stream priorities, other TensorRT tactic choices per context and limiting
+  each context to part of the GPU were not tried.
+
+### Default and code
+
+Nothing in the read path changed and there is no new reader switch. The
+measurement slot stays (opt-in, not in any CTest list, compiled only into
+`uct_paddle_tests` through `OKUFLOW_UCT_GRAPH_FAULT_HOOKS`). Round 10's note
+about one activation arena per engine stands unchanged: nothing runs the
+contexts of one engine concurrently.
