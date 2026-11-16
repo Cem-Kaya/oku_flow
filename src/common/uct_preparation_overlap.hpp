@@ -9,6 +9,10 @@
 // and smoke-checks the detector. Every decision stays with the sequential
 // code, in its order, at its point:
 //
+// - The helper waits before creating its execution context until the
+//   detector's exists (`Ahead::Open`), so the detector's context creation is
+//   not slowed by the helper's and the detector stage keeps its sequential
+//   length.
 // - The helper holds nothing: no attempt latch, no memo, no file or
 //   directory write, no stream work, no builder. A cache miss ends its load
 //   as "needs build". It reports to its own logger (State::recognizerAheadLogger),
@@ -45,9 +49,12 @@
 #include "uct_tensorrt_failures.hpp"
 
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <exception>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <new>
 #include <stdexcept>
 #include <string>
@@ -98,8 +105,14 @@ class Ahead {
 public:
     // Helper thread. Loads without building; returns true for "needs build".
     // `stop` stays valid after this object is gone (objects made by the load
-    // may keep it).
-    using Load = std::function<bool(const std::function<bool()>& stop)>;
+    // may keep it). The load calls `gate` right before it creates its
+    // execution context: it returns once the preparation thread has opened
+    // the gate (`Open`, after the detector's own context exists) and returns
+    // false when the helper must stop instead. TensorRT largely serializes
+    // two context creations, so the detector's comes first, as in the
+    // sequential order, and its stage (and any latch it holds) is not
+    // lengthened by the helper's.
+    using Load = std::function<bool(const std::function<bool()>& stop, const std::function<bool()>& gate)>;
     Ahead() = default;
     Ahead(const Ahead&) = delete;
     Ahead& operator=(const Ahead&) = delete;
@@ -117,7 +130,15 @@ public:
             shared->stop = std::move(stop);
             thread_ = std::thread([shared, load = std::move(load)] {
                 const std::function<bool()> stop = [shared] { return shared->abandoned.load() || shared->stop(); };
-                try { shared->needsBuild = load(stop); }
+                const std::function<bool()> gate = [shared, stop] {
+                    std::unique_lock lock(shared->gateMutex);
+                    // Open and abandonment notify; cancellation and the
+                    // deadline are polled.
+                    while (!shared->open && !stop())
+                        shared->gateChanged.wait_for(lock, std::chrono::milliseconds(10));
+                    return shared->open && !stop();
+                };
+                try { shared->needsBuild = load(stop, gate); }
                 catch (...) { shared->failure = std::current_exception(); }
             });
             shared_ = std::move(shared);
@@ -132,10 +153,22 @@ public:
     // Started and neither taken nor abandoned: the helper may still run.
     bool Pending() const { return started_ && !resolved_; }
     const std::string& Key() const { return key_; }
-    // Preparation thread, at the recognizer point: joins without stopping.
+    // Preparation thread: the detector's execution context exists.
+    void Open() noexcept
+    {
+        if (!shared_) return;
+        {
+            std::lock_guard lock(shared_->gateMutex);
+            shared_->open = true;
+        }
+        shared_->gateChanged.notify_all();
+    }
+    // Preparation thread, at the recognizer point: opens the gate and joins
+    // without stopping.
     Outcome Take()
     {
         if (!Pending()) return {};
+        Open();
         Join();
         resolved_ = true;
         if (shared_->failure)
@@ -146,7 +179,11 @@ public:
     std::exception_ptr Abandon() noexcept
     {
         if (!Pending()) return {};
-        shared_->abandoned = true;
+        {
+            std::lock_guard lock(shared_->gateMutex);
+            shared_->abandoned = true;
+        }
+        shared_->gateChanged.notify_all();
         Join();
         resolved_ = true;
         return IsFault(shared_->failure) ? shared_->failure : std::exception_ptr{};
@@ -156,6 +193,9 @@ private:
     struct Shared {
         std::atomic<bool> abandoned{};
         std::function<bool()> stop;
+        std::mutex gateMutex;
+        std::condition_variable gateChanged;
+        bool open{};                 // under gateMutex
         bool needsBuild{};           // written by the helper, read after join
         std::exception_ptr failure;  // likewise
     };

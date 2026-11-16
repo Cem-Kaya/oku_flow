@@ -50,6 +50,13 @@ enum class Timing { HelperFirst, MainFirst, Together };
 // The detector side before the recognizer point.
 enum class Detector { Ready, NeedsBuild, FallsBack, Fails, Cancelled };
 
+// Ends met during the context creation, after the helper's gate; the others
+// are met before it (verification, plan lookup, deserialization).
+inline bool AfterGate(Load load)
+{
+    return load == Load::Loaded || load == Load::Api || load == Load::OutOfMemory;
+}
+
 inline bool IsFaultLoad(Load load)
 {
     return load == Load::Cuda || load == Load::Api || load == Load::OutOfMemory || load == Load::Unknown;
@@ -160,7 +167,7 @@ inline Observed Prepare(World& world, const Scenario& s, bool helper)
 {
     Observed observed;
     Fake state;
-    std::atomic<bool> cancel{}, mainArrived{}, helperDone{};
+    std::atomic<bool> cancel{}, mainArrived{}, helperParked{};
     const auto cancelled = [&cancel] { return cancel.load(); };
     {
         std::lock_guard lock(world.mutex);
@@ -173,7 +180,7 @@ inline Observed Prepare(World& world, const Scenario& s, bool helper)
         state.aheadNetwork = true;
         const bool started = ahead.Start(kKey,
             [&world] { if (world.Memo(kKey)) throw runtime_precision::ArtifactError("previously refused"); },
-            [&](const std::function<bool()>& stop) {
+            [&](const std::function<bool()>& stop, const std::function<bool()>& gate) {
                 observed.helperRan = true;
                 if (s.timing != Timing::HelperFirst) {
                     const auto until = Clock::now() + std::chrono::seconds(5);
@@ -186,19 +193,31 @@ inline Observed Prepare(World& world, const Scenario& s, bool helper)
                 // A hash in progress returns at stop; a vendor call runs to its end.
                 if (stop()) {
                     observed.helperStopped = true;
-                    helperDone = true;
+                    helperParked = true;
                     throw detail::VerificationInterrupted("stopped while verifying");
                 }
+                if (!AfterGate(s.helper)) {
+                    observed.helperFaulted = IsFaultLoad(s.helper);
+                    helperParked = true;
+                    Throw(s.helper);
+                    return s.helper == Load::NeedsBuild;
+                }
+                helperParked = true; // waits for the detector's context
+                if (!gate()) {
+                    observed.helperStopped = true;
+                    throw detail::VerificationInterrupted("stopped before the execution context");
+                }
                 observed.helperFaulted = IsFaultLoad(s.helper);
-                helperDone = true;
                 Throw(s.helper);
-                return s.helper == Load::NeedsBuild;
+                return false;
             },
             cancelled);
         if (!started) state.aheadNetwork = false;
+        // HelperFirst: everything the helper can do before the detector's
+        // context exists is done before the preparation thread goes on.
         if (started && s.timing == Timing::HelperFirst) {
             const auto until = Clock::now() + std::chrono::seconds(5);
-            while (!helperDone && Clock::now() < until) std::this_thread::yield();
+            while (!helperParked && Clock::now() < until) std::this_thread::yield();
         }
     }
     // The production cancellation release (outer handler, and the detector
@@ -215,10 +234,14 @@ inline Observed Prepare(World& world, const Scenario& s, bool helper)
     };
     try {
         preparation_overlap::DetectorSide(ahead, settlement, [&] {
-            if (s.detector == Detector::Ready) return;
+            if (s.detector == Detector::Ready) {
+                ahead.Open(); // the detector's context exists
+                return;
+            }
             if (s.detector == Detector::NeedsBuild) {
                 arrive();
                 if (ahead.Pending()) preparation_overlap::Settle(ahead, settlement); // before the build
+                ahead.Open();
                 return;
             }
             if (s.detector == Detector::FallsBack) {
@@ -232,6 +255,7 @@ inline Observed Prepare(World& world, const Scenario& s, bool helper)
                     world.WriteMemo(kDetectorKey);
                     state.ownedDetector.clear(); // its latch stays held, as in production
                 }
+                ahead.Open(); // the FP32 detector's context
                 return;
             }
             state.ownedDetector = kDetectorKey;
@@ -415,7 +439,7 @@ inline void AbandonedOwnerDoesNotRefuseAnother()
             const auto settlement = MakePoint(world, stateA);
             Ahead ahead;
             stateA.aheadNetwork = true;
-            aStarted = ahead.Start(kKey, [] {}, [&](const std::function<bool()>&) {
+            aStarted = ahead.Start(kKey, [] {}, [&](const std::function<bool()>&, const std::function<bool()>&) {
                 inVendorCall = true;
                 // A vendor call does not look at stop.
                 while (!releaseVendorCall) std::this_thread::yield();
@@ -479,7 +503,7 @@ inline void AbandonStopsJoinsAndReleases()
         Ahead ahead;
         bool ran = false;
         QVERIFY(!ahead.Start(kKey, [&world] { if (world.Memo(kKey)) throw runtime_precision::ArtifactError("memo"); },
-                             [&](const std::function<bool()>&) { ran = true; return false; }, [] { return false; }));
+                             [&](const std::function<bool()>&, const std::function<bool()>&) { ran = true; return false; }, [] { return false; }));
         QVERIFY(!ahead.Started() && !ahead.Pending());
         QVERIFY(!ran);
         QCOMPARE(world.begins, 0);
@@ -489,7 +513,7 @@ inline void AbandonStopsJoinsAndReleases()
         Fake state;
         state.aheadNetwork = true;
         Ahead ahead;
-        QVERIFY(ahead.Start("runtime-recognizer:other", [] {}, [](const std::function<bool()>&) { return false; },
+        QVERIFY(ahead.Start("runtime-recognizer:other", [] {}, [](const std::function<bool()>&, const std::function<bool()>&) { return false; },
                             [] { return false; }));
         bool inPlace = false;
         preparation_overlap::Decide(&ahead, kKey, MakePoint(world, state, [&] { inPlace = true; }));
@@ -505,7 +529,7 @@ inline void AbandonStopsJoinsAndReleases()
         const auto started = Clock::now();
         {
             Ahead ahead;
-            QVERIFY(ahead.Start(kKey, [] {}, [&](const std::function<bool()>& stop) -> bool {
+            QVERIFY(ahead.Start(kKey, [] {}, [&](const std::function<bool()>& stop, const std::function<bool()>&) -> bool {
                 kept = stop; // as a Network keeps its build progress callback
                 while (!stop()) std::this_thread::yield();
                 finished = true;
@@ -520,11 +544,49 @@ inline void AbandonStopsJoinsAndReleases()
     {
         // Take twice, Start twice: nothing changes after the first.
         Ahead ahead;
-        QVERIFY(ahead.Start(kKey, [] {}, [](const std::function<bool()>&) { return true; }, [] { return false; }));
+        QVERIFY(ahead.Start(kKey, [] {}, [](const std::function<bool()>&, const std::function<bool()>&) { return true; }, [] { return false; }));
         QCOMPARE(ahead.Take().kind, preparation_overlap::Outcome::Kind::NeedsBuild);
         QCOMPARE(ahead.Take().kind, preparation_overlap::Outcome::Kind::NotStarted);
         QVERIFY(!ahead.Abandon());
-        QVERIFY(!ahead.Start(kKey, [] {}, [](const std::function<bool()>&) { return false; }, [] { return false; }));
+        QVERIFY(!ahead.Start(kKey, [] {}, [](const std::function<bool()>&, const std::function<bool()>&) { return false; }, [] { return false; }));
+    }
+    {
+        // The gate holds the context creation until Open; Take opens it;
+        // abandonment releases it with false.
+        std::atomic<bool> parked{}, passed{};
+        Ahead ahead;
+        QVERIFY(ahead.Start(kKey, [] {}, [&](const std::function<bool()>&, const std::function<bool()>& gate) {
+            parked = true;
+            passed = gate();
+            return false;
+        }, [] { return false; }));
+        while (!parked) std::this_thread::yield();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        QVERIFY(!passed);
+        ahead.Open();
+        QCOMPARE(ahead.Take().kind, preparation_overlap::Outcome::Kind::Loaded);
+        QVERIFY(passed);
+        Ahead taken;
+        QVERIFY(taken.Start(kKey, [] {}, [](const std::function<bool()>&, const std::function<bool()>& gate) {
+            if (!gate()) throw detail::VerificationInterrupted("stopped before the execution context");
+            return false;
+        }, [] { return false; }));
+        QCOMPARE(taken.Take().kind, preparation_overlap::Outcome::Kind::Loaded); // no Open: Take opens
+        Ahead abandoned;
+        QVERIFY(abandoned.Start(kKey, [] {}, [](const std::function<bool()>&, const std::function<bool()>& gate) {
+            if (!gate()) throw detail::VerificationInterrupted("stopped before the execution context");
+            return false;
+        }, [] { return false; }));
+        QVERIFY(!abandoned.Abandon()); // released with false: interrupted, not a fault
+        std::atomic<bool> cancel{};
+        Ahead cancelled;
+        QVERIFY(cancelled.Start(kKey, [] {}, [](const std::function<bool()>&, const std::function<bool()>& gate) {
+            if (!gate()) throw detail::VerificationInterrupted("stopped before the execution context");
+            return false;
+        }, [&cancel] { return cancel.load(); }));
+        cancel = true; // polled
+        const auto outcome = cancelled.Take();
+        QCOMPARE(outcome.kind, preparation_overlap::Outcome::Kind::Failed); // cancellation wins over a late Open
     }
     {
         // A fault raised after a refusal keeps its class and both messages.

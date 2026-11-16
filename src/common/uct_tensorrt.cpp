@@ -469,12 +469,14 @@ class Network
             bool variableWidth = false, bool allowPreparation = true,
             const QByteArray* precisionPlan = nullptr,const QString& explicitCacheRoot = {},
             const QByteArray& verifiedPlanKey = "verified-local-bf16",bool bf16Graph=false,int expectedClasses=0,
-            bool nativeBf16=false, bool* needsBuild = nullptr)
+            bool nativeBf16=false, bool* needsBuild = nullptr, const std::function<bool()>& beforeContext = {})
     {
         // `needsBuild` selects a load without building (preparation_overlap):
         // a cache miss sets it and returns before any builder library, cache
         // directory or stream use. The caller then builds through an ordinary
         // call in the original place, which repeats every check.
+        // `beforeContext` (the helper's gate) runs right before the execution
+        // context is created; false means stop there.
         PreparationProfile loadProfile(detection ? "detector" : "recognizer");
         detection_=detection;variableWidth_=variableWidth;maximumBatch_=maximumBatch;
         maximumOutputFloats_=!detection && maximumBatch==16 ? 256ull*1024*1024 : 64ull*1024*1024;
@@ -702,6 +704,11 @@ class Network
         if (bf16Graph && (contextBytes_ < 0 || (!detection && !engine_cache::ContextFits(contextBytes_))))
             reject("BF16 recognizer context exceeds its supported memory bound.");
         loadProfile.Mark("engine-contract");
+        if (beforeContext) {
+            if (!beforeContext())
+                throw detail::VerificationInterrupted("GPU preparation stopped before the execution context.");
+            loadProfile.Mark("wait-for-detector-context");
+        }
         context_.reset(engine_->createExecutionContext());
         loadProfile.Mark("execution-context");
         Check(cudaPeekAtLastError());
@@ -1353,7 +1360,7 @@ QByteArray RuntimeRecognizerAttempt(const Libraries& libraries,const QByteArray&
 // before the helper starts.
 void LoadRuntimeRecognizer(Network& network,State& state,Logger& logger,const PaddleAssets& assets,const QString& sdk,
     const public_bf16::Request& request,ModelTier tier,int capacity,const std::function<bool()>& stop,
-    bool* needsBuild = nullptr)
+    bool* needsBuild = nullptr,const std::function<bool()>& beforeContext = {})
 {
     using namespace public_bf16;
     const auto spec=Model(tier);
@@ -1361,7 +1368,7 @@ void LoadRuntimeRecognizer(Network& network,State& state,Logger& logger,const Pa
     network.PreparePinned(*state.libraries,logger,sdk,
         native ? assets.recognizer : QDir(request.modelRoot).filePath(GraphRelativePath(tier)),
         native ? assets.recognizerSha256 : QByteArray(spec.graphSha256),false,state.device,state.stream,
-        stop,capacity,false,true,nullptr,request.cacheRoot,{},true,spec.classes,native,needsBuild);
+        stop,capacity,false,true,nullptr,request.cacheRoot,{},true,spec.classes,native,needsBuild,beforeContext);
 }
 // The runtime recognizer point's actions on this State (preparation_overlap::Point).
 // `loadInPlace` may be empty where the point is only used to settle the helper.
@@ -2338,12 +2345,13 @@ class TensorRtRecognizer final : public Recognizer
                         const auto helperDeadline=std::chrono::steady_clock::now()+std::chrono::seconds(600);
                         const bool started=ahead.Start(recognizerAttempt.toStdString(),
                             [cacheRoot,attempt=recognizerAttempt]{public_bf16::RefuseRememberedFailure(cacheRoot,attempt);},
-                            [network,owner,assets,sdk,publicRequest,recognizerTier,recognizerBatch,device](const std::function<bool()>& stop) {
+                            [network,owner,assets,sdk,publicRequest,recognizerTier,recognizerBatch,device](
+                                    const std::function<bool()>& stop,const std::function<bool()>& gate) {
                                 // CUDA runtime state is per host thread.
                                 Check(cudaSetDevice(device));
                                 bool needsBuild=false;
                                 LoadRuntimeRecognizer(*network,*owner,owner->recognizerAheadLogger,assets,sdk,publicRequest,
-                                    recognizerTier,recognizerBatch,stop,&needsBuild);
+                                    recognizerTier,recognizerBatch,stop,&needsBuild,gate);
                                 // Per-thread CUDA error state ends with this thread: read it here.
                                 Check(cudaPeekAtLastError());
                                 return needsBuild;
@@ -2356,13 +2364,16 @@ class TensorRtRecognizer final : public Recognizer
                     // so no build shares the device with it, and the build runs
                     // through the ordinary call on a new Network (the first one
                     // queued nothing), exactly as in the sequential order.
+                    // Its execution context made, the helper may make its own.
                     const auto prepareDetector=[&](const std::function<void(Network&,bool*)>& prepare) {
                         bool needsBuild=false;
                         prepare(*state->detector,ahead.Pending() ? &needsBuild : nullptr);
-                        if(!needsBuild)return;
-                        preparation_overlap::Settle(ahead,settlement);
-                        state->detector=std::make_unique<Network>(Network::PublicTag{});
-                        prepare(*state->detector,nullptr);
+                        if(needsBuild) {
+                            preparation_overlap::Settle(ahead,settlement);
+                            state->detector=std::make_unique<Network>(Network::PublicTag{});
+                            prepare(*state->detector,nullptr);
+                        }
+                        ahead.Open();
                     };
                     preparation_overlap::DetectorSide(ahead,settlement,[&] {
                     if(cancelled())throw std::runtime_error("GPU preparation cancelled before FP32 detector");
