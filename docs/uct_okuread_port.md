@@ -30,6 +30,7 @@ chalkboard lecture frames. Worker time is not camera-to-paint latency.
 | Speculative ink retries | Not applicable: OkuFlow has no retry fits |
 | Reuse-cache crop order defect | Not applicable: OkuFlow has no OCR reuse cache and never reorders crops |
 | Keep word-merge state across one read instead of rebuilding it per crop | Round 7, on by default, identical output |
+| Overlap verification and loading of the two engines | Round 11, on by default: startup to first GPU result 878 to 614 ms (forward) and 670 to 428 ms (reverse), identical output |
 
 ## Round 1: detector post-processing
 
@@ -1433,3 +1434,213 @@ calls, and running out of memory during a capture puts it off instead of
 refusing the shape. Kept as it is: a TensorRT enqueue that fails inside a
 capture with no CUDA status is treated as a fault, not a refusal, as the round
 3 reviewers asked; round 10 exercises captures on the other model tiers.
+
+## Round 11: detector and recognizer prepared side by side (on by default, exact)
+
+Target: startup to first result (unprofiled, median of at least five fresh
+warm-file-cache processes, forward and reverse cohorts separately) at least
+200 ms less than the base build in each order; byte-identical output on all 18
+scenes and an identical backend detail string; warm worker time unchanged
+within noise; preparation cancelled at any point retires cleanly and nothing is
+joined at exit. **Met**: 878 to 614 ms forward and 670 to 428 ms reverse.
+
+Every pin, digest, bound, ownership and smoke check that ran before still runs,
+on the same bytes, before the artifact it guards is used and before the State
+is published. Nothing verified is kept across calls or processes. There is no
+switch.
+
+### What changed
+
+1. **Asset files hashed side by side.** `LoadPaddleAssets` hashed up to six
+   files one after the other on the production root (each role's original
+   graph and config to choose its directory, then the chosen graphs again).
+   Each of those reads now runs as its own task, all joined before the call
+   returns. The second graph check starts at once on the original path and is
+   used only when the original directory is chosen; otherwise the chosen path
+   is verified afterwards. Results are taken in the original order, so the
+   chosen paths and the error are the sequential loader's.
+2. **The production recognizer loads beside the detector.** On the BF16
+   production path (`preparation_overlap::Ahead`,
+   `src/common/uct_preparation_overlap.hpp`) the preparation thread reads the
+   recognizer's failure memo, takes its attempt latch and starts one helper
+   thread, then prepares and smoke-checks the detector exactly as before. The
+   helper selects the device and runs the same `Network::PreparePinned` call
+   (source read and verify, runtime, plan read and verify, deserialization,
+   engine contract, execution context) into a Network attached to the State
+   before its first vendor call. It never builds and never touches the stream:
+   a cache miss ends the load as "needs build". At the original recognizer
+   point the preparation thread joins the helper, reads the memo again and
+   hands the outcome to the original code: a loaded engine goes on to the
+   original zero-input compatibility check, a cache miss to the original build
+   (a fresh `PreparePinned` that repeats every check), a failure is rethrown
+   unchanged into the original catch. If the detector side fails or is
+   cancelled first, the helper is stopped and joined and its latch is
+   released, because the sequential code never reached the recognizer. A memo,
+   a latch already held or a thread that cannot be started means no helper;
+   the original code then runs unchanged. Other paths (FP32-only GPUs, the
+   local BF16 manifest, candidate validation, FP32 control, experiments,
+   bucketed width) stay sequential.
+3. **Completion polls no longer wait a whole timer tick.** `ConfirmPublicCompletion`
+   slept 1 ms between polls; on Windows that lasts a system timer tick
+   (15.6 ms median measured on this machine), so each wait for a few
+   milliseconds of preparation GPU work (four detector smoke shapes, the
+   recognizer check) cost about one tick. `CompletionPollPause` waits 250 us on
+   a high-resolution waitable timer, without changing the system timer
+   resolution, and falls back to the 1 ms sleep. The poll, its cancellation and
+   its 30 s deadline are unchanged. It is used only during preparation.
+
+### Vendor rules
+
+The SDK at `Z:\Projects\OkuRead\local-work-data\sdks\tensorrt-11.4.0.106` ships
+headers, binaries and libraries only; the headers are the shipped vendor
+documentation. `NvInferRuntime.h`, `ILogger`: "The Logger object implementation
+must be thread safe ... TensorRT does not hold any synchronization primitives
+when calling the interface functions", and `log` "may be called from multiple
+threads when multiple execution contexts are used during runtime, or if the
+same logger is used for multiple runtimes, builders, or refitters". The
+`IErrorRecorder` methods are likewise required to be thread-safe; this code
+sets none, so errors go to the logger, whose `log` and `Error` take a mutex.
+The headers contain no statement that one `IRuntime`, `ICudaEngine` or
+`IExecutionContext` may be used from two threads, and none is: each Network
+creates its own runtime, engine and context, so the two threads share only the
+logger, the read-only runtime factory pointer and version string of
+`Libraries`, the device and the stream handle (which the helper never uses).
+The builder never runs on the helper. CUDA runtime state is per host thread,
+so the helper calls `cudaSetDevice` first and reads its own
+`cudaPeekAtLastError` before it ends. One consequence remains: TensorRT
+serializes much of the two engines' context creation internally (below), so
+the overlap that matters is verification and deserialization against the
+other engine's vendor work, as the brief anticipated.
+
+### Ownership, cancellation and decisions
+
+- The helper is joined by the preparation thread on every path, normal or
+  exceptional, before that thread drops its State reference. The preparation
+  thread itself is still detached and still never joined: a reader destroyed
+  during preparation sets the cancel flag and returns.
+- The helper's stop is the preparation's own cancellation and deadline plus
+  "abandoned". Objects the load creates may keep that stop callable after the
+  helper is gone (it holds no reference into the joined object).
+- The early latch is released only when the recognizer point is never
+  reached or a memo appears there; a released latch has no queued work, so its
+  completion is known. Adopted, it belongs to the original code and follows
+  its rules: `AllowsTensorRtCapacityFallback`, `VerificationInterrupted` and
+  `ArtifactError` reach the same catches as before, failure memos are written
+  only there, and a cancellation releases latches only after the drain.
+- Two deliberate differences, both timing only: the recognizer's 600 s deadline
+  starts when the helper starts (earlier by the detector's preparation time);
+  and when two preparations of the same recognizer race, the latch is taken
+  earlier, so which of them loses the race can differ. A memo or a held latch
+  at the start defers both decisions to the original point, as before.
+
+### Measured
+
+RTX 4090 (driver 621.14), Ryzen 9 5900X, MSVC 19.44 Release, Qt 6.12.0, CUDA
+12.9.86, TensorRT 11.4.0.106, medium/medium BF16 cached plans, batch eight,
+fixed1024, warm file cache, GPU use serialized through the shared lease.
+Base: a build of `6e454cc`; overlap: a build of `a5c8190` (changes 1 and 2);
+new: `8c64ffa` (all three). Evidence `r11-startup-ab`: one process per arm and
+cohort, ten cohorts (five forward, five reverse), five warm reads per scene.
+
+| Startup to first result, unprofiled | base ms | overlap ms | new ms | new - base |
+| --- | ---: | ---: | ---: | ---: |
+| forward (first scene doc-camera-1080), median of 5 | 878.1 | 667.9 | 613.6 | -264.5 |
+| reverse (first scene board-lecture-05), median of 5 | 669.5 | 486.7 | 427.6 | -241.9 |
+| forward processes | 862, 878, 880, 885, 867 | 725, 720, 666, 668, 651 | 651, 605, 613, 620, 614 | |
+| reverse processes | 752, 664, 716, 670, 667 | 497, 464, 487, 512, 460 | 462, 420, 425, 454, 428 | |
+
+Every new process is at least 211 ms (forward) and 202 ms (reverse) below
+every base process of the same order. The harness polls a preparing reader
+with a 20 ms sleep, which Windows rounds up to whole timer ticks, so startup
+figures carry that granularity.
+
+Wall phases, profiled, attribution only (`r11-preparation-profile-final`, ten
+fresh processes per build on doc-camera-1080; nested rows overlap, do not add;
+the recognizer rows of the new build run on the helper beside the detector
+rows):
+
+| Role / phase | base median ms | new median ms |
+| --- | ---: | ---: |
+| assets: verify-and-dictionary | 168.76 | 55.51 |
+| preparation: runtime-dll-load | 19.50 | 20.12 |
+| detector: source-read-and-verify | 41.33 | 44.80 |
+| detector: plan-read-and-verify | 23.23 | 24.38 |
+| detector: deserialize | 17.56 | 27.23 |
+| detector: execution-context | 92.31 | 168.15 |
+| preparation: detector-prepare | 182.33 | 273.03 |
+| preparation: detector-smoke-four-shapes | 70.14 | 35.42 |
+| recognizer: source-read-and-verify | 51.56 | 55.46 |
+| recognizer: plan-read-and-verify | 27.70 | 28.97 |
+| recognizer: deserialize | 5.42 | 12.59 |
+| recognizer: execution-context | 73.46 | 76.76 |
+| preparation: recognizer-prepare (preparation thread) | 171.77 | 8.69 |
+| preparation: completion-and-receipts | 4.77 | 4.47 |
+| preparation total (elapsed at last checkpoint) | 448.45 | 342.13 |
+
+The detector's execution context takes 76 ms longer and its deserialization
+10 ms longer while the recognizer's are created at the same time: TensorRT
+largely serializes context creation. What the overlap gains is the
+recognizer's verification and the parts that do not contend. The earlier
+profile of the overlap alone (`r11-preparation-profile`, build `a5c8190`) gave
+474.01 to 389.93 ms with the smoke unchanged (69.66 to 66.27 ms); the poll pause
+halves the smoke and shortens the recognizer check.
+
+What is left on the path, in order: assets 56 ms, runtime DLL 20 ms, detector
+273 ms (of which about 85 ms is contention with the recognizer's vendor work),
+smoke 35 ms, the recognizer check 9 ms, receipts 5 ms, then the first read.
+The detector and recognizer context creations together are sequential vendor
+time.
+
+### Correctness evidence
+
+- Output: byte-identical complete output on **18/18** scenes for both the
+  overlap and the new build against the base in all ten cohorts
+  (`r11-startup-ab`); the backend detail string (plan keys, payload digests,
+  cache status, graph identity, four smoke shapes) is identical in all 30
+  processes. Warm geometric mean new versus base 1.009x, first read 1.008x
+  (overlap 0.992x and 0.989x): within the 1 percent noise floor.
+- Decisions: `preparationOverlapMatchesSequentialDecisions` (CTest
+  `uct_paddle_processing`) drives the real `Ahead` with real threads through
+  504 scenarios: seven load outcomes (loaded, needs build, typed refusal,
+  verification interrupted, CUDA fault, allocation failure, unknown exception),
+  the helper ending before, after or together with the preparation thread,
+  the detector side ready, failing or cancelled, a memo at the start and at the
+  recognizer point, and a latch held by another preparation. For each it
+  compares the path handed to the original code, the rethrown exception type
+  and the latch state with the sequential order. `preparationOverlapAbandonStopsJoinsAndReleases`
+  checks stop, join, release, a stop kept after the unit is gone, and
+  double adoption.
+- Assets: `optionalAssetVerificationMatchesSequential` compares
+  `LoadPaddleAssets` with a frozen copy of the `6e454cc` loader on the real
+  medium files in seven layouts (intact production root, tampered with and
+  without downloaded roles, a downloaded role with a changed config, explicit
+  roots, an empty root): identical in all seven.
+- Cancellation (`r11-cancellation`): `optionalPreparationCancellation` cancels
+  the production preparation at 24 points from 0 to 560 ms (17 while it was
+  still preparing). Destroying the reader took at most 0.64 ms (it never waits
+  for the preparation), every cancelled State's retirement completed, and after
+  each cancellation a fresh reader became ready with the identical backend
+  detail and identical output.
+- CTest `uct_paddle_processing`, `uct_precision_artifact_contract`,
+  `uct_model_installation_contract` and `uct_merge_replay`: 4/4 pass.
+
+### Not established
+
+- Only the RTX 4090 and this CPU were measured. The gain depends on spare CPU
+  cores for hashing and on how much the GPU vendor library serializes context
+  creation on other GPUs and drivers.
+- Cold file cache, the first session after boot and the real application's
+  model hand-off were not measured; the harness initializes CUDA first.
+- The overlap applies to the BF16 production path only; Turing and other
+  FP32-only GPUs keep the sequential engine order and gain only from the asset
+  hashing and the poll pause.
+- No GPU fault, allocation failure or cache miss was injected on the helper;
+  those paths are covered by the model-free decision test, not end to end.
+- No GUI, native close or shipping/CPU/CUDA matrix run (the orchestrator runs
+  the full matrix).
+
+### What did not help
+
+Context creation does not overlap well: with both engines creating contexts at
+once the detector's took 168 ms instead of 92 ms. No other variant was built
+and dropped; reordering the two context creations was not tried.
