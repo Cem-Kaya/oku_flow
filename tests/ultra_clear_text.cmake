@@ -146,7 +146,9 @@ add_executable(uct_paddle_tests
     ${PROJECT_SOURCE_DIR}/src/common/uct_default_recognizer.cpp
     ${PROJECT_SOURCE_DIR}/src/common/uct_windows_ocr.cpp)
 target_include_directories(uct_paddle_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
-target_compile_definitions(uct_paddle_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+# Test-only fault injection for the graph replay path (src/common/uct_graph_cache.hpp).
+# Only this executable compiles the hooks; the application never does.
+target_compile_definitions(uct_paddle_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE OKUFLOW_UCT_GRAPH_FAULT_HOOKS)
 target_link_libraries(uct_paddle_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::Test windowsapp)
 okuflow_configure_ocr(uct_paddle_tests)
 add_test(NAME uct_formula_contract COMMAND uct_paddle_tests formulaCatalogBoundsAndCacheIdentity formulaByteLevelTokenizerKeepsFractions formulaWholeImagePreparationKeepsSparseInkAndBounds)
