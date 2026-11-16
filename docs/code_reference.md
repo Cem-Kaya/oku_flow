@@ -8328,28 +8328,49 @@ context and returns why the engine stays plain when an allocation fails.
 `Network::RunReplay` carries out each decision and never creates a context:
 new slots take one made by `Network::CreateSpareContext`, which the
 preparation thread calls after the State is published, one context at a time,
-for the distinct shapes asked for, only while no read is in flight (`ReplayWork`,
-`ReplayReading`) and spaced by completed reads or idle time; a failed creation
-stops the production and never throws. `Network::RunPlain` is the plain
-enqueue (the whole path with replay off, the overflow path with it on).
+for the distinct shapes asked for; a failed creation stops the production and
+never throws. When a creation may start is `ReplayWork::Turn`'s policy: in an
+idle gap (no read in flight and `ReplayWork::kQuiet`, 10 ms, after the last
+read ended), or under continuous load once `kReadsUnderLoad` (2) reads have
+ended since the last creation; a read that begins while a creation runs
+proceeds. `ReplayReading` marks a read in flight: `Recognize` (including its
+upload) and `RecognizeDevice` hold it outside their `try`, so a failing read
+retires its State, which stops the thread (`ReplayWork::Stop`), before the
+marker ends. The thread holds the State, never the `Preparation`: it drops its
+reference when it publishes, so a reader destroyed or reselected before its
+first read destroys the `Preparation`, which retires the unadopted State;
+`TensorRtRecognizer::Retire` also stops that State's thread directly.
+`Network::RunPlain` is the plain enqueue (the whole path with replay off, the
+overflow path with it on).
 `Network::Capture` records one `enqueueV3` with
 `cudaStreamCaptureModeThreadLocal`, always ends the capture, turns only the
 capture-specific CUDA statuses into a refusal and puts a capture off below
-256 MiB of free memory. `Network::ReplayReceipt` and
+256 MiB of free memory or when the device runs out of memory during the
+capture; after either deferral `Network::CaptureHeldOff` runs every call that
+would capture plainly for `graph_cache::kCaptureHoldOffReads` (16) reads,
+counted by `Network::ReplayReadBegins` once per `RecognizeDevice`. `Network::ReplayReceipt` and
 `TensorRtProfile::GraphCall`/`GraphReceipt` add a `graphReplay` object to the
 profile line. `Network::Run` takes a `mayCapture` argument that
 `RecognizeDevice` sets to false for recognition look-ahead and for detections
-queued behind an earlier detection. `DeviceBuffer::TryReserve` reports an
-allocation failure instead of throwing.
+queued behind an earlier detection. `DeviceBuffer::TryReserve` makes the
+larger allocation before it releases the old buffer and reports an allocation
+failure instead of throwing, keeping the old buffer; `EnableReplay` then keeps
+the engine's plain output buffer (receipt `outputBytesKeptAfterFailure`). The
+profile receipt also carries, per read, the overflow calls (`read.overflow`)
+and whether a context creation overlapped the read (`creation`).
 
-`graph_cache::FaultPlan`, `Fault`, `Checkpoint` and `FaultPlanForTest` are
-test-only fault injection: `Network` calls the hooks only where
-`OKUFLOW_UCT_GRAPH_FAULT_HOOKS` is defined, which is the `uct_paddle_tests`
-executable alone. The policy is covered by `graphReplayCachePolicy`
+`graph_cache::FaultPlan`, `Fault`, `Checkpoint`, `FaultPlanForTest` (a shared
+reference each hook loads, so a plan outlives its last reader) and
+`CreatorThreadsForTest` (context-creation threads not yet ended) are test-only
+fault injection: `Network` and the context-creation thread call the hooks only
+where `OKUFLOW_UCT_GRAPH_FAULT_HOOKS` is defined, which is the
+`uct_paddle_tests` executable alone; `FaultPlan::creatorWaiting` runs on that
+thread between its completion check and its wait. The policy is covered by `graphReplayCachePolicy`
 (`tests/uct_graph_cache_cases.hpp`); real engines by the opt-in
 `optionalGraphReplayLifetime` (`tests/uct_graph_replay_lifetime.hpp`) and
-`optionalGraphReplayFaults`, `optionalGraphReplayCheckpoints` and
-`optionalGraphReplayConfigurations` (`tests/uct_graph_replay_faults.hpp`).
+`optionalGraphReplayFaults`, `optionalGraphReplayCheckpoints`,
+`optionalGraphReplayRetireUnadopted` and `optionalGraphReplayConfigurations`
+(`tests/uct_graph_replay_faults.hpp`).
 
 
 ### UCT startup loader instrumentation and SHA-256 (round 5)

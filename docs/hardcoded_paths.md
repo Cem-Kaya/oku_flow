@@ -1472,15 +1472,16 @@ at least one per batch size (8, or 16 at batch sixteen); with the bucketed
 recognizer width the recognizer always runs plainly and only the detector
 replays. Recognized output is unchanged on every scene it was measured on. It
 adds no setting, file or model and creates no execution context before the
-reader is ready: contexts are made afterwards, one per shape asked for, only
-while no read runs. Device memory per engine is one activation arena (it
+reader is ready: contexts are made afterwards, one per shape asked for, in
+idle gaps between reads, or under continuous load one per two reads. Device memory per engine is one activation arena (it
 replaces the preparation context's own), about 2.5 MB per context and 2 MB per
 graph as round 3 measured them, and 1.6 MB more detector output storage.
 
 The opt-in GPU checks `optionalGraphReplayLifetime`
 (`OKUFLOW_UCT_GRAPH_LIFETIME_TEST=1`), `optionalGraphReplayFaults`
 (`OKUFLOW_UCT_GRAPH_FAULT_TEST=1`), `optionalGraphReplayCheckpoints`
-(`OKUFLOW_UCT_GRAPH_CHECKPOINT_TEST=1`) and `optionalGraphReplayConfigurations`
+(`OKUFLOW_UCT_GRAPH_CHECKPOINT_TEST=1`), `optionalGraphReplayRetireUnadopted`
+(`OKUFLOW_UCT_GRAPH_RETIRE_TEST=1`) and `optionalGraphReplayConfigurations`
 (`OKUFLOW_UCT_GRAPH_CONFIG_TEST=1`, optional `OKUFLOW_UCT_GRAPH_CONFIGS`) read
 `OKUFLOW_UCT_TEST_IMAGE`, `OKUFLOW_UCT_TEST_IMAGE_2` (another frame size) and
 optionally write `OKUFLOW_UCT_GRAPH_TEST_EVIDENCE`. They are test inputs only.

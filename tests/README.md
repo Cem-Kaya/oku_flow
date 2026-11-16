@@ -2697,12 +2697,24 @@ and (except the first) `OKUFLOW_UCT_TEST_IMAGE_2`, an image of another size;
   TensorRT rejects between planning and binding, a failed background context
   creation, and an activation arena or replay output storage that cannot be
   allocated. Every read must return the switch-off bytes or fail closed
-  through State retirement, no call may end with its stream capturing, and
-  the receipt counters must show the path ran.
+  through State retirement, no call may end with its stream capturing, the
+  receipt counters must show the path ran, and every context-creation thread
+  must end after its State retires. The low-memory case reads long enough for
+  the capture hold-off (`graph_cache::kCaptureHoldOffReads`) to expire after
+  each injected deferral and requires captures after the last one; the
+  output-storage case requires the plain output buffer to survive the failed
+  allocation.
 - `optionalGraphReplayCheckpoints` (`OKUFLOW_UCT_GRAPH_CHECKPOINT_TEST=1`)
   cancels reads at named points of replay calls (planned, captured, drained,
   launched) across two frame sizes with region reconciliation on and a
   two-shape bound.
+- `optionalGraphReplayRetireUnadopted` (`OKUFLOW_UCT_GRAPH_RETIRE_TEST=1`)
+  makes a reader ready and destroys it before its first read, twice: once
+  while the State's context-creation thread waits for a wanted context, once
+  with the thread held (test hook) between its completion check and its wait.
+  The unadopted State must retire (one completed receipt, also while the
+  thread is held), the thread must end, and a fresh reader of the same model
+  must become ready and read on BF16 (`[BF16 / BF16]`).
 - `optionalGraphReplayConfigurations` (`OKUFLOW_UCT_GRAPH_CONFIG_TEST=1`,
   optional `OKUFLOW_UCT_GRAPH_CONFIGS` comma list) compares switch-off and
   switch-on output, timing and receipts for the medium BF16 pair at batch 8,
