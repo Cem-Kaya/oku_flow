@@ -854,21 +854,27 @@ class Network
             throw CudaFailure("TensorRT graph capture did not end.");
         return false;
     }
+    enum class Captured { Yes, Refused, Deferred };
     // Captures one enqueue of `context` into `executable`. Nothing executes
     // during capture; the caller launches the graph. The capture is always
-    // ended before return, also when TensorRT refuses the enqueue.
-    bool Capture(nvinfer1::IExecutionContext& context, cudaGraphExec_t& executable, cudaStream_t stream,
-                 double& captureMs)
+    // ended before return, also when TensorRT refuses the enqueue. Deferred
+    // means "not now": the shape may be captured by a later call.
+    Captured Capture(nvinfer1::IExecutionContext& context, cudaGraphExec_t& executable, cudaStream_t stream,
+                     double& captureMs)
     {
+        const auto refuse = [&](cudaError_t status, bool structural = false) {
+            RefuseCapture(status, stream, structural);
+            return Captured::Refused;
+        };
         QElapsedTimer timer;
         timer.start();
         std::size_t before{}, after{}, total{};
         Check(cudaMemGetInfo(&before, &total));
         // Keep headroom for the rest of the application; refuse rather than
         // push the device into allocation failures.
-        if (before < 256ull * 1024 * 1024) return false;
+        if (before < 256ull * 1024 * 1024) return Captured::Deferred;
         const auto began = cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal);
-        if (began != cudaSuccess) return RefuseCapture(began, stream);
+        if (began != cudaSuccess) return refuse(began);
         const bool enqueued = context.enqueueV3(stream);
         cudaGraph_t graph{};
         const auto ended = cudaStreamEndCapture(stream, &graph);
@@ -876,20 +882,29 @@ class Network
             cudaGraph_t graph;
             ~GraphOwner() { if (graph) cudaGraphDestroy(graph); }
         } owner{graph};
-        if (ended != cudaSuccess || !enqueued || !graph) return RefuseCapture(ended, stream);
+        if (!enqueued) {
+            // TensorRT gave up inside the capture. That is a refusal only when
+            // CUDA names a capture-specific reason; a TensorRT failure with no
+            // such status is a fault like any failed enqueue.
+            const auto reason = ended != cudaSuccess ? ended : cudaGetLastError();
+            if (reason == cudaSuccess || !CaptureRefusal(reason, false))
+                throw std::runtime_error("TensorRT OCR enqueue failed during graph capture.");
+            return refuse(reason);
+        }
+        if (ended != cudaSuccess || !graph) return refuse(ended);
         cudaGraphExec_t instantiated{};
         const auto made = cudaGraphInstantiateWithFlags(&instantiated, graph, 0);
-        if (made != cudaSuccess) return RefuseCapture(made, stream, true);
+        if (made != cudaSuccess) return refuse(made, true);
         const auto uploaded = cudaGraphUpload(instantiated, stream);
         if (uploaded != cudaSuccess) {
             cudaGraphExecDestroy(instantiated); // never launched
-            return RefuseCapture(uploaded, stream, true);
+            return refuse(uploaded, true);
         }
         executable = instantiated;
         Check(cudaMemGetInfo(&after, &total));
         replayGraphBytes_ += before > after ? std::int64_t(before - after) : 0;
         captureMs += timer.nsecsElapsed() / 1e6;
-        return true;
+        return Captured::Yes;
     }
     nvinfer1::Dims RunReplay(float* input, int width, int height, cudaStream_t stream,
                              TensorRtProfile& profile, int batch, bool mayCapture, QElapsedTimer& host)
@@ -908,10 +923,8 @@ class Network
         }
         auto& slot = replaySlots_.at(std::size_t(decision.slot));
         if (decision.drain) Check(cudaStreamSynchronize(stream));
-        if (decision.dropGraph && slot.graph) {
-            Check(cudaGraphExecDestroy(slot.graph));
-            slot.graph = nullptr;
-        }
+        if (decision.dropGraph && slot.graph)
+            Check(cudaGraphExecDestroy(std::exchange(slot.graph, nullptr)));
         if (decision.reshape) {
             if (!slot.context->setInputShape(input_.c_str(), nvinfer1::Dims4(batch, 3, height, width)))
                 throw std::runtime_error("TensorRT shape rejected.");
@@ -928,9 +941,10 @@ class Network
         }
         replay_->Bound(decision.slot);
         auto launch = decision.launch;
-        if (launch == graph_cache::Launch::Capture && !Capture(*slot.context, slot.graph, stream, captureMs)) {
-            replay_->Refuse(decision.slot);
-            launch = graph_cache::Launch::Plain;
+        if (launch == graph_cache::Launch::Capture) {
+            const auto captured = Capture(*slot.context, slot.graph, stream, captureMs);
+            if (captured == Captured::Refused) replay_->Refuse(decision.slot);
+            if (captured != Captured::Yes) launch = graph_cache::Launch::Plain;
         }
         if (launch == graph_cache::Launch::Plain) {
             if (!slot.context->enqueueV3(stream))
