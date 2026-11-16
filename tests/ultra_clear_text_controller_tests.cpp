@@ -121,6 +121,12 @@ struct KeepWarmFlag {
         qputenv("OKUFLOW_UCT_TEST_KEEP_WARM", value);
         qputenv("OKUFLOW_UCT_TEST_KEEP_WARM_SHAPE", settings);
     }
+    // Neither variable set: the application's default.
+    KeepWarmFlag()
+    {
+        qunsetenv("OKUFLOW_UCT_TEST_KEEP_WARM");
+        qunsetenv("OKUFLOW_UCT_TEST_KEEP_WARM_SHAPE");
+    }
     ~KeepWarmFlag()
     {
         if (modeExisted) qputenv("OKUFLOW_UCT_TEST_KEEP_WARM", mode); else qunsetenv("OKUFLOW_UCT_TEST_KEEP_WARM");
@@ -3202,13 +3208,33 @@ void UltraClearTextControllerTests::keepWarmFollowsPacedMediaAndStopsOnPauseAndD
         return counter.load() == before;
     };
     {
-        // Default: off. Paced media reads never ask the backend to warm.
+        // Switched off: nothing ever asks the backend to warm.
+        KeepWarmFlag off("0", "");
         ImmutableHarness h;
+        h.owner.resize(1000, 600);
+        h.owner.show();
         h.Enable();
         for (std::uint64_t frame = 1; frame <= 40; ++frame) h.PlayFrame(frame);
         QTRY_VERIFY(h.controller->SchedulerStatistics().submitted >= 2);
         QTest::qWait(30);
         QCOMPARE(h.script->warmCalls.load(), 0);
+    }
+    {
+        // The default (no variable set): change mode, only on external power.
+        KeepWarmFlag byDefault;
+        std::atomic<bool> external{false};
+        ImmutableHarness h;
+        h.owner.resize(1000, 600);
+        h.owner.show();
+        h.controller->SetExternalPowerQueryForTest([&external] { return external.load(); });
+        h.Enable(); // a change, but on battery: armed, never launched
+        QVERIFY(staysAt(h.script->warmCalls, 120));
+        external = true;
+        QVERIFY(h.controller->SetImmutableScene(h.Scene(10))); // a change on external power
+        QTRY_VERIFY(h.script->warmCalls.load() > 3);
+        external = false; // unplugged while warming: it stops
+        QTest::qWait(40);
+        QVERIFY(staysAt(h.script->warmCalls, 120));
     }
     KeepWarmFlag flag("continuous", "5,200,0,2500");
     ImmutableHarness h;

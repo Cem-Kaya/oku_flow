@@ -315,6 +315,9 @@ public:
     // announced read or view change (round 14).
     void SetViewVisible(bool visible);
     bool ViewVisible() const noexcept { return viewVisible_; }
+    // Test seam: replaces the query "is the computer on external power" that
+    // gates the default keep-warm. Set before text reading is enabled.
+    void SetExternalPowerQueryForTest(std::function<bool()> query) { externalPowerForTest_ = std::move(query); }
 
     // Selected media uses the same recognition scheduler as live input.
     // A successful selection recognizes its owned complete scene once, then
@@ -619,6 +622,7 @@ private:
     // an unchecked/out-of-view/composite probe does not create this demand.
     bool probeInvalidatedSinceSubmit_{};
     bool viewVisible_{true};
+    std::function<bool()> externalPowerForTest_;
     std::int64_t lastSubmitMs_{std::numeric_limits<std::int64_t>::min() / 2};
     QRectF lastJobCoverage_;
     // Acquisition of the last submitted live/advancing OCR job. A held image

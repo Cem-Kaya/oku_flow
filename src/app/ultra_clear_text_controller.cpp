@@ -15,6 +15,7 @@
 #include <QMetaObject>
 #include <QSignalBlocker>
 #include <QTimer>
+#include <qt_windows.h>
 
 #include <algorithm>
 #include <chrono>
@@ -22,6 +23,13 @@
 
 namespace okuflow {
 namespace {
+// On external power, or unknown (a desktop without a battery reports
+// "online"). Cheap: read from the scheduler worker before every launch.
+bool OnExternalPower() noexcept
+{
+    SYSTEM_POWER_STATUS status{};
+    return !GetSystemPowerStatus(&status) || status.ACLineStatus != 0;
+}
 
 std::int64_t SteadyNowMs()
 {
@@ -385,16 +393,25 @@ void UltraClearTextController::EnsureScheduler()
         },
         timing_.probeDecimation, uct::ModelTuning{}.minimumWordHeightPx, false,
         qEnvironmentVariable("OKUFLOW_UCT_SHADOW_PLANNER") == "1", regionalOcrEnabled_);
-    // Private GPU clock keep-warm, off by default (rounds 13 and 14 of
-    // docs/uct_okuread_port.md). continuous and preroll run after a paced live
+    // GPU clock keep-warm (rounds 13 and 14 of docs/uct_okuread_port.md).
+    // The default is change mode on external power; OKUFLOW_UCT_TEST_KEEP_WARM
+    // overrides it (0 turns it off). continuous and preroll run after a paced live
     // or advancing-media read announced the next one; change runs from a view
     // change that a read will follow (NoteViewChange) until that read, its
     // follow-ups and a short tail are done.
     // Invalidate's Cancel() stops it for pause, suppression, composites and
     // source loss; hiding or minimizing the view stops it too.
-    const auto keepWarm = uct::KeepWarmFromEnvironment();
+    const auto keepWarm = uct::KeepWarmForApplication();
     if (!keepWarm.error.isEmpty()) qWarning().noquote() << keepWarm.error;
     if (keepWarm.settings.Enabled()) scheduler_->SetKeepWarm(keepWarm.settings);
+    // The default (no variable set) raises the GPU's clocks for the read after
+    // a view change only on external power: on battery the power it costs is
+    // not the user's choice to make by default. A mode named in the variable
+    // runs regardless.
+    if (keepWarm.applicationDefault) {
+        if (externalPowerForTest_) scheduler_->SetKeepWarmPowerGate(externalPowerForTest_);
+        else scheduler_->SetKeepWarmPowerGate([] { return OnExternalPower(); });
+    }
     scheduler_->SetKeepWarmVisible(viewVisible_);
 }
 

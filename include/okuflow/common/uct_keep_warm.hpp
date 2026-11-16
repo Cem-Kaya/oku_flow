@@ -7,11 +7,18 @@
 // reads the GPU's power management lowers its clocks and a sparse frame's read
 // becomes several times slower. Keep-warm runs a short single-warp spin on the
 // recognizer's own stream while a read is expected, so the clocks are up when
-// it arrives. It trades power for latency, so it is a private switch and OFF by
-// default:
+// it arrives. It trades power for latency.
 //
-//   OKUFLOW_UCT_TEST_KEEP_WARM        = 0 | change | continuous | preroll  (default off)
+//   OKUFLOW_UCT_TEST_KEEP_WARM        = 0 | change | continuous | preroll
 //   OKUFLOW_UCT_TEST_KEEP_WARM_SHAPE  = periodMs,busyUs,leadMs,idleMs[,windowMs,tailMs] (optional)
+//
+// The application's default when the variable is not set is `change`, and only
+// while the computer runs on external power (KeepWarmForApplication; the
+// owner's decision of 2026-11-17, against the reviewers' recommendation to
+// keep every mode off until the open items of round 14 are closed). `0` turns
+// it off; a named mode runs regardless of the power source. Test slots that
+// compare modes read the variable strictly (KeepWarmFromEnvironment: not set
+// means off).
 //
 // change (round 14): warm from a view change (pan or zoom settling, a scene or
 // slide change, a new source, resume, text reading switched on) until the read
@@ -80,7 +87,11 @@ inline constexpr std::chrono::microseconds kKeepWarmMaximumBusy{250000};
 struct KeepWarmParse {
     KeepWarmSettings settings; // Off when the text is empty, "0" or invalid
     QString error;             // non-empty when the text was invalid
+    bool applicationDefault{}; // no variable was set: the application's default applies
 };
+
+// What the application runs when neither variable is set.
+inline constexpr KeepWarmMode kKeepWarmApplicationDefault = KeepWarmMode::Change;
 
 // Strict parser for the two private variables. Bounds: period 1-1000 ms,
 // busy 10 us to 250 ms, lead 0-2000 ms, idle time-out 100-10000 ms, change
@@ -136,6 +147,21 @@ inline KeepWarmParse KeepWarmFromEnvironment()
 {
     return ParseKeepWarm(qEnvironmentVariable("OKUFLOW_UCT_TEST_KEEP_WARM"),
                          qEnvironmentVariable("OKUFLOW_UCT_TEST_KEEP_WARM_SHAPE"));
+}
+
+// The application's choice: the default mode when neither variable is set (the
+// caller then also installs a power gate for external power), otherwise exactly
+// what the variables say.
+inline KeepWarmParse KeepWarmForApplication()
+{
+    if (qEnvironmentVariableIsEmpty("OKUFLOW_UCT_TEST_KEEP_WARM") &&
+        qEnvironmentVariableIsEmpty("OKUFLOW_UCT_TEST_KEEP_WARM_SHAPE")) {
+        KeepWarmParse result;
+        result.settings.mode = kKeepWarmApplicationDefault;
+        result.applicationDefault = true;
+        return result;
+    }
+    return KeepWarmFromEnvironment();
 }
 
 // When to launch.

@@ -7142,6 +7142,34 @@ void UltraClearTextTests::keepWarmSwitchParsesStrictlyAndDefaultsOff()
         QVERIFY2(!parsed.settings.Enabled(), qPrintable(mode + " " + shape));
         QVERIFY2(!parsed.error.isEmpty(), qPrintable(mode + " " + shape));
     }
+    // The application's default: with neither variable set it runs change
+    // mode and says so, so that the caller gates it on external power. Test
+    // slots read the variable strictly (not set is off). "0" turns the
+    // application's default off; a named mode is taken as it is.
+    const bool hadMode = qEnvironmentVariableIsSet("OKUFLOW_UCT_TEST_KEEP_WARM");
+    const bool hadShape = qEnvironmentVariableIsSet("OKUFLOW_UCT_TEST_KEEP_WARM_SHAPE");
+    const QByteArray oldMode = qgetenv("OKUFLOW_UCT_TEST_KEEP_WARM");
+    const QByteArray oldShape = qgetenv("OKUFLOW_UCT_TEST_KEEP_WARM_SHAPE");
+    const auto restore = qScopeGuard([&] {
+        if (hadMode) qputenv("OKUFLOW_UCT_TEST_KEEP_WARM", oldMode); else qunsetenv("OKUFLOW_UCT_TEST_KEEP_WARM");
+        if (hadShape) qputenv("OKUFLOW_UCT_TEST_KEEP_WARM_SHAPE", oldShape); else qunsetenv("OKUFLOW_UCT_TEST_KEEP_WARM_SHAPE");
+    });
+    qunsetenv("OKUFLOW_UCT_TEST_KEEP_WARM");
+    qunsetenv("OKUFLOW_UCT_TEST_KEEP_WARM_SHAPE");
+    const auto byDefault = KeepWarmForApplication();
+    QCOMPARE(byDefault.settings.mode, KeepWarmMode::Change);
+    QVERIFY(byDefault.applicationDefault);
+    QVERIFY(byDefault.error.isEmpty());
+    QVERIFY(!KeepWarmFromEnvironment().settings.Enabled());
+    qputenv("OKUFLOW_UCT_TEST_KEEP_WARM", "0");
+    QVERIFY(!KeepWarmForApplication().settings.Enabled());
+    QVERIFY(!KeepWarmForApplication().applicationDefault);
+    qputenv("OKUFLOW_UCT_TEST_KEEP_WARM", "continuous");
+    QCOMPARE(KeepWarmForApplication().settings.mode, KeepWarmMode::Continuous);
+    QVERIFY(!KeepWarmForApplication().applicationDefault);
+    qputenv("OKUFLOW_UCT_TEST_KEEP_WARM", "sometimes");
+    QVERIFY(!KeepWarmForApplication().settings.Enabled());
+    QVERIFY(!KeepWarmForApplication().error.isEmpty());
 }
 
 void UltraClearTextTests::keepWarmPolicyContinuousWindowAndTimeout()
