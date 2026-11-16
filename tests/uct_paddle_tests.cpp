@@ -581,6 +581,7 @@ class PaddleTests final : public QObject
     }
     void regionReconcileRules() { uct_region_reconcile_test::Rules(); }
     void graphReplayCachePolicy() { uct_graph_cache_test::Policies(); }
+    void graphReplayCreationTurns() { uct_graph_cache_test::CreationTurns(); }
     void recognitionGroupSlotsRequireCompletionAndConsumption()
     {
         detail::RecognitionGroups groups;

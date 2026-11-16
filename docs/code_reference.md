@@ -8365,8 +8365,10 @@ reference each hook loads, so a plan outlives its last reader) and
 fault injection: `Network` and the context-creation thread call the hooks only
 where `OKUFLOW_UCT_GRAPH_FAULT_HOOKS` is defined, which is the
 `uct_paddle_tests` executable alone; `FaultPlan::creatorWaiting` runs on that
-thread between its completion check and its wait. The policy is covered by `graphReplayCachePolicy`
-(`tests/uct_graph_cache_cases.hpp`); real engines by the opt-in
+thread between its completion check and its wait. `ReplayWork` lives in
+`src/common/uct_graph_cache.hpp` with the cache policy. The cache policy is
+covered by `graphReplayCachePolicy`, the creation policy by
+`graphReplayCreationTurns` (both `tests/uct_graph_cache_cases.hpp`, model-free); real engines by the opt-in
 `optionalGraphReplayLifetime` (`tests/uct_graph_replay_lifetime.hpp`) and
 `optionalGraphReplayFaults`, `optionalGraphReplayCheckpoints`,
 `optionalGraphReplayRetireUnadopted` and `optionalGraphReplayConfigurations`

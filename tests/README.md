@@ -2671,6 +2671,13 @@ the GPU window layout the experiment's host parser relies on. The experiment its
 `OKUFLOW_UCT_TEST_REGION_RECONCILE=1`; its speed and labelled-page results are
 in [the port record](../docs/uct_okuread_port.md).
 
+`graphReplayCreationTurns` (model-free, real threads) checks when the replay
+context-creation thread may create (`graph_cache::ReplayWork::Turn`): in an
+idle gap no earlier than `kQuiet` after the last read ended; with reads back
+to back not after one read end and at once after `kReadsUnderLoad`; reads that
+end while nothing is wanted not counted; no turn once stopped or cancelled.
+Its assertions are lower bounds or generous upper bounds, not timings.
+
 `graphReplayCachePolicy` (model-free, in `uct_paddle_processing`) checks the
 bookkeeping of TensorRT graph replay (`OKUFLOW_UCT_TEST_TRT_GRAPH`): one
 context per cached shape, a plain enqueue before any capture, no capture where

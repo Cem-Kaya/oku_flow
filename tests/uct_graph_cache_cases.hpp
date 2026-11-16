@@ -4,6 +4,10 @@
 
 #include <QtTest>
 
+#include <chrono>
+#include <future>
+#include <thread>
+
 namespace uct_graph_cache_test
 {
 using namespace okuflow::uct::graph_cache;
@@ -15,6 +19,129 @@ inline Decision Run(Policy& policy, Shape shape, const void* input, const void* 
     policy.Bound(decision.slot);
     policy.Ran(decision.slot, decision.launch);
     return decision;
+}
+
+// ReplayWork::Turn, the context-creation policy, with real threads. Every
+// assertion has a lower bound only (a turn may not come early) or a generous
+// upper bound (it must come).
+inline void CreationTurns()
+{
+    using namespace std::chrono;
+    using namespace std::chrono_literals;
+    struct Creator {
+        ReplayWork& work;
+        std::atomic<bool>& wanted;
+        std::atomic<bool> stopped{};
+        std::uint64_t since{};
+        // Runs one Turn on a thread; the future says whether it granted a creation.
+        std::future<bool> Start()
+        {
+            return std::async(std::launch::async, [this] {
+                std::unique_lock lock(work.mutex);
+                return work.Turn(lock, [this] { return wanted.load(); }, [this] { return stopped.load(); }, since);
+            });
+        }
+    };
+    const auto pending = [](std::future<bool>& turn, milliseconds wait) {
+        return turn.wait_for(wait) == std::future_status::timeout;
+    };
+
+    // Idle gap: no read in flight, but not before kQuiet after the last read ended.
+    {
+        ReplayWork work;
+        std::atomic<bool> wanted{true};
+        Creator creator{work, wanted};
+        work.Begin();
+        work.End();
+        const auto ended = steady_clock::now();
+        auto turn = creator.Start();
+        QVERIFY(turn.wait_for(5s) == std::future_status::ready);
+        QVERIFY(turn.get());
+        QVERIFY(steady_clock::now() - ended >= ReplayWork::kQuiet);
+        QCOMPARE(work.started.load(), std::uint64_t(1));
+        QCOMPARE(work.startedUnderLoad.load(), std::uint64_t(0));
+    }
+    // Back-to-back reads leave no idle gap: no turn after one read ends, a turn
+    // (under load) once kReadsUnderLoad reads have ended.
+    {
+        ReplayWork work;
+        std::atomic<bool> wanted{true};
+        Creator creator{work, wanted};
+        work.Begin();
+        auto turn = creator.Start();
+        QVERIFY(pending(turn, 30ms));
+        work.End();
+        work.Begin(); // the next read starts at once
+        QVERIFY(pending(turn, 30ms));
+        work.End();
+        work.Begin();
+        QVERIFY(turn.wait_for(5s) == std::future_status::ready);
+        QVERIFY(turn.get());
+        QCOMPARE(work.started.load(), std::uint64_t(1));
+        QCOMPARE(work.startedUnderLoad.load(), std::uint64_t(1));
+        // The count starts again from the reads ended at that creation.
+        creator.since = work.readsEnded;
+        auto next = creator.Start();
+        work.End();
+        work.Begin();
+        QVERIFY(pending(next, 30ms));
+        work.End();
+        work.Begin();
+        QVERIFY(next.wait_for(5s) == std::future_status::ready);
+        QVERIFY(next.get());
+        work.End();
+    }
+    // Reads that end while nothing is wanted do not count towards a turn under load.
+    {
+        ReplayWork work;
+        std::atomic<bool> wanted{false};
+        Creator creator{work, wanted};
+        work.Begin();
+        auto turn = creator.Start();
+        for (int i = 0; i < 3; ++i) {
+            QVERIFY(pending(turn, 15ms));
+            work.End();
+            work.Begin();
+        }
+        QVERIFY(pending(turn, 15ms));
+        wanted = true;
+        work.Notify();
+        QVERIFY(pending(turn, 30ms)); // a read is in flight and none ended since
+        work.End();
+        work.Begin();
+        QVERIFY(pending(turn, 30ms));
+        work.End();
+        work.Begin();
+        QVERIFY(turn.wait_for(5s) == std::future_status::ready);
+        QVERIFY(turn.get());
+        work.End();
+    }
+    // Stop wakes a waiting thread, which gets no turn; so does the caller's own
+    // stop condition (a cancelled preparation) once the thread is woken.
+    {
+        ReplayWork work;
+        std::atomic<bool> wanted{false};
+        Creator creator{work, wanted};
+        auto turn = creator.Start();
+        QVERIFY(pending(turn, 20ms));
+        work.Stop();
+        QVERIFY(turn.wait_for(5s) == std::future_status::ready);
+        QVERIFY(!turn.get());
+        QCOMPARE(work.started.load(), std::uint64_t(0));
+    }
+    {
+        ReplayWork work;
+        std::atomic<bool> wanted{true};
+        Creator creator{work, wanted};
+        work.Begin();
+        auto turn = creator.Start();
+        QVERIFY(pending(turn, 20ms));
+        creator.stopped = true;
+        work.Notify();
+        QVERIFY(turn.wait_for(5s) == std::future_status::ready);
+        QVERIFY(!turn.get());
+        work.End();
+    }
 }
 
 inline void Policies()

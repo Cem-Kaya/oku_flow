@@ -334,87 +334,7 @@ class Progress final : public nvinfer1::IProgressMonitor
   private:
     const std::atomic<bool> &cancelled_;
 };
-// Graph replay: wakes the thread that creates execution contexts after the
-// State is published, and tells it whether a read is in flight. Creating a
-// context slows inference running at the same time (measured: full-replay
-// reads about a fifth slower while contexts were being created on another
-// thread, docs/uct_okuread_port.md, round 10), so the thread follows this
-// policy (Turn):
-// - A creation starts only while no read is in flight and at least kQuiet
-//   after the last read ended (an idle gap), or
-// - under continuous load, when kReadsUnderLoad reads have ended since the
-//   last creation (or since a context became wanted) without such a gap: then
-//   it starts at once, while a read may be in flight, and slows that read.
-// A read that begins while a creation runs proceeds. A failing read retires
-// its State, which stops the thread, before the read's marker ends.
-struct ReplayWork {
-    static constexpr auto kQuiet = std::chrono::milliseconds(10);
-    static constexpr std::uint64_t kReadsUnderLoad = 2;
-    std::mutex mutex;
-    std::condition_variable wake;
-    int reading{};               // reads in flight (guarded by mutex)
-    std::uint64_t readsEnded{};  // guarded by mutex
-    std::chrono::steady_clock::time_point lastEnd{};
-    std::atomic<bool> stop{};
-    // Observations for the profile receipt; written by the creating thread.
-    std::atomic<bool> creating{};
-    std::atomic<std::uint64_t> started{}, startedUnderLoad{};
-    void Notify() noexcept
-    {
-        try { std::lock_guard lock(mutex); } catch (...) {}
-        wake.notify_all();
-    }
-    void Stop() noexcept
-    {
-        stop = true;
-        Notify();
-    }
-    void Begin()
-    {
-        std::lock_guard lock(mutex);
-        ++reading;
-    }
-    void End() noexcept
-    {
-        try {
-            std::lock_guard lock(mutex);
-            --reading;
-            ++readsEnded;
-            lastEnd = std::chrono::steady_clock::now();
-        } catch (...) {}
-        wake.notify_all();
-    }
-    // The creating thread, holding `lock` on `mutex`: wait until a context
-    // may be created under the policy above. `wanted` says whether any engine
-    // wants one; `stopped` whether the thread must end. Returns false to end.
-    template <class Wanted, class Stopped>
-    bool Turn(std::unique_lock<std::mutex>& lock, Wanted&& wanted, Stopped&& stopped, std::uint64_t& since)
-    {
-        for (;;) {
-            if (stop.load() || stopped()) return false;
-            if (!wanted()) {
-                since = readsEnded; // nothing wanted: reads that end now do not count
-                wake.wait(lock);
-                continue;
-            }
-            if (readsEnded - since >= kReadsUnderLoad) {
-                ++started;
-                if (reading > 0) ++startedUnderLoad;
-                return true;
-            }
-            if (reading == 0) {
-                const auto quiet = lastEnd + kQuiet;
-                if (std::chrono::steady_clock::now() >= quiet) {
-                    ++started;
-                    return true;
-                }
-                wake.wait_until(lock, quiet);
-                continue;
-            }
-            wake.wait(lock);
-        }
-    }
-};
+using graph_cache::ReplayWork;
 class Network
 {
     class PublicProgress final : public nvinfer1::IProgressMonitor {
@@ -1926,7 +1846,7 @@ class TensorRtRecognizer final : public Recognizer
                 return output;
             }
             retained = state_;
-            reading.emplace(state_);
+            if (state_->detector->ReplayEnabled() || state_->recognizer->ReplayEnabled()) reading.emplace(state_);
             output.inputFault = true;
             state_->uploadPixels = image.convertToFormat(QImage::Format_ARGB32);
             const auto &pixels = state_->uploadPixels;
@@ -1987,7 +1907,7 @@ class TensorRtRecognizer final : public Recognizer
                 output.backendPreparing = true;
                 return output;
             }
-            reading.emplace(state_);
+            if (state_->detector->ReplayEnabled() || state_->recognizer->ReplayEnabled()) reading.emplace(state_);
             state_->detector->ReplayReadBegins();
             state_->recognizer->ReplayReadBegins();
             // Whether a context creation overlaps this read (profile receipt).
