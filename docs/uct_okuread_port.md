@@ -1456,7 +1456,12 @@ MSVC 19.44 Release, CUDA 12.9.86, TensorRT 11.4.0.106, medium BF16 detector and
 recognizer unless a row says otherwise, branch `perf/okuread-port-r10` at
 `af7ff1f` (reader code as of `6d79985`), two reversed cohorts of five warm
 reads. Other agents' jobs shared the machine through the GPU lease, and the
-desktop ran remote-desktop, game-launcher and GPU-monitoring software.
+desktop ran remote-desktop, game-launcher and GPU-monitoring software. Every
+timing in this section comes from the `uct_paddle_tests` executable, which
+compiles the test-only fault hooks (`OKUFLOW_UCT_GRAPH_FAULT_HOOKS`): with
+replay on, each network call also loads the (empty) fault plan a few times.
+The application does not compile them. The follow-up below supersedes the
+creation policy and some statements of this section; where it does, it says so.
 
 ### What a context costs, measured first
 
@@ -1501,13 +1506,20 @@ In `src/common/uct_tensorrt.cpp` and `src/common/uct_graph_cache.hpp`:
   `ReplayReading` in `RecognizeDevice`, which is the only change there). The
   read path never creates a context. The thread ends when both engines have
   every context they can use, or at the latest one creation after the State
-  retires.
+  retires. As built in this round neither of the last two statements held
+  everywhere, as the council found: a creation could start just before a read
+  and run beside it, a failing read let one start on its doomed State, and a
+  reader destroyed between "ready" and its first read left the thread asleep
+  for good with the State never retired. The follow-up below fixes both and
+  states the policy that now holds.
 - **Allocation failures fall back instead of retiring.** An activation arena
   that cannot be allocated leaves the preparation context owning its memory and
   that engine on the plain enqueue; so does replay output storage that cannot
-  be allocated (`DeviceBuffer::TryReserve`). A failed background creation stops
-  the production; misses then run on the overflow context. Real device faults
-  are still fatal and retire the State as before.
+  be allocated (`DeviceBuffer::TryReserve`; as built here it released the
+  plain buffer before the larger allocation, fixed in the follow-up). A failed
+  background creation stops the production; misses below capacity then run on
+  the overflow context. Real device faults are still fatal and retire the
+  State as before.
 - **Configurations by construction.** With the bucketed recognizer width (up to
   32 shapes at batch eight) the recognizer runs plainly and the detector
   replays. A fixed-canvas recognizer gets at least one slot per batch size,
@@ -1599,7 +1611,12 @@ the same gap (`r10-idle-gap350-1`) measured 1.089x (doc-camera-1080), 1.140x
 small to stand in for the target. With a 500 ms gap before every read (`r10-gap500-repeat-1`, two scenes, two
 cohorts) replay settles within two or three reads: doc-camera-1080 at 187 to
 191 ms against 205 ms off, board-lecture-01 at 19.1 to 19.2 ms against 24 ms
-(one cohort of each arm was disturbed at the same time by other load).
+(one cohort of each arm was disturbed at the same time by other load). The
+orchestrator's own paced runs of the whole set on this build show the same
+bursts in both arms and are not usable either: `r10c-v1-gap350-ab-1` (warm
+1.021x), `r10c-v1-gap350-ab-2` (1.298x) and `r10c-v1-gap1000-ab-1` (0.663x),
+identical output in all three. Round 13 later traced the bursts to the GPU
+clocking itself down between sparse reads (`gapdiag-1-*`).
 
 ### Output
 
@@ -1735,7 +1752,8 @@ context and its graph) costs about 1.6 MiB, so all sixteen slots of both
 engines in use come to about 53 MiB; that full case was not reached in a run
 (the detector used at most 7 of its 8 slots on any set). The receipts' own
 per-context figures (`contextBytesObservedApprox`) are taken on the creating
-thread while the worker allocates and overstate it.
+thread while the worker allocates and overstate it. The 53 MiB for all
+sixteen slots is an extrapolation, not a measurement.
 
 ### Round 3's slow first reads
 
@@ -1757,7 +1775,9 @@ spaced by idle gaps (`r10-clocks-gap2000-1`), the GPU stayed in P2 at 2.5 to
 arm slow two- to five-fold in bursts while other desktop software is active,
 in whichever process is reading at the time (`r10-clocks-gap2000-1`: the
 replay process; its repeat `r10-gap2000-repeat-1`: the switch-off process).
-The cause in round 3 is therefore not isolated. With this round's design the
+The cause in round 3 is therefore not isolated, and this round does not close
+that condition; round 13's finding that this GPU clocks down between sparse
+reads is a candidate it did not test. With this round's design the
 reader's startup is the switch-off startup and the effect is gone from the
 same title run (`r10-titles-1`): the first three 1280x720 placements of the
 reverse cohort read 17 to 21 ms against 17 to 18 ms off, with two slower
@@ -1765,8 +1785,11 @@ reads (41.7 and 23.3 ms) in the stretch where the process makes its contexts.
 
 ### Default
 
-Off. Every condition the round 3 council set is now met except the speed
-target under the standard protocol. Moving context creation out of startup
+Off. Most conditions the round 3 council set are met; the speed target under
+the standard protocol is not, the slow start of round 3 is not isolated, the
+memory with every slot in use is extrapolated, and no clean paced run exists
+(this section originally said every other condition was met; see the
+follow-up for what its council found). Moving context creation out of startup
 moved its cost to the reads that meet new shapes, and with reads back to back
 that costs three of six lecture frames their 1.20x and the geometric mean its
 1.17x. Making the contexts before ready would meet the speed target and miss
