@@ -224,6 +224,8 @@ inline void CorpusTiming()
     const QJsonObject report{{"schema", 1}, {"scenes", sceneRecords}, {"passes", passes}, {"gapMs", gapMs},
         {"stamp", media ? "media" : "camera"}, {"pair", tiers.join(QLatin1Char(':'))}, {"profile", profile},
         {"startupFirstResultMs", startupMs}, {"startupPreparingPolls", preparingPolls},
+        // The startup read is scene zero's true first read in this process.
+        {"startupWorkerMs", first->completion->result.durationMs},
         {"backendDetail", backend.detail}, {"switches", switches},
         {"executableSha256", Hex(executableHash.result())},
         {"gpu", QString::fromLatin1(properties.name)}, {"cudaDriverApi", driver},

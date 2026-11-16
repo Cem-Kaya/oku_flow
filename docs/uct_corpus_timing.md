@@ -63,6 +63,14 @@ words lost and gained, and the largest box-edge change when the ordered text
 agrees. Scenes with a truth file are scored by exact match against the words
 that were drawn. There is no confidence interval or outlier rejection.
 
+Before its timed reads each process reads scene zero until the GPU reader is
+ready; `startupFirstResultMs` in the report is construction to that first GPU
+result. That startup read inherits nothing, so it is scene zero's true first
+read in the process, and `startupWorkerMs` records its worker time. The
+"first read" in the summary is the first timed read and comes after it. To
+measure true first reads, run one scene per process (`--scenes`) and read
+`startupWorkerMs`.
+
 ## Scene set, version 1
 
 Eighteen scenes. Twelve are generated from this repository's documentation
