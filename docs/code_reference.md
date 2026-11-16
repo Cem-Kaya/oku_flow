@@ -8349,42 +8349,71 @@ boundary/empty/257 MiB inputs, cancellation, read errors and a tampered file.
 
 `LoadPaddleAssets` (`src/common/uct_paddle_processing.cpp`) runs its existing
 file checks as concurrent tasks (`std::async`, inline when no thread can be
-started), all joined before it returns: each role's original graph and config
-(which choose that role's directory) and the chosen directory's graph, the last
-started at once on the original path and used only when the original directory
-is chosen. Results are evaluated in the original order, so paths and errors
-equal the sequential loader's.
+started), all joined before it returns: each role's original graph (one task,
+whose result serves both the directory choice and, when the original directory
+is chosen, the final check) and, on the production root, its original config.
+A downloaded directory's graph is verified afterwards. Results are evaluated
+in the original order, so paths and errors equal the sequential loader's.
 
-`preparation_overlap::Ahead` (`src/common/uct_preparation_overlap.hpp`) runs
-one load beside the preparation thread. `Start(Steps, stop)` reads the failure
-memo (`Steps::refuseRemembered`), takes the attempt latch (`Steps::begin`) and
-starts `Steps::load` on a helper thread with a stop that also turns true when
-the object is abandoned; a memo, a held latch or a thread that cannot be
-started leaves everything to the caller's original code (`Started()` false).
-`Adopt()` joins the helper, reads the memo again (a refusal releases the latch
-and is rethrown) and returns an `Adoption`: `NotStarted`, `Loaded`,
-`NeedsBuild` or `Failed` with the helper's exception unchanged; the latch then
-belongs to the caller. Destruction without `Adopt` stops and joins the helper
-and releases the latch (`Steps::release`). `TensorRtRecognizer::BeginPreparation`
-uses it for the production BF16 recognizer: `RuntimeRecognizerGraph`,
+`preparation_overlap` (`src/common/uct_preparation_overlap.hpp`, round 11 and
+its council follow-up) runs the production BF16 recognizer's cached-plan load
+on one helper thread beside the detector:
+
+- `Ahead::Start(key, refuseRemembered, load, stop)` starts the helper unless a
+  failure memo exists for `key`; it takes no latch and the load writes
+  nothing. The load receives a stop (the caller's stop or abandonment) and a
+  gate it calls right before its execution context; `Open()` (after the
+  detector's context exists) lets it pass, abandonment or the stop make it
+  return false. `Take()` opens the gate, joins and returns an `Outcome`
+  (`NotStarted`, `Loaded`, `NeedsBuild`, `Failed` for a failure that is not a
+  fault, `Fault`). `Abandon()` stops, joins and returns the helper's fault, if
+  any. `Pending()` is true until one of them ran; destruction abandons.
+- `IsFault` classifies an exception the way the preparation's catches do
+  (neither a capacity fallback nor an interrupted verification).
+  `RaiseFault(fault, cause)` raises it as `CudaFailure` (when it was one) or
+  `TensorRtApiFailure`, with `cause`'s message first.
+- `Point` holds the recognizer point's actions (memo refusal, latch, held-latch
+  refusal, owning the latch, adopt, discard, the original load in place).
+  `Decide(ahead, key, point)` runs that point in the original order: take the
+  helper (one started for another key is settled instead), memo, latch, then
+  adopt a loaded engine, or discard and load in place, or attach and raise a
+  fault; a refusal discards (a fault is still raised).
+  `Settle(ahead, point, cause)` abandons a pending helper and discards its
+  Network, or after a fault holds the recognizer latch as after a terminal
+  fault and raises the fault. `DetectorSide(ahead, point, stage, ended)` runs
+  the detector stage; on a failure it calls `ended` (production: the
+  cancellation release) and then settles before the failure leaves.
+
+`TensorRtRecognizer::BeginPreparation` wires it: `RuntimeRecognizerGraph`,
 `RuntimeRecognizerAttempt` and `LoadRuntimeRecognizer` give the helper and the
-original place the same key and the same `Network::PreparePinned` call; the
-helper passes `needsBuild`, which ends a cache miss before any builder library,
-cache directory or stream use. `State::recognizerAhead` holds the helper's
-Network from before its first vendor call until `PrepareRuntimeRecognizer`
-adopts it or the State is retired. `PrepareRuntimeRecognizer` takes the `Ahead`
-and continues exactly as before after the load.
+original point the same key and the same `Network::PreparePinned` call (the
+helper passes `needsBuild`, which ends a cache miss before any builder, cache
+directory or stream use, its own logger and the gate as `beforeContext`).
+`RecognizerPoint(state, cacheRoot, attempt, loadInPlace)` builds the `Point`
+on a State. Detectors are prepared through a local `prepareDetector`: while
+the helper is pending a detector first loads with `needsBuild`; a cache miss
+settles the helper and builds on a fresh Network; then `Open()`. The
+cancellation release of the outer handler is a shared, idempotent lambda
+(`releaseCancelled`). After the recognizer point the helper is settled again,
+and publication throws while `Pending()` or `State::recognizerAhead` is set.
+`State::recognizerAheadLogger` is the helper's logger; `Logger::Absorb` copies
+its last error into `State::logger` when its load is adopted.
+`PrepareRuntimeRecognizer` calls `Decide` and continues exactly as before
+after the load, with a deadline started at the recognizer point.
 
 `CompletionPollPause` waits between `ConfirmPublicCompletion` polls with a
 high-resolution waitable timer (250 us; 1 ms sleep when unavailable); the
 poll, cancellation and 30 s deadline are unchanged.
 
-Tests: `preparationOverlapMatchesSequentialDecisions` and
-`preparationOverlapAbandonStopsJoinsAndReleases`
+Tests: `preparationOverlapMatchesSequentialDecisions` (drives `Ahead`,
+`Decide`, `Settle` and `DetectorSide` in the production order against the same
+driver without a helper), `preparationOverlapAbandonStopsJoinsAndReleases` and
+`preparationOverlapAbandonedOwnerDoesNotRefuseAnother`
 (`tests/uct_preparation_overlap_cases.hpp`, in CTest `uct_paddle_processing`);
-opt-in `optionalAssetVerificationMatchesSequential` and
-`optionalPreparationCancellation` (`tests/uct_preparation_diagnostic.hpp`,
-which keeps a frozen copy of the sequential loader as its oracle).
+opt-in `optionalAssetVerificationMatchesSequential`,
+`optionalPreparationCancellation` and `optionalOverlappingPreparation`
+(`tests/uct_preparation_diagnostic.hpp`, which keeps a frozen copy of the
+sequential loader as its oracle).
 
 Round 6 retains these rules;
 the tests additionally exercise unequal-tolerance chain restoration and check

@@ -30,7 +30,7 @@ chalkboard lecture frames. Worker time is not camera-to-paint latency.
 | Speculative ink retries | Not applicable: OkuFlow has no retry fits |
 | Reuse-cache crop order defect | Not applicable: OkuFlow has no OCR reuse cache and never reorders crops |
 | Keep word-merge state across one read instead of rebuilding it per crop | Round 7, on by default, identical output |
-| Overlap verification and loading of the two engines | Round 11, on by default: startup to first GPU result 878 to 614 ms (forward) and 670 to 428 ms (reverse), identical output |
+| Overlap verification and loading of the two engines | Round 11 and its follow-up, on by default: startup to first GPU result 887 to 605 ms (forward) and 674 to 424 ms (reverse), identical output |
 
 ## Round 1: detector post-processing
 
@@ -1449,6 +1449,14 @@ on the same bytes, before the artifact it guards is used and before the State
 is published. Nothing verified is kept across calls or processes. There is no
 switch.
 
+This section records round 11 as reviewed (`aff2b2a`). The council found the
+recognizer overlap's decisions not yet equal to the sequential code's; "Round
+11 follow-up" below changes the latch, the deadline, the fallback and fault
+paths, the asset check and the context order, and gives the current numbers.
+Where this section describes the early latch, the shared deadline, the
+speculative second graph check or the decision test, the follow-up supersedes
+it.
+
 ### What changed
 
 1. **Asset files hashed side by side.** `LoadPaddleAssets` hashed up to six
@@ -1616,8 +1624,10 @@ time.
   without downloaded roles, a downloaded role with a changed config, explicit
   roots, an empty root): identical in all seven.
 - Cancellation (`r11-cancellation`): `optionalPreparationCancellation` cancels
-  the production preparation at 24 points from 0 to 560 ms (17 while it was
-  still preparing). Destroying the reader took at most 0.64 ms (it never waits
+  the production preparation at 24 points from 0 to 560 ms (19 while it was
+  still preparing; corrected from 17). The points are measured from before
+  `Initialize()`, which returns only after the asset check, so no point
+  interrupts the asset hashing. Destroying the reader took at most 0.64 ms (it never waits
   for the preparation), every cancelled State's retirement completed, and after
   each cancellation a fresh reader became ready with the identical backend
   detail and identical output.
@@ -1643,4 +1653,226 @@ time.
 
 Context creation does not overlap well: with both engines creating contexts at
 once the detector's took 168 ms instead of 92 ms. No other variant was built
-and dropped; reordering the two context creations was not tried.
+and dropped; reordering the two context creations was not tried (the follow-up
+does it).
+
+## Round 11 follow-up: the recognizer overlap made decision-exact (on by default)
+
+Target, from the council review of round 11 (scores 7, 7, 8): the claim
+"failure, fallback and cancellation decisions are unchanged" was not yet true
+of the recognizer loaded beside the detector. Make it true (items 1 to 6),
+remove the duplicate graph read of the asset check (item 7), prove the
+recognizer point's decisions on the production wiring, run the cold-cache
+build path and overlapping preparations on the GPU, and measure again. The
+overlap stays on by default only if every item is closed. **All seven are
+closed; it stays on.** One finding outside the seven is reported below
+("Overlapping preparations").
+
+### What changed
+
+1. **Deadline.** The helper's deadline starts when it starts and governs only
+   its own work. The recognizer point starts its own 600 s deadline, as the
+   sequential code did, for every outcome. A helper load stopped by its own
+   deadline is not adopted: the original load runs in place under the fresh
+   deadline (item 4 below), so no load or build is refused for a deadline the
+   sequential code would not have hit.
+2. **Latch.** The helper takes no latch and writes nothing (its load never
+   builds, creates no cache directory and queues no stream work). `Decide`
+   (`src/common/uct_preparation_overlap.hpp`) runs the recognizer point in the
+   original order: join the helper, read the memo, take the latch. A memo or a
+   latch held elsewhere discards the helper's Network and refuses exactly as
+   before. The helper reads the memo once at its start only to skip pointless
+   work. Two preparations of the same recognizer therefore meet the latch only
+   across their recognizer stages, as in the sequential order
+   (`preparationOverlapAbandonedOwnerDoesNotRefuseAnother`; GPU below).
+3. **Nothing left in a published State.** With the latch, only an engine the
+   helper loaded completely is adopted. A cache miss, an artifact refusal, an
+   interrupted verification or a plain runtime error is discarded and the
+   original load runs in place, so the sequential code decides it again
+   itself. Every refusal path discards, the FP32 fallback resets
+   `State::recognizerAhead` again, and publication throws while a helper is
+   pending or its Network is set.
+4. **Publication.** The helper is settled (stopped, joined, discarded) after
+   the recognizer point on every path, before any other recognizer is
+   prepared. `Decide` never adopts a load started for another attempt key; it
+   settles it and runs the original load.
+5. **Faults.** A helper that ended in a fault (CUDA, TensorRT API, allocation,
+   unknown) is never discarded. At the recognizer point the Network is
+   attached and the fault raised as the original load would have raised it.
+   When the detector side ends first (`DetectorSide`), before the detector's
+   FP32 fallback (so a helper fault is never recorded in the detector's
+   failure memo) and before a detector build, `Settle` raises the fault as a
+   fault of the same class with the detector side's failure first and the
+   helper's message after it, and holds the recognizer as after a terminal
+   fault in its own stage: latch taken unless a memo or another holder refuses
+   it, never released, no memo written.
+6. **Loggers.** The helper reports to `State::recognizerAheadLogger`. When its
+   load is adopted, `Logger::Absorb` copies its last error into
+   `State::logger`, which then holds what one shared logger would have held
+   after the sequential order. No message of one engine reaches the other's
+   failure text or memo.
+7. **Assets.** One task reads and hashes each role's original graph and serves
+   both the directory choice and the final check. The recognizer's
+   downloaded graph is not read when the detector's already failed, as in the
+   sequential `||`. Paths and errors are unchanged (7/7 layouts, three runs,
+   `r11b-assets`). A damaged production root with valid downloads now costs
+   what the sequential loader costs (120 to 127 ms against 121 to 126 ms; round
+   11 cost 154 against 129). The only extra work left on a damaged root is the
+   original config's hash when the original graph already failed.
+
+Two further changes came out of the GPU runs:
+
+- **Detector builds and context creation come first.** While the helper is
+  pending, a detector first loads without building. A cache miss settles the
+  helper before the build, so no build shares the device with it, and the
+  build runs through the ordinary call on a fresh Network. The helper waits at
+  a gate right before its execution context until the detector's context
+  exists (`Ahead::Open`). TensorRT largely serializes two context creations,
+  and beside the helper's the detector's took 168 ms instead of 92 ms, which
+  lengthened the detector stage and the time its latch was held. With the gate
+  it takes 94.7 ms (base 93.5) and preparation is shorter overall.
+- **Cancellation releases before the join.** The outer handler releases a
+  cancelled preparation's latches once its stream is confirmed complete.
+  `DetectorSide` now runs the same release (shared and idempotent) before it
+  settles the helper, so a helper inside a vendor call never keeps the
+  detector's latch held longer than the sequential code did.
+
+Round 10 note: round 10 constructs every recognizer with
+`state->recognizerArena`; the helper's construction site carries a
+`ROUND 10 MERGE` comment.
+
+### Decisions on the production wiring
+
+`preparationOverlapMatchesSequentialDecisions` (CTest `uct_paddle_processing`)
+drives the production `Ahead`, `Decide`, `Settle` and `DetectorSide` in the
+order of `BeginPreparation`, with only the vendor calls and the unchanged catch
+bodies faked. Each of 7104 scenarios runs twice: with the helper, and without
+it (the production code with no helper is the sequential code). Decision,
+recognizer and detector latch state and memo writes must be equal. Scenarios:
+the helper's load loaded, needing a build, refused (`ArtifactError`), a plain
+`runtime_error`, `VerificationInterrupted` (its own deadline), `CudaFailure`,
+`TensorRtApiFailure`, `bad_alloc` or an unknown exception, each before or
+after its gate as in production; the original load's outcome where it differs
+(any outcome after a discarded helper); the helper ending before, after or
+with the preparation thread; the detector ready, needing a build, falling back
+to FP32, failing or cancelled; a memo at the start or at the recognizer point;
+the latch held by another preparation; cancellation at the recognizer point.
+The one deliberate rule: a helper that actually ended in a fault is raised and
+holds the recognizer as above, and no memo is written. A mutation that
+rethrows a non-fault helper failure, as round 11 did, fails the test.
+`preparationOverlapAbandonedOwnerDoesNotRefuseAnother` runs two preparations
+sharing a recognizer: A is cancelled while its helper is inside a vendor call,
+B decides while A still waits for it and adopts BF16, and A takes nothing (or,
+if A's helper then faults, A holds the latch as after its own terminal fault).
+`preparationOverlapAbandonStopsJoinsAndReleases` covers the memo at the start,
+a helper of another key, stop, join, the gate and `RaiseFault`.
+
+### GPU evidence
+
+Hardware and build as in round 11 (RTX 4090, driver 621.14, Ryzen 9 5900X,
+MSVC 19.44 Release, Qt 6.12.0, CUDA 12.9.86, TensorRT 11.4.0.106, medium and
+medium BF16, batch eight, fixed1024, warm file cache, shared GPU lease). New:
+a build of `03d2cd7`. Base: the same `6e454cc` build as round 11.
+
+**Startup** (`r11b-startup-ab`, unprofiled, one process per arm and cohort,
+ten cohorts, five warm reads per scene):
+
+| Startup to first result | base ms | new ms | new - base |
+| --- | ---: | ---: | ---: |
+| forward (first scene doc-camera-1080), median of 5 | 886.9 | 605.0 | -281.9 |
+| reverse (first scene board-lecture-05), median of 5 | 674.4 | 423.7 | -250.7 |
+| forward processes | 989, 887, 853, 947, 857 | 605, 613, 585, 588, 617 | |
+| reverse processes | 714, 664, 674, 661, 694 | 386, 385, 471, 424, 431 | |
+
+Every new process is at least 236 ms (forward) and 190 ms (reverse) below
+every base process of its order. Warm geometric mean new versus base 1.005x,
+first read 1.006x (noise floor 1 percent). Output byte-identical on **18/18**
+scenes in all ten cohorts; one backend detail string in all 20 processes,
+equal between the arms.
+
+**Phases**, profiled, attribution only (`r11b-profile-gated`, ten processes per
+build on doc-camera-1080; nested rows overlap):
+
+| Role / phase | base median ms | new median ms |
+| --- | ---: | ---: |
+| assets: verify-and-dictionary | 170.16 | 53.14 |
+| preparation: runtime-dll-load | 19.79 | 20.27 |
+| detector: source-read-and-verify | 41.52 | 45.82 |
+| detector: plan-read-and-verify | 23.03 | 24.02 |
+| detector: deserialize | 17.38 | 23.31 |
+| detector: execution-context | 93.50 | 94.73 |
+| preparation: detector-prepare | 184.87 | 195.77 |
+| preparation: detector-smoke-four-shapes | 64.64 | 51.99 |
+| recognizer: source-read-and-verify | 53.05 | 55.34 |
+| recognizer: plan-read-and-verify | 28.10 | 28.79 |
+| recognizer: deserialize | 5.40 | 12.10 |
+| recognizer: wait-for-detector-context | - | 97.43 |
+| recognizer: execution-context | 75.73 | 85.39 |
+| preparation: recognizer-prepare (preparation thread) | 179.42 | 41.42 |
+| preparation total (elapsed at last checkpoint) | 455.28 | 316.37 |
+
+Round 11 as reviewed gave 342.13 ms here; the gate saves the context
+contention (the helper's context is now created during the detector smoke).
+
+**Cold cache** (`r11b-cold`, slot `optionalNativePrecisionSetup`,
+`LOCALAPPDATA` and the recognizer cache in new real directories under the
+evidence folder; `$w\tools\run-paddle-lad.bat` is `run-paddle.bat` with
+`LOCALAPPDATA` from `R11B_LAD`):
+
+| Case | base | new |
+| --- | --- | --- |
+| both caches empty: first process | ready after 85.9 s; both plans `saved` | ready after 88.2 s; both plans `saved` |
+| the same caches: second process | 603 ms; both `loaded` | 501 ms; both `loaded` |
+| detector cached, recognizer cache empty: first / second | 39.8 s `saved` / 604 ms `loaded` | 38.2 s `saved` / 484 ms `loaded` |
+
+Plan keys, cache states, context sizes, graph identities and the rest of the
+detail are identical between base and new in every case; only plan payload
+digests differ, and a second base build on its own empty cache
+(`base-both-2`) also produced different digests, so that is TensorRT build
+nondeterminism. The second case exercises the helper's "needs build" outcome
+(the original build then runs in place); the first exercises the detector's
+load-then-build with the helper settled first. The scratch plan caches were
+deleted afterwards.
+
+**Cancellation** (`r11b-cancellation`, `optionalPreparationCancellation`, 24
+points over 0 to 596 ms measured from before `Initialize()`): 13 points still
+preparing, destruction at most 0.51 ms, every cancelled State closed, every
+fresh reader afterwards had the identical detail and output. As in round 11,
+`Initialize()` returns only after the asset check, so no point interrupts the
+asset hashing.
+
+**Overlapping preparations** (`optionalOverlappingPreparation`): A is
+cancelled at 24 points from its start to the end of its detector stage and B,
+with the same detector and recognizer, starts at once. B's recognizer came up
+on BF16 with the plan receipt of an undisturbed start at **48/48** points (two
+runs, `r11b-overlap-gated`). At 40/48 B's whole detail and output were those
+of an undisturbed start. At 8/48 (A cancelled 118 to 256 ms after its start)
+B's BF16 detector found A's own detector attempt still in flight ("BF16
+detector already failed or in flight this session") and chose the FP32
+detector. That is the detector latch rule of the sequential code, which this
+round does not change: A holds its detector attempt until its detector vendor
+call returns and the cancellation is confirmed. How often a back-to-back B meets
+it depends on how soon B reaches its detector. The same slot built on the base
+(`r11b-overlap-base-probe`, diff kept there) never met it in 48 points:
+there B's own sequential asset hashing (170 ms) gave A that much more time. On
+`52edbf5`, asset hashing alone with no overlap (`r11b-overlap-hash-probe`), it
+met it at 4/48. Round 11 without the gate (`r11b-overlap`, build `512c052`)
+met it at 5/24 and failed the first, stricter version of this check. B's FP32
+detector is a per-State choice: no memo is written, and the next preparation
+tries BF16 again. Making B wait for A's detector attempt would change the
+latch rule and is not part of this round.
+
+### Not established
+
+- Only the RTX 4090 and this CPU were measured, with a warm file cache.
+- Faults on the helper (CUDA, allocation, out of memory while both contexts
+  allocate) were exercised model-free only; none was injected on the GPU.
+  Which side reports an exhausted device can still differ from the sequential
+  order. Both orders end the preparation with a terminal fault, but the side
+  whose latch stays held can differ.
+- The detector-latch race above occurs in the base, in round 11's hashing
+  change and here. Its frequency in the real application, where a new
+  preparation follows a settings change, was not measured.
+- No GUI run and no full build matrix (the orchestrator runs them). CTest
+  `uct_paddle_processing`, `uct_precision_artifact_contract`,
+  `uct_model_installation_contract` and `uct_merge_replay` pass 4/4.
