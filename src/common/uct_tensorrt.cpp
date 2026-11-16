@@ -39,6 +39,7 @@ bool TensorRtCropDiagnostic::TryCommit(Plan&& plan) noexcept
 #include "uct_recognizer_width.hpp"
 #include "uct_tensorrt_identity.hpp"
 #include "uct_tensorrt_failures.hpp"
+#include "uct_preparation_overlap.hpp"
 #include <NvInfer.h>
 #include <NvOnnxParser.h>
 #include <QCryptographicHash>
@@ -457,8 +458,12 @@ class Network
             bool variableWidth = false, bool allowPreparation = true,
             const QByteArray* precisionPlan = nullptr,const QString& explicitCacheRoot = {},
             const QByteArray& verifiedPlanKey = "verified-local-bf16",bool bf16Graph=false,int expectedClasses=0,
-            bool nativeBf16=false)
+            bool nativeBf16=false, bool* needsBuild = nullptr)
     {
+        // `needsBuild` selects a load without building (preparation_overlap):
+        // a cache miss sets it and returns before any builder library, cache
+        // directory or stream use. The caller then builds through an ordinary
+        // call in the original place, which repeats every check.
         PreparationProfile loadProfile(detection ? "detector" : "recognizer");
         detection_=detection;variableWidth_=variableWidth;maximumBatch_=maximumBatch;
         maximumOutputFloats_=!detection && maximumBatch==16 ? 256ull*1024*1024 : 64ull*1024*1024;
@@ -505,7 +510,7 @@ class Network
                 detection, maximumBatch, variableWidth_, historicalDriver));
         const auto cache = explicitCacheRoot.isEmpty()
             ? QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath("OkuFlow/ocr-engines") : explicitCacheRoot;
-        if (allowPreparation && !precisionPlan) QDir().mkpath(cache);
+        if (allowPreparation && !precisionPlan && !needsBuild) QDir().mkpath(cache);
         const auto path = QDir(cache).filePath(QString::fromLatin1(key) + ".plan");
         if (precisionPlan) {
             engine_.reset(runtime_->deserializeCudaEngine(precisionPlan->constData(), precisionPlan->size()));
@@ -547,6 +552,10 @@ class Network
         }
         if (!engine_)
         {
+            if (needsBuild) {
+                *needsBuild = true;
+                return;
+            }
             // Width experiments never trigger an unreviewed cold build during
             // normal inference. One-time preparation is a separate opt-in.
             if (!allowPreparation)
@@ -1052,6 +1061,10 @@ struct State
     Logger logger;
     std::unique_ptr<Libraries> libraries;
     std::unique_ptr<Network> detector, recognizer;
+    // The recognizer loaded beside the detector (preparation_overlap). Moved
+    // into `recognizer` at the original point, or kept here until the State
+    // is retired or its stream is confirmed complete.
+    std::unique_ptr<Network> recognizerAhead;
     DeviceBuffer<float> detectorInput, recognizerInput, scores;
     DeviceBuffer<int> labels, count, ids, tokenCount, groupWidths, ribbonOffsets;
     DeviceBuffer<gpu::Component> components;
@@ -1276,27 +1289,62 @@ void RecordFp32Control(State& state,const PaddleAssets& assets,const public_bf16
         {"corpusSha256",QString::fromLatin1(corpus.Sha256())},{"rows",rows},
         {"acceptedPlan",state.recognizer->PlanReceipt("recognizer")}});
 }
-void PrepareRuntimeRecognizer(State& state,const PaddleAssets& assets,const QString& sdk,
-    const public_bf16::Request& request,ModelTier detector,ModelTier tier,int capacity,const QByteArray& uuid,
-    const std::function<bool()>& stop,const std::function<bool()>& cancelled,const public_bf16::AttestationObserver& observer) {
+QByteArray RuntimeRecognizerGraph(const PaddleAssets& assets,const public_bf16::Request& request,ModelTier tier)
+{
+    return request.use == public_bf16::CatalogUse::Production
+        ? native_precision::GraphIdentity(QByteArray::fromHex(assets.recognizerSha256))
+        : QByteArray::fromHex(public_bf16::Model(tier).graphSha256);
+}
+QByteArray RuntimeRecognizerAttempt(const Libraries& libraries,const QByteArray& graphIdentity,int capacity,const QByteArray& uuid)
+{
+    return "runtime-recognizer:"+bf16_runtime::PlanKey(graphIdentity,uuid,false,capacity,false,libraries.tensorRtVersion);
+}
+// The production recognizer's cached-plan load, either in the original place
+// or on the preparation_overlap helper (`needsBuild` non-null: no build).
+void LoadRuntimeRecognizer(Network& network,State& state,const PaddleAssets& assets,const QString& sdk,
+    const public_bf16::Request& request,ModelTier tier,int capacity,const std::function<bool()>& stop,
+    bool* needsBuild = nullptr)
+{
     using namespace public_bf16;
     const auto spec=Model(tier);
     const bool native = request.use == CatalogUse::Production;
-    if (!native) ReadModel(request.modelRoot,assets,tier); // explicit historical graph diagnostic only
-    const auto graphIdentity = native ? native_precision::GraphIdentity(QByteArray::fromHex(assets.recognizerSha256))
-                                      : QByteArray::fromHex(spec.graphSha256);
-    const auto key=bf16_runtime::PlanKey(graphIdentity,uuid,false,capacity,false,state.libraries->tensorRtVersion);
-    const auto attempt="runtime-recognizer:"+key;
-    RefuseRememberedFailure(request.cacheRoot,attempt);
-    if(!SessionAttempts().Begin(attempt))throw Refusal(Reason::BuildRefused,"BF16 recognizer already failed/in flight this session");
-    state.ownedAttempts[1]=attempt;
-    state.recognizer=std::make_unique<Network>(Network::PublicTag{});
-    state.publicCompletion.Queued();
-    state.recognizer->PreparePinned(*state.libraries,state.logger,sdk,
+    network.PreparePinned(*state.libraries,state.logger,sdk,
         native ? assets.recognizer : QDir(request.modelRoot).filePath(GraphRelativePath(tier)),
         native ? assets.recognizerSha256 : QByteArray(spec.graphSha256),false,state.device,state.stream,
-        stop,capacity,false,true,nullptr,request.cacheRoot,{},true,spec.classes,native);
+        stop,capacity,false,true,nullptr,request.cacheRoot,{},true,spec.classes,native,needsBuild);
+}
+void PrepareRuntimeRecognizer(State& state,const PaddleAssets& assets,const QString& sdk,
+    const public_bf16::Request& request,ModelTier detector,ModelTier tier,int capacity,const QByteArray& uuid,
+    const std::function<bool()>& stop,const std::function<bool()>& cancelled,const public_bf16::AttestationObserver& observer,
+    preparation_overlap::Ahead* ahead = nullptr) {
+    using namespace public_bf16;
+    using Kind = preparation_overlap::Adoption::Kind;
+    const auto spec=Model(tier);
+    const bool native = request.use == CatalogUse::Production;
+    if (!native) ReadModel(request.modelRoot,assets,tier); // explicit historical graph diagnostic only
+    const auto graphIdentity = RuntimeRecognizerGraph(assets,request,tier);
+    const auto attempt=RuntimeRecognizerAttempt(*state.libraries,graphIdentity,capacity,uuid);
+    // Joins the load started beside the detector; it rereads the memo here
+    // and rethrows its refusal exactly where the original code would.
+    const auto adoption = ahead ? ahead->Adopt() : preparation_overlap::Adoption{};
+    if (adoption.kind == Kind::NotStarted) {
+        RefuseRememberedFailure(request.cacheRoot,attempt);
+        if(!SessionAttempts().Begin(attempt))throw Refusal(Reason::BuildRefused,"BF16 recognizer already failed/in flight this session");
+    }
+    state.ownedAttempts[1]=attempt;
+    if (adoption.kind == Kind::Loaded || adoption.kind == Kind::Failed) {
+        // The same Network, attached to the State before its first vendor
+        // call, in the state the original call would have left it in.
+        state.recognizer=std::move(state.recognizerAhead);
+        state.publicCompletion.Queued();
+        if (adoption.failure) std::rethrow_exception(adoption.failure);
+    } else {
+        state.recognizer=std::make_unique<Network>(Network::PublicTag{});
+        state.publicCompletion.Queued();
+        LoadRuntimeRecognizer(*state.recognizer,state,assets,sdk,request,tier,capacity,stop);
+    }
     ConfirmPublicCompletion(state,cancelled);
+    state.recognizerAhead.reset(); // a load that met a cache miss; it queued nothing
     RefuseStoppedCandidate(state.publicCompletion,stop(),"BF16 recognizer build deadline");
     const auto elements=std::size_t(capacity)*3*48*1024;
     auto* input=state.recognizerInput.Reserve(elements);
@@ -2180,6 +2228,42 @@ class TensorRtRecognizer final : public Recognizer
                         if(!refusal.isEmpty())throw std::runtime_error(refusal.toStdString());
                         precisionPlan=experiment->bytes;
                     }
+                    // The production recognizer's cached-plan load runs beside
+                    // the detector (uct_preparation_overlap.hpp); every decision
+                    // about it is still taken at the original recognizer point.
+                    const bool runtimeRecognizer=publicRequest.enabled && publicRequest.runtimePreference &&
+                        !publicRequest.fp32Control && !experiment && !precisionRequest.Requested() &&
+                        properties.major>=8 && !variableWidth;
+                    const auto recognizerDeadline=std::chrono::steady_clock::now()+std::chrono::seconds(600);
+                    // Declared after `state`: joined and resolved before the State
+                    // reference is dropped, on every path.
+                    preparation_overlap::Ahead ahead;
+                    if(runtimeRecognizer && publicRequest.use==public_bf16::CatalogUse::Production) {
+                        const auto attempt=RuntimeRecognizerAttempt(*state->libraries,
+                            RuntimeRecognizerGraph(assets,publicRequest,recognizerTier),recognizerBatch,
+                            QByteArray(reinterpret_cast<const char*>(&properties.uuid),sizeof(properties.uuid)));
+                        state->recognizerAhead=std::make_unique<Network>(Network::PublicTag{});
+                        auto* const network=state->recognizerAhead.get();
+                        auto* const owner=state.get();
+                        const auto cacheRoot=publicRequest.cacheRoot;
+                        const int device=state->device;
+                        const bool started=ahead.Start({
+                                [cacheRoot,attempt]{public_bf16::RefuseRememberedFailure(cacheRoot,attempt);},
+                                [attempt]{return public_bf16::SessionAttempts().Begin(attempt);},
+                                [attempt]{public_bf16::SessionAttempts().Cancelled(attempt,public_bf16::Completion::Confirmed);},
+                                [network,owner,assets,sdk,publicRequest,recognizerTier,recognizerBatch,device](const std::function<bool()>& stop) {
+                                    // CUDA runtime state is per host thread.
+                                    Check(cudaSetDevice(device));
+                                    bool needsBuild=false;
+                                    LoadRuntimeRecognizer(*network,*owner,assets,sdk,publicRequest,recognizerTier,
+                                        recognizerBatch,stop,&needsBuild);
+                                    // Per-thread CUDA error state ends with this thread: read it here.
+                                    Check(cudaPeekAtLastError());
+                                    return needsBuild;
+                                }},
+                            [cancelled,recognizerDeadline]{return cancelled() || std::chrono::steady_clock::now()>=recognizerDeadline;});
+                        if(!started)state->recognizerAhead.reset(); // no vendor call was made on it
+                    }
                     if(cancelled())throw std::runtime_error("GPU preparation cancelled before FP32 detector");
                     if(publicRequest.enabled && publicRequest.preferDetector && !publicRequest.fp32Control && !experiment && !precisionRequest.Requested() && properties.major>=8) {
                         const auto detectorDeadline=std::chrono::steady_clock::now()+std::chrono::seconds(600);
@@ -2254,11 +2338,14 @@ class TensorRtRecognizer final : public Recognizer
                         if(properties.major<8 || variableWidth) {
                             state->precisionDetail+="BF16 recognizer unavailable for this GPU/width profile; selected-tier FP32 remains selected. ";
                         } else {
-                            const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(600);
+                            // A load started beside the detector keeps its deadline.
+                            const auto deadline=ahead.Started() ? recognizerDeadline
+                                                                : std::chrono::steady_clock::now()+std::chrono::seconds(600);
                             const auto stop=[cancelled,deadline]{return cancelled() || std::chrono::steady_clock::now()>=deadline;};
                             try {
                                 PrepareRuntimeRecognizer(*state,assets,sdk,publicRequest,detectorTier,recognizerTier,capacity,
-                                    QByteArray(reinterpret_cast<const char*>(&properties.uuid),sizeof(properties.uuid)),stop,cancelled,attestationObserver);
+                                    QByteArray(reinterpret_cast<const char*>(&properties.uuid),sizeof(properties.uuid)),stop,cancelled,attestationObserver,
+                                    &ahead);
                             } catch(const runtime_precision::ArtifactError& error) {
                                 Check(cudaPeekAtLastError());
                                 if(cancelled())throw std::runtime_error("BF16 recognizer cancelled before FP32 fallback");
