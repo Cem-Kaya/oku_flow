@@ -535,6 +535,8 @@ struct PaddleMergeContext::State
         int position{};      // index inside the row
         int x0{}, y0{}, x1{}, y1{};
         bool everywhere{};   // not in the grid: non-finite or very large bounds
+        int centerCell{-1};  // row-search grid cell of the centre; -1: reach list
+        double cx{}, cy{};   // the shape's centre
         quint32 seen{};
     };
     struct Row {
@@ -542,12 +544,19 @@ struct PaddleMergeContext::State
         int index{};
         bool touched{};         // words erased or added during this call
         bool stable{};          // sorting it again cannot move a word
+        quint32 seen{};
     };
     static constexpr qsizetype kMaximumRows = 1024;
     static constexpr std::size_t kMaximumWords = 8192;
     static constexpr int kMaximumGridCells = 256;
     static constexpr int kMaximumCellsPerWord = 64;
     static constexpr int kMaximumQueryCells = 1024;
+    // Row search: a word joins a row only through a word whose centre lies
+    // within its own extent plus this reach along the line (see RowCandidates).
+    // Words wider plus taller than the reach, or with coordinates beyond the
+    // bound, are visited by every row search.
+    static constexpr double kRowReach = 512;
+    static constexpr double kCoordinateBound = 0x1p24;
 
     const QVector<RecognizedLine>* owner{};
     QVector<RecognizedLine> shadow; // shares the output's buffer between calls
@@ -563,7 +572,9 @@ struct PaddleMergeContext::State
     int cellsX{1}, cellsY{1};
     std::vector<std::vector<int>> cells;
     std::vector<int> everywhere;
-    quint32 visit{};
+    std::vector<std::vector<int>> centerCells;
+    std::vector<int> reach; // entries every row search visits
+    quint32 visit{}, rowVisit{};
 
     static Geometry MakeGeometry(const RecognizedWord& word)
     {
@@ -587,9 +598,33 @@ struct PaddleMergeContext::State
         y0 = cell(std::min(t, b), cellHeight, cellsY); y1 = cell(std::max(t, b), cellHeight, cellsY);
         return true;
     }
+    static bool Moderate(double value) { return std::abs(value) <= kCoordinateBound; } // false for NaN
+    int CellOf(double value, double size, int count) const
+    {
+        return int(std::clamp(std::floor(value / size), 0.0, double(count - 1)));
+    }
+    // Row-search cell of the shape's centre, or -1 when the word must be
+    // visited by every row search (coordinates beyond the bound, or width
+    // plus height beyond the reach).
+    int CenterCell(const TextQuad& shape, double& cx, double& cy) const
+    {
+        double l = shape.points[0].x(), r = l, t = shape.points[0].y(), b = t;
+        for (const QPointF& point : shape.points) {
+            if (!Moderate(point.x()) || !Moderate(point.y())) return -1;
+            l = std::min(l, point.x()); r = std::max(r, point.x());
+            t = std::min(t, point.y()); b = std::max(b, point.y());
+        }
+        if ((r - l) + (b - t) > kRowReach) return -1;
+        const QPointF center = shape.Center();
+        cx = center.x(); cy = center.y();
+        return CellOf(cy, cellHeight, cellsY) * cellsX + CellOf(cx, cellWidth, cellsX);
+    }
     void Insert(int id)
     {
         auto& e = entries[std::size_t(id)];
+        e.centerCell = CenterCell(e.g.shape, e.cx, e.cy);
+        if (e.centerCell < 0) reach.push_back(id);
+        else centerCells[std::size_t(e.centerCell)].push_back(id);
         e.everywhere = !CellRange(e.g.bounds, e.x0, e.y0, e.x1, e.y1) ||
             (e.x1 - e.x0 + 1) * (e.y1 - e.y0 + 1) > kMaximumCellsPerWord;
         if (e.everywhere) { everywhere.push_back(id); return; }
@@ -605,6 +640,8 @@ struct PaddleMergeContext::State
     void Release(int id)
     {
         const auto& e = entries[std::size_t(id)];
+        if (e.centerCell < 0) Drop(reach, id);
+        else Drop(centerCells[std::size_t(e.centerCell)], id);
         if (e.everywhere) Drop(everywhere, id);
         else
             for (int y = e.y0; y <= e.y1; ++y)
@@ -649,6 +686,7 @@ struct PaddleMergeContext::State
         cellsX = std::clamp(int(std::ceil(width / cellWidth)), 1, kMaximumGridCells);
         cellsY = std::clamp(int(std::ceil(height / cellHeight)), 1, kMaximumGridCells);
         cells.resize(std::size_t(cellsX) * std::size_t(cellsY));
+        centerCells.resize(cells.size());
         for (const auto& line : output) {
             const int rowId = AddRow();
             for (const auto& word : line.words) Add(rowId, MakeGeometry(word));
@@ -686,6 +724,72 @@ struct PaddleMergeContext::State
             const int ra = rows[std::size_t(ea.row)].index, rb = rows[std::size_t(eb.row)].index;
             return ra != rb ? ra < rb : ea.position < eb.position;
         });
+    }
+    // Output indices, ascending, of every row that can give the incoming word
+    // a finite row distance; false means visit every row. `angle`, `height`
+    // and `center` are the incoming word's prepared row geometry.
+    //
+    // A cached word O counts in rowDistance only if small > 0 and
+    // small >= .5 * large, so large <= 2 * small <= 2h (h: this word's
+    // height). Then dy <= .35 * large <= .7h puts O's centre within .7h of
+    // this word's centre across the line, and gap <= 4 * small <= 4h makes
+    // O's extent along the line meet [low - 4h, high + 4h]. O's centre lies
+    // in the box of its points, so it is within that box's width plus height
+    // (at most kRowReach for words in the grid) of the point of O realising
+    // that meeting. The test below is that band with a pixel of slack, which
+    // covers rounding many times over at coordinates within the bound. Rows
+    // with no such word keep rowDistance's initial maximum and are never
+    // chosen; the others are evaluated exactly, in output order.
+    bool RowCandidates(const TextQuad& shape, double angle, double height, QPointF center,
+                       std::vector<qsizetype>& result)
+    {
+        result.clear();
+        if (!(height > 0) || !Moderate(height) || !std::isfinite(angle) ||
+            !Moderate(center.x()) || !Moderate(center.y())) return false;
+        const QPointF along(std::cos(angle), std::sin(angle)), across(-along.y(), along.x());
+        double low = std::numeric_limits<double>::max(), high = std::numeric_limits<double>::lowest();
+        for (const QPointF& point : shape.points) {
+            if (!Moderate(point.x()) || !Moderate(point.y())) return false;
+            const double value = QPointF::dotProduct(point, along);
+            low = std::min(low, value); high = std::max(high, value);
+        }
+        constexpr double slack = 1;
+        const double a0 = low - 4 * height - kRowReach - slack, a1 = high + 4 * height + kRowReach + slack;
+        const double c = QPointF::dotProduct(center, across);
+        const double c0 = c - .7 * height - slack, c1 = c + .7 * height + slack;
+        double left = std::numeric_limits<double>::max(), right = std::numeric_limits<double>::lowest();
+        double top = left, bottom = right;
+        for (const double a : {a0, a1})
+            for (const double b : {c0, c1}) {
+                const double x = a * along.x() + b * across.x(), y = a * along.y() + b * across.y();
+                left = std::min(left, x); right = std::max(right, x);
+                top = std::min(top, y); bottom = std::max(bottom, y);
+            }
+        left -= slack; right += slack; top -= slack; bottom += slack;
+        const int x0 = CellOf(left, cellWidth, cellsX), x1 = CellOf(right, cellWidth, cellsX);
+        const int y0 = CellOf(top, cellHeight, cellsY), y1 = CellOf(bottom, cellHeight, cellsY);
+        if ((x1 - x0 + 1) * (y1 - y0 + 1) > kMaximumQueryCells) return false;
+        if (++rowVisit == 0) {
+            for (auto& row : rows) row.seen = 0;
+            rowVisit = 1;
+        }
+        const auto take = [&](int id) {
+            auto& row = rows[std::size_t(entries[std::size_t(id)].row)];
+            if (row.seen == rowVisit) return;
+            row.seen = rowVisit;
+            result.push_back(row.index);
+        };
+        for (int y = y0; y <= y1; ++y)
+            for (int x = x0; x <= x1; ++x)
+                for (const int id : centerCells[std::size_t(y * cellsX + x)]) {
+                    const auto& e = entries[std::size_t(id)];
+                    const QPointF point(e.cx, e.cy);
+                    const double a = QPointF::dotProduct(point, along), b = QPointF::dotProduct(point, across);
+                    if (a >= a0 && a <= a1 && b >= c0 && b <= c1) take(id);
+                }
+        for (const int id : reach) take(id);
+        std::sort(result.begin(), result.end());
+        return true;
     }
 };
 
@@ -799,6 +903,7 @@ void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line
     };
     qsizetype preferredLine = -1;
     std::vector<int> candidates, hits;
+    std::vector<qsizetype> rowSearch;
     for (auto word : line.words) {
         constexpr double margin = kDetailCropEdgeMarginPx;
         if (detail && ((region.left() > 0 && word.boundsPx.left() < margin) ||
@@ -853,8 +958,18 @@ void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line
         qsizetype emptyLine = -1;
         if (target < 0) {
             double best = std::numeric_limits<double>::max();
-            for (qsizetype index = 0; index < qsizetype(s.order.size()); ++index) {
-                if (s.rows[std::size_t(s.order[std::size_t(index)])].words.empty()) { emptyLine = index; continue; }
+            for (qsizetype index = 0; index < qsizetype(s.order.size()); ++index)
+                if (s.rows[std::size_t(s.order[std::size_t(index)])].words.empty()) emptyLine = index;
+            // Only rows holding a word that can count are visited; every
+            // other non-empty row would return the initial maximum.
+            prepareRow(wordGeometry);
+            if (!s.RowCandidates(wordGeometry.shape, wordGeometry.angle, wordGeometry.height,
+                                 wordGeometry.center, rowSearch)) {
+                rowSearch.clear();
+                for (qsizetype index = 0; index < qsizetype(s.order.size()); ++index)
+                    if (!s.rows[std::size_t(s.order[std::size_t(index)])].words.empty()) rowSearch.push_back(index);
+            }
+            for (const qsizetype index : rowSearch) {
                 const double distance = rowDistance(index, wordGeometry);
                 if (distance < best) {
                     best = distance;

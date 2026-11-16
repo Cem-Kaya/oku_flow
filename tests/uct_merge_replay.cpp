@@ -421,6 +421,41 @@ QVector<Case> GeneratedCases()
     Add(oversize,{Word("joins",22,3,8,2)}); Add(oversize,{Word("replaces",10,3,8,2,.99)});
     cases.push_back(oversize);
 
+    // Row search (round 7): one word per call, so no preferred row
+    // short-circuits the search across rows.
+    Case reach{"row-search-reach-and-band-edges",{}, {}, false};
+    reach.initial={{{Word("long-reach-list",100,500,2000,20)}},
+                   {{Word("near-reach-grid",100,700,470,20)}},
+                   {{Word("tilted-long",100,1500,2000,20,.9,.05)}},
+                   {{Word("double-height",100,1000,40,20)}},
+                   {{Word("other",100,2600)}}};
+    Add(reach,{Word("joins-long",2150,500,40,20)});           // gap 50 <= 80 from a 2000 px word
+    Add(reach,{Word("joins-near",100+470+79,700,40,20)});     // gap 79, centre 314 px along
+    Add(reach,{Word("misses-near",100+470+79+40+81,700,40,20)}); // gap 81 > 80: a new row
+    Add(reach,{Word("joins-tilted",100+2040*std::cos(.05),1500+2040*std::sin(.05),40,20,.9,.05)});
+    Add(reach,{Word("edge-dy-gap",180,1012,24,10)});           // dy = .35 * 20, gap = 4 * 10, heights 1:2
+    Add(reach,{Word("past-edge-dy",180+64+40,1012.5,24,10)});  // dy just past .35 * large
+    cases.push_back(reach);
+    Case far{"row-search-unbounded-coordinates",{}, {}, false};
+    far.initial={{{Word("far",1e8,500,40,20)}},{{Word("near",100,500,40,20)}},
+                 {{Word("far-negative",-3e7,900,40,20)}}};
+    Add(far,{Word("far-next",1e8+60,500,40,20)});
+    Add(far,{Word("far-negative-next",-3e7+60,900,40,20)});
+    Add(far,{Word("near-next",160,500,40,20)});
+    Add(far,{Word("huge-query",100,1100,3000,2900)});  // its row search covers too many cells
+    Add(far,{Word("huge-query-neighbour",3150,1100,600,2900)});
+    cases.push_back(far);
+    Case rowTies{"row-search-ties-and-emptied-row",{}, {}, false};
+    rowTies.initial={{{Word("left",100,500,40,20)}},{{Word("right",240,500,40,20)}},
+                  {{Word("victim-a",1000,1500,40,20,.5)}},{{Word("victim-b",1000,1600,40,20,.5)}},
+                  {{Word("bystander",3000,3000)}}};
+    Add(rowTies,{Word("tie-goes-first",170,500,40,20)});
+    // The winner overlaps both victims: its first overlapping row is the
+    // target and the other row empties; the next word has no row nearby and
+    // takes the last empty row.
+    Add(rowTies,{Word("winner",995,1495,50,130,.95),Word("lonely",2000,3800,40,20)});
+    cases.push_back(rowTies);
+
     Case preference{"rejected-later-veto-retains-first-overlap-preference",{}, {}, false};
     preference.initial={{{Word("first-weaker",100,100,24,12,.7)}},
                         {{Word("later-veto",100,104,24,12,.99)}}};
