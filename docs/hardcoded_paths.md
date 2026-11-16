@@ -1508,6 +1508,18 @@ The replay fault hooks have no environment switch: they exist only in the
 `uct_paddle_tests` executable (`OKUFLOW_UCT_GRAPH_FAULT_HOOKS`). The corpus
 harness report's `startupWorkerMs` is the worker time of its startup read.
 
+## Stream-concurrency measurement (round 8)
+
+`OKUFLOW_UCT_STREAM_PROBE=1` selects the opt-in GPU measurement
+`optionalStreamConcurrency` in `uct_paddle_tests`;
+`OKUFLOW_UCT_STREAM_PROBE_EVIDENCE` must name a new absolute JSON file and
+`OKUFLOW_UCT_STREAM_PROBE_REPEATS` (5 to 50, default 7) sets the timed repeats.
+They are test inputs only and reach nothing in the application: the probe code
+exists only in that executable (`OKUFLOW_UCT_GRAPH_FAULT_HOOKS`). It uses the
+prepared plans under `LOCALAPPDATA` and never prepares an engine. Round 8 added
+no reader switch: its measurement ended the round before one was built
+(`docs/uct_okuread_port.md`).
+
 ## UCT preparation profile (round 5)
 
 Existing private `OKUFLOW_UCT_TRT_PROFILE=1` also emits bounded per-preparation
