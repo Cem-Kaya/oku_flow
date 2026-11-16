@@ -1557,3 +1557,24 @@ corpus slot hold `ID3D12Device::SetStablePowerState(TRUE)` on the CUDA
 adapter for the life of that test process (comparison only; it needs Windows
 Developer Mode, applies to the whole adapter while the process lives, and the
 application never calls it). See `docs/uct_okuread_port.md`.
+
+## UCT preparation diagnostics (round 11)
+
+Three opt-in, unregistered slots of `uct_paddle_tests`; none changes a default
+or the application. `OKUFLOW_UCT_ASSET_EQUIVALENCE=1` runs
+`optionalAssetVerificationMatchesSequential`: it hard-links (or copies) the
+medium model files from `DefaultPaddleRoot()` into a temporary directory under
+`LOCALAPPDATA`, temporarily points `OKUFLOW_UCT_ROOT` and `LOCALAPPDATA` at
+intact, tampered and downloaded layouts and compares `LoadPaddleAssets` with a
+frozen sequential copy; the directory is removed afterwards.
+`OKUFLOW_UCT_PREPARATION_CANCEL=1` with `OKUFLOW_UCT_TEST_IMAGE` runs
+`optionalPreparationCancellation` on the GPU (use the shared lease);
+`OKUFLOW_UCT_PREPARATION_CANCEL_POINTS` (2 to 64, default 24) sets the number
+of cancellation points and `OKUFLOW_UCT_PREPARATION_CANCEL_EVIDENCE` names a new
+absolute JSON report file. `OKUFLOW_UCT_OVERLAP_PREPARATION=1` with
+`OKUFLOW_UCT_TEST_IMAGE` runs `optionalOverlappingPreparation` on the GPU (use
+the shared lease): it cancels one preparation and starts another with the same
+models at once; `OKUFLOW_UCT_OVERLAP_POINTS` (2 to 64, default 16) sets the
+number of cancellation points and `OKUFLOW_UCT_OVERLAP_EVIDENCE` names a new
+absolute JSON report file. The production side-by-side preparation itself has
+no switch. See `docs/uct_okuread_port.md`.
