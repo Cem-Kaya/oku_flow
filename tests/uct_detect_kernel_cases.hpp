@@ -407,5 +407,59 @@ inline void BoxSumMatchesSequentialAdds()
     QVERIFY(applied > groups / 3 && refused > groups / 8 && changed > groups / 4);
     QVERIFY(ties > 100000 && laneZeroTies > 2000 && repeatedTies > 10000 && landed > 500);
 }
+
+// The host side of the region-reconciliation experiment groups recognition
+// windows back into detections by this layout: each detection's own window has
+// no internal-edge flag and every overlapping sub-window that follows has one.
+inline void RecognitionWindowsMarkEverySubWindow()
+{
+    using namespace okuflow::uct;
+    int devices{};
+    if (cudaGetDeviceCount(&devices) != cudaSuccess || devices < 1) QSKIP("CUDA device unavailable.");
+    constexpr int w = 960, h = 544;
+    std::vector<float> values(std::size_t(w) * h, 0.f);
+    int expected = 0, longLines = 0;
+    for (int row = 0; row < 12; ++row) {
+        // Line lengths from a short word to nearly the full width: none, a few
+        // and the maximum number of sub-windows.
+        const int y = 14 + row * 44, length = 40 + row * 78;
+        for (int dy = 0; dy < 9; ++dy)
+            for (int x = 20; x < 20 + length && x < w - 20; ++x) values[std::size_t(y + dy) * w + x] = .92f;
+        ++expected;
+    }
+    FixtureStream stream;
+    GpuBuffer<float> map(values.size());
+    GpuBuffer<int> labels(values.size()), count(1);
+    GpuBuffer<gpu::Component> components(values.size());
+    GpuBuffer<gpu::Quad> detected(128), windows(128 * 9);
+    std::vector<gpu::Quad> result(128 * 9);
+    int total{};
+    QCOMPARE(cudaMemcpyAsync(map.data, values.data(), values.size() * sizeof(float), cudaMemcpyHostToDevice, stream.value), cudaSuccess);
+    gpu::Detect(map.data, w, h, w * 2, h * 2, labels.data, components.data, detected.data, count.data, stream.value);
+    gpu::RecognitionWindows(detected.data, count.data, windows.data, stream.value);
+    QCOMPARE(cudaGetLastError(), cudaSuccess);
+    QCOMPARE(cudaMemcpyAsync(&total, count.data, sizeof(int), cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+    QCOMPARE(cudaMemcpyAsync(result.data(), windows.data, result.size() * sizeof(gpu::Quad), cudaMemcpyDeviceToHost, stream.value), cudaSuccess);
+    QCOMPARE(cudaStreamSynchronize(stream.value), cudaSuccess);
+    QVERIFY(total >= expected && total <= 128 * 9);
+    int detections = 0;
+    for (int first = 0; first < total;) {
+        QCOMPARE(result[std::size_t(first)].internalEdges, 0);
+        int end = first + 1;
+        while (end < total && result[std::size_t(end)].internalEdges != 0) ++end;
+        const int subWindows = end - first - 1;
+        QVERIFY(subWindows == 0 || (subWindows >= 2 && subWindows <= 8));
+        for (int index = first + 1; index < end; ++index) {
+            // First, middle and last sub-windows: right, both and left edges internal.
+            QCOMPARE(result[std::size_t(index)].internalEdges, (index > first + 1 ? 1 : 0) | (index + 1 < end ? 2 : 0));
+            QCOMPARE(result[std::size_t(index)].componentRoot, result[std::size_t(first)].componentRoot);
+        }
+        longLines += subWindows > 0;
+        ++detections;
+        first = end;
+    }
+    QCOMPARE(detections, expected);
+    QVERIFY(longLines >= 6);
+}
 } // namespace uct_detect_test
 #endif

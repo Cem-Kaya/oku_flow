@@ -224,7 +224,7 @@ if(OKUFLOW_ENABLE_CUDA)
     # Detector post-processing against its original kernels and the exact box
     # sum against sequential float adds. Its own case and budget: several
     # hundred Detect launches would otherwise share uct_paddle_cuda's deadline.
-    add_test(NAME uct_detect_kernels_cuda COMMAND uct_paddle_tests gpuDetectKernelsMatchReferenceBytes gpuBoxSumMatchesSequentialFloatAdds)
+    add_test(NAME uct_detect_kernels_cuda COMMAND uct_paddle_tests gpuDetectKernelsMatchReferenceBytes gpuBoxSumMatchesSequentialFloatAdds gpuRecognitionWindowsMarkEverySubWindow)
     set_tests_properties(uct_detect_kernels_cuda PROPERTIES TIMEOUT 60 LABELS "gpu"
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")

@@ -3206,6 +3206,14 @@ class PaddleTests final : public QObject
         QSKIP("CUDA adapter not compiled.");
 #endif
     }
+    void gpuRecognitionWindowsMarkEverySubWindow()
+    {
+#if OKUFLOW_ENABLE_CUDA
+        uct_detect_test::RecognitionWindowsMarkEverySubWindow();
+#else
+        QSKIP("CUDA adapter not compiled.");
+#endif
+    }
     void gpuBoxSumMatchesSequentialFloatAdds()
     {
 #if OKUFLOW_ENABLE_CUDA

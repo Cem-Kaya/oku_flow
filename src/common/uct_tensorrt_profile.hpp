@@ -91,8 +91,11 @@ public:
     }
     void Merge(double hostMs) { if (enabled_) mergeMs_ += hostMs; }
     // Private region-reconciliation experiment: detections and why some were not recognized.
-    void Reconcile(int detections, int clipped, int whole, int tile, double hostMs) {
-        if (enabled_) { reconcile_ = {detections, clipped, whole, tile}; reconcileMs_ = hostMs; reconciled_ = true; }
+    void Reconcile(int detections, int clipped, int whole, int tile, int restored, bool wellFormed, double hostMs) {
+        if (enabled_) {
+            reconcile_ = {detections, clipped, whole, tile, restored, wellFormed ? 1 : 0};
+            reconcileMs_ = hostMs; reconciled_ = true;
+        }
     }
     template<class Operation> void Wait(bool detectorCount, Operation operation) {
         if (!enabled_) { operation(); return; }
@@ -218,7 +221,8 @@ public:
         auto complete = report;
         if (reconciled_)
             complete["regionReconcile"] = QJsonObject{{"detections", reconcile_[0]}, {"clippedDropped", reconcile_[1]},
-                {"wholeDropped", reconcile_[2]}, {"tileDropped", reconcile_[3]}, {"hostMs", reconcileMs_}};
+                {"wholeDropped", reconcile_[2]}, {"tileDropped", reconcile_[3]}, {"restored", reconcile_[4]},
+                {"windowLayoutRecognized", reconcile_[5] != 0}, {"hostMs", reconcileMs_}};
         qInfo().noquote() << "UCT_TRT_PROFILE" << QJsonDocument(complete).toJson(QJsonDocument::Compact);
     }
 private:
@@ -234,7 +238,7 @@ private:
     std::uint64_t requestedWidth_{}, usedWidth_{}, canvasWidth_{};
     std::unique_ptr<QCryptographicHash> cropHash_;
     double detectorWaitMs_{}, groupWaitMs_{};
-    std::array<int, 4> reconcile_{};
+    std::array<int, 6> reconcile_{};
     double reconcileMs_{};
     bool reconciled_{};
     bool enabled_{};

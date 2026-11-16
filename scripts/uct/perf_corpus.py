@@ -12,8 +12,13 @@ without text and real chalkboard lecture frames. Generated scenes carry the
 words that were drawn (`<name>.truth.txt`, reading order). Lecture frames have
 no ground truth. These are stand-ins for camera content, not owner captures.
 
+`--variant N` (N >= 1) writes a different labelled set of the same kinds of
+scene: other text, fonts, type sizes and camera poses, plus small and large
+type at 3840x2160. Use a variant that nobody has looked at when a rule chosen
+on other pages needs an untouched check. Variant 0 is the standard set.
+
 Requires Pillow and NumPy. Usage:
-    python scripts/uct/perf_corpus.py --out <dir> [--lecture <mp4>] [--ffmpeg <exe>]
+    python scripts/uct/perf_corpus.py --out <dir> [--lecture <mp4>] [--ffmpeg <exe>] [--variant N]
 """
 import argparse
 import hashlib
@@ -259,7 +264,51 @@ def lecture_frames(video, ffmpeg, out):
     return made
 
 
-def build(out, lecture, ffmpeg):
+def variant_scenes(out, variant, add):
+    """Other text, fonts, sizes and poses than the standard set; labelled scenes only."""
+    rng = random.Random(20261115 + variant * 7919)
+    faces = ["times.ttf", "georgia.ttf", "segoeui.ttf", "arial.ttf", "calibri.ttf", "verdana.ttf", "tahoma.ttf"]
+    sources = [repo_words("docs/developer_guide.md", 5000 + variant * 911), repo_words("docs/ultra_clear_text.md", 1500 + variant * 577),
+               repo_words("README.md", 200 + variant * 131), repo_words("docs/hardcoded_paths.md", 900 + variant * 733)]
+
+    def pose(spread):
+        return [(rng.uniform(.03, .03 + spread), rng.uniform(.02, .02 + spread)),
+                (rng.uniform(.97 - spread, .97), rng.uniform(.02, .02 + spread)),
+                (rng.uniform(.97 - spread, .97), rng.uniform(.98 - spread, .98)),
+                (rng.uniform(.03, .03 + spread), rng.uniform(.98 - spread, .98))]
+
+    def words(index):
+        text = sources[(index + variant) % len(sources)]
+        start = rng.randrange(0, max(1, len(text) - 4000))
+        return text[start:]
+
+    def face(index):
+        return faces[(index + variant) % len(faces)]
+
+    kind = {"kind": "generated-document-camera", "variant": variant}
+    for index, (name, size, page_size, body, columns, spread) in enumerate((
+            ("doc-camera-1080", (1920, 1080), (2200, 1300), 28, 2, .06),
+            ("doc-camera-1080-small", (1920, 1080), (2200, 1300), 21, 3, .04),
+            ("doc-camera-1080-large", (1920, 1080), (2200, 1300), 46, 1, .08),
+            ("doc-camera-1440", (2560, 1440), (2900, 1700), 32, 2, .06),
+            ("doc-camera-2160-small", (3840, 2160), (4200, 2400), 30, 3, .04),
+            ("doc-camera-2160", (3840, 2160), (4200, 2400), 44, 2, .05),
+            ("doc-camera-2160-large", (3840, 2160), (4200, 2400), 68, 2, .06))):
+        page = document_page(words(index), page_size, body, face(index), columns)
+        add(f"{name}-v{variant}", camera(page.image, size, pose(spread), rng, blur=rng.uniform(.6, 1.2), noise=rng.uniform(2, 4.5)),
+            page.truth, kind)
+    for index, (name, size, scale, dark) in enumerate((("slide-1080", (1920, 1080), 1.0, variant % 2 == 0),
+                                                       ("slide-1440", (2560, 1440), 1.33, variant % 2 == 1),
+                                                       ("slide-2160", (3840, 2160), 2.0, variant % 2 == 0))):
+        page = slide(words(index + 3), size, dark=dark, scale=scale)
+        add(f"{name}-v{variant}", page.image, page.truth, {"kind": "generated-slide", "variant": variant})
+    page = table_page(words(7), (1920, 1080))
+    add(f"table-1080-v{variant}", page.image, page.truth, {"kind": "generated-table", "variant": variant})
+    page = document_page(words(8), (1654, 2339), 24 + 2 * (variant % 3), face(8), 1)
+    add(f"page-portrait-v{variant}", page.image, page.truth, {"kind": "generated-rendered-page", "variant": variant})
+
+
+def build(out, lecture, ffmpeg, variant=0):
     out.mkdir(parents=True, exist_ok=True)
     rng = random.Random(20261115)
     guide = repo_words("docs/developer_guide.md", 400)
@@ -273,6 +322,9 @@ def build(out, lecture, ffmpeg):
         image.save(path)
         scenes.append((path, truth, meta))
 
+    if variant:
+        variant_scenes(out, variant, add)
+        return write_manifest(out, scenes)
     flat = [(0.06, 0.03), (0.95, 0.05), (0.97, 0.98), (0.04, 0.96)]
     tilt = [(0.16, 0.06), (0.90, 0.02), (0.99, 0.93), (0.05, 0.99)]
     page = document_page(guide, (2200, 1300), 30, "times.ttf", 2)
@@ -305,6 +357,10 @@ def build(out, lecture, ffmpeg):
     if lecture:
         scenes += lecture_frames(lecture, ffmpeg, out)
 
+    return write_manifest(out, scenes)
+
+
+def write_manifest(out, scenes):
     manifest = {"version": VERSION, "generator": "scripts/uct/perf_corpus.py", "scenes": []}
     for path, truth, meta in scenes:
         with Image.open(path) as image:
@@ -326,11 +382,12 @@ def main():
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--lecture", type=Path, help="local copy of the documented public lecture sample")
     parser.add_argument("--ffmpeg", default="ffmpeg")
+    parser.add_argument("--variant", type=int, default=0, help="0: standard set; N >= 1: another labelled set")
     arguments = parser.parse_args()
     out = arguments.out.resolve()
     if ROOT in out.parents or out == ROOT:
         sys.exit("Refusing to write the corpus inside the repository.")
-    manifest = build(out, arguments.lecture, arguments.ffmpeg)
+    manifest = build(out, arguments.lecture, arguments.ffmpeg, arguments.variant)
     print(json.dumps({"scenes": len(manifest["scenes"]), "out": str(out)}))
 
 
