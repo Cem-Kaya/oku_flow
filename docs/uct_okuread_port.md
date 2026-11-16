@@ -13,7 +13,9 @@ and recognizer in BF16. `nvidia-smi` reported `display_active: Disabled` for
 every run, so the display was asleep or not driven; worker time has no
 composition step, but the state is recorded with each run. The scene set
 contains no owner camera capture; twelve scenes are generated and six are real
-chalkboard lecture frames. Worker time is not camera-to-paint latency.
+chalkboard lecture frames. Worker time is not camera-to-paint latency. Reads are issued back to back unless a
+gap is stated; round 13 found that this matters a great deal for sparse frames
+(see "Where the branch stands").
 
 ## What applied and what did not
 
@@ -33,6 +35,86 @@ chalkboard lecture frames. Worker time is not camera-to-paint latency.
 | Keep word-merge state across one read instead of rebuilding it per crop | Round 7, on by default, identical output |
 | Run two inferences of one engine at once on two streams (not an OkuRead idea; this program's own) | Round 8, measured first and not built: on the RTX 4090 two streams finish a set of recognizer or detector inferences no sooner, and graph launches show the GPU loses throughput when they overlap |
 | Overlap verification and loading of the two engines | Round 11 and its follow-up, on by default: startup to first GPU result 887 to 605 ms (forward) and 674 to 424 ms (reverse), identical output |
+
+## Where the branch stands
+
+Integration branch `perf/okuread-port` at `32a27d1` (rounds 13 and 14 are not
+in it; see the end of this section). Nothing was pushed or published.
+
+| Round | What | State | Default | Result (RTX 4090) |
+| --- | --- | --- | --- | --- |
+| 1 | Detector post-processing kernels | merged | on | 1.126x warm, identical output |
+| 2 | One recognition per line across regions | merged | off, `OKUFLOW_UCT_TEST_REGION_RECONCILE=1` | 1.28x to 1.33x warm, dense pages 1.7x to 1.9x; changes text (55 of 62 titles complete instead of 43; +30 exact words over 112 pages) |
+| 3 and 10 | Network calls replayed as CUDA graphs | merged | off, `OKUFLOW_UCT_TEST_TRT_GRAPH=1` | 1.11x to 1.18x warm back to back, identical output, no startup or first-read cost |
+| 4 | Small recognizer first | not merged (`perf/okuread-port-r4`) | | misreads `O0` as `00`; slower on sparse frames |
+| 5 and 11 | Verified startup of the GPU reader | merged | on | startup to first GPU result about 3.85 s to 0.39 s to 0.58 s, identical output |
+| 6 | Reconciliation rules that keep the first version's reading gain | merged (tests and record) | | negative: that gain was withheld words shown again |
+| 7 | Word merge without per-call rework | merged | on | merge time 89.5 to 14.9 ms on the dense 3840x2160 page, identical output; whole read about 1.02x |
+| 8 | Two inferences in flight on two streams | merged (measurement slot and record) | | negative: slower than one after the other |
+| 9 | Faster box score, every GPU | merged | on | textless frame 47.4 to 31.8 ms, bent page 73.5 to 65.2 ms; no page of 212 changed |
+| 12 | Flat lines no longer refused as curved (issue #18) | merged | off, `OKUFLOW_UCT_TEST_FLAT_RIBBON=straight-refused` | +324, +454 and +117 exact words on the three screen-page groups, +545 on bent pages, no page worse; placement of drawn words not fully within the reviewers' criteria on dense bent pages |
+| 13 | Reads at the application's pacing; keep-warm | on its branch (`perf/okuread-port-r13`) | off, `OKUFLOW_UCT_TEST_KEEP_WARM` | paced sparse reads 0.96x to 1.06x of back to back instead of 4.3x to 4.9x, for 45 to 63 W while reading |
+| 14 | Warm on view change instead of continuously; paced re-measurement | in progress (`perf/okuread-port-r14`) | off | not finished |
+
+Measured on the merged build with every default as above (`int9-ab-v1`, two
+cohorts of five warm reads, back to back), each switch against switch-off:
+graph replay 1.168x warm and 1.146x first read, identical output on 18 of 18
+scenes; region reconciliation 1.328x and 1.335x; both together 1.475x and
+1.469x; the flat-line switch 1.024x with identical output on these scenes.
+Against the build from before round 11 the defaults measure 1.010x warm with
+identical output and startup to first result 837 to 583 ms and 656 to 391 ms
+(`int9-pair-v1`).
+
+What the back-to-back protocol does not show (round 13): the application
+reads on timers, and with reads spaced 350 ms or more apart the GPU lowers its
+clocks between reads of a sparse frame. A lecture-frame read that takes 24 ms
+back to back then takes about 110 ms. Dense pages keep the GPU busy and are
+unaffected. So on sparse live frames every warm figure in this record
+describes the GPU at full clock, which the application reaches only with the
+round 13 switch, with the driver's own power setting changed by the owner, or
+if the real display and video path hold the clocks, which was not measurable
+here.
+
+Council scores (Claude Opus 5.5, GPT-6.1 Sol, Gemini 4 Hydrogen), as submitted:
+
+| Round | Opus | Sol | Gemini | Outcome |
+| --- | --- | --- | --- | --- |
+| 1 | 7 | 7 | 8 | fixes applied, merged |
+| 2 | 6 | 6 | 6 | rules rewritten, merged off |
+| 3 | 7 | 7 | 8 | merged off; conditions became round 10 |
+| 4 | 7 | 7 | 7 | kept on its branch, unanimous |
+| 5 | 7 | 7 | 8 | fixes applied, merged on |
+| 6 | 7 | 8 | 8 | negative result accepted |
+| 7 | 8 | 7 | 9 | fixes applied, merged on |
+| 8 | 8 | 8 | 9 | corrections applied, merged |
+| 9 (and the fixes for 3 and 5) | 7 (7) | 8 (7) | 8 (6) | default kept; one defect in the fixes found and fixed |
+| 10 | 7 | 6 | 7 | follow-up fixed the blocker; merged off |
+| 11, first pass | 7 | 7 | 8 | follow-up |
+| 11, second pass | 8 | 7 | 9 | merged on; one known race recorded |
+| 12 | 7 | 6 | 7 | follow-up narrowed the rule; merged off |
+| 13 | 8 | 6 | 8 | findings carried into round 14 |
+
+The tracked gate (`scripts/agent_build.bat`) was run on `32a27d1` with desktop
+tests excluded (`OKUFLOW_AGENT_EXCLUDE_GUI=1`), which is partial validation by
+the project's own rule: release compile passed; the CUDA gate passed (17
+passed, 5 skipped for missing codec inputs); in the CPU gate 246 of 248
+background tests passed and 2 (`file_document_contract`,
+`pdf_export_distribution_contract`) could not run because the pinned qpdf
+12.4.2 runtime is not installed on this machine, so the script reports the CPU
+gate as failed. Neither test's inputs were changed by this work.
+
+Known and open:
+
+- Round 11: a preparation started immediately after one with the same
+  detector was cancelled can run the FP32 detector for the life of that reader
+  (8 of 48 test points; see round 11's review). The agreed remedy, a bounded
+  wait for an attempt that is in flight, is not built.
+- Graph replay (rounds 3 and 10) stays off: back to back it misses its 1.17x
+  target at 1.11x to 1.17x, and its paced gain on sparse frames could not be
+  measured while the clocks fall.
+- Round 12's switch needs the owner's eyes on drawn-word placement before it
+  can be a default.
+- Rounds 13 and 14 are not merged.
 
 ## Round 1: detector post-processing
 
