@@ -23,7 +23,7 @@ chalkboard lecture frames. Worker time is not camera-to-paint latency.
 | Cooperative box scoring | Round 1, rewritten: OkuRead's exact variant gave no gain here. Exact, selectable; superseded as the default by the tree sum in round 9 |
 | Fixed-tree box scoring | Round 9, on by default on every GPU: it rounds differently, which the owner accepted; no corpus page changed |
 | Collect detections across tiles before recognition; a complete detection supersedes its covered edge fragment | Round 2, private switch, off: changes output |
-| Replay TensorRT enqueue as CUDA graphs, one execution context per cached shape | Round 3, made robust in round 10 (no startup or first-read cost, failures fall back), private switch, off: identical output; reads right after new shapes appear pay for making contexts |
+| Replay TensorRT enqueue as CUDA graphs, one execution context per cached shape | Round 3, made robust in round 10 and its follow-up (no startup or first-read cost, failures fall back, contexts made in idle gaps), private switch, off: identical output; back to back, reads that overlap a context creation pay for it |
 | Small recognizer first, Medium retries for doubtful crops | Round 4, built and measured, not merged: misreads `O0` as `00`, slower on sparse frames |
 | Streaming verification, hashing each file once, faster SHA-256 | Round 5, on by default: startup to first GPU result 3.85 s to 0.85 s, identical output |
 | Composition flush before capture, capture targets, overlay raster | Not applicable: OkuFlow analyses camera, video and file frames it already owns |
@@ -1808,3 +1808,237 @@ to the owner and the council.
   run and needs that measurement before it could be on.
 - Spaced reads on this machine are disturbed by other desktop software; no
   clean paced run of the whole scene set exists.
+
+### Follow-up after the council review
+
+Council on this round (`c65bb1b`): 6, 7 and 7 out of 10; one reviewer for
+keeping replay off, two for turning it on once their findings were fixed. The
+follow-up, on the same branch, first merged the integration branch (rounds 5,
+6, 7 and 9 and the fixes other councils asked for) and then worked through the
+findings. Replay stays off; the orchestrator decides the default after this
+follow-up and round 13.
+
+**Merge.** The integration branch's capture changes are kept: a failed
+`enqueueV3` inside a capture is a refusal only with a capture-specific CUDA
+status; less than 256 MiB of free memory, or running out of memory during the
+capture, puts the capture off (both now count as `deferrals` in the receipt);
+after a deferral the engine holds captures off. So are the cancellation of an
+interrupted verification, round 7's per-read merge context and round 5's
+preparation profile and hashing. The hold-off is now counted in reads, not in
+network calls: after a deferral every call of that engine that would capture
+runs plainly for the rest of the read and the next fifteen reads
+(`graph_cache::kCaptureHoldOffReads`). How many calls want a capture per read
+depends on the scene; a read count does not, and the low-memory fault test
+reads long enough for it (below).
+
+**What was fixed.**
+
+| Finding | Fix | Shown by |
+| --- | --- | --- |
+| Blocker (all three reviewers): after "ready" and before the first read, the context thread slept on a condition that cancellation never woke, while holding the last reference to the `Preparation`. Destroying the reader in that window left the State unretired for the rest of the session | The thread lets go of the `Preparation` when it publishes the State and keeps only the State. Destroying a reader whose State was never adopted destroys the `Preparation`, which retires that State and so stops and wakes the thread (`ReplayWork::Stop`); `Retire` also stops it directly. A cancelled live `Preparation` is part of the wait's condition | `optionalGraphReplayRetireUnadopted` (`r10b-retire-1`): ready, destroyed without a read, once while the thread waits for a wanted context and once with the thread held between its completion check and its wait; the State retires (one completed receipt, also while the thread is held), the thread ends, and a fresh reader of the same model is ready and reads on `[BF16 / BF16]`. The same test on a build without the fix fails ("the unadopted State was not retired", no receipt; `r10b-retire-negative-control-1`, build not kept) |
+| "Only while no read is in flight" was not enforced | A stated policy (`ReplayWork::Turn`, below), a read marker that also covers `Recognize`'s upload, and a marker held past `Retire` on a failing read, so a retiring State stops the thread before its read ends | `graphReplayCreationTurns` (model-free); receipts per read (`creation`) |
+| The output-storage fallback freed the plain buffer before the larger allocation | `DeviceBuffer::TryReserve` allocates first and keeps the old buffer when that fails; the bound addresses are cleared before any early return. The fault hook now makes that larger allocation fail | `optionalGraphReplayFaults` (`r10b-faults-1`): the recognizer runs plainly, its plain output buffer survives (`outputBytesKeptAfterFailure`), output identical, no retirement |
+| The fault test freed its plan after a fixed 500 ms delay | Fault plans are shared references each hook loads (`FaultPlanForTest`); the tests also wait for every context thread to end (`CreatorThreadsForTest`) | every GPU slot above |
+| The missed warm target was not attributed per call | Receipts per read: overflow calls, warm-up, captures, and whether a creation ran at the read's start or end or started during it | below |
+| Record and comments | Corrected in place above (marked) and in the code comments; the round 8 note below | — |
+
+**The creation policy.** A context creation starts only (a) in an idle gap: no
+read in flight and at least 10 ms since the last read ended, or (b) under
+continuous load: once two reads have ended since the last creation, or since a
+context became wanted, without such a gap; then it starts at once. A read that
+begins while a creation runs proceeds and is slowed. One creation runs at a
+time. With the application's pacing (a read submitted every 350 ms) any read
+shorter than about 340 ms leaves a gap, so creations land between reads; a read
+of 350 ms or more leaves none, and rule (b) bounds the wait at two reads.
+
+Measured on scene set v1 back to back (`r10b-v1-profile-1` receipts mapped by
+scene and pass onto the timed processes of `r10b-v1-ab-1`): every process made
+the contexts it wanted (detector 5 of 5, recognizer 8 of 8) with no eviction,
+refusal or deferral. A creation took 136 to 281 ms beside reads (63 to 91 ms
+at preparation with nothing running). The cost lands on the reads it overlaps:
+
+| Read | Reads | Excess over settled replay, median | Range |
+| --- | ---: | --- | --- |
+| overlaps a creation, settled 50 ms or more | 23 | +26.9 ms (+13 %) | +0.1 to +128 ms (+0 to +36 %) |
+| overlaps a creation, settled under 50 ms | 19 | +16.8 ms (+76 %) | +4.3 to +45 ms (+20 to +207 %) |
+| only overflow calls (the plain path) | 22 | at switch-off speed | |
+| neither | 152 | +0.0 ms | |
+
+**Attribution of the missed target.** In round 10's own run the reverse
+cohort's lecture frames were slow over whole scenes (board-lecture-04 59.0,
+44.0, 30.1, 29.2, 78.1, 37.7 ms against 19.4 to 20.1 in the forward cohort),
+which the "about a fifth" of the churn diagnostic does not explain. The new
+receipts do: a read whose shapes still run on the overflow context runs at the
+switch-off time (board-lecture-05's 22.9 and 22.5 ms reads, switch-off 22.3),
+and of the 13 lecture reads 10 ms or more above settled replay (+10.4 to +45
+ms), 12 had a creation running (the flags come from the separate profiled
+process, mapped by scene and pass).
+On short reads a creation acts as a stall of tens of milliseconds, not as a
+proportional slowdown. In reads (reads more than 8 % above settled replay; `r10b_transition.py`):
+
+| Process | Transition | Excess over settled replay | Against switch-off, same reads |
+| --- | --- | ---: | ---: |
+| forward cohort (dense documents first) | first 25 reads (6.1 s), 11 of them slow | +469 ms | -40 ms |
+| reverse cohort (lecture frames first) | until read 97 (10.2 s), 38 slow | +870 ms | -6 ms |
+| round 10's design, forward (`r10-v1-ab-1`) | first 20 reads, 8 slow | +329 ms | -107 ms |
+| round 10's design, reverse | until read 63, 32 slow | +831 ms | +320 ms |
+
+So a v1 process pays about half a second to 0.9 s over settled replay while it
+makes its 13 contexts; with this policy that is spread over more reads, and
+over the transition the replay process is no slower in total than the
+switch-off process, where round 10's design was 0.3 s behind it.
+
+**Timing after the fixes.** RTX 4090 (driver 621.14), Ryzen 9 5900X, MSVC
+19.44 Release, CUDA 12.9.86, TensorRT 11.4.0.106, medium BF16 pair; build of
+`253c676` (later commits move the creation policy into the cache header, skip
+the read marker with replay off and add tests and documentation), the
+`uct_paddle_tests` executable with the fault hooks compiled in. Arms
+`OKUFLOW_UCT_TEST_TRT_GRAPH=0` and `=1`. `nvidia-smi` sampled P-state, clocks,
+power and utilisation every 100 ms (read-only query) in every run.
+
+Back to back, the standard two reversed cohorts of five (`r10b-v1-ab-1`) and a
+second run of six cohorts alternating direction and arm order, three each way
+(`r10b-v1-alt-1`). Warm median of all warm reads per arm, the range of the
+replay arm's cohort medians, and warm and first-read speedups:
+
+| Scene | two cohorts: off / on warm ms (on cohorts) | warm / first | six cohorts: off / on warm ms (on cohorts) | warm / first |
+|---|---|---|---|---|
+| doc-camera-1080 | 205.0 / 192.4 (188.4..211.7) | 1.065 / 1.045 | 203.9 / 193.0 (188.1..233.2) | 1.056 / 1.024 |
+| doc-camera-tilt-1080 | 156.9 / 145.8 (144.1..154.8) | 1.076 / 1.035 | 156.7 / 147.7 (144.1..164.4) | 1.061 / 1.066 |
+| doc-camera-2160 | 464.4 / 431.9 (431.0..459.2) | 1.075 / 1.019 | 464.2 / 435.3 (432.1..462.0) | 1.066 / 1.049 |
+| doc-camera-turkish-1080 | 177.7 / 164.0 (163.8..164.2) | 1.084 / 0.956 | 178.1 / 164.5 (164.0..166.0) | 1.083 / 1.086 |
+| book-curved-1080 | 63.3 / 55.1 (55.0..55.1) | 1.149 / 1.064 | 63.0 / 55.6 (55.0..57.6) | 1.134 / 1.141 |
+| slide-light-1080 | 68.9 / 59.9 (59.7..60.4) | 1.150 / 1.110 | 67.4 / 60.1 (60.0..63.2) | 1.122 / 1.188 |
+| slide-dark-1080 | 69.8 / 60.9 (60.7..60.9) | 1.146 / 1.090 | 69.8 / 61.1 (60.4..63.7) | 1.142 / 1.113 |
+| slide-light-2160 | 113.0 / 98.3 (98.2..102.8) | 1.149 / 1.120 | 113.6 / 98.4 (97.8..107.4) | 1.154 / 1.097 |
+| table-1080 | 140.3 / 127.8 (127.0..142.9) | 1.098 / 1.033 | 140.5 / 127.9 (126.9..150.9) | 1.098 / 1.100 |
+| page-portrait-1654x2339 | 371.6 / 377.5 (356.1..420.2) | 0.984 / 0.997 | 373.2 / 367.5 (352.5..400.3) | 1.016 / 1.021 |
+| signs-sparse-1080 | 32.0 / 27.7 (27.3..36.3) | 1.155 / 1.126 | 31.0 / 28.2 (26.8..33.2) | 1.099 / 1.067 |
+| no-text-1080 | 30.9 / 26.3 (26.1..26.5) | 1.176 / 1.195 | 30.4 / 26.1 (25.7..26.3) | 1.166 / 1.189 |
+| board-lecture-00 | 23.7 / 18.8 (18.7..18.8) | 1.265 / 1.240 | 22.7 / 18.6 (18.6..18.8) | 1.223 / 1.250 |
+| board-lecture-01 | 23.7 / 18.5 (18.3..18.5) | 1.284 / 1.276 | 23.1 / 18.2 (17.9..20.5) | 1.266 / 1.251 |
+| board-lecture-02 | 25.4 / 21.8 (21.8..22.0) | 1.166 / 0.801 | 26.0 / 21.5 (21.3..29.2) | 1.210 / 1.049 |
+| board-lecture-03 | 26.1 / 23.7 (21.4..34.0) | 1.104 / 1.126 | 27.2 / 22.0 (20.9..28.8) | 1.237 / 1.094 |
+| board-lecture-04 | 25.3 / 23.0 (20.0..36.5) | 1.100 / 0.839 | 24.9 / 21.5 (19.4..51.2) | 1.157 / 0.910 |
+| board-lecture-05 | 22.3 / 20.8 (18.9..33.2) | 1.067 / 1.090 | 22.8 / 20.3 (18.4..39.0) | 1.123 / 1.119 |
+| geometric mean | | 1.125 / 1.058 | | 1.132 / 1.098 |
+
+Identical output on 18 of 18 scenes in both runs. Every process of both arms
+ran in P2 at a median 2.57 to 2.64 GHz with no sample below 1.5 GHz; the last
+switch-off process of the six-cohort run was slower on every scene at lower
+utilisation (other load), not at lower clocks. The warm target (1.17x, each
+lecture frame 1.20x) is still not met back to back: 1.125x and 1.132x, and the
+lecture frames that open the reverse cohorts carry the creation transient
+(board-lecture-04's replay cohort medians 19.4 to 51.2 ms). Where a cohort
+read a lecture frame with its contexts made, it ran at 17.9 to 21.4 ms against
+22.3 to 27.6 ms off.
+
+Paced like the application's advancing media, 350 ms before every read, six
+alternating cohorts (`r10b-v1-gap350-1`):
+
+| Scene | paced: off / on warm ms (on cohorts) | warm / first |
+|---|---|---|
+| doc-camera-1080 | 202.7 / 185.6 (185.3..185.7) | 1.092 / 1.002 |
+| doc-camera-tilt-1080 | 155.8 / 142.5 (142.1..142.8) | 1.093 / 1.089 |
+| doc-camera-2160 | 461.8 / 425.6 (423.9..426.5) | 1.085 / 1.079 |
+| doc-camera-turkish-1080 | 175.8 / 162.6 (161.9..163.5) | 1.081 / 1.037 |
+| book-curved-1080 | 79.6 / 77.2 (55.4..79.6) | 1.031 / 1.100 |
+| slide-light-1080 | 82.4 / 81.3 (80.2..81.7) | 1.014 / 1.200 |
+| slide-dark-1080 | 84.3 / 80.9 (60.2..81.9) | 1.042 / 1.092 |
+| slide-light-2160 | 112.0 / 97.9 (97.5..98.5) | 1.143 / 1.076 |
+| table-1080 | 137.9 / 125.9 (125.8..126.6) | 1.095 / 1.097 |
+| page-portrait-1654x2339 | 368.2 / 344.2 (342.0..344.7) | 1.070 / 1.209 |
+| signs-sparse-1080 | 59.3 / 61.1 (26.8..137.4) | 0.972 / 0.406 |
+| no-text-1080 | 70.7 / 67.2 (66.9..124.5) | 1.052 / 1.057 |
+| board-lecture-00 | 108.5 / 53.0 (43.1..109.9) | 2.047 / 1.067 |
+| board-lecture-01 | 53.4 / 51.7 (19.1..107.9) | 1.033 / 1.018 |
+| board-lecture-02 | 67.3 / 63.7 (22.3..112.4) | 1.055 / 0.709 |
+| board-lecture-03 | 113.7 / 110.5 (57.3..120.0) | 1.029 / 1.517 |
+| board-lecture-04 | 68.6 / 31.2 (20.7..114.4) | 2.200 / 1.019 |
+| board-lecture-05 | 23.1 / 19.6 (19.5..111.1) | 1.177 / 1.571 |
+| geometric mean | | 1.150 / 1.040 |
+
+Identical output on 18 of 18. The clock state was the same in both arms:
+P2 for 70 and 71 percent of the samples, P3 12 and 12, P5 16 and 14, P8 2 and
+2; 29 and 28 percent of the samples below 1.5 GHz (10th percentile 660 and 705
+MHz). That is round 13's finding: between the reads of a sparse frame the GPU
+clocks itself down, and a short read then runs at a fraction of its speed. So
+the sparse scenes (the lecture frames, signs, no-text, the 1080 slides, the
+curved book) swing between about 19 and 120 ms within an arm and support no
+paced gain or loss. The dense scenes, whose reads keep the clocks up, are
+consistent within 2 percent across cohorts and agree with back to back:
+doc-camera 1.08x to 1.09x, table 1.10x, slide-light-2160 1.14x, page-portrait
+1.07x. The geometric mean, 1.150x, is not a claim. In the paced profiled pass
+(`r10b-v1-gap350-profile-1`) all 13 creations of each process landed in idle
+gaps (59 to 90 ms each, as at preparation), no creation started under load,
+and over each whole paced process the replay arm took 0.25 to 1.5 s less than
+the switch-off arm of the same cohort.
+
+Receipts from separate profiled passes, never used for timing
+(`r10b-v1-profile-1`, back to back, with and without region reconciliation,
+and `r10b-v1-gap350-profile-1`): in every process contexts created equal
+contexts wanted (detector 5 of 5, recognizer 8 of 8), no eviction, no refusal,
+no deferral.
+
+**Tests on the final build** (`c8cbb5a`): `optionalGraphReplayFaults`
+(`r10b-faults-2`, all ten paths; the low-memory case reads 78 times, its three
+deferrals pass and captures follow the last one), `optionalGraphReplayRetireUnadopted`
+(`r10b-retire-2`), `optionalGraphReplayCheckpoints` (`r10b-checkpoints-2`:
+cancelled 13, 2, 6 and 13 reads at planned, captured, drained and launched),
+`optionalGraphReplayLifetime` (`r10b-lifetime-2`) and all nine
+`optionalGraphReplayConfigurations` (`r10b-configurations-2`) pass, every one
+with identical output against the switch-off read; the model-free
+`graphReplayCreationTurns` passed 20 runs of 20. Contexts made by the end of
+each configuration's process (about 26 reads back to back), detector and
+recognizer, against those wanted:
+
+| Configuration | Contexts made / wanted | Evictions, refusals | Replay keeps (switch-on minus off, free memory) |
+| --- | --- | --- | ---: |
+| Medium BF16, batch 8 | 3/3, 6/6 | 0, 0 | 42 MiB |
+| Medium BF16, batch 1 | 3/3, 1/1 | 0, 0 | 16 MiB |
+| Medium, batch 16 (FP32 recognizer) | 3/3, 4/7 | 0, 0 | 24 MiB |
+| Medium FP32 | 3/3, 4/6 | 0, 0 | 14 MiB |
+| Small BF16 | 3/3, 6/6 | 0, 0 | 30 MiB |
+| Tiny BF16 | 3/3, 1/1 | 0, 0 | 12 MiB |
+| Bucketed width (recognizer plain) | 3/3, - | 0, 0 | 12 MiB |
+| Paused-detail reads | 3/3, 6/6 | 0, 0 | 42 MiB |
+| `medium-bf16-fill` (both images and twelve detail views, 300 ms gaps) | 6/6, 8/8 | 0, 0 | 66 MiB |
+
+In round 10 the same short runs ended with the small tier at 3 of 6 recognizer
+contexts; under continuous load the policy now makes one context per two
+reads, so a process needs about twice as many reads as it wants contexts, and
+the two configurations with the most (batch 16, FP32, whose creations are also
+the slowest) end these runs short of them, their remaining shapes on the
+overflow context. `medium-bf16-fill` was run: 14 slots in use (6 of the
+detector's 8, all 8 of the recognizer's), 66 MiB, where round 10's run of the
+same configuration measured 50 MiB for the same slot count. Free device memory
+on this shared desktop varies by that much between runs, so the figure is an
+upper reading, not a precise one; all sixteen slots were not reached and the
+53 MiB extrapolation of round 10 is withdrawn in favour of "between 50 and 66
+MiB measured with 14 slots".
+
+**Which conditions are closed.**
+
+| Condition | State |
+| --- | --- |
+| Council blocker: unadopted State never retired | Closed: fixed, GPU test, negative control |
+| Creation "only while no read runs" not enforced | Closed: stated policy, enforced, tested without a model, measured cost per overlapped read |
+| Creator starved under continuous load | Closed with a bound: one creation per two reads; short processes with many contexts wanted still end before all exist |
+| Output-storage fallback freed the plain buffer | Closed: fixed, the fault reaches the allocation |
+| Fault test freed its plan after a delay | Closed |
+| Attribution of the missed warm target | Closed: per-read receipts; the excess sits on reads that overlap a creation |
+| Hold-off and the low-memory test | Closed: hold-off in reads, test reads long enough and asserts recovery |
+| Warm target back to back (1.17x, lecture frames 1.20x) | **Not met**: 1.125x and 1.132x |
+| Paced gain | **Not established**: the GPU clocks down between sparse reads in both arms (round 13); dense scenes 1.07x to 1.14x |
+| Round 3's slow start | **Not isolated** |
+| Memory with every slot in use | **Not reached** (14 of 16 slots, 50 to 66 MiB) |
+
+Default: off, as the brief requires; the orchestrator decides after this and
+round 13.
+
+**Round 8 note.** The contexts of one engine share one activation arena,
+including its plain overflow context. That is safe only while every context of
+the engine runs in order on the State's one stream. Round 8, which runs
+recognition groups concurrently, must give each context that can run beside
+another its own arena (or keep both on one stream) before it is combined with
+replay.
