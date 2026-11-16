@@ -1433,3 +1433,281 @@ calls, and running out of memory during a capture puts it off instead of
 refusing the shape. Kept as it is: a TensorRT enqueue that fails inside a
 capture with no CUDA status is treated as a fault, not a refusal, as the round
 3 reviewers asked; round 10 exercises captures on the other model tiers.
+
+## Round 13: reads at the application's pacing on a clocked-down GPU (private switch, off)
+
+Every earlier timing in this record issues reads back to back. The
+application does not: it reads on timers (`UctTiming`: 350 ms between reads of
+advancing media, a 1500 ms refresh of a live view, 300 ms settling of a paused
+view). Between such reads the GPU's power management lowers its clocks, and a
+sparse frame's read takes four to five times as long as every table above
+says: about 110 ms instead of 23 ms for a real lecture frame.
+
+Targets stated before the work: with the remedy on, at gaps of 350 and 1000
+ms, the median of reads 6 to 25 of each real lecture frame at most 1.25 times
+its back-to-back median, in two fresh processes each; no read delayed
+(back-to-back medians of all 18 scenes unchanged within the noise floor, first
+reads included); byte-identical complete output on the 18 scenes at gaps 0 and
+350; the cost reported (added power and GPU utilization, and zero when text
+reading is off or idle past the time-out); and whether the application's own
+video load changes the picture, answered with numbers.
+
+Result: all met, at a cost of 45 to 63 W more GPU power while text reading is
+active at the application's pacings. `OKUFLOW_UCT_TEST_KEEP_WARM=continuous`
+or `=preroll` selects it; it stays off by default (see "Default").
+
+Hardware and build for every number below: RTX 4090, driver 621.14, Ryzen 9
+5900X, MSVC 19.44 Release, CUDA 12.9.86, TensorRT 11.4.0.106, medium detector
+and recognizer in BF16, build `b3e1ce3` (corpus executable SHA-256
+`a3308495…`; `r13-frameload-350-b`, `r13-tail-long` and `r13-stable-350` used
+`4cb32cb`, which changes only the test slot), `display_active: Disabled`. GPU state
+sampled every 50 or 100 ms with read-only `nvidia-smi` queries.
+
+### Paced measurement
+
+`perf_measure.py` records the gap, every read's time in order, the median of
+reads 6 to 25 ("settled") and, with `--gpu-sample-ms`, the P-state, clocks,
+utilization and power draw over the timed reads; `--frame-load` and
+`--tail-ms` emulate the application's video work and keep an idle tail. See
+[corpus timing](uct_corpus_timing.md), "Paced runs". Tooling is commit
+`63e53f1` plus the options in `0ca6b30`.
+
+### How the governor behaves
+
+`optionalGpuClockProbe` (`scripts/uct/gpu_clock_probe.py`, evidence
+`r13-clock-2`, `r13-clock-3-refine`) measures the SM clock with an in-kernel
+meter (one warp, 100 µs, SM cycles over `%globaltimer` nanoseconds) and needs
+no engine.
+
+| Question | Answer |
+| --- | --- |
+| Step-down | After a busy period the clock stays at 2,630 to 2,650 MHz through 1,500 ms of idle and is at 713 to 730 MHz after 2,000 ms (both repeats). Light work in between does not change that: 1 to 25 percent duty drops at 1.75 to 2.0 s. P-state P2 for about 1.6 s, then P5 (720 to 870 MHz), then P8 |
+| What holds the high state | Time utilization of at least 40 percent: one warp busy 40 or 45 percent of every 16 or 33 ms holds 2,630 MHz for 4 s; 35 percent decays to 2,215 MHz, 30 percent to 2,500 MHz, 25 percent to about 1,400 MHz, 10 percent or less to 715 MHz. 256 blocks at 2 or 10 percent drop just the same: it is the time a kernel is resident, not how much of the GPU it uses |
+| Step-up | From P8 (5 s idle) under continuous load, one warp or every SM: at or above 2,400 MHz after 263 to 273 ms. From 3 s idle: 100 percent duty 256 to 301 ms, 75 percent 512 ms, 60 percent 1,264 ms, 50 percent and below never |
+| Spin or nap | A resident warp that naps 10 µs between flag reads holds and steps up exactly like a spinning one, at the same power |
+| Power | P8 idle 12 to 17 W; one warp holding P2 at 40 percent 78 W, 50 percent 72 to 82 W, 100 percent 85 to 88 W (spinning or napping). The cost is the high clock state itself, not the warp's work |
+
+Paced reads without a remedy show the governor oscillating: a lecture frame
+reads at 23 to 27 ms for about 1.5 to 2 s after denser work, then at 45 to 60
+ms (P3), then at 105 to 125 ms (P5); a read at the lowest clock occasionally
+takes about 200 ms, and that sustained burst steps the clocks up again for the
+next few reads (`r13-paced-350`, base series).
+
+### The application's own GPU load
+
+The application's per-frame video work while text reading is on is a camera or
+decoder upload, colour conversion, zoom, grading or sharpening, and the
+presenter's copy and draw: about one read and one write of a 1920x1080 frame
+per step. The emulation (`FrameLoad`) uploads one NV12 1920x1080 frame from
+pinned memory and makes 6 or 16 full-frame BGRA device copies per frame on its
+own stream, at 30 or 60 fps: 0.7 to 1.75 ms of GPU time per frame, 4 to 8
+percent utilization. It neither holds nor raises the clocks: from the high
+state they drop at 1.75 to 2.0 s exactly as with no load, from idle they stay
+at P8 (`r13-clock-2`, "frames"). With the load running during paced reads the
+base arm is as slow as without it, 2.2 to 4.9 times its back-to-back median
+(`r13-frameload-350`). With continuous keep-warm and the
+load running, the six lecture frames read at 0.97 to 1.08 times their
+back-to-back median in both processes of `r13-frameload-350-b`. In the first
+run (`r13-frameload-350`) one process read frames 03 and 04 at 1.46 and 1.36
+times, at full clock (P2, 2,655 MHz, reads of 35 to 38 ms where the other
+process and every other run read 25 to 27 ms); that was not a clock effect and
+did not repeat, so it is reported as a disturbed process. The emulated video
+load therefore does not change the picture: without a remedy the reads are as
+slow as with no load.
+
+Not emulated: the display. These runs had no driven display, so there was no
+desktop composition, scan-out or presentation through D3D12 to a real swap
+chain; Extra Stable, keystone or neural video enhancement, which add more GPU
+work per frame, were not emulated either. A real display and those effects add
+load, but nothing here suggests they reach the 40 percent utilization that
+holds the clocks; the owner's check in the real application (below) settles
+it.
+
+### What changed
+
+- **Policy** (`include/okuflow/common/uct_keep_warm.hpp`, pure, model-free).
+  Armed only when a paced reader announces its next read
+  (`RecognitionScheduler::ExpectNextRead`); ordinary submissions never arm it.
+  `continuous` warms from the announcement until the next read and between
+  reads; `preroll` only from a lead before the announced read until it arrives
+  (or the lead, at least 100 ms, after it is due). Never while a read runs.
+  Disarmed by `Cancel()` (the controller's `Invalidate`: pause, media
+  suppression, settling, composites, source loss, geometry change), by
+  `StopKeepWarm()`, by destruction, and by an idle time-out of 2.5 s after the
+  last submitted read; it stays disarmed until the next announcement.
+- **Where the work runs.** No new thread and no new stream: the recognition
+  worker, while it waits for a job, asks the recognizer to queue one spin
+  (`Recognizer::KeepWarm`) on the TensorRT `State`'s own stream. A spin is one
+  warp that naps 10 µs between reads of a host-mapped stop flag and lasts at
+  most 50 ms; the worker tops up every 25 ms with at most one spin waiting
+  behind the running one, so a late wake-up (Windows timer granularity) leaves
+  no gap. Before every job the worker sets the flag
+  (`InterruptKeepWarm`); both spins end within one nap, and the job's first
+  GPU work follows them on the same stream. The flag and two events belong to
+  the `State`; `Retire` sets the flag before `RetireState` drains the stream,
+  and they are released in `~State`, which runs only after that drain. A CUDA
+  failure in this path disables keep-warm for that recognizer and leaves fault
+  handling to the next read. A backend that is still preparing is never
+  forced; a CPU backend is asked once and keep-warm then stays off.
+- **The controller** announces the next read after each paced live or
+  advancing-media full submission (media interval 350 ms, live refresh 1500
+  ms). Paused stills are read without an announcement, so a paused view never
+  warms.
+- **The corpus slot** announces each read before its gap, as the application
+  does.
+
+### Measured: paced lecture frames
+
+Median of reads 6 to 25, each of two fresh processes (cohorts walk the scenes
+in opposite orders), against the back-to-back base median of that scene
+(`r13-b2b-v1`, 22.1 to 26.2 ms). Arms: base, `continuous`, `preroll`, all at
+the defaults.
+
+| Gap | Arm | Six lecture frames, ratio range (per process) | Target 1.25x |
+| --- | --- | --- | --- |
+| 350 ms (`r13-paced-350`) | base | 1.09 to 5.12 (most 4.4 to 4.9) | not met |
+| 350 ms | continuous | 0.97 to 1.05 | met, every frame, both processes |
+| 350 ms | preroll | 0.96 to 1.04 | met |
+| 1000 ms (`r13-paced-1000`) | base | 4.25 to 5.16 | not met |
+| 1000 ms | continuous | 0.98 to 1.06 | met |
+| 1000 ms | preroll | 0.98 to 1.06 | met |
+| 1500 ms (`r13-paced-1500`, frames 00 and 03) | base | 4.49 to 4.93 | not met |
+| 1500 ms | continuous | 1.00 to 1.02 | met |
+| 1500 ms | preroll | 1.00 to 1.02 | met |
+
+Per frame, 350 ms, ms (process 0, process 1):
+
+| Frame | Back-to-back | Base | Continuous | Preroll |
+| --- | ---: | --- | --- | --- |
+| board-lecture-00 | 22.80 | 110.0, 111.8 | 23.6, 23.0 | 22.8, 23.0 |
+| board-lecture-01 | 22.30 | 53.5, 53.4 | 23.4, 22.9 | 23.0, 23.3 |
+| board-lecture-02 | 25.41 | 117.8, 116.7 | 25.8, 25.7 | 25.9, 25.5 |
+| board-lecture-03 | 26.15 | 116.6, 66.3 | 26.1, 26.1 | 26.2, 26.0 |
+| board-lecture-04 | 25.65 | 113.2, 60.0 | 24.9, 24.9 | 25.0, 24.5 |
+| board-lecture-05 | 22.09 | 113.1, 24.0 | 21.8, 22.0 | 21.8, 22.0 |
+| doc-camera-1080 (dense) | 203.87 | 202.3, 200.6 | 203.8, 201.2 | 202.3, 203.0 |
+
+The dense page is not affected by pacing (its own 200 ms reads keep the GPU
+busy) and not by the remedy. First reads of each scene at 350 ms: base 23.7 to
+119.4 ms depending on where the governor was, continuous and preroll 22.1 to
+28.9 ms; at 1000 ms base 23.4 to 196.7 ms, continuous 22.3 to 29.6 ms, preroll
+22.3 to 29.4 ms (the dense page 201 to 208 ms with the remedy, 201.7 and 503.0
+ms base).
+
+### Measured: no read delayed, output identical
+
+Back-to-back, all 18 scenes, two cohorts of five warm reads (`r13-b2b-v1`):
+continuous 0.994x warm and 0.993x first read (geometric mean), preroll 1.005x
+and 1.004x. Dense scenes within 2 percent; the short lecture frames 0.957 to
+1.046x warm and 0.924 to 1.037x first, inside their 12 percent noise floor.
+Identical complete output on 18 of 18 scenes for both arms. At gap 350, all 18
+scenes, base against continuous: identical on 18 of 18 (`r13-id-v1-gap350`);
+every paced run above also compared identical on every scene. The GPU contract
+`optionalKeepWarmGpuContract` read board-lecture-00 and -03, doc-camera-1080
+and no-text-1080 sixteen times with spins running or queued and matched a
+scheduler that never warms byte for byte; destroying the scheduler with spins
+outstanding took 0.92 ms and the TensorRT State closure completed
+(`$w\logs\r13-gpu-contract-1.log`).
+
+### Cost
+
+Mean power and utilization over the timed reads (`nvidia-smi`, 100 ms), per
+process; the scene list includes the dense page, whose reads dominate the
+base arm's power at 350 ms.
+
+| Gap | Base W (util %) | Continuous W (util %) | Preroll W (util %) | Added, continuous / preroll |
+| --- | --- | --- | --- | --- |
+| 350 ms | 64.7, 65.8 (20, 21) | 115.5, 113.8 (98) | 116.4, 113.5 (98) | +49 / +50 W |
+| 1000 ms | 40.6, 40.6 (11) | 95.9, 94.7 (99) | 86.5, 85.4 (37) | +55 / +45 W |
+| 1500 ms (two sparse frames) | 22.8, 23.9 (7) | 86.2, 85.7 (99.5) | 75.4, 75.2 (24) | +63 / +52 W |
+
+With either arm the GPU stays in P2 for the whole run (every sample), against
+P2 for a third of the samples and P5/P8 for most of the rest in the base arm.
+Preroll saves 10 to 11 W against continuous at 1000 and 1500 ms and nothing at
+350 ms: the lead (350 ms) covers the whole gap, and at 1000 or 1500 ms the
+clocks hold through the gap anyway (step-down needs 1.75 to 2 s), so the saving
+is only the warp's own work. Utilization reads 98 to 99 percent with
+continuous because a resident warp counts as busy.
+
+Zero when off or idle: with the switch off nothing is launched (base arms, 0
+launches; the scheduler and controller tests check that announcements and
+reads never warm when it is off, and the controller retires the worker when
+text reading is turned off). When reads stop, continuous keeps warming until
+the 2.5 s idle time-out (about 50 more spins) and then disarms; preroll stops
+at the end of its window. With a 15 s idle tail after the last read
+(`r13-tail-long`, board-lecture-00), the 12 s after the time-out average
+22.7 W with continuous (the clocks hold P2 for about 1.75 s more, then 82 of
+110 samples are P8), 11.9 W with preroll and 10.5 W with base: once idle past
+the time-out, keep-warm adds nothing.
+
+### The other candidates
+
+- **Pre-roll** is measured above: it meets the target at every pacing, saves
+  10 to 11 W at 1000 and 1500 ms and nothing at 350 ms. Its weakness is a read
+  earlier than announced (a changing live scene reads before the 1500 ms
+  refresh); then only the hold from the previous read helps.
+- **A process-lifetime request for the high state without administrator
+  rights.** CUDA has no clock or power API. NVML's clock and power setters
+  (`nvmlDeviceSetGpuLockedClocks`, `SetApplicationsClocks`,
+  `SetPowerManagementLimit`, persistence mode) need administrator rights and
+  apply to the whole device until reset, so they are out of scope. DXGI's
+  `SetGPUThreadPriority` and Windows' process power throttling change
+  scheduling, not clocks. The one candidate is D3D12's
+  `ID3D12Device::SetStablePowerState(TRUE)`: no administrator rights, ends with
+  the device, but it requires Windows Developer Mode (without it the call
+  removes the device), applies to the whole adapter, fixes the clock at a
+  "stable" value rather than the boost clock and is documented for profiling,
+  not for applications. Developer Mode is on on this PC, so it was measured as
+  a test-only comparison (`OKUFLOW_UCT_CORPUS_STABLE_POWER=1`,
+  `r13-stable-350`): the call succeeded (`hr=0`) and held P2 at a fixed
+  2,235 MHz for the whole process. Lecture frames read at 1.06 to 1.49 times
+  their back-to-back median (target missed on three of six frames in one
+  process each), and dense pages were 11 to 16 percent slower (doc-camera-1080
+  228 to 230 ms against 202 to 204 ms, doc-camera-2160 517 to 537 ms against
+  458 to 467 ms) because the stable clock is below the boost clock. Power while
+  reading was about the base arm's (102 W against 103 to 105 W with the dense
+  pages in the list), and the state lasts as long as the device: 53 W in the
+  idle tail. Slower than keep-warm, not a remedy for dense pages, and not
+  available to users without Developer Mode; the application does not use it.
+- **The driver's "Power management mode"** (NVIDIA Control Panel, "Prefer
+  maximum performance", per program or global) is a persistent driver profile
+  setting and out of scope for the application. The owner can choose it by
+  hand for `OkuFlowApp.exe`; it was not changed or measured here.
+
+### Default
+
+Off. Both variants meet every target, but they buy the latency with 45 to 63 W
+more GPU power for as long as text reading is active on live or playing media,
+and that trade is the owner's decision. Recommendation: turn on
+`OKUFLOW_UCT_TEST_KEEP_WARM=continuous` if the owner wants lecture and sign
+text to appear at back-to-back speed during playback and live viewing, and
+accepts about 50 to 60 W more GPU power while text reading is active (on this
+RTX 4090; nothing while it is off, paused or idle past 2.5 s). It meets every
+target at every pacing the application uses and covers reads that come
+earlier than announced. `preroll` saves 10 to 11 W at 1000 ms or longer gaps
+and nothing at the 350 ms media pacing; it is the better choice only if the
+live refresh is lengthened. If the extra power is not wanted, leave it off:
+reads stay correct, only 2 to 5 times slower on sparse frames between denser
+work. Making it a user setting (with a plain power note) would be the next
+step, not part of this round.
+
+What to check by hand in the real application, with the switch set in the
+environment before starting it: a live board view and a playing lecture video
+with Ultra Clear Text on, (1) `nvidia-smi -q -d PERFORMANCE,POWER` (read-only)
+or the overlay's own timing trace with and without the switch to see whether
+the real display and video work already hold P2 on this PC, (2) how fast new
+text appears after a pan or a slide change, (3) the GPU power draw with the
+switch on, and that it falls back when Ultra Clear Text is turned off, the
+video is paused or the window is minimized.
+
+### Not established
+
+- The display: no run had a driven display, presentation or desktop
+  composition; the application's video work was emulated with CUDA copies.
+- Other GPUs and drivers: the governor's thresholds and timings above are the
+  RTX 4090's with driver 621.14. A laptop GPU or another generation may step
+  down faster, need a different duty or cost different power.
+- Real-application latency: worker time on file fixtures, not camera-to-paint.
+- The `UctTiming` pacing was emulated with sleeps in the corpus slot; the
+  controller's announcement is covered by tests, not by a timed run of the
+  application.
