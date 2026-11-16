@@ -1929,6 +1929,7 @@ class PaddleTests final : public QObject
     void curvedRibbonEndpointPadding() {uct_ribbon_test::EndpointPadding();}
     void curvedRibbonStraightSpanBound() {uct_ribbon_test::StraightSpanBound();}
     void curvedRibbonFlatSwitchBothReaders() {uct_ribbon_test::FlatSwitchBothReaders();}
+    void curvedRibbonMovedWordsHeldToInk() {uct_ribbon_test::MovedWordsHeldToInk();}
     void currentInkOwnershipAndResidual() {uct_ribbon_test::InkOwnershipAndResidual();}
     void currentInkHeldOutDiagnostic() {uct_ribbon_test::HeldOutInkDiagnostic();}
     void optionalRibbonPrimitiveAB() {uct_ribbon_test::PrimitiveBenchmark();}

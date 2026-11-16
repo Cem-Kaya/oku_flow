@@ -798,6 +798,12 @@ void FinalizeRecognizedGeometry(RecognitionOutput& output)
         for (auto& word : line.words) {
             if (word.quadPx.valid && QuadArea(word.quadPx) <= 0.0)
                 word.disposition = TokenDisposition::kInvalidGeometry;
+            else if (candidate(word) && word.movedLineBow > 0 && word.paddedBounds && !word.inkFitted)
+                // Private round 12 straight rule: the line was refused curved
+                // geometry and moved to the rectangle path. Its word is drawn
+                // only where fitting found its own ink; otherwise it stays
+                // withheld over its detector span, as when the line was refused.
+                word.disposition = TokenDisposition::kInvalidGeometry;
             else if (candidate(word) && word.paddedBounds && !word.inkFitted &&
                      (word.text.size() == 1 || (word.text.size() == 2 &&
                        word.text[0].isHighSurrogate() && word.text[1].isLowSurrogate())) &&

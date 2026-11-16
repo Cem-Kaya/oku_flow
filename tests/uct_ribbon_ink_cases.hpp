@@ -881,6 +881,45 @@ inline void FlatSwitchBothReaders() {
         QVERIFY(!movedLine.words[i].fromRibbon);
     }
 }
+// Round 12b: a word read from a line the straight rule moved is drawn only
+// where the worker fitted it to its own ink. FinalizeRecognizedGeometry
+// withholds an unfitted one over its detector span (invalid geometry, as when
+// the line was refused); every word that is not from a moved line, fitted or
+// not, keeps exactly today's disposition.
+inline void MovedWordsHeldToInk() {
+    const auto word = [](bool moved, bool padded, bool fitted, TokenDisposition disposition) {
+        RecognizedWord w{QStringLiteral("word"), QRectF(100, 50, 60, 22), padded, QRectF(96, 50, 68, 22), disposition,
+                         .95, QRectF(100, 50, 60, 22)};
+        w.quadPx = TextQuad::FromRect(w.boundsPx); w.inkFitted = fitted;
+        if (fitted) { w.boundsPx = QRectF(102, 57, 56, 7); w.quadPx = TextQuad::FromRect(w.boundsPx); }
+        w.movedLineBow = moved ? .13 : 0;
+        return w;
+    };
+    struct Case { bool moved, padded, fitted; TokenDisposition before, after; };
+    const Case cases[]{
+        {true, true, false, TokenDisposition::kCandidate, TokenDisposition::kInvalidGeometry},
+        {true, true, true, TokenDisposition::kCandidate, TokenDisposition::kCandidate},
+        {true, false, false, TokenDisposition::kCandidate, TokenDisposition::kCandidate}, // not a fitting word
+        {true, true, false, TokenDisposition::kLowConfidence, TokenDisposition::kLowConfidence},
+        {false, true, false, TokenDisposition::kCandidate, TokenDisposition::kCandidate}, // today's behaviour
+        {false, true, true, TokenDisposition::kCandidate, TokenDisposition::kCandidate},
+    };
+    for (const auto& c : cases) {
+        RecognitionOutput out; out.ok = true;
+        // Two lines so the duplicate pass sees distinct text and leaves them.
+        auto w = word(c.moved, c.padded, c.fitted, c.before);
+        auto other = word(false, true, true, TokenDisposition::kCandidate);
+        other.text = QStringLiteral("other"); other.boundsPx.translate(0, 200); other.quadPx = TextQuad::FromRect(other.boundsPx);
+        out.lines = {RecognizedLine{{w}}, RecognizedLine{{other}}};
+        FinalizeRecognizedGeometry(out);
+        QCOMPARE(out.lines[0].words[0].disposition, c.after);
+        QCOMPARE(out.lines[1].words[0].disposition, TokenDisposition::kCandidate);
+        // The detector span stays the protection box of a withheld word.
+        QCOMPARE(out.lines[0].words[0].protectedBoundsPx, QRectF(100, 50, 60, 22));
+        if (c.after == TokenDisposition::kInvalidGeometry)
+            QVERIFY(out.lines[0].words[0].protectedBoundsPx.contains(w.boundsPx));
+    }
+}
 inline void PrimitiveBenchmark() {
     if(qEnvironmentVariable("OKUFLOW_UCT_RIBBON_BENCHMARK")!="1")QSKIP("Explicit model-free A/B benchmark not selected.");
     const auto root=qEnvironmentVariable("OKUFLOW_UCT_RIBBON_EVIDENCE");QVERIFY(!root.isEmpty());QVERIFY(QDir().mkpath(root));
