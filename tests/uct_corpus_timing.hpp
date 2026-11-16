@@ -101,6 +101,7 @@ inline void CorpusTiming()
         std::optional<Completion> completion;
         MeteredImage::Meters meters;
         double submitToCallbackMs{};
+        qint64 submittedUnixMs{}; // wall clock, to align reads with external GPU-state samples
         QVector<QJsonObject> profiles;
         QString error;
     };
@@ -135,6 +136,7 @@ inline void CorpusTiming()
         stamp.viewTransform = {0, 0, 1, 1, 0, 0, 1, 1, true};
         stamp.liveCameraCapture = !media;
         capture.Take();
+        result.submittedUnixMs = QDateTime::currentMSecsSinceEpoch();
         const auto submitted = Clock::now();
         if (!scheduler->SubmitDevice(stamp, metered)) {
             result.error = "Submission refused: " + scheduler->Status().detail;
@@ -195,7 +197,8 @@ inline void CorpusTiming()
                     candidates += word.disposition == TokenDisposition::kCandidate;
                 }
             QJsonObject record{{"pass", pass}, {"workerMs", result.durationMs},
-                {"submitToCallbackMs", attempt.submitToCallbackMs}, {"residentMs", attempt.meters.residentMs},
+                {"submitToCallbackMs", attempt.submitToCallbackMs}, {"submittedUnixMs", attempt.submittedUnixMs},
+                {"residentMs", attempt.meters.residentMs},
                 {"inputWaitMs", attempt.meters.waitMs}, {"outputSha256", sha}, {"words", words}, {"candidates", candidates}};
             if (!attempt.profiles.isEmpty()) {
                 QJsonArray lines;

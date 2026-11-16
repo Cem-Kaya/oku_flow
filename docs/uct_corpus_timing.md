@@ -63,6 +63,36 @@ words lost and gained, and the largest box-edge change when the ordered text
 agrees. Scenes with a truth file are scored by exact match against the words
 that were drawn. There is no confidence interval or outlier rejection.
 
+## Paced runs
+
+The application does not read back to back. It reads on timers (`UctTiming`:
+a full read every 350 ms of advancing media, a 1500 ms refresh of a live view,
+300 ms settling of a paused view), and between reads the GPU's power
+management lowers its clocks. A back-to-back median says nothing about that
+case, so paced runs are part of the protocol:
+
+| Option | Meaning |
+| --- | --- |
+| `--gap-ms N` | Sleep N ms before every read (the slot's `OKUFLOW_UCT_CORPUS_GAP_MS`). Use 350 and 1000 next to 0 |
+| `--passes 24 --cohorts 2` | 25 reads per scene and process; the effect develops over seconds, so five passes are too few |
+| `--settled-from K` | Also report the median of the reads from pass K on (default 5: reads 6 onwards) |
+| `--gpu-sample-ms N` | Sample `nvidia-smi` (power state, graphics and memory clock, utilization, power draw) every N ms, 50 to 1000, while each process runs; off by default |
+
+The summary always records the gap, the settled medians and every read's time
+in order (`series` in `summary.json`, "Per-read series" in `summary.md`). With
+sampling, each process keeps its raw samples next to its report
+(`cohortN-arm.smi.csv`), the summary gives P-state counts, median clock, mean
+utilization and mean power over the timed reads, and each read in the series
+carries the P-state sampled last before it. Each read records its wall-clock
+submission time (`submittedUnixMs`) for that alignment. Sampling uses
+read-only `nvidia-smi` queries and stops with its process; it changes no GPU
+setting.
+
+Paced timings are sensitive to anything else that uses the GPU: other jobs on
+the shared lease, a driven display, video playback. Take them under the lease,
+look at the per-read series before trusting a median, and say when a run looks
+disturbed.
+
 ## Scene set, version 1
 
 Eighteen scenes. Twelve are generated from this repository's documentation
