@@ -32,6 +32,7 @@ bool TensorRtCropDiagnostic::TryCommit(Plan&& plan) noexcept
 #include "uct_tensorrt_profile.hpp"
 #include "uct_frozen_upload.hpp"
 #include "uct_recognition_groups.hpp"
+#include "uct_region_reconcile.hpp"
 #include "uct_recognizer_width.hpp"
 #include "uct_tensorrt_identity.hpp"
 #include "uct_tensorrt_failures.hpp"
@@ -774,7 +775,8 @@ struct State
     DeviceBuffer<gpu::Component> components;
     DeviceBuffer<gpu::Quad> detectedQuads, quads;
     DeviceBuffer<gpu::Token> tokens;
-    HostBuffer<int> hostCount, hostGroupWidths;
+    HostBuffer<int> hostCount, hostGroupWidths, regionCounts;
+    HostBuffer<gpu::Quad> regionWindows; // region-reconciliation experiment only
     HostBuffer<gpu::Quad> hostQuad;
     HostBuffer<unsigned char> goldenPixels;
     HostBuffer<float> detectorSmokeMap;
@@ -1125,6 +1127,14 @@ class TensorRtRecognizer final : public Recognizer
                 else if (name != "reference") invalidDetectKernels_ = true;
             }
         }
+        // Private experiment, off by default. See uct_region_reconcile.hpp.
+        // "keep" runs the same detect-first path but recognizes every detection:
+        // its output must equal the ordinary path, which is how the path's
+        // ordering and ownership are checked end to end.
+        const auto reconcile = qEnvironmentVariable("OKUFLOW_UCT_TEST_REGION_RECONCILE");
+        reconcile_ = reconcile == "1" || reconcile == "keep";
+        reconcileKeepAll_ = reconcile == "keep";
+        invalidReconcile_ = !reconcile.isEmpty() && reconcile != "0" && !reconcile_;
     }
     ~TensorRtRecognizer() override
     {
@@ -1146,6 +1156,10 @@ class TensorRtRecognizer final : public Recognizer
         }
         if (invalidDetectKernels_) {
             status_.detail = "OKUFLOW_UCT_TEST_DETECT_KERNELS accepts reference, roots, boxes, ribbons and tree.";
+            return status_;
+        }
+        if (invalidReconcile_) {
+            status_.detail = "OKUFLOW_UCT_TEST_REGION_RECONCILE accepts only 0, 1 or keep.";
             return status_;
         }
         assets_ = LoadPaddleAssets(root_,detectorTier_,recognizerTier_);
@@ -1324,6 +1338,118 @@ class TensorRtRecognizer final : public Recognizer
             }
             const double magnification = detail_ ? PaddleDetailMagnification(*detail_) : 1.0;
             if (detail_) output.detailRegionPx = regions.first();
+            // Private experiment, off by default: detect every region first, leave
+            // out detections another region already covers, then recognize what
+            // remains (uct_region_reconcile.hpp). The ordinary path is untouched.
+            // Crop capture/replay diagnostics and detail jobs keep the ordinary path.
+            std::vector<std::vector<gpu::Quad>> reconciled;
+            if (reconcile_ && !frozen && !cropDiagnostic_ && !detail_ && regions.size() > 1) {
+                constexpr int capacity = recognizer_width::kMaximumCrops;
+                const int regionCount = int(regions.size());
+                auto* counts = state_->regionCounts.Reserve(std::size_t(regionCount));
+                auto* windows = state_->regionWindows.Reserve(std::size_t(regionCount) * capacity);
+                state_->hostQuad.Reserve(capacity); // no pinned reallocation behind a later queued upload
+                QSize queued;
+                for (int index = 0; index < regionCount; ++index) {
+                    if (cancelled.load()) {
+                        // Queued detection still reads the owned image.
+                        Check(cudaStreamSynchronize(state_->stream));
+                        output.cancelled=true;output.lines.clear();cancelOwnedInput();return output;
+                    }
+                    const QRect& region = regions[index];
+                    const auto* cropPixels=static_cast<const unsigned char*>(image.Data())+
+                        std::size_t(region.y())*image.pitch+std::size_t(region.x())*4;
+                    const QSize size = PaddleDetectionSize(region.size(), 1.0, 960);
+                    // Equal shapes queue behind each other. A shape change first
+                    // waits for the stream, as recognition groups do: scratch
+                    // buffers and the detector output may be reallocated.
+                    if (queued.isValid() && size != queued)
+                        profile.Wait(true, [&] { Check(cudaStreamSynchronize(state_->stream)); });
+                    queued = size;
+                    auto *input = state_->detectorInput.Reserve(static_cast<std::size_t>(size.width()) *
+                                                                size.height() * 3);
+                    profile.Measure(TensorRtProfile::Normalize, state_->stream, [&] {
+                        gpu::Normalize(cropPixels, image.pitch, region.width(), region.height(), input,
+                                       size.width(), size.height(), state_->stream);
+                    });
+                    nvinfer1::Dims shape{};
+                    profile.Measure(TensorRtProfile::Detector, state_->stream, [&] {
+                        shape = state_->detector->Run(input, size.width(), size.height(), state_->stream,
+                                                      profile);
+                    });
+                    if (shape.nbDims != 4 || shape.d[0] != 1 || shape.d[1] != 1)
+                        throw std::runtime_error("Unexpected GPU detector output.");
+                    const int w = static_cast<int>(shape.d[3]), h = static_cast<int>(shape.d[2]);
+                    profile.Measure(TensorRtProfile::Regions, state_->stream, [&] {
+                        gpu::Detect(state_->detector->Output(), w, h, region.width(), region.height(),
+                                    state_->labels.Reserve(w * h), state_->components.Reserve(w * h),
+                                    state_->detectedQuads.Reserve(128), state_->count.Reserve(1), state_->stream,
+                                    curvedRibbon_ ? state_->ribbonOffsets.Reserve((w*h+255)/256) : nullptr,
+                                    detectKernels_);
+                        gpu::RecognitionWindows(state_->detectedQuads.Get(),state_->count.Get(),
+                                                 state_->quads.Reserve(128*9),state_->stream);
+                        Check(cudaGetLastError());
+                    });
+                    profile.Measure(TensorRtProfile::Metadata, state_->stream, [&] {
+                        Check(cudaMemcpyAsync(counts + index, state_->count.Get(), sizeof(int),
+                                              cudaMemcpyDeviceToHost, state_->stream));
+                        Check(cudaMemcpyAsync(windows + std::size_t(index) * capacity, state_->quads.Get(),
+                                              capacity * sizeof(gpu::Quad), cudaMemcpyDeviceToHost, state_->stream));
+                    });
+                    profile.Transfer(sizeof(int) + capacity * sizeof(gpu::Quad));
+                }
+                profile.Wait(true, [&] { Check(cudaStreamSynchronize(state_->stream)); });
+                QElapsedTimer reconcileTimer;
+                reconcileTimer.start();
+                struct Range { int region, first, count; };
+                std::vector<region_reconcile::Detection> detections;
+                std::vector<Range> ranges;
+                bool wellFormed = true;
+                for (int index = 0; index < regionCount; ++index) {
+                    const int count = counts[index];
+                    if (count < 0 || count > capacity)
+                        throw std::runtime_error("GPU detector region count is invalid.");
+                    const auto* quads = windows + std::size_t(index) * capacity;
+                    // Each detection is its own window followed by its
+                    // overlapping sub-windows, which carry internal-edge flags.
+                    for (int first = 0; first < count;) {
+                        if (quads[first].internalEdges != 0) { wellFormed = false; break; }
+                        int end = first + 1;
+                        while (end < count && quads[end].internalEdges != 0) ++end;
+                        region_reconcile::Detection detection;
+                        detection.region = index;
+                        for (int k = 0; k < 4; ++k)
+                            detection.quad.points[k] = QPointF(quads[first].xy[k * 2] + regions[index].x(),
+                                                               quads[first].xy[k * 2 + 1] + regions[index].y());
+                        detection.quad.valid = true;
+                        // A ribbon's quad is only an envelope, and a refused ribbon's
+                        // protection must reach decoding: such detections are never dropped.
+                        detection.curved = quads[first].ribbon.valid || quads[first].ribbon.unsupported;
+                        detections.push_back(detection);
+                        ranges.push_back({index, first, end - first});
+                        first = end;
+                    }
+                }
+                region_reconcile::Stats stats;
+                stats.detections = int(detections.size());
+                reconciled.resize(std::size_t(regionCount));
+                if (!wellFormed || reconcileKeepAll_) {
+                    // Unexpected window layout, or the pass-through check: every window, in order.
+                    for (int index = 0; index < regionCount; ++index)
+                        reconciled[std::size_t(index)].assign(windows + std::size_t(index) * capacity,
+                            windows + std::size_t(index) * capacity + counts[index]);
+                } else {
+                    stats = region_reconcile::Reconcile(regions, {image.width, image.height}, detections);
+                    for (std::size_t i = 0; i < detections.size(); ++i) {
+                        if (!detections[i].keep) continue;
+                        const auto* quads = windows + std::size_t(ranges[i].region) * capacity + ranges[i].first;
+                        auto& kept = reconciled[std::size_t(ranges[i].region)];
+                        kept.insert(kept.end(), quads, quads + ranges[i].count);
+                    }
+                }
+                profile.Reconcile(stats.detections, stats.clippedDropped, stats.wholeDropped, stats.tileDropped,
+                                  stats.restored, wellFormed, reconcileTimer.nsecsElapsed() / 1e6);
+            }
             int regionIndex = 0;
             for (const QRect& region : regions) {
             if (cancelled.load()) {
@@ -1361,6 +1487,23 @@ class TensorRtRecognizer final : public Recognizer
                     Check(cudaMemcpyAsync(state_->quads.Reserve(128*9), upload,
                                           quads.size()*sizeof(gpu::Quad), cudaMemcpyHostToDevice, state_->stream));
                     frozenUpload.Queued();
+                }
+            } else if (!reconciled.empty()) {
+                const auto& kept = reconciled[std::size_t(regionIndex)];
+                count = int(kept.size());
+                if (hostWidths)
+                    for (int first = 0; first < count; first += submissionGroup)
+                        hostWidths[first/submissionGroup] = recognizer_width::OrderedGroup(
+                            kept.data()+first,std::min(submissionGroup,count-first));
+                if (count) {
+                    // Compact descriptor upload. The previous region's groups have
+                    // completed, so the pinned storage is free. Unlike frozen replay
+                    // this is not marked as a pending frozen upload: a cancellation
+                    // drains the stream (cancelGroups) instead of retiring the engines.
+                    auto* upload = state_->hostQuad.Reserve(recognizer_width::kMaximumCrops);
+                    std::copy(kept.begin(), kept.end(), upload);
+                    Check(cudaMemcpyAsync(state_->quads.Reserve(128*9), upload,
+                                          kept.size()*sizeof(gpu::Quad), cudaMemcpyHostToDevice, state_->stream));
                 }
             } else {
             const QSize size = PaddleDetectionSize(region.size(), magnification, detail_ ? detail_->detectorLongEdge : 960);
@@ -1507,6 +1650,9 @@ class TensorRtRecognizer final : public Recognizer
             // Drains enqueued look-ahead before an early return releases the
             // input lease; a failed drain propagates to normal retirement.
             const auto cancelGroups = [&] {
+                // The reconciled path may have a descriptor upload queued with no
+                // group behind it yet; complete it before the input is released.
+                if (!reconciled.empty()) Check(cudaStreamSynchronize(state_->stream));
                 groupLifetime.Cancel([&] { Check(cudaStreamSynchronize(state_->stream)); }, cancelOwnedInput);
                 output.cancelled = true;
                 output.lines.clear();
@@ -1998,6 +2144,7 @@ class TensorRtRecognizer final : public Recognizer
     bool invalidBatch_{}, invalidWidth_{}, variableWidth_{}, allowWidthPreparation_{};
     gpu::DetectKernels detectKernels_{};
     bool invalidDetectKernels_{}, explicitDetectKernels_{};
+    bool reconcile_{}, reconcileKeepAll_{}, invalidReconcile_{};
     std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic_;
     const runtime_precision::Request precisionRequest_;
     const public_bf16::Request publicRequest_;

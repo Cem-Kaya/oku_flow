@@ -8253,3 +8253,22 @@ kernel set, kept as the oracle for `gpuDetectKernelsMatchReferenceBytes`;
 `TensorRtRecognizer` applies `ForDevice` in `Initialize` unless the private
 `OKUFLOW_UCT_TEST_DETECT_KERNELS` comparison switch names the kernels. See
 `docs/uct_okuread_port.md`.
+
+`region_reconcile::Reconcile` (`src/common/uct_region_reconcile.hpp`) is the
+private cross-region experiment selected by `OKUFLOW_UCT_TEST_REGION_RECONCILE=1`:
+given `DetectorRegions` and every region's detections in frame pixels, it marks
+detections not to be recognized. `Replaces` is the one relation behind every
+decision (same line, comparable height, the stand-in spans the replaced
+detection; `Measure`, `Extent`, `ContinuesPast`, `kWholeFrameMinimumHeight`,
+`kContainToleranceLimitPx`): clipped tile fragments a larger detection stands
+in for, whole-frame detections an unclipped tile detection stands in for, and
+duplicate tile detections. A coverage pass restores any detection without a
+kept stand-in; curved detections (`Detection::curved`) take no part.
+`TensorRtRecognizer::RecognizeDevice` then detects all regions first, reads
+each region's windows back, and uploads the kept windows per region.
+`OKUFLOW_UCT_TEST_REGION_RECONCILE=keep` runs that path while recognizing
+everything. `TensorRtProfile::Reconcile` adds a `regionReconcile` object
+(detections, the three drop counts, restorations, whether the window layout was
+recognized) to the profile line. Rules are covered by `regionReconcileRules`
+(`tests/uct_region_reconcile_cases.hpp`), the GPU window layout the parser
+relies on by `gpuRecognitionWindowsMarkEverySubWindow`.

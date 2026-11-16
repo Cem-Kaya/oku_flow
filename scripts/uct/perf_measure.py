@@ -143,6 +143,8 @@ def geometry_delta(base, candidate):
 def summarize(arguments, arms, records, manifest):
     scenes = [entry["name"] for entry in manifest]
     truths = {entry["name"]: entry.get("truth") for entry in manifest}
+    # Reports are matched to scenes by file, not by name: a manifest may name a scene differently.
+    files = {entry["name"]: (arguments.corpus / entry["file"]).resolve() for entry in manifest}
     table, ratios, first_ratios = [], [], []
     base = arms[0][0]
     for scene in scenes:
@@ -153,7 +155,7 @@ def summarize(arguments, arms, records, manifest):
             for record in records:
                 if record["arm"] != name:
                     continue
-                entry = next(item for item in record["report"]["scenes"] if Path(item["path"]).stem == scene)
+                entry = next(item for item in record["report"]["scenes"] if Path(item["path"]).resolve() == files[scene])
                 values = [read["workerMs"] for read in entry["reads"] if read["pass"] > 0]
                 warm += values
                 cohort_medians.append(statistics.median(values))
