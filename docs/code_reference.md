@@ -8350,3 +8350,65 @@ the tests additionally exercise unequal-tolerance chain restoration and check
 curved retention, unchanged input geometry, statistics and permutation
 independence on every random layout. See the negative-result diagnosis in
 `docs/uct_okuread_port.md`.
+
+
+### UCT GPU clock keep-warm between paced reads (round 13)
+
+`include/okuflow/common/uct_keep_warm.hpp` is the pure decision logic of the
+private keep-warm experiment. `KeepWarmMode` (`Off`, `Continuous`, `PreRoll`)
+and `KeepWarmSettings` (period, spin length `busy`, pre-roll `lead`,
+`idleTimeout`; off by default) are parsed strictly from
+`OKUFLOW_UCT_TEST_KEEP_WARM` and `OKUFLOW_UCT_TEST_KEEP_WARM_SHAPE` by
+`ParseKeepWarm`/`KeepWarmFromEnvironment` (`KeepWarmParse` carries the error
+for invalid text, which stays off). `KeepWarmPolicy` decides when a launch is
+due: armed only by `ExpectRead` (an announced paced read), never by an ordinary
+`ReadSubmitted`; never while `ReadStarted`/`ReadFinished` bracket a job; at most
+one launch per period; for `PreRoll` only inside [due - lead, due + max(lead,
+100 ms)] (`Busy` cuts a spin at the window end); `TimedOut`/`IdleDeadline`
+end it when no read was submitted for the idle time-out; `Disarm` holds until
+the next announcement. A read submitted before the pre-roll window leaves the
+announcement in place.
+
+`Recognizer::KeepWarm(busy)` and `Recognizer::InterruptKeepWarm()` are the
+worker-confined backend hooks (`KeepWarmResult`: `Launched`, `Pending`,
+`NotReady`, `Unsupported`; the default is `Unsupported`). `TensorRtRecognizer`
+implements them on a promoted, ready `State` only (never starting
+preparation): a host-mapped stop flag (`State::warmStopHost`/`warmStopDevice`)
+and two events (`State::warmDone`) allow one spin to run and one to wait behind
+it on `State::stream`; `InterruptKeepWarm` sets the flag, and `Retire` calls it
+before `RetireState`. The flag and events are released in `~State`, which runs
+only after `RetireState` found the stream complete. Any CUDA failure in this
+path disables keep-warm for that recognizer and leaves fault handling to the
+next read. `AutomaticRecognizer` forwards to the serving backend (`NotReady`
+while a candidate prepares) and interrupts every candidate; the model
+preparation `ReadyRecognizer` forwards both.
+
+`gpu::KeepWarm(stop, durationNs, blocks, stream, sleepNs)` and
+`gpu::SampleClock(out, durationNs, stream)` (`include/okuflow/cuda/uct_kernels.hpp`)
+are the kernels: warps that spin or nap on `%globaltimer` until the duration
+or the stop flag, and a one-warp meter of SM cycles over GPU nanoseconds.
+
+`RecognitionScheduler::SetKeepWarm`, `ExpectNextRead`, `StopKeepWarm` and
+`KeepWarmArmed` expose the policy; `Cancel()` and destruction disarm it, and a
+validation-only (`probeOnly`) scheduler ignores it. `State::WaitForJob` replaces
+the plain job wait: between waits it asks the recognizer to launch (mutex
+released around the call), wakes for the next launch or the idle deadline, and
+a submitted job ends the wait at once; the worker calls `InterruptKeepWarm`
+after dequeuing every job. `SchedulerStats` gains `keepWarmLaunches`,
+`keepWarmPending`, `keepWarmNotReady`, `keepWarmTimeouts` and
+`keepWarmBusyMs`. `UltraClearTextController::EnsureScheduler` configures the
+setting from the environment, and `HandleProbeOutcome` announces the next read
+after each paced live or advancing-media full submission.
+
+Tests: `keepWarmSwitchParsesStrictlyAndDefaultsOff`,
+`keepWarmPolicyContinuousWindowAndTimeout`, `keepWarmPolicyPreRollWindow` and
+the scheduler cases `schedulerKeepWarmNeverRunsDuringReadsAndStopsOnCancel`,
+`schedulerKeepWarmIdleTimeoutAndDestruction`,
+`schedulerKeepWarmPreRollAndUnsupportedBackends` (`tests/ultra_clear_text_tests.cpp`);
+`keepWarmFollowsPacedMediaAndStopsOnPauseAndDisable`
+(`tests/ultra_clear_text_controller_tests.cpp`); the opt-in GPU contract
+`optionalKeepWarmGpuContract` (`tests/uct_corpus_timing.hpp::KeepWarmGpuContract`).
+Measurement: `optionalGpuClockProbe` (`tests/uct_gpu_clock_probe.hpp::ClockProbe`,
+with `PreciseSleep`, `FrameLoad` and `ParseFrameLoad`) and
+`scripts/uct/gpu_clock_probe.py`; `CorpusTiming` announces each read, can run
+`FrameLoad` and keeps an idle tail. See `docs/uct_okuread_port.md`, round 13.

@@ -77,6 +77,8 @@ case, so paced runs are part of the protocol:
 | `--passes 24 --cohorts 2` | 25 reads per scene and process; the effect develops over seconds, so five passes are too few |
 | `--settled-from K` | Also report the median of the reads from pass K on (default 5: reads 6 onwards) |
 | `--gpu-sample-ms N` | Sample `nvidia-smi` (power state, graphics and memory clock, utilization, power draw) every N ms, 50 to 1000, while each process runs; off by default |
+| `--frame-load fps:passes` | Emulate the application's per-frame video GPU work during the reads: one NV12 1920x1080 upload and `passes` full-frame device copies per frame, on its own stream (`OKUFLOW_UCT_CORPUS_FRAME_LOAD`) |
+| `--tail-ms N` | Keep the process idle N ms after the last read (`OKUFLOW_UCT_CORPUS_TAIL_MS`), to show that keep-warm stops and what the GPU then draws |
 
 The summary always records the gap, the settled medians and every read's time
 in order (`series` in `summary.json`, "Per-read series" in `summary.md`). With
@@ -92,6 +94,16 @@ Paced timings are sensitive to anything else that uses the GPU: other jobs on
 the shared lease, a driven display, video playback. Take them under the lease,
 look at the per-read series before trusting a median, and say when a run looks
 disturbed.
+
+Like the application, the slot announces each read before waiting for it
+(`RecognitionScheduler::ExpectNextRead`), which is what arms the private
+keep-warm of round 13; the report records keep-warm activity and the tail.
+
+`scripts/uct/gpu_clock_probe.py` runs the model-free `optionalGpuClockProbe`
+slot with `nvidia-smi` sampling: an in-kernel clock meter while the GPU idles
+after load (step-down), under continuous load from a low state (step-up),
+under periodic load of a chosen busy fraction (`duty`, `refine`) and under the
+emulated frame load (`frames`). It needs no engine.
 
 ## Scene set, version 1
 
