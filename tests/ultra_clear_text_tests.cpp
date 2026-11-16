@@ -41,6 +41,9 @@
 #include <cmath>
 #include <cstring>
 #include <condition_variable>
+#include <deque>
+#include <functional>
+#include <thread>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -1157,6 +1160,10 @@ private slots:
     void schedulerKeepWarmNeverRunsDuringReadsAndStopsOnCancel();
     void schedulerKeepWarmIdleTimeoutAndDestruction();
     void schedulerKeepWarmPreRollAndUnsupportedBackends();
+    void keepWarmPolicyChangeWindowTailAndColdRefresh();
+    void keepWarmPolicyVisibilityPowerGateAndRegionalReads();
+    void schedulerKeepWarmDisarmStopsRunningSpins();
+    void schedulerKeepWarmChangeModeFollowsViewChanges();
     void schedulerCoalescesLatestOnly();
     void schedulerCancelRevokesWithoutReleasingInput();
     void schedulerDestructionIsBoundedWhileHeld();
@@ -7090,6 +7097,19 @@ void UltraClearTextTests::keepWarmSwitchParsesStrictlyAndDefaultsOff()
     QVERIFY(!ParseKeepWarm("0", {}).settings.Enabled());
     QCOMPARE(ParseKeepWarm("continuous", {}).settings.mode, KeepWarmMode::Continuous);
     QCOMPARE(ParseKeepWarm("preroll", {}).settings.mode, KeepWarmMode::PreRoll);
+    QCOMPARE(ParseKeepWarm("change", {}).settings.mode, KeepWarmMode::Change);
+    // Round 14 defaults: 10 ms spins topped up every 5 ms; a 1500 ms change
+    // window and a 400 ms tail.
+    QCOMPARE(ParseKeepWarm("change", {}).settings.busy, std::chrono::microseconds(10000));
+    QCOMPARE(ParseKeepWarm("change", {}).settings.period, std::chrono::milliseconds(5));
+    QCOMPARE(ParseKeepWarm("change", {}).settings.changeWindow, std::chrono::milliseconds(1500));
+    QCOMPARE(ParseKeepWarm("change", {}).settings.tail, std::chrono::milliseconds(400));
+    const auto changeShape = ParseKeepWarm("change", "4,8000,0,2500,900,250");
+    QVERIFY(changeShape.error.isEmpty());
+    QCOMPARE(changeShape.settings.changeWindow, std::chrono::milliseconds(900));
+    QCOMPARE(changeShape.settings.tail, std::chrono::milliseconds(250));
+    QCOMPARE(changeShape.settings.busy, std::chrono::microseconds(8000));
+    QVERIFY(ParseKeepWarm("continuous", "5,250000,0,2500").error.isEmpty());
     const auto shaped = ParseKeepWarm("preroll", "20,1500,250,3000");
     QVERIFY(shaped.error.isEmpty());
     QCOMPARE(shaped.settings.period, std::chrono::milliseconds(20));
@@ -7103,7 +7123,12 @@ void UltraClearTextTests::keepWarmSwitchParsesStrictlyAndDefaultsOff()
              {"1", {}}, {"on", {}}, {"Continuous", {}}, {"continuous", "20,1500,250"},
              {"continuous", "0,10,0,1000"}, {"continuous", "10,1000001,0,1000"}, {"continuous", "10,9,0,1000"},
              {"continuous", "10,100,2001,1000"}, {"continuous", "10,100,0,99"}, {"continuous", "10,100,0,10001"},
-             {"continuous", "10,-1,0,1000"}, {"continuous", "10, 100,0,1000"}, {"0", "10,100,0,1000"}}) {
+             {"continuous", "10,-1,0,1000"}, {"continuous", "10, 100,0,1000"}, {"0", "10,100,0,1000"},
+             // Round 14: a spin stays far below the GPU watchdog; change shapes
+             // have six fields with bounded window and tail.
+             {"continuous", "10,250001,0,1000"}, {"change", "10,100,0,1000,99,0"},
+             {"change", "10,100,0,1000,10001,0"}, {"change", "10,100,0,1000,500,5001"},
+             {"change", "10,100,0,1000,500"}, {"Change", {}}, {"warm", {}}}) {
         const auto parsed = ParseKeepWarm(mode, shape);
         QVERIFY2(!parsed.settings.Enabled(), qPrintable(mode + " " + shape));
         QVERIFY2(!parsed.error.isEmpty(), qPrintable(mode + " " + shape));
@@ -7368,6 +7393,414 @@ void UltraClearTextTests::schedulerKeepWarmPreRollAndUnsupportedBackends()
     probeOnly.SetKeepWarm(FastContinuous());
     probeOnly.ExpectNextRead(std::chrono::steady_clock::now() + std::chrono::milliseconds(350));
     QVERIFY(!probeOnly.KeepWarmArmed());
+}
+
+void UltraClearTextTests::keepWarmPolicyChangeWindowTailAndColdRefresh()
+{
+    using namespace std::chrono_literals;
+    const auto t0 = KeepWarmPolicy::Clock::now();
+    KeepWarmSettings settings;
+    settings.mode = KeepWarmMode::Change;
+    settings.period = 5ms;
+    settings.busy = 10000us;
+    settings.changeWindow = 1500ms;
+    settings.tail = 400ms;
+    KeepWarmPolicy policy(settings);
+    // A refresh announcement or a plain read never arms change mode.
+    policy.ExpectRead(t0 + 1500ms, t0);
+    policy.ReadSubmitted(t0);
+    QVERIFY(!policy.Armed());
+    QVERIFY(!policy.NextWarm(t0));
+    // A view change arms it at once, for its window.
+    policy.ViewChanged(t0);
+    QVERIFY(policy.Armed());
+    QVERIFY(policy.AwaitingChangeRead());
+    QVERIFY(policy.Due(t0));
+    QCOMPARE(*policy.ChangeUntil(), t0 + 1500ms);
+    // Nothing follows: it ends with the window.
+    QVERIFY(!policy.TimedOut(t0 + 1500ms));
+    QVERIFY(policy.TimedOut(t0 + 1501ms));
+    QVERIFY(!policy.NextWarm(t0 + 1501ms));
+    // A later change inside the window extends it (a pan that goes on).
+    policy.ViewChanged(t0 + 1000ms);
+    QCOMPARE(*policy.ChangeUntil(), t0 + 2500ms);
+    // The change's read after the settle: never warm while it runs, then the
+    // tail replaces the window.
+    policy.Warmed(t0 + 1200ms);
+    policy.ReadSubmitted(t0 + 1300ms);
+    QVERIFY(!policy.AwaitingChangeRead());
+    policy.ReadStarted();
+    QVERIFY(!policy.NextWarm(t0 + 1320ms));
+    QVERIFY(!policy.TimedOut(t0 + 3000ms)); // never times out while a read runs
+    policy.ReadFinished(t0 + 1340ms);
+    QCOMPARE(*policy.ChangeUntil(), t0 + 1740ms);
+    QVERIFY(policy.Due(t0 + 1340ms));
+    // A spin never outlasts the tail.
+    QCOMPARE(policy.Busy(t0 + 1735ms), std::chrono::microseconds(5000));
+    QCOMPARE(policy.Busy(t0 + 1500ms), std::chrono::microseconds(10000));
+    // A follow-up read inside the tail (words pending, a second pass) runs
+    // warm and earns its own tail; then it ends.
+    policy.ReadSubmitted(t0 + 1500ms);
+    policy.ReadStarted();
+    policy.ReadFinished(t0 + 1530ms);
+    QCOMPARE(*policy.ChangeUntil(), t0 + 1930ms);
+    QVERIFY(policy.TimedOut(t0 + 1931ms));
+    policy.Disarm(); // what the worker does on time-out
+    // The next periodic refresh of the unchanged view stays cold.
+    policy.ExpectRead(t0 + 3000ms, t0 + 1531ms);
+    policy.ReadSubmitted(t0 + 3000ms);
+    policy.ReadStarted();
+    policy.ReadFinished(t0 + 3100ms);
+    QVERIFY(!policy.Armed());
+    QVERIFY(!policy.NextWarm(t0 + 3100ms));
+    // A change while a read of the old view runs keeps its own window when
+    // that read finishes.
+    policy.ReadStarted();
+    policy.ViewChanged(t0 + 4000ms);
+    policy.ReadFinished(t0 + 4050ms);
+    QVERIFY(policy.AwaitingChangeRead());
+    QCOMPARE(*policy.ChangeUntil(), t0 + 5500ms);
+    // Continuous and pre-roll keep round 13's arming: a view change alone
+    // arms neither.
+    settings.mode = KeepWarmMode::Continuous;
+    settings.idleTimeout = 2500ms;
+    KeepWarmPolicy continuous(settings);
+    continuous.ViewChanged(t0);
+    QVERIFY(!continuous.Armed());
+    settings.mode = KeepWarmMode::PreRoll;
+    KeepWarmPolicy preroll(settings);
+    preroll.ViewChanged(t0);
+    QVERIFY(!preroll.Armed());
+}
+
+void UltraClearTextTests::keepWarmPolicyVisibilityPowerGateAndRegionalReads()
+{
+    using namespace std::chrono_literals;
+    const auto t0 = KeepWarmPolicy::Clock::now();
+    KeepWarmSettings settings;
+    settings.mode = KeepWarmMode::Change;
+    settings.period = 5ms;
+    settings.busy = 10000us;
+    settings.changeWindow = 1500ms;
+    settings.tail = 400ms;
+    KeepWarmPolicy policy(settings);
+    // Not visible: hiding disarms, nothing arms while hidden, and showing
+    // again arms nothing until the next change.
+    policy.ViewChanged(t0);
+    QVERIFY(policy.Due(t0));
+    policy.SetVisible(false);
+    QVERIFY(!policy.Armed());
+    QVERIFY(!policy.NextWarm(t0));
+    policy.ViewChanged(t0 + 10ms);
+    QVERIFY(!policy.Armed());
+    policy.SetVisible(true);
+    QVERIFY(!policy.Armed());
+    policy.ViewChanged(t0 + 20ms);
+    QVERIFY(policy.Due(t0 + 20ms));
+    // The power gate (a later user setting) is consulted before every launch.
+    bool allowed = false;
+    policy.SetPowerGate([&] { return allowed; });
+    QVERIFY(policy.Armed());
+    QVERIFY(!policy.NextWarm(t0 + 20ms));
+    allowed = true;
+    QVERIFY(policy.Due(t0 + 20ms));
+    // Reconfiguring keeps visibility and the gate.
+    policy.SetVisible(false);
+    policy.Configure(settings);
+    QVERIFY(!policy.Visible());
+    policy.SetVisible(true);
+    allowed = false;
+    policy.ViewChanged(t0 + 30ms);
+    QVERIFY(!policy.NextWarm(t0 + 30ms));
+    policy.SetPowerGate({}); // empty: allowed
+    QVERIFY(policy.Due(t0 + 30ms));
+    // A regional pass is not the read the change waits for.
+    policy.ReadSubmitted(t0 + 100ms, false);
+    QVERIFY(policy.AwaitingChangeRead());
+    policy.ReadSubmitted(t0 + 200ms, true);
+    QVERIFY(!policy.AwaitingChangeRead());
+    // Pre-roll (round 13 review): a regional submission inside the lead window
+    // neither clears the announced full read nor ends the pre-roll.
+    settings.mode = KeepWarmMode::PreRoll;
+    settings.lead = 350ms;
+    KeepWarmPolicy preroll(settings);
+    preroll.ExpectRead(t0 + 1000ms, t0);
+    preroll.ReadSubmitted(t0 + 800ms, false);
+    QVERIFY(preroll.Expected().has_value());
+    QVERIFY(preroll.Due(t0 + 800ms));
+    preroll.ReadSubmitted(t0 + 900ms, true);
+    QVERIFY(!preroll.Expected());
+    QVERIFY(!preroll.NextWarm(t0 + 900ms));
+    // Announcements are fenced while hidden.
+    preroll.SetVisible(false);
+    preroll.ExpectRead(t0 + 2000ms, t0 + 1000ms);
+    QVERIFY(!preroll.Armed());
+    QVERIFY(!preroll.Expected());
+}
+
+namespace {
+// Models keep-warm spins that RUN on a GPU stream (round 14 review): each
+// launch runs for its busy time after the one before it, at most two are
+// outstanding (the running one and one queued), and an interrupt ends both at
+// once, as the TensorRT backend's stop flag does. A launch can be held inside
+// KeepWarm, which the scheduler calls outside its mutex.
+class SpinningRecognizer final : public Recognizer {
+public:
+    using Clock = std::chrono::steady_clock;
+    struct Shared {
+        std::mutex mutex;
+        std::condition_variable cv;
+        std::deque<Clock::time_point> ends; // outstanding spins, in stream order
+        bool holdLaunch{}, launchHeld{};
+        int launches{}, interrupts{}, heldReturns{};
+        Clock::time_point lastLaunchReturned{}, lastInterrupt{};
+        bool Running(Clock::time_point now)
+        {
+            while (!ends.empty() && ends.front() <= now) ends.pop_front();
+            return !ends.empty();
+        }
+    };
+    explicit SpinningRecognizer(std::shared_ptr<Shared> shared) : shared_(std::move(shared)) {}
+    BackendStatus Initialize() override { BackendStatus s; s.state = BackendState::kReady; return s; }
+    RecognitionOutput Recognize(const QImage&, const std::atomic<bool>& cancelled) override
+    {
+        RecognitionOutput out;
+        out.ok = !cancelled.load();
+        out.cancelled = cancelled.load();
+        return out;
+    }
+    KeepWarmResult KeepWarm(std::chrono::microseconds busy) override
+    {
+        std::unique_lock lock(shared_->mutex);
+        bool held = false;
+        if (shared_->holdLaunch) {
+            shared_->launchHeld = held = true;
+            shared_->cv.notify_all();
+            shared_->cv.wait(lock, [&] { return !shared_->holdLaunch; });
+            shared_->launchHeld = false;
+        }
+        const auto now = Clock::now();
+        shared_->Running(now);
+        shared_->heldReturns += held;
+        if (shared_->ends.size() >= 2) return KeepWarmResult::Pending;
+        const auto start = shared_->ends.empty() ? now : shared_->ends.back();
+        shared_->ends.push_back(start + busy);
+        ++shared_->launches;
+        shared_->lastLaunchReturned = Clock::now();
+        return KeepWarmResult::Launched;
+    }
+    void InterruptKeepWarm() noexcept override
+    {
+        std::lock_guard lock(shared_->mutex);
+        shared_->ends.clear();
+        ++shared_->interrupts;
+        shared_->lastInterrupt = Clock::now();
+    }
+
+private:
+    std::shared_ptr<Shared> shared_;
+};
+
+bool SpinRunning(SpinningRecognizer::Shared& shared)
+{
+    std::lock_guard lock(shared.mutex);
+    return shared.Running(SpinningRecognizer::Clock::now());
+}
+
+// Arms with `arm`, waits for a running spin, applies `disarm` and returns how
+// long the spins kept running after it in ms (-1: no spin ran, -2: still
+// running after a second). Spins are 200 ms long, so only the stop request
+// can end them within a few milliseconds.
+double SpinsStopAfter(SpinningRecognizer::Shared& shared, const std::function<void()>& arm,
+                      const std::function<void()>& disarm)
+{
+    arm();
+    QElapsedTimer waited;
+    waited.start();
+    while (!SpinRunning(shared) && waited.elapsed() < 1000) QTest::qWait(1);
+    if (!SpinRunning(shared)) return -1;
+    QTest::qWait(5); // the second spin is queued by now
+    QElapsedTimer timer;
+    timer.start();
+    disarm();
+    while (SpinRunning(shared) && timer.elapsed() < 1000) std::this_thread::yield(); // a sleep would round to the timer tick
+    return SpinRunning(shared) ? -2 : timer.nsecsElapsed() / 1e6;
+}
+} // namespace
+
+void UltraClearTextTests::schedulerKeepWarmDisarmStopsRunningSpins()
+{
+    using namespace std::chrono_literals;
+    auto shared = std::make_shared<SpinningRecognizer::Shared>();
+    std::atomic<int> completions{0};
+    RecognitionScheduler scheduler(std::make_unique<SpinningRecognizer>(shared),
+                                   [&](RecognitionResult) { ++completions; }, {});
+    QTRY_COMPARE(scheduler.Status().state, BackendState::kReady);
+    auto settings = FastContinuous(5000);
+    settings.busy = 200000us; // long spins: only an interrupt ends them early
+    scheduler.SetKeepWarm(settings);
+    const auto arm = [&] { scheduler.ExpectNextRead(std::chrono::steady_clock::now() + 350ms); };
+    // Every disarm path ends the running and the queued spin, not only the
+    // next launch, and none of them blocks its caller.
+    const std::vector<std::pair<const char*, std::function<void()>>> paths{
+        {"Cancel", [&] { scheduler.Cancel(); }},
+        {"StopKeepWarm", [&] { scheduler.StopKeepWarm(); }},
+        {"SetKeepWarm", [&] { scheduler.SetKeepWarm(settings); }},
+        {"hidden", [&] { scheduler.SetKeepWarmVisible(false); }},
+        {"power gate", [&] { scheduler.SetKeepWarmPowerGate([] { return false; }); }}};
+    double worstMs = 0;
+    for (const auto& [name, disarm] : paths) {
+        const double ms = SpinsStopAfter(*shared, arm, disarm);
+        QVERIFY2(ms >= 0, name);
+        QVERIFY2(ms < 100, qPrintable(QString("%1: spins ran %2 ms after disarm").arg(name).arg(ms)));
+        worstMs = std::max(worstMs, ms);
+        scheduler.SetKeepWarmVisible(true);
+        scheduler.SetKeepWarmPowerGate({});
+        scheduler.StopKeepWarm();
+        QTRY_VERIFY(!SpinRunning(*shared));
+    }
+    // An interrupt (a reallocation elsewhere) ends the running spins but only
+    // pauses: still armed, warming resumes at the next period.
+    arm();
+    QTRY_VERIFY(SpinRunning(*shared));
+    const auto [launchesBefore, interruptsBefore] = [&] {
+        std::lock_guard lock(shared->mutex);
+        return std::pair{shared->launches, shared->interrupts};
+    }();
+    scheduler.InterruptKeepWarm();
+    QVERIFY(scheduler.KeepWarmArmed());
+    QTRY_VERIFY([&] { std::lock_guard lock(shared->mutex); return shared->interrupts > interruptsBefore; }());
+    QTRY_VERIFY([&] { std::lock_guard lock(shared->mutex); return shared->launches > launchesBefore; }());
+    QTRY_VERIFY(SpinRunning(*shared));
+    scheduler.StopKeepWarm();
+    QTRY_VERIFY(!SpinRunning(*shared));
+
+    // A launch that is outside the scheduler's mutex when Cancel() arrives is
+    // interrupted as soon as it returns.
+    const int heldBefore = [&] {
+        std::lock_guard lock(shared->mutex);
+        shared->holdLaunch = true;
+        return shared->heldReturns;
+    }();
+    arm();
+    QTRY_VERIFY([&] { std::lock_guard lock(shared->mutex); return shared->launchHeld; }());
+    QElapsedTimer cancelling;
+    cancelling.start();
+    scheduler.Cancel();
+    QVERIFY2(cancelling.elapsed() < 50, "Cancel must not wait for a launch in progress.");
+    {
+        std::lock_guard lock(shared->mutex);
+        shared->holdLaunch = false;
+    }
+    shared->cv.notify_all();
+    // The held launch lands after Cancel(); the worker interrupts it next.
+    QTRY_VERIFY([&] { std::lock_guard lock(shared->mutex); return shared->heldReturns > heldBefore; }());
+    QTRY_VERIFY(!SpinRunning(*shared));
+    {
+        std::lock_guard lock(shared->mutex);
+        QVERIFY(shared->lastInterrupt >= shared->lastLaunchReturned);
+    }
+    const int afterCancel = [&] { std::lock_guard lock(shared->mutex); return shared->launches; }();
+    QTest::qWait(60);
+    QCOMPARE([&] { std::lock_guard lock(shared->mutex); return shared->launches; }(), afterCancel);
+    QVERIFY(!SpinRunning(*shared));
+
+    // The idle time-out ends running spins too, long before their bound.
+    auto expiring = settings;
+    expiring.idleTimeout = 150ms;
+    scheduler.SetKeepWarm(expiring);
+    QElapsedTimer armed;
+    armed.start();
+    arm();
+    QTRY_VERIFY(SpinRunning(*shared));
+    QTRY_VERIFY_WITH_TIMEOUT(!SpinRunning(*shared), 2000);
+    QVERIFY2(armed.elapsed() < 300, "Spins outlived the idle time-out (their own bound is 200 ms each).");
+    QVERIFY(!scheduler.KeepWarmArmed());
+
+    const auto stats = scheduler.Stats();
+    QVERIFY(stats.keepWarmStops >= paths.size());
+    QVERIFY(stats.keepWarmStopMaxUs > 0 && stats.keepWarmStopMaxUs < 100000);
+    qInfo().noquote() << "keep-warm disarm: slowest stop" << worstMs << "ms; worker stop latency max"
+                      << stats.keepWarmStopMaxUs << "us";
+
+    // Destruction ends them as well.
+    auto other = std::make_shared<SpinningRecognizer::Shared>();
+    auto destroyed = std::make_unique<RecognitionScheduler>(std::make_unique<SpinningRecognizer>(other),
+                                                            RecognitionScheduler::Completion{},
+                                                            RecognitionScheduler::StatusChanged{});
+    QTRY_COMPARE(destroyed->Status().state, BackendState::kReady);
+    destroyed->SetKeepWarm(settings);
+    const double destroyMs = SpinsStopAfter(*other, [&] {
+        destroyed->ExpectNextRead(std::chrono::steady_clock::now() + 350ms);
+    }, [&] { destroyed.reset(); });
+    QVERIFY(destroyMs >= 0 && destroyMs < 100);
+}
+
+void UltraClearTextTests::schedulerKeepWarmChangeModeFollowsViewChanges()
+{
+    using namespace std::chrono_literals;
+    auto shared = std::make_shared<WarmingRecognizer::Shared>();
+    std::atomic<int> completions{0};
+    std::atomic<bool> allowed{true};
+    RecognitionScheduler scheduler(std::make_unique<WarmingRecognizer>(shared),
+                                   [&](RecognitionResult) { ++completions; }, {});
+    const auto releaseGate = qScopeGuard([&] { scheduler.SetKeepWarmPowerGate({}); });
+    QTRY_COMPARE(scheduler.Status().state, BackendState::kReady);
+    auto settings = FastContinuous();
+    settings.mode = KeepWarmMode::Change;
+    settings.changeWindow = 300ms;
+    settings.tail = 100ms;
+    scheduler.SetKeepWarm(settings);
+    // Refresh announcements and plain reads never arm it.
+    scheduler.ExpectNextRead(std::chrono::steady_clock::now() + 1500ms);
+    QVERIFY(!scheduler.KeepWarmArmed());
+    QVERIFY(scheduler.Submit({}, SolidImage(1)));
+    QTRY_COMPARE(completions.load(), 1);
+    QVERIFY(StaysAt(shared->launches, 60));
+    QCOMPARE(shared->launches.load(), 0);
+
+    // A view change arms it at once; with no read it ends with its window.
+    QElapsedTimer timer;
+    timer.start();
+    scheduler.NoteViewChange();
+    QVERIFY(scheduler.KeepWarmArmed());
+    QTRY_VERIFY(shared->launches.load() > 3);
+    QTRY_VERIFY_WITH_TIMEOUT(!scheduler.KeepWarmArmed(), 2000);
+    QVERIFY(timer.elapsed() >= 290);
+    QVERIFY(StaysAt(shared->launches, 60));
+    QCOMPARE(scheduler.Stats().keepWarmChanges, std::uint64_t{1});
+
+    // Change, settle, read: warm before the read, never during it, and for the
+    // tail after it (shorter than the window it replaces).
+    scheduler.NoteViewChange();
+    QTest::qWait(50);
+    QVERIFY(scheduler.KeepWarmArmed());
+    timer.restart();
+    QVERIFY(scheduler.Submit({}, SolidImage(2)));
+    QTRY_COMPARE(completions.load(), 2);
+    QTRY_VERIFY_WITH_TIMEOUT(!scheduler.KeepWarmArmed(), 2000);
+    QVERIFY2(timer.elapsed() < 280, "The tail after the change's read should end warming before the window.");
+    QCOMPARE(shared->launchesDuringRead.load(), 0);
+
+    // Hidden: a change arms nothing; shown again: still nothing until the next change.
+    scheduler.SetKeepWarmVisible(false);
+    scheduler.NoteViewChange();
+    QVERIFY(!scheduler.KeepWarmArmed());
+    QVERIFY(StaysAt(shared->launches, 60));
+    scheduler.SetKeepWarmVisible(true);
+    QVERIFY(!scheduler.KeepWarmArmed());
+    QVERIFY(StaysAt(shared->launches, 40));
+
+    // The power gate: armed but no launch while it refuses.
+    allowed = false;
+    scheduler.SetKeepWarmPowerGate([&] { return allowed.load(); });
+    scheduler.NoteViewChange();
+    QVERIFY(scheduler.KeepWarmArmed());
+    QVERIFY(StaysAt(shared->launches, 60));
+    allowed = true;
+    scheduler.NoteViewChange();
+    const int gated = shared->launches.load();
+    QTRY_VERIFY(shared->launches.load() > gated);
 }
 
 int main(int argc, char** argv)

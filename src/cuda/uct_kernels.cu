@@ -1023,7 +1023,9 @@ __global__ void sampleClock(ClockSample *out, unsigned long long durationNs)
     if (threadIdx.x == 0)
         *out = ClockSample{static_cast<unsigned long long>(end - cycles), now - start, start};
 }
-constexpr unsigned long long kMaximumSpinNs = 2000000000ull;
+// Far below the Windows GPU watchdog (TDR, two seconds by default): no single
+// diagnostic or keep-warm launch may come near it (round 14).
+constexpr unsigned long long kMaximumSpinNs = 250000000ull;
 } // namespace
 void KeepWarm(const volatile int *stop, unsigned long long durationNs, int blocks, cudaStream_t s, unsigned sleepNs)
 {

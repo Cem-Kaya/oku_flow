@@ -170,13 +170,15 @@ void DecodeBatch(const float *probabilities, int samples, int steps, int classes
 // `durationNs` of GPU wall time (%globaltimer) has passed or *stop is non-zero.
 // `stop` is host-mapped memory the owner sets to end the kernel early (it may
 // be null). Nothing is written. One block is the keep-warm load; more blocks
-// exist only for the characterization diagnostic. At most two seconds. With
+// exist only for the characterization diagnostic. At most 250 ms per launch,
+// far below the Windows GPU watchdog (round 14); longer loads queue several
+// launches. With
 // `sleepNs` (at most 1 ms) the warp stays resident but naps that long between
 // flag reads (sm_70 and newer; older devices spin).
 void KeepWarm(const volatile int* stop, unsigned long long durationNs, int blocks, cudaStream_t stream,
               unsigned sleepNs = 0);
-// Diagnostic clock meter: one warp spins for about `durationNs` (at most two
-// seconds) and records the SM cycles and GPU wall nanoseconds it saw;
+// Diagnostic clock meter: one warp spins for about `durationNs` (at most
+// 250 ms) and records the SM cycles and GPU wall nanoseconds it saw;
 // MHz = cycles * 1000 / nanoseconds.
 struct ClockSample { unsigned long long cycles, nanoseconds, startNs; };
 void SampleClock(ClockSample* out, unsigned long long durationNs, cudaStream_t stream);

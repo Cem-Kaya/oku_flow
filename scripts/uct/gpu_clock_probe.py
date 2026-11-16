@@ -1,16 +1,20 @@
-"""GPU power-management characterization for paced OCR reads (round 13).
+"""GPU power-management characterization for paced OCR reads (rounds 13 and 14).
 
 Runs the opt-in `optionalGpuClockProbe` slot of `uct_paddle_tests` once, with
 read-only `nvidia-smi` sampling, and attaches each phase's samples (power
 state, clocks, utilization, power draw) to the phase the slot measured with its
 in-kernel clock meter. Phases: `idle` (nothing runs), `stepdown` (clock after
 an idle gap that follows a busy period), `stepup` (clock under continuous load
-from a low state), `duty` (clock under periodic load of a given busy fraction)
-and `frames` (emulated per-frame video work). No GPU or system setting is
+from a low state), `duty` (clock under periodic load of a given busy fraction),
+`frames` (emulated per-frame video work), and from round 14 `climb` (which load
+raises the clock fastest from the lowest state), `stall` (how long cudaMalloc,
+cudaFree and pinned allocations on another thread wait while keep-warm spins
+run) and `interrupt` (how fast a raised stop flag ends a running and a queued
+spin). No GPU or system setting is
 changed. Evidence stays outside the repository.
 
     python scripts/uct/gpu_clock_probe.py --exe <uct_paddle_tests.exe> --out <new dir> \\
-        --qt-bin <dir> --cuda-bin <dir> [--plan idle,stepdown,stepup,duty,frames] [--lease <gpu_serial.py>]
+        --qt-bin <dir> --cuda-bin <dir> [--plan idle,stepdown,stepup,duty,frames,climb,stall,interrupt] [--lease <gpu_serial.py>]
 """
 import argparse
 import json
@@ -45,7 +49,20 @@ def describe(phase):
     if name == "frames":
         return (f"{phase['fps']:g} fps, {phase['passes']} passes, from {phase['from']}, "
                 f"median frame GPU {phase['medianFrameGpuMs']:.3f} ms")
+    if name == "climb":
+        return f"{phase['load']} from idle {phase['idleMs']} ms (repeat {phase['repeat']})"
+    if name == "stall":
+        return f"spins of {phase['busyMs']:g} ms ({phase['launches']} launches)" if phase["busyMs"] else "no spins (control)"
+    if name == "interrupt":
+        return "napping warp" if phase["sleepNs"] else "spinning warp"
     return name
+
+
+def spread(values):
+    values = sorted(v for v in values if v >= 0)
+    if not values:
+        return "-"
+    return f"median {statistics.median(values):.3g}, max {values[-1]:.3g}"
 
 
 def first_at_or_above(trajectory, mhz):
@@ -63,7 +80,12 @@ def markdown(report):
         smi = phase.get("samples")
         if phase["name"] == "stepdown":
             meter = f"{phase['firstMHz']:.0f} first, {phase['tenthMHz']:.0f} tenth"
-        elif phase["name"] in ("stepup", "duty", "frames"):
+        elif phase["name"] == "stall":
+            meter = "; ".join(f"{key[4:-2]} {spread(phase[key])} ms" for key in
+                              ("cudaMallocMs", "cudaFreeMs", "cudaMallocHostMs", "cudaFreeHostMs"))
+        elif phase["name"] == "interrupt":
+            meter = f"stop to both spins done: {spread(phase['stopUs'])} us"
+        elif phase["name"] in ("stepup", "duty", "frames", "climb"):
             values = [value for _, value in phase["trajectory"]]
             high = 0.95 * max(values) if values else 0
             reach = first_at_or_above(phase["trajectory"], 2400) if values else None
@@ -87,7 +109,7 @@ def main():
     parser.add_argument("--qt-bin", required=True, type=Path)
     parser.add_argument("--cuda-bin", required=True, type=Path)
     parser.add_argument("--plan", default="idle,stepdown,stepup,duty,frames",
-                        help="comma list of idle, stepdown, stepup, duty, refine, frames")
+                        help="comma list of idle, stepdown, stepup, duty, refine, frames, climb, stall, interrupt")
     parser.add_argument("--sample-ms", type=int, default=50, help="nvidia-smi interval, 50 to 1000 ms")
     parser.add_argument("--lease", type=Path, help="shared GPU lease wrapper; exit 75 is retried")
     arguments = parser.parse_args()

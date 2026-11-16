@@ -1328,6 +1328,14 @@ class Network
             ++replayDeferrals_;
             return Captured::Deferred;
         }
+        // "Never behind queued work" (round 3) is about inference: no earlier
+        // network call of the read may still be queued. A keep-warm spin may
+        // still be ending when a capture begins (the worker interrupts spins
+        // before every read; one ends within a 10 us nap, a queued one exits
+        // at once). That is safe: a spin reads only the host-mapped stop flag
+        // and touches no tensor, arena or binding memory, a thread-local
+        // capture records only work enqueued after it begins, and the
+        // captured graph launches behind the spin in stream order.
         const auto began = cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal);
         if (began != cudaSuccess) return refuse(began);
         // Test builds only: an illegal call inside the capture, which CUDA
@@ -2091,6 +2099,14 @@ class TensorRtRecognizer final : public Recognizer
         if (!state_ || preparation_) return KeepWarmResult::NotReady;
         auto& state = *state_;
         if (cudaSetDevice(state.device) != cudaSuccess) return KeepWarmResult::NotReady;
+        // Graph replay (round 10) creates execution contexts on its own thread
+        // in idle gaps, which is when spins run. TensorRT's allocations there
+        // may wait for all queued GPU work of the context, so no spin starts
+        // while a creation runs, and a creation stops any running spin first
+        // (it raises the flag below under this mutex). Deferred counts as
+        // Pending.
+        std::lock_guard creation(state.replayWork.mutex);
+        if (state.replayWork.creating) return KeepWarmResult::Pending;
         if (!state.warmStopDevice) {
             void* host{};
             if (cudaHostAlloc(&host, sizeof(LONG), cudaHostAllocMapped) != cudaSuccess) {
@@ -3143,6 +3159,11 @@ class TensorRtRecognizer final : public Recognizer
                                     std::unique_lock lock(work.mutex);
                                     if (!work.Turn(lock, needed, cancelling, since)) break;
                                     work.creating = true;
+                                    // Keep-warm (round 14): end a running spin and
+                                    // skip a queued one before the creation's
+                                    // allocations, which may wait for all queued
+                                    // work; no spin starts until it is done.
+                                    if (state->warmStopHost) InterlockedExchange(state->warmStopHost, 1);
                                 }
                                 auto& first = recognizerNext ? *state->recognizer : *state->detector;
                                 auto& second = recognizerNext ? *state->detector : *state->recognizer;

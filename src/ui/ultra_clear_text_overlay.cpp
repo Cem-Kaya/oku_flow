@@ -448,6 +448,10 @@ void UltraClearTextOverlay::UpdateVisibility()
     QWidget* window = renderTarget_ ? renderTarget_->window() : nullptr;
     const bool targetShown = renderTarget_ && renderTarget_->isVisible() && window &&
                              !(window->windowState() & Qt::WindowMinimized);
+    if (targetShown != targetShown_) {
+        targetShown_ = targetShown;
+        emit targetShownChanged(targetShown);
+    }
     // The tool window is a sibling of native dialogs, not part of their
     // client area. A late OCR completion must not show it above a modal file
     // picker or another application. Keep the words for a normal resume.

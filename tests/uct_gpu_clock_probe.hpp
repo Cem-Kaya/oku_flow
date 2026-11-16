@@ -193,8 +193,14 @@ inline void ClockProbe()
             return 0.0;
         return double(host->cycles) * 1000.0 / double(host->nanoseconds);
     };
+    // Long loads queue launches of at most 100 ms each, back to back: no
+    // kernel comes near the Windows GPU watchdog (round 14).
+    const auto spin = [&](double ms, int blocks, cudaStream_t stream, unsigned sleepNs = 0) {
+        for (double left = ms; left > 0; left -= 100)
+            gpu::KeepWarm(nullptr, static_cast<unsigned long long>(std::min(left, 100.0) * 1e6), blocks, stream, sleepNs);
+    };
     const auto hold = [&](double ms) {
-        gpu::KeepWarm(nullptr, static_cast<unsigned long long>(ms * 1e6), fullBlocks, loadStream.value);
+        spin(ms, fullBlocks, loadStream.value);
         cudaStreamSynchronize(loadStream.value);
     };
     QJsonArray phases;
@@ -262,7 +268,7 @@ inline void ClockProbe()
                     hold(300);
                     PreciseSleep(idle);
                     const auto start = now();
-                    if (full) gpu::KeepWarm(nullptr, 1500000000ull, fullBlocks, loadStream.value);
+                    if (full) spin(1500, fullBlocks, loadStream.value);
                     QJsonArray trajectory;
                     const auto begin = ProbeClock::now();
                     double kept = -1e9;
@@ -347,6 +353,139 @@ inline void ClockProbe()
                 data["trajectory"] = trajectory;
                 phase("frames", data, start);
             }
+    }
+    if (plan.contains("climb")) {
+        // Round 14: what raises the clocks fastest from the lowest state. Each
+        // load starts after 3.5 s of idle and runs 800 ms; the meter runs on
+        // its own stream every 5 ms. Loads: one napping warp (the keep-warm
+        // load), one spinning warp, every SM spinning, every SM spinning plus
+        // back-to-back 64 MiB device copies, and copies alone.
+        void* copyA{};
+        void* copyB{};
+        constexpr std::size_t kCopyBytes = 64ull << 20;
+        QVERIFY(cudaMalloc(&copyA, kCopyBytes) == cudaSuccess && cudaMalloc(&copyB, kCopyBytes) == cudaSuccess);
+        const auto releaseCopies = qScopeGuard([&] {
+            cudaDeviceSynchronize();
+            cudaFree(copyA);
+            cudaFree(copyB);
+        });
+        uct_resident_test::DeviceStream copyStream;
+        QVERIFY(copyStream.value);
+        struct Load { const char* name; int blocks; unsigned sleepNs; bool copies; };
+        const Load loads[] = {{"one napping warp", 1, 10000, false}, {"one spinning warp", 1, 0, false},
+                              {"all SMs", fullBlocks, 0, false}, {"all SMs + copies", fullBlocks, 0, true},
+                              {"copies only", 0, 0, true}};
+        for (int repeat = 0; repeat < 3; ++repeat)
+            for (const auto& load : loads) {
+                hold(300);
+                PreciseSleep(3500);
+                const auto start = now();
+                if (load.blocks) spin(800, load.blocks, loadStream.value, load.sleepNs);
+                int copies = 0;
+                if (load.copies) // queued up front; more than the 800 ms window at full clock
+                    for (; copies < 400; ++copies)
+                        if (cudaMemcpyAsync(copies % 2 ? copyA : copyB, copies % 2 ? copyB : copyA, kCopyBytes,
+                                            cudaMemcpyDeviceToDevice, copyStream.value) != cudaSuccess) break;
+                QJsonArray trajectory;
+                const auto begin = ProbeClock::now();
+                double kept = -1e9;
+                for (;;) {
+                    const double at = std::chrono::duration<double, std::milli>(ProbeClock::now() - begin).count();
+                    if (at > 800) break;
+                    const double mhz = meter(meterStream.value);
+                    if (at - kept >= 5) {
+                        trajectory.push_back(QJsonArray{at, mhz});
+                        kept = at;
+                    }
+                }
+                cudaStreamSynchronize(loadStream.value);
+                cudaStreamSynchronize(copyStream.value);
+                phase("climb", {{"load", load.name}, {"repeat", repeat}, {"idleMs", 3500}, {"copies", copies},
+                                {"trajectory", trajectory}}, start);
+            }
+    }
+    if (plan.contains("stall")) {
+        // Round 14: do keep-warm spins hold up context-wide CUDA calls made by
+        // another thread (the video path's buffer reallocation)? A spinner
+        // thread keeps one napping warp running plus one queued, as the
+        // worker does, with spins of `busyMs`; this thread times cudaMalloc,
+        // cudaFree, cudaMallocHost and cudaFreeHost meanwhile. busyMs 0 is the
+        // control without spins.
+        for (const double busyMs : {0.0, 2.0, 5.0, 10.0, 25.0, 50.0}) {
+            hold(300);
+            std::atomic<bool> spinning{busyMs > 0};
+            std::atomic<int> launches{0};
+            std::thread spinner([&] {
+                cudaSetDevice(0);
+                cudaEvent_t done[2]{};
+                cudaEventCreateWithFlags(&done[0], cudaEventDisableTiming);
+                cudaEventCreateWithFlags(&done[1], cudaEventDisableTiming);
+                int next = 0;
+                while (spinning.load()) {
+                    if (cudaEventQuery(done[next]) == cudaSuccess) {
+                        gpu::KeepWarm(nullptr, static_cast<unsigned long long>(busyMs * 1e6), 1, loadStream.value, 10000);
+                        cudaEventRecord(done[next], loadStream.value);
+                        next ^= 1;
+                        ++launches;
+                    }
+                    PreciseSleep(std::max(1.0, busyMs / 2));
+                }
+                cudaStreamSynchronize(loadStream.value);
+                cudaEventDestroy(done[0]);
+                cudaEventDestroy(done[1]);
+            });
+            PreciseSleep(300);
+            const auto start = now();
+            QJsonArray freeMs, mallocMs, hostAllocMs, hostFreeMs;
+            const auto timed = [](auto&& call) {
+                const auto t0 = ProbeClock::now();
+                const bool ok = call() == cudaSuccess;
+                const double ms = std::chrono::duration<double, std::milli>(ProbeClock::now() - t0).count();
+                return ok ? ms : -1.0;
+            };
+            for (int sample = 0; sample < 25; ++sample) {
+                void* buffer{};
+                void* host{};
+                mallocMs.push_back(timed([&] { return cudaMalloc(&buffer, 4ull << 20); }));
+                freeMs.push_back(timed([&] { return cudaFree(buffer); }));
+                hostAllocMs.push_back(timed([&] { return cudaMallocHost(&host, 8ull << 20); }));
+                hostFreeMs.push_back(timed([&] { return cudaFreeHost(host); }));
+                PreciseSleep(37 + (sample * 13) % 41); // land at varied spin phases
+            }
+            spinning = false;
+            spinner.join();
+            phase("stall", {{"busyMs", busyMs}, {"launches", launches.load()}, {"cudaMallocMs", mallocMs},
+                            {"cudaFreeMs", freeMs}, {"cudaMallocHostMs", hostAllocMs}, {"cudaFreeHostMs", hostFreeMs}},
+                  start);
+        }
+    }
+    if (plan.contains("interrupt")) {
+        // Round 14: how fast a raised stop flag ends a running spin and the
+        // one queued behind it, as the scheduler's stop request does.
+        LONG* flagHost{};
+        int* flagDevice{};
+        QVERIFY(cudaHostAlloc(reinterpret_cast<void**>(&flagHost), sizeof(LONG), cudaHostAllocMapped) == cudaSuccess);
+        QVERIFY(cudaHostGetDevicePointer(reinterpret_cast<void**>(&flagDevice), flagHost, 0) == cudaSuccess);
+        cudaEvent_t done{};
+        QVERIFY(cudaEventCreateWithFlags(&done, cudaEventDisableTiming) == cudaSuccess);
+        for (const unsigned sleepNs : {10000u, 0u}) {
+            QJsonArray stopUs;
+            const auto start = now();
+            for (int sample = 0; sample < 40; ++sample) {
+                InterlockedExchange(flagHost, 0);
+                gpu::KeepWarm(flagDevice, 50000000ull, 1, loadStream.value, sleepNs);
+                gpu::KeepWarm(flagDevice, 50000000ull, 1, loadStream.value, sleepNs);
+                cudaEventRecord(done, loadStream.value);
+                PreciseSleep(5 + (sample * 7) % 30);
+                const auto raised = ProbeClock::now();
+                InterlockedExchange(flagHost, 1);
+                while (cudaEventQuery(done) == cudaErrorNotReady) {}
+                stopUs.push_back(std::chrono::duration<double, std::micro>(ProbeClock::now() - raised).count());
+            }
+            phase("interrupt", {{"sleepNs", double(sleepNs)}, {"stopUs", stopUs}}, start);
+        }
+        cudaEventDestroy(done);
+        cudaFreeHost(flagHost);
     }
     const QJsonObject report{{"schema", 1}, {"gpu", QString::fromLatin1(properties.name)},
         {"multiprocessors", properties.multiProcessorCount}, {"plan", plan.join(',')},

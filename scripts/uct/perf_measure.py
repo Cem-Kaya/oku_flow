@@ -21,6 +21,14 @@ management develops over seconds; the median of the reads from
 utilization and power draw sampled by `nvidia-smi` (read-only queries) while
 each process runs.
 
+Round 14: `--change-each` reports a view change after every paced read (a
+playing video whose text keeps changing). `--session R,C,S,D` replaces the
+passes with the controller's timeline on a live view for D ms per scene: a
+view change every C ms (its read S ms later) and a refresh read R ms after the
+previous read (0 turns either off); each read records its kind, whether
+keep-warm was armed when it was submitted, and with sampling each scene gets
+the GPU state averaged over its whole session (`sessionSamples`).
+
 Engines are never prepared: point --localappdata at a cache that already
 holds the plans. Evidence stays outside the repository.
 
@@ -167,6 +175,11 @@ def attach_samples(report, samples):
         report["tailSamples"] = {
             "beforeTimeout": sample_summary([s for s in samples if end < s["unixMs"] <= split]),
             "afterTimeout": sample_summary([s for s in samples if split < s["unixMs"] <= tail["endUnixMs"]])}
+    for scene in report["scenes"]:
+        session = scene.get("session") or {}
+        if session.get("startUnixMs"):
+            scene["sessionSamples"] = sample_summary(
+                [s for s in samples if session["startUnixMs"] <= s["unixMs"] <= session["endUnixMs"]])
     for read in reads:
         before = [sample for sample in samples if sample["unixMs"] <= read["submittedUnixMs"]]
         if before:
@@ -186,6 +199,8 @@ def run_process(arguments, exe, switches, scenes, evidence, log):
         "OKUFLOW_UCT_CORPUS_GAP_MS": str(arguments.gap_ms),
         "OKUFLOW_UCT_CORPUS_FRAME_LOAD": arguments.frame_load or "",
         "OKUFLOW_UCT_CORPUS_TAIL_MS": str(arguments.tail_ms),
+        "OKUFLOW_UCT_CORPUS_SESSION": arguments.session or "",
+        "OKUFLOW_UCT_CORPUS_CHANGE_EACH": "1" if arguments.change_each else "0",
     }
     command = [str(exe), "optionalCorpusTiming"]
     if arguments.lease:
@@ -427,6 +442,10 @@ def main():
     parser.add_argument("--frame-load", help="emulated per-frame video GPU work during the reads, fps:passes")
     parser.add_argument("--tail-ms", type=int, default=0,
                         help="idle time after the last read, to show keep-warm stopping (0-20000)")
+    parser.add_argument("--change-each", action="store_true",
+                        help="report a view change after every paced read (changing video)")
+    parser.add_argument("--session", help="refreshMs,changeMs,settleMs,durationMs: the live-view timeline "
+                                          "per scene instead of passes")
     parser.add_argument("--qt-bin", required=True, type=Path)
     parser.add_argument("--tensorrt-root", required=True, type=Path)
     parser.add_argument("--cuda-bin", required=True, type=Path)
@@ -451,7 +470,8 @@ def main():
                 "cohorts": arguments.cohorts, "profile": arguments.profile, "stamp": arguments.stamp,
                 "gapMs": arguments.gap_ms, "settledFrom": arguments.settled_from,
                 "gpuSampleMs": arguments.gpu_sample_ms, "frameLoad": arguments.frame_load,
-                "tailMs": arguments.tail_ms, "scenes": manifest, "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                "tailMs": arguments.tail_ms, "changeEach": arguments.change_each, "session": arguments.session,
+                "scenes": manifest, "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
                 "executables": {}}
     for name, _ in arms:
         exe = Path(executables.get(name, arguments.exe))

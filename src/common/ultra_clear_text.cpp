@@ -2117,6 +2117,19 @@ struct RecognitionScheduler::State {
     std::function<void()> beforeCompletionForTest;
     bool inFlight{};
     KeepWarmPolicy keepWarm; // guarded by mutex; launches only from the worker
+    // A disarm or interrupt asked the worker to stop any running or queued
+    // spin (guarded by mutex). The worker handles it after a launch it was
+    // making returns, and before deciding the next launch.
+    bool keepWarmStop{};
+    std::chrono::steady_clock::time_point keepWarmStopRaised{};
+    void RaiseKeepWarmStop()
+    {
+        // A read in flight: its dequeue already interrupted every spin and
+        // none launches until it ends.
+        if (!keepWarm.Settings().Enabled() || keepWarmStop || inFlight) return;
+        keepWarmStop = true;
+        keepWarmStopRaised = std::chrono::steady_clock::now();
+    }
     std::atomic<bool> cancelInFlight{false};
     std::shared_ptr<std::atomic<bool>> formulaInFlightStop;
     std::uint64_t authority{1};
@@ -2202,9 +2215,25 @@ struct RecognitionScheduler::State {
                 (job.corroboration.selectedJobId ? timing::Corroboration : 0u), job.corroboration.selectedJobId});
         pending = std::move(job);
         ++stats.submitted;
-        keepWarm.ReadSubmitted(KeepWarmPolicy::Clock::now());
+        // A regional pass or a formula is not the announced read and not the
+        // read a view change waits for.
+        keepWarm.ReadSubmitted(KeepWarmPolicy::Clock::now(), !job.regional && !job.formula);
         wake.notify_one();
         return id;
+    }
+
+    // Worker only, mutex held: a raised stop request interrupts any running
+    // or queued spin. Called before every launch decision, so a launch that
+    // was outside the mutex when the request came is interrupted as soon as
+    // it returns.
+    void HandleKeepWarmStop()
+    {
+        if (!keepWarmStop) return;
+        keepWarmStop = false;
+        if (recognizer) recognizer->InterruptKeepWarm(); // noexcept, sets a host flag
+        ++stats.keepWarmStops;
+        stats.keepWarmStopMaxUs = std::max(stats.keepWarmStopMaxUs,
+            std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - keepWarmStopRaised).count());
     }
 
     // Worker only, mutex held. Waits for a job. While keep-warm is due it
@@ -2213,11 +2242,14 @@ struct RecognitionScheduler::State {
     void WaitForJob(std::unique_lock<std::mutex>& lock)
     {
         for (;;) {
+            HandleKeepWarmStop();
             if (shutdown || pending) return;
             const auto now = KeepWarmPolicy::Clock::now();
             if (keepWarm.TimedOut(now)) {
                 keepWarm.Disarm();
                 ++stats.keepWarmTimeouts;
+                RaiseKeepWarmStop(); // the last spin may still run up to its bound
+                continue;
             }
             const auto next = keepWarm.NextWarm(now);
             if (!next || *next > now) {
@@ -2268,6 +2300,8 @@ struct RecognitionScheduler::State {
                 std::unique_lock lock(self->mutex);
                 self->WaitForJob(lock);
                 if (self->shutdown) {
+                    // Destruction disarmed and raised a stop; WaitForJob handled it.
+                    self->HandleKeepWarmStop();
                     break;
                 }
                 if (auto barrier = std::exchange(self->beforeDequeueForTest, {})) {
@@ -2282,6 +2316,7 @@ struct RecognitionScheduler::State {
                 self->inFlight = true;
                 self->keepWarm.ReadStarted();
                 warming = self->keepWarm.Settings().Enabled();
+                self->keepWarmStop = false; // the interrupt below covers it
                 self->cancelInFlight.store(job.authority != self->authority);
                 self->formulaInFlightStop=job.formulaStop;
                 if(job.formulaStop && self->cancelInFlight.load())job.formulaStop->store(true);
@@ -2632,7 +2667,7 @@ struct RecognitionScheduler::State {
             {
                 std::lock_guard lock(self->mutex);
                 self->inFlight = false;
-                self->keepWarm.ReadFinished();
+                self->keepWarm.ReadFinished(KeepWarmPolicy::Clock::now());
                 self->formulaInFlightStop.reset();
                 if (result.regionalFallback) ++self->stats.regionalFallbacks;
                 if (result.regionalFailed) ++self->stats.regionalFailures;
@@ -2754,6 +2789,7 @@ RecognitionScheduler::~RecognitionScheduler()
         state_->shutdown = true;
         state_->pending.reset();
         state_->keepWarm.Disarm();
+        state_->RaiseKeepWarmStop();
         ++state_->authority;
         state_->cancelInFlight.store(true);
         if(state_->formulaInFlightStop)state_->formulaInFlightStop->store(true);
@@ -2837,7 +2873,9 @@ void RecognitionScheduler::Cancel()
     }
     state_->cancelInFlight.store(true);
     if(state_->formulaInFlightStop)state_->formulaInFlightStop->store(true);
-    state_->keepWarm.Disarm(); // re-armed only by the next announced paced read
+    state_->keepWarm.Disarm(); // re-armed only by the next announced read or view change
+    state_->RaiseKeepWarmStop();
+    state_->wake.notify_one(); // the worker interrupts running spins at once
 }
 
 void RecognitionScheduler::SetKeepWarm(KeepWarmSettings settings)
@@ -2845,9 +2883,51 @@ void RecognitionScheduler::SetKeepWarm(KeepWarmSettings settings)
     if (state_->probeOnly) return; // validation-only workers never run recognition
     {
         std::lock_guard lock(state_->mutex);
+        state_->RaiseKeepWarmStop(); // under the old settings: spins of the old shape end
         const bool reading = state_->keepWarm.Reading();
         state_->keepWarm.Configure(settings);
         if (reading) state_->keepWarm.ReadStarted();
+    }
+    state_->wake.notify_one();
+}
+
+void RecognitionScheduler::NoteViewChange()
+{
+    {
+        std::lock_guard lock(state_->mutex);
+        if (state_->shutdown || !state_->keepWarm.Settings().Enabled()) return;
+        const bool was = state_->keepWarm.Armed();
+        state_->keepWarm.ViewChanged(KeepWarmPolicy::Clock::now());
+        if (state_->keepWarm.Armed() && !was) ++state_->stats.keepWarmChanges;
+    }
+    state_->wake.notify_one();
+}
+
+void RecognitionScheduler::InterruptKeepWarm()
+{
+    {
+        std::lock_guard lock(state_->mutex);
+        state_->RaiseKeepWarmStop();
+    }
+    state_->wake.notify_one();
+}
+
+void RecognitionScheduler::SetKeepWarmVisible(bool visible)
+{
+    {
+        std::lock_guard lock(state_->mutex);
+        if (!visible) state_->RaiseKeepWarmStop();
+        state_->keepWarm.SetVisible(visible);
+    }
+    state_->wake.notify_one();
+}
+
+void RecognitionScheduler::SetKeepWarmPowerGate(KeepWarmPolicy::PowerGate gate)
+{
+    {
+        std::lock_guard lock(state_->mutex);
+        state_->keepWarm.SetPowerGate(std::move(gate));
+        if (!state_->keepWarm.PowerAllowed()) state_->RaiseKeepWarmStop();
     }
     state_->wake.notify_one();
 }
@@ -2867,6 +2947,7 @@ void RecognitionScheduler::StopKeepWarm()
     {
         std::lock_guard lock(state_->mutex);
         state_->keepWarm.Disarm();
+        state_->RaiseKeepWarmStop();
     }
     state_->wake.notify_one();
 }

@@ -115,6 +115,25 @@ inline void CorpusTiming()
     const int tailMs = qEnvironmentVariable("OKUFLOW_UCT_CORPUS_TAIL_MS").toInt();
     QVERIFY2(tailMs >= 0 && tailMs <= 20000, "OKUFLOW_UCT_CORPUS_TAIL_MS must be 0-20000.");
     const bool stablePower = qEnvironmentVariable("OKUFLOW_UCT_CORPUS_STABLE_POWER") == "1";
+    // Round 14: the content changes after every paced read (a playing video
+    // whose text keeps changing), and the session scenario
+    // refreshMs,changeMs,settleMs,durationMs (see the read loop below).
+    const bool changeEach = qEnvironmentVariable("OKUFLOW_UCT_CORPUS_CHANGE_EACH") == "1";
+    struct Session { int refreshMs{}, changeMs{}, settleMs{}, durationMs{}; };
+    std::optional<Session> session;
+    if (const auto text = qEnvironmentVariable("OKUFLOW_UCT_CORPUS_SESSION"); !text.isEmpty()) {
+        const auto parts = text.split(QLatin1Char(','));
+        bool valid = parts.size() == 4;
+        int values[4]{};
+        for (int i = 0; valid && i < 4; ++i) values[i] = parts[i].toInt(&valid);
+        valid = valid && values[0] >= 0 && values[0] <= 10000 && values[1] >= 0 && values[1] <= 60000 &&
+                values[2] >= 0 && values[2] <= 5000 && values[3] >= 1000 && values[3] <= 600000 &&
+                (values[0] > 0 || values[1] > 0) && (!values[1] || values[2] < values[1]);
+        QVERIFY2(valid, "OKUFLOW_UCT_CORPUS_SESSION must be refreshMs,changeMs,settleMs,durationMs "
+                        "(0-10000, 0-60000, 0-5000 below changeMs, 1000-600000; refresh or change set).");
+        session = Session{values[0], values[1], values[2], values[3]};
+    }
+    QVERIFY2(!(session && (gapMs || changeEach)), "A session sets its own pacing; drop the gap and change-each.");
 
     QVERIFY(cudaSetDevice(0) == cudaSuccess);
     cudaDeviceProp properties{};
@@ -262,17 +281,25 @@ inline void CorpusTiming()
         QJsonObject firstOutput;
         QString firstSha;
         bool identical = true;
-        for (int pass = 0; pass <= passes; ++pass) { // pass 0 is this scene's first read in this process
-            // As the application does: announce when the next paced read is due
-            // (no effect unless keep-warm is on), then wait for it.
-            scheduler->ExpectNextRead(Clock::now() + std::chrono::milliseconds(gapMs));
-            if (gapMs) std::this_thread::sleep_for(std::chrono::milliseconds(gapMs));
+        int pass = 0;
+        // One read of this scene and its record. `extra` adds the scenario's
+        // fields. Returns false after a failed verification.
+        const auto readAndRecord = [&](QJsonObject extra) {
+            extra["armedAtSubmit"] = scheduler->KeepWarmArmed();
             auto attempt = read(index);
-            QVERIFY2(attempt.completion, qPrintable(attempt.error));
+            if (!attempt.completion) {
+                QTest::qFail(qPrintable(attempt.error), __FILE__, __LINE__);
+                return false;
+            }
             const auto& result = attempt.completion->result;
-            QVERIFY2(result.output.ok, qPrintable(scenes[std::size_t(index)].path + ": " + result.output.error));
-            QVERIFY2(result.deviceInput && attempt.meters.egress == 0 && attempt.meters.residentCalls == 1,
-                     "A read left the resident GPU path.");
+            if (!result.output.ok) {
+                QTest::qFail(qPrintable(scenes[std::size_t(index)].path + ": " + result.output.error), __FILE__, __LINE__);
+                return false;
+            }
+            if (!(result.deviceInput && attempt.meters.egress == 0 && attempt.meters.residentCalls == 1)) {
+                QTest::qFail("A read left the resident GPU path.", __FILE__, __LINE__);
+                return false;
+            }
             const auto sha = Hex(QCryptographicHash::hash(ExactOutputBytes(result.output), QCryptographicHash::Sha256));
             if (pass == 0) {
                 firstSha = sha;
@@ -309,27 +336,90 @@ inline void CorpusTiming()
                 {"submitToCallbackMs", attempt.submitToCallbackMs}, {"submittedUnixMs", attempt.submittedUnixMs},
                 {"residentMs", attempt.meters.residentMs},
                 {"inputWaitMs", attempt.meters.waitMs}, {"outputSha256", sha}, {"words", words}, {"candidates", candidates}};
+            for (auto it = extra.begin(); it != extra.end(); ++it) record[it.key()] = it.value();
             if (!attempt.profiles.isEmpty()) {
                 QJsonArray lines;
                 for (const auto& line : attempt.profiles) lines.push_back(line);
                 record["profile"] = lines;
             }
             reads.push_back(record);
+            ++pass;
+            return true;
+        };
+        QJsonObject sessionRecord;
+        if (!session) {
+            for (int repeat = 0; repeat <= passes; ++repeat) { // pass 0 is this scene's first read in this process
+                if (gapMs) std::this_thread::sleep_for(std::chrono::milliseconds(gapMs));
+                if (!readAndRecord({})) return;
+                // As the application does: announce the next paced read only
+                // once a read was submitted (round 14; the first timed read of
+                // a process is never armed). No effect unless keep-warm is on;
+                // change mode ignores it. With OKUFLOW_UCT_CORPUS_CHANGE_EACH
+                // the content changes after every read (playing video), which
+                // a probe would report as a view change.
+                scheduler->ExpectNextRead(Clock::now() + std::chrono::milliseconds(gapMs));
+                if (changeEach) scheduler->NoteViewChange();
+            }
+        } else {
+            // Round 14 session: the controller's timeline on a live view. A
+            // view change every changeMs (Cancel, then NoteViewChange, as
+            // Invalidate does), its read settleMs later; a refresh read
+            // refreshMs after the previous read; each read announces the next
+            // refresh. Fixed duration, so power can be averaged over it.
+            using SessionClock = uct_clock_probe_test::ProbeClock;
+            const auto begin = SessionClock::now();
+            const auto end = begin + std::chrono::milliseconds(session->durationMs);
+            const auto never = SessionClock::time_point::max();
+            auto nextChange = session->changeMs ? begin + std::chrono::milliseconds(session->changeMs) : never;
+            auto nextRefresh = session->refreshMs ? begin + std::chrono::milliseconds(session->refreshMs) : never;
+            sessionRecord["startUnixMs"] = QDateTime::currentMSecsSinceEpoch();
+            int changes = 0;
+            for (;;) {
+                const auto due = std::min(nextChange, nextRefresh);
+                if (due >= end) break;
+                uct_clock_probe_test::SleepUntil(due);
+                QJsonObject extra;
+                if (due == nextChange) {
+                    scheduler->Cancel();
+                    scheduler->NoteViewChange();
+                    const auto changed = SessionClock::now();
+                    uct_clock_probe_test::SleepUntil(changed + std::chrono::milliseconds(session->settleMs));
+                    extra["kind"] = "change";
+                    extra["sinceChangeMs"] = std::chrono::duration<double, std::milli>(SessionClock::now() - changed).count();
+                    nextChange += std::chrono::milliseconds(session->changeMs);
+                    ++changes;
+                } else {
+                    extra["kind"] = "refresh";
+                }
+                const auto submitted = SessionClock::now();
+                if (!readAndRecord(extra)) return;
+                if (session->refreshMs) {
+                    nextRefresh = submitted + std::chrono::milliseconds(session->refreshMs);
+                    scheduler->ExpectNextRead(Clock::now() + std::chrono::milliseconds(session->refreshMs));
+                }
+            }
+            uct_clock_probe_test::SleepUntil(end);
+            sessionRecord["endUnixMs"] = QDateTime::currentMSecsSinceEpoch();
+            sessionRecord["changes"] = changes;
         }
         const auto& scene = scenes[std::size_t(index)];
-        sceneRecords.push_back(QJsonObject{{"path", scene.path}, {"sha256", scene.sha256},
+        QJsonObject sceneRecord{{"path", scene.path}, {"sha256", scene.sha256},
             {"width", scene.image.width()}, {"height", scene.image.height()}, {"reads", reads},
-            {"repeatedOutputsIdentical", identical}, {"firstOutputSha256", firstSha}, {"firstOutput", firstOutput}});
+            {"repeatedOutputsIdentical", identical}, {"firstOutputSha256", firstSha}, {"firstOutput", firstOutput}};
+        if (session) sceneRecord["session"] = sessionRecord;
+        sceneRecords.push_back(sceneRecord);
     }
 
     const auto statsJson = [](const SchedulerStats& stats) {
         return QJsonObject{{"launches", double(stats.keepWarmLaunches)}, {"pending", double(stats.keepWarmPending)},
             {"notReady", double(stats.keepWarmNotReady)}, {"timeouts", double(stats.keepWarmTimeouts)},
-            {"busyMs", stats.keepWarmBusyMs}};
+            {"busyMs", stats.keepWarmBusyMs}, {"stops", double(stats.keepWarmStops)},
+            {"changes", double(stats.keepWarmChanges)}, {"stopMaxUs", stats.keepWarmStopMaxUs}};
     };
     QJsonObject keepWarmRecord{{"mode", int(keepWarm.settings.mode)},
         {"periodMs", double(keepWarm.settings.period.count())}, {"busyUs", double(keepWarm.settings.busy.count())},
         {"leadMs", double(keepWarm.settings.lead.count())}, {"idleTimeoutMs", double(keepWarm.settings.idleTimeout.count())},
+        {"changeWindowMs", double(keepWarm.settings.changeWindow.count())}, {"tailMs", double(keepWarm.settings.tail.count())},
         {"afterReads", statsJson(scheduler->Stats())}};
     QJsonObject tail;
     if (tailMs) {
@@ -363,7 +453,10 @@ inline void CorpusTiming()
         {"executableSha256", Hex(executableHash.result())},
         {"gpu", QString::fromLatin1(properties.name)}, {"cudaDriverApi", driver},
         {"retirement", closed.Json()}, {"profileLinesMalformed", capture.Malformed()},
-        {"keepWarm", keepWarmRecord}, {"tail", tail},
+        {"keepWarm", keepWarmRecord}, {"tail", tail}, {"changeEach", changeEach},
+        {"session", session ? QJsonObject{{"refreshMs", session->refreshMs}, {"changeMs", session->changeMs},
+                                          {"settleMs", session->settleMs}, {"durationMs", session->durationMs}}
+                            : QJsonObject{}},
         {"stablePowerState", stable ? stable->Detail() : QString()},
         {"frameLoad", frameLoad ? frameLoad->Json() : QJsonObject{}},
         {"scope", "Scheduler worker time on file fixtures: no camera, decoder, presenter, paint or accessibility."}};
@@ -496,6 +589,66 @@ inline void KeepWarmGpuContract()
             QCOMPARE(sha, reference[i]);
             ++compared;
         }
+    // Round 14: change mode. A view change warms; reads that land while its
+    // spins run or wait are byte-identical too.
+    {
+        KeepWarmSettings change;
+        change.mode = KeepWarmMode::Change;
+        warm->SetKeepWarm(change);
+        for (int i = 0; i < int(scenes.size()); ++i) {
+            const auto launched = warm->Stats().keepWarmLaunches;
+            warm->Cancel();
+            warm->NoteViewChange();
+            const auto deadline = Clock::now() + std::chrono::seconds(2);
+            while (warm->Stats().keepWarmLaunches < launched + 2 && Clock::now() < deadline)
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            QVERIFY2(warm->Stats().keepWarmLaunches >= launched + 2, "A view change did not warm the GPU backend.");
+            std::this_thread::sleep_for(std::chrono::milliseconds(4 + 3 * i));
+            read(*warm, *mailbox, i, sha);
+            if (QTest::currentTestFailed()) return;
+            QCOMPARE(sha, reference[i]);
+            ++compared;
+        }
+        warm->SetKeepWarm(settings);
+    }
+    // Round 14 review: disarming ends spins that are RUNNING on the GPU, not
+    // only future launches. Freeing a frame-sized (8 MiB) allocation waits for
+    // all queued work of the context (r14-clock-1; small blocks may not), so
+    // the time a cudaFree issued right after StopKeepWarm() takes bounds how
+    // long the spins kept running; without the stop it waits for the running
+    // and the queued spin.
+    {
+        QVector<double> stopped, unstopped;
+        for (int i = 0; i < 16; ++i) {
+            const bool stop = i % 2 == 0;
+            const auto launched = warm->Stats().keepWarmLaunches;
+            warm->ExpectNextRead(std::chrono::steady_clock::now() + std::chrono::milliseconds(350));
+            const auto deadline = Clock::now() + std::chrono::seconds(2);
+            while (warm->Stats().keepWarmLaunches < launched + 2 && Clock::now() < deadline)
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            QVERIFY(warm->Stats().keepWarmLaunches >= launched + 2);
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            void* buffer{};
+            QVERIFY(cudaMalloc(&buffer, 8 << 20) == cudaSuccess);
+            const auto begin = Clock::now();
+            if (stop) warm->StopKeepWarm();
+            QVERIFY(cudaFree(buffer) == cudaSuccess);
+            (stop ? stopped : unstopped).push_back(Ms(Clock::now() - begin));
+            warm->StopKeepWarm();
+            std::this_thread::sleep_for(std::chrono::milliseconds(30));
+        }
+        std::sort(stopped.begin(), stopped.end());
+        std::sort(unstopped.begin(), unstopped.end());
+        qInfo().noquote() << "keep-warm GPU stop: cudaFree after StopKeepWarm median" << stopped[stopped.size() / 2]
+                          << "ms, max" << stopped.back() << "ms; without the stop median" << unstopped[unstopped.size() / 2]
+                          << "ms, max" << unstopped.back() << "ms; worker stop latency max"
+                          << warm->Stats().keepWarmStopMaxUs << "us";
+        // A stop raised while the worker is itself inside a CUDA call that the
+        // free holds up is handled when that call returns: never later than
+        // the spins' own bound (two 10 ms spins).
+        QVERIFY2(stopped[stopped.size() / 2] < 2.0, "Disarming did not end the running spins promptly.");
+        QVERIFY2(stopped.back() < 25.0, "Disarming took longer than the spins' own bound.");
+    }
     // Destroy while spins are outstanding: prompt, and every State closes.
     warm->ExpectNextRead(std::chrono::steady_clock::now() + std::chrono::milliseconds(350));
     const auto launched = warm->Stats().keepWarmLaunches;
