@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 namespace okuflow::uct::graph_cache
@@ -247,7 +248,11 @@ enum class Fault {
     ArenaUnavailable,               // the shared activation arena cannot be allocated
     OutputStorageUnavailable,       // the fixed replay output storage cannot be allocated
 };
+// Named points of one replay call, for tests that cancel exactly there.
+enum class Checkpoint { Planned, Captured, Drained, Launched };
 struct FaultPlan {
+    // Called on the worker at each checkpoint (detector 0, recognizer 1).
+    std::function<void(Checkpoint, int)> checkpoint;
     Fault fault{Fault::None};
     int engine{-1}; // 0 detector, 1 recognizer, -1 either
     int skip{};     // eligible events let through first

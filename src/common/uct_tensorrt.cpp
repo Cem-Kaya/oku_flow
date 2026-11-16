@@ -977,8 +977,14 @@ class Network
         std::this_thread::sleep_for(std::chrono::milliseconds(30));
         static_cast<std::atomic<bool>*>(done)->store(true);
     }
+    void Reached(graph_cache::Checkpoint at) const
+    {
+        auto* plan = graph_cache::FaultPlanForTest().load();
+        if (plan && plan->checkpoint) plan->checkpoint(at, detection_ ? 0 : 1);
+    }
 #else
     static constexpr bool FaultFires(graph_cache::Fault) { return false; }
+    static constexpr void Reached(graph_cache::Checkpoint) {}
 #endif
     // With graph replay requested, the preparation context is created on the
     // activation arena that every replay context of this engine shares, so it
@@ -1120,6 +1126,7 @@ class Network
         Check(cudaMemGetInfo(&after, &total));
         replayGraphBytes_ += before > after ? std::int64_t(before - after) : 0;
         captureMs += timer.nsecsElapsed() / 1e6;
+        Reached(graph_cache::Checkpoint::Captured);
         return Captured::Yes;
     }
     nvinfer1::Dims RunReplay(float* input, int width, int height, cudaStream_t stream,
@@ -1158,6 +1165,7 @@ class Network
             }
             if (work_) work_->Notify();
         }
+        Reached(graph_cache::Checkpoint::Planned);
         if (decision.create) {
             auto context = TakeSpareContext();
             if (!context) throw std::logic_error("TensorRT replay slot has no execution context.");
@@ -1174,6 +1182,7 @@ class Network
             }
 #endif
             Check(cudaStreamSynchronize(stream));
+            Reached(graph_cache::Checkpoint::Drained);
 #if defined(OKUFLOW_UCT_GRAPH_FAULT_HOOKS)
             if (queued) {
                 auto* plan = graph_cache::FaultPlanForTest().load();
@@ -1214,6 +1223,7 @@ class Network
             Check(cudaGraphLaunch(slot.graph, stream));
         }
         replay_->Ran(decision.slot, launch);
+        Reached(graph_cache::Checkpoint::Launched);
         profile.NetworkCall(detection_, batch, profile.Enabled() ? host.nsecsElapsed() / 1e6 : 0,
                             shapeSets, addressSets);
         profile.GraphCall(int(launch), decision.create, 0, captureMs, decision.drain, decision.evicted);

@@ -164,6 +164,75 @@ inline void Policies()
     QCOMPARE(d.slot, 1); // the unbound slot again, not slot 0's graph
     QVERIFY(failing.HasGraph(0));
 
+    // Without a ready context a miss recycles a slot (as if the cache were
+    // full) and counts as starved; the very first slot is always created.
+    Policy starving(4);
+    d = starving.Plan(n8, &in, &out, true, false);
+    QVERIFY(d.create && d.slot == 0);
+    starving.Bound(d.slot);
+    starving.Ran(d.slot, d.launch);
+    d = starving.Plan(n3, &in, &out, true, false);
+    QVERIFY(!d.create && d.slot == 0 && d.reshape && d.evicted && d.drain);
+    starving.Bound(d.slot);
+    starving.Ran(d.slot, d.launch);
+    QCOMPARE(starving.Count().starved, std::uint64_t(1));
+    QCOMPARE(starving.Slots(), 1);
+    // Once a context is ready the cache grows again; a full cache is not starved.
+    d = Run(starving, n8, &in, &out);
+    QVERIFY(d.create && d.slot == 1);
+    Run(starving, n5, &in, &out);
+    Run(starving, whole, &in, &out);
+    QCOMPARE(starving.Slots(), 4);
+    Run(starving, tile, &in, &out, true);
+    QCOMPARE(starving.Count().starved, std::uint64_t(1));
+    QCOMPARE(starving.Count().evictions, std::uint64_t(2));
+    // Distinct shapes asked for are counted (the contexts worth creating),
+    // including evicted ones, never twice, and only up to the bound.
+    QCOMPARE(starving.Seen(), 5);
+    Run(starving, n3, &in, &out);
+    QCOMPARE(starving.Seen(), 5);
+    Policy counting(2);
+    for (int i = 1; i <= kMaximumSeenShapes + 10; ++i) Run(counting, Shape{1, 32, 8 * i}, &in, &out);
+    QCOMPARE(counting.Seen(), kMaximumSeenShapes);
+
+    // Per-engine capacities. Off stays off; the default gives the detector
+    // the default bound and a fixed-canvas recognizer at least one slot per
+    // batch size; the bucketed recognizer width runs its recognizer plainly;
+    // an explicit comparison bound applies to both engines as given.
+    QCOMPARE(ForConfiguration(0, false, 8, false), (Capacities{0, 0}));
+    QCOMPARE(ForConfiguration(kDefaultShapes, false, 8, false), (Capacities{8, 8}));
+    QCOMPARE(ForConfiguration(kDefaultShapes, false, 1, false), (Capacities{8, 8}));
+    QCOMPARE(ForConfiguration(kDefaultShapes, false, 16, false), (Capacities{8, 16}));
+    QCOMPARE(ForConfiguration(kDefaultShapes, false, 8, true), (Capacities{8, 0}));
+    QCOMPARE(ForConfiguration(kDefaultShapes, false, 16, true), (Capacities{8, 0}));
+    QCOMPARE(ForConfiguration(1, true, 8, false), (Capacities{1, 1}));
+    QCOMPARE(ForConfiguration(4, true, 16, false), (Capacities{4, 4}));
+    QCOMPARE(ForConfiguration(2, true, 8, true), (Capacities{2, 0}));
+    QCOMPARE(ForConfiguration(99, true, 8, false), (Capacities{kMaximumShapes, kMaximumShapes}));
+    // Contexts worth creating: a recognizer on the fixed canvas has one shape
+    // per batch size; a plain engine needs none.
+    QCOMPARE(UsefulContexts(8, false, 8), 8);
+    QCOMPARE(UsefulContexts(8, true, 8), 8);
+    QCOMPARE(UsefulContexts(8, true, 1), 1);
+    QCOMPARE(UsefulContexts(16, true, 16), 16);
+    QCOMPARE(UsefulContexts(1, true, 8), 1);
+    QCOMPARE(UsefulContexts(0, true, 8), 0);
+
+    // Fault plans fire only for their fault and engine, after `skip`
+    // eligible events, `count` times.
+    FaultPlan plan;
+    plan.fault = Fault::MoveInput;
+    plan.engine = 1;
+    plan.skip = 1;
+    plan.count = 2;
+    QVERIFY(!plan.Fire(Fault::RejectShape, 1));
+    QVERIFY(!plan.Fire(Fault::MoveInput, 0));
+    QVERIFY(!plan.Fire(Fault::MoveInput, 1)); // skipped
+    QVERIFY(plan.Fire(Fault::MoveInput, 1));
+    QVERIFY(plan.Fire(Fault::MoveInput, 1));
+    QVERIFY(!plan.Fire(Fault::MoveInput, 1));
+    QCOMPARE(plan.injected.load(), 2);
+
     // Bounds: capacity is clamped to 1..16 and slots never exceed it.
     QCOMPARE(Policy(0).Capacity(), 1);
     QCOMPARE(Policy(99).Capacity(), kMaximumShapes);

@@ -25,6 +25,7 @@
 #include "uct_resident_diagnostic.hpp"
 #include "uct_corpus_timing.hpp"
 #include "uct_graph_replay_lifetime.hpp"
+#include "uct_graph_replay_faults.hpp"
 #include "uct_paused_video_diagnostic.hpp"
 #include "uct_active_regional_diagnostic.hpp"
 #include "uct_precision_artifact_cases.hpp"
@@ -1906,6 +1907,18 @@ class PaddleTests final : public QObject
     void optionalGraphReplayLifetime()
     {
         uct_graph_replay_test::Lifetime();
+    }
+    void optionalGraphReplayFaults()
+    {
+        uct_graph_faults_test::Faults();
+    }
+    void optionalGraphReplayCheckpoints()
+    {
+        uct_graph_faults_test::Checkpoints();
+    }
+    void optionalGraphReplayConfigurations()
+    {
+        uct_graph_faults_test::Configurations();
     }
     void optionalPublicBf16Preparation()
     {
