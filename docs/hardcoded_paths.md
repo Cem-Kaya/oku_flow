@@ -1443,8 +1443,13 @@ status. It adds no setting, file or model. See `docs/uct_okuread_port.md`.
 
 `OKUFLOW_UCT_TEST_REGION_RECONCILE=1` selects the private experiment that
 detects every region of a full read first and recognizes each line once.
-Unset or `0` keeps the ordinary path; any other value leaves the GPU backend
-unavailable with an explanatory status. It changes recognized output and is
-never a default. Bounds: at most the regions `DetectorRegions` produces (17),
+`keep` runs the same two-phase path but recognizes every detection, which must
+reproduce the ordinary output byte for byte. Unset or `0` keeps the ordinary
+path; any other value leaves the GPU backend unavailable with an explanatory
+status. `1` changes recognized output and is never a default. Rule constants
+(`src/common/uct_region_reconcile.hpp`): turn at most 0.175 rad, height ratio
+at least 0.7, containment tolerance a quarter of the height up to 48 px,
+centre-line offset at most 0.35 of the smaller height, whole-frame stand-ins
+only for boxes at least 24 px tall. Bounds: at most the regions `DetectorRegions` produces (17),
 1,152 windows per region read back as compact descriptors, no image transfer.
 See `docs/uct_okuread_port.md`.

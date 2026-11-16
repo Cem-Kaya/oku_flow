@@ -193,120 +193,184 @@ reconciles words afterwards by overlap and confidence. A full read of a
 and a 3840x2160 frame nine, so most lines are recognized two or three times.
 The word-level rule also has a defect: a confident fragment cut by a tile edge
 can replace the complete word that another region read. On 62 placements of
-two owner-supplied stylized title crops the unchanged build returns fragments
-such as a three-letter prefix in 19 cases, with curved processing on or off.
+two owner-supplied stylized title crops the unchanged build returns the
+complete title in 43 and a fragment of it in 19, with curved processing on or
+off.
 
-Target stated before the work: halve the recognizer crops on text scenes, take
-the dense 1920x1080 document from 204 ms to 120 ms or less, repair most of the
-19 fragmented titles, and lose no labelled words overall on pages the rules
-were not chosen on.
+Targets stated before the work, and the result with the final rules:
+
+| Target | Result |
+| --- | --- |
+| Halve the recognizer crops on text scenes | Met on the dense scenes (329 to 151, 731 to 343, 617 to 319, 211 to 97); slides 78 to 53 and 79 to 58: not met |
+| Dense 1920x1080 document from 204 ms to 120 ms or less | Met: 205.8 to 111.0 ms |
+| Repair most of the 19 fragmented titles | Met: 12 of 19 repaired (55 of 62 complete), none worse |
+| Lose no labelled words overall on pages the rules were not chosen on | Met in total (+30 exact matches over 112 pages); not met on one group of 40 pages (-7) |
 
 `OKUFLOW_UCT_TEST_REGION_RECONCILE=1` selects the experiment. It is off by
 default because it changes recognized output, and no owner camera material was
-available to check it on.
+available to check it on. `OKUFLOW_UCT_TEST_REGION_RECONCILE=keep` runs the
+same two-phase path but recognizes every detection; it exists to show that the
+path itself changes nothing.
 
 ### What changed
 
 With the switch on, `TensorRtRecognizer::RecognizeDevice` runs detection for
 every region first. Regions with the same detector shape queue behind each
-other and a shape change waits for the stream, so a 1920x1080 read waits twice
-instead of three times and a 3840x2160 read twice instead of nine times. Each
-region's recognition windows come back to the host with its count.
+other and a shape change waits for the stream. Each region's recognition
+windows come back to the host with its count.
 `region_reconcile::Reconcile` (`src/common/uct_region_reconcile.hpp`) then
-decides from detector geometry alone which detections not to recognize:
+decides from detector geometry alone which detections not to recognize. One
+relation carries every decision: detection S may stand in for detection D when
+both are straight, come from different regions, lie on the same line (turn at
+most 0.175 rad, centre lines within 0.35 of the smaller height), have
+comparable height (ratio at least 0.7) and S spans everything D spans along
+the line, within a quarter of D's height and at most 48 px. Then:
 
-- **A.** A tile detection that ends at one of its tile's internal edges, when
-  a larger detection of the same line from another region contains its whole
-  extent along the line and continues past that edge. A whole-frame detection
-  counts only when the fragment's box is at least 24 px tall.
-- **B.** A whole-frame detection that an unclipped tile detection reproduces.
-- **C.** The later of two unclipped detections of the same line from two tiles.
+- **A.** A tile detection that ends at one of its tile's internal edges is
+  left out when a larger detection stands in for it and continues past that
+  edge. The whole-frame pass may stand in only for boxes at least 24 px tall.
+- **B.** A whole-frame detection is left out when an unclipped tile detection
+  stands in for it.
+- **C.** An unclipped tile detection is left out when an unclipped detection
+  from another tile stands in for it; if each stands in for the other, the
+  lower region index keeps it.
 
-The remaining windows are uploaded per region, as frozen-crop replay already
-does, and recognition and word merging proceed unchanged. No detection is
-moved, joined or invented. With the switch off the original path runs
-untouched.
+Each rule is evaluated on the full input, so no rule sees another's outcome
+and the order of detections cannot matter. A final pass restores every
+detection that no kept detection stands in for, repeated until nothing
+changes, so no chain of decisions can leave text that only a dropped detection
+covered. Curved detections, fitted or refused, take no part: their quad is
+only an envelope and a refused ribbon carries ink protection that must reach
+decoding. The remaining windows are uploaded per region and recognition and
+word merging proceed unchanged. No detection is moved, joined or invented.
+With the switch off the original path runs untouched. Regional and
+paused-detail reads have a single region, and crop-diagnostic and frozen-replay
+reads bypass the experiment.
 
-Rule A's first form dropped a fragment when another detection merely covered
-60 percent of it; that could discard text the other detection never saw, so it
-was replaced by containment before any measurement was kept. Its second form
-let the whole-frame pass replace tile fragments at any size. On two held-out
-pages with 7 to 9 px type that lost 36 and 26 labelled words: the whole-frame
-pass sees the frame at half scale or less and its boxes for small type are too
-tall to read well. The 24 px floor was chosen among 24, 32 and 40 on twenty
-separate tuning pages and then checked on the held-out pages below.
+### How the rules got here
+
+The first form of rule A dropped a fragment when another detection merely
+covered 60 percent of it; that could discard text the other detection never
+saw and was replaced by containment before any measurement was kept. Letting
+the whole-frame pass replace tile fragments at any size lost 36 and 26
+labelled words on two pages with 7 to 9 px type: the whole-frame pass sees the
+frame at half scale or less and its boxes for small type are too tall to read
+well. The 24 px floor was chosen among 24, 32 and 40 on twenty tuning pages.
+
+The version first submitted for review (`ec7282d`) used looser tests: an
+overlap test for B and C, height ratio 0.5, no coverage pass, curved
+detections included. It measured 1.286x warm, +206 exact label matches on the
+tuning pages, +483 on 88 other pages and 57 of 62 titles. The council (below)
+showed that it could lose text through chains of decisions, drop a refused
+ribbon's protection and depend on visiting order, so the rules above replaced
+it. They keep the speed and the title repairs but not the reading gain: the
+tuning pages now gain 3 exact matches instead of 206. Which of the stricter
+conditions removed the gain is not established; it is the subject of round 6.
+
+After the review a floor in whole-frame detector pixels (12, which is 24 px at
+1920 wide and 48 px at 3840 wide) was tried in place of the 24 px floor, as a
+reviewer suggested. On the tuning pages and one fresh page set it kept fewer
+words (+4 and +6 exact matches against +3 and +10) and gave up the speed gain
+on 3840x2160 pages (crops 731 to 729), so the frame-pixel floor stayed
+(`r2k-tune`, `r2k-fresh1`). Limits of 16, 32 and 48 px and no limit on the
+containment tolerance read the labelled pages identically; 48 is the smallest
+that repairs as many titles as no limit (51, 54, 55, 55 of 62; `r2k2-*`).
 
 ### Speed
 
-Evidence `r2-reconcile-ab-2-final`, switch off against on, same executable.
+Evidence `r2z-ab-v1`, build `1b580f5`, switch off against on, same executable.
+Crop counts are from a separate profiled run of the same build
+(`r2z-profile-v1`).
 
 | Scene | Off ms | On ms | Speedup | Crops off / on | First read ms, off / on |
 | --- | ---: | ---: | ---: | --- | --- |
-| doc-camera-1080 | 206.67 | 107.95 | 1.914 | 329 / 147 | 206.58 / 107.01 |
-| doc-camera-2160 | 476.01 | 261.02 | 1.824 | 731 / 340 | 473.38 / 262.51 |
-| page-portrait-1654x2339 | 376.37 | 207.43 | 1.814 | 617 / 247 | 374.60 / 206.86 |
-| doc-camera-turkish-1080 | 177.68 | 98.77 | 1.799 | 285 / 138 | 177.26 / 98.28 |
-| doc-camera-tilt-1080 | 158.74 | 90.31 | 1.758 | 243 / 121 | 158.77 / 90.91 |
-| table-1080 | 139.00 | 79.21 | 1.755 | 211 / 98 | 139.39 / 79.25 |
-| slide-dark-1080 | 69.75 | 53.04 | 1.315 | 79 / 42 | 69.25 / 53.76 |
-| slide-light-1080 | 67.24 | 51.79 | 1.298 | 78 / 41 | 67.29 / 52.11 |
-| slide-light-2160 | 113.46 | 88.51 | 1.282 | 79 / 37 | 113.88 / 89.05 |
-| board-lecture-05 (real) | 22.41 | 20.47 | 1.095 | 4 / 2 | 23.36 / 20.84 |
-| signs-sparse-1080 | 31.11 | 28.72 | 1.083 | 10 / 5 | 30.99 / 28.55 |
-| board-lecture-00 (real) | 22.77 | 21.81 | 1.044 | 3 / 2 | 23.16 / 22.03 |
-| board-lecture-02 (real) | 25.52 | 24.60 | 1.037 | 3 / 2 | 26.30 / 24.88 |
-| board-lecture-03 (real) | 25.52 | 24.81 | 1.028 | 5 / 4 | 25.74 / 24.60 |
-| book-curved-1080 | 73.09 | 73.47 | 0.995 | 53 / 53 | 73.45 / 73.30 |
-| board-lecture-01 (real) | 22.90 | 23.16 | 0.989 | 3 / 3 | 22.59 / 23.09 |
-| board-lecture-04 (real) | 23.99 | 24.73 | 0.970 | 5 / 5 | 23.60 / 25.40 |
-| no-text-1080 | 43.97 | 46.36 | 0.948 | 3 / 3 | 45.07 / 46.72 |
+| doc-camera-1080 | 205.83 | 110.98 | 1.855 | 329 / 151 | 206.61 / 112.02 |
+| doc-camera-turkish-1080 | 182.05 | 101.84 | 1.788 | 285 / 140 | 184.67 / 100.64 |
+| doc-camera-2160 | 478.53 | 268.54 | 1.782 | 731 / 343 | 477.19 / 266.12 |
+| page-portrait-1654x2339 | 382.24 | 223.41 | 1.711 | 617 / 319 | 381.99 / 224.02 |
+| table-1080 | 141.05 | 84.19 | 1.675 | 211 / 97 | 140.27 / 81.45 |
+| doc-camera-tilt-1080 | 158.54 | 95.74 | 1.656 | 243 / 122 | 157.59 / 102.69 |
+| slide-light-2160 | 117.15 | 90.70 | 1.292 | 79 / 38 | 116.72 / 89.95 |
+| slide-dark-1080 | 71.83 | 56.56 | 1.270 | 79 / 58 | 71.68 / 56.76 |
+| slide-light-1080 | 68.66 | 55.24 | 1.243 | 78 / 53 | 69.34 / 60.79 |
+| signs-sparse-1080 | 34.78 | 30.06 | 1.157 | 10 / 5 | 34.56 / 32.16 |
+| board-lecture-03 (real) | 28.67 | 25.26 | 1.135 | 5 / 4 | 27.89 / 25.50 |
+| board-lecture-02 (real) | 28.59 | 25.34 | 1.128 | 3 / 2 | 29.56 / 25.70 |
+| board-lecture-04 (real) | 27.87 | 25.74 | 1.083 | 5 / 5 | 27.21 / 25.93 |
+| no-text-1080 | 48.36 | 46.97 | 1.030 | 3 / 3 | 49.57 / 47.42 |
+| board-lecture-00 (real) | 24.60 | 24.26 | 1.014 | 3 / 3 | 26.86 / 25.39 |
+| board-lecture-05 (real) | 23.88 | 24.09 | 0.992 | 4 / 3 | 24.61 / 23.75 |
+| board-lecture-01 (real) | 24.79 | 25.33 | 0.978 | 3 / 3 | 25.78 / 24.03 |
+| book-curved-1080 | 74.05 | 75.92 | 0.975 | 53 / 53 | 74.55 / 73.75 |
 
-Geometric mean 1.286x warm and 1.286x for first reads. Crop counts are from a
-separate profiled run with the earlier rule form (`r2-reconcile-profile-2`).
-The real lecture frames and the scenes where nothing is dropped are inside the
-noise floor. The textless scene is about 5 percent slower in both cohorts:
-with nothing to drop, the experiment still copies every region's window buffer
-to the host.
+Geometric mean 1.285x warm and 1.284x for first reads. Other jobs were using
+the machine during this run and the two cohorts of the short scenes differ by
+up to 25 percent, so the rows from signs-sparse down are inside the noise.
+The bent page, where every detection is curved and nothing is dropped, is 2.5
+percent slower in this run; the added cost of the path (reading the windows
+back and uploading the kept ones) is not separately measured.
 
 ### Output
 
 The switch changes output, so it is compared on labelled pages rather than
 claimed identical. Exact-match counts are case-sensitive whole words against
 the labels, as a multiset; "other words" are recognized words with no label
-left to match. Evidence `r2-tune-1`, `r2-validate-heldout-a`, `-b`,
-`r2-validate-v1`, `r2-validate-titles`.
+left to match. The metric does not see word position or order. All rows are
+the final build `1b580f5` (`r2z-q-*`, `r2z-ab-v1`).
 
 | Pages | Labels | Exact off | Exact on | Other words off / on | Pages worse / better | Worst page |
 | --- | ---: | ---: | ---: | --- | --- | ---: |
-| Tuning, 20 (rule chosen here) | 8,154 | 6,163 | 6,369 | 1,065 / 1,052 | 1 / 14 | -1 |
-| Held-out, 40 (first two groups) | 12,180 | 9,225 | 9,525 | 1,581 / 1,596 | 3 / 28 | -6 |
-| Held-out, 48 (last three groups) | 5,323 | 3,076 | 3,259 | 1,399 / 1,408 | 7 / 38 | -10 |
-| This repository's 12 generated scenes | 4,394 | 4,106 | 4,118 | 81 / 61 | 1 / 3 | -2 |
+| Tuning, 20 (constants chosen here) | 8,154 | 6,163 | 6,166 | 1,065 / 1,042 | 6 / 6 | -4 |
+| Fresh generated set 1, 12 (constants chosen here) | 7,381 | 7,328 | 7,338 | 65 / 39 | 2 / 7 | -1 |
+| Development, 40 | 12,180 | 9,225 | 9,218 | 1,581 / 1,537 | 14 / 11 | -6 |
+| Development, 48 | 5,323 | 3,076 | 3,094 | 1,399 / 1,346 | 3 / 17 | -1 |
+| This repository's 12 generated scenes | 4,394 | 4,106 | 4,117 | 81 / 62 | 1 / 3 | -2 |
+| Fresh generated set 2, 12 (not looked at before the final build) | 6,610 | 6,577 | 6,585 | 65 / 36 | 1 / 6 | -2 |
 
-The 108 tuning and held-out pages are OkuRead's generated labelled screen
-pages at 1920x1080 to 5120x1440, read in place; they were not built for this
-work. On the 88 held-out pages exact matches rise from 12,301 to 12,784 and
-ten pages get worse, the worst by ten words. On this repository's scenes the
-words that disappear are mostly fragments and duplicates and the words that
-appear are the completed forms; the Turkish page is the exception, where three
+The tuning and development pages are OkuRead's generated labelled screen pages
+at 1920x1080 to 5120x1440, read in place. The two development groups were
+used while the first rule forms were being worked out, so they are not
+held-out; only fresh set 2 is. The fresh sets come from
+`scripts/uct/perf_corpus.py --variant N`, which redraws this repository's
+twelve generated scenes with other text. Fewer other words on every set is
+the tile-edge fragments and duplicates disappearing. On the Turkish page three
 words lose a dotless i and recall falls from 0.9463 to 0.9403.
 
-Title placements (private owner crops, 62): complete title read in 43 before
-and 57 after, with no placement getting worse. The five that still fail are
-the largest placements, where the title is wider than a tile and the
-whole-frame pass does not detect it as one line either.
+Title placements (private owner crops, 62; `r2z-q-titles`): the complete title
+is read in 43 with the switch off and 55 with it on, and no placement gets
+worse. The seven that still fail are the largest placements.
 
-`regionReconcileRules` (model-free, in `uct_paddle_processing`) covers each
-rule, the cases where nothing may be dropped (one region, an unknown layout,
-two halves of one line with no whole-frame detection, a fragment that sticks
-out of its neighbour, another row or angle, small type against the whole-frame
-pass) and independence from detection order.
+Pass-through mode (`keep`) is byte-identical to the switch-off path on 18 of
+18 scenes, 40 of 40 development pages and 62 of 62 title placements
+(`r2z-keep-*`).
+
+Tests: `regionReconcileRules` (model-free, in `uct_paddle_processing`) covers
+each rule, the cases where nothing may be dropped (one region, an unknown
+layout, two halves of one line with no whole-frame detection, a fragment that
+sticks out of its neighbour, another row or angle, a whole-frame box that
+merged two lines, small type against the whole-frame pass at 1920 and 3840
+wide, curved detections on either side), the reviewers' chains, tile order
+independence and 300 random layouts checked for coverage.
+`gpuRecognitionWindowsMarkEverySubWindow` (in `uct_detect_kernels_cuda`) holds
+the GPU window layout the host parser relies on.
 
 ### Not established
 
 No owner camera or document capture was available, and the real frames in the
 scene set hold almost no text, so the effect on real boards and documents is
-unmeasured. The experiment has no GPU contract test of its own beyond the
-scene-set runs; cancellation during the detection phase drains the stream
-before the input is released and was read, not exercised. Regional and
-paused-detail reads have a single region and are unaffected.
+unmeasured. Cancellation during the detection phase drains the stream before
+the input is released; that was read and reviewed, not exercised by a test.
+
+### Review
+
+Council, as submitted (`ec7282d`): Claude Opus 5.5 6/10, GPT-6.1 Sol 6/10,
+Gemini 4 Hydrogen 6/10. Applied: the single relation with a coverage pass and
+order-independent evaluation, curved detections excluded, height ratio 0.7, a
+bounded containment tolerance, kept-window upload without the frozen-replay
+queue accounting, a stream drain before buffers are released on cancellation,
+restorations and window-layout validity in the profile, the pass-through mode
+and its identity runs, the GPU window-layout test, a fresh untouched page set
+for the final check, crop counts taken from the final build, and the wording
+of the page groups. Tried and not kept: the floor in detector pixels (above).
+The reviewed rules have not been through a second council pass; round 6
+revisits them.
