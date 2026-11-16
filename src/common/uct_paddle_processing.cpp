@@ -866,6 +866,10 @@ RecognizedLine PaddleDecodeTokens(std::span<const PaddleToken> tokens, int steps
             word.fromRibbon=true;word.ribbonErrorPx=-1;word.ribbonReadingPointPx=word.quadPx.Center();
         }
     }
+    // A line the private straight rule moved is read as a rectangle; its words
+    // carry the line's bow so the worker can hold them to their ink.
+    if (quad.ribbon.outcome == ribbon::kSpanStraight)
+        for (auto& word : line.words) word.movedLineBow = std::max(1e-6, double(quad.ribbon.bow));
     return line;
 }
 

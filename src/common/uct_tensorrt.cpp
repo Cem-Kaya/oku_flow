@@ -1423,10 +1423,7 @@ class TensorRtRecognizer final : public Recognizer
         // take the ordinary rectangle path: "straight" before any ribbon check,
         // "straight-refused" only where the ribbon would be refused (a valid
         // ribbon fit stays a ribbon).
-        const auto flat = qEnvironmentVariable("OKUFLOW_UCT_TEST_FLAT_RIBBON");
-        if (flat == "straight" || flat == "straight-refused")
-            straightRule_ = {kStraightSpanHeights, flat == "straight-refused"};
-        else invalidFlatRibbon_ = !flat.isEmpty() && flat != "0";
+        invalidFlatRibbon_ = !PaddleFlatRibbonRule(qEnvironmentVariable("OKUFLOW_UCT_TEST_FLAT_RIBBON"), straightRule_);
         // Private experiment, off by default. See uct_graph_cache.hpp. The
         // shape count exists to compare cache sizes; 1 is one graph per engine.
         const auto graph = qEnvironmentVariable("OKUFLOW_UCT_TEST_TRT_GRAPH");
@@ -1468,7 +1465,7 @@ class TensorRtRecognizer final : public Recognizer
             return status_;
         }
         if (invalidFlatRibbon_) {
-            status_.detail = "OKUFLOW_UCT_TEST_FLAT_RIBBON accepts only 0, straight or straight-refused.";
+            status_.detail = kPaddleFlatRibbonError;
             return status_;
         }
         if (invalidGraph_) {
@@ -2504,8 +2501,7 @@ class TensorRtRecognizer final : public Recognizer
     gpu::DetectKernels detectKernels_{};
     bool invalidDetectKernels_{};
     bool reconcile_{}, reconcileKeepAll_{}, invalidReconcile_{};
-    // Private round 12 experiment; 0 keeps the shipped straight-line bound.
-    static constexpr double kStraightSpanHeights = 20;
+    // Private round 12 experiment; {} keeps the shipped straight-line bound.
     ribbon::StraightRule straightRule_{};
     bool invalidFlatRibbon_{};
     int graphShapes_{}; // 0: plain enqueue (default)

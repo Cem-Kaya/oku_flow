@@ -96,22 +96,31 @@ OKUFLOW_RIBBON_HD inline void Add(Bin* bins, double t, double v) {
 // Sagitta (detector pixels) below which a fitted center line counts as
 // straight. The established bound is max(0.75 px, 8% of the mean envelope
 // height), whatever the line's length. A positive span K (in mean heights)
-// scales it by max(1, length / (K * meanHeight)): lines up to K heights are
-// judged exactly as before, and for a longer parabolic line under the scaled
-// bound every piece of K heights departs from its own chord by less than the
-// established bound (the sagitta over a sub-span falls with its squared
-// length), and the angle between curve and chord (4 * sagitta / length at the
-// ends) stays below what the established bound accepts on a line K heights
-// long. Small fitted curvature on long flat lines is then the rectangle path.
+// scales the relative part by max(1, length / (K * meanHeight)): lines up to
+// K heights are judged exactly as before, and for a longer parabolic line
+// under the scaled bound every piece of K heights departs from its own chord
+// by less than the established bound (the sagitta over a sub-span falls with
+// its squared length), and the angle between curve and chord (4 * sagitta /
+// length at the ends) stays below what the established bound accepts on a line
+// K heights long. The 0.75 px floor is a fixed noise allowance and is never
+// scaled, so it cannot loosen the rule for small type.
 OKUFLOW_RIBBON_HD inline double StraightBound(double meanHeight, double length, double straightSpan) {
-    const double bound = ::fmax(.75, meanHeight * .08);
-    return straightSpan > 0 ? bound * ::fmax(1., length / (straightSpan * meanHeight)) : bound;
+    const double relative = meanHeight * .08;
+    return ::fmax(.75, straightSpan > 0 ? relative * ::fmax(1., length / (straightSpan * meanHeight)) : relative);
 }
+// Round 12 constants of the private straight rule (docs/uct_okuread_port.md,
+// rounds 12 and 12b): K, and an absolute cap on the bow of a line the rule may
+// treat as straight, in mean heights, whatever its length.
+inline constexpr double kStraightSpanHeights = 20;
+inline constexpr double kStraightMaximumBow = .32;
 // Private round 12 experiment, off when span is 0. span: K in StraightBound.
-// refusedOnly: apply the scaled bound only to a line whose ribbon would be
-// refused; a valid ribbon fit stays a ribbon. Otherwise it applies before any
-// ribbon check.
-struct StraightRule { double span{}; bool refusedOnly{}; };
+// maximumBow: no line whose fitted sagitta exceeds this many mean heights is
+// treated as straight (0: no cap). refusedOnly: apply the rule only to a line
+// whose fit passed every shape check (steep, residual, height model) and was
+// refused only because the padded ribbon leaves its source region; a valid
+// ribbon fit stays a ribbon, and every other refusal stays refused. Otherwise
+// it applies before any ribbon check.
+struct StraightRule { double span{}; bool refusedOnly{}; double maximumBow{}; };
 // Bounded least-squares center fit to component cross-section envelopes.
 // Refuse holes, degenerate shapes, poorly fitted envelopes and image edges;
 // a refusal means the established rectangle, never guessed curved geometry.
@@ -162,10 +171,15 @@ OKUFLOW_RIBBON_HD inline Geometry Fit(const Bin* bins, double u0, double u1,
     if (!Finite(g.c) || ::fabs(g.c) * .25 < StraightBound(meanHeight, length, 0)) return straight(kStraight);
     // Private experiment (StraightRule): a long line under the length-scaled
     // bound is straight, before any ribbon check or only instead of a refusal.
-    const bool spanStraight = rule.span > 0 && ::fabs(g.c) * .25 < StraightBound(meanHeight, length, rule.span);
+    const double sagitta = ::fabs(g.c) * .25;
+    const bool spanStraight = rule.span > 0 && sagitta < StraightBound(meanHeight, length, rule.span) &&
+                              (rule.maximumBow <= 0 || sagitta <= rule.maximumBow * meanHeight);
     if (spanStraight && !rule.refusedOnly) return straight(kSpanStraight);
+    // Only a line that passed every shape check moves: a steep or residual
+    // refusal says the parabola does not describe the line, and a height
+    // refusal says one rectangle height cannot fit its words.
     const auto refuse = [&](FitOutcome outcome) {
-        if (spanStraight) return straight(kSpanStraight);
+        if (spanStraight && outcome == kOutside) return straight(kSpanStraight);
         g.outcome = outcome; return g;
     };
     g.unsupported=true; g.bow=bow;

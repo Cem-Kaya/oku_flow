@@ -1928,6 +1928,7 @@ class PaddleTests final : public QObject
     void curvedRibbonSmallWordsAndPaintReasons() {uct_ribbon_test::SmallWordsAndPaintReasons();}
     void curvedRibbonEndpointPadding() {uct_ribbon_test::EndpointPadding();}
     void curvedRibbonStraightSpanBound() {uct_ribbon_test::StraightSpanBound();}
+    void curvedRibbonFlatSwitchBothReaders() {uct_ribbon_test::FlatSwitchBothReaders();}
     void currentInkOwnershipAndResidual() {uct_ribbon_test::InkOwnershipAndResidual();}
     void currentInkHeldOutDiagnostic() {uct_ribbon_test::HeldOutInkDiagnostic();}
     void optionalRibbonPrimitiveAB() {uct_ribbon_test::PrimitiveBenchmark();}
@@ -3300,46 +3301,89 @@ class PaddleTests final : public QObject
         QSKIP("CUDA adapter not compiled.");
 #endif
     }
-    // Round 12 rule on the GPU path: the same outcome as the CPU detector on a
-    // long, slightly bowed line (a ribbon today), and no ribbon flag when a
-    // rule moves it to the rectangle path.
+    // Round 12 rule on the GPU path against the CPU detector, with the default
+    // detector kernels (parallelRibbonMerge) and the reference ones: a long,
+    // slightly bowed line in the middle of the map (a valid ribbon today), the
+    // same line at the bottom edge (refused today because the padded ribbon
+    // leaves the source: moved by the rule), and two edge lines either side of
+    // the bow cap (round 12b). Outcome and status must match exactly. The bins
+    // the fit reads are summed in a different order on the GPU (float partial
+    // sums per thread, merged), the CPU sums in double, so bow and geometry
+    // are compared to a stated rounding tolerance and their exact equality is
+    // reported, not required.
     void gpuRibbonStraightRuleMatchesCpu()
     {
 #if OKUFLOW_ENABLE_CUDA
         int devices{};QVERIFY(cudaGetDeviceCount(&devices)==cudaSuccess&&devices>0);
         constexpr int w=1200,h=120;
-        std::vector<float> map(w*h);
-        for(int y=0;y<h;++y)for(int x=20;x<=1180;++x) {
-            const double t=(x-20)/1160.,center=60-4*1.6*t*(1-t); // 1.6 px sagitta over 1160 px
-            if(std::abs(y-center)<=4)map[y*w+x]=.95f;
-        }
         FixtureStream stream;
         GpuBuffer<float> mapDevice(w*h);
         GpuBuffer<int> labels(w*h),count(1),offsets((w*h+255)/256);
         GpuBuffer<gpu::Component> components(w*h);
         GpuBuffer<gpu::Quad> detected(128);
-        QCOMPARE(cudaMemcpyAsync(mapDevice.data,map.data(),map.size()*sizeof(float),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
         std::atomic<bool> cancelled{};
-        const ribbon::StraightRule rules[]{{},{20,false},{20,true}};
-        for(const auto& rule:rules) {
-            const auto cpu=PaddleDetect(map,w,h,{w,h},cancelled,true,rule);
-            QCOMPARE(cpu.size(),1);
-            gpu::Detect(mapDevice.data,w,h,w,h,labels.data,components.data,detected.data,count.data,stream.value,
-                        offsets.data,{},rule);
-            gpu::Quad actual{};int total{};
-            QCOMPARE(cudaMemcpyAsync(&total,count.data,sizeof(total),cudaMemcpyDeviceToHost,stream.value),cudaSuccess);
-            QCOMPARE(cudaMemcpyAsync(&actual,detected.data,sizeof(actual),cudaMemcpyDeviceToHost,stream.value),cudaSuccess);
-            QCOMPARE(cudaStreamSynchronize(stream.value),cudaSuccess);
-            QCOMPARE(total,1);
-            QCOMPARE(int(actual.ribbon.outcome),int(cpu[0].ribbon.outcome));
-            QCOMPARE(actual.ribbon.valid,cpu[0].ribbon.valid);QCOMPARE(actual.ribbon.unsupported,cpu[0].ribbon.unsupported);
-            if(rule.span==0)QCOMPARE(int(actual.ribbon.outcome),int(ribbon::kFitted));
-            else if(rule.refusedOnly)QVERIFY(actual.ribbon.valid); // a valid fit stays a ribbon
-            else {
-                QCOMPARE(int(actual.ribbon.outcome),int(ribbon::kSpanStraight));
-                QVERIFY(!actual.ribbon.valid&&!actual.ribbon.unsupported);
+        const ribbon::StraightRule capped{ribbon::kStraightSpanHeights,true,ribbon::kStraightMaximumBow};
+        const ribbon::StraightRule rules[]{{},{20,false},{20,true},capped,
+            {ribbon::kStraightSpanHeights,false,ribbon::kStraightMaximumBow}};
+        struct Case { const char* name; double center, sagitta; };
+        const Case cases[]{{"middle",60,1.6},{"edge",112,1.6},{"edge under cap",112,2.4},{"edge over cap",112,3.4}};
+        int moved=0,keptAtCap=0,bytesEqual=0,compared=0;
+        double largestBow=0,largestField=0;
+        for(const auto& c:cases) {
+            std::vector<float> map(w*h);
+            for(int y=0;y<h;++y)for(int x=20;x<=1180;++x) {
+                const double t=(x-20)/1160.,center=c.center-4*c.sagitta*t*(1-t);
+                if(std::abs(y-center)<=4)map[y*w+x]=.95f;
+            }
+            QCOMPARE(cudaMemcpyAsync(mapDevice.data,map.data(),map.size()*sizeof(float),cudaMemcpyHostToDevice,stream.value),cudaSuccess);
+            const auto today=PaddleDetect(map,w,h,{w,h},cancelled,true);
+            QCOMPARE(today.size(),1);
+            QCOMPARE(int(today[0].ribbon.outcome),int(c.center==60?ribbon::kFitted:ribbon::kOutside));
+            for(const auto& rule:rules)for(const auto kernels:{gpu::DetectKernels{},gpu::DetectKernels::Reference()}) {
+                const auto cpu=PaddleDetect(map,w,h,{w,h},cancelled,true,rule);
+                QCOMPARE(cpu.size(),1);
+                gpu::Detect(mapDevice.data,w,h,w,h,labels.data,components.data,detected.data,count.data,stream.value,
+                            offsets.data,kernels,rule);
+                gpu::Quad actual{};int total{};
+                QCOMPARE(cudaMemcpyAsync(&total,count.data,sizeof(total),cudaMemcpyDeviceToHost,stream.value),cudaSuccess);
+                QCOMPARE(cudaMemcpyAsync(&actual,detected.data,sizeof(actual),cudaMemcpyDeviceToHost,stream.value),cudaSuccess);
+                QCOMPARE(cudaStreamSynchronize(stream.value),cudaSuccess);
+                QCOMPARE(total,1);
+                const auto& a=actual.ribbon; const auto& b=cpu[0].ribbon;
+                const auto label=QStringLiteral("%1 span=%2 refusedOnly=%3 cap=%4 parallel=%5")
+                    .arg(c.name).arg(rule.span).arg(rule.refusedOnly).arg(rule.maximumBow).arg(kernels.parallelRibbonMerge);
+                QVERIFY2(a.outcome==b.outcome,qPrintable(label));
+                QVERIFY2(a.valid==b.valid&&a.unsupported==b.unsupported,qPrintable(label));
+                QVERIFY2(std::abs(a.bow-b.bow)<=1e-5f*std::max(1.f,b.bow),qPrintable(label));
+                largestBow=std::max(largestBow,double(std::abs(a.bow-b.bow)));
+                const double fa[]{a.ox,a.oy,a.ux,a.uy,a.vx,a.vy,a.a,a.b,a.c,a.h0,a.h1,a.start,a.end,
+                                  a.protectLeft,a.protectTop,a.protectRight,a.protectBottom};
+                const double fb[]{b.ox,b.oy,b.ux,b.uy,b.vx,b.vy,b.a,b.b,b.c,b.h0,b.h1,b.start,b.end,
+                                  b.protectLeft,b.protectTop,b.protectRight,b.protectBottom};
+                for(int i=0;i<int(std::size(fa));++i) {
+                    const double d=std::abs(fa[i]-fb[i]);
+                    largestField=std::max(largestField,d);
+                    QVERIFY2(d<=1e-6*std::max(1.,std::abs(fb[i])),qPrintable(label+QStringLiteral(" field %1").arg(i)));
+                }
+                ++compared; bytesEqual+=std::memcmp(fa,fb,sizeof(fa))==0&&std::memcmp(&a.bow,&b.bow,sizeof(a.bow))==0;
+                // What each rule does with each case.
+                if(rule.span==0) QCOMPARE(a.outcome,today[0].ribbon.outcome);
+                else if(c.center==60) {
+                    if(rule.refusedOnly) QVERIFY2(a.valid,qPrintable(label)); // a valid fit stays a ribbon
+                    else QCOMPARE(int(a.outcome),int(ribbon::kSpanStraight));
+                } else if(rule.maximumBow>0&&a.bow>rule.maximumBow) {
+                    QCOMPARE(int(a.outcome),int(ribbon::kOutside));QVERIFY(a.unsupported); ++keptAtCap;
+                } else {
+                    QCOMPARE(int(a.outcome),int(ribbon::kSpanStraight));QVERIFY(!a.valid&&!a.unsupported); ++moved;
+                    QCOMPARE(a.protectRight,0.);QCOMPARE(a.protectBottom,0.);
+                }
+                if(rule.maximumBow>0&&c.center!=60)
+                    QCOMPARE(a.outcome==ribbon::kSpanStraight,QString(c.name)!="edge over cap");
             }
         }
+        QVERIFY(moved>0);QVERIFY(keptAtCap>0);
+        qInfo().noquote()<<"ribbon fit GPU vs CPU: comparisons="<<compared<<"bit-identical="<<bytesEqual
+                         <<"largest bow difference="<<largestBow<<"largest geometry field difference="<<largestField;
 #else
         QSKIP("CUDA adapter not compiled.");
 #endif

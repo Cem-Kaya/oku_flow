@@ -9,6 +9,7 @@
 #include <QJsonObject>
 #include <QSaveFile>
 #include <QDir>
+#include <QTemporaryDir>
 #include <QLineF>
 #include <QTransform>
 #include <QtTest>
@@ -670,7 +671,14 @@ inline void StraightSpanBound() {
         QCOMPARE(ribbon::StraightBound(height,length,0),established);
         const double scaled=ribbon::StraightBound(height,length,K);
         if(length<=K*height)QCOMPARE(scaled,established);
-        else QVERIFY(std::abs(scaled-established*length/(K*height))<1e-12*scaled);
+        else {
+            // Only the relative part scales; the 0.75 px floor never does, so
+            // small type is never judged more loosely than 8% of its height
+            // times the length factor, or the fixed floor.
+            const double relative=.08*height*length/(K*height);
+            QVERIFY(std::abs(scaled-std::max(.75,relative))<1e-12*scaled);
+            QVERIFY(scaled<=std::max(.75,established*length/(K*height))*(1+1e-12));
+        }
         // What the scaled bound guarantees for a parabola at the bound: each
         // K-height piece departs from its own chord by at most the established
         // bound, and the end angle (4 sagitta / length) stays at or below the
@@ -680,6 +688,10 @@ inline void StraightSpanBound() {
         QVERIFY(4*scaled/length<=4*established/piece*(1+1e-12));
     }
     QCOMPARE(ribbon::StraightBound(10,1000,-1),.8); // non-positive span: shipped rule
+    // Round 12b: at a detector height of 5 px and 100 heights the bound was
+    // 0.75 px x 5 = 0.75 h; now it is 0.4 h (8% x 5), and the cap holds every
+    // length to kStraightMaximumBow.
+    QVERIFY(std::abs(ribbon::StraightBound(5,500,K)-2.)<1e-12);
     ribbon::Bin bins[ribbon::kBins];
     const ribbon::StraightRule before{K,false},refusedOnly{K,true};
     // A long flat line with the small fitted bow seen on flat pages (0.15 of
@@ -727,7 +739,9 @@ inline void StraightSpanBound() {
         if(b.outcome==ribbon::kSpanStraight) {
             QVERIFY(!b.valid&&!b.unsupported);QVERIFY(a.valid||a.unsupported);
             QVERIFY(u1-20>K*height); // only lines longer than K heights move
-            if(rule.refusedOnly)QVERIFY(a.unsupported);
+            // refusedOnly moves only a line that passed every shape check
+            // and was refused because the padded ribbon leaves its source.
+            if(rule.refusedOnly)QCOMPARE(int(a.outcome),int(ribbon::kOutside));
             ++moved;
         } else {
             QVERIFY(SameFit(a,b));++kept;refusedKept+=b.unsupported;validKept+=b.valid;
@@ -736,6 +750,59 @@ inline void StraightSpanBound() {
         if(rule.refusedOnly&&a.valid)QVERIFY(SameFit(a,b));
     }
     QVERIFY(moved>10);QVERIFY(kept>10);QVERIFY(refusedKept>3);QVERIFY(validKept>3);
+    // Shapes the parabola argument does not cover stay refused, with today's
+    // geometry and protection, even when their least-squares bow is far under
+    // the scaled bound. Lines of 90 heights (scaled bound 0.36 h).
+    const auto keptRefused=[&](ribbon::FitOutcome reason,int sourceHeight) {
+        const double u1=20+90*height;
+        const auto a=ribbon::Fit(bins,20,u1,1,0,1,1,8000,sourceHeight);
+        QCOMPARE(int(a.outcome),int(reason));QVERIFY(a.unsupported);
+        QVERIFY(a.bow<ribbon::StraightBound(height,u1-20,K)/height); // the bow alone would move it
+        for(const auto& rule:{refusedOnly,ribbon::StraightRule{K,true,ribbon::kStraightMaximumBow}})
+            QVERIFY(SameFit(a,ribbon::Fit(bins,20,u1,1,0,1,1,8000,sourceHeight,true,rule)));
+    };
+    // The review's photographed page: flat for most of its length, dropping
+    // half a text height over the last fifth (a gutter). Residual refusal.
+    for(int i=0;i<ribbon::kBins;++i)bins[i]={};
+    for(int i=0;i<ribbon::kBins;++i)for(int k=0;k<3;++k) {
+        const double t=(i+(k+.5)/3)/ribbon::kBins,drop=t>.8?.5*height*((t-.8)/.2)*((t-.8)/.2):0;
+        ribbon::Add(bins,t,100+drop-half);ribbon::Add(bins,t,100+drop+half);
+    }
+    keptRefused(ribbon::kResidual,400);
+    // A strongly tapering envelope (half height 2 to 8): one rectangle height
+    // cannot fit the words at its thin end. Height refusal.
+    for(int i=0;i<ribbon::kBins;++i)bins[i]={};
+    for(int i=0;i<ribbon::kBins;++i)for(int k=0;k<3;++k) {
+        const double t=(i+(k+.5)/3)/ribbon::kBins,taper=2+6*t,center=100-4*2.*t*(1-t);
+        ribbon::Add(bins,t,center-taper);ribbon::Add(bins,t,center+taper);
+    }
+    keptRefused(ribbon::kHeight,400);
+    // The absolute cap: a 160-height line with a bow of 0.4 h is under the
+    // scaled bound (0.64 h) but over the cap, so it stays refused at a source
+    // edge; at 0.3 h it moves.
+    const ribbon::StraightRule capped{K,true,ribbon::kStraightMaximumBow};
+    for(double bow:{.3,.4}) {
+        BowedBins(bins,bow*height,half);
+        const double u1=20+160*height;
+        const auto a=ribbon::Fit(bins,20,u1,1,0,1,1,8000,104);
+        QCOMPARE(int(a.outcome),int(ribbon::kOutside));
+        QVERIFY(a.bow<ribbon::StraightBound(height,u1-20,K)/height);
+        const auto b=ribbon::Fit(bins,20,u1,1,0,1,1,8000,104,true,capped);
+        if(bow<ribbon::kStraightMaximumBow) QCOMPARE(int(b.outcome),int(ribbon::kSpanStraight));
+        else QVERIFY(SameFit(a,b));
+        QCOMPARE(int(ribbon::Fit(bins,20,u1,1,0,1,1,8000,104,true,refusedOnly).outcome),int(ribbon::kSpanStraight));
+    }
+    // The switch reads the same for both readers.
+    ribbon::StraightRule parsed{1,true,1};
+    QVERIFY(PaddleFlatRibbonRule({},parsed));QCOMPARE(parsed.span,0.);
+    QVERIFY(PaddleFlatRibbonRule("0",parsed));QCOMPARE(parsed.span,0.);
+    QVERIFY(PaddleFlatRibbonRule("straight-refused",parsed));
+    QCOMPARE(parsed.span,ribbon::kStraightSpanHeights);QVERIFY(parsed.refusedOnly);
+    QCOMPARE(parsed.maximumBow,ribbon::kStraightMaximumBow);
+    QVERIFY(PaddleFlatRibbonRule("straight",parsed));QVERIFY(!parsed.refusedOnly);
+    for(const char* bad:{"1","Straight","straight-refused ","yes"}) {
+        QVERIFY(!PaddleFlatRibbonRule(bad,parsed));QCOMPARE(parsed.span,0.);
+    }
     for(auto o:{ribbon::kStraight,ribbon::kFitted,ribbon::kSteep,ribbon::kOutside})QVERIFY(outcomes[o]>0);
     // Refusal reasons are recorded by the first failed check.
     BowedBins(bins,8,5);
@@ -746,6 +813,73 @@ inline void StraightSpanBound() {
     BowedBins(bins,8,5);
     for(int i=0;i<ribbon::kBins;i+=2){bins[i].low-=6;bins[i].high-=6;} // a comb: no quadratic centre
     QCOMPARE(int(ribbon::Fit(bins,20,420,1,0,1,1,500,2000).outcome),int(ribbon::kResidual));
+}
+// Round 12b: both readers read OKUFLOW_UCT_TEST_FLAT_RIBBON through the same
+// parser, refuse an invalid value with the same message before touching any
+// model, and the CPU reader's detector post-processing (PaddleDetect) applies
+// the parsed rule: a long, slightly bowed line refused today at the bottom of
+// its source moves to the rectangle path, and its decoded words carry the
+// line's bow (RecognizedWord::movedLineBow) while every other word carries 0.
+inline void FlatSwitchBothReaders() {
+    struct Environment {
+        QByteArray key, old; bool present;
+        Environment(const char* k, const char* value)
+            : key(k), old(qgetenv(k)), present(qEnvironmentVariableIsSet(k)) { qputenv(k, value); }
+        ~Environment() { if (present) qputenv(key.constData(), old); else qunsetenv(key.constData()); }
+    };
+    QTemporaryDir empty; QVERIFY(empty.isValid());
+    {
+        Environment invalid("OKUFLOW_UCT_TEST_FLAT_RIBBON", "yes");
+        const auto status = CreatePaddleCpuRecognizer(empty.path())->Initialize();
+        QCOMPARE(status.state, BackendState::kUnavailable);
+        QCOMPARE(status.detail, QString::fromLatin1(kPaddleFlatRibbonError));
+#if OKUFLOW_UCT_TRT
+        const auto gpuStatus = CreateTensorRtRecognizer(empty.path())->Initialize();
+        QCOMPARE(gpuStatus.state, BackendState::kUnavailable);
+        QCOMPARE(gpuStatus.detail, QString::fromLatin1(kPaddleFlatRibbonError));
+#endif
+    }
+    for (const char* valid : {"0", "straight", "straight-refused"}) {
+        Environment value("OKUFLOW_UCT_TEST_FLAT_RIBBON", valid);
+        const auto status = CreatePaddleCpuRecognizer(empty.path())->Initialize();
+        QCOMPARE(status.state, BackendState::kUnavailable); // no models here
+        QVERIFY(status.detail != QString::fromLatin1(kPaddleFlatRibbonError));
+    }
+    ribbon::StraightRule rule;
+    QVERIFY(PaddleFlatRibbonRule("straight-refused", rule));
+    constexpr int w = 1200, h = 120;
+    std::vector<float> map(w * h);
+    for (int y = 0; y < h; ++y) for (int x = 20; x <= 1180; ++x) {
+        const double t = (x - 20) / 1160., center = 112 - 4 * 1.6 * t * (1 - t);
+        if (std::abs(y - center) <= 4) map[y * w + x] = .95f;
+    }
+    std::atomic<bool> cancelled{};
+    const auto today = PaddleDetect(map, w, h, {w, h}, cancelled, true);
+    const auto moved = PaddleDetect(map, w, h, {w, h}, cancelled, true, rule);
+    QCOMPARE(today.size(), 1); QCOMPARE(moved.size(), 1);
+    QCOMPARE(int(today[0].ribbon.outcome), int(ribbon::kOutside)); QVERIFY(today[0].ribbon.unsupported);
+    QCOMPARE(int(moved[0].ribbon.outcome), int(ribbon::kSpanStraight));
+    QVERIFY(!moved[0].ribbon.valid && !moved[0].ribbon.unsupported);
+    QCOMPARE(moved[0].points, today[0].points); // the same rectangle, without the ribbon flag
+    QVERIFY(moved[0].ribbon.bow > .1f && moved[0].ribbon.bow < ribbon::kStraightMaximumBow);
+    const QStringList dictionary{"", "a", "b", " "};
+    const std::vector<PaddleToken> tokens{{1, 2, 4, .99f}, {3, 8, 8, .99f}, {2, 12, 15, .99f}};
+    const auto refusedLine = PaddleDecodeTokens(tokens, 40, today[0], dictionary);
+    const auto movedLine = PaddleDecodeTokens(tokens, 40, moved[0], dictionary);
+    PaddleQuad plain = moved[0]; plain.ribbon = {};
+    const auto plainLine = PaddleDecodeTokens(tokens, 40, plain, dictionary);
+    QCOMPARE(movedLine.words.size(), 2); QCOMPARE(refusedLine.words.size(), 2); QCOMPARE(plainLine.words.size(), 2);
+    for (int i = 0; i < 2; ++i) {
+        QCOMPARE(refusedLine.words[i].disposition, TokenDisposition::kInvalidGeometry);
+        QCOMPARE(refusedLine.words[i].movedLineBow, 0.);
+        QCOMPARE(plainLine.words[i].movedLineBow, 0.);
+        QCOMPARE(movedLine.words[i].disposition, TokenDisposition::kCandidate);
+        QVERIFY(std::abs(movedLine.words[i].movedLineBow - moved[0].ribbon.bow) < 1e-6);
+        // Apart from the provenance, a moved line's word is the plain rectangle word.
+        QCOMPARE(movedLine.words[i].boundsPx, plainLine.words[i].boundsPx);
+        QCOMPARE(movedLine.words[i].protectedBoundsPx, plainLine.words[i].protectedBoundsPx);
+        QVERIFY(!movedLine.words[i].fromRibbon);
+    }
 }
 inline void PrimitiveBenchmark() {
     if(qEnvironmentVariable("OKUFLOW_UCT_RIBBON_BENCHMARK")!="1")QSKIP("Explicit model-free A/B benchmark not selected.");

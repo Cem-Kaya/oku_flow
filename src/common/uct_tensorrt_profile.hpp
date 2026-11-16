@@ -170,14 +170,14 @@ public:
     // counters; nothing is kept per crop. `confident` counts words at the
     // ordinary 0.7 confidence whatever their disposition, `invalid` those the
     // decode itself marked invalid geometry (before any merge inheritance).
-    // Refused detections also record their protection box, and detections a
-    // StraightRule moved to the rectangle path the same box of their quad, in
-    // frame pixels (bounded): today's boxes can then be matched per page.
+    // Every detection also records (bounded) a box in frame pixels with its
+    // kind, fitted bow and decoded word count: a refused detection its
+    // protection box, every other detection the box of its quad. Today's boxes
+    // can then be matched per page and with the read's output.
     void RibbonCrop(const ribbon::Geometry& curve, int edges, int words, int confident, int invalid,
                     const float* xy = nullptr, QPoint origin = {}) {
         if (!enabled_) return;
-        if (edges == 0 && xy && (curve.unsupported || curve.outcome == ribbon::kSpanStraight) &&
-            ribbonBoxes_.size() < kMaximumRibbonBoxes) {
+        if (edges == 0 && xy && ribbonBoxes_.size() < kMaximumRibbonBoxes) {
             double left = xy[0], top = xy[1], right = xy[0], bottom = xy[1];
             for (int i = 1; i < 4; ++i) {
                 left = std::min(left, double(xy[2*i])); right = std::max(right, double(xy[2*i]));
@@ -185,8 +185,11 @@ public:
             }
             if (curve.unsupported) { left = curve.protectLeft; top = curve.protectTop;
                                      right = curve.protectRight; bottom = curve.protectBottom; }
-            ribbonBoxes_.push_back(QJsonArray{curve.unsupported ? 1 : 0, left + origin.x(), top + origin.y(),
-                                              right + origin.x(), bottom + origin.y()});
+            const int kind = curve.unsupported ? 1 : curve.outcome == ribbon::kSpanStraight ? 0
+                           : curve.outcome == ribbon::kStraight ? 2 : curve.valid ? 3 : 4;
+            ribbonBoxes_.push_back(QJsonArray{kind, left + origin.x(), top + origin.y(),
+                                              right + origin.x(), bottom + origin.y(), curve.bow, words,
+                                              int(curve.outcome)});
         }
         const int outcome = curve.outcome < ribbon::kFitOutcomes ? curve.outcome : 0;
         const int scope = edges == 0 ? 0 : 1;
@@ -293,7 +296,9 @@ public:
                 ribbon[QString("bow_") + kinds[k]] = bins;
             }
             ribbon["boxes"] = ribbonBoxes_;
-            ribbon["boxesEncoding"] = "[refused 1 (protection box) or moved by a straight rule 0 (quad box), left, top, right, bottom], frame pixels";
+            ribbon["boxesEncoding"] = "[kind: moved by a straight rule 0, refused 1 (protection box), straight 2, fitted 3, "
+                                      "not tried 4; left, top, right, bottom in frame pixels; fitted bow in mean heights; "
+                                      "words decoded; fit outcome]";
             complete["ribbonFit"] = ribbon;
         }
         if (reconciled_)
@@ -343,7 +348,7 @@ private:
     std::array<std::array<int, ribbon::kFitOutcomes>, 2> ribbonOutcomes_{};
     std::array<std::array<int, kBowBounds.size() + 1>, 4> ribbonBows_{};
     std::array<std::array<int, 3>, 2 * ribbon::kFitOutcomes> ribbonWords_{};
-    static constexpr qsizetype kMaximumRibbonBoxes = 512;
+    static constexpr qsizetype kMaximumRibbonBoxes = 128 * 16; // detections of up to 16 detector passes
     QJsonArray ribbonBoxes_;
     double enqueueMs_{}, mergeMs_{};
     std::size_t metadataBytes_{};
