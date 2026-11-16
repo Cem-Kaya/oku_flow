@@ -42,7 +42,8 @@ scan against unchanged output, so its overlap flags drive stable erasure. Words
 and cache entries compact together; empty rows retain their indices until the
 original final prune. Incoming geometry is made after crop translation.
 
-There is no spatial index or persistent cache. Caching is restricted to 1024
+This candidate had no spatial index or persistent cache; round 7 added both
+as `PaddleMergeContext` (see the section at the end). Caching is restricted to 1024
 rows and 8192 words, accounting for spare vector capacity left by erasure.
 Oversized input or exhausted cache capacity uses uncached decisions without
 rejecting/truncating output. Cache vectors are released on fallback and return.
@@ -132,3 +133,53 @@ directional historical evidence, not this candidate's before/after result or a
 guarantee of the current bottleneck. CPU merge microtime cannot establish GPU
 utilization, worker/callback gain, CPU fallback speed, paint latency, native
 accessibility or delivered display/OCR FPS.
+
+## Round 7: one context per read (2026-11-16)
+
+The cache above still belonged to one call, so every call of a read rebuilt
+the geometry of every word merged so far, scanned every word and re-sorted
+every row. `PaddleMergeContext` keeps the cache for all calls into one output:
+cached geometry, a uniform grid over word bounds (at least 64 px cells, at
+most 256 per axis; words covering more than 64 cells and non-finite bounds
+are kept in a list every query visits; a query covering more than 1024 cells
+or with non-finite bounds scans every word), a second grid over word centres
+for the row search, and per-row sort state. Candidates
+from the grid are filtered with the same `QRectF::intersects` predicate the
+overlap test starts with and sorted back into output order, so first target,
+rejection, erasure order and preferred-row updates are those of a full scan.
+The cell argument: two rectangles that intersect share an interior point, and
+that point's cell lies in both cell ranges because division, floor and clamp
+are monotone.
+
+A word with no overlap and no usable preferred row searched every row. Row
+distance counts a cached word only when its height and the incoming word's
+height h are within a factor of two (so the larger is at most 2h), its centre
+is within .35 of the larger height (at most .7h) across the line, and the gap
+along the line is at most four times the smaller height (at most 4h). The
+cached word's centre lies in the box of its points, so it is within that
+box's width plus height of the point that meets the incoming word's extended
+extent. The row search therefore visits only rows holding a word whose centre
+lies in that band, with the reach capped at 512 px and a pixel of slack;
+words beyond the reach or with coordinates beyond 2^24 px are visited by
+every search, and an incoming word without a finite positive height, or whose
+band covers more than 1024 cells, searches every row. Rows that are not
+visited would return the initial maximum and are never chosen; visited rows
+are evaluated exactly, in output order, and the last empty row is found by
+scanning the row list as before.
+
+A row is not re-sorted when no word was erased from it or added to it, its
+last sort keys were finite and bounded (mixed rectangle and quad rows only on
+an exactly upright baseline, where both forms compare the left edge), and its
+first word still gives the same baseline angle bits: sorting a sorted
+sequence again under a strict weak order is the identity. Other rows are
+sorted with the original `std::stable_sort`, or with an index sort that yields
+the same unique permutation when the order is strict.
+
+Change detection does not compare words: between calls the context holds a
+shallow copy of the output, so any change through the container API detaches
+the output and the next call rebuilds. The copy is released before a call
+writes, so the merge itself never copies. The four-argument overload, sizes
+above 1024 rows or 8192 words, and any exception leave no state to trust and
+fall back to a rebuild or the unchanged per-call merge. The ec7282d oracle and
+the new replay cases are described in `tests/README.md`; results and
+end-to-end identity are in [the OkuRead port record](uct_okuread_port.md).

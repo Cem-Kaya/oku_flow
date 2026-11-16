@@ -188,6 +188,29 @@ hash-pinned historical final output rows, explicitly regrouped into artificial
 calls with missing legacy fields defaulted. Those are function microbenchmarks,
 not captured call sequences, ground truth, GPU/full-worker or FPS evidence.
 
+Round 7 (`PaddleMergeContext`) adds a second frozen oracle,
+`tests/uct_merge_baseline_ec72.cpp`: the exact ec7282d merge body, which
+includes refused-ribbon protection inheritance that bb53 predates. Every case
+is compared with ec7282d after every call; bb53 is still compared on every
+case whose inputs carry no inheritable protection. The candidate runs twice,
+once with one context for the whole case (as a recognizer keeps one per read)
+and once through the four-argument overload. Snapshots and frozen inputs use
+format 2, which adds `fromRibbon`, `ribbonErrorPx` and
+`ribbonReadingPointPx`; format 1 inputs still load. New generated cases are
+read-shaped sequences (every detector region of a 3840x2160, 1654x2339 or
+1920x1080 read, tile-edge fragments inside and outside the edge margin,
+overlapping recognition windows, refused ribbons, tilt, rectangle-only and
+mixed shapes), context bound crossings (8192 words, 1024 rows, oversize
+initial output) and row-search edges (rows reached only through a 2000 px
+word, a word at the 512 px reach, a tilted long word, dy and gap exactly at
+their limits with a 1:2 height ratio, coordinates beyond 2^24 px, a search
+band over too many cells, a distance tie and an emptied row reused later in
+the same call). `ContextControls` checks outside edits between calls, one
+context alternating between two outputs, a moved context and source size
+changes. The benchmark's base arm is now the ec7282d merge and its candidate
+the per-read context. `--only <text>` keeps only cases whose name contains the
+text (development filter; it also skips `ContextControls`).
+
 `uct_paddle_cuda`'s `gpuAlgorithmsAndOwnedInputs` additionally compares full
 validation integrals (including zero borders) against an integer CPU oracle
 across warp/tile tails, decimations, padded pitch and repeated poisoned buffers.

@@ -26,6 +26,7 @@ chalkboard lecture frames. Worker time is not camera-to-paint latency.
 | Composition flush before capture, capture targets, overlay raster | Not applicable: OkuFlow analyses camera, video and file frames it already owns |
 | Speculative ink retries | Not applicable: OkuFlow has no retry fits |
 | Reuse-cache crop order defect | Not applicable: OkuFlow has no OCR reuse cache and never reorders crops |
+| Keep word-merge state across one read instead of rebuilding it per crop | Round 7, on by default, identical output |
 
 ## Round 1: detector post-processing
 
@@ -310,3 +311,231 @@ unmeasured. The experiment has no GPU contract test of its own beyond the
 scene-set runs; cancellation during the detection phase drains the stream
 before the input is released and was read, not exercised. Regional and
 paused-detail reads have a single region and are unaffected.
+
+## Round 7: host word merging without per-call rework (on by default, exact)
+
+After every recognized crop the recognizer merges that crop's words into
+everything already read (`PaddleMergeRecognition`). Each call rebuilt the
+geometry of every word merged so far, compared the incoming words with every
+word and every row, and sorted every row again, so a read with several
+hundred crops repeated that work several hundred times. On the
+[corpus timing](uct_corpus_timing.md) profile this host merging took 20.3 ms
+of a 217 ms read on the dense 1920x1080 document, 56.8 ms of 394 ms on the
+portrait page and 80.7 ms of 499 ms on the dense 3840x2160 document.
+
+Targets stated before the work, for an exact change (no decision may change):
+
+- Profiled `mergeHostMs`: 3840x2160 document 20 ms or less, portrait page
+  15 ms or less, 1920x1080 document 6 ms or less.
+- Unprofiled warm worker time at least 1.10x on `doc-camera-2160` and
+  `page-portrait-1654x2339`, and no scene slower beyond the noise floor.
+- Byte-identical complete output against the base build on the 18 scenes, the
+  88 held-out labelled pages and the 62 title placements, with
+  `OKUFLOW_UCT_TEST_REGION_RECONCILE` unset and set; `uct_merge_replay` and
+  `uct_paddle_processing` pass.
+- The replay benchmark reported for the old and the new merge.
+
+| Target | Result |
+| --- | --- |
+| `mergeHostMs` 3840x2160 at most 20 ms | **Met**: 89.5 to 14.9 ms |
+| `mergeHostMs` portrait at most 15 ms | **Met**: 63.4 to 10.2 ms |
+| `mergeHostMs` 1920x1080 at most 6 ms | **Met**: 16.5 to 4.8 ms |
+| Warm worker at least 1.10x on 3840x2160 and portrait | **Not met**: 1.028x and 1.026x (recheck 1.033x and 1.023x) |
+| No scene slower beyond the noise floor | **Met** after a recheck (below) |
+| Identical output everywhere listed | **Met**: 336 of 336 scene comparisons identical |
+| `uct_merge_replay`, `uct_paddle_processing` pass | **Met** |
+| Replay benchmark old versus new | **Reported** (below) |
+
+There is no switch: the change is exact and is on by default.
+
+### What changed
+
+`PaddleMergeContext` (`include/okuflow/common/uct_paddle.hpp`, implemented in
+`src/common/uct_paddle_processing.cpp`) keeps the merge's state for all calls
+into one output. The GPU recognizer (`TensorRtRecognizer::RecognizeDevice`)
+and the CPU recognizer each create one per read and pass it to the new
+five-argument overload; the call site in `src/common/uct_tensorrt.cpp` changes
+by two lines. The four-argument overload keeps its behaviour for every other
+caller. The context holds:
+
+- each merged word's shape, bounds, area, angle, height and centre, computed
+  once;
+- a uniform grid over word bounds. The overlap scan visits only words whose
+  bounds pass `QRectF::intersects` against the incoming word's bounds, which
+  is the merge's own first overlap test, and visits them in output order, so
+  the first target, the rejection that stops the scan, the erased words and
+  the preferred-row updates are those of a full scan;
+- a grid over word centres for the row search. A word with no overlap and no
+  usable preferred row computed its distance to every word of every row. A
+  cached word can only give a finite distance when its centre lies in a band
+  around the incoming word, because the distance counts a word only at a
+  height within a factor of two, a centre within .35 of the larger height
+  across the line and a gap of at most four times the smaller height along
+  it. Only rows holding such a word are evaluated, exactly and in output
+  order; the last empty row is found as before;
+- per-row sort state. A row that gained or lost no word, was last sorted
+  under a strict weak order and still gives the same baseline angle from its
+  first word is not sorted again: sorting a sorted sequence again is then the
+  identity. Every other row is sorted with the original comparison.
+
+The context notices outside changes without comparing words. Between calls
+it holds a shallow copy of the output, so any change through the container
+API gives the output a new buffer, and the next call rebuilds the context
+from the output. Above 1024 rows or 8192 words the context is released and
+the unchanged per-call merge runs. The method, the bounds and the arguments
+for each step are in [the merge optimization record](uct_merge_optimization.md).
+
+No threshold, association rule, sort order, recognition or detection step
+changed.
+
+### Correctness evidence
+
+`uct_merge_replay` compares every ordered word field, with exact double bits,
+after every call. It now also has a frozen copy of the ec7282d merge
+(`tests/uct_merge_baseline_ec72.cpp`), because the bb53 oracle predates
+refused-ribbon protection inheritance. Every case is compared with ec7282d,
+and with bb53 wherever no input carries inheritable protection. The candidate
+runs with one context per case and through the four-argument overload. The
+new cases are read-shaped call sequences built from every detector region of
+a full read (3840x2160, 1654x2339 and 1920x1080, with tile-edge fragments,
+overlapping recognition windows, refused ribbons, tilt, rectangle-only and
+mixed shapes), context checks (outside edits between calls, one context
+shared by two outputs, a moved context, a source size change), the 8192-word
+and 1024-row bounds crossed in both directions, and row-search edges. See
+`tests/README.md`. `uct_merge_replay`, `uct_paddle_processing` (49 slots) and
+`uct_ribbon_ink_contract` (12 slots) pass on the final build.
+
+End to end, the final build (`c1d4765`) was compared with a build of
+`1b580f5` (round 2 as finalized), same corpus, complete ordered output
+(text, order, dispositions, geometry, confidence, colours):
+
+| Scene set | Reconcile unset | Reconcile set to 1 |
+| --- | --- | --- |
+| This repository's 18 scenes | 18 / 18 identical | 18 / 18 identical |
+| Held-out labelled pages, first 40 | 40 / 40 identical | 40 / 40 identical |
+| Held-out labelled pages, last 48 | 48 / 48 identical | 48 / 48 identical |
+| Title placements (private owner crops), 62 | 62 / 62 identical | 62 / 62 identical |
+
+Every arm was deterministic across its reads. Evidence `r7-final-v1-timing`
+and `r7-final-identity-v1-reconcile`, `-okuread-labelled-a`, `-a-reconcile`,
+`-okuread-labelled-b`, `-b-reconcile`, `-issue18-variants`,
+`-issue18-variants-reconcile`. The intermediate build with the context but
+without the row search (`c0e6261`) was compared the same way and was also
+identical everywhere (`r7-v1-timing`, `r7-identity-*`).
+
+### Merge host time
+
+Profiled runs (`--profile`; timing from these is not quoted), base `1b580f5`
+against the final build, `doc-camera-1080`, `doc-camera-2160` and
+`page-portrait-1654x2339`, two reversed cohorts of five warm reads. Medians of
+`mergeHostMs` over all ten warm reads; the cohort medians follow in
+brackets. The field also covers CTC token decoding of each group, which this
+round did not change.
+
+| Scene | Words | Base ms | New ms | Ratio |
+| --- | ---: | --- | --- | ---: |
+| doc-camera-1080 | 491 | 16.45 (16.21, 16.87) | 4.77 (4.90, 4.52) | 3.4 |
+| doc-camera-2160 | 1,199 | 89.48 (88.87, 89.77) | 14.94 (15.10, 14.38) | 6.0 |
+| page-portrait-1654x2339 | 983 | 63.42 (72.70, 60.14) | 10.20 (11.84, 8.16) | 6.2 |
+
+Evidence `r7-final-profile-merge`. With the context only (`r7-profile-merge`,
+a busier run: its base cohorts disagree by up to 50 percent) the new medians
+were 4.92, 21.69 and 10.23 ms. The 3840x2160 document then missed its target
+in one cohort (24.08 ms), which is why the row search was added.
+
+### Replay benchmark
+
+`uct_merge_replay_tests --benchmark --only <case>`: five warm-up visits per
+arm, then 31 alternating ABBA/BAAB blocks, all-field check after every call.
+Median summed merge time of one visit (all calls of a case), base = the
+frozen ec7282d merge, CPU only (Ryzen 9 5900X). The same frozen inputs
+(SHA-256 `8b4d0600...a53986` for the 3840x2160 case) were used for both
+builds. The benchmark had to run one case per process: all cases in one
+process exceed the replay's four-minute execution budget, because the base
+merge is slow on the read-shaped cases (kept as
+`r7-replay-benchmark-rowsearch-full-budget-exceeded`).
+
+| Case | Calls | Final words | Base ms | Context ms | Context and row search ms | Base / final |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| read-like-dense-3840x2160 | 599 | 1,607 | 85.05 / 81.72 | 6.43 | 5.32 | 15.4 |
+| read-like-portrait-1654x2339 | 505 | 1,532 | 68.44 / 69.34 | 5.14 | 4.80 | 14.5 |
+| read-like-dense-1920x1080 | 275 | 878 | 22.77 / 22.28 | 2.65 | 2.67 | 8.4 |
+| read-like-ribbons-1920x1080 | 313 | 864 | 24.62 / 23.09 | 2.76 | 2.21 | 10.5 |
+| read-like-tilted-1920x1080 | 321 | 1,022 | 29.63 / 28.80 | 3.40 | 3.29 | 8.8 |
+| read-like-rectangles-1920x1080 | 170 | 524 | 8.56 / 8.38 | 1.30 | 1.31 | 6.4 |
+| read-like-mixed-shapes-1920x1080 | 189 | 606 | 11.28 / 11.23 | 1.66 | 1.67 | 6.7 |
+| generated-book-383 | 64 | 383 | 3.28 / 3.36 | 0.67 | 0.64 | 5.3 |
+| generated-high-density-768 | 64 | 768 | 9.21 / 16.70 | 1.33 | 2.74 | 6.1 |
+
+The base column gives the base arm of each build's own run (context run /
+final run); the ratio is within the final run. `generated-atlas-175` and
+`generated-frame55-262` gave 3.6 and 3.9 in the final run. The high-density case's
+base arm doubled in the final run as well, so other load on the machine
+rather than the change is the likely cause there. Evidence
+`r7-replay-benchmark-context` and `r7-replay-benchmark-rowsearch`. The final
+benchmark binary was built from the final merge source before the three
+row-search replay cases were added; those cases are untimed.
+
+### Worker time
+
+Unprofiled, base `1b580f5` against the final build, this repository's 18
+scenes, two reversed cohorts of five warm reads (evidence
+`r7-final-v1-timing`).
+
+| Scene | Base warm ms (cohorts) | New warm ms (cohorts) | Speedup | First read ms, base / new |
+| --- | --- | --- | ---: | --- |
+| doc-camera-2160 | 491.27 (482.07, 495.97) | 477.74 (476.54, 479.06) | 1.028 | 489.90 / 477.86 |
+| page-portrait-1654x2339 | 386.57 (382.08, 392.48) | 376.70 (376.02, 388.05) | 1.026 | 382.14 / 377.66 |
+| doc-camera-1080 | 212.31 (212.25, 212.38) | 210.20 (210.49, 207.61) | 1.010 | 213.30 / 209.86 |
+| doc-camera-tilt-1080 | 163.85 (160.41, 164.42) | 161.00 (161.88, 159.38) | 1.018 | 163.51 / 161.43 |
+| doc-camera-turkish-1080 | 183.60 (182.45, 184.88) | 185.55 (182.86, 188.63) | 0.989 | 179.85 / 192.59 |
+| table-1080 | 144.26 (142.14, 147.40) | 145.25 (140.52, 149.79) | 0.993 | 144.68 / 142.46 |
+| slide-light-2160 | 122.39 (117.20, 128.80) | 128.05 (123.91, 129.00) | 0.956 | 126.83 / 126.19 |
+| book-curved-1080 | 75.46 (75.10, 78.86) | 80.89 (75.82, 81.32) | 0.933 | 79.78 / 78.75 |
+| slide-dark-1080 | 75.29 (72.42, 75.42) | 78.27 (72.50, 80.32) | 0.962 | 75.10 / 74.21 |
+| slide-light-1080 | 72.77 (70.34, 73.09) | 72.62 (71.37, 75.10) | 1.002 | 71.48 / 71.98 |
+| no-text-1080 | 46.78 (46.79, 46.77) | 47.40 (47.00, 48.50) | 0.987 | 48.33 / 47.78 |
+| signs-sparse-1080 | 32.81 (32.22, 33.65) | 32.78 (32.88, 32.68) | 1.001 | 33.01 / 32.57 |
+| board-lecture-00 (real) | 24.17 (23.63, 24.83) | 23.99 (23.77, 24.04) | 1.007 | 24.22 / 25.77 |
+| board-lecture-01 (real) | 25.09 (25.56, 24.87) | 24.45 (23.84, 26.36) | 1.026 | 24.03 / 25.17 |
+| board-lecture-02 (real) | 27.27 (26.40, 28.36) | 27.76 (26.50, 27.77) | 0.982 | 28.71 / 29.32 |
+| board-lecture-03 (real) | 27.81 (26.50, 28.75) | 27.79 (29.34, 27.75) | 1.001 | 28.07 / 27.79 |
+| board-lecture-04 (real) | 25.62 (24.72, 27.66) | 25.91 (25.86, 27.84) | 0.989 | 27.21 / 24.85 |
+| board-lecture-05 (real) | 23.22 (22.67, 23.94) | 22.88 (22.23, 23.64) | 1.015 | 25.11 / 23.90 |
+
+Geometric mean 0.996x warm and 1.005x for first reads. The three scenes that
+read 4 to 7 percent slower had cohorts that disagree with each other, and
+they were measured again in a separate run with the two target scenes
+(`r7-final-v1-timing-recheck`, same protocol):
+
+| Scene | Base warm ms (cohorts) | New warm ms (cohorts) | Speedup | First read ms, base / new |
+| --- | --- | --- | ---: | --- |
+| doc-camera-2160 | 487.73 (488.77, 481.39) | 471.94 (470.88, 478.38) | 1.033 | 485.62 / 476.09 |
+| page-portrait-1654x2339 | 385.45 (386.86, 382.86) | 376.83 (376.70, 379.77) | 1.023 | 389.49 / 382.15 |
+| doc-camera-turkish-1080 | 186.74 (187.95, 179.94) | 181.33 (179.80, 184.42) | 1.030 | 183.45 / 183.10 |
+| book-curved-1080 | 77.78 (78.98, 74.38) | 75.66 (74.29, 78.38) | 1.028 | 76.39 / 78.98 |
+| slide-dark-1080 | 73.88 (74.37, 71.35) | 73.81 (76.47, 72.83) | 1.001 | 76.38 / 72.89 |
+| slide-light-2160 | 119.49 (125.47, 116.03) | 116.90 (116.47, 117.13) | 1.022 | 122.41 / 115.90 |
+| no-text-1080 | 48.51 (48.31, 48.72) | 47.45 (47.04, 48.13) | 1.022 | 49.84 / 55.35 |
+
+None of them is slower there; the single textless first read (55.35 ms) is
+one sample. The intermediate context-only build measured 1.024x and 1.022x on
+the two target scenes and 1.002x on the geometric mean (`r7-v1-timing`).
+
+The worker gain is far smaller than the merge time removed: on the 3840x2160
+document about 75 ms of host merging went away and the read became about
+14 ms shorter. Recognition groups are issued ahead of the merge (a two-slot
+look-ahead), so most of the merge already ran while the GPU worked on the
+next group, and the read is limited by GPU work. That is an inference from
+these two measurements; this round did not measure the overlap directly.
+Reaching 1.10x on worker time would need a change on the GPU side of the
+read, which is outside this round's scope.
+
+### Not established
+
+The replay cases are constructed call sequences, not captured detector
+calls. The CPU recognizer uses the context too, but its speed was not
+measured. Paused-detail and regional reads have one region and few calls and
+were not measured separately. `CHANGELOG.md` is unchanged: output is
+identical and the worker-time change is inside the noise floor on most
+scenes.
