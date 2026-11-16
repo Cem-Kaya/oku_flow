@@ -8345,6 +8345,47 @@ snapshot for building, and still hashes every loaded plan before deserializing.
 `startupSha256MatchesQtAndRefusesErrors` covers Qt differential digests,
 boundary/empty/257 MiB inputs, cancellation, read errors and a tampered file.
 
+### UCT preparation side by side (round 11)
+
+`LoadPaddleAssets` (`src/common/uct_paddle_processing.cpp`) runs its existing
+file checks as concurrent tasks (`std::async`, inline when no thread can be
+started), all joined before it returns: each role's original graph and config
+(which choose that role's directory) and the chosen directory's graph, the last
+started at once on the original path and used only when the original directory
+is chosen. Results are evaluated in the original order, so paths and errors
+equal the sequential loader's.
+
+`preparation_overlap::Ahead` (`src/common/uct_preparation_overlap.hpp`) runs
+one load beside the preparation thread. `Start(Steps, stop)` reads the failure
+memo (`Steps::refuseRemembered`), takes the attempt latch (`Steps::begin`) and
+starts `Steps::load` on a helper thread with a stop that also turns true when
+the object is abandoned; a memo, a held latch or a thread that cannot be
+started leaves everything to the caller's original code (`Started()` false).
+`Adopt()` joins the helper, reads the memo again (a refusal releases the latch
+and is rethrown) and returns an `Adoption`: `NotStarted`, `Loaded`,
+`NeedsBuild` or `Failed` with the helper's exception unchanged; the latch then
+belongs to the caller. Destruction without `Adopt` stops and joins the helper
+and releases the latch (`Steps::release`). `TensorRtRecognizer::BeginPreparation`
+uses it for the production BF16 recognizer: `RuntimeRecognizerGraph`,
+`RuntimeRecognizerAttempt` and `LoadRuntimeRecognizer` give the helper and the
+original place the same key and the same `Network::PreparePinned` call; the
+helper passes `needsBuild`, which ends a cache miss before any builder library,
+cache directory or stream use. `State::recognizerAhead` holds the helper's
+Network from before its first vendor call until `PrepareRuntimeRecognizer`
+adopts it or the State is retired. `PrepareRuntimeRecognizer` takes the `Ahead`
+and continues exactly as before after the load.
+
+`CompletionPollPause` waits between `ConfirmPublicCompletion` polls with a
+high-resolution waitable timer (250 us; 1 ms sleep when unavailable); the
+poll, cancellation and 30 s deadline are unchanged.
+
+Tests: `preparationOverlapMatchesSequentialDecisions` and
+`preparationOverlapAbandonStopsJoinsAndReleases`
+(`tests/uct_preparation_overlap_cases.hpp`, in CTest `uct_paddle_processing`);
+opt-in `optionalAssetVerificationMatchesSequential` and
+`optionalPreparationCancellation` (`tests/uct_preparation_diagnostic.hpp`,
+which keeps a frozen copy of the sequential loader as its oracle).
+
 Round 6 retains these rules;
 the tests additionally exercise unequal-tolerance chain restoration and check
 curved retention, unchanged input geometry, statistics and permutation
