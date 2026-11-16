@@ -8285,14 +8285,29 @@ only under a private `StraightRule` (`kSpanStraight`). It is stored with the fit
 bow (`Geometry::outcome`, `Geometry::bow`: centre sagitta over mean envelope
 height) in what was padding, so the 144-byte layout is unchanged; no decision
 reads it. `ribbon::StraightBound(meanHeight, length, span)` is the straight-line
-sagitta bound: the established max(0.75 px, 8% of the mean height), scaled by
-max(1, length / (span x meanHeight)) when `span` is positive.
-`ribbon::StraightRule{span, refusedOnly}` is the private round 12 experiment
-(`OKUFLOW_UCT_TEST_FLAT_RIBBON`), passed through `ribbon::Fit`, `gpu::Detect` and
-`PaddleDetect`; `{}` is the shipped rule. `TensorRtProfile::RibbonCrop` adds a
-`ribbonFit` object to the profile line: crops and decoded words per outcome,
-separately for detections and their sub-windows, and a bow histogram per outcome
-class. Covered by `curvedRibbonStraightSpanBound` (model-free) and
+sagitta bound: the established max(0.75 px, 8% of the mean height); when `span`
+is positive the 8% part is scaled by max(1, length / (span x meanHeight)) and the
+0.75 px floor is not. `ribbon::StraightRule{span, refusedOnly, maximumBow}` is
+the private round 12 experiment (`OKUFLOW_UCT_TEST_FLAT_RIBBON`), passed through
+`ribbon::Fit`, `gpu::Detect` and `PaddleDetect`; `{}` is the shipped rule.
+`refusedOnly` moves only a line refused because its padded ribbon leaves the
+source (`kOutside`, after every shape check); `maximumBow` caps, in mean
+heights, the bow of any line the rule treats as straight
+(`ribbon::kStraightMaximumBow` = 0.32; `ribbon::kStraightSpanHeights` = 20).
+`PaddleFlatRibbonRule(value, rule)` (`include/okuflow/common/uct_paddle.hpp`)
+parses the switch for both the TensorRT and the CPU reader; an invalid value
+returns false and the reader refuses to start with `kPaddleFlatRibbonError`.
+`PaddleDecodeTokens` gives each word of a moved line the line's bow in
+`RecognizedWord::movedLineBow` (0 for every other word; not part of the exact
+output bytes), and `FinalizeRecognizedGeometry` withholds such a word as
+invalid geometry over its detector span when the worker's ink fitting could not
+place it. `TensorRtProfile::RibbonCrop` adds a `ribbonFit` object to the
+profile line: crops and decoded words per outcome, separately for detections
+and their sub-windows, a bow histogram per outcome class, and every
+detection's box with its kind, bow and decoded word count. The corpus timing
+evidence also records `inkFitted`, the final quad and `movedLineBow` per word.
+Covered by `curvedRibbonStraightSpanBound`, `curvedRibbonFlatSwitchBothReaders`,
+`curvedRibbonMovedWordsHeldToInk` (model-free) and
 `gpuRibbonStraightRuleMatchesCpu`.
 
 `graph_cache::Policy` (`src/common/uct_graph_cache.hpp`) is the bookkeeping of

@@ -1460,14 +1460,18 @@ See `docs/uct_okuread_port.md`.
 ## Flat-line ribbon switch (2026-11-16)
 
 `OKUFLOW_UCT_TEST_FLAT_RIBBON` selects the private round 12 experiment on the
-GPU ribbon fit (`ribbon::StraightRule`). `straight-refused` lets the fit's
-straight-line bound grow linearly with a line's length beyond
-`kStraightSpanHeights` (20) mean heights, but only where the ribbon would
-otherwise be refused: such a line takes the ordinary rectangle path with no
-ribbon flag and no protection box, and a valid ribbon fit stays a ribbon.
-`straight` applies the same bound before any ribbon check, so long lines with a
-small fitted bow lose a valid ribbon too. Unset or `0` keeps the shipped rule;
-any other value leaves the GPU backend unavailable with an explanatory status.
+ribbon fit (`ribbon::StraightRule`), read the same way by the TensorRT and the
+CPU reader. `straight-refused` lets the 8% part of the fit's straight-line
+bound grow linearly with a line's length beyond `kStraightSpanHeights` (20)
+mean heights, up to an absolute cap of `kStraightMaximumBow` (0.32) mean
+heights, but only for a line refused because its padded ribbon leaves its
+source region (every shape check passed): such a line takes the ordinary
+rectangle path with no ribbon flag and no protection box, and its words are
+drawn only where the worker fits them to their ink. A valid ribbon fit stays a
+ribbon and every other refusal stays refused. `straight` applies the same
+bound and cap before any ribbon check, so long lines with a small fitted bow
+lose a valid ribbon too. Unset or `0` keeps the shipped rule; any other value
+leaves either backend unavailable with an explanatory status.
 Both values change recognized output and neither is a default. It adds no
 setting, file or model and only takes effect where curved processing is on
 (`OKUFLOW_UCT_CURVED_RIBBON`). See `docs/uct_okuread_port.md`, round 12.
