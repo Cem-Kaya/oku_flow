@@ -129,7 +129,7 @@ inline void Faults()
         {"capture enqueue fails with a capture status", Fault::CaptureEnqueueFailsInvalidated, -1, 1, 1, nullptr, false},
         {"capture enqueue fails without a CUDA reason", Fault::CaptureEnqueueFails, -1, 2, 1, nullptr, true},
         {"eviction drains work still queued", Fault::QueueBeforeDrain, -1, 0, 6, "1", false},
-        {"input arrives at another address", Fault::MoveInput, -1, 3, 8, nullptr, false},
+        {"input arrives at another address", Fault::MoveInput, -1, 60, 20, nullptr, false},
         {"TensorRT rejects the shape between Plan and Bound", Fault::RejectShape, -1, 3, 1, nullptr, true},
         {"background context creation fails", Fault::ContextCreationFails, 1, 0, 1, nullptr, false},
         {"shared activation arena unavailable", Fault::ArenaUnavailable, 0, 0, 1, nullptr, false},
