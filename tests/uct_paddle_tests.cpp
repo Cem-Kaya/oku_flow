@@ -1912,6 +1912,10 @@ class PaddleTests final : public QObject
     {
         uct_clock_probe_test::ClockProbe();
     }
+    void optionalKeepWarmGpuContract()
+    {
+        uct_corpus_test::KeepWarmGpuContract();
+    }
     void optionalGraphReplayLifetime()
     {
         uct_graph_replay_test::Lifetime();

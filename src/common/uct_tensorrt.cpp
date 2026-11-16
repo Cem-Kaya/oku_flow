@@ -1084,12 +1084,14 @@ struct State
     AnalysisPool uploadPool;
     SharedDeviceImage inFlight;
     // Keep-warm (private, off by default): a host-mapped stop flag the worker
-    // sets before every read and an event marking the last spin. Created on
-    // first use, on this State's stream only, and released in ~State, which
-    // runs only after RetireState has found the stream complete.
+    // sets before every read, and events marking the last two spins (one may
+    // run while the next waits behind it). Created on first use, on this
+    // State's stream only, and released in ~State, which runs only after
+    // RetireState has found the stream complete.
     volatile LONG* warmStopHost{};
     int* warmStopDevice{};
-    cudaEvent_t warmDone{};
+    cudaEvent_t warmDone[2]{};
+    int warmNext{};
     // Pre-existing empty slot: final retirement can self-quarantine without
     // allocation if asynchronous cleanup cannot accept the resource closure.
     std::shared_ptr<State> retirementQuarantine;
@@ -1098,8 +1100,9 @@ struct State
         for (auto event : groupEvents)
             if (event)
                 cudaEventDestroy(event);
-        if (warmDone)
-            cudaEventDestroy(warmDone);
+        for (auto event : warmDone)
+            if (event)
+                cudaEventDestroy(event);
         if (warmStopHost)
             cudaFreeHost(const_cast<LONG*>(warmStopHost));
         if (stream)
@@ -1541,7 +1544,7 @@ class TensorRtRecognizer final : public Recognizer
         if (!state_ || preparation_) return KeepWarmResult::NotReady;
         auto& state = *state_;
         if (cudaSetDevice(state.device) != cudaSuccess) return KeepWarmResult::NotReady;
-        if (!state.warmDone) {
+        if (!state.warmStopDevice) {
             void* host{};
             if (cudaHostAlloc(&host, sizeof(LONG), cudaHostAllocMapped) != cudaSuccess) {
                 warmFailed_ = true;
@@ -1551,30 +1554,38 @@ class TensorRtRecognizer final : public Recognizer
             *state.warmStopHost = 1;
             void* device{};
             if (cudaHostGetDevicePointer(&device, host, 0) != cudaSuccess ||
-                cudaEventCreateWithFlags(&state.warmDone, cudaEventDisableTiming) != cudaSuccess) {
-                warmFailed_ = true; // the flag is released with the State
+                cudaEventCreateWithFlags(&state.warmDone[0], cudaEventDisableTiming) != cudaSuccess ||
+                cudaEventCreateWithFlags(&state.warmDone[1], cudaEventDisableTiming) != cudaSuccess) {
+                warmFailed_ = true; // the flag and events are released with the State
                 return KeepWarmResult::Unsupported;
             }
             state.warmStopDevice = static_cast<int*>(device);
         }
-        const auto previous = cudaEventQuery(state.warmDone);
-        if (previous == cudaErrorNotReady) return KeepWarmResult::Pending;
-        if (previous != cudaSuccess) {
+        // At most two spins outstanding: the running one and one queued behind
+        // it, so the stream stays occupied even when this worker wakes late.
+        const auto older = cudaEventQuery(state.warmDone[state.warmNext]);
+        if (older == cudaErrorNotReady) return KeepWarmResult::Pending;
+        if (older != cudaSuccess) {
             warmFailed_ = true; // the next read reports and retires a real fault
             return KeepWarmResult::Unsupported;
         }
         InterlockedExchange(state.warmStopHost, 0);
         try {
-            gpu::KeepWarm(state.warmStopDevice, static_cast<unsigned long long>(busy.count()) * 1000ull, 1, state.stream);
+            // One resident warp that naps 10 us between flag reads: it holds the
+            // clocks like a spinning warp and ends within a nap of an interrupt.
+            gpu::KeepWarm(state.warmStopDevice, static_cast<unsigned long long>(busy.count()) * 1000ull, 1,
+                          state.stream, kKeepWarmNapNs);
         } catch (const std::exception&) {
             warmFailed_ = true;
             return KeepWarmResult::Unsupported;
         }
-        if (cudaGetLastError() != cudaSuccess || cudaEventRecord(state.warmDone, state.stream) != cudaSuccess) {
+        if (cudaGetLastError() != cudaSuccess ||
+            cudaEventRecord(state.warmDone[state.warmNext], state.stream) != cudaSuccess) {
             InterlockedExchange(state.warmStopHost, 1);
             warmFailed_ = true;
             return KeepWarmResult::Unsupported;
         }
+        state.warmNext ^= 1;
         return KeepWarmResult::Launched;
     }
     void InterruptKeepWarm() noexcept override
@@ -2552,6 +2563,7 @@ class TensorRtRecognizer final : public Recognizer
     std::optional<DetailFocus> detail_;
     bool curvedRibbon_{}; // worker-confined, one recognition at a time
     bool warmFailed_{};   // worker-confined: keep-warm disabled for this recognizer
+    static constexpr unsigned kKeepWarmNapNs = 10000;
     PaddleAssets assets_;
     BackendStatus status_;
     std::shared_ptr<State> state_;

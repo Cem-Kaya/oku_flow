@@ -7096,10 +7096,12 @@ void UltraClearTextTests::keepWarmSwitchParsesStrictlyAndDefaultsOff()
     QCOMPARE(shaped.settings.busy, std::chrono::microseconds(1500));
     QCOMPARE(shaped.settings.lead, std::chrono::milliseconds(250));
     QCOMPARE(shaped.settings.idleTimeout, std::chrono::milliseconds(3000));
+    // A spin may outlast the period (one waits behind the running one).
+    QVERIFY(ParseKeepWarm("continuous", "25,50000,0,2500").error.isEmpty());
     // Invalid text is off and reported, never a guess.
     for (const auto& [mode, shape] : std::vector<std::pair<QString, QString>>{
              {"1", {}}, {"on", {}}, {"Continuous", {}}, {"continuous", "20,1500,250"},
-             {"continuous", "0,10,0,1000"}, {"continuous", "10,10001,0,1000"}, {"continuous", "10,9,0,1000"},
+             {"continuous", "0,10,0,1000"}, {"continuous", "10,1000001,0,1000"}, {"continuous", "10,9,0,1000"},
              {"continuous", "10,100,2001,1000"}, {"continuous", "10,100,0,99"}, {"continuous", "10,100,0,10001"},
              {"continuous", "10,-1,0,1000"}, {"continuous", "10, 100,0,1000"}, {"0", "10,100,0,1000"}}) {
         const auto parsed = ParseKeepWarm(mode, shape);

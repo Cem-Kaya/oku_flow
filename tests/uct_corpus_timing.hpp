@@ -279,7 +279,157 @@ inline void CorpusTiming()
     QVERIFY(uct_batch_test::Save(evidence, report));
     QVERIFY(closed.Passed());
 }
+// GPU contract for the private keep-warm (round 13): with real engines, reads
+// interleaved with running spins are byte-identical to reads of a scheduler
+// that never warms, a spin outstanding at destruction does not hold up
+// retirement, and every TensorRT State closure completes. Opt-in: needs the
+// prepared plans, OKUFLOW_UCT_KEEP_WARM_GPU_TEST=1 and one or more images in
+// OKUFLOW_UCT_CORPUS_IMAGES.
+inline void KeepWarmGpuContract()
+{
+    using namespace uct_resident_test;
+    if (qEnvironmentVariable("OKUFLOW_UCT_KEEP_WARM_GPU_TEST") != "1")
+        QSKIP("Explicit keep-warm GPU contract not selected.");
+    QStringList paths;
+    for (const auto& path : qEnvironmentVariable("OKUFLOW_UCT_CORPUS_IMAGES").split(QLatin1Char(';'), Qt::SkipEmptyParts))
+        paths.push_back(QFileInfo(path.trimmed()).absoluteFilePath());
+    QVERIFY2(!paths.isEmpty() && paths.size() <= 8, "Select 1-8 images with OKUFLOW_UCT_CORPUS_IMAGES.");
+    QVERIFY(cudaSetDevice(0) == cudaSuccess);
+    DeviceStream stream;
+    DeviceUploads uploads;
+    QVERIFY(stream.value);
+    uploads.stream = stream.value;
+    struct Scene { QImage image; void* device{}; };
+    std::vector<Scene> scenes;
+    for (const auto& path : paths) {
+        Scene scene;
+        scene.image = QImage(path).convertToFormat(QImage::Format_ARGB32);
+        QVERIFY2(!scene.image.isNull(), qPrintable(path));
+        scene.device = uploads.Allocate(std::size_t(scene.image.sizeInBytes()));
+        QVERIFY(scene.device);
+        QVERIFY(cudaMemcpyAsync(scene.device, scene.image.constBits(), std::size_t(scene.image.sizeInBytes()),
+                                cudaMemcpyHostToDevice, stream.value) == cudaSuccess);
+        scenes.push_back(std::move(scene));
+    }
+    QVERIFY(cudaStreamSynchronize(stream.value) == cudaSuccess);
+    auto pool = std::make_unique<AnalysisPool>();
+    std::uint64_t frame = 1;
+    // One owned read through `scheduler`; returns the exact output digest.
+    const auto read = [&](RecognitionScheduler& scheduler, Mailbox& mailbox, int index, QByteArray& sha) {
+        const auto& scene = scenes[std::size_t(index)];
+        const int w = scene.image.width(), h = scene.image.height();
+        SharedDeviceImage owned;
+        for (int attempt = 0; !owned && attempt < 2000; ++attempt) {
+            owned = pool->Capture(scene.device, std::size_t(w) * 4, w, h, stream.value, std::uint64_t(index) + 1, frame, 1);
+            if (!owned) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        QVERIFY(owned);
+        QVERIFY(cudaStreamSynchronize(stream.value) == cudaSuccess);
+        SourceStamp stamp;
+        stamp.sourceEpoch = owned->sourceEpoch;
+        stamp.geometryGeneration = 1;
+        stamp.frameSeq = frame++;
+        stamp.viewportWidth = std::uint32_t(w);
+        stamp.viewportHeight = std::uint32_t(h);
+        stamp.viewTransform = {0, 0, 1, 1, 0, 0, 1, 1, true};
+        stamp.liveCameraCapture = true;
+        for (int attempt = 0; attempt < 6000; ++attempt) {
+            const auto submitted = Clock::now();
+            QVERIFY(scheduler.SubmitDevice(stamp, owned));
+            const auto completion = Await(mailbox, submitted + std::chrono::seconds(60));
+            QVERIFY(completion);
+            const auto& output = completion->result.output;
+            if (output.backendPreparing && !output.ok) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                continue;
+            }
+            QVERIFY2(output.ok, qPrintable(output.error));
+            sha = QCryptographicHash::hash(ExactOutputBytes(output), QCryptographicHash::Sha256);
+            return;
+        }
+        QFAIL("Cached GPU engines were not ready; prepare them first.");
+    };
+    const auto make = [&](uct_batch_test::RetirementReceipts& retirement, const std::shared_ptr<Mailbox>& mailbox) {
+        return std::make_unique<RecognitionScheduler>(
+            CreateProductionTensorRtRecognizer(ModelTier::Medium, ModelTier::Medium, retirement.Observer(), QString()),
+            [mailbox](RecognitionResult result) {
+                const auto at = Clock::now();
+                {
+                    std::lock_guard lock(mailbox->mutex);
+                    mailbox->completed = Completion{std::move(result), mailbox->backend, at};
+                }
+                mailbox->ready.notify_all();
+            },
+            [mailbox](BackendStatus status) {
+                std::lock_guard lock(mailbox->mutex);
+                mailbox->backend = std::move(status);
+            },
+            2, ModelTuning{}.minimumWordHeightPx, false, false);
+    };
+    // Reference digests from a scheduler that never warms.
+    QVector<QByteArray> reference(int(scenes.size()));
+    {
+        uct_batch_test::RetirementReceipts retirement;
+        const auto mailbox = std::make_shared<Mailbox>();
+        auto plain = make(retirement, mailbox);
+        for (int i = 0; i < int(scenes.size()); ++i) {
+            read(*plain, *mailbox, i, reference[i]);
+            if (QTest::currentTestFailed()) return;
+        }
+        plain.reset();
+        QVERIFY(retirement.Wait().Passed());
+    }
+    // Continuous keep-warm: reads land while spins run or wait on the stream.
+    uct_batch_test::RetirementReceipts retirement;
+    const auto mailbox = std::make_shared<Mailbox>();
+    auto warm = make(retirement, mailbox);
+    KeepWarmSettings settings;
+    settings.mode = KeepWarmMode::Continuous;
+    warm->SetKeepWarm(settings);
+    QByteArray sha;
+    read(*warm, *mailbox, 0, sha); // promotes the prepared engines
+    if (QTest::currentTestFailed()) return;
+    QCOMPARE(sha, reference[0]);
+    int compared = 0;
+    for (int round = 0; round < 4; ++round)
+        for (int i = 0; i < int(scenes.size()); ++i) {
+            const auto launched = warm->Stats().keepWarmLaunches;
+            warm->ExpectNextRead(std::chrono::steady_clock::now() + std::chrono::milliseconds(350));
+            const auto deadline = Clock::now() + std::chrono::seconds(2);
+            while (warm->Stats().keepWarmLaunches < launched + 2 && Clock::now() < deadline)
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            QVERIFY2(warm->Stats().keepWarmLaunches >= launched + 2, "Keep-warm did not launch on the GPU backend.");
+            std::this_thread::sleep_for(std::chrono::milliseconds(3 + 7 * round)); // land at varied spin phases
+            read(*warm, *mailbox, i, sha);
+            if (QTest::currentTestFailed()) return;
+            QCOMPARE(sha, reference[i]);
+            ++compared;
+        }
+    // Destroy while spins are outstanding: prompt, and every State closes.
+    warm->ExpectNextRead(std::chrono::steady_clock::now() + std::chrono::milliseconds(350));
+    const auto launched = warm->Stats().keepWarmLaunches;
+    const auto deadline = Clock::now() + std::chrono::seconds(2);
+    while (warm->Stats().keepWarmLaunches < launched + 2 && Clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    QVERIFY(warm->Stats().keepWarmLaunches >= launched + 2);
+    const auto stats = warm->Stats();
+    const auto destroying = Clock::now();
+    warm.reset();
+    const double destroyMs = Ms(Clock::now() - destroying);
+    const auto& closed = retirement.Wait();
+    const double retiredMs = Ms(Clock::now() - destroying);
+    qInfo().noquote() << "keep-warm GPU contract: reads compared" << compared << "launches" << stats.keepWarmLaunches
+                      << "pending" << stats.keepWarmPending << "destroy ms" << destroyMs << "retired ms" << retiredMs;
+    QVERIFY(closed.Passed());
+    QVERIFY2(destroyMs < 1000, "Destroying a warming scheduler took too long.");
+}
 #else
+inline void KeepWarmGpuContract()
+{
+    if (qEnvironmentVariable("OKUFLOW_UCT_KEEP_WARM_GPU_TEST") != "1")
+        QSKIP("Explicit keep-warm GPU contract not selected.");
+    QFAIL("The keep-warm GPU contract needs the CUDA analysis pool and TensorRT adapter.");
+}
 inline void CorpusTiming()
 {
     if (qEnvironmentVariable("OKUFLOW_UCT_CORPUS_TIMING") != "1")

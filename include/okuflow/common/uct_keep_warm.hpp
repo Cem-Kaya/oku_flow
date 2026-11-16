@@ -31,9 +31,14 @@ enum class KeepWarmMode : std::uint8_t {
 
 struct KeepWarmSettings {
     KeepWarmMode mode{KeepWarmMode::Off};
-    std::chrono::milliseconds period{16};       // one launch per period at most
-    std::chrono::microseconds busy{4000};       // spin of one launch; never longer than the period
-    std::chrono::milliseconds lead{200};        // pre-roll: start this long before the read is due
+    // Defaults from the round 13 characterization (RTX 4090): the clocks hold
+    // at 40 percent or more time utilization and step up from the lowest
+    // state in about 260 to 300 ms at full utilization. A spin longer than
+    // the period, with one queued behind the running one, keeps the stream
+    // occupied even when the worker wakes late.
+    std::chrono::milliseconds period{25};       // the worker tops up at most once per period
+    std::chrono::microseconds busy{50000};      // length of one spin
+    std::chrono::milliseconds lead{350};        // pre-roll: start this long before the read is due
     std::chrono::milliseconds idleTimeout{2500};// no read submitted for this long: stop until re-armed
     bool Enabled() const noexcept { return mode != KeepWarmMode::Off; }
 };
@@ -44,7 +49,7 @@ struct KeepWarmParse {
 };
 
 // Strict parser for the two private variables. Bounds: period 1-1000 ms,
-// busy 10 us to the period, lead 0-2000 ms, idle time-out 100-10000 ms.
+// busy 10 us to 1 s, lead 0-2000 ms, idle time-out 100-10000 ms.
 inline KeepWarmParse ParseKeepWarm(const QString& mode, const QString& shape)
 {
     KeepWarmParse result;
@@ -65,14 +70,14 @@ inline KeepWarmParse ParseKeepWarm(const QString& mode, const QString& shape)
         bool ok = parts.size() == 4;
         for (int i = 0; ok && i < 4; ++i) {
             for (const QChar c : parts[i]) ok = ok && c >= QLatin1Char('0') && c <= QLatin1Char('9');
-            ok = ok && !parts[i].isEmpty() && parts[i].size() <= 6;
+            ok = ok && !parts[i].isEmpty() && parts[i].size() <= 7;
             if (ok) values[i] = parts[i].toLongLong();
         }
-        ok = ok && values[0] >= 1 && values[0] <= 1000 && values[1] >= 10 && values[1] <= values[0] * 1000 &&
+        ok = ok && values[0] >= 1 && values[0] <= 1000 && values[1] >= 10 && values[1] <= 1000000 &&
              values[2] >= 0 && values[2] <= 2000 && values[3] >= 100 && values[3] <= 10000;
         if (!ok) {
             result.error = QStringLiteral("OKUFLOW_UCT_TEST_KEEP_WARM_SHAPE must be periodMs,busyUs,leadMs,idleMs "
-                                          "with period 1-1000, busy 10 to the period, lead 0-2000, idle 100-10000.");
+                                          "with period 1-1000, busy 10-1000000, lead 0-2000, idle 100-10000.");
             return result;
         }
         settings.period = std::chrono::milliseconds(values[0]);
@@ -174,7 +179,8 @@ public:
         lastWarm_ = now;
     }
     // How long one launch may spin: the configured busy time, cut so that a
-    // pre-roll launch never outlasts its window.
+    // pre-roll launch never outlasts its window (a spin queued behind the
+    // running one can still end up to one spin later).
     std::chrono::microseconds Busy(TimePoint now) const
     {
         auto busy = settings_.busy;
