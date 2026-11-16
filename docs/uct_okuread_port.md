@@ -38,8 +38,8 @@ gap is stated; round 13 found that this matters a great deal for sparse frames
 
 ## Where the branch stands
 
-Integration branch `perf/okuread-port` at `32a27d1` (rounds 13 and 14 are not
-in it; see the end of this section). Nothing was pushed or published.
+Integration branch `perf/okuread-port` with all fourteen rounds: `88f9266` is
+the merge of rounds 13 and 14.
 
 | Round | What | State | Default | Result (RTX 4090) |
 | --- | --- | --- | --- | --- |
@@ -53,8 +53,8 @@ in it; see the end of this section). Nothing was pushed or published.
 | 8 | Two inferences in flight on two streams | merged (measurement slot and record) | | negative: slower than one after the other |
 | 9 | Faster box score, every GPU | merged | on | textless frame 47.4 to 31.8 ms, bent page 73.5 to 65.2 ms; no page of 212 changed |
 | 12 | Flat lines no longer refused as curved (issue #18) | merged | off, `OKUFLOW_UCT_TEST_FLAT_RIBBON=straight-refused` | +324, +454 and +117 exact words on the three screen-page groups, +545 on bent pages, no page worse; placement of drawn words not fully within the reviewers' criteria on dense bent pages |
-| 13 | Reads at the application's pacing; keep-warm | on its branch (`perf/okuread-port-r13`) | off, `OKUFLOW_UCT_TEST_KEEP_WARM` | paced sparse reads 0.96x to 1.06x of back to back instead of 4.3x to 4.9x, for 45 to 63 W while reading |
-| 14 | Warm on view change instead of continuously; paced re-measurement | in progress (`perf/okuread-port-r14`) | off | not finished |
+| 13 | Reads at the application's pacing; continuous and pre-roll keep-warm | merged | off, `OKUFLOW_UCT_TEST_KEEP_WARM=continuous` or `=preroll` | paced sparse reads 0.96x to 1.06x of back to back instead of 4.3x to 4.9x, for 45 to 63 W while reading |
+| 14 | GPU clocks raised after a view change; paced re-measurement | merged | on while on external power (the owner's decision; the reviewers recommended off), `OKUFLOW_UCT_TEST_KEEP_WARM=0` turns it off | read after a view change 1.1x to 2.2x of back to back instead of 6x to 9x (met 1.25x only with a 600 ms lead); +6 to +14 W at one change per 10 s |
 
 Measured on the merged build with every default as above (`int9-ab-v1`, two
 cohorts of five warm reads, back to back), each switch against switch-off:
@@ -65,15 +65,28 @@ Against the build from before round 11 the defaults measure 1.010x warm with
 identical output and startup to first result 837 to 583 ms and 656 to 391 ms
 (`int9-pair-v1`).
 
+The whole program in one comparison (`total-start-vs-now`, same session, two
+cohorts of five warm reads, back to back, 18 scenes): the build from before
+round 7 with the original detector kernels selected, which reads like the
+program's starting point, against the final build with its defaults. Warm
+reads 1.153x, first reads 1.155x (geometric mean), identical output on 18 of
+18 scenes. Dense pages gain 1.00x to 1.05x, slides 1.08x to 1.15x, the six
+lecture frames 1.04x to 1.21x, the bent book page 1.48x (104.5 to 70.7 ms) and
+the textless frame 2.55x (82.7 to 32.4 ms). Startup is not in that figure
+(rounds 5 and 11: about 3.85 s to 0.39 s to 0.58 s).
+
 What the back-to-back protocol does not show (round 13): the application
 reads on timers, and with reads spaced 350 ms or more apart the GPU lowers its
 clocks between reads of a sparse frame. A lecture-frame read that takes 24 ms
 back to back then takes about 110 ms. Dense pages keep the GPU busy and are
 unaffected. So on sparse live frames every warm figure in this record
-describes the GPU at full clock, which the application reaches only with the
-round 13 switch, with the driver's own power setting changed by the owner, or
-if the real display and video path hold the clocks, which was not measurable
-here.
+describes the GPU at full clock. The application reaches that for the read
+after a view change through round 14's default (on external power), for every
+read with round 13's continuous mode, with the driver's own power setting
+changed by the owner, or if the real display and video path hold the clocks,
+which was not measurable here. With the clocks held, graph replay is 1.19x to
+1.31x faster on lecture frames at 350 ms pacing and region reconciliation
+halves the dense page (`r14-switches-350`).
 
 Council scores (Claude Opus 5.5, GPT-6.1 Sol, Gemini 4 Hydrogen), as submitted:
 
@@ -93,6 +106,7 @@ Council scores (Claude Opus 5.5, GPT-6.1 Sol, Gemini 4 Hydrogen), as submitted:
 | 11, second pass | 8 | 7 | 9 | merged on; one known race recorded |
 | 12 | 7 | 6 | 7 | follow-up narrowed the rule; merged off |
 | 13 | 8 | 6 | 8 | findings carried into round 14 |
+| 14 | 7 | 7 | 8 | fixes applied (not reviewed again); all three recommended every mode off, the owner chose change mode on by default on external power |
 
 The tracked gate (`scripts/agent_build.bat`) was run on `32a27d1` with desktop
 tests excluded (`OKUFLOW_AGENT_EXCLUDE_GUI=1`), which is partial validation by
@@ -110,11 +124,16 @@ Known and open:
   (8 of 48 test points; see round 11's review). The agreed remedy, a bounded
   wait for an attempt that is in flight, is not built.
 - Graph replay (rounds 3 and 10) stays off: back to back it misses its 1.17x
-  target at 1.11x to 1.17x, and its paced gain on sparse frames could not be
-  measured while the clocks fall.
+  target at 1.11x to 1.17x. At the application's pacing it gains 1.19x to
+  1.31x on lecture frames, but only while the clocks are held, which round
+  14's default does only around view changes.
 - Round 12's switch needs the owner's eyes on drawn-word placement before it
   can be a default.
-- Rounds 13 and 14 are not merged.
+- Round 14's default was turned on against the review: nothing coordinates
+  other threads' GPU buffer reallocations with the warm-up kernels (a free can
+  wait about 20 ms per buffer at a source or geometry change), nothing was
+  measured with a driven display or on a live camera, and the read after a
+  view change misses its target at the 300 ms settle delay.
 
 ## Round 1: detector post-processing
 
