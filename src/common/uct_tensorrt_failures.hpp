@@ -26,6 +26,13 @@ public:
     using std::runtime_error::runtime_error;
 };
 
+inline bool IsVerificationInterrupted(const std::exception_ptr& failure) {
+    if (!failure) return false;
+    try { std::rethrow_exception(failure); }
+    catch (const VerificationInterrupted&) { return true; }
+    catch (...) { return false; }
+}
+
 // Shared by the production factory checks and the model-free failure fixture.
 template<class T> T* RequireTensorRtApi(T* value, std::string_view message) {
     if (!value) throw TensorRtApiFailure(std::string(message));

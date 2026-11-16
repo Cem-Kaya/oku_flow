@@ -122,6 +122,8 @@ What the profile says:
 - On sparse real frames the three detector passes and TensorRT launch time
   dominate a 26 to 33 ms read.
 - Host merging grows with word count: 80.7 ms on the dense 3840x2160 page.
+  Round 7 of [the OkuRead port record](uct_okuread_port.md) keeps the merge
+  state across one read and brings that to about 15 ms with identical output.
 
 An A/A run of the unchanged build (two cohorts, five passes) gave a geometric
 mean of 0.990x with identical output on 18 of 18 scenes. Individual dense

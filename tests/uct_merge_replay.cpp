@@ -1,4 +1,5 @@
 #include "uct_merge_baseline_bb53.hpp"
+#include "uct_merge_baseline_ec72.hpp"
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -14,6 +15,7 @@
 #include <bit>
 #include <cmath>
 #include <cstdio>
+#include <functional>
 #include <limits>
 #include <numbers>
 #include <stdexcept>
@@ -21,7 +23,10 @@
 using namespace okuflow::uct;
 namespace {
 using Lines = QVector<RecognizedLine>;
-using Merge = void (*)(Lines&, RecognizedLine, QRect, QSize);
+using Merge = std::function<void(Lines&, const RecognizedLine&, QRect, QSize)>;
+// Snapshot/frozen-input format: 2 adds the ribbon fields that protection
+// inheritance reads and writes.
+constexpr quint32 kFormat = 2;
 constexpr QSize scene{4096, 4096};
 struct Call { RecognizedLine line; QRect region{QPoint(), scene}; QSize source{scene}; };
 struct Case { QString name; Lines initial; QVector<Call> calls; bool timed{true}; };
@@ -40,7 +45,7 @@ void Quad(QDataStream& out, const TextQuad& quad)
     out << quad.valid;
     for (const auto& p : quad.points) { Bits(out, p.x()); Bits(out, p.y()); }
 }
-QByteArray Snapshot(const Lines& lines)
+QByteArray Snapshot(const Lines& lines, quint32 format = kFormat)
 {
     QByteArray bytes;
     QDataStream out(&bytes, QIODevice::WriteOnly);
@@ -60,6 +65,10 @@ QByteArray Snapshot(const Lines& lines)
             if (word.colors) out << word.colors->foreground << word.colors->background;
             Quad(out, word.quadPx); Quad(out, word.inkSearchQuadPx);
             out << word.inkFitted;
+            if (format >= 2) {
+                out << word.fromRibbon; Bits(out, word.ribbonErrorPx);
+                Bits(out, word.ribbonReadingPointPx.x()); Bits(out, word.ribbonReadingPointPx.y());
+            }
         }
     }
     return bytes;
@@ -79,10 +88,10 @@ TextQuad ReadQuad(QDataStream& in)
     for(auto& p:quad.points) { const auto x=ReadBits(in),y=ReadBits(in); p={x,y}; }
     return quad;
 }
-Lines Restore(const QByteArray& bytes)
+Lines Restore(const QByteArray& bytes, quint32 format = kFormat)
 {
     QDataStream in(bytes); in.setVersion(QDataStream::Qt_6_0);
-    quint64 rows{}; in >> rows; Require(rows<=1024,"Frozen row bound exceeded");
+    quint64 rows{}; in >> rows; Require(rows<=2048,"Frozen row bound exceeded");
     Lines lines; quint64 total=0;
     for(quint64 r=0;r<rows;++r) {
         quint64 count{}; in >> count; total+=count;
@@ -96,6 +105,10 @@ Lines Restore(const QByteArray& bytes)
             word.protectedBoundsPx=ReadRect(in); in >> colors;
             if(colors) { LineColors value; in >> value.foreground >> value.background; word.colors=value; }
             word.quadPx=ReadQuad(in); word.inkSearchQuadPx=ReadQuad(in); in >> word.inkFitted;
+            if(format>=2) {
+                in >> word.fromRibbon; word.ribbonErrorPx=ReadBits(in);
+                const auto x=ReadBits(in),y=ReadBits(in); word.ribbonReadingPointPx={x,y};
+            }
             row.words.push_back(word);
         }
         lines.push_back(row);
@@ -149,11 +162,148 @@ Case Page(const QString& name, int count, int columns, double angle)
     }
     return c;
 }
+// Deterministic generator for read-shaped call sequences: one page of text
+// lines, every detector region of a full read in production order (whole
+// frame, then the overlapping tiles), one call per recognition window in
+// region-local pixels. Tile passes re-read the same words with jittered
+// geometry and confidence, cut words at tile edges (some inside the edge
+// margin, some just outside it), and split long lines into overlapping
+// windows. Constructed, not captured: it stresses one output across hundreds
+// of calls the way a dense read does, it is not detector ground truth.
+struct ReadLikeOptions {
+    QSize source;
+    quint64 seed{1};
+    double tilt{};          // page rotation in radians
+    int columns{1};         // independent text columns
+    bool ribbons{};         // some refused-ribbon words carry inheritable protection
+    double typeScale{1};
+    double quadShare{1};    // words with a detector quad; the rest are rectangles
+};
+Case ReadLike(const QString& name, const ReadLikeOptions& o)
+{
+    Case c{name};
+    quint64 state = o.seed * 0x9e3779b97f4a7c15ULL + 1;
+    const auto next = [&] {
+        state = state * 6364136223846793005ULL + 1442695040888963407ULL;
+        return double(state >> 11) * 0x1.0p-53;
+    };
+    struct TextWord { QString text; QRectF box; };
+    QVector<QVector<TextWord>> page;
+    const double columnWidth = (o.source.width() - 60.0) / o.columns;
+    for (int column = 0; column < o.columns; ++column) {
+        double y = 30 + 7 * column;
+        int serial = 0;
+        while (y < o.source.height() - 80) {
+            const bool title = next() < .06;
+            const double h = (title ? 34 + 20 * next() : 13 + 9 * next()) * o.typeScale;
+            QVector<TextWord> line;
+            double x = 30 + column * columnWidth + 12 * next();
+            const double right = 30 + (column + 1) * columnWidth - 20;
+            const double end = right - (next() < .2 ? columnWidth * next() * .6 : 0);
+            while (true) {
+                const int letters = 2 + int(next() * 9);
+                const double w = h * (.45 * letters + .2 * next());
+                if (x + w > end) break;
+                QString text = QString::number(column) + "c" + QString::number(page.size()) + "w";
+                while (text.size() < letters) text += QChar(u'a' + (serial++ % 26));
+                line.push_back({text, {x, y, w, h}});
+                x += w + h * (.35 + .25 * next());
+            }
+            if (!line.isEmpty()) page.push_back(line);
+            y += h * (1.45 + .4 * next());
+        }
+    }
+    const QPointF pivot(o.source.width() / 2.0, o.source.height() / 2.0);
+    const auto place = [&](const QRectF& box, double jitter) {
+        RecognizedWord word;
+        const QRectF moved = box.translated((next() - .5) * jitter, (next() - .5) * jitter)
+            .adjusted(0, 0, (next() - .5) * jitter, (next() - .5) * jitter);
+        word.boundsPx = moved;
+        if (o.tilt != 0 || next() < o.quadShare) {
+            QTransform transform;
+            transform.translate(pivot.x(), pivot.y()); transform.rotateRadians(o.tilt);
+            transform.translate(-pivot.x(), -pivot.y());
+            word.quadPx = TextQuad::FromRect(moved);
+            for (auto& p : word.quadPx.points) p = transform.map(p);
+            word.inkSearchQuadPx = word.quadPx;
+            word.boundsPx = word.quadPx.Bounds();
+        }
+        word.inkSearchPx = word.boundsPx.adjusted(-1, -2, 1, 2);
+        word.protectedBoundsPx = word.boundsPx.adjusted(-2, -3, 2, 3);
+        word.paddedBounds = true;
+        word.colors = LineColors{QColor(10, 12, 14), QColor(240, 238, 230)};
+        return word;
+    };
+    const auto local = [](RecognizedWord word, QPoint origin) {
+        const QPointF offset(-origin.x(), -origin.y());
+        word.boundsPx.translate(offset); word.inkSearchPx.translate(offset);
+        word.protectedBoundsPx.translate(offset);
+        if (word.quadPx.valid) word.quadPx = word.quadPx.Translated(offset);
+        if (word.inkSearchQuadPx.valid) word.inkSearchQuadPx = word.inkSearchQuadPx.Translated(offset);
+        return word;
+    };
+    const auto regions = PaddleDetectionRegions(o.source);
+    for (const QRect& region : regions) {
+        const bool whole = region.size() == o.source;
+        // Tiles see the page at full scale: steadier boxes, more confidence.
+        const double jitter = whole ? 1.6 : .7;
+        for (const auto& line : page) {
+            // The detector's view of this line inside the region; a few
+            // detections stop short of the tile edge, leaving a fragment
+            // just outside the merge's edge margin.
+            const double inset = !whole && next() < .25 ? 9 + 12 * next() : 0;
+            const QRectF view = QRectF(region).adjusted(inset, 0, -inset, 0);
+            QVector<RecognizedWord> words;
+            for (const auto& source : line) {
+                if (!view.intersects(source.box) || source.box.top() < view.top() ||
+                    source.box.bottom() > view.bottom()) continue;
+                QRectF box = source.box;
+                QString text = source.text;
+                if (!view.contains(box)) {
+                    const QRectF cut = box.intersected(view);
+                    const qsizetype keep = qsizetype(text.size() * cut.width() / box.width());
+                    if (keep < 1) continue;
+                    text = cut.left() > box.left() ? text.right(keep) : text.left(keep);
+                    box = cut;
+                }
+                auto word = place(box, jitter);
+                word.text = text;
+                word.confidence = (whole ? .62 : .78) + (whole ? .36 : .21) * next();
+                const double roll = next();
+                if (roll < .04) word.disposition = TokenDisposition::kLowConfidence;
+                else if (roll < .07) word.disposition = TokenDisposition::kHighRisk;
+                else if (o.ribbons && roll < .13) {
+                    word.fromRibbon = true;
+                    word.disposition = TokenDisposition::kInvalidGeometry;
+                    word.ribbonErrorPx = 1 + next();
+                    word.protectedBoundsPx = word.boundsPx.adjusted(-3, -5, 3, 5);
+                }
+                if (next() < .1) word.inkFitted = true;
+                words.push_back(local(word, region.topLeft()));
+            }
+            // Long lines arrive as overlapping recognition windows.
+            const qsizetype span = 9;
+            for (qsizetype first = 0; first < words.size(); first += span - 2) {
+                Add(c, words.mid(first, span), region, o.source);
+                if (first + span >= words.size()) break;
+            }
+        }
+    }
+    return c;
+}
+
 QVector<Case> GeneratedCases()
 {
     QVector<Case> cases{Page("generated-book-383",383,12,0),
         Page("generated-atlas-175",175,7,.06), Page("generated-frame55-262",262,9,-.1),
         Page("generated-high-density-768",768,24,.03)};
+    cases.push_back(ReadLike("read-like-dense-3840x2160",{QSize(3840,2160),7,0,2,false,1.6}));
+    cases.push_back(ReadLike("read-like-portrait-1654x2339",{QSize(1654,2339),11,0,1,false,1.05}));
+    cases.push_back(ReadLike("read-like-dense-1920x1080",{QSize(1920,1080),13,0,1,false,1.1}));
+    cases.push_back(ReadLike("read-like-ribbons-1920x1080",{QSize(1920,1080),19,0,2,true,1.1}));
+    cases.push_back(ReadLike("read-like-tilted-1920x1080",{QSize(1920,1080),17,.12,1,true}));
+    cases.push_back(ReadLike("read-like-rectangles-1920x1080",{QSize(1920,1080),23,0,1,false,1.2,0}));
+    cases.push_back(ReadLike("read-like-mixed-shapes-1920x1080",{QSize(1920,1080),29,0,1,true,1.2,.85}));
     Case noOverlap{"no-overlap"};
     for (int i = 0; i < 80; ++i) Add(noOverlap, {Word(QString::number(i),40+(i%8)*400,40+(i/8)*200)});
     cases.push_back(noOverlap);
@@ -238,6 +388,73 @@ QVector<Case> GeneratedCases()
     Add(cacheCap,{Word("new-at-cap",8192*32.,100),Word("then-replace",0,100,24,12,.99)});
     cases.push_back(cacheCap);
     cacheCap.name="cache-8191-seed"; cacheCap.initial[0].words.removeLast(); cases.push_back(cacheCap);
+
+    // A context crossing its word bound in both directions within one
+    // sequence: grow past 8192 words, replace at the bound, wipe most words
+    // with one wide winner, then grow again from the rebuilt context.
+    Case wordBound{"context-word-bound-crossing",{}, {}, false};
+    for(int r=0;r<80;++r) {
+        RecognizedLine row;
+        for(int i=0;i<102;++i) row.words.push_back(Word(QString::number(r*102+i),40+i*30.,40+r*24.,22,12));
+        wordBound.initial.push_back(row);
+    }
+    wordBound.initial.back().words.resize(80); // 8158 words
+    for(int k=0;k<40;++k)
+        Add(wordBound,{Word("grow"+QString::number(k),3300+(k%4)*60.,40+(k/4)*24.,40,12)});
+    Add(wordBound,{Word("replace-at-bound",40,40,22,12,.99)});
+    Add(wordBound,{Word("wipe",30,30,3100,1000,.995)});
+    for(int k=0;k<12;++k)
+        Add(wordBound,{Word("regrow"+QString::number(k),3300+(k%4)*60.,1500+(k/4)*24.,40,12),
+                       Word("next"+QString::number(k),3360+(k%4)*60.,1500+(k/4)*24.,40,12)});
+    cases.push_back(wordBound);
+    // Rows at the 1024 cap: new rows until refusal, then a winner that empties
+    // two rows so later words in the same call reuse the last empty one.
+    Case rowBound{"context-row-bound-crossing",{}, {}, false};
+    for(int i=0;i<1018;++i) rowBound.initial.push_back({{Word(QString::number(i),10+(i%4)*900.,(i/4+1)*15.,8,8)}});
+    for(int k=0;k<10;++k) Add(rowBound,{Word("row"+QString::number(k),3800,100+k*300.,8,8)});
+    Add(rowBound,{Word("span",5,10,20,30,.99),Word("refused-or-reused",3900,4000,8,8),
+                  Word("again",3950,4050,8,8)});
+    Add(rowBound,{Word("after-prune",3900,3900,8,8)});
+    cases.push_back(rowBound);
+    Case oversize{"context-oversize-initial-rows",{}, {}, false};
+    for(int i=0;i<1030;++i) oversize.initial.push_back({{Word(QString::number(i),10,(i+1)*3.,8,2)}});
+    Add(oversize,{Word("joins",22,3,8,2)}); Add(oversize,{Word("replaces",10,3,8,2,.99)});
+    cases.push_back(oversize);
+
+    // Row search (round 7): one word per call, so no preferred row
+    // short-circuits the search across rows.
+    Case reach{"row-search-reach-and-band-edges",{}, {}, false};
+    reach.initial={{{Word("long-reach-list",100,500,2000,20)}},
+                   {{Word("near-reach-grid",100,700,470,20)}},
+                   {{Word("tilted-long",100,1500,2000,20,.9,.05)}},
+                   {{Word("double-height",100,1000,40,20)}},
+                   {{Word("other",100,2600)}}};
+    Add(reach,{Word("joins-long",2150,500,40,20)});           // gap 50 <= 80 from a 2000 px word
+    Add(reach,{Word("joins-near",100+470+79,700,40,20)});     // gap 79, centre 314 px along
+    Add(reach,{Word("misses-near",100+470+79+40+81,700,40,20)}); // gap 81 > 80: a new row
+    Add(reach,{Word("joins-tilted",100+2040*std::cos(.05),1500+2040*std::sin(.05),40,20,.9,.05)});
+    Add(reach,{Word("edge-dy-gap",180,1012,24,10)});           // dy = .35 * 20, gap = 4 * 10, heights 1:2
+    Add(reach,{Word("past-edge-dy",180+64+40,1012.5,24,10)});  // dy just past .35 * large
+    cases.push_back(reach);
+    Case far{"row-search-unbounded-coordinates",{}, {}, false};
+    far.initial={{{Word("far",1e8,500,40,20)}},{{Word("near",100,500,40,20)}},
+                 {{Word("far-negative",-3e7,900,40,20)}}};
+    Add(far,{Word("far-next",1e8+60,500,40,20)});
+    Add(far,{Word("far-negative-next",-3e7+60,900,40,20)});
+    Add(far,{Word("near-next",160,500,40,20)});
+    Add(far,{Word("huge-query",100,1100,3000,2900)});  // its row search covers too many cells
+    Add(far,{Word("huge-query-neighbour",3150,1100,600,2900)});
+    cases.push_back(far);
+    Case rowTies{"row-search-ties-and-emptied-row",{}, {}, false};
+    rowTies.initial={{{Word("left",100,500,40,20)}},{{Word("right",240,500,40,20)}},
+                  {{Word("victim-a",1000,1500,40,20,.5)}},{{Word("victim-b",1000,1600,40,20,.5)}},
+                  {{Word("bystander",3000,3000)}}};
+    Add(rowTies,{Word("tie-goes-first",170,500,40,20)});
+    // The winner overlaps both victims: its first overlapping row is the
+    // target and the other row empties; the next word has no row nearby and
+    // takes the last empty row.
+    Add(rowTies,{Word("winner",995,1495,50,130,.95),Word("lonely",2000,3800,40,20)});
+    cases.push_back(rowTies);
 
     Case preference{"rejected-later-veto-retains-first-overlap-preference",{}, {}, false};
     preference.initial={{{Word("first-weaker",100,100,24,12,.7)}},
@@ -392,20 +609,61 @@ void GeometryControls()
             Require(std::bit_cast<quint64>(QuadIntersectionArea(a,b))==std::bit_cast<quint64>(merge_replay::FrozenQuadIntersectionArea(a,b)),"Quad intersection bit mismatch");
     }
 }
-QVector<QByteArray> Expected(const Case& c)
+enum class Arm { Bb53, Ec72, Context, Free };
+QString ArmName(Arm arm)
 {
-    Lines lines=c.initial; QVector<QByteArray> expected;
+    switch(arm) {
+    case Arm::Bb53: return "frozen-bb53";
+    case Arm::Ec72: return "baseline";
+    case Arm::Context: return "candidate";
+    case Arm::Free: return "candidate-without-context";
+    }
+    return {};
+}
+// One merge function per visit; the candidate keeps one context for the
+// whole visit, exactly as a recognizer keeps one per read.
+class Merger {
+  public:
+    explicit Merger(Arm arm) : arm_(arm) {}
+    void operator()(Lines& lines, const Call& call)
+    {
+        switch(arm_) {
+        case Arm::Bb53: merge_replay::FrozenPaddleMergeRecognition(lines,call.line,call.region,call.source); break;
+        case Arm::Ec72: merge_replay::FrozenEc72PaddleMergeRecognition(lines,call.line,call.region,call.source); break;
+        case Arm::Context: PaddleMergeRecognition(lines,call.line,call.region,call.source,context_); break;
+        case Arm::Free: PaddleMergeRecognition(lines,call.line,call.region,call.source); break;
+        }
+    }
+  private:
+    Arm arm_;
+    PaddleMergeContext context_;
+};
+QVector<QByteArray> Expected(const Case& c, Arm arm = Arm::Ec72)
+{
+    Lines lines=c.initial; QVector<QByteArray> expected; Merger merge(arm);
     for(const auto& call:c.calls) {
-        merge_replay::FrozenPaddleMergeRecognition(lines,call.line,call.region,call.source);
+        merge(lines,call);
         expected.push_back(Snapshot(lines));
     }
     return expected;
+}
+// bb53 predates refused-ribbon protection inheritance (73e3e4d). Without an
+// inheritable input word no inheritance can happen, and ec7282d must equal it.
+bool InheritableInput(const Case& c)
+{
+    const auto inheritable=[](const RecognizedWord& w) {
+        return !w.protectedBoundsPx.isEmpty() && w.disposition==TokenDisposition::kInvalidGeometry &&
+               (w.fromRibbon || w.ribbonErrorPx<0);
+    };
+    for(const auto& row:c.initial) for(const auto& w:row.words) if(inheritable(w)) return true;
+    for(const auto& call:c.calls) for(const auto& w:call.line.words) if(inheritable(w)) return true;
+    return false;
 }
 QByteArray FrozenInputs(const QVector<Case>& cases)
 {
     QByteArray bytes;
     QDataStream out(&bytes,QIODevice::WriteOnly); out.setVersion(QDataStream::Qt_6_0);
-    out << quint32(1) << quint64(cases.size());
+    out << kFormat << quint64(cases.size());
     for(const auto& c:cases) {
         out << c.name << Snapshot(c.initial) << c.timed << quint64(c.calls.size());
         for(const auto& call:c.calls)
@@ -413,19 +671,20 @@ QByteArray FrozenInputs(const QVector<Case>& cases)
     }
     return bytes;
 }
-QVector<Case> LoadFrozen(const QString& path)
+QVector<Case> LoadFrozen(const QString& path, quint32& loadedVersion)
 {
     QFile file(path); Require(file.open(QIODevice::ReadOnly) && file.size()<=64*1024*1024,"Cannot open bounded frozen corpus");
     QDataStream in(file.readAll()); in.setVersion(QDataStream::Qt_6_0);
     quint32 version{}; quint64 count{}; in >> version >> count;
-    Require(version==1 && count<=128,"Unsupported frozen corpus"); QVector<Case> cases;
+    Require((version==1 || version==kFormat) && count<=128,"Unsupported frozen corpus"); QVector<Case> cases;
+    loadedVersion=version;
     for(quint64 i=0;i<count;++i) {
         Case c; QByteArray initial; quint64 calls{};
-        in >> c.name >> initial >> c.timed >> calls; c.initial=Restore(initial);
+        in >> c.name >> initial >> c.timed >> calls; c.initial=Restore(initial,version);
         Require(calls<=10000,"Frozen call bound exceeded");
         for(quint64 j=0;j<calls;++j) {
             QByteArray line; Call call; in >> line >> call.region >> call.source;
-            const auto rows=Restore(line); Require(rows.size()==1,"Frozen call needs one input line");
+            const auto rows=Restore(line,version); Require(rows.size()==1,"Frozen call needs one input line");
             call.line=rows[0]; c.calls.push_back(call);
         }
         cases.push_back(c);
@@ -438,19 +697,111 @@ void SaveBytes(const QString& path,const QByteArray& bytes)
     QSaveFile file(path); Require(file.open(QIODevice::WriteOnly),"Cannot create frozen input artifact");
     Require(file.write(bytes)==bytes.size() && file.commit(),"Cannot commit frozen inputs");
 }
-QJsonObject Visit(const Case& c, const QVector<QByteArray>& expected, Merge merge,
-                  const QString& arm, int block, int position, QElapsedTimer& deadline)
+QJsonObject Visit(const Case& c, const QVector<QByteArray>& expected, Arm arm,
+                  int block, int position, QElapsedTimer& deadline)
 {
-    Lines lines=c.initial; QJsonArray times; qint64 total=0;
+    Lines lines=c.initial; QJsonArray times; qint64 total=0; Merger merge(arm);
     for(qsizetype i=0;i<c.calls.size();++i) {
         Require(deadline.elapsed()<240000,"CPU replay exceeded four-minute execution budget");
         const auto& call=c.calls[i]; QElapsedTimer timer; timer.start();
-        merge(lines,call.line,call.region,call.source);
+        merge(lines,call);
         const auto ns=timer.nsecsElapsed(); total+=ns; times.push_back(double(ns));
-        Require(Snapshot(lines)==expected[i],c.name+" "+arm+" bit mismatch after call "+QString::number(i));
+        Require(Snapshot(lines)==expected[i],c.name+" "+ArmName(arm)+" bit mismatch after call "+QString::number(i));
     }
-    return {{"case",c.name},{"arm",arm},{"block",block},{"position",position},
+    return {{"case",c.name},{"arm",ArmName(arm)},{"block",block},{"position",position},
             {"mergeNanoseconds",double(total)},{"callNanoseconds",times},{"correctAfterEveryCall",true}};
+}
+// A context must never let stale cache decide: one context alternating
+// between two outputs, a different source size, a moved context, and outside
+// edits between calls (geometry moved, words swapped, erased, appended,
+// reversed, rows cleared, quads dropped, text/confidence changed) must all
+// give the oracle's result on the same edited output.
+void ContextControls()
+{
+    const auto base=GeneratedCases().front().calls; // generated-book-383
+    Require(base.size()>40,"Context control needs a long call sequence");
+    const auto edit=[](Lines& lines, int kind) {
+        if(lines.isEmpty()) return;
+        // Taken only by the edits that write, so the read-only and copy
+        // kinds leave the output's buffer untouched.
+        const auto row=[&]() -> QVector<RecognizedWord>& { return lines[(kind*7)%lines.size()].words; };
+        switch(kind%12) {
+        case 0: if(!row().isEmpty()) { auto& w=row()[0]; w.boundsPx.translate(3,1);
+                    if(w.quadPx.valid) w.quadPx=w.quadPx.Translated({3,1}); } break;
+        case 1: if(row().size()>1) std::swap(row()[0],row()[row().size()-1]); break;
+        case 2: if(!row().isEmpty()) row().removeAt(row().size()/2); break;
+        case 3: std::reverse(row().begin(),row().end()); break;
+        case 4: lines.push_back({{Word("outside",3000,3000)}}); break;
+        case 5: row().clear(); break; // an empty row left for the merge to reuse
+        case 6: for(auto& w:row()) { w.text+="x"; w.confidence=.999; w.disposition=TokenDisposition::kCandidate; } break;
+        case 7: if(!row().isEmpty()) { row()[0].quadPx=TextQuad::FromRect(row()[0].boundsPx).Translated({0,.5}); } break;
+        case 8: lines.clear(); break;
+        // A copy edited elsewhere leaves the output's buffer alone: reuse.
+        case 9: { auto copy=lines; copy[0].words.clear(); copy.push_back({}); } break;
+        // The recognizer's final row sort, applied between calls.
+        case 10: std::sort(lines.begin(),lines.end(),[](const auto& a,const auto& b) {
+                     return !a.words.isEmpty() && !b.words.isEmpty() &&
+                            a.words[0].boundsPx.top()>b.words[0].boundsPx.top(); }); break;
+        // Read-only access: reuse.
+        case 11: Require(std::as_const(lines).constFirst().words.size()>=0,"read"); break;
+        }
+    };
+    // Outside edits every few calls, applied identically to both outputs.
+    for(int every : {1,3,11}) {
+        Lines want, got; PaddleMergeContext context; int kind=every;
+        for(qsizetype i=0;i<base.size();++i) {
+            if(i%every==every-1) { edit(want,kind); edit(got,kind); ++kind; }
+            merge_replay::FrozenEc72PaddleMergeRecognition(want,base[i].line,base[i].region,base[i].source);
+            PaddleMergeRecognition(got,base[i].line,base[i].region,base[i].source,context);
+            Require(Snapshot(got)==Snapshot(want),"Context outside edit mismatch at call "+QString::number(i)+
+                    " every "+QString::number(every));
+        }
+    }
+    // One context alternating between two outputs, then moved, then given a
+    // different source size for the same output.
+    Lines wantA, wantB, gotA, gotB; PaddleMergeContext shared;
+    for(qsizetype i=0;i<base.size();++i) {
+        auto& want=i%2 ? wantB : wantA; auto& got=i%2 ? gotB : gotA;
+        merge_replay::FrozenEc72PaddleMergeRecognition(want,base[i].line,base[i].region,base[i].source);
+        if(i==base.size()/2) { PaddleMergeContext moved(std::move(shared)); shared=std::move(moved); }
+        PaddleMergeRecognition(got,base[i].line,base[i].region,base[i].source,shared);
+        Require(Snapshot(got)==Snapshot(want),"Shared context mismatch at call "+QString::number(i));
+    }
+    Lines want=wantA, got=gotA; PaddleMergeContext context;
+    for(int size : {4096,2048,4096,640}) {
+        const QSize source(size,size);
+        auto line=base.front().line;
+        merge_replay::FrozenEc72PaddleMergeRecognition(want,line,QRect(QPoint(),source),source);
+        PaddleMergeRecognition(got,line,QRect(QPoint(),source),source,context);
+        Require(Snapshot(got)==Snapshot(want),"Context source change mismatch at "+QString::number(size));
+    }
+    // A reference to one row's words kept across a call that leaves the row
+    // in place (an empty incoming line), then used to change the row: the
+    // outer list is untouched, so only the per-row copies can notice.
+    for(int kind : {0,1,2,3}) {
+        Lines wantRows, gotRows; PaddleMergeContext kept;
+        for(qsizetype i=0;i<40;++i) {
+            merge_replay::FrozenEc72PaddleMergeRecognition(wantRows,base[i].line,base[i].region,base[i].source);
+            PaddleMergeRecognition(gotRows,base[i].line,base[i].region,base[i].source,kept);
+        }
+        Require(!gotRows.isEmpty() && gotRows[0].words.size()>1 && Snapshot(gotRows)==Snapshot(wantRows),
+                "Retained row control needs a populated first row");
+        auto& wantWords=wantRows[0].words; auto& gotWords=gotRows[0].words;
+        merge_replay::FrozenEc72PaddleMergeRecognition(wantRows,{},base[0].region,base[0].source);
+        PaddleMergeRecognition(gotRows,{},base[0].region,base[0].source,kept);
+        for(auto* words : {&wantWords,&gotWords}) {
+            if(kind==0) words->clear();
+            else if(kind==1) words->removeLast();
+            else if(kind==2) std::reverse(words->begin(),words->end());
+            else words->push_back(Word("kept",5,5));
+        }
+        for(qsizetype i=0;i<40;++i) {
+            merge_replay::FrozenEc72PaddleMergeRecognition(wantRows,base[i].line,base[i].region,base[i].source);
+            PaddleMergeRecognition(gotRows,base[i].line,base[i].region,base[i].source,kept);
+            Require(Snapshot(gotRows)==Snapshot(wantRows),"Retained row reference mismatch, kind "+
+                    QString::number(kind)+" call "+QString::number(i));
+        }
+    }
 }
 void Save(const QString& path, const QJsonObject& object)
 {
@@ -463,21 +814,28 @@ int main(int argc,char** argv)
 {
     QCoreApplication app(argc,argv); QJsonArray raw; QString output;
     try {
-        const auto args=app.arguments(); bool benchmark=false; QString archive,frozenPath;
+        const auto args=app.arguments(); bool benchmark=false; QString archive,frozenPath,only;
         for(int i=1;i<args.size();++i) {
             if(args[i]=="--benchmark") benchmark=true;
             else if(args[i]=="--output" && i+1<args.size()) output=args[++i];
             else if(args[i]=="--archive-manifest" && i+1<args.size()) archive=args[++i];
             else if(args[i]=="--frozen-input" && i+1<args.size()) frozenPath=args[++i];
+            else if(args[i]=="--only" && i+1<args.size()) only=args[++i];
             else throw std::runtime_error("Unknown/incomplete argument");
         }
         Require(!benchmark || !output.isEmpty(),"Benchmark requires an explicit output path");
         QElapsedTimer deadline; deadline.start(); GeometryControls();
         Require(frozenPath.isEmpty() || archive.isEmpty(),"Select frozen inputs or archive regrouping");
-        auto cases=frozenPath.isEmpty() ? GeneratedCases() : LoadFrozen(frozenPath);
+        quint32 frozenVersion=kFormat;
+        auto cases=frozenPath.isEmpty() ? GeneratedCases() : LoadFrozen(frozenPath,frozenVersion);
         if(!archive.isEmpty()) AddArchive(cases,archive);
+        if(frozenPath.isEmpty() && only.isEmpty()) ContextControls();
+        // Development filter: keep only cases whose name contains this text.
+        if(!only.isEmpty()) cases.removeIf([&](const Case& c) { return !c.name.contains(only); });
         const auto frozen=FrozenInputs(cases);
-        if(!frozenPath.isEmpty()) {
+        // An older format is rewritten as the current one, so only a file
+        // of the current format can be held to a byte round trip.
+        if(!frozenPath.isEmpty() && frozenVersion==kFormat) {
             QFile original(frozenPath);
             Require(original.open(QIODevice::ReadOnly) && original.readAll()==frozen,
                     "Frozen input roundtrip changed serialized field bits");
@@ -487,26 +845,36 @@ int main(int argc,char** argv)
         QJsonArray coverage;
         for(const auto& c:cases) {
             const auto expected=Expected(c);
+            const bool inheritable=InheritableInput(c);
+            if(!inheritable) Require(Expected(c,Arm::Bb53)==expected,c.name+": ec7282d oracle differs from bb53");
             QCryptographicHash digest(QCryptographicHash::Sha256);
             for(const auto& bytes:expected) digest.addData(bytes);
+            const auto final=expected.isEmpty() ? Snapshot(c.initial) : expected.last();
+            const auto finalLines=Restore(final);
+            qsizetype finalWords=0; for(const auto& row:finalLines) finalWords+=row.words.size();
             coverage.push_back(QJsonObject{{"case",c.name},{"calls",double(c.calls.size())},
+                {"finalRows",double(finalLines.size())},{"finalWords",double(finalWords)},
+                {"bb53Compared",!inheritable},
                 {"allFieldsExpectedSha256",QString::fromLatin1(digest.result().toHex())}});
-            raw.push_back(Visit(c,expected,PaddleMergeRecognition,"candidate",-2,0,deadline));
+            std::printf("%s: %lld calls, %lld rows, %lld words\n",qPrintable(c.name),
+                        qlonglong(c.calls.size()),qlonglong(finalLines.size()),qlonglong(finalWords));
+            raw.push_back(Visit(c,expected,Arm::Context,-2,0,deadline));
+            raw.push_back(Visit(c,expected,Arm::Free,-3,0,deadline));
             if(!benchmark || !c.timed) continue;
             for(int warm=0;warm<5;++warm) {
-                raw.push_back(Visit(c,expected,merge_replay::FrozenPaddleMergeRecognition,"baseline",-1,warm,deadline));
-                raw.push_back(Visit(c,expected,PaddleMergeRecognition,"candidate",-1,warm,deadline));
+                raw.push_back(Visit(c,expected,Arm::Ec72,-1,warm,deadline));
+                raw.push_back(Visit(c,expected,Arm::Context,-1,warm,deadline));
             }
             for(int block=0;block<31;++block) for(int pos=0;pos<4;++pos) {
                 const bool baseline=(block%2==0 ? (pos==0 || pos==3) : (pos==1 || pos==2));
-                raw.push_back(Visit(c,expected,baseline ? merge_replay::FrozenPaddleMergeRecognition : PaddleMergeRecognition,
-                    baseline ? "baseline" : "candidate",block,pos,deadline));
+                raw.push_back(Visit(c,expected,baseline ? Arm::Ec72 : Arm::Context,block,pos,deadline));
             }
         }
-        QJsonObject report{{"complete",true},{"baselineCommit","bb53ac884c24d15f0c77b2dc43cace0e8e650c24"},
+        QJsonObject report{{"complete",true},{"baselineCommit","ec7282db3a79fc760e1ff3b714807115f06cc5bf"},
+            {"correctnessOracles","ec7282d for every case; bb53 also where no input carries inheritable protection"},
             {"scope","CPU merge function microtime; generated and optional regrouped final-output inputs; not a GPU/worker/FPS measurement"},
             {"warmupsPerArm",benchmark?5:0},{"pairedBlocks",benchmark?31:0},
-            {"blockOrder","ABBA, BAAB alternating"},{"coverage",coverage},{"rawVisits",raw}};
+            {"blockOrder","ABBA, BAAB alternating"},{"inputFormat",double(kFormat)},{"coverage",coverage},{"rawVisits",raw}};
         report.insert("frozenInputsSha256",QString::fromLatin1(inputHash));
         report.insert("frozenInputBytes",frozen.size());
         if(!output.isEmpty()) Save(output,report);

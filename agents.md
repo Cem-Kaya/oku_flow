@@ -1083,6 +1083,8 @@ aligned with the project goals.
 - Keep the bb53 merge and geometry oracle bodies frozen in the dedicated
   `tests/uct_merge_baseline_bb53*.cpp` translation units; a candidate edit must
   not update its reference. Compare every ordered word field after every call.
+  The same applies to the ec7282d oracle `tests/uct_merge_baseline_ec72.cpp`
+  that round 7's per-read `PaddleMergeContext` is checked against.
 - `uct_merge_replay` is model-free CPU correctness coverage. Explicit timing
   uses five warmups and 31 alternating ABBA/BAAB blocks, preserves raw visits
   and serialized inputs, and does not establish GPU/full-worker or FPS gains.

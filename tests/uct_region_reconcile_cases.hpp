@@ -179,6 +179,22 @@ inline void Rules()
     QVERIFY(Covered(regions, source, {Box(0, 880, 340, 700, 22), Box(1, band + 40, 340, seam - band - 42, 18),
                                       Box(2, band + 2, 340, 500, 18)}));
 
+    // Different containment tolerances can make a chain even without a split
+    // line: the tile covers the taller whole-frame envelope within 10 px,
+    // but misses the fragment's start by more than its 7.5 px allowance.
+    // Restore the fragment rather than borrowing the removed whole-frame box.
+    QCOMPARE(Kept(regions, source, {Box(0, 891, 295, 700, 40),
+                                    Box(1, 891, 300, seam - 893, 30),
+                                    Box(2, 900, 300, 691, 30)}, &stats),
+             (QVector<bool>{false, true, true}));
+    QCOMPARE(stats.restored, 1);
+    QCOMPARE(stats.Kept(), 2);
+    // An envelope that looks straight still cannot stand in for a fitted or
+    // refused ribbon. This includes the otherwise attractive title fragment.
+    QCOMPARE(Kept(regions, source, {Box(0, 500, 400, 900, 200),
+                                    Curved(Box(1, 500, 400, seam - 560, 200))}),
+             (QVector<bool>{true, true}));
+
     // C: one line inside the overlap band, complete in both tiles. The lower
     // region keeps it, whatever the order; the whole-frame copy goes as well.
     const double inBand = band + 30, width = seam - band - 60;
@@ -225,6 +241,8 @@ inline void Rules()
 
     // Random layouts: whatever the rules decide, nothing dropped is left without
     // a kept detection that spans it.
+    std::mt19937 shuffleOrder(11);
+    int dropped = 0, restored = 0, curvedKept = 0;
     for (int trial = 0; trial < 300; ++trial) {
         std::uniform_real_distribution<double> x(0, 1700), y(20, 1000), w(40, 900), h(14, 90), tilt(-4, 4);
         std::uniform_int_distribution<int> region(0, 2), chance(0, 9);
@@ -243,6 +261,36 @@ inline void Rules()
             }
         }
         QVERIFY2(Covered(regions, source, layout), qPrintable(QStringLiteral("random layout %1").arg(trial)));
+        auto result = layout;
+        const auto resultStats = region_reconcile::Reconcile(regions, source, result);
+        QCOMPARE(resultStats.Kept(), int(std::count_if(result.begin(), result.end(),
+            [](const Detection& detection) { return detection.keep; })));
+        for (std::size_t i = 0; i < layout.size(); ++i) {
+            QCOMPARE(result[i].quad.points, layout[i].quad.points);
+            QCOMPARE(result[i].quad.valid, layout[i].quad.valid);
+            QCOMPARE(result[i].region, layout[i].region);
+            QCOMPARE(result[i].curved, layout[i].curved);
+            if (layout[i].curved) QVERIFY(result[i].keep);
+        }
+        std::vector<std::size_t> permutation(layout.size());
+        for (std::size_t i = 0; i < permutation.size(); ++i) permutation[i] = i;
+        std::shuffle(permutation.begin(), permutation.end(), shuffleOrder); // its own generator: layouts stay the same
+        std::vector<Detection> shuffled;
+        for (const auto i : permutation) shuffled.push_back(layout[i]);
+        const auto shuffledStats = region_reconcile::Reconcile(regions, source, shuffled);
+        for (std::size_t i = 0; i < shuffled.size(); ++i)
+            QCOMPARE(shuffled[i].keep, result[permutation[i]].keep);
+        QCOMPARE(shuffledStats.clippedDropped, resultStats.clippedDropped);
+        QCOMPARE(shuffledStats.wholeDropped, resultStats.wholeDropped);
+        QCOMPARE(shuffledStats.tileDropped, resultStats.tileDropped);
+        QCOMPARE(shuffledStats.restored, resultStats.restored);
+        dropped += resultStats.detections - resultStats.Kept();
+        restored += resultStats.restored;
+        curvedKept += int(std::count_if(layout.begin(), layout.end(), [](const Detection& d) { return d.curved; }));
     }
+    // The random layouts must reach the code they check.
+    QVERIFY2(dropped > 100 && curvedKept > 100,
+             qPrintable(QStringLiteral("random layouts: dropped %1 restored %2 curved %3").arg(dropped).arg(restored).arg(curvedKept)));
+    qInfo() << "region reconcile random layouts: dropped" << dropped << "restored" << restored << "curved kept" << curvedKept;
 }
 } // namespace uct_region_reconcile_test

@@ -4,6 +4,8 @@ add_executable(uct_merge_replay_tests
     uct_merge_baseline_bb53.hpp
     uct_merge_baseline_bb53.cpp
     uct_merge_baseline_bb53_geometry.cpp
+    uct_merge_baseline_ec72.hpp
+    uct_merge_baseline_ec72.cpp
     ${PROJECT_SOURCE_DIR}/src/common/uct_paddle_processing.cpp
     ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp
     ${PROJECT_SOURCE_DIR}/src/common/uct_region_planner.cpp
@@ -17,7 +19,7 @@ target_link_libraries(uct_merge_replay_tests PRIVATE Qt6::Core Qt6::Gui)
 set_target_properties(uct_merge_replay_tests PROPERTIES
     AUTOMOC OFF AUTOUIC OFF AUTORCC OFF DISABLE_PRECOMPILE_HEADERS ON)
 add_test(NAME uct_merge_replay COMMAND uct_merge_replay_tests)
-set_tests_properties(uct_merge_replay PROPERTIES TIMEOUT 60 LABELS "headless"
+set_tests_properties(uct_merge_replay PROPERTIES TIMEOUT 120 LABELS "headless"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
-    REQUIRED_FILES "${CMAKE_CURRENT_SOURCE_DIR}/uct_merge_replay.cpp;${CMAKE_CURRENT_SOURCE_DIR}/uct_merge_baseline_bb53.hpp;${CMAKE_CURRENT_SOURCE_DIR}/uct_merge_baseline_bb53.cpp;${CMAKE_CURRENT_SOURCE_DIR}/uct_merge_baseline_bb53_geometry.cpp;${PROJECT_SOURCE_DIR}/src/common/uct_paddle_processing.cpp;${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp")
+    REQUIRED_FILES "${CMAKE_CURRENT_SOURCE_DIR}/uct_merge_replay.cpp;${CMAKE_CURRENT_SOURCE_DIR}/uct_merge_baseline_bb53.hpp;${CMAKE_CURRENT_SOURCE_DIR}/uct_merge_baseline_bb53.cpp;${CMAKE_CURRENT_SOURCE_DIR}/uct_merge_baseline_bb53_geometry.cpp;${CMAKE_CURRENT_SOURCE_DIR}/uct_merge_baseline_ec72.hpp;${CMAKE_CURRENT_SOURCE_DIR}/uct_merge_baseline_ec72.cpp;${PROJECT_SOURCE_DIR}/src/common/uct_paddle_processing.cpp;${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp")
 # --benchmark is explicit only; ordinary CTest never runs the timing blocks.

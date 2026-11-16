@@ -29,6 +29,7 @@ chalkboard lecture frames. Worker time is not camera-to-paint latency.
 | Composition flush before capture, capture targets, overlay raster | Not applicable: OkuFlow analyses camera, video and file frames it already owns |
 | Speculative ink retries | Not applicable: OkuFlow has no retry fits |
 | Reuse-cache crop order defect | Not applicable: OkuFlow has no OCR reuse cache and never reorders crops |
+| Keep word-merge state across one read instead of rebuilding it per crop | Round 7, on by default, identical output |
 
 ## Round 1: detector post-processing
 
@@ -88,8 +89,8 @@ rounding is the one `boxesInside` reproduces. What is established:
 | Original fuses every column | sm_100, 103, 120, 121 |
 
 Equal intermediate code and equal instruction counts do not settle the final
-rounding, so they are not treated as proof. `DetectKernels::ForDevice` enables
-the new box kernel only when built with the CUDA 12.9 toolkit
+rounding, so they are not treated as proof. `DetectKernels::ForDevice` (since round 9: `DetectKernels::Exact`) enables
+the exact box kernel only when built with the CUDA 12.9 toolkit
 (`kCooperativeBoxesToolkit`) and running on compute capability 8.6 or 8.9, that
 is RTX 30 and RTX 40 series cards. On everything else, including the GTX 10
 series test system, RTX 20 and RTX 50 series, and under any other toolkit, the
@@ -839,6 +840,510 @@ failure injection, an input above 4 GiB, an end-to-end GPU run with a tampered
 plan, and reporting a failed system hash as such where assets are loaded (it
 reports as missing or changed files and disables both Paddle readers).
 
+## Round 6: reconcile safety versus reading gain (negative result)
+
+Targets: tuning gain at least 150 exact words with no page losing more than
+three; each confirmation set must retain total exact matches, not increase
+unmatched words, and lose at most five per page; at least 57/62 complete titles
+without regression; v1 warm geometric mean at least 1.28x and dense 1080p at
+least 1.8x, without a scene regression beyond the noise floor. Retain coverage,
+order independence and all fitted/refused ribbons.
+
+Result: retain the reviewed `1b580f5` rules. No production code or threshold
+changes. The experiment remains OFF by default. The earlier reading gain
+cannot be recovered simply by weakening containment: adding only the required
+curved/refused-ribbon protection to the original rules removes its aggregate
+tuning gain, before adding the reviewed height/span/coverage restrictions.
+This is a negative result for that mechanism, not a proof that every future
+geometry-only design must fail.
+
+### Diagnosis
+
+Built `ec7282d` and `1b580f5` in separate external source/build trees. Temporary
+geometry-only dumps were removed from the final binary. Evidence:
+`r6-diagnosis-tune2`, `r6-diagnosis-decisions`, `r6-tune-ablation` under the
+private program evidence root documented above. No recognized title text or
+owner imagery enters Git.
+
+The external CPU replay checks both builds' actual decisions against the
+reconstructed rules, verifies equal detector geometry, and records every
+input quad, rule witness and restoration in `all-detections.json` (2,468
+records, first and warm reads). `actual-old-witnesses.json` lists each
+old-drop/reviewed-keep decision and every old-rule witness's failed reviewed
+conditions. Counts below use first reads only and each detection once; where
+several old witnesses exist, classify by the one with fewest failed conditions.
+
+| Obstruction to the best old witness | Detections |
+| --- | ---: |
+| Curved/refused ribbon, alone or with another condition | 201 |
+| Height ratio alone | 46 |
+| Baseline span alone | 5 |
+| Height ratio and span | 2 |
+| Final coverage/rule selection | 2 |
+| Total old-drop/reviewed-keep | 256 |
+
+There is no offset-only obstruction in this classification; one combined
+curved/height/offset case occurs. This distinguishes relevant old witnesses
+from arbitrary nearby boxes. Both valid and refused ribbon flags were
+collapsed to the existing `Detection::curved`; this diagnosis does not
+identify which of those two flags accounts for each difference.
+
+RTX 4090, driver 621.14, Ryzen 9 5900X; MSVC 19.44 Release, Qt 6.12,
+CUDA 12.9.86, TensorRT 11.4.0.106, medium/medium cached BF16-linear plans,
+mixed arithmetic, N8 fixed1024. Tuning-only ablation `r6-tune-ablation`,
+one first and one warm read, identical executable across these arms:
+
+| Rules | Exact / 8,154 labels | Other | Worse / better pages | Worst delta |
+| --- | ---: | ---: | --- | ---: |
+| Switch off | 6,163 | 1,065 | 0 / 0 | 0 |
+| Original, unprotected | 6,369 | 1,052 | 1 / 14 | -1 |
+| Original plus curved/refused protection only | 6,163 | 1,032 | 7 / 5 | -3 |
+
+For example, tuning pages 07, 08 and 18 have off/original/protected exact counts
+104/133/104, 440/458/437 and 426/459/423 respectively. The exact quads and
+witnesses are in private evidence. Keeping envelope geometry that looks
+straight is insufficient reason to discard the refused-ribbon ink-protection
+contract. No asymmetric tolerance or joint-span rule was selected: only five
+changed straight detections are blocked solely by the span condition, while
+the required ribbon protection alone removes all aggregate old-rule gain.
+
+### Retained contract and tests
+
+Invariant: no detection is omitted unless a kept straight detection from
+another region spans its baseline extent within the stated tolerance and
+passes the same-line/height/whole-frame-resolution checks. This is detector
+geometry coverage, not a proof of correct recognized text or pixel coverage.
+The strict `Replaces` relation and final monotone restoration pass remain
+unchanged; fitted and refused ribbons take no part in any removal.
+
+`regionReconcileRules` adds a chain where unequal height-based tolerances
+require restoring a fragment, plus a large straight-looking ribbon-envelope
+case. All 300 deterministic random layouts now also check shuffled keep
+choices, unchanged quads/regions/ribbon flags, retained curved detections and
+statistics conservation. Existing two-line, large-title, 3840-wide and other
+chain tests remain. The final slot passes; this is scoped model-free evidence,
+not the shipping matrix. No GUI tests, installed OkuRead, Magnifier, camera,
+network publishing or default activation were used.
+
+### Final confirmation
+
+Final binary SHA-256:
+`dc9b8f4edacef577479759929ca1808bc235eec7440203bdda5f15cbaa222ad9`.
+The command transcript and complete results are in the private `r6-handback.md`.
+Variants 3 and 4 were generated only after that binary existed; constants were
+not changed after confirmation. Quality runs use one first and one warm read
+with profiling; their timings are not performance evidence. Speed uses the
+separate unprofiled two reversed cohorts of five warm reads.
+
+All numbers: RTX 4090 / driver 621.14 / Ryzen 9 5900X; MSVC 19.44 Release, Qt 6.12.0, CUDA 12.9.86, TRT 11.4.0.106, cached medium/medium BF16-linear mixed arithmetic, N8 fixed1024.
+
+| Set | Exact off / on | Other off / on | Worse / better | Worst | Restorations first / all reads | Quality target |
+|---|---:|---:|---:|---:|---:|---|
+| okuread-tune | 6163 / 6166 | 1065 / 1042 | 6 / 6 | -4 | 2 / 4 | NOT MET |
+| v1-variant1 | 7328 / 7338 | 65 / 39 | 2 / 7 | -1 | 2 / 4 | MET |
+| okuread-labelled-a | 9225 / 9218 | 1581 / 1537 | 14 / 11 | -6 | 2 / 4 | NOT MET |
+| okuread-labelled-b | 3076 / 3094 | 1399 / 1346 | 3 / 17 | -1 | 3 / 6 | MET |
+| v1-variant3 | 7889 / 7901 | 95 / 66 | 1 / 6 | -1 | 4 / 8 | MET |
+| v1-variant4 | 7256 / 7268 | 77 / 42 | 2 / 7 | -1 | 4 / 8 | MET |
+| v1-speed | 4106 / 4117 | 81 / 62 | 1 / 3 | -2 | 2 / 4 | MET |
+
+Keep complete ordered output identical: okuread-labelled-a: 40/40 scenes.
+
+
+Keep complete ordered output identical: v1-speed: 18/18 scenes.
+
+
+Titles (counts only): base 43/62, on 55/62, keep 43/62; complete-off becoming incomplete-on: 0.
+Title restorations first / all reads: 0 / 0.
+Keep byte identity on titles: 62/62.
+
+Unprofiled worker timing (ms); two reversed cohorts, five warm passes each.
+
+| Scene | Warm off / on | First off / on | Warm x | Cohort 0 / 1 warm x |
+|---|---:|---:|---:|---:|
+| doc-camera-1080 | 208.67 / 109.29 | 208.86 / 109.75 | 1.909 | 1.919 / 1.895 |
+| doc-camera-tilt-1080 | 159.84 / 95.64 | 160.00 / 96.43 | 1.671 | 1.668 / 1.674 |
+| doc-camera-2160 | 479.16 / 272.66 | 478.38 / 280.30 | 1.757 | 1.795 / 1.718 |
+| doc-camera-turkish-1080 | 180.39 / 102.12 | 179.27 / 104.69 | 1.766 | 1.787 / 1.749 |
+| book-curved-1080 | 75.66 / 76.68 | 73.48 / 75.00 | 0.987 | 0.983 / 1.029 |
+| slide-light-1080 | 67.91 / 57.38 | 72.96 / 62.35 | 1.184 | 1.186 / 1.179 |
+| slide-dark-1080 | 69.80 / 58.81 | 70.66 / 61.12 | 1.187 | 1.213 / 1.180 |
+| slide-light-2160 | 117.56 / 92.06 | 115.62 / 94.27 | 1.277 | 1.256 / 1.305 |
+| table-1080 | 141.25 / 82.27 | 142.16 / 81.94 | 1.717 | 1.742 / 1.712 |
+| page-portrait-1654x2339 | 380.17 / 229.27 | 381.63 / 225.21 | 1.658 | 1.635 / 1.664 |
+| signs-sparse-1080 | 32.46 / 30.93 | 32.50 / 29.85 | 1.049 | 1.063 / 1.103 |
+| no-text-1080 | 46.07 / 47.64 | 47.45 / 49.02 | 0.967 | 0.967 / 0.966 |
+| board-lecture-00 | 23.50 / 25.03 | 25.13 / 26.06 | 0.939 | 0.929 / 0.971 |
+| board-lecture-01 | 24.59 / 25.31 | 25.63 / 24.82 | 0.971 | 0.957 / 0.988 |
+| board-lecture-02 | 27.36 / 26.36 | 27.90 / 26.89 | 1.038 | 1.005 / 1.013 |
+| board-lecture-03 | 28.10 / 26.56 | 27.53 / 35.47 | 1.058 | 1.051 / 1.054 |
+| board-lecture-04 | 27.10 / 27.15 | 25.71 / 27.42 | 0.998 | 0.944 / 1.049 |
+| board-lecture-05 | 23.23 / 24.79 | 23.42 / 24.87 | 0.937 | 0.953 / 0.977 |
+
+Geometric means: {"warm": 1.2391162151378239, "firstRead": 1.2142088106554645, "scenesIdentical": 6, "scenes": 18}
+Cohort warm geometric means: [1.235631167111847, 1.2515299168366205]
+
+Target decisions: tuning NOT MET (+3, worst -4); labelled A NOT MET (total -7,
+worst -6); labelled B, v1, fresh variants 3 and 4 quality MET; titles NOT MET
+(55 rather than 57, no regression). V1 warm aggregate NOT MET (1.239x versus
+1.28x); dense 1080p MET (1.909x versus 1.8x). The no-scene-regression target
+is NOT MET conservatively: no-text is 3.4% slower in both cohorts, beyond the
+2% dense-scene reference floor. Sparse lecture regressions remain within the
+12% sparse-scene floor. First-read geometric mean is 1.214x; the first-read
+columns exclude engine startup and are not cold-cache measurements.
+
+The geometry invariant is retained by construction and passes all random
+layouts and the complete tuning-geometry replay. Final corpus profile lines
+show the restorations above (v1 uses its separate profile run); they are not
+an independent pixel/text coverage audit of every confirmation page. No
+recognition correctness follows from the relation. The retained coverage
+algorithm ensures every omitted detection has a kept `Replaces` witness;
+curved/refused detections are always kept. No general camera safety claim is
+made from that formal invariant.
+
+`uct_paddle_processing` through `run_test_gate.ps1` is SCOPED PASS: 1/349
+CTest cases, no skipped Qt rows or unresolved failures; full matrix and GUI
+acceptance were not run. `agent_check.ps1` configured CPU then returned
+FULL-required for missing dependency inventory; the delegate guide forbids
+starting that full matrix. The first chain fixture had incorrect tile-edge
+geometry and failed; its corrected, rebuilt fixture passes. All failed logs
+remain external. An initial dump hit QtTest's warning cap and was replaced
+by direct diagnostic output; its evidence remains, but only the second full
+dump supports the diagnosis. Variant generation initially failed because the
+lease helper's Python lacked NumPy; the existing Anaconda Python generated
+both untouched sets without installing packages or changing system settings.
+
+All 24 final arm/cohort receipts bind the same executable and report cached
+medium BF16 plans, deterministic output and zero malformed profile lines.
+Private diagnostic and ablation binaries were rebuilt during investigation;
+their evidence hashes identify those historical builds, not the final binary.
+No new runtime switch was shipped and no default or dependency changed.
+
+Turning this experiment on still needs the missed tuning/held-out/title/speed
+criteria resolved while retaining ribbon protection and the geometry invariant,
+plus independent coverage review and owner camera/document captures. The
+corpora contain no owner camera capture. Worker timing, generated-page scores,
+model-free geometry tests and private title counts do not establish native
+presentation, real-camera quality, accessibility or release acceptance.
+
+### Review
+
+Council on `83e2b30`: Claude Opus 5.5 7/10, GPT-6.1 Sol 8/10, Gemini 4 Hydrogen
+8/10; all three accept the negative result and keep the reviewed rules. They
+recounted the diagnosis table and the ablation from the evidence and found
+both correct, and they supplied what the diagnosis above leaves open:
+
+- **What the first version's gain was.** The scorer counts only confident
+  words. Every word read from a refused ribbon is marked invalid geometry with
+  a protection box, and word merging passes that mark to whichever overlapping
+  word wins. In the first reads of the tuning ablation the three arms have 584,
+  333 and 584 invalid-geometry words (switch off, first rules, first rules
+  with curved detections excluded) against 7,228, 7,421 and 7,195 confident
+  ones. So most of the +206 was about 251 withheld words counted again because
+  their protection never reached the merge: the bypass the first council
+  objected to, not better reading.
+- **Which side was curved.** Of the 201 blocked decisions, 100 drop a straight
+  detection whose stand-in is curved-flagged, 47 drop a curved-flagged
+  detection in favour of a straight one (the bypass), and 54 are curved on
+  both sides. The ablation excluded curved detections in every role, so "the
+  exclusion alone removes the gain" holds for that combination, not for each
+  role.
+- **Fitted and refused ribbons are different cases** and were not separated. A
+  refused ribbon keeps the ordinary rectangle as its box, so as a stand-in its
+  geometry is as good as a straight detection's; a fitted ribbon's box is only
+  an envelope.
+- **Flat text is flagged as curved very often.** On the 20 flat tuning pages
+  299 of 1,234 detections carry a ribbon flag, and one read has about 880
+  fitted and 168 refused ribbon crops. This is a reading question before it is
+  a speed question; see round 12.
+
+Applied while merging: the random-layout test also compares `quad.valid` and
+every statistics counter under the shuffle, shuffles with its own generator,
+and fails unless the layouts actually drop and keep curved detections. Not
+done: an independent span check in the test file (the coverage check still
+calls the production `Replaces`).
+
+Measured afterwards on the merged build, curved processing on (default)
+against off (`OKUFLOW_UCT_CURVED_RIBBON=0`), one read per page, RTX 4090
+(`issue18-flat-*`): with curved processing off, exact label matches rise from 6,163
+to 6,544 on the 20 tuning pages, from 9,225 to 9,965 and from 3,076 to 3,523 on
+the two development groups and from 7,328 to 7,341 on fresh set 1, and fall
+from 4,106 to 4,101 on this repository's scenes, which include a really bent
+page. With curved processing on those sets have 584, 946, 805, 13 and 36
+invalid-geometry words. That is the defect of issue #18, at scale on flat
+pages, and it is what round 12 addresses.
+
+## Round 7: host word merging without per-call rework (on by default, exact)
+
+After every recognized crop the recognizer merges that crop's words into
+everything already read (`PaddleMergeRecognition`). Each call rebuilt the
+geometry of every word merged so far, compared the incoming words with every
+word and every row, and sorted every row again, so a read with several
+hundred crops repeated that work several hundred times. On the
+[corpus timing](uct_corpus_timing.md) profile this host merging took 20.3 ms
+of a 217 ms read on the dense 1920x1080 document, 56.8 ms of 394 ms on the
+portrait page and 80.7 ms of 499 ms on the dense 3840x2160 document.
+
+Targets stated before the work, for an exact change (no decision may change):
+
+- Profiled `mergeHostMs`: 3840x2160 document 20 ms or less, portrait page
+  15 ms or less, 1920x1080 document 6 ms or less.
+- Unprofiled warm worker time at least 1.10x on `doc-camera-2160` and
+  `page-portrait-1654x2339`, and no scene slower beyond the noise floor.
+- Byte-identical complete output against the base build on the 18 scenes, the
+  88 held-out labelled pages and the 62 title placements, with
+  `OKUFLOW_UCT_TEST_REGION_RECONCILE` unset and set; `uct_merge_replay` and
+  `uct_paddle_processing` pass.
+- The replay benchmark reported for the old and the new merge.
+
+| Target | Result |
+| --- | --- |
+| `mergeHostMs` 3840x2160 at most 20 ms | **Met**: 89.5 to 14.9 ms |
+| `mergeHostMs` portrait at most 15 ms | **Met**: 63.4 to 10.2 ms |
+| `mergeHostMs` 1920x1080 at most 6 ms | **Met**: 16.5 to 4.8 ms |
+| Warm worker at least 1.10x on 3840x2160 and portrait | **Not met**: 1.028x and 1.026x (recheck 1.033x and 1.023x) |
+| No scene slower beyond the noise floor | **Met** after a recheck (below) |
+| Identical output everywhere listed | **Met**: 336 of 336 scene comparisons identical |
+| `uct_merge_replay`, `uct_paddle_processing` pass | **Met** |
+| Replay benchmark old versus new | **Reported** (below) |
+
+There is no switch: the change is exact and is on by default.
+
+### What changed
+
+`PaddleMergeContext` (`include/okuflow/common/uct_paddle.hpp`, implemented in
+`src/common/uct_paddle_processing.cpp`) keeps the merge's state for all calls
+into one output. The GPU recognizer (`TensorRtRecognizer::RecognizeDevice`)
+and the CPU recognizer each create one per read and pass it to the new
+five-argument overload; the call site in `src/common/uct_tensorrt.cpp` changes
+by two lines. The four-argument overload keeps its behaviour for every other
+caller. The context holds:
+
+- each merged word's shape, bounds, area, angle, height and centre, computed
+  once;
+- a uniform grid over word bounds. The overlap scan visits only words whose
+  bounds pass `QRectF::intersects` against the incoming word's bounds, which
+  is the merge's own first overlap test, and visits them in output order, so
+  the first target, the rejection that stops the scan, the erased words and
+  the preferred-row updates are those of a full scan;
+- a grid over word centres for the row search. A word with no overlap and no
+  usable preferred row computed its distance to every word of every row. A
+  cached word can only give a finite distance when its centre lies in a band
+  around the incoming word, because the distance counts a word only at a
+  height within a factor of two, a centre within .35 of the larger height
+  across the line and a gap of at most four times the smaller height along
+  it. Only rows holding such a word are evaluated, exactly and in output
+  order; the last empty row is found as before;
+- per-row sort state. A row that gained or lost no word, was last sorted
+  under a strict weak order and still gives the same baseline angle from its
+  first word is not sorted again: sorting a sorted sequence again is then the
+  identity. Every other row is sorted with the original comparison.
+
+The context notices outside changes without comparing words. Between calls
+it holds a shallow copy of the output, so any change through the container
+API gives the output a new buffer, and the next call rebuilds the context
+from the output. Above 1024 rows or 8192 words the context is released and
+the unchanged per-call merge runs. The method, the bounds and the arguments
+for each step are in [the merge optimization record](uct_merge_optimization.md).
+
+No threshold, association rule, sort order, recognition or detection step
+changed.
+
+### Correctness evidence
+
+`uct_merge_replay` compares every ordered word field, with exact double bits,
+after every call. It now also has a frozen copy of the ec7282d merge
+(`tests/uct_merge_baseline_ec72.cpp`), because the bb53 oracle predates
+refused-ribbon protection inheritance. Every case is compared with ec7282d,
+and with bb53 wherever no input carries inheritable protection. The candidate
+runs with one context per case and through the four-argument overload. The
+new cases are read-shaped call sequences built from every detector region of
+a full read (3840x2160, 1654x2339 and 1920x1080, with tile-edge fragments,
+overlapping recognition windows, refused ribbons, tilt, rectangle-only and
+mixed shapes), context checks (outside edits between calls, one context
+shared by two outputs, a moved context, a source size change), the 8192-word
+and 1024-row bounds crossed in both directions, and row-search edges. See
+`tests/README.md`. `uct_merge_replay`, `uct_paddle_processing` (49 slots) and
+`uct_ribbon_ink_contract` (12 slots) pass on the final build.
+
+End to end, the final build (`c1d4765`) was compared with a build of
+`1b580f5` (round 2 as finalized), same corpus, complete ordered output
+(text, order, dispositions, geometry, confidence, colours):
+
+| Scene set | Reconcile unset | Reconcile set to 1 |
+| --- | --- | --- |
+| This repository's 18 scenes | 18 / 18 identical | 18 / 18 identical |
+| Held-out labelled pages, first 40 | 40 / 40 identical | 40 / 40 identical |
+| Held-out labelled pages, last 48 | 48 / 48 identical | 48 / 48 identical |
+| Title placements (private owner crops), 62 | 62 / 62 identical | 62 / 62 identical |
+
+Every arm was deterministic across its reads. Evidence `r7-final-v1-timing`
+and `r7-final-identity-v1-reconcile`, `-okuread-labelled-a`, `-a-reconcile`,
+`-okuread-labelled-b`, `-b-reconcile`, `-issue18-variants`,
+`-issue18-variants-reconcile`. The intermediate build with the context but
+without the row search (`c0e6261`) was compared the same way and was also
+identical everywhere (`r7-v1-timing`, `r7-identity-*`).
+
+### Merge host time
+
+Profiled runs (`--profile`; timing from these is not quoted), base `1b580f5`
+against the final build, `doc-camera-1080`, `doc-camera-2160` and
+`page-portrait-1654x2339`, two reversed cohorts of five warm reads. Medians of
+`mergeHostMs` over all ten warm reads; the cohort medians follow in
+brackets. The field also covers CTC token decoding of each group, which this
+round did not change.
+
+| Scene | Words | Base ms | New ms | Ratio |
+| --- | ---: | --- | --- | ---: |
+| doc-camera-1080 | 491 | 16.45 (16.21, 16.87) | 4.77 (4.90, 4.52) | 3.4 |
+| doc-camera-2160 | 1,199 | 89.48 (88.87, 89.77) | 14.94 (15.10, 14.38) | 6.0 |
+| page-portrait-1654x2339 | 983 | 63.42 (72.70, 60.14) | 10.20 (11.84, 8.16) | 6.2 |
+
+Evidence `r7-final-profile-merge`. With the context only (`r7-profile-merge`,
+a busier run: its base cohorts disagree by up to 50 percent) the new medians
+were 4.92, 21.69 and 10.23 ms. The 3840x2160 document then missed its target
+in one cohort (24.08 ms), which is why the row search was added.
+
+### Replay benchmark
+
+`uct_merge_replay_tests --benchmark --only <case>`: five warm-up visits per
+arm, then 31 alternating ABBA/BAAB blocks, all-field check after every call.
+Median summed merge time of one visit (all calls of a case), base = the
+frozen ec7282d merge, CPU only (Ryzen 9 5900X). The same frozen inputs
+(SHA-256 `8b4d0600...a53986` for the 3840x2160 case) were used for both
+builds. The benchmark had to run one case per process: all cases in one
+process exceed the replay's four-minute execution budget, because the base
+merge is slow on the read-shaped cases (kept as
+`r7-replay-benchmark-rowsearch-full-budget-exceeded`).
+
+| Case | Calls | Final words | Base ms | Context ms | Context and row search ms | Base / final |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| read-like-dense-3840x2160 | 599 | 1,607 | 85.05 / 81.72 | 6.43 | 5.32 | 15.4 |
+| read-like-portrait-1654x2339 | 505 | 1,532 | 68.44 / 69.34 | 5.14 | 4.80 | 14.5 |
+| read-like-dense-1920x1080 | 275 | 878 | 22.77 / 22.28 | 2.65 | 2.67 | 8.4 |
+| read-like-ribbons-1920x1080 | 313 | 864 | 24.62 / 23.09 | 2.76 | 2.21 | 10.5 |
+| read-like-tilted-1920x1080 | 321 | 1,022 | 29.63 / 28.80 | 3.40 | 3.29 | 8.8 |
+| read-like-rectangles-1920x1080 | 170 | 524 | 8.56 / 8.38 | 1.30 | 1.31 | 6.4 |
+| read-like-mixed-shapes-1920x1080 | 189 | 606 | 11.28 / 11.23 | 1.66 | 1.67 | 6.7 |
+| generated-book-383 | 64 | 383 | 3.28 / 3.36 | 0.67 | 0.64 | 5.3 |
+| generated-high-density-768 | 64 | 768 | 9.21 / 16.70 | 1.33 | 2.74 | 6.1 |
+
+The base column gives the base arm of each build's own run (context run /
+final run); the ratio is within the final run. `generated-atlas-175` and
+`generated-frame55-262` gave 3.6 and 3.9 in the final run. The high-density case's
+base arm doubled in the final run as well, so other load on the machine
+rather than the change is the likely cause there. Evidence
+`r7-replay-benchmark-context` and `r7-replay-benchmark-rowsearch`. The final
+benchmark binary was built from the final merge source before the three
+row-search replay cases were added; those cases are untimed.
+
+### Worker time
+
+Unprofiled, base `1b580f5` against the final build, this repository's 18
+scenes, two reversed cohorts of five warm reads (evidence
+`r7-final-v1-timing`).
+
+| Scene | Base warm ms (cohorts) | New warm ms (cohorts) | Speedup | First read ms, base / new |
+| --- | --- | --- | ---: | --- |
+| doc-camera-2160 | 491.27 (482.07, 495.97) | 477.74 (476.54, 479.06) | 1.028 | 489.90 / 477.86 |
+| page-portrait-1654x2339 | 386.57 (382.08, 392.48) | 376.70 (376.02, 388.05) | 1.026 | 382.14 / 377.66 |
+| doc-camera-1080 | 212.31 (212.25, 212.38) | 210.20 (210.49, 207.61) | 1.010 | 213.30 / 209.86 |
+| doc-camera-tilt-1080 | 163.85 (160.41, 164.42) | 161.00 (161.88, 159.38) | 1.018 | 163.51 / 161.43 |
+| doc-camera-turkish-1080 | 183.60 (182.45, 184.88) | 185.55 (182.86, 188.63) | 0.989 | 179.85 / 192.59 |
+| table-1080 | 144.26 (142.14, 147.40) | 145.25 (140.52, 149.79) | 0.993 | 144.68 / 142.46 |
+| slide-light-2160 | 122.39 (117.20, 128.80) | 128.05 (123.91, 129.00) | 0.956 | 126.83 / 126.19 |
+| book-curved-1080 | 75.46 (75.10, 78.86) | 80.89 (75.82, 81.32) | 0.933 | 79.78 / 78.75 |
+| slide-dark-1080 | 75.29 (72.42, 75.42) | 78.27 (72.50, 80.32) | 0.962 | 75.10 / 74.21 |
+| slide-light-1080 | 72.77 (70.34, 73.09) | 72.62 (71.37, 75.10) | 1.002 | 71.48 / 71.98 |
+| no-text-1080 | 46.78 (46.79, 46.77) | 47.40 (47.00, 48.50) | 0.987 | 48.33 / 47.78 |
+| signs-sparse-1080 | 32.81 (32.22, 33.65) | 32.78 (32.88, 32.68) | 1.001 | 33.01 / 32.57 |
+| board-lecture-00 (real) | 24.17 (23.63, 24.83) | 23.99 (23.77, 24.04) | 1.007 | 24.22 / 25.77 |
+| board-lecture-01 (real) | 25.09 (25.56, 24.87) | 24.45 (23.84, 26.36) | 1.026 | 24.03 / 25.17 |
+| board-lecture-02 (real) | 27.27 (26.40, 28.36) | 27.76 (26.50, 27.77) | 0.982 | 28.71 / 29.32 |
+| board-lecture-03 (real) | 27.81 (26.50, 28.75) | 27.79 (29.34, 27.75) | 1.001 | 28.07 / 27.79 |
+| board-lecture-04 (real) | 25.62 (24.72, 27.66) | 25.91 (25.86, 27.84) | 0.989 | 27.21 / 24.85 |
+| board-lecture-05 (real) | 23.22 (22.67, 23.94) | 22.88 (22.23, 23.64) | 1.015 | 25.11 / 23.90 |
+
+Geometric mean 0.996x warm and 1.005x for first reads. The three scenes that
+read 4 to 7 percent slower had cohorts that disagree with each other, and
+they were measured again in a separate run with the two target scenes
+(`r7-final-v1-timing-recheck`, same protocol):
+
+| Scene | Base warm ms (cohorts) | New warm ms (cohorts) | Speedup | First read ms, base / new |
+| --- | --- | --- | ---: | --- |
+| doc-camera-2160 | 487.73 (488.77, 481.39) | 471.94 (470.88, 478.38) | 1.033 | 485.62 / 476.09 |
+| page-portrait-1654x2339 | 385.45 (386.86, 382.86) | 376.83 (376.70, 379.77) | 1.023 | 389.49 / 382.15 |
+| doc-camera-turkish-1080 | 186.74 (187.95, 179.94) | 181.33 (179.80, 184.42) | 1.030 | 183.45 / 183.10 |
+| book-curved-1080 | 77.78 (78.98, 74.38) | 75.66 (74.29, 78.38) | 1.028 | 76.39 / 78.98 |
+| slide-dark-1080 | 73.88 (74.37, 71.35) | 73.81 (76.47, 72.83) | 1.001 | 76.38 / 72.89 |
+| slide-light-2160 | 119.49 (125.47, 116.03) | 116.90 (116.47, 117.13) | 1.022 | 122.41 / 115.90 |
+| no-text-1080 | 48.51 (48.31, 48.72) | 47.45 (47.04, 48.13) | 1.022 | 49.84 / 55.35 |
+
+None of them is slower there; the single textless first read (55.35 ms) is
+one sample. The intermediate context-only build measured 1.024x and 1.022x on
+the two target scenes and 1.002x on the geometric mean (`r7-v1-timing`).
+
+The worker gain is far smaller than the merge time removed: on the 3840x2160
+document about 75 ms of host merging went away and the read became about
+14 ms shorter. Recognition groups are issued ahead of the merge (a two-slot
+look-ahead), so most of the merge already ran while the GPU worked on the
+next group, and the read is limited by GPU work. That is an inference from
+these two measurements; this round did not measure the overlap directly.
+Reaching 1.10x on worker time would need a change on the GPU side of the
+read, which is outside this round's scope.
+
+### Not established
+
+The replay cases are constructed call sequences, not captured detector
+calls. The CPU recognizer uses the context too, but its speed was not
+measured. Paused-detail and regional reads have one region and few calls and
+were not measured separately. `CHANGELOG.md` is unchanged: output is
+identical and the worker-time change is inside the noise floor on most
+scenes.
+
+### Review
+
+Council on `d66814e`: Claude Opus 5.5 8/10, GPT-6.1 Sol 7/10, Gemini 4 Hydrogen
+9/10. Opus and Gemini recommended merging it on; Sol wanted one case closed
+first. All three checked every order-dependent decision (first overlapping
+row, the rejecting overlap, preferred-row updates, the last empty row,
+distance ties, the sort shortcut) against the original and found them
+reproduced, the frozen bb53 files untouched and the ec7282d copy equal to the
+function it freezes.
+
+Applied while merging:
+
+- Sol's case: a reference to one row's word list kept across a call and then
+  used to clear or change the row left the outer list's buffer alone, so the
+  context kept indices into words that were gone. The context now also keeps a
+  shallow copy of every row's word list and compares each row's buffer and
+  size on every call; the replay test drives clear, remove, reverse and append
+  through such a reference and compares with the frozen merge after every
+  call.
+- Retained capacity: after 8,192 words have been added since the last rebuild
+  the next call rebuilds from scratch, so rows and grid cells cannot keep the
+  capacity of an unbounded history of merged-away words.
+- The public header described a bit-for-bit comparison of every word that the
+  code does not make; it now says what is and is not detected.
+- The reader releases the context before its final row sort, which otherwise
+  copied the list of rows once per read.
+- The replay tool held every loaded corpus to a byte round trip, which a
+  format-1 corpus cannot pass after being rewritten as format 2; the check now
+  applies to the current format only.
+
+The merged build with these fixes was compared with the integration build
+from before the merge (`int6-r7-*`): one identical complete-output hash on 18
+scenes (two cohorts of five passes), 88 development pages and 62 title
+placements, each with region reconciliation off and on in both arms, 336
+comparisons in all; warm 1.023x and 1.010x on the scene set; the replay test
+passes.
+
+Not done: moving the per-call scratch vectors into the context, routing the
+four-argument overload to the uncached merge, and the oracle cases the
+reviewers listed as still missing (mixed rectangle and quad words on a tilted
+row, a sort that changes the first word's angle, a check that the context is
+actually reused).
+
 ## Round 9: the faster box score as the default, on every GPU
 
 Round 1 missed its target for the textless scene because its exact box score
@@ -855,9 +1360,11 @@ Target (round 1's, carried over): "regions" stage of the textless scene under
 What changed: `DetectKernels` defaults to `treeBoxes` on every device, and the
 device-specific selection is gone from the reader. Each lane of a warp sums its
 pixels in double and a fixed shuffle tree combines the lanes. The kernel spells
-out its own membership test and summation order, so its score is the same on
-every GPU generation, which the original kernel's was not (its membership test
-depends on how the compiler built it for each architecture, see round 1). The
+out its own membership test and summation order, so the sum itself no longer
+depends on how the compiler built it for each architecture, as the original's
+did (round 1). A component's extents and scan bounds are still ordinary
+compiled float arithmetic, so scores are not claimed equal across GPU
+generations. The
 exact raster-order variant remains selectable with
 `OKUFLOW_UCT_TEST_DETECT_KERNELS=roots,boxes,ribbons`, and
 `DetectKernels::Exact` names where that variant equals the original bit for
@@ -867,7 +1374,10 @@ How large the difference is: the original adds the values of a component one
 at a time in float, so its own sum drifts with the number of pixels; the
 double tree does not. The scores therefore differ by the original's
 accumulated rounding, which is far more than one last bit on a large
-component: on the kernel test's 60 crafted detector maps 930 of 2,179 compared box scores differ in their bits, the largest by 0.025 percent of the score, and no map's box count changed. A difference
+component: on the kernel test's 50 crafted detector maps with
+values in [0, 1], 16,605 of 58,451 components that both kernels accept have
+scores with other bits, the largest difference is 0.025 percent of the score,
+and no component is accepted by one kernel only (`int3-gpu.log`). A difference
 reaches the output only when a component's mean lands that close to the 0.4
 acceptance threshold.
 
@@ -884,6 +1394,12 @@ Geometric mean 1.031x warm and 1.035x for first reads. On the merged
 integration build the same comparison in the other direction gives 1.067x for
 the default against the exact selection (`int1-ab-v1`).
 
+Detector scores do change on real pages: the profile's crop-descriptor hash,
+which includes them, differs between the two sums on 5 of 5 profiled scenes
+(`r1-kernels-attribution-4`). The score is used only for acceptance and is not
+part of the output, so a page changes only if a component is accepted by one
+sum and not the other, and that can add or remove a whole line.
+
 Output, tree sum against the exact default, same executable: one identical
 complete-output hash on 18 of 18 scenes (two cohorts), 20 tuning pages, 88
 development pages, 24 fresh generated pages and 62 title placements, 212 in
@@ -894,6 +1410,30 @@ to a script update under them and were compared from their raw reports with
 Not established: the kernel ran only on the RTX 4090. It uses no
 architecture-specific code, but RTX 20, 30 and 50 series cards were not run.
 The corpora contain no owner camera capture.
+
+### Review
+
+Council on the default (`8686ca3`, `7b6ed8a`): Claude Opus 5.5 7/10, GPT-6.1
+Sol 8/10, Gemini 4 Hydrogen 8/10; all three for keeping it as the default.
+None found a defect in the tree kernel. Applied: the kernel test now matches
+components by root and checks every one (same labels, moments and extents;
+scores within 2^-24 per pixel of the component's own box, twice over, instead
+of per pixel of the whole map; a component only one kernel accepts must sit on
+the threshold; repeatability including labels and components; the same boxes
+without ribbon scratch); the exact box kernel is compared only on devices
+where `DetectKernels::Exact` selects it, so the test can run on other GPU
+generations; the claim that scores are equal across GPU generations is
+withdrawn (extents and scan bounds are still compiled float arithmetic); the
+record states that detector scores do change on real pages. In the same pass
+the reviewers checked the fixes made for rounds 3 and 5 (7/10, 7/10, 6/10) and
+found one defect in them, now fixed: a verification interrupted by a
+cancellation left its BF16 attempt latched for the session, so the next setup
+of the same model would have fallen back to FP32. Also applied for round 3: a
+capture put off for lack of memory is not retried for the next 64 network
+calls, and running out of memory during a capture puts it off instead of
+refusing the shape. Kept as it is: a TensorRT enqueue that fails inside a
+capture with no CUDA status is treated as a fault, not a refusal, as the round
+3 reviewers asked; round 10 exercises captures on the other model tiers.
 
 ## Round 10: graph replay made robust; default left off
 

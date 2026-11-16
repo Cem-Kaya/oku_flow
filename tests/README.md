@@ -188,6 +188,30 @@ hash-pinned historical final output rows, explicitly regrouped into artificial
 calls with missing legacy fields defaulted. Those are function microbenchmarks,
 not captured call sequences, ground truth, GPU/full-worker or FPS evidence.
 
+Round 7 (`PaddleMergeContext`) adds a second frozen oracle,
+`tests/uct_merge_baseline_ec72.cpp`: the exact ec7282d merge body, which
+includes refused-ribbon protection inheritance that bb53 predates. Every case
+is compared with ec7282d after every call; bb53 is still compared on every
+case whose inputs carry no inheritable protection. The candidate runs twice,
+once with one context for the whole case (as a recognizer keeps one per read)
+and once through the four-argument overload. Snapshots and frozen inputs use
+format 2, which adds `fromRibbon`, `ribbonErrorPx` and
+`ribbonReadingPointPx`; format 1 inputs still load and replay (their byte
+round-trip check is skipped, because they are rewritten as format 2). New generated cases are
+read-shaped sequences (every detector region of a 3840x2160, 1654x2339 or
+1920x1080 read, tile-edge fragments inside and outside the edge margin,
+overlapping recognition windows, refused ribbons, tilt, rectangle-only and
+mixed shapes), context bound crossings (8192 words, 1024 rows, oversize
+initial output) and row-search edges (rows reached only through a 2000 px
+word, a word at the 512 px reach, a tilted long word, dy and gap exactly at
+their limits with a 1:2 height ratio, coordinates beyond 2^24 px, a search
+band over too many cells, a distance tie and an emptied row reused later in
+the same call). `ContextControls` checks outside edits between calls, one
+context alternating between two outputs, a moved context and source size
+changes. The benchmark's base arm is now the ec7282d merge and its candidate
+the per-read context. `--only <text>` keeps only cases whose name contains the
+text (development filter; it also skips `ContextControls`).
+
 `uct_paddle_cuda`'s `gpuAlgorithmsAndOwnedInputs` additionally compares full
 validation integrals (including zero borders) against an integer CPU oracle
 across warp/tile tails, decimations, padded pitch and repeated poisoned buffers.
@@ -2616,8 +2640,8 @@ for selectors, the protocol, the baseline profile and its limits. These are
 file-fixture worker timings, not camera, presentation or release acceptance.
 
 `uct_detect_kernels_cuda` is a serial `gpu` case with its own 60-second
-budget. `gpuDetectKernelsMatchReferenceBytes` holds the new detector
-post-processing kernels to the original kernels bit for bit on 60 distinct
+budget. `gpuDetectKernelsMatchReferenceBytes` holds the exact detector
+post-processing kernel selections to the original kernels bit for bit on 60 distinct
 synthetic probability maps, with and without ribbon fitting: long parent
 chains, more than 128 components, dozens of roots in one block,
 threshold-sensitive rotated boxes, rounding ties, curved bands and non-finite or
@@ -2628,9 +2652,12 @@ ribbon fits, applied and refused groups, ties, binade landings). They execute
 on the test GPU only. The exact box kernel is verified against the original on
 sm_86 and sm_89 under the CUDA 12.9 toolkit. The default tree box sum is held
 to a different contract in the same test: repeatable, the same labels and box
-geometry as the original, and scores within the original's own accumulated
-float rounding (n * 2^-24 for n pixels); maps whose box count changes are
-counted. See [the port record](../docs/uct_okuread_port.md).
+moments as the original for every component (matched by root), scores of
+components both kernels accept within the original's own accumulated float
+rounding (2^-24 per pixel of the component's oriented box, twice over), and
+every component only one kernel accepts within that bound of the 0.4
+threshold. The exact box kernel is compared only on devices where
+`DetectKernels::Exact` selects it. See [the port record](../docs/uct_okuread_port.md).
 
 `regionReconcileRules` (model-free, in `uct_paddle_processing`) checks the
 private cross-region reconciliation rules on constructed detections: clipped

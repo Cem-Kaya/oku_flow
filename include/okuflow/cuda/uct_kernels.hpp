@@ -105,11 +105,13 @@ void Normalize(const void *image, std::size_t pitch, int width, int height, floa
 // Defaults, on every GPU: path-compressing union-find roots and four ribbon
 // bins merged per round, both exact by construction, and treeBoxes: one warp
 // per component whose lanes sum their pixels in double and combine through a
-// fixed shuffle tree. That sum is repeatable and spells out its own rounding,
-// so it gives the same score on every GPU generation, but it is not the
-// original raster-order float sum: a score can differ in its last bits, which
-// reaches the output only when a component's mean lands within a rounding
-// step of the 0.4 acceptance threshold. The owner accepted differences of
+// fixed shuffle tree. That sum is defined and repeatable: the membership
+// test and the order of additions are spelled out. (A component's extents and
+// scan bounds still follow the compiler's rounding per architecture, so scores
+// are not claimed equal across GPU generations.) It is not the original
+// raster-order float sum: a score differs by the original's accumulated
+// rounding, which reaches the output only when a component's mean lands that
+// close to the 0.4 acceptance threshold. The owner accepted differences of
 // that size for the speed (docs/uct_okuread_port.md, round 9).
 //
 // cooperativeBoxes without treeBoxes is the exact variant: the original

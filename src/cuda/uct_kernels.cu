@@ -358,8 +358,9 @@ __global__ void boxSumGroups(const float *scores, const unsigned *masks, const f
 // count the boxes kernel computes: boxesAddGroup where it applies, otherwise
 // lane zero folds the staged values serially. With tree == true (the default)
 // each lane keeps a double partial sum over its fixed stride and a fixed
-// shuffle tree combines them: defined, repeatable and the same on every GPU,
-// but not the original rounding.
+// shuffle tree combines them: defined and repeatable, but not the original
+// rounding. The extents and scan bounds it starts from are compiled float
+// arithmetic, as in the original.
 __device__ void boxesWarp(int i, const float *map, Component *comps, int w, int h, int sw, int sh,
                           bool tree, float *staged)
 {
