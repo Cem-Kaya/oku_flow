@@ -241,7 +241,7 @@ inline void Rules()
 
     // Random layouts: whatever the rules decide, nothing dropped is left without
     // a kept detection that spans it.
-    std::mt19937 order(11);
+    std::mt19937 shuffleOrder(11);
     int dropped = 0, restored = 0, curvedKept = 0;
     for (int trial = 0; trial < 300; ++trial) {
         std::uniform_real_distribution<double> x(0, 1700), y(20, 1000), w(40, 900), h(14, 90), tilt(-4, 4);
@@ -274,7 +274,7 @@ inline void Rules()
         }
         std::vector<std::size_t> permutation(layout.size());
         for (std::size_t i = 0; i < permutation.size(); ++i) permutation[i] = i;
-        std::shuffle(permutation.begin(), permutation.end(), order); // its own generator: layouts stay the same
+        std::shuffle(permutation.begin(), permutation.end(), shuffleOrder); // its own generator: layouts stay the same
         std::vector<Detection> shuffled;
         for (const auto i : permutation) shuffled.push_back(layout[i]);
         const auto shuffledStats = region_reconcile::Reconcile(regions, source, shuffled);
