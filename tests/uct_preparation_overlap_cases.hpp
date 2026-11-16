@@ -1,10 +1,23 @@
 #pragma once
-// Model-free checks of the recognizer load beside the detector (round 11,
-// src/common/uct_preparation_overlap.hpp): for every outcome of the load, with
-// the detector side succeeding, failing or being cancelled, and with the
-// helper ending before, after or at the same time as the preparation thread
-// arrives, the latch, the memo decision and the outcome handed to the
-// original code equal what the sequential code decides.
+// Model-free checks of the recognizer load beside the detector (round 11 and
+// its follow-up, src/common/uct_preparation_overlap.hpp).
+//
+// The driver below has the shape of the production preparation thread
+// (TensorRtRecognizer::BeginPreparation and PrepareRuntimeRecognizer in
+// uct_tensorrt.cpp): it starts the helper, runs the detector side through the
+// production `DetectorSide` (with `Settle` before a detector build and before
+// the detector's FP32 fallback), decides the recognizer through the production
+// `Decide`, settles again after the recognizer point and refuses to publish an
+// unresolved helper. Only the vendor calls and the unchanged catch bodies are
+// fakes; they record the latch, the failure memos and the decision.
+//
+// Every scenario runs twice: with the helper, and without it (the production
+// code with no helper is the sequential code of 6e454cc). The decision, the
+// latch state and the memo writes must be equal. A helper that actually ended
+// in a fault is the one deliberate exception, with its own rule: the fault is
+// raised (never discarded and never recorded against the detector), the
+// recognizer latch is held as after a terminal fault in its own stage unless a
+// memo or another holder refuses it, and no memo is written.
 #include "../src/common/uct_preparation_overlap.hpp"
 #include "../src/common/uct_runtime_precision.hpp"
 #include "../src/common/uct_tensorrt_failures.hpp"
@@ -16,221 +29,261 @@
 #include <set>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace uct_preparation_overlap_test
 {
 using namespace okuflow::uct;
-using preparation_overlap::Adoption;
 using preparation_overlap::Ahead;
-using preparation_overlap::Steps;
+using preparation_overlap::Point;
 using Clock = std::chrono::steady_clock;
 
-// How the helper's load ends: through its own work, or because it saw stop.
-enum class Load { Loaded, NeedsBuild, Refused, Interrupted, Fault, OutOfMemory, Unknown };
-// When the helper ends relative to the preparation thread's arrival at the
-// recognizer point (or at its own failure).
-enum class Timing { HelperFirst, MainFirst, Together };
-// What the detector side does before the recognizer point.
-enum class Detector { Ready, Fails, Cancelled };
-
 constexpr const char* kKey = "runtime-recognizer:test";
+constexpr const char* kDetectorKey = "detector:test";
 
-// The process latch and the memo store, as the production steps use them.
-struct World {
-    std::mutex mutex;
-    std::set<std::string> latch;
-    bool memo{};
-    int begins{}, releases{}, memoReads{};
-    bool Held()
-    {
-        std::lock_guard lock(mutex);
-        return latch.count(kKey) != 0;
-    }
-};
+// How a load ends. Interrupted is a stopped hash: for the helper, its own
+// deadline; for the original load, the sequential code's.
+enum class Load { Loaded, NeedsBuild, Artifact, Runtime, Interrupted, Cuda, Api, OutOfMemory, Unknown };
+// When the helper ends relative to the preparation thread's arrival where it
+// takes or settles the helper.
+enum class Timing { HelperFirst, MainFirst, Together };
+// The detector side before the recognizer point.
+enum class Detector { Ready, NeedsBuild, FallsBack, Fails, Cancelled };
 
-// The recognizer stage's outcome as the original code receives it.
-struct Result {
-    enum class Path { Sequential, Check, Build, Rethrown, Refused, NotReached } path{Path::NotReached};
-    std::string failure; // type of a rethrown or refused exception
-    bool latchHeld{};
-    bool operator==(const Result& other) const
-    {
-        return path == other.path && failure == other.failure && latchHeld == other.latchHeld;
-    }
-};
-
-inline std::string TypeOf(const std::exception_ptr& failure)
+inline bool IsFaultLoad(Load load)
 {
-    try { std::rethrow_exception(failure); }
-    catch (const detail::VerificationInterrupted&) { return "interrupted"; }
-    catch (const detail::CudaFailure&) { return "cuda"; }
-    catch (const runtime_precision::ArtifactError&) { return "artifact"; }
-    catch (const std::bad_alloc&) { return "bad_alloc"; }
-    catch (const std::exception&) { return "other"; }
-    catch (...) { return "unknown"; }
+    return load == Load::Cuda || load == Load::Api || load == Load::OutOfMemory || load == Load::Unknown;
 }
 
 inline void Throw(Load load)
 {
     switch (load) {
-    case Load::Refused: throw runtime_precision::ArtifactError("plan refused");
+    case Load::Artifact: throw runtime_precision::ArtifactError("plan refused");
+    case Load::Runtime: throw std::runtime_error("plain runtime failure");
     case Load::Interrupted: throw detail::VerificationInterrupted("stopped while verifying");
-    case Load::Fault: throw detail::CudaFailure("device fault");
+    case Load::Cuda: throw detail::CudaFailure("device fault");
+    case Load::Api: throw detail::TensorRtApiFailure("execution context creation failed");
     case Load::OutOfMemory: throw std::bad_alloc();
     case Load::Unknown: throw 7;
     default: return;
     }
 }
 
-inline Steps MakeSteps(World& world, std::function<bool(const std::function<bool()>&)> load)
-{
-    return {[&world] {
-                std::lock_guard lock(world.mutex);
-                ++world.memoReads;
-                if (world.memo) throw runtime_precision::ArtifactError("previously refused");
-            },
-            [&world] {
-                std::lock_guard lock(world.mutex);
-                ++world.begins;
-                return world.latch.insert(kKey).second;
-            },
-            [&world] {
-                std::lock_guard lock(world.mutex);
-                ++world.releases;
-                world.latch.erase(kKey);
-            },
-            std::move(load)};
-}
-
-// The original code at the recognizer point: memo, latch, then the load in place.
-inline Result Sequential(World& world, Load load, bool cancelled)
-{
-    Result result;
-    try {
-        {
-            std::lock_guard lock(world.mutex);
-            if (world.memo) throw runtime_precision::ArtifactError("previously refused");
-        }
-        {
-            std::lock_guard lock(world.mutex);
-            if (!world.latch.insert(kKey).second) throw runtime_precision::ArtifactError("already in flight");
-        }
-        // A cancelled hash stops verification as VerificationInterrupted.
-        if (cancelled) throw detail::VerificationInterrupted("stopped while verifying");
-        Throw(load);
-        result.path = load == Load::NeedsBuild ? Result::Path::Build : Result::Path::Check;
-    } catch (const runtime_precision::ArtifactError& error) {
-        // Distinguish a refusal before the latch from one thrown by the load.
-        result.path = std::string(error.what()) == "plan refused" ? Result::Path::Rethrown : Result::Path::Refused;
-        result.failure = "artifact";
-    } catch (...) {
-        result.path = Result::Path::Rethrown;
-        result.failure = TypeOf(std::current_exception());
+// The process latch and the failure memos, shared by every preparation.
+struct World {
+    std::mutex mutex;
+    std::set<std::string> latch, memos;
+    std::vector<std::string> memoWrites;
+    int begins{};
+    bool Held(const std::string& key = kKey)
+    {
+        std::lock_guard lock(mutex);
+        return latch.count(key) != 0;
     }
-    result.latchHeld = world.Held();
-    return result;
+    bool Memo(const std::string& key)
+    {
+        std::lock_guard lock(mutex);
+        return memos.count(key) != 0;
+    }
+    bool Begin(const std::string& key)
+    {
+        std::lock_guard lock(mutex);
+        ++begins;
+        return latch.insert(key).second;
+    }
+    void Erase(const std::string& key)
+    {
+        std::lock_guard lock(mutex);
+        latch.erase(key);
+    }
+    void WriteMemo(const std::string& key)
+    {
+        std::lock_guard lock(mutex);
+        memoWrites.push_back(key);
+        memos.insert(key);
+    }
+};
+
+// The parts of the State the recognizer point touches.
+struct Fake {
+    enum class Recognizer { None, Adopted, InPlace } recognizer{Recognizer::None};
+    bool aheadNetwork{};   // State::recognizerAhead
+    std::string owned;     // State::ownedAttempts[1]
+    std::string ownedDetector;
+};
+
+inline Point MakePoint(World& world, Fake& state, std::function<void()> loadInPlace = {})
+{
+    return {[&world] { if (world.Memo(kKey)) throw runtime_precision::ArtifactError("previously refused"); },
+            [&world] { return world.Begin(kKey); },
+            [] { throw runtime_precision::ArtifactError("already failed or in flight"); },
+            [&state] { state.owned = kKey; },
+            [&state] {
+                if (!state.aheadNetwork) throw std::logic_error("adopted without a helper network");
+                state.aheadNetwork = false;
+                state.recognizer = Fake::Recognizer::Adopted;
+            },
+            [&state] { state.aheadNetwork = false; },
+            std::move(loadInPlace)};
 }
 
 struct Scenario {
-    Load load{Load::Loaded};
+    Load helper{Load::Loaded}, inPlace{Load::Loaded};
     Timing timing{Timing::HelperFirst};
     Detector detector{Detector::Ready};
-    bool memoAtStart{}, memoAtRecognizer{}, heldElsewhere{};
+    bool memoAtStart{}, memoAtRecognizer{}, heldElsewhere{}, cancelAtRecognizer{};
 };
 
 struct Observed {
-    Result result;
-    bool loadRan{}, sawStop{}, helperDone{};
+    std::string decision; // bf16, fp32, cancelled, failed, fault
+    std::string message;
+    bool latchHeld{}, detectorLatchHeld{};
+    std::vector<std::string> memoWrites;
+    bool adopted{}, publishedClean{true}, aheadLeftAfterRefusal{};
+    // Helper facts, for the expectation.
+    bool helperRan{}, helperFaulted{}, helperStopped{};
+    bool operator==(const Observed& other) const
+    {
+        return decision == other.decision && latchHeld == other.latchHeld &&
+               detectorLatchHeld == other.detectorLatchHeld && memoWrites == other.memoWrites;
+    }
 };
 
-// Runs the production unit the way BeginPreparation drives it.
-inline Observed Overlapped(const Scenario& scenario)
+inline std::string Classify(const std::exception_ptr& failure, bool cancelled)
 {
-    World world;
-    world.memo = scenario.memoAtStart;
-    if (scenario.heldElsewhere) world.latch.insert(kKey);
-    std::atomic<bool> cancel{}, mainArrived{}, helperArrived{}, loadRan{}, sawStop{}, helperDone{};
-    Observed observed;
-    {
-        Ahead ahead;
-        const auto stopped = [&cancel] { return cancel.load(); };
-        const bool started = ahead.Start(MakeSteps(world, [&](const std::function<bool()>& stop) {
-            loadRan = true;
-            helperArrived = true;
-            const auto deadline = Clock::now() + std::chrono::seconds(5);
-            if (scenario.timing == Timing::MainFirst || scenario.timing == Timing::Together) {
-                // Wait for the preparation thread (or for stop).
-                while (!mainArrived && !stop() && Clock::now() < deadline) std::this_thread::yield();
-                if (scenario.timing == Timing::MainFirst)
-                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
-            }
-            // A hash in progress returns at stop; a vendor call runs to its end.
-            if (stop()) {
-                sawStop = true;
-                helperDone = true;
-                throw detail::VerificationInterrupted("stopped while verifying");
-            }
-            helperDone = true;
-            Throw(scenario.load);
-            return scenario.load == Load::NeedsBuild;
-        }), stopped);
-        if (scenario.timing == Timing::HelperFirst && started) {
-            const auto deadline = Clock::now() + std::chrono::seconds(5);
-            while (!helperDone && Clock::now() < deadline) std::this_thread::yield();
-        }
-        if (scenario.timing == Timing::Together && started) {
-            const auto deadline = Clock::now() + std::chrono::seconds(5);
-            while (!helperArrived && Clock::now() < deadline) std::this_thread::yield();
-        }
-        {
-            std::lock_guard lock(world.mutex);
-            world.memo = scenario.memoAtRecognizer;
-        }
-        if (scenario.detector == Detector::Cancelled) cancel = true;
-        mainArrived = true;
-        if (scenario.detector == Detector::Ready) {
-            try {
-                const auto adoption = ahead.Adopt();
-                switch (adoption.kind) {
-                case Adoption::Kind::NotStarted: {
-                    // The original code runs unchanged at this point.
-                    observed.result = Sequential(world, scenario.load, false);
-                    break;
-                }
-                case Adoption::Kind::Loaded: observed.result.path = Result::Path::Check; break;
-                case Adoption::Kind::NeedsBuild: observed.result.path = Result::Path::Build; break;
-                case Adoption::Kind::Failed:
-                    observed.result.path = Result::Path::Rethrown;
-                    observed.result.failure = TypeOf(adoption.failure);
-                    break;
-                }
-            } catch (const runtime_precision::ArtifactError&) {
-                observed.result.path = Result::Path::Refused;
-                observed.result.failure = "artifact";
-            }
-            observed.result.latchHeld = world.Held();
-        }
-    } // a failed or cancelled detector side: destruction stops, joins, releases
-    if (scenario.detector != Detector::Ready) observed.result.latchHeld = world.Held();
-    observed.loadRan = loadRan;
-    observed.sawStop = sawStop;
-    observed.helperDone = helperDone || !loadRan;
-    return observed;
+    if (preparation_overlap::IsFault(failure)) return "fault";
+    return cancelled ? "cancelled" : "failed";
 }
 
-// What the sequential code decides for the same scenario.
-inline Result Expected(const Scenario& scenario)
+// One preparation in the order of the production preparation thread.
+inline Observed Prepare(World& world, const Scenario& s, bool helper)
 {
-    if (scenario.detector != Detector::Ready) {
-        // The recognizer point is never reached: no latch of this preparation.
-        Result result;
-        result.latchHeld = scenario.heldElsewhere;
-        return result;
+    Observed observed;
+    Fake state;
+    std::atomic<bool> cancel{}, mainArrived{}, helperDone{};
+    const auto cancelled = [&cancel] { return cancel.load(); };
+    {
+        std::lock_guard lock(world.mutex);
+        if (s.memoAtStart) world.memos.insert(kKey);
+        if (s.heldElsewhere) world.latch.insert(kKey);
     }
-    World world;
-    world.memo = scenario.memoAtRecognizer;
-    if (scenario.heldElsewhere) world.latch.insert(kKey);
-    return Sequential(world, scenario.load, false);
+    const auto settlement = MakePoint(world, state);
+    Ahead ahead;
+    if (helper) {
+        state.aheadNetwork = true;
+        const bool started = ahead.Start(kKey,
+            [&world] { if (world.Memo(kKey)) throw runtime_precision::ArtifactError("previously refused"); },
+            [&](const std::function<bool()>& stop) {
+                observed.helperRan = true;
+                if (s.timing != Timing::HelperFirst) {
+                    const auto until = Clock::now() + std::chrono::seconds(5);
+                    while (!mainArrived && !stop() && Clock::now() < until) std::this_thread::yield();
+                    if (s.timing == Timing::MainFirst) {
+                        const auto pause = Clock::now() + std::chrono::microseconds(300);
+                        while (!stop() && Clock::now() < pause) std::this_thread::yield();
+                    }
+                }
+                // A hash in progress returns at stop; a vendor call runs to its end.
+                if (stop()) {
+                    observed.helperStopped = true;
+                    helperDone = true;
+                    throw detail::VerificationInterrupted("stopped while verifying");
+                }
+                observed.helperFaulted = IsFaultLoad(s.helper);
+                helperDone = true;
+                Throw(s.helper);
+                return s.helper == Load::NeedsBuild;
+            },
+            cancelled);
+        if (!started) state.aheadNetwork = false;
+        if (started && s.timing == Timing::HelperFirst) {
+            const auto until = Clock::now() + std::chrono::seconds(5);
+            while (!helperDone && Clock::now() < until) std::this_thread::yield();
+        }
+    }
+    const auto arrive = [&] {
+        mainArrived = true;
+        if (s.timing == Timing::Together) std::this_thread::yield();
+    };
+    try {
+        preparation_overlap::DetectorSide(ahead, settlement, [&] {
+            if (s.detector == Detector::Ready) return;
+            if (s.detector == Detector::NeedsBuild) {
+                arrive();
+                if (ahead.Pending()) preparation_overlap::Settle(ahead, settlement); // before the build
+                return;
+            }
+            if (s.detector == Detector::FallsBack) {
+                state.ownedDetector = kDetectorKey;
+                world.Begin(kDetectorKey);
+                try { throw runtime_precision::ArtifactError("detector plan refused"); }
+                catch (const std::exception&) {
+                    arrive();
+                    preparation_overlap::Settle(ahead, settlement, std::current_exception());
+                    if (cancelled()) throw std::runtime_error("detector cancelled before FP32 fallback");
+                    world.WriteMemo(kDetectorKey);
+                    state.ownedDetector.clear(); // its latch stays held, as in production
+                }
+                return;
+            }
+            state.ownedDetector = kDetectorKey;
+            world.Begin(kDetectorKey);
+            arrive();
+            if (s.detector == Detector::Cancelled) {
+                cancel = true;
+                throw detail::VerificationInterrupted("detector stopped while verifying");
+            }
+            throw detail::CudaFailure("detector device fault");
+        });
+        // The recognizer point.
+        {
+            std::lock_guard lock(world.mutex);
+            if (s.memoAtRecognizer) world.memos.insert(kKey);
+        }
+        if (s.cancelAtRecognizer) cancel = true;
+        arrive();
+        try {
+            preparation_overlap::Decide(&ahead, kKey, MakePoint(world, state, [&] {
+                state.recognizer = Fake::Recognizer::InPlace;
+                // The sequential code meets a fault the helper met at its load
+                // before it sees a later cancellation.
+                if (IsFaultLoad(s.inPlace)) Throw(s.inPlace);
+                if (cancelled()) throw detail::VerificationInterrupted("stopped while verifying");
+                Throw(s.inPlace);
+            }));
+            // Compatibility check and completion (ConfirmPublicCompletion).
+            if (cancelled()) throw std::runtime_error("completion cancelled");
+            world.Erase(kKey); // Passed
+            state.owned.clear();
+            observed.adopted = state.recognizer == Fake::Recognizer::Adopted;
+            observed.decision = "bf16";
+        } catch (const runtime_precision::ArtifactError&) {
+            observed.aheadLeftAfterRefusal = state.aheadNetwork;
+            if (cancelled()) throw std::runtime_error("recognizer cancelled before FP32 fallback");
+            state.recognizer = Fake::Recognizer::None;
+            state.aheadNetwork = false; // the production fallback resets it too
+            if (!state.owned.empty()) world.WriteMemo(state.owned);
+            state.owned.clear();
+            observed.decision = "fp32";
+        }
+        preparation_overlap::Settle(ahead, settlement);
+        observed.publishedClean = !ahead.Pending() && !state.aheadNetwork;
+        if (!observed.publishedClean) throw std::logic_error("unresolved recognizer load at publication");
+    } catch (...) {
+        const auto failure = std::current_exception();
+        observed.message = preparation_overlap::Message(failure);
+        // The production outer catch: a cancellation releases what it owns.
+        if (cancelled() && (detail::AllowsTensorRtCapacityFallback(failure) || detail::IsVerificationInterrupted(failure))) {
+            for (auto* key : {&state.owned, &state.ownedDetector})
+                if (!key->empty()) { world.Erase(*key); key->clear(); }
+        }
+        observed.decision = Classify(failure, cancelled());
+    }
+    (void)ahead.Abandon(); // resolved on every path above; makes the helper's writes visible
+    observed.latchHeld = world.Held(kKey);
+    observed.detectorLatchHeld = world.Held(kDetectorKey);
+    observed.memoWrites = world.memoWrites;
+    return observed;
 }
 
 inline const char* Name(Load load)
@@ -238,102 +291,254 @@ inline const char* Name(Load load)
     switch (load) {
     case Load::Loaded: return "loaded";
     case Load::NeedsBuild: return "needs-build";
-    case Load::Refused: return "refused";
+    case Load::Artifact: return "artifact";
+    case Load::Runtime: return "runtime_error";
     case Load::Interrupted: return "interrupted";
-    case Load::Fault: return "fault";
+    case Load::Cuda: return "cuda";
+    case Load::Api: return "tensorrt-api";
     case Load::OutOfMemory: return "bad_alloc";
     case Load::Unknown: return "unknown";
     }
     return "?";
 }
 
-inline QByteArray Describe(const Scenario& s, const Result& got, const Result& want)
+inline QByteArray Describe(const Scenario& s, const Observed& got, const Observed& want)
 {
-    return QByteArray("load=") + Name(s.load) + " timing=" + QByteArray::number(int(s.timing)) +
-           " detector=" + QByteArray::number(int(s.detector)) + " memoStart=" + QByteArray::number(s.memoAtStart) +
-           " memoRecognizer=" + QByteArray::number(s.memoAtRecognizer) + " heldElsewhere=" +
-           QByteArray::number(s.heldElsewhere) + " got path=" + QByteArray::number(int(got.path)) + " " +
-           QByteArray::fromStdString(got.failure) + " held=" + QByteArray::number(got.latchHeld) +
-           " want path=" + QByteArray::number(int(want.path)) + " " + QByteArray::fromStdString(want.failure) +
-           " held=" + QByteArray::number(want.latchHeld);
+    const auto memos = [](const Observed& o) {
+        QByteArray text;
+        for (const auto& key : o.memoWrites) text += QByteArray::fromStdString(key) + ",";
+        return text;
+    };
+    return QByteArray("helper=") + Name(s.helper) + " inPlace=" + Name(s.inPlace) +
+           " timing=" + QByteArray::number(int(s.timing)) + " detector=" + QByteArray::number(int(s.detector)) +
+           " memoStart=" + QByteArray::number(s.memoAtStart) + " memoRecognizer=" + QByteArray::number(s.memoAtRecognizer) +
+           " heldElsewhere=" + QByteArray::number(s.heldElsewhere) + " cancelAtRecognizer=" +
+           QByteArray::number(s.cancelAtRecognizer) + " helperFaulted=" + QByteArray::number(got.helperFaulted) +
+           " | got " + QByteArray::fromStdString(got.decision) + " held=" + QByteArray::number(got.latchHeld) +
+           " detectorHeld=" + QByteArray::number(got.detectorLatchHeld) + " memos=" + memos(got) +
+           " (" + QByteArray::fromStdString(got.message) + ") | want " + QByteArray::fromStdString(want.decision) +
+           " held=" + QByteArray::number(want.latchHeld) + " detectorHeld=" + QByteArray::number(want.detectorLatchHeld) +
+           " memos=" + memos(want) + " (" + QByteArray::fromStdString(want.message) + ")";
+}
+
+// The rule for a helper that ended in a fault (see the file comment).
+inline Observed AfterHelperFault(const Scenario& s)
+{
+    Observed want;
+    want.decision = "fault";
+    // Raised at the recognizer point (memo read there) or on the detector side
+    // (memo read there, which is the start's: none, or no helper would run).
+    const bool remembered = s.detector == Detector::Ready ? s.memoAtRecognizer : s.memoAtStart;
+    want.latchHeld = s.heldElsewhere || !remembered;
+    // A detector attempt that was in flight when the fault was raised stays held.
+    want.detectorLatchHeld = s.detector == Detector::FallsBack || s.detector == Detector::Fails ||
+                             s.detector == Detector::Cancelled;
+    return want;
 }
 
 inline void MatchesSequential()
 {
-    int scenarios = 0;
-    for (const auto load : {Load::Loaded, Load::NeedsBuild, Load::Refused, Load::Interrupted, Load::Fault,
-                            Load::OutOfMemory, Load::Unknown})
-    for (const auto timing : {Timing::HelperFirst, Timing::MainFirst, Timing::Together})
-    for (const auto detector : {Detector::Ready, Detector::Fails, Detector::Cancelled})
-    for (const bool memoAtStart : {false, true})
-    for (const bool memoAtRecognizer : {false, true})
-    for (const bool heldElsewhere : {false, true}) {
-        const Scenario scenario{load, timing, detector, memoAtStart, memoAtRecognizer, heldElsewhere};
-        const auto observed = Overlapped(scenario);
-        const auto expected = Expected(scenario);
-        QVERIFY2(observed.result == expected, Describe(scenario, observed.result, expected).constData());
-        // No helper without a free latch and no memo at the start.
-        QCOMPARE(observed.loadRan, !memoAtStart && !heldElsewhere);
-        // The helper ended before the unit was gone, on every path.
-        QVERIFY(observed.helperDone);
-        ++scenarios;
+    int scenarios = 0, adopted = 0, faultsRaised = 0, redone = 0;
+    const auto loads = {Load::Loaded, Load::NeedsBuild, Load::Artifact, Load::Runtime, Load::Interrupted,
+                        Load::Cuda, Load::Api, Load::OutOfMemory, Load::Unknown};
+    for (const auto helper : loads)
+    for (const auto inPlace : loads) {
+        if (inPlace == Load::NeedsBuild) continue; // the original load builds in place
+        // A loaded plan loads again; a fault is met by the sequential load too;
+        // any other end of the helper is decided again by the original load.
+        if (helper == Load::Loaded && inPlace != Load::Loaded) continue;
+        if (IsFaultLoad(helper) && inPlace != helper) continue;
+        for (const auto timing : {Timing::HelperFirst, Timing::MainFirst, Timing::Together})
+        for (const auto detector : {Detector::Ready, Detector::NeedsBuild, Detector::FallsBack, Detector::Fails,
+                                    Detector::Cancelled})
+        for (const bool memoAtStart : {false, true})
+        for (const bool memoAtRecognizer : {false, true})
+        for (const bool heldElsewhere : {false, true})
+        for (const bool cancelAtRecognizer : {false, true}) {
+            if (cancelAtRecognizer && (detector == Detector::Fails || detector == Detector::Cancelled)) continue;
+            const Scenario s{helper, inPlace, timing, detector, memoAtStart, memoAtRecognizer, heldElsewhere,
+                             cancelAtRecognizer};
+            World overlapped, sequential;
+            const auto got = Prepare(overlapped, s, true);
+            const auto reference = Prepare(sequential, s, false);
+            const auto want = got.helperFaulted ? AfterHelperFault(s) : reference;
+            QVERIFY2(got == want, Describe(s, got, want).constData());
+            // No helper with a memo at the start; otherwise it always ran.
+            QCOMPARE(got.helperRan, !memoAtStart);
+            // Never left beside a published State, never left after a refusal.
+            QVERIFY2(got.publishedClean, Describe(s, got, want).constData());
+            QVERIFY2(!got.aheadLeftAfterRefusal, Describe(s, got, want).constData());
+            // Only a load that ended loaded is adopted.
+            if (got.adopted) {
+                QVERIFY(helper == Load::Loaded && !got.helperStopped);
+                ++adopted;
+            }
+            if (got.helperFaulted) {
+                ++faultsRaised;
+                // Raised with the detector side's failure, never recorded against it.
+                if (detector == Detector::FallsBack || detector == Detector::Fails || detector == Detector::Cancelled)
+                    QVERIFY2(got.message.find("detector") != std::string::npos &&
+                             got.message.find("recognizer prepared beside the detector failed") != std::string::npos,
+                             got.message.c_str());
+                QVERIFY(got.memoWrites.empty());
+            } else if (!got.adopted && got.decision != "cancelled" && helper != Load::Loaded) {
+                ++redone;
+            }
+            ++scenarios;
+        }
     }
-    QCOMPARE(scenarios, 7 * 3 * 3 * 2 * 2 * 2);
+    // Every class of outcome was reached.
+    QVERIFY(adopted > 0);
+    QVERIFY(faultsRaised > 0);
+    QVERIFY(redone > 0);
+    qInfo().noquote() << "preparationOverlap scenarios" << scenarios << "adopted" << adopted << "faultsRaised"
+                      << faultsRaised << "decidedAgainInPlace" << redone;
 }
 
-// A failed or cancelled detector side stops a load that is still waiting and
-// joins it; the stop seen by the load stays callable after the unit is gone.
+// Item 2 of the follow-up: preparation A is cancelled while its helper is
+// inside a vendor call, and preparation B with the same recognizer reaches its
+// recognizer point before A has joined that call. The helper holds nothing,
+// so B takes the latch and adopts its own BF16 load, as when A had finished.
+inline void AbandonedOwnerDoesNotRefuseAnother()
+{
+    for (const bool faultAfterwards : {false, true}) {
+        World world;
+        std::atomic<bool> inVendorCall{}, releaseVendorCall{}, aSettling{}, aFinished{}, aStarted{};
+        std::atomic<bool> cancelA{};
+        Fake stateA;
+        Observed a;
+        std::thread preparationA([&] {
+            const auto settlement = MakePoint(world, stateA);
+            Ahead ahead;
+            stateA.aheadNetwork = true;
+            aStarted = ahead.Start(kKey, [] {}, [&](const std::function<bool()>&) {
+                inVendorCall = true;
+                // A vendor call does not look at stop.
+                while (!releaseVendorCall) std::this_thread::yield();
+                if (faultAfterwards) throw detail::TensorRtApiFailure("execution context creation failed");
+                return false;
+            }, [&cancelA] { return cancelA.load(); });
+            if (!aStarted) { aFinished = true; return; }
+            try {
+                preparation_overlap::DetectorSide(ahead, settlement, [&] {
+                    while (!inVendorCall) std::this_thread::yield();
+                    cancelA = true;
+                    aSettling = true;
+                    throw detail::VerificationInterrupted("detector stopped while verifying");
+                });
+            } catch (...) {
+                const auto failure = std::current_exception();
+                a.message = preparation_overlap::Message(failure);
+                if (cancelA && (detail::AllowsTensorRtCapacityFallback(failure) || detail::IsVerificationInterrupted(failure)))
+                    if (!stateA.owned.empty()) { world.Erase(stateA.owned); stateA.owned.clear(); }
+                a.decision = Classify(failure, cancelA);
+            }
+            aFinished = true;
+        });
+        while (!aSettling && !aFinished) std::this_thread::yield();
+        QVERIFY(aStarted);
+        // B runs to its decision while A still waits for its helper.
+        Scenario b;
+        const auto observedB = Prepare(world, b, true);
+        QCOMPARE(observedB.decision, std::string("bf16"));
+        QVERIFY(observedB.adopted);
+        QVERIFY(!world.Held()); // B passed and released; A never took it
+        QCOMPARE(world.begins, 1);
+        QVERIFY(!aFinished); // A was still waiting for its helper's vendor call
+        releaseVendorCall = true;
+        preparationA.join();
+        QVERIFY(world.memoWrites.empty());
+        if (!faultAfterwards) {
+            // The sequential order: cancelled before the recognizer, nothing held.
+            QCOMPARE(a.decision, std::string("cancelled"));
+            QVERIFY(!world.Held());
+            QCOMPARE(world.begins, 1);
+        } else {
+            // A's own fault: raised with its cancellation, held as after a
+            // terminal fault in A's recognizer stage.
+            QCOMPARE(a.decision, std::string("fault"));
+            QVERIFY(a.message.find("recognizer prepared beside the detector failed") != std::string::npos);
+            QVERIFY(world.Held());
+            QCOMPARE(world.begins, 2);
+        }
+    }
+}
+
+// The remaining unit rules: no helper with a memo at the start; a helper
+// started for another attempt is never adopted; destruction stops and joins;
+// the stop seen by the load stays callable after the unit is gone.
 inline void AbandonStopsJoinsAndReleases()
 {
-    World world;
-    std::function<bool()> kept;
-    std::atomic<bool> finished{};
-    const auto started = Clock::now();
     {
+        World world;
+        world.memos.insert(kKey);
         Ahead ahead;
-        QVERIFY(ahead.Start(MakeSteps(world, [&](const std::function<bool()>& stop) {
-            kept = stop; // as a Network keeps its build progress callback
-            while (!stop()) std::this_thread::yield();
-            finished = true;
-            if (stop()) throw detail::VerificationInterrupted("stopped while verifying");
-            return false;
-        }), [] { return false; }));
-        QVERIFY(world.Held());
+        bool ran = false;
+        QVERIFY(!ahead.Start(kKey, [&world] { if (world.Memo(kKey)) throw runtime_precision::ArtifactError("memo"); },
+                             [&](const std::function<bool()>&) { ran = true; return false; }, [] { return false; }));
+        QVERIFY(!ahead.Started() && !ahead.Pending());
+        QVERIFY(!ran);
+        QCOMPARE(world.begins, 0);
     }
-    QVERIFY(finished);
-    QVERIFY(!world.Held());
-    QCOMPARE(world.releases, 1);
-    QVERIFY(kept && kept()); // abandoned stays true and safe to read
-    QVERIFY(Clock::now() - started < std::chrono::seconds(5));
-
-    // The caller's own stop (cancellation, deadline) reaches the load too.
-    World cancelled;
-    std::atomic<bool> cancel{};
     {
+        World world;
+        Fake state;
+        state.aheadNetwork = true;
         Ahead ahead;
-        QVERIFY(ahead.Start(MakeSteps(cancelled, [&](const std::function<bool()>& stop) {
-            cancel = true;
-            if (stop()) throw detail::VerificationInterrupted("stopped while verifying");
-            return false;
-        }), [&cancel] { return cancel.load(); }));
-        const auto adoption = ahead.Adopt();
-        QCOMPARE(adoption.kind, Adoption::Kind::Failed);
-        QCOMPARE(TypeOf(adoption.failure), std::string("interrupted"));
-        QVERIFY(cancelled.Held()); // handed to the caller, whose cancellation rule releases it
+        QVERIFY(ahead.Start("runtime-recognizer:other", [] {}, [](const std::function<bool()>&) { return false; },
+                            [] { return false; }));
+        bool inPlace = false;
+        preparation_overlap::Decide(&ahead, kKey, MakePoint(world, state, [&] { inPlace = true; }));
+        QVERIFY(inPlace);
+        QVERIFY(!state.aheadNetwork);
+        QVERIFY(state.recognizer != Fake::Recognizer::Adopted);
+        QVERIFY(!ahead.Pending());
+        QCOMPARE(state.owned, std::string(kKey));
     }
-    QVERIFY(cancelled.Held()); // adopted: never released by the unit
-    QCOMPARE(cancelled.releases, 0);
-
-    // Adopt twice, or after NotStarted, changes nothing.
-    World again;
     {
-        Ahead ahead;
-        QVERIFY(ahead.Start(MakeSteps(again, [](const std::function<bool()>&) { return false; }), [] { return false; }));
-        QCOMPARE(ahead.Adopt().kind, Adoption::Kind::Loaded);
-        QCOMPARE(ahead.Adopt().kind, Adoption::Kind::NotStarted);
-        QVERIFY(!ahead.Start(MakeSteps(again, [](const std::function<bool()>&) { return false; }), [] { return false; }));
+        std::function<bool()> kept;
+        std::atomic<bool> finished{};
+        const auto started = Clock::now();
+        {
+            Ahead ahead;
+            QVERIFY(ahead.Start(kKey, [] {}, [&](const std::function<bool()>& stop) -> bool {
+                kept = stop; // as a Network keeps its build progress callback
+                while (!stop()) std::this_thread::yield();
+                finished = true;
+                throw detail::VerificationInterrupted("stopped while verifying");
+            }, [] { return false; }));
+            QVERIFY(ahead.Pending());
+        }
+        QVERIFY(finished);
+        QVERIFY(kept && kept()); // abandoned stays true and safe to read
+        QVERIFY(Clock::now() - started < std::chrono::seconds(5));
     }
-    QVERIFY(again.Held());
-    QCOMPARE(again.begins, 1);
+    {
+        // Take twice, Start twice: nothing changes after the first.
+        Ahead ahead;
+        QVERIFY(ahead.Start(kKey, [] {}, [](const std::function<bool()>&) { return true; }, [] { return false; }));
+        QCOMPARE(ahead.Take().kind, preparation_overlap::Outcome::Kind::NeedsBuild);
+        QCOMPARE(ahead.Take().kind, preparation_overlap::Outcome::Kind::NotStarted);
+        QVERIFY(!ahead.Abandon());
+        QVERIFY(!ahead.Start(kKey, [] {}, [](const std::function<bool()>&) { return false; }, [] { return false; }));
+    }
+    {
+        // A fault raised after a refusal keeps its class and both messages.
+        try {
+            preparation_overlap::RaiseFault(std::make_exception_ptr(detail::CudaFailure("device fault")),
+                                            std::make_exception_ptr(runtime_precision::ArtifactError("previously refused")));
+            QFAIL("RaiseFault returned");
+        } catch (const detail::CudaFailure& error) {
+            const std::string message = error.what();
+            QVERIFY(message.find("previously refused") == 0);
+            QVERIFY(message.find("device fault") != std::string::npos);
+        }
+        try {
+            preparation_overlap::RaiseFault(std::make_exception_ptr(std::bad_alloc()));
+            QFAIL("RaiseFault returned");
+        } catch (const detail::TensorRtApiFailure& error) {
+            QVERIFY(std::string(error.what()).find("out of memory") != std::string::npos);
+        }
+    }
 }
 } // namespace uct_preparation_overlap_test

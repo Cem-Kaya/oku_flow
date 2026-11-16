@@ -584,6 +584,7 @@ class PaddleTests final : public QObject
     void graphReplayCachePolicy() { uct_graph_cache_test::Policies(); }
     void preparationOverlapMatchesSequentialDecisions() { uct_preparation_overlap_test::MatchesSequential(); }
     void preparationOverlapAbandonStopsJoinsAndReleases() { uct_preparation_overlap_test::AbandonStopsJoinsAndReleases(); }
+    void preparationOverlapAbandonedOwnerDoesNotRefuseAnother() { uct_preparation_overlap_test::AbandonedOwnerDoesNotRefuseAnother(); }
     void optionalAssetVerificationMatchesSequential() { uct_preparation_diagnostic::AssetsMatchSequential(); }
     void optionalPreparationCancellation() { uct_preparation_diagnostic::PreparationCancellation(); }
     void recognitionGroupSlotsRequireCompletionAndConsumption()
