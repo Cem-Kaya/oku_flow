@@ -4,6 +4,10 @@
 
 #include <QtTest>
 
+#include <chrono>
+#include <future>
+#include <thread>
+
 namespace uct_graph_cache_test
 {
 using namespace okuflow::uct::graph_cache;
@@ -15,6 +19,129 @@ inline Decision Run(Policy& policy, Shape shape, const void* input, const void* 
     policy.Bound(decision.slot);
     policy.Ran(decision.slot, decision.launch);
     return decision;
+}
+
+// ReplayWork::Turn, the context-creation policy, with real threads. Every
+// assertion has a lower bound only (a turn may not come early) or a generous
+// upper bound (it must come).
+inline void CreationTurns()
+{
+    using namespace std::chrono;
+    using namespace std::chrono_literals;
+    struct Creator {
+        ReplayWork& work;
+        std::atomic<bool>& wanted;
+        std::atomic<bool> stopped{};
+        std::uint64_t since{};
+        // Runs one Turn on a thread; the future says whether it granted a creation.
+        std::future<bool> Start()
+        {
+            return std::async(std::launch::async, [this] {
+                std::unique_lock lock(work.mutex);
+                return work.Turn(lock, [this] { return wanted.load(); }, [this] { return stopped.load(); }, since);
+            });
+        }
+    };
+    const auto pending = [](std::future<bool>& turn, milliseconds wait) {
+        return turn.wait_for(wait) == std::future_status::timeout;
+    };
+
+    // Idle gap: no read in flight, but not before kQuiet after the last read ended.
+    {
+        ReplayWork work;
+        std::atomic<bool> wanted{true};
+        Creator creator{work, wanted};
+        work.Begin();
+        work.End();
+        const auto ended = steady_clock::now();
+        auto turn = creator.Start();
+        QVERIFY(turn.wait_for(5s) == std::future_status::ready);
+        QVERIFY(turn.get());
+        QVERIFY(steady_clock::now() - ended >= ReplayWork::kQuiet);
+        QCOMPARE(work.started.load(), std::uint64_t(1));
+        QCOMPARE(work.startedUnderLoad.load(), std::uint64_t(0));
+    }
+    // Back-to-back reads leave no idle gap: no turn after one read ends, a turn
+    // (under load) once kReadsUnderLoad reads have ended.
+    {
+        ReplayWork work;
+        std::atomic<bool> wanted{true};
+        Creator creator{work, wanted};
+        work.Begin();
+        auto turn = creator.Start();
+        QVERIFY(pending(turn, 30ms));
+        work.End();
+        work.Begin(); // the next read starts at once
+        QVERIFY(pending(turn, 30ms));
+        work.End();
+        work.Begin();
+        QVERIFY(turn.wait_for(5s) == std::future_status::ready);
+        QVERIFY(turn.get());
+        QCOMPARE(work.started.load(), std::uint64_t(1));
+        QCOMPARE(work.startedUnderLoad.load(), std::uint64_t(1));
+        // The count starts again from the reads ended at that creation.
+        creator.since = work.readsEnded;
+        auto next = creator.Start();
+        work.End();
+        work.Begin();
+        QVERIFY(pending(next, 30ms));
+        work.End();
+        work.Begin();
+        QVERIFY(next.wait_for(5s) == std::future_status::ready);
+        QVERIFY(next.get());
+        work.End();
+    }
+    // Reads that end while nothing is wanted do not count towards a turn under load.
+    {
+        ReplayWork work;
+        std::atomic<bool> wanted{false};
+        Creator creator{work, wanted};
+        work.Begin();
+        auto turn = creator.Start();
+        for (int i = 0; i < 3; ++i) {
+            QVERIFY(pending(turn, 15ms));
+            work.End();
+            work.Begin();
+        }
+        QVERIFY(pending(turn, 15ms));
+        wanted = true;
+        work.Notify();
+        QVERIFY(pending(turn, 30ms)); // a read is in flight and none ended since
+        work.End();
+        work.Begin();
+        QVERIFY(pending(turn, 30ms));
+        work.End();
+        work.Begin();
+        QVERIFY(turn.wait_for(5s) == std::future_status::ready);
+        QVERIFY(turn.get());
+        work.End();
+    }
+    // Stop wakes a waiting thread, which gets no turn; so does the caller's own
+    // stop condition (a cancelled preparation) once the thread is woken.
+    {
+        ReplayWork work;
+        std::atomic<bool> wanted{false};
+        Creator creator{work, wanted};
+        auto turn = creator.Start();
+        QVERIFY(pending(turn, 20ms));
+        work.Stop();
+        QVERIFY(turn.wait_for(5s) == std::future_status::ready);
+        QVERIFY(!turn.get());
+        QCOMPARE(work.started.load(), std::uint64_t(0));
+    }
+    {
+        ReplayWork work;
+        std::atomic<bool> wanted{true};
+        Creator creator{work, wanted};
+        work.Begin();
+        auto turn = creator.Start();
+        QVERIFY(pending(turn, 20ms));
+        creator.stopped = true;
+        work.Notify();
+        QVERIFY(turn.wait_for(5s) == std::future_status::ready);
+        QVERIFY(!turn.get());
+        work.End();
+    }
 }
 
 inline void Policies()
@@ -163,6 +290,80 @@ inline void Policies()
     d = failing.Plan(whole, &in, &out, true);
     QCOMPARE(d.slot, 1); // the unbound slot again, not slot 0's graph
     QVERIFY(failing.HasGraph(0));
+
+    // Without a ready context a miss below capacity runs on the plain overflow
+    // context: no slot, no eviction, no drain. A full cache still recycles.
+    Policy starving(4);
+    d = starving.Plan(n8, &in, &out, true, false);
+    QVERIFY(d.overflow && d.slot == -1 && !d.create && !d.evicted && !d.drain && d.launch == Launch::Plain);
+    starving.RanOverflow();
+    QCOMPARE(starving.Slots(), 0);
+    d = Run(starving, n8, &in, &out); // a context is ready now
+    QVERIFY(d.create && d.slot == 0 && !d.overflow);
+    d = starving.Plan(n3, &in, &out, true, false);
+    QVERIFY(d.overflow && !d.evicted);
+    starving.RanOverflow();
+    QCOMPARE(Run(starving, n8, &in, &out).launch, Launch::Capture); // n8 kept its slot
+    QCOMPARE(starving.Count().overflow, std::uint64_t(2));
+    QCOMPARE(starving.Count().plain, std::uint64_t(3));
+    // Once contexts are ready the cache grows again; a full cache recycles
+    // instead of overflowing, whatever the caller says.
+    Run(starving, n3, &in, &out);
+    Run(starving, n5, &in, &out);
+    Run(starving, whole, &in, &out);
+    QCOMPARE(starving.Slots(), 4);
+    d = starving.Plan(tile, &in, &out, true, false);
+    QVERIFY(!d.overflow && d.evicted && d.slot >= 0);
+    starving.Bound(d.slot);
+    starving.Ran(d.slot, d.launch);
+    QCOMPARE(starving.Count().overflow, std::uint64_t(2));
+    QCOMPARE(starving.Count().evictions, std::uint64_t(1));
+    // Distinct shapes asked for are counted (the contexts worth creating),
+    // including evicted ones, never twice, and only up to the bound.
+    QCOMPARE(starving.Seen(), 5);
+    Run(starving, n3, &in, &out);
+    QCOMPARE(starving.Seen(), 5);
+    Policy counting(2);
+    for (int i = 1; i <= kMaximumSeenShapes + 10; ++i) Run(counting, Shape{1, 32, 8 * i}, &in, &out);
+    QCOMPARE(counting.Seen(), kMaximumSeenShapes);
+
+    // Per-engine capacities. Off stays off; the default gives the detector
+    // the default bound and a fixed-canvas recognizer at least one slot per
+    // batch size; the bucketed recognizer width runs its recognizer plainly;
+    // an explicit comparison bound applies to both engines as given.
+    QCOMPARE(ForConfiguration(0, false, 8, false), (Capacities{0, 0}));
+    QCOMPARE(ForConfiguration(kDefaultShapes, false, 8, false), (Capacities{8, 8}));
+    QCOMPARE(ForConfiguration(kDefaultShapes, false, 1, false), (Capacities{8, 8}));
+    QCOMPARE(ForConfiguration(kDefaultShapes, false, 16, false), (Capacities{8, 16}));
+    QCOMPARE(ForConfiguration(kDefaultShapes, false, 8, true), (Capacities{8, 0}));
+    QCOMPARE(ForConfiguration(kDefaultShapes, false, 16, true), (Capacities{8, 0}));
+    QCOMPARE(ForConfiguration(1, true, 8, false), (Capacities{1, 1}));
+    QCOMPARE(ForConfiguration(4, true, 16, false), (Capacities{4, 4}));
+    QCOMPARE(ForConfiguration(2, true, 8, true), (Capacities{2, 0}));
+    QCOMPARE(ForConfiguration(99, true, 8, false), (Capacities{kMaximumShapes, kMaximumShapes}));
+    // Contexts worth creating: a recognizer on the fixed canvas has one shape
+    // per batch size; a plain engine needs none.
+    QCOMPARE(UsefulContexts(8, false, 8), 8);
+    QCOMPARE(UsefulContexts(8, true, 8), 8);
+    QCOMPARE(UsefulContexts(8, true, 1), 1);
+    QCOMPARE(UsefulContexts(16, true, 16), 16);
+    QCOMPARE(UsefulContexts(1, true, 8), 1);
+    QCOMPARE(UsefulContexts(0, true, 8), 0);
+
+    // Fault plans fire only for their fault and engine, after `skip`
+    // eligible events, `count` times.
+    FaultPlan plan;
+    plan.fault = Fault::MoveInput;
+    plan.engine = 1;
+    plan.skip = 1;
+    plan.count = 2;
+    QVERIFY(!plan.Fire(Fault::RejectShape, 1));
+    QVERIFY(!plan.Fire(Fault::MoveInput, 0));
+    QVERIFY(!plan.Fire(Fault::MoveInput, 1)); // skipped
+    QVERIFY(plan.Fire(Fault::MoveInput, 1));
+    QVERIFY(plan.Fire(Fault::MoveInput, 1));
+    QVERIFY(!plan.Fire(Fault::MoveInput, 1));
+    QCOMPARE(plan.injected.load(), 2);
 
     // Bounds: capacity is clamped to 1..16 and slots never exceed it.
     QCOMPARE(Policy(0).Capacity(), 1);

@@ -1457,20 +1457,37 @@ only for boxes at least 24 px tall. Bounds: at most the regions `DetectorRegions
 1,152 windows per region read back as compact descriptors, no image transfer.
 See `docs/uct_okuread_port.md`.
 
-## TensorRT graph-replay switch (2026-11-16)
+## TensorRT graph-replay switch (2026-11-16, revised in round 10)
 
 `OKUFLOW_UCT_TEST_TRT_GRAPH=1` selects the private experiment that replays each
 TensorRT detector and recognizer enqueue as a CUDA graph, with one execution
 context per cached input shape. Unset or `0` keeps the plain enqueue; any other
-value leaves the GPU backend unavailable with an explanatory status.
-`OKUFLOW_UCT_TEST_TRT_GRAPH_SHAPES` (1 to 16, default 8, valid only together
-with `OKUFLOW_UCT_TEST_TRT_GRAPH=1`) bounds the shapes cached per engine for
-comparisons; 1 is one graph per engine. Recognized output is unchanged on every
-scene it was measured on, but the switch stays off by default. It adds no
-setting, file or model; device memory per engine is one activation arena (it
-replaces the preparation context's own) plus about 2.5 MB per context and
-about 2 MB per graph, and 1.6 MB more detector output storage. `OKUFLOW_UCT_GRAPH_LIFETIME_TEST=1` with `OKUFLOW_UCT_TEST_IMAGE` runs
-the opt-in `optionalGraphReplayLifetime` check. See `docs/uct_okuread_port.md`.
+value leaves the GPU backend unavailable with an explanatory status. It stays
+off by default (see `docs/uct_okuread_port.md`, round 10, for why).
+`OKUFLOW_UCT_TEST_TRT_GRAPH_SHAPES` (1 to 16, valid only together with
+`OKUFLOW_UCT_TEST_TRT_GRAPH=1`) bounds the shapes cached per engine for
+comparisons and then applies to both engines as given; 1 is one graph per
+engine. Without it the detector caches 8 shapes and a fixed-canvas recognizer
+at least one per batch size (8, or 16 at batch sixteen); with the bucketed
+recognizer width the recognizer always runs plainly and only the detector
+replays. Recognized output is unchanged on every scene it was measured on. It
+adds no setting, file or model and creates no execution context before the
+reader is ready: contexts are made afterwards, one per shape asked for, in
+idle gaps between reads, or under continuous load one per two reads. Device memory per engine is one activation arena (it
+replaces the preparation context's own), about 2.5 MB per context and 2 MB per
+graph as round 3 measured them, and 1.6 MB more detector output storage.
+
+The opt-in GPU checks `optionalGraphReplayLifetime`
+(`OKUFLOW_UCT_GRAPH_LIFETIME_TEST=1`), `optionalGraphReplayFaults`
+(`OKUFLOW_UCT_GRAPH_FAULT_TEST=1`), `optionalGraphReplayCheckpoints`
+(`OKUFLOW_UCT_GRAPH_CHECKPOINT_TEST=1`), `optionalGraphReplayRetireUnadopted`
+(`OKUFLOW_UCT_GRAPH_RETIRE_TEST=1`) and `optionalGraphReplayConfigurations`
+(`OKUFLOW_UCT_GRAPH_CONFIG_TEST=1`, optional `OKUFLOW_UCT_GRAPH_CONFIGS`) read
+`OKUFLOW_UCT_TEST_IMAGE`, `OKUFLOW_UCT_TEST_IMAGE_2` (another frame size) and
+optionally write `OKUFLOW_UCT_GRAPH_TEST_EVIDENCE`. They are test inputs only.
+The replay fault hooks have no environment switch: they exist only in the
+`uct_paddle_tests` executable (`OKUFLOW_UCT_GRAPH_FAULT_HOOKS`). The corpus
+harness report's `startupWorkerMs` is the worker time of its startup read.
 
 ## UCT preparation profile (round 5)
 

@@ -316,6 +316,12 @@ public:
         std::lock_guard lock(Gate().mutex);
         return std::exchange(lines_, {});
     }
+    // The lines so far, kept for a later Take.
+    QVector<QJsonObject> Peek() const
+    {
+        std::lock_guard lock(Gate().mutex);
+        return lines_;
+    }
     int Malformed() const
     {
         std::lock_guard lock(Gate().mutex);
