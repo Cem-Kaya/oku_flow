@@ -1165,6 +1165,7 @@ private slots:
     void schedulerKeepWarmDisarmStopsRunningSpins();
     void schedulerKeepWarmChangeModeFollowsViewChanges();
     void schedulerKeepWarmQueuesASecondSpinPerWake();
+    void keepWarmPolicyChangesWithoutReadsAreBounded();
     void schedulerCoalescesLatestOnly();
     void schedulerCancelRevokesWithoutReleasingInput();
     void schedulerDestructionIsBoundedWhileHeld();
@@ -7709,8 +7710,21 @@ void UltraClearTextTests::schedulerKeepWarmDisarmStopsRunningSpins()
         scheduler.StopKeepWarm();
         QTRY_VERIFY(!SpinRunning(*shared));
     }
+    // A gate whose own answer turns to refusing, with nobody calling the
+    // setter: the worker notices at its next wake and ends the running spins.
+    {
+        std::atomic<bool> allowed{true};
+        scheduler.SetKeepWarmPowerGate([&allowed] { return allowed.load(); });
+        const double ms = SpinsStopAfter(*shared, arm, [&] { allowed = false; });
+        QVERIFY2(ms >= 0 && ms < 150,
+                 qPrintable(QString("spins ran %1 ms after the power gate began to refuse").arg(ms)));
+        scheduler.SetKeepWarmPowerGate({});
+        scheduler.StopKeepWarm();
+        QTRY_VERIFY(!SpinRunning(*shared));
+    }
     // An interrupt (a reallocation elsewhere) ends the running spins but only
-    // pauses: still armed, warming resumes at the next period.
+    // pauses: still armed, warming resumes at the next period. It is not a
+    // hold-off; a caller that needs the stream free for longer must stop.
     arm();
     QTRY_VERIFY(SpinRunning(*shared));
     const auto [launchesBefore, interruptsBefore] = [&] {
@@ -7851,6 +7865,95 @@ void UltraClearTextTests::schedulerKeepWarmChangeModeFollowsViewChanges()
     scheduler.NoteViewChange();
     const int gated = shared->launches.load();
     QTRY_VERIFY(shared->launches.load() > gated);
+
+    // A formula is not the read a view change waits for (the scheduler has
+    // to classify the job before it moves it): warming continues past the
+    // formula and its tail, to the end of the change window.
+    scheduler.StopKeepWarm();
+    settings.changeWindow = 700ms;
+    settings.tail = 50ms;
+    scheduler.SetKeepWarm(settings);
+    auto pixels = std::make_shared<PixelBuffer>();
+    pixels->width = 8;
+    pixels->height = 8;
+    pixels->strideBytes = 32;
+    pixels->bytes.assign(8 * 32, 0x80);
+    const int before = completions.load();
+    timer.restart();
+    scheduler.NoteViewChange();
+    QVERIFY(scheduler.SubmitFormula({}, pixels, {},
+        [](const SourceStamp&, const QImage&, SharedDeviceImage, const std::atomic<bool>&) {
+            return FormulaObservation{};
+        }, std::make_shared<std::atomic<bool>>(false)) != 0);
+    QTRY_COMPARE(completions.load(), before + 1);
+    QTest::qWait(250); // far past the 50 ms tail
+    QVERIFY2(scheduler.KeepWarmArmed(), "A formula ended the warming that waits for the change's full read.");
+    QTRY_VERIFY_WITH_TIMEOUT(!scheduler.KeepWarmArmed(), 3000);
+    QVERIFY(timer.elapsed() >= 690);
+}
+
+void UltraClearTextTests::keepWarmPolicyChangesWithoutReadsAreBounded()
+{
+    using namespace std::chrono_literals;
+    const auto t0 = KeepWarmPolicy::Clock::now();
+    KeepWarmSettings settings;
+    settings.mode = KeepWarmMode::Change;
+    settings.changeWindow = 1500ms;
+    settings.tail = 400ms;
+    KeepWarmPolicy policy(settings);
+    // A camera picture that keeps moving reports a change with every probe
+    // (80 ms) and no read is submitted. One run of such changes warms for at
+    // most two change windows from its first change.
+    for (auto t = 0ms; t <= 10000ms; t += 80ms) policy.ViewChanged(t0 + t);
+    QCOMPARE(*policy.ChangeUntil(), t0 + 3000ms);
+    QVERIFY(policy.Due(t0 + 2999ms));
+    QVERIFY(policy.TimedOut(t0 + 3001ms));
+    // The worker's time-out is not a new episode: further probes stay cold.
+    policy.Expire();
+    for (auto t = 3040ms; t <= 20000ms; t += 80ms) {
+        policy.ViewChanged(t0 + t);
+        QVERIFY2(!policy.Armed(), qPrintable(QString::number(t.count())));
+    }
+    // A full read ends the run: the next change warms again.
+    policy.ReadSubmitted(t0 + 20010ms);
+    policy.ReadStarted();
+    policy.ReadFinished(t0 + 20050ms);
+    policy.ViewChanged(t0 + 20080ms);
+    QVERIFY(policy.Armed());
+    QCOMPARE(*policy.ChangeUntil(), t0 + 21580ms);
+    // A regional pass or a formula does not end the run.
+    for (auto t = 20160ms; t <= 30000ms; t += 80ms) policy.ViewChanged(t0 + t);
+    QCOMPARE(*policy.ChangeUntil(), t0 + 23080ms);
+    policy.Expire();
+    policy.ReadSubmitted(t0 + 30010ms, false);
+    policy.ViewChanged(t0 + 30080ms);
+    QVERIFY(!policy.Armed());
+    // Nor does time alone while the changes continue; a pause of one change
+    // window does.
+    policy.ViewChanged(t0 + 30160ms);
+    QVERIFY(!policy.Armed());
+    policy.ViewChanged(t0 + 31660ms);
+    QVERIFY(policy.Armed());
+    QCOMPARE(*policy.ChangeUntil(), t0 + 33160ms);
+    // An explicit disarm (the application's cancel for the user's own change)
+    // starts a fresh run at once.
+    for (auto t = 31740ms; t <= 40000ms; t += 80ms) policy.ViewChanged(t0 + t);
+    policy.Expire();
+    policy.ViewChanged(t0 + 40080ms);
+    QVERIFY(!policy.Armed());
+    policy.Disarm();
+    policy.ViewChanged(t0 + 40160ms);
+    QVERIFY(policy.Armed());
+    // Changes that reads follow are never limited: continuous media.
+    KeepWarmPolicy media(settings);
+    for (auto t = 0ms; t <= 20000ms; t += 350ms) {
+        media.ViewChanged(t0 + t);
+        QVERIFY(media.Armed());
+        media.ReadSubmitted(t0 + t + 300ms);
+        media.ReadStarted();
+        media.ReadFinished(t0 + t + 330ms);
+        QVERIFY(!media.TimedOut(t0 + t + 349ms));
+    }
 }
 
 int main(int argc, char** argv)

@@ -2245,6 +2245,19 @@ class TensorRtRecognizer final : public Recognizer
             warmFailed_ = true; // the next read reports and retires a real fault
             return KeepWarmResult::Unsupported;
         }
+        // A raised stop flag ends the spins that are outstanding. Lowering it
+        // again while one of them still runs would let that spin carry on to
+        // its bound (a stop followed at once by a re-arm, as on a source or
+        // geometry change), so a launch after a stop waits until both are done:
+        // one ends within a nap of the flag, a queued one exits at once.
+        if (*state.warmStopHost != 0) {
+            const auto newer = cudaEventQuery(state.warmDone[state.warmNext ^ 1]);
+            if (newer == cudaErrorNotReady) return KeepWarmResult::Pending;
+            if (newer != cudaSuccess) {
+                warmFailed_ = true;
+                return KeepWarmResult::Unsupported;
+            }
+        }
         InterlockedExchange(state.warmStopHost, 0);
         try {
             // One resident warp that naps 10 us between flag reads: it holds the

@@ -55,9 +55,11 @@ struct KeepWarmSettings {
     // holds the clocks but raises them too slowly). The spin length also
     // bounds how long a context-wide CUDA call made on another thread
     // waits behind keep-warm: cudaFree waits for the running and the queued
-    // spin (at most 17.8 ms measured with 10 ms spins, 99 ms with round 13's
-    // 50 ms), cudaFreeHost for about one spin; cudaMalloc and cudaMallocHost
-    // do not wait (evidence r14-clock-1).
+    // spin (at most 17.8 ms measured with 10 ms spins in the probe and 20.1 ms
+    // in the GPU contract, 99 ms with round 13's 50 ms), cudaFreeHost for about
+    // one spin; cudaMalloc and cudaMallocHost do not wait (evidence
+    // r14-clock-1, r14-tests-7). That is per call: a reallocation that frees
+    // several buffers in a row can wait again behind spins queued meanwhile.
     std::chrono::milliseconds period{5};        // the worker tops up at most once per period
     std::chrono::microseconds busy{10000};      // length of one spin
     std::chrono::milliseconds lead{350};        // pre-roll: start this long before the read is due
@@ -208,15 +210,37 @@ public:
     }
     // The view changed and a read will follow. Arms change mode only:
     // continuous and pre-roll keep round 13's arming by announcements.
+    //
+    // Changes that no full read follows must not warm for ever: a camera
+    // picture that keeps moving (noise, a person in front of the board) reports
+    // a change with every probe while no read is submitted. One run of such
+    // changes keeps it warm for at most two change windows from its first
+    // change. After that it stays cold until a full read is submitted, the
+    // changes pause for one change window, or something disarms it explicitly
+    // (a cancel, which the application issues for the user's own changes).
     void ViewChanged(TimePoint now)
     {
         if (settings_.mode != KeepWarmMode::Change || !visible_) return;
+        if (unreadSince_ && now - lastChange_ >= settings_.changeWindow) unreadSince_.reset();
+        if (!unreadSince_) unreadSince_ = now;
+        lastChange_ = now;
+        const auto limit = *unreadSince_ + 2 * settings_.changeWindow;
+        if (now >= limit) return;
         if (!armed_) changeUntil_ = now;
         armed_ = true;
         awaitingChangeRead_ = true;
-        changeUntil_ = std::max(changeUntil_, now + settings_.changeWindow);
+        changeUntil_ = std::max(changeUntil_, std::min(now + settings_.changeWindow, limit));
     }
+    // Cancel, pause, source loss, hiding, shutdown: stop until re-armed. This
+    // also ends the current run of unread changes.
     void Disarm() noexcept
+    {
+        Expire();
+        unreadSince_.reset();
+    }
+    // The policy's own time-out: stop until re-armed, and keep the record of
+    // unread changes so that the next probe does not start a fresh allowance.
+    void Expire() noexcept
     {
         armed_ = false;
         awaitingChangeRead_ = false;
@@ -230,6 +254,7 @@ public:
     {
         activity_ = std::max(activity_, now);
         if (!fulfils) return;
+        unreadSince_.reset();
         if (expected_ && now >= *expected_ - settings_.lead) expected_.reset();
         if (armed_ && settings_.mode == KeepWarmMode::Change) awaitingChangeRead_ = false;
     }
@@ -313,7 +338,8 @@ private:
     KeepWarmSettings settings_;
     bool armed_{}, reading_{}, warmed_{}, visible_{true}, awaitingChangeRead_{};
     std::optional<TimePoint> expected_;
-    TimePoint activity_{}, lastWarm_{}, changeUntil_{};
+    TimePoint activity_{}, lastWarm_{}, changeUntil_{}, lastChange_{};
+    std::optional<TimePoint> unreadSince_; // first change of the current run without a full read
     PowerGate gate_;
 };
 

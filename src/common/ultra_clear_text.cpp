@@ -2122,6 +2122,8 @@ struct RecognitionScheduler::State {
     // making returns, and before deciding the next launch.
     bool keepWarmStop{};
     std::chrono::steady_clock::time_point keepWarmStopRaised{};
+    // Worker only: the power gate allowed warming when it was last consulted.
+    bool keepWarmPowerAllowed{true};
     void RaiseKeepWarmStop()
     {
         // A read in flight: its dequeue already interrupted every spin and
@@ -2213,11 +2215,12 @@ struct RecognitionScheduler::State {
         TraceTiming(timing::Event::Submit, timingProducer, TimingChannel(), stamp, id, authority,
             {0, 0, (job.device ? timing::DeviceInput : 0u) |
                 (job.corroboration.selectedJobId ? timing::Corroboration : 0u), job.corroboration.selectedJobId});
+        // A regional pass or a formula is not the announced read and not the
+        // read a view change waits for. Decided before the job is moved.
+        const bool fulfils = !job.regional && !job.formula;
         pending = std::move(job);
         ++stats.submitted;
-        // A regional pass or a formula is not the announced read and not the
-        // read a view change waits for.
-        keepWarm.ReadSubmitted(KeepWarmPolicy::Clock::now(), !job.regional && !job.formula);
+        keepWarm.ReadSubmitted(KeepWarmPolicy::Clock::now(), fulfils);
         wake.notify_one();
         return id;
     }
@@ -2253,9 +2256,22 @@ struct RecognitionScheduler::State {
         for (;;) {
             HandleKeepWarmStop();
             if (shutdown || pending) return;
+            // A gate that turned to refusing since the last look (the callable
+            // itself changed its answer, nobody called the setter) must end
+            // the spins that are outstanding, not only prevent new ones. The
+            // worker sees it at its next wake, at most one launch period later.
+            if (keepWarm.Armed()) {
+                const bool allowed = keepWarm.PowerAllowed();
+                if (!allowed && keepWarmPowerAllowed) {
+                    keepWarmPowerAllowed = false;
+                    RaiseKeepWarmStop();
+                    continue;
+                }
+                keepWarmPowerAllowed = allowed;
+            }
             const auto now = KeepWarmPolicy::Clock::now();
             if (keepWarm.TimedOut(now)) {
-                keepWarm.Disarm();
+                keepWarm.Expire(); // not a new episode: see KeepWarmPolicy::ViewChanged
                 ++stats.keepWarmTimeouts;
                 RaiseKeepWarmStop(); // the last spin may still run up to its bound
                 continue;
@@ -2321,6 +2337,7 @@ struct RecognitionScheduler::State {
                     lock.unlock();
                     barrier();
                     lock.lock();
+                    self->HandleKeepWarmStop(); // a disarm made while the barrier ran
                     if (self->shutdown) break;
                     if (!self->pending) continue;
                 }

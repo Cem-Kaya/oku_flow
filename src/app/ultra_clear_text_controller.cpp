@@ -406,7 +406,8 @@ void UltraClearTextController::SetViewVisible(bool visible)
 
 void UltraClearTextController::NoteViewChange()
 {
-    if (enabled_ && viewVisible_ && scheduler_) scheduler_->NoteViewChange();
+    // Suppressed media reads nothing, so nothing is warmed for it either.
+    if (enabled_ && viewVisible_ && !mediaOverlaySuppressed_ && scheduler_) scheduler_->NoteViewChange();
 }
 
 void UltraClearTextController::SetEnabled(bool enabled)
@@ -519,6 +520,7 @@ void UltraClearTextController::SetMediaOverlaySuppressed(bool suppressed, bool e
     mediaOverlaySuppressed_ = suppressed;
     if (!suppressed && enabled_) {
         EnsureScheduler();
+        NoteViewChange(); // suppression lifted: reading resumes with a first read
         SubmitImmutableIfNeeded();
         SubmitAdvancingMediaProbe();
     }
@@ -1016,6 +1018,8 @@ bool UltraClearTextController::OnPresented(const UctFrameContext& context)
         compositePaused_ = context.unsupportedCompositeFrames;
         if (compositePaused_) {
             Invalidate(QStringLiteral("composite"));
+        } else {
+            NoteViewChange(); // composite frames ended: a first read follows
         }
     }
     if (pendingReadbackId_ != 0 && now - pendingSinceMs_ > timing_.readbackTimeoutMs) {

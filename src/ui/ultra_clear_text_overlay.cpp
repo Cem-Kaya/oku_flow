@@ -197,6 +197,13 @@ UltraClearTextOverlay::UltraClearTextOverlay(QWidget* renderTarget, QWidget* own
     setAccessibleDescription(QStringLiteral(
         "Visual glyph overlay. The recognized text is available in the Ultra Clear Text reading pane."));
     applicationActive_ = QGuiApplication::applicationState() == Qt::ApplicationActive;
+    // The overlay is usually built before its window is shown: start from the
+    // target's real state, so nothing treats a hidden view as visible until
+    // the first show reports the change.
+    if (QWidget* window = renderTarget_ ? renderTarget_->window() : nullptr)
+        targetShown_ = renderTarget_->isVisible() && !(window->windowState() & Qt::WindowMinimized);
+    else
+        targetShown_ = false;
     // One application filter sees activation as well as target/ancestor
     // geometry and modality events, without duplicate per-widget filters.
     qApp->installEventFilter(this);
