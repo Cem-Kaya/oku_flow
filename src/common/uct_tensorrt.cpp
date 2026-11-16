@@ -1758,6 +1758,7 @@ class TensorRtRecognizer final : public Recognizer
                                   stats.restored, wellFormed, reconcileTimer.nsecsElapsed() / 1e6);
             }
             int regionIndex = 0;
+            PaddleMergeContext mergeContext; // one per read: output.lines
             for (const QRect& region : regions) {
             if (cancelled.load()) {
                 output.cancelled=true;output.lines.clear();cancelOwnedInput();return output;
@@ -2032,7 +2033,7 @@ class TensorRtRecognizer final : public Recognizer
                                                           static_cast<double>(width))));
                     auto line = PaddleDecodeTokens(decoded, validSteps, box, assets_.dictionary);
                     PaddleMergeRecognition(output.lines, std::move(line), region,
-                                           {image.width, image.height});
+                                           {image.width, image.height}, mergeContext);
                 }
                 profile.Merge(profile.Enabled() ? merge.nsecsElapsed() / 1e6 : 0);
                 groupLifetime.Consumed(group.slot);
@@ -2049,6 +2050,7 @@ class TensorRtRecognizer final : public Recognizer
             }
             ++regionIndex;
             }
+            mergeContext = {}; // release its shared copies: the sort below must not copy the rows
             std::sort(output.lines.begin(), output.lines.end(), [](const auto &a, const auto &b) {
                 return a.words[0].boundsPx.top() < b.words[0].boundsPx.top();
             });

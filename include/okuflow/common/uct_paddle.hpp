@@ -131,6 +131,35 @@ inline bool PaddleRibbonEnabled(bool allowed, const QString& overrideValue) {
 // crop-edge fragments and reconciles overlapping words without duplicates.
 void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line,
                              QRect region, QSize source);
+// Word geometry, a spatial index and row sort state for the merges of one
+// read, so each call only works on the words near its own. It never changes a
+// decision. Between calls it keeps shallow copies of `output` and of every
+// row's word list; anything done to them through their API (a different
+// output, rows or words added, removed, sorted or accessed for writing) gives
+// them another buffer, which the next call sees and answers with a rebuild.
+// It does not compare word contents: do not write to a word through a
+// reference or pointer taken before an earlier call. Above 1024 rows or 8192
+// words it is released and the call takes the uncached path.
+class PaddleMergeContext
+{
+  public:
+    PaddleMergeContext();
+    ~PaddleMergeContext();
+    PaddleMergeContext(PaddleMergeContext&&) noexcept;
+    PaddleMergeContext& operator=(PaddleMergeContext&&) noexcept;
+    PaddleMergeContext(const PaddleMergeContext&) = delete;
+    PaddleMergeContext& operator=(const PaddleMergeContext&) = delete;
+    struct State;
+
+  private:
+    friend void PaddleMergeRecognition(QVector<RecognizedLine>&, RecognizedLine, QRect, QSize,
+                                       PaddleMergeContext&);
+    std::unique_ptr<State> state_;
+};
+// Same result as the overload above after every call; keep one context for
+// all merges into one output.
+void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line,
+                             QRect region, QSize source, PaddleMergeContext& context);
 std::vector<float> PaddleNormalize(const QImage &image, QSize target, bool detection);
 QVector<PaddleQuad> PaddleDetect(std::span<const float> map, int width, int height, QSize source,
                                  const std::atomic<bool> &cancelled, bool curvedRibbon = false);

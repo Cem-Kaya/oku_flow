@@ -11,6 +11,7 @@
 #include <QLineF>
 #include <QStandardPaths>
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <limits>
 #include <numbers>
@@ -206,8 +207,11 @@ double PaddleRecognitionHeight(const PaddleQuad& line) {
     return line.ribbon.valid ? line.ribbon.Height() : QLineF(line.points[0],line.points[3]).length();
 }
 
-void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line,
-                             QRect region, QSize source)
+namespace
+{
+// The per-call merge, unchanged: used above the context's bounds.
+void MergeWithoutContext(QVector<RecognizedLine>& output, RecognizedLine line,
+                         QRect region, QSize source)
 {
     const bool detail = region.size() != source;
     // Rotated words compare their detector shapes. Bounding boxes of
@@ -491,6 +495,645 @@ void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line
                    QPointF::dotProduct(geometry(b).points[0], along);
         });
     }
+}
+
+bool SameBits(double a, double b)
+{
+    return std::bit_cast<quint64>(a) == std::bit_cast<quint64>(b);
+}
+TextQuad MergeShape(const RecognizedWord& word)
+{
+    return word.quadPx.valid ? word.quadPx : TextQuad::FromRect(word.boundsPx);
+}
+} // namespace
+
+// Everything cached here is a function of each word's boundsPx and quadPx
+// bits alone; confidence, text, disposition and protection are always read
+// from the output itself.
+//
+// Change detection: between calls the state holds a shallow copy (`shadow`)
+// of the output and one of every row's word list (`wordShadows`). Qt
+// containers detach before any modification while their buffer is shared, so
+// anything done to the output or to a row's words through their API after a
+// call - an assignment, append, erase, sort, swap, clear, or any non-const
+// access to a row or word, also through a reference to a row kept from before
+// the call - gives the container a different buffer, and the next call
+// rebuilds. The copies are released before this call touches the output, so
+// the merge's own edits never copy anything. What stays unseen is a write
+// through a reference or pointer to a WORD taken before a call; every call can
+// move words, so such references are not valid uses, and such a write cannot
+// make any cached index stale (the word lists are unchanged).
+//
+// Retained capacity: rows and grid cells keep the capacity of words that were
+// merged away. After kMaximumWords words have been added since the last
+// rebuild the next call rebuilds from scratch, which bounds what is retained
+// to a small multiple of the live words, as the uncached merge bounds its
+// per-call cache.
+struct PaddleMergeContext::State
+{
+    struct Geometry {
+        TextQuad shape;
+        QRectF bounds;
+        std::optional<double> area;
+        double angle{}, height{};
+        QPointF center;
+        bool rowReady{};
+    };
+    struct Entry {
+        Geometry g;
+        int row{-1};         // row id, not output index
+        int position{};      // index inside the row
+        int x0{}, y0{}, x1{}, y1{};
+        bool everywhere{};   // not in the grid: non-finite or very large bounds
+        int centerCell{-1};  // row-search grid cell of the centre; -1: reach list
+        double cx{}, cy{};   // the shape's centre
+        quint32 seen{};
+    };
+    struct Row {
+        std::vector<int> words; // entry ids in output order
+        int index{};
+        bool touched{};         // words erased or added during this call
+        bool stable{};          // sorting it again cannot move a word
+        quint32 seen{};
+    };
+    static constexpr qsizetype kMaximumRows = 1024;
+    static constexpr std::size_t kMaximumWords = 8192;
+    static constexpr int kMaximumGridCells = 256;
+    static constexpr int kMaximumCellsPerWord = 64;
+    static constexpr int kMaximumQueryCells = 1024;
+    // Row search: a word joins a row only through a word whose centre lies
+    // within its own extent plus this reach along the line (see RowCandidates).
+    // Words wider plus taller than the reach, or with coordinates beyond the
+    // bound, are visited by every row search.
+    static constexpr double kRowReach = 512;
+    static constexpr double kCoordinateBound = 0x1p24;
+
+    const QVector<RecognizedLine>* owner{};
+    QVector<RecognizedLine> shadow; // shares the output's buffer between calls
+    std::vector<QVector<RecognizedWord>> wordShadows; // and each row's word buffer
+    std::size_t addedSinceRebuild{};
+    QSize source;
+    bool ready{};
+    std::vector<Entry> entries;
+    std::vector<int> freeEntries;
+    std::vector<Row> rows;
+    std::vector<int> freeRows;
+    std::vector<int> order; // row id at each output index
+    std::size_t words{};
+    double cellWidth{1}, cellHeight{1};
+    int cellsX{1}, cellsY{1};
+    std::vector<std::vector<int>> cells;
+    std::vector<int> everywhere;
+    std::vector<std::vector<int>> centerCells;
+    std::vector<int> reach; // entries every row search visits
+    quint32 visit{}, rowVisit{};
+
+    static Geometry MakeGeometry(const RecognizedWord& word)
+    {
+        Geometry result;
+        result.shape = MergeShape(word);
+        result.bounds = result.shape.Bounds();
+        return result;
+    }
+    bool CellRange(const QRectF& r, int& x0, int& y0, int& x1, int& y1) const
+    {
+        // QRectF::intersects compares left/top with right()/bottom(), the
+        // same sums used here. A shared interior point lies in a cell both
+        // ranges contain, because division, floor and clamping are monotone.
+        const double l = r.left(), t = r.top(), right = r.right(), b = r.bottom();
+        if (!std::isfinite(l) || !std::isfinite(t) || !std::isfinite(right) || !std::isfinite(b))
+            return false;
+        const auto cell = [](double v, double size, int count) {
+            return int(std::clamp(std::floor(v / size), 0.0, double(count - 1)));
+        };
+        x0 = cell(std::min(l, right), cellWidth, cellsX); x1 = cell(std::max(l, right), cellWidth, cellsX);
+        y0 = cell(std::min(t, b), cellHeight, cellsY); y1 = cell(std::max(t, b), cellHeight, cellsY);
+        return true;
+    }
+    static bool Moderate(double value) { return std::abs(value) <= kCoordinateBound; } // false for NaN
+    int CellOf(double value, double size, int count) const
+    {
+        return int(std::clamp(std::floor(value / size), 0.0, double(count - 1)));
+    }
+    // Row-search cell of the shape's centre, or -1 when the word must be
+    // visited by every row search (coordinates beyond the bound, or width
+    // plus height beyond the reach).
+    int CenterCell(const TextQuad& shape, double& cx, double& cy) const
+    {
+        double l = shape.points[0].x(), r = l, t = shape.points[0].y(), b = t;
+        for (const QPointF& point : shape.points) {
+            if (!Moderate(point.x()) || !Moderate(point.y())) return -1;
+            l = std::min(l, point.x()); r = std::max(r, point.x());
+            t = std::min(t, point.y()); b = std::max(b, point.y());
+        }
+        if ((r - l) + (b - t) > kRowReach) return -1;
+        const QPointF center = shape.Center();
+        cx = center.x(); cy = center.y();
+        return CellOf(cy, cellHeight, cellsY) * cellsX + CellOf(cx, cellWidth, cellsX);
+    }
+    void Insert(int id)
+    {
+        auto& e = entries[std::size_t(id)];
+        e.centerCell = CenterCell(e.g.shape, e.cx, e.cy);
+        if (e.centerCell < 0) reach.push_back(id);
+        else centerCells[std::size_t(e.centerCell)].push_back(id);
+        e.everywhere = !CellRange(e.g.bounds, e.x0, e.y0, e.x1, e.y1) ||
+            (e.x1 - e.x0 + 1) * (e.y1 - e.y0 + 1) > kMaximumCellsPerWord;
+        if (e.everywhere) { everywhere.push_back(id); return; }
+        for (int y = e.y0; y <= e.y1; ++y)
+            for (int x = e.x0; x <= e.x1; ++x) cells[std::size_t(y * cellsX + x)].push_back(id);
+    }
+    static void Drop(std::vector<int>& list, int id)
+    {
+        const auto at = std::find(list.begin(), list.end(), id);
+        *at = list.back();
+        list.pop_back();
+    }
+    void Release(int id)
+    {
+        const auto& e = entries[std::size_t(id)];
+        if (e.centerCell < 0) Drop(reach, id);
+        else Drop(centerCells[std::size_t(e.centerCell)], id);
+        if (e.everywhere) Drop(everywhere, id);
+        else
+            for (int y = e.y0; y <= e.y1; ++y)
+                for (int x = e.x0; x <= e.x1; ++x) Drop(cells[std::size_t(y * cellsX + x)], id);
+        freeEntries.push_back(id);
+        --words;
+    }
+    int Add(int rowId, Geometry g)
+    {
+        int id;
+        if (freeEntries.empty()) { id = int(entries.size()); entries.emplace_back(); }
+        else { id = freeEntries.back(); freeEntries.pop_back(); }
+        auto& e = entries[std::size_t(id)];
+        e = Entry{};
+        e.g = std::move(g);
+        auto& row = rows[std::size_t(rowId)];
+        e.row = rowId;
+        e.position = int(row.words.size());
+        row.words.push_back(id);
+        Insert(id);
+        ++words;
+        return id;
+    }
+    int AddRow()
+    {
+        int id;
+        if (freeRows.empty()) { id = int(rows.size()); rows.emplace_back(); }
+        else { id = freeRows.back(); freeRows.pop_back(); }
+        rows[std::size_t(id)] = Row{};
+        rows[std::size_t(id)].index = int(order.size());
+        order.push_back(id);
+        return id;
+    }
+    void Rebuild(const QVector<RecognizedLine>& output, QSize size)
+    {
+        *this = State{};
+        owner = &output;
+        source = size;
+        const int width = std::max(1, size.width()), height = std::max(1, size.height());
+        cellWidth = std::max(64.0, width / double(kMaximumGridCells));
+        cellHeight = std::max(64.0, height / double(kMaximumGridCells));
+        cellsX = std::clamp(int(std::ceil(width / cellWidth)), 1, kMaximumGridCells);
+        cellsY = std::clamp(int(std::ceil(height / cellHeight)), 1, kMaximumGridCells);
+        cells.resize(std::size_t(cellsX) * std::size_t(cellsY));
+        centerCells.resize(cells.size());
+        for (const auto& line : output) {
+            const int rowId = AddRow();
+            for (const auto& word : line.words) Add(rowId, MakeGeometry(word));
+        }
+    }
+    // Every cached word whose bounds intersect `query` (QRectF::intersects,
+    // the merge's own first overlap test), in output order.
+    void Candidates(const QRectF& query, std::vector<int>& result)
+    {
+        result.clear();
+        int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+        if (!CellRange(query, x0, y0, x1, y1) || (x1 - x0 + 1) * (y1 - y0 + 1) > kMaximumQueryCells) {
+            for (const int rowId : order)
+                for (const int id : rows[std::size_t(rowId)].words)
+                    if (query.intersects(entries[std::size_t(id)].g.bounds)) result.push_back(id);
+            return;
+        }
+        if (++visit == 0) {
+            for (auto& e : entries) e.seen = 0;
+            visit = 1;
+        }
+        const auto take = [&](int id) {
+            auto& e = entries[std::size_t(id)];
+            if (e.seen == visit) return;
+            e.seen = visit;
+            if (query.intersects(e.g.bounds)) result.push_back(id);
+        };
+        for (int y = y0; y <= y1; ++y)
+            for (int x = x0; x <= x1; ++x)
+                for (const int id : cells[std::size_t(y * cellsX + x)]) take(id);
+        for (const int id : everywhere) take(id);
+        std::sort(result.begin(), result.end(), [&](int a, int b) {
+            const auto& ea = entries[std::size_t(a)];
+            const auto& eb = entries[std::size_t(b)];
+            const int ra = rows[std::size_t(ea.row)].index, rb = rows[std::size_t(eb.row)].index;
+            return ra != rb ? ra < rb : ea.position < eb.position;
+        });
+    }
+    // Output indices, ascending, of every row that can give the incoming word
+    // a finite row distance; false means visit every row. `angle`, `height`
+    // and `center` are the incoming word's prepared row geometry.
+    //
+    // A cached word O counts in rowDistance only if small > 0 and
+    // small >= .5 * large, so large <= 2 * small <= 2h (h: this word's
+    // height). Then dy <= .35 * large <= .7h puts O's centre within .7h of
+    // this word's centre across the line, and gap <= 4 * small <= 4h makes
+    // O's extent along the line meet [low - 4h, high + 4h]. O's centre lies
+    // in the box of its points, so it is within that box's width plus height
+    // (at most kRowReach for words in the grid) of the point of O realising
+    // that meeting. The test below is that band with a pixel of slack, which
+    // covers rounding many times over at coordinates within the bound. Rows
+    // with no such word keep rowDistance's initial maximum and are never
+    // chosen; the others are evaluated exactly, in output order.
+    bool RowCandidates(const TextQuad& shape, double angle, double height, QPointF center,
+                       std::vector<qsizetype>& result)
+    {
+        result.clear();
+        if (!(height > 0) || !Moderate(height) || !std::isfinite(angle) ||
+            !Moderate(center.x()) || !Moderate(center.y())) return false;
+        const QPointF along(std::cos(angle), std::sin(angle)), across(-along.y(), along.x());
+        double low = std::numeric_limits<double>::max(), high = std::numeric_limits<double>::lowest();
+        for (const QPointF& point : shape.points) {
+            if (!Moderate(point.x()) || !Moderate(point.y())) return false;
+            const double value = QPointF::dotProduct(point, along);
+            low = std::min(low, value); high = std::max(high, value);
+        }
+        constexpr double slack = 1;
+        const double a0 = low - 4 * height - kRowReach - slack, a1 = high + 4 * height + kRowReach + slack;
+        const double c = QPointF::dotProduct(center, across);
+        const double c0 = c - .7 * height - slack, c1 = c + .7 * height + slack;
+        double left = std::numeric_limits<double>::max(), right = std::numeric_limits<double>::lowest();
+        double top = left, bottom = right;
+        for (const double a : {a0, a1})
+            for (const double b : {c0, c1}) {
+                const double x = a * along.x() + b * across.x(), y = a * along.y() + b * across.y();
+                left = std::min(left, x); right = std::max(right, x);
+                top = std::min(top, y); bottom = std::max(bottom, y);
+            }
+        left -= slack; right += slack; top -= slack; bottom += slack;
+        const int x0 = CellOf(left, cellWidth, cellsX), x1 = CellOf(right, cellWidth, cellsX);
+        const int y0 = CellOf(top, cellHeight, cellsY), y1 = CellOf(bottom, cellHeight, cellsY);
+        if ((x1 - x0 + 1) * (y1 - y0 + 1) > kMaximumQueryCells) return false;
+        if (++rowVisit == 0) {
+            for (auto& row : rows) row.seen = 0;
+            rowVisit = 1;
+        }
+        const auto take = [&](int id) {
+            auto& row = rows[std::size_t(entries[std::size_t(id)].row)];
+            if (row.seen == rowVisit) return;
+            row.seen = rowVisit;
+            result.push_back(row.index);
+        };
+        for (int y = y0; y <= y1; ++y)
+            for (int x = x0; x <= x1; ++x)
+                for (const int id : centerCells[std::size_t(y * cellsX + x)]) {
+                    const auto& e = entries[std::size_t(id)];
+                    const QPointF point(e.cx, e.cy);
+                    const double a = QPointF::dotProduct(point, along), b = QPointF::dotProduct(point, across);
+                    if (a >= a0 && a <= a1 && b >= c0 && b <= c1) take(id);
+                }
+        for (const int id : reach) take(id);
+        std::sort(result.begin(), result.end());
+        return true;
+    }
+};
+
+PaddleMergeContext::PaddleMergeContext() = default;
+PaddleMergeContext::~PaddleMergeContext() = default;
+PaddleMergeContext::PaddleMergeContext(PaddleMergeContext&&) noexcept = default;
+PaddleMergeContext& PaddleMergeContext::operator=(PaddleMergeContext&&) noexcept = default;
+
+void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line,
+                             QRect region, QSize source)
+{
+    PaddleMergeContext context;
+    PaddleMergeRecognition(output, std::move(line), region, source, context);
+}
+
+void PaddleMergeRecognition(QVector<RecognizedLine>& output, RecognizedLine line,
+                             QRect region, QSize source, PaddleMergeContext& context)
+{
+    using State = PaddleMergeContext::State;
+    if (!context.state_) context.state_ = std::make_unique<State>();
+    State& s = *context.state_;
+    bool reuse = s.ready && s.owner == &output && s.source == source &&
+        s.addedSinceRebuild <= State::kMaximumWords &&
+        s.shadow.size() == output.size() && s.shadow.constData() == std::as_const(output).constData() &&
+        s.wordShadows.size() == std::size_t(output.size());
+    for (qsizetype index = 0; reuse && index < output.size(); ++index) {
+        const auto& words = std::as_const(output)[index].words;
+        const auto& kept = s.wordShadows[std::size_t(index)];
+        reuse = kept.size() == words.size() && kept.constData() == words.constData();
+    }
+    s.ready = false;  // an exception below leaves nothing to trust
+    s.shadow = {};    // release before any write, so the merge never detaches
+    s.wordShadows.clear();
+    s.addedSinceRebuild += std::size_t(line.words.size());
+    std::size_t total = s.words;
+    bool fits = reuse;
+    if (!reuse) {
+        fits = output.size() <= State::kMaximumRows;
+        total = 0;
+        for (qsizetype index = 0; fits && index < output.size(); ++index) {
+            total += std::size_t(std::as_const(output)[index].words.size());
+            fits = total <= State::kMaximumWords;
+        }
+    }
+    if (!fits || std::size_t(line.words.size()) > State::kMaximumWords - total) {
+        context.state_.reset();
+        MergeWithoutContext(output, std::move(line), region, source);
+        return;
+    }
+    if (!reuse) s.Rebuild(std::as_const(output), source);
+
+    // From here on this is MergeWithoutContext's procedure with the cached
+    // geometry; comments mark where the context replaces a full scan.
+    const bool detail = region.size() != source;
+    const auto geometry = [](const RecognizedWord& word) { return MergeShape(word); };
+    using Geometry = State::Geometry;
+    const auto area = [](Geometry& value) {
+        if (!value.area) value.area = QuadArea(value.shape);
+        return *value.area;
+    };
+    const auto prepareRow = [](Geometry& value) {
+        if (value.rowReady) return;
+        value.angle = QuadAngle(value.shape);
+        value.height = QuadHeight(value.shape);
+        value.center = value.shape.Center();
+        value.rowReady = true;
+    };
+    const auto overlaps = [&](const RecognizedWord& a, const RecognizedWord& b,
+                              Geometry& ga, Geometry& gb) {
+        if (!ga.bounds.intersects(gb.bounds)) return false;
+        const double areaA = area(ga), areaB = area(gb);
+        const double smaller = std::min(areaA, areaB);
+        if (smaller <= 0) return false;
+        const double intersection = QuadIntersectionArea(ga.shape, gb.shape);
+        if (intersection >= .7 * smaller) return true;
+        if (intersection < .65 * smaller) return false;
+        const QString& shortText = a.text.size() < b.text.size() ? a.text : b.text;
+        const QString& longText = a.text.size() < b.text.size() ? b.text : a.text;
+        const bool fragment = !shortText.isEmpty() && shortText.size() < longText.size() &&
+            smaller < .35 * std::max(areaA, areaB) &&
+            (longText.startsWith(shortText) || longText.endsWith(shortText));
+        return fragment;
+    };
+    const auto rowDistance = [&](qsizetype index, Geometry& wordGeometry) {
+        double best = std::numeric_limits<double>::max();
+        prepareRow(wordGeometry);
+        const TextQuad& wordShape = wordGeometry.shape;
+        const double angle = wordGeometry.angle;
+        const QPointF along(std::cos(angle), std::sin(angle)), across(-along.y(), along.x());
+        const auto extent = [&](const TextQuad& quad) {
+            double low = std::numeric_limits<double>::max(), high = std::numeric_limits<double>::lowest();
+            for (const QPointF& point : quad.points) {
+                const double t = QPointF::dotProduct(point, along);
+                low = std::min(low, t); high = std::max(high, t);
+            }
+            return std::pair{low, high};
+        };
+        const auto [wordLow, wordHigh] = extent(wordShape);
+        for (const int id : s.rows[std::size_t(s.order[std::size_t(index)])].words) {
+            auto& oldGeometry = s.entries[std::size_t(id)].g;
+            prepareRow(oldGeometry);
+            const TextQuad& oldShape = oldGeometry.shape;
+            double turn = std::abs(oldGeometry.angle - angle);
+            turn = std::fmod(turn, std::numbers::pi);
+            if (std::min(turn, std::numbers::pi - turn) > .175) continue;
+            const double small = std::min(oldGeometry.height, wordGeometry.height);
+            const double large = std::max(oldGeometry.height, wordGeometry.height);
+            const double dy = std::abs(QPointF::dotProduct(oldGeometry.center - wordGeometry.center, across));
+            const auto [oldLow, oldHigh] = extent(oldShape);
+            const double gap = std::max({0.0, oldLow - wordHigh, wordLow - oldHigh});
+            if (small > 0 && small >= .5 * large && dy <= .35 * large && gap <= 4 * small)
+                best = std::min(best, gap + 4 * dy);
+        }
+        return best;
+    };
+    const auto inheritableProtection = [](const RecognizedWord& value) {
+        return !value.protectedBoundsPx.isEmpty() &&
+            value.disposition==TokenDisposition::kInvalidGeometry &&
+            (value.fromRibbon || value.ribbonErrorPx<0);
+    };
+    qsizetype preferredLine = -1;
+    std::vector<int> candidates, hits;
+    std::vector<qsizetype> rowSearch;
+    for (auto word : line.words) {
+        constexpr double margin = kDetailCropEdgeMarginPx;
+        if (detail && ((region.left() > 0 && word.boundsPx.left() < margin) ||
+            (region.top() > 0 && word.boundsPx.top() < margin) ||
+            (region.x() + region.width() < source.width() && word.boundsPx.right() > region.width() - margin) ||
+            (region.y() + region.height() < source.height() && word.boundsPx.bottom() > region.height() - margin))) continue;
+        word.boundsPx.translate(region.topLeft());
+        if (!word.inkSearchPx.isEmpty()) word.inkSearchPx.translate(region.topLeft());
+        if (!word.protectedBoundsPx.isEmpty()) word.protectedBoundsPx.translate(region.topLeft());
+        if (word.quadPx.valid) word.quadPx = word.quadPx.Translated(region.topLeft());
+        if (word.inkSearchQuadPx.valid) word.inkSearchQuadPx = word.inkSearchQuadPx.Translated(region.topLeft());
+        if (word.fromRibbon) word.ribbonReadingPointPx += region.topLeft();
+        auto wordGeometry = State::MakeGeometry(word);
+        bool use = true;
+        qsizetype dropLine = -1, dropWord = -1;
+        QRectF inheritedProtection;
+        qsizetype target = -1;
+        // Words whose bounds miss this word's bounds fail the first overlap
+        // test, so only the intersecting ones are visited, in output order.
+        s.Candidates(wordGeometry.bounds, candidates);
+        hits.clear();
+        for (const int id : candidates) {
+            auto& entry = s.entries[std::size_t(id)];
+            const qsizetype index = s.rows[std::size_t(entry.row)].index, wi = entry.position;
+            const auto& old = std::as_const(output)[index].words[wi];
+            if (!overlaps(word, old, wordGeometry, entry.g)) continue;
+            hits.push_back(id);
+            if (target < 0) target = index;
+            if (word.confidence < old.confidence ||
+                (word.disposition != TokenDisposition::kCandidate && old.disposition == TokenDisposition::kCandidate)) {
+                use = false;
+                dropLine = index;
+                dropWord = wi;
+                break;
+            }
+        }
+        if (target >= 0) preferredLine = target;
+        if (!use) {
+            if (inheritableProtection(word) && dropLine >= 0) {
+                auto& winner = output[dropLine].words[dropWord];
+                winner.protectedBoundsPx = winner.protectedBoundsPx.isEmpty()
+                    ? word.protectedBoundsPx
+                    : winner.protectedBoundsPx.united(word.protectedBoundsPx);
+                winner.disposition=TokenDisposition::kInvalidGeometry;
+                winner.ribbonErrorPx=-1;
+            }
+            continue;
+        }
+        if (target < 0 && preferredLine >= 0 &&
+            rowDistance(preferredLine, wordGeometry) < std::numeric_limits<double>::max())
+            target = preferredLine;
+        qsizetype emptyLine = -1;
+        if (target < 0) {
+            double best = std::numeric_limits<double>::max();
+            for (qsizetype index = 0; index < qsizetype(s.order.size()); ++index)
+                if (s.rows[std::size_t(s.order[std::size_t(index)])].words.empty()) emptyLine = index;
+            // Only rows holding a word that can count are visited; every
+            // other non-empty row would return the initial maximum.
+            prepareRow(wordGeometry);
+            if (!s.RowCandidates(wordGeometry.shape, wordGeometry.angle, wordGeometry.height,
+                                 wordGeometry.center, rowSearch)) {
+                rowSearch.clear();
+                for (qsizetype index = 0; index < qsizetype(s.order.size()); ++index)
+                    if (!s.rows[std::size_t(s.order[std::size_t(index)])].words.empty()) rowSearch.push_back(index);
+            }
+            for (const qsizetype index : rowSearch) {
+                const double distance = rowDistance(index, wordGeometry);
+                if (distance < best) {
+                    best = distance;
+                    target = index;
+                }
+            }
+        }
+        if (target < 0) {
+            if (emptyLine >= 0) target = emptyLine;
+            else {
+                if (output.size() >= 1024) continue;
+                target = output.size();
+                output.push_back({});
+                s.AddRow();
+            }
+        }
+        // Erase exactly the overlapping words found above, in output order.
+        for (const int id : hits) {
+            const auto& entry = s.entries[std::size_t(id)];
+            const auto& old = std::as_const(output)[s.rows[std::size_t(entry.row)].index].words[entry.position];
+            if (inheritableProtection(old))
+                inheritedProtection = inheritedProtection.isEmpty()
+                    ? old.protectedBoundsPx
+                    : inheritedProtection.united(old.protectedBoundsPx);
+        }
+        for (std::size_t h = 0; h < hits.size();) {
+            const int rowId = s.entries[std::size_t(hits[h])].row;
+            std::size_t end = h;
+            while (end < hits.size() && s.entries[std::size_t(hits[end])].row == rowId) ++end;
+            auto& row = s.rows[std::size_t(rowId)];
+            auto& words = output[row.index].words;
+            qsizetype kept = 0;
+            std::size_t next = h;
+            for (qsizetype wi = 0; wi < words.size(); ++wi) {
+                if (next < end && s.entries[std::size_t(hits[next])].position == wi) {
+                    s.Release(hits[next++]);
+                    continue;
+                }
+                if (kept != wi) {
+                    words[kept] = std::move(words[wi]);
+                    row.words[std::size_t(kept)] = row.words[std::size_t(wi)];
+                    s.entries[std::size_t(row.words[std::size_t(kept)])].position = int(kept);
+                }
+                ++kept;
+            }
+            words.erase(words.begin() + kept, words.end());
+            row.words.resize(std::size_t(kept));
+            row.touched = true;
+            h = end;
+        }
+        if (!inheritedProtection.isEmpty()) {
+            word.protectedBoundsPx = word.protectedBoundsPx.isEmpty()
+                ? inheritedProtection
+                : word.protectedBoundsPx.united(inheritedProtection);
+            word.disposition=TokenDisposition::kInvalidGeometry;
+            word.ribbonErrorPx=-1;
+        }
+        output[target].words.push_back(std::move(word));
+        const int rowId = s.order[std::size_t(target)];
+        s.rows[std::size_t(rowId)].touched = true;
+        s.Add(rowId, std::move(wordGeometry));
+        preferredLine = target;
+    }
+    bool emptied = false;
+    for (const int rowId : s.order) emptied = emptied || s.rows[std::size_t(rowId)].words.empty();
+    if (emptied) {
+        output.erase(std::remove_if(output.begin(), output.end(), [](const auto& l) {
+            return l.words.isEmpty();
+        }), output.end());
+        std::size_t kept = 0;
+        for (const int rowId : s.order) {
+            auto& row = s.rows[std::size_t(rowId)];
+            if (row.words.empty()) { s.freeRows.push_back(rowId); continue; }
+            row.index = int(kept);
+            s.order[kept++] = rowId;
+        }
+        s.order.resize(kept);
+    }
+    // Reading order along the row's own baseline (left edge when upright).
+    std::vector<int> permutation, ids;
+    for (qsizetype index = 0; index < output.size(); ++index) {
+        const int rowId = s.order[std::size_t(index)];
+        auto& row = s.rows[std::size_t(rowId)];
+        // An unchanged row that was left sorted under a strict weak order
+        // whose baseline its first word still gives: sorting is the identity.
+        if (!row.touched && row.stable) continue;
+        row.touched = false;
+        auto& words = output[index].words;
+        const double angle = QuadAngle(geometry(words.first()));
+        const QPointF along(std::cos(angle), std::sin(angle));
+        const auto before = [&](const RecognizedWord& a, const RecognizedWord& b) {
+            if (!a.quadPx.valid && !b.quadPx.valid) return a.boundsPx.left() < b.boundsPx.left();
+            return QPointF::dotProduct(geometry(a).points[0], along) <
+                   QPointF::dotProduct(geometry(b).points[0], along);
+        };
+        // With finite bounded sort keys the comparison is a strict weak
+        // order (mixed rectangle/quad rows only on an exactly upright
+        // baseline, where both forms compare the left edge), so every stable
+        // sort yields the same unique permutation and an index sort is exact.
+        bool strict = std::isfinite(along.x()) && std::isfinite(along.y());
+        bool anyQuad = false, anyRect = false;
+        for (const auto& word : words) {
+            if (!strict) break;
+            const QPointF key = word.quadPx.valid ? word.quadPx.points[0] : word.boundsPx.topLeft();
+            strict = std::abs(key.x()) < 0x1p500 && std::abs(key.y()) < 0x1p500;
+            (word.quadPx.valid ? anyQuad : anyRect) = true;
+        }
+        strict = strict && (!(anyQuad && anyRect) || (along.x() == 1 && along.y() == 0));
+        if (!strict) {
+            // Exactly the original call; the row's cache follows the result.
+            std::stable_sort(words.begin(), words.end(), before);
+            const auto old = row.words;
+            row.words.clear();
+            for (const int id : old) s.Release(id);
+            for (const auto& word : words) s.Add(rowId, State::MakeGeometry(word));
+            row.stable = false;
+            continue;
+        }
+        permutation.resize(std::size_t(words.size()));
+        for (std::size_t i = 0; i < permutation.size(); ++i) permutation[i] = int(i);
+        std::stable_sort(permutation.begin(), permutation.end(), [&](int a, int b) {
+            return before(words[a], words[b]);
+        });
+        bool moved = false;
+        for (std::size_t i = 0; i < permutation.size() && !moved; ++i) moved = permutation[i] != int(i);
+        if (moved) {
+            QVector<RecognizedWord> sorted;
+            sorted.reserve(words.size());
+            ids.resize(permutation.size());
+            for (std::size_t i = 0; i < permutation.size(); ++i) {
+                sorted.push_back(std::move(words[permutation[i]]));
+                ids[i] = row.words[std::size_t(permutation[i])];
+                s.entries[std::size_t(ids[i])].position = int(i);
+            }
+            words = std::move(sorted);
+            row.words.assign(ids.begin(), ids.end());
+        }
+        row.stable = SameBits(QuadAngle(geometry(words.first())), angle);
+    }
+    s.shadow = output;
+    s.wordShadows.reserve(std::size_t(output.size()));
+    for (const auto& row : std::as_const(output)) s.wordShadows.push_back(row.words);
+    s.ready = true;
 }
 
 std::vector<float> PaddleNormalize(const QImage &image, QSize target, bool detection)

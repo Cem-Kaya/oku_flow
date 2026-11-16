@@ -540,6 +540,26 @@ GPU/BF16 throughput, CPU fallback speed and FPS remain unmeasured. See
 [method and evidence limits](uct_merge_optimization.md) and the
 [2026-10-23 CPU replay report](uct_merge_cpu_replay_2026_10_23.md).
 
+`PaddleMergeContext` (`uct_paddle.hpp`) carries that work across the merge
+calls of one read: the five-argument `PaddleMergeRecognition` overload keeps
+each merged word's geometry, a uniform grid over word bounds (the overlap scan
+visits only words whose bounds pass the merge's own `QRectF::intersects` test,
+still in output order), a grid of word centres for the row search (a word
+with no overlap visits only rows holding a word whose centre lies in the band
+where a finite row distance is possible; words wider plus taller than 512 px
+or beyond 2^24 px are visited by every search) and per-row sort state (a row
+that is unchanged, was sorted under a strict weak order and keeps the same
+baseline angle is not sorted again). The context holds a shallow copy of the output between calls;
+any change to the output through its API detaches it and the next call
+rebuilds the context. Above 1024 rows or 8192 words it is released and the
+unchanged per-call merge runs. The GPU and CPU recognizers keep one context
+per read; the four-argument overload creates a context per call. Decisions
+are unchanged: `uct_merge_replay` also compares every case with a frozen copy
+of the ec7282d merge (`tests/uct_merge_baseline_ec72.cpp`), runs both
+overloads, and covers read-shaped call sequences, outside edits between calls
+and the word and row bounds. See round 7 in
+[the OkuRead port record](uct_okuread_port.md).
+
 ## Source-supported text perspective
 
 `RefineWordSurface` optionally replaces an already fitted word rectangle with
@@ -1273,7 +1293,7 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   and dictionary. `DefaultPaddleRoot` resolves explicit, adjacent and local
   roots. `PaddleTensor`/`PaddleCpuSession` describe bounded float I/O.
   `PaddleDetectionSize`, `PaddleDetectionRegions`, `PaddleRecognitionWindows`,
-  `PaddleMergeRecognition`, `PaddleNormalize`, `PaddleDetect`, `PaddleRectify`,
+  `PaddleMergeRecognition`/`PaddleMergeContext`, `PaddleNormalize`, `PaddleDetect`, `PaddleRectify`,
   `PaddleDecode`/`PaddleDecodeTokens`, `PaddleQuad` and `PaddleToken` implement
   first-party bilinear BGR normalization, connected-component/PCA regions,
   padded rectification and confidence-filtered CTC word spans. Spans are
