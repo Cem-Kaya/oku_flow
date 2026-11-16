@@ -23,6 +23,7 @@ chalkboard lecture frames. Worker time is not camera-to-paint latency.
 | Cooperative box scoring | Round 1, rewritten: OkuRead's exact variant gave no gain here. On by default with CUDA 12.9 on sm_86 and sm_89 (RTX 30 and 40 series) |
 | Fixed-tree box scoring | Round 1, private comparison switch only: it rounds differently |
 | Collect detections across tiles before recognition; a complete detection supersedes its covered edge fragment | Round 2, private switch, off: changes output |
+| Replay TensorRT enqueue as CUDA graphs, one execution context per cached shape | Round 3, private switch, off: identical output; startup and the first read of a new frame size cost more |
 | Composition flush before capture, capture targets, overlay raster | Not applicable: OkuFlow analyses camera, video and file frames it already owns |
 | Speculative ink retries | Not applicable: OkuFlow has no retry fits |
 | Reuse-cache crop order defect | Not applicable: OkuFlow has no OCR reuse cache and never reorders crops |
@@ -374,3 +375,210 @@ for the final check, crop counts taken from the final build, and the wording
 of the page groups. Tried and not kept: the floor in detector pixels (above).
 The reviewed rules have not been through a second council pass; round 6
 revisits them.
+
+## Round 3: TensorRT enqueue replayed as CUDA graphs (private switch, off)
+
+Targets stated before the work: byte-identical complete output on all 18
+scenes in both cohorts, on the 62 title placements and on one labelled set;
+warm worker time at least 1.20x on the six real lecture frames and at least
+1.05x on dense scenes; the first read of each scene no more than 10 percent
+slower, or an accounting of what the first use costs and after how many reads
+it is repaid, also with `OKUFLOW_UCT_TEST_REGION_RECONCILE=1` in both arms.
+
+Result: output identical everywhere it was measured; lecture frames 1.23x to
+1.35x and dense documents 1.09x to 1.10x warm. The first-read target is met
+except where a scene brings a frame size the process has not read before:
+2 of 18 scenes, accounted for below. Startup takes 0.36 to 0.98 s longer.
+
+`OKUFLOW_UCT_TEST_TRT_GRAPH=1` selects it. It stays off by default in this
+round; see "Default" below.
+
+### Why it matters here
+
+The baseline profile spends 13 to 18 ms of a 22 to 26 ms lecture-frame read
+on the host inside `enqueueV3`, and 93 of 204 ms on the dense page. A
+1920x1080 read runs the detector at two shapes (the whole frame and two equal
+tiles) and the recognizer at batch eight plus one partial batch per region, so
+one graph per engine would be recaptured on almost every call.
+
+### What changed
+
+`Network::Run` (`src/common/uct_tensorrt.cpp`) has a second path, decided by
+`graph_cache::Policy` (`src/common/uct_graph_cache.hpp`):
+
+- **One context per cached shape, at most one graph per context.** Keys are
+  batch, height and width; the input and output addresses are checked on
+  every call. Reshaping, readdressing or recycling a context first destroys
+  its graph. No context is shared by two live graphs (OkuRead found that this
+  changed later output).
+- **One activation arena per engine.** The contexts are created with
+  `kUSER_MANAGED` memory and all point at one buffer of
+  `getDeviceMemorySizeV2()` bytes. That is legal because they all run in order
+  on the State's one stream. The preparation context, which owns the same
+  amount of memory, is released when replay is enabled, so the arena adds
+  nothing.
+- **Output storage never moves.** The shared output tensor is sized once for
+  the profile's largest input (960x960 for the detector, batch eight for the
+  recognizer), so no graph can hold a stale output address.
+- **Plain first, capture later, never behind queued work.** A new binding runs
+  as a plain enqueue; a later call with the same binding is captured
+  (`cudaStreamBeginCapture` in thread-local mode, `enqueueV3`,
+  `cudaStreamEndCapture`, instantiate, upload) and launched; after that it
+  replays. `RecognizeDevice` forbids capture for a recognition look-ahead
+  group and for a detection queued behind an earlier equal-shaped detection of
+  the same read, so nothing is captured while earlier inference is in flight.
+  The existing rule that a shape change waits for the stream is unchanged.
+- **Bounded, least recently used.** Eight shapes per engine by default (the
+  recognizer's eight batch sizes on the fixed canvas); when full, the least
+  recently used slot is drained, loses its graph and is reshaped. Its context
+  is reused, not recreated.
+- **Refusals fall back.** Capture-specific CUDA statuses (unsupported,
+  invalidated, isolation, implicit, merge, unjoined, out of memory, not
+  supported, and an invalid value from instantiate or upload) end the capture,
+  run the call as a plain enqueue and mark the shape so it is never captured
+  again; after 32 refused shapes capture stops. Capture is also refused with
+  less than 256 MiB free. Every other failure is fatal, as before, and goes
+  through the existing State retirement. No refusal occurred in any run.
+- **Lifetime.** A drain (`cudaStreamSynchronize`) precedes every graph
+  destruction and every reshape of a used context. Otherwise graphs and
+  contexts are destroyed with their Network, which the State releases only
+  after its stream is known complete (`RetireState`). The capture is always
+  ended inside `Network::Capture`, before any cancellation check or exception
+  can intervene.
+- **Contexts are made during preparation.** Creating an execution context
+  took about 90 ms for the detector and 60 ms for the recognizer. The first
+  version created them on demand, which added up to 270 ms to first reads (for
+  example doc-camera-tilt 160 to 271 ms, `r3-graph-smoke-1`). Now preparation
+  creates three detector contexts (the whole frame and the tiles of one frame
+  size) and one recognizer context per batch size. That runs no inference.
+
+With the switch off, `Run` takes the original path unchanged.
+`OKUFLOW_UCT_TEST_TRT_GRAPH_SHAPES` (1 to 16) changes the bound, for the
+comparison below only.
+
+### Cache shape, chosen by measurement
+
+Evidence `r3-graph-ab-1`: two reversed cohorts of five warm reads, four arms
+on one executable. "Single" is one graph per engine (bound 1).
+
+| Arm | Warm, geometric mean | First read, geometric mean | Output |
+| --- | ---: | ---: | --- |
+| Single (one graph per engine) | 1.015x | 1.004x | identical 18/18 |
+| Four shapes per engine | 1.174x | 1.111x | identical 18/18 |
+| Eight shapes per engine (default of the switch) | 1.178x | 1.103x | identical 18/18 |
+
+One graph per engine recaptures on nearly every shape change and adds a drain
+each time, so it gains nothing. Four shapes evict recognizer batch sizes about
+twice per 1920x1080 read, each eviction a drain plus a plain enqueue; on this
+scene set that cost is inside the noise, but eight shapes never evict on the
+fixed canvas, so eight is the switch's default.
+
+### Measured, eight shapes
+
+Evidence `r3-graph-ab-1`, RTX 4090 (driver 621.14, display not driven), Ryzen
+9 5900X, MSVC 19.44 Release, CUDA 12.9.86, TensorRT 11.4.0.106, medium BF16
+detector and recognizer, commit `4dcbbb4`. Warm is the median of ten warm
+reads; the cohort medians of the new arm are in brackets. First read is the
+median over the two cohorts of the scene's first read in each process.
+
+| Scene | Off ms | On ms | Warm speedup | First read ms, off / on |
+| --- | ---: | ---: | ---: | --- |
+| board-lecture-01 (real) | 24.99 | 18.54 (18.33, 18.69) | 1.348 | 23.28 / 18.42 |
+| board-lecture-04 (real) | 26.33 | 19.93 (20.07, 19.90) | 1.321 | 26.56 / 26.58 |
+| board-lecture-03 (real) | 27.37 | 21.19 (21.17, 21.21) | 1.292 | 26.98 / 21.15 |
+| board-lecture-00 (real) | 23.75 | 19.10 (19.05, 19.14) | 1.244 | 25.44 / 19.08 |
+| board-lecture-02 (real) | 27.17 | 21.96 (21.71, 22.17) | 1.237 | 28.97 / 22.44 |
+| board-lecture-05 (real) | 23.85 | 19.33 (18.89, 19.95) | 1.234 | 23.76 / 20.61 |
+| signs-sparse-1080 | 32.58 | 27.13 | 1.201 | 32.86 / 28.72 |
+| slide-light-2160 | 120.01 | 100.77 | 1.191 | 116.78 / 149.41 |
+| slide-dark-1080 | 72.34 | 62.01 | 1.167 | 72.67 / 61.13 |
+| slide-light-1080 | 69.47 | 60.88 | 1.141 | 69.36 / 60.77 |
+| no-text-1080 | 47.31 | 41.53 | 1.139 | 47.43 / 41.57 |
+| book-curved-1080 | 75.05 | 66.05 | 1.136 | 76.72 / 67.41 |
+| table-1080 | 142.21 | 127.77 | 1.113 | 145.30 / 127.96 |
+| doc-camera-2160 | 484.97 | 440.04 | 1.102 | 480.84 / 449.84 |
+| doc-camera-turkish-1080 | 182.48 | 165.60 | 1.102 | 181.94 / 167.91 |
+| doc-camera-tilt-1080 | 159.99 | 145.72 | 1.098 | 160.29 / 149.57 |
+| page-portrait-1654x2339 | 386.34 | 352.78 | 1.095 | 380.34 / 506.29 |
+| doc-camera-1080 | 206.89 | 189.53 | 1.092 | 206.88 / 190.27 |
+
+Geometric mean 1.178x warm and 1.103x for first reads. Every lecture frame
+is at least 1.23x pooled; compared cohort by cohort the lowest is
+board-lecture-05 at 1.26x and 1.197x. The dense documents gain 1.09x to 1.10x, more
+than the 2 percent dense-scene noise floor. In a profiled run
+(`r3-graph-smoke-2`, timing not quoted) host time inside the network calls of
+a warm doc-camera-1080 read fell from about 62 ms to 0.3 ms; the rest of the
+read is GPU work, which replay does not change.
+
+With `OKUFLOW_UCT_TEST_REGION_RECONCILE=1` in both arms (`r3-graph-reconcile-ab-1`)
+the gain is 1.196x warm and 1.113x for first reads: lecture frames 1.20x to
+1.38x, the six dense documents 1.10x to 1.15x, identical output on 18 of 18.
+
+### First use: what it costs and when it is repaid
+
+| Cost | Size | Repaid after |
+| --- | --- | --- |
+| Engine preparation creates 3 detector and 8 recognizer contexts | Startup to first result 3.87 to 3.94 s off, 4.73 to 4.91 s on (`r3-graph-ab-1`); 0.36 to 0.98 s more across all eight cohort pairs | Runs on the preparation thread while the CPU reader serves; at the lecture-frame gain of 5 to 6 ms per read, after about 170 reads |
+| A frame size with detector shapes beyond the prepared three: about 80 to 90 ms per new detector context | 2 of 18 scenes: page-portrait +94 to +158 ms; the first 3840x2160 scene in the reverse cohort +83 ms | 5 warm reads; with region reconciliation on, 7 to 8 |
+| First capture of a shape | about 1 to 2 ms, once per shape | the next replay |
+
+On the varied page sizes of the title placements and the labelled set, more
+first reads pay for a new detector context: 7 of 62 and 8 of 40 first reads
+are more than 10 percent slower, while the first-read geometric means are
+1.101x and 1.061x faster. A live source keeps one frame size, so after
+startup it pays this at most once.
+
+### Output
+
+| Set | Arms | Result |
+| --- | --- | --- |
+| Scene set v1, 18 scenes, two cohorts, six reads each | off, single, four, eight shapes | identical (`r3-graph-ab-1`) |
+| Scene set v1 with region reconciliation in both arms | off, eight shapes | identical 18/18 (`r3-graph-reconcile-ab-1`) |
+| 62 title placements (private owner crops), two cohorts | off, eight shapes | identical 62/62 (`r3-graph-titles-1`) |
+| Held-out labelled set A, 40 pages, two cohorts | off, eight shapes | identical 40/40 (`r3-graph-labelled-a-1`) |
+
+"Identical" means one complete-output hash (text, order, dispositions,
+geometry, confidence, colours) for every read of the scene in every process of
+every arm. The opt-in `optionalGraphReplayLifetime` (`r3-graph-lifetime-2`)
+read doc-camera-1080 with the switch off, with one graph per engine and with
+eight shapes. In each replay mode it cancelled 40 reads from another thread
+at delays spread from 0 to 1.2 times a warm read (32 cancelled, 8 completed).
+Every completed read, and the read after each cancellation, reproduced the
+switch-off output byte for byte; the engines stayed ready, and each State
+retired with its exact receipt. Its first version (`r3-graph-lifetime-1`)
+cancelled only within the first 10 ms of a read and so never reached the
+recognizer; that run is kept.
+
+### Device memory
+
+From the profile's receipts (`r3-graph-smoke-2`; `cudaMemGetInfo` deltas
+with 2 MiB granularity, approximate, not exclusive):
+
+| Engine | Arena | Contexts (eight-shape run) | Graphs | Output storage |
+| --- | --- | --- | --- | --- |
+| Detector | 289.6 MB, replaces the preparation context's own | 5, about 12.6 MB | 5, about 10.5 MB | 3.7 MB (960x960) instead of 2.1 MB for a 1920x1080 frame |
+| Recognizer | 169.9 MB, replaces the preparation context's own | 8, about 18.9 MB | 8, about 12.6 MB | unchanged (batch eight) |
+
+About 55 MB more in total with eight shapes. One graph per engine adds about
+2 MB.
+
+### Default
+
+Off in this branch. Recommendation: enable it by default for the TensorRT
+reader. Output was identical on every set measured, the warm gain is largest
+on the live lecture frames this reader runs on continuously, and the costs
+are bounded: preparation is about 1 s longer while the CPU reader serves, a
+frame size first seen after startup costs one read 80 to 180 ms, and about
+55 MB of device memory are added. Before enabling it, check on one more GPU
+generation: every measurement here is one RTX 4090.
+
+### Not established
+
+Measured on one RTX 4090 with the medium BF16 pair only. The small and tiny
+tiers, FP32 plans, the bucketed recognizer width (up to 32 shapes with batch
+eight, more than the bound) and batch sixteen were not run. Paused-detail
+reads use other detector shapes; they were not run with the switch on and
+would create or evict detector contexts. No capture refusal or 256 MiB
+headroom refusal was observed, so those fallbacks are read and covered by the
+model-free test, not exercised on the GPU. No owner camera capture was
+available.

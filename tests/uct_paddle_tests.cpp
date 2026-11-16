@@ -22,6 +22,7 @@
 #include "uct_ribbon_ink_cases.hpp"
 #include "uct_resident_diagnostic.hpp"
 #include "uct_corpus_timing.hpp"
+#include "uct_graph_replay_lifetime.hpp"
 #include "uct_paused_video_diagnostic.hpp"
 #include "uct_active_regional_diagnostic.hpp"
 #include "uct_precision_artifact_cases.hpp"
@@ -185,6 +186,7 @@ struct FixtureStream
 #include "uct_ink_outline_cuda_cases.hpp"
 #include "uct_detect_kernel_cases.hpp"
 #include "uct_region_reconcile_cases.hpp"
+#include "uct_graph_cache_cases.hpp"
 
 class PaddleTests final : public QObject
 {
@@ -483,6 +485,7 @@ class PaddleTests final : public QObject
         QVERIFY(!detail::AllowsTensorRtCapacityFallback(std::make_exception_ptr(7)));
     }
     void regionReconcileRules() { uct_region_reconcile_test::Rules(); }
+    void graphReplayCachePolicy() { uct_graph_cache_test::Policies(); }
     void recognitionGroupSlotsRequireCompletionAndConsumption()
     {
         detail::RecognitionGroups groups;
@@ -1809,6 +1812,10 @@ class PaddleTests final : public QObject
     void optionalCorpusTiming()
     {
         uct_corpus_test::CorpusTiming();
+    }
+    void optionalGraphReplayLifetime()
+    {
+        uct_graph_replay_test::Lifetime();
     }
     void optionalPublicBf16Preparation()
     {

@@ -31,6 +31,7 @@ bool TensorRtCropDiagnostic::TryCommit(Plan&& plan) noexcept
 #include "okuflow/cuda/uct_kernels.hpp"
 #include "uct_tensorrt_profile.hpp"
 #include "uct_frozen_upload.hpp"
+#include "uct_graph_cache.hpp"
 #include "uct_recognition_groups.hpp"
 #include "uct_region_reconcile.hpp"
 #include "uct_recognizer_width.hpp"
@@ -678,8 +679,62 @@ class Network
                role + "PlanCache=" + cacheStatus_ + ";" +
                role + "ContextBytes=" + QString::number(contextBytes_) + "; ";
     }
+    // Private experiment OKUFLOW_UCT_TEST_TRT_GRAPH (uct_graph_cache.hpp).
+    // Called once, after preparation confirmed the stream complete and before
+    // the State is published. Replaces the preparation context, which owns
+    // its activation memory, by contexts that share one arena. `prepared`
+    // contexts are created now: creating one takes tens of milliseconds, which
+    // would otherwise land on the first read of each new shape. Creating a
+    // context runs no inference.
+    void EnableReplay(int capacity, int prepared)
+    {
+        if (replay_) return;
+        context_.reset();
+        batch_ = width_ = height_ = 0;
+        boundInput_ = boundOutput_ = nullptr;
+        replayArenaBytes_ = engine_->getDeviceMemorySizeV2();
+        if (replayArenaBytes_ < 0)
+            throw TensorRtApiFailure("TensorRT context memory size is unavailable.");
+        replayArena_.Reserve(std::size_t(std::max<std::int64_t>(replayArenaBytes_, 1)));
+        replay_.emplace(capacity);
+        replaySlots_.reserve(std::size_t(replay_->Capacity()));
+        // The output tensor is shared by every slot and must never move, or
+        // every graph would hold a stale address: size it for the profile's
+        // largest input once.
+        auto first = CreateReplayContext();
+        const auto maximum = engine_->getProfileShape(input_.c_str(), 0, nvinfer1::OptProfileSelector::kMAX);
+        if (!first->setInputShape(input_.c_str(), maximum))
+            throw std::runtime_error("TensorRT refused the profile's largest shape.");
+        outputBuffer_.Reserve(OutputCount(first->getTensorShape(output_.c_str())));
+        spareContexts_.push_back(std::move(first));
+        replayOutput_ = outputBuffer_.Get();
+        prepared = std::clamp(prepared, 1, replay_->Capacity());
+        spareContexts_.reserve(std::size_t(prepared));
+        while (int(spareContexts_.size()) < prepared) spareContexts_.push_back(CreateReplayContext());
+        // Taken from the back: the first slot gets the first context.
+        std::reverse(spareContexts_.begin(), spareContexts_.end());
+    }
+    bool ReplayEnabled() const { return replay_.has_value(); }
+    QJsonObject ReplayReceipt() const
+    {
+        if (!replay_) return {};
+        const auto& count = replay_->Count();
+        return {{"capacity", replay_->Capacity()}, {"slots", replay_->Slots()},
+            {"arenaBytes", qint64(replayArenaBytes_)}, {"outputBytes", qint64(OutputCapacityBytes())},
+            {"contextsCreated", qint64(replayContextsCreated_)},
+            {"contextCreateMs", replayContextMs_},
+            {"contextBytesObservedApprox", qint64(replayContextBytes_)},
+            {"graphBytesObservedApprox", qint64(replayGraphBytes_)},
+            {"hits", qint64(count.hits)}, {"misses", qint64(count.misses)},
+            {"evictions", qint64(count.evictions)}, {"rebinds", qint64(count.rebinds)},
+            {"drains", qint64(count.drains)}, {"plain", qint64(count.plain)},
+            {"captures", qint64(count.captures)}, {"replays", qint64(count.replays)},
+            {"refusals", qint64(count.refusals)}, {"captureBlocked", replay_->Blocked()}};
+    }
+    // `mayCapture` is false while an earlier inference of the same read may
+    // still be queued on the stream. It only matters with replay enabled.
     nvinfer1::Dims Run(float *input, int width, int height, cudaStream_t stream,
-                       TensorRtProfile &profile, int batch = 1)
+                       TensorRtProfile &profile, int batch = 1, bool mayCapture = true)
     {
         QElapsedTimer host;
         if (profile.Enabled()) host.start();
@@ -688,6 +743,8 @@ class Network
             throw std::runtime_error("Recognizer width is outside the prepared bucket policy.");
         if (batch < 1 || batch > maximumBatch_)
             throw std::runtime_error("TensorRT batch exceeds its prepared profile.");
+        if (replay_)
+            return RunReplay(input, width, height, stream, profile, batch, mayCapture, host);
         if (batch != batch_ || width != width_ || height != height_)
         {
             if (!context_->setInputShape(input_.c_str(), nvinfer1::Dims4(batch, 3, height, width)))
@@ -735,6 +792,172 @@ class Network
     std::size_t OutputCapacityBytes() const { return outputBuffer_.Capacity() * sizeof(float); }
 
   private:
+    std::size_t OutputCount(const nvinfer1::Dims& shape) const
+    {
+        std::size_t count = 1;
+        if (shape.nbDims < 1 || shape.nbDims > 4)
+            throw std::runtime_error("Invalid TensorRT output rank.");
+        for (int i = 0; i < shape.nbDims; ++i)
+        {
+            if (shape.d[i] <= 0 ||
+                count > maximumOutputFloats_ / static_cast<std::size_t>(shape.d[i]))
+                throw std::runtime_error("Invalid TensorRT output extent.");
+            count *= shape.d[i];
+        }
+        return count;
+    }
+    std::unique_ptr<nvinfer1::IExecutionContext> CreateReplayContext()
+    {
+        QElapsedTimer timer;
+        timer.start();
+        std::size_t before{}, after{}, total{};
+        Check(cudaMemGetInfo(&before, &total));
+        std::unique_ptr<nvinfer1::IExecutionContext> context(
+            engine_->createExecutionContext(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED));
+        Check(cudaPeekAtLastError());
+        if (!context)
+            throw TensorRtApiFailure("TensorRT replay execution context creation failed.");
+        context->setDeviceMemoryV2(replayArena_.Get(), replayArenaBytes_);
+        Check(cudaPeekAtLastError());
+        Check(cudaMemGetInfo(&after, &total));
+        replayContextBytes_ += before > after ? std::int64_t(before - after) : 0;
+        replayContextMs_ += timer.nsecsElapsed() / 1e6;
+        ++replayContextsCreated_;
+        return context;
+    }
+    // CUDA statuses after which a capture may be abandoned and the call run
+    // as a plain enqueue. Anything else is a fault and stays fatal.
+    static bool CaptureRefusal(cudaError_t status, bool structural)
+    {
+        switch (status) {
+        case cudaSuccess: case cudaErrorMemoryAllocation: case cudaErrorNotSupported:
+        case cudaErrorStreamCaptureUnsupported: case cudaErrorStreamCaptureInvalidated:
+        case cudaErrorStreamCaptureMerge: case cudaErrorStreamCaptureUnjoined:
+        case cudaErrorStreamCaptureIsolation: case cudaErrorStreamCaptureImplicit:
+            return true;
+        case cudaErrorInvalidValue:
+            return structural; // instantiate/upload refusing this graph
+        default:
+            return false;
+        }
+    }
+    bool RefuseCapture(cudaError_t status, cudaStream_t stream, bool structural = false)
+    {
+        if (!CaptureRefusal(status, structural))
+            throw CudaFailure(cudaGetErrorString(status));
+        const auto pending = cudaGetLastError();
+        if (!CaptureRefusal(pending, structural))
+            throw CudaFailure(cudaGetErrorString(pending));
+        cudaStreamCaptureStatus capturing{};
+        Check(cudaStreamIsCapturing(stream, &capturing));
+        if (capturing != cudaStreamCaptureStatusNone)
+            throw CudaFailure("TensorRT graph capture did not end.");
+        return false;
+    }
+    // Captures one enqueue of `context` into `executable`. Nothing executes
+    // during capture; the caller launches the graph. The capture is always
+    // ended before return, also when TensorRT refuses the enqueue.
+    bool Capture(nvinfer1::IExecutionContext& context, cudaGraphExec_t& executable, cudaStream_t stream,
+                 double& captureMs)
+    {
+        QElapsedTimer timer;
+        timer.start();
+        std::size_t before{}, after{}, total{};
+        Check(cudaMemGetInfo(&before, &total));
+        // Keep headroom for the rest of the application; refuse rather than
+        // push the device into allocation failures.
+        if (before < 256ull * 1024 * 1024) return false;
+        const auto began = cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal);
+        if (began != cudaSuccess) return RefuseCapture(began, stream);
+        const bool enqueued = context.enqueueV3(stream);
+        cudaGraph_t graph{};
+        const auto ended = cudaStreamEndCapture(stream, &graph);
+        struct GraphOwner {
+            cudaGraph_t graph;
+            ~GraphOwner() { if (graph) cudaGraphDestroy(graph); }
+        } owner{graph};
+        if (ended != cudaSuccess || !enqueued || !graph) return RefuseCapture(ended, stream);
+        cudaGraphExec_t instantiated{};
+        const auto made = cudaGraphInstantiateWithFlags(&instantiated, graph, 0);
+        if (made != cudaSuccess) return RefuseCapture(made, stream, true);
+        const auto uploaded = cudaGraphUpload(instantiated, stream);
+        if (uploaded != cudaSuccess) {
+            cudaGraphExecDestroy(instantiated); // never launched
+            return RefuseCapture(uploaded, stream, true);
+        }
+        executable = instantiated;
+        Check(cudaMemGetInfo(&after, &total));
+        replayGraphBytes_ += before > after ? std::int64_t(before - after) : 0;
+        captureMs += timer.nsecsElapsed() / 1e6;
+        return true;
+    }
+    nvinfer1::Dims RunReplay(float* input, int width, int height, cudaStream_t stream,
+                             TensorRtProfile& profile, int batch, bool mayCapture, QElapsedTimer& host)
+    {
+        int shapeSets = 0, addressSets = 0;
+        double contextMs = replayContextMs_, captureMs = 0;
+        auto* output = outputBuffer_.Get();
+        if (output != replayOutput_)
+            throw std::logic_error("TensorRT replay output storage moved.");
+        const auto decision = replay_->Plan({batch, height, width}, input, output, mayCapture);
+        if (decision.create) {
+            if (!spareContexts_.empty()) {
+                replaySlots_.push_back({std::move(spareContexts_.back())});
+                spareContexts_.pop_back();
+            } else replaySlots_.push_back({CreateReplayContext()});
+        }
+        auto& slot = replaySlots_.at(std::size_t(decision.slot));
+        if (decision.drain) Check(cudaStreamSynchronize(stream));
+        if (decision.dropGraph && slot.graph) {
+            Check(cudaGraphExecDestroy(slot.graph));
+            slot.graph = nullptr;
+        }
+        if (decision.reshape) {
+            if (!slot.context->setInputShape(input_.c_str(), nvinfer1::Dims4(batch, 3, height, width)))
+                throw std::runtime_error("TensorRT shape rejected.");
+            ++shapeSets;
+            slot.shape = slot.context->getTensorShape(output_.c_str());
+            if (OutputCount(slot.shape) > outputBuffer_.Capacity())
+                throw std::runtime_error("TensorRT output exceeds the replay output storage.");
+        }
+        if (decision.rebind) {
+            if (!slot.context->setTensorAddress(input_.c_str(), input) ||
+                !slot.context->setTensorAddress(output_.c_str(), output))
+                throw std::runtime_error("TensorRT OCR binding failed.");
+            addressSets += 2;
+        }
+        replay_->Bound(decision.slot);
+        auto launch = decision.launch;
+        if (launch == graph_cache::Launch::Capture && !Capture(*slot.context, slot.graph, stream, captureMs)) {
+            replay_->Refuse(decision.slot);
+            launch = graph_cache::Launch::Plain;
+        }
+        if (launch == graph_cache::Launch::Plain) {
+            if (!slot.context->enqueueV3(stream))
+                throw std::runtime_error("TensorRT OCR enqueue failed.");
+        } else {
+            // A failed launch may have partly executed: fatal, as an enqueue fault.
+            Check(cudaGraphLaunch(slot.graph, stream));
+        }
+        replay_->Ran(decision.slot, launch);
+        profile.NetworkCall(detection_, batch, profile.Enabled() ? host.nsecsElapsed() / 1e6 : 0,
+                            shapeSets, addressSets);
+        profile.GraphCall(int(launch), decision.create, replayContextMs_ - contextMs, captureMs, decision.drain,
+                          decision.evicted);
+        return slot.shape;
+    }
+    struct ReplaySlot {
+        std::unique_ptr<nvinfer1::IExecutionContext> context;
+        cudaGraphExec_t graph{};
+        nvinfer1::Dims shape{};
+        ReplaySlot(std::unique_ptr<nvinfer1::IExecutionContext> created) : context(std::move(created)) {}
+        ReplaySlot(ReplaySlot&& other) noexcept
+            : context(std::move(other.context)), graph(std::exchange(other.graph, nullptr)), shape(other.shape) {}
+        ReplaySlot& operator=(ReplaySlot&&) = delete;
+        // The owning State destroys its Networks only after its stream is
+        // known complete, so no launch of this graph can still be queued.
+        ~ReplaySlot() { if (graph) cudaGraphExecDestroy(graph); }
+    };
     // Declared first, destroyed last, after contexts/engines/output storage.
     std::unique_ptr<PublicResources> publicResources_;
     QByteArray publicPlan_;
@@ -752,6 +975,16 @@ class Network
     int batch_{}, width_{}, height_{};
     nvinfer1::Dims shape_{};
     float *boundInput_{}, *boundOutput_{};
+    // Graph replay (private experiment). Destroyed before the arena, the
+    // output storage and the engine they refer to.
+    DeviceBuffer<unsigned char> replayArena_;
+    std::int64_t replayArenaBytes_{}, replayContextBytes_{}, replayGraphBytes_{};
+    std::int64_t replayContextsCreated_{};
+    double replayContextMs_{};
+    const float* replayOutput_{};
+    std::optional<graph_cache::Policy> replay_;
+    std::vector<std::unique_ptr<nvinfer1::IExecutionContext>> spareContexts_;
+    std::vector<ReplaySlot> replaySlots_;
 };
 struct State
 {
@@ -1135,6 +1368,19 @@ class TensorRtRecognizer final : public Recognizer
         reconcile_ = reconcile == "1" || reconcile == "keep";
         reconcileKeepAll_ = reconcile == "keep";
         invalidReconcile_ = !reconcile.isEmpty() && reconcile != "0" && !reconcile_;
+        // Private experiment, off by default. See uct_graph_cache.hpp. The
+        // shape count exists to compare cache sizes; 1 is one graph per engine.
+        const auto graph = qEnvironmentVariable("OKUFLOW_UCT_TEST_TRT_GRAPH");
+        const auto shapes = qEnvironmentVariable("OKUFLOW_UCT_TEST_TRT_GRAPH_SHAPES");
+        invalidGraph_ = !graph.isEmpty() && graph != "0" && graph != "1";
+        if (graph == "1") graphShapes_ = graph_cache::kDefaultShapes;
+        if (!shapes.isEmpty()) {
+            bool digits = shapes.size() <= 2 && std::all_of(shapes.begin(), shapes.end(),
+                [](QChar c) { return c >= QLatin1Char('0') && c <= QLatin1Char('9'); });
+            const int value = digits ? shapes.toInt() : 0;
+            if (graph != "1" || value < 1 || value > graph_cache::kMaximumShapes) invalidGraph_ = true;
+            else graphShapes_ = value;
+        }
     }
     ~TensorRtRecognizer() override
     {
@@ -1160,6 +1406,11 @@ class TensorRtRecognizer final : public Recognizer
         }
         if (invalidReconcile_) {
             status_.detail = "OKUFLOW_UCT_TEST_REGION_RECONCILE accepts only 0, 1 or keep.";
+            return status_;
+        }
+        if (invalidGraph_) {
+            status_.detail = "OKUFLOW_UCT_TEST_TRT_GRAPH accepts only 0 or 1; OKUFLOW_UCT_TEST_TRT_GRAPH_SHAPES "
+                             "accepts 1 to 16 and only with OKUFLOW_UCT_TEST_TRT_GRAPH=1.";
             return status_;
         }
         assets_ = LoadPaddleAssets(root_,detectorTier_,recognizerTier_);
@@ -1350,6 +1601,7 @@ class TensorRtRecognizer final : public Recognizer
                 auto* windows = state_->regionWindows.Reserve(std::size_t(regionCount) * capacity);
                 state_->hostQuad.Reserve(capacity); // no pinned reallocation behind a later queued upload
                 QSize queued;
+                bool queuedDetection = false;
                 for (int index = 0; index < regionCount; ++index) {
                     if (cancelled.load()) {
                         // Queued detection still reads the owned image.
@@ -1363,8 +1615,10 @@ class TensorRtRecognizer final : public Recognizer
                     // Equal shapes queue behind each other. A shape change first
                     // waits for the stream, as recognition groups do: scratch
                     // buffers and the detector output may be reallocated.
-                    if (queued.isValid() && size != queued)
+                    if (queued.isValid() && size != queued) {
                         profile.Wait(true, [&] { Check(cudaStreamSynchronize(state_->stream)); });
+                        queuedDetection = false;
+                    }
                     queued = size;
                     auto *input = state_->detectorInput.Reserve(static_cast<std::size_t>(size.width()) *
                                                                 size.height() * 3);
@@ -1373,9 +1627,12 @@ class TensorRtRecognizer final : public Recognizer
                                        size.width(), size.height(), state_->stream);
                     });
                     nvinfer1::Dims shape{};
+                    // Capture only with no earlier detection of this read queued.
+                    const bool mayCapture = !queuedDetection;
+                    queuedDetection = true;
                     profile.Measure(TensorRtProfile::Detector, state_->stream, [&] {
                         shape = state_->detector->Run(input, size.width(), size.height(), state_->stream,
-                                                      profile);
+                                                      profile, 1, mayCapture);
                     });
                     if (shape.nbDims != 4 || shape.d[0] != 1 || shape.d[1] != 1)
                         throw std::runtime_error("Unexpected GPU detector output.");
@@ -1574,7 +1831,8 @@ class TensorRtRecognizer final : public Recognizer
                     throw std::runtime_error("Invalid ordered-group recognizer canvas.");
                 return width;
             };
-            const auto issueGroup = [&](int first, int slot) {
+            // A look-ahead group is issued while the previous group still runs.
+            const auto issueGroup = [&](int first, int slot, bool lookAhead) {
                 groupLifetime.Queue(slot);
                 IssuedGroup group;
                 group.first = first;
@@ -1600,7 +1858,7 @@ class TensorRtRecognizer final : public Recognizer
                     nvinfer1::Dims recShape{};
                     profile.Measure(TensorRtProfile::Recognizer, state_->stream, [&] {
                         recShape = state_->recognizer->Run(crop, width, 48, state_->stream,
-                                                          profile, batchSize);
+                                                          profile, batchSize, !lookAhead && batchFirst == 0);
                     });
                     if (recShape.nbDims != 3 || recShape.d[0] != batchSize ||
                         recShape.d[2] != assets_.dictionary.size() || recShape.d[1] <= 0)
@@ -1663,7 +1921,7 @@ class TensorRtRecognizer final : public Recognizer
                 return output;
             }
             std::optional<IssuedGroup> current;
-            if (count > 0) current = issueGroup(0, 0);
+            if (count > 0) current = issueGroup(0, 0, false);
             while (current)
             {
                 const IssuedGroup group = *current;
@@ -1672,7 +1930,7 @@ class TensorRtRecognizer final : public Recognizer
                 if (next < count && !cancelled.load() && groupWidth(next) == group.width &&
                     std::min(submissionGroup, count - next) == group.size)
                 {
-                    current = issueGroup(next, 1 - group.slot);
+                    current = issueGroup(next, 1 - group.slot, true);
                 }
                 profile.Wait(false, [&] { Check(cudaEventSynchronize(state_->groupEvents[group.slot])); }); // this group's completion
                 groupLifetime.Completed(group.slot);
@@ -1736,7 +1994,7 @@ class TensorRtRecognizer final : public Recognizer
                         cancelGroups();
                         return output;
                     }
-                    current = issueGroup(next, 1 - group.slot);
+                    current = issueGroup(next, 1 - group.slot, false);
                 }
             }
             ++regionIndex;
@@ -1746,6 +2004,9 @@ class TensorRtRecognizer final : public Recognizer
             });
             output.ok = !cancelled.load();
             output.cancelled = cancelled.load();
+            if (state_->detector->ReplayEnabled())
+                profile.GraphReceipt({{"detector", state_->detector->ReplayReceipt()},
+                                      {"recognizer", state_->recognizer->ReplayReceipt()}});
             profile.Emit(state_->recognizerBatch,state_->variableWidth);
             if (cropDiagnostic_) {
                 if (frozen) TensorRtCropDiagnosticAccess::Replayed(*cropDiagnostic_);
@@ -1798,10 +2059,12 @@ class TensorRtRecognizer final : public Recognizer
         const auto detectorTier = detectorTier_, recognizerTier = recognizerTier_;
         const int recognizerBatch = recognizerBatch_;
         const bool variableWidth = variableWidth_, allowWidthPreparation = allowWidthPreparation_;
+        const int graphShapes = graphShapes_;
         try
         {
             std::thread([preparation, assets, sdk, recognizerBatch, variableWidth, allowWidthPreparation,
-                         precisionRequest, publicRequest, attestationObserver, experiment, detectorTier, recognizerTier] {
+                         precisionRequest, publicRequest, attestationObserver, experiment, detectorTier, recognizerTier,
+                         graphShapes] {
                 try
                 {
                     const auto baselinePolicy=public_bf16::BaselinePolicy(publicRequest);
@@ -2056,6 +2319,17 @@ class TensorRtRecognizer final : public Recognizer
                     }
                     ConfirmPublicCompletion(*state,cancelled);
                     state->detector->ReleaseBuildResources();state->recognizer->ReleaseBuildResources();
+                    if (graphShapes > 0) {
+                        // The stream was just confirmed complete; nothing is queued.
+                        // Contexts made now: three detector shapes covers the
+                        // whole frame and the tiles of one frame size; the
+                        // recognizer needs one per batch size and canvas.
+                        state->detector->EnableReplay(graphShapes, 3);
+                        state->recognizer->EnableReplay(graphShapes,
+                            state->recognizerBatch * (state->variableWidth ? 4 : 1));
+                        state->precisionDetail += QString("Experimental TensorRT graph replay, %1 shapes per engine. ")
+                            .arg(graphShapes);
+                    }
                     state->precisionDetail+=QString("Selected detector=%1/%2; selected recognizer=%3; attempted BF16 detector tensor smoke=%4/4. ")
                         .arg(ModelTierToken(detectorTier),state->detectorBf16 ? "BF16-linear" : "FP32",ModelTierToken(recognizerTier))
                         .arg(state->detectorSmoke.size());
@@ -2145,6 +2419,8 @@ class TensorRtRecognizer final : public Recognizer
     gpu::DetectKernels detectKernels_{};
     bool invalidDetectKernels_{}, explicitDetectKernels_{};
     bool reconcile_{}, reconcileKeepAll_{}, invalidReconcile_{};
+    int graphShapes_{}; // 0: plain enqueue (default)
+    bool invalidGraph_{};
     std::shared_ptr<TensorRtCropDiagnostic> cropDiagnostic_;
     const runtime_precision::Request precisionRequest_;
     const public_bf16::Request publicRequest_;
