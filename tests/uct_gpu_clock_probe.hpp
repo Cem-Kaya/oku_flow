@@ -7,7 +7,9 @@
 // wall-clock window so scripts/uct/gpu_clock_probe.py can attach nvidia-smi
 // power-state, clock and power samples. It changes no GPU or system setting.
 #include "uct_resident_diagnostic.hpp"
-#include "okuflow/cuda/uct_kernels.hpp"
+#if OKUFLOW_ENABLE_CUDA && OKUFLOW_UCT_TRT
+#include "okuflow/cuda/uct_kernels.hpp" // needs the CUDA headers: absent from the CPU test build
+#endif
 #include <QDateTime>
 #include <QJsonArray>
 #include <QJsonObject>
