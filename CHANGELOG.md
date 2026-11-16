@@ -5,17 +5,25 @@
 - Shorten cached GPU text-engine startup using system SHA-256 on Windows and
   reusing the verified owned source digest for recipe identity. All pins,
   plan checks and detector smoke shapes remain required before activation.
-  Existing private TensorRT profiling now reports preparation wall phases.
+  Measured in the OCR test harness on an RTX 4090 with a warm file cache: about
+  3.85 s to 0.85 s from creating the GPU reader to its first result. A stopped
+  or failed hash now ends preparation instead of being treated as a changed
+  file. Existing private TensorRT profiling now reports preparation wall
+  phases.
+
+- Score detected text regions with a faster sum on every supported GPU. The
+  score can differ from the previous one by float rounding, which the owner
+  accepted for the speed; no page of the test corpora (212 scenes and pages)
+  changed. Measured on an RTX 4090, OCR worker time fell from 47.4 to 31.8 ms
+  on a generated frame without text and from 73.5 to 65.2 ms on a bent page;
+  other scenes are unchanged. See docs/uct_okuread_port.md, round 9.
 
 - Speed up GPU text-region extraction with identical results: shorter
   component-root walks, per-warp box scoring with an exact parallel float sum
   and a wider ribbon merge. Measured on an RTX 4090, OCR worker time fell from
   80.9 to 45.7 ms on a generated frame without text and by 5 to 17 percent on
   six real lecture frames; dense documents moved by about 3 percent, which is
-  at the edge of what the measurement can show. The new box scoring is used
-  on RTX 30 and 40 series GPUs, where it is verified identical; other GPUs
-  keep the original box kernel and gain only the root and ribbon changes. See
-  docs/uct_okuread_port.md.
+  at the edge of what the measurement can show. See docs/uct_okuread_port.md.
 
 - Clarify the public Android privacy policy: OkuFlow Camera is an accessibility-focused
   USB companion, normal viewing does not upload camera images to the developer,

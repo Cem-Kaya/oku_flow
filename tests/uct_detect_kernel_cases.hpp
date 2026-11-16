@@ -186,6 +186,7 @@ inline void KernelsMatchReference()
     FixtureStream stream;
     int ribbonFits = 0, ribbonRefusals = 0, eligible = 0, largest = 0;
     int treeMaps = 0, treeCountChanges = 0, treeBoxes = 0, treeScoreChanges = 0;
+    double treeLargest = 0;
     QStringList failures;
     bool every = true; // the first size runs every variant, the others the ten clean shapes
     for (const QSize size : {QSize(960, 544), QSize(928, 960), QSize(333, 257), QSize(96, 64)}) {
@@ -242,11 +243,17 @@ inline void KernelsMatchReference()
         }
         // The default tree sum is not the original's rounding. What it must
         // hold: the same result on every run, and against the original the
-        // same labels, components and box geometry with scores that differ
-        // only by rounding. A score that crosses the acceptance threshold
-        // changes the count; those maps are counted, not compared further.
+        // same labels and box geometry with scores that differ by no more
+        // than the original's own accumulated rounding: adding n values in
+        // [0, 1] one at a time in float is off by at most n * 2^-24 of the
+        // sum, and the double tree is exact to far below that. A score that
+        // crosses the acceptance threshold changes the count; those maps are
+        // counted, not compared further.
         for (int variant = 0; variant < (every ? 30 : 10); ++variant) {
             const auto values = Map(w, h, variant);
+            const bool plain = std::all_of(values.begin(), values.end(),
+                [](float value) { return std::isfinite(value) && value >= 0.f && value <= 1.f; });
+            const float bound = float(pixels) * 0x1p-24f;
             Output reference, tree, again;
             QVERIFY(run(values, true, gpu::DetectKernels::Reference(), reference));
             QVERIFY(run(values, true, gpu::DetectKernels{}, tree));
@@ -261,9 +268,11 @@ inline void KernelsMatchReference()
                 const auto &p = reference.quads[std::size_t(i)], &q = tree.quads[std::size_t(i)];
                 QVERIFY2(SameBits(p.xy, q.xy, sizeof(p.xy)) && p.componentRoot == q.componentRoot,
                          "tree sum changed box geometry");
-                if (std::isfinite(p.score)) {
-                    QVERIFY2(std::abs(p.score - q.score) <= 4e-6f * std::max(1.f, std::abs(p.score)),
+                if (plain) {
+                    const float difference = std::abs(p.score - q.score);
+                    QVERIFY2(difference <= bound * p.score,
                              qPrintable(QStringLiteral("tree score %1 against %2").arg(q.score).arg(p.score)));
+                    treeLargest = std::max(treeLargest, double(difference) / p.score);
                     treeScoreChanges += !SameBits(&p.score, &q.score, sizeof(float));
                     ++treeBoxes;
                 }
@@ -284,7 +293,8 @@ inline void KernelsMatchReference()
     QVERIFY2(treeBoxes > 1000 && treeCountChanges * 2 <= treeMaps,
              qPrintable(QStringLiteral("tree maps %1 count changes %2 boxes %3").arg(treeMaps).arg(treeCountChanges).arg(treeBoxes)));
     qInfo() << "tree box sum: maps" << treeMaps << "maps with another count" << treeCountChanges
-            << "boxes compared" << treeBoxes << "scores with other bits" << treeScoreChanges;
+            << "boxes compared" << treeBoxes << "scores with other bits" << treeScoreChanges
+            << "largest relative score difference" << treeLargest;
 }
 
 // boxesAddGroup against the definition it claims to equal: adding the masked

@@ -20,10 +20,12 @@ chalkboard lecture frames. Worker time is not camera-to-paint latency.
 | OkuRead idea | Here |
 | --- | --- |
 | Path-compressing component roots, four-bin ribbon merge | Round 1, on by default, identical output |
-| Cooperative box scoring | Round 1, rewritten: OkuRead's exact variant gave no gain here. On by default with CUDA 12.9 on sm_86 and sm_89 (RTX 30 and 40 series) |
-| Fixed-tree box scoring | Round 1, private comparison switch only: it rounds differently |
+| Cooperative box scoring | Round 1, rewritten: OkuRead's exact variant gave no gain here. Exact, selectable; superseded as the default by the tree sum in round 9 |
+| Fixed-tree box scoring | Round 9, on by default on every GPU: it rounds differently, which the owner accepted; no corpus page changed |
 | Collect detections across tiles before recognition; a complete detection supersedes its covered edge fragment | Round 2, private switch, off: changes output |
 | Replay TensorRT enqueue as CUDA graphs, one execution context per cached shape | Round 3, private switch, off: identical output; startup and the first read of a new frame size cost more |
+| Small recognizer first, Medium retries for doubtful crops | Round 4, built and measured, not merged: misreads `O0` as `00`, slower on sparse frames |
+| Streaming verification, hashing each file once, faster SHA-256 | Round 5, on by default: startup to first GPU result 3.85 s to 0.85 s, identical output |
 | Composition flush before capture, capture targets, overlay raster | Not applicable: OkuFlow analyses camera, video and file frames it already owns |
 | Speculative ink retries | Not applicable: OkuFlow has no retry fits |
 | Reuse-cache crop order defect | Not applicable: OkuFlow has no OCR reuse cache and never reorders crops |
@@ -167,8 +169,8 @@ it stays a private switch. The remaining exact cost on that scene is one warp
 per very large component; real lecture frames do not have such components
 (their regions stage is now 1.7 to 2.5 ms), so it was not pursued. The group
 sum is an associative scan over a step total and a parity state, so several
-warps could share one large component and stay exact; that is the route to
-the missed target if textless frames with large blobs turn out to matter.
+warps could share one large component and stay exact. That route was not
+needed: round 9 makes the tree sum the default instead.
 
 ### Review
 
@@ -386,9 +388,13 @@ slower, or an accounting of what the first use costs and after how many reads
 it is repaid, also with `OKUFLOW_UCT_TEST_REGION_RECONCILE=1` in both arms.
 
 Result: output identical everywhere it was measured; lecture frames 1.23x to
-1.35x and dense documents 1.09x to 1.10x warm. The first-read target is met
-except where a scene brings a frame size the process has not read before:
-2 of 18 scenes, accounted for below. Startup takes 0.36 to 0.98 s longer.
+1.35x pooled (one frame is 1.197x in one of its two cohorts) and dense
+documents 1.09x to 1.10x warm. First reads, as this harness measures them, are
+within target except where a scene brings a frame size the process has not
+read before: 2 of 18 scenes, accounted for below. The harness reads its first
+scene during startup, so later scenes' first reads inherit contexts and
+graphs; a scene's first read in a fresh process was not measured. Startup
+takes 0.36 to 0.98 s longer.
 
 `OKUFLOW_UCT_TEST_TRT_GRAPH=1` selects it. It stays off by default in this
 round; see "Default" below.
@@ -436,9 +442,13 @@ one graph per engine would be recaptured on almost every call.
   invalidated, isolation, implicit, merge, unjoined, out of memory, not
   supported, and an invalid value from instantiate or upload) end the capture,
   run the call as a plain enqueue and mark the shape so it is never captured
-  again; after 32 refused shapes capture stops. Capture is also refused with
-  less than 256 MiB free. Every other failure is fatal, as before, and goes
-  through the existing State retirement. No refusal occurred in any run.
+  again; with the 32nd refused shape capture stops. With less than 256 MiB
+  free a capture is only put off: the call runs plainly and the shape is
+  offered again later. A TensorRT enqueue that fails inside a capture without
+  a capture-specific CUDA status is a fault, like any failed enqueue. Every
+  other failure is fatal, as before, and goes through the existing State
+  retirement. No refusal occurred in the profiled runs; the timing runs
+  recorded no receipts.
 - **Lifetime.** A drain (`cudaStreamSynchronize`) precedes every graph
   destruction and every reshape of a used context. Otherwise graphs and
   contexts are destroyed with their Network, which the State releases only
@@ -524,9 +534,16 @@ the gain is 1.196x warm and 1.113x for first reads: lecture frames 1.20x to
 
 On the varied page sizes of the title placements and the labelled set, more
 first reads pay for a new detector context: 7 of 62 and 8 of 40 first reads
-are more than 10 percent slower, while the first-read geometric means are
-1.101x and 1.061x faster. A live source keeps one frame size, so after
-startup it pays this at most once.
+are more than 10 percent slower (the largest is +204 ms on a 1080x1920
+page), while the first-read geometric means are 1.101x and 1.061x faster. A
+live source keeps one frame size, so after startup it pays this at most once.
+
+One thing in the title run is not explained: the first few reads of a process
+with the switch on take about twice as long as with it off even after the
+scene's first read (the first three 1280x720 placements of the reverse cohort:
+31 to 41 ms against 18 ms; the same placements later in the process take 15 to
+16 ms). Four placements therefore show 0.64x to 0.76x warm in that run, which
+has one warm pass. Round 10 is to find the cause.
 
 ### Output
 
@@ -559,18 +576,19 @@ with 2 MiB granularity, approximate, not exclusive):
 | Detector | 289.6 MB, replaces the preparation context's own | 5, about 12.6 MB | 5, about 10.5 MB | 3.7 MB (960x960) instead of 2.1 MB for a 1920x1080 frame |
 | Recognizer | 169.9 MB, replaces the preparation context's own | 8, about 18.9 MB | 8, about 12.6 MB | unchanged (batch eight) |
 
-About 55 MB more in total with eight shapes. One graph per engine adds about
-2 MB.
+About 55 MB more in total in that run, with five detector and eight recognizer
+slots in use. With all eight slots of both engines in use the same per-slot
+figures give about 70 MB; that bound was not measured. One graph per engine
+adds about 2 MB.
 
 ### Default
 
-Off in this branch. Recommendation: enable it by default for the TensorRT
-reader. Output was identical on every set measured, the warm gain is largest
-on the live lecture frames this reader runs on continuously, and the costs
-are bounded: preparation is about 1 s longer while the CPU reader serves, a
-frame size first seen after startup costs one read 80 to 180 ms, and about
-55 MB of device memory are added. Before enabling it, check on one more GPU
-generation: every measurement here is one RTX 4090.
+Off. The implementer recommended turning it on after a check on one more GPU
+generation. The council (below) agreed on merging it switched off and named
+what is missing before it can be on: the configurations and failure paths
+listed under "Not established", memory pressure that today retires the reader
+where the plain path would carry on, and true first-read measurements. Round
+10 takes those conditions.
 
 ### Not established
 
@@ -581,7 +599,62 @@ reads use other detector shapes; they were not run with the switch on and
 would create or evict detector contexts. No capture refusal or 256 MiB
 headroom refusal was observed, so those fallbacks are read and covered by the
 model-free test, not exercised on the GPU. No owner camera capture was
-available.
+available. Creating an execution context on the read path, or failing to
+create the replay contexts during preparation, throws and retires the GPU
+State where the plain path would have continued. The lifetime test cancels
+after three warm reads of one image, so it exercises replays, not captures or
+evictions.
+
+### Review
+
+Council, as submitted (`8b64733`): Claude Opus 5.5 7/10, GPT-6.1 Sol 7/10,
+Gemini 4 Hydrogen 8/10; all three for merging it switched off. None found a
+lifetime or ordering defect or a change with the switch off. Applied on the
+integration branch: a failed capture enqueue is a refusal only with a
+capture-specific status; low free memory defers instead of refusing; a moved
+tensor address drains whenever the slot was used; capture stops with the 32nd
+refused shape as documented; a graph handle is cleared before its destroy is
+checked; the output receipt used for "identical" now also covers the ribbon
+diagnostics (`ExactOutputBytes`; the runs above predate that and cover text,
+order, dispositions, geometry, confidence and colours); the wording of the
+result, first reads, refusals and memory above. Left for round 10: fallback
+instead of retirement under memory pressure, the untested configurations,
+fault injection on the GPU, a lifetime test that cancels during captures and
+evictions, first reads in fresh processes, and the slow start in the title
+run.
+
+On the merged integration build (`int1-ab-v1`, same protocol) the switch
+measures 1.178x warm and 1.131x for first reads with identical output on 18 of
+18 scenes, and 1.511x warm together with region reconciliation.
+
+## Round 4: Small recognizer first, Medium for doubtful crops (not merged)
+
+OkuRead recognizes with its Small model first and retries doubtful crops on
+Medium. Target stated before the work: at least 1.30x warm on every dense
+scene, no scene slower, and no new misreading of the critical symbols the
+owner's earlier acceptance work guards (`docs/uct_batch8_quality_acceptance.md`).
+
+Built by GPT-6.1 Sol behind `OKUFLOW_UCT_TEST_RECOGNIZER_CASCADE=1` on branch
+`perf/okuread-port-r4`, commit `5a9b8c9`. It is not merged. Measured on the
+RTX 4090 (evidence `r4-cascade-ab-1`, `r4-cascade-reconcile-ab-1`,
+`r4-cascade-heldout-a-1`, `-b-1`, `r4-cascade-profile-1`):
+
+| Measure | Result |
+| --- | --- |
+| Warm, geometric mean over 18 scenes | 1.083x; 1.123x with region reconciliation on in both arms |
+| Dense scenes | 1.14x to 1.56x: target met on some, not all |
+| Sparse real frames | up to 21.3 percent slower: the cascade waits for each batch and gives up the look-ahead group |
+| Critical symbols | a serial `O0` is read as `00` on both 1920x1080 slide scenes: the guard fails |
+| Labelled exact matches, 88 pages | 12,301 to 12,398; with reconciliation 12,784 to 12,861; one group of 48 pages gets worse |
+| Device memory | +158 MiB for the second recognizer |
+| Startup to first result | +1.1 to +1.3 s |
+
+Council on the branch: Claude Opus 5.5 7/10, GPT-6.1 Sol 7/10, Gemini 4
+Hydrogen 7/10, all three for keeping it on its branch. The `O0` misreading is
+the same one that kept the Small recognizer from being promoted before, and a
+better scheduler would not change it, so the code is not carried in the
+reader. The branch and its evidence are kept.
+
 
 ## Round 5: cached-engine startup verification
 
@@ -730,3 +803,93 @@ CMake path, then passed via the prepared Visual Studio CTest. Initial edits
 also hit a documentation encoding error before any document write; UTF-8 append
 fixed it. No preload, verification deferral, concurrency, context cache or
 smoke-shape removal was attempted. No default changed recognized output.
+
+### Scope of the startup figure
+
+"Startup to first result" is measured from constructing the reader to its
+first GPU result in the corpus harness: CUDA is already initialized, the file
+cache is warm, and the figure includes the first read of the cohort's first
+scene (about 24 ms in the reverse cohorts and about 207 ms in the forward
+ones, which is why the two orders differ). With three forward and two reverse
+processes the median is a forward process. Not measured: a cold file cache,
+the first session after boot, the real application's model hand-off, and a
+CPU without SHA instructions (the test CPU has them; Intel desktop CPUs before
+the 11th generation do not and will gain less from the hash change).
+`LoadPaddleAssets` is shared with the CPU Paddle reader, whose startup changes
+with it and was not measured.
+
+### Review
+
+Council, as submitted (`09ba2bd`): Claude Opus 5.5 7/10, GPT-6.1 Sol 7/10,
+Gemini 4 Hydrogen 8/10. All three confirmed that the reused digest covers the
+same owned bytes and that every pin, plan and smoke check still runs in order
+before activation, and all three supported having it on by default once the
+following were fixed. Applied while merging: an empty digest (a stopped or
+failed hash) is never compared; it raises `VerificationInterrupted`, which is
+terminal, is not remembered as a changed artifact and cannot fall through to
+another plan, an engine build or the FP32 fallback (before, cancelling during a
+plan hash could reach the builder libraries); a cached plan needs a 32-byte
+digest prefix and a non-empty payload; `sha256::Digest` latches every rejected
+operation and gives one result per object, with or without CNG; the header
+links `bcrypt` itself, so the test targets that compile the OCR sources
+without the shared OCR link settings still link; tests with varied content, a
+read error after several chunks and direct failure sequences. Not done: CNG
+failure injection, an input above 4 GiB, an end-to-end GPU run with a tampered
+plan, and reporting a failed system hash as such where assets are loaded (it
+reports as missing or changed files and disables both Paddle readers).
+
+## Round 9: the faster box score as the default, on every GPU
+
+Round 1 missed its target for the textless scene because its exact box score
+still walks one large component on one warp. A second exact kernel that shares
+a component between warps was briefed and then dropped: the owner decided that
+differences at the level of float rounding are acceptable for speed, and that
+this holds for every GPU generation. The fixed-tree sum that round 1 kept as a
+private comparison is therefore the default now.
+
+Target (round 1's, carried over): "regions" stage of the textless scene under
+15 ms, with identical recognized output on every corpus page. Met: 26.4 to
+11.1 ms (`r1-kernels-attribution-4`), and no page changed.
+
+What changed: `DetectKernels` defaults to `treeBoxes` on every device, and the
+device-specific selection is gone from the reader. Each lane of a warp sums its
+pixels in double and a fixed shuffle tree combines the lanes. The kernel spells
+out its own membership test and summation order, so its score is the same on
+every GPU generation, which the original kernel's was not (its membership test
+depends on how the compiler built it for each architecture, see round 1). The
+exact raster-order variant remains selectable with
+`OKUFLOW_UCT_TEST_DETECT_KERNELS=roots,boxes,ribbons`, and
+`DetectKernels::Exact` names where that variant equals the original bit for
+bit.
+
+How large the difference is: the original adds the values of a component one
+at a time in float, so its own sum drifts with the number of pixels; the
+double tree does not. The scores therefore differ by the original's
+accumulated rounding, which is far more than one last bit on a large
+component: on the kernel test's 60 crafted detector maps 930 of 2,179 compared box scores differ in their bits, the largest by 0.025 percent of the score, and no map's box count changed. A difference
+reaches the output only when a component's mean lands that close to the 0.4
+acceptance threshold.
+
+Measured (`r9-tree-ab-v1`, build `bcd7082`, exact round 1 default against the
+tree sum selected by the switch, two cohorts of five warm reads, RTX 4090):
+
+| Scene | Exact ms | Tree ms | Speedup | First read ms, exact / tree |
+| --- | ---: | ---: | ---: | --- |
+| no-text-1080 | 47.40 | 31.84 | 1.489 | 48.15 / 33.67 |
+| book-curved-1080 | 73.53 | 65.22 | 1.127 | 76.28 / 66.06 |
+| every other scene | | | 0.96 to 1.03, inside the noise | |
+
+Geometric mean 1.031x warm and 1.035x for first reads. On the merged
+integration build the same comparison in the other direction gives 1.067x for
+the default against the exact selection (`int1-ab-v1`).
+
+Output, tree sum against the exact default, same executable: one identical
+complete-output hash on 18 of 18 scenes (two cohorts), 20 tuning pages, 88
+development pages, 24 fresh generated pages and 62 title placements, 212 in
+all (`r9-tree-ab-v1`, `r9-tree-id-*`; two of those runs lost their summary step
+to a script update under them and were compared from their raw reports with
+`raw_identity.py`). No page changed, so no recognized text changed.
+
+Not established: the kernel ran only on the RTX 4090. It uses no
+architecture-specific code, but RTX 20, 30 and 50 series cards were not run.
+The corpora contain no owner camera capture.

@@ -1432,10 +1432,13 @@ Math model-data URLs use versioned `uct-formula-tf32-v1` prerelease assets and p
 ## Detector post-processing comparison switch (2026-11-16)
 
 `OKUFLOW_UCT_TEST_DETECT_KERNELS` is a private comparison switch read once by
-the TensorRT recognizer. Unset selects `DetectKernels::ForDevice` for the GPU.
+the TensorRT recognizer. Unset selects the defaults on every GPU: compressed
+roots, the four-bin ribbon merge and the tree box sum (`roots,ribbons,tree`).
 `reference` selects the original detector post-processing kernels; a comma list
 of `roots`, `boxes`, `ribbons` and `tree` enables individual kernels on top of
-the originals. `tree` rounds box scores differently and is never a default. An
+the originals. `roots,boxes,ribbons` is the exact selection, bit-identical to
+the originals on RTX 30 and 40 series cards under the CUDA 12.9 toolkit. `tree`
+rounds box scores differently from the originals (round 9 of the port record). An
 empty or unknown value leaves the GPU backend unavailable with an explanatory
 status. It adds no setting, file or model. See `docs/uct_okuread_port.md`.
 
@@ -1465,8 +1468,8 @@ with `OKUFLOW_UCT_TEST_TRT_GRAPH=1`) bounds the shapes cached per engine for
 comparisons; 1 is one graph per engine. Recognized output is unchanged on every
 scene it was measured on, but the switch stays off by default. It adds no
 setting, file or model; device memory per engine is one activation arena (it
-replaces the preparation context's own) plus about 2 MiB per context and per
-graph. `OKUFLOW_UCT_GRAPH_LIFETIME_TEST=1` with `OKUFLOW_UCT_TEST_IMAGE` runs
+replaces the preparation context's own) plus about 2.5 MB per context and
+about 2 MB per graph, and 1.6 MB more detector output storage. `OKUFLOW_UCT_GRAPH_LIFETIME_TEST=1` with `OKUFLOW_UCT_TEST_IMAGE` runs
 the opt-in `optionalGraphReplayLifetime` check. See `docs/uct_okuread_port.md`.
 
 ## UCT preparation profile (round 5)
