@@ -25,8 +25,9 @@
 //   recycled: its context is reshaped, it is never destroyed and recreated.
 // - The read path never creates an execution context (creating one takes tens
 //   of milliseconds). The caller says whether a ready context is available
-//   (`canCreate`); without one a miss recycles the least recently used slot
-//   as if the cache were full, and the cache grows later.
+//   (`canCreate`); without one, while the cache is not full, a miss runs on
+//   the engine's plain overflow context exactly as the plain path would,
+//   evicts nothing, and the cache grows later.
 // - A shape whose capture was refused is not tried again; with the
 //   kMaximumRefusedShapes-th distinct refusal capture stops altogether. A
 //   refused shape still runs, as a plain enqueue. A capture that is only put
@@ -92,13 +93,14 @@ struct Decision {
     bool reshape{};   // set the slot's input shape
     bool rebind{};    // set the slot's tensor addresses
     bool evicted{};   // the slot held another shape that is now forgotten
+    bool overflow{};  // no slot: run on the plain overflow context (slot is -1)
     Launch launch{Launch::Plain};
 };
 
 struct Counters {
     std::uint64_t hits{}, misses{}, creates{}, evictions{}, rebinds{}, drains{};
     std::uint64_t plain{}, captures{}, replays{}, refusals{};
-    std::uint64_t starved{}; // misses below capacity that recycled for want of a ready context
+    std::uint64_t overflow{}; // misses below capacity run plainly for want of a ready context
 };
 
 class Policy
@@ -122,7 +124,6 @@ class Policy
     // `output`. The slot's bookkeeping is updated as if the decision succeeds,
     // but the slot is not usable again until Bound() confirms the binding.
     // `canCreate`: the caller has a ready execution context for a new slot.
-    // The very first slot is always created; the caller must have its context.
     Decision Plan(const Shape& shape, const void* input, const void* output, bool mayCapture,
                   bool canCreate = true)
     {
@@ -148,13 +149,18 @@ class Policy
             }
         } else {
             ++counters_.misses;
-            if (int(slots_.size()) < capacity_ && (canCreate || slots_.empty())) {
+            if (int(slots_.size()) < capacity_ && !canCreate) {
+                // No ready context yet: run plainly beside the cache.
+                ++counters_.overflow;
+                decision.overflow = true;
+                return decision;
+            }
+            if (int(slots_.size()) < capacity_) {
                 index = int(slots_.size());
                 slots_.push_back({});
                 decision.create = true;
                 ++counters_.creates;
             } else {
-                counters_.starved += int(slots_.size()) < capacity_;
                 // Recycle a slot whose binding failed first, else the least
                 // recently used one. Ties cannot occur: every use is stamped.
                 index = 0;
@@ -197,6 +203,8 @@ class Policy
         else if (launch == Launch::Capture) { slot.graph = true; ++counters_.captures; }
         else ++counters_.replays;
     }
+    // An overflow decision ran as a plain enqueue.
+    void RanOverflow() { ++counters_.plain; }
     // Capture of this slot's shape was refused; the caller runs it plainly.
     void Refuse(int index)
     {

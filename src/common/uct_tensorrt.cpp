@@ -765,11 +765,13 @@ class Network
     // Graph replay (OKUFLOW_UCT_TEST_TRT_GRAPH, uct_graph_cache.hpp). Called
     // once, after preparation confirmed the stream complete and before the
     // State is published. The preparation context already uses the shared
-    // activation arena (CreatePreparationContext) and becomes the first replay
-    // slot, so no context is created here: the others are made after the
-    // State is published (CreateSpareContext). Returns why this engine keeps
-    // the plain enqueue, or an empty string when replay is on. Only an
-    // allocation failure is a reason; other failures are thrown as before.
+    // activation arena (CreatePreparationContext) and stays as the plain
+    // overflow context: a shape without a cache slot runs on it exactly as
+    // the plain path would. No context is created here; the cache's contexts
+    // are made after the State is published (CreateSpareContext). Returns why
+    // this engine keeps the plain enqueue, or an empty string when replay is
+    // on. Only an allocation failure is a reason; other failures are thrown
+    // as before.
     QString EnableReplay(int capacity, int contexts, ReplayWork* work)
     {
         if (replay_ || capacity <= 0) return {};
@@ -792,10 +794,8 @@ class Network
         work_ = work;
         std::lock_guard lock(spare_.mutex);
         spare_.limit = std::clamp(contexts, 1, replay_->Capacity());
-        spare_.wanted = 1; // grows with the distinct shapes asked for (RunReplay)
+        spare_.wanted = 0; // grows with the distinct shapes asked for (RunReplay)
         spare_.contexts.reserve(std::size_t(spare_.limit));
-        spare_.contexts.push_back(std::move(context_));
-        spare_.made = 1;
         return {};
     }
     bool ReplayEnabled() const { return replay_.has_value(); }
@@ -876,7 +876,7 @@ class Network
             {"drains", qint64(count.drains)}, {"plain", qint64(count.plain)},
             {"captures", qint64(count.captures)}, {"replays", qint64(count.replays)},
             {"refusals", qint64(count.refusals)}, {"deferrals", qint64(replayDeferrals_)},
-            {"starved", qint64(count.starved)}, {"captureBlocked", replay_->Blocked()}};
+            {"overflow", qint64(count.overflow)}, {"captureBlocked", replay_->Blocked()}};
         std::lock_guard lock(spare_.mutex);
         receipt["contextsLimit"] = spare_.limit;
         receipt["contextsWanted"] = spare_.wanted;
@@ -895,7 +895,6 @@ class Network
     {
         QElapsedTimer host;
         if (profile.Enabled()) host.start();
-        int shapeSets = 0, addressSets = 0;
         if (variableWidth_ && (!recognizer_width::IsCanvas(width) || height != 48))
             throw std::runtime_error("Recognizer width is outside the prepared bucket policy.");
         if (batch < 1 || batch > maximumBatch_)
@@ -919,6 +918,21 @@ class Network
 #endif
             return RunReplay(input, width, height, stream, profile, batch, mayCapture, host);
         }
+        return RunPlain(input, width, height, stream, profile, batch, host);
+    }
+    const float *Output() const
+    {
+        return outputBuffer_.Get();
+    }
+    std::size_t OutputCapacityBytes() const { return outputBuffer_.Capacity() * sizeof(float); }
+
+  private:
+    // The plain enqueue on the one plain context: the whole path with replay
+    // off, and the overflow context's path with it on.
+    nvinfer1::Dims RunPlain(float *input, int width, int height, cudaStream_t stream,
+                            TensorRtProfile &profile, int batch, QElapsedTimer& host)
+    {
+        int shapeSets = 0, addressSets = 0;
         if (batch != batch_ || width != width_ || height != height_)
         {
             if (!context_->setInputShape(input_.c_str(), nvinfer1::Dims4(batch, 3, height, width)))
@@ -959,13 +973,6 @@ class Network
                             shapeSets, addressSets);
         return shape_;
     }
-    const float *Output() const
-    {
-        return outputBuffer_.Get();
-    }
-    std::size_t OutputCapacityBytes() const { return outputBuffer_.Capacity() * sizeof(float); }
-
-  private:
 #if defined(OKUFLOW_UCT_GRAPH_FAULT_HOOKS)
     bool FaultFires(graph_cache::Fault fault) const
     {
@@ -1161,11 +1168,20 @@ class Network
             shapesReported_ = replay_->Seen();
             {
                 std::lock_guard lock(spare_.mutex);
-                spare_.wanted = std::clamp(shapesReported_, 1, spare_.limit);
+                spare_.wanted = std::clamp(shapesReported_, 0, spare_.limit);
             }
             if (work_) work_->Notify();
         }
         Reached(graph_cache::Checkpoint::Planned);
+        if (decision.overflow) {
+            // No slot for this shape yet: exactly the plain path, on the
+            // overflow context. Nothing is drained, evicted or captured.
+            const auto shape = RunPlain(input, width, height, stream, profile, batch, host);
+            replay_->RanOverflow();
+            Reached(graph_cache::Checkpoint::Launched);
+            profile.GraphCall(int(graph_cache::Launch::Plain), false, 0, 0, false, false);
+            return shape;
+        }
         if (decision.create) {
             auto context = TakeSpareContext();
             if (!context) throw std::logic_error("TensorRT replay slot has no execution context.");
@@ -2688,16 +2704,19 @@ class TensorRtRecognizer final : public Recognizer
                                               state->recognizer->PlanReceipt("recognizer");
                     preparationProfile.Mark("completion-and-receipts");
                     preparation->phase.store(1, std::memory_order_release);
-                    // Graph replay: the other execution contexts are made here,
+                    // Graph replay: the cache's execution contexts are made here,
                     // after the engines are published, one per distinct shape
-                    // the worker has asked for and only while no read is in
-                    // flight, so they delay neither "ready" nor the read that
-                    // met the shape (it recycles a slot meanwhile). Contexts
-                    // asked for in one read are made in one burst after it.
-                    // This thread keeps the State alive until it stops: when
-                    // both engines have every context they can use, or at the
-                    // latest one context after the State retires. Nothing here
-                    // may fail the published preparation.
+                    // the worker has asked for. A shape without one runs on
+                    // the plain overflow context meanwhile. Creating a context
+                    // slows inference running at the same time, so each one
+                    // is started only while no read is in flight (the
+                    // application paces its reads, so it normally lands in
+                    // the gap after the read that asked for it). This thread
+                    // keeps the State alive
+                    // until it stops: when both engines have every context
+                    // they can use, or at the latest one context after the
+                    // State retires. Nothing here may fail the published
+                    // preparation.
                     if (graphShapes > 0) {
                         try {
                             auto& work = state->replayWork;
@@ -2705,19 +2724,22 @@ class TensorRtRecognizer final : public Recognizer
                             const auto needed = [&] {
                                 return state->recognizer->NeedsContext() || state->detector->NeedsContext();
                             };
+                            bool recognizerNext = true;
                             while (!stop() && !(state->recognizer->ContextsSettled() && state->detector->ContextsSettled())) {
                                 {
                                     std::unique_lock lock(work.mutex);
-                                    // The timeout covers a wake between the check and the wait.
-                                    work.wake.wait_for(lock, std::chrono::milliseconds(200), [&] {
+                                    // Sleep until a context is wanted and no read is in
+                                    // flight. RunReplay notifies under this mutex after
+                                    // raising the wanted count, and a read on ending.
+                                    work.wake.wait(lock, [&] {
                                         return work.stop.load() || (work.reading == 0 && needed());
                                     });
-                                    if (work.reading != 0) continue;
+                                    if (work.stop.load()) continue;
                                 }
-                                while (!stop() && needed()) {
-                                    if (state->recognizer->NeedsContext()) state->recognizer->CreateSpareContext();
-                                    if (!stop() && state->detector->NeedsContext()) state->detector->CreateSpareContext();
-                                }
+                                auto& first = recognizerNext ? *state->recognizer : *state->detector;
+                                auto& second = recognizerNext ? *state->detector : *state->recognizer;
+                                if (first.NeedsContext()) { first.CreateSpareContext(); recognizerNext = !recognizerNext; }
+                                else if (second.NeedsContext()) second.CreateSpareContext();
                             }
                             if (stop()) {
                                 state->recognizer->StopSpareContexts("State retired");

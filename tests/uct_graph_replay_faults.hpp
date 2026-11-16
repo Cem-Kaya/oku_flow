@@ -210,9 +210,9 @@ inline void Faults()
             break;
         case Fault::ContextCreationFails:
             QCOMPARE(receipt["recognizer"].toObject()["contextsStopped"].toString(), QString("context creation failed"));
-            QCOMPARE(Count(receipt, "recognizer", "contextsCreated"), qint64(1));
-            QVERIFY(Count(receipt, "recognizer", "starved") > 0);
-            QVERIFY(Count(receipt, "detector", "contextsCreated") > 1);
+            QCOMPARE(Count(receipt, "recognizer", "contextsCreated"), qint64(0));
+            QVERIFY(Count(receipt, "recognizer", "overflow") > 0);
+            QVERIFY(Count(receipt, "detector", "contextsCreated") > 0);
             break;
         case Fault::ArenaUnavailable:
             QVERIFY(!receipt["detector"].toObject()["enabled"].toBool());

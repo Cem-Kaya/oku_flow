@@ -164,28 +164,33 @@ inline void Policies()
     QCOMPARE(d.slot, 1); // the unbound slot again, not slot 0's graph
     QVERIFY(failing.HasGraph(0));
 
-    // Without a ready context a miss recycles a slot (as if the cache were
-    // full) and counts as starved; the very first slot is always created.
+    // Without a ready context a miss below capacity runs on the plain overflow
+    // context: no slot, no eviction, no drain. A full cache still recycles.
     Policy starving(4);
     d = starving.Plan(n8, &in, &out, true, false);
-    QVERIFY(d.create && d.slot == 0);
-    starving.Bound(d.slot);
-    starving.Ran(d.slot, d.launch);
+    QVERIFY(d.overflow && d.slot == -1 && !d.create && !d.evicted && !d.drain && d.launch == Launch::Plain);
+    starving.RanOverflow();
+    QCOMPARE(starving.Slots(), 0);
+    d = Run(starving, n8, &in, &out); // a context is ready now
+    QVERIFY(d.create && d.slot == 0 && !d.overflow);
     d = starving.Plan(n3, &in, &out, true, false);
-    QVERIFY(!d.create && d.slot == 0 && d.reshape && d.evicted && d.drain);
-    starving.Bound(d.slot);
-    starving.Ran(d.slot, d.launch);
-    QCOMPARE(starving.Count().starved, std::uint64_t(1));
-    QCOMPARE(starving.Slots(), 1);
-    // Once a context is ready the cache grows again; a full cache is not starved.
-    d = Run(starving, n8, &in, &out);
-    QVERIFY(d.create && d.slot == 1);
+    QVERIFY(d.overflow && !d.evicted);
+    starving.RanOverflow();
+    QCOMPARE(Run(starving, n8, &in, &out).launch, Launch::Capture); // n8 kept its slot
+    QCOMPARE(starving.Count().overflow, std::uint64_t(2));
+    QCOMPARE(starving.Count().plain, std::uint64_t(3));
+    // Once contexts are ready the cache grows again; a full cache recycles
+    // instead of overflowing, whatever the caller says.
+    Run(starving, n3, &in, &out);
     Run(starving, n5, &in, &out);
     Run(starving, whole, &in, &out);
     QCOMPARE(starving.Slots(), 4);
-    Run(starving, tile, &in, &out, true);
-    QCOMPARE(starving.Count().starved, std::uint64_t(1));
-    QCOMPARE(starving.Count().evictions, std::uint64_t(2));
+    d = starving.Plan(tile, &in, &out, true, false);
+    QVERIFY(!d.overflow && d.evicted && d.slot >= 0);
+    starving.Bound(d.slot);
+    starving.Ran(d.slot, d.launch);
+    QCOMPARE(starving.Count().overflow, std::uint64_t(2));
+    QCOMPARE(starving.Count().evictions, std::uint64_t(1));
     // Distinct shapes asked for are counted (the contexts worth creating),
     // including evicted ones, never twice, and only up to the bound.
     QCOMPARE(starving.Seen(), 5);

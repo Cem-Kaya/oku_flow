@@ -2645,15 +2645,42 @@ the GPU window layout the experiment's host parser relies on. The experiment its
 in [the port record](../docs/uct_okuread_port.md).
 
 `graphReplayCachePolicy` (model-free, in `uct_paddle_processing`) checks the
-bookkeeping of the private TensorRT graph replay
-(`OKUFLOW_UCT_TEST_TRT_GRAPH=1`): one context per cached shape, a plain enqueue
-before any capture, no capture where the caller forbids it, drains before a
-graph is dropped or a used context is reshaped, least-recently-used recycling
-within the bound, refused shapes that are never retried, and failed bindings
-that are never reused as hits. The opt-in `optionalGraphReplayLifetime`
-(`OKUFLOW_UCT_GRAPH_LIFETIME_TEST=1`, `OKUFLOW_UCT_TEST_IMAGE`, prepared
-medium plans, GPU lease) reads one image with the switch off, with one graph
-per engine and with the default cache, cancels reads from another thread at
-spread delays, requires every completed read to reproduce the switch-off output
-byte for byte and the State to retire cleanly. Results are in
-[the port record](../docs/uct_okuread_port.md).
+bookkeeping of TensorRT graph replay (`OKUFLOW_UCT_TEST_TRT_GRAPH`): one
+context per cached shape, a plain enqueue before any capture, no capture where
+the caller forbids it, drains before a graph is dropped or a used context is
+reshaped, least-recently-used recycling within the bound, the plain overflow
+context for a miss without a ready context (nothing evicted), the distinct
+shapes counted for context creation, the per-engine bounds (bucketed width,
+batch sixteen, explicit bound), refused shapes that are never retried, failed
+bindings that are never reused as hits, and the test-only fault plan. The
+opt-in GPU slots use prepared plans, the GPU lease, `OKUFLOW_UCT_TEST_IMAGE`
+and (except the first) `OKUFLOW_UCT_TEST_IMAGE_2`, an image of another size;
+`OKUFLOW_UCT_GRAPH_TEST_EVIDENCE` names an optional JSON report:
+
+- `optionalGraphReplayLifetime` (`OKUFLOW_UCT_GRAPH_LIFETIME_TEST=1`) reads one
+  image with the switch off, with one graph per engine and with the default
+  cache, cancels reads from another thread at spread delays, requires every
+  completed read to reproduce the switch-off output byte for byte and the State
+  to retire cleanly.
+- `optionalGraphReplayFaults` (`OKUFLOW_UCT_GRAPH_FAULT_TEST=1`) drives each
+  failure path through the test-only hooks that only this executable compiles
+  (`OKUFLOW_UCT_GRAPH_FAULT_HOOKS`): a capture CUDA refuses, a capture put off
+  for low free memory, a capture enqueue that fails with and without a capture
+  status, an eviction drain with work still queued, a moved input, a shape
+  TensorRT rejects between planning and binding, a failed background context
+  creation, and an activation arena or replay output storage that cannot be
+  allocated. Every read must return the switch-off bytes or fail closed
+  through State retirement, no call may end with its stream capturing, and
+  the receipt counters must show the path ran.
+- `optionalGraphReplayCheckpoints` (`OKUFLOW_UCT_GRAPH_CHECKPOINT_TEST=1`)
+  cancels reads at named points of replay calls (planned, captured, drained,
+  launched) across two frame sizes with region reconciliation on and a
+  two-shape bound.
+- `optionalGraphReplayConfigurations` (`OKUFLOW_UCT_GRAPH_CONFIG_TEST=1`,
+  optional `OKUFLOW_UCT_GRAPH_CONFIGS` comma list) compares switch-off and
+  switch-on output, timing and receipts for the medium BF16 pair at batch 8,
+  1 and 16, FP32 plans, the small and tiny tiers, the bucketed recognizer
+  width and paused-detail reads, and requires no eviction in the last round.
+  It may prepare plans that are missing (full SDK).
+
+Results are in [the port record](../docs/uct_okuread_port.md).
