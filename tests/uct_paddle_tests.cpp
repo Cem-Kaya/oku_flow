@@ -1920,6 +1920,10 @@ class PaddleTests final : public QObject
     {
         uct_graph_faults_test::Checkpoints();
     }
+    void optionalGraphReplayRetireUnadopted()
+    {
+        uct_graph_faults_test::RetireUnadopted();
+    }
     void optionalGraphReplayConfigurations()
     {
         uct_graph_faults_test::Configurations();

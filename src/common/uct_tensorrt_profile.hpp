@@ -92,10 +92,13 @@ public:
     }
     // Private graph-replay experiment: how one network call ran (0 plain,
     // 1 captured then launched, 2 replayed) and what it cost on the host.
-    void GraphCall(int launch, bool created, double contextMs, double captureMs, bool drained, bool evicted) {
+    // `overflow`: a plain call on the overflow context (no slot for its shape).
+    void GraphCall(int launch, bool created, double contextMs, double captureMs, bool drained, bool evicted,
+                   bool overflow = false) {
         if (!enabled_) return;
         graphUsed_ = true;
         ++graph_.launches[std::clamp(launch, 0, 2)];
+        graph_.overflow += overflow;
         graph_.contexts += created; graph_.drains += drained; graph_.evictions += evicted;
         graph_.contextMs += contextMs; graph_.captureMs += captureMs;
     }
@@ -236,7 +239,8 @@ public:
                 {"windowLayoutRecognized", reconcile_[5] != 0}, {"hostMs", reconcileMs_}};
         if (graphUsed_) {
             auto graph = graphReceipt_;
-            graph["read"] = QJsonObject{{"plain", graph_.launches[0]}, {"captures", graph_.launches[1]},
+            graph["read"] = QJsonObject{{"plain", graph_.launches[0]}, {"overflow", graph_.overflow},
+                {"captures", graph_.launches[1]},
                 {"replays", graph_.launches[2]}, {"slotsOpened", graph_.contexts},
                 {"contextCreateMs", graph_.contextMs}, {"captureMs", graph_.captureMs},
                 {"drains", graph_.drains}, {"evictions", graph_.evictions}};
@@ -258,7 +262,7 @@ private:
     std::unique_ptr<QCryptographicHash> cropHash_;
     double detectorWaitMs_{}, groupWaitMs_{};
     std::array<int, 6> reconcile_{};
-    struct GraphCounts { std::array<int, 3> launches{}; int contexts{}, drains{}, evictions{}; double contextMs{}, captureMs{}; };
+    struct GraphCounts { std::array<int, 3> launches{}; int contexts{}, drains{}, evictions{}, overflow{}; double contextMs{}, captureMs{}; };
     GraphCounts graph_{};
     bool graphUsed_{};
     QJsonObject graphReceipt_;

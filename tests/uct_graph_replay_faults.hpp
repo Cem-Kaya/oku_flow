@@ -9,6 +9,11 @@
 // - Checkpoints (OKUFLOW_UCT_GRAPH_CHECKPOINT_TEST=1): cancellations at named
 //   points of replay calls (planned, captured, drained, launched), two frame
 //   sizes, region reconciliation on, a two-shape bound so slots are recycled.
+// - Unadopted retirement (OKUFLOW_UCT_GRAPH_RETIRE_TEST=1): a reader that is
+//   ready but destroyed before its first read retires its State, its
+//   context-creation thread ends, and a fresh reader of the same model is
+//   ready on BF16; also with the retirement landing while that thread is
+//   between its completion check and its wait.
 // - Configurations (OKUFLOW_UCT_GRAPH_CONFIG_TEST=1): switch-off against
 //   switch-on on other model tiers, FP32 plans, recognizer batch 1 and 16, the
 //   bucketed recognizer width and paused-detail reads, with timing, receipts
@@ -20,7 +25,10 @@
 #include "uct_resident_diagnostic.hpp"
 #include "../src/common/uct_graph_cache.hpp"
 
+#include <condition_variable>
+#include <functional>
 #include <map>
+#include <mutex>
 
 namespace okuflow::uct::uct_graph_faults_test {
 #if OKUFLOW_ENABLE_CUDA && OKUFLOW_UCT_TRT && defined(OKUFLOW_UCT_GRAPH_FAULT_HOOKS)
@@ -74,24 +82,35 @@ inline qint64 Sum(const QJsonObject& receipt, const char* key)
 {
     return Count(receipt, "detector", key) + Count(receipt, "recognizer", key);
 }
-// Fault plans outlive the recognizers that read them: the context thread of
-// a retired State may still hold the pointer for one context creation.
+// Fault plans are shared: every hook loads its own reference, so a context
+// thread of a retired State that is still finishing keeps the plan it read
+// alive. The MoveInput copies are read only by reads, which have all ended
+// (and their streams completed: the tests wait for each retirement) when the
+// plans are destroyed.
 struct Plans {
-    std::vector<std::unique_ptr<FaultPlan>> plans;
+    std::vector<std::shared_ptr<FaultPlan>> plans;
     FaultPlan& Next()
     {
-        plans.push_back(std::make_unique<FaultPlan>());
+        plans.push_back(std::make_shared<FaultPlan>());
         return *plans.back();
     }
+    std::shared_ptr<FaultPlan> Last() const { return plans.back(); }
     ~Plans()
     {
         graph_cache::FaultPlanForTest() = nullptr;
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
         for (auto& plan : plans)
             for (auto*& scratch : plan->scratch)
                 if (scratch) cudaFree(std::exchange(scratch, nullptr));
     }
 };
+// Context-creation threads end within a bound once their State retires.
+inline bool CreatorsEnded(int timeoutMs = 30000)
+{
+    QElapsedTimer timer;
+    timer.start();
+    while (graph_cache::CreatorThreadsForTest().load() != 0 && timer.elapsed() < timeoutMs) QTest::qWait(10);
+    return graph_cache::CreatorThreadsForTest().load() == 0;
+}
 inline bool Reference(const Images& images, QByteArray& a, QByteArray& b)
 {
     uct_batch_test::Environment off("OKUFLOW_UCT_TEST_TRT_GRAPH", "0");
@@ -144,7 +163,7 @@ inline void Faults()
         plan.engine = item.engine;
         plan.skip = item.skip;
         plan.count = item.count;
-        graph_cache::FaultPlanForTest() = &plan;
+        graph_cache::FaultPlanForTest() = plans.Last();
         uct_batch_test::Environment graph("OKUFLOW_UCT_TEST_TRT_GRAPH", "1");
         uct_batch_test::Environment profiling("OKUFLOW_UCT_TRT_PROFILE", "1");
         std::optional<uct_batch_test::Environment> shapes;
@@ -159,10 +178,23 @@ inline void Faults()
         // replayed and (with bound 1) evicted.
         const QImage* sequence[] = {&images.a, &images.a, &images.a, &images.b, &images.b, &images.b,
                                     &images.a, &images.a, &images.b, &images.a};
+        // Low free memory: each deferral holds captures off for
+        // kCaptureHoldOffReads reads, so the case reads long enough for every
+        // injected deferral to pass and for captures to follow the last one.
+        const int reads = item.fault == Fault::LowFreeMemory
+            ? int(std::size(sequence)) + (item.count + 1) * (graph_cache::kCaptureHoldOffReads + 1)
+            : int(std::size(sequence));
         int failed = 0, completed = 0;
         QString failure;
-        for (const auto* image : sequence) {
+        qint64 capturesAtLastDeferral = -1;
+        for (int index = 0; index < reads; ++index) {
+            const auto* image = sequence[std::size_t(index) % std::size(sequence)];
             const auto output = Read(*recognizer, *image, never);
+            if (item.fault == Fault::LowFreeMemory && capturesAtLastDeferral < 0 &&
+                plan.injected.load() >= item.count) {
+                // The read that met the last injected deferral.
+                capturesAtLastDeferral = Sum(LastReceipt(capture.Peek()), "captures");
+            }
             QVERIFY2(!output.backendPreparing, "The reader did not become ready again.");
             if (!output.ok) {
                 ++failed;
@@ -189,9 +221,18 @@ inline void Faults()
             QVERIFY(!receipt["detector"].toObject()["captureBlocked"].toBool());
             break;
         case Fault::LowFreeMemory:
-            QVERIFY(Sum(receipt, "deferrals") >= 3);
+            QCOMPARE(plan.injected.load(), item.count);
+            QVERIFY(Sum(receipt, "deferrals") >= item.count);
             QCOMPARE(Sum(receipt, "refusals"), qint64(0));
-            QVERIFY(Sum(receipt, "captures") > 0);
+            QVERIFY(Sum(receipt, "heldOff") > 0);
+            // Recovers after transient low memory: the hold-off has expired
+            // on both engines and captures followed the last deferral.
+            QVERIFY(!receipt["detector"].toObject()["captureHeldOff"].toBool());
+            QVERIFY(!receipt["recognizer"].toObject()["captureHeldOff"].toBool());
+            QVERIFY(capturesAtLastDeferral >= 0);
+            QVERIFY2(Sum(receipt, "captures") > capturesAtLastDeferral,
+                     qPrintable(QString("captures %1 at the last deferral, %2 at the end")
+                                .arg(capturesAtLastDeferral).arg(Sum(receipt, "captures"))));
             break;
         case Fault::CaptureEnqueueFails:
             QVERIFY2(failure.contains("graph capture"), qPrintable(failure));
@@ -223,6 +264,8 @@ inline void Faults()
         case Fault::OutputStorageUnavailable:
             QVERIFY(!receipt["recognizer"].toObject()["enabled"].toBool());
             QVERIFY(receipt["recognizer"].toObject()["reason"].toString().contains("output storage"));
+            // The failed larger allocation kept the plain output buffer.
+            QVERIFY(receipt["recognizer"].toObject()["outputBytesKeptAfterFailure"].toInteger() > 0);
             QVERIFY(receipt["detector"].toObject()["enabled"].toBool());
             QVERIFY2(detail.contains("recognizer plain"), qPrintable(detail));
             break;
@@ -234,6 +277,7 @@ inline void Faults()
         const auto& closed = retirement.Wait();
         QVERIFY2(closed.Passed(), qPrintable(QString(item.name) + ": State retirement failed."));
         QCOMPARE(closed.statuses.size(), item.fatal ? 2 : 1);
+        QVERIFY2(CreatorsEnded(), "A context-creation thread did not end after its State retired.");
         graph_cache::FaultPlanForTest() = nullptr;
         results.push_back(QJsonObject{{"case", item.name}, {"injected", plan.injected.load()},
             {"readsCompleted", completed}, {"readsFailedClosed", failed}, {"failure", failure},
@@ -269,7 +313,7 @@ inline void Checkpoints()
         ++reached[int(at)];
         if (armed && at == target && --remaining == 0) armed->store(true);
     };
-    graph_cache::FaultPlanForTest() = &plan;
+    graph_cache::FaultPlanForTest() = plans.Last();
     uct_batch_test::Environment graph("OKUFLOW_UCT_TEST_TRT_GRAPH", "1");
     uct_batch_test::Environment bound("OKUFLOW_UCT_TEST_TRT_GRAPH_SHAPES", "2");
     uct_batch_test::RetirementReceipts retirement;
@@ -319,11 +363,106 @@ inline void Checkpoints()
     recognizer.reset();
     QVERIFY2(retirement.Wait().Passed(), "TensorRT State retirement with graph replay failed.");
     QCOMPARE(retirement.Wait().statuses.size(), 1);
+    QVERIFY2(CreatorsEnded(), "A context-creation thread did not end after its State retired.");
     graph_cache::FaultPlanForTest() = nullptr;
     const auto evidence = qEnvironmentVariable("OKUFLOW_UCT_GRAPH_TEST_EVIDENCE");
     if (!evidence.isEmpty()) QVERIFY(uct_batch_test::Save(evidence, QJsonObject{{"checkpoints", rows},
         {"reached", QJsonObject{{"planned", reached[0]}, {"captured", reached[1]}, {"drained", reached[2]},
                                 {"launched", reached[3]}}}}));
+}
+
+inline void RetireUnadopted()
+{
+    if (qEnvironmentVariable("OKUFLOW_UCT_GRAPH_RETIRE_TEST") != "1")
+        QSKIP("Explicit graph-replay retirement diagnostic not selected.");
+    const QImage image(qEnvironmentVariable("OKUFLOW_UCT_TEST_IMAGE"));
+    QVERIFY2(!image.isNull(), "OKUFLOW_UCT_TEST_IMAGE must name a readable image.");
+    uct_batch_test::Environment graph("OKUFLOW_UCT_TEST_TRT_GRAPH", "1");
+    qunsetenv("OKUFLOW_UCT_TEST_TRT_GRAPH_SHAPES");
+    QVERIFY2(CreatorsEnded(), "A context-creation thread of an earlier test is still running.");
+    // Holds the context-creation thread at its first turn, between the check
+    // whether every context is made and the wait, until released. Shared, so
+    // a thread that outlives a failed assertion never reads a dead local.
+    struct Gate {
+        std::mutex mutex;
+        std::condition_variable changed;
+        bool reached{}, released{};
+    };
+    const auto waitFor = [](const std::function<bool()>& condition, int timeoutMs) {
+        QElapsedTimer timer;
+        timer.start();
+        while (!condition() && timer.elapsed() < timeoutMs) QTest::qWait(5);
+        return condition();
+    };
+    QJsonArray rows;
+    for (const bool betweenCheckAndWait : {false, true}) {
+        const char* variant = betweenCheckAndWait ? "retired between the completion check and the wait"
+                                                  : "retired while waiting for a wanted context";
+        Plans plans;
+        auto& plan = plans.Next();
+        const auto gate = std::make_shared<Gate>();
+        if (betweenCheckAndWait)
+            plan.creatorWaiting = [gate] {
+                std::unique_lock lock(gate->mutex);
+                if (gate->reached) return;
+                gate->reached = true;
+                gate->changed.notify_all();
+                gate->changed.wait(lock, [&] { return gate->released; });
+            };
+        graph_cache::FaultPlanForTest() = plans.Last();
+        qint64 receiptsBeforeRelease = -1;
+        {
+            uct_batch_test::RetirementReceipts retirement;
+            auto recognizer = CreateProductionTensorRtRecognizer(ModelTier::Medium, ModelTier::Medium,
+                                                                 retirement.Observer());
+            QVERIFY2(Ready(*recognizer), qPrintable(recognizer->Status().detail));
+            QVERIFY2(recognizer->Status().detail.contains("graph replay"), qPrintable(recognizer->Status().detail));
+            // Ready, and the State's context-creation thread is running.
+            QVERIFY2(waitFor([] { return graph_cache::CreatorThreadsForTest().load() == 1; }, 30000),
+                     "The context-creation thread did not start after ready.");
+            if (betweenCheckAndWait)
+                QVERIFY2(waitFor([gate] { std::lock_guard lock(gate->mutex); return gate->reached; }, 30000),
+                         "The context-creation thread did not reach its first turn.");
+            else QTest::qWait(200); // let it settle into its wait
+            // Destroyed without a read: the State was published and never adopted.
+            recognizer.reset();
+            if (betweenCheckAndWait) {
+                // The State must be retired while its thread is held: the
+                // retirement may not depend on that thread getting a turn.
+                receiptsBeforeRelease = retirement.Wait().Passed() ? retirement.Wait().statuses.size() : 0;
+                {
+                    std::lock_guard lock(gate->mutex);
+                    gate->released = true;
+                }
+                gate->changed.notify_all();
+            }
+            const auto& closed = retirement.Wait();
+            QVERIFY2(closed.Passed(), qPrintable(QString(variant) + ": the unadopted State was not retired."));
+            QCOMPARE(closed.statuses.size(), 1);
+            QVERIFY2(CreatorsEnded(), qPrintable(QString(variant) + ": the context-creation thread did not end."));
+        }
+        if (betweenCheckAndWait) QCOMPARE(receiptsBeforeRelease, qint64(1));
+        graph_cache::FaultPlanForTest() = nullptr;
+        // A fresh reader of the same model: its BF16 attempts were released.
+        uct_batch_test::RetirementReceipts again;
+        auto fresh = CreateProductionTensorRtRecognizer(ModelTier::Medium, ModelTier::Medium, again.Observer());
+        QVERIFY2(Ready(*fresh), qPrintable(fresh->Status().detail));
+        std::atomic<bool> never{false};
+        const auto output = Read(*fresh, image, never);
+        QVERIFY2(output.ok, qPrintable(output.error));
+        const auto status = fresh->Status();
+        QVERIFY2(status.name.contains(QLatin1String("[BF16 / BF16]")), qPrintable(status.name + " / " + status.detail));
+        QVERIFY2(!status.detail.contains(QLatin1String("in flight")), qPrintable(status.detail));
+        fresh.reset();
+        QVERIFY2(again.Wait().Passed(), "The fresh reader's State retirement failed.");
+        QVERIFY2(CreatorsEnded(), "The fresh reader's context-creation thread did not end.");
+        rows.push_back(QJsonObject{{"variant", variant}, {"retired", true}, {"creatorEnded", true},
+                                   {"receiptsWhileHeld", receiptsBeforeRelease},
+                                   {"freshReader", status.name}});
+        qInfo().noquote() << "graph replay unadopted retirement:" << variant << "passed;" << status.name;
+    }
+    const auto evidence = qEnvironmentVariable("OKUFLOW_UCT_GRAPH_TEST_EVIDENCE");
+    if (!evidence.isEmpty()) QVERIFY(uct_batch_test::Save(evidence, QJsonObject{{"unadoptedRetirement", rows}}));
 }
 
 inline void Configurations()
@@ -473,6 +612,7 @@ inline void Skip(const char* gate)
 }
 inline void Faults() { Skip("OKUFLOW_UCT_GRAPH_FAULT_TEST"); }
 inline void Checkpoints() { Skip("OKUFLOW_UCT_GRAPH_CHECKPOINT_TEST"); }
+inline void RetireUnadopted() { Skip("OKUFLOW_UCT_GRAPH_RETIRE_TEST"); }
 inline void Configurations() { Skip("OKUFLOW_UCT_GRAPH_CONFIG_TEST"); }
 #endif
 } // namespace okuflow::uct::uct_graph_faults_test

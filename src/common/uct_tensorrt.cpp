@@ -112,23 +112,26 @@ template <class T> class DeviceBuffer
         }
         return data_;
     }
-    // Like Reserve, but an allocation failure leaves the buffer empty and
-    // returns false instead of throwing. Any other CUDA failure still throws.
-    bool TryReserve(std::size_t count)
+    // Like Reserve, but the larger allocation is made before the old buffer
+    // is released: an allocation failure keeps the old buffer and returns
+    // false instead of throwing. Any other CUDA failure still throws.
+    // `failAllocation` (test builds' fault hooks only) answers the allocation
+    // as the device would when it is out of memory.
+    bool TryReserve(std::size_t count, bool failAllocation = false)
     {
         if (count <= capacity_) return true;
-        auto *old = std::exchange(data_, nullptr);
-        capacity_ = 0;
-        if (old)
-            Check(cudaFree(old));
-        const auto status = cudaMalloc(reinterpret_cast<void **>(&data_), count * sizeof(T));
+        T* fresh{};
+        const auto status = failAllocation ? cudaErrorMemoryAllocation
+                                           : cudaMalloc(reinterpret_cast<void **>(&fresh), count * sizeof(T));
         if (status == cudaErrorMemoryAllocation) {
-            data_ = nullptr;
             (void)cudaGetLastError(); // not sticky; clear it for the next checked call
             return false;
         }
         Check(status);
+        auto *old = std::exchange(data_, fresh);
         capacity_ = count;
+        if (old)
+            Check(cudaFree(old));
         return true;
     }
     void Release()
@@ -332,15 +335,30 @@ class Progress final : public nvinfer1::IProgressMonitor
     const std::atomic<bool> &cancelled_;
 };
 // Graph replay: wakes the thread that creates execution contexts after the
-// State is published, and tells it whether a read is in flight. Contexts are
-// created only while no read runs: creating one stalls concurrent inference
-// (measured: full-replay reads about 19 percent slower while contexts were
-// being created on another thread, docs/uct_okuread_port.md, round 10).
+// State is published, and tells it whether a read is in flight. Creating a
+// context slows inference running at the same time (measured: full-replay
+// reads about a fifth slower while contexts were being created on another
+// thread, docs/uct_okuread_port.md, round 10), so the thread follows this
+// policy (Turn):
+// - A creation starts only while no read is in flight and at least kQuiet
+//   after the last read ended (an idle gap), or
+// - under continuous load, when kReadsUnderLoad reads have ended since the
+//   last creation (or since a context became wanted) without such a gap: then
+//   it starts at once, while a read may be in flight, and slows that read.
+// A read that begins while a creation runs proceeds. A failing read retires
+// its State, which stops the thread, before the read's marker ends.
 struct ReplayWork {
+    static constexpr auto kQuiet = std::chrono::milliseconds(10);
+    static constexpr std::uint64_t kReadsUnderLoad = 2;
     std::mutex mutex;
     std::condition_variable wake;
-    int reading{};
+    int reading{};               // reads in flight (guarded by mutex)
+    std::uint64_t readsEnded{};  // guarded by mutex
+    std::chrono::steady_clock::time_point lastEnd{};
     std::atomic<bool> stop{};
+    // Observations for the profile receipt; written by the creating thread.
+    std::atomic<bool> creating{};
+    std::atomic<std::uint64_t> started{}, startedUnderLoad{};
     void Notify() noexcept
     {
         try { std::lock_guard lock(mutex); } catch (...) {}
@@ -358,8 +376,43 @@ struct ReplayWork {
     }
     void End() noexcept
     {
-        try { std::lock_guard lock(mutex); --reading; } catch (...) {}
+        try {
+            std::lock_guard lock(mutex);
+            --reading;
+            ++readsEnded;
+            lastEnd = std::chrono::steady_clock::now();
+        } catch (...) {}
         wake.notify_all();
+    }
+    // The creating thread, holding `lock` on `mutex`: wait until a context
+    // may be created under the policy above. `wanted` says whether any engine
+    // wants one; `stopped` whether the thread must end. Returns false to end.
+    template <class Wanted, class Stopped>
+    bool Turn(std::unique_lock<std::mutex>& lock, Wanted&& wanted, Stopped&& stopped, std::uint64_t& since)
+    {
+        for (;;) {
+            if (stop.load() || stopped()) return false;
+            if (!wanted()) {
+                since = readsEnded; // nothing wanted: reads that end now do not count
+                wake.wait(lock);
+                continue;
+            }
+            if (readsEnded - since >= kReadsUnderLoad) {
+                ++started;
+                if (reading > 0) ++startedUnderLoad;
+                return true;
+            }
+            if (reading == 0) {
+                const auto quiet = lastEnd + kQuiet;
+                if (std::chrono::steady_clock::now() >= quiet) {
+                    ++started;
+                    return true;
+                }
+                wake.wait_until(lock, quiet);
+                continue;
+            }
+            wake.wait(lock);
+        }
     }
 };
 class Network
@@ -783,11 +836,22 @@ class Network
         const auto maximum = engine_->getProfileShape(input_.c_str(), 0, nvinfer1::OptProfileSelector::kMAX);
         if (!context_->setInputShape(input_.c_str(), maximum))
             throw std::runtime_error("TensorRT refused the profile's largest shape.");
-        batch_ = width_ = height_ = 0; // the plain path sets its shape again
-        const auto count = OutputCount(context_->getTensorShape(output_.c_str()));
-        if (FaultFires(graph_cache::Fault::OutputStorageUnavailable) || !outputBuffer_.TryReserve(count))
-            return replayUnavailable_ = QStringLiteral("replay output storage unavailable");
+        // The plain path sets its shape and both addresses again, also when
+        // replay cannot be enabled below.
+        batch_ = width_ = height_ = 0;
         boundInput_ = boundOutput_ = nullptr;
+        auto count = OutputCount(context_->getTensorShape(output_.c_str()));
+        // Test builds only: the larger allocation fails. Asking for more than
+        // the buffer holds makes the allocation happen, so the test reaches
+        // the state where the old buffer must survive the failure.
+        const bool fail = FaultFires(graph_cache::Fault::OutputStorageUnavailable);
+        if (fail) count = std::max(count, outputBuffer_.Capacity() + 1);
+        if (!outputBuffer_.TryReserve(count, fail)) {
+            // The plain buffer is kept: the plain path needs no allocation
+            // under the same memory pressure.
+            outputBytesKept_ = std::int64_t(OutputCapacityBytes());
+            return replayUnavailable_ = QStringLiteral("replay output storage unavailable");
+        }
         replayOutput_ = outputBuffer_.Get();
         replay_.emplace(capacity);
         replaySlots_.reserve(std::size_t(replay_->Capacity()));
@@ -799,6 +863,9 @@ class Network
         return {};
     }
     bool ReplayEnabled() const { return replay_.has_value(); }
+    // Worker, once at the start of every read: the unit of the capture hold-off.
+    void ReplayReadBegins() { if (replay_) ++replayReads_; }
+    bool CaptureHeldOff() const { return replayReads_ < captureHeldUntilRead_; }
     // Whether this engine wants another context now, and whether it never will.
     bool NeedsContext() const
     {
@@ -810,11 +877,12 @@ class Network
         std::lock_guard lock(spare_.mutex);
         return !replay_ || !spare_.stopped.isEmpty() || spare_.made >= spare_.limit;
     }
-    // Preparation thread, after the State is published and only while no
-    // read is in flight: create one more context for the replay cache, for a
-    // shape the worker has asked for. Returns whether more are wanted. Never
-    // throws and never retires anything: a failed creation stops the
-    // production and the cache keeps the contexts it has (a miss then recycles
+    // Preparation thread, after the State is published, when ReplayWork's
+    // policy gives it a turn: create one more context for the replay cache,
+    // for a shape the worker has asked for. Returns whether more are wanted.
+    // Never throws and never retires anything: a failed creation stops the
+    // production and the cache keeps the contexts it has (a miss below
+    // capacity then runs on the overflow context; only a full cache recycles
     // a slot). CUDA's last error is per thread, so nothing is left for the
     // worker's checks; a real device fault is sticky and reaches the worker's
     // next call, which retires the State as before. Creating a context of an
@@ -866,7 +934,11 @@ class Network
     }
     QJsonObject ReplayReceipt() const
     {
-        if (!replay_) return {{"enabled", false}, {"reason", replayUnavailable_}};
+        if (!replay_) {
+            QJsonObject receipt{{"enabled", false}, {"reason", replayUnavailable_}};
+            if (outputBytesKept_ >= 0) receipt["outputBytesKeptAfterFailure"] = qint64(outputBytesKept_);
+            return receipt;
+        }
         const auto& count = replay_->Count();
         QJsonObject receipt{{"enabled", true}, {"capacity", replay_->Capacity()}, {"slots", replay_->Slots()},
             {"arenaBytes", qint64(arenaBytes_)}, {"outputBytes", qint64(OutputCapacityBytes())},
@@ -876,6 +948,7 @@ class Network
             {"drains", qint64(count.drains)}, {"plain", qint64(count.plain)},
             {"captures", qint64(count.captures)}, {"replays", qint64(count.replays)},
             {"refusals", qint64(count.refusals)}, {"deferrals", qint64(replayDeferrals_)},
+            {"heldOff", qint64(replayHeldOff_)}, {"captureHeldOff", CaptureHeldOff()},
             {"overflow", qint64(count.overflow)}, {"captureBlocked", replay_->Blocked()}};
         std::lock_guard lock(spare_.mutex);
         receipt["contextsLimit"] = spare_.limit;
@@ -906,7 +979,7 @@ class Network
                 cudaStream_t stream;
                 ~CaptureWitness()
                 {
-                    auto* plan = graph_cache::FaultPlanForTest().load();
+                    const auto plan = graph_cache::FaultPlanForTest().load();
                     if (!plan) return;
                     ++plan->replayCalls;
                     cudaStreamCaptureStatus capturing{};
@@ -976,7 +1049,7 @@ class Network
 #if defined(OKUFLOW_UCT_GRAPH_FAULT_HOOKS)
     bool FaultFires(graph_cache::Fault fault) const
     {
-        auto* plan = graph_cache::FaultPlanForTest().load();
+        const auto plan = graph_cache::FaultPlanForTest().load();
         return plan && plan->Fire(fault, detection_ ? 0 : 1);
     }
     static void CUDART_CB QueuedHostWork(void* done)
@@ -986,7 +1059,7 @@ class Network
     }
     void Reached(graph_cache::Checkpoint at) const
     {
-        auto* plan = graph_cache::FaultPlanForTest().load();
+        const auto plan = graph_cache::FaultPlanForTest().load();
         if (plan && plan->checkpoint) plan->checkpoint(at, detection_ ? 0 : 1);
     }
 #else
@@ -1150,7 +1223,7 @@ class Network
             throw std::logic_error("TensorRT replay output storage moved.");
 #if defined(OKUFLOW_UCT_GRAPH_FAULT_HOOKS)
         // Test builds only: the same input arrives at another address.
-        if (auto* plan = graph_cache::FaultPlanForTest().load(); plan && FaultFires(graph_cache::Fault::MoveInput)) {
+        if (const auto plan = graph_cache::FaultPlanForTest().load(); plan && FaultFires(graph_cache::Fault::MoveInput)) {
             const int index = std::exchange(plan->nextScratch, 1 - plan->nextScratch);
             const auto bytes = std::size_t(batch) * 3 * std::size_t(height) * std::size_t(width) * sizeof(float);
             constexpr std::size_t kLargest = std::size_t(16) * 3 * 48 * 1024 * sizeof(float) > std::size_t(960) * 960 * 3 * sizeof(float)
@@ -1164,11 +1237,12 @@ class Network
             input = static_cast<float*>(plan->scratch[index]);
         }
 #endif
-        // The read path never creates a context: without a ready one a miss
-        // recycles the least recently used slot.
+        // The read path never creates a context. Without a ready one a miss
+        // below capacity runs on the overflow context; only a miss with the
+        // cache full recycles the least recently used slot.
         const auto decision = replay_->Plan({batch, height, width}, input, output, mayCapture, SpareContextReady());
         if (replay_->Seen() != shapesReported_) {
-            // A new shape: ask for one more context, made after this read.
+            // A new shape: ask for one more context (ReplayWork decides when).
             shapesReported_ = replay_->Seen();
             {
                 std::lock_guard lock(spare_.mutex);
@@ -1183,7 +1257,7 @@ class Network
             const auto shape = RunPlain(input, width, height, stream, profile, batch, host);
             replay_->RanOverflow();
             Reached(graph_cache::Checkpoint::Launched);
-            profile.GraphCall(int(graph_cache::Launch::Plain), false, 0, 0, false, false);
+            profile.GraphCall(int(graph_cache::Launch::Plain), false, 0, 0, false, false, true);
             return shape;
         }
         if (decision.create) {
@@ -1205,7 +1279,7 @@ class Network
             Reached(graph_cache::Checkpoint::Drained);
 #if defined(OKUFLOW_UCT_GRAPH_FAULT_HOOKS)
             if (queued) {
-                auto* plan = graph_cache::FaultPlanForTest().load();
+                const auto plan = graph_cache::FaultPlanForTest().load();
                 ++(queuedHostWorkDone_.load() ? plan->drainsAfterQueuedWork : plan->drainsBeforeQueuedWorkDone);
             }
 #endif
@@ -1230,16 +1304,17 @@ class Network
         }
         replay_->Bound(decision.slot);
         auto launch = decision.launch;
-        if (launch == graph_cache::Launch::Capture && captureHoldOff_ > 0) {
+        if (launch == graph_cache::Launch::Capture && CaptureHeldOff()) {
             // A capture was put off recently: do not ask the device for its
-            // free memory again on every call while it stays short.
-            --captureHoldOff_;
+            // free memory, or try another capture, while it may stay short.
+            ++replayHeldOff_;
             launch = graph_cache::Launch::Plain;
         }
         if (launch == graph_cache::Launch::Capture) {
             const auto captured = Capture(*slot.context, slot.graph, stream, captureMs);
             if (captured == Captured::Refused) replay_->Refuse(decision.slot);
-            if (captured == Captured::Deferred) captureHoldOff_ = kCaptureHoldOffCalls;
+            if (captured == Captured::Deferred)
+                captureHeldUntilRead_ = replayReads_ + graph_cache::kCaptureHoldOffReads;
             if (captured != Captured::Yes) launch = graph_cache::Launch::Plain;
         }
         if (launch == graph_cache::Launch::Plain) {
@@ -1304,9 +1379,12 @@ class Network
     // engine they refer to.
     bool arenaRequested_{};
     QString replayUnavailable_;
+    std::int64_t outputBytesKept_{-1}; // the plain output buffer kept when replay storage failed
     std::int64_t replayGraphBytes_{}, replayDeferrals_{};
-    static constexpr int kCaptureHoldOffCalls = 64; // network calls skipped after a deferred capture
-    int captureHoldOff_{};
+    // Reads that reached this engine, and the first read after a deferral's
+    // hold-off (graph_cache::kCaptureHoldOffReads). Worker only.
+    std::uint64_t replayReads_{}, captureHeldUntilRead_{};
+    std::int64_t replayHeldOff_{}; // calls that would have captured, run plainly during a hold-off
     const float* replayOutput_{};
     std::optional<graph_cache::Policy> replay_;
     ReplayWork* work_{}; // the owning State's, which outlives this Network
@@ -1837,6 +1915,9 @@ class TensorRtRecognizer final : public Recognizer
         RecognitionOutput output;
         bool uploadQueued = false, handedOff = false;
         std::shared_ptr<State> retained;
+        // Graph replay: the upload is part of the read. Declared outside the
+        // try, so a failing read retires its State before the marker ends.
+        std::optional<ReplayReading> reading;
         try
         {
             if (!Ensure(0))
@@ -1845,6 +1926,7 @@ class TensorRtRecognizer final : public Recognizer
                 return output;
             }
             retained = state_;
+            reading.emplace(state_);
             output.inputFault = true;
             state_->uploadPixels = image.convertToFormat(QImage::Format_ARGB32);
             const auto &pixels = state_->uploadPixels;
@@ -1883,6 +1965,10 @@ class TensorRtRecognizer final : public Recognizer
                                       const std::atomic<bool> &cancelled) override
     {
         RecognitionOutput output;
+        // Graph replay: marks this read in flight for the context-creation
+        // thread (ReplayWork). Outside the try, so a failing read retires its
+        // State, which stops that thread, before the marker ends.
+        std::optional<ReplayReading> reading;
         detail::FrozenUploadRetirement frozenUpload;
         const auto cancelOwnedInput = [&] {
             ObserveRetirement(retirementObserver_, frozenUpload.Cancel(state_, [](std::shared_ptr<State> state) {
@@ -1901,8 +1987,12 @@ class TensorRtRecognizer final : public Recognizer
                 output.backendPreparing = true;
                 return output;
             }
-            // Graph replay creates execution contexts only while no read is in flight.
-            const ReplayReading reading(state_);
+            reading.emplace(state_);
+            state_->detector->ReplayReadBegins();
+            state_->recognizer->ReplayReadBegins();
+            // Whether a context creation overlaps this read (profile receipt).
+            const bool creatingAtStart = state_->replayWork.creating.load();
+            const auto startedBefore = state_->replayWork.started.load();
             QString error;
             output.inputFault = true;
             state_->inFlight = image.weak_from_this().lock();
@@ -2359,9 +2449,16 @@ class TensorRtRecognizer final : public Recognizer
             });
             output.ok = !cancelled.load();
             output.cancelled = cancelled.load();
-            if (state_->detector->ReplayEnabled() || state_->recognizer->ReplayEnabled())
+            if (profile.Enabled() && (state_->detector->ReplayEnabled() || state_->recognizer->ReplayEnabled())) {
+                const auto& work = state_->replayWork;
                 profile.GraphReceipt({{"detector", state_->detector->ReplayReceipt()},
-                                      {"recognizer", state_->recognizer->ReplayReceipt()}});
+                                      {"recognizer", state_->recognizer->ReplayReceipt()},
+                                      {"creation", QJsonObject{{"runningAtStart", creatingAtStart},
+                                          {"startedDuring", qint64(work.started.load() - startedBefore)},
+                                          {"runningAtEnd", work.creating.load()},
+                                          {"startedTotal", qint64(work.started.load())},
+                                          {"startedUnderLoadTotal", qint64(work.startedUnderLoad.load())}}}});
+            }
             profile.Emit(state_->recognizerBatch,state_->variableWidth);
             if (cropDiagnostic_) {
                 if (frozen) TensorRtCropDiagnosticAccess::Replayed(*cropDiagnostic_);
@@ -2418,9 +2515,9 @@ class TensorRtRecognizer final : public Recognizer
         const bool explicitGraphShapes = explicitGraphShapes_;
         try
         {
-            std::thread([preparation, assets, sdk, recognizerBatch, variableWidth, allowWidthPreparation,
+            std::thread([preparation = std::shared_ptr<Preparation>(preparation), assets, sdk, recognizerBatch, variableWidth, allowWidthPreparation,
                          precisionRequest, publicRequest, attestationObserver, experiment, detectorTier, recognizerTier,
-                         graphShapes, explicitGraphShapes] {
+                         graphShapes, explicitGraphShapes]() mutable {
                 try
                 {
                     PreparationProfile preparationProfile("preparation");
@@ -2722,40 +2819,66 @@ class TensorRtRecognizer final : public Recognizer
                     // Graph replay: the cache's execution contexts are made here,
                     // after the engines are published, one per distinct shape
                     // the worker has asked for. A shape without one runs on
-                    // the plain overflow context meanwhile. Creating a context
-                    // slows inference running at the same time, so each one
-                    // is started only while no read is in flight (the
-                    // application paces its reads, so it normally lands in
-                    // the gap after the read that asked for it). This thread
-                    // keeps the State alive
-                    // until it stops: when both engines have every context
-                    // they can use, or at the latest one context after the
+                    // the plain overflow context meanwhile. When a creation
+                    // may start is ReplayWork's policy (idle gaps first, one
+                    // creation per two reads under continuous load).
+                    //
+                    // This thread keeps the State alive, never the
+                    // Preparation: it lets go of the Preparation now, so a
+                    // reader destroyed or reselected before its first read
+                    // destroys the Preparation, which retires the unadopted
+                    // State and wakes this thread through its stop flag. The
+                    // thread ends when both engines have every context they
+                    // can use, or after at most one more creation once the
                     // State retires. Nothing here may fail the published
                     // preparation.
                     if (graphShapes > 0) {
+                        preparation.reset();
                         try {
+#if defined(OKUFLOW_UCT_GRAPH_FAULT_HOOKS)
+                            struct Alive {
+                                Alive() { ++graph_cache::CreatorThreadsForTest(); }
+                                ~Alive() { --graph_cache::CreatorThreadsForTest(); }
+                            } alive;
+#endif
                             auto& work = state->replayWork;
-                            const auto stop = [&] { return work.stop.load() || cancelled(); };
+                            // Cancellation of a Preparation that still exists.
+                            // A destroyed one is not a cancellation: after the
+                            // reader adopts the State it drops the Preparation,
+                            // and a State that is never adopted is retired by
+                            // the Preparation's destructor, which sets work.stop.
+                            const auto cancelling = [weak] {
+                                const auto owner = weak.lock();
+                                return owner && owner->cancel.load();
+                            };
+                            const auto stop = [&] { return work.stop.load() || cancelling(); };
                             const auto needed = [&] {
                                 return state->recognizer->NeedsContext() || state->detector->NeedsContext();
                             };
                             bool recognizerNext = true;
+                            std::uint64_t since = 0;
                             while (!stop() && !(state->recognizer->ContextsSettled() && state->detector->ContextsSettled())) {
+#if defined(OKUFLOW_UCT_GRAPH_FAULT_HOOKS)
+                                // Test builds only: between the check above and the wait.
+                                if (const auto plan = graph_cache::FaultPlanForTest().load(); plan && plan->creatorWaiting)
+                                    plan->creatorWaiting();
+#endif
                                 {
                                     std::unique_lock lock(work.mutex);
-                                    // Sleep until a context is wanted and no read is in
-                                    // flight. RunReplay notifies under this mutex after
-                                    // raising the wanted count, and a read on ending.
-                                    work.wake.wait(lock, [&] {
-                                        return work.stop.load() || (work.reading == 0 && needed());
-                                    });
-                                    if (work.stop.load()) continue;
+                                    if (!work.Turn(lock, needed, cancelling, since)) break;
+                                    work.creating = true;
                                 }
                                 auto& first = recognizerNext ? *state->recognizer : *state->detector;
                                 auto& second = recognizerNext ? *state->detector : *state->recognizer;
                                 if (first.NeedsContext()) { first.CreateSpareContext(); recognizerNext = !recognizerNext; }
                                 else if (second.NeedsContext()) second.CreateSpareContext();
+                                {
+                                    std::lock_guard lock(work.mutex);
+                                    work.creating = false;
+                                    since = work.readsEnded;
+                                }
                             }
+                            work.creating = false;
                             if (stop()) {
                                 state->recognizer->StopSpareContexts("State retired");
                                 state->detector->StopSpareContexts("State retired");
@@ -2765,6 +2888,7 @@ class TensorRtRecognizer final : public Recognizer
                 }
                 catch (const std::exception &error)
                 {
+                    if (!preparation) return; // published; nothing after publication throws
                     // A user abort is not a failed model. Release only this
                     // preparation's latch keys after a fresh bounded drain;
                     // unknown completion or real CUDA/API faults keep them held.
@@ -2832,6 +2956,13 @@ class TensorRtRecognizer final : public Recognizer
         if (preparation_)
         {
             preparation_->cancel = true;
+            // A State published but not yet adopted: stop and wake its
+            // graph-replay context thread now. Dropping the Preparation
+            // below retires that State (~Preparation).
+            try {
+                std::lock_guard lock(preparation_->mutex);
+                if (preparation_->state) preparation_->state->replayWork.Stop();
+            } catch (...) {}
             preparation_.reset();
         }
         ObserveRetirement(retirementObserver_, detail::RetireOwnedState(state_, RetireState));

@@ -12,8 +12,11 @@
 //   No context is ever shared by two live graphs: reshaping or readdressing a
 //   context first destroys its graph. (OkuRead found that one context shared
 //   across several graphs changed later output.)
-// - The contexts of one Network share one activation arena. That is legal
-//   because all of them run in order on the one stream of their State.
+// - The contexts of one Network share one activation arena, including its
+//   plain overflow context. That is safe only while every context of the
+//   engine runs in order on the one stream of its State: a change that runs
+//   two contexts of one engine on different streams at once (for example
+//   concurrent recognition groups, round 8) must give each its own arena.
 // - A context whose work may still be queued is never reshaped, readdressed or
 //   stripped of its graph before the stream is drained (`drain`).
 // - A new or reshaped binding is first run as a plain enqueue, which lets
@@ -31,12 +34,15 @@
 // - A shape whose capture was refused is not tried again; with the
 //   kMaximumRefusedShapes-th distinct refusal capture stops altogether. A
 //   refused shape still runs, as a plain enqueue. A capture that is only put
-//   off (too little free device memory at that moment) is not a refusal.
+//   off (too little free device memory at that moment, or the device running
+//   out of memory during the capture) is not a refusal; the Network then
+//   holds every capture off for kCaptureHoldOffReads reads.
 
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <vector>
 
 namespace okuflow::uct::graph_cache
@@ -48,6 +54,13 @@ constexpr int kMaximumShapes = 16;
 constexpr int kDefaultShapes = 8;
 constexpr int kMaximumRefusedShapes = 32;
 constexpr int kMaximumSeenShapes = 64;
+// After a capture is put off for lack of memory, an engine runs every call
+// that would capture as a plain enqueue for the rest of that read and the next
+// kCaptureHoldOffReads - 1 reads, so it does not ask the device for its free
+// memory, or try a capture that runs out of it, on every call while memory
+// stays short. Counted in reads, not calls: how many calls want a capture per
+// read depends on the scene, a read count does not.
+constexpr int kCaptureHoldOffReads = 16;
 
 // How many shapes each engine caches; 0 runs that engine as a plain enqueue.
 // `requested` is 0 (replay off), kDefaultShapes, or the explicit comparison
@@ -100,7 +113,7 @@ struct Decision {
 struct Counters {
     std::uint64_t hits{}, misses{}, creates{}, evictions{}, rebinds{}, drains{};
     std::uint64_t plain{}, captures{}, replays{}, refusals{};
-    std::uint64_t overflow{}; // misses below capacity run plainly for want of a ready context
+    std::uint64_t overflow{}; // misses below capacity run plainly on the overflow context for want of a ready context
 };
 
 class Policy
@@ -261,6 +274,10 @@ enum class Checkpoint { Planned, Captured, Drained, Launched };
 struct FaultPlan {
     // Called on the worker at each checkpoint (detector 0, recognizer 1).
     std::function<void(Checkpoint, int)> checkpoint;
+    // Called on the context-creation thread of a published State each time it
+    // has found a context still wanted and is about to wait for its turn
+    // (before it takes the wait's lock).
+    std::function<void()> creatorWaiting;
     Fault fault{Fault::None};
     int engine{-1}; // 0 detector, 1 recognizer, -1 either
     int skip{};     // eligible events let through first
@@ -283,11 +300,19 @@ struct FaultPlan {
     }
 };
 #if defined(OKUFLOW_UCT_GRAPH_FAULT_HOOKS)
-// Set before a recognizer is created and cleared after it and its State are gone.
-inline std::atomic<FaultPlan*>& FaultPlanForTest()
+// Set before a recognizer is created and cleared after it and its State are
+// gone. Every user loads its own reference, so a plan outlives the last call
+// that reads it, also on a context-creation thread that is still finishing.
+inline std::atomic<std::shared_ptr<FaultPlan>>& FaultPlanForTest()
 {
-    static std::atomic<FaultPlan*> plan{};
+    static std::atomic<std::shared_ptr<FaultPlan>> plan{};
     return plan;
+}
+// Context-creation threads of published States that have not ended yet.
+inline std::atomic<int>& CreatorThreadsForTest()
+{
+    static std::atomic<int> threads{};
+    return threads;
 }
 #endif
 } // namespace okuflow::uct::graph_cache
