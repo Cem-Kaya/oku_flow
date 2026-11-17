@@ -1080,6 +1080,9 @@ processes in a second chunk. Doctor rows
 `userEndpointThatDoesNotListThePhoneEndsInTheReplugSentence` and
 `hungUserEndpointEndsInTheReplugSentence`; `overriddenEndpointIsNeverStopped`
 was changed deliberately (WaitForUser is now allowed; no takeover action).
+`slowDefaultVerdictEndsWhenTheOtherDeviceGoes`: a slow default's other device
+(`--fixture-device-file`) goes away without an event and the other-program
+verdict ends.
 `phone_link_text` (headless) checks one sentence per diagnosis and that every
 sentence is translated in all 24 catalogs. The native slot
 `phoneSentenceIsShownAndSpokenForEveryDiagnosis` delivers every verdict

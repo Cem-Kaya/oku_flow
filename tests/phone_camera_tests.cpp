@@ -2624,6 +2624,28 @@ private slots:
         QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::WaitForUser));
         QVERIFY(!slow.Exited());
     }
+    void slowDefaultVerdictEndsWhenTheOtherDeviceGoes() {
+        // Iteration 5 (6): the other device (an emulator or TCP device) goes
+        // away without any Windows event. While the doctor waits for the
+        // user, that listener is listed again; the verdict ends with it.
+        DefaultAdbFixture slow({});
+        slow.child.reset();
+        const QString device = slow.File(QStringLiteral("device"));
+        { QFile file(device); QVERIFY(file.open(QIODevice::WriteOnly)); }
+        slow.flags = {L"--fixture-slow-version", L"1100", L"--fixture-device-file", device.toStdWString()};
+        QVERIFY(slow.copied && slow.Start());
+        ScopedLinkHooks hooks(slow.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {}, 100);
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        auto reports = LinkCycles(30, [](const auto& r) {
+            return r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone; }, "xyz");
+        QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone));
+        QVERIFY(QFile::remove(device)); // The other device is gone; no event.
+        reports = LinkCycles(10, [](const auto& r) {
+            return r.decision.diagnosis != okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone; }, "xyz");
+        QVERIFY(reports.back().decision.diagnosis != okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone);
+        QVERIFY(!reports.back().observation.defaultHasOtherDevices);
+        QVERIFY(!slow.Exited());
+    }
     void slowButListingDefaultIsNeverStopped() {
         // Iteration 3 (C1): two host:version answers slower than the budget
         // confirm a "hang", but the server lists at once when asked: it is

@@ -518,7 +518,9 @@ aligned with the project goals.
   nothing is stopped and the hang must be confirmed again; termination goes
   on only when that listing gets no answer. A listing there that shows
   another device is remembered for that listener: the other-program
-  sentence. The transport's hand-back and every pre-check match the wanted
+  sentence, re-checked by listing that listener again at the user-wait
+  cadence while it stands (a vanished emulator or TCP device raises no
+  event). The transport's hand-back and every pre-check match the wanted
   phone, not any phone. A leftover stop that ended IdentityChanged is tried
   again on a later observation. Reconnects to another program's server and
   the owned offline ladder have separate budgets. Two programs never fight without an end state: per-episode caps

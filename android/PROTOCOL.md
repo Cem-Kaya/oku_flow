@@ -168,7 +168,9 @@ diagnosis and one next action, least disturbing first:
    hang must be confirmed again from scratch. When that listing showed
    another device in state DEVICE, the default serves someone: Windows says
    another program is using the phone's USB connection instead of trying
-   again. A hung
+   again; while it says so, Windows lists that server again every 2 s (an
+   emulator or network device that goes away raises no Windows event), and a
+   listing without another device ends that sentence. A hung
    listener with the phone unplugged reads as "connect the phone", not as
    recovery. A stop outcome noted after a newer event belongs to the old
    episode and is dropped. A listener that

@@ -1905,7 +1905,9 @@ so metadata generation cannot silently accept an incomplete copy.
   that the pre-stop listing aborted; `Episode` names the
   current episode. `PhoneLinkDiagnosisName`/`ActionName`/`EventName` give trace
   names. A borrowed `ServerUnresponsive` with `defaultHasOtherDevices` (its
-  listing answered and showed another device) is named, never stopped.
+  listing answered and showed another device) is named, never stopped; the
+  transport lists that listener again every `userWaitPollMs` while the
+  verdict stands and drops it when another device is no longer listed.
   `PhoneLinkObservation::defaultPhoneStalled` marks a "device" listing
   on the default whose adbd timed out there in this episode (the transport
   remembers it per listener): it is never handed back to. Before

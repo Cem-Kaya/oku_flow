@@ -110,6 +110,8 @@ struct AdbRuntime {
     // showed another device in state device: it serves someone (cleared by
     // events, by a listing without one, or when that listener is gone).
     std::optional<AdbListenerIdentity> hungServesOther;
+    // When that listener is listed again while the verdict stands.
+    Clock::time_point hungServesOtherRelistAt{};
     // Sibling OkuFlow instances (PID, creation) being proven leftovers, and
     // whether a stop was tried (once per process) and refused.
     struct SiblingState { OkuFlowSiblingTrack track; bool stopTried{false}; bool stopRefused{false}; bool named{false}; };
@@ -2275,10 +2277,36 @@ void RunPhoneLinkLadder(const PhoneLinkRequest& link, const std::string& preferr
         // Its listing answered earlier and showed another device: it serves
         // someone, also while its version probes stay slow.
         std::optional<AdbListenerIdentity> servesOther;
-        { auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex); servesOther = runtime.hungServesOther; }
+        bool relistDue = false;
+        {
+            auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
+            servesOther = runtime.hungServesOther;
+            relistDue = Clock::now() >= runtime.hungServesOtherRelistAt;
+        }
         if (servesOther) {
             const auto listener = ListenerIdentity(DefaultPort());
-            if (listener && *listener == *servesOther) o.defaultHasOtherDevices = true;
+            if (listener && *listener == *servesOther) {
+                o.defaultHasOtherDevices = true;
+                // That verdict rests on an earlier listing, and an emulator
+                // or TCP device that goes away raises no Windows event: while
+                // the doctor waits for the user, that listener is listed
+                // again at the user-wait cadence. A listing without another
+                // device ends the verdict; no answer keeps it.
+                if (relistDue) {
+                    {
+                        auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
+                        runtime.hungServesOtherRelistAt =
+                            Clock::now() + std::chrono::milliseconds(runtime.doctor.Policy().userWaitPollMs);
+                    }
+                    const auto listed = ListDefaultEntries(canceled);
+                    if (listed && !OtherDeviceServed(*listed, target)) {
+                        o.defaultHasOtherDevices = false;
+                        auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
+                        if (runtime.hungServesOther && *runtime.hungServesOther == *servesOther)
+                            runtime.hungServesOther.reset();
+                    }
+                }
+            }
         }
     }
 
