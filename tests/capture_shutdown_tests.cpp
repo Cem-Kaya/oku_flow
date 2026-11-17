@@ -601,8 +601,8 @@ private slots:
         std::promise<void> finishRelease, coordinatorRunning;
         auto releaseFuture = finishRelease.get_future().share();
         std::thread coordinator([&] {
-            coordinatorRunning.set_value();
             control.MarkQuiescent();
+            coordinatorRunning.set_value();
             if (control.WaitReleasePermission()) releaseFuture.wait();
             control.MarkFinished();
         });
