@@ -2,6 +2,7 @@
 #ifdef _WIN32
 #include "okuflow/capture/media_capture.hpp"
 #include "okuflow/capture/phone_startup_budget.hpp"
+#include "okuflow/capture/phone_link_doctor.hpp"
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
@@ -18,6 +19,48 @@ class QJsonObject;
 namespace okuflow {
 // Public adb devices.proto fields only; unknown/non-USB/unauthorized transports are excluded.
 std::vector<CameraDescriptor> ParseAdbUsbDevices(std::span<const std::uint8_t> protobuf);
+// Every listed transport with its raw state, for the link doctor. The camera
+// list above stays restricted to USB + DEVICE; this keeps unauthorized,
+// authorizing, connecting and offline entries visible.
+struct AdbDeviceEntry {
+    std::string serial;
+    std::string model;
+    PhoneAdbState state{PhoneAdbState::Other};
+    bool usb{false};
+    std::uint64_t transportId{0};
+};
+std::vector<AdbDeviceEntry> ParseAdbDeviceEntries(std::span<const std::uint8_t> protobuf);
+// host:devices-l text fallback for older servers.
+std::vector<AdbDeviceEntry> ParseAdbDevicesLongText(std::string_view text);
+// Pure parser for the bounded read-only phone shell query (wakefulness,
+// keyguard, package presence, process presence). Unknown stays Unknown.
+PhoneShellFacts ParsePhoneShellFacts(std::string_view text);
+// SetupAPI: is an Android ADB USB interface present in Windows right now?
+PhoneAdbInterface QueryAndroidAdbInterface();
+// Short stable tag for logs and the always-on trace; never the serial itself.
+std::string PhoneSerialTag(std::string_view serial);
+// Always-on rolling phone link trace (two files of at most 256 KiB). An empty
+// path disables the file; lines still reach the debug log.
+void SetPhoneLinkTraceFile(const std::wstring& path);
+void TracePhoneLink(std::string_view line);
+// Events reset every recovery budget (doctor, launch, reconnect, server
+// start/restart cooldowns). Resume and removal also void the server identity
+// so pre-sleep transport ids and health are not trusted. Thread-safe.
+void NotePhoneLinkEvent(PhoneLinkEvent event);
+// Caller facts for one discovery cycle with the doctor engaged.
+struct PhoneLinkRequest {
+    bool phoneWanted{false};
+    bool captureAbandoned{false};
+    bool sessionStreaming{false};
+};
+struct PhoneLinkReport {
+    PhoneLinkObservation observation;
+    PhoneLinkDecision decision;
+    // The phone the ladder is about (preferred serial, or the only USB entry).
+    std::string targetSerial;
+    // Short trace text of the executed action's outcome, empty when none ran.
+    std::string actionResult;
+};
 // Missing/invalid capabilities expose no hardware zoom, never a guessed range.
 std::pair<float, float> ResolvePhoneZoomRange(const QJsonObject& capabilities, const std::string& selectedCamera);
 
@@ -53,6 +96,14 @@ struct PhoneAdbTestHooks {
     std::wstring ownedServerExecutable;
     std::vector<std::wstring> ownedServerArguments;
     std::uint32_t borrowedHangConfirmationMs{5000};
+    // Windows ADB interface presence; unset reports Unknown (no blind rules).
+    std::function<PhoneAdbInterface()> adbInterface;
+    // Another OkuFlow instance; unset reports none (no real process scan).
+    std::function<bool()> otherInstanceRunning;
+    // Image file name a default-port listener must have before termination.
+    std::wstring terminableImageName{L"adb.exe"};
+    // Doctor budgets for fast fixtures; production uses PhoneLinkPolicy{}.
+    std::optional<PhoneLinkPolicy> linkPolicy;
 };
 void SetPhoneAdbTestHooks(std::optional<PhoneAdbTestHooks> hooks);
 // Stops only the private adb server this process launched and owns (exact
@@ -100,9 +151,14 @@ public:
         bool* listingSucceeded = nullptr,
         const std::string& recoverySerial = {},
         PhoneDiscoveryStatus* status = nullptr,
-        PhoneServerIntent serverIntent = PhoneServerIntent::BorrowOnly);
-    // Automatic starts launch the phone app at most once per serial and USB
-    // transport. A deliberate user selection may restore that one launch.
+        PhoneServerIntent serverIntent = PhoneServerIntent::BorrowOnly,
+        // Opt-in: collect a full link observation, let the doctor choose
+        // the next recovery rung and run it (bounded, cancellable).
+        const PhoneLinkRequest* link = nullptr,
+        PhoneLinkReport* report = nullptr);
+    // Automatic starts wake the phone and launch the companion when its
+    // listener is absent: at once after an event, then at most every 20 s.
+    // A deliberate user selection restores the immediate launch.
     static void AllowAppLaunch(const std::string& serial);
     // Worker-only recovery: reset only this currently authorized USB transport
     // when adb host services respond but two full-token device shell health

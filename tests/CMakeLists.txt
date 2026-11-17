@@ -175,7 +175,7 @@ if (WIN32)
         ${PROJECT_SOURCE_DIR}/src/capture/capture_buffer.cpp)
     target_include_directories(phone_camera_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_libraries(phone_camera_tests PRIVATE
-        Qt6::Core Qt6::Network Qt6::Test iphlpapi ws2_32 version advapi32 d3d11 d3d12 dxgi mf mfplat mfreadwrite mfuuid ole32 wmcodecdspuuid)
+        Qt6::Core Qt6::Network Qt6::Test iphlpapi setupapi ws2_32 version advapi32 d3d11 d3d12 dxgi mf mfplat mfreadwrite mfuuid ole32 wmcodecdspuuid)
     target_compile_definitions(phone_camera_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE
         OKUFLOW_ADB_OWNED_CHILD_FIXTURE="$<TARGET_FILE:adb_owned_child_fixture>")
     add_dependencies(phone_camera_tests adb_owned_child_fixture)
@@ -196,7 +196,7 @@ if (WIN32)
     )
     target_include_directories(capture_shutdown_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_libraries(capture_shutdown_tests PRIVATE
-        Qt6::Core Qt6::Network Qt6::Test iphlpapi ws2_32 version advapi32 d3d11 d3d12 dxgi mf mfplat mfreadwrite mfuuid ole32 wmcodecdspuuid)
+        Qt6::Core Qt6::Network Qt6::Test iphlpapi setupapi ws2_32 version advapi32 d3d11 d3d12 dxgi mf mfplat mfreadwrite mfuuid ole32 wmcodecdspuuid)
     target_compile_definitions(capture_shutdown_tests PRIVATE
         NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
     add_test(NAME capture_shutdown COMMAND capture_shutdown_tests)

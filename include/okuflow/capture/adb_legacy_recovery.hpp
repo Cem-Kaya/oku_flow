@@ -184,5 +184,58 @@ struct LegacyAdbRecoveryResult {
 LegacyAdbRecoveryResult TryReclaimLegacyBundledAdbServer(
     const LegacyAdbRecoveryRequest& request);
 
+// Owner decision of 2026-11-17 ("kill the hanging server"): a default-port
+// adb server that is confirmed hung, or that is responsive but blind to a
+// phone Windows shows and ignores host:kill, is stopped. This helper acts
+// only on the exact process behind the IPv4 loopback listener of `port`:
+// it opens that listener's owning process, requires the same PID and
+// creation time as the identity the caller observed before deciding, an
+// image file name equal to `requiredImageName` (adb.exe) and a process
+// other than this one, sends one raw host:kill when asked, and terminates
+// through the held handle only when the process outlives the wait and still
+// owns the listener. Never by name, never a tree, never a PID from storage.
+// Callers keep the policy preconditions: phone-use intent, no adb endpoint
+// override, no other device in state DEVICE on that server, no live session.
+struct DefaultAdbStopRequest {
+    std::uint16_t port{kLegacyAdbDefaultPort};
+    // Identity observed when the decision was made; 0 skips the check.
+    DWORD expectedProcessId{0};
+    std::uint64_t expectedCreation{0};
+    bool sendHostKillFirst{true};
+    std::wstring requiredImageName{L"adb.exe"};
+    const std::atomic<bool>* canceled{nullptr};
+    std::chrono::milliseconds hostKillWait{2000};
+    std::chrono::milliseconds exitWait{2000};
+};
+enum class DefaultAdbStopStatus {
+    Stopped,          // The exact listener process exited.
+    NoListener,       // Nothing listens on the loopback port.
+    SelfListener,     // The listener is this process (never stopped).
+    NotAdb,           // Image name differs: not stopped.
+    IdentityChanged,  // PID/creation/listener changed: not stopped.
+    AccessDenied,     // Windows refused termination (elevated or another user).
+    Canceled,
+    Failed
+};
+struct DefaultAdbStopResult {
+    DefaultAdbStopStatus status{DefaultAdbStopStatus::Failed};
+    bool hostKillDelivered{false};
+    bool terminated{false};
+    DWORD processId{0};
+    std::string diagnostic; // No paths; image file name and PID only.
+};
+DefaultAdbStopResult TryStopDefaultAdbServer(const DefaultAdbStopRequest& request);
+
+// Other running OkuFlow app/launcher processes of this user and session.
+// `sameImageOnly` keeps only processes whose image equals this process's
+// image (the same installation). Observation only; nothing is stopped.
+struct OkuFlowSibling {
+    DWORD processId{0};
+    std::uint64_t creation{0};
+    bool sameImage{false};
+    bool hasVisibleWindow{false};
+};
+std::vector<OkuFlowSibling> FindOkuFlowSiblings(bool sameImageOnly);
+
 } // namespace okuflow
 #endif

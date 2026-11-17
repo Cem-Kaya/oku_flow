@@ -752,7 +752,240 @@ void NotePortAfterExit(std::uint16_t port, DWORD oldPid, std::string* diagnostic
     }
 }
 
+// Raw host:kill to the loopback port after re-checking, post-connect, that
+// the listener still belongs to `pid`. No adb client process is run.
+bool SendRawHostKill(std::uint16_t port, DWORD pid, const std::atomic<bool>* canceled)
+{
+    static std::once_flag winsockOnce;
+    static int winsockResult = -1;
+    std::call_once(winsockOnce, [] {
+        WSADATA data{};
+        winsockResult = WSAStartup(MAKEWORD(2, 2), &data);
+    });
+    if (winsockResult != 0) return false;
+    SocketGuard guard{socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)};
+    if (guard.socket == INVALID_SOCKET) return false;
+    u_long nonBlocking = 1;
+    if (ioctlsocket(guard.socket, FIONBIO, &nonBlocking) != 0) return false;
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    address.sin_port = htons(port);
+    if (connect(guard.socket, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0) {
+        if (WSAGetLastError() != WSAEWOULDBLOCK) return false;
+        const auto deadline = Clock::now() + std::chrono::milliseconds(500);
+        for (;;) {
+            if (canceled && canceled->load()) return false;
+            fd_set writable{};
+            FD_SET(guard.socket, &writable);
+            timeval slice{0, 20 * 1000};
+            const int ready = select(0, nullptr, &writable, nullptr, &slice);
+            if (ready > 0) {
+                int socketError = 0;
+                int bytes = sizeof(socketError);
+                if (getsockopt(guard.socket, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&socketError), &bytes) != 0 ||
+                    socketError != 0)
+                    return false;
+                break;
+            }
+            if (ready < 0 || Clock::now() >= deadline) return false;
+        }
+    }
+    DWORD listener = 0;
+    if (FindLoopbackListenerPid(port, &listener) != ListenerLookup::Found || listener != pid) return false;
+    constexpr char requestBytes[] = "0009host:kill";
+    constexpr int requestLength = static_cast<int>(sizeof(requestBytes) - 1);
+    const auto deadline = Clock::now() + std::chrono::milliseconds(500);
+    for (int sent = 0; sent < requestLength;) {
+        if (canceled && canceled->load()) return false;
+        fd_set writable{};
+        FD_SET(guard.socket, &writable);
+        timeval slice{0, 20 * 1000};
+        if (select(0, nullptr, &writable, nullptr, &slice) <= 0) {
+            if (Clock::now() >= deadline) return false;
+            continue;
+        }
+        const int now = send(guard.socket, requestBytes + sent, requestLength - sent, 0);
+        if (now <= 0) return false;
+        sent += now;
+    }
+    shutdown(guard.socket, SD_SEND);
+    return true;
+}
+
+std::uint64_t CreationTicks(const FILETIME& time)
+{
+    return (static_cast<std::uint64_t>(time.dwHighDateTime) << 32) | time.dwLowDateTime;
+}
+
+struct VisibleWindowSearch { DWORD pid{0}; bool found{false}; };
+BOOL CALLBACK FindVisibleWindow(HWND window, LPARAM parameter)
+{
+    auto* search = reinterpret_cast<VisibleWindowSearch*>(parameter);
+    DWORD owner = 0;
+    GetWindowThreadProcessId(window, &owner);
+    if (owner == search->pid && IsWindowVisible(window) && !GetWindow(window, GW_OWNER)) {
+        search->found = true;
+        return FALSE;
+    }
+    return TRUE;
+}
+
 } // namespace
+
+DefaultAdbStopResult TryStopDefaultAdbServer(const DefaultAdbStopRequest& request)
+{
+    using S = DefaultAdbStopStatus;
+    DefaultAdbStopResult result;
+    const auto canceled = [&] { return request.canceled && request.canceled->load(); };
+    if (canceled()) { result.status = S::Canceled; return result; }
+    DWORD pid = 0;
+    switch (FindLoopbackListenerPid(request.port, &pid)) {
+    case ListenerLookup::Found: break;
+    case ListenerLookup::None:
+        result.status = S::NoListener; result.diagnostic = "No loopback listener"; return result;
+    case ListenerLookup::Ambiguous:
+        result.status = S::IdentityChanged; result.diagnostic = "Several processes listen on the port"; return result;
+    default:
+        result.status = S::Failed; result.diagnostic = ErrorText("Query loopback listener table"); return result;
+    }
+    result.processId = pid;
+    if (!pid || pid == GetCurrentProcessId()) {
+        result.status = S::SelfListener; result.diagnostic = "The listener is this process"; return result;
+    }
+    if (request.expectedProcessId && request.expectedProcessId != pid) {
+        result.status = S::IdentityChanged; result.diagnostic = "Listener PID changed since the decision"; return result;
+    }
+    HandleGuard process{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE | PROCESS_TERMINATE, FALSE, pid)};
+    bool canTerminate = process.handle != nullptr;
+    if (!process.handle) {
+        const DWORD error = GetLastError();
+        process.handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, pid);
+        if (!process.handle) {
+            result.status = error == ERROR_ACCESS_DENIED ? S::AccessDenied : S::Failed;
+            result.diagnostic = ErrorText("Open the listener process");
+            return result;
+        }
+    }
+    FILETIME created{}, exited{}, kernel{}, user{};
+    if (!GetProcessTimes(process.handle, &created, &exited, &kernel, &user) || !ProcessAlive(process.handle)) {
+        result.status = S::IdentityChanged; result.diagnostic = "Listener process exited"; return result;
+    }
+    if (request.expectedCreation && CreationTicks(created) != request.expectedCreation) {
+        result.status = S::IdentityChanged; result.diagnostic = "Listener creation time changed"; return result;
+    }
+    std::wstring image;
+    if (!ProcessCanonicalImage(process.handle, &image)) {
+        result.status = S::Failed; result.diagnostic = "Listener image cannot be read"; return result;
+    }
+    const std::wstring imageName = BaseName(image);
+    result.diagnostic = "listener pid " + std::to_string(pid);
+    if (!EqualNoCase(imageName, request.requiredImageName)) {
+        result.status = S::NotAdb; result.diagnostic += " is not the adb server image"; return result;
+    }
+    const auto stillSame = [&] {
+        DWORD listener = 0;
+        FILETIME again{}, e{}, k{}, u{};
+        return ProcessAlive(process.handle) &&
+            GetProcessTimes(process.handle, &again, &e, &k, &u) && CreationTicks(again) == CreationTicks(created) &&
+            FindLoopbackListenerPid(request.port, &listener) == ListenerLookup::Found && listener == pid;
+    };
+    if (request.sendHostKillFirst) {
+        result.hostKillDelivered = SendRawHostKill(request.port, pid, request.canceled);
+        if (result.hostKillDelivered) {
+            const auto deadline = Clock::now() + ClampMs(request.hostKillWait, std::chrono::milliseconds(0),
+                                                         std::chrono::milliseconds(5000));
+            while (Clock::now() < deadline && ProcessAlive(process.handle)) {
+                if (canceled()) { result.status = S::Canceled; return result; }
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+            if (!ProcessAlive(process.handle)) {
+                result.status = S::Stopped; result.diagnostic += " exited after host:kill"; return result;
+            }
+        }
+    }
+    if (canceled()) { result.status = S::Canceled; return result; }
+    if (!stillSame()) {
+        if (!ProcessAlive(process.handle)) { result.status = S::Stopped; result.diagnostic += " exited"; return result; }
+        result.status = S::IdentityChanged; result.diagnostic += " changed before termination"; return result;
+    }
+    if (!canTerminate) {
+        result.status = S::AccessDenied; result.diagnostic += ": Windows denied termination"; return result;
+    }
+    if (!TerminateProcess(process.handle, 1)) {
+        const DWORD error = GetLastError();
+        if (!ProcessAlive(process.handle)) { result.status = S::Stopped; result.diagnostic += " exited"; return result; }
+        result.status = error == ERROR_ACCESS_DENIED ? S::AccessDenied : S::Failed;
+        result.diagnostic += ": " + ErrorText("Terminate the listener process");
+        return result;
+    }
+    result.terminated = true;
+    const auto deadline = Clock::now() + ClampMs(request.exitWait, std::chrono::milliseconds(50),
+                                                 std::chrono::milliseconds(5000));
+    while (Clock::now() < deadline && ProcessAlive(process.handle))
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    result.status = ProcessAlive(process.handle) ? S::Failed : S::Stopped;
+    result.diagnostic += result.status == S::Stopped ? " terminated through its exact handle"
+                                                     : " did not exit after termination";
+    return result;
+}
+
+std::vector<OkuFlowSibling> FindOkuFlowSiblings(bool sameImageOnly)
+{
+    std::vector<OkuFlowSibling> siblings;
+    std::wstring ownImage;
+    {
+        HandleGuard self{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, GetCurrentProcessId())};
+        if (!self.handle || !ProcessCanonicalImage(self.handle, &ownImage)) return siblings;
+    }
+    HandleGuard snapshot{CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)};
+    if (snapshot.handle == INVALID_HANDLE_VALUE) return siblings;
+    std::map<DWORD, DWORD> parents;
+    std::map<DWORD, std::wstring> names;
+    PROCESSENTRY32W entry{sizeof(entry)};
+    if (!Process32FirstW(snapshot.handle, &entry)) return siblings;
+    do {
+        parents[entry.th32ProcessID] = entry.th32ParentProcessID;
+        names[entry.th32ProcessID] = entry.szExeFile;
+    } while (Process32NextW(snapshot.handle, &entry));
+    const DWORD currentPid = GetCurrentProcessId();
+    std::set<DWORD> ancestors;
+    for (DWORD at = currentPid, steps = 0; steps < 16; ++steps) {
+        const auto found = parents.find(at);
+        if (found == parents.end() || !found->second || found->second == at) break;
+        ancestors.insert(found->second);
+        at = found->second;
+    }
+    DWORD currentSession = 0;
+    std::vector<unsigned char> currentSid;
+    if (!ProcessIdToSessionId(currentPid, &currentSession) || !CurrentUserSid(&currentSid, nullptr)) return siblings;
+    const std::wstring ownName = BaseName(ownImage);
+    for (const auto& [pid, name] : names) {
+        if (pid == currentPid || ancestors.contains(pid)) continue;
+        if (!EqualNoCase(name, ownName) && !EqualNoCase(name, L"OkuFlowApp.exe")) continue;
+        DWORD session = 0;
+        if (!ProcessIdToSessionId(pid, &session) || session != currentSession) continue;
+        HandleGuard process{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid)};
+        if (!process.handle) continue;
+        HandleGuard token;
+        std::vector<unsigned char> sid;
+        if (!OpenProcessToken(process.handle, TOKEN_QUERY, &token.handle) || !TokenUserSid(token.handle, &sid) ||
+            sid != currentSid)
+            continue;
+        std::wstring image;
+        OkuFlowSibling sibling;
+        sibling.processId = pid;
+        sibling.sameImage = ProcessCanonicalImage(process.handle, &image) && EqualNoCase(image, ownImage);
+        if (sameImageOnly && !sibling.sameImage) continue;
+        FILETIME created{}, exited{}, kernel{}, user{};
+        if (GetProcessTimes(process.handle, &created, &exited, &kernel, &user)) sibling.creation = CreationTicks(created);
+        VisibleWindowSearch search{pid};
+        EnumWindows(FindVisibleWindow, reinterpret_cast<LPARAM>(&search));
+        sibling.hasVisibleWindow = search.found;
+        siblings.push_back(sibling);
+    }
+    return siblings;
+}
 
 LegacyAdbRecoveryResult TryReclaimLegacyBundledAdbServer(
     const LegacyAdbRecoveryRequest& request)

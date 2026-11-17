@@ -70,8 +70,11 @@ enum class OwnedServerProbe { Responsive, Unresponsive, NoListener };
 
 struct OwnedAdbServerPolicy {
     // Minimum spacing between owned-server restarts/relaunches; also prevents
-    // crash-looping a child that exits immediately.
-    std::chrono::milliseconds restartCooldown{30000};
+    // crash-looping a child that exits immediately. Consecutive launches
+    // without an event double it up to maxRestartCooldown; ResetBudgets
+    // (arrival, resume, manual pick) returns to the base.
+    std::chrono::milliseconds restartCooldown{5000};
+    std::chrono::milliseconds maxRestartCooldown{30000};
     std::chrono::milliseconds readinessDeadline{5000};
     std::chrono::milliseconds pollSlice{50};
     // Consecutive non-responsive probes required before a restart is allowed.
@@ -111,6 +114,11 @@ public:
     // allowLifecycleEffects=false performs only an exact-child health probe:
     // it never launches, restarts or retires support for ordinary enumeration.
     EnsureResult EnsureRunning(const std::atomic<bool>* canceled, bool allowLifecycleEffects = true);
+    // Doctor rung 3: restart a responsive but blind owned child now. Live
+    // sessions and cancellation win; the doctor's budget paces it.
+    EnsureResult Restart(const std::atomic<bool>* canceled);
+    // Events clear the restart cooldown and its doubling.
+    void ResetBudgets();
     // Permanent for this manager: stops the exact owned child (if any) and
     // makes later EnsureRunning calls return Stopped.
     void Stop();
@@ -142,6 +150,7 @@ private:
     std::optional<std::uint16_t> port_;
     std::chrono::steady_clock::time_point nextRestart_{};
     int launches_{0};
+    int launchesSinceReset_{0};
     int restarts_{0};
     bool stopped_{false};
     std::atomic<bool> stopRequested_{false};

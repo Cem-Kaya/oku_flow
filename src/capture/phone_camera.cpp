@@ -18,7 +18,10 @@
 #include <QProcessEnvironment>
 #include <QStandardPaths>
 #include <QtEndian>
+#include <QCryptographicHash>
+#include <QDateTime>
 #include <codecapi.h>
+#include <setupapi.h>
 #include <mferror.h>
 #include <mftransform.h>
 #include <wmcodecdsp.h>
@@ -32,6 +35,7 @@
 #include <optional>
 #include <set>
 #include <charconv>
+#include <cstdio>
 #include <stdexcept>
 
 namespace okuflow {
@@ -67,8 +71,18 @@ struct AdbRuntime {
     unsigned shadowHandbackProbes{};
     std::optional<PhoneAdbTestHooks> hooks;
     Clock::time_point nextServerStart{};
-    std::map<std::string, std::uint64_t> launched;
+    // Next allowed automatic companion launch per serial; events clear it.
+    std::map<std::string, Clock::time_point> launched;
     std::map<std::pair<std::uint16_t, std::string>, Clock::time_point> nextUsbRecovery;
+    std::map<std::pair<std::uint16_t, std::string>, unsigned> usbRecoveryAttempts;
+    // Link doctor and its event clock (fast window for hang confirmation).
+    PhoneLinkDoctor doctor;
+    Clock::time_point lastEvent{};
+    // Rung 4: a private server beside a responsive but blind default.
+    bool shadowRequested{false};
+    bool shadowForBlindness{false};
+    bool borrowedConfirmed{false};
+    std::optional<AdbListenerIdentity> defaultIdentity;
     // Suppresses repeated shell health probes after a definitive healthy or
     // other-host/phone-state answer. Separate from the reconnect-send slot so
     // a healthy answer does not consume the one-minute recovery budget.
@@ -104,6 +118,40 @@ AdbServerEndpoint Endpoint() {
         return {true, false, owned->Port().value_or(0), true};
     }
     return env;
+}
+std::optional<PhoneAdbTestHooks> Hooks()
+{
+    auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
+    return runtime.hooks;
+}
+// The default-port listener (or the fixture standing in for it).
+std::uint16_t DefaultPort()
+{
+    const auto hooks = Hooks();
+    return hooks ? hooks->port : EnvEndpoint().port;
+}
+// An endpoint the user set through the adb environment variables (or a
+// borrowed fixture) stays theirs: never shadowed, asked to exit or stopped.
+bool DefaultIsUserEndpoint()
+{
+    const auto hooks = Hooks();
+    return hooks ? hooks->ownedServerExecutable.empty() : EnvEndpoint().overridden;
+}
+PhoneAdbInterface RuntimeAdbInterface()
+{
+    const auto hooks = Hooks();
+    if (hooks) return hooks->adbInterface ? hooks->adbInterface() : PhoneAdbInterface::Unknown;
+    return QueryAndroidAdbInterface();
+}
+bool RuntimeOtherInstance()
+{
+    const auto hooks = Hooks();
+    if (hooks) return hooks->otherInstanceRunning && hooks->otherInstanceRunning();
+    return !FindOkuFlowSiblings(true).empty();
+}
+std::int64_t NowMs(Clock::time_point at = Clock::now())
+{
+    return std::chrono::duration_cast<std::chrono::milliseconds>(at.time_since_epoch()).count();
 }
 std::optional<AdbListenerIdentity> ListenerIdentity(std::uint16_t port)
 {
@@ -158,11 +206,16 @@ struct OccupiedPhone {
     }
     std::string serial;
 };
-bool MayLaunch(const std::string& serial, std::uint64_t transport) {
+// Companion launch budget: at once after an event (arrival, removal, resume,
+// manual pick, a new server identity), then a slow periodic retry while the
+// user wants the phone. Replaces "once per USB transport", which spent its
+// only launch on a locked phone.
+constexpr auto kAppLaunchPeriod = std::chrono::seconds(20);
+bool MayLaunch(const std::string& serial) {
     auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
-    const auto previous = runtime.launched.find(serial);
-    if (previous != runtime.launched.end() && previous->second == transport) return false;
-    runtime.launched[serial] = transport;
+    auto& next = runtime.launched[serial];
+    if (Clock::now() < next) return false;
+    next = Clock::now() + kAppLaunchPeriod;
     return true;
 }
 
@@ -208,14 +261,31 @@ bool Write(QTcpSocket& socket, const QByteArray& bytes, const std::atomic<bool>*
     }
     return true;
 }
-void Connect(QTcpSocket& socket, int timeout)
+// Budgets a loaded or just-resumed laptop can meet. Waits are sliced so
+// cancellation stays responsive (20 ms).
+constexpr int kHostConnectMs = 500;
+constexpr int kHostReplyFieldMs = 1000;
+constexpr int kCompanionProbeTransportMs = 1000;
+void ConnectTo(QTcpSocket& socket, std::uint16_t port, int timeout, const std::atomic<bool>* canceled = nullptr)
+{
+    socket.connectToHost(QHostAddress::LocalHost, port);
+    const auto deadline = Clock::now() + std::chrono::milliseconds(timeout);
+    while (socket.state() != QAbstractSocket::ConnectedState) {
+        if (canceled && canceled->load()) { socket.abort(); CheckCanceled(canceled); }
+        if (socket.state() == QAbstractSocket::UnconnectedState || Clock::now() >= deadline) {
+            socket.abort();
+            throw AdbServerUnavailable("The local adb server is unavailable");
+        }
+        socket.waitForConnected(20);
+    }
+}
+void Connect(QTcpSocket& socket, int timeout, const std::atomic<bool>* canceled = nullptr)
 {
     socket.setReadBufferSize(32 * 1024 * 1024);
     const auto endpoint = Endpoint();
     if (!endpoint.supported) throw std::runtime_error("USB phone support requires a local TCP adb server");
     if (endpoint.port == 0) throw AdbServerUnavailable("The owned adb server is unavailable");
-    socket.connectToHost(QHostAddress::LocalHost, endpoint.port);
-    if (!socket.waitForConnected(timeout)) throw AdbServerUnavailable("The local adb server is unavailable");
+    ConnectTo(socket, endpoint.port, timeout, canceled);
 }
 
 QString FindAdbExecutable()
@@ -245,8 +315,9 @@ QString FindAdbExecutable()
 OwnedServerProbe ProbeAdbHostVersion(std::uint16_t port, const std::atomic<bool>* canceled)
 {
     QTcpSocket socket;
-    socket.connectToHost(QHostAddress::LocalHost, port);
-    if (!socket.waitForConnected(100)) return OwnedServerProbe::NoListener;
+    try { ConnectTo(socket, port, kHostConnectMs, canceled); }
+    catch (const AdbServerUnavailable&) { return OwnedServerProbe::NoListener; }
+    catch (const std::exception&) { return OwnedServerProbe::Unresponsive; }
     try {
         Write(socket, QByteArrayLiteral("000chost:version"), canceled);
         if (Read(socket, 4, 1000, canceled) != "OKAY") return OwnedServerProbe::Unresponsive;
@@ -359,7 +430,12 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
         bool shadow = false, occupied = false;
         { std::lock_guard lock(runtime.mutex);
           shadow = runtime.shadowServer; occupied = !runtime.occupied.empty(); }
-        if (shadow && !occupied && owned->OwnsRunningServer()) {
+        bool blindShadow = false;
+        { std::lock_guard lock(runtime.mutex); blindShadow = runtime.shadowForBlindness; }
+        // A shadow started because the default is blind to a phone Windows
+        // shows stays until the takeover settles or the phone is unplugged.
+        if (blindShadow && RuntimeAdbInterface() == PhoneAdbInterface::Absent) blindShadow = false;
+        if (shadow && !occupied && !blindShadow && owned->OwnsRunningServer()) {
             bool empty = false;
             try {
                 // Empty raw protobuf proves there are no transports at all,
@@ -378,6 +454,7 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
                 std::lock_guard lock(runtime.mutex);
                 if (runtime.ownedServer == owned) runtime.ownedServer.reset();
                 runtime.shadowServer = false; runtime.shadowHandbackProbes = 0;
+                runtime.shadowForBlindness = false;
                 runtime.launched.clear();
                 runtime.nextServerStart = Clock::now() + std::chrono::seconds(30);
                 return Result::Running;
@@ -408,13 +485,22 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
     const auto defaultProbe = ProbeAdbHostVersion(env.port, canceled);
     CheckCanceled(canceled);
     if (defaultProbe == OwnedServerProbe::Responsive) {
+        const auto identity = ListenerIdentity(env.port);
         std::lock_guard lock(runtime.mutex);
         runtime.borrowedFailures = 0;
         runtime.borrowedFailureSince = {};
         runtime.borrowedFailureIdentity.reset();
-        return Result::Running;
-    }
-    if (defaultProbe == OwnedServerProbe::Unresponsive) {
+        runtime.borrowedConfirmed = false;
+        if (identity) runtime.defaultIdentity = identity;
+        // Rung 4a: a responsive default blind to the phone gets a private
+        // server beside it; whichever lists the phone is used.
+        if (!runtime.shadowRequested || !allowOwnedBootstrap) return Result::Running;
+        runtime.shadowRequested = false;
+        runtime.shadowServer = true;
+        runtime.shadowForBlindness = true;
+        runtime.shadowHandbackProbes = 0;
+        runtime.nextServerStart = {};
+    } else if (defaultProbe == OwnedServerProbe::Unresponsive) {
         const auto identity = ListenerIdentity(env.port);
         bool confirmed = false;
         {
@@ -425,8 +511,13 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
                 runtime.borrowedFailures = 0;
             }
             ++runtime.borrowedFailures;
-            const auto confirmation = std::chrono::milliseconds(hooks ? hooks->borrowedHangConfirmationMs : 5000);
+            auto confirmation = std::chrono::milliseconds(hooks ? hooks->borrowedHangConfirmationMs : 5000);
+            // Inside an event's fast window two failed probes one second apart suffice.
+            if (runtime.lastEvent != Clock::time_point{} && Clock::now() - runtime.lastEvent < std::chrono::seconds(10))
+                confirmation = std::min(confirmation, std::chrono::milliseconds(1000));
             confirmed = runtime.borrowedFailures >= 2 && Clock::now() - runtime.borrowedFailureSince >= confirmation;
+            runtime.borrowedConfirmed = confirmed;
+            if (identity) runtime.defaultIdentity = identity;
             if (!runtime.occupied.empty()) confirmed = false;
         }
         if (!allowOwnedBootstrap || !confirmed) return Result::BorrowedUnresponsive;
@@ -448,9 +539,10 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
             recoveredLegacy = result.status == LegacyAdbRecoveryStatus::Recovered;
             qInfo() << "Legacy OkuFlow USB recovery:" << QString::fromStdString(result.diagnostic);
         }
-        // An unknown listener is never terminated. The private server keeps
-        // trying USB and can hand back after the default recovers safely.
-        { std::lock_guard lock(runtime.mutex); runtime.shadowServer = !recoveredLegacy; }
+        // The private server takes over USB at once. A hung default that
+        // keeps the phone is then stopped by the link doctor (owner decision
+        // of 2026-11-17), never here and never by name.
+        { std::lock_guard lock(runtime.mutex); runtime.shadowServer = !recoveredLegacy; runtime.shadowForBlindness = false; }
     } else {
         std::lock_guard lock(runtime.mutex);
         runtime.borrowedFailures = 0; runtime.borrowedFailureSince = {};
@@ -511,21 +603,33 @@ void AdbRequest(QTcpSocket& socket, const QByteArray& service, int timeout = 300
 void Transport(QTcpSocket& socket, const std::string& serial, const QByteArray& service,
                const std::atomic<bool>* canceled = nullptr, int timeout = 3000, std::uint64_t transportId = 0)
 {
-    Connect(socket, 300);
+    Connect(socket, kHostConnectMs, canceled);
     AdbRequest(socket, transportId ? "host:transport-id:" + QByteArray::number(transportId) :
         "host:transport:" + QByteArray::fromStdString(serial), timeout, canceled);
     AdbRequest(socket, service, timeout, canceled);
+}
+QByteArray ReadHostReply(QTcpSocket& socket, const QByteArray& service, const std::atomic<bool>* canceled)
+{
+    AdbRequest(socket, service, kHostReplyFieldMs, canceled);
+    bool valid = false;
+    const int size = Read(socket, 4, kHostReplyFieldMs, canceled).toInt(&valid, 16);
+    if (!valid || size < 0 || size > 65535) throw std::runtime_error("Invalid adb reply length");
+    return Read(socket, size, kHostReplyFieldMs, canceled);
 }
 QByteArray AdbHostReply(const QByteArray& service, const std::atomic<bool>* canceled)
 {
     CheckCanceled(canceled);
     QTcpSocket socket;
-    Connect(socket, 100);
-    AdbRequest(socket, service, 150, canceled);
-    bool valid = false;
-    const int size = Read(socket, 4, 150, canceled).toInt(&valid, 16);
-    if (!valid || size < 0 || size > 65535) throw std::runtime_error("Invalid adb reply length");
-    return Read(socket, size, 150, canceled);
+    Connect(socket, kHostConnectMs, canceled);
+    return ReadHostReply(socket, service, canceled);
+}
+// Explicit port: the default listener while a private server shadows it.
+QByteArray AdbHostReplyAt(std::uint16_t port, const QByteArray& service, const std::atomic<bool>* canceled)
+{
+    CheckCanceled(canceled);
+    QTcpSocket socket;
+    ConnectTo(socket, port, kHostConnectMs, canceled);
+    return ReadHostReply(socket, service, canceled);
 }
 Packet ReadPacket(QTcpSocket& socket, int limit, const std::atomic<bool>* canceled = nullptr)
 {
@@ -824,6 +928,12 @@ void SetPhoneAdbTestHooks(std::optional<PhoneAdbTestHooks> hooks)
     runtime.borrowedFailureIdentity.reset(); runtime.borrowedFailureSince = {};
     runtime.borrowedFailures = 0; runtime.shadowServer = false; runtime.shadowHandbackProbes = 0;
     runtime.launched.clear(); runtime.nextUsbRecovery.clear(); runtime.nextUsbHealthProbe.clear();
+    runtime.usbRecoveryAttempts.clear();
+    runtime.doctor = PhoneLinkDoctor(runtime.hooks && runtime.hooks->linkPolicy ? *runtime.hooks->linkPolicy
+                                                                                : PhoneLinkPolicy{});
+    runtime.lastEvent = {};
+    runtime.shadowRequested = runtime.shadowForBlindness = runtime.borrowedConfirmed = false;
+    runtime.defaultIdentity.reset();
 }
 void PhoneCameraTransport::AllowAppLaunch(const std::string& serial)
 {
@@ -850,7 +960,47 @@ void PhoneVideoDecoder::Decode(std::span<const std::uint8_t> data, LONGLONG time
     impl_->decoder.Input(QByteArray(reinterpret_cast<const char*>(data.data()), static_cast<qsizetype>(data.size())), timestamp, impl_->fps, callback);
 }
 
-std::vector<CameraDescriptor> ParseAdbUsbDevices(std::span<const std::uint8_t> protobuf)
+namespace {
+PhoneAdbState StateFromProto(std::uint64_t state)
+{
+    // AOSP devices.proto ConnectionState (ANY=0 is the proto3 default).
+    switch (state) {
+    case 1: return PhoneAdbState::Connecting;
+    case 2: return PhoneAdbState::Authorizing;
+    case 3: return PhoneAdbState::Unauthorized;
+    case 4: return PhoneAdbState::NoPermissions;
+    case 6: return PhoneAdbState::Offline;
+    case 8: return PhoneAdbState::Device;
+    default: return PhoneAdbState::Other;
+    }
+}
+const char* StateName(PhoneAdbState state)
+{
+    switch (state) {
+    case PhoneAdbState::NotListed: return "not-listed";
+    case PhoneAdbState::Device: return "device";
+    case PhoneAdbState::Unauthorized: return "unauthorized";
+    case PhoneAdbState::Authorizing: return "authorizing";
+    case PhoneAdbState::Connecting: return "connecting";
+    case PhoneAdbState::Offline: return "offline";
+    case PhoneAdbState::NoPermissions: return "no-permissions";
+    case PhoneAdbState::Other: return "other";
+    }
+    return "other";
+}
+CameraDescriptor DescriptorFor(const AdbDeviceEntry& entry)
+{
+    CameraDescriptor descriptor;
+    descriptor.phoneSerial = entry.serial;
+    descriptor.phoneTransportId = entry.transportId;
+    descriptor.symbolicLink = QString("okuflow-phone:%1").arg(QString::fromStdString(entry.serial)).toStdWString();
+    descriptor.name = QString("OkuFlow Camera · %1").arg(QString::fromStdString(entry.model.empty() ? entry.serial : entry.model)
+        .replace('_', ' ')).toStdWString();
+    return descriptor;
+}
+} // namespace
+
+std::vector<AdbDeviceEntry> ParseAdbDeviceEntries(std::span<const std::uint8_t> protobuf)
 {
     struct Reader {
         std::span<const std::uint8_t> bytes;
@@ -881,15 +1031,15 @@ std::vector<CameraDescriptor> ParseAdbUsbDevices(std::span<const std::uint8_t> p
         }
     } root{protobuf};
     if (protobuf.size() > 65535) throw std::runtime_error("Oversized adb device listing");
-    std::vector<CameraDescriptor> devices;
+    std::vector<AdbDeviceEntry> entries;
     while (root.position < root.bytes.size()) {
         const auto tag = root.Varint();
         if (!(tag >> 3)) throw std::runtime_error("Invalid adb protobuf field");
         if (tag != 10) { root.Skip(static_cast<unsigned>(tag & 7)); continue; }
         const auto size = root.Varint();
         Reader device{root.Bytes(size)};
-        std::string serial, model;
-        std::uint64_t state = 0, type = 0, transportId = 0;
+        AdbDeviceEntry entry;
+        std::uint64_t state = 0, type = 0;
         while (device.position < device.bytes.size()) {
             const auto field = device.Varint();
             if (!(field >> 3)) throw std::runtime_error("Invalid adb device field");
@@ -897,61 +1047,292 @@ std::vector<CameraDescriptor> ParseAdbUsbDevices(std::span<const std::uint8_t> p
                 const auto length = device.Varint();
                 const auto text = device.Bytes(length);
                 if (length > 512) throw std::runtime_error("Oversized adb device name");
-                (field == 10 ? serial : model).assign(reinterpret_cast<const char*>(text.data()), text.size());
+                (field == 10 ? entry.serial : entry.model).assign(reinterpret_cast<const char*>(text.data()), text.size());
             } else if (field == 16) state = device.Varint();
             else if (field == 56) type = device.Varint();
-            else if (field == 80) transportId = device.Varint();
+            else if (field == 80) entry.transportId = device.Varint();
             else device.Skip(static_cast<unsigned>(field & 7));
         }
-        if (type != 1 || state != 8 || serial.empty() || serial.starts_with("emulator-")) continue;
-        CameraDescriptor descriptor;
-        descriptor.phoneSerial = serial;
-        descriptor.phoneTransportId = transportId;
-        descriptor.symbolicLink = QString("okuflow-phone:%1").arg(QString::fromStdString(serial)).toStdWString();
-        descriptor.name = QString("OkuFlow Camera · %1").arg(QString::fromStdString(model.empty() ? serial : model).replace('_', ' ')).toStdWString();
-        devices.push_back(std::move(descriptor));
+        if (entry.serial.empty()) continue;
+        entry.state = StateFromProto(state);
+        entry.usb = type == 1 && !entry.serial.starts_with("emulator-");
+        entries.push_back(std::move(entry));
+        if (entries.size() > 512) throw std::runtime_error("Too many adb devices");
+    }
+    return entries;
+}
+
+std::vector<CameraDescriptor> ParseAdbUsbDevices(std::span<const std::uint8_t> protobuf)
+{
+    std::vector<CameraDescriptor> devices;
+    for (const auto& entry : ParseAdbDeviceEntries(protobuf)) {
+        if (!entry.usb || entry.state != PhoneAdbState::Device) continue;
+        devices.push_back(DescriptorFor(entry));
         if (devices.size() > 128) throw std::runtime_error("Too many USB devices");
     }
     return devices;
 }
 
+std::vector<AdbDeviceEntry> ParseAdbDevicesLongText(std::string_view text)
+{
+    std::vector<AdbDeviceEntry> entries;
+    for (const auto& line : QByteArray(text.data(), static_cast<qsizetype>(text.size())).split('\n')) {
+        const auto fields = line.simplified().split(' ');
+        if (fields.size() < 2 || fields[0].isEmpty()) continue;
+        AdbDeviceEntry entry;
+        entry.serial = fields[0].toStdString();
+        const auto& word = fields[1];
+        entry.state = word == "device" ? PhoneAdbState::Device : word == "unauthorized" ? PhoneAdbState::Unauthorized :
+            word == "offline" ? PhoneAdbState::Offline : word == "authorizing" ? PhoneAdbState::Authorizing :
+            word == "connecting" ? PhoneAdbState::Connecting : word == "no" ? PhoneAdbState::NoPermissions :
+            PhoneAdbState::Other;
+        for (const auto& field : fields) {
+            if (field.startsWith("usb:")) entry.usb = true;
+            if (field.startsWith("model:")) entry.model = field.mid(6).toStdString();
+            if (field.startsWith("transport_id:")) {
+                bool valid = false;
+                const auto id = field.mid(13).toULongLong(&valid);
+                if (valid) entry.transportId = id;
+            }
+        }
+        if (entry.serial.starts_with("emulator-")) entry.usb = false;
+        entries.push_back(std::move(entry));
+        if (entries.size() >= 64) break;
+    }
+    return entries;
+}
+
+PhoneShellFacts ParsePhoneShellFacts(std::string_view text)
+{
+    PhoneShellFacts facts;
+    char section = 0;
+    bool sawEnd = false, sawPackages = false, sawProcesses = false, packageLine = false, processLine = false;
+    bool keyguardTrue = false, keyguardFalse = false;
+    for (const auto& raw : QByteArray(text.data(), static_cast<qsizetype>(text.size())).split('\n')) {
+        const auto line = raw.trimmed();
+        if (line == "W:" || line == "K:" || line == "P:" || line == "R:") {
+            section = line[0];
+            if (section == 'P') sawPackages = true;
+            if (section == 'R') sawProcesses = true;
+            continue;
+        }
+        if (line == "END") { sawEnd = true; break; }
+        if (section == 'W') {
+            const auto at = line.indexOf("mWakefulness=");
+            if (at >= 0) {
+                const auto value = line.mid(at + 13).split(' ').front();
+                if (value == "Awake") facts.screenAwake = PhoneFact::Yes;
+                else if (value == "Asleep" || value == "Dozing" || value == "Dreaming") facts.screenAwake = PhoneFact::No;
+            }
+        } else if (section == 'K') {
+            for (const char* key : {"mShowingLockscreen=", "mDreamingLockscreen=", "isKeyguardShowing=",
+                                    "mKeyguardShowing=", "KeyguardShowing="}) {
+                const auto at = line.indexOf(key);
+                if (at < 0) continue;
+                const auto value = line.mid(at + static_cast<qsizetype>(std::strlen(key)));
+                if (value.startsWith("true")) keyguardTrue = true;
+                else if (value.startsWith("false")) keyguardFalse = true;
+            }
+        } else if (section == 'P') {
+            if (line.startsWith("package:")) packageLine = true;
+        } else if (section == 'R') {
+            if (!line.isEmpty() && std::all_of(line.begin(), line.end(), [](char c) { return c == ' ' || (c >= '0' && c <= '9'); }))
+                processLine = true;
+        }
+    }
+    if (keyguardTrue) facts.keyguardShowing = PhoneFact::Yes;
+    else if (keyguardFalse) facts.keyguardShowing = PhoneFact::No;
+    if (packageLine) facts.appInstalled = PhoneFact::Yes;
+    else if (sawPackages && sawEnd) facts.appInstalled = PhoneFact::No;
+    if (processLine) facts.appRunning = PhoneFact::Yes;
+    else if (sawProcesses && sawEnd) facts.appRunning = PhoneFact::No;
+    return facts;
+}
+
+PhoneAdbInterface QueryAndroidAdbInterface()
+{
+    // Android USB debugging interface class (WinUSB/ADB), also registered for
+    // arrival notifications in main_window.cpp.
+    static const GUID kAdbInterface{0xf72fe0d4, 0xcbcb, 0x407d, {0x88, 0x14, 0x9e, 0xd6, 0x73, 0xd0, 0xdd, 0x6b}};
+    HDEVINFO set = SetupDiGetClassDevsW(&kAdbInterface, nullptr, nullptr, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+    if (set == INVALID_HANDLE_VALUE) return PhoneAdbInterface::Unknown;
+    SP_DEVICE_INTERFACE_DATA data{};
+    data.cbSize = sizeof(data);
+    const bool any = SetupDiEnumDeviceInterfaces(set, nullptr, &kAdbInterface, 0, &data) != FALSE;
+    const DWORD error = any ? ERROR_SUCCESS : GetLastError();
+    SetupDiDestroyDeviceInfoList(set);
+    if (any) return PhoneAdbInterface::Present;
+    return error == ERROR_NO_MORE_ITEMS ? PhoneAdbInterface::Absent : PhoneAdbInterface::Unknown;
+}
+
+std::string PhoneSerialTag(std::string_view serial)
+{
+    if (serial.empty()) return "phone-none";
+    const auto digest = QCryptographicHash::hash(QByteArray(serial.data(), static_cast<qsizetype>(serial.size())),
+                                                 QCryptographicHash::Sha256).toHex().left(8);
+    return "phone-" + digest.toStdString();
+}
+
+namespace {
+struct TraceFile { std::mutex mutex; std::wstring path; };
+TraceFile& Trace() { static TraceFile trace; return trace; }
+constexpr long long kTraceFileLimit = 256 * 1024;
+} // namespace
+
+void SetPhoneLinkTraceFile(const std::wstring& path)
+{
+    auto& trace = Trace();
+    std::lock_guard lock(trace.mutex);
+    trace.path = path;
+}
+
+void TracePhoneLink(std::string_view line)
+{
+    const auto text = std::to_string(NowMs()) + " " +
+        QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString() + " " + std::string(line);
+    qInfo().noquote() << "Phone link:" << QString::fromStdString(text);
+    auto& trace = Trace();
+    std::lock_guard lock(trace.mutex);
+    if (trace.path.empty()) return;
+    WIN32_FILE_ATTRIBUTE_DATA info{};
+    if (GetFileAttributesExW(trace.path.c_str(), GetFileExInfoStandard, &info) &&
+        ((static_cast<long long>(info.nFileSizeHigh) << 32) | info.nFileSizeLow) >= kTraceFileLimit)
+        MoveFileExW(trace.path.c_str(), (trace.path + L".1").c_str(), MOVEFILE_REPLACE_EXISTING);
+    FILE* file = nullptr;
+    if (_wfopen_s(&file, trace.path.c_str(), L"ab") != 0 || !file) return;
+    std::fwrite(text.data(), 1, text.size(), file);
+    std::fputc('\n', file);
+    std::fclose(file);
+}
+
+void NotePhoneLinkEvent(PhoneLinkEvent event)
+{
+    auto& runtime = Runtime();
+    std::shared_ptr<OwnedAdbServer> owned;
+    {
+        std::lock_guard lock(runtime.mutex);
+        const auto now = Clock::now();
+        runtime.doctor.OnEvent(event, NowMs(now));
+        runtime.lastEvent = now;
+        runtime.launched.clear();
+        runtime.nextUsbRecovery.clear();
+        runtime.nextUsbHealthProbe.clear();
+        runtime.usbRecoveryAttempts.clear();
+        runtime.nextServerStart = {};
+        runtime.borrowedFailures = 0;
+        runtime.borrowedFailureSince = {};
+        runtime.borrowedFailureIdentity.reset();
+        runtime.borrowedConfirmed = false;
+        // Pre-sleep / pre-removal transport ids and server health are stale:
+        // the next identity observation starts a new server epoch.
+        if (event == PhoneLinkEvent::Resume || event == PhoneLinkEvent::DeviceRemoval)
+            runtime.lastIdentity.reset();
+        owned = runtime.ownedServer;
+    }
+    if (owned) owned->ResetBudgets();
+    TracePhoneLink("event " + std::string(PhoneLinkEventName(event)));
+}
+
 namespace {
 // Listing without companion probes: recovery must not touch other phones.
-std::vector<CameraDescriptor> ListUsbPhones(const std::atomic<bool>* canceled)
+std::vector<CameraDescriptor> ListUsbPhones(const std::atomic<bool>* canceled,
+                                            std::vector<AdbDeviceEntry>* rawEntries = nullptr)
 {
-    std::vector<CameraDescriptor> attached;
+    std::vector<AdbDeviceEntry> entries;
+    bool text = false;
     try {
         const auto data = AdbHostReply("host:track-devices-proto-binary", canceled);
-        attached = ParseAdbUsbDevices(std::span(reinterpret_cast<const std::uint8_t*>(data.constData()), static_cast<size_t>(data.size())));
+        entries = ParseAdbDeviceEntries(std::span(reinterpret_cast<const std::uint8_t*>(data.constData()), static_cast<size_t>(data.size())));
     } catch (...) {
-        for (const auto& line : AdbHostReply("host:devices-l", canceled).split('\n')) {
-            const auto fields = line.simplified().split(' ');
-            if (fields.size() < 3 || fields[1] != "device" || fields[0].startsWith("emulator-")) continue;
-            bool usb = false;
-            QByteArray model = fields[0];
-            for (const auto& field : fields) {
-                if (field.startsWith("usb:")) usb = true;
-                if (field.startsWith("model:")) model = field.mid(6);
-            }
-            if (!usb || attached.size() >= 8) continue;
-            CameraDescriptor descriptor;
-            descriptor.phoneSerial = fields[0].toStdString();
-            for (const auto& field : fields) {
-                if (field.startsWith("transport_id:")) {
-                    bool valid = false;
-                    const auto id = field.mid(13).toULongLong(&valid);
-                    if (valid) descriptor.phoneTransportId = id;
-                }
-            }
-            descriptor.symbolicLink = QString("okuflow-phone:%1").arg(QString::fromUtf8(fields[0])).toStdWString();
-            descriptor.name = QString("OkuFlow Camera · %1").arg(QString::fromUtf8(model).replace('_', ' ')).toStdWString();
-            attached.push_back(std::move(descriptor));
-        }
+        const auto reply = AdbHostReply("host:devices-l", canceled);
+        entries = ParseAdbDevicesLongText(std::string_view(reply.constData(), static_cast<size_t>(reply.size())));
+        text = true;
+    }
+    std::vector<CameraDescriptor> attached;
+    for (const auto& entry : entries) {
+        if (!entry.usb || entry.state != PhoneAdbState::Device) continue;
+        if (text && attached.size() >= 8) continue;
+        attached.push_back(DescriptorFor(entry));
+        if (attached.size() > 128) throw std::runtime_error("Too many USB devices");
     }
     std::uint64_t epoch = 0;
     { auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex); epoch = runtime.serverEpoch; }
     for (auto& descriptor : attached) descriptor.phoneServerEpoch = epoch;
+    if (rawEntries) *rawEntries = std::move(entries);
     return attached;
+}
+
+// Reads a short shell reply until the stream closes, `until` appears, the
+// deadline passes or 64 KiB arrived.
+QByteArray DrainShell(QTcpSocket& socket, const std::atomic<bool>* canceled, int timeoutMs,
+                      const QByteArray& until = {})
+{
+    QByteArray response;
+    const auto deadline = Clock::now() + std::chrono::milliseconds(timeoutMs);
+    while (socket.state() == QAbstractSocket::ConnectedState && Clock::now() < deadline) {
+        CheckCanceled(canceled);
+        socket.waitForReadyRead(20);
+        response += socket.readAll();
+        if (response.size() > kControlLimit) throw std::runtime_error("Oversized phone shell response");
+        if (!until.isEmpty() && response.contains(until)) break;
+    }
+    response += socket.readAll();
+    if (response.size() > kControlLimit) throw std::runtime_error("Oversized phone shell response");
+    return response;
+}
+
+enum class CompanionLaunch { Started, NotInstalled };
+// Rung 5: wake the screen (harmless input) and start the activity with the
+// host-launch extra, which lets a new companion show over the keyguard. The
+// Play package is tried first; the legacy debug package only when the new
+// activity class is absent. Never force-stops anything.
+CompanionLaunch LaunchCompanion(const std::string& serial, std::uint64_t transportId,
+                                const std::atomic<bool>* canceled, bool wake)
+{
+    if (wake) {
+        try {
+            QTcpSocket waker;
+            Transport(waker, serial, "shell:input keyevent KEYCODE_WAKEUP", canceled, 1000, transportId);
+            DrainShell(waker, canceled, 1000);
+        } catch (const std::exception&) {
+            CheckCanceled(canceled);
+        }
+    }
+    for (const char* command : {
+        "shell:am start -n com.okuflow/com.okuflow.camera.MainActivity --ez com.okuflow.camera.extra.HOST_LAUNCH true",
+        "shell:am start -n com.okuflow.camera/.MainActivity --ez com.okuflow.camera.extra.HOST_LAUNCH true"}) {
+        QTcpSocket launcher;
+        Transport(launcher, serial, command, canceled, 1000, transportId);
+        const auto response = DrainShell(launcher, canceled, 2000);
+        if (!response.contains("Error") && !response.contains("Exception")) return CompanionLaunch::Started;
+        const bool legacy = std::string_view(command).find("com.okuflow.camera/.MainActivity") != std::string_view::npos;
+        if (legacy || !response.contains("Error type 3")) return CompanionLaunch::NotInstalled;
+    }
+    return CompanionLaunch::NotInstalled;
+}
+
+// Read-only phone facts in one bounded shell request. A timeout here (no
+// byte at all) is adbd silence; any reply proves adbd answers.
+constexpr char kShellFactsCommand[] =
+    "shell:echo W:; dumpsys power | grep -m1 mWakefulness=; echo K:; "
+    "dumpsys window | grep -E 'mShowingLockscreen|mDreamingLockscreen|isKeyguardShowing|mKeyguardShowing' | head -n 4; "
+    "echo P:; pm path com.okuflow; pm path com.okuflow.camera; echo R:; pidof com.okuflow com.okuflow.camera; echo END";
+PhoneShellFacts QueryShellFacts(const AdbDeviceEntry& entry, const std::atomic<bool>* canceled, bool* timedOut)
+{
+    *timedOut = false;
+    try {
+        QTcpSocket shell;
+        Transport(shell, entry.serial, kShellFactsCommand, canceled, 2000, entry.transportId);
+        const auto response = DrainShell(shell, canceled, 2500, "END");
+        if (response.isEmpty() && shell.state() == QAbstractSocket::ConnectedState) *timedOut = true;
+        return ParsePhoneShellFacts(std::string_view(response.constData(), static_cast<size_t>(response.size())));
+    } catch (const UsbResponseTimeout&) {
+        CheckCanceled(canceled);
+        *timedOut = true;
+    } catch (const std::exception&) {
+        CheckCanceled(canceled);
+    }
+    return {};
 }
 
 using RecoveryKey = std::pair<std::uint16_t, std::string>;
@@ -959,8 +1340,12 @@ constexpr std::string_view kUsbHealthToken = "OKUFLOW_USB_HEALTH\n";
 // Long enough for a slow first shell on a loaded phone; a reset now needs
 // two consecutive timeouts at this budget, not one.
 constexpr int kUsbHealthProbeTimeoutMs = 2000;
-constexpr auto kUsbHealthProbeCooldown = std::chrono::seconds(30);
-constexpr auto kUsbReconnectCooldown = std::chrono::seconds(60);
+// Healthy/definitive answers suppress shell probes briefly; events clear it.
+constexpr auto kUsbHealthProbeCooldown = std::chrono::seconds(10);
+// Reconnect cadence per phone/server: at once after an event, then 3 s, then
+// 30 s until the next event (was a flat minute that no event renewed).
+constexpr auto kUsbReconnectRetry = std::chrono::seconds(3);
+constexpr auto kUsbReconnectCooldown = std::chrono::seconds(30);
 constexpr auto kUsbReconnectVerifyWindow = std::chrono::seconds(2);
 
 bool SameUsbTransportAttached(const std::vector<CameraDescriptor>& phones,
@@ -1078,7 +1463,10 @@ bool PhoneCameraTransport::RecoverStalledUsbTransport(const CameraDescriptor& de
             auto& next = runtime.nextUsbRecovery[key];
             if (Clock::now() < next) return false;
             // Reserve before sending, including unsupported/failed replies.
-            next = Clock::now() + kUsbReconnectCooldown;
+            auto& attempts = runtime.usbRecoveryAttempts[key];
+            next = Clock::now() + (attempts == 0 ? std::chrono::duration_cast<Clock::duration>(kUsbReconnectRetry)
+                                                 : std::chrono::duration_cast<Clock::duration>(kUsbReconnectCooldown));
+            ++attempts;
         }
         const auto reply = AdbHostReply("host-transport-id:" +
             QByteArray::number(descriptor.phoneTransportId) + ":reconnect", canceled);
@@ -1109,98 +1497,444 @@ bool PhoneCameraTransport::RecoverStalledUsbTransport(const CameraDescriptor& de
     }
 }
 
+namespace {
+struct DiscoveryFacts {
+    bool endpointSupported{true};
+    PhoneServerProbe probe{PhoneServerProbe::Unknown};
+    std::vector<AdbDeviceEntry> entries;
+    std::map<std::string, std::pair<PhoneCompanionProbe, std::string>> companions;
+};
+
+const char* ServerKindName(PhoneServerKind kind)
+{
+    switch (kind) {
+    case PhoneServerKind::None: return "none";
+    case PhoneServerKind::Owned: return "owned";
+    case PhoneServerKind::BorrowedDefault: return "borrowed-default";
+    case PhoneServerKind::Override: return "override";
+    }
+    return "none";
+}
+const char* ProbeName(PhoneServerProbe probe)
+{
+    switch (probe) {
+    case PhoneServerProbe::Unknown: return "unknown";
+    case PhoneServerProbe::Responsive: return "responsive";
+    case PhoneServerProbe::Unresponsive: return "unresponsive";
+    case PhoneServerProbe::NoListener: return "no-listener";
+    }
+    return "unknown";
+}
+const char* CompanionName(PhoneCompanionProbe probe)
+{
+    switch (probe) {
+    case PhoneCompanionProbe::Unknown: return "unknown";
+    case PhoneCompanionProbe::Ready: return "ready";
+    case PhoneCompanionProbe::SessionBusy: return "session-busy";
+    case PhoneCompanionProbe::Problem: return "problem";
+    case PhoneCompanionProbe::Refused: return "refused";
+    case PhoneCompanionProbe::TimedOut: return "timed-out";
+    }
+    return "unknown";
+}
+const char* InterfaceName(PhoneAdbInterface value)
+{
+    return value == PhoneAdbInterface::Present ? "present" : value == PhoneAdbInterface::Absent ? "absent" : "unknown";
+}
+const char* FactName(PhoneFact fact)
+{
+    return fact == PhoneFact::Yes ? "yes" : fact == PhoneFact::No ? "no" : "?";
+}
+
+// Lists the default listener directly (while a private server shadows it).
+std::optional<std::vector<AdbDeviceEntry>> ListDefaultEntries(const std::atomic<bool>* canceled)
+{
+    try {
+        const auto data = AdbHostReplyAt(DefaultPort(), "host:track-devices-proto-binary", canceled);
+        return ParseAdbDeviceEntries(std::span(reinterpret_cast<const std::uint8_t*>(data.constData()),
+                                               static_cast<size_t>(data.size())));
+    } catch (const std::exception&) {
+        CheckCanceled(canceled);
+        return std::nullopt;
+    }
+}
+bool OtherDeviceServed(const std::vector<AdbDeviceEntry>& entries, const std::string& target)
+{
+    return std::any_of(entries.begin(), entries.end(), [&](const auto& entry) {
+        return entry.state == PhoneAdbState::Device && entry.serial != target;
+    });
+}
+
+void AfterDefaultStopped()
+{
+    auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
+    runtime.shadowServer = false;
+    runtime.shadowForBlindness = false;
+    runtime.shadowHandbackProbes = 0;
+    runtime.borrowedFailures = 0;
+    runtime.borrowedFailureSince = {};
+    runtime.borrowedFailureIdentity.reset();
+    runtime.borrowedConfirmed = false;
+    runtime.defaultIdentity.reset();
+    runtime.nextServerStart = {};
+}
+
+std::string ExecuteLinkAction(PhoneLinkAction action, const PhoneLinkObservation& o, const AdbDeviceEntry* entry,
+                              const std::string& target, const std::atomic<bool>* canceled)
+{
+    using A = PhoneLinkAction;
+    auto& runtime = Runtime();
+    PhoneLinkPolicy policy;
+    { std::lock_guard lock(runtime.mutex); policy = runtime.doctor.Policy(); }
+    switch (action) {
+    case A::None:
+    case A::Relist:
+    case A::WaitForUser:
+        return {};
+    case A::ReconnectTransport: {
+        if (!entry) return "no listed phone";
+        if (entry->state == PhoneAdbState::Device) {
+            auto descriptor = DescriptorFor(*entry);
+            { std::lock_guard lock(runtime.mutex); descriptor.phoneServerEpoch = runtime.serverEpoch; }
+            return PhoneCameraTransport::RecoverStalledUsbTransport(descriptor, canceled)
+                ? "stalled transport reset" : "stalled transport kept (proof steps not met)";
+        }
+        const auto service = entry->transportId
+            ? "host-transport-id:" + QByteArray::number(entry->transportId) + ":reconnect"
+            : QByteArray("host:reconnect-offline");
+        try {
+            AdbHostReply(service, canceled);
+            return std::string("reconnect requested for a ") + StateName(entry->state) + " transport";
+        } catch (const std::exception& error) {
+            CheckCanceled(canceled);
+            return std::string("reconnect request failed: ") + error.what();
+        }
+    }
+    case A::RestartOwnedServer: {
+        std::shared_ptr<OwnedAdbServer> owned;
+        { std::lock_guard lock(runtime.mutex); owned = runtime.ownedServer; }
+        if (!owned || o.shadowRunning) return "no owned server to restart";
+        const auto result = owned->Restart(canceled);
+        using R = OwnedAdbServer::EnsureResult;
+        if (result == R::Restarted || result == R::Launched) {
+            { std::lock_guard lock(runtime.mutex); runtime.launched.clear(); }
+            return "owned server restarted on private port " + std::to_string(owned->Port().value_or(0));
+        }
+        if (result == R::RestartDeferredLiveSession) return "owned restart deferred: a live session uses it";
+        if (result == R::Throttled) return "owned restart throttled";
+        return "owned restart did not complete";
+    }
+    case A::StartShadowServer: {
+        if (DefaultIsUserEndpoint()) return "refused: user endpoint";
+        const auto identity = ListenerIdentity(DefaultPort());
+        {
+            std::lock_guard lock(runtime.mutex);
+            runtime.shadowRequested = true;
+            runtime.nextServerStart = {};
+            if (identity) runtime.defaultIdentity = identity;
+        }
+        const auto result = EnsureAdbServer(canceled, PhoneServerIntent::PhoneUse);
+        using R = OwnedAdbServer::EnsureResult;
+        return result == R::Launched || result == R::Running || result == R::Restarted
+            ? "private server started beside the default" : "private server beside the default is not ready yet";
+    }
+    case A::AskDefaultServerToExit: {
+        if (DefaultIsUserEndpoint() || !o.phoneWanted) return "refused: user endpoint or no phone intent";
+        const auto port = DefaultPort();
+        const auto listed = ListDefaultEntries(canceled);
+        if (listed && OtherDeviceServed(*listed, target)) return "kept: the default server serves another device";
+        const auto before = ListenerIdentity(port);
+        if (!before) { AfterDefaultStopped(); return "default server already gone"; }
+        try {
+            QTcpSocket socket;
+            ConnectTo(socket, port, kHostConnectMs, canceled);
+            Write(socket, QByteArrayLiteral("0009host:kill"), canceled);
+            try { Read(socket, 4, 1000, canceled); } catch (const std::exception&) { CheckCanceled(canceled); }
+        } catch (const std::exception&) {
+            CheckCanceled(canceled);
+            return "host:kill not delivered";
+        }
+        const auto deadline = Clock::now() + std::chrono::milliseconds(policy.hostKillWaitMs);
+        while (Clock::now() < deadline) {
+            CheckCanceled(canceled);
+            const auto now = ListenerIdentity(port);
+            if (!now || !(*now == *before)) { AfterDefaultStopped(); return "default server exited after host:kill"; }
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        return "default server ignored host:kill";
+    }
+    case A::TerminateDefaultServer: {
+        if (DefaultIsUserEndpoint() || !o.phoneWanted) return "refused: user endpoint or no phone intent";
+        const auto port = DefaultPort();
+        if (o.serverProbe == PhoneServerProbe::Responsive || o.shadowRunning) {
+            const auto listed = ListDefaultEntries(canceled);
+            if (listed && OtherDeviceServed(*listed, target)) return "kept: the default server serves another device";
+        }
+        const auto identity = ListenerIdentity(port);
+        if (!identity) { AfterDefaultStopped(); return "default server already gone"; }
+        std::optional<AdbListenerIdentity> expected;
+        std::wstring imageName = L"adb.exe";
+        {
+            std::lock_guard lock(runtime.mutex);
+            expected = runtime.defaultIdentity;
+            if (runtime.hooks) imageName = runtime.hooks->terminableImageName;
+            if (expected && !(*expected == *identity)) {
+                runtime.defaultIdentity = identity;
+                return "refused: the listener changed since the decision";
+            }
+        }
+        DefaultAdbStopRequest request;
+        request.port = port;
+        request.expectedProcessId = identity->processId;
+        request.expectedCreation = identity->created;
+        request.requiredImageName = imageName;
+        request.canceled = canceled;
+        request.hostKillWait = std::chrono::milliseconds(policy.hostKillWaitMs);
+        const auto result = TryStopDefaultAdbServer(request);
+        if (result.status == DefaultAdbStopStatus::Stopped) AfterDefaultStopped();
+        if (result.status == DefaultAdbStopStatus::AccessDenied) {
+            std::lock_guard lock(runtime.mutex);
+            runtime.doctor.NoteDefaultStopRefused();
+        }
+        return "default server stop: " + result.diagnostic;
+    }
+    case A::WakeAndLaunchApp: {
+        if (!entry) return "no listed phone";
+        try {
+            return LaunchCompanion(entry->serial, entry->transportId, canceled, true) == CompanionLaunch::Started
+                ? "woke the phone and requested the companion" : "companion is not installed";
+        } catch (const std::exception& error) {
+            CheckCanceled(canceled);
+            return std::string("companion launch failed: ") + error.what();
+        }
+    }
+    }
+    return {};
+}
+
+void RunPhoneLinkLadder(const PhoneLinkRequest& link, const std::string& preferredSerial, const DiscoveryFacts& facts,
+                        const std::atomic<bool>* canceled, PhoneLinkReport& report)
+{
+    PhoneLinkObservation o;
+    o.phoneWanted = link.phoneWanted;
+    o.captureAbandoned = link.captureAbandoned;
+    o.sessionStreaming = link.sessionStreaming;
+    o.endpointSupported = facts.endpointSupported;
+    o.serverProbe = facts.probe;
+    o.adbInterface = RuntimeAdbInterface();
+    const auto endpoint = Endpoint();
+    bool shadow = false, shadowForBlindness = false, confirmed = false;
+    {
+        auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
+        shadow = runtime.shadowServer;
+        shadowForBlindness = runtime.shadowForBlindness;
+        confirmed = runtime.borrowedConfirmed;
+    }
+    o.server = !endpoint.supported ? PhoneServerKind::None : endpoint.overridden ? PhoneServerKind::Override
+        : endpoint.ownedByThisProcess ? PhoneServerKind::Owned : PhoneServerKind::BorrowedDefault;
+    o.shadowRunning = endpoint.ownedByThisProcess && shadow;
+
+    // Target: the preferred phone, else the only (or first ready) USB entry.
+    std::string target = preferredSerial;
+    const AdbDeviceEntry* entry = nullptr;
+    std::vector<const AdbDeviceEntry*> usb;
+    for (const auto& candidate : facts.entries) if (candidate.usb) usb.push_back(&candidate);
+    if (target.empty() && !usb.empty()) {
+        const auto ready = std::find_if(usb.begin(), usb.end(), [](const auto* e) { return e->state == PhoneAdbState::Device; });
+        target = (ready != usb.end() ? *ready : usb.front())->serial;
+    }
+    for (const auto* candidate : usb) if (candidate->serial == target) entry = candidate;
+    o.phoneState = entry ? entry->state : PhoneAdbState::NotListed;
+    if (o.server == PhoneServerKind::BorrowedDefault) o.defaultHasOtherDevices = OtherDeviceServed(facts.entries, target);
+
+    if (o.shadowRunning) {
+        const auto defaultProbe = ProbeAdbHostVersion(DefaultPort(), canceled);
+        if (defaultProbe == OwnedServerProbe::Responsive) {
+            if (const auto listed = ListDefaultEntries(canceled)) {
+                o.defaultListsPhone = std::any_of(listed->begin(), listed->end(), [&](const auto& e) {
+                    return e.usb && (target.empty() || e.serial == target);
+                });
+                o.defaultHasOtherDevices = OtherDeviceServed(*listed, target);
+            }
+        } else if (defaultProbe == OwnedServerProbe::Unresponsive && !shadowForBlindness &&
+                   o.phoneState == PhoneAdbState::NotListed) {
+            // The private server took over but still cannot reach the phone:
+            // the hung default keeps the USB interface.
+            o.server = PhoneServerKind::BorrowedDefault;
+            o.serverProbe = PhoneServerProbe::Unresponsive;
+            o.shadowRunning = false;
+        } else if (defaultProbe == OwnedServerProbe::NoListener) {
+            AfterDefaultStopped();
+            o.shadowRunning = false;
+        }
+    }
+    if (o.server == PhoneServerKind::BorrowedDefault && o.serverProbe == PhoneServerProbe::Unresponsive)
+        o.defaultUnresponsiveConfirmed = confirmed;
+
+    if (entry && entry->state == PhoneAdbState::Device) {
+        const auto companion = facts.companions.find(entry->serial);
+        if (companion != facts.companions.end()) {
+            o.companion = companion->second.first;
+            o.problem = companion->second.second;
+        }
+        if (o.companion == PhoneCompanionProbe::Refused || o.companion == PhoneCompanionProbe::TimedOut) {
+            bool timedOut = false;
+            o.shell = QueryShellFacts(*entry, canceled, &timedOut);
+            o.adbd = timedOut ? PhoneAdbdHealth::TimedOut : PhoneAdbdHealth::Answers;
+        }
+    }
+    if (o.phoneWanted && o.companion != PhoneCompanionProbe::Ready && !o.sessionStreaming)
+        o.otherInstanceRunning = RuntimeOtherInstance();
+    CheckCanceled(canceled);
+
+    PhoneLinkDecision decision;
+    {
+        auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
+        decision = runtime.doctor.Decide(o, NowMs());
+    }
+    report.observation = o;
+    report.decision = decision;
+    report.targetSerial = target;
+    if (decision.diagnosisChanged) {
+        TracePhoneLink(std::string("diagnosis ") + std::string(PhoneLinkDiagnosisName(decision.diagnosis)) +
+            " " + PhoneSerialTag(target) + " interface=" + InterfaceName(o.adbInterface) +
+            " server=" + ServerKindName(o.server) + (o.shadowRunning ? "+shadow" : "") +
+            " probe=" + ProbeName(o.serverProbe) + " state=" + StateName(o.phoneState) +
+            " companion=" + CompanionName(o.companion) + (o.problem.empty() ? "" : ":" + o.problem) +
+            " awake=" + FactName(o.shell.screenAwake) + " keyguard=" + FactName(o.shell.keyguardShowing) +
+            " installed=" + FactName(o.shell.appInstalled) + " running=" + FactName(o.shell.appRunning) +
+            (o.otherInstanceRunning ? " other-instance" : "") + (o.defaultHasOtherDevices ? " default-serves-others" : ""));
+    }
+    if (decision.action == PhoneLinkAction::None || decision.action == PhoneLinkAction::Relist ||
+        decision.action == PhoneLinkAction::WaitForUser)
+        return;
+    report.actionResult = ExecuteLinkAction(decision.action, o, entry, target, canceled);
+    TracePhoneLink(std::string("action ") + std::string(PhoneLinkActionName(decision.action)) + " " +
+                   PhoneSerialTag(target) + " -> " + report.actionResult);
+}
+} // namespace
+
 std::vector<CameraDescriptor> PhoneCameraTransport::Enumerate(
     const std::string& connectedSerial, const std::atomic<bool>* canceled, bool* listingSucceeded,
-    const std::string& recoverySerial, PhoneDiscoveryStatus* status, PhoneServerIntent serverIntent)
+    const std::string& recoverySerial, PhoneDiscoveryStatus* status, PhoneServerIntent serverIntent,
+    const PhoneLinkRequest* link, PhoneLinkReport* report)
 {
     if (listingSucceeded) *listingSucceeded = false;
     if (status) *status = PhoneDiscoveryStatus::Unknown;
+    const bool heal = link && report;
     std::vector<CameraDescriptor> devices;
+    DiscoveryFacts facts;
     try {
-        if (!Endpoint().supported) {
-            if (status) *status = PhoneDiscoveryStatus::EndpointUnsupported;
-            return devices;
-        }
-        const auto readiness = EnsureAdbServer(canceled, serverIntent);
-        ObserveServerIdentity();
-        using Result = OwnedAdbServer::EnsureResult;
-        if (readiness == Result::BorrowedUnresponsive) {
-            if (status) *status = PhoneDiscoveryStatus::ServerUnresponsive;
-            return devices;
-        }
-        if (Endpoint().ownedByThisProcess && readiness != Result::Running &&
-            readiness != Result::Launched && readiness != Result::Restarted) {
-            if (status && !(canceled && canceled->load())) *status = PhoneDiscoveryStatus::OwnedServerRecovering;
-            return devices;
-        }
-        const auto attached = ListUsbPhones(canceled);
-        if (listingSucceeded) *listingSucceeded = true;
-        if (status) *status = PhoneDiscoveryStatus::Listed;
-        {
-            auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
-            if (!attached.empty()) runtime.shadowServer = false;
-            else if (runtime.shadowServer && status) *status = PhoneDiscoveryStatus::OwnedServerRecovering;
-        }
-        for (const auto& descriptor : attached) {
-            CheckCanceled(canceled);
-            if (devices.size() >= 32) break;
-            // Keep this identity even after lens discovery so a saved phone choice never falls back to a webcam.
-            devices.push_back(descriptor);
-            bool occupied = false;
-            { auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex); occupied = runtime.occupied.contains(descriptor.phoneSerial); }
-            if (descriptor.phoneSerial == connectedSerial || occupied) {
-                devices.back().phoneAppReady = true;
-                continue; // Discovery must never bind another control host to the live phone.
+        [&] {
+            if (!Endpoint().supported) {
+                facts.endpointSupported = false;
+                if (status) *status = PhoneDiscoveryStatus::EndpointUnsupported;
+                return;
             }
-            try {
-                QTcpSocket capabilitiesSocket;
-                Transport(capabilitiesSocket, descriptor.phoneSerial, "localabstract:okuflow_camera", canceled, 150, descriptor.phoneTransportId);
-                const auto capabilities = ControlHello(capabilitiesSocket, 1500, false, canceled, true);
-                devices.back().phoneBusy = capabilities["busy"].toBool();
-                devices.back().phoneProblem = capabilities["problem"].toString().toStdString();
-                devices.back().phoneAppReady = !devices.back().phoneBusy && devices.back().phoneProblem.empty();
-                const auto discoveredPhone = devices.back();
-                const auto cameras = capabilities["cameras"].toArray();
-                if (!cameras.empty()) {
-                    for (const auto& camera : cameras) {
-                        if (devices.size() >= 32) break;
-                        const auto id = camera.toObject()["id"].toString();
-                        if (id.isEmpty() || id.size() > 128) continue;
-                        auto lens = discoveredPhone;
-                        lens.phoneCameraId = id.toStdString();
-                        const auto role = camera.toObject()["role"].toString();
-                        if (role == "auto" || role == "ultrawide" || role == "main" || role == "telephoto" || role == "front")
-                            lens.phoneLensRole = role.toStdString();
-                        lens.symbolicLink += L"/" + id.toStdWString();
-                        lens.name += L" · " + id.toStdWString();
-                        devices.push_back(std::move(lens));
-                    }
-                    if (!devices.empty() && devices.back().phoneSerial == descriptor.phoneSerial) continue;
+            const auto readiness = EnsureAdbServer(canceled, serverIntent);
+            ObserveServerIdentity();
+            using Result = OwnedAdbServer::EnsureResult;
+            if (readiness == Result::BorrowedUnresponsive) {
+                facts.probe = PhoneServerProbe::Unresponsive;
+                if (status) *status = PhoneDiscoveryStatus::ServerUnresponsive;
+                return;
+            }
+            if (Endpoint().ownedByThisProcess && readiness != Result::Running &&
+                readiness != Result::Launched && readiness != Result::Restarted) {
+                facts.probe = PhoneServerProbe::NoListener;
+                if (status && !(canceled && canceled->load())) *status = PhoneDiscoveryStatus::OwnedServerRecovering;
+                return;
+            }
+            const auto attached = ListUsbPhones(canceled, &facts.entries);
+            facts.probe = PhoneServerProbe::Responsive;
+            if (listingSucceeded) *listingSucceeded = true;
+            if (status) *status = PhoneDiscoveryStatus::Listed;
+            {
+                auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
+                if (!attached.empty()) { runtime.shadowServer = false; runtime.shadowForBlindness = false; }
+                else if (runtime.shadowServer && status) *status = PhoneDiscoveryStatus::OwnedServerRecovering;
+            }
+            for (const auto& descriptor : attached) {
+                CheckCanceled(canceled);
+                if (devices.size() >= 32) break;
+                // Keep this identity even after lens discovery so a saved phone choice never falls back to a webcam.
+                devices.push_back(descriptor);
+                bool occupied = false;
+                { auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex); occupied = runtime.occupied.contains(descriptor.phoneSerial); }
+                if (descriptor.phoneSerial == connectedSerial || occupied) {
+                    devices.back().phoneAppReady = true;
+                    continue; // Discovery must never bind another control host to the live phone.
                 }
-            } catch (const PhoneProtocolError& error) {
-                auto& phone = devices.back(); phone.phoneProblem = error.code;
-                phone.phoneBusy = error.code == "sessionBusy" || error.code == "busy";
-            } catch (const UsbResponseTimeout&) {
-                // A timed-out probe is the only discovery evidence consistent
-                // with a stalled transport, and only the preferred idle phone
-                // may act on it. Ordinary device browsing is read-only.
-                if (descriptor.phoneSerial == recoverySerial)
-                    RecoverStalledUsbTransport(descriptor, canceled);
-            } catch (...) {
-                // A prompt refusal (app closed/paused, listener absent) proves
-                // adbd answered: no stall evidence and no recovery shell work.
-                // App absent: retain the saved-camera entry for later startup.
+                auto& companion = facts.companions[descriptor.phoneSerial];
+                try {
+                    QTcpSocket capabilitiesSocket;
+                    Transport(capabilitiesSocket, descriptor.phoneSerial, "localabstract:okuflow_camera", canceled,
+                              kCompanionProbeTransportMs, descriptor.phoneTransportId);
+                    const auto capabilities = ControlHello(capabilitiesSocket, 1500, false, canceled, true);
+                    devices.back().phoneBusy = capabilities["busy"].toBool();
+                    devices.back().phoneProblem = capabilities["problem"].toString().toStdString();
+                    devices.back().phoneAppReady = !devices.back().phoneBusy && devices.back().phoneProblem.empty();
+                    companion = {devices.back().phoneBusy ? PhoneCompanionProbe::SessionBusy
+                                 : devices.back().phoneProblem.empty() ? PhoneCompanionProbe::Ready
+                                                                       : PhoneCompanionProbe::Problem,
+                                 devices.back().phoneProblem};
+                    const auto discoveredPhone = devices.back();
+                    const auto cameras = capabilities["cameras"].toArray();
+                    if (!cameras.empty()) {
+                        for (const auto& camera : cameras) {
+                            if (devices.size() >= 32) break;
+                            const auto id = camera.toObject()["id"].toString();
+                            if (id.isEmpty() || id.size() > 128) continue;
+                            auto lens = discoveredPhone;
+                            lens.phoneCameraId = id.toStdString();
+                            const auto role = camera.toObject()["role"].toString();
+                            if (role == "auto" || role == "ultrawide" || role == "main" || role == "telephoto" || role == "front")
+                                lens.phoneLensRole = role.toStdString();
+                            lens.symbolicLink += L"/" + id.toStdWString();
+                            lens.name += L" · " + id.toStdWString();
+                            devices.push_back(std::move(lens));
+                        }
+                        if (!devices.empty() && devices.back().phoneSerial == descriptor.phoneSerial) continue;
+                    }
+                } catch (const PhoneProtocolError& error) {
+                    auto& phone = devices.back(); phone.phoneProblem = error.code;
+                    phone.phoneBusy = error.code == "sessionBusy" || error.code == "busy";
+                    companion = {error.code == "sessionBusy" ? PhoneCompanionProbe::SessionBusy : PhoneCompanionProbe::Problem,
+                                 error.code};
+                } catch (const UsbResponseTimeout&) {
+                    companion = {PhoneCompanionProbe::TimedOut, {}};
+                    // A timed-out probe is the only discovery evidence consistent
+                    // with a stalled transport, and only the preferred idle phone
+                    // may act on it. Ordinary device browsing is read-only. With
+                    // the doctor engaged, its ladder decides instead.
+                    if (!heal && descriptor.phoneSerial == recoverySerial)
+                        RecoverStalledUsbTransport(descriptor, canceled);
+                } catch (...) {
+                    // A prompt refusal (app closed/paused, listener absent) proves
+                    // adbd answered: no stall evidence and no recovery shell work.
+                    // App absent: retain the saved-camera entry for later startup.
+                    companion = {PhoneCompanionProbe::Refused, {}};
+                }
             }
-        }
+        }();
     } catch (const UsbResponseTimeout&) {
+        facts.probe = PhoneServerProbe::Unresponsive;
         if (status && !(canceled && canceled->load()))
             *status = Endpoint().ownedByThisProcess ? PhoneDiscoveryStatus::OwnedServerRecovering
                                                    : PhoneDiscoveryStatus::ServerUnresponsive;
     } catch (const AdbServerUnavailable&) {
+        facts.probe = PhoneServerProbe::NoListener;
         if (status && !(canceled && canceled->load()))
             *status = Endpoint().ownedByThisProcess ? PhoneDiscoveryStatus::OwnedServerRecovering
                                                    : PhoneDiscoveryStatus::NoListener;
     } catch (...) { /* Optional companion discovery never makes webcam enumeration fail. */ }
+    if (heal && !(canceled && canceled->load())) {
+        try { RunPhoneLinkLadder(*link, recoverySerial, facts, canceled, *report); }
+        catch (const std::exception& error) {
+            if (!(canceled && canceled->load()))
+                TracePhoneLink(std::string("ladder interrupted: ") + error.what());
+        }
+    }
     return devices;
 }
 
@@ -1324,10 +2058,26 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
             // transport. The bare listing supplies the current transport ID
             // without probing unrelated phones on every start/HEVC retry.
             RequireAdbServer(&canceled_);
-            const auto attached = ListUsbPhones(&canceled_);
-            const auto selected = std::find_if(attached.begin(), attached.end(), [&](const auto& item) { return item.phoneSerial == descriptor.phoneSerial; });
-            if (selected == attached.end())
-                throw std::runtime_error("The selected phone is not connected and authorized over USB");
+            // A phone that is listed but not ready yet (offline after resume,
+            // authorizing, connecting) gets a short bounded wait inside the
+            // startup budget instead of failing a manual pick at once.
+            std::vector<CameraDescriptor> attached;
+            std::vector<AdbDeviceEntry> entries;
+            const auto stateDeadline = std::min(Clock::now() + std::chrono::seconds(4),
+                                                startupBudget.Deadline() - std::chrono::seconds(2));
+            auto selected = attached.end();
+            for (;;) {
+                attached = ListUsbPhones(&canceled_, &entries);
+                selected = std::find_if(attached.begin(), attached.end(), [&](const auto& item) { return item.phoneSerial == descriptor.phoneSerial; });
+                if (selected != attached.end()) break;
+                const bool listed = std::any_of(entries.begin(), entries.end(), [&](const auto& entry) {
+                    return entry.usb && entry.serial == descriptor.phoneSerial;
+                });
+                if (!listed || Clock::now() >= stateDeadline)
+                    throw std::runtime_error(listed ? "The selected phone is listed by adb but is not ready"
+                                                    : "The selected phone is not connected and authorized over USB");
+                for (int i = 0; i < 12; ++i) { CheckCanceled(&canceled_); std::this_thread::sleep_for(std::chrono::milliseconds(20)); }
+            }
             descriptor.phoneTransportId = selected->phoneTransportId;
             descriptor.phoneServerEpoch = selected->phoneServerEpoch;
             QTcpSocket control, video;
@@ -1349,30 +2099,14 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
                 } catch (const std::exception&) {
                     control.abort(); video.abort(); CheckCanceled(&canceled_);
                     // Only an absent listener gets a single launch per USB attachment.
-                    if (!endpointOpened && MayLaunch(descriptor.phoneSerial, descriptor.phoneTransportId)) {
-                        // The Play app uses com.okuflow; retain the earlier
-                        // debug package only when the new activity is absent.
-                        // A paused/blocked installed app must not launch the
-                        // legacy app instead and bypass the user's intent.
-                        for (const char* command : {
-                            "shell:am start -n com.okuflow/com.okuflow.camera.MainActivity",
-                            "shell:am start -n com.okuflow.camera/.MainActivity"}) {
-                            QTcpSocket launcher;
-                            Transport(launcher, descriptor.phoneSerial, command,
-                                      &canceled_, 1000, descriptor.phoneTransportId);
-                            QByteArray response;
-                            const auto launchDeadline = Clock::now() + std::chrono::seconds(2);
-                            while (launcher.state() == QAbstractSocket::ConnectedState && Clock::now() < launchDeadline) {
-                                CheckCanceled(&canceled_); launcher.waitForReadyRead(20); response += launcher.readAll();
-                                if (response.size() > kControlLimit) throw std::runtime_error("Oversized app launch response");
-                            }
-                            response += launcher.readAll();
-                            if (response.size() > kControlLimit) throw std::runtime_error("Oversized app launch response");
-                            if (!response.contains("Error") && !response.contains("Exception")) break;
-                            const bool legacy = std::string_view(command).find("com.okuflow.camera/.MainActivity") != std::string_view::npos;
-                            if (legacy || !response.contains("Error type 3"))
-                                throw std::runtime_error("Install OkuFlow Camera on the selected USB phone first");
-                        }
+                    if (!endpointOpened && MayLaunch(descriptor.phoneSerial)) {
+                        // Wake first: a launch on a sleeping phone would otherwise be spent
+                        // behind the keyguard. A paused/blocked installed app keeps its
+                        // own state; the legacy package is only tried when the Play
+                        // activity is absent.
+                        if (LaunchCompanion(descriptor.phoneSerial, descriptor.phoneTransportId, &canceled_, true) ==
+                            CompanionLaunch::NotInstalled)
+                            throw std::runtime_error("Install OkuFlow Camera on the selected USB phone first");
                     }
                     if (Clock::now() >= connectionDeadline)
                         throw std::runtime_error("Open OkuFlow Camera, allow camera access and authorize USB debugging");

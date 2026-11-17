@@ -263,7 +263,15 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::LaunchAndAwaitLocked(
         child_ = launch_(*port_);
         // Budget recorded even for a failed attempt so a broken executable
         // cannot be retried on every discovery cycle.
-        nextRestart_ = std::chrono::steady_clock::now() + policy_.restartCooldown;
+        {
+            const auto base = policy_.restartCooldown;
+            auto cooldown = base;
+            for (int i = 0; i < launchesSinceReset_ && cooldown < policy_.maxRestartCooldown; ++i)
+                cooldown *= 2;
+            cooldown = std::max(base, std::min(cooldown, policy_.maxRestartCooldown));
+            ++launchesSinceReset_;
+            nextRestart_ = std::chrono::steady_clock::now() + cooldown;
+        }
         if (!child_) { port_.reset(); return EnsureResult::LaunchFailed; }
         HandleGuard observedProcess{child_->DuplicateObservationHandle()};
         if (!observedProcess.handle) { child_.reset(); port_.reset(); return EnsureResult::LaunchFailed; }
@@ -359,6 +367,33 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::EnsureRunning(const std::atomic<boo
     if (std::chrono::steady_clock::now() < nextRestart_)
         return EnsureResult::Throttled;
     return LaunchAndAwaitLocked(canceled, launches_ > 0);
+}
+
+OwnedAdbServer::EnsureResult OwnedAdbServer::Restart(const std::atomic<bool>* canceled)
+{
+    std::unique_lock lock(mutex_, std::defer_lock);
+    while (!lock.try_lock_for(std::chrono::milliseconds(20))) {
+        if (Canceled(canceled)) return EnsureResult::Canceled;
+    }
+    if (stopped_) return EnsureResult::Stopped;
+    if (Canceled(canceled)) return EnsureResult::Canceled;
+    if (hasLiveSessions_ && hasLiveSessions_()) return EnsureResult::RestartDeferredLiveSession;
+    // A deliberate blind restart is paced by the link doctor's own budget
+    // (once after the grace, then 15 s, then 60 s); the crash-loop cooldown
+    // only guards automatic relaunches of an exiting child.
+    if (child_) child_->Stop();
+    child_.reset();
+    port_.reset();
+    observation_.store(nullptr);
+    ++restarts_;
+    return LaunchAndAwaitLocked(canceled, true);
+}
+
+void OwnedAdbServer::ResetBudgets()
+{
+    std::lock_guard lock(mutex_);
+    nextRestart_ = {};
+    launchesSinceReset_ = 0;
 }
 
 void OwnedAdbServer::Stop()
