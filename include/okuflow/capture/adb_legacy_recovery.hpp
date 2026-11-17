@@ -209,6 +209,11 @@ struct DefaultAdbStopRequest {
     bool terminateIfAlive{true};
     std::wstring requiredImageName{L"adb.exe"};
     const std::atomic<bool>* canceled{nullptr};
+    // Asked right before host:kill is sent and right before the
+    // termination: false does neither (status Canceled). The caller's
+    // authority to act can end while the stop runs (the user chose another
+    // source). Unset: always wanted.
+    std::function<bool()> stillWanted;
     std::chrono::milliseconds hostKillWait{2000};
     std::chrono::milliseconds exitWait{2000};
 };
@@ -231,6 +236,32 @@ struct DefaultAdbStopResult {
     std::string diagnostic; // No paths; image file name and PID only.
 };
 DefaultAdbStopResult TryStopDefaultAdbServer(const DefaultAdbStopRequest& request);
+
+// One row of the Windows TCP listener tables (IPv4 and IPv6), reduced to
+// what the adb listener lookups need.
+struct TcpListenerRow {
+    bool ipv6{false};
+    bool loopback{false};    // 127.0.0.1 or ::1
+    bool anyAddress{false};  // 0.0.0.0 or ::
+    std::uint16_t port{0};
+    DWORD processId{0};
+};
+// Reads both listener tables. False when a table cannot be read.
+bool ReadTcpListenerRows(std::vector<TcpListenerRow>* rows);
+// The rows that stand for the listener OkuFlow reaches on 127.0.0.1:port:
+// the IPv4 loopback rows; when there is none, the any-address rows of that
+// port (0.0.0.0, or :: of a dual-stack socket, as an adb started with -a
+// binds), which also accept loopback connections. ::1 alone is never
+// reached by 127.0.0.1 and is ignored. Every lookup that identifies the
+// default-port adb (and the legacy reclamation) uses this one rule; the
+// identity proof after it is unchanged (exact handle, creation time, image
+// adb.exe, not this process).
+std::vector<TcpListenerRow> AdbListenerRows(const std::vector<TcpListenerRow>& rows, std::uint16_t port);
+// Test seam (production never sets it): rewrites the rows read before every
+// lookup, so a fixture bound to loopback can stand for an any-address
+// listener without binding every address (which would show a firewall
+// prompt on the owner's desktop).
+void SetTcpListenerRowsTransformForTest(std::function<void(std::vector<TcpListenerRow>&)> transform);
 
 // Other running OkuFlow app/launcher processes of this user and session.
 // `sameImageOnly` keeps only processes whose image equals this process's

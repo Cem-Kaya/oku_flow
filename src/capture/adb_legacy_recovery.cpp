@@ -1,10 +1,11 @@
 #ifdef _WIN32
 #include "okuflow/capture/adb_legacy_recovery.hpp"
 
+// ws2tcpip.h first: the IPv6 listener table types need ws2ipdef.h.
+#include <ws2tcpip.h>
 #include <iphlpapi.h>
 #include <sddl.h>
 #include <tlhelp32.h>
-#include <ws2tcpip.h>
 
 #include <QCryptographicHash>
 #include <QFile>
@@ -226,32 +227,15 @@ bool SameIdentity(const ProcessIdentity& left, const ProcessIdentity& right)
 
 enum class ListenerLookup { Found, None, Ambiguous, Error };
 
-// Observation only: maps the exact 127.0.0.1 listener for the port to one
-// PID. The PID is used solely to open the exact handle revalidated later.
+// Observation only: maps the listener OkuFlow reaches on 127.0.0.1:port
+// (AdbListenerRows: loopback, else any-address) to one PID. The PID is used
+// solely to open the exact handle revalidated later.
 ListenerLookup FindLoopbackListenerPid(std::uint16_t port, DWORD* pid)
 {
-    ULONG bytes = 0;
-    if (GetExtendedTcpTable(nullptr, &bytes, FALSE, AF_INET, TCP_TABLE_OWNER_PID_LISTENER, 0) !=
-        ERROR_INSUFFICIENT_BUFFER)
-        return ListenerLookup::Error;
-    // The table can grow between the size query and the read (the other
-    // two callers retry the same way).
-    std::vector<std::uint8_t> storage;
-    DWORD result = ERROR_INSUFFICIENT_BUFFER;
-    for (int attempt = 0; attempt < 3 && result == ERROR_INSUFFICIENT_BUFFER; ++attempt) {
-        storage.resize(bytes);
-        result = GetExtendedTcpTable(storage.data(), &bytes, FALSE, AF_INET,
-                                     TCP_TABLE_OWNER_PID_LISTENER, 0);
-    }
-    if (result != NO_ERROR) return ListenerLookup::Error;
-    const auto* table = reinterpret_cast<const MIB_TCPTABLE_OWNER_PID*>(storage.data());
+    std::vector<TcpListenerRow> rows;
+    if (!ReadTcpListenerRows(&rows)) return ListenerLookup::Error;
     std::set<DWORD> owners;
-    for (DWORD i = 0; i < table->dwNumEntries; ++i) {
-        const auto& row = table->table[i];
-        if (ntohs(static_cast<u_short>(row.dwLocalPort)) == port &&
-            ntohl(row.dwLocalAddr) == INADDR_LOOPBACK)
-            owners.insert(row.dwOwningPid);
-    }
+    for (const auto& row : AdbListenerRows(rows, port)) owners.insert(row.processId);
     if (owners.empty()) return ListenerLookup::None;
     if (owners.size() > 1) return ListenerLookup::Ambiguous;
     *pid = *owners.begin();
@@ -839,6 +823,84 @@ BOOL CALLBACK FindVisibleWindow(HWND window, LPARAM parameter)
 
 } // namespace
 
+namespace {
+std::mutex& RowsTransformMutex() { static std::mutex mutex; return mutex; }
+std::function<void(std::vector<TcpListenerRow>&)>& RowsTransform()
+{
+    static std::function<void(std::vector<TcpListenerRow>&)> transform;
+    return transform;
+}
+// One listener table; the table can grow between the size query and the
+// read, so the read is retried.
+template <typename Table>
+bool ReadListenerTable(ULONG family, std::vector<std::uint8_t>* storage)
+{
+    ULONG bytes = 0;
+    if (GetExtendedTcpTable(nullptr, &bytes, FALSE, family, TCP_TABLE_OWNER_PID_LISTENER, 0) != ERROR_INSUFFICIENT_BUFFER)
+        return false;
+    DWORD result = ERROR_INSUFFICIENT_BUFFER;
+    for (int attempt = 0; attempt < 3 && result == ERROR_INSUFFICIENT_BUFFER; ++attempt) {
+        storage->resize(std::max<ULONG>(bytes, sizeof(Table)));
+        result = GetExtendedTcpTable(storage->data(), &bytes, FALSE, family, TCP_TABLE_OWNER_PID_LISTENER, 0);
+    }
+    return result == NO_ERROR;
+}
+} // namespace
+
+bool ReadTcpListenerRows(std::vector<TcpListenerRow>* rows)
+{
+    rows->clear();
+    std::vector<std::uint8_t> v4, v6;
+    if (!ReadListenerTable<MIB_TCPTABLE_OWNER_PID>(AF_INET, &v4)) return false;
+    const auto* table4 = reinterpret_cast<const MIB_TCPTABLE_OWNER_PID*>(v4.data());
+    for (DWORD i = 0; i < table4->dwNumEntries; ++i) {
+        const auto& row = table4->table[i];
+        TcpListenerRow out;
+        out.port = ntohs(static_cast<u_short>(row.dwLocalPort));
+        out.loopback = ntohl(row.dwLocalAddr) == INADDR_LOOPBACK;
+        out.anyAddress = row.dwLocalAddr == INADDR_ANY;
+        out.processId = row.dwOwningPid;
+        rows->push_back(out);
+    }
+    // No IPv6 stack is not an error: the IPv4 rows stand alone.
+    if (ReadListenerTable<MIB_TCP6TABLE_OWNER_PID>(AF_INET6, &v6)) {
+        const auto* table6 = reinterpret_cast<const MIB_TCP6TABLE_OWNER_PID*>(v6.data());
+        for (DWORD i = 0; i < table6->dwNumEntries; ++i) {
+            const auto& row = table6->table[i];
+            TcpListenerRow out;
+            out.ipv6 = true;
+            out.port = ntohs(static_cast<u_short>(row.dwLocalPort));
+            static const UCHAR any[16]{};
+            static const UCHAR loopback[16]{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
+            out.anyAddress = std::memcmp(row.ucLocalAddr, any, 16) == 0;
+            out.loopback = std::memcmp(row.ucLocalAddr, loopback, 16) == 0;
+            out.processId = row.dwOwningPid;
+            rows->push_back(out);
+        }
+    }
+    std::function<void(std::vector<TcpListenerRow>&)> transform;
+    { std::lock_guard lock(RowsTransformMutex()); transform = RowsTransform(); }
+    if (transform) transform(*rows);
+    return true;
+}
+
+std::vector<TcpListenerRow> AdbListenerRows(const std::vector<TcpListenerRow>& rows, std::uint16_t port)
+{
+    std::vector<TcpListenerRow> loopback, any;
+    for (const auto& row : rows) {
+        if (row.port != port) continue;
+        if (!row.ipv6 && row.loopback) loopback.push_back(row);
+        else if (row.anyAddress) any.push_back(row);
+    }
+    return loopback.empty() ? any : loopback;
+}
+
+void SetTcpListenerRowsTransformForTest(std::function<void(std::vector<TcpListenerRow>&)> transform)
+{
+    std::lock_guard lock(RowsTransformMutex());
+    RowsTransform() = std::move(transform);
+}
+
 DefaultAdbStopResult TryStopDefaultAdbServer(const DefaultAdbStopRequest& request)
 {
     using S = DefaultAdbStopStatus;
@@ -896,7 +958,9 @@ DefaultAdbStopResult TryStopDefaultAdbServer(const DefaultAdbStopRequest& reques
             GetProcessTimes(process.handle, &again, &e, &k, &u) && CreationTicks(again) == CreationTicks(created) &&
             FindLoopbackListenerPid(request.port, &listener) == ListenerLookup::Found && listener == pid;
     };
+    const auto unwanted = [&] { return request.stillWanted && !request.stillWanted(); };
     if (request.sendHostKillFirst) {
+        if (unwanted()) { result.status = S::Canceled; result.diagnostic += ": no longer wanted"; return result; }
         result.hostKillDelivered = SendRawHostKill(request.port, pid, request.canceled);
         if (result.hostKillDelivered) {
             const auto deadline = Clock::now() + ClampMs(request.hostKillWait, std::chrono::milliseconds(0),
@@ -923,6 +987,7 @@ DefaultAdbStopResult TryStopDefaultAdbServer(const DefaultAdbStopRequest& reques
     if (!canTerminate) {
         result.status = S::AccessDenied; result.diagnostic += ": Windows denied termination"; return result;
     }
+    if (unwanted()) { result.status = S::Canceled; result.diagnostic += ": no longer wanted"; return result; }
     if (!TerminateProcess(process.handle, 1)) {
         const DWORD error = GetLastError();
         if (!ProcessAlive(process.handle)) { result.status = S::Stopped; result.diagnostic += " exited"; return result; }

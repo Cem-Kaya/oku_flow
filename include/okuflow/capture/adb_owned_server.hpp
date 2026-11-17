@@ -137,6 +137,14 @@ public:
     std::optional<std::uint16_t> Port() const;
     int LaunchCount() const;
     int RestartCount() const;
+    // Starts of this manager's child that never answered: one for each
+    // start grace a child stays alive without ever answering (also one that
+    // is replaced, and one whose listener ownership cannot be verified), and
+    // one for a child that died before it ever answered (counted by the
+    // next EnsureRunning). A child that answers resets it to zero; events
+    // do not (the sentence it leads to stands until OkuFlow's adb answers).
+    // Lock-free: readable while a worker holds the manager through a launch.
+    int UnansweredStarts() const { return unansweredStarts_.load(); }
 private:
     bool Canceled(const std::atomic<bool>* canceled) const
     { return stopRequested_.load() || (canceled && canceled->load()); }
@@ -162,6 +170,12 @@ private:
     std::chrono::steady_clock::time_point nextRestart_{};
     std::chrono::steady_clock::time_point launchedAt_{};
     bool answered_{false};
+    // When the current child last counted (or was launched), and whether its
+    // death before answering was counted.
+    std::chrono::steady_clock::time_point unansweredCountedAt_{};
+    bool deathCounted_{false};
+    std::atomic<int> unansweredStarts_{0};
+    void CountUnansweredLocked();
     std::atomic<bool> budgetResetRequested_{false};
     int launches_{0};
     int launchesSinceReset_{0};

@@ -3,6 +3,7 @@
 #include "okuflow/capture/media_capture.hpp"
 #include "okuflow/capture/phone_startup_budget.hpp"
 #include "okuflow/capture/phone_link_doctor.hpp"
+#include "okuflow/capture/adb_owned_server.hpp"
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -69,6 +70,19 @@ struct PhoneLinkRequest {
     // frame); preferred over the recovery serial as the ladder's target so
     // shell commands never reach a phone the user did not choose.
     std::string targetSerial;
+    // The application's phone-intent generation when this request was made,
+    // and the live counter it advances on every source or target change
+    // (a webcam, a file, another phone, no phone). Every side effect of the
+    // ladder (ask, terminate, start beside, restart, reconnect, hand-back,
+    // wake and launch, leftover-instance cleanup) is checked against it right
+    // before it runs and after each blocking pre-check: a stale request does
+    // nothing ("dropped: the source changed"). Null: never stale.
+    std::uint64_t intentGeneration{0};
+    const std::atomic<std::uint64_t>* liveIntentGeneration{nullptr};
+    bool IntentStale() const
+    {
+        return liveIntentGeneration && liveIntentGeneration->load() != intentGeneration;
+    }
 };
 struct PhoneLinkReport {
     PhoneLinkObservation observation;
@@ -146,8 +160,19 @@ struct PhoneAdbTestHooks {
     // Runs when a StartShadowServer action begins, before its start request
     // is set (lets a test change the default between decision and act).
     std::function<void()> beforeShadowStartForTest;
+    // Runs when a WakeAndLaunchApp action begins, before its first shell
+    // command (lets a test change the source between decision and act).
+    std::function<void()> beforeCompanionLaunchForTest;
+    // Runs inside the ladder's hand-back after its live-session check and
+    // before the private server is stopped (a session's server request made
+    // here must wait for the hand-back).
+    std::function<void()> afterHandBackCheckForTest;
     // Doctor budgets for fast fixtures; production uses PhoneLinkPolicy{}.
     std::optional<PhoneLinkPolicy> linkPolicy;
+    // Owned-server budgets for fast fixtures (start grace, readiness,
+    // cooldown); production uses OwnedAdbServerPolicy{}. Listener ownership
+    // is always verified.
+    std::optional<OwnedAdbServerPolicy> ownedPolicy;
 };
 void SetPhoneAdbTestHooks(std::optional<PhoneAdbTestHooks> hooks);
 // Stops only the private adb server this process launched and owns (exact
@@ -216,8 +241,11 @@ public:
     // camera sessions. Returns true only when adb acknowledges a targeted
     // reconnect request and the stale transport then disappears or
     // re-registers under a new ID; discovery observes the phone afterward.
+    // `stillWanted` (optional) is asked right before the reconnect request
+    // is sent: false sends nothing (the source changed meanwhile).
     static bool RecoverStalledUsbTransport(const CameraDescriptor& descriptor,
-                                          const std::atomic<bool>* canceled = nullptr);
+                                          const std::atomic<bool>* canceled = nullptr,
+                                          const std::function<bool()>& stillWanted = {});
     bool Start(const CameraDescriptor& descriptor, IMFDXGIDeviceManager* manager,
                FrameCallback callback, CaptureErrorCallback errorCallback,
                const std::atomic<bool>* startupCanceled = nullptr);

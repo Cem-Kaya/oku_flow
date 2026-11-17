@@ -344,6 +344,18 @@ public:
         if (exitRequestNotNeededUsed_) ++abortedTakeoverStops_;
         exitRequestNotNeededUsed_ = true;
     }
+    // An AskDefaultServerToExit or TerminateDefaultServer of this episode
+    // was dropped because the user chose another source (the request lost
+    // its authority): given back, not remembered, not counted (nothing was
+    // tried, nothing was kept).
+    void NoteExitRequestDropped(std::uint64_t episode)
+    {
+        if (episode == episode_) GiveExitRequestBack();
+    }
+    void NoteTerminationDropped(std::uint64_t episode)
+    {
+        if (episode == episode_ && terminate_.attempts > 0) --terminate_.attempts;
+    }
     std::uint64_t Episode() const { return episode_; }
     // The listener is gone, changed identity, or the phone is listed.
     void ClearDefaultStopRefused() { defaultStopRefused_ = false; stopFailures_ = 0; }

@@ -287,6 +287,8 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::LaunchAndAwaitLocked(
         ++launches_;
         launchedAt_ = std::chrono::steady_clock::now();
         answered_ = false;
+        unansweredCountedAt_ = launchedAt_;
+        deathCounted_ = false;
         const auto deadline = std::chrono::steady_clock::now() + policy_.readinessDeadline;
         for (;;) {
             if (Canceled(canceled)) return EnsureResult::Canceled; // Child stays owned.
@@ -303,6 +305,7 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::LaunchAndAwaitLocked(
             if (Canceled(canceled)) return EnsureResult::Canceled;
             if (ResponsiveOwnedChild(response)) {
                 answered_ = true;
+                unansweredStarts_.store(0);
                 return restart ? EnsureResult::Restarted : EnsureResult::Launched;
             }
             if (std::chrono::steady_clock::now() >= deadline)
@@ -323,11 +326,13 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::EnsureRunning(const std::atomic<boo
     if (stopped_) return EnsureResult::Stopped;
     if (Canceled(canceled)) return EnsureResult::Canceled;
     ApplyBudgetResetLocked();
+    CountUnansweredLocked();
     if (child_ && child_->IsRunning() && port_) {
         const auto response = probe_(*port_, canceled);
         if (Canceled(canceled)) return EnsureResult::Canceled;
         if (ResponsiveOwnedChild(response)) {
             answered_ = true;
+            unansweredStarts_.store(0);
             return EnsureResult::Running;
         }
         if (!allowLifecycleEffects) return EnsureResult::NotReady;
@@ -347,6 +352,7 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::EnsureRunning(const std::atomic<boo
             if (Canceled(canceled)) return EnsureResult::Canceled;
             if (ResponsiveOwnedChild(confirmedResponse)) {
                 answered_ = true;
+                unansweredStarts_.store(0);
                 return EnsureResult::Running;
             }
             if (confirmedResponse == OwnedServerProbe::Responsive && child_->IsRunning())
@@ -406,6 +412,23 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::Restart(const std::atomic<bool>* ca
     observation_.store(nullptr);
     ++restarts_;
     return LaunchAndAwaitLocked(canceled, true);
+}
+
+void OwnedAdbServer::CountUnansweredLocked()
+{
+    // A child that never answered: one count per start grace it stays alive
+    // (so one that is never replaced, as when its listener ownership cannot
+    // be verified, still reaches the sentence), one when it died.
+    if (!child_ || answered_) return;
+    if (!child_->IsRunning()) {
+        if (!deathCounted_) { deathCounted_ = true; ++unansweredStarts_; }
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (now - unansweredCountedAt_ >= policy_.startGrace) {
+        unansweredCountedAt_ = now;
+        ++unansweredStarts_;
+    }
 }
 
 void OwnedAdbServer::ResetBudgets()
