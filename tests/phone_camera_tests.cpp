@@ -3,6 +3,7 @@
 #include "okuflow/capture/phone_startup_budget.hpp"
 #include "okuflow/capture/adb_owned_server.hpp"
 #include "okuflow/capture/adb_legacy_recovery.hpp"
+#include "phone_adb_test_guard.hpp"
 #include <QtTest/QtTest>
 #include <QFile>
 #include <QFileInfo>
@@ -126,7 +127,7 @@ public:
     ~FakePhoneAdb() {
         stopped.store(true);
         worker.join();
-        if (installedHooks) okuflow::SetPhoneAdbTestHooks(std::nullopt);
+        if (installedHooks) okuflow_test::UseClosedAdbPort();
     }
     bool installedHooks{true};
     quint16 port{};
@@ -424,7 +425,7 @@ struct ScopedOwnedAdbHooks {
         okuflow::SetPhoneAdbTestHooks(okuflow::PhoneAdbTestHooks{
             defaultPort, {}, OwnedChildFixturePath().toStdWString(), std::move(arguments), borrowedConfirmationMs});
     }
-    ~ScopedOwnedAdbHooks() { okuflow::SetPhoneAdbTestHooks(std::nullopt); }
+    ~ScopedOwnedAdbHooks() { okuflow_test::UseClosedAdbPort(); }
     std::uint16_t defaultPort;
 };
 } // namespace
@@ -464,7 +465,7 @@ struct ScopedLinkHooks {
         if (customize) customize(hooks);
         okuflow::SetPhoneAdbTestHooks(hooks);
     }
-    ~ScopedLinkHooks() { okuflow::SetPhoneAdbTestHooks(std::nullopt); }
+    ~ScopedLinkHooks() { okuflow_test::UseClosedAdbPort(); }
 };
 // Another program's default-port adb server, out of process: a copy of the
 // owned-child fixture named adb.exe (or kept under its own name to prove
@@ -579,6 +580,27 @@ bool Saw(const std::vector<okuflow::PhoneLinkReport>& reports, okuflow::PhoneLin
 class PhoneCameraTests : public QObject {
     Q_OBJECT
 private slots:
+    // Iteration 7 (4): no test of this target can reach the machine's
+    // default adb port (see phone_adb_test_guard.hpp).
+    void initTestCase() { okuflow_test::UseClosedAdbPort(); }
+    void aTestWithoutHooksReachesOnlyTheClosedPort() {
+        // Every scoped fixture restores the closed-port default instead of no
+        // hooks. ADB_SERVER_SOCKET names a decoy listener here, so even
+        // without any hooks (as when this row fails) discovery goes there,
+        // never to port 5037.
+        okuflow_test::LoopbackListener decoy;
+        QVERIFY(decoy.Listening());
+        qputenv("ADB_SERVER_SOCKET", QByteArray("tcp:127.0.0.1:") + QByteArray::number(decoy.Port()));
+        auto restore = qScopeGuard([] { qunsetenv("ADB_SERVER_SOCKET"); });
+        { ScopedLinkHooks scoped(PickTestPort()); } // A test's own hooks come and go.
+        okuflow_test::LoopbackListener closed(okuflow_test::ClosedAdbPort());
+        QVERIFY(closed.Listening());
+        bool listed = false;
+        okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, nullptr, okuflow::PhoneServerIntent::BorrowOnly);
+        QVERIFY(closed.Accepted(1000));
+        QVERIFY(!decoy.Accepted(0));
+        QVERIFY(!listed);
+    }
     void zoomUsesSelectedLensOrAutomaticCapabilities() {
         const auto caps = QJsonDocument::fromJson(R"({"automaticCamera":"9","cameras":[{"id":"9","zoomMin":0.5,"zoomMax":20},{"id":"2","zoomMin":1,"zoomMax":1}]})").object();
         QCOMPARE(okuflow::ResolvePhoneZoomRange(caps, ""), (std::pair{0.5f,20.0f}));

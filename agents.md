@@ -631,6 +631,12 @@ aligned with the project goals.
 - Native fixture slots must not leak camera or phone-link state into the
   next slot: `ResetCameraFixture` drains work in flight before it resets, and
   the fixture's adb hooks keep any dispatched discovery off a real adb.
+  Every test target that links `phone_camera.cpp` installs closed-port adb
+  hooks before its first test and restores them, not "no hooks", when a
+  test's own hooks end (`tests/phone_adb_test_guard.hpp`).
+- Discovery is held back only while a camera start or the stop a queued
+  start waits behind runs; a start that waits for a recording to end does
+  not stop the link ladder for the length of the recording.
 - Nothing here was observed on a real failing laptop; report fixture evidence
   separately from real sleep/cable/phone acceptance.
 

@@ -1153,6 +1153,16 @@ OkuFlow's server is still asked to exit. Doctor row
 private server it started beside a hung default, with an event raised through
 `afterPrivateServerRetiredForTest` (cap 1); the default that hangs again still
 gets a private server.
+`phone_camera_tests` and `capture_shutdown_tests` (both link `phone_camera.cpp`)
+install adb test hooks on a private closed loopback port (Windows ADB interface
+reported absent) in `initTestCase`, and the scoped fixtures of
+`phone_camera_tests` (`FakePhoneAdb`, `ScopedOwnedAdbHooks`, `ScopedLinkHooks`)
+restore that default instead of clearing the hooks
+(`tests/phone_adb_test_guard.hpp`): a test without hooks of its own cannot
+reach the machine's default adb port. `aTestWithoutHooksReachesOnlyTheClosedPort`
+and `phoneCodeReachesOnlyTheClosedAdbPort` check it with a listener on the
+closed port and a decoy named by `ADB_SERVER_SOCKET`, so a failing check never
+reaches port 5037 either.
 `phone_link_text` (headless) checks one sentence per diagnosis and that every
 sentence is translated in all 24 catalogs. The native slot
 `phoneSentenceIsShownAndSpokenForEveryDiagnosis` delivers every verdict
