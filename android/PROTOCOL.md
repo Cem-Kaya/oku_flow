@@ -271,7 +271,9 @@ two observations 20 s apart (above the longest bounded critical teardown,
 about 17 s) and the windows of its UI thread (the thread that owns its main
 window, recorded at registration; every top-level window when no thread is
 recorded) do not answer a window message within 1 s (a sibling with a visible
-window is not sent one). A hidden window of another thread decides nothing.
+window is not sent one). A hidden window of another thread decides nothing,
+and a recorded UI thread that owns no window at all proves nothing either (only
+the exit signal can then make it a leftover).
 Windows terminates that exact process once, and only while it plausibly
 holds the phone (the phone is listed by no server, the Windows ADB interface
 is present, the blind grace has passed), through a held handle (same PID,

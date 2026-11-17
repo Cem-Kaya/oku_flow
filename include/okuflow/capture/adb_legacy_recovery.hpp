@@ -305,6 +305,10 @@ struct OkuFlowSiblingObservation {
     // top-level window of the process must answer. Not asked at all when a
     // visible window was found.
     bool answersWindowMessage{false};
+    // The recorded UI thread owns no window at all: there is nothing to
+    // judge (its main window is not there yet or already gone before the
+    // exit signal, whose own grace then applies), so it stays Pending.
+    bool uiThreadHasNoWindow{false};
 };
 // `image` and `tag` default to this process's installation; tests pass a
 // fixture image and tag. Observation only: nothing is signalled. The window

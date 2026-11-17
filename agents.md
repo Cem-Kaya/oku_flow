@@ -578,7 +578,8 @@ aligned with the project goals.
   same image, user and session whose exit signal has been set for 5 s, or that
   shows no window on two observations 20 s apart and whose recorded UI
   thread's windows (the thread of its main window, recorded at registration;
-  every top-level window without that record) do not answer a window message,
+  every top-level window without that record) do not answer a window message
+  (a recorded UI thread with no window at all stays pending),
   is terminated once through a held
   handle (PID, creation time, image path, still no visible window), and only
   while the phone is unlisted, the interface present and the blind grace over;

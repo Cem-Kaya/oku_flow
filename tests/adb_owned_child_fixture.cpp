@@ -26,6 +26,8 @@
 //       main thread and a hidden top-level window on a helper thread that
 //       never pumps; the recorded UI thread is the helper (uiStuck 1) or the
 //       main thread (uiStuck 0)
+//   instance-nowindow <tag> <readyFile>
+//       registered instance whose recorded UI thread (main thread) owns no window
 //   spawn <childReady> <parentReady>
 //       start `exit-after 3000 <childReady>` outside any job, then exit
 #include "okuflow/capture/adb_owned_server.hpp"
@@ -268,6 +270,13 @@ int wmain(int count, wchar_t** arguments)
             for (int waited = 0; waited < 100 && !FileExists(arguments[5]); ++waited) Sleep(20);
         }
         if (!WritePid(arguments[4])) return 3;
+        SleepForever();
+    }
+    // instance-nowindow <tag> <readyFile>: registered, its main thread
+    // recorded as the UI thread, and no window at all.
+    if (mode == L"instance-nowindow" && count >= 4) {
+        if (!RegisterInstance(arguments[2], false, GetCurrentThreadId())) return 6;
+        if (!WritePid(arguments[3])) return 3;
         SleepForever();
     }
     if (mode == L"instance-windows" && count >= 5) {

@@ -1127,7 +1127,8 @@ Update this file whenever these defaults move or new fixed paths are introduced.
   proof: exit signal set for 5 s, or no window on two observations 20 s apart
   plus the registered UI thread's windows not answering `WM_NULL` within 1 s
   (named 4-byte mapping `Local\OkuFlow.UiThread.<tag>.<pid>` holds that
-  thread; without it every top-level window must answer) (100 ms
+  thread; without it every top-level window must answer; a recorded thread
+  with no window at all proves nothing) (100 ms
   slices that observe shutdown; never sent to a sibling with a visible window).
   Stopped only while the phone is unlisted, the interface present and the 5 s
   blind grace over; exit and adb-child waits 2 s, both cancellable.

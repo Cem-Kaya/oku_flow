@@ -1875,7 +1875,8 @@ so metadata generation cannot silently accept an incomplete copy.
   `ObserveOkuFlowSiblings` (optional `canceled`) reports registration, exit
   signal, visible window and whether the windows of the registered UI thread
   (`OkuFlowInstanceUiThreadName`, `RecordOkuFlowUiThread`; every top-level
-  window without that record) answer `WM_NULL`
+  window without that record) answer `WM_NULL` (`uiThreadHasNoWindow`: the
+  recorded thread owns no window, classified Pending)
   (100 ms slices; not asked when a window is visible); `ClassifyOkuFlowSibling`
   (pure, with `OkuFlowSiblingTrack`/`OkuFlowSiblingPolicy`, windowless proof
   20 s) proves a leftover; `StopLeftoverOkuFlowInstance` terminates the exact

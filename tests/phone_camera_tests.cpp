@@ -1122,6 +1122,35 @@ private slots:
         CloseHandle(opened);
         CloseHandle(record);
     }
+    void recordedUiThreadWithoutAWindowIsNotALeftover() {
+        // Iteration 5 (7): the recorded UI thread owns no window at all, so
+        // nothing answers or fails to answer a window message: Pending for
+        // as long as that lasts, never a leftover.
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString image = directory.filePath(QStringLiteral("okuflow_instance_fixture.exe"));
+        QVERIFY(QFile::copy(OwnedChildFixturePath(), image));
+        const std::wstring tag = L"nowindow" + std::to_wstring(GetCurrentProcessId());
+        const QString a = directory.filePath(QStringLiteral("a.txt"));
+        std::string error;
+        auto instance = okuflow::OwnedChildProcess::Launch({image.toStdWString(),
+            {L"instance-nowindow", tag, a.toStdWString()}, {}, {}}, &error);
+        QVERIFY2(instance, error.c_str());
+        QVERIFY(WaitForFixtureFile(a));
+        const auto siblings = okuflow::ObserveOkuFlowSiblings(image.toStdWString(), tag);
+        QCOMPARE(siblings.size(), size_t{1});
+        QVERIFY(siblings.front().registered && !siblings.front().hasVisibleWindow);
+        QVERIFY(siblings.front().uiThreadHasNoWindow);
+        okuflow::OkuFlowSiblingTrack track;
+        for (std::int64_t now = 0; now <= 120000; now += 5000)
+            QCOMPARE(int(okuflow::ClassifyOkuFlowSibling(siblings.front(), track, now)),
+                     int(okuflow::OkuFlowSiblingVerdict::Pending));
+        // Its exit signal still proves a leftover after the exiting grace.
+        auto exiting = siblings.front();
+        exiting.exiting = true;
+        QCOMPARE(int(okuflow::ClassifyOkuFlowSibling(exiting, track, 200000)), int(okuflow::OkuFlowSiblingVerdict::Pending));
+        QCOMPARE(int(okuflow::ClassifyOkuFlowSibling(exiting, track, 205000)), int(okuflow::OkuFlowSiblingVerdict::Leftover));
+    }
     void leftoverInstanceIsStoppedThroughDiscovery() {
         // C2/A3 through Enumerate and the production RuntimeSiblings path
         // (fixture image and tag only): an unregistered windowless sibling

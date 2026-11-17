@@ -1194,6 +1194,7 @@ std::vector<OkuFlowSiblingObservation> ObserveOkuFlowSiblings(const std::wstring
             const auto uiThread = sibling.registered ? RecordedUiThread(wantedTag, pid) : std::nullopt;
             if (uiThread) EnumThreadWindows(*uiThread, CollectThreadWindows, reinterpret_cast<LPARAM>(&windows));
             else EnumWindows(CollectTopLevelWindows, reinterpret_cast<LPARAM>(&windows));
+            sibling.uiThreadHasNoWindow = uiThread && windows.windows.empty();
             sibling.answersWindowMessage = !windows.windows.empty() &&
                 std::all_of(windows.windows.begin(), windows.windows.end(),
                             [&](HWND window) { return AnswersWindowMessage(window, canceled); });
@@ -1217,8 +1218,9 @@ OkuFlowSiblingVerdict ClassifyOkuFlowSibling(const OkuFlowSiblingObservation& o,
         return nowMs - track.exitingSinceMs >= policy.exitingGraceMs ? V::Leftover : V::Pending;
     }
     track.exitingSinceMs = -1;
-    if (o.answersWindowMessage) {
-        // Hidden but alive (starting, or a window being recreated).
+    if (o.answersWindowMessage || o.uiThreadHasNoWindow) {
+        // Hidden but alive (starting, or a window being recreated), or its
+        // recorded UI thread has no window to judge at all.
         track.windowlessSinceMs = -1;
         return V::Pending;
     }
