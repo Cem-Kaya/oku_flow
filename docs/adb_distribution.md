@@ -122,24 +122,23 @@ another live/starting phone session holds a counted occupancy reservation.
 Owned readiness polling permits five seconds plus the current bounded probe.
 Two failed host-version probes use one-second per-read deadlines before an
 idle restart, with a fresh port and the 5 s (doubling to 30 s) retry budget.
-The two probes are 1 s apart, and a child that is alive but has never answered
-yet (antivirus scanning the executable, a loaded laptop) gets a 30 s start
-grace before it can be judged hung. A
-responsive owned server that lists no USB entry while Windows shows the ADB
-interface is restarted by the link doctor 5 s after the last event, then after
-15 s, then 60 s, at most three times per episode; the user is then asked to
-re-plug the cable. Two consecutive launch failures of the bundled adb (a
-missing or quarantined file) are named in one sentence. So are starts that
-never answer: a child that stays alive without ever answering counts once per
-30 s start grace (also one that is replaced, and one whose listener ownership
-cannot be verified), and one that dies before it ever answered counts once.
-After readiness, a responsive child whose listener ownership remains
-unverifiable also counts once per start grace. Discovery waits for verified
-readiness before listing the private server. The idle shadow's earlier
-handback check also requires the exact private listener before listing and
-rechecks that identity before accepting the empty listing as evidence.
-A private server that cannot start beside another program's default counts
-the same way. A verified response from OkuFlow's own server resets the count.
+The two probes are 1 s apart. Readiness proves that the IPv4 loopback listener
+belongs to the exact child. Once ready, a live child that answers
+`host:version` on its port is running. A child that never proves readiness
+gets a 30 s start grace before the manager confirms the failure and restarts
+on a fresh port. A child that stays unready counts once per start grace or
+once when it dies. Two such counts or launch failures surface the existing
+startup message. Verified readiness clears the count. Manager retirement
+discards its counts. The idle shadow still verifies the private listener
+before listing and before accepting the empty listing as evidence.
+
+A responsive owned server that lists no USB entry while Windows shows the
+ADB interface is restarted by the link doctor 5 s after the last event, then
+after 15 s, then 60 s, at most three times per episode. A windowed sibling
+does not block these restarts. A busy companion can identify the sibling
+immediately. If the phone is still missing when owned repair reaches its
+cap, the doctor uses the sibling message when a sibling and the USB interface
+are present, or the re-plug message otherwise.
 An owned server that answers its version probes while its device listing fails (time-out, closed socket, invalid reply, `FAIL` to
 both listing forms) gets the same restart rung and cap after the 5 s grace and
 ends in the re-plug sentence: upstream adb answers `host:version` without the
@@ -263,15 +262,8 @@ nothing further and lists nothing in that cycle. A cycle whose source changed
 does not reach the doctor at all, so it reserves nothing of the episode; the
 application advances the intent generation only when the intent changed
 (computed after the change, before a pick's event), so a pick of the phone
-already chosen revokes nothing. A private child that never answered (one that
-died before answering, or that is retired alive after its readiness wait ran
-to its deadline or a probe found it silent past it; a start cut short by a
-source change counts nothing, whatever its age) is counted with the launch
-failures when its manager is dropped (the yield to an answering default, both
-hand-backs): starts beside an answering default end in the "cannot start"
-sentence, which ends once OkuFlow's own server answers. The release for a
-webcam adds nothing to them (the user chose another source) and clears the
-private-server flags as the other retirements do. A legacy reclamation
+already chosen revokes nothing. A new link episode also revokes a pending
+default-server stop before its next effect. A legacy reclamation
 entered on a listing hang lists the default once more first: an answer ends
 the hang and nothing is reclaimed, an adb `FAIL` keeps the hang and forbids
 the reclamation in that call. At the hand-over cap a listing-hung default is
@@ -334,23 +326,24 @@ the serial/transport is rechecked after the timeout. It sends only
 `host-transport-id:ID:reconnect`: at once, 3 s later, then at most every 30 s
 per phone/server until the next event, including across new transport IDs or
 unsupported replies. Both recovery paths open the reconnect socket on the
-observed port, verify its listener, then re-list on that port before the write.
-The fresh listing must match the USB serial, transport ID and state that
-authorized the request. A private listener must belong unambiguously to the
-same live child before the listing and at the write. A transport-ID reconnect
-can use a unique default listener's PID when Windows cannot open that process.
-The ID-less `host:reconnect-offline` fallback requires a verified private server. An idle
+observed port and take a fresh listing there before writing. The listing
+must match the USB serial, transport ID and state. The write checks that
+the port and server kind are still current and the source still authorizes it.
+An ID-less offline entry on OkuFlow's own server goes directly to the
+bounded owned restart rung. An idle
 preferred phone can receive the same recovery during background discovery while a
 fallback webcam is active. Ordinary browsing, explicit webcam intent, coded
 phone problems, busy sessions and live/starting phone ownership do not trigger
 it. A successful request still needs subsequent discovery and decoded frames.
 Other adb clients using that same phone lose their transport during a targeted
 reset. The phone-link trace uses fixed tokens for known companion problem codes
-and records unfamiliar codes as `unknown`. Discovery and session startup use
-`host:transport:<serial>` for wake and each activity command, including the
-legacy activity fallback. The USB serial identifies the selected phone even
-when a replacement adb server reuses its transport ID for another phone.
-The ladder checks source authority before each shell command.
+and records unfamiliar codes as `unknown`. Wake and both activity commands
+use serial selection when the listing shows a unique serial. If the serial
+appears twice, they select the ready entry by its transport ID. A second
+ready transport with the same serial vetoes a stop of the shared default.
+The discovery ladder checks source authority at the shell write, after
+transport selection. Session startup tries control once immediately after
+a successful activity launch, inside the overall startup budget.
 
 A globally hung server cannot acknowledge this transport request. The automatic
 server recovery above handles OkuFlow-owned or proven legacy support and, under

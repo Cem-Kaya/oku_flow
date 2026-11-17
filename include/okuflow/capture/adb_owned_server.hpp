@@ -148,23 +148,9 @@ public:
     std::optional<AdbListenerIdentity> ListeningIdentity(std::uint16_t port) const;
     int LaunchCount() const;
     int RestartCount() const;
-    // Starts of this manager's child that never answered: one for each
-    // start grace a child stays alive without ever answering (also one that
-    // is replaced, and one whose listener ownership cannot be verified), and
-    // one for a child that died before it ever answered (counted by the
-    // next EnsureRunning). A responsive child whose listener ownership stays
-    // unverifiable after readiness also counts once per start grace.
-    // Only a verified response resets the count.
-    // Lock-free: readable while a worker holds the manager through a launch.
+    // Counts a child that never proved readiness per start grace or at death.
+    // A ready child clears the count. Reading does not take the manager lock.
     int UnansweredStarts() const { return unansweredStarts_.load(); }
-    // The same count, for a manager that is about to be dropped (the caller
-    // keeps it, then calls Stop): also a child that died before it ever
-    // answered and was not counted yet, and one dropped alive whose
-    // readiness wait ran to its deadline unanswered (or that a probe found
-    // silent past it). A start cut short by a source change or a
-    // cancellation adds nothing, whatever its age. Interrupts work in flight
-    // first, as Stop does (the manager serves nothing afterwards).
-    int UnansweredStartsAtRetirement();
 private:
     bool Canceled(const std::atomic<bool>* canceled) const
     { return stopRequested_.load() || (canceled && canceled->load()); }
@@ -201,15 +187,10 @@ private:
     std::chrono::steady_clock::time_point nextRestart_{};
     std::chrono::steady_clock::time_point launchedAt_{};
     bool answered_{false};
-    // First or most recently counted responsive probe with unverified ownership.
-    std::optional<std::chrono::steady_clock::time_point> unverifiedOwnershipAt_;
     // When the current child last counted (or was launched), and whether its
     // death before answering was counted.
     std::chrono::steady_clock::time_point unansweredCountedAt_{};
     bool deathCounted_{false};
-    // The current child was observed missing its readiness deadline (its
-    // wait ran out, or a probe after the deadline failed).
-    bool readinessMissed_{false};
     std::atomic<int> unansweredStarts_{0};
     void CountUnansweredLocked();
     std::atomic<bool> budgetResetRequested_{false};

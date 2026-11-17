@@ -63,6 +63,7 @@ struct PhoneLinkObservation {
     // or it cannot be stopped at all (unreadable identity, not adb.exe).
     bool defaultStopRefused{false};
     PhoneAdbState phoneState{PhoneAdbState::NotListed};
+    bool hasTransportId{false};
     // The server lists a USB device, but not the wanted phone: Windows shows
     // an ADB interface because of that other device.
     bool otherUsbListed{false};

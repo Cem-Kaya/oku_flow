@@ -1852,8 +1852,8 @@ so metadata generation cannot silently accept an incomplete copy.
   outcomes; `Port`, `OwnsRunningServer`, `LaunchCount` and `RestartCount` expose
   process-local observations. `RunningSnapshot` holds an atomic shared
   observation handle and port so `Port` never waits for a probe. It reports
-  child liveness, not host readiness. `EnsureRunning(..., false)` checks exact
-  listener health without lifecycle effects for ordinary enumeration.
+  child liveness, not host readiness. `EnsureRunning(..., false)` observes
+  readiness and host health without lifecycle effects for ordinary enumeration.
   Manager and lifecycle timed-lock waits
   check cancellation every 20 ms. `ProbeAdbHostVersion` uses explicit ports, while
   `CreateOwnedAdbServer` wires exact hidden children, emulator suppression,
@@ -1930,15 +1930,15 @@ so metadata generation cannot silently accept an incomplete copy.
   using `FindLoopbackListener` in `adb_listener.hpp`, shared with the stop
   helper. They check that identity after listing, after a stall re-check and
   before the stop helper.
-  `OwnedAdbServer::UnansweredStarts` counts starts that never answered (one
-  per start grace alive, one at death) and responsive probes whose ownership
-  remains unverifiable after readiness (one per start grace).
-  `ObserveChildReadinessLocked` clears the count on a verified response;
-  `UnansweredStartsAtRetirement` adds a death not counted yet and a child
-  dropped alive whose readiness wait ran to its deadline (or that a probe
-  found silent past it; `readinessMissed_`), never by age alone, for the
-  transport to keep with its launch failures when it drops the manager (not
-  for a release for a webcam, which adds nothing).
+  A new doctor episode cancels a pending ask or termination at the same
+  authority checks used for a source change. The exact listener checks still apply.
+  `ObserveChildReadinessLocked` requires a responsive host, a live child and
+  the child's listener ownership to admit readiness. Later host probes trust
+  that live child on its own port. A child with unverified readiness after
+  its start grace uses the existing confirm-and-restart path.
+  `OwnedAdbServer::UnansweredStarts` counts a child that never proves readiness
+  per grace or at death. Verified readiness clears it, and manager retirement
+  discards it. The idle shadow verifies listener ownership before its pre-list.
   `OwnedAdbServer::EnsureRunning`/`Restart` take an optional `stillWanted`,
   asked with every cancellation check while the manager's lock is held.
   `NoteRestartDeferred` gives back a restart a live session deferred. A cycle
@@ -1962,7 +1962,10 @@ so metadata generation cannot silently accept an incomplete copy.
   `NoteDefaultListenerChanged` carry the transport's stop outcomes and listener
   changes. `ReserveLaunch`/`RenewLaunches` are the one per-event companion
   launch budget shared by the ladder and camera starts. `BlindGracePassed`
-  gates a leftover stop; `HandOverAllowed`/`NoteHandOver` count the
+  gates a leftover stop. The blind owned restart rung runs with a windowed
+  sibling and names it at the cap if the phone is still missing and Windows
+  reports the interface. A busy companion names the sibling immediately.
+  `HandOverAllowed`/`NoteHandOver` count the
   transport's starts beside a hung default and every executed hand-back
   (the doctor's `HandBackToDefault` decision itself does not count; the
   transport passes the episode it started in, and a count noted after a
@@ -2016,12 +2019,17 @@ so metadata generation cannot silently accept an incomplete copy.
   `ReleaseForWebcam` call. `OccupiedPhone` prevents overlapping
   probes; `MayLaunch` takes a camera start's single wake + launch from the
   doctor's per-event budget (`PhoneLinkDoctor::ReserveLaunch`), and
-  `AllowAppLaunch` (a manual camera pick) renews it. `LaunchCompanion` calls
-  `Transport` with only the serial for wake and both activity commands.
-  The ladder passes `stillWanted` to check authority before each shell command.
+  `AllowAppLaunch` (a manual camera pick) renews it. `SelectUsbEntry` prefers a
+  ready row for the target serial. `LaunchCompanion` selects a unique serial
+  directly and uses the selected ID for duplicate serials in the current
+  listing. `OtherDeviceServed` also protects a second ready transport with
+  the same serial. The ladder passes `stillWanted` through `Transport` to the
+  service write after adb acknowledges transport selection. A refused shell
+  write reports `Dropped`.
   `ControlHello` accepts a token-free `probe:true` ACK,
   supports older tokened ACKs and reads coded ERROR packets. Real hello and
-  video binding are retried together within a bounded connection window.
+  video binding share the connection window, with one immediate control
+  attempt after a successful launch inside `PhoneStartupBudget`.
   `ownedServerExecutable` / `ownedServerArguments` opt into the private fake
   process fixture, with the hook port standing in for 5037. `OccupiedPhone`
   increments/decrements per-serial counts so overlapping sessions remain
@@ -2031,14 +2039,13 @@ so metadata generation cannot silently accept an incomplete copy.
   `PhoneCameraTransport.RecoverStalledUsbTransport` requires a responsive adb
   version query, the same authorized USB serial/transport before and after a
   pair of timed-out independent shell echoes, plus a fresh non-claiming companion
-  timeout, then sends `host-transport-id:ID:reconnect`. `ReconnectServer` carries
-  the listing port and unique listener identity into `AdbReconnectReply`.
-  For a private port that identity comes from the owned child's verified
-  listener. A transport-ID reconnect can use a unique PID when Windows
-  cannot open the default listener. Both paths re-list after the reconnect
-  socket opens and require the same USB serial, ID and state. The ID-less
-  fallback is private-only.
-  `AdbRequest` checks the listener and source intent at the guarded write.
+  timeout, then sends `host-transport-id:ID:reconnect`.
+  `AdbReconnectReply` uses the observed port for its socket and asks for a
+  fresh listing on that port after connecting. It requires the same USB
+  serial, ID and state. `ReconnectEndpointIsCurrent` checks the port and
+  server kind at the write, where `AdbRequest` also checks source authority.
+  `PhoneLinkObservation::hasTransportId` gates the targeted rung. The offline
+  branch uses the bounded owned restart directly when there is no ID.
   `CompanionProblemTraceToken`
   allows only known codes in diagnosis and session-end traces. The echo checks require
   all response bytes, not just one early byte. Post-ack listing must observe the

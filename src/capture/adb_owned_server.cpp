@@ -230,23 +230,10 @@ bool OwnedAdbServer::ObserveChildReadinessLocked(OwnedServerProbe response)
 {
     if (response != OwnedServerProbe::Responsive || !child_ || !child_->IsRunning() || !port_)
         return false;
-    if (!policy_.verifyListenerOwnership || child_->OwnsListeningPort(*port_)) {
-        answered_ = true;
-        unverifiedOwnershipAt_.reset();
-        unansweredStarts_.store(0);
-        return true;
-    }
-    // A previously healthy child can keep answering without proving it
-    // owns the listener. Use the startup grace to count sustained loss.
-    if (answered_) {
-        const auto now = std::chrono::steady_clock::now();
-        if (!unverifiedOwnershipAt_) unverifiedOwnershipAt_ = now;
-        else if (now - *unverifiedOwnershipAt_ >= policy_.startGrace) {
-            unverifiedOwnershipAt_ = now;
-            ++unansweredStarts_;
-        }
-    }
-    return false;
+    if (!answered_ && policy_.verifyListenerOwnership && !child_->OwnsListeningPort(*port_)) return false;
+    answered_ = true;
+    unansweredStarts_.store(0);
+    return true;
 }
 
 bool OwnedAdbServer::WaitSlice(const std::atomic<bool>* canceled) const
@@ -296,10 +283,8 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::LaunchAndAwaitLocked(
         ++launches_;
         launchedAt_ = std::chrono::steady_clock::now();
         answered_ = false;
-        unverifiedOwnershipAt_.reset();
         unansweredCountedAt_ = launchedAt_;
         deathCounted_ = false;
-        readinessMissed_ = false;
         const auto deadline = std::chrono::steady_clock::now() + policy_.readinessDeadline;
         for (;;) {
             if (Halted(canceled)) return EnsureResult::Canceled; // Child stays owned.
@@ -316,10 +301,8 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::LaunchAndAwaitLocked(
             if (Halted(canceled)) return EnsureResult::Canceled;
             if (ObserveChildReadinessLocked(response))
                 return restart ? EnsureResult::Restarted : EnsureResult::Launched;
-            if (std::chrono::steady_clock::now() >= deadline) {
-                readinessMissed_ = true; // Its readiness wait ran out unanswered.
+            if (std::chrono::steady_clock::now() >= deadline)
                 return EnsureResult::NotReady; // Owned child left for later probes.
-            }
             if (!WaitSlice(canceled)) return EnsureResult::Canceled;
         }
     }
@@ -343,15 +326,8 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::EnsureRunning(const std::atomic<boo
         const auto response = probe_(*port_, canceled);
         if (Halted(canceled)) return EnsureResult::Canceled;
         if (ObserveChildReadinessLocked(response)) return EnsureResult::Running;
-        // A start whose readiness wait was cut short (a source change, a
-        // cancellation) is observed missing its readiness only by a probe
-        // that fails after the deadline.
-        if (!answered_ && std::chrono::steady_clock::now() - launchedAt_ >= policy_.readinessDeadline)
-            readinessMissed_ = true;
         if (!allowLifecycleEffects) return EnsureResult::NotReady;
-        if (response == OwnedServerProbe::Responsive && child_->IsRunning())
-            return EnsureResult::NotReady; // Ownership lookup is unknown/mismatched, not a host hang.
-        // Alive and never answered: still starting (antivirus, load), not hung.
+        // Give a child that never proved readiness its normal start grace.
         if (!answered_ && std::chrono::steady_clock::now() - launchedAt_ < policy_.startGrace)
             return EnsureResult::NotReady;
         // Confirm with further consecutive non-responsive probes, spaced
@@ -364,8 +340,6 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::EnsureRunning(const std::atomic<boo
             const auto confirmedResponse = probe_(*port_, canceled);
             if (Halted(canceled)) return EnsureResult::Canceled;
             if (ObserveChildReadinessLocked(confirmedResponse)) return EnsureResult::Running;
-            if (confirmedResponse == OwnedServerProbe::Responsive && child_->IsRunning())
-                return EnsureResult::NotReady;
         }
         if (confirmed && child_->IsRunning()) {
             if (Halted(canceled)) return EnsureResult::Canceled;
@@ -428,9 +402,8 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::Restart(const std::atomic<bool>* ca
 
 void OwnedAdbServer::CountUnansweredLocked()
 {
-    // A child that never answered: one count per start grace it stays alive
-    // (so one that is never replaced, as when its listener ownership cannot
-    // be verified, still reaches the sentence), one when it died.
+    // A child that never proved readiness: one count per start grace
+    // it stays alive, or one when it dies.
     if (!child_ || answered_) return;
     if (!child_->IsRunning()) {
         if (!deathCounted_) { deathCounted_ = true; ++unansweredStarts_; }
@@ -441,28 +414,6 @@ void OwnedAdbServer::CountUnansweredLocked()
         unansweredCountedAt_ = now;
         ++unansweredStarts_;
     }
-}
-
-int OwnedAdbServer::UnansweredStartsAtRetirement()
-{
-    // The manager is about to be stopped: work in flight on it (a launch, a
-    // readiness or confirmation wait) is interrupted first, as Stop() does,
-    // so this never waits for it.
-    stopRequested_.store(true);
-    std::lock_guard lock(mutex_);
-    // Only what was observed counts, never the child's age alone: a death
-    // before it ever answered, or a live child whose readiness wait ran to
-    // its deadline unanswered (or that a later probe found silent past it),
-    // once and only if no start grace counted it already. A start cut short
-    // by a source change or a cancellation was never judged: nothing.
-    if (!child_ || answered_) return unansweredStarts_.load();
-    if (!child_->IsRunning()) {
-        if (!deathCounted_) { deathCounted_ = true; ++unansweredStarts_; }
-    } else if (readinessMissed_ && unansweredCountedAt_ == launchedAt_) {
-        unansweredCountedAt_ = std::chrono::steady_clock::now();
-        ++unansweredStarts_;
-    }
-    return unansweredStarts_.load();
 }
 
 void OwnedAdbServer::ResetBudgets()

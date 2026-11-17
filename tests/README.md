@@ -1017,7 +1017,7 @@ blind private server, one that comes back after every `host:kill` (bounded),
 a connect-stalled listener with a full accept queue, an unopenable listener,
 `host:kill` aborted when the re-list fails or the phone appears, a UI-thread
 event while a slow owned launch holds the manager, the start grace, the
-chosen phone as target, `reconnect-offline` only on OkuFlow's own server, no
+chosen phone as target, no
 serial in the trace, adb that cannot be launched, the first automatic start,
 leftover-instance classification and exact termination of windowless
 registered fixture instances, and the proven adb-child fallback.
@@ -1131,9 +1131,6 @@ beside the default), `hostKillIsNotWrittenAfterTheSourceChanged` (hook
 `afterHostKillConnectForTest`, the fixture's kill log stays empty),
 `staleCycleLeavesTheEpisodeBudgetToTheNextCycle` (revoked at "decide":
 reconnect, restart, hand-back and launch still act at once in the next cycle),
-`privateServerThatDiesAfterItsReadinessBesideADefaultIsCounted` (owned child
-with `--fixture-slow-version-file` and `--fixture-exit-on-kill`; the test sends
-it `host:kill` once it went silent: no fixture change),
 `legacyReclaimOfAListingHangNeedsAFreshSilentListing` (seam
 `legacyReclaimForTest` stands in for the production-only reclamation),
 `listingHangOfOneListenerIsNotAnothers` (listener rows rewritten to a decoy
@@ -1154,9 +1151,6 @@ the four access units of `data/phone-camera.h264` are sent in a loop from the
 fake's own thread) and refuse the companion at once (`companionRefuses`); a
 real `PhoneCameraTransport` session then decodes frames in the contract suite
 (`ScopedMediaFoundation`). Rows:
-`interruptedPrivateServerStartIsNotCountedAtRetirement` (owned manager: a
-start cut short inside its readiness wait counts nothing at retirement; a wait
-that ran out, or a probe past the deadline, counts one),
 `webcamReleaseOfAStartingPrivateServerCountsNothing` (no launch failure, and
 the empty default listing reads Listed, not OkuFlow's server recovering),
 `onlyALiveRealSessionKeepsAConfirmedHungDefault` (a real session registered
@@ -1166,34 +1160,39 @@ rewritten to a decoy `adb.exe`),
 `aSessionThatRegistersRightAfterALiveOneIsNotLive` (a decoded frame makes a
 session live; a session registering right after the last one ended is not),
 `terminationCanceledWithoutAStopIsGivenBack` (a stale intent refunds the
-attempt, while repeated transient live-session vetoes reach the aborted-stop
-cap), and `transportReconnectIsNotWrittenAfterTheSourceChanged` (offline and
+attempt, a device-removal event during the kill wait leaves the fixture
+child alive, and transient live-session vetoes reach the aborted-stop cap), and `transportReconnectIsNotWrittenAfterTheSourceChanged` (offline and
 stalled device, with an immediate retry proving the stalled reservation was
 returned). The back-to-back session row asserts the cleared timestamp and the
 silent session fixture uses an extended connect budget. Round 11 adds
 `defaultStopKeepsAListenerThatReplacedTheOneListed` (ask and termination),
-`offlineReconnectUsesTheObservedTransport` (ready, endpoint swap and listener
-swap), and `companionProblemTraceUsesOnlyFixedCodes` (probe and hello error).
+`offlineReconnectUsesTheObservedTransport` (ready, endpoint change and changed
+USB serial or ID), and `companionProblemTraceUsesOnlyFixedCodes` (probe and hello error).
 The round 11 follow-up checks two listener owners at the first pre-stop lookup
 for both ask and termination (`defaultStopRefusesAmbiguousListingOwner`).
-`privateReconnectRequiresTheOwnedListener` models an ID-less reply and a live
-child whose private listener row names another process. The offline table tests
-transitions to unauthorized, connecting and ready, including a ready transition
-after opening the reconnect socket. `stalledReconnectChecksTheAttachmentAfterConnect`
-covers a ready device re-registering with a different ID at the same point.
-`ladderLaunchUsesTheSelectedPhoneSerial` switches to a server that reuses
-the selected phone's transport ID for another serial and checks that the
-other phone gets no wake or activity command. `ladderLaunchOnReadableBorrowedDefault`
-checks that the wake and launch succeed with one discovery listing.
-`sessionLaunchKeepsTheExistingAdbRequests` checks every adb request from
-listing through a successful one-phone streaming start. `launchesRegisteredPackage`
-checks serial selection for the wake, Play activity and legacy fallback.
-Round 12 also covers targeted-only offline and stalled-device recovery for
-an unopenable listener (`unopenableDefaultReconnectRequiresATransportId`)
-and unreadable ownership after healthy readiness followed by recovery
-(`previouslyHealthyOwnedListenerMustRemainVerifiable`). That fixture also
-checks that an idle shadow skips private listings while ownership is
-unverified and requires two verified observations to hand back.
+The offline table checks transitions to unauthorized, connecting and ready,
+including a ready transition after opening the reconnect socket.
+`stalledReconnectChecksTheAttachmentAfterConnect` covers a ready device
+re-registering with a different ID at the same point.
+`offlineWithoutTransportIdRestartsOwnedServer` and its doctor counterpart
+check the direct owned-restart rung and its cap.
+`ownedServerRestartsWhenReadinessOwnershipNeverMatches` checks grace,
+relaunch on a fresh port and the unanswered count.
+`idleShadowHandbackChecksOwnershipBeforeListing` checks that a ready child
+still serves discovery and that hand-back requires verified observations.
+`siblingWindowAllowsBoundedOwnedRepair` covers the restart cap and the
+immediate busy-companion diagnosis.
+`ladderLaunchUsesTheSelectedPhoneSerial` covers a replacement server reusing
+an old ID. `ladderLaunchOnReadableBorrowedDefault` checks one discovery
+listing. `ladderLaunchUsesTheReadyDuplicateTransport` and
+`sessionLaunchKeepsTheExistingAdbRequests` cover both duplicate orders,
+one wake and one launch by ID, and the unique-serial request sequence.
+`anotherReadyTransportWithTheSameSerialVetoesDefaultStop` covers the
+pre-stop listing. `sourceChangeDuringSelectionDropsTheShellWrite` advances
+source generation before the fake acknowledges transport selection.
+The slow activity row in `sessionLaunchKeepsTheExistingAdbRequests` checks
+control and streaming after the connection window elapsed.
+`launchesRegisteredPackage` checks selection for Play and legacy activity.
 `absentUserEndpointIsNamedAndCanRecover` starts a fake on the configured port
 after the existing sentence appears. The doctor row
 `absentUserEndpointSharesTheUnresponsiveDeadline` checks the deadline and its
