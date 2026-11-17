@@ -1174,6 +1174,13 @@ silent session fixture uses an extended connect budget. Round 11 adds
 `defaultStopKeepsAListenerThatReplacedTheOneListed` (ask and termination),
 `offlineReconnectUsesTheObservedTransport` (ready, endpoint swap and listener
 swap), and `companionProblemTraceUsesOnlyFixedCodes` (probe and hello error).
+The round 11 follow-up checks two listener owners at the first pre-stop lookup
+for both ask and termination (`defaultStopRefusesAmbiguousListingOwner`).
+`privateReconnectRequiresTheOwnedListener` models an ID-less reply and a live
+child whose private listener row names another process. The offline table tests
+transitions to unauthorized, connecting and ready, including a ready transition
+after opening the reconnect socket. `stalledReconnectChecksTheAttachmentAfterConnect`
+covers a ready device re-registering with a different ID at the same point.
 Doctor:
 `silentPrivateServerBesideADefaultThatServesThePhoneIsHandedBack`,
 `restartDeferredForALiveSessionIsGivenBack`. Legacy:

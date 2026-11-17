@@ -1837,10 +1837,10 @@ so metadata generation cannot silently accept an incomplete copy.
   the kernel. `LaunchOptions.assignOverride` is a private test seam.
   `environmentOverrides` builds a sorted Unicode child environment without
   modifying the parent; production sets `ADB_EMU=0` and `ADB_REJECT_KILL_SERVER=1`.
-  `DuplicateObservationHandle` returns a non-inherited synchronize-only handle.
-  `OwnsListeningPort` uses
-  the native IPv4 TCP owner table to observe exact-child loopback ownership,
-  never as process-termination authority.
+  `DuplicateObservationHandle` returns a non-inherited handle with query and
+  synchronization rights. `OwnsListeningPort` and
+  `OwnedAdbServer::ListeningIdentity` use the same unique-owner check against
+  the exact child's live handle and the IPv4 loopback listener.
 - `OwnedAdbServer` serializes `EnsureRunning` and injects probe/launch/port/session
   functions for private tests. `OwnedAdbServerPolicy` defaults to two consecutive
   failed probes, a 5s readiness window, 50ms polling and 30s launch/restart
@@ -1849,7 +1849,7 @@ so metadata generation cannot silently accept an incomplete copy.
   restart. `EnsureResult` reports launch/ready/deferred/throttled/canceled/stopped
   outcomes; `Port`, `OwnsRunningServer`, `LaunchCount` and `RestartCount` expose
   process-local observations. `RunningSnapshot` holds an atomic shared
-  synchronize-only handle/port so `Port` never waits for a probe; it reports
+  observation handle and port so `Port` never waits for a probe. It reports
   child liveness, not host readiness. `EnsureRunning(..., false)` checks exact
   listener health without lifecycle effects for ordinary enumeration.
   Manager and lifecycle timed-lock waits
@@ -1922,8 +1922,10 @@ so metadata generation cannot silently accept an incomplete copy.
   `ExecuteLinkAction` keeps a live-session veto from the termination helper's
   authority callback and passes it to `NoteTerminationAborted`, including
   when the session ends before the helper returns. The ask and both
-  termination paths check their pre-listing listener identity after listing,
-  after a stall re-check and before the stop helper.
+  termination paths require a unique owner before their pre-stop listing
+  using `FindLoopbackListener` in `adb_listener.hpp`, shared with the stop
+  helper. They check that identity after listing, after a stall re-check and
+  before the stop helper.
   `OwnedAdbServer::UnansweredStarts` counts starts that never answered (one
   per start grace alive, one at death), reset when the child answers;
   `UnansweredStartsAtRetirement` adds a death not counted yet and a child
@@ -2021,11 +2023,12 @@ so metadata generation cannot silently accept an incomplete copy.
   version query, the same authorized USB serial/transport before and after a
   pair of timed-out independent shell echoes, plus a fresh non-claiming companion
   timeout, then sends `host-transport-id:ID:reconnect`. `ReconnectServer` carries
-  the listing port, ownership and default listener identity into
-  `AdbReconnectReply`. `AdbRequest` uses the guarded socket write for the
-  final admission check. The offline ladder also re-lists on that port and
-  requires a matching eligible USB serial and ID. The ID-less fallback
-  requires continued owned-server status. `CompanionProblemTraceToken`
+  the listing port and unique listener identity into `AdbReconnectReply`.
+  For a private port that identity comes from the owned child's verified
+  listener. Both paths re-list after the reconnect socket opens and require
+  the same USB serial, ID and state. The ID-less fallback is private-only.
+  `AdbRequest` checks the listener and source intent at the guarded write.
+  `CompanionProblemTraceToken`
   allows only known codes in diagnosis and session-end traces. The echo checks require
   all response bytes, not just one early byte. Post-ack listing must observe the
   stale ID disappearing or changing within two seconds before success.

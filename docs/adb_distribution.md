@@ -174,9 +174,9 @@ its any-address row, `0.0.0.0` or a dual-stack `::`, as an adb started with
 `-a` binds: it answers OkuFlow's loopback probes too; `::1` alone is never
 reached and is ignored; every lookup and the legacy reclamation share this
 rule and the identity proof below is unchanged). The ask and both termination
-paths capture the listener's PID and creation time before their pre-stop
-listing. They require the same listener after the listing, after any stall
-re-check and at the stop helper call. The helper opens the process and requires
+paths require one unique owner before their pre-stop listing and capture its
+PID and creation time. They require the same listener after the listing, after
+any stall re-check and at the stop helper call. The helper opens the process and requires
 that original PID and creation time, the
 image file name `adb.exe`, a process other than OkuFlow, and the same listener
 again immediately before `TerminateProcess` on the held handle. Never by name,
@@ -325,14 +325,13 @@ authorized USB listing and a separate timed-out shell echo are required;
 the serial/transport is rechecked after the timeout. It sends only
 `host-transport-id:ID:reconnect`: at once, 3 s later, then at most every 30 s
 per phone/server until the next event, including across new transport IDs or
-unsupported replies. The offline ladder re-lists on the observed server
-before opening the reconnect socket. It requires the same USB serial and
-transport ID in a reconnect-eligible state. An active authorization handshake
-keeps its transport. Both paths connect to the observed port and re-check the
-endpoint and default listener identity at the write. An ID-less
-`host:reconnect-offline` also requires continued ownership of the private
-server. An idle preferred
-phone can receive the same recovery during background discovery while a
+unsupported replies. Both recovery paths open the reconnect socket on the
+observed port, verify its listener, then re-list on that port before the write.
+The fresh listing must match the USB serial, transport ID and state that
+authorized the request. A private listener must belong unambiguously to the
+same live child before the listing and at the write. The ID-less
+`host:reconnect-offline` fallback is reserved for that private server. An idle
+preferred phone can receive the same recovery during background discovery while a
 fallback webcam is active. Ordinary browsing, explicit webcam intent, coded
 phone problems, busy sessions and live/starting phone ownership do not trigger
 it. A successful request still needs subsequent discovery and decoded frames.

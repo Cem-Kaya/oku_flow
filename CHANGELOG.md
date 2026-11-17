@@ -3,8 +3,9 @@
 ## [Unreleased]
 
 - Bind USB phone recovery to the Android tool that supplied the listing.
-  Preserve replacement servers and skip reconnects when the phone has already
-  recovered. Repeated live-session vetoes reach the existing stop limit.
+  Require a unique listener for stops and reconnects. Skip a reconnect when the
+  first listing after its socket opens shows a changed phone state or attachment.
+  Repeated live-session vetoes reach the existing stop limit.
   Phone-link traces record fixed companion problem codes.
 
 - Submit Android 0.1.5 (code 6) with the phone-link recovery changes to the

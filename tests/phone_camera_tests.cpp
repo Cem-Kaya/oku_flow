@@ -110,20 +110,37 @@ public:
             while (arrival == ArrivalMode::QueuedConnections && !releaseQueuedConnections.load() && !stopped.load())
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             const auto listenPortNow = server.serverPort();
+            // A host client can wait for the result of a second connection
+            // before it sends its first request. Keep idle sockets pending
+            // while the fake accepts and serves the listing connection.
+            std::vector<std::unique_ptr<QTcpSocket>> idle;
             while (!stopped.load() && !closeListener.load()) {
                 PumpStream();
-                if (!server.hasPendingConnections() && !server.waitForNewConnection(streamControl ? 5 : 20)) continue;
-                std::unique_ptr<QTcpSocket> socket(server.nextPendingConnection());
-                // Gone from the listener table before it answers this request.
+                std::unique_ptr<QTcpSocket> socket;
+                std::erase_if(idle, [&](auto& waiting) {
+                    if (!socket && (waiting->bytesAvailable() || waiting->waitForReadyRead(1)))
+                        socket = std::move(waiting);
+                    return !waiting || waiting->state() != QAbstractSocket::ConnectedState;
+                });
                 bool reopen = false;
-                if (goneAtNextConnection.exchange(false)) {
-                    server.close();
-                    reopen = reopenAfterGone.load();
-                    if (!reopen) closeListener.store(true);
-                }
-                if (arrival == ArrivalMode::BufferedRequest) {
-                    if (!socket->bytesAvailable() && !socket->waitForReadyRead(1000)) continue;
-                    ++bufferedRequests;
+                if (!socket) {
+                    if (!server.hasPendingConnections() &&
+                        !server.waitForNewConnection(streamControl || !idle.empty() ? 5 : 20)) continue;
+                    socket.reset(server.nextPendingConnection());
+                    // Gone from the listener table before it answers this request.
+                    const bool gone = goneAtNextConnection.exchange(false);
+                    if (gone) {
+                        server.close();
+                        reopen = reopenAfterGone.load();
+                        if (!reopen) closeListener.store(true);
+                    }
+                    if (arrival == ArrivalMode::BufferedRequest) {
+                        if (!socket->bytesAvailable() && !socket->waitForReadyRead(1000)) continue;
+                        ++bufferedRequests;
+                    } else if (!gone && !socket->bytesAvailable() && !socket->waitForReadyRead(1)) {
+                        if (socket->state() == QAbstractSocket::ConnectedState) idle.push_back(std::move(socket));
+                        continue;
+                    }
                 }
                 try { Serve(*socket); } catch (...) {}
                 // A streaming companion's channels stay open beside the
@@ -4556,6 +4573,52 @@ private slots:
         QVERIFY(!replacement.Exited());
         QCOMPARE(reports.back().actionResult, "refused: the listener changed since the decision");
     }
+    void defaultStopRefusesAmbiguousListingOwner_data() {
+        QTest::addColumn<bool>("terminate");
+        QTest::newRow("ask") << false;
+        QTest::newRow("terminate after an ignored ask") << true;
+    }
+    void defaultStopRefusesAmbiguousListingOwner() {
+        QFETCH(bool, terminate);
+        DefaultAdbFixture first({}), second({});
+        QVERIFY(first.copied && !first.Exited() && second.copied && !second.Exited());
+        const DWORD firstPid = first.child->ProcessId(), secondPid = second.child->ProcessId();
+        FakePhoneAdb fake(false, false, false, FakePhoneAdb::LaunchMode::None,
+                          FakePhoneAdb::RecoveryMode::Healthy, false);
+        fake.listEmpty.store(true);
+        bool ambiguousNext = false;
+        int ambiguousLookups = 0;
+        okuflow::SetTcpListenerRowsTransformForTest([&](std::vector<okuflow::TcpListenerRow>& rows) {
+            for (auto& row : rows) {
+                if (row.port != fake.port || row.ipv6 || !row.loopback) continue;
+                row.processId = firstPid;
+                if (std::exchange(ambiguousNext, false)) {
+                    auto other = row;
+                    other.processId = secondPid;
+                    rows.push_back(other);
+                    ++ambiguousLookups;
+                }
+                break;
+            }
+        });
+        auto restore = qScopeGuard([] { okuflow::SetTcpListenerRowsTransformForTest({}); });
+        ScopedLinkHooks hooks(fake.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {},
+                              100, [&](okuflow::PhoneAdbTestHooks& h) {
+            h.beforeDefaultStopForTest = [&] {
+                if (!terminate || fake.ServiceCount("host:kill") > 0) ambiguousNext = true;
+            };
+        });
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto expected = terminate ? okuflow::PhoneLinkAction::TerminateDefaultServer
+                                        : okuflow::PhoneLinkAction::AskDefaultServerToExit;
+        const auto reports = LinkCycles(40, [&](const auto& r) { return r.decision.action == expected; });
+        QCOMPARE(reports.back().decision.action, expected);
+        QCOMPARE(ambiguousLookups, 1);
+        QCOMPARE(fake.ServiceCount("host:kill"), terminate ? 1 : 0);
+        QVERIFY(!first.Exited());
+        QVERIFY(!second.Exited());
+        QCOMPARE(reports.back().actionResult, "kept: the listener table cannot be read");
+    }
     void companionProblemTraceUsesOnlyFixedCodes_data() {
         QTest::addColumn<bool>("helloError");
         QTest::newRow("probe problem") << false;
@@ -4757,14 +4820,35 @@ private slots:
         QTest::newRow("ready at the fresh listing") << 0;
         QTest::newRow("endpoint changed before connect") << 1;
         QTest::newRow("listener changed after connect") << 2;
+        QTest::newRow("unauthorized at the fresh listing") << 3;
+        QTest::newRow("connecting at the fresh listing") << 4;
+        QTest::newRow("ready after connecting the write socket") << 5;
+        QTest::newRow("listener changed in the fresh listing") << 6;
     }
     void offlineReconnectUsesTheObservedTransport() {
         QFETCH(int, change);
         FakePhoneAdb first(false, false, false, FakePhoneAdb::LaunchMode::None, FakePhoneAdb::RecoveryMode::Healthy, false);
         FakePhoneAdb second(false, false, false, FakePhoneAdb::LaunchMode::None, FakePhoneAdb::RecoveryMode::Healthy, false);
-        DefaultAdbFixture replacement({});
-        QVERIFY(replacement.copied && !replacement.Exited());
-        const DWORD replacementPid = replacement.child->ProcessId();
+        std::unique_ptr<DefaultAdbFixture> replacement;
+        DWORD replacementPid = 0;
+        if (change == 2 || change == 6) {
+            replacement = std::make_unique<DefaultAdbFixture>(std::vector<std::wstring>{});
+            QVERIFY(replacement->copied && !replacement->Exited());
+            replacementPid = replacement->child->ProcessId();
+        }
+        std::atomic<bool> swapOwner{false}, listingArmed{false};
+        if (change == 2 || change == 6) {
+            const auto firstPort = first.port;
+            okuflow::SetTcpListenerRowsTransformForTest([&, firstPort](std::vector<okuflow::TcpListenerRow>& rows) {
+                if (!swapOwner.load()) return;
+                for (auto& row : rows)
+                    if (row.port == firstPort) row.processId = replacementPid;
+            });
+            first.SetBeforeListingReply([&] {
+                if (listingArmed.load()) swapOwner.store(true);
+            });
+        }
+        auto restore = qScopeGuard([] { okuflow::SetTcpListenerRowsTransformForTest({}); });
         first.listingState.store(6);
         second.listingState.store(6);
         ScopedLinkHooks hooks(first.port, okuflow::PhoneAdbInterface::Present, {}, {}, 5000,
@@ -4772,25 +4856,103 @@ private slots:
             h.linkStageForTest = [&](std::string_view stage) {
                 if (stage != "decide") return;
                 if (change == 0) first.listingState.store(8);
+                if (change == 3) first.listingState.store(3);
+                if (change == 4) first.listingState.store(1);
                 if (change == 1) {
                     okuflow::PhoneAdbTestHooks replacementHooks{second.port, {}};
                     replacementHooks.linkPolicy = FastLinkPolicy();
                     okuflow::SetPhoneAdbTestHooks(replacementHooks);
                 }
             };
-            if (change == 2) h.afterReconnectConnectForTest = [&] {
-                okuflow::SetTcpListenerRowsTransformForTest([&](std::vector<okuflow::TcpListenerRow>& rows) {
-                    for (auto& row : rows) if (row.port == first.port) row.processId = replacementPid;
-                });
+            h.afterReconnectConnectForTest = [&] {
+                if (change == 2) swapOwner.store(true);
+                if (change == 5) first.listingState.store(8);
+                if (change == 6) listingArmed.store(true);
             };
         });
-        auto restore = qScopeGuard([] { okuflow::SetTcpListenerRowsTransformForTest({}); });
         okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::Resume);
         const auto reports = LinkCycles(1);
         QCOMPARE(reports.back().decision.action, okuflow::PhoneLinkAction::ReconnectTransport);
+        if (change == 6) QVERIFY(swapOwner.load());
         QCOMPARE(first.ServiceCount("host-transport-id:9:reconnect"), 0);
         QCOMPARE(second.ServiceCount("host-transport-id:9:reconnect"), 0);
         QCOMPARE(reports.back().actionResult, "kept: the observed transport changed or recovered");
+    }
+    void privateReconnectRequiresTheOwnedListener_data() {
+        QTest::addColumn<bool>("afterConnect");
+        QTest::newRow("foreign owner before connect") << false;
+        QTest::newRow("foreign owner before fresh listing") << true;
+    }
+    void privateReconnectRequiresTheOwnedListener() {
+        QFETCH(bool, afterConnect);
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        QFile offline(directory.filePath(QStringLiteral("offline")));
+        QVERIFY(offline.open(QIODevice::WriteOnly));
+        offline.close();
+        std::optional<std::uint16_t> privatePort;
+        bool foreignOwner = false;
+        int privateListings = 0, connects = 0, foreignRows = 0;
+        okuflow::SetTcpListenerRowsTransformForTest([&](std::vector<okuflow::TcpListenerRow>& rows) {
+            if (!foreignOwner || !privatePort) return;
+            for (auto& row : rows) {
+                if (row.port != *privatePort || row.ipv6 || !row.loopback) continue;
+                row.processId = GetCurrentProcessId();
+                ++foreignRows;
+            }
+        });
+        auto restore = qScopeGuard([] { okuflow::SetTcpListenerRowsTransformForTest({}); });
+        const auto defaultPort = PickTestPort();
+        ScopedLinkHooks hooks(defaultPort, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(),
+                              {L"--fixture-device", L"--fixture-offline-file", offline.fileName().toStdWString()}, 5000,
+                              [&](okuflow::PhoneAdbTestHooks& h) {
+            h.transformAdbEntriesForTest = [&](std::uint16_t port, std::vector<okuflow::AdbDeviceEntry>& entries) {
+                if (port == defaultPort || entries.empty()) return;
+                ++privateListings;
+                // Existing child fixture serves an offline phone. Present the
+                // same reply without a transport ID to exercise the fallback.
+                for (auto& entry : entries) entry.transportId = 0;
+            };
+            h.linkStageForTest = [&](std::string_view stage) {
+                if (stage != "decide") return;
+                privatePort = okuflow::OwnedAdbServerPort();
+                if (!afterConnect) foreignOwner = true;
+            };
+            h.afterReconnectConnectForTest = [&] {
+                ++connects;
+                if (afterConnect) foreignOwner = true;
+            };
+        });
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::Resume);
+        const auto reports = LinkCycles(1);
+        QVERIFY(privatePort.has_value());
+        QCOMPARE(okuflow::OwnedAdbServerPort(), privatePort); // Child is still alive.
+        QCOMPARE(reports.back().observation.server, okuflow::PhoneServerKind::Owned);
+        QCOMPARE(reports.back().observation.phoneState, okuflow::PhoneAdbState::Offline);
+        QCOMPARE(reports.back().decision.action, okuflow::PhoneLinkAction::ReconnectTransport);
+        QVERIFY(foreignRows > 0);
+        QCOMPARE(connects, afterConnect ? 1 : 0);
+        QCOMPARE(privateListings, 1); // Foreign ownership prevented a fresh listing or a reconnect write.
+        QCOMPARE(reports.back().actionResult, "kept: the observed transport changed or recovered");
+    }
+    void stalledReconnectChecksTheAttachmentAfterConnect() {
+        FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::None,
+                            FakePhoneAdb::RecoveryMode::SelectionStalled, false);
+        int connects = 0;
+        ScopedLinkHooks hooks(server.port, okuflow::PhoneAdbInterface::Present, {}, {}, 5000,
+                              [&](okuflow::PhoneAdbTestHooks& h) {
+            h.afterReconnectConnectForTest = [&] {
+                ++connects;
+                // The formerly stalled phone re-registers as a ready device.
+                server.transportId.store(10);
+                server.deviceStalled.store(false);
+            };
+        });
+        auto descriptor = FixturePhone();
+        descriptor.phoneTransportId = 9;
+        QVERIFY(!okuflow::PhoneCameraTransport::RecoverStalledUsbTransport(descriptor));
+        QCOMPARE(connects, 1);
+        QCOMPARE(server.ServiceCount("host-transport-id:9:reconnect"), 0);
     }
     void transportReconnectIsNotWrittenAfterTheSourceChanged_data() {
         QTest::addColumn<bool>("offline");

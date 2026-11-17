@@ -9,6 +9,8 @@
 #include <winsock2.h>
 #include <windows.h>
 
+#include "okuflow/capture/adb_listener.hpp"
+
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -50,7 +52,7 @@ public:
     bool IsRunning() const noexcept;
     bool WaitForExit(std::chrono::milliseconds timeout) const noexcept;
     bool OwnsListeningPort(std::uint16_t port) const;
-    // Caller closes this non-inherited SYNCHRONIZE-only handle. It cannot
+    // Caller closes this non-inherited query/synchronize handle. It cannot
     // terminate the child and remains valid while lifecycle handles change.
     HANDLE DuplicateObservationHandle() const;
     // Exact job termination plus a bounded wait; idempotent and noexcept.
@@ -141,6 +143,9 @@ public:
     // Nonblocking snapshot of a live child, not a readiness guarantee. The
     // caller must accept only ready EnsureResult values before host traffic.
     std::optional<std::uint16_t> Port() const;
+    // Verify the snapshot child still uniquely owns the requested IPv4
+    // loopback listener, using the same ownership check as readiness.
+    std::optional<AdbListenerIdentity> ListeningIdentity(std::uint16_t port) const;
     int LaunchCount() const;
     int RestartCount() const;
     // Starts of this manager's child that never answered: one for each

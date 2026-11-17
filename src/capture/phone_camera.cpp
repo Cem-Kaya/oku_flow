@@ -25,7 +25,6 @@
 #include <mferror.h>
 #include <mftransform.h>
 #include <wmcodecdsp.h>
-#include <iphlpapi.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -61,12 +60,6 @@ struct AdbConnectTimedOut : std::runtime_error { using std::runtime_error::runti
 // The server answered a request with FAIL: it is alive (an answer, never "no
 // answer"), whatever it refused.
 struct AdbFailReply : std::runtime_error { using std::runtime_error::runtime_error; };
-struct AdbListenerIdentity {
-    std::uint16_t port{};
-    DWORD processId{};
-    std::uint64_t created{};
-    bool operator==(const AdbListenerIdentity&) const = default;
-};
 struct AdbRuntime {
     std::mutex mutex;
     std::timed_mutex lifecycleMutex;
@@ -279,7 +272,7 @@ void RuntimeSiblings(bool* windowed, bool* leftover, bool mayStop, const std::at
 // listener whose process cannot be opened (another user, elevated) is
 // Unopenable, never "gone": it still holds the port and cannot be stopped
 // by OkuFlow.
-enum class ListenerState { Unknown, None, Found, Unopenable };
+enum class ListenerState { Unknown, None, Ambiguous, Found, Unopenable };
 struct ListenerLookup {
     ListenerState state{ListenerState::Unknown};
     AdbListenerIdentity identity{}; // processId only when Unopenable.
@@ -294,33 +287,23 @@ ListenerLookup LookupListener(std::uint16_t port, bool refusedOnIpv4 = false)
 {
     ListenerLookup lookup;
     if (!port) { lookup.state = ListenerState::None; return lookup; }
-    std::vector<TcpListenerRow> rows;
-    if (!ReadTcpListenerRows(&rows)) return lookup;
-    const auto hooks = Hooks();
-    lookup.state = ListenerState::None;
-    for (const auto& row : AdbListenerRows(rows, port)) {
-        if (refusedOnIpv4 && row.ipv6) continue;
-        const bool forcedUnopenable = hooks && hooks->defaultListenerUnopenable && port == hooks->port &&
-                                      hooks->defaultListenerUnopenable();
-        HANDLE process = forcedUnopenable ? nullptr
-            : OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, row.processId);
-        if (!process) {
-            lookup.state = ListenerState::Unopenable;
-            lookup.identity = {port, row.processId, 0};
-            return lookup;
-        }
-        FILETIME created{}, exited{}, kernel{}, user{};
-        const bool valid = GetProcessTimes(process, &created, &exited, &kernel, &user) &&
-                           WaitForSingleObject(process, 0) == WAIT_TIMEOUT;
-        CloseHandle(process);
-        if (valid) {
-            lookup.state = ListenerState::Found;
-            lookup.identity = {port, row.processId,
-                (static_cast<std::uint64_t>(created.dwHighDateTime) << 32) | created.dwLowDateTime};
-            return lookup;
-        }
+    TcpListenerRow row;
+    switch (FindLoopbackListener(port, &row, refusedOnIpv4)) {
+    case AdbListenerLookup::Error: return lookup;
+    case AdbListenerLookup::Ambiguous: return {ListenerState::Ambiguous, {}};
+    case AdbListenerLookup::None: return {ListenerState::None, {}};
+    case AdbListenerLookup::Found: break;
     }
-    return lookup;
+    const auto hooks = Hooks();
+    const bool forcedUnopenable = hooks && hooks->defaultListenerUnopenable && port == hooks->port &&
+                                  hooks->defaultListenerUnopenable();
+    HANDLE process = forcedUnopenable ? nullptr
+        : OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, row.processId);
+    if (!process) return {ListenerState::Unopenable, {port, row.processId, 0}};
+    const auto identity = ReadAdbListenerIdentity(port, row.processId, process);
+    CloseHandle(process);
+    return identity ? ListenerLookup{ListenerState::Found, *identity}
+                    : ListenerLookup{ListenerState::None, {}};
 }
 std::optional<AdbListenerIdentity> ListenerIdentity(std::uint16_t port)
 {
@@ -328,24 +311,35 @@ std::optional<AdbListenerIdentity> ListenerIdentity(std::uint16_t port)
     if (lookup.state != ListenerState::Found) return std::nullopt;
     return lookup.identity;
 }
+std::optional<AdbListenerIdentity> ReconnectListenerIdentity(const AdbServerEndpoint& endpoint)
+{
+    if (!endpoint.supported || !endpoint.port) return std::nullopt;
+    if (!endpoint.ownedByThisProcess) return ListenerIdentity(endpoint.port);
+    std::shared_ptr<OwnedAdbServer> owned;
+    {
+        auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
+        owned = runtime.ownedServer;
+    }
+    return owned ? owned->ListeningIdentity(endpoint.port) : std::nullopt;
+}
+
 // Reconnect authority belongs to the server that supplied the listing.
 struct ReconnectServer {
     AdbServerEndpoint endpoint;
-    bool requiresListenerIdentity{false};
     std::optional<AdbListenerIdentity> listener;
 
     bool StillCurrent() const
     {
         const auto current = Endpoint();
-        return endpoint.supported && current.supported && endpoint.port && current.port == endpoint.port &&
+        return endpoint.supported && current.supported && current.port == endpoint.port &&
             current.ownedByThisProcess == endpoint.ownedByThisProcess &&
-            (!requiresListenerIdentity || (listener && ListenerIdentity(endpoint.port) == listener));
+            current.overridden == endpoint.overridden &&
+            listener && ReconnectListenerIdentity(current) == listener;
     }
 };
 ReconnectServer ObserveReconnectServer(const AdbServerEndpoint& endpoint)
 {
-    const bool checkListener = endpoint.port && endpoint.port == DefaultPort();
-    return {endpoint, checkListener, checkListener ? ListenerIdentity(endpoint.port) : std::nullopt};
+    return {endpoint, ReconnectListenerIdentity(endpoint)};
 }
 void ObserveServerIdentity()
 {
@@ -489,7 +483,8 @@ OwnedServerProbe ProbeAdbHostVersion(std::uint16_t port, const std::atomic<bool>
     try { ConnectTo(socket, port, kHostConnectMs, canceled); }
     catch (const AdbServerUnavailable&) {
         const auto listener = LookupListener(port, true).state;
-        return listener == ListenerState::Found || listener == ListenerState::Unopenable
+        return listener == ListenerState::Found || listener == ListenerState::Unopenable ||
+            listener == ListenerState::Ambiguous
             ? OwnedServerProbe::Unresponsive : OwnedServerProbe::NoListener;
     }
     catch (const std::exception&) { return OwnedServerProbe::Unresponsive; }
@@ -556,17 +551,22 @@ std::vector<AdbDeviceEntry> ListAdbEntries(std::optional<std::uint16_t> port, co
     const auto reply = [&](const char* service) {
         return port ? AdbHostReplyAt(*port, service, canceled) : AdbHostReply(service, canceled);
     };
-    if (text) *text = false;
-    try {
-        const auto data = reply("host:track-devices-proto-binary");
-        return ParseAdbDeviceEntries(std::span(reinterpret_cast<const std::uint8_t*>(data.constData()),
-                                               static_cast<size_t>(data.size())));
-    } catch (...) {
-        CheckCanceled(canceled);
-    }
-    const auto reply2 = reply("host:devices-l");
-    if (text) *text = true;
-    return ParseAdbDevicesLongText(std::string_view(reply2.constData(), static_cast<size_t>(reply2.size())));
+    auto entries = [&] {
+        if (text) *text = false;
+        try {
+            const auto data = reply("host:track-devices-proto-binary");
+            return ParseAdbDeviceEntries(std::span(reinterpret_cast<const std::uint8_t*>(data.constData()),
+                                                   static_cast<size_t>(data.size())));
+        } catch (...) {
+            CheckCanceled(canceled);
+        }
+        const auto data = reply("host:devices-l");
+        if (text) *text = true;
+        return ParseAdbDevicesLongText(std::string_view(data.constData(), static_cast<size_t>(data.size())));
+    }();
+    if (const auto hooks = Hooks(); hooks && hooks->transformAdbEntriesForTest)
+        hooks->transformAdbEntriesForTest(port ? *port : Endpoint().port, entries);
+    return entries;
 }
 bool ListsTargetUsable(const std::vector<AdbDeviceEntry>& entries, const std::string& target);
 bool DefaultServesTarget(const std::vector<AdbDeviceEntry>& entries, const std::string& target);
@@ -1142,21 +1142,21 @@ QByteArray AdbHostReplyAt(std::uint16_t port, const QByteArray& service, const s
     ConnectTo(socket, port, kHostConnectMs, canceled);
     return ReadHostReply(socket, service, canceled);
 }
-// A transport reconnect request for a source or server that may change while
-// the connect waits: `stillWanted` is asked once the connect is done, right
-// before the request bytes are queued. nullopt: dropped, nothing written.
+// Open the write socket first, then observe the transport on the same
+// server. The final identity and intent checks run at the write boundary.
 std::optional<QByteArray> AdbReconnectReply(const ReconnectServer& server, const QByteArray& service,
                                             const std::atomic<bool>* canceled,
-                                            const std::function<bool()>& stillWanted)
+                                            const std::function<bool()>& stillWanted,
+                                            const std::function<bool()>& stillEligible)
 {
     CheckCanceled(canceled);
     if (!server.StillCurrent()) return std::nullopt;
     QTcpSocket socket;
     ConnectTo(socket, server.endpoint.port, kHostConnectMs, canceled);
     if (const auto hooks = Hooks(); hooks && hooks->afterReconnectConnectForTest) hooks->afterReconnectConnectForTest();
-    if (!AdbRequest(socket, service, kHostReplyFieldMs, canceled, [&] {
-            return server.StillCurrent() && (!stillWanted || stillWanted());
-        })) return std::nullopt;
+    const auto allowed = [&] { return server.StillCurrent() && (!stillWanted || stillWanted()); };
+    if (!allowed() || !stillEligible()) return std::nullopt;
+    if (!AdbRequest(socket, service, kHostReplyFieldMs, canceled, allowed)) return std::nullopt;
     return ReadHostReplyBody(socket, canceled);
 }
 Packet ReadPacket(QTcpSocket& socket, int limit, const std::atomic<bool>* canceled = nullptr)
@@ -2090,7 +2090,6 @@ bool RecoverStalledUsbTransportOn(const ReconnectServer& server, const CameraDes
             SuppressUsbHealthProbes(key);
             return false;
         }
-        if (!SameUsbTransportAttached(ListUsbPhones(canceled, nullptr, port), descriptor)) return false;
         if (stillWanted && !stillWanted()) return false;
         Clock::time_point reservedNext{}, previousNext{};
         unsigned previousAttempts = 0;
@@ -2107,11 +2106,16 @@ bool RecoverStalledUsbTransportOn(const ReconnectServer& server, const CameraDes
             reservedNext = next;
             ++attempts;
         }
-        // The source can change while the connect waits: asked again right
-        // before the request is written. A dropped request wrote nothing and
-        // gives its reservation back.
+        // A dropped request wrote nothing and gives its reservation back.
         const auto reply = AdbReconnectReply(server, "host-transport-id:" +
-            QByteArray::number(descriptor.phoneTransportId) + ":reconnect", canceled, stillWanted);
+            QByteArray::number(descriptor.phoneTransportId) + ":reconnect", canceled, stillWanted, [&] {
+                try {
+                    return SameUsbTransportAttached(ListUsbPhones(canceled, nullptr, port), descriptor);
+                } catch (const std::exception&) {
+                    // A failed listing authorized no write. Return the reservation.
+                    return false;
+                }
+            });
         if (!reply) {
             auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
             if (const auto next = runtime.nextUsbRecovery.find(key);
@@ -2401,20 +2405,15 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
             ? "host-transport-id:" + QByteArray::number(entry->transportId) + ":reconnect"
             : QByteArray("host:reconnect-offline");
         try {
-            // Re-list on the observed server before opening the write
-            // socket. Some servers serialize clients until a request arrives.
             const auto stillEligible = [&] {
                 const auto entries = ListAdbEntries(listingServer.endpoint.port, canceled);
                 return std::any_of(entries.begin(), entries.end(), [&](const auto& current) {
                     return current.usb && current.serial == entry->serial &&
                         current.transportId == entry->transportId &&
-                        current.state != PhoneAdbState::Device &&
-                        current.state != PhoneAdbState::Authorizing &&
-                        current.state != PhoneAdbState::NotListed;
+                        current.state == entry->state;
                 });
             };
-            if (!listingServer.StillCurrent() || !stillEligible() ||
-                !AdbReconnectReply(listingServer, service, canceled, stillWanted))
+            if (!AdbReconnectReply(listingServer, service, canceled, stillWanted, stillEligible))
                 return stale() ? dropped : "kept: the observed transport changed or recovered";
             return std::string("reconnect requested for a ") + StateName(entry->state) + " transport";
         } catch (const std::exception&) {
@@ -2855,7 +2854,8 @@ void RunPhoneLinkLadder(const PhoneLinkRequest& link, const std::string& preferr
     if (refused) {
         const auto listener = LookupListener(DefaultPort());
         const bool gone = listener.state == ListenerState::None;
-        const bool changed = listener.state != ListenerState::Unknown && !gone && refusedListener &&
+        const bool identified = listener.state == ListenerState::Found || listener.state == ListenerState::Unopenable;
+        const bool changed = identified && refusedListener &&
             (listener.identity.processId != refusedListener->processId ||
              (listener.identity.created && refusedListener->created &&
               listener.identity.created != refusedListener->created));
@@ -3209,7 +3209,8 @@ std::vector<CameraDescriptor> PhoneCameraTransport::Enumerate(
         // Refused, but a listener in the table that does not accept (full
         // accept queue of a frozen adb) hangs too.
         const auto listener = LookupListener(Endpoint().port, true).state;
-        const bool present = listener == ListenerState::Found || listener == ListenerState::Unopenable;
+        const bool present = listener == ListenerState::Found || listener == ListenerState::Unopenable ||
+            listener == ListenerState::Ambiguous;
         facts.probe = present ? PhoneServerProbe::Unresponsive : PhoneServerProbe::NoListener;
         if (status && !(canceled && canceled->load()))
             *status = Endpoint().ownedByThisProcess ? PhoneDiscoveryStatus::OwnedServerRecovering

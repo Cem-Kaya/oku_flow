@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <cwchar>
-#include <iphlpapi.h>
 #include <map>
 #include <thread>
 #include <utility>
@@ -182,34 +181,27 @@ bool OwnedChildProcess::WaitForExit(std::chrono::milliseconds timeout) const noe
     return WaitForSingleObject(process_, wait) == WAIT_OBJECT_0;
 }
 
+namespace {
+bool ProcessOwnsListeningPort(HANDLE process, DWORD pid, std::uint16_t port)
+{
+    if (!process || WaitForSingleObject(process, 0) != WAIT_TIMEOUT) return false;
+    TcpListenerRow listener;
+    return FindLoopbackListener(port, &listener) == AdbListenerLookup::Found &&
+        !listener.ipv6 && listener.loopback && listener.processId == pid &&
+        WaitForSingleObject(process, 0) == WAIT_TIMEOUT;
+}
+} // namespace
+
 bool OwnedChildProcess::OwnsListeningPort(std::uint16_t port) const
 {
-    if (!IsRunning()) return false;
-    ULONG bytes = 0;
-    if (GetExtendedTcpTable(nullptr, &bytes, FALSE, AF_INET, TCP_TABLE_OWNER_PID_LISTENER, 0)
-        != ERROR_INSUFFICIENT_BUFFER) return false;
-    std::vector<std::uint8_t> storage;
-    DWORD result = ERROR_INSUFFICIENT_BUFFER;
-    for (int attempt = 0; attempt < 3 && result == ERROR_INSUFFICIENT_BUFFER; ++attempt) {
-        storage.resize(bytes);
-        result = GetExtendedTcpTable(storage.data(), &bytes, FALSE, AF_INET,
-                                      TCP_TABLE_OWNER_PID_LISTENER, 0);
-    }
-    if (result != NO_ERROR) return false;
-    const auto* table = reinterpret_cast<const MIB_TCPTABLE_OWNER_PID*>(storage.data());
-    for (DWORD i = 0; i < table->dwNumEntries; ++i) {
-        const auto& row = table->table[i];
-        if (row.dwOwningPid == processId_ && ntohs(static_cast<u_short>(row.dwLocalPort)) == port &&
-            ntohl(row.dwLocalAddr) == INADDR_LOOPBACK && IsRunning()) return true;
-    }
-    return false;
+    return ProcessOwnsListeningPort(process_, processId_, port);
 }
 
 HANDLE OwnedChildProcess::DuplicateObservationHandle() const
 {
     HANDLE observation = nullptr;
     return process_ && DuplicateHandle(GetCurrentProcess(), process_, GetCurrentProcess(),
-        &observation, SYNCHRONIZE, FALSE, 0) ? observation : nullptr;
+        &observation, SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, 0) ? observation : nullptr;
 }
 
 void OwnedChildProcess::Stop() noexcept
@@ -504,6 +496,17 @@ std::optional<std::uint16_t> OwnedAdbServer::Port() const
     const auto snapshot = observation_.load();
     return snapshot && WaitForSingleObject(snapshot->process, 0) == WAIT_TIMEOUT
         ? std::optional<std::uint16_t>(snapshot->port) : std::nullopt;
+}
+
+std::optional<AdbListenerIdentity> OwnedAdbServer::ListeningIdentity(std::uint16_t port) const
+{
+    const auto snapshot = observation_.load();
+    if (stopRequested_.load() || !snapshot || snapshot->port != port) return std::nullopt;
+    const DWORD pid = GetProcessId(snapshot->process);
+    if (!pid || !ProcessOwnsListeningPort(snapshot->process, pid, port)) return std::nullopt;
+    const auto identity = ReadAdbListenerIdentity(port, pid, snapshot->process);
+    if (stopRequested_.load() || observation_.load() != snapshot) return std::nullopt;
+    return identity;
 }
 
 int OwnedAdbServer::LaunchCount() const { std::lock_guard lock(mutex_); return launches_; }

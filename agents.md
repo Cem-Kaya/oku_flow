@@ -498,10 +498,13 @@ aligned with the project goals.
   ports and scripted probes; missing fixture registration must fail the gate.
 
 ## Phone reconnect ladder (2026-11-17)
-- Bind recovery evidence to its listener before sending the listing. Carry
-  that identity through the stop checks, and pin reconnect writes to their
-  observed endpoint. A live veto counts even if the session ends before the
-  result is handled. Check reservation give-backs by retrying without an
+- Bind recovery evidence to a uniquely identified listener before sending the
+  listing. Carry that identity through the stop checks. For reconnects, check
+  private listener ownership with the same live-child proof as readiness.
+  Open the reconnect socket before the final listing and check the same USB
+  serial, transport ID, state and listener before emission. A live veto counts
+  even if the session ends before the result is handled. Check reservation
+  give-backs by retrying without an
   event, and test cleared timestamps directly so expiry cannot mask a failure.
   Keep companion-provided text out of traces with fixed protocol tokens.
 - Iteration 9 lessons. An authority check must reach the shared helpers a
