@@ -179,6 +179,11 @@ struct PhoneLinkPolicy {
     // in the re-plug sentence (beside: after the takeover grace; hung:
     // after this long unresponsive).
     std::int64_t unknownInterfaceBlindMs{30000};
+    // An endpoint the user set through the adb environment variables is
+    // never taken over or stopped. Unresponsive this long, it ends in the
+    // re-plug sentence (as a hung default does under Unknown); responsive
+    // but not listing the phone, it does so after the blind grace.
+    std::int64_t userEndpointUnresponsiveMs{30000};
     // A companion problem other than paused/busy host/blocked/hot (camera
     // busy in another phone app, failed, no mode, unknown) reads "Restoring"
     // this long, then the user is told what to do on the phone.

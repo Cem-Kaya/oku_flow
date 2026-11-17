@@ -602,12 +602,60 @@ private slots:
         auto hung = blind;
         hung.serverProbe = PhoneServerProbe::Unresponsive;
         hung.defaultUnresponsiveConfirmed = true;
+        // Changed deliberately (iteration 5, 5): such an endpoint may now end
+        // in the re-plug sentence (WaitForUser); it is still never taken over.
         for (std::int64_t now = 0; now < 120000; now += 1000) {
             for (const auto& o : {blind, hung}) {
                 const auto action = doctor.Decide(o, now).action;
-                QVERIFY(action == A::Relist);
+                QVERIFY(action == A::Relist || action == A::WaitForUser);
             }
         }
+    }
+    void userEndpointThatDoesNotListThePhoneEndsInTheReplugSentence()
+    {
+        // Iteration 5 (5): responsive, Windows shows the phone, the user's
+        // endpoint does not list it: after the blind grace the re-plug
+        // sentence, never a takeover; a listing of the phone ends it.
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        const auto blind = Blind(PhoneServerKind::Override);
+        const auto grace = doctor.Policy().blindGraceMs;
+        for (std::int64_t now = 0; now < grace; now += 1000)
+            QCOMPARE(int(doctor.Decide(blind, now).action), int(A::Relist));
+        for (std::int64_t now = grace; now < 120000; now += 1000) {
+            const auto named = doctor.Decide(blind, now);
+            QCOMPARE(int(named.diagnosis), int(D::ReplugCable));
+            QCOMPARE(int(named.action), int(A::WaitForUser));
+            QCOMPARE_MS(named.nextPollMs - now, doctor.Policy().userWaitPollMs);
+        }
+        auto listed = Ready();
+        listed.server = PhoneServerKind::Override;
+        QCOMPARE(int(doctor.Decide(listed, 121000).diagnosis), int(D::Connected));
+    }
+    void hungUserEndpointEndsInTheReplugSentence()
+    {
+        // Iteration 5 (5): the user's endpoint hangs: never stopped; after
+        // userEndpointUnresponsiveMs the re-plug sentence; an event restarts
+        // the time.
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto hung = Blind(PhoneServerKind::Override);
+        hung.serverProbe = PhoneServerProbe::Unresponsive;
+        hung.defaultUnresponsiveConfirmed = true;
+        const auto limit = doctor.Policy().userEndpointUnresponsiveMs;
+        for (std::int64_t now = 0; now < limit; now += 1000) {
+            const auto waiting = doctor.Decide(hung, now);
+            QCOMPARE(int(waiting.diagnosis), int(D::ServerUnresponsive));
+            QCOMPARE(int(waiting.action), int(A::Relist));
+        }
+        for (std::int64_t now = limit; now < limit + 60000; now += 1000) {
+            const auto named = doctor.Decide(hung, now);
+            QCOMPARE(int(named.diagnosis), int(D::ReplugCable));
+            QCOMPARE(int(named.action), int(A::WaitForUser));
+        }
+        doctor.OnEvent(PhoneLinkEvent::Resume, 200000);
+        QCOMPARE(int(doctor.Decide(hung, 200000).action), int(A::Relist));
+        QCOMPARE(int(doctor.Decide(hung, 200000 + limit).diagnosis), int(D::ReplugCable));
     }
     void confirmedHungDefaultIsTerminatedWithBudget()
     {

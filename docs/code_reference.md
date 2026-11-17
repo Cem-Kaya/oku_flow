@@ -1890,7 +1890,8 @@ so metadata generation cannot silently accept an incomplete copy.
   `DiagnosePhoneLink`, `PhoneLinkWaitsForUser`, `PhoneLinkDoctor::OnEvent/Decide`
   and `PhoneLinkPolicy` form the pure, clock-free decision unit (27 diagnoses,
   10 actions, event-reset budgets, per-episode caps including `handOverCap`,
-  `foreignReconnects`, `unknownInterfaceBlindMs`, `companionFailedGraceMs`).
+  `foreignReconnects`, `unknownInterfaceBlindMs`, `userEndpointUnresponsiveMs`,
+  `companionFailedGraceMs`).
   `NoteDefaultStopRefused`, `NoteDefaultStopFailed` (second one refuses; the
   overloads taking `PhoneLinkDecision::episode` drop an outcome that arrives
   after a newer event), `ClearDefaultStopRefused` and

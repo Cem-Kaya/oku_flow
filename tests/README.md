@@ -1076,7 +1076,10 @@ executed hand-back (`NoteHandOver`) as the transport does. Shell facts end with
 the whole line `OKUFLOW_FACTS_END` (the fake's replies and
 `shellFactsParserIsConservative` changed deliberately from `END`);
 `shellFactsAreReadToTheirSentinelLine` sends output containing END first and the
-processes in a second chunk.
+processes in a second chunk. Doctor rows
+`userEndpointThatDoesNotListThePhoneEndsInTheReplugSentence` and
+`hungUserEndpointEndsInTheReplugSentence`; `overriddenEndpointIsNeverStopped`
+was changed deliberately (WaitForUser is now allowed; no takeover action).
 `phone_link_text` (headless) checks one sentence per diagnosis and that every
 sentence is translated in all 24 catalogs. The native slot
 `phoneSentenceIsShownAndSpokenForEveryDiagnosis` delivers every verdict

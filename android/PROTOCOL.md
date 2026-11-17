@@ -109,7 +109,9 @@ diagnosis and one next action, least disturbing first:
    it stuck is holding the USB interface without serving it and follows rung 4
    (unless it serves another device in state DEVICE: the other-program
    sentence); the user's endpoint is never taken over and Windows asks for a
-   re-plug of the cable.
+   re-plug of the cable. The same sentence ends the user's endpoint's other
+   states: responsive but not listing a phone Windows shows (after the 5 s
+   blind grace) and unresponsive for 30 s.
 3. Restart OkuFlow's own server when it answers `host:version` but lists no USB
    entry at all although Windows shows the ADB interface (another listed phone
    is not blindness), 5 s after the last event or first such observation, or

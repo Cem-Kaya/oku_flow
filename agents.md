@@ -550,7 +550,9 @@ aligned with the project goals.
   every time).
 - Every stuck state ends somewhere, also on a server OkuFlow does not own: a
   phone kept offline/connecting/stalled by a borrowed default is taken over
-  after two reconnects; the user's endpoint gets the re-plug sentence. Only a
+  after two reconnects; the user's endpoint gets the re-plug sentence, also
+  when it does not list a phone Windows shows (after the blind grace) or
+  stays unresponsive (`userEndpointUnresponsiveMs`). Only a
   usable listing (ready, unauthorized, authorizing) hands USB back; "ready"
   for a phone whose adbd timed out on that same default listener in this
   episode is not usable (it swapped back and forth before), also in the

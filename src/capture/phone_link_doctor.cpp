@@ -269,6 +269,13 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         }
         if (o.server == PhoneServerKind::BorrowedDefault && o.defaultUnresponsiveConfirmed)
             return terminate(false);
+        // The user's endpoint (adb environment variables) is never stopped:
+        // a hang that lasts ends in the re-plug sentence.
+        if (o.server == PhoneServerKind::Override &&
+            nowMs - SinceEventOr(unresponsiveSinceMs_) >= policy_.userEndpointUnresponsiveMs) {
+            *raised = D::ReplugCable;
+            return A::WaitForUser;
+        }
         return A::Relist; // An owned server restarts itself after two failed probes.
     case D::OtherInstanceHoldsPhone:
     case D::OtherProgramHoldsPhone:
@@ -302,6 +309,10 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         const bool assumedPresent = o.adbInterface == PhoneAdbInterface::Unknown &&
             blindFor >= policy_.unknownInterfaceBlindMs;
         if (!interfacePresent && !assumedPresent) return A::Relist;
+        // The user's endpoint is never taken over: responsive but blind to a
+        // phone Windows shows after the grace, it ends in the re-plug
+        // sentence (probing goes on; a listing of the phone ends it).
+        if (o.server == PhoneServerKind::Override) { *raised = D::ReplugCable; return A::WaitForUser; }
         if (owned && !o.shadowRunning) {
             if (restart_.attempts >= policy_.blindRestartCap) { *raised = D::ReplugCable; return A::WaitForUser; }
             if (!restart_.Allowed(nowMs)) return A::Relist;

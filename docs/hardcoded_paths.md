@@ -672,7 +672,10 @@ owned-server restart after 5 s (then 15 s, then 60 s); private server beside a
 blind default after 5 s; `host:kill` 6 s later; termination 2 s after that.
 A phone stuck (offline, connecting, stalled, no permissions) on a server
 OkuFlow does not own: two reconnects (at once, 3 s), then 6 s later the
-takeover (borrowed default) or the re-plug sentence (user endpoint). Per
+takeover (borrowed default) or the re-plug sentence (user endpoint). The user
+endpoint also gets the re-plug sentence when it does not list a phone Windows
+shows after the 5 s blind grace, and when it stays unresponsive for 30 s
+(`userEndpointUnresponsiveMs`). Per
 episode: 3 blind/stuck restarts, 2 `host:kill`, 3 terminations, 4 private
 server starts beside the default plus hand-backs. Windows interface Unknown
 (the SetupAPI query failed): after 30 s blind OkuFlow may start or restart its
