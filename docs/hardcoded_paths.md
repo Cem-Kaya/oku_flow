@@ -1073,12 +1073,16 @@ Update this file whenever these defaults move or new fixed paths are introduced.
   With no default listener/override, hidden direct server starts select a
   private ephemeral loopback port. An exact owned child in a non-inherited
   kill-on-close job dies at normal exit or process crash. Failed launch, child
-  exit and confirmed-hang relaunch attempts retain a 30 s cooldown. Existing
-  unknown listeners/overrides remain borrowed, never replaced or killed; their runtime
-  files may remain locked after OkuFlow exits (`OkuFlow2` fallback).
-  Owned health probes use a 100 ms connect deadline and 1000 ms per bounded
-  host-version read, with two consecutive failures before an idle restart.
-  Readiness polling uses a 5 s deadline and 50 ms slices (an in-progress bounded
+  exit and confirmed-hang relaunch attempts wait 5 s, doubling to 30 s, reset by
+  every link event. Overrides remain borrowed, never replaced or killed. A
+  default-port `adb.exe` that is confirmed hung or blind is stopped under the
+  owner's 2026-11-17 rule (android/PROTOCOL.md); other default listeners stay
+  borrowed. Their runtime files may remain locked after OkuFlow exits
+  (`OkuFlow2` fallback).
+  Owned health probes use a 500 ms connect deadline and 1000 ms per bounded
+  host-version read, with two consecutive failures 1 s apart before an idle
+  restart, and never within 30 s of the launch of a child that has not answered
+  yet. Readiness polling uses a 5 s deadline and 50 ms slices (an in-progress bounded
   probe can finish beyond that deadline). Live/starting phone sessions and
   cancellation suppress restart. Lifecycle/port/budget state is process-local.
   Bootstrap requires phone-use intent. Explicit webcam selection relinquishes
@@ -1086,6 +1090,17 @@ Update this file whenever these defaults move or new fixed paths are introduced.
   verifies the IPv4 loopback listener's PID against its held process. A dead
   child can yield to a responsive default listener after its sessions finish; shutdown forbids any
   later owned bootstrap. WinUSB exclusivity is documented in adb_distribution.md.
+- OkuFlow instance registration (real instances only, never offscreen or
+  test runs): named events `Local\OkuFlow.Instance.<tag>.<pid>` and
+  `Local\OkuFlow.Exiting.<tag>.<pid>` in the session namespace, where `<tag>` is
+  a 64-bit FNV-1a hash (16 hex digits) of the lower-case canonical image path.
+  No file, no registry value; the kernel removes the names with the process.
+  Leftover proof: exit signal set for 5 s, or no window on two observations
+  10 s apart plus no answer to `WM_NULL` within 1 s.
+- The phone link trace (`phone-link.log`) is written by one private writer
+  thread; callers, including the UI thread, only queue lines (at most 1024
+  waiting). Action results are fixed reasons, never adb error texts, which can
+  carry a serial.
 - Cancellable adb lock waits use 20 ms slices; Port reads use a synchronize-only
   atomic child snapshot. Server epochs observe loopback port/PID/creation time.
   Borrowed hangs need two failures spanning 5 s before phone-intent recovery.

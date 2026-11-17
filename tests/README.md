@@ -1007,6 +1007,20 @@ the launch budget; resume voids pre-sleep transport identity; `Start` waits for
 a listed phone to become ready. These were changed deliberately with the
 ladder: the launch command now carries the host-launch extra after a wake key,
 and `phone_retry_policy` encodes 1/2/3/5/10 s instead of 5/10/20/60 s.
+Iteration 2 rows: the default-port stand-in is an out-of-process copy of the
+owned-child fixture named `adb.exe` (no image hook), so the production image
+rule is tested, and the same copy under its own name proves a non-`adb.exe`
+server is never asked or terminated. The user-endpoint guard is the real
+`ANDROID_ADB_SERVER_PORT`. Rows cover an event during a hung-default takeover,
+a shadowed default that later lists the phone, a default appearing beside a
+blind private server, one that comes back after every `host:kill` (bounded),
+a connect-stalled listener with a full accept queue, an unopenable listener,
+`host:kill` aborted when the re-list fails or the phone appears, a UI-thread
+event while a slow owned launch holds the manager, the start grace, the
+chosen phone as target, `reconnect-offline` only on OkuFlow's own server, no
+serial in the trace, adb that cannot be launched, the first automatic start,
+leftover-instance classification and exact termination of windowless
+registered fixture instances, and the proven adb-child fallback.
 `phone_link_text` (headless) checks one sentence per diagnosis and that every
 sentence is translated in all 24 catalogs. The opt-in native fixture slot
 `resumeAndDeviceRemovalReachTheApplication` sends synthetic `WM_POWERBROADCAST`

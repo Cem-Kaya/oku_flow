@@ -98,6 +98,10 @@ struct AdbRuntime {
     // was last sent to: a different one is a new takeover, asked first.
     std::optional<AdbListenerIdentity> besideIdentity;
     std::optional<AdbListenerIdentity> askedIdentity;
+    // Sibling OkuFlow instances (PID, creation) being proven leftovers, and
+    // whether a stop was tried (once per process) and refused.
+    struct SiblingState { OkuFlowSiblingTrack track; bool stopTried{false}; bool stopRefused{false}; };
+    std::map<std::pair<DWORD, std::uint64_t>, SiblingState> siblings;
     // Suppresses repeated shell health probes after a definitive healthy or
     // other-host/phone-state answer. Separate from the reconnect-send slot so
     // a healthy answer does not consume the reconnect budget.
@@ -160,21 +164,54 @@ PhoneAdbInterface RuntimeAdbInterface()
     if (hooks) return hooks->adbInterface ? hooks->adbInterface() : PhoneAdbInterface::Unknown;
     return QueryAndroidAdbInterface();
 }
-// Other instances of this installation: with a visible window (the user can
-// close it) or without one (a leftover, for example stuck while exiting).
+std::int64_t NowMs(Clock::time_point at = Clock::now())
+{
+    return std::chrono::duration_cast<std::chrono::milliseconds>(at.time_since_epoch()).count();
+}
+void TraceLine(std::string_view line);
+// Other instances of this installation (same image, user, session). A
+// visible window is the user's to close (sentence, never terminated). A
+// registered instance proven to be a leftover (exit signalled for 5 s, or
+// no window on two observations 10 s apart and no answer to a window
+// message) is terminated through a held handle once; if Windows refuses,
+// its proven adb child is stopped, else the user is told. An unregistered
+// windowless one (an older version, a test run) is named, never terminated.
 void RuntimeSiblings(bool* windowed, bool* leftover)
 {
     *windowed = *leftover = false;
     const auto hooks = Hooks();
     if (hooks) { *windowed = hooks->otherInstanceRunning && hooks->otherInstanceRunning(); return; }
-    for (const auto& sibling : FindOkuFlowSiblings(true)) {
-        if (sibling.hasVisibleWindow) *windowed = true;
-        else *leftover = true;
+    const auto now = NowMs();
+    auto& runtime = Runtime();
+    std::map<std::pair<DWORD, std::uint64_t>, AdbRuntime::SiblingState> seen;
+    for (const auto& sibling : ObserveOkuFlowSiblings()) {
+        const auto key = std::make_pair(sibling.processId, sibling.creation);
+        AdbRuntime::SiblingState state;
+        { std::lock_guard lock(runtime.mutex); if (const auto it = runtime.siblings.find(key); it != runtime.siblings.end()) state = it->second; }
+        switch (ClassifyOkuFlowSibling(sibling, state.track, now)) {
+        case OkuFlowSiblingVerdict::Windowed: *windowed = true; break;
+        case OkuFlowSiblingVerdict::UnregisteredWindowless: *leftover = true; break;
+        case OkuFlowSiblingVerdict::Pending: break;
+        case OkuFlowSiblingVerdict::Leftover:
+            if (!state.stopTried) {
+                state.stopTried = true;
+                LeftoverInstanceStopRequest request;
+                request.processId = sibling.processId;
+                request.creation = sibling.creation;
+                const auto status = StopLeftoverOkuFlowInstance(request);
+                state.stopRefused = status == LeftoverInstanceStopStatus::Refused;
+                TraceLine(status == LeftoverInstanceStopStatus::Stopped ? "leftover OkuFlow instance stopped"
+                    : status == LeftoverInstanceStopStatus::AdbChildStopped ? "leftover OkuFlow instance refused; its adb child stopped"
+                    : status == LeftoverInstanceStopStatus::Refused ? "leftover OkuFlow instance could not be stopped"
+                    : "leftover OkuFlow instance changed; nothing stopped");
+            }
+            if (state.stopRefused) *leftover = true;
+            break;
+        }
+        seen[key] = state;
     }
-}
-std::int64_t NowMs(Clock::time_point at = Clock::now())
-{
-    return std::chrono::duration_cast<std::chrono::milliseconds>(at.time_since_epoch()).count();
+    std::lock_guard lock(runtime.mutex);
+    runtime.siblings = std::move(seen);
 }
 // The IPv4 loopback listener of a port. A listener whose process cannot be
 // opened (another user, elevated) is Unopenable, never "gone": it still
@@ -1315,6 +1352,8 @@ void TracePhoneLink(std::string_view line)
     }
     trace.wake.notify_one();
 }
+
+namespace { void TraceLine(std::string_view line) { TracePhoneLink(line); } }
 
 bool FlushPhoneLinkTrace(std::chrono::milliseconds timeout)
 {

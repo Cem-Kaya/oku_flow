@@ -152,6 +152,11 @@ turns one observation of the whole USB chain into a diagnosis and the next
 recovery rung; `PhoneCameraTransport::Enumerate(..., link, report)` collects the
 observation and runs that rung. A working webcam is replaced only by a ready phone.
 
+Sibling OkuFlow instances are observed through `ObserveOkuFlowSiblings`;
+proven leftovers of this installation are stopped by
+`StopLeftoverOkuFlowInstance` (android/PROTOCOL.md, "Leftover OkuFlow
+instance").
+
 The raw host connection honors local TCP adb endpoint overrides; those are
 never stopped. A hung or blind default-port adb is stopped under the owner's
 2026-11-17 rule through `TryStopDefaultAdbServer` (exact listener handle). Without an override/listener, a hidden bundled adb

@@ -29,6 +29,7 @@
 #include "okuflow/capture/media_capture.hpp"
 #include "okuflow/capture/phone_retry_policy.hpp"
 #include "okuflow/capture/phone_link_doctor.hpp"
+#include "okuflow/capture/adb_legacy_recovery.hpp"
 #include "okuflow/app/phone_link_text.hpp"
 #include "okuflow/capture/audio_capture.hpp"
 #include "okuflow/common/frame_pipeline.hpp"
@@ -570,6 +571,8 @@ private:
     void NotePhoneEvent(PhoneLinkEvent event);
     void OnPhoneDiscoveryPulse();
     PhoneLinkText PhoneLinkSentence() const;
+    // Named registration of this real instance (see OkuFlowInstanceRegistration).
+    std::unique_ptr<OkuFlowInstanceRegistration> instanceRegistration_;
     // The phone is the wanted camera (saved/temporary phone intent, or the
     // automatic first-run choice) and the status line must carry its
     // sentence: no camera, or a fallback webcam showing meanwhile.

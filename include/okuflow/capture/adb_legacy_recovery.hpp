@@ -13,6 +13,7 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -241,6 +242,100 @@ struct OkuFlowSibling {
     bool hasVisibleWindow{false};
 };
 std::vector<OkuFlowSibling> FindOkuFlowSiblings(bool sameImageOnly);
+
+// Leftover OkuFlow instances of this installation (iteration 2, A10).
+//
+// A real instance (a main window on the real Windows platform; offscreen
+// and test instances never register) creates two named kernel events in
+// its session namespace that carry the installation tag and its PID:
+//   Local\OkuFlow.Instance.<tag>.<pid>   exists while the instance lives
+//   Local\OkuFlow.Exiting.<tag>.<pid>    set when the instance begins to exit
+// The tag is a hash of the canonical image path, so only instances of the
+// same installation match. The kernel removes both names with the process.
+inline std::wstring OkuFlowInstanceObjectName(bool exiting, const std::wstring& tag, DWORD processId)
+{
+    return std::wstring(exiting ? L"Local\\OkuFlow.Exiting." : L"Local\\OkuFlow.Instance.") + tag + L"." +
+           std::to_wstring(processId);
+}
+// Tag of this process's installation (hash of its canonical image path).
+std::wstring OkuFlowInstallationTag();
+std::wstring OkuFlowInstallationTag(const std::wstring& canonicalImagePath);
+
+class OkuFlowInstanceRegistration {
+public:
+    // Null when the objects cannot be created; nothing else depends on it.
+    static std::unique_ptr<OkuFlowInstanceRegistration> Register();
+    ~OkuFlowInstanceRegistration();
+    OkuFlowInstanceRegistration(const OkuFlowInstanceRegistration&) = delete;
+    OkuFlowInstanceRegistration& operator=(const OkuFlowInstanceRegistration&) = delete;
+    // The instance begins to exit (idempotent).
+    void SignalExiting();
+private:
+    OkuFlowInstanceRegistration(HANDLE registered, HANDLE exiting) : registered_(registered), exiting_(exiting) {}
+    HANDLE registered_{nullptr};
+    HANDLE exiting_{nullptr};
+};
+
+// One observation of a sibling of the same image, user and session.
+struct OkuFlowSiblingObservation {
+    DWORD processId{0};
+    std::uint64_t creation{0};
+    bool registered{false};
+    bool exiting{false};
+    bool hasVisibleWindow{false};
+    // Any top-level window of the process answered WM_NULL within 1 s.
+    bool answersWindowMessage{false};
+};
+// `image` and `tag` default to this process's installation; tests pass a
+// fixture image and tag. Observation only: nothing is signalled.
+std::vector<OkuFlowSiblingObservation> ObserveOkuFlowSiblings(const std::wstring& image = {},
+                                                               const std::wstring& tag = {});
+
+struct OkuFlowSiblingTrack {
+    std::int64_t exitingSinceMs{-1};
+    std::int64_t windowlessSinceMs{-1};
+};
+struct OkuFlowSiblingPolicy {
+    // The exit signal has been set this long and the process still lives.
+    std::int64_t exitingGraceMs{5000};
+    // Registered, no visible window on two observations this far apart, and
+    // no answer to a window message.
+    std::int64_t windowlessConfirmMs{10000};
+};
+enum class OkuFlowSiblingVerdict {
+    Windowed,               // A visible window: the user can close it; never terminated.
+    Pending,                // Not yet proven a leftover (or still starting).
+    Leftover,               // Proven leftover of this installation: may be terminated.
+    UnregisteredWindowless  // No registration (old version, test run): named, never terminated.
+};
+// Pure: classifies one observation and updates its track.
+OkuFlowSiblingVerdict ClassifyOkuFlowSibling(const OkuFlowSiblingObservation& observation,
+                                             OkuFlowSiblingTrack& track, std::int64_t nowMs,
+                                             const OkuFlowSiblingPolicy& policy = {});
+
+// Terminates the exact proven leftover through a held handle: same PID and
+// creation time, canonical image equal to `expectedImage`, not this
+// process. Its owned adb child then dies with its job object. If Windows
+// refuses, only that leftover's own adb child is stopped, and only when it
+// is proven: parent PID equal to the leftover, created after it, canonical
+// image equal to `bundledAdbImage` (this installation's platform-tools\adb.exe).
+struct LeftoverInstanceStopRequest {
+    DWORD processId{0};
+    std::uint64_t creation{0};
+    std::wstring expectedImage;   // Empty: this process's canonical image.
+    std::wstring bundledAdbImage; // Empty: <this image's directory>\platform-tools\adb.exe.
+    std::chrono::milliseconds exitWait{2000};
+};
+enum class LeftoverInstanceStopStatus {
+    Stopped,          // The leftover instance exited.
+    AdbChildStopped,  // The instance could not be stopped; its exact adb child was.
+    Refused,          // Neither could be stopped: the user is told.
+    IdentityChanged   // Not the observed process any more: nothing done.
+};
+LeftoverInstanceStopStatus StopLeftoverOkuFlowInstance(const LeftoverInstanceStopRequest& request);
+// The adb-child step alone (also used by tests).
+bool StopLeftoverAdbChild(DWORD parentId, std::uint64_t parentCreation, const std::wstring& bundledAdbImage,
+                          std::chrono::milliseconds exitWait = std::chrono::milliseconds(2000));
 
 } // namespace okuflow
 #endif

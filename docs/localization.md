@@ -1,5 +1,13 @@
 # Application languages
 
+Phone reconnect iteration 2 adds three Windows source keys and replaces one
+(948 total): "Unplug the phone's USB cable and plug it back in.", "OkuFlow
+Camera is not responding on the phone. Close it on the phone and open it
+again.", "OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or
+allow it in your antivirus program.", and the Allow sentence now ends "If no
+question appears, unplug the USB cable and plug it back in." Structural parity
+passed in all 24 catalogs; the 96 targets still need the per-entry review.
+
 The phone reconnect work adds eleven Windows source keys (945 total): one plain
 sentence per phone link state for the camera placeholder. Each uses the
 companion's own localized app name and button labels (for example the Resume

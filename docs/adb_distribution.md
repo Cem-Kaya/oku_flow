@@ -121,10 +121,15 @@ another live/starting phone session holds a counted occupancy reservation.
 
 Owned readiness polling permits five seconds plus the current bounded probe.
 Two failed host-version probes use one-second per-read deadlines before an
-idle restart, with a fresh port and the 5 s (doubling to 30 s) retry budget. A
-responsive owned server that lists no USB phone while Windows shows the ADB
+idle restart, with a fresh port and the 5 s (doubling to 30 s) retry budget.
+The two probes are 1 s apart, and a child that is alive but has never answered
+yet (antivirus scanning the executable, a loaded laptop) gets a 30 s start
+grace before it can be judged hung. A
+responsive owned server that lists no USB entry while Windows shows the ADB
 interface is restarted by the link doctor 5 s after the last event, then after
-15 s, then every 60 s. The IPv4 loopback
+15 s, then 60 s, at most three times per episode; the user is then asked to
+re-plug the cable. Two consecutive launch failures of the bundled adb (a
+missing or quarantined file) are named in one sentence. The IPv4 loopback
 listener's PID must match the exact held process handle before readiness is
 accepted; PID lookup is observation only, never termination authority. Shutdown
 latches out future bootstrap, and stopping a manager interrupts its next probe
@@ -136,10 +141,13 @@ the connection automatically.
 that a default-port adb server that hangs is to be killed, not worked around.
 This replaces the earlier rule that an unknown listener is never terminated.
 With phone-use intent and no adb endpoint environment variable, a default-port
-server that is confirmed hung (two failed version probes spanning 5 s, 1 s
-inside an event's fast window), or that is responsive but blind to a phone
-Windows shows while OkuFlow's private server beside it is blind too, first
-receives one raw `host:kill`. If its loopback listener remains after 2 s, or it
+server that is confirmed hung (two failed version probes of the same listener
+spanning 5 s; events restart the confirmation, they never shorten it; a
+listener that does not accept counts as hung), or that is responsive but blind
+to a phone Windows shows while OkuFlow's private server beside it is blind too,
+first receives one raw `host:kill`, only after a fresh listing that succeeded,
+serves no other device and does not list the phone, and after the PID,
+creation-time and `adb.exe` image checks. If its loopback listener remains after 2 s, or it
 cannot answer at all, `TryStopDefaultAdbServer` terminates exactly the process
 behind that listener: it opens the listener's owning PID, requires the same PID
 and creation time as the identity observed when the decision was made, the
@@ -149,7 +157,13 @@ never a process tree, never a stored PID. A responsive server that lists
 another device in state DEVICE is serving someone and keeps running; OkuFlow's
 private server runs beside it and the app says another program is using the
 phone's USB connection. An access-denied termination (elevated server or
-another user's) is traced and shown with the same sentence. Overridden
+another user's), a listener process that cannot be opened, an image other than
+`adb.exe`, and a changed identity or failure twice in a row are traced and
+shown with the same sentence, until the listener is gone or changes or the
+phone is listed. Termination requires the Windows ADB interface to be present.
+Per episode at most two `host:kill` requests and three terminations; another
+adb that appears beside OkuFlow's blind server is handed back to when it lists
+the phone and otherwise taken over under the same caps. Overridden
 endpoints are never asked to exit or stopped. Lifecycle and manager lock waits
 check cancellation every 20 ms; live-port observation does not wait for a host
 probe. Camera startup accepts only confirmed-ready results. Server identity

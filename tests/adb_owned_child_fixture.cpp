@@ -140,6 +140,18 @@ int wmain(int count, wchar_t** arguments)
         if (!WritePid(arguments[2])) return 3;
         SleepForever();
     }
+    // instance <tag> <exiting 0|1> <readyFile>: a windowless registered
+    // OkuFlow-like instance (the named events of OkuFlowInstanceRegistration).
+    if (mode == L"instance" && count >= 5) {
+        const auto pid = std::to_wstring(GetCurrentProcessId());
+        const std::wstring tag = arguments[2];
+        HANDLE registered = CreateEventW(nullptr, TRUE, FALSE, (L"Local\\OkuFlow.Instance." + tag + L"." + pid).c_str());
+        HANDLE exiting = CreateEventW(nullptr, TRUE, FALSE, (L"Local\\OkuFlow.Exiting." + tag + L"." + pid).c_str());
+        if (!registered || !exiting) return 6;
+        if (std::wstring(arguments[3]) == L"1") SetEvent(exiting);
+        if (!WritePid(arguments[4])) return 3;
+        SleepForever();
+    }
     if (mode == L"exit-after" && count >= 4) {
         if (!WritePid(arguments[3])) return 3;
         Sleep(static_cast<DWORD>(_wtoi(arguments[2])));

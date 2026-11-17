@@ -998,6 +998,220 @@ std::vector<OkuFlowSibling> FindOkuFlowSiblings(bool sameImageOnly)
     return siblings;
 }
 
+namespace {
+std::wstring OwnCanonicalImage()
+{
+    HandleGuard self{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, GetCurrentProcessId())};
+    std::wstring image;
+    if (!self.handle || !ProcessCanonicalImage(self.handle, &image)) return {};
+    return image;
+}
+
+struct AnyWindowSearch { DWORD pid{0}; HWND window{nullptr}; };
+BOOL CALLBACK FindAnyTopLevelWindow(HWND window, LPARAM parameter)
+{
+    auto* search = reinterpret_cast<AnyWindowSearch*>(parameter);
+    DWORD owner = 0;
+    GetWindowThreadProcessId(window, &owner);
+    if (owner != search->pid) return TRUE;
+    search->window = window;
+    return FALSE;
+}
+} // namespace
+
+std::wstring OkuFlowInstallationTag(const std::wstring& canonicalImagePath)
+{
+    // FNV-1a 64 over the lower-case path: stable, no secrets, short.
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (wchar_t ch : canonicalImagePath) {
+        ch = static_cast<wchar_t>(towlower(ch));
+        hash ^= static_cast<std::uint64_t>(ch);
+        hash *= 1099511628211ULL;
+    }
+    wchar_t text[17]{};
+    swprintf_s(text, L"%016llx", static_cast<unsigned long long>(hash));
+    return text;
+}
+
+std::wstring OkuFlowInstallationTag()
+{
+    return OkuFlowInstallationTag(OwnCanonicalImage());
+}
+
+std::unique_ptr<OkuFlowInstanceRegistration> OkuFlowInstanceRegistration::Register()
+{
+    const auto tag = OkuFlowInstallationTag();
+    const DWORD pid = GetCurrentProcessId();
+    HANDLE registered = CreateEventW(nullptr, TRUE, FALSE, OkuFlowInstanceObjectName(false, tag, pid).c_str());
+    if (!registered) return nullptr;
+    HANDLE exiting = CreateEventW(nullptr, TRUE, FALSE, OkuFlowInstanceObjectName(true, tag, pid).c_str());
+    if (!exiting) { CloseHandle(registered); return nullptr; }
+    return std::unique_ptr<OkuFlowInstanceRegistration>(new OkuFlowInstanceRegistration(registered, exiting));
+}
+
+OkuFlowInstanceRegistration::~OkuFlowInstanceRegistration()
+{
+    if (exiting_) CloseHandle(exiting_);
+    if (registered_) CloseHandle(registered_);
+}
+
+void OkuFlowInstanceRegistration::SignalExiting()
+{
+    if (exiting_) SetEvent(exiting_);
+}
+
+std::vector<OkuFlowSiblingObservation> ObserveOkuFlowSiblings(const std::wstring& image, const std::wstring& tag)
+{
+    std::vector<OkuFlowSiblingObservation> result;
+    std::wstring wantedImage = image;
+    if (wantedImage.empty()) wantedImage = OwnCanonicalImage();
+    else if (!CanonicalFilePath(image, &wantedImage)) return result;
+    if (wantedImage.empty()) return result;
+    const std::wstring wantedTag = tag.empty() ? OkuFlowInstallationTag(wantedImage) : tag;
+    const std::wstring wantedName = BaseName(wantedImage);
+    HandleGuard snapshot{CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)};
+    if (snapshot.handle == INVALID_HANDLE_VALUE) return result;
+    std::map<DWORD, DWORD> parents;
+    std::map<DWORD, std::wstring> names;
+    PROCESSENTRY32W entry{sizeof(entry)};
+    if (!Process32FirstW(snapshot.handle, &entry)) return result;
+    do {
+        parents[entry.th32ProcessID] = entry.th32ParentProcessID;
+        names[entry.th32ProcessID] = entry.szExeFile;
+    } while (Process32NextW(snapshot.handle, &entry));
+    const DWORD currentPid = GetCurrentProcessId();
+    std::set<DWORD> ancestors;
+    for (DWORD at = currentPid, steps = 0; steps < 16; ++steps) {
+        const auto found = parents.find(at);
+        if (found == parents.end() || !found->second || found->second == at) break;
+        ancestors.insert(found->second);
+        at = found->second;
+    }
+    DWORD currentSession = 0;
+    std::vector<unsigned char> currentSid;
+    if (!ProcessIdToSessionId(currentPid, &currentSession) || !CurrentUserSid(&currentSid, nullptr)) return result;
+    for (const auto& [pid, name] : names) {
+        if (pid == currentPid || ancestors.contains(pid) || !EqualNoCase(name, wantedName)) continue;
+        DWORD session = 0;
+        if (!ProcessIdToSessionId(pid, &session) || session != currentSession) continue;
+        HandleGuard process{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid)};
+        if (!process.handle) continue;
+        HandleGuard token;
+        std::vector<unsigned char> sid;
+        if (!OpenProcessToken(process.handle, TOKEN_QUERY, &token.handle) || !TokenUserSid(token.handle, &sid) ||
+            sid != currentSid)
+            continue;
+        std::wstring candidateImage;
+        if (!ProcessCanonicalImage(process.handle, &candidateImage) || !EqualNoCase(candidateImage, wantedImage)) continue;
+        OkuFlowSiblingObservation sibling;
+        sibling.processId = pid;
+        FILETIME created{}, exited{}, kernel{}, user{};
+        if (GetProcessTimes(process.handle, &created, &exited, &kernel, &user)) sibling.creation = CreationTicks(created);
+        HandleGuard registered{OpenEventW(SYNCHRONIZE, FALSE, OkuFlowInstanceObjectName(false, wantedTag, pid).c_str())};
+        sibling.registered = registered.handle != nullptr;
+        if (sibling.registered) {
+            HandleGuard exiting{OpenEventW(SYNCHRONIZE, FALSE, OkuFlowInstanceObjectName(true, wantedTag, pid).c_str())};
+            sibling.exiting = exiting.handle && WaitForSingleObject(exiting.handle, 0) == WAIT_OBJECT_0;
+        }
+        VisibleWindowSearch visible{pid};
+        EnumWindows(FindVisibleWindow, reinterpret_cast<LPARAM>(&visible));
+        sibling.hasVisibleWindow = visible.found;
+        AnyWindowSearch any{pid};
+        EnumWindows(FindAnyTopLevelWindow, reinterpret_cast<LPARAM>(&any));
+        DWORD_PTR answer = 0;
+        sibling.answersWindowMessage = any.window &&
+            SendMessageTimeoutW(any.window, WM_NULL, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &answer) != 0;
+        result.push_back(sibling);
+    }
+    return result;
+}
+
+OkuFlowSiblingVerdict ClassifyOkuFlowSibling(const OkuFlowSiblingObservation& o, OkuFlowSiblingTrack& track,
+                                             std::int64_t nowMs, const OkuFlowSiblingPolicy& policy)
+{
+    using V = OkuFlowSiblingVerdict;
+    if (o.hasVisibleWindow) {
+        track = {};
+        return V::Windowed;
+    }
+    if (!o.registered) return V::UnregisteredWindowless;
+    if (o.exiting) {
+        if (track.exitingSinceMs < 0) track.exitingSinceMs = nowMs;
+        return nowMs - track.exitingSinceMs >= policy.exitingGraceMs ? V::Leftover : V::Pending;
+    }
+    track.exitingSinceMs = -1;
+    if (o.answersWindowMessage) {
+        // Hidden but alive (starting, or a window being recreated).
+        track.windowlessSinceMs = -1;
+        return V::Pending;
+    }
+    if (track.windowlessSinceMs < 0) track.windowlessSinceMs = nowMs;
+    return nowMs - track.windowlessSinceMs >= policy.windowlessConfirmMs ? V::Leftover : V::Pending;
+}
+
+bool StopLeftoverAdbChild(DWORD parentId, std::uint64_t parentCreation, const std::wstring& bundledAdbImage,
+                          std::chrono::milliseconds exitWait)
+{
+    std::wstring wantedImage;
+    if (!CanonicalFilePath(bundledAdbImage, &wantedImage)) return false;
+    HandleGuard snapshot{CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)};
+    if (snapshot.handle == INVALID_HANDLE_VALUE) return false;
+    std::vector<DWORD> children;
+    PROCESSENTRY32W entry{sizeof(entry)};
+    if (!Process32FirstW(snapshot.handle, &entry)) return false;
+    do {
+        if (entry.th32ParentProcessID == parentId && entry.th32ProcessID != GetCurrentProcessId())
+            children.push_back(entry.th32ProcessID);
+    } while (Process32NextW(snapshot.handle, &entry));
+    bool stopped = false;
+    for (const DWORD child : children) {
+        HandleGuard process{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE | PROCESS_TERMINATE,
+                                        FALSE, child)};
+        if (!process.handle) continue;
+        FILETIME created{}, exited{}, kernel{}, user{};
+        // A parent PID can be reused: the child must be younger than the parent.
+        if (!GetProcessTimes(process.handle, &created, &exited, &kernel, &user) ||
+            CreationTicks(created) < parentCreation || !ProcessAlive(process.handle))
+            continue;
+        std::wstring image;
+        if (!ProcessCanonicalImage(process.handle, &image) || !EqualNoCase(image, wantedImage)) continue;
+        if (!TerminateProcess(process.handle, 1)) continue;
+        WaitForSingleObject(process.handle, static_cast<DWORD>(exitWait.count()));
+        stopped = stopped || !ProcessAlive(process.handle);
+    }
+    return stopped;
+}
+
+LeftoverInstanceStopStatus StopLeftoverOkuFlowInstance(const LeftoverInstanceStopRequest& request)
+{
+    using S = LeftoverInstanceStopStatus;
+    if (!request.processId || request.processId == GetCurrentProcessId()) return S::IdentityChanged;
+    std::wstring expectedImage = request.expectedImage.empty() ? OwnCanonicalImage() : request.expectedImage;
+    if (!request.expectedImage.empty() && !CanonicalFilePath(request.expectedImage, &expectedImage)) return S::IdentityChanged;
+    const std::wstring bundledAdb = request.bundledAdbImage.empty()
+        ? JoinPath(JoinPath(DirName(expectedImage), L"platform-tools"), L"adb.exe") : request.bundledAdbImage;
+    HandleGuard process{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE | PROCESS_TERMINATE,
+                                    FALSE, request.processId)};
+    bool canTerminate = process.handle != nullptr;
+    if (!process.handle)
+        process.handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, request.processId);
+    if (!process.handle)
+        return StopLeftoverAdbChild(request.processId, request.creation, bundledAdb, request.exitWait)
+            ? S::AdbChildStopped : S::Refused;
+    FILETIME created{}, exited{}, kernel{}, user{};
+    std::wstring image;
+    if (!GetProcessTimes(process.handle, &created, &exited, &kernel, &user) || !ProcessAlive(process.handle) ||
+        CreationTicks(created) != request.creation || !ProcessCanonicalImage(process.handle, &image) ||
+        !EqualNoCase(image, expectedImage))
+        return S::IdentityChanged;
+    if (canTerminate && TerminateProcess(process.handle, 1)) {
+        WaitForSingleObject(process.handle, static_cast<DWORD>(request.exitWait.count()));
+        if (!ProcessAlive(process.handle)) return S::Stopped;
+    }
+    return StopLeftoverAdbChild(request.processId, request.creation, bundledAdb, request.exitWait)
+        ? S::AdbChildStopped : S::Refused;
+}
+
 LegacyAdbRecoveryResult TryReclaimLegacyBundledAdbServer(
     const LegacyAdbRecoveryRequest& request)
 {

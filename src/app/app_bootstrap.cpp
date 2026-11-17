@@ -1393,6 +1393,15 @@ bool OkuFlowApp::Initialize()
         const QString traceDirectory = userDataPaths_ ? userDataPaths_->Debug(&traceError) : QString();
         if (!traceDirectory.isEmpty())
             SetPhoneLinkTraceFile(QDir(traceDirectory).filePath(QStringLiteral("phone-link.log")).toStdWString());
+        // Only a real instance (the Windows platform, a main window) registers;
+        // offscreen and test instances never do, so they are never taken for
+        // a leftover of this installation and never terminated.
+        if (QGuiApplication::platformName() == QStringLiteral("windows") && mainWindow_) {
+            instanceRegistration_ = OkuFlowInstanceRegistration::Register();
+            connect(qtApp_, &QCoreApplication::aboutToQuit, this, [this]() {
+                if (instanceRegistration_) instanceRegistration_->SignalExiting();
+            });
+        }
         for (const auto& sibling : FindOkuFlowSiblings(true))
             TracePhoneLink(std::string("start-up: another OkuFlow instance of this installation is running, ") +
                            (sibling.hasVisibleWindow ? "with a window" : "without a window"));
@@ -1408,6 +1417,9 @@ bool OkuFlowApp::Initialize()
 }
 
 OkuFlowApp::~OkuFlowApp() {
+    // Exit begins: a sibling may treat this instance as a leftover only if it
+    // still lives a few seconds after this signal.
+    if (instanceRegistration_) instanceRegistration_->SignalExiting();
     if (uctModelSetupCancel_) uctModelSetupCancel_->store(true);
     ++uctModelSetupGeneration_;
     ShutdownVideoPlayback();

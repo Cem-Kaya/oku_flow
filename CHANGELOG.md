@@ -15,6 +15,15 @@
   `phone-link.log` in the Debug folder records what happened, without serial
   numbers. OkuFlow Camera can show over the lock screen when the computer opens
   it (never while paused) and tells the computer when streaming is paused.
+- The phone instruction stays visible and is read aloud in the status line even
+  while a laptop webcam shows the picture in the meantime. OkuFlow now also
+  says when to unplug and re-plug the cable, when OkuFlow Camera on the phone
+  stops responding, and when its own USB connection cannot start (reinstall or
+  allow it in the antivirus program). A leftover OkuFlow window that is stuck
+  while closing is ended automatically; an OkuFlow window you can see is never
+  closed. Another Android tool that keeps restarting its server is no longer
+  fought endlessly: after a few attempts OkuFlow says another program is using
+  the phone.
 
 - Clarify the public Android privacy policy: OkuFlow Camera is an accessibility-focused
   USB companion, normal viewing does not upload camera images to the developer,

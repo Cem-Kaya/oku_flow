@@ -503,17 +503,42 @@ aligned with the project goals.
   exact loopback listener handle, decision-time PID + creation time, image
   `adb.exe`, not this process, `host:kill` first where it can answer. Never by
   name, never a tree, never an adb endpoint environment variable, never a
-  server that lists another device in state DEVICE. Tests use fixture images
-  through `PhoneAdbTestHooks::terminableImageName` and private ports only.
+  server that lists another device in state DEVICE. Tests run a copy of the
+  owned-child fixture named `adb.exe` on private ports; there is no image-name
+  hook, so the production `adb.exe` rule is what the tests exercise.
+- Every stop outcome needs an end state: refused, unopenable, not `adb.exe`,
+  or failed twice is the other-program sentence, cleared only when the
+  listener is gone or changes or the phone is listed. `host:kill` goes out only
+  after a successful fresh listing without the phone or another device and the
+  identity and image checks. Termination needs the Windows ADB interface. Two
+  programs never fight without an end state: per-episode caps on restarts,
+  `host:kill` and terminations end in a sentence.
+- Never shorten the 5 s hang confirmation after an event; events restart it.
+  Confirm a hang from the doctor's own probe too (the borrowed branch of
+  `EnsureAdbServer` no longer runs once a private server exists).
+- `NotePhoneLinkEvent` runs on the UI thread: no lock a worker can hold
+  through a launch, no file I/O (the trace has its own writer thread).
 - Keep `phone_link_doctor` pure (no Qt, Windows or clock). Budgets reset on
   events, not only time; a new rung needs a doctor row, a fake-adb row and a
   trace line. Do not reintroduce "once per transport" launch budgets or
   minute-long holds; the owner's complaint was stacked 30 s / 60 s waits.
-- A windowless sibling instance is reported, not terminated: an offscreen
-  test instance of the same build is indistinguishable from a stuck one.
+- Leftover OkuFlow instances (replaces "a windowless sibling is reported, not
+  terminated", which left the owner's original complaint in place): only real
+  instances register named events (`OkuFlowInstanceRegistration`), so an
+  offscreen or test instance is never taken for a leftover. A registered
+  sibling of the same image, user and session whose exit signal has been set
+  for 5 s, or that shows no window on two observations 10 s apart and does not
+  answer a window message, is terminated once through a held handle (PID,
+  creation time, image path); if refused, only its proven bundled adb child is
+  stopped; else the sentence. A sibling with a visible window is never
+  terminated and is named only after the blind grace.
 - New placeholder sentences need all 24 catalogs and per-entry small-agent
-  review; the eleven 2026-11-17 phone sentences were written without that
-  review (the implementer ran without sub-agents) and still need it.
+  review; the eleven 2026-11-17 phone sentences and the four of iteration 2
+  were written without that review (the implementer ran without sub-agents)
+  and still need it.
+- While the phone is the wanted camera, its sentence owns the status line,
+  also over a fallback webcam and over the generic reconnect text, and the
+  status line speaks the instruction itself, never only a title.
 - Nothing here was observed on a real failing laptop; report fixture evidence
   separately from real sleep/cable/phone acceptance.
 

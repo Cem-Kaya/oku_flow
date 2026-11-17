@@ -1866,18 +1866,31 @@ so metadata generation cannot silently accept an incomplete copy.
   as the decision-time identity, image `adb.exe`, not this process, optional
   raw `host:kill`, revalidation and `TerminateProcess` on the held handle;
   `DefaultAdbStopResult` reports Stopped, NoListener, SelfListener, NotAdb,
-  IdentityChanged, AccessDenied, Canceled or Failed. `FindOkuFlowSiblings`
+  IdentityChanged, AccessDenied, HostKillIgnored (`terminateIfAlive=false`:
+  asked only), Canceled or Failed. `FindOkuFlowSiblings`
   lists other same-user/session OkuFlow processes (same image, visible window)
-  for observation only.
+  for observation only. `OkuFlowInstanceRegistration::Register/SignalExiting`
+  creates and sets the named instance events of a real instance
+  (`OkuFlowInstanceObjectName`, `OkuFlowInstallationTag`);
+  `ObserveOkuFlowSiblings` reports registration, exit signal, visible window
+  and window-message answer; `ClassifyOkuFlowSibling` (pure, with
+  `OkuFlowSiblingTrack`/`OkuFlowSiblingPolicy`) proves a leftover;
+  `StopLeftoverOkuFlowInstance` terminates the exact proven leftover through a
+  held handle and falls back to `StopLeftoverAdbChild` (proven bundled adb
+  child only).
 - `phone_link_doctor.hpp` / `phone_link_doctor.cpp`: `PhoneLinkObservation`,
   `DiagnosePhoneLink`, `PhoneLinkWaitsForUser`, `PhoneLinkDoctor::OnEvent/Decide`
-  and `PhoneLinkPolicy` form the pure, clock-free decision unit (22 diagnoses,
-  9 actions, event-reset budgets). `PhoneLinkDiagnosisName`/`ActionName`/
-  `EventName` give trace names.
+  and `PhoneLinkPolicy` form the pure, clock-free decision unit (27 diagnoses,
+  10 actions, event-reset budgets, per-episode caps). `NoteDefaultStopRefused`,
+  `NoteDefaultStopFailed` (second one refuses), `ClearDefaultStopRefused` and
+  `NoteDefaultListenerChanged` carry the transport's stop outcomes and listener
+  changes. `PhoneLinkDiagnosisName`/`ActionName`/`EventName` give trace names.
 - `OwnedAdbServer::Restart` restarts a responsive but blind owned child (live
-  sessions win); `ResetBudgets` clears the restart cooldown, which starts at
+  sessions win); `ResetBudgets` (lock-free, applied by the next
+  `EnsureRunning`/`Restart`) clears the restart cooldown, which starts at
   `OwnedAdbServerPolicy::restartCooldown` (5 s) and doubles to
-  `maxRestartCooldown` (30 s).
+  `maxRestartCooldown` (30 s). `startGrace` (30 s) protects a child that has
+  never answered; `confirmationSpacing` (1 s) spaces the hang probes.
 - `PhoneAdbTestHooks` / `SetPhoneAdbTestHooks` isolate fake-socket tests on a
   private random port and disable real bootstrap; switching hooks stops any
   previously owned child and resets test budgets. `OccupiedPhone`, `MayLaunch`
@@ -5030,9 +5043,12 @@ translated app strings; it is an HTML draft, not a native-device screenshot.
   public protobuf fields without a runtime dependency; `ParseAdbDeviceEntries` /
   `ParseAdbDevicesLongText` keep every transport with its raw `PhoneAdbState`.
   `ParsePhoneShellFacts` parses the read-only shell query, `QueryAndroidAdbInterface`
-  checks SetupAPI presence, `NotePhoneLinkEvent` resets budgets, and
-  `SetPhoneLinkTraceFile` / `TracePhoneLink` / `PhoneSerialTag` write the
-  always-on trace. `Enumerate(..., PhoneLinkRequest*, PhoneLinkReport*)` collects
+  checks SetupAPI presence, `NotePhoneLinkEvent` resets budgets (UI-thread
+  safe: short locks only), and
+  `SetPhoneLinkTraceFile` / `TracePhoneLink` / `FlushPhoneLinkTrace` /
+  `PhoneSerialTag` write the always-on trace through its own writer thread.
+  `PhoneLinkRequest::targetSerial` and `phoneWantedIfAttached` carry the chosen
+  phone and the first-run automatic intent. `Enumerate(..., PhoneLinkRequest*, PhoneLinkReport*)` collects
   one observation, asks the doctor and runs the chosen rung. `PhoneCameraTransport`
   `Enumerate` uses USB connection type, with explicit-USB legacy fallback, and
   optionally lists camera IDs. `Start` waits for first decoded output; `Run`
