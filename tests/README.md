@@ -1095,7 +1095,15 @@ ask, the next listing misses the phone; one ask per episode) and the doctor row
 neither followed by a termination nor counted as an ask.
 `stalledPhoneThatRecoversWithACrlfReplyIsHandedBack` runs the iteration 5
 recovery row with `--fixture-shell-crlf` (the echo ends with CR LF): any reply
-to the stall re-check is an answer. Doctor rows
+to the stall re-check is an answer.
+`deadPrivateServerThatYieldsToTheDefaultClearsTheShadow` (the private server
+beside a hung default dies, the default recovers with an empty listing: Listed,
+not "own server recovering", and a new hang meets a private server at once),
+`requestedPrivateServerThatCannotStartYetStartsLater` (the doctor's start beside
+a blind default with no executable yet, hand-over cap 1: started once the
+executable appears) and `handOverCountedAfterAnEventIsDropped` (hook
+`afterPrivateServerRetiredForTest` raises an event during the ladder's
+hand-back; cap 1) with the doctor row `handOverOfAnEarlierEpisodeIsDropped`. Doctor rows
 `userEndpointThatDoesNotListThePhoneEndsInTheReplugSentence` and
 `hungUserEndpointEndsInTheReplugSentence`; `overriddenEndpointIsNeverStopped`
 was changed deliberately (WaitForUser is now allowed; no takeover action).

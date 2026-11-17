@@ -705,6 +705,21 @@ private slots:
         }
         QCOMPARE(int(last.action), int(A::StartShadowServer));
     }
+    void handOverOfAnEarlierEpisodeIsDropped()
+    {
+        // Iteration 6 (5): a start beside the default or a hand-back noted
+        // after a newer event belongs to the old episode and is dropped.
+        PhoneLinkPolicy policy;
+        policy.handOverCap = 1;
+        PhoneLinkDoctor doctor(policy);
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        const auto earlier = doctor.Episode();
+        doctor.OnEvent(PhoneLinkEvent::ManualPick, 1000);
+        QVERIFY(!doctor.NoteHandOver(earlier));
+        QVERIFY(doctor.HandOverAllowed());
+        QVERIFY(doctor.NoteHandOver(doctor.Episode()));
+        QVERIFY(!doctor.HandOverAllowed());
+    }
     void abortedTerminationDoesNotSpendTheBudget()
     {
         // Iteration 5 (3), changed deliberately in iteration 6 (1): a

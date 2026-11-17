@@ -140,6 +140,9 @@ struct PhoneAdbTestHooks {
     // Runs when a host:kill or termination of the default listener starts,
     // before its fresh listing (lets a fixture change between decision and act).
     std::function<void()> beforeDefaultStopForTest;
+    // Runs when a hand-back has stopped the private server, before the
+    // hand-over is counted (lets a test raise an event in between).
+    std::function<void()> afterPrivateServerRetiredForTest;
     // Doctor budgets for fast fixtures; production uses PhoneLinkPolicy{}.
     std::optional<PhoneLinkPolicy> linkPolicy;
 };

@@ -274,6 +274,14 @@ public:
     // default; a hand-back is always allowed.
     bool HandOverAllowed() const { return handOvers_ < policy_.handOverCap; }
     void NoteHandOver() { ++handOvers_; }
+    // The same, tagged with the episode the start or hand-back belongs to:
+    // noted after a newer event, it is dropped. True when it was recorded.
+    bool NoteHandOver(std::uint64_t episode)
+    {
+        if (episode != episode_) return false;
+        NoteHandOver();
+        return true;
+    }
     // A TerminateDefaultServer of this episode was not carried out because
     // the default answered its pre-stop listing (also with an adb FAIL
     // reply): nothing was stopped, so it does not spend the termination

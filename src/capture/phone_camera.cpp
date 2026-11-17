@@ -553,10 +553,15 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
     CheckCanceled(canceled);
     std::optional<PhoneAdbTestHooks> hooks;
     std::shared_ptr<OwnedAdbServer> owned;
+    // The hand-overs below are counted for the episode this call started
+    // in: the mutex is released around Stop() and FindAdbExecutable(), and a
+    // count noted after a newer event is dropped (as stop outcomes are).
+    std::uint64_t episode = 0;
     {
         auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
         hooks = runtime.hooks;
         owned = runtime.ownedServer;
+        episode = runtime.doctor.Episode();
     }
     const auto env = hooks ? AdbServerEndpoint{hooks->port != 0,
                                hooks->ownedServerExecutable.empty(), hooks->port, false}
@@ -631,6 +636,7 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
             if (handback) {
                 CheckCanceled(canceled);
                 owned->Stop();
+                if (hooks && hooks->afterPrivateServerRetiredForTest) hooks->afterPrivateServerRetiredForTest();
                 std::lock_guard lock(runtime.mutex);
                 if (runtime.ownedServer == owned) runtime.ownedServer.reset();
                 runtime.shadowServer = false; runtime.shadowHandbackProbes = 0;
@@ -640,7 +646,7 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
                 // server once its hang is confirmed (the hand-over cap, not
                 // a 30 s throttle, bounds the swaps). Counted once retired.
                 runtime.nextServerStart = {};
-                runtime.doctor.NoteHandOver();
+                runtime.doctor.NoteHandOver(episode);
                 return Result::Running;
             }
         }
@@ -652,6 +658,13 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
                 owned->Stop();
                 std::lock_guard lock(runtime.mutex);
                 if (runtime.ownedServer == owned) runtime.ownedServer.reset();
+                // No private server shadows the default any more: clear what
+                // both hand-back paths clear, so an empty default listing is
+                // not reported as OkuFlow's own server recovering and a
+                // default that hangs again meets a private server at once.
+                runtime.shadowServer = runtime.shadowForBlindness = runtime.shadowRequested = false;
+                runtime.shadowHandbackProbes = 0;
+                runtime.nextServerStart = {};
                 return Result::Running;
             }
         }
@@ -681,7 +694,6 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
         // Rung 4a: a responsive default blind to the phone gets a private
         // server beside it; whichever lists the phone is used.
         if (!runtime.shadowRequested || !allowOwnedBootstrap) return Result::Running;
-        runtime.shadowRequested = false;
         runtime.nextServerStart = {};
         beside = Beside::Blind;
     } else if (defaultProbe == OwnedServerProbe::Unresponsive) {
@@ -723,7 +735,6 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
                     if (!runtime.doctor.HandOverAllowed()) return Result::BorrowedUnresponsive;
                     chargeHandOver = true;
                 }
-                runtime.shadowRequested = false;
                 beside = Beside::Hung;
             } else {
                 runtime.shadowServer = false;
@@ -748,10 +759,14 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
             runtime.nextServerStart = Clock::now() + std::chrono::seconds(30);
         }
         if (beside != Beside::No) {
+            // The doctor's request is consumed only now: a requested start
+            // that cannot launch yet stays requested (and charged once, by
+            // the doctor's rung) instead of being charged again next cycle.
+            runtime.shadowRequested = false;
             runtime.shadowServer = true;
             runtime.shadowForBlindness = beside == Beside::Blind;
             if (beside == Beside::Blind) runtime.shadowHandbackProbes = 0;
-            if (chargeHandOver) runtime.doctor.NoteHandOver();
+            if (chargeHandOver) runtime.doctor.NoteHandOver(episode);
         }
     }
     if (owned) return owned->EnsureRunning(canceled);
@@ -1477,6 +1492,9 @@ void NotePhoneLinkEvent(PhoneLinkEvent event)
         runtime.borrowedFailureSince = {};
         runtime.borrowedFailureIdentity.reset();
         runtime.borrowedConfirmed = false;
+        // A private-server start the doctor requested belongs to the old
+        // episode (its hand-over was charged there).
+        runtime.shadowRequested = false;
         runtime.defaultStall.reset(); // A re-plug or resume may have healed it.
         runtime.hungServesOther.reset();
         // Pre-sleep / pre-removal transport ids and server health are stale:
@@ -1993,6 +2011,8 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         if (occupied) return "hand-back deferred: a live session uses the private server";
         CheckCanceled(canceled);
         owned->Stop();
+        if (const auto hooks = Hooks(); hooks && hooks->afterPrivateServerRetiredForTest)
+            hooks->afterPrivateServerRetiredForTest();
         {
             std::lock_guard lock(runtime.mutex);
             if (runtime.ownedServer == owned) runtime.ownedServer.reset();
@@ -2002,8 +2022,9 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
             // again is met by a private server at once (the cap bounds it).
             runtime.nextServerStart = {};
             // Counted now that the private server is retired, not when the
-            // doctor decided it (a live session defers it).
-            runtime.doctor.NoteHandOver();
+            // doctor decided it (a live session defers it), and only in the
+            // decision's episode.
+            runtime.doctor.NoteHandOver(decision.episode);
         }
         return "the default server lists the phone; private server retired";
     }

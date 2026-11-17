@@ -1554,6 +1554,96 @@ private slots:
             okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, nullptr, Intent::PhoneUse);
         QVERIFY(okuflow::OwnedAdbServerPort().has_value());
     }
+    void deadPrivateServerThatYieldsToTheDefaultClearsTheShadow() {
+        // Iteration 6 (4): the private server beside a hung default dies and
+        // the default answers again: the private server is dropped and so is
+        // the shadow state, as both hand-back paths do. An empty default
+        // listing is a listing, not "OkuFlow's own server recovering", and a
+        // default that hangs again meets a private server at once.
+        ScopedOwnedAdbHooks hooks({L"--fixture-exit-after-list"}, 0);
+        FakePhoneAdb borrowed(false, false, false, FakePhoneAdb::LaunchMode::None,
+                              FakePhoneAdb::RecoveryMode::ServerStalled, false, hooks.defaultPort);
+        using Intent = okuflow::PhoneServerIntent;
+        bool listed = false;
+        okuflow::PhoneDiscoveryStatus status{};
+        for (int attempt = 0; attempt < 4 && !listed; ++attempt)
+            okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, &status, Intent::PhoneUse);
+        QVERIFY(listed); // The private server beside the hung default answered once...
+        QCOMPARE(status, okuflow::PhoneDiscoveryStatus::OwnedServerRecovering);
+        QTRY_VERIFY_WITH_TIMEOUT(!okuflow::OwnedAdbServerPort().has_value(), 2000); // ...and died.
+        borrowed.hostUnresponsive.store(false);
+        borrowed.deviceStalled.store(false);
+        borrowed.listEmpty.store(true);
+        listed = false;
+        QVERIFY(okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, &status, Intent::PhoneUse).empty());
+        QVERIFY(listed);
+        QCOMPARE(status, okuflow::PhoneDiscoveryStatus::Listed);
+        QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
+        borrowed.hostUnresponsive.store(true); // Hangs again.
+        listed = false;
+        for (int attempt = 0; attempt < 4 && !listed; ++attempt)
+            okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, &status, Intent::PhoneUse);
+        QVERIFY(listed); // A new private server started and listed (no 30 s start throttle left over).
+    }
+    void requestedPrivateServerThatCannotStartYetStartsLater() {
+        // Iteration 6 (5): the doctor's start beside a blind default (charged
+        // once, by its rung, reaching the hand-over cap of one) cannot launch
+        // yet: no executable. The request stays until a start passes the
+        // checks, so it is made once the executable appears, instead of being
+        // dropped and asked for again at the cap.
+        QTemporaryDir directory;
+        const QString later = directory.filePath(QStringLiteral("adb_later.exe"));
+        DefaultAdbFixture other({});
+        QVERIFY(other.copied && !other.Exited());
+        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present, later.toStdWString(), {}, 5000,
+                              [](okuflow::PhoneAdbTestHooks& h) { h.linkPolicy->handOverCap = 1; });
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        auto reports = LinkCycles(40, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::StartShadowServer; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::StartShadowServer));
+        LinkCycles(3);
+        QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
+        QVERIFY(QFile::copy(OwnedChildFixturePath(), later));
+        LinkCycles(10, [](const auto&) { return okuflow::OwnedAdbServerPort().has_value(); });
+        QVERIFY(okuflow::OwnedAdbServerPort().has_value());
+        QVERIFY(!other.Exited());
+    }
+    void handOverCountedAfterAnEventIsDropped() {
+        // Iteration 6 (5): an event arrives while the private server is being
+        // retired for a default that lists the phone (the mutex is released
+        // around Stop()). That hand-back belongs to the old episode and is not
+        // counted in the new one: with a hand-over cap of one, the default
+        // that loses the phone again still gets a private server beside it.
+        DefaultAdbFixture other({});
+        other.child.reset();
+        const QString device = other.File(QStringLiteral("device"));
+        other.flags = {L"--fixture-device-file", device.toStdWString()};
+        QVERIFY(other.copied && other.Start());
+        auto fired = std::make_shared<std::atomic<bool>>(false);
+        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {},
+                              5000, [fired](okuflow::PhoneAdbTestHooks& h) {
+            h.linkPolicy->handOverCap = 1;
+            h.afterPrivateServerRetiredForTest = [fired] {
+                if (!fired->exchange(true)) okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::ManualPick);
+            };
+        });
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        auto reports = LinkCycles(40, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::StartShadowServer; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::StartShadowServer));
+        QVERIFY(okuflow::OwnedAdbServerPort().has_value());
+        { QFile file(device); QVERIFY(file.open(QIODevice::WriteOnly)); } // The default lists the phone.
+        reports = LinkCycles(40, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::HandBackToDefault; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::HandBackToDefault));
+        QVERIFY(fired->load());
+        QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
+        QVERIFY(QFile::remove(device)); // It loses the phone again.
+        reports = LinkCycles(40, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::StartShadowServer ||
+                r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::StartShadowServer));
+    }
     void ownedWiringShadowNeverHandsBackWithPrivateTransports() {
         ScopedOwnedAdbHooks hooks({L"--fixture-device"}, 0);
         FakePhoneAdb borrowed(false, false, false, FakePhoneAdb::LaunchMode::None,

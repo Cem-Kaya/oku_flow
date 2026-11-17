@@ -1901,7 +1901,9 @@ so metadata generation cannot silently accept an incomplete copy.
   launch budget shared by the ladder and camera starts; `BlindGracePassed`
   gates a leftover stop; `HandOverAllowed`/`NoteHandOver` count the
   transport's starts beside a hung default and every executed hand-back
-  (the doctor's `HandBackToDefault` decision itself does not count);
+  (the doctor's `HandBackToDefault` decision itself does not count; the
+  transport passes the episode it started in, and a count noted after a
+  newer event is dropped);
   `NoteTerminationAborted` gives back a termination of the current episode
   that the pre-stop listing aborted and counts it toward
   `PhoneLinkPolicy::abortedStopCap`, at which a borrowed
@@ -1933,7 +1935,9 @@ so metadata generation cannot silently accept an incomplete copy.
   `siblingTag`, `siblingAdbImage`, the sibling grace fields and
   `refuseSiblingTermination` run the production sibling scan and leftover stop
   against a private fixture image; `siblingVisibleWindowForTest` reports a
-  window at the last check before termination (outcome IdentityChanged). `OccupiedPhone` prevents overlapping
+  window at the last check before termination (outcome IdentityChanged);
+  `afterPrivateServerRetiredForTest` runs after a hand-back stopped the private
+  server and before the hand-over is counted. `OccupiedPhone` prevents overlapping
   probes; `MayLaunch` takes a camera start's single wake + launch from the
   doctor's per-event budget (`PhoneLinkDoctor::ReserveLaunch`), and
   `AllowAppLaunch` (a manual camera pick) renews it. `ControlHello` accepts a token-free `probe:true` ACK,

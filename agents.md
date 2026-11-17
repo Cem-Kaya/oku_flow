@@ -540,7 +540,11 @@ aligned with the project goals.
   (probed at the user-wait cadence; a server that recovers or goes away
   ends it), so a default that is slow only in its version probes is never
   "Restoring" for ever. Neither hand-back path arms the
-  30 s start throttle.
+  30 s start throttle, and a dead private server that yields to a
+  responsive default clears the same shadow state they clear. A start the
+  doctor requested stays requested until a start passes the executable and
+  throttle checks (an event drops it); hand-overs are counted only in the
+  episode they started in.
 - Never shorten the 5 s hang confirmation after an event; events restart it.
   Confirm a hang from the doctor's own probe too (the borrowed branch of
   `EnsureAdbServer` no longer runs once a private server exists).
