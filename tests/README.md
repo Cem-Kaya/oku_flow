@@ -1036,7 +1036,10 @@ adb is named without a renewing pick and an adb killed at start
 "unknown" for the interface, a companion camera failure, "any phone" with
 another attached phone, and a hung-default shadow never handed back to a
 default that only answers. `phone_camera_contract` now runs about four
-minutes; its CTest limit is 300 s.
+minutes (246 s after iteration 4); its CTest limit is 300 s. Its longest rows
+are bounded by production budgets (the 5 s camera connection window of each
+start, 2 s shell health probes on a stalled transport, the private server's
+5 s launch back-off), not by test waits, so they were not shortened.
 Iteration 4 rows: a default that lists the phone "device" and never answers
 its shell (`--fixture-stalled-shell`) is taken over without a hand-back; a
 paused companion whose process dies is relaunched on the same ladder; with

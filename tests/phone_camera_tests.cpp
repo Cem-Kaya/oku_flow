@@ -1100,6 +1100,20 @@ private slots:
             QVERIFY(sibling.registered && !sibling.hasVisibleWindow);
             QCOMPARE(sibling.answersWindowMessage, sibling.processId == alive->ProcessId());
         }
+        // The production record (written by OkuFlowInstanceRegistration)
+        // uses the name and layout the fixture and the observer use.
+        const std::wstring selfTag = L"record" + std::to_wstring(GetCurrentProcessId());
+        HANDLE record = okuflow::RecordOkuFlowUiThread(selfTag, GetCurrentProcessId(), GetCurrentThreadId());
+        QVERIFY(record);
+        HANDLE opened = OpenFileMappingW(FILE_MAP_READ, FALSE,
+                                         okuflow::OkuFlowInstanceUiThreadName(selfTag, GetCurrentProcessId()).c_str());
+        QVERIFY(opened);
+        const void* view = MapViewOfFile(opened, FILE_MAP_READ, 0, 0, sizeof(DWORD));
+        QVERIFY(view);
+        QCOMPARE(*static_cast<const DWORD*>(view), GetCurrentThreadId());
+        UnmapViewOfFile(view);
+        CloseHandle(opened);
+        CloseHandle(record);
     }
     void leftoverInstanceIsStoppedThroughDiscovery() {
         // C2/A3 through Enumerate and the production RuntimeSiblings path
