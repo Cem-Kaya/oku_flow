@@ -108,14 +108,15 @@ Council scores (Claude Opus 5.5, GPT-6.1 Sol, Gemini 4 Hydrogen), as submitted:
 | 13 | 8 | 6 | 8 | findings carried into round 14 |
 | 14 | 7 | 7 | 8 | fixes applied (not reviewed again); all three recommended every mode off, the owner chose change mode on by default on external power |
 
-The tracked gate (`scripts/agent_build.bat`) was run on `32a27d1` with desktop
+The tracked gate (`scripts/agent_build.bat`) was run on `b30ca2e` with desktop
 tests excluded (`OKUFLOW_AGENT_EXCLUDE_GUI=1`), which is partial validation by
-the project's own rule: release compile passed; the CUDA gate passed (17
-passed, 5 skipped for missing codec inputs); in the CPU gate 246 of 248
-background tests passed and 2 (`file_document_contract`,
-`pdf_export_distribution_contract`) could not run because the pinned qpdf
-12.4.2 runtime is not installed on this machine, so the script reports the CPU
-gate as failed. Neither test's inputs were changed by this work.
+the project's own rule. Translation integrity passed; release compile passed;
+the CPU gate passed (261 passed, 9 skipped for missing codec inputs, none
+unresolved, with the pinned qpdf 12.4.2 runtime installed into the private
+work area by `scripts/stage_pdf_export.ps1`); the CUDA gate passed (17 passed,
+5 skipped). The first run on the merged head failed to compile the CPU test
+build, because a round 13 test header included the CUDA kernel header outside
+its guard; `b30ca2e` fixes that. Native desktop tests remain pending.
 
 Known and open:
 
