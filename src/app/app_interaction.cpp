@@ -274,6 +274,7 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
     QString detail;
     QString color;
     LivePoliteness politeness = LivePoliteness::kPolite;
+    bool phoneSentenceShown = false;
     const bool lightSurface = uiState_->processingStatusLabel_->palette().color(QPalette::Window).lightness() >= 128;
     const QString errorColor = lightSurface ? QStringLiteral("#8a1f1f") : QStringLiteral("#ff9797");
     const QString warningColor = lightSurface ? QStringLiteral("#7a4d00") : QStringLiteral("#f6c85f");
@@ -327,6 +328,7 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
         detail = TranslateUi(sentence.detail.isEmpty() ? sentence.title : sentence.detail);
         color = warningColor;
         politeness = userMustAct ? LivePoliteness::kAssertive : LivePoliteness::kPolite;
+        phoneSentenceShown = true;
     } else if (!cameraActive_ &&
         pipelineOrchestrator_->IsCameraReconnectPending()) {
         text = QStringLiteral("Reconnecting to camera…");
@@ -462,12 +464,18 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
     // Transient, non-modal notifications (disk-full recording stop, reconnect
     // give-up, ...) override the pipeline summary for a few seconds. The label
     // is refreshed every presented frame, so the message clears on its own.
+    // While the phone sentence owns the line it stays the announced text; the
+    // notification goes to the tooltip instead of replacing the instruction.
     if (!presenterFaultReported_ && !transientStatusMessage_.isEmpty()) {
         if (QDateTime::currentMSecsSinceEpoch() < transientStatusUntilMs_) {
-            detail = text + QStringLiteral(" - ") + transientStatusMessage_;
-            text = transientStatusMessage_;
-            color = QStringLiteral("#1c6dd0");
-            politeness = transientStatusPoliteness_;
+            if (phoneSentenceShown) {
+                detail = detail + QStringLiteral(" - ") + transientStatusMessage_;
+            } else {
+                detail = text + QStringLiteral(" - ") + transientStatusMessage_;
+                text = transientStatusMessage_;
+                color = QStringLiteral("#1c6dd0");
+                politeness = transientStatusPoliteness_;
+            }
         } else {
             transientStatusMessage_.clear();
         }

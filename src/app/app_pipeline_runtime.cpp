@@ -349,10 +349,13 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
                     else StartCameraCapture(static_cast<size_t>(target), false, false, true);
                 } else if (!cameraActive_) {
                     StartFallbackCamera();
-                    UpdateCameraPlaceholder();
                 }
             }
-            UpdateCameraPlaceholder();
+            // Every discovery result reaches the status line, not only the
+            // (deliberately silent) placeholder: with no camera running there
+            // are no frames to refresh it, and the screen reader must hear a
+            // changed diagnosis.
+            UpdateProcessingStatusLabel();
         } catch (const std::exception& error) {
             qWarning() << "Background phone discovery failed:" << error.what();
         }

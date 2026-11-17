@@ -482,6 +482,24 @@ public:
         app.UpdateProcessingStatusLabel();
     }
     static void ClearPhoneDiagnosis(OkuFlowApp& app) {app.phoneLinkKnown_=false;app.phoneLinkDecision_={};}
+    // The same verdict through the real poll path: a finished discovery
+    // worker hands its report to PollPhoneCameraDiscovery, which alone must
+    // refresh what the user sees and hears (no camera runs, no frames).
+    static void DeliverPhoneDiagnosis(OkuFlowApp& app,PhoneLinkDiagnosis diagnosis,PhoneLinkAction action) {
+        auto report=std::make_shared<PhoneLinkReport>();
+        report->decision.diagnosis=diagnosis;report->decision.action=action;
+        report->decision.nextPollMs=std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count()+60000;
+        std::promise<std::pair<PhoneDiscoveryStatus,std::vector<CameraDescriptor>>> ready;
+        app.phoneDiscovery_=ready.get_future();
+        ready.set_value({PhoneDiscoveryStatus::OwnedServerRecovering,{}});
+        app.phoneLinkPending_=report;
+        app.phoneDiscoveryTimer_.start(); // No real discovery can be dispatched by this fixture.
+        const bool initialized=app.initialized_; app.initialized_=true;
+        app.PollPhoneCameraDiscovery(); app.initialized_=initialized;
+    }
+    static void ShowToast(OkuFlowApp& app,const QString& text) {app.ShowStatusMessage(text,60000,LivePoliteness::kPolite);}
+    static void ClearToast(OkuFlowApp& app) {app.transientStatusMessage_.clear();}
     static QString StatusText(OkuFlowApp& app) {return app.uiState_->processingStatusLabel_->text();}
     static QString StatusName(OkuFlowApp& app) {return app.uiState_->processingStatusLabel_->accessibleName();}
     static QString PlaceholderTitle(OkuFlowApp& app) {return app.mainWindow_->cameraPlaceholderTitle_->text();}
@@ -2449,9 +2467,11 @@ private slots:
         QVERIFY(!NativeControlFixture::PhoneDiscoveryDue(app_));
     }
     void phoneSentenceIsShownAndSpokenForEveryDiagnosis() {
-        // B1/B2/E4 through the real UpdateCameraPlaceholder and
-        // UpdateProcessingStatusLabel: offscreen, no adb, no phone.
+        // B1/B2/E4, and iteration 3 B1: every verdict arrives through the
+        // real PollPhoneCameraDiscovery path, which alone must update the
+        // placeholder and the spoken status line. Offscreen, no adb, no phone.
         const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::ClearToast(app_);
             NativeControlFixture::ClearPhoneDiagnosis(app_);
             NativeControlFixture::FallbackWebcamLive(app_,false);
             NativeControlFixture::ResetCameraFixture(app_);
@@ -2463,7 +2483,7 @@ private slots:
                 const auto diagnosis=static_cast<PhoneLinkDiagnosis>(i);
                 const auto expected=PhoneLinkPlaceholderText(diagnosis,
                     PhoneLinkWaitsForUser(diagnosis)||action==PhoneLinkAction::WaitForUser);
-                NativeControlFixture::SetPhoneDiagnosis(app_,diagnosis,action);
+                NativeControlFixture::DeliverPhoneDiagnosis(app_,diagnosis,action);
                 if (expected.title.isEmpty()) continue;
                 const QByteArray name(PhoneLinkDiagnosisName(diagnosis).data());
                 QVERIFY2(NativeControlFixture::StatusText(app_)==expected.spoken,name.constData());
@@ -2473,6 +2493,12 @@ private slots:
             }
         }
         const QString replug=QStringLiteral("Unplug the phone's USB cable and plug it back in.");
+        // Iteration 3 (B2): a notification does not replace the instruction
+        // while the phone sentence owns the status line.
+        NativeControlFixture::ShowToast(app_,QStringLiteral("Recording stopped"));
+        NativeControlFixture::DeliverPhoneDiagnosis(app_,PhoneLinkDiagnosis::ReplugCable,PhoneLinkAction::WaitForUser);
+        QCOMPARE(NativeControlFixture::StatusText(app_),replug);
+        NativeControlFixture::ClearToast(app_);
         // The phone sentence wins over the generic reconnect text.
         NativeControlFixture::BeginReconnect(app_);
         QVERIFY(NativeControlFixture::ReconnectPending(app_));
