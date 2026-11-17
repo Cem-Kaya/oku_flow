@@ -555,8 +555,10 @@ aligned with the project goals.
   raised after the critical teardown (recording, image writes, capture stop,
   settings, owned adb), never at `aboutToQuit`. A registered sibling of the
   same image, user and session whose exit signal has been set for 5 s, or that
-  shows no window on two observations 20 s apart and whose top-level windows
-  do not all answer a window message, is terminated once through a held
+  shows no window on two observations 20 s apart and whose recorded UI
+  thread's windows (the thread of its main window, recorded at registration;
+  every top-level window without that record) do not answer a window message,
+  is terminated once through a held
   handle (PID, creation time, image path, still no visible window), and only
   while the phone is unlisted, the interface present and the blind grace over;
   if refused, only its proven bundled adb child is stopped while the instance

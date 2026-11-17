@@ -1021,6 +1021,28 @@ BOOL CALLBACK CollectTopLevelWindows(HWND window, LPARAM parameter)
     if (owner == search->pid) search->windows.push_back(window);
     return search->windows.size() < 32 ? TRUE : FALSE;
 }
+// The windows of one thread (the instance's recorded UI thread), bounded.
+BOOL CALLBACK CollectThreadWindows(HWND window, LPARAM parameter)
+{
+    auto* search = reinterpret_cast<TopLevelWindowSearch*>(parameter);
+    search->windows.push_back(window);
+    return search->windows.size() < 32 ? TRUE : FALSE;
+}
+// The UI thread an instance recorded at registration, if it still belongs
+// to that process.
+std::optional<DWORD> RecordedUiThread(const std::wstring& tag, DWORD pid)
+{
+    HandleGuard mapping{OpenFileMappingW(FILE_MAP_READ, FALSE, OkuFlowInstanceUiThreadName(tag, pid).c_str())};
+    if (!mapping.handle) return std::nullopt;
+    const void* view = MapViewOfFile(mapping.handle, FILE_MAP_READ, 0, 0, sizeof(DWORD));
+    if (!view) return std::nullopt;
+    DWORD threadId = 0;
+    std::memcpy(&threadId, view, sizeof(threadId));
+    UnmapViewOfFile(view);
+    HandleGuard thread{OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, threadId)};
+    if (!threadId || !thread.handle || GetProcessIdOfThread(thread.handle) != pid) return std::nullopt;
+    return threadId;
+}
 bool StopRequested(const std::atomic<bool>* canceled) { return canceled && canceled->load(); }
 // WM_NULL within 1 s, sent in 100 ms slices that observe cancellation.
 bool AnswersWindowMessage(HWND window, const std::atomic<bool>* canceled)
@@ -1069,6 +1091,18 @@ std::wstring OkuFlowInstallationTag()
     return OkuFlowInstallationTag(OwnCanonicalImage());
 }
 
+HANDLE RecordOkuFlowUiThread(const std::wstring& tag, DWORD processId, DWORD threadId)
+{
+    HANDLE mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(DWORD),
+                                        OkuFlowInstanceUiThreadName(tag, processId).c_str());
+    if (!mapping) return nullptr;
+    void* view = MapViewOfFile(mapping, FILE_MAP_WRITE, 0, 0, sizeof(DWORD));
+    if (!view) { CloseHandle(mapping); return nullptr; }
+    std::memcpy(view, &threadId, sizeof(threadId));
+    UnmapViewOfFile(view);
+    return mapping;
+}
+
 std::unique_ptr<OkuFlowInstanceRegistration> OkuFlowInstanceRegistration::Register()
 {
     const auto tag = OkuFlowInstallationTag();
@@ -1077,11 +1111,15 @@ std::unique_ptr<OkuFlowInstanceRegistration> OkuFlowInstanceRegistration::Regist
     if (!registered) return nullptr;
     HANDLE exiting = CreateEventW(nullptr, TRUE, FALSE, OkuFlowInstanceObjectName(true, tag, pid).c_str());
     if (!exiting) { CloseHandle(registered); return nullptr; }
-    return std::unique_ptr<OkuFlowInstanceRegistration>(new OkuFlowInstanceRegistration(registered, exiting));
+    // The caller is the GUI thread that owns the main window. Without this
+    // record an observer falls back to every top-level window.
+    HANDLE uiThread = RecordOkuFlowUiThread(tag, pid, GetCurrentThreadId());
+    return std::unique_ptr<OkuFlowInstanceRegistration>(new OkuFlowInstanceRegistration(registered, exiting, uiThread));
 }
 
 OkuFlowInstanceRegistration::~OkuFlowInstanceRegistration()
 {
+    if (uiThread_) CloseHandle(uiThread_);
     if (exiting_) CloseHandle(exiting_);
     if (registered_) CloseHandle(registered_);
 }
@@ -1150,8 +1188,12 @@ std::vector<OkuFlowSiblingObservation> ObserveOkuFlowSiblings(const std::wstring
         // A visible window is the user's to close whatever it answers: no
         // message (up to a second each on the discovery worker).
         if (!sibling.hasVisibleWindow) {
+            // Judged by the recorded UI thread's windows only; without that
+            // record (an older registration), by every top-level window.
             TopLevelWindowSearch windows{pid};
-            EnumWindows(CollectTopLevelWindows, reinterpret_cast<LPARAM>(&windows));
+            const auto uiThread = sibling.registered ? RecordedUiThread(wantedTag, pid) : std::nullopt;
+            if (uiThread) EnumThreadWindows(*uiThread, CollectThreadWindows, reinterpret_cast<LPARAM>(&windows));
+            else EnumWindows(CollectTopLevelWindows, reinterpret_cast<LPARAM>(&windows));
             sibling.answersWindowMessage = !windows.windows.empty() &&
                 std::all_of(windows.windows.begin(), windows.windows.end(),
                             [&](HWND window) { return AnswersWindowMessage(window, canceled); });

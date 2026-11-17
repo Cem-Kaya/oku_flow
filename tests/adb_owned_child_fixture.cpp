@@ -18,9 +18,11 @@
 // Sibling modes (windowless; hidden windows are never shown):
 //   instance <tag> <exiting 0|1> <readyFile> [childReady]
 //       registered instance; optionally with a `sleep` child of this image
-//   instance-windows <tag> <stuck 0|1> <readyFile>
-//       registered instance with a hidden pumping top-level window and, when
-//       stuck, a hidden top-level window on a thread that never pumps
+//   instance-windows <tag> <uiStuck 0|1> <readyFile>
+//       registered instance with a hidden pumping top-level window on its
+//       main thread and a hidden top-level window on a helper thread that
+//       never pumps; the recorded UI thread is the helper (uiStuck 1) or the
+//       main thread (uiStuck 0)
 //   spawn <childReady> <parentReady>
 //       start `exit-after 3000 <childReady>` outside any job, then exit
 #include "okuflow/capture/adb_owned_server.hpp"
@@ -68,14 +70,24 @@ HWND CreateHiddenWindow()
     return CreateWindowExW(WS_EX_TOOLWINDOW, L"OkuFlowSiblingFixture", L"", WS_POPUP, 0, 0, 1, 1, nullptr,
                            nullptr, GetModuleHandleW(nullptr), nullptr);
 }
-bool RegisterInstance(const std::wstring& tag, bool exiting)
+// The named objects of OkuFlowInstanceRegistration; `uiThread` (when set)
+// is recorded like the production registration records its GUI thread.
+bool RegisterInstance(const std::wstring& tag, bool exiting, DWORD uiThread = 0)
 {
     const auto pid = std::to_wstring(GetCurrentProcessId());
     HANDLE registered = CreateEventW(nullptr, TRUE, FALSE, (L"Local\\OkuFlow.Instance." + tag + L"." + pid).c_str());
     HANDLE exitEvent = CreateEventW(nullptr, TRUE, FALSE, (L"Local\\OkuFlow.Exiting." + tag + L"." + pid).c_str());
     if (!registered || !exitEvent) return false;
     if (exiting) SetEvent(exitEvent);
-    return true; // Both handles stay open for the life of the process.
+    if (uiThread) {
+        HANDLE mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(DWORD),
+                                            (L"Local\\OkuFlow.UiThread." + tag + L"." + pid).c_str());
+        void* view = mapping ? MapViewOfFile(mapping, FILE_MAP_WRITE, 0, 0, sizeof(DWORD)) : nullptr;
+        if (!view) return false;
+        *static_cast<DWORD*>(view) = uiThread;
+        UnmapViewOfFile(view);
+    }
+    return true; // The handles stay open for the life of the process.
 }
 bool ReadSocket(SOCKET socket, char* bytes, int count)
 {
@@ -234,14 +246,18 @@ int wmain(int count, wchar_t** arguments)
         SleepForever();
     }
     if (mode == L"instance-windows" && count >= 5) {
-        if (!RegisterInstance(arguments[2], false)) return 6;
         std::atomic<HWND> stuck{nullptr};
-        if (std::wstring(arguments[3]) == L"1") {
-            // Created on a thread that never reads its messages.
-            std::thread([&stuck] { stuck.store(CreateHiddenWindow()); SleepForever(); }).detach();
-            for (int waited = 0; waited < 100 && !stuck.load(); ++waited) Sleep(20);
-            if (!stuck.load()) return 5;
-        }
+        std::atomic<DWORD> stuckThread{0};
+        // Created on a thread that never reads its messages.
+        std::thread([&stuck, &stuckThread] {
+            stuckThread.store(GetCurrentThreadId());
+            stuck.store(CreateHiddenWindow());
+            SleepForever();
+        }).detach();
+        for (int waited = 0; waited < 100 && !stuck.load(); ++waited) Sleep(20);
+        if (!stuck.load()) return 5;
+        const bool uiStuck = std::wstring(arguments[3]) == L"1";
+        if (!RegisterInstance(arguments[2], false, uiStuck ? stuckThread.load() : GetCurrentThreadId())) return 6;
         HWND pumping = CreateHiddenWindow();
         if (!pumping) return 5;
         // First in z-order, so a scan that stops at the first window sees it.

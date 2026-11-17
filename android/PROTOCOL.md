@@ -250,8 +250,10 @@ saved, its own adb stopped), not when it begins to exit. Another instance of
 the same image, user and session is a leftover when its exit signal has been
 set for 5 s and it still lives, or when it is registered, shows no window on
 two observations 20 s apart (above the longest bounded critical teardown,
-about 17 s) and not every one of its top-level windows answers a window
-message within 1 s (a sibling with a visible window is not sent one).
+about 17 s) and the windows of its UI thread (the thread that owns its main
+window, recorded at registration; every top-level window when no thread is
+recorded) do not answer a window message within 1 s (a sibling with a visible
+window is not sent one). A hidden window of another thread decides nothing.
 Windows terminates that exact process once, and only while it plausibly
 holds the phone (the phone is listed by no server, the Windows ADB interface
 is present, the blind grace has passed), through a held handle (same PID,

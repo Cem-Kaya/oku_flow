@@ -1074,9 +1074,13 @@ private slots:
         QCOMPARE(int(okuflow::StopLeftoverOkuFlowInstance(request)), int(okuflow::LeftoverInstanceStopStatus::IdentityChanged));
         QVERIFY(instance->IsRunning());
     }
-    void leftoverIsJudgedByEveryTopLevelWindow() {
-        // C2: a hidden window on a thread that still pumps does not vouch
-        // for a stuck one; an instance whose windows all answer is alive.
+    void leftoverIsJudgedByItsUiThread() {
+        // Changed deliberately (iteration 4, A7; was
+        // leftoverIsJudgedByEveryTopLevelWindow): both fixture instances have
+        // a hidden window that pumps (main thread) and one that never pumps
+        // (helper thread). The registered UI thread decides: a pumping
+        // helper does not vouch for a stuck UI (iteration 3, C2), and a
+        // helper that never pumps does not make a healthy UI a leftover.
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
         const QString image = directory.filePath(QStringLiteral("okuflow_instance_fixture.exe"));

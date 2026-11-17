@@ -1026,7 +1026,7 @@ start-up and after a hand-back is taken over (fixture `--fixture-offline-file`),
 a slow-but-listing default is never stopped (`--fixture-slow-version`), the
 interface is re-checked when a stop runs, a leftover that cannot be opened stops
 nothing (fixture `spawn`), a window appearing before termination keeps the
-leftover, every top-level window must answer (`instance-windows`), the
+leftover, the registered UI thread's windows decide (`instance-windows`), the
 production sibling scan runs through `Enumerate` against a fixture image and tag
 (stop, plausibility gate, adb-child fallback, unregistered sibling never ending
 the ladder), a paused companion on a locked phone and a manual pick with the
@@ -1046,7 +1046,9 @@ wants a listed USB phone. The doctor test `blindWithoutWindowsInterfaceNeverEsca
 was renamed `windowsCannotTellNeverStopsAnotherServer` and changed deliberately.
 The private server started beside a hung default counts toward the hand-over
 cap and is handed back at the cap (`privateServerBesideAHungDefaultCountsTowardTheHandOverCap`,
-policy hook `handOverCap` 0 and 1).
+policy hook `handOverCap` 0 and 1). `leftoverIsJudgedByItsUiThread` (was
+`leftoverIsJudgedByEveryTopLevelWindow`, changed deliberately): the fixture's
+recorded UI thread decides, not a helper thread's hidden window.
 `phone_link_text` (headless) checks one sentence per diagnosis and that every
 sentence is translated in all 24 catalogs. The native slot
 `phoneSentenceIsShownAndSpokenForEveryDiagnosis` delivers every verdict

@@ -252,11 +252,22 @@ std::vector<OkuFlowSibling> FindOkuFlowSiblings(bool sameImageOnly);
 //   Local\OkuFlow.Exiting.<tag>.<pid>    set when the instance begins to exit
 // The tag is a hash of the canonical image path, so only instances of the
 // same installation match. The kernel removes both names with the process.
+// A third object, a 4-byte named mapping
+//   Local\OkuFlow.UiThread.<tag>.<pid>   the thread that owns the main window
+// lets an observer judge the instance by that thread's windows only (a
+// helper thread's hidden window says nothing about the UI).
 inline std::wstring OkuFlowInstanceObjectName(bool exiting, const std::wstring& tag, DWORD processId)
 {
     return std::wstring(exiting ? L"Local\\OkuFlow.Exiting." : L"Local\\OkuFlow.Instance.") + tag + L"." +
            std::to_wstring(processId);
 }
+inline std::wstring OkuFlowInstanceUiThreadName(const std::wstring& tag, DWORD processId)
+{
+    return L"Local\\OkuFlow.UiThread." + tag + L"." + std::to_wstring(processId);
+}
+// Records `threadId` under that name; the returned mapping handle keeps the
+// record alive (close it with the registration). Null on failure.
+HANDLE RecordOkuFlowUiThread(const std::wstring& tag, DWORD processId, DWORD threadId);
 // Tag of this process's installation (hash of its canonical image path).
 std::wstring OkuFlowInstallationTag();
 std::wstring OkuFlowInstallationTag(const std::wstring& canonicalImagePath);
@@ -264,6 +275,8 @@ std::wstring OkuFlowInstallationTag(const std::wstring& canonicalImagePath);
 class OkuFlowInstanceRegistration {
 public:
     // Null when the objects cannot be created; nothing else depends on it.
+    // Call on the thread that owns the main window (the Qt GUI thread): it
+    // is recorded as the instance's UI thread.
     static std::unique_ptr<OkuFlowInstanceRegistration> Register();
     ~OkuFlowInstanceRegistration();
     OkuFlowInstanceRegistration(const OkuFlowInstanceRegistration&) = delete;
@@ -271,9 +284,11 @@ public:
     // The instance begins to exit (idempotent).
     void SignalExiting();
 private:
-    OkuFlowInstanceRegistration(HANDLE registered, HANDLE exiting) : registered_(registered), exiting_(exiting) {}
+    OkuFlowInstanceRegistration(HANDLE registered, HANDLE exiting, HANDLE uiThread)
+        : registered_(registered), exiting_(exiting), uiThread_(uiThread) {}
     HANDLE registered_{nullptr};
     HANDLE exiting_{nullptr};
+    HANDLE uiThread_{nullptr};
 };
 
 // One observation of a sibling of the same image, user and session.
@@ -283,9 +298,12 @@ struct OkuFlowSiblingObservation {
     bool registered{false};
     bool exiting{false};
     bool hasVisibleWindow{false};
-    // Every top-level window of the process answered WM_NULL within 1 s (a
-    // hidden helper window on another thread cannot vouch for a stuck UI).
-    // Not asked at all when a visible window was found.
+    // The windows of the instance's recorded UI thread (the thread that owns
+    // its main window) answered WM_NULL within 1 s: a hidden helper window on
+    // another thread neither vouches for a stuck UI nor, when it never pumps,
+    // makes a healthy UI look stuck. Without a recorded UI thread, every
+    // top-level window of the process must answer. Not asked at all when a
+    // visible window was found.
     bool answersWindowMessage{false};
 };
 // `image` and `tag` default to this process's installation; tests pass a
