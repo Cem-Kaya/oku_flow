@@ -2111,10 +2111,12 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         if (RuntimeAdbInterface() != PhoneAdbInterface::Present) return "kept: the Windows ADB interface is gone";
         // A stop aborted because the default answered its pre-stop listing
         // stopped nothing: it does not spend the termination cap (whose end
-        // is the other-program sentence).
+        // is the other-program sentence). It counts for the rung that decided
+        // it: the takeover's termination follows an ask (hostKillAlreadySent),
+        // the hung branch's does not.
         const auto aborted = [&](const char* reason) {
             std::lock_guard lock(runtime.mutex);
-            runtime.doctor.NoteTerminationAborted(decision.episode);
+            runtime.doctor.NoteTerminationAborted(decision.episode, decision.hostKillAlreadySent);
             return std::string(reason);
         };
         if (o.serverProbe == PhoneServerProbe::Responsive || o.shadowRunning) {

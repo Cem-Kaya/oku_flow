@@ -536,10 +536,13 @@ aligned with the project goals.
   (the pre-ask checks kept the server, or it was not delivered) is not
   remembered as sent, so no termination follows it, and it does not use up
   an ask. Aborted terminations and unsent asks have their own per-episode
-  count (`abortedStopCap`, 3): at it the other-program sentence stands
-  (probed at the user-wait cadence; a server that recovers or goes away
-  ends it), so a default that is slow only in its version probes is never
-  "Restoring" for ever. Neither hand-back path arms the
+  count (`abortedStopCap`, 3), one per rung (the hung branch's aborted
+  terminations; the takeover's unsent asks and aborted terminations), so
+  the end of one rung never ends the other: at it the other-program
+  sentence stands (probed at the user-wait cadence; a server that recovers
+  or goes away ends it), so a default that is slow only in its version
+  probes is never "Restoring" for ever, and one that answers them again but
+  stays blind is still asked to exit beside OkuFlow's server. Neither hand-back path arms the
   30 s start throttle, and a dead private server that yields to a
   responsive default clears the same shadow state they clear. A start the
   doctor requested stays requested until a start passes the executable and

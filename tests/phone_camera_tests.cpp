@@ -2803,6 +2803,19 @@ private slots:
             return r.decision.diagnosis != okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone; });
         QVERIFY(reports.back().decision.diagnosis != okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone);
         QVERIFY(!slow.Exited());
+        // Iteration 7 (2): it answers again but still does not list the
+        // phone. OkuFlow's private server already runs beside it (started
+        // when the hang was first confirmed), so this is the takeover branch,
+        // whose count is not the hung branch's: after the takeover grace the
+        // default is asked to exit, not named at once.
+        QVERIFY(okuflow::OwnedAdbServerPort().has_value());
+        reports = LinkCycles(60, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::AskDefaultServerToExit ||
+                r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone; });
+        QVERIFY(!Saw(reports, okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone));
+        QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::NotListedByServer));
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::AskDefaultServerToExit));
+        QVERIFY(!slow.Exited());
     }
     void hostKillIsAbortedWhenTheInterfaceIsGoneAtExecution() {
         // Iteration 4 (B4): like termination, host:kill re-checks the

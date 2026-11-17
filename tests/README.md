@@ -1131,6 +1131,12 @@ manual origin while a recording is open (the start is only queued until the
 recording ends) and requires a new discovery to be dispatched and its result
 consumed meanwhile. The fixture's `CameraPending` now also counts a queued
 start (`pendingCameraStart_`), as `CameraPendingDump` already printed it.
+`abortedTerminationsDoNotSpendTheTerminationCap` goes on past the recovery:
+the default answers its version probes again but stays blind beside
+OkuFlow's private server, and after the takeover grace it is asked to exit
+(not named at once by the hung branch's aborted stops). Doctor row
+`abortedStopsOfOneRungDoNotEndTheOther` covers both directions; the existing
+doctor calls of `NoteTerminationAborted` now name the hung branch.
 `phone_link_text` (headless) checks one sentence per diagnosis and that every
 sentence is translated in all 24 catalogs. The native slot
 `phoneSentenceIsShownAndSpokenForEveryDiagnosis` delivers every verdict

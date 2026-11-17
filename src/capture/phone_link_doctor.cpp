@@ -173,7 +173,7 @@ void PhoneLinkDoctor::OnEvent(PhoneLinkEvent, std::int64_t nowMs)
     defaultStopRefused_ = false;
     stopFailures_ = 0;
     handOvers_ = 0;
-    abortedStops_ = 0;
+    abortedHungStops_ = abortedTakeoverStops_ = 0;
     launchHeld_ = false;
     holdReleasedByDeath_ = false;
     lastLaunchMs_ = -1;
@@ -233,8 +233,10 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
             }
             return A::Relist;
         }
-        if (terminate_.attempts >= policy_.terminateCap ||
-            abortedStops_ >= policy_.abortedStopCap) {
+        // Each rung ends at its own aborted stops (the takeover branch
+        // terminates after an ask, the hung branch without one).
+        const int aborted = hostKillSent ? abortedTakeoverStops_ : abortedHungStops_;
+        if (terminate_.attempts >= policy_.terminateCap || aborted >= policy_.abortedStopCap) {
             *raised = D::OtherProgramHoldsPhone;
             return A::WaitForUser;
         }
@@ -277,7 +279,7 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         // confirm again for ever: once the aborted stops reach their cap the
         // sentence stands, also while the hang is being confirmed again.
         if (o.server == PhoneServerKind::BorrowedDefault &&
-            (o.defaultUnresponsiveConfirmed || abortedStops_ >= policy_.abortedStopCap))
+            (o.defaultUnresponsiveConfirmed || abortedHungStops_ >= policy_.abortedStopCap))
             return terminate(false);
         // The user's endpoint (adb environment variables) is never stopped:
         // a hang that lasts ends in the re-plug sentence.
@@ -336,7 +338,7 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
             // Unknown: the default is never asked to exit or stopped.
             if (!interfacePresent) { *raised = D::ReplugCable; return A::WaitForUser; }
             if (askedExitMs_ < 0) {
-                if (askExit_.attempts >= policy_.askExitCap || abortedStops_ >= policy_.abortedStopCap) {
+                if (askExit_.attempts >= policy_.askExitCap || abortedTakeoverStops_ >= policy_.abortedStopCap) {
                     *raised = D::OtherProgramHoldsPhone;
                     return A::WaitForUser;
                 }
@@ -542,7 +544,7 @@ PhoneLinkDecision PhoneLinkDoctor::Decide(const PhoneLinkObservation& observatio
         if (o.sessionStreaming || nowMs - connectedSinceMs_ >= policy_.connectedHoldMs) {
             reconnect_ = restart_ = shadow_ = askExit_ = terminate_ = launch_ = handback_ = Budget{};
             stopFailures_ = 0;
-            abortedStops_ = 0;
+            abortedHungStops_ = abortedTakeoverStops_ = 0;
             launchHeld_ = false;
             // handOvers_ is renewed only by events: a default that works for
             // a while between losing the phone still ends in the sentence.

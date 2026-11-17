@@ -773,7 +773,7 @@ private slots:
             if (last.action != A::TerminateDefaultServer) continue;
             if (aborted < policy.abortedStopCap - 1) {
                 ++aborted;
-                doctor.NoteTerminationAborted(last.episode);
+                doctor.NoteTerminationAborted(last.episode, false);
             } else {
                 ++carried;
             }
@@ -795,7 +795,7 @@ private slots:
             if (last.diagnosis == D::OtherProgramHoldsPhone) break;
             if (last.action == A::TerminateDefaultServer) {
                 ++aborted;
-                doctor.NoteTerminationAborted(last.episode);
+                doctor.NoteTerminationAborted(last.episode, false);
                 confirmedAt = now + 5000;
             }
         }
@@ -826,7 +826,7 @@ private slots:
         // nothing (neither given back nor toward the end).
         const auto earlier = doctor.Episode();
         doctor.OnEvent(PhoneLinkEvent::Resume, 2000000);
-        for (int i = 0; i < policy.abortedStopCap; ++i) doctor.NoteTerminationAborted(earlier);
+        for (int i = 0; i < policy.abortedStopCap; ++i) doctor.NoteTerminationAborted(earlier, false);
         hung.defaultUnresponsiveConfirmed = true;
         QCOMPARE(int(doctor.Decide(hung, 2000000).action), int(A::TerminateDefaultServer));
         // Carried-out stops still end at the termination cap.
@@ -837,8 +837,74 @@ private slots:
         }
         QCOMPARE(carried, policy.terminateCap);
         QCOMPARE(int(last.diagnosis), int(D::OtherProgramHoldsPhone));
-        doctor.NoteTerminationAborted(earlier);
+        doctor.NoteTerminationAborted(earlier, false);
         QCOMPARE(int(doctor.Decide(hung, 2401000).diagnosis), int(D::OtherProgramHoldsPhone));
+    }
+    void abortedStopsOfOneRungDoNotEndTheOther()
+    {
+        // Iteration 7 (2): the hung branch's aborted terminations and the
+        // takeover branch's unsent asks and aborted terminations are counted
+        // separately: a default that was slow only in its version probes
+        // (hung branch at its cap, the sentence) and then answers them again
+        // but stays blind is still asked to exit beside OkuFlow's server, and
+        // the reverse.
+        PhoneLinkDoctor doctor;
+        const auto policy = doctor.Policy();
+        auto hung = Blind(PhoneServerKind::BorrowedDefault);
+        hung.serverProbe = PhoneServerProbe::Unresponsive;
+        hung.defaultUnresponsiveConfirmed = true;
+        auto beside = Blind(PhoneServerKind::Owned);
+        beside.shadowRunning = true;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        std::int64_t now = 0;
+        int aborted = 0;
+        PhoneLinkDecision last;
+        for (; now < 600000 && last.diagnosis != D::OtherProgramHoldsPhone; now += 1000) {
+            last = doctor.Decide(hung, now);
+            if (last.action != A::TerminateDefaultServer) continue;
+            QVERIFY(!last.hostKillAlreadySent);
+            ++aborted;
+            doctor.NoteTerminationAborted(last.episode, last.hostKillAlreadySent);
+        }
+        QCOMPARE(aborted, policy.abortedStopCap);
+        QCOMPARE(int(last.diagnosis), int(D::OtherProgramHoldsPhone));
+        // It answers its version probes again, still blind: a private server
+        // beside it, then (after the takeover grace) an ask, not the sentence.
+        QCOMPARE(int(doctor.Decide(Blind(PhoneServerKind::BorrowedDefault), now).action), int(A::Relist));
+        now += policy.blindGraceMs;
+        QCOMPARE(int(doctor.Decide(Blind(PhoneServerKind::BorrowedDefault), now).action), int(A::StartShadowServer));
+        QCOMPARE(int(doctor.Decide(beside, now + 1000).action), int(A::Relist));
+        now += 1000 + policy.takeoverGraceMs;
+        const auto ask = doctor.Decide(beside, now);
+        QCOMPARE(int(ask.diagnosis), int(D::NotListedByServer));
+        QCOMPARE(int(ask.action), int(A::AskDefaultServerToExit));
+        // Its termination after the ignored ask is the takeover's own (past
+        // the termination spacing the hung branch reserved, too).
+        now += std::max(policy.hostKillWaitMs, policy.restartRetryMs);
+        const auto takeoverStop = doctor.Decide(beside, now);
+        QCOMPARE(int(takeoverStop.action), int(A::TerminateDefaultServer));
+        QVERIFY(takeoverStop.hostKillAlreadySent);
+
+        // The reverse: unsent asks end the takeover, and a default that hangs
+        // afterwards is still terminated (its first stop is not named).
+        doctor.OnEvent(PhoneLinkEvent::Resume, 1000000);
+        now = 1000000;
+        int asks = 0;
+        last = {};
+        for (; now < 1600000; now += 500) {
+            last = doctor.Decide(beside, now);
+            if (last.diagnosis == D::OtherProgramHoldsPhone) break;
+            if (last.action == A::AskDefaultServerToExit) {
+                ++asks;
+                doctor.NoteExitRequestNotSent(last.episode);
+            }
+        }
+        QCOMPARE(asks, policy.abortedStopCap);
+        QCOMPARE(int(last.diagnosis), int(D::OtherProgramHoldsPhone));
+        now += 1000;
+        const auto hungStop = doctor.Decide(hung, now);
+        QCOMPARE(int(hungStop.diagnosis), int(D::ServerUnresponsive));
+        QCOMPARE(int(hungStop.action), int(A::TerminateDefaultServer));
     }
     void hungDefaultIsNotTerminatedWithoutTheWindowsInterface()
     {

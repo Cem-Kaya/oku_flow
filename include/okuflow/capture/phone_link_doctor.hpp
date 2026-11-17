@@ -162,7 +162,11 @@ struct PhoneLinkPolicy {
     // of them end in the other-program sentence (the user can close the
     // other program; probing goes on at the user-wait cadence, so a server
     // that recovers or goes away ends it). The same count as terminateCap:
-    // an aborted stop ends where a carried-out one does.
+    // an aborted stop ends where a carried-out one does. Each rung keeps its
+    // own count against this cap: the hung branch (a borrowed default whose
+    // version probes fail) counts its aborted terminations, the takeover
+    // branch (OkuFlow's server beside a blind default) counts its unsent asks
+    // and its aborted terminations, so the end of one never ends the other.
     int abortedStopCap{3};
     // Per episode: starts of the private server beside the default plus
     // hand-backs to it (the transport's own start beside a hung default and
@@ -286,24 +290,27 @@ public:
     // the default answered its pre-stop listing (also with an adb FAIL
     // reply): nothing was stopped, so it does not spend the termination
     // cap. The retry spacing stays as reserved. It counts toward
-    // abortedStopCap instead, whose end is the other-program sentence.
-    void NoteTerminationAborted(std::uint64_t episode)
+    // abortedStopCap instead, whose end is the other-program sentence, in
+    // the count of the rung that decided it: takeover is the decision's
+    // hostKillAlreadySent (only the takeover branch terminates after an
+    // ask), otherwise the hung branch.
+    void NoteTerminationAborted(std::uint64_t episode, bool takeover)
     {
         if (episode != episode_) return;
         if (terminate_.attempts > 0) --terminate_.attempts;
-        ++abortedStops_;
+        ++(takeover ? abortedTakeoverStops_ : abortedHungStops_);
     }
     // An AskDefaultServerToExit of this episode sent no host:kill (the
     // pre-ask checks kept the server, or the request was never delivered):
     // it is not remembered as asked, so no termination follows as if the
     // request had been ignored, and it does not spend askExitCap. The retry
-    // spacing stays as reserved; it counts toward abortedStopCap.
+    // spacing stays as reserved; it counts toward abortedStopCap (takeover).
     void NoteExitRequestNotSent(std::uint64_t episode)
     {
         if (episode != episode_) return;
         askedExitMs_ = -1;
         if (askExit_.attempts > 0) --askExit_.attempts;
-        ++abortedStops_;
+        ++abortedTakeoverStops_;
     }
     std::uint64_t Episode() const { return episode_; }
     // The listener is gone, changed identity, or the phone is listed.
@@ -365,7 +372,11 @@ private:
     bool defaultStopRefused_{false};
     int stopFailures_{0};
     int handOvers_{0};
-    int abortedStops_{0};
+    // Aborted stops per rung (abortedStopCap): the hung branch's aborted
+    // terminations; the takeover branch's unsent asks and aborted
+    // terminations.
+    int abortedHungStops_{0};
+    int abortedTakeoverStops_{0};
     bool launchHeld_{false};
     // A hold was already released at once because the app died (episode).
     bool holdReleasedByDeath_{false};
