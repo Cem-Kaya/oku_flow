@@ -1858,6 +1858,40 @@ bool DefaultServesTarget(const std::vector<AdbDeviceEntry>& entries, const std::
              e.state == PhoneAdbState::Unauthorized || e.state == PhoneAdbState::Authorizing);
     });
 }
+// Only the stall memory keeps the default's "device" row for the phone from
+// counting (that memory is set and cleared only while OkuFlow borrows the
+// default). Before another program's adb is asked to exit or terminated,
+// adbd is asked once more through that very listener (one bounded shell
+// echo): if it answers, the stall is over, the memory is cleared and
+// nothing is stopped; the next cycle hands back. A "device" row whose shell
+// stays silent still does not serve the phone.
+bool StallEndedOnDefault(const std::vector<AdbDeviceEntry>& entries, const std::string& target,
+                         const std::atomic<bool>* canceled)
+{
+    if (!ListsTargetUsable(entries, target) || DefaultServesTarget(entries, target)) return false;
+    const auto stalled = StalledOnDefault();
+    const auto entry = std::find_if(entries.begin(), entries.end(), [&](const auto& e) {
+        return e.usb && e.state == PhoneAdbState::Device && !stalled.empty() && e.serial == stalled;
+    });
+    if (entry == entries.end()) return false;
+    bool answers = false;
+    try {
+        QTcpSocket shell;
+        ConnectTo(shell, DefaultPort(), kHostConnectMs, canceled);
+        AdbRequest(shell, entry->transportId ? "host:transport-id:" + QByteArray::number(entry->transportId)
+                                             : "host:transport:" + QByteArray::fromStdString(entry->serial),
+                   kUsbHealthProbeTimeoutMs, canceled);
+        AdbRequest(shell, "shell:echo OKUFLOW_USB_HEALTH", kUsbHealthProbeTimeoutMs, canceled);
+        answers = Read(shell, static_cast<int>(kUsbHealthToken.size()), kUsbHealthProbeTimeoutMs, canceled) ==
+            QByteArray(kUsbHealthToken.data(), static_cast<int>(kUsbHealthToken.size()));
+    } catch (const std::exception&) {
+        CheckCanceled(canceled);
+    }
+    if (!answers) return false;
+    auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
+    if (runtime.defaultStall && runtime.defaultStall->serial == stalled) runtime.defaultStall.reset();
+    return true;
+}
 // Every stop outcome ends somewhere: gone, retried once, or named. A
 // refusal or failure belongs to the episode of the decision that caused it:
 // noted after a newer event, it is dropped (the new episode starts clean).
@@ -1974,6 +2008,7 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         if (!listed) return "kept: the default server listing failed";
         if (OtherDeviceServed(*listed, target)) return "kept: the default server serves another device";
         if (DefaultServesTarget(*listed, target)) return "kept: the default server lists the phone now";
+        if (StallEndedOnDefault(*listed, target, canceled)) return "kept: the phone answers on the default server now";
         const auto listener = LookupListener(port);
         if (listener.state == ListenerState::None) { AfterDefaultStopped(); return "default server already gone"; }
         if (listener.state == ListenerState::Unopenable) {
@@ -2008,6 +2043,8 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
             if (!listed) return "kept: the default server listing failed";
             if (OtherDeviceServed(*listed, target)) return "kept: the default server serves another device";
             if (DefaultServesTarget(*listed, target)) return "kept: the default server lists the phone now";
+            if (StallEndedOnDefault(*listed, target, canceled))
+                return "kept: the phone answers on the default server now";
         } else {
             // A hang confirmed by version probes alone: one short listing
             // before anything else. A server that answers it at all (a slow

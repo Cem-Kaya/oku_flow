@@ -13,6 +13,9 @@
 //       [--fixture-slow-version <ms>]  (host:version answers after <ms>; listings stay prompt)
 //       [--fixture-stalled-shell]     (the listed device's adbd never answers: a transport
 //                                      request is accepted, the service after it never is)
+//       [--fixture-stalled-shell-file <path>] (stalled like --fixture-stalled-shell while <path>
+//                                      exists; otherwise adbd answers `shell:echo <text>` with
+//                                      <text> and a newline, and fails every other service)
 // Tests may run a copy of this executable named adb.exe so the production
 // image rule (adb.exe) is exercised without any hook.
 // Sibling modes (windowless; hidden windows are never shown):
@@ -111,7 +114,7 @@ void Reply(SOCKET socket, const std::string& body)
 }
 struct FakeOptions {
     bool hang{false}, exitAfterList{false}, device{false}, exitOnKill{false}, stalledShell{false};
-    std::wstring deviceFile, failFile, killLog, offlineFile;
+    std::wstring deviceFile, failFile, killLog, offlineFile, stalledShellFile;
     unsigned slowVersionMs{0};
 };
 void AppendLine(const std::wstring& path, const char* line)
@@ -158,7 +161,9 @@ int FakeAdbServer(unsigned short port, const FakeOptions& options)
         if (!ReadSocket(client, request.data(), static_cast<int>(count))) { closesocket(client); continue; }
         if (options.hang) SleepForever();
         const bool deviceListed = options.device || (!options.deviceFile.empty() && FileExists(options.deviceFile.c_str()));
-        if (options.stalledShell && deviceListed && request.starts_with("host:transport")) {
+        const bool stalledShell = options.stalledShell ||
+            (!options.stalledShellFile.empty() && FileExists(options.stalledShellFile.c_str()));
+        if (stalledShell && deviceListed && request.starts_with("host:transport")) {
             // adbd of the listed device is silent: the server accepts the
             // transport, reads the service request and never answers it.
             send(client, "OKAY", 4, 0);
@@ -168,6 +173,25 @@ int FakeAdbServer(unsigned short port, const FakeOptions& options)
                 if (service.size() <= 65535) ReadSocket(client, service.data(), static_cast<int>(service.size()));
             }
             held.push_back(client); // Kept open, never answered, until exit.
+            continue;
+        }
+        if (!options.stalledShellFile.empty() && deviceListed && request.starts_with("host:transport")) {
+            // adbd answers: `shell:echo <text>` streams <text> and a newline.
+            send(client, "OKAY", 4, 0);
+            char next[5]{};
+            std::string service;
+            if (ReadSocket(client, next, 4)) {
+                service.assign(std::strtoul(next, nullptr, 16), ' ');
+                if (service.size() > 65535 || !ReadSocket(client, service.data(), static_cast<int>(service.size())))
+                    service.clear();
+            }
+            if (service.starts_with("shell:echo ")) {
+                const std::string text = "OKAY" + service.substr(11) + "\n";
+                send(client, text.data(), static_cast<int>(text.size()), 0);
+            } else {
+                send(client, "FAIL000bunsupported", 19, 0);
+            }
+            closesocket(client);
             continue;
         }
         if (request == "host:kill" && !options.killLog.empty()) AppendLine(options.killLog, "host:kill");
@@ -219,6 +243,7 @@ int wmain(int count, wchar_t** arguments)
         else if (argument == L"--fixture-fail-file" && i + 1 < count) options.failFile = arguments[++i];
         else if (argument == L"--fixture-kill-log" && i + 1 < count) options.killLog = arguments[++i];
         else if (argument == L"--fixture-offline-file" && i + 1 < count) options.offlineFile = arguments[++i];
+        else if (argument == L"--fixture-stalled-shell-file" && i + 1 < count) options.stalledShellFile = arguments[++i];
         else if (argument == L"--fixture-exit-at-start") return 0; // Killed before it ever answers.
         else if (argument == L"--fixture-slow-version" && i + 1 < count)
             options.slowVersionMs = static_cast<unsigned>(_wtoi(arguments[++i]));

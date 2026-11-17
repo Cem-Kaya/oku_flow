@@ -137,7 +137,10 @@ diagnosis and one next action, least disturbing first:
    ready, unauthorized or authorizing is handed back to at once. A phone that
    default listed ready while its adbd did not answer (a stalled transport)
    stays "not served" there until an event, adbd answering there, or another
-   listener: that listing never stops `host:kill` or termination from going on. Starts of the
+   listener: while its shell stays silent, that listing never stops `host:kill`
+   or termination from going on. Right before either, Windows asks the phone's
+   shell once more through that listener; if it answers, nothing is stopped and
+   USB is handed back on the next cycle. Starts of the
    private server beside the default and hand-backs (also the hand-back of a
    private server started for a hung default, which needs the same usable
    listing, never just an answer) are counted together, also the private

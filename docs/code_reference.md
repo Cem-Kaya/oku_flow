@@ -1904,7 +1904,10 @@ so metadata generation cannot silently accept an incomplete copy.
   listing answered and showed another device) is named, never stopped.
   `PhoneLinkObservation::defaultPhoneStalled` marks a "device" listing
   on the default whose adbd timed out there in this episode (the transport
-  remembers it per listener): it is never handed back to.
+  remembers it per listener): it is never handed back to. Before
+  `AskDefaultServerToExit` or `TerminateDefaultServer` is executed on that
+  memory alone, one bounded shell echo through the default listener
+  re-checks adbd; an answer clears the memory and keeps the server.
 - `OwnedAdbServer::Restart` restarts a responsive but blind owned child (live
   sessions win); `ResetBudgets` (lock-free, applied by the next
   `EnsureRunning`/`Restart`) clears the restart cooldown, which starts at

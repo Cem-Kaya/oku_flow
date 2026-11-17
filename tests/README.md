@@ -1059,6 +1059,10 @@ the wanted phone; a hung default whose listing answers FAIL is never stopped;
 named. Native slot `differentPhoneSentenceIsNotShownBeforeTheSwitch`; doctor
 rows `ownedOfflineLadderStartsFreshAfterForeignReconnects`,
 `slowDefaultServingAnotherDeviceIsNamed`.
+Iteration 5 rows: a default whose shell is silent until OkuFlow's own server
+runs beside it and then answers (`--fixture-stalled-shell-file`, stalled while
+the file exists) is handed back to without `host:kill`
+(`stalledPhoneThatRecoversOnTheDefaultIsHandedBack`).
 `phone_link_text` (headless) checks one sentence per diagnosis and that every
 sentence is translated in all 24 catalogs. The native slot
 `phoneSentenceIsShownAndSpokenForEveryDiagnosis` delivers every verdict

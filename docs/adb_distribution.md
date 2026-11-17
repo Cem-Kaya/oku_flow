@@ -173,7 +173,9 @@ hung default counts; at the cap no more starts, but a hand-back to a default
 that lists the phone is still made); another adb that
 appears beside OkuFlow's blind server is handed back to when it lists the phone
 in a usable state and otherwise taken over under the same caps. A phone that
-default listed ready while its adbd timed out there is not served by it. Overridden
+default listed ready while its adbd timed out there is not served by it, unless one
+more shell request through that listener, made right before `host:kill` or a
+termination, is answered: then nothing is stopped and USB is handed back. Overridden
 endpoints are never asked to exit or stopped. Lifecycle and manager lock waits
 check cancellation every 20 ms; live-port observation does not wait for a host
 probe. Camera startup accepts only confirmed-ready results. Server identity
