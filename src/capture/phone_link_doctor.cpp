@@ -284,7 +284,17 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         // OkuFlow's own adb.exe cannot be started (missing, quarantined,
         // dying or silent at start): that is what is broken, also while
         // another program's adb answers on the default port.
-        if (o.serverLaunchFailures >= policy_.adbLaunchFailuresToName) { *raised = D::AdbCannotStart; return A::WaitForUser; }
+        // The sentence stands and the start is tried again at the ceiling
+        // spacing, uncharged (nothing was handed over): nothing else starts
+        // a private server beside an answering default, so without this the
+        // sentence would outlast its cause (the user allowing adb.exe, or
+        // security software releasing it) until OkuFlow is restarted.
+        if (o.serverLaunchFailures >= policy_.adbLaunchFailuresToName) {
+            *raised = D::AdbCannotStart;
+            if (!shadow_.Allowed(nowMs)) return A::WaitForUser;
+            Reserve(shadow_, nowMs, policy_.restartCeilingMs, policy_.restartCeilingMs);
+            return A::StartShadowServer;
+        }
         if (handOvers_ >= policy_.handOverCap) { *raised = D::OtherProgramHoldsPhone; return A::WaitForUser; }
         if (!shadow_.Allowed(nowMs)) return A::Relist;
         Reserve(shadow_, nowMs, policy_.restartRetryMs, policy_.restartCeilingMs);
@@ -585,13 +595,19 @@ PhoneLinkDecision PhoneLinkDoctor::Decide(const PhoneLinkObservation& observatio
     hostKillSent_ = false;
     PhoneLinkDiagnosis raised = decision.diagnosis;
     // A flapping cable: a quiet period ends the verdict; while it stands,
-    // every state but a working link names the cable and no rung runs
-    // (probing goes on at the user-wait cadence).
+    // a phone the server does not reach names the cable and no rung runs
+    // (probing goes on at the user-wait cadence). A phone that is listed
+    // ready or unauthorized is reached at this moment: its own ladder and
+    // its own sentence apply (tap Allow, resume streaming, install the app).
+    // The re-plug sentence over those would send a user who re-plugged a
+    // few times in a row back to the cable, each re-plug renewing the
+    // verdict, while the phone waits for an answer on its screen.
     if (flapping_ && lastRemovalMs_ >= 0 && nowMs - lastRemovalMs_ >= policy_.flapQuietMs) {
         flapping_ = false;
         removalCount_ = 0;
     }
-    if (flapping_ && decision.diagnosis != D::Connected && decision.diagnosis != D::NotWanted &&
+    const bool reached = o.phoneState == PhoneAdbState::Device || o.phoneState == PhoneAdbState::Unauthorized;
+    if (flapping_ && !reached && decision.diagnosis != D::Connected && decision.diagnosis != D::NotWanted &&
         decision.diagnosis != D::EndpointUnsupported && decision.diagnosis != D::RestartRequired) {
         raised = D::ReplugCable;
         decision.action = PhoneLinkAction::WaitForUser;

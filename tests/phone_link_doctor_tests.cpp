@@ -1189,11 +1189,39 @@ private slots:
             const auto decision = doctor.Decide(blind, doctor.Policy().blindGraceMs);
             if (failures < doctor.Policy().adbLaunchFailuresToName) {
                 QCOMPARE(int(decision.action), int(A::StartShadowServer));
+                QVERIFY(decision.diagnosis != D::AdbCannotStart);
             } else {
                 QCOMPARE(int(decision.diagnosis), int(D::AdbCannotStart));
-                QCOMPARE(int(decision.action), int(A::WaitForUser));
             }
         }
+    }
+    void adbThatCannotStartBesideADefaultIsTriedAgain()
+    {
+        // After council round 8's fixes: nothing but this rung starts a
+        // private server beside an answering default. With the sentence up
+        // the start is tried again at the ceiling spacing, uncharged, so the
+        // sentence ends once adb.exe can start (it stood until OkuFlow was
+        // restarted), and it never turns into the other-program sentence.
+        PhoneLinkDoctor doctor;
+        const auto policy = doctor.Policy();
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto blind = Blind(PhoneServerKind::BorrowedDefault);
+        blind.serverLaunchFailures = policy.adbLaunchFailuresToName;
+        std::vector<std::int64_t> starts;
+        QCOMPARE(int(doctor.Decide(blind, 0).action), int(A::Relist)); // The blind grace runs first.
+        const std::int64_t until = policy.blindGraceMs + (policy.handOverCap + 3) * policy.restartCeilingMs;
+        for (std::int64_t now = policy.blindGraceMs; now <= until; now += 1000) {
+            const auto decision = doctor.Decide(blind, now);
+            QCOMPARE(int(decision.diagnosis), int(D::AdbCannotStart));
+            QVERIFY(decision.action == A::StartShadowServer || decision.action == A::WaitForUser);
+            QCOMPARE_MS(decision.nextPollMs - now, policy.userWaitPollMs);
+            if (decision.action == A::StartShadowServer) starts.push_back(now);
+        }
+        QVERIFY2(int(starts.size()) > policy.handOverCap, "The start beside the default must be tried again past the hand-over cap.");
+        for (size_t i = 1; i < starts.size(); ++i) QCOMPARE_MS(starts[i] - starts[i - 1], policy.restartCeilingMs);
+        // OkuFlow's adb answers again: the ordinary rung, the sentence gone.
+        blind.serverLaunchFailures = 0;
+        QVERIFY(doctor.Decide(blind, until + policy.restartCeilingMs).diagnosis != D::AdbCannotStart);
     }
     void terminationCapKeepsTheSentenceWithoutAConfirmation()
     {
@@ -1297,6 +1325,16 @@ private slots:
             QCOMPARE(int(decision.diagnosis), int(D::ReplugCable));
             QCOMPARE(int(decision.action), int(A::WaitForUser));
         }
+        // A phone the server reaches at this moment keeps its own sentence
+        // and ladder: the cable verdict does not hide what the phone waits
+        // for (it sent a user who re-plugged a few times back to the cable).
+        const auto unauthorized = With([](auto& o) {
+            o.phoneState = PhoneAdbState::Unauthorized;
+            o.adbd = PhoneAdbdHealth::Unknown; o.companion = PhoneCompanionProbe::Unknown;
+        });
+        QCOMPARE(int(doctor.Decide(unauthorized, now).diagnosis), int(D::Unauthorized));
+        QCOMPARE(int(doctor.Decide(Problem("paused"), now).diagnosis), int(D::CompanionPaused));
+        QCOMPARE(int(doctor.Decide(blind, now).diagnosis), int(D::ReplugCable));
         // A quiet period ends it.
         QVERIFY(doctor.Decide(blind, now + policy.flapQuietMs).diagnosis != D::ReplugCable);
         // A manual pick ends it at once.

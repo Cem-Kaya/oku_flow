@@ -228,7 +228,13 @@ spacing of a rung grows with its reservations, not with the attempts a
 give-back lowered, so given-back attempts still reach the ceiling. Resume
 signals within 5 s of the last applied resume are one event; four device
 removals within 60 s name the cable (re-plug sentence) until the link holds,
-30 s pass without a removal, or a manual pick or resume starts over. Once the
+30 s pass without a removal, or a manual pick or resume starts over; a phone
+that is listed ready or unauthorized at that moment keeps its own ladder and
+sentence (tap Allow, resume streaming), so repeated re-plugs by the user never
+hide what the phone waits for. While the sentence for OkuFlow's own adb that
+cannot start stands beside an answering default, the start beside it is tried
+again at the restart ceiling, uncharged: nothing else starts a private server
+there, and the sentence ends once adb.exe can start. Once the
 terminations of a hung default are spent, the other-program sentence stands
 also while a respawned default is not confirmed yet.
 

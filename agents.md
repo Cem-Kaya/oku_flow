@@ -511,7 +511,13 @@ aligned with the project goals.
   the companion launch. Measure a live session by frames the capture
   delivered, never by frames presented (a media view, a minimized or covered
   window presents nothing). Events need storm limits: coalesce one wake's
-  resume signals, and name a cable that keeps dropping. Listener lookups use
+  resume signals, and name a cable that keeps dropping, but never over a
+  phone the server reaches at that moment (its own sentence is the one the
+  user needs, and a user who re-plugs a few times must not be sent back to
+  the cable). A sentence that waits for the user still needs something that
+  tries again: the doctor's start beside an answering default is retried at
+  the ceiling while "adb cannot start" stands, because no other code starts
+  that server. Listener lookups use
   the any-address row when no loopback row exists, under the same identity
   proof. Never bind a test listener to every address (a firewall prompt on
   the owner's desktop): the listener-row seam rewrites rows instead.

@@ -1150,7 +1150,10 @@ never bind every address, which would show a firewall prompt),
 now requires the AdbCannotStart end instead of endless recovery. Doctor rows
 cover the owned listing rung, the AdbCannotStart end beside a default, the
 termination cap without a confirmation, the reservation spacing, resume
-coalescing, the flapping cable and the standing re-plug sentence;
+coalescing, the flapping cable (not over a phone that is listed ready or
+unauthorized), the start beside an answering default tried again while
+"adb cannot start" stands (`adbThatCannotStartBesideADefaultIsTriedAgain`)
+and the standing re-plug sentence;
 `abortedStopsOfOneRungDoNotEndTheOther` waits the ceiling (changed
 deliberately: given-back attempts keep their spacing). Native slots
 `resumeKeepsAPhoneThatDeliversWithoutPresenting` and
