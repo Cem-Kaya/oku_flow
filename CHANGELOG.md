@@ -58,6 +58,11 @@
   closes. A request to exit that was never sent is no longer followed by
   stopping the tool, and a phone whose shell answers with a Windows line ending
   counts as answering.
+- Choosing a camera while a recording runs no longer pauses USB phone recovery
+  until the recording ends. An Android tool that was slow to answer and then
+  recovered is still asked to give up the phone instead of being named at once,
+  and OkuFlow no longer starts its own USB connection beside a tool on the
+  default port that no check has examined.
 
 - Clarify the public Android privacy policy: OkuFlow Camera is an accessibility-focused
   USB companion, normal viewing does not upload camera images to the developer,
