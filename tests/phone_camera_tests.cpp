@@ -2616,6 +2616,47 @@ private slots:
         // the same hand-back, no host:kill, nothing stopped.
         recoveredStallIsHandedBack(true);
     }
+    void stalledPhoneThatRecoversBeforeTheTerminationIsHandedBack() {
+        // Iteration 6 (8): the re-check on the termination path. The shell
+        // is still silent at the ask, so host:kill goes out and is ignored;
+        // it answers by the time the termination runs. The termination is
+        // aborted before any byte ("the phone answers"), the server keeps
+        // running and USB goes back to it.
+        DefaultAdbFixture other({});
+        other.child.reset();
+        const QString stall = other.File(QStringLiteral("stall"));
+        const QString kills = other.File(QStringLiteral("kills.log"));
+        { QFile file(stall); QVERIFY(file.open(QIODevice::WriteOnly)); }
+        other.flags = {L"--fixture-device", L"--fixture-stalled-shell-file", stall.toStdWString(),
+                       L"--fixture-kill-log", kills.toStdWString()};
+        QVERIFY(other.copied && other.Start());
+        auto stops = std::make_shared<std::atomic<int>>(0);
+        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {},
+                              5000, [stall, stops](okuflow::PhoneAdbTestHooks& h) {
+            // The first stop step is the ask; the shell recovers before the next.
+            h.beforeDefaultStopForTest = [stall, stops] { if (stops->fetch_add(1) == 1) QFile::remove(stall); };
+        });
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        auto reports = LinkCycles(80, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::TerminateDefaultServer; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::TerminateDefaultServer));
+        QCOMPARE(QString::fromStdString(reports.back().actionResult),
+                 QStringLiteral("kept: the phone answers on the default server now"));
+        const auto asked = std::find_if(reports.begin(), reports.end(), [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::AskDefaultServerToExit; });
+        QVERIFY(asked != reports.end());
+        QVERIFY2(asked->actionResult.find("outlived host:kill") != std::string::npos, asked->actionResult.c_str());
+        reports = LinkCycles(40, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::HandBackToDefault; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::HandBackToDefault));
+        QVERIFY(!Saw(reports, okuflow::PhoneLinkAction::TerminateDefaultServer));
+        QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
+        QTest::qWait(300);
+        QVERIFY(!other.Exited());
+        QFile log(kills);
+        QVERIFY(log.open(QIODevice::ReadOnly));
+        QCOMPARE(log.readAll().count('\n'), 1); // Only the ask's host:kill; the termination sent nothing.
+    }
     void keptAskIsNotFollowedByATermination() {
         // Iteration 6 (2): the stalled phone's shell answers at the ask, so
         // no host:kill is sent, and the next listing misses the phone for a

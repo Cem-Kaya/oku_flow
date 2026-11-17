@@ -1096,6 +1096,10 @@ neither followed by a termination nor counted as an ask.
 `stalledPhoneThatRecoversWithACrlfReplyIsHandedBack` runs the iteration 5
 recovery row with `--fixture-shell-crlf` (the echo ends with CR LF): any reply
 to the stall re-check is an answer.
+`stalledPhoneThatRecoversBeforeTheTerminationIsHandedBack` covers the same
+re-check on the termination path: the shell is silent at the ask (host:kill is
+sent and ignored) and answers when the termination runs; it is aborted, the
+server keeps running and USB is handed back.
 `deadPrivateServerThatYieldsToTheDefaultClearsTheShadow` (the private server
 beside a hung default dies, the default recovers with an empty listing: Listed,
 not "own server recovering", and a new hang meets a private server at once),
