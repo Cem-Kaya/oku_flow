@@ -346,10 +346,9 @@ reset. The phone-link trace uses fixed tokens for known companion problem codes
 and records unfamiliar codes as `unknown`. Wake and both activity commands
 use serial selection when the listing shows a unique serial. With duplicate
 serials, wake and launch use the ready transport ID chosen for that attempt.
-When several ready USB entries share a serial, startup prefers the selected
-ID if it still appears in the current server epoch and otherwise uses the
-first ready entry. A second ready transport with the same serial vetoes a
-stop of the shared default.
+Known limitation: when several ready USB entries report one serial, a camera
+session uses the first ready entry, whichever was picked. A second ready
+transport with the same serial vetoes a stop of the shared default.
 The discovery ladder checks source authority at the shell write, after
 transport selection. After writing the activity request, the same session
 start retries the control connection at its existing pace even if adb never

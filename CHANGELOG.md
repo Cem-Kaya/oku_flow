@@ -8,8 +8,6 @@
   blind default. An ID-less offline phone on a borrowed default gets time to
   recover before OkuFlow starts a private server.
 - Wake and launch handle duplicate serials after USB re-enumeration.
-  A camera session uses the selected ready transport while its server epoch
-  is current.
   A second ready transport also keeps a shared server from being stopped.
   Changing source during transport selection cancels the shell command.
   Camera startup keeps retrying the companion connection after a prompt

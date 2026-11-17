@@ -3398,17 +3398,7 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
             for (;;) {
                 attached = ListUsbPhones(&canceled_, &entries);
                 selected = std::find_if(attached.begin(), attached.end(), [&](const auto& item) { return item.phoneSerial == descriptor.phoneSerial; });
-                if (selected != attached.end()) {
-                    if (descriptor.phoneTransportId && descriptor.phoneServerEpoch &&
-                        selected->phoneServerEpoch == descriptor.phoneServerEpoch) {
-                        const auto exact = std::find_if(selected, attached.end(), [&](const auto& item) {
-                            return item.phoneSerial == descriptor.phoneSerial &&
-                                item.phoneTransportId == descriptor.phoneTransportId;
-                        });
-                        if (exact != attached.end()) selected = exact;
-                    }
-                    break;
-                }
+                if (selected != attached.end()) break;
                 const bool listed = std::any_of(entries.begin(), entries.end(), [&](const auto& entry) {
                     return entry.usb && entry.serial == descriptor.phoneSerial;
                 });

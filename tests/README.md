@@ -1199,9 +1199,9 @@ an old ID. `ladderLaunchOnReadableBorrowedDefault` checks one discovery
 listing. `ladderLaunchUsesTheReadyDuplicateTransport` and
 `sessionLaunchKeepsTheExistingAdbRequests` cover both duplicate orders,
 one wake and one launch by ID, and the unique-serial request sequence.
-The session rows also assert control, video, wake and launch on the selected
-ID for two ready entries in either order, with first-ready fallback when the
-ID disappears or the server epoch changes on resume.
+The session rows also pin the known limitation for two ready entries with one
+serial: control, video, wake and launch go to the first ready entry in either
+listing order, whichever entry the descriptor named.
 The ladder also keeps each ready transport's companion status separate.
 `anotherReadyTransportWithTheSameSerialVetoesDefaultStop` adds a ready
 duplicate at the pre-stop listing of an otherwise stoppable fixture child. `sourceChangeDuringSelectionDropsTheShellWrite` advances

@@ -2031,10 +2031,9 @@ so metadata generation cannot silently accept an incomplete copy.
   `AllowAppLaunch` (a manual camera pick) renews it. `SelectUsbEntry` prefers a
   ready row for the target serial. `LaunchCompanion` selects a unique serial
   directly and uses the selected ID for duplicate serials in the current
-  listing. `QueueInitialCameraStart` copies the transport ID and server epoch
-  into its worker descriptor. `PhoneCameraTransport::Run` prefers that ID
-  among ready USB entries of the same serial and server epoch. If the ID has
-  disappeared or the epoch has changed, it uses the first ready match.
+  listing. `PhoneCameraTransport::Run` takes the first ready USB entry with
+  the descriptor's serial and adopts its transport ID, so two ready phones
+  that report one serial are not told apart (known limitation).
   `OtherDeviceServed` also protects a second ready transport with
   the same serial. The ladder passes `stillWanted` through `Transport` to the
   service write after adb acknowledges transport selection. A refused shell

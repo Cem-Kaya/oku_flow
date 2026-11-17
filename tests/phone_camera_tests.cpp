@@ -5363,23 +5363,19 @@ private slots:
     void sessionLaunchKeepsTheExistingAdbRequests_data() {
         QTest::addColumn<int>("duplicate");
         QTest::addColumn<bool>("slow");
-        QTest::addColumn<bool>("removeSelection");
-        QTest::addColumn<bool>("resume");
         QTest::addColumn<int>("expectedId");
-        QTest::newRow("unique serial") << 0 << false << false << false << 9;
-        QTest::newRow("offline first") << 1 << false << false << false << 9;
-        QTest::newRow("offline last") << 2 << false << false << false << 9;
-        QTest::newRow("activity reply crosses the connection window") << 0 << true << false << false << 9;
-        QTest::newRow("select ID 10 listed second") << 3 << false << false << false << 10;
-        QTest::newRow("select ID 9 listed second") << 4 << false << false << false << 9;
-        QTest::newRow("selected ID no longer listed") << 4 << false << true << false << 10;
-        QTest::newRow("selected ID from before resume") << 3 << false << false << true << 9;
+        QTest::newRow("unique serial") << 0 << false << 9;
+        QTest::newRow("offline first") << 1 << false << 9;
+        QTest::newRow("offline last") << 2 << false << 9;
+        QTest::newRow("activity reply crosses the connection window") << 0 << true << 9;
+        // Two ready phones that report one serial cannot be told apart
+        // across adb servers: the session uses the first ready entry.
+        QTest::newRow("two ready, ID 9 listed first") << 3 << false << 9;
+        QTest::newRow("two ready, ID 10 listed first") << 4 << false << 10;
     }
     void sessionLaunchKeepsTheExistingAdbRequests() {
         QFETCH(int, duplicate);
         QFETCH(bool, slow);
-        QFETCH(bool, removeSelection);
-        QFETCH(bool, resume);
         QFETCH(int, expectedId);
         FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::Play,
                             FakePhoneAdb::RecoveryMode::Healthy, false);
@@ -5396,13 +5392,11 @@ private slots:
         QVERIFY(media.com && media.mf);
         auto descriptor = FixturePhone();
         if (duplicate >= 3) {
+            // Start from the entry listed second: the first ready one is used.
             const auto listed = okuflow::PhoneCameraTransport::Enumerate(descriptor.phoneSerial);
             QCOMPARE(listed.size(), size_t{2});
             descriptor = listed.back();
             QCOMPARE(descriptor.phoneTransportId, duplicate == 3 ? 10ULL : 9ULL);
-            QVERIFY(descriptor.phoneServerEpoch != 0);
-            if (removeSelection) server.transportId.store(11);
-            if (resume) okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::Resume);
         }
         const auto beforeStart = server.Services().size();
         okuflow::PhoneCameraTransport transport;
