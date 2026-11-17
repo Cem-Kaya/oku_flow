@@ -406,7 +406,8 @@ public:
     static void CancelReconnect(OkuFlowApp& app) {app.pipelineOrchestrator_->CancelCameraReconnect();}
     static int ReconnectAttempts(OkuFlowApp& app) {return app.pipelineOrchestrator_->CameraReconnectAttempt();}
     static bool CameraPending(OkuFlowApp& app) {
-        return app.cameraStartupPending_ || app.cameraStopPending_ || app.startupWorkers_->active.load()!=0;
+        return app.cameraStartupPending_ || app.cameraStopPending_ || app.pendingCameraStart_.has_value() ||
+            app.startupWorkers_->active.load()!=0;
     }
     // What keeps CameraPending true (printed when a pending check fails).
     static QByteArray CameraPendingDump(OkuFlowApp& app) {
@@ -423,6 +424,24 @@ public:
         return QByteArray::fromStdString(text);
     }
     static bool PhoneDiscoveryInFlight(const OkuFlowApp& app) {return app.phoneDiscovery_.valid();}
+    static PhoneDiscoveryStatus LastPhoneDiscoveryStatus(const OkuFlowApp& app) {return app.phoneDiscoveryStatus_;}
+    // A start with manual origin while a recording session exists, as the
+    // format picker makes it (it does not stop the recording): the start is
+    // only queued (pendingCameraStart_) until the recording ends.
+    static bool ManualStartWhileRecording(OkuFlowApp& app,size_t index) {
+        return app.StartCameraCapture(index,true,false,false,agent::CameraSourceOrigin::Manual);
+    }
+    // One discovery poll with the cadence due. The fixture's adb hooks (a
+    // closed private port) keep a dispatched Enumerate off any real adb.
+    static void PollDueDiscovery(OkuFlowApp& app) {
+        app.phoneDiscoveryTimer_.invalidate();
+        const bool initialized=app.initialized_; app.initialized_=true;
+        app.PollPhoneCameraDiscovery(); app.initialized_=initialized;
+    }
+    static void PollDiscovery(OkuFlowApp& app) {
+        const bool initialized=app.initialized_; app.initialized_=true;
+        app.PollPhoneCameraDiscovery(); app.initialized_=initialized;
+    }
     // Leaves no camera or phone-link state of one slot to the next: work in
     // flight is drained first (a queued start dropped, a running camera
     // stopped and its stop finished, a dispatched discovery waited for),
@@ -2532,6 +2551,33 @@ private slots:
         QCOMPARE(calls->load(),2);
         QVERIFY(NativeControlFixture::PhoneIntentRetained(app_));
         QCOMPARE(NativeControlFixture::QuickModeSettings(app_).cameraSymbolicLink,QStringLiteral("okuflow-phone:fixture-only"));
+    }
+    void discoveryKeepsRunningWhileAPickWaitsForARecording() {
+        // Iteration 7 (1): a manual start while a recording is open is only
+        // queued until the recording ends, which can be a whole lecture.
+        // Discovery (and with it the phone link ladder) keeps running
+        // meanwhile: a new discovery is dispatched and its result consumed.
+        auto calls=std::make_shared<std::atomic<int>>(0);
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::ResetCameraFixture(app_); // Drops the queued start first.
+            NativeControlFixture::CleanupVideoRecording(app_);
+            QVERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
+        });
+        NativeControlFixture::SeedPhoneSources(app_,[calls](const std::atomic<bool>&) {++*calls;return true;});
+        const auto session=NativeControlFixture::StartSilentVideoRecording(app_);
+        QVERIFY(session);
+        QVERIFY(NativeControlFixture::ManualStartWhileRecording(app_,1));
+        // The start waits for the recording (CameraPending counts a queued start).
+        QVERIFY2(NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
+        QVERIFY(!NativeControlFixture::PhoneDiscoveryInFlight(app_));
+        QCOMPARE(NativeControlFixture::LastPhoneDiscoveryStatus(app_),PhoneDiscoveryStatus::Unknown);
+        NativeControlFixture::PollDueDiscovery(app_);
+        QVERIFY2(NativeControlFixture::PhoneDiscoveryInFlight(app_),NativeControlFixture::CameraPendingDump(app_).constData());
+        QTRY_VERIFY((NativeControlFixture::PollDiscovery(app_),
+                     NativeControlFixture::LastPhoneDiscoveryStatus(app_)!=PhoneDiscoveryStatus::Unknown));
+        QVERIFY(NativeControlFixture::Recording(app_).has_value());
+        QVERIFY(NativeControlFixture::CameraPending(app_)); // Still queued behind the recording.
+        QCOMPARE(calls->load(),0);
     }
     void automaticDiscoveryWaitsForAReadyPhone() {
         // Iteration 4 (A6): with no camera running, a saved phone whose

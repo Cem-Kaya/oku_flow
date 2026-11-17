@@ -1125,6 +1125,12 @@ pre-checks. The native slot `phoneSentenceIsShownAndSpokenForEveryDiagnosis`
 also checks that the notification is announced once across later label
 refreshes (its announcement time does not change after the live region's 5 s
 duplicate window).
+Iteration 7 rows: the native slot
+`discoveryKeepsRunningWhileAPickWaitsForARecording` starts a camera with
+manual origin while a recording is open (the start is only queued until the
+recording ends) and requires a new discovery to be dispatched and its result
+consumed meanwhile. The fixture's `CameraPending` now also counts a queued
+start (`pendingCameraStart_`), as `CameraPendingDump` already printed it.
 `phone_link_text` (headless) checks one sentence per diagnosis and that every
 sentence is translated in all 24 catalogs. The native slot
 `phoneSentenceIsShownAndSpokenForEveryDiagnosis` delivers every verdict

@@ -1763,12 +1763,18 @@ so metadata generation cannot silently accept an incomplete copy.
   phone readiness before replacing a working camera. With no working source,
   a saved attached phone can be retried before its listener starts.
 - `OkuFlowApp.PollPhoneCameraDiscovery` consumes an asynchronous USB snapshot
-  every five seconds, reconciles by stable identity, and rebuilds the picker
+  at the cadence the link doctor names (`PhoneLinkDecision::nextPollMs`: at
+  once after a link event, about one second apart at first, backing off to
+  at most ten seconds; five seconds when no verdict came back), reconciles by
+  stable identity, and rebuilds the picker
   only when visible names/identities change. A running phone is never probed;
   a starting phone is excluded inside the transport. No new discovery is
   dispatched while a camera start is in flight, also one queued behind the
-  previous camera's stop (`pendingCameraStart_`): its result could not start
-  anything and its link ladder could act on the phone about to start. Recording permits only
+  previous camera's stop while that stop runs (`pendingCameraStart_` with
+  `cameraStopPending_`): its result could not start anything and its link
+  ladder could act on the phone about to start. A start that only waits for
+  a recording to end (a manual pick while recording) does not hold discovery
+  back. Recording permits only
   recovery of the same source, without switching to a fallback.
 - `StartCameraCapture` always dispatches phone startup off the UI thread.
   `StartFallbackCamera` restores a temporary webcam after phone startup/loss;
