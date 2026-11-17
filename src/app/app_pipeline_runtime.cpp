@@ -373,9 +373,16 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
         recoverySerial = phoneIntent.mid(phonePrefix.size()).section('/', 0, 0).toStdString();
     phoneDiscoveryTimer_.start();
     phoneDiscoveryIntentGeneration_ = cameraIntent_.Requested().generation;
-    const PhoneLinkRequest linkRequest{permitPhone && phoneIntent.startsWith(phonePrefix),
-                                       mediaCapture_.WasAbandoned(),
-                                       !connectedSerial.empty() && cameraFramePresented_};
+    PhoneLinkRequest linkRequest;
+    linkRequest.phoneWanted = permitPhone && phoneIntent.startsWith(phonePrefix);
+    // First start in automatic mode (no saved phone, no explicit webcam):
+    // an attached Windows ADB interface counts as wanting the phone, so the
+    // ladder runs before any re-plug or manual pick.
+    linkRequest.phoneWantedIfAttached = !temporarySource && automaticPhoneSelectionAllowed_ && phoneIntent.isEmpty();
+    linkRequest.captureAbandoned = mediaCapture_.WasAbandoned();
+    linkRequest.sessionStreaming = !connectedSerial.empty() && cameraFramePresented_;
+    // The phone of the selected session, also before its first frame.
+    linkRequest.targetSerial = !connectedSerial.empty() ? connectedSerial : recoverySerial;
     auto linkReport = std::make_shared<PhoneLinkReport>();
     phoneLinkPending_ = linkReport;
     try {

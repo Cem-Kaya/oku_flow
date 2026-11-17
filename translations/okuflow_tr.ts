@@ -3766,8 +3766,20 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
         <translation>Telefonu USB ile bağlayın, ardından telefonda Dosya aktarımı seçeneğini seçin ve USB hata ayıklamasını açın.</translation>
     </message>
     <message>
-        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
-        <translation>Telefonunuzun kilidini açın ve USB hata ayıklama sorusunda İzin ver'e dokunun.</translation>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>Telefonunuzun kilidini açın ve USB hata ayıklama sorusunda İzin ver'e dokunun. Soru görünmezse USB kablosunu çıkarıp yeniden takın.</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>OkuFlow Kamera telefonda yanıt vermiyor. Uygulamayı telefonda kapatıp yeniden açın.</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>Telefonun USB kablosunu çıkarıp yeniden takın.</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow, telefonla USB bağlantısını başlatamıyor. OkuFlow'u yeniden yükleyin veya virüsten koruma programınızda ona izin verin.</translation>
     </message>
     <message>
         <source>Unlock your phone.</source>

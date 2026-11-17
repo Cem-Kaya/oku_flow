@@ -3766,8 +3766,20 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <translation>휴대폰을 USB로 연결한 다음 휴대폰에서 파일 전송을 선택하고 USB 디버깅을 켜세요.</translation>
     </message>
     <message>
-        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
-        <translation>휴대폰 잠금을 해제하고 USB 디버깅 확인 창에서 허용을 탭하세요.</translation>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>휴대폰 잠금을 해제하고 USB 디버깅 확인 창에서 허용을 탭하세요. 확인 창이 나타나지 않으면 USB 케이블을 뽑았다가 다시 연결하세요.</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>휴대폰에서 OkuFlow 카메라가 응답하지 않습니다. 휴대폰에서 앱을 닫았다가 다시 여세요.</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>휴대폰의 USB 케이블을 뽑았다가 다시 연결하세요.</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow가 USB 휴대폰 연결을 시작할 수 없습니다. OkuFlow를 다시 설치하거나 백신 프로그램에서 허용하세요.</translation>
     </message>
     <message>
         <source>Unlock your phone.</source>

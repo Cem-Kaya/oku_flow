@@ -3766,8 +3766,20 @@ Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</
         <translation>Anslut telefonen med USB, välj sedan Filöverföring på telefonen och aktivera USB-felsökning.</translation>
     </message>
     <message>
-        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
-        <translation>Lås upp telefonen och tryck på Tillåt i frågan om USB-felsökning.</translation>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>Lås upp telefonen och tryck på Tillåt i frågan om USB-felsökning. Om ingen fråga visas drar du ur USB-kabeln och ansluter den igen.</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>OkuFlow Kamera svarar inte på telefonen. Stäng appen på telefonen och öppna den igen.</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>Dra ur telefonens USB-kabel och anslut den igen.</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow kan inte starta USB-anslutningen till telefonen. Installera om OkuFlow eller tillåt det i ditt antivirusprogram.</translation>
     </message>
     <message>
         <source>Unlock your phone.</source>

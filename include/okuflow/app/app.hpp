@@ -570,6 +570,10 @@ private:
     void NotePhoneEvent(PhoneLinkEvent event);
     void OnPhoneDiscoveryPulse();
     PhoneLinkText PhoneLinkSentence() const;
+    // The phone is the wanted camera (saved/temporary phone intent, or the
+    // automatic first-run choice) and the status line must carry its
+    // sentence: no camera, or a fallback webcam showing meanwhile.
+    bool PhoneSentenceOwnsStatusLine() const;
     std::atomic<bool> phoneDiscoveryCanceled_{false};
     QElapsedTimer phoneDiscoveryTimer_;
     quint64 phoneDiscoveryIntentGeneration_{};

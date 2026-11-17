@@ -199,9 +199,22 @@ void OkuFlowApp::UpdateSpatialSharpenUi() {
 
 PhoneLinkText OkuFlowApp::PhoneLinkSentence() const {
     if (!phoneLinkKnown_) return {};
+    // An explicit webcam choice ends phone intent at once, before the next
+    // discovery cycle reports NotWanted.
+    const bool temporarySource = !cameraIntent_.TemporaryOwner().isEmpty();
+    if (temporarySource ? cameraIntent_.TemporaryPhoneIntent().isEmpty() : !automaticPhoneSelectionAllowed_) return {};
     const bool userMustAct = PhoneLinkWaitsForUser(phoneLinkDecision_.diagnosis) ||
         phoneLinkDecision_.action == PhoneLinkAction::WaitForUser;
     return PhoneLinkPlaceholderText(phoneLinkDecision_.diagnosis, userMustAct);
+}
+
+bool OkuFlowApp::PhoneSentenceOwnsStatusLine() const {
+    if (PhoneLinkSentence().title.isEmpty()) return false;
+    if (!cameraActive_) return true;
+    // A fallback webcam is showing while the phone is still wanted: the
+    // picture may stay, the instruction must not be hidden by it.
+    return selectedCameraIndex_ >= 0 && static_cast<size_t>(selectedCameraIndex_) < cameras_.size() &&
+           cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial.empty();
 }
 
 void OkuFlowApp::UpdateCameraPlaceholder() {
@@ -217,8 +230,7 @@ void OkuFlowApp::UpdateCameraPlaceholder() {
     QString detail;
     if (presenterFaultReported_) {
         title = QStringLiteral("GPU stopped responding. Restart OkuFlow to resume video.");
-    } else if (!cameraActive_ && !cameraStartupPending_ && !preferredPhoneCamera_.isEmpty() &&
-        automaticPhoneSelectionAllowed_ && !PhoneLinkSentence().title.isEmpty()) {
+    } else if (!cameraActive_ && !cameraStartupPending_ && !PhoneLinkSentence().title.isEmpty()) {
         // One plain sentence per diagnosis; reachable by screen readers
         // through the placeholder's live translation source.
         const auto sentence = PhoneLinkSentence();
@@ -303,6 +315,18 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
         text = QStringLiteral("Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.");
         detail = text;
         color = readyColor;
+    } else if (PhoneSentenceOwnsStatusLine()) {
+        // The phone sentence wins over the generic reconnect text and over
+        // a fallback webcam's pipeline summary. The instruction itself is
+        // shown and announced (translated by SetLiveText), never only a
+        // generic title with the instruction in a tooltip.
+        const auto sentence = PhoneLinkSentence();
+        const bool userMustAct = PhoneLinkWaitsForUser(phoneLinkDecision_.diagnosis) ||
+            phoneLinkDecision_.action == PhoneLinkAction::WaitForUser;
+        text = sentence.spoken;
+        detail = TranslateUi(sentence.detail.isEmpty() ? sentence.title : sentence.detail);
+        color = warningColor;
+        politeness = userMustAct ? LivePoliteness::kAssertive : LivePoliteness::kPolite;
     } else if (!cameraActive_ &&
         pipelineOrchestrator_->IsCameraReconnectPending()) {
         text = QStringLiteral("Reconnecting to camera…");
@@ -314,13 +338,6 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
         color = errorColor;
         politeness = LivePoliteness::kAssertive;
         if (automaticPhoneSelectionAllowed_ && !preferredPhoneCamera_.isEmpty() &&
-            !PhoneLinkSentence().title.isEmpty()) {
-            const auto sentence = PhoneLinkSentence();
-            text = sentence.title;
-            detail = sentence.detail.isEmpty() ? sentence.title : sentence.detail;
-            color = warningColor;
-            politeness = LivePoliteness::kPolite;
-        } else if (automaticPhoneSelectionAllowed_ && !preferredPhoneCamera_.isEmpty() &&
             (phoneDiscoveryStatus_ == PhoneDiscoveryStatus::OwnedServerRecovering ||
              phoneDiscoveryStatus_ == PhoneDiscoveryStatus::ServerUnresponsive)) {
             text = QStringLiteral("Restoring USB connection…");

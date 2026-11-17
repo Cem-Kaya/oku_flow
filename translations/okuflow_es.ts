@@ -3766,8 +3766,20 @@ Use «Connect ChatGPT» en la pestaña Asistente del modo avanzado para iniciar 
         <translation>Conecte el teléfono por USB y, en el teléfono, elija Transferencia de archivos y active la depuración USB.</translation>
     </message>
     <message>
-        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
-        <translation>Desbloquee el teléfono y toque Permitir en la pregunta sobre la depuración USB.</translation>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>Desbloquee el teléfono y toque Permitir en la pregunta sobre la depuración USB. Si no aparece ninguna pregunta, desconecte el cable USB y vuelva a conectarlo.</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>OkuFlow Cámara no responde en el teléfono. Ciérrela en el teléfono y vuelva a abrirla.</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>Desconecte el cable USB del teléfono y vuelva a conectarlo.</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow no puede iniciar la conexión USB con el teléfono. Vuelva a instalar OkuFlow o permítalo en su programa antivirus.</translation>
     </message>
     <message>
         <source>Unlock your phone.</source>

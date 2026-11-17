@@ -3766,8 +3766,20 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <translation>وصّل الهاتف عبر USB، ثم اختر نقل الملفات على الهاتف وشغّل تصحيح أخطاء USB.</translation>
     </message>
     <message>
-        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
-        <translation>افتح قفل هاتفك واضغط على «سماح» في سؤال تصحيح أخطاء USB.</translation>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>افتح قفل هاتفك واضغط على «سماح» في سؤال تصحيح أخطاء USB. إذا لم يظهر السؤال، افصل كابل USB ثم أعد توصيله.</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>تطبيق كاميرا OkuFlow لا يستجيب على الهاتف. أغلقه على الهاتف ثم افتحه مرة أخرى.</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>افصل كابل USB الخاص بالهاتف ثم أعد توصيله.</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>يتعذر على OkuFlow بدء اتصال الهاتف عبر USB. أعد تثبيت OkuFlow، أو اسمح له في برنامج مكافحة الفيروسات.</translation>
     </message>
     <message>
         <source>Unlock your phone.</source>

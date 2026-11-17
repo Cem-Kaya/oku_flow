@@ -3766,8 +3766,20 @@ Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u
         <translation>Sluit de telefoon aan via USB, kies daarna op de telefoon Bestandsoverdracht en zet USB-foutopsporing aan.</translation>
     </message>
     <message>
-        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
-        <translation>Ontgrendel je telefoon en tik op Toestaan bij de vraag over USB-foutopsporing.</translation>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>Ontgrendel je telefoon en tik op Toestaan bij de vraag over USB-foutopsporing. Verschijnt er geen vraag, koppel dan de USB-kabel los en sluit hem opnieuw aan.</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>OkuFlow Camera reageert niet op de telefoon. Sluit de app op de telefoon en open hem opnieuw.</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>Koppel de USB-kabel van de telefoon los en sluit hem opnieuw aan.</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow kan de USB-verbinding met de telefoon niet starten. Installeer OkuFlow opnieuw of sta het toe in je antivirusprogramma.</translation>
     </message>
     <message>
         <source>Unlock your phone.</source>

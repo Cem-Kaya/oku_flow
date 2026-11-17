@@ -3766,8 +3766,20 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <translation>スマートフォンを USB で接続し、スマートフォンで [ファイル転送] を選んで USB デバッグをオンにしてください。</translation>
     </message>
     <message>
-        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
-        <translation>スマートフォンのロックを解除し、USB デバッグの確認で [許可] をタップしてください。</translation>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>スマートフォンのロックを解除し、USB デバッグの確認で [許可] をタップしてください。確認が表示されない場合は、USB ケーブルを抜いてから挿し直してください。</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>スマートフォンの OkuFlow カメラが応答していません。スマートフォンでアプリを閉じて、もう一度開いてください。</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>スマートフォンの USB ケーブルを抜いてから挿し直してください。</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow がスマートフォンとの USB 接続を開始できません。OkuFlow を再インストールするか、ウイルス対策ソフトで許可してください。</translation>
     </message>
     <message>
         <source>Unlock your phone.</source>

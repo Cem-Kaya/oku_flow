@@ -3766,8 +3766,20 @@ Přihlaste se přes Connect ChatGPT na kartě Asistent v režimu Upřesnit.</tra
         <translation>Připojte telefon přes USB, potom v telefonu zvolte Přenos souborů a zapněte ladění USB.</translation>
     </message>
     <message>
-        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
-        <translation>Odemkněte telefon a v dotazu na ladění USB klepněte na Povolit.</translation>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>Odemkněte telefon a v dotazu na ladění USB klepněte na Povolit. Pokud se dotaz nezobrazí, odpojte kabel USB a znovu ho připojte.</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>Aplikace OkuFlow Fotoaparát v telefonu nereaguje. Zavřete ji v telefonu a znovu ji otevřete.</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>Odpojte kabel USB telefonu a znovu ho připojte.</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow nemůže spustit připojení telefonu přes USB. Přeinstalujte OkuFlow nebo ho povolte ve svém antivirovém programu.</translation>
     </message>
     <message>
         <source>Unlock your phone.</source>

@@ -3766,8 +3766,20 @@ Pilih Hubungkan ChatGPT di tab Asisten pada mode Tingkat Lanjut untuk masuk.</tr
         <translation>Sambungkan ponsel melalui USB, lalu di ponsel pilih Transfer file dan aktifkan USB debugging.</translation>
     </message>
     <message>
-        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
-        <translation>Buka kunci ponsel Anda dan ketuk Izinkan pada pertanyaan USB debugging.</translation>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>Buka kunci ponsel Anda dan ketuk Izinkan pada pertanyaan USB debugging. Jika pertanyaan tidak muncul, cabut kabel USB lalu colokkan kembali.</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>OkuFlow Kamera tidak merespons di ponsel. Tutup aplikasinya di ponsel lalu buka lagi.</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>Cabut kabel USB ponsel lalu colokkan kembali.</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow tidak dapat memulai koneksi USB ke ponsel. Instal ulang OkuFlow, atau izinkan di program antivirus Anda.</translation>
     </message>
     <message>
         <source>Unlock your phone.</source>

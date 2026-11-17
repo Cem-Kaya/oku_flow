@@ -57,7 +57,25 @@ private slots:
         QCOMPARE(PhoneLinkPlaceholderText(D::PhoneLocked, false).title, QStringLiteral("Restoring USB connection…"));
         QCOMPARE(PhoneLinkPlaceholderText(D::PhoneLocked, true).detail, QStringLiteral("Unlock your phone."));
         QCOMPARE(PhoneLinkPlaceholderText(D::Unauthorized, false).detail,
-                 QStringLiteral("Unlock your phone and tap Allow on the USB debugging question."));
+                 QStringLiteral("Unlock your phone and tap Allow on the USB debugging question. If no question "
+                                "appears, unplug the USB cable and plug it back in."));
+        // B3: the brief authorizing phase of a re-plug reads "Restoring".
+        QCOMPARE(PhoneLinkPlaceholderText(D::Authorizing, false).title, QStringLiteral("Restoring USB connection…"));
+        QCOMPARE(PhoneLinkPlaceholderText(D::Authorizing, true).detail,
+                 PhoneLinkPlaceholderText(D::Unauthorized, true).detail);
+        // B2: the status line speaks the instruction itself, not "Waiting for phone…".
+        for (int i = 0; i < kPhoneLinkDiagnosisCount; ++i) {
+            const auto text = PhoneLinkPlaceholderText(static_cast<D>(i), true);
+            if (text.title.isEmpty()) continue;
+            QVERIFY(text.spoken != QStringLiteral("Waiting for phone…"));
+            QVERIFY(text.spoken == text.title || text.spoken == text.detail);
+        }
+        QCOMPARE(PhoneLinkPlaceholderText(D::ReplugCable, true).spoken,
+                 QStringLiteral("Unplug the phone's USB cable and plug it back in."));
+        QCOMPARE(PhoneLinkPlaceholderText(D::OtherProgramHoldsPhone, true).spoken,
+                 PhoneLinkPlaceholderText(D::OtherProgramHoldsPhone, true).detail);
+        QCOMPARE(PhoneLinkPlaceholderText(D::NotListedByServer, false).spoken,
+                 QStringLiteral("Restoring USB connection…"));
         QCOMPARE(PhoneLinkPlaceholderText(D::CompanionPaused, false).detail,
                  QStringLiteral("On the phone, open OkuFlow Camera and tap Resume streaming."));
         QCOMPARE(PhoneLinkPlaceholderText(D::OtherProgramHoldsPhone, false).detail,
@@ -74,7 +92,7 @@ private slots:
             for (int i = 0; i < kPhoneLinkDiagnosisCount; ++i) {
                 for (const bool userMustAct : {false, true}) {
                     const auto text = PhoneLinkPlaceholderText(static_cast<D>(i), userMustAct);
-                    for (const auto& sentence : {text.title, text.detail}) {
+                    for (const auto& sentence : {text.title, text.detail, text.spoken}) {
                         if (sentence.isEmpty()) continue;
                         const auto found = catalog.find(sentence);
                         QVERIFY2(found != catalog.end(), qPrintable(name + QStringLiteral(": ") + sentence));

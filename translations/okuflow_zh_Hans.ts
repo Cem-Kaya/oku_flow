@@ -3766,8 +3766,20 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <translation>用 USB 连接手机，然后在手机上选择“文件传输”并打开 USB 调试。</translation>
     </message>
     <message>
-        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
-        <translation>解锁手机，并在 USB 调试提示中点按“允许”。</translation>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>解锁手机，并在 USB 调试提示中点按“允许”。如果没有出现提示，请拔下 USB 线后重新插上。</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>手机上的 OkuFlow 相机没有响应。请在手机上关闭它，然后重新打开。</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>请拔下手机的 USB 线，然后重新插上。</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow 无法启动 USB 手机连接。请重新安装 OkuFlow，或在杀毒软件中允许它。</translation>
     </message>
     <message>
         <source>Unlock your phone.</source>

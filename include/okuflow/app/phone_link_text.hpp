@@ -13,6 +13,9 @@ namespace okuflow {
 struct PhoneLinkText {
     QString title;
     QString detail;
+    // The one sentence the status line shows and screen readers announce:
+    // the instruction itself when the user must act, else the title.
+    QString spoken;
 };
 
 // userMustAct: the ladder has nothing left to try before the user acts

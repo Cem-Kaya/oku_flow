@@ -3766,8 +3766,20 @@ Wybierz „Połącz z ChatGPT” na karcie Asystent w trybie zaawansowanym, aby 
         <translation>Podłącz telefon przez USB, a następnie na telefonie wybierz Przesyłanie plików i włącz debugowanie USB.</translation>
     </message>
     <message>
-        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
-        <translation>Odblokuj telefon i w pytaniu o debugowanie USB dotknij Zezwól.</translation>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>Odblokuj telefon i w pytaniu o debugowanie USB dotknij Zezwól. Jeśli pytanie się nie pojawi, odłącz kabel USB i podłącz go ponownie.</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>Aplikacja OkuFlow Kamera nie odpowiada na telefonie. Zamknij ją na telefonie i otwórz ponownie.</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>Odłącz kabel USB telefonu i podłącz go ponownie.</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow nie może uruchomić połączenia USB z telefonem. Zainstaluj OkuFlow ponownie lub zezwól na niego w programie antywirusowym.</translation>
     </message>
     <message>
         <source>Unlock your phone.</source>

@@ -3766,8 +3766,20 @@ Utilisez Connect ChatGPT dans l'onglet Assistant avancé pour vous connecter.</t
         <translation>Branchez le téléphone en USB, puis choisissez Transfert de fichiers et activez le débogage USB sur le téléphone.</translation>
     </message>
     <message>
-        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
-        <translation>Déverrouillez votre téléphone et appuyez sur Autoriser dans la question sur le débogage USB.</translation>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>Déverrouillez votre téléphone et appuyez sur Autoriser dans la question sur le débogage USB. Si aucune question n’apparaît, débranchez le câble USB puis rebranchez-le.</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>OkuFlow Camera ne répond pas sur le téléphone. Fermez-la sur le téléphone, puis rouvrez-la.</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>Débranchez le câble USB du téléphone, puis rebranchez-le.</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow ne peut pas démarrer sa connexion USB avec le téléphone. Réinstallez OkuFlow ou autorisez-le dans votre antivirus.</translation>
     </message>
     <message>
         <source>Unlock your phone.</source>

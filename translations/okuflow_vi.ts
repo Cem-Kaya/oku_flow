@@ -3766,8 +3766,20 @@ Chọn Kết nối ChatGPT trong tab Trợ lý của chế độ Nâng cao để
         <translation>Kết nối điện thoại qua USB, sau đó chọn Truyền tệp trên điện thoại và bật gỡ lỗi USB.</translation>
     </message>
     <message>
-        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
-        <translation>Mở khóa điện thoại và nhấn Cho phép trong câu hỏi về gỡ lỗi USB.</translation>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>Mở khóa điện thoại và nhấn Cho phép trong câu hỏi về gỡ lỗi USB. Nếu không thấy câu hỏi, hãy rút cáp USB rồi cắm lại.</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>OkuFlow Máy ảnh không phản hồi trên điện thoại. Hãy đóng ứng dụng trên điện thoại rồi mở lại.</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>Rút cáp USB của điện thoại rồi cắm lại.</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow không thể bắt đầu kết nối USB với điện thoại. Hãy cài đặt lại OkuFlow hoặc cho phép ứng dụng trong chương trình diệt virus.</translation>
     </message>
     <message>
         <source>Unlock your phone.</source>

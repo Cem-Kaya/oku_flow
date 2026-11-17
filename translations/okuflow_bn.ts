@@ -3766,8 +3766,20 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <translation>ফোনটি USB দিয়ে সংযুক্ত করুন, তারপর ফোনে ফাইল ট্রান্সফার বেছে নিন এবং USB ডিবাগিং চালু করুন।</translation>
     </message>
     <message>
-        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
-        <translation>ফোন আনলক করুন এবং USB ডিবাগিংয়ের প্রশ্নে অনুমতি দিন-এ ট্যাপ করুন।</translation>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>ফোন আনলক করুন এবং USB ডিবাগিংয়ের প্রশ্নে অনুমতি দিন-এ ট্যাপ করুন। কোনো প্রশ্ন না দেখালে USB কেবলটি খুলে আবার লাগান।</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>ফোনে OkuFlow ক্যামেরা সাড়া দিচ্ছে না। ফোনে এটি বন্ধ করে আবার খুলুন।</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>ফোনের USB কেবলটি খুলে আবার লাগান।</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow তার USB ফোন সংযোগ শুরু করতে পারছে না। OkuFlow আবার ইনস্টল করুন, অথবা আপনার অ্যান্টিভাইরাস প্রোগ্রামে এটিকে অনুমতি দিন।</translation>
     </message>
     <message>
         <source>Unlock your phone.</source>
