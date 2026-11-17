@@ -621,6 +621,9 @@ aligned with the project goals.
   companion answered ready; the ladder wakes and launches the others. Every discovery result refreshes the status line (no
   frames refresh it while no camera runs); native tests deliver verdicts
   through `PollPhoneCameraDiscovery`, not by calling the label update.
+- Native fixture slots must not leak camera or phone-link state into the
+  next slot: `ResetCameraFixture` drains work in flight before it resets, and
+  the fixture's adb hooks keep any dispatched discovery off a real adb.
 - Nothing here was observed on a real failing laptop; report fixture evidence
   separately from real sleep/cable/phone acceptance.
 

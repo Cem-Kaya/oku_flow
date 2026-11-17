@@ -1765,7 +1765,10 @@ so metadata generation cannot silently accept an incomplete copy.
 - `OkuFlowApp.PollPhoneCameraDiscovery` consumes an asynchronous USB snapshot
   every five seconds, reconciles by stable identity, and rebuilds the picker
   only when visible names/identities change. A running phone is never probed;
-  a starting phone is excluded inside the transport. Recording permits only
+  a starting phone is excluded inside the transport. No new discovery is
+  dispatched while a camera start is in flight, also one queued behind the
+  previous camera's stop (`pendingCameraStart_`): its result could not start
+  anything and its link ladder could act on the phone about to start. Recording permits only
   recovery of the same source, without switching to a fallback.
 - `StartCameraCapture` always dispatches phone startup off the UI thread.
   `StartFallbackCamera` restores a temporary webcam after phone startup/loss;

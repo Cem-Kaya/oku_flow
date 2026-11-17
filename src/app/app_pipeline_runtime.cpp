@@ -377,7 +377,13 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
             qWarning() << "Background phone discovery failed:" << error.what();
         }
     }
-    if (cameraStartupPending_ || (phoneDiscoveryTimer_.isValid() &&
+    // No new discovery while a camera start is in flight, also one that
+    // waits for the previous camera to stop (pendingCameraStart_): its result
+    // could not start anything (see above), and its link ladder could
+    // restart the server or reset the transport of the phone about to
+    // start, which registers as occupied only once its start runs. Both are
+    // bounded (the stop by its 1.5 s budget, then the start).
+    if (cameraStartupPending_ || pendingCameraStart_ || (phoneDiscoveryTimer_.isValid() &&
                                   phoneDiscoveryTimer_.elapsed() < phoneDiscoveryIntervalMs_)) return;
     std::string connectedSerial;
     if (cameraActive_ && selectedCameraIndex_ >= 0 &&
