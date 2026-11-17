@@ -308,6 +308,7 @@ void OkuFlowApp::QueueInitialCameraStart(
     const std::string phoneSerial = descriptor.phoneSerial;
     const std::string phoneCameraId = descriptor.phoneCameraId;
     const auto phoneTransportId = descriptor.phoneTransportId;
+    const auto phoneServerEpoch = descriptor.phoneServerEpoch;
     cameraStartupPending_ = true;
     UpdateCameraPlaceholder();
     UpdateCameraAccelerationUi();
@@ -317,8 +318,8 @@ void OkuFlowApp::QueueInitialCameraStart(
     qInfo() << "Startup timing: camera worker dispatched" << startupTimer_.elapsed() << "ms";
     const auto startForTest = cameraStartForTest_;
     try {
-        std::thread([job, startForTest, name, symbolicLink, phoneSerial, phoneCameraId, phoneTransportId, requestedStableId,
-                     requestAcceleration, interactive, captureSession]() mutable {
+        std::thread([job, startForTest, name, symbolicLink, phoneSerial, phoneCameraId, phoneTransportId,
+                     phoneServerEpoch, requestedStableId, requestAcceleration, interactive, captureSession]() mutable {
             const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
             try {
                 ThrowIfFailed(apartment, "Initialize camera startup COM apartment");
@@ -328,6 +329,7 @@ void OkuFlowApp::QueueInitialCameraStart(
                 localDescriptor.phoneSerial = phoneSerial;
                 localDescriptor.phoneCameraId = phoneCameraId;
                 localDescriptor.phoneTransportId = phoneTransportId;
+                localDescriptor.phoneServerEpoch = phoneServerEpoch;
                 if (phoneSerial.empty() && !startForTest) {
                     Microsoft::WRL::ComPtr<IMFAttributes> attributes;
                     ThrowIfFailed(MFCreateAttributes(&attributes, 2), "Create camera attributes");

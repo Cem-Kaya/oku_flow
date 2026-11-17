@@ -8,10 +8,14 @@
   blind default. An ID-less offline phone on a borrowed default gets time to
   recover before OkuFlow starts a private server.
 - Wake and launch handle duplicate serials after USB re-enumeration.
+  A camera session uses the selected ready transport while its server epoch
+  is current.
   A second ready transport also keeps a shared server from being stopped.
   Changing source during transport selection cancels the shell command.
-  Camera startup keeps retrying the companion connection after it sends the
-  activity request, even if the launch status goes unanswered.
+  Camera startup keeps retrying the companion connection after a prompt
+  refusal, even if the launch status goes unanswered. A silent control open
+  leaves time for USB recovery, and an explicit adb refusal of the activity
+  request ends the attempt.
 - A phone link event cancels a pending stop of the shared server, including
   legacy bundle recovery. Repeated live-session vetoes reach the existing
   stop limit. If the phone remains unlisted after a bounded takeover, the

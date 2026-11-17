@@ -344,14 +344,19 @@ it. A successful request still needs subsequent discovery and decoded frames.
 Other adb clients using that same phone lose their transport during a targeted
 reset. The phone-link trace uses fixed tokens for known companion problem codes
 and records unfamiliar codes as `unknown`. Wake and both activity commands
-use serial selection when the listing shows a unique serial. If the serial
-appears twice, they select the ready entry by its transport ID. A second
-ready transport with the same serial vetoes a stop of the shared default.
+use serial selection when the listing shows a unique serial. With duplicate
+serials, wake and launch use the ready transport ID chosen for that attempt.
+When several ready USB entries share a serial, startup prefers the selected
+ID if it still appears in the current server epoch and otherwise uses the
+first ready entry. A second ready transport with the same serial vetoes a
+stop of the shared default.
 The discovery ladder checks source authority at the shell write, after
 transport selection. After writing the activity request, the same session
 start retries the control connection at its existing pace even if adb never
-returns the service status. Retries use the remaining startup budget up to its
-camera/decode reserve.
+returns the service status. An explicit adb refusal of the activity request
+ends startup. Prompt control refusals can use the remaining startup budget up
+to its camera/decode reserve. A timeout opening control returns to the ordinary
+connection window so stalled USB recovery can run before the startup deadline.
 
 A globally hung server cannot acknowledge this transport request. The automatic
 server recovery above handles OkuFlow-owned or proven legacy support and, under

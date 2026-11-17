@@ -2031,16 +2031,23 @@ so metadata generation cannot silently accept an incomplete copy.
   `AllowAppLaunch` (a manual camera pick) renews it. `SelectUsbEntry` prefers a
   ready row for the target serial. `LaunchCompanion` selects a unique serial
   directly and uses the selected ID for duplicate serials in the current
-  listing. `OtherDeviceServed` also protects a second ready transport with
+  listing. `QueueInitialCameraStart` copies the transport ID and server epoch
+  into its worker descriptor. `PhoneCameraTransport::Run` prefers that ID
+  among ready USB entries of the same serial and server epoch. If the ID has
+  disappeared or the epoch has changed, it uses the first ready match.
+  `OtherDeviceServed` also protects a second ready transport with
   the same serial. The ladder passes `stillWanted` through `Transport` to the
   service write after adb acknowledges transport selection. A refused shell
   write reports `Dropped`.
   `ControlHello` accepts a token-free `probe:true` ACK,
   supports older tokened ACKs and reads coded ERROR packets. Real hello and
   video binding share the connection window. `LaunchCompanion` can report
-  that `AdbRequest` wrote the activity service, even if the status read
-  fails. `PhoneCameraTransport::Run` then paces control retries using
-  `PhoneStartupBudget::Deadline() - DecodeReserve` as the cutoff.
+  that `AdbRequest` wrote the activity service even when its status is
+  withheld. An explicit `AdbFailReply` from launch ends the attempt.
+  `PhoneCameraTransport::Run` paces post-launch control retries up to
+  `PhoneStartupBudget::Deadline() - DecodeReserve`. A `UsbResponseTimeout`
+  before control opens limits retries to the ordinary connection window,
+  leaving time for `RecoverStalledUsbTransport`.
   `ownedServerExecutable` / `ownedServerArguments` opt into the private fake
   process fixture, with the hook port standing in for 5037. `OccupiedPhone`
   increments/decrements per-serial counts so overlapping sessions remain

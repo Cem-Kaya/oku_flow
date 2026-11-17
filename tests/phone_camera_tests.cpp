@@ -174,6 +174,7 @@ public:
     std::atomic<int> bufferedRequests{0};
     std::atomic<bool> releaseQueuedConnections{false};
     std::atomic<int> reconnects{0}, healthProbes{0};
+    std::atomic<std::int64_t> reconnectReceivedMs{0};
     std::atomic<std::uint64_t> transportId{9};
     std::atomic<bool> deviceStalled{false};
     std::atomic<bool> hostUnresponsive{false};
@@ -205,7 +206,9 @@ public:
     // Same transport ID, but the only USB phone is now "xyz".
     std::atomic<bool> replacementPhone{false};
     // Duplicate "abc" with ID 10, before or after the ready ID 9.
-    std::atomic<int> duplicateSerial{0}; // 1: offline first, 2: offline last, 3: second ready.
+    // 1: ID 10 offline first, 2: offline last, 3: ready last, 4: ready first.
+    std::atomic<int> duplicateSerial{0};
+    std::atomic<bool> duplicateCompanionInitiallyReady{false};
     void SetBeforeSerialSelectionReply(std::function<void()> callback) {
         std::lock_guard lock(launchMutex);
         beforeSerialSelectionReply = std::move(callback);
@@ -213,6 +216,7 @@ public:
     std::atomic<int> activityReplyDelayMs{0};
     std::atomic<int> listenerOpenDelayMs{0};
     std::atomic<bool> withholdActivityStatus{false}, listenerNeverOpens{false};
+    std::atomic<bool> refuseActivityRequest{false}, withholdControlStatusAfterLaunch{false};
     void SetOnHostKill(std::function<void()> callback) {
         std::lock_guard lock(launchMutex);
         onHostKill = std::move(callback);
@@ -337,6 +341,8 @@ private:
             return;
         }
         if (service == "host-transport-id:" + QByteArray::number(transportId.load()) + ":reconnect") {
+            reconnectReceivedMs.store(std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count());
             ++reconnects;
             if (recoveryMode == RecoveryMode::Unsupported) { Write(socket, "FAIL000bunsupported"); return; }
             if (reconnectFailsWithSerial.load()) { Write(socket, "FAIL0016device 'abc' not found"); return; }
@@ -367,9 +373,9 @@ private:
             const int duplicate = duplicateSerial.load();
             if (duplicate) {
                 QByteArray second(data, sizeof(data));
-                second[8] = duplicate == 3 ? 8 : 6;
+                second[8] = duplicate >= 3 ? 8 : 6;
                 second[12] = 10;
-                if (duplicate == 1) body.prepend(second);
+                if (duplicate == 1 || duplicate == 4) body.prepend(second);
                 else body.append(second);
             }
             if (listEmpty.load()) body.clear();
@@ -439,6 +445,7 @@ private:
         }
         if (next.startsWith("shell:am start")) {
             { std::lock_guard lock(launchMutex); launches.append(QString::fromUtf8(next)); }
+            if (refuseActivityRequest.load()) { Write(socket, "FAIL0007missing"); return; }
             const auto delay = activityReplyDelayMs.load();
             if (withholdActivityStatus) launchReadyAt = std::chrono::steady_clock::now();
             if (delay) std::this_thread::sleep_for(std::chrono::milliseconds(delay));
@@ -456,7 +463,11 @@ private:
             return;
         }
         if (next != "localabstract:okuflow_camera") return;
-        const bool otherReadyDuplicate = duplicateSerial.load() == 3 && service == "host:transport-id:10";
+        if (withholdControlStatusAfterLaunch.load() && launchReadyAt != std::chrono::steady_clock::time_point::max()) {
+            waitForClose();
+            return;
+        }
+        const bool otherReadyDuplicate = duplicateCompanionInitiallyReady.load() && service == "host:transport-id:10";
         if (companionRefuses.load() || (launchMode != LaunchMode::None &&
             std::chrono::steady_clock::now() < launchReadyAt && !otherReadyDuplicate)) {
             ++listenerRefusals;
@@ -2701,6 +2712,7 @@ private slots:
         FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::Play,
                             FakePhoneAdb::RecoveryMode::Healthy, false);
         server.duplicateSerial.store(duplicate);
+        server.duplicateCompanionInitiallyReady.store(duplicate == 3);
         ScopedLinkHooks hooks(server.port);
         const auto reports = LinkCycles(1, {}, "abc");
         QCOMPARE(reports.back().observation.phoneState, okuflow::PhoneAdbState::Device);
@@ -5351,14 +5363,24 @@ private slots:
     void sessionLaunchKeepsTheExistingAdbRequests_data() {
         QTest::addColumn<int>("duplicate");
         QTest::addColumn<bool>("slow");
-        QTest::newRow("unique serial") << 0 << false;
-        QTest::newRow("offline first") << 1 << false;
-        QTest::newRow("offline last") << 2 << false;
-        QTest::newRow("activity reply crosses the connection window") << 0 << true;
+        QTest::addColumn<bool>("removeSelection");
+        QTest::addColumn<bool>("resume");
+        QTest::addColumn<int>("expectedId");
+        QTest::newRow("unique serial") << 0 << false << false << false << 9;
+        QTest::newRow("offline first") << 1 << false << false << false << 9;
+        QTest::newRow("offline last") << 2 << false << false << false << 9;
+        QTest::newRow("activity reply crosses the connection window") << 0 << true << false << false << 9;
+        QTest::newRow("select ID 10 listed second") << 3 << false << false << false << 10;
+        QTest::newRow("select ID 9 listed second") << 4 << false << false << false << 9;
+        QTest::newRow("selected ID no longer listed") << 4 << false << true << false << 10;
+        QTest::newRow("selected ID from before resume") << 3 << false << false << true << 9;
     }
     void sessionLaunchKeepsTheExistingAdbRequests() {
         QFETCH(int, duplicate);
         QFETCH(bool, slow);
+        QFETCH(bool, removeSelection);
+        QFETCH(bool, resume);
+        QFETCH(int, expectedId);
         FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::Play,
                             FakePhoneAdb::RecoveryMode::Healthy, false);
         server.duplicateSerial.store(duplicate);
@@ -5372,12 +5394,23 @@ private slots:
         server.streaming.store(true);
         ScopedMediaFoundation media;
         QVERIFY(media.com && media.mf);
+        auto descriptor = FixturePhone();
+        if (duplicate >= 3) {
+            const auto listed = okuflow::PhoneCameraTransport::Enumerate(descriptor.phoneSerial);
+            QCOMPARE(listed.size(), size_t{2});
+            descriptor = listed.back();
+            QCOMPARE(descriptor.phoneTransportId, duplicate == 3 ? 10ULL : 9ULL);
+            QVERIFY(descriptor.phoneServerEpoch != 0);
+            if (removeSelection) server.transportId.store(11);
+            if (resume) okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::Resume);
+        }
+        const auto beforeStart = server.Services().size();
         okuflow::PhoneCameraTransport transport;
-        QVERIFY(transport.Start(FixturePhone(), nullptr, [](okuflow::MediaFrame&&) {}, {}));
+        QVERIFY(transport.Start(descriptor, nullptr, [](okuflow::MediaFrame&&) {}, {}));
         transport.Stop();
 
         // One listing, one wake, one launch, then control and video.
-        const QString selectById = "host:transport-id:9";
+        const QString selectById = "host:transport-id:" + QString::number(expectedId);
         const QString launchSelection = duplicate ? selectById : QStringLiteral("host:transport:abc");
         const QString companionSocket = "localabstract:okuflow_camera";
         const QStringList expected{
@@ -5389,7 +5422,7 @@ private slots:
             selectById, companionSocket, // Control retry.
             selectById, companionSocket, // Video connection.
         };
-        QCOMPARE(server.Services(), expected);
+        QCOMPARE(server.Services().mid(beforeStart), expected);
     }
     void sessionRetriesAfterTheActivityRequestWasWritten_data() {
         QTest::addColumn<int>("replyDelayMs");
@@ -5434,6 +5467,52 @@ private slots:
             QVERIFY2(opened, transport.Error().c_str());
             if (listenerDelayMs) QVERIFY(server.listenerRefusals.load() >= 3);
         }
+    }
+    void silentControlOpenLeavesTimeForTransportReconnect() {
+        using Clock = std::chrono::steady_clock;
+        FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::Play,
+                            FakePhoneAdb::RecoveryMode::Stalled, false);
+        server.withholdActivityStatus = true;
+        server.activityReplyDelayMs = 1300;
+        server.withholdControlStatusAfterLaunch = true;
+        ScopedLinkHooks hooks(server.port);
+        ScopedMediaFoundation media;
+        QVERIFY(media.com && media.mf);
+        okuflow::PhoneCameraTransport transport;
+        const auto startMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            Clock::now().time_since_epoch()).count();
+        qInfo() << "Fixture start at steady ms:" << startMs;
+        const bool opened = transport.Start(FixturePhone(), nullptr, {}, {});
+        const auto finishedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            Clock::now().time_since_epoch()).count();
+        const auto reconnectMs = server.reconnectReceivedMs.load();
+        qInfo() << "Fixture Start returned at +" << finishedMs - startMs << "ms";
+        if (reconnectMs)
+            qInfo() << "Fixture received the reconnect request at +" << reconnectMs - startMs << "ms";
+        transport.Stop();
+
+        QVERIFY(!opened);
+        QCOMPARE(server.Launches().size(), 1);
+        QCOMPARE(server.reconnects.load(), 1);
+        QCOMPARE(server.healthProbes.load(), 2);
+        QVERIFY(reconnectMs > startMs && reconnectMs <= finishedMs);
+        QVERIFY(std::chrono::milliseconds(reconnectMs - startMs) < okuflow::PhoneStartupBudget::Timeout);
+    }
+    void activityFailEndsTheStartWithoutRetryingControl() {
+        FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::Play,
+                            FakePhoneAdb::RecoveryMode::Healthy, false);
+        server.refuseActivityRequest = true;
+        ScopedLinkHooks hooks(server.port);
+        ScopedMediaFoundation media;
+        QVERIFY(media.com && media.mf);
+        okuflow::PhoneCameraTransport transport;
+        const bool opened = transport.Start(FixturePhone(), nullptr, {}, {});
+        transport.Stop();
+
+        QVERIFY(!opened);
+        QCOMPARE(server.Launches().size(), 1);
+        QCOMPARE(server.ServiceCount("localabstract:okuflow_camera"), 1);
+        QCOMPARE(transport.Error(), "missing");
     }
     void localAdbOverridesAreRespected() {
         auto endpoint = okuflow::ParseAdbServerEndpoint("", "", "");

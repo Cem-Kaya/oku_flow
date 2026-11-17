@@ -1199,12 +1199,20 @@ an old ID. `ladderLaunchOnReadableBorrowedDefault` checks one discovery
 listing. `ladderLaunchUsesTheReadyDuplicateTransport` and
 `sessionLaunchKeepsTheExistingAdbRequests` cover both duplicate orders,
 one wake and one launch by ID, and the unique-serial request sequence.
+The session rows also assert control, video, wake and launch on the selected
+ID for two ready entries in either order, with first-ready fallback when the
+ID disappears or the server epoch changes on resume.
 The ladder also keeps each ready transport's companion status separate.
 `anotherReadyTransportWithTheSameSerialVetoesDefaultStop` adds a ready
 duplicate at the pre-stop listing of an otherwise stoppable fixture child. `sourceChangeDuringSelectionDropsTheShellWrite` advances
 source generation before the fake acknowledges transport selection.
 The slow activity row in `sessionLaunchKeepsTheExistingAdbRequests` checks
 control and streaming after the connection window elapsed.
+`silentControlOpenLeavesTimeForTransportReconnect` withholds the activity
+status and each later control-open status. It verifies that the failed start
+completes both shell probes and sends a targeted reconnect before returning.
+`activityFailEndsTheStartWithoutRetryingControl` requires one activity
+request and no second control connection after an explicit adb refusal.
 `launchesRegisteredPackage` checks selection for Play and legacy activity.
 `absentUserEndpointIsNamedAndCanRecover` starts a fake on the configured port
 after the existing sentence appears. The doctor row

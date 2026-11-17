@@ -3398,7 +3398,17 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
             for (;;) {
                 attached = ListUsbPhones(&canceled_, &entries);
                 selected = std::find_if(attached.begin(), attached.end(), [&](const auto& item) { return item.phoneSerial == descriptor.phoneSerial; });
-                if (selected != attached.end()) break;
+                if (selected != attached.end()) {
+                    if (descriptor.phoneTransportId && descriptor.phoneServerEpoch &&
+                        selected->phoneServerEpoch == descriptor.phoneServerEpoch) {
+                        const auto exact = std::find_if(selected, attached.end(), [&](const auto& item) {
+                            return item.phoneSerial == descriptor.phoneSerial &&
+                                item.phoneTransportId == descriptor.phoneTransportId;
+                        });
+                        if (exact != attached.end()) selected = exact;
+                    }
+                    break;
+                }
                 const bool listed = std::any_of(entries.begin(), entries.end(), [&](const auto& entry) {
                     return entry.usb && entry.serial == descriptor.phoneSerial;
                 });
@@ -3414,7 +3424,7 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
             const auto hooks = Hooks();
             const auto connectionDeadline = Clock::now() + (hooks && hooks->sessionConnectBudgetForTest
                 ? *hooks->sessionConnectBudgetForTest : std::chrono::seconds(5));
-            const auto launchRetryDeadline = (lastDecodedClock < 0 ? startupBudget : PhoneStartupBudget(Clock::now()))
+            auto launchRetryDeadline = (lastDecodedClock < 0 ? startupBudget : PhoneStartupBudget(Clock::now()))
                 .Deadline() - PhoneStartupBudget::DecodeReserve;
             constexpr auto openCompanionError = "Open OkuFlow Camera, allow camera access and authorize USB debugging";
             bool launchAttempted = false;
@@ -3438,8 +3448,11 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
                     control.abort(); video.abort();
                     const auto deadline = activityWritten ? launchRetryDeadline : connectionDeadline;
                     if (error.code != "sessionBusy" || Clock::now() >= deadline) throw;
-                } catch (const std::exception&) {
+                } catch (const std::exception& error) {
                     control.abort(); video.abort(); CheckCanceled(&canceled_);
+                    // A silent control open needs time for stalled USB recovery.
+                    if (!endpointOpened && dynamic_cast<const UsbResponseTimeout*>(&error))
+                        launchRetryDeadline = std::min(launchRetryDeadline, connectionDeadline);
                     // An absent listener gets at most one launch per start
                     // attempt, taken from the shared per-event budget.
                     if (!endpointOpened && !launchAttempted && MayLaunch()) {
@@ -3454,6 +3467,8 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
                         try {
                             launch = LaunchCompanion(entries, descriptor.phoneSerial, descriptor.phoneTransportId,
                                                      &canceled_, true, {}, &activityWritten);
+                        } catch (const AdbFailReply&) {
+                            throw;
                         } catch (const std::exception&) {
                             CheckCanceled(&canceled_);
                             // The activity can accept the request without
