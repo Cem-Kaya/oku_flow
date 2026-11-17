@@ -23,6 +23,14 @@ void SetLiveText(QWidget* widget,
                  LivePoliteness politeness,
                  const QString& rolePrefix = {});
 
+// Announces a passing message through the widget's live region without
+// changing its text, for a notification while another sentence owns the
+// line. The text is translated like SetLiveText's; the same duplicate
+// suppression applies. Call only on the Qt UI thread.
+void AnnounceLiveText(QWidget* widget,
+                      const QString& text,
+                      LivePoliteness politeness);
+
 // Bounded-delay variant for rapidly changing labels. The latest update wins
 // at the first pending deadline, including during a continuous update stream.
 // SetLiveText supersedes any pending coalesced value immediately.

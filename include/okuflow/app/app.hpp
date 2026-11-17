@@ -562,6 +562,7 @@ private:
     // by the discovery worker; read only after its future is ready).
     std::shared_ptr<PhoneLinkReport> phoneLinkPending_;
     PhoneLinkDecision phoneLinkDecision_{};
+    std::string phoneLinkTargetSerial_;
     bool phoneLinkKnown_{};
     qint64 phoneDiscoveryIntervalMs_{5000};
     qint64 lastPulseWallMs_{};
@@ -885,6 +886,7 @@ private:
     CudaBufferFormat cudaBufferFormat_{CudaBufferFormat::kRgba8};
     bool rawCudaPathWarned_{false};
     QString transientStatusMessage_;
+    bool transientStatusAnnounced_{false};
     qint64 transientStatusUntilMs_{0};
     LivePoliteness transientStatusPoliteness_{LivePoliteness::kPolite};
     QString lastSuperResLogState_;

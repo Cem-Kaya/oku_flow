@@ -380,6 +380,11 @@ public:
     static bool ReconnectDue(OkuFlowApp& app) {return app.pipelineOrchestrator_->CameraReconnectDue(QDateTime::currentMSecsSinceEpoch());}
     static void LoseActiveReconnect(OkuFlowApp& app) {app.BeginCameraReconnect();}
     static bool CameraActive(OkuFlowApp& app) {return app.cameraActive_;}
+    static bool PhoneCameraRunning(OkuFlowApp& app) {
+        return app.cameraActive_ && app.selectedCameraIndex_>=0 &&
+            static_cast<size_t>(app.selectedCameraIndex_)<app.cameras_.size() &&
+            !app.cameras_[static_cast<size_t>(app.selectedCameraIndex_)].phoneSerial.empty();
+    }
     static void DriveReconnect(OkuFlowApp& app) {app.DriveCameraReconnect();}
     static void ExpireReconnect(OkuFlowApp& app) {
         app.pipelineOrchestrator_->CancelCameraReconnect();
@@ -502,6 +507,11 @@ public:
     static void ClearToast(OkuFlowApp& app) {app.transientStatusMessage_.clear();}
     static QString StatusText(OkuFlowApp& app) {return app.uiState_->processingStatusLabel_->text();}
     static QString StatusName(OkuFlowApp& app) {return app.uiState_->processingStatusLabel_->accessibleName();}
+    // The live-region helper records each announcement it made (text and
+    // time) on the widget (src/ui/live_status_text.cpp).
+    static bool StatusAnnounced(OkuFlowApp& app,const QString& text) {
+        return app.uiState_->processingStatusLabel_->property("_okuflowLiveTextAnnouncementHistory").toMap().contains(text);
+    }
     static QString PlaceholderTitle(OkuFlowApp& app) {return app.mainWindow_->cameraPlaceholderTitle_->text();}
     static QString PlaceholderDetail(OkuFlowApp& app) {return app.mainWindow_->cameraPlaceholderDetail_->text();}
     // A fallback webcam (index 0) is live while the phone stays the wanted camera.
@@ -2447,6 +2457,27 @@ private slots:
         QVERIFY(NativeControlFixture::PhoneIntentRetained(app_));
         QCOMPARE(NativeControlFixture::QuickModeSettings(app_).cameraSymbolicLink,QStringLiteral("okuflow-phone:fixture-only"));
     }
+    void automaticDiscoveryWaitsForAReadyPhone() {
+        // Iteration 4 (A6): with no camera running, a saved phone whose
+        // companion is not ready (locked, paused) is not started by
+        // automatic discovery; capture starts once the probe reports ready.
+        auto calls=std::make_shared<std::atomic<int>>(0);
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::StopCamera(app_);
+            QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+            NativeControlFixture::ResetCameraFixture(app_);
+        });
+        auto phone=NativeControlFixture::SeedPhoneSources(app_,[calls](const std::atomic<bool>&) {++*calls;return true;});
+        QVERIFY(!NativeControlFixture::CameraActive(app_));
+        phone.phoneAppReady=false;
+        NativeControlFixture::DiscoverFixturePhone(app_,&phone);
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QVERIFY(!NativeControlFixture::PhoneCameraRunning(app_)); // At most the fallback webcam.
+        phone.phoneAppReady=true;
+        NativeControlFixture::DiscoverFixturePhone(app_,&phone);
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QVERIFY(NativeControlFixture::PhoneCameraRunning(app_));
+    }
     void resumeAndDeviceRemovalReachTheApplication() {
         // Private offscreen fixture: synthetic window messages only, no adb or phone.
         NativeControlFixture::HoldPhoneDiscovery(app_);NativeControlFixture::FailPhoneRetry(app_);
@@ -2498,6 +2529,8 @@ private slots:
         NativeControlFixture::ShowToast(app_,QStringLiteral("Recording stopped"));
         NativeControlFixture::DeliverPhoneDiagnosis(app_,PhoneLinkDiagnosis::ReplugCable,PhoneLinkAction::WaitForUser);
         QCOMPARE(NativeControlFixture::StatusText(app_),replug);
+        // Iteration 4 (A2): it is still announced once through the live region.
+        QVERIFY(NativeControlFixture::StatusAnnounced(app_,QStringLiteral("Recording stopped")));
         NativeControlFixture::ClearToast(app_);
         // The phone sentence wins over the generic reconnect text.
         NativeControlFixture::BeginReconnect(app_);

@@ -566,8 +566,10 @@ aligned with the project goals.
   sub-agents) and still need it.
 - While the phone is the wanted camera, its sentence owns the status line,
   also over a fallback webcam, over the generic reconnect text and over a
-  passing notification, and the status line speaks the instruction itself,
-  never only a title. Every discovery result refreshes the status line (no
+  passing notification (which goes to the tooltip and is announced once
+  through `AnnounceLiveText`), and the status line speaks the instruction
+  itself, never only a title. Automatic discovery starts only a phone whose
+  companion answered ready; the ladder wakes and launches the others. Every discovery result refreshes the status line (no
   frames refresh it while no camera runs); native tests deliver verdicts
   through `PollPhoneCameraDiscovery`, not by calling the label update.
 - Nothing here was observed on a real failing laptop; report fixture evidence

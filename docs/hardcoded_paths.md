@@ -1070,7 +1070,11 @@ Update this file whenever these defaults move or new fixed paths are introduced.
   Directories" above: at once after an event, 1 s, then up to 10 s; 2 s while
   waiting for the user; 5 s healthy), with a 100 ms UI completion pulse.
   Probe ACK deadline is 1500 ms; listing reads are 1000 ms per reply field.
-  Unknown listing results preserve the cache. Failed automatic starts back off
+  Unknown listing results preserve the cache. Automatic discovery starts only
+  a phone whose companion probe answered ready (also with no camera running,
+  and never the phone the link doctor waits for the user on); a locked or
+  paused phone is woken and launched by the ladder instead, and manual picks
+  are not restricted. Failed automatic starts back off
   1/2/3/5/10 s; busy/hot starts wait at least 5 s (the phone holds those
   problems for 10 s). A new transport, readiness transition or link event
   resets it.

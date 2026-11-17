@@ -464,13 +464,18 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
     // Transient, non-modal notifications (disk-full recording stop, reconnect
     // give-up, ...) override the pipeline summary for a few seconds. The label
     // is refreshed every presented frame, so the message clears on its own.
-    // While the phone sentence owns the line it stays the announced text; the
-    // notification goes to the tooltip instead of replacing the instruction.
+    // While the phone sentence owns the line it stays the persistent text;
+    // the notification goes to the tooltip and is announced once through the
+    // live region, so a screen reader still hears it.
+    bool announceNotification = false;
     if (!presenterFaultReported_ && !transientStatusMessage_.isEmpty()) {
         if (QDateTime::currentMSecsSinceEpoch() < transientStatusUntilMs_) {
             if (phoneSentenceShown) {
                 detail = detail + QStringLiteral(" - ") + transientStatusMessage_;
+                announceNotification = !transientStatusAnnounced_;
+                transientStatusAnnounced_ = true;
             } else {
+                transientStatusAnnounced_ = true; // Spoken by SetLiveText below.
                 detail = text + QStringLiteral(" - ") + transientStatusMessage_;
                 text = transientStatusMessage_;
                 color = QStringLiteral("#1c6dd0");
@@ -483,6 +488,10 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
 
     SetLiveText(uiState_->processingStatusLabel_, text, politeness,
                 QStringLiteral("Pipeline status"));
+    if (announceNotification) {
+        AnnounceLiveText(uiState_->processingStatusLabel_, transientStatusMessage_,
+                         transientStatusPoliteness_);
+    }
     if (uiState_->processingStatusLabel_->toolTip() != detail) {
         uiState_->processingStatusLabel_->setToolTip(detail);
     }
@@ -721,6 +730,7 @@ void OkuFlowApp::ShowStatusMessage(const QString& message,
                                     LivePoliteness politeness)
 {
     transientStatusMessage_ = message;
+    transientStatusAnnounced_ = false;
     transientStatusUntilMs_ = QDateTime::currentMSecsSinceEpoch() + durationMs;
     transientStatusPoliteness_ = politeness;
     UpdateProcessingStatusLabel();

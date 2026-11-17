@@ -275,6 +275,7 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
             phoneDiscoveryStatus_ = discoveryStatus;
             if (phoneLinkPending_) {
                 const auto decision = phoneLinkPending_->decision;
+                phoneLinkTargetSerial_ = phoneLinkPending_->targetSerial;
                 phoneLinkPending_.reset();
                 phoneLinkKnown_ = decision.nextPollMs != 0;
                 if (phoneLinkKnown_) {
@@ -321,9 +322,19 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
                 const bool selectingAnyPhone = preferredPhoneCamera_ == QStringLiteral("okuflow-phone:");
                 const bool freshIntent = !selectingAnyPhone ||
                     phoneDiscoveryIntentGeneration_ == cameraIntent_.Requested().generation;
-                const int target = freshIntent && cameraIntent_.TemporaryOwner().isEmpty()
+                // Automatic discovery starts only a phone whose companion
+                // answered ready, also with no camera running: a locked or
+                // paused saved phone is woken and launched by the link
+                // ladder, and capture starts once its probe reports ready
+                // (a start would only spend its connect time showing
+                // "Starting camera." over the instruction). Manual picks
+                // are not restricted.
+                int target = freshIntent && cameraIntent_.TemporaryOwner().isEmpty()
                     ? ResolveAutomaticPhoneIndex(cameras_, preferredPhoneCamera_.toStdWString(),
-                        automaticPhoneSelectionAllowed_, cameraActive_) : -1;
+                        automaticPhoneSelectionAllowed_, true) : -1;
+                if (target >= 0 && phoneLinkKnown_ && phoneLinkDecision_.action == PhoneLinkAction::WaitForUser &&
+                    cameras_[static_cast<size_t>(target)].phoneSerial == phoneLinkTargetSerial_)
+                    target = -1; // The doctor waits for the user on this very phone.
                 const bool recording = recordingManager_ && recordingManager_->IsActive();
                 const bool sameRecordedSource = target >= 0 &&
                     cameras_[static_cast<size_t>(target)].symbolicLink == mediaCapture_.LastSymbolicLink();

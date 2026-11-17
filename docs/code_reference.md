@@ -4356,6 +4356,10 @@ Namespace `okuflow`
   - `void SetLiveTextCoalesced(QWidget* widget, const QString& text,
     LivePoliteness politeness, const QString& rolePrefix = {},
     int delayMs = 400)`
+  - `void AnnounceLiveText(QWidget* widget, const QString& text,
+    LivePoliteness politeness)` announces a translated passing message
+    without changing the widget's text (a notification while the phone
+    sentence owns the status line), with the same duplicate suppression.
 
 ### `include/okuflow/ui/render_widget.hpp`
 `okuflow::RenderWidget`
