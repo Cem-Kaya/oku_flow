@@ -95,8 +95,19 @@ private slots:
         QTest::newRow("locked") << Refused(PhoneFact::Yes, PhoneFact::Yes) << D::PhoneLocked;
         QTest::newRow("asleep") << Refused(PhoneFact::No, PhoneFact::Unknown) << D::PhoneLocked;
         QTest::newRow("app killed") << Refused(PhoneFact::Yes, PhoneFact::No) << D::AppNotRunning;
-        QTest::newRow("frozen app") << With([](auto& o) { o.companion = PhoneCompanionProbe::TimedOut; })
+        // adbd answers (the shell query replied) while the listener hangs.
+        QTest::newRow("frozen app") << With([](auto& o) {
+            o.companion = PhoneCompanionProbe::TimedOut; o.adbd = PhoneAdbdHealth::Answers; })
                                     << D::AppNotRunning;
+        QTest::newRow("app process alive, listener refuses") << With([](auto& o) {
+            o.companion = PhoneCompanionProbe::Refused;
+            o.shell = {PhoneFact::Yes, PhoneFact::No, PhoneFact::Yes, PhoneFact::Yes}; })
+                                                             << D::CompanionListenerClosed;
+        QTest::newRow("no permissions") << With([](auto& o) { o.phoneState = PhoneAdbState::NoPermissions; })
+                                        << D::Offline;
+        QTest::newRow("unknown state") << With([](auto& o) { o.phoneState = PhoneAdbState::Other; }) << D::Offline;
+        QTest::newRow("another phone listed") << With([](auto& o) {
+            o.phoneState = PhoneAdbState::NotListed; o.otherUsbListed = true; }) << D::WantedPhoneNotAttached;
         QTest::newRow("not installed") << Refused(PhoneFact::Yes, PhoneFact::No, PhoneFact::No)
                                        << D::AppNotInstalled;
         QTest::newRow("paused") << Problem("paused") << D::CompanionPaused;
@@ -120,6 +131,11 @@ private slots:
         QTest::newRow("stop refused") << With([](auto& o) {
             o.defaultStopRefused = true; o.phoneState = PhoneAdbState::NotListed; })
                                       << D::OtherProgramHoldsPhone;
+        // Refusal wins over the probe that the hung server keeps failing.
+        QTest::newRow("stop refused, server unresponsive") << With([](auto& o) {
+            o.defaultStopRefused = true; o.phoneState = PhoneAdbState::NotListed;
+            o.server = PhoneServerKind::BorrowedDefault; o.serverProbe = PhoneServerProbe::Unresponsive; })
+                                                           << D::OtherProgramHoldsPhone;
     }
     void diagnosis()
     {
@@ -131,6 +147,7 @@ private slots:
     {
         for (int i = 0; i < kPhoneLinkDiagnosisCount; ++i)
             QVERIFY(PhoneLinkDiagnosisName(static_cast<D>(i)) != "unknown");
+        QVERIFY(PhoneLinkActionName(A::HandBackToDefault) != "unknown");
     }
     void eventMakesNextCycleImmediateAndPollBacksOffToCeiling()
     {
@@ -158,14 +175,28 @@ private slots:
     }
     void waitingForUserPollsSteadily()
     {
+        // Changed deliberately (iteration 2, A11): after a quiet period in
+        // Unauthorized exactly one targeted reconnect re-asks the question.
         PhoneLinkDoctor doctor;
         doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
         const auto unauthorized = With([](auto& o) { o.phoneState = PhoneAdbState::Unauthorized; });
+        int reconnects = 0;
         for (std::int64_t now = 0; now < 120000; now += 2000) {
             const auto decision = doctor.Decide(unauthorized, now);
-            QCOMPARE(int(decision.action), int(A::WaitForUser));
+            if (decision.action == A::ReconnectTransport) {
+                ++reconnects;
+                QVERIFY(now >= doctor.Policy().unauthorizedReconnectMs);
+            } else {
+                QCOMPARE(int(decision.action), int(A::WaitForUser));
+            }
+            QCOMPARE(int(decision.diagnosis), int(D::Unauthorized));
             QCOMPARE_MS(decision.nextPollMs - now, 2000);
         }
+        QCOMPARE(reconnects, 1);
+        // A new event (re-plug) renews that single reconnect.
+        doctor.OnEvent(PhoneLinkEvent::DeviceArrival, 120000);
+        QCOMPARE(int(doctor.Decide(unauthorized, 120000).action), int(A::WaitForUser));
+        QCOMPARE(int(doctor.Decide(unauthorized, 140000).action), int(A::ReconnectTransport));
     }
     void unauthorizedThenAuthorized()
     {
@@ -186,8 +217,14 @@ private slots:
         const auto offline = With([](auto& o) { o.phoneState = PhoneAdbState::Offline; });
         QCOMPARE(int(doctor.Decide(offline, 0).action), int(A::ReconnectTransport)); // Immediate.
         QCOMPARE(int(doctor.Decide(Ready(), 1000).diagnosis), int(D::Connected));
-        // A new offline episode after Connected starts with an immediate reconnect again.
-        QCOMPARE(int(doctor.Decide(offline, 1500).action), int(A::ReconnectTransport));
+        // Changed deliberately (iteration 2, C8): Connected renews the
+        // budgets only after it held; a flip back half a second later waits
+        // for the reconnect budget instead of resetting at once.
+        QCOMPARE(int(doctor.Decide(offline, 1500).action), int(A::Relist));
+        QCOMPARE(int(doctor.Decide(offline, 3000).action), int(A::ReconnectTransport));
+        QCOMPARE(int(doctor.Decide(Ready(), 4000).diagnosis), int(D::Connected));
+        QCOMPARE(int(doctor.Decide(Ready(), 14000).diagnosis), int(D::Connected)); // Held 10 s.
+        QCOMPARE(int(doctor.Decide(offline, 14500).action), int(A::ReconnectTransport));
     }
     void offlineThatNeedsAServerRestart()
     {
@@ -222,12 +259,24 @@ private slots:
     }
     void authorizingGetsAShortGraceFirst()
     {
+        // Changed deliberately (iteration 2, B3): authorizing is the Allow
+        // handshake. It is never reset; after the grace the user is asked.
         PhoneLinkDoctor doctor;
         doctor.OnEvent(PhoneLinkEvent::DeviceArrival, 0);
         const auto authorizing = With([](auto& o) { o.phoneState = PhoneAdbState::Authorizing; });
         QCOMPARE(int(doctor.Decide(authorizing, 0).action), int(A::Relist));
         QCOMPARE(int(doctor.Decide(authorizing, 1000).action), int(A::Relist));
-        QCOMPARE(int(doctor.Decide(authorizing, 2000).action), int(A::ReconnectTransport));
+        for (std::int64_t now = 2000; now < 60000; now += 1000) {
+            const auto decision = doctor.Decide(authorizing, now);
+            QCOMPARE(int(decision.action), int(A::WaitForUser));
+            QCOMPARE(int(decision.diagnosis), int(D::Authorizing));
+        }
+        // `connecting` is not the handshake: it keeps the reconnect ladder.
+        PhoneLinkDoctor connectingDoctor;
+        connectingDoctor.OnEvent(PhoneLinkEvent::DeviceArrival, 0);
+        const auto connecting = With([](auto& o) { o.phoneState = PhoneAdbState::Connecting; });
+        QCOMPARE(int(connectingDoctor.Decide(connecting, 0).action), int(A::Relist));
+        QCOMPARE(int(connectingDoctor.Decide(connecting, 2000).action), int(A::ReconnectTransport));
     }
     void blindOwnedServerRestartsAfterGrace()
     {
@@ -241,10 +290,18 @@ private slots:
         QCOMPARE(int(doctor.Decide(blind, 20000).action), int(A::RestartOwnedServer));
         QCOMPARE(int(doctor.Decide(blind, 60000).action), int(A::Relist));
         QCOMPARE(int(doctor.Decide(blind, 80000).action), int(A::RestartOwnedServer));
+        // Iteration 2 (A9): after the third restart of the episode the user
+        // is asked to re-plug the cable; probing goes on, restarts stop.
+        for (std::int64_t now = 81000; now < 300000; now += 1000) {
+            const auto decision = doctor.Decide(blind, now);
+            QCOMPARE(int(decision.diagnosis), int(D::ReplugCable));
+            QCOMPARE(int(decision.action), int(A::WaitForUser));
+            QCOMPARE_MS(decision.nextPollMs - now, doctor.Policy().userWaitPollMs);
+        }
         // An event renews both grace and budget.
-        doctor.OnEvent(PhoneLinkEvent::Resume, 81000);
-        QCOMPARE(int(doctor.Decide(blind, 81000).action), int(A::Relist));
-        QCOMPARE(int(doctor.Decide(blind, 86000).action), int(A::RestartOwnedServer));
+        doctor.OnEvent(PhoneLinkEvent::Resume, 301000);
+        QCOMPARE(int(doctor.Decide(blind, 301000).action), int(A::Relist));
+        QCOMPARE(int(doctor.Decide(blind, 306000).action), int(A::RestartOwnedServer));
     }
     void blindWithoutWindowsInterfaceNeverEscalates()
     {
@@ -318,14 +375,210 @@ private slots:
         hung.serverProbe = PhoneServerProbe::Unresponsive;
         QCOMPARE(int(doctor.Decide(hung, 0).action), int(A::Relist)); // Not confirmed yet.
         hung.defaultUnresponsiveConfirmed = true;
-        QCOMPARE(int(doctor.Decide(hung, 1000).action), int(A::TerminateDefaultServer));
+        const auto first = doctor.Decide(hung, 1000);
+        QCOMPARE(int(first.action), int(A::TerminateDefaultServer));
+        QVERIFY(!first.hostKillAlreadySent); // A hung server never got host:kill: send it first.
         QCOMPARE(int(doctor.Decide(hung, 2000).action), int(A::Relist));
         doctor.NoteDefaultStopRefused();
-        const auto refused = doctor.Decide(hung, 20000);
-        QCOMPARE(int(refused.action), int(A::Relist));
-        auto listed = hung;
-        listed.serverProbe = PhoneServerProbe::Responsive;
-        QCOMPARE(int(doctor.Decide(listed, 21000).diagnosis), int(D::OtherProgramHoldsPhone));
+        // Changed deliberately (iteration 2, A5): the refusal is named while
+        // the probe still says unresponsive, and nothing is retried.
+        for (std::int64_t now = 20000; now < 120000; now += 1000) {
+            const auto refused = doctor.Decide(hung, now);
+            QCOMPARE(int(refused.diagnosis), int(D::OtherProgramHoldsPhone));
+            QCOMPARE(int(refused.action), int(A::WaitForUser));
+        }
+    }
+    void hungDefaultIsNotTerminatedWithoutTheWindowsInterface()
+    {
+        // C2: a slow but healthy default with no phone attached is never killed.
+        for (auto present : {PhoneAdbInterface::Absent, PhoneAdbInterface::Unknown}) {
+            PhoneLinkDoctor doctor;
+            doctor.OnEvent(PhoneLinkEvent::Resume, 0);
+            auto hung = Blind(PhoneServerKind::BorrowedDefault);
+            hung.serverProbe = PhoneServerProbe::Unresponsive;
+            hung.defaultUnresponsiveConfirmed = true;
+            hung.adbInterface = present;
+            for (std::int64_t now = 0; now < 120000; now += 1000)
+                QVERIFY(doctor.Decide(hung, now).action != A::TerminateDefaultServer);
+        }
+    }
+    void everyFailedStopOutcomeEndsInTheSentence()
+    {
+        // A6: identity changed / failed twice, or refused / not adb / unopenable once.
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto hung = Blind(PhoneServerKind::BorrowedDefault);
+        hung.serverProbe = PhoneServerProbe::Unresponsive;
+        hung.defaultUnresponsiveConfirmed = true;
+        QCOMPARE(int(doctor.Decide(hung, 0).action), int(A::TerminateDefaultServer));
+        doctor.NoteDefaultStopFailed();
+        QVERIFY(!doctor.DefaultStopRefused()); // One retry.
+        QCOMPARE(int(doctor.Decide(hung, 15000).action), int(A::TerminateDefaultServer));
+        doctor.NoteDefaultStopFailed();
+        QVERIFY(doctor.DefaultStopRefused());
+        const auto named = doctor.Decide(hung, 16000);
+        QCOMPARE(int(named.diagnosis), int(D::OtherProgramHoldsPhone));
+        QCOMPARE(int(named.action), int(A::WaitForUser));
+        // Without any note, terminations are capped per episode too.
+        PhoneLinkDoctor capped;
+        capped.OnEvent(PhoneLinkEvent::AppStart, 0);
+        int terminations = 0;
+        PhoneLinkDecision last;
+        for (std::int64_t now = 0; now < 600000; now += 1000) {
+            last = capped.Decide(hung, now);
+            terminations += last.action == A::TerminateDefaultServer;
+        }
+        QCOMPARE(terminations, capped.Policy().terminateCap);
+        QCOMPARE(int(last.diagnosis), int(D::OtherProgramHoldsPhone));
+    }
+    void stopRefusalEndsWithItsCause()
+    {
+        // A7: refusal is cleared once the phone is listed (or the transport
+        // clears it when the listener is gone or changed).
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        doctor.NoteDefaultStopRefused();
+        QCOMPARE(int(doctor.Decide(Blind(), 0).diagnosis), int(D::OtherProgramHoldsPhone));
+        QCOMPARE(int(doctor.Decide(Ready(), 1000).diagnosis), int(D::Connected));
+        QVERIFY(!doctor.DefaultStopRefused());
+        QCOMPARE(int(doctor.Decide(Blind(), 2000).diagnosis), int(D::NotListedByServer));
+        doctor.NoteDefaultStopRefused();
+        doctor.ClearDefaultStopRefused();
+        QCOMPARE(int(doctor.Decide(Blind(), 3000).diagnosis), int(D::NotListedByServer));
+    }
+    void shadowedDefaultThatListsThePhoneIsHandedBack()
+    {
+        // A8: a default that lists the phone (also unauthorized) is used.
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto shadow = Blind(PhoneServerKind::Owned);
+        shadow.shadowRunning = true;
+        QCOMPARE(int(doctor.Decide(shadow, 0).action), int(A::Relist));
+        QCOMPARE(int(doctor.Decide(shadow, 5000).action), int(A::Relist)); // Takeover grace.
+        shadow.defaultListsPhone = true;
+        QCOMPARE(int(doctor.Decide(shadow, 6000).action), int(A::HandBackToDefault));
+        QCOMPARE(int(doctor.Decide(shadow, 7000).action), int(A::Relist));
+        QCOMPARE(int(doctor.Decide(shadow, 9000).action), int(A::HandBackToDefault));
+        // Even a stop refusal from an earlier takeover gives way to the listing.
+        doctor.NoteDefaultStopRefused();
+        QCOMPARE(int(doctor.Decide(shadow, 12000).action), int(A::HandBackToDefault));
+    }
+    void defaultThatKeepsComingBackEndsInTheSentence()
+    {
+        // A2: OkuFlow's server blind beside another adb that comes back after
+        // every host:kill (Android Studio restarting its adb): bounded.
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto beside = Blind(PhoneServerKind::Owned);
+        beside.shadowRunning = true;
+        int asks = 0, terminations = 0;
+        PhoneLinkDecision last;
+        std::int64_t now = 0;
+        for (int round = 0; round < 6; ++round) {
+            // The other adb is beside us until it is asked to exit...
+            for (int i = 0; i < 20; ++i, now += 1000) {
+                last = doctor.Decide(beside, now);
+                asks += last.action == A::AskDefaultServerToExit;
+                terminations += last.action == A::TerminateDefaultServer;
+                if (last.action == A::AskDefaultServerToExit) { now += 1000; break; }
+            }
+            // ...exits, and comes back a few seconds later.
+            for (int i = 0; i < 3; ++i, now += 1000) doctor.Decide(Blind(PhoneServerKind::Owned), now);
+        }
+        for (int i = 0; i < 10; ++i, now += 1000) { // Back again, past the takeover grace.
+            last = doctor.Decide(beside, now);
+            asks += last.action == A::AskDefaultServerToExit;
+        }
+        QCOMPARE(asks, doctor.Policy().askExitCap);
+        QCOMPARE(terminations, 0);
+        QCOMPARE(int(last.diagnosis), int(D::OtherProgramHoldsPhone));
+        QCOMPARE(int(last.action), int(A::WaitForUser));
+    }
+    void anotherListedPhoneIsNotBlindness()
+    {
+        // C4: a second phone listed by the server is not "blind": no restarts.
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto other = Blind();
+        other.otherUsbListed = true;
+        for (std::int64_t now = 0; now < 120000; now += 1000) {
+            const auto decision = doctor.Decide(other, now);
+            QCOMPARE(int(decision.diagnosis), int(D::WantedPhoneNotAttached));
+            QCOMPARE(int(decision.action), int(A::WaitForUser));
+        }
+    }
+    void hangingCompanionIsNamedAfterBoundedLaunches()
+    {
+        // A15: the listener accepts and never answers.
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        const auto hanging = With([](auto& o) {
+            o.companion = PhoneCompanionProbe::TimedOut; o.adbd = PhoneAdbdHealth::Answers;
+            o.shell = {PhoneFact::Yes, PhoneFact::No, PhoneFact::Yes, PhoneFact::Yes}; });
+        int launches = 0;
+        PhoneLinkDecision last;
+        for (std::int64_t now = 0; now < 300000; now += 1000) {
+            last = doctor.Decide(hanging, now);
+            launches += last.action == A::WakeAndLaunchApp;
+        }
+        QCOMPARE(launches, doctor.Policy().hangingCompanionLaunches);
+        QCOMPARE(int(last.diagnosis), int(D::CompanionNotResponding));
+        QCOMPARE(int(last.action), int(A::WaitForUser));
+        doctor.OnEvent(PhoneLinkEvent::ManualPick, 300000);
+        QCOMPARE(int(doctor.Decide(hanging, 300000).action), int(A::WakeAndLaunchApp));
+    }
+    void oldCompanionWhilePausedIsLaunchedOnlyOnEvents()
+    {
+        // D1: Pause in the companion installed today: no listener, the probe
+        // is refused, the app process runs. One launch per event, no loop.
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        const auto paused = With([](auto& o) {
+            o.companion = PhoneCompanionProbe::Refused;
+            o.shell = {PhoneFact::Yes, PhoneFact::No, PhoneFact::Yes, PhoneFact::Yes}; });
+        int launches = 0;
+        for (std::int64_t now = 0; now < 300000; now += 1000) {
+            const auto decision = doctor.Decide(paused, now);
+            launches += decision.action == A::WakeAndLaunchApp;
+            QCOMPARE(int(decision.diagnosis), int(D::CompanionListenerClosed));
+        }
+        QCOMPARE(launches, 1);
+        doctor.OnEvent(PhoneLinkEvent::DeviceArrival, 300000);
+        QCOMPARE(int(doctor.Decide(paused, 300000).action), int(A::WakeAndLaunchApp));
+    }
+    void adbThatCannotStartIsNamed()
+    {
+        // A16: OkuFlow's own adb.exe cannot be launched (quarantine, missing).
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto starting = With([](auto& o) {
+            o.server = PhoneServerKind::Owned; o.serverProbe = PhoneServerProbe::NoListener;
+            o.phoneState = PhoneAdbState::NotListed; });
+        starting.serverLaunchFailures = 1;
+        QCOMPARE(int(doctor.Decide(starting, 0).diagnosis), int(D::ServerStarting));
+        starting.serverLaunchFailures = 2;
+        const auto named = doctor.Decide(starting, 1000);
+        QCOMPARE(int(named.diagnosis), int(D::AdbCannotStart));
+        QCOMPARE(int(named.action), int(A::WaitForUser));
+        starting.serverLaunchFailures = 0;
+        QCOMPARE(int(doctor.Decide(starting, 2000).diagnosis), int(D::ServerStarting));
+    }
+    void flappingCompanionIsNotRelaunchedOnEveryFlip()
+    {
+        // C8: ready / refused / ready / refused within seconds.
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        const auto killed = Refused(PhoneFact::Yes, PhoneFact::No);
+        int launches = 0;
+        for (std::int64_t now = 0; now < 60000; now += 1000)
+            launches += doctor.Decide((now / 1000) % 2 ? Ready() : killed, now).action == A::WakeAndLaunchApp;
+        // The ordinary launch budget (0, 3, 9, 29, 49 s), not one per flip (30).
+        QVERIFY2(launches <= 5, QByteArray::number(launches).constData());
+        // A live session renews at once.
+        auto streaming = Ready();
+        streaming.sessionStreaming = true;
+        doctor.Decide(streaming, 60000);
+        QCOMPARE(int(doctor.Decide(killed, 60500).action), int(A::WakeAndLaunchApp));
     }
     void lockedPhoneIsWokenThenUserIsAsked()
     {
@@ -410,15 +663,27 @@ private slots:
     }
     void twoInstancesWaitForTheUser()
     {
+        // Changed deliberately (iteration 2, A12): the sibling window is
+        // blamed only after the blind grace; before that "Restoring".
         PhoneLinkDoctor doctor;
         doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
         auto held = Blind();
         held.otherInstanceRunning = true;
         for (std::int64_t now = 0; now < 30000; now += 1000) {
             const auto decision = doctor.Decide(held, now);
-            QCOMPARE(int(decision.diagnosis), int(D::OtherInstanceHoldsPhone));
-            QCOMPARE(int(decision.action), int(A::WaitForUser)); // Never restarts against a sibling.
+            QVERIFY(decision.action != A::RestartOwnedServer); // Never restarts against a sibling.
+            if (now < doctor.Policy().blindGraceMs) {
+                QCOMPARE(int(decision.diagnosis), int(D::NotListedByServer));
+                QCOMPARE(int(decision.action), int(A::Relist));
+            } else {
+                QCOMPARE(int(decision.diagnosis), int(D::OtherInstanceHoldsPhone));
+                QCOMPARE(int(decision.action), int(A::WaitForUser));
+            }
         }
+        // A sibling while the phone is listed is not blamed for anything.
+        auto listed = Ready();
+        listed.otherInstanceRunning = true;
+        QCOMPARE(int(doctor.Decide(listed, 31000).diagnosis), int(D::Connected));
     }
 };
 

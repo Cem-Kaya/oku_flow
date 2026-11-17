@@ -47,16 +47,24 @@ struct PhoneLinkObservation {
     bool sessionStreaming{false};
     PhoneAdbInterface adbInterface{PhoneAdbInterface::Unknown};
     PhoneServerKind server{PhoneServerKind::None};
-    // A private owned server runs beside a borrowed default listener.
+    // OkuFlow's private server runs beside a default-port listener of another
+    // adb (one OkuFlow started as a shadow, or one that appeared later).
     bool shadowRunning{false};
     PhoneServerProbe serverProbe{PhoneServerProbe::Unknown};
     // Facts about the default-port listener while it is borrowed or shadowed.
     bool defaultListsPhone{false};
     bool defaultHasOtherDevices{false};
     bool defaultUnresponsiveConfirmed{false};
-    // Windows refused to stop the default listener (elevated/other user).
+    // Windows refused to stop the default listener (elevated/other user),
+    // or it cannot be stopped at all (unreadable identity, not adb.exe).
     bool defaultStopRefused{false};
     PhoneAdbState phoneState{PhoneAdbState::NotListed};
+    // The server lists a USB device, but not the wanted phone: Windows shows
+    // an ADB interface because of that other device.
+    bool otherUsbListed{false};
+    // Consecutive failed launches of OkuFlow's own adb (missing file,
+    // antivirus quarantine); reset by a running server.
+    int serverLaunchFailures{0};
     PhoneAdbdHealth adbd{PhoneAdbdHealth::Unknown};
     PhoneCompanionProbe companion{PhoneCompanionProbe::Unknown};
     std::string problem; // Companion problem code, when companion == Problem.
@@ -86,8 +94,13 @@ enum class PhoneLinkDiagnosis {
     CompanionFailed,         // busy camera, failed, noMode or an unknown code.
     OtherInstanceHoldsPhone,
     OtherProgramHoldsPhone,
+    ReplugCable,             // Restarts did not bring a present interface back: unplug and re-plug.
+    CompanionNotResponding,  // The companion's listener accepts but never answers, after launches.
+    CompanionListenerClosed, // The app process runs but its listener refuses (paused old companion).
+    AdbCannotStart,          // OkuFlow's own adb.exe could not be launched repeatedly.
+    WantedPhoneNotAttached,  // The server lists another USB phone, not the wanted one.
 };
-inline constexpr int kPhoneLinkDiagnosisCount = 22;
+inline constexpr int kPhoneLinkDiagnosisCount = 27;
 
 enum class PhoneLinkAction {
     None,
@@ -99,6 +112,7 @@ enum class PhoneLinkAction {
     TerminateDefaultServer,  // 4c: exact-handle termination of a hung default adb.exe.
     WakeAndLaunchApp,        // 5: KEYCODE_WAKEUP + am start (never force-stop).
     WaitForUser,             // 6: one sentence; keep probing.
+    HandBackToDefault,       // 4d: the default-port server lists the phone: use it, retire the private one.
 };
 
 enum class PhoneLinkEvent { AppStart, DeviceArrival, DeviceRemoval, Resume, ManualPick, WindowActivatedAfterIdle };
@@ -131,6 +145,26 @@ struct PhoneLinkPolicy {
     std::int64_t takeoverGraceMs{6000};
     std::int64_t hostKillWaitMs{2000};
     std::int64_t takeoverCeilingMs{60000};
+    // Per episode (until the next event): blind restarts of the private
+    // server, host:kill requests and terminations of a default-port adb.
+    // After the cap the state is named to the user instead of fighting.
+    int blindRestartCap{3};
+    int askExitCap{2};
+    int terminateCap{3};
+    // Unauthorized for this long with no change: one targeted reconnect,
+    // which makes the phone ask the Allow question again.
+    std::int64_t unauthorizedReconnectMs{20000};
+    // Authorizing (the Allow handshake) reads "Restoring" this long first.
+    std::int64_t authorizingGraceMs{2000};
+    // Connected must hold this long before every budget is renewed, so a
+    // companion that flips between ready and refused is not relaunched at
+    // once on every flip. A live streaming session renews at once.
+    std::int64_t connectedHoldMs{10000};
+    // A listener that accepts but never answers after this many launches is
+    // named ("close and reopen OkuFlow Camera") instead of relaunched.
+    int hangingCompanionLaunches{2};
+    // Consecutive launch failures of OkuFlow's own adb before it is named.
+    int adbLaunchFailuresToName{2};
     // Rung 5: at once, then these, then every launchPeriodicMs.
     std::array<std::int64_t, 2> launchRetryMs{3000, 6000};
     std::int64_t launchPeriodicMs{20000};
@@ -139,6 +173,9 @@ struct PhoneLinkPolicy {
 struct PhoneLinkDecision {
     PhoneLinkDiagnosis diagnosis{PhoneLinkDiagnosis::NotWanted};
     PhoneLinkAction action{PhoneLinkAction::None};
+    // TerminateDefaultServer only: host:kill was already sent to this
+    // listener in this episode, so termination does not send it again.
+    bool hostKillAlreadySent{false};
     // Absolute monotonic time for the next discovery cycle.
     std::int64_t nextPollMs{0};
     bool diagnosisChanged{false};
@@ -153,8 +190,14 @@ public:
     // caller performs the returned action once (or not at all if it is
     // canceled); the reservation stands either way.
     PhoneLinkDecision Decide(const PhoneLinkObservation& observation, std::int64_t nowMs);
-    // The default server stop was attempted but Windows refused it.
+    // The default server stop was attempted but Windows refused it, or the
+    // listener cannot be stopped at all (unreadable identity, not adb.exe).
     void NoteDefaultStopRefused() { defaultStopRefused_ = true; }
+    // A stop that ended neither stopped nor refused (identity changed,
+    // failed): the second such outcome in an episode counts as refused.
+    void NoteDefaultStopFailed() { if (++stopFailures_ >= 2) defaultStopRefused_ = true; }
+    // The listener is gone, changed identity, or the phone is listed.
+    void ClearDefaultStopRefused() { defaultStopRefused_ = false; stopFailures_ = 0; }
     bool DefaultStopRefused() const { return defaultStopRefused_; }
     PhoneLinkDiagnosis LastDiagnosis() const { return last_; }
     std::int64_t LastEventMs() const { return eventAtMs_; }
@@ -168,7 +211,7 @@ private:
     };
     std::int64_t SinceEventOr(std::int64_t firstSeenMs) const;
     PhoneLinkAction LadderFor(PhoneLinkDiagnosis diagnosis, const PhoneLinkObservation& observation,
-                              std::int64_t nowMs);
+                              std::int64_t nowMs, PhoneLinkDiagnosis* raised);
     void Reserve(Budget& budget, std::int64_t nowMs, std::int64_t retryMs, std::int64_t ceilingMs);
     PhoneLinkPolicy policy_;
     PhoneLinkDiagnosis last_{PhoneLinkDiagnosis::NotWanted};
@@ -182,8 +225,14 @@ private:
     std::int64_t lastReconnectMs_{-1};
     std::int64_t shadowSinceMs_{-1};
     std::int64_t askedExitMs_{-1};
+    std::int64_t unauthorizedSinceMs_{-1};
+    std::int64_t authorizingSinceMs_{-1};
+    std::int64_t connectedSinceMs_{-1};
+    bool unauthorizedReconnected_{false};
+    bool hostKillSent_{false};
     bool defaultStopRefused_{false};
-    Budget reconnect_, restart_, shadow_, askExit_, terminate_, launch_;
+    int stopFailures_{0};
+    Budget reconnect_, restart_, shadow_, askExit_, terminate_, launch_, handback_;
 };
 
 } // namespace okuflow
