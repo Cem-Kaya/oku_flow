@@ -498,6 +498,20 @@ aligned with the project goals.
   ports and scripted probes; missing fixture registration must fail the gate.
 
 ## Phone reconnect ladder (2026-11-17)
+- Iteration 9 lessons. An authority check must reach the shared helpers a
+  guarded call reaches (the server request, the owned manager, the raw
+  `host:kill` right before its first byte, the legacy reclamation), not only
+  the outer executor; a test that revokes before the outer check proves
+  nothing about the inner ones, so revoke inside them (stage hooks). A request
+  that lost its authority must not reach the decision unit at all: deciding
+  reserves budgets the next, valid cycle needs. Advance an intent generation
+  only when the intent changes, computed after the change. Evidence belongs to
+  the thing it was recorded for: when a manager is dropped, keep its counts;
+  when a listener changes, drop its listener-specific evidence and compare the
+  identity wherever a confirmation is read. A rung whose own server is the
+  broken part must look at the alternative that works (the default that lists
+  the phone). A safety refusal (a registered session) belongs in the executor
+  too, not only in the decision that relies on a measurement.
 - Iteration 8 lessons. A server can answer `host:version` while every
   listing fails (upstream adb answers it without the transport lock): any
   listing failure after a ready server is "does not answer", never

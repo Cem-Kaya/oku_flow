@@ -688,7 +688,10 @@ that stay silent past the 30 s start grace (one count per grace) or die
 before answering count with launch failures toward the AdbCannotStart
 sentence (2); resume signals within 5 s of the last applied resume are one
 event; 4 removals within 60 s name the cable until the link holds 10 s or no
-removal comes for 30 s. Windows interface Unknown
+removal comes for 30 s. Iteration 9 changes no number: a restart a live
+session defers is given back (not one of the 3), a private child dropped
+without ever answering counts toward the AdbCannotStart 2, and a termination
+or ask refused for a registered session counts toward the 3 aborted stops. Windows interface Unknown
 (the SetupAPI query failed): after 30 s blind OkuFlow may start or restart its
 own server, never ask another to exit or stop it; that takeover, or a hung
 default unresponsive for 30 s, ends in the re-plug sentence. Companion problem

@@ -1125,6 +1125,34 @@ pre-checks. The native slot `phoneSentenceIsShownAndSpokenForEveryDiagnosis`
 also checks that the notification is announced once across later label
 refreshes (its announcement time does not change after the live region's 5 s
 duplicate window).
+Iteration 9 rows: `staleIntentInsideTheServerRequestStartsNothing` (hook
+`linkStageForTest` revokes at "locked" or "default-probed" inside the start
+beside the default), `hostKillIsNotWrittenAfterTheSourceChanged` (hook
+`afterHostKillConnectForTest`, the fixture's kill log stays empty),
+`staleCycleLeavesTheEpisodeBudgetToTheNextCycle` (revoked at "decide":
+reconnect, restart, hand-back and launch still act at once in the next cycle),
+`privateServerThatDiesAfterItsReadinessBesideADefaultIsCounted` (owned child
+with `--fixture-slow-version-file` and `--fixture-exit-on-kill`; the test sends
+it `host:kill` once it went silent: no fixture change),
+`legacyReclaimOfAListingHangNeedsAFreshSilentListing` (seam
+`legacyReclaimForTest` stands in for the production-only reclamation),
+`listingHangOfOneListenerIsNotAnothers` (listener rows rewritten to a decoy
+`adb.exe`), `listingHungDefaultAtTheHandOverCapIsListedAgain`,
+`silentPrivateServerIsHandedBackToADefaultThatListsThePhone`,
+`adbThatCannotStartBesideADefaultEndsOnceItCanStart` (an event drops the
+pending start request first, so only the rung's retry can end the sentence),
+`stopsAreRefusedWhileAPhoneSessionIsRegistered` (hook
+`phoneSessionRegisteredForTest`), `refusedConnectWithOnlyAnIpv6RowIsNoListener`
+(an injected `::` row), and the session start through the default added to
+`adbThatCannotStartBesideABlindDefaultIsNamed`. The listing-failure rows use
+`listingMode` 3 (closed at once) where a hang's time-out adds nothing. Doctor:
+`silentPrivateServerBesideADefaultThatServesThePhoneIsHandedBack`,
+`restartDeferredForALiveSessionIsGivenBack`. Legacy:
+`requestThatLostItsAuthorityWritesNoHostKill`. Native:
+`aSourceChangeRevokesTheRunningLadder` now runs a real discovery cycle held at
+"decide" while the webcam is picked (it only checked a counter before),
+`aPickOfTheChosenPhoneRevokesNothing`, `aHiddenLivePhoneSessionIsConnectedForTheDoctor`
+(both in `native_app_phone_link_offscreen`).
 Iteration 8 rows: `listingFailureOfTheDefaultIsAConfirmedHang` (the in-process
 fake answers host:version while both listing forms hang, answer FAIL or
 close: a private server starts beside it and the hung-default rules end it),

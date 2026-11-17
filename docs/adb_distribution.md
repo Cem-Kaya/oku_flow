@@ -238,6 +238,48 @@ there, and the sentence ends once adb.exe can start. Once the
 terminations of a hung default are spent, the other-program sentence stands
 also while a respawned default is not confirmed yet.
 
+**Iteration 9 additions.** The discovery cycle's and the ladder's authority
+also reaches the server request itself (`EnsureAdbServer`): it is asked once
+the lifecycle lock is taken, after each blocking probe or listing, and right
+before every lifecycle effect (the legacy reclamation, a start beside the
+default, a launch, restart, replacement or retirement of OkuFlow's own child),
+inside the owned manager with every cancellation check, inside the legacy
+reclamation with every cancellation check, and in the raw `host:kill` once
+more right before its first byte. A request that lost its authority does
+nothing further and lists nothing in that cycle. A cycle whose source changed
+does not reach the doctor at all, so it reserves nothing of the episode; the
+application advances the intent generation only when the intent changed
+(computed after the change, before a pick's event), so a pick of the phone
+already chosen revokes nothing. A private child that never answered (one that
+outlived its readiness deadline silent and then died, or that is retired
+alive and silent) is counted with the launch failures when its manager is
+dropped (the yield to an answering default, both hand-backs, the release for
+a webcam): starts beside an answering default end in the "cannot start"
+sentence, which ends once OkuFlow's own server answers. A legacy reclamation
+entered on a listing hang lists the default once more first: an answer ends
+the hang and nothing is reclaimed, an adb `FAIL` keeps the hang and forbids
+the reclamation in that call. At the hand-over cap a listing-hung default is
+borrowed and listed again, so a listing that succeeds ends the hang. Listing
+failures belong to the listener they were seen on: a different listener
+clears them, and both hang confirmations are read for the listener that is
+there now. OkuFlow's private server beside a default that lists the phone is
+handed back also when it does not answer or its listing fails. A session's
+own server request uses a responsive default whatever start beside it is
+requested. The ask and the termination refuse, as aborted stops, while a
+phone session is registered (which listener a session's sockets reach is not
+recorded, so any registered session counts), and a live session counts as
+streaming by the frames the capture delivered. A restart deferred for a live
+session is given back. A refused IPv4 connect with only an IPv6 (`::`) row
+for the port is no listener.
+
+Documented, not changed. A default whose listing hang is confirmed by
+discovery's own listing (after `EnsureAdbServer`) is terminated in that same
+cycle, before a private server is tried beside it; the next cycle's server
+request starts one beside it if it is still there. Aborted stops keep the
+spacing of their reservations: terminations at 0, +15 s and +75 s, asks at 0,
++6 s and +66 s, so the other-program sentence that three aborted stops lead to
+comes after about 75 s of "Restoring" (66 s for unsent asks).
+
 After at least two failed default host-version probes spanning five seconds,
 phone-use intent may reclaim a detached adb from the reviewed legacy OkuFlow
 release. This is deliberate adoption based on current provenance, not a claim

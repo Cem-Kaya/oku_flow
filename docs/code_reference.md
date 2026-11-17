@@ -1789,9 +1789,9 @@ so metadata generation cannot silently accept an incomplete copy.
   (`CameraIngress::delivered`, never reset; presentation is not measured: a
   media view or a minimized or covered window presents nothing) and detect
   wall-clock jumps. `RefreshPhoneIntentGeneration` advances
-  `phoneIntentGeneration_` when the phone intent key (temporary source, phone
-  intent, preferred phone, automatic selection, file source) changes, or
-  always for a deliberate pick; discovery carries it in
+  `phoneIntentGeneration_` only when the phone intent key (temporary source,
+  phone intent, preferred phone, automatic selection, file source) changes,
+  computed after the change and before a pick's event; discovery carries it in
   `PhoneLinkRequest::intentGeneration`/`liveIntentGeneration`. `PhoneLinkSentence` maps the last `PhoneLinkDecision` to the
   placeholder/status sentence. `MainWindow` emits `phoneUsbRemoved`,
   `systemSuspending`, `systemResumed` (resume broadcasts and console display on)
@@ -1881,8 +1881,11 @@ so metadata generation cannot silently accept an incomplete copy.
   loopback, else any-address `0.0.0.0`/`::`); every listener lookup uses them;
   `SetTcpListenerRowsTransformForTest` is the test seam.
   `TryStopDefaultAdbServer(DefaultAdbStopRequest)` implements the owner's
-  2026-11-17 default-port rule (`stillWanted` is asked before `host:kill` and
-  before the termination): exact listener PID, same PID/creation
+  2026-11-17 default-port rule (`stillWanted` is asked before `host:kill`,
+  again right before its first byte, and before the termination;
+  `afterHostKillConnectForTest` is the seam between connect and write;
+  `LegacyAdbRecoveryRequest::stillWanted` is asked with every cancellation
+  check of the legacy reclamation): exact listener PID, same PID/creation
   as the decision-time identity, image `adb.exe`, not this process, optional
   raw `host:kill`, revalidation and `TerminateProcess` on the held handle;
   `DefaultAdbStopResult` reports Stopped, NoListener, SelfListener, NotAdb,
@@ -1917,7 +1920,18 @@ so metadata generation cannot silently accept an incomplete copy.
   coalesced resume). `NoteExitRequestDropped`/`NoteTerminationDropped` give
   back an ask or termination dropped for a changed source, uncounted.
   `OwnedAdbServer::UnansweredStarts` counts starts that never answered (one
-  per start grace alive, one at death), reset when the child answers.
+  per start grace alive, one at death), reset when the child answers;
+  `UnansweredStartsAtRetirement` adds a death not counted yet and a child
+  dropped alive and silent past its readiness deadline, for the transport to
+  keep with its launch failures when it drops the manager.
+  `OwnedAdbServer::EnsureRunning`/`Restart` take an optional `stillWanted`,
+  asked with every cancellation check while the manager's lock is held.
+  `NoteRestartDeferred` gives back a restart a live session deferred. A cycle
+  whose `PhoneLinkRequest` is stale never reaches `Decide` (the transport's
+  `DropStaleCycle`: last diagnosis, next cycle at once). `PhoneAdbTestHooks`
+  seams of iteration 9: `linkStageForTest` ("locked", "default-probed",
+  "decide"), `afterHostKillConnectForTest`, `legacyReclaimForTest`,
+  `phoneSessionRegisteredForTest`.
   `NoteDefaultStopRefused`, `NoteDefaultStopFailed` (second one refuses; the
   overloads taking `PhoneLinkDecision::episode` drop an outcome that arrives
   after a newer event), `ClearDefaultStopRefused` and
