@@ -1021,8 +1021,27 @@ chosen phone as target, `reconnect-offline` only on OkuFlow's own server, no
 serial in the trace, adb that cannot be launched, the first automatic start,
 leftover-instance classification and exact termination of windowless
 registered fixture instances, and the proven adb-child fallback.
+Iteration 3 rows: a phone kept offline by another default-port adb from
+start-up and after a hand-back is taken over (fixture `--fixture-offline-file`),
+a slow-but-listing default is never stopped (`--fixture-slow-version`), the
+interface is re-checked when a stop runs, a leftover that cannot be opened stops
+nothing (fixture `spawn`), a window appearing before termination keeps the
+leftover, every top-level window must answer (`instance-windows`), the
+production sibling scan runs through `Enumerate` against a fixture image and tag
+(stop, plausibility gate, adb-child fallback, unregistered sibling never ending
+the ladder), a paused companion on a locked phone and a manual pick with the
+companion paused launch once per event (fake `LaunchMode::Paused`), a missing
+adb is named without a renewing pick and an adb killed at start
+(`--fixture-exit-at-start`) reaches the same sentence, Windows answering
+"unknown" for the interface, a companion camera failure, "any phone" with
+another attached phone, and a hung-default shadow never handed back to a
+default that only answers. `phone_camera_contract` now runs about four
+minutes; its CTest limit is 300 s.
 `phone_link_text` (headless) checks one sentence per diagnosis and that every
-sentence is translated in all 24 catalogs. The opt-in native fixture slot
+sentence is translated in all 24 catalogs. The native slot
+`phoneSentenceIsShownAndSpokenForEveryDiagnosis` delivers every verdict
+through the real `PollPhoneCameraDiscovery` path (no direct label update) and
+checks that a passing notification does not replace the phone sentence. The opt-in native fixture slot
 `resumeAndDeviceRemovalReachTheApplication` sends synthetic `WM_POWERBROADCAST`
 and ADB removal messages to the real application object offscreen.
 

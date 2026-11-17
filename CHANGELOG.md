@@ -24,6 +24,15 @@
   closed. Another Android tool that keeps restarting its server is no longer
   fought endlessly: after a few attempts OkuFlow says another program is using
   the phone.
+- A phone that another Android tool keeps offline is now taken over after two
+  reconnects instead of reading "Restoring USB connection…" for ever, also
+  right after OkuFlow starts. OkuFlow says when the phone camera is held by
+  another phone app or cannot start, and when a different phone than the
+  chosen one is connected. A paused OkuFlow Camera on a locked phone is woken
+  once, not every 20 seconds. A screen reader now hears every change of the
+  phone instruction while no camera runs, and passing notifications no longer
+  replace it. A leftover OkuFlow instance is stopped only after it has finished
+  saving recordings and settings, and only while it plausibly holds the phone.
 
 - Clarify the public Android privacy policy: OkuFlow Camera is an accessibility-focused
   USB companion, normal viewing does not upload camera images to the developer,

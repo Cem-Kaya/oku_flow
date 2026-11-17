@@ -528,23 +528,43 @@ aligned with the project goals.
   events, not only time; a new rung needs a doctor row, a fake-adb row and a
   trace line. Do not reintroduce "once per transport" launch budgets or
   minute-long holds; the owner's complaint was stacked 30 s / 60 s waits.
+  Camera starts take launches from the doctor's per-event budget
+  (`ReserveLaunch`), never from a timer of their own.
+- Every stuck state ends somewhere, also on a server OkuFlow does not own: a
+  phone kept offline/connecting/stalled by a borrowed default is taken over
+  after two reconnects; the user's endpoint gets the re-plug sentence. Only a
+  usable listing (ready, unauthorized, authorizing) hands USB back. Windows
+  "Unknown" for the ADB interface counts as present only for OkuFlow's own
+  server and only after 30 s blind.
 - Leftover OkuFlow instances (replaces "a windowless sibling is reported, not
   terminated", which left the owner's original complaint in place): only real
   instances register named events (`OkuFlowInstanceRegistration`), so an
-  offscreen or test instance is never taken for a leftover. A registered
-  sibling of the same image, user and session whose exit signal has been set
-  for 5 s, or that shows no window on two observations 10 s apart and does not
-  answer a window message, is terminated once through a held handle (PID,
-  creation time, image path); if refused, only its proven bundled adb child is
-  stopped; else the sentence. A sibling with a visible window is never
-  terminated and is named only after the blind grace.
+  offscreen or test instance is never taken for a leftover. The exit signal is
+  raised after the critical teardown (recording, image writes, capture stop,
+  settings, owned adb), never at `aboutToQuit`. A registered sibling of the
+  same image, user and session whose exit signal has been set for 5 s, or that
+  shows no window on two observations 20 s apart and whose top-level windows
+  do not all answer a window message, is terminated once through a held
+  handle (PID, creation time, image path, still no visible window), and only
+  while the phone is unlisted, the interface present and the blind grace over;
+  if refused, only its proven bundled adb child is stopped while the instance
+  is held open; an instance that cannot be opened stops nothing; else the
+  sentence. A sibling with a visible window is never terminated and is named
+  only after the blind grace. An unregistered windowless sibling is traced and
+  never blocks the ladder. Tests drive the real scan through Enumerate with a
+  fixture image and tag (`PhoneAdbTestHooks::siblingImage`), never this
+  installation.
 - New placeholder sentences need all 24 catalogs and per-entry small-agent
-  review; the eleven 2026-11-17 phone sentences and the four of iteration 2
-  were written without that review (the implementer ran without sub-agents)
-  and still need it.
+  review; the eleven 2026-11-17 phone sentences, the four of iteration 2 and
+  the two of iteration 3 (companion camera failure, a different phone
+  connected) were written without that review (the implementer ran without
+  sub-agents) and still need it.
 - While the phone is the wanted camera, its sentence owns the status line,
-  also over a fallback webcam and over the generic reconnect text, and the
-  status line speaks the instruction itself, never only a title.
+  also over a fallback webcam, over the generic reconnect text and over a
+  passing notification, and the status line speaks the instruction itself,
+  never only a title. Every discovery result refreshes the status line (no
+  frames refresh it while no camera runs); native tests deliver verdicts
+  through `PollPhoneCameraDiscovery`, not by calling the label update.
 - Nothing here was observed on a real failing laptop; report fixture evidence
   separately from real sleep/cable/phone acceptance.
 

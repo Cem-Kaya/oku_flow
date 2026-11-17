@@ -1,5 +1,13 @@
 # Application languages
 
+Phone reconnect iteration 3 adds two Windows source keys (950 total): "The
+phone camera could not start. Close other camera apps on the phone, then open
+OkuFlow Camera again." and "A different phone is connected. Connect the phone
+you chose in OkuFlow, or choose the connected phone under Settings, Camera."
+They reuse each catalog's existing names for OkuFlow Camera and for Settings,
+Camera. Structural parity passed in all 24 catalogs; the 48 targets still need
+the per-entry review.
+
 Phone reconnect iteration 2 adds three Windows source keys and replaces one
 (948 total): "Unplug the phone's USB cable and plug it back in.", "OkuFlow
 Camera is not responding on the phone. Close it on the phone and open it

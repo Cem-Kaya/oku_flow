@@ -1872,19 +1872,33 @@ so metadata generation cannot silently accept an incomplete copy.
   for observation only. `OkuFlowInstanceRegistration::Register/SignalExiting`
   creates and sets the named instance events of a real instance
   (`OkuFlowInstanceObjectName`, `OkuFlowInstallationTag`);
-  `ObserveOkuFlowSiblings` reports registration, exit signal, visible window
-  and window-message answer; `ClassifyOkuFlowSibling` (pure, with
-  `OkuFlowSiblingTrack`/`OkuFlowSiblingPolicy`) proves a leftover;
-  `StopLeftoverOkuFlowInstance` terminates the exact proven leftover through a
-  held handle and falls back to `StopLeftoverAdbChild` (proven bundled adb
-  child only).
+  `ObserveOkuFlowSiblings` (optional `canceled`) reports registration, exit
+  signal, visible window and whether every top-level window answers `WM_NULL`
+  (100 ms slices; not asked when a window is visible); `ClassifyOkuFlowSibling`
+  (pure, with `OkuFlowSiblingTrack`/`OkuFlowSiblingPolicy`, windowless proof
+  20 s) proves a leftover; `StopLeftoverOkuFlowInstance` terminates the exact
+  proven leftover through a held handle after re-checking it has no visible
+  window, stops nothing when the process cannot be opened, and falls back to
+  `StopLeftoverAdbChild` (proven bundled adb child only, with the parent held
+  open, alive and of the same creation). `LeftoverInstanceStopRequest` carries
+  `canceled` and the test seams `visibleWindowForTest` and
+  `refuseTerminationForTest`. The instance raises its exit signal in
+  `~OkuFlowApp` after the critical teardown.
 - `phone_link_doctor.hpp` / `phone_link_doctor.cpp`: `PhoneLinkObservation`,
   `DiagnosePhoneLink`, `PhoneLinkWaitsForUser`, `PhoneLinkDoctor::OnEvent/Decide`
   and `PhoneLinkPolicy` form the pure, clock-free decision unit (27 diagnoses,
-  10 actions, event-reset budgets, per-episode caps). `NoteDefaultStopRefused`,
-  `NoteDefaultStopFailed` (second one refuses), `ClearDefaultStopRefused` and
+  10 actions, event-reset budgets, per-episode caps including `handOverCap`,
+  `foreignReconnects`, `unknownInterfaceBlindMs`, `companionFailedGraceMs`).
+  `NoteDefaultStopRefused`, `NoteDefaultStopFailed` (second one refuses; the
+  overloads taking `PhoneLinkDecision::episode` drop an outcome that arrives
+  after a newer event), `ClearDefaultStopRefused` and
   `NoteDefaultListenerChanged` carry the transport's stop outcomes and listener
-  changes. `PhoneLinkDiagnosisName`/`ActionName`/`EventName` give trace names.
+  changes. `ReserveLaunch`/`RenewLaunches` are the one per-event companion
+  launch budget shared by the ladder and camera starts; `BlindGracePassed`
+  gates a leftover stop; `HandOverAllowed`/`NoteHandOver` count the
+  transport's own hand-back of a hung-default shadow; `Episode` names the
+  current episode. `PhoneLinkDiagnosisName`/`ActionName`/`EventName` give trace
+  names.
 - `OwnedAdbServer::Restart` restarts a responsive but blind owned child (live
   sessions win); `ResetBudgets` (lock-free, applied by the next
   `EnsureRunning`/`Restart`) clears the restart cooldown, which starts at
@@ -1893,10 +1907,13 @@ so metadata generation cannot silently accept an incomplete copy.
   never answered; `confirmationSpacing` (1 s) spaces the hang probes.
 - `PhoneAdbTestHooks` / `SetPhoneAdbTestHooks` isolate fake-socket tests on a
   private random port and disable real bootstrap; switching hooks stops any
-  previously owned child and resets test budgets. `OccupiedPhone`, `MayLaunch`
-  and `AllowAppLaunch` prevent overlapping probes and repeated automatic
-  activity launches for one USB transport. A manual camera pick renews the
-  launch allowance. `ControlHello` accepts a token-free `probe:true` ACK,
+  previously owned child and resets test budgets. `siblingImage`,
+  `siblingTag`, `siblingAdbImage`, the sibling grace fields and
+  `refuseSiblingTermination` run the production sibling scan and leftover stop
+  against a private fixture image. `OccupiedPhone` prevents overlapping
+  probes; `MayLaunch` takes a camera start's single wake + launch from the
+  doctor's per-event budget (`PhoneLinkDoctor::ReserveLaunch`), and
+  `AllowAppLaunch` (a manual camera pick) renews it. `ControlHello` accepts a token-free `probe:true` ACK,
   supports older tokened ACKs and reads coded ERROR packets. Real hello and
   video binding are retried together within a bounded connection window.
   `ownedServerExecutable` / `ownedServerArguments` opt into the private fake

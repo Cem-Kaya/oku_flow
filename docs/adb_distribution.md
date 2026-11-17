@@ -146,8 +146,13 @@ spanning 5 s; events restart the confirmation, they never shorten it; a
 listener that does not accept counts as hung), or that is responsive but blind
 to a phone Windows shows while OkuFlow's private server beside it is blind too,
 first receives one raw `host:kill`, only after a fresh listing that succeeded,
-serves no other device and does not list the phone, and after the PID,
-creation-time and `adb.exe` image checks. If its loopback listener remains after 2 s, or it
+serves no other device and does not list the phone ready, unauthorized or
+authorizing, and after the PID, creation-time and `adb.exe` image checks. A
+borrowed default that keeps the phone offline, connecting, stalled or without
+permissions after two targeted reconnects is treated as blind (it holds the
+interface without serving it). A hang confirmed only by version probes gets
+one short listing attempt before anything else: any answer keeps the server
+and restarts the confirmation. If its loopback listener remains after 2 s, or it
 cannot answer at all, `TryStopDefaultAdbServer` terminates exactly the process
 behind that listener: it opens the listener's owning PID, requires the same PID
 and creation time as the identity observed when the decision was made, the
@@ -160,10 +165,12 @@ phone's USB connection. An access-denied termination (elevated server or
 another user's), a listener process that cannot be opened, an image other than
 `adb.exe`, and a changed identity or failure twice in a row are traced and
 shown with the same sentence, until the listener is gone or changes or the
-phone is listed. Termination requires the Windows ADB interface to be present.
-Per episode at most two `host:kill` requests and three terminations; another
-adb that appears beside OkuFlow's blind server is handed back to when it lists
-the phone and otherwise taken over under the same caps. Overridden
+phone is listed. Termination requires the Windows ADB interface to be present,
+checked again when the stop runs; "unknown" never counts for a stop.
+Per episode at most two `host:kill` requests, three terminations and four
+private-server starts beside the default plus hand-backs; another adb that
+appears beside OkuFlow's blind server is handed back to when it lists the phone
+in a usable state and otherwise taken over under the same caps. Overridden
 endpoints are never asked to exit or stopped. Lifecycle and manager lock waits
 check cancellation every 20 ms; live-port observation does not wait for a host
 probe. Camera startup accepts only confirmed-ready results. Server identity

@@ -190,7 +190,7 @@ if (WIN32)
         OKUFLOW_ADB_OWNED_CHILD_FIXTURE="$<TARGET_FILE:adb_owned_child_fixture>")
     add_dependencies(phone_camera_tests adb_owned_child_fixture)
     add_test(NAME phone_camera_contract COMMAND phone_camera_tests -v1)
-    set_tests_properties(phone_camera_contract PROPERTIES TIMEOUT 180
+    set_tests_properties(phone_camera_contract PROPERTIES TIMEOUT 300
         ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 

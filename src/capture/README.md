@@ -154,8 +154,10 @@ observation and runs that rung. A working webcam is replaced only by a ready pho
 
 Sibling OkuFlow instances are observed through `ObserveOkuFlowSiblings`;
 proven leftovers of this installation are stopped by
-`StopLeftoverOkuFlowInstance` (android/PROTOCOL.md, "Leftover OkuFlow
-instance").
+`StopLeftoverOkuFlowInstance` only while they plausibly hold the phone
+(android/PROTOCOL.md, "Leftover OkuFlow instance"). Camera starts and the
+ladder share one per-event companion launch budget
+(`PhoneLinkDoctor::ReserveLaunch`).
 
 The raw host connection honors local TCP adb endpoint overrides; those are
 never stopped. A hung or blind default-port adb is stopped under the owner's

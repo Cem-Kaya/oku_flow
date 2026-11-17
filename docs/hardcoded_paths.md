@@ -670,7 +670,18 @@ the user; 5 s while healthy. Host budgets: 500ms connect, 1000ms per reply
 field, 1000ms companion probe transport, 2500ms read-only shell facts. Blind
 owned-server restart after 5 s (then 15 s, then 60 s); private server beside a
 blind default after 5 s; `host:kill` 6 s later; termination 2 s after that.
-Companion wake + launch: at once, 3 s, 6 s, then every 20 s. A resumed phone
+A phone stuck (offline, connecting, stalled, no permissions) on a server
+OkuFlow does not own: two reconnects (at once, 3 s), then 6 s later the
+takeover (borrowed default) or the re-plug sentence (user endpoint). Per
+episode: 3 blind/stuck restarts, 2 `host:kill`, 3 terminations, 4 private
+server starts beside the default plus hand-backs. Windows interface Unknown:
+OkuFlow's own server counts as present after 30 s blind. Companion problem
+(busy camera, failed, no mode): sentence after 20 s. A hang confirmed only by
+version probes gets one listing attempt (500 ms connect, 1000 ms per reply
+field) before termination. Companion wake + launch: at once, 3 s, 6 s, then
+every 20 s, one budget shared by discovery and camera starts (at most one per
+start attempt; once per event while the app process runs with its listener
+closed). A resumed phone
 session must present a frame within 3 s. Owned bootstrap/crash cooldown 5 s,
 doubling to 30 s. Capture shutdown bounds its D3D11 completion-query poll to
 1000ms while retaining the facade's shared 1500ms stop deadline. Stopping a
@@ -1054,10 +1065,14 @@ Update this file whenever these defaults move or new fixed paths are introduced.
 - No phone serial/model is embedded. Saved `cameraSymbolicLink` is a user
   preference; `cameraSelectionExplicit` distinguishes a manual webcam choice
   from an implicit fallback. Runtime transport IDs are never saved.
-- Discovery runs asynchronously every 5 s, with a 100 ms UI completion pulse.
-  Probe ACK deadline is 1500 ms; listing reads are 150 ms. Unknown listing
-  results preserve the cache. Failure retries back off 5/10/20/60 s; busy/hot
-  starts wait at least 30 s. A new transport or readiness transition resets it.
+- Discovery runs asynchronously at the link doctor's pace (see "Build
+  Directories" above: at once after an event, 1 s, then up to 10 s; 2 s while
+  waiting for the user; 5 s healthy), with a 100 ms UI completion pulse.
+  Probe ACK deadline is 1500 ms; listing reads are 1000 ms per reply field.
+  Unknown listing results preserve the cache. Failed automatic starts back off
+  1/2/3/5/10 s; busy/hot starts wait at least 5 s (the phone holds those
+  problems for 10 s). A new transport, readiness transition or link event
+  resets it.
 - `ADB_SERVER_SOCKET` accepts `tcp:<port>` or local `tcp:<host>:<port>`;
   `ANDROID_ADB_SERVER_PORT` and `ANDROID_ADB_SERVER_ADDRESS` accept local TCP.
   Default is `127.0.0.1:5037`; nonlocal/invalid overrides disable USB phones.
@@ -1095,8 +1110,12 @@ Update this file whenever these defaults move or new fixed paths are introduced.
   `Local\OkuFlow.Exiting.<tag>.<pid>` in the session namespace, where `<tag>` is
   a 64-bit FNV-1a hash (16 hex digits) of the lower-case canonical image path.
   No file, no registry value; the kernel removes the names with the process.
-  Leftover proof: exit signal set for 5 s, or no window on two observations
-  10 s apart plus no answer to `WM_NULL` within 1 s.
+  The exit signal is set after the critical teardown, not at quit. Leftover
+  proof: exit signal set for 5 s, or no window on two observations 20 s apart
+  plus not every top-level window answering `WM_NULL` within 1 s (100 ms
+  slices that observe shutdown; never sent to a sibling with a visible window).
+  Stopped only while the phone is unlisted, the interface present and the 5 s
+  blind grace over; exit and adb-child waits 2 s, both cancellable.
 - The phone link trace (`phone-link.log`) is written by one private writer
   thread; callers, including the UI thread, only queue lines (at most 1024
   waiting). Action results are fixed reasons, never adb error texts, which can
@@ -1115,10 +1134,15 @@ Update this file whenever these defaults move or new fixed paths are introduced.
   acquisition is capped at 3 s, host-kill connect at 500 ms, graceful/forced exit
   waits at 2 s each. Private fixtures inject their own manifest/launcher hashes,
   root, scan scope, mutex and port, never the owner's port 5037. An unused shadow
-  hands back after an empty raw transport list and two healthy default probes.
-- Automatic activity launch is limited to one attempt per serial/transport.
-  A manual phone selection renews it. Permission, busy and thermal probe
-  problems wait for phone-state changes instead of forcing foreground every 5 s.
+  hands back after an empty raw transport list of its own and two default
+  listings in a row that show a USB phone ready, unauthorized or authorizing
+  (an answer alone is not enough), within the per-episode hand-over cap.
+- Automatic activity launch (wake + `am start`) uses the link doctor's one
+  per-event budget for discovery and camera starts: at once, 3 s, 6 s, then
+  every 20 s; at most one per camera start attempt; once per event while the
+  app process runs with its listener closed. A manual phone selection renews
+  it. Permission, busy and thermal probe problems wait for phone-state changes
+  instead of forcing foreground.
 - Source builds use `%LOCALAPPDATA%/OkuFlow/adb-source-build` by default;
   `scripts/build_adb_from_source.ps1 -BuildRoot` selects another local root.
   Inputs and GCC 16.2.0 are pinned in `scripts/adb-source/pins.json`.
