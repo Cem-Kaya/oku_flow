@@ -83,7 +83,9 @@ struct PrivateTorchSocket {
 // Private random port, no bootstrap: these fixtures can never reach a real adb or phone.
 class FakePhoneAdb {
 public:
-    enum class LaunchMode { None, Play, Legacy, Blocked };
+    // Paused: `am start` succeeds but the listener stays closed (a paused
+    // companion installed today).
+    enum class LaunchMode { None, Play, Legacy, Blocked, Paused };
     enum class RecoveryMode { Healthy, Stalled, ServerStalled, SelectionStalled, Replugged,
                               Unsupported, LegacyListing, Unauthorized, Wifi,
                               PartialEcho, SlowHealthy, AckWithoutEffect, CompanionBusy };
@@ -265,6 +267,7 @@ private:
             { std::lock_guard lock(launchMutex); launches.append(QString::fromUtf8(next)); }
             Write(socket, "OKAY");
             if (launchMode == LaunchMode::Blocked) Write(socket, "Error: Activity start blocked");
+            else if (launchMode == LaunchMode::Paused) Write(socket, "Starting: Intent");
             else if (launchMode == LaunchMode::Legacy && !next.contains("com.okuflow.camera/.MainActivity"))
                 Write(socket, "Error type 3\nError: Activity class does not exist.");
             else { launchReady = true; Write(socket, "Starting: Intent"); }
@@ -2099,6 +2102,48 @@ private slots:
         QCOMPARE(server.Launches().size(), qsizetype{1});
         okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::DeviceArrival);
         LinkCycles(3);
+        QCOMPARE(server.Launches().size(), qsizetype{2});
+    }
+    void pausedCompanionOnALockedPhoneIsLaunchedOncePerEvent() {
+        // Iteration 3 (C3): paused, phone locked, app process running. One
+        // wake + launch per event, then the user is asked; never every 20 s.
+        FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::Paused,
+                            FakePhoneAdb::RecoveryMode::Healthy, false);
+        server.SetShellFacts("W:\n mWakefulness=Asleep\nK:\n mKeyguardShowing=true\nP:\npackage:/x\nR:\n4242\nEND\n");
+        ScopedLinkHooks hooks(server.port);
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto reports = LinkCycles(40);
+        QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::CompanionListenerClosed));
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::WaitForUser));
+        QCOMPARE(server.Launches().size(), qsizetype{1});
+        QCOMPARE(server.ServiceCount("shell:input keyevent KEYCODE_WAKEUP"), 1);
+    }
+    void manualPickWithThePausedCompanionLaunchesOncePerEvent() {
+        // C3: the session start path takes its launch from the same
+        // per-event budget as the ladder: repeated starts do not relaunch.
+        FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::Paused,
+                            FakePhoneAdb::RecoveryMode::Healthy, false);
+        server.SetShellFacts("W:\n mWakefulness=Awake\nK:\n mKeyguardShowing=false\nP:\npackage:/x\nR:\n4242\nEND\n");
+        ScopedLinkHooks hooks(server.port);
+        const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        QVERIFY(SUCCEEDED(apartment)); QVERIFY(SUCCEEDED(MFStartup(MF_VERSION)));
+        auto teardown = qScopeGuard([&] { MFShutdown(); CoUninitialize(); });
+        okuflow::CameraDescriptor phone; phone.phoneSerial = "abc"; phone.phoneTransportId = 9;
+        const auto start = [&] {
+            okuflow::PhoneCameraTransport transport;
+            const bool started = transport.Start(phone, nullptr, {}, {});
+            transport.Stop();
+            return started;
+        };
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::ManualPick);
+        okuflow::PhoneCameraTransport::AllowAppLaunch("abc");
+        QVERIFY(!start());
+        QCOMPARE(server.Launches().size(), qsizetype{1});
+        LinkCycles(6); // The ladder names it and does not launch again.
+        QVERIFY(!start()); // Another automatic attempt within the episode.
+        QCOMPARE(server.Launches().size(), qsizetype{1});
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::ManualPick);
+        QVERIFY(!start());
         QCOMPARE(server.Launches().size(), qsizetype{2});
     }
     void hangingCompanionListenerIsNamed() {

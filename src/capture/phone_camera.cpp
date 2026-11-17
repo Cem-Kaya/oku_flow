@@ -77,8 +77,6 @@ struct AdbRuntime {
     unsigned shadowHandbackProbes{};
     std::optional<PhoneAdbTestHooks> hooks;
     Clock::time_point nextServerStart{};
-    // Next allowed automatic companion launch per serial; events clear it.
-    std::map<std::string, Clock::time_point> launched;
     std::map<std::pair<std::uint16_t, std::string>, Clock::time_point> nextUsbRecovery;
     std::map<std::pair<std::uint16_t, std::string>, unsigned> usbRecoveryAttempts;
     // Link doctor and its event clock (fast window for hang confirmation).
@@ -300,7 +298,6 @@ void ObserveServerIdentity()
     if (runtime.lastIdentity == identity) return;
     runtime.lastIdentity = identity;
     ++runtime.serverEpoch;
-    runtime.launched.clear();
     runtime.nextUsbRecovery.clear();
     runtime.nextUsbHealthProbe.clear();
 }
@@ -315,17 +312,15 @@ struct OccupiedPhone {
     }
     std::string serial;
 };
-// Companion launch budget: at once after an event (arrival, removal, resume,
-// manual pick, a new server identity), then a slow periodic retry while the
-// user wants the phone. Replaces "once per USB transport", which spent its
-// only launch on a locked phone.
-constexpr auto kAppLaunchPeriod = std::chrono::seconds(20);
-bool MayLaunch(const std::string& serial) {
+// Companion launch budget of the session start path: the link doctor's one
+// per-event budget, shared with the discovery ladder (at once after an event,
+// then 3 s, 6 s, then every 20 s; once per event while the app process runs
+// with its listener closed). Replaces a separate 20 s timer per serial that
+// woke a paused, locked phone for ever.
+bool MayLaunch()
+{
     auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
-    auto& next = runtime.launched[serial];
-    if (Clock::now() < next) return false;
-    next = Clock::now() + kAppLaunchPeriod;
-    return true;
+    return runtime.doctor.ReserveLaunch(NowMs());
 }
 
 void Check(HRESULT hr, const char* operation)
@@ -603,7 +598,6 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
                 if (runtime.ownedServer == owned) runtime.ownedServer.reset();
                 runtime.shadowServer = false; runtime.shadowHandbackProbes = 0;
                 runtime.shadowForBlindness = false;
-                runtime.launched.clear();
                 runtime.nextServerStart = Clock::now() + std::chrono::seconds(30);
                 return Result::Running;
             }
@@ -616,13 +610,11 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
                 owned->Stop();
                 std::lock_guard lock(runtime.mutex);
                 if (runtime.ownedServer == owned) runtime.ownedServer.reset();
-                runtime.launched.clear();
                 return Result::Running;
             }
         }
         const auto result = owned->EnsureRunning(canceled);
         if (result == Result::Launched || result == Result::Restarted) {
-            { std::lock_guard lock(runtime.mutex); runtime.launched.clear(); }
             qInfo() << "OkuFlow owned adb is ready on private port" << owned->Port().value_or(0);
         }
         return result;
@@ -1056,7 +1048,7 @@ void SetPhoneAdbTestHooks(std::optional<PhoneAdbTestHooks> hooks)
     runtime.lastIdentity.reset(); runtime.serverEpoch = 0;
     runtime.borrowedFailureIdentity.reset(); runtime.borrowedFailureSince = {};
     runtime.borrowedFailures = 0; runtime.shadowServer = false; runtime.shadowHandbackProbes = 0;
-    runtime.launched.clear(); runtime.nextUsbRecovery.clear(); runtime.nextUsbHealthProbe.clear();
+    runtime.nextUsbRecovery.clear(); runtime.nextUsbHealthProbe.clear();
     runtime.usbRecoveryAttempts.clear();
     runtime.doctor = PhoneLinkDoctor(runtime.hooks && runtime.hooks->linkPolicy ? *runtime.hooks->linkPolicy
                                                                                 : PhoneLinkPolicy{});
@@ -1071,7 +1063,8 @@ void SetPhoneAdbTestHooks(std::optional<PhoneAdbTestHooks> hooks)
 }
 void PhoneCameraTransport::AllowAppLaunch(const std::string& serial)
 {
-    auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex); runtime.launched.erase(serial);
+    (void)serial; // One budget for the phone link, renewed by the deliberate pick.
+    auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex); runtime.doctor.RenewLaunches();
 }
 
 struct PhoneVideoDecoder::Impl {
@@ -1401,7 +1394,6 @@ void NotePhoneLinkEvent(PhoneLinkEvent event)
         const auto now = Clock::now();
         runtime.doctor.OnEvent(event, NowMs(now));
         runtime.lastEvent = now;
-        runtime.launched.clear();
         runtime.nextUsbRecovery.clear();
         runtime.nextUsbHealthProbe.clear();
         runtime.usbRecoveryAttempts.clear();
@@ -1848,7 +1840,6 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
             if (runtime.ownedServer == owned) runtime.ownedServer.reset();
             runtime.shadowServer = runtime.shadowForBlindness = runtime.shadowRequested = false;
             runtime.shadowHandbackProbes = 0;
-            runtime.launched.clear();
             runtime.nextServerStart = {};
         }
         return "the default server lists the phone; private server retired";
@@ -1860,7 +1851,6 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         const auto result = owned->Restart(canceled);
         using R = OwnedAdbServer::EnsureResult;
         if (result == R::Restarted || result == R::Launched) {
-            { std::lock_guard lock(runtime.mutex); runtime.launched.clear(); }
             return "owned server restarted on private port " + std::to_string(owned->Port().value_or(0));
         }
         if (result == R::RestartDeferredLiveSession) return "owned restart deferred: a live session uses it";
@@ -2422,6 +2412,7 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
             QTcpSocket control, video;
             QJsonObject capabilities;
             const auto connectionDeadline = Clock::now() + std::chrono::seconds(5);
+            bool launchedThisAttempt = false;
             for (;;) {
                 CheckCanceled(&canceled_);
                 bool endpointOpened = false;
@@ -2437,8 +2428,12 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
                     if (error.code != "sessionBusy" || Clock::now() >= connectionDeadline) throw;
                 } catch (const std::exception&) {
                     control.abort(); video.abort(); CheckCanceled(&canceled_);
-                    // Only an absent listener gets a single launch per USB attachment.
-                    if (!endpointOpened && MayLaunch(descriptor.phoneSerial)) {
+                    // An absent listener gets at most one launch per start
+                    // attempt, taken from the shared per-event budget.
+                    if (!endpointOpened && !launchedThisAttempt && MayLaunch()) {
+                        launchedThisAttempt = true;
+                        TracePhoneLink("session start: woke the phone and requested the companion " +
+                                       PhoneSerialTag(descriptor.phoneSerial));
                         // Wake first: a launch on a sleeping phone would otherwise be spent
                         // behind the keyguard. A paused/blocked installed app keeps its
                         // own state; the legacy package is only tried when the Play

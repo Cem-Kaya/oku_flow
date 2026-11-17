@@ -103,6 +103,12 @@ private slots:
             o.companion = PhoneCompanionProbe::Refused;
             o.shell = {PhoneFact::Yes, PhoneFact::No, PhoneFact::Yes, PhoneFact::Yes}; })
                                                              << D::CompanionListenerClosed;
+        // Iteration 3 (C3): the listener refuses while the app process runs,
+        // whatever the keyguard shows (paused on a locked phone).
+        QTest::newRow("paused and locked") << With([](auto& o) {
+            o.companion = PhoneCompanionProbe::Refused;
+            o.shell = {PhoneFact::No, PhoneFact::Yes, PhoneFact::Yes, PhoneFact::Yes}; })
+                                           << D::CompanionListenerClosed;
         QTest::newRow("no permissions") << With([](auto& o) { o.phoneState = PhoneAdbState::NoPermissions; })
                                         << D::Offline;
         QTest::newRow("unknown state") << With([](auto& o) { o.phoneState = PhoneAdbState::Other; }) << D::Offline;
@@ -660,6 +666,30 @@ private slots:
         QCOMPARE(launches, 1);
         doctor.OnEvent(PhoneLinkEvent::DeviceArrival, 300000);
         QCOMPARE(int(doctor.Decide(paused, 300000).action), int(A::WakeAndLaunchApp));
+    }
+    void sessionStartSharesThePerEventLaunchBudget()
+    {
+        // C3: the session start path and the ladder draw on one budget.
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::ManualPick, 0);
+        QVERIFY(doctor.ReserveLaunch(0));   // The start path launches first.
+        QVERIFY(!doctor.ReserveLaunch(100)); // Not again at once.
+        const auto paused = With([](auto& o) {
+            o.companion = PhoneCompanionProbe::Refused;
+            o.shell = {PhoneFact::No, PhoneFact::Yes, PhoneFact::Yes, PhoneFact::Yes}; });
+        for (std::int64_t now = 1000; now < 120000; now += 1000) {
+            QCOMPARE(int(doctor.Decide(paused, now).action), int(A::WaitForUser));
+            QVERIFY(!doctor.ReserveLaunch(now)); // Held until the next event.
+        }
+        doctor.OnEvent(PhoneLinkEvent::DeviceArrival, 120000);
+        QVERIFY(doctor.ReserveLaunch(120000));
+        // A killed app (process gone) keeps the ordinary spaced budget.
+        PhoneLinkDoctor killed;
+        killed.OnEvent(PhoneLinkEvent::AppStart, 0);
+        QVERIFY(killed.ReserveLaunch(0));
+        QCOMPARE(int(killed.Decide(Refused(PhoneFact::Yes, PhoneFact::No), 500).action), int(A::Relist));
+        QCOMPARE(int(killed.Decide(Refused(PhoneFact::Yes, PhoneFact::No), 3000).action), int(A::WakeAndLaunchApp));
+        QVERIFY(!killed.ReserveLaunch(3500));
     }
     void adbThatCannotStartIsNamed()
     {

@@ -120,13 +120,14 @@ PhoneLinkDiagnosis DiagnosePhoneLink(const PhoneLinkObservation& o)
         break;
     }
     if (o.shell.appInstalled == PhoneFact::No) return D::AppNotInstalled;
+    // The app process lives but its listener refuses: the companion that is
+    // installed today answers nothing while paused. Launched once per event,
+    // whatever the keyguard shows (a paused app on a locked phone is woken
+    // once, not every 20 s).
+    if (o.companion == PhoneCompanionProbe::Refused && o.shell.appRunning == PhoneFact::Yes)
+        return D::CompanionListenerClosed;
     if (o.shell.keyguardShowing == PhoneFact::Yes || o.shell.screenAwake == PhoneFact::No)
         return D::PhoneLocked;
-    // The app process lives but its listener refuses: the companion that is
-    // installed today answers nothing while paused. Launched only on events.
-    if (o.companion == PhoneCompanionProbe::Refused && o.shell.appRunning == PhoneFact::Yes &&
-        o.shell.screenAwake == PhoneFact::Yes)
-        return D::CompanionListenerClosed;
     return D::AppNotRunning;
 }
 
@@ -166,6 +167,7 @@ void PhoneLinkDoctor::OnEvent(PhoneLinkEvent, std::int64_t nowMs)
     defaultStopRefused_ = false;
     stopFailures_ = 0;
     handOvers_ = 0;
+    launchHeld_ = false;
     reconnect_ = restart_ = shadow_ = askExit_ = terminate_ = launch_ = handback_ = Budget{};
 }
 
@@ -180,6 +182,22 @@ void PhoneLinkDoctor::Reserve(Budget& budget, std::int64_t nowMs, std::int64_t r
     // waits retryMs; later attempts wait the ceiling until a new event.
     ++budget.attempts;
     budget.nextAllowedMs = nowMs + (budget.attempts <= 1 ? retryMs : ceilingMs);
+}
+
+void PhoneLinkDoctor::TakeLaunch(std::int64_t nowMs)
+{
+    // At once, then launchRetryMs, then every launchPeriodicMs.
+    ++launch_.attempts;
+    const auto index = static_cast<size_t>(launch_.attempts - 1);
+    launch_.nextAllowedMs = nowMs + (index < policy_.launchRetryMs.size()
+        ? policy_.launchRetryMs[index] : policy_.launchPeriodicMs);
+}
+
+bool PhoneLinkDoctor::ReserveLaunch(std::int64_t nowMs)
+{
+    if (launchHeld_ || !launch_.Allowed(nowMs)) return false;
+    TakeLaunch(nowMs);
+    return true;
 }
 
 PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const PhoneLinkObservation& o,
@@ -335,28 +353,29 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         // A listener that accepts but never answers is not helped by more
         // launches (am start only brings the hanging activity forward).
         const bool hanging = o.companion == PhoneCompanionProbe::TimedOut && o.adbd == PhoneAdbdHealth::Answers;
-        if (hanging && launch_.attempts >= policy_.hangingCompanionLaunches) {
+        // Also when the episode's launches are held (the app was launched
+        // once while its listener was closed and now hangs).
+        if (hanging && (launch_.attempts >= policy_.hangingCompanionLaunches || launchHeld_)) {
+            launchHeld_ = true;
             *raised = D::CompanionNotResponding;
             return A::WaitForUser;
         }
-        if (launch_.Allowed(nowMs)) {
-            ++launch_.attempts;
-            const auto index = static_cast<size_t>(launch_.attempts - 1);
-            launch_.nextAllowedMs = nowMs + (index < policy_.launchRetryMs.size()
-                ? policy_.launchRetryMs[index] : policy_.launchPeriodicMs);
-            return A::WakeAndLaunchApp;
-        }
-        return launch_.attempts >= 2 ? A::WaitForUser : A::Relist;
+        if (ReserveLaunch(nowMs)) return A::WakeAndLaunchApp;
+        return launch_.attempts >= 2 || launchHeld_ ? A::WaitForUser : A::Relist;
     }
     case D::CompanionListenerClosed:
         // Paused (companion installed today) or a listener that closed while
         // the process lives: one launch per event, never a periodic loop
         // that pulls the app over whatever the user does on the phone.
-        if (launch_.attempts == 0) {
+        // The session start path shares this budget: one launch per event
+        // between both of them.
+        if (launch_.attempts == 0 && !launchHeld_) {
+            launchHeld_ = true;
             ++launch_.attempts;
             launch_.nextAllowedMs = nowMs + policy_.launchPeriodicMs;
             return A::WakeAndLaunchApp;
         }
+        launchHeld_ = true;
         return A::WaitForUser;
     case D::CompanionFailed:
         return A::Relist;
@@ -416,6 +435,7 @@ PhoneLinkDecision PhoneLinkDoctor::Decide(const PhoneLinkObservation& observatio
         if (o.sessionStreaming || nowMs - connectedSinceMs_ >= policy_.connectedHoldMs) {
             reconnect_ = restart_ = shadow_ = askExit_ = terminate_ = launch_ = handback_ = Budget{};
             stopFailures_ = 0;
+            launchHeld_ = false;
             // handOvers_ is renewed only by events: a default that works for
             // a while between losing the phone still ends in the sentence.
         }

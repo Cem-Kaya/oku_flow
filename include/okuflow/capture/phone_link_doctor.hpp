@@ -213,6 +213,14 @@ public:
     // because an earlier listener was asked). Counts toward the caps.
     void NoteDefaultListenerChanged() { askedExitMs_ = -1; shadowSinceMs_ = -1; }
     bool DefaultStopRefused() const { return defaultStopRefused_; }
+    // The one per-event companion launch budget, shared by the discovery
+    // ladder and the session start path (wake + launch). Refused, until the
+    // next event, once the episode named a state where more launches only
+    // pull the app over what the user does on the phone (its process runs
+    // but its listener refuses; it accepts but never answers).
+    bool ReserveLaunch(std::int64_t nowMs);
+    // A deliberate pick of the phone renews the launch budget.
+    void RenewLaunches() { launch_ = Budget{}; launchHeld_ = false; }
     // The phone has been missing from every listing for the blind grace
     // (as of the last Decide), so a leftover may plausibly hold it.
     bool BlindGracePassed(std::int64_t nowMs) const
@@ -233,6 +241,7 @@ private:
     PhoneLinkAction LadderFor(PhoneLinkDiagnosis diagnosis, const PhoneLinkObservation& observation,
                               std::int64_t nowMs, PhoneLinkDiagnosis* raised);
     void Reserve(Budget& budget, std::int64_t nowMs, std::int64_t retryMs, std::int64_t ceilingMs);
+    void TakeLaunch(std::int64_t nowMs);
     PhoneLinkPolicy policy_;
     PhoneLinkDiagnosis last_{PhoneLinkDiagnosis::NotWanted};
     bool haveLast_{false};
@@ -253,6 +262,7 @@ private:
     bool defaultStopRefused_{false};
     int stopFailures_{0};
     int handOvers_{0};
+    bool launchHeld_{false};
     Budget reconnect_, restart_, shadow_, askExit_, terminate_, launch_, handback_;
 };
 

@@ -186,9 +186,12 @@ public:
         // the next recovery rung and run it (bounded, cancellable).
         const PhoneLinkRequest* link = nullptr,
         PhoneLinkReport* report = nullptr);
-    // Automatic starts wake the phone and launch the companion when its
-    // listener is absent: at once after an event, then at most every 20 s.
-    // A deliberate user selection restores the immediate launch.
+    // Starts wake the phone and launch the companion when its listener is
+    // absent, at most once per start attempt, from the link doctor's one
+    // per-event launch budget that the discovery ladder shares (at once
+    // after an event, then 3 s, 6 s, every 20 s; once per event while the
+    // app process runs with its listener closed). A deliberate user
+    // selection renews that budget.
     static void AllowAppLaunch(const std::string& serial);
     // Worker-only recovery: reset only this currently authorized USB transport
     // when adb host services respond but two full-token device shell health
