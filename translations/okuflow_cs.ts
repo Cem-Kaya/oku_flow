@@ -3806,6 +3806,10 @@ Přihlaste se přes Connect ChatGPT na kartě Asistent v režimu Upřesnit.</tra
         <translation>V telefonu otevřete aplikaci OkuFlow Fotoaparát a klepněte na Obnovit streamování.</translation>
     </message>
     <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>V telefonu otevřete aplikaci OkuFlow Fotoaparát. Pokud ukazuje, že je streamování pozastavené, klepněte na Obnovit streamování.</translation>
+    </message>
+    <message>
         <source>Another computer or program is using the phone camera.</source>
         <translation>Fotoaparát telefonu používá jiný počítač nebo program.</translation>
     </message>

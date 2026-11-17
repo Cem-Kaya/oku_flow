@@ -3806,6 +3806,10 @@ Melden Sie sich auf der erweiterten Registerkarte Assistent über ChatGPT verbin
         <translation>Öffnen Sie OkuFlow Kamera auf dem Telefon und tippen Sie auf „Übertragung fortsetzen“.</translation>
     </message>
     <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>Öffnen Sie OkuFlow Kamera auf dem Telefon. Wenn die Übertragung als pausiert angezeigt wird, tippen Sie auf „Übertragung fortsetzen“.</translation>
+    </message>
+    <message>
         <source>Another computer or program is using the phone camera.</source>
         <translation>Ein anderer Computer oder ein anderes Programm verwendet die Telefonkamera.</translation>
     </message>

@@ -529,7 +529,9 @@ aligned with the project goals.
   trace line. Do not reintroduce "once per transport" launch budgets or
   minute-long holds; the owner's complaint was stacked 30 s / 60 s waits.
   Camera starts take launches from the doctor's per-event budget
-  (`ReserveLaunch`), never from a timer of their own.
+  (`ReserveLaunch`), never from a timer of their own. A listener refusal
+  within `launchSettleMs` of OkuFlow's own launch holds nothing, and a hold
+  ends when the app process is gone.
 - Every stuck state ends somewhere, also on a server OkuFlow does not own: a
   phone kept offline/connecting/stalled by a borrowed default is taken over
   after two reconnects; the user's endpoint gets the re-plug sentence. Only a

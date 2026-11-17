@@ -3806,6 +3806,10 @@ Wybierz „Połącz z ChatGPT” na karcie Asystent w trybie zaawansowanym, aby 
         <translation>Na telefonie otwórz aplikację OkuFlow Kamera i dotknij Wznów transmisję strumieniową.</translation>
     </message>
     <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>Na telefonie otwórz aplikację OkuFlow Kamera. Jeśli pokazuje, że transmisja jest wstrzymana, dotknij Wznów transmisję strumieniową.</translation>
+    </message>
+    <message>
         <source>Another computer or program is using the phone camera.</source>
         <translation>Inny komputer lub program używa kamery telefonu.</translation>
     </message>

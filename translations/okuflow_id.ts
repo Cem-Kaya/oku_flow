@@ -3806,6 +3806,10 @@ Pilih Hubungkan ChatGPT di tab Asisten pada mode Tingkat Lanjut untuk masuk.</tr
         <translation>Di ponsel, buka OkuFlow Kamera lalu ketuk Lanjutkan streaming.</translation>
     </message>
     <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>Di ponsel, buka OkuFlow Kamera. Jika menunjukkan bahwa streaming dijeda, ketuk Lanjutkan streaming.</translation>
+    </message>
+    <message>
         <source>Another computer or program is using the phone camera.</source>
         <translation>Komputer atau program lain sedang menggunakan kamera ponsel.</translation>
     </message>

@@ -3806,6 +3806,10 @@ Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</
         <translation>Öppna OkuFlow Kamera på telefonen och tryck på Återuppta streaming.</translation>
     </message>
     <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>Öppna OkuFlow Kamera på telefonen. Om den visar att streamingen är pausad trycker du på Återuppta streaming.</translation>
+    </message>
+    <message>
         <source>Another computer or program is using the phone camera.</source>
         <translation>En annan dator eller ett annat program använder telefonens kamera.</translation>
     </message>

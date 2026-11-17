@@ -78,6 +78,11 @@ private slots:
                  QStringLiteral("Restoring USB connection…"));
         QCOMPARE(PhoneLinkPlaceholderText(D::CompanionPaused, false).detail,
                  QStringLiteral("On the phone, open OkuFlow Camera and tap Resume streaming."));
+        // Iteration 4 (A5): the process runs and its listener refuses,
+        // paused or not: one sentence right in both cases.
+        QCOMPARE(PhoneLinkPlaceholderText(D::CompanionListenerClosed, true).spoken,
+                 QStringLiteral("On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume "
+                                "streaming."));
         QCOMPARE(PhoneLinkPlaceholderText(D::OtherProgramHoldsPhone, false).detail,
                  QStringLiteral("Another program is using the phone's USB connection. Close it or restart the computer."));
         // Iteration 3 (A5, A6).

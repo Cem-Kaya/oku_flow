@@ -61,10 +61,13 @@ PhoneLinkText Sentence(PhoneLinkDiagnosis diagnosis, bool userMustAct)
     case D::AppNotInstalled:
         return {waiting, QStringLiteral("Install OkuFlow Camera on the phone.")};
     case D::CompanionPaused:
-    // The companion installed today answers nothing while paused; its
-    // process runs and its listener refuses. Opening it shows Resume.
-    case D::CompanionListenerClosed:
         return {waiting, QStringLiteral("On the phone, open OkuFlow Camera and tap Resume streaming.")};
+    case D::CompanionListenerClosed:
+        // The app process runs but its listener refuses: paused (the
+        // companion installed today answers nothing while paused), or a
+        // camera service that did not start. Right in both cases.
+        return {waiting, QStringLiteral("On the phone, open OkuFlow Camera. If it shows that streaming is paused, "
+                                        "tap Resume streaming.")};
     case D::CompanionNotResponding:
         return {waiting, QStringLiteral("OkuFlow Camera is not responding on the phone. Close it on the phone and "
                                         "open it again.")};

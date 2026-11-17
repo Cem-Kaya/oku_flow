@@ -3806,6 +3806,10 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
         <translation>Telefonda OkuFlow Kamera uygulamasını açın ve Aktarımı sürdür'e dokunun.</translation>
     </message>
     <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>Telefonda OkuFlow Kamera uygulamasını açın. Aktarımın duraklatıldığını gösteriyorsa Aktarımı sürdür'e dokunun.</translation>
+    </message>
+    <message>
         <source>Another computer or program is using the phone camera.</source>
         <translation>Telefon kamerasını başka bir bilgisayar veya program kullanıyor.</translation>
     </message>

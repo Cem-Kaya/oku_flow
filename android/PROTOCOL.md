@@ -170,7 +170,12 @@ diagnosis and one next action, least disturbing first:
    the loop: when the app process runs but its listener refuses (the companion
    installed before the paused-status answer, while paused), whatever the
    keyguard shows, discovery and camera starts together launch once per event
-   and Windows asks the user to open OkuFlow Camera and tap Resume streaming;
+   and Windows asks the user to open OkuFlow Camera and, if it shows that
+   streaming is paused, to tap Resume streaming (also right when its camera
+   service did not start). Within 5 s after OkuFlow's own launch such a
+   refusal is a launch still starting and holds nothing (the ordinary spacing
+   applies), and a hold ends as soon as the app process is no longer running,
+   which is relaunched at once;
    when the listener accepts but never answers after two launches (or after
    that single launch), Windows asks the user to close OkuFlow Camera on the
    phone and open it again (relaunching would only bring the hanging activity

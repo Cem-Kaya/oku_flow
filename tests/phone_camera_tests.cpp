@@ -437,6 +437,7 @@ okuflow::PhoneLinkPolicy FastLinkPolicy()
     policy.launchPeriodicMs = 2000;
     policy.unknownInterfaceBlindMs = 300;
     policy.companionFailedGraceMs = 300;
+    policy.launchSettleMs = 150;
     return policy;
 }
 // Borrowed fixture endpoint (user endpoint semantics) with doctor hooks.
@@ -2124,6 +2125,25 @@ private slots:
         QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::WaitForUser));
         QCOMPARE(server.Launches().size(), qsizetype{1});
         QCOMPARE(server.ServiceCount("shell:input keyevent KEYCODE_WAKEUP"), 1);
+    }
+    void pausedCompanionThatDiesIsRelaunched() {
+        // Iteration 4 (A5): paused (process runs, listener refuses): one
+        // launch, held. Then the app process dies: relaunched on the same
+        // ladder without waiting for an event.
+        FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::Paused,
+                            FakePhoneAdb::RecoveryMode::Healthy, false);
+        server.SetShellFacts("W:\n mWakefulness=Awake\nK:\n mKeyguardShowing=false\nP:\npackage:/x\nR:\n4242\nEND\n");
+        ScopedLinkHooks hooks(server.port);
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        auto reports = LinkCycles(10);
+        QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::CompanionListenerClosed));
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::WaitForUser));
+        QCOMPARE(server.Launches().size(), qsizetype{1});
+        server.SetShellFacts("W:\n mWakefulness=Awake\nK:\n mKeyguardShowing=false\nP:\npackage:/x\nR:\nEND\n");
+        reports = LinkCycles(6, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::WakeAndLaunchApp; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::WakeAndLaunchApp));
+        QCOMPARE(server.Launches().size(), qsizetype{2});
     }
     void manualPickWithThePausedCompanionLaunchesOncePerEvent() {
         // C3: the session start path takes its launch from the same

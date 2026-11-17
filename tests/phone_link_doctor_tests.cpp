@@ -753,7 +753,11 @@ private slots:
         const auto paused = With([](auto& o) {
             o.companion = PhoneCompanionProbe::Refused;
             o.shell = {PhoneFact::No, PhoneFact::Yes, PhoneFact::Yes, PhoneFact::Yes}; });
-        for (std::int64_t now = 1000; now < 120000; now += 1000) {
+        // Changed deliberately (iteration 4, A5): just after that launch the
+        // refusal is a launch still starting; it is held once the settle
+        // window passed.
+        QCOMPARE(int(doctor.Decide(paused, 1000).action), int(A::Relist));
+        for (std::int64_t now = doctor.Policy().launchSettleMs; now < 120000; now += 1000) {
             QCOMPARE(int(doctor.Decide(paused, now).action), int(A::WaitForUser));
             QVERIFY(!doctor.ReserveLaunch(now)); // Held until the next event.
         }
@@ -766,6 +770,48 @@ private slots:
         QCOMPARE(int(killed.Decide(Refused(PhoneFact::Yes, PhoneFact::No), 500).action), int(A::Relist));
         QCOMPARE(int(killed.Decide(Refused(PhoneFact::Yes, PhoneFact::No), 3000).action), int(A::WakeAndLaunchApp));
         QVERIFY(!killed.ReserveLaunch(3500));
+    }
+    void launchStillStartingIsNotHeld()
+    {
+        // Iteration 4 (A5): after OkuFlow's own launch the app process runs
+        // before its listener opens. A refusal then is not "listener closed":
+        // nothing is held, a start that fails is retried at the ordinary
+        // spacing, and it reads as the app being started.
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        const auto killed = Refused(PhoneFact::Yes, PhoneFact::No);
+        const auto starting = With([](auto& o) {
+            o.companion = PhoneCompanionProbe::Refused;
+            o.shell = {PhoneFact::Yes, PhoneFact::No, PhoneFact::Yes, PhoneFact::Yes}; });
+        QCOMPARE(int(doctor.Decide(killed, 0).action), int(A::WakeAndLaunchApp));
+        const auto settling = doctor.Decide(starting, 1000);
+        QCOMPARE(int(settling.action), int(A::Relist));
+        QCOMPARE(int(settling.diagnosis), int(D::AppNotRunning));
+        QCOMPARE(int(doctor.Decide(killed, 2000).action), int(A::Relist)); // The start failed.
+        QCOMPARE(int(doctor.Decide(killed, 3000).action), int(A::WakeAndLaunchApp)); // Ordinary spacing.
+        // A refusal that outlasts the window with the process running is held.
+        const auto settle = doctor.Policy().launchSettleMs;
+        QCOMPARE(int(doctor.Decide(starting, 3000 + settle).diagnosis), int(D::CompanionListenerClosed));
+        QCOMPARE(int(doctor.Decide(starting, 3000 + settle).action), int(A::WaitForUser));
+        QVERIFY(!doctor.ReserveLaunch(3000 + settle + 20000));
+    }
+    void pausedCompanionThatDiesIsRelaunched()
+    {
+        // Iteration 4 (A5): paused, launched once and held; then the app
+        // process dies. The same doctor relaunches it instead of waiting for
+        // an event.
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        const auto paused = With([](auto& o) {
+            o.companion = PhoneCompanionProbe::Refused;
+            o.shell = {PhoneFact::Yes, PhoneFact::No, PhoneFact::Yes, PhoneFact::Yes}; });
+        QCOMPARE(int(doctor.Decide(paused, 0).action), int(A::WakeAndLaunchApp));
+        for (std::int64_t now = 1000; now < 10000; now += 1000)
+            QCOMPARE(int(doctor.Decide(paused, now).action), int(A::WaitForUser));
+        QVERIFY(!doctor.ReserveLaunch(10000));
+        const auto died = doctor.Decide(Refused(PhoneFact::Yes, PhoneFact::No), 11000);
+        QCOMPARE(int(died.diagnosis), int(D::AppNotRunning));
+        QCOMPARE(int(died.action), int(A::WakeAndLaunchApp));
     }
     void adbThatCannotStartIsNamed()
     {

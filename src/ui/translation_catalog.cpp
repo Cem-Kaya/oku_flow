@@ -497,6 +497,7 @@ namespace {
     QT_TRANSLATE_NOOP("OkuFlow", "OkuFlow will read this result using the selected voice."),
     QT_TRANSLATE_NOOP("OkuFlow", "On"),
     QT_TRANSLATE_NOOP("OkuFlow", "On the phone, open OkuFlow Camera and tap Resume streaming."),
+    QT_TRANSLATE_NOOP("OkuFlow", "On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming."),
     QT_TRANSLATE_NOOP("OkuFlow", "Open a saved video (Ctrl+O)"),
     QT_TRANSLATE_NOOP("OkuFlow", "Open a video, picture, or PDF (Ctrl+O)"),
     QT_TRANSLATE_NOOP("OkuFlow", "Open AI Settings dialog"),

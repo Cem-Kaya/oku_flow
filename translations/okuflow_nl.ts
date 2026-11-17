@@ -3806,6 +3806,10 @@ Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u
         <translation>Open OkuFlow Camera op de telefoon en tik op Streaming hervatten.</translation>
     </message>
     <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>Open OkuFlow Camera op de telefoon. Als die aangeeft dat streaming is gepauzeerd, tik dan op Streaming hervatten.</translation>
+    </message>
+    <message>
         <source>Another computer or program is using the phone camera.</source>
         <translation>Een andere computer of een ander programma gebruikt de camera van de telefoon.</translation>
     </message>

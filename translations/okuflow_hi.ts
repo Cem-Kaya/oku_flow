@@ -3806,6 +3806,10 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <translation>फ़ोन पर OkuFlow कैमरा खोलें और स्ट्रीमिंग फिर से शुरू करें पर टैप करें।</translation>
     </message>
     <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>फ़ोन पर OkuFlow कैमरा खोलें। अगर यह दिखाए कि स्ट्रीमिंग रुकी हुई है, तो स्ट्रीमिंग फिर से शुरू करें पर टैप करें।</translation>
+    </message>
+    <message>
         <source>Another computer or program is using the phone camera.</source>
         <translation>कोई दूसरा कंप्यूटर या प्रोग्राम फ़ोन का कैमरा इस्तेमाल कर रहा है।</translation>
     </message>

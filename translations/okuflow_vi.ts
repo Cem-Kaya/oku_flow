@@ -3806,6 +3806,10 @@ Chọn Kết nối ChatGPT trong tab Trợ lý của chế độ Nâng cao để
         <translation>Trên điện thoại, mở OkuFlow Máy ảnh rồi nhấn Tiếp tục phát trực tuyến.</translation>
     </message>
     <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>Trên điện thoại, mở OkuFlow Máy ảnh. Nếu ứng dụng cho biết phát trực tuyến đang tạm dừng, hãy nhấn Tiếp tục phát trực tuyến.</translation>
+    </message>
+    <message>
         <source>Another computer or program is using the phone camera.</source>
         <translation>Một máy tính hoặc chương trình khác đang dùng camera của điện thoại.</translation>
     </message>

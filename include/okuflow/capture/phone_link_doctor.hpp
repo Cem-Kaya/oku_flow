@@ -192,6 +192,11 @@ struct PhoneLinkPolicy {
     // Rung 5: at once, then these, then every launchPeriodicMs.
     std::array<std::int64_t, 2> launchRetryMs{3000, 6000};
     std::int64_t launchPeriodicMs{20000};
+    // After OkuFlow's own wake + launch the app process runs for 1 to 3 s
+    // before its listener opens: a refusal with the process running within
+    // this window is a launch still starting, not a closed listener, and
+    // does not hold the launch budget (the ordinary spacing applies).
+    std::int64_t launchSettleMs{5000};
 };
 
 struct PhoneLinkDecision {
@@ -301,6 +306,7 @@ private:
     int stopFailures_{0};
     int handOvers_{0};
     bool launchHeld_{false};
+    std::int64_t lastLaunchMs_{-1};
     std::uint64_t episode_{0};
     std::int64_t failedSinceMs_{-1};
     Budget reconnect_, restart_, shadow_, askExit_, terminate_, launch_, handback_;

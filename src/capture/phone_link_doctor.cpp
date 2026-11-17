@@ -174,6 +174,7 @@ void PhoneLinkDoctor::OnEvent(PhoneLinkEvent, std::int64_t nowMs)
     stopFailures_ = 0;
     handOvers_ = 0;
     launchHeld_ = false;
+    lastLaunchMs_ = -1;
     reconnect_ = restart_ = shadow_ = askExit_ = terminate_ = launch_ = handback_ = Budget{};
 }
 
@@ -194,6 +195,7 @@ void PhoneLinkDoctor::TakeLaunch(std::int64_t nowMs)
 {
     // At once, then launchRetryMs, then every launchPeriodicMs.
     ++launch_.attempts;
+    lastLaunchMs_ = nowMs;
     const auto index = static_cast<size_t>(launch_.attempts - 1);
     launch_.nextAllowedMs = nowMs + (index < policy_.launchRetryMs.size()
         ? policy_.launchRetryMs[index] : policy_.launchPeriodicMs);
@@ -361,6 +363,12 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
     }
     case D::PhoneLocked:
     case D::AppNotRunning: {
+        // The app process is gone: a hold taken while it ran (paused, or a
+        // listener that hung) no longer applies; relaunch it now.
+        if (launchHeld_ && o.shell.appRunning == PhoneFact::No) {
+            launchHeld_ = false;
+            launch_.nextAllowedMs = std::min(launch_.nextAllowedMs, nowMs);
+        }
         // A listener that accepts but never answers is not helped by more
         // launches (am start only brings the hanging activity forward).
         const bool hanging = o.companion == PhoneCompanionProbe::TimedOut && o.adbd == PhoneAdbdHealth::Answers;
@@ -383,8 +391,17 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         if (launch_.attempts == 0 && !launchHeld_) {
             launchHeld_ = true;
             ++launch_.attempts;
+            lastLaunchMs_ = nowMs;
             launch_.nextAllowedMs = nowMs + policy_.launchPeriodicMs;
             return A::WakeAndLaunchApp;
+        }
+        // Shortly after OkuFlow's own launch (ladder or session start) the
+        // process runs before its listener opens: still starting. Not held,
+        // so a start that fails is retried at the ordinary spacing; it reads
+        // as the app being started ("Restoring").
+        if (!launchHeld_ && lastLaunchMs_ >= 0 && nowMs - lastLaunchMs_ < policy_.launchSettleMs) {
+            *raised = D::AppNotRunning;
+            return A::Relist;
         }
         launchHeld_ = true;
         return A::WaitForUser;
