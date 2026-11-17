@@ -1904,9 +1904,12 @@ so metadata generation cannot silently accept an incomplete copy.
   (the doctor's `HandBackToDefault` decision itself does not count);
   `NoteTerminationAborted` gives back a termination of the current episode
   that the pre-stop listing aborted and counts it toward
-  `PhoneLinkPolicy::abortedTerminationCap`, at which a borrowed
+  `PhoneLinkPolicy::abortedStopCap`, at which a borrowed
   `ServerUnresponsive` (or a takeover termination) ends in
-  `OtherProgramHoldsPhone` with `WaitForUser`; `Episode` names the
+  `OtherProgramHoldsPhone` with `WaitForUser`; `NoteExitRequestNotSent`
+  does the same for an `AskDefaultServerToExit` that sent no `host:kill`
+  (gives the ask back, forgets the ask time so no termination follows, and
+  counts toward that cap); `Episode` names the
   current episode. `PhoneLinkDiagnosisName`/`ActionName`/`EventName` give trace
   names. A borrowed `ServerUnresponsive` with `defaultHasOtherDevices` (its
   listing answered and showed another device) is named, never stopped; the

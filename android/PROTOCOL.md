@@ -178,9 +178,10 @@ diagnosis and one next action, least disturbing first:
    the listener table still shows it, as for a frozen adb with a full accept
    queue) counts as hung, never as absent. Per episode at most two
    `host:kill` requests and three terminations (a termination not carried out
-   because the default answered its listing does not count toward them, but
-   three such aborted terminations end in the same sentence, which a server
-   that recovers or goes away ends); a different
+   because the default answered its listing does not count toward them, nor
+   does a `host:kill` request that was never sent, which no termination
+   follows; but three such aborted stops end in the same sentence, which a
+   server that recovers or goes away ends); a different
    process that appears on the port is a new takeover and is asked first.
    Starts beside the default and hand-backs count only once they happened.
    After the caps,

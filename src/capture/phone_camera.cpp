@@ -2033,27 +2033,36 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
             ? "private server started beside the default" : "private server beside the default is not ready yet";
     }
     case A::AskDefaultServerToExit: {
-        if (DefaultIsUserEndpoint() || !o.phoneWanted) return "refused: user endpoint or no phone intent";
+        // An ask that sends no host:kill is not remembered as sent: no
+        // termination follows it as if the request had been ignored, and
+        // it does not use up one of the episode's asks.
+        const auto notSent = [&](std::string reason) {
+            std::lock_guard lock(runtime.mutex);
+            runtime.doctor.NoteExitRequestNotSent(decision.episode);
+            return reason;
+        };
+        if (DefaultIsUserEndpoint() || !o.phoneWanted) return notSent("refused: user endpoint or no phone intent");
         const auto port = DefaultPort();
         if (const auto hooks = Hooks(); hooks && hooks->beforeDefaultStopForTest) hooks->beforeDefaultStopForTest();
         // Like termination, asking to exit needs the Windows ADB interface
         // at execution time: a phone unplugged since the decision is no
         // reason to stop anything.
-        if (RuntimeAdbInterface() != PhoneAdbInterface::Present) return "kept: the Windows ADB interface is gone";
+        if (RuntimeAdbInterface() != PhoneAdbInterface::Present) return notSent("kept: the Windows ADB interface is gone");
         // Before any byte: a fresh listing that succeeded, serves no other
         // device and still does not list the phone.
         const auto listed = ListDefaultEntries(canceled);
-        if (!listed) return "kept: the default server listing failed";
-        if (OtherDeviceServed(*listed, target)) return "kept: the default server serves another device";
-        if (DefaultServesTarget(*listed, target)) return "kept: the default server lists the phone now";
-        if (StallEndedOnDefault(*listed, target, canceled)) return "kept: the phone answers on the default server now";
+        if (!listed) return notSent("kept: the default server listing failed");
+        if (OtherDeviceServed(*listed, target)) return notSent("kept: the default server serves another device");
+        if (DefaultServesTarget(*listed, target)) return notSent("kept: the default server lists the phone now");
+        if (StallEndedOnDefault(*listed, target, canceled))
+            return notSent("kept: the phone answers on the default server now");
         const auto listener = LookupListener(port);
         if (listener.state == ListenerState::None) { AfterDefaultStopped(); return "default server already gone"; }
         if (listener.state == ListenerState::Unopenable) {
             NoteListenerUnopenable(listener, decision.episode);
-            return "refused: the listener process cannot be opened";
+            return notSent("refused: the listener process cannot be opened");
         }
-        if (listener.state != ListenerState::Found) return "kept: the listener table cannot be read";
+        if (listener.state != ListenerState::Found) return notSent("kept: the listener table cannot be read");
         // Same PID and creation time, image adb.exe, not this process; the
         // raw host:kill re-checks the listener after connecting.
         DefaultAdbStopRequest request;
@@ -2067,6 +2076,7 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         const auto result = TryStopDefaultAdbServer(request);
         NoteStopOutcome(result.status, listener, decision.episode);
         if (result.status == DefaultAdbStopStatus::Stopped) return "default server exited after host:kill";
+        if (!result.hostKillDelivered) return notSent("default server ask: " + result.diagnostic);
         return "default server ask: " + result.diagnostic;
     }
     case A::TerminateDefaultServer: {

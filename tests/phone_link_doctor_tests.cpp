@@ -711,11 +711,11 @@ private slots:
         // confirmed hang whose pre-stop listing answers (also with FAIL) is
         // not terminated and does not spend the termination cap. The aborted
         // stops have an end of their own: the other-program sentence after
-        // abortedTerminationCap of them, polled at the user-wait cadence and
+        // abortedStopCap of them, polled at the user-wait cadence and
         // ended by a server that recovers or goes away.
         PhoneLinkDoctor doctor;
         const auto policy = doctor.Policy();
-        QVERIFY(policy.abortedTerminationCap > 1);
+        QVERIFY(policy.abortedStopCap > 1);
         auto hung = Blind(PhoneServerKind::BorrowedDefault);
         hung.serverProbe = PhoneServerProbe::Unresponsive;
         // Aborts below their own cap leave the whole termination cap.
@@ -727,19 +727,19 @@ private slots:
         for (; now < 600000 && last.diagnosis != D::OtherProgramHoldsPhone; now += 1000) {
             last = doctor.Decide(hung, now);
             if (last.action != A::TerminateDefaultServer) continue;
-            if (aborted < policy.abortedTerminationCap - 1) {
+            if (aborted < policy.abortedStopCap - 1) {
                 ++aborted;
                 doctor.NoteTerminationAborted(last.episode);
             } else {
                 ++carried;
             }
         }
-        QCOMPARE(aborted, policy.abortedTerminationCap - 1);
+        QCOMPARE(aborted, policy.abortedStopCap - 1);
         QCOMPARE(carried, policy.terminateCap);
         QCOMPARE(int(last.action), int(A::WaitForUser));
 
         // Every stop aborted (the transport confirms the hang again 5 s after
-        // each abort): the sentence comes after abortedTerminationCap aborts.
+        // each abort): the sentence comes after abortedStopCap aborts.
         doctor.OnEvent(PhoneLinkEvent::Resume, 1000000);
         now = 1000000;
         aborted = 0;
@@ -755,7 +755,7 @@ private slots:
                 confirmedAt = now + 5000;
             }
         }
-        QCOMPARE(aborted, policy.abortedTerminationCap);
+        QCOMPARE(aborted, policy.abortedStopCap);
         QCOMPARE(int(last.diagnosis), int(D::OtherProgramHoldsPhone));
         QCOMPARE(int(last.action), int(A::WaitForUser));
         // It stands whether or not the hang is confirmed at the moment, and
@@ -782,7 +782,7 @@ private slots:
         // nothing (neither given back nor toward the end).
         const auto earlier = doctor.Episode();
         doctor.OnEvent(PhoneLinkEvent::Resume, 2000000);
-        for (int i = 0; i < policy.abortedTerminationCap; ++i) doctor.NoteTerminationAborted(earlier);
+        for (int i = 0; i < policy.abortedStopCap; ++i) doctor.NoteTerminationAborted(earlier);
         hung.defaultUnresponsiveConfirmed = true;
         QCOMPARE(int(doctor.Decide(hung, 2000000).action), int(A::TerminateDefaultServer));
         // Carried-out stops still end at the termination cap.
@@ -915,6 +915,54 @@ private slots:
         doctor.NoteDefaultListenerChanged();
         QCOMPARE(int(doctor.Decide(beside, 8000).action), int(A::Relist)); // Not terminated.
         QCOMPARE(int(doctor.Decide(beside, 14000).action), int(A::AskDefaultServerToExit));
+    }
+    void askThatSendsNothingIsNotRememberedAsSent()
+    {
+        // Iteration 6 (2): an AskDefaultServerToExit that sent no host:kill
+        // (the pre-ask checks kept the server) is not remembered as sent: no
+        // termination hostKillWaitMs later as if the request had been
+        // ignored, and the ask is not used up (one ask per episode here).
+        PhoneLinkPolicy policy;
+        policy.askExitCap = 1;
+        PhoneLinkDoctor doctor(policy);
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto beside = Blind(PhoneServerKind::Owned);
+        beside.shadowRunning = true;
+        QCOMPARE(int(doctor.Decide(beside, 0).action), int(A::Relist));
+        const auto kept = doctor.Decide(beside, policy.takeoverGraceMs);
+        QCOMPARE(int(kept.action), int(A::AskDefaultServerToExit));
+        doctor.NoteExitRequestNotSent(kept.episode);
+        std::int64_t now = policy.takeoverGraceMs + 500;
+        for (; now < 2 * policy.takeoverGraceMs; now += 500) {
+            const auto next = doctor.Decide(beside, now);
+            QCOMPARE(int(next.action), int(A::Relist));
+            QCOMPARE(int(next.diagnosis), int(D::NotListedByServer));
+        }
+        // Asked again at the ask spacing; this one is sent and ignored, so
+        // termination follows it.
+        QCOMPARE(int(doctor.Decide(beside, now).action), int(A::AskDefaultServerToExit));
+        QCOMPARE(int(doctor.Decide(beside, now + policy.hostKillWaitMs).action), int(A::TerminateDefaultServer));
+
+        // Asks that never send anything end in the other-program sentence
+        // after abortedStopCap of them (an earlier episode's note counts for
+        // nothing).
+        const auto earlier = doctor.Episode();
+        doctor.OnEvent(PhoneLinkEvent::Resume, 100000);
+        doctor.NoteExitRequestNotSent(earlier);
+        int asks = 0;
+        PhoneLinkDecision last;
+        for (now = 100000; now < 400000; now += 500) {
+            last = doctor.Decide(beside, now);
+            QVERIFY(last.action != A::TerminateDefaultServer);
+            if (last.diagnosis == D::OtherProgramHoldsPhone) break;
+            if (last.action == A::AskDefaultServerToExit) {
+                ++asks;
+                doctor.NoteExitRequestNotSent(last.episode);
+            }
+        }
+        QCOMPARE(asks, policy.abortedStopCap);
+        QCOMPARE(int(last.diagnosis), int(D::OtherProgramHoldsPhone));
+        QCOMPARE(int(last.action), int(A::WaitForUser));
     }
     void anotherListedPhoneIsNotBlindness()
     {

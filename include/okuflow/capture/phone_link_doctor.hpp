@@ -155,14 +155,15 @@ struct PhoneLinkPolicy {
     int blindRestartCap{3};
     int askExitCap{2};
     int terminateCap{3};
-    // Per episode: terminations aborted because the default answered its
-    // pre-stop listing (a slow server whose version probes hang). They do
-    // not spend terminateCap, but this many of them end in the
-    // other-program sentence (the user can close the other program; probing
-    // goes on at the user-wait cadence, so a server that recovers or goes
-    // away ends it). The same count as terminateCap: an aborted stop ends
-    // where a carried-out one does.
-    int abortedTerminationCap{3};
+    // Per episode: stops decided but not carried out (a termination aborted
+    // because the default answered its pre-stop listing, as a slow server
+    // whose version probes hang does; a host:kill request that was never
+    // sent). They spend neither terminateCap nor askExitCap, but this many
+    // of them end in the other-program sentence (the user can close the
+    // other program; probing goes on at the user-wait cadence, so a server
+    // that recovers or goes away ends it). The same count as terminateCap:
+    // an aborted stop ends where a carried-out one does.
+    int abortedStopCap{3};
     // Per episode: starts of the private server beside the default plus
     // hand-backs to it (the transport's own start beside a hung default and
     // its own hand-back count too). At the cap no more private servers are
@@ -277,12 +278,24 @@ public:
     // the default answered its pre-stop listing (also with an adb FAIL
     // reply): nothing was stopped, so it does not spend the termination
     // cap. The retry spacing stays as reserved. It counts toward
-    // abortedTerminationCap instead, whose end is the other-program sentence.
+    // abortedStopCap instead, whose end is the other-program sentence.
     void NoteTerminationAborted(std::uint64_t episode)
     {
         if (episode != episode_) return;
         if (terminate_.attempts > 0) --terminate_.attempts;
-        ++abortedTerminations_;
+        ++abortedStops_;
+    }
+    // An AskDefaultServerToExit of this episode sent no host:kill (the
+    // pre-ask checks kept the server, or the request was never delivered):
+    // it is not remembered as asked, so no termination follows as if the
+    // request had been ignored, and it does not spend askExitCap. The retry
+    // spacing stays as reserved; it counts toward abortedStopCap.
+    void NoteExitRequestNotSent(std::uint64_t episode)
+    {
+        if (episode != episode_) return;
+        askedExitMs_ = -1;
+        if (askExit_.attempts > 0) --askExit_.attempts;
+        ++abortedStops_;
     }
     std::uint64_t Episode() const { return episode_; }
     // The listener is gone, changed identity, or the phone is listed.
@@ -344,7 +357,7 @@ private:
     bool defaultStopRefused_{false};
     int stopFailures_{0};
     int handOvers_{0};
-    int abortedTerminations_{0};
+    int abortedStops_{0};
     bool launchHeld_{false};
     // A hold was already released at once because the app died (episode).
     bool holdReleasedByDeath_{false};

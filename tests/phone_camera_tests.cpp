@@ -2555,6 +2555,44 @@ private slots:
         QVERIFY(!other.Exited());
         QVERIFY(!QFile::exists(kills)); // No host:kill was ever sent.
     }
+    void keptAskIsNotFollowedByATermination() {
+        // Iteration 6 (2): the stalled phone's shell answers at the ask, so
+        // no host:kill is sent, and the next listing misses the phone for a
+        // moment. The kept ask is not remembered as sent: no termination as
+        // if host:kill had been ignored, no other-program sentence, and the
+        // ask is not used up (one ask per episode here): the blind default
+        // beside is asked again, as any is.
+        DefaultAdbFixture other({});
+        other.child.reset();
+        const QString stall = other.File(QStringLiteral("stall"));
+        const QString device = other.File(QStringLiteral("device"));
+        const QString kills = other.File(QStringLiteral("kills.log"));
+        { QFile file(stall); QVERIFY(file.open(QIODevice::WriteOnly)); }
+        { QFile file(device); QVERIFY(file.open(QIODevice::WriteOnly)); }
+        other.flags = {L"--fixture-device-file", device.toStdWString(), L"--fixture-stalled-shell-file",
+                       stall.toStdWString(), L"--fixture-exit-on-kill", L"--fixture-kill-log", kills.toStdWString()};
+        QVERIFY(other.copied && other.Start());
+        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {},
+                              5000, [stall](okuflow::PhoneAdbTestHooks& h) {
+            h.linkPolicy->askExitCap = 1;
+            h.beforeDefaultStopForTest = [stall] { QFile::remove(stall); }; // adbd answers from the ask on.
+        });
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        auto reports = LinkCycles(80, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::AskDefaultServerToExit; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::AskDefaultServerToExit));
+        QVERIFY2(reports.back().actionResult.find("answers on the default server") != std::string::npos,
+                 reports.back().actionResult.c_str());
+        QVERIFY(!QFile::exists(kills));
+        QVERIFY(QFile::remove(device)); // The next listing misses the phone.
+        reports = LinkCycles(40, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::AskDefaultServerToExit ||
+                r.decision.action == okuflow::PhoneLinkAction::TerminateDefaultServer ||
+                r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone; });
+        QVERIFY(!Saw(reports, okuflow::PhoneLinkAction::TerminateDefaultServer));
+        QVERIFY(!Saw(reports, okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone));
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::AskDefaultServerToExit));
+    }
     void hungDefaultReasonUsesTheSameServesTest() {
         // Iteration 5 (8): a default whose listing shows the phone "device"
         // while its adbd timed out there, then hangs on version probes. The
@@ -2622,7 +2660,7 @@ private slots:
         // Iteration 5 (3), changed deliberately in iteration 6 (1): each
         // termination aborted because the listing answered stops nothing and
         // does not spend the termination cap, but the aborted stops have an
-        // end: the other-program sentence after abortedTerminationCap of them
+        // end: the other-program sentence after abortedStopCap of them
         // (set above the termination cap here, so a spent cap would end it
         // sooner). A server that recovers ends the sentence.
         DefaultAdbFixture slow({});
@@ -2635,7 +2673,7 @@ private slots:
         QVERIFY(slow.Start());
         const int cap = okuflow::PhoneLinkPolicy{}.terminateCap + 2;
         ScopedLinkHooks hooks(slow.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {}, 100,
-                              [cap](okuflow::PhoneAdbTestHooks& h) { h.linkPolicy->abortedTerminationCap = cap; });
+                              [cap](okuflow::PhoneAdbTestHooks& h) { h.linkPolicy->abortedStopCap = cap; });
         okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
         int aborted = 0;
         auto reports = LinkCycles(120, [&](const auto& r) {
@@ -2756,7 +2794,7 @@ private slots:
         // Every termination of the row was aborted, and their number is the cap.
         const auto terminations = std::count_if(all.begin(), all.end(), [](const auto& r) {
             return r.decision.action == okuflow::PhoneLinkAction::TerminateDefaultServer; });
-        QCOMPARE(terminations, std::ptrdiff_t{okuflow::PhoneLinkPolicy{}.abortedTerminationCap});
+        QCOMPARE(terminations, std::ptrdiff_t{okuflow::PhoneLinkPolicy{}.abortedStopCap});
         for (const auto& report : all)
             QVERIFY2(report.decision.action != okuflow::PhoneLinkAction::TerminateDefaultServer ||
                      report.actionResult.find("kept:") == 0, report.actionResult.c_str());

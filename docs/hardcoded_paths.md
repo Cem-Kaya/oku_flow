@@ -676,9 +676,10 @@ takeover (borrowed default) or the re-plug sentence (user endpoint). The user
 endpoint also gets the re-plug sentence when it does not list a phone Windows
 shows after the 5 s blind grace, and when it stays unresponsive for 30 s
 (`userEndpointUnresponsiveMs`). Per
-episode: 3 blind/stuck restarts, 2 `host:kill`, 3 terminations, 3 terminations
-aborted because the default answered its pre-stop listing (counted apart; they
-end in the other-program sentence too), 4 private server starts beside the
+episode: 3 blind/stuck restarts, 2 `host:kill`, 3 terminations, 3 aborted stops
+(terminations aborted because the default answered its pre-stop listing and
+`host:kill` requests never sent; counted apart, they end in the other-program
+sentence too), 4 private server starts beside the
 default plus hand-backs. Windows interface Unknown
 (the SetupAPI query failed): after 30 s blind OkuFlow may start or restart its
 own server, never ask another to exit or stop it; that takeover, or a hung

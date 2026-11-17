@@ -171,9 +171,10 @@ Per episode at most two `host:kill` requests, three terminations and four
 private-server starts beside the default plus hand-backs (the start beside a
 hung default counts once it actually starts, a hand-back once the private server
 is retired, and a termination aborted because the listing answered does not
-count toward the three terminations; three aborted terminations in an episode
-end in the same other-program sentence, which a server that recovers or goes
-away ends; at the cap no more starts, but a hand-back to a default
+count toward the three terminations, nor does a `host:kill` request that was
+never sent count toward the two (no termination follows such a request); three
+such aborted stops in an episode end in the same other-program sentence, which
+a server that recovers or goes away ends; at the cap no more starts, but a hand-back to a default
 that lists the phone is still made); another adb that
 appears beside OkuFlow's blind server is handed back to when it lists the phone
 in a usable state and otherwise taken over under the same caps. A phone that

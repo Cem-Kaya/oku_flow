@@ -1083,12 +1083,16 @@ the whole line `OKUFLOW_FACTS_END` (the fake's replies and
 `shellFactsAreReadToTheirSentinelLine` sends output containing END first and the
 processes in a second chunk. Changed deliberately in iteration 6:
 `abortedTerminationsDoNotSpendTheTerminationCap` (contract, policy hook
-`abortedTerminationCap` = termination cap + 2) and
+`abortedStopCap` = termination cap + 2) and
 `abortedTerminationDoesNotSpendTheBudget` (doctor) now require the end of the
 aborted loop: the other-program sentence after the aborted-termination cap,
 standing at the user-wait cadence until the server recovers or goes away.
 `slowDefaultWithoutItsOtherDeviceEndsInTheSentence` runs from the end of
-`slowDefaultVerdictEndsWhenTheOtherDeviceGoes` into that end. Doctor rows
+`slowDefaultVerdictEndsWhenTheOtherDeviceGoes` into that end.
+`keptAskIsNotFollowedByATermination` (the stalled phone's shell answers at the
+ask, the next listing misses the phone; one ask per episode) and the doctor row
+`askThatSendsNothingIsNotRememberedAsSent`: an ask that sent no `host:kill` is
+neither followed by a termination nor counted as an ask. Doctor rows
 `userEndpointThatDoesNotListThePhoneEndsInTheReplugSentence` and
 `hungUserEndpointEndsInTheReplugSentence`; `overriddenEndpointIsNeverStopped`
 was changed deliberately (WaitForUser is now allowed; no takeover action).
