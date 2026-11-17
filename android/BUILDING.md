@@ -36,7 +36,9 @@ Gradle runs on JDK 21; Java and Kotlin emit JVM 17 bytecode. `minSdk` is 30,
 `compileSdk` is release 37 with minor API level 2, and `targetSdk` is 37 (Android
 target behavior uses the major API level). The install application id is
 `com.okuflow` (Play/install application id); Kotlin/resource namespace and class
-paths stay `com.okuflow.camera`. Prepared version code 5, version name `0.1.4`.
+paths stay `com.okuflow.camera`. Prepared version code 6, version name `0.1.5` (the phone-link recovery
+changes: lock-screen visibility on a computer launch, the paused status
+answer, Pause withdrawing that visibility). Code 5 / `0.1.4` is the last Alpha CLI commit before it.
 The code-4 / `0.1.3` Alpha CLI commit and last verified Console publication
 code 3 / `0.1.2` are separate artifacts with separate acceptance evidence.
 NDK and CMake are installed for the later native processing stage; no native
