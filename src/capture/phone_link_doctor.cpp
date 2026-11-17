@@ -160,8 +160,35 @@ bool PhoneLinkWaitsForUser(PhoneLinkDiagnosis diagnosis)
     }
 }
 
-void PhoneLinkDoctor::OnEvent(PhoneLinkEvent, std::int64_t nowMs)
+bool PhoneLinkDoctor::OnEvent(PhoneLinkEvent event, std::int64_t nowMs)
 {
+    if (event == PhoneLinkEvent::Resume) {
+        // One wake, several signals: one event. Measured from the last
+        // applied resume (not sliding), so a steady trickle of signals never
+        // swallows a later genuine resume.
+        if (lastResumeMs_ >= 0 && nowMs - lastResumeMs_ < policy_.resumeCoalesceMs) return false;
+        lastResumeMs_ = nowMs;
+    }
+    if (event == PhoneLinkEvent::DeviceRemoval) {
+        // Removals within the window only (bounded; the oldest is dropped).
+        size_t kept = 0;
+        for (size_t i = 0; i < static_cast<size_t>(removalCount_); ++i)
+            if (nowMs - removals_[i] < policy_.flapWindowMs) removals_[kept++] = removals_[i];
+        if (kept == removals_.size()) {
+            std::move(removals_.begin() + 1, removals_.end(), removals_.begin());
+            --kept;
+        }
+        removals_[kept++] = nowMs;
+        removalCount_ = static_cast<int>(kept);
+        lastRemovalMs_ = nowMs;
+        if (removalCount_ >= policy_.flapRemovals) flapping_ = true;
+    } else if (event == PhoneLinkEvent::ManualPick || event == PhoneLinkEvent::Resume ||
+               event == PhoneLinkEvent::AppStart) {
+        // A deliberate pick, a resume or the start is a fresh attempt.
+        removalCount_ = 0;
+        lastRemovalMs_ = -1;
+        flapping_ = false;
+    }
     ++episode_;
     failedSinceMs_ = -1;
     eventAtMs_ = nowMs;
@@ -179,6 +206,7 @@ void PhoneLinkDoctor::OnEvent(PhoneLinkEvent, std::int64_t nowMs)
     holdReleasedByDeath_ = false;
     lastLaunchMs_ = -1;
     reconnect_ = restart_ = shadow_ = askExit_ = terminate_ = launch_ = handback_ = Budget{};
+    return true;
 }
 
 std::int64_t PhoneLinkDoctor::SinceEventOr(std::int64_t firstSeenMs) const
@@ -189,9 +217,11 @@ std::int64_t PhoneLinkDoctor::SinceEventOr(std::int64_t firstSeenMs) const
 void PhoneLinkDoctor::Reserve(Budget& budget, std::int64_t nowMs, std::int64_t retryMs, std::int64_t ceilingMs)
 {
     // First attempt after an event is immediate (already allowed); the second
-    // waits retryMs; later attempts wait the ceiling until a new event.
+    // waits retryMs; later attempts wait the ceiling until a new event. The
+    // spacing follows the reservations, not the attempts a give-back lowered.
     ++budget.attempts;
-    budget.nextAllowedMs = nowMs + (budget.attempts <= 1 ? retryMs : ceilingMs);
+    ++budget.reserved;
+    budget.nextAllowedMs = nowMs + (budget.reserved <= 1 ? retryMs : ceilingMs);
 }
 
 void PhoneLinkDoctor::TakeLaunch(std::int64_t nowMs)
@@ -251,6 +281,10 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
     // at the cap no more private servers start beside the default, so a
     // default that alternately lists and loses the phone is named.
     const auto shadow = [&] {
+        // OkuFlow's own adb.exe cannot be started (missing, quarantined,
+        // dying or silent at start): that is what is broken, also while
+        // another program's adb answers on the default port.
+        if (o.serverLaunchFailures >= policy_.adbLaunchFailuresToName) { *raised = D::AdbCannotStart; return A::WaitForUser; }
         if (handOvers_ >= policy_.handOverCap) { *raised = D::OtherProgramHoldsPhone; return A::WaitForUser; }
         if (!shadow_.Allowed(nowMs)) return A::Relist;
         Reserve(shadow_, nowMs, policy_.restartRetryMs, policy_.restartCeilingMs);
@@ -279,8 +313,12 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         // answered), so this branch would otherwise confirm, abort and
         // confirm again for ever: once the aborted stops reach their cap the
         // sentence stands, also while the hang is being confirmed again.
+        // Likewise once the terminations are spent: the last one cleared the
+        // confirmation, and a default respawned faster than the confirmation
+        // time would otherwise read "Restoring" for ever.
         if (o.server == PhoneServerKind::BorrowedDefault &&
-            (o.defaultUnresponsiveConfirmed || abortedHungStops_ >= policy_.abortedStopCap))
+            (o.defaultUnresponsiveConfirmed || abortedHungStops_ >= policy_.abortedStopCap ||
+             terminate_.attempts >= policy_.terminateCap))
             return terminate(false);
         // The user's endpoint (adb environment variables) is never stopped:
         // a hang that lasts ends in the re-plug sentence.
@@ -289,7 +327,18 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
             *raised = D::ReplugCable;
             return A::WaitForUser;
         }
-        return A::Relist; // An owned server restarts itself after two failed probes.
+        // OkuFlow's own server answers its version probes (so its manager
+        // keeps it) while its device listing fails: an adb stuck in a USB
+        // transport after sleep or a cable pull. The restart rung and its
+        // cap after the blind grace, ending in the re-plug sentence.
+        if (owned) {
+            if (nowMs - SinceEventOr(unresponsiveSinceMs_) < policy_.blindGraceMs) return A::Relist;
+            if (restart_.attempts >= policy_.blindRestartCap) { *raised = D::ReplugCable; return A::WaitForUser; }
+            if (!restart_.Allowed(nowMs)) return A::Relist;
+            Reserve(restart_, nowMs, policy_.restartRetryMs, policy_.restartCeilingMs);
+            return A::RestartOwnedServer;
+        }
+        return A::Relist;
     case D::OtherInstanceHoldsPhone:
     case D::OtherProgramHoldsPhone:
         // A sibling window (or a leftover) is blamed only after the blind
@@ -400,6 +449,10 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
             if (o.defaultHasOtherDevices) { *raised = D::OtherProgramHoldsPhone; return A::WaitForUser; }
             return shadow();
         }
+        // Once the restarts are spent the re-plug sentence stands until an
+        // event or a change of state; a free reconnect slot no longer flips
+        // it back to "Restoring".
+        if (restart_.attempts >= policy_.blindRestartCap) { *raised = D::ReplugCable; return A::WaitForUser; }
         const bool restartDue = owned && lastReconnectMs_ >= 0 &&
             nowMs - lastReconnectMs_ >= policy_.stuckAfterReconnectMs && restart_.Allowed(nowMs);
         if (restartDue && reconnect_.attempts >= 2) {
@@ -531,7 +584,20 @@ PhoneLinkDecision PhoneLinkDoctor::Decide(const PhoneLinkObservation& observatio
 
     hostKillSent_ = false;
     PhoneLinkDiagnosis raised = decision.diagnosis;
-    decision.action = LadderFor(decision.diagnosis, o, nowMs, &raised);
+    // A flapping cable: a quiet period ends the verdict; while it stands,
+    // every state but a working link names the cable and no rung runs
+    // (probing goes on at the user-wait cadence).
+    if (flapping_ && lastRemovalMs_ >= 0 && nowMs - lastRemovalMs_ >= policy_.flapQuietMs) {
+        flapping_ = false;
+        removalCount_ = 0;
+    }
+    if (flapping_ && decision.diagnosis != D::Connected && decision.diagnosis != D::NotWanted &&
+        decision.diagnosis != D::EndpointUnsupported && decision.diagnosis != D::RestartRequired) {
+        raised = D::ReplugCable;
+        decision.action = PhoneLinkAction::WaitForUser;
+    } else {
+        decision.action = LadderFor(decision.diagnosis, o, nowMs, &raised);
+    }
     decision.diagnosis = raised;
     decision.hostKillAlreadySent = decision.action == PhoneLinkAction::TerminateDefaultServer && hostKillSent_;
 
@@ -548,6 +614,9 @@ PhoneLinkDecision PhoneLinkDoctor::Decide(const PhoneLinkObservation& observatio
             abortedHungStops_ = abortedTakeoverStops_ = 0;
             exitRequestNotNeededUsed_ = false;
             launchHeld_ = false;
+            // The link holds: a flapping verdict ends.
+            flapping_ = false;
+            removalCount_ = 0;
             // handOvers_ is renewed only by events: a default that works for
             // a while between losing the phone still ends in the sentence.
         }

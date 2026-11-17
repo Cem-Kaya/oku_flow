@@ -879,8 +879,11 @@ private slots:
         QCOMPARE(int(ask.diagnosis), int(D::NotListedByServer));
         QCOMPARE(int(ask.action), int(A::AskDefaultServerToExit));
         // Its termination after the ignored ask is the takeover's own (past
-        // the termination spacing the hung branch reserved, too).
-        now += std::max(policy.hostKillWaitMs, policy.restartRetryMs);
+        // the termination spacing the hung branch reserved, too). Changed
+        // deliberately in iteration 8 (B4): the hung branch's three aborted
+        // terminations were given back but keep their spacing, which has
+        // grown to the ceiling (it was the short retry before).
+        now += std::max(policy.hostKillWaitMs, policy.takeoverCeilingMs);
         const auto takeoverStop = doctor.Decide(beside, now);
         QCOMPARE(int(takeoverStop.action), int(A::TerminateDefaultServer));
         QVERIFY(takeoverStop.hostKillAlreadySent);
@@ -1140,6 +1143,202 @@ private slots:
         doctor.OnEvent(PhoneLinkEvent::DeviceArrival, now + 100000);
         const auto afterEvent = doctor.Decide(beside, now + 100000 + policy.takeoverGraceMs + policy.blindGraceMs);
         QVERIFY(afterEvent.diagnosis != D::OtherProgramHoldsPhone);
+    }
+    void ownedServerWhoseListingFailsIsRestartedThenNamed()
+    {
+        // Iteration 8 (A1): OkuFlow's own server answers host:version (its
+        // manager keeps it) while its device listing fails. It was relisted
+        // for ever; now the restart rung and its cap after the blind grace,
+        // then the re-plug sentence, which stands; an event renews it.
+        PhoneLinkDoctor doctor;
+        const auto policy = doctor.Policy();
+        doctor.OnEvent(PhoneLinkEvent::Resume, 0);
+        auto silent = Blind();
+        silent.serverProbe = PhoneServerProbe::Unresponsive;
+        QCOMPARE(int(DiagnosePhoneLink(silent)), int(D::ServerUnresponsive));
+        int restarts = 0;
+        PhoneLinkDecision last;
+        std::int64_t firstRestart = -1;
+        for (std::int64_t now = 0; now < 400000; now += 500) {
+            last = doctor.Decide(silent, now);
+            if (last.action == A::RestartOwnedServer) {
+                ++restarts;
+                if (firstRestart < 0) firstRestart = now;
+            }
+        }
+        QCOMPARE_MS(firstRestart, policy.blindGraceMs);
+        QCOMPARE(restarts, policy.blindRestartCap);
+        QCOMPARE(int(last.diagnosis), int(D::ReplugCable));
+        QCOMPARE(int(last.action), int(A::WaitForUser));
+        doctor.OnEvent(PhoneLinkEvent::DeviceArrival, 500000);
+        QCOMPARE(int(doctor.Decide(silent, 500000).action), int(A::Relist));
+        QCOMPARE(int(doctor.Decide(silent, 500000 + policy.blindGraceMs).action), int(A::RestartOwnedServer));
+    }
+    void adbThatCannotStartBesideAnAnsweringDefaultIsNamed()
+    {
+        // Iteration 8 (A3): another program's adb answers on the default
+        // port but is blind; OkuFlow's private server beside it cannot be
+        // started. The end is the AdbCannotStart sentence, not the
+        // other-program sentence after the hand-over cap.
+        for (const int failures : {0, 1, 2}) {
+            PhoneLinkDoctor doctor;
+            doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+            auto blind = Blind(PhoneServerKind::BorrowedDefault);
+            blind.serverLaunchFailures = failures;
+            QCOMPARE(int(doctor.Decide(blind, 0).action), int(A::Relist));
+            const auto decision = doctor.Decide(blind, doctor.Policy().blindGraceMs);
+            if (failures < doctor.Policy().adbLaunchFailuresToName) {
+                QCOMPARE(int(decision.action), int(A::StartShadowServer));
+            } else {
+                QCOMPARE(int(decision.diagnosis), int(D::AdbCannotStart));
+                QCOMPARE(int(decision.action), int(A::WaitForUser));
+            }
+        }
+    }
+    void terminationCapKeepsTheSentenceWithoutAConfirmation()
+    {
+        // Iteration 8 (A6): every termination clears the hang confirmation
+        // (the transport forgets the stopped listener). Once the cap is
+        // spent, the sentence stands also while a respawned default is not
+        // confirmed hung yet; it read "Restoring" until a new confirmation.
+        PhoneLinkDoctor doctor;
+        const auto policy = doctor.Policy();
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto hung = Blind(PhoneServerKind::BorrowedDefault);
+        hung.serverProbe = PhoneServerProbe::Unresponsive;
+        int terminations = 0;
+        std::int64_t now = 0;
+        for (; now < 600000 && terminations < policy.terminateCap; now += 1000) {
+            hung.defaultUnresponsiveConfirmed = true;
+            if (doctor.Decide(hung, now).action == A::TerminateDefaultServer) ++terminations;
+        }
+        QCOMPARE(terminations, policy.terminateCap);
+        hung.defaultUnresponsiveConfirmed = false; // A new process, not confirmed yet.
+        for (int i = 0; i < 30; ++i, now += 1000) {
+            const auto decision = doctor.Decide(hung, now);
+            QCOMPARE(int(decision.diagnosis), int(D::OtherProgramHoldsPhone));
+            QCOMPARE(int(decision.action), int(A::WaitForUser));
+        }
+    }
+    void givenBackAttemptsKeepTheSpacingGrowing()
+    {
+        // Iteration 8 (B4): a give-back lowers the count toward the cap but
+        // not the spacing: the third reservation waits the ceiling, as it
+        // does without give-backs (it waited the short retry every time).
+        PhoneLinkDoctor doctor;
+        const auto policy = doctor.Policy();
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto hung = Blind(PhoneServerKind::BorrowedDefault);
+        hung.serverProbe = PhoneServerProbe::Unresponsive;
+        hung.defaultUnresponsiveConfirmed = true;
+        std::vector<std::int64_t> at;
+        for (std::int64_t now = 0; now < 600000 && at.size() < 3; now += 500) {
+            const auto decision = doctor.Decide(hung, now);
+            if (decision.action != A::TerminateDefaultServer) continue;
+            at.push_back(now);
+            doctor.NoteTerminationAborted(decision.episode, false);
+        }
+        QCOMPARE(int(at.size()), 3);
+        QCOMPARE_MS(at[1] - at[0], policy.restartRetryMs);
+        QCOMPARE_MS(at[2] - at[1], policy.takeoverCeilingMs);
+    }
+    void resumeSignalsOfOneWakeAreOneEvent()
+    {
+        // Iteration 8 (B5): one wake raises up to four resume signals; each
+        // renewed every cap. Within resumeCoalesceMs of the last applied
+        // resume they are one event (measured from the applied one).
+        PhoneLinkDoctor doctor;
+        const auto policy = doctor.Policy();
+        QVERIFY(doctor.OnEvent(PhoneLinkEvent::Resume, 0));
+        const auto episode = doctor.Episode();
+        QVERIFY(doctor.ReserveLaunch(0));
+        QVERIFY(!doctor.ReserveLaunch(1));
+        QVERIFY(!doctor.OnEvent(PhoneLinkEvent::Resume, 1000));
+        QVERIFY(!doctor.OnEvent(PhoneLinkEvent::Resume, policy.resumeCoalesceMs - 1));
+        QCOMPARE(doctor.Episode(), episode);
+        // The launch budget was not renewed by the coalesced signals.
+        QVERIFY(!doctor.ReserveLaunch(2000));
+        // Another kind of event is never coalesced; a later resume applies.
+        QVERIFY(doctor.OnEvent(PhoneLinkEvent::DeviceArrival, policy.resumeCoalesceMs - 1));
+        QVERIFY(doctor.OnEvent(PhoneLinkEvent::Resume, policy.resumeCoalesceMs));
+        QVERIFY(doctor.Episode() == episode + 2);
+    }
+    void aFlappingCableIsNamed()
+    {
+        // Iteration 8 (B5): a cable or hub that drops more often than the
+        // blind grace never let a grace pass. flapRemovals removals within
+        // flapWindowMs name the cable until the link holds, a quiet period
+        // passes, or a manual pick or resume starts a fresh attempt.
+        PhoneLinkDoctor doctor;
+        const auto policy = doctor.Policy();
+        const auto blind = Blind();
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        // An ordinary quick re-plug (and a USB mode switch) is not flapping.
+        doctor.OnEvent(PhoneLinkEvent::DeviceRemoval, 1000);
+        doctor.OnEvent(PhoneLinkEvent::DeviceArrival, 1500);
+        doctor.OnEvent(PhoneLinkEvent::DeviceRemoval, 4000);
+        doctor.OnEvent(PhoneLinkEvent::DeviceArrival, 4500);
+        QCOMPARE(int(doctor.Decide(blind, 4500).diagnosis), int(D::NotListedByServer));
+        // Removals spread wider than the window are not flapping either.
+        PhoneLinkDoctor spread;
+        for (int i = 0; i < 8; ++i) spread.OnEvent(PhoneLinkEvent::DeviceRemoval, i * (policy.flapWindowMs / 2));
+        QCOMPARE(int(spread.Decide(blind, 8 * (policy.flapWindowMs / 2)).diagnosis), int(D::NotListedByServer));
+
+        const auto flap = [&](PhoneLinkDoctor& d, std::int64_t from) {
+            for (int i = 0; i < policy.flapRemovals; ++i) {
+                d.OnEvent(PhoneLinkEvent::DeviceRemoval, from + i * 3000);
+                d.OnEvent(PhoneLinkEvent::DeviceArrival, from + i * 3000 + 1000);
+            }
+            return from + (policy.flapRemovals - 1) * 3000 + 1000;
+        };
+        std::int64_t now = flap(doctor, 10000);
+        for (std::int64_t t = now; t < now + policy.flapQuietMs - 3000; t += 1000) {
+            const auto decision = doctor.Decide(blind, t);
+            QCOMPARE(int(decision.diagnosis), int(D::ReplugCable));
+            QCOMPARE(int(decision.action), int(A::WaitForUser));
+        }
+        // A quiet period ends it.
+        QVERIFY(doctor.Decide(blind, now + policy.flapQuietMs).diagnosis != D::ReplugCable);
+        // A manual pick ends it at once.
+        now = flap(doctor, now + 100000);
+        QCOMPARE(int(doctor.Decide(blind, now).diagnosis), int(D::ReplugCable));
+        doctor.OnEvent(PhoneLinkEvent::ManualPick, now + 1);
+        QVERIFY(doctor.Decide(blind, now + 1).diagnosis != D::ReplugCable);
+        // A resume too.
+        now = flap(doctor, now + 100000);
+        QCOMPARE(int(doctor.Decide(blind, now).diagnosis), int(D::ReplugCable));
+        doctor.OnEvent(PhoneLinkEvent::Resume, now + 1);
+        QVERIFY(doctor.Decide(blind, now + 1).diagnosis != D::ReplugCable);
+        // A working link is shown, and once it holds the verdict ends.
+        now = flap(doctor, now + 100000);
+        QCOMPARE(int(doctor.Decide(Ready(), now).diagnosis), int(D::Connected));
+        QCOMPARE(int(doctor.Decide(Ready(), now + policy.connectedHoldMs).diagnosis), int(D::Connected));
+        QVERIFY(doctor.Decide(blind, now + policy.connectedHoldMs + 1000).diagnosis != D::ReplugCable);
+    }
+    void replugSentenceOfTheOwnedOfflineLadderStands()
+    {
+        // Iteration 8 (B10): after the third restart of the owned offline
+        // ladder the re-plug sentence flipped back to "Restoring" whenever a
+        // reconnect slot came free. Once it stands it stays until an event.
+        PhoneLinkDoctor doctor;
+        const auto policy = doctor.Policy();
+        doctor.OnEvent(PhoneLinkEvent::Resume, 0);
+        const auto offline = With([](auto& o) { o.phoneState = PhoneAdbState::Offline; });
+        std::int64_t now = 0;
+        int restarts = 0;
+        for (; now < 1000000; now += 500) {
+            const auto decision = doctor.Decide(offline, now);
+            restarts += decision.action == A::RestartOwnedServer;
+            if (decision.diagnosis == D::ReplugCable) break;
+        }
+        QCOMPARE(restarts, policy.blindRestartCap);
+        for (const auto end = now + 300000; now < end; now += 500) {
+            const auto decision = doctor.Decide(offline, now);
+            QCOMPARE(int(decision.diagnosis), int(D::ReplugCable));
+            QCOMPARE(int(decision.action), int(A::WaitForUser));
+        }
+        doctor.OnEvent(PhoneLinkEvent::DeviceArrival, now);
+        QCOMPARE(int(doctor.Decide(offline, now).action), int(A::ReconnectTransport));
     }
     void anotherListedPhoneIsNotBlindness()
     {

@@ -213,8 +213,24 @@ struct PhoneLinkPolicy {
     // A listener that accepts but never answers after this many launches is
     // named ("close and reopen OkuFlow Camera") instead of relaunched.
     int hangingCompanionLaunches{2};
-    // Consecutive launch failures of OkuFlow's own adb before it is named.
+    // Consecutive launch failures of OkuFlow's own adb before it is named
+    // (also a start that stays alive and never answers past its start grace,
+    // or dies before it ever answered; also while another program's adb
+    // answers on the default port and a private server is needed beside it).
     int adbLaunchFailuresToName{2};
+    // Event storms. One wake raises several resume signals (two power
+    // broadcasts, display on, the wall-clock jump): resumes within this long
+    // of the last applied resume are one event, not a renewal of every cap.
+    std::int64_t resumeCoalesceMs{5000};
+    // A cable or hub that drops and returns more often than the blind grace
+    // never lets a grace pass: this many removal events within flapWindowMs
+    // name the cable (re-plug sentence) until the link holds
+    // (connectedHoldMs) or no removal came for flapQuietMs. A manual pick or
+    // a resume starts a fresh attempt. An ordinary re-plug is one removal
+    // (two when the phone also switches its USB mode).
+    int flapRemovals{4};
+    std::int64_t flapWindowMs{60000};
+    std::int64_t flapQuietMs{30000};
     // Rung 5: at once, then these, then every launchPeriodicMs.
     std::array<std::int64_t, 2> launchRetryMs{3000, 6000};
     std::int64_t launchPeriodicMs{20000};
@@ -243,7 +259,9 @@ class PhoneLinkDoctor {
 public:
     explicit PhoneLinkDoctor(PhoneLinkPolicy policy = {}) : policy_(policy) {}
     // Every event resets all budgets and makes the next cycle immediate.
-    void OnEvent(PhoneLinkEvent event, std::int64_t nowMs);
+    // False when the event was coalesced into the previous one (a resume
+    // within resumeCoalesceMs of the last applied resume): nothing reset.
+    bool OnEvent(PhoneLinkEvent event, std::int64_t nowMs);
     // Classifies, chooses the next action and reserves its budget. The
     // caller performs the returned action once (or not at all if it is
     // canceled); the reservation stands either way.
@@ -354,7 +372,11 @@ public:
     const PhoneLinkPolicy& Policy() const { return policy_; }
 private:
     struct Budget {
+        // Attempts that count toward a cap (a give-back lowers it).
         int attempts{0};
+        // Reservations since the last reset: the retry spacing grows with
+        // these, so attempts that were given back still reach the ceiling.
+        int reserved{0};
         std::int64_t nextAllowedMs{0};
         bool Allowed(std::int64_t nowMs) const { return nowMs >= nextAllowedMs; }
     };
@@ -404,6 +426,14 @@ private:
     std::int64_t lastLaunchMs_{-1};
     std::uint64_t episode_{0};
     std::int64_t failedSinceMs_{-1};
+    // Event storms: the last applied resume, recent removal times (bounded)
+    // and the flapping verdict (ended by a held link, a quiet period, a
+    // manual pick, a resume or the start).
+    std::int64_t lastResumeMs_{-1};
+    std::array<std::int64_t, 16> removals_{};
+    int removalCount_{0};
+    std::int64_t lastRemovalMs_{-1};
+    bool flapping_{false};
     Budget reconnect_, restart_, shadow_, askExit_, terminate_, launch_, handback_;
 };
 
