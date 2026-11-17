@@ -14,6 +14,7 @@ class StreamingPauseReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_PAUSE = "com.okuflow.camera.PAUSE_STREAMING"
         fun pauseStreaming(context: Context) {
+            com.okuflow.camera.link.PausedStatusEndpoint.start(context)
             StreamingIntentStore.get(context).pause()
             context.stopService(Intent(context, CameraStreamService::class.java))
         }

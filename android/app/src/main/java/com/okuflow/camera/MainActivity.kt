@@ -9,7 +9,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import com.okuflow.camera.camera.CameraStreamService
 import com.okuflow.camera.link.HOST_LAUNCH_EXTRA
+import com.okuflow.camera.link.PausedStatusEndpoint
 import com.okuflow.camera.link.showOverKeyguardForHostLaunch
 import com.okuflow.camera.settings.AppLanguageStore
 import com.okuflow.camera.settings.StreamingIntentStore
@@ -30,7 +32,11 @@ class MainActivity : ComponentActivity() {
         // Covers setup, permission-return, settings and streaming alike.
         // Android stops honoring this window flag when the app is backgrounded.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        applyHostLaunch(intent)
+        PausedStatusEndpoint.start(this)
+        // A recreated activity (configuration change, or restore after the
+        // process was killed) is not a new computer launch: the system hands
+        // back the original intent, extra included.
+        if (savedInstanceState == null) applyHostLaunch(intent) else intent?.removeExtra(HOST_LAUNCH_EXTRA)
         setContent {
             OkuFlowCameraTheme {
                 OkuFlowCameraApp()
@@ -58,6 +64,7 @@ class MainActivity : ComponentActivity() {
         val hostLaunch = intent?.getBooleanExtra(HOST_LAUNCH_EXTRA, false) == true
         intent?.removeExtra(HOST_LAUNCH_EXTRA)
         if (!hostLaunch) return
+        CameraStreamService.onHostLaunch()
         val show = showOverKeyguardForHostLaunch(true, StreamingIntentStore.get(this).paused.value)
         setShowWhenLocked(show)
         setTurnScreenOn(show)

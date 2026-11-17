@@ -59,9 +59,12 @@ const val HOST_LAUNCH_EXTRA = "com.okuflow.camera.extra.HOST_LAUNCH"
 /** Transient busy/failed camera problems stay visible at least this long. */
 const val PROBLEM_RETRY_HOLD_MS = 10_000L
 
-/** The paused status listener retries its bind while the service releases the socket. */
-const val PAUSED_BIND_ATTEMPTS = 20
-const val PAUSED_BIND_RETRY_MS = 500L
+/**
+ * The paused status listener is supervised at this cadence for as long as the
+ * process lives: while Pause is saved it is (re)bound, retrying without a
+ * limit while the camera service still releases the socket; otherwise closed.
+ */
+const val PAUSED_SUPERVISE_MS = 500L
 
 /**
  * A computer launch may show the activity over the keyguard and turn the

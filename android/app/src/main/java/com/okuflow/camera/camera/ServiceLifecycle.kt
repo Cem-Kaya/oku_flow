@@ -20,7 +20,11 @@ internal class ListenerRegistration(
     }
 }
 
-/** New camera foreground services require a resumed activity; a refusal waits for a fresh resume. */
+/**
+ * New camera foreground services require a resumed activity; a refusal waits
+ * for a fresh resume or a new launch by the computer (which may come while
+ * the activity is already resumed and so never produces a resume).
+ */
 internal class VisibleServiceStartGate {
     private var resumed = false
     private var refused = false
@@ -29,4 +33,5 @@ internal class VisibleServiceStartGate {
     fun onResumed() { resumed = true; refused = false }
     fun onPaused() { resumed = false }
     fun onRefused() { refused = true }
+    fun onHostLaunch() { refused = false }
 }

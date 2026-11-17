@@ -4,6 +4,21 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ServiceLifecycleTest {
+    @Test fun aComputerLaunchClearsAnEarlierRefusal() {
+        // D4: onNewIntent on a resumed activity produces no resume.
+        val gate = VisibleServiceStartGate()
+        gate.onResumed()
+        gate.onRefused()
+        assertFalse(gate.canStart)
+        gate.onHostLaunch()
+        assertTrue(gate.canStart)
+        // Never while the activity is not resumed.
+        gate.onPaused()
+        gate.onRefused()
+        gate.onHostLaunch()
+        assertFalse(gate.canStart)
+    }
+
     @Test fun listenerStartupFailureBeforeRegistrationNeverRemovesIt() {
         // The USB socket can fail after PowerManager is acquired but before thermal add.
         val registration = ListenerRegistration({ fail("Startup never reached thermal registration") },

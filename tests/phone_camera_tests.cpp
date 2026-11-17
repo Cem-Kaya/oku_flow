@@ -1763,6 +1763,13 @@ private slots:
         QCOMPARE(int(facts.keyguardShowing), int(okuflow::PhoneFact::No));
         QCOMPARE(int(facts.appInstalled), int(okuflow::PhoneFact::No));
         QCOMPARE(int(facts.appRunning), int(okuflow::PhoneFact::No));
+        // Android 12 and later: KeyguardController and DeviceIdleController lines.
+        facts = okuflow::ParsePhoneShellFacts("W:\nmWakefulness=Awake\nK:\n  KeyguardShowing=true AodShowing=false\nP:\nR:\nEND\n");
+        QCOMPARE(int(facts.keyguardShowing), int(okuflow::PhoneFact::Yes));
+        facts = okuflow::ParsePhoneShellFacts("W:\nmWakefulness=Awake\nK:\n  mScreenLocked=true\nP:\nR:\nEND\n");
+        QCOMPARE(int(facts.keyguardShowing), int(okuflow::PhoneFact::Yes));
+        facts = okuflow::ParsePhoneShellFacts("W:\nmWakefulness=Awake\nK:\n  mKeyguardShowing=false\n  mScreenLocked=false\nP:\nR:\nEND\n");
+        QCOMPARE(int(facts.keyguardShowing), int(okuflow::PhoneFact::No));
         // Truncated output (no END) never claims absence.
         facts = okuflow::ParsePhoneShellFacts("W:\nK:\nP:\nR:\n");
         QCOMPARE(int(facts.appInstalled), int(okuflow::PhoneFact::Unknown));

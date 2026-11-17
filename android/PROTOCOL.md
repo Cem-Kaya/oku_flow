@@ -245,15 +245,30 @@ While the user has saved Pause, the camera service and its listener are stopped.
 Newer companions then bind a status-only listener on the same socket while the
 app process lives: a probe receives `{"protocol":1,"probe":true,"busy":false,
 "problem":"paused","cameras":[]}` and a control hello receives ERROR
-`{"code":"paused"}`. It never opens the camera or clears Pause; Resume closes it
-before the camera service binds again. Compatibility: older hosts treat the
+`{"code":"paused"}`. It never opens the camera or clears Pause. The listener
+belongs to the process, not to a screen: a supervisor started by the first
+component of the process keeps it bound every 500 ms while Pause is saved
+(retrying without a limit while the camera service still releases the socket)
+and closes it otherwise. Resume closes it synchronously before the camera
+service can start and bind the socket; if Resume cannot be saved, it is bound
+again. Compatibility: older hosts treat the
 unknown `paused` code as "not ready" and never start; newer hosts with an older
-companion see an absent socket and use the read-only shell facts instead.
+companion see an absent socket and use the read-only shell facts instead (a
+running app process with a refused socket is launched once per event and
+the user is asked to tap Resume streaming, never relaunched in a loop).
 
 A launch carrying the boolean extra `com.okuflow.camera.extra.HOST_LAUNCH`
 shows the activity over the lock screen and turns the screen on, so a locked
 phone on a stand can start the camera service from a resumed activity. A saved
-Pause disables this; leaving the activity clears both flags.
+Pause disables this; leaving the activity clears both flags. A host launch also
+clears an earlier foreground-service refusal (it may arrive through
+`onNewIntent` while the activity is already resumed, which produces no
+resume). A recreated activity (configuration change, or restore after the
+process was killed) is not a host launch: the extra of the original intent is
+dropped there. The read-only keyguard facts read `mShowingLockscreen` (Android
+9 and older), the KeyguardController's `mKeyguardShowing`/`KeyguardShowing`
+(Android 10 and later) and DeviceIdleController's `mScreenLocked` as a
+fallback; any one reporting true counts as locked.
 Capabilities are built once per listener (warmed in the background) and copied
 per reply.
 

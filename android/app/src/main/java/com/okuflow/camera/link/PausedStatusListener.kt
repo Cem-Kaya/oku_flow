@@ -1,13 +1,10 @@
 package com.okuflow.camera.link
 
+import android.content.Context
 import android.net.LocalServerSocket
 import android.net.LocalSocket
 import android.util.Log
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
+import com.okuflow.camera.settings.StreamingIntentStore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
@@ -63,34 +60,75 @@ class PausedStatusListener : AutoCloseable {
     }
 }
 
-/** Process-wide owner: bound while Pause is saved and the app process lives. */
-object PausedStatusEndpoint {
-    private var listener: PausedStatusListener? = null
+/**
+ * Pure binding policy of the paused status listener, driven by [tick]. While
+ * Pause is saved a listener is kept bound, retried on every tick for as long
+ * as Pause stays saved (the camera service releases the socket
+ * asynchronously); otherwise it is closed. [releaseForResume] closes it
+ * synchronously before Resume starts the camera service, so the two never
+ * race for the socket name, and lets the next tick bind again if Resume fails.
+ */
+internal class PausedBindSupervisor(private val bind: () -> AutoCloseable) {
+    private var listener: AutoCloseable? = null
+    private var resuming = false
+    var failedBinds = 0
+        private set
 
-    /**
-     * Follows the saved Pause. The camera service releases the socket
-     * asynchronously after Pause, so binding retries briefly; Resume closes
-     * the status listener before the service binds the socket again.
-     */
-    fun follow(scope: CoroutineScope, paused: StateFlow<Boolean>) = scope.launch {
-        paused.collectLatest { isPaused ->
-            if (!isPaused) { close(); return@collectLatest }
-            repeat(PAUSED_BIND_ATTEMPTS) {
-                if (open()) return@collectLatest
-                delay(PAUSED_BIND_RETRY_MS)
-            }
-            Log.w("OkuFlow-USB", "Paused status listener could not bind")
+    val bound: Boolean @Synchronized get() = listener != null
+
+    @Synchronized fun tick(paused: Boolean) {
+        if (!paused || resuming) { closeLocked(); return }
+        if (listener != null) return
+        listener = runCatching { bind() }.getOrNull()
+        if (listener == null) ++failedBinds else failedBinds = 0
+    }
+
+    fun releaseForResume(resume: () -> Boolean): Boolean {
+        synchronized(this) { resuming = true; closeLocked() }
+        try {
+            return resume()
+        } finally {
+            synchronized(this) { resuming = false }
         }
     }
 
-    @Synchronized private fun open(): Boolean {
-        if (listener != null) return true
-        listener = runCatching { PausedStatusListener() }.getOrNull()
-        return listener != null
-    }
-
-    @Synchronized fun close() {
-        listener?.close()
+    private fun closeLocked() {
+        listener?.let { runCatching { it.close() } }
         listener = null
     }
+}
+
+/**
+ * Process-wide owner: bound while Pause is saved and the app process lives,
+ * not tied to a screen or ViewModel (swiping the activity away while paused
+ * keeps the answer as long as the process lives).
+ */
+object PausedStatusEndpoint {
+    private val supervisor = PausedBindSupervisor { PausedStatusListener() }
+    @Volatile private var started = false
+
+    /** Idempotent; any component of the process may call it first. */
+    fun start(context: Context) {
+        if (started) return
+        synchronized(this) {
+            if (started) return
+            started = true
+        }
+        val store = StreamingIntentStore.get(context.applicationContext)
+        thread(name = "OkuFlow-USB-paused-supervisor", isDaemon = true) {
+            var warned = false
+            while (true) {
+                supervisor.tick(store.paused.value)
+                if (supervisor.failedBinds >= 20 && !warned) {
+                    warned = true
+                    Log.w("OkuFlow-USB", "Paused status listener still cannot bind; retrying")
+                }
+                if (supervisor.bound) warned = false
+                Thread.sleep(PAUSED_SUPERVISE_MS)
+            }
+        }
+    }
+
+    /** Releases the socket name before [resume] lets the camera service start. */
+    fun releaseForResume(resume: () -> Boolean): Boolean = supervisor.releaseForResume(resume)
 }

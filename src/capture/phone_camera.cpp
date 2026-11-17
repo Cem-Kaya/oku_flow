@@ -1237,8 +1237,13 @@ PhoneShellFacts ParsePhoneShellFacts(std::string_view text)
                 else if (value == "Asleep" || value == "Dozing" || value == "Dreaming") facts.screenAwake = PhoneFact::No;
             }
         } else if (section == 'K') {
-            for (const char* key : {"mShowingLockscreen=", "mDreamingLockscreen=", "isKeyguardShowing=",
-                                    "mKeyguardShowing=", "KeyguardShowing="}) {
+            // Android 9 and older print the policy's mShowingLockscreen;
+            // Android 10 to 14 print the KeyguardController's
+            // mKeyguardShowing / KeyguardShowing (substring of both);
+            // DeviceIdleController's mScreenLocked (Android 10 and later) is
+            // the fallback when the window dump changes again.
+            for (const char* key : {"mShowingLockscreen=", "mDreamingLockscreen=", "KeyguardShowing=",
+                                    "mScreenLocked="}) {
                 const auto at = line.indexOf(key);
                 if (at < 0) continue;
                 const auto value = line.mid(at + static_cast<qsizetype>(std::strlen(key)));
@@ -1475,7 +1480,8 @@ CompanionLaunch LaunchCompanion(const std::string& serial, std::uint64_t transpo
 // byte at all) is adbd silence; any reply proves adbd answers.
 constexpr char kShellFactsCommand[] =
     "shell:echo W:; dumpsys power | grep -m1 mWakefulness=; echo K:; "
-    "dumpsys window | grep -E 'mShowingLockscreen|mDreamingLockscreen|isKeyguardShowing|mKeyguardShowing' | head -n 4; "
+    "dumpsys window | grep -E 'mShowingLockscreen|mDreamingLockscreen|KeyguardShowing' | head -n 6; "
+    "dumpsys deviceidle | grep -m1 mScreenLocked=; "
     "echo P:; pm path com.okuflow; pm path com.okuflow.camera; echo R:; pidof com.okuflow com.okuflow.camera; echo END";
 PhoneShellFacts QueryShellFacts(const AdbDeviceEntry& entry, const std::atomic<bool>* canceled, bool* timedOut)
 {
