@@ -2519,41 +2519,12 @@ private slots:
         QVERIFY(other.child->WaitForExit(std::chrono::milliseconds(3000)));
         QVERIFY(okuflow::OwnedAdbServerPort().has_value());
     }
-    void stalledPhoneThatRecoversOnTheDefaultIsHandedBack() {
-        // Iteration 5 (1): the default lists the phone "device" and its
-        // shell is silent until OkuFlow's own server runs beside it, then
-        // answers. Before host:kill the shell is asked once more through
-        // that listener: the stall is over, nothing is stopped, USB goes back.
-        DefaultAdbFixture other({});
-        other.child.reset();
-        const QString stall = other.File(QStringLiteral("stall"));
-        const QString kills = other.File(QStringLiteral("kills.log"));
-        { QFile file(stall); QVERIFY(file.open(QIODevice::WriteOnly)); }
-        other.flags = {L"--fixture-device", L"--fixture-exit-on-kill", L"--fixture-stalled-shell-file",
-                       stall.toStdWString(), L"--fixture-kill-log", kills.toStdWString()};
-        QVERIFY(other.copied && other.Start());
-        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString());
-        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
-        auto reports = LinkCycles(60, [](const auto& r) {
-            return r.decision.action == okuflow::PhoneLinkAction::StartShadowServer; });
-        QVERIFY(Saw(reports, okuflow::PhoneLinkDiagnosis::TransportStalled));
-        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::StartShadowServer));
-        QVERIFY(okuflow::OwnedAdbServerPort().has_value());
-        QVERIFY(QFile::remove(stall)); // adbd answers on the default from now on.
-        reports = LinkCycles(60, [](const auto& r) {
-            return r.decision.action == okuflow::PhoneLinkAction::HandBackToDefault; });
-        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::HandBackToDefault));
-        // The memory was cleared by the re-check: the listing serves the phone.
-        QVERIFY(reports.back().observation.defaultListsPhone && !reports.back().observation.defaultPhoneStalled);
-        const auto asked = std::find_if(reports.begin(), reports.end(), [](const auto& r) {
-            return r.decision.action == okuflow::PhoneLinkAction::AskDefaultServerToExit; });
-        QVERIFY(asked != reports.end());
-        QVERIFY2(asked->actionResult.find("answers on the default server") != std::string::npos, asked->actionResult.c_str());
-        QVERIFY(!Saw(reports, okuflow::PhoneLinkAction::TerminateDefaultServer));
-        QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
-        QTest::qWait(300);
-        QVERIFY(!other.Exited());
-        QVERIFY(!QFile::exists(kills)); // No host:kill was ever sent.
+    void stalledPhoneThatRecoversOnTheDefaultIsHandedBack() { recoveredStallIsHandedBack(false); }
+    void stalledPhoneThatRecoversWithACrlfReplyIsHandedBack() {
+        // Iteration 6 (3): the recovered shell ends its echo with CR LF (a
+        // shell through a PTY). Any reply within the budget is an answer:
+        // the same hand-back, no host:kill, nothing stopped.
+        recoveredStallIsHandedBack(true);
     }
     void keptAskIsNotFollowedByATermination() {
         // Iteration 6 (2): the stalled phone's shell answers at the ask, so
@@ -3466,6 +3437,44 @@ private slots:
         // Once capture is stopped, a real absence removes its stale entries.
         merged = okuflow::MergePhoneCameraDiscovery(merged, {}, L"");
         QCOMPARE(merged.size(), size_t{2});
+    }
+private:
+    void recoveredStallIsHandedBack(bool crlf) {
+        // Iteration 5 (1): the default lists the phone "device" and its
+        // shell is silent until OkuFlow's own server runs beside it, then
+        // answers. Before host:kill the shell is asked once more through
+        // that listener: the stall is over, nothing is stopped, USB goes back.
+        DefaultAdbFixture other({});
+        other.child.reset();
+        const QString stall = other.File(QStringLiteral("stall"));
+        const QString kills = other.File(QStringLiteral("kills.log"));
+        { QFile file(stall); QVERIFY(file.open(QIODevice::WriteOnly)); }
+        other.flags = {L"--fixture-device", L"--fixture-exit-on-kill", L"--fixture-stalled-shell-file",
+                       stall.toStdWString(), L"--fixture-kill-log", kills.toStdWString()};
+        if (crlf) other.flags.push_back(L"--fixture-shell-crlf");
+        QVERIFY(other.copied && other.Start());
+        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString());
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        auto reports = LinkCycles(60, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::StartShadowServer; });
+        QVERIFY(Saw(reports, okuflow::PhoneLinkDiagnosis::TransportStalled));
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::StartShadowServer));
+        QVERIFY(okuflow::OwnedAdbServerPort().has_value());
+        QVERIFY(QFile::remove(stall)); // adbd answers on the default from now on.
+        reports = LinkCycles(60, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::HandBackToDefault; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::HandBackToDefault));
+        // The memory was cleared by the re-check: the listing serves the phone.
+        QVERIFY(reports.back().observation.defaultListsPhone && !reports.back().observation.defaultPhoneStalled);
+        const auto asked = std::find_if(reports.begin(), reports.end(), [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::AskDefaultServerToExit; });
+        QVERIFY(asked != reports.end());
+        QVERIFY2(asked->actionResult.find("answers on the default server") != std::string::npos, asked->actionResult.c_str());
+        QVERIFY(!Saw(reports, okuflow::PhoneLinkAction::TerminateDefaultServer));
+        QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
+        QTest::qWait(300);
+        QVERIFY(!other.Exited());
+        QVERIFY(!QFile::exists(kills)); // No host:kill was ever sent.
     }
 };
 QTEST_GUILESS_MAIN(PhoneCameraTests)

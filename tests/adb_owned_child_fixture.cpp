@@ -17,6 +17,7 @@
 //       [--fixture-stalled-shell-file <path>] (stalled like --fixture-stalled-shell while <path>
 //                                      exists; otherwise adbd answers `shell:echo <text>` with
 //                                      <text> and a newline, and fails every other service)
+//       [--fixture-shell-crlf]        (that echo ends its line with CR LF, as a shell through a PTY may)
 // Tests may run a copy of this executable named adb.exe so the production
 // image rule (adb.exe) is exercised without any hook.
 // Sibling modes (windowless; hidden windows are never shown):
@@ -116,7 +117,7 @@ void Reply(SOCKET socket, const std::string& body)
     }
 }
 struct FakeOptions {
-    bool hang{false}, exitAfterList{false}, device{false}, exitOnKill{false}, stalledShell{false};
+    bool hang{false}, exitAfterList{false}, device{false}, exitOnKill{false}, stalledShell{false}, shellCrlf{false};
     std::wstring deviceFile, failFile, killLog, offlineFile, stalledShellFile, slowVersionFile;
     unsigned slowVersionMs{0};
 };
@@ -189,7 +190,7 @@ int FakeAdbServer(unsigned short port, const FakeOptions& options)
                     service.clear();
             }
             if (service.starts_with("shell:echo ")) {
-                const std::string text = "OKAY" + service.substr(11) + "\n";
+                const std::string text = "OKAY" + service.substr(11) + (options.shellCrlf ? "\r\n" : "\n");
                 send(client, text.data(), static_cast<int>(text.size()), 0);
             } else {
                 send(client, "FAIL000bunsupported", 19, 0);
@@ -243,6 +244,7 @@ int wmain(int count, wchar_t** arguments)
         else if (argument == L"--fixture-device") options.device = true;
         else if (argument == L"--fixture-exit-on-kill") options.exitOnKill = true;
         else if (argument == L"--fixture-stalled-shell") options.stalledShell = true;
+        else if (argument == L"--fixture-shell-crlf") options.shellCrlf = true;
         else if (argument == L"--fixture-device-file" && i + 1 < count) options.deviceFile = arguments[++i];
         else if (argument == L"--fixture-fail-file" && i + 1 < count) options.failFile = arguments[++i];
         else if (argument == L"--fixture-kill-log" && i + 1 < count) options.killLog = arguments[++i];

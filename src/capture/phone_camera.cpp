@@ -1896,8 +1896,10 @@ bool DefaultServesTarget(const std::vector<AdbDeviceEntry>& entries, const std::
 // default). Before another program's adb is asked to exit or terminated,
 // adbd is asked once more through that very listener (one bounded shell
 // echo): if it answers, the stall is over, the memory is cleared and
-// nothing is stopped; the next cycle hands back. A "device" row whose shell
-// stays silent still does not serve the phone.
+// nothing is stopped; the next cycle hands back. Any reply within the budget
+// is an answer, whatever its bytes (a shell may end the line with CRLF), as
+// for the ordinary health probe; only a timeout or a failed socket is not.
+// A "device" row whose shell stays silent still does not serve the phone.
 bool StallEndedOnDefault(const std::vector<AdbDeviceEntry>& entries, const std::string& target,
                          const std::atomic<bool>* canceled)
 {
@@ -1915,8 +1917,8 @@ bool StallEndedOnDefault(const std::vector<AdbDeviceEntry>& entries, const std::
                                              : "host:transport:" + QByteArray::fromStdString(entry->serial),
                    kUsbHealthProbeTimeoutMs, canceled);
         AdbRequest(shell, "shell:echo OKUFLOW_USB_HEALTH", kUsbHealthProbeTimeoutMs, canceled);
-        answers = Read(shell, static_cast<int>(kUsbHealthToken.size()), kUsbHealthProbeTimeoutMs, canceled) ==
-            QByteArray(kUsbHealthToken.data(), static_cast<int>(kUsbHealthToken.size()));
+        Read(shell, 1, kUsbHealthProbeTimeoutMs, canceled); // Throws on a timeout or a closed socket.
+        answers = true;
     } catch (const std::exception&) {
         CheckCanceled(canceled);
     }

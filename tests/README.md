@@ -1092,7 +1092,10 @@ standing at the user-wait cadence until the server recovers or goes away.
 `keptAskIsNotFollowedByATermination` (the stalled phone's shell answers at the
 ask, the next listing misses the phone; one ask per episode) and the doctor row
 `askThatSendsNothingIsNotRememberedAsSent`: an ask that sent no `host:kill` is
-neither followed by a termination nor counted as an ask. Doctor rows
+neither followed by a termination nor counted as an ask.
+`stalledPhoneThatRecoversWithACrlfReplyIsHandedBack` runs the iteration 5
+recovery row with `--fixture-shell-crlf` (the echo ends with CR LF): any reply
+to the stall re-check is an answer. Doctor rows
 `userEndpointThatDoesNotListThePhoneEndsInTheReplugSentence` and
 `hungUserEndpointEndsInTheReplugSentence`; `overriddenEndpointIsNeverStopped`
 was changed deliberately (WaitForUser is now allowed; no takeover action).

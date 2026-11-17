@@ -568,7 +568,9 @@ aligned with the project goals.
   `host:kill` and termination pre-checks. That memory is updated only while
   OkuFlow borrows the default, so right before `host:kill` or a termination
   that it alone permits, the phone's shell is asked once more through that
-  listener (`StallEndedOnDefault`): an answer clears it, nothing is stopped
+  listener (`StallEndedOnDefault`): an answer (any reply within the 2 s
+  budget, CRLF included; only a timeout or a failed socket is silence)
+  clears it, nothing is stopped
   and the next cycle hands back. Windows "Unknown" for the ADB
   interface means only that the SetupAPI query failed (a phone without the
   standard ADB interface GUID reads Absent). After 30 s blind under Unknown
