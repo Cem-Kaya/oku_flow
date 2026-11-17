@@ -191,7 +191,9 @@ diagnosis and one next action, least disturbing first:
    service did not start). Within 5 s after OkuFlow's own launch such a
    refusal is a launch still starting and holds nothing (the ordinary spacing
    applies), and a hold ends as soon as the app process is no longer running,
-   which is relaunched at once;
+   which is relaunched at once the first time after an event and otherwise 20 s
+   after the last launch (Pause survives the process, so an app that keeps
+   being killed is not brought forward every time);
    when the listener accepts but never answers after two launches (or after
    that single launch), Windows asks the user to close OkuFlow Camera on the
    phone and open it again (relaunching would only bring the hanging activity

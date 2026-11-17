@@ -686,7 +686,8 @@ other-program sentence. Companion wake + launch: at once, 3 s, 6 s, then
 every 20 s, one budget shared by discovery and camera starts (at most one per
 start attempt; once per event while the app process runs with its listener
 closed, not counting the 5 s after OkuFlow's own launch; a hold ends when the
-app process is gone). A resumed phone
+app process is gone, relaunching at once the first time per event and 20 s after
+the last launch later). A resumed phone
 session must present a frame within 3 s. Owned bootstrap/crash cooldown 5 s,
 doubling to 30 s. Capture shutdown bounds its D3D11 completion-query poll to
 1000ms while retaining the facade's shared 1500ms stop deadline. Stopping a
@@ -1153,7 +1154,8 @@ Update this file whenever these defaults move or new fixed paths are introduced.
   every 20 s; at most one per camera start attempt; once per event while the
   app process runs with its listener closed, except within 5 s after
   OkuFlow's own launch (still starting, not held); a hold ends when the app
-  process is gone. A manual phone selection renews
+  process is gone (relaunch at once the first time per event, later 20 s after
+  the last launch). A manual phone selection renews
   it. Permission, busy and thermal probe problems wait for phone-state changes
   instead of forcing foreground.
 - Source builds use `%LOCALAPPDATA%/OkuFlow/adb-source-build` by default;

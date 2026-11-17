@@ -902,6 +902,37 @@ private slots:
         QCOMPARE(int(died.diagnosis), int(D::AppNotRunning));
         QCOMPARE(int(died.action), int(A::WakeAndLaunchApp));
     }
+    void pausedCompanionThatKeepsDyingIsRelaunchedAtTheOrdinarySpacing()
+    {
+        // Iteration 5 (2): pause, death, relaunch, pause, death. Pause is
+        // stored on the phone and survives the kill, so a battery manager
+        // that keeps killing the app would pull it to the front every time:
+        // only the first release in an episode relaunches at once.
+        PhoneLinkPolicy policy;
+        PhoneLinkDoctor doctor(policy);
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        const auto paused = With([](auto& o) {
+            o.companion = PhoneCompanionProbe::Refused;
+            o.shell = {PhoneFact::Yes, PhoneFact::No, PhoneFact::Yes, PhoneFact::Yes}; });
+        const auto died = Refused(PhoneFact::Yes, PhoneFact::No);
+        QCOMPARE(int(doctor.Decide(paused, 0).action), int(A::WakeAndLaunchApp));
+        QCOMPARE(int(doctor.Decide(paused, 9000).action), int(A::WaitForUser));
+        const std::int64_t relaunchMs = 11000;
+        QCOMPARE(int(doctor.Decide(died, relaunchMs).action), int(A::WakeAndLaunchApp)); // First release: at once.
+        for (std::int64_t now = 12000; now < 18000; now += 1000) doctor.Decide(paused, now); // Paused again: held.
+        QCOMPARE(int(doctor.Decide(paused, 18000).action), int(A::WaitForUser));
+        for (std::int64_t now = 19000; now < relaunchMs + policy.launchPeriodicMs; now += 1000) {
+            const auto again = doctor.Decide(died, now);
+            QCOMPARE(int(again.diagnosis), int(D::AppNotRunning));
+            QVERIFY2(again.action != A::WakeAndLaunchApp, QByteArray::number(now).constData());
+        }
+        QCOMPARE(int(doctor.Decide(died, relaunchMs + policy.launchPeriodicMs).action), int(A::WakeAndLaunchApp));
+        // A new event starts a new episode: the first release is at once again.
+        doctor.OnEvent(PhoneLinkEvent::DeviceArrival, 40000);
+        QCOMPARE(int(doctor.Decide(paused, 40000).action), int(A::WakeAndLaunchApp));
+        doctor.Decide(paused, 49000);
+        QCOMPARE(int(doctor.Decide(died, 50000).action), int(A::WakeAndLaunchApp));
+    }
     void adbThatCannotStartIsNamed()
     {
         // A16: OkuFlow's own adb.exe cannot be launched (quarantine, missing).

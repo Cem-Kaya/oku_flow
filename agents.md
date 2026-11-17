@@ -539,7 +539,10 @@ aligned with the project goals.
   Camera starts take launches from the doctor's per-event budget
   (`ReserveLaunch`), never from a timer of their own. A listener refusal
   within `launchSettleMs` of OkuFlow's own launch holds nothing, and a hold
-  ends when the app process is gone.
+  ends when the app process is gone: relaunched at once the first time in an
+  episode, later at `launchPeriodicMs` after the last launch (Pause survives
+  a kill, so an app a battery manager keeps killing is not pulled forward
+  every time).
 - Every stuck state ends somewhere, also on a server OkuFlow does not own: a
   phone kept offline/connecting/stalled by a borrowed default is taken over
   after two reconnects; the user's endpoint gets the re-plug sentence. Only a

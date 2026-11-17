@@ -1062,7 +1062,9 @@ rows `ownedOfflineLadderStartsFreshAfterForeignReconnects`,
 Iteration 5 rows: a default whose shell is silent until OkuFlow's own server
 runs beside it and then answers (`--fixture-stalled-shell-file`, stalled while
 the file exists) is handed back to without `host:kill`
-(`stalledPhoneThatRecoversOnTheDefaultIsHandedBack`).
+(`stalledPhoneThatRecoversOnTheDefaultIsHandedBack`). Doctor row
+`pausedCompanionThatKeepsDyingIsRelaunchedAtTheOrdinarySpacing`: only the first
+hold released by the app's death in an episode relaunches at once.
 `phone_link_text` (headless) checks one sentence per diagnosis and that every
 sentence is translated in all 24 catalogs. The native slot
 `phoneSentenceIsShownAndSpokenForEveryDiagnosis` delivers every verdict

@@ -319,6 +319,8 @@ private:
     int stopFailures_{0};
     int handOvers_{0};
     bool launchHeld_{false};
+    // A hold was already released at once because the app died (episode).
+    bool holdReleasedByDeath_{false};
     std::int64_t lastLaunchMs_{-1};
     std::uint64_t episode_{0};
     std::int64_t failedSinceMs_{-1};

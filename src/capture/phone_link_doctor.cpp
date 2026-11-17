@@ -174,6 +174,7 @@ void PhoneLinkDoctor::OnEvent(PhoneLinkEvent, std::int64_t nowMs)
     stopFailures_ = 0;
     handOvers_ = 0;
     launchHeld_ = false;
+    holdReleasedByDeath_ = false;
     lastLaunchMs_ = -1;
     reconnect_ = restart_ = shadow_ = askExit_ = terminate_ = launch_ = handback_ = Budget{};
 }
@@ -396,10 +397,18 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
     case D::PhoneLocked:
     case D::AppNotRunning: {
         // The app process is gone: a hold taken while it ran (paused, or a
-        // listener that hung) no longer applies; relaunch it now.
+        // listener that hung) no longer applies. The first such release in
+        // an episode relaunches at once; later ones wait the periodic launch
+        // spacing after the last launch, so a paused app that a battery
+        // manager keeps killing is not pulled to the front every time.
         if (launchHeld_ && o.shell.appRunning == PhoneFact::No) {
             launchHeld_ = false;
-            launch_.nextAllowedMs = std::min(launch_.nextAllowedMs, nowMs);
+            if (!holdReleasedByDeath_) {
+                holdReleasedByDeath_ = true;
+                launch_.nextAllowedMs = std::min(launch_.nextAllowedMs, nowMs);
+            } else if (lastLaunchMs_ >= 0) {
+                launch_.nextAllowedMs = std::max(launch_.nextAllowedMs, lastLaunchMs_ + policy_.launchPeriodicMs);
+            }
         }
         // A listener that accepts but never answers is not helped by more
         // launches (am start only brings the hanging activity forward).
