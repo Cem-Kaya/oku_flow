@@ -2299,6 +2299,27 @@ private slots:
         QVERIFY(other.child->WaitForExit(std::chrono::milliseconds(3000)));
         QVERIFY(okuflow::OwnedAdbServerPort().has_value());
     }
+    void stalledPhoneOnTheDefaultIsTakenOver() {
+        // Iteration 4 (A1): another adb on the default port lists the phone
+        // "device" but its adbd never answers. Once OkuFlow's own server runs
+        // beside it, that listing is not serving the phone: no hand-back
+        // (which swapped back and forth), the takeover completes.
+        DefaultAdbFixture other({L"--fixture-device", L"--fixture-exit-on-kill", L"--fixture-stalled-shell"});
+        QVERIFY(other.copied && !other.Exited());
+        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString());
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto reports = LinkCycles(60, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::AskDefaultServerToExit ||
+                r.decision.action == okuflow::PhoneLinkAction::HandBackToDefault; });
+        QVERIFY(Saw(reports, okuflow::PhoneLinkDiagnosis::TransportStalled));
+        QVERIFY(Saw(reports, okuflow::PhoneLinkAction::StartShadowServer));
+        QVERIFY(!Saw(reports, okuflow::PhoneLinkAction::HandBackToDefault));
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::AskDefaultServerToExit));
+        QVERIFY(reports.back().observation.defaultListsPhone && reports.back().observation.defaultPhoneStalled);
+        QVERIFY2(reports.back().actionResult.find("exited") != std::string::npos, reports.back().actionResult.c_str());
+        QVERIFY(other.child->WaitForExit(std::chrono::milliseconds(3000)));
+        QVERIFY(okuflow::OwnedAdbServerPort().has_value());
+    }
     void slowButListingDefaultIsNeverStopped() {
         // Iteration 3 (C1): two host:version answers slower than the budget
         // confirm a "hang", but the server lists at once when asked: it is

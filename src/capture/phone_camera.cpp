@@ -96,6 +96,13 @@ struct AdbRuntime {
     // was last sent to: a different one is a new takeover, asked first.
     std::optional<AdbListenerIdentity> besideIdentity;
     std::optional<AdbListenerIdentity> askedIdentity;
+    // A phone the default-port listener lists in state device while adbd
+    // timed out for it there (cleared by events, when adbd answers there,
+    // and when that listener is gone or replaced). Such a listing does not
+    // serve the phone: no hand-back, and no reason to keep a takeover from
+    // going on.
+    struct DefaultStall { std::string serial; AdbListenerIdentity listener; };
+    std::optional<DefaultStall> defaultStall;
     // Sibling OkuFlow instances (PID, creation) being proven leftovers, and
     // whether a stop was tried (once per process) and refused.
     struct SiblingState { OkuFlowSiblingTrack track; bool stopTried{false}; bool stopRefused{false}; bool named{false}; };
@@ -485,6 +492,7 @@ std::shared_ptr<OwnedAdbServer> CreateOwnedAdbServer(
 QByteArray AdbHostReply(const QByteArray& service, const std::atomic<bool>* canceled);
 QByteArray AdbHostReplyAt(std::uint16_t port, const QByteArray& service, const std::atomic<bool>* canceled);
 bool ListsTargetUsable(const std::vector<AdbDeviceEntry>& entries, const std::string& target);
+bool DefaultServesTarget(const std::vector<AdbDeviceEntry>& entries, const std::string& target);
 // One probe of the default-port listener. A hang is confirmed by at least
 // two failed probes of the same listener spanning the confirmation time
 // (5 s), also after a resume or start: events clear the tracker, so a slow
@@ -593,7 +601,7 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
             if (empty) {
                 try {
                     const auto data = AdbHostReplyAt(env.port, "host:track-devices-proto-binary", canceled);
-                    readyDefault = ListsTargetUsable(ParseAdbDeviceEntries(std::span(
+                    readyDefault = DefaultServesTarget(ParseAdbDeviceEntries(std::span(
                         reinterpret_cast<const std::uint8_t*>(data.constData()), static_cast<size_t>(data.size()))), {});
                 } catch (...) { CheckCanceled(canceled); }
             }
@@ -1073,6 +1081,7 @@ void SetPhoneAdbTestHooks(std::optional<PhoneAdbTestHooks> hooks)
     runtime.launchFailures = 0;
     runtime.besideIdentity.reset();
     runtime.askedIdentity.reset();
+    runtime.defaultStall.reset();
     runtime.siblings.clear();
 }
 void PhoneCameraTransport::AllowAppLaunch(const std::string& serial)
@@ -1416,6 +1425,7 @@ void NotePhoneLinkEvent(PhoneLinkEvent event)
         runtime.borrowedFailureSince = {};
         runtime.borrowedFailureIdentity.reset();
         runtime.borrowedConfirmed = false;
+        runtime.defaultStall.reset(); // A re-plug or resume may have healed it.
         // Pre-sleep / pre-removal transport ids and server health are stale:
         // the next identity observation starts a new server epoch.
         if (event == PhoneLinkEvent::Resume || event == PhoneLinkEvent::DeviceRemoval)
@@ -1770,9 +1780,10 @@ void AfterDefaultStopped()
     runtime.borrowedFailureIdentity.reset();
     runtime.borrowedConfirmed = false;
     runtime.defaultIdentity.reset();
+    runtime.defaultStall.reset();
     runtime.nextServerStart = {};
 }
-// The default serves the phone: listed over USB as ready, unauthorized or
+// The default lists the phone usable: over USB as ready, unauthorized or
 // authorizing. Offline, connecting, no permissions or an unknown state there
 // is holding the interface without serving it, never a reason to hand back
 // or to keep a takeover from going on.
@@ -1782,6 +1793,27 @@ bool ListsTargetUsable(const std::vector<AdbDeviceEntry>& entries, const std::st
         return e.usb && (target.empty() || e.serial == target) &&
             (e.state == PhoneAdbState::Device || e.state == PhoneAdbState::Unauthorized ||
              e.state == PhoneAdbState::Authorizing);
+    });
+}
+// The serial whose "device" listing on the current default-port listener
+// is known stalled (adbd timed out for it there), if any.
+std::string StalledOnDefault()
+{
+    std::optional<AdbRuntime::DefaultStall> stall;
+    { auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex); stall = runtime.defaultStall; }
+    if (!stall) return {};
+    const auto listener = ListenerIdentity(DefaultPort());
+    return listener && *listener == stall->listener ? stall->serial : std::string{};
+}
+// The default serves the phone: a usable listing, except "device" for a
+// phone whose adbd timed out on that very listener in this episode.
+bool DefaultServesTarget(const std::vector<AdbDeviceEntry>& entries, const std::string& target)
+{
+    const auto stalled = StalledOnDefault();
+    return std::any_of(entries.begin(), entries.end(), [&](const auto& e) {
+        return e.usb && (target.empty() || e.serial == target) &&
+            ((e.state == PhoneAdbState::Device && (stalled.empty() || e.serial != stalled)) ||
+             e.state == PhoneAdbState::Unauthorized || e.state == PhoneAdbState::Authorizing);
     });
 }
 // Every stop outcome ends somewhere: gone, retried once, or named. A
@@ -1895,7 +1927,7 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         const auto listed = ListDefaultEntries(canceled);
         if (!listed) return "kept: the default server listing failed";
         if (OtherDeviceServed(*listed, target)) return "kept: the default server serves another device";
-        if (ListsTargetUsable(*listed, target)) return "kept: the default server lists the phone now";
+        if (DefaultServesTarget(*listed, target)) return "kept: the default server lists the phone now";
         const auto listener = LookupListener(port);
         if (listener.state == ListenerState::None) { AfterDefaultStopped(); return "default server already gone"; }
         if (listener.state == ListenerState::Unopenable) {
@@ -1929,7 +1961,7 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
             const auto listed = ListDefaultEntries(canceled);
             if (!listed) return "kept: the default server listing failed";
             if (OtherDeviceServed(*listed, target)) return "kept: the default server serves another device";
-            if (ListsTargetUsable(*listed, target)) return "kept: the default server lists the phone now";
+            if (DefaultServesTarget(*listed, target)) return "kept: the default server lists the phone now";
         } else if (const auto listed = ListDefaultEntries(canceled)) {
             // A hang confirmed by version probes alone: one short listing
             // before anything else. A server that lists at all (a slow but
@@ -2071,6 +2103,7 @@ void RunPhoneLinkLadder(const PhoneLinkRequest& link, const std::string& preferr
             o.shadowRunning = true;
             if (const auto listed = ListDefaultEntries(canceled)) {
                 o.defaultListsPhone = ListsTargetUsable(*listed, target);
+                o.defaultPhoneStalled = o.defaultListsPhone && !DefaultServesTarget(*listed, target);
                 o.defaultHasOtherDevices = OtherDeviceServed(*listed, target);
             }
         } else if (defaultProbe == OwnedServerProbe::Unresponsive) {
@@ -2102,6 +2135,20 @@ void RunPhoneLinkLadder(const PhoneLinkRequest& link, const std::string& preferr
             o.shell = QueryShellFacts(*entry, canceled, &timedOut);
             o.adbd = timedOut ? PhoneAdbdHealth::TimedOut : PhoneAdbdHealth::Answers;
         }
+        // Another program's default lists the phone as ready while adbd is
+        // silent for it: remembered for this listener, so that listing does
+        // not count as serving the phone once OkuFlow's own server runs
+        // beside it (no hand-back; host:kill and termination go on).
+        if (o.server == PhoneServerKind::BorrowedDefault) {
+            const bool stalled = o.adbd == PhoneAdbdHealth::TimedOut;
+            const bool answered = o.adbd == PhoneAdbdHealth::Answers ||
+                (o.companion != PhoneCompanionProbe::Unknown && o.companion != PhoneCompanionProbe::TimedOut);
+            const auto listener = stalled ? ListenerIdentity(DefaultPort()) : std::nullopt;
+            auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
+            if (stalled && listener) runtime.defaultStall = AdbRuntime::DefaultStall{entry->serial, *listener};
+            else if (answered && runtime.defaultStall && runtime.defaultStall->serial == entry->serial)
+                runtime.defaultStall.reset();
+        }
     }
     if (o.phoneWanted && o.companion != PhoneCompanionProbe::Ready && !o.sessionStreaming) {
         // A leftover is stopped only when it plausibly holds the phone.
@@ -2130,7 +2177,8 @@ void RunPhoneLinkLadder(const PhoneLinkRequest& link, const std::string& preferr
             " awake=" + FactName(o.shell.screenAwake) + " keyguard=" + FactName(o.shell.keyguardShowing) +
             " installed=" + FactName(o.shell.appInstalled) + " running=" + FactName(o.shell.appRunning) +
             (o.otherInstanceRunning ? " other-instance" : "") + (o.leftoverInstanceRunning ? " leftover-instance" : "") +
-            (o.defaultHasOtherDevices ? " default-serves-others" : ""));
+            (o.defaultHasOtherDevices ? " default-serves-others" : "") +
+            (o.defaultPhoneStalled ? " default-lists-phone-stalled" : ""));
     }
     if (decision.action == PhoneLinkAction::None || decision.action == PhoneLinkAction::Relist ||
         decision.action == PhoneLinkAction::WaitForUser)

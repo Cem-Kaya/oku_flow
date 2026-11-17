@@ -53,6 +53,10 @@ struct PhoneLinkObservation {
     PhoneServerProbe serverProbe{PhoneServerProbe::Unknown};
     // Facts about the default-port listener while it is borrowed or shadowed.
     bool defaultListsPhone{false};
+    // The default lists the phone in state device, but adbd timed out for
+    // it there earlier in this episode (same listener): that listing does
+    // not serve the phone, so it is no reason to hand USB back.
+    bool defaultPhoneStalled{false};
     bool defaultHasOtherDevices{false};
     bool defaultUnresponsiveConfirmed{false};
     // Windows refused to stop the default listener (elevated/other user),

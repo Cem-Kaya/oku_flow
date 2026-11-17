@@ -275,8 +275,9 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         if (o.server == PhoneServerKind::BorrowedDefault) return shadow();
         if (owned && o.shadowRunning) {
             // The default lists the phone usable (ready, unauthorized or
-            // authorizing): use it. Offline there is not serving it.
-            if (o.defaultListsPhone) {
+            // authorizing): use it. Offline there is not serving it, and
+            // neither is "ready" for a phone whose adbd timed out there.
+            if (o.defaultListsPhone && !o.defaultPhoneStalled) {
                 if (handOvers_ >= policy_.handOverCap) { *raised = D::OtherProgramHoldsPhone; return A::WaitForUser; }
                 if (!handback_.Allowed(nowMs)) return A::Relist;
                 Reserve(handback_, nowMs, policy_.reconnectRetryMs, policy_.reconnectRetryMs);
@@ -402,7 +403,8 @@ PhoneLinkDecision PhoneLinkDoctor::Decide(const PhoneLinkObservation& observatio
     PhoneLinkObservation o = observation;
     // A listed phone proves nothing holds its USB interface blindly any more
     // (also when the default-port server is the one that lists it).
-    if (o.phoneState != PhoneAdbState::NotListed || (o.shadowRunning && o.defaultListsPhone))
+    if (o.phoneState != PhoneAdbState::NotListed ||
+        (o.shadowRunning && o.defaultListsPhone && !o.defaultPhoneStalled))
         ClearDefaultStopRefused();
     o.defaultStopRefused = o.defaultStopRefused || defaultStopRefused_;
     PhoneLinkDecision decision;

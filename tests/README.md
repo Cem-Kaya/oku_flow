@@ -1037,6 +1037,8 @@ adb is named without a renewing pick and an adb killed at start
 another attached phone, and a hung-default shadow never handed back to a
 default that only answers. `phone_camera_contract` now runs about four
 minutes; its CTest limit is 300 s.
+Iteration 4 rows: a default that lists the phone "device" and never answers
+its shell (`--fixture-stalled-shell`) is taken over without a hand-back.
 `phone_link_text` (headless) checks one sentence per diagnosis and that every
 sentence is translated in all 24 catalogs. The native slot
 `phoneSentenceIsShownAndSpokenForEveryDiagnosis` delivers every verdict

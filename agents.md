@@ -533,7 +533,10 @@ aligned with the project goals.
 - Every stuck state ends somewhere, also on a server OkuFlow does not own: a
   phone kept offline/connecting/stalled by a borrowed default is taken over
   after two reconnects; the user's endpoint gets the re-plug sentence. Only a
-  usable listing (ready, unauthorized, authorizing) hands USB back. Windows
+  usable listing (ready, unauthorized, authorizing) hands USB back; "ready"
+  for a phone whose adbd timed out on that same default listener in this
+  episode is not usable (it swapped back and forth before), also in the
+  `host:kill` and termination pre-checks. Windows
   "Unknown" for the ADB interface counts as present only for OkuFlow's own
   server and only after 30 s blind.
 - Leftover OkuFlow instances (replaces "a windowless sibling is reported, not

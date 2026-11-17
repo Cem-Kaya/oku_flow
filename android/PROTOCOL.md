@@ -124,11 +124,15 @@ diagnosis and one next action, least disturbing first:
    another adb there (Android Studio, scrcpy, a vendor suite, or one restarted
    after `host:kill`) is handed back to when it lists the phone ready,
    unauthorized or authorizing (offline, connecting or no permissions there is
-   not serving it), and otherwise follows rung 4.
+   not serving it, and neither is "ready" for a phone whose adbd timed out on
+   that same listener earlier in the episode), and otherwise follows rung 4.
 4. A borrowed default-port server that is responsive but blind for 5 s, or
    that keeps the phone stuck after rung 2, gets a private owned server beside
    it; whichever lists the phone is used, and a default that lists the phone
-   ready, unauthorized or authorizing is handed back to at once. Starts of the
+   ready, unauthorized or authorizing is handed back to at once. A phone that
+   default listed ready while its adbd did not answer (a stalled transport)
+   stays "not served" there until an event, adbd answering there, or another
+   listener: that listing never stops `host:kill` or termination from going on. Starts of the
    private server beside the default and hand-backs (also the hand-back of a
    private server started for a hung default, which needs the same usable
    listing, never just an answer) are capped at four per episode, then Windows

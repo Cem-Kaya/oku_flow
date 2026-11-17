@@ -11,6 +11,8 @@
 //       [--fixture-kill-log <path>]   (one line per host:kill received)
 //       [--fixture-offline-file <path>] (while it exists, the device is listed offline)
 //       [--fixture-slow-version <ms>]  (host:version answers after <ms>; listings stay prompt)
+//       [--fixture-stalled-shell]     (the listed device's adbd never answers: a transport
+//                                      request is accepted, the service after it never is)
 // Tests may run a copy of this executable named adb.exe so the production
 // image rule (adb.exe) is exercised without any hook.
 // Sibling modes (windowless; hidden windows are never shown):
@@ -28,6 +30,7 @@
 #include <cstdlib>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 bool WritePid(const wchar_t* path)
@@ -95,7 +98,7 @@ void Reply(SOCKET socket, const std::string& body)
     }
 }
 struct FakeOptions {
-    bool hang{false}, exitAfterList{false}, device{false}, exitOnKill{false};
+    bool hang{false}, exitAfterList{false}, device{false}, exitOnKill{false}, stalledShell{false};
     std::wstring deviceFile, failFile, killLog, offlineFile;
     unsigned slowVersionMs{0};
 };
@@ -128,6 +131,7 @@ int FakeAdbServer(unsigned short port, const FakeOptions& options)
     address.sin_port = htons(port);
     if (bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == SOCKET_ERROR ||
         listen(listener, 8) == SOCKET_ERROR) { closesocket(listener); WSACleanup(); return 9; }
+    std::vector<SOCKET> held;
     for (;;) {
         const SOCKET client = accept(listener, nullptr, nullptr);
         if (client == INVALID_SOCKET) break;
@@ -141,9 +145,22 @@ int FakeAdbServer(unsigned short port, const FakeOptions& options)
         std::string request(count, '\0');
         if (!ReadSocket(client, request.data(), static_cast<int>(count))) { closesocket(client); continue; }
         if (options.hang) SleepForever();
+        const bool deviceListed = options.device || (!options.deviceFile.empty() && FileExists(options.deviceFile.c_str()));
+        if (options.stalledShell && deviceListed && request.starts_with("host:transport")) {
+            // adbd of the listed device is silent: the server accepts the
+            // transport, reads the service request and never answers it.
+            send(client, "OKAY", 4, 0);
+            char next[5]{};
+            if (ReadSocket(client, next, 4)) {
+                std::string service(std::strtoul(next, nullptr, 16), ' ');
+                if (service.size() <= 65535) ReadSocket(client, service.data(), static_cast<int>(service.size()));
+            }
+            held.push_back(client); // Kept open, never answered, until exit.
+            continue;
+        }
         if (request == "host:kill" && !options.killLog.empty()) AppendLine(options.killLog, "host:kill");
         const bool listing = request == "host:track-devices-proto-binary" || request == "host:devices-l";
-        const bool device = options.device || (!options.deviceFile.empty() && FileExists(options.deviceFile.c_str()));
+        const bool device = deviceListed;
         const bool failing = !options.failFile.empty() && FileExists(options.failFile.c_str());
         if (request == "host:version") {
             if (options.slowVersionMs) Sleep(options.slowVersionMs);
@@ -163,6 +180,7 @@ int FakeAdbServer(unsigned short port, const FakeOptions& options)
         closesocket(client);
         if (listing && options.exitAfterList) break;
     }
+    for (const auto client : held) closesocket(client);
     closesocket(listener);
     WSACleanup();
     return 0;
@@ -184,6 +202,7 @@ int wmain(int count, wchar_t** arguments)
         else if (argument == L"--fixture-exit-after-list") options.exitAfterList = true;
         else if (argument == L"--fixture-device") options.device = true;
         else if (argument == L"--fixture-exit-on-kill") options.exitOnKill = true;
+        else if (argument == L"--fixture-stalled-shell") options.stalledShell = true;
         else if (argument == L"--fixture-device-file" && i + 1 < count) options.deviceFile = arguments[++i];
         else if (argument == L"--fixture-fail-file" && i + 1 < count) options.failFile = arguments[++i];
         else if (argument == L"--fixture-kill-log" && i + 1 < count) options.killLog = arguments[++i];

@@ -170,7 +170,8 @@ checked again when the stop runs; "unknown" never counts for a stop.
 Per episode at most two `host:kill` requests, three terminations and four
 private-server starts beside the default plus hand-backs; another adb that
 appears beside OkuFlow's blind server is handed back to when it lists the phone
-in a usable state and otherwise taken over under the same caps. Overridden
+in a usable state and otherwise taken over under the same caps. A phone that
+default listed ready while its adbd timed out there is not served by it. Overridden
 endpoints are never asked to exit or stopped. Lifecycle and manager lock waits
 check cancellation every 20 ms; live-port observation does not wait for a host
 probe. Camera startup accepts only confirmed-ready results. Server identity

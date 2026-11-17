@@ -286,9 +286,15 @@ private slots:
         }
         QVERIFY(sequence == (std::vector<A>{A::ReconnectTransport, A::ReconnectTransport, A::StartShadowServer}));
         // The private server now runs beside it; the default still lists the
-        // phone stuck (not usable), so it is asked to exit, then stopped.
+        // phone stuck, so it is asked to exit, then stopped. Offline,
+        // connecting and no permissions there are not a usable listing.
+        // Iteration 4 (A1): a stalled phone is listed "device" there, which
+        // is usable, but adbd timed out for it: that listing does not serve
+        // it either (the earlier row paired it with defaultListsPhone=false,
+        // which cannot occur).
         auto beside = Blind(PhoneServerKind::Owned);
         beside.shadowRunning = true;
+        if (stuck.phoneState == PhoneAdbState::Device) beside.defaultListsPhone = beside.defaultPhoneStalled = true;
         sequence.clear();
         for (now += 500; now <= 60000; now += 500) {
             const auto decision = doctor.Decide(beside, now);

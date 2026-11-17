@@ -1898,7 +1898,9 @@ so metadata generation cannot silently accept an incomplete copy.
   gates a leftover stop; `HandOverAllowed`/`NoteHandOver` count the
   transport's own hand-back of a hung-default shadow; `Episode` names the
   current episode. `PhoneLinkDiagnosisName`/`ActionName`/`EventName` give trace
-  names.
+  names. `PhoneLinkObservation::defaultPhoneStalled` marks a "device" listing
+  on the default whose adbd timed out there in this episode (the transport
+  remembers it per listener): it is never handed back to.
 - `OwnedAdbServer::Restart` restarts a responsive but blind owned child (live
   sessions win); `ResetBudgets` (lock-free, applied by the next
   `EnsureRunning`/`Restart`) clears the restart cooldown, which starts at
