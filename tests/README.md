@@ -1148,7 +1148,12 @@ which closes its listener before it answers the ask's pre-ask listing
 (`goneAtNextConnection`), so the ask finds it already gone; with one ask and
 one aborted stop per episode, another blind default that appears beside
 OkuFlow's server is still asked to exit. Doctor row
-`askThatFindsTheDefaultGoneIsGivenBackUncounted`.
+`askThatFindsTheDefaultGoneIsGivenBackUncounted`. Doctor row
+`defaultThatIsGoneAtEveryAskEndsInTheSentence`: only the first such ask of an
+episode is uncounted; a default that is gone at every ask (a listener the
+lookup cannot identify) gets the aborted-stop cap plus one asks, then the
+other-program sentence at the user-wait cadence, and a new event gives one
+uncounted ask again.
 `ownHandBackCountedAfterAnEventIsDropped`: the transport's own hand-back of the
 private server it started beside a hung default, with an event raised through
 `afterPrivateServerRetiredForTest` (cap 1); the default that hangs again still
