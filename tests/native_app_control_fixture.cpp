@@ -393,6 +393,18 @@ public:
             !app.cameras_[static_cast<size_t>(app.selectedCameraIndex_)].phoneSerial.empty();
     }
     static void DriveReconnect(OkuFlowApp& app) {app.DriveCameraReconnect();}
+    // The running camera's capture delivers frames, as its capture callback
+    // does (this fixture presents none: like a media view, or a minimized
+    // or covered window, nothing reaches the presented-frame counter).
+    static bool DeliverCameraFrames(OkuFlowApp& app,int count) {
+        if(!app.cameraIngress_)return false;
+        std::scoped_lock lock(app.cameraIngress_->mutex);
+        app.cameraIngress_->delivered+=static_cast<std::uint64_t>(count);
+        return true;
+    }
+    static std::uint64_t PresentedCameraFrames(const OkuFlowApp& app) {return app.cameraFramesPresented_;}
+    static std::uint64_t PhoneIntentGeneration(const OkuFlowApp& app) {return app.phoneIntentGeneration_.load();}
+    static void RefreshPhoneIntent(OkuFlowApp& app) {app.RefreshPhoneIntentGeneration();}
     static void ExpireReconnect(OkuFlowApp& app) {
         app.pipelineOrchestrator_->CancelCameraReconnect();
         app.pipelineOrchestrator_->BeginCameraReconnect(QDateTime::currentMSecsSinceEpoch()-30001);
@@ -2642,6 +2654,49 @@ private slots:
         NativeControlFixture::HoldPhoneDiscovery(app_);
         NativeControlFixture::UsbArrival(app_,false,true,DBT_DEVICEREMOVECOMPLETE); // Not an ADB interface.
         QVERIFY(!NativeControlFixture::PhoneDiscoveryDue(app_));
+    }
+    void resumeKeepsAPhoneThatDeliversWithoutPresenting() {
+        // Iteration 8 (A5): the resume check counted presented frames, and
+        // nothing is presented while a media view is shown (a PDF page, the
+        // recording) or the window is minimized or covered: a healthy phone
+        // session was torn down 3 s after every resume. It counts frames the
+        // capture delivers. Offscreen, a fixture camera start, no adb.
+        const auto cleanup=qScopeGuard([&] {NativeControlFixture::ResetCameraFixture(app_);});
+        NativeControlFixture::SeedPhoneSources(app_,[](const std::atomic<bool>&) {return true;});
+        QVERIFY(NativeControlFixture::StartFixturePhone(app_));
+        QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::PhoneCameraRunning(app_)&&!NativeControlFixture::CameraPending(app_),5000);
+        QVERIFY(NativeControlFixture::DeliverCameraFrames(app_,1));
+        const auto presented=NativeControlFixture::PresentedCameraFrames(app_);
+        QTimer delivering;
+        QObject::connect(&delivering,&QTimer::timeout,&delivering,[this] {NativeControlFixture::DeliverCameraFrames(app_,3);});
+        delivering.start(100);
+        NativeControlFixture::PowerBroadcast(app_,PBT_APMRESUMEAUTOMATIC);
+        QTest::qWait(3600);
+        delivering.stop();
+        QCOMPARE(NativeControlFixture::PresentedCameraFrames(app_),presented); // Nothing presented meanwhile.
+        QVERIFY(NativeControlFixture::PhoneCameraRunning(app_));
+        QVERIFY(!NativeControlFixture::ReconnectPending(app_));
+        // The counterpart: a session that delivers nothing after the resume
+        // is torn down and reconnected.
+        NativeControlFixture::PowerBroadcast(app_,PBT_APMRESUMESUSPEND);
+        QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::ReconnectPending(app_)||!NativeControlFixture::PhoneCameraRunning(app_),6000);
+    }
+    void aSourceChangeRevokesTheRunningLadder() {
+        // Iteration 8 (A4): every source or target change advances the phone
+        // intent generation that a running discovery's link ladder checks
+        // before each side effect; an unchanged intent does not.
+        const auto cleanup=qScopeGuard([&] {NativeControlFixture::ResetCameraFixture(app_);});
+        NativeControlFixture::SeedPhoneSources(app_,[](const std::atomic<bool>&) {return true;});
+        NativeControlFixture::RefreshPhoneIntent(app_);
+        const auto before=NativeControlFixture::PhoneIntentGeneration(app_);
+        NativeControlFixture::RefreshPhoneIntent(app_);
+        QCOMPARE(NativeControlFixture::PhoneIntentGeneration(app_),before);
+        NativeControlFixture::PickFixtureWebcam(app_);
+        const auto webcam=NativeControlFixture::PhoneIntentGeneration(app_);
+        QVERIFY(webcam>before);
+        NativeControlFixture::PickAutomaticPhone(app_);
+        QVERIFY(NativeControlFixture::PhoneIntentGeneration(app_)>webcam);
+        QTRY_VERIFY_WITH_TIMEOUT(!NativeControlFixture::CameraPending(app_),5000);
     }
     void phoneSentenceIsShownAndSpokenForEveryDiagnosis() {
         // B1/B2/E4, and iteration 3 B1: every verdict arrives through the

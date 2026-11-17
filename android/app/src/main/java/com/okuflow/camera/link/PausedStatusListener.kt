@@ -18,14 +18,27 @@ import kotlin.concurrent.thread
  * and refuses control hellos with ERROR code `paused`. It never opens the
  * camera, never allocates a session and never clears Pause.
  */
-class PausedStatusListener : AutoCloseable {
+class PausedStatusListener : PausedStatusHandle {
     private val server = LocalServerSocket(SOCKET_NAME)
     private val running = AtomicBoolean(true)
+
+    /** False once the accept loop ended (an accept failure, or [close]). */
+    override val alive: Boolean get() = running.get()
 
     init {
         thread(name = "OkuFlow-USB-paused", isDaemon = true) {
             while (running.get()) {
-                val socket = try { server.accept() } catch (_: Exception) { break }
+                val socket = try {
+                    server.accept()
+                } catch (exception: Exception) {
+                    // The listener reports its end and frees the socket name,
+                    // so the supervisor binds a new one on its next tick.
+                    if (running.getAndSet(false)) {
+                        Log.i("OkuFlow-USB", "Paused status listener ended: ${exception.javaClass.simpleName}")
+                        runCatching { server.close() }
+                    }
+                    break
+                }
                 runCatching { thread(name = "OkuFlow-USB-paused-reply", isDaemon = true) { answer(socket) } }
                     .onFailure { runCatching { socket.close() } }
             }
@@ -60,16 +73,24 @@ class PausedStatusListener : AutoCloseable {
     }
 }
 
+/** A bound paused status listener; [alive] turns false when it ended by itself. */
+interface PausedStatusHandle : AutoCloseable {
+    val alive: Boolean
+}
+
 /**
  * Pure binding policy of the paused status listener, driven by [tick]. While
  * Pause is saved a listener is kept bound, retried on every tick for as long
  * as Pause stays saved (the camera service releases the socket
- * asynchronously); otherwise it is closed. [releaseForResume] closes it
- * synchronously before Resume starts the camera service, so the two never
- * race for the socket name, and lets the next tick bind again if Resume fails.
+ * asynchronously); otherwise it is closed. A listener that ended by itself
+ * (its accept loop failed) is closed and bound again on the next tick, so
+ * the computer keeps telling "paused" from "app not running".
+ * [releaseForResume] closes it synchronously before Resume starts the camera
+ * service, so the two never race for the socket name, and lets the next tick
+ * bind again if Resume fails.
  */
-internal class PausedBindSupervisor(private val bind: () -> AutoCloseable) {
-    private var listener: AutoCloseable? = null
+internal class PausedBindSupervisor(private val bind: () -> PausedStatusHandle) {
+    private var listener: PausedStatusHandle? = null
     private var resuming = false
     var failedBinds = 0
         private set
@@ -78,6 +99,7 @@ internal class PausedBindSupervisor(private val bind: () -> AutoCloseable) {
 
     @Synchronized fun tick(paused: Boolean) {
         if (!paused || resuming) { closeLocked(); return }
+        if (listener?.alive == false) closeLocked()
         if (listener != null) return
         listener = runCatching { bind() }.getOrNull()
         if (listener == null) ++failedBinds else failedBinds = 0

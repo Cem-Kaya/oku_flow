@@ -136,6 +136,7 @@ void OkuFlowApp::CancelCameraTransition(const QString& owner, bool failedFallbac
     for (const auto& camera : cameras_) enumeration.append(QString::fromStdWString(camera.symbolicLink));
     const auto restore = cameraIntent_.RestoreChoice(enumeration);
     cameraIntent_.ReleaseTemporary(owner); pendingCameraStart_.reset();
+    RefreshPhoneIntentGeneration();
     if (pendingCameraStartupCancel_) pendingCameraStartupCancel_->store(true);
     if (restore && !cameraStopFailed_) {
         const auto index = enumeration.indexOf(restore->identity.symbolicLink);

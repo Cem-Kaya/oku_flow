@@ -581,6 +581,15 @@ private:
     std::atomic<bool> phoneDiscoveryCanceled_{false};
     QElapsedTimer phoneDiscoveryTimer_;
     quint64 phoneDiscoveryIntentGeneration_{};
+    // Phone-intent generation: advanced on every source or target change (a
+    // webcam, a file, another phone, no phone, an agent's temporary source).
+    // A discovery cycle carries the value it started with; its link ladder
+    // does nothing once the live value differs (PhoneLinkRequest).
+    std::atomic<std::uint64_t> phoneIntentGeneration_{1};
+    QString phoneIntentKey_;
+    // Recomputes what the phone intent is now and advances the generation
+    // when it changed (or always, for a deliberate pick).
+    void RefreshPhoneIntentGeneration(bool force = false);
     QString preferredPhoneCamera_;
     bool automaticPhoneSelectionAllowed_{};
     std::shared_ptr<std::atomic<bool>> pendingCameraStartupCancel_;

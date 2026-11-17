@@ -9,16 +9,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.lifecycleScope
 import com.okuflow.camera.camera.CameraStreamService
 import com.okuflow.camera.link.HOST_LAUNCH_EXTRA
+import com.okuflow.camera.link.HostLaunchKeyguard
 import com.okuflow.camera.link.PausedStatusEndpoint
-import com.okuflow.camera.link.showOverKeyguardForHostLaunch
+import kotlinx.coroutines.launch
 import com.okuflow.camera.settings.AppLanguageStore
 import com.okuflow.camera.settings.StreamingIntentStore
 import com.okuflow.camera.ui.OkuFlowCameraApp
 import com.okuflow.camera.ui.theme.OkuFlowCameraTheme
 
 class MainActivity : ComponentActivity() {
+    private val keyguard = HostLaunchKeyguard()
+
     // Android 11–12 per-app language; Android 13+ applies it in the framework.
     override fun attachBaseContext(newBase: Context) = super.attachBaseContext(AppLanguageStore.wrap(newBase))
 
@@ -37,6 +41,16 @@ class MainActivity : ComponentActivity() {
         // process was killed) is not a new computer launch: the system hands
         // back the original intent, extra included.
         if (savedInstanceState == null) applyHostLaunch(intent) else intent?.removeExtra(HOST_LAUNCH_EXTRA)
+        // Pause stays authoritative while the activity is up: saved Pause
+        // withdraws the lock-screen visibility a computer launch granted.
+        lifecycleScope.launch {
+            StreamingIntentStore.get(this@MainActivity).paused.collect { paused ->
+                if (keyguard.onPausedChanged(paused)) {
+                    setShowWhenLocked(false)
+                    setTurnScreenOn(false)
+                }
+            }
+        }
         setContent {
             OkuFlowCameraTheme {
                 OkuFlowCameraApp()
@@ -55,6 +69,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         if (!isChangingConfigurations) {
+            keyguard.onStop()
             setShowWhenLocked(false)
             setTurnScreenOn(false)
         }
@@ -65,7 +80,7 @@ class MainActivity : ComponentActivity() {
         intent?.removeExtra(HOST_LAUNCH_EXTRA)
         if (!hostLaunch) return
         CameraStreamService.onHostLaunch()
-        val show = showOverKeyguardForHostLaunch(true, StreamingIntentStore.get(this).paused.value)
+        val show = keyguard.onHostLaunch(StreamingIntentStore.get(this).paused.value)
         setShowWhenLocked(show)
         setTurnScreenOn(show)
     }

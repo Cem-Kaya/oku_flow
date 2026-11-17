@@ -74,6 +74,35 @@ const val PAUSED_SUPERVISE_MS = 500L
  */
 internal fun showOverKeyguardForHostLaunch(hostLaunch: Boolean, paused: Boolean): Boolean = hostLaunch && !paused
 
+/**
+ * The lock-screen visibility a computer launch granted, as it changes: given
+ * by a launch while not paused; withdrawn at once when Pause is saved (the
+ * activity must not stay over the keyguard showing Resume, or streaming could
+ * be resumed without unlocking) and when the activity stops. A later Resume
+ * never grants it again; only a new computer launch does.
+ */
+internal class HostLaunchKeyguard {
+    var shown = false
+        private set
+
+    /** A computer launch; returns whether the activity shows over the keyguard. */
+    fun onHostLaunch(paused: Boolean): Boolean {
+        shown = showOverKeyguardForHostLaunch(true, paused)
+        return shown
+    }
+
+    /** Pause changed; true when the lock-screen flags must be cleared now. */
+    fun onPausedChanged(paused: Boolean): Boolean {
+        if (!paused || !shown) return false
+        shown = false
+        return true
+    }
+
+    fun onStop() {
+        shown = false
+    }
+}
+
 /** Unbound control sessions are closed after this, so a stalled host cannot hold the single slot. */
 const val VIDEO_BIND_DEADLINE_MS = 5_000L
 

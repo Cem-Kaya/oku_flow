@@ -11,6 +11,8 @@ namespace okuflow {
 void OkuFlowApp::OnCameraSelectionChanged(int index) {
     if (uiState_ && uiState_->cameraCombo_ &&
         uiState_->cameraCombo_->itemData(index) == QStringLiteral("phone")) {
+        // A deliberate pick revokes whatever a discovery cycle is doing now.
+        RefreshPhoneIntentGeneration(true);
         pipelineOrchestrator_->CancelCameraReconnect();
         automaticPhoneSelectionAllowed_ = true;
         preferredPhoneCamera_ = QStringLiteral("okuflow-phone:"); // Any newly discovered USB phone.
@@ -29,6 +31,7 @@ void OkuFlowApp::OnCameraSelectionChanged(int index) {
         selectedCameraIndex_ = -1;
         mainWindow_->setFileSourceSelected({},uiState_->cameraCombo_->findData(QStringLiteral("phone")));
         NotePhoneEvent(PhoneLinkEvent::ManualPick);
+        RefreshPhoneIntentGeneration();
         SavePersistentSettings();
         UpdateCameraPlaceholder();
         return;
@@ -43,7 +46,10 @@ void OkuFlowApp::OnCameraSelectionChanged(int index) {
         return;
     }
 
-    // A manual camera pick always wins over an in-flight automatic reconnect.
+    // A manual camera pick always wins over an in-flight automatic reconnect,
+    // and over whatever a discovery cycle's link ladder is doing now (a
+    // webcam or another phone: no host:kill, no stop, no launch follows).
+    RefreshPhoneIntentGeneration(true);
     pipelineOrchestrator_->CancelCameraReconnect();
     automaticPhoneSelectionAllowed_ = !cameras_[static_cast<size_t>(index)].phoneSerial.empty();
     preferredPhoneCamera_ = automaticPhoneSelectionAllowed_
@@ -53,6 +59,7 @@ void OkuFlowApp::OnCameraSelectionChanged(int index) {
     settingsController_->MutableSettings().cameraSymbolicLink =
         QString::fromStdWString(cameras_[static_cast<size_t>(index)].symbolicLink);
     cameraIntent_.SelectManual(settingsController_->MutableSettings().cameraSymbolicLink,index);
+    RefreshPhoneIntentGeneration();
     if (controlService_) controlService_->SourceChanged();
     if (recordingManager_) {
         if (const auto session = recordingManager_->CurrentSessionInfo()) StopRecording(session->id);
@@ -111,14 +118,23 @@ void OkuFlowApp::OnSystemResume()
         static_cast<size_t>(selectedCameraIndex_) < cameras_.size() &&
         !cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial.empty();
     if (!phoneLive) return;
-    // A running phone session must show new frames within a short window;
-    // otherwise its sockets died with the sleep and it is torn down.
-    const auto frames = cameraFramesPresented_;
+    // A running phone session must deliver new frames within a short
+    // window; otherwise its sockets died with the sleep and it is torn down.
+    // Delivered by the transport, not presented: while a PDF page or the
+    // recording is shown (a media view), or the window is minimized or
+    // covered, a healthy session presents nothing but still delivers.
+    const auto ingress = cameraIngress_;
+    if (!ingress) return;
+    std::uint64_t frames = 0;
+    { std::scoped_lock lock(ingress->mutex); frames = ingress->delivered; }
     const auto session = cameraSessionId_;
-    QTimer::singleShot(3000, this, [this, frames, session] {
+    QTimer::singleShot(3000, this, [this, frames, session, ingress] {
         if (phoneDiscoveryCanceled_.load() || session != cameraSessionId_ || !cameraActive_ ||
-            cameraFramesPresented_ != frames)
+            cameraIngress_ != ingress)
             return;
+        std::uint64_t delivered = 0;
+        { std::scoped_lock lock(ingress->mutex); delivered = ingress->delivered; }
+        if (delivered != frames) return;
         TracePhoneLink("no phone frames within 3 s after resume; reconnecting");
         BeginCameraReconnect();
         for (auto& [serial, retry] : phoneRetries_) retry.Reset();

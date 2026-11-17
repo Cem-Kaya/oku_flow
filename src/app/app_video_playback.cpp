@@ -558,6 +558,8 @@ void OkuFlowApp::OpenVideoFile(const QString& path)
     }
     // Suspend recovery only for the explicit file choice. Saved phone intent
     // is retained, so returning to Camera resumes its normal discovery/retry.
+    // A link ladder already running for the phone loses its authority now.
+    RefreshPhoneIntentGeneration(true);
     pipelineOrchestrator_->CancelCameraReconnect();
     pendingCameraStart_.reset();
     if (cameraStartupPending_) StopCameraCapture();

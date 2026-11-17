@@ -33,7 +33,7 @@ class LinkPolicyTest {
         val supervisor = PausedBindSupervisor {
             binds++
             if (!available) throw java.io.IOException("Address in use")
-            AutoCloseable { closes++ }
+            Handle { closes++ }
         }
         repeat(100) { supervisor.tick(paused = true) }
         assertFalse(supervisor.bound)
@@ -51,7 +51,7 @@ class LinkPolicyTest {
         // D3: closed synchronously before resume, never rebound during it,
         // bound again when the resume could not be saved.
         var open = 0
-        val supervisor = PausedBindSupervisor { open++; AutoCloseable { open-- } }
+        val supervisor = PausedBindSupervisor { open++; Handle { open-- } }
         supervisor.tick(paused = true)
         assertEquals(1, open)
         val resumed = supervisor.releaseForResume {
@@ -66,6 +66,46 @@ class LinkPolicyTest {
         assertTrue(supervisor.releaseForResume { true })
         supervisor.tick(paused = false)
         assertEquals(0, open)
+    }
+    @Test fun aListenerThatDiesAfterBindingIsBoundAgain() {
+        // Iteration 8 (A7): an accept failure ended the listener's thread
+        // while the supervisor still held it, so it never bound again and the
+        // computer could not tell "paused" from "app not running".
+        val handles = mutableListOf<Handle>()
+        val supervisor = PausedBindSupervisor { Handle().also { handles += it } }
+        supervisor.tick(paused = true)
+        assertEquals(1, handles.size)
+        supervisor.tick(paused = true)
+        assertEquals(1, handles.size) // Alive: kept.
+        handles[0].alive = false // Its accept loop ended.
+        supervisor.tick(paused = true)
+        assertEquals(2, handles.size)
+        assertTrue(handles[0].closed)
+        assertTrue(supervisor.bound)
+        // Not while Pause is cleared.
+        handles[1].alive = false
+        supervisor.tick(paused = false)
+        assertFalse(supervisor.bound)
+        assertEquals(2, handles.size)
+    }
+    @Test fun pauseWithdrawsTheLockScreenVisibilityOfAComputerLaunch() {
+        // Iteration 8 (A7): the launch granted it; Pause tapped in the
+        // activity withdraws it at once, and a Resume never grants it again.
+        val keyguard = HostLaunchKeyguard()
+        assertTrue(keyguard.onHostLaunch(paused = false))
+        assertFalse(keyguard.onPausedChanged(paused = false))
+        assertTrue(keyguard.shown)
+        assertTrue(keyguard.onPausedChanged(paused = true)) // Clear the flags now.
+        assertFalse(keyguard.shown)
+        assertFalse(keyguard.onPausedChanged(paused = false)) // Resume attempt.
+        assertFalse(keyguard.shown)
+        assertFalse(keyguard.onPausedChanged(paused = true)) // Nothing left to clear.
+        // A launch while paused grants nothing; leaving the screen ends a grant.
+        assertFalse(keyguard.onHostLaunch(paused = true))
+        assertTrue(keyguard.onHostLaunch(paused = false))
+        keyguard.onStop()
+        assertFalse(keyguard.shown)
+        assertFalse(keyguard.onPausedChanged(paused = true))
     }
     @Test fun computerLaunchShowsOverTheLockScreenOnlyWhileNotPaused() {
         assertTrue(showOverKeyguardForHostLaunch(hostLaunch = true, paused = false))
@@ -84,5 +124,15 @@ class LinkPolicyTest {
         assertTrue(peerAllowed(0))
         assertFalse(peerAllowed(10123))
         assertFalse(peerAllowed(null))
+    }
+}
+
+/** A bound listener stand-in: [alive] as the listener reports it. */
+private class Handle(private val onClose: () -> Unit = {}) : PausedStatusHandle {
+    override var alive = true
+    var closed = false
+    override fun close() {
+        closed = true
+        onClose()
     }
 }

@@ -689,6 +689,7 @@ void AppControlTarget::Execute(ToolId tool, const QJsonObject& args, const QStri
             operations_.Advance(operation,OperationState::Failed); completion(ControlResult::Failure("busy")); return;
         }
         const auto generation = app_.cameraIntent_.Requested().generation;
+        app_.RefreshPhoneIntentGeneration(); // An agent's temporary source revokes a running ladder.
         app_.controlService_->OwnedSourceRequested(owner,beforeSource); observed_ = Fields();
         if (app_.cameraIntent_.TemporaryOwner() != owner || app_.cameraIntent_.Requested().generation != generation) {
             operations_.Advance(operation,OperationState::Failed); completion(ControlResult::Failure("canceled")); return;

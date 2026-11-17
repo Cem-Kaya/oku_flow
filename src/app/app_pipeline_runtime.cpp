@@ -247,8 +247,22 @@ void OkuFlowApp::PopulateCameraCombo() {
     mainWindow_->setCameraDevices(names, selectedCameraIndex_);
 }
 
+void OkuFlowApp::RefreshPhoneIntentGeneration(bool force)
+{
+    const QString key = (cameraIntent_.TemporaryOwner().isEmpty() ? QStringLiteral("own|") : QStringLiteral("temporary|")) +
+        cameraIntent_.TemporaryPhoneIntent() + QLatin1Char('|') + preferredPhoneCamera_ + QLatin1Char('|') +
+        (automaticPhoneSelectionAllowed_ ? QStringLiteral("auto|") : QStringLiteral("manual|")) +
+        (FileSourceRequested() ? QStringLiteral("file") : QStringLiteral("camera"));
+    if (!force && key == phoneIntentKey_) return;
+    phoneIntentKey_ = key;
+    phoneIntentGeneration_.fetch_add(1);
+}
+
 void OkuFlowApp::OnPhoneDiscoveryPulse()
 {
+    // A backstop for any source change without its own call: an in-flight
+    // ladder loses its authority within one pulse.
+    if (initialized_) RefreshPhoneIntentGeneration();
     if (initialized_ && !phoneDiscoveryCanceled_.load()) {
         // Sleep without a power broadcast (some modern-standby laptops): the
         // 100 ms pulse sees the wall clock jump and treats it as a resume.
@@ -403,7 +417,10 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
         recoverySerial = phoneIntent.mid(phonePrefix.size()).section('/', 0, 0).toStdString();
     phoneDiscoveryTimer_.start();
     phoneDiscoveryIntentGeneration_ = cameraIntent_.Requested().generation;
+    RefreshPhoneIntentGeneration();
     PhoneLinkRequest linkRequest;
+    linkRequest.intentGeneration = phoneIntentGeneration_.load();
+    linkRequest.liveIntentGeneration = &phoneIntentGeneration_;
     linkRequest.phoneWanted = permitPhone && phoneIntent.startsWith(phonePrefix);
     // First start in automatic mode (no saved phone, no explicit webcam):
     // an attached Windows ADB interface counts as wanting the phone, so the
@@ -2004,6 +2021,7 @@ bool OkuFlowApp::StartCameraCapture(size_t index,
             std::scoped_lock lock(ingress->mutex);
             if (!ingress->accepting) return;
             ++ingress->received;
+            ++ingress->delivered;
             if (ingress->profileReceived++ == 0)
                 ingress->firstArrivalMs = GetTickCount64();
             else {
