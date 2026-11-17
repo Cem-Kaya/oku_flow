@@ -1081,7 +1081,14 @@ executed hand-back (`NoteHandOver`) as the transport does. Shell facts end with
 the whole line `OKUFLOW_FACTS_END` (the fake's replies and
 `shellFactsParserIsConservative` changed deliberately from `END`);
 `shellFactsAreReadToTheirSentinelLine` sends output containing END first and the
-processes in a second chunk. Doctor rows
+processes in a second chunk. Changed deliberately in iteration 6:
+`abortedTerminationsDoNotSpendTheTerminationCap` (contract, policy hook
+`abortedTerminationCap` = termination cap + 2) and
+`abortedTerminationDoesNotSpendTheBudget` (doctor) now require the end of the
+aborted loop: the other-program sentence after the aborted-termination cap,
+standing at the user-wait cadence until the server recovers or goes away.
+`slowDefaultWithoutItsOtherDeviceEndsInTheSentence` runs from the end of
+`slowDefaultVerdictEndsWhenTheOtherDeviceGoes` into that end. Doctor rows
 `userEndpointThatDoesNotListThePhoneEndsInTheReplugSentence` and
 `hungUserEndpointEndsInTheReplugSentence`; `overriddenEndpointIsNeverStopped`
 was changed deliberately (WaitForUser is now allowed; no takeover action).

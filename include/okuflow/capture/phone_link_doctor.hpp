@@ -155,6 +155,14 @@ struct PhoneLinkPolicy {
     int blindRestartCap{3};
     int askExitCap{2};
     int terminateCap{3};
+    // Per episode: terminations aborted because the default answered its
+    // pre-stop listing (a slow server whose version probes hang). They do
+    // not spend terminateCap, but this many of them end in the
+    // other-program sentence (the user can close the other program; probing
+    // goes on at the user-wait cadence, so a server that recovers or goes
+    // away ends it). The same count as terminateCap: an aborted stop ends
+    // where a carried-out one does.
+    int abortedTerminationCap{3};
     // Per episode: starts of the private server beside the default plus
     // hand-backs to it (the transport's own start beside a hung default and
     // its own hand-back count too). At the cap no more private servers are
@@ -268,10 +276,13 @@ public:
     // A TerminateDefaultServer of this episode was not carried out because
     // the default answered its pre-stop listing (also with an adb FAIL
     // reply): nothing was stopped, so it does not spend the termination
-    // cap. The retry spacing stays as reserved.
+    // cap. The retry spacing stays as reserved. It counts toward
+    // abortedTerminationCap instead, whose end is the other-program sentence.
     void NoteTerminationAborted(std::uint64_t episode)
     {
-        if (episode == episode_ && terminate_.attempts > 0) --terminate_.attempts;
+        if (episode != episode_) return;
+        if (terminate_.attempts > 0) --terminate_.attempts;
+        ++abortedTerminations_;
     }
     std::uint64_t Episode() const { return episode_; }
     // The listener is gone, changed identity, or the phone is listed.
@@ -333,6 +344,7 @@ private:
     bool defaultStopRefused_{false};
     int stopFailures_{0};
     int handOvers_{0};
+    int abortedTerminations_{0};
     bool launchHeld_{false};
     // A hold was already released at once because the app died (episode).
     bool holdReleasedByDeath_{false};

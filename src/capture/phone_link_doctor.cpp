@@ -173,6 +173,7 @@ void PhoneLinkDoctor::OnEvent(PhoneLinkEvent, std::int64_t nowMs)
     defaultStopRefused_ = false;
     stopFailures_ = 0;
     handOvers_ = 0;
+    abortedTerminations_ = 0;
     launchHeld_ = false;
     holdReleasedByDeath_ = false;
     lastLaunchMs_ = -1;
@@ -232,7 +233,11 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
             }
             return A::Relist;
         }
-        if (terminate_.attempts >= policy_.terminateCap) { *raised = D::OtherProgramHoldsPhone; return A::WaitForUser; }
+        if (terminate_.attempts >= policy_.terminateCap ||
+            abortedTerminations_ >= policy_.abortedTerminationCap) {
+            *raised = D::OtherProgramHoldsPhone;
+            return A::WaitForUser;
+        }
         if (!terminate_.Allowed(nowMs)) return A::Relist;
         Reserve(terminate_, nowMs, policy_.restartRetryMs, policy_.takeoverCeilingMs);
         hostKillSent_ = hostKillSent;
@@ -267,7 +272,12 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
             *raised = D::OtherProgramHoldsPhone;
             return A::WaitForUser;
         }
-        if (o.server == PhoneServerKind::BorrowedDefault && o.defaultUnresponsiveConfirmed)
+        // Each aborted stop clears the hang confirmation (the listing
+        // answered), so this branch would otherwise confirm, abort and
+        // confirm again for ever: once the aborted stops reach their cap the
+        // sentence stands, also while the hang is being confirmed again.
+        if (o.server == PhoneServerKind::BorrowedDefault &&
+            (o.defaultUnresponsiveConfirmed || abortedTerminations_ >= policy_.abortedTerminationCap))
             return terminate(false);
         // The user's endpoint (adb environment variables) is never stopped:
         // a hang that lasts ends in the re-plug sentence.
@@ -523,6 +533,7 @@ PhoneLinkDecision PhoneLinkDoctor::Decide(const PhoneLinkObservation& observatio
         if (o.sessionStreaming || nowMs - connectedSinceMs_ >= policy_.connectedHoldMs) {
             reconnect_ = restart_ = shadow_ = askExit_ = terminate_ = launch_ = handback_ = Budget{};
             stopFailures_ = 0;
+            abortedTerminations_ = 0;
             launchHeld_ = false;
             // handOvers_ is renewed only by events: a default that works for
             // a while between losing the phone still ends in the sentence.

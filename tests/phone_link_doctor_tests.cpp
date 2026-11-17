@@ -707,37 +707,94 @@ private slots:
     }
     void abortedTerminationDoesNotSpendTheBudget()
     {
-        // Iteration 5 (3): a confirmed hang whose pre-stop listing answers
-        // (also with FAIL) is not terminated; that abort does not count, so a
-        // slow default is never named as another program after the cap.
+        // Iteration 5 (3), changed deliberately in iteration 6 (1): a
+        // confirmed hang whose pre-stop listing answers (also with FAIL) is
+        // not terminated and does not spend the termination cap. The aborted
+        // stops have an end of their own: the other-program sentence after
+        // abortedTerminationCap of them, polled at the user-wait cadence and
+        // ended by a server that recovers or goes away.
         PhoneLinkDoctor doctor;
-        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        const auto policy = doctor.Policy();
+        QVERIFY(policy.abortedTerminationCap > 1);
         auto hung = Blind(PhoneServerKind::BorrowedDefault);
         hung.serverProbe = PhoneServerProbe::Unresponsive;
+        // Aborts below their own cap leave the whole termination cap.
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        std::int64_t now = 0;
+        int aborted = 0, carried = 0;
+        PhoneLinkDecision last;
         hung.defaultUnresponsiveConfirmed = true;
-        int terminations = 0;
-        for (std::int64_t now = 0; now < 300000; now += 1000) {
-            const auto decision = doctor.Decide(hung, now);
-            QVERIFY(decision.diagnosis != D::OtherProgramHoldsPhone);
-            if (decision.action == A::TerminateDefaultServer) {
-                ++terminations;
-                doctor.NoteTerminationAborted(decision.episode);
+        for (; now < 600000 && last.diagnosis != D::OtherProgramHoldsPhone; now += 1000) {
+            last = doctor.Decide(hung, now);
+            if (last.action != A::TerminateDefaultServer) continue;
+            if (aborted < policy.abortedTerminationCap - 1) {
+                ++aborted;
+                doctor.NoteTerminationAborted(last.episode);
+            } else {
+                ++carried;
             }
         }
-        QVERIFY2(terminations > doctor.Policy().terminateCap, QByteArray::number(terminations).constData());
-        // A stop that was carried out (not aborted) still counts.
-        doctor.OnEvent(PhoneLinkEvent::Resume, 400000);
-        int carried = 0;
-        PhoneLinkDecision last;
-        for (std::int64_t now = 400000; now < 700000; now += 1000) {
+        QCOMPARE(aborted, policy.abortedTerminationCap - 1);
+        QCOMPARE(carried, policy.terminateCap);
+        QCOMPARE(int(last.action), int(A::WaitForUser));
+
+        // Every stop aborted (the transport confirms the hang again 5 s after
+        // each abort): the sentence comes after abortedTerminationCap aborts.
+        doctor.OnEvent(PhoneLinkEvent::Resume, 1000000);
+        now = 1000000;
+        aborted = 0;
+        std::int64_t confirmedAt = now + 5000;
+        last = {};
+        for (; now < 1600000; now += 1000) {
+            hung.defaultUnresponsiveConfirmed = now >= confirmedAt;
+            last = doctor.Decide(hung, now);
+            if (last.diagnosis == D::OtherProgramHoldsPhone) break;
+            if (last.action == A::TerminateDefaultServer) {
+                ++aborted;
+                doctor.NoteTerminationAborted(last.episode);
+                confirmedAt = now + 5000;
+            }
+        }
+        QCOMPARE(aborted, policy.abortedTerminationCap);
+        QCOMPARE(int(last.diagnosis), int(D::OtherProgramHoldsPhone));
+        QCOMPARE(int(last.action), int(A::WaitForUser));
+        // It stands whether or not the hang is confirmed at the moment, and
+        // probing goes on at the user-wait cadence.
+        for (int i = 0; i < 60; ++i) {
+            now += policy.userWaitPollMs;
+            hung.defaultUnresponsiveConfirmed = i % 2 == 0;
+            const auto waiting = doctor.Decide(hung, now);
+            QCOMPARE(int(waiting.diagnosis), int(D::OtherProgramHoldsPhone));
+            QCOMPARE(int(waiting.action), int(A::WaitForUser));
+            QCOMPARE_MS(waiting.nextPollMs, now + policy.userWaitPollMs);
+        }
+        // A server that recovers ends it...
+        const auto recovered = Blind(PhoneServerKind::BorrowedDefault);
+        now += policy.userWaitPollMs;
+        QCOMPARE(int(doctor.Decide(recovered, now).diagnosis), int(D::NotListedByServer));
+        // ...and so does one that goes away.
+        auto gone = Blind(PhoneServerKind::BorrowedDefault);
+        gone.serverProbe = PhoneServerProbe::NoListener;
+        now += policy.userWaitPollMs;
+        QCOMPARE(int(doctor.Decide(gone, now).diagnosis), int(D::ServerStarting));
+
+        // An event starts over, and aborts of an earlier episode count for
+        // nothing (neither given back nor toward the end).
+        const auto earlier = doctor.Episode();
+        doctor.OnEvent(PhoneLinkEvent::Resume, 2000000);
+        for (int i = 0; i < policy.abortedTerminationCap; ++i) doctor.NoteTerminationAborted(earlier);
+        hung.defaultUnresponsiveConfirmed = true;
+        QCOMPARE(int(doctor.Decide(hung, 2000000).action), int(A::TerminateDefaultServer));
+        // Carried-out stops still end at the termination cap.
+        carried = 1;
+        for (now = 2001000; now < 2400000; now += 1000) {
             last = doctor.Decide(hung, now);
             carried += last.action == A::TerminateDefaultServer;
         }
-        QCOMPARE(carried, doctor.Policy().terminateCap);
+        QCOMPARE(carried, policy.terminateCap);
         QCOMPARE(int(last.diagnosis), int(D::OtherProgramHoldsPhone));
-        // An abort of an earlier episode does not give a budget back.
-        doctor.NoteTerminationAborted(0);
-        QCOMPARE(int(doctor.Decide(hung, 701000).diagnosis), int(D::OtherProgramHoldsPhone));
+        doctor.NoteTerminationAborted(earlier);
+        QCOMPARE(int(doctor.Decide(hung, 2401000).diagnosis), int(D::OtherProgramHoldsPhone));
     }
     void hungDefaultIsNotTerminatedWithoutTheWindowsInterface()
     {

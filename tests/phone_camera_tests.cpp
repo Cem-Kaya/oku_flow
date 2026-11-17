@@ -2619,26 +2619,49 @@ private slots:
         QVERIFY(!slow.Exited());
     }
     void abortedTerminationsDoNotSpendTheTerminationCap() {
-        // Iteration 5 (3): each termination aborted because the listing
-        // answered stops nothing and spends nothing: more aborts than the
-        // cap, and the other-program sentence never comes.
+        // Iteration 5 (3), changed deliberately in iteration 6 (1): each
+        // termination aborted because the listing answered stops nothing and
+        // does not spend the termination cap, but the aborted stops have an
+        // end: the other-program sentence after abortedTerminationCap of them
+        // (set above the termination cap here, so a spent cap would end it
+        // sooner). A server that recovers ends the sentence.
         DefaultAdbFixture slow({});
         slow.child.reset();
         const QString fail = slow.File(QStringLiteral("fail"));
+        const QString slowFile = slow.File(QStringLiteral("slow"));
         { QFile file(fail); QVERIFY(file.open(QIODevice::WriteOnly)); }
-        slow.flags = {L"--fixture-slow-version", L"1100", L"--fixture-fail-file", fail.toStdWString()};
+        { QFile file(slowFile); QVERIFY(file.open(QIODevice::WriteOnly)); }
+        slow.flags = {L"--fixture-slow-version-file", slowFile.toStdWString(), L"--fixture-fail-file", fail.toStdWString()};
         QVERIFY(slow.Start());
-        ScopedLinkHooks hooks(slow.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {}, 100);
+        const int cap = okuflow::PhoneLinkPolicy{}.terminateCap + 2;
+        ScopedLinkHooks hooks(slow.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {}, 100,
+                              [cap](okuflow::PhoneAdbTestHooks& h) { h.linkPolicy->abortedTerminationCap = cap; });
         okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
-        const int cap = okuflow::PhoneLinkPolicy{}.terminateCap;
         int aborted = 0;
-        const auto reports = LinkCycles(80, [&](const auto& r) {
+        auto reports = LinkCycles(120, [&](const auto& r) {
             if (r.decision.action == okuflow::PhoneLinkAction::TerminateDefaultServer &&
                 r.actionResult.find("answers a listing with FAIL") != std::string::npos)
                 ++aborted;
-            return aborted > cap || r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone; });
-        QVERIFY2(aborted > cap, QByteArray::number(aborted).constData());
-        QVERIFY(!Saw(reports, okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone));
+            return r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone; });
+        QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone));
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::WaitForUser));
+        QCOMPARE(aborted, cap);
+        for (const auto& report : reports)
+            QVERIFY2(report.decision.action != okuflow::PhoneLinkAction::TerminateDefaultServer ||
+                     report.actionResult.find("kept:") == 0, report.actionResult.c_str());
+        // The sentence stands while the server stays as it is.
+        reports = LinkCycles(6);
+        for (const auto& report : reports) {
+            QCOMPARE(int(report.decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone));
+            QCOMPARE(int(report.decision.action), int(okuflow::PhoneLinkAction::WaitForUser));
+        }
+        QVERIFY(!slow.Exited());
+        // It recovers (prompt versions, plain listings): the sentence ends.
+        QVERIFY(QFile::remove(slowFile));
+        QVERIFY(QFile::remove(fail));
+        reports = LinkCycles(20, [](const auto& r) {
+            return r.decision.diagnosis != okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone; });
+        QVERIFY(reports.back().decision.diagnosis != okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone);
         QVERIFY(!slow.Exited());
     }
     void hostKillIsAbortedWhenTheInterfaceIsGoneAtExecution() {
@@ -2696,6 +2719,47 @@ private slots:
             return r.decision.diagnosis != okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone; }, "xyz");
         QVERIFY(reports.back().decision.diagnosis != okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone);
         QVERIFY(!reports.back().observation.defaultHasOtherDevices);
+        QVERIFY(!slow.Exited());
+    }
+    void slowDefaultWithoutItsOtherDeviceEndsInTheSentence() {
+        // Iteration 6 (1): past the end of iteration 5's item 6. The other
+        // device goes away from a slow default; the verdict ends, and every
+        // termination after it is aborted because the listing answers. Those
+        // aborted stops end in the other-program sentence, no longer resting
+        // on another device, instead of "Restoring" for ever.
+        DefaultAdbFixture slow({});
+        slow.child.reset();
+        const QString device = slow.File(QStringLiteral("device"));
+        { QFile file(device); QVERIFY(file.open(QIODevice::WriteOnly)); }
+        slow.flags = {L"--fixture-slow-version", L"1100", L"--fixture-device-file", device.toStdWString()};
+        QVERIFY(slow.copied && slow.Start());
+        ScopedLinkHooks hooks(slow.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {}, 100);
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        auto reports = LinkCycles(30, [](const auto& r) {
+            return r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone; }, "xyz");
+        QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone));
+        QVERIFY(reports.back().observation.defaultHasOtherDevices);
+        auto all = reports;
+        QVERIFY(QFile::remove(device)); // The other device is gone; no event.
+        reports = LinkCycles(10, [](const auto& r) {
+            return r.decision.diagnosis != okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone; }, "xyz");
+        QVERIFY(reports.back().decision.diagnosis != okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone);
+        all.insert(all.end(), reports.begin(), reports.end());
+        reports = LinkCycles(80, [](const auto& r) {
+            return r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone; }, "xyz");
+        all.insert(all.end(), reports.begin(), reports.end());
+        QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone));
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::WaitForUser));
+        QVERIFY(!reports.back().observation.defaultHasOtherDevices);
+        QVERIFY(std::any_of(reports.begin(), reports.end(), [](const auto& r) {
+            return r.actionResult == "kept: the default server answers a listing"; }));
+        // Every termination of the row was aborted, and their number is the cap.
+        const auto terminations = std::count_if(all.begin(), all.end(), [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::TerminateDefaultServer; });
+        QCOMPARE(terminations, std::ptrdiff_t{okuflow::PhoneLinkPolicy{}.abortedTerminationCap});
+        for (const auto& report : all)
+            QVERIFY2(report.decision.action != okuflow::PhoneLinkAction::TerminateDefaultServer ||
+                     report.actionResult.find("kept:") == 0, report.actionResult.c_str());
         QVERIFY(!slow.Exited());
     }
     void slowButListingDefaultIsNeverStopped() {

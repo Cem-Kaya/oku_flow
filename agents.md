@@ -532,8 +532,12 @@ aligned with the project goals.
   is throttled or has no executable is not, a hand-back counts once the
   private server is retired (a live session can defer it), and a
   termination aborted because the default answered its listing does not
-  spend the termination cap. Neither hand-back path arms the 30 s start
-  throttle.
+  spend the termination cap. Aborted terminations have their own
+  per-episode count (`abortedTerminationCap`, 3): at it the other-program
+  sentence stands (probed at the user-wait cadence; a server that recovers
+  or goes away ends it), so a default that is slow only in its version
+  probes is never "Restoring" for ever. Neither hand-back path arms the
+  30 s start throttle.
 - Never shorten the 5 s hang confirmation after an event; events restart it.
   Confirm a hang from the doctor's own probe too (the borrowed branch of
   `EnsureAdbServer` no longer runs once a private server exists).

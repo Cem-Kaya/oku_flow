@@ -1903,7 +1903,10 @@ so metadata generation cannot silently accept an incomplete copy.
   transport's starts beside a hung default and every executed hand-back
   (the doctor's `HandBackToDefault` decision itself does not count);
   `NoteTerminationAborted` gives back a termination of the current episode
-  that the pre-stop listing aborted; `Episode` names the
+  that the pre-stop listing aborted and counts it toward
+  `PhoneLinkPolicy::abortedTerminationCap`, at which a borrowed
+  `ServerUnresponsive` (or a takeover termination) ends in
+  `OtherProgramHoldsPhone` with `WaitForUser`; `Episode` names the
   current episode. `PhoneLinkDiagnosisName`/`ActionName`/`EventName` give trace
   names. A borrowed `ServerUnresponsive` with `defaultHasOtherDevices` (its
   listing answered and showed another device) is named, never stopped; the
