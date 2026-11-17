@@ -526,7 +526,12 @@ aligned with the project goals.
   default plus hand-backs end in a sentence. Every start beside the default
   counts (also the transport's own beside a hung default); at the cap a
   hand-back to a default that lists the phone is still made, so the count
-  never ends on the blind side.
+  never ends on the blind side. Only what happened is counted: a start that
+  is throttled or has no executable is not, a hand-back counts once the
+  private server is retired (a live session can defer it), and a
+  termination aborted because the default answered its listing does not
+  spend the termination cap. Neither hand-back path arms the 30 s start
+  throttle.
 - Never shorten the 5 s hang confirmation after an event; events restart it.
   Confirm a hang from the doctor's own probe too (the borrowed branch of
   `EnsureAdbServer` no longer runs once a private server exists).

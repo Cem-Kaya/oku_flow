@@ -288,11 +288,12 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         // neither is "ready" for a phone whose adbd timed out there.
         // Also at the hand-over cap: the cap prefers the configuration in
         // which the phone is listed (no more private servers beside the
-        // default are started, see shadow()).
+        // default are started, see shadow()). The hand-back counts toward
+        // the cap when the transport actually retires its private server
+        // (NoteHandOver): a live session can defer it.
         if (owned && o.shadowRunning && o.defaultListsPhone && !o.defaultPhoneStalled) {
             if (!handback_.Allowed(nowMs)) return A::Relist;
             Reserve(handback_, nowMs, policy_.reconnectRetryMs, policy_.reconnectRetryMs);
-            ++handOvers_;
             return A::HandBackToDefault;
         }
         // Windows cannot tell (Unknown): after a long blind period OkuFlow's

@@ -252,12 +252,22 @@ public:
         return true;
     }
     // The transport started a private server beside a hung default, or
-    // handed USB back to the default on its own (that shadow, now that the
-    // default lists the phone): both count toward the per-episode
-    // hand-over cap like the ladder's own. HandOverAllowed gates only new
-    // starts beside the default; a hand-back is always allowed.
+    // retired its private server for the default (the ladder's
+    // HandBackToDefault once executed, or its own hand-back of a hung-default
+    // shadow, now that the default lists the phone): each counts toward the
+    // per-episode hand-over cap like the ladder's own starts, and only once
+    // it actually happened. HandOverAllowed gates only new starts beside the
+    // default; a hand-back is always allowed.
     bool HandOverAllowed() const { return handOvers_ < policy_.handOverCap; }
     void NoteHandOver() { ++handOvers_; }
+    // A TerminateDefaultServer of this episode was not carried out because
+    // the default answered its pre-stop listing (also with an adb FAIL
+    // reply): nothing was stopped, so it does not spend the termination
+    // cap. The retry spacing stays as reserved.
+    void NoteTerminationAborted(std::uint64_t episode)
+    {
+        if (episode == episode_ && terminate_.attempts > 0) --terminate_.attempts;
+    }
     std::uint64_t Episode() const { return episode_; }
     // The listener is gone, changed identity, or the phone is listed.
     void ClearDefaultStopRefused() { defaultStopRefused_ = false; stopFailures_ = 0; }

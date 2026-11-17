@@ -171,8 +171,11 @@ diagnosis and one next action, least disturbing first:
    does not accept a connection (a timed-out connect, or a refused one while
    the listener table still shows it, as for a frozen adb with a full accept
    queue) counts as hung, never as absent. Per episode at most two
-   `host:kill` requests and three terminations; a different process that
-   appears on the port is a new takeover and is asked first. After the caps,
+   `host:kill` requests and three terminations (a termination not carried out
+   because the default answered its listing does not count); a different
+   process that appears on the port is a new takeover and is asked first.
+   Starts beside the default and hand-backs count only once they happened.
+   After the caps,
    or when a stop is refused, Windows says another program is using the
    phone's USB connection instead of fighting.
 5. Phone side: when the companion socket is refused or times out while adbd

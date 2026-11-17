@@ -377,6 +377,8 @@ private slots:
     void defaultThatAlternatelyListsAndLosesThePhoneIsNamed()
     {
         // A8: shadow, hand back, shadow, hand back... is capped per episode.
+        // Changed deliberately (iteration 5, 3): a hand-back counts when the
+        // transport retires its private server (NoteHandOver), as here.
         PhoneLinkDoctor doctor;
         doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
         const auto lost = Blind(PhoneServerKind::BorrowedDefault);
@@ -398,6 +400,7 @@ private slots:
                 if (last.action != A::Relist) break;
             }
             if (last.action != A::HandBackToDefault) break;
+            doctor.NoteHandOver();
             ++handOvers;
         }
         QCOMPARE(handOvers, doctor.Policy().handOverCap);
@@ -414,6 +417,8 @@ private slots:
         // rungs, as after the transport's uncounted start beside a hung
         // default). At the cap the default that lists the phone is still
         // handed back to, and no more private servers are started.
+        // Changed deliberately (iteration 5, 3): each executed hand-back is
+        // noted by the transport (NoteHandOver), as here.
         PhoneLinkDoctor doctor;
         doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
         const auto lost = Blind(PhoneServerKind::BorrowedDefault);
@@ -429,9 +434,14 @@ private slots:
             }
             return last;
         };
-        QCOMPARE(int(next(listing).action), int(A::HandBackToDefault)); // 1
+        const auto handedBack = [&] {
+            const auto last = next(listing);
+            if (last.action == A::HandBackToDefault) doctor.NoteHandOver();
+            return last;
+        };
+        QCOMPARE(int(handedBack().action), int(A::HandBackToDefault)); // 1
         QCOMPARE(int(next(lost).action), int(A::StartShadowServer));    // 2
-        QCOMPARE(int(next(listing).action), int(A::HandBackToDefault)); // 3
+        QCOMPARE(int(handedBack().action), int(A::HandBackToDefault)); // 3
         QCOMPARE(int(next(lost).action), int(A::StartShadowServer));    // 4: the cap, private side.
         QVERIFY(!doctor.HandOverAllowed());
         QCOMPARE(int(next(listing).action), int(A::HandBackToDefault)); // Still made at the cap.
@@ -619,6 +629,67 @@ private slots:
             QCOMPARE(int(refused.diagnosis), int(D::OtherProgramHoldsPhone));
             QCOMPARE(int(refused.action), int(A::WaitForUser));
         }
+    }
+    void handBackDeferredByALiveSessionIsNotCounted()
+    {
+        // Iteration 5 (3): HandBackToDefault decided while a live session
+        // keeps the private server is not carried out; it counts toward the
+        // hand-over cap only once the transport retires that server.
+        PhoneLinkPolicy policy;
+        policy.handOverCap = 2;
+        PhoneLinkDoctor doctor(policy);
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto listing = Blind(PhoneServerKind::Owned);
+        listing.shadowRunning = true;
+        listing.defaultListsPhone = true;
+        std::int64_t now = 0;
+        int decided = 0;
+        for (; now < 60000 && decided < 3; now += 500)
+            decided += doctor.Decide(listing, now).action == A::HandBackToDefault; // Deferred twice...
+        QCOMPARE(decided, 3);
+        doctor.NoteHandOver(); // ...then executed once.
+        QVERIFY(doctor.HandOverAllowed());
+        const auto lost = Blind(PhoneServerKind::BorrowedDefault);
+        PhoneLinkDecision last;
+        for (int i = 0; i < 200; ++i, now += 500) {
+            last = doctor.Decide(lost, now);
+            if (last.action != A::Relist) break;
+        }
+        QCOMPARE(int(last.action), int(A::StartShadowServer));
+    }
+    void abortedTerminationDoesNotSpendTheBudget()
+    {
+        // Iteration 5 (3): a confirmed hang whose pre-stop listing answers
+        // (also with FAIL) is not terminated; that abort does not count, so a
+        // slow default is never named as another program after the cap.
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto hung = Blind(PhoneServerKind::BorrowedDefault);
+        hung.serverProbe = PhoneServerProbe::Unresponsive;
+        hung.defaultUnresponsiveConfirmed = true;
+        int terminations = 0;
+        for (std::int64_t now = 0; now < 300000; now += 1000) {
+            const auto decision = doctor.Decide(hung, now);
+            QVERIFY(decision.diagnosis != D::OtherProgramHoldsPhone);
+            if (decision.action == A::TerminateDefaultServer) {
+                ++terminations;
+                doctor.NoteTerminationAborted(decision.episode);
+            }
+        }
+        QVERIFY2(terminations > doctor.Policy().terminateCap, QByteArray::number(terminations).constData());
+        // A stop that was carried out (not aborted) still counts.
+        doctor.OnEvent(PhoneLinkEvent::Resume, 400000);
+        int carried = 0;
+        PhoneLinkDecision last;
+        for (std::int64_t now = 400000; now < 700000; now += 1000) {
+            last = doctor.Decide(hung, now);
+            carried += last.action == A::TerminateDefaultServer;
+        }
+        QCOMPARE(carried, doctor.Policy().terminateCap);
+        QCOMPARE(int(last.diagnosis), int(D::OtherProgramHoldsPhone));
+        // An abort of an earlier episode does not give a budget back.
+        doctor.NoteTerminationAborted(0);
+        QCOMPARE(int(doctor.Decide(hung, 701000).diagnosis), int(D::OtherProgramHoldsPhone));
     }
     void hungDefaultIsNotTerminatedWithoutTheWindowsInterface()
     {

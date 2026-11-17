@@ -1064,7 +1064,15 @@ runs beside it and then answers (`--fixture-stalled-shell-file`, stalled while
 the file exists) is handed back to without `host:kill`
 (`stalledPhoneThatRecoversOnTheDefaultIsHandedBack`). Doctor row
 `pausedCompanionThatKeepsDyingIsRelaunchedAtTheOrdinarySpacing`: only the first
-hold released by the app's death in an episode relaunches at once.
+hold released by the app's death in an episode relaunches at once. Budgets:
+`hangRightAfterAHandBackMeetsAPrivateServerAgain` (no 30 s throttle after the
+transport's own hand-back), `privateServerStartThatCannotHappenIsNotCharged`
+(no executable yet, cap 1), `abortedTerminationsDoNotSpendTheTerminationCap`;
+doctor rows `handBackDeferredByALiveSessionIsNotCounted`,
+`abortedTerminationDoesNotSpendTheBudget`. The doctor rows
+`defaultThatAlternatelyListsAndLosesThePhoneIsNamed` and
+`handOverCapEndsWhereThePhoneIsListed` were changed deliberately: they note each
+executed hand-back (`NoteHandOver`) as the transport does.
 `phone_link_text` (headless) checks one sentence per diagnosis and that every
 sentence is translated in all 24 catalogs. The native slot
 `phoneSentenceIsShownAndSpokenForEveryDiagnosis` delivers every verdict

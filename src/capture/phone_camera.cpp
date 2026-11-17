@@ -625,8 +625,7 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
               runtime.shadowHandbackProbes = readyDefault ? runtime.shadowHandbackProbes + 1 : 0;
               // Also at the hand-over cap: the cap prefers the side where
               // the phone is listed.
-              handback = runtime.shadowHandbackProbes >= 2;
-              if (handback) runtime.doctor.NoteHandOver(); }
+              handback = runtime.shadowHandbackProbes >= 2; }
             if (handback) {
                 CheckCanceled(canceled);
                 owned->Stop();
@@ -634,7 +633,12 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
                 if (runtime.ownedServer == owned) runtime.ownedServer.reset();
                 runtime.shadowServer = false; runtime.shadowHandbackProbes = 0;
                 runtime.shadowForBlindness = false;
-                runtime.nextServerStart = Clock::now() + std::chrono::seconds(30);
+                // Same as the ladder's hand-back: no start throttle, so a
+                // default that hangs again right after is met by a private
+                // server once its hang is confirmed (the hand-over cap, not
+                // a 30 s throttle, bounds the swaps). Counted once retired.
+                runtime.nextServerStart = {};
+                runtime.doctor.NoteHandOver();
                 return Result::Running;
             }
         }
@@ -662,6 +666,13 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
     // 2026-11-17). Overridden endpoints never reach this branch.
     const auto defaultProbe = ProbeAdbHostVersion(env.port, canceled);
     CheckCanceled(canceled);
+    // A start beside the default: its shadow flags are set, and the
+    // transport's own start beside a hung default is charged to the
+    // hand-over cap, only once the start actually proceeds (not when the
+    // executable is missing or the start is throttled).
+    enum class Beside { No, Blind, Hung };
+    Beside beside = Beside::No;
+    bool chargeHandOver = false;
     if (defaultProbe == OwnedServerProbe::Responsive) {
         NoteDefaultProbe(defaultProbe, ListenerIdentity(env.port));
         std::lock_guard lock(runtime.mutex);
@@ -669,10 +680,8 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
         // server beside it; whichever lists the phone is used.
         if (!runtime.shadowRequested || !allowOwnedBootstrap) return Result::Running;
         runtime.shadowRequested = false;
-        runtime.shadowServer = true;
-        runtime.shadowForBlindness = true;
-        runtime.shadowHandbackProbes = 0;
         runtime.nextServerStart = {};
+        beside = Beside::Blind;
     } else if (defaultProbe == OwnedServerProbe::Unresponsive) {
         bool confirmed = NoteDefaultProbe(defaultProbe, ListenerIdentity(env.port));
         {
@@ -710,12 +719,14 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
             if (!recoveredLegacy) {
                 if (!runtime.shadowRequested) {
                     if (!runtime.doctor.HandOverAllowed()) return Result::BorrowedUnresponsive;
-                    runtime.doctor.NoteHandOver();
+                    chargeHandOver = true;
                 }
                 runtime.shadowRequested = false;
+                beside = Beside::Hung;
+            } else {
+                runtime.shadowServer = false;
+                runtime.shadowForBlindness = false;
             }
-            runtime.shadowServer = !recoveredLegacy;
-            runtime.shadowForBlindness = false;
         }
     } else {
         NoteDefaultProbe(defaultProbe, std::nullopt);
@@ -733,6 +744,12 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
             if (executable.isEmpty() || !QFileInfo(executable).isFile()) return Result::LaunchFailed;
             if (Clock::now() < runtime.nextServerStart) return Result::Throttled;
             runtime.nextServerStart = Clock::now() + std::chrono::seconds(30);
+        }
+        if (beside != Beside::No) {
+            runtime.shadowServer = true;
+            runtime.shadowForBlindness = beside == Beside::Blind;
+            if (beside == Beside::Blind) runtime.shadowHandbackProbes = 0;
+            if (chargeHandOver) runtime.doctor.NoteHandOver();
         }
     }
     if (owned) return owned->EnsureRunning(canceled);
@@ -1963,7 +1980,12 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
             if (runtime.ownedServer == owned) runtime.ownedServer.reset();
             runtime.shadowServer = runtime.shadowForBlindness = runtime.shadowRequested = false;
             runtime.shadowHandbackProbes = 0;
+            // Like the transport's own hand-back: a default that hangs
+            // again is met by a private server at once (the cap bounds it).
             runtime.nextServerStart = {};
+            // Counted now that the private server is retired, not when the
+            // doctor decided it (a live session defers it).
+            runtime.doctor.NoteHandOver();
         }
         return "the default server lists the phone; private server retired";
     }
@@ -2038,13 +2060,21 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         // Termination needs the Windows ADB interface at execution time too:
         // a phone unplugged since the decision is no reason to stop anything.
         if (RuntimeAdbInterface() != PhoneAdbInterface::Present) return "kept: the Windows ADB interface is gone";
+        // A stop aborted because the default answered its pre-stop listing
+        // stopped nothing: it does not spend the termination cap (whose end
+        // is the other-program sentence).
+        const auto aborted = [&](const char* reason) {
+            std::lock_guard lock(runtime.mutex);
+            runtime.doctor.NoteTerminationAborted(decision.episode);
+            return std::string(reason);
+        };
         if (o.serverProbe == PhoneServerProbe::Responsive || o.shadowRunning) {
             const auto listed = ListDefaultEntries(canceled);
             if (!listed) return "kept: the default server listing failed";
-            if (OtherDeviceServed(*listed, target)) return "kept: the default server serves another device";
-            if (DefaultServesTarget(*listed, target)) return "kept: the default server lists the phone now";
+            if (OtherDeviceServed(*listed, target)) return aborted("kept: the default server serves another device");
+            if (DefaultServesTarget(*listed, target)) return aborted("kept: the default server lists the phone now");
             if (StallEndedOnDefault(*listed, target, canceled))
-                return "kept: the phone answers on the default server now";
+                return aborted("kept: the phone answers on the default server now");
         } else {
             // A hang confirmed by version probes alone: one short listing
             // before anything else. A server that answers it at all (a slow
@@ -2064,10 +2094,10 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
                     if (servesOther && identity) runtime.hungServesOther = identity;
                     else runtime.hungServesOther.reset();
                 }
-                if (servesOther) return "kept: the default server serves another device";
-                if (listed && ListsTargetUsable(*listed, target)) return "kept: the default server lists the phone";
-                return answeredFail ? "kept: the default server answers a listing with FAIL"
-                                    : "kept: the default server answers a listing";
+                if (servesOther) return aborted("kept: the default server serves another device");
+                if (listed && ListsTargetUsable(*listed, target)) return aborted("kept: the default server lists the phone");
+                return aborted(answeredFail ? "kept: the default server answers a listing with FAIL"
+                                            : "kept: the default server answers a listing");
             }
         }
         const auto listener = LookupListener(port);

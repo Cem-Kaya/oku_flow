@@ -1474,6 +1474,50 @@ private slots:
             QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
         }
     }
+    void hangRightAfterAHandBackMeetsAPrivateServerAgain() {
+        // Iteration 5 (3): the transport's own hand-back no longer arms the
+        // 30 s start throttle (the ladder's never did). A default that hangs
+        // right after it gets a private server once the hang is confirmed,
+        // instead of burning the hand-over cap on throttled starts.
+        FakePhoneAdb borrowed(false, false, false, FakePhoneAdb::LaunchMode::None,
+                              FakePhoneAdb::RecoveryMode::ServerStalled, false);
+        ScopedLinkHooks hooks(borrowed.port, okuflow::PhoneAdbInterface::Present,
+                              OwnedChildFixturePath().toStdWString(), {}, 0);
+        using Intent = okuflow::PhoneServerIntent;
+        bool listed = false;
+        for (int attempt = 0; attempt < 3 && !okuflow::OwnedAdbServerPort(); ++attempt)
+            okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, nullptr, Intent::PhoneUse);
+        QVERIFY(okuflow::OwnedAdbServerPort().has_value());
+        borrowed.hostUnresponsive.store(false);
+        borrowed.deviceStalled.store(false);
+        for (int attempt = 0; attempt < 3 && okuflow::OwnedAdbServerPort(); ++attempt)
+            okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, nullptr, Intent::PhoneUse);
+        QVERIFY(!okuflow::OwnedAdbServerPort().has_value()); // Handed back.
+        borrowed.hostUnresponsive.store(true); // Hangs again at once.
+        for (int attempt = 0; attempt < 6 && !okuflow::OwnedAdbServerPort(); ++attempt)
+            okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, nullptr, Intent::PhoneUse);
+        QVERIFY(okuflow::OwnedAdbServerPort().has_value());
+    }
+    void privateServerStartThatCannotHappenIsNotCharged() {
+        // Iteration 5 (3): beside a hung default, a start that cannot happen
+        // (no executable yet) does not count toward the hand-over cap. With
+        // the cap at one start, the start that finally can happen is made.
+        QTemporaryDir directory;
+        const QString later = directory.filePath(QStringLiteral("adb_later.exe"));
+        FakePhoneAdb borrowed(false, false, false, FakePhoneAdb::LaunchMode::None,
+                              FakePhoneAdb::RecoveryMode::ServerStalled, false);
+        ScopedLinkHooks hooks(borrowed.port, okuflow::PhoneAdbInterface::Present, later.toStdWString(), {}, 0,
+                              [](okuflow::PhoneAdbTestHooks& h) { h.linkPolicy->handOverCap = 1; });
+        using Intent = okuflow::PhoneServerIntent;
+        bool listed = false;
+        for (int attempt = 0; attempt < 4; ++attempt)
+            okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, nullptr, Intent::PhoneUse);
+        QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
+        QVERIFY(QFile::copy(OwnedChildFixturePath(), later));
+        for (int attempt = 0; attempt < 3 && !okuflow::OwnedAdbServerPort(); ++attempt)
+            okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, nullptr, Intent::PhoneUse);
+        QVERIFY(okuflow::OwnedAdbServerPort().has_value());
+    }
     void ownedWiringShadowNeverHandsBackWithPrivateTransports() {
         ScopedOwnedAdbHooks hooks({L"--fixture-device"}, 0);
         FakePhoneAdb borrowed(false, false, false, FakePhoneAdb::LaunchMode::None,
@@ -2489,6 +2533,29 @@ private slots:
         QVERIFY2(reports.back().actionResult.find("answers a listing with FAIL") != std::string::npos,
                  reports.back().actionResult.c_str());
         QTest::qWait(300);
+        QVERIFY(!slow.Exited());
+    }
+    void abortedTerminationsDoNotSpendTheTerminationCap() {
+        // Iteration 5 (3): each termination aborted because the listing
+        // answered stops nothing and spends nothing: more aborts than the
+        // cap, and the other-program sentence never comes.
+        DefaultAdbFixture slow({});
+        slow.child.reset();
+        const QString fail = slow.File(QStringLiteral("fail"));
+        { QFile file(fail); QVERIFY(file.open(QIODevice::WriteOnly)); }
+        slow.flags = {L"--fixture-slow-version", L"1100", L"--fixture-fail-file", fail.toStdWString()};
+        QVERIFY(slow.Start());
+        ScopedLinkHooks hooks(slow.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {}, 100);
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const int cap = okuflow::PhoneLinkPolicy{}.terminateCap;
+        int aborted = 0;
+        const auto reports = LinkCycles(80, [&](const auto& r) {
+            if (r.decision.action == okuflow::PhoneLinkAction::TerminateDefaultServer &&
+                r.actionResult.find("answers a listing with FAIL") != std::string::npos)
+                ++aborted;
+            return aborted > cap || r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone; });
+        QVERIFY2(aborted > cap, QByteArray::number(aborted).constData());
+        QVERIFY(!Saw(reports, okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone));
         QVERIFY(!slow.Exited());
     }
     void hostKillIsAbortedWhenTheInterfaceIsGoneAtExecution() {

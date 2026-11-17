@@ -1898,7 +1898,10 @@ so metadata generation cannot silently accept an incomplete copy.
   changes. `ReserveLaunch`/`RenewLaunches` are the one per-event companion
   launch budget shared by the ladder and camera starts; `BlindGracePassed`
   gates a leftover stop; `HandOverAllowed`/`NoteHandOver` count the
-  transport's own hand-back of a hung-default shadow; `Episode` names the
+  transport's starts beside a hung default and every executed hand-back
+  (the doctor's `HandBackToDefault` decision itself does not count);
+  `NoteTerminationAborted` gives back a termination of the current episode
+  that the pre-stop listing aborted; `Episode` names the
   current episode. `PhoneLinkDiagnosisName`/`ActionName`/`EventName` give trace
   names. A borrowed `ServerUnresponsive` with `defaultHasOtherDevices` (its
   listing answered and showed another device) is named, never stopped.
