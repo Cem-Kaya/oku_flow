@@ -494,6 +494,20 @@ private slots:
         QCOMPARE(int(last.diagnosis), int(D::OtherProgramHoldsPhone));
         QCOMPARE(int(last.action), int(A::WaitForUser));
     }
+    void aNewListenerBesideIsAskedBeforeItIsTerminated()
+    {
+        // A2: the asked listener was replaced by another process before the
+        // termination step: the new one gets the grace and host:kill first.
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto beside = Blind(PhoneServerKind::Owned);
+        beside.shadowRunning = true;
+        QCOMPARE(int(doctor.Decide(beside, 0).action), int(A::Relist));
+        QCOMPARE(int(doctor.Decide(beside, 6000).action), int(A::AskDefaultServerToExit));
+        doctor.NoteDefaultListenerChanged();
+        QCOMPARE(int(doctor.Decide(beside, 8000).action), int(A::Relist)); // Not terminated.
+        QCOMPARE(int(doctor.Decide(beside, 14000).action), int(A::AskDefaultServerToExit));
+    }
     void anotherListedPhoneIsNotBlindness()
     {
         // C4: a second phone listed by the server is not "blind": no restarts.

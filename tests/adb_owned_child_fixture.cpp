@@ -5,7 +5,11 @@
 //       launch `sleep <childReady>` through OwnedChildProcess, write
 //       <parentReady>, then return normally (exit) or sleep (hang) so the
 //       test can terminate this parent and observe job-close cleanup.
-// No real adb or window. Optional fake host mode binds only a private test port.
+// No real adb or window. Optional fake host mode binds only a private test port:
+//   -L tcp:<port> [--fixture-hang] [--fixture-exit-after-list] [--fixture-device]
+//       [--fixture-exit-on-kill] [--fixture-device-file <path>] [--fixture-fail-file <path>]
+// Tests may run a copy of this executable named adb.exe so the production
+// image rule (adb.exe) is exercised without any hook.
 #include "okuflow/capture/adb_owned_server.hpp"
 
 #include <cstdio>
@@ -50,7 +54,11 @@ void Reply(SOCKET socket, const std::string& body)
         offset += sent;
     }
 }
-int FakeAdbServer(unsigned short port, bool hang, bool exitAfterList, bool device)
+struct FakeOptions {
+    bool hang{false}, exitAfterList{false}, device{false}, exitOnKill{false};
+    std::wstring deviceFile, failFile;
+};
+int FakeAdbServer(unsigned short port, const FakeOptions& options)
 {
     wchar_t emulatorSetting[8]{};
     if (!GetEnvironmentVariableW(L"ADB_EMU", emulatorSetting, 8) ||
@@ -83,16 +91,23 @@ int FakeAdbServer(unsigned short port, bool hang, bool exitAfterList, bool devic
         if (count > 65535) { closesocket(client); continue; }
         std::string request(count, '\0');
         if (!ReadSocket(client, request.data(), static_cast<int>(count))) { closesocket(client); continue; }
-        if (hang) SleepForever();
+        if (options.hang) SleepForever();
         const bool listing = request == "host:track-devices-proto-binary" || request == "host:devices-l";
+        const bool device = options.device || (!options.deviceFile.empty() && FileExists(options.deviceFile.c_str()));
+        const bool failing = !options.failFile.empty() && FileExists(options.failFile.c_str());
         if (request == "host:version") Reply(client, "0029");
+        else if (listing && failing) send(client, "FAIL0006broken", 14, 0);
         else if (listing) {
             const char protobuf[]{10, 11, 10, 3, 'a', 'b', 'c', 16, 8, 56, 1, 80, 9};
             Reply(client, device ? std::string(protobuf, sizeof(protobuf)) : std::string{});
+        } else if (request == "host:kill" && options.exitOnKill) {
+            send(client, "OKAY", 4, 0);
+            closesocket(client);
+            break;
         }
         else send(client, "FAIL000bunsupported", 19, 0);
         closesocket(client);
-        if (listing && exitAfterList) break;
+        if (listing && options.exitAfterList) break;
     }
     closesocket(listener);
     WSACleanup();
@@ -105,17 +120,20 @@ int wmain(int count, wchar_t** arguments)
     // Private production-wiring mode understands the same bind arguments as
     // adb, but serves only harmless version/empty-list host queries.
     unsigned short port = 0;
-    bool hang = false, exitAfterList = false, device = false;
+    FakeOptions options;
     for (int i = 1; i < count; ++i) {
         const std::wstring argument = arguments[i];
         if (argument == L"-L" && i + 1 < count) {
             const std::wstring socketSpec = arguments[++i];
             if (socketSpec.starts_with(L"tcp:")) port = static_cast<unsigned short>(_wtoi(socketSpec.c_str() + 4));
-        } else if (argument == L"--fixture-hang") hang = true;
-        else if (argument == L"--fixture-exit-after-list") exitAfterList = true;
-        else if (argument == L"--fixture-device") device = true;
+        } else if (argument == L"--fixture-hang") options.hang = true;
+        else if (argument == L"--fixture-exit-after-list") options.exitAfterList = true;
+        else if (argument == L"--fixture-device") options.device = true;
+        else if (argument == L"--fixture-exit-on-kill") options.exitOnKill = true;
+        else if (argument == L"--fixture-device-file" && i + 1 < count) options.deviceFile = arguments[++i];
+        else if (argument == L"--fixture-fail-file" && i + 1 < count) options.failFile = arguments[++i];
     }
-    if (port) return FakeAdbServer(port, hang, exitAfterList, device);
+    if (port) return FakeAdbServer(port, options);
     if (count < 3) return 2;
     const std::wstring mode = arguments[1];
     if (mode == L"sleep") {

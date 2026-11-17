@@ -77,6 +77,13 @@ struct OwnedAdbServerPolicy {
     std::chrono::milliseconds maxRestartCooldown{30000};
     std::chrono::milliseconds readinessDeadline{5000};
     std::chrono::milliseconds pollSlice{50};
+    // A child that is alive and has never answered yet (antivirus scanning
+    // the executable, a loaded laptop) is not judged hung before this much
+    // time since its launch; only one that answered once and then stopped is.
+    std::chrono::milliseconds startGrace{30000};
+    // Spacing of the confirmation probes before a hang restart, so one
+    // stall of a fraction of a second never restarts the server.
+    std::chrono::milliseconds confirmationSpacing{1000};
     // Consecutive non-responsive probes required before a restart is allowed.
     int unresponsiveProbesToConfirm{2};
     int maxLaunchAttemptsPerEnsure{2};
@@ -117,7 +124,9 @@ public:
     // Doctor rung 3: restart a responsive but blind owned child now. Live
     // sessions and cancellation win; the doctor's budget paces it.
     EnsureResult Restart(const std::atomic<bool>* canceled);
-    // Events clear the restart cooldown and its doubling.
+    // Events clear the restart cooldown and its doubling. Lock-free: safe on
+    // the UI thread while a worker holds the manager through a launch; the
+    // request is applied by the next EnsureRunning/Restart.
     void ResetBudgets();
     // Permanent for this manager: stops the exact owned child (if any) and
     // makes later EnsureRunning calls return Stopped.
@@ -133,6 +142,8 @@ private:
     { return stopRequested_.load() || (canceled && canceled->load()); }
     bool ResponsiveOwnedChild(OwnedServerProbe response) const;
     bool WaitSlice(const std::atomic<bool>* canceled) const;
+    bool WaitFor(std::chrono::milliseconds duration, const std::atomic<bool>* canceled) const;
+    void ApplyBudgetResetLocked();
     EnsureResult LaunchAndAwaitLocked(const std::atomic<bool>* canceled, bool restart);
     ProbeFn probe_;
     LaunchFn launch_;
@@ -149,6 +160,9 @@ private:
     std::unique_ptr<OwnedChildProcess> child_;
     std::optional<std::uint16_t> port_;
     std::chrono::steady_clock::time_point nextRestart_{};
+    std::chrono::steady_clock::time_point launchedAt_{};
+    bool answered_{false};
+    std::atomic<bool> budgetResetRequested_{false};
     int launches_{0};
     int launchesSinceReset_{0};
     int restarts_{0};

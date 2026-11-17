@@ -242,7 +242,12 @@ bool OwnedAdbServer::ResponsiveOwnedChild(OwnedServerProbe response) const
 
 bool OwnedAdbServer::WaitSlice(const std::atomic<bool>* canceled) const
 {
-    const auto deadline = std::chrono::steady_clock::now() + policy_.pollSlice;
+    return WaitFor(policy_.pollSlice, canceled);
+}
+
+bool OwnedAdbServer::WaitFor(std::chrono::milliseconds duration, const std::atomic<bool>* canceled) const
+{
+    const auto deadline = std::chrono::steady_clock::now() + duration;
     while (std::chrono::steady_clock::now() < deadline) {
         if (Canceled(canceled)) return false;
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -280,6 +285,8 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::LaunchAndAwaitLocked(
         snapshot->port = *port_;
         observation_.store(std::move(snapshot));
         ++launches_;
+        launchedAt_ = std::chrono::steady_clock::now();
+        answered_ = false;
         const auto deadline = std::chrono::steady_clock::now() + policy_.readinessDeadline;
         for (;;) {
             if (Canceled(canceled)) return EnsureResult::Canceled; // Child stays owned.
@@ -294,8 +301,10 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::LaunchAndAwaitLocked(
             }
             const auto response = probe_(*port_, canceled);
             if (Canceled(canceled)) return EnsureResult::Canceled;
-            if (ResponsiveOwnedChild(response))
+            if (ResponsiveOwnedChild(response)) {
+                answered_ = true;
                 return restart ? EnsureResult::Restarted : EnsureResult::Launched;
+            }
             if (std::chrono::steady_clock::now() >= deadline)
                 return EnsureResult::NotReady; // Owned child left for later probes.
             if (!WaitSlice(canceled)) return EnsureResult::Canceled;
@@ -313,24 +322,33 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::EnsureRunning(const std::atomic<boo
     }
     if (stopped_) return EnsureResult::Stopped;
     if (Canceled(canceled)) return EnsureResult::Canceled;
+    ApplyBudgetResetLocked();
     if (child_ && child_->IsRunning() && port_) {
         const auto response = probe_(*port_, canceled);
         if (Canceled(canceled)) return EnsureResult::Canceled;
-        if (ResponsiveOwnedChild(response))
+        if (ResponsiveOwnedChild(response)) {
+            answered_ = true;
             return EnsureResult::Running;
+        }
         if (!allowLifecycleEffects) return EnsureResult::NotReady;
         if (response == OwnedServerProbe::Responsive && child_->IsRunning())
             return EnsureResult::NotReady; // Ownership lookup is unknown/mismatched, not a host hang.
-        // Confirm with further consecutive non-responsive probes; one slow
-        // answer never restarts a server other work may depend on.
+        // Alive and never answered: still starting (antivirus, load), not hung.
+        if (!answered_ && std::chrono::steady_clock::now() - launchedAt_ < policy_.startGrace)
+            return EnsureResult::NotReady;
+        // Confirm with further consecutive non-responsive probes, spaced
+        // apart; one slow answer never restarts a server other work may
+        // depend on.
         bool confirmed = true;
         for (int probe = 1; probe < std::max(1, policy_.unresponsiveProbesToConfirm); ++probe) {
-            if (!WaitSlice(canceled)) return EnsureResult::Canceled;
+            if (!WaitFor(policy_.confirmationSpacing, canceled)) return EnsureResult::Canceled;
             if (!child_->IsRunning()) { confirmed = false; break; }
             const auto confirmedResponse = probe_(*port_, canceled);
             if (Canceled(canceled)) return EnsureResult::Canceled;
-            if (ResponsiveOwnedChild(confirmedResponse))
+            if (ResponsiveOwnedChild(confirmedResponse)) {
+                answered_ = true;
                 return EnsureResult::Running;
+            }
             if (confirmedResponse == OwnedServerProbe::Responsive && child_->IsRunning())
                 return EnsureResult::NotReady;
         }
@@ -377,6 +395,7 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::Restart(const std::atomic<bool>* ca
     }
     if (stopped_) return EnsureResult::Stopped;
     if (Canceled(canceled)) return EnsureResult::Canceled;
+    ApplyBudgetResetLocked();
     if (hasLiveSessions_ && hasLiveSessions_()) return EnsureResult::RestartDeferredLiveSession;
     // A deliberate blind restart is paced by the link doctor's own budget
     // (once after the grace, then 15 s, then 60 s); the crash-loop cooldown
@@ -391,7 +410,13 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::Restart(const std::atomic<bool>* ca
 
 void OwnedAdbServer::ResetBudgets()
 {
-    std::lock_guard lock(mutex_);
+    // Never takes mutex_: a worker may hold it for a whole launch.
+    budgetResetRequested_.store(true);
+}
+
+void OwnedAdbServer::ApplyBudgetResetLocked()
+{
+    if (!budgetResetRequested_.exchange(false)) return;
     nextRestart_ = {};
     launchesSinceReset_ = 0;
 }

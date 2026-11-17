@@ -4,6 +4,7 @@
 #include "okuflow/capture/phone_startup_budget.hpp"
 #include "okuflow/capture/phone_link_doctor.hpp"
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <mutex>
 #include <thread>
@@ -42,7 +43,11 @@ std::string PhoneSerialTag(std::string_view serial);
 // Always-on rolling phone link trace (two files of at most 256 KiB). An empty
 // path disables the file; lines still reach the debug log.
 void SetPhoneLinkTraceFile(const std::wstring& path);
+// Never writes the file on the calling thread (events arrive on the UI
+// thread): lines are queued for a private writer thread.
 void TracePhoneLink(std::string_view line);
+// Waits until every queued trace line is written (tests, shutdown).
+bool FlushPhoneLinkTrace(std::chrono::milliseconds timeout);
 // Events reset every recovery budget (doctor, launch, reconnect, server
 // start/restart cooldowns). Resume and removal also void the server identity
 // so pre-sleep transport ids and health are not trusted. Thread-safe.
@@ -52,6 +57,13 @@ struct PhoneLinkRequest {
     bool phoneWanted{false};
     bool captureAbandoned{false};
     bool sessionStreaming{false};
+    // Automatic first start (no saved phone, no explicit webcam): the phone
+    // counts as wanted while Windows shows an ADB interface.
+    bool phoneWantedIfAttached{false};
+    // The phone of the selected or live session (also before its first
+    // frame); preferred over the recovery serial as the ladder's target so
+    // shell commands never reach a phone the user did not choose.
+    std::string targetSerial;
 };
 struct PhoneLinkReport {
     PhoneLinkObservation observation;
@@ -101,8 +113,13 @@ struct PhoneAdbTestHooks {
     std::function<PhoneAdbInterface()> adbInterface;
     // Another OkuFlow instance; unset reports none (no real process scan).
     std::function<bool()> otherInstanceRunning;
-    // Image file name a default-port listener must have before termination.
-    std::wstring terminableImageName{L"adb.exe"};
+    // Reports the default-port listener's process as one OpenProcess
+    // refuses (another user, elevated). The adb.exe image rule itself has
+    // no hook: fixtures run a copy named adb.exe.
+    std::function<bool()> defaultListenerUnopenable;
+    // Runs when a host:kill or termination of the default listener starts,
+    // before its fresh listing (lets a fixture change between decision and act).
+    std::function<void()> beforeDefaultStopForTest;
     // Doctor budgets for fast fixtures; production uses PhoneLinkPolicy{}.
     std::optional<PhoneLinkPolicy> linkPolicy;
 };

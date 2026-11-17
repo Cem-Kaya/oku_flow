@@ -198,6 +198,10 @@ public:
     void NoteDefaultStopFailed() { if (++stopFailures_ >= 2) defaultStopRefused_ = true; }
     // The listener is gone, changed identity, or the phone is listed.
     void ClearDefaultStopRefused() { defaultStopRefused_ = false; stopFailures_ = 0; }
+    // A different process now listens on the default port beside OkuFlow's
+    // server: a new takeover (grace, then asked first, never terminated
+    // because an earlier listener was asked). Counts toward the caps.
+    void NoteDefaultListenerChanged() { askedExitMs_ = -1; shadowSinceMs_ = -1; }
     bool DefaultStopRefused() const { return defaultStopRefused_; }
     PhoneLinkDiagnosis LastDiagnosis() const { return last_; }
     std::int64_t LastEventMs() const { return eventAtMs_; }

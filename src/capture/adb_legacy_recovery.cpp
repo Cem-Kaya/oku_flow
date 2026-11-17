@@ -234,10 +234,16 @@ ListenerLookup FindLoopbackListenerPid(std::uint16_t port, DWORD* pid)
     if (GetExtendedTcpTable(nullptr, &bytes, FALSE, AF_INET, TCP_TABLE_OWNER_PID_LISTENER, 0) !=
         ERROR_INSUFFICIENT_BUFFER)
         return ListenerLookup::Error;
-    std::vector<std::uint8_t> storage(bytes);
-    if (GetExtendedTcpTable(storage.data(), &bytes, FALSE, AF_INET,
-                            TCP_TABLE_OWNER_PID_LISTENER, 0) != NO_ERROR)
-        return ListenerLookup::Error;
+    // The table can grow between the size query and the read (the other
+    // two callers retry the same way).
+    std::vector<std::uint8_t> storage;
+    DWORD result = ERROR_INSUFFICIENT_BUFFER;
+    for (int attempt = 0; attempt < 3 && result == ERROR_INSUFFICIENT_BUFFER; ++attempt) {
+        storage.resize(bytes);
+        result = GetExtendedTcpTable(storage.data(), &bytes, FALSE, AF_INET,
+                                     TCP_TABLE_OWNER_PID_LISTENER, 0);
+    }
+    if (result != NO_ERROR) return ListenerLookup::Error;
     const auto* table = reinterpret_cast<const MIB_TCPTABLE_OWNER_PID*>(storage.data());
     std::set<DWORD> owners;
     for (DWORD i = 0; i < table->dwNumEntries; ++i) {
@@ -905,6 +911,11 @@ DefaultAdbStopResult TryStopDefaultAdbServer(const DefaultAdbStopRequest& reques
         }
     }
     if (canceled()) { result.status = S::Canceled; return result; }
+    if (!request.terminateIfAlive) {
+        result.status = request.sendHostKillFirst && !result.hostKillDelivered ? S::Failed : S::HostKillIgnored;
+        result.diagnostic += result.hostKillDelivered ? " outlived host:kill" : ": host:kill not delivered";
+        return result;
+    }
     if (!stillSame()) {
         if (!ProcessAlive(process.handle)) { result.status = S::Stopped; result.diagnostic += " exited"; return result; }
         result.status = S::IdentityChanged; result.diagnostic += " changed before termination"; return result;

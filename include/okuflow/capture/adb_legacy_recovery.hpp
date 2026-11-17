@@ -203,6 +203,9 @@ struct DefaultAdbStopRequest {
     DWORD expectedProcessId{0};
     std::uint64_t expectedCreation{0};
     bool sendHostKillFirst{true};
+    // False: only ask (host:kill after every identity and image check) and
+    // report HostKillIgnored when the process outlives the wait.
+    bool terminateIfAlive{true};
     std::wstring requiredImageName{L"adb.exe"};
     const std::atomic<bool>* canceled{nullptr};
     std::chrono::milliseconds hostKillWait{2000};
@@ -215,6 +218,7 @@ enum class DefaultAdbStopStatus {
     NotAdb,           // Image name differs: not stopped.
     IdentityChanged,  // PID/creation/listener changed: not stopped.
     AccessDenied,     // Windows refused termination (elevated or another user).
+    HostKillIgnored,  // terminateIfAlive=false: asked, and it is still running.
     Canceled,
     Failed
 };
