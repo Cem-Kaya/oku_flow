@@ -111,8 +111,20 @@ struct PhoneAdbTestHooks {
     std::uint32_t borrowedHangConfirmationMs{5000};
     // Windows ADB interface presence; unset reports Unknown (no blind rules).
     std::function<PhoneAdbInterface()> adbInterface;
-    // Another OkuFlow instance; unset reports none (no real process scan).
+    // Another OkuFlow instance; unset reports none (no real process scan)
+    // unless siblingImage names a fixture image for the real scan.
     std::function<bool()> otherInstanceRunning;
+    // The production sibling scan, classification and leftover stop run
+    // against this private fixture image and registration tag (never this
+    // installation); the adb-child fallback uses siblingAdbImage.
+    std::wstring siblingImage;
+    std::wstring siblingTag;
+    std::wstring siblingAdbImage;
+    std::int64_t siblingExitingGraceMs{5000};
+    std::int64_t siblingWindowlessMs{20000};
+    // The leftover's termination is refused as Windows would for an
+    // elevated process, to reach the adb-child step.
+    bool refuseSiblingTermination{false};
     // Reports the default-port listener's process as one OpenProcess
     // refuses (another user, elevated). The adb.exe image rule itself has
     // no hook: fixtures run a copy named adb.exe.

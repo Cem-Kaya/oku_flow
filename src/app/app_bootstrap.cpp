@@ -1397,10 +1397,11 @@ bool OkuFlowApp::Initialize()
         // offscreen and test instances never do, so they are never taken for
         // a leftover of this installation and never terminated.
         if (QGuiApplication::platformName() == QStringLiteral("windows") && mainWindow_) {
+            // The exit signal is raised by the destructor after the critical
+            // teardown (recording, image writes, capture stop, settings, the
+            // owned adb), never at aboutToQuit: a quick reopen must not stop
+            // an instance that is still finalizing a recording.
             instanceRegistration_ = OkuFlowInstanceRegistration::Register();
-            connect(qtApp_, &QCoreApplication::aboutToQuit, this, [this]() {
-                if (instanceRegistration_) instanceRegistration_->SignalExiting();
-            });
         }
         for (const auto& sibling : FindOkuFlowSiblings(true))
             TracePhoneLink(std::string("start-up: another OkuFlow instance of this installation is running, ") +
@@ -1417,9 +1418,6 @@ bool OkuFlowApp::Initialize()
 }
 
 OkuFlowApp::~OkuFlowApp() {
-    // Exit begins: a sibling may treat this instance as a leftover only if it
-    // still lives a few seconds after this signal.
-    if (instanceRegistration_) instanceRegistration_->SignalExiting();
     if (uctModelSetupCancel_) uctModelSetupCancel_->store(true);
     ++uctModelSetupGeneration_;
     ShutdownVideoPlayback();
@@ -1494,6 +1492,11 @@ OkuFlowApp::~OkuFlowApp() {
     // running on the default endpoint or explicitly overridden) is left
     // exactly as found.
     ShutdownOwnedAdbServer();
+    // The critical teardown is done (recording finalized or abandoned, image
+    // writes, capture stop, settings, the owned adb that held the phone): a
+    // sibling may treat this instance as a leftover only if it still lives a
+    // few seconds after this signal.
+    if (instanceRegistration_) instanceRegistration_->SignalExiting();
     mediaFoundationTeardownUnsafe =
         mediaFoundationTeardownUnsafe || mediaCapture_.WasAbandoned() ||
         (startupWorkers_ && (startupWorkers_->active.load() != 0 ||

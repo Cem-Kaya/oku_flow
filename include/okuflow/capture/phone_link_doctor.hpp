@@ -213,6 +213,12 @@ public:
     // because an earlier listener was asked). Counts toward the caps.
     void NoteDefaultListenerChanged() { askedExitMs_ = -1; shadowSinceMs_ = -1; }
     bool DefaultStopRefused() const { return defaultStopRefused_; }
+    // The phone has been missing from every listing for the blind grace
+    // (as of the last Decide), so a leftover may plausibly hold it.
+    bool BlindGracePassed(std::int64_t nowMs) const
+    {
+        return blindSinceMs_ >= 0 && nowMs - SinceEventOr(blindSinceMs_) >= policy_.blindGraceMs;
+    }
     PhoneLinkDiagnosis LastDiagnosis() const { return last_; }
     std::int64_t LastEventMs() const { return eventAtMs_; }
     std::int64_t NextPollMs() const { return nextPollMs_; }

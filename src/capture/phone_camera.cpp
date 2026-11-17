@@ -100,7 +100,7 @@ struct AdbRuntime {
     std::optional<AdbListenerIdentity> askedIdentity;
     // Sibling OkuFlow instances (PID, creation) being proven leftovers, and
     // whether a stop was tried (once per process) and refused.
-    struct SiblingState { OkuFlowSiblingTrack track; bool stopTried{false}; bool stopRefused{false}; };
+    struct SiblingState { OkuFlowSiblingTrack track; bool stopTried{false}; bool stopRefused{false}; bool named{false}; };
     std::map<std::pair<DWORD, std::uint64_t>, SiblingState> siblings;
     // Suppresses repeated shell health probes after a definitive healthy or
     // other-host/phone-state answer. Separate from the reconnect-send slot so
@@ -171,33 +171,54 @@ std::int64_t NowMs(Clock::time_point at = Clock::now())
 void TraceLine(std::string_view line);
 // Other instances of this installation (same image, user, session). A
 // visible window is the user's to close (sentence, never terminated). A
-// registered instance proven to be a leftover (exit signalled for 5 s, or
-// no window on two observations 10 s apart and no answer to a window
-// message) is terminated through a held handle once; if Windows refuses,
-// its proven adb child is stopped, else the user is told. An unregistered
-// windowless one (an older version, a test run) is named, never terminated.
-void RuntimeSiblings(bool* windowed, bool* leftover)
+// registered instance proven to be a leftover (exit signalled for 5 s after
+// its critical teardown, or no window on two observations 20 s apart and no
+// answer to a window message) is terminated through a held handle once, and
+// only when it plausibly holds the phone (`mayStop`: the phone is not
+// listed, the Windows ADB interface is present, the blind grace passed); if
+// Windows refuses, its proven adb child is stopped, else the user is told.
+// An unregistered windowless one (an older version, a test run) is named in
+// the trace once and never terminated; it does not stop the blind ladder.
+void RuntimeSiblings(bool* windowed, bool* leftover, bool mayStop, const std::atomic<bool>* canceled)
 {
     *windowed = *leftover = false;
     const auto hooks = Hooks();
-    if (hooks) { *windowed = hooks->otherInstanceRunning && hooks->otherInstanceRunning(); return; }
+    if (hooks && hooks->otherInstanceRunning) { *windowed = hooks->otherInstanceRunning(); return; }
+    // Fixtures scan only a private fixture image and tag, never this
+    // installation; without one there is no scan at all.
+    if (hooks && hooks->siblingImage.empty()) return;
+    OkuFlowSiblingPolicy policy;
+    if (hooks) { policy.exitingGraceMs = hooks->siblingExitingGraceMs; policy.windowlessConfirmMs = hooks->siblingWindowlessMs; }
     const auto now = NowMs();
     auto& runtime = Runtime();
     std::map<std::pair<DWORD, std::uint64_t>, AdbRuntime::SiblingState> seen;
-    for (const auto& sibling : ObserveOkuFlowSiblings()) {
+    for (const auto& sibling : ObserveOkuFlowSiblings(hooks ? hooks->siblingImage : std::wstring{},
+                                                      hooks ? hooks->siblingTag : std::wstring{}, canceled)) {
         const auto key = std::make_pair(sibling.processId, sibling.creation);
         AdbRuntime::SiblingState state;
         { std::lock_guard lock(runtime.mutex); if (const auto it = runtime.siblings.find(key); it != runtime.siblings.end()) state = it->second; }
-        switch (ClassifyOkuFlowSibling(sibling, state.track, now)) {
+        switch (ClassifyOkuFlowSibling(sibling, state.track, now, policy)) {
         case OkuFlowSiblingVerdict::Windowed: *windowed = true; break;
-        case OkuFlowSiblingVerdict::UnregisteredWindowless: *leftover = true; break;
+        case OkuFlowSiblingVerdict::UnregisteredWindowless:
+            if (!state.named) {
+                state.named = true;
+                TraceLine("an unregistered OkuFlow instance without a window runs (older version or test run); "
+                          "never stopped, the ladder goes on");
+            }
+            break;
         case OkuFlowSiblingVerdict::Pending: break;
         case OkuFlowSiblingVerdict::Leftover:
-            if (!state.stopTried) {
+            if (!state.stopTried && mayStop) {
                 state.stopTried = true;
                 LeftoverInstanceStopRequest request;
                 request.processId = sibling.processId;
                 request.creation = sibling.creation;
+                request.canceled = canceled;
+                if (hooks) {
+                    request.expectedImage = hooks->siblingImage;
+                    request.bundledAdbImage = hooks->siblingAdbImage;
+                    request.refuseTerminationForTest = hooks->refuseSiblingTermination;
+                }
                 const auto status = StopLeftoverOkuFlowInstance(request);
                 state.stopRefused = status == LeftoverInstanceStopStatus::Refused;
                 TraceLine(status == LeftoverInstanceStopStatus::Stopped ? "leftover OkuFlow instance stopped"
@@ -1046,6 +1067,7 @@ void SetPhoneAdbTestHooks(std::optional<PhoneAdbTestHooks> hooks)
     runtime.launchFailures = 0;
     runtime.besideIdentity.reset();
     runtime.askedIdentity.reset();
+    runtime.siblings.clear();
 }
 void PhoneCameraTransport::AllowAppLaunch(const std::string& serial)
 {
@@ -2076,8 +2098,14 @@ void RunPhoneLinkLadder(const PhoneLinkRequest& link, const std::string& preferr
             o.adbd = timedOut ? PhoneAdbdHealth::TimedOut : PhoneAdbdHealth::Answers;
         }
     }
-    if (o.phoneWanted && o.companion != PhoneCompanionProbe::Ready && !o.sessionStreaming)
-        RuntimeSiblings(&o.otherInstanceRunning, &o.leftoverInstanceRunning);
+    if (o.phoneWanted && o.companion != PhoneCompanionProbe::Ready && !o.sessionStreaming) {
+        // A leftover is stopped only when it plausibly holds the phone.
+        bool graceOver = false;
+        { auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex); graceOver = runtime.doctor.BlindGracePassed(NowMs()); }
+        const bool mayStop = o.phoneState == PhoneAdbState::NotListed &&
+            o.adbInterface == PhoneAdbInterface::Present && graceOver;
+        RuntimeSiblings(&o.otherInstanceRunning, &o.leftoverInstanceRunning, mayStop, canceled);
+    }
     CheckCanceled(canceled);
 
     PhoneLinkDecision decision;

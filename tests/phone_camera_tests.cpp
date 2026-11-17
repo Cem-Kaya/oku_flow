@@ -912,8 +912,10 @@ private slots:
         okuflow::OkuFlowSiblingObservation hidden{4, 4, true, false, false, false};
         track = {};
         QCOMPARE(int(okuflow::ClassifyOkuFlowSibling(hidden, track, 0)), int(V::Pending));
-        QCOMPARE(int(okuflow::ClassifyOkuFlowSibling(hidden, track, 9999)), int(V::Pending));
-        QCOMPARE(int(okuflow::ClassifyOkuFlowSibling(hidden, track, 10000)), int(V::Leftover));
+        // Changed deliberately (iteration 3, C2): 20 s, above the longest
+        // bounded critical teardown that runs before the exit signal.
+        QCOMPARE(int(okuflow::ClassifyOkuFlowSibling(hidden, track, 19999)), int(V::Pending));
+        QCOMPARE(int(okuflow::ClassifyOkuFlowSibling(hidden, track, 20000)), int(V::Leftover));
         // A hidden instance that answers a window message is alive (starting).
         hidden.answersWindowMessage = true;
         QCOMPARE(int(okuflow::ClassifyOkuFlowSibling(hidden, track, 20000)), int(V::Pending));
@@ -961,8 +963,8 @@ private slots:
         QCOMPARE(int(okuflow::ClassifyOkuFlowSibling(w, tw, 0)), int(V::Pending));
         QCOMPARE(int(okuflow::ClassifyOkuFlowSibling(u, tu, 0)), int(V::UnregisteredWindowless));
         QCOMPARE(int(okuflow::ClassifyOkuFlowSibling(e, te, 5000)), int(V::Leftover));
-        QCOMPARE(int(okuflow::ClassifyOkuFlowSibling(w, tw, 10000)), int(V::Leftover));
-        QCOMPARE(int(okuflow::ClassifyOkuFlowSibling(u, tu, 10000)), int(V::UnregisteredWindowless));
+        QCOMPARE(int(okuflow::ClassifyOkuFlowSibling(w, tw, 20000)), int(V::Leftover));
+        QCOMPARE(int(okuflow::ClassifyOkuFlowSibling(u, tu, 20000)), int(V::UnregisteredWindowless));
         // A different creation time is a different process: nothing done.
         okuflow::LeftoverInstanceStopRequest stale{e.processId, e.creation + 1, image.toStdWString(), {}};
         QCOMPARE(int(okuflow::StopLeftoverOkuFlowInstance(stale)), int(okuflow::LeftoverInstanceStopStatus::IdentityChanged));
@@ -1008,6 +1010,143 @@ private slots:
         QVERIFY(okuflow::StopLeftoverAdbChild(parent->ProcessId(), parentCreation, image.toStdWString()));
         QVERIFY(WaitFixtureProcessExited(childPid));
         QVERIFY(parent->IsRunning());
+    }
+    void leftoverThatCannotBeOpenedStopsNothing() {
+        // Iteration 3 (C2): the leftover is gone (its PID cannot be opened):
+        // whoever is a child of that PID is never walked or stopped.
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString image = directory.filePath(QStringLiteral("okuflow_instance_fixture.exe"));
+        QVERIFY(QFile::copy(OwnedChildFixturePath(), image));
+        const QString childReady = directory.filePath(QStringLiteral("child.txt"));
+        const QString parentReady = directory.filePath(QStringLiteral("parent.txt"));
+        std::wstring command = L"\"" + image.toStdWString() + L"\" spawn \"" + childReady.toStdWString() + L"\" \"" +
+                               parentReady.toStdWString() + L"\"";
+        STARTUPINFOW startup{sizeof(startup)};
+        PROCESS_INFORMATION process{};
+        QVERIFY(CreateProcessW(image.toStdWString().c_str(), command.data(), nullptr, nullptr, FALSE,
+                               CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process));
+        FILETIME created{}, exited{}, kernel{}, user{};
+        QVERIFY(GetProcessTimes(process.hProcess, &created, &exited, &kernel, &user));
+        const std::uint64_t creation = (static_cast<std::uint64_t>(created.dwHighDateTime) << 32) | created.dwLowDateTime;
+        QVERIFY(WaitForFixtureFile(parentReady) && WaitForFixtureFile(childReady));
+        QCOMPARE(WaitForSingleObject(process.hProcess, 3000), DWORD{WAIT_OBJECT_0});
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+        const auto childPid = ReadFixturePid(childReady);
+        QVERIFY(childPid);
+        okuflow::LeftoverInstanceStopRequest request{process.dwProcessId, creation, image.toStdWString(), image.toStdWString()};
+        const auto status = okuflow::StopLeftoverOkuFlowInstance(request);
+        QVERIFY(status != okuflow::LeftoverInstanceStopStatus::AdbChildStopped);
+        QVERIFY(!FixtureProcessExited(childPid));
+        QVERIFY(!okuflow::StopLeftoverAdbChild(process.dwProcessId, creation, image.toStdWString()));
+        QVERIFY(!FixtureProcessExited(childPid));
+        QVERIFY(WaitFixtureProcessExited(childPid, 6000)); // Ends by itself; the folder can then be removed.
+    }
+    void leftoverWithAWindowNowIsNotStopped() {
+        // C2: the visible-window check is repeated right before termination.
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString image = directory.filePath(QStringLiteral("okuflow_instance_fixture.exe"));
+        QVERIFY(QFile::copy(OwnedChildFixturePath(), image));
+        const std::wstring tag = L"window" + std::to_wstring(GetCurrentProcessId());
+        const QString ready = directory.filePath(QStringLiteral("a.txt"));
+        std::string error;
+        auto instance = okuflow::OwnedChildProcess::Launch({image.toStdWString(),
+            {L"instance", tag, L"1", ready.toStdWString()}, {}, {}}, &error);
+        QVERIFY2(instance, error.c_str());
+        QVERIFY(WaitForFixtureFile(ready));
+        const auto siblings = okuflow::ObserveOkuFlowSiblings(image.toStdWString(), tag);
+        QCOMPARE(siblings.size(), size_t{1});
+        okuflow::LeftoverInstanceStopRequest request{siblings[0].processId, siblings[0].creation, image.toStdWString(), {}};
+        request.visibleWindowForTest = [](DWORD) { return true; };
+        QCOMPARE(int(okuflow::StopLeftoverOkuFlowInstance(request)), int(okuflow::LeftoverInstanceStopStatus::IdentityChanged));
+        QVERIFY(instance->IsRunning());
+    }
+    void leftoverIsJudgedByEveryTopLevelWindow() {
+        // C2: a hidden window on a thread that still pumps does not vouch
+        // for a stuck one; an instance whose windows all answer is alive.
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString image = directory.filePath(QStringLiteral("okuflow_instance_fixture.exe"));
+        QVERIFY(QFile::copy(OwnedChildFixturePath(), image));
+        const std::wstring tag = L"windows" + std::to_wstring(GetCurrentProcessId());
+        const QString a = directory.filePath(QStringLiteral("a.txt")), b = directory.filePath(QStringLiteral("b.txt"));
+        std::string error;
+        auto stuck = okuflow::OwnedChildProcess::Launch({image.toStdWString(),
+            {L"instance-windows", tag, L"1", a.toStdWString()}, {}, {}}, &error);
+        auto alive = okuflow::OwnedChildProcess::Launch({image.toStdWString(),
+            {L"instance-windows", tag, L"0", b.toStdWString()}, {}, {}}, &error);
+        QVERIFY2(stuck && alive, error.c_str());
+        QVERIFY(WaitForFixtureFile(a) && WaitForFixtureFile(b));
+        const auto siblings = okuflow::ObserveOkuFlowSiblings(image.toStdWString(), tag);
+        QCOMPARE(siblings.size(), size_t{2});
+        for (const auto& sibling : siblings) {
+            QVERIFY(sibling.registered && !sibling.hasVisibleWindow);
+            QCOMPARE(sibling.answersWindowMessage, sibling.processId == alive->ProcessId());
+        }
+    }
+    void leftoverInstanceIsStoppedThroughDiscovery() {
+        // C2/A3 through Enumerate and the production RuntimeSiblings path
+        // (fixture image and tag only): an unregistered windowless sibling
+        // is named, never stopped and does not end the ladder; a proven
+        // leftover is stopped only while the phone is missing; a refused
+        // termination falls back to the leftover's own child.
+        FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::None,
+                            FakePhoneAdb::RecoveryMode::Healthy, false);
+        server.listingState.store(6); // Listed (offline): the leftover holds nothing.
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString image = directory.filePath(QStringLiteral("okuflow_instance_fixture.exe"));
+        QVERIFY(QFile::copy(OwnedChildFixturePath(), image));
+        const std::wstring tag = L"ladder" + std::to_wstring(GetCurrentProcessId());
+        const QString a = directory.filePath(QStringLiteral("a.txt")), c = directory.filePath(QStringLiteral("c.txt"));
+        std::string error;
+        auto exiting = okuflow::OwnedChildProcess::Launch({image.toStdWString(),
+            {L"instance", tag, L"1", a.toStdWString()}, {}, {}}, &error);
+        auto unregistered = okuflow::OwnedChildProcess::Launch({image.toStdWString(), {L"sleep", c.toStdWString()}, {}, {}}, &error);
+        QVERIFY2(exiting && unregistered, error.c_str());
+        QVERIFY(WaitForFixtureFile(a) && WaitForFixtureFile(c));
+        bool refuse = false;
+        const auto customize = [&](okuflow::PhoneAdbTestHooks& h) {
+            h.siblingImage = image.toStdWString(); h.siblingTag = tag; h.siblingAdbImage = image.toStdWString();
+            h.siblingExitingGraceMs = 100; h.siblingWindowlessMs = 200; h.refuseSiblingTermination = refuse;
+        };
+        {
+            ScopedLinkHooks hooks(server.port, okuflow::PhoneAdbInterface::Present, {}, {}, 5000, customize);
+            okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+            LinkCycles(8);
+            QVERIFY(exiting->IsRunning()); // The phone is listed: nothing plausibly held.
+        }
+        server.listEmpty.store(true);
+        {
+            ScopedLinkHooks hooks(server.port, okuflow::PhoneAdbInterface::Present, {}, {}, 5000, customize);
+            okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+            const auto reports = LinkCycles(30, [&](const auto&) { return !exiting->IsRunning(); });
+            QVERIFY(exiting->WaitForExit(std::chrono::milliseconds(3000)));
+            QVERIFY(unregistered->IsRunning());
+            QVERIFY(!Saw(reports, okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone));
+            const auto later = LinkCycles(6);
+            QVERIFY(!Saw(later, okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone));
+            QVERIFY(unregistered->IsRunning());
+        }
+        // Termination refused: only the leftover's own child of the adb image.
+        const QString b = directory.filePath(QStringLiteral("b.txt")), child = directory.filePath(QStringLiteral("child.txt"));
+        auto holder = okuflow::OwnedChildProcess::Launch({image.toStdWString(),
+            {L"instance", tag, L"1", b.toStdWString(), child.toStdWString()}, {}, {}}, &error);
+        QVERIFY2(holder, error.c_str());
+        QVERIFY(WaitForFixtureFile(b) && WaitForFixtureFile(child));
+        const auto childPid = ReadFixturePid(child);
+        QVERIFY(childPid);
+        refuse = true;
+        {
+            ScopedLinkHooks hooks(server.port, okuflow::PhoneAdbInterface::Present, {}, {}, 5000, customize);
+            okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+            LinkCycles(30, [&](const auto&) { return FixtureProcessExited(childPid); });
+            QVERIFY(WaitFixtureProcessExited(childPid));
+            QVERIFY(holder->IsRunning());
+            QVERIFY(unregistered->IsRunning());
+        }
     }
     void ownedServerStillStartingIsNotKilled() {
         // A14: alive and never answered (antivirus delaying the start):

@@ -283,13 +283,17 @@ struct OkuFlowSiblingObservation {
     bool registered{false};
     bool exiting{false};
     bool hasVisibleWindow{false};
-    // Any top-level window of the process answered WM_NULL within 1 s.
+    // Every top-level window of the process answered WM_NULL within 1 s (a
+    // hidden helper window on another thread cannot vouch for a stuck UI).
+    // Not asked at all when a visible window was found.
     bool answersWindowMessage{false};
 };
 // `image` and `tag` default to this process's installation; tests pass a
-// fixture image and tag. Observation only: nothing is signalled.
+// fixture image and tag. Observation only: nothing is signalled. The window
+// messages are sent in short slices that observe `canceled`.
 std::vector<OkuFlowSiblingObservation> ObserveOkuFlowSiblings(const std::wstring& image = {},
-                                                               const std::wstring& tag = {});
+                                                               const std::wstring& tag = {},
+                                                               const std::atomic<bool>* canceled = nullptr);
 
 struct OkuFlowSiblingTrack {
     std::int64_t exitingSinceMs{-1};
@@ -297,10 +301,14 @@ struct OkuFlowSiblingTrack {
 };
 struct OkuFlowSiblingPolicy {
     // The exit signal has been set this long and the process still lives.
+    // An instance sets it only after its critical teardown (recording
+    // finalization, image writes, capture stop, settings, its own adb).
     std::int64_t exitingGraceMs{5000};
     // Registered, no visible window on two observations this far apart, and
-    // no answer to a window message.
-    std::int64_t windowlessConfirmMs{10000};
+    // no answer to a window message. Above the longest bounded critical
+    // teardown (about 17 s: recording join 3 s, image writes 10 s, capture
+    // stop 1.5 s, discovery and settings), which runs before the signal.
+    std::int64_t windowlessConfirmMs{20000};
 };
 enum class OkuFlowSiblingVerdict {
     Windowed,               // A visible window: the user can close it; never terminated.
@@ -325,17 +333,27 @@ struct LeftoverInstanceStopRequest {
     std::wstring expectedImage;   // Empty: this process's canonical image.
     std::wstring bundledAdbImage; // Empty: <this image's directory>\platform-tools\adb.exe.
     std::chrono::milliseconds exitWait{2000};
+    // Every wait observes this (application shutdown).
+    const std::atomic<bool>* canceled{nullptr};
+    // Test seams: the visible-window check made right before termination,
+    // and a termination Windows refuses (to reach the adb-child step).
+    std::function<bool(DWORD processId)> visibleWindowForTest;
+    bool refuseTerminationForTest{false};
 };
 enum class LeftoverInstanceStopStatus {
     Stopped,          // The leftover instance exited.
     AdbChildStopped,  // The instance could not be stopped; its exact adb child was.
-    Refused,          // Neither could be stopped: the user is told.
-    IdentityChanged   // Not the observed process any more: nothing done.
+    Refused,          // Neither could be stopped (or the process cannot be opened): the user is told.
+    IdentityChanged   // Not the observed process or state any more (also a window appeared): nothing done.
 };
 LeftoverInstanceStopStatus StopLeftoverOkuFlowInstance(const LeftoverInstanceStopRequest& request);
-// The adb-child step alone (also used by tests).
+// The adb-child step alone (also used by tests). The parent is opened and
+// held for the whole step and must still live with exactly
+// `parentCreation`; otherwise nothing is stopped (a reused PID's children
+// are never walked).
 bool StopLeftoverAdbChild(DWORD parentId, std::uint64_t parentCreation, const std::wstring& bundledAdbImage,
-                          std::chrono::milliseconds exitWait = std::chrono::milliseconds(2000));
+                          std::chrono::milliseconds exitWait = std::chrono::milliseconds(2000),
+                          const std::atomic<bool>* canceled = nullptr);
 
 } // namespace okuflow
 #endif

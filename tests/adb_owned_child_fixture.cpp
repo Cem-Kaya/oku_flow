@@ -13,11 +13,21 @@
 //       [--fixture-slow-version <ms>]  (host:version answers after <ms>; listings stay prompt)
 // Tests may run a copy of this executable named adb.exe so the production
 // image rule (adb.exe) is exercised without any hook.
+// Sibling modes (windowless; hidden windows are never shown):
+//   instance <tag> <exiting 0|1> <readyFile> [childReady]
+//       registered instance; optionally with a `sleep` child of this image
+//   instance-windows <tag> <stuck 0|1> <readyFile>
+//       registered instance with a hidden pumping top-level window and, when
+//       stuck, a hidden top-level window on a thread that never pumps
+//   spawn <childReady> <parentReady>
+//       start `exit-after 3000 <childReady>` outside any job, then exit
 #include "okuflow/capture/adb_owned_server.hpp"
 
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <thread>
 
 namespace {
 bool WritePid(const wchar_t* path)
@@ -36,6 +46,33 @@ bool FileExists(const wchar_t* path)
 void SleepForever()
 {
     for (;;) Sleep(50);
+}
+LRESULT CALLBACK FixtureWindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    return DefWindowProcW(window, message, wParam, lParam);
+}
+// A hidden top-level window (never shown, no taskbar entry).
+HWND CreateHiddenWindow()
+{
+    static const ATOM atom = [] {
+        WNDCLASSW type{};
+        type.lpfnWndProc = FixtureWindowProc;
+        type.hInstance = GetModuleHandleW(nullptr);
+        type.lpszClassName = L"OkuFlowSiblingFixture";
+        return RegisterClassW(&type);
+    }();
+    if (!atom) return nullptr;
+    return CreateWindowExW(WS_EX_TOOLWINDOW, L"OkuFlowSiblingFixture", L"", WS_POPUP, 0, 0, 1, 1, nullptr,
+                           nullptr, GetModuleHandleW(nullptr), nullptr);
+}
+bool RegisterInstance(const std::wstring& tag, bool exiting)
+{
+    const auto pid = std::to_wstring(GetCurrentProcessId());
+    HANDLE registered = CreateEventW(nullptr, TRUE, FALSE, (L"Local\\OkuFlow.Instance." + tag + L"." + pid).c_str());
+    HANDLE exitEvent = CreateEventW(nullptr, TRUE, FALSE, (L"Local\\OkuFlow.Exiting." + tag + L"." + pid).c_str());
+    if (!registered || !exitEvent) return false;
+    if (exiting) SetEvent(exitEvent);
+    return true; // Both handles stay open for the life of the process.
 }
 bool ReadSocket(SOCKET socket, char* bytes, int count)
 {
@@ -164,14 +201,50 @@ int wmain(int count, wchar_t** arguments)
     // instance <tag> <exiting 0|1> <readyFile>: a windowless registered
     // OkuFlow-like instance (the named events of OkuFlowInstanceRegistration).
     if (mode == L"instance" && count >= 5) {
-        const auto pid = std::to_wstring(GetCurrentProcessId());
-        const std::wstring tag = arguments[2];
-        HANDLE registered = CreateEventW(nullptr, TRUE, FALSE, (L"Local\\OkuFlow.Instance." + tag + L"." + pid).c_str());
-        HANDLE exiting = CreateEventW(nullptr, TRUE, FALSE, (L"Local\\OkuFlow.Exiting." + tag + L"." + pid).c_str());
-        if (!registered || !exiting) return 6;
-        if (std::wstring(arguments[3]) == L"1") SetEvent(exiting);
+        if (!RegisterInstance(arguments[2], std::wstring(arguments[3]) == L"1")) return 6;
+        std::unique_ptr<okuflow::OwnedChildProcess> child;
+        if (count >= 6) {
+            wchar_t self[32768]{};
+            if (!GetModuleFileNameW(nullptr, self, 32768)) return 3;
+            child = okuflow::OwnedChildProcess::Launch({self, {L"sleep", arguments[5]}, {}, {}});
+            if (!child) return 4;
+            for (int waited = 0; waited < 100 && !FileExists(arguments[5]); ++waited) Sleep(20);
+        }
         if (!WritePid(arguments[4])) return 3;
         SleepForever();
+    }
+    if (mode == L"instance-windows" && count >= 5) {
+        if (!RegisterInstance(arguments[2], false)) return 6;
+        std::atomic<HWND> stuck{nullptr};
+        if (std::wstring(arguments[3]) == L"1") {
+            // Created on a thread that never reads its messages.
+            std::thread([&stuck] { stuck.store(CreateHiddenWindow()); SleepForever(); }).detach();
+            for (int waited = 0; waited < 100 && !stuck.load(); ++waited) Sleep(20);
+            if (!stuck.load()) return 5;
+        }
+        HWND pumping = CreateHiddenWindow();
+        if (!pumping) return 5;
+        // First in z-order, so a scan that stops at the first window sees it.
+        SetWindowPos(pumping, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        if (!WritePid(arguments[4])) return 3;
+        MSG message{};
+        while (GetMessageW(&message, nullptr, 0, 0) > 0) DispatchMessageW(&message);
+        return 0;
+    }
+    if (mode == L"spawn" && count >= 4) {
+        wchar_t self[32768]{};
+        if (!GetModuleFileNameW(nullptr, self, 32768)) return 3;
+        std::wstring command = L"\"" + std::wstring(self) + L"\" exit-after 3000 \"" + arguments[2] + L"\"";
+        STARTUPINFOW startup{sizeof(startup)};
+        PROCESS_INFORMATION process{};
+        if (!CreateProcessW(self, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr,
+                            &startup, &process))
+            return 4;
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+        for (int waited = 0; waited < 100 && !FileExists(arguments[2]); ++waited) Sleep(20);
+        if (!WritePid(arguments[3])) return 3;
+        return 0;
     }
     if (mode == L"exit-after" && count >= 4) {
         if (!WritePid(arguments[3])) return 3;

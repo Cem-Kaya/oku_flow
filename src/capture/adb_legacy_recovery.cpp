@@ -933,8 +933,11 @@ DefaultAdbStopResult TryStopDefaultAdbServer(const DefaultAdbStopRequest& reques
     result.terminated = true;
     const auto deadline = Clock::now() + ClampMs(request.exitWait, std::chrono::milliseconds(50),
                                                  std::chrono::milliseconds(5000));
-    while (Clock::now() < deadline && ProcessAlive(process.handle))
+    while (Clock::now() < deadline && ProcessAlive(process.handle) && !canceled())
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (ProcessAlive(process.handle) && canceled()) {
+        result.status = S::Canceled; result.diagnostic += " terminated; exit wait canceled"; return result;
+    }
     result.status = ProcessAlive(process.handle) ? S::Failed : S::Stopped;
     result.diagnostic += result.status == S::Stopped ? " terminated through its exact handle"
                                                      : " did not exit after termination";
@@ -1007,15 +1010,43 @@ std::wstring OwnCanonicalImage()
     return image;
 }
 
-struct AnyWindowSearch { DWORD pid{0}; HWND window{nullptr}; };
-BOOL CALLBACK FindAnyTopLevelWindow(HWND window, LPARAM parameter)
+// Every top-level window of the process (bounded): a stuck UI thread is not
+// vouched for by a hidden helper window of another thread that still pumps.
+struct TopLevelWindowSearch { DWORD pid{0}; std::vector<HWND> windows; };
+BOOL CALLBACK CollectTopLevelWindows(HWND window, LPARAM parameter)
 {
-    auto* search = reinterpret_cast<AnyWindowSearch*>(parameter);
+    auto* search = reinterpret_cast<TopLevelWindowSearch*>(parameter);
     DWORD owner = 0;
     GetWindowThreadProcessId(window, &owner);
-    if (owner != search->pid) return TRUE;
-    search->window = window;
-    return FALSE;
+    if (owner == search->pid) search->windows.push_back(window);
+    return search->windows.size() < 32 ? TRUE : FALSE;
+}
+bool StopRequested(const std::atomic<bool>* canceled) { return canceled && canceled->load(); }
+// WM_NULL within 1 s, sent in 100 ms slices that observe cancellation.
+bool AnswersWindowMessage(HWND window, const std::atomic<bool>* canceled)
+{
+    for (int slice = 0; slice < 10; ++slice) {
+        if (StopRequested(canceled)) return false;
+        DWORD_PTR answer = 0;
+        SetLastError(ERROR_SUCCESS);
+        if (SendMessageTimeoutW(window, WM_NULL, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 100, &answer)) return true;
+        // Hung (not pumping for 5 s) or gone: no point in waiting longer.
+        if (GetLastError() != ERROR_TIMEOUT || !IsWindow(window)) return false;
+    }
+    return false;
+}
+// Waits for a process to exit in short slices that observe cancellation.
+void WaitForExit(HANDLE process, std::chrono::milliseconds wait, const std::atomic<bool>* canceled)
+{
+    const auto deadline = Clock::now() + wait;
+    while (Clock::now() < deadline && !StopRequested(canceled) &&
+           WaitForSingleObject(process, 20) == WAIT_TIMEOUT) {}
+}
+bool HasVisibleWindow(DWORD pid)
+{
+    VisibleWindowSearch visible{pid};
+    EnumWindows(FindVisibleWindow, reinterpret_cast<LPARAM>(&visible));
+    return visible.found;
 }
 } // namespace
 
@@ -1060,7 +1091,8 @@ void OkuFlowInstanceRegistration::SignalExiting()
     if (exiting_) SetEvent(exiting_);
 }
 
-std::vector<OkuFlowSiblingObservation> ObserveOkuFlowSiblings(const std::wstring& image, const std::wstring& tag)
+std::vector<OkuFlowSiblingObservation> ObserveOkuFlowSiblings(const std::wstring& image, const std::wstring& tag,
+                                                               const std::atomic<bool>* canceled)
 {
     std::vector<OkuFlowSiblingObservation> result;
     std::wstring wantedImage = image;
@@ -1091,6 +1123,7 @@ std::vector<OkuFlowSiblingObservation> ObserveOkuFlowSiblings(const std::wstring
     std::vector<unsigned char> currentSid;
     if (!ProcessIdToSessionId(currentPid, &currentSession) || !CurrentUserSid(&currentSid, nullptr)) return result;
     for (const auto& [pid, name] : names) {
+        if (StopRequested(canceled)) break;
         if (pid == currentPid || ancestors.contains(pid) || !EqualNoCase(name, wantedName)) continue;
         DWORD session = 0;
         if (!ProcessIdToSessionId(pid, &session) || session != currentSession) continue;
@@ -1113,14 +1146,16 @@ std::vector<OkuFlowSiblingObservation> ObserveOkuFlowSiblings(const std::wstring
             HandleGuard exiting{OpenEventW(SYNCHRONIZE, FALSE, OkuFlowInstanceObjectName(true, wantedTag, pid).c_str())};
             sibling.exiting = exiting.handle && WaitForSingleObject(exiting.handle, 0) == WAIT_OBJECT_0;
         }
-        VisibleWindowSearch visible{pid};
-        EnumWindows(FindVisibleWindow, reinterpret_cast<LPARAM>(&visible));
-        sibling.hasVisibleWindow = visible.found;
-        AnyWindowSearch any{pid};
-        EnumWindows(FindAnyTopLevelWindow, reinterpret_cast<LPARAM>(&any));
-        DWORD_PTR answer = 0;
-        sibling.answersWindowMessage = any.window &&
-            SendMessageTimeoutW(any.window, WM_NULL, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &answer) != 0;
+        sibling.hasVisibleWindow = HasVisibleWindow(pid);
+        // A visible window is the user's to close whatever it answers: no
+        // message (up to a second each on the discovery worker).
+        if (!sibling.hasVisibleWindow) {
+            TopLevelWindowSearch windows{pid};
+            EnumWindows(CollectTopLevelWindows, reinterpret_cast<LPARAM>(&windows));
+            sibling.answersWindowMessage = !windows.windows.empty() &&
+                std::all_of(windows.windows.begin(), windows.windows.end(),
+                            [&](HWND window) { return AnswersWindowMessage(window, canceled); });
+        }
         result.push_back(sibling);
     }
     return result;
@@ -1150,10 +1185,20 @@ OkuFlowSiblingVerdict ClassifyOkuFlowSibling(const OkuFlowSiblingObservation& o,
 }
 
 bool StopLeftoverAdbChild(DWORD parentId, std::uint64_t parentCreation, const std::wstring& bundledAdbImage,
-                          std::chrono::milliseconds exitWait)
+                          std::chrono::milliseconds exitWait, const std::atomic<bool>* canceled)
 {
     std::wstring wantedImage;
-    if (!CanonicalFilePath(bundledAdbImage, &wantedImage)) return false;
+    if (StopRequested(canceled) || !CanonicalFilePath(bundledAdbImage, &wantedImage)) return false;
+    // The parent is held for the whole step: its PID cannot be reused while
+    // the children are walked, and it must still be the observed process.
+    HandleGuard parent{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, parentId)};
+    if (!parent.handle) return false;
+    {
+        FILETIME created{}, exited{}, kernel{}, user{};
+        if (!GetProcessTimes(parent.handle, &created, &exited, &kernel, &user) || !ProcessAlive(parent.handle) ||
+            CreationTicks(created) != parentCreation)
+            return false;
+    }
     HandleGuard snapshot{CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)};
     if (snapshot.handle == INVALID_HANDLE_VALUE) return false;
     std::vector<DWORD> children;
@@ -1165,6 +1210,7 @@ bool StopLeftoverAdbChild(DWORD parentId, std::uint64_t parentCreation, const st
     } while (Process32NextW(snapshot.handle, &entry));
     bool stopped = false;
     for (const DWORD child : children) {
+        if (StopRequested(canceled)) break;
         HandleGuard process{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE | PROCESS_TERMINATE,
                                         FALSE, child)};
         if (!process.handle) continue;
@@ -1176,7 +1222,7 @@ bool StopLeftoverAdbChild(DWORD parentId, std::uint64_t parentCreation, const st
         std::wstring image;
         if (!ProcessCanonicalImage(process.handle, &image) || !EqualNoCase(image, wantedImage)) continue;
         if (!TerminateProcess(process.handle, 1)) continue;
-        WaitForSingleObject(process.handle, static_cast<DWORD>(exitWait.count()));
+        WaitForExit(process.handle, exitWait, canceled);
         stopped = stopped || !ProcessAlive(process.handle);
     }
     return stopped;
@@ -1192,23 +1238,29 @@ LeftoverInstanceStopStatus StopLeftoverOkuFlowInstance(const LeftoverInstanceSto
         ? JoinPath(JoinPath(DirName(expectedImage), L"platform-tools"), L"adb.exe") : request.bundledAdbImage;
     HandleGuard process{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE | PROCESS_TERMINATE,
                                     FALSE, request.processId)};
-    bool canTerminate = process.handle != nullptr;
+    bool canTerminate = process.handle != nullptr && !request.refuseTerminationForTest;
     if (!process.handle)
         process.handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, request.processId);
-    if (!process.handle)
-        return StopLeftoverAdbChild(request.processId, request.creation, bundledAdb, request.exitWait)
-            ? S::AdbChildStopped : S::Refused;
+    // Not even the identity can be checked (or the process is gone): stop
+    // nothing. Whoever has that PID now is not walked for children.
+    if (!process.handle) return S::Refused;
     FILETIME created{}, exited{}, kernel{}, user{};
     std::wstring image;
     if (!GetProcessTimes(process.handle, &created, &exited, &kernel, &user) || !ProcessAlive(process.handle) ||
         CreationTicks(created) != request.creation || !ProcessCanonicalImage(process.handle, &image) ||
         !EqualNoCase(image, expectedImage))
         return S::IdentityChanged;
+    if (StopRequested(request.canceled)) return S::IdentityChanged;
+    // A window that appeared since the observation is the user's to close.
+    const bool visibleNow = request.visibleWindowForTest ? request.visibleWindowForTest(request.processId)
+                                                         : HasVisibleWindow(request.processId);
+    if (visibleNow) return S::IdentityChanged;
     if (canTerminate && TerminateProcess(process.handle, 1)) {
-        WaitForSingleObject(process.handle, static_cast<DWORD>(request.exitWait.count()));
+        WaitForExit(process.handle, request.exitWait, request.canceled);
         if (!ProcessAlive(process.handle)) return S::Stopped;
     }
-    return StopLeftoverAdbChild(request.processId, request.creation, bundledAdb, request.exitWait)
+    // Still holding the parent handle whose creation and image matched.
+    return StopLeftoverAdbChild(request.processId, request.creation, bundledAdb, request.exitWait, request.canceled)
         ? S::AdbChildStopped : S::Refused;
 }
 
