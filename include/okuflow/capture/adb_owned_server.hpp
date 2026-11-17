@@ -152,9 +152,10 @@ public:
     // Lock-free: readable while a worker holds the manager through a launch.
     int UnansweredStarts() const { return unansweredStarts_.load(); }
     // The same count, for a manager that is about to be dropped (the caller
-    // keeps it): also a child that died before it ever answered and was not
-    // counted yet, and one dropped alive past its readiness deadline
-    // without ever answering.
+    // keeps it, then calls Stop): also a child that died before it ever
+    // answered and was not counted yet, and one dropped alive past its
+    // readiness deadline without ever answering. Interrupts work in flight
+    // first, as Stop does (the manager serves nothing afterwards).
     int UnansweredStartsAtRetirement();
 private:
     bool Canceled(const std::atomic<bool>* canceled) const

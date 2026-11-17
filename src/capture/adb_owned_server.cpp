@@ -438,6 +438,10 @@ void OwnedAdbServer::CountUnansweredLocked()
 
 int OwnedAdbServer::UnansweredStartsAtRetirement()
 {
+    // The manager is about to be stopped: work in flight on it (a launch, a
+    // readiness or confirmation wait) is interrupted first, as Stop() does,
+    // so this never waits for it.
+    stopRequested_.store(true);
     std::lock_guard lock(mutex_);
     CountUnansweredLocked();
     // A child dropped alive past its readiness deadline without ever
