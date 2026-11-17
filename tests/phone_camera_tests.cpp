@@ -110,7 +110,8 @@ public:
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             const auto listenPortNow = server.serverPort();
             while (!stopped.load() && !closeListener.load()) {
-                if (!server.hasPendingConnections() && !server.waitForNewConnection(20)) continue;
+                PumpStream();
+                if (!server.hasPendingConnections() && !server.waitForNewConnection(streamControl ? 5 : 20)) continue;
                 std::unique_ptr<QTcpSocket> socket(server.nextPendingConnection());
                 // Gone from the listener table before it answers this request.
                 bool reopen = false;
@@ -124,6 +125,11 @@ public:
                     ++bufferedRequests;
                 }
                 try { Serve(*socket); } catch (...) {}
+                // A streaming companion's channels stay open beside the
+                // requests that follow (served by this same thread).
+                if (keepRole == 1) { streamControl = std::move(socket); streamVideo.reset(); streamStarted = false; controlBuffer.clear(); }
+                else if (keepRole == 2) streamVideo = std::move(socket);
+                keepRole = 0;
                 // An adb the lookup cannot identify: gone at every ask, back
                 // at the next listing.
                 if (reopen) {
@@ -131,6 +137,8 @@ public:
                     if (!server.listen(QHostAddress::LocalHost, listenPortNow)) closeListener.store(true);
                 }
             }
+            streamVideo.reset();
+            streamControl.reset();
         });
         port = future.get();
         if (!port) throw std::runtime_error("Cannot listen on test socket");
@@ -173,6 +181,16 @@ public:
     std::atomic<bool> secondUsbPhone{false};
     // adb FAIL texts often carry the serial: the trace must not.
     std::atomic<bool> reconnectFailsWithSerial{false};
+    // After round 10: a companion that streams. A session's control hello
+    // is answered with a token, its video channel is bound, and after the
+    // start command the access units given here (H.264, from
+    // data/phone-camera.h264) are sent in a loop at about 30 frames per
+    // second. Discovery's probes are answered as before.
+    std::atomic<bool> streaming{false};
+    std::vector<QByteArray> accessUnits;
+    std::atomic<int> videoPacketsSent{0};
+    // The companion's listener is closed (adbd refuses it at once).
+    std::atomic<bool> companionRefuses{false};
     std::string problemCode;
     std::string shellFactsLater;
     std::string shellFacts{"W:\n  mWakefulness=Awake\nK:\n mShowingLockscreen=false\nP:\npackage:/data/app/base.apk\nR:\nOKUFLOW_FACTS_END\n"};
@@ -205,6 +223,56 @@ private:
         socket.write(bytes);
         while (socket.bytesToWrite() && !stopped.load()) socket.waitForBytesWritten(20);
     }
+    void WritePacket(QTcpSocket& socket, quint16 type, const QByteArray& body) {
+        QByteArray packet(8, 0);
+        qToLittleEndian<quint16>(type, packet.data());
+        qToLittleEndian<quint32>(static_cast<quint32>(body.size()), packet.data() + 4);
+        Write(socket, packet + body);
+    }
+    // The streaming companion, between requests on the worker thread:
+    // commands are read (a start is answered with the stream's
+    // configuration) and the next access unit is sent when it is due.
+    void PumpStream() {
+        if (!streamControl) return;
+        if (!streamControl->bytesAvailable()) streamControl->waitForReadyRead(1);
+        if (streamControl->state() != QAbstractSocket::ConnectedState) {
+            streamVideo.reset(); streamControl.reset(); streamStarted = false; controlBuffer.clear();
+            return;
+        }
+        controlBuffer += streamControl->readAll();
+        while (controlBuffer.size() >= 8) {
+            const auto size = qFromLittleEndian<quint32>(controlBuffer.constData() + 4);
+            if (controlBuffer.size() < 8 + static_cast<qsizetype>(size)) break;
+            const auto body = controlBuffer.mid(8, size);
+            controlBuffer.remove(0, 8 + size);
+            if (body.contains(R"("op":"start")") && !streamStarted) {
+                streamStarted = true;
+                streamSequence = 0;
+                streamTimestampUs = 0;
+                WritePacket(*streamControl, 3, R"({"event":"configured","width":64,"height":48,"fps":30,"mime":"video/avc","generation":1})");
+            }
+        }
+        if (!streamStarted || !streamVideo || accessUnits.empty()) return;
+        if (streamVideo->state() != QAbstractSocket::ConnectedState) { streamVideo.reset(); return; }
+        const auto now = std::chrono::steady_clock::now();
+        if (now - lastStreamFrame < std::chrono::milliseconds(33)) return;
+        lastStreamFrame = now;
+        QByteArray data(20, 0);
+        qToLittleEndian<qint64>(streamTimestampUs, data.data());
+        qToLittleEndian<qint64>(streamSequence, data.data() + 8);
+        qToLittleEndian<quint32>(1, data.data() + 16);
+        data += accessUnits[static_cast<size_t>(streamSequence) % accessUnits.size()];
+        ++streamSequence;
+        streamTimestampUs += 33333;
+        WritePacket(*streamVideo, 6, data);
+        ++videoPacketsSent;
+    }
+    int keepRole{0};
+    std::unique_ptr<QTcpSocket> streamControl, streamVideo;
+    QByteArray controlBuffer;
+    bool streamStarted{false};
+    qint64 streamSequence{0}, streamTimestampUs{0};
+    std::chrono::steady_clock::time_point lastStreamFrame{};
     void Serve(QTcpSocket& socket) {
         // EnsureAdbServer opens a harmless TCP probe with no data.
         if (!socket.bytesAvailable() && !socket.waitForReadyRead(100)) return;
@@ -312,7 +380,7 @@ private:
             return;
         }
         if (next != "localabstract:okuflow_camera") return;
-        if (launchMode != LaunchMode::None && !launchReady) {
+        if (companionRefuses.load() || (launchMode != LaunchMode::None && !launchReady)) {
             const QByteArray message("listener absent");
             Write(socket, "FAIL" + QByteArray::number(message.size(), 16).rightJustified(4, '0') + message);
             return;
@@ -322,6 +390,13 @@ private:
         const auto body = Read(socket, static_cast<int>(qFromLittleEndian<quint32>(header.constData() + 8)));
         if (body.contains("probe")) ++probes;
         hello.store(true);
+        if (streaming.load() && !body.contains("probe")) {
+            // Role 1: the session's control channel; role 2: its video channel.
+            keepRole = qFromLittleEndian<quint16>(header.constData() + 6) == 2 ? 2 : 1;
+            WritePacket(socket, 1, keepRole == 2 ? QByteArray(R"({"channel":"video"})")
+                                                 : QByteArray(R"({"protocol":1,"token":"stream","cameras":[{"id":"0"}]})"));
+            return;
+        }
         // A stalled transport stalls the companion channel too, except when the
         // fixture models a session another host claimed in the meantime.
         if (stall || (deviceStalled.load() && recoveryMode != RecoveryMode::CompanionBusy)) {
@@ -630,6 +705,38 @@ bool Saw(const std::vector<okuflow::PhoneLinkReport>& reports, okuflow::PhoneLin
 bool Saw(const std::vector<okuflow::PhoneLinkReport>& reports, okuflow::PhoneLinkDiagnosis diagnosis)
 {
     return std::any_of(reports.begin(), reports.end(), [&](const auto& r) { return r.decision.diagnosis == diagnosis; });
+}
+// The four access units of an Annex B H.264 test file (split at the access
+// unit delimiters), for the streaming FakePhoneAdb.
+std::vector<QByteArray> H264AccessUnits(const QString& path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) return {};
+    const auto bytes = file.readAll();
+    const QByteArray delimiter("\0\0\0\1\x09", 5);
+    std::vector<qsizetype> starts;
+    for (qsizetype pos = 0; (pos = bytes.indexOf(delimiter, pos)) >= 0; pos += delimiter.size()) starts.push_back(pos);
+    starts.push_back(bytes.size());
+    std::vector<QByteArray> units;
+    for (size_t index = 0; index + 1 < starts.size(); ++index)
+        units.push_back(bytes.mid(starts[index], starts[index + 1] - starts[index]));
+    return units;
+}
+// COM and Media Foundation for a real phone session's decoder (production:
+// the capture code starts them).
+struct ScopedMediaFoundation {
+    ScopedMediaFoundation()
+        : com(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))), mf(SUCCEEDED(MFStartup(MF_VERSION))) {}
+    ~ScopedMediaFoundation() { if (mf) MFShutdown(); if (com) CoUninitialize(); }
+    bool com{false};
+    bool mf{false};
+};
+okuflow::CameraDescriptor FixturePhone()
+{
+    okuflow::CameraDescriptor phone;
+    phone.phoneSerial = "abc";
+    phone.symbolicLink = L"okuflow-phone:abc";
+    return phone;
 }
 } // namespace
 
@@ -4240,19 +4347,22 @@ private slots:
         QVERIFY(!PhoneSessionBlocksStop(true, now - okuflow::kLivePhoneSessionFrameMs, now)); // Reconnecting: frames stopped.
         QVERIFY(!PhoneSessionBlocksStop(false, now - 100, now));                            // Ended a moment ago.
     }
-    void stopsAreRefusedWhileAPhoneSessionIsRegistered_data() {
+    void stopsAreRefusedWhileAPhoneSessionIsLive_data() {
         QTest::addColumn<QString>("action");
         QTest::newRow("ask the default to exit") << QStringLiteral("ask");
         QTest::newRow("terminate the default") << QStringLiteral("terminate");
     }
-    void stopsAreRefusedWhileAPhoneSessionIsRegistered() {
+    void stopsAreRefusedWhileAPhoneSessionIsLive() {
         // Iteration 9 (A9): the termination executor never looked at the
         // sessions, and the doctor's "a live session" measured presented
         // frames (none behind a PDF page): a hidden live session's server
         // could be stopped. Ask and terminate refuse while a phone session
         // is live (delivering frames; the hook reports one), as aborted
         // stops: the rung ends in the sentence, never in a stop. (The
-        // session goes live between the decision and the stop.)
+        // session goes live between the decision and the stop.) Renamed
+        // after round 10 (it said "registered", the rule the orchestrator
+        // reverted); onlyALiveRealSessionKeepsAConfirmedHungDefault covers
+        // the same refusal with real sessions.
         QFETCH(QString, action);
         const bool ask = action == QStringLiteral("ask");
         auto session = std::make_shared<std::atomic<bool>>(false);
@@ -4279,8 +4389,262 @@ private slots:
                 std::chrono::steady_clock::now() - started > std::chrono::seconds(60); });
         QCOMPARE(int(later.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone));
         QTest::qWait(300);
-        QVERIFY2(!fixture.Exited(), "The server of a registered session was stopped.");
-        QVERIFY2(!QFile::exists(killLog), "host:kill was sent while a session was registered.");
+        QVERIFY2(!fixture.Exited(), "The server of a live session was stopped.");
+        QVERIFY2(!QFile::exists(killLog), "host:kill was sent while a session was live.");
+    }
+    // ---- After round 10 (final council) ----
+    void interruptedPrivateServerStartIsNotCountedAtRetirement_data() {
+        QTest::addColumn<QString>("start");
+        QTest::newRow("interrupted inside its readiness wait") << QStringLiteral("interrupted");
+        QTest::newRow("readiness wait ran to its deadline") << QStringLiteral("deadline");
+        QTest::newRow("interrupted, then silent to a probe past the deadline") << QStringLiteral("probed");
+    }
+    void interruptedPrivateServerStartIsNotCountedAtRetirement() {
+        // After round 10 (1): a child retired alive and silent was counted as
+        // a failed launch by its age alone (past the readiness deadline),
+        // also when its readiness wait was cut short by a source change and
+        // never judged. Only what was observed counts now: a readiness wait
+        // that ran out, or a probe that found the child silent past it.
+        QFETCH(QString, start);
+        QTemporaryDir directory;
+        auto state = std::make_shared<OwnedLaunchState>();
+        state->fixture = OwnedChildFixturePath(); state->directory = directory.path();
+        QVERIFY(QFile::exists(state->fixture));
+        auto policy = TestOwnedPolicy(std::chrono::milliseconds(0));
+        policy.readinessDeadline = std::chrono::milliseconds(300);
+        policy.startGrace = std::chrono::minutes(10); // No count for a start grace here.
+        okuflow::OwnedAdbServer server(
+            [](std::uint16_t, const std::atomic<bool>*) { return okuflow::OwnedServerProbe::Unresponsive; },
+            [state](std::uint16_t port) { return state->Launch(port); },
+            [] { return PickTestPort(); }, [] { return false; }, policy);
+        using Result = okuflow::OwnedAdbServer::EnsureResult;
+        if (start == QStringLiteral("deadline")) {
+            QCOMPARE(int(server.EnsureRunning(nullptr)), int(Result::NotReady));
+        } else {
+            // The source changes 100 ms after the child was launched.
+            std::optional<std::chrono::steady_clock::time_point> launchedAt;
+            const auto stillWanted = [state, &launchedAt] {
+                if (state->launches.load() == 0) return true;
+                if (!launchedAt) launchedAt = std::chrono::steady_clock::now();
+                return std::chrono::steady_clock::now() - *launchedAt < std::chrono::milliseconds(100);
+            };
+            QCOMPARE(int(server.EnsureRunning(nullptr, true, stillWanted)), int(Result::Canceled));
+        }
+        QCOMPARE(server.LaunchCount(), 1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(400)); // Retired past the deadline.
+        if (start == QStringLiteral("probed"))
+            QCOMPARE(int(server.EnsureRunning(nullptr, false)), int(Result::NotReady));
+        QCOMPARE(server.UnansweredStartsAtRetirement(), start == QStringLiteral("interrupted") ? 0 : 1);
+        server.Stop();
+    }
+    void webcamReleaseOfAStartingPrivateServerCountsNothing() {
+        // After round 10 (1, 5): OkuFlow's private server beside a blind
+        // default was started and has not answered (its readiness wait ran
+        // out); the user picks a webcam. The release added the silent child
+        // to the launch failures (twice and the next phone pick said "cannot
+        // start"), and left the shadow flags set, so the empty default
+        // listing read as OkuFlow's own server recovering. (The child's
+        // version answers after 1100 ms while the file exists, past the probe
+        // budget.)
+        QTemporaryDir directory;
+        const QString slow = directory.filePath(QStringLiteral("slow"));
+        { QFile file(slow); QVERIFY(file.open(QIODevice::WriteOnly)); }
+        FakePhoneAdb other(false, false, false, FakePhoneAdb::LaunchMode::None,
+                           FakePhoneAdb::RecoveryMode::Healthy, false);
+        other.listEmpty.store(true);
+        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(),
+                              {L"--fixture-slow-version-file", slow.toStdWString()}, 5000, [](okuflow::PhoneAdbTestHooks& h) {
+            auto owned = FastOwnedPolicy();
+            owned.startGrace = std::chrono::minutes(10);
+            h.ownedPolicy = owned;
+        });
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto reports = LinkCycles(60, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::StartShadowServer; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::StartShadowServer));
+        QVERIFY(okuflow::OwnedAdbServerPort().has_value()); // Alive and silent past its readiness.
+        okuflow::PhoneDiscoveryStatus status{};
+        okuflow::PhoneCameraTransport::Enumerate({}, nullptr, nullptr, {}, &status, okuflow::PhoneServerIntent::ReleaseForWebcam);
+        QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
+        // Item 5: no private server shadows the default any more.
+        QCOMPARE(int(status), int(okuflow::PhoneDiscoveryStatus::Listed));
+        // Item 1: the user's choice says nothing about adb.exe.
+        const auto next = LinkCycles(1);
+        QCOMPARE(next.back().observation.serverLaunchFailures, 0);
+    }
+    void onlyALiveRealSessionKeepsAConfirmedHungDefault_data() {
+        QTest::addColumn<bool>("decoding");
+        QTest::newRow("registered without a frame: the hung default is stopped") << false;
+        QTest::newRow("decoding frames: the stop is refused") << true;
+    }
+    void onlyALiveRealSessionKeepsAConfirmedHungDefault() {
+        // After round 10 (2): the live-session rule had no test of its
+        // wiring (the executors' rows use a hook). A real session on the
+        // default-port fake: registered and silent (the companion's listener
+        // is closed, the session retries its connect), or decoding H.264
+        // frames. Then the default's listings fail until the hang is
+        // confirmed and the ladder decides to terminate it. The default's
+        // listener rows name a decoy adb.exe this test started, which the
+        // termination reaches through its exact handle.
+        QFETCH(bool, decoding);
+        const auto units = H264AccessUnits(QFINDTESTDATA("data/phone-camera.h264"));
+        QCOMPARE(units.size(), size_t{4});
+        ScopedMediaFoundation media;
+        QVERIFY(media.mf);
+        DefaultAdbFixture decoy({});
+        QVERIFY(decoy.copied && !decoy.Exited());
+        const DWORD decoyPid = decoy.child->ProcessId();
+        FakePhoneAdb fake(false, false, false, FakePhoneAdb::LaunchMode::None,
+                          FakePhoneAdb::RecoveryMode::Healthy, false);
+        fake.accessUnits = units;
+        fake.streaming.store(decoding);
+        fake.companionRefuses.store(!decoding);
+        const auto port = fake.port;
+        okuflow::SetTcpListenerRowsTransformForTest([port, decoyPid](std::vector<okuflow::TcpListenerRow>& rows) {
+            for (auto& row : rows) if (row.port == port) row.processId = decoyPid;
+        });
+        auto restore = qScopeGuard([] { okuflow::SetTcpListenerRowsTransformForTest({}); });
+        ScopedLinkHooks hooks(fake.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {}, 100);
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        okuflow::PhoneCameraTransport transport;
+        std::atomic<int> frames{0};
+        auto session = std::async(std::launch::async, [&] {
+            return transport.Start(FixturePhone(), nullptr, [&](okuflow::MediaFrame&&) { ++frames; }, {});
+        });
+        auto stopSession = qScopeGuard([&] { transport.Cancel(); session.wait(); transport.Stop(); });
+        if (decoding) {
+            QTRY_VERIFY_WITH_TIMEOUT(frames.load() >= 3, 4000);
+        } else {
+            // Registered, and retrying its connect to the closed listener.
+            QTRY_VERIFY_WITH_TIMEOUT(okuflow::ReadPhoneSessionStateForTest().registered &&
+                                     fake.ServiceCount(QStringLiteral("localabstract:okuflow_camera")) > 0, 3000);
+        }
+        QCOMPARE(okuflow::ReadPhoneSessionStateForTest().live, decoding);
+        fake.listingMode.store(3); // Closed at once: a failed listing, without a hang's time-out.
+        const auto started = std::chrono::steady_clock::now();
+        const auto reports = LinkCycles(60, [&](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::TerminateDefaultServer ||
+                std::chrono::steady_clock::now() - started > std::chrono::seconds(3); });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::TerminateDefaultServer));
+        QVERIFY2(okuflow::ReadPhoneSessionStateForTest().registered, "The session ended before the stop was decided.");
+        if (decoding) {
+            QCOMPARE(QString::fromStdString(reports.back().actionResult),
+                     QStringLiteral("kept: a live phone session uses the connection"));
+            QVERIFY2(!decoy.child->WaitForExit(std::chrono::milliseconds(300)), "The server of a live session was stopped.");
+            // The application reports the delivered frames: Connected.
+            okuflow::PhoneLinkRequest streaming;
+            streaming.sessionStreaming = true;
+            const auto next = LinkCycles(1, {}, "abc", &streaming);
+            QCOMPARE(int(next.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::Connected));
+        } else {
+            QVERIFY2(reports.back().actionResult != "kept: a live phone session uses the connection",
+                     "A registered session without a frame kept the hung default.");
+            QVERIFY2(decoy.child->WaitForExit(std::chrono::milliseconds(3000)), reports.back().actionResult.c_str());
+        }
+    }
+    void aSessionThatRegistersRightAfterALiveOneIsNotLive() {
+        // After round 10 (2): a decoded frame of a real session makes it
+        // live (the frame time is written where a frame is decoded), and the
+        // frame time is forgotten when the last session ends: a session that
+        // registers within 2 s of the previous one's last frame is starting,
+        // not live.
+        const auto units = H264AccessUnits(QFINDTESTDATA("data/phone-camera.h264"));
+        QCOMPARE(units.size(), size_t{4});
+        ScopedMediaFoundation media;
+        QVERIFY(media.mf);
+        FakePhoneAdb fake;
+        fake.accessUnits = units;
+        fake.streaming.store(true);
+        std::atomic<int> frames{0};
+        {
+            okuflow::PhoneCameraTransport first;
+            QVERIFY(first.Start(FixturePhone(), nullptr, [&](okuflow::MediaFrame&&) { ++frames; }, {}));
+            QTRY_VERIFY_WITH_TIMEOUT(frames.load() >= 3, 3000);
+            QVERIFY(okuflow::ReadPhoneSessionStateForTest().live);
+            first.Stop();
+        }
+        QVERIFY(!okuflow::ReadPhoneSessionStateForTest().registered);
+        fake.streaming.store(false);
+        fake.companionRefuses.store(true);
+        okuflow::PhoneCameraTransport second;
+        auto session = std::async(std::launch::async, [&] { return second.Start(FixturePhone(), nullptr, {}, {}); });
+        auto stopSession = qScopeGuard([&] { second.Cancel(); session.wait(); second.Stop(); });
+        QTRY_VERIFY_WITH_TIMEOUT(okuflow::ReadPhoneSessionStateForTest().registered, 3000);
+        QVERIFY2(!okuflow::ReadPhoneSessionStateForTest().live, "A starting session read as live from the previous session's frames.");
+    }
+    void terminationCanceledWithoutAStopIsGivenBack() {
+        // After round 10 (4): the live check suppressed the stop inside the
+        // termination (right before its first byte) and read false again
+        // right after: the outcome was Canceled, which spent one of the
+        // terminations without a stop. It is given back. (Cap 1: before,
+        // the hung default was never stopped.)
+        DefaultAdbFixture hung({L"--fixture-hang"});
+        QVERIFY(hung.copied && !hung.Exited());
+        auto fired = std::make_shared<std::atomic<bool>>(false);
+        auto liveReads = std::make_shared<std::atomic<int>>(0);
+        ScopedLinkHooks hooks(hung.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {},
+                              100, [fired, liveReads](okuflow::PhoneAdbTestHooks& h) {
+            // After the first connect a session reads live for the check
+            // before the first byte and the one after it (the stop is
+            // canceled), and not live from the executor's check right after.
+            h.afterHostKillConnectForTest = [fired, liveReads] { if (!fired->exchange(true)) liveReads->store(2); };
+            h.phoneSessionLiveForTest = [liveReads] {
+                int reads = liveReads->load();
+                while (reads > 0 && !liveReads->compare_exchange_weak(reads, reads - 1)) {}
+                return reads > 0;
+            };
+            h.linkPolicy->terminateCap = 1;
+        });
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto first = LinkCycles(12, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::TerminateDefaultServer; });
+        QCOMPARE(int(first.back().decision.action), int(okuflow::PhoneLinkAction::TerminateDefaultServer));
+        QVERIFY(fired->load());
+        QVERIFY2(first.back().actionResult.ends_with("no longer wanted; attempt given back"), first.back().actionResult.c_str());
+        QCOMPARE(liveReads->load(), 0);
+        QVERIFY(!hung.Exited());
+        const auto started = std::chrono::steady_clock::now();
+        const auto later = LinkCycles(60, [&](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::TerminateDefaultServer ||
+                r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone ||
+                std::chrono::steady_clock::now() - started > std::chrono::seconds(10); });
+        QCOMPARE(int(later.back().decision.action), int(okuflow::PhoneLinkAction::TerminateDefaultServer));
+        QVERIFY(hung.child->WaitForExit(std::chrono::milliseconds(3000)));
+    }
+    void transportReconnectIsNotWrittenAfterTheSourceChanged_data() {
+        QTest::addColumn<bool>("offline");
+        QTest::newRow("offline transport") << true;
+        QTest::newRow("stalled device") << false;
+    }
+    void transportReconnectIsNotWrittenAfterTheSourceChanged() {
+        // After round 10 (3): both reconnect paths checked the request's
+        // authority, then connected (which can wait) and wrote the request
+        // without asking again. The user changes the source between that
+        // connect and the write: nothing is written, the result is dropped.
+        QFETCH(bool, offline);
+        auto live = std::make_shared<std::atomic<std::uint64_t>>(1);
+        okuflow::PhoneLinkRequest request;
+        request.intentGeneration = 1;
+        request.liveIntentGeneration = live.get();
+        FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::None,
+                            offline ? FakePhoneAdb::RecoveryMode::Healthy : FakePhoneAdb::RecoveryMode::SelectionStalled, false);
+        if (offline) server.listingState.store(6);
+        auto connected = std::make_shared<std::atomic<int>>(0);
+        ScopedLinkHooks hooks(server.port, okuflow::PhoneAdbInterface::Present, {}, {}, 5000,
+                              [live, connected](okuflow::PhoneAdbTestHooks& h) {
+            h.afterReconnectConnectForTest = [live, connected] { ++*connected; live->store(2); };
+        });
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::Resume);
+        const auto reports = LinkCycles(12, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::ReconnectTransport; }, "abc", &request);
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::ReconnectTransport));
+        QCOMPARE(int(reports.back().decision.diagnosis),
+                 int(offline ? okuflow::PhoneLinkDiagnosis::Offline : okuflow::PhoneLinkDiagnosis::TransportStalled));
+        QCOMPARE(connected->load(), 1);
+        QCOMPARE(QString::fromStdString(reports.back().actionResult), QStringLiteral("dropped: the source changed"));
+        QTest::qWait(100);
+        QCOMPARE(server.reconnects.load(), 0);
+        for (const auto& service : server.Services()) QVERIFY2(!service.contains("reconnect"), qPrintable(service));
     }
     void refusedConnectWithOnlyAnIpv6RowIsNoListener() {
         // Iteration 9 (B3): an unrelated program listens on [::]:<port>
