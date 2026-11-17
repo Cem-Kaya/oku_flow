@@ -1924,6 +1924,57 @@ private slots:
         QTest::qWait(300);
         QVERIFY(!other.Exited());
     }
+    void terminationDoesNotRepeatHostKill() {
+        // C3: a blind default that ignores host:kill is terminated without a
+        // second host:kill to the same listener.
+        DefaultAdbFixture other({});
+        other.child.reset();
+        const QString log = other.File(QStringLiteral("kills.txt"));
+        other.flags = {L"--fixture-kill-log", log.toStdWString()};
+        QVERIFY(other.Start());
+        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString());
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto reports = LinkCycles(60, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::TerminateDefaultServer; });
+        QVERIFY(Saw(reports, okuflow::PhoneLinkAction::AskDefaultServerToExit));
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::TerminateDefaultServer));
+        QVERIFY2(reports.back().actionResult.find("terminated through its exact handle") != std::string::npos,
+                 reports.back().actionResult.c_str());
+        QVERIFY(other.child->WaitForExit(std::chrono::milliseconds(3000)));
+        QFile kills(log);
+        QVERIFY(kills.open(QIODevice::ReadOnly));
+        QCOMPARE(kills.readAll().count("host:kill"), qsizetype{1});
+    }
+    void companionInstalledTodayWhilePausedIsLaunchedOncePerEvent() {
+        // D1: no listener, the probe is refused, the app process runs.
+        FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::Blocked,
+                            FakePhoneAdb::RecoveryMode::Healthy, false);
+        server.SetShellFacts("W:\n mWakefulness=Awake\nK:\n mKeyguardShowing=false\nP:\npackage:/x\nR:\n4242\nEND\n");
+        ScopedLinkHooks hooks(server.port);
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto reports = LinkCycles(15);
+        QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::CompanionListenerClosed));
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::WaitForUser));
+        QCOMPARE(server.Launches().size(), qsizetype{1});
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::DeviceArrival);
+        LinkCycles(3);
+        QCOMPARE(server.Launches().size(), qsizetype{2});
+    }
+    void hangingCompanionListenerIsNamed() {
+        // A15: the listener exists and accepts, but never answers.
+        FakePhoneAdb server(false, true, false, FakePhoneAdb::LaunchMode::Play,
+                            FakePhoneAdb::RecoveryMode::Healthy, false);
+        server.SetShellFacts("W:\n mWakefulness=Awake\nK:\n mKeyguardShowing=false\nP:\npackage:/x\nR:\n4242\nEND\n");
+        ScopedLinkHooks hooks(server.port);
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto reports = LinkCycles(20, [](const auto& r) {
+            return r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::CompanionNotResponding; });
+        QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::CompanionNotResponding));
+        const auto launches = server.Launches().size();
+        QVERIFY(launches <= 2);
+        LinkCycles(4);
+        QCOMPARE(server.Launches().size(), launches); // No relaunch loop.
+    }
     void hostKillIsNeverSentToAnotherImage() {
         // C1/A6: a vendor-renamed server is never asked or terminated, and
         // the user is told at once instead of "Restoring" for ever.

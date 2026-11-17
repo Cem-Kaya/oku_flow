@@ -8,6 +8,7 @@
 // No real adb or window. Optional fake host mode binds only a private test port:
 //   -L tcp:<port> [--fixture-hang] [--fixture-exit-after-list] [--fixture-device]
 //       [--fixture-exit-on-kill] [--fixture-device-file <path>] [--fixture-fail-file <path>]
+//       [--fixture-kill-log <path>]   (one line per host:kill received)
 // Tests may run a copy of this executable named adb.exe so the production
 // image rule (adb.exe) is exercised without any hook.
 #include "okuflow/capture/adb_owned_server.hpp"
@@ -56,8 +57,16 @@ void Reply(SOCKET socket, const std::string& body)
 }
 struct FakeOptions {
     bool hang{false}, exitAfterList{false}, device{false}, exitOnKill{false};
-    std::wstring deviceFile, failFile;
+    std::wstring deviceFile, failFile, killLog;
 };
+void AppendLine(const std::wstring& path, const char* line)
+{
+    FILE* file = nullptr;
+    if (_wfopen_s(&file, path.c_str(), L"ab") != 0 || !file) return;
+    std::fputs(line, file);
+    std::fputc('\n', file);
+    std::fclose(file);
+}
 int FakeAdbServer(unsigned short port, const FakeOptions& options)
 {
     wchar_t emulatorSetting[8]{};
@@ -92,6 +101,7 @@ int FakeAdbServer(unsigned short port, const FakeOptions& options)
         std::string request(count, '\0');
         if (!ReadSocket(client, request.data(), static_cast<int>(count))) { closesocket(client); continue; }
         if (options.hang) SleepForever();
+        if (request == "host:kill" && !options.killLog.empty()) AppendLine(options.killLog, "host:kill");
         const bool listing = request == "host:track-devices-proto-binary" || request == "host:devices-l";
         const bool device = options.device || (!options.deviceFile.empty() && FileExists(options.deviceFile.c_str()));
         const bool failing = !options.failFile.empty() && FileExists(options.failFile.c_str());
@@ -132,6 +142,7 @@ int wmain(int count, wchar_t** arguments)
         else if (argument == L"--fixture-exit-on-kill") options.exitOnKill = true;
         else if (argument == L"--fixture-device-file" && i + 1 < count) options.deviceFile = arguments[++i];
         else if (argument == L"--fixture-fail-file" && i + 1 < count) options.failFile = arguments[++i];
+        else if (argument == L"--fixture-kill-log" && i + 1 < count) options.killLog = arguments[++i];
     }
     if (port) return FakeAdbServer(port, options);
     if (count < 3) return 2;

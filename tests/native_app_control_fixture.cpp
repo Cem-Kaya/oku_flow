@@ -128,6 +128,7 @@ public:
         QObject::connect(app.mainWindow_.get(),&MainWindow::phoneUsbRemoved,&app,&OkuFlowApp::OnPhoneUsbRemoval);
         QObject::connect(app.mainWindow_.get(),&MainWindow::systemSuspending,&app,&OkuFlowApp::OnSystemSuspend);
         QObject::connect(app.mainWindow_.get(),&MainWindow::systemResumed,&app,&OkuFlowApp::OnSystemResume);
+        QObject::connect(app.mainWindow_.get(),&MainWindow::windowActivationChanged,&app,&OkuFlowApp::OnWindowActivationChanged);
         app.pipelineOrchestrator_=std::make_unique<PipelineOrchestrator>(app,PipelineOrchestrator::Callbacks{});
         app.interactionController_=std::make_unique<InteractionController>(app);
         app.assistiveManager_=std::make_unique<AssistiveFeatureManager>(*app.uiState_->renderWidget_,app,
@@ -390,6 +391,7 @@ public:
         app.RecordStartupFirstPresent();
     }
     static bool ReconnectPending(OkuFlowApp& app) {return app.pipelineOrchestrator_->IsCameraReconnectPending();}
+    static void CancelReconnect(OkuFlowApp& app) {app.pipelineOrchestrator_->CancelCameraReconnect();}
     static int ReconnectAttempts(OkuFlowApp& app) {return app.pipelineOrchestrator_->CameraReconnectAttempt();}
     static bool CameraPending(OkuFlowApp& app) {
         return app.cameraStartupPending_ || app.cameraStopPending_ || app.startupWorkers_->active.load()!=0;
@@ -452,6 +454,43 @@ public:
         const auto initialized=app.initialized_;app.initialized_=true;
         app.mainWindow_->nativeEvent({},&message,nullptr);app.initialized_=initialized;
     }
+    // WM_POWERBROADCAST / PBT_POWERSETTINGCHANGE for the console display state.
+    static void ConsoleDisplay(OkuFlowApp& app,DWORD state) {
+        static const GUID kConsoleDisplayState{0x6fe69556,0x704a,0x47a0,{0x8f,0x24,0xc2,0x8d,0x93,0x6f,0xda,0x47}};
+        QByteArray bytes(int(offsetof(POWERBROADCAST_SETTING,Data)+sizeof(DWORD)),0);
+        auto* setting=reinterpret_cast<POWERBROADCAST_SETTING*>(bytes.data());
+        setting->PowerSetting=kConsoleDisplayState;setting->DataLength=sizeof(DWORD);
+        std::memcpy(setting->Data,&state,sizeof(state));
+        MSG message{};message.hwnd=reinterpret_cast<HWND>(app.mainWindow_->effectiveWinId());
+        message.message=WM_POWERBROADCAST;message.wParam=PBT_POWERSETTINGCHANGE;
+        message.lParam=reinterpret_cast<LPARAM>(bytes.data());
+        const auto initialized=app.initialized_;app.initialized_=true;
+        app.mainWindow_->nativeEvent({},&message,nullptr);app.initialized_=initialized;
+    }
+    // The real MainWindow signal; idleMs back-dates the deactivation.
+    static void Activation(OkuFlowApp& app,bool active,qint64 idleMs=0) {
+        const auto initialized=app.initialized_;app.initialized_=true;
+        emit app.mainWindow_->windowActivationChanged(active);
+        if (!active && idleMs) app.deactivatedAtMs_=QDateTime::currentMSecsSinceEpoch()-idleMs;
+        app.initialized_=initialized;
+    }
+    // One doctor verdict as the discovery worker would hand it to the UI.
+    static void SetPhoneDiagnosis(OkuFlowApp& app,PhoneLinkDiagnosis diagnosis,PhoneLinkAction action) {
+        app.phoneLinkKnown_=true;app.phoneLinkDecision_={};
+        app.phoneLinkDecision_.diagnosis=diagnosis;app.phoneLinkDecision_.action=action;
+        app.phoneLinkDecision_.nextPollMs=1;
+        app.UpdateProcessingStatusLabel();
+    }
+    static void ClearPhoneDiagnosis(OkuFlowApp& app) {app.phoneLinkKnown_=false;app.phoneLinkDecision_={};}
+    static QString StatusText(OkuFlowApp& app) {return app.uiState_->processingStatusLabel_->text();}
+    static QString StatusName(OkuFlowApp& app) {return app.uiState_->processingStatusLabel_->accessibleName();}
+    static QString PlaceholderTitle(OkuFlowApp& app) {return app.mainWindow_->cameraPlaceholderTitle_->text();}
+    static QString PlaceholderDetail(OkuFlowApp& app) {return app.mainWindow_->cameraPlaceholderDetail_->text();}
+    // A fallback webcam (index 0) is live while the phone stays the wanted camera.
+    static void FallbackWebcamLive(OkuFlowApp& app,bool live) {
+        app.cameraActive_=live;app.selectedCameraIndex_=live?0:1;
+    }
+    static void ExplicitWebcamChoice(OkuFlowApp& app) {app.automaticPhoneSelectionAllowed_=false;}
     // No real discovery is dispatched: the hold keeps the poll's cadence closed.
     static void HoldPhoneDiscovery(OkuFlowApp& app) {app.phoneDiscoveryTimer_.start();}
     static bool PhoneDiscoveryDue(const OkuFlowApp& app) {return !app.phoneDiscoveryTimer_.isValid();}
@@ -2408,6 +2447,71 @@ private slots:
         NativeControlFixture::HoldPhoneDiscovery(app_);
         NativeControlFixture::UsbArrival(app_,false,true,DBT_DEVICEREMOVECOMPLETE); // Not an ADB interface.
         QVERIFY(!NativeControlFixture::PhoneDiscoveryDue(app_));
+    }
+    void phoneSentenceIsShownAndSpokenForEveryDiagnosis() {
+        // B1/B2/E4 through the real UpdateCameraPlaceholder and
+        // UpdateProcessingStatusLabel: offscreen, no adb, no phone.
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::ClearPhoneDiagnosis(app_);
+            NativeControlFixture::FallbackWebcamLive(app_,false);
+            NativeControlFixture::ResetCameraFixture(app_);
+        });
+        NativeControlFixture::SeedPhoneSources(app_,[](const std::atomic<bool>&) {return true;});
+        NativeControlFixture::FallbackWebcamLive(app_,false);
+        for (int i=0;i<kPhoneLinkDiagnosisCount;++i) {
+            for (const auto action:{PhoneLinkAction::Relist,PhoneLinkAction::WaitForUser}) {
+                const auto diagnosis=static_cast<PhoneLinkDiagnosis>(i);
+                const auto expected=PhoneLinkPlaceholderText(diagnosis,
+                    PhoneLinkWaitsForUser(diagnosis)||action==PhoneLinkAction::WaitForUser);
+                NativeControlFixture::SetPhoneDiagnosis(app_,diagnosis,action);
+                if (expected.title.isEmpty()) continue;
+                const QByteArray name(PhoneLinkDiagnosisName(diagnosis).data());
+                QVERIFY2(NativeControlFixture::StatusText(app_)==expected.spoken,name.constData());
+                QVERIFY2(NativeControlFixture::StatusName(app_).contains(expected.spoken),name.constData());
+                QVERIFY2(NativeControlFixture::PlaceholderTitle(app_)==expected.title,name.constData());
+                QVERIFY2(NativeControlFixture::PlaceholderDetail(app_)==expected.detail,name.constData());
+            }
+        }
+        const QString replug=QStringLiteral("Unplug the phone's USB cable and plug it back in.");
+        // The phone sentence wins over the generic reconnect text.
+        NativeControlFixture::BeginReconnect(app_);
+        QVERIFY(NativeControlFixture::ReconnectPending(app_));
+        NativeControlFixture::SetPhoneDiagnosis(app_,PhoneLinkDiagnosis::ReplugCable,PhoneLinkAction::WaitForUser);
+        QCOMPARE(NativeControlFixture::StatusText(app_),replug);
+        QCOMPARE(NativeControlFixture::PlaceholderDetail(app_),replug);
+        NativeControlFixture::CancelReconnect(app_);
+        // Over a live fallback webcam the instruction stays in the status line.
+        NativeControlFixture::FallbackWebcamLive(app_,true);
+        NativeControlFixture::SetPhoneDiagnosis(app_,PhoneLinkDiagnosis::Unauthorized,PhoneLinkAction::WaitForUser);
+        QCOMPARE(NativeControlFixture::StatusText(app_),PhoneLinkPlaceholderText(PhoneLinkDiagnosis::Unauthorized,true).spoken);
+        NativeControlFixture::SetPhoneDiagnosis(app_,PhoneLinkDiagnosis::NotListedByServer,PhoneLinkAction::Relist);
+        QCOMPARE(NativeControlFixture::StatusText(app_),QStringLiteral("Restoring USB connection…"));
+        // Connected, or an explicit webcam choice, gives the line back.
+        NativeControlFixture::SetPhoneDiagnosis(app_,PhoneLinkDiagnosis::Connected,PhoneLinkAction::None);
+        QVERIFY(NativeControlFixture::StatusText(app_)!=QStringLiteral("Restoring USB connection…"));
+        NativeControlFixture::ExplicitWebcamChoice(app_);
+        NativeControlFixture::SetPhoneDiagnosis(app_,PhoneLinkDiagnosis::ReplugCable,PhoneLinkAction::WaitForUser);
+        QVERIFY(NativeControlFixture::StatusText(app_)!=replug);
+    }
+    void displayOnAndActivationAfterIdleReachTheApplication() {
+        // E4: the display-on power setting and activation after idle are link events.
+        NativeControlFixture::HoldPhoneDiscovery(app_);NativeControlFixture::FailPhoneRetry(app_);
+        NativeControlFixture::ConsoleDisplay(app_,1); // On without a preceding off: no event.
+        QVERIFY(!NativeControlFixture::PhoneDiscoveryDue(app_));
+        NativeControlFixture::ConsoleDisplay(app_,0);
+        QVERIFY(!NativeControlFixture::PhoneDiscoveryDue(app_));
+        NativeControlFixture::ConsoleDisplay(app_,1);
+        QVERIFY(NativeControlFixture::PhoneDiscoveryDue(app_));
+        QVERIFY(!NativeControlFixture::PhoneRetryBlocked(app_));
+        NativeControlFixture::HoldPhoneDiscovery(app_);NativeControlFixture::FailPhoneRetry(app_);
+        NativeControlFixture::Activation(app_,false,1000);
+        NativeControlFixture::Activation(app_,true); // Short absence: nothing.
+        QVERIFY(!NativeControlFixture::PhoneDiscoveryDue(app_));
+        NativeControlFixture::Activation(app_,false,130000);
+        NativeControlFixture::Activation(app_,true); // After two idle minutes: an event.
+        QVERIFY(NativeControlFixture::PhoneDiscoveryDue(app_));
+        QVERIFY(!NativeControlFixture::PhoneRetryBlocked(app_));
+        NativeControlFixture::HoldPhoneDiscovery(app_);
     }
     void usbReplugSelectsPhoneAfterManualWebcamButRepeatedDiscoveryDoesNot() {
         auto calls=std::make_shared<std::atomic<int>>(0);
