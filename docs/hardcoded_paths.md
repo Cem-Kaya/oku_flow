@@ -680,7 +680,15 @@ episode: 3 blind/stuck restarts, 2 `host:kill`, 3 terminations, 3 aborted stops
 (terminations aborted because the default answered its pre-stop listing and
 `host:kill` requests never sent to a default that still listens; counted apart from the caps, and apart for a
 hung default and for a takeover, they end in the other-program sentence too), 4 private server starts beside the
-default plus hand-backs. Windows interface Unknown
+default plus hand-backs. Iteration 8: an owned server whose listing fails
+while its version answers is restarted after the 5 s grace (15 s, then 60 s,
+3 per episode, then the re-plug sentence); a default whose listing fails on
+two listings spanning 5 s is a confirmed hang; starts of OkuFlow's own adb
+that stay silent past the 30 s start grace (one count per grace) or die
+before answering count with launch failures toward the AdbCannotStart
+sentence (2); resume signals within 5 s of the last applied resume are one
+event; 4 removals within 60 s name the cable until the link holds 10 s or no
+removal comes for 30 s. Windows interface Unknown
 (the SetupAPI query failed): after 30 s blind OkuFlow may start or restart its
 own server, never ask another to exit or stop it; that takeover, or a hung
 default unresponsive for 30 s, ends in the re-plug sentence. Companion problem

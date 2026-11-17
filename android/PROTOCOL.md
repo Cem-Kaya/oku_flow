@@ -239,8 +239,10 @@ listener is never terminated. Windows stops a default-port server only with
 phone-use intent, when no adb endpoint environment variable is set, no other
 device is in state DEVICE on that server (when it can still answer), and no
 live phone session needs it. It first sends `host:kill` where the server can
-still answer. It terminates only the exact process behind the IPv4 loopback
-listener, through a handle opened for that listener's owning process and
+still answer. It terminates only the exact process behind the listener OkuFlow
+reaches on `127.0.0.1` (the IPv4 loopback row; when there is none, the
+any-address row of that port, `0.0.0.0` or a dual-stack `::`), through a
+handle opened for that listener's owning process and
 re-verified (same PID and creation time as the identity observed when the
 decision was made, image file name `adb.exe`, not OkuFlow itself, still owning
 the listener), never by name, never a process tree. An endpoint set through
@@ -338,7 +340,10 @@ app process lives: a probe receives `{"protocol":1,"probe":true,"busy":false,
 belongs to the process, not to a screen: a supervisor started by the first
 component of the process keeps it bound every 500 ms while Pause is saved
 (retrying without a limit while the camera service still releases the socket)
-and closes it otherwise. Resume closes it synchronously before the camera
+and closes it otherwise. A listener whose accept loop ends by itself reports
+its end and frees the socket name; the supervisor binds a new one on its next
+tick while Pause stays saved, so the computer keeps telling "paused" from "app
+not running". Resume closes it synchronously before the camera
 service can start and bind the socket; if Resume cannot be saved, it is bound
 again. Compatibility: older hosts treat the
 unknown `paused` code as "not ready" and never start; newer hosts with an older
@@ -349,7 +354,11 @@ the user is asked to tap Resume streaming, never relaunched in a loop).
 A launch carrying the boolean extra `com.okuflow.camera.extra.HOST_LAUNCH`
 shows the activity over the lock screen and turns the screen on, so a locked
 phone on a stand can start the camera service from a resumed activity. A saved
-Pause disables this; leaving the activity clears both flags. A host launch also
+Pause disables this; leaving the activity clears both flags. Pause saved while
+the activity is shown over the lock screen (tapped in the activity) clears
+both flags at once, so the lock screen covers the activity and Resume needs an
+unlock; a later Resume never grants them again (only a new computer launch
+does). A host launch also
 clears an earlier foreground-service refusal (it may arrive through
 `onNewIntent` while the activity is already resumed, which produces no
 resume). A recreated activity (configuration change, or restore after the

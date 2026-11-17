@@ -62,7 +62,9 @@ without being touched. This shows only OkuFlow Camera's own screen; it does not
 unlock the phone or reveal other apps. Anyone holding the locked phone could
 then see that screen and use its controls (for example Pause) until the app is
 left. A saved Pause is respected: a paused app never appears over the lock
-screen, so streaming cannot be resumed there without unlocking.
+screen, so streaming cannot be resumed there without unlocking. Tapping Pause
+while the app is shown over the lock screen takes it off the lock screen at
+once; resuming then needs an unlock.
 Restore automatic settings resets camera preferences. Android's
 app-storage controls or uninstalling remove stored preferences. App backup and
 device transfer are disabled. No in-app user account is created by the companion.

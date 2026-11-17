@@ -498,6 +498,23 @@ aligned with the project goals.
   ports and scripted probes; missing fixture registration must fail the gate.
 
 ## Phone reconnect ladder (2026-11-17)
+- Iteration 8 lessons. A server can answer `host:version` while every
+  listing fails (upstream adb answers it without the transport lock): any
+  listing failure after a ready server is "does not answer", never
+  "starting", and a version answer must not clear a listing hang. Every
+  counter that leads to a sentence must also count the quiet failure modes
+  (an adb child alive and silent, one that dies before answering, a private
+  server that cannot start beside an answering default) and be reset only by
+  the thing it names answering. A discovery cycle's authority ends when the
+  user changes the source: check its intent generation right before every
+  side effect and after every blocking pre-check, also inside the stop and
+  the companion launch. Measure a live session by frames the capture
+  delivered, never by frames presented (a media view, a minimized or covered
+  window presents nothing). Events need storm limits: coalesce one wake's
+  resume signals, and name a cable that keeps dropping. Listener lookups use
+  the any-address row when no loopback row exists, under the same identity
+  proof. Never bind a test listener to every address (a firewall prompt on
+  the owner's desktop): the listener-row seam rewrites rows instead.
 - The owner decided on 2026-11-17 that a hanging default-port adb server is
   killed, not worked around. Stop it only through `TryStopDefaultAdbServer`:
   exact loopback listener handle, decision-time PID + creation time, image

@@ -1125,6 +1125,39 @@ pre-checks. The native slot `phoneSentenceIsShownAndSpokenForEveryDiagnosis`
 also checks that the notification is announced once across later label
 refreshes (its announcement time does not change after the live region's 5 s
 duplicate window).
+Iteration 8 rows: `listingFailureOfTheDefaultIsAConfirmedHang` (the in-process
+fake answers host:version while both listing forms hang, answer FAIL or
+close: a private server starts beside it and the hung-default rules end it),
+`ownedServerWhoseListingFailsIsRestartedThenNamed` (`--fixture-fail-file` on
+OkuFlow's own server: three restarts, then the re-plug sentence),
+`ownedAdbThatNeverAnswersIsNamed` (`--fixture-slow-version-file`: version
+answers after 1100 ms, past the 1000 ms probe budget, until the file goes;
+hook `ownedPolicy` shortens the start grace), `adbThatCannotStartBesideABlindDefaultIsNamed`
+(missing or at-once exiting executable beside a blind default),
+`staleIntentDropsTheLadderSideEffects` (the source changes at
+`beforeDefaultStopForTest`, `beforeShadowStartForTest` and the new
+`beforeCompanionLaunchForTest`: no `host:kill`, termination, start or shell
+command), `olderDefaultThatListsOnlyTextIsHandedBack` (`textOnly`),
+`handBackWaitsForASessionServerRequest` (new hook `afterHandBackCheckForTest`),
+`silentDefaultBesideOkuFlowsServerIsStoppedNotSpent` and
+`anyAddressDefaultListenerIsTerminatedThroughItsExactHandle` (the listener-row
+seam `SetTcpListenerRowsTransformForTest` maps the in-process fake to a decoy
+`adb.exe`, or rewrites a fixture's loopback row as an any-address row; tests
+never bind every address, which would show a firewall prompt),
+`adbListenerRowsPreferLoopbackThenAnyAddress`,
+`defaultGoneAtEveryAskEndsInTheSentenceEndToEnd` (`reopenAfterGone`).
+`ownedWiringHungStartupReportsAutomaticRecovery` was changed deliberately: it
+now requires the AdbCannotStart end instead of endless recovery. Doctor rows
+cover the owned listing rung, the AdbCannotStart end beside a default, the
+termination cap without a confirmation, the reservation spacing, resume
+coalescing, the flapping cable and the standing re-plug sentence;
+`abortedStopsOfOneRungDoNotEndTheOther` waits the ceiling (changed
+deliberately: given-back attempts keep their spacing). Native slots
+`resumeKeepsAPhoneThatDeliversWithoutPresenting` and
+`aSourceChangeRevokesTheRunningLadder`; the phone link slots run as the CTest
+entry `native_app_phone_link_offscreen` (opt-in native fixture configure, like
+every native slot). Android JVM rows `aListenerThatDiesAfterBindingIsBoundAgain`
+and `pauseWithdrawsTheLockScreenVisibilityOfAComputerLaunch`.
 Iteration 7 rows: the native slot
 `discoveryKeepsRunningWhileAPickWaitsForARecording` starts a camera with
 manual origin while a recording is open (the start is only queued until the

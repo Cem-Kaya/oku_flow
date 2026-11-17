@@ -1785,8 +1785,14 @@ so metadata generation cannot silently accept an incomplete copy.
 - `OkuFlowApp::NotePhoneEvent`, `OnPhoneUsbRemoval`, `OnSystemSuspend`,
   `OnSystemResume`, `OnWindowActivationChanged`, `OnPhoneDiscoveryPulse` turn
   window messages into `PhoneLinkEvent`s (reset budgets, immediate discovery),
-  check a resumed phone session for a frame within 3 s and detect wall-clock
-  jumps. `PhoneLinkSentence` maps the last `PhoneLinkDecision` to the
+  check a resumed phone session for a frame delivered by the capture within 3 s
+  (`CameraIngress::delivered`, never reset; presentation is not measured: a
+  media view or a minimized or covered window presents nothing) and detect
+  wall-clock jumps. `RefreshPhoneIntentGeneration` advances
+  `phoneIntentGeneration_` when the phone intent key (temporary source, phone
+  intent, preferred phone, automatic selection, file source) changes, or
+  always for a deliberate pick; discovery carries it in
+  `PhoneLinkRequest::intentGeneration`/`liveIntentGeneration`. `PhoneLinkSentence` maps the last `PhoneLinkDecision` to the
   placeholder/status sentence. `MainWindow` emits `phoneUsbRemoved`,
   `systemSuspending`, `systemResumed` (resume broadcasts and console display on)
   and `windowActivationChanged`.
@@ -1870,8 +1876,13 @@ so metadata generation cannot silently accept an incomplete copy.
   held process handle. `LegacyAdbRecoveryResult` distinguishes recovered,
   unmanaged, busy, identity-changed, canceled and failed, with structured detail
   and observation diagnostics. Overridden servers are never stopped.
+  `ReadTcpListenerRows`/`AdbListenerRows` read both listener tables and pick
+  the rows standing for the listener reached on `127.0.0.1:port` (IPv4
+  loopback, else any-address `0.0.0.0`/`::`); every listener lookup uses them;
+  `SetTcpListenerRowsTransformForTest` is the test seam.
   `TryStopDefaultAdbServer(DefaultAdbStopRequest)` implements the owner's
-  2026-11-17 default-port rule: exact loopback listener PID, same PID/creation
+  2026-11-17 default-port rule (`stillWanted` is asked before `host:kill` and
+  before the termination): exact listener PID, same PID/creation
   as the decision-time identity, image `adb.exe`, not this process, optional
   raw `host:kill`, revalidation and `TerminateProcess` on the held handle;
   `DefaultAdbStopResult` reports Stopped, NoListener, SelfListener, NotAdb,
@@ -1901,7 +1912,12 @@ so metadata generation cannot silently accept an incomplete copy.
   and `PhoneLinkPolicy` form the pure, clock-free decision unit (27 diagnoses,
   10 actions, event-reset budgets, per-episode caps including `handOverCap`,
   `foreignReconnects`, `unknownInterfaceBlindMs`, `userEndpointUnresponsiveMs`,
-  `companionFailedGraceMs`).
+  `companionFailedGraceMs`, and the event-storm limits `resumeCoalesceMs`,
+  `flapRemovals`, `flapWindowMs`, `flapQuietMs`; `OnEvent` returns false for a
+  coalesced resume). `NoteExitRequestDropped`/`NoteTerminationDropped` give
+  back an ask or termination dropped for a changed source, uncounted.
+  `OwnedAdbServer::UnansweredStarts` counts starts that never answered (one
+  per start grace alive, one at death), reset when the child answers.
   `NoteDefaultStopRefused`, `NoteDefaultStopFailed` (second one refuses; the
   overloads taking `PhoneLinkDecision::episode` drop an outcome that arrives
   after a newer event), `ClearDefaultStopRefused` and

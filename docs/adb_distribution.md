@@ -129,7 +129,19 @@ responsive owned server that lists no USB entry while Windows shows the ADB
 interface is restarted by the link doctor 5 s after the last event, then after
 15 s, then 60 s, at most three times per episode; the user is then asked to
 re-plug the cable. Two consecutive launch failures of the bundled adb (a
-missing or quarantined file) are named in one sentence. The IPv4 loopback
+missing or quarantined file) are named in one sentence. So are starts that
+never answer: a child that stays alive without ever answering counts once per
+30 s start grace (also one that is replaced, and one whose listener ownership
+cannot be verified), one that dies before it ever answered counts once; a
+child that answers ends the count, events do not. A private server that cannot
+start beside another program's default counts the same way, and only
+OkuFlow's own server answering resets the count (another program's default
+answering does not). An owned server that answers its version probes while
+its device listing fails (time-out, closed socket, invalid reply, `FAIL` to
+both listing forms) gets the same restart rung and cap after the 5 s grace and
+ends in the re-plug sentence: upstream adb answers `host:version` without the
+transport lock its listings take, so an adb stuck in a USB transport after
+sleep or a cable pull answers the one and not the other. The IPv4 loopback
 listener's PID must match the exact held process handle before readiness is
 accepted; PID lookup is observation only, never termination authority. Shutdown
 latches out future bootstrap, and stopping a manager interrupts its next probe
@@ -143,7 +155,10 @@ This replaces the earlier rule that an unknown listener is never terminated.
 With phone-use intent and no adb endpoint environment variable, a default-port
 server that is confirmed hung (two failed version probes of the same listener
 spanning 5 s; events restart the confirmation, they never shorten it; a
-listener that does not accept counts as hung), or that is responsive but blind
+listener that does not accept counts as hung; so does a server whose version
+answers while its device listing fails on two listings of the same listener
+spanning 5 s, where a version answer never clears that confirmation and a
+successful listing does), or that is responsive but blind
 to a phone Windows shows while OkuFlow's private server beside it is blind too,
 first receives one raw `host:kill`, only after a fresh listing that succeeded,
 serves no other device and does not list the phone ready, unauthorized or
@@ -152,9 +167,13 @@ borrowed default that keeps the phone offline, connecting, stalled or without
 permissions after two targeted reconnects is treated as blind (it holds the
 interface without serving it). A hang confirmed only by version probes gets
 one short listing attempt before anything else: any answer keeps the server
-and restarts the confirmation. If its loopback listener remains after 2 s, or it
+and restarts the confirmation. If its listener remains after 2 s, or it
 cannot answer at all, `TryStopDefaultAdbServer` terminates exactly the process
-behind that listener: it opens the listener's owning PID, requires the same PID
+behind that listener (the IPv4 `127.0.0.1` row of the port; when there is none,
+its any-address row, `0.0.0.0` or a dual-stack `::`, as an adb started with
+`-a` binds: it answers OkuFlow's loopback probes too; `::1` alone is never
+reached and is ignored; every lookup and the legacy reclamation share this
+rule and the identity proof below is unchanged): it opens the listener's owning PID, requires the same PID
 and creation time as the identity observed when the decision was made, the
 image file name `adb.exe`, a process other than OkuFlow, and the same listener
 again immediately before `TerminateProcess` on the held handle. Never by name,
@@ -187,6 +206,31 @@ check cancellation every 20 ms; live-port observation does not wait for a host
 probe. Camera startup accepts only confirmed-ready results. Server identity
 includes port, PID and process creation time, so a restarted server reusing
 transport ID 1 still renews launch/recovery budgets and camera retry state.
+
+**Iteration 8 additions.** Before every side effect of the ladder (ask,
+termination, start beside the default, restart, reconnect, hand-back, wake and
+launch, leftover-instance cleanup), right after each blocking pre-check, and
+inside the stop (before `host:kill` and before `TerminateProcess`) and the
+companion launch (before each shell command), the discovery cycle's
+phone-intent generation is compared with the application's live one, which
+advances on every source or target change (a webcam, a file, another phone,
+no phone, an agent's temporary source): a stale cycle does nothing and traces
+"dropped: the source changed"; an ask or termination dropped this way is
+given back uncounted. A termination beside OkuFlow's server whose pre-stop
+listing is silent is an aborted stop until the listing hang is confirmed, then
+the stop goes on; a `FAIL` there is an answer and keeps the server. The
+ladder's hand-back holds the lifecycle lock around its live-session check and
+the stop, as the transport's own hand-back does. Every listing (also of the
+default beside OkuFlow's server and in both hand-back checks) tries the
+protobuf form and then the text form, so an older adb that answers only
+`host:devices-l` is asked, stopped and handed back to like any other. The
+spacing of a rung grows with its reservations, not with the attempts a
+give-back lowered, so given-back attempts still reach the ceiling. Resume
+signals within 5 s of the last applied resume are one event; four device
+removals within 60 s name the cable (re-plug sentence) until the link holds,
+30 s pass without a removal, or a manual pick or resume starts over. Once the
+terminations of a hung default are spent, the other-program sentence stands
+also while a respawned default is not confirmed yet.
 
 After at least two failed default host-version probes spanning five seconds,
 phone-use intent may reclaim a detached adb from the reviewed legacy OkuFlow
