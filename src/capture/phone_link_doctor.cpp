@@ -165,6 +165,7 @@ void PhoneLinkDoctor::OnEvent(PhoneLinkEvent, std::int64_t nowMs)
     unauthorizedReconnected_ = false;
     defaultStopRefused_ = false;
     stopFailures_ = 0;
+    handOvers_ = 0;
     reconnect_ = restart_ = shadow_ = askExit_ = terminate_ = launch_ = handback_ = Budget{};
 }
 
@@ -200,6 +201,15 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         hostKillSent_ = hostKillSent;
         return A::TerminateDefaultServer;
     };
+    // Rung 4a and its reverse (4d) are capped together per episode: a
+    // default that alternately lists and loses the phone is named.
+    const auto shadow = [&] {
+        if (handOvers_ >= policy_.handOverCap) { *raised = D::OtherProgramHoldsPhone; return A::WaitForUser; }
+        if (!shadow_.Allowed(nowMs)) return A::Relist;
+        Reserve(shadow_, nowMs, policy_.restartRetryMs, policy_.restartCeilingMs);
+        ++handOvers_;
+        return A::StartShadowServer;
+    };
     switch (diagnosis) {
     case D::Connected:
     case D::NotWanted:
@@ -234,16 +244,15 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
             Reserve(restart_, nowMs, policy_.restartRetryMs, policy_.restartCeilingMs);
             return A::RestartOwnedServer;
         }
-        if (o.server == PhoneServerKind::BorrowedDefault) {
-            if (!shadow_.Allowed(nowMs)) return A::Relist;
-            Reserve(shadow_, nowMs, policy_.restartRetryMs, policy_.restartCeilingMs);
-            return A::StartShadowServer;
-        }
+        if (o.server == PhoneServerKind::BorrowedDefault) return shadow();
         if (owned && o.shadowRunning) {
-            // The default lists the phone (also unauthorized): use it.
+            // The default lists the phone usable (ready, unauthorized or
+            // authorizing): use it. Offline there is not serving it.
             if (o.defaultListsPhone) {
+                if (handOvers_ >= policy_.handOverCap) { *raised = D::OtherProgramHoldsPhone; return A::WaitForUser; }
                 if (!handback_.Allowed(nowMs)) return A::Relist;
                 Reserve(handback_, nowMs, policy_.reconnectRetryMs, policy_.reconnectRetryMs);
+                ++handOvers_;
                 return A::HandBackToDefault;
             }
             if (nowMs - SinceEventOr(shadowSinceMs_) < policy_.takeoverGraceMs) return A::Relist;
@@ -280,6 +289,25 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         if (!responsive) return A::Relist;
         const std::int64_t stuckFor = nowMs - SinceEventOr(stuckSinceMs_);
         if (diagnosis == D::Authorizing && stuckFor < policy_.authorizingGraceMs) return A::Relist;
+        if (!owned) {
+            // Another program's default server, or the user's endpoint: a
+            // bounded number of targeted reconnects (counted also when one
+            // cannot be sent, e.g. no transport id), then an end state.
+            if (reconnect_.attempts < policy_.foreignReconnects) {
+                if (!reconnect_.Allowed(nowMs)) return A::Relist;
+                Reserve(reconnect_, nowMs, policy_.reconnectRetryMs, policy_.reconnectCeilingMs);
+                lastReconnectMs_ = nowMs;
+                return A::ReconnectTransport;
+            }
+            if (lastReconnectMs_ >= 0 && nowMs - lastReconnectMs_ < policy_.stuckAfterReconnectMs) return A::Relist;
+            // The user's endpoint is never taken over.
+            if (o.server != PhoneServerKind::BorrowedDefault) { *raised = D::ReplugCable; return A::WaitForUser; }
+            // A default that keeps the phone stuck holds the interface
+            // without serving it: the takeover rungs, unless it serves
+            // another device.
+            if (o.defaultHasOtherDevices) { *raised = D::OtherProgramHoldsPhone; return A::WaitForUser; }
+            return shadow();
+        }
         const bool restartDue = owned && lastReconnectMs_ >= 0 &&
             nowMs - lastReconnectMs_ >= policy_.stuckAfterReconnectMs && restart_.Allowed(nowMs);
         if (restartDue && reconnect_.attempts >= 2) {
@@ -388,6 +416,8 @@ PhoneLinkDecision PhoneLinkDoctor::Decide(const PhoneLinkObservation& observatio
         if (o.sessionStreaming || nowMs - connectedSinceMs_ >= policy_.connectedHoldMs) {
             reconnect_ = restart_ = shadow_ = askExit_ = terminate_ = launch_ = handback_ = Budget{};
             stopFailures_ = 0;
+            // handOvers_ is renewed only by events: a default that works for
+            // a while between losing the phone still ends in the sentence.
         }
         delay = policy_.healthyPollMs;
     } else {

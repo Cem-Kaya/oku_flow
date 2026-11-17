@@ -242,20 +242,121 @@ private slots:
             restarts += doctor.Decide(offline, now).action == A::RestartOwnedServer;
         QCOMPARE(restarts, 1);
     }
-    void borrowedServerOfflineOnlyReconnects()
+    void stuckPhoneOnAnotherServerEscalates_data()
+    {
+        QTest::addColumn<PhoneLinkObservation>("stuck");
+        const auto borrowed = [](PhoneAdbState state, PhoneAdbdHealth adbd = PhoneAdbdHealth::Answers) {
+            return With([=](auto& o) {
+                o.server = PhoneServerKind::BorrowedDefault; o.phoneState = state; o.adbd = adbd;
+                if (adbd == PhoneAdbdHealth::TimedOut) o.companion = PhoneCompanionProbe::TimedOut;
+            });
+        };
+        QTest::newRow("offline") << borrowed(PhoneAdbState::Offline);
+        QTest::newRow("connecting") << borrowed(PhoneAdbState::Connecting);
+        QTest::newRow("no permissions") << borrowed(PhoneAdbState::NoPermissions);
+        QTest::newRow("stalled") << borrowed(PhoneAdbState::Device, PhoneAdbdHealth::TimedOut);
+    }
+    void stuckPhoneOnAnotherServerEscalates()
+    {
+        // Iteration 3 (A1), replaces borrowedServerOfflineOnlyReconnects,
+        // which only asserted what did not happen: a default that keeps the
+        // phone stuck holds the interface without serving it. Two targeted
+        // reconnects, then the takeover rungs; never an owned restart.
+        QFETCH(PhoneLinkObservation, stuck);
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        std::vector<A> sequence;
+        std::int64_t now = 0;
+        for (; now <= 30000; now += 500) {
+            const auto decision = doctor.Decide(stuck, now);
+            QVERIFY(decision.action != A::RestartOwnedServer);
+            if (decision.action != A::Relist) sequence.push_back(decision.action);
+            if (decision.action == A::StartShadowServer) break;
+        }
+        QVERIFY(sequence == (std::vector<A>{A::ReconnectTransport, A::ReconnectTransport, A::StartShadowServer}));
+        // The private server now runs beside it; the default still lists the
+        // phone stuck (not usable), so it is asked to exit, then stopped.
+        auto beside = Blind(PhoneServerKind::Owned);
+        beside.shadowRunning = true;
+        sequence.clear();
+        for (now += 500; now <= 60000; now += 500) {
+            const auto decision = doctor.Decide(beside, now);
+            if (decision.action != A::Relist) sequence.push_back(decision.action);
+            if (decision.action == A::TerminateDefaultServer) break;
+        }
+        QVERIFY(sequence == (std::vector<A>{A::AskDefaultServerToExit, A::TerminateDefaultServer}));
+    }
+    void stuckPhoneOnAServerServingAnotherDeviceIsNamed()
     {
         PhoneLinkDoctor doctor;
         doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
         const auto offline = With([](auto& o) {
-            o.server = PhoneServerKind::BorrowedDefault; o.phoneState = PhoneAdbState::Offline; });
+            o.server = PhoneServerKind::BorrowedDefault; o.phoneState = PhoneAdbState::Offline;
+            o.defaultHasOtherDevices = true; });
+        PhoneLinkDecision last;
         int reconnects = 0;
-        for (std::int64_t now = 0; now <= 40000; now += 500) {
-            const auto action = doctor.Decide(offline, now).action;
-            QVERIFY(action != A::RestartOwnedServer && action != A::TerminateDefaultServer &&
-                    action != A::AskDefaultServerToExit);
-            reconnects += action == A::ReconnectTransport;
+        for (std::int64_t now = 0; now <= 60000; now += 500) {
+            last = doctor.Decide(offline, now);
+            QVERIFY(last.action != A::StartShadowServer && last.action != A::AskDefaultServerToExit &&
+                    last.action != A::TerminateDefaultServer && last.action != A::RestartOwnedServer);
+            reconnects += last.action == A::ReconnectTransport;
         }
-        QCOMPARE(reconnects, 3); // 0 s, 3 s, 33 s.
+        QCOMPARE(reconnects, doctor.Policy().foreignReconnects);
+        QCOMPARE(int(last.diagnosis), int(D::OtherProgramHoldsPhone));
+        QCOMPARE(int(last.action), int(A::WaitForUser));
+    }
+    void stuckPhoneOnAUserEndpointAsksForAReplug()
+    {
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        const auto offline = With([](auto& o) {
+            o.server = PhoneServerKind::Override; o.phoneState = PhoneAdbState::Offline; });
+        PhoneLinkDecision last;
+        int reconnects = 0;
+        for (std::int64_t now = 0; now <= 60000; now += 500) {
+            last = doctor.Decide(offline, now);
+            QVERIFY(last.action == A::ReconnectTransport || last.action == A::Relist || last.action == A::WaitForUser);
+            reconnects += last.action == A::ReconnectTransport;
+        }
+        QCOMPARE(reconnects, doctor.Policy().foreignReconnects);
+        QCOMPARE(int(last.diagnosis), int(D::ReplugCable));
+        QCOMPARE(int(last.action), int(A::WaitForUser));
+        // An event (re-plug) renews the reconnects.
+        doctor.OnEvent(PhoneLinkEvent::DeviceArrival, 61000);
+        QCOMPARE(int(doctor.Decide(offline, 61000).action), int(A::ReconnectTransport));
+    }
+    void defaultThatAlternatelyListsAndLosesThePhoneIsNamed()
+    {
+        // A8: shadow, hand back, shadow, hand back... is capped per episode.
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        const auto lost = Blind(PhoneServerKind::BorrowedDefault);
+        auto listing = Blind(PhoneServerKind::Owned);
+        listing.shadowRunning = true;
+        listing.defaultListsPhone = true;
+        int handOvers = 0;
+        PhoneLinkDecision last;
+        std::int64_t now = 0;
+        for (int round = 0; round < 10; ++round) {
+            for (int i = 0; i < 200; ++i, now += 500) {
+                last = doctor.Decide(lost, now);
+                if (last.action != A::Relist) break;
+            }
+            if (last.action != A::StartShadowServer) break;
+            ++handOvers;
+            for (int i = 0; i < 200; ++i, now += 500) {
+                last = doctor.Decide(listing, now);
+                if (last.action != A::Relist) break;
+            }
+            if (last.action != A::HandBackToDefault) break;
+            ++handOvers;
+        }
+        QCOMPARE(handOvers, doctor.Policy().handOverCap);
+        QCOMPARE(int(last.diagnosis), int(D::OtherProgramHoldsPhone));
+        QCOMPARE(int(last.action), int(A::WaitForUser));
+        doctor.OnEvent(PhoneLinkEvent::DeviceArrival, now);
+        QCOMPARE(int(doctor.Decide(listing, now).action), int(A::Relist)); // Blind grace first.
+        QCOMPARE(int(doctor.Decide(listing, now + doctor.Policy().blindGraceMs).action), int(A::HandBackToDefault));
     }
     void authorizingGetsAShortGraceFirst()
     {

@@ -1744,10 +1744,16 @@ void AfterDefaultStopped()
     runtime.defaultIdentity.reset();
     runtime.nextServerStart = {};
 }
-bool ListsTarget(const std::vector<AdbDeviceEntry>& entries, const std::string& target)
+// The default serves the phone: listed over USB as ready, unauthorized or
+// authorizing. Offline, connecting, no permissions or an unknown state there
+// is holding the interface without serving it, never a reason to hand back
+// or to keep a takeover from going on.
+bool ListsTargetUsable(const std::vector<AdbDeviceEntry>& entries, const std::string& target)
 {
     return std::any_of(entries.begin(), entries.end(), [&](const auto& e) {
-        return e.usb && (target.empty() || e.serial == target);
+        return e.usb && (target.empty() || e.serial == target) &&
+            (e.state == PhoneAdbState::Device || e.state == PhoneAdbState::Unauthorized ||
+             e.state == PhoneAdbState::Authorizing);
     });
 }
 // Every stop outcome ends somewhere: gone, retried once, or named.
@@ -1862,7 +1868,7 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         const auto listed = ListDefaultEntries(canceled);
         if (!listed) return "kept: the default server listing failed";
         if (OtherDeviceServed(*listed, target)) return "kept: the default server serves another device";
-        if (ListsTarget(*listed, target)) return "kept: the default server lists the phone now";
+        if (ListsTargetUsable(*listed, target)) return "kept: the default server lists the phone now";
         const auto listener = LookupListener(port);
         if (listener.state == ListenerState::None) { AfterDefaultStopped(); return "default server already gone"; }
         if (listener.state == ListenerState::Unopenable) {
@@ -1892,7 +1898,7 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
             const auto listed = ListDefaultEntries(canceled);
             if (!listed) return "kept: the default server listing failed";
             if (OtherDeviceServed(*listed, target)) return "kept: the default server serves another device";
-            if (ListsTarget(*listed, target)) return "kept: the default server lists the phone now";
+            if (ListsTargetUsable(*listed, target)) return "kept: the default server lists the phone now";
         }
         const auto listener = LookupListener(port);
         if (listener.state == ListenerState::None) { AfterDefaultStopped(); return "default server already gone"; }
@@ -2024,7 +2030,7 @@ void RunPhoneLinkLadder(const PhoneLinkRequest& link, const std::string& preferr
             }
             o.shadowRunning = true;
             if (const auto listed = ListDefaultEntries(canceled)) {
-                o.defaultListsPhone = ListsTarget(*listed, target);
+                o.defaultListsPhone = ListsTargetUsable(*listed, target);
                 o.defaultHasOtherDevices = OtherDeviceServed(*listed, target);
             }
         } else if (defaultProbe == OwnedServerProbe::Unresponsive) {

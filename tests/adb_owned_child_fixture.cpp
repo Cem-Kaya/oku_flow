@@ -9,6 +9,8 @@
 //   -L tcp:<port> [--fixture-hang] [--fixture-exit-after-list] [--fixture-device]
 //       [--fixture-exit-on-kill] [--fixture-device-file <path>] [--fixture-fail-file <path>]
 //       [--fixture-kill-log <path>]   (one line per host:kill received)
+//       [--fixture-offline-file <path>] (while it exists, the device is listed offline)
+//       [--fixture-slow-version <ms>]  (host:version answers after <ms>; listings stay prompt)
 // Tests may run a copy of this executable named adb.exe so the production
 // image rule (adb.exe) is exercised without any hook.
 #include "okuflow/capture/adb_owned_server.hpp"
@@ -57,7 +59,8 @@ void Reply(SOCKET socket, const std::string& body)
 }
 struct FakeOptions {
     bool hang{false}, exitAfterList{false}, device{false}, exitOnKill{false};
-    std::wstring deviceFile, failFile, killLog;
+    std::wstring deviceFile, failFile, killLog, offlineFile;
+    unsigned slowVersionMs{0};
 };
 void AppendLine(const std::wstring& path, const char* line)
 {
@@ -105,10 +108,14 @@ int FakeAdbServer(unsigned short port, const FakeOptions& options)
         const bool listing = request == "host:track-devices-proto-binary" || request == "host:devices-l";
         const bool device = options.device || (!options.deviceFile.empty() && FileExists(options.deviceFile.c_str()));
         const bool failing = !options.failFile.empty() && FileExists(options.failFile.c_str());
-        if (request == "host:version") Reply(client, "0029");
+        if (request == "host:version") {
+            if (options.slowVersionMs) Sleep(options.slowVersionMs);
+            Reply(client, "0029");
+        }
         else if (listing && failing) send(client, "FAIL0006broken", 14, 0);
         else if (listing) {
-            const char protobuf[]{10, 11, 10, 3, 'a', 'b', 'c', 16, 8, 56, 1, 80, 9};
+            char protobuf[]{10, 11, 10, 3, 'a', 'b', 'c', 16, 8, 56, 1, 80, 9};
+            if (!options.offlineFile.empty() && FileExists(options.offlineFile.c_str())) protobuf[8] = 6;
             Reply(client, device ? std::string(protobuf, sizeof(protobuf)) : std::string{});
         } else if (request == "host:kill" && options.exitOnKill) {
             send(client, "OKAY", 4, 0);
@@ -143,6 +150,9 @@ int wmain(int count, wchar_t** arguments)
         else if (argument == L"--fixture-device-file" && i + 1 < count) options.deviceFile = arguments[++i];
         else if (argument == L"--fixture-fail-file" && i + 1 < count) options.failFile = arguments[++i];
         else if (argument == L"--fixture-kill-log" && i + 1 < count) options.killLog = arguments[++i];
+        else if (argument == L"--fixture-offline-file" && i + 1 < count) options.offlineFile = arguments[++i];
+        else if (argument == L"--fixture-slow-version" && i + 1 < count)
+            options.slowVersionMs = static_cast<unsigned>(_wtoi(arguments[++i]));
     }
     if (port) return FakeAdbServer(port, options);
     if (count < 3) return 2;

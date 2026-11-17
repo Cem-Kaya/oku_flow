@@ -151,6 +151,16 @@ struct PhoneLinkPolicy {
     int blindRestartCap{3};
     int askExitCap{2};
     int terminateCap{3};
+    // Per episode: starts of the private server beside the default plus
+    // hand-backs to it. A default that alternately lists and loses the
+    // phone ends in the other-program sentence instead of a swap loop.
+    int handOverCap{4};
+    // A phone listed offline, connecting or stalled (or with no
+    // permissions) by a server OkuFlow does not own: this many targeted
+    // reconnects, then the default is "holding the interface without
+    // serving it" (takeover rungs) and a user endpoint gets the re-plug
+    // sentence.
+    int foreignReconnects{2};
     // Unauthorized for this long with no change: one targeted reconnect,
     // which makes the phone ask the Allow question again.
     std::int64_t unauthorizedReconnectMs{20000};
@@ -236,6 +246,7 @@ private:
     bool hostKillSent_{false};
     bool defaultStopRefused_{false};
     int stopFailures_{0};
+    int handOvers_{0};
     Budget reconnect_, restart_, shadow_, askExit_, terminate_, launch_, handback_;
 };
 

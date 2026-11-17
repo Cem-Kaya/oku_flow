@@ -2057,6 +2057,57 @@ private slots:
         QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::Unauthorized));
         QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
     }
+    void stuckPhoneOnTheDefaultAtStartUpIsTakenOver() {
+        // Iteration 3 (A1): the owner's scenario. Another adb on the default
+        // port keeps the phone offline; OkuFlow starts and borrows it. Two
+        // reconnects, then the private server beside it, then host:kill.
+        DefaultAdbFixture other({});
+        other.child.reset();
+        const QString offline = other.File(QStringLiteral("offline"));
+        { QFile file(offline); QVERIFY(file.open(QIODevice::WriteOnly)); }
+        other.flags = {L"--fixture-device", L"--fixture-exit-on-kill", L"--fixture-offline-file", offline.toStdWString()};
+        QVERIFY(other.Start());
+        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString());
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto reports = LinkCycles(80, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::AskDefaultServerToExit; });
+        QVERIFY(Saw(reports, okuflow::PhoneLinkDiagnosis::Offline));
+        QCOMPARE(std::count_if(reports.begin(), reports.end(), [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::ReconnectTransport; }), std::ptrdiff_t{2});
+        QVERIFY(Saw(reports, okuflow::PhoneLinkAction::StartShadowServer));
+        QVERIFY(!Saw(reports, okuflow::PhoneLinkAction::HandBackToDefault));
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::AskDefaultServerToExit));
+        QVERIFY2(reports.back().actionResult.find("exited") != std::string::npos, reports.back().actionResult.c_str());
+        QVERIFY(other.child->WaitForExit(std::chrono::milliseconds(3000)));
+        QVERIFY(okuflow::OwnedAdbServerPort().has_value());
+    }
+    void stuckPhoneOnTheDefaultAfterAHandBackIsTakenOver() {
+        // A1: the default that OkuFlow handed back to later keeps the phone
+        // offline. The offline listing is never a reason to hand back again.
+        const auto defaultPort = PickTestPort();
+        ScopedLinkHooks hooks(defaultPort, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString());
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        LinkCycles(1);
+        QVERIFY(okuflow::OwnedAdbServerPort().has_value());
+        DefaultAdbFixture other({}, defaultPort);
+        other.child.reset();
+        const QString offline = other.File(QStringLiteral("offline"));
+        other.flags = {L"--fixture-device", L"--fixture-exit-on-kill", L"--fixture-offline-file", offline.toStdWString()};
+        QVERIFY(other.Start());
+        auto reports = LinkCycles(20, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::HandBackToDefault; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::HandBackToDefault));
+        QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
+        { QFile file(offline); QVERIFY(file.open(QIODevice::WriteOnly)); }
+        reports = LinkCycles(80, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::AskDefaultServerToExit; });
+        QVERIFY(Saw(reports, okuflow::PhoneLinkDiagnosis::Offline));
+        QVERIFY(Saw(reports, okuflow::PhoneLinkAction::StartShadowServer));
+        QVERIFY(!Saw(reports, okuflow::PhoneLinkAction::HandBackToDefault));
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::AskDefaultServerToExit));
+        QVERIFY(other.child->WaitForExit(std::chrono::milliseconds(3000)));
+        QVERIFY(okuflow::OwnedAdbServerPort().has_value());
+    }
     void connectStalledListenerIsUnresponsive() {
         // A3: a frozen listener with a full accept queue is a hang, not "no
         // listener": it is confirmed and acted on, not worked around.
