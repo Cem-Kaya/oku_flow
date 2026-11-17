@@ -173,7 +173,7 @@ hung default counts once it actually starts, a hand-back once the private server
 is retired, and a termination aborted because the listing answered does not
 count toward the three terminations, nor does a `host:kill` request that was
 never sent count toward the two (no termination follows such a request); three
-such aborted stops (an ask that finds the server already gone is not one) in an episode, counted apart for a hung default and for a
+such aborted stops (the first ask of an episode that finds the server already gone is not one; further ones are) in an episode, counted apart for a hung default and for a
 takeover beside a blind one, end in the same other-program sentence, which
 a server that recovers or goes away ends; at the cap no more starts, but a hand-back to a default
 that lists the phone is still made); another adb that

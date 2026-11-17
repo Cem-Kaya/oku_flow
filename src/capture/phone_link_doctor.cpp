@@ -174,6 +174,7 @@ void PhoneLinkDoctor::OnEvent(PhoneLinkEvent, std::int64_t nowMs)
     stopFailures_ = 0;
     handOvers_ = 0;
     abortedHungStops_ = abortedTakeoverStops_ = 0;
+    exitRequestNotNeededUsed_ = false;
     launchHeld_ = false;
     holdReleasedByDeath_ = false;
     lastLaunchMs_ = -1;
@@ -545,6 +546,7 @@ PhoneLinkDecision PhoneLinkDoctor::Decide(const PhoneLinkObservation& observatio
             reconnect_ = restart_ = shadow_ = askExit_ = terminate_ = launch_ = handback_ = Budget{};
             stopFailures_ = 0;
             abortedHungStops_ = abortedTakeoverStops_ = 0;
+            exitRequestNotNeededUsed_ = false;
             launchHeld_ = false;
             // handOvers_ is renewed only by events: a default that works for
             // a while between losing the phone still ends in the sentence.

@@ -536,7 +536,11 @@ aligned with the project goals.
   (the pre-ask checks kept the server, or it was not delivered) is not
   remembered as sent, so no termination follows it, and it does not use up
   an ask; an ask that finds the default already gone is given back the
-  same way but is not an aborted stop (nothing was kept). Aborted terminations and unsent asks have their own per-episode
+  same way and, the first time in an episode, is not an aborted stop (nothing
+  was kept); every further one in the same episode counts, because a default
+  that is "gone" at each ask and answers again is a listener the lookup cannot
+  identify (an adb bound to every address), and an uncounted give-back would
+  ask it for ever with nothing shown (council round 7). Aborted terminations and unsent asks have their own per-episode
   count (`abortedStopCap`, 3), one per rung (the hung branch's aborted
   terminations; the takeover's unsent asks and aborted terminations), so
   the end of one rung never ends the other: at it the other-program

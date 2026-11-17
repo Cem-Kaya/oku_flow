@@ -608,6 +608,10 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
         }
         bool shadow = false, occupied = false;
         { std::lock_guard lock(runtime.mutex);
+          // A private server already exists, so a request to start one is
+          // met or moot: it must not wait for a later call and start an
+          // unrequested server beside a default nobody examined again.
+          runtime.shadowRequested = false;
           shadow = runtime.shadowServer; occupied = !runtime.occupied.empty(); }
         bool blindShadow = false;
         { std::lock_guard lock(runtime.mutex); blindShadow = runtime.shadowForBlindness; }
@@ -645,6 +649,7 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
                 if (runtime.ownedServer == owned) runtime.ownedServer.reset();
                 runtime.shadowServer = false; runtime.shadowHandbackProbes = 0;
                 runtime.shadowForBlindness = false;
+                runtime.shadowRequested = false; // A request does not outlive the server it was for.
                 // Same as the ladder's hand-back: no start throttle, so a
                 // default that hangs again right after is met by a private
                 // server once its hang is confirmed (the hand-over cap, not

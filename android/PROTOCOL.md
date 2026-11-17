@@ -180,8 +180,8 @@ diagnosis and one next action, least disturbing first:
    `host:kill` requests and three terminations (a termination not carried out
    because the default answered its listing does not count toward them, nor
    does a `host:kill` request that was never sent, which no termination
-   follows (one whose server was already gone is not an aborted stop
-   either); but three such aborted stops of the same rung, the hung server's
+   follows (the first one of an episode whose server was already gone is not
+   an aborted stop either; further ones are); but three such aborted stops of the same rung, the hung server's
    or the takeover's, end in the same sentence, which a
    server that recovers or goes away ends); a different
    process that appears on the port is a new takeover and is asked first.

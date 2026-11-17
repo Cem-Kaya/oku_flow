@@ -1105,6 +1105,42 @@ private slots:
         doctor.NoteExitRequestNotNeeded(earlier);
         QCOMPARE(int(doctor.Decide(beside, 100000 + 2 * policy.takeoverGraceMs).action), int(A::TerminateDefaultServer));
     }
+    void defaultThatIsGoneAtEveryAskEndsInTheSentence()
+    {
+        // Council round 7: a default that answers listings but that the
+        // listener lookup cannot identify (an adb bound to every address)
+        // is "already gone" at every ask. Only the first such ask of an
+        // episode is free; the following ones count, and the rung ends in
+        // the other-program sentence instead of asking for ever.
+        PhoneLinkPolicy policy;
+        PhoneLinkDoctor doctor(policy);
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto beside = Blind(PhoneServerKind::Owned);
+        beside.shadowRunning = true;
+        std::int64_t now = 0;
+        int asks = 0;
+        bool named = false;
+        for (; now < 600000 && !named; now += 1000) {
+            const auto decision = doctor.Decide(beside, now);
+            QVERIFY2(decision.action != A::TerminateDefaultServer, "A default that was never asked must not be terminated.");
+            if (decision.action == A::AskDefaultServerToExit) {
+                ++asks;
+                doctor.NoteExitRequestNotNeeded(decision.episode);
+            }
+            named = decision.diagnosis == D::OtherProgramHoldsPhone;
+            if (named) QCOMPARE(int(decision.action), int(A::WaitForUser));
+        }
+        QVERIFY2(named, "Repeated asks that find the default gone never reached a sentence.");
+        QCOMPARE(asks, policy.abortedStopCap + 1); // One free, then the cap.
+        // It stays named, and polls at the user-wait cadence.
+        const auto later = doctor.Decide(beside, now + 60000);
+        QCOMPARE(int(later.diagnosis), int(D::OtherProgramHoldsPhone));
+        QCOMPARE(later.nextPollMs, now + 60000 + policy.userWaitPollMs);
+        // A new event gives one free ask again.
+        doctor.OnEvent(PhoneLinkEvent::DeviceArrival, now + 100000);
+        const auto afterEvent = doctor.Decide(beside, now + 100000 + policy.takeoverGraceMs + policy.blindGraceMs);
+        QVERIFY(afterEvent.diagnosis != D::OtherProgramHoldsPhone);
+    }
     void anotherListedPhoneIsNotBlindness()
     {
         // C4: a second phone listed by the server is not "blind": no restarts.

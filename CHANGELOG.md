@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- An Android tool server that listens on every network address, which OkuFlow
+  cannot identify, no longer keeps the phone on "Restoring USB connection…"
+  for ever: after a few attempts OkuFlow says another program is using the
+  phone.
 - Make the USB phone camera reconnect by itself after sleep, cable pulls,
   improper shutdowns and phone sleep. OkuFlow now sees unauthorized, offline
   and stalled phones, wakes the phone and reopens OkuFlow Camera, restarts its

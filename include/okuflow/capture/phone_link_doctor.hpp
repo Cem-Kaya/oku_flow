@@ -308,18 +308,23 @@ public:
     void NoteExitRequestNotSent(std::uint64_t episode)
     {
         if (episode != episode_) return;
-        NoteExitRequestNotNeeded(episode);
+        GiveExitRequestBack();
         ++abortedTakeoverStops_;
     }
     // An AskDefaultServerToExit of this episode found the default already
     // gone: nothing was asked, so the ask is given back and not remembered
-    // as sent, and nothing was kept, so it does not count toward
-    // abortedStopCap.
+    // as sent, and nothing was kept, so the first one of an episode does not
+    // count toward abortedStopCap. A default that is "gone" at one ask and
+    // answers again at the next is a listener the lookup cannot identify
+    // (for example an adb bound to every address instead of loopback): it
+    // would be asked for ever with nothing shown, so every further one of
+    // the episode counts and the rung ends in the other-program sentence.
     void NoteExitRequestNotNeeded(std::uint64_t episode)
     {
         if (episode != episode_) return;
-        askedExitMs_ = -1;
-        if (askExit_.attempts > 0) --askExit_.attempts;
+        GiveExitRequestBack();
+        if (exitRequestNotNeededUsed_) ++abortedTakeoverStops_;
+        exitRequestNotNeededUsed_ = true;
     }
     std::uint64_t Episode() const { return episode_; }
     // The listener is gone, changed identity, or the phone is listed.
@@ -386,6 +391,13 @@ private:
     // terminations.
     int abortedHungStops_{0};
     int abortedTakeoverStops_{0};
+    // The one uncounted "default already gone" ask of this episode was used.
+    bool exitRequestNotNeededUsed_{false};
+    void GiveExitRequestBack()
+    {
+        askedExitMs_ = -1;
+        if (askExit_.attempts > 0) --askExit_.attempts;
+    }
     bool launchHeld_{false};
     // A hold was already released at once because the app died (episode).
     bool holdReleasedByDeath_{false};
