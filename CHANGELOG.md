@@ -51,6 +51,13 @@
   see the phone, or stops answering, ends in the re-plug instruction. A slow
   Android tool that served another device no longer keeps OkuFlow saying
   another program uses the phone once that device is gone.
+- An Android tool on the default port that answers listings but not version
+  checks is no longer met with "Restoring USB connection…" for ever: after
+  three stops that it answered in time, OkuFlow says another program is using
+  the phone's USB connection, and the sentence ends when that tool recovers or
+  closes. A request to exit that was never sent is no longer followed by
+  stopping the tool, and a phone whose shell answers with a Windows line ending
+  counts as answering.
 
 - Clarify the public Android privacy policy: OkuFlow Camera is an accessibility-focused
   USB companion, normal viewing does not upload camera images to the developer,
