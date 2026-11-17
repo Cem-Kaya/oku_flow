@@ -3811,7 +3811,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
     </message>
     <message>
         <source>Another computer or program is using the phone camera.</source>
-        <translation>Камерою телефона користується інший комп'ютер або програма.</translation>
+        <translation>Камерою телефона користується інший комп’ютер або програма.</translation>
     </message>
     <message>
         <source>Camera access is blocked on the phone.</source>
@@ -3827,7 +3827,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
     </message>
     <message>
         <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
-        <translation>USB-з'єднання телефона використовує інша програма. Закрийте її або перезапустіть комп'ютер.</translation>
+        <translation>USB-з’єднання телефона використовує інша програма. Закрийте її або перезапустіть комп’ютер.</translation>
     </message>
 </context>
 </TS>

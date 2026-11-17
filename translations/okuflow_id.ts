@@ -3819,7 +3819,7 @@ Pilih Hubungkan ChatGPT di tab Asisten pada mode Tingkat Lanjut untuk masuk.</tr
     </message>
     <message>
         <source>The phone is too hot. Let it cool down.</source>
-        <translation>Ponsel terlalu panas. Biarkan dingin terlebih dahulu.</translation>
+        <translation>Ponsel terlalu panas. Biarkan ponsel mendingin terlebih dahulu.</translation>
     </message>
     <message>
         <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>

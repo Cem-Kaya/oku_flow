@@ -3763,11 +3763,11 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
     </message>
     <message>
         <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
-        <translation>เชื่อมต่อโทรศัพท์ผ่าน USB แล้วเลือก ถ่ายโอนไฟล์ บนโทรศัพท์และเปิดการดีบัก USB</translation>
+        <translation>เชื่อมต่อโทรศัพท์ผ่าน USB แล้วเลือก ถ่ายโอนไฟล์ บนโทรศัพท์และเปิดการแก้ไขข้อบกพร่อง USB</translation>
     </message>
     <message>
         <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
-        <translation>ปลดล็อกโทรศัพท์แล้วแตะ อนุญาต ในคำถามเรื่องการดีบัก USB หากไม่มีคำถามปรากฏขึ้น ให้ถอดสาย USB แล้วเสียบกลับเข้าไปใหม่</translation>
+        <translation>ปลดล็อกโทรศัพท์แล้วแตะ อนุญาต ในคำถามเรื่องการแก้ไขข้อบกพร่อง USB หากไม่มีคำถามปรากฏขึ้น ให้ถอดสาย USB แล้วเสียบกลับเข้าไปใหม่</translation>
     </message>
     <message>
         <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
@@ -3779,7 +3779,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
     </message>
     <message>
         <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
-        <translation>OkuFlow ไม่สามารถเริ่มการเชื่อมต่อโทรศัพท์ผ่าน USB ได้ ติดตั้ง OkuFlow ใหม่ หรืออนุญาตในโปรแกรมป้องกันไวรัสของคุณ</translation>
+        <translation>OkuFlow ไม่สามารถเริ่มการเชื่อมต่อโทรศัพท์ผ่าน USB ได้ ติดตั้ง OkuFlow ใหม่ หรืออนุญาต OkuFlow ในโปรแกรมป้องกันไวรัสของคุณ</translation>
     </message>
     <message>
         <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>

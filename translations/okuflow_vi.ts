@@ -3787,7 +3787,7 @@ Chọn Kết nối ChatGPT trong tab Trợ lý của chế độ Nâng cao để
     </message>
     <message>
         <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
-        <translation>Một điện thoại khác đang được kết nối. Hãy kết nối điện thoại bạn đã chọn trong OkuFlow, hoặc chọn điện thoại đang kết nối trong Cài đặt, Camera.</translation>
+        <translation>Một điện thoại khác đang được kết nối. Hãy kết nối điện thoại bạn đã chọn trong OkuFlow, hoặc chọn điện thoại đang kết nối trong Cài đặt, Máy ảnh.</translation>
     </message>
     <message>
         <source>Unlock your phone.</source>

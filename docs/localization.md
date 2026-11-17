@@ -1,5 +1,26 @@
 # Application languages
 
+The seventeen phone reconnect sentences (eleven of the first iteration, four
+of iteration 2 including the replaced Allow sentence, two of iteration 3 and
+one of iteration 4) received the per-entry read-only review on 2026-11-17: all
+408 targets in 24 catalogs, none unread, by Claude Haiku 5.5 (ar, bn, cs, de,
+es, fa, fr, he, hi, id, it, ja) and Grok 4.7 Fast (ko, nl, pl, pt_BR, ru, sv,
+th, tr, uk, ur, vi, zh_Hans). 381 were accepted and 27 flagged. The
+coordinating agent checked each flag against this catalog and the companion's
+strings and applied 15: Settings and Camera as the catalog names them (bn, fa,
+ur, vi), USB debugging as the companion's Thai strings name it and a missing
+object (th), the typographic apostrophe (uk), word order and register
+(zh_Hans), the subject of "let it cool down" (id), and the u/uw address (nl).
+Twelve were not applied: the Spanish section name keeps its capital; Swedish
+does not require the comma that was asked for; Brazilian Portuguese keeps the
+masculine article for the app name, as the companion's own text has it; and
+Turkish and Vietnamese keep the companion's wording for USB debugging
+("USB hata ayıklama", "gỡ lỗi USB"), although the reviewer reports that
+Android itself says "USB hata ayıklaması" and "Gỡ lỗi qua USB": that claim was
+not checked on a device and stays open for both the companion and these
+sentences. The notes below that say a review is still needed predate this
+paragraph. Model review is not native-speaker or rendered-UI acceptance.
+
 Phone reconnect iteration 4 adds one Windows source key (951 total): "On the
 phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume
 streaming." It is shown when the companion's process runs but its listener is

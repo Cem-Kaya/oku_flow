@@ -3767,7 +3767,7 @@ Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u
     </message>
     <message>
         <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
-        <translation>Ontgrendel je telefoon en tik op Toestaan bij de vraag over USB-foutopsporing. Verschijnt er geen vraag, koppel dan de USB-kabel los en sluit hem opnieuw aan.</translation>
+        <translation>Ontgrendel uw telefoon en tik op Toestaan bij de vraag over USB-foutopsporing. Verschijnt er geen vraag, koppel dan de USB-kabel los en sluit hem opnieuw aan.</translation>
     </message>
     <message>
         <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
@@ -3779,7 +3779,7 @@ Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u
     </message>
     <message>
         <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
-        <translation>OkuFlow kan de USB-verbinding met de telefoon niet starten. Installeer OkuFlow opnieuw of sta het toe in je antivirusprogramma.</translation>
+        <translation>OkuFlow kan de USB-verbinding met de telefoon niet starten. Installeer OkuFlow opnieuw of sta het toe in uw antivirusprogramma.</translation>
     </message>
     <message>
         <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
@@ -3791,7 +3791,7 @@ Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u
     </message>
     <message>
         <source>Unlock your phone.</source>
-        <translation>Ontgrendel je telefoon.</translation>
+        <translation>Ontgrendel uw telefoon.</translation>
     </message>
     <message>
         <source>Open OkuFlow Camera on the phone.</source>

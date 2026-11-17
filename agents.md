@@ -595,7 +595,11 @@ aligned with the project goals.
   the two of iteration 3 (companion camera failure, a different phone
   connected) and the one of iteration 4 (open OkuFlow Camera and, if it shows
   that streaming is paused, tap Resume streaming) were written without that
-  review (the implementer ran without sub-agents) and still need it.
+  review (the implementer ran without sub-agents); the coordinating agent ran
+  it afterwards over all 408 targets and applied 15 vetted corrections (see
+  `docs/localization.md`). A flag is checked against the catalog and the
+  companion's strings before it is applied: 12 of 27 were wrong or
+  unverifiable.
 - While the phone is the wanted camera, its sentence owns the status line,
   also over a fallback webcam, over the generic reconnect text and over a
   passing notification (which goes to the tooltip and is announced once

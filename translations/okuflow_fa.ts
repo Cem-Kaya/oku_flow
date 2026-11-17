@@ -3787,7 +3787,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
     </message>
     <message>
         <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
-        <translation>تلفن دیگری وصل است. تلفنی را که در OkuFlow انتخاب کرده‌اید وصل کنید، یا تلفن وصل‌شده را از بخش Settings، گزینهٔ Camera انتخاب کنید.</translation>
+        <translation>تلفن دیگری وصل است. تلفنی را که در OkuFlow انتخاب کرده‌اید وصل کنید، یا تلفن وصل‌شده را از بخش تنظیمات، گزینهٔ دوربین انتخاب کنید.</translation>
     </message>
     <message>
         <source>Unlock your phone.</source>

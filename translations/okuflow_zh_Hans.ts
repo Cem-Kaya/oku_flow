@@ -3779,7 +3779,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
     </message>
     <message>
         <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
-        <translation>OkuFlow 无法启动 USB 手机连接。请重新安装 OkuFlow，或在杀毒软件中允许它。</translation>
+        <translation>OkuFlow 无法启动与手机的 USB 连接。请重新安装 OkuFlow，或在杀毒软件中允许它。</translation>
     </message>
     <message>
         <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
@@ -3819,7 +3819,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
     </message>
     <message>
         <source>The phone is too hot. Let it cool down.</source>
-        <translation>手机温度过高。请等待其冷却。</translation>
+        <translation>手机温度过高。请等它冷却。</translation>
     </message>
     <message>
         <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
