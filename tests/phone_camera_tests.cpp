@@ -4011,13 +4011,14 @@ private slots:
         auto staleRequest = request();
         const auto stale = LinkCycles(1, {}, "abc", &staleRequest);
         QVERIFY(!armed->load());
+        auto freshRequest = request();
+        const auto fresh = LinkCycles(1, {}, "abc", &freshRequest);
+        // The budget: the next cycle acts at once, as after the event.
+        QCOMPARE(int(fresh.back().decision.action), int(expected));
+        QVERIFY(fresh.back().actionResult.find("dropped") == std::string::npos);
         QCOMPARE(QString::fromStdString(stale.back().actionResult),
                  QStringLiteral("dropped before its decision: the source changed"));
         QCOMPARE(int(stale.back().decision.action), int(okuflow::PhoneLinkAction::None));
-        auto freshRequest = request();
-        const auto fresh = LinkCycles(1, {}, "abc", &freshRequest);
-        QCOMPARE(int(fresh.back().decision.action), int(expected));
-        QVERIFY(fresh.back().actionResult.find("dropped") == std::string::npos);
     }
     void privateServerThatDiesAfterItsReadinessBesideADefaultIsCounted() {
         // Iteration 9 (A3): OkuFlow's private server beside a responsive,
