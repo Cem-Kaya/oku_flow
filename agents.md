@@ -696,9 +696,13 @@ aligned with the project goals.
   start waits behind runs; a start that waits for a recording to end does
   not stop the link ladder for the length of the recording.
 - Bind wake and activity launch to the USB serial and the server that listed
-  it. Recheck source intent at each shell write, including after transport
-  selection. Permit PID-only listener evidence solely for transport-ID
-  reconnects on the borrowed default. Count sustained loss of ownership proof
+  it. Verify the attachment once per launch under a shared listing deadline.
+  Recheck source and listener at each shell write. Return an unwritten
+  reservation with its retry spacing intact. Keep room after an activity
+  write for a control connection within the overall startup deadline.
+  Permit PID-only listener evidence on the borrowed default for serial-scoped
+  launches and transport-ID reconnects. Verify the exact private listener
+  before the idle shadow pre-list. Count sustained loss of ownership proof
   after a healthy private-server observation and clear it on verified readiness.
 - Nothing here was observed on a real failing laptop; report fixture evidence
   separately from real sleep/cable/phone acceptance.

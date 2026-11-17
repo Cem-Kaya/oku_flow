@@ -134,11 +134,13 @@ never answer: a child that stays alive without ever answering counts once per
 30 s start grace (also one that is replaced, and one whose listener ownership
 cannot be verified), and one that dies before it ever answered counts once.
 After readiness, a responsive child whose listener ownership remains
-unverifiable also counts once per start grace. Its device listing stays
-unavailable until a verified response clears the count. A private server that cannot
-start beside another program's default counts the same way, and only
-a verified response from OkuFlow's own server resets the count. An owned server that answers its version probes while
-its device listing fails (time-out, closed socket, invalid reply, `FAIL` to
+unverifiable also counts once per start grace. Discovery waits for verified
+readiness before listing the private server. The idle shadow's earlier
+handback check also requires the exact private listener before listing and
+rechecks that identity before accepting the empty listing as evidence.
+A private server that cannot start beside another program's default counts
+the same way. A verified response from OkuFlow's own server resets the count.
+An owned server that answers its version probes while its device listing fails (time-out, closed socket, invalid reply, `FAIL` to
 both listing forms) gets the same restart rung and cap after the 5 s grace and
 ends in the re-plug sentence: upstream adb answers `host:version` without the
 transport lock its listings take, so an adb stuck in a USB transport after
@@ -317,9 +319,11 @@ kill or saved PID grants authority. Recovery still requires new decoded frames.
 If a hung default listener is not a reviewed legacy bundle, OkuFlow starts a
 private owned server at once and the link doctor applies the 2026-11-17 stop
 rule above. WinUSB may remain unavailable while that
-other server retains the phone. An unused shadow server hands back only after
-its raw transport list is empty and the default answers two consecutive version
-checks. Unauthorized transports also prevent handback. Ordinary enumeration
+other server retains the phone. The idle shadow handback in the server
+manager's caller requires two consecutive checks in which the verified
+private listener lists no raw transports and the default lists the wanted
+phone in a usable state. Unauthorized transports on the private server also
+prevent this handback. Ordinary enumeration
 (`BorrowOnly`) performs no lifecycle effects; `ReleaseForWebcam` only releases
 idle owned support, while `PhoneUse` enables guarded bootstrap/recovery.
 
@@ -343,9 +347,17 @@ it. A successful request still needs subsequent discovery and decoded frames.
 Other adb clients using that same phone lose their transport during a targeted
 reset. The phone-link trace uses fixed tokens for known companion problem codes
 and records unfamiliar codes as `unknown`. Discovery and session startup bind
-wake and activity launch to the server that listed the selected phone. Before
-each shell command they confirm the USB serial and current transport ID,
-select by serial and recheck the listener and source authority at the write.
+wake and activity launch to the server that listed the selected phone. One
+fresh listing verifies the USB serial and current transport ID for the whole
+launch, including the legacy activity fallback. Both listing forms share a
+deadline, limited further by the time remaining for session negotiation.
+Each shell command selects by serial and rechecks listener and source
+authority before writing. Launch can use a unique borrowed default's PID
+when Windows cannot open the process. Stop authority still requires the
+existing process and creation-time evidence. A reservation with no shell
+bytes queued is returned to its launch budget with the retry spacing intact.
+Session startup reserves time in its overall deadline for a control connection
+after an activity write, even if the short connection window expired.
 
 A globally hung server cannot acknowledge this transport request. The automatic
 server recovery above handles OkuFlow-owned or proven legacy support and, under

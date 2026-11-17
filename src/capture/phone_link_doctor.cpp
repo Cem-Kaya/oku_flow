@@ -202,10 +202,9 @@ bool PhoneLinkDoctor::OnEvent(PhoneLinkEvent event, std::int64_t nowMs)
     handOvers_ = 0;
     abortedHungStops_ = abortedTakeoverStops_ = 0;
     exitRequestNotNeededUsed_ = false;
-    launchHeld_ = false;
+    RenewLaunches();
     holdReleasedByDeath_ = false;
-    lastLaunchMs_ = -1;
-    reconnect_ = restart_ = shadow_ = askExit_ = terminate_ = launch_ = handback_ = Budget{};
+    reconnect_ = restart_ = shadow_ = askExit_ = terminate_ = handback_ = Budget{};
     return true;
 }
 
@@ -239,6 +238,23 @@ bool PhoneLinkDoctor::ReserveLaunch(std::int64_t nowMs)
     if (launchHeld_ || !launch_.Allowed(nowMs)) return false;
     TakeLaunch(nowMs);
     return true;
+}
+
+void PhoneLinkDoctor::RenewLaunches()
+{
+    ++launchGeneration_;
+    launch_ = Budget{};
+    launchHeld_ = false;
+    lastLaunchMs_ = -1;
+}
+
+void PhoneLinkDoctor::NoteLaunchDropped(std::uint64_t generation)
+{
+    if (generation != launchGeneration_ || launch_.attempts == 0) return;
+    if (--launch_.attempts == 0) {
+        launchHeld_ = false;
+        lastLaunchMs_ = -1;
+    }
 }
 
 PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const PhoneLinkObservation& o,
@@ -541,6 +557,10 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         // The session start path shares this budget: one launch per event
         // between both of them.
         if (launch_.attempts == 0 && !launchHeld_) {
+            if (!launch_.Allowed(nowMs)) {
+                *raised = D::AppNotRunning;
+                return A::Relist;
+            }
             launchHeld_ = true;
             ++launch_.attempts;
             lastLaunchMs_ = nowMs;
@@ -634,6 +654,7 @@ PhoneLinkDecision PhoneLinkDoctor::Decide(const PhoneLinkObservation& observatio
         decision.action = LadderFor(decision.diagnosis, o, nowMs, &raised);
     }
     decision.diagnosis = raised;
+    if (decision.action == PhoneLinkAction::WakeAndLaunchApp) decision.launchGeneration = LaunchGeneration();
     decision.hostKillAlreadySent = decision.action == PhoneLinkAction::TerminateDefaultServer && hostKillSent_;
 
     std::int64_t delay = 0;
@@ -644,11 +665,11 @@ PhoneLinkDecision PhoneLinkDoctor::Decide(const PhoneLinkObservation& observatio
         // companion flipping between ready and refused is not relaunched
         // at once on every flip.
         if (o.sessionStreaming || nowMs - connectedSinceMs_ >= policy_.connectedHoldMs) {
-            reconnect_ = restart_ = shadow_ = askExit_ = terminate_ = launch_ = handback_ = Budget{};
+            reconnect_ = restart_ = shadow_ = askExit_ = terminate_ = handback_ = Budget{};
+            RenewLaunches();
             stopFailures_ = 0;
             abortedHungStops_ = abortedTakeoverStops_ = 0;
             exitRequestNotNeededUsed_ = false;
-            launchHeld_ = false;
             // The link holds: a flapping verdict ends.
             flapping_ = false;
             removalCount_ = 0;

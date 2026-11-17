@@ -253,6 +253,8 @@ struct PhoneLinkDecision {
     // action noted after a newer event is dropped.
     std::uint64_t episode{0};
     bool diagnosisChanged{false};
+    // Only WakeAndLaunchApp reserves against this launch generation.
+    std::uint64_t launchGeneration{0};
 };
 
 class PhoneLinkDoctor {
@@ -378,8 +380,11 @@ public:
     // pull the app over what the user does on the phone (its process runs
     // but its listener refuses; it accepts but never answers).
     bool ReserveLaunch(std::int64_t nowMs);
+    std::uint64_t LaunchGeneration() const { return launchGeneration_; }
+    // Return a launch with no shell bytes queued, retaining its retry spacing.
+    void NoteLaunchDropped(std::uint64_t generation);
     // A deliberate pick of the phone renews the launch budget.
-    void RenewLaunches() { launch_ = Budget{}; launchHeld_ = false; }
+    void RenewLaunches();
     // The phone has been missing from every listing for the blind grace
     // (as of the last Decide), so a leftover may plausibly hold it.
     bool BlindGracePassed(std::int64_t nowMs) const
@@ -440,6 +445,7 @@ private:
         askedExitMs_ = -1;
         if (askExit_.attempts > 0) --askExit_.attempts;
     }
+    std::uint64_t launchGeneration_{0};
     bool launchHeld_{false};
     // A hold was already released at once because the app died (episode).
     bool holdReleasedByDeath_{false};

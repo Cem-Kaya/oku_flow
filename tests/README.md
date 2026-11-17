@@ -1186,7 +1186,16 @@ during selection (`ladderLaunchUsesTheObservedServerAndPhone`), a reused ID
 at session startup (`sessionLaunchUsesTheSelectedUsbSerial`), targeted-only
 offline and stalled-device recovery for an unopenable listener (`unopenableDefaultReconnectRequiresATransportId`),
 and unreadable ownership after healthy readiness followed by recovery
-(`previouslyHealthyOwnedListenerMustRemainVerifiable`).
+(`previouslyHealthyOwnedListenerMustRemainVerifiable`). That fixture also
+checks that an idle shadow skips private listings while ownership is
+unverified and requires two verified observations to hand back.
+`sessionLaunchUsesOneBoundedListingThenRetriesControl` checks a streaming
+start after a slow listing and launch, and a refusal when the listing
+exceeds the caller's budget. `ladderLaunchVerifiesOnceOnBorrowedDefault`
+counts listing requests for readable and unopenable listeners.
+`ladderGivesBackOnlyAnUnwrittenLaunch` checks same-episode retry after a
+refused write and a retained reservation when the wake was already sent.
+The doctor verifies the spacing and ignores a late refund after renewal.
 `absentUserEndpointIsNamedAndCanRecover` starts a fake on the configured port
 after the existing sentence appears. The doctor row
 `absentUserEndpointSharesTheUnresponsiveDeadline` checks the deadline and its

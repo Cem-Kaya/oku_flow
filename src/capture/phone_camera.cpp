@@ -17,6 +17,7 @@
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QStandardPaths>
+#include <QScopeGuard>
 #include <QtEndian>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -334,14 +335,14 @@ struct ReconnectServer {
     AdbServerEndpoint endpoint;
     std::optional<AdbListenerIdentity> listener;
 
-    // Only a transport-ID reconnect can rely on PID-only listener evidence.
-    bool StillCurrent(bool targetedReconnect = false) const
+    // Only a phone-scoped request can rely on PID-only default-listener evidence.
+    bool StillCurrent(bool allowPidOnly = false) const
     {
         const auto current = Endpoint();
         return endpoint.supported && current.supported && current.port == endpoint.port &&
             current.ownedByThisProcess == endpoint.ownedByThisProcess &&
             current.overridden == endpoint.overridden &&
-            listener && (listener->created || targetedReconnect) && ReconnectListenerIdentity(current) == listener;
+            listener && (listener->created || allowPidOnly) && ReconnectListenerIdentity(current) == listener;
     }
 };
 ReconnectServer ObserveReconnectServer(const AdbServerEndpoint& endpoint)
@@ -379,10 +380,17 @@ struct OccupiedPhone {
 // then 3 s, 6 s, then every 20 s; once per event while the app process runs
 // with its listener closed). Replaces a separate 20 s timer per serial that
 // woke a paused, locked phone for ever.
-bool MayLaunch()
+std::optional<std::uint64_t> ReserveSessionLaunch()
 {
     auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
-    return runtime.doctor.ReserveLaunch(NowMs());
+    if (!runtime.doctor.ReserveLaunch(NowMs())) return std::nullopt;
+    return runtime.doctor.LaunchGeneration();
+}
+
+void ReturnUnusedLaunch(std::uint64_t generation)
+{
+    auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
+    runtime.doctor.NoteLaunchDropped(generation);
 }
 
 void Check(HRESULT hr, const char* operation)
@@ -393,11 +401,19 @@ void CheckCanceled(const std::atomic<bool>* canceled)
 {
     if (canceled && canceled->load()) throw std::runtime_error("Phone camera canceled");
 }
-QByteArray Read(QTcpSocket& socket, int size, int timeout, const std::atomic<bool>* canceled = nullptr)
+constexpr auto kNoSocketDeadline = Clock::time_point::max();
+int SocketWaitMs(Clock::time_point deadline)
+{
+    return static_cast<int>(std::clamp(std::chrono::ceil<std::chrono::milliseconds>(deadline - Clock::now()).count(),
+                                      int64_t{0}, int64_t{20}));
+}
+
+QByteArray Read(QTcpSocket& socket, int size, int timeout, const std::atomic<bool>* canceled = nullptr,
+                Clock::time_point limit = kNoSocketDeadline)
 {
     QByteArray result;
     result.reserve(size);
-    const auto deadline = Clock::now() + std::chrono::milliseconds(timeout);
+    const auto deadline = std::min(limit, Clock::now() + std::chrono::milliseconds(timeout));
     while (result.size() < size) {
         CheckCanceled(canceled);
         const auto bytes = socket.read(size - result.size());
@@ -405,25 +421,29 @@ QByteArray Read(QTcpSocket& socket, int size, int timeout, const std::atomic<boo
         if (result.size() == size) break;
         if (socket.state() != QAbstractSocket::ConnectedState) throw std::runtime_error("Phone USB connection closed");
         if (Clock::now() >= deadline) throw UsbResponseTimeout("Phone USB response timed out");
-        socket.waitForReadyRead(20);
+        socket.waitForReadyRead(SocketWaitMs(deadline));
     }
     return result;
 }
 bool Write(QTcpSocket& socket, const QByteArray& bytes, const std::atomic<bool>* canceled = nullptr,
-           const std::function<bool()>& allowed = {})
+           const std::function<bool()>& allowed = {}, Clock::time_point limit = kNoSocketDeadline,
+           bool* written = nullptr)
 {
     CheckCanceled(canceled);
     // Admission is checked at the actual emission boundary, after serialization.
     // Once queued in QTcpSocket, a command may be acknowledged even if its owner
     // cancels later; cancellation does not invent a compensating device state.
     if (allowed && !allowed()) return false;
-    if (socket.write(bytes) != bytes.size()) throw std::runtime_error("Phone USB write failed");
-    const auto deadline = Clock::now() + std::chrono::seconds(3);
+    if (Clock::now() >= limit) throw UsbResponseTimeout("Phone USB response timed out");
+    const auto queued = socket.write(bytes);
+    if (written && queued > 0) *written = true;
+    if (queued != bytes.size()) throw std::runtime_error("Phone USB write failed");
+    const auto deadline = std::min(limit, Clock::now() + std::chrono::seconds(3));
     while (socket.bytesToWrite()) {
         CheckCanceled(canceled);
         if (socket.state() != QAbstractSocket::ConnectedState || Clock::now() >= deadline)
             throw std::runtime_error("Phone USB write timed out");
-        socket.waitForBytesWritten(20);
+        socket.waitForBytesWritten(SocketWaitMs(deadline));
     }
     return true;
 }
@@ -432,10 +452,12 @@ bool Write(QTcpSocket& socket, const QByteArray& bytes, const std::atomic<bool>*
 constexpr int kHostConnectMs = 500;
 constexpr int kHostReplyFieldMs = 1000;
 constexpr int kCompanionProbeTransportMs = 1000;
-void ConnectTo(QTcpSocket& socket, std::uint16_t port, int timeout, const std::atomic<bool>* canceled = nullptr)
+void ConnectTo(QTcpSocket& socket, std::uint16_t port, int timeout, const std::atomic<bool>* canceled = nullptr,
+               Clock::time_point limit = kNoSocketDeadline)
 {
+    const auto deadline = std::min(limit, Clock::now() + std::chrono::milliseconds(timeout));
+    if (Clock::now() >= deadline) throw AdbConnectTimedOut("The local adb server did not accept the connection in time");
     socket.connectToHost(QHostAddress::LocalHost, port);
-    const auto deadline = Clock::now() + std::chrono::milliseconds(timeout);
     while (socket.state() != QAbstractSocket::ConnectedState) {
         if (canceled && canceled->load()) { socket.abort(); CheckCanceled(canceled); }
         if (socket.state() == QAbstractSocket::UnconnectedState) {
@@ -446,16 +468,17 @@ void ConnectTo(QTcpSocket& socket, std::uint16_t port, int timeout, const std::a
             socket.abort();
             throw AdbConnectTimedOut("The local adb server did not accept the connection in time");
         }
-        socket.waitForConnected(20);
+        socket.waitForConnected(SocketWaitMs(deadline));
     }
 }
-void Connect(QTcpSocket& socket, int timeout, const std::atomic<bool>* canceled = nullptr)
+void Connect(QTcpSocket& socket, int timeout, const std::atomic<bool>* canceled = nullptr,
+             Clock::time_point limit = kNoSocketDeadline)
 {
     socket.setReadBufferSize(32 * 1024 * 1024);
     const auto endpoint = Endpoint();
     if (!endpoint.supported) throw std::runtime_error("USB phone support requires a local TCP adb server");
     if (endpoint.port == 0) throw AdbServerUnavailable("The owned adb server is unavailable");
-    ConnectTo(socket, endpoint.port, timeout, canceled);
+    ConnectTo(socket, endpoint.port, timeout, canceled, limit);
 }
 
 QString FindAdbExecutable()
@@ -546,17 +569,19 @@ std::shared_ptr<OwnedAdbServer> CreateOwnedAdbServer(
         }, policy);
 }
 
-QByteArray AdbHostReply(const QByteArray& service, const std::atomic<bool>* canceled);
-QByteArray AdbHostReplyAt(std::uint16_t port, const QByteArray& service, const std::atomic<bool>* canceled);
+QByteArray AdbHostReply(const QByteArray& service, const std::atomic<bool>* canceled,
+                       Clock::time_point limit = kNoSocketDeadline);
+QByteArray AdbHostReplyAt(std::uint16_t port, const QByteArray& service, const std::atomic<bool>* canceled,
+                         Clock::time_point limit = kNoSocketDeadline);
 // One device listing of a server, shared by every caller: the protobuf form,
 // and the text form when that fails (an older adb answers FAIL to it). No
 // port: the endpoint in use; a port: that listener (the default beside
 // OkuFlow's server). `text` reports which form answered.
 std::vector<AdbDeviceEntry> ListAdbEntries(std::optional<std::uint16_t> port, const std::atomic<bool>* canceled,
-                                           bool* text = nullptr)
+                                           bool* text = nullptr, Clock::time_point limit = kNoSocketDeadline)
 {
     const auto reply = [&](const char* service) {
-        return port ? AdbHostReplyAt(*port, service, canceled) : AdbHostReply(service, canceled);
+        return port ? AdbHostReplyAt(*port, service, canceled, limit) : AdbHostReply(service, canceled, limit);
     };
     auto entries = [&] {
         if (text) *text = false;
@@ -815,12 +840,15 @@ OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* cancel
         // A shadow started because the default is blind to a phone Windows
         // shows stays until the takeover settles or the phone is unplugged.
         if (blindShadow && RuntimeAdbInterface() == PhoneAdbInterface::Absent) blindShadow = false;
-        if (shadow && !occupied && !blindShadow && owned->OwnsRunningServer()) {
+        if (shadow && !occupied && !blindShadow) {
+            const auto port = owned->Port();
+            const auto listener = port ? owned->ListeningIdentity(*port) : std::nullopt;
+            const auto verified = [&] { return listener && owned->ListeningIdentity(listener->port) == listener; };
             bool empty = false;
             try {
                 // An empty raw listing proves there are no transports at all,
                 // including unauthorized USB entries filtered from the picker.
-                empty = ListAdbEntries(std::nullopt, canceled).empty();
+                if (listener) empty = ListAdbEntries(*port, canceled).empty() && verified();
             } catch (...) { CheckCanceled(canceled); }
             // The default answering again is not enough: it must list a
             // phone in a usable state (ready, unauthorized, authorizing).
@@ -831,15 +859,23 @@ OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* cancel
                     readyDefault = DefaultServesTarget(ListAdbEntries(env.port, canceled), wanted);
                 } catch (...) { CheckCanceled(canceled); }
             }
+            const bool provedHandback = readyDefault && verified();
             bool handback = false;
             { std::lock_guard lock(runtime.mutex);
-              runtime.shadowHandbackProbes = readyDefault ? runtime.shadowHandbackProbes + 1 : 0;
+              runtime.shadowHandbackProbes = provedHandback ? runtime.shadowHandbackProbes + 1 : 0;
               // Also at the hand-over cap: the cap prefers the side where
               // the phone is listed.
               handback = runtime.shadowHandbackProbes >= 2; }
             if (handback) {
                 CheckCanceled(canceled);
                 if (stale()) return Result::Canceled;
+                handback = verified();
+                if (!handback) {
+                    std::lock_guard lock(runtime.mutex);
+                    runtime.shadowHandbackProbes = 0;
+                }
+            }
+            if (handback) {
                 const int unanswered = owned->UnansweredStartsAtRetirement();
                 owned->Stop();
                 if (hooks && hooks->afterPrivateServerRetiredForTest) hooks->afterPrivateServerRetiredForTest();
@@ -1093,62 +1129,67 @@ void RequireAdbServer(const std::atomic<bool>* canceled, const std::string& want
     ObserveServerIdentity();
 }
 bool AdbRequest(QTcpSocket& socket, const QByteArray& service, int timeout = 3000,
-                const std::atomic<bool>* canceled = nullptr, const std::function<bool()>& allowed = {})
+                const std::atomic<bool>* canceled = nullptr, const std::function<bool()>& allowed = {},
+                Clock::time_point limit = kNoSocketDeadline, bool* written = nullptr)
 {
     if (service.size() > 65535) throw std::runtime_error("Invalid adb request");
-    if (!Write(socket, QByteArray::number(service.size(), 16).rightJustified(4, '0') + service, canceled, allowed))
+    if (!Write(socket, QByteArray::number(service.size(), 16).rightJustified(4, '0') + service, canceled, allowed, limit, written))
         return false;
-    const auto status = Read(socket, 4, timeout, canceled);
+    const auto status = Read(socket, 4, timeout, canceled, limit);
     if (status == "FAIL") {
         bool valid = false;
-        const int size = Read(socket, 4, timeout, canceled).toInt(&valid, 16);
+        const int size = Read(socket, 4, timeout, canceled, limit).toInt(&valid, 16);
         if (!valid || size < 0 || size > kControlLimit) throw std::runtime_error("Invalid adb error");
-        throw AdbFailReply(Read(socket, size, timeout, canceled).toStdString());
+        throw AdbFailReply(Read(socket, size, timeout, canceled, limit).toStdString());
     }
     if (status != "OKAY") throw std::runtime_error("Invalid adb response");
     return true;
 }
 bool Transport(QTcpSocket& socket, const std::string& serial, const QByteArray& service,
                const std::atomic<bool>* canceled = nullptr, int timeout = 3000, std::uint64_t transportId = 0,
-               std::optional<std::uint16_t> port = std::nullopt, const std::function<bool()>& allowed = {})
+               std::optional<std::uint16_t> port = std::nullopt, const std::function<bool()>& allowed = {},
+               Clock::time_point limit = kNoSocketDeadline, bool* serviceWritten = nullptr)
 {
     if (port) {
         socket.setReadBufferSize(32 * 1024 * 1024);
-        ConnectTo(socket, *port, kHostConnectMs, canceled);
+        ConnectTo(socket, *port, kHostConnectMs, canceled, limit);
     } else {
-        Connect(socket, kHostConnectMs, canceled);
+        Connect(socket, kHostConnectMs, canceled, limit);
     }
     if (!AdbRequest(socket, transportId ? "host:transport-id:" + QByteArray::number(transportId) :
-        "host:transport:" + QByteArray::fromStdString(serial), timeout, canceled, allowed))
+        "host:transport:" + QByteArray::fromStdString(serial), timeout, canceled, allowed, limit))
         return false;
-    return AdbRequest(socket, service, timeout, canceled, allowed);
+    return AdbRequest(socket, service, timeout, canceled, allowed, limit, serviceWritten);
 }
-QByteArray ReadHostReplyBody(QTcpSocket& socket, const std::atomic<bool>* canceled)
+QByteArray ReadHostReplyBody(QTcpSocket& socket, const std::atomic<bool>* canceled,
+                            Clock::time_point limit = kNoSocketDeadline)
 {
     bool valid = false;
-    const int size = Read(socket, 4, kHostReplyFieldMs, canceled).toInt(&valid, 16);
+    const int size = Read(socket, 4, kHostReplyFieldMs, canceled, limit).toInt(&valid, 16);
     if (!valid || size < 0 || size > 65535) throw std::runtime_error("Invalid adb reply length");
-    return Read(socket, size, kHostReplyFieldMs, canceled);
+    return Read(socket, size, kHostReplyFieldMs, canceled, limit);
 }
-QByteArray ReadHostReply(QTcpSocket& socket, const QByteArray& service, const std::atomic<bool>* canceled)
+QByteArray ReadHostReply(QTcpSocket& socket, const QByteArray& service, const std::atomic<bool>* canceled,
+                        Clock::time_point limit = kNoSocketDeadline)
 {
-    AdbRequest(socket, service, kHostReplyFieldMs, canceled);
-    return ReadHostReplyBody(socket, canceled);
+    AdbRequest(socket, service, kHostReplyFieldMs, canceled, {}, limit);
+    return ReadHostReplyBody(socket, canceled, limit);
 }
-QByteArray AdbHostReply(const QByteArray& service, const std::atomic<bool>* canceled)
+QByteArray AdbHostReply(const QByteArray& service, const std::atomic<bool>* canceled, Clock::time_point limit)
 {
     CheckCanceled(canceled);
     QTcpSocket socket;
-    Connect(socket, kHostConnectMs, canceled);
-    return ReadHostReply(socket, service, canceled);
+    Connect(socket, kHostConnectMs, canceled, limit);
+    return ReadHostReply(socket, service, canceled, limit);
 }
 // Explicit port: the default listener while a private server shadows it.
-QByteArray AdbHostReplyAt(std::uint16_t port, const QByteArray& service, const std::atomic<bool>* canceled)
+QByteArray AdbHostReplyAt(std::uint16_t port, const QByteArray& service, const std::atomic<bool>* canceled,
+                         Clock::time_point limit)
 {
     CheckCanceled(canceled);
     QTcpSocket socket;
-    ConnectTo(socket, port, kHostConnectMs, canceled);
-    return ReadHostReply(socket, service, canceled);
+    ConnectTo(socket, port, kHostConnectMs, canceled, limit);
+    return ReadHostReply(socket, service, canceled, limit);
 }
 // Open the write socket first, then observe the transport on the same
 // server. The final identity and intent checks run at the write boundary.
@@ -1866,10 +1907,11 @@ namespace {
 // Listing without companion probes: recovery must not touch other phones.
 std::vector<CameraDescriptor> ListUsbPhones(const std::atomic<bool>* canceled,
                                             std::vector<AdbDeviceEntry>* rawEntries = nullptr,
-                                            std::optional<std::uint16_t> port = std::nullopt)
+                                            std::optional<std::uint16_t> port = std::nullopt,
+                                            Clock::time_point limit = kNoSocketDeadline)
 {
     bool text = false;
-    auto entries = ListAdbEntries(port, canceled, &text);
+    auto entries = ListAdbEntries(port, canceled, &text, limit);
     std::vector<CameraDescriptor> attached;
     for (const auto& entry : entries) {
         if (!entry.usb || entry.state != PhoneAdbState::Device) continue;
@@ -1900,13 +1942,13 @@ bool HasWholeLine(const QByteArray& text, const QByteArray& line)
 // arrives (a whole line, never a substring: dumpsys lines and package paths
 // can contain any word), the deadline passes or 64 KiB arrived.
 QByteArray DrainShell(QTcpSocket& socket, const std::atomic<bool>* canceled, int timeoutMs,
-                      const QByteArray& until = {})
+                      const QByteArray& until = {}, Clock::time_point limit = kNoSocketDeadline)
 {
     QByteArray response;
-    const auto deadline = Clock::now() + std::chrono::milliseconds(timeoutMs);
+    const auto deadline = std::min(limit, Clock::now() + std::chrono::milliseconds(timeoutMs));
     while (socket.state() == QAbstractSocket::ConnectedState && Clock::now() < deadline) {
         CheckCanceled(canceled);
-        socket.waitForReadyRead(20);
+        socket.waitForReadyRead(SocketWaitMs(deadline));
         response += socket.readAll();
         if (response.size() > kControlLimit) throw std::runtime_error("Oversized phone shell response");
         if (!until.isEmpty() && HasWholeLine(response, until)) break;
@@ -1917,43 +1959,59 @@ QByteArray DrainShell(QTcpSocket& socket, const std::atomic<bool>* canceled, int
 }
 
 enum class CompanionLaunch { Started, NotInstalled, Dropped, AttachmentChanged };
+struct CompanionLaunchWrites {
+    bool wake{};
+    bool activity{};
+};
 // Rung 5: wake the screen (harmless input) and start the activity with the
 // host-launch extra, which lets a new companion show over the keyguard. The
 // Play package is tried first; the legacy debug package only when the new
 // activity class is absent. Never force-stops anything.
 CompanionLaunch LaunchCompanion(const ReconnectServer& server, const std::string& serial, std::uint64_t transportId,
-                                const std::atomic<bool>* canceled, bool wake,
-                                const std::function<bool()>& stillWanted = {})
+                                const std::atomic<bool>* canceled, CompanionLaunchWrites& writes,
+                                const std::function<bool()>& stillWanted = {},
+                                Clock::time_point verifyBy = kNoSocketDeadline,
+                                Clock::time_point launchBy = kNoSocketDeadline)
 {
-    const auto allowed = [&] { return server.StillCurrent() && (!stillWanted || stillWanted()); };
+    // Serial selection scopes this to one phone even if the default can only
+    // be identified by PID. Both writes on each shell socket recheck authority.
+    const auto allowed = [&] { return server.StillCurrent(true) && (!stillWanted || stillWanted()); };
     const auto refused = [&] {
         return stillWanted && !stillWanted() ? CompanionLaunch::Dropped : CompanionLaunch::AttachmentChanged;
     };
-    const auto openShell = [&](QTcpSocket& socket, const char* command) {
-        if (!allowed()) return false;
-        const auto phones = ListUsbPhones(canceled, nullptr, server.endpoint.port);
-        if (std::none_of(phones.begin(), phones.end(), [&](const auto& phone) {
+    if (!allowed()) return refused();
+    // Both listing forms share one transaction budget, further limited by
+    // the caller. A fallback can use only what remains of that budget.
+    const auto deadline = std::min(verifyBy, Clock::now() +
+        std::chrono::milliseconds(kHostConnectMs + 3 * kHostReplyFieldMs));
+    try {
+        const auto phones = ListUsbPhones(canceled, nullptr, server.endpoint.port, deadline);
+        if (Clock::now() >= deadline || std::none_of(phones.begin(), phones.end(), [&](const auto& phone) {
                 return phone.phoneSerial == serial && phone.phoneTransportId == transportId;
-            })) return false;
+            })) return refused();
+    } catch (const std::exception&) {
+        CheckCanceled(canceled);
+        return refused();
+    }
+    const auto openShell = [&](QTcpSocket& socket, const char* command, bool& written) {
+        if (!allowed()) return false;
         // Select by serial so recycling the transport ID after the listing
         // cannot route a shell command to a different phone.
-        return Transport(socket, serial, command, canceled, 1000, 0, server.endpoint.port, allowed);
+        return Transport(socket, serial, command, canceled, 1000, 0, server.endpoint.port, allowed, launchBy, &written);
     };
-    if (wake) {
-        try {
-            QTcpSocket waker;
-            if (!openShell(waker, "shell:input keyevent KEYCODE_WAKEUP")) return refused();
-            DrainShell(waker, canceled, 1000);
-        } catch (const std::exception&) {
-            CheckCanceled(canceled);
-        }
+    try {
+        QTcpSocket waker;
+        if (!openShell(waker, "shell:input keyevent KEYCODE_WAKEUP", writes.wake)) return refused();
+        DrainShell(waker, canceled, 1000, {}, launchBy);
+    } catch (const std::exception&) {
+        CheckCanceled(canceled);
     }
     for (const char* command : {
         "shell:am start -n com.okuflow/com.okuflow.camera.MainActivity --ez com.okuflow.camera.extra.HOST_LAUNCH true",
         "shell:am start -n com.okuflow.camera/.MainActivity --ez com.okuflow.camera.extra.HOST_LAUNCH true"}) {
         QTcpSocket launcher;
-        if (!openShell(launcher, command)) return refused();
-        const auto response = DrainShell(launcher, canceled, 2000);
+        if (!openShell(launcher, command, writes.activity)) return refused();
+        const auto response = DrainShell(launcher, canceled, 2000, {}, launchBy);
         if (!response.contains("Error") && !response.contains("Exception")) return CompanionLaunch::Started;
         const bool legacy = std::string_view(command).find("com.okuflow.camera/.MainActivity") != std::string_view::npos;
         if (legacy || !response.contains("Error type 3")) return CompanionLaunch::NotInstalled;
@@ -2779,11 +2837,16 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         return "default server stop: " + result.diagnostic;
     }
     case A::WakeAndLaunchApp: {
+        CompanionLaunchWrites writes;
+        const auto reservation = qScopeGuard([&] {
+            if (!writes.wake && !writes.activity) ReturnUnusedLaunch(decision.launchGeneration);
+        });
         if (!entry) return "no listed phone";
         if (const auto hooks = Hooks(); hooks && hooks->beforeCompanionLaunchForTest) hooks->beforeCompanionLaunchForTest();
         if (stale()) return dropped;
         try {
-            const auto launched = LaunchCompanion(listingServer, entry->serial, entry->transportId, canceled, true, stillWanted);
+            const auto launched = LaunchCompanion(listingServer, entry->serial, entry->transportId, canceled,
+                                                  writes, stillWanted);
             if (launched == CompanionLaunch::Dropped) return dropped;
             if (launched == CompanionLaunch::AttachmentChanged) return "companion launch failed";
             return launched == CompanionLaunch::Started
@@ -3421,14 +3484,22 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
             QTcpSocket control, video;
             QJsonObject capabilities;
             const auto hooks = Hooks();
-            const auto connectionDeadline = Clock::now() + (hooks && hooks->sessionConnectBudgetForTest
-                ? *hooks->sessionConnectBudgetForTest : std::chrono::seconds(5));
+            const auto nowConnecting = Clock::now();
+            const auto overallDeadline = (lastDecodedClock < 0 ? startupBudget : PhoneStartupBudget(nowConnecting)).Deadline();
+            const auto connectionDeadline = std::min(overallDeadline, nowConnecting +
+                (hooks && hooks->sessionConnectBudgetForTest
+                    ? *hooks->sessionConnectBudgetForTest : std::chrono::seconds(5)));
+            // Preserve room for a fresh control socket after am start.
+            const auto launchDeadline = overallDeadline - std::chrono::milliseconds(kHostConnectMs);
+            const auto verifyDeadline = std::min(connectionDeadline, launchDeadline);
             bool launchedThisAttempt = false;
+            bool companionNotInstalled = false;
             for (;;) {
                 CheckCanceled(&canceled_);
                 bool endpointOpened = false;
                 try {
-                    Transport(control, descriptor.phoneSerial, "localabstract:okuflow_camera", &canceled_, 1000, descriptor.phoneTransportId);
+                    Transport(control, descriptor.phoneSerial, "localabstract:okuflow_camera", &canceled_, 1000,
+                              descriptor.phoneTransportId, std::nullopt, {}, overallDeadline);
                     endpointOpened = true;
                     capabilities = ControlHello(control, 1500, hevcSupported, &canceled_);
                     Transport(video, descriptor.phoneSerial, "localabstract:okuflow_camera", &canceled_, 1000, descriptor.phoneTransportId);
@@ -3441,19 +3512,31 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
                     control.abort(); video.abort(); CheckCanceled(&canceled_);
                     // An absent listener gets at most one launch per start
                     // attempt, taken from the shared per-event budget.
-                    if (!endpointOpened && !launchedThisAttempt && MayLaunch()) {
-                        launchedThisAttempt = true;
-                        // Wake first: a launch on a sleeping phone would otherwise be spent
-                        // behind the keyguard. A paused/blocked installed app keeps its
-                        // own state; the legacy package is only tried when the Play
-                        // activity is absent.
-                        const auto launch = LaunchCompanion(listingServer, descriptor.phoneSerial,
-                                                            descriptor.phoneTransportId, &canceled_, true);
-                        if (launch == CompanionLaunch::Started)
-                            TracePhoneLink("session start: woke the phone and requested the companion " +
-                                           PhoneSerialTag(descriptor.phoneSerial));
-                        if (launch == CompanionLaunch::NotInstalled)
-                            throw std::runtime_error("Install OkuFlow Camera on the selected USB phone first");
+                    if (companionNotInstalled)
+                        throw std::runtime_error("Install OkuFlow Camera on the selected USB phone first");
+                    if (!endpointOpened && !launchedThisAttempt && Clock::now() < verifyDeadline) {
+                        if (const auto generation = ReserveSessionLaunch()) {
+                            launchedThisAttempt = true;
+                            CompanionLaunchWrites writes;
+                            const auto reservation = qScopeGuard([&] {
+                                if (!writes.wake && !writes.activity) ReturnUnusedLaunch(*generation);
+                            });
+                            try {
+                                const auto launch = LaunchCompanion(listingServer, descriptor.phoneSerial,
+                                    descriptor.phoneTransportId, &canceled_, writes, {}, verifyDeadline, launchDeadline);
+                                if (launch == CompanionLaunch::Started)
+                                    TracePhoneLink("session start: woke the phone and requested the companion " +
+                                                   PhoneSerialTag(descriptor.phoneSerial));
+                                companionNotInstalled = launch == CompanionLaunch::NotInstalled;
+                            } catch (const std::exception&) {
+                                CheckCanceled(&canceled_);
+                                if (!writes.activity) throw;
+                            }
+                            // An activity request may open the listener even if
+                            // the reply timed out or the short window expired.
+                            if (writes.activity && (Clock::now() >= connectionDeadline || companionNotInstalled))
+                                continue;
+                        }
                     }
                     if (Clock::now() >= connectionDeadline)
                         throw std::runtime_error("Open OkuFlow Camera, allow camera access and authorize USB debugging");

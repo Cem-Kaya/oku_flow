@@ -1589,6 +1589,29 @@ private slots:
         QCOMPARE(int(killed.Decide(Refused(PhoneFact::Yes, PhoneFact::No), 3000).action), int(A::WakeAndLaunchApp));
         QVERIFY(!killed.ReserveLaunch(3500));
     }
+    void unwrittenLaunchKeepsSpacingAndCannotRefundANewerGeneration()
+    {
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto closed = Refused(PhoneFact::Yes, PhoneFact::No);
+        closed.shell.appRunning = PhoneFact::Yes;
+        const auto first = doctor.Decide(closed, 0);
+        QCOMPARE(first.action, A::WakeAndLaunchApp);
+        doctor.NoteLaunchDropped(first.launchGeneration);
+        const auto retryAt = doctor.Policy().launchPeriodicMs;
+        QCOMPARE(doctor.Decide(closed, retryAt - 1).action, A::Relist);
+        const auto retry = doctor.Decide(closed, retryAt);
+        QCOMPARE(retry.action, A::WakeAndLaunchApp);
+        QCOMPARE(retry.episode, first.episode);
+
+        // A manual renewal in the same episode can race with the outcome.
+        doctor.RenewLaunches();
+        const auto renewed = doctor.Decide(closed, retryAt + 1);
+        QCOMPARE(renewed.action, A::WakeAndLaunchApp);
+        QCOMPARE(renewed.episode, first.episode);
+        doctor.NoteLaunchDropped(retry.launchGeneration);
+        QCOMPARE(doctor.Decide(closed, 2 * retryAt + 1).action, A::WaitForUser);
+    }
     void launchStillStartingIsNotHeld()
     {
         // Iteration 4 (A5): after OkuFlow's own launch the app process runs

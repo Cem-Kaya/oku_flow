@@ -707,7 +707,8 @@ every 20 s, one budget shared by discovery and camera starts (at most one per
 start attempt; once per event while the app process runs with its listener
 closed, not counting the 5 s after OkuFlow's own launch; a hold ends when the
 app process is gone, relaunching at once the first time per event and 20 s after
-the last launch later). A resumed phone
+the last launch later). An unwritten action returns its launch reservation
+while retaining the retry spacing. A resumed phone
 session must present a frame within 3 s. Owned bootstrap/crash cooldown 5 s,
 doubling to 30 s. Capture shutdown bounds its D3D11 completion-query poll to
 1000ms while retaining the facade's shared 1500ms stop deadline. Stopping a
