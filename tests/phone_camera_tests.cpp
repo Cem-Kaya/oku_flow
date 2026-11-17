@@ -2485,6 +2485,18 @@ private slots:
             QCOMPARE(int(report.decision.diagnosis), int(present == okuflow::PhoneAdbInterface::Present
                 ? okuflow::PhoneLinkDiagnosis::Unauthorized : okuflow::PhoneLinkDiagnosis::NotWanted));
         }
+        // Iteration 4 (A4): Windows cannot tell; the phone is wanted once the
+        // server lists any USB phone, and not while it lists none.
+        for (const bool listed : {true, false}) {
+            server.listEmpty.store(!listed);
+            ScopedLinkHooks hooks(server.port, okuflow::PhoneAdbInterface::Unknown);
+            okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+            okuflow::PhoneLinkReport report;
+            okuflow::PhoneCameraTransport::Enumerate({}, nullptr, nullptr, {}, nullptr,
+                                                     okuflow::PhoneServerIntent::PhoneUse, &request, &report);
+            QCOMPARE(int(report.decision.diagnosis), int(listed ? okuflow::PhoneLinkDiagnosis::Unauthorized
+                                                                : okuflow::PhoneLinkDiagnosis::NotWanted));
+        }
     }
     void reconnectOfflineWithoutIdNeverReachesAnotherServer() {
         // C6: host:reconnect-offline affects every offline device of that
@@ -2559,6 +2571,37 @@ private slots:
             return r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::ReplugCable; });
         QVERIFY(Saw(reports, okuflow::PhoneLinkAction::RestartOwnedServer));
         QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::ReplugCable));
+    }
+    void windowsCannotTellNeverStopsAnotherServer() {
+        // Iteration 4 (A4): Windows answers Unknown, another adb on the
+        // default port lists nothing. After the stated blind period OkuFlow
+        // starts its own private server beside it, never asks it to exit or
+        // stops it, and ends in the re-plug sentence instead of "Restoring".
+        DefaultAdbFixture other({L"--fixture-exit-on-kill"});
+        QVERIFY(other.copied && !other.Exited());
+        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Unknown, OwnedChildFixturePath().toStdWString());
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto reports = LinkCycles(80, [](const auto& r) {
+            return r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::ReplugCable; });
+        QVERIFY(Saw(reports, okuflow::PhoneLinkAction::StartShadowServer));
+        QVERIFY(!Saw(reports, okuflow::PhoneLinkAction::AskDefaultServerToExit));
+        QVERIFY(!Saw(reports, okuflow::PhoneLinkAction::TerminateDefaultServer));
+        QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::ReplugCable));
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::WaitForUser));
+        QVERIFY(!other.Exited());
+    }
+    void hungDefaultEndsInTheReplugSentenceWhenWindowsCannotTell() {
+        // A4: a hung default under Unknown is never terminated; it ends in
+        // the re-plug sentence after the stated time.
+        DefaultAdbFixture hung({L"--fixture-hang"});
+        QVERIFY(hung.copied && !hung.Exited());
+        ScopedLinkHooks hooks(hung.port, okuflow::PhoneAdbInterface::Unknown, OwnedChildFixturePath().toStdWString(), {}, 100);
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto reports = LinkCycles(40, [](const auto& r) {
+            return r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::ReplugCable; });
+        QVERIFY(!Saw(reports, okuflow::PhoneLinkAction::TerminateDefaultServer));
+        QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::ReplugCable));
+        QVERIFY(!hung.Exited());
     }
     void companionFailureIsNamedEndToEnd() {
         // A5: the camera is held by another phone app ("busy").

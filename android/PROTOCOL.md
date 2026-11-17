@@ -115,11 +115,16 @@ diagnosis and one next action, least disturbing first:
    15 s, then 60 s. At most three restarts per episode (until the next event);
    after that Windows asks the user to unplug the phone's cable and plug it
    back in, and keeps probing. Live sessions that deliver frames defer it.
-   When Windows cannot say whether the ADB interface is there (SetupAPI fails,
-   or the phone does not publish the standard ADB interface GUID, which also
-   means no arrival event), OkuFlow's own unshadowed server is treated as if it
-   were there after 30 s blind: the same restarts, cap and re-plug sentence.
-   This is never a reason to stop a server OkuFlow did not start.
+   When Windows cannot say whether the ADB interface is there (only when the
+   SetupAPI query itself fails; a phone that does not publish the standard ADB
+   interface GUID reads as absent and gets the connect sentence), OkuFlow's
+   own server is treated as if it were there after 30 s blind: the same
+   restarts, cap and re-plug sentence, and a private server may be started
+   beside a blind default. This is never a reason to ask a server OkuFlow did
+   not start to exit or to stop it: such a takeover ends in the re-plug
+   sentence after the takeover grace, and a hung default after 30 s
+   unresponsive. A first automatic start with no saved phone wants the phone
+   under "unknown" once the server lists a USB phone.
    While OkuFlow's own server is blind, Windows also looks at the default port:
    another adb there (Android Studio, scrcpy, a vendor suite, or one restarted
    after `host:kill`) is handed back to when it lists the phone ready,

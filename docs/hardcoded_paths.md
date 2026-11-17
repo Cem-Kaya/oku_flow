@@ -674,8 +674,10 @@ A phone stuck (offline, connecting, stalled, no permissions) on a server
 OkuFlow does not own: two reconnects (at once, 3 s), then 6 s later the
 takeover (borrowed default) or the re-plug sentence (user endpoint). Per
 episode: 3 blind/stuck restarts, 2 `host:kill`, 3 terminations, 4 private
-server starts beside the default plus hand-backs. Windows interface Unknown:
-OkuFlow's own server counts as present after 30 s blind. Companion problem
+server starts beside the default plus hand-backs. Windows interface Unknown
+(the SetupAPI query failed): after 30 s blind OkuFlow may start or restart its
+own server, never ask another to exit or stop it; that takeover, or a hung
+default unresponsive for 30 s, ends in the re-plug sentence. Companion problem
 (busy camera, failed, no mode): sentence after 20 s. A hang confirmed only by
 version probes gets one listing attempt (500 ms connect, 1000 ms per reply
 field) before termination. Companion wake + launch: at once, 3 s, 6 s, then

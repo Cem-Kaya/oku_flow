@@ -2028,7 +2028,14 @@ void RunPhoneLinkLadder(const PhoneLinkRequest& link, const std::string& preferr
     o.endpointSupported = facts.endpointSupported;
     o.serverProbe = facts.probe;
     o.adbInterface = RuntimeAdbInterface();
-    if (link.phoneWantedIfAttached && o.adbInterface == PhoneAdbInterface::Present) o.phoneWanted = true;
+    // A first automatic start with no saved phone wants an attached phone:
+    // Windows shows the ADB interface, or cannot tell (Unknown: SetupAPI
+    // failed) and the server lists a USB phone.
+    if (link.phoneWantedIfAttached &&
+        (o.adbInterface == PhoneAdbInterface::Present ||
+         (o.adbInterface == PhoneAdbInterface::Unknown &&
+          std::any_of(facts.entries.begin(), facts.entries.end(), [](const auto& e) { return e.usb; }))))
+        o.phoneWanted = true;
     const auto endpoint = Endpoint();
     bool shadow = false, confirmed = false, refused = false;
     std::optional<AdbListenerIdentity> refusedListener;

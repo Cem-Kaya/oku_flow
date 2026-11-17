@@ -421,8 +421,9 @@ private slots:
         QCOMPARE(int(doctor.Decide(blind, 301000).action), int(A::Relist));
         QCOMPARE(int(doctor.Decide(blind, 306000).action), int(A::RestartOwnedServer));
     }
-    void blindWithoutWindowsInterfaceNeverEscalates()
+    void windowsCannotTellNeverStopsAnotherServer()
     {
+        // Renamed in iteration 4 (was blindWithoutWindowsInterfaceNeverEscalates).
         // Changed deliberately (iteration 3, A4): Windows cannot tell
         // (Unknown) is treated as present for OkuFlow's own server after a
         // long blind period: restarts and their cap, then the re-plug
@@ -442,7 +443,11 @@ private slots:
         QCOMPARE(restarts, doctor.Policy().blindRestartCap);
         QCOMPARE(int(last.diagnosis), int(D::ReplugCable));
         QCOMPARE(int(last.action), int(A::WaitForUser));
-        // Never for a server OkuFlow did not start, also after the period.
+        // Changed deliberately (iteration 4, A4): a server OkuFlow did not
+        // start. After the period OkuFlow may start its own private server
+        // beside the blind default; that default is never asked to exit or
+        // stopped, and the state ends in the re-plug sentence (it read
+        // "Restoring" for ever before).
         PhoneLinkDoctor borrowedDoctor;
         borrowedDoctor.OnEvent(PhoneLinkEvent::AppStart, 0);
         auto borrowed = Blind(PhoneServerKind::BorrowedDefault);
@@ -450,10 +455,30 @@ private slots:
         auto beside = Blind(PhoneServerKind::Owned);
         beside.adbInterface = PhoneAdbInterface::Unknown;
         beside.shadowRunning = true;
-        for (std::int64_t now = 0; now < period + 120000; now += 1000) {
-            QCOMPARE(int(borrowedDoctor.Decide(borrowed, now).action), int(A::Relist));
-            QCOMPARE(int(borrowedDoctor.Decide(beside, now).action), int(A::Relist));
+        std::int64_t now = 0;
+        for (; now < period; now += 1000) QCOMPARE(int(borrowedDoctor.Decide(borrowed, now).action), int(A::Relist));
+        QCOMPARE(int(borrowedDoctor.Decide(borrowed, now).action), int(A::StartShadowServer));
+        for (std::int64_t end = now + 120000; now < end; now += 1000) {
+            last = borrowedDoctor.Decide(beside, now);
+            QVERIFY(last.action != A::AskDefaultServerToExit && last.action != A::TerminateDefaultServer);
         }
+        QCOMPARE(int(last.diagnosis), int(D::ReplugCable));
+        QCOMPARE(int(last.action), int(A::WaitForUser));
+        // The same for a hung default: never terminated under Unknown, the
+        // re-plug sentence once it stayed unresponsive for the period.
+        PhoneLinkDoctor hungDoctor;
+        hungDoctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto hung = Blind(PhoneServerKind::BorrowedDefault);
+        hung.adbInterface = PhoneAdbInterface::Unknown;
+        hung.serverProbe = PhoneServerProbe::Unresponsive;
+        hung.defaultUnresponsiveConfirmed = true;
+        for (now = 0; now < period + 60000; now += 1000) {
+            last = hungDoctor.Decide(hung, now);
+            QVERIFY(last.action != A::TerminateDefaultServer);
+            if (now < period) QCOMPARE(int(last.action), int(A::Relist));
+        }
+        QCOMPARE(int(last.diagnosis), int(D::ReplugCable));
+        QCOMPARE(int(last.action), int(A::WaitForUser));
         auto absent = Blind();
         absent.adbInterface = PhoneAdbInterface::Absent;
         const auto decision = doctor.Decide(absent, 61000);

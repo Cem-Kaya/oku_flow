@@ -36,7 +36,9 @@ std::vector<AdbDeviceEntry> ParseAdbDevicesLongText(std::string_view text);
 // Pure parser for the bounded read-only phone shell query (wakefulness,
 // keyguard, package presence, process presence). Unknown stays Unknown.
 PhoneShellFacts ParsePhoneShellFacts(std::string_view text);
-// SetupAPI: is an Android ADB USB interface present in Windows right now?
+// SetupAPI: is an Android ADB USB interface (standard interface GUID)
+// present in Windows right now? Absent also for a phone that does not
+// publish that GUID; Unknown only when the SetupAPI query itself failed.
 PhoneAdbInterface QueryAndroidAdbInterface();
 // Short stable tag for logs and the always-on trace; never the serial itself.
 std::string PhoneSerialTag(std::string_view serial);

@@ -1038,7 +1038,12 @@ another attached phone, and a hung-default shadow never handed back to a
 default that only answers. `phone_camera_contract` now runs about four
 minutes; its CTest limit is 300 s.
 Iteration 4 rows: a default that lists the phone "device" and never answers
-its shell (`--fixture-stalled-shell`) is taken over without a hand-back.
+its shell (`--fixture-stalled-shell`) is taken over without a hand-back; a
+paused companion whose process dies is relaunched on the same ladder; with
+Windows answering "unknown" another adb is never asked to exit or stopped
+(blind default and hung default end in the re-plug sentence) and a first start
+wants a listed USB phone. The doctor test `blindWithoutWindowsInterfaceNeverEscalates`
+was renamed `windowsCannotTellNeverStopsAnotherServer` and changed deliberately.
 `phone_link_text` (headless) checks one sentence per diagnosis and that every
 sentence is translated in all 24 catalogs. The native slot
 `phoneSentenceIsShownAndSpokenForEveryDiagnosis` delivers every verdict

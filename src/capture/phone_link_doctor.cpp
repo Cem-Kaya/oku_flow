@@ -167,7 +167,7 @@ void PhoneLinkDoctor::OnEvent(PhoneLinkEvent, std::int64_t nowMs)
     eventAtMs_ = nowMs;
     nextPollMs_ = nowMs;
     failedCycles_ = 0;
-    blindSinceMs_ = stuckSinceMs_ = lastReconnectMs_ = shadowSinceMs_ = askedExitMs_ = -1;
+    blindSinceMs_ = unresponsiveSinceMs_ = stuckSinceMs_ = lastReconnectMs_ = shadowSinceMs_ = askedExitMs_ = -1;
     unauthorizedSinceMs_ = authorizingSinceMs_ = connectedSinceMs_ = -1;
     unauthorizedReconnected_ = false;
     defaultStopRefused_ = false;
@@ -220,7 +220,17 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
     // interface present (a slow but healthy server with no phone attached is
     // never killed), and a bounded number of times per episode.
     const auto terminate = [&](bool hostKillSent) {
-        if (o.defaultStopRefused || !interfacePresent) return A::Relist;
+        if (o.defaultStopRefused) return A::Relist;
+        if (!interfacePresent) {
+            // Windows cannot tell: a server OkuFlow did not start is never
+            // stopped; a hang that lasts ends in the re-plug sentence.
+            if (o.adbInterface == PhoneAdbInterface::Unknown &&
+                nowMs - SinceEventOr(unresponsiveSinceMs_) >= policy_.unknownInterfaceBlindMs) {
+                *raised = D::ReplugCable;
+                return A::WaitForUser;
+            }
+            return A::Relist;
+        }
         if (terminate_.attempts >= policy_.terminateCap) { *raised = D::OtherProgramHoldsPhone; return A::WaitForUser; }
         if (!terminate_.Allowed(nowMs)) return A::Relist;
         Reserve(terminate_, nowMs, policy_.restartRetryMs, policy_.takeoverCeilingMs);
@@ -262,12 +272,24 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         }
         return A::WaitForUser;
     case D::NotListedByServer: {
-        // Windows cannot tell (Unknown): only OkuFlow's own server, and only
-        // after a long blind period, is treated as if the interface were there.
-        const bool assumedPresent = o.adbInterface == PhoneAdbInterface::Unknown && owned && !o.shadowRunning &&
-            nowMs - SinceEventOr(blindSinceMs_) >= policy_.unknownInterfaceBlindMs;
-        if ((!interfacePresent && !assumedPresent) || !responsive) return A::Relist;
-        if (nowMs - SinceEventOr(blindSinceMs_) < policy_.blindGraceMs) return A::Relist;
+        const std::int64_t blindFor = nowMs - SinceEventOr(blindSinceMs_);
+        if (!responsive || blindFor < policy_.blindGraceMs) return A::Relist;
+        // The default lists the phone usable (ready, unauthorized or
+        // authorizing): use it. Offline there is not serving it, and
+        // neither is "ready" for a phone whose adbd timed out there.
+        if (owned && o.shadowRunning && o.defaultListsPhone && !o.defaultPhoneStalled) {
+            if (handOvers_ >= policy_.handOverCap) { *raised = D::OtherProgramHoldsPhone; return A::WaitForUser; }
+            if (!handback_.Allowed(nowMs)) return A::Relist;
+            Reserve(handback_, nowMs, policy_.reconnectRetryMs, policy_.reconnectRetryMs);
+            ++handOvers_;
+            return A::HandBackToDefault;
+        }
+        // Windows cannot tell (Unknown): after a long blind period OkuFlow's
+        // own server may be started or restarted as if the interface were
+        // there; another server is never asked to exit or stopped (below).
+        const bool assumedPresent = o.adbInterface == PhoneAdbInterface::Unknown &&
+            blindFor >= policy_.unknownInterfaceBlindMs;
+        if (!interfacePresent && !assumedPresent) return A::Relist;
         if (owned && !o.shadowRunning) {
             if (restart_.attempts >= policy_.blindRestartCap) { *raised = D::ReplugCable; return A::WaitForUser; }
             if (!restart_.Allowed(nowMs)) return A::Relist;
@@ -276,18 +298,10 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         }
         if (o.server == PhoneServerKind::BorrowedDefault) return shadow();
         if (owned && o.shadowRunning) {
-            // The default lists the phone usable (ready, unauthorized or
-            // authorizing): use it. Offline there is not serving it, and
-            // neither is "ready" for a phone whose adbd timed out there.
-            if (o.defaultListsPhone && !o.defaultPhoneStalled) {
-                if (handOvers_ >= policy_.handOverCap) { *raised = D::OtherProgramHoldsPhone; return A::WaitForUser; }
-                if (!handback_.Allowed(nowMs)) return A::Relist;
-                Reserve(handback_, nowMs, policy_.reconnectRetryMs, policy_.reconnectRetryMs);
-                ++handOvers_;
-                return A::HandBackToDefault;
-            }
             if (nowMs - SinceEventOr(shadowSinceMs_) < policy_.takeoverGraceMs) return A::Relist;
             if (o.defaultHasOtherDevices) { *raised = D::OtherProgramHoldsPhone; return A::WaitForUser; }
+            // Unknown: the default is never asked to exit or stopped.
+            if (!interfacePresent) { *raised = D::ReplugCable; return A::WaitForUser; }
             if (askedExitMs_ < 0) {
                 if (askExit_.attempts >= policy_.askExitCap) { *raised = D::OtherProgramHoldsPhone; return A::WaitForUser; }
                 if (!askExit_.Allowed(nowMs)) return A::Relist;
@@ -438,6 +452,8 @@ PhoneLinkDecision PhoneLinkDoctor::Decide(const PhoneLinkObservation& observatio
     }
     const bool stuck = decision.diagnosis == D::Authorizing || decision.diagnosis == D::Offline ||
                        decision.diagnosis == D::TransportStalled;
+    if (decision.diagnosis == D::ServerUnresponsive) { if (unresponsiveSinceMs_ < 0) unresponsiveSinceMs_ = nowMs; }
+    else unresponsiveSinceMs_ = -1;
     if (stuck) { if (stuckSinceMs_ < 0) stuckSinceMs_ = nowMs; }
     else { stuckSinceMs_ = -1; lastReconnectMs_ = -1; }
     if (o.phoneState == PhoneAdbState::Authorizing) { if (authorizingSinceMs_ < 0) authorizingSinceMs_ = nowMs; }

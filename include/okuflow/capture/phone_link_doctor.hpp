@@ -165,11 +165,15 @@ struct PhoneLinkPolicy {
     // serving it" (takeover rungs) and a user endpoint gets the re-plug
     // sentence.
     int foreignReconnects{2};
-    // Windows cannot say whether the ADB interface is there (SetupAPI
-    // failed, or the phone does not publish the standard interface GUID):
-    // after this long blind, OkuFlow's own server is treated as if it were
-    // present (restart rung and its cap, then the re-plug sentence). Never
-    // for stopping a server OkuFlow did not start.
+    // Windows cannot say whether the ADB interface is there (Unknown: the
+    // SetupAPI query itself failed; a phone without the standard ADB
+    // interface GUID reads Absent). After this long blind, OkuFlow may
+    // start or restart its own server as if the interface were present
+    // (restart rung and its cap; a private server beside a blind default).
+    // A server OkuFlow did not start is never asked to exit or stopped
+    // under Unknown: a takeover or a hung default that this would need ends
+    // in the re-plug sentence (beside: after the takeover grace; hung:
+    // after this long unresponsive).
     std::int64_t unknownInterfaceBlindMs{30000};
     // A companion problem other than paused/busy host/blocked/hot (camera
     // busy in another phone app, failed, no mode, unknown) reads "Restoring"
@@ -293,6 +297,7 @@ private:
     unsigned failedCycles_{0};
     // Episode markers (reset by events and by Connected).
     std::int64_t blindSinceMs_{-1};
+    std::int64_t unresponsiveSinceMs_{-1};
     std::int64_t stuckSinceMs_{-1};
     std::int64_t lastReconnectMs_{-1};
     std::int64_t shadowSinceMs_{-1};

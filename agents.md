@@ -538,9 +538,13 @@ aligned with the project goals.
   usable listing (ready, unauthorized, authorizing) hands USB back; "ready"
   for a phone whose adbd timed out on that same default listener in this
   episode is not usable (it swapped back and forth before), also in the
-  `host:kill` and termination pre-checks. Windows
-  "Unknown" for the ADB interface counts as present only for OkuFlow's own
-  server and only after 30 s blind.
+  `host:kill` and termination pre-checks. Windows "Unknown" for the ADB
+  interface means only that the SetupAPI query failed (a phone without the
+  standard ADB interface GUID reads Absent). After 30 s blind under Unknown
+  OkuFlow may start or restart its own server (also beside a blind
+  default); a server OkuFlow did not start is never asked to exit or
+  stopped under Unknown, and such a takeover or a hung default ends in the
+  re-plug sentence instead of "Restoring" for ever.
 - Leftover OkuFlow instances (replaces "a windowless sibling is reported, not
   terminated", which left the owner's original complaint in place): only real
   instances register named events (`OkuFlowInstanceRegistration`), so an

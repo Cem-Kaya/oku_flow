@@ -5066,7 +5066,8 @@ translated app strings; it is an HTML draft, not a native-device screenshot.
   public protobuf fields without a runtime dependency; `ParseAdbDeviceEntries` /
   `ParseAdbDevicesLongText` keep every transport with its raw `PhoneAdbState`.
   `ParsePhoneShellFacts` parses the read-only shell query, `QueryAndroidAdbInterface`
-  checks SetupAPI presence, `NotePhoneLinkEvent` resets budgets (UI-thread
+  checks SetupAPI presence of the standard ADB interface GUID (Absent also for
+  a phone without it; Unknown only when SetupAPI fails), `NotePhoneLinkEvent` resets budgets (UI-thread
   safe: short locks only), and
   `SetPhoneLinkTraceFile` / `TracePhoneLink` / `FlushPhoneLinkTrace` /
   `PhoneSerialTag` write the always-on trace through its own writer thread.
