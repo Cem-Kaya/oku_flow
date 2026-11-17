@@ -28,7 +28,7 @@ void OkuFlowApp::OnCameraSelectionChanged(int index) {
         StopCameraCapture();
         selectedCameraIndex_ = -1;
         mainWindow_->setFileSourceSelected({},uiState_->cameraCombo_->findData(QStringLiteral("phone")));
-        phoneDiscoveryTimer_.invalidate();
+        NotePhoneEvent(PhoneLinkEvent::ManualPick);
         SavePersistentSettings();
         UpdateCameraPlaceholder();
         return;
@@ -62,6 +62,8 @@ void OkuFlowApp::OnCameraSelectionChanged(int index) {
     ReturnVideoToCamera();
     if (mainWindow_) mainWindow_->setVideoSourceSelected(false, index);
     if (automaticPhoneSelectionAllowed_) {
+        // A manual pick after any failure starts a fresh recovery ladder.
+        NotePhoneEvent(PhoneLinkEvent::ManualPick);
         phoneRetries_[cameras_[static_cast<size_t>(index)].phoneSerial].Succeeded();
         PhoneCameraTransport::AllowAppLaunch(cameras_[static_cast<size_t>(index)].phoneSerial);
     }
@@ -79,8 +81,64 @@ int OkuFlowApp::CameraPickerIndex() const {
     return selectedCameraIndex_;
 }
 
+void OkuFlowApp::NotePhoneEvent(PhoneLinkEvent event)
+{
+    NotePhoneLinkEvent(event);
+    for (auto& [serial, retry] : phoneRetries_) retry.Reset();
+    phoneDiscoveryTimer_.invalidate();
+}
+
+void OkuFlowApp::OnPhoneUsbRemoval()
+{
+    if (!initialized_ || phoneDiscoveryCanceled_.load()) return;
+    // A pull followed by a re-plug is a clean new attempt even when the
+    // transport id does not change.
+    NotePhoneEvent(PhoneLinkEvent::DeviceRemoval);
+}
+
+void OkuFlowApp::OnSystemSuspend()
+{
+    TracePhoneLink("system suspending");
+}
+
+void OkuFlowApp::OnSystemResume()
+{
+    if (!initialized_ || phoneDiscoveryCanceled_.load()) return;
+    // Every pre-sleep fact is stale: transport ids, server health, retry and
+    // launch budgets. Discovery starts the ladder at once.
+    NotePhoneEvent(PhoneLinkEvent::Resume);
+    const bool phoneLive = cameraActive_ && selectedCameraIndex_ >= 0 &&
+        static_cast<size_t>(selectedCameraIndex_) < cameras_.size() &&
+        !cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial.empty();
+    if (!phoneLive) return;
+    // A running phone session must show new frames within a short window;
+    // otherwise its sockets died with the sleep and it is torn down.
+    const auto frames = cameraFramesPresented_;
+    const auto session = cameraSessionId_;
+    QTimer::singleShot(3000, this, [this, frames, session] {
+        if (phoneDiscoveryCanceled_.load() || session != cameraSessionId_ || !cameraActive_ ||
+            cameraFramesPresented_ != frames)
+            return;
+        TracePhoneLink("no phone frames within 3 s after resume; reconnecting");
+        BeginCameraReconnect();
+        for (auto& [serial, retry] : phoneRetries_) retry.Reset();
+        phoneDiscoveryTimer_.invalidate();
+    });
+}
+
+void OkuFlowApp::OnWindowActivationChanged(bool active)
+{
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (!active) { deactivatedAtMs_ = now; return; }
+    const bool longIdle = deactivatedAtMs_ && now - deactivatedAtMs_ >= 120000;
+    deactivatedAtMs_ = 0;
+    if (longIdle && initialized_ && !phoneDiscoveryCanceled_.load())
+        NotePhoneEvent(PhoneLinkEvent::WindowActivatedAfterIdle);
+}
+
 void OkuFlowApp::OnPhoneUsbArrival()
 {
+    if (initialized_ && !phoneDiscoveryCanceled_.load()) NotePhoneEvent(PhoneLinkEvent::DeviceArrival);
     if (!initialized_ || phoneDiscoveryCanceled_.load() || !cameraIntent_.TemporaryOwner().isEmpty()) return;
     // Existing phone/lens intent survives reconnect; duplicate notifications
     // only accelerate discovery and never restart a connected phone.

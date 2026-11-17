@@ -257,6 +257,13 @@ public:
 
 signals:
     void phoneUsbArrived();
+    // An Android ADB USB interface was removed (cable pull, phone reboot).
+    void phoneUsbRemoved();
+    // WM_POWERBROADCAST: suspend, and resume (automatic or user) or the
+    // console display turning on again after it was off.
+    void systemSuspending();
+    void systemResumed();
+    void windowActivationChanged(bool active);
     void cameraLabelsRefreshRequested();
     void quickModeActivated(int row);
     void quickModeOptionsChanged();
@@ -293,6 +300,8 @@ protected:
 private:
     void* phoneDeviceNotification_{};
     quintptr phoneDeviceNotificationWindow_{};
+    void* displayPowerNotification_{};
+    bool displayWasOff_{false};
     friend class agent::NativeControlFixture;
     void ActivatePresetRow(int row);
     void ActivateRelativePreset(int offset);

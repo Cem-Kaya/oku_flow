@@ -3761,5 +3761,49 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>فرمول خوانده نشد. تصویر اصلی تغییری نکرده است.</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>تلفن را با USB وصل کنید، سپس در تلفن «انتقال فایل» را انتخاب کنید و اشکال‌زدایی USB را روشن کنید.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
+        <translation>قفل تلفن را باز کنید و در پرسش اشکال‌زدایی USB روی «اجازه دادن» ضربه بزنید.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>قفل تلفن را باز کنید.</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>برنامهٔ OkuFlow دوربین را در تلفن باز کنید.</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>برنامهٔ OkuFlow دوربین را روی تلفن نصب کنید.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>در تلفن، برنامهٔ OkuFlow دوربین را باز کنید و روی «از سرگیری پخش جریانی» ضربه بزنید.</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>رایانه یا برنامهٔ دیگری از دوربین تلفن استفاده می‌کند.</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>دسترسی به دوربین در تلفن مسدود شده است.</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>تلفن بیش از حد داغ است. بگذارید خنک شود.</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>پنجرهٔ دیگری از OkuFlow از تلفن استفاده می‌کند. برای استفاده از تلفن در اینجا آن را ببندید.</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>برنامهٔ دیگری از اتصال USB تلفن استفاده می‌کند. آن را ببندید یا رایانه را دوباره راه‌اندازی کنید.</translation>
+    </message>
 </context>
 </TS>

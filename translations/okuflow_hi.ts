@@ -3761,5 +3761,49 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>फ़ॉर्मूला पढ़ा नहीं जा सका। मूल छवि में कोई बदलाव नहीं हुआ।</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>फ़ोन को USB से कनेक्ट करें, फिर फ़ोन पर फ़ाइल ट्रांसफ़र चुनें और USB डिबगिंग चालू करें।</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
+        <translation>अपना फ़ोन अनलॉक करें और USB डिबगिंग वाले सवाल में अनुमति दें पर टैप करें।</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>अपना फ़ोन अनलॉक करें।</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>फ़ोन पर OkuFlow कैमरा खोलें।</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>फ़ोन पर OkuFlow कैमरा इंस्टॉल करें।</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>फ़ोन पर OkuFlow कैमरा खोलें और स्ट्रीमिंग फिर से शुरू करें पर टैप करें।</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>कोई दूसरा कंप्यूटर या प्रोग्राम फ़ोन का कैमरा इस्तेमाल कर रहा है।</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>फ़ोन पर कैमरे का ऐक्सेस ब्लॉक है।</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>फ़ोन बहुत गर्म है। इसे ठंडा होने दें।</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>OkuFlow की कोई दूसरी विंडो फ़ोन इस्तेमाल कर रही है। फ़ोन को यहाँ इस्तेमाल करने के लिए उसे बंद करें।</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>कोई दूसरा प्रोग्राम फ़ोन का USB कनेक्शन इस्तेमाल कर रहा है। उसे बंद करें या कंप्यूटर रीस्टार्ट करें।</translation>
+    </message>
 </context>
 </TS>

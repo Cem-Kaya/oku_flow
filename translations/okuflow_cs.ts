@@ -3761,5 +3761,49 @@ Přihlaste se přes Connect ChatGPT na kartě Asistent v režimu Upřesnit.</tra
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>Vzorec se nepodařilo přečíst. Původní obraz se nezměnil.</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>Připojte telefon přes USB, potom v telefonu zvolte Přenos souborů a zapněte ladění USB.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
+        <translation>Odemkněte telefon a v dotazu na ladění USB klepněte na Povolit.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>Odemkněte telefon.</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>Otevřete v telefonu aplikaci OkuFlow Fotoaparát.</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>Nainstalujte do telefonu aplikaci OkuFlow Fotoaparát.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>V telefonu otevřete aplikaci OkuFlow Fotoaparát a klepněte na Obnovit streamování.</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>Fotoaparát telefonu používá jiný počítač nebo program.</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>Přístup k fotoaparátu je v telefonu zablokován.</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>Telefon je příliš horký. Nechte ho vychladnout.</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>Telefon používá jiné okno OkuFlow. Zavřete ho, abyste mohli telefon používat tady.</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>Připojení USB telefonu používá jiný program. Zavřete ho nebo restartujte počítač.</translation>
+    </message>
 </context>
 </TS>

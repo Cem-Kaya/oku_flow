@@ -143,11 +143,17 @@ PhoneAdbInterface RuntimeAdbInterface()
     if (hooks) return hooks->adbInterface ? hooks->adbInterface() : PhoneAdbInterface::Unknown;
     return QueryAndroidAdbInterface();
 }
-bool RuntimeOtherInstance()
+// Other instances of this installation: with a visible window (the user can
+// close it) or without one (a leftover, for example stuck while exiting).
+void RuntimeSiblings(bool* windowed, bool* leftover)
 {
+    *windowed = *leftover = false;
     const auto hooks = Hooks();
-    if (hooks) return hooks->otherInstanceRunning && hooks->otherInstanceRunning();
-    return !FindOkuFlowSiblings(true).empty();
+    if (hooks) { *windowed = hooks->otherInstanceRunning && hooks->otherInstanceRunning(); return; }
+    for (const auto& sibling : FindOkuFlowSiblings(true)) {
+        if (sibling.hasVisibleWindow) *windowed = true;
+        else *leftover = true;
+    }
 }
 std::int64_t NowMs(Clock::time_point at = Clock::now())
 {
@@ -1784,7 +1790,7 @@ void RunPhoneLinkLadder(const PhoneLinkRequest& link, const std::string& preferr
         }
     }
     if (o.phoneWanted && o.companion != PhoneCompanionProbe::Ready && !o.sessionStreaming)
-        o.otherInstanceRunning = RuntimeOtherInstance();
+        RuntimeSiblings(&o.otherInstanceRunning, &o.leftoverInstanceRunning);
     CheckCanceled(canceled);
 
     PhoneLinkDecision decision;
@@ -1803,7 +1809,8 @@ void RunPhoneLinkLadder(const PhoneLinkRequest& link, const std::string& preferr
             " companion=" + CompanionName(o.companion) + (o.problem.empty() ? "" : ":" + o.problem) +
             " awake=" + FactName(o.shell.screenAwake) + " keyguard=" + FactName(o.shell.keyguardShowing) +
             " installed=" + FactName(o.shell.appInstalled) + " running=" + FactName(o.shell.appRunning) +
-            (o.otherInstanceRunning ? " other-instance" : "") + (o.defaultHasOtherDevices ? " default-serves-others" : ""));
+            (o.otherInstanceRunning ? " other-instance" : "") + (o.leftoverInstanceRunning ? " leftover-instance" : "") +
+            (o.defaultHasOtherDevices ? " default-serves-others" : ""));
     }
     if (decision.action == PhoneLinkAction::None || decision.action == PhoneLinkAction::Relist ||
         decision.action == PhoneLinkAction::WaitForUser)

@@ -125,6 +125,9 @@ public:
         app.mainWindow_=std::make_unique<MainWindow>();
         app.uiState_=std::make_unique<UIStateManager>(*app.mainWindow_,app);
         QObject::connect(app.mainWindow_.get(),&MainWindow::phoneUsbArrived,&app,&OkuFlowApp::OnPhoneUsbArrival);
+        QObject::connect(app.mainWindow_.get(),&MainWindow::phoneUsbRemoved,&app,&OkuFlowApp::OnPhoneUsbRemoval);
+        QObject::connect(app.mainWindow_.get(),&MainWindow::systemSuspending,&app,&OkuFlowApp::OnSystemSuspend);
+        QObject::connect(app.mainWindow_.get(),&MainWindow::systemResumed,&app,&OkuFlowApp::OnSystemResume);
         app.pipelineOrchestrator_=std::make_unique<PipelineOrchestrator>(app,PipelineOrchestrator::Callbacks{});
         app.interactionController_=std::make_unique<InteractionController>(app);
         app.assistiveManager_=std::make_unique<AssistiveFeatureManager>(*app.uiState_->renderWidget_,app,
@@ -442,6 +445,22 @@ public:
         message.message=WM_DEVICECHANGE;message.wParam=action;message.lParam=reinterpret_cast<LPARAM>(device);
         const auto initialized=app.initialized_;app.initialized_=true;
         app.mainWindow_->nativeEvent({},&message,nullptr);app.initialized_=initialized;
+    }
+    static void PowerBroadcast(OkuFlowApp& app,WPARAM event) {
+        MSG message{};message.hwnd=reinterpret_cast<HWND>(app.mainWindow_->effectiveWinId());
+        message.message=WM_POWERBROADCAST;message.wParam=event;
+        const auto initialized=app.initialized_;app.initialized_=true;
+        app.mainWindow_->nativeEvent({},&message,nullptr);app.initialized_=initialized;
+    }
+    // No real discovery is dispatched: the hold keeps the poll's cadence closed.
+    static void HoldPhoneDiscovery(OkuFlowApp& app) {app.phoneDiscoveryTimer_.start();}
+    static bool PhoneDiscoveryDue(const OkuFlowApp& app) {return !app.phoneDiscoveryTimer_.isValid();}
+    static void FailPhoneRetry(OkuFlowApp& app) {
+        auto& retry=app.phoneRetries_["fixture-only"];retry.Observe(1,true,"");
+        retry.Failed(static_cast<std::int64_t>(GetTickCount64()));
+    }
+    static bool PhoneRetryBlocked(OkuFlowApp& app) {
+        return !app.phoneRetries_["fixture-only"].CanAttempt(static_cast<std::int64_t>(GetTickCount64()));
     }
     static void WebcamOnly(OkuFlowApp& app) {
         app.cameras_.resize(1);app.selectedCameraIndex_=0;
@@ -2370,6 +2389,25 @@ private slots:
         QCOMPARE(calls->load(),2);
         QVERIFY(NativeControlFixture::PhoneIntentRetained(app_));
         QCOMPARE(NativeControlFixture::QuickModeSettings(app_).cameraSymbolicLink,QStringLiteral("okuflow-phone:fixture-only"));
+    }
+    void resumeAndDeviceRemovalReachTheApplication() {
+        // Private offscreen fixture: synthetic window messages only, no adb or phone.
+        NativeControlFixture::HoldPhoneDiscovery(app_);NativeControlFixture::FailPhoneRetry(app_);
+        QVERIFY(NativeControlFixture::PhoneRetryBlocked(app_));
+        NativeControlFixture::PowerBroadcast(app_,PBT_APMSUSPEND);
+        QVERIFY(!NativeControlFixture::PhoneDiscoveryDue(app_)); // Suspend only records the event.
+        NativeControlFixture::PowerBroadcast(app_,PBT_APMRESUMEAUTOMATIC);
+        QVERIFY(NativeControlFixture::PhoneDiscoveryDue(app_)); // Resume: immediate discovery,
+        QVERIFY(!NativeControlFixture::PhoneRetryBlocked(app_)); // and pre-sleep budgets are void.
+        NativeControlFixture::HoldPhoneDiscovery(app_);NativeControlFixture::FailPhoneRetry(app_);
+        NativeControlFixture::PowerBroadcast(app_,PBT_APMRESUMESUSPEND);
+        QVERIFY(NativeControlFixture::PhoneDiscoveryDue(app_));QVERIFY(!NativeControlFixture::PhoneRetryBlocked(app_));
+        NativeControlFixture::HoldPhoneDiscovery(app_);NativeControlFixture::FailPhoneRetry(app_);
+        NativeControlFixture::UsbArrival(app_,true,true,DBT_DEVICEREMOVECOMPLETE);
+        QVERIFY(NativeControlFixture::PhoneDiscoveryDue(app_));QVERIFY(!NativeControlFixture::PhoneRetryBlocked(app_));
+        NativeControlFixture::HoldPhoneDiscovery(app_);
+        NativeControlFixture::UsbArrival(app_,false,true,DBT_DEVICEREMOVECOMPLETE); // Not an ADB interface.
+        QVERIFY(!NativeControlFixture::PhoneDiscoveryDue(app_));
     }
     void usbReplugSelectsPhoneAfterManualWebcamButRepeatedDiscoveryDoesNot() {
         auto calls=std::make_shared<std::atomic<int>>(0);

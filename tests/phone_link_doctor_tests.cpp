@@ -114,6 +114,9 @@ private slots:
         QTest::newRow("two instances, phone held") << With([](auto& o) {
             o.otherInstanceRunning = true; o.phoneState = PhoneAdbState::NotListed; })
                                                    << D::OtherInstanceHoldsPhone;
+        QTest::newRow("windowless leftover instance") << With([](auto& o) {
+            o.leftoverInstanceRunning = true; o.phoneState = PhoneAdbState::NotListed; })
+                                                      << D::OtherProgramHoldsPhone;
         QTest::newRow("stop refused") << With([](auto& o) {
             o.defaultStopRefused = true; o.phoneState = PhoneAdbState::NotListed; })
                                       << D::OtherProgramHoldsPhone;

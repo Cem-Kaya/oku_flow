@@ -3761,5 +3761,49 @@ Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>De formule kon niet worden gelezen. De oorspronkelijke afbeelding is ongewijzigd.</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>Sluit de telefoon aan via USB, kies daarna op de telefoon Bestandsoverdracht en zet USB-foutopsporing aan.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
+        <translation>Ontgrendel je telefoon en tik op Toestaan bij de vraag over USB-foutopsporing.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>Ontgrendel je telefoon.</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>Open OkuFlow Camera op de telefoon.</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>Installeer OkuFlow Camera op de telefoon.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>Open OkuFlow Camera op de telefoon en tik op Streaming hervatten.</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>Een andere computer of een ander programma gebruikt de camera van de telefoon.</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>Cameratoegang is geblokkeerd op de telefoon.</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>De telefoon is te warm. Laat hem afkoelen.</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>Een ander OkuFlow-venster gebruikt de telefoon. Sluit het om de telefoon hier te gebruiken.</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>Een ander programma gebruikt de USB-verbinding van de telefoon. Sluit het of start de computer opnieuw op.</translation>
+    </message>
 </context>
 </TS>

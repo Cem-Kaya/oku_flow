@@ -3761,5 +3761,49 @@ Pilih Hubungkan ChatGPT di tab Asisten pada mode Tingkat Lanjut untuk masuk.</tr
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>Rumus tidak dapat dibaca. Gambar asli tidak berubah.</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>Sambungkan ponsel melalui USB, lalu di ponsel pilih Transfer file dan aktifkan USB debugging.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
+        <translation>Buka kunci ponsel Anda dan ketuk Izinkan pada pertanyaan USB debugging.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>Buka kunci ponsel Anda.</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>Buka OkuFlow Kamera di ponsel.</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>Pasang OkuFlow Kamera di ponsel.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>Di ponsel, buka OkuFlow Kamera lalu ketuk Lanjutkan streaming.</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>Komputer atau program lain sedang menggunakan kamera ponsel.</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>Akses kamera diblokir di ponsel.</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>Ponsel terlalu panas. Biarkan dingin terlebih dahulu.</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>Jendela OkuFlow lain sedang menggunakan ponsel. Tutup jendela itu untuk menggunakan ponsel di sini.</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>Program lain sedang menggunakan koneksi USB ponsel. Tutup program itu atau mulai ulang komputer.</translation>
+    </message>
 </context>
 </TS>

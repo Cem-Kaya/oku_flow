@@ -3761,5 +3761,49 @@ Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>Formeln kunde inte läsas. Originalbilden är oförändrad.</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>Anslut telefonen med USB, välj sedan Filöverföring på telefonen och aktivera USB-felsökning.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
+        <translation>Lås upp telefonen och tryck på Tillåt i frågan om USB-felsökning.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>Lås upp telefonen.</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>Öppna OkuFlow Kamera på telefonen.</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>Installera OkuFlow Kamera på telefonen.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>Öppna OkuFlow Kamera på telefonen och tryck på Återuppta streaming.</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>En annan dator eller ett annat program använder telefonens kamera.</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>Kameraåtkomst är blockerad på telefonen.</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>Telefonen är för varm. Låt den svalna.</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>Ett annat OkuFlow-fönster använder telefonen. Stäng det för att använda telefonen här.</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>Ett annat program använder telefonens USB-anslutning. Stäng det eller starta om datorn.</translation>
+    </message>
 </context>
 </TS>

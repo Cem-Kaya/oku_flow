@@ -2,6 +2,7 @@
 
 #include "app_internal.hpp"
 #include "okuflow/capture/phone_camera.hpp"
+#include "okuflow/app/phone_link_text.hpp"
 #include <QLocale>
 
 namespace okuflow {
@@ -196,6 +197,13 @@ void OkuFlowApp::UpdateSpatialSharpenUi() {
     }
 }
 
+PhoneLinkText OkuFlowApp::PhoneLinkSentence() const {
+    if (!phoneLinkKnown_) return {};
+    const bool userMustAct = PhoneLinkWaitsForUser(phoneLinkDecision_.diagnosis) ||
+        phoneLinkDecision_.action == PhoneLinkAction::WaitForUser;
+    return PhoneLinkPlaceholderText(phoneLinkDecision_.diagnosis, userMustAct);
+}
+
 void OkuFlowApp::UpdateCameraPlaceholder() {
     if (!mainWindow_) {
         return;
@@ -209,6 +217,13 @@ void OkuFlowApp::UpdateCameraPlaceholder() {
     QString detail;
     if (presenterFaultReported_) {
         title = QStringLiteral("GPU stopped responding. Restart OkuFlow to resume video.");
+    } else if (!cameraActive_ && !cameraStartupPending_ && !preferredPhoneCamera_.isEmpty() &&
+        automaticPhoneSelectionAllowed_ && !PhoneLinkSentence().title.isEmpty()) {
+        // One plain sentence per diagnosis; reachable by screen readers
+        // through the placeholder's live translation source.
+        const auto sentence = PhoneLinkSentence();
+        title = sentence.title;
+        detail = sentence.detail;
     } else if (!cameraActive_ && !cameraStartupPending_ && !preferredPhoneCamera_.isEmpty() &&
         automaticPhoneSelectionAllowed_) {
         if (phoneDiscoveryStatus_ == PhoneDiscoveryStatus::OwnedServerRecovering ||
@@ -299,6 +314,13 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
         color = errorColor;
         politeness = LivePoliteness::kAssertive;
         if (automaticPhoneSelectionAllowed_ && !preferredPhoneCamera_.isEmpty() &&
+            !PhoneLinkSentence().title.isEmpty()) {
+            const auto sentence = PhoneLinkSentence();
+            text = sentence.title;
+            detail = sentence.detail.isEmpty() ? sentence.title : sentence.detail;
+            color = warningColor;
+            politeness = LivePoliteness::kPolite;
+        } else if (automaticPhoneSelectionAllowed_ && !preferredPhoneCamera_.isEmpty() &&
             (phoneDiscoveryStatus_ == PhoneDiscoveryStatus::OwnedServerRecovering ||
              phoneDiscoveryStatus_ == PhoneDiscoveryStatus::ServerUnresponsive)) {
             text = QStringLiteral("Restoring USB connection…");

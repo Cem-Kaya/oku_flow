@@ -37,8 +37,12 @@ struct PhoneLinkObservation {
     bool endpointSupported{true};
     // MediaCapture refused further starts in this process (stop missed its deadline).
     bool captureAbandoned{false};
-    // Another OkuFlow instance of this installation runs for this user/session.
+    // Another OkuFlow instance of this installation runs for this user/session
+    // with a visible window (the user can close it).
     bool otherInstanceRunning{false};
+    // Such an instance without any visible window: a leftover the user cannot
+    // close from the taskbar (for example one that is stuck while exiting).
+    bool leftoverInstanceRunning{false};
     // A live phone session in this process is delivering frames.
     bool sessionStreaming{false};
     PhoneAdbInterface adbInterface{PhoneAdbInterface::Unknown};

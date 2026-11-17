@@ -3761,5 +3761,49 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>无法识别公式。原始图像未更改。</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>用 USB 连接手机，然后在手机上选择“文件传输”并打开 USB 调试。</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
+        <translation>解锁手机，并在 USB 调试提示中点按“允许”。</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>请解锁手机。</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>请在手机上打开 OkuFlow 相机。</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>请在手机上安装 OkuFlow 相机。</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>在手机上打开 OkuFlow 相机，然后点按“恢复串流”。</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>另一台电脑或另一个程序正在使用手机摄像头。</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>手机上的相机访问已被阻止。</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>手机温度过高。请等待其冷却。</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>另一个 OkuFlow 窗口正在使用手机。请关闭该窗口以在此处使用手机。</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>另一个程序正在使用手机的 USB 连接。请关闭该程序或重启电脑。</translation>
+    </message>
 </context>
 </TS>

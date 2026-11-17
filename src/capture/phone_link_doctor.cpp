@@ -79,6 +79,8 @@ PhoneLinkDiagnosis DiagnosePhoneLink(const PhoneLinkObservation& o)
         if (o.adbInterface == PhoneAdbInterface::Absent) return D::NoAdbInterface;
         if (o.otherInstanceRunning && o.adbInterface == PhoneAdbInterface::Present)
             return D::OtherInstanceHoldsPhone;
+        if (o.leftoverInstanceRunning && o.adbInterface == PhoneAdbInterface::Present)
+            return D::OtherProgramHoldsPhone;
         return D::NotListedByServer;
     case PhoneAdbState::Unauthorized: return D::Unauthorized;
     case PhoneAdbState::Authorizing:

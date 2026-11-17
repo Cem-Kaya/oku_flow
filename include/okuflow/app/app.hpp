@@ -28,6 +28,8 @@
 #include "okuflow/app/user_data_paths.hpp"
 #include "okuflow/capture/media_capture.hpp"
 #include "okuflow/capture/phone_retry_policy.hpp"
+#include "okuflow/capture/phone_link_doctor.hpp"
+#include "okuflow/app/phone_link_text.hpp"
 #include "okuflow/capture/audio_capture.hpp"
 #include "okuflow/common/frame_pipeline.hpp"
 #include "okuflow/common/annotation_model.hpp"
@@ -79,6 +81,7 @@ struct ID3D12Resource;
 namespace okuflow {
 namespace agent { class AppControlTarget; class AppControlService; class NativeControlFixture; }
 enum class PhoneDiscoveryStatus;
+struct PhoneLinkReport;
 
 class RenderWidget;
 class JoystickOverlay;
@@ -125,6 +128,10 @@ private slots:
     void OnPresetSelectionChanged(QListWidgetItem* current, QListWidgetItem* previous);
     void OnCameraSelectionChanged(int index);
     void OnPhoneUsbArrival();
+    void OnPhoneUsbRemoval();
+    void OnSystemSuspend();
+    void OnSystemResume();
+    void OnWindowActivationChanged(bool active);
     void OnCameraFormatChanged(int index);
     void OnMicrophoneSelectionChanged(int index);
     void SetRecordingCanvasMode(RecordingCanvasMode mode);
@@ -550,6 +557,19 @@ private:
     std::vector<CameraDescriptor> cameras_;
     std::future<std::pair<PhoneDiscoveryStatus, std::vector<CameraDescriptor>>> phoneDiscovery_;
     PhoneDiscoveryStatus phoneDiscoveryStatus_{};
+    // Link doctor result of the last discovery cycle (the report is written
+    // by the discovery worker; read only after its future is ready).
+    std::shared_ptr<PhoneLinkReport> phoneLinkPending_;
+    PhoneLinkDecision phoneLinkDecision_{};
+    bool phoneLinkKnown_{};
+    qint64 phoneDiscoveryIntervalMs_{5000};
+    qint64 lastPulseWallMs_{};
+    qint64 deactivatedAtMs_{};
+    std::uint64_t cameraFramesPresented_{};
+    // Every link event resets the doctor, launch and retry budgets.
+    void NotePhoneEvent(PhoneLinkEvent event);
+    void OnPhoneDiscoveryPulse();
+    PhoneLinkText PhoneLinkSentence() const;
     std::atomic<bool> phoneDiscoveryCanceled_{false};
     QElapsedTimer phoneDiscoveryTimer_;
     quint64 phoneDiscoveryIntentGeneration_{};

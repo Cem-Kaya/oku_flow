@@ -104,6 +104,16 @@ target_link_libraries(phone_link_doctor_tests PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME phone_link_doctor COMMAND phone_link_doctor_tests)
 set_tests_properties(phone_link_doctor PROPERTIES TIMEOUT 30
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+add_executable(phone_link_text_tests phone_link_text_tests.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/phone_link_text.cpp
+    ${PROJECT_SOURCE_DIR}/src/capture/phone_link_doctor.cpp)
+target_include_directories(phone_link_text_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(phone_link_text_tests PRIVATE Qt6::Core Qt6::Test)
+target_compile_definitions(phone_link_text_tests PRIVATE
+    OKUFLOW_TRANSLATIONS_DIR="${PROJECT_SOURCE_DIR}/translations")
+add_test(NAME phone_link_text COMMAND phone_link_text_tests)
+set_tests_properties(phone_link_text PROPERTIES TIMEOUT 30 LABELS "headless"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 add_executable(phone_retry_policy_tests phone_retry_policy_tests.cpp)
 target_include_directories(phone_retry_policy_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
 target_link_libraries(phone_retry_policy_tests PRIVATE Qt6::Core Qt6::Test)

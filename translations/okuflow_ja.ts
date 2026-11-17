@@ -3761,5 +3761,49 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>数式を読み取れませんでした。元の画像は変更されていません。</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>スマートフォンを USB で接続し、スマートフォンで [ファイル転送] を選んで USB デバッグをオンにしてください。</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
+        <translation>スマートフォンのロックを解除し、USB デバッグの確認で [許可] をタップしてください。</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>スマートフォンのロックを解除してください。</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>スマートフォンで OkuFlow カメラを開いてください。</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>スマートフォンに OkuFlow カメラをインストールしてください。</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>スマートフォンで OkuFlow カメラを開き、[ストリーミングを再開する] をタップしてください。</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>別のコンピューターまたはプログラムがスマートフォンのカメラを使用しています。</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>スマートフォンでカメラへのアクセスがブロックされています。</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>スマートフォンが熱くなりすぎています。冷めるまでお待ちください。</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>別の OkuFlow ウィンドウがスマートフォンを使用しています。ここで使うには、そのウィンドウを閉じてください。</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>別のプログラムがスマートフォンの USB 接続を使用しています。そのプログラムを閉じるか、コンピューターを再起動してください。</translation>
+    </message>
 </context>
 </TS>

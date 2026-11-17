@@ -3761,5 +3761,49 @@ Melden Sie sich auf der erweiterten Registerkarte Assistent über ChatGPT verbin
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>Die Formel konnte nicht gelesen werden. Das Originalbild bleibt unverändert.</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>Verbinden Sie das Telefon per USB, wählen Sie dann auf dem Telefon „Dateiübertragung“ und schalten Sie USB-Debugging ein.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question.</source>
+        <translation>Entsperren Sie Ihr Telefon und tippen Sie bei der Frage zum USB-Debugging auf „Zulassen“.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>Entsperren Sie Ihr Telefon.</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>Öffnen Sie OkuFlow Kamera auf dem Telefon.</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>Installieren Sie OkuFlow Kamera auf dem Telefon.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>Öffnen Sie OkuFlow Kamera auf dem Telefon und tippen Sie auf „Übertragung fortsetzen“.</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>Ein anderer Computer oder ein anderes Programm verwendet die Telefonkamera.</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>Der Kamerazugriff ist auf dem Telefon blockiert.</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>Das Telefon ist zu heiß. Lassen Sie es abkühlen.</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>Ein anderes OkuFlow-Fenster verwendet das Telefon. Schließen Sie es, um das Telefon hier zu verwenden.</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>Ein anderes Programm verwendet die USB-Verbindung des Telefons. Schließen Sie es oder starten Sie den Computer neu.</translation>
+    </message>
 </context>
 </TS>

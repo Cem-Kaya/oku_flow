@@ -52,6 +52,7 @@ if(OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE)
         pendingPhoneDoesNotLockWebcamSelection
         automaticPhoneChoiceWorksBeforeUsbDiscovery
         usbReplugSelectsPhoneAfterManualWebcamButRepeatedDiscoveryDoesNot
+        resumeAndDeviceRemovalReachTheApplication
         documentPaneFitsSettingsAfterTabSwitch
         pdfTextAndPicturesShareTheFilePickerWithoutVideoCommands
         phoneRecoverySurvivesFileReviewAndConnectionLoss)

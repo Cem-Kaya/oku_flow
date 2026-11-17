@@ -247,6 +247,22 @@ void OkuFlowApp::PopulateCameraCombo() {
     mainWindow_->setCameraDevices(names, selectedCameraIndex_);
 }
 
+void OkuFlowApp::OnPhoneDiscoveryPulse()
+{
+    if (initialized_ && !phoneDiscoveryCanceled_.load()) {
+        // Sleep without a power broadcast (some modern-standby laptops): the
+        // 100 ms pulse sees the wall clock jump and treats it as a resume.
+        const qint64 wall = QDateTime::currentMSecsSinceEpoch();
+        const bool jumped = lastPulseWallMs_ && wall - lastPulseWallMs_ > 30000;
+        lastPulseWallMs_ = wall;
+        if (jumped) {
+            TracePhoneLink("wall clock advanced while the pulse was idle; treating it as a resume");
+            OnSystemResume();
+        }
+    }
+    PollPhoneCameraDiscovery();
+}
+
 void OkuFlowApp::PollPhoneCameraDiscovery()
 {
     if (!initialized_ || phoneDiscoveryCanceled_.load() || cameraStartupPending_ ||
@@ -257,6 +273,20 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
         try {
             auto [discoveryStatus, discovered] = phoneDiscovery_.get();
             phoneDiscoveryStatus_ = discoveryStatus;
+            if (phoneLinkPending_) {
+                const auto decision = phoneLinkPending_->decision;
+                phoneLinkPending_.reset();
+                phoneLinkKnown_ = decision.nextPollMs != 0;
+                if (phoneLinkKnown_) {
+                    phoneLinkDecision_ = decision;
+                    const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now().time_since_epoch()).count();
+                    // The doctor paces discovery: 1 s after an event, never above 10 s.
+                    phoneDiscoveryIntervalMs_ = std::clamp<qint64>(decision.nextPollMs - now, 0, 10000);
+                } else {
+                    phoneDiscoveryIntervalMs_ = 5000;
+                }
+            }
             if (discoveryStatus == PhoneDiscoveryStatus::Listed) {
                 const std::wstring selectedLink = selectedCameraIndex_ >= 0 &&
                         static_cast<size_t>(selectedCameraIndex_) < cameras_.size()
@@ -328,7 +358,7 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
         }
     }
     if (cameraStartupPending_ || (phoneDiscoveryTimer_.isValid() &&
-                                  phoneDiscoveryTimer_.elapsed() < 5000)) return;
+                                  phoneDiscoveryTimer_.elapsed() < phoneDiscoveryIntervalMs_)) return;
     std::string connectedSerial;
     if (cameraActive_ && selectedCameraIndex_ >= 0 &&
         static_cast<size_t>(selectedCameraIndex_) < cameras_.size())
@@ -343,14 +373,20 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
         recoverySerial = phoneIntent.mid(phonePrefix.size()).section('/', 0, 0).toStdString();
     phoneDiscoveryTimer_.start();
     phoneDiscoveryIntentGeneration_ = cameraIntent_.Requested().generation;
+    const PhoneLinkRequest linkRequest{permitPhone && phoneIntent.startsWith(phonePrefix),
+                                       mediaCapture_.WasAbandoned(),
+                                       !connectedSerial.empty() && cameraFramePresented_};
+    auto linkReport = std::make_shared<PhoneLinkReport>();
+    phoneLinkPending_ = linkReport;
     try {
         phoneDiscovery_ = std::async(std::launch::async, [connectedSerial, recoverySerial,
             serverIntent = permitPhone ? PhoneServerIntent::PhoneUse
                                                           : PhoneServerIntent::ReleaseForWebcam,
-            canceled = &phoneDiscoveryCanceled_]() {
+            canceled = &phoneDiscoveryCanceled_, linkRequest, linkReport]() {
             PhoneDiscoveryStatus status{};
             auto phones = PhoneCameraTransport::Enumerate(connectedSerial, canceled, nullptr,
-                                                         recoverySerial, &status, serverIntent);
+                                                         recoverySerial, &status, serverIntent,
+                                                         &linkRequest, linkReport.get());
             return std::make_pair(status, std::move(phones));
         });
     } catch (const std::exception& error) {
@@ -1508,6 +1544,7 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         cameraIntent_.MarkFirstFrame(startingCameraIntentGeneration_);
         if (controlTarget_) controlTarget_->FramePresented(observationFrame);
         cameraFramePresented_ = true;
+        ++cameraFramesPresented_;
         RecordStartupFirstPresent();
         if (pendingSceneCaptureClock100ns_) {
             pipelineOrchestrator_->RecordCaptureToPresentSample(
@@ -3207,7 +3244,7 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
         else ultraClearText_->OnPresentationSucceeded();
     }
     ApplyUltraClearTextDisplayColors(0); // Raw CPU camera / pre-graded CPU media.
-    if (!selectedMedia) cameraFramePresented_ = true;
+    if (!selectedMedia) { cameraFramePresented_ = true; ++cameraFramesPresented_; }
     if (!selectedMedia) {
         lastAnnotationPresentation_ = UltraClearTextContext(false, transform,
             mapping.targetWidth, mapping.targetHeight);
