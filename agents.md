@@ -506,9 +506,12 @@ aligned with the project goals.
   that lost its authority must not reach the decision unit at all: deciding
   reserves budgets the next, valid cycle needs. Advance an intent generation
   only when the intent changes, computed after the change. Evidence belongs to
-  the thing it was recorded for: when a manager is dropped, keep its counts;
-  when a listener changes, drop its listener-specific evidence and compare the
-  identity wherever a confirmation is read. A rung whose own server is the
+  the thing it was recorded for: when a manager is dropped, keep its counts
+  of what was observed (a death, a readiness wait that ran out), never a
+  failure inferred from age alone, and nothing when the user's choice of
+  another source dropped it; when a listener changes, drop its
+  listener-specific evidence and compare the identity wherever a
+  confirmation is read. A rung whose own server is the
   broken part must look at the alternative that works (the default that lists
   the phone). A safety refusal (a live session) belongs in the executor
   too, not only in the decision that relies on a measurement; but it must

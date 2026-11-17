@@ -690,7 +690,9 @@ sentence (2); resume signals within 5 s of the last applied resume are one
 event; 4 removals within 60 s name the cable until the link holds 10 s or no
 removal comes for 30 s. Iteration 9 changes no number: a restart a live
 session defers is given back (not one of the 3), a private child dropped
-without ever answering counts toward the AdbCannotStart 2, and a termination
+without ever answering counts toward the AdbCannotStart 2 (after round 10:
+only one that died, or whose readiness wait ran out or a probe found silent
+past it; nothing for a release for a webcam), and a termination
 or ask refused for a live session (registered, a frame within 2 s) counts toward the 3 aborted stops. Windows interface Unknown
 (the SetupAPI query failed): after 30 s blind OkuFlow may start or restart its
 own server, never ask another to exit or stop it; that takeover, or a hung

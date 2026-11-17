@@ -1918,12 +1918,16 @@ so metadata generation cannot silently accept an incomplete copy.
   `companionFailedGraceMs`, and the event-storm limits `resumeCoalesceMs`,
   `flapRemovals`, `flapWindowMs`, `flapQuietMs`; `OnEvent` returns false for a
   coalesced resume). `NoteExitRequestDropped`/`NoteTerminationDropped` give
-  back an ask or termination dropped for a changed source, uncounted.
+  back an ask or termination dropped for a changed source, uncounted
+  (`NoteTerminationDropped` also for a termination canceled inside the stop
+  without stopping anything, unless the cycle itself was canceled).
   `OwnedAdbServer::UnansweredStarts` counts starts that never answered (one
   per start grace alive, one at death), reset when the child answers;
   `UnansweredStartsAtRetirement` adds a death not counted yet and a child
-  dropped alive and silent past its readiness deadline, for the transport to
-  keep with its launch failures when it drops the manager.
+  dropped alive whose readiness wait ran to its deadline (or that a probe
+  found silent past it; `readinessMissed_`), never by age alone, for the
+  transport to keep with its launch failures when it drops the manager (not
+  for a release for a webcam, which adds nothing).
   `OwnedAdbServer::EnsureRunning`/`Restart` take an optional `stillWanted`,
   asked with every cancellation check while the manager's lock is held.
   `NoteRestartDeferred` gives back a restart a live session deferred. A cycle
@@ -1931,9 +1935,14 @@ so metadata generation cannot silently accept an incomplete copy.
   `DropStaleCycle`: last diagnosis, next cycle at once). `PhoneAdbTestHooks`
   seams of iteration 9: `linkStageForTest` ("locked", "default-probed",
   "decide"), `afterHostKillConnectForTest`, `legacyReclaimForTest`,
-  `phoneSessionLiveForTest`. `PhoneSessionBlocksStop` (pure): only a
+  `phoneSessionLiveForTest`; after round 10 `afterReconnectConnectForTest`
+  (between a transport reconnect's connect and its write, where
+  `AdbReconnectReply` asks the request's authority) and the read-only
+  `ReadPhoneSessionStateForTest`. `PhoneSessionBlocksStop` (pure): only a
   session that is registered and delivered a frame within
-  `kLivePhoneSessionFrameMs` forbids an ask or a termination.
+  `kLivePhoneSessionFrameMs` forbids an ask or a termination; the frame time
+  is written where a frame is decoded and cleared when the last session ends
+  (`~OccupiedPhone`).
   `NoteDefaultStopRefused`, `NoteDefaultStopFailed` (second one refuses; the
   overloads taking `PhoneLinkDecision::episode` drop an outcome that arrives
   after a newer event), `ClearDefaultStopRefused` and

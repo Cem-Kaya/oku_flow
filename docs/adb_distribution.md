@@ -210,13 +210,17 @@ transport ID 1 still renews launch/recovery budgets and camera retry state.
 **Iteration 8 additions.** Before every side effect of the ladder (ask,
 termination, start beside the default, restart, reconnect, hand-back, wake and
 launch, leftover-instance cleanup), right after each blocking pre-check, and
-inside the stop (before `host:kill` and before `TerminateProcess`) and the
-companion launch (before each shell command), the discovery cycle's
+inside the stop (before `host:kill` and before `TerminateProcess`), the
+companion launch (before each shell command) and both transport reconnect
+requests (after the connect, right before the request is written), the
+discovery cycle's
 phone-intent generation is compared with the application's live one, which
 advances on every source or target change (a webcam, a file, another phone,
 no phone, an agent's temporary source): a stale cycle does nothing and traces
 "dropped: the source changed"; an ask or termination dropped this way is
-given back uncounted. A termination beside OkuFlow's server whose pre-stop
+given back uncounted, as is a termination canceled inside the stop without
+stopping anything (unless the cycle itself was canceled). A termination beside
+OkuFlow's server whose pre-stop
 listing is silent is an aborted stop until the listing hang is confirmed, then
 the stop goes on; a `FAIL` there is an answer and keeps the server. The
 ladder's hand-back holds the lifecycle lock around its live-session check and
@@ -251,11 +255,14 @@ does not reach the doctor at all, so it reserves nothing of the episode; the
 application advances the intent generation only when the intent changed
 (computed after the change, before a pick's event), so a pick of the phone
 already chosen revokes nothing. A private child that never answered (one that
-outlived its readiness deadline silent and then died, or that is retired
-alive and silent) is counted with the launch failures when its manager is
-dropped (the yield to an answering default, both hand-backs, the release for
-a webcam): starts beside an answering default end in the "cannot start"
-sentence, which ends once OkuFlow's own server answers. A legacy reclamation
+died before answering, or that is retired alive after its readiness wait ran
+to its deadline or a probe found it silent past it; a start cut short by a
+source change counts nothing, whatever its age) is counted with the launch
+failures when its manager is dropped (the yield to an answering default, both
+hand-backs): starts beside an answering default end in the "cannot start"
+sentence, which ends once OkuFlow's own server answers. The release for a
+webcam adds nothing to them (the user chose another source) and clears the
+private-server flags as the other retirements do. A legacy reclamation
 entered on a listing hang lists the default once more first: an answer ends
 the hang and nothing is reclaimed, an adb `FAIL` keeps the hang and forbids
 the reclamation in that call. At the hand-over cap a listing-hung default is
@@ -270,7 +277,8 @@ phone session is live, that is registered and a frame was delivered within
 2 s (which listener a session's sockets reach is not recorded, so any live
 session counts; a session that is only starting or reconnecting does not, or a
 manual pick retrying against a hung default would keep that default from being
-stopped), and a live session counts as
+stopped; the frame time is forgotten when the last session ends), and a live
+session counts as
 streaming by the frames the capture delivered. A restart deferred for a live
 session is given back. A refused IPv4 connect with only an IPv6 (`::`) row
 for the port is no listener.

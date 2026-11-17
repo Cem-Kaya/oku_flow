@@ -1141,13 +1141,33 @@ it `host:kill` once it went silent: no fixture change),
 `silentPrivateServerIsHandedBackToADefaultThatListsThePhone`,
 `adbThatCannotStartBesideADefaultEndsOnceItCanStart` (an event drops the
 pending start request first, so only the rung's retry can end the sentence),
-`stopsAreRefusedWhileAPhoneSessionIsRegistered` (hook
-`phoneSessionLiveForTest`), `onlyALivePhoneSessionForbidsAStop` (the pure
+`stopsAreRefusedWhileAPhoneSessionIsLive` (hook `phoneSessionLiveForTest`;
+named `...IsRegistered` before round 10), `onlyALivePhoneSessionForbidsAStop` (the pure
 rule: registered and a frame within 2 s; a starting or reconnecting session
 does not forbid a stop), `refusedConnectWithOnlyAnIpv6RowIsNoListener`
 (an injected `::` row), and the session start through the default added to
 `adbThatCannotStartBesideABlindDefaultIsNamed`. The listing-failure rows use
-`listingMode` 3 (closed at once) where a hang's time-out adds nothing. Doctor:
+`listingMode` 3 (closed at once) where a hang's time-out adds nothing.
+After round 10: `FakePhoneAdb` can stream (`streaming`: a session's control
+hello gets a token, its video channel is bound, and after the start command
+the four access units of `data/phone-camera.h264` are sent in a loop from the
+fake's own thread) and refuse the companion at once (`companionRefuses`); a
+real `PhoneCameraTransport` session then decodes frames in the contract suite
+(`ScopedMediaFoundation`). Rows:
+`interruptedPrivateServerStartIsNotCountedAtRetirement` (owned manager: a
+start cut short inside its readiness wait counts nothing at retirement; a wait
+that ran out, or a probe past the deadline, counts one),
+`webcamReleaseOfAStartingPrivateServerCountsNothing` (no launch failure, and
+the empty default listing reads Listed, not OkuFlow's server recovering),
+`onlyALiveRealSessionKeepsAConfirmedHungDefault` (a real session registered
+without a frame lets the confirmed listing-hung default be terminated; one
+decoding frames keeps it, and the next cycle reads Connected; listener rows
+rewritten to a decoy `adb.exe`),
+`aSessionThatRegistersRightAfterALiveOneIsNotLive` (a decoded frame makes a
+session live; a session registering right after the last one ended is not),
+`terminationCanceledWithoutAStopIsGivenBack` (cap 1; the hung default is still
+terminated) and `transportReconnectIsNotWrittenAfterTheSourceChanged` (offline
+and stalled device; hook `afterReconnectConnectForTest`). Doctor:
 `silentPrivateServerBesideADefaultThatServesThePhoneIsHandedBack`,
 `restartDeferredForALiveSessionIsGivenBack`. Legacy:
 `requestThatLostItsAuthorityWritesNoHostKill`. Native:
