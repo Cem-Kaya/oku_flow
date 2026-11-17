@@ -177,6 +177,9 @@ struct PhoneAdbTestHooks {
     std::function<void(std::string_view stage)> linkStageForTest;
     // Runs after the raw host:kill connect, before any byte is written.
     std::function<void()> afterHostKillConnectForTest;
+    // Runs after a transport reconnect request's connect (offline and
+    // stalled-device paths), before its authority check and any byte.
+    std::function<void()> afterReconnectConnectForTest;
     // Stands in for the legacy bundle reclamation of a hung default, which
     // runs only in production (never against the machine's default port
     // from a fixture): set, the branch is entered as in production, this
@@ -184,8 +187,8 @@ struct PhoneAdbTestHooks {
     // default that is not a legacy bundle.
     std::function<void()> legacyReclaimForTest;
     // Reports a live phone session (registered and delivering frames), for
-    // the refusal of the ask and termination executors (a fixture cannot
-    // hold a real session live while the ladder decides a stop).
+    // the refusal of the ask and termination executors, in addition to the
+    // real sessions (lets a test make one go live at an exact point).
     std::function<bool()> phoneSessionLiveForTest;
     // Doctor budgets for fast fixtures; production uses PhoneLinkPolicy{}.
     std::optional<PhoneLinkPolicy> linkPolicy;
@@ -209,6 +212,11 @@ constexpr bool PhoneSessionBlocksStop(bool registered, std::int64_t lastFrameMs,
 // Test seam (read only): a private-server start beside the default is
 // requested and not yet consumed or dropped.
 bool PhoneAdbShadowRequestedForTest();
+// Test seam (read only): a phone session is registered, and whether the
+// production rule reads it live (PhoneSessionBlocksStop over the last
+// decoded frame; the phoneSessionLiveForTest hook is not consulted).
+struct PhoneSessionStateForTest { bool registered{false}; bool live{false}; };
+PhoneSessionStateForTest ReadPhoneSessionStateForTest();
 // Stops only the private adb server this process launched and owns (exact
 // job-owned child). A borrowed pre-existing/overridden server is untouched.
 // Called on normal app teardown after capture stops; state is per-process

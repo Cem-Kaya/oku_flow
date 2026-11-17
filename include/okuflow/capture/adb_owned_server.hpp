@@ -153,8 +153,10 @@ public:
     int UnansweredStarts() const { return unansweredStarts_.load(); }
     // The same count, for a manager that is about to be dropped (the caller
     // keeps it, then calls Stop): also a child that died before it ever
-    // answered and was not counted yet, and one dropped alive past its
-    // readiness deadline without ever answering. Interrupts work in flight
+    // answered and was not counted yet, and one dropped alive whose
+    // readiness wait ran to its deadline unanswered (or that a probe found
+    // silent past it). A start cut short by a source change or a
+    // cancellation adds nothing, whatever its age. Interrupts work in flight
     // first, as Stop does (the manager serves nothing afterwards).
     int UnansweredStartsAtRetirement();
 private:
@@ -197,6 +199,9 @@ private:
     // death before answering was counted.
     std::chrono::steady_clock::time_point unansweredCountedAt_{};
     bool deathCounted_{false};
+    // The current child was observed missing its readiness deadline (its
+    // wait ran out, or a probe after the deadline failed).
+    bool readinessMissed_{false};
     std::atomic<int> unansweredStarts_{0};
     void CountUnansweredLocked();
     std::atomic<bool> budgetResetRequested_{false};

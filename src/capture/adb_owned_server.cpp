@@ -289,6 +289,7 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::LaunchAndAwaitLocked(
         answered_ = false;
         unansweredCountedAt_ = launchedAt_;
         deathCounted_ = false;
+        readinessMissed_ = false;
         const auto deadline = std::chrono::steady_clock::now() + policy_.readinessDeadline;
         for (;;) {
             if (Halted(canceled)) return EnsureResult::Canceled; // Child stays owned.
@@ -308,8 +309,10 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::LaunchAndAwaitLocked(
                 unansweredStarts_.store(0);
                 return restart ? EnsureResult::Restarted : EnsureResult::Launched;
             }
-            if (std::chrono::steady_clock::now() >= deadline)
+            if (std::chrono::steady_clock::now() >= deadline) {
+                readinessMissed_ = true; // Its readiness wait ran out unanswered.
                 return EnsureResult::NotReady; // Owned child left for later probes.
+            }
             if (!WaitSlice(canceled)) return EnsureResult::Canceled;
         }
     }
@@ -337,6 +340,11 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::EnsureRunning(const std::atomic<boo
             unansweredStarts_.store(0);
             return EnsureResult::Running;
         }
+        // A start whose readiness wait was cut short (a source change, a
+        // cancellation) is observed missing its readiness only by a probe
+        // that fails after the deadline.
+        if (!answered_ && std::chrono::steady_clock::now() - launchedAt_ >= policy_.readinessDeadline)
+            readinessMissed_ = true;
         if (!allowLifecycleEffects) return EnsureResult::NotReady;
         if (response == OwnedServerProbe::Responsive && child_->IsRunning())
             return EnsureResult::NotReady; // Ownership lookup is unknown/mismatched, not a host hang.
@@ -443,13 +451,15 @@ int OwnedAdbServer::UnansweredStartsAtRetirement()
     // so this never waits for it.
     stopRequested_.store(true);
     std::lock_guard lock(mutex_);
-    CountUnansweredLocked();
-    // A child dropped alive past its readiness deadline without ever
-    // answering (and not counted yet for a start grace or its death) is a
-    // start that did not work: counted once. One dropped earlier (the user
-    // chose a webcam right after the start) is not.
-    if (child_ && !answered_ && !deathCounted_ && unansweredCountedAt_ == launchedAt_ &&
-        std::chrono::steady_clock::now() - launchedAt_ >= policy_.readinessDeadline) {
+    // Only what was observed counts, never the child's age alone: a death
+    // before it ever answered, or a live child whose readiness wait ran to
+    // its deadline unanswered (or that a later probe found silent past it),
+    // once and only if no start grace counted it already. A start cut short
+    // by a source change or a cancellation was never judged: nothing.
+    if (!child_ || answered_) return unansweredStarts_.load();
+    if (!child_->IsRunning()) {
+        if (!deathCounted_) { deathCounted_ = true; ++unansweredStarts_; }
+    } else if (readinessMissed_ && unansweredCountedAt_ == launchedAt_) {
         unansweredCountedAt_ = std::chrono::steady_clock::now();
         ++unansweredStarts_;
     }
