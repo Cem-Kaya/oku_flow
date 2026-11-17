@@ -143,6 +143,9 @@ struct PhoneAdbTestHooks {
     // Runs when a hand-back has stopped the private server, before the
     // hand-over is counted (lets a test raise an event in between).
     std::function<void()> afterPrivateServerRetiredForTest;
+    // Runs when a StartShadowServer action begins, before its start request
+    // is set (lets a test change the default between decision and act).
+    std::function<void()> beforeShadowStartForTest;
     // Doctor budgets for fast fixtures; production uses PhoneLinkPolicy{}.
     std::optional<PhoneLinkPolicy> linkPolicy;
 };

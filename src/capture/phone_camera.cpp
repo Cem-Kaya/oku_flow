@@ -562,6 +562,10 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
         hooks = runtime.hooks;
         owned = runtime.ownedServer;
         episode = runtime.doctor.Episode();
+        // USB is released for a webcam: a private-server start the doctor
+        // requested for the phone is void (it would otherwise wait for the
+        // next phone-use call and start beside whatever default runs then).
+        if (intent == PhoneServerIntent::ReleaseForWebcam) runtime.shadowRequested = false;
     }
     const auto env = hooks ? AdbServerEndpoint{hooks->port != 0,
                                hooks->ownedServerExecutable.empty(), hooks->port, false}
@@ -752,6 +756,11 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
                                      : FindAdbExecutable();
     {
         auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
+        // A start the doctor requested beside a default that is gone now (or
+        // was reclaimed as a legacy bundle) is void: this start is not beside
+        // anything. Kept, it would start a private server beside a default
+        // that comes back later, responsive and unexamined.
+        if (beside == Beside::No) runtime.shadowRequested = false;
         if (runtime.ownedServer) { owned = runtime.ownedServer; }
         else {
             if (executable.isEmpty() || !QFileInfo(executable).isFile()) return Result::LaunchFailed;
@@ -2043,6 +2052,7 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
     }
     case A::StartShadowServer: {
         if (DefaultIsUserEndpoint()) return "refused: user endpoint";
+        if (const auto hooks = Hooks(); hooks && hooks->beforeShadowStartForTest) hooks->beforeShadowStartForTest();
         const auto identity = ListenerIdentity(DefaultPort());
         {
             std::lock_guard lock(runtime.mutex);

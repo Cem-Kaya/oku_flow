@@ -545,9 +545,12 @@ aligned with the project goals.
   stays blind is still asked to exit beside OkuFlow's server. Neither hand-back path arms the
   30 s start throttle, and a dead private server that yields to a
   responsive default clears the same shadow state they clear. A start the
-  doctor requested stays requested until a start passes the executable and
-  throttle checks (an event drops it); hand-overs are counted only in the
-  episode they started in.
+  doctor requested stays requested until a start beside the default passes
+  the executable and throttle checks; an event drops it, and so do a start
+  that is not beside a default any more (the default went away before it
+  ran) and releasing USB for a webcam, so a request never starts a private
+  server beside a default no decision examined. Hand-overs are counted only
+  in the episode they started in.
 - Never shorten the 5 s hang confirmation after an event; events restart it.
   Confirm a hang from the doctor's own probe too (the borrowed branch of
   `EnsureAdbServer` no longer runs once a private server exists).

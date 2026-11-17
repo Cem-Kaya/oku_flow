@@ -1608,6 +1608,63 @@ private slots:
         QVERIFY(okuflow::OwnedAdbServerPort().has_value());
         QVERIFY(!other.Exited());
     }
+    void requestOfADefaultThatWentAwayDoesNotOutliveIt() {
+        // Iteration 7 (3): the doctor decides a private server beside a blind
+        // default, which goes away before the start runs (and there is
+        // nothing to launch yet). The start that follows is not beside
+        // anything, so the request ends there: when the default comes back
+        // responsive, phone-use discovery borrows it and starts no private
+        // server beside it that no decision asked for.
+        QTemporaryDir directory;
+        const QString later = directory.filePath(QStringLiteral("adb_later.exe"));
+        DefaultAdbFixture other({});
+        QVERIFY(other.copied && !other.Exited());
+        DefaultAdbFixture* fixture = &other;
+        auto gone = std::make_shared<std::atomic<bool>>(false);
+        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present, later.toStdWString(), {}, 5000,
+                              [fixture, gone](okuflow::PhoneAdbTestHooks& h) {
+            h.beforeShadowStartForTest = [fixture, gone] { if (!gone->exchange(true)) fixture->child.reset(); };
+        });
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto reports = LinkCycles(40, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::StartShadowServer; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::StartShadowServer));
+        QVERIFY(gone->load());
+        QVERIFY(other.Exited());
+        QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
+        QVERIFY(other.Start()); // Back, responsive and blind, in the same episode.
+        QVERIFY(QFile::copy(OwnedChildFixturePath(), later));
+        bool listed = false;
+        for (int attempt = 0; attempt < 3; ++attempt)
+            okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, nullptr, okuflow::PhoneServerIntent::PhoneUse);
+        QVERIFY(listed);
+        QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
+    }
+    void requestIsDroppedWhenUsbIsReleasedForAWebcam() {
+        // Iteration 7 (3): a requested start beside a blind default that
+        // cannot launch yet stays requested (iteration 6), but releasing USB
+        // for a webcam voids it: a later phone-use call with the executable
+        // in place starts no private server that no decision asked for.
+        QTemporaryDir directory;
+        const QString later = directory.filePath(QStringLiteral("adb_later.exe"));
+        DefaultAdbFixture other({});
+        QVERIFY(other.copied && !other.Exited());
+        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present, later.toStdWString(), {}, 5000);
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto reports = LinkCycles(40, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::StartShadowServer; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::StartShadowServer));
+        QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
+        using Intent = okuflow::PhoneServerIntent;
+        bool listed = false;
+        okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, nullptr, Intent::ReleaseForWebcam);
+        QVERIFY(listed);
+        QVERIFY(QFile::copy(OwnedChildFixturePath(), later));
+        for (int attempt = 0; attempt < 3; ++attempt)
+            okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, nullptr, Intent::PhoneUse);
+        QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
+        QVERIFY(!other.Exited());
+    }
     void handOverCountedAfterAnEventIsDropped() {
         // Iteration 6 (5): an event arrives while the private server is being
         // retired for a default that lists the phone (the mutex is released

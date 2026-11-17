@@ -1137,6 +1137,12 @@ OkuFlow's private server, and after the takeover grace it is asked to exit
 (not named at once by the hung branch's aborted stops). Doctor row
 `abortedStopsOfOneRungDoNotEndTheOther` covers both directions; the existing
 doctor calls of `NoteTerminationAborted` now name the hung branch.
+`requestOfADefaultThatWentAwayDoesNotOutliveIt` (new hook
+`beforeShadowStartForTest` stops the default between the doctor's private
+server decision and its start, with no executable yet; the default comes back
+responsive in the same episode) and `requestIsDroppedWhenUsbIsReleasedForAWebcam`
+(a start request held back by the missing executable, then a `ReleaseForWebcam`
+call): in both, a later phone-use discovery starts no private server.
 `phone_link_text` (headless) checks one sentence per diagnosis and that every
 sentence is translated in all 24 catalogs. The native slot
 `phoneSentenceIsShownAndSpokenForEveryDiagnosis` delivers every verdict

@@ -1950,7 +1950,13 @@ so metadata generation cannot silently accept an incomplete copy.
   against a private fixture image; `siblingVisibleWindowForTest` reports a
   window at the last check before termination (outcome IdentityChanged);
   `afterPrivateServerRetiredForTest` runs after a hand-back stopped the private
-  server and before the hand-over is counted. `OccupiedPhone` prevents overlapping
+  server and before the hand-over is counted; `beforeShadowStartForTest` runs
+  when a `StartShadowServer` action begins, before its start request is set.
+  That request (`AdbRuntime::shadowRequested`) is consumed by the start beside
+  the default once it passes the executable and throttle checks, kept while
+  those checks hold it back, and dropped by an event, by a phone-use start
+  that is not beside a default any more (the default went away) and by a
+  `ReleaseForWebcam` call. `OccupiedPhone` prevents overlapping
   probes; `MayLaunch` takes a camera start's single wake + launch from the
   doctor's per-event budget (`PhoneLinkDoctor::ReserveLaunch`), and
   `AllowAppLaunch` (a manual camera pick) renews it. `ControlHello` accepts a token-free `probe:true` ACK,
