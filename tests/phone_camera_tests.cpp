@@ -108,16 +108,28 @@ public:
             promise.set_value(server.serverPort());
             while (arrival == ArrivalMode::QueuedConnections && !releaseQueuedConnections.load() && !stopped.load())
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            const auto listenPortNow = server.serverPort();
             while (!stopped.load() && !closeListener.load()) {
                 if (!server.hasPendingConnections() && !server.waitForNewConnection(20)) continue;
                 std::unique_ptr<QTcpSocket> socket(server.nextPendingConnection());
                 // Gone from the listener table before it answers this request.
-                if (goneAtNextConnection.exchange(false)) { server.close(); closeListener.store(true); }
+                bool reopen = false;
+                if (goneAtNextConnection.exchange(false)) {
+                    server.close();
+                    reopen = reopenAfterGone.load();
+                    if (!reopen) closeListener.store(true);
+                }
                 if (arrival == ArrivalMode::BufferedRequest) {
                     if (!socket->bytesAvailable() && !socket->waitForReadyRead(1000)) continue;
                     ++bufferedRequests;
                 }
                 try { Serve(*socket); } catch (...) {}
+                // An adb the lookup cannot identify: gone at every ask, back
+                // at the next listing.
+                if (reopen) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    if (!server.listen(QHostAddress::LocalHost, listenPortNow)) closeListener.store(true);
+                }
             }
         });
         port = future.get();
@@ -149,6 +161,14 @@ public:
     std::atomic<bool> closeListener{false};
     // The next connection is still answered, but the listener closes first.
     std::atomic<bool> goneAtNextConnection{false};
+    // ... and listens again on the same port after answering it.
+    std::atomic<bool> reopenAfterGone{false};
+    // Iteration 8: both listing forms 0 answer, 1 hang (never answered),
+    // 2 answer FAIL, 3 close the socket at once; host:version still answers.
+    std::atomic<int> listingMode{0};
+    // An older adb: FAIL to the protobuf listing, the text one answers
+    // (empty while listEmpty).
+    std::atomic<bool> textOnly{false};
     // A second USB phone "xyz" in state DEVICE (otherDevice is a Wi-Fi one).
     std::atomic<bool> secondUsbPhone{false};
     // adb FAIL texts often carry the serial: the trace must not.
@@ -215,8 +235,14 @@ private:
             Write(socket, "OKAY" + QByteArray::number(reply.size(), 16).rightJustified(4, '0') + reply);
             return;
         }
+        if (service == "host:track-devices-proto-binary" || service == "host:devices-l") {
+            const int mode = listingMode.load();
+            if (mode == 1) { waitForClose(); return; }
+            if (mode == 2) { Write(socket, "FAIL0006broken"); return; }
+            if (mode == 3) return; // Closed without a byte.
+        }
         if (service == "host:track-devices-proto-binary") {
-            if (recoveryMode == RecoveryMode::LegacyListing) { Write(socket, "FAIL000bunsupported"); return; }
+            if (recoveryMode == RecoveryMode::LegacyListing || textOnly.load()) { Write(socket, "FAIL000bunsupported"); return; }
             const char data[]{10, 11, 10, 3, 'a', 'b', 'c', 16, 8, 56, 1, 80, 9};
             QByteArray body(data, sizeof(data));
             body[sizeof(data) - 1] = static_cast<char>(transportId.load());
@@ -237,8 +263,8 @@ private:
             return;
         }
         if (service == "host:devices-l") {
-            const QByteArray reply("abc device usb:1-1 model:Fixture transport_id:" +
-                                   QByteArray::number(transportId.load()) + "\n");
+            const QByteArray reply = textOnly.load() && listEmpty.load() ? QByteArray() :
+                QByteArray("abc device usb:1-1 model:Fixture transport_id:" + QByteArray::number(transportId.load()) + "\n");
             Write(socket, "OKAY" + QByteArray::number(reply.size(), 16).rightJustified(4, '0') + reply);
             return;
         }
@@ -452,6 +478,18 @@ okuflow::PhoneLinkPolicy FastLinkPolicy()
     policy.launchSettleMs = 150;
     return policy;
 }
+// Owned-server budgets short enough that several start graces fit in a row
+// (production: 30 s grace, 5 s readiness, 5 s cooldown doubling to 30 s).
+okuflow::OwnedAdbServerPolicy FastOwnedPolicy()
+{
+    okuflow::OwnedAdbServerPolicy owned;
+    owned.startGrace = std::chrono::milliseconds(300);
+    owned.readinessDeadline = std::chrono::milliseconds(200);
+    owned.restartCooldown = std::chrono::milliseconds(100);
+    owned.maxRestartCooldown = std::chrono::milliseconds(200);
+    owned.confirmationSpacing = std::chrono::milliseconds(10);
+    return owned;
+}
 // Borrowed fixture endpoint (user endpoint semantics) with doctor hooks.
 struct ScopedLinkHooks {
     explicit ScopedLinkHooks(std::uint16_t port, okuflow::PhoneAdbInterface present = okuflow::PhoneAdbInterface::Present,
@@ -550,10 +588,12 @@ struct StalledListener {
 };
 // Runs doctor-engaged discovery cycles at the doctor's own cadence.
 std::vector<okuflow::PhoneLinkReport> LinkCycles(int count,
-    const std::function<bool(const okuflow::PhoneLinkReport&)>& until = {}, const std::string& serial = "abc")
+    const std::function<bool(const okuflow::PhoneLinkReport&)>& until = {}, const std::string& serial = "abc",
+    const okuflow::PhoneLinkRequest* base = nullptr)
 {
     std::vector<okuflow::PhoneLinkReport> reports;
     okuflow::PhoneLinkRequest request;
+    if (base) request = *base;
     request.phoneWanted = true;
     for (int i = 0; i < count; ++i) {
         okuflow::PhoneLinkReport report;
@@ -1468,14 +1508,25 @@ private slots:
         QVERIFY(replacement.probes.load() != 0);
     }
     void ownedWiringHungStartupReportsAutomaticRecovery() {
-        ScopedOwnedAdbHooks hooks({L"--fixture-hang"});
+        // Changed deliberately in iteration 8 (A2): this row asserted the
+        // endless outcome (a private adb that starts, stays alive and never
+        // answers read "recovering" for ever). The first cycle still reports
+        // automatic recovery; two starts that outlive their start grace
+        // unanswered now end in the AdbCannotStart sentence.
+        ScopedLinkHooks hooks(PickTestPort(), okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(),
+                              {L"--fixture-hang"}, 5000, [](okuflow::PhoneAdbTestHooks& h) { h.ownedPolicy = FastOwnedPolicy(); });
         bool listed = true;
         okuflow::PhoneDiscoveryStatus status{};
         QVERIFY(okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, &status, okuflow::PhoneServerIntent::PhoneUse).empty());
         QVERIFY(!listed);
         QCOMPARE(status, okuflow::PhoneDiscoveryStatus::OwnedServerRecovering);
         QVERIFY(okuflow::OwnedAdbServerPort().has_value());
-        // Borrowed hangs remain a distinct diagnostic status; UI retries automatically.
+        const auto started = std::chrono::steady_clock::now();
+        const auto reports = LinkCycles(400, [&](const auto& r) {
+            return r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::AdbCannotStart ||
+                std::chrono::steady_clock::now() - started > std::chrono::seconds(60); });
+        QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::AdbCannotStart));
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::WaitForUser));
     }
     void ownedWiringShadowsHungDefaultThenHandsBackAfterConfirmation() {
         ScopedOwnedAdbHooks hooks({}, 0);
@@ -3401,6 +3452,352 @@ private slots:
         QVERIFY(!Saw(reports, okuflow::PhoneLinkAction::AskDefaultServerToExit));
         QVERIFY(!Saw(reports, okuflow::PhoneLinkAction::TerminateDefaultServer));
         QCOMPARE(server.ServiceCount("host:kill"), 0);
+    }
+    void listingFailureOfTheDefaultIsAConfirmedHang_data() {
+        QTest::addColumn<int>("mode");
+        QTest::newRow("listing hangs") << 1;
+        QTest::newRow("listing answers FAIL") << 2;
+        QTest::newRow("listing closes") << 3;
+    }
+    void listingFailureOfTheDefaultIsAConfirmedHang() {
+        // Iteration 8 (A1): another program's adb answers host:version but
+        // its device listing hangs, fails or closes (an adb stuck in a USB
+        // transport after sleep). It was relisted for ever ("Restoring", or
+        // "starting" for FAIL and close). Now a listing that stays failed for
+        // the confirmation time is a confirmed hang: a private server starts
+        // beside it and the hung-default rules end it. This default is the
+        // test process itself, so it can never be stopped: a silent one ends
+        // in the other-program sentence after a refused stop, one that
+        // answers FAIL after the aborted stops.
+        QFETCH(int, mode);
+        FakePhoneAdb other(false, false, false, FakePhoneAdb::LaunchMode::None,
+                           FakePhoneAdb::RecoveryMode::Healthy, false);
+        other.listingMode.store(mode);
+        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {}, 300);
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        bool privateServer = false;
+        const auto started = std::chrono::steady_clock::now();
+        const auto reports = LinkCycles(400, [&](const auto& r) {
+            privateServer = privateServer || okuflow::OwnedAdbServerPort().has_value();
+            return r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone ||
+                std::chrono::steady_clock::now() - started > std::chrono::seconds(90); });
+        QVERIFY(Saw(reports, okuflow::PhoneLinkDiagnosis::ServerUnresponsive));
+        QVERIFY(!Saw(reports, okuflow::PhoneLinkDiagnosis::ServerStarting));
+        QVERIFY2(privateServer, "No private server was started beside the hung default.");
+        QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone));
+        QVERIFY(Saw(reports, okuflow::PhoneLinkAction::TerminateDefaultServer));
+        QVERIFY(other.ServiceCount(QStringLiteral("host:version")) > 0);
+    }
+    void ownedServerWhoseListingFailsIsRestartedThenNamed() {
+        // Iteration 8 (A1): OkuFlow's own server answers host:version (its
+        // manager keeps it) while both listing forms answer FAIL. It read
+        // "starting" for ever; now the restart rung and its cap, then the
+        // re-plug sentence.
+        QTemporaryDir directory;
+        const QString fail = directory.filePath(QStringLiteral("fail"));
+        { QFile file(fail); QVERIFY(file.open(QIODevice::WriteOnly)); }
+        ScopedLinkHooks hooks(PickTestPort(), okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(),
+                              {L"--fixture-fail-file", fail.toStdWString()});
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto reports = LinkCycles(400, [](const auto& r) {
+            return r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::ReplugCable; });
+        QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::ReplugCable));
+        QVERIFY(!Saw(reports, okuflow::PhoneLinkDiagnosis::ServerStarting));
+        const auto restarts = std::count_if(reports.begin(), reports.end(), [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::RestartOwnedServer &&
+                r.actionResult.find("owned server restarted") != std::string::npos; });
+        QCOMPARE(int(restarts), okuflow::PhoneLinkPolicy{}.blindRestartCap);
+    }
+    void ownedAdbThatNeverAnswersIsNamed() {
+        // Iteration 8 (A2): security software lets OkuFlow's adb.exe run but
+        // blocks its socket: the child stays alive and never answers. It was
+        // replaced after every start grace and read "starting" for ever.
+        // Now two starts that outlive their start grace unanswered end in
+        // the AdbCannotStart sentence while recovery goes on, and a server
+        // that answers later ends it. (Version answers after 1100 ms while
+        // the file exists: past the 1000 ms probe budget, so never in time.)
+        QTemporaryDir directory;
+        const QString slow = directory.filePath(QStringLiteral("slow"));
+        { QFile file(slow); QVERIFY(file.open(QIODevice::WriteOnly)); }
+        ScopedLinkHooks hooks(PickTestPort(), okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(),
+                              {L"--fixture-slow-version-file", slow.toStdWString()}, 5000, [](okuflow::PhoneAdbTestHooks& h) { h.ownedPolicy = FastOwnedPolicy(); });
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto started = std::chrono::steady_clock::now();
+        const auto reports = LinkCycles(400, [&](const auto& r) {
+            return r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::AdbCannotStart ||
+                std::chrono::steady_clock::now() - started > std::chrono::seconds(60); });
+        QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::AdbCannotStart));
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::WaitForUser));
+        // The child answers now: the sentence ends.
+        QVERIFY(QFile::remove(slow));
+        const auto later = LinkCycles(60, [](const auto& r) {
+            return r.decision.diagnosis != okuflow::PhoneLinkDiagnosis::AdbCannotStart &&
+                r.decision.diagnosis != okuflow::PhoneLinkDiagnosis::ServerStarting; });
+        QVERIFY(later.back().decision.diagnosis != okuflow::PhoneLinkDiagnosis::AdbCannotStart);
+        QCOMPARE(int(later.back().observation.serverLaunchFailures), 0);
+    }
+    void adbThatCannotStartBesideABlindDefaultIsNamed_data() {
+        QTest::addColumn<bool>("missing");
+        QTest::newRow("executable missing") << true;
+        QTest::newRow("executable exits at start") << false;
+    }
+    void adbThatCannotStartBesideABlindDefaultIsNamed() {
+        // Iteration 8 (A3): another program's adb answers and is blind to the
+        // phone; OkuFlow's own adb.exe cannot be started beside it. The end
+        // was the other-program sentence after the hand-over cap (the
+        // default's Running reset the count); now it is AdbCannotStart.
+        QFETCH(bool, missing);
+        FakePhoneAdb other(false, false, false, FakePhoneAdb::LaunchMode::None,
+                           FakePhoneAdb::RecoveryMode::Healthy, false);
+        other.listEmpty.store(true);
+        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present,
+                              missing ? std::wstring(L"Z:\\okuflow-missing\\adb.exe") : OwnedChildFixturePath().toStdWString(),
+                              missing ? std::vector<std::wstring>{} : std::vector<std::wstring>{L"--fixture-exit-at-start"});
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto started = std::chrono::steady_clock::now();
+        const auto reports = LinkCycles(400, [&](const auto& r) {
+            return r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::AdbCannotStart ||
+                r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone ||
+                std::chrono::steady_clock::now() - started > std::chrono::seconds(60); });
+        QVERIFY(Saw(reports, okuflow::PhoneLinkAction::StartShadowServer));
+        QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::AdbCannotStart));
+        QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
+    }
+    void staleIntentDropsTheLadderSideEffects_data() {
+        QTest::addColumn<QString>("action");
+        QTest::newRow("ask the default to exit") << QStringLiteral("ask");
+        QTest::newRow("terminate the default") << QStringLiteral("terminate");
+        QTest::newRow("start beside the default") << QStringLiteral("beside");
+        QTest::newRow("wake and launch") << QStringLiteral("launch");
+    }
+    void staleIntentDropsTheLadderSideEffects() {
+        // Iteration 8 (A4): the user picks another source while a discovery
+        // cycle runs. The request's intent generation is checked right before
+        // every side effect: nothing is asked, stopped, started or launched.
+        QFETCH(QString, action);
+        auto live = std::make_shared<std::atomic<std::uint64_t>>(1);
+        okuflow::PhoneLinkRequest request;
+        request.intentGeneration = 1;
+        request.liveIntentGeneration = live.get();
+        const auto changeSource = [live] { live->store(2); };
+        QTemporaryDir directory;
+        const QString killLog = directory.filePath(QStringLiteral("kills.txt"));
+        std::unique_ptr<DefaultAdbFixture> fixture;
+        std::unique_ptr<FakePhoneAdb> fake;
+        std::unique_ptr<ScopedLinkHooks> hooks;
+        okuflow::PhoneLinkAction expected{};
+        if (action == QStringLiteral("ask") || action == QStringLiteral("terminate")) {
+            const bool ask = action == QStringLiteral("ask");
+            fixture = std::make_unique<DefaultAdbFixture>(ask ? std::vector<std::wstring>{L"--fixture-kill-log", killLog.toStdWString()}
+                                                              : std::vector<std::wstring>{L"--fixture-hang"});
+            QVERIFY(fixture->copied && !fixture->Exited());
+            hooks = std::make_unique<ScopedLinkHooks>(fixture->port, okuflow::PhoneAdbInterface::Present,
+                OwnedChildFixturePath().toStdWString(), std::vector<std::wstring>{}, ask ? 5000u : 100u,
+                [changeSource](okuflow::PhoneAdbTestHooks& h) { h.beforeDefaultStopForTest = changeSource; });
+            expected = ask ? okuflow::PhoneLinkAction::AskDefaultServerToExit : okuflow::PhoneLinkAction::TerminateDefaultServer;
+        } else if (action == QStringLiteral("beside")) {
+            fake = std::make_unique<FakePhoneAdb>(false, false, false, FakePhoneAdb::LaunchMode::None,
+                                                  FakePhoneAdb::RecoveryMode::Healthy, false);
+            fake->listEmpty.store(true);
+            hooks = std::make_unique<ScopedLinkHooks>(fake->port, okuflow::PhoneAdbInterface::Present,
+                OwnedChildFixturePath().toStdWString(), std::vector<std::wstring>{}, 5000u,
+                [changeSource](okuflow::PhoneAdbTestHooks& h) { h.beforeShadowStartForTest = changeSource; });
+            expected = okuflow::PhoneLinkAction::StartShadowServer;
+        } else {
+            fake = std::make_unique<FakePhoneAdb>(false, false, false, FakePhoneAdb::LaunchMode::Play,
+                                                  FakePhoneAdb::RecoveryMode::Healthy, false);
+            hooks = std::make_unique<ScopedLinkHooks>(fake->port, okuflow::PhoneAdbInterface::Present, std::wstring{},
+                std::vector<std::wstring>{}, 5000u,
+                [changeSource](okuflow::PhoneAdbTestHooks& h) { h.beforeCompanionLaunchForTest = changeSource; });
+            expected = okuflow::PhoneLinkAction::WakeAndLaunchApp;
+        }
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto reports = LinkCycles(80, [expected](const auto& r) { return r.decision.action == expected; }, "abc", &request);
+        QCOMPARE(int(reports.back().decision.action), int(expected));
+        QCOMPARE(QString::fromStdString(reports.back().actionResult), QStringLiteral("dropped: the source changed"));
+        QTest::qWait(300);
+        if (fixture) {
+            QVERIFY(!fixture->Exited());
+            QVERIFY2(!QFile::exists(killLog), "host:kill was sent after the source changed.");
+        }
+        if (action == QStringLiteral("beside")) QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
+        if (action == QStringLiteral("launch")) {
+            QVERIFY(fake->Launches().isEmpty());
+            for (const auto& service : fake->Services())
+                QVERIFY2(!service.startsWith(QStringLiteral("shell:input")) && !service.startsWith(QStringLiteral("shell:am start")),
+                         qPrintable(service));
+        }
+    }
+    void olderDefaultThatListsOnlyTextIsHandedBack() {
+        // Iteration 8 (B1): an older adb on the default port answers FAIL to
+        // the protobuf listing and lists in text. Its listing beside
+        // OkuFlow's server used the protobuf form only, so a default that
+        // lists the phone was never handed back to (nor asked, nor stopped).
+        FakePhoneAdb other(false, false, false, FakePhoneAdb::LaunchMode::None,
+                           FakePhoneAdb::RecoveryMode::Healthy, false);
+        other.textOnly.store(true);
+        other.listEmpty.store(true);
+        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString());
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        auto reports = LinkCycles(60, [](const auto&) { return okuflow::OwnedAdbServerPort().has_value(); });
+        QVERIFY(okuflow::OwnedAdbServerPort().has_value());
+        other.listEmpty.store(false); // The older adb lists the phone now (text form only).
+        reports = LinkCycles(60, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::HandBackToDefault; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::HandBackToDefault));
+        QCOMPARE(QString::fromStdString(reports.back().actionResult),
+                 QStringLiteral("the default server lists the phone; private server retired"));
+        QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
+    }
+    void handBackWaitsForASessionServerRequest() {
+        // Iteration 8 (B3): the ladder's hand-back checks for live sessions
+        // and stops the private server under the lifecycle lock, as the
+        // transport's own hand-back does: a session's server request made in
+        // between waits for the hand-back (it then uses the default) instead
+        // of registering on a private server that is stopped under it.
+        FakePhoneAdb other(false, false, false, FakePhoneAdb::LaunchMode::None,
+                           FakePhoneAdb::RecoveryMode::Healthy, false);
+        other.listEmpty.store(true);
+        auto finishedDuringHandBack = std::make_shared<std::atomic<int>>(-1);
+        auto session = std::make_shared<std::thread>();
+        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {},
+                              5000, [finishedDuringHandBack, session](okuflow::PhoneAdbTestHooks& h) {
+            h.afterHandBackCheckForTest = [finishedDuringHandBack, session] {
+                auto done = std::make_shared<std::atomic<bool>>(false);
+                *session = std::thread([done] {
+                    bool listed = false;
+                    okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, "abc", nullptr,
+                                                             okuflow::PhoneServerIntent::PhoneUse);
+                    done->store(true);
+                });
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1500);
+                while (!done->load() && std::chrono::steady_clock::now() < deadline)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                finishedDuringHandBack->store(done->load() ? 1 : 0);
+            };
+        });
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        LinkCycles(60, [](const auto&) { return okuflow::OwnedAdbServerPort().has_value(); });
+        QVERIFY(okuflow::OwnedAdbServerPort().has_value());
+        other.listEmpty.store(false);
+        const auto reports = LinkCycles(60, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::HandBackToDefault; });
+        if (session->joinable()) session->join();
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::HandBackToDefault));
+        QCOMPARE(finishedDuringHandBack->load(), 0);
+    }
+    void silentDefaultBesideOkuFlowsServerIsStoppedNotSpent() {
+        // Iteration 8 (B2): a blind default ignored host:kill; at the
+        // termination's pre-stop check its listing is silent while its
+        // version still answers. That check returned "kept: listing failed"
+        // without giving the attempt back, so the terminations were spent
+        // without one stop (with one termination per episode the hung
+        // default was named, never stopped). Now it is an aborted stop until
+        // the listing hang is confirmed, then the hung default is stopped
+        // through its exact handle. The default is the in-process fake (its
+        // version answers, its listing falls silent); its listener rows name
+        // a decoy adb.exe this test started, which stands for its process.
+        DefaultAdbFixture decoy({});
+        QVERIFY(decoy.copied && !decoy.Exited());
+        const DWORD decoyPid = decoy.child->ProcessId();
+        FakePhoneAdb other(false, false, false, FakePhoneAdb::LaunchMode::None,
+                           FakePhoneAdb::RecoveryMode::Healthy, false);
+        other.listEmpty.store(true);
+        const auto port = other.port;
+        okuflow::SetTcpListenerRowsTransformForTest([port, decoyPid](std::vector<okuflow::TcpListenerRow>& rows) {
+            for (auto& row : rows) if (row.port == port) row.processId = decoyPid;
+        });
+        auto restore = qScopeGuard([] { okuflow::SetTcpListenerRowsTransformForTest({}); });
+        FakePhoneAdb* fake = &other;
+        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {},
+                              300, [fake](okuflow::PhoneAdbTestHooks& h) {
+            h.linkPolicy->terminateCap = 1;
+            // After the ignored ask, the listing falls silent.
+            h.beforeDefaultStopForTest = [fake] {
+                if (fake->ServiceCount(QStringLiteral("host:kill")) > 0) fake->listingMode.store(1);
+            };
+        });
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto started = std::chrono::steady_clock::now();
+        const auto reports = LinkCycles(400, [&](const auto& r) {
+            return decoy.Exited() || r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone ||
+                std::chrono::steady_clock::now() - started > std::chrono::seconds(90); });
+        QVERIFY(Saw(reports, okuflow::PhoneLinkAction::AskDefaultServerToExit));
+        const auto silent = std::find_if(reports.begin(), reports.end(), [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::TerminateDefaultServer &&
+                r.actionResult == "kept: the default server listing failed"; });
+        QVERIFY2(silent != reports.end(), "The termination never met the silent listing.");
+        QVERIFY2(decoy.child->WaitForExit(std::chrono::milliseconds(3000)), "The silent default was never stopped.");
+        QVERIFY(!Saw(reports, okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone));
+    }
+    void anyAddressDefaultListenerIsTerminatedThroughItsExactHandle() {
+        // Iteration 8 (B8): the listener lookups read only 127.0.0.1 rows. An
+        // adb bound to every address answers OkuFlow's probes but was "gone"
+        // at every ask and stop. With no loopback row, the any-address row
+        // of the port is used under the same identity proof. (The fixture
+        // binds loopback; the rows are rewritten so it stands for an
+        // any-address listener without binding every address.)
+        DefaultAdbFixture hung({L"--fixture-hang"});
+        QVERIFY(hung.copied && !hung.Exited());
+        const auto port = hung.port;
+        okuflow::SetTcpListenerRowsTransformForTest([port](std::vector<okuflow::TcpListenerRow>& rows) {
+            for (auto& row : rows)
+                if (row.port == port && row.loopback) { row.loopback = false; row.anyAddress = true; }
+        });
+        auto restore = qScopeGuard([] { okuflow::SetTcpListenerRowsTransformForTest({}); });
+        ScopedLinkHooks hooks(hung.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {}, 100);
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto reports = LinkCycles(12, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::TerminateDefaultServer; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::TerminateDefaultServer));
+        QVERIFY2(reports.back().actionResult.find("terminated through its exact handle") != std::string::npos,
+                 reports.back().actionResult.c_str());
+        QVERIFY(hung.child->WaitForExit(std::chrono::milliseconds(3000)));
+    }
+    void adbListenerRowsPreferLoopbackThenAnyAddress() {
+        // Iteration 8 (B8): the one rule both lookups use.
+        using Row = okuflow::TcpListenerRow;
+        const auto row = [](bool ipv6, bool loopback, bool any, std::uint16_t port, DWORD pid) {
+            Row r; r.ipv6 = ipv6; r.loopback = loopback; r.anyAddress = any; r.port = port; r.processId = pid; return r; };
+        const auto pids = [](const std::vector<Row>& rows) {
+            std::vector<DWORD> out;
+            for (const auto& r : rows) out.push_back(r.processId);
+            return out;
+        };
+        // Loopback wins over an any-address row of another process.
+        QCOMPARE(pids(okuflow::AdbListenerRows({row(false, false, true, 5037, 7), row(false, true, false, 5037, 9)}, 5037)),
+                 (std::vector<DWORD>{9}));
+        // No loopback row: 0.0.0.0 and :: both stand for it.
+        QCOMPARE(pids(okuflow::AdbListenerRows({row(false, false, true, 5037, 7)}, 5037)), (std::vector<DWORD>{7}));
+        QCOMPARE(pids(okuflow::AdbListenerRows({row(true, false, true, 5037, 8)}, 5037)), (std::vector<DWORD>{8}));
+        // ::1 alone is never reached by 127.0.0.1; other ports never count.
+        QVERIFY(okuflow::AdbListenerRows({row(true, true, false, 5037, 8)}, 5037).empty());
+        QVERIFY(okuflow::AdbListenerRows({row(false, true, false, 5038, 8), row(false, false, true, 5038, 9)}, 5037).empty());
+    }
+    void defaultGoneAtEveryAskEndsInTheSentenceEndToEnd() {
+        // Iteration 8 (B9): the post-round-7 change through the executor: a
+        // default the lookup finds gone at every ask (it answers listings,
+        // then is not in the table when the ask looks) ends in the
+        // other-program sentence instead of being asked for ever.
+        FakePhoneAdb other(false, false, false, FakePhoneAdb::LaunchMode::None,
+                           FakePhoneAdb::RecoveryMode::Healthy, false);
+        other.listEmpty.store(true);
+        other.reopenAfterGone.store(true);
+        FakePhoneAdb* gone = &other;
+        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {},
+                              5000, [gone](okuflow::PhoneAdbTestHooks& h) {
+            h.beforeDefaultStopForTest = [gone] { gone->goneAtNextConnection.store(true); };
+        });
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto started = std::chrono::steady_clock::now();
+        const auto reports = LinkCycles(600, [&](const auto& r) {
+            return r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone ||
+                std::chrono::steady_clock::now() - started > std::chrono::seconds(90); });
+        const auto asks = std::count_if(reports.begin(), reports.end(), [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::AskDefaultServerToExit &&
+                r.actionResult == "default server already gone"; });
+        QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone));
+        QCOMPARE(int(asks), okuflow::PhoneLinkPolicy{}.abortedStopCap + 1);
     }
     void hungDefaultIsTerminatedOnlyThroughItsExactHandle() {
         // Changed (iteration 2, E3): no image-name hook; the fixture runs as adb.exe.
