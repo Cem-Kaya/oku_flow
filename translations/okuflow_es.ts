@@ -3782,6 +3782,14 @@ Use «Connect ChatGPT» en la pestaña Asistente del modo avanzado para iniciar 
         <translation>OkuFlow no puede iniciar la conexión USB con el teléfono. Vuelva a instalar OkuFlow o permítalo en su programa antivirus.</translation>
     </message>
     <message>
+        <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
+        <translation>No se pudo iniciar la cámara del teléfono. Cierre las demás aplicaciones de cámara en el teléfono y vuelva a abrir OkuFlow Cámara.</translation>
+    </message>
+    <message>
+        <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
+        <translation>Hay otro teléfono conectado. Conecte el teléfono que eligió en OkuFlow o seleccione el teléfono conectado en Configuración, Cámara.</translation>
+    </message>
+    <message>
         <source>Unlock your phone.</source>
         <translation>Desbloquee el teléfono.</translation>
     </message>

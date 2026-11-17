@@ -78,6 +78,11 @@ private slots:
         QTest::newRow("hung server") << With([](auto& o) {
             o.server = PhoneServerKind::BorrowedDefault; o.serverProbe = PhoneServerProbe::Unresponsive;
             o.phoneState = PhoneAdbState::NotListed; }) << D::ServerUnresponsive;
+        // Iteration 3 (A2): a hung listener with the phone unplugged.
+        QTest::newRow("hung server, phone unplugged") << With([](auto& o) {
+            o.server = PhoneServerKind::BorrowedDefault; o.serverProbe = PhoneServerProbe::Unresponsive;
+            o.phoneState = PhoneAdbState::NotListed; o.adbInterface = PhoneAdbInterface::Absent; })
+                                                      << D::NoAdbInterface;
         QTest::newRow("no ADB interface") << With([](auto& o) {
             o.adbInterface = PhoneAdbInterface::Absent; o.phoneState = PhoneAdbState::NotListed; })
                                           << D::NoAdbInterface;
@@ -412,12 +417,37 @@ private slots:
     }
     void blindWithoutWindowsInterfaceNeverEscalates()
     {
+        // Changed deliberately (iteration 3, A4): Windows cannot tell
+        // (Unknown) is treated as present for OkuFlow's own server after a
+        // long blind period: restarts and their cap, then the re-plug
+        // sentence. Before that period, and for any other server, nothing.
         PhoneLinkDoctor doctor;
         doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
         auto unknown = Blind();
         unknown.adbInterface = PhoneAdbInterface::Unknown;
-        for (std::int64_t now = 0; now < 60000; now += 1000)
-            QCOMPARE(int(doctor.Decide(unknown, now).action), int(A::Relist));
+        const auto period = doctor.Policy().unknownInterfaceBlindMs;
+        int restarts = 0;
+        PhoneLinkDecision last;
+        for (std::int64_t now = 0; now < period + 300000; now += 1000) {
+            last = doctor.Decide(unknown, now);
+            if (now < period) QCOMPARE(int(last.action), int(A::Relist));
+            restarts += last.action == A::RestartOwnedServer;
+        }
+        QCOMPARE(restarts, doctor.Policy().blindRestartCap);
+        QCOMPARE(int(last.diagnosis), int(D::ReplugCable));
+        QCOMPARE(int(last.action), int(A::WaitForUser));
+        // Never for a server OkuFlow did not start, also after the period.
+        PhoneLinkDoctor borrowedDoctor;
+        borrowedDoctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto borrowed = Blind(PhoneServerKind::BorrowedDefault);
+        borrowed.adbInterface = PhoneAdbInterface::Unknown;
+        auto beside = Blind(PhoneServerKind::Owned);
+        beside.adbInterface = PhoneAdbInterface::Unknown;
+        beside.shadowRunning = true;
+        for (std::int64_t now = 0; now < period + 120000; now += 1000) {
+            QCOMPARE(int(borrowedDoctor.Decide(borrowed, now).action), int(A::Relist));
+            QCOMPARE(int(borrowedDoctor.Decide(beside, now).action), int(A::Relist));
+        }
         auto absent = Blind();
         absent.adbInterface = PhoneAdbInterface::Absent;
         const auto decision = doctor.Decide(absent, 61000);
@@ -666,6 +696,46 @@ private slots:
         QCOMPARE(launches, 1);
         doctor.OnEvent(PhoneLinkEvent::DeviceArrival, 300000);
         QCOMPARE(int(doctor.Decide(paused, 300000).action), int(A::WakeAndLaunchApp));
+    }
+    void companionFailureIsNamedAfterAGrace()
+    {
+        // Iteration 3 (A5): busy camera, failed, no mode: "Restoring" while
+        // the companion retries, then the user is told; an event restarts it.
+        for (const char* code : {"busy", "failed", "noMode"}) {
+            PhoneLinkDoctor doctor;
+            doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+            const auto failed = Problem(code);
+            const auto grace = doctor.Policy().companionFailedGraceMs;
+            for (std::int64_t now = 0; now < grace; now += 1000)
+                QCOMPARE(int(doctor.Decide(failed, now).action), int(A::Relist));
+            for (std::int64_t now = grace; now < grace + 60000; now += 1000) {
+                const auto decision = doctor.Decide(failed, now);
+                QCOMPARE(int(decision.diagnosis), int(D::CompanionFailed));
+                QCOMPARE(int(decision.action), int(A::WaitForUser));
+            }
+            doctor.OnEvent(PhoneLinkEvent::ManualPick, grace + 60000);
+            QCOMPARE(int(doctor.Decide(failed, grace + 60000).action), int(A::Relist));
+        }
+    }
+    void stopOutcomeOfAnEarlierEpisodeIsDropped()
+    {
+        // Iteration 3 (C4): a refusal noted after a newer event does not
+        // leak into the new episode.
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto hung = Blind(PhoneServerKind::BorrowedDefault);
+        hung.serverProbe = PhoneServerProbe::Unresponsive;
+        hung.defaultUnresponsiveConfirmed = true;
+        const auto decision = doctor.Decide(hung, 0);
+        QCOMPARE(int(decision.action), int(A::TerminateDefaultServer));
+        doctor.OnEvent(PhoneLinkEvent::DeviceArrival, 100); // While the stop ran.
+        QVERIFY(!doctor.NoteDefaultStopRefused(decision.episode));
+        QVERIFY(!doctor.NoteDefaultStopFailed(decision.episode));
+        QVERIFY(!doctor.DefaultStopRefused());
+        QCOMPARE(int(doctor.Decide(hung, 200).action), int(A::TerminateDefaultServer));
+        // The current episode's outcome is kept.
+        QVERIFY(doctor.NoteDefaultStopRefused(doctor.Episode()));
+        QVERIFY(doctor.DefaultStopRefused());
     }
     void sessionStartSharesThePerEventLaunchBudget()
     {

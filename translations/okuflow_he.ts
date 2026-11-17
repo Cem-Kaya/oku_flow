@@ -3782,6 +3782,14 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <translation>OkuFlow לא יכול להפעיל את חיבור הטלפון ב־USB. התקן מחדש את OkuFlow, או אפשר אותו בתוכנת האנטי־וירוס.</translation>
     </message>
     <message>
+        <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
+        <translation>לא ניתן היה להפעיל את מצלמת הטלפון. סגור אפליקציות מצלמה אחרות בטלפון ולאחר מכן פתח שוב את OkuFlow מצלמה.</translation>
+    </message>
+    <message>
+        <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
+        <translation>מחובר טלפון אחר. חבר את הטלפון שבחרת ב-OkuFlow, או בחר את הטלפון המחובר תחת הגדרות, מצלמה.</translation>
+    </message>
+    <message>
         <source>Unlock your phone.</source>
         <translation>בטל את נעילת הטלפון.</translation>
     </message>

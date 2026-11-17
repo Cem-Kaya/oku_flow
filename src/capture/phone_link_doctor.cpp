@@ -80,7 +80,11 @@ PhoneLinkDiagnosis DiagnosePhoneLink(const PhoneLinkObservation& o)
         // A default listener that cannot be stopped is named first, also
         // while it does not answer: nothing else OkuFlow can do frees USB.
         if (o.defaultStopRefused) return D::OtherProgramHoldsPhone;
-        if (o.serverProbe == PhoneServerProbe::Unresponsive) return D::ServerUnresponsive;
+        // A hung listener with the phone unplugged: the connect sentence
+        // wins (nothing would be stopped without the interface anyway).
+        if (o.serverProbe == PhoneServerProbe::Unresponsive)
+            return o.adbInterface == PhoneAdbInterface::Absent && !o.otherUsbListed ? D::NoAdbInterface
+                                                                                   : D::ServerUnresponsive;
         if (o.server == PhoneServerKind::None || o.serverProbe == PhoneServerProbe::NoListener ||
             o.serverProbe == PhoneServerProbe::Unknown)
             return D::ServerStarting;
@@ -158,6 +162,8 @@ bool PhoneLinkWaitsForUser(PhoneLinkDiagnosis diagnosis)
 
 void PhoneLinkDoctor::OnEvent(PhoneLinkEvent, std::int64_t nowMs)
 {
+    ++episode_;
+    failedSinceMs_ = -1;
     eventAtMs_ = nowMs;
     nextPollMs_ = nowMs;
     failedCycles_ = 0;
@@ -254,7 +260,11 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         }
         return A::WaitForUser;
     case D::NotListedByServer: {
-        if (!interfacePresent || !responsive) return A::Relist;
+        // Windows cannot tell (Unknown): only OkuFlow's own server, and only
+        // after a long blind period, is treated as if the interface were there.
+        const bool assumedPresent = o.adbInterface == PhoneAdbInterface::Unknown && owned && !o.shadowRunning &&
+            nowMs - SinceEventOr(blindSinceMs_) >= policy_.unknownInterfaceBlindMs;
+        if ((!interfacePresent && !assumedPresent) || !responsive) return A::Relist;
         if (nowMs - SinceEventOr(blindSinceMs_) < policy_.blindGraceMs) return A::Relist;
         if (owned && !o.shadowRunning) {
             if (restart_.attempts >= policy_.blindRestartCap) { *raised = D::ReplugCable; return A::WaitForUser; }
@@ -378,7 +388,9 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         launchHeld_ = true;
         return A::WaitForUser;
     case D::CompanionFailed:
-        return A::Relist;
+        // Camera busy in another phone app, failed, no mode: "Restoring" for
+        // a while (the companion retries), then say what to do on the phone.
+        return nowMs - SinceEventOr(failedSinceMs_) >= policy_.companionFailedGraceMs ? A::WaitForUser : A::Relist;
     default:
         return A::WaitForUser;
     }
@@ -411,6 +423,8 @@ PhoneLinkDecision PhoneLinkDoctor::Decide(const PhoneLinkObservation& observatio
     else { stuckSinceMs_ = -1; lastReconnectMs_ = -1; }
     if (o.phoneState == PhoneAdbState::Authorizing) { if (authorizingSinceMs_ < 0) authorizingSinceMs_ = nowMs; }
     else authorizingSinceMs_ = -1;
+    if (decision.diagnosis == D::CompanionFailed) { if (failedSinceMs_ < 0) failedSinceMs_ = nowMs; }
+    else failedSinceMs_ = -1;
     if (decision.diagnosis == D::Unauthorized) { if (unauthorizedSinceMs_ < 0) unauthorizedSinceMs_ = nowMs; }
     else { unauthorizedSinceMs_ = -1; unauthorizedReconnected_ = false; }
     if (o.shadowRunning) { if (shadowSinceMs_ < 0) shadowSinceMs_ = nowMs; }
@@ -452,6 +466,7 @@ PhoneLinkDecision PhoneLinkDoctor::Decide(const PhoneLinkObservation& observatio
         }
     }
     decision.nextPollMs = nowMs + delay;
+    decision.episode = episode_;
     nextPollMs_ = decision.nextPollMs;
     decision.diagnosisChanged = !haveLast_ || last_ != decision.diagnosis;
     last_ = decision.diagnosis;

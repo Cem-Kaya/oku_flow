@@ -3782,6 +3782,14 @@ Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</
         <translation>OkuFlow kan inte starta USB-anslutningen till telefonen. Installera om OkuFlow eller tillåt det i ditt antivirusprogram.</translation>
     </message>
     <message>
+        <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
+        <translation>Telefonens kamera kunde inte starta. Stäng andra kameraappar på telefonen och öppna sedan OkuFlow Kamera igen.</translation>
+    </message>
+    <message>
+        <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
+        <translation>En annan telefon är ansluten. Anslut telefonen du valde i OkuFlow, eller välj den anslutna telefonen under Inställningar, Kamera.</translation>
+    </message>
+    <message>
         <source>Unlock your phone.</source>
         <translation>Lås upp telefonen.</translation>
     </message>

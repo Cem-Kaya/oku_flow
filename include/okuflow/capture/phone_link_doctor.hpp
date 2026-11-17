@@ -161,6 +161,16 @@ struct PhoneLinkPolicy {
     // serving it" (takeover rungs) and a user endpoint gets the re-plug
     // sentence.
     int foreignReconnects{2};
+    // Windows cannot say whether the ADB interface is there (SetupAPI
+    // failed, or the phone does not publish the standard interface GUID):
+    // after this long blind, OkuFlow's own server is treated as if it were
+    // present (restart rung and its cap, then the re-plug sentence). Never
+    // for stopping a server OkuFlow did not start.
+    std::int64_t unknownInterfaceBlindMs{30000};
+    // A companion problem other than paused/busy host/blocked/hot (camera
+    // busy in another phone app, failed, no mode, unknown) reads "Restoring"
+    // this long, then the user is told what to do on the phone.
+    std::int64_t companionFailedGraceMs{20000};
     // Unauthorized for this long with no change: one targeted reconnect,
     // which makes the phone ask the Allow question again.
     std::int64_t unauthorizedReconnectMs{20000};
@@ -188,6 +198,9 @@ struct PhoneLinkDecision {
     bool hostKillAlreadySent{false};
     // Absolute monotonic time for the next discovery cycle.
     std::int64_t nextPollMs{0};
+    // The episode (events so far) the decision belongs to: an outcome of its
+    // action noted after a newer event is dropped.
+    std::uint64_t episode{0};
     bool diagnosisChanged{false};
 };
 
@@ -206,6 +219,27 @@ public:
     // A stop that ended neither stopped nor refused (identity changed,
     // failed): the second such outcome in an episode counts as refused.
     void NoteDefaultStopFailed() { if (++stopFailures_ >= 2) defaultStopRefused_ = true; }
+    // The same, tagged with the decision's episode: an outcome that arrives
+    // after a newer event belongs to the old episode and is dropped. True
+    // when it was recorded.
+    bool NoteDefaultStopRefused(std::uint64_t episode)
+    {
+        if (episode != episode_) return false;
+        NoteDefaultStopRefused();
+        return true;
+    }
+    bool NoteDefaultStopFailed(std::uint64_t episode)
+    {
+        if (episode != episode_) return false;
+        NoteDefaultStopFailed();
+        return true;
+    }
+    // The transport handed USB back to the default on its own (a shadow
+    // started for a hung default that now lists the phone): it counts
+    // toward the per-episode hand-over cap like the ladder's own.
+    bool HandOverAllowed() const { return handOvers_ < policy_.handOverCap; }
+    void NoteHandOver() { ++handOvers_; }
+    std::uint64_t Episode() const { return episode_; }
     // The listener is gone, changed identity, or the phone is listed.
     void ClearDefaultStopRefused() { defaultStopRefused_ = false; stopFailures_ = 0; }
     // A different process now listens on the default port beside OkuFlow's
@@ -263,6 +297,8 @@ private:
     int stopFailures_{0};
     int handOvers_{0};
     bool launchHeld_{false};
+    std::uint64_t episode_{0};
+    std::int64_t failedSinceMs_{-1};
     Budget reconnect_, restart_, shadow_, askExit_, terminate_, launch_, handback_;
 };
 

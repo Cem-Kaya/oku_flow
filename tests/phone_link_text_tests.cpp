@@ -80,6 +80,16 @@ private slots:
                  QStringLiteral("On the phone, open OkuFlow Camera and tap Resume streaming."));
         QCOMPARE(PhoneLinkPlaceholderText(D::OtherProgramHoldsPhone, false).detail,
                  QStringLiteral("Another program is using the phone's USB connection. Close it or restart the computer."));
+        // Iteration 3 (A5, A6).
+        QCOMPARE(PhoneLinkPlaceholderText(D::CompanionFailed, false).title, QStringLiteral("Restoring USB connection…"));
+        QCOMPARE(PhoneLinkPlaceholderText(D::CompanionFailed, true).spoken,
+                 QStringLiteral("The phone camera could not start. Close other camera apps on the phone, then open "
+                                "OkuFlow Camera again."));
+        QCOMPARE(PhoneLinkPlaceholderText(D::WantedPhoneNotAttached, true).spoken,
+                 QStringLiteral("A different phone is connected. Connect the phone you chose in OkuFlow, or choose the "
+                                "connected phone under Settings, Camera."));
+        QVERIFY(PhoneLinkPlaceholderText(D::WantedPhoneNotAttached, true).detail !=
+                PhoneLinkPlaceholderText(D::NoAdbInterface, true).detail);
     }
     void everySentenceIsTranslatedInEveryCatalog()
     {

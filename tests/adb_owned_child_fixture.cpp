@@ -188,6 +188,7 @@ int wmain(int count, wchar_t** arguments)
         else if (argument == L"--fixture-fail-file" && i + 1 < count) options.failFile = arguments[++i];
         else if (argument == L"--fixture-kill-log" && i + 1 < count) options.killLog = arguments[++i];
         else if (argument == L"--fixture-offline-file" && i + 1 < count) options.offlineFile = arguments[++i];
+        else if (argument == L"--fixture-exit-at-start") return 0; // Killed before it ever answers.
         else if (argument == L"--fixture-slow-version" && i + 1 < count)
             options.slowVersionMs = static_cast<unsigned>(_wtoi(arguments[++i]));
     }

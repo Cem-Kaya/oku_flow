@@ -483,6 +483,8 @@ std::shared_ptr<OwnedAdbServer> CreateOwnedAdbServer(
 }
 
 QByteArray AdbHostReply(const QByteArray& service, const std::atomic<bool>* canceled);
+QByteArray AdbHostReplyAt(std::uint16_t port, const QByteArray& service, const std::atomic<bool>* canceled);
+bool ListsTargetUsable(const std::vector<AdbDeviceEntry>& entries, const std::string& target);
 // One probe of the default-port listener. A hang is confirmed by at least
 // two failed probes of the same listener spanning the confirmation time
 // (5 s), also after a resume or start: events clear the tracker, so a slow
@@ -585,12 +587,21 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
                 // including unauthorized USB entries filtered from the picker.
                 empty = AdbHostReply("host:track-devices-proto-binary", canceled).isEmpty();
             } catch (...) { CheckCanceled(canceled); }
-            const bool readyDefault = empty &&
-                ProbeAdbHostVersion(env.port, canceled) == OwnedServerProbe::Responsive;
+            // The default answering again is not enough: it must list a
+            // phone in a usable state (ready, unauthorized, authorizing).
+            bool readyDefault = false;
+            if (empty) {
+                try {
+                    const auto data = AdbHostReplyAt(env.port, "host:track-devices-proto-binary", canceled);
+                    readyDefault = ListsTargetUsable(ParseAdbDeviceEntries(std::span(
+                        reinterpret_cast<const std::uint8_t*>(data.constData()), static_cast<size_t>(data.size()))), {});
+                } catch (...) { CheckCanceled(canceled); }
+            }
             bool handback = false;
             { std::lock_guard lock(runtime.mutex);
               runtime.shadowHandbackProbes = readyDefault ? runtime.shadowHandbackProbes + 1 : 0;
-              handback = runtime.shadowHandbackProbes >= 2; }
+              handback = runtime.shadowHandbackProbes >= 2 && runtime.doctor.HandOverAllowed();
+              if (handback) runtime.doctor.NoteHandOver(); }
             if (handback) {
                 CheckCanceled(canceled);
                 owned->Stop();
@@ -670,18 +681,21 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
         NoteDefaultProbe(defaultProbe, std::nullopt);
     }
     if (!allowOwnedBootstrap) return Result::NotReady;
+    // Nothing to launch (missing or quarantined adb.exe) is a launch
+    // failure at once, without arming the start throttle: the sentence must
+    // not wait for it.
+    const QString executable = hooks ? QString::fromStdWString(hooks->ownedServerExecutable)
+                                     : FindAdbExecutable();
     {
         auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
         if (runtime.ownedServer) { owned = runtime.ownedServer; }
         else {
+            if (executable.isEmpty() || !QFileInfo(executable).isFile()) return Result::LaunchFailed;
             if (Clock::now() < runtime.nextServerStart) return Result::Throttled;
             runtime.nextServerStart = Clock::now() + std::chrono::seconds(30);
         }
     }
     if (owned) return owned->EnsureRunning(canceled);
-    const QString executable = hooks ? QString::fromStdWString(hooks->ownedServerExecutable)
-                                     : FindAdbExecutable();
-    if (executable.isEmpty()) return Result::LaunchFailed;
     owned = CreateOwnedAdbServer(executable, hooks ? hooks->ownedServerArguments : std::vector<std::wstring>{});
     {
         auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
@@ -1770,24 +1784,25 @@ bool ListsTargetUsable(const std::vector<AdbDeviceEntry>& entries, const std::st
              e.state == PhoneAdbState::Authorizing);
     });
 }
-// Every stop outcome ends somewhere: gone, retried once, or named.
-void NoteStopOutcome(DefaultAdbStopStatus status, const ListenerLookup& listener)
+// Every stop outcome ends somewhere: gone, retried once, or named. A
+// refusal or failure belongs to the episode of the decision that caused it:
+// noted after a newer event, it is dropped (the new episode starts clean).
+void NoteStopOutcome(DefaultAdbStopStatus status, const ListenerLookup& listener, std::uint64_t episode)
 {
     using S = DefaultAdbStopStatus;
     if (status == S::Stopped || status == S::NoListener) { AfterDefaultStopped(); return; }
     if (status == S::HostKillIgnored || status == S::Canceled) return;
     auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
-    if (status == S::AccessDenied || status == S::NotAdb || status == S::SelfListener)
-        runtime.doctor.NoteDefaultStopRefused();
-    else
-        runtime.doctor.NoteDefaultStopFailed(); // IdentityChanged, Failed: one retry.
-    if (runtime.doctor.DefaultStopRefused()) runtime.refusedListener = listener.identity;
+    const bool recorded = status == S::AccessDenied || status == S::NotAdb || status == S::SelfListener
+        ? runtime.doctor.NoteDefaultStopRefused(episode)
+        : runtime.doctor.NoteDefaultStopFailed(episode); // IdentityChanged, Failed: one retry.
+    if (recorded && runtime.doctor.DefaultStopRefused()) runtime.refusedListener = listener.identity;
+    if (!recorded) TraceLine("stop outcome of an earlier episode dropped");
 }
-void NoteListenerUnopenable(const ListenerLookup& listener)
+void NoteListenerUnopenable(const ListenerLookup& listener, std::uint64_t episode)
 {
     auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
-    runtime.doctor.NoteDefaultStopRefused();
-    runtime.refusedListener = listener.identity;
+    if (runtime.doctor.NoteDefaultStopRefused(episode)) runtime.refusedListener = listener.identity;
 }
 
 std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLinkObservation& o,
@@ -1884,7 +1899,7 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         const auto listener = LookupListener(port);
         if (listener.state == ListenerState::None) { AfterDefaultStopped(); return "default server already gone"; }
         if (listener.state == ListenerState::Unopenable) {
-            NoteListenerUnopenable(listener);
+            NoteListenerUnopenable(listener, decision.episode);
             return "refused: the listener process cannot be opened";
         }
         if (listener.state != ListenerState::Found) return "kept: the listener table cannot be read";
@@ -1899,7 +1914,7 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         request.hostKillWait = std::chrono::milliseconds(policy.hostKillWaitMs);
         { std::lock_guard lock(runtime.mutex); runtime.askedIdentity = listener.identity; }
         const auto result = TryStopDefaultAdbServer(request);
-        NoteStopOutcome(result.status, listener);
+        NoteStopOutcome(result.status, listener, decision.episode);
         if (result.status == DefaultAdbStopStatus::Stopped) return "default server exited after host:kill";
         return "default server ask: " + result.diagnostic;
     }
@@ -1928,7 +1943,7 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         const auto listener = LookupListener(port);
         if (listener.state == ListenerState::None) { AfterDefaultStopped(); return "default server already gone"; }
         if (listener.state == ListenerState::Unopenable) {
-            NoteListenerUnopenable(listener);
+            NoteListenerUnopenable(listener, decision.episode);
             return "refused: the listener process cannot be opened";
         }
         if (listener.state != ListenerState::Found) return "kept: the listener table cannot be read";
@@ -1939,8 +1954,8 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
             const auto expected = runtime.defaultIdentity;
             if (expected && !(*expected == listener.identity)) {
                 runtime.defaultIdentity = listener.identity;
-                runtime.doctor.NoteDefaultStopFailed();
-                if (runtime.doctor.DefaultStopRefused()) runtime.refusedListener = listener.identity;
+                if (runtime.doctor.NoteDefaultStopFailed(decision.episode) && runtime.doctor.DefaultStopRefused())
+                    runtime.refusedListener = listener.identity;
                 return "refused: the listener changed since the decision";
             }
         }
@@ -1954,7 +1969,7 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         request.canceled = canceled;
         request.hostKillWait = std::chrono::milliseconds(policy.hostKillWaitMs);
         const auto result = TryStopDefaultAdbServer(request);
-        NoteStopOutcome(result.status, listener);
+        NoteStopOutcome(result.status, listener, decision.episode);
         return "default server stop: " + result.diagnostic;
     }
     case A::WakeAndLaunchApp: {

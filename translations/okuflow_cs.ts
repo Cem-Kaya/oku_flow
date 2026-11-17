@@ -3782,6 +3782,14 @@ Přihlaste se přes Connect ChatGPT na kartě Asistent v režimu Upřesnit.</tra
         <translation>OkuFlow nemůže spustit připojení telefonu přes USB. Přeinstalujte OkuFlow nebo ho povolte ve svém antivirovém programu.</translation>
     </message>
     <message>
+        <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
+        <translation>Fotoaparát telefonu se nepodařilo spustit. Zavřete v telefonu ostatní aplikace fotoaparátu a pak znovu otevřete aplikaci OkuFlow Fotoaparát.</translation>
+    </message>
+    <message>
+        <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
+        <translation>Je připojen jiný telefon. Připojte telefon, který jste vybrali v OkuFlow, nebo vyberte připojený telefon v části Nastavení, Fotoaparát.</translation>
+    </message>
+    <message>
         <source>Unlock your phone.</source>
         <translation>Odemkněte telefon.</translation>
     </message>

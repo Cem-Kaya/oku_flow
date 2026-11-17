@@ -3782,6 +3782,14 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
         <translation>OkuFlow, telefonla USB bağlantısını başlatamıyor. OkuFlow'u yeniden yükleyin veya virüsten koruma programınızda ona izin verin.</translation>
     </message>
     <message>
+        <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
+        <translation>Telefonun kamerası başlatılamadı. Telefondaki diğer kamera uygulamalarını kapatın, ardından OkuFlow Kamera'yı yeniden açın.</translation>
+    </message>
+    <message>
+        <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
+        <translation>Başka bir telefon bağlı. OkuFlow'da seçtiğiniz telefonu bağlayın veya bağlı telefonu Ayarlar, Kamera bölümünden seçin.</translation>
+    </message>
+    <message>
         <source>Unlock your phone.</source>
         <translation>Telefonunuzun kilidini açın.</translation>
     </message>

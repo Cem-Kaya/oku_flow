@@ -3782,6 +3782,14 @@ Pilih Hubungkan ChatGPT di tab Asisten pada mode Tingkat Lanjut untuk masuk.</tr
         <translation>OkuFlow tidak dapat memulai koneksi USB ke ponsel. Instal ulang OkuFlow, atau izinkan di program antivirus Anda.</translation>
     </message>
     <message>
+        <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
+        <translation>Kamera ponsel tidak dapat dimulai. Tutup aplikasi kamera lain di ponsel, lalu buka lagi OkuFlow Kamera.</translation>
+    </message>
+    <message>
+        <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
+        <translation>Ponsel lain sedang terhubung. Hubungkan ponsel yang Anda pilih di OkuFlow, atau pilih ponsel yang terhubung di bawah Pengaturan, Kamera.</translation>
+    </message>
+    <message>
         <source>Unlock your phone.</source>
         <translation>Buka kunci ponsel Anda.</translation>
     </message>

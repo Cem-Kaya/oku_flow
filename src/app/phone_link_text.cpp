@@ -35,11 +35,19 @@ PhoneLinkText Sentence(PhoneLinkDiagnosis diagnosis, bool userMustAct)
     case D::NotListedByServer:
     case D::Offline:
     case D::TransportStalled:
-    case D::CompanionFailed:
         return restoring;
+    case D::CompanionFailed:
+        // Camera busy in another phone app, failed or no mode, after a grace.
+        return userMustAct ? PhoneLinkText{waiting, QStringLiteral(
+            "The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera "
+            "again.")} : restoring;
     case D::NoAdbInterface:
-    case D::WantedPhoneNotAttached:
         return {waiting, connect};
+    case D::WantedPhoneNotAttached:
+        // Another phone is listed, not the chosen one (a ready other phone is
+        // used automatically; one that is not ready yet gets this sentence).
+        return {waiting, QStringLiteral("A different phone is connected. Connect the phone you chose in OkuFlow, or "
+                                        "choose the connected phone under Settings, Camera.")};
     case D::Unauthorized:
         return {waiting, allow};
     case D::Authorizing:

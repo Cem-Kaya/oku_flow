@@ -3782,6 +3782,14 @@ Chọn Kết nối ChatGPT trong tab Trợ lý của chế độ Nâng cao để
         <translation>OkuFlow không thể bắt đầu kết nối USB với điện thoại. Hãy cài đặt lại OkuFlow hoặc cho phép ứng dụng trong chương trình diệt virus.</translation>
     </message>
     <message>
+        <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
+        <translation>Không thể khởi động camera của điện thoại. Hãy đóng các ứng dụng camera khác trên điện thoại, rồi mở lại OkuFlow Máy ảnh.</translation>
+    </message>
+    <message>
+        <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
+        <translation>Một điện thoại khác đang được kết nối. Hãy kết nối điện thoại bạn đã chọn trong OkuFlow, hoặc chọn điện thoại đang kết nối trong Cài đặt, Camera.</translation>
+    </message>
+    <message>
         <source>Unlock your phone.</source>
         <translation>Mở khóa điện thoại.</translation>
     </message>
