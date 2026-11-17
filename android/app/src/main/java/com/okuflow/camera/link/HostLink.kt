@@ -47,6 +47,30 @@ enum class HostProblem(
 /** ERROR code for a control hello rejected because another host holds the session. */
 const val SESSION_BUSY_CODE = "sessionBusy"
 
+/** Probe problem / ERROR code while the user saved Pause (status-only listener). */
+const val PAUSED_CODE = "paused"
+
+/** Abstract socket shared by the camera listener and the paused status listener. */
+const val SOCKET_NAME = "okuflow_camera"
+
+/** Boolean `am start` extra the computer sets when it launches the app over USB. */
+const val HOST_LAUNCH_EXTRA = "com.okuflow.camera.extra.HOST_LAUNCH"
+
+/** Transient busy/failed camera problems stay visible at least this long. */
+const val PROBLEM_RETRY_HOLD_MS = 10_000L
+
+/** The paused status listener retries its bind while the service releases the socket. */
+const val PAUSED_BIND_ATTEMPTS = 20
+const val PAUSED_BIND_RETRY_MS = 500L
+
+/**
+ * A computer launch may show the activity over the keyguard and turn the
+ * screen on so a locked phone on a stand reconnects without being touched.
+ * Saved Pause stays authoritative: a paused app never shows over the lock
+ * screen, so nobody can resume streaming there without unlocking.
+ */
+internal fun showOverKeyguardForHostLaunch(hostLaunch: Boolean, paused: Boolean): Boolean = hostLaunch && !paused
+
 /** Unbound control sessions are closed after this, so a stalled host cannot hold the single slot. */
 const val VIDEO_BIND_DEADLINE_MS = 5_000L
 
@@ -62,7 +86,7 @@ internal fun peerAllowed(uid: Int?): Boolean = uid == 2000 || uid == 0
  * cleared by the next session, the next stream, cooling or unplugging.
  */
 internal fun canRetryProblem(problem: HostProblem?, state: HostLinkState, elapsedMs: Long): Boolean =
-    state == HostLinkState.Disconnected && elapsedMs >= 30_000 &&
+    state == HostLinkState.Disconnected && elapsedMs >= PROBLEM_RETRY_HOLD_MS &&
         problem in listOf(HostProblem.CameraBusy, HostProblem.CameraFailed)
 
 object HostLink {
@@ -85,7 +109,7 @@ object HostLink {
         mutableProblem.value = problem
     }
 
-    /** Retry transient camera failures, retaining their visible warning for at least 30 seconds. */
+    /** Retry transient camera failures, retaining their visible warning for at least 10 seconds. */
     internal fun retryTransientProblem() {
         if (canRetryProblem(problem.value, state.value, SystemClock.elapsedRealtime() - problemAtMs)) report(null)
     }

@@ -1,6 +1,7 @@
 package com.okuflow.camera
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.view.WindowManager
@@ -8,7 +9,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import com.okuflow.camera.link.HOST_LAUNCH_EXTRA
+import com.okuflow.camera.link.showOverKeyguardForHostLaunch
 import com.okuflow.camera.settings.AppLanguageStore
+import com.okuflow.camera.settings.StreamingIntentStore
 import com.okuflow.camera.ui.OkuFlowCameraApp
 import com.okuflow.camera.ui.theme.OkuFlowCameraTheme
 
@@ -26,10 +30,36 @@ class MainActivity : ComponentActivity() {
         // Covers setup, permission-return, settings and streaming alike.
         // Android stops honoring this window flag when the app is backgrounded.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        applyHostLaunch(intent)
         setContent {
             OkuFlowCameraTheme {
                 OkuFlowCameraApp()
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        applyHostLaunch(intent)
+    }
+
+    // Leaving the screen ends the computer launch: the next lock screen is
+    // ordinary again, and a later recreation is not a host launch.
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) {
+            setShowWhenLocked(false)
+            setTurnScreenOn(false)
+        }
+    }
+
+    private fun applyHostLaunch(intent: Intent?) {
+        val hostLaunch = intent?.getBooleanExtra(HOST_LAUNCH_EXTRA, false) == true
+        intent?.removeExtra(HOST_LAUNCH_EXTRA)
+        if (!hostLaunch) return
+        val show = showOverKeyguardForHostLaunch(true, StreamingIntentStore.get(this).paused.value)
+        setShowWhenLocked(show)
+        setTurnScreenOn(show)
     }
 }

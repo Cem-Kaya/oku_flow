@@ -53,6 +53,16 @@ host connection. **Pause streaming** saves a separate pause preference and close
 the camera/listener service. Reconnecting, reopening or automatic computer launch
 does not clear it; only **Resume streaming** does. Camera reset does not clear Pause.
 If app storage cannot save the choice, the screen reports that limitation.
+While paused, the app answers the computer's status check with "paused" only;
+the camera stays closed.
+
+When the computer opens OkuFlow Camera over USB, the app can appear over the
+lock screen and turn the screen on, so a locked phone on a stand reconnects
+without being touched. This shows only OkuFlow Camera's own screen; it does not
+unlock the phone or reveal other apps. Anyone holding the locked phone could
+then see that screen and use its controls (for example Pause) until the app is
+left. A saved Pause is respected: a paused app never appears over the lock
+screen, so streaming cannot be resumed there without unlocking.
 Restore automatic settings resets camera preferences. Android's
 app-storage controls or uninstalling remove stored preferences. App backup and
 device transfer are disabled. No in-app user account is created by the companion.
