@@ -511,12 +511,17 @@ aligned with the project goals.
   listener is gone or changes or the phone is listed. `host:kill` goes out only
   after a successful fresh listing without the phone (ready, unauthorized or
   authorizing) or another device and the identity and image checks.
-  Termination needs the Windows ADB interface, checked again when the stop
-  runs. Before any byte of a termination for a hang that only version probes
-  confirmed, one short listing attempt is made: if it succeeds (another
-  device, the phone, or just an answer) nothing is stopped and the hang must
-  be confirmed again; termination goes on only when that listing fails or
-  times out. Two programs never fight without an end state: per-episode caps
+  Termination and `host:kill` need the Windows ADB interface, checked again
+  when the stop runs. Before any byte of a termination for a hang that only
+  version probes confirmed, one short listing attempt is made: if it is
+  answered (another device, the phone, just an answer, or an adb FAIL reply)
+  nothing is stopped and the hang must be confirmed again; termination goes
+  on only when that listing gets no answer. A listing there that shows
+  another device is remembered for that listener: the other-program
+  sentence. The transport's hand-back and every pre-check match the wanted
+  phone, not any phone. A leftover stop that ended IdentityChanged is tried
+  again on a later observation. Reconnects to another program's server and
+  the owned offline ladder have separate budgets. Two programs never fight without an end state: per-episode caps
   on restarts, `host:kill`, terminations and private-server starts beside the
   default plus hand-backs end in a sentence. Every start beside the default
   counts (also the transport's own beside a hung default); at the cap a

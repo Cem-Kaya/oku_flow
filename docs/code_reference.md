@@ -1900,7 +1900,9 @@ so metadata generation cannot silently accept an incomplete copy.
   gates a leftover stop; `HandOverAllowed`/`NoteHandOver` count the
   transport's own hand-back of a hung-default shadow; `Episode` names the
   current episode. `PhoneLinkDiagnosisName`/`ActionName`/`EventName` give trace
-  names. `PhoneLinkObservation::defaultPhoneStalled` marks a "device" listing
+  names. A borrowed `ServerUnresponsive` with `defaultHasOtherDevices` (its
+  listing answered and showed another device) is named, never stopped.
+  `PhoneLinkObservation::defaultPhoneStalled` marks a "device" listing
   on the default whose adbd timed out there in this episode (the transport
   remembers it per listener): it is never handed back to.
 - `OwnedAdbServer::Restart` restarts a responsive but blind owned child (live
@@ -1914,7 +1916,8 @@ so metadata generation cannot silently accept an incomplete copy.
   previously owned child and resets test budgets. `siblingImage`,
   `siblingTag`, `siblingAdbImage`, the sibling grace fields and
   `refuseSiblingTermination` run the production sibling scan and leftover stop
-  against a private fixture image. `OccupiedPhone` prevents overlapping
+  against a private fixture image; `siblingVisibleWindowForTest` reports a
+  window at the last check before termination (outcome IdentityChanged). `OccupiedPhone` prevents overlapping
   probes; `MayLaunch` takes a camera start's single wake + launch from the
   doctor's per-event budget (`PhoneLinkDoctor::ReserveLaunch`), and
   `AllowAppLaunch` (a manual camera pick) renews it. `ControlHello` accepts a token-free `probe:true` ACK,

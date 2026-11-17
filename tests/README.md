@@ -1048,7 +1048,14 @@ The private server started beside a hung default counts toward the hand-over
 cap and is handed back at the cap (`privateServerBesideAHungDefaultCountsTowardTheHandOverCap`,
 policy hook `handOverCap` 0 and 1). `leftoverIsJudgedByItsUiThread` (was
 `leftoverIsJudgedByEveryTopLevelWindow`, changed deliberately): the fixture's
-recorded UI thread decides, not a helper thread's hidden window.
+recorded UI thread decides, not a helper thread's hidden window. Section B
+rows: a leftover stop that ended IdentityChanged is retried (hook
+`siblingVisibleWindowForTest`); the hung-default shadow is handed back only for
+the wanted phone; a hung default whose listing answers FAIL is never stopped;
+`host:kill` re-checks the interface; a slow default serving another device is
+named. Native slot `differentPhoneSentenceIsNotShownBeforeTheSwitch`; doctor
+rows `ownedOfflineLadderStartsFreshAfterForeignReconnects`,
+`slowDefaultServingAnotherDeviceIsNamed`.
 `phone_link_text` (headless) checks one sentence per diagnosis and that every
 sentence is translated in all 24 catalogs. The native slot
 `phoneSentenceIsShownAndSpokenForEveryDiagnosis` delivers every verdict

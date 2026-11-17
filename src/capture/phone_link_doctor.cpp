@@ -260,6 +260,12 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         }
         return A::Relist;
     case D::ServerUnresponsive:
+        // Its listing answered and showed another device (its version
+        // probes stay slow): it serves someone and is never stopped.
+        if (o.server == PhoneServerKind::BorrowedDefault && o.defaultHasOtherDevices) {
+            *raised = D::OtherProgramHoldsPhone;
+            return A::WaitForUser;
+        }
         if (o.server == PhoneServerKind::BorrowedDefault && o.defaultUnresponsiveConfirmed)
             return terminate(false);
         return A::Relist; // An owned server restarts itself after two failed probes.
@@ -336,6 +342,14 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
     case D::Offline:
     case D::TransportStalled: {
         if (!responsive) return A::Relist;
+        // Reconnects to another program's server and the owned offline
+        // ladder are separate: after a takeover the owned ladder starts
+        // fresh instead of waiting out the foreign reconnects' ceiling.
+        if (reconnectOwned_ != owned) {
+            reconnect_ = Budget{};
+            lastReconnectMs_ = -1;
+            reconnectOwned_ = owned;
+        }
         const std::int64_t stuckFor = nowMs - SinceEventOr(stuckSinceMs_);
         if (diagnosis == D::Authorizing && stuckFor < policy_.authorizingGraceMs) return A::Relist;
         if (!owned) {

@@ -356,6 +356,12 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
                         preferredPhoneCamera_ = saved.cameraSymbolicLink;
                     }
                     qInfo() << "Automatically connecting to USB phone camera";
+                    // The doctor named "a different phone is connected" for
+                    // the saved phone, but OkuFlow switches to that ready
+                    // phone now (the product's replacement rule): the
+                    // sentence would only flash for one cycle.
+                    if (phoneLinkKnown_ && phoneLinkDecision_.diagnosis == PhoneLinkDiagnosis::WantedPhoneNotAttached)
+                        phoneLinkKnown_ = false;
                     if (selectingAnyPhone) OnCameraSelectionChanged(target);
                     else StartCameraCapture(static_cast<size_t>(target), false, false, true);
                 } else if (!cameraActive_) {

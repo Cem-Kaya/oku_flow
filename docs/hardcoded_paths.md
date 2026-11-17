@@ -680,7 +680,9 @@ own server, never ask another to exit or stop it; that takeover, or a hung
 default unresponsive for 30 s, ends in the re-plug sentence. Companion problem
 (busy camera, failed, no mode): sentence after 20 s. A hang confirmed only by
 version probes gets one listing attempt (500 ms connect, 1000 ms per reply
-field) before termination. Companion wake + launch: at once, 3 s, 6 s, then
+field) before termination; any answer to it, an adb FAIL reply included,
+keeps the server, and one that shows another device ends in the
+other-program sentence. Companion wake + launch: at once, 3 s, 6 s, then
 every 20 s, one budget shared by discovery and camera starts (at most one per
 start attempt; once per event while the app process runs with its listener
 closed, not counting the 5 s after OkuFlow's own launch; a hold ends when the

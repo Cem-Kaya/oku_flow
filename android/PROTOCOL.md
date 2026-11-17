@@ -154,10 +154,14 @@ diagnosis and one next action, least disturbing first:
    doctor's own probe while OkuFlow's server runs beside it), Windows
    terminates exactly that process (see "Default-port server stop" below).
    Termination needs the Windows ADB interface to be present, checked again
-   when the stop runs. A hang confirmed only by version probes first gets one
-   short listing attempt: if it succeeds at all (another device, the phone, or
-   just an answer: a slow but healthy server, or one that recovered) nothing
-   is stopped and the hang must be confirmed again from scratch. A hung
+   when the stop runs (also before `host:kill`). A hang confirmed only by
+   version probes first gets one short listing attempt: if it is answered at
+   all (another device, the phone, just an answer, or an adb FAIL reply: a
+   slow but healthy server, or one that recovered) nothing is stopped and the
+   hang must be confirmed again from scratch. When that listing showed
+   another device in state DEVICE, the default serves someone: Windows says
+   another program is using the phone's USB connection instead of trying
+   again. A hung
    listener with the phone unplugged reads as "connect the phone", not as
    recovery. A stop outcome noted after a newer event belongs to the old
    episode and is dropped. A listener that

@@ -127,6 +127,9 @@ struct PhoneAdbTestHooks {
     // The leftover's termination is refused as Windows would for an
     // elevated process, to reach the adb-child step.
     bool refuseSiblingTermination{false};
+    // Reports a visible window of the leftover at the last check before
+    // termination (its stop then ends IdentityChanged).
+    std::function<bool(DWORD processId)> siblingVisibleWindowForTest;
     // Reports the default-port listener's process as one OpenProcess
     // refuses (another user, elevated). The adb.exe image rule itself has
     // no hook: fixtures run a copy named adb.exe.

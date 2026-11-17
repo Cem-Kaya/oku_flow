@@ -33,6 +33,17 @@
   phone instruction while no camera runs, and passing notifications no longer
   replace it. A leftover OkuFlow instance is stopped only after it has finished
   saving recordings and settings, and only while it plausibly holds the phone.
+- A phone that another Android tool lists as ready but that no longer answers
+  is taken over instead of being swapped back and forth. A screen reader hears
+  passing notifications (for example a recording that stopped) also while the
+  phone instruction owns the status line. A locked or paused phone is no
+  longer "started" every few seconds over its instruction; it is woken and
+  OkuFlow Camera is opened, and the camera starts once it is ready. When
+  OkuFlow Camera runs but does not answer, Windows now says to open it and,
+  if it shows that streaming is paused, to tap Resume streaming. When Windows
+  cannot report the phone's USB interface, OkuFlow ends in the re-plug
+  instruction instead of "Restoring USB connection…" for ever, and never stops
+  another program's Android tool then.
 
 - Clarify the public Android privacy policy: OkuFlow Camera is an accessibility-focused
   USB companion, normal viewing does not upload camera images to the developer,

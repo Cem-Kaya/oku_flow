@@ -303,6 +303,38 @@ private slots:
         }
         QVERIFY(sequence == (std::vector<A>{A::AskDefaultServerToExit, A::TerminateDefaultServer}));
     }
+    void ownedOfflineLadderStartsFreshAfterForeignReconnects()
+    {
+        // Iteration 4 (B5): two reconnects to another program's server, then
+        // OkuFlow's own server lists the phone offline (after a takeover): its
+        // first reconnect goes out at once, not after the 30 s ceiling.
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        const auto foreign = With([](auto& o) {
+            o.server = PhoneServerKind::BorrowedDefault; o.phoneState = PhoneAdbState::Offline; });
+        const auto owned = With([](auto& o) { o.phoneState = PhoneAdbState::Offline; });
+        QCOMPARE(int(doctor.Decide(foreign, 0).action), int(A::ReconnectTransport));
+        QCOMPARE(int(doctor.Decide(foreign, 3000).action), int(A::ReconnectTransport));
+        QCOMPARE(int(doctor.Decide(owned, 4000).action), int(A::ReconnectTransport));
+        QCOMPARE(int(doctor.Decide(owned, 5000).action), int(A::Relist));
+        QCOMPARE(int(doctor.Decide(owned, 7000).action), int(A::ReconnectTransport)); // 3 s spacing.
+    }
+    void slowDefaultServingAnotherDeviceIsNamed()
+    {
+        // Iteration 4 (B6): a confirmed "hung" default whose listing showed
+        // another device serves someone: named, never terminated.
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto hung = Blind(PhoneServerKind::BorrowedDefault);
+        hung.serverProbe = PhoneServerProbe::Unresponsive;
+        hung.defaultUnresponsiveConfirmed = true;
+        hung.defaultHasOtherDevices = true;
+        for (std::int64_t now = 0; now < 60000; now += 1000) {
+            const auto decision = doctor.Decide(hung, now);
+            QCOMPARE(int(decision.diagnosis), int(D::OtherProgramHoldsPhone));
+            QCOMPARE(int(decision.action), int(A::WaitForUser));
+        }
+    }
     void stuckPhoneOnAServerServingAnotherDeviceIsNamed()
     {
         PhoneLinkDoctor doctor;

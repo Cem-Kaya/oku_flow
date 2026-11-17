@@ -503,6 +503,22 @@ public:
         const bool initialized=app.initialized_; app.initialized_=true;
         app.PollPhoneCameraDiscovery(); app.initialized_=initialized;
     }
+    // A discovery result with cameras and a doctor verdict in the same poll.
+    static void DeliverDiscoveryAndDiagnosis(OkuFlowApp& app,std::vector<CameraDescriptor> phones,
+                                             PhoneLinkDiagnosis diagnosis,PhoneLinkAction action,std::string target) {
+        auto report=std::make_shared<PhoneLinkReport>();
+        report->decision.diagnosis=diagnosis;report->decision.action=action;report->targetSerial=std::move(target);
+        report->decision.nextPollMs=std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count()+60000;
+        std::promise<std::pair<PhoneDiscoveryStatus,std::vector<CameraDescriptor>>> ready;
+        app.phoneDiscovery_=ready.get_future();
+        app.phoneDiscoveryIntentGeneration_=app.cameraIntent_.Requested().generation;
+        ready.set_value({PhoneDiscoveryStatus::Listed,std::move(phones)});
+        app.phoneLinkPending_=report;
+        app.phoneDiscoveryTimer_.start();
+        const bool initialized=app.initialized_; app.initialized_=true;
+        app.PollPhoneCameraDiscovery(); app.initialized_=initialized;
+    }
     static void ShowToast(OkuFlowApp& app,const QString& text) {app.ShowStatusMessage(text,60000,LivePoliteness::kPolite);}
     static void ClearToast(OkuFlowApp& app) {app.transientStatusMessage_.clear();}
     static QString StatusText(OkuFlowApp& app) {return app.uiState_->processingStatusLabel_->text();}
@@ -2475,6 +2491,30 @@ private slots:
         QVERIFY(!NativeControlFixture::PhoneCameraRunning(app_)); // At most the fallback webcam.
         phone.phoneAppReady=true;
         NativeControlFixture::DiscoverFixturePhone(app_,&phone);
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QVERIFY(NativeControlFixture::PhoneCameraRunning(app_));
+    }
+    void differentPhoneSentenceIsNotShownBeforeTheSwitch() {
+        // Iteration 4 (B7): the saved phone is absent, another ready phone is
+        // listed and the doctor says "a different phone is connected". OkuFlow
+        // switches to the ready phone (kept by decision) in the same poll, so
+        // that sentence is not shown for the cycle before.
+        auto calls=std::make_shared<std::atomic<int>>(0);
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::ClearPhoneDiagnosis(app_);
+            NativeControlFixture::StopCamera(app_);
+            QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+            NativeControlFixture::ResetCameraFixture(app_);
+        });
+        NativeControlFixture::SeedPhoneSources(app_,[calls](const std::atomic<bool>&) {++*calls;return true;});
+        CameraDescriptor other;
+        other.name=L"Other private phone"; other.symbolicLink=L"okuflow-phone:other-fixture";
+        other.phoneSerial="other-fixture"; other.phoneAppReady=true; other.phoneTransportId=92;
+        const auto different=PhoneLinkPlaceholderText(PhoneLinkDiagnosis::WantedPhoneNotAttached,true);
+        NativeControlFixture::DeliverDiscoveryAndDiagnosis(app_,{other},PhoneLinkDiagnosis::WantedPhoneNotAttached,
+                                                           PhoneLinkAction::WaitForUser,"fixture-only");
+        QVERIFY(NativeControlFixture::StatusText(app_)!=different.spoken);
+        QVERIFY(NativeControlFixture::PlaceholderDetail(app_)!=different.detail);
         QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
         QVERIFY(NativeControlFixture::PhoneCameraRunning(app_));
     }

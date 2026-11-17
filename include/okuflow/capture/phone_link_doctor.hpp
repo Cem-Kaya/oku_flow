@@ -312,6 +312,8 @@ private:
     std::int64_t authorizingSinceMs_{-1};
     std::int64_t connectedSinceMs_{-1};
     bool unauthorizedReconnected_{false};
+    // Whose reconnects reconnect_ counts: OkuFlow's own server or another.
+    bool reconnectOwned_{false};
     bool hostKillSent_{false};
     bool defaultStopRefused_{false};
     int stopFailures_{0};
