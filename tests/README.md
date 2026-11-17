@@ -1085,6 +1085,12 @@ was changed deliberately (WaitForUser is now allowed; no takeover action).
 verdict ends. `recordedUiThreadWithoutAWindowIsNotALeftover` (fixture mode
 `instance-nowindow`): a registered instance whose recorded UI thread owns no
 window stays Pending; its exit signal still proves a leftover.
+`hungDefaultReasonUsesTheSameServesTest` (`--fixture-slow-version-file`): the
+pre-termination listing's reason uses the same serves test as the other
+pre-checks. The native slot `phoneSentenceIsShownAndSpokenForEveryDiagnosis`
+also checks that the notification is announced once across later label
+refreshes (its announcement time does not change after the live region's 5 s
+duplicate window).
 `phone_link_text` (headless) checks one sentence per diagnosis and that every
 sentence is translated in all 24 catalogs. The native slot
 `phoneSentenceIsShownAndSpokenForEveryDiagnosis` delivers every verdict

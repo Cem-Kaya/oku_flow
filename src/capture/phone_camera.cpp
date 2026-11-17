@@ -2111,7 +2111,11 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
                     else runtime.hungServesOther.reset();
                 }
                 if (servesOther) return aborted("kept: the default server serves another device");
-                if (listed && ListsTargetUsable(*listed, target)) return aborted("kept: the default server lists the phone");
+                // Kept whatever it lists; the reason uses the same test as
+                // every other pre-check (a "device" row whose adbd timed out
+                // there in this episode does not serve the phone).
+                if (listed && DefaultServesTarget(*listed, target))
+                    return aborted("kept: the default server lists the phone");
                 return aborted(answeredFail ? "kept: the default server answers a listing with FAIL"
                                             : "kept: the default server answers a listing");
             }

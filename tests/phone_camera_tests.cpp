@@ -2555,6 +2555,29 @@ private slots:
         QVERIFY(!other.Exited());
         QVERIFY(!QFile::exists(kills)); // No host:kill was ever sent.
     }
+    void hungDefaultReasonUsesTheSameServesTest() {
+        // Iteration 5 (8): a default whose listing shows the phone "device"
+        // while its adbd timed out there, then hangs on version probes. The
+        // pre-termination listing keeps it (any answer does); the reason uses
+        // the same test as the other pre-checks: it answers, it does not
+        // serve the phone.
+        DefaultAdbFixture other({});
+        other.child.reset();
+        const QString slow = other.File(QStringLiteral("slow"));
+        other.flags = {L"--fixture-device", L"--fixture-stalled-shell", L"--fixture-slow-version-file", slow.toStdWString()};
+        QVERIFY(other.copied && other.Start());
+        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {}, 100);
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        auto reports = LinkCycles(60, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::StartShadowServer; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::StartShadowServer));
+        { QFile file(slow); QVERIFY(file.open(QIODevice::WriteOnly)); }
+        reports = LinkCycles(40, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::TerminateDefaultServer; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::TerminateDefaultServer));
+        QCOMPARE(QString::fromStdString(reports.back().actionResult), QStringLiteral("kept: the default server answers a listing"));
+        QVERIFY(!other.Exited());
+    }
     void shadowIsHandedBackOnlyForTheWantedPhone() {
         // Iteration 4 (B2): the hung default recovers and lists another USB
         // phone ready, not the wanted one: the private server stays.

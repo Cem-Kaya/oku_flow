@@ -528,6 +528,11 @@ public:
     static bool StatusAnnounced(OkuFlowApp& app,const QString& text) {
         return app.uiState_->processingStatusLabel_->property("_okuflowLiveTextAnnouncementHistory").toMap().contains(text);
     }
+    // When that announcement was made (ms since the epoch; 0 when none).
+    static qint64 StatusAnnouncedAtMs(OkuFlowApp& app,const QString& text) {
+        return app.uiState_->processingStatusLabel_->property("_okuflowLiveTextAnnouncementHistory").toMap()
+            .value(text).toLongLong();
+    }
     static QString PlaceholderTitle(OkuFlowApp& app) {return app.mainWindow_->cameraPlaceholderTitle_->text();}
     static QString PlaceholderDetail(OkuFlowApp& app) {return app.mainWindow_->cameraPlaceholderDetail_->text();}
     // A fallback webcam (index 0) is live while the phone stays the wanted camera.
@@ -2571,6 +2576,16 @@ private slots:
         QCOMPARE(NativeControlFixture::StatusText(app_),replug);
         // Iteration 4 (A2): it is still announced once through the live region.
         QVERIFY(NativeControlFixture::StatusAnnounced(app_,QStringLiteral("Recording stopped")));
+        // Iteration 5 (8): once, across later label refreshes, also after the
+        // live region's 5 s duplicate window (which alone would let it repeat).
+        const qint64 announcedAt=NativeControlFixture::StatusAnnouncedAtMs(app_,QStringLiteral("Recording stopped"));
+        QVERIFY(announcedAt>0);
+        QTest::qWait(5200);
+        for (int refresh=0;refresh<3;++refresh) {
+            NativeControlFixture::DeliverPhoneDiagnosis(app_,PhoneLinkDiagnosis::ReplugCable,PhoneLinkAction::WaitForUser);
+            QCOMPARE(NativeControlFixture::StatusText(app_),replug);
+        }
+        QCOMPARE(NativeControlFixture::StatusAnnouncedAtMs(app_,QStringLiteral("Recording stopped")),announcedAt);
         NativeControlFixture::ClearToast(app_);
         // The phone sentence wins over the generic reconnect text.
         NativeControlFixture::BeginReconnect(app_);

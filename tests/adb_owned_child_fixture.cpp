@@ -11,6 +11,7 @@
 //       [--fixture-kill-log <path>]   (one line per host:kill received)
 //       [--fixture-offline-file <path>] (while it exists, the device is listed offline)
 //       [--fixture-slow-version <ms>]  (host:version answers after <ms>; listings stay prompt)
+//       [--fixture-slow-version-file <path>] (host:version answers after 1100 ms while <path> exists)
 //       [--fixture-stalled-shell]     (the listed device's adbd never answers: a transport
 //                                      request is accepted, the service after it never is)
 //       [--fixture-stalled-shell-file <path>] (stalled like --fixture-stalled-shell while <path>
@@ -116,7 +117,7 @@ void Reply(SOCKET socket, const std::string& body)
 }
 struct FakeOptions {
     bool hang{false}, exitAfterList{false}, device{false}, exitOnKill{false}, stalledShell{false};
-    std::wstring deviceFile, failFile, killLog, offlineFile, stalledShellFile;
+    std::wstring deviceFile, failFile, killLog, offlineFile, stalledShellFile, slowVersionFile;
     unsigned slowVersionMs{0};
 };
 void AppendLine(const std::wstring& path, const char* line)
@@ -202,6 +203,7 @@ int FakeAdbServer(unsigned short port, const FakeOptions& options)
         const bool failing = !options.failFile.empty() && FileExists(options.failFile.c_str());
         if (request == "host:version") {
             if (options.slowVersionMs) Sleep(options.slowVersionMs);
+            else if (!options.slowVersionFile.empty() && FileExists(options.slowVersionFile.c_str())) Sleep(1100);
             Reply(client, "0029");
         }
         else if (listing && failing) send(client, "FAIL0006broken", 14, 0);
@@ -246,6 +248,7 @@ int wmain(int count, wchar_t** arguments)
         else if (argument == L"--fixture-kill-log" && i + 1 < count) options.killLog = arguments[++i];
         else if (argument == L"--fixture-offline-file" && i + 1 < count) options.offlineFile = arguments[++i];
         else if (argument == L"--fixture-stalled-shell-file" && i + 1 < count) options.stalledShellFile = arguments[++i];
+        else if (argument == L"--fixture-slow-version-file" && i + 1 < count) options.slowVersionFile = arguments[++i];
         else if (argument == L"--fixture-exit-at-start") return 0; // Killed before it ever answers.
         else if (argument == L"--fixture-slow-version" && i + 1 < count)
             options.slowVersionMs = static_cast<unsigned>(_wtoi(arguments[++i]));
