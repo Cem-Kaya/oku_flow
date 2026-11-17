@@ -81,7 +81,9 @@ Each discovery cycle with phone-use intent observes the whole chain (Windows
 ADB interface through SetupAPI, server kind and health, the target phone's raw
 state, the companion probe and, when adbd answers but the companion does not,
 one read-only shell query: `dumpsys power` wakefulness, `dumpsys window`
-keyguard lines, `pm path` and `pidof` for both packages). The doctor names one
+keyguard lines, `pm path` and `pidof` for both packages, closed by the line
+`OKUFLOW_FACTS_END`; Windows reads to that whole line, so output that contains
+"END" elsewhere does not cut it short). The doctor names one
 diagnosis and one next action, least disturbing first:
 
 1. List again.

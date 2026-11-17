@@ -1072,7 +1072,11 @@ doctor rows `handBackDeferredByALiveSessionIsNotCounted`,
 `abortedTerminationDoesNotSpendTheBudget`. The doctor rows
 `defaultThatAlternatelyListsAndLosesThePhoneIsNamed` and
 `handOverCapEndsWhereThePhoneIsListed` were changed deliberately: they note each
-executed hand-back (`NoteHandOver`) as the transport does.
+executed hand-back (`NoteHandOver`) as the transport does. Shell facts end with
+the whole line `OKUFLOW_FACTS_END` (the fake's replies and
+`shellFactsParserIsConservative` changed deliberately from `END`);
+`shellFactsAreReadToTheirSentinelLine` sends output containing END first and the
+processes in a second chunk.
 `phone_link_text` (headless) checks one sentence per diagnosis and that every
 sentence is translated in all 24 catalogs. The native slot
 `phoneSentenceIsShownAndSpokenForEveryDiagnosis` delivers every verdict

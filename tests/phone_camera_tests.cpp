@@ -149,7 +149,8 @@ public:
     // adb FAIL texts often carry the serial: the trace must not.
     std::atomic<bool> reconnectFailsWithSerial{false};
     std::string problemCode;
-    std::string shellFacts{"W:\n  mWakefulness=Awake\nK:\n mShowingLockscreen=false\nP:\npackage:/data/app/base.apk\nR:\nEND\n"};
+    std::string shellFactsLater;
+    std::string shellFacts{"W:\n  mWakefulness=Awake\nK:\n mShowingLockscreen=false\nP:\npackage:/data/app/base.apk\nR:\nOKUFLOW_FACTS_END\n"};
     QStringList Services() {
         std::lock_guard lock(launchMutex);
         return services;
@@ -158,7 +159,9 @@ public:
         std::lock_guard lock(launchMutex);
         return launches;
     }
-    void SetShellFacts(std::string facts) { std::lock_guard lock(launchMutex); shellFacts = std::move(facts); }
+    // `later` is written 300 ms after `facts`, as a second chunk.
+    void SetShellFacts(std::string facts, std::string later = {}) {
+        std::lock_guard lock(launchMutex); shellFacts = std::move(facts); shellFactsLater = std::move(later); }
     void SetProblem(std::string code) { std::lock_guard lock(launchMutex); problemCode = std::move(code); }
     int ServiceCount(const QString& service) { return static_cast<int>(Services().count(service)); }
 private:
@@ -258,9 +261,13 @@ private:
         }
         if (next.startsWith("shell:echo W:")) {
             Write(socket, "OKAY");
-            std::string facts;
-            { std::lock_guard lock(launchMutex); facts = shellFacts; }
+            std::string facts, later;
+            { std::lock_guard lock(launchMutex); facts = shellFacts; later = shellFactsLater; }
             Write(socket, QByteArray::fromStdString(facts));
+            if (!later.empty()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                Write(socket, QByteArray::fromStdString(later));
+            }
             return;
         }
         if (next.startsWith("shell:am start")) {
@@ -2024,28 +2031,37 @@ private slots:
     }
     void shellFactsParserIsConservative() {
         auto facts = okuflow::ParsePhoneShellFacts("W:\n  mWakefulness=Asleep\nK:\n mDreamingLockscreen=false mShowingLockscreen=true\n"
-                                                   "P:\npackage:/data/app/x/base.apk\nR:\n12345\nEND\n");
+                                                   "P:\npackage:/data/app/x/base.apk\nR:\n12345\nOKUFLOW_FACTS_END\n");
         QCOMPARE(int(facts.screenAwake), int(okuflow::PhoneFact::No));
         QCOMPARE(int(facts.keyguardShowing), int(okuflow::PhoneFact::Yes));
         QCOMPARE(int(facts.appInstalled), int(okuflow::PhoneFact::Yes));
         QCOMPARE(int(facts.appRunning), int(okuflow::PhoneFact::Yes));
-        facts = okuflow::ParsePhoneShellFacts("W:\nmWakefulness=Awake\nK:\nisKeyguardShowing=false\nP:\nR:\nEND\n");
+        facts = okuflow::ParsePhoneShellFacts("W:\nmWakefulness=Awake\nK:\nisKeyguardShowing=false\nP:\nR:\nOKUFLOW_FACTS_END\n");
         QCOMPARE(int(facts.screenAwake), int(okuflow::PhoneFact::Yes));
         QCOMPARE(int(facts.keyguardShowing), int(okuflow::PhoneFact::No));
         QCOMPARE(int(facts.appInstalled), int(okuflow::PhoneFact::No));
         QCOMPARE(int(facts.appRunning), int(okuflow::PhoneFact::No));
         // Android 12 and later: KeyguardController and DeviceIdleController lines.
-        facts = okuflow::ParsePhoneShellFacts("W:\nmWakefulness=Awake\nK:\n  KeyguardShowing=true AodShowing=false\nP:\nR:\nEND\n");
+        facts = okuflow::ParsePhoneShellFacts("W:\nmWakefulness=Awake\nK:\n  KeyguardShowing=true AodShowing=false\nP:\nR:\nOKUFLOW_FACTS_END\n");
         QCOMPARE(int(facts.keyguardShowing), int(okuflow::PhoneFact::Yes));
-        facts = okuflow::ParsePhoneShellFacts("W:\nmWakefulness=Awake\nK:\n  mScreenLocked=true\nP:\nR:\nEND\n");
+        facts = okuflow::ParsePhoneShellFacts("W:\nmWakefulness=Awake\nK:\n  mScreenLocked=true\nP:\nR:\nOKUFLOW_FACTS_END\n");
         QCOMPARE(int(facts.keyguardShowing), int(okuflow::PhoneFact::Yes));
-        facts = okuflow::ParsePhoneShellFacts("W:\nmWakefulness=Awake\nK:\n  mKeyguardShowing=false\n  mScreenLocked=false\nP:\nR:\nEND\n");
+        facts = okuflow::ParsePhoneShellFacts("W:\nmWakefulness=Awake\nK:\n  mKeyguardShowing=false\n  mScreenLocked=false\nP:\nR:\nOKUFLOW_FACTS_END\n");
         QCOMPARE(int(facts.keyguardShowing), int(okuflow::PhoneFact::No));
         // Truncated output (no END) never claims absence.
         facts = okuflow::ParsePhoneShellFacts("W:\nK:\nP:\nR:\n");
         QCOMPARE(int(facts.appInstalled), int(okuflow::PhoneFact::Unknown));
         QCOMPARE(int(facts.appRunning), int(okuflow::PhoneFact::Unknown));
         QCOMPARE(int(okuflow::ParsePhoneShellFacts("").screenAwake), int(okuflow::PhoneFact::Unknown));
+        // Iteration 5 (4): only the unique sentinel line ends the sections; a
+        // line that reads END (or contains it) is ordinary output. Changed
+        // deliberately: the rows above end with the sentinel, not "END".
+        facts = okuflow::ParsePhoneShellFacts("W:\nmWakefulness=Awake\nK:\nmPendingEND=0\nP:\nEND\npackage:/data/app/END/base.apk\n"
+                                              "R:\n4242\nOKUFLOW_FACTS_END\n");
+        QCOMPARE(int(facts.appInstalled), int(okuflow::PhoneFact::Yes));
+        QCOMPARE(int(facts.appRunning), int(okuflow::PhoneFact::Yes));
+        facts = okuflow::ParsePhoneShellFacts("W:\nK:\nP:\nR:\nEND\n");
+        QCOMPARE(int(facts.appRunning), int(okuflow::PhoneFact::Unknown));
         QVERIFY(okuflow::PhoneSerialTag("abc").starts_with("phone-"));
         QVERIFY(okuflow::PhoneSerialTag("abc").find("abc") == std::string::npos);
     }
@@ -2079,7 +2095,7 @@ private slots:
     void ladderWakesAndLaunchesOnALockedPhone() {
         FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::Play,
                             FakePhoneAdb::RecoveryMode::Healthy, false);
-        server.SetShellFacts("W:\n mWakefulness=Asleep\nK:\n mShowingLockscreen=true\nP:\npackage:/x\nR:\nEND\n");
+        server.SetShellFacts("W:\n mWakefulness=Asleep\nK:\n mShowingLockscreen=true\nP:\npackage:/x\nR:\nOKUFLOW_FACTS_END\n");
         ScopedLinkHooks hooks(server.port);
         okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::DeviceArrival);
         const auto reports = LinkCycles(6, [](const auto& r) {
@@ -2090,10 +2106,25 @@ private slots:
         QCOMPARE(server.Launches().size(), qsizetype{1});
         QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::Connected));
     }
+    void shellFactsAreReadToTheirSentinelLine() {
+        // Iteration 5 (4): a package path and a dumpsys line containing END
+        // arrive first; the processes and the sentinel follow in a second
+        // chunk. The read goes on to the sentinel line, so "running" is known.
+        FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::Play,
+                            FakePhoneAdb::RecoveryMode::Healthy, false);
+        server.SetShellFacts("W:\n mWakefulness=Awake\nK:\n mKeyguardShowing=false mPendingEND=0\n"
+                             "P:\npackage:/data/app/~~ENDx==/com.okuflow-1/base.apk\nEND\n",
+                             "R:\n4242\nOKUFLOW_FACTS_END\n");
+        ScopedLinkHooks hooks(server.port);
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto reports = LinkCycles(1);
+        QCOMPARE(int(reports.front().observation.shell.appInstalled), int(okuflow::PhoneFact::Yes));
+        QCOMPARE(int(reports.front().observation.shell.appRunning), int(okuflow::PhoneFact::Yes));
+    }
     void ladderManualPickAfterFailureStartsAFreshLadder() {
         FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::Blocked,
                             FakePhoneAdb::RecoveryMode::Healthy, false);
-        server.SetShellFacts("W:\n mWakefulness=Awake\nK:\n mShowingLockscreen=true\nP:\npackage:/x\nR:\nEND\n");
+        server.SetShellFacts("W:\n mWakefulness=Awake\nK:\n mShowingLockscreen=true\nP:\npackage:/x\nR:\nOKUFLOW_FACTS_END\n");
         ScopedLinkHooks hooks(server.port);
         okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
         auto reports = LinkCycles(12);
@@ -2110,7 +2141,7 @@ private slots:
     void ladderNeverLaunchesForAMissingOrPausedCompanion() {
         FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::Play,
                             FakePhoneAdb::RecoveryMode::Healthy, false);
-        server.SetShellFacts("W:\n mWakefulness=Awake\nK:\nP:\nR:\nEND\n");
+        server.SetShellFacts("W:\n mWakefulness=Awake\nK:\nP:\nR:\nOKUFLOW_FACTS_END\n");
         ScopedLinkHooks hooks(server.port);
         okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
         auto reports = LinkCycles(3);
@@ -2220,7 +2251,7 @@ private slots:
         // D1: no listener, the probe is refused, the app process runs.
         FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::Blocked,
                             FakePhoneAdb::RecoveryMode::Healthy, false);
-        server.SetShellFacts("W:\n mWakefulness=Awake\nK:\n mKeyguardShowing=false\nP:\npackage:/x\nR:\n4242\nEND\n");
+        server.SetShellFacts("W:\n mWakefulness=Awake\nK:\n mKeyguardShowing=false\nP:\npackage:/x\nR:\n4242\nOKUFLOW_FACTS_END\n");
         ScopedLinkHooks hooks(server.port);
         okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
         const auto reports = LinkCycles(15);
@@ -2236,7 +2267,7 @@ private slots:
         // wake + launch per event, then the user is asked; never every 20 s.
         FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::Paused,
                             FakePhoneAdb::RecoveryMode::Healthy, false);
-        server.SetShellFacts("W:\n mWakefulness=Asleep\nK:\n mKeyguardShowing=true\nP:\npackage:/x\nR:\n4242\nEND\n");
+        server.SetShellFacts("W:\n mWakefulness=Asleep\nK:\n mKeyguardShowing=true\nP:\npackage:/x\nR:\n4242\nOKUFLOW_FACTS_END\n");
         ScopedLinkHooks hooks(server.port);
         okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
         const auto reports = LinkCycles(40);
@@ -2251,14 +2282,14 @@ private slots:
         // ladder without waiting for an event.
         FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::Paused,
                             FakePhoneAdb::RecoveryMode::Healthy, false);
-        server.SetShellFacts("W:\n mWakefulness=Awake\nK:\n mKeyguardShowing=false\nP:\npackage:/x\nR:\n4242\nEND\n");
+        server.SetShellFacts("W:\n mWakefulness=Awake\nK:\n mKeyguardShowing=false\nP:\npackage:/x\nR:\n4242\nOKUFLOW_FACTS_END\n");
         ScopedLinkHooks hooks(server.port);
         okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
         auto reports = LinkCycles(10);
         QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::CompanionListenerClosed));
         QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::WaitForUser));
         QCOMPARE(server.Launches().size(), qsizetype{1});
-        server.SetShellFacts("W:\n mWakefulness=Awake\nK:\n mKeyguardShowing=false\nP:\npackage:/x\nR:\nEND\n");
+        server.SetShellFacts("W:\n mWakefulness=Awake\nK:\n mKeyguardShowing=false\nP:\npackage:/x\nR:\nOKUFLOW_FACTS_END\n");
         reports = LinkCycles(6, [](const auto& r) {
             return r.decision.action == okuflow::PhoneLinkAction::WakeAndLaunchApp; });
         QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::WakeAndLaunchApp));
@@ -2269,7 +2300,7 @@ private slots:
         // per-event budget as the ladder: repeated starts do not relaunch.
         FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::Paused,
                             FakePhoneAdb::RecoveryMode::Healthy, false);
-        server.SetShellFacts("W:\n mWakefulness=Awake\nK:\n mKeyguardShowing=false\nP:\npackage:/x\nR:\n4242\nEND\n");
+        server.SetShellFacts("W:\n mWakefulness=Awake\nK:\n mKeyguardShowing=false\nP:\npackage:/x\nR:\n4242\nOKUFLOW_FACTS_END\n");
         ScopedLinkHooks hooks(server.port);
         const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
         QVERIFY(SUCCEEDED(apartment)); QVERIFY(SUCCEEDED(MFStartup(MF_VERSION)));
@@ -2296,7 +2327,7 @@ private slots:
         // A15: the listener exists and accepts, but never answers.
         FakePhoneAdb server(false, true, false, FakePhoneAdb::LaunchMode::Play,
                             FakePhoneAdb::RecoveryMode::Healthy, false);
-        server.SetShellFacts("W:\n mWakefulness=Awake\nK:\n mKeyguardShowing=false\nP:\npackage:/x\nR:\n4242\nEND\n");
+        server.SetShellFacts("W:\n mWakefulness=Awake\nK:\n mKeyguardShowing=false\nP:\npackage:/x\nR:\n4242\nOKUFLOW_FACTS_END\n");
         ScopedLinkHooks hooks(server.port);
         okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
         const auto reports = LinkCycles(20, [](const auto& r) {

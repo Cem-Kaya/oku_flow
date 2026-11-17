@@ -35,6 +35,9 @@ std::vector<AdbDeviceEntry> ParseAdbDeviceEntries(std::span<const std::uint8_t> 
 std::vector<AdbDeviceEntry> ParseAdbDevicesLongText(std::string_view text);
 // Pure parser for the bounded read-only phone shell query (wakefulness,
 // keyguard, package presence, process presence). Unknown stays Unknown.
+// "Not installed" and "not running" need the closing sentinel line
+// (kPhoneShellFactsEnd, matched as a whole line, also by the reader).
+inline constexpr char kPhoneShellFactsEnd[] = "OKUFLOW_FACTS_END";
 PhoneShellFacts ParsePhoneShellFacts(std::string_view text);
 // SetupAPI: is an Android ADB USB interface (standard interface GUID)
 // present in Windows right now? Absent also for a phone that does not

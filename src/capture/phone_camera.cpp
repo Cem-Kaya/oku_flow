@@ -1316,7 +1316,7 @@ PhoneShellFacts ParsePhoneShellFacts(std::string_view text)
             if (section == 'R') sawProcesses = true;
             continue;
         }
-        if (line == "END") { sawEnd = true; break; }
+        if (line == kPhoneShellFactsEnd) { sawEnd = true; break; }
         if (section == 'W') {
             const auto at = line.indexOf("mWakefulness=");
             if (at >= 0) {
@@ -1516,8 +1516,21 @@ std::vector<CameraDescriptor> ListUsbPhones(const std::atomic<bool>* canceled,
     return attached;
 }
 
-// Reads a short shell reply until the stream closes, `until` appears, the
-// deadline passes or 64 KiB arrived.
+// True when `line` is one whole line of `text` (LF or CRLF line ends).
+bool HasWholeLine(const QByteArray& text, const QByteArray& line)
+{
+    for (auto at = text.indexOf(line); at >= 0; at = text.indexOf(line, at + 1)) {
+        const auto end = at + line.size();
+        const bool starts = at == 0 || text[at - 1] == '\n';
+        const bool ends = end < text.size() &&
+            (text[end] == '\n' || (text[end] == '\r' && end + 1 < text.size() && text[end + 1] == '\n'));
+        if (starts && ends) return true;
+    }
+    return false;
+}
+// Reads a short shell reply until the stream closes, the line `until`
+// arrives (a whole line, never a substring: dumpsys lines and package paths
+// can contain any word), the deadline passes or 64 KiB arrived.
 QByteArray DrainShell(QTcpSocket& socket, const std::atomic<bool>* canceled, int timeoutMs,
                       const QByteArray& until = {})
 {
@@ -1528,7 +1541,7 @@ QByteArray DrainShell(QTcpSocket& socket, const std::atomic<bool>* canceled, int
         socket.waitForReadyRead(20);
         response += socket.readAll();
         if (response.size() > kControlLimit) throw std::runtime_error("Oversized phone shell response");
-        if (!until.isEmpty() && response.contains(until)) break;
+        if (!until.isEmpty() && HasWholeLine(response, until)) break;
     }
     response += socket.readAll();
     if (response.size() > kControlLimit) throw std::runtime_error("Oversized phone shell response");
@@ -1571,14 +1584,15 @@ constexpr char kShellFactsCommand[] =
     "shell:echo W:; dumpsys power | grep -m1 mWakefulness=; echo K:; "
     "dumpsys window | grep -E 'mShowingLockscreen|mDreamingLockscreen|KeyguardShowing' | head -n 6; "
     "dumpsys deviceidle | grep -m1 mScreenLocked=; "
-    "echo P:; pm path com.okuflow; pm path com.okuflow.camera; echo R:; pidof com.okuflow com.okuflow.camera; echo END";
+    "echo P:; pm path com.okuflow; pm path com.okuflow.camera; echo R:; pidof com.okuflow com.okuflow.camera; "
+    "echo OKUFLOW_FACTS_END";
 PhoneShellFacts QueryShellFacts(const AdbDeviceEntry& entry, const std::atomic<bool>* canceled, bool* timedOut)
 {
     *timedOut = false;
     try {
         QTcpSocket shell;
         Transport(shell, entry.serial, kShellFactsCommand, canceled, 2000, entry.transportId);
-        const auto response = DrainShell(shell, canceled, 2500, "END");
+        const auto response = DrainShell(shell, canceled, 2500, kPhoneShellFactsEnd);
         if (response.isEmpty() && shell.state() == QAbstractSocket::ConnectedState) *timedOut = true;
         return ParsePhoneShellFacts(std::string_view(response.constData(), static_cast<size_t>(response.size())));
     } catch (const UsbResponseTimeout&) {

@@ -5076,7 +5076,9 @@ translated app strings; it is an HTML draft, not a native-device screenshot.
 - `phone_camera.hpp` / `phone_camera.cpp`: `ParseAdbUsbDevices` reads bounded
   public protobuf fields without a runtime dependency; `ParseAdbDeviceEntries` /
   `ParseAdbDevicesLongText` keep every transport with its raw `PhoneAdbState`.
-  `ParsePhoneShellFacts` parses the read-only shell query, `QueryAndroidAdbInterface`
+  `ParsePhoneShellFacts` parses the read-only shell query (absence of the app
+  or its process only after the whole sentinel line `kPhoneShellFactsEnd`,
+  `OKUFLOW_FACTS_END`, which the reader also waits for), `QueryAndroidAdbInterface`
   checks SetupAPI presence of the standard ADB interface GUID (Absent also for
   a phone without it; Unknown only when SetupAPI fails), `NotePhoneLinkEvent` resets budgets (UI-thread
   safe: short locks only), and
