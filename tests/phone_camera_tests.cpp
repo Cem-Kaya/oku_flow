@@ -1061,10 +1061,12 @@ private slots:
         auto launch = std::async(std::launch::async, [&] { return server.EnsureRunning(nullptr); });
         auto unblock = qScopeGuard([&] { release.store(true); if (launch.valid()) launch.wait(); });
         QTest::qWait(100);
-        const auto before = std::chrono::steady_clock::now();
-        server.ResetBudgets();
-        QVERIFY(std::chrono::steady_clock::now() - before < std::chrono::milliseconds(50));
+        // On its own thread with a deadline, so a regression fails instead of hanging.
+        auto reset = std::async(std::launch::async, [&] { server.ResetBudgets(); });
+        const bool prompt = reset.wait_for(std::chrono::milliseconds(250)) == std::future_status::ready;
         release.store(true);
+        reset.wait();
+        QVERIFY2(prompt, "ResetBudgets waited for the launch holding the manager");
         QCOMPARE(launch.get(), okuflow::OwnedAdbServer::EnsureResult::LaunchFailed);
         // The reset requested during the launch clears its 60 s cooldown.
         server.ResetBudgets();
@@ -2125,11 +2127,9 @@ private slots:
         auto stop = qScopeGuard([&] { canceled.store(true); discovery.wait(); });
         QTRY_VERIFY_WITH_TIMEOUT(okuflow::OwnedAdbServerPort().has_value(), 3000);
         QVERIFY(discovery.wait_for(std::chrono::milliseconds(0)) == std::future_status::timeout); // Still launching.
-        const auto before = std::chrono::steady_clock::now();
-        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::Resume);
-        const auto took = std::chrono::steady_clock::now() - before;
-        QVERIFY2(took < std::chrono::milliseconds(250),
-                 QByteArray::number(qint64(std::chrono::duration_cast<std::chrono::milliseconds>(took).count())).constData());
+        auto event = std::async(std::launch::async, [] { okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::Resume); });
+        QVERIFY2(event.wait_for(std::chrono::milliseconds(250)) == std::future_status::ready,
+                 "the event waited for the owned launch");
     }
     void ladderTargetsTheChosenPhone() {
         // C5: the connected serial is the target, also before a frame.
