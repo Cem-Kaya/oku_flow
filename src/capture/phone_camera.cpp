@@ -719,7 +719,7 @@ OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* cancel
         if (intent == PhoneServerIntent::ReleaseForWebcam) runtime.shadowRequested = false;
     }
     // Revoked while the lock was awaited (another call held it).
-    if (hooks && hooks->serverRequestStageForTest) hooks->serverRequestStageForTest("locked");
+    if (hooks && hooks->linkStageForTest) hooks->linkStageForTest("locked");
     if (stale()) return Result::Canceled;
     const auto env = hooks ? AdbServerEndpoint{hooks->port != 0,
                                hooks->ownedServerExecutable.empty(), hooks->port, false}
@@ -863,7 +863,7 @@ OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* cancel
     // 2026-11-17). Overridden endpoints never reach this branch.
     const auto defaultProbe = ProbeAdbHostVersion(env.port, canceled);
     CheckCanceled(canceled);
-    if (hooks && hooks->serverRequestStageForTest) hooks->serverRequestStageForTest("default-probed");
+    if (hooks && hooks->linkStageForTest) hooks->linkStageForTest("default-probed");
     if (stale()) return Result::Canceled;
     // A start beside the default: its shadow flags are set, and the
     // transport's own start beside a hung default is charged to the
@@ -2245,6 +2245,20 @@ void NoteListenerUnopenable(const ListenerLookup& listener, std::uint64_t episod
     if (runtime.doctor.NoteDefaultStopRefused(episode)) runtime.refusedListener = listener.identity;
 }
 
+// A live or starting phone session is registered (OccupiedPhone), or a
+// fixture reports one.
+bool PhoneSessionRegistered()
+{
+    auto& runtime = Runtime();
+    std::optional<PhoneAdbTestHooks> hooks;
+    {
+        std::lock_guard lock(runtime.mutex);
+        if (!runtime.occupied.empty()) return true;
+        hooks = runtime.hooks;
+    }
+    return hooks && hooks->phoneSessionRegisteredForTest && hooks->phoneSessionRegisteredForTest();
+}
+
 std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLinkObservation& o,
                               const AdbDeviceEntry* entry, const std::string& target,
                               const PhoneLinkRequest& link, const std::atomic<bool>* canceled)
@@ -2398,10 +2412,7 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         // a session opened on the default before a private server started
         // keeps its sockets there), so any registered session refuses the
         // stop, as an aborted one (bounded by abortedStopCap).
-        const auto sessionRegistered = [&] {
-            std::lock_guard lock(runtime.mutex);
-            return !runtime.occupied.empty();
-        };
+        const auto sessionRegistered = [] { return PhoneSessionRegistered(); };
         // An ask that sends no host:kill is not remembered as sent: no
         // termination follows it as if the request had been ignored, and
         // it does not use up one of the episode's asks.
@@ -2477,10 +2488,7 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
     }
     case A::TerminateDefaultServer: {
         // As for the ask: a registered phone session refuses the stop.
-        const auto sessionRegistered = [&] {
-            std::lock_guard lock(runtime.mutex);
-            return !runtime.occupied.empty();
-        };
+        const auto sessionRegistered = [] { return PhoneSessionRegistered(); };
         if (DefaultIsUserEndpoint() || !o.phoneWanted) return "refused: user endpoint or no phone intent";
         const auto port = DefaultPort();
         // Dropped for a changed source: the attempt is given back uncounted.
@@ -2848,6 +2856,7 @@ void RunPhoneLinkLadder(const PhoneLinkRequest& link, const std::string& preferr
     }
     CheckCanceled(canceled);
 
+    if (const auto hooks = Hooks(); hooks && hooks->linkStageForTest) hooks->linkStageForTest("decide");
     PhoneLinkDecision decision;
     bool staleNow = false;
     {

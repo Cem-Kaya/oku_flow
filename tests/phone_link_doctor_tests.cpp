@@ -1223,6 +1223,76 @@ private slots:
         blind.serverLaunchFailures = 0;
         QVERIFY(doctor.Decide(blind, until + policy.restartCeilingMs).diagnosis != D::AdbCannotStart);
     }
+    void silentPrivateServerBesideADefaultThatServesThePhoneIsHandedBack()
+    {
+        // Iteration 9 (A7): OkuFlow's private server beside the default does
+        // not answer (ServerStarting) or its listing fails (an owned
+        // ServerUnresponsive) while the default lists the phone. Neither
+        // diagnosis looked at the default: OkuFlow stayed on its broken
+        // server for good ("cannot start" or the re-plug sentence). It is
+        // handed back under the hand-back budget; never to a default whose
+        // listing of the phone is stalled.
+        for (const auto probe : {PhoneServerProbe::NoListener, PhoneServerProbe::Unresponsive}) {
+            PhoneLinkDoctor doctor;
+            const auto policy = doctor.Policy();
+            doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+            auto silent = Blind();
+            silent.serverProbe = probe;
+            silent.shadowRunning = true;
+            silent.defaultListsPhone = true;
+            silent.serverLaunchFailures = policy.adbLaunchFailuresToName; // Also with the sentence due.
+            const auto first = doctor.Decide(silent, 0);
+            QCOMPARE(int(first.action), int(A::HandBackToDefault));
+            // Spaced by the hand-back budget (a live session can defer it).
+            QCOMPARE(int(doctor.Decide(silent, 1).action), int(A::Relist));
+            QCOMPARE(int(doctor.Decide(silent, policy.reconnectRetryMs).action), int(A::HandBackToDefault));
+            auto stalled = silent;
+            stalled.defaultPhoneStalled = true;
+            PhoneLinkDoctor other;
+            other.OnEvent(PhoneLinkEvent::AppStart, 0);
+            for (std::int64_t now = 0; now < 120000; now += 1000)
+                QVERIFY(other.Decide(stalled, now).action != A::HandBackToDefault);
+            auto notListing = silent;
+            notListing.defaultListsPhone = false;
+            PhoneLinkDoctor third;
+            third.OnEvent(PhoneLinkEvent::AppStart, 0);
+            for (std::int64_t now = 0; now < 120000; now += 1000)
+                QVERIFY(third.Decide(notListing, now).action != A::HandBackToDefault);
+        }
+    }
+    void restartDeferredForALiveSessionIsGivenBack()
+    {
+        // Iteration 9 (B2): a restart the transport defers because a live
+        // session uses the private server restarted nothing. It spent one of
+        // the three restarts whose end is the re-plug sentence.
+        PhoneLinkDoctor doctor;
+        const auto policy = doctor.Policy();
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        const auto blind = Blind();
+        int restarts = 0;
+        for (std::int64_t now = 0; now < 1000000; now += 500) {
+            const auto decision = doctor.Decide(blind, now);
+            if (decision.action != A::RestartOwnedServer) continue;
+            ++restarts;
+            if (restarts <= policy.blindRestartCap) doctor.NoteRestartDeferred(decision.episode);
+        }
+        // The deferred ones did not count: the cap's restarts still follow.
+        QCOMPARE(restarts, 2 * policy.blindRestartCap);
+        QCOMPARE(int(doctor.Decide(blind, 1000000).diagnosis), int(D::ReplugCable));
+        // A give-back of an earlier episode is dropped.
+        PhoneLinkDoctor later;
+        later.OnEvent(PhoneLinkEvent::AppStart, 0);
+        std::uint64_t old = 0;
+        int counted = 0;
+        for (std::int64_t now = 0; now < 1000000; now += 500) {
+            const auto decision = later.Decide(blind, now);
+            if (decision.action != A::RestartOwnedServer) continue;
+            ++counted;
+            if (counted == 1) { old = decision.episode; later.OnEvent(PhoneLinkEvent::DeviceArrival, now); }
+            else later.NoteRestartDeferred(old);
+        }
+        QCOMPARE(counted, 1 + policy.blindRestartCap);
+    }
     void terminationCapKeepsTheSentenceWithoutAConfirmation()
     {
         // Iteration 8 (A6): every termination clears the hang confirmation

@@ -167,11 +167,14 @@ struct PhoneAdbTestHooks {
     // before the private server is stopped (a session's server request made
     // here must wait for the hand-back).
     std::function<void()> afterHandBackCheckForTest;
-    // Runs inside a server request (EnsureAdbServer) at a named stage:
-    // "locked" (the lifecycle lock was just taken, as after waiting for it)
-    // and "default-probed" (the default's version probe just returned), so
-    // a test can change the source inside the request.
-    std::function<void(std::string_view stage)> serverRequestStageForTest;
+    // Runs at a named stage of a discovery cycle, so a test can change the
+    // source inside it: in a server request (EnsureAdbServer) "locked" (the
+    // lifecycle lock was just taken, as after waiting for it) and
+    // "default-probed" (the default's version probe just returned); in the
+    // link ladder "decide" (the observation is complete, right before the
+    // doctor decides). The server request stages hold the lifecycle lock
+    // (another server request waits); "decide" holds no lock.
+    std::function<void(std::string_view stage)> linkStageForTest;
     // Runs after the raw host:kill connect, before any byte is written.
     std::function<void()> afterHostKillConnectForTest;
     // Stands in for the legacy bundle reclamation of a hung default, which
@@ -180,6 +183,11 @@ struct PhoneAdbTestHooks {
     // runs in place of the reclamation, and the branch goes on as for a
     // default that is not a legacy bundle.
     std::function<void()> legacyReclaimForTest;
+    // Reports a live or starting phone session as registered, for the
+    // refusal of the ask and termination executors (a real session
+    // registers when its start has its server; a fixture cannot hold one
+    // registered while the ladder decides a stop).
+    std::function<bool()> phoneSessionRegisteredForTest;
     // Doctor budgets for fast fixtures; production uses PhoneLinkPolicy{}.
     std::optional<PhoneLinkPolicy> linkPolicy;
     // Owned-server budgets for fast fixtures (start grace, readiness,

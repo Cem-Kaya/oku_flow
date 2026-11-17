@@ -651,6 +651,34 @@ private slots:
         QVERIFY(foreign->Alive());
     }
 
+    void requestThatLostItsAuthorityWritesNoHostKill()
+    {
+        // Iteration 9 (A1): the user chooses another source while the
+        // reclamation runs, between the host:kill connect and its write. The
+        // caller's authority is asked with every cancellation check, so also
+        // right before the first byte: nothing is written, nothing stopped.
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        const Distribution distribution = BuildDistribution(temp.path(), false);
+        auto server = StartServer(distribution,
+                                  QDir(temp.path()).filePath(QStringLiteral("ready.txt")),
+                                  QStringLiteral("ok"));
+        QVERIFY(server);
+        std::atomic<bool> wanted{true};
+        auto request = MakeRequest(server->ready.port, distribution, temp.path());
+        request.stillWanted = [&] { return wanted.load(); };
+        bool hookRan = false;
+        request.policy.afterHostKillConnectForTest = [&] { hookRan = true; wanted.store(false); };
+        const auto result = TryReclaimLegacyBundledAdbServer(request);
+        QVERIFY(hookRan);
+        QCOMPARE(result.status, LegacyAdbRecoveryStatus::Canceled);
+        QVERIFY(!result.hostKillDelivered);
+        QVERIFY(!result.stoppedViaHostKill);
+        QVERIFY(!result.usedForcedTermination);
+        QTest::qWait(300);
+        QVERIFY(server->Alive()); // A kill-mode "ok" server exits on host:kill.
+    }
+
     void cancelsAfterClassificationBeforeStop()
     {
         QTemporaryDir temp;

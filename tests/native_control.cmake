@@ -55,7 +55,9 @@ if(OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE)
         automaticDiscoveryWaitsForAReadyPhone
         differentPhoneSentenceIsNotShownBeforeTheSwitch
         resumeKeepsAPhoneThatDeliversWithoutPresenting
-        aSourceChangeRevokesTheRunningLadder)
+        aSourceChangeRevokesTheRunningLadder
+        aPickOfTheChosenPhoneRevokesNothing
+        aHiddenLivePhoneSessionIsConnectedForTheDoctor)
     set_tests_properties(native_app_phone_link_offscreen PROPERTIES TIMEOUT 90
         LABELS "headless;native-control-opt-in" RESOURCE_LOCK okuflow_process_identity
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
