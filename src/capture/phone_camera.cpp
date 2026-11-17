@@ -85,7 +85,7 @@ struct AdbRuntime {
     std::optional<AdbListenerIdentity> defaultIdentity;
     // Suppresses repeated shell health probes after a definitive healthy or
     // other-host/phone-state answer. Separate from the reconnect-send slot so
-    // a healthy answer does not consume the one-minute recovery budget.
+    // a healthy answer does not consume the reconnect budget.
     std::map<std::pair<std::uint16_t, std::string>, Clock::time_point> nextUsbHealthProbe;
     std::map<std::string, unsigned> occupied;
     // The private server launched by this process, if owned mode engaged.
@@ -486,8 +486,10 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
         return result;
     }
     // First engagement borrows a responsive default listener. Repeated host
-    // hangs may reclaim only a reviewed legacy OkuFlow bundle; an unknown
-    // listener is untouched while a separate private child retries USB.
+    // hangs first try the reviewed legacy OkuFlow bundle reclamation; any
+    // other hung default gets a private child at once and is then stopped by
+    // the link doctor through its exact listener handle (owner decision of
+    // 2026-11-17). Overridden endpoints never reach this branch.
     const auto defaultProbe = ProbeAdbHostVersion(env.port, canceled);
     CheckCanceled(canceled);
     if (defaultProbe == OwnedServerProbe::Responsive) {

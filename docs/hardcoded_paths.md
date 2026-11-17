@@ -660,12 +660,29 @@ documented Qt 6.12.0 SDK; `-QtPrefix` overrides it.
 
 USB recovery uses two consecutive 2000ms shell-response timeouts, a fresh
 1000ms non-claiming companion probe and a 2000ms post-ack transport-ID check.
-Definitive health/phone responses suppress further health probes for 30 seconds;
-reconnect requests have a 60-second cooldown per endpoint/phone. Both budgets
-are in-process and reset on restart. Ordinary discovery polls every 5 seconds.
-Capture shutdown bounds its D3D11 completion-query poll to 1000ms while retaining
-the facade's shared 1500ms stop deadline. These limits avoid unbounded GPU waits
-and never authorize killing or replacing a foreign/shared adb server.
+Definitive health/phone responses suppress further health probes for 10 seconds;
+reconnect requests per endpoint/phone go at once, 3 s later, then every 30 s.
+All budgets are in-process, reset on restart and by link events (arrival,
+removal, resume, display on, start, manual pick, activation after 2 idle
+minutes). Discovery runs at the link doctor's pace: at once after an event,
+1 s for five failed cycles, then 2, 3, 5 s, ceiling 10 s; 2 s while waiting for
+the user; 5 s while healthy. Host budgets: 500ms connect, 1000ms per reply
+field, 1000ms companion probe transport, 2500ms read-only shell facts. Blind
+owned-server restart after 5 s (then 15 s, then 60 s); private server beside a
+blind default after 5 s; `host:kill` 6 s later; termination 2 s after that.
+Companion wake + launch: at once, 3 s, 6 s, then every 20 s. A resumed phone
+session must present a frame within 3 s. Owned bootstrap/crash cooldown 5 s,
+doubling to 30 s. Capture shutdown bounds its D3D11 completion-query poll to
+1000ms while retaining the facade's shared 1500ms stop deadline. Stopping a
+default-port adb follows only the owner's 2026-11-17 rule (android/PROTOCOL.md);
+an adb endpoint environment variable is never stopped.
+
+Phone link trace (always on): `Debug\phone-link.log` under the user data root,
+rotated to `phone-link.log.1` at 256 KiB (two files at most). One line per link
+event, diagnosis change and ladder action, with a monotonic millisecond time and
+UTC time. Phones appear only as `phone-<8 hex>` (SHA-256 prefix of the serial);
+no file paths, user names or serial numbers are written. The owner can attach
+these two files to a failure report.
 
 - `scripts/build_and_run.bat` configures `build\`
 - The helper prefers launching:

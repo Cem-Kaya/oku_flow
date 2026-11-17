@@ -30,9 +30,10 @@ namespace okuflow {
 // or nested bundle layout). This is a
 // deliberate adoption of a reviewed OkuFlow-bundled legacy process based on
 // current file/process provenance, not historical kernel proof of which
-// application originally spawned it. Every unknown fails closed and no
-// genuinely foreign process is ever stopped, signalled by name, or tracked
-// by a persisted PID.
+// application originally spawned it. Every unknown fails closed here. Other
+// hung or blind default-port adb servers are handled by the separate
+// TryStopDefaultAdbServer rule below (owner decision of 2026-11-17); no
+// process is ever signalled by name or tracked by a persisted PID.
 //
 // The caller retains the policy preconditions: it must have externally
 // confirmed an unresponsive server (at least two failed host-version probes

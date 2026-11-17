@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+- Make the USB phone camera reconnect by itself after sleep, cable pulls,
+  improper shutdowns and phone sleep. OkuFlow now sees unauthorized, offline
+  and stalled phones, wakes the phone and reopens OkuFlow Camera, restarts its
+  own Android connection when it goes blind, and, as the owner decided on
+  2026-11-17, stops a hung or blind default Android tool server that holds the
+  phone (never one set through the adb environment variables or one serving
+  other devices). Retries restart quickly after every connection, wake or
+  manual pick instead of waiting up to a minute. The camera area says in one
+  sentence what to do when only the user can act (for example "Unlock your
+  phone and tap Allow on the USB debugging question"). A small rolling
+  `phone-link.log` in the Debug folder records what happened, without serial
+  numbers. OkuFlow Camera can show over the lock screen when the computer opens
+  it (never while paused) and tells the computer when streaming is paused.
+
 - Clarify the public Android privacy policy: OkuFlow Camera is an accessibility-focused
   USB companion, normal viewing does not upload camera images to the developer,
   users control local files, and optional Windows AI requests follow the selected

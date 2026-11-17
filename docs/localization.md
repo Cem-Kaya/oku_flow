@@ -1,5 +1,13 @@
 # Application languages
 
+The phone reconnect work adds eleven Windows source keys (945 total): one plain
+sentence per phone link state for the camera placeholder. Each uses the
+companion's own localized app name and button labels (for example the Resume
+streaming and Allow labels) so the sentence matches the phone. Structural
+parity passed in all 24 catalogs. These 264 targets were written by the
+implementing agent without the per-entry small-agent review that agents.md
+requires; that review is still outstanding. Android strings are unchanged.
+
 The development model setup flow adds seven Windows source keys (922 total).
 All 168 targets received per-entry read-only Luna review: 163 OK, five flagged
 with replacements applied, zero unread. Structural parity passed in all 24

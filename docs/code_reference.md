@@ -1770,9 +1770,21 @@ so metadata generation cannot silently accept an incomplete copy.
 - `StartCameraCapture` always dispatches phone startup off the UI thread.
   `StartFallbackCamera` restores a temporary webcam after phone startup/loss;
   it does not overwrite the phone preference. Phone errors are nonmodal.
-  `PhoneRetryPolicy.Observe/Failed/Succeeded/CanAttempt` tracks per-transport
-  readiness and 5/10/20/60-second failure backoff (at least 30 seconds for busy
-  or hot errors). Replug, recovery, changed problem or server epoch resets that backoff.
+  `PhoneRetryPolicy.Observe/Failed/Succeeded/CanAttempt/Reset` tracks per-transport
+  readiness and 1/2/3/5/10-second failure backoff (at least 5 seconds for busy
+  errors). Replug, recovery, changed problem, server epoch or a link event resets it.
+- `OkuFlowApp::NotePhoneEvent`, `OnPhoneUsbRemoval`, `OnSystemSuspend`,
+  `OnSystemResume`, `OnWindowActivationChanged`, `OnPhoneDiscoveryPulse` turn
+  window messages into `PhoneLinkEvent`s (reset budgets, immediate discovery),
+  check a resumed phone session for a frame within 3 s and detect wall-clock
+  jumps. `PhoneLinkSentence` maps the last `PhoneLinkDecision` to the
+  placeholder/status sentence. `MainWindow` emits `phoneUsbRemoved`,
+  `systemSuspending`, `systemResumed` (resume broadcasts and console display on)
+  and `windowActivationChanged`.
+- `phone_link_text.hpp` / `phone_link_text.cpp`: `PhoneLinkPlaceholderText`
+  returns one catalog sentence per `PhoneLinkDiagnosis` (empty for Connected
+  and NotWanted); recovering states read "Restoring USB connection…" until the
+  ladder waits for the user.
 - `PersistentSettings.cameraSelectionExplicit` distinguishes a user pick from
   an implicit first-run webcam. `OnCameraSelectionChanged` sets it and saves
   the stable link. `settings::LoadDetailed` infers an explicit preference for
@@ -1848,7 +1860,24 @@ so metadata generation cannot silently accept an incomplete copy.
   post-connect revalidation; a failed bounded exit wait can use only the exact
   held process handle. `LegacyAdbRecoveryResult` distinguishes recovered,
   unmanaged, busy, identity-changed, canceled and failed, with structured detail
-  and observation diagnostics. Unknown/SDK/overridden servers are never stopped.
+  and observation diagnostics. Overridden servers are never stopped.
+  `TryStopDefaultAdbServer(DefaultAdbStopRequest)` implements the owner's
+  2026-11-17 default-port rule: exact loopback listener PID, same PID/creation
+  as the decision-time identity, image `adb.exe`, not this process, optional
+  raw `host:kill`, revalidation and `TerminateProcess` on the held handle;
+  `DefaultAdbStopResult` reports Stopped, NoListener, SelfListener, NotAdb,
+  IdentityChanged, AccessDenied, Canceled or Failed. `FindOkuFlowSiblings`
+  lists other same-user/session OkuFlow processes (same image, visible window)
+  for observation only.
+- `phone_link_doctor.hpp` / `phone_link_doctor.cpp`: `PhoneLinkObservation`,
+  `DiagnosePhoneLink`, `PhoneLinkWaitsForUser`, `PhoneLinkDoctor::OnEvent/Decide`
+  and `PhoneLinkPolicy` form the pure, clock-free decision unit (22 diagnoses,
+  9 actions, event-reset budgets). `PhoneLinkDiagnosisName`/`ActionName`/
+  `EventName` give trace names.
+- `OwnedAdbServer::Restart` restarts a responsive but blind owned child (live
+  sessions win); `ResetBudgets` clears the restart cooldown, which starts at
+  `OwnedAdbServerPolicy::restartCooldown` (5 s) and doubles to
+  `maxRestartCooldown` (30 s).
 - `PhoneAdbTestHooks` / `SetPhoneAdbTestHooks` isolate fake-socket tests on a
   private random port and disable real bootstrap; switching hooks stops any
   previously owned child and resets test budgets. `OccupiedPhone`, `MayLaunch`
@@ -4998,7 +5027,13 @@ translated app strings; it is an HTML draft, not a native-device screenshot.
   bounded stop coordinator; a hung decoder retains its session. Frame-rate
   atomics follow decoded generation metadata.
 - `phone_camera.hpp` / `phone_camera.cpp`: `ParseAdbUsbDevices` reads bounded
-  public protobuf fields without a runtime dependency. `PhoneCameraTransport`
+  public protobuf fields without a runtime dependency; `ParseAdbDeviceEntries` /
+  `ParseAdbDevicesLongText` keep every transport with its raw `PhoneAdbState`.
+  `ParsePhoneShellFacts` parses the read-only shell query, `QueryAndroidAdbInterface`
+  checks SetupAPI presence, `NotePhoneLinkEvent` resets budgets, and
+  `SetPhoneLinkTraceFile` / `TracePhoneLink` / `PhoneSerialTag` write the
+  always-on trace. `Enumerate(..., PhoneLinkRequest*, PhoneLinkReport*)` collects
+  one observation, asks the doctor and runs the chosen rung. `PhoneCameraTransport`
   `Enumerate` uses USB connection type, with explicit-USB legacy fallback, and
   optionally lists camera IDs. `Start` waits for first decoded output; `Run`
   revalidates USB transport ID, launches the installed activity, binds channels,

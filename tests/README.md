@@ -992,6 +992,26 @@ synthetic phone session admits the bounded command before split stop, retires
 its token at Begin and rejects later admission. These rows establish command
 ownership/protocol behavior, not real-phone light or camera acceptance.
 
+`phone_link_doctor` is model-free: every diagnosis (table-driven), every event
+reset, every budget, and the owner's sequences (sleep and resume, pull and
+re-plug within a second, unauthorized then authorized, offline fixed by a
+reconnect, offline needing a server restart, blind owned server, blind borrowed
+server with and without other devices, locked phone, killed app, paused, busy
+with another host, two instances). The ladder rows of `phone_camera_contract`
+drive the same sequences end to end through `Enumerate`/`Start` with the fake
+adb server and the owned-child fixture: `host:kill` reaches only a responsive
+blind default that serves no other device, never an overridden endpoint; a hung
+fixture default is terminated only through its exact listener handle; a
+listener in the test process itself is never terminated; a manual pick renews
+the launch budget; resume voids pre-sleep transport identity; `Start` waits for
+a listed phone to become ready. These were changed deliberately with the
+ladder: the launch command now carries the host-launch extra after a wake key,
+and `phone_retry_policy` encodes 1/2/3/5/10 s instead of 5/10/20/60 s.
+`phone_link_text` (headless) checks one sentence per diagnosis and that every
+sentence is translated in all 24 catalogs. The opt-in native fixture slot
+`resumeAndDeviceRemovalReachTheApplication` sends synthetic `WM_POWERBROADCAST`
+and ADB removal messages to the real application object offscreen.
+
 The remaining `phone_camera_contract` rows check USB connection-type protobuf parsing without
 a Windows bus path, malformed lengths/varints, saved webcam/phone/lens-fallback
 selection and actual NV12 output from Windows H.264 and optional HEVC decoders.

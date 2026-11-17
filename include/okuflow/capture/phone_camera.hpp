@@ -75,8 +75,9 @@ struct AdbServerEndpoint {
     // True only for the private loopback server this OkuFlow process
     // launched itself (exact owned child in a kill-on-job-close job). An
     // overridden endpoint or a pre-existing default-port listener is borrowed.
-    // Only separately proven reviewed legacy OkuFlow bundles qualify for
-    // deliberate reclamation; unknown/shared SDK servers remain untouched.
+    // An overridden endpoint is never stopped. A default-port adb.exe that is
+    // hung, or blind to a phone Windows shows and serving no other device, is
+    // stopped through its exact listener handle (owner decision 2026-11-17).
     bool ownedByThisProcess{false};
 };
 AdbServerEndpoint ParseAdbServerEndpoint(std::string_view serverSocket, std::string_view serverPort,

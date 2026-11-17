@@ -280,7 +280,8 @@ aligned with the project goals.
   real camera or adb server. Preserve saved physical-camera selection when
   adding phone entries or changing discovery.
 - Follow `android/PROTOCOL.md`; never replace/kill a foreign adb server to test
-  the companion. Query structured USB transport type and use its transport ID;
+  the companion (the product's 2026-11-17 default-server stop rule is not a
+  testing permission). Query structured USB transport type and use its transport ID;
   unknown/Wi-Fi transports must not become cable-camera sources. The probe's
   recordings belong in local app data, not release bundles or the synced tree.
 - Report local fixtures separately from real-phone quality, disconnect and
@@ -478,12 +479,14 @@ aligned with the project goals.
 ## Owned adb lifecycle (2026-10-13)
 - A server started by OkuFlow must run on a private loopback port as an exact
   child assigned suspended to a non-inherited kill-on-close Windows job.
-  Normal shutdown and process crash clean up only that child. Existing default
-  listeners and endpoint overrides remain borrowed, except for the narrowly
-  reviewed legacy adoption contract below; never stop unknown/SDK servers.
-- Automatic owned-server restart requires confirmed host-version failure, no
-  live/starting phone session, cancellation checks and a 30-second cooldown
-  across failed launches and child exits. Do not persist PIDs as ownership proof.
+  Normal shutdown and process crash clean up only that child. Endpoint
+  overrides always remain borrowed. A default-port adb that is hung, or blind
+  to a phone Windows shows and serving no other device, is stopped only under
+  the owner's 2026-11-17 rule (see "Phone reconnect ladder" below).
+- Automatic owned-server restart requires confirmed host-version failure (or a
+  doctor blind restart), no live/starting phone session, cancellation checks
+  and a 5 s cooldown doubling to 30 s that link events reset. Do not persist
+  PIDs as ownership proof.
 - Count overlapping phone occupancy reservations rather than erasing a serial
   still used by another session. Repair an idle server before a new session
   registers itself. Shutdown must prevent any later owned bootstrap.
@@ -493,6 +496,26 @@ aligned with the project goals.
   preserve foreign server ownership while testing automatic recovery paths.
 - Keep lifecycle validation desktop-free with `adb_owned_child_fixture`, private
   ports and scripted probes; missing fixture registration must fail the gate.
+
+## Phone reconnect ladder (2026-11-17)
+- The owner decided on 2026-11-17 that a hanging default-port adb server is
+  killed, not worked around. Stop it only through `TryStopDefaultAdbServer`:
+  exact loopback listener handle, decision-time PID + creation time, image
+  `adb.exe`, not this process, `host:kill` first where it can answer. Never by
+  name, never a tree, never an adb endpoint environment variable, never a
+  server that lists another device in state DEVICE. Tests use fixture images
+  through `PhoneAdbTestHooks::terminableImageName` and private ports only.
+- Keep `phone_link_doctor` pure (no Qt, Windows or clock). Budgets reset on
+  events, not only time; a new rung needs a doctor row, a fake-adb row and a
+  trace line. Do not reintroduce "once per transport" launch budgets or
+  minute-long holds; the owner's complaint was stacked 30 s / 60 s waits.
+- A windowless sibling instance is reported, not terminated: an offscreen
+  test instance of the same build is indistinguishable from a stuck one.
+- New placeholder sentences need all 24 catalogs and per-entry small-agent
+  review; the eleven 2026-11-17 phone sentences were written without that
+  review (the implementer ran without sub-agents) and still need it.
+- Nothing here was observed on a real failing laptop; report fixture evidence
+  separately from real sleep/cable/phone acceptance.
 
 ## Automatic legacy USB recovery (2026-10-14)
 - Legacy adb reclamation is deliberate adoption of the reviewed OkuFlow bundle,

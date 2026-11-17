@@ -90,12 +90,14 @@ bundle validation and legacy-process reclamation have separate pinning gates.
 Do not infer permission to terminate an unknown process from a path override.
 
 If no listener or endpoint override exists, it starts adb hidden with
-`-L tcp:<port> server nodaemon`, which binds loopback without `-a`. Bootstrap is
-throttled to 30 seconds. New owned servers use a private ephemeral port and a
-non-inherited Windows kill-on-close job; normal app exit or crash stops only
-that exact child. Existing/default and overridden servers remain borrowed;
-only the reviewed legacy OkuFlow bundle qualifies for the separate reclamation
-rule below. A dead/failed owned child can yield to a newly available
+`-L tcp:<port> server nodaemon`, which binds loopback without `-a`. Bootstrap
+waits 5 s, doubling to 30 s without a new event (arrival, removal, resume,
+start, manual pick); every event returns to 5 s. New owned servers use a
+private ephemeral port and a non-inherited Windows kill-on-close job; normal app
+exit or crash stops only that exact child. Existing/default servers are
+borrowed while they serve the phone; a default-port server that hangs or is
+blind to a phone Windows shows is stopped under the owner's 2026-11-17 rule
+below. Overridden servers always remain the user's. A dead/failed owned child can yield to a newly available
 responsive default server after its sessions finish. An explicit webcam choice prevents owned bootstrap and
 relinquishes an idle owned server. The Python probe does not own server startup
 or shutdown.
@@ -119,15 +121,36 @@ another live/starting phone session holds a counted occupancy reservation.
 
 Owned readiness polling permits five seconds plus the current bounded probe.
 Two failed host-version probes use one-second per-read deadlines before an
-idle restart, with a fresh port and a 30-second retry budget. The IPv4 loopback
+idle restart, with a fresh port and the 5 s (doubling to 30 s) retry budget. A
+responsive owned server that lists no USB phone while Windows shows the ADB
+interface is restarted by the link doctor 5 s after the last event, then after
+15 s, then every 60 s. The IPv4 loopback
 listener's PID must match the exact held process handle before readiness is
 accepted; PID lookup is observation only, never termination authority. Shutdown
 latches out future bootstrap, and stopping a manager interrupts its next probe
 or polling step. Owned startup/recovery uses localized automatic-retry guidance;
 The product never sends users to Task Manager; it keeps checking and retrying
-the connection automatically. Recovery of a genuinely foreign server that
-retains the exclusive USB handle is an external ownership limitation, not
-permission to terminate that foreign process. Lifecycle and manager lock waits
+the connection automatically.
+
+**Default-port server stop (owner decision, 2026-11-17).** The owner decided
+that a default-port adb server that hangs is to be killed, not worked around.
+This replaces the earlier rule that an unknown listener is never terminated.
+With phone-use intent and no adb endpoint environment variable, a default-port
+server that is confirmed hung (two failed version probes spanning 5 s, 1 s
+inside an event's fast window), or that is responsive but blind to a phone
+Windows shows while OkuFlow's private server beside it is blind too, first
+receives one raw `host:kill`. If its loopback listener remains after 2 s, or it
+cannot answer at all, `TryStopDefaultAdbServer` terminates exactly the process
+behind that listener: it opens the listener's owning PID, requires the same PID
+and creation time as the identity observed when the decision was made, the
+image file name `adb.exe`, a process other than OkuFlow, and the same listener
+again immediately before `TerminateProcess` on the held handle. Never by name,
+never a process tree, never a stored PID. A responsive server that lists
+another device in state DEVICE is serving someone and keeps running; OkuFlow's
+private server runs beside it and the app says another program is using the
+phone's USB connection. An access-denied termination (elevated server or
+another user's) is traced and shown with the same sentence. Overridden
+endpoints are never asked to exit or stopped. Lifecycle and manager lock waits
 check cancellation every 20 ms; live-port observation does not wait for a host
 probe. Camera startup accepts only confirmed-ready results. Server identity
 includes port, PID and process creation time, so a restarted server reusing
@@ -149,8 +172,9 @@ rechecked before sending one bounded raw `host:kill`, including after TCP
 connection, and before any exact-handle forced termination. No process-name
 kill or saved PID grants authority. Recovery still requires new decoded frames.
 
-If a hung default listener cannot be reclaimed, it remains untouched and
-OkuFlow tries a private owned server. WinUSB may remain unavailable while that
+If a hung default listener is not a reviewed legacy bundle, OkuFlow starts a
+private owned server at once and the link doctor applies the 2026-11-17 stop
+rule above. WinUSB may remain unavailable while that
 other server retains the phone. An unused shadow server hands back only after
 its raw transport list is empty and the default answers two consecutive version
 checks. Unauthorized transports also prevent handback. Ordinary enumeration
@@ -161,8 +185,11 @@ After a camera failure, Windows can request a targeted reset of the selected
 USB transport without stopping adb. A responsive `host:version`, current
 authorized USB listing and a separate timed-out shell echo are required;
 the serial/transport is rechecked after the timeout. It sends only
-`host-transport-id:ID:reconnect`, at most once per phone/server per minute,
-including across new transport IDs or unsupported replies. An idle preferred
+`host-transport-id:ID:reconnect`: at once, 3 s later, then at most every 30 s
+per phone/server until the next event, including across new transport IDs or
+unsupported replies. A transport listed `offline`, `authorizing` or
+`connecting` receives the same targeted request without the DEVICE-only proof
+steps, because no client can use it in that state. An idle preferred
 phone can receive the same recovery during background discovery while a
 fallback webcam is active. Ordinary browsing, explicit webcam intent, coded
 phone problems, busy sessions and live/starting phone ownership do not trigger
@@ -171,8 +198,9 @@ Other adb clients using that same phone lose their transport during this reset;
 other phones and the server process are retained.
 
 A globally hung server cannot acknowledge this transport request. The automatic
-server recovery above handles OkuFlow-owned or proven legacy support; unknown
-shared servers remain untouched. OkuFlow does not reset every offline device,
+server recovery above handles OkuFlow-owned or proven legacy support and, under
+the 2026-11-17 rule, a hung default-port `adb.exe`; overridden endpoints remain
+the user's. OkuFlow does not reset every offline device,
 revoke authorization or restart the phone daemon. Private fake-server fixtures verify
 the guarded recovery; a naturally occurring live-server hang needs separate
 device evidence. The upstream host service is described by the

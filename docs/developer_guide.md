@@ -1164,9 +1164,11 @@ without a terminal on a private ephemeral loopback port and preserves an
 existing or overridden server. Its exact child is assigned to a non-inherited
 Windows kill-on-close job before running: app close and crash both stop it.
 An idle owned server can restart after two confirmed unresponsive version
-probes, with a 30-second cooldown across failures/crashes; live/starting phone
-sessions and cancellation suppress restart. Borrowed servers remain under
-their owner's control. The Android APK is built
+probes, with a 5 s cooldown doubling to 30 s across failures/crashes and reset
+by every link event; live/starting phone sessions and cancellation suppress
+restart. Overridden endpoints remain under their owner's control; a hung or
+blind default-port adb is stopped under the owner's 2026-11-17 rule
+(android/PROTOCOL.md, docs/adb_distribution.md). The Android APK is built
 and installed separately; some phone vendors require a separately installed
 Windows USB debugging driver. See [`docs/adb_distribution.md`](../docs/adb_distribution.md)
 for build provenance and redistribution terms.
@@ -1186,8 +1188,10 @@ Server epochs reset retry/launch state even when a restarted adb reuses IDs.
 Confirmed default-server hangs (two failures spanning five seconds) try narrow
 reviewed-legacy OkuFlow reclamation: exact process handle, canonical bundle,
 pinned adb manifest/image, product metadata or pinned public launcher hash,
-no sibling/session, serialized and revalidated before stop effects. Unknown
-listeners remain untouched while a private shadow tries USB. Empty raw private
+no sibling/session, serialized and revalidated before stop effects. Other
+hung or blind default listeners get a private shadow at once and are then
+asked to exit and, if needed, terminated through their exact listener handle by
+the link doctor (`phone_link_doctor`, `TryStopDefaultAdbServer`). Empty raw private
 transports plus two healthy default probes permit handback. `BorrowOnly` has no
 lifecycle effects; explicit webcam intent only releases idle owned support.
 See the provenance pins, private fixtures and limits in adb_distribution.md.
