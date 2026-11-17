@@ -22,6 +22,7 @@ PhoneLinkObservation Ready()
     o.server = PhoneServerKind::Owned;
     o.serverProbe = PhoneServerProbe::Responsive;
     o.phoneState = PhoneAdbState::Device;
+    o.hasTransportId = true;
     o.adbd = PhoneAdbdHealth::Answers;
     o.companion = PhoneCompanionProbe::Ready;
     return o;
@@ -133,9 +134,12 @@ private slots:
         QTest::newRow("two instances, phone busy") << With([](auto& o) {
             o.otherInstanceRunning = true; o.companion = PhoneCompanionProbe::SessionBusy; })
                                                    << D::OtherInstanceHoldsPhone;
-        QTest::newRow("two instances, phone held") << With([](auto& o) {
-            o.otherInstanceRunning = true; o.phoneState = PhoneAdbState::NotListed; })
+        QTest::newRow("two instances, busy problem code") << With([](auto& o) {
+            o.otherInstanceRunning = true; o.companion = PhoneCompanionProbe::Problem; o.problem = "sessionBusy"; })
                                                    << D::OtherInstanceHoldsPhone;
+        QTest::newRow("two instances, phone missing") << With([](auto& o) {
+            o.otherInstanceRunning = true; o.phoneState = PhoneAdbState::NotListed; })
+                                                      << D::NotListedByServer;
         QTest::newRow("windowless leftover instance") << With([](auto& o) {
             o.leftoverInstanceRunning = true; o.phoneState = PhoneAdbState::NotListed; })
                                                       << D::OtherProgramHoldsPhone;
@@ -236,6 +240,52 @@ private slots:
         QCOMPARE(int(doctor.Decide(Ready(), 4000).diagnosis), int(D::Connected));
         QCOMPARE(int(doctor.Decide(Ready(), 14000).diagnosis), int(D::Connected)); // Held 10 s.
         QCOMPARE(int(doctor.Decide(offline, 14500).action), int(A::ReconnectTransport));
+    }
+    void offlineWithoutTransportIdGoesDirectlyToOwnedRestart()
+    {
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::Resume, 0);
+        const auto offline = With([](auto& o) {
+            o.phoneState = PhoneAdbState::Offline;
+            o.hasTransportId = false;
+        });
+        for (int i = 0; i < doctor.Policy().blindRestartCap; ++i) {
+            const auto now = i * (doctor.Policy().restartCeilingMs + 1LL);
+            QCOMPARE(doctor.Decide(offline, now).action, A::RestartOwnedServer);
+            const auto next = doctor.Decide(offline, now + 1);
+            QCOMPARE(next.action, i + 1 == doctor.Policy().blindRestartCap ? A::WaitForUser : A::Relist);
+        }
+    }
+    void borrowedOfflineWithoutIdWaitsBeforeShadowing()
+    {
+        PhoneLinkDoctor doctor;
+        const auto offline = With([](auto& o) {
+            o.server = PhoneServerKind::BorrowedDefault;
+            o.phoneState = PhoneAdbState::Offline;
+            o.hasTransportId = false;
+        });
+        doctor.OnEvent(PhoneLinkEvent::Resume, 0);
+        const auto grace = doctor.Policy().stuckAfterReconnectMs;
+        QCOMPARE(doctor.Decide(offline, 0).action, A::Relist);
+        QCOMPARE(doctor.Decide(offline, grace - 1).action, A::Relist);
+        QCOMPARE(doctor.Decide(offline, grace).action, A::StartShadowServer);
+    }
+    void ownedOfflinePrefersASecondReconnectOnlyWhenDue_data()
+    {
+        QTest::addColumn<bool>("reconnectDue");
+        QTest::newRow("second reconnect due") << true;
+        QTest::newRow("second reconnect still cooling down") << false;
+    }
+    void ownedOfflinePrefersASecondReconnectOnlyWhenDue()
+    {
+        QFETCH(bool, reconnectDue);
+        PhoneLinkPolicy policy;
+        policy.reconnectRetryMs = policy.stuckAfterReconnectMs + (reconnectDue ? 0 : 1);
+        PhoneLinkDoctor doctor(policy);
+        const auto offline = With([](auto& o) { o.phoneState = PhoneAdbState::Offline; });
+        QCOMPARE(doctor.Decide(offline, 0).action, A::ReconnectTransport);
+        QCOMPARE(doctor.Decide(offline, policy.stuckAfterReconnectMs).action,
+                 reconnectDue ? A::ReconnectTransport : A::RestartOwnedServer);
     }
     void offlineThatNeedsAServerRestart()
     {
@@ -373,6 +423,39 @@ private slots:
         // An event (re-plug) renews the reconnects.
         doctor.OnEvent(PhoneLinkEvent::DeviceArrival, 61000);
         QCOMPARE(int(doctor.Decide(offline, 61000).action), int(A::ReconnectTransport));
+    }
+    void blindBorrowedDefaultNamesTheSiblingAtTakeoverCaps_data()
+    {
+        QTest::addColumn<int>("cap");
+        QTest::newRow("hand-over cap") << 0;
+        QTest::newRow("exit request cap") << 1;
+        QTest::newRow("termination cap") << 2;
+    }
+    void blindBorrowedDefaultNamesTheSiblingAtTakeoverCaps()
+    {
+        QFETCH(int, cap);
+        PhoneLinkPolicy policy;
+        policy.blindGraceMs = policy.takeoverGraceMs = policy.hostKillWaitMs = 0;
+        if (cap == 0) policy.handOverCap = 0;
+        if (cap == 1) policy.askExitCap = 0;
+        if (cap == 2) policy.terminateCap = 0;
+        PhoneLinkDoctor doctor(policy);
+        auto blind = Blind(PhoneServerKind::BorrowedDefault);
+        blind.otherInstanceRunning = true;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto decision = doctor.Decide(blind, 0);
+        if (cap > 0) {
+            QCOMPARE(decision.action, A::StartShadowServer);
+            blind.server = PhoneServerKind::Owned;
+            blind.shadowRunning = true;
+            decision = doctor.Decide(blind, 1);
+        }
+        if (cap == 2) {
+            QCOMPARE(decision.action, A::AskDefaultServerToExit);
+            decision = doctor.Decide(blind, 2);
+        }
+        QCOMPARE(decision.action, A::WaitForUser);
+        QCOMPARE(decision.diagnosis, D::OtherInstanceHoldsPhone);
     }
     void defaultThatAlternatelyListsAndLosesThePhoneIsNamed()
     {
@@ -656,6 +739,27 @@ private slots:
         doctor.OnEvent(PhoneLinkEvent::Resume, 200000);
         QCOMPARE(int(doctor.Decide(hung, 200000).action), int(A::Relist));
         QCOMPARE(int(doctor.Decide(hung, 200000 + limit).diagnosis), int(D::ReplugCable));
+    }
+    void absentUserEndpointSharesTheUnresponsiveDeadline()
+    {
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto missing = Blind(PhoneServerKind::Override);
+        missing.serverProbe = PhoneServerProbe::NoListener;
+        const auto limit = doctor.Policy().userEndpointUnresponsiveMs;
+        QCOMPARE(doctor.Decide(missing, 0).diagnosis, D::ServerStarting);
+        QCOMPARE(doctor.Decide(missing, limit - 1).action, A::Relist);
+        const auto named = doctor.Decide(missing, limit);
+        QCOMPARE(named.diagnosis, D::ReplugCable);
+        QCOMPARE(named.action, A::WaitForUser);
+
+        missing.serverProbe = PhoneServerProbe::Unresponsive;
+        QCOMPARE(doctor.Decide(missing, limit + 1).diagnosis, D::ReplugCable);
+        auto ready = Ready();
+        ready.server = PhoneServerKind::Override;
+        QCOMPARE(doctor.Decide(ready, limit + 2).diagnosis, D::Connected);
+        missing.serverProbe = PhoneServerProbe::NoListener;
+        QCOMPARE(doctor.Decide(missing, limit + 3).diagnosis, D::ServerStarting);
     }
     void confirmedHungDefaultIsTerminatedWithBudget()
     {
@@ -1756,31 +1860,37 @@ private slots:
         }
         QCOMPARE(PhoneLinkEventName(PhoneLinkEvent::Resume), std::string_view("resume"));
     }
-    void twoInstancesWaitForTheUser()
+    void siblingWindowAllowsBoundedOwnedRepair_data()
     {
-        // Changed deliberately (iteration 2, A12): the sibling window is
-        // blamed only after the blind grace; before that "Restoring".
+        QTest::addColumn<bool>("listingFails");
+        QTest::newRow("blind listing") << false;
+        QTest::newRow("failed listing") << true;
+    }
+    void siblingWindowAllowsBoundedOwnedRepair()
+    {
+        QFETCH(bool, listingFails);
         PhoneLinkDoctor doctor;
         doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
         auto held = Blind();
         held.otherInstanceRunning = true;
-        for (std::int64_t now = 0; now < 30000; now += 1000) {
-            const auto decision = doctor.Decide(held, now);
-            QVERIFY(decision.action != A::RestartOwnedServer); // Never restarts against a sibling.
-            if (now < doctor.Policy().blindGraceMs) {
-                QCOMPARE(int(decision.diagnosis), int(D::NotListedByServer));
-                QCOMPARE(int(decision.action), int(A::Relist));
-            } else {
-                QCOMPARE(int(decision.diagnosis), int(D::OtherInstanceHoldsPhone));
-                QCOMPARE(int(decision.action), int(A::WaitForUser));
-            }
+        if (listingFails) held.serverProbe = PhoneServerProbe::Unresponsive;
+        QCOMPARE(doctor.Decide(held, 0).action, A::Relist);
+        auto now = std::int64_t{doctor.Policy().blindGraceMs};
+        for (int i = 0; i < doctor.Policy().blindRestartCap; ++i) {
+            QCOMPARE(doctor.Decide(held, now).action, A::RestartOwnedServer);
+            now += doctor.Policy().restartCeilingMs + 1;
         }
-        // A sibling while the phone is listed is not blamed for anything.
+        const auto exhausted = doctor.Decide(held, now);
+        QCOMPARE(exhausted.diagnosis, D::OtherInstanceHoldsPhone);
+        QCOMPARE(exhausted.action, A::WaitForUser);
         auto listed = Ready();
         listed.otherInstanceRunning = true;
-        QCOMPARE(int(doctor.Decide(listed, 31000).diagnosis), int(D::Connected));
-    }
-};
+        QCOMPARE(doctor.Decide(listed, ++now).diagnosis, D::Connected);
+        listed.companion = PhoneCompanionProbe::SessionBusy;
+        const auto busy = doctor.Decide(listed, ++now);
+        QCOMPARE(busy.diagnosis, D::OtherInstanceHoldsPhone);
+        QCOMPARE(busy.action, A::WaitForUser);
+    }};
 
 QTEST_APPLESS_MAIN(PhoneLinkDoctorTests)
 #include "phone_link_doctor_tests.moc"

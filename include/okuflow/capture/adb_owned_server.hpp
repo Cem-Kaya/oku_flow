@@ -9,6 +9,8 @@
 #include <winsock2.h>
 #include <windows.h>
 
+#include "okuflow/capture/adb_listener.hpp"
+
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -50,7 +52,7 @@ public:
     bool IsRunning() const noexcept;
     bool WaitForExit(std::chrono::milliseconds timeout) const noexcept;
     bool OwnsListeningPort(std::uint16_t port) const;
-    // Caller closes this non-inherited SYNCHRONIZE-only handle. It cannot
+    // Caller closes this non-inherited query/synchronize handle. It cannot
     // terminate the child and remains valid while lifecycle handles change.
     HANDLE DuplicateObservationHandle() const;
     // Exact job termination plus a bounded wait; idempotent and noexcept.
@@ -127,9 +129,10 @@ public:
     // stop for a request that is no longer wanted (result Canceled).
     EnsureResult EnsureRunning(const std::atomic<bool>* canceled, bool allowLifecycleEffects = true,
                                std::function<bool()> stillWanted = {});
-    // Doctor rung 3: restart a responsive but blind owned child now. Live
-    // sessions and cancellation win; the doctor's budget paces it.
-    EnsureResult Restart(const std::atomic<bool>* canceled, std::function<bool()> stillWanted = {});
+    // Restart an idle owned child on the doctor's budget. A responsive
+    // shadow with a stuck phone must still be the listener that listed it.
+    EnsureResult Restart(const std::atomic<bool>* canceled, std::function<bool()> stillWanted = {},
+                         std::optional<AdbListenerIdentity> expectedListener = std::nullopt);
     // Events clear the restart cooldown and its doubling. Lock-free: safe on
     // the UI thread while a worker holds the manager through a launch; the
     // request is applied by the next EnsureRunning/Restart.
@@ -141,24 +144,14 @@ public:
     // Nonblocking snapshot of a live child, not a readiness guarantee. The
     // caller must accept only ready EnsureResult values before host traffic.
     std::optional<std::uint16_t> Port() const;
+    // Verify the snapshot child still uniquely owns the requested IPv4
+    // loopback listener, using the same ownership check as readiness.
+    std::optional<AdbListenerIdentity> ListeningIdentity(std::uint16_t port) const;
     int LaunchCount() const;
     int RestartCount() const;
-    // Starts of this manager's child that never answered: one for each
-    // start grace a child stays alive without ever answering (also one that
-    // is replaced, and one whose listener ownership cannot be verified), and
-    // one for a child that died before it ever answered (counted by the
-    // next EnsureRunning). A child that answers resets it to zero; events
-    // do not (the sentence it leads to stands until OkuFlow's adb answers).
-    // Lock-free: readable while a worker holds the manager through a launch.
+    // Counts a child that never proved readiness per start grace or at death.
+    // A ready child clears the count. Reading does not take the manager lock.
     int UnansweredStarts() const { return unansweredStarts_.load(); }
-    // The same count, for a manager that is about to be dropped (the caller
-    // keeps it, then calls Stop): also a child that died before it ever
-    // answered and was not counted yet, and one dropped alive whose
-    // readiness wait ran to its deadline unanswered (or that a probe found
-    // silent past it). A start cut short by a source change or a
-    // cancellation adds nothing, whatever its age. Interrupts work in flight
-    // first, as Stop does (the manager serves nothing afterwards).
-    int UnansweredStartsAtRetirement();
 private:
     bool Canceled(const std::atomic<bool>* canceled) const
     { return stopRequested_.load() || (canceled && canceled->load()); }
@@ -173,7 +166,7 @@ private:
         ~WantedScope() { owner->wanted_ = {}; }
         OwnedAdbServer* owner;
     };
-    bool ResponsiveOwnedChild(OwnedServerProbe response) const;
+    bool ObserveChildReadinessLocked(OwnedServerProbe response);
     bool WaitSlice(const std::atomic<bool>* canceled) const;
     bool WaitFor(std::chrono::milliseconds duration, const std::atomic<bool>* canceled) const;
     void ApplyBudgetResetLocked();
@@ -199,9 +192,6 @@ private:
     // death before answering was counted.
     std::chrono::steady_clock::time_point unansweredCountedAt_{};
     bool deathCounted_{false};
-    // The current child was observed missing its readiness deadline (its
-    // wait ran out, or a probe after the deadline failed).
-    bool readinessMissed_{false};
     std::atomic<int> unansweredStarts_{0};
     void CountUnansweredLocked();
     std::atomic<bool> budgetResetRequested_{false};

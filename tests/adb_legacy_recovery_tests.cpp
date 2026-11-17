@@ -343,6 +343,26 @@ private slots:
         QVERIFY(WaitProcessExited(server->ready.pid));
     }
 
+    void revokedEpisodeDuringHostKillWaitKeepsTheClassifiedChild()
+    {
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        const Distribution distribution = BuildDistribution(temp.path(), false);
+        auto server = StartServer(distribution, QDir(temp.path()).filePath(QStringLiteral("ready.txt")),
+                                  QStringLiteral("ignore"));
+        QVERIFY(server && server->Alive());
+        auto request = MakeRequest(server->ready.port, distribution, temp.path());
+        bool sameEpisode = true;
+        request.stillWanted = [&] { return sameEpisode; };
+        request.policy.afterHostKillDeliveredForTest = [&] { sameEpisode = false; };
+        const auto result = TryReclaimLegacyBundledAdbServer(request);
+        QVERIFY(!sameEpisode);
+        QVERIFY(result.hostKillDelivered);
+        QVERIFY(server->Alive());
+        QVERIFY(!result.usedForcedTermination);
+        QCOMPARE(result.status, LegacyAdbRecoveryStatus::Canceled);
+    }
+
     void foreignServerIsNotManagedAndUntouched()
     {
         QTemporaryDir temp;

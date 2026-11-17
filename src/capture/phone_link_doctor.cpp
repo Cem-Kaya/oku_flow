@@ -90,8 +90,6 @@ PhoneLinkDiagnosis DiagnosePhoneLink(const PhoneLinkObservation& o)
             return D::ServerStarting;
         if (o.adbInterface == PhoneAdbInterface::Absent) return D::NoAdbInterface;
         if (o.otherUsbListed) return D::WantedPhoneNotAttached;
-        if (o.otherInstanceRunning && o.adbInterface == PhoneAdbInterface::Present)
-            return D::OtherInstanceHoldsPhone;
         if (o.leftoverInstanceRunning && o.adbInterface == PhoneAdbInterface::Present)
             return D::OtherProgramHoldsPhone;
         return D::NotListedByServer;
@@ -249,6 +247,8 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
     const bool owned = o.server == PhoneServerKind::Owned;
     const bool responsive = o.serverProbe == PhoneServerProbe::Responsive;
     const bool interfacePresent = o.adbInterface == PhoneAdbInterface::Present;
+    const auto takeoverCapDiagnosis = o.otherInstanceRunning && interfacePresent && o.phoneState == PhoneAdbState::NotListed
+        ? D::OtherInstanceHoldsPhone : D::OtherProgramHoldsPhone;
     // Terminating a default-port adb: confirmed, stoppable, the Windows ADB
     // interface present (a slow but healthy server with no phone attached is
     // never killed), and a bounded number of times per episode.
@@ -268,7 +268,7 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         // terminates after an ask, the hung branch without one).
         const int aborted = hostKillSent ? abortedTakeoverStops_ : abortedHungStops_;
         if (terminate_.attempts >= policy_.terminateCap || aborted >= policy_.abortedStopCap) {
-            *raised = D::OtherProgramHoldsPhone;
+            *raised = hostKillSent ? takeoverCapDiagnosis : D::OtherProgramHoldsPhone;
             return A::WaitForUser;
         }
         if (!terminate_.Allowed(nowMs)) return A::Relist;
@@ -295,7 +295,7 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
             Reserve(shadow_, nowMs, policy_.restartCeilingMs, policy_.restartCeilingMs);
             return A::StartShadowServer;
         }
-        if (handOvers_ >= policy_.handOverCap) { *raised = D::OtherProgramHoldsPhone; return A::WaitForUser; }
+        if (handOvers_ >= policy_.handOverCap) { *raised = takeoverCapDiagnosis; return A::WaitForUser; }
         if (!shadow_.Allowed(nowMs)) return A::Relist;
         Reserve(shadow_, nowMs, policy_.restartRetryMs, policy_.restartCeilingMs);
         ++handOvers_;
@@ -315,6 +315,15 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         Reserve(handback_, nowMs, policy_.reconnectRetryMs, policy_.reconnectRetryMs);
         return A::HandBackToDefault;
     };
+    // Absence and a hang both leave the user's endpoint unavailable.
+    // Keep polling after the existing wait-for-user diagnosis is raised.
+    if (o.server == PhoneServerKind::Override &&
+        (diagnosis == D::ServerUnresponsive ||
+         (diagnosis == D::ServerStarting && o.serverProbe == PhoneServerProbe::NoListener)) &&
+        nowMs - SinceEventOr(unresponsiveSinceMs_) >= policy_.userEndpointUnresponsiveMs) {
+        *raised = D::ReplugCable;
+        return A::WaitForUser;
+    }
     switch (diagnosis) {
     case D::Connected:
     case D::NotWanted:
@@ -345,13 +354,6 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
             (o.defaultUnresponsiveConfirmed || abortedHungStops_ >= policy_.abortedStopCap ||
              terminate_.attempts >= policy_.terminateCap))
             return terminate(false);
-        // The user's endpoint (adb environment variables) is never stopped:
-        // a hang that lasts ends in the re-plug sentence.
-        if (o.server == PhoneServerKind::Override &&
-            nowMs - SinceEventOr(unresponsiveSinceMs_) >= policy_.userEndpointUnresponsiveMs) {
-            *raised = D::ReplugCable;
-            return A::WaitForUser;
-        }
         // OkuFlow's own server answers its version probes (so its manager
         // keeps it) while its device listing fails: an adb stuck in a USB
         // transport after sleep or a cable pull. The restart rung and its
@@ -359,7 +361,11 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         if (owned) {
             if (defaultServesPhone) return handBack();
             if (nowMs - SinceEventOr(unresponsiveSinceMs_) < policy_.blindGraceMs) return A::Relist;
-            if (restart_.attempts >= policy_.blindRestartCap) { *raised = D::ReplugCable; return A::WaitForUser; }
+            if (restart_.attempts >= policy_.blindRestartCap) {
+                *raised = o.otherInstanceRunning && interfacePresent && o.phoneState == PhoneAdbState::NotListed
+                    ? D::OtherInstanceHoldsPhone : D::ReplugCable;
+                return A::WaitForUser;
+            }
             if (!restart_.Allowed(nowMs)) return A::Relist;
             Reserve(restart_, nowMs, policy_.restartRetryMs, policy_.restartCeilingMs);
             return A::RestartOwnedServer;
@@ -367,8 +373,8 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         return A::Relist;
     case D::OtherInstanceHoldsPhone:
     case D::OtherProgramHoldsPhone:
-        // A sibling window (or a leftover) is blamed only after the blind
-        // grace: until then it may just be showing a PDF while USB settles.
+        // Allow USB to settle before attributing a missing phone to a
+        // leftover. A listed phone with a busy companion needs no grace.
         if (o.phoneState == PhoneAdbState::NotListed && !o.defaultStopRefused &&
             nowMs - SinceEventOr(blindSinceMs_) < policy_.blindGraceMs) {
             *raised = D::NotListedByServer;
@@ -398,7 +404,11 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         // sentence (probing goes on; a listing of the phone ends it).
         if (o.server == PhoneServerKind::Override) { *raised = D::ReplugCable; return A::WaitForUser; }
         if (owned && !o.shadowRunning) {
-            if (restart_.attempts >= policy_.blindRestartCap) { *raised = D::ReplugCable; return A::WaitForUser; }
+            if (restart_.attempts >= policy_.blindRestartCap) {
+                *raised = o.otherInstanceRunning && interfacePresent && o.phoneState == PhoneAdbState::NotListed
+                    ? D::OtherInstanceHoldsPhone : D::ReplugCable;
+                return A::WaitForUser;
+            }
             if (!restart_.Allowed(nowMs)) return A::Relist;
             Reserve(restart_, nowMs, policy_.restartRetryMs, policy_.restartCeilingMs);
             return A::RestartOwnedServer;
@@ -411,7 +421,7 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
             if (!interfacePresent) { *raised = D::ReplugCable; return A::WaitForUser; }
             if (askedExitMs_ < 0) {
                 if (askExit_.attempts >= policy_.askExitCap || abortedTakeoverStops_ >= policy_.abortedStopCap) {
-                    *raised = D::OtherProgramHoldsPhone;
+                    *raised = takeoverCapDiagnosis;
                     return A::WaitForUser;
                 }
                 if (!askExit_.Allowed(nowMs)) return A::Relist;
@@ -426,7 +436,7 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
     case D::Unauthorized:
         // The question may have been dismissed or timed out: one targeted
         // reconnect after a quiet period makes the phone ask again.
-        if (responsive && !unauthorizedReconnected_ && unauthorizedSinceMs_ >= 0 &&
+        if (responsive && o.hasTransportId && !unauthorizedReconnected_ && unauthorizedSinceMs_ >= 0 &&
             nowMs - SinceEventOr(unauthorizedSinceMs_) >= policy_.unauthorizedReconnectMs) {
             unauthorizedReconnected_ = true;
             return A::ReconnectTransport;
@@ -454,9 +464,8 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         if (diagnosis == D::Authorizing && stuckFor < policy_.authorizingGraceMs) return A::Relist;
         if (!owned) {
             // Another program's default server, or the user's endpoint: a
-            // bounded number of targeted reconnects (counted also when one
-            // cannot be sent, e.g. no transport id), then an end state.
-            if (reconnect_.attempts < policy_.foreignReconnects) {
+            // bounded number of targeted reconnects if adb supplied an ID.
+            if (o.hasTransportId && reconnect_.attempts < policy_.foreignReconnects) {
                 if (!reconnect_.Allowed(nowMs)) return A::Relist;
                 Reserve(reconnect_, nowMs, policy_.reconnectRetryMs, policy_.reconnectCeilingMs);
                 lastReconnectMs_ = nowMs;
@@ -469,32 +478,27 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
             // without serving it: the takeover rungs, unless it serves
             // another device.
             if (o.defaultHasOtherDevices) { *raised = D::OtherProgramHoldsPhone; return A::WaitForUser; }
+            if (!o.hasTransportId && stuckFor < policy_.stuckAfterReconnectMs) return A::Relist;
             return shadow();
         }
         // Once the restarts are spent the re-plug sentence stands until an
         // event or a change of state; a free reconnect slot no longer flips
         // it back to "Restoring".
         if (restart_.attempts >= policy_.blindRestartCap) { *raised = D::ReplugCable; return A::WaitForUser; }
-        const bool restartDue = owned && lastReconnectMs_ >= 0 &&
-            nowMs - lastReconnectMs_ >= policy_.stuckAfterReconnectMs && restart_.Allowed(nowMs);
-        if (restartDue && reconnect_.attempts >= 2) {
-            if (restart_.attempts >= policy_.blindRestartCap) { *raised = D::ReplugCable; return A::WaitForUser; }
+        // With no transport ID there is no targeted reconnect to try first.
+        const bool restartDue = restart_.Allowed(nowMs) && (!o.hasTransportId ||
+            (lastReconnectMs_ >= 0 && nowMs - lastReconnectMs_ >= policy_.stuckAfterReconnectMs));
+        const bool reconnectDue = o.hasTransportId && reconnect_.Allowed(nowMs);
+        if (restartDue && (!reconnectDue || reconnect_.attempts >= 2)) {
             Reserve(restart_, nowMs, policy_.restartRetryMs, policy_.restartCeilingMs);
             lastReconnectMs_ = -1;
             return A::RestartOwnedServer;
         }
-        if (reconnect_.Allowed(nowMs)) {
+        if (reconnectDue) {
             Reserve(reconnect_, nowMs, policy_.reconnectRetryMs, policy_.reconnectCeilingMs);
             lastReconnectMs_ = nowMs;
             return A::ReconnectTransport;
         }
-        if (restartDue) {
-            if (restart_.attempts >= policy_.blindRestartCap) { *raised = D::ReplugCable; return A::WaitForUser; }
-            Reserve(restart_, nowMs, policy_.restartRetryMs, policy_.restartCeilingMs);
-            lastReconnectMs_ = -1;
-            return A::RestartOwnedServer;
-        }
-        if (owned && restart_.attempts >= policy_.blindRestartCap) { *raised = D::ReplugCable; return A::WaitForUser; }
         return A::Relist;
     }
     case D::PhoneLocked:
@@ -588,8 +592,13 @@ PhoneLinkDecision PhoneLinkDoctor::Decide(const PhoneLinkObservation& observatio
     }
     const bool stuck = decision.diagnosis == D::Authorizing || decision.diagnosis == D::Offline ||
                        decision.diagnosis == D::TransportStalled;
-    if (decision.diagnosis == D::ServerUnresponsive) { if (unresponsiveSinceMs_ < 0) unresponsiveSinceMs_ = nowMs; }
-    else unresponsiveSinceMs_ = -1;
+    if (decision.diagnosis == D::ServerUnresponsive ||
+        (decision.diagnosis == D::ServerStarting && o.server == PhoneServerKind::Override &&
+         o.serverProbe == PhoneServerProbe::NoListener)) {
+        if (unresponsiveSinceMs_ < 0) unresponsiveSinceMs_ = nowMs;
+    } else {
+        unresponsiveSinceMs_ = -1;
+    }
     if (stuck) { if (stuckSinceMs_ < 0) stuckSinceMs_ = nowMs; }
     else { stuckSinceMs_ = -1; lastReconnectMs_ = -1; }
     if (o.phoneState == PhoneAdbState::Authorizing) { if (authorizingSinceMs_ < 0) authorizingSinceMs_ = nowMs; }

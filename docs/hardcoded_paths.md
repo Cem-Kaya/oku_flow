@@ -674,8 +674,8 @@ A phone stuck (offline, connecting, stalled, no permissions) on a server
 OkuFlow does not own: two reconnects (at once, 3 s), then 6 s later the
 takeover (borrowed default) or the re-plug sentence (user endpoint). The user
 endpoint also gets the re-plug sentence when it does not list a phone Windows
-shows after the 5 s blind grace, and when it stays unresponsive for 30 s
-(`userEndpointUnresponsiveMs`). Per
+shows after the 5 s blind grace, and when it stays absent or unresponsive
+for 30 s (`userEndpointUnresponsiveMs`). Per
 episode: 3 blind/stuck restarts, 2 `host:kill`, 3 terminations, 3 aborted stops
 (terminations aborted because the default answered its pre-stop listing and
 `host:kill` requests never sent to a default that still listens; counted apart from the caps, and apart for a
@@ -683,16 +683,13 @@ hung default and for a takeover, they end in the other-program sentence too), 4 
 default plus hand-backs. Iteration 8: an owned server whose listing fails
 while its version answers is restarted after the 5 s grace (15 s, then 60 s,
 3 per episode, then the re-plug sentence); a default whose listing fails on
-two listings spanning 5 s is a confirmed hang; starts of OkuFlow's own adb
-that stay silent past the 30 s start grace (one count per grace) or die
-before answering count with launch failures toward the AdbCannotStart
-sentence (2); resume signals within 5 s of the last applied resume are one
-event; 4 removals within 60 s name the cable until the link holds 10 s or no
-removal comes for 30 s. Iteration 9 changes no number: a restart a live
-session defers is given back (not one of the 3), a private child dropped
-without ever answering counts toward the AdbCannotStart 2 (after round 10:
-only one that died, or whose readiness wait ran out or a probe found silent
-past it; nothing for a release for a webcam), and a termination
+two listings spanning 5 s is a confirmed hang. Starts of OkuFlow's own adb
+that never prove readiness past the 30 s grace count once per grace or at
+death while the manager is active. Two failures surface the existing
+AdbCannotStart message. A restart a live session defers is given back.
+Resume signals within 5 s of the last applied resume are one event.
+Four removals within 60 s name the cable until the link holds 10 s or no
+removal comes for 30 s. A termination
 or ask refused for a live session (registered, a frame within 2 s) counts toward the 3 aborted stops. Windows interface Unknown
 (the SetupAPI query failed): after 30 s blind OkuFlow may start or restart its
 own server, never ask another to exit or stop it; that takeover, or a hung
@@ -706,7 +703,8 @@ every 20 s, one budget shared by discovery and camera starts (at most one per
 start attempt; once per event while the app process runs with its listener
 closed, not counting the 5 s after OkuFlow's own launch; a hold ends when the
 app process is gone, relaunching at once the first time per event and 20 s after
-the last launch later). A resumed phone
+the last launch later). An unwritten action returns its launch reservation
+while retaining the retry spacing. A resumed phone
 session must present a frame within 3 s. Owned bootstrap/crash cooldown 5 s,
 doubling to 30 s. Capture shutdown bounds its D3D11 completion-query poll to
 1000ms while retaining the facade's shared 1500ms stop deadline. Stopping a

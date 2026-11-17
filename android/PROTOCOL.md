@@ -89,11 +89,11 @@ diagnosis and one next action, least disturbing first:
 1. List again.
 2. Targeted `host-transport-id:<id>:reconnect`, also for a transport listed
    `offline`, `connecting`, `no permissions` or in a state OkuFlow does not
-   know (`host:reconnect-offline` when no id is known, and only on OkuFlow's
-   own private server, since it reaches every offline device of that server):
-   at once, 3 s later, then every 30 s until the next event. `authorizing` is
-   the Allow handshake and is never reset; it reads "Restoring USB
-   connection…" for 2 s and then asks the user to tap Allow. A phone listed
+   know, when adb supplies a transport ID. A fresh listing on the observed
+   server must still show the same USB serial, transport ID and state at
+   the write. The cadence is at once, 3 s later, then every 30 s until the
+   next event. During the `authorizing` handshake, Windows shows
+   "Restoring USB connection…" for 2 s and then asks the user to tap Allow. A phone listed
    `unauthorized` for 20 s without a change gets one targeted reconnect per
    event, which makes the phone ask the Allow question again. A
    transport in state DEVICE keeps the earlier proof steps before a reset
@@ -104,9 +104,9 @@ diagnosis and one next action, least disturbing first:
    suppress health probes for 10 s. On a server OkuFlow does not own (a
    borrowed default-port server or the user's own endpoint) a phone that stays
    `offline`, `connecting`, stalled or with `no permissions` gets two targeted
-   reconnects (counted also when one cannot be sent, for example without a
-   transport id), then an end state 6 s later: a default-port server that keeps
-   it stuck is holding the USB interface without serving it and follows rung 4
+   reconnects if the listing supplies an ID. Six seconds after the last
+   reconnect, or after the stuck grace when an ID-less listing comes from
+   the default, the default that keeps it stuck follows rung 4
    (unless it serves another device in state DEVICE: the other-program
    sentence); the user's endpoint is never taken over and Windows asks for a
    re-plug of the cable. The same sentence ends the user's endpoint's other
@@ -115,10 +115,14 @@ diagnosis and one next action, least disturbing first:
 3. Restart OkuFlow's own server when it answers `host:version` but lists no USB
    entry at all although Windows shows the ADB interface (another listed phone
    is not blindness), 5 s after the last event or first such observation, or
-   when a transport stays offline or connecting 6 s after two reconnects; then
-   15 s, then 60 s. At most three restarts per episode (until the next event);
-   after that Windows asks the user to unplug the phone's cable and plug it
-   back in, and keeps probing. Live sessions that deliver frames defer it.
+   when a transport stays offline or connecting 6 s after two reconnects.
+   An ID-less offline transport on the owned server goes directly to this
+   restart rung, including while that server runs beside a blind default.
+   In that case the responsive private listener must still belong to the
+   exact child that produced the listing. Retries are spaced 15 s, then 60 s.
+   After three restarts in one episode, Windows asks the user to unplug the
+   phone's cable and plug it back in, and keeps probing. A registered session defers the owned restart
+   and returns its retry slot.
    When Windows cannot say whether the ADB interface is there (only when the
    SetupAPI query itself fails; a phone that does not publish the standard ADB
    interface GUID reads as absent and gets the connect sentence), OkuFlow's
@@ -196,8 +200,11 @@ diagnosis and one next action, least disturbing first:
    when the Play activity is absent): at once after an event, 3 s and 6 s later,
    then every 20 s while the user wants the phone. Camera starts take at most
    one wake + launch per start attempt from that same per-event budget (no
-   timer of their own). The app is never force-stopped. Two exceptions end
-   the loop: when the app process runs but its listener refuses (the companion
+   timer of their own). After the activity request is written, the session
+   retries control through the remaining startup budget up to its camera
+   reserve, including when the service status goes unanswered. The app is
+   never force-stopped. Two exceptions end the loop. When the app process
+   runs but its listener refuses (the companion
    installed before the paused-status answer, while paused), whatever the
    keyguard shows, discovery and camera starts together launch once per event
    and Windows asks the user to open OkuFlow Camera and, if it shows that
@@ -262,8 +269,9 @@ phone is listed. `host:kill` itself goes out only after a fresh listing that
 succeeded, serves no other device and still does not list the phone, and
 after the same PID, creation time and `adb.exe` image checks (rechecked after
 connecting); termination does not repeat a `host:kill` already sent to that
-listener. The reviewed legacy OkuFlow bundle
-reclamation in docs/adb_distribution.md still runs first for a hung default.
+listener. The reviewed legacy OkuFlow bundle reclamation in
+docs/adb_distribution.md runs first for a hung default. A new link episode
+revokes it during the host-kill wait and before forced termination.
 
 ### Leftover OkuFlow instance (2026-11-17, iteration 2)
 

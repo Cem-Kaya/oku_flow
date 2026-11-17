@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <cwchar>
-#include <iphlpapi.h>
 #include <map>
 #include <thread>
 #include <utility>
@@ -182,34 +181,27 @@ bool OwnedChildProcess::WaitForExit(std::chrono::milliseconds timeout) const noe
     return WaitForSingleObject(process_, wait) == WAIT_OBJECT_0;
 }
 
+namespace {
+bool ProcessOwnsListeningPort(HANDLE process, DWORD pid, std::uint16_t port)
+{
+    if (!process || WaitForSingleObject(process, 0) != WAIT_TIMEOUT) return false;
+    TcpListenerRow listener;
+    return FindLoopbackListener(port, &listener) == AdbListenerLookup::Found &&
+        !listener.ipv6 && listener.loopback && listener.processId == pid &&
+        WaitForSingleObject(process, 0) == WAIT_TIMEOUT;
+}
+} // namespace
+
 bool OwnedChildProcess::OwnsListeningPort(std::uint16_t port) const
 {
-    if (!IsRunning()) return false;
-    ULONG bytes = 0;
-    if (GetExtendedTcpTable(nullptr, &bytes, FALSE, AF_INET, TCP_TABLE_OWNER_PID_LISTENER, 0)
-        != ERROR_INSUFFICIENT_BUFFER) return false;
-    std::vector<std::uint8_t> storage;
-    DWORD result = ERROR_INSUFFICIENT_BUFFER;
-    for (int attempt = 0; attempt < 3 && result == ERROR_INSUFFICIENT_BUFFER; ++attempt) {
-        storage.resize(bytes);
-        result = GetExtendedTcpTable(storage.data(), &bytes, FALSE, AF_INET,
-                                      TCP_TABLE_OWNER_PID_LISTENER, 0);
-    }
-    if (result != NO_ERROR) return false;
-    const auto* table = reinterpret_cast<const MIB_TCPTABLE_OWNER_PID*>(storage.data());
-    for (DWORD i = 0; i < table->dwNumEntries; ++i) {
-        const auto& row = table->table[i];
-        if (row.dwOwningPid == processId_ && ntohs(static_cast<u_short>(row.dwLocalPort)) == port &&
-            ntohl(row.dwLocalAddr) == INADDR_LOOPBACK && IsRunning()) return true;
-    }
-    return false;
+    return ProcessOwnsListeningPort(process_, processId_, port);
 }
 
 HANDLE OwnedChildProcess::DuplicateObservationHandle() const
 {
     HANDLE observation = nullptr;
     return process_ && DuplicateHandle(GetCurrentProcess(), process_, GetCurrentProcess(),
-        &observation, SYNCHRONIZE, FALSE, 0) ? observation : nullptr;
+        &observation, SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, 0) ? observation : nullptr;
 }
 
 void OwnedChildProcess::Stop() noexcept
@@ -234,10 +226,14 @@ OwnedAdbServer::OwnedAdbServer(ProbeFn probe, LaunchFn launch, PortPickerFn pick
 
 OwnedAdbServer::~OwnedAdbServer() { Stop(); }
 
-bool OwnedAdbServer::ResponsiveOwnedChild(OwnedServerProbe response) const
+bool OwnedAdbServer::ObserveChildReadinessLocked(OwnedServerProbe response)
 {
-    return response == OwnedServerProbe::Responsive && child_ && child_->IsRunning() && port_ &&
-        (!policy_.verifyListenerOwnership || child_->OwnsListeningPort(*port_));
+    if (response != OwnedServerProbe::Responsive || !child_ || !child_->IsRunning() || !port_)
+        return false;
+    if (!answered_ && policy_.verifyListenerOwnership && !child_->OwnsListeningPort(*port_)) return false;
+    answered_ = true;
+    unansweredStarts_.store(0);
+    return true;
 }
 
 bool OwnedAdbServer::WaitSlice(const std::atomic<bool>* canceled) const
@@ -289,7 +285,6 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::LaunchAndAwaitLocked(
         answered_ = false;
         unansweredCountedAt_ = launchedAt_;
         deathCounted_ = false;
-        readinessMissed_ = false;
         const auto deadline = std::chrono::steady_clock::now() + policy_.readinessDeadline;
         for (;;) {
             if (Halted(canceled)) return EnsureResult::Canceled; // Child stays owned.
@@ -304,15 +299,10 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::LaunchAndAwaitLocked(
             }
             const auto response = probe_(*port_, canceled);
             if (Halted(canceled)) return EnsureResult::Canceled;
-            if (ResponsiveOwnedChild(response)) {
-                answered_ = true;
-                unansweredStarts_.store(0);
+            if (ObserveChildReadinessLocked(response))
                 return restart ? EnsureResult::Restarted : EnsureResult::Launched;
-            }
-            if (std::chrono::steady_clock::now() >= deadline) {
-                readinessMissed_ = true; // Its readiness wait ran out unanswered.
+            if (std::chrono::steady_clock::now() >= deadline)
                 return EnsureResult::NotReady; // Owned child left for later probes.
-            }
             if (!WaitSlice(canceled)) return EnsureResult::Canceled;
         }
     }
@@ -335,20 +325,9 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::EnsureRunning(const std::atomic<boo
     if (child_ && child_->IsRunning() && port_) {
         const auto response = probe_(*port_, canceled);
         if (Halted(canceled)) return EnsureResult::Canceled;
-        if (ResponsiveOwnedChild(response)) {
-            answered_ = true;
-            unansweredStarts_.store(0);
-            return EnsureResult::Running;
-        }
-        // A start whose readiness wait was cut short (a source change, a
-        // cancellation) is observed missing its readiness only by a probe
-        // that fails after the deadline.
-        if (!answered_ && std::chrono::steady_clock::now() - launchedAt_ >= policy_.readinessDeadline)
-            readinessMissed_ = true;
+        if (ObserveChildReadinessLocked(response)) return EnsureResult::Running;
         if (!allowLifecycleEffects) return EnsureResult::NotReady;
-        if (response == OwnedServerProbe::Responsive && child_->IsRunning())
-            return EnsureResult::NotReady; // Ownership lookup is unknown/mismatched, not a host hang.
-        // Alive and never answered: still starting (antivirus, load), not hung.
+        // Give a child that never proved readiness its normal start grace.
         if (!answered_ && std::chrono::steady_clock::now() - launchedAt_ < policy_.startGrace)
             return EnsureResult::NotReady;
         // Confirm with further consecutive non-responsive probes, spaced
@@ -360,13 +339,7 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::EnsureRunning(const std::atomic<boo
             if (!child_->IsRunning()) { confirmed = false; break; }
             const auto confirmedResponse = probe_(*port_, canceled);
             if (Halted(canceled)) return EnsureResult::Canceled;
-            if (ResponsiveOwnedChild(confirmedResponse)) {
-                answered_ = true;
-                unansweredStarts_.store(0);
-                return EnsureResult::Running;
-            }
-            if (confirmedResponse == OwnedServerProbe::Responsive && child_->IsRunning())
-                return EnsureResult::NotReady;
+            if (ObserveChildReadinessLocked(confirmedResponse)) return EnsureResult::Running;
         }
         if (confirmed && child_->IsRunning()) {
             if (Halted(canceled)) return EnsureResult::Canceled;
@@ -404,7 +377,8 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::EnsureRunning(const std::atomic<boo
 }
 
 OwnedAdbServer::EnsureResult OwnedAdbServer::Restart(const std::atomic<bool>* canceled,
-                                                   std::function<bool()> stillWanted)
+                                                   std::function<bool()> stillWanted,
+                                                   std::optional<AdbListenerIdentity> expectedListener)
 {
     std::unique_lock lock(mutex_, std::defer_lock);
     while (!lock.try_lock_for(std::chrono::milliseconds(20))) {
@@ -413,6 +387,8 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::Restart(const std::atomic<bool>* ca
     const WantedScope scope(this, std::move(stillWanted));
     if (stopped_) return EnsureResult::Stopped;
     if (Halted(canceled)) return EnsureResult::Canceled;
+    if (expectedListener && ListeningIdentity(expectedListener->port) != expectedListener)
+        return EnsureResult::Canceled;
     ApplyBudgetResetLocked();
     if (hasLiveSessions_ && hasLiveSessions_()) return EnsureResult::RestartDeferredLiveSession;
     if (Halted(canceled)) return EnsureResult::Canceled;
@@ -429,9 +405,8 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::Restart(const std::atomic<bool>* ca
 
 void OwnedAdbServer::CountUnansweredLocked()
 {
-    // A child that never answered: one count per start grace it stays alive
-    // (so one that is never replaced, as when its listener ownership cannot
-    // be verified, still reaches the sentence), one when it died.
+    // A child that never proved readiness: one count per start grace
+    // it stays alive, or one when it dies.
     if (!child_ || answered_) return;
     if (!child_->IsRunning()) {
         if (!deathCounted_) { deathCounted_ = true; ++unansweredStarts_; }
@@ -442,28 +417,6 @@ void OwnedAdbServer::CountUnansweredLocked()
         unansweredCountedAt_ = now;
         ++unansweredStarts_;
     }
-}
-
-int OwnedAdbServer::UnansweredStartsAtRetirement()
-{
-    // The manager is about to be stopped: work in flight on it (a launch, a
-    // readiness or confirmation wait) is interrupted first, as Stop() does,
-    // so this never waits for it.
-    stopRequested_.store(true);
-    std::lock_guard lock(mutex_);
-    // Only what was observed counts, never the child's age alone: a death
-    // before it ever answered, or a live child whose readiness wait ran to
-    // its deadline unanswered (or that a later probe found silent past it),
-    // once and only if no start grace counted it already. A start cut short
-    // by a source change or a cancellation was never judged: nothing.
-    if (!child_ || answered_) return unansweredStarts_.load();
-    if (!child_->IsRunning()) {
-        if (!deathCounted_) { deathCounted_ = true; ++unansweredStarts_; }
-    } else if (readinessMissed_ && unansweredCountedAt_ == launchedAt_) {
-        unansweredCountedAt_ = std::chrono::steady_clock::now();
-        ++unansweredStarts_;
-    }
-    return unansweredStarts_.load();
 }
 
 void OwnedAdbServer::ResetBudgets()
@@ -504,6 +457,17 @@ std::optional<std::uint16_t> OwnedAdbServer::Port() const
     const auto snapshot = observation_.load();
     return snapshot && WaitForSingleObject(snapshot->process, 0) == WAIT_TIMEOUT
         ? std::optional<std::uint16_t>(snapshot->port) : std::nullopt;
+}
+
+std::optional<AdbListenerIdentity> OwnedAdbServer::ListeningIdentity(std::uint16_t port) const
+{
+    const auto snapshot = observation_.load();
+    if (stopRequested_.load() || !snapshot || snapshot->port != port) return std::nullopt;
+    const DWORD pid = GetProcessId(snapshot->process);
+    if (!pid || !ProcessOwnsListeningPort(snapshot->process, pid, port)) return std::nullopt;
+    const auto identity = ReadAdbListenerIdentity(port, pid, snapshot->process);
+    if (stopRequested_.load() || observation_.load() != snapshot) return std::nullopt;
+    return identity;
 }
 
 int OwnedAdbServer::LaunchCount() const { std::lock_guard lock(mutex_); return launches_; }

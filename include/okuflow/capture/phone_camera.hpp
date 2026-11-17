@@ -178,14 +178,17 @@ struct PhoneAdbTestHooks {
     // Runs after the raw host:kill connect, before any byte is written.
     std::function<void()> afterHostKillConnectForTest;
     // Runs after a transport reconnect request's connect (offline and
-    // stalled-device paths), before its authority check and any byte.
+    // stalled-device paths), before its fresh listing and any byte.
     std::function<void()> afterReconnectConnectForTest;
+    // Adjust a fixture's parsed listing, for example to model a private
+    // adb server that omits transport IDs.
+    std::function<void(std::uint16_t, std::vector<AdbDeviceEntry>&)> transformAdbEntriesForTest;
     // Stands in for the legacy bundle reclamation of a hung default, which
     // runs only in production (never against the machine's default port
     // from a fixture): set, the branch is entered as in production, this
     // runs in place of the reclamation, and the branch goes on as for a
     // default that is not a legacy bundle.
-    std::function<void()> legacyReclaimForTest;
+    std::function<void(const std::function<bool()>& stillWanted)> legacyReclaimForTest;
     // Reports a live phone session (registered and delivering frames), for
     // the refusal of the ask and termination executors, in addition to the
     // real sessions (lets a test make one go live at an exact point).

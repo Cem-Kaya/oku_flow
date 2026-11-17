@@ -1,9 +1,6 @@
 #ifdef _WIN32
 #include "okuflow/capture/adb_legacy_recovery.hpp"
 
-// ws2tcpip.h first: the IPv6 listener table types need ws2ipdef.h.
-#include <ws2tcpip.h>
-#include <iphlpapi.h>
 #include <sddl.h>
 #include <tlhelp32.h>
 
@@ -19,7 +16,6 @@
 #include <cstring>
 #include <cwchar>
 #include <map>
-#include <mutex>
 #include <optional>
 #include <set>
 #include <thread>
@@ -229,21 +225,13 @@ bool SameIdentity(const ProcessIdentity& left, const ProcessIdentity& right)
            EqualNoCase(left.canonicalImagePath, right.canonicalImagePath);
 }
 
-enum class ListenerLookup { Found, None, Ambiguous, Error };
-
-// Observation only: maps the listener OkuFlow reaches on 127.0.0.1:port
-// (AdbListenerRows: loopback, else any-address) to one PID. The PID is used
-// solely to open the exact handle revalidated later.
-ListenerLookup FindLoopbackListenerPid(std::uint16_t port, DWORD* pid)
+// The PID is used solely to open the exact handle revalidated later.
+AdbListenerLookup FindLoopbackListenerPid(std::uint16_t port, DWORD* pid)
 {
-    std::vector<TcpListenerRow> rows;
-    if (!ReadTcpListenerRows(&rows)) return ListenerLookup::Error;
-    std::set<DWORD> owners;
-    for (const auto& row : AdbListenerRows(rows, port)) owners.insert(row.processId);
-    if (owners.empty()) return ListenerLookup::None;
-    if (owners.size() > 1) return ListenerLookup::Ambiguous;
-    *pid = *owners.begin();
-    return ListenerLookup::Found;
+    TcpListenerRow listener;
+    const auto result = FindLoopbackListener(port, &listener);
+    if (result == AdbListenerLookup::Found) *pid = listener.processId;
+    return result;
 }
 
 // StringFileInfo ProductName through the file's own translation table,
@@ -680,7 +668,7 @@ std::optional<LegacyAdbRecoveryResult> Revalidate(const Target& target,
     }
     DWORD listenerPid = 0;
     switch (FindLoopbackListenerPid(request.port, &listenerPid)) {
-    case ListenerLookup::Found:
+    case AdbListenerLookup::Found:
         if (listenerPid != target.identity.pid) {
             abort.status = Status::IdentityChanged;
             abort.detail = Detail::ListenerChanged;
@@ -688,7 +676,7 @@ std::optional<LegacyAdbRecoveryResult> Revalidate(const Target& target,
             return abort;
         }
         break;
-    case ListenerLookup::Error:
+    case AdbListenerLookup::Error:
         abort.status = Status::Failed;
         abort.detail = Detail::ListenerQueryFailed;
         abort.diagnostic = ErrorText("Query loopback listener table");
@@ -732,9 +720,9 @@ void NotePortAfterExit(std::uint16_t port, DWORD oldPid, std::string* diagnostic
     const auto deadline = Clock::now() + std::chrono::milliseconds(250);
     for (;;) {
         DWORD listenerPid = 0;
-        const ListenerLookup lookup = FindLoopbackListenerPid(port, &listenerPid);
-        if (lookup == ListenerLookup::None) return;
-        if (lookup == ListenerLookup::Found && listenerPid != oldPid) {
+        const AdbListenerLookup lookup = FindLoopbackListenerPid(port, &listenerPid);
+        if (lookup == AdbListenerLookup::None) return;
+        if (lookup == AdbListenerLookup::Found && listenerPid != oldPid) {
             *diagnostic += "; the port has since been claimed by another listener";
             return;
         }
@@ -791,7 +779,7 @@ bool SendRawHostKill(std::uint16_t port, DWORD pid, const std::atomic<bool>* can
     }
     if (afterConnectForTest) afterConnectForTest();
     DWORD listener = 0;
-    if (FindLoopbackListenerPid(port, &listener) != ListenerLookup::Found || listener != pid) return false;
+    if (FindLoopbackListenerPid(port, &listener) != AdbListenerLookup::Found || listener != pid) return false;
     constexpr char requestBytes[] = "0009host:kill";
     constexpr int requestLength = static_cast<int>(sizeof(requestBytes) - 1);
     const auto deadline = Clock::now() + std::chrono::milliseconds(500);
@@ -833,84 +821,6 @@ BOOL CALLBACK FindVisibleWindow(HWND window, LPARAM parameter)
 
 } // namespace
 
-namespace {
-std::mutex& RowsTransformMutex() { static std::mutex mutex; return mutex; }
-std::function<void(std::vector<TcpListenerRow>&)>& RowsTransform()
-{
-    static std::function<void(std::vector<TcpListenerRow>&)> transform;
-    return transform;
-}
-// One listener table; the table can grow between the size query and the
-// read, so the read is retried.
-template <typename Table>
-bool ReadListenerTable(ULONG family, std::vector<std::uint8_t>* storage)
-{
-    ULONG bytes = 0;
-    if (GetExtendedTcpTable(nullptr, &bytes, FALSE, family, TCP_TABLE_OWNER_PID_LISTENER, 0) != ERROR_INSUFFICIENT_BUFFER)
-        return false;
-    DWORD result = ERROR_INSUFFICIENT_BUFFER;
-    for (int attempt = 0; attempt < 3 && result == ERROR_INSUFFICIENT_BUFFER; ++attempt) {
-        storage->resize(std::max<ULONG>(bytes, sizeof(Table)));
-        result = GetExtendedTcpTable(storage->data(), &bytes, FALSE, family, TCP_TABLE_OWNER_PID_LISTENER, 0);
-    }
-    return result == NO_ERROR;
-}
-} // namespace
-
-bool ReadTcpListenerRows(std::vector<TcpListenerRow>* rows)
-{
-    rows->clear();
-    std::vector<std::uint8_t> v4, v6;
-    if (!ReadListenerTable<MIB_TCPTABLE_OWNER_PID>(AF_INET, &v4)) return false;
-    const auto* table4 = reinterpret_cast<const MIB_TCPTABLE_OWNER_PID*>(v4.data());
-    for (DWORD i = 0; i < table4->dwNumEntries; ++i) {
-        const auto& row = table4->table[i];
-        TcpListenerRow out;
-        out.port = ntohs(static_cast<u_short>(row.dwLocalPort));
-        out.loopback = ntohl(row.dwLocalAddr) == INADDR_LOOPBACK;
-        out.anyAddress = row.dwLocalAddr == INADDR_ANY;
-        out.processId = row.dwOwningPid;
-        rows->push_back(out);
-    }
-    // No IPv6 stack is not an error: the IPv4 rows stand alone.
-    if (ReadListenerTable<MIB_TCP6TABLE_OWNER_PID>(AF_INET6, &v6)) {
-        const auto* table6 = reinterpret_cast<const MIB_TCP6TABLE_OWNER_PID*>(v6.data());
-        for (DWORD i = 0; i < table6->dwNumEntries; ++i) {
-            const auto& row = table6->table[i];
-            TcpListenerRow out;
-            out.ipv6 = true;
-            out.port = ntohs(static_cast<u_short>(row.dwLocalPort));
-            static const UCHAR any[16]{};
-            static const UCHAR loopback[16]{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
-            out.anyAddress = std::memcmp(row.ucLocalAddr, any, 16) == 0;
-            out.loopback = std::memcmp(row.ucLocalAddr, loopback, 16) == 0;
-            out.processId = row.dwOwningPid;
-            rows->push_back(out);
-        }
-    }
-    std::function<void(std::vector<TcpListenerRow>&)> transform;
-    { std::lock_guard lock(RowsTransformMutex()); transform = RowsTransform(); }
-    if (transform) transform(*rows);
-    return true;
-}
-
-std::vector<TcpListenerRow> AdbListenerRows(const std::vector<TcpListenerRow>& rows, std::uint16_t port)
-{
-    std::vector<TcpListenerRow> loopback, any;
-    for (const auto& row : rows) {
-        if (row.port != port) continue;
-        if (!row.ipv6 && row.loopback) loopback.push_back(row);
-        else if (row.anyAddress) any.push_back(row);
-    }
-    return loopback.empty() ? any : loopback;
-}
-
-void SetTcpListenerRowsTransformForTest(std::function<void(std::vector<TcpListenerRow>&)> transform)
-{
-    std::lock_guard lock(RowsTransformMutex());
-    RowsTransform() = std::move(transform);
-}
-
 DefaultAdbStopResult TryStopDefaultAdbServer(const DefaultAdbStopRequest& request)
 {
     using S = DefaultAdbStopStatus;
@@ -919,10 +829,10 @@ DefaultAdbStopResult TryStopDefaultAdbServer(const DefaultAdbStopRequest& reques
     if (canceled()) { result.status = S::Canceled; return result; }
     DWORD pid = 0;
     switch (FindLoopbackListenerPid(request.port, &pid)) {
-    case ListenerLookup::Found: break;
-    case ListenerLookup::None:
+    case AdbListenerLookup::Found: break;
+    case AdbListenerLookup::None:
         result.status = S::NoListener; result.diagnostic = "No loopback listener"; return result;
-    case ListenerLookup::Ambiguous:
+    case AdbListenerLookup::Ambiguous:
         result.status = S::IdentityChanged; result.diagnostic = "Several processes listen on the port"; return result;
     default:
         result.status = S::Failed; result.diagnostic = ErrorText("Query loopback listener table"); return result;
@@ -966,7 +876,7 @@ DefaultAdbStopResult TryStopDefaultAdbServer(const DefaultAdbStopRequest& reques
         FILETIME again{}, e{}, k{}, u{};
         return ProcessAlive(process.handle) &&
             GetProcessTimes(process.handle, &again, &e, &k, &u) && CreationTicks(again) == CreationTicks(created) &&
-            FindLoopbackListenerPid(request.port, &listener) == ListenerLookup::Found && listener == pid;
+            FindLoopbackListenerPid(request.port, &listener) == AdbListenerLookup::Found && listener == pid;
     };
     const auto unwanted = [&] { return request.stillWanted && !request.stillWanted(); };
     if (request.sendHostKillFirst) {
@@ -1482,12 +1392,12 @@ LegacyAdbRecoveryResult TryReclaimLegacyBundledAdbServer(
 
     DWORD listenerPid = 0;
     switch (FindLoopbackListenerPid(request.port, &listenerPid)) {
-    case ListenerLookup::Found:
+    case AdbListenerLookup::Found:
         break;
-    case ListenerLookup::None:
+    case AdbListenerLookup::None:
         return MakeResult(Status::NotManaged, Detail::NoLoopbackListener,
                           "No loopback IPv4 listener on the requested port");
-    case ListenerLookup::Ambiguous:
+    case AdbListenerLookup::Ambiguous:
         return MakeResult(Status::NotManaged, Detail::AmbiguousListener,
                           "Several processes listen on the requested loopback port");
     default:
@@ -1542,7 +1452,7 @@ LegacyAdbRecoveryResult TryReclaimLegacyBundledAdbServer(
         DWORD stablePid = 0;
         if (!CaptureIdentity(target.process.handle, &stable) ||
             !SameIdentity(stable, target.identity) ||
-            FindLoopbackListenerPid(request.port, &stablePid) != ListenerLookup::Found ||
+            FindLoopbackListenerPid(request.port, &stablePid) != AdbListenerLookup::Found ||
             stablePid != target.identity.pid) {
             auto result = MakeResult(Status::IdentityChanged, Detail::ListenerChanged,
                                      "Listener identity changed during classification");
@@ -1582,6 +1492,7 @@ LegacyAdbRecoveryResult TryReclaimLegacyBundledAdbServer(
     }
     outcome.hostKillDelivered = killDelivered;
     if (killDelivered) {
+        if (policy.afterHostKillDeliveredForTest) policy.afterHostKillDeliveredForTest();
         switch (WaitForExit(target.process.handle, policy.hostKillExitWait, request, true)) {
         case ExitWait::Exited:
             outcome.status = Status::Recovered;

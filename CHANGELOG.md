@@ -2,20 +2,33 @@
 
 ## [Unreleased]
 
-- Bind USB phone recovery to the Android tool that supplied the listing.
-  Preserve replacement servers and skip reconnects when the phone has already
-  recovered. Repeated live-session vetoes reach the existing stop limit.
-  Phone-link traces record fixed companion problem codes.
+- USB reconnects require a fresh matching listing on the observed server.
+  An offline phone listed without a transport ID goes directly to the
+  bounded restart of OkuFlow's own server, including when it runs beside a
+  blind default. An ID-less offline phone on a borrowed default gets time to
+  recover before OkuFlow starts a private server.
+- Wake and launch handle duplicate serials after USB re-enumeration.
+  A second ready transport also keeps a shared server from being stopped.
+  Changing source during transport selection cancels the shell command.
+  Camera startup keeps retrying the companion connection after a prompt
+  refusal, even if the launch status goes unanswered. A silent control open
+  leaves time for USB recovery, and an explicit adb refusal of the activity
+  request ends the attempt.
+- A phone link event cancels a pending stop of the shared server, including
+  legacy bundle recovery. Repeated live-session vetoes reach the existing
+  stop limit. If the phone remains unlisted after a bounded takeover, the
+  app identifies a second OkuFlow window when present.
+  Owned servers verify listener ownership at readiness and before an idle
+  shadow hands back. Children that fail readiness can restart on a fresh port.
+- Phone-link traces record fixed companion problem codes. An absent configured
+  endpoint reaches its existing recovery message.
 
 - Submit Android 0.1.5 (code 6) with the phone-link recovery changes to the
   Play closed test (Alpha). Not yet run on a device.
 - Picking the phone that is already chosen no longer cancels a phone
   connection step that is under way. Choosing another source while OkuFlow
   repairs the phone connection now also stops the repair inside OkuFlow's
-  Android tool. When OkuFlow's own Android tool keeps dying shortly after it
-  starts, or stays silent while another program's tool lists the phone,
-  OkuFlow uses the other tool or says that its own cannot start, instead of
-  blaming another program. A phone camera behind a PDF page or a recording is
+  Android tool. A phone camera behind a PDF page or a recording is
   no longer treated as idle, and another program's Android tool is never
   stopped while a phone session is delivering frames. Choosing a webcam while
   OkuFlow's own Android tool is still starting no longer counts against that

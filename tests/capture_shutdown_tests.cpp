@@ -598,13 +598,18 @@ private slots:
     void stalledFinalReleaseSharesTheOriginalDeadline()
     {
         okuflow::CaptureShutdown control;
-        std::promise<void> finishRelease;
+        std::promise<void> finishRelease, coordinatorRunning;
         auto releaseFuture = finishRelease.get_future().share();
         std::thread coordinator([&] {
             control.MarkQuiescent();
+            coordinatorRunning.set_value();
             if (control.WaitReleasePermission()) releaseFuture.wait();
             control.MarkFinished();
         });
+        // The 25 ms deadline measures the shutdown, not how long a loaded
+        // machine takes to schedule a new thread (a hosted runner missed it
+        // before the coordinator had run at all).
+        coordinatorRunning.get_future().wait();
         const auto deadline = std::chrono::steady_clock::now() + 25ms;
         control.Cancel();
         const bool quiesced = control.WaitQuiescent(deadline);

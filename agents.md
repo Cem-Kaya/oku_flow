@@ -498,10 +498,20 @@ aligned with the project goals.
   ports and scripted probes; missing fixture registration must fail the gate.
 
 ## Phone reconnect ladder (2026-11-17)
-- Bind recovery evidence to its listener before sending the listing. Carry
-  that identity through the stop checks, and pin reconnect writes to their
-  observed endpoint. A live veto counts even if the session ends before the
-  result is handled. Check reservation give-backs by retrying without an
+- Bind stop evidence to a uniquely identified listener before listing and
+  carry its identity through the stop checks. A new link episode revokes
+  the stop at its next effect. A targeted reconnect uses the observed port
+  and server kind. Open the reconnect socket before the final listing,
+  require the same USB serial, transport ID and state, and check authority
+  at emission. An ID-less offline entry on the owned server goes to the
+  bounded restart rung. A responsive private server beside a blind default
+  can take that rung only on its own listing of the stuck phone. Match the
+  listener to the held child again under the manager lock. Test replacement
+  and reservation give-back with an actual registered session. Wait the
+  stuck grace when a borrowed default reports an offline phone without an ID.
+  Name the sibling at the takeover caps if the interface is present and the
+  phone remains unlisted. A live veto counts even if the session ends before
+  the result is handled. Check reservation give-backs by retrying without an
   event, and test cleared timestamps directly so expiry cannot mask a failure.
   Keep companion-provided text out of traces with fixed protocol tokens.
 - Iteration 9 lessons. An authority check must reach the shared helpers a
@@ -511,12 +521,8 @@ aligned with the project goals.
   nothing about the inner ones, so revoke inside them (stage hooks). A request
   that lost its authority must not reach the decision unit at all: deciding
   reserves budgets the next, valid cycle needs. Advance an intent generation
-  only when the intent changes, computed after the change. Evidence belongs to
-  the thing it was recorded for: when a manager is dropped, keep its counts
-  of what was observed (a death, a readiness wait that ran out), never a
-  failure inferred from age alone, and nothing when the user's choice of
-  another source dropped it; when a listener changes, drop its
-  listener-specific evidence and compare the identity wherever a
+  only when the intent changes, computed after the change. When a listener
+  changes, drop its listener-specific evidence and compare the identity wherever a
   confirmation is read. A rung whose own server is the
   broken part must look at the alternative that works (the default that lists
   the phone). A safety refusal (a live session) belongs in the executor
@@ -617,7 +623,11 @@ aligned with the project goals.
   trace line. Do not reintroduce "once per transport" launch budgets or
   minute-long holds; the owner's complaint was stacked 30 s / 60 s waits.
   Camera starts take launches from the doctor's per-event budget
-  (`ReserveLaunch`), never from a timer of their own. A listener refusal
+  (`ReserveLaunch`), never from a timer of their own. Track whether the
+  activity request was written separately from its status. Keep control
+  retries in the same camera start within the startup budget's reserve.
+  Carry source and episode authority through the legacy reclaim's host-kill
+  wait and final termination. A listener refusal
   within `launchSettleMs` of OkuFlow's own launch holds nothing, and a hold
   ends when the app process is gone: relaunched at once the first time in an
   episode (spent only by a decision that actually launches), later at `launchPeriodicMs` after the last launch (Pause survives
@@ -692,6 +702,19 @@ aligned with the project goals.
 - Discovery is held back only while a camera start or the stop a queued
   start waits behind runs; a start that waits for a recording to end does
   not stop the link ladder for the length of the recording.
+- Use serial selection for wake and activity commands when the current
+  listing names the serial once. For duplicate serials select the ready
+  transport ID and treat any second ready transport as a reason to keep a
+  shared default running. Check source authority at the shell write after
+  selection. A successful activity launch gets an immediate control attempt
+  inside the overall start budget.
+- Verify owned listener identity at readiness. A live, ready child answering
+  on its port is running. A child that never verifies readiness can restart
+  after its start grace, and its readiness counts end with the manager.
+  The idle shadow's pre-list still verifies the exact private listener.
+- The idle-shadow hand-back in `EnsureAdbServer` and the doctor hand-back
+  in `ExecuteLinkAction` both retire a private server under the lifecycle
+  lock. They currently use separate implementations.
 - Nothing here was observed on a real failing laptop; report fixture evidence
   separately from real sleep/cable/phone acceptance.
 
