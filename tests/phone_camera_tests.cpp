@@ -537,11 +537,21 @@ std::vector<okuflow::OkuFlowSiblingObservation> ObserveSiblingsEventually(const 
     }
     return siblings;
 }
+// The fixture writes its ready file by renaming a finished temporary file, so
+// a file that exists holds the whole PID. It can still be unreadable for a
+// moment (a hosted Windows runner read 0 right after the file appeared, most
+// likely a security scan holding it): read until a PID is there, briefly.
 unsigned long ReadFixturePid(const QString& path)
 {
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) return 0;
-    return file.readAll().trimmed().toULong();
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    for (;;) {
+        QFile file(path);
+        if (file.open(QIODevice::ReadOnly)) {
+            if (const auto pid = file.readAll().trimmed().toULong()) return pid;
+        }
+        if (std::chrono::steady_clock::now() >= deadline) return 0;
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
 }
 // Observation only: tests never terminate a process they found by PID.
 bool FixtureProcessExited(unsigned long pid)
