@@ -175,6 +175,9 @@ struct PhoneAdbTestHooks {
     std::optional<OwnedAdbServerPolicy> ownedPolicy;
 };
 void SetPhoneAdbTestHooks(std::optional<PhoneAdbTestHooks> hooks);
+// Test seam (read only): a private-server start beside the default is
+// requested and not yet consumed or dropped.
+bool PhoneAdbShadowRequestedForTest();
 // Stops only the private adb server this process launched and owns (exact
 // job-owned child). A borrowed pre-existing/overridden server is untouched.
 // Called on normal app teardown after capture stops; state is per-process

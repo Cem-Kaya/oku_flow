@@ -1290,6 +1290,11 @@ void SetPhoneAdbTestHooks(std::optional<PhoneAdbTestHooks> hooks)
     runtime.hungServesOther.reset();
     runtime.siblings.clear();
 }
+bool PhoneAdbShadowRequestedForTest()
+{
+    auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
+    return runtime.shadowRequested;
+}
 void PhoneCameraTransport::AllowAppLaunch(const std::string& serial)
 {
     (void)serial; // One budget for the phone link, renewed by the deliberate pick.

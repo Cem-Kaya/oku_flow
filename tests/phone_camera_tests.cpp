@@ -3774,6 +3774,36 @@ private slots:
         QVERIFY(okuflow::AdbListenerRows({row(true, true, false, 5037, 8)}, 5037).empty());
         QVERIFY(okuflow::AdbListenerRows({row(false, true, false, 5038, 8), row(false, false, true, 5038, 9)}, 5037).empty());
     }
+    void startRequestIsMootWhenAPrivateServerAlreadyRuns() {
+        // Iteration 8 (B9), for the post-round-7 clear: the doctor decided a
+        // private server beside a blind default, and by the time the start
+        // runs OkuFlow's own server already exists (the default went away
+        // and a phone-use call engaged it). The request is met or moot; it
+        // must not wait for a later call and start a server nobody asked for.
+        FakePhoneAdb other(false, false, false, FakePhoneAdb::LaunchMode::None,
+                           FakePhoneAdb::RecoveryMode::Healthy, false);
+        other.listEmpty.store(true);
+        FakePhoneAdb* fake = &other;
+        auto armed = std::make_shared<std::atomic<bool>>(false);
+        ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {},
+                              5000, [fake, armed](okuflow::PhoneAdbTestHooks& h) {
+            h.beforeShadowStartForTest = [fake, armed] {
+                if (armed->exchange(true)) return;
+                fake->closeListener.store(true);
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                for (int i = 0; i < 20 && !okuflow::OwnedAdbServerPort(); ++i)
+                    okuflow::PhoneCameraTransport::Enumerate({}, nullptr, nullptr, "abc", nullptr,
+                                                             okuflow::PhoneServerIntent::PhoneUse);
+            };
+        });
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto reports = LinkCycles(60, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::StartShadowServer; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::StartShadowServer));
+        QVERIFY(armed->load());
+        QVERIFY(okuflow::OwnedAdbServerPort().has_value());
+        QVERIFY2(!okuflow::PhoneAdbShadowRequestedForTest(), "A start request outlived the private server that met it.");
+    }
     void defaultGoneAtEveryAskEndsInTheSentenceEndToEnd() {
         // Iteration 8 (B9): the post-round-7 change through the executor: a
         // default the lookup finds gone at every ask (it answers listings,
