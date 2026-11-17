@@ -674,8 +674,8 @@ A phone stuck (offline, connecting, stalled, no permissions) on a server
 OkuFlow does not own: two reconnects (at once, 3 s), then 6 s later the
 takeover (borrowed default) or the re-plug sentence (user endpoint). The user
 endpoint also gets the re-plug sentence when it does not list a phone Windows
-shows after the 5 s blind grace, and when it stays unresponsive for 30 s
-(`userEndpointUnresponsiveMs`). Per
+shows after the 5 s blind grace, and when it stays absent or unresponsive
+for 30 s (`userEndpointUnresponsiveMs`). Per
 episode: 3 blind/stuck restarts, 2 `host:kill`, 3 terminations, 3 aborted stops
 (terminations aborted because the default answered its pre-stop listing and
 `host:kill` requests never sent to a default that still listens; counted apart from the caps, and apart for a
@@ -686,7 +686,8 @@ while its version answers is restarted after the 5 s grace (15 s, then 60 s,
 two listings spanning 5 s is a confirmed hang; starts of OkuFlow's own adb
 that stay silent past the 30 s start grace (one count per grace) or die
 before answering count with launch failures toward the AdbCannotStart
-sentence (2); resume signals within 5 s of the last applied resume are one
+sentence (2). A previously ready server that stays responsive while its
+listener ownership remains unverifiable counts on the same start grace; resume signals within 5 s of the last applied resume are one
 event; 4 removals within 60 s name the cable until the link holds 10 s or no
 removal comes for 30 s. Iteration 9 changes no number: a restart a live
 session defers is given back (not one of the 3), a private child dropped

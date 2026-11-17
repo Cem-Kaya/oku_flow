@@ -132,11 +132,12 @@ re-plug the cable. Two consecutive launch failures of the bundled adb (a
 missing or quarantined file) are named in one sentence. So are starts that
 never answer: a child that stays alive without ever answering counts once per
 30 s start grace (also one that is replaced, and one whose listener ownership
-cannot be verified), one that dies before it ever answered counts once; a
-child that answers ends the count, events do not. A private server that cannot
+cannot be verified), and one that dies before it ever answered counts once.
+After readiness, a responsive child whose listener ownership remains
+unverifiable also counts once per start grace. Its device listing stays
+unavailable until a verified response clears the count. A private server that cannot
 start beside another program's default counts the same way, and only
-OkuFlow's own server answering resets the count (another program's default
-answering does not). An owned server that answers its version probes while
+a verified response from OkuFlow's own server resets the count. An owned server that answers its version probes while
 its device listing fails (time-out, closed socket, invalid reply, `FAIL` to
 both listing forms) gets the same restart rung and cap after the 5 s grace and
 ends in the re-plug sentence: upstream adb answers `host:version` without the
@@ -243,7 +244,10 @@ cannot start stands beside an answering default, the start beside it is tried
 again at the restart ceiling, uncharged: nothing else starts a private server
 there, and the sentence ends once adb.exe can start. Once the
 terminations of a hung default are spent, the other-program sentence stands
-also while a respawned default is not confirmed yet.
+also while a respawned default is not confirmed yet. A configured loopback
+endpoint that is absent or unresponsive reaches the existing re-plug sentence
+after the same grace. OkuFlow keeps probing it so a responding server clears
+the sentence.
 
 **Iteration 9 additions.** The discovery cycle's and the ladder's authority
 also reaches the server request itself (`EnsureAdbServer`): it is asked once
@@ -329,15 +333,19 @@ unsupported replies. Both recovery paths open the reconnect socket on the
 observed port, verify its listener, then re-list on that port before the write.
 The fresh listing must match the USB serial, transport ID and state that
 authorized the request. A private listener must belong unambiguously to the
-same live child before the listing and at the write. The ID-less
-`host:reconnect-offline` fallback is reserved for that private server. An idle
+same live child before the listing and at the write. A transport-ID reconnect
+can use a unique default listener's PID when Windows cannot open that process.
+The ID-less `host:reconnect-offline` fallback requires a verified private server. An idle
 preferred phone can receive the same recovery during background discovery while a
 fallback webcam is active. Ordinary browsing, explicit webcam intent, coded
 phone problems, busy sessions and live/starting phone ownership do not trigger
 it. A successful request still needs subsequent discovery and decoded frames.
 Other adb clients using that same phone lose their transport during a targeted
 reset. The phone-link trace uses fixed tokens for known companion problem codes
-and records unfamiliar codes as `unknown`.
+and records unfamiliar codes as `unknown`. Discovery and session startup bind
+wake and activity launch to the server that listed the selected phone. Before
+each shell command they confirm the USB serial and current transport ID,
+select by serial and recheck the listener and source authority at the write.
 
 A globally hung server cannot acknowledge this transport request. The automatic
 server recovery above handles OkuFlow-owned or proven legacy support and, under

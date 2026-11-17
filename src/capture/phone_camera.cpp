@@ -314,7 +314,13 @@ std::optional<AdbListenerIdentity> ListenerIdentity(std::uint16_t port)
 std::optional<AdbListenerIdentity> ReconnectListenerIdentity(const AdbServerEndpoint& endpoint)
 {
     if (!endpoint.supported || !endpoint.port) return std::nullopt;
-    if (!endpoint.ownedByThisProcess) return ListenerIdentity(endpoint.port);
+    if (!endpoint.ownedByThisProcess) {
+        const auto lookup = LookupListener(endpoint.port);
+        if (lookup.state == ListenerState::Found ||
+            (lookup.state == ListenerState::Unopenable && !endpoint.overridden && lookup.identity.processId))
+            return lookup.identity;
+        return std::nullopt;
+    }
     std::shared_ptr<OwnedAdbServer> owned;
     {
         auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
@@ -328,13 +334,14 @@ struct ReconnectServer {
     AdbServerEndpoint endpoint;
     std::optional<AdbListenerIdentity> listener;
 
-    bool StillCurrent() const
+    // Only a transport-ID reconnect can rely on PID-only listener evidence.
+    bool StillCurrent(bool targetedReconnect = false) const
     {
         const auto current = Endpoint();
         return endpoint.supported && current.supported && current.port == endpoint.port &&
             current.ownedByThisProcess == endpoint.ownedByThisProcess &&
             current.overridden == endpoint.overridden &&
-            listener && ReconnectListenerIdentity(current) == listener;
+            listener && (listener->created || targetedReconnect) && ReconnectListenerIdentity(current) == listener;
     }
 };
 ReconnectServer ObserveReconnectServer(const AdbServerEndpoint& endpoint)
@@ -1101,9 +1108,9 @@ bool AdbRequest(QTcpSocket& socket, const QByteArray& service, int timeout = 300
     if (status != "OKAY") throw std::runtime_error("Invalid adb response");
     return true;
 }
-void Transport(QTcpSocket& socket, const std::string& serial, const QByteArray& service,
+bool Transport(QTcpSocket& socket, const std::string& serial, const QByteArray& service,
                const std::atomic<bool>* canceled = nullptr, int timeout = 3000, std::uint64_t transportId = 0,
-               std::optional<std::uint16_t> port = std::nullopt)
+               std::optional<std::uint16_t> port = std::nullopt, const std::function<bool()>& allowed = {})
 {
     if (port) {
         socket.setReadBufferSize(32 * 1024 * 1024);
@@ -1111,9 +1118,10 @@ void Transport(QTcpSocket& socket, const std::string& serial, const QByteArray& 
     } else {
         Connect(socket, kHostConnectMs, canceled);
     }
-    AdbRequest(socket, transportId ? "host:transport-id:" + QByteArray::number(transportId) :
-        "host:transport:" + QByteArray::fromStdString(serial), timeout, canceled);
-    AdbRequest(socket, service, timeout, canceled);
+    if (!AdbRequest(socket, transportId ? "host:transport-id:" + QByteArray::number(transportId) :
+        "host:transport:" + QByteArray::fromStdString(serial), timeout, canceled, allowed))
+        return false;
+    return AdbRequest(socket, service, timeout, canceled, allowed);
 }
 QByteArray ReadHostReplyBody(QTcpSocket& socket, const std::atomic<bool>* canceled)
 {
@@ -1145,16 +1153,16 @@ QByteArray AdbHostReplyAt(std::uint16_t port, const QByteArray& service, const s
 // Open the write socket first, then observe the transport on the same
 // server. The final identity and intent checks run at the write boundary.
 std::optional<QByteArray> AdbReconnectReply(const ReconnectServer& server, const QByteArray& service,
-                                            const std::atomic<bool>* canceled,
+                                            bool targetedReconnect, const std::atomic<bool>* canceled,
                                             const std::function<bool()>& stillWanted,
                                             const std::function<bool()>& stillEligible)
 {
     CheckCanceled(canceled);
-    if (!server.StillCurrent()) return std::nullopt;
+    if (!server.StillCurrent(targetedReconnect)) return std::nullopt;
     QTcpSocket socket;
     ConnectTo(socket, server.endpoint.port, kHostConnectMs, canceled);
     if (const auto hooks = Hooks(); hooks && hooks->afterReconnectConnectForTest) hooks->afterReconnectConnectForTest();
-    const auto allowed = [&] { return server.StillCurrent() && (!stillWanted || stillWanted()); };
+    const auto allowed = [&] { return server.StillCurrent(targetedReconnect) && (!stillWanted || stillWanted()); };
     if (!allowed() || !stillEligible()) return std::nullopt;
     if (!AdbRequest(socket, service, kHostReplyFieldMs, canceled, allowed)) return std::nullopt;
     return ReadHostReplyBody(socket, canceled);
@@ -1908,22 +1916,33 @@ QByteArray DrainShell(QTcpSocket& socket, const std::atomic<bool>* canceled, int
     return response;
 }
 
-enum class CompanionLaunch { Started, NotInstalled, Dropped };
+enum class CompanionLaunch { Started, NotInstalled, Dropped, AttachmentChanged };
 // Rung 5: wake the screen (harmless input) and start the activity with the
 // host-launch extra, which lets a new companion show over the keyguard. The
 // Play package is tried first; the legacy debug package only when the new
 // activity class is absent. Never force-stops anything.
-CompanionLaunch LaunchCompanion(const std::string& serial, std::uint64_t transportId,
+CompanionLaunch LaunchCompanion(const ReconnectServer& server, const std::string& serial, std::uint64_t transportId,
                                 const std::atomic<bool>* canceled, bool wake,
                                 const std::function<bool()>& stillWanted = {})
 {
-    // Each shell command is checked right before it is sent: a source
-    // change meanwhile sends nothing more (Dropped).
-    if (stillWanted && !stillWanted()) return CompanionLaunch::Dropped;
+    const auto allowed = [&] { return server.StillCurrent() && (!stillWanted || stillWanted()); };
+    const auto refused = [&] {
+        return stillWanted && !stillWanted() ? CompanionLaunch::Dropped : CompanionLaunch::AttachmentChanged;
+    };
+    const auto openShell = [&](QTcpSocket& socket, const char* command) {
+        if (!allowed()) return false;
+        const auto phones = ListUsbPhones(canceled, nullptr, server.endpoint.port);
+        if (std::none_of(phones.begin(), phones.end(), [&](const auto& phone) {
+                return phone.phoneSerial == serial && phone.phoneTransportId == transportId;
+            })) return false;
+        // Select by serial so recycling the transport ID after the listing
+        // cannot route a shell command to a different phone.
+        return Transport(socket, serial, command, canceled, 1000, 0, server.endpoint.port, allowed);
+    };
     if (wake) {
         try {
             QTcpSocket waker;
-            Transport(waker, serial, "shell:input keyevent KEYCODE_WAKEUP", canceled, 1000, transportId);
+            if (!openShell(waker, "shell:input keyevent KEYCODE_WAKEUP")) return refused();
             DrainShell(waker, canceled, 1000);
         } catch (const std::exception&) {
             CheckCanceled(canceled);
@@ -1932,9 +1951,8 @@ CompanionLaunch LaunchCompanion(const std::string& serial, std::uint64_t transpo
     for (const char* command : {
         "shell:am start -n com.okuflow/com.okuflow.camera.MainActivity --ez com.okuflow.camera.extra.HOST_LAUNCH true",
         "shell:am start -n com.okuflow.camera/.MainActivity --ez com.okuflow.camera.extra.HOST_LAUNCH true"}) {
-        if (stillWanted && !stillWanted()) return CompanionLaunch::Dropped;
         QTcpSocket launcher;
-        Transport(launcher, serial, command, canceled, 1000, transportId);
+        if (!openShell(launcher, command)) return refused();
         const auto response = DrainShell(launcher, canceled, 2000);
         if (!response.contains("Error") && !response.contains("Exception")) return CompanionLaunch::Started;
         const bool legacy = std::string_view(command).find("com.okuflow.camera/.MainActivity") != std::string_view::npos;
@@ -2050,7 +2068,7 @@ bool RecoverStalledUsbTransportOn(const ReconnectServer& server, const CameraDes
                                   const std::atomic<bool>* canceled, const std::function<bool()>& stillWanted)
 {
     if (descriptor.phoneSerial.empty() || !descriptor.phoneTransportId ||
-        descriptor.phoneBusy || !descriptor.phoneProblem.empty() || !server.StillCurrent()) return false;
+        descriptor.phoneBusy || !descriptor.phoneProblem.empty() || !server.StillCurrent(true)) return false;
     const auto port = server.endpoint.port;
     const auto key = std::make_pair(port, descriptor.phoneSerial);
     try {
@@ -2108,7 +2126,7 @@ bool RecoverStalledUsbTransportOn(const ReconnectServer& server, const CameraDes
         }
         // A dropped request wrote nothing and gives its reservation back.
         const auto reply = AdbReconnectReply(server, "host-transport-id:" +
-            QByteArray::number(descriptor.phoneTransportId) + ":reconnect", canceled, stillWanted, [&] {
+            QByteArray::number(descriptor.phoneTransportId) + ":reconnect", true, canceled, stillWanted, [&] {
                 try {
                     return SameUsbTransportAttached(ListUsbPhones(canceled, nullptr, port), descriptor);
                 } catch (const std::exception&) {
@@ -2413,7 +2431,7 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
                         current.state == entry->state;
                 });
             };
-            if (!AdbReconnectReply(listingServer, service, canceled, stillWanted, stillEligible))
+            if (!AdbReconnectReply(listingServer, service, entry->transportId != 0, canceled, stillWanted, stillEligible))
                 return stale() ? dropped : "kept: the observed transport changed or recovered";
             return std::string("reconnect requested for a ") + StateName(entry->state) + " transport";
         } catch (const std::exception&) {
@@ -2765,8 +2783,9 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         if (const auto hooks = Hooks(); hooks && hooks->beforeCompanionLaunchForTest) hooks->beforeCompanionLaunchForTest();
         if (stale()) return dropped;
         try {
-            const auto launched = LaunchCompanion(entry->serial, entry->transportId, canceled, true, stillWanted);
+            const auto launched = LaunchCompanion(listingServer, entry->serial, entry->transportId, canceled, true, stillWanted);
             if (launched == CompanionLaunch::Dropped) return dropped;
+            if (launched == CompanionLaunch::AttachmentChanged) return "companion launch failed";
             return launched == CompanionLaunch::Started
                 ? "woke the phone and requested the companion" : "companion is not installed";
         } catch (const std::exception&) {
@@ -2837,10 +2856,9 @@ void RunPhoneLinkLadder(const PhoneLinkRequest& link, const std::string& preferr
         o.serverLaunchFailures = runtime.launchFailures;
         ownedManager = runtime.ownedServer;
     }
-    // Starts of OkuFlow's own adb that stayed alive without ever answering
-    // past their start grace, or died before they ever answered (security
-    // software that lets adb.exe run but blocks its socket): named like
-    // launches that failed outright; one that answers ends the count.
+    // A child that never becomes ready, or a responsive listener that stays
+    // unverifiable after readiness, counts like a launch that failed outright.
+    // A verified response clears the count.
     if (ownedManager) o.serverLaunchFailures += ownedManager->UnansweredStarts();
     // The adb environment variables make the endpoint the user's, whatever
     // test hooks say: it is reported as an override, never taken over.
@@ -3381,8 +3399,13 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
             const auto stateDeadline = std::min(Clock::now() + std::chrono::seconds(4),
                                                 startupBudget.Deadline() - std::chrono::seconds(2));
             auto selected = attached.end();
+            ReconnectServer listingServer;
             for (;;) {
-                attached = ListUsbPhones(&canceled_, &entries);
+                const auto endpoint = Endpoint();
+                if (!endpoint.supported) throw std::runtime_error("USB phone support requires a local TCP adb server");
+                if (!endpoint.port) throw AdbServerUnavailable("The owned adb server is unavailable");
+                listingServer = ObserveReconnectServer(endpoint);
+                attached = ListUsbPhones(&canceled_, &entries, listingServer.endpoint.port);
                 selected = std::find_if(attached.begin(), attached.end(), [&](const auto& item) { return item.phoneSerial == descriptor.phoneSerial; });
                 if (selected != attached.end()) break;
                 const bool listed = std::any_of(entries.begin(), entries.end(), [&](const auto& entry) {
@@ -3420,14 +3443,16 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
                     // attempt, taken from the shared per-event budget.
                     if (!endpointOpened && !launchedThisAttempt && MayLaunch()) {
                         launchedThisAttempt = true;
-                        TracePhoneLink("session start: woke the phone and requested the companion " +
-                                       PhoneSerialTag(descriptor.phoneSerial));
                         // Wake first: a launch on a sleeping phone would otherwise be spent
                         // behind the keyguard. A paused/blocked installed app keeps its
                         // own state; the legacy package is only tried when the Play
                         // activity is absent.
-                        if (LaunchCompanion(descriptor.phoneSerial, descriptor.phoneTransportId, &canceled_, true) ==
-                            CompanionLaunch::NotInstalled)
+                        const auto launch = LaunchCompanion(listingServer, descriptor.phoneSerial,
+                                                            descriptor.phoneTransportId, &canceled_, true);
+                        if (launch == CompanionLaunch::Started)
+                            TracePhoneLink("session start: woke the phone and requested the companion " +
+                                           PhoneSerialTag(descriptor.phoneSerial));
+                        if (launch == CompanionLaunch::NotInstalled)
                             throw std::runtime_error("Install OkuFlow Camera on the selected USB phone first");
                     }
                     if (Clock::now() >= connectionDeadline)

@@ -657,6 +657,27 @@ private slots:
         QCOMPARE(int(doctor.Decide(hung, 200000).action), int(A::Relist));
         QCOMPARE(int(doctor.Decide(hung, 200000 + limit).diagnosis), int(D::ReplugCable));
     }
+    void absentUserEndpointSharesTheUnresponsiveDeadline()
+    {
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto missing = Blind(PhoneServerKind::Override);
+        missing.serverProbe = PhoneServerProbe::NoListener;
+        const auto limit = doctor.Policy().userEndpointUnresponsiveMs;
+        QCOMPARE(doctor.Decide(missing, 0).diagnosis, D::ServerStarting);
+        QCOMPARE(doctor.Decide(missing, limit - 1).action, A::Relist);
+        const auto named = doctor.Decide(missing, limit);
+        QCOMPARE(named.diagnosis, D::ReplugCable);
+        QCOMPARE(named.action, A::WaitForUser);
+
+        missing.serverProbe = PhoneServerProbe::Unresponsive;
+        QCOMPARE(doctor.Decide(missing, limit + 1).diagnosis, D::ReplugCable);
+        auto ready = Ready();
+        ready.server = PhoneServerKind::Override;
+        QCOMPARE(doctor.Decide(ready, limit + 2).diagnosis, D::Connected);
+        missing.serverProbe = PhoneServerProbe::NoListener;
+        QCOMPARE(doctor.Decide(missing, limit + 3).diagnosis, D::ServerStarting);
+    }
     void confirmedHungDefaultIsTerminatedWithBudget()
     {
         PhoneLinkDoctor doctor;

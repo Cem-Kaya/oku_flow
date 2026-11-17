@@ -152,8 +152,9 @@ public:
     // start grace a child stays alive without ever answering (also one that
     // is replaced, and one whose listener ownership cannot be verified), and
     // one for a child that died before it ever answered (counted by the
-    // next EnsureRunning). A child that answers resets it to zero; events
-    // do not (the sentence it leads to stands until OkuFlow's adb answers).
+    // next EnsureRunning). A responsive child whose listener ownership stays
+    // unverifiable after readiness also counts once per start grace.
+    // Only a verified response resets the count.
     // Lock-free: readable while a worker holds the manager through a launch.
     int UnansweredStarts() const { return unansweredStarts_.load(); }
     // The same count, for a manager that is about to be dropped (the caller
@@ -178,7 +179,7 @@ private:
         ~WantedScope() { owner->wanted_ = {}; }
         OwnedAdbServer* owner;
     };
-    bool ResponsiveOwnedChild(OwnedServerProbe response) const;
+    bool ObserveChildReadinessLocked(OwnedServerProbe response);
     bool WaitSlice(const std::atomic<bool>* canceled) const;
     bool WaitFor(std::chrono::milliseconds duration, const std::atomic<bool>* canceled) const;
     void ApplyBudgetResetLocked();
@@ -200,6 +201,8 @@ private:
     std::chrono::steady_clock::time_point nextRestart_{};
     std::chrono::steady_clock::time_point launchedAt_{};
     bool answered_{false};
+    // First or most recently counted responsive probe with unverified ownership.
+    std::optional<std::chrono::steady_clock::time_point> unverifiedOwnershipAt_;
     // When the current child last counted (or was launched), and whether its
     // death before answering was counted.
     std::chrono::steady_clock::time_point unansweredCountedAt_{};

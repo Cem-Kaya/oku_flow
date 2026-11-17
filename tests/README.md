@@ -1181,6 +1181,17 @@ child whose private listener row names another process. The offline table tests
 transitions to unauthorized, connecting and ready, including a ready transition
 after opening the reconnect socket. `stalledReconnectChecksTheAttachmentAfterConnect`
 covers a ready device re-registering with a different ID at the same point.
+Round 12 rows cover a reused transport ID, an endpoint switch and revocation
+during selection (`ladderLaunchUsesTheObservedServerAndPhone`), a reused ID
+at session startup (`sessionLaunchUsesTheSelectedUsbSerial`), targeted-only
+offline and stalled-device recovery for an unopenable listener (`unopenableDefaultReconnectRequiresATransportId`),
+and unreadable ownership after healthy readiness followed by recovery
+(`previouslyHealthyOwnedListenerMustRemainVerifiable`).
+`absentUserEndpointIsNamedAndCanRecover` starts a fake on the configured port
+after the existing sentence appears. The doctor row
+`absentUserEndpointSharesTheUnresponsiveDeadline` checks the deadline and its
+reset. `terminationCanceledWithoutAStopIsGivenBack` changes intent after the
+fake receives `host:kill` and verifies the fresh attempt can still terminate.
 Doctor:
 `silentPrivateServerBesideADefaultThatServesThePhoneIsHandedBack`,
 `restartDeferredForALiveSessionIsGivenBack`. Legacy:

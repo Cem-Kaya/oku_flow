@@ -226,10 +226,27 @@ OwnedAdbServer::OwnedAdbServer(ProbeFn probe, LaunchFn launch, PortPickerFn pick
 
 OwnedAdbServer::~OwnedAdbServer() { Stop(); }
 
-bool OwnedAdbServer::ResponsiveOwnedChild(OwnedServerProbe response) const
+bool OwnedAdbServer::ObserveChildReadinessLocked(OwnedServerProbe response)
 {
-    return response == OwnedServerProbe::Responsive && child_ && child_->IsRunning() && port_ &&
-        (!policy_.verifyListenerOwnership || child_->OwnsListeningPort(*port_));
+    if (response != OwnedServerProbe::Responsive || !child_ || !child_->IsRunning() || !port_)
+        return false;
+    if (!policy_.verifyListenerOwnership || child_->OwnsListeningPort(*port_)) {
+        answered_ = true;
+        unverifiedOwnershipAt_.reset();
+        unansweredStarts_.store(0);
+        return true;
+    }
+    // A previously healthy child can keep answering without proving it
+    // owns the listener. Use the startup grace to count sustained loss.
+    if (answered_) {
+        const auto now = std::chrono::steady_clock::now();
+        if (!unverifiedOwnershipAt_) unverifiedOwnershipAt_ = now;
+        else if (now - *unverifiedOwnershipAt_ >= policy_.startGrace) {
+            unverifiedOwnershipAt_ = now;
+            ++unansweredStarts_;
+        }
+    }
+    return false;
 }
 
 bool OwnedAdbServer::WaitSlice(const std::atomic<bool>* canceled) const
@@ -279,6 +296,7 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::LaunchAndAwaitLocked(
         ++launches_;
         launchedAt_ = std::chrono::steady_clock::now();
         answered_ = false;
+        unverifiedOwnershipAt_.reset();
         unansweredCountedAt_ = launchedAt_;
         deathCounted_ = false;
         readinessMissed_ = false;
@@ -296,11 +314,8 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::LaunchAndAwaitLocked(
             }
             const auto response = probe_(*port_, canceled);
             if (Halted(canceled)) return EnsureResult::Canceled;
-            if (ResponsiveOwnedChild(response)) {
-                answered_ = true;
-                unansweredStarts_.store(0);
+            if (ObserveChildReadinessLocked(response))
                 return restart ? EnsureResult::Restarted : EnsureResult::Launched;
-            }
             if (std::chrono::steady_clock::now() >= deadline) {
                 readinessMissed_ = true; // Its readiness wait ran out unanswered.
                 return EnsureResult::NotReady; // Owned child left for later probes.
@@ -327,11 +342,7 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::EnsureRunning(const std::atomic<boo
     if (child_ && child_->IsRunning() && port_) {
         const auto response = probe_(*port_, canceled);
         if (Halted(canceled)) return EnsureResult::Canceled;
-        if (ResponsiveOwnedChild(response)) {
-            answered_ = true;
-            unansweredStarts_.store(0);
-            return EnsureResult::Running;
-        }
+        if (ObserveChildReadinessLocked(response)) return EnsureResult::Running;
         // A start whose readiness wait was cut short (a source change, a
         // cancellation) is observed missing its readiness only by a probe
         // that fails after the deadline.
@@ -352,11 +363,7 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::EnsureRunning(const std::atomic<boo
             if (!child_->IsRunning()) { confirmed = false; break; }
             const auto confirmedResponse = probe_(*port_, canceled);
             if (Halted(canceled)) return EnsureResult::Canceled;
-            if (ResponsiveOwnedChild(confirmedResponse)) {
-                answered_ = true;
-                unansweredStarts_.store(0);
-                return EnsureResult::Running;
-            }
+            if (ObserveChildReadinessLocked(confirmedResponse)) return EnsureResult::Running;
             if (confirmedResponse == OwnedServerProbe::Responsive && child_->IsRunning())
                 return EnsureResult::NotReady;
         }

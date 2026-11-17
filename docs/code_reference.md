@@ -1917,8 +1917,10 @@ so metadata generation cannot silently accept an incomplete copy.
   `foreignReconnects`, `unknownInterfaceBlindMs`, `userEndpointUnresponsiveMs`,
   `companionFailedGraceMs`, and the event-storm limits `resumeCoalesceMs`,
   `flapRemovals`, `flapWindowMs`, `flapQuietMs`; `OnEvent` returns false for a
-  coalesced resume). `NoteExitRequestDropped`/`NoteTerminationDropped` give
-  back an ask or termination dropped for a changed source, uncounted.
+  coalesced resume). A configured endpoint's absence shares its unresponsive
+  deadline. `NoteExitRequestDropped`/`NoteTerminationDropped` give back
+  an ask or termination dropped for a changed source, including a cancellation
+  during the termination helper's wait after it delivered `host:kill`.
   `ExecuteLinkAction` keeps a live-session veto from the termination helper's
   authority callback and passes it to `NoteTerminationAborted`, including
   when the session ends before the helper returns. The ask and both
@@ -1927,7 +1929,9 @@ so metadata generation cannot silently accept an incomplete copy.
   helper. They check that identity after listing, after a stall re-check and
   before the stop helper.
   `OwnedAdbServer::UnansweredStarts` counts starts that never answered (one
-  per start grace alive, one at death), reset when the child answers;
+  per start grace alive, one at death) and responsive probes whose ownership
+  remains unverifiable after readiness (one per start grace).
+  `ObserveChildReadinessLocked` clears the count on a verified response;
   `UnansweredStartsAtRetirement` adds a death not counted yet and a child
   dropped alive whose readiness wait ran to its deadline (or that a probe
   found silent past it; `readinessMissed_`), never by age alone, for the
@@ -2010,7 +2014,11 @@ so metadata generation cannot silently accept an incomplete copy.
   `ReleaseForWebcam` call. `OccupiedPhone` prevents overlapping
   probes; `MayLaunch` takes a camera start's single wake + launch from the
   doctor's per-event budget (`PhoneLinkDoctor::ReserveLaunch`), and
-  `AllowAppLaunch` (a manual camera pick) renews it. `ControlHello` accepts a token-free `probe:true` ACK,
+  `AllowAppLaunch` (a manual camera pick) renews it. `LaunchCompanion` uses
+  the observed server from discovery or session startup. It re-lists the USB
+  serial and ID before each command and uses `Transport` with a serial
+  selector and listener/source checks at both request writes.
+  `ControlHello` accepts a token-free `probe:true` ACK,
   supports older tokened ACKs and reads coded ERROR packets. Real hello and
   video binding are retried together within a bounded connection window.
   `ownedServerExecutable` / `ownedServerArguments` opt into the private fake
@@ -2025,8 +2033,10 @@ so metadata generation cannot silently accept an incomplete copy.
   timeout, then sends `host-transport-id:ID:reconnect`. `ReconnectServer` carries
   the listing port and unique listener identity into `AdbReconnectReply`.
   For a private port that identity comes from the owned child's verified
-  listener. Both paths re-list after the reconnect socket opens and require
-  the same USB serial, ID and state. The ID-less fallback is private-only.
+  listener. A transport-ID reconnect can use a unique PID when Windows
+  cannot open the default listener. Both paths re-list after the reconnect
+  socket opens and require the same USB serial, ID and state. The ID-less
+  fallback is private-only.
   `AdbRequest` checks the listener and source intent at the guarded write.
   `CompanionProblemTraceToken`
   allows only known codes in diagnosis and session-end traces. The echo checks require

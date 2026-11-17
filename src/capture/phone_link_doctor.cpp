@@ -315,6 +315,15 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         Reserve(handback_, nowMs, policy_.reconnectRetryMs, policy_.reconnectRetryMs);
         return A::HandBackToDefault;
     };
+    // Absence and a hang both leave the user's endpoint unavailable.
+    // Keep polling after the existing wait-for-user diagnosis is raised.
+    if (o.server == PhoneServerKind::Override &&
+        (diagnosis == D::ServerUnresponsive ||
+         (diagnosis == D::ServerStarting && o.serverProbe == PhoneServerProbe::NoListener)) &&
+        nowMs - SinceEventOr(unresponsiveSinceMs_) >= policy_.userEndpointUnresponsiveMs) {
+        *raised = D::ReplugCable;
+        return A::WaitForUser;
+    }
     switch (diagnosis) {
     case D::Connected:
     case D::NotWanted:
@@ -345,13 +354,6 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
             (o.defaultUnresponsiveConfirmed || abortedHungStops_ >= policy_.abortedStopCap ||
              terminate_.attempts >= policy_.terminateCap))
             return terminate(false);
-        // The user's endpoint (adb environment variables) is never stopped:
-        // a hang that lasts ends in the re-plug sentence.
-        if (o.server == PhoneServerKind::Override &&
-            nowMs - SinceEventOr(unresponsiveSinceMs_) >= policy_.userEndpointUnresponsiveMs) {
-            *raised = D::ReplugCable;
-            return A::WaitForUser;
-        }
         // OkuFlow's own server answers its version probes (so its manager
         // keeps it) while its device listing fails: an adb stuck in a USB
         // transport after sleep or a cable pull. The restart rung and its
@@ -588,8 +590,13 @@ PhoneLinkDecision PhoneLinkDoctor::Decide(const PhoneLinkObservation& observatio
     }
     const bool stuck = decision.diagnosis == D::Authorizing || decision.diagnosis == D::Offline ||
                        decision.diagnosis == D::TransportStalled;
-    if (decision.diagnosis == D::ServerUnresponsive) { if (unresponsiveSinceMs_ < 0) unresponsiveSinceMs_ = nowMs; }
-    else unresponsiveSinceMs_ = -1;
+    if (decision.diagnosis == D::ServerUnresponsive ||
+        (decision.diagnosis == D::ServerStarting && o.server == PhoneServerKind::Override &&
+         o.serverProbe == PhoneServerProbe::NoListener)) {
+        if (unresponsiveSinceMs_ < 0) unresponsiveSinceMs_ = nowMs;
+    } else {
+        unresponsiveSinceMs_ = -1;
+    }
     if (stuck) { if (stuckSinceMs_ < 0) stuckSinceMs_ = nowMs; }
     else { stuckSinceMs_ = -1; lastReconnectMs_ = -1; }
     if (o.phoneState == PhoneAdbState::Authorizing) { if (authorizingSinceMs_ < 0) authorizingSinceMs_ = nowMs; }

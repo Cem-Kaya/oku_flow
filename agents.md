@@ -695,6 +695,11 @@ aligned with the project goals.
 - Discovery is held back only while a camera start or the stop a queued
   start waits behind runs; a start that waits for a recording to end does
   not stop the link ladder for the length of the recording.
+- Bind wake and activity launch to the USB serial and the server that listed
+  it. Recheck source intent at each shell write, including after transport
+  selection. Permit PID-only listener evidence solely for transport-ID
+  reconnects on the borrowed default. Count sustained loss of ownership proof
+  after a healthy private-server observation and clear it on verified readiness.
 - Nothing here was observed on a real failing laptop; report fixture evidence
   separately from real sleep/cable/phone acceptance.
 
